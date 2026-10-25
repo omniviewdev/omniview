@@ -25,7 +25,7 @@ func TestStartConnectionWatch_Success(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	err := ctrl.StartConnectionWatch("p1", "conn-1")
+	err := ctrl.StartConnectionWatch(testInvocationContext(), "p1", "conn-1")
 	require.NoError(t, err)
 }
 
@@ -38,7 +38,7 @@ func TestStartConnectionWatch_ProviderError(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	err := ctrl.StartConnectionWatch("p1", "conn-1")
+	err := ctrl.StartConnectionWatch(testInvocationContext(), "p1", "conn-1")
 	assert.Error(t, err)
 }
 
@@ -50,7 +50,7 @@ func TestStopConnectionWatch_Success(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
-	err := ctrl.StopConnectionWatch("p1", "conn-1")
+	err := ctrl.StopConnectionWatch(testInvocationContext(), "p1", "conn-1")
 	require.NoError(t, err)
 }
 
@@ -63,7 +63,7 @@ func TestStopConnectionWatch_ProviderError(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	err := ctrl.StopConnectionWatch("p1", "conn-1")
+	err := ctrl.StopConnectionWatch(testInvocationContext(), "p1", "conn-1")
 	assert.Error(t, err)
 }
 
@@ -83,7 +83,7 @@ func TestGetWatchState_Success(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	ws, err := ctrl.GetWatchState("p1", "conn-1")
+	ws, err := ctrl.GetWatchState(testInvocationContext(), "p1", "conn-1")
 	require.NoError(t, err)
 	assert.Equal(t, "conn-1", ws.ConnectionID)
 	assert.Equal(t, resource.WatchStateSynced, ws.Resources["pods"])
@@ -98,7 +98,7 @@ func TestGetWatchState_ProviderError(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, err := ctrl.GetWatchState("p1", "conn-1")
+	_, err := ctrl.GetWatchState(testInvocationContext(), "p1", "conn-1")
 	assert.Error(t, err)
 }
 
@@ -110,7 +110,7 @@ func TestEnsureResourceWatch_Success(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
-	err := ctrl.EnsureResourceWatch("p1", "conn-1", "pods")
+	err := ctrl.EnsureResourceWatch(testInvocationContext(), "p1", "conn-1", "pods")
 	require.NoError(t, err)
 }
 
@@ -123,7 +123,7 @@ func TestEnsureResourceWatch_ProviderError(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	err := ctrl.EnsureResourceWatch("p1", "conn-1", "pods")
+	err := ctrl.EnsureResourceWatch(testInvocationContext(), "p1", "conn-1", "pods")
 	assert.Error(t, err)
 }
 
@@ -135,7 +135,7 @@ func TestStopResourceWatch_Success(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
-	err := ctrl.StopResourceWatch("p1", "conn-1", "pods")
+	err := ctrl.StopResourceWatch(testInvocationContext(), "p1", "conn-1", "pods")
 	require.NoError(t, err)
 }
 
@@ -147,7 +147,7 @@ func TestRestartResourceWatch_Success(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
-	err := ctrl.RestartResourceWatch("p1", "conn-1", "pods")
+	err := ctrl.RestartResourceWatch(testInvocationContext(), "p1", "conn-1", "pods")
 	require.NoError(t, err)
 }
 
@@ -164,7 +164,7 @@ func TestIsResourceWatchRunning_True(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	running, err := ctrl.IsResourceWatchRunning("p1", "conn-1", "pods")
+	running, err := ctrl.IsResourceWatchRunning(testInvocationContext(), "p1", "conn-1", "pods")
 	require.NoError(t, err)
 	assert.True(t, running)
 }
@@ -173,7 +173,7 @@ func TestIsResourceWatchRunning_False(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
-	running, err := ctrl.IsResourceWatchRunning("p1", "conn-1", "pods")
+	running, err := ctrl.IsResourceWatchRunning(testInvocationContext(), "p1", "conn-1", "pods")
 	require.NoError(t, err)
 	assert.False(t, running)
 }
@@ -187,7 +187,7 @@ func TestIsResourceWatchRunning_ProviderError(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	running, err := ctrl.IsResourceWatchRunning("p1", "conn-1", "pods")
+	running, err := ctrl.IsResourceWatchRunning(testInvocationContext(), "p1", "conn-1", "pods")
 	require.Error(t, err)
 	assert.False(t, running)
 }

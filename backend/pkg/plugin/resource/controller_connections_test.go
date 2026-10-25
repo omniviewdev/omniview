@@ -63,7 +63,7 @@ func TestListConnections_ReturnsFromMemory(t *testing.T) {
 		{ID: "a", Name: "Alpha"},
 	}
 
-	result, err := ctrl.ListConnections("test-plugin")
+	result, err := ctrl.ListConnections(testInvocationContext(), "test-plugin")
 	require.NoError(t, err)
 	require.Len(t, result, 2)
 	assert.Equal(t, "Alpha", result[0].Name)
@@ -74,7 +74,7 @@ func TestListConnections_EmptySlice(t *testing.T) {
 	ctrl := newTestController()
 	ctrl.connections["test-plugin"] = []types.Connection{}
 
-	result, err := ctrl.ListConnections("test-plugin")
+	result, err := ctrl.ListConnections(testInvocationContext(), "test-plugin")
 	require.NoError(t, err)
 	assert.Empty(t, result)
 }
@@ -87,19 +87,19 @@ func TestAddConnection_ThenList(t *testing.T) {
 	ctrl := newTestController()
 	ctrl.connections["plugin-a"] = []types.Connection{}
 
-	require.NoError(t, ctrl.AddConnection("plugin-a", types.Connection{ID: "conn-1", Name: "First"}))
-	require.NoError(t, ctrl.AddConnection("plugin-a", types.Connection{ID: "conn-2", Name: "Second"}))
+	require.NoError(t, ctrl.AddConnection(testInvocationContext(), "plugin-a", types.Connection{ID: "conn-1", Name: "First"}))
+	require.NoError(t, ctrl.AddConnection(testInvocationContext(), "plugin-a", types.Connection{ID: "conn-2", Name: "Second"}))
 
-	result, err := ctrl.ListConnections("plugin-a")
+	result, err := ctrl.ListConnections(testInvocationContext(), "plugin-a")
 	require.NoError(t, err)
 	assert.Len(t, result, 2)
 }
 
 func TestAddConnection_NewPlugin(t *testing.T) {
 	ctrl := newTestController()
-	require.NoError(t, ctrl.AddConnection("new-plugin", types.Connection{ID: "conn-1", Name: "First"}))
+	require.NoError(t, ctrl.AddConnection(testInvocationContext(), "new-plugin", types.Connection{ID: "conn-1", Name: "First"}))
 
-	result, err := ctrl.ListConnections("new-plugin")
+	result, err := ctrl.ListConnections(testInvocationContext(), "new-plugin")
 	require.NoError(t, err)
 	assert.Len(t, result, 1)
 	assert.Equal(t, "First", result[0].Name)
@@ -114,7 +114,7 @@ func TestAddConnection_ConcurrentSafe(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			_ = ctrl.AddConnection("p1", types.Connection{ID: fmt.Sprintf("c%d", idx)})
+			_ = ctrl.AddConnection(testInvocationContext(), "p1", types.Connection{ID: fmt.Sprintf("c%d", idx)})
 		}(i)
 	}
 	wg.Wait()
@@ -135,7 +135,7 @@ func TestGetConnection_Found(t *testing.T) {
 		{ID: "c2", Name: "two"},
 	}
 
-	conn, err := ctrl.GetConnection("p", "c2")
+	conn, err := ctrl.GetConnection(testInvocationContext(), "p", "c2")
 	require.NoError(t, err)
 	assert.Equal(t, "two", conn.Name)
 }
@@ -144,7 +144,7 @@ func TestGetConnection_NotFound(t *testing.T) {
 	ctrl := newTestController()
 	ctrl.connections["p"] = []types.Connection{{ID: "c1", Name: "one"}}
 
-	_, err := ctrl.GetConnection("p", "missing")
+	_, err := ctrl.GetConnection(testInvocationContext(), "p", "missing")
 	require.Error(t, err)
 }
 
@@ -159,9 +159,9 @@ func TestRemoveConnection_Success(t *testing.T) {
 		{ID: "c2", Name: "two"},
 	}
 
-	require.NoError(t, ctrl.RemoveConnection("p", "c1"))
+	require.NoError(t, ctrl.RemoveConnection(testInvocationContext(), "p", "c1"))
 
-	result, err := ctrl.ListConnections("p")
+	result, err := ctrl.ListConnections(testInvocationContext(), "p")
 	require.NoError(t, err)
 	assert.Len(t, result, 1)
 	assert.Equal(t, "c2", result[0].ID)
@@ -171,7 +171,7 @@ func TestRemoveConnection_NotFound(t *testing.T) {
 	ctrl := newTestController()
 	ctrl.connections["p"] = []types.Connection{{ID: "c1", Name: "one"}}
 
-	err := ctrl.RemoveConnection("p", "missing")
+	err := ctrl.RemoveConnection(testInvocationContext(), "p", "missing")
 	require.Error(t, err)
 }
 
@@ -182,7 +182,7 @@ func TestRemoveConnection_LastConnection(t *testing.T) {
 	ctrl.connections["p1"] = []types.Connection{{ID: "c1"}}
 	ctrl.connsMu.Unlock()
 
-	require.NoError(t, ctrl.RemoveConnection("p1", "c1"))
+	require.NoError(t, ctrl.RemoveConnection(testInvocationContext(), "p1", "c1"))
 
 	ctrl.connsMu.RLock()
 	assert.Empty(t, ctrl.connections["p1"])
@@ -197,11 +197,11 @@ func TestUpdateConnection_Success(t *testing.T) {
 	ctrl := newTestController()
 	ctrl.connections["p"] = []types.Connection{{ID: "c1", Name: "old-name"}}
 
-	updated, err := ctrl.UpdateConnection("p", types.Connection{ID: "c1", Name: "new-name"})
+	updated, err := ctrl.UpdateConnection(testInvocationContext(), "p", types.Connection{ID: "c1", Name: "new-name"})
 	require.NoError(t, err)
 	assert.Equal(t, "new-name", updated.Name)
 
-	conn, err := ctrl.GetConnection("p", "c1")
+	conn, err := ctrl.GetConnection(testInvocationContext(), "p", "c1")
 	require.NoError(t, err)
 	assert.Equal(t, "new-name", conn.Name)
 }
@@ -210,7 +210,7 @@ func TestUpdateConnection_NotFound(t *testing.T) {
 	ctrl := newTestController()
 	ctrl.connections["p"] = []types.Connection{{ID: "c1", Name: "one"}}
 
-	_, err := ctrl.UpdateConnection("p", types.Connection{ID: "missing", Name: "x"})
+	_, err := ctrl.UpdateConnection(testInvocationContext(), "p", types.Connection{ID: "missing", Name: "x"})
 	require.Error(t, err)
 }
 
@@ -226,12 +226,12 @@ func TestUpdateConnection_ConcurrentSafe(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, _ = ctrl.UpdateConnection("p1", types.Connection{ID: "c1", Name: "updated"})
+			_, _ = ctrl.UpdateConnection(testInvocationContext(), "p1", types.Connection{ID: "c1", Name: "updated"})
 		}()
 	}
 	wg.Wait()
 
-	conn, err := ctrl.GetConnection("p1", "c1")
+	conn, err := ctrl.GetConnection(testInvocationContext(), "p1", "c1")
 	require.NoError(t, err)
 	assert.Equal(t, "updated", conn.Name)
 }
@@ -252,7 +252,7 @@ func TestStartConnection_Success(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	cs, err := ctrl.StartConnection("p1", "conn-1")
+	cs, err := ctrl.StartConnection(testInvocationContext(), "p1", "conn-1")
 	require.NoError(t, err)
 	assert.Equal(t, types.ConnectionStatusConnected, cs.Status)
 }
@@ -269,7 +269,7 @@ func TestStartConnection_EmitsStatusEvent(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, _ = ctrl.StartConnection("p1", "conn-1")
+	_, _ = ctrl.StartConnection(testInvocationContext(), "p1", "conn-1")
 
 	events := emitter.EventsWithKey("connection/status")
 	require.NotEmpty(t, events)
@@ -288,7 +288,7 @@ func TestStartConnection_FailedConnection(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, err := ctrl.StartConnection("p1", "conn-1")
+	_, err := ctrl.StartConnection(testInvocationContext(), "p1", "conn-1")
 	assert.Error(t, err)
 }
 
@@ -305,7 +305,7 @@ func TestStopConnection_Success(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	conn, err := ctrl.StopConnection("p1", "conn-1")
+	conn, err := ctrl.StopConnection(testInvocationContext(), "p1", "conn-1")
 	require.NoError(t, err)
 	assert.Equal(t, "conn-1", conn.ID)
 }
@@ -319,7 +319,7 @@ func TestStopConnection_EmitsDisconnected(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, _ = ctrl.StopConnection("p1", "conn-1")
+	_, _ = ctrl.StopConnection(testInvocationContext(), "p1", "conn-1")
 
 	events := emitter.EventsWithKey("connection/status")
 	require.NotEmpty(t, events)
@@ -341,7 +341,7 @@ func TestLoadConnections_Success(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	conns, err := ctrl.LoadConnections("p1")
+	conns, err := ctrl.LoadConnections(testInvocationContext(), "p1")
 	require.NoError(t, err)
 	assert.Len(t, conns, 2)
 }
@@ -355,7 +355,7 @@ func TestLoadConnections_EmptyReturn(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	conns, err := ctrl.LoadConnections("p1")
+	conns, err := ctrl.LoadConnections(testInvocationContext(), "p1")
 	require.NoError(t, err)
 	assert.Empty(t, conns)
 }
@@ -371,7 +371,7 @@ func TestListAllConnections_ReturnsCopy(t *testing.T) {
 	ctrl.connections["p1"] = []types.Connection{{ID: "c1"}}
 	ctrl.connsMu.Unlock()
 
-	result, err := ctrl.ListAllConnections()
+	result, err := ctrl.ListAllConnections(testInvocationContext())
 	require.NoError(t, err)
 
 	// Map key mutation should not affect internal state.
@@ -392,7 +392,7 @@ func TestListAllConnections_ReturnsSliceCopy(t *testing.T) {
 	}
 	ctrl.connsMu.Unlock()
 
-	result, err := ctrl.ListAllConnections()
+	result, err := ctrl.ListAllConnections(testInvocationContext())
 	require.NoError(t, err)
 
 	// Sorting the returned slice must not mutate internal state.
@@ -415,7 +415,7 @@ func TestListAllConnections_MultiplePlugins(t *testing.T) {
 	ctrl.connections["p2"] = []types.Connection{{ID: "c2"}, {ID: "c3"}}
 	ctrl.connsMu.Unlock()
 
-	result, err := ctrl.ListAllConnections()
+	result, err := ctrl.ListAllConnections(testInvocationContext())
 	require.NoError(t, err)
 	assert.Len(t, result["p1"], 1)
 	assert.Len(t, result["p2"], 2)
@@ -434,7 +434,7 @@ func TestGetConnectionNamespaces_Success(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	ns, err := ctrl.GetConnectionNamespaces("p1", "conn-1")
+	ns, err := ctrl.GetConnectionNamespaces(testInvocationContext(), "p1", "conn-1")
 	require.NoError(t, err)
 	assert.Contains(t, ns, "default")
 	assert.Contains(t, ns, "kube-system")
@@ -449,7 +449,7 @@ func TestGetConnectionNamespaces_ProviderError(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, err := ctrl.GetConnectionNamespaces("p1", "conn-1")
+	_, err := ctrl.GetConnectionNamespaces(testInvocationContext(), "p1", "conn-1")
 	assert.Error(t, err)
 }
 
@@ -461,23 +461,23 @@ func TestConnectionLifecycle_FullRoundTrip(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
-	require.NoError(t, ctrl.AddConnection("p1", types.Connection{ID: "c1", Name: "Test"}))
+	require.NoError(t, ctrl.AddConnection(testInvocationContext(), "p1", types.Connection{ID: "c1", Name: "Test"}))
 
-	conns, err := ctrl.ListConnections("p1")
+	conns, err := ctrl.ListConnections(testInvocationContext(), "p1")
 	require.NoError(t, err)
 	require.Len(t, conns, 1)
 
-	updated, err := ctrl.UpdateConnection("p1", types.Connection{ID: "c1", Name: "Updated"})
+	updated, err := ctrl.UpdateConnection(testInvocationContext(), "p1", types.Connection{ID: "c1", Name: "Updated"})
 	require.NoError(t, err)
 	assert.Equal(t, "Updated", updated.Name)
 
-	got, err := ctrl.GetConnection("p1", "c1")
+	got, err := ctrl.GetConnection(testInvocationContext(), "p1", "c1")
 	require.NoError(t, err)
 	assert.Equal(t, "Updated", got.Name)
 
-	require.NoError(t, ctrl.RemoveConnection("p1", "c1"))
+	require.NoError(t, ctrl.RemoveConnection(testInvocationContext(), "p1", "c1"))
 
-	conns, err = ctrl.ListConnections("p1")
+	conns, err = ctrl.ListConnections(testInvocationContext(), "p1")
 	require.NoError(t, err)
 	assert.Empty(t, conns)
 }

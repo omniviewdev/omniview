@@ -17,11 +17,16 @@ const (
 	TypeSettingsInvalidConfig = "omniview:settings/invalid-config"
 
 	// Resource errors.
-	TypeResourceNotFound     = "omniview:resource/not-found"
-	TypeResourceForbidden    = "omniview:resource/forbidden"
-	TypeResourceUnauthorized = "omniview:resource/unauthorized"
-	TypeResourceConflict     = "omniview:resource/conflict"
-	TypeResourceTimeout      = "omniview:resource/timeout"
+	TypeResourceNotFound            = "omniview:resource/not-found"
+	TypeResourceForbidden           = "omniview:resource/forbidden"
+	TypeResourceUnauthorized        = "omniview:resource/unauthorized"
+	TypeResourceConflict            = "omniview:resource/conflict"
+	TypeResourceTimeout             = "omniview:resource/timeout"
+	TypeResourceLimit               = "omniview:resource/limit"
+	TypeResourceContinuationExpired = "omniview:resource/continuation-expired"
+	TypeResourceResetRequired       = "omniview:resource/reset-required"
+	TypeResourcePartial             = "omniview:resource/partial"
+	TypeResourceProvider            = "omniview:resource/provider-error"
 
 	// Connection errors.
 	TypeConnectionNotFound = "omniview:connection/not-found"

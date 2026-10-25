@@ -9,7 +9,7 @@ import (
 
 func TestGraphService_GetRelated(t *testing.T) {
 	g := graph.NewRelationshipGraph()
-	svc := NewGraphService(g)
+	svc := NewGraphService(g, nil, nil)
 
 	src := graph.GraphNode{
 		PluginID:     "k8s",
@@ -21,7 +21,7 @@ func TestGraphService_GetRelated(t *testing.T) {
 	tgt := graph.GraphNode{PluginID: "k8s", ConnectionID: "c1", ResourceKey: "core::v1::Node", ID: "worker-1"}
 	g.AddEdge(graph.GraphEdge{Source: src, Target: tgt, Type: sdkresource.RelRunsOn, Label: "runs on"})
 
-	edges, err := svc.GetRelated("k8s", "c1", "core::v1::Pod", "default", "nginx", "outgoing", nil)
+	edges, err := svc.GetRelated(testInvocationContext(), "k8s", "c1", "core::v1::Pod", "default", "nginx", "outgoing", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestGraphService_GetRelated(t *testing.T) {
 
 func TestGraphService_GetRelated_Incoming(t *testing.T) {
 	g := graph.NewRelationshipGraph()
-	svc := NewGraphService(g)
+	svc := NewGraphService(g, nil, nil)
 
 	src := graph.GraphNode{
 		PluginID:     "k8s",
@@ -45,7 +45,7 @@ func TestGraphService_GetRelated_Incoming(t *testing.T) {
 	g.AddEdge(graph.GraphEdge{Source: src, Target: tgt, Type: sdkresource.RelRunsOn, Label: "runs on"})
 
 	// Query from target's perspective — incoming
-	edges, err := svc.GetRelated("k8s", "c1", "core::v1::Node", "", "worker-1", "incoming", nil)
+	edges, err := svc.GetRelated(testInvocationContext(), "k8s", "c1", "core::v1::Node", "", "worker-1", "incoming", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestGraphService_GetRelated_Incoming(t *testing.T) {
 
 func TestGraphService_GetRelated_FilterByType(t *testing.T) {
 	g := graph.NewRelationshipGraph()
-	svc := NewGraphService(g)
+	svc := NewGraphService(g, nil, nil)
 
 	src := graph.GraphNode{
 		PluginID:     "k8s",
@@ -77,7 +77,7 @@ func TestGraphService_GetRelated_FilterByType(t *testing.T) {
 	g.AddEdge(graph.GraphEdge{Source: src, Target: tgt2, Type: sdkresource.RelExposes, Label: "exposed by"})
 
 	relType := string(sdkresource.RelRunsOn)
-	edges, err := svc.GetRelated("k8s", "c1", "core::v1::Pod", "default", "nginx", "outgoing", &relType)
+	edges, err := svc.GetRelated(testInvocationContext(), "k8s", "c1", "core::v1::Pod", "default", "nginx", "outgoing", &relType)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestGraphService_GetRelated_FilterByType(t *testing.T) {
 
 func TestGraphService_GetDependencyTree(t *testing.T) {
 	g := graph.NewRelationshipGraph()
-	svc := NewGraphService(g)
+	svc := NewGraphService(g, nil, nil)
 
 	pod := graph.GraphNode{
 		PluginID:     "k8s",
@@ -103,7 +103,7 @@ func TestGraphService_GetDependencyTree(t *testing.T) {
 	node := graph.GraphNode{PluginID: "k8s", ConnectionID: "c1", ResourceKey: "core::v1::Node", ID: "worker-1"}
 	g.AddEdge(graph.GraphEdge{Source: pod, Target: node, Type: sdkresource.RelRunsOn, Label: "runs on"})
 
-	tree, err := svc.GetDependencyTree("k8s", "c1", "core::v1::Pod", "default", "nginx", 3)
+	tree, err := svc.GetDependencyTree(testInvocationContext(), "k8s", "c1", "core::v1::Pod", "default", "nginx", 3)
 	if err != nil {
 		t.Fatal(err)
 	}

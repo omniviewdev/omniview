@@ -7,7 +7,7 @@ export type Operation = {
   resourceName: string;
   namespace: string;
   connectionID: string;
-  status: 'running' | 'completed' | 'error';
+  status: 'running' | 'completed' | 'error' | 'cancelled';
   progress?: { ready: number; desired: number };
   message?: string;
   startedAt: number;
@@ -42,11 +42,11 @@ export const OperationsProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setOperations((prev) => prev.filter((op) => op.id !== id));
   }, []);
 
-  // Auto-remove completed/errored operations after 30 seconds.
+  // Auto-remove terminal operations after 30 seconds.
   React.useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
     for (const op of operations) {
-      if (op.status === 'completed' || op.status === 'error') {
+      if (op.status !== 'running') {
         const elapsed = Date.now() - (op.completedAt ?? op.startedAt);
         const remaining = Math.max(0, AUTO_REMOVE_DELAY - elapsed);
         timers.push(setTimeout(() => removeOperation(op.id), remaining));

@@ -77,7 +77,7 @@ func TestL3_01_ListRoundTrip(t *testing.T) {
 	grpcProvider := setupGRPCProvider(t, sdkProvider)
 	registerMockPlugin(ctrl, "p1", grpcProvider)
 
-	result, err := ctrl.List("p1", "conn-1", "core::v1::Pod", resource.ListInput{})
+	result, err := ctrl.List(testInvocationContext(), "p1", "conn-1", "core::v1::Pod", resource.ListInput{})
 	require.NoError(t, err)
 	require.True(t, result.Success)
 	require.Len(t, result.Result, 1)
@@ -103,7 +103,7 @@ func TestL3_02_GetRoundTrip(t *testing.T) {
 	grpcProvider := setupGRPCProvider(t, sdkProvider)
 	registerMockPlugin(ctrl, "p1", grpcProvider)
 
-	result, err := ctrl.Get("p1", "conn-1", "core::v1::Pod", resource.GetInput{ID: "my-pod"})
+	result, err := ctrl.Get(testInvocationContext(), "p1", "conn-1", "core::v1::Pod", resource.GetInput{ID: "my-pod"})
 	require.NoError(t, err)
 	require.True(t, result.Success)
 	assert.JSONEq(t, `{"name":"my-pod"}`, string(result.Result))
@@ -288,9 +288,9 @@ func TestL3_06_ErrorPropagationViaGRPC(t *testing.T) {
 	grpcProvider := setupGRPCProvider(t, sdkProvider)
 	registerMockPlugin(ctrl, "p1", grpcProvider)
 
-	_, err := ctrl.List("p1", "conn-1", "core::v1::Pod", resource.ListInput{})
+	_, err := ctrl.List(testInvocationContext(), "p1", "conn-1", "core::v1::Pod", resource.ListInput{})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "connection refused")
+	assert.Equal(t, "PROVIDER_ERROR", requireAppError(t, err).Code)
 }
 
 // ============================================================================

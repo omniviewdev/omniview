@@ -31,21 +31,31 @@ export function AddConnection(pluginID: string, connection: types$0.Connection):
     return $Call.ByID(4065522324, pluginID, connection);
 }
 
+export function AttachStreamAction(handleID: string): $CancellablePromise<$models.ActionSnapshot> {
+    return $Call.ByID(2393377246, handleID).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
+export function CancelStreamAction(handleID: string): $CancellablePromise<void> {
+    return $Call.ByID(1090099505, handleID);
+}
+
 export function CheckConnection(pluginID: string, connectionID: string): $CancellablePromise<types$0.ConnectionStatus> {
     return $Call.ByID(1688967279, pluginID, connectionID).then(($result: any) => {
-        return $$createType0($result);
+        return $$createType1($result);
     });
 }
 
 export function Create(pluginID: string, connectionID: string, key: string, input: resource$0.CreateInput): $CancellablePromise<resource$0.CreateResult | null> {
     return $Call.ByID(1613386605, pluginID, connectionID, key, input).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType3($result);
     });
 }
 
 export function Delete(pluginID: string, connectionID: string, key: string, input: resource$0.DeleteInput): $CancellablePromise<resource$0.DeleteResult | null> {
     return $Call.ByID(1477526970, pluginID, connectionID, key, input).then(($result: any) => {
-        return $$createType4($result);
+        return $$createType5($result);
     });
 }
 
@@ -55,13 +65,13 @@ export function EnsureResourceWatch(pluginID: string, connectionID: string, reso
 
 export function ExecuteAction(pluginID: string, connectionID: string, key: string, actionID: string, input: resource$0.ActionInput): $CancellablePromise<resource$0.ActionResult | null> {
     return $Call.ByID(1844283666, pluginID, connectionID, key, actionID, input).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType7($result);
     });
 }
 
 export function Find(pluginID: string, connectionID: string, key: string, input: resource$0.FindInput): $CancellablePromise<resource$0.FindResult | null> {
     return $Call.ByID(4148812394, pluginID, connectionID, key, input).then(($result: any) => {
-        return $$createType8($result);
+        return $$createType9($result);
     });
 }
 
@@ -70,7 +80,7 @@ export function Find(pluginID: string, connectionID: string, key: string, input:
  */
 export function Get(pluginID: string, connectionID: string, key: string, input: resource$0.GetInput): $CancellablePromise<resource$0.GetResult | null> {
     return $Call.ByID(194970279, pluginID, connectionID, key, input).then(($result: any) => {
-        return $$createType10($result);
+        return $$createType11($result);
     });
 }
 
@@ -79,25 +89,25 @@ export function Get(pluginID: string, connectionID: string, key: string, input: 
  */
 export function GetActions(pluginID: string, connectionID: string, key: string): $CancellablePromise<resource$0.ActionDescriptor[]> {
     return $Call.ByID(419011114, pluginID, connectionID, key).then(($result: any) => {
-        return $$createType12($result);
+        return $$createType13($result);
     });
 }
 
 export function GetAllConnectionStates(): $CancellablePromise<{ [_ in string]?: $models.ConnectionState[] }> {
     return $Call.ByID(4153677080).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType16($result);
     });
 }
 
 export function GetConnection(pluginID: string, connectionID: string): $CancellablePromise<types$0.Connection> {
     return $Call.ByID(950535743, pluginID, connectionID).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType17($result);
     });
 }
 
 export function GetConnectionNamespaces(pluginID: string, connectionID: string): $CancellablePromise<string[]> {
     return $Call.ByID(537508515, pluginID, connectionID).then(($result: any) => {
-        return $$createType17($result);
+        return $$createType18($result);
     });
 }
 
@@ -106,13 +116,13 @@ export function GetConnectionNamespaces(pluginID: string, connectionID: string):
  */
 export function GetEditorSchemas(pluginID: string, connectionID: string): $CancellablePromise<resource$0.EditorSchema[]> {
     return $Call.ByID(1394342402, pluginID, connectionID).then(($result: any) => {
-        return $$createType19($result);
+        return $$createType20($result);
     });
 }
 
 export function GetFilterFields(pluginID: string, connectionID: string, key: string): $CancellablePromise<resource$0.FilterField[]> {
     return $Call.ByID(1947262600, pluginID, connectionID, key).then(($result: any) => {
-        return $$createType21($result);
+        return $$createType22($result);
     });
 }
 
@@ -121,7 +131,7 @@ export function GetFilterFields(pluginID: string, connectionID: string, key: str
  */
 export function GetHealth(pluginID: string, connectionID: string, key: string, data: json$0.RawMessage): $CancellablePromise<resource$0.ResourceHealth | null> {
     return $Call.ByID(1644192689, pluginID, connectionID, key, data).then(($result: any) => {
-        return $$createType23($result);
+        return $$createType24($result);
     });
 }
 
@@ -130,31 +140,31 @@ export function GetHealth(pluginID: string, connectionID: string, key: string, d
  */
 export function GetRelationships(pluginID: string, key: string): $CancellablePromise<resource$0.RelationshipDescriptor[]> {
     return $Call.ByID(2699561690, pluginID, key).then(($result: any) => {
-        return $$createType25($result);
+        return $$createType26($result);
     });
 }
 
 export function GetResourceCapabilities(pluginID: string, key: string): $CancellablePromise<resource$0.ResourceCapabilities | null> {
     return $Call.ByID(1474609809, pluginID, key).then(($result: any) => {
-        return $$createType27($result);
+        return $$createType28($result);
     });
 }
 
 export function GetResourceDefinition(pluginID: string, typeID: string): $CancellablePromise<resource$0.ResourceDefinition> {
     return $Call.ByID(4077050094, pluginID, typeID).then(($result: any) => {
-        return $$createType28($result);
+        return $$createType29($result);
     });
 }
 
 export function GetResourceEvents(pluginID: string, connectionID: string, key: string, id: string, $namespace: string, limit: number): $CancellablePromise<resource$0.ResourceEvent[]> {
     return $Call.ByID(3171791798, pluginID, connectionID, key, id, $namespace, limit).then(($result: any) => {
-        return $$createType30($result);
+        return $$createType31($result);
     });
 }
 
 export function GetResourceGroup(pluginID: string, groupID: string): $CancellablePromise<resource$0.ResourceGroup> {
     return $Call.ByID(114848330, pluginID, groupID).then(($result: any) => {
-        return $$createType31($result);
+        return $$createType32($result);
     });
 }
 
@@ -163,7 +173,7 @@ export function GetResourceGroup(pluginID: string, groupID: string): $Cancellabl
  */
 export function GetResourceGroups(pluginID: string, connectionID: string): $CancellablePromise<{ [_ in string]?: resource$0.ResourceGroup }> {
     return $Call.ByID(4290498491, pluginID, connectionID).then(($result: any) => {
-        return $$createType32($result);
+        return $$createType33($result);
     });
 }
 
@@ -173,19 +183,19 @@ export function GetResourceSchema(pluginID: string, connectionID: string, key: s
 
 export function GetResourceType(pluginID: string, typeID: string): $CancellablePromise<resource$0.ResourceMeta | null> {
     return $Call.ByID(2078766795, pluginID, typeID).then(($result: any) => {
-        return $$createType34($result);
+        return $$createType35($result);
     });
 }
 
 export function GetResourceTypes(pluginID: string, connectionID: string): $CancellablePromise<{ [_ in string]?: resource$0.ResourceMeta }> {
     return $Call.ByID(3311395752, pluginID, connectionID).then(($result: any) => {
-        return $$createType35($result);
+        return $$createType36($result);
     });
 }
 
 export function GetWatchState(pluginID: string, connectionID: string): $CancellablePromise<resource$0.WatchConnectionSummary | null> {
     return $Call.ByID(42345827, pluginID, connectionID).then(($result: any) => {
-        return $$createType37($result);
+        return $$createType38($result);
     });
 }
 
@@ -206,19 +216,19 @@ export function IsResourceWatchRunning(pluginID: string, connectionID: string, r
 
 export function List(pluginID: string, connectionID: string, key: string, input: resource$0.ListInput): $CancellablePromise<resource$0.ListResult | null> {
     return $Call.ByID(3093409425, pluginID, connectionID, key, input).then(($result: any) => {
-        return $$createType39($result);
+        return $$createType40($result);
     });
 }
 
 export function ListAllConnections(): $CancellablePromise<{ [_ in string]?: types$0.Connection[] }> {
     return $Call.ByID(1598984489).then(($result: any) => {
-        return $$createType41($result);
+        return $$createType42($result);
     });
 }
 
 export function ListConnections(pluginID: string): $CancellablePromise<types$0.Connection[]> {
     return $Call.ByID(1775572154, pluginID).then(($result: any) => {
-        return $$createType40($result);
+        return $$createType41($result);
     });
 }
 
@@ -227,13 +237,13 @@ export function ListConnections(pluginID: string): $CancellablePromise<types$0.C
  */
 export function ListPlugins(): $CancellablePromise<string[]> {
     return $Call.ByID(3217612415).then(($result: any) => {
-        return $$createType17($result);
+        return $$createType18($result);
     });
 }
 
 export function LoadConnections(pluginID: string): $CancellablePromise<types$0.Connection[]> {
     return $Call.ByID(2037329938, pluginID).then(($result: any) => {
-        return $$createType40($result);
+        return $$createType41($result);
     });
 }
 
@@ -243,7 +253,7 @@ export function RemoveConnection(pluginID: string, connectionID: string): $Cance
 
 export function ResolveRelationships(pluginID: string, connectionID: string, key: string, id: string, $namespace: string): $CancellablePromise<resource$0.ResolvedRelationship[]> {
     return $Call.ByID(3987850310, pluginID, connectionID, key, id, $namespace).then(($result: any) => {
-        return $$createType43($result);
+        return $$createType44($result);
     });
 }
 
@@ -256,7 +266,7 @@ export function RestartResourceWatch(pluginID: string, connectionID: string, res
  */
 export function StartConnection(pluginID: string, connectionID: string): $CancellablePromise<types$0.ConnectionStatus> {
     return $Call.ByID(3276991559, pluginID, connectionID).then(($result: any) => {
-        return $$createType0($result);
+        return $$createType1($result);
     });
 }
 
@@ -269,7 +279,7 @@ export function StartConnectionWatch(pluginID: string, connectionID: string): $C
 
 export function StopConnection(pluginID: string, connectionID: string): $CancellablePromise<types$0.Connection> {
     return $Call.ByID(794258089, pluginID, connectionID).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType17($result);
     });
 }
 
@@ -298,60 +308,61 @@ export function UnsubscribeResource(pluginID: string, connectionID: string, reso
 
 export function Update(pluginID: string, connectionID: string, key: string, input: resource$0.UpdateInput): $CancellablePromise<resource$0.UpdateResult | null> {
     return $Call.ByID(2408192164, pluginID, connectionID, key, input).then(($result: any) => {
-        return $$createType45($result);
+        return $$createType46($result);
     });
 }
 
 export function UpdateConnection(pluginID: string, connection: types$0.Connection): $CancellablePromise<types$0.Connection> {
     return $Call.ByID(2131988692, pluginID, connection).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType17($result);
     });
 }
 
 // Private type creation functions
-const $$createType0 = types$0.ConnectionStatus.createFrom;
-const $$createType1 = resource$0.CreateResult.createFrom;
-const $$createType2 = $Create.Nullable($$createType1);
-const $$createType3 = resource$0.DeleteResult.createFrom;
-const $$createType4 = $Create.Nullable($$createType3);
-const $$createType5 = resource$0.ActionResult.createFrom;
-const $$createType6 = $Create.Nullable($$createType5);
-const $$createType7 = resource$0.FindResult.createFrom;
-const $$createType8 = $Create.Nullable($$createType7);
-const $$createType9 = resource$0.GetResult.createFrom;
-const $$createType10 = $Create.Nullable($$createType9);
-const $$createType11 = resource$0.ActionDescriptor.createFrom;
-const $$createType12 = $Create.Array($$createType11);
-const $$createType13 = $models.ConnectionState.createFrom;
-const $$createType14 = $Create.Array($$createType13);
-const $$createType15 = $Create.Map($Create.Any, $$createType14);
-const $$createType16 = types$0.Connection.createFrom;
-const $$createType17 = $Create.Array($Create.Any);
-const $$createType18 = resource$0.EditorSchema.createFrom;
-const $$createType19 = $Create.Array($$createType18);
-const $$createType20 = resource$0.FilterField.createFrom;
-const $$createType21 = $Create.Array($$createType20);
-const $$createType22 = resource$0.ResourceHealth.createFrom;
-const $$createType23 = $Create.Nullable($$createType22);
-const $$createType24 = resource$0.RelationshipDescriptor.createFrom;
-const $$createType25 = $Create.Array($$createType24);
-const $$createType26 = resource$0.ResourceCapabilities.createFrom;
-const $$createType27 = $Create.Nullable($$createType26);
-const $$createType28 = resource$0.ResourceDefinition.createFrom;
-const $$createType29 = resource$0.ResourceEvent.createFrom;
-const $$createType30 = $Create.Array($$createType29);
-const $$createType31 = resource$0.ResourceGroup.createFrom;
-const $$createType32 = $Create.Map($Create.Any, $$createType31);
-const $$createType33 = resource$0.ResourceMeta.createFrom;
-const $$createType34 = $Create.Nullable($$createType33);
-const $$createType35 = $Create.Map($Create.Any, $$createType33);
-const $$createType36 = resource$0.WatchConnectionSummary.createFrom;
-const $$createType37 = $Create.Nullable($$createType36);
-const $$createType38 = resource$0.ListResult.createFrom;
-const $$createType39 = $Create.Nullable($$createType38);
-const $$createType40 = $Create.Array($$createType16);
-const $$createType41 = $Create.Map($Create.Any, $$createType40);
-const $$createType42 = resource$0.ResolvedRelationship.createFrom;
-const $$createType43 = $Create.Array($$createType42);
-const $$createType44 = resource$0.UpdateResult.createFrom;
-const $$createType45 = $Create.Nullable($$createType44);
+const $$createType0 = $models.ActionSnapshot.createFrom;
+const $$createType1 = types$0.ConnectionStatus.createFrom;
+const $$createType2 = resource$0.CreateResult.createFrom;
+const $$createType3 = $Create.Nullable($$createType2);
+const $$createType4 = resource$0.DeleteResult.createFrom;
+const $$createType5 = $Create.Nullable($$createType4);
+const $$createType6 = resource$0.ActionResult.createFrom;
+const $$createType7 = $Create.Nullable($$createType6);
+const $$createType8 = resource$0.FindResult.createFrom;
+const $$createType9 = $Create.Nullable($$createType8);
+const $$createType10 = resource$0.GetResult.createFrom;
+const $$createType11 = $Create.Nullable($$createType10);
+const $$createType12 = resource$0.ActionDescriptor.createFrom;
+const $$createType13 = $Create.Array($$createType12);
+const $$createType14 = $models.ConnectionState.createFrom;
+const $$createType15 = $Create.Array($$createType14);
+const $$createType16 = $Create.Map($Create.Any, $$createType15);
+const $$createType17 = types$0.Connection.createFrom;
+const $$createType18 = $Create.Array($Create.Any);
+const $$createType19 = resource$0.EditorSchema.createFrom;
+const $$createType20 = $Create.Array($$createType19);
+const $$createType21 = resource$0.FilterField.createFrom;
+const $$createType22 = $Create.Array($$createType21);
+const $$createType23 = resource$0.ResourceHealth.createFrom;
+const $$createType24 = $Create.Nullable($$createType23);
+const $$createType25 = resource$0.RelationshipDescriptor.createFrom;
+const $$createType26 = $Create.Array($$createType25);
+const $$createType27 = resource$0.ResourceCapabilities.createFrom;
+const $$createType28 = $Create.Nullable($$createType27);
+const $$createType29 = resource$0.ResourceDefinition.createFrom;
+const $$createType30 = resource$0.ResourceEvent.createFrom;
+const $$createType31 = $Create.Array($$createType30);
+const $$createType32 = resource$0.ResourceGroup.createFrom;
+const $$createType33 = $Create.Map($Create.Any, $$createType32);
+const $$createType34 = resource$0.ResourceMeta.createFrom;
+const $$createType35 = $Create.Nullable($$createType34);
+const $$createType36 = $Create.Map($Create.Any, $$createType34);
+const $$createType37 = resource$0.WatchConnectionSummary.createFrom;
+const $$createType38 = $Create.Nullable($$createType37);
+const $$createType39 = resource$0.ListResult.createFrom;
+const $$createType40 = $Create.Nullable($$createType39);
+const $$createType41 = $Create.Array($$createType17);
+const $$createType42 = $Create.Map($Create.Any, $$createType41);
+const $$createType43 = resource$0.ResolvedRelationship.createFrom;
+const $$createType44 = $Create.Array($$createType43);
+const $$createType45 = resource$0.UpdateResult.createFrom;
+const $$createType46 = $Create.Nullable($$createType45);

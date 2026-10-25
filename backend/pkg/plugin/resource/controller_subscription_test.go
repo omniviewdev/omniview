@@ -18,7 +18,7 @@ func TestSubscribeResource_Success(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
-	err := ctrl.SubscribeResource("p1", "conn-1", "pods")
+	err := ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 	require.NoError(t, err)
 	assert.True(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
 }
@@ -27,8 +27,8 @@ func TestSubscribeResource_RefCounting(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
-	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
-	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 	assert.True(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
 }
 
@@ -36,8 +36,8 @@ func TestUnsubscribeResource_Success(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
-	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
-	err := ctrl.UnsubscribeResource("p1", "conn-1", "pods")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
+	err := ctrl.UnsubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 	require.NoError(t, err)
 	assert.False(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
 }
@@ -46,48 +46,48 @@ func TestUnsubscribeResource_AtZero(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
-	err := ctrl.UnsubscribeResource("p1", "conn-1", "pods")
+	err := ctrl.UnsubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 	require.NoError(t, err) // no error even when already 0
 }
 
 func TestIsSubscribed_AfterSubscribe(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 	assert.True(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
 }
 
 func TestIsSubscribed_AfterUnsubscribe(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
-	_ = ctrl.UnsubscribeResource("p1", "conn-1", "pods")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
+	_ = ctrl.UnsubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 	assert.False(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
 }
 
 func TestIsSubscribed_RefCounted(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
-	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
-	_ = ctrl.UnsubscribeResource("p1", "conn-1", "pods")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
+	_ = ctrl.UnsubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 	assert.True(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
 }
 
 func TestSubscription_DifferentResources(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 	assert.True(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
 	assert.False(t, ctrl.isSubscribed("p1", "conn-1", "services"))
 }
 
 func TestSubscription_DifferentConnections(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 	assert.True(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
 	assert.False(t, ctrl.isSubscribed("p1", "conn-2", "pods"))
 }
 
 func TestSubscription_DifferentPlugins(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 	assert.True(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
 	assert.False(t, ctrl.isSubscribed("p2", "conn-1", "pods"))
 }
@@ -95,8 +95,8 @@ func TestSubscription_DifferentPlugins(t *testing.T) {
 func TestSubscription_RemoveAllOnStop(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
-	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
-	_ = ctrl.SubscribeResource("p1", "conn-1", "services")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "services")
 
 	_ = ctrl.OnPluginStop("p1", defaultMeta())
 
@@ -117,7 +117,7 @@ func TestSubscription_GatesADD(t *testing.T) {
 	assert.Empty(t, emitter.EventsWithKey("ADD"))
 
 	// Subscribe — should emit.
-	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 	sink.OnAdd(resource.WatchAddPayload{Connection: "conn-1", Key: "pods"})
 
 	ev := emitter.WaitForEvent(t, "ADD", time.Second)

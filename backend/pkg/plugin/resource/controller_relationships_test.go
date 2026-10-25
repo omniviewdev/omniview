@@ -37,7 +37,7 @@ func TestGetRelationships_Success(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	rels, err := ctrl.GetRelationships("p1", "core::v1::Pod")
+	rels, err := ctrl.GetRelationships(testInvocationContext(), "p1", "core::v1::Pod")
 	require.NoError(t, err)
 	require.Len(t, rels, 2)
 	assert.Equal(t, resource.RelOwns, rels[0].Type)
@@ -56,14 +56,14 @@ func TestGetRelationships_ProviderError(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, err := ctrl.GetRelationships("p1", "core::v1::Pod")
+	_, err := ctrl.GetRelationships(testInvocationContext(), "p1", "core::v1::Pod")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "relationships unavailable")
+	assert.Equal(t, "PROVIDER_ERROR", requireAppError(t, err).Code)
 }
 
 func TestGetRelationships_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	_, err := ctrl.GetRelationships("nonexistent", "pods")
+	_, err := ctrl.GetRelationships(testInvocationContext(), "nonexistent", "pods")
 	var appErr *apperror.AppError
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
@@ -100,7 +100,7 @@ func TestResolveRelationships_Success(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	resolved, err := ctrl.ResolveRelationships("p1", "conn-1", "core::v1::Pod", "my-pod", "default")
+	resolved, err := ctrl.ResolveRelationships(testInvocationContext(), "p1", "conn-1", "core::v1::Pod", "my-pod", "default")
 	require.NoError(t, err)
 	require.Len(t, resolved, 1)
 	assert.Equal(t, resource.RelOwns, resolved[0].Descriptor.Type)
@@ -119,14 +119,14 @@ func TestResolveRelationships_ProviderError(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, err := ctrl.ResolveRelationships("p1", "conn-1", "pods", "pod-1", "default")
+	_, err := ctrl.ResolveRelationships(testInvocationContext(), "p1", "conn-1", "pods", "pod-1", "default")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "resolve failed")
+	assert.Equal(t, "PROVIDER_ERROR", requireAppError(t, err).Code)
 }
 
 func TestResolveRelationships_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	_, err := ctrl.ResolveRelationships("nonexistent", "conn-1", "pods", "pod-1", "default")
+	_, err := ctrl.ResolveRelationships(testInvocationContext(), "nonexistent", "conn-1", "pods", "pod-1", "default")
 	var appErr *apperror.AppError
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)

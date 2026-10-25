@@ -17,6 +17,7 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/diagnostics"
 	"github.com/omniviewdev/omniview/backend/menus"
+	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/data"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
@@ -267,8 +268,10 @@ func main() {
 	utilsClient := utils.NewClient()
 
 	// Setup the plugin systems
-	resourceController := resource.NewController(log, settingsProvider, stateDir.PluginStore)
-	graphService := resource.NewGraphService(resourceController.Graph())
+	resourceBoundary := invocation.NewBoundary(nil)
+	resourceUIRealm := invocation.NewScope(invocation.TrustedUI)
+	resourceController := resource.NewController(log, settingsProvider, stateDir.PluginStore, resourceBoundary)
+	graphService := resource.NewGraphService(resourceController.Graph(), resourceUIRealm, resourceBoundary)
 
 	settingsController := settings.NewController(log, settingsProvider, settingsStore)
 
@@ -431,7 +434,7 @@ func main() {
 	// OnPluginStart on all controllers — they need ctx for gRPC streams.
 	services := []application.Service{
 		// 1. Controllers — need ctx before plugin loading
-		application.NewService(&resource.ServiceWrapper{Ctrl: resourceController}),
+		application.NewService(&resource.ServiceWrapper{Ctrl: resourceController, Realm: resourceUIRealm}),
 		application.NewService(graphService),
 		application.NewService(&settings.ServiceWrapper{Ctrl: settingsController}),
 		application.NewService(&exec.ServiceWrapper{Ctrl: execController}),

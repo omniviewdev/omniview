@@ -9,6 +9,8 @@ export {
 };
 
 export {
+    ActionEventDTO,
+    ActionSnapshot,
     ConnectionState,
     ConnectionStatusPayload
 } from "./models.js";

@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
@@ -250,7 +251,7 @@ func (c *controller) getConnectedCtx(
 	connectionID string,
 ) *sdktypes.PluginContext {
 	// get the connection from the right resource
-	connection, err := c.resourceClient.GetConnection(plugin, connectionID)
+	connection, err := c.resourceClient.GetConnection(invocation.HostContext(ctx), plugin, connectionID)
 	if err != nil {
 		c.logger.Errorw(ctx, "getConnectedCtx: failed to get connection",
 			"pluginID", plugin,

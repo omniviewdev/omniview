@@ -34,7 +34,7 @@ func TestGetHealth_Success(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	data := json.RawMessage(`{"name":"my-pod"}`)
-	health, err := ctrl.GetHealth("p1", "conn-1", "core::v1::Pod", data)
+	health, err := ctrl.GetHealth(testInvocationContext(), "p1", "conn-1", "core::v1::Pod", data)
 	require.NoError(t, err)
 	require.NotNil(t, health)
 	assert.Equal(t, resource.HealthHealthy, health.Status)
@@ -51,15 +51,15 @@ func TestGetHealth_ProviderError(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	health, err := ctrl.GetHealth("p1", "conn-1", "core::v1::Pod", nil)
+	health, err := ctrl.GetHealth(testInvocationContext(), "p1", "conn-1", "core::v1::Pod", nil)
 	require.Error(t, err)
 	assert.Nil(t, health)
-	assert.Contains(t, err.Error(), "health check failed")
+	assert.Equal(t, "PROVIDER_ERROR", requireAppError(t, err).Code)
 }
 
 func TestGetHealth_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	health, err := ctrl.GetHealth("nonexistent", "conn-1", "pods", nil)
+	health, err := ctrl.GetHealth(testInvocationContext(), "nonexistent", "conn-1", "pods", nil)
 	var appErr *apperror.AppError
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
@@ -102,7 +102,7 @@ func TestGetResourceEvents_Success(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	events, err := ctrl.GetResourceEvents("p1", "conn-1", "core::v1::Pod", "my-pod", "default", 10)
+	events, err := ctrl.GetResourceEvents(testInvocationContext(), "p1", "conn-1", "core::v1::Pod", "my-pod", "default", 10)
 	require.NoError(t, err)
 	require.Len(t, events, 2)
 
@@ -125,14 +125,14 @@ func TestGetResourceEvents_ProviderError(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, err := ctrl.GetResourceEvents("p1", "conn-1", "core::v1::Pod", "my-pod", "default", 10)
+	_, err := ctrl.GetResourceEvents(testInvocationContext(), "p1", "conn-1", "core::v1::Pod", "my-pod", "default", 10)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "events unavailable")
+	assert.Equal(t, "PROVIDER_ERROR", requireAppError(t, err).Code)
 }
 
 func TestGetResourceEvents_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	_, err := ctrl.GetResourceEvents("nonexistent", "conn-1", "pods", "pod-1", "default", 10)
+	_, err := ctrl.GetResourceEvents(testInvocationContext(), "nonexistent", "conn-1", "pods", "pod-1", "default", 10)
 	var appErr *apperror.AppError
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
