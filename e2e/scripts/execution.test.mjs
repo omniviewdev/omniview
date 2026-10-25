@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { assertStandaloneBootstrap, applicationBudget, commandTimeout, repositoryCommit, toolEnvironment } from './execution.mjs';
+import { assertStandaloneBootstrap, applicationBudget, commandTimeout, repositoryCommit, runnerOptions, toolEnvironment } from './execution.mjs';
 
 test('tool environment drops ambient credentials, autoconnect and module/workspace overrides', () => {
   const env = toolEnvironment({ PATH: '/tools', HOME: '/human', CI: '1', AWS_ACCESS_KEY_ID: 'secret', AWS_SECRET_ACCESS_KEY: 'secret', KUBECONFIG: '/human/kube', GOOGLE_APPLICATION_CREDENTIALS: '/human/cloud', AZURE_CLIENT_SECRET: 'secret', GH_TOKEN: 'secret', NODE_OPTIONS: '--require=/human/hook', NODE_PATH: '/human/modules', OMNIVIEW_WORKSPACE_FILE: '/human/workspace.json', PNPM_CONFIG_WORKSPACE_DIR: '/human/root', GOFLAGS: '-modfile=/human/go.mod', GOWORK: '/human/go.work', SDK_SOURCE: '/human/sdk', GIT_CONFIG_GLOBAL: '/human/gitconfig', OMNIVIEW_E2E_PNPM_EXECUTABLE: '/tools/pnpm', GOCACHE: '/human/compiler', GOMODCACHE: '/human/modules', GOPATH: '/human/go', OMNIVIEW_E2E_TOOL_CACHE_ROOT: '/human/cache' });
@@ -76,5 +76,39 @@ test('selection-only CLI works without package managers or browser dependencies 
     }
     const focused = execFileSync(process.execPath, [join(scripts, 'run.mjs'), '--full', '--select', '--grep', '/probe/i'], { env: { ...toolEnvironment(process.env), PATH: '' }, encoding: 'utf8' });
     assert.match(focused, /\"kind\":\"focused\"/);
+  } finally { rmSync(arena, { recursive: true, force: true }); }
+});
+
+test('cache-only preparation is an explicit exclusive mode, never a filtered acceptance run', () => {
+  assert.equal(runnerOptions(['--cache-only']).cacheOnly, true);
+  assert.equal(runnerOptions([]).cacheOnly, undefined);
+  for (const args of [
+    ['--cache-only', '--changed'], ['--cache-only', '--full'],
+    ['--cache-only', '--base', 'main'], ['--cache-only', '--grep', 'probe'],
+    ['--cache-only', '--ui'], ['--cache-only', '--observe'],
+    ['--cache-only', '--select'], ['--cache-only', '--list'],
+    ['--cache-only', '--report'], ['--cache-only', '--init-tool-cache'],
+  ]) assert.throws(() => runnerOptions(args), /cache-only.*alone/i);
+  assert.throws(() => runnerOptions(['--unknown']), /Unsupported argument/);
+});
+
+test('cache-only refuses missing explicit cache ownership before dependency or application preparation', () => {
+  const arena = mkdtempSync(join(tmpdir(), 'omniview-cache-only-mode-'));
+  const scripts = join(arena, 'e2e/scripts');
+  mkdirSync(scripts, { recursive: true });
+  try {
+    for (const name of ['run.mjs', 'execution.mjs', 'select-tests.mjs', 'application.mjs', 'cohort.mjs', 'tool-cache.mjs']) copyFileSync(fileURLToPath(new URL(name, import.meta.url)), join(scripts, name));
+    mkdirSync(join(arena, 'scripts'));
+    copyFileSync(fileURLToPath(new URL('../../scripts/wails-tool.mjs', import.meta.url)), join(arena, 'scripts/wails-tool.mjs'));
+    assert.throws(() => execFileSync(process.execPath, [join(scripts, 'run.mjs'), '--cache-only'], { env: { ...toolEnvironment(process.env), PATH: '' }, stdio: 'pipe' }), error => {
+      assert.match(error.stderr.toString(), /cache-only requires OMNIVIEW_E2E_TOOL_CACHE_ROOT/);
+      return true;
+    });
+    const report = JSON.parse(readFileSync(join(arena, 'e2e/playwright-report/invocation.json'), 'utf8'));
+    assert.equal(report.operation, 'cache-only');
+    assert.equal(report.succeeded, false);
+    assert.equal(report.applicationAcceptance, false);
+    assert.deepEqual(report.phases, []);
+    assert.equal(existsSync(join(arena, 'node_modules')), false);
   } finally { rmSync(arena, { recursive: true, force: true }); }
 });

@@ -61,3 +61,26 @@ export function applicationBudget(started, now, { interactive = false } = {}) {
   if (remainingMs <= cleanupReserveMs) throw Error('Inclusive E2E budget exhausted during preparation; refusing to start application profiles');
   return { deadline, remainingMs, interruptAfterMs: remainingMs - cleanupReserveMs, cleanupReserveMs };
 }
+
+export function runnerOptions(args, base = process.env.OMNIVIEW_E2E_BASE) {
+  const result = { full: true, base };
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--full') result.full = true;
+    else if (arg === '--changed') result.full = false;
+    else if (arg === '--base' && args[i + 1]) result.base = args[++i];
+    else if (arg === '--grep' && args[i + 1]) result.grep = args[++i];
+    else if (arg === '--list') result.list = true;
+    else if (arg === '--select') result.select = true;
+    else if (arg === '--ui') result.ui = true;
+    else if (arg === '--observe') result.observe = true;
+    else if (arg === '--report') result.report = true;
+    else if (arg === '--init-tool-cache') result.initToolCache = true;
+    else if (arg === '--cache-only') result.cacheOnly = true;
+    else throw Error(`Unsupported argument: ${arg}. Use --full, --changed --base REF, --grep PATTERN, --select, --list, --ui, --observe, --report, --init-tool-cache, or --cache-only.`);
+  }
+  if (result.cacheOnly && (args.length !== 1 || args[0] !== '--cache-only')) throw Error('--cache-only must be used alone; it prepares native payloads, never application acceptance');
+  if (args.includes('--full')) result.full = true;
+  if (result.observe && !result.full) throw Error('Observation cannot use changed-file selection');
+  return result;
+}
