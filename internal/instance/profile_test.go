@@ -76,6 +76,25 @@ func TestWorkspaceNamesRootsAndExplicitChildEnvironment(t *testing.T) {
 	}
 }
 
+func TestP02MetricsControlRemainsHostOnly(t *testing.T) {
+	p := Profile{Descriptor: devcontract.InstanceDescriptor{StateRoot: t.TempDir(), Kind: "development", WorkspaceID: fixtureID}}
+	base := []string{"OMNIVIEW_P02_METRICS_SOCKET=/private/benchmark.sock", "KEEP=yes"}
+	for _, pluginID := range []string{"", "workspace-probe"} {
+		child, err := p.ChildEnvironment(base, pluginID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		joined := strings.Join(child, "\n")
+		present := strings.Contains(joined, "OMNIVIEW_P02_METRICS_SOCKET=")
+		if present != (pluginID == "") {
+			t.Fatalf("benchmark socket inheritance for plugin %q: %s", pluginID, joined)
+		}
+		if !strings.Contains(joined, "KEEP=yes") {
+			t.Fatal("unrelated environment changed")
+		}
+	}
+}
+
 func TestWorkspaceRejectsConflictsAndProductionNesting(t *testing.T) {
 	home := t.TempDir()
 	manifest := workspaceFixture(t, home, fixtureID, "Alpha")
