@@ -3,7 +3,7 @@ import React from 'react';
 import { Text } from '@omniviewdev/base-ui';
 
 // Types
-import { type SectionSelection } from '.';
+import { SettingsFocusContext, type SectionSelection } from '.';
 import SettingsEntry from './SettingsEntry';
 import type { Setting } from '@omniviewdev/runtime/models';
 import { useDevMode } from '@/hooks/useDevMode';
@@ -27,6 +27,35 @@ const SettingsEntries: React.FC<Props> = ({
   renderSetting,
 }) => {
   const devMode = useDevMode();
+  const focusRequest = React.useContext(SettingsFocusContext);
+  const focusTarget = focusRequest?.settingId;
+  const root = React.useRef<HTMLDivElement>(null);
+  const fulfilledFocus = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    if (!focusRequest) {
+      fulfilledFocus.current = null; return; 
+    }
+
+    const token = JSON.stringify([sectionID, focusRequest.requestKey, focusRequest.settingId]);
+    if (fulfilledFocus.current === token) {
+      return;
+    }
+
+    const row = document.getElementById(`setting-${encodeURIComponent(focusRequest.settingId)}`);
+    if (!row || !root.current?.contains(row)) {
+      return;
+    }
+
+    row.scrollIntoView({ block: 'nearest' });
+    const editor = row.querySelector<HTMLElement>('input:not(:disabled):not([type="hidden"]):not([tabindex="-1"]), button:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]');
+    (editor ?? row).focus();
+    if (editor && document.activeElement !== editor && !editor.contains(document.activeElement)) {
+      row.focus();
+    }
+
+    fulfilledFocus.current = token;
+  }, [focusRequest, settings, sectionID]);
 
   const handleChange = (name: string, value: any) => {
     const id = `${sectionID}.${name}`;
@@ -42,13 +71,15 @@ const SettingsEntries: React.FC<Props> = ({
   );
 
   return (
-    <div className={styles.Root}>
+    <div ref={root} className={styles.Root}>
+      {focusTarget && !visibleSettings.some(([id]) => `${sectionID}.${id}` === focusTarget)
+        && <p role='status'>Requested setting is unavailable.</p>}
       {visibleSettings.map(([id, setting]) => {
         const fullID = `${sectionID}.${id}`;
         const renderOverride = renderSetting?.[fullID];
 
         return (
-          <div key={id} className={styles.Row}>
+          <div key={id} id={`setting-${encodeURIComponent(fullID)}`} data-setting-id={fullID} className={styles.Row} tabIndex={-1} role='group' aria-label={setting.label}>
             {/* Label + description column */}
             <div className={styles.LabelColumn}>
               <Text weight='semibold' size='sm'>{setting.label}</Text>

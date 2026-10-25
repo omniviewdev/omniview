@@ -1,20 +1,18 @@
 import React from 'react';
-import { Hotkey, SearchInput } from '@omniviewdev/base-ui';
+import { Hotkey } from '@omniviewdev/base-ui';
 import { LuSearch } from 'react-icons/lu';
 import styles from '../Header.module.css';
 
 /**
  * The search area in the header.
  */
-const HeaderSearchArea: React.FC = () => (
+const HeaderSearchArea: React.FC<{ onOpen: () => void }> = ({ onOpen }) => (
   <div className={styles.SearchArea}>
-    <SearchInput
-      size='sm'
-      placeholder='Search anything…'
-      className={styles.Search}
-      startDecorator={<LuSearch className={styles.SearchIcon} />}
-      endDecorator={<Hotkey>⌘ K</Hotkey>}
-    />
+    <button type='button' className={styles.Search} onClick={onOpen} aria-label='Search commands, settings and navigation'>
+      <LuSearch className={styles.SearchIcon} aria-hidden='true' />
+      <span>Search commands, settings and navigation…</span>
+      <Hotkey>Ctrl / ⌘ K</Hotkey>
+    </button>
   </div>
 );
 

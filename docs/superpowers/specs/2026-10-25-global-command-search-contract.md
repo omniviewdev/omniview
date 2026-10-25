@@ -123,7 +123,7 @@ Existing implementation anchors and exported-reference locations are recorded in
 - `ui/pages/settings/index.tsx`, `SettingsEntries.tsx` and focused tests: current-query selection and exact setting focus. Existing editors/storage unchanged.
 - Selected private `workspace-probe/ui/src/entry.ts` plus a narrow palette contribution/proof page/test if needed: real resource route, public disabled contribution, cancellable delayed provider and unload/reload replacement. Use existing export normalization/lifecycle. For actual native denial verification only, private `pkg/main.go` may register non-sensitive Boolean `probe_deny_connections` defaultfalse; private `pkg/tasks.go` may read the existing injected plugin setting in `LoadConnections` and return typed `FORBIDDEN` with private provider canaries. Propagate configuration errors. Toggle/read/restore through existing SettingsClient; verify real RPC/host/palette error handling and no canary disclosure. This is provider fault injection, not proof of a new authorizer or permission policy; no host/SDK/API change is authorized.
 
-Read-only: generic runtime registry/store/exports, PluginService load/unload ownership, selected UI CommandList/Dialog/CommandPalette and UI58 receipt, existing ResourceClient/SettingsProvider bindings, SDK. No central four roadmap docs, Taskfile/workflows, generated bindings/shims/shared maps/release/API edits.
+Read-only: generic runtime registry/store/exports, selected UI CommandList/Dialog/CommandPalette and UI58 receipt, existing ResourceClient/SettingsProvider bindings, SDK. Existing PluginService ownership and APIs remain unchanged; `reload` may publish loading after reserving its inflight operation, and `unload` may publish unloading before awaiting cache clearance, so lifecycle subscribers synchronously retire stale search work and feedback. Do not change generic transition/notify semantics. No central four roadmap docs, Taskfile/workflows, generated bindings/shims/shared maps/release/API edits.
 
 ## 8. Complete acceptance and review barriers
 
@@ -135,3 +135,20 @@ All host113 criteria remain required; this draft does not narrow the packet:
 4. Actual canonical host/browser proof after parent launch grant: keyboard opens real header; find Appearance/Theme and focus the real editor; navigate native tasks resource route. For the exact allowed-command effect, establish private `workspace-probe/local`, invoke existing `ResourceClient.RemoveConnection(plugin, 'local')` to remove ONLY its owned host-cache entry, verify a fresh `ListConnections` omits it, execute palette `ResourceClient.LoadConnections(plugin)`, then verify fresh `ListConnections` restores the native ID/name. Existing RemoveConnection controller1008–1027 touches only host cache; LoadConnections776–812 invokes the registered native provider and merges that cache; the selected private provider really supplies local. No fixture backend change, file-behavior invention, production state or toast-only success claim.
 5. Actual delayed external provider, safe disabled/denied outcome, close/focus, unload/reload and stale-action checks in the real host. Browser observations supplement, not replace, semantic regressions. No claim of production resource search, new permission isolation or full inventory correctness.
 6. Independent contract freeze BEFORE production edits, independent settled-source review, then parent-owned publication/PR/admin merge and central evidence update. The selected UI58 proof is reused with its original component-only scope.
+
+## 9. Local integration receipt — publication pending
+
+The selected private host/plugin/UI workspace exercised the actual application endpoint, not the asset-only Vite server. The frozen instance identity, state root and generation were checked after restart and frontend replacement.
+
+| Verification | Observed result |
+| --- | --- |
+| Focused palette/settings/header/registry and existing PluginService tests | 209 passed across nine files in8.74s; includes114 feature/shared cases and95 existing lifecycle cases |
+| Production/test TypeScript and scoped ESLint | Passed |
+| Private fixture native Go and UI typecheck | Passed; native Go execution0.793s |
+| Keyboard and presentation | Real Ctrl/Meta+K, one focused combobox, active-option ownership, both Tab boundaries, Clear/Enter, Escape and opener restoration |
+| Settings and resource navigation | Actual Theme editor focus; same-mounted category changes and identical-URL refocus; actual plugin capability route |
+| Allowed native command | Remove only owned cached `local`; palette reload invokes native discovery; fresh host list restores `local` / `Private native tasks` |
+| Provider denial | Same enabled command returns safe `FORBIDDEN` with correlation; private provider canaries absent; existing native setting restoredfalse→true→false |
+| External providers and lifecycle | Nonmatching alias label remains visible; source errors sanitized; older/closed results fenced; actual unload/load and same-task reload reject retired actions while new actions work |
+
+The browser-specific focus regression remains in the sole application suite at `e2e/tests/layout/app-shell.spec.ts`; IME and lifecycle semantics remain in focused unit tests. Native provider-denial injection does not certify a new authorization policy. These results do not accept P43, production CEL/numeric/schema/query contracts or the remaining native-editor gates. PR checks, application-suite execution and merge acceptance remain separate publication gates.
