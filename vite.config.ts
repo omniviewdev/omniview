@@ -12,6 +12,9 @@ import { managedViteFeedback } from './packages/omniviewdev-vite-plugin/src/feed
 // if in ESM context
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const reactCompilerSourceRoot = __dirname.split(path.sep)
+  .map(segment => segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  .join(String.raw`[/\\]`);
 
 const selectedRoots = workspaceViteRoots(process.env.OMNIVIEW_VITE_ALLOWED_ROOTS);
 const ownedVitePort = workspaceVitePort(process.env.WAILS_VITE_PORT);
@@ -81,7 +84,11 @@ export default defineConfig({
       },
     },
     react(),
-    babel({ presets: [reactCompilerPreset({ target: '19' })] }),
+    babel({
+      // Linked package dist files are already compiled; keep app and benchmark sources live.
+      include: new RegExp(String.raw`^${reactCompilerSourceRoot}[/\\](?:ui[/\\]|bench[/\\]|packages[/\\][^/\\]+[/\\]src[/\\]|plugins[/\\][^/\\]+[/\\]ui[/\\]src[/\\]).*\.(?:[jt]sx?|[cm][jt]s)(?:$|\?)`),
+      presets: [reactCompilerPreset({ target: '19' })],
+    }),
     wails('./packages/omniviewdev-runtime/src/bindings'),
     {
       name: 'optional-local-react-devtools',

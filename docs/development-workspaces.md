@@ -274,3 +274,23 @@ exercise generation and its consumers.
 `task fmt` and `task check:fmt-check` select tracked and nonignored Go source through Git, preserving spaced filenames with NUL-delimited arguments. Both use `goimports` for formatting and imports; they never traverse ignored `node_modules`, prepared Wails sources or other tool caches.
 
 See [worktree lifecycle](development-worktree-lifecycle.md), [package linking](development-package-linking.md), [build/watch graph](development-watch-graph.md), [instance profiles](development-instance-profiles.md), [sessions](development-sessions.md), [baselines](development-baselines.md) and [authenticated control](development-control.md) for producer contracts and platform evidence.
+
+## CI dependency payload caches
+
+Actions restores native Go module/compiler and pnpm content-store payloads using
+the participating host, SDK, UI and plugin dependency inputs. UUID-owned host
+compiler caches remain isolated. Installed trees, profiles, source outputs and
+ownership receipts are not restored from these caches.
+
+Linux development headers remain required by the pinned Wails transitive cgo
+dependencies even for server builds. CI caches only their downloaded `.deb`
+archives, keyed by platform, recipe and fresh APT index contents. Before
+privileged installation, `scripts/verify-apt-archives.mjs` checks package identity,
+size and streamed SHA-256 against those authenticated indexes. Native APT
+installation still runs. Successful package installation publishes this payload
+cache before browser execution; it does not certify application acceptance.
+
+The host React compiler processes owned source, including runtime and benchmark
+sources, rather than reprocessing built dependency/distribution bundles. Actual
+compiler/render regressions run on Linux and native Windows.
+
