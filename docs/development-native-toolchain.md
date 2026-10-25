@@ -1,6 +1,6 @@
 # Isolated native WebView toolchain
 
-Omniview uses unmodified Wails `v3.0.0-beta.34.0.20261022002616-a90f7e7f50bf` and `@wailsio/runtime` `3.0.0-beta.34`. There is no framework fork, source patch, or patched-source build path. Native isolation uses application identity and stock platform options; cleanup and workspace policy belong to Omniview.
+Omniview uses unmodified Go/native Wails `v3.0.0-beta.34.0.20261022002616-a90f7e7f50bf`. Native isolation uses application identity and stock platform options; cleanup and workspace policy belong to Omniview. The genuine npm `@wailsio/runtime` remains exactly `3.0.0-beta.34`, with the explicit checked-in dependency patch described below; no framework fork or patched Go-source build path is used.
 
 Use Task entry points, or prepare an effective host module when selecting a local SDK:
 
@@ -16,6 +16,16 @@ GOWORK=off GOFLAGS= go test -modfile="$GO_MODFILE" ./... -count=1
 Standalone effective mod/sum files live under ignored `.local/hostmod`; managed workspaces use their ledger-owned `toolsrc/hostmod` capability. Preparation does not copy framework sources. It refuses Wails replacements, unsafe output paths, and foreign output ownership. CLI caches separately hash immutable module templates and executables before reuse. `task host:prepare SDK_SOURCE="$SDK_SOURCE"` prints the effective modfile.
 
 Bindings remain `task bindings SDK_SOURCE="$SDK_SOURCE"`. Tasks select the Wails CLI from the root Go pin rather than trusting an ambient `wails3`. Never run raw binding generation or build Vite-plugin shims before the runtime package.
+
+## Declared npm Call settlement patch
+
+`pnpm-workspace.yaml` declares `patches/@wailsio__runtime@3.0.0-beta.34.patch` for the exact published npm package. The patch makes its Call response callbacks settle only their own still-registered resolver record. Cancellation removes that ownership while still sending the existing native CancelCall request; a later response cannot reject an already-canceled promise or touch a newly reused call ID. Ordinary errors and successful void results remain unchanged. The generic CancellablePromise late-rejection policy is not weakened.
+
+Native pnpm 12.14.0 generates and verifies the patch hash in `pnpm-lock.yaml`. Managed composition rebases and fingerprints the declared patch through its existing policy/source-hash path; never edit installed packages, caches or generated receipts. The post-install `node --test scripts/wails-call.test.mjs` regression imports the actual resolved package and uses strict isolated processes, not a Call clone or global rejection filter. Keep the patch until a genuinely corrected upstream release is selected and verified.
+
+Managed source fingerprints bind the raw patch bytes; native scalar-lock hashes use CRLF-to-LF-normalized patch bytes. Raw-byte changes still invalidate source ownership even when their normalized native hash is unchanged.
+
+This npm package owns application binding calls in development and production. The Go-embedded `/wails/runtime.js` used by separate MCP/dev surfaces is not modified by this patch and is not claimed fixed. Go/native Wails pinning, replacement refusal, native cancellation and cooperative cleanup remain stock. P04 still requires its integrated Wails cancellation/cleanup acceptance; this declared patch alone does not certify it.
 
 Stock macOS startup uses the immutable `CFBundleIdentifier` and WebKit's default persistent store, not a UUID-store option. The removed UUID-selection requirement no longer imposes macOS14; older operating systems still need their own runtime verification. Windows retains stock `Windows.WebviewUserDataPath`.
 
@@ -82,7 +92,7 @@ These are mechanism probes, not proof of every full-host lifecycle or platform. 
 
 ### Future upstream work
 
-No Wails extension is required for this workspace model. If a new requirement genuinely exceeds stock capabilities, first demonstrate that gap independently of Omniview policy. Wails requires a [proposal-only WEP draft PR](https://github.com/wailsapp/wails/blob/a90f7e7f50bf3d7db5552fcaf9eeec6fd3d4e626/v3/wep/README.md), at least two weeks of feedback, and recorded acceptance before an implementation PR. Follow its [contribution guidance](https://github.com/wailsapp/wails/blob/a90f7e7f50bf3d7db5552fcaf9eeec6fd3d4e626/CONTRIBUTING.md); do not revive a local patch as a supported dependency.
+No Wails-native extension is required for this workspace model. If a new native requirement genuinely exceeds stock capabilities, first demonstrate that gap independently of Omniview policy. Wails requires a [proposal-only WEP draft PR](https://github.com/wailsapp/wails/blob/a90f7e7f50bf3d7db5552fcaf9eeec6fd3d4e626/v3/wep/README.md), at least two weeks of feedback, and recorded acceptance before an implementation PR. Follow its [contribution guidance](https://github.com/wailsapp/wails/blob/a90f7e7f50bf3d7db5552fcaf9eeec6fd3d4e626/CONTRIBUTING.md); do not add native framework patches to implement workspace policy. The declared npm Call bug fix above does not add a native workspace-policy API.
 
 ### Native API references
 
