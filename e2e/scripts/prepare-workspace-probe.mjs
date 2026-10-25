@@ -15,6 +15,10 @@ const files = [
   'go.sum',
   'plugin.yaml',
   'pkg/main.go',
+  'pkg/resource-benchmark.go',
+  'pkg/resource-benchmark_test.go',
+  'pkg/resource-events_test.go',
+  'pkg/resource-corpus.json',
   'ui/package.json',
   'ui/pnpm-workspace.yaml',
   'ui/pnpm-lock.yaml',
@@ -23,6 +27,7 @@ const files = [
   'ui/vite/omniview.ts',
   'ui/src/entry.ts',
   'ui/src/ProbePage.tsx',
+  'ui/src/ResourceBenchmark.tsx',
   'ui/src/probe.css',
 ];
 

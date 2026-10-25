@@ -11,3 +11,4 @@ sdk_protocol_version: 1
 capabilities:
   - ui
   - settings
+  - resource
