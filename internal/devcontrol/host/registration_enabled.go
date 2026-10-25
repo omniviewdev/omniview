@@ -4,6 +4,7 @@ package host
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -23,16 +24,17 @@ import (
 // Registered last: Wails starts services in order and shuts them down in reverse.
 // Thus no control mutation precedes controller/bootstrap startup or outlives its managers.
 type developmentControlLifecycle struct {
-	mu              sync.Mutex
-	runtimeReady    bool
-	profile         instance.Profile
-	readSnapshot    func() devcontract.InstanceDescriptor
-	publishSnapshot func(devcontract.InstanceDescriptor)
-	manager         plugin.Manager
-	dev             *devserver.DevServerManager
-	provider        pkgsettings.Provider
-	controller      pluginsettings.Controller
-	server          *devcontrol.Server
+	mu               sync.Mutex
+	runtimeReady     bool
+	profile          instance.Profile
+	readSnapshot     func() devcontract.InstanceDescriptor
+	publishSnapshot  func(devcontract.InstanceDescriptor)
+	manager          plugin.Manager
+	dev              *devserver.DevServerManager
+	provider         pkgsettings.Provider
+	controller       pluginsettings.Controller
+	server           *devcontrol.Server
+	benchmarkMetrics *resourceBenchmarkMetrics
 }
 
 // Register adds development control after all services that its adapters depend on.
@@ -93,6 +95,15 @@ func (s *developmentControlLifecycle) ServiceStartup(ctx context.Context, _ appl
 		s.server = nil
 		return err
 	}
+	metrics, err := startResourceBenchmarkMetrics(ctx, os.Getenv("OMNIVIEW_P02_METRICS_SOCKET"), descriptor)
+	if err != nil {
+		closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = server.Close(closeCtx)
+		s.server = nil
+		return fmt.Errorf("start requested P02 benchmark metrics: %w", err)
+	}
+	s.benchmarkMetrics = metrics
 	go s.observeEndpoints(ctx)
 	return nil
 }
@@ -116,10 +127,11 @@ func (s *developmentControlLifecycle) markRuntimeReady() {
 func (s *developmentControlLifecycle) ServiceShutdown() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	metricsErr := s.benchmarkMetrics.Close()
 	if s.server == nil {
-		return nil
+		return metricsErr
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	return s.server.Close(ctx)
+	return errors.Join(metricsErr, s.server.Close(ctx))
 }

@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 1,
+  "scope": "Bounded functional cleanup through actual selected provider/host/runtime/table; NOT a performance measurement or native WebView proof",
+  "rawResultSHA256": "428266f1541b9c66bcb3ab678d82d161ad37b2d4a2b25c6785161f0ce7423fc7",
+  "historicalBaselineRawSHA256": "0fd77e9bf167964aa95ed4ff5c9ecf737d1f3e4fbfb8e39389fa286377ce7992",
+  "historicalTimingsUnchanged": true,
+  "projection": "Private workspace/state/executable paths, process IDs, workspace/generation IDs, endpoints and body text omitted. Numeric observations and fixture query keys are copied from the real functional run. No timing or production-provider acceptance is inferred.",
+  "sourceCohort": {
+    "hostBase": "6fcc62e05219bb31232ce06017db3d2b8c69be73",
+    "sdk": "9ba88075a39e5406926a22d536722afecaab465c",
+    "ui": "229a060885acea203410b1b113c68e4016d81b97",
+    "probeBase": "3a27f12789c22046e4547e72657d8880cc286962",
+    "workingSourceSHA256": {
+      "e2e/fixtures/workspace-probe/pkg/resource-benchmark.go": "28de3829c1466771d399f52e7940604faa91a7e7d931e57c407d6302654f13b8",
+      "e2e/fixtures/workspace-probe/pkg/resource-events_test.go": "23f1262e2f4a8499d3b9efb6c85f08c0220df52178eff88baf97d031bfe76e7a",
+      "e2e/fixtures/workspace-probe/ui/src/ProbePage.tsx": "89c3f428903ae959b81ea9efebc3ea22716acca1622678181ca84ca4ec4ef81e",
+      "e2e/fixtures/workspace-probe/ui/src/ResourceBenchmark.tsx": "85c712729536839d9ea9c077117b1b2aad4130a4ebc62c1e3c714c727fd935f0",
+      "bench/app/resource-benchmark-lifecycle.test.tsx": "d2445f991aa41ee9acdf95f5468658d3a18e3309d5080cc97a0d737205f7a733",
+      "bench/app/resource-benchmark.vitest.config.ts": "37bde9930adc9a2b6a0abee08c526e1f0b41ba3a2d8232f607bdcdbb425feb05"
+    }
+  },
+  "sharedRuntimeControl": "Shared runtime ready",
+  "mounted": {
+    "activeConnections": 1,
+    "activeSourceWatches": 1,
+    "domRows": 2
+  },
+  "tableOnly": {
+    "activeConnections": 1,
+    "activeSourceWatches": 1,
+    "cacheEntries": 2,
+    "cacheObservers": [
+      {
+        "key": [
+          "p02-finite",
+          "container-bundled-events",
+          0
+        ],
+        "observers": 0,
+        "status": "success"
+      },
+      {
+        "key": [
+          "workspace-probe",
+          "container-bundled-events",
+          "container",
+          [],
+          "list"
+        ],
+        "observers": 0,
+        "status": "success"
+      }
+    ],
+    "domRows": 0
+  },
+  "rootUnmount": {
+    "globalRemoved": true,
+    "after": {
+      "samples": [],
+      "cacheEntries": 0,
+      "cacheObservers": [],
+      "domRows": 0
+    },
+    "actualProviderLifecycle": [
+      {
+        "activeConnections": 1,
+        "activeSourceWatches": 0
+      },
+      {
+        "activeConnections": 0,
+        "activeSourceWatches": 0
+      }
+    ]
+  },
+  "immediateRemount": {
+    "oldRootLifecycle": [
+      {
+        "activeConnections": 1,
+        "activeSourceWatches": 0
+      },
+      {
+        "activeConnections": 0,
+        "activeSourceWatches": 0
+      }
+    ],
+    "newRoot": {
+      "activeConnections": 1,
+      "activeSourceWatches": 1,
+      "domRows": 2
+    }
+  },
+  "finalRootUnmount": {
+    "after": {
+      "samples": [],
+      "cacheEntries": 0,
+      "cacheObservers": [],
+      "domRows": 0
+    },
+    "actualProviderLifecycle": [
+      {
+        "activeConnections": 1,
+        "activeSourceWatches": 0
+      },
+      {
+        "activeConnections": 0,
+        "activeSourceWatches": 0
+      }
+    ]
+  },
+  "correlation": {
+    "authenticatedHostIdentityBeforeAndAfter": true,
+    "sameActualProviderProcessBeforeAndAfterRemount": true,
+    "ownProviderSpawnLogLine": 1659,
+    "lifecycleLogLines": [
+      1762,
+      1763,
+      1767,
+      1768,
+      1772,
+      1773
+    ],
+    "ownProviderExitLogLine": 1790,
+    "observation": "New stderr records captured from byte offsets taken immediately before each root-stop, within this authenticated generation and provider-process lifetime; not old log entries, subtraction or reopened clients."
+  },
+  "checks": {
+    "lifecycleUnit": {
+      "passed": 7,
+      "failed": 0,
+      "invocation": "node node_modules/vitest/vitest.mjs run --config bench/app/resource-benchmark.vitest.config.ts --configLoader runner",
+      "resultCache": false,
+      "act": "testing-library helper; no act warnings"
+    },
+    "measurementUnit": {
+      "passed": 4,
+      "failed": 0,
+      "invocation": "node --test bench/app/resource-measurements.test.mjs"
+    },
+    "providerPackage": {
+      "passed": true,
+      "invocation": "go test ./pkg -count=1",
+      "coverage": "Actual source counter transitions in client-last and watch-last removal orders, plus finite/native/sparse/cancellation tests"
+    },
+    "selectedProbeTypecheck": {
+      "passed": true,
+      "invocation": "node node_modules/typescript/bin/tsc --project ../workspace-probe/ui/tsconfig.json",
+      "declarations": "Actual canonical producers, not aliases or standalone registry auto-install"
+    }
+  },
+  "disposal": {
+    "chromiumClosed": true,
+    "workspaceStopped": true,
+    "instanceAbsent": true,
+    "canonicalUnlink": "Actual CLI returned phase unlinked after45.75s",
+    "metricsSocketRemovedAndOwnedEmptyParentRetired": true,
+    "pluginProcessExitObserved": true,
+    "gracefulPluginExitWarningRetained": true
+  },
+  "isolationWarning": "WARNING: this workspace explicitly permits unreviewed SDK isolation-boundary edits. Its source-built plugins may bypass profile isolation. This is not a sandbox.",
+  "errors": []
+}

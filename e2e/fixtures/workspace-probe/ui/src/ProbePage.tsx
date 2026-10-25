@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { Button } from '@omniviewdev/base-ui';
 import { formatGroup } from '@omniviewdev/runtime';
 import './probe.css';
+import { ResourceBenchmark } from './ResourceBenchmark';
 
 export function ProbePage() {
   const [clicks, setClicks] = useState(0);
   const [runtimeValue, setRuntimeValue] = useState('');
+  const [benchmark, setBenchmark] = useState(false);
 
   return (
     <section className="workspace-probe" aria-labelledby="workspace-probe-title">
@@ -25,6 +27,8 @@ export function ProbePage() {
         Read shared runtime
       </Button>
       <output role="status" aria-label="Probe runtime value">{runtimeValue}</output>
+      <Button onClick={() => setBenchmark((value) => !value)}>Toggle P02 benchmark</Button>
+      {benchmark ? <ResourceBenchmark /> : null}
     </section>
   );
 }
