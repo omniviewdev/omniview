@@ -1,6 +1,9 @@
 package devcompose
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -495,18 +498,8 @@ func mergeLockedPatches(w devcontract.ResolvedWorkspace, dst, src, policy map[st
 	}
 	for name, value := range patches {
 		if lockedHash, ok := value.(string); ok {
-			// Native12 records only a SHA256, never a patch path. Resolve that
-			// identity exclusively through already-fingerprinted source policy.
-			patch, declared := mapping(policy["patchedDependencies"])[name].(string)
-			if !declared {
-				return refusal("locked scalar patch in %s lacks a reconciled source declaration", source)
-			}
-			absolute := filepath.Join(w.Root, filepath.FromSlash(patch))
-			if !within(repo, absolute) || exactPath(absolute) != nil {
-				return refusal("locked patch escapes or redirects selected repository in %s", source)
-			}
-			if len(lockedHash) != 64 || sourceHashes[patch] != lockedHash {
-				return refusal("locked patch hash in %s does not match its reconciled source fingerprint", source)
+			if scalarErr := validateNativeScalarPatch(w, policy, sourceHashes, repo, source, name, lockedHash); scalarErr != nil {
+				return scalarErr
 			}
 			rewritten[name] = lockedHash
 			continue
@@ -550,6 +543,49 @@ func mergeLockedPatches(w devcontract.ResolvedWorkspace, dst, src, policy map[st
 		dst["patchedDependencies"] = map[string]any{}
 	}
 	return mergeRecords(mapping(dst["patchedDependencies"]), rewritten, "patchedDependencies", source)
+}
+
+func validateNativeScalarPatch(w devcontract.ResolvedWorkspace, policy map[string]any, sourceHashes map[string]string, repo, source, name, lockedHash string) error {
+	patch, declared := mapping(policy["patchedDependencies"])[name].(string)
+	if !declared {
+		return refusal("locked scalar patch in %s lacks a reconciled source declaration", source)
+	}
+	absolute := filepath.Join(w.Root, filepath.FromSlash(patch))
+	if !within(repo, absolute) || exactPath(absolute) != nil {
+		return refusal("locked patch escapes or redirects selected repository in %s", source)
+	}
+	fingerprint, recorded := sourceHashes[patch]
+	if !recorded || len(fingerprint) != 64 || len(lockedHash) != 64 {
+		return refusal("locked patch hash in %s lacks a reconciled source fingerprint", source)
+	}
+	// Re-reading through the existing fingerprint refuses any raw-byte change,
+	// including CRLF/LF changes that retain the same native package identity.
+	inputs := sourceSet{hashes: sourceHashes}
+	raw, readErr := readInput(w, &inputs, absolute)
+	if readErr != nil {
+		return readErr
+	}
+	matches := fingerprint == lockedHash
+	if crlf := bytes.Index(raw, []byte("\r\n")); crlf >= 0 {
+		// Native12 hashes LF-normalized patch bytes. Stream the unchanged spans
+		// rather than allocating a second copy of the entire patch.
+		digest := sha256.New()
+		for crlf >= 0 {
+			digest.Write(raw[:crlf])
+			raw = raw[crlf+1:]
+			crlf = bytes.Index(raw, []byte("\r\n"))
+		}
+		digest.Write(raw)
+		var sum [sha256.Size]byte
+		normalized := digest.Sum(sum[:0])
+		var encoded [sha256.Size * 2]byte
+		hex.Encode(encoded[:], normalized)
+		matches = string(encoded[:]) == lockedHash
+	}
+	if !matches {
+		return refusal("locked patch hash in %s does not match its normalized source bytes", source)
+	}
+	return nil
 }
 
 func lockedHostProviders(w devcontract.ResolvedWorkspace, sources sourceSet, documents map[string]map[string]any, nearest map[string]string) (map[string]string, error) {

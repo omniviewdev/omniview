@@ -32,121 +32,222 @@ func TestLockSeedMarksNativeMetadataDocumentStream(t *testing.T) {
 	}
 }
 
-func TestLockSeedNative12ScalarPatchRequiresOwnedSource(t *testing.T) {
-	// These are the real beta.34 patch bytes and scalar record emitted by native
-	// pnpm 12.14.0 and consumed by its frozen standalone install for issue 133.
-	const nativeHash = "dabb203a4da4e8fc89694f2ba11be7cfd6d918a1ce1ce256a917c6c905f55947"
-	const patchPath = "omniview/patches/@wailsio__runtime@3.0.0-beta.34.patch"
-	patch, err := os.ReadFile("../../patches/@wailsio__runtime@3.0.0-beta.34.patch")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if hash(patch) != nativeHash {
-		t.Fatal("native scalar regression no longer matches its authentic source patch")
-	}
-	for _, name := range []string{
-		"accepted", "undeclared", "missing", "escaping", "redirected",
-		"changed", "malformed-hash", "wrong-hash", "foreign-declaration", "conflicting-policy",
+const scalarPatchLF = "diff --git a/value b/value\n--- a/value\n+++ b/value\n@@ -1 +1 @@\n-before\n+after\n"
+
+func TestNativeScalarPatchLineEndingHash(t *testing.T) {
+	lockedHash := hash([]byte(scalarPatchLF))
+	for _, tc := range []struct {
+		name, patch string
+	}{
+		{"LF", scalarPatchLF},
+		{"CRLF", strings.ReplaceAll(scalarPatchLF, "\n", "\r\n")},
 	} {
-		t.Run(name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			w, roots := fixture(t)
-			put(t, w.Root, patchPath, string(patch))
-			put(t, w.Root, "omniview/package.json", `{"name":"host","private":true,"packageManager":"pnpm@12.14.0","dependencies":{"react":"^19.0.0","react-dom":"^19.0.0","@wailsio/runtime":"3.0.0-beta.34"}}`)
-			policy := "packages: ['packages/*']\nstrictPeerDependencies: true\npatchedDependencies:\n  '@wailsio/runtime@3.0.0-beta.34': patches/@wailsio__runtime@3.0.0-beta.34.patch\n"
+			const patchPath = "omniview/patches/exact.patch"
+			put(t, w.Root, patchPath, tc.patch)
+			put(t, w.Root, "omniview/pnpm-workspace.yaml", "packages: ['packages/*']\npatchedDependencies:\n  exact@1.2.3: patches/exact.patch\n")
+			sources, discoverErr := discover(w, roots)
+			if discoverErr != nil {
+				t.Fatal(discoverErr)
+			}
+			reconciled, reconcileErr := reconcile(w, sources)
+			if reconcileErr != nil {
+				t.Fatal(reconcileErr)
+			}
+			originalFingerprint := reconciled.inputHashes[patchPath]
+			dst := map[string]any{}
+			src := map[string]any{"patchedDependencies": map[string]any{"exact@1.2.3": lockedHash}}
+			mergeErr := mergeLockedPatches(w, dst, src, reconciled.settings, reconciled.inputHashes, filepath.Join(w.Root, "omniview/pnpm-lock.yaml"))
+			if mergeErr != nil {
+				t.Fatalf("declared %s patch with native LF hash refused: %v", tc.name, mergeErr)
+			}
+			if mapping(dst["patchedDependencies"])["exact@1.2.3"] != lockedHash {
+				t.Fatal("composition changed the native scalar hash")
+			}
+			if originalFingerprint != hash([]byte(tc.patch)) || reconciled.inputHashes[patchPath] != originalFingerprint {
+				t.Fatal("native line-ending normalization replaced raw source-byte authority")
+			}
+		})
+	}
+}
+
+const scalarPatchPath = "omniview/patches/exact.patch"
+const scalarPatchPolicy = "packages: ['packages/*']\nstrictPeerDependencies: true\npatchedDependencies:\n  exact@1.2.3: patches/exact.patch\n"
+
+func scalarPatchFixture(t *testing.T, patch, lockedHash string) (devcontract.ResolvedWorkspace, []Root) {
+	t.Helper()
+	w, roots := fixture(t)
+	put(t, w.Root, scalarPatchPath, patch)
+	put(t, w.Root, "omniview/package.json", `{"name":"host","private":true,"packageManager":"pnpm@12.14.0","dependencies":{"react":"^19.0.0","react-dom":"^19.0.0","exact":"^1"}}`)
+	put(t, w.Root, "omniview/pnpm-workspace.yaml", scalarPatchPolicy)
+	raw, readErr := os.ReadFile(filepath.Join(w.Root, "omniview/pnpm-lock.yaml"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	docs, decodeErr := decodeDocuments(raw)
+	if decodeErr != nil {
+		t.Fatal(decodeErr)
+	}
+	main := docs[len(docs)-1]
+	main["patchedDependencies"] = map[string]any{"exact@1.2.3": lockedHash}
+	version := "1.2.3(patch_hash=" + lockedHash + ")"
+	mapping(mapping(mapping(main["importers"])["."])["dependencies"])["exact"] = map[string]any{"specifier": "^1", "version": version}
+	mapping(main["packages"])["exact@1.2.3"] = map[string]any{"resolution": map[string]any{"integrity": "sha512-selected"}}
+	mapping(main["snapshots"])["exact@"+version] = map[string]any{}
+	encoded, encodeErr := encodeDocuments(docs)
+	if encodeErr != nil {
+		t.Fatal(encodeErr)
+	}
+	put(t, w.Root, "omniview/pnpm-lock.yaml", string(encoded))
+	return w, roots
+}
+
+func TestLockSeedNative12ScalarPatchRequiresOwnedSource(t *testing.T) {
+	nativeHash := hash([]byte(scalarPatchLF))
+	crlfPatch := strings.ReplaceAll(scalarPatchLF, "\n", "\r\n")
+	removeDeclaration := func(t *testing.T, w devcontract.ResolvedWorkspace) {
+		put(t, w.Root, "omniview/pnpm-workspace.yaml", "packages: ['packages/*']\nstrictPeerDependencies: true\n")
+	}
+	declareForeignPatch := func(t *testing.T, w devcontract.ResolvedWorkspace) {
+		put(t, w.Root, "plugin-a/patches/exact.patch", scalarPatchLF)
+		put(t, w.Root, "plugin-a/ui/pnpm-workspace.yaml", "packages: ['widgets/*']\npatchedDependencies:\n  exact@1.2.3: ../patches/exact.patch\n")
+	}
+	for _, tc := range []struct {
+		name, patch, lockedHash string
+		prepare                 func(*testing.T, devcontract.ResolvedWorkspace)
+		wantErr                 bool
+	}{
+		{name: "accepted-LF"},
+		{name: "accepted-CRLF", patch: crlfPatch},
+		{name: "undeclared", prepare: removeDeclaration, wantErr: true},
+		{name: "missing", prepare: func(t *testing.T, w devcontract.ResolvedWorkspace) {
+			if removeErr := os.Remove(filepath.Join(w.Root, scalarPatchPath)); removeErr != nil {
+				t.Fatal(removeErr)
+			}
+		}, wantErr: true},
+		{name: "escaping", prepare: func(t *testing.T, w devcontract.ResolvedWorkspace) {
+			put(t, w.Root, "outside.patch", scalarPatchLF)
+			put(t, w.Root, "omniview/pnpm-workspace.yaml", strings.ReplaceAll(scalarPatchPolicy, "patches/exact.patch", "../outside.patch"))
+		}, wantErr: true},
+		{name: "redirected", prepare: func(t *testing.T, w devcontract.ResolvedWorkspace) {
+			put(t, w.Root, "outside.patch", scalarPatchLF)
+			if removeErr := os.Remove(filepath.Join(w.Root, scalarPatchPath)); removeErr != nil {
+				t.Fatal(removeErr)
+			}
+			if linkErr := os.Symlink(filepath.Join(w.Root, "outside.patch"), filepath.Join(w.Root, scalarPatchPath)); linkErr != nil {
+				t.Fatal(linkErr)
+			}
+		}, wantErr: true},
+		{name: "changed", prepare: func(t *testing.T, w devcontract.ResolvedWorkspace) {
+			put(t, w.Root, scalarPatchPath, scalarPatchLF+"# changed after native lock generation\n")
+		}, wantErr: true},
+		{name: "malformed-hash", lockedHash: "not-a-native-sha256", wantErr: true},
+		{name: "wrong-hash", lockedHash: strings.Repeat("0", 64), wantErr: true},
+		{name: "raw-CRLF-hash", patch: crlfPatch, lockedHash: hash([]byte(crlfPatch)), wantErr: true},
+		{name: "foreign-declaration", prepare: func(t *testing.T, w devcontract.ResolvedWorkspace) {
+			removeDeclaration(t, w)
+			declareForeignPatch(t, w)
+		}, wantErr: true},
+		{name: "conflicting-policy", prepare: declareForeignPatch, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			patch := scalarPatchLF
+			if tc.patch != "" {
+				patch = tc.patch
+			}
 			lockedHash := nativeHash
-			switch name {
-			case "undeclared", "foreign-declaration":
-				policy = "packages: ['packages/*']\nstrictPeerDependencies: true\n"
-			case "missing":
-				if err := os.Remove(filepath.Join(w.Root, patchPath)); err != nil {
-					t.Fatal(err)
-				}
-			case "escaping":
-				policy = strings.ReplaceAll(policy, "patches/@wailsio__runtime@3.0.0-beta.34.patch", "../outside.patch")
-				put(t, w.Root, "outside.patch", string(patch))
-			case "redirected":
-				put(t, w.Root, "outside.patch", string(patch))
-				if err := os.Remove(filepath.Join(w.Root, patchPath)); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.Symlink(filepath.Join(w.Root, "outside.patch"), filepath.Join(w.Root, patchPath)); err != nil {
-					t.Fatal(err)
-				}
-			case "changed":
-				put(t, w.Root, patchPath, string(patch)+"# source changed after native lock generation\n")
-			case "malformed-hash":
-				lockedHash = "not-a-native-sha256"
-			case "wrong-hash":
-				lockedHash = strings.Repeat("0", 64)
+			if tc.lockedHash != "" {
+				lockedHash = tc.lockedHash
 			}
-			put(t, w.Root, "omniview/pnpm-workspace.yaml", policy)
-			if name == "foreign-declaration" || name == "conflicting-policy" {
-				put(t, w.Root, "plugin-a/patches/runtime.patch", string(patch))
-				put(t, w.Root, "plugin-a/ui/pnpm-workspace.yaml", "packages: ['widgets/*']\npatchedDependencies:\n  '@wailsio/runtime@3.0.0-beta.34': ../patches/runtime.patch\n")
+			w, roots := scalarPatchFixture(t, patch, lockedHash)
+			if tc.prepare != nil {
+				tc.prepare(t, w)
 			}
-			source, err := os.ReadFile(filepath.Join(w.Root, "omniview/pnpm-lock.yaml"))
-			if err != nil {
-				t.Fatal(err)
+			lockPath := filepath.Join(w.Root, "omniview/pnpm-lock.yaml")
+			before, beforeErr := os.ReadFile(lockPath)
+			if beforeErr != nil {
+				t.Fatal(beforeErr)
 			}
-			docs, err := decodeDocuments(source)
-			if err != nil {
-				t.Fatal(err)
-			}
-			main := docs[len(docs)-1]
-			main["patchedDependencies"] = map[string]any{"@wailsio/runtime@3.0.0-beta.34": lockedHash}
-			version := "3.0.0-beta.34(patch_hash=" + lockedHash + ")"
-			mapping(mapping(mapping(main["importers"])["."])["dependencies"])["@wailsio/runtime"] = map[string]any{"specifier": "3.0.0-beta.34", "version": version}
-			mapping(main["packages"])["@wailsio/runtime@3.0.0-beta.34"] = map[string]any{
-				"resolution": map[string]any{"integrity": "sha512-uchPkqqbH+yAweQh4J0y0G1NRE6ILcas6huNTruTVU84aWqCFanlpdVM/KYJdcNzWKhdHGcGGBJYCUYn3ualoQ=="},
-			}
-			mapping(main["snapshots"])["@wailsio/runtime@"+version] = map[string]any{}
-			source, err = encodeDocuments(docs)
-			if err != nil {
-				t.Fatal(err)
-			}
-			put(t, w.Root, "omniview/pnpm-lock.yaml", string(source))
-			p, err := New(w, roots, nil)
-			if name != "accepted" {
-				if err == nil {
+			p, planErr := New(w, roots, nil)
+			if tc.wantErr {
+				if planErr == nil {
 					t.Fatal("native scalar lock established authority over an invalid source patch")
 				}
 				return
 			}
-			if err != nil {
-				t.Fatalf("native pnpm scalar patch with declared, fingerprinted source refused: %v", err)
+			if planErr != nil {
+				t.Fatal(planErr)
 			}
-			if p.SourceHashes[patchPath] != nativeHash {
-				t.Fatal("lock scalar replaced the declared source patch fingerprint")
+			if p.SourceHashes[scalarPatchPath] != hash([]byte(patch)) {
+				t.Fatal("native scalar replaced the raw source-byte fingerprint")
 			}
-			generatedDocs, err := decodeDocuments(generated(t, p, "pnpm-lock.yaml"))
-			if err != nil {
-				t.Fatal(err)
+			generatedDocs, lockErr := decodeDocuments(generated(t, p, "pnpm-lock.yaml"))
+			if lockErr != nil {
+				t.Fatal(lockErr)
 			}
-			generatedMain := generatedDocs[len(generatedDocs)-1]
-			if mapping(generatedMain["patchedDependencies"])["@wailsio/runtime@3.0.0-beta.34"] != nativeHash {
-				t.Fatal("composition rewrote the native scalar into an installer-incompatible patch record")
+			main := generatedDocs[len(generatedDocs)-1]
+			if mapping(main["patchedDependencies"])["exact@1.2.3"] != nativeHash {
+				t.Fatal("composition changed the native scalar hash")
 			}
-			host := mapping(mapping(generatedMain["importers"])["omniview"])
-			if mapping(mapping(host["dependencies"])["@wailsio/runtime"])["version"] != version || mapping(generatedMain["snapshots"])["@wailsio/runtime@"+version] == nil {
+			version := "1.2.3(patch_hash=" + nativeHash + ")"
+			host := mapping(mapping(main["importers"])["omniview"])
+			if mapping(mapping(host["dependencies"])["exact"])["version"] != version || mapping(main["snapshots"])["exact@"+version] == nil {
 				t.Fatal("composition moved the selected patched importer or snapshot")
 			}
-			generatedPolicy, err := decodeDocuments(generated(t, p, "pnpm-workspace.yaml"))
-			if err != nil || mapping(generatedPolicy[0]["patchedDependencies"])["@wailsio/runtime@3.0.0-beta.34"] != patchPath {
-				t.Fatalf("source policy lost its independently owned patch path: %v", err)
+			policyDocs, policyErr := decodeDocuments(generated(t, p, "pnpm-workspace.yaml"))
+			if policyErr != nil {
+				t.Fatal(policyErr)
 			}
-			after, err := os.ReadFile(filepath.Join(w.Root, "omniview/pnpm-lock.yaml"))
-			if err != nil || string(after) != string(source) {
-				t.Fatalf("composition modified the native source lock: %v", err)
+			if mapping(policyDocs[0]["patchedDependencies"])["exact@1.2.3"] != scalarPatchPath {
+				t.Fatal("source policy lost its independently owned patch path")
 			}
-			if err := CheckInputs(p); err != nil {
-				t.Fatal(err)
+			after, afterErr := os.ReadFile(lockPath)
+			if afterErr != nil || string(after) != string(before) {
+				t.Fatalf("composition modified the native source lock: %v", afterErr)
 			}
-			put(t, w.Root, patchPath, string(patch)+"# changed after planning\n")
-			if err := CheckInputs(p); err == nil {
+			if inputsErr := CheckInputs(p); inputsErr != nil {
+				t.Fatal(inputsErr)
+			}
+			put(t, w.Root, scalarPatchPath, patch+"# changed after planning\n")
+			if inputsErr := CheckInputs(p); inputsErr == nil {
 				t.Fatal("changed patch bytes did not stale the source-owned plan")
 			}
-			if _, err := New(w, roots, nil); err == nil {
-				t.Fatal("new planning accepted stale native patch hash after source mutation")
+			if _, newPlanErr := New(w, roots, nil); newPlanErr == nil {
+				t.Fatal("new planning accepted a stale native patch hash")
+			}
+		})
+	}
+}
+
+func TestNativeScalarPatchRequiresRawSourceAuthority(t *testing.T) {
+	nativeHash := hash([]byte(scalarPatchLF))
+	for _, tc := range []struct {
+		name   string
+		change func(*testing.T, devcontract.ResolvedWorkspace, *reconciledPolicy)
+	}{
+		{"missing-fingerprint", func(_ *testing.T, _ devcontract.ResolvedWorkspace, policy *reconciledPolicy) {
+			delete(policy.inputHashes, scalarPatchPath)
+		}},
+		{"line-ending-mutation-after-reconciliation", func(t *testing.T, w devcontract.ResolvedWorkspace, _ *reconciledPolicy) {
+			put(t, w.Root, scalarPatchPath, scalarPatchLF)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w, roots := scalarPatchFixture(t, strings.ReplaceAll(scalarPatchLF, "\n", "\r\n"), nativeHash)
+			sources, discoverErr := discover(w, roots)
+			if discoverErr != nil {
+				t.Fatal(discoverErr)
+			}
+			reconciled, reconcileErr := reconcile(w, sources)
+			if reconcileErr != nil {
+				t.Fatal(reconcileErr)
+			}
+			tc.change(t, w, &reconciled)
+			src := map[string]any{"patchedDependencies": map[string]any{"exact@1.2.3": nativeHash}}
+			mergeErr := mergeLockedPatches(w, map[string]any{}, src, reconciled.settings, reconciled.inputHashes, filepath.Join(w.Root, "omniview/pnpm-lock.yaml"))
+			if mergeErr == nil {
+				t.Fatal("native scalar accepted missing or changed raw-byte source authority")
 			}
 		})
 	}
