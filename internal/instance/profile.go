@@ -285,7 +285,7 @@ func (p Profile) ChildEnvironment(base []string, pluginID string) ([]string, err
 	env := make([]string, 0, len(base)+len(values))
 	for _, entry := range base {
 		key, _, _ := strings.Cut(entry, "=")
-		if pluginID != "" && (strings.HasPrefix(key, "OMNIVIEW_PROCESS_BRIDGE_") || strings.HasPrefix(key, "OMNIVIEW_SUPERVISOR_") || key == "OMNIVIEW_PLUGIN_PNPM_COMMANDS") {
+		if pluginID != "" && (strings.HasPrefix(key, "OMNIVIEW_PROCESS_BRIDGE_") || strings.HasPrefix(key, "OMNIVIEW_SUPERVISOR_") || key == "OMNIVIEW_PLUGIN_PNPM_COMMANDS" || key == "OMNIVIEW_P02_METRICS_SOCKET") {
 			continue
 		}
 		if !keys[key] {
