@@ -110,7 +110,7 @@ Every owner publishes a portable contract receipt alongside its focused spec/pla
 
 Do not launch production consumers if their inputs are merely illustrative code snippets, pending numeric dependency choices or a generated file from another agent's unlanded checkout. Stop and resolve the affected gate; unrelated ready work may continue.
 
-**Current next launch:** C00 has an independently accepted [selected-source receipt](2026-10-17-resource-intelligence-baseline.md). Reconcile P00's remote predecessor state, then proceed with P44/P04/P18 under their existing dependencies and independent ownership. P18 reuses the merged editor evidence and closes remaining host feasibility acceptance. P01 still waits for P44; most production consumers remain held by their own contract gates.
+**Current next launch:** C00/P00 and P44 are independently accepted; P44's real SDK conformance receipt is merged in [SDK PR13](https://github.com/omniviewdev/plugin-sdk/pull/13) at `da0c53be2da636d3833b7ca1e73f8a6c8d26b5c7`. P01/P02 may execute their own design/spike and measurement acceptance. P01's production numeric/profile gate remains blocked. P04's reviewed C02 proposal is not implementation acceptance; SDK PR14 and host/runtime/provider consumption remain in progress. P18 reuses merged editor evidence while retaining explicit native accessibility gates. Production consumers remain held by their actual contract prerequisites.
 
 ## 6. UI execution reconciliation — 2026-10-22
 
