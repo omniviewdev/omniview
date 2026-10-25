@@ -115,6 +115,14 @@ becomes ready. Both paths consume the same reconciled state. Initial-batch IDs
 remain reserved until the batch settles, including plugins queued behind its
 concurrency limit, so a status update cannot start a competing import.
 
+The provider releases its plugin registrations and native-import refresh ownership
+on unmount, not just its event listeners. The extension registry is retained across
+live module updates, so a replacement provider must be able to register the same
+plugin-defined extension points without inheriting the retired provider's entries.
+Builtins and contributions owned by other plugins are not cleared. Pending imports,
+startup batches and delayed retries from the retired lifetime cannot publish into
+the replacement lifetime; React Strict Mode effect replay starts a fresh batch.
+
 The shell remains interactive while plugins initialize. `ready` describes the
 initial eligible batch settling, not every development server becoming ready.
 `RouteProvider` reserves `/_plugin/:pluginId/*` before plugin routes exist:
@@ -133,9 +141,13 @@ other plugins load, and saved card order is not pruned against a partial registr
 
 ### Concurrency Safety
 
-- `load()` deduplicates concurrent calls via `inflightLoads` map
-- `reload()` uses a generation counter (`loadGeneration`) to discard stale results
-- `loadAll()` runs a two-pass strategy: Pass 1 loads in parallel, Pass 2 retries failures (dependency ordering)
+- `load()` and `reload()` deduplicate concurrent calls via `inflightLoads`; an old
+  operation only releases its own reservation.
+- Load generations remain monotonic across `reset()` so retired imports, delayed
+  retries and cleanup continuations cannot overwrite replacement state.
+- `loadAll()` imports/validates in bounded parallel chunks, registers all owned
+  extension points, then applies contributions and routes. Cancelled participants
+  do not publish.
 
 ## Extension Points
 
