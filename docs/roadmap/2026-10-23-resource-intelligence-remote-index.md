@@ -4,8 +4,8 @@ Published: 2026-10-23.
 
 - [Delivery project](https://github.com/orgs/omniviewdev/projects/13) (organization project, private).
 - [Parent roadmap and launch-wave index](https://github.com/omniviewdev/omniview/issues/78).
-- 48 canonical packets, 113 native GitHub blocked-by relationships, three independent UI-quality followups, and one parent issue. All 48 production issues remain open; the bounded table/palette followups have merged implementation receipts.
-- Current reconciliation: P00 and UI-LAYOUT are Ready; 47 production packets remain Blocked. UI-TABLE and UI-PALETTE are Done for their bounded acceptance only; P23/P24/P42/P43 remain Blocked. Existing UI evidence is not full production acceptance.
+- 48 canonical packets, 113 native GitHub blocked-by relationships at publication, three independent UI-quality followups, and one parent issue. Counts are historical; remote state remains authoritative.
+- Current execution reconciliation: P00/C00 has an independently accepted [selected-source baseline receipt](2026-10-17-resource-intelligence-baseline.md), issue79 is closed, and P44 is accepted through merged [SDK PR13](https://github.com/omniviewdev/plugin-sdk/pull/13), commit `da0c53be2da636d3833b7ca1e73f8a6c8d26b5c7`. P01/P02 and remaining P04/P18 acceptance are in progress; production numeric, invocation integration and native accessibility gates remain explicit. All three bounded UI-quality followups are Done, including UI-LAYOUT through merged [UI PR71](https://github.com/omniviewdev/ui/pull/71), commit `6c046bf19e332e8250d3aa66daaf5f092e600c5e`. This does not certify their related production packets.
 - Project fields: Packet, Wave, Workstream, Status, Readiness and Evidence. Views: All work, Delivery board, Dependency waves, Ready to launch and UI work. Wave is longest-predecessor depth, not a date/estimate. Use ascending Wave sorting when planning; don't treat packet numbering as launch order.
 - Existing Platform project links the parent; Kubernetes Plugin project also includes P08–P11. Existing issues/drafts were not closed, moved or overwritten.
 
@@ -13,7 +13,7 @@ Published: 2026-10-23.
 
 | Packet | Owning repository / remote issue | Wave | Hard blockers | Evidence at publication |
 | --- | --- | --- | --- | --- |
-| P00 | [omniview#79: Resolve the integration baseline](https://github.com/omniviewdev/omniview/issues/79) | 0 | None | Integration proof required |
+| P00 | [omniview#79: Resolve the integration baseline](https://github.com/omniviewdev/omniview/issues/79) | 0 | None | Independently accepted [browser-mode selected-source receipt](2026-10-17-resource-intelligence-baseline.md); remote integration pending |
 | P01 | [omniview#80: Complete the CEL query/resource contracts and confirmation gates](https://github.com/omniviewdev/omniview/issues/80) | 2 | [P00](https://github.com/omniviewdev/omniview/issues/79), [P44](https://github.com/omniviewdev/plugin-sdk/issues/11) | No production completion receipt |
 | P02 | [omniview#81: Establish end-to-end resource performance baselines](https://github.com/omniviewdev/omniview/issues/81) | 2 | [P00](https://github.com/omniviewdev/omniview/issues/79), [P44](https://github.com/omniviewdev/plugin-sdk/issues/11) | No production completion receipt |
 | P03 | [omniview#82: Canonical resource identity and cache cutover](https://github.com/omniviewdev/omniview/issues/82) | 4 | [P00](https://github.com/omniviewdev/omniview/issues/79), [P44](https://github.com/omniviewdev/plugin-sdk/issues/11), [P45](https://github.com/omniviewdev/plugin-sdk/issues/12) | No production completion receipt |
@@ -57,7 +57,7 @@ Published: 2026-10-23.
 | P41 | [omniview#112: Per-view index suggestions and maintenance UX](https://github.com/omniviewdev/omniview/issues/112) | 12 | [P32](https://github.com/omniviewdev/omniview/issues/103), [P40](https://github.com/omniviewdev/omniview/issues/111) | UI subset available; production acceptance open |
 | P42 | [omniview#113: Functional global command/settings/navigation palette](https://github.com/omniviewdev/omniview/issues/113) | 2 | [P00](https://github.com/omniviewdev/omniview/issues/79), [P04](https://github.com/omniviewdev/omniview/issues/83) | No production completion receipt |
 | P43 | [omniview#114: Unified resource search integration](https://github.com/omniviewdev/omniview/issues/114) | 9 | [P35](https://github.com/omniviewdev/omniview/issues/106), [P42](https://github.com/omniviewdev/omniview/issues/113) | UI subset available; production acceptance open |
-| P44 | [plugin-sdk#11: Early provider-neutral conformance fixtures](https://github.com/omniviewdev/plugin-sdk/issues/11) | 1 | [P00](https://github.com/omniviewdev/omniview/issues/79) | No production completion receipt |
+| P44 | [plugin-sdk#11: Early provider-neutral conformance fixtures](https://github.com/omniviewdev/plugin-sdk/issues/11) | 1 | [P00](https://github.com/omniviewdev/omniview/issues/79) | Accepted real current-SDK corpus/process proof; [merged SDK PR13](https://github.com/omniviewdev/plugin-sdk/pull/13); replacement-contract conformance remains P45 |
 | P45 | [plugin-sdk#12: New-major provider contract and usable SDK/host read boundary](https://github.com/omniviewdev/plugin-sdk/issues/12) | 3 | [P01](https://github.com/omniviewdev/omniview/issues/80), [P04](https://github.com/omniviewdev/omniview/issues/83), [P44](https://github.com/omniviewdev/plugin-sdk/issues/11) | No production completion receipt |
 | P46 | [omniview#102: Incompatible-plugin admission and coordinated release gate](https://github.com/omniviewdev/omniview/issues/102) | 10 | [P45](https://github.com/omniviewdev/plugin-sdk/issues/12), [P47](https://github.com/omniviewdev/omniview/issues/101) | No production completion receipt |
 | P47 | [omniview#101: Runtime/plugin public ABI cutover and legacy retirement](https://github.com/omniviewdev/omniview/issues/101) | 9 | [P15](https://github.com/omniviewdev/omniview/issues/89), [P26](https://github.com/omniviewdev/omniview/issues/95), [P45](https://github.com/omniviewdev/plugin-sdk/issues/12) | No production completion receipt |
@@ -65,7 +65,7 @@ Published: 2026-10-23.
 ## Independent presentation followups
 
 - [UI-TABLE: Harden expandable table keyboard, focus and nested interactions](https://github.com/omniviewdev/ui/issues/66): Done from merged [UI PR59](https://github.com/omniviewdev/ui/pull/59), commit `3c5b5fc`; related P23/P24 remain Blocked, not completed by presentation hardening.
-- [UI-LAYOUT: Harden existing view-layout keyboard and controlled interactions](https://github.com/omniviewdev/ui/issues/67): Ready; execution/assignment unconfirmed. Related P33 remains Blocked.
+- [UI-LAYOUT: Harden existing view-layout keyboard and controlled interactions](https://github.com/omniviewdev/ui/issues/67): Done through merged [UI PR71](https://github.com/omniviewdev/ui/pull/71), commit `6c046bf19e332e8250d3aa66daaf5f092e600c5e`; issue closed and project Done verified. Related P33 remains separately gated.
 - [UI-PALETTE: Harden existing command-palette interaction and accessibility](https://github.com/omniviewdev/ui/issues/68): Done from merged [UI PR58](https://github.com/omniviewdev/ui/pull/58), commit `dd8f60c`; related P42/P43 remain Blocked, not completed by presentation hardening.
 
 ## Maintaining progress
