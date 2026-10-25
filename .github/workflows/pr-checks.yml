@@ -33,27 +33,37 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+      - name: Select restored Go cache for Task
+        id: go-cache
+        run: |
+          GO_BUILD_CACHE_DIRECTORY="$(GOWORK=off GOFLAGS= go env GOCACHE)"
+          printf 'directory=%s\n' "$GO_BUILD_CACHE_DIRECTORY" >> "$GITHUB_OUTPUT"
+          GOWORK=off GOFLAGS= go env -json GOVERSION GOOS GOARCH GOCACHE
+
       - name: Install Task
         uses: arduino/setup-task@v2
         with:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Verify effective Task Go cache
+        run: task check:go-cache GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
+
       - name: Build
-        run: task check:go-build
+        run: task check:go-build GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
 
       - name: Vet
-        run: task check:go-vet
+        run: task check:go-vet GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
 
       - name: Test
-        run: task check:go-test
+        run: task check:go-test GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
 
       - name: Generate fresh C02 error transport corpus
         id: c02-corpus
         run: |
           CORPUS_NAME="c02-error-corpus-${GITHUB_RUN_ATTEMPT}"
           export C02_ERROR_CORPUS="$RUNNER_TEMP/${CORPUS_NAME}.json"
-          task check:c02-corpus
+          task check:c02-corpus GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
           printf 'corpus_name=%s\n' "$CORPUS_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Upload C02 error transport corpus
@@ -67,7 +77,7 @@ jobs:
         run: go install golang.org/x/tools/cmd/goimports@latest
 
       - name: Format check
-        run: task check:fmt-check
+        run: task check:fmt-check GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
 
       # Reports only issues the PR introduces; the existing backlog is not fixed yet.
       - name: Lint
@@ -96,11 +106,21 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+      - name: Select restored Go cache for Task
+        id: go-cache
+        run: |
+          GO_BUILD_CACHE_DIRECTORY="$(GOWORK=off GOFLAGS= go env GOCACHE)"
+          printf 'directory=%s\n' "$GO_BUILD_CACHE_DIRECTORY" >> "$GITHUB_OUTPUT"
+          GOWORK=off GOFLAGS= go env -json GOVERSION GOOS GOARCH GOCACHE
+
       - name: Install Task
         uses: arduino/setup-task@v2
         with:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify effective Task Go cache
+        run: task check:go-cache GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
 
       - uses: actions/setup-node@v4
         with:
@@ -110,7 +130,7 @@ jobs:
         run: GOWORK=off GOFLAGS= bash ./scripts/install-wails-cli.sh
 
       - name: Check bindings are up to date
-        run: task check:bindings-check
+        run: task check:bindings-check GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
 
       - name: Check native Wails capability contracts
         run: GOWORK=off GOFLAGS= node --test scripts/wails-tool.test.mjs

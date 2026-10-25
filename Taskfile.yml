@@ -262,6 +262,22 @@ tasks:
       - task: check:ui-lint
       - task: check:ui-typecheck
 
+  check:go-cache:
+    summary: Verify Task uses the explicitly selected Go compiler cache
+    requires:
+      vars: [GO_BUILD_CACHE_DIRECTORY]
+    preconditions:
+      - sh: test -n {{.GO_BUILD_CACHE_DIRECTORY | shellQuote}}
+        msg: GO_BUILD_CACHE_DIRECTORY must name the selected Go compiler cache
+      - sh: test {{osIsAbs .GO_BUILD_CACHE_DIRECTORY}} = true
+        msg: GO_BUILD_CACHE_DIRECTORY must name an absolute Go compiler cache directory
+    cmds:
+      - |
+        set -e
+        ACTUAL_GOCACHE="$(GOWORK=off GOFLAGS= go env GOCACHE)"
+        printf 'Task GOCACHE=%s\n' "$ACTUAL_GOCACHE"
+        test "$ACTUAL_GOCACHE" = {{.GO_BUILD_CACHE_DIRECTORY | shellQuote}}
+
   check:go-build:
     cmds:
       - |
