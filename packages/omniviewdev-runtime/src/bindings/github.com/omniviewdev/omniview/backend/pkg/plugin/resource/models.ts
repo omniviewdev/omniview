@@ -7,10 +7,77 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as apperror$0 from "../../apperror/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as types$0 from "../../../../../plugin-sdk/pkg/types/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as resource$0 from "../../../../../plugin-sdk/pkg/v1/resource/models.js";
+
+export class ActionEventDTO {
+    "type": string;
+    "data"?: { [_ in string]?: any };
+    "error"?: apperror$0.AppError | null;
+
+    /** Creates a new ActionEventDTO instance. */
+    constructor($$source: Partial<ActionEventDTO> = {}) {
+        if (!("type" in $$source)) {
+            this["type"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ActionEventDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ActionEventDTO {
+        const $$createField1_0 = $$createType0;
+        const $$createField2_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("data" in $$parsedSource) {
+            $$parsedSource["data"] = $$createField1_0($$parsedSource["data"]);
+        }
+        if ("error" in $$parsedSource) {
+            $$parsedSource["error"] = $$createField2_0($$parsedSource["error"]);
+        }
+        return new ActionEventDTO($$parsedSource as Partial<ActionEventDTO>);
+    }
+}
+
+export class ActionSnapshot {
+    "sequence": number;
+    "event": ActionEventDTO;
+    "terminal": boolean;
+
+    /** Creates a new ActionSnapshot instance. */
+    constructor($$source: Partial<ActionSnapshot> = {}) {
+        if (!("sequence" in $$source)) {
+            this["sequence"] = 0;
+        }
+        if (!("event" in $$source)) {
+            this["event"] = (new ActionEventDTO());
+        }
+        if (!("terminal" in $$source)) {
+            this["terminal"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ActionSnapshot instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ActionSnapshot {
+        const $$createField1_0 = $$createType3;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("event" in $$parsedSource) {
+            $$parsedSource["event"] = $$createField1_0($$parsedSource["event"]);
+        }
+        return new ActionSnapshot($$parsedSource as Partial<ActionSnapshot>);
+    }
+}
 
 /**
  * ConnectionState is the full state snapshot for a single connection,
@@ -82,9 +149,9 @@ export class ConnectionState {
      * Creates a new ConnectionState instance from a string or object.
      */
     static createFrom($$source: any = {}): ConnectionState {
-        const $$createField0_0 = $$createType0;
-        const $$createField2_0 = $$createType1;
-        const $$createField3_0 = $$createType2;
+        const $$createField0_0 = $$createType4;
+        const $$createField2_0 = $$createType5;
+        const $$createField3_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("connection" in $$parsedSource) {
             $$parsedSource["connection"] = $$createField0_0($$parsedSource["connection"]);
@@ -136,6 +203,10 @@ export class ConnectionStatusPayload {
 }
 
 // Private type creation functions
-const $$createType0 = types$0.Connection.createFrom;
-const $$createType1 = $Create.Map($Create.Any, $Create.Any);
-const $$createType2 = $Create.Map($Create.Any, $Create.Any);
+const $$createType0 = $Create.Map($Create.Any, $Create.Any);
+const $$createType1 = apperror$0.AppError.createFrom;
+const $$createType2 = $Create.Nullable($$createType1);
+const $$createType3 = ActionEventDTO.createFrom;
+const $$createType4 = types$0.Connection.createFrom;
+const $$createType5 = $Create.Map($Create.Any, $Create.Any);
+const $$createType6 = $Create.Map($Create.Any, $Create.Any);

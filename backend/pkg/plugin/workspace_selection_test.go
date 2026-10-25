@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/pprof"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -307,6 +308,8 @@ http.createServer((req,res)=>{res.writeHead(req.url==='/@vite/client'?200:404,{'
 			break
 		}
 		if time.Now().After(deadline) {
+			t.Logf("selected startup process logs: %+v", servers.GetDevServerLogs("flux", 100))
+			_ = pprof.Lookup("goroutine").WriteTo(os.Stderr, 2)
 			t.Fatalf("selected canonical startup did not reach actual readiness: %+v %+v %v", state, info, err)
 		}
 		time.Sleep(10 * time.Millisecond)

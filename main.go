@@ -17,6 +17,7 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/diagnostics"
 	"github.com/omniviewdev/omniview/backend/menus"
+	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/data"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
@@ -70,6 +71,19 @@ var assets embed.FS
 
 //go:embed build/appicon.png
 var icon []byte
+
+func newUICapabilityControllers(
+	log logging.Logger,
+	settingsProvider pkgsettings.Provider,
+	resourceController resource.Controller,
+	resourceUIRealm *invocation.Scope,
+) (exec.Controller, networker.Controller, pluginlogs.Controller, pluginmetric.Controller) {
+	uiResourceService := &resource.ServiceWrapper{Ctrl: resourceController, Realm: resourceUIRealm}
+	return exec.NewController(log, settingsProvider, uiResourceService),
+		networker.NewController(log, settingsProvider, uiResourceService),
+		pluginlogs.NewController(log, settingsProvider, uiResourceService),
+		pluginmetric.NewController(log, settingsProvider, uiResourceService)
+}
 
 //nolint:funlen // main function is expected to be long
 func main() {
@@ -267,18 +281,16 @@ func main() {
 	utilsClient := utils.NewClient()
 
 	// Setup the plugin systems
-	resourceController := resource.NewController(log, settingsProvider, stateDir.PluginStore)
-	graphService := resource.NewGraphService(resourceController.Graph())
+	resourceBoundary := invocation.NewBoundary(nil)
+	resourceUIRealm := invocation.NewScope(invocation.TrustedUI)
+	resourceController := resource.NewController(log, settingsProvider, stateDir.PluginStore, resourceBoundary)
+	graphService := resource.NewGraphService(resourceController.Graph(), resourceUIRealm, resourceBoundary)
 
 	settingsController := settings.NewController(log, settingsProvider, settingsStore)
 
-	execController := exec.NewController(log, settingsProvider, resourceController)
-
-	networkerController := networker.NewController(log, settingsProvider, resourceController)
-
-	logsController := pluginlogs.NewController(log, settingsProvider, resourceController)
-
-	metricController := pluginmetric.NewController(log, settingsProvider, resourceController)
+	execController, networkerController, logsController, metricController := newUICapabilityControllers(
+		log, settingsProvider, resourceController, resourceUIRealm,
+	)
 
 	dataController := data.NewController(log, stateDir.PluginData)
 
@@ -431,7 +443,7 @@ func main() {
 	// OnPluginStart on all controllers — they need ctx for gRPC streams.
 	services := []application.Service{
 		// 1. Controllers — need ctx before plugin loading
-		application.NewService(&resource.ServiceWrapper{Ctrl: resourceController}),
+		application.NewService(&resource.ServiceWrapper{Ctrl: resourceController, Realm: resourceUIRealm}),
 		application.NewService(graphService),
 		application.NewService(&settings.ServiceWrapper{Ctrl: settingsController}),
 		application.NewService(&exec.ServiceWrapper{Ctrl: execController}),

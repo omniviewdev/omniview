@@ -132,40 +132,6 @@ func TestNotImplemented(t *testing.T) {
 	assert.Equal(t, "Feature X is not yet supported.", appErr.Detail)
 }
 
-func TestFromResourceOperationError(t *testing.T) {
-	tests := []struct {
-		name       string
-		code       string
-		wantType   string
-		wantStatus int
-	}{
-		{"NOT_FOUND", "NOT_FOUND", TypeResourceNotFound, 404},
-		{"FORBIDDEN", "FORBIDDEN", TypeResourceForbidden, 403},
-		{"UNAUTHORIZED", "UNAUTHORIZED", TypeResourceUnauthorized, 401},
-		{"CONFLICT", "CONFLICT", TypeResourceConflict, 409},
-		{"TIMEOUT", "TIMEOUT", TypeResourceTimeout, 408},
-		{"unknown", "WEIRD", TypeInternal, 500},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			input := `{"code":"` + tt.code + `","title":"Test","message":"detail","suggestions":["try again"]}`
-			appErr := FromResourceOperationError(input, "plug-1")
-			assert.Equal(t, tt.wantType, appErr.Type)
-			assert.Equal(t, tt.wantStatus, appErr.Status)
-			assert.Equal(t, "Test", appErr.Title)
-			assert.Equal(t, "detail", appErr.Detail)
-			assert.Equal(t, "plug-1", appErr.Instance)
-			assert.Equal(t, []string{"try again"}, appErr.Suggestions)
-		})
-	}
-}
-
-func TestFromResourceOperationError_InvalidJSON(t *testing.T) {
-	appErr := FromResourceOperationError("not json", "plug-1")
-	assert.Equal(t, TypeInternal, appErr.Type)
-	assert.Equal(t, 500, appErr.Status)
-}
-
 func TestActionHelpers(t *testing.T) {
 	nav := NavigateAction("Go", "/foo")
 	assert.Equal(t, "navigate", nav.Type)

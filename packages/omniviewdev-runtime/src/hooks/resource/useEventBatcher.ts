@@ -87,9 +87,10 @@ export function applyBatch(
  * window (default 500ms) to batch the initial ADD flood into 1-2 flushes.
  * Satisfies REQ-BATCH-2.
  *
- * **Mode 2 — Live Updates (all other states):** Uses `requestAnimationFrame`
- * to align cache updates with the browser repaint cycle (~16ms), providing
- * the lowest-latency batching for live updates. Satisfies REQ-BATCH-1.
+ * **Mode 2 — Live Updates (all other states):** Races `requestAnimationFrame`
+ * against the same bounded window, retaining next-frame batching while allowing
+ * already-delivered data to progress when painting is withheld but timers run.
+ * This does not promise progress while the entire event loop is frozen.
  *
  * Mode transitions happen automatically when `watchState` changes.
  * Pending timers flush normally; subsequent events use the new scheduling.
@@ -116,8 +117,14 @@ export function useEventBatcher(
   const flush = useCallback(() => {
     const events = bufferRef.current;
     bufferRef.current = [];
-    timerRef.current = null;
-    rafRef.current = null;
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
 
     if (events.length === 0 || !idAccessor) return;
 
@@ -146,11 +153,10 @@ export function useEventBatcher(
         return;
       }
 
-      // SYNCING (1) → use setTimeout with larger window for initial sync batching.
-      // All other states → use requestAnimationFrame for lowest-latency live updates.
-      if (stateRef.current === 1) {
-        timerRef.current = setTimeout(flush, syncWindowMs);
-      } else {
+      // One timer bounds both modes; live updates normally win on the next frame.
+      // Whichever callback flushes first cancels the other schedule.
+      timerRef.current = setTimeout(flush, syncWindowMs);
+      if (stateRef.current !== 1) {
         rafRef.current = requestAnimationFrame(flush);
       }
     },

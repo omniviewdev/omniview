@@ -1,121 +1,99 @@
 import type { AppError, AppErrorAction } from './types';
 import { ErrorTypes } from './types';
 
-/**
- * Maps ResourceOperationError codes to AppError type URIs and HTTP status codes.
- * Mirrors Go apperror.mapResourceCode.
- */
-function mapResourceCode(code: string): { typeUri: string; status: number } {
-  switch (code) {
-    case 'NOT_FOUND':
-      return { typeUri: ErrorTypes.RESOURCE_NOT_FOUND, status: 404 };
-    case 'FORBIDDEN':
-      return { typeUri: ErrorTypes.RESOURCE_FORBIDDEN, status: 403 };
-    case 'UNAUTHORIZED':
-      return { typeUri: ErrorTypes.RESOURCE_UNAUTHORIZED, status: 401 };
-    case 'CONFLICT':
-    case 'ALREADY_EXISTS':
-      return { typeUri: ErrorTypes.RESOURCE_CONFLICT, status: 409 };
-    case 'TIMEOUT':
-      return { typeUri: ErrorTypes.RESOURCE_TIMEOUT, status: 408 };
-    case 'CONNECTION_ERROR':
-      return { typeUri: ErrorTypes.RESOURCE_CONNECTION_ERROR, status: 503 };
-    case 'CERTIFICATE_ERROR':
-      return { typeUri: ErrorTypes.RESOURCE_CERTIFICATE_ERROR, status: 502 };
-    default:
-      return { typeUri: ErrorTypes.INTERNAL, status: 500 };
-  }
-}
+/** Canonical resource classifications mirror backend/pkg/apperror/resource.go. */
+const resourceCodes: Record<string, readonly [string, number, AppError['recovery']]> = {
+  INVALID_REQUEST: [ErrorTypes.VALIDATION, 400, 'correctRequest'],
+  UNSUPPORTED: [ErrorTypes.NOT_IMPLEMENTED, 501, 'refreshContract'],
+  FORBIDDEN: [ErrorTypes.RESOURCE_FORBIDDEN, 403, 'none'],
+  UNAUTHORIZED: [ErrorTypes.RESOURCE_UNAUTHORIZED, 401, 'none'],
+  NOT_FOUND: [ErrorTypes.RESOURCE_NOT_FOUND, 404, 'none'],
+  CONFLICT: [ErrorTypes.RESOURCE_CONFLICT, 409, 'refreshContract'],
+  ALREADY_EXISTS: [ErrorTypes.RESOURCE_CONFLICT, 409, 'refreshContract'],
+  CANCELLED: [ErrorTypes.CANCELLED, 499, 'none'],
+  TIMEOUT: [ErrorTypes.RESOURCE_TIMEOUT, 408, 'none'],
+  UNAVAILABLE: [ErrorTypes.CONNECTION_FAILED, 503, 'reconnect'],
+  CONNECTION_ERROR: [ErrorTypes.CONNECTION_FAILED, 503, 'reconnect'],
+  CERTIFICATE_ERROR: [ErrorTypes.CONNECTION_FAILED, 502, 'reconnect'],
+  RESOURCE_LIMIT: [ErrorTypes.RESOURCE_LIMIT, 429, 'correctRequest'],
+  CONTINUATION_EXPIRED: [ErrorTypes.RESOURCE_CONTINUATION_EXPIRED, 410, 'restartQuery'],
+  RESET_REQUIRED: [ErrorTypes.RESOURCE_RESET_REQUIRED, 409, 'restartQuery'],
+  PARTIAL_RESULT: [ErrorTypes.RESOURCE_PARTIAL, 422, 'none'],
+  PROVIDER_ERROR: [ErrorTypes.RESOURCE_PROVIDER_ERROR, 502, 'none'],
+  INTERNAL: [ErrorTypes.INTERNAL, 500, 'none'],
+};
 
-/**
- * Parse any error shape from the Wails boundary into a structured AppError.
- *
- * Handles:
- * - JSON string from AppError.Error() → parsed into typed AppError
- * - Plain string from old fmt.Errorf → wrapped as internal error
- * - Error object → extracts .message, tries JSON parse
- * - null/undefined → generic "Unknown error"
- *
- * NEVER returns null.
- */
-export function parseAppError(error: unknown): AppError {
-  if (error == null) {
+function record(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null ? value as Record<string, unknown> : undefined;
+}
+function text(value: unknown, limit: number): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= limit;
+}
+function cancellation(): AppError {
+  return { type: ErrorTypes.CANCELLED, code: 'CANCELLED', title: 'Cancelled', status: 499, detail: 'The operation was cancelled.', recovery: 'none' };
+}
+function decode(error: unknown, depth: number): AppError | undefined {
+  if (depth > 4) return undefined;
+  if (error === 'cancelled') return cancellation();
+  if (typeof error === 'string') {
+    const raw = error.trim();
+    if (!raw.startsWith('{')) return undefined;
+    try { return decode(JSON.parse(raw), depth + 1); } catch { return undefined; }
+  }
+  const parsed = record(error);
+  if (!parsed) return undefined;
+  if (parsed.name === 'AbortError' || parsed.name === 'CancelError') return cancellation();
+  // Only a complete host envelope is accepted. Provider-controlled fields are
+  // sanitized authoritatively in Go; the SDK fallback below fails safely too.
+  if (text(parsed.type, 256) && text(parsed.title, 256) && typeof parsed.status === 'number' && Number.isInteger(parsed.status) && parsed.status >= 100 && parsed.status <= 599 && typeof parsed.detail === 'string' && parsed.detail.length <= 4096) {
+    const result: AppError = { type: parsed.type, title: parsed.title, status: parsed.status, detail: parsed.detail };
+    if (text(parsed.code, 64)) result.code = parsed.code;
+    if (text(parsed.requestId, 256)) result.requestId = parsed.requestId;
+    if (text(parsed.instance, 512)) result.instance = parsed.instance;
+    if (Array.isArray(parsed.suggestions)) result.suggestions = parsed.suggestions.filter((item): item is string => text(item, 512)).slice(0, 8);
+    if (Array.isArray(parsed.actions)) result.actions = parsed.actions.filter((item): item is AppErrorAction => {
+      const action = record(item);
+      return !!action && ['navigate', 'retry', 'open-url', 'copy'].includes(String(action.type)) && text(action.label, 256) && (action.target === undefined || text(action.target, 4096));
+    }).slice(0, 8);
+    if (['correctRequest', 'refreshContract', 'restartQuery', 'reconnect', 'none'].includes(String(parsed.recovery))) result.recovery = parsed.recovery as AppError['recovery'];
+    const location = record(parsed.location);
+    if (location?.unit === 'utf8-byte' && typeof location.start === 'number' && typeof location.end === 'number' && Number.isSafeInteger(location.start) && Number.isSafeInteger(location.end) && location.start >= 0 && location.end >= location.start) {
+      result.location = { start: location.start, end: location.end, unit: 'utf8-byte' };
+    }
+    return result;
+  }
+  if (typeof parsed.code === 'string' && typeof parsed.title === 'string' && typeof parsed.message === 'string') {
+    let code = parsed.code;
+    if (code === 'PERMISSION_DENIED') code = 'FORBIDDEN';
+    if (['INVALID_INPUT', 'FILTER_UNKNOWN_FIELD', 'FILTER_INVALID_OPERATOR'].includes(code)) code = 'INVALID_REQUEST';
+    if (!Object.prototype.hasOwnProperty.call(resourceCodes, code)) code = 'INTERNAL';
+    if (code === 'CANCELLED') return cancellation();
+    const [type, status, recovery] = resourceCodes[code]!;
+    const safe = code === 'FORBIDDEN' || code === 'UNAUTHORIZED' || code === 'INTERNAL' || code === 'PROVIDER_ERROR';
     return {
-      type: ErrorTypes.INTERNAL,
-      title: 'Unknown error',
-      status: 500,
-      detail: 'An unknown error occurred.',
+      type, status, code, recovery,
+      title: safe ? code === 'FORBIDDEN' ? 'Access denied' : code === 'UNAUTHORIZED' ? 'Authentication required' : 'Operation failed' : text(parsed.title, 256) ? parsed.title : 'Operation failed',
+      detail: safe ? 'The operation could not be completed.' : text(parsed.message, 4096) ? parsed.message : 'The operation could not be completed.',
+      ...(!safe && Array.isArray(parsed.suggestions) ? { suggestions: parsed.suggestions.filter((item): item is string => text(item, 512)).slice(0, 8) } : {}),
     };
   }
+  return decode(parsed.message, depth + 1) ?? decode(parsed.cause, depth + 1);
+}
 
-  // Get the string to parse
-  let raw: string;
-  if (typeof error === 'string') {
-    raw = error;
-  } else if (error instanceof Error) {
-    raw = error.message;
-  } else {
-    raw = String(error);
-  }
-
-  // Attempt JSON parse
-  if (raw.startsWith('{')) {
-    try {
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
-      // Validate it has at minimum the required fields
-      if (
-        typeof parsed.type === 'string' &&
-        typeof parsed.title === 'string' &&
-        typeof parsed.status === 'number' &&
-        typeof parsed.detail === 'string'
-      ) {
-        return parsed as unknown as AppError;
-      }
-
-      // Defense-in-depth: recognize ResourceOperationError shape {code, title, message}
-      // from the plugin-sdk that may arrive without engine wrapping.
-      if (
-        typeof parsed.code === 'string' &&
-        typeof parsed.title === 'string' &&
-        typeof parsed.message === 'string'
-      ) {
-        const { typeUri, status } = mapResourceCode(parsed.code as string);
-        return {
-          type: typeUri,
-          title: parsed.title as string,
-          status,
-          detail: parsed.message as string,
-          suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions as string[] : undefined,
-        };
-      }
-    } catch {
-      // Fall through to plain string handling
-    }
-  }
-
-  // Plain string fallback — wrap as internal error
-  return {
+/** Decode actual Wails/SDK errors without exposing arbitrary raw diagnostics. */
+export function parseAppError(error: unknown): AppError {
+  return decode(error, 0) ?? {
     type: ErrorTypes.INTERNAL,
-    title: 'Error',
+    title: error == null ? 'Unknown error' : 'Error',
     status: 500,
-    detail: raw,
+    detail: error == null ? 'An unknown error occurred.' : 'The operation could not be completed.',
   };
 }
 
-/**
- * Detects both new format (type === "omniview:cancelled") and legacy ("cancelled" string).
- */
 export function isCancelledError(error: unknown): boolean {
-  if (error == null) return false;
-
-  // Check raw string match first (legacy format)
-  const raw = typeof error === 'string' ? error : error instanceof Error ? error.message : String(error);
-  if (raw === 'cancelled') return true;
-
-  // Check structured format
-  const parsed = parseAppError(error);
-  return parsed.type === ErrorTypes.CANCELLED;
+  return parseAppError(error).type === ErrorTypes.CANCELLED;
 }
+
 
 /**
  * Converts an AppErrorAction into a { label, onClick } suitable for snackbar actions.

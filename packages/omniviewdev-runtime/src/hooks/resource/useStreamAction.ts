@@ -1,124 +1,105 @@
 import React from 'react';
+import { Events, type CancellablePromise } from '@wailsio/runtime';
 import { useSnackbar } from '../snackbar/useSnackbar';
-import { showAppError } from '../../errors/parseAppError';
+import { isCancelledError, parseAppError, showAppError } from '../../errors/parseAppError';
 import { useOperations } from '../operations/useOperations';
 import { ActionInput } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/resource/models';
-import { StreamAction } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
-import { Events } from '@wailsio/runtime';
+import type { ActionSnapshot } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/models';
+import { StreamAction, AttachStreamAction, CancelStreamAction } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
-type UseStreamActionOptions = {
-  pluginID?: string;
-  connectionID: string;
-  resourceKey: string;
+type UseStreamActionOptions = { pluginID?: string; connectionID: string; resourceKey: string };
+type StartStreamActionParams = { actionID: string; id: string; namespace: string; label: string; params?: Record<string, unknown> };
+type PendingAction = {
+  disposed: boolean;
+  terminal: boolean;
+  handle?: string;
+  sequence: number;
+  unsubscribe?: () => void;
+  open?: CancellablePromise<string>;
+  attach?: CancellablePromise<ActionSnapshot>;
 };
 
-type StartStreamActionParams = {
-  actionID: string;
-  id: string;
-  namespace: string;
-  label: string;
-  params?: Record<string, unknown>;
-};
-
-type ActionEvent = {
-  type: 'progress' | 'complete' | 'error';
-  data: Record<string, unknown>;
-};
-
-/**
- * useStreamAction provides a function to start a streaming action,
- * automatically subscribing to Wails events and tracking the operation
- * in the OperationsContext.
- */
-export const useStreamAction = ({
-  pluginID: explicitPluginID,
-  connectionID,
-  resourceKey,
-}: UseStreamActionOptions) => {
+/** Host-ready open, listener-first attachment and owning cleanup of current actions. */
+export const useStreamAction = ({ pluginID: explicitPluginID, connectionID, resourceKey }: UseStreamActionOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
   const { showSnackbar } = useSnackbar();
   const { addOperation, updateOperation } = useOperations();
-  const cleanupRef = React.useRef<(() => void)[]>([]);
+  const actions = React.useRef(new Set<PendingAction>());
 
-  // Cleanup all listeners on unmount.
-  React.useEffect(() => {
-    return () => {
-      cleanupRef.current.forEach((fn) => fn());
-    };
-  }, []);
+  const dispose = React.useCallback((action: PendingAction, cancelled = false) => {
+    if (action.disposed) return;
+    action.disposed = true;
+    action.unsubscribe?.();
+    void action.open?.cancel();
+    void action.attach?.cancel();
+    if (action.handle) {
+      void CancelStreamAction(action.handle).catch(() => undefined);
+      if (cancelled) updateOperation(action.handle, { status: 'cancelled', message: 'Cancelled', completedAt: Date.now() });
+    }
+    actions.current.delete(action);
+  }, [updateOperation]);
 
-  const startStreamAction = React.useCallback(
-    async ({ actionID, id, namespace, label, params = {} }: StartStreamActionParams) => {
-      try {
-        const operationID = await StreamAction(
-          pluginID,
-          connectionID,
-          resourceKey,
-          actionID,
-          ActionInput.createFrom({ id, namespace, params }),
-        );
+  React.useEffect(() => () => {
+    for (const action of actions.current) dispose(action, true);
+  }, [pluginID, connectionID, resourceKey, dispose]);
 
-        addOperation({
-          id: operationID,
-          label,
-          resourceKey,
-          resourceName: id,
-          namespace,
-          connectionID,
-          status: 'running',
-          startedAt: Date.now(),
-        });
-
-        const eventKey = `action/stream/${operationID}`;
-        const cancel = Events.On(eventKey, (ev) => {
-          const event = ev.data as ActionEvent;
-          switch (event.type) {
-            case 'progress': {
-              const data = event.data ?? {};
-              updateOperation(operationID, {
-                message: data.message as string | undefined,
-                progress:
-                  data.ready !== undefined && data.desired !== undefined
-                    ? { ready: data.ready as number, desired: data.desired as number }
-                    : undefined,
-              });
-              break;
-            }
-            case 'complete':
-              updateOperation(operationID, {
-                status: 'completed',
-                message: (event.data?.message as string) ?? 'Completed',
-                completedAt: Date.now(),
-              });
-              showSnackbar((event.data?.message as string) ?? label + ' completed', 'success');
-              Events.Off(eventKey);
-              break;
-            case 'error':
-              updateOperation(operationID, {
-                status: 'error',
-                message: (event.data?.message as string) ?? 'Failed',
-                completedAt: Date.now(),
-              });
-              showSnackbar((event.data?.message as string) ?? label + ' failed', 'error');
-              Events.Off(eventKey);
-              break;
-          }
-        });
-
-        cleanupRef.current.push(() => {
-          cancel();
-          Events.Off(eventKey);
-        });
-
-        return operationID;
-      } catch (error: unknown) {
+  const startStreamAction = React.useCallback(async ({ actionID, id, namespace, label, params = {} }: StartStreamActionParams) => {
+    const action: PendingAction = { disposed: false, terminal: false, sequence: 0 };
+    actions.current.add(action);
+    try {
+      action.open = StreamAction(pluginID, connectionID, resourceKey, actionID, ActionInput.createFrom({ id, namespace, params }));
+      const handle = await action.open;
+      action.open = undefined;
+      if (action.disposed) { void CancelStreamAction(handle).catch(() => undefined); return handle; }
+      action.handle = handle;
+      addOperation({ id: handle, label, resourceKey, resourceName: id, namespace, connectionID, status: 'running', startedAt: Date.now() });
+      const apply = (snapshot: ActionSnapshot) => {
+        if (action.disposed || !Number.isSafeInteger(snapshot.sequence) || snapshot.sequence <= action.sequence) return;
+        action.sequence = snapshot.sequence;
+        const event = snapshot.event;
+        const data = event.data ?? {};
+        if (event.type === 'error') {
+          action.terminal = true;
+          const error = parseAppError(event.error);
+          updateOperation(handle, { status: isCancelledError(error) ? 'cancelled' : 'error', message: error.title, completedAt: Date.now() });
+          showAppError(showSnackbar, error, label);
+          dispose(action);
+        } else if (event.type === 'complete') {
+          action.terminal = true;
+          const message = typeof data.message === 'string' ? data.message : `${label} completed`;
+          updateOperation(handle, { status: 'completed', message, completedAt: Date.now() });
+          showSnackbar(message, 'success');
+          dispose(action);
+        } else {
+          updateOperation(handle, {
+            message: typeof data.message === 'string' ? data.message : undefined,
+            progress: typeof data.ready === 'number' && typeof data.desired === 'number' ? { ready: data.ready, desired: data.desired } : undefined,
+          });
+        }
+      };
+      // The host buffers latest/terminal state and emits nothing until Attach.
+      action.unsubscribe = Events.On(`action/stream/${handle}`, (event) => apply(event.data as ActionSnapshot));
+      action.attach = AttachStreamAction(handle);
+      const snapshot = await action.attach;
+      action.attach = undefined;
+      apply(snapshot);
+      return handle;
+    } catch (error: unknown) {
+      // A live terminal event may cancel the pending attachment promise during cleanup.
+      if (action.terminal && action.handle) return action.handle;
+      if (!action.disposed) {
+        if (action.handle) updateOperation(action.handle, { status: isCancelledError(error) ? 'cancelled' : 'error', message: parseAppError(error).title, completedAt: Date.now() });
         showAppError(showSnackbar, error, `Failed to start "${actionID}"`);
-        throw error;
       }
-    },
-    [pluginID, connectionID, resourceKey, addOperation, updateOperation, showSnackbar],
-  );
+      dispose(action);
+      throw error;
+    }
+  }, [pluginID, connectionID, resourceKey, addOperation, updateOperation, showSnackbar, dispose]);
 
-  return { startStreamAction };
+  const cancelStreamAction = React.useCallback((handle: string) => {
+    for (const action of actions.current) if (action.handle === handle) { dispose(action, true); return; }
+  }, [dispose]);
+
+  return { startStreamAction, cancelStreamAction };
 };

@@ -179,19 +179,22 @@ func TestAdapterV1_TypeMetadata_Passthrough(t *testing.T) {
 	tp := resourcetest.NewTestProvider(t)
 	adapter := NewAdapterV1(tp)
 
-	groups := adapter.GetResourceGroups(ctx, "c1")
+	groups, err := adapter.GetResourceGroups(ctx, "c1")
+	require.NoError(t, err)
 	assert.NotNil(t, groups)
 
-	_, err := adapter.GetResourceGroup(ctx, "g1")
+	_, err = adapter.GetResourceGroup(ctx, "g1")
 	require.NoError(t, err)
 
-	types := adapter.GetResourceTypes(ctx, "c1")
+	types, err := adapter.GetResourceTypes(ctx, "c1")
+	require.NoError(t, err)
 	assert.NotNil(t, types)
 
 	_, err = adapter.GetResourceType(ctx, "t1")
 	require.NoError(t, err)
 
-	ht := adapter.HasResourceType(ctx, "t1")
+	ht, err := adapter.HasResourceType(ctx, "t1")
+	require.NoError(t, err)
 	assert.False(t, ht)
 
 	_, err = adapter.GetResourceDefinition(ctx, "t1")

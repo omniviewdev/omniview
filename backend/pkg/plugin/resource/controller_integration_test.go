@@ -3,7 +3,6 @@ package resource
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -69,19 +68,23 @@ func TestIntegration_OnPluginStart_FullWiring(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	// Simulate LoadConnections during start.
-	conns, err := ctrl.LoadConnections("p1")
+	conns, err := ctrl.LoadConnections(testInvocationContext(), "p1")
 	require.NoError(t, err)
 	require.Len(t, conns, 1)
 	assert.True(t, loadCalled)
 
 	// Provider is registered and queryable.
-	require.True(t, ctrl.HasPlugin("p1"))
+	{
+		present, err := ctrl.HasPlugin(testInvocationContext(), "p1")
+		require.NoError(t, err)
+		require.True(t, present)
+	}
 	provider, err := ctrl.getProvider("p1")
 	require.NoError(t, err)
 	require.NotNil(t, provider)
 
 	// Connection was merged into state.
-	conn, err := ctrl.GetConnection("p1", "conn-1")
+	conn, err := ctrl.GetConnection(testInvocationContext(), "p1", "conn-1")
 	require.NoError(t, err)
 	assert.Equal(t, "Test Cluster", conn.Name)
 
@@ -118,33 +121,33 @@ func TestIntegration_CRUD_ThroughController(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	// Get
-	getResult, err := ctrl.Get("p1", "conn-1", "core::v1::Pod", resource.GetInput{ID: "my-pod"})
+	getResult, err := ctrl.Get(testInvocationContext(), "p1", "conn-1", "core::v1::Pod", resource.GetInput{ID: "my-pod"})
 	require.NoError(t, err)
 	assert.True(t, getResult.Success)
 	assert.JSONEq(t, `{"id":"my-pod"}`, string(getResult.Result))
 
 	// List
-	listResult, err := ctrl.List("p1", "conn-1", "core::v1::Pod", resource.ListInput{})
+	listResult, err := ctrl.List(testInvocationContext(), "p1", "conn-1", "core::v1::Pod", resource.ListInput{})
 	require.NoError(t, err)
 	assert.True(t, listResult.Success)
 
 	// Find
-	findResult, err := ctrl.Find("p1", "conn-1", "core::v1::Pod", resource.FindInput{})
+	findResult, err := ctrl.Find(testInvocationContext(), "p1", "conn-1", "core::v1::Pod", resource.FindInput{})
 	require.NoError(t, err)
 	assert.True(t, findResult.Success)
 
 	// Create
-	createResult, err := ctrl.Create("p1", "conn-1", "core::v1::Pod", resource.CreateInput{})
+	createResult, err := ctrl.Create(testInvocationContext(), "p1", "conn-1", "core::v1::Pod", resource.CreateInput{})
 	require.NoError(t, err)
 	assert.True(t, createResult.Success)
 
 	// Update
-	updateResult, err := ctrl.Update("p1", "conn-1", "core::v1::Pod", resource.UpdateInput{})
+	updateResult, err := ctrl.Update(testInvocationContext(), "p1", "conn-1", "core::v1::Pod", resource.UpdateInput{})
 	require.NoError(t, err)
 	assert.True(t, updateResult.Success)
 
 	// Delete
-	deleteResult, err := ctrl.Delete("p1", "conn-1", "core::v1::Pod", resource.DeleteInput{})
+	deleteResult, err := ctrl.Delete(testInvocationContext(), "p1", "conn-1", "core::v1::Pod", resource.DeleteInput{})
 	require.NoError(t, err)
 	assert.True(t, deleteResult.Success)
 }
@@ -155,7 +158,7 @@ func TestIntegration_WatchEventsFlow(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
 	// Subscribe.
-	err := ctrl.SubscribeResource("p1", "conn-1", "pods")
+	err := ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 	require.NoError(t, err)
 
 	// Simulate watch event through sink.
@@ -190,7 +193,7 @@ func TestIntegration_SubscriptionGates(t *testing.T) {
 	assert.Empty(t, emitter.EventsWithKey("ADD"))
 
 	// Subscribe — event should appear.
-	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 	sink.OnAdd(resource.WatchAddPayload{Connection: "conn-1", Key: "pods", ID: "pod-2"})
 
 	ev := emitter.WaitForEvent(t, "ADD", time.Second)
@@ -207,12 +210,12 @@ func TestIntegration_Unsubscribe_StopsEvents(t *testing.T) {
 	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 
 	// Subscribe, emit, verify.
-	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 	sink.OnAdd(resource.WatchAddPayload{Connection: "conn-1", Key: "pods", ID: "pod-1"})
 	assert.Len(t, emitter.EventsWithKey("ADD"), 1)
 
 	// Unsubscribe.
-	_ = ctrl.UnsubscribeResource("p1", "conn-1", "pods")
+	_ = ctrl.UnsubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 
 	// New event should NOT be emitted.
 	sink.OnAdd(resource.WatchAddPayload{Connection: "conn-1", Key: "pods", ID: "pod-2"})
@@ -227,11 +230,11 @@ func TestIntegration_RefCounted_Subscriptions(t *testing.T) {
 	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 
 	// Subscribe twice.
-	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
-	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 
 	// Unsubscribe once — still subscribed due to ref count.
-	_ = ctrl.UnsubscribeResource("p1", "conn-1", "pods")
+	_ = ctrl.UnsubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 	assert.True(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
 
 	// Events still flow.
@@ -252,9 +255,9 @@ func TestIntegration_ConnectionDisconnect(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 	// Pre-add the connection.
-	_ = ctrl.AddConnection("p1", types.Connection{ID: "conn-1", Name: "Test"})
+	_ = ctrl.AddConnection(testInvocationContext(), "p1", types.Connection{ID: "conn-1", Name: "Test"})
 
-	conn, err := ctrl.StopConnection("p1", "conn-1")
+	conn, err := ctrl.StopConnection(testInvocationContext(), "p1", "conn-1")
 	require.NoError(t, err)
 	assert.Equal(t, "conn-1", conn.ID)
 
@@ -272,11 +275,15 @@ func TestIntegration_PluginStop_CleansAll(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
 	// Add connection and subscription.
-	_ = ctrl.AddConnection("p1", types.Connection{ID: "conn-1", Name: "Test"})
-	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
+	_ = ctrl.AddConnection(testInvocationContext(), "p1", types.Connection{ID: "conn-1", Name: "Test"})
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 
 	// Verify pre-conditions.
-	require.True(t, ctrl.HasPlugin("p1"))
+	{
+		present, err := ctrl.HasPlugin(testInvocationContext(), "p1")
+		require.NoError(t, err)
+		require.True(t, present)
+	}
 	require.True(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
 
 	// Stop.
@@ -284,7 +291,11 @@ func TestIntegration_PluginStop_CleansAll(t *testing.T) {
 	require.NoError(t, err)
 
 	// Everything should be cleaned up.
-	assert.False(t, ctrl.HasPlugin("p1"))
+	{
+		present, err := ctrl.HasPlugin(testInvocationContext(), "p1")
+		assert.NoError(t, err)
+		assert.False(t, present)
+	}
 	assert.False(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
 
 	ctrl.connsMu.RLock()
@@ -300,8 +311,8 @@ func TestIntegration_MultiPlugin_Isolation(t *testing.T) {
 	registerMockPlugin(ctrl, "p2", &mockProvider{})
 
 	// Subscribe both plugins to "pods".
-	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
-	_ = ctrl.SubscribeResource("p2", "conn-1", "pods")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p2", "conn-1", "pods")
 
 	sink1 := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 	sink2 := &engineWatchSink{pluginID: "p2", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
@@ -377,7 +388,7 @@ func TestIntegration_SubscribeNonExistent(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
-	err := ctrl.SubscribeResource("p1", "conn-1", "nonexistent-resource-type")
+	err := ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "nonexistent-resource-type")
 	require.NoError(t, err)
 	assert.True(t, ctrl.isSubscribed("p1", "conn-1", "nonexistent-resource-type"))
 }
@@ -388,7 +399,7 @@ func TestIntegration_SubscribeBeforeConnect(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
 	// Subscribe BEFORE any connection is established.
-	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 
 	// Later, events arrive through sink (simulating post-connect watch events).
 	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
@@ -404,7 +415,7 @@ func TestIntegration_SubscribeBeforeConnect(t *testing.T) {
 func TestIntegration_OutOfOrderEvents(t *testing.T) {
 	ctrl, emitter := newTestControllerWithEmitter(t)
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
-	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 
 	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 
@@ -435,26 +446,6 @@ func TestIntegration_OutOfOrderEvents(t *testing.T) {
 	assert.Equal(t, []string{"ADD", "DELETE", "ADD"}, eventTypes)
 }
 
-// EI-015: SDK error propagated to caller via AppError detail.
-func TestIntegration_ErrorPropagation(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	expectedMsg := "upstream SDK error: connection timed out"
-	mock := &mockProvider{
-		GetFunc: func(_ context.Context, _ string, _ resource.GetInput) (*resource.GetResult, error) {
-			return nil, errors.New(expectedMsg)
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	result, err := ctrl.Get("p1", "conn-1", "pods", resource.GetInput{})
-	assert.Nil(t, result)
-	require.Error(t, err)
-
-	var appErr *apperror.AppError
-	require.ErrorAs(t, err, &appErr, "error should be an AppError")
-	assert.Contains(t, appErr.Detail, expectedMsg)
-}
-
 // EI-016: Two plugins with same resource key, no cross-contamination.
 func TestIntegration_SameKeyTwoPlugins(t *testing.T) {
 	ctrl, emitter := newTestControllerWithEmitter(t)
@@ -473,15 +464,15 @@ func TestIntegration_SameKeyTwoPlugins(t *testing.T) {
 	registerMockPlugin(ctrl, "p2", mock2)
 
 	// Subscribe both to same resource key.
-	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
-	_ = ctrl.SubscribeResource("p2", "conn-1", "pods")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p2", "conn-1", "pods")
 
 	// CRUD isolation: each returns its own data.
-	r1, err := ctrl.Get("p1", "conn-1", "pods", resource.GetInput{})
+	r1, err := ctrl.Get(testInvocationContext(), "p1", "conn-1", "pods", resource.GetInput{})
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"source":"p1"}`, string(r1.Result))
 
-	r2, err := ctrl.Get("p2", "conn-1", "pods", resource.GetInput{})
+	r2, err := ctrl.Get(testInvocationContext(), "p2", "conn-1", "pods", resource.GetInput{})
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"source":"p2"}`, string(r2.Result))
 
@@ -498,7 +489,7 @@ func TestIntegration_SameKeyTwoPlugins(t *testing.T) {
 	}
 
 	// Unsubscribe p1 should not affect p2.
-	_ = ctrl.UnsubscribeResource("p1", "conn-1", "pods")
+	_ = ctrl.UnsubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 	assert.False(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
 	assert.True(t, ctrl.isSubscribed("p2", "conn-1", "pods"))
 }
@@ -511,7 +502,7 @@ func TestIntegration_RapidSubUnsub(t *testing.T) {
 	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 
 	for i := 0; i < 100; i++ {
-		_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
+		_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 
 		// Emit while subscribed.
 		sink.OnAdd(resource.WatchAddPayload{
@@ -520,7 +511,7 @@ func TestIntegration_RapidSubUnsub(t *testing.T) {
 			ID:         fmt.Sprintf("pod-%d", i),
 		})
 
-		_ = ctrl.UnsubscribeResource("p1", "conn-1", "pods")
+		_ = ctrl.UnsubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 	}
 
 	// After 100 cycles, should not be subscribed.
@@ -559,7 +550,7 @@ func TestIntegration_DoubleStart(t *testing.T) {
 
 	// Old cancel should have been called (context cancelled).
 	// We can verify the new provider is active.
-	result, err := ctrl.Get("p1", "conn-1", "pods", resource.GetInput{})
+	result, err := ctrl.Get(testInvocationContext(), "p1", "conn-1", "pods", resource.GetInput{})
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"version":"v2"}`, string(result.Result))
 
@@ -602,25 +593,25 @@ func TestIntegration_ConcurrentCRUD(t *testing.T) {
 			key := fmt.Sprintf("core::v1::Pod%d", idx)
 			connID := fmt.Sprintf("conn-%d", idx%3)
 
-			if r, err := ctrl.Get("p1", connID, key, resource.GetInput{ID: fmt.Sprintf("pod-%d", idx)}); err != nil {
+			if r, err := ctrl.Get(testInvocationContext(), "p1", connID, key, resource.GetInput{ID: fmt.Sprintf("pod-%d", idx)}); err != nil {
 				errs <- fmt.Errorf("Get[%d]: %w", idx, err)
 			} else if !r.Success {
 				errs <- fmt.Errorf("Get[%d]: not successful", idx)
 			}
 
-			if _, err := ctrl.List("p1", connID, key, resource.ListInput{}); err != nil {
+			if _, err := ctrl.List(testInvocationContext(), "p1", connID, key, resource.ListInput{}); err != nil {
 				errs <- fmt.Errorf("List[%d]: %w", idx, err)
 			}
 
-			if _, err := ctrl.Create("p1", connID, key, resource.CreateInput{}); err != nil {
+			if _, err := ctrl.Create(testInvocationContext(), "p1", connID, key, resource.CreateInput{}); err != nil {
 				errs <- fmt.Errorf("Create[%d]: %w", idx, err)
 			}
 
-			if _, err := ctrl.Update("p1", connID, key, resource.UpdateInput{}); err != nil {
+			if _, err := ctrl.Update(testInvocationContext(), "p1", connID, key, resource.UpdateInput{}); err != nil {
 				errs <- fmt.Errorf("Update[%d]: %w", idx, err)
 			}
 
-			if _, err := ctrl.Delete("p1", connID, key, resource.DeleteInput{}); err != nil {
+			if _, err := ctrl.Delete(testInvocationContext(), "p1", connID, key, resource.DeleteInput{}); err != nil {
 				errs <- fmt.Errorf("Delete[%d]: %w", idx, err)
 			}
 		}(i)
@@ -633,11 +624,15 @@ func TestIntegration_ConcurrentCRUD(t *testing.T) {
 	}
 
 	// Plugin should still be healthy after concurrent operations.
-	require.True(t, ctrl.HasPlugin("p1"))
+	{
+		present, err := ctrl.HasPlugin(testInvocationContext(), "p1")
+		require.NoError(t, err)
+		require.True(t, present)
+	}
 
 	// No plugin-not-found errors — confirms locking is correct.
 	var appErr *apperror.AppError
-	_, err := ctrl.Get("p1", "conn-1", "pods", resource.GetInput{})
+	_, err := ctrl.Get(testInvocationContext(), "p1", "conn-1", "pods", resource.GetInput{})
 	if err != nil {
 		require.NotErrorAs(t, err, &appErr, "should not get PluginNotFound after concurrent CRUD")
 	}

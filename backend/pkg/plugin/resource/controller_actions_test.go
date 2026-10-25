@@ -31,7 +31,7 @@ func TestGetActions_Success(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	actions, err := ctrl.GetActions("p1", "conn-1", "pods")
+	actions, err := ctrl.GetActions(testInvocationContext(), "p1", "conn-1", "pods")
 	require.NoError(t, err)
 	require.Len(t, actions, 2)
 	assert.Equal(t, "restart", actions[0].ID)
@@ -48,14 +48,14 @@ func TestGetActions_ProviderError(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, err := ctrl.GetActions("p1", "conn-1", "pods")
+	_, err := ctrl.GetActions(testInvocationContext(), "p1", "conn-1", "pods")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "actions unavailable")
+	assert.Equal(t, "PROVIDER_ERROR", requireAppError(t, err).Code)
 }
 
 func TestGetActions_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	_, err := ctrl.GetActions("nonexistent", "conn-1", "pods")
+	_, err := ctrl.GetActions(testInvocationContext(), "nonexistent", "conn-1", "pods")
 	var appErr *apperror.AppError
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
@@ -80,7 +80,7 @@ func TestExecuteAction_Success(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	result, err := ctrl.ExecuteAction("p1", "conn-1", "pods", "restart", resource.ActionInput{})
+	result, err := ctrl.ExecuteAction(testInvocationContext(), "p1", "conn-1", "pods", "restart", resource.ActionInput{})
 	require.NoError(t, err)
 	assert.True(t, result.Success)
 }
@@ -94,14 +94,14 @@ func TestExecuteAction_ProviderError(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, err := ctrl.ExecuteAction("p1", "conn-1", "pods", "restart", resource.ActionInput{})
+	_, err := ctrl.ExecuteAction(testInvocationContext(), "p1", "conn-1", "pods", "restart", resource.ActionInput{})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "action failed")
+	assert.Equal(t, "PROVIDER_ERROR", requireAppError(t, err).Code)
 }
 
 func TestExecuteAction_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	_, err := ctrl.ExecuteAction("nonexistent", "conn-1", "pods", "restart", resource.ActionInput{})
+	_, err := ctrl.ExecuteAction(testInvocationContext(), "nonexistent", "conn-1", "pods", "restart", resource.ActionInput{})
 	var appErr *apperror.AppError
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
@@ -111,145 +111,91 @@ func TestExecuteAction_PluginNotFound(t *testing.T) {
 // StreamAction
 // ============================================================================
 
-func TestStreamAction_ReturnsOperationID(t *testing.T) {
+func TestStreamAction_OpaqueHandleRequiresProviderReady(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	mock := &mockProvider{
-		StreamActionFunc: func(
-			_ context.Context,
-			_, _ string,
-			_ resource.ActionInput,
-			stream chan<- resource.ActionEvent,
-		) error {
-			close(stream)
-			return nil
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	opID, err := ctrl.StreamAction("p1", "conn-1", "pods", "restart", resource.ActionInput{ID: "req-1"})
+	registerMockPlugin(ctrl, "p1", &mockProvider{StreamActionFunc: func(ctx context.Context, _, _ string, _ resource.ActionInput, ch chan<- resource.ActionEvent) error {
+		ch <- resource.ActionEvent{Type: "ready"}
+		<-ctx.Done()
+		return ctx.Err()
+	}})
+	id, err := ctrl.StreamAction(testInvocationContext(), "p1", "conn-1", "opaque", "restart", resource.ActionInput{ID: "private-object"})
 	require.NoError(t, err)
-	assert.NotEmpty(t, opID)
-	assert.True(t, strings.HasPrefix(opID, "op_restart_req-1_"),
-		"expected operation ID prefix 'op_restart_req-1_', got %s", opID)
+	assert.NotEmpty(t, id)
+	assert.NotContains(t, id, "private-object")
+	assert.NotContains(t, id, "restart")
+	require.NoError(t, ctrl.CancelStreamAction(testInvocationContext(), id))
+	assert.Equal(t, 0, actionCount(ctrl.actions))
 }
 
-func TestStreamAction_EmitsEvents(t *testing.T) {
-	ctrl, emitter := newTestControllerWithEmitter(t)
-	mock := &mockProvider{
-		StreamActionFunc: func(
-			_ context.Context,
-			_, _ string,
-			_ resource.ActionInput,
-			stream chan<- resource.ActionEvent,
-		) error {
-			stream <- resource.ActionEvent{Type: "progress", Data: map[string]interface{}{"pct": 50}}
-			stream <- resource.ActionEvent{Type: "complete", Data: map[string]interface{}{"pct": 100}}
-			close(stream)
-			return nil
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	opID, err := ctrl.StreamAction("p1", "conn-1", "pods", "restart", resource.ActionInput{ID: "r1"})
-	require.NoError(t, err)
-
-	// Wait for both events to be emitted.
-	events := emitter.WaitForNEvents(t, "action/stream/"+opID, 2, 2*time.Second)
-	assert.Len(t, events, 2)
-
-	// Verify event types in order.
-	ev0, ok := events[0].Data[0].(resource.ActionEvent)
-	require.True(t, ok)
-	assert.Equal(t, "progress", ev0.Type)
-
-	ev1, ok := events[1].Data[0].(resource.ActionEvent)
-	require.True(t, ok)
-	assert.Equal(t, "complete", ev1.Type)
+func TestStreamAction_MissingReadyFailsWithoutHandle(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	registerMockPlugin(ctrl, "p1", &mockProvider{StreamActionFunc: func(context.Context, string, string, resource.ActionInput, chan<- resource.ActionEvent) error {
+		return nil
+	}})
+	id, err := ctrl.StreamAction(testInvocationContext(), "p1", "conn-1", "opaque", "restart", resource.ActionInput{})
+	require.Error(t, err)
+	assert.Empty(t, id)
+	assert.Equal(t, 0, actionCount(ctrl.actions))
 }
 
-func TestStreamAction_EmitsError(t *testing.T) {
+func TestStreamAction_EmitsOrderedSnapshotsOnlyAfterAttach(t *testing.T) {
 	ctrl, emitter := newTestControllerWithEmitter(t)
-	mock := &mockProvider{
-		StreamActionFunc: func(
-			_ context.Context,
-			_, _ string,
-			_ resource.ActionInput,
-			stream chan<- resource.ActionEvent,
-		) error {
-			close(stream)
-			return errors.New("stream broke")
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	opID, err := ctrl.StreamAction("p1", "conn-1", "pods", "restart", resource.ActionInput{ID: "r1"})
+	release := make(chan struct{})
+	registerMockPlugin(ctrl, "p1", &mockProvider{StreamActionFunc: func(ctx context.Context, _, _ string, _ resource.ActionInput, ch chan<- resource.ActionEvent) error {
+		ch <- resource.ActionEvent{Type: "ready"}
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		ch <- resource.ActionEvent{Type: "progress", Data: map[string]any{"pct": 50}}
+		ch <- resource.ActionEvent{Type: "complete", Data: map[string]any{"pct": 100}}
+		return nil
+	}})
+	id, err := ctrl.StreamAction(testInvocationContext(), "p1", "conn-1", "opaque", "restart", resource.ActionInput{})
 	require.NoError(t, err)
+	assert.Empty(t, emitter.EventsWithKey("action/stream/"+id))
+	first, err := ctrl.AttachStreamAction(testInvocationContext(), id)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1), first.Sequence)
+	close(release)
+	events := emitter.WaitForNEvents(t, "action/stream/"+id, 2, 2*time.Second)
+	progress := events[0].Data[0].(ActionSnapshot)
+	complete := events[1].Data[0].(ActionSnapshot)
+	assert.Equal(t, "progress", progress.Event.Type)
+	assert.Equal(t, "complete", complete.Event.Type)
+	assert.Greater(t, complete.Sequence, progress.Sequence)
+	assert.True(t, complete.Terminal)
+}
 
-	// Wait for the error event.
-	ev := emitter.WaitForEvent(t, "action/stream/"+opID, 2*time.Second)
-	actionEv, ok := ev.Data[0].(resource.ActionEvent)
-	require.True(t, ok)
-	assert.Equal(t, "error", actionEv.Type)
-	assert.Contains(t, actionEv.Data["message"], "stream broke")
+func TestStreamAction_NormalizesTerminalFailureAfterReady(t *testing.T) {
+	ctrl, emitter := newTestControllerWithEmitter(t)
+	release := make(chan struct{})
+	registerMockPlugin(ctrl, "p1", &mockProvider{StreamActionFunc: func(ctx context.Context, _, _ string, _ resource.ActionInput, ch chan<- resource.ActionEvent) error {
+		ch <- resource.ActionEvent{Type: "ready"}
+		select {
+		case <-release:
+			return errors.New("secret-provider-diagnostic")
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}})
+	id, err := ctrl.StreamAction(testInvocationContext(), "p1", "conn-1", "opaque", "restart", resource.ActionInput{})
+	require.NoError(t, err)
+	_, err = ctrl.AttachStreamAction(testInvocationContext(), id)
+	require.NoError(t, err)
+	close(release)
+	event := emitter.WaitForEvent(t, "action/stream/"+id, 2*time.Second).Data[0].(ActionSnapshot)
+	require.NotNil(t, event.Event.Error)
+	assert.Equal(t, "PROVIDER_ERROR", event.Event.Error.Code)
+	assert.False(t, strings.Contains(event.Event.Error.Error(), "secret"))
+	assert.True(t, event.Terminal)
 }
 
 func TestStreamAction_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	_, err := ctrl.StreamAction("nonexistent", "conn-1", "pods", "restart", resource.ActionInput{})
+	_, err := ctrl.StreamAction(testInvocationContext(), "nonexistent", "conn-1", "opaque", "restart", resource.ActionInput{})
 	var appErr *apperror.AppError
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
-}
-
-func TestStreamAction_ChannelDrained(t *testing.T) {
-	ctrl, emitter := newTestControllerWithEmitter(t)
-	eventCount := 5
-	mock := &mockProvider{
-		StreamActionFunc: func(
-			_ context.Context,
-			_, _ string,
-			_ resource.ActionInput,
-			stream chan<- resource.ActionEvent,
-		) error {
-			for i := 0; i < eventCount; i++ {
-				stream <- resource.ActionEvent{Type: "progress", Data: map[string]interface{}{"i": i}}
-			}
-			close(stream)
-			return nil
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	opID, err := ctrl.StreamAction("p1", "conn-1", "pods", "restart", resource.ActionInput{ID: "r1"})
-	require.NoError(t, err)
-
-	events := emitter.WaitForNEvents(t, "action/stream/"+opID, eventCount, 2*time.Second)
-	assert.Len(t, events, eventCount, "all events should be drained from channel")
-}
-
-func TestStreamAction_OperationIDFormat(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	mock := &mockProvider{
-		StreamActionFunc: func(
-			_ context.Context,
-			_, _ string,
-			_ resource.ActionInput,
-			stream chan<- resource.ActionEvent,
-		) error {
-			close(stream)
-			return nil
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	opID, err := ctrl.StreamAction("p1", "conn-1", "pods", "scale", resource.ActionInput{ID: "input-42"})
-	require.NoError(t, err)
-
-	// Format: op_{actionID}_{inputID}_{timestamp}
-	parts := strings.SplitN(opID, "_", 4)
-	require.Len(t, parts, 4, "operation ID should have 4 parts separated by underscore")
-	assert.Equal(t, "op", parts[0])
-	assert.Equal(t, "scale", parts[1])
-	assert.Equal(t, "input-42", parts[2])
-	assert.NotEmpty(t, parts[3], "timestamp part should be non-empty")
 }

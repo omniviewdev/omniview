@@ -13,14 +13,18 @@ const statusClientClosedRequest = 499
 // Its Error() method returns a JSON string so the structured fields survive
 // the Wails IPC boundary (Wails calls .Error() and sends the string to JS).
 type AppError struct {
-	Err         error    `json:"-"`
-	Type        string   `json:"type"`
-	Title       string   `json:"title"`
-	Status      int      `json:"status"`
-	Detail      string   `json:"detail"`
-	Instance    string   `json:"instance,omitempty"`
-	Suggestions []string `json:"suggestions,omitempty"`
-	Actions     []Action `json:"actions,omitempty"`
+	Err         error     `json:"-"`
+	Type        string    `json:"type"`
+	Title       string    `json:"title"`
+	Status      int       `json:"status"`
+	Detail      string    `json:"detail"`
+	Instance    string    `json:"instance,omitempty"`
+	Suggestions []string  `json:"suggestions,omitempty"`
+	Actions     []Action  `json:"actions,omitempty"`
+	Code        string    `json:"code,omitempty"`
+	RequestID   string    `json:"requestId,omitempty"`
+	Recovery    string    `json:"recovery,omitempty"`
+	Location    *Location `json:"location,omitempty"`
 }
 
 // Error returns a JSON-encoded representation so the structured fields
@@ -205,55 +209,5 @@ func ConfigMissing(setting, detail string) *AppError {
 		Err:         nil,
 		Instance:    "",
 		Suggestions: nil,
-	}
-}
-
-// FromResourceOperationError translates a ResourceOperationError JSON string
-// (from the existing plugin-sdk error type) into an AppError.
-func FromResourceOperationError(jsonStr string, pluginID string) *AppError {
-	var raw struct {
-		Code        string   `json:"code"`
-		Title       string   `json:"title"`
-		Message     string   `json:"message"`
-		Suggestions []string `json:"suggestions"`
-	}
-	if err := json.Unmarshal([]byte(jsonStr), &raw); err != nil {
-		return Internal(fmt.Errorf("failed to parse resource error: %s", jsonStr), "Resource operation failed")
-	}
-
-	typeURI, status := mapResourceCode(raw.Code)
-	return &AppError{
-		Type:        typeURI,
-		Status:      status,
-		Title:       raw.Title,
-		Detail:      raw.Message,
-		Instance:    pluginID,
-		Suggestions: raw.Suggestions,
-		Err:         nil,
-		Actions:     nil,
-	}
-}
-
-// mapResourceCode maps existing ResourceOperationError codes to type URIs and HTTP status codes.
-func mapResourceCode(code string) (string, int) {
-	switch code {
-	case "NOT_FOUND":
-		return TypeResourceNotFound, http.StatusNotFound
-	case "FORBIDDEN":
-		return TypeResourceForbidden, http.StatusForbidden
-	case "UNAUTHORIZED":
-		return TypeResourceUnauthorized, http.StatusUnauthorized
-	case "CONFLICT":
-		return TypeResourceConflict, http.StatusConflict
-	case "ALREADY_EXISTS":
-		return TypeResourceConflict, http.StatusConflict
-	case "TIMEOUT":
-		return TypeResourceTimeout, http.StatusRequestTimeout
-	case "CONNECTION_ERROR":
-		return TypeConnectionFailed, http.StatusServiceUnavailable
-	case "CERTIFICATE_ERROR":
-		return TypeConnectionFailed, http.StatusBadGateway
-	default:
-		return TypeInternal, http.StatusInternalServerError
 	}
 }
