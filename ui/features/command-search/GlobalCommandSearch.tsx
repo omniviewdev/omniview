@@ -79,7 +79,9 @@ export function GlobalCommandSearch({ controller, snapshot, input, onClose, cata
   const disabledKeys = useMemo(
     () =>
       snapshot.rows
-        .filter((row) => row.disabledReason !== undefined || snapshot.executionPending)
+        .filter(
+          (row) => row.disabledReason !== undefined || (snapshot.executionPending && row.value.kind === 'command'),
+        )
         .map((row) => row.key),
     [snapshot.rows, snapshot.executionPending],
   );
@@ -147,7 +149,10 @@ export function GlobalCommandSearch({ controller, snapshot, input, onClose, cata
             }
           }}
           renderItem={(row) => (
-            <CommandList.Item itemKey={row.key} disabled={Boolean(row.disabledReason) || snapshot.executionPending}>
+            <CommandList.Item
+              itemKey={row.key}
+              disabled={Boolean(row.disabledReason) || (snapshot.executionPending && row.value.kind === 'command')}
+            >
               <div className={styles.Row}>
                 <CommandList.ItemLabel>{row.label}</CommandList.ItemLabel>
                 <span className={styles.Kind}>{getRowKindLabel(row)}</span>

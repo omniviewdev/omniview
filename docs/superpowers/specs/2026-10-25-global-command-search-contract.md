@@ -87,7 +87,7 @@ At activation, resolve the current accepted row and its registration again; vali
 
 Use `parseAppError` only on actual existing-service errors; show its safe code/detail/request ID without raw causes, arbitrary error.message or provider actions. A FORBIDDEN outcome remains denial, never empty success. Public disabled reasons stay visible beside disabled rows; they are not silently filtered out. Unknown provider failures get fixed `Search source unavailable.` feedback. Cancellation is expected and is not an internal-error alert.
 
-One execution may be pending at a time; repeat Enter/click cannot dispatch twice. A successful finite reload reports completion, not inventory/query completeness. Closing the palette invalidates search/presentation callbacks; it does not claim to roll back an already accepted native command. Late completion cannot reopen or overwrite a newer palette session. Navigation closes the palette after validation and must not have its destination focus stolen by opener restoration.
+One native command execution may be pending at a time; repeat Enter/click cannot dispatch another native command. Valid settings and navigation rows retain their ordinary readiness/availability checks and remain usable while it is pending. A successful finite reload reports completion, not inventory/query completeness. Closing the palette invalidates search/presentation callbacks; it does not claim to roll back an already accepted native command. Late completion cannot reopen or overwrite a newer palette session. Navigation closes the palette after validation and must not have its destination focus stolen by opener restoration.
 
 Native execution feedback uses the palette session and observed contributing-owner/command-target lifecycle, independently of search epochs. Query edits and unrelated catalogue mutations preserve pending status and completion. Once either owner leaves readiness, that execution's presentation remains retired even if it becomes ready before settlement. The pending lock lasts until the actual native call settles.
 
@@ -100,6 +100,8 @@ Each open, query change, registry mutation, plugin readiness/registration change
 Static catalogue matching is bounded local case-insensitive substring matching across admitted label/description/keywords. Process at most 1000 static candidates per epoch in deterministic existing registry/settings-catalog order; malformed, disabled and nonmatching candidates consume that processing budget too. Stop at the bound rather than normalize/map/sort the remainder, and show an explicit narrow-search/overflow status instead of claiming authoritative complete coverage.
 
 External providers receive the raw controlled query and an AbortSignal. They own their search semantics/order; **do not fuzzy-filter or rerank their returned labels against the query**. Admit at most 8 provider attempts per epoch in deterministic existing registry order, with at most 4 concurrent attempts and no retries. Later admitted attempts start only when a slot becomes free; epoch cancellation drops the queue. Additional providers get visible source-limit status, not silent complete coverage. Retain each provider's item order and distinct source identity; static entries precede provider groups. There is no shared-score fiction, pagination, live resource lease or completeness claim across sources.
+
+Invoke the original provider function with its contributed object as the method receiver. Preserve that function's identity for current-registration activation checks; do not create a new bound wrapper during each admission.
 
 For each provider response, inspect ONLY its first 20 array items. Check `items.length` in O(1) to mark a larger response truncated; do not scan, normalize, map or copy the rest. Validate duplicate IDs only within that bounded accepted prefix. An oversized/malformed prefix item makes that source unavailable with fixed safe feedback; it cannot introduce a hidden executable partial result. Other current sources remain independent.
 
@@ -144,14 +146,15 @@ The selected private host/plugin/UI workspace exercised the actual application e
 
 | Verification | Observed result |
 | --- | --- |
-| Focused palette/settings/header/extensions and all PluginService core tests | 456 passed across 20 files in 4.07 s |
+| Focused palette/settings/header/extensions and all PluginService core tests | 460 passed across 20 files in 4.22 s |
 | Production/test TypeScript and scoped ESLint | Passed |
 | Private fixture native Go and UI typecheck | Passed; native Go execution 0.793 s |
 | Keyboard and presentation | Real Ctrl/Meta+K, one focused combobox, active-option ownership, both Tab boundaries, Clear/Enter, Escape and opener restoration |
 | Settings and resource navigation | Actual Theme editor focus; same-mounted category changes and identical-URL refocus; actual plugin capability route |
 | Allowed native command | Remove only owned cached `local`; palette reload invokes native discovery; fresh host list restores `local` / `Private native tasks`. Pending status and actual completion survive a same-task query edit. |
 | Provider denial | Same enabled command returns safe `FORBIDDEN` with correlation after a same-task query edit; private provider canaries absent; existing native setting restored false→true→false |
-| External providers and lifecycle | Nonmatching alias label remains visible; source errors sanitized; older/closed results fenced; actual unload/load and same-task reload reject retired actions while new actions work |
+| External providers and lifecycle | Stateful original-method receiver returns an actionable nonmatching alias; source errors sanitized; older/closed results fenced; actual unload/load and same-task reload reject retired actions while new actions work |
+| Pending native navigation | Actual Home row stays enabled while the native reload is busy, navigates and closes the palette; retired completion cannot enter the next session |
 
 An independent `vercel-react-best-practices` and code-organization review approved the settled source with no Critical/Important findings. The lifecycle hook, dialog presentation and shared settings definitions have separate module boundaries; catalogue registration compares ordered semantic inputs without render-time ref reads, serialization keys or lint suppression.
 

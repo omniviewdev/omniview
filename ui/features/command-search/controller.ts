@@ -60,6 +60,7 @@ type NativeExecution = {
 type ProviderAttempt = {
   registration: ExtensionContributionRegistration;
   provider: SearchProviderV1;
+  receiver: unknown;
   source: SearchSource;
   controller: AbortController;
   items: AcceptedEntry[];
@@ -346,7 +347,11 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       }, 5000);
       try {
         Promise.resolve(
-          attempt.provider.search({ query: snapshot.query, signal: attempt.controller.signal, limit: 20 }),
+          attempt.provider.search.call(attempt.receiver, {
+            query: snapshot.query,
+            signal: attempt.controller.signal,
+            limit: 20,
+          }),
         ).then(
           (value) => {
             finishAttempt(token, attempt, value, false);
@@ -436,6 +441,7 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
           attempts.push({
             registration,
             provider: value,
+            receiver: registration.value,
             source: { id: registration.id, label: registration.label, state: 'queued' },
             controller: new AbortController(),
             items: [],
@@ -573,7 +579,7 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       }
     },
     async activate(key) {
-      if (disposed || !snapshot.isOpen || nativeExecution) {
+      if (disposed || !snapshot.isOpen) {
         return;
       }
 
@@ -612,6 +618,10 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       }
 
       if (!value) {
+        return;
+      }
+
+      if (value.kind === 'command' && nativeExecution) {
         return;
       }
 

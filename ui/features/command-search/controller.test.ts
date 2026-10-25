@@ -86,6 +86,25 @@ afterEach(() => {
 });
 
 describe('actual registry and async epochs', () => {
+  it('uses the contributed method receiver and preserves its actionable function identity', async () => {
+    const provider = {
+      schemaVersion: 1,
+      kind: 'provider',
+      client: { label: 'Provider-selected destination' },
+      async search() {
+        return response('method-result', this.client.label);
+      },
+    };
+    h.register('probe/method', provider, 'Stateful method provider');
+    h.controller.open();
+    h.controller.setQuery('external alias');
+    await flush();
+
+    expect(labels()).toEqual(['Provider-selected destination']);
+    await h.controller.activate(key('Provider-selected destination'));
+    expect(h.navigate).toHaveBeenCalledExactlyOnceWith('/plugins');
+  });
+
   it('keeps external alias results without local matching/reranking and preserves source order', async () => {
     h.provider('probe/z-first', async () => ({
       items: [item('z', 'Zulu'), item('a', 'Alpha')],
@@ -373,6 +392,37 @@ describe('current typed dispatch, native service authority and execution lifecyc
     native.resolve([]);
     await Promise.all([first, repeated]);
     expect(h.controller.getSnapshot().executionPending).toBe(false);
+  });
+
+  it.each([
+    { kind: 'navigation', value: navigation(), href: '/plugins' },
+    {
+      kind: 'setting',
+      value: {
+        schemaVersion: 1,
+        kind: 'setting',
+        target: { section: 'core', categoryId: 'appearance', settingId: 'appearance.theme' },
+      },
+      href: '/settings?section=core&category=appearance&setting=appearance.theme',
+    },
+  ])('allows a current $kind destination while retaining the accepted native command lock', async ({ value, href }) => {
+    h.register('core/destination', value, 'Destination', 'core');
+    const native = createDeferred<never[]>();
+    h.loadConnections.mockImplementation(async () => native.promise);
+    h.controller.open();
+    await flush();
+    const execution = h.controller.activate(key('Reload'));
+    await h.controller.activate(key('Destination'));
+    const afterNavigation = h.controller.getSnapshot();
+    native.resolve([]);
+    await execution;
+
+    expect(h.navigate).toHaveBeenCalledExactlyOnceWith(href);
+    expect(afterNavigation).toMatchObject({ isOpen: false, executionPending: true });
+    h.controller.open();
+    await flush();
+    expect(h.controller.getSnapshot()).toMatchObject({ isOpen: true, executionPending: false, feedback: undefined });
+    expect(h.loadConnections).toHaveBeenCalledOnce();
   });
 
   it.each(['success', 'denial'] as const)(

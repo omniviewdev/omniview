@@ -59,12 +59,18 @@ vi.mock('@omniviewdev/runtime/api', async (importOriginal) => {
       repositories: [],
       endpoints: { browser: null, vite: null, hmr: null, mcp: null, control: null, health: null },
     }),
-    ResourceClient: { ...original.ResourceClient, ListPlugins: native.listPlugins, LoadConnections: native.loadConnections },
+    ResourceClient: {
+      ...original.ResourceClient,
+      ListPlugins: native.listPlugins,
+      LoadConnections: native.loadConnections,
+    },
     SettingsProvider: {
       ...original.SettingsProvider,
       ListSettings: vi.fn(async () => ({
         appearance: new Category({
-          id: 'appearance', label: 'Appearance', description: 'Application appearance',
+          id: 'appearance',
+          label: 'Appearance',
+          description: 'Application appearance',
           settings: { theme: new Setting({ id: 'theme', label: 'Theme', type: SettingType.Select }) },
         }),
       })),
@@ -137,7 +143,11 @@ it('keeps development identity and details available when optional header contro
   render(
     <Provider store={store}>
       <MemoryRouter>
-        <HeaderProviders><InstanceProvider><CoreLayoutHeader /></InstanceProvider></HeaderProviders>
+        <HeaderProviders>
+          <InstanceProvider>
+            <CoreLayoutHeader />
+          </InstanceProvider>
+        </HeaderProviders>
       </MemoryRouter>
     </Provider>,
   );
@@ -154,7 +164,7 @@ it('keeps development identity and details available when optional header contro
   const instanceButton = screen.getByRole('button', { name: 'DEV · Header profile — instance details' });
   expect(instanceButton).toBeVisible();
   await waitFor(() => {
-    expect(document.title).toBe('Omniview — DEV · Header profile'); 
+    expect(document.title).toBe('Omniview — DEV · Header profile');
   });
   fireEvent.click(instanceButton);
   expect(await screen.findByRole('dialog')).toBeVisible();
@@ -164,7 +174,12 @@ it('keeps development identity and details available when optional header contro
 
 function CurrentLocation() {
   const location = useLocation();
-  return <output data-testid='current-location'>{location.pathname}{location.search}</output>;
+  return (
+    <output data-testid='current-location'>
+      {location.pathname}
+      {location.search}
+    </output>
+  );
 }
 
 function renderSearchHeader(searchVisible = true, service?: PluginService) {
@@ -194,23 +209,26 @@ function renderSearchHeader(searchVisible = true, service?: PluginService) {
   );
 }
 
-it.each(['ctrlKey', 'metaKey'] as const)('opens one real header session with %s+K even when the configurable search area is hidden', async (modifier) => {
-  renderSearchHeader(false);
-  const shortcut = new KeyboardEvent('keydown', { key: 'k', [modifier]: true, bubbles: true, cancelable: true });
-  act(() => {
-    document.dispatchEvent(shortcut); 
-  });
-  const dialog = await screen.findByRole('dialog', { name: /search/i });
-  expect(shortcut.defaultPrevented).toBe(true);
-  expect(dialog).toBeVisible();
-  const input = screen.getByRole('combobox', { name: /search/i });
-  expect(input).toBeInstanceOf(HTMLInputElement);
-  expect(input).toHaveFocus();
-  expect(screen.getAllByRole('combobox')).toHaveLength(1);
-  const listId = input.getAttribute('aria-controls');
-  expect(listId).toBeTruthy();
-  expect(document.getElementById(listId!)).toHaveAttribute('role', 'listbox');
-});
+it.each(['ctrlKey', 'metaKey'] as const)(
+  'opens one real header session with %s+K even when the configurable search area is hidden',
+  async (modifier) => {
+    renderSearchHeader(false);
+    const shortcut = new KeyboardEvent('keydown', { key: 'k', [modifier]: true, bubbles: true, cancelable: true });
+    act(() => {
+      document.dispatchEvent(shortcut);
+    });
+    const dialog = await screen.findByRole('dialog', { name: /search/i });
+    expect(shortcut.defaultPrevented).toBe(true);
+    expect(dialog).toBeVisible();
+    const input = screen.getByRole('combobox', { name: /search/i });
+    expect(input).toBeInstanceOf(HTMLInputElement);
+    expect(input).toHaveFocus();
+    expect(screen.getAllByRole('combobox')).toHaveLength(1);
+    const listId = input.getAttribute('aria-controls');
+    expect(listId).toBeTruthy();
+    expect(document.getElementById(listId!)).toHaveAttribute('role', 'listbox');
+  },
+);
 
 it('keeps palette double-clicks outside native title-bar maximize behavior', async () => {
   renderSearchHeader();
@@ -236,7 +254,7 @@ it('ignores both IME composition and legacy229 shortcut events without preventin
   for (const detail of [{ isComposing: true }, { keyCode: 229 }]) {
     const event = new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true, cancelable: true, ...detail });
     await act(async () => {
-      document.dispatchEvent(event); 
+      document.dispatchEvent(event);
     });
     expect(event.defaultPrevented).toBe(false);
     expect(screen.queryByRole('dialog', { name: /search/i })).not.toBeInTheDocument();
@@ -247,14 +265,14 @@ it('opens from the accessible trigger, closes on Escape and restores the connect
   renderSearchHeader();
   const opener = screen.getByRole('button', { name: /search/i });
   act(() => {
-    opener.focus(); 
+    opener.focus();
   });
   fireEvent.click(opener);
   const input = await screen.findByRole('combobox', { name: /search/i });
   expect(input).toHaveFocus();
   fireEvent.keyDown(input, { key: 'Escape' });
   await waitFor(() => {
-    expect(screen.queryByRole('dialog', { name: /search/i })).not.toBeInTheDocument(); 
+    expect(screen.queryByRole('dialog', { name: /search/i })).not.toBeInTheDocument();
   });
   expect(opener).toHaveFocus();
 });
@@ -271,7 +289,7 @@ it('uses the actual input for controlled matching, current active-option ownersh
   expect(document.getElementById(activeId!)).toHaveAttribute('role', 'option');
   fireEvent.keyDown(input, { key: 'Enter' });
   await waitFor(() => {
-    expect(screen.getByTestId('current-location').textContent).toBe('/'); 
+    expect(screen.getByTestId('current-location').textContent).toBe('/');
   });
   expect(screen.queryByRole('dialog', { name: /search/i })).not.toBeInTheDocument();
 });
@@ -283,7 +301,7 @@ it('removes the sole shortcut listener on unmount after StrictMode replay', asyn
   view.unmount();
   const event = new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true, cancelable: true });
   act(() => {
-    document.dispatchEvent(event); 
+    document.dispatchEvent(event);
   });
   expect(event.defaultPrevented).toBe(false);
   expect(screen.queryByRole('dialog', { name: /search/i })).not.toBeInTheDocument();
@@ -298,7 +316,7 @@ it('keeps Clear search keyboard activation out of command dispatch and returns i
   fireEvent.keyDown(input, { key: 'ArrowDown' });
   const clear = screen.getByRole('button', { name: 'Clear search' });
   act(() => {
-    clear.focus(); 
+    clear.focus();
   });
   fireEvent.keyDown(clear, { key: 'Enter' });
   expect(screen.getByTestId('current-location').textContent).toBe('/plugins');
@@ -320,6 +338,41 @@ it('ignores IME Enter on the current command option', async () => {
   fireEvent.keyDown(input, { key: 'ArrowDown' });
   fireEvent.keyDown(input, { key: 'Enter', isComposing: true, keyCode: 229 });
   expect(screen.getByTestId('current-location').textContent).toBe('/plugins');
+});
+
+it('keeps navigation enabled while an accepted native reload remains pending', async () => {
+  const pluginId = 'palette-pending-navigation';
+  const { service, importer } = createHeaderPluginEnvironment();
+  importer.register(pluginId, { plugin: new PluginWindow() });
+  await service.load(pluginId);
+  const pendingNative = createDeferred<never[]>();
+  native.listPlugins.mockResolvedValue([pluginId]);
+  native.loadConnections.mockImplementation(async () => pendingNative.promise);
+
+  try {
+    renderSearchHeader(true, service);
+    fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
+    const input = await screen.findByRole('combobox', { name: /search/i });
+    fireEvent.change(input, { target: { value: `Reload ${pluginId} connections` } });
+    const command = await screen.findByRole('option', { name: new RegExp(`Reload ${pluginId} connections`) });
+    await waitFor(() => {
+      expect(command).not.toHaveAttribute('aria-disabled', 'true');
+    });
+    fireEvent.click(command);
+    expect(native.loadConnections).toHaveBeenCalledExactlyOnceWith(pluginId);
+    fireEvent.change(input, { target: { value: 'Home' } });
+    const home = await screen.findByRole('option', { name: /^Home/ });
+    expect(home).not.toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(home);
+    expect(screen.getByTestId('current-location').textContent).toBe('/');
+    expect(screen.queryByRole('dialog', { name: /search/i })).not.toBeInTheDocument();
+  } finally {
+    await act(async () => {
+      pendingNative.resolve([]);
+      await Promise.resolve();
+      await service.unload(pluginId);
+    });
+  }
 });
 
 function createHeaderPluginEnvironment(clearPlugin?: PluginServiceDeps['clearPlugin']) {
@@ -356,15 +409,19 @@ it('refuses a real row click in the same task that reload moves its owner to loa
   const pluginId = 'palette-reload-race';
   const { service, importer } = createHeaderPluginEnvironment();
   const pluginModule = {
-    plugin: new PluginWindow().withRoutes([{ path: '/capabilities', Component: () => <h1>Native tasks navigation</h1> }]),
-    extensionRegistrations: [{
-      extensionPointId: 'omniview/global-search',
-      registration: {
-        id: 'lifecycle-navigation',
-        label: 'Lifecycle navigation target',
-        value: { schemaVersion: 1, kind: 'navigation', target: { kind: 'plugin', pluginId, path: '/capabilities' } },
+    plugin: new PluginWindow().withRoutes([
+      { path: '/capabilities', Component: () => <h1>Native tasks navigation</h1> },
+    ]),
+    extensionRegistrations: [
+      {
+        extensionPointId: 'omniview/global-search',
+        registration: {
+          id: 'lifecycle-navigation',
+          label: 'Lifecycle navigation target',
+          value: { schemaVersion: 1, kind: 'navigation', target: { kind: 'plugin', pluginId, path: '/capabilities' } },
+        },
       },
-    }],
+    ],
   };
   importer.register(pluginId, pluginModule);
   await service.load(pluginId);
@@ -415,104 +472,115 @@ it.each([
   ['reload', 'error'],
   ['unload', 'success'],
   ['unload', 'error'],
-] as const)('does not announce a pending native command’s stale %s/%s completion during its owner transition', async (operation, outcome) => {
-  const pluginId = `palette-pending-${operation}-${outcome}`;
-  const clearing = createDeferred();
-  let holdClear = false;
-  const { service, importer } = createHeaderPluginEnvironment(async () => {
-    if (holdClear) {
-      await clearing.promise;
-    }
-  });
-  const pluginModule = { plugin: new PluginWindow() };
-  importer.register(pluginId, pluginModule);
-  await service.load(pluginId);
-  expect(service.getPluginState(pluginId)?.phase).toBe('ready');
-  const importing = createDeferred<typeof pluginModule>();
-  importer.register(pluginId, async () => importing.promise);
-  const pendingNative = createDeferred<never[]>();
-  native.listPlugins.mockResolvedValue([pluginId]);
-  native.loadConnections.mockImplementation(async () => pendingNative.promise);
-  let transition: Promise<void> | undefined;
-  let observer: MutationObserver | undefined;
-
-  try {
-    renderSearchHeader(true, service);
-    fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
-    const input = await screen.findByRole('combobox', { name: /search/i });
-    const label = `Reload ${pluginId} connections`;
-    fireEvent.change(input, { target: { value: label } });
-    const command = await screen.findByRole('option', { name: new RegExp(label) });
-    await waitFor(() => {
-      expect(command).not.toHaveAttribute('aria-disabled', 'true');
-    });
-    fireEvent.click(command);
-    expect(native.loadConnections).toHaveBeenCalledExactlyOnceWith(pluginId);
-    const dialog = screen.getByRole('dialog', { name: /search/i });
-    expect(dialog.querySelector('[aria-busy="true"]')).not.toBeNull();
-    holdClear = operation === 'unload';
-
-    await act(async () => {
-      transition = operation === 'reload' ? service.reload(pluginId) : service.unload(pluginId);
-      await Promise.resolve();
-    });
-
-    const expectedPhase = operation === 'reload' ? 'loading' : 'unloading';
-    expect(service.getPluginState(pluginId)?.phase).toBe(expectedPhase);
-    const renderedUpdates: string[] = [];
-    const recordUpdates = (records: MutationRecord[]) => {
-      for (const record of records) {
-        renderedUpdates.push(record.target.textContent ?? '');
-        for (const node of record.addedNodes) {
-          renderedUpdates.push(node.textContent ?? '');
-        }
-
-        for (const node of record.removedNodes) {
-          renderedUpdates.push(node.textContent ?? '');
-        }
+] as const)(
+  'does not announce a pending native command’s stale %s/%s completion during its owner transition',
+  async (operation, outcome) => {
+    const pluginId = `palette-pending-${operation}-${outcome}`;
+    const clearing = createDeferred();
+    let holdClear = false;
+    const { service, importer } = createHeaderPluginEnvironment(async () => {
+      if (holdClear) {
+        await clearing.promise;
       }
-    };
+    });
+    const pluginModule = { plugin: new PluginWindow() };
+    importer.register(pluginId, pluginModule);
+    await service.load(pluginId);
+    expect(service.getPluginState(pluginId)?.phase).toBe('ready');
+    const importing = createDeferred<typeof pluginModule>();
+    importer.register(pluginId, async () => importing.promise);
+    const pendingNative = createDeferred<never[]>();
+    native.listPlugins.mockResolvedValue([pluginId]);
+    native.loadConnections.mockImplementation(async () => pendingNative.promise);
+    let transition: Promise<void> | undefined;
+    let observer: MutationObserver | undefined;
 
-    observer = new MutationObserver(recordUpdates);
-    observer.observe(dialog, { subtree: true, childList: true, characterData: true });
+    try {
+      renderSearchHeader(true, service);
+      fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
+      const input = await screen.findByRole('combobox', { name: /search/i });
+      const label = `Reload ${pluginId} connections`;
+      fireEvent.change(input, { target: { value: label } });
+      const command = await screen.findByRole('option', { name: new RegExp(label) });
+      await waitFor(() => {
+        expect(command).not.toHaveAttribute('aria-disabled', 'true');
+      });
+      fireEvent.click(command);
+      expect(native.loadConnections).toHaveBeenCalledExactlyOnceWith(pluginId);
+      const dialog = screen.getByRole('dialog', { name: /search/i });
+      expect(dialog.querySelector('[aria-busy="true"]')).not.toBeNull();
+      holdClear = operation === 'unload';
 
-    await act(async () => {
-      if (outcome === 'success') {
+      await act(async () => {
+        transition = operation === 'reload' ? service.reload(pluginId) : service.unload(pluginId);
+        await Promise.resolve();
+      });
+
+      const expectedPhase = operation === 'reload' ? 'loading' : 'unloading';
+      expect(service.getPluginState(pluginId)?.phase).toBe(expectedPhase);
+      const renderedUpdates: string[] = [];
+      const recordUpdates = (records: MutationRecord[]) => {
+        for (const record of records) {
+          renderedUpdates.push(record.target.textContent ?? '');
+          for (const node of record.addedNodes) {
+            renderedUpdates.push(node.textContent ?? '');
+          }
+
+          for (const node of record.removedNodes) {
+            renderedUpdates.push(node.textContent ?? '');
+          }
+        }
+      };
+
+      observer = new MutationObserver(recordUpdates);
+      observer.observe(dialog, { subtree: true, childList: true, characterData: true });
+
+      await act(async () => {
+        if (outcome === 'success') {
+          pendingNative.resolve([]);
+        } else {
+          pendingNative.reject(
+            new Error(
+              JSON.stringify({
+                type: 'omniview:resource/forbidden',
+                status: 403,
+                title: 'Forbidden',
+                detail: 'Retired native failure.',
+                code: 'FORBIDDEN',
+                requestId: 'retired-native-request',
+              }),
+            ),
+          );
+        }
+
+        await Promise.resolve();
+      });
+      await waitFor(() => {
+        expect(dialog.querySelector('[aria-busy="true"]')).toBeNull();
+      });
+      recordUpdates(observer.takeRecords());
+
+      expect(service.getPluginState(pluginId)?.phase).toBe(expectedPhase);
+      expect(dialog).toBeVisible();
+      expect(input).toHaveValue(label);
+      const retiredFeedback = /Connections reloaded\.|Retired native failure\.|FORBIDDEN|retired-native-request/;
+      expect(screen.queryByText(retiredFeedback)).not.toBeInTheDocument();
+      // A message briefly committed to the live region still violates the epoch
+      // fence, even if a later catalogue render removes it before this assertion.
+      expect(renderedUpdates.join('\n')).not.toMatch(retiredFeedback);
+    } finally {
+      observer?.disconnect();
+      await act(async () => {
         pendingNative.resolve([]);
-      } else {
-        pendingNative.reject(new Error(JSON.stringify({
-          type: 'omniview:resource/forbidden', status: 403, title: 'Forbidden',
-          detail: 'Retired native failure.', code: 'FORBIDDEN', requestId: 'retired-native-request',
-        })));
-      }
+        importing.resolve(pluginModule);
+        holdClear = false;
+        clearing.resolve();
+        if (transition) {
+          await transition;
+        }
 
-      await Promise.resolve();
-    });
-    await waitFor(() => {
-      expect(dialog.querySelector('[aria-busy="true"]')).toBeNull();
-    });
-    recordUpdates(observer.takeRecords());
-
-    expect(service.getPluginState(pluginId)?.phase).toBe(expectedPhase);
-    expect(dialog).toBeVisible();
-    expect(input).toHaveValue(label);
-    const retiredFeedback = /Connections reloaded\.|Retired native failure\.|FORBIDDEN|retired-native-request/;
-    expect(screen.queryByText(retiredFeedback)).not.toBeInTheDocument();
-    // A message briefly committed to the live region still violates the epoch
-    // fence, even if a later catalogue render removes it before this assertion.
-    expect(renderedUpdates.join('\n')).not.toMatch(retiredFeedback);
-  } finally {
-    observer?.disconnect();
-    await act(async () => {
-      pendingNative.resolve([]);
-      importing.resolve(pluginModule);
-      holdClear = false;
-      clearing.resolve();
-      if (transition) {
-        await transition;
-      }
-
-      await service.unload(pluginId);
-    });
-  }
-});
+        await service.unload(pluginId);
+      });
+    }
+  },
+);
