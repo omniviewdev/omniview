@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { assertStandaloneBootstrap, applicationBudget, commandTimeout, repositoryCommit, runnerOptions, toolEnvironment } from './execution.mjs';
+import { assertStandaloneBootstrap, applicationBudget, commandTimeout, preparationStarted, repositoryCommit, runnerOptions, toolEnvironment } from './execution.mjs';
 
 test('tool environment drops ambient credentials, autoconnect and module/workspace overrides', () => {
   const env = toolEnvironment({ PATH: '/tools', HOME: '/human', CI: '1', AWS_ACCESS_KEY_ID: 'secret', AWS_SECRET_ACCESS_KEY: 'secret', KUBECONFIG: '/human/kube', GOOGLE_APPLICATION_CREDENTIALS: '/human/cloud', AZURE_CLIENT_SECRET: 'secret', GH_TOKEN: 'secret', NODE_OPTIONS: '--require=/human/hook', NODE_PATH: '/human/modules', OMNIVIEW_WORKSPACE_FILE: '/human/workspace.json', PNPM_CONFIG_WORKSPACE_DIR: '/human/root', GOFLAGS: '-modfile=/human/go.mod', GOWORK: '/human/go.work', SDK_SOURCE: '/human/sdk', GIT_CONFIG_GLOBAL: '/human/gitconfig', OMNIVIEW_E2E_PNPM_EXECUTABLE: '/tools/pnpm', GOCACHE: '/human/compiler', GOMODCACHE: '/human/modules', GOPATH: '/human/go', OMNIVIEW_E2E_TOOL_CACHE_ROOT: '/human/cache' });
@@ -33,6 +33,13 @@ test('application deadline subtracts all preparation and reserves owned teardown
   assert.throws(() => applicationBudget(1000, 541000), /budget/);
   assert.throws(() => applicationBudget(1000, 601001), /budget/);
 });
+test('workflow provisioning is charged to the same inclusive deadline and cannot supply a future or malformed start', () => {
+  assert.equal(preparationStarted(151000), 151000);
+  assert.equal(preparationStarted(151000, '1000'), 1000);
+  assert.equal(commandTimeout(preparationStarted(151000, '1000'), 151000, 180000), 180000);
+  assert.equal(commandTimeout(preparationStarted(591000, '1000'), 591000, 180000), 10000);
+  for (const value of ['', '151001', '-1', '1.5', '1e3', 'NaN', 'Infinity', ' 1000']) assert.throws(() => preparationStarted(151000, value), /preparation start/);
+});
 test('interactive sessions outlive acceptance while each command keeps a fresh bound', () => {
   assert.equal(applicationBudget(1000, 901000, { interactive: true }), null);
   assert.equal(commandTimeout(1000, 901000, 30000, true), 30000);
@@ -59,7 +66,7 @@ test('selection-only CLI works without package managers or browser dependencies 
   const scripts = join(arena, 'e2e/scripts');
   mkdirSync(scripts, { recursive: true });
   try {
-    for (const name of ['run.mjs', 'execution.mjs', 'select-tests.mjs', 'application.mjs', 'cohort.mjs', 'tool-cache.mjs']) copyFileSync(fileURLToPath(new URL(name, import.meta.url)), join(scripts, name));
+    for (const name of ['run.mjs', 'execution.mjs', 'select-tests.mjs', 'application.mjs', 'cohort.mjs', 'tool-cache.mjs', 'browser-dependencies.mjs']) copyFileSync(fileURLToPath(new URL(name, import.meta.url)), join(scripts, name));
     mkdirSync(join(arena, 'scripts'));
     copyFileSync(fileURLToPath(new URL('../../scripts/wails-tool.mjs', import.meta.url)), join(arena, 'scripts/wails-tool.mjs'));
     const output = join(arena, 'github-output');
@@ -97,7 +104,7 @@ test('cache-only refuses missing explicit cache ownership before dependency or a
   const scripts = join(arena, 'e2e/scripts');
   mkdirSync(scripts, { recursive: true });
   try {
-    for (const name of ['run.mjs', 'execution.mjs', 'select-tests.mjs', 'application.mjs', 'cohort.mjs', 'tool-cache.mjs']) copyFileSync(fileURLToPath(new URL(name, import.meta.url)), join(scripts, name));
+    for (const name of ['run.mjs', 'execution.mjs', 'select-tests.mjs', 'application.mjs', 'cohort.mjs', 'tool-cache.mjs', 'browser-dependencies.mjs']) copyFileSync(fileURLToPath(new URL(name, import.meta.url)), join(scripts, name));
     mkdirSync(join(arena, 'scripts'));
     copyFileSync(fileURLToPath(new URL('../../scripts/wails-tool.mjs', import.meta.url)), join(arena, 'scripts/wails-tool.mjs'));
     assert.throws(() => execFileSync(process.execPath, [join(scripts, 'run.mjs'), '--cache-only'], { env: { ...toolEnvironment(process.env), PATH: '' }, stdio: 'pipe' }), error => {

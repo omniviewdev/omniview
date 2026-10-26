@@ -9,7 +9,7 @@ import { validatePinnedWailsTool } from '../../scripts/wails-tool.mjs';
 // private HOME/cache locations and observation identity are added explicitly by
 // the runner; ambient provider/autoconnect/module/manager inputs never reach it.
 export function toolEnvironment(input, { toolCacheRoot, wailsToolCapability } = {}) {
-  const keys = ['PATH', 'PATHEXT', 'SystemRoot', 'WINDIR', 'TMPDIR', 'TMP', 'TEMP', 'LANG', 'LC_ALL', 'TZ', 'TERM', 'CI', 'PNPM_HOME', 'PLAYWRIGHT_BROWSERS_PATH', 'OMNIVIEW_E2E_PNPM_EXECUTABLE'];
+  const keys = ['PATH', 'PATHEXT', 'SystemRoot', 'WINDIR', 'TMPDIR', 'TMP', 'TEMP', 'LANG', 'LC_ALL', 'TZ', 'TERM', 'CI', 'PNPM_HOME', 'OMNIVIEW_E2E_PNPM_EXECUTABLE'];
   const env = Object.fromEntries(keys.filter(key => typeof input[key] === 'string').map(key => [key, input[key]]));
   if (toolCacheRoot) {
     const cache = readToolCache(toolCacheRoot);
@@ -17,6 +17,7 @@ export function toolEnvironment(input, { toolCacheRoot, wailsToolCapability } = 
     env.GOCACHE = cache.bootstrapGoCache;
     env.GOMODCACHE = cache.goModCache;
     env.pnpm_config_store_dir = cache.pnpmStore;
+    env.PLAYWRIGHT_BROWSERS_PATH = cache.playwrightBrowsers;
   }
   if (wailsToolCapability !== undefined) {
     validatePinnedWailsTool(wailsToolCapability, { env });
@@ -45,6 +46,11 @@ export function repositoryCommit(source, env) {
   const ref = git('rev-parse', 'HEAD');
   if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(ref)) throw Error('Selected source has no immutable commit');
   return ref;
+}
+export function preparationStarted(now, value) {
+  if (value === undefined) return now;
+  if (!/^[0-9]+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) > now) throw Error('Invalid workflow preparation start; refusing to reset or extend the inclusive E2E deadline');
+  return Number(value);
 }
 export function commandTimeout(started, now, timeout, interactive = false) {
   if (timeout === 0) return undefined;
