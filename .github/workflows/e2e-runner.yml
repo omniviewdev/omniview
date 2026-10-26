@@ -73,6 +73,9 @@ jobs:
       - name: Verify SDK checkout matches reviewed pin
         run: test "$(git -C "$GITHUB_WORKSPACE/plugin-sdk" rev-parse HEAD)" = "$REVIEWED_SDK_REVISION"
 
+      - name: Start inclusive preparation clock
+        run: echo "OMNIVIEW_E2E_PREPARATION_STARTED_AT=$(date +%s%3N)" >> "$GITHUB_ENV"
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -174,7 +177,6 @@ jobs:
         id: linux-packages
         if: steps.preparation.outputs.required == 'true' && steps.selection.outputs.requires_application != 'false'
         run: |
-          echo "OMNIVIEW_E2E_PREPARATION_STARTED_AT=$(date +%s%3N)" >> "$GITHUB_ENV"
           directory=/tmp/omniview-e2e-apt
           mkdir -m 0755 "$directory"
           sudo install -d -m 0700 -o _apt -g root "$directory/partial"

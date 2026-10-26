@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { beforeEach } from 'node:test';
 import { missingLinuxPackages, prepareLinuxDependencies } from './browser-dependencies.mjs';
 
 const missing = 'Missing system dependencies (2):\n  fonts-ipafont-gothic\n  fonts-freefont-ttf';
 const installed = 'All system dependencies are installed.';
+
+beforeEach(context => { context.mock.method(process, 'getuid', () => 1000); });
 
 test('pinned Playwright simulation identifies actual missing packages without interpreting shell input', () => {
   assert.deepEqual(missingLinuxPackages(installed), []);
@@ -83,4 +85,19 @@ test('unsupported platform warnings, resolver failures and inconsistent simulati
     } }), /dependency simulation/);
     assert.equal(calls, 2);
   }
+});
+
+for (const [uid, command, prefix] of [[0, 'apt-get', []], [1000, 'sudo', ['apt-get']]]) test(`Linux UID${uid} provisions update and install with the available privilege boundary`, context => {
+  context.mock.method(process, 'getuid', () => uid);
+  const calls = [];
+  prepareLinuxDependencies({ playwrightCLI: '/pinned/cli.js', execute: (command, args, options) => {
+    if (uid === 0 && command === 'sudo') throw Error('sudo is not installed in this root runner');
+    calls.push({ command, args });
+    return args.includes('--dry-run') ? options.capture === 'result' ? { stdout: installed, stderr: '', status: 0 } : installed : '';
+  } });
+  const apt = calls.filter(call => call.command === 'sudo' || call.command === 'apt-get');
+  assert.deepEqual(apt, [
+    { command, args: [...prefix, 'update'] },
+    { command, args: [...prefix, 'install', '-y', '--no-install-recommends', 'libgtk-4-dev', 'libwebkitgtk-6.0-dev', 'libwayland-dev', 'build-essential', 'pkg-config'] },
+  ]);
 });

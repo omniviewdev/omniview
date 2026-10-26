@@ -15,12 +15,14 @@ export function missingLinuxPackages(output) {
 }
 
 export function prepareLinuxDependencies({ execute, playwrightCLI, archiveDirectory, native = true }) {
+  const aptCommand = process.getuid?.() === 0 ? 'apt-get' : 'sudo';
+  const aptPrefix = aptCommand === 'sudo' ? ['apt-get'] : [];
   if (archiveDirectory) {
     // The workflow refreshes authenticated indexes before restoring archives.
     // Cache bytes never authorize their own package names, versions or hashes.
     execute(process.execPath, [archiveVerifier, archiveDirectory]);
   } else {
-    execute('sudo', ['apt-get', 'update']);
+    execute(aptCommand, [...aptPrefix, 'update']);
   }
   const probe = [playwrightCLI, 'install-deps', '--dry-run', 'chromium'];
   // Playwright 1.64.1 uses exit1 for a successful simulation with missing
@@ -31,7 +33,7 @@ export function prepareLinuxDependencies({ execute, playwrightCLI, archiveDirect
   if (result.status !== (missingBrowserPackages.length ? 1 : 0)) throw Error('Pinned Playwright dependency simulation returned an inconsistent status');
   const packages = [...new Set([...(native ? nativePackages : []), ...missingBrowserPackages])];
   if (packages.length) {
-    execute('sudo', ['apt-get', ...(archiveDirectory ? ['-o', `Dir::Cache::archives=${archiveDirectory}`] : []), 'install', '-y', '--no-install-recommends', ...packages]);
+    execute(aptCommand, [...aptPrefix, ...(archiveDirectory ? ['-o', `Dir::Cache::archives=${archiveDirectory}`] : []), 'install', '-y', '--no-install-recommends', ...packages]);
     if (missingLinuxPackages(execute(process.execPath, probe, { capture: true })).length) throw Error('Linux browser dependencies remain missing after provisioning');
   }
   return { missingBrowserPackages, native, authenticatedArchives: archiveDirectory ? 'validated' : 'not-used' };

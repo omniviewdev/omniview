@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { toolEnvironment } from './execution.mjs';
+import { applicationBudget, preparationStarted, toolEnvironment } from './execution.mjs';
 
 const workflow = name => readFileSync(new URL(`../../.github/workflows/${name}`, import.meta.url), 'utf8');
 const shared = workflow('e2e-runner.yml');
@@ -27,6 +27,31 @@ function script(block) {
 function shell(block, env = {}) {
   return spawnSync('/bin/bash', ['-e', '-o', 'pipefail', '-c', script(block)], { env: { ...toolEnvironment(process.env), ...env }, encoding: 'utf8' });
 }
+
+test('every runnable path charges Node and Go setup to the same early unconditional workflow clock', () => {
+  const clock = step(shared, 'Start inclusive preparation clock');
+  for (const name of ['Setup Node', 'Setup Go']) assert.ok(shared.indexOf(clock) < shared.indexOf(step(shared, name)), `${name} must consume the existing preparation clock`);
+  assert.doesNotMatch(clock, /^        if:/m, 'selection/native-library conditions cannot exclude tooling or cache-only preparation');
+  const arena = mkdtempSync(join(tmpdir(), 'omniview-preparation-clock-'));
+  try {
+    // GNU date is the Linux boundary; this fixture makes setup time deterministic
+    // without sleeping or executing package managers on the test host.
+    writeFileSync(join(arena, 'date'), `#!${process.execPath}\nif (process.argv[2] !== '+%s%3N') process.exit(1);\nprocess.stdout.write(process.env.CLOCK_NOW + '\\n');\n`, { mode: 0o700 });
+    for (const [name, selection, native, cacheOnly] of [
+      ['application', 'full', 'true', 'false'],
+      ['tooling-only', 'selected', 'false', 'false'],
+      ['cache-only', 'cache-only', 'true', 'true'],
+    ]) {
+      const output = join(arena, name);
+      const child = shell(clock, { PATH: arena, CLOCK_NOW: '1000', GITHUB_ENV: output, SELECTION: selection, REQUIRES_APPLICATION: native, CACHE_ONLY: cacheOnly });
+      assert.equal(child.status, 0, child.stderr);
+      const env = Object.fromEntries(readFileSync(output, 'utf8').trim().split('\n').map(line => line.split('=')));
+      const started = preparationStarted(151000, env.OMNIVIEW_E2E_PREPARATION_STARTED_AT);
+      assert.equal(started, 1000, name);
+      assert.equal(applicationBudget(started, 151000).remainingMs, 450000, `${name} cannot reset the clock after setup/restores`);
+    }
+  } finally { rmSync(arena, { recursive: true, force: true }); }
+});
 
 test('main primer skips native preparation only for all three exact lookup hits, never a fallback or missing output', () => {
   const arena = mkdtempSync(join(tmpdir(), 'omniview-main-cache-decision-'));

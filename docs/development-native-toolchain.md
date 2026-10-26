@@ -29,9 +29,11 @@ copying an upstream package/version list. A second simulation must prove all
 browser dependencies installed; an unsupported-platform warning, unexpected
 output/status or package-manager error fails closed. The subsequent Chromium
 installation downloads/reuses browser binaries only, never another APT pass.
+Root Linux invokes `apt-get` directly; other UIDs use `sudo` for both index
+refresh and installation, so a root runner does not require `sudo`.
 
-The workflow starts the inclusive preparation clock before refreshing indexes.
-Its restore/setup time and the canonical dependency/browser phases all count
+The workflow starts the inclusive preparation clock before Node/Go setup and
+index refresh. Restore/setup time and canonical dependency/browser phases count
 toward600000ms; the default subprocess bound remains180000ms. A cold archive miss
 can still fail either bound: caching is not a promise that external downloads
 complete in time, and failures are not retried.
