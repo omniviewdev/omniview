@@ -17,7 +17,8 @@ test('explicit cache initialization creates private fixed native-cache children 
     assert.equal(cache.goModCache, join(root, 'go-mod'));
     assert.equal(cache.bootstrapGoCache, join(root, 'bootstrap-go-build'));
     assert.equal(cache.pnpmStore, join(root, 'pnpm-store/12.14.0'));
-    for (const path of [root, cache.goModCache, cache.bootstrapGoCache, cache.pnpmStore]) assert.equal(lstatSync(path).mode & 0o777, 0o700);
+    assert.equal(cache.playwrightBrowsers, join(root, 'playwright-browsers'));
+    for (const path of [root, cache.goModCache, cache.bootstrapGoCache, cache.pnpmStore, cache.playwrightBrowsers]) assert.equal(lstatSync(path).mode & 0o777, 0o700);
     writeFileSync(join(cache.goModCache, 'downloaded-module'), 'native cache payload');
     assert.deepEqual(initializeToolCache(root), cache);
     assert.deepEqual(readToolCache(root), cache);
@@ -145,14 +146,14 @@ test('cache-init CLI exports only native cache paths and performs no tool, depen
   const scripts = join(host, 'e2e/scripts');
   mkdirSync(scripts, { recursive: true });
   try {
-    for (const name of ['run.mjs', 'execution.mjs', 'select-tests.mjs', 'application.mjs', 'cohort.mjs', 'tool-cache.mjs']) copyFileSync(fileURLToPath(new URL(name, import.meta.url)), join(scripts, name));
+    for (const name of ['run.mjs', 'execution.mjs', 'select-tests.mjs', 'application.mjs', 'cohort.mjs', 'tool-cache.mjs', 'browser-dependencies.mjs']) copyFileSync(fileURLToPath(new URL(name, import.meta.url)), join(scripts, name));
     mkdirSync(join(host, 'scripts'));
     copyFileSync(fileURLToPath(new URL('../../scripts/wails-tool.mjs', import.meta.url)), join(host, 'scripts/wails-tool.mjs'));
     const output = join(arena, 'github-env');
     const root = join(arena, 'cache');
     execFileSync(process.execPath, [join(scripts, 'run.mjs'), '--init-tool-cache'], { env: { ...toolEnvironment(process.env), PATH: '', OMNIVIEW_E2E_TOOL_CACHE_ROOT: root, GITHUB_ENV: output, OMNIVIEW_WAILS_TOOL_CAPABILITY: '{}' }, encoding: 'utf8' });
     const cache = readToolCache(root);
-    assert.equal(readFileSync(output, 'utf8'), `OMNIVIEW_E2E_TOOL_CACHE_ROOT=${cache.root}\nGOCACHE=${cache.bootstrapGoCache}\nGOMODCACHE=${cache.goModCache}\n`);
+    assert.equal(readFileSync(output, 'utf8'), `OMNIVIEW_E2E_TOOL_CACHE_ROOT=${cache.root}\nGOCACHE=${cache.bootstrapGoCache}\nGOMODCACHE=${cache.goModCache}\nPLAYWRIGHT_BROWSERS_PATH=${cache.playwrightBrowsers}\n`);
     assert.equal(existsSync(join(host, 'node_modules')), false);
     assert.equal(existsSync(join(host, '.local')), false);
     assert.equal(existsSync(join(host, 'e2e/playwright-report')), false);
@@ -215,7 +216,7 @@ test('cache-only retirement removes complete private artifacts and cohort data, 
   try {
     const cache = initializeToolCache(join(arena, 'cache'));
     const owner = readFileSync(join(cache.root, '.owner.json'), 'utf8');
-    for (const directory of [cache.goModCache, cache.bootstrapGoCache, cache.pnpmStore]) writeFileSync(join(directory, 'native-payload'), 'retained native bytes');
+    for (const directory of [cache.goModCache, cache.bootstrapGoCache, cache.pnpmStore, cache.playwrightBrowsers]) writeFileSync(join(directory, 'native-payload'), 'retained native bytes');
     const root = join(arena, 'preparation');
     const home = join(root, 'home');
     mkdirSync(home, { recursive: true, mode: 0o700 });
@@ -233,6 +234,19 @@ test('cache-only retirement removes complete private artifacts and cohort data, 
     retirePreparationHome(root, env, { toolCache: cache });
     assert.equal(existsSync(root), false);
     assert.equal(readFileSync(join(cache.root, '.owner.json'), 'utf8'), owner);
-    for (const directory of [cache.goModCache, cache.bootstrapGoCache, cache.pnpmStore]) assert.equal(readFileSync(join(directory, 'native-payload'), 'utf8'), 'retained native bytes');
+    for (const directory of [cache.goModCache, cache.bootstrapGoCache, cache.pnpmStore, cache.playwrightBrowsers]) assert.equal(readFileSync(join(directory, 'native-payload'), 'utf8'), 'retained native bytes');
+  } finally { rmSync(arena, { recursive: true, force: true }); }
+});
+
+test('only an actual validated cache owner can select persistent browser payloads', () => {
+  const arena = temporary();
+  try {
+    const cache = initializeToolCache(join(arena, 'cache'));
+    const input = { PLAYWRIGHT_BROWSERS_PATH: '/foreign/browser-cache' };
+    assert.equal(toolEnvironment(input).PLAYWRIGHT_BROWSERS_PATH, undefined);
+    assert.equal(toolEnvironment(input, { toolCacheRoot: cache.root }).PLAYWRIGHT_BROWSERS_PATH, cache.playwrightBrowsers);
+    rmSync(cache.playwrightBrowsers, { recursive: true });
+    symlinkSync(join(arena, 'foreign'), cache.playwrightBrowsers);
+    assert.throws(() => toolEnvironment(input, { toolCacheRoot: cache.root }), /cache|ENOENT/);
   } finally { rmSync(arena, { recursive: true, force: true }); }
 });

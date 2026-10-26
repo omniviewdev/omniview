@@ -2,8 +2,8 @@ import { constants, closeSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openS
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-const kind = 'omniview-e2e-native-tool-cache-v1';
-const entries = ['.owner.json', 'go-mod', 'bootstrap-go-build', 'pnpm-store'];
+const kind = 'omniview-e2e-native-tool-cache-v2';
+const entries = ['.owner.json', 'go-mod', 'bootstrap-go-build', 'pnpm-store', 'playwright-browsers'];
 function fail(reason) { throw Error(`E2E tool cache ${reason}; choose a fresh owned cache path, never adopt or repair unknown contents`); }
 function absolute(path) {
   if (typeof path !== 'string' || !isAbsolute(path) || resolve(path) !== path) fail('requires an absolute canonical cache path');
@@ -73,7 +73,7 @@ function rejectOverlap(root, protectedRoots) {
   }
 }
 function paths(root) {
-  return { root, goModCache: join(root, 'go-mod'), bootstrapGoCache: join(root, 'bootstrap-go-build'), pnpmStore: join(root, 'pnpm-store', '12.14.0') };
+  return { root, goModCache: join(root, 'go-mod'), bootstrapGoCache: join(root, 'bootstrap-go-build'), pnpmStore: join(root, 'pnpm-store', '12.14.0'), playwrightBrowsers: join(root, 'playwright-browsers') };
 }
 function readOwner(root, info) {
   const path = join(root, '.owner.json');
@@ -97,7 +97,7 @@ export function readToolCache(root, { protectedRoots = [] } = {}) {
   const actual = readdirSync(root);
   if (actual.length !== entries.length || actual.some(name => !entries.includes(name))) fail('contains unknown top-level data');
   const cache = paths(root);
-  for (const path of [cache.goModCache, cache.bootstrapGoCache, join(root, 'pnpm-store'), cache.pnpmStore]) privateDirectory(path);
+  for (const path of [cache.goModCache, cache.bootstrapGoCache, join(root, 'pnpm-store'), cache.pnpmStore, cache.playwrightBrowsers]) privateDirectory(path);
   if (!same(original, privateDirectory(root))) fail('directory changed during validation');
   return cache;
 }
@@ -114,7 +114,7 @@ export function initializeToolCache(root, { protectedRoots = [] } = {}) {
   }
   const directory = privateDirectory(root);
   const cache = paths(root);
-  for (const path of [cache.goModCache, cache.bootstrapGoCache, join(root, 'pnpm-store'), cache.pnpmStore]) mkdirSync(path, { mode: 0o700 });
+  for (const path of [cache.goModCache, cache.bootstrapGoCache, join(root, 'pnpm-store'), cache.pnpmStore, cache.playwrightBrowsers]) mkdirSync(path, { mode: 0o700 });
   // This marker records only actual cache-directory creation identity. It is
   // never a managed installation receipt, source attestation or build proof.
   const fd = openSync(join(root, '.owner.json'), constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);

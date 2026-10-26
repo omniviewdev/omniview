@@ -115,18 +115,20 @@ jobs:
         env:
           PNPM_KEY: ${{ runner.os }}-${{ runner.arch }}-e2e-native-pnpm-12.14.0-v1-${{ hashFiles('host/pnpm-lock.yaml', 'ui/pnpm-lock.yaml', 'host/plugins/kubernetes/ui/pnpm-lock.yaml') }}
           GO_KEY: setup-go-Linux-x64-ubuntu24-go-${{ steps.go.outputs.go-version }}-${{ hashFiles('host/go.sum', 'plugin-sdk/go.sum', 'host/plugins/kubernetes/go.sum', 'host/e2e/fixtures/workspace-probe/go.sum', 'host/e2e/scripts/tool-cache.mjs') }}
+          BROWSER_KEY: ${{ runner.os }}-${{ runner.arch }}-ubuntu24-e2e-chromium-v1-${{ hashFiles('host/pnpm-lock.yaml', 'host/e2e/package.json') }}
         run: |
           echo "pnpm=$PNPM_KEY" >> "$GITHUB_OUTPUT"
           echo "go=$GO_KEY" >> "$GITHUB_OUTPUT"
+          echo "browser=$BROWSER_KEY" >> "$GITHUB_OUTPUT"
 
       # Lookup-only never restores ownership metadata or creates a native cache
-      # container. Both exact main-scope keys must exist to omit preparation.
+      # container. All three exact main-scope keys must exist to omit preparation.
       - name: Look up exact main pnpm payload
         id: pnpm-lookup
         if: inputs.cache-only
         uses: actions/cache/restore@v4
         with:
-          path: ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1/pnpm-store/12.14.0
+          path: ${{ runner.temp }}/omniview-e2e-native-tool-cache-v2/pnpm-store/12.14.0
           key: ${{ steps.cache-keys.outputs.pnpm }}
           lookup-only: true
 
@@ -136,9 +138,18 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: |
-            ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1/go-mod
-            ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1/bootstrap-go-build
+            ${{ runner.temp }}/omniview-e2e-native-tool-cache-v2/go-mod
+            ${{ runner.temp }}/omniview-e2e-native-tool-cache-v2/bootstrap-go-build
           key: ${{ steps.cache-keys.outputs.go }}
+          lookup-only: true
+
+      - name: Look up exact main Chromium payload
+        id: browser-lookup
+        if: inputs.cache-only
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/omniview-e2e-native-tool-cache-v2/playwright-browsers
+          key: ${{ steps.cache-keys.outputs.browser }}
           lookup-only: true
 
       - name: Decide native preparation
@@ -147,8 +158,9 @@ jobs:
           SELECTION: ${{ steps.selection.outputs.kind }}
           GO_HIT: ${{ steps.go-lookup.outputs.cache-hit }}
           PNPM_HIT: ${{ steps.pnpm-lookup.outputs.cache-hit }}
+          BROWSER_HIT: ${{ steps.browser-lookup.outputs.cache-hit }}
         run: |
-          if [[ "$SELECTION" == none || ( "$CACHE_ONLY" == true && "$GO_HIT" == true && "$PNPM_HIT" == true ) ]]; then
+          if [[ "$SELECTION" == none || ( "$CACHE_ONLY" == true && "$GO_HIT" == true && "$PNPM_HIT" == true && "$BROWSER_HIT" == true ) ]]; then
             echo "required=false" >> "$GITHUB_OUTPUT"
           else
             echo "required=true" >> "$GITHUB_OUTPUT"
@@ -156,12 +168,13 @@ jobs:
 
       - name: Explain exact native payload hit
         if: inputs.cache-only && steps.preparation.outputs.required == 'false'
-        run: echo "Both exact main-scope native payloads already exist; no install, compile, browser or application acceptance was performed."
+        run: echo "All three exact main-scope native payloads already exist; no install, compile, browser tests or application acceptance was performed."
 
       - name: Prepare Linux package archive cache
         id: linux-packages
         if: steps.preparation.outputs.required == 'true' && steps.selection.outputs.requires_application != 'false'
         run: |
+          echo "OMNIVIEW_E2E_PREPARATION_STARTED_AT=$(date +%s%3N)" >> "$GITHUB_ENV"
           directory=/tmp/omniview-e2e-apt
           mkdir -m 0755 "$directory"
           sudo install -d -m 0700 -o _apt -g root "$directory/partial"
@@ -175,22 +188,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ steps.linux-packages.outputs.directory }}/*.deb
-          key: ${{ runner.os }}-${{ runner.arch }}-ubuntu24-e2e-apt-v1-${{ hashFiles('host/.github/workflows/e2e-runner.yml') }}-${{ steps.linux-packages.outputs.indexes }}
-
-      - name: Install Linux dependencies
-        if: steps.preparation.outputs.required == 'true' && steps.selection.outputs.requires_application != 'false'
-        env:
-          APT_ARCHIVES_DIRECTORY: ${{ steps.linux-packages.outputs.directory }}
-        run: |
-          node scripts/verify-apt-archives.mjs "$APT_ARCHIVES_DIRECTORY"
-          sudo apt-get -o "Dir::Cache::archives=$APT_ARCHIVES_DIRECTORY" install -y --no-install-recommends libgtk-4-dev libwebkitgtk-6.0-dev libwayland-dev build-essential pkg-config
-
-      - name: Save verified Linux package archives
-        if: steps.preparation.outputs.required == 'true' && steps.selection.outputs.requires_application != 'false' && steps.linux-package-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ steps.linux-packages.outputs.directory }}/*.deb
-          key: ${{ steps.linux-package-cache.outputs.cache-primary-key }}
+          key: ${{ runner.os }}-${{ runner.arch }}-ubuntu24-e2e-apt-v1-${{ hashFiles('host/.github/workflows/e2e-runner.yml', 'host/e2e/scripts/browser-dependencies.mjs', 'host/e2e/package.json', 'host/pnpm-lock.yaml') }}-${{ steps.linux-packages.outputs.indexes }}
 
       - name: Setup pinned pnpm
         if: steps.preparation.outputs.required == 'true'
@@ -203,7 +201,7 @@ jobs:
       - name: Initialize private native-tool cache container
         if: steps.preparation.outputs.required == 'true'
         env:
-          OMNIVIEW_E2E_TOOL_CACHE_ROOT: ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1
+          OMNIVIEW_E2E_TOOL_CACHE_ROOT: ${{ runner.temp }}/omniview-e2e-native-tool-cache-v2
           SDK_SOURCE: ${{ github.workspace }}/plugin-sdk
           UI_SOURCE: ${{ github.workspace }}/ui
           KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
@@ -232,6 +230,14 @@ jobs:
           restore-keys: |
             setup-go-Linux-x64-ubuntu24-go-${{ steps.go.outputs.go-version }}-
 
+      - name: Restore exact pinned Chromium payload
+        id: browser-cache
+        if: steps.preparation.outputs.required == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+          key: ${{ steps.cache-keys.outputs.browser }}
+
       - name: Install Task
         if: steps.preparation.outputs.required == 'true' && steps.selection.outputs.requires_application != 'false'
         uses: arduino/setup-task@v2
@@ -241,7 +247,7 @@ jobs:
 
       # Same canonical preparation for both modes, exactly one invocation.
       # Cache-only returns through source proof and canonical/private retirement,
-      # never through application profiles, Playwright or acceptance assertions.
+      # never through application profiles, Playwright tests or acceptance assertions.
       - name: Run canonical preparation or application suite once
         id: canonical
         if: steps.preparation.outputs.required == 'true'
@@ -250,6 +256,7 @@ jobs:
           UI_SOURCE: ${{ github.workspace }}/ui
           KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
           SELECTION: ${{ steps.selection.outputs.kind }}
+          OMNIVIEW_E2E_APT_ARCHIVES_DIRECTORY: ${{ steps.linux-packages.outputs.directory }}
         run: |
           if [[ "$CACHE_ONLY" == true ]]; then
             node e2e/scripts/run.mjs --cache-only
@@ -258,6 +265,20 @@ jobs:
           else
             node e2e/scripts/run.mjs --full --base "$SELECTION_BASE"
           fi
+
+      - name: Save validated Linux package archives
+        if: ${{ !cancelled() && steps.canonical.outputs.linux_dependencies_prepared == 'true' && steps.linux-package-cache.outputs.cache-hit != 'true' && (!inputs.cache-only || steps.canonical.outcome == 'success') }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.linux-packages.outputs.directory }}/*.deb
+          key: ${{ steps.linux-package-cache.outputs.cache-primary-key }}
+
+      - name: Save pinned Chromium payload independently of application assertions
+        if: ${{ !cancelled() && steps.canonical.outputs.browser_prepared == 'true' && steps.browser-cache.outputs.cache-hit != 'true' && (!inputs.cache-only || steps.canonical.outcome == 'success') }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+          key: ${{ steps.browser-cache.outputs.cache-primary-key }}
 
       - name: Save native pnpm payload independently of application assertions
         if: ${{ !cancelled() && steps.pnpm-cache.outcome == 'success' && steps.pnpm-cache.outputs.cache-hit != 'true' && (!inputs.cache-only || steps.canonical.outcome == 'success') }}
@@ -284,11 +305,12 @@ jobs:
           CANONICAL_OUTCOME: ${{ steps.canonical.outcome }}
           GO_HIT: ${{ steps.go-lookup.outputs.cache-hit }}
           PNPM_HIT: ${{ steps.pnpm-lookup.outputs.cache-hit }}
+          BROWSER_HIT: ${{ steps.browser-lookup.outputs.cache-hit }}
         run: |
           if [[ "$SELECTION_OUTCOME" == success && "$SELECTION" == none && "$CACHE_ONLY" == false ]]; then
             exit 0
           fi
-          if [[ "$CACHE_ONLY" == true && "$PREPARATION" == false && "$GO_HIT" == true && "$PNPM_HIT" == true ]]; then
+          if [[ "$CACHE_ONLY" == true && "$PREPARATION" == false && "$GO_HIT" == true && "$PNPM_HIT" == true && "$BROWSER_HIT" == true ]]; then
             exit 0
           fi
           test "$PREPARATION" = true && test "$CANONICAL_OUTCOME" = success

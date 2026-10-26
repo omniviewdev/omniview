@@ -17,6 +17,44 @@ Standalone effective mod/sum files live under ignored `.local/hostmod`; managed 
 
 Bindings remain `task bindings SDK_SOURCE="$SDK_SOURCE"`. Tasks select the Wails CLI from the root Go pin rather than trusting an ambient `wails3`. Never run raw binding generation or build Vite-plugin shims before the runtime package.
 
+## Canonical Linux E2E prerequisites and payloads
+
+The Ubuntu24.04 reusable runner has one Linux provisioning owner:
+`e2e/scripts/browser-dependencies.mjs`, called inside the canonical invocation.
+It verifies restored `.deb` archives against freshly authenticated APT indexes,
+combines the existing GTK4/WebKit6/Wayland/build recipe with the **actual pinned
+Playwright** missing-package simulation, and installs that union in one APT
+transaction. This preserves Chromium's libraries, X packages and fonts without
+copying an upstream package/version list. A second simulation must prove all
+browser dependencies installed; an unsupported-platform warning, unexpected
+output/status or package-manager error fails closed. The subsequent Chromium
+installation downloads/reuses browser binaries only, never another APT pass.
+
+The workflow starts the inclusive preparation clock before refreshing indexes.
+Its restore/setup time and the canonical dependency/browser phases all count
+toward600000ms; the default subprocess bound remains180000ms. A cold archive miss
+can still fail either bound: caching is not a promise that external downloads
+complete in time, and failures are not retried.
+
+Initialize a fresh explicit native-tool cache with `--init-tool-cache` before
+restoring payloads. The v2 container adds private `playwright-browsers` alongside
+Go and pnpm payloads; old containers are refused, never adopted or repaired.
+Only payload children are cached, not `.owner.json`, profiles or managed
+receipts. `PLAYWRIGHT_BROWSERS_PATH` is derived from the validated owner, not an
+ambient override; runs without an explicit cache use their private preparation
+HOME. Chromium keys bind OS/architecture, Ubuntu24 and the committed package pin
+and lockfile, with no fallback browser key. Existing default-main scope trust
+remains unchanged; the v2 path transition initially requires new payloads.
+
+Trusted-main `--cache-only` now prepares browser binaries too, but starts no
+application profiles/tests and never reports application acceptance. It skips
+preparation only when exact pnpm, Go **and Chromium** main-scope lookups all hit.
+Acceptance still requires the one genuine application invocation and its
+fail-closed final gate. Darwin boundary/smoke checks do not establish Linux APT
+behavior: retain actual Ubuntu cold-populate, warm-skip and subsequent-PR restore
+evidence separately from application case/drain/canonical-cleanup receipts.
+
+
 ## Declared npm Call settlement patch
 
 `pnpm-workspace.yaml` declares `patches/@wailsio__runtime@3.0.0-beta.34.patch` for the exact published npm package. The patch makes its Call response callbacks settle only their own still-registered resolver record. Cancellation removes that ownership while still sending the existing native CancelCall request; a later response cannot reject an already-canceled promise or touch a newly reused call ID. Ordinary errors and successful void results remain unchanged. The generic CancellablePromise late-rejection policy is not weakened.
