@@ -46,7 +46,8 @@ receipts. `PLAYWRIGHT_BROWSERS_PATH` is derived from the validated owner, not an
 ambient override; runs without an explicit cache use their private preparation
 HOME. Chromium keys bind OS/architecture, Ubuntu24 and the committed package pin
 and lockfile, with no fallback browser key. Existing default-main scope trust
-remains unchanged; the v2 path transition initially requires new payloads.
+remains unchanged. CI preserves the established Go/pnpm payload paths while
+creating fresh v2 ownership; ownership metadata is never restored.
 
 Trusted-main `--cache-only` now prepares browser binaries too, but starts no
 application profiles/tests and never reports application acceptance. It skips

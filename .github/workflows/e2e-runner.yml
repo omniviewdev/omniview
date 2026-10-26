@@ -131,7 +131,7 @@ jobs:
         if: inputs.cache-only
         uses: actions/cache/restore@v4
         with:
-          path: ${{ runner.temp }}/omniview-e2e-native-tool-cache-v2/pnpm-store/12.14.0
+          path: ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1/pnpm-store/12.14.0
           key: ${{ steps.cache-keys.outputs.pnpm }}
           lookup-only: true
 
@@ -141,8 +141,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: |
-            ${{ runner.temp }}/omniview-e2e-native-tool-cache-v2/go-mod
-            ${{ runner.temp }}/omniview-e2e-native-tool-cache-v2/bootstrap-go-build
+            ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1/go-mod
+            ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1/bootstrap-go-build
           key: ${{ steps.cache-keys.outputs.go }}
           lookup-only: true
 
@@ -151,7 +151,7 @@ jobs:
         if: inputs.cache-only
         uses: actions/cache/restore@v4
         with:
-          path: ${{ runner.temp }}/omniview-e2e-native-tool-cache-v2/playwright-browsers
+          path: ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1/playwright-browsers
           key: ${{ steps.cache-keys.outputs.browser }}
           lookup-only: true
 
@@ -203,11 +203,12 @@ jobs:
       - name: Initialize private native-tool cache container
         if: steps.preparation.outputs.required == 'true'
         env:
-          OMNIVIEW_E2E_TOOL_CACHE_ROOT: ${{ runner.temp }}/omniview-e2e-native-tool-cache-v2
+          OMNIVIEW_E2E_TOOL_CACHE_ROOT: ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1
           SDK_SOURCE: ${{ github.workspace }}/plugin-sdk
           UI_SOURCE: ${{ github.workspace }}/ui
           KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
-        # Filesystem ownership only; restore only native payloads beneath it.
+        # Keep native payload paths stable for Actions cache-version reuse.
+        # Create fresh v2 ownership; restore payloads only, never the owner.
         run: node e2e/scripts/run.mjs --init-tool-cache
 
       - name: Restore standalone native pnpm content store
