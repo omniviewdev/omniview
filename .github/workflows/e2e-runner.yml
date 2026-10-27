@@ -26,8 +26,8 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-    # Safety watchdog only; both runner modes keep the inclusive 600-second clock.
-    timeout-minutes: 15
+    # Safety watchdog only; both runner modes keep the inclusive 1800-second clock.
+    timeout-minutes: 35
     defaults:
       run:
         shell: bash

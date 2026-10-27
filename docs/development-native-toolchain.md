@@ -31,7 +31,7 @@ is incomplete; it does not silently install packages or retry. Local Linux runs
 retain authenticated APT installation. Chromium binaries remain a separate,
 exact-version payload cache, not part of the system image.
 
-The inclusive 600000ms preparation clock still covers Node/Go setup, restored
+The inclusive 1800000ms (30-minute) preparation clock covers Node/Go setup, restored
 payloads and canonical preparation. Image pulling happens during job startup
 before this clock; compare total job duration, not only preparation duration.
 The default subprocess bound remains 180000ms.

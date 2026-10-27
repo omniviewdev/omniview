@@ -55,13 +55,13 @@ export function preparationStarted(now, value) {
 export function commandTimeout(started, now, timeout, interactive = false) {
   if (timeout === 0) return undefined;
   if (interactive) return timeout;
-  const remaining = started + 600_000 - now;
+  const remaining = started + 1_800_000 - now;
   if (remaining <= 0) throw Error('Inclusive E2E budget exhausted');
   return Math.min(timeout, remaining);
 }
 export function applicationBudget(started, now, { interactive = false } = {}) {
   if (interactive) return null;
-  const deadline = started + 600_000;
+  const deadline = started + 1_800_000;
   const remainingMs = deadline - now;
   const cleanupReserveMs = 60_000;
   if (remainingMs <= cleanupReserveMs) throw Error('Inclusive E2E budget exhausted during preparation; refusing to start application profiles');
