@@ -313,8 +313,9 @@ export function attachManagedViteFeedback(server: ManagedFeedbackServer, raw = p
       try {
         fd = openSync(path.join(context.workspaceRoot, '.local', 'launch-status.json'), constants.O_RDONLY | constants.O_NOFOLLOW);
         const stat = fstatSync(fd);
-        if (!stat.isFile() || stat.size > 1024 * 1024 || (stat.mode & 0o077) !== 0
-          || typeof process.getuid === 'function' && stat.uid !== process.getuid()) {
+        if (!stat.isFile() || stat.size > 1024 * 1024
+          || process.platform !== 'win32' && ((stat.mode & 0o077) !== 0
+            || typeof process.getuid === 'function' && stat.uid !== process.getuid())) {
           throw new Error('Development status ownership changed');
         }
 

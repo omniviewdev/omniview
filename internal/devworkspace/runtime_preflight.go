@@ -19,6 +19,9 @@ func compatibilityPreflight(ctx context.Context, w Workspace, options LaunchOpti
 	if err != nil {
 		return err
 	}
+	if plan.SDK == "" {
+		return devcontract.Fail(2, "sdk_source_required", "select the plugin-sdk repository before launching")
+	}
 	sdkBytes, err := os.ReadFile(filepath.Join(plan.SDK, "go.mod"))
 	if err != nil {
 		return err
@@ -67,7 +70,7 @@ func compatibilityPreflight(ctx context.Context, w Workspace, options LaunchOpti
 	return nil
 }
 
-var diagnosticSecret = regexp.MustCompile(`(?i)(bearer\s+)[^\s]+|((?:token|password|secret|authorization|api[_-]?key)\s*[:=]\s*)(?:bearer\s+)?[^\s,;]+|([a-z][a-z0-9+.-]*://)[^/@\s]+:[^/@\s]+@`)
+var diagnosticSecret = regexp.MustCompile(`(?i)(bearer\s+)[^\s]+|((?:token|password|secret|authorization|api[_-]?key)\s*[:=]\s*)(?:(?:bearer|basic)\s+)?[^\s,;]+|([a-z][a-z0-9+.-]*://)[^/@\s]+:[^/@\s]+@`)
 
 func safeCompilerDiagnostic(text, root string) string {
 	text = diagnosticSecret.ReplaceAllString(text, "${1}${2}${3}[REDACTED]")

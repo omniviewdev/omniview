@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -55,12 +56,7 @@ func checkoutStatuses(ctx context.Context, w Workspace) map[string]CheckoutStatu
 				if name == "" || err != nil {
 					continue
 				}
-				var bytes []byte
-				bytes, err = os.ReadFile(filepath.Join(directory, name))
-				if err == nil {
-					fmt.Fprintf(hash, "\x00%s\x00", name)
-					hash.Write(bytes)
-				}
+				err = hashUntrackedPath(ctx, hash, directory, name)
 			}
 			if err == nil {
 				state.SourceDigest = hex.EncodeToString(hash.Sum(nil))
@@ -72,6 +68,50 @@ func checkoutStatuses(ctx context.Context, w Workspace) map[string]CheckoutStatu
 		result[repository.ID] = state
 	}
 	return result
+}
+
+// Hash links themselves and describe special files without opening their targets.
+func hashUntrackedPath(ctx context.Context, hash io.Writer, directory, name string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	path := filepath.Join(directory, name)
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(hash, "\x00%s\x00%s\x00", name, info.Mode().String())
+	if info.Mode()&os.ModeSymlink != 0 {
+		target, err := os.Readlink(path)
+		if err != nil {
+			return err
+		}
+		_, err = io.WriteString(hash, target)
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		_, err = fmt.Fprintf(hash, "%d", info.Size())
+		return err
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	_, err = io.Copy(hash, checkoutContextReader{ctx: ctx, reader: file})
+	return err
+}
+
+type checkoutContextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r checkoutContextReader) Read(buffer []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(buffer)
 }
 
 func (s *workspaceSupervisor) observeStatus(ctx context.Context, status Status) Status {

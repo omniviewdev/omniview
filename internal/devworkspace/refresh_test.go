@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/stretchr/testify/require"
 )
 
@@ -69,4 +70,58 @@ func TestRefreshRejectsUnknownDurablePhase(t *testing.T) {
 	require.NoError(t, atomicJSON(path, refreshIntent{WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, Phase: "unknown"}))
 	_, err := m.Refresh(context.Background(), "recovery", RefreshOptions{})
 	require.ErrorContains(t, err, "unknown phase")
+}
+
+func TestRecoverLinksPendingAggregateRestoresAbsence(t *testing.T) {
+	for _, pending := range []bool{true, false} {
+		t.Run(map[bool]string{true: "pending", false: "not-pending"}[pending], func(t *testing.T) {
+			m, w, j := recoveryFixture(t)
+			var entry *linkFile
+			for i := range j.Files {
+				if j.Files[i].Path == "pnpm-lock.yaml" {
+					entry = &j.Files[i]
+				}
+			}
+			require.NotNil(t, entry)
+			require.False(t, entry.OriginalExists)
+			entry.Pending = pending
+			path := filepath.Join(w.Root, entry.Path)
+			changed := []byte("unknown interrupted installer output")
+			require.NoError(t, os.WriteFile(path, changed, 0600))
+			require.NoError(t, saveLinkJournal(j))
+			report, err := m.RecoverLinks(context.Background(), "recovery")
+			key := linkHash([]byte(entry.Path+"\x00"+linkHash(changed, true)), true)
+			raw, readErr := os.ReadFile(filepath.Join(m.Root, ".omniview-dev", "recovery", w.Manifest.WorkspaceID, key+".json"))
+			require.NoError(t, readErr)
+			var backup linkFile
+			require.NoError(t, json.Unmarshal(raw, &backup))
+			require.Equal(t, changed, backup.Original)
+			if !pending {
+				require.ErrorContains(t, err, "requires reconciliation")
+				active, readErr := os.ReadFile(path)
+				require.NoError(t, readErr)
+				require.Equal(t, changed, active)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, "unlinking", report.Phase)
+			require.NoFileExists(t, path)
+			_, err = m.RecoverLinks(context.Background(), "recovery")
+			require.NoError(t, err, "recovery after restoration must be idempotent")
+		})
+	}
+}
+
+func TestPreserveGeneratedEditsReportsDeletedPath(t *testing.T) {
+	w := generatedFixture(t)
+	prepared, err := PrepareGeneratedTree(w, "bin", "generation")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(prepared.Directory, "host"), []byte("output"), 0700))
+	require.NoError(t, RecordGeneratedTree(prepared))
+	require.NoError(t, os.Remove(filepath.Join(prepared.Destination, "host")))
+	err = preserveGeneratedEdits(w, t.TempDir())
+	var failure *devcontract.Error
+	require.ErrorAs(t, err, &failure)
+	require.Equal(t, "generated_conflict", failure.Code)
+	require.ErrorContains(t, err, "bin/host")
 }

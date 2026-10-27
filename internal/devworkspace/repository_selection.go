@@ -2,6 +2,9 @@ package devworkspace
 
 import (
 	"context"
+	"errors"
+	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
@@ -50,10 +53,60 @@ func resolveSelectedCommit(ctx context.Context, common, ref string) (string, err
 			return "", devcontract.Fail(2, "invalid_ref", "remote branch selection is invalid")
 		}
 		tracking := "refs/remotes/" + remote + "/" + branch
-		if _, err = git(ctx, common, "", "fetch", "--no-tags", "--no-recurse-submodules", "--", remote, "+refs/heads/"+branch+":"+tracking); err != nil {
+		if err = fetchSelectedBranch(ctx, common, remote, branch, tracking); err != nil {
 			return "", err
 		}
 		return resolveCommit(ctx, common, tracking)
 	}
 	return resolveCommit(ctx, common, ref)
+}
+
+// fetchSelectedBranch imports only credential helper settings from global
+// configuration. All other Git configuration remains isolated by git().
+func fetchSelectedBranch(ctx context.Context, common, remote, branch, tracking string) error {
+	fetchArgs := []string{"fetch", "--no-tags", "--no-recurse-submodules", "--", remote, "+refs/heads/" + branch + ":" + tracking}
+	remoteURL, err := git(ctx, common, "", "remote", "get-url", remote)
+	if err != nil {
+		return err
+	}
+	if !strings.HasPrefix(strings.ToLower(remoteURL), "https://") && !strings.HasPrefix(strings.ToLower(remoteURL), "http://") {
+		_, err = git(ctx, common, "", fetchArgs...)
+		return err
+	}
+	query := exec.CommandContext(ctx, "git", "-C", common, "config", "--global", "--null", "--includes", "--get-regexp", `^credential(\..*)?\.helper$`)
+	// Global scope excludes local values while retaining gitdir include matching.
+	for _, entry := range os.Environ() {
+		key, _, _ := strings.Cut(entry, "=")
+		if !strings.HasPrefix(key, "GIT_") && key != "GOWORK" {
+			query.Env = append(query.Env, entry)
+		}
+	}
+	query.Env = append(query.Env, "GIT_TERMINAL_PROMPT=0", "GOWORK=off")
+	raw, err := query.Output()
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != 1 {
+			return devcontract.Fail(5, "git_credentials", "cannot read credential helper configuration; repair Git configuration before fetching the selected source")
+		}
+	}
+	args := []string{}
+	for _, record := range strings.Split(string(raw), "\x00") {
+		if record == "" {
+			continue
+		}
+		key, value, ok := strings.Cut(record, "\n")
+		if !ok {
+			return devcontract.Fail(5, "git_credentials", "cannot read credential helper configuration")
+		}
+		args = append(args, "-c", key+"="+value)
+	}
+	args = append(args, fetchArgs...)
+	_, err = git(ctx, common, "", args...)
+	if err != nil && ctx.Err() == nil {
+		return devcontract.Fail(5, "git_failed", "cannot fetch selected source; check remote access and configured Git credential helpers")
+	}
+	return err
 }

@@ -41,7 +41,7 @@ func (m *Manager) VerifySourceReload(ctx context.Context, name, modulePath, mark
 		return evidence, err
 	}
 	client.Close()
-	if err = hostDescriptorReady(descriptor, descriptor); err != nil {
+	if err = sourceReloadHostReady(descriptor, status.Instance); err != nil {
 		return evidence, err
 	}
 	service, ok := status.Services["vite"]
@@ -80,8 +80,16 @@ func (m *Manager) VerifySourceReload(ctx context.Context, name, modulePath, mark
 	if err != nil {
 		return evidence, err
 	}
-	if current.Generation != status.Generation || current.Services["vite"].Process != service.Process {
+	if current.Generation != status.Generation || current.Services["vite"].Process != service.Process ||
+		sourceReloadHostReady(descriptor, current.Instance) != nil {
 		return evidence, devcontract.Fail(4, "stale_target", "workspace frontend changed during source verification; retry against the current generation")
 	}
 	return SourceReloadEvidence{WorkspaceID: status.Manifest.WorkspaceID, Generation: status.Generation, ModulePath: modulePath, SourceMarker: marker, VerifiedAt: time.Now().UTC(), Verification: "source-marker-served (browser execution not asserted)", Checkouts: checkoutStatuses(ctx, status.Workspace)}, nil
+}
+
+func sourceReloadHostReady(connected devcontract.InstanceDescriptor, reported *devcontract.InstanceDescriptor) error {
+	if reported == nil || connected.Process != reported.Process {
+		return devcontract.Fail(4, "stale_target", "connected host differs from the supervisor-reported host")
+	}
+	return hostDescriptorReady(connected, *reported)
 }

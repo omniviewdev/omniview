@@ -77,6 +77,8 @@ A temporarily unavailable diagnostics backend must not turn its own rejected log
 
 Owned browser error artifacts retain at most 500 ordinary distinct records plus explicit overflow, clip messages to 2048 characters and aggregate occurrences/first/last timestamps. Overflow declares incomplete coverage and counts every unretained occurrence; it is not evidence that omitted errors were harmless. Normal settings bootstrap messages remain excluded. Identify failing bindings rather than treating all `/wails/runtime` HTTP 422 responses alike: observed startup marketplace `ListAvailablePlugins` failures are independent of installed local-source loading.
 
+Ready-phase checkout inspection uses a 30-second deadline tied to the supervisor session. Untracked regular files stream into the source digest with cancellation checks; symlinks contribute their link targets, and directories or special files contribute metadata without opening them. A failed inspection keeps served-source health unknown. Live-control reconciliation runs only for `ready`, so missing startup hosts do not overwrite launch progress or `build-error`. A frontend-only success never clears a pending host-replacement failure. Source-marker evidence requires the same authenticated host process before and after the request, alongside the existing workspace generation and Vite process checks.
+
 ## Parent-only live smoke
 
 Prepared script: `internal/devworkspace/testdata/buildgraph-live-smoke.mjs`. It must run only after parent verification and real disposable host/two-plugin launch; it has not been executed as part of source authoring.

@@ -68,7 +68,8 @@ If the current version is already installed with old cask metadata, use
 the binary stanza idempotently. It preserves tap metadata and zap rules, and
 rejects unexpected binary paths, archive URLs, or duplicate stanzas rather
 than publishing an ambiguous cask. `HOMEBREW_TAP_TOKEN` is required for stable
-and nightly cask publication; missing credentials fail the publication step.
+and nightly cask publication. Missing credentials fail before creating a stable
+release or deleting the previous nightly release.
 
 Before either release is published, `homebrew-check.yml` uses native
 Apple Silicon (`macos-15`) and Intel (`macos-15-intel`) runners to:

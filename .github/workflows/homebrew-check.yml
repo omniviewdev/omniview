@@ -27,12 +27,15 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
       - name: Checkout published tap metadata
         uses: actions/checkout@v4
         with:
+          persist-credentials: false
           repository: omniviewdev/homebrew-tap
           path: homebrew-tap
       - uses: actions/download-artifact@v4

@@ -66,16 +66,20 @@ func (m *Manager) RecoverLinks(ctx context.Context, name string) (LinkReport, er
 			if err = atomicOwnedJSON(filepath.Join(backupRoot, key+".json"), receipt, w.Manifest.WorkspaceID); err != nil {
 				return LinkReport{}, err
 			}
-			if !e.OriginalExists || !current.OriginalExists {
+			if !e.OriginalExists && current.OriginalExists && e.Pending {
+				// The synced receipt preserves unattested installer output.
+				// Restore recorded absence; never accept these bytes as installed.
+			} else if !e.OriginalExists || !current.OriginalExists {
 				return LinkReport{}, devcontract.Fail(4, "link_merge_conflict", "edited generated or deleted dependency file requires reconciliation; active bytes and backup retained: "+e.Path)
+			} else {
+				merged, mergeErr := removeOwnedLinkDelta(ctx, e.Original, e.Applied, current.Original)
+				if mergeErr != nil {
+					return LinkReport{}, devcontract.Fail(4, "link_merge_conflict", "user edits overlap the owned dependency overlay; active bytes and backup retained: "+e.Path)
+				}
+				e.Original = merged
+				e.OriginalHash = linkHash(merged, true)
+				e.Mode = current.Mode
 			}
-			merged, mergeErr := removeOwnedLinkDelta(ctx, e.Original, e.Applied, current.Original)
-			if mergeErr != nil {
-				return LinkReport{}, devcontract.Fail(4, "link_merge_conflict", "user edits overlap the owned dependency overlay; active bytes and backup retained: "+e.Path)
-			}
-			e.Original = merged
-			e.OriginalHash = linkHash(merged, true)
-			e.Mode = current.Mode
 		}
 		e.Applied = current.Original
 		e.AppliedHash = current.OriginalHash

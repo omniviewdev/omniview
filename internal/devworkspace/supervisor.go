@@ -384,7 +384,13 @@ func (s *workspaceSupervisor) persist() {
 func (s *workspaceSupervisor) setPhase(phase string, err error) {
 	var served map[string]CheckoutStatus
 	if phase == "ready" {
-		served = checkoutStatuses(context.Background(), s.workspace)
+		parent := s.sessionContext
+		if parent == nil {
+			parent = context.Background()
+		}
+		ctx, cancel := context.WithTimeout(parent, 30*time.Second)
+		served = checkoutStatuses(ctx, s.workspace)
+		cancel()
 	}
 	s.mu.Lock()
 	if err != nil {
@@ -415,7 +421,7 @@ func (s *workspaceSupervisor) failed(err error) { s.setPhase("error", err) }
 func (s *workspaceSupervisor) execute(ctx context.Context, command string) (Status, error) {
 	if command == "status" {
 		status := s.snapshot()
-		if status.Phase != "stopped" && status.Phase != "error" {
+		if status.Phase == "ready" {
 			client, descriptor, err := ConnectWorkspaceControl(ctx, s.workspace, s.manager.options.Home, s.generation)
 			if err != nil {
 				status.Phase = "unreachable"

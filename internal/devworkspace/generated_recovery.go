@@ -24,6 +24,9 @@ func preserveGeneratedEdits(w Workspace, backupRoot string) error {
 			return err
 		}
 		current, err := inspectGenerated(actual)
+		if os.IsNotExist(err) {
+			return devcontract.Fail(4, "generated_conflict", "recorded generated path was deleted: "+relative)
+		}
 		if err != nil {
 			return err
 		}
