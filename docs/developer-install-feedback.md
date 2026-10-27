@@ -11,6 +11,12 @@
 
 Reuse the runtime snackbar and host toast architecture. Error toasts expose **Details** first; opening Details reveals a nonmodal Notifications panel with selectable, whitespace-preserving diagnostics, Copy details and all supplied actions. The existing footer Notifications bell reopens recent errors after toast dismissal and shows their count; there is no second floating entry point. Panel controls use base-ui buttons. Keep the newest 20 errors in memory for the application session, including their title, detail, timestamp and recovery actions. Clear removes retained diagnostics. Restart drops history. Do not write arbitrary compiler output or local paths to browser storage: output may contain secrets. Copy details is an explicit user sharing action.
 
+### Notification center design audit
+
+The original panel mixed browser-default headings and disclosure rows with base-ui buttons, used a foreground-colored border, and placed timestamps and large diagnostic blocks in the primary scan line. The notification center now uses base-ui `Card` with the overlay surface, `Toolbar`, `Text`, `IconButton`, `Button`, `Code`, and `EmptyState`. Base-ui owns typography, control density, focus treatment, borders, and elevation. Runtime-owned layout styles ship with JavaScript; consumers do not need a separate stylesheet.
+
+The compact, bottom-right panel shows newest errors first, with severity icons, truncated message summaries, expand/collapse controls, and individual dismissal. Expanding a message reveals its timestamp, selectable wrapped diagnostics, copy action, and recovery actions. The list and diagnostics scroll independently within viewport bounds. The opaque overlay remains readable above active toasts in dark and light themes. Escape closes the panel and restores focus to its opener. Closing retains history; dismissing removes only that error; clearing removes all errors.
+
 Developer-install errors include the selected source, plugin ID when known and available backend build output. Early metadata/path failures use the same notification history without requiring a plugin record. Build output remains available through the existing devtools output viewer for known plugins. Retry installation opens the existing source picker, avoiding assumptions about a missing plugin record. No automatic retries or modal interruption.
 
 Startup failures carry a bounded log snapshot through cleanup so a removed
