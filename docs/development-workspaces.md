@@ -23,6 +23,12 @@ The pnpm12 workspace policy retains 24-hour release-age protection (`minimumRele
 
 Choose source refs that satisfy the actual peer contracts: compare the host's `packages/omniviewdev-runtime/package.json` with the selected UI's `packages/base-ui/package.json`. A checkout can lag an existing compatible release tag. Select compatible released source while preserving feature changes; do not invent a package version or weaken peer validation to make an older source pass.
 
+Runtime UI preflight checks the host, selected plugin frontends, and linked shared
+packages. Other discovered workspace packages, such as standalone comparison or
+benchmark apps, retain their own dependencies; their private UI libraries do not
+become host-shared dependencies. Selected runtime consumers must still migrate
+legacy UI, MUI, and Emotion dependencies to the supported base-ui contract.
+
 The generated package root is `$COLLECTION/workspaces/<feature>`, above its host/UI/plugin worktrees. Managed native12 commands keep the actual consumer cwd/argv while enforcing this root through `PNPM_CONFIG_WORKSPACE_DIR`. Source configs/lockfiles remain standalone; compatible policies and locked registry resolutions are reconciled explicitly, and conflicts refuse mutation. Do not hand-edit generated root files or run independent plugin installs inside a managed feature.
 
 The host workspace includes its packages and E2E tooling; host TypeScript projects own `ui/` and `packages/`, not plugin repositories under `plugins/`. Each plugin's own project owns its dependencies, aliases and tests. Managed features add only explicitly selected plugin repositories; initializing an unselected submodule must not change host compilation or dependency resolution.

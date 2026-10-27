@@ -68,6 +68,58 @@ func TestCompatibilityPreflightRequiresSDK(t *testing.T) {
 	}
 }
 
+func TestRuntimeUIContractsIgnoreToolingButRejectRuntimeLegacyDependencies(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		consumer   string
+		section    string
+		dependency string
+		reject     bool
+	}{
+		{"comparison app", "ui/apps/comparison", "devDependencies", "@emotion/react", false},
+		{"host", "host", "dependencies", "@omniviewdev/ui", true},
+		{"shared package", "ui/packages/base-ui", "peerDependencies", "@emotion/react", true},
+		{"selected plugin", "plugin/ui", "devDependencies", "@mui/material", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			w := Workspace{ResolvedWorkspace: devcontract.ResolvedWorkspace{
+				Root: root,
+				Manifest: devcontract.WorkspaceManifest{
+					Repositories: []devcontract.Repository{
+						{ID: "omniview", Directory: "host"},
+						{ID: "ui", Directory: "ui"},
+						{ID: "plugin", Directory: "plugin"},
+					},
+					Plugins: []devcontract.Plugin{{ID: "plugin", RepositoryID: "plugin", Mode: "managed"}},
+				},
+			}}
+			targets := map[string]string{"@omniviewdev/base-ui": filepath.Join(root, "ui/packages/base-ui")}
+			var plan linkPlan
+			for _, path := range []string{"host", "ui/packages/base-ui", "plugin/ui", "ui/apps/comparison"} {
+				data := `{"name":"fixture","dependencies":{}}`
+				if path == test.consumer {
+					data = `{"name":"fixture","` + test.section + `":{"` + test.dependency + `":"1.0.0"}}`
+				}
+				directory := filepath.Join(root, path)
+				writeGraphFixture(t, filepath.Join(directory, "package.json"), data)
+				plan.Consumers = append(plan.Consumers, linkConsumer{Path: directory, Targets: targets})
+			}
+			err := validateRuntimeUIContracts(w, plan)
+			if !test.reject {
+				if err != nil {
+					t.Fatalf("tool-only dependency blocked runtime admission: %v", err)
+				}
+				return
+			}
+			var failure *devcontract.Error
+			if !errors.As(err, &failure) || failure.Code != "ui_contract_mismatch" {
+				t.Fatalf("runtime legacy dependency escaped preflight: %v", err)
+			}
+		})
+	}
+}
+
 func TestHashUntrackedPathDoesNotFollowSymlinks(t *testing.T) {
 	root := t.TempDir()
 	link := filepath.Join(root, "link")
