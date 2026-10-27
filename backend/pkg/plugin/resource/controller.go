@@ -294,7 +294,8 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 		c.pluginsMu.Lock()
 		owned := c.plugins[pluginID] == state
 		if owned {
-			delete(c.plugins, pluginID)
+			// Retain generation ownership until all of its state is retired.
+			state.provider = nil
 		}
 		c.pluginsMu.Unlock()
 		if !owned {
@@ -308,6 +309,9 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 		c.clearAutoConnectAttempts(pluginID)
 		c.subs.RemoveAll(pluginID)
 		c.cleanupPluginGraphState(pluginID, conns)
+		c.pluginsMu.Lock()
+		delete(c.plugins, pluginID)
+		c.pluginsMu.Unlock()
 	}()
 	c.clearAutoConnectAttempts(pluginID)
 
@@ -409,7 +413,10 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	// Cancel watch goroutines.
 	c.pluginsMu.Lock()
 	stopped := c.plugins[pluginID]
-	delete(c.plugins, pluginID)
+	// Make calls unavailable now; release ownership only after retirement.
+	if stopped != nil {
+		stopped.provider = nil
+	}
 	c.pluginsMu.Unlock()
 	if stopped != nil {
 		stopped.watchCancel()
@@ -428,6 +435,9 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	c.subs.RemoveAll(pluginID)
 
 	c.cleanupPluginGraphState(pluginID, pluginConns)
+	c.pluginsMu.Lock()
+	delete(c.plugins, pluginID)
+	c.pluginsMu.Unlock()
 
 	return nil
 }

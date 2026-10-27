@@ -3,6 +3,7 @@ package resource
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -179,12 +180,11 @@ func TestWatchStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
 	oldBackend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": oldProvider})
 	go func() { oldDone <- ctrl.OnPluginStart("proof", defaultMeta(), oldBackend) }()
 	<-store.entered
-	// This probe only schedules the old unsafe interleaving. Acceptance below
-	// checks real replacement consumers, never the private lock itself.
-	retirementFenced := !ctrl.lifecycleMu.TryLock()
-	if !retirementFenced {
-		ctrl.lifecycleMu.Unlock()
-	}
+	// Ownership stays visible through retirement, while actual provider calls
+	// are unavailable. This existing consumer API also schedules the old gap.
+	retiring, err := ctrl.ListPlugins(testInvocationContext())
+	require.NoError(t, err)
+	retirementFenced := slices.Contains(retiring, "proof")
 
 	meta := resource.ResourceMeta{Group: "proof", Version: "v1", Kind: "Replacement"}
 	replacement := resourcetest.NewTestProvider(t,
