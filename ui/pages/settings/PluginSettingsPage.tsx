@@ -66,13 +66,24 @@ const PluginSettingsPage: React.FC<Props> = ({ id }) => {
       const results = await Promise.all(entries.map(async ([key, value]) => (
         [key, await SettingsClient.ValidateSetting(id, settingID(key), value)] as const
       )));
-      if (revision.current !== current) return;
+      if (revision.current !== current) {
+        return;
+      }
+
       setValidation(Object.fromEntries(results));
-      if (results.some(([, result]) => !result.valid)) return;
+      if (results.some(([, result]) => !result.valid)) {
+        return;
+      }
+
       await setSettings(values);
-      if (revision.current === current) clearDraftValues();
+      if (revision.current === current) {
+        clearDraftValues();
+      }
     } catch {
-      if (revision.current !== current) return;
+      if (revision.current !== current) {
+        return;
+      }
+
       setValidation(previous => ({
         ...previous,
         ...Object.fromEntries(entries.map(([key]) => [key, { valid: false, message: 'Could not save. Ensure the plugin is running and check the value before retrying.' }])),

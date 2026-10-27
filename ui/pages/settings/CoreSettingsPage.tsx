@@ -82,16 +82,26 @@ const CoreSettingsPage: React.FC<Props> = ({ id: categoryID }) => {
       const results = await Promise.all(Object.entries(values).map(async ([id, value]) => (
         [id, await SettingsProvider.ValidateSetting(id, value)] as const
       )));
-      if (revision.current !== current) return;
+      if (revision.current !== current) {
+        return;
+      }
+
       setValidation(Object.fromEntries(results));
       if (results.some(([, result]) => !result.valid)) {
         return;
       }
+
       await setSettings(values);
-      if (revision.current === current) clearDraftValues();
+      if (revision.current === current) {
+        clearDraftValues();
+      }
+
       reload();
     } catch {
-      if (revision.current !== current) return;
+      if (revision.current !== current) {
+        return;
+      }
+
       // Keep drafts on validation transport or persistence failure.
       setValidation(previous => ({
         ...previous,
