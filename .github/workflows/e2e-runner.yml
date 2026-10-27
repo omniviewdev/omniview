@@ -14,11 +14,18 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   application:
     if: ${{ !inputs.cache-only || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1
+      options: --init
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     # Safety watchdog only; both runner modes keep the inclusive 600-second clock.
     timeout-minutes: 15
     defaults:
@@ -33,6 +40,7 @@ jobs:
       REVIEWED_SDK_REVISION: ${{ vars.OMNIVIEW_E2E_REVIEWED_SDK_REVISION }}
       UI_SOURCE_REF: ${{ vars.OMNIVIEW_E2E_UI_REF }}
       CACHE_ONLY: ${{ inputs.cache-only && 'true' || 'false' }}
+      OMNIVIEW_E2E_PREINSTALLED_LINUX: "true"
       SELECTION_BASE: ${{ inputs.base }}
     steps:
       - name: Checkout host implementation
@@ -73,6 +81,17 @@ jobs:
       - name: Verify SDK checkout matches reviewed pin
         run: test "$(git -C "$GITHUB_WORKSPACE/plugin-sdk" rev-parse HEAD)" = "$REVIEWED_SDK_REVISION"
 
+      - name: Resolve container source and native payload paths
+        # Shell paths use the container mounts, unlike host-side workflow contexts.
+        # Resolve paths only: an exact cache-only hit must not initialize ownership.
+        run: |
+          {
+            echo "SDK_SOURCE=$GITHUB_WORKSPACE/plugin-sdk"
+            echo "UI_SOURCE=$GITHUB_WORKSPACE/ui"
+            echo "KUBERNETES_SOURCE=$GITHUB_WORKSPACE/host/plugins/kubernetes"
+            echo "OMNIVIEW_E2E_TOOL_CACHE_ROOT=$(realpath -e "$RUNNER_TEMP")/omniview-e2e-native-private-v1/omniview-e2e-native-tool-cache-v1"
+          } >> "$GITHUB_ENV"
+
       - name: Start inclusive preparation clock
         run: echo "OMNIVIEW_E2E_PREPARATION_STARTED_AT=$(date +%s%3N)" >> "$GITHUB_ENV"
 
@@ -82,14 +101,10 @@ jobs:
           node-version: "24.14.0"
 
       - name: Selector and cache-mode boundary contracts
-        run: node --test e2e/scripts/*.test.mjs scripts/verify-apt-archives.test.mjs
+        run: node --test e2e/scripts/*.test.mjs
 
       - name: Select conservative application impact
         id: selection
-        env:
-          SDK_SOURCE: ${{ github.workspace }}/plugin-sdk
-          UI_SOURCE: ${{ github.workspace }}/ui
-          KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
         run: |
           if [[ "$CACHE_ONLY" == true ]]; then
             echo "kind=cache-only" >> "$GITHUB_OUTPUT"
@@ -131,7 +146,7 @@ jobs:
         if: inputs.cache-only
         uses: actions/cache/restore@v4
         with:
-          path: ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1/pnpm-store/12.14.0
+          path: ${{ env.OMNIVIEW_E2E_TOOL_CACHE_ROOT }}/pnpm-store/12.14.0
           key: ${{ steps.cache-keys.outputs.pnpm }}
           lookup-only: true
 
@@ -141,8 +156,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: |
-            ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1/go-mod
-            ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1/bootstrap-go-build
+            ${{ env.OMNIVIEW_E2E_TOOL_CACHE_ROOT }}/go-mod
+            ${{ env.OMNIVIEW_E2E_TOOL_CACHE_ROOT }}/bootstrap-go-build
           key: ${{ steps.cache-keys.outputs.go }}
           lookup-only: true
 
@@ -151,7 +166,7 @@ jobs:
         if: inputs.cache-only
         uses: actions/cache/restore@v4
         with:
-          path: ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1/playwright-browsers
+          path: ${{ env.OMNIVIEW_E2E_TOOL_CACHE_ROOT }}/playwright-browsers
           key: ${{ steps.cache-keys.outputs.browser }}
           lookup-only: true
 
@@ -173,25 +188,6 @@ jobs:
         if: inputs.cache-only && steps.preparation.outputs.required == 'false'
         run: echo "All three exact main-scope native payloads already exist; no install, compile, browser tests or application acceptance was performed."
 
-      - name: Prepare Linux package archive cache
-        id: linux-packages
-        if: steps.preparation.outputs.required == 'true' && steps.selection.outputs.requires_application != 'false'
-        run: |
-          directory=/tmp/omniview-e2e-apt
-          mkdir -m 0755 "$directory"
-          sudo install -d -m 0700 -o _apt -g root "$directory/partial"
-          echo "directory=$directory" >> "$GITHUB_OUTPUT"
-          sudo apt-get update
-          echo "indexes=$(sha256sum /var/lib/apt/lists/*_InRelease | sha256sum | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
-
-      - name: Restore Linux package archives
-        id: linux-package-cache
-        if: steps.preparation.outputs.required == 'true' && steps.selection.outputs.requires_application != 'false'
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ steps.linux-packages.outputs.directory }}/*.deb
-          key: ${{ runner.os }}-${{ runner.arch }}-ubuntu24-e2e-apt-v1-${{ hashFiles('host/.github/workflows/e2e-runner.yml', 'host/e2e/scripts/browser-dependencies.mjs', 'host/e2e/package.json', 'host/pnpm-lock.yaml') }}-${{ steps.linux-packages.outputs.indexes }}
-
       - name: Setup pinned pnpm
         if: steps.preparation.outputs.required == 'true'
         uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
@@ -202,14 +198,14 @@ jobs:
 
       - name: Initialize private native-tool cache container
         if: steps.preparation.outputs.required == 'true'
-        env:
-          OMNIVIEW_E2E_TOOL_CACHE_ROOT: ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1
-          SDK_SOURCE: ${{ github.workspace }}/plugin-sdk
-          UI_SOURCE: ${{ github.workspace }}/ui
-          KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
-        # Keep native payload paths stable for Actions cache-version reuse.
-        # Create fresh v2 ownership; restore payloads only, never the owner.
-        run: node e2e/scripts/run.mjs --init-tool-cache
+        # The mounted runner temp directory belongs to the host runner, not root.
+        # Create a fresh private parent as the container user; never adopt, chown
+        # or chmod existing runner directories. Keep this path stable across jobs
+        # so lookup, restore and save share the same Actions cache version.
+        # Restore payloads only, never the cache owner.
+        run: |
+          mkdir -m 700 -- "$(dirname "$OMNIVIEW_E2E_TOOL_CACHE_ROOT")"
+          node e2e/scripts/run.mjs --init-tool-cache
 
       - name: Restore standalone native pnpm content store
         id: pnpm-cache
@@ -255,11 +251,7 @@ jobs:
         id: canonical
         if: steps.preparation.outputs.required == 'true'
         env:
-          SDK_SOURCE: ${{ github.workspace }}/plugin-sdk
-          UI_SOURCE: ${{ github.workspace }}/ui
-          KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
           SELECTION: ${{ steps.selection.outputs.kind }}
-          OMNIVIEW_E2E_APT_ARCHIVES_DIRECTORY: ${{ steps.linux-packages.outputs.directory }}
         run: |
           if [[ "$CACHE_ONLY" == true ]]; then
             node e2e/scripts/run.mjs --cache-only
@@ -268,13 +260,6 @@ jobs:
           else
             node e2e/scripts/run.mjs --full --base "$SELECTION_BASE"
           fi
-
-      - name: Save validated Linux package archives
-        if: ${{ !cancelled() && steps.canonical.outputs.linux_dependencies_prepared == 'true' && steps.linux-package-cache.outputs.cache-hit != 'true' && (!inputs.cache-only || steps.canonical.outcome == 'success') }}
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ steps.linux-packages.outputs.directory }}/*.deb
-          key: ${{ steps.linux-package-cache.outputs.cache-primary-key }}
 
       - name: Save pinned Chromium payload independently of application assertions
         if: ${{ !cancelled() && steps.canonical.outputs.browser_prepared == 'true' && steps.browser-cache.outputs.cache-hit != 'true' && (!inputs.cache-only || steps.canonical.outcome == 'success') }}

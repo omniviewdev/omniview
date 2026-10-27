@@ -8,6 +8,10 @@ concurrency:
   group: pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  packages: read
+
 env:
   NODE_OPTIONS: "--max-old-space-size=4096"
   GO_VERSION: "1.26"
@@ -47,6 +51,7 @@ jobs:
             build-tags: "production"
             extra-ldflags: ""
           - os: ubuntu-24.04
+            container: ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1
             platform: linux/amd64
             artifact-name: pr-build-linux
             build-tags: "production"
@@ -57,10 +62,22 @@ jobs:
             build-tags: "production"
             extra-ldflags: "-H windowsgui"
     runs-on: ${{ matrix.os }}
+    container:
+      image: ${{ matrix.container || '' }}
+      options: --init
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     timeout-minutes: 30
     env:
       GOWORK: "off"
     steps:
+      # Container Git must own the mount after checkout's temporary HOME expires.
+      - name: Match checkout directory ownership to container user
+        if: runner.os == 'Linux'
+        shell: bash
+        run: chown "$(id -u):$(id -g)" "$PWD"
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -70,35 +87,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-
-      - name: Prepare Linux package archive cache
-        id: linux-packages
-        if: runner.os == 'Linux'
-        run: |
-          directory=/tmp/omniview-e2e-apt
-          mkdir -m 0755 "$directory"
-          echo "directory=$directory" >> "$GITHUB_OUTPUT"
-          sudo apt-get update
-          echo "indexes=$(sha256sum /var/lib/apt/lists/*_InRelease | sha256sum | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
-
-      - name: Restore Linux package archives
-        id: linux-package-cache
-        if: runner.os == 'Linux'
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ steps.linux-packages.outputs.directory }}/*.deb
-          key: ${{ runner.os }}-${{ runner.arch }}-ubuntu24-e2e-apt-v1-${{ hashFiles('.github/workflows/e2e-runner.yml', 'e2e/scripts/browser-dependencies.mjs', 'e2e/package.json', 'pnpm-lock.yaml') }}-${{ steps.linux-packages.outputs.indexes }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-ubuntu24-e2e-apt-v1-${{ hashFiles('.github/workflows/e2e-runner.yml', 'e2e/scripts/browser-dependencies.mjs', 'e2e/package.json', 'pnpm-lock.yaml') }}-
-
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        env:
-          APT_ARCHIVES_DIRECTORY: ${{ steps.linux-packages.outputs.directory }}
-        run: |
-          node scripts/verify-apt-archives.mjs "$APT_ARCHIVES_DIRECTORY" --prepare
-          sudo install -d -m 0700 -o _apt -g root "$APT_ARCHIVES_DIRECTORY/partial"
-          sudo apt-get -o "Dir::Cache::archives=$APT_ARCHIVES_DIRECTORY" install -y --no-install-recommends libgtk-4-dev libwebkitgtk-6.0-dev libwayland-dev build-essential pkg-config
 
       - name: Setup pnpm
         uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0

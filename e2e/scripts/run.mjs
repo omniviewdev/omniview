@@ -164,7 +164,7 @@ async function main() {
   started = preparationStarted(processStarted, process.env.OMNIVIEW_E2E_PREPARATION_STARTED_AT);
   if (started < processStarted) phases.push({ name: 'workflow-preparation', elapsedMs: processStarted - started });
   // A single invocation owns ALL preparation and browser work. No retry loop,
-  // setup job, prebuilt host, force-peer override, or fabricated link evidence.
+  // setup job, forced peers, or fabricated link evidence.
   assertStandaloneBootstrap(root);
   const sources = {};
   const refs = {};
@@ -211,8 +211,7 @@ async function main() {
     env.SDK_SOURCE = sources['plugin-sdk'];
   }
   if (process.platform === 'linux') {
-    linuxDependencies = phase('linux-dependency-install', () => prepareLinuxDependencies({ execute, playwrightCLI: playwrightCLI(), archiveDirectory: process.env.OMNIVIEW_E2E_APT_ARCHIVES_DIRECTORY, native: needsApplication }));
-    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, 'linux_dependencies_prepared=true\n');
+    linuxDependencies = phase('linux-dependencies', () => prepareLinuxDependencies({ execute, playwrightCLI: playwrightCLI(), preinstalled: process.env.OMNIVIEW_E2E_PREINSTALLED_LINUX === 'true', native: needsApplication }));
   }
   phase('browser-install', () => execute(process.execPath, [playwrightCLI(), 'install', 'chromium'], { cwd: join(root, 'e2e') }));
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, 'browser_prepared=true\n');

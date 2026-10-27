@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 # Separate from PR validation; do not interrupt canonical retirement when a new
 # merge arrives. Only trusted main pushes can populate the shared main scope.

@@ -341,12 +341,12 @@ matches before verification starts. Standalone and workspace defaults remain
 unchanged; an explicit cache override must be nonempty and absolute.
 
 Linux development headers remain required by the pinned Wails transitive cgo
-dependencies even for server builds. CI caches only their downloaded `.deb`
-archives, keyed by platform, recipe and fresh APT index contents. Before
-privileged installation, `scripts/verify-apt-archives.mjs` checks package identity,
-size and streamed SHA-256 against those authenticated indexes. Native APT
-installation still runs. Successful package installation publishes this payload
-cache before browser execution; it does not certify application acceptance.
+dependencies even for server builds. Linux native CI jobs use the prebuilt
+`ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1` container, refreshed weekly by
+`ci-image.yml`. E2E verifies the image's native and Chromium OS dependencies
+without running APT. Browser binaries retain their exact-version payload cache.
+See [native toolchain maintenance](development-native-toolchain.md#ci-image-maintenance-and-runner-choice)
+for image updates, bootstrap requirements and runner security tradeoffs.
 
 The host React compiler processes owned source, including runtime and benchmark
 sources, rather than reprocessing built dependency/distribution bundles. Actual

@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   id-token: write
+  packages: read
 
 concurrency:
   group: nightly
@@ -218,20 +219,26 @@ jobs:
   # Linux (linux/amd64)
   # ─────────────────────────────────────────────────────────────────────────────
   build-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1
+      options: --init
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
     needs: check-changes
     if: needs.check-changes.outputs.should_build == 'true'
     steps:
+      - name: Match checkout directory ownership to container user
+        run: chown "$(id -u):$(id -g)" "$PWD"
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      # awalsh128/cache-apt-pkgs-action@latest restores an empty package set here, so install directly.
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libgtk-4-dev libwebkitgtk-6.0-dev libwayland-dev build-essential pkg-config
 
       - name: Setup Node
         uses: actions/setup-node@v4
