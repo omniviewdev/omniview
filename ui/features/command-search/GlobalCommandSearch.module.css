@@ -4,25 +4,36 @@
   overscroll-behavior: contain;
 }
 
-.Row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: var(--ov-space-1) var(--ov-space-3);
-  min-inline-size: 0;
+
+.SourceDetails {
+  margin-block-start: var(--ov-space-2);
+  color: var(--ov-color-fg-muted);
+  font-size: var(--ov-font-size-caption);
 }
 
-.Row > :nth-child(n + 3) {
-  grid-column: 1 / -1;
-}
-
-.Kind {
-  color: var(--ov-color-fg-subtle);
-  font-size: var(--ov-font-size-xs, 11px);
+.SourceDetails summary {
+  cursor: pointer;
+  padding-block: var(--ov-space-1);
 }
 
 .Sources {
-  margin-block: var(--ov-space-3) 0;
+  margin-block: var(--ov-space-2) 0;
   padding-inline-start: var(--ov-space-4);
+  max-block-size: 8rem;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
+.KeyboardHints,
+.KeyboardHints > span {
+  display: flex;
+  align-items: center;
+  gap: var(--ov-space-1);
+}
+
+.KeyboardHints {
+  flex-wrap: wrap;
+  gap: var(--ov-space-4);
   color: var(--ov-color-fg-muted);
-  font-size: var(--ov-font-size-xs, 11px);
+  font-size: var(--ov-font-size-caption);
 }

@@ -52,7 +52,7 @@
 
 .SearchArea {
   composes: Area;
-  flex: 0 1 500px;
+  flex: 0 1 560px;
   min-inline-size: 0;
   justify-content: center;
   padding-inline: var(--ov-space-1);
@@ -62,33 +62,6 @@
   composes: NoDrag;
   inline-size: 100%;
   min-inline-size: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--ov-space-2);
-  padding: var(--ov-space-2) var(--ov-space-3);
-  border: 1px solid var(--ov-color-border-default);
-  border-radius: var(--ov-radius-sm, 4px);
-  background: var(--ov-color-bg-surface);
-  color: var(--ov-color-fg-muted);
-  font: inherit;
-  text-align: start;
-  cursor: pointer;
-}
-
-.Search > span {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.Search:focus-visible {
-  outline: 2px solid var(--ov-color-accent-strong);
-  outline-offset: 2px;
-}
-
-.SearchIcon {
-  color: var(--ov-color-accent-strong);
 }
 
 .InstanceControl {

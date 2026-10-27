@@ -159,3 +159,23 @@ The selected private host/plugin/UI workspace exercised the actual application e
 An independent `vercel-react-best-practices` and code-organization review approved the settled source with no Critical/Important findings. The lifecycle hook, dialog presentation and shared settings definitions have separate module boundaries; catalogue registration compares ordered semantic inputs without render-time ref reads, serialization keys or lint suppression.
 
 The browser-specific focus regression remains in the sole application suite at `e2e/tests/layout/app-shell.spec.ts`; IME and lifecycle semantics remain in focused unit tests. Native provider-denial injection does not certify a new authorization policy. These results do not accept P43, production CEL/numeric/schema/query contracts or the remaining native-editor gates. PR checks, application-suite execution and merge acceptance remain separate publication gates.
+
+## 10. Post-PR139 local UX revision — approved for publication
+
+This follow-up supersedes the substring-only, static-first display allocation and open-only shortcut rules above. The original PR139 receipt remains historical evidence, not acceptance of these changes.
+
+Human approval followed inspection of the running development instance on October 26, 2026. The final dialog title and accessible search labels are **Search Omniview**; the header placeholder remains **Search anything…**.
+
+- Static entries use weighted label, keyword and description matching, including token abbreviations, subsequences and conservative one-edit word corrections. Exact labels rank above weaker matches. Matching still examines at most 1,000 admitted candidates; setting values remain excluded.
+- The 100-row display budget is allocated round-robin across the static list and admitted provider lists, redistributing unused slots. Static entries retain local relevance order; each provider retains its own order. The presentation groups rows by kind, preserving order within each kind. Provider labels are never locally filtered or scored.
+- Local results update immediately on query edits. External searches wait for a 150 ms pause; stale work is aborted immediately. Open and lifecycle refreshes search without this typing delay. Cancellation clears debounce timers and retains all existing registration, epoch and execution fences.
+- Exact Ctrl+K or Meta+K toggles the palette. Shift, Alt, combined Ctrl+Meta, key repeats, IME and already-consumed events are ignored. Foreign dialogs and menus retain shortcut ownership.
+- The header uses base-ui `SearchTrigger` with the exact Input shell styles, short search copy and a platform-specific Hotkey hint. Host CSS controls layout only, not appearance. `CommandList.ItemContent`, `ItemMeta` and `ItemDisabledReason` own the compact row layout: icon/title centers align, breadcrumb trails the title, description occupies one ellipsized second line, and disabled reasons wrap visibly. Independent hover highlighting is removed; actual pointer movement transfers the single active selection from keyboard navigation.
+
+Local human inspection is required before commits or PR creation. After approval, publication includes focused checks, independent review, required CI, dependency-ordered releases, merge verification and actual release verification. Release the additive base-ui API first, then update the host's declared UI dependency to that published version before its standalone checks and merge. No SDK release is required by these presentation changes.
+
+### Next platform slices
+
+The command extension must resolve data-only action references through the existing extension registry and registered host adapters. Resource actions already have `GetActions`/`ExecuteAction` and execution-time admission in `backend/pkg/plugin/resource/controller.go`; do not add a privileged callback bus. Freeze argument validation, confirmation, lifecycle and authority rules before widening the palette's closed command union.
+
+Resource search remains P43 over P35's authoritative multi-provider query service. Shared result controls and legacy client-side multi-List search are not that service. Scope chips, resource metadata, contextual actions and multistep selection must consume the real action/query contracts rather than inventing a partial client resource engine. Recents, caching and personalization remain separate follow-ups.

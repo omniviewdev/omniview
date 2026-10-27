@@ -74,7 +74,7 @@ test.describe('App Shell', () => {
   });
 
   test('global search keeps keyboard focus inside its dialog and restores its opener', async ({ appPage }) => {
-    const name = 'Search commands, settings and navigation';
+    const name = 'Search Omniview';
     const opener = appPage.getByRole('button', { name, exact: true });
     await opener.focus();
     await appPage.keyboard.press('ControlOrMeta+k');
