@@ -366,11 +366,12 @@ func completePublication(ctx context.Context, s scope, j *journal, key string) e
 		case recordPublication:
 			p.setState(operation.published())
 		case retirePublication:
-			// Retire only exact known before-images, never broad deletion.
+			// This immediate inspection already admitted the whole backup.
+			// No checkpoint or mutation separates admission from leaf rehashes.
 			backupSpec := entry.Spec
 			backupSpec.Target = p.Backup
 			if len(inspection.backup) > 0 {
-				if err = removeSnapshot(backupSpec, p.Before); err != nil {
+				if err = removeSnapshotLeaves(backupSpec, p.Before); err != nil {
 					return err
 				}
 			}

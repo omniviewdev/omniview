@@ -104,7 +104,9 @@ func inspectPublication(ctx context.Context, entry *outputEntry) (publicationIns
 	removed := state.operation() == removeOutput
 	if sameSnapshot(inspection.current, p.After) || removed && len(inspection.current) == 0 {
 		inspection.action = retirePublication
-		if state != state.operation().published() {
+		// A removal publishes no stage: its durable intent/rename already
+		// permits exact retirement, including recovery of partial cleanup.
+		if !removed && state != state.operation().published() {
 			inspection.action = recordPublication
 		}
 		return inspection, validateRetiredStage(entry)
