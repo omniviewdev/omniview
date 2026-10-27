@@ -12,6 +12,18 @@ enum Entity {
   PLUGINS = 'plugins',
 }
 
+function localInstallDiagnosticMessage(error: unknown): string {
+  if (typeof error === 'string') {
+    return error;
+  }
+
+  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+    return error.message;
+  }
+
+  return '';
+}
+
 /**
  * Interact with the plugin manager to get, list, install, uninstall, and update plugins.
  */
@@ -125,10 +137,7 @@ export const usePluginManager = () => {
 
       // This explicit local developer operation may expose bridge diagnostics.
       // Keep global resource-error sanitization unchanged.
-      const bridgeMessage: string = error instanceof Error ? String(error.message)
-        : typeof error === 'string' ? error
-          : error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
-            ? String(error.message) : '';
+      const bridgeMessage = localInstallDiagnosticMessage(error);
       const diagnostic = appErr.detail === 'The operation could not be completed.' && bridgeMessage
         ? `${bridgeMessage.slice(0, 3800)}${bridgeMessage.length > 3800 ? '\n[Diagnostic truncated.]' : ''}`
         : appErr.detail;
