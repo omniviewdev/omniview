@@ -57,6 +57,36 @@ fail-closed final gate. Darwin boundary/smoke checks do not establish Linux APT
 behavior: retain actual Ubuntu cold-populate, warm-skip and subsequent-PR restore
 evidence separately from application case/drain/canonical-cleanup receipts.
 
+## Backend native prerequisite archives
+
+`PR Checks / Go checks` uses Ubuntu24.04, matching the existing E2E archive
+producer and `/tmp/omniview-e2e-apt/*.deb` physical payload path. Bindings, UI and
+the production platform matrix are unchanged. A fresh authenticated index update
+precedes lookup. The exact key includes OS/architecture, the producer's existing
+recipe inputs and current signed-index digest; its sole fallback keeps the same
+OS/architecture/recipe prefix across index-only rotations. Existing Actions cache
+scope visibility is unchanged; this backend consumer publishes no archives.
+
+The backend's opt-in `verify-apt-archives.mjs DIRECTORY --prepare` runs before
+creating APT's partial directory. It requires a canonical, current-UID-owned,
+non-public-writable, archive-only candidate and examines the **entire** bundle.
+Every indexed payload must still match authenticated package/version/architecture,
+size and SHA256. Only an absent version of a known package/architecture can retain
+the whole candidate in a private sibling and create a fresh empty active
+directory; none of those candidate bytes or ownership metadata is accepted.
+Unknown entries/packages/architectures, symlinks, malformed metadata and indexed
+tampering remain fatal. Nothing is deleted or repaired. The strict default
+verifier never performs this preparation.
+
+APT then owns a freshly created partial directory and performs the unchanged real
+native installation once. Existing E2E archive publication and trusted-main's
+three-native-key-hit skip are unchanged: an actual package-version change can
+require cold fetching until the next genuine producer, and not every index
+rotation triggers main population. A lookup hit alone proves no runtime reuse.
+Darwin filesystem/metadata fixtures and workflow lint are not Ubuntu proof;
+retain actual matched cache identity/bytes, verification count, APT download and
+installation timing, and successful native build/vet/test evidence separately.
+
 
 ## Declared npm Call settlement patch
 

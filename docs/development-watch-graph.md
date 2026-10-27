@@ -37,6 +37,8 @@ Before the first Vite child launch, merge `graph.ViteEnvironment()` into its exp
 - `BeginFeedback(ctx, WatchChange)`: durably hold browser feedback before the first producer in a backend-affecting transaction.
 - `CommitFeedback(ctx, WatchChange)`: release only after successful host/plugin readiness and consumer refresh. A failed replacement obligation survives an unrelated frontend-only success.
 
+Resource-controller startup waits for the SDK's actual watch-registration acknowledgement before making the provider available or discovering/autoconnecting resources. Failed startup retires runtime ownership but preserves saved connection configuration through normal failed-plugin shutdown and durable reload.
+
 Set A08's startup dependency-watching default off before managed starts; `Watch` also disables it for active generations. A08 retains plugin source watchers. The graph recursively covers selected host/UI/effective SDK including new directories and settings/log/proto, and observes selection/dependency manifests. Bindings (also without local host-package selection), canonical YAML worker, shims/dist/build, manager/cache/stage directories and exact Vite config loader stamps cannot enqueue self-build loops. The stamp predicate is shared with `devoutputs.IsViteConfigTemporaryFile`. Debounced JS changes rebuild ordered closure; SDK changes invoke actual owned supervisor/readiness hooks once per generation. No fake source stamp exists.
 
 Generated output directories are pruned before watch registration, including when a new source subtree appears. Filtering their events afterward is insufficient: atomic publication can rename/delete a watched bindings directory and invalidate a Linux inotify descriptor. Real source parents and siblings remain watched; watcher errors still fail the generation.
@@ -118,6 +120,17 @@ Managed installation/build/Vite commands establish native-free `internal/devoutp
 
 `BeginVite(ctx,resolvedWorkspace,consumerRoot)` covers typechecker/config-loader/Vite process lifetime and returns authoritative `OMNIVIEW_VITE_CACHE_DIRECTORY`. Optimizer cache is UUID-owned external storage; exact `.vite-temp` and `.tmp` children and Vite5 root loader stamps are separately controlled. An immutable modules snapshot excludes a cache subtree only with its matching independent journal record. Shared consumer cache writers remain live until the last actual process finishes, not until a transport request returns.
 
+The finite canonical E2E build instead uses `BeginViteBuild` for its fixed ordered
+producer transaction. It fully byte-validates the immutable aggregate at admission
+and completion, while reserving aggregate modules, every selected consumer's modules
+and their actual cache-writer lifetimes. Each consumer rechecks owned modules,
+directory identities and recorded composition input bytes before execution; the
+normal package-input, SDK, type/declaration, worker, shim and atomic-publication
+checks still run. Install/restore and other writers cannot cross this lifetime.
+Only joined owned commands permit completion. Scoped-operation cancellation, replacement, tamper or
+uncertain disposal retain reservations and fail the build; no validation cache,
+mtime shortcut, skipped producer or parallel profile lane is introduced.
+
 Managed frontend preparation, spawn/capture and publication share a start gate with shutdown. Process-map locking covers only short lookup/publication operations, so a second plugin's tool/output preparation cannot block the first plugin's log/status observations. Shutdown snapshots every accepted retained child under the same start gate, then releases locks before waiting for disposal. Observation deadlines are not increased to hide a healthy process stranded behind unrelated startup work.
 
 A lost retained-process observation is not proof of process exit. The producer stays unready with its owned handle retained; the actual cause is written to its existing local diagnostic log and bounded dev-log buffer. Read those logs deliberately with `--unsafe-output` on a private test instance, rather than inferring death from a live HTTP endpoint or an empty public `LastError`.
@@ -137,9 +150,11 @@ Root-level Vite loader ownership filters the tracked inventory before validating
 
 The managed Go watcher compiles into an exclusively created `0700` `.dev-build-*` directory inside the selected profile's plugin storage, not the source worktree's `build/bin`. Provenance reads that staged executable before atomic publication within the same profile filesystem. Only the owned temporary build directory is retired; preexisting source artifacts are neither overwritten nor broadly adopted for cleanup.
 
-Finite producer commands reuse the supervisor's actual retained process-group/job lifecycle with separate stdout/stderr. A mere parent exit is not proof its descendants stopped. `errOwnedCommandUncertain` preserves durable pending intent and forbids Finish/Abort/publication/attestation; ordinary context cancellation is handled only after actual tree stop. Adapter callbacks share this contract.
+Finite producer commands reuse the supervisor's actual retained process-group/job lifecycle with separate stdout/stderr. A mere parent exit is not proof its descendants stopped. `errOwnedCommandUncertain` preserves durable pending intent and forbids Finish/Abort/publication/attestation; ordinary context cancellation is handled only after actual tree stop. A joined child-only cancellation/deadline may finish authenticated partial cache ownership while its scoped build operation remains active; the build still fails and the failed producer's staged output is not published as ready. Cancellation of the scoped operation retains reservations. Adapter callbacks share this contract.
 
 The main lifecycle owner invokes `RestoreRepositoryOutputs(ctx,w)` only under stopped profile/lifecycle guards before source-changing Edit/Remove. It restores CURRENT committed source, refuses user changes/unknown additions/foreign roots, resumes known interrupted publication/cleanup and retires fully restored journal bindings before slug/root relocation. Unknown producer-writing lifetimes remain an explicit refusal. Normal dirty/ignored-source checks are not weakened. Manual standalone Task/package builds are user-origin changes, not retroactively managed outputs; use the controlled workspace launcher for managed acceptance.
+
+Removal retains its durable captured/backed-up intent while retiring the exact before-image; it needs no metadata-only “published” checkpoint for an absent destination. Older captured/backed-up/published removal journals, including partial backup cleanup, remain recoverable. The executor may consume only its immediately preceding full-byte backup inspection for leaf removal, with no intervening checkpoint or mutation and a fresh hash/type/mode/identity check at each leaf. Other cleanup callers still freshly admit the complete tree themselves; no observation is retained as reusable validation authority.
 
 Parent checks use the effective SDK/native module selection: core ownership/source/workspace suites, Vite-plugin tests, `node --test scripts/producer-paths.test.mjs`, the real pinned-manager probe, controlled bootstrap and canonical removal/relocation, and actual websocket HMR/browser source edits. The permanent producer-path test runs real esbuild into a disposable spaced destination and verifies tracked worker bytes remain unchanged. Parent standalone pnpm12.14.0 builds passed for providers, runtime, Vite-plugin shims, host UI and all three UI libraries; these do not substitute for managed A16 graph/output-ownership acceptance.
 

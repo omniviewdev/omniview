@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -125,12 +126,22 @@ func TestApplicationFixtureProducerOutputsRestoreCanonicalSource(t *testing.T) {
 			}
 		}
 	}
+	var consumers []string
+	for _, node := range g.Nodes {
+		if node.Kind == "javascript" {
+			consumers = append(consumers, node.Directory)
+		}
+	}
+	writer, err := devoutputs.BeginViteBuild(ctx, g.workspace.ResolvedWorkspace, *g.plan.Composition, consumers)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var built []BuildNode
 	for _, node := range g.Nodes {
 		if node.Kind != "javascript" {
 			continue
 		}
-		if err = g.applicationFixtureJavaScript(ctx, node); err != nil {
+		if err = g.applicationFixtureJavaScript(ctx, node, writer); err != nil {
 			t.Fatalf("%s: %v", node.ID, err)
 		}
 		built = append(built, node)
@@ -140,6 +151,9 @@ func TestApplicationFixtureProducerOutputsRestoreCanonicalSource(t *testing.T) {
 	}
 	if len(built) != 8 {
 		t.Fatalf("missing selected producer coverage: %d", len(built))
+	}
+	if err = writer.Finish(ctx); err != nil {
+		t.Fatal(err)
 	}
 	if err = RestoreRepositoryOutputs(ctx, g.workspace); err != nil {
 		t.Fatal(err)
@@ -183,7 +197,8 @@ func TestApplicationFixtureProducerRetainsUncertainOutputWriter(t *testing.T) {
 		if node.ID != "base-ui" {
 			continue
 		}
-		if err = g.applicationFixtureJavaScript(ctx, node); !errors.Is(err, errOwnedCommandUncertain) {
+		err = g.buildApplicationFixture(ctx, []BuildNode{node}, t.TempDir(), func(_ string, run func() error) error { return run() })
+		if !errors.Is(err, errOwnedCommandUncertain) {
 			t.Fatal(err)
 		}
 	}
@@ -362,4 +377,172 @@ func TestApplicationFixtureHostTransportChild(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-signals
+}
+
+type applicationDeadlineEvidence struct {
+	Producer, Descendant int
+	Cache, Stage         string
+}
+
+func TestApplicationFixtureDeadlineProducerProcess(t *testing.T) {
+	if os.Getenv("OMNIVIEW_APPLICATION_DEADLINE_PRODUCER") != "1" {
+		return
+	}
+	cache, stage := os.Getenv("OMNIVIEW_VITE_CACHE_DIRECTORY"), os.Getenv("OMNIVIEW_BUILD_OUTPUT_DIRECTORY")
+	if cache == "" || stage == "" {
+		t.Fatal("actual producer capabilities are missing")
+	}
+	if err := os.WriteFile(filepath.Join(cache, "partial.js"), []byte("controlled partial compiler cache\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stage, "index.js"), []byte("partial JS is not ready\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(stop)
+	descendant := exec.Command(os.Args[0], "-test.run=^TestOwnedChildProcessFixture$")
+	descendant.Env = append(os.Environ(), "OMNIVIEW_OWNED_CHILD_FIXTURE=descendant")
+	if err := descendant.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(applicationDeadlineEvidence{Producer: os.Getpid(), Descendant: descendant.Process.Pid, Cache: cache, Stage: stage}); err != nil {
+		t.Fatal(err)
+	}
+	<-stop
+	_ = descendant.Wait()
+}
+
+func TestApplicationFixtureFinalizesOnlyDeterminateChildCancellation(t *testing.T) {
+	for _, test := range []struct {
+		name                  string
+		wantErr               error
+		outerLive, scopedLive bool
+		finish                bool
+	}{
+		{"child-deadline", context.DeadlineExceeded, true, true, true},
+		{"child-cancel", context.Canceled, true, true, true},
+		{"scoped-cancel", context.Canceled, true, false, false},
+		{"outer-cancel", context.Canceled, false, false, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			outer, cancelOuter := context.WithCancel(context.Background())
+			defer cancelOuter()
+			scoped, cancelScoped := context.WithCancel(outer)
+			defer cancelScoped()
+			g := graphFixture(t)
+			install, err := devoutputs.BeginCompositionInstall(scoped, g.workspace.ResolvedWorkspace, *g.plan.Composition)
+			if err != nil {
+				t.Fatal(err)
+			}
+			writeGraphFixture(t, filepath.Join(g.workspace.Root, "node_modules/fixture"), "aggregate\n")
+			for _, pkg := range g.plan.Composition.Packages {
+				writeGraphFixture(t, filepath.Join(pkg.Path, "node_modules/fixture"), "consumer\n")
+			}
+			if err = install.Finish(scoped); err != nil {
+				t.Fatal(err)
+			}
+			var nodes []BuildNode
+			for _, node := range g.Nodes {
+				if node.ID == "base-ui" {
+					nodes = append(nodes, node)
+				}
+			}
+			if len(nodes) != 1 {
+				t.Fatal("actual selected JavaScript producer is missing")
+			}
+			var evidence applicationDeadlineEvidence
+			var producer, descendant devcontract.ProcessIdentity
+			owner := devsession.ProcessOwner{WorkspaceID: g.workspace.Manifest.WorkspaceID, Generation: g.options.Generation, Role: "application-deadline-producer", Source: nodes[0].Directory}
+			descendantOwner := owner
+			descendantOwner.Role = "application-deadline-descendant"
+			g.runProducer = func(ctx context.Context, directory string, environment []string, _ string, _ ...string) ([]byte, error) {
+				var childCtx context.Context
+				var cancelChild context.CancelFunc
+				if test.name == "child-deadline" {
+					childCtx, cancelChild = context.WithTimeout(ctx, 2*time.Second)
+				} else {
+					childCtx, cancelChild = context.WithCancel(ctx)
+				}
+				defer cancelChild()
+				command := exec.Command(os.Args[0], "-test.run=^TestApplicationFixtureDeadlineProducerProcess$")
+				command.Dir = directory
+				command.Env = append(append(os.Environ(), environment...), "GOWORK=off", "OMNIVIEW_APPLICATION_DEADLINE_PRODUCER=1")
+				reader, output := io.Pipe()
+				defer reader.Close()
+				command.Stdout = output
+				var diagnostics strings.Builder
+				command.Stderr = &diagnostics
+				done := make(chan error, 1)
+				go func() {
+					runErr := RunRepositoryCommand(childCtx, command, owner)
+					_ = output.CloseWithError(runErr)
+					done <- runErr
+				}()
+				readyErr := json.NewDecoder(reader).Decode(&evidence)
+				if readyErr == nil {
+					producer, readyErr = devsession.CaptureProcess(evidence.Producer, owner)
+				}
+				if readyErr == nil {
+					descendant, readyErr = devsession.CaptureProcess(evidence.Descendant, descendantOwner)
+				}
+				if readyErr != nil {
+					cancelChild()
+				} else {
+					switch test.name {
+					case "child-cancel":
+						cancelChild()
+					case "scoped-cancel":
+						cancelScoped()
+					case "outer-cancel":
+						cancelOuter()
+					}
+				}
+				_, _ = io.Copy(io.Discard, reader)
+				runErr := <-done
+				if readyErr != nil {
+					return nil, errors.Join(readyErr, runErr, errors.New(diagnostics.String()))
+				}
+				return nil, runErr
+			}
+			err = g.buildApplicationFixture(scoped, nodes, t.TempDir(), func(_ string, run func() error) error { return run() })
+			if !errors.Is(err, test.wantErr) || errors.Is(err, errOwnedCommandUncertain) {
+				t.Fatalf("actual joined producer failure was lost or became success/uncertainty: %v", err)
+			}
+			if (outer.Err() == nil) != test.outerLive || (scoped.Err() == nil) != test.scopedLive {
+				t.Fatalf("operation cancellation was confused with its child: outer=%v scoped=%v", outer.Err(), scoped.Err())
+			}
+			if producer.PID == 0 || descendant.PID == 0 {
+				t.Fatal("actual producer/descendant identities were not captured")
+			}
+			if err = devsession.VerifyOwnedProcess(producer, owner); !errors.Is(err, devsession.ErrProcessGone) {
+				t.Fatal("producer survived the returned failure", err)
+			}
+			if err = devsession.VerifyOwnedProcess(descendant, descendantOwner); !errors.Is(err, devsession.ErrProcessGone) {
+				t.Fatal("descendant survived the returned failure", err)
+			}
+			if raw, err := os.ReadFile(filepath.Join(evidence.Cache, "partial.js")); err != nil || string(raw) != "controlled partial compiler cache\n" {
+				t.Fatal("actual controlled partial cache is missing", err)
+			}
+			if _, err = os.Lstat(evidence.Stage); !os.IsNotExist(err) {
+				t.Fatal("determinate failed producer left its staged output", err)
+			}
+			if _, err = os.Lstat(filepath.Join(nodes[0].Directory, "dist")); !os.IsNotExist(err) {
+				t.Fatal("failed producer published ready artifacts", err)
+			}
+			if test.finish {
+				if err = ValidateRepositoryOutputs(scoped, g.workspace); err != nil {
+					t.Fatal("joined child cancellation stranded or failed to authenticate owned partial output", err)
+				}
+				if err = RestoreRepositoryOutputs(scoped, g.workspace); err != nil {
+					t.Fatal("canonical restoration could not retire the completed failed transaction", err)
+				}
+				if _, err = os.Lstat(evidence.Cache); !os.IsNotExist(err) {
+					t.Fatal("canonical restoration retained the authenticated partial cache", err)
+				}
+			} else if err = RestoreRepositoryOutputs(context.Background(), g.workspace); err == nil {
+				t.Fatal("canceled operation released durable writer ownership")
+			}
+		})
+	}
 }

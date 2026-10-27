@@ -40,7 +40,7 @@ type ResourceProvider interface {
 	StopConnectionWatch(ctx context.Context, connectionID string) error
 	HasWatch(ctx context.Context, connectionID string) bool
 	GetWatchState(ctx context.Context, connectionID string) (*resource.WatchConnectionSummary, error)
-	ListenForEvents(ctx context.Context, sink resource.WatchEventSink) error
+	ListenForEvents(ctx context.Context, sink resource.WatchEventSink, onReady func() error) error
 	EnsureResourceWatch(ctx context.Context, connectionID, resourceKey string) error
 	StopResourceWatch(ctx context.Context, connectionID, resourceKey string) error
 	RestartResourceWatch(ctx context.Context, connectionID, resourceKey string) error

@@ -113,6 +113,22 @@ func (source subscriptionFileSource) Watch(ctx context.Context, client *subscrip
 	}
 }
 
+type subscriptionRegistrationGate struct {
+	sdkresource.Provider
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (p *subscriptionRegistrationGate) ListenForEvents(ctx context.Context, sink sdkresource.WatchEventSink, onReady func() error) error {
+	close(p.entered)
+	select {
+	case <-p.release:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return p.Provider.ListenForEvents(ctx, sink, onReady)
+}
+
 func TestC02RegisteredFileWatchSubscriptionLifecycle(t *testing.T) {
 	ctx := testInvocationContext()
 	path := filepath.Join(t.TempDir(), "native.txt")
@@ -131,11 +147,29 @@ func TestC02RegisteredFileWatchSubscriptionLifecycle(t *testing.T) {
 	})
 	require.NoError(t, buildErr)
 	t.Cleanup(registered.Close)
-	transport := setupGRPCProvider(t, registered)
+	gated := &subscriptionRegistrationGate{Provider: registered, entered: make(chan struct{}), release: make(chan struct{})}
+	transport := setupGRPCProvider(t, gated)
 	ctrl, emitter := newTestControllerWithEmitter(t)
 	backend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": transport})
-	require.NoError(t, ctrl.OnPluginStart("proof", defaultMeta(), backend))
 	t.Cleanup(func() { require.NoError(t, ctrl.OnPluginShutdown("proof", defaultMeta())) })
+	started := make(chan error, 1)
+	go func() { started <- ctrl.OnPluginStart("proof", defaultMeta(), backend) }()
+	select {
+	case <-gated.entered:
+	case <-time.After(time.Second):
+		t.Fatal("actual event RPC did not reach delayed native registration")
+	}
+	// A concurrent request must not start the one-shot source while the real
+	// SDK listener is still absent. This is an admission outcome, not a sleep.
+	_, pendingErr := ctrl.StartConnection(ctx, "proof", "local")
+	require.Error(t, pendingErr)
+	close(gated.release)
+	select {
+	case startErr := <-started:
+		require.NoError(t, startErr)
+	case <-time.After(time.Second):
+		t.Fatal("registered event RPC did not complete plugin startup")
+	}
 	connection, connectionErr := ctrl.GetConnection(ctx, "proof", "local")
 	require.NoError(t, connectionErr)
 	require.Equal(t, path, connection.Data["path"])

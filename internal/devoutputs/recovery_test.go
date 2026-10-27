@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -289,49 +290,133 @@ func TestPublishPreflightsEveryCapturedDestination(t *testing.T) {
 func TestInterruptedRemovalRetainsLegacyProgressStates(t *testing.T) {
 	for _, phase := range []string{"captured", "backed-up", "published"} {
 		t.Run(phase, func(t *testing.T) {
-			w, repo := outputFixture(t)
-			outputGit(t, repo, "rm", "dist/.gitkeep")
-			outputCommit(t, repo, "no tracked distribution")
-			stage, err := Prepare(context.Background(), w, repo, Distribution)
-			if err != nil {
-				t.Fatal(err)
-			}
-			writeOutput(t, filepath.Join(stage.Directory, "index.js"), "generated distribution")
-			if err = Publish(context.Background(), stage); err != nil {
-				t.Fatal(err)
-			}
-			err = locked(context.Background(), stage.s, func(j *journal) error {
-				entry := j.Entries[stage.key]
-				before, err := snapshotPath(entry.Spec, nil)
-				if err != nil {
-					return err
-				}
-				revision, err := specHead(context.Background(), entry.Spec)
-				if err != nil {
-					return err
-				}
-				j.Restoring = true
-				if err = allocateRemoval(stage.s, j, entry, revision, before); err != nil {
-					return err
-				}
-				if err = os.Rename(entry.Spec.Target, entry.Pending.Backup); err != nil {
-					return err
-				}
-				entry.Pending.Phase = phase
-				return save(stage.s, j)
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err = Restore(context.Background(), w); err != nil {
-				t.Fatal(err)
-			}
-			if _, err = os.Lstat(filepath.Join(repo, "dist")); !os.IsNotExist(err) {
-				t.Fatalf("interrupted removal left generated output: %v", err)
-			}
-			if _, err = os.Lstat(stage.s.path); !os.IsNotExist(err) {
-				t.Fatalf("interrupted removal left journal: %v", err)
+			for _, progress := range []string{"complete backup", "partial backup", "edited partial backup", "foreign partial backup"} {
+				t.Run(progress, func(t *testing.T) {
+					w, repo := outputFixture(t)
+					outputGit(t, repo, "rm", "dist/.gitkeep")
+					outputCommit(t, repo, "no tracked distribution")
+					stage, err := Prepare(context.Background(), w, repo, Distribution)
+					if err != nil {
+						t.Fatal(err)
+					}
+					const original = "generated distribution"
+					writeOutput(t, filepath.Join(stage.Directory, "index.js"), original)
+					writeOutput(t, filepath.Join(stage.Directory, "removed.js"), "owned partial cleanup")
+					if err = Publish(context.Background(), stage); err != nil {
+						t.Fatal(err)
+					}
+					var backup string
+					err = locked(context.Background(), stage.s, func(j *journal) error {
+						entry := j.Entries[stage.key]
+						before, err := snapshotPath(entry.Spec, nil)
+						if err != nil {
+							return err
+						}
+						revision, err := specHead(context.Background(), entry.Spec)
+						if err != nil {
+							return err
+						}
+						j.Restoring = true
+						if err = allocateRemoval(stage.s, j, entry, revision, before); err != nil {
+							return err
+						}
+						backup = entry.Pending.Backup
+						if err = os.Rename(entry.Spec.Target, backup); err != nil {
+							return err
+						}
+						if phase == "captured" {
+							// The rename happened but its next checkpoint did not.
+							return nil
+						}
+						entry.Pending.Phase = phase
+						return save(stage.s, j)
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if progress != "complete backup" {
+						if err = os.Remove(filepath.Join(backup, "removed.js")); err != nil {
+							t.Fatal(err)
+						}
+					}
+					remaining := filepath.Join(backup, "index.js")
+					want := original
+					switch progress {
+					case "edited partial backup":
+						before, err := os.Stat(remaining)
+						if err != nil {
+							t.Fatal(err)
+						}
+						want = strings.Repeat("x", len(original))
+						writeOutput(t, remaining, want)
+						if err = os.Chtimes(remaining, before.ModTime(), before.ModTime()); err != nil {
+							t.Fatal(err)
+						}
+						after, err := os.Stat(remaining)
+						if err != nil || after.Size() != before.Size() || !after.ModTime().Equal(before.ModTime()) {
+							t.Fatal("foreign edit did not preserve size/mtime", err)
+						}
+					case "foreign partial backup":
+						writeOutput(t, filepath.Join(backup, "human.js"), "foreign bytes")
+					}
+					err = Restore(context.Background(), w)
+					if progress == "edited partial backup" || progress == "foreign partial backup" {
+						if err == nil {
+							t.Fatal("interrupted removal accepted foreign bytes")
+						}
+						if data, err := os.ReadFile(remaining); err != nil || string(data) != want {
+							t.Fatal("refusal changed the remaining backup", err)
+						}
+						if progress == "foreign partial backup" {
+							if data, err := os.ReadFile(filepath.Join(backup, "human.js")); err != nil || string(data) != "foreign bytes" {
+								t.Fatal("refusal changed unknown bytes", err)
+							}
+						}
+						persisted, err := readJournal(stage.s)
+						if err != nil || !persisted.Restoring || persisted.Entries[stage.key] == nil {
+							t.Fatal("foreign removal released pending ownership", err)
+						}
+						return
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					if _, err = os.Lstat(filepath.Join(repo, "dist")); !os.IsNotExist(err) {
+						t.Fatalf("interrupted removal left generated output: %v", err)
+					}
+					if _, err = os.Lstat(backup); !os.IsNotExist(err) {
+						t.Fatalf("interrupted removal left its known backup: %v", err)
+					}
+					if _, err = os.Lstat(stage.s.path); !os.IsNotExist(err) {
+						t.Fatalf("interrupted removal left journal: %v", err)
+					}
+				})
 			}
 		})
+	}
+}
+
+func TestRemovalLeavesRehashEditsAfterWholeTreeAdmission(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "payload.js")
+	writeOutput(t, path, "owned bytes")
+	spec := specification{Target: root, Kind: Distribution, Mode: "tree"}
+	expected, err := snapshotPath(spec, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeOutput(t, path, "human bytes")
+	if err = os.Chtimes(path, before.ModTime(), before.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if err = removeSnapshotLeaves(spec, expected); err == nil {
+		t.Fatal("leaf removal reused an earlier digest")
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != "human bytes" {
+		t.Fatal("leaf removal changed later user bytes", err)
 	}
 }

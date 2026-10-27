@@ -248,6 +248,12 @@ func removeSnapshot(spec specification, expected snapshot) error {
 			return fmt.Errorf("producer cleanup snapshot changed: %s", path)
 		}
 	}
+	return removeSnapshotLeaves(spec, expected)
+}
+
+// The caller must freshly admit the complete tree immediately before this call,
+// with no intervening checkpoint or mutation. Rehash every leaf before removal.
+func removeSnapshotLeaves(spec specification, expected snapshot) error {
 	paths := make([]string, 0, len(expected))
 	for path := range expected {
 		paths = append(paths, path)
