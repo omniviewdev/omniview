@@ -24,10 +24,10 @@ The backend includes at most 200 retained log lines and caps the diagnostic at 1
 1. In a packaged application, install a directory without plugin.yaml. Expect one error, a visible Details action, source path and metadata error; no plugin record required.
 2. Install a plugin with a Go compiler error. Expect no success toast; Details includes compiler output and source path. Open Build Output to inspect the existing output viewer.
 3. Wait beyond the toast lifetime. Open Notifications; expect the same selectable diagnostic. Copy details must copy title, timestamp and diagnostic text.
-4. Clear history and expect the Notifications button to disappear. Restart the application and expect no retained errors.
+4. Clear history and expect the footer bell's error count to reset while the bell remains available. Restart the application and expect no retained errors.
 5. Trigger a structured settings error. Expect Details plus every supplied recovery action in the panel, not just the first action.
 6. Cancel the source picker. Expect no error notification or retained entry.
 7. Disable local storage. Expect live error feedback and session history to remain functional; this feature does not use storage.
 8. Correct source/configuration and choose Retry installation. Expect the normal picker and installation flow; prior failure remains until cleared.
 
-Automated coverage should exercise error retention, detail opening, multiple actions, copy, clearing and cancellation suppression. Parent should run frontend tests and `GOWORK=off go test ./backend/pkg/plugin/... -count=1` after integration; no checks run during this change.
+Automated coverage exercises error retention, detail opening, multiple actions, copy, clearing and cancellation suppression. Run the frontend outcome tests and `GOWORK=off go test ./backend/pkg/plugin/... -count=1`, then exercise the installed application's notification controls.

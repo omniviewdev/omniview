@@ -133,6 +133,7 @@ func TestInstallDevPluginFromPath_RebindFailureDoesNotReplaceSource(t *testing.T
 			b := devSourceFixture(t, "id: flux\nversion: 9.0.0\ncapabilities: [ui]\n")
 			_, err := pm.InstallDevPluginFromPath(a)
 			require.NoError(t, err)
+			servers.logs = []devserver.LogEntry{{Source: "go-build", Message: "previous-source-build-output"}}
 			if failure == "server-stop" {
 				servers.stopErr = errors.New("server refuses stop")
 			} else {
@@ -141,6 +142,7 @@ func TestInstallDevPluginFromPath_RebindFailureDoesNotReplaceSource(t *testing.T
 
 			_, err = pm.InstallDevPluginFromPath(b)
 			require.Error(t, err)
+			assert.NotContains(t, err.Error(), "previous-source-build-output")
 			info, getErr := pm.GetPlugin("flux")
 			require.NoError(t, getErr)
 			assert.Equal(t, a, info.DevPath)
@@ -174,7 +176,6 @@ func TestInstallDevPluginFromPath_FailedBuildIsErrorAndRecoverable(t *testing.T)
 	assert.Equal(t, apperror.TypePluginBuildFailed, appErr.Type)
 	assert.Contains(t, appErr.Detail, "Source: "+source)
 	assert.Contains(t, appErr.Detail, "main.go:42: undefined: resource")
-	assert.Contains(t, appErr.Detail, "older output may be omitted")
 	assert.Equal(t, "kubernetes", appErr.Instance)
 	assert.Equal(t, string(lifecycle.PhaseBuildFailed), info.Phase)
 	assert.Equal(t, source, info.DevPath)

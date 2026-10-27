@@ -49,6 +49,7 @@ func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
 func (pm *pluginManager) InstallDevPluginFromPath(path string) (info sdktypes.PluginInfo, err error) {
 	l := pm.logger.Named("InstallDevPluginFromPath")
 	var pluginID string
+	buildAttempted := false
 	defer func() {
 		if r := recover(); r != nil {
 			l.Errorw(pm.ctx, "panic in dev install", "panic", r, "stack", string(debug.Stack()))
@@ -71,7 +72,7 @@ func (pm *pluginManager) InstallDevPluginFromPath(path string) (info sdktypes.Pl
 			fmt.Fprintf(&detail, "\n%s", appErr.Detail)
 			if logsSource, ok := pm.devServerMgr.(interface {
 				GetDevServerLogs(string, int) []devserver.LogEntry
-			}); pluginID != "" && ok {
+			}); buildAttempted && pluginID != "" && ok {
 				logs := logsSource.GetDevServerLogs(pluginID, 200)
 				if len(logs) > 0 {
 					detail.WriteString("\n\nBuild output (last 200 retained lines; older output may be omitted):\n")
@@ -130,6 +131,7 @@ func (pm *pluginManager) InstallDevPluginFromPath(path string) (info sdktypes.Pl
 		return info, err
 	}
 
+	buildAttempted = true
 	state, startErr := pm.devServerMgr.StartDevServerForPath(metadata.ID, path)
 	if startErr != nil {
 		return pm.failedDevInstall(metadata, path, lifecycle.PhaseFailed,
