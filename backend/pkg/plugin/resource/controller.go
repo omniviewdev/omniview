@@ -411,16 +411,20 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	}
 
 	// Cancel watch goroutines.
-	c.pluginsMu.Lock()
+	c.pluginsMu.RLock()
 	stopped := c.plugins[pluginID]
+	c.pluginsMu.RUnlock()
+	if stopped != nil {
+		stopped.watchCancel()
+	}
+	// Cancel first so a concurrent readiness acknowledgement cannot republish
+	// the retiring provider after invalidation.
+	c.pluginsMu.Lock()
 	// Make calls unavailable now; release ownership only after retirement.
 	if stopped != nil {
 		stopped.provider = nil
 	}
 	c.pluginsMu.Unlock()
-	if stopped != nil {
-		stopped.watchCancel()
-	}
 
 	// Capture connections before deleting them — needed for registry cleanup.
 	c.connsMu.RLock()
