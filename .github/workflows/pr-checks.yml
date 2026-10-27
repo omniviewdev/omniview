@@ -16,17 +16,41 @@ env:
 jobs:
   go-checks:
     name: Go checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       c02_corpus_name: ${{ steps.c02-corpus.outputs.corpus_name }}
     steps:
       - uses: actions/checkout@v4
 
-      # awalsh128/cache-apt-pkgs-action@latest restores an empty package set here, so install directly.
-      - name: Install Linux dependencies
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.14.0"
+
+      - name: Prepare Linux package archive cache
+        id: linux-packages
         run: |
+          directory=/tmp/omniview-e2e-apt
+          mkdir -m 0755 "$directory"
+          echo "directory=$directory" >> "$GITHUB_OUTPUT"
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libgtk-4-dev libwebkitgtk-6.0-dev libwayland-dev build-essential pkg-config
+          echo "indexes=$(sha256sum /var/lib/apt/lists/*_InRelease | sha256sum | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Linux package archives
+        id: linux-package-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.linux-packages.outputs.directory }}/*.deb
+          key: ${{ runner.os }}-${{ runner.arch }}-ubuntu24-e2e-apt-v1-${{ hashFiles('.github/workflows/e2e-runner.yml', 'e2e/scripts/browser-dependencies.mjs', 'e2e/package.json', 'pnpm-lock.yaml') }}-${{ steps.linux-packages.outputs.indexes }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-ubuntu24-e2e-apt-v1-${{ hashFiles('.github/workflows/e2e-runner.yml', 'e2e/scripts/browser-dependencies.mjs', 'e2e/package.json', 'pnpm-lock.yaml') }}-
+
+      - name: Install Linux dependencies
+        env:
+          APT_ARCHIVES_DIRECTORY: ${{ steps.linux-packages.outputs.directory }}
+        run: |
+          node scripts/verify-apt-archives.mjs "$APT_ARCHIVES_DIRECTORY" --prepare
+          sudo install -d -m 0700 -o _apt -g root "$APT_ARCHIVES_DIRECTORY/partial"
+          sudo apt-get -o "Dir::Cache::archives=$APT_ARCHIVES_DIRECTORY" install -y --no-install-recommends libgtk-4-dev libwebkitgtk-6.0-dev libwayland-dev build-essential pkg-config
 
       - uses: actions/setup-go@v5
         with:
