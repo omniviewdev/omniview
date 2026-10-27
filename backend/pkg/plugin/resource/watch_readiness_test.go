@@ -156,7 +156,7 @@ func (b *replacementAttemptBackend) Dispense(name string) (interface{}, error) {
 }
 
 func TestWatchStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
+	ctrl, emitter := newTestControllerWithEmitter(t)
 	store := &pausedFailedStartStore{Store: ctrl.registryStore, entered: make(chan struct{}), release: make(chan struct{})}
 	ctrl.registryStore = store
 	defer func() {
@@ -179,8 +179,8 @@ func TestWatchStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
 	oldBackend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": oldProvider})
 	go func() { oldDone <- ctrl.OnPluginStart("proof", defaultMeta(), oldBackend) }()
 	<-store.entered
-	// Probe the transaction while only retired cleanup can own the gate.
-	// Unlike a negative-time window, TryLock gives an immediate outcome.
+	// This probe only schedules the old unsafe interleaving. Acceptance below
+	// checks real replacement consumers, never the private lock itself.
 	retirementFenced := !ctrl.lifecycleMu.TryLock()
 	if !retirementFenced {
 		ctrl.lifecycleMu.Unlock()
@@ -197,6 +197,13 @@ func TestWatchStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
 	}
 	replacement.GetRelationshipsFunc = func(context.Context, string) ([]resource.RelationshipDescriptor, error) {
 		return []resource.RelationshipDescriptor{{Type: resource.RelOwns, TargetResourceKey: "replacement-target"}}, nil
+	}
+	actionStopped := make(chan struct{})
+	replacement.StreamActionFunc = func(ctx context.Context, _ string, _ string, _ resource.ActionInput, events chan<- resource.ActionEvent) error {
+		defer close(actionStopped)
+		events <- resource.ActionEvent{Type: "ready"}
+		<-ctx.Done()
+		return nil
 	}
 	replaced := make(chan error, 1)
 	replacementBackend := &replacementAttemptBackend{
@@ -215,19 +222,39 @@ func TestWatchStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("replacement did not attempt actual provider negotiation")
 	}
+	var replacementErr error
+	if !retirementFenced {
+		// The old implementation permits publication in this exact gap.
+		// Finish it before allowing retired cleanup to resume.
+		replacementErr = <-replaced
+	}
 	close(store.release)
 	require.ErrorIs(t, <-oldDone, failed)
-	require.NoError(t, <-replaced)
-	require.True(t, retirementFenced, "retirement released admission before its graph cleanup completed")
+	if retirementFenced {
+		replacementErr = <-replaced
+	}
+	require.NoError(t, replacementErr)
+	ctx := testInvocationContext()
+	discovered, err := ctrl.GetResourceTypes(ctx, "proof", "replacement")
+	require.NoError(t, err)
+	require.Contains(t, discovered, meta.Key())
+	connection, err := ctrl.GetConnection(ctx, "proof", "replacement")
+	require.NoError(t, err)
+	require.Equal(t, "replacement", connection.ID)
+	require.NoError(t, ctrl.SubscribeResource(ctx, "proof", "replacement", meta.Key()))
+	sink := &engineWatchSink{pluginID: "proof", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
+	sink.OnAdd(resource.WatchAddPayload{Connection: "replacement", Key: meta.Key(), ID: "replacement-visible"})
+	require.Len(t, emitter.EventsWithKey("proof/replacement/"+meta.Key()+"/ADD"), 1)
+	handle, err := ctrl.StreamAction(ctx, "proof", "replacement", meta.Key(), "verify-admission", resource.ActionInput{})
+	require.NoError(t, err)
+	require.NotEmpty(t, handle)
+	require.NoError(t, ctrl.CancelStreamAction(ctx, handle))
+	select {
+	case <-actionStopped:
+	case <-time.After(time.Second):
+		t.Fatal("replacement action did not retire after consumer cancellation")
+	}
 	require.Len(t, ctrl.graph.GetDeclarations(meta.Key()), 1, "retired cleanup erased replacement declarations")
-	connections := ctrl.getConnections("proof")
-	require.Len(t, connections, 1)
-	require.Equal(t, "replacement", connections[0].ID)
-	require.True(t, ctrl.subs.IsSubscribed("proof", "replacement", meta.Key()))
-	ctrl.actions.mu.Lock()
-	blocked := ctrl.actions.blocked["proof"]
-	ctrl.actions.mu.Unlock()
-	require.False(t, blocked, "retired cleanup blocked replacement action admission")
 	present, err := ctrl.HasPlugin(testInvocationContext(), "proof")
 	require.NoError(t, err)
 	require.True(t, present)
