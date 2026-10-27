@@ -121,8 +121,8 @@ func (a *AdapterV1) GetWatchState(ctx context.Context, connectionID string) (*re
 	return a.inner.GetWatchState(ctx, connectionID)
 }
 
-func (a *AdapterV1) ListenForEvents(ctx context.Context, sink resource.WatchEventSink) error {
-	return a.inner.ListenForEvents(ctx, sink)
+func (a *AdapterV1) ListenForEvents(ctx context.Context, sink resource.WatchEventSink, onReady func() error) error {
+	return a.inner.ListenForEvents(ctx, sink, onReady)
 }
 
 func (a *AdapterV1) EnsureResourceWatch(ctx context.Context, connectionID, resourceKey string) error {

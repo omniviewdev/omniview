@@ -56,7 +56,12 @@ func TestIntegration_OnPluginStart_FullWiring(t *testing.T) {
 				{ID: "conn-1", Name: "Test Cluster"},
 			}, nil
 		},
-		ListenForEventsFunc: func(ctx context.Context, _ resource.WatchEventSink) error {
+		ListenForEventsFunc: func(ctx context.Context, _ resource.WatchEventSink, onReady func() error) error {
+			if onReady != nil {
+				if err := onReady(); err != nil {
+					return err
+				}
+			}
 			<-ctx.Done()
 			return nil
 		},
