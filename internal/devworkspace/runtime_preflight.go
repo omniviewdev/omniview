@@ -53,7 +53,37 @@ func compatibilityPreflight(ctx context.Context, w Workspace, options LaunchOpti
 			return devcontract.Fail(3, "sdk_contract_mismatch", fmt.Sprintf("%s/go.mod does not declare %s; select compatible host and plugin branches", filepath.Base(root), linkedSDK))
 		}
 	}
+	return validateRuntimeUIContracts(w, plan)
+}
+
+func validateRuntimeUIContracts(w Workspace, plan linkPlan) error {
+	host, err := w.RepositoryPath("omniview")
+	if err != nil {
+		return err
+	}
+	runtimePaths := map[string]bool{host: true}
 	for _, consumer := range plan.Consumers {
+		for _, target := range consumer.Targets {
+			runtimePaths[target] = true
+		}
+	}
+	for _, plugin := range w.Manifest.Plugins {
+		root, err := w.RepositoryPath(plugin.RepositoryID)
+		if err != nil {
+			return err
+		}
+		frontend := filepath.Join(root, "ui")
+		if _, err := os.Stat(filepath.Join(frontend, "package.json")); os.IsNotExist(err) {
+			frontend = root
+		} else if err != nil {
+			return err
+		}
+		runtimePaths[frontend] = true
+	}
+	for _, consumer := range plan.Consumers {
+		if !runtimePaths[consumer.Path] {
+			continue
+		}
 		pkg, err := readLinkPackage(consumer.Path)
 		if err != nil {
 			return err
@@ -62,7 +92,8 @@ func compatibilityPreflight(ctx context.Context, w Workspace, options LaunchOpti
 			dependencies, _ := pkg[section].(map[string]any)
 			for dependency := range dependencies {
 				if dependency == "@omniviewdev/ui" || strings.HasPrefix(dependency, "@mui/") || strings.HasPrefix(dependency, "@emotion/") {
-					return devcontract.Fail(3, "ui_contract_mismatch", fmt.Sprintf("%s declares unsupported shared UI dependency %s; migrate to @omniviewdev/base-ui and select compatible plugin branches", filepath.Base(consumer.Path), dependency))
+					path, _ := filepath.Rel(w.Root, consumer.Path)
+					return devcontract.Fail(3, "ui_contract_mismatch", fmt.Sprintf("%s declares unsupported shared UI dependency %s; migrate to @omniviewdev/base-ui and select compatible plugin branches", path, dependency))
 				}
 			}
 		}
