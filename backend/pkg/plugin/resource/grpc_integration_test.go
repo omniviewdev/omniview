@@ -120,7 +120,12 @@ func TestL3_03_WatchEventsFlowThroughGRPC(t *testing.T) {
 	ready := make(chan resource.WatchEventSink, 1)
 
 	sdkProvider := resourcetest.NewTestProvider(t,
-		resourcetest.WithListenForEventsFunc(func(ctx context.Context, sink resource.WatchEventSink) error {
+		resourcetest.WithListenForEventsFunc(func(ctx context.Context, sink resource.WatchEventSink, onReady func() error) error {
+			if onReady != nil {
+				if err := onReady(); err != nil {
+					return err
+				}
+			}
 			ready <- sink
 			<-ctx.Done()
 			return nil
@@ -137,7 +142,7 @@ func TestL3_03_WatchEventsFlowThroughGRPC(t *testing.T) {
 	watchCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
-	watchReady := make(chan struct{})
+	watchReady := make(chan error, 1)
 	go ctrl.listenForWatchEvents(watchCtx, "p1", grpcProvider, sink, watchReady)
 
 	// Wait for the SDK provider to receive the sink.
@@ -174,7 +179,12 @@ func TestL3_04_SubscriptionGatingViaGRPC(t *testing.T) {
 
 	ready := make(chan resource.WatchEventSink, 1)
 	sdkProvider := resourcetest.NewTestProvider(t,
-		resourcetest.WithListenForEventsFunc(func(ctx context.Context, sink resource.WatchEventSink) error {
+		resourcetest.WithListenForEventsFunc(func(ctx context.Context, sink resource.WatchEventSink, onReady func() error) error {
+			if onReady != nil {
+				if err := onReady(); err != nil {
+					return err
+				}
+			}
 			ready <- sink
 			<-ctx.Done()
 			return nil
@@ -189,7 +199,7 @@ func TestL3_04_SubscriptionGatingViaGRPC(t *testing.T) {
 	watchCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
-	watchReady := make(chan struct{})
+	watchReady := make(chan error, 1)
 	go ctrl.listenForWatchEvents(watchCtx, "p1", grpcProvider, sink, watchReady)
 
 	select {
@@ -226,7 +236,12 @@ func TestL3_05_StateEventKeyFormatViaGRPC(t *testing.T) {
 
 	ready := make(chan resource.WatchEventSink, 1)
 	sdkProvider := resourcetest.NewTestProvider(t,
-		resourcetest.WithListenForEventsFunc(func(ctx context.Context, sink resource.WatchEventSink) error {
+		resourcetest.WithListenForEventsFunc(func(ctx context.Context, sink resource.WatchEventSink, onReady func() error) error {
+			if onReady != nil {
+				if err := onReady(); err != nil {
+					return err
+				}
+			}
 			ready <- sink
 			<-ctx.Done()
 			return nil
@@ -239,7 +254,7 @@ func TestL3_05_StateEventKeyFormatViaGRPC(t *testing.T) {
 	watchCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
-	watchReady := make(chan struct{})
+	watchReady := make(chan error, 1)
 	go ctrl.listenForWatchEvents(watchCtx, "p1", grpcProvider, sink, watchReady)
 
 	select {
@@ -302,7 +317,12 @@ func TestL3_07_MixedEventsViaGRPC(t *testing.T) {
 
 	ready := make(chan resource.WatchEventSink, 1)
 	sdkProvider := resourcetest.NewTestProvider(t,
-		resourcetest.WithListenForEventsFunc(func(ctx context.Context, sink resource.WatchEventSink) error {
+		resourcetest.WithListenForEventsFunc(func(ctx context.Context, sink resource.WatchEventSink, onReady func() error) error {
+			if onReady != nil {
+				if err := onReady(); err != nil {
+					return err
+				}
+			}
 			ready <- sink
 			<-ctx.Done()
 			return nil
@@ -318,7 +338,7 @@ func TestL3_07_MixedEventsViaGRPC(t *testing.T) {
 	watchCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
-	watchReady := make(chan struct{})
+	watchReady := make(chan error, 1)
 	go ctrl.listenForWatchEvents(watchCtx, "p1", grpcProvider, sink, watchReady)
 
 	select {

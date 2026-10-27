@@ -176,7 +176,7 @@ type mockProvider struct {
 	StopConnectionWatchFunc     func(ctx context.Context, connectionID string) error
 	HasWatchFunc                func(ctx context.Context, connectionID string) bool
 	GetWatchStateFunc           func(ctx context.Context, connectionID string) (*resource.WatchConnectionSummary, error)
-	ListenForEventsFunc         func(ctx context.Context, sink resource.WatchEventSink) error
+	ListenForEventsFunc         func(ctx context.Context, sink resource.WatchEventSink, onReady func() error) error
 	EnsureResourceWatchFunc     func(ctx context.Context, connectionID, resourceKey string) error
 	StopResourceWatchFunc       func(ctx context.Context, connectionID, resourceKey string) error
 	RestartResourceWatchFunc    func(ctx context.Context, connectionID, resourceKey string) error
@@ -379,9 +379,14 @@ func (m *mockProvider) GetWatchState(
 	return nil, nil
 }
 
-func (m *mockProvider) ListenForEvents(ctx context.Context, sink resource.WatchEventSink) error {
+func (m *mockProvider) ListenForEvents(ctx context.Context, sink resource.WatchEventSink, onReady func() error) error {
 	if m.ListenForEventsFunc != nil {
-		return m.ListenForEventsFunc(ctx, sink)
+		return m.ListenForEventsFunc(ctx, sink, onReady)
+	}
+	if onReady != nil {
+		if err := onReady(); err != nil {
+			return err
+		}
 	}
 	<-ctx.Done()
 	return nil

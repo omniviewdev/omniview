@@ -252,7 +252,7 @@ func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
 	c.connsMu.Unlock()
 }
 
-func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend plugintypes.PluginBackend) error {
+func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend plugintypes.PluginBackend) (retErr error) {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginStart")
 
@@ -265,17 +265,38 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 
 	watchCtx, watchCancel := context.WithCancel(context.Background())
 
+	state := &pluginState{
+		version: version, watchCancel: watchCancel,
+	}
 	c.pluginsMu.Lock()
 	if existing, ok := c.plugins[pluginID]; ok {
 		existing.watchCancel()
 	}
-	c.plugins[pluginID] = &pluginState{
-		provider:    provider,
-		version:     version,
-		watchCancel: watchCancel,
-		crashOnce:   sync.Once{},
-	}
+	c.plugins[pluginID] = state
 	c.pluginsMu.Unlock()
+	defer func() {
+		if retErr == nil {
+			return
+		}
+		watchCancel()
+		c.pluginsMu.Lock()
+		owned := c.plugins[pluginID] == state
+		if owned {
+			delete(c.plugins, pluginID)
+		}
+		c.pluginsMu.Unlock()
+		if !owned {
+			return
+		}
+		c.actions.stopPlugin(pluginID)
+		c.connsMu.Lock()
+		conns := c.connections[pluginID]
+		delete(c.connections, pluginID)
+		c.connsMu.Unlock()
+		c.clearAutoConnectAttempts(pluginID)
+		c.subs.RemoveAll(pluginID)
+		c.cleanupPluginGraphState(pluginID, conns)
+	}()
 	c.clearAutoConnectAttempts(pluginID)
 
 	// Clean up stale registry/graph state from the previous plugin instance.
@@ -286,8 +307,41 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 		c.cleanupPluginGraphState(pluginID, prevConns)
 	}
 
+	// Start watch event listener (uses WatchEventSink callback pattern).
+	sink := &engineWatchSink{
+		pluginID:   pluginID,
+		ctrl:       c,
+		store:      c.registryStore,
+		dispatcher: c.dispatcher,
+	}
+	watchReady := make(chan error, 1)
+	go c.listenForWatchEvents(watchCtx, pluginID, provider, sink, watchReady)
+
+	// Only the provider's actual registration acknowledgement admits sources.
+	timer := time.NewTimer(watchStreamReadyTimeout)
+	defer timer.Stop()
+	select {
+	case err := <-watchReady:
+		if err != nil {
+			return fmt.Errorf("watch event stream startup: %w", err)
+		}
+		logger.Debugw(context.Background(), "watch event stream established")
+	case <-watchCtx.Done():
+		return watchCtx.Err()
+	case <-timer.C:
+		return fmt.Errorf("watch event stream startup: %w", context.DeadlineExceeded)
+	}
+	c.pluginsMu.Lock()
+	if c.plugins[pluginID] != state || watchCtx.Err() != nil {
+		c.pluginsMu.Unlock()
+		return context.Canceled
+	}
+	// Keep concurrent resource calls from starting sources during registration.
+	state.provider = provider
+	c.pluginsMu.Unlock()
+
 	// Load connections from the plugin.
-	if conns, loadErr := c.LoadConnections(invocation.HostContext(context.Background()), pluginID); loadErr != nil {
+	if conns, loadErr := c.LoadConnections(invocation.HostContext(watchCtx), pluginID); loadErr != nil {
 		logger.Errorw(context.Background(), "failed to load connections from plugin", "error", loadErr)
 	} else if len(conns) > 0 {
 		eventKey := pluginID + "/connection/sync"
@@ -296,7 +350,7 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	}
 
 	// Bootstrap relationship declarations for the graph indexer.
-	bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), relationshipBootstrapTimeout)
+	bootstrapCtx, bootstrapCancel := context.WithTimeout(watchCtx, relationshipBootstrapTimeout)
 	defer bootstrapCancel()
 	if resourceTypes, discoveryErr := provider.GetResourceTypes(bootstrapCtx, ""); discoveryErr == nil {
 		for rk := range resourceTypes {
@@ -312,28 +366,10 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 		}
 	}
 
-	// Start watch event listener (uses WatchEventSink callback pattern).
-	sink := &engineWatchSink{
-		pluginID:   pluginID,
-		ctrl:       c,
-		store:      c.registryStore,
-		dispatcher: c.dispatcher,
-	}
-	watchReady := make(chan struct{})
-	go c.listenForWatchEvents(watchCtx, pluginID, provider, sink, watchReady)
-
-	// Wait for the gRPC stream to be established (with timeout).
-	select {
-	case <-watchReady:
-		logger.Debugw(context.Background(), "watch event stream established")
-	case <-time.After(watchStreamReadyTimeout):
-		logger.Warnw(context.Background(), "watch event stream did not establish in time, continuing anyway")
-	}
-
 	// Start connection watcher.
 	go c.listenForConnectionEvents(watchCtx, pluginID, provider)
 
-	return nil
+	return watchCtx.Err()
 }
 
 func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
@@ -438,8 +474,8 @@ func (c *controller) HasPlugin(ctx context.Context, pluginID string) (_result bo
 	defer finishResource(ctx, &retErr)
 	c.pluginsMu.RLock()
 	defer c.pluginsMu.RUnlock()
-	_, ok := c.plugins[pluginID]
-	return ok, nil
+	ps, ok := c.plugins[pluginID]
+	return ok && ps.provider != nil, nil
 
 }
 
@@ -451,7 +487,7 @@ func (c *controller) getProvider(pluginID string) (ResourceProvider, error) {
 	c.pluginsMu.RLock()
 	defer c.pluginsMu.RUnlock()
 	ps, ok := c.plugins[pluginID]
-	if !ok {
+	if !ok || ps.provider == nil {
 		return nil, apperror.PluginNotFound(pluginID)
 	}
 	return ps.provider, nil
@@ -1632,7 +1668,7 @@ func (c *controller) GetResourceEvents(ctx context.Context, pluginID, connection
 
 // listenForWatchEvents runs ListenForEvents with the engine sink.
 // Blocks until ctx is cancelled or the stream errors.
-// Closes the ready channel before calling ListenForEvents to signal the caller.
+// Reports readiness only after the provider acknowledges actual registration.
 //
 // NOTE: No span wraps this method — it runs for the entire plugin lifetime.
 // The underlying gRPC stream gets its own otelgrpc span; individual watch
@@ -1642,12 +1678,24 @@ func (c *controller) listenForWatchEvents(
 	pluginID string,
 	provider ResourceProvider,
 	sink resource.WatchEventSink,
-	ready chan struct{},
+	ready chan<- error,
 ) {
 	c.logger.Infow(ctx, "watch event listener starting", "pluginID", pluginID)
-	close(ready) // Signal that we're about to call ListenForEvents
-	err := provider.ListenForEvents(ctx, sink)
-	if err != nil && ctx.Err() == nil {
+	registered := false
+	err := provider.ListenForEvents(ctx, sink, func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		registered = true
+		ready <- nil
+		return nil
+	})
+	if !registered {
+		if err == nil {
+			err = fmt.Errorf("watch event listener returned before registration")
+		}
+		ready <- err
+	} else if err != nil && ctx.Err() == nil {
 		c.triggerCrashRecovery(pluginID, err, "watch")
 	}
 	c.logger.Infow(ctx, "watch event listener stopped", "pluginID", pluginID)
