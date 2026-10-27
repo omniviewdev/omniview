@@ -26,6 +26,14 @@ func (p transactionSDKProvider) ListSettings() map[string]pkgsettings.Setting {
 	return result
 }
 
+func (p transactionSDKProvider) ValidateSetting(id string, value any) (pkgsettings.ValidationResult, error) {
+	setting, err := p.Provider.GetSetting(id)
+	if err != nil {
+		return pkgsettings.ValidationResult{}, err
+	}
+	return setting.Validation(value), nil
+}
+
 func TestSettingsTransaction_PreservesValidationHooksAndPersistence(t *testing.T) {
 	store := openTestStore(t)
 	provider := pkgsettings.NewProvider(pkgsettings.ProviderOpts{

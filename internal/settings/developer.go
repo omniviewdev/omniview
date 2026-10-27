@@ -26,11 +26,12 @@ var Developer = settings.Category{
 			Default: "",
 		},
 		"gopath": {
-			ID:          "gopath",
-			Label:       "Go Path",
-			Description: "Path to the Go binary",
-			Type:        settings.Text,
-			Default:     "",
+			ID:            "gopath",
+			Label:         "Go Path",
+			Description:   "Path to the Go binary",
+			Type:          settings.Text,
+			Default:       "",
+			ValidateValue: validateGoExecutable,
 			FileSelection: &settings.SettingFileSelection{
 				Enabled:      true,
 				AllowFolders: false,
