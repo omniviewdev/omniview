@@ -43,6 +43,12 @@ validation RPC. Source selection requires an absolute path. Local review uses
 the workspace-selected SDK; a published-dependency build must pin an SDK commit
 containing the same API.
 
+The E2E runner checks out the independently reviewed SDK revision selected by
+`OMNIVIEW_E2E_REVIEWED_SDK_REVISION`. After reviewing the SDK change, advance that
+trusted repository variable to a commit containing validation and keep
+`e2e/source-cohort.json` aligned. Updating only `go.mod` cannot update this separate
+source selection. Do not bypass the reviewed-source gate for a feature branch.
+
 ```sh
 SDK_SOURCE=/absolute/path/to/plugin-sdk
 (cd "$SDK_SOURCE" && GOWORK=off go test ./settings ./pkg/v1/settings -count=1)
