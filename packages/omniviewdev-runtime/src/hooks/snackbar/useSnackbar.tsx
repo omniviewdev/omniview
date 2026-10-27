@@ -1,11 +1,13 @@
 import React, { createContext, useContext, type ReactNode } from 'react';
-import { useToast, type ToastSeverity } from '@omniviewdev/base-ui';
+import { Button, useToast, type ToastSeverity } from '@omniviewdev/base-ui';
 
 type VariantType = 'default' | 'success' | 'error' | 'warning' | 'info';
 
 type SnackbarContextType = {
   showSnackbar(message: string, status: VariantType, icon?: string, details?: string): void;
   showSnackbar(options: ShowSnackbarOptions): void;
+  openNotifications(): void;
+  notificationCount: number;
 };
 
 const SnackbarContext = createContext<SnackbarContextType | undefined>(undefined);
@@ -32,10 +34,17 @@ const variantToSeverity: Record<VariantType, ToastSeverity> = {
   error: 'danger',
 };
 
+type Notice = { id: number; message: string; details?: string; created: string; actions?: ShowSnackbarOptions['actions'] };
+
 export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) => {
   const { toast } = useToast();
 
   const [singleShowNotices, setSingleShowNotices] = React.useState<string[]>([]);
+  const [notices, setNotices] = React.useState<Notice[]>([]);
+  const [historyOpen, setHistoryOpen] = React.useState(false);
+  const [selectedId, setSelectedId] = React.useState<number>();
+  const [copyError, setCopyError] = React.useState('');
+  const nextId = React.useRef(Date.now());
 
   const setNoticeShown = (message: string) => {
     setSingleShowNotices(prev => [...prev, message]);
@@ -69,18 +78,62 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
       _details = details;
     }
 
-    // base-ui toasts take a single action; app errors carry one in practice.
-    toast(_details ?? _message, {
+    let detailAction: { label: string; onClick: () => void } | undefined;
+    if (_status === 'error') {
+      const notice: Notice = {
+        id: ++nextId.current, message: _message, details: _details,
+        created: new Date().toISOString(), actions: _actions,
+      };
+      setNotices(previous => [...previous, notice].slice(-20));
+      detailAction = { label: 'Details', onClick: () => {
+        setSelectedId(notice.id);
+        setHistoryOpen(true);
+      } };
+    }
+    toast(_status === 'error' ? _message : _details ?? _message, {
       severity: variantToSeverity[_status] ?? 'info',
-      title: _details ? _message : undefined,
+      title: _status !== 'error' && _details ? _message : undefined,
       duration: _autoHideDuration,
-      action: _actions?.[0],
+      action: detailAction ?? _actions?.[0],
     });
   };
 
   return (
-    <SnackbarContext.Provider value={{ showSnackbar }}>
+    <SnackbarContext.Provider value={{ showSnackbar, openNotifications: () => setHistoryOpen(true), notificationCount: notices.length }}>
       {children}
+      {historyOpen && (
+        <aside aria-label="Notifications" style={{
+          position: 'fixed', right: 16, bottom: 64, zIndex: 1400,
+          width: 'min(600px, calc(100vw - 32px))', maxHeight: '70vh', overflow: 'auto',
+          padding: 16, background: 'var(--ov-color-bg-surface, #202020)',
+          color: 'var(--ov-color-fg-default, #eee)', border: '1px solid currentColor', borderRadius: 8,
+        }}>
+          <h2>Notifications</h2>
+          <Button size="sm" variant="ghost" onClick={() => setHistoryOpen(false)}>Close</Button>
+          <Button size="sm" variant="ghost" onClick={() => { setNotices([]); setSelectedId(undefined); setCopyError(''); }}>Clear history</Button>
+          {notices.length === 0 && <p>No recent errors.</p>}
+          {notices.slice().reverse().map(notice => (
+            <details key={notice.id} open={selectedId === notice.id} onToggle={event => {
+              if (event.currentTarget.open) setSelectedId(notice.id);
+            }}>
+              <summary>{notice.message} — <time dateTime={notice.created}>{new Date(notice.created).toLocaleString()}</time></summary>
+              <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', userSelect: 'text' }}>{notice.details || notice.message}</pre>
+              <Button size="sm" variant="ghost" onClick={async () => {
+                setCopyError('');
+                try {
+                  await navigator.clipboard.writeText(`${notice.message}\n${notice.created}\n${notice.details ?? ''}`);
+                } catch {
+                  setCopyError('Copy failed. Select the diagnostic text and copy it manually.');
+                }
+              }}>Copy details</Button>
+              {notice.actions?.map((action, index) => (
+                <Button key={`${action.label}-${index}`} size="sm" variant="ghost" onClick={action.onClick}>{action.label}</Button>
+              ))}
+            </details>
+          ))}
+          {copyError && <p role="status">{copyError}</p>}
+        </aside>
+      )}
     </SnackbarContext.Provider>
   );
 };

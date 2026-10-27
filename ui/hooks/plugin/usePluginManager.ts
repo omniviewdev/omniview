@@ -6,9 +6,22 @@ import { Events } from '@omniviewdev/runtime/runtime';
 import type { PluginMeta, PluginInfo } from '@omniviewdev/runtime/models';
 
 import { usePluginService } from '@/features/plugins';
+import { devToolsChannel } from '@/features/devtools/events';
 
 enum Entity {
   PLUGINS = 'plugins',
+}
+
+function localInstallDiagnosticMessage(error: unknown): string {
+  if (typeof error === 'string') {
+    return error;
+  }
+
+  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+    return error.message;
+  }
+
+  return '';
 }
 
 /**
@@ -117,7 +130,37 @@ export const usePluginManager = () => {
       // A rejected build/rebind can still retain a different source and failed
       // record. Refresh list and detail queries instead of leaving A as running.
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
-      createErrorHandler(showSnackbar, 'Dev mode installation failed')(error);
+      const appErr = parseAppError(error);
+      if (appErr.type === 'omniview:cancelled') {
+        return;
+      }
+
+      // This explicit local developer operation may expose bridge diagnostics.
+      // Keep global resource-error sanitization unchanged.
+      const bridgeMessage = localInstallDiagnosticMessage(error);
+      const diagnostic = appErr.detail === 'The operation could not be completed.' && bridgeMessage
+        ? `${bridgeMessage.slice(0, 3800)}${bridgeMessage.length > 3800 ? '\n[Diagnostic truncated.]' : ''}`
+        : appErr.detail;
+      showSnackbar({
+        message: 'Dev mode installation failed',
+        status: 'error',
+        details: [appErr.title, diagnostic, ...(appErr.suggestions ?? [])].filter(Boolean).join('\n'),
+        actions: [
+          ...(appErr.instance ? [{
+            label: 'Build Output',
+            onClick: () => {
+              devToolsChannel.emit('onOpenBuildOutput', appErr.instance!);
+            },
+          }] : []),
+          ...(appErr.actions?.map(actionToSnackbar) ?? []),
+          {
+            label: 'Retry installation',
+            onClick: () => {
+              installDev.mutate();
+            },
+          },
+        ],
+      });
     },
   });
 

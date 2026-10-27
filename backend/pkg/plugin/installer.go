@@ -9,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"golang.org/x/sync/errgroup"
@@ -47,10 +49,35 @@ func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
 // structured error; it does not represent a ready installation.
 func (pm *pluginManager) InstallDevPluginFromPath(path string) (info sdktypes.PluginInfo, err error) {
 	l := pm.logger.Named("InstallDevPluginFromPath")
+	var pluginID string
+	buildAttempted := false
 	defer func() {
 		if r := recover(); r != nil {
 			l.Errorw(pm.ctx, "panic in dev install", "panic", r, "stack", string(debug.Stack()))
 			err = apperror.Internal(fmt.Errorf("panic: %v", r), "Install in dev mode failed")
+		}
+		if err != nil {
+			var appErr *apperror.AppError
+			if !errors.As(err, &appErr) {
+				appErr = apperror.Wrap(err, apperror.TypePluginInstallFailed,
+					http.StatusInternalServerError, "Dev mode installation failed")
+			}
+			// Copy before adding occurrence-specific context.
+			diagnostic := *appErr
+			var logs []devserver.LogEntry
+			var startupErr *devserver.StartupError
+			if errors.As(err, &startupErr) {
+				logs = startupErr.Logs
+			} else if logsSource, ok := pm.devServerMgr.(interface {
+				GetDevServerLogs(string, int) []devserver.LogEntry
+			}); buildAttempted && pluginID != "" && ok {
+				logs = logsSource.GetDevServerLogs(pluginID, 200)
+			}
+			if pluginID != "" {
+				diagnostic.Instance = pluginID
+			}
+			diagnostic.Detail = devInstallDiagnostic(path, pluginID, appErr.Detail, logs)
+			err = &diagnostic
 		}
 	}()
 
@@ -65,6 +92,7 @@ func (pm *pluginManager) InstallDevPluginFromPath(path string) (info sdktypes.Pl
 	if err != nil {
 		return info, apperror.Wrap(err, apperror.TypePluginInstallFailed, http.StatusUnprocessableEntity, "Failed to parse plugin metadata")
 	}
+	pluginID = metadata.ID
 	if pm.devServerMgr == nil {
 		return info, apperror.New(
 			apperror.TypeSettingsMissingConfig, http.StatusUnprocessableEntity,
@@ -95,6 +123,7 @@ func (pm *pluginManager) InstallDevPluginFromPath(path string) (info sdktypes.Pl
 		return info, err
 	}
 
+	buildAttempted = true
 	state, startErr := pm.devServerMgr.StartDevServerForPath(metadata.ID, path)
 	if startErr != nil {
 		return pm.failedDevInstall(metadata, path, lifecycle.PhaseFailed,
@@ -117,6 +146,67 @@ func (pm *pluginManager) InstallDevPluginFromPath(path string) (info sdktypes.Pl
 	}
 	pm.emitter.Emit(EventDevInstallComplete, metadata)
 	return info, nil
+}
+
+func devInstallDiagnostic(path, pluginID, cause string, logs []devserver.LogEntry) string {
+	const limit = 1800
+	const truncated = "\n[Diagnostic truncated.]"
+	var detail strings.Builder
+	fmt.Fprintf(&detail, "Source: %s\n", path)
+	if pluginID != "" {
+		fmt.Fprintf(&detail, "Plugin: %s\n", pluginID)
+	}
+	fmt.Fprintf(&detail, "\n%s", cause)
+	context := detail.String()
+	contextLimit := limit
+	if len(logs) > 0 {
+		contextLimit = limit / 2
+	}
+	if utf8.RuneCountInString(context) > contextLimit {
+		context = diagnosticPrefix(context, contextLimit-utf8.RuneCountInString(truncated)) + truncated
+	}
+	if len(logs) == 0 {
+		return context
+	}
+	const header = "\n\nBuild output (newest retained lines; earlier output may be omitted):\n"
+	remaining := limit - utf8.RuneCountInString(context) - utf8.RuneCountInString(header)
+	start := len(logs)
+	for start > 0 {
+		entry := logs[start-1]
+		size := 7 + utf8.RuneCountInString(entry.Timestamp) + utf8.RuneCountInString(entry.Source) + utf8.RuneCountInString(entry.Message)
+		if size > remaining {
+			break
+		}
+		remaining -= size
+		start--
+	}
+	var result strings.Builder
+	result.WriteString(context)
+	result.WriteString(header)
+	if start == len(logs) {
+		message := logs[start-1].Message
+		for remaining > 0 && len(message) > 0 {
+			_, size := utf8.DecodeLastRuneInString(message)
+			message = message[:len(message)-size]
+			remaining--
+		}
+		result.WriteString(logs[start-1].Message[len(message):])
+	} else {
+		for _, entry := range logs[start:] {
+			fmt.Fprintf(&result, "[%s] [%s] %s\n", entry.Timestamp, entry.Source, entry.Message)
+		}
+	}
+	return result.String()
+}
+
+func diagnosticPrefix(value string, limit int) string {
+	for offset := range value {
+		if limit == 0 {
+			return value[:offset]
+		}
+		limit--
+	}
+	return value
 }
 
 // installOpsLock serializes install/rebind/unlink/uninstall transactions, but

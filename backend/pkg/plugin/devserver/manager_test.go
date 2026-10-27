@@ -4,7 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -62,6 +66,33 @@ func newTestManager(t *testing.T) *DevServerManager {
 	t.Helper()
 	svc := appstate.NewTestService(t)
 	return NewDevServerManager(logging.NewNop(), svc.RootDir(), svc.Plugins(), nil, nil, &mockSettingsProvider{})
+}
+
+func TestManager_StartupFailureRetainsOutputAfterCleanup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX executable fixture")
+	}
+	mgr := newTestManager(t)
+	mgr.ctx = context.Background()
+	mgr.settingsProvider = nil
+	source := managedSourceFixture(t, "install-failure")
+	require.NoError(t, os.MkdirAll(filepath.Join(source, "ui"), 0700))
+	tools := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tools, "pnpm"), []byte("#!/bin/sh\nprintf 'dependency resolution failed: incompatible peer\\n' >&2\nexit 1\n"), 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(tools, "node"), []byte("#!/bin/sh\nexit 0\n"), 0700))
+	t.Setenv("PATH", tools+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	_, err := mgr.StartDevServerForPath("install-failure", source)
+	require.Error(t, err)
+	require.False(t, mgr.IsManaged("install-failure"))
+	require.Empty(t, mgr.GetDevServerLogs("install-failure", 200))
+	var startup *StartupError
+	require.ErrorAs(t, err, &startup)
+	var output strings.Builder
+	for _, entry := range startup.Logs {
+		output.WriteString(entry.Message)
+	}
+	require.Contains(t, output.String(), "dependency resolution failed: incompatible peer")
 }
 
 func TestNewDevServerManager(t *testing.T) {

@@ -287,8 +287,9 @@ func (m *DevServerManager) startDevServer(pluginID, devPath string) (DevServerSt
 	// Initial compilation is synchronous; Vite is probed before a successful
 	// start result, while backend readiness awaits the actual loader callback.
 	if err = inst.Start(); err != nil {
-		if stopErr := inst.Stop(); stopErr != nil {
-			failure := errors.Join(err, stopErr)
+		stopErr := inst.Stop()
+		failure := &StartupError{Err: errors.Join(err, stopErr), Logs: inst.GetLogs(200)}
+		if stopErr != nil {
 			inst.setLastError(failure.Error())
 			return inst.State(), failure
 		}
@@ -297,7 +298,7 @@ func (m *DevServerManager) startDevServer(pluginID, devPath string) (DevServerSt
 		m.mu.Unlock()
 		m.ports.Release(port)
 		return DevServerState{}, apperror.Wrap(
-			err, apperror.TypePluginBuildFailed, http.StatusInternalServerError, "Failed to start dev server",
+			failure, apperror.TypePluginBuildFailed, http.StatusInternalServerError, "Failed to start dev server",
 		)
 	}
 

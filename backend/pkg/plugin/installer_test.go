@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
@@ -27,6 +29,11 @@ type transactionDevServers struct {
 	stopErr    error
 	startErr   error
 	buildError string
+	logs       []devserver.LogEntry
+}
+
+func (d *transactionDevServers) GetDevServerLogs(string, int) []devserver.LogEntry {
+	return d.logs
 }
 
 func (d *transactionDevServers) SupervisorOwnsStartup() bool {
@@ -74,6 +81,20 @@ func devSourceFixture(t *testing.T, metadata string) string {
 	return path
 }
 
+func TestInstallDevPluginFromPath_EarlyFailureIncludesSource(t *testing.T) {
+	pm := newTestManager(t)
+	source := t.TempDir()
+	_, err := pm.InstallDevPluginFromPath(source)
+	require.Error(t, err)
+	var diagnostic *apperror.AppError
+	require.ErrorAs(t, err, &diagnostic)
+	canonical, resolveErr := filepath.EvalSymlinks(source)
+	require.NoError(t, resolveErr)
+	assert.Contains(t, diagnostic.Detail, "Source: "+canonical)
+	assert.Contains(t, diagnostic.Detail, "plugin.yaml")
+	assert.Empty(t, diagnostic.Instance)
+}
+
 func TestInstallDevPluginFromPath_RebindsManagedSourceAndPersists(t *testing.T) {
 	pm := newTestManager(t)
 	servers := &transactionDevServers{}
@@ -114,6 +135,7 @@ func TestInstallDevPluginFromPath_RebindFailureDoesNotReplaceSource(t *testing.T
 			b := devSourceFixture(t, "id: flux\nversion: 9.0.0\ncapabilities: [ui]\n")
 			_, err := pm.InstallDevPluginFromPath(a)
 			require.NoError(t, err)
+			servers.logs = []devserver.LogEntry{{Source: "go-build", Message: "previous-source-build-output"}}
 			if failure == "server-stop" {
 				servers.stopErr = errors.New("server refuses stop")
 			} else {
@@ -122,6 +144,7 @@ func TestInstallDevPluginFromPath_RebindFailureDoesNotReplaceSource(t *testing.T
 
 			_, err = pm.InstallDevPluginFromPath(b)
 			require.Error(t, err)
+			assert.NotContains(t, err.Error(), "previous-source-build-output")
 			info, getErr := pm.GetPlugin("flux")
 			require.NoError(t, getErr)
 			assert.Equal(t, a, info.DevPath)
@@ -138,9 +161,35 @@ func TestInstallDevPluginFromPath_RebindFailureDoesNotReplaceSource(t *testing.T
 	}
 }
 
+func TestDevInstallDiagnosticKeepsNewestOutputWithinBudget(t *testing.T) {
+	for _, test := range []struct{ name, message string }{
+		{"short", "main.go:42: undefined: resource"},
+		{"long_unicode", strings.Repeat("界", 2200) + "main.go:42: undefined: resource"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			logs := []devserver.LogEntry{{Source: "go-build", Message: "oldest-output-only"}}
+			for range 150 {
+				logs = append(logs, devserver.LogEntry{Source: "go-build", Message: strings.Repeat("older output ", 20)})
+			}
+			logs = append(logs, devserver.LogEntry{Source: "go-build", Message: test.message})
+			detail := devInstallDiagnostic("/source", "kubernetes", "compiler failed", logs)
+			require.Contains(t, detail, "/source")
+			require.Contains(t, detail, "kubernetes")
+			require.Contains(t, detail, "compiler failed")
+			require.Contains(t, detail, "main.go:42: undefined: resource")
+			require.NotContains(t, detail, "oldest-output-only")
+			require.True(t, utf8.ValidString(detail))
+			require.LessOrEqual(t, utf8.RuneCountInString(detail), 1800)
+		})
+	}
+}
+
 func TestInstallDevPluginFromPath_FailedBuildIsErrorAndRecoverable(t *testing.T) {
 	pm := newTestManager(t)
-	pm.devServerMgr = &transactionDevServers{buildError: "compiler rejected source"}
+	pm.devServerMgr = &transactionDevServers{
+		buildError: "compiler rejected source",
+		logs:       []devserver.LogEntry{{Source: "go-build", Message: "main.go:42: undefined: resource"}},
+	}
 	emitter := &testRecordingEmitter{}
 	pm.emitter = emitter
 	source := devSourceFixture(t, backendYaml)
@@ -150,6 +199,9 @@ func TestInstallDevPluginFromPath_FailedBuildIsErrorAndRecoverable(t *testing.T)
 	var appErr *apperror.AppError
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginBuildFailed, appErr.Type)
+	assert.Contains(t, appErr.Detail, "Source: "+source)
+	assert.Contains(t, appErr.Detail, "main.go:42: undefined: resource")
+	assert.Equal(t, "kubernetes", appErr.Instance)
 	assert.Equal(t, string(lifecycle.PhaseBuildFailed), info.Phase)
 	assert.Equal(t, source, info.DevPath)
 	assert.Contains(t, info.LastError, "compiler rejected source")

@@ -8,6 +8,7 @@ const backend = vi.hoisted(() => ({
   installDev: vi.fn(),
   list: vi.fn(),
   get: vi.fn(),
+  showSnackbar: vi.fn(),
 }));
 
 // Replace IPC and presentation boundaries, not QueryClient or mutation hooks.
@@ -25,9 +26,9 @@ vi.mock('@omniviewdev/runtime/api', () => ({
   },
 }));
 vi.mock('@omniviewdev/runtime', () => ({
-  useSnackbar: () => ({ showSnackbar: () => undefined }),
+  useSnackbar: () => ({ showSnackbar: backend.showSnackbar }),
   createErrorHandler: () => () => undefined,
-  parseAppError: (error: unknown) => ({ detail: String(error) }),
+  parseAppError: () => ({ title: 'Error', type: 'omniview:internal', detail: 'The operation could not be completed.' }),
   actionToSnackbar: (action: unknown) => action,
 }));
 vi.mock('@omniviewdev/runtime/runtime', () => ({
@@ -84,6 +85,11 @@ describe('dev install retained-failure reconciliation', () => {
       });
       expect(result.current.manager.installDev.isError).toBe(true);
       expect(result.current.manager.installDev.isSuccess).toBe(false);
+      expect(backend.showSnackbar).toHaveBeenLastCalledWith(expect.objectContaining({
+        status: 'error',
+        details: expect.stringContaining('Dev plugin build failed'),
+        actions: expect.arrayContaining([expect.objectContaining({ label: 'Retry installation' })]),
+      }));
     } finally {
       unmount();
       client.clear();

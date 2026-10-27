@@ -22,7 +22,7 @@ import type { DevServerAggregateStatus, DevServerState } from '@/features/devtoo
 import { getAggregateStatus } from '@/features/devtools/types';
 import { useDevServer } from '@/hooks/plugin/useDevServer';
 import { usePluginService } from '@/features/plugins';
-import { usePortForwardSessions, useOperations } from '@omniviewdev/runtime';
+import { usePortForwardSessions, useOperations, useSnackbar } from '@omniviewdev/runtime';
 import type { Operation } from '@omniviewdev/runtime';
 import HintTooltip from '@/components/base/HintTooltip';
 
@@ -335,14 +335,16 @@ function PluginLoadingSpinner() {
 }
 
 // ---------------------------------------------------------------------------
-// NotificationButton — placeholder bell icon
+// NotificationButton — retained error diagnostics
 // ---------------------------------------------------------------------------
 
 function NotificationButton() {
+  const { openNotifications, notificationCount } = useSnackbar();
   return (
     <HintTooltip content='Notifications' side='top'>
-      <button type='button' className={styles.IconButton} aria-label='Notifications'>
+      <button type='button' className={styles.IconButton} aria-label={`Notifications (${notificationCount})`} onClick={openNotifications}>
         <LuBell size={10} />
+        {notificationCount > 0 && <span>{notificationCount}</span>}
       </button>
     </HintTooltip>
   );
