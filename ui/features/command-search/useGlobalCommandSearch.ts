@@ -169,22 +169,36 @@ export function useGlobalCommandSearch() {
         event.defaultPrevented ||
         event.isComposing ||
         event.keyCode === 229 ||
+        event.repeat ||
+        event.shiftKey ||
         event.altKey ||
-        !(event.ctrlKey || event.metaKey) ||
+        event.ctrlKey === event.metaKey ||
         event.key.toLowerCase() !== 'k'
       ) {
         return;
       }
 
+      const isOpen = controllerRef.current?.getSnapshot().isOpen;
+      const target = event.target instanceof Element ? event.target : null;
+      const owner = target?.closest('[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]');
+      const palette = input.current?.closest('[role="dialog"]');
+      if (owner && owner !== palette && !(owner.getAttribute('role') === 'listbox' && palette?.contains(owner))) {
+        return;
+      }
+
       event.preventDefault();
-      open();
+      if (isOpen) {
+        close();
+      } else {
+        open();
+      }
     };
 
     document.addEventListener('keydown', shortcut);
     return () => {
       document.removeEventListener('keydown', shortcut);
     };
-  }, [open]);
+  }, [open, close]);
 
   useEffect(() => {
     if (previouslyOpen.current && !snapshot.isOpen) {

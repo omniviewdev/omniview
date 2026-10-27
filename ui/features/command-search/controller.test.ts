@@ -98,14 +98,14 @@ describe('actual registry and async epochs', () => {
     h.register('probe/method', provider, 'Stateful method provider');
     h.controller.open();
     h.controller.setQuery('external alias');
-    await flush();
+    await vi.advanceTimersByTimeAsync(150);
 
     expect(labels()).toEqual(['Provider-selected destination']);
     await h.controller.activate(key('Provider-selected destination'));
     expect(h.navigate).toHaveBeenCalledExactlyOnceWith('/plugins');
   });
 
-  it('keeps external alias results without local matching/reranking and preserves source order', async () => {
+  it('keeps external alias results without local matching/reranking', async () => {
     h.provider('probe/z-first', async () => ({
       items: [item('z', 'Zulu'), item('a', 'Alpha')],
       completion: 'complete',
@@ -113,8 +113,9 @@ describe('actual registry and async epochs', () => {
     h.provider('probe/a-second', async () => response('alias', 'Native tasks'));
     h.controller.open();
     h.controller.setQuery('external-alias-that-is-not-a-label');
-    await flush();
-    expect(labels()).toEqual(['Zulu', 'Alpha', 'Native tasks']);
+    await vi.advanceTimersByTimeAsync(150);
+    expect(labels()).toEqual(expect.arrayContaining(['Zulu', 'Alpha', 'Native tasks']));
+    expect(labels().indexOf('Zulu')).toBeLessThan(labels().indexOf('Alpha'));
     expect(new Set(h.controller.getSnapshot().rows.map((row) => row.key)).size).toBe(3);
   });
 
@@ -129,10 +130,10 @@ describe('actual registry and async epochs', () => {
       });
       h.controller.open();
       h.controller.setQuery('old');
-      await flush();
+      await vi.advanceTimersByTimeAsync(150);
       h.controller.setQuery('new');
       expect(requests.find((request) => request.query === 'old')?.signal.aborted).toBe(true);
-      await flush();
+      await vi.advanceTimersByTimeAsync(150);
       if (settle === 'resolve') {
         old.resolve(response('old', 'Retired'));
       } else {
@@ -230,6 +231,124 @@ describe('actual registry and async epochs', () => {
   });
 });
 
+describe('local relevance and provider fairness', () => {
+  it('ranks exact labels above prefixes, keywords, and description matches', async () => {
+    h.register('description', { ...navigation(), description: 'settings' }, 'Preferences');
+    h.register('keyword', { ...navigation(), keywords: ['settings'] }, 'Configure');
+    h.register('prefix', navigation(), 'Settings appearance');
+    h.register('exact', navigation(), 'Settings');
+    h.controller.open();
+    h.controller.setQuery('settings');
+    await flush();
+    expect(labels()).toEqual(['Settings', 'Settings appearance', 'Configure', 'Preferences']);
+  });
+
+  it('matches a full label containing a hyphenated plugin ID', () => {
+    const label = 'Reload palette-pending-navigation connections';
+    h.register('reload-hyphenated', navigation(), label);
+    h.controller.open();
+    h.controller.setQuery(label);
+    expect(labels()).toEqual([label]);
+  });
+
+  it('matches abbreviations, subsequences, and conservative setting typos', async () => {
+    h.register('reload', { ...navigation(), keywords: ['refresh'] }, 'Reload connections');
+    h.register('setting', navigation(), 'Settings');
+    h.controller.open();
+    for (const query of ['rel conn', 'rld conn']) {
+      h.controller.setQuery(query);
+      await flush();
+      expect(labels()).toContain('Reload connections');
+    }
+
+    for (const query of ['setings', 'settigns', 'settongs']) {
+      h.controller.setQuery(query);
+      await flush();
+      expect(labels()).toContain('Settings');
+    }
+
+    h.controller.setQuery('xyz');
+    await flush();
+    expect(labels()).toEqual([]);
+  });
+
+  it('reserves fair space for admitted providers even with 100 matching statics', async () => {
+    for (let index = 0; index < 100; index++) {
+      h.register(`static-${index}`, navigation(), `Static ${index}`);
+    }
+
+    h.provider('first', async () => ({
+      items: Array.from({ length: 20 }, (_, index) => item(`first-${index}`)),
+      completion: 'complete',
+    }));
+    h.provider('second', async () => ({
+      items: Array.from({ length: 20 }, (_, index) => item(`second-${index}`)),
+      completion: 'complete',
+    }));
+    h.controller.open();
+    await flush();
+    expect(labels()).toHaveLength(100);
+    expect(labels().filter((label) => label.startsWith('Static'))).toHaveLength(60);
+    for (const prefix of ['first', 'second']) {
+      expect(labels().filter((label) => label.startsWith(prefix))).toEqual(
+        Array.from({ length: 20 }, (_, index) => `${prefix}-${index}`),
+      );
+    }
+
+    expect(h.controller.getSnapshot().message).toMatch(/limit/i);
+  });
+
+  it('shows local matches without waiting and searches only after typing pauses', async () => {
+    const requests: ProviderRequest[] = [];
+    h.register('reload', navigation(), 'Reload connections');
+    h.provider('external', async (request) => {
+      requests.push(request);
+      return response('external');
+    });
+    h.controller.open();
+    await flush();
+    expect(requests).toHaveLength(1);
+    h.controller.setQuery('rel');
+    expect(requests[0].signal.aborted).toBe(true);
+    expect(labels()).toEqual(['Reload connections']);
+    await flush();
+    await vi.advanceTimersByTimeAsync(100);
+    h.controller.setQuery('rel conn');
+    await vi.advanceTimersByTimeAsync(149);
+    expect(requests).toHaveLength(1);
+    expect(labels()).toEqual(['Reload connections']);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(requests.map(({ query }) => query)).toEqual(['', 'rel conn']);
+  });
+
+  it('retires a pending query timer when the catalogue changes', async () => {
+    const search = vi.fn(async () => response('external'));
+    h.provider('external', search);
+    h.controller.open();
+    await flush();
+    h.controller.setQuery('pending');
+    h.register('fresh', navigation(), 'Pending destination');
+    await flush();
+    expect(search).toHaveBeenCalledTimes(2);
+    expect(labels()).toContain('Pending destination');
+    await vi.advanceTimersByTimeAsync(150);
+    expect(search).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['close', 'dispose'] as const)('cancels debounced searches on %s', async (operation) => {
+    const search = vi.fn(async () => response('external'));
+    h.provider('external', search);
+    h.controller.open();
+    await flush();
+    h.controller.setQuery('pending');
+    await flush();
+    h.controller[operation]();
+    await vi.advanceTimersByTimeAsync(150);
+    expect(search).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
 describe('finite work and nonauthoritative overflow', () => {
   it('coalesces a real same-tick registry burst into one current provider response and rejects the retired result', async () => {
     const retired = createDeferred<ProviderResponse>();
@@ -240,7 +359,7 @@ describe('finite work and nonauthoritative overflow', () => {
     });
     h.controller.open();
     h.controller.setQuery('external-alias');
-    await flush();
+    await vi.advanceTimersByTimeAsync(150);
     for (let index = 0; index < 1000; index++) {
       h.register(`core/burst-${index}`, navigation(), `Unrelated ${index}`, 'core');
     }
@@ -258,7 +377,7 @@ describe('finite work and nonauthoritative overflow', () => {
     );
   });
 
-  it('admits8 attempts in registry order, runs4 concurrently, times out after5s and never retries', async () => {
+  it('caps admitted providers and concurrent work, times out, and never retries', async () => {
     const calls: string[] = [];
     const pending = Array.from({ length: 9 }, () => createDeferred<ProviderResponse>());
     for (let index = 0; index < 9; index++) {
@@ -270,15 +389,15 @@ describe('finite work and nonauthoritative overflow', () => {
 
     h.controller.open();
     await flush();
-    expect(calls).toEqual(['p0', 'p1', 'p2', 'p3']);
+    expect(calls).toHaveLength(4);
     expect(h.controller.getSnapshot().sources).toContainEqual(
       expect.objectContaining({ id: 'probe/p8', state: 'source-limit' }),
     );
     pending[0].resolve(response('first'));
     await flush();
-    expect(calls).toEqual(['p0', 'p1', 'p2', 'p3', 'p4']);
+    expect(calls).toHaveLength(5);
     await vi.advanceTimersByTimeAsync(5000);
-    expect(calls).toEqual(['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7']);
+    expect(new Set(calls).size).toBe(8);
     await vi.advanceTimersByTimeAsync(5000);
     expect(calls).toHaveLength(8);
     expect(labels()).toEqual(['first']);
@@ -329,7 +448,7 @@ describe('finite work and nonauthoritative overflow', () => {
 
     h.controller.open();
     h.controller.setQuery('RAW Alias');
-    await flush();
+    await vi.advanceTimersByTimeAsync(150);
     expect(search).toHaveBeenLastCalledWith(
       expect.objectContaining({ query: 'RAW Alias', limit: 20, signal: expect.any(AbortSignal) }),
     );

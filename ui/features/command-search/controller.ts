@@ -70,6 +70,108 @@ type ProviderAttempt = {
 
 const capabilityUnavailable = 'Connection discovery is unavailable for this plugin.';
 
+function tokenScore(query: string, candidate: string): number {
+  if (candidate === query) {
+    return 100;
+  }
+
+  if (candidate.startsWith(query)) {
+    return 80;
+  }
+
+  if (candidate.includes(query)) {
+    return 60;
+  }
+
+  let cursor = 0;
+  for (const character of candidate) {
+    if (character === query[cursor]) {
+      cursor++;
+    }
+  }
+
+  if (cursor === query.length) {
+    return 30;
+  }
+
+  // Permit one edit only for meaningful words, never short abbreviations.
+  if (query.length < 5 || Math.abs(candidate.length - query.length) > 1) {
+    return 0;
+  }
+
+  let left = 0;
+  let right = 0;
+  let edits = 0;
+  while (left < query.length && right < candidate.length) {
+    if (query[left] === candidate[right]) {
+      left++;
+      right++;
+    } else {
+      if (++edits > 1) {
+        return 0;
+      }
+
+      if (
+        query.length === candidate.length &&
+        query[left] === candidate[right + 1] &&
+        query[left + 1] === candidate[right]
+      ) {
+        left += 2;
+        right += 2;
+        continue;
+      }
+
+      if (query.length >= candidate.length) {
+        left++;
+      }
+
+      if (candidate.length >= query.length) {
+        right++;
+      }
+    }
+  }
+
+  return edits + (left < query.length || right < candidate.length ? 1 : 0) <= 1 ? 15 : 0;
+}
+
+function staticScore(query: string, label: string, value: SearchEntryV1): number {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) {
+    return 1;
+  }
+
+  const fields = [
+    { text: label.toLowerCase(), weight: 6 },
+    ...(value.keywords ?? []).map((text) => ({ text: text.toLowerCase(), weight: 3 })),
+    { text: value.description?.toLowerCase() ?? '', weight: 1 },
+  ];
+  let score = 0;
+  for (const token of normalized.split(/[\s/_.-]+/).filter(Boolean)) {
+    let best = 0;
+    for (const field of fields) {
+      for (const word of field.text.split(/[\s/_.-]+/)) {
+        best = Math.max(best, tokenScore(token, word) * field.weight);
+      }
+    }
+
+    if (!best) {
+      return 0;
+    }
+
+    score += best;
+  }
+
+  for (const field of fields) {
+    if (field.text === normalized) {
+      score += 200 * field.weight;
+    } else if (field.text.startsWith(normalized)) {
+      score += 100 * field.weight;
+    }
+  }
+
+  return score;
+}
+
 function sameIntent(left: SearchEntryV1, right: SearchEntryV1): boolean {
   if (left.kind === 'command' && right.kind === 'command') {
     return left.command.pluginId === right.command.pluginId;
@@ -135,6 +237,8 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
   let feedback: SearchFeedback | undefined;
   let launchQueued = false;
   let launchToken: number | undefined;
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
+  let debounceSearch = false;
 
   function emit() {
     for (const listener of listeners) {
@@ -211,18 +315,38 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       actions.set(key, entry);
     }
 
-    for (const entry of statics) {
-      append(entry);
-    }
-
-    for (const attempt of attempts) {
-      const remaining = 100 - rows.length;
-      for (const entry of attempt.items) {
-        append(entry);
+    const lists = [statics, ...attempts.map((attempt) => attempt.items)];
+    const quotas = lists.map(() => 0);
+    let remaining = 100;
+    while (remaining > 0) {
+      let allocated = false;
+      for (let index = 0; index < lists.length && remaining > 0; index++) {
+        if (quotas[index] < lists[index].length) {
+          quotas[index]++;
+          remaining--;
+          allocated = true;
+        }
       }
 
+      if (!allocated) {
+        break;
+      }
+    }
+
+    for (let index = 0; index < lists.length; index++) {
+      for (let item = 0; item < quotas[index]; item++) {
+        append(lists[index][item]);
+      }
+
+      if (quotas[index] < lists[index].length) {
+        clipped = true;
+      }
+    }
+
+    for (let index = 0; index < attempts.length; index++) {
+      const attempt = attempts[index];
       sources.push(
-        attempt.items.length > remaining && attempt.source.state === 'complete'
+        attempt.items.length > quotas[index + 1] && attempt.source.state === 'complete'
           ? { ...attempt.source, state: 'truncated' }
           : { ...attempt.source },
       );
@@ -257,6 +381,8 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
   }
 
   function abortSearch() {
+    clearTimeout(searchTimer);
+    searchTimer = undefined;
     for (const attempt of attempts) {
       attempt.settled = true;
       attempt.controller.abort();
@@ -368,7 +494,8 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
     publish();
   }
 
-  function invalidate() {
+  function invalidate(debounce = false) {
+    debounceSearch = debounce;
     ++epoch;
     if (nativeExecution && !isExecutionCurrent(nativeExecution)) {
       // A later ready phase must not revive feedback from a retired owner.
@@ -383,6 +510,12 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
     feedback = nativeExecution?.valid ? feedback : undefined;
     snapshot = { ...snapshot, rows: [], sources: [], feedback };
     emit();
+    if (debounce) {
+      launchToken = undefined;
+      launch(epoch);
+      return;
+    }
+
     launchToken = epoch;
     if (launchQueued) {
       return;
@@ -399,70 +532,80 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
         return;
       }
 
-      store = deps.registry.getExtensionPoint(GLOBAL_SEARCH_EXTENSION_POINT_ID);
-      capturedVersion = store?.version ?? -1;
-      if (!isSearchQueryAllowed(snapshot.query)) {
-        publish();
-        return;
-      }
-
-      const query = snapshot.query.toLowerCase();
-      const registrations = store?.listAll() ?? [];
-      staticOverflow = registrations.length > 1000;
-      let overflowProvider = false;
-      for (let index = 0; index < Math.min(registrations.length, 1000); index++) {
-        const registration = registrations[index];
-        let value;
-        try {
-          value = admitSearchContribution(registration);
-        } catch {
-          value = undefined;
-        }
-
-        if (!value) {
-          otherSources.push({ id: `invalid:${index}`, label: 'Search contribution', state: 'unavailable' });
-          continue;
-        }
-
-        if (!ownerReady(registration.plugin)) {
-          continue;
-        }
-
-        if (value.kind === 'provider') {
-          if (attempts.length >= 8) {
-            if (!overflowProvider) {
-              otherSources.push({ id: registration.id, label: registration.label, state: 'source-limit' });
-            }
-
-            overflowProvider = true;
-            continue;
-          }
-
-          attempts.push({
-            registration,
-            provider: value,
-            receiver: registration.value,
-            source: { id: registration.id, label: registration.label, state: 'queued' },
-            controller: new AbortController(),
-            items: [],
-            settled: false,
-          });
-        } else if (
-          !query ||
-          registration.label.toLowerCase().includes(query) ||
-          value.description?.toLowerCase().includes(query) === true ||
-          value.keywords?.some((keyword) => keyword.toLowerCase().includes(query)) === true
-        ) {
-          if (statics.length < 100) {
-            statics.push({ registration, label: registration.label, itemId: '', value });
-          } else {
-            displayOverflow = true;
-          }
-        }
-      }
-
-      pump(token);
+      launch(token);
     });
+  }
+
+  function launch(token: number) {
+    store = deps.registry.getExtensionPoint(GLOBAL_SEARCH_EXTENSION_POINT_ID);
+    capturedVersion = store?.version ?? -1;
+    if (!isSearchQueryAllowed(snapshot.query)) {
+      publish();
+      return;
+    }
+
+    const query = snapshot.query;
+    const ranked: Array<{ entry: AcceptedEntry; score: number }> = [];
+    const registrations = store?.listAll() ?? [];
+    staticOverflow = registrations.length > 1000;
+    let overflowProvider = false;
+    for (let index = 0; index < Math.min(registrations.length, 1000); index++) {
+      const registration = registrations[index];
+      let value;
+      try {
+        value = admitSearchContribution(registration);
+      } catch {
+        value = undefined;
+      }
+
+      if (!value) {
+        otherSources.push({ id: `invalid:${index}`, label: 'Search contribution', state: 'unavailable' });
+        continue;
+      }
+
+      if (!ownerReady(registration.plugin)) {
+        continue;
+      }
+
+      if (value.kind === 'provider') {
+        if (attempts.length >= 8) {
+          if (!overflowProvider) {
+            otherSources.push({ id: registration.id, label: registration.label, state: 'source-limit' });
+          }
+
+          overflowProvider = true;
+          continue;
+        }
+
+        attempts.push({
+          registration,
+          provider: value,
+          receiver: registration.value,
+          source: { id: registration.id, label: registration.label, state: 'queued' },
+          controller: new AbortController(),
+          items: [],
+          settled: false,
+        });
+      } else {
+        const score = staticScore(query, registration.label, value);
+        if (score > 0) {
+          ranked.push({ entry: { registration, label: registration.label, itemId: '', value }, score });
+        }
+      }
+    }
+
+    ranked.sort((left, right) => right.score - left.score);
+    displayOverflow = ranked.length > 100;
+    statics.push(...ranked.slice(0, 100).map(({ entry }) => entry));
+    publish();
+    if (debounceSearch) {
+      searchTimer = setTimeout(() => {
+        searchTimer = undefined;
+        pump(token);
+      }, 150);
+    } else {
+      pump(token);
+    }
   }
 
   function attachStore() {
@@ -473,7 +616,9 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
 
     unsubscribeStore?.();
     store = next;
-    unsubscribeStore = store?.subscribe(invalidate);
+    unsubscribeStore = store?.subscribe(() => {
+      invalidate(); 
+    });
   }
 
   function discover() {
@@ -569,7 +714,7 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       }
 
       snapshot = { ...snapshot, query };
-      invalidate();
+      invalidate(true);
     },
     refresh() {
       attachStore();
