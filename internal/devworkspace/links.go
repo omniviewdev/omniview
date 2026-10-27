@@ -714,6 +714,9 @@ func (m *Manager) linkWorkspace(ctx context.Context, name string) (Workspace, fu
 	}
 	if err == nil {
 		for i := range j.Resources {
+			if j.Resources[i].Removed {
+				continue
+			}
 			if err = verifyWorktree(ctx, &j.Resources[i], false); err != nil {
 				break
 			}
