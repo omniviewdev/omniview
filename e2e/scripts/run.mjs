@@ -44,7 +44,7 @@ async function runApplication(args) {
   try {
     deadlineBudget = applicationBudget(started, Date.now(), { interactive });
     const outcome = await new Promise((resolve, reject) => {
-      const child = spawn(process.execPath, [playwrightCLI(), ...args, '--global-timeout', '0', '--reporter=html,list,./scripts/timing-reporter.mjs'], { cwd: join(root, 'e2e'), env, stdio: 'inherit' });
+      const child = spawn(process.execPath, [playwrightCLI(), ...args, '--global-timeout', '0'], { cwd: join(root, 'e2e'), env, stdio: 'inherit' });
       let interrupted = false;
       const interrupt = () => {
         if (!interrupted) {

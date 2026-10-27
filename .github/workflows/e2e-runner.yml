@@ -303,12 +303,82 @@ jobs:
           fi
           test "$PREPARATION" = true && test "$CANONICAL_OUTCOME" = success
 
-      - name: Upload only allowed browser reports
+      - name: Upload Playwright HTML report
+        id: html-report
         if: always() && !inputs.cache-only
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          path: |
-            host/e2e/playwright-report/
-            host/e2e/test-results/
+          path: host/e2e/playwright-report/
+          if-no-files-found: ignore
           retention-days: 7
+
+      - name: Upload Playwright raw test evidence
+        id: test-evidence
+        if: always() && !inputs.cache-only
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: host/e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Summarize canonical application feedback
+        if: always() && !inputs.cache-only
+        working-directory: /
+        env:
+          JOB_STATUS: ${{ job.status }}
+          SELECTION: ${{ steps.selection.outputs.kind }}
+          SELECTION_OUTCOME: ${{ steps.selection.outcome }}
+          CANONICAL_OUTCOME: ${{ steps.canonical.outcome }}
+          REPORT_URL: ${{ steps.html-report.outputs.artifact-url }}
+          EVIDENCE_URL: ${{ steps.test-evidence.outputs.artifact-url }}
+          REPORT_UPLOAD_OUTCOME: ${{ steps.html-report.outcome }}
+          EVIDENCE_UPLOAD_OUTCOME: ${{ steps.test-evidence.outcome }}
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          {
+            echo '## Canonical application E2E'
+            echo
+            if [[ "$JOB_STATUS" == cancelled || "$CANONICAL_OUTCOME" == cancelled ]]; then
+              echo '**Interrupted/cancelled.** Any report or evidence may be partial; no completed acceptance is claimed.'
+            elif [[ "$SELECTION_OUTCOME" == success && "$SELECTION" == none ]]; then
+              echo '**Skipped: proven no application impact.** The conservative selector allowed only prose with an unchanged source cohort.'
+            elif [[ "$CANONICAL_OUTCOME" == success ]]; then
+              echo '**Canonical operation succeeded.** This includes runner acceptance and cleanup, not merely browser assertions.'
+            elif [[ "$CANONICAL_OUTCOME" == failure ]]; then
+              if [[ -f host/e2e/playwright-report/index.html ]]; then
+                echo '**Canonical operation failed.** Inspect browser results and canonical logs; preparation, acceptance or cleanup can fail independently.'
+              else
+                echo '**Canonical operation failed without an HTML report.** Preparation or the runner may have failed before reporter completion; inspect canonical logs.'
+              fi
+            else
+              echo '**Preparation failed or application invocation was not reached.** No application acceptance is claimed; inspect preceding failed steps.'
+            fi
+            echo
+            if [[ -f host/e2e/playwright-report/index.html ]]; then
+              echo 'HTML report exists; its contents do not override the canonical status above.'
+            else
+              echo 'HTML report unavailable: the suite was skipped, preparation failed, or execution ended before the reporter finalized.'
+            fi
+            echo
+            if [[ -n "$REPORT_URL" ]]; then
+              printf -- '- [Download HTML report](%s) (`playwright-report`, retained 7 days).\n' "$REPORT_URL"
+            else
+              printf -- '- HTML artifact unavailable (upload step: `%s`).\n' "$REPORT_UPLOAD_OUTCOME"
+            fi
+            if [[ -n "$EVIDENCE_URL" ]]; then
+              printf -- '- [Download raw test evidence](%s) (`playwright-test-results`, retained 7 days).\n' "$EVIDENCE_URL"
+            else
+              printf -- '- Raw evidence artifact unavailable (upload step: `%s`); passing or unstarted tests may produce none.\n' "$EVIDENCE_UPLOAD_OUTCOME"
+            fi
+            echo
+            echo 'Artifacts are downloads, not hosted HTML. Extract the entire HTML ZIP, including its data directory, into ./playwright-report.'
+            echo 'From this checkout, serve it with the pinned Playwright version:'
+            echo '```sh'
+            echo 'pnpm --dir e2e exec playwright show-report ../playwright-report'
+            echo '```'
+            echo 'Open a failed test to inspect retained screenshots, video and redacted browser errors. Raw evidence is a separate optional download.'
+            echo 'Traces remain disabled: authenticated Vite HMR URLs can contain tokens. Private profiles, source receipts and temporary logs are not uploaded.'
+            echo 'GitHub failure annotations appear in the check/logs when Playwright runs. Hard runner termination may prevent uploads and this summary.'
+          } >> "$GITHUB_STEP_SUMMARY"

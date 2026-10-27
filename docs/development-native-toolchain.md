@@ -57,6 +57,85 @@ Acceptance still requires the one genuine application invocation and its
 fail-closed final gate. Keep Linux image readiness, cache reuse and application
 case/drain/canonical-cleanup evidence separate.
 
+## Application E2E feedback in GitHub Actions
+
+`PR Validation` calls `.github/workflows/e2e-runner.yml` for the canonical
+application suite. The stable `e2e-tests` check accepts only the reusable job's
+success, including an explicitly proven prose-only skip. Browser results alone
+do not prove canonical preparation, acceptance and cleanup succeeded.
+
+Playwright uses its GitHub reporter in Actions for failure annotations on the
+check and source locations, alongside terminal output, HTML and case timings.
+Annotations require Playwright to run; checkout, source validation or preparation
+errors remain in their own step logs. No PR comments or write permissions are
+needed. The always-run **Summarize canonical application feedback** step separates
+proven skips, preparation/not-reached failures, canonical failures without a
+report, completed operations and cancellation. A report can exist even when the
+canonical operation fails afterward. A missing report is not evidence that tests
+passed or that application assertions ran.
+
+Actual application runs attempt both uploads on success, failure and cancellation:
+
+| Artifact | Uploaded directory | Contents |
+| --- | --- | --- |
+| `playwright-report` | `e2e/playwright-report/` | HTML report with `index.html` at the ZIP root and its attachment data |
+| `playwright-test-results` | `e2e/test-results/` | Raw retained test evidence, including failure screenshots, videos and redacted browser errors when produced |
+
+Both artifacts retain the existing seven-day lifetime. The job summary links
+directly to each uploaded artifact; absent files produce no artifact. Cache-only
+main runs produce neither application feedback summaries nor these uploads.
+Only these browser-output directories are uploaded, never private profiles,
+ownership receipts or general temporary logs. **Traces remain disabled**:
+authenticated Vite HMR URLs can contain tokens. Screenshots, videos and reports
+can still contain visible application data; keep tests on their isolated fixtures
+and treat downloaded evidence as sensitive.
+
+GitHub artifacts are ZIP downloads, not hosted HTML. Download `playwright-report`
+from the summary or run's Artifacts section and extract the entire ZIP, including
+`data/`, into `./playwright-report` at the checkout root. With the pinned E2E
+dependencies already installed, serve it from the checkout root:
+
+```sh
+pnpm --dir e2e exec playwright show-report ../playwright-report
+```
+
+Open a failed test in the report to inspect its attachments. Download the raw
+evidence artifact separately when individual files are needed. Do not open only
+`index.html` through `file://`, move attachment data away, or expect the artifact
+link to serve an interactive website.
+
+For a locally generated report, use `pnpm --dir e2e report`. To run the canonical
+suite locally, explicitly select the companion sources and independently reviewed
+SDK commit, then invoke the runner rather than bypassing preparation:
+
+```sh
+SDK_SOURCE=/absolute/path/to/plugin-sdk \
+UI_SOURCE=/absolute/path/to/ui \
+KUBERNETES_SOURCE=/absolute/path/to/omniview-plugin-kubernetes \
+REVIEWED_SDK_REVISION='<independently-reviewed-full-sdk-commit>' \
+node e2e/scripts/run.mjs --full
+```
+
+Local prerequisites and source ownership rules still apply. To run conservative
+selection instead, use `--changed --base <base-commit>` in place of `--full`.
+No HTML report is expected for a proven skip or failure before Playwright.
+Cancellation, an inclusive runner deadline, reporter failure or hard watchdog
+termination can leave partial evidence or no finalized report. A hard runner
+termination can also prevent the always-run uploads and summary entirely; inspect
+the check status and logs when feedback is unavailable. Expired/deleted artifacts
+cannot be recovered through their former links.
+
+This feedback applies only to the canonical application runner. `PR Checks`
+separately runs Go checks, bindings checks and UI build/lint/type checks and its
+C02 transport check. `PR Validation` also builds platform artifacts.
+`render-bench.yml` runs render benchmarks and `app-profile.yml` runs whole-app
+profiling with their own result uploads; they are not this application test
+report. Those runners and their reporting conventions are unchanged.
+
+See Playwright's official [reporter documentation](https://playwright.dev/docs/test-reporters)
+for multiple reporters and GitHub annotations, and its [CI guide](https://playwright.dev/docs/ci-intro)
+for downloading and serving reports and handling sensitive evidence.
+
 ## CI image maintenance and runner choice
 
 `.github/ci/Dockerfile` owns the system package recipe. `ci-image.yml` rebuilds
