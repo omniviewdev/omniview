@@ -18,12 +18,17 @@ import (
 // A saved status file is diagnostic history, never evidence of current readiness.
 type Status struct {
 	Workspace
-	Generation string                          `json:"generation,omitempty"`
-	Phase      string                          `json:"launchPhase"`
-	Instance   *devcontract.InstanceDescriptor `json:"instance,omitempty"`
-	Builds     map[string]BuildEvent           `json:"builds,omitempty"`
-	Services   map[string]ServiceStatus        `json:"services,omitempty"`
-	LastError  *devcontract.Error              `json:"lastError,omitempty"`
+	Generation      string                          `json:"generation,omitempty"`
+	Phase           string                          `json:"launchPhase"`
+	Instance        *devcontract.InstanceDescriptor `json:"instance,omitempty"`
+	Builds          map[string]BuildEvent           `json:"builds,omitempty"`
+	Services        map[string]ServiceStatus        `json:"services,omitempty"`
+	LastError       *devcontract.Error              `json:"lastError,omitempty"`
+	Health          RuntimeHealth                   `json:"health"`
+	Checkouts       map[string]CheckoutStatus       `json:"checkouts,omitempty"`
+	ServedCheckouts map[string]CheckoutStatus       `json:"servedCheckouts,omitempty"`
+	FailedStage     string                          `json:"failedStage,omitempty"`
+	RecoveryCommand string                          `json:"recoveryCommand,omitempty"`
 }
 
 type ServiceStatus struct {
@@ -122,10 +127,11 @@ func (m *Manager) Status(ctx context.Context, name string) (Status, error) {
 	if err != nil {
 		return Status{}, err
 	}
-	status := Status{Workspace: w, Phase: "stopped"}
+	status := Status{Workspace: w, Phase: "stopped", Health: RuntimeHealth{Liveness: "stopped", Build: "unknown", Dependencies: "unknown", ServedSource: "not-serving", Readiness: "not-ready", HMR: "unverified", SourceReload: "unverified"}}
 	var record supervisorRecord
 	err = readLaunchJSON(launchPath(w, "supervisor.json"), &record)
 	if os.IsNotExist(err) {
+		status.Checkouts = checkoutStatuses(ctx, w)
 		return status, nil
 	}
 	if err != nil {
@@ -137,15 +143,20 @@ func (m *Manager) Status(ctx context.Context, name string) (Status, error) {
 	status.Generation = record.Generation
 	if err = verifySupervisor(record, w); err != nil {
 		if errors.Is(err, devsession.ErrProcessGone) {
+			status.Checkouts = checkoutStatuses(ctx, w)
 			var saved Status
 			if readLaunchJSON(launchPath(w, "launch-status.json"), &saved) == nil && saved.Generation == record.Generation {
 				status.Builds = saved.Builds
 				status.LastError = saved.LastError
+				status.FailedStage = saved.FailedStage
+				status.RecoveryCommand = saved.RecoveryCommand
+				status.ServedCheckouts = saved.ServedCheckouts
 				if saved.Phase == "stopped" {
 					return status, nil
 				}
 			}
 			status.Phase = "crashed"
+			status.Health.Liveness = "crashed"
 			return status, nil
 		}
 		return status, err

@@ -250,7 +250,7 @@ func (g *BuildGraph) emit(id, phase string, err error) {
 	}
 	event := BuildEvent{Node: id, Phase: phase}
 	if err != nil {
-		event.Error = err.Error()
+		event.Error = safeCompilerDiagnostic(err.Error(), g.workspace.Root)
 	}
 	g.options.OnEvent(event)
 }
@@ -291,15 +291,14 @@ func (g *BuildGraph) commandWithEnvironment(ctx context.Context, dir string, env
 	cmd.Env = append(cmd.Env, environment...)
 	var output strings.Builder
 	cmd.Stdout = &output
-	if g.options.Output != nil {
-		cmd.Stderr = g.options.Output
-	} // Private caller sink, never inspect JSON.
+	stderr := &childOutput{output: g.options.Output}
+	cmd.Stderr = stderr
 	err := RunRepositoryCommand(ctx, cmd, devsession.ProcessOwner{WorkspaceID: g.workspace.Manifest.WorkspaceID, Generation: g.options.Generation, Role: "build-command", Source: dir})
 	if g.options.Output != nil && output.Len() > 0 {
 		_, _ = io.WriteString(g.options.Output, output.String())
 	}
 	if err != nil {
-		return nil, errors.Join(err, fmt.Errorf("%s failed in %s (compiler diagnostics are available in the private build output)", program, dir))
+		return nil, errors.Join(err, fmt.Errorf("%s failed in selected checkout:\n%s", program, safeCompilerDiagnostic(output.String()+"\n"+stderr.text, g.workspace.Root)))
 	}
 	return []byte(output.String()), nil
 }

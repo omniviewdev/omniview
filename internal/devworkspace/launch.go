@@ -287,7 +287,8 @@ func (s *workspaceSupervisor) runLaunchCommand(ctx context.Context, directory st
 	command.Env = environment
 	var stdout strings.Builder
 	command.Stdout = &stdout
-	command.Stderr = output
+	stderr := &childOutput{output: output}
+	command.Stderr = stderr
 	err := RunRepositoryCommand(ctx, command, devsession.ProcessOwner{WorkspaceID: s.workspace.Manifest.WorkspaceID, Generation: s.generation, Role: "build", Source: directory})
 	if output != nil && stdout.Len() > 0 {
 		_, _ = io.WriteString(output, stdout.String())
@@ -296,13 +297,16 @@ func (s *workspaceSupervisor) runLaunchCommand(ctx context.Context, directory st
 		if ctx.Err() != nil && !errors.Is(err, errOwnedCommandUncertain) {
 			return nil, ctx.Err()
 		}
-		return nil, fmt.Errorf("%s failed in selected checkout (see private build output): %w", program, err)
+		return nil, fmt.Errorf("%s failed in selected checkout: %w\n%s", program, err, safeCompilerDiagnostic(stdout.String()+"\n"+stderr.text, s.workspace.Root))
 	}
 	return []byte(stdout.String()), nil
 }
 
 func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 	o := s.options
+	if err := compatibilityPreflight(ctx, s.workspace, o); err != nil {
+		return nil, err
+	}
 	report, err := s.manager.Link(ctx, s.workspace.Manifest.WorkspaceID, LinkOptions{Evidence: o.LinkEvidence})
 	if err != nil {
 		var typed *devcontract.Error
@@ -353,7 +357,9 @@ func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 			s.status.LastError = nil
 		} else if event.Phase == "error" || event.Phase == "invalidated" {
 			s.status.Phase = "build-error"
-			s.status.LastError = devcontract.Fail(5, "build_failed", "selected source build failed; private supervisor.log contains compiler diagnostics")
+			s.status.FailedStage = event.Node
+			s.status.RecoveryCommand = "omniview-dev workspace refresh " + s.workspace.Manifest.WorkspaceID
+			s.status.LastError = devcontract.Fail(5, "build_failed", safeCompilerDiagnostic(event.Error, s.workspace.Root))
 		}
 		s.mu.Unlock()
 		s.persist()

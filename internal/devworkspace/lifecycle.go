@@ -375,7 +375,7 @@ func (m *Manager) Edit(ctx context.Context, name string, opts EditOptions) (Work
 		}
 		repos[id] = true
 	}
-	create := CreateOptions{Slug: old.Slug, DisplayName: old.DisplayName, Baseline: old.Profile.Baseline, Refs: map[string]string{}, Ports: opts.Ports, workspaceID: old.WorkspaceID}
+	create := CreateOptions{Slug: old.Slug, DisplayName: old.DisplayName, Baseline: old.Profile.Baseline, Refs: map[string]string{}, Ports: opts.Ports, workspaceID: old.WorkspaceID, pinnedCommits: map[string]string{}}
 	if opts.Slug != nil {
 		create.Slug = *opts.Slug
 	}
@@ -391,11 +391,11 @@ func (m *Manager) Edit(ctx context.Context, name string, opts EditOptions) (Work
 	for id := range plugins {
 		create.Plugins = append(create.Plugins, id)
 	}
-	// Unchanged refs stay pinned even if the source's main branch advanced.
+	// Resolve every existing plugin source from its selected commit, including
+	// a retained source that a plugin selection may reintroduce. Unchanged
+	// tracking names remain names; only explicit ref edits advance their SHAs.
 	for _, r := range j.Resources {
-		if repos[r.Repository.ID] {
-			create.Refs[r.Repository.ID] = r.Repository.BaseCommit
-		}
+		create.pinnedCommits[r.Repository.ID] = r.Repository.BaseCommit
 	}
 	for id, ref := range opts.Refs {
 		create.Refs[id] = ref

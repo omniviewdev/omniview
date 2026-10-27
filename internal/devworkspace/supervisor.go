@@ -382,7 +382,26 @@ func (s *workspaceSupervisor) persist() {
 	}
 }
 func (s *workspaceSupervisor) setPhase(phase string, err error) {
+	var served map[string]CheckoutStatus
+	if phase == "ready" {
+		parent := s.sessionContext
+		if parent == nil {
+			parent = context.Background()
+		}
+		ctx, cancel := context.WithTimeout(parent, 30*time.Second)
+		served = checkoutStatuses(ctx, s.workspace)
+		cancel()
+	}
 	s.mu.Lock()
+	if err != nil {
+		s.status.FailedStage = s.status.Phase
+		s.status.RecoveryCommand = "omniview-dev workspace refresh " + s.workspace.Manifest.WorkspaceID
+	}
+	if phase == "ready" {
+		s.status.ServedCheckouts = served
+		s.status.FailedStage = ""
+		s.status.RecoveryCommand = ""
+	}
 	s.status.Phase = phase
 	s.status.LastError = nil
 	if phase == "stopped" || phase == "error" {
@@ -431,7 +450,7 @@ func (s *workspaceSupervisor) execute(ctx context.Context, command string) (Stat
 				}
 			}
 		}
-		return status, nil
+		return s.observeStatus(ctx, status), nil
 	}
 	if command == "stop" || command == "restart" {
 		s.sessionCancel()

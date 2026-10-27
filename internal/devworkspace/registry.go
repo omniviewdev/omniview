@@ -83,7 +83,7 @@ func resolveCommit(ctx context.Context, common, ref string) (string, error) {
 	return git(ctx, common, "", "rev-parse", "--verify", "--end-of-options", ref+"^{commit}")
 }
 
-func sourceFromSpec(ctx context.Context, root string, spec SourceSpec) (Source, error) {
+func sourceFromSpec(ctx context.Context, root string, spec SourceSpec, refresh bool) (Source, error) {
 	var s Source
 	if !safeID(spec.ID) {
 		return s, devcontract.Fail(2, "invalid_repository", "source ID is invalid")
@@ -140,7 +140,11 @@ func sourceFromSpec(ctx context.Context, root string, spec SourceSpec) (Source, 
 			return s, devcontract.Fail(2, "missing_default_ref", "detached source requires an explicit default ref")
 		}
 	}
-	if _, err = resolveCommit(ctx, common, ref); err != nil {
+	resolve := resolveCommit
+	if refresh {
+		resolve = resolveSelectedCommit
+	}
+	if _, err = resolve(ctx, common, ref); err != nil {
 		return s, err
 	}
 	directory := spec.Directory
@@ -239,7 +243,7 @@ func Init(ctx context.Context, opts InitOptions) (Registry, error) {
 	}
 	reg.SchemaVersion = 1
 	for _, spec := range specs {
-		s, e := sourceFromSpec(ctx, root, spec)
+		s, e := sourceFromSpec(ctx, root, spec, true)
 		if e != nil {
 			return Registry{}, e
 		}
@@ -279,7 +283,7 @@ func LoadRegistry(root string) (Registry, error) {
 		if !filepath.IsAbs(s.CommonDir) || (s.Worktree != "" && !filepath.IsAbs(s.Worktree)) {
 			return reg, devcontract.Fail(2, "invalid_registry", "registry paths must be absolute")
 		}
-		resolved, e := sourceFromSpec(context.Background(), root, SourceSpec{ID: s.ID, Path: s.CommonDir, Worktree: s.Worktree, DefaultRef: s.DefaultRef, Directory: s.Directory})
+		resolved, e := sourceFromSpec(context.Background(), root, SourceSpec{ID: s.ID, Path: s.CommonDir, Worktree: s.Worktree, DefaultRef: s.DefaultRef, Directory: s.Directory}, false)
 		if e != nil {
 			return reg, e
 		}

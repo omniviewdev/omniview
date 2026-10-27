@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/spf13/cobra"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devcontrol"
@@ -19,28 +20,19 @@ import (
 	"github.com/omniviewdev/omniview/internal/instance"
 )
 
-// HandleControlCommand is the root CLI integration point. Unrecognized command
-// groups are left to the workspace/orchestration handler without side effects.
-func HandleControlCommand(ctx context.Context, args []string, in io.Reader, out, diagnostics io.Writer) (bool, int) {
-	if len(args) == 0 {
-		return false, 0
-	}
-	switch args[0] {
-	case "instance", "plugin", "settings", "operation":
-	default:
-		return false, 0
-	}
-	fail := func(err error) (bool, int) {
+func executeControlCommand(cmd *cobra.Command, command controlCommand) error {
+	ctx, out, diagnostics := cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr()
+	fail := func(err error) error {
 		var typed *devcontract.Error
 		if !errors.As(err, &typed) {
 			typed = devcontract.Fail(5, "operation_failed", "development control operation failed")
 		}
 		_ = json.NewEncoder(out).Encode(map[string]any{"error": typed})
-		return true, devcontract.ExitCode(typed)
-	}
-	command, err := parseControlCommand(args, in, diagnostics)
-	if err != nil {
-		return fail(err)
+		jsonOutput, _ := cmd.Flags().GetBool("json")
+		if !jsonOutput {
+			fmt.Fprintf(diagnostics, "%s: %s\n", typed.Code, typed.Message)
+		}
+		return commandExit(devcontract.ExitCode(typed))
 	}
 	workspace, err := resolveControlWorkspace(ctx, command.root, command.workspace)
 	if err != nil {
@@ -88,15 +80,15 @@ func HandleControlCommand(ctx context.Context, args []string, in io.Reader, out,
 		}
 	}
 	if encodeErr := json.NewEncoder(out).Encode(response); encodeErr != nil {
-		return true, 5
+		return commandExit(5)
 	}
 	if err != nil {
-		return true, devcontract.ExitCode(err)
+		return commandExit(devcontract.ExitCode(err))
 	}
 	if response.Error != nil {
-		return true, devcontract.ExitCode(response.Error)
+		return commandExit(devcontract.ExitCode(response.Error))
 	}
-	return true, 0
+	return nil
 }
 
 type controlCommand struct {
@@ -108,75 +100,72 @@ type controlCommand struct {
 	timeout         time.Duration
 }
 
-func parseControlCommand(args []string, in io.Reader, diagnostics io.Writer) (controlCommand, error) {
-	var command controlCommand
-	if len(args) < 2 {
-		return command, controlUsage("command action is required; see development-cli.md")
+func addControlCommands(root *cobra.Command, in io.Reader) {
+	addControlCommandsWithExecutor(root, in, executeControlCommand)
+}
+
+func addControlCommandsWithExecutor(root *cobra.Command, in io.Reader, execute func(*cobra.Command, controlCommand) error) {
+	groups := map[string]*cobra.Command{}
+	for _, name := range []string{"instance", "plugin", "settings", "operation"} {
+		group := &cobra.Command{Use: name, Short: "Manage " + name}
+		root.AddCommand(group)
+		groups[name] = group
 	}
-	group, action, start := args[0], args[1], 2
-	if group == "plugin" && action == "dev" {
-		if len(args) < 3 {
-			return command, controlUsage("plugin dev action is required")
-		}
-		action = "dev." + args[2]
-		start = 3
-	}
-	command.operation = group + "." + action
-	flags := flag.NewFlagSet(command.operation, flag.ContinueOnError)
-	flags.SetOutput(diagnostics)
-	flags.StringVar(&command.workspace, "workspace", "", "explicit workspace name, UUID, manifest or directory")
-	flags.StringVar(&command.root, "root", "", "registered repository collection root for workspace names")
-	flags.Bool("json", true, "JSON stdout (always enabled)")
-	flags.BoolVar(&command.wait, "wait", false, "wait for accepted mutation completion")
-	flags.DurationVar(&command.timeout, "timeout", 30*time.Second, "maximum wait; timeout does not cancel mutation")
-	switch group {
-	case "plugin":
-		err := parsePluginControlCommand(&command, flags, args[start:])
-		return command, err
-	case "settings":
-		err := parseSettingsControlCommand(&command, flags, args[start:], in)
-		return command, err
-	case "operation":
-		err := parseOperationControlCommand(&command, flags, args[start:])
-		return command, err
-	case "instance":
-		if action == "inspect" {
-			positionals, err := parseControlFlags(&command, flags, args[start:])
-			if err != nil {
-				return command, err
+	dev := &cobra.Command{Use: "dev", Short: "Manage plugin development"}
+	groups["plugin"].AddCommand(dev)
+	for _, operation := range []string{
+		"instance.inspect", "plugin.list", "plugin.get", "plugin.uninstall", "plugin.install-archive", "plugin.install-version",
+		"plugin.dev.link", "plugin.dev.unlink", "plugin.dev.start", "plugin.dev.stop", "plugin.dev.restart", "plugin.dev.status", "plugin.dev.rebuild", "plugin.dev.logs",
+		"settings.schema", "settings.get", "settings.set", "settings.set-many", "operation.get", "operation.wait",
+	} {
+		command := &controlCommand{operation: operation}
+		parts := strings.Split(operation, ".")
+		leaf := &cobra.Command{Use: parts[len(parts)-1] + " [ID | PATH]", Short: "Run " + strings.ReplaceAll(operation, ".", " ")}
+		flags := leaf.Flags()
+		flags.StringVar(&command.workspace, "workspace", "", "explicit workspace name, UUID, manifest or directory")
+		flags.StringVar(&command.root, "root", "", "registered repository collection root for workspace names")
+		flags.Bool("json", false, "suppress human diagnostics; stdout is always JSON")
+		flags.BoolVar(&command.wait, "wait", false, "wait for accepted mutation completion")
+		flags.DurationVar(&command.timeout, "timeout", 30*time.Second, "maximum wait; timeout does not cancel mutation")
+		var prepare func([]string) error
+		switch parts[0] {
+		case "plugin":
+			prepare = bindPluginControlCommand(command, flags)
+		case "settings":
+			prepare = bindSettingsControlCommand(command, flags, in)
+		case "operation":
+			prepare = bindOperationControlCommand(command, flags)
+		default:
+			prepare = func(args []string) error {
+				if len(args) != 0 {
+					return controlUsage("this command accepts no positional target")
+				}
+				command.params = devcontrol.EmptyParams{}
+				return nil
 			}
-			if len(positionals) != 0 {
-				return command, controlUsage("this command accepts no positional target")
-			}
-			command.params = devcontrol.EmptyParams{}
-			return command, nil
 		}
+		leaf.RunE = func(cmd *cobra.Command, args []string) error {
+			if command.timeout <= 0 {
+				return controlUsage("timeout must be positive")
+			}
+			if len(args) > 1 {
+				return controlUsage("at most one positional target is accepted")
+			}
+			if err := prepare(args); err != nil {
+				return err
+			}
+			return execute(cmd, *command)
+		}
+		parent := groups[parts[0]]
+		if len(parts) == 3 {
+			parent = dev
+		}
+		parent.AddCommand(leaf)
 	}
-	return command, controlUsage("unknown control command")
 }
 
 func controlUsage(message string) error {
 	return devcontract.Fail(2, "usage", message)
-}
-
-func parseControlFlags(command *controlCommand, flags *flag.FlagSet, args []string) ([]string, error) {
-	normalized := normalizeRegisteredFlags(flags, args, nil)
-	if normalized.unknownFlag {
-		return nil, controlUsage("unknown command flag")
-	}
-	if normalized.missingValue != "" {
-		return nil, controlUsage("command flag requires a value")
-	}
-	if err := flags.Parse(normalized.options); err != nil {
-		return nil, controlUsage("invalid command flags")
-	}
-	if command.timeout <= 0 {
-		return nil, controlUsage("timeout must be positive")
-	}
-	if len(normalized.positionals) > 1 {
-		return nil, controlUsage("at most one positional target is accepted")
-	}
-	return normalized.positionals, nil
 }
 
 func controlTarget(explicit string, positionals []string, disagreement string) (string, error) {

@@ -19,6 +19,21 @@ env:
   GOWORK: "off"
 
 jobs:
+  release-packaging-checks:
+    name: Release packaging contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Check Homebrew cask publication
+        run: node --test build/homebrew/update-cask.test.mjs
+      - name: Check macOS packaging shell syntax
+        run: |
+          bash -n build/darwin/build-universal.sh
+          bash -n build/darwin/verify-release-package.sh
+
   go-checks:
     name: Go checks
     runs-on: ubuntu-24.04

@@ -89,19 +89,3 @@ func TestWorkspaceTerminatorSelectsActualTarget(t *testing.T) {
 		}
 	}
 }
-
-func TestWorkspaceFlagErrorsKeepDiagnosticsOffJSONStdout(t *testing.T) {
-	var out, diagnostics bytes.Buffer
-	if code := run([]string{"workspace", "inspect", "--unknown"}, &out, &diagnostics); code != 2 {
-		t.Fatalf("exit %d, want usage error", code)
-	}
-	var failure struct {
-		Error *devcontract.Error `json:"error"`
-	}
-	if err := json.Unmarshal(out.Bytes(), &failure); err != nil || failure.Error == nil {
-		t.Fatalf("error must be JSON stdout: %s (%v)", &out, err)
-	}
-	if diagnostics.Len() == 0 {
-		t.Fatal("flag diagnostics must be written to stderr")
-	}
-}

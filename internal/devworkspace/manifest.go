@@ -51,6 +51,9 @@ type CreateOptions struct {
 	Baseline     *string
 	Ports        *devcontract.PortPolicy
 	workspaceID  string
+	// pinnedCommits preserves existing resource metadata during selection edits.
+	// Unlike Refs, entries need not remain selected in the resulting manifest.
+	pinnedCommits map[string]string
 }
 
 type EditOptions struct {
@@ -143,13 +146,29 @@ func (m *Manager) plan(ctx context.Context, reg Registry, opts CreateOptions) (d
 	sources := map[string]Source{}
 	commits := map[string]string{}
 	pluginSources := map[string]string{}
+	selections := map[string]string{}
 	for _, s := range reg.Repositories {
 		sources[s.ID] = s
 		ref := s.DefaultRef
 		if r, ok := opts.Refs[s.ID]; ok {
 			ref = r
 		}
-		commit, err := resolveCommit(ctx, s.CommonDir, ref)
+		selection := ref
+		if pinned := opts.pinnedCommits[s.ID]; pinned != "" {
+			if _, explicit := opts.Refs[s.ID]; !explicit {
+				selection = pinned
+			}
+		}
+		selections[s.ID] = selection
+		if !selected[s.ID] && len(plugins) == 0 {
+			continue
+		}
+		resolve := resolveSelectedCommit
+		if !selected[s.ID] {
+			// Discovery must not contact unrelated remotes.
+			resolve = resolveCommit
+		}
+		commit, err := resolve(ctx, s.CommonDir, selection)
 		if err != nil {
 			return manifest, err
 		}
@@ -186,6 +205,27 @@ func (m *Manager) plan(ctx context.Context, reg Registry, opts CreateOptions) (d
 		repositoryID, ok := pluginSources[id]
 		if !ok {
 			return manifest, devcontract.Fail(3, "missing_plugin", "plugin ID is not present in registered source metadata")
+		}
+		if !selected[repositoryID] {
+			source := sources[repositoryID]
+			commit, err := resolveSelectedCommit(ctx, source.CommonDir, selections[repositoryID])
+			if err != nil {
+				return manifest, err
+			}
+			raw, err := git(ctx, source.CommonDir, "", "show", commit+":plugin.yaml")
+			if err != nil {
+				if ctx.Err() != nil {
+					return manifest, ctx.Err()
+				}
+				return manifest, devcontract.Fail(3, "missing_plugin", "selected source no longer contains committed plugin metadata")
+			}
+			var meta struct {
+				ID string `yaml:"id"`
+			}
+			if yaml.Unmarshal([]byte(raw), &meta) != nil || meta.ID != id {
+				return manifest, devcontract.Fail(2, "invalid_plugin_metadata", "selected source changed committed plugin identity")
+			}
+			commits[repositoryID] = commit
 		}
 		selected[repositoryID] = true
 		manifest.Plugins = append(manifest.Plugins, devcontract.Plugin{ID: id, RepositoryID: repositoryID, Mode: "managed"})

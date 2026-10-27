@@ -1,12 +1,23 @@
 # Development instance CLI
 
-`omniview-dev` is a native-independent client of a running, isolated development
-host. It does not build plugins itself, start another Vite supervisor, expose a
-shell, or offer arbitrary file operations. Marketplace publisher CLI commands are
-unchanged; `plugin list` here means plugins installed in the selected instance.
+`omniview-dev` manages isolated development workspaces and controls their running
+hosts. Workspace commands own builds, links, and supervised services; instance,
+plugin, settings, and operation commands use the authenticated host API.
+Marketplace publisher CLI commands are unchanged; `plugin list` here means plugins
+installed in the selected instance.
 
-Bootstrap the CLI through the public task, which prints its actual immutable
-absolute executable path. The host consumes published SDK `v0.6.0`:
+On macOS, the application cask installs and updates `omniview-dev` alongside the
+desktop app:
+
+```sh
+brew install --cask omniviewdev/tap/omniview
+brew update && brew upgrade --cask omniviewdev/tap/omniview
+omniview-dev --help
+```
+
+For source development, bootstrap the CLI through the public task, which prints
+its actual immutable absolute executable path. The host consumes published SDK
+`v0.7.0`:
 
 ```sh
 DEV="$(task --silent dev:cli:build)"
@@ -50,9 +61,88 @@ custom state root is not a discovery source and cannot redirect the client.
 
 ## Commands
 
-Flags may appear before or after the single positional ID/path, following the
-command group and action. `--id ID` can replace positional IDs; `--path PATH` can
-replace positional paths. All results are JSON, even without `--json`.
+Commands, flags, help, and shell completion use Cobra. Every group and command
+supports `--help` without selecting a workspace or contacting a running host.
+`help workspace up` is equivalent to `workspace up --help`. Usage failures list
+valid commands without echoing private argument values.
+
+Generate completion with `completion bash`, `completion zsh`, `completion fish`,
+or `completion powershell`, then load the output through your shell's normal
+completion mechanism. Completion follows the command tree and offers only flags
+valid for the selected command:
+
+```sh
+source <(omniview-dev completion bash)
+```
+
+Flags accept `--flag=value` and may appear before or after positional targets
+within a command. Repeat selection flags to supply multiple values. Boolean
+overrides use `--watch=false`; `--` ends flag parsing for dash-prefixed targets.
+
+### Repository and workspace lifecycle
+
+Repository mappings belong to the collection, not to any single workspace:
+
+```sh
+"$DEV" repository list --root /path/to/collection
+"$DEV" repository add my-plugin --source /path/to/plugin \
+  --ref main --directory my-plugin --root /path/to/collection
+"$DEV" repository remove my-plugin --root /path/to/collection
+```
+
+Adding a mapping preserves existing mappings. Removal refuses repositories still
+referenced by workspaces or retained lifecycle resources; it never deletes source
+repositories or worktrees. The host repository cannot be removed.
+
+Remote-tracking selections such as `origin/main` or
+`refs/remotes/origin/main` fetch the requested branch before resolving it.
+The manifest retains the named base ref and records its resolved base commit.
+Explicit commit pins do not fetch. Selection edits preserve committed plugin
+metadata from existing worktrees.
+
+```sh
+"$DEV" workspace edit feature --add-repo my-plugin --apply
+"$DEV" workspace refresh feature
+"$DEV" workspace update feature --repo my-plugin
+"$DEV" workspace recover feature
+"$DEV" workspace evidence feature --json
+```
+
+`edit` persists selection/ref/name/port edits. `--apply` also refreshes the workspace:
+stop owned services, relink dependencies, rebuild, restart, and verify readiness.
+`refresh` uses the current worktree contents without advancing Git refs. `update`
+fast-forwards selected repositories before refreshing; it does not discard dirty
+edits or reset branches. `recover` resumes refresh work using its durable journal.
+Existing `resume` and `rollback` commands handle interrupted workspace creation.
+
+Refresh commands reuse saved launch settings and protocol evidence. Supply launch
+flags for a workspace that has never launched, or override saved settings
+explicitly. `workspace evidence` inspects reusable protocol proof;
+`--link-evidence FILE` applies supplied proof through the normal link operation.
+Refresh revalidates link state rather than treating old link freshness as current.
+Workspace commands print human diagnostics by default; `--json` returns structured
+errors and results. Control API commands retain their JSON response envelopes.
+
+`workspace inspect` reports independent process, build, dependency, served-source,
+readiness, HMR, and source-reload observations. Current checkout commit, branch,
+dirty state, and source digest remain distinct from the last served checkout.
+Failures name the failed stage and a recovery command. An HMR connection alone
+does not prove that an edited source module was served or executed.
+
+To verify an actual source edit, add a unique marker to the module, then run:
+
+```sh
+"$DEV" workspace verify-reload feature --module /ui/path/to/module.tsx \
+  --marker UNIQUE_SOURCE_EDIT_MARKER --json
+```
+
+The command authenticates the owned host and fetches the marker from its exact
+Vite endpoint. Evidence proves the edited source was served, not browser execution.
+
+For control API commands, flags may appear before or after the single positional
+ID/path, following the command group and action. `--id ID` can replace positional
+IDs; `--path PATH` can replace positional paths. Control results are JSON, even
+without `--json`.
 
 | Command | Arguments | Meaning |
 | --- | --- | --- |

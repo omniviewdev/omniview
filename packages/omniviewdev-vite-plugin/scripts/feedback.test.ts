@@ -231,6 +231,41 @@ test('real supervisor authority subprocess rereads state and refuses foreign or 
 });
 
 for (const framework of frameworks) {
+  test(`${framework.name}: development status rejects foreign generations and exposes only banner fields`, { timeout: 10000 }, async t => {
+    const f = await fixture(t, framework);
+    const local = path.join(f.workspaceRoot, '.local');
+    mkdirSync(local, { mode: 0o700 });
+    const file = path.join(local, 'launch-status.json');
+    const status = {
+      generation: f.context.generation,
+      manifest: { workspaceID: f.context.workspaceID },
+      launchPhase: 'build-error',
+      failedStage: 'host-backend',
+      lastError: { message: 'PRIVATE_COMPILER_DIAGNOSTIC' },
+    };
+    const endpoint = `${f.server.resolvedUrls!.local[0]}__omniview_development_status`;
+    writeFileSync(file, JSON.stringify(status), { mode: 0o600 });
+    let response = await fetch(endpoint);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(await response.json(), {
+      phase: 'build-error',
+      failedStage: 'host-backend',
+      recoveryCommand: `omniview-dev workspace refresh ${f.context.workspaceID}`,
+    });
+    writeFileSync(file, JSON.stringify({ ...status, generation: 'foreign' }));
+    response = await fetch(endpoint);
+    assert.equal(response.status, 503);
+    assert.equal(await response.text(), '');
+    writeFileSync(file, JSON.stringify(status));
+    if (process.platform !== 'win32') {
+      chmodSync(file, 0o644);
+      response = await fetch(endpoint);
+      assert.equal(response.status, 503);
+      assert.equal(await response.text(), '');
+    }
+  });
+
   test(`${framework.name}: held source publication stays HTTP-readable without HMR navigation, then releases one fresh reload`, { timeout: 10000 }, async t => {
     const f = await fixture(t, framework);
     await f.change('value.js', 'export const value = "changed";');

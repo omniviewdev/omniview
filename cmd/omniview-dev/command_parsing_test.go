@@ -61,14 +61,14 @@ func TestWorkspaceRegisteredFlagsKeepEmptyAndRepeatedValues(t *testing.T) {
 }
 
 func TestControlRegisteredFlagTerminatorAndValues(t *testing.T) {
-	command, err := parseControlCommand([]string{"plugin", "get", "--wait=false", "--timeout", "2s", "--", "--plugin"}, nil, &bytes.Buffer{})
+	command, err := parseControlCommandForTest([]string{"plugin", "get", "--wait=false", "--timeout", "2s", "--", "--plugin"}, nil, &bytes.Buffer{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if command.wait || command.timeout != 2*time.Second || command.params != (devcontrol.PluginParams{ID: "--plugin"}) {
 		t.Fatalf("unexpected command: %+v", command)
 	}
-	command, err = parseControlCommand([]string{"settings", "set", "theme", "--value", `"--"`}, nil, &bytes.Buffer{})
+	command, err = parseControlCommandForTest([]string{"settings", "set", "theme", "--value", `"--"`}, nil, &bytes.Buffer{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestControlParserKeepsUsageErrorsPrivate(t *testing.T) {
 		{"plugin", "dev", "logs", "one", "--cursor", secret},
 		{"settings", "set", "x", "--value", secret},
 	} {
-		_, err := parseControlCommand(args, nil, &bytes.Buffer{})
+		_, err := parseControlCommandForTest(args, nil, &bytes.Buffer{})
 		if devcontract.ExitCode(err) != 2 || strings.Contains(err.Error(), secret) {
 			t.Fatalf("unsafe usage error: %v", err)
 		}

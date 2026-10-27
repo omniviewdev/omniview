@@ -1,0 +1,56 @@
+name: Homebrew release package checks
+
+on:
+  workflow_call:
+    inputs:
+      artifact:
+        required: true
+        type: string
+      cask:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  install-upgrade:
+    name: Install and upgrade (${{ matrix.architecture }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            architecture: arm64
+          - runner: macos-15-intel
+            architecture: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Checkout published tap metadata
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          repository: omniviewdev/homebrew-tap
+          path: homebrew-tap
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact }}
+          path: release-package
+      - name: Check native runner architecture
+        env:
+          EXPECTED_ARCHITECTURE: ${{ matrix.architecture }}
+        run: test "$(uname -m)" = "$EXPECTED_ARCHITECTURE"
+      - name: Check cask updater
+        run: node --test build/homebrew/update-cask.test.mjs
+      - name: Verify signed universal release archive
+        run: bash build/darwin/verify-release-package.sh release-package/*.dmg
+      - name: Exercise fresh install, legacy upgrade, CLI upgrade, and uninstall
+        env:
+          CASK: ${{ inputs.cask }}
+        run: node build/homebrew/check-cask.mjs release-package/*.dmg "homebrew-tap/Casks/$CASK.rb"
