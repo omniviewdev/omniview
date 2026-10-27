@@ -231,6 +231,9 @@ jobs:
     needs: check-changes
     if: needs.check-changes.outputs.should_build == 'true'
     steps:
+      - name: Match checkout directory ownership to container user
+        run: chown "$(id -u):$(id -g)" "$PWD"
+
       - name: Checkout
         uses: actions/checkout@v4
         with:

@@ -198,6 +198,9 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Match checkout directory ownership to container user
+        run: chown "$(id -u):$(id -g)" "$PWD"
+
       - name: Normalize version
         id: version
         shell: bash

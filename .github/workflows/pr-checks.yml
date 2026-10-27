@@ -33,6 +33,11 @@ jobs:
     outputs:
       c02_corpus_name: ${{ steps.c02-corpus.outputs.corpus_name }}
     steps:
+      # The runner creates this mount as UID 1001; Git must see the same owner
+      # as the container user after checkout's temporary HOME goes away.
+      - name: Match checkout directory ownership to container user
+        run: chown "$(id -u):$(id -g)" "$PWD"
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
@@ -112,6 +117,10 @@ jobs:
       run:
         shell: bash
     steps:
+      # Keep Git ownership checks enabled instead of adding safe.directory trust.
+      - name: Match checkout directory ownership to container user
+        run: chown "$(id -u):$(id -g)" "$PWD"
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4

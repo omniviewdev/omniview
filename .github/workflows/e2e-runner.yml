@@ -80,6 +80,17 @@ jobs:
       - name: Verify SDK checkout matches reviewed pin
         run: test "$(git -C "$GITHUB_WORKSPACE/plugin-sdk" rev-parse HEAD)" = "$REVIEWED_SDK_REVISION"
 
+      - name: Resolve container source and native payload paths
+        # Shell paths use the container mounts, unlike host-side workflow contexts.
+        # Resolve paths only: an exact cache-only hit must not initialize ownership.
+        run: |
+          {
+            echo "SDK_SOURCE=$GITHUB_WORKSPACE/plugin-sdk"
+            echo "UI_SOURCE=$GITHUB_WORKSPACE/ui"
+            echo "KUBERNETES_SOURCE=$GITHUB_WORKSPACE/host/plugins/kubernetes"
+            echo "OMNIVIEW_E2E_TOOL_CACHE_ROOT=$(realpath -e "$RUNNER_TEMP")/omniview-e2e-native-private-v1/omniview-e2e-native-tool-cache-v1"
+          } >> "$GITHUB_ENV"
+
       - name: Start inclusive preparation clock
         run: echo "OMNIVIEW_E2E_PREPARATION_STARTED_AT=$(date +%s%3N)" >> "$GITHUB_ENV"
 
@@ -93,10 +104,6 @@ jobs:
 
       - name: Select conservative application impact
         id: selection
-        env:
-          SDK_SOURCE: ${{ github.workspace }}/plugin-sdk
-          UI_SOURCE: ${{ github.workspace }}/ui
-          KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
         run: |
           if [[ "$CACHE_ONLY" == true ]]; then
             echo "kind=cache-only" >> "$GITHUB_OUTPUT"
@@ -138,7 +145,7 @@ jobs:
         if: inputs.cache-only
         uses: actions/cache/restore@v4
         with:
-          path: ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1/pnpm-store/12.14.0
+          path: ${{ env.OMNIVIEW_E2E_TOOL_CACHE_ROOT }}/pnpm-store/12.14.0
           key: ${{ steps.cache-keys.outputs.pnpm }}
           lookup-only: true
 
@@ -148,8 +155,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: |
-            ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1/go-mod
-            ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1/bootstrap-go-build
+            ${{ env.OMNIVIEW_E2E_TOOL_CACHE_ROOT }}/go-mod
+            ${{ env.OMNIVIEW_E2E_TOOL_CACHE_ROOT }}/bootstrap-go-build
           key: ${{ steps.cache-keys.outputs.go }}
           lookup-only: true
 
@@ -158,7 +165,7 @@ jobs:
         if: inputs.cache-only
         uses: actions/cache/restore@v4
         with:
-          path: ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1/playwright-browsers
+          path: ${{ env.OMNIVIEW_E2E_TOOL_CACHE_ROOT }}/playwright-browsers
           key: ${{ steps.cache-keys.outputs.browser }}
           lookup-only: true
 
@@ -190,14 +197,14 @@ jobs:
 
       - name: Initialize private native-tool cache container
         if: steps.preparation.outputs.required == 'true'
-        env:
-          OMNIVIEW_E2E_TOOL_CACHE_ROOT: ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1
-          SDK_SOURCE: ${{ github.workspace }}/plugin-sdk
-          UI_SOURCE: ${{ github.workspace }}/ui
-          KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
-        # Keep native payload paths stable for Actions cache-version reuse.
-        # Create fresh v2 ownership; restore payloads only, never the owner.
-        run: node e2e/scripts/run.mjs --init-tool-cache
+        # The mounted runner temp directory belongs to the host runner, not root.
+        # Create a fresh private parent as the container user; never adopt, chown
+        # or chmod existing runner directories. Keep this path stable across jobs
+        # so lookup, restore and save share the same Actions cache version.
+        # Restore payloads only, never the cache owner.
+        run: |
+          mkdir -m 700 -- "$(dirname "$OMNIVIEW_E2E_TOOL_CACHE_ROOT")"
+          node e2e/scripts/run.mjs --init-tool-cache
 
       - name: Restore standalone native pnpm content store
         id: pnpm-cache
@@ -243,9 +250,6 @@ jobs:
         id: canonical
         if: steps.preparation.outputs.required == 'true'
         env:
-          SDK_SOURCE: ${{ github.workspace }}/plugin-sdk
-          UI_SOURCE: ${{ github.workspace }}/ui
-          KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
           SELECTION: ${{ steps.selection.outputs.kind }}
         run: |
           if [[ "$CACHE_ONLY" == true ]]; then

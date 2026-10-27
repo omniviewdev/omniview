@@ -71,6 +71,12 @@ jobs:
     env:
       GOWORK: "off"
     steps:
+      # Container Git must own the mount after checkout's temporary HOME expires.
+      - name: Match checkout directory ownership to container user
+        if: runner.os == 'Linux'
+        shell: bash
+        run: chown "$(id -u):$(id -g)" "$PWD"
+
       - name: Checkout
         uses: actions/checkout@v4
         with:

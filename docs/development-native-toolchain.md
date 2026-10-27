@@ -44,16 +44,18 @@ receipts. `PLAYWRIGHT_BROWSERS_PATH` is derived from the validated owner, not an
 ambient override; runs without an explicit cache use their private preparation
 HOME. Chromium keys bind OS/architecture, Ubuntu24 and the committed package pin
 and lockfile, with no fallback browser key. Existing default-main scope trust
-remains unchanged. CI preserves the established Go/pnpm payload paths while
-creating fresh v2 ownership; ownership metadata is never restored.
+remains unchanged. CI creates a fresh private parent beneath the container's
+canonical `$RUNNER_TEMP`, then initializes v2 ownership before payload restore.
+The mount itself keeps its runner ownership. This container-path cutover changes
+Actions' path-derived cache version and requires one cold population; ownership
+metadata is never restored.
 
 Trusted-main `--cache-only` now prepares browser binaries too, but starts no
 application profiles/tests and never reports application acceptance. It skips
 preparation only when exact pnpm, Go **and Chromium** main-scope lookups all hit.
 Acceptance still requires the one genuine application invocation and its
-fail-closed final gate. Darwin boundary/smoke checks do not establish Linux APT
-behavior: retain actual Ubuntu cold-populate, warm-skip and subsequent-PR restore
-evidence separately from application case/drain/canonical-cleanup receipts.
+fail-closed final gate. Keep Linux image readiness, cache reuse and application
+case/drain/canonical-cleanup evidence separate.
 
 ## CI image maintenance and runner choice
 
@@ -65,6 +67,12 @@ registry secret is required. The package must inherit Actions access from this
 repository, including read access for PR jobs. The initial image must be
 published before consumer jobs can start. Public visibility is optional and
 allows anonymous local pulls; GHCR packages are private on first publication.
+
+Container jobs use shell `$GITHUB_WORKSPACE` and `$RUNNER_TEMP`, not the host
+paths from expression contexts. Before root-level checkouts, native jobs align
+the fresh checkout mount's owner with the container user. This retains Git's
+ownership checks and normal VCS stamping without wildcard `safe.directory`
+exceptions or recursive ownership changes.
 
 The versioned `ubuntu24-v1` tag accepts weekly security refreshes. Job setup logs
 record the resolved digest; retain that digest when comparing timings or
