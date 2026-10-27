@@ -10,6 +10,7 @@ if (!mod) {
   );
 }
 
+export const CelQueryEditor = mod.CelQueryEditor;
 export const CodeEditor = mod.CodeEditor;
 export const CommandPalette = mod.CommandPalette;
 export const DiffViewer = mod.DiffViewer;

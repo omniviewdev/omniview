@@ -90,3 +90,21 @@ Focused typography/search/command-list tests passed 51 cases and header tests pa
 Human UX approval and authorization to file PRs, merge and release were received on October 26, 2026. The final dialog title, combobox name and header trigger name are **Search Omniview**, verified in the actual running instance. The corresponding application test selector was updated.
 
 Shared UI publication uses [UI PR73](https://github.com/omniviewdev/ui/pull/73), applied cleanly to current UI main rather than releasing the older reviewed baseline. Its standalone frozen-lockfile suite passed 1,543 tests across 138 files and built base-ui, ai-ui and editors. No snapshot update was needed; the earlier aggregate-run snapshot failure was not treated as release proof.
+
+### Review corrections and consumer verification
+
+All three CodeRabbit threads on UI PR73 were corrected and resolved before waiting for benchmark completion:
+
+- Metadata and shortcut slots now occupy separate first-row grid tracks. Actual Storybook inspection at 520px and 280px verified nonoverlap with and without icons, with descriptions below.
+- The first pointer event establishes a coordinate baseline instead of overriding keyboard selection. A subsequent coordinate change transfers selection; the new keyboard-first regression covers stationary-pointer delivery.
+- Hotkey exposes normalized chord text through a screen-reader-only child instead of applying an unsupported name to a generic `kbd` or `span`. Both polymorphic forms have regression coverage.
+
+The corrected standalone UI checkout passed 1,546 base-ui tests, 223 ai-ui tests and 239 editor tests. All three package builds and the base-ui TypeScript check passed. A built-export smoke rendered SearchTrigger and Hotkey under JSDOM. The standalone host also passed `GOWORK=off go test ./... -count=1` across 41 tested packages; 12 additional packages had no tests.
+
+Benchmark infrastructure verification remains separate from these functional results. The unsupported macro runner was replaced with CPU simulation on standard Ubuntu 24.04 runners. A serial instrumented run completed measurements but reached its deadline before upload. Four native Vitest shards now retain the complete suite, with separate execution-log artifacts; complementary local shards proved disjoint file execution. Actual sharded CI measurement upload must succeed before this infrastructure is reported as verified.
+
+The user subsequently authorized bypassing performance benchmarks for this release. [UI PR73](https://github.com/omniviewdev/ui/pull/73) merged as `a3c205f386c0593dcc27ce62d9f67e5224c35afc` with functional checks passing and actionable review threads resolved. The sharded benchmark run had a failing shard and was canceled; it is not release proof. [UI issue 74](https://github.com/omniviewdev/ui/issues/74) tracks diagnosis, time-efficient execution, representative coverage, runtime budgets and verified comparison reporting. The benchmark exception does not waive functional verification.
+
+UI version PR75 merged as `a33879bcdcfc4971c3bcd98f23d657c6f5572307`. Release workflow `40436600552` published `@omniviewdev/base-ui@0.7.0`, `@omniviewdev/ai-ui@6.0.0` and `@omniviewdev/editors@6.0.0`. Public registry version metadata independently exposed all three tarballs, integrity hashes and trusted-publisher provenance; ai-ui and editors require base-ui `0.7.0`. The host's immutable E2E UI cohort now selects that release commit.
+
+Standalone host adoption of the published cohort retained strict peers and release-age policy. Providers, runtime, Vite-plugin shim generation/export verification and the production application build passed in dependency order. The complete host UI suite passed 1,058 tests across 67 files against registry packages, not source-linked UI.
