@@ -24,6 +24,7 @@ jobs:
     runs-on: ubuntu-24.04
     container:
       image: ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1
+      options: --init
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -110,6 +111,7 @@ jobs:
     runs-on: ubuntu-24.04
     container:
       image: ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1
+      options: --init
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}

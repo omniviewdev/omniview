@@ -73,6 +73,9 @@ paths from expression contexts. Before root-level checkouts, native jobs align
 the fresh checkout mount's owner with the container user. This retains Git's
 ownership checks and normal VCS stamping without wildcard `safe.directory`
 exceptions or recursive ownership changes.
+Docker's `--init` reaps orphaned compiler/browser children. Without it, the
+runner's keepalive process becomes PID 1 and zombie processes can keep owned
+process groups present after teardown. Do not weaken group-exit assertions.
 
 The versioned `ubuntu24-v1` tag accepts weekly security refreshes. Job setup logs
 record the resolved digest; retain that digest when comparing timings or

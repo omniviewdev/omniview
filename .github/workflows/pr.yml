@@ -64,6 +64,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     container:
       image: ${{ matrix.container || '' }}
+      options: --init
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
