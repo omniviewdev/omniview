@@ -8,7 +8,7 @@ on:
       - .github/workflows/ci-image.yml
       - e2e/package.json
   push:
-    branches: [main]
+    branches: [main, fix/ci-prebuilt-linux-image]
     paths:
       - .github/ci/Dockerfile
       - .github/workflows/ci-image.yml
@@ -56,9 +56,10 @@ jobs:
           cache-to: type=gha,mode=max,scope=ci-image-ubuntu24
       - name: Smoke native libraries and Chromium OS dependencies
         run: |
-          docker run --rm omniview-ci:smoke bash -euo pipefail -c '
+          docker run --rm --init omniview-ci:smoke bash -euo pipefail -c '
             test "$(id -u)" = 0
             node --version | grep -E "^v24\."
+            zstd --version
             pkg-config --exists gtk4 webkitgtk-6.0 wayland-client
             pkg-config --modversion gtk4 webkitgtk-6.0 wayland-client
             playwright install-deps --dry-run chromium
@@ -67,7 +68,7 @@ jobs:
   publish:
     name: Publish trusted Linux image
     needs: build
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/ci-prebuilt-linux-image')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:

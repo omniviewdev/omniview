@@ -16,7 +16,7 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
     && apt-get install -y --no-install-recommends \
         libgtk-4-dev libwebkitgtk-6.0-dev libwayland-dev \
         build-essential pkg-config \
-        git curl ca-certificates unzip zip sudo jq dbus-x11 xvfb \
+        git curl ca-certificates unzip zip zstd sudo jq dbus-x11 xvfb \
     && npm install --global "playwright@${PLAYWRIGHT_VERSION}" \
     && playwright install-deps chromium \
     && npm cache clean --force \
