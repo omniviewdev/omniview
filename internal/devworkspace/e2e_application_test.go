@@ -125,12 +125,22 @@ func TestApplicationFixtureProducerOutputsRestoreCanonicalSource(t *testing.T) {
 			}
 		}
 	}
+	var consumers []string
+	for _, node := range g.Nodes {
+		if node.Kind == "javascript" {
+			consumers = append(consumers, node.Directory)
+		}
+	}
+	writer, err := devoutputs.BeginViteBuild(ctx, g.workspace.ResolvedWorkspace, *g.plan.Composition, consumers)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var built []BuildNode
 	for _, node := range g.Nodes {
 		if node.Kind != "javascript" {
 			continue
 		}
-		if err = g.applicationFixtureJavaScript(ctx, node); err != nil {
+		if err = g.applicationFixtureJavaScript(ctx, node, writer); err != nil {
 			t.Fatalf("%s: %v", node.ID, err)
 		}
 		built = append(built, node)
@@ -140,6 +150,9 @@ func TestApplicationFixtureProducerOutputsRestoreCanonicalSource(t *testing.T) {
 	}
 	if len(built) != 8 {
 		t.Fatalf("missing selected producer coverage: %d", len(built))
+	}
+	if err = writer.Finish(ctx); err != nil {
+		t.Fatal(err)
 	}
 	if err = RestoreRepositoryOutputs(ctx, g.workspace); err != nil {
 		t.Fatal(err)
@@ -183,7 +196,11 @@ func TestApplicationFixtureProducerRetainsUncertainOutputWriter(t *testing.T) {
 		if node.ID != "base-ui" {
 			continue
 		}
-		if err = g.applicationFixtureJavaScript(ctx, node); !errors.Is(err, errOwnedCommandUncertain) {
+		writer, err := devoutputs.BeginViteBuild(ctx, g.workspace.ResolvedWorkspace, *g.plan.Composition, []string{node.Directory})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = g.applicationFixtureJavaScript(ctx, node, writer); !errors.Is(err, errOwnedCommandUncertain) {
 			t.Fatal(err)
 		}
 	}

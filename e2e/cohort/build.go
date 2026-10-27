@@ -202,25 +202,10 @@ func buildApplicationCohort(ctx context.Context, manager *devworkspace.Manager, 
 	if err = report.stage("application-sdk-admission", "setup", func() error { _, err := verify(ctx, prepared.Paths.Repositories["omniview"], ""); return err }); err != nil {
 		return err
 	}
-	// Finish every ordered producer before starting any plugin Go compiler.
-	for _, node := range prepared.Nodes {
-		if node.Kind != "bindings" && node.Kind != "javascript" && node.Kind != "host-backend" {
-			continue
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if err := report.stage(node.ID+"-build-once", "ordered", func() error {
-			timeout := 180 * time.Second
-			if node.Kind == "host-backend" {
-				timeout = 480 * time.Second
-			}
-			producerCtx, cancel := context.WithTimeout(ctx, timeout)
-			defer cancel()
-			return manager.BuildApplicationFixtureProducer(producerCtx, target, node.ID, artifacts, config.Refs["plugin-sdk"])
-		}); err != nil {
-			return err
-		}
+	if err := manager.BuildApplicationFixture(ctx, target, artifacts, config.Refs["plugin-sdk"], func(name string, build func() error) error {
+		return report.stage(name, "ordered", build)
+	}); err != nil {
+		return err
 	}
 	for _, id := range []string{"workspace-probe", "kubernetes"} {
 		if err := ctx.Err(); err != nil {

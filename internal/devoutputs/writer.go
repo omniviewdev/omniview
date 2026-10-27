@@ -22,6 +22,8 @@ type Writer struct {
 	Environment                 []string
 	s                           scope
 	keys                        []string
+	immutable                   []string
+	composition                 *devcompose.Plan
 	token                       string
 	checks                      map[string]string
 	allocated                   map[string]snapshot
@@ -324,6 +326,215 @@ func validateLiveCacheRoot(entry *outputEntry) error {
 	return nil
 }
 
+type viteBuildConsumer struct {
+	modulesKey  string
+	environment string
+}
+
+// ViteBuild owns one finite ordered canonical build, not reusable validation.
+// Finish requires every actual producer and descendant to have joined.
+type ViteBuild struct {
+	writer    *Writer
+	consumers map[string]viteBuildConsumer
+}
+
+func BeginViteBuild(ctx context.Context, w devcontract.ResolvedWorkspace, plan devcompose.Plan, consumers []string) (*ViteBuild, error) {
+	if len(consumers) == 0 {
+		return nil, fmt.Errorf("finite Vite build requires selected consumers")
+	}
+	if err := devcompose.Validate(w, plan); err != nil {
+		return nil, err
+	}
+	if err := devcompose.CheckInputs(plan); err != nil {
+		return nil, err
+	}
+	s, err := newScope(w)
+	if err != nil {
+		return nil, err
+	}
+	build := &ViteBuild{writer: newWriter(s), consumers: make(map[string]viteBuildConsumer, len(consumers))}
+	for _, consumer := range consumers {
+		if !filepath.IsAbs(consumer) || filepath.Clean(consumer) != consumer {
+			return nil, fmt.Errorf("build consumer must be canonical")
+		}
+		canonical, err := cleanPath(consumer)
+		if err != nil || canonical != consumer {
+			return nil, fmt.Errorf("build consumer was redirected")
+		}
+		if _, duplicate := build.consumers[consumer]; duplicate {
+			return nil, fmt.Errorf("duplicate build consumer")
+		}
+		selected := false
+		for _, pkg := range plan.Packages {
+			if pkg.Path == consumer {
+				selected = true
+				break
+			}
+		}
+		if !selected {
+			return nil, fmt.Errorf("build consumer is not a selected composition package")
+		}
+		repository, _, err := s.repository(consumer)
+		if err != nil {
+			return nil, err
+		}
+		if _, err = head(ctx, repository); err != nil {
+			return nil, err
+		}
+		spec, err := s.spec(consumer, modules)
+		if err != nil {
+			return nil, err
+		}
+		build.consumers[consumer] = viteBuildConsumer{modulesKey: keyOf(spec)}
+	}
+	writer := build.writer
+	writer.composition = &plan
+	err = locked(ctx, s, func(j *journal) error {
+		if j.Restoring {
+			return fmt.Errorf("repository restoration must finish before build")
+		}
+		for _, entry := range j.Entries {
+			if entry.Pending != nil || entry.Cleanup != nil || len(entry.Live) != 0 {
+				return fmt.Errorf("finite build overlaps an unfinished repository writer")
+			}
+		}
+		aggregateSpec, err := s.spec(w.Root, modules)
+		if err != nil {
+			return err
+		}
+		aggregateKey := keyOf(aggregateSpec)
+		aggregate := j.Entries[aggregateKey]
+		if aggregate == nil || aggregate.Expected["."].Kind != "directory" {
+			return fmt.Errorf("finite build requires an owned installed aggregate")
+		}
+		// The entire immutable store is byte-validated at both transaction
+		// boundaries. Its durable reservation blocks install/restore in between.
+		if err = validateEntry(ctx, aggregate, false); err != nil {
+			return err
+		}
+		for _, consumer := range consumers {
+			entry := j.Entries[build.consumers[consumer].modulesKey]
+			if entry == nil || entry.Expected["."].Kind != "directory" {
+				return fmt.Errorf("build consumer modules are not independently owned")
+			}
+			if err = validateEntry(ctx, entry, false); err != nil {
+				return err
+			}
+		}
+		for _, consumer := range consumers {
+			if err = writer.beginViteConsumer(ctx, j, consumer); err != nil {
+				return err
+			}
+			selected := build.consumers[consumer]
+			selected.environment = writer.Environment[0]
+			build.consumers[consumer] = selected
+			writer.Environment = writer.Environment[:0]
+		}
+		writer.immutable = make([]string, 0, len(consumers)+1)
+		writer.immutable = append(writer.immutable, aggregateKey)
+		for _, consumer := range consumers {
+			writer.immutable = append(writer.immutable, build.consumers[consumer].modulesKey)
+		}
+		for _, key := range writer.immutable {
+			entry := j.Entries[key]
+			if entry.Live == nil {
+				entry.Live = map[string]bool{}
+			}
+			entry.Live[writer.token] = true
+		}
+		writer.registered = true
+		return save(s, j)
+	})
+	if err != nil {
+		if writer.registered && ctx.Err() == nil {
+			err = errors.Join(err, writer.Finish(context.WithoutCancel(ctx)))
+		}
+		return nil, err
+	}
+	writer.ready = true
+	return build, nil
+}
+
+func (writer *Writer) validateBuildInputs() error {
+	if err := devcompose.Validate(writer.s.workspace, *writer.composition); err != nil {
+		return err
+	}
+	return devcompose.CheckInputs(*writer.composition)
+}
+
+func (writer *Writer) reservedModules(j *journal, key string) (*outputEntry, error) {
+	entry := j.Entries[key]
+	if entry == nil || entry.Spec.Kind != modules || entry.Pending != nil || entry.Cleanup != nil || len(entry.Live) != 1 || !entry.Live[writer.token] {
+		return nil, fmt.Errorf("finite build reservation changed")
+	}
+	return entry, nil
+}
+
+// Environment checks each actual consumer immediately before its producer.
+// Immutable aggregate content is never accepted from an intermediate image.
+func (build *ViteBuild) Environment(ctx context.Context, consumerRoot string) (string, error) {
+	selected, ok := build.consumers[consumerRoot]
+	if !ok {
+		return "", fmt.Errorf("consumer is outside this finite build")
+	}
+	writer := build.writer
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	if writer.finished {
+		return "", fmt.Errorf("finite build already finished")
+	}
+	err := locked(ctx, writer.s, func(j *journal) error {
+		for _, key := range writer.immutable {
+			entry, err := writer.reservedModules(j, key)
+			if err != nil {
+				return err
+			}
+			expected := entry.Expected["."]
+			info, err := os.Lstat(entry.Spec.Target)
+			if err != nil {
+				return err
+			}
+			if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != expected.Mode {
+				return fmt.Errorf("reserved build modules root changed")
+			}
+			identity, err := directoryIdentity(entry.Spec.Target)
+			if err != nil || identity != expected.Identity {
+				return fmt.Errorf("reserved build modules root was replaced")
+			}
+		}
+		entry, err := writer.reservedModules(j, selected.modulesKey)
+		if err != nil {
+			return err
+		}
+		actual, err := snapshotPath(entry.Spec, entry.Exclude)
+		if err != nil {
+			return err
+		}
+		if !sameSnapshot(actual, physical(entry.Expected)) {
+			return fmt.Errorf("consumer modules changed before build")
+		}
+		for _, kind := range []Producer{loaderCache, typeCache, viteCache, loaderFiles} {
+			spec, err := writer.s.spec(consumerRoot, kind)
+			if err != nil {
+				return err
+			}
+			cache := j.Entries[keyOf(spec)]
+			if cache == nil || cache.Pending != nil || cache.Cleanup != nil || len(cache.Live) != 1 || !cache.Live[writer.token] {
+				return fmt.Errorf("finite build cache reservation changed")
+			}
+			if err = validateLiveCacheRoot(cache); err != nil {
+				return err
+			}
+		}
+		return writer.validateBuildInputs()
+	})
+	return selected.environment, err
+}
+
+func (build *ViteBuild) Finish(ctx context.Context) error {
+	return build.writer.Finish(ctx)
+}
+
 func BeginVite(ctx context.Context, w devcontract.ResolvedWorkspace, consumerRoot string) (*Writer, error) {
 	s, err := newScope(w)
 	if err != nil {
@@ -356,129 +567,8 @@ func BeginVite(ctx context.Context, w devcontract.ResolvedWorkspace, consumerRoo
 				return err
 			}
 		}
-		moduleSpec, err := s.spec(consumerRoot, modules)
-		if err != nil {
+		if err := writer.beginViteConsumer(ctx, j, consumerRoot); err != nil {
 			return err
-		}
-		moduleKey := keyOf(moduleSpec)
-		parent := j.Entries[moduleKey]
-		if parent == nil {
-			return fmt.Errorf("Vite requires independently owned node_modules; run controlled workspace linking first")
-		}
-		if parent.Pending != nil || parent.Cleanup != nil || len(parent.Live) > 0 {
-			return fmt.Errorf("Vite cannot start during a modules writer")
-		}
-		current, err := snapshotPath(parent.Spec, parent.Exclude)
-		if err != nil {
-			return err
-		}
-		if !sameSnapshot(current, physical(parent.Expected)) {
-			return fmt.Errorf("node_modules changed before Vite start")
-		}
-		if len(current) == 0 {
-			return fmt.Errorf("controlled node_modules is missing; reinstall before starting Vite")
-		}
-		// Loader and compiler cache subtrees are explicitly transferred out of the
-		// immutable modules snapshot, with their own actual writer lifetimes.
-		for _, kind := range []Producer{loaderCache, typeCache, viteCache, loaderFiles} {
-			spec, err := s.spec(consumerRoot, kind)
-			if err != nil {
-				return err
-			}
-			key := keyOf(spec)
-			entry := j.Entries[key]
-			if entry == nil {
-				actual, err := snapshotPath(spec, nil)
-				if err != nil {
-					return err
-				}
-				switch kind {
-				case loaderCache, typeCache:
-					relative, _ := filepath.Rel(parent.Spec.Target, spec.Target)
-					inherited := snapshot{}
-					for path, value := range parent.Expected {
-						if path == relative {
-							inherited["."] = value
-						} else if contains(relative, path) && path != relative {
-							suffix, _ := filepath.Rel(relative, path)
-							inherited[suffix] = value
-						}
-					}
-					if !sameSnapshot(actual, inherited) {
-						return fmt.Errorf("cache subtree contains unowned files")
-					}
-					filtered := snapshot{}
-					for path, value := range parent.Expected {
-						if path != relative && !contains(relative, path) {
-							filtered[path] = value
-						}
-					}
-					parent.Expected = filtered
-					parent.Exclude = append(parent.Exclude, relative)
-				case loaderFiles:
-					if len(actual) > 1 {
-						return fmt.Errorf("preexisting config-loader artifacts are not owned")
-					}
-					if _, err = head(ctx, spec.Repository); err != nil {
-						return err
-					}
-				case viteCache:
-					if len(actual) > 0 {
-						return fmt.Errorf("preexisting optimizer cache is not owned")
-					}
-				}
-				entry = &outputEntry{Spec: spec, Expected: actual, Original: snapshot{}, Live: map[string]bool{}}
-				j.Entries[key] = entry
-			} else {
-				if entry.Pending != nil || entry.Cleanup != nil {
-					return fmt.Errorf("cache has unfinished publication")
-				}
-				if len(entry.Live) > 0 {
-					if err := validateLiveCacheRoot(entry); err != nil {
-						return err
-					}
-				} else {
-					actual, err := snapshotPath(entry.Spec, nil)
-					if err != nil {
-						return err
-					}
-					if !sameSnapshot(actual, physical(entry.Expected)) {
-						return fmt.Errorf("owned cache changed while stopped")
-					}
-				}
-			}
-			if entry.Live == nil {
-				entry.Live = map[string]bool{}
-			}
-			entry.Live[writer.token] = true
-			writer.keys = append(writer.keys, key)
-			// Save allocation intent before any producer-visible root is created.
-			if err = save(s, j); err != nil {
-				return err
-			}
-			writer.registered = true
-			expectedRoot := entry.Expected["."]
-			if kind != loaderFiles && (expectedRoot.Kind == "" || expectedRoot.Kind == "absent") {
-				if kind == viteCache {
-					if err = ensureMetadataDirectory(s, filepath.Dir(spec.Target)); err != nil {
-						return err
-					}
-				}
-				if err = os.Mkdir(spec.Target, 0700); err != nil {
-					return err
-				}
-				entry.Expected, err = snapshotPath(spec, nil)
-				if err != nil {
-					return err
-				}
-				writer.allocated[key] = entry.Expected
-				if err = save(s, j); err != nil {
-					return err
-				}
-			}
-			if kind == viteCache {
-				writer.Environment = append(writer.Environment, "OMNIVIEW_VITE_CACHE_DIRECTORY="+spec.Target)
-			}
 		}
 		return save(s, j)
 	})
@@ -492,6 +582,135 @@ func BeginVite(ctx context.Context, w devcontract.ResolvedWorkspace, consumerRoo
 	return writer, nil
 }
 
+func (writer *Writer) beginViteConsumer(ctx context.Context, j *journal, consumerRoot string) error {
+	s := writer.s
+	moduleSpec, err := s.spec(consumerRoot, modules)
+	if err != nil {
+		return err
+	}
+	moduleKey := keyOf(moduleSpec)
+	parent := j.Entries[moduleKey]
+	if parent == nil {
+		return fmt.Errorf("Vite requires independently owned node_modules; run controlled workspace linking first")
+	}
+	if parent.Pending != nil || parent.Cleanup != nil || len(parent.Live) > 0 {
+		return fmt.Errorf("Vite cannot start during a modules writer")
+	}
+	current, err := snapshotPath(parent.Spec, parent.Exclude)
+	if err != nil {
+		return err
+	}
+	if !sameSnapshot(current, physical(parent.Expected)) {
+		return fmt.Errorf("node_modules changed before Vite start")
+	}
+	if len(current) == 0 {
+		return fmt.Errorf("controlled node_modules is missing; reinstall before starting Vite")
+	}
+	// Loader and compiler cache subtrees are explicitly transferred out of the
+	// immutable modules snapshot, with their own actual writer lifetimes.
+	for _, kind := range []Producer{loaderCache, typeCache, viteCache, loaderFiles} {
+		spec, err := s.spec(consumerRoot, kind)
+		if err != nil {
+			return err
+		}
+		key := keyOf(spec)
+		entry := j.Entries[key]
+		if entry == nil {
+			actual, err := snapshotPath(spec, nil)
+			if err != nil {
+				return err
+			}
+			switch kind {
+			case loaderCache, typeCache:
+				relative, _ := filepath.Rel(parent.Spec.Target, spec.Target)
+				inherited := snapshot{}
+				for path, value := range parent.Expected {
+					if path == relative {
+						inherited["."] = value
+					} else if contains(relative, path) && path != relative {
+						suffix, _ := filepath.Rel(relative, path)
+						inherited[suffix] = value
+					}
+				}
+				if !sameSnapshot(actual, inherited) {
+					return fmt.Errorf("cache subtree contains unowned files")
+				}
+				filtered := snapshot{}
+				for path, value := range parent.Expected {
+					if path != relative && !contains(relative, path) {
+						filtered[path] = value
+					}
+				}
+				parent.Expected = filtered
+				parent.Exclude = append(parent.Exclude, relative)
+			case loaderFiles:
+				if len(actual) > 1 {
+					return fmt.Errorf("preexisting config-loader artifacts are not owned")
+				}
+				if _, err = head(ctx, spec.Repository); err != nil {
+					return err
+				}
+			case viteCache:
+				if len(actual) > 0 {
+					return fmt.Errorf("preexisting optimizer cache is not owned")
+				}
+			}
+			entry = &outputEntry{Spec: spec, Expected: actual, Original: snapshot{}, Live: map[string]bool{}}
+			j.Entries[key] = entry
+		} else {
+			if entry.Pending != nil || entry.Cleanup != nil {
+				return fmt.Errorf("cache has unfinished publication")
+			}
+			if len(entry.Live) > 0 {
+				if err := validateLiveCacheRoot(entry); err != nil {
+					return err
+				}
+			} else {
+				actual, err := snapshotPath(entry.Spec, nil)
+				if err != nil {
+					return err
+				}
+				if !sameSnapshot(actual, physical(entry.Expected)) {
+					return fmt.Errorf("owned cache changed while stopped")
+				}
+			}
+		}
+		if entry.Live == nil {
+			entry.Live = map[string]bool{}
+		}
+		entry.Live[writer.token] = true
+		writer.keys = append(writer.keys, key)
+		// Save allocation intent before any producer-visible root is created.
+		if err = save(s, j); err != nil {
+			return err
+		}
+		writer.registered = true
+		expectedRoot := entry.Expected["."]
+		if kind != loaderFiles && (expectedRoot.Kind == "" || expectedRoot.Kind == "absent") {
+			if kind == viteCache {
+				if err = ensureMetadataDirectory(s, filepath.Dir(spec.Target)); err != nil {
+					return err
+				}
+			}
+			if err = os.Mkdir(spec.Target, 0700); err != nil {
+				return err
+			}
+			entry.Expected, err = snapshotPath(spec, nil)
+			if err != nil {
+				return err
+			}
+			writer.allocated[key] = entry.Expected
+			if err = save(s, j); err != nil {
+				return err
+			}
+		}
+		if kind == viteCache {
+			writer.Environment = append(writer.Environment, "OMNIVIEW_VITE_CACHE_DIRECTORY="+spec.Target)
+		}
+	}
+	return nil
+}
+
 func (writer *Writer) Finish(ctx context.Context) error {
 	if writer == nil {
 		return nil
@@ -501,8 +720,24 @@ func (writer *Writer) Finish(ctx context.Context) error {
 	if writer.finished {
 		return nil
 	}
+	if len(writer.immutable) > 0 && ctx.Err() != nil {
+		return ctx.Err()
+	}
 	var sourceErr error
 	err := locked(ctx, writer.s, func(j *journal) error {
+		for _, key := range writer.immutable {
+			entry, err := writer.reservedModules(j, key)
+			if err != nil {
+				return err
+			}
+			actual, err := snapshotPath(entry.Spec, entry.Exclude)
+			if err != nil {
+				return err
+			}
+			if !sameSnapshot(actual, physical(entry.Expected)) {
+				return fmt.Errorf("immutable modules changed during finite build")
+			}
+		}
 		// First validate identities for all capability roots, before recording any.
 		snapshots := map[string]snapshot{}
 		for _, key := range writer.keys {
@@ -545,12 +780,23 @@ func (writer *Writer) Finish(ctx context.Context) error {
 				sourceErr = fmt.Errorf("package source configuration changed while installer was running: %s", path)
 			}
 		}
+		if len(writer.immutable) > 0 {
+			if err := writer.validateBuildInputs(); err != nil {
+				return err
+			}
+			if err := errors.Join(ctx.Err(), sourceErr); err != nil {
+				return err
+			}
+		}
 		for key, actual := range snapshots {
 			entry := j.Entries[key]
 			delete(entry.Live, writer.token)
 			if len(entry.Live) == 0 {
 				entry.Expected = actual
 			}
+		}
+		for _, key := range writer.immutable {
+			delete(j.Entries[key].Live, writer.token)
 		}
 		if err := save(writer.s, j); err != nil {
 			return err
