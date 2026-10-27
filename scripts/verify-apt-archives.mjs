@@ -31,7 +31,7 @@ export async function verifyAptArchives(directory, metadata) {
   }))).filter(record => {
     // apt-cache also emits dpkg's installed-state-only records. They are not
     // authenticated index evidence and must never authorize archive bytes.
-    return !(record.Status === 'install ok installed' && !record.Filename && !record.SHA256);
+    return !(record.Status && !record.Filename && !record.SHA256);
   });
   for (const record of records) {
     if (!/^[a-z0-9][a-z0-9+.-]*$/.test(record.Package ?? '') || !versionPattern.test(record.Version ?? '') || !/^[a-z0-9][a-z0-9-]*$/.test(record.Architecture ?? '') || !/^[a-f0-9]{64}$/.test(record.SHA256 ?? '') || !/^[0-9]+$/.test(record.Size ?? '')) throw new Error('Invalid authenticated package metadata');

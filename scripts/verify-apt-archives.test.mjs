@@ -140,6 +140,16 @@ test('an obsolete first entry cannot hide later indexed tampering or invalid bun
   }
 });
 
+test('held installed-state records do not shadow authenticated cached archives', async t => {
+  const f = candidateFixture(t);
+  const held = 'Package: sample\nVersion: 1:1.0-1\nArchitecture: all\nStatus: hold ok installed\nSize: 23\n\n';
+  const inode = lstatSync(f.directory).ino;
+  const report = await prepareAptArchives(f.directory, held + f.metadata);
+  assert.deepEqual(report, { count: 1, retainedDirectory: null });
+  assert.equal(lstatSync(f.directory).ino, inode);
+  assert.deepEqual(readFileSync(f.filename), f.content);
+});
+
 test('installed-status-only metadata cannot authorize cached bytes absent from fresh indexes', async t => {
   const f = candidateFixture(t);
   const installed = 'Package: sample\nVersion: 1:2.0-1\nArchitecture: all\nStatus: install ok installed\nSize: 23\n\n';
