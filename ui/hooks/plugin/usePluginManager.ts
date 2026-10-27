@@ -122,6 +122,7 @@ export const usePluginManager = () => {
       if (appErr.type === 'omniview:cancelled') {
         return;
       }
+
       // This explicit local developer operation may expose bridge diagnostics.
       // Keep global resource-error sanitization unchanged.
       const bridgeMessage: string = error instanceof Error ? String(error.message)
@@ -138,10 +139,17 @@ export const usePluginManager = () => {
         actions: [
           ...(appErr.instance ? [{
             label: 'Build Output',
-            onClick: () => { devToolsChannel.emit('onOpenBuildOutput', appErr.instance!); },
+            onClick: () => {
+              devToolsChannel.emit('onOpenBuildOutput', appErr.instance!);
+            },
           }] : []),
           ...(appErr.actions?.map(actionToSnackbar) ?? []),
-          { label: 'Retry installation', onClick: () => { installDev.mutate(); } },
+          {
+            label: 'Retry installation',
+            onClick: () => {
+              installDev.mutate();
+            },
+          },
         ],
       });
     },
