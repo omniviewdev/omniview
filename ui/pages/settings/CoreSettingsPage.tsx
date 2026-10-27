@@ -152,6 +152,8 @@ const CoreSettingsPage: React.FC<Props> = ({ id: categoryID }) => {
             variant='soft'
             onClick={commitDraftValues}
             disabled={saving}
+            aria-label='Save Changes'
+            aria-busy={saving}
           >
             {saving ? 'Checking and saving…' : 'Save Changes'}
           </Button>

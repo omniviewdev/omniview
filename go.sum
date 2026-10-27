@@ -130,6 +130,8 @@ github.com/omniviewdev/plugin-sdk v0.6.1-0.20261027164602-4f27ee720160 h1:r0VbKe
 github.com/omniviewdev/plugin-sdk v0.6.1-0.20261027164602-4f27ee720160/go.mod h1:7EL5BfctDEQdflClkZMhgvSAGkDff79UteN7rcuBUho=
 github.com/omniviewdev/plugin-sdk v0.6.1-0.20261027171519-fcc779ecf5fe h1:rC+d4NZ6DDDq57fFCs8NWWJPNNa32dMzAkOlkJOeGcU=
 github.com/omniviewdev/plugin-sdk v0.6.1-0.20261027171519-fcc779ecf5fe/go.mod h1:7EL5BfctDEQdflClkZMhgvSAGkDff79UteN7rcuBUho=
+github.com/omniviewdev/plugin-sdk v0.6.1-0.20261027173816-c0f3a822573f h1:+ht7P0QAPgBnQLhhssctLMU0fB5HF8dInR8gX6lryAw=
+github.com/omniviewdev/plugin-sdk v0.6.1-0.20261027173816-c0f3a822573f/go.mod h1:7EL5BfctDEQdflClkZMhgvSAGkDff79UteN7rcuBUho=
 github.com/omniviewdev/registry v0.2.1 h1:4CsiBZmlftBZV/3LyQNiI2plRkMAqgFD8Q4zffFCVYk=
 github.com/omniviewdev/registry v0.2.1/go.mod h1:/IZABypY6iIaHo2Gw5g5Ll4SIbUhEm5/02spR/svl3Q=
 github.com/omniviewdev/registry v0.2.3 h1:s9GYTZMqwMaUgvuHVTIOgHcRHK9C28O68EW3o+lHvIc=

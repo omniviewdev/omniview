@@ -2,7 +2,7 @@ module github.com/omniviewdev/workspace-probe
 
 go 1.25.0
 
-require github.com/omniviewdev/plugin-sdk v0.6.1-0.20261027171519-fcc779ecf5fe
+require github.com/omniviewdev/plugin-sdk v0.6.1-0.20261027173816-c0f3a822573f
 
 require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
