@@ -1,7 +1,6 @@
 package categories
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
@@ -25,21 +24,21 @@ var Terminal = settings.Category{
 			Label:       "Default Shell",
 			Default:     defaultShell(),
 			Description: "The default shell to use when opening a terminal",
-			Validator: func(value interface{}) error {
+			Validator: func(value interface{}) settings.ValidationResult {
 				val, ok := value.(string)
 				if !ok {
-					return settings.ErrSettingTypeMismatch
+					return settings.ValidationResult{Code: "shell_type", Message: "Enter a shell executable name or path."}
 				}
 				path, err := exec.LookPath(val)
 				if err != nil {
-					return fmt.Errorf("could not find executable: %w", err)
+					return settings.ValidationResult{Code: "shell_executable", Message: "Choose an executable shell installed on this system."}
 				}
 				// make sure the shell exists on the users system
 				if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
-					return fmt.Errorf("could not find shell '%s'", val)
+					return settings.ValidationResult{Code: "shell_missing", Message: "The selected shell no longer exists. Choose an installed shell."}
 				}
 
-				return nil
+				return settings.ValidationResult{Valid: true, Code: "shell_executable", Message: "Shell executable is available."}
 			},
 		},
 

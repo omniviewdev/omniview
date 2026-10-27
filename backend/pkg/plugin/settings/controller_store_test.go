@@ -312,7 +312,7 @@ func TestStaleClient_ReturnsBboltFallback(t *testing.T) {
 func TestValidateSettingRequiresLivePluginAndPreservesFeedback(t *testing.T) {
 	ctrl := NewController(logging.NewNop(), nil, openTestStore(t)).(*controller)
 	ctrl.clients["fixture"] = newMockProvider(map[string]pkgsettings.Setting{
-		"tool": {ID: "tool", Type: pkgsettings.Text, Value: "saved", ValidateValue: func(value any) pkgsettings.ValidationResult {
+		"tool": {ID: "tool", Type: pkgsettings.Text, Value: "saved", Validator: func(value any) pkgsettings.ValidationResult {
 			return pkgsettings.ValidationResult{Valid: value == "good", Code: "tool_check", Message: "Tool check completed."}
 		}},
 	})

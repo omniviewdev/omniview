@@ -2,16 +2,18 @@
 
 ## Business cases and UX contract
 
-Developers must be able to verify a selected Go executable before saving it. SDK settings may register reusable function validators returning structured, user-safe results. Existing error validators continue to work. Validation is advisory until save; every save runs validation again, and failed bulk validation changes no values.
+Developers must be able to verify a selected Go executable before saving it. SDK settings register one reusable `Validator` callback returning structured, user-safe results. This is a breaking alpha API cutover: error-returning callbacks must migrate to `settings.ValidationResult`; no compatibility registration path exists. Validation is advisory until save; every save runs validation again, and failed bulk validation changes no values.
 
 Core settings validate changed drafts asynchronously after a short debounce. Each row announces checking, success, or actionable failure. Responses for older drafts, discarded drafts, or another category must never replace current feedback. Save remains available to retry validation, but is disabled while saving. Drafts survive failures. Editing and discard cannot race an in-flight save.
+
+The save action retains its accessible name and exposes busy state until validation and persistence finish. Its action bar disappears only after a successful save; rejected drafts keep their actions and feedback.
 
 An empty Go path retains the existing optional default: automatic discovery in PATH and common installation folders when a build needs Go. Clearing an override succeeds without requiring Go to be installed. This does not claim that automatic discovery has been smoke-tested. Explicit paths reject missing files, directories, and non-executable files, then run `go version` directly without a shell. The smoke command has a five-second deadline and bounded output, and must identify itself as Go. `GOTOOLCHAIN=local` prevents Go toolchain download and `GOWORK=off` avoids ambient workspace selection. No builds or module mutation occurs. Success identifies the version; failures explain selection, execution, timeout, or unexpected output without echoing command output, environment, or submitted values. Sensitive settings always receive generic feedback.
 
 ## Expected outcomes
 
 - A reusable structured validator produces success/failure code and message; its failure prevents direct and bulk SDK saves.
-- Legacy validator failures remain enforced, but frontend preflight receives generic text rather than potentially secret-bearing errors.
+- The single registered callback enforces the same constraints during draft evaluation and writes.
 - Missing path, directory, non-executable file, nonzero smoke exit, timeout, or non-Go output fails without changing saved values.
 - A real Go executable succeeds. Empty path succeeds with an explicit automatic-discovery message, even without Go installed.
 - Delayed old results cannot overwrite newer drafts. Discard removes feedback. Category switches clear drafts and feedback.
@@ -26,15 +28,15 @@ Expected tests cover real in-memory gRPC roundtrips, contextual success/failure,
 
 ## Registering validators
 
-Set `settings.Setting.ValidateValue` to a `func(interface{}) settings.ValidationResult`.
+Set `settings.Setting.Validator` to a `func(interface{}) settings.ValidationResult`.
 Return `Valid: true` for accepted values, a stable `Code` for programmatic
 consumers, and a contextual `Message` safe to display. Failure is the zero-value
 `Valid: false`; provide a message explaining how to correct the value. Validators
 must not mutate settings and should bound any external command or network work.
-`Setting.Validation` and provider `ValidateSetting` evaluate drafts; normal
-setting writes rerun validation. Existing `Validator` callbacks still enforce
-their constraints before structured validation. Sensitive settings always return
-generic feedback, regardless of callback content.
+`Setting.Validation` and provider `ValidateSetting` evaluate drafts without mutation.
+`Setting.Validate` returns an error for rejected writes by delegating to the same
+evaluation; it is not another callback. Normal setting writes rerun validation.
+Sensitive settings always return generic feedback, regardless of callback content.
 
 ## Verification
 
@@ -60,4 +62,4 @@ Generate frontend bindings with `task bindings SDK_SOURCE="$SDK_SOURCE"`, then r
 
 Manual smoke: open Developer Settings, change Go Path to a missing file, and confirm contextual error plus rejected save. Select the absolute path printed by `command -v go`, confirm version success, then save and reload. Clear the path to restore automatic discovery. Select executable scripts that exit 1, print unrelated output, or sleep 30 seconds: each must fail, with timeout feedback within roughly five seconds. Quickly alternate valid and invalid drafts and switch categories during checking; only current draft feedback may appear. Replace a valid executable before save; save must fail and retain the draft.
 
-Plugin smoke: rebuild a plugin against the selected SDK with a registered `ValidateValue` callback returning distinct success and failure codes/messages. Open Settings → Plugins → that plugin. Edit its setting: expect checking followed by the callback's contextual message. Invalid save must retain the draft; valid save must persist across reopening. Quickly change drafts or switch plugins while checking: older responses must not appear. Stop the plugin before save: retain drafts and report unavailable validation. Repeat with a sensitive setting whose callback accidentally includes its input: feedback must stay generic. Older plugin builds without the validation RPC must report unavailable validation, not success.
+Plugin smoke: rebuild a plugin against the selected SDK with a registered `Validator` callback returning distinct success and failure codes/messages. Open Settings → Plugins → that plugin. Edit its setting: expect checking followed by the callback's contextual message. Invalid save must retain the draft; valid save must persist across reopening. Quickly change drafts or switch plugins while checking: older responses must not appear. Stop the plugin before save: retain drafts and report unavailable validation. Repeat with a sensitive setting whose callback accidentally includes its input: feedback must stay generic. Older plugin builds without the validation RPC must report unavailable validation, not success.

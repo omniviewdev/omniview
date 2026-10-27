@@ -956,8 +956,8 @@ func TestAppearanceThemeDefaultsToVoid(t *testing.T) {
     setting := Appearance.Settings["theme"]
     require.Equal(t, "void", setting.Default)
     require.Empty(t, setting.Options)
-    require.NoError(t, setting.Validator("plugin:acme/slate"))
-    require.Error(t, setting.Validator("bad theme id"))
+    require.NoError(t, setting.Validate("plugin:acme/slate"))
+    require.Error(t, setting.Validate("bad theme id"))
 }
 
 func TestMigrateAppearanceValues(t *testing.T) {
@@ -994,15 +994,15 @@ Use this validator:
 ```go
 var themeIDPattern = regexp.MustCompile(`^[A-Za-z0-9._~%:/-]+$`)
 
-func validateThemeID(value any) error {
+func validateThemeID(value any) settings.ValidationResult {
     id, ok := value.(string)
     if !ok {
-        return settings.ErrSettingTypeMismatch
+        return settings.ValidationResult{Code: "theme_type", Message: "Choose a theme using a text ID."}
     }
     if id == "" || len(id) > 256 || !themeIDPattern.MatchString(id) {
-        return fmt.Errorf("invalid theme ID")
+        return settings.ValidationResult{Code: "theme_id", Message: "Use a theme ID of 1–256 characters containing only letters, numbers, or . _ ~ % : / -."}
     }
-    return nil
+    return settings.ValidationResult{Valid: true, Code: "theme_id", Message: "Theme ID is valid."}
 }
 ```
 

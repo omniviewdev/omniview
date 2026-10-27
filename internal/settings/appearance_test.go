@@ -10,8 +10,8 @@ func TestAppearanceThemeDefaultsToVoid(t *testing.T) {
 	setting := Appearance.Settings[settingTheme]
 	require.Equal(t, "void", setting.Default)
 	require.Empty(t, setting.Options)
-	require.NoError(t, setting.Validator("plugin:acme/slate"))
-	require.Error(t, setting.Validator("bad theme id"))
+	require.NoError(t, setting.Validate("plugin:acme/slate"))
+	require.Error(t, setting.Validate("bad theme id"))
 }
 
 func TestMigrateAppearanceValues(t *testing.T) {

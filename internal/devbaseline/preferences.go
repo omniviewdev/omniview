@@ -43,7 +43,7 @@ func safePreferences(values map[string]map[string]any) (map[string]map[string]an
 			if !legacyWeight && !safeValue(field, value) {
 				return nil, fmt.Errorf("baseline: invalid allowlisted preference %s.%s", category, key)
 			}
-			if field.Validator != nil && field.Validator(value) != nil {
+			if field.Validator != nil && !field.Validation(value).Valid {
 				return nil, fmt.Errorf("baseline: invalid allowlisted preference %s.%s", category, key)
 			}
 			if result[category] == nil {

@@ -1,7 +1,7 @@
 package categories
 
 import (
-	"fmt"
+	"strings"
 
 	"github.com/omniviewdev/omniview/internal/telemetry"
 	"github.com/omniviewdev/plugin-sdk/settings"
@@ -58,15 +58,15 @@ func buildTelemetrySettings() map[string]settings.Setting {
 			Type:        settings.Text,
 			Default:     defaults.LogsShipLevel,
 			Options:     logLevelOptions,
-			Validator: func(v any) error {
+			Validator: func(v any) settings.ValidationResult {
 				s, ok := v.(string)
 				if !ok {
-					return fmt.Errorf("expected string, got %T", v)
+					return settings.ValidationResult{Code: "log_level_type", Message: "Choose a log level from the available options."}
 				}
 				if !telemetry.IsValidLogLevel(s) {
-					return fmt.Errorf("invalid log level %q; valid values: %v", s, telemetry.GetValidLogLevels())
+					return settings.ValidationResult{Code: "log_level", Message: "Choose a log level: " + strings.Join(validLevels, ", ") + "."}
 				}
-				return nil
+				return settings.ValidationResult{Valid: true, Code: "log_level", Message: "Log level is valid."}
 			},
 		},
 		"profiling": {
