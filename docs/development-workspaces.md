@@ -2,6 +2,10 @@
 
 The host-owned CLI manages independent Git worktrees, one pnpm workspace per feature, isolated development profiles and persistent launch supervisors. Commands below replace manual developer-settings dialogs and global links. Runtime/platform acceptance is recorded separately; source implementation is not proof that every native, plugin and HMR combination has passed.
 
+The browser development-status banner stays above the bottom status bar and does
+not intercept input. Notification history, terminal controls, and underlying
+application actions remain usable while development status is visible.
+
 The [workspace roadmap](development-workspaces-roadmap.md) records research decisions, repository routing, ordered parallel work packets, exercised evidence and remaining acceptance gates.
 
 ## Bootstrap the local CLI and sources

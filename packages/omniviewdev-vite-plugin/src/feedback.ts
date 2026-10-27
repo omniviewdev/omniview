@@ -442,7 +442,7 @@ export function managedViteFeedback() {
 const banner = document.createElement('div');
 banner.id = 'omniview-development-banner';
 banner.setAttribute('role', 'status');
-banner.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:2147483647;padding:6px 12px;background:#172554;color:#fff;font:12px monospace;white-space:pre-wrap';
+banner.style.cssText = 'position:fixed;bottom:32px;left:12px;max-width:calc(100vw - 24px);box-sizing:border-box;pointer-events:none;z-index:2147483647;padding:6px 12px;background:#172554;color:#fff;font:12px monospace;white-space:pre-wrap';
 document.body.append(banner);
 async function refreshDevelopmentStatus() {
   try {
