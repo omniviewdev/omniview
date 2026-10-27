@@ -83,6 +83,9 @@ diagnosing image regressions. Change the major image tag for incompatible
 toolchain changes. Update the image's Playwright pin with `e2e/package.json`;
 the publisher checks the versions agree. A failed rebuild leaves the previous
 published image available. Do not cache APT databases or installed system paths.
+The image includes `zstd` so Actions caches use their normal fast compressor
+instead of a gzip fallback. Changing compression also changes the cache version,
+so the first image-backed run may need a cold population.
 
 Standard hosted containers preserve a clean VM boundary without owning runner
 patching, registration, autoscaling, cleanup or idle capacity. Image pulls and
