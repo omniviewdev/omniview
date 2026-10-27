@@ -59,14 +59,15 @@ evidence separately from application case/drain/canonical-cleanup receipts.
 
 ## Native CI prerequisite archives
 
-`PR Checks / Go checks` and `PR Checks / Bindings freshness` use Ubuntu24.04,
-matching the existing E2E archive producer and
-`/tmp/omniview-e2e-apt/*.deb` physical payload path. UI and the production platform
-matrix are unchanged. A fresh authenticated index update
+`PR Checks / Go checks`, `PR Checks / Bindings freshness` and the Linux
+`PR Validation / build-artifacts` entry use Ubuntu24.04, matching the existing
+E2E archive producer and `/tmp/omniview-e2e-apt/*.deb` physical payload path.
+The PR Linux baseline is explicit; macOS/Windows and release workflows are unchanged.
+A fresh authenticated index update
 precedes lookup. The exact key includes OS/architecture, the producer's existing
 recipe inputs and current signed-index digest; its sole fallback keeps the same
 OS/architecture/recipe prefix across index-only rotations. Existing Actions cache
-scope visibility is unchanged; neither native job publishes APT archives.
+scope visibility is unchanged; these consumers publish no APT archives.
 
 Each job's opt-in `verify-apt-archives.mjs DIRECTORY --prepare` runs before
 creating APT's partial directory. It requires a canonical, current-UID-owned,
@@ -86,8 +87,8 @@ require cold fetching until the next genuine producer, and not every index
 rotation triggers main population. A lookup hit alone proves no runtime reuse.
 Darwin filesystem/metadata fixtures and workflow lint are not Ubuntu proof;
 retain actual matched cache identity/bytes, verification count, APT download and
-installation timing, and successful native build/vet/test or bindings-freshness
-evidence separately.
+installation timing, and successful native build/vet/test, bindings freshness or PR
+artifact build/upload evidence separately.
 
 
 ## Declared npm Call settlement patch
