@@ -10,13 +10,17 @@ vi.mock('@omniviewdev/base-ui', async importOriginal => ({
   ...(await importOriginal<typeof BaseUI>()),
   useToast: () => ({ toast }),
 }));
-afterEach(() => { cleanup(); vi.clearAllMocks(); });
+afterEach(() => {
+  cleanup(); vi.clearAllMocks(); 
+});
 
 function Trigger({ actions = [] }: { actions?: Array<{ label: string; onClick: () => void }> }) {
   const { showSnackbar, openNotifications, notificationCount } = useSnackbar();
-  return <><button onClick={() => showSnackbar({
-    message: 'Installation failed', status: 'error', details: 'Source: /tmp/plugin\ncompiler error <unsafe>', actions,
-  })}>Fail</button><button onClick={openNotifications}>Notifications ({notificationCount})</button></>;
+  return <><button onClick={() => {
+    showSnackbar({
+      message: 'Installation failed', status: 'error', details: 'Source: /tmp/plugin\ncompiler error <unsafe>', actions,
+    }); 
+  }}>Fail</button><button onClick={openNotifications}>Notifications ({notificationCount})</button></>;
 }
 
 describe('notification diagnostics', () => {
@@ -39,12 +43,14 @@ describe('notification diagnostics', () => {
     expect(screen.queryByText('Notifications (1)')).toBeNull();
   });
 
-  it('opens details from toast and copies plain diagnostic text', async () => {
+  it('opens details from toast and copies plain diagnostic text', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     render(<SnackbarProvider><Trigger /></SnackbarProvider>);
     fireEvent.click(screen.getByText('Fail'));
-    act(() => toast.mock.calls[0][1].action.onClick());
+    act(() => {
+      toast.mock.calls[0][1].action.onClick();
+    });
     fireEvent.click(screen.getByText('Copy details'));
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining('compiler error <unsafe>'));
     expect(screen.getByLabelText('Notifications').querySelector('unsafe')).toBeNull();
@@ -53,7 +59,10 @@ describe('notification diagnostics', () => {
   it('bounds session history to twenty errors without writing browser storage', () => {
     const store = vi.spyOn(Storage.prototype, 'setItem');
     render(<SnackbarProvider><Trigger /></SnackbarProvider>);
-    for (let index = 0; index < 25; index++) fireEvent.click(screen.getByText('Fail'));
+    for (let index = 0; index < 25; index++) {
+      fireEvent.click(screen.getByText('Fail'));
+    }
+
     expect(screen.getByText('Notifications (20)')).toBeTruthy();
     expect(store).not.toHaveBeenCalled();
     store.mockRestore();
@@ -63,7 +72,9 @@ describe('notification diagnostics', () => {
     render(<SnackbarProvider><Trigger /></SnackbarProvider>);
     fireEvent.click(screen.getByText('Fail'));
     fireEvent.click(screen.getByText('Fail'));
-    act(() => toast.mock.calls[1][1].action.onClick());
+    act(() => {
+      toast.mock.calls[1][1].action.onClick();
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Collapse details' }));
     expect(screen.queryByRole('button', { name: 'Copy details' })).toBeNull();
     fireEvent.click(screen.getAllByRole('button', { name: 'Dismiss Installation failed' })[0]);

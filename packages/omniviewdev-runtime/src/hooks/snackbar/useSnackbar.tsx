@@ -5,10 +5,10 @@ import { styles } from './NotificationCenter.styles';
 type VariantType = 'default' | 'success' | 'error' | 'warning' | 'info';
 
 type SnackbarContextType = {
+  notificationCount: number;
   showSnackbar(message: string, status: VariantType, icon?: string, details?: string): void;
   showSnackbar(options: ShowSnackbarOptions): void;
   openNotifications(): void;
-  notificationCount: number;
 };
 
 const SnackbarContext = createContext<SnackbarContextType | undefined>(undefined);
@@ -49,7 +49,10 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
   const panelRef = React.useRef<HTMLElement>(null);
 
   React.useEffect(() => {
-    if (!historyOpen) return;
+    if (!historyOpen) {
+      return;
+    }
+
     const previousFocus = document.activeElement;
     panelRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
@@ -58,10 +61,13 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
         setHistoryOpen(false);
       }
     };
+
     document.addEventListener('keydown', onKeyDown);
     return () => {
       document.removeEventListener('keydown', onKeyDown);
-      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
+        previousFocus.focus();
+      }
     };
   }, [historyOpen]);
 
@@ -84,6 +90,7 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
         if (singleShowNotices.includes(_message)) {
           return;
         }
+
         setNoticeShown(_message);
       }
 
@@ -109,6 +116,7 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
         setHistoryOpen(true);
       } };
     }
+
     toast(_status === 'error' ? _message : _details ?? _message, {
       severity: variantToSeverity[_status] ?? 'info',
       title: _status !== 'error' && _details ? _message : undefined,
@@ -118,7 +126,9 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
   };
 
   return (
-    <SnackbarContext.Provider value={{ showSnackbar, openNotifications: () => setHistoryOpen(true), notificationCount: notices.length }}>
+    <SnackbarContext.Provider value={{ showSnackbar, openNotifications: () => {
+      setHistoryOpen(true); 
+    }, notificationCount: notices.length }}>
       {children}
       {historyOpen && (
         <Card ref={panelRef} style={styles.Panel} size="sm" variant="outline" surface="overlay" elevation={3}
@@ -129,13 +139,17 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
             <Toolbar.Group style={styles.HeaderActions}>
               <IconButton size="sm" variant="ghost" aria-label="Clear history" title="Clear history"
                 disabled={notices.length === 0}
-                onClick={() => { setNotices([]); setSelectedId(undefined); setCopyError(''); }}>
+                onClick={() => {
+                  setNotices([]); setSelectedId(undefined); setCopyError(''); 
+                }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
                   <path d="m3 3 6 6m0-6L3 9M13 6h8M3 14h18M3 20h18" />
                 </svg>
               </IconButton>
               <IconButton size="sm" variant="ghost" aria-label="Close notifications" title="Close notifications"
-                onClick={() => setHistoryOpen(false)}>
+                onClick={() => {
+                  setHistoryOpen(false); 
+                }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
                   <path d="m6 9 6 6 6-6" />
                 </svg>
@@ -154,13 +168,17 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
                     </svg>
                     <Button size="sm" variant="ghost" style={styles.Message}
                       aria-expanded={expanded} aria-controls={`notification-${notice.id}`}
-                      title={notice.message} onClick={() => { setSelectedId(expanded ? undefined : notice.id); setCopyError(''); }}>
+                      title={notice.message} onClick={() => {
+                        setSelectedId(expanded ? undefined : notice.id); setCopyError(''); 
+                      }}>
                       <Text size="sm" style={styles.MessageText} truncate={!expanded}>{notice.message}</Text>
                     </Button>
                     <IconButton size="sm" variant="ghost" aria-label={expanded ? 'Collapse details' : 'Expand details'}
                       title={expanded ? 'Collapse details' : 'Expand details'} aria-expanded={expanded}
                       aria-controls={`notification-${notice.id}`}
-                      onClick={() => { setSelectedId(expanded ? undefined : notice.id); setCopyError(''); }}>
+                      onClick={() => {
+                        setSelectedId(expanded ? undefined : notice.id); setCopyError(''); 
+                      }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
                         <path d={expanded ? 'm6 15 6-6 6 6' : 'm6 9 6 6 6-6'} />
                       </svg>
@@ -168,7 +186,9 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
                     <IconButton size="sm" variant="ghost" aria-label={`Dismiss ${notice.message}`} title="Dismiss notification"
                       onClick={() => {
                         setNotices(previous => previous.filter(item => item.id !== notice.id));
-                        if (expanded) { setSelectedId(undefined); setCopyError(''); }
+                        if (expanded) {
+                          setSelectedId(undefined); setCopyError(''); 
+                        }
                       }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
                         <path d="m6 6 12 12m0-12L6 18" />
@@ -178,7 +198,7 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
                   <div id={`notification-${notice.id}`} hidden={!expanded} style={styles.Details}>
                     {expanded && <>
                       <Text size="xs" tone="muted"><time dateTime={notice.created}>{new Date(notice.created).toLocaleString()}</time></Text>
-                      <Code size="sm" style={styles.Code}>{notice.details || notice.message}</Code>
+                      <Code size="sm" style={styles.Code}>{notice.details?.length ? notice.details : notice.message}</Code>
                       <div style={styles.Actions}>
                         <Button size="sm" variant="ghost" onClick={async () => {
                           setCopyError('');
