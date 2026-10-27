@@ -45,6 +45,7 @@ type Service interface {
 	// GetSetting returns the setting by ID. This ID should be in the form of a dot separated string
 	// that represents the path to the setting. For example, "appearance.theme"
 	GetSetting(plugin, id string) (pkgsettings.Setting, error)
+	ValidateSetting(plugin, id string, value any) (pkgsettings.ValidationResult, error)
 
 	// SetSetting sets the value of the setting by ID
 	SetSetting(plugin, id string, value any) error
@@ -623,6 +624,17 @@ func (c *controller) GetSetting(plugin, id string) (_ pkgsettings.Setting, retEr
 		return pkgsettings.Setting{}, err
 	}
 	return setting, nil
+}
+
+// ValidateSetting requires a live plugin; persisted schema cannot execute callbacks.
+func (c *controller) ValidateSetting(plugin, id string, value any) (pkgsettings.ValidationResult, error) {
+	c.mu.RLock()
+	client, ok := c.clients[plugin]
+	c.mu.RUnlock()
+	if !ok {
+		return pkgsettings.ValidationResult{}, apperror.PluginNotFound(plugin)
+	}
+	return client.ValidateSetting(id, value)
 }
 
 // SetSetting sets the value of the setting by ID.

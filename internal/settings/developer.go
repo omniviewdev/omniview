@@ -31,6 +31,7 @@ var Developer = settings.Category{
 			Description: "Path to the Go binary",
 			Type:        settings.Text,
 			Default:     "",
+			Validator:   validateGoExecutable,
 			FileSelection: &settings.SettingFileSelection{
 				Enabled:      true,
 				AllowFolders: false,

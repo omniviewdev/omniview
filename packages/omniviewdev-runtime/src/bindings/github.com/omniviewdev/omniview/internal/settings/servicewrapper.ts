@@ -115,6 +115,15 @@ export function SetSettings(settingsMap: { [_ in string]?: any }): $CancellableP
 }
 
 /**
+ * ValidateSetting checks a draft without changing or persisting its value.
+ */
+export function ValidateSetting(id: string, value: any): $CancellablePromise<settings$0.ValidationResult> {
+    return $Call.ByID(1399113254, id, value).then(($result: any) => {
+        return $$createType9($result);
+    });
+}
+
+/**
  * Values returns a flat map of all setting values keyed by "category.settingID".
  * This is a host-side convenience for the frontend — it was removed from the SDK
  * Provider interface (plugins don't need it) but the UI settings context uses it
@@ -141,3 +150,4 @@ var $$createType7 = (function $$initCreateType7(...args: any[]): any {
     return $$createType7(...args);
 });
 const $$createType8 = $Create.Map($Create.Any, $$createType0);
+const $$createType9 = settings$0.ValidationResult.createFrom;

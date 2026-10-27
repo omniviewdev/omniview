@@ -38,3 +38,7 @@ func (a *AdapterV1) SetSetting(id string, value any) error {
 func (a *AdapterV1) SetSettings(settings map[string]any) error {
 	return a.inner.SetSettings(settings)
 }
+
+func (a *AdapterV1) ValidateSetting(id string, value any) (pkgsettings.ValidationResult, error) {
+	return a.inner.ValidateSetting(id, value)
+}

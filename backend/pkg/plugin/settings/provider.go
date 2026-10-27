@@ -11,6 +11,7 @@ type Provider interface {
 	ListSettings() map[string]pkgsettings.Setting
 	GetSetting(id string) (pkgsettings.Setting, error)
 	GetSettingValue(id string) (any, error)
+	ValidateSetting(id string, value any) (pkgsettings.ValidationResult, error)
 	SetSetting(id string, value any) error
 	SetSettings(settings map[string]any) error
 }

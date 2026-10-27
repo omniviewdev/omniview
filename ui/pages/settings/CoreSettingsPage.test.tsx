@@ -8,7 +8,12 @@ const mocks = vi.hoisted(() => ({
   reload: vi.fn(),
   selectTheme: vi.fn(),
   setSettings: vi.fn(),
+  validateSetting: vi.fn(),
   requestedThemeId: 'dark',
+}));
+
+vi.mock('@omniviewdev/runtime/api', () => ({
+  SettingsProvider: { ValidateSetting: mocks.validateSetting },
 }));
 
 vi.mock('@/theme/AppThemeController', async (importOriginal) => {
@@ -79,6 +84,7 @@ describe('CoreSettingsPage appearance settings', () => {
     mocks.reload.mockReset();
     mocks.selectTheme.mockReset().mockResolvedValue(undefined);
     mocks.setSettings.mockReset().mockResolvedValue(undefined);
+    mocks.validateSetting.mockReset().mockResolvedValue({ valid: true, code: 'valid', message: 'Value is valid.' });
     mocks.requestedThemeId = 'dark';
   });
 
@@ -123,5 +129,39 @@ describe('CoreSettingsPage appearance settings', () => {
     expect(screen.queryByText('Unsaved change')).not.toBeInTheDocument();
     expect(screen.getByRole('textbox')).toHaveValue('Search');
     expect(screen.queryByRole('button', { name: 'Save Changes' })).not.toBeInTheDocument();
+  });
+
+  it('retains invalid drafts and prevents saves with contextual feedback', async () => {
+    mocks.validateSetting.mockResolvedValue({ valid: false, code: 'invalid', message: 'Select a working executable.' });
+    render(<CoreSettingsPage id='appearance' />);
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'broken' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    });
+    expect(mocks.setSettings).not.toHaveBeenCalled();
+    expect(screen.getByText('Select a working executable.')).toBeVisible();
+    expect(screen.getByRole('textbox')).toHaveValue('broken');
+    expect(screen.getByRole('button', { name: 'Save Changes' })).toBeEnabled();
+  });
+
+  it('ignores validation responses after discard', async () => {
+    vi.useFakeTimers();
+    try {
+      const { promise, resolve } = Promise.withResolvers<{ valid: boolean; code: string; message: string }>();
+      mocks.validateSetting.mockReturnValue(promise);
+      render(<CoreSettingsPage id='appearance' />);
+      fireEvent.change(screen.getByRole('textbox'), { target: { value: 'draft' } });
+      await act(async () => {
+        vi.advanceTimersByTime(400);
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+      await act(async () => {
+        resolve({ valid: false, code: 'stale', message: 'Old failure' });
+      });
+      expect(screen.queryByText('Old failure')).not.toBeInTheDocument();
+      expect(screen.queryByText('Checking…')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

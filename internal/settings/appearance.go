@@ -1,7 +1,6 @@
 package categories
 
 import (
-	"fmt"
 	"regexp"
 
 	"github.com/omniviewdev/plugin-sdk/settings"
@@ -34,15 +33,15 @@ var Appearance = settings.Category{
 	},
 }
 
-func validateThemeID(value any) error {
+func validateThemeID(value any) settings.ValidationResult {
 	id, ok := value.(string)
 	if !ok {
-		return settings.ErrSettingTypeMismatch
+		return settings.ValidationResult{Code: "theme_type", Message: "Choose a theme using a text ID."}
 	}
 	if id == "" || len(id) > 256 || !themeIDPattern.MatchString(id) {
-		return fmt.Errorf("invalid theme ID")
+		return settings.ValidationResult{Code: "theme_id", Message: "Use a theme ID of 1–256 characters containing only letters, numbers, or . _ ~ % : / -."}
 	}
-	return nil
+	return settings.ValidationResult{Valid: true, Code: "theme_id", Message: "Theme ID is valid."}
 }
 
 // MigrateAppearanceValues upgrades known legacy theme IDs without changing

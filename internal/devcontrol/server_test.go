@@ -34,12 +34,12 @@ func fixtureServer(t *testing.T) (*Server, pkgsettings.Provider, *settingsstore.
 	t.Cleanup(func() { store.Close() })
 	// A host provider has no PluginID. Plugin-mode providers resolve every key
 	// against category "plugin", unlike the host's category.setting addressing.
-	provider := pkgsettings.NewProvider(pkgsettings.ProviderOpts{PluginSettings: []pkgsettings.Category{{ID: "limits", Settings: map[string]pkgsettings.Setting{"count": {ID: "count", Type: pkgsettings.Integer, Value: 3, Default: 3, Validator: func(value any) error {
+	provider := pkgsettings.NewProvider(pkgsettings.ProviderOpts{PluginSettings: []pkgsettings.Category{{ID: "limits", Settings: map[string]pkgsettings.Setting{"count": {ID: "count", Type: pkgsettings.Integer, Value: 3, Default: 3, Validator: func(value any) pkgsettings.ValidationResult {
 		v, ok := value.(int)
 		if !ok || v < 1 {
-			return errors.New("private validator detail")
+			return pkgsettings.ValidationResult{Code: "positive_count", Message: "Count must be positive."}
 		}
-		return nil
+		return pkgsettings.ValidationResult{Valid: true, Code: "positive_count", Message: "Count is valid."}
 	}}, "secret": {ID: "secret", Type: pkgsettings.Password, Value: "fixture-secret", Default: "fixture-secret", Sensitive: true}}}}})
 	initial, err := provider.GetInt("limits.count")
 	if err != nil || initial != 3 {

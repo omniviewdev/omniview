@@ -6,7 +6,8 @@ export {
     Setting,
     SettingFileSelection,
     SettingOption,
-    SettingType
+    SettingType,
+    ValidationResult
 } from "./models.js";
 
 export type {

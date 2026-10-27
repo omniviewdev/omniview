@@ -321,6 +321,38 @@ export enum SettingType {
  */
 export type Store = { [_ in string]?: Category };
 
+/**
+ * ValidationResult is safe to show in settings forms. Codes are stable machine-readable identifiers.
+ */
+export class ValidationResult {
+    "valid": boolean;
+    "code": string;
+    "message": string;
+
+    /** Creates a new ValidationResult instance. */
+    constructor($$source: Partial<ValidationResult> = {}) {
+        if (!("valid" in $$source)) {
+            this["valid"] = false;
+        }
+        if (!("code" in $$source)) {
+            this["code"] = "";
+        }
+        if (!("message" in $$source)) {
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ValidationResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ValidationResult {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ValidationResult($$parsedSource as Partial<ValidationResult>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = Setting.createFrom;
 const $$createType1 = $Create.Map($Create.Any, $$createType0);

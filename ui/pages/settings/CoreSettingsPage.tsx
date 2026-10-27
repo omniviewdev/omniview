@@ -12,6 +12,7 @@ import SettingsEntries from './SettingsEntries';
 import { Section } from './settingsContext';
 import styles from './SettingsPage.module.css';
 import { useSettings } from '@omniviewdev/runtime';
+import { SettingsProvider } from '@omniviewdev/runtime/api';
 
 type Props = {
   id: string;
@@ -27,6 +28,37 @@ const APPEARANCE_SETTING_RENDERERS = {
  */
 const CoreSettingsPage: React.FC<Props> = ({ id: categoryID }) => {
   const [draftValues, setDraftValues] = React.useState<Record<string, any>>({});
+  const [validation, setValidation] = React.useState<Record<string, { valid: boolean; message: string }>>({});
+  const [saving, setSaving] = React.useState(false);
+  const revision = React.useRef(0);
+
+  React.useEffect(() => {
+    setDraftValues({});
+    setValidation({});
+  }, [categoryID]);
+
+  React.useEffect(() => {
+    const current = ++revision.current;
+    const entries = Object.entries(draftValues).filter(([, value]) => value !== undefined);
+    setValidation(Object.fromEntries(entries.map(([id]) => [id, { valid: false, message: 'Checking…' }])));
+    const timer = window.setTimeout(() => {
+      entries.forEach(([id, value]) => {
+        SettingsProvider.ValidateSetting(id, value).then(result => {
+          if (revision.current === current) {
+            setValidation(previous => ({ ...previous, [id]: result }));
+          }
+        }).catch(() => {
+          if (revision.current === current) {
+            setValidation(previous => ({ ...previous, [id]: { valid: false, message: 'Could not validate. Save to retry.' } }));
+          }
+        });
+      });
+    }, 400);
+    return () => {
+      window.clearTimeout(timer);
+      revision.current++;
+    };
+  }, [draftValues, categoryID]);
 
   const { settings, setSettings } = useCategorySettings({ category: categoryID });
   const { reload } = useSettings();
@@ -35,7 +67,7 @@ const CoreSettingsPage: React.FC<Props> = ({ id: categoryID }) => {
     ([id, value]) => id !== THEME_SETTING_ID && value !== undefined,
   );
 
-  const commitDraftValues = () => {
+  const commitDraftValues = async () => {
     const values = Object.entries(draftValues).reduce<Record<string, any>>((acc, [id, value]) => {
       if (id !== THEME_SETTING_ID && value !== undefined) {
         acc[id] = value;
@@ -44,12 +76,40 @@ const CoreSettingsPage: React.FC<Props> = ({ id: categoryID }) => {
       return acc;
     }, {});
 
-    setSettings(values).then(() => {
-      clearDraftValues();
+    setSaving(true);
+    const current = revision.current;
+    try {
+      const results = await Promise.all(Object.entries(values).map(async ([id, value]) => (
+        [id, await SettingsProvider.ValidateSetting(id, value)] as const
+      )));
+      if (revision.current !== current) {
+        return;
+      }
+
+      setValidation(Object.fromEntries(results));
+      if (results.some(([, result]) => !result.valid)) {
+        return;
+      }
+
+      await setSettings(values);
+      if (revision.current === current) {
+        clearDraftValues();
+      }
+
       reload();
-    }).catch(() => {
-      // error notification is handled by useCategorySettings hook
-    });
+    } catch {
+      if (revision.current !== current) {
+        return;
+      }
+
+      // Keep drafts on validation transport or persistence failure.
+      setValidation(previous => ({
+        ...previous,
+        ...Object.fromEntries(Object.keys(values).map(id => [id, { valid: false, message: 'Could not save. Check the value and try again.' }])),
+      }));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const clearDraftValues = () => {
@@ -72,16 +132,17 @@ const CoreSettingsPage: React.FC<Props> = ({ id: categoryID }) => {
       </div>
 
       {/* Settings form */}
-      <div className={styles.Form}>
+      <fieldset className={styles.Form} disabled={saving}>
         <SettingsEntries
           section={Section.Core}
           id={categoryID}
           settings={settings.data.settings}
           draftValues={draftValues}
           setDraftValues={setDraftValues}
+          validation={validation}
           renderSetting={categoryID === 'appearance' ? APPEARANCE_SETTING_RENDERERS : undefined}
         />
-      </div>
+      </fieldset>
 
       {/* Action bar */}
       {hasDrafts && (
@@ -90,13 +151,17 @@ const CoreSettingsPage: React.FC<Props> = ({ id: categoryID }) => {
             color='brand'
             variant='soft'
             onClick={commitDraftValues}
+            disabled={saving}
+            aria-label='Save Changes'
+            aria-busy={saving}
           >
-            Save Changes
+            {saving ? 'Checking and saving…' : 'Save Changes'}
           </Button>
           <Button
             color='neutral'
             variant='ghost'
             onClick={clearDraftValues}
+            disabled={saving}
           >
             Discard
           </Button>

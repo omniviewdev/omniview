@@ -36,6 +36,15 @@ func (s *ServiceWrapper) GetSetting(id string) (pkgsettings.Setting, error) {
 func (s *ServiceWrapper) GetSettingValue(id string) (any, error) {
 	return s.Provider.GetSettingValue(id)
 }
+
+// ValidateSetting checks a draft without changing or persisting its value.
+func (s *ServiceWrapper) ValidateSetting(id string, value any) (pkgsettings.ValidationResult, error) {
+	setting, err := s.Provider.GetSetting(id)
+	if err != nil {
+		return pkgsettings.ValidationResult{}, err
+	}
+	return setting.Validation(value), nil
+}
 func (s *ServiceWrapper) SetSetting(id string, value any) error {
 	return s.Provider.SetSetting(id, value)
 }

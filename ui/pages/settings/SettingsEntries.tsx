@@ -14,6 +14,7 @@ type Props = SectionSelection & {
   draftValues: Record<string, any>;
   setDraftValues: (draftValues: Record<string, any>) => void;
   renderSetting?: Readonly<Record<string, () => React.ReactNode>>;
+  validation?: Record<string, { valid: boolean; message: string }>;
 };
 
 /**
@@ -25,6 +26,7 @@ const SettingsEntries: React.FC<Props> = ({
   draftValues,
   setDraftValues,
   renderSetting,
+  validation,
 }) => {
   const devMode = useDevMode();
   const focusRequest = React.useContext(SettingsFocusContext);
@@ -106,6 +108,11 @@ const SettingsEntries: React.FC<Props> = ({
                     handleChange={handleChange}
                   />
                 )}
+              {validation?.[fullID] && (
+                <p role='status' aria-live='polite'>
+                  {validation[fullID].valid ? 'Valid: ' : ''}{validation[fullID].message}
+                </p>
+              )}
             </div>
           </div>
         );

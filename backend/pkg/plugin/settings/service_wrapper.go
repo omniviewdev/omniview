@@ -54,3 +54,7 @@ func (s *ServiceWrapper) SetSetting(plugin, id string, value any) error {
 func (s *ServiceWrapper) SetSettings(plugin string, settingsMap map[string]any) error {
 	return s.Ctrl.SetSettings(plugin, settingsMap)
 }
+
+func (s *ServiceWrapper) ValidateSetting(plugin, id string, value any) (pkgsettings.ValidationResult, error) {
+	return s.Ctrl.ValidateSetting(plugin, id, value)
+}

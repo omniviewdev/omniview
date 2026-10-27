@@ -1,7 +1,6 @@
 package settings
 
 import (
-	"errors"
 	"testing"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
@@ -26,6 +25,14 @@ func (p transactionSDKProvider) ListSettings() map[string]pkgsettings.Setting {
 	return result
 }
 
+func (p transactionSDKProvider) ValidateSetting(id string, value any) (pkgsettings.ValidationResult, error) {
+	setting, err := p.Provider.GetSetting(id)
+	if err != nil {
+		return pkgsettings.ValidationResult{}, err
+	}
+	return setting.Validation(value), nil
+}
+
 func TestSettingsTransaction_PreservesValidationHooksAndPersistence(t *testing.T) {
 	store := openTestStore(t)
 	provider := pkgsettings.NewProvider(pkgsettings.ProviderOpts{
@@ -36,12 +43,12 @@ func TestSettingsTransaction_PreservesValidationHooksAndPersistence(t *testing.T
 			ID: "limits", Settings: map[string]pkgsettings.Setting{
 				"count": {
 					ID: "count", Type: pkgsettings.Integer, Value: 3, Default: 3,
-					Validator: func(value any) error {
+					Validator: func(value any) pkgsettings.ValidationResult {
 						count, ok := value.(int)
 						if !ok || count < 1 {
-							return errors.New("count must be positive")
+							return pkgsettings.ValidationResult{Code: "positive_count", Message: "Count must be positive."}
 						}
-						return nil
+						return pkgsettings.ValidationResult{Valid: true, Code: "positive_count", Message: "Count is valid."}
 					},
 				},
 			},

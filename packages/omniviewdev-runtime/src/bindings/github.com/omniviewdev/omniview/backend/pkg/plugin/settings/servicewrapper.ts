@@ -53,6 +53,12 @@ export function SetSettings(plugin: string, settingsMap: { [_ in string]?: any }
     return $Call.ByID(230212281, plugin, settingsMap);
 }
 
+export function ValidateSetting(plugin: string, id: string, value: any): $CancellablePromise<settings$0.ValidationResult> {
+    return $Call.ByID(1534017462, plugin, id, value).then(($result: any) => {
+        return $$createType4($result);
+    });
+}
+
 export function Values(): $CancellablePromise<{ [_ in string]?: any }> {
     return $Call.ByID(2408440370).then(($result: any) => {
         return $$createType3($result);
@@ -64,3 +70,4 @@ const $$createType0 = settings$0.Setting.createFrom;
 const $$createType1 = $Create.Array($Create.Any);
 const $$createType2 = $Create.Map($Create.Any, $$createType0);
 const $$createType3 = $Create.Map($Create.Any, $Create.Any);
+const $$createType4 = settings$0.ValidationResult.createFrom;

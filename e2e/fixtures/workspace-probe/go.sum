@@ -58,10 +58,8 @@ github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWE
 github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
 github.com/oklog/run v1.1.0 h1:GEenZ1cK0+q0+wsJew9qUg/DyD8k3JzYsZAi5gYi2mA=
 github.com/oklog/run v1.1.0/go.mod h1:sVPdnTZT1zYwAJeCMu2Th4T21pA3FPOQRfWjQlk7DVU=
-github.com/omniviewdev/plugin-sdk v0.6.1-0.20261025021152-8e78f72556c5 h1:OP6PeO5LT6hsTOW/jgdAV3QS0EYK4tVxpbepRco4c3U=
-github.com/omniviewdev/plugin-sdk v0.6.1-0.20261025021152-8e78f72556c5/go.mod h1:7EL5BfctDEQdflClkZMhgvSAGkDff79UteN7rcuBUho=
-github.com/omniviewdev/plugin-sdk v0.6.1-0.20261027043654-cae2a08cf2b9 h1:jSzc/Z5TxxPkQSkYGOQQdmYCZFaWe70ovcSPHP7XxyQ=
-github.com/omniviewdev/plugin-sdk v0.6.1-0.20261027043654-cae2a08cf2b9/go.mod h1:7EL5BfctDEQdflClkZMhgvSAGkDff79UteN7rcuBUho=
+github.com/omniviewdev/plugin-sdk v0.7.0 h1:jgspsb2tngT875VV3Wq6oxGj5KyYQxFjSWkepxPuCns=
+github.com/omniviewdev/plugin-sdk v0.7.0/go.mod h1:7EL5BfctDEQdflClkZMhgvSAGkDff79UteN7rcuBUho=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=

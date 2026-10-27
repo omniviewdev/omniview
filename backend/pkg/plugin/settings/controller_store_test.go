@@ -51,6 +51,14 @@ func (m *mockSettingsProvider) GetSetting(id string) (pkgsettings.Setting, error
 	return s, nil
 }
 
+func (m *mockSettingsProvider) ValidateSetting(id string, value any) (pkgsettings.ValidationResult, error) {
+	setting, err := m.GetSetting(id)
+	if err != nil {
+		return pkgsettings.ValidationResult{}, err
+	}
+	return setting.Validation(value), nil
+}
+
 func (m *mockSettingsProvider) GetSettingValue(id string) (any, error) {
 	s, err := m.GetSetting(id)
 	if err != nil {
@@ -299,4 +307,23 @@ func TestStaleClient_ReturnsBboltFallback(t *testing.T) {
 	require.NotNil(t, settings)
 	assert.Equal(t, "dark", settings["theme"].Value)
 	assert.Equal(t, "en", settings["lang"].Value)
+}
+
+func TestValidateSettingRequiresLivePluginAndPreservesFeedback(t *testing.T) {
+	ctrl := NewController(logging.NewNop(), nil, openTestStore(t)).(*controller)
+	ctrl.clients["fixture"] = newMockProvider(map[string]pkgsettings.Setting{
+		"tool": {ID: "tool", Type: pkgsettings.Text, Value: "saved", Validator: func(value any) pkgsettings.ValidationResult {
+			return pkgsettings.ValidationResult{Valid: value == "good", Code: "tool_check", Message: "Tool check completed."}
+		}},
+	})
+	result, err := ctrl.ValidateSetting("fixture", "tool", "bad")
+	require.NoError(t, err)
+	require.False(t, result.Valid)
+	require.Equal(t, "tool_check", result.Code)
+	require.Equal(t, "saved", ctrl.clients["fixture"].ListSettings()["tool"].Value)
+	result, err = ctrl.ValidateSetting("fixture", "tool", "good")
+	require.NoError(t, err)
+	require.True(t, result.Valid)
+	_, err = ctrl.ValidateSetting("missing", "tool", "good")
+	require.Error(t, err)
 }
