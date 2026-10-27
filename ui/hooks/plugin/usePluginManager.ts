@@ -119,15 +119,17 @@ export const usePluginManager = () => {
       // record. Refresh list and detail queries instead of leaving A as running.
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
       const appErr = parseAppError(error);
-      if (appErr.type === 'omniview:cancelled') return;
+      if (appErr.type === 'omniview:cancelled') {
+        return;
+      }
       // This explicit local developer operation may expose bridge diagnostics.
       // Keep global resource-error sanitization unchanged.
-      const bridgeMessage = error instanceof Error ? error.message
+      const bridgeMessage: string = error instanceof Error ? String(error.message)
         : typeof error === 'string' ? error
           : error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
-            ? error.message : '';
+            ? String(error.message) : '';
       const diagnostic = appErr.detail === 'The operation could not be completed.' && bridgeMessage
-        ? bridgeMessage.slice(0, 3800) + (bridgeMessage.length > 3800 ? '\n[Diagnostic truncated.]' : '')
+        ? `${bridgeMessage.slice(0, 3800)}${bridgeMessage.length > 3800 ? '\n[Diagnostic truncated.]' : ''}`
         : appErr.detail;
       showSnackbar({
         message: 'Dev mode installation failed',
@@ -136,10 +138,10 @@ export const usePluginManager = () => {
         actions: [
           ...(appErr.instance ? [{
             label: 'Build Output',
-            onClick: () => devToolsChannel.emit('onOpenBuildOutput', appErr.instance!),
+            onClick: () => { devToolsChannel.emit('onOpenBuildOutput', appErr.instance!); },
           }] : []),
           ...(appErr.actions?.map(actionToSnackbar) ?? []),
-          { label: 'Retry installation', onClick: () => installDev.mutate() },
+          { label: 'Retry installation', onClick: () => { installDev.mutate(); } },
         ],
       });
     },

@@ -183,11 +183,13 @@ reason. The footer notification bell retains errors for the current session;
 **Copy details** copies diagnostics explicitly. Build output may contain local
 paths or secrets, so review it before sharing.
 
-To add a plugin, stop the workspace, register/select its repository through the
-[workspace CLI workflow](development-workspaces.md), add the repository and plugin
-with `workspace edit`, then restart and select the resulting workspace checkout.
+If the collection already registers the plugin repository, stop the workspace,
+select the repository and plugin with `workspace edit`, then restart and select
+the resulting workspace checkout. Repository mappings are fixed at collection
+initialization: if the source is not registered, initialize a separate collection
+with that source through the [workspace CLI workflow](development-workspaces.md).
 Do not bypass source admission or copy a binary into another profile. A separate
-workspace avoids interrupting an instance already in use.
+collection and workspace avoid interrupting an instance already in use.
 
 ### 2.2 Development Workflow
 

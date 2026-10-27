@@ -164,6 +164,15 @@ type BuildOpts struct {
 	Workspace                 *devcontract.ResolvedWorkspace
 }
 
+// StartupError retains diagnostics after a failed instance has been cleaned up.
+type StartupError struct {
+	Err  error
+	Logs []LogEntry
+}
+
+func (e *StartupError) Error() string { return e.Err.Error() }
+func (e *StartupError) Unwrap() error { return e.Err }
+
 // ============================================================================
 // Ring buffer for log storage
 // ============================================================================

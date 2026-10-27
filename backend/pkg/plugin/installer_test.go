@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
@@ -155,6 +157,29 @@ func TestInstallDevPluginFromPath_RebindFailureDoesNotReplaceSource(t *testing.T
 			require.NoError(t, readErr)
 			require.Len(t, states, 1)
 			assert.Equal(t, a, states[0].DevPath)
+		})
+	}
+}
+
+func TestDevInstallDiagnosticKeepsNewestOutputWithinBudget(t *testing.T) {
+	for _, test := range []struct{ name, message string }{
+		{"short", "main.go:42: undefined: resource"},
+		{"long_unicode", strings.Repeat("界", 2200) + "main.go:42: undefined: resource"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			logs := []devserver.LogEntry{{Source: "go-build", Message: "oldest-output-only"}}
+			for range 150 {
+				logs = append(logs, devserver.LogEntry{Source: "go-build", Message: strings.Repeat("older output ", 20)})
+			}
+			logs = append(logs, devserver.LogEntry{Source: "go-build", Message: test.message})
+			detail := devInstallDiagnostic("/source", "kubernetes", "compiler failed", logs)
+			require.Contains(t, detail, "/source")
+			require.Contains(t, detail, "kubernetes")
+			require.Contains(t, detail, "compiler failed")
+			require.Contains(t, detail, "main.go:42: undefined: resource")
+			require.NotContains(t, detail, "oldest-output-only")
+			require.True(t, utf8.ValidString(detail))
+			require.LessOrEqual(t, utf8.RuneCountInString(detail), 1800)
 		})
 	}
 }

@@ -13,6 +13,11 @@ Reuse the runtime snackbar and host toast architecture. Error toasts expose **De
 
 Developer-install errors include the selected source, plugin ID when known and available backend build output. Early metadata/path failures use the same notification history without requiring a plugin record. Build output remains available through the existing devtools output viewer for known plugins. Retry installation opens the existing source picker, avoiding assumptions about a missing plugin record. No automatic retries or modal interruption.
 
+Startup failures carry a bounded log snapshot through cleanup so a removed
+dev-server instance cannot discard dependency-install output. Within the detail
+limit, source/error context remains visible and output favors the newest retained
+entries, including the tail of a single oversized line.
+
 The backend includes at most 200 retained log lines and caps the diagnostic at 1800 Unicode code points, safely within the shared parser's 4096 UTF-16-unit budget. Both output-tail and total-diagnostic limits are disclosed. The developer-install flow alone can display an otherwise unstructured local bridge error message, capped at 3800 UTF-16 units. Global resource-error sanitization is unchanged.
 
 ## Official reference
