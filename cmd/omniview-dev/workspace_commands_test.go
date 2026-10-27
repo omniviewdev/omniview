@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,7 +11,62 @@ import (
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devworkspace"
+	"github.com/spf13/cobra"
 )
+
+// parseWorkspaceCommand exercises the production Cobra leaf without running
+// workspace operations. Flag registration and validation remain shared.
+func parseWorkspaceCommand(args []string, diagnostics io.Writer) (workspaceCommand, error) {
+	var parsed workspaceCommand
+	root := &cobra.Command{Use: "omniview-dev", SilenceErrors: true, SilenceUsage: true}
+	group := &cobra.Command{Use: "workspace"}
+	group.AddCommand(newWorkspaceCommand(args[1], func(_ *cobra.Command, c workspaceCommand) error {
+		parsed = c
+		return nil
+	}))
+	root.AddCommand(group)
+	root.SetOut(diagnostics)
+	root.SetErr(diagnostics)
+	root.SetArgs(args)
+	err := root.Execute()
+	return parsed, err
+}
+func TestWorkspaceCobraValidation(t *testing.T) {
+	for _, args := range [][]string{
+		{"workspace", "up", "one", "two"},
+		{"workspace", "list", "one"},
+		{"workspace", "init", "one"},
+		{"workspace", "up", "--timeout=0s"},
+		{"workspace", "up", "--mode"},
+		{"workspace", "up", "--unknown"},
+	} {
+		if _, err := parseWorkspaceCommand(args, io.Discard); err == nil {
+			t.Fatalf("accepted invalid command: %v", args)
+		}
+	}
+	_, err := parseWorkspaceCommand([]string{"workspace", "up", "one", "--workspace", "two"}, io.Discard)
+	if devcontract.ExitCode(err) != 4 {
+		t.Fatalf("conflicting target exit: %v", err)
+	}
+}
+
+func TestRepositoryCobraInterspersedAndTerminatedTargets(t *testing.T) {
+	for _, args := range [][]string{
+		{"repository", "add", "example", "--json"},
+		{"repository", "add", "--json", "--", "--example"},
+	} {
+		var out, diagnostics bytes.Buffer
+		if code := run(args, &out, &diagnostics); code != 2 {
+			t.Fatalf("exit=%d output=%s diagnostics=%s", code, out.String(), diagnostics.String())
+		}
+		var result struct {
+			Error *devcontract.Error `json:"error"`
+		}
+		if err := json.Unmarshal(out.Bytes(), &result); err != nil || result.Error == nil || result.Error.Message != "repository add requires --source" {
+			t.Fatalf("target or JSON flag was not parsed: %s (%v)", out.String(), err)
+		}
+	}
+}
 
 func TestWorkspaceLifecycleCLIUsesRealGitAndPreservesBranches(t *testing.T) {
 	root := t.TempDir()

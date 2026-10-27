@@ -308,6 +308,35 @@ export function attachManagedViteFeedback(server: ManagedFeedbackServer, raw = p
   }
 
   server.middlewares.use((request, response, next) => {
+    if (request.url === '/__omniview_development_status') {
+      let fd: number | undefined;
+      try {
+        fd = openSync(path.join(context.workspaceRoot, '.local', 'launch-status.json'), constants.O_RDONLY | constants.O_NOFOLLOW);
+        const stat = fstatSync(fd);
+        if (!stat.isFile() || stat.size > 1024 * 1024 || (stat.mode & 0o077) !== 0
+          || typeof process.getuid === 'function' && stat.uid !== process.getuid()) {
+          throw new Error('Development status ownership changed');
+        }
+        const bytes = Buffer.alloc(stat.size);
+        readSync(fd, bytes, 0, bytes.length, 0);
+        const status = JSON.parse(bytes.toString('utf8'));
+        if (status.generation !== context.generation || status.manifest?.workspaceID !== context.workspaceID) {
+          throw new Error('Development status identity changed');
+        }
+        response.setHeader('Cache-Control', 'no-store');
+        response.setHeader('Content-Type', 'application/json');
+        response.end(JSON.stringify({
+          phase: status.launchPhase,
+          failedStage: status.failedStage,
+          recoveryCommand: `omniview-dev workspace refresh ${context.workspaceID}`,
+        }));
+      } catch {
+        response.writeHead(503).end();
+      } finally {
+        if (fd !== undefined) closeSync(fd);
+      }
+      return;
+    }
     if (request.headers.accept !== 'text/x-vite-ping') {
       next(); return;
     }
@@ -393,6 +422,33 @@ export function managedViteFeedback() {
     name: 'omniview-managed-vite-feedback',
     apply: 'serve' as const,
     enforce: 'pre' as const,
+    transformIndexHtml() {
+      if (!process.env.OMNIVIEW_VITE_FEEDBACK) return [];
+      return [{
+        tag: 'script',
+        attrs: { type: 'module' },
+        injectTo: 'body' as const,
+        children: `
+const banner = document.createElement('div');
+banner.id = 'omniview-development-banner';
+banner.setAttribute('role', 'status');
+banner.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:2147483647;padding:6px 12px;background:#172554;color:#fff;font:12px monospace;white-space:pre-wrap';
+document.body.append(banner);
+async function refreshDevelopmentStatus() {
+  try {
+    const response = await fetch('/__omniview_development_status', { cache: 'no-store' });
+    if (!response.ok) throw new Error('status unavailable');
+    const status = await response.json();
+    banner.textContent = 'DEVELOPMENT — ' + status.phase + (status.failedStage ? ' — failed stage: ' + status.failedStage + ' — recover: ' + status.recoveryCommand : '');
+  } catch {
+    banner.textContent = 'DEVELOPMENT — supervisor status unavailable; inspect workspace status before trusting served source';
+  }
+}
+refreshDevelopmentStatus();
+setInterval(refreshDevelopmentStatus, 1500);
+`,
+      }];
+    },
     configureServer(server: ManagedFeedbackServer) {
       attachManagedViteFeedback(server);
     },

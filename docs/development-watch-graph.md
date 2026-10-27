@@ -25,6 +25,14 @@ Managed plugin watcher/rebuild operations enforce the same exact selected SDK di
 
 ## Launch and watch adapters
 
+Launch preflight validates the selected composition, reviewed SDK source, parsed Go module contracts and shared UI dependencies before install or compilation. The selected SDK must declare `github.com/omniviewdev/plugin-sdk`; host and Go plugins must require that module. Comments containing its name do not satisfy the contract. Legacy MUI, Emotion and `@omniviewdev/ui` dependencies require migration to the current host contract.
+
+Workspace status reports actual checkout commits, branches and dirty content fingerprints separately from manifest base commits. `health` separates supervisor liveness, build health, dependency freshness, served-source freshness, authenticated host readiness, HMR connectivity and source reload verification. A completed watch transaction captures the served checkout fingerprint; a failed build leaves the previous served fingerprint intact. Unknown or unverified observations never imply freshness.
+
+Managed host Vite injects a persistent DEVELOPMENT banner. Failed stages include the workspace refresh recovery command. Compiler summaries retain actionable diagnostics while redacting secret-like values and local workspace/home paths; full private logs remain available locally. HMR connectivity alone does not verify that a source edit reached the browser: `sourceReload` remains `unverified` until a separate source-edit/browser observation establishes that result.
+
+For explicit delivery verification, make a deliberate source edit containing a unique marker, then run `omniview-dev workspace verify-reload <workspace> --module /ui/path/to/module.tsx --marker <unique-marker>`. The API `Manager.VerifySourceReload` authenticates the current host and supervisor and checks the transformed module from their exact owned Vite endpoint. Evidence records the generation, checkout fingerprints and marker. It rejects redirects and does not claim browser execution; use a browser assertion for rendered-state verification. Restore the source edit afterward if it was temporary.
+
 Before the first Vite child launch, merge `graph.ViteEnvironment()` into its explicit profile child environment. It contains `OMNIVIEW_VITE_ALLOWED_ROOTS` as JSON of canonical selected repository directories. Host Vite requires its actual `WAILS_VITE_PORT`; managed plugin Vite requires `OMNIVIEW_VITE_PORT` matching its leased listener. Both configure explicit HMR client ports; roots are strict filesystem allowances, not wildcard CORS or all-filesystem access. Plugin configuration conflicts with the owned port/HMR endpoint fail rather than silently using fallback discovery. Plugin React/runtime shared-module shim routing remains unchanged.
 
 `graph.Watch(ctx, WatchHooks)` is blocking and cancellation-owned. All hooks are required:

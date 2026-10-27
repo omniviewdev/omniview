@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
@@ -33,12 +34,18 @@ func (m *Manager) Reconfigure(ctx context.Context, name string, options EditOpti
 	if err = RequireStopped(ctx, before.ResolvedWorkspace); err != nil {
 		return ReconfigureResult{}, err
 	}
-	evidence, linkErr := m.LinkEvidence(ctx, name)
+	if err = preserveGeneratedEdits(before, filepath.Join(m.Root, ".omniview-dev", "recovery", before.Manifest.WorkspaceID)); err != nil {
+		return ReconfigureResult{}, err
+	}
+	evidence, linkErr := m.ProtocolEvidence(ctx, name)
 	linked := linkErr == nil
 	if linkErr != nil && !os.IsNotExist(linkErr) {
 		return ReconfigureResult{}, linkErr
 	}
 	if linked {
+		if _, err = m.RecoverLinks(ctx, name); err != nil {
+			return ReconfigureResult{}, err
+		}
 		if _, err = m.Unlink(ctx, name); err != nil {
 			return ReconfigureResult{}, err
 		}

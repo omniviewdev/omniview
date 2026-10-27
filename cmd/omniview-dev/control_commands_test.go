@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -20,7 +22,30 @@ import (
 	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/omniview/internal/devworkspace"
 	"github.com/omniviewdev/omniview/internal/instance"
+	"github.com/spf13/cobra"
 )
+
+func executeControlTestCommand(ctx context.Context, args []string, in io.Reader, out, diagnostics io.Writer) (bool, int) {
+	return true, runWithInput(ctx, args, in, out, diagnostics)
+}
+
+func parseControlCommandForTest(args []string, in io.Reader, diagnostics io.Writer) (controlCommand, error) {
+	var result controlCommand
+	root := &cobra.Command{Use: "omniview-dev", SilenceErrors: true, SilenceUsage: true}
+	root.SetOut(diagnostics)
+	root.SetErr(diagnostics)
+	addControlCommandsWithExecutor(root, in, func(_ *cobra.Command, command controlCommand) error {
+		result = command
+		return nil
+	})
+	root.SetArgs(args)
+	err := root.Execute()
+	var typed *devcontract.Error
+	if err != nil && !errors.As(err, &typed) {
+		err = controlUsage("invalid command flags")
+	}
+	return result, err
+}
 
 func TestControlCommandTypedParameters(t *testing.T) {
 	tests := []struct {
@@ -31,6 +56,9 @@ func TestControlCommandTypedParameters(t *testing.T) {
 		{[]string{"plugin", "list"}, "", "plugin.list", `{}`},
 		{[]string{"plugin", "get", "one"}, "", "plugin.get", `{"id":"one"}`},
 		{[]string{"plugin", "install-version", "one", "--version", "1.2.3"}, "", "plugin.install-version", `{"id":"one","version":"1.2.3"}`},
+		{[]string{"plugin", "get", "--id", "one", "--timeout=2s", "one", "--wait=false"}, "", "plugin.get", `{"id":"one"}`},
+		{[]string{"plugin", "get", "--", "--help"}, "", "plugin.get", `{"id":"--help"}`},
+		{[]string{"settings", "set", "theme", "--value", "-"}, `"dark"`, "settings.set", `{"scope":"host","id":"theme","value":"dark"}`},
 		{[]string{"plugin", "dev", "rebuild", "one", "--generation", "build-2"}, "", "plugin.dev.rebuild", `{"id":"one","generation":"build-2"}`},
 		{[]string{"plugin", "dev", "logs", "two", "--cursor", "4", "--limit", "20"}, "", "plugin.dev.logs", `{"id":"two","cursor":4,"limit":20}`},
 		{[]string{"settings", "get", "--scope", "plugin", "--plugin", "one", "--id", "password"}, "", "settings.get", `{"scope":"plugin","pluginID":"one","id":"password"}`},
@@ -40,7 +68,7 @@ func TestControlCommandTypedParameters(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {
-			command, err := parseControlCommand(tt.args, strings.NewReader(tt.input), &bytes.Buffer{})
+			command, err := parseControlCommandForTest(tt.args, strings.NewReader(tt.input), &bytes.Buffer{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -75,7 +103,7 @@ func TestControlCommandRejectsInvalidInput(t *testing.T) {
 		{"plugin", "list", "--timeout", "0s"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
-			_, err := parseControlCommand(args, strings.NewReader(""), &bytes.Buffer{})
+			_, err := parseControlCommandForTest(args, strings.NewReader(""), &bytes.Buffer{})
 			if devcontract.ExitCode(err) != 2 {
 				t.Fatalf("expected usage error, got %v", err)
 			}
@@ -214,7 +242,7 @@ func TestControlCommandsRejectSelectedSourceMismatchBeforeMutation(t *testing.T)
 		t.Fatal(err)
 	}
 	var out, diag bytes.Buffer
-	handled, code := HandleControlCommand(context.Background(), []string{"plugin", "uninstall", "one", "--workspace", root}, strings.NewReader(""), &out, &diag)
+	handled, code := executeControlTestCommand(context.Background(), []string{"plugin", "uninstall", "one", "--workspace", root}, strings.NewReader(""), &out, &diag)
 	if !handled || code != 4 {
 		t.Fatalf("wrong selected source was not rejected: handled=%v code=%d output=%s", handled, code, out.String())
 	}
@@ -226,7 +254,7 @@ func TestControlCommandsRejectSelectedSourceMismatchBeforeMutation(t *testing.T)
 func TestControlCommandsVerifyActualDescriptorBeforeMutation(t *testing.T) {
 	root, requests := controlFixture(t, func(d *devcontract.InstanceDescriptor) { d.Generation = "replaced" })
 	var out, diag bytes.Buffer
-	handled, code := HandleControlCommand(context.Background(), []string{"plugin", "dev", "stop", "one", "--workspace", root}, strings.NewReader(""), &out, &diag)
+	handled, code := executeControlTestCommand(context.Background(), []string{"plugin", "dev", "stop", "one", "--workspace", root}, strings.NewReader(""), &out, &diag)
 	if !handled || code != 4 {
 		t.Fatalf("handled=%v code=%d output=%s", handled, code, out.String())
 	}
@@ -238,7 +266,7 @@ func TestControlCommandsVerifyActualDescriptorBeforeMutation(t *testing.T) {
 func TestControlCommandsListInstalledAndPreserveAcceptedTimeout(t *testing.T) {
 	root, requests := controlFixture(t, nil)
 	var out, diag bytes.Buffer
-	_, code := HandleControlCommand(context.Background(), []string{"plugin", "list", "--workspace", root}, strings.NewReader(""), &out, &diag)
+	_, code := executeControlTestCommand(context.Background(), []string{"plugin", "list", "--workspace", root}, strings.NewReader(""), &out, &diag)
 	if code != 0 || !strings.Contains(out.String(), `"two"`) {
 		t.Fatalf("code=%d output=%s", code, out.String())
 	}
@@ -246,7 +274,7 @@ func TestControlCommandsListInstalledAndPreserveAcceptedTimeout(t *testing.T) {
 		t.Fatalf("not installed plugin list: %+v", *requests)
 	}
 	out.Reset()
-	_, code = HandleControlCommand(context.Background(), []string{"plugin", "dev", "start", "one", "--workspace", root, "--wait", "--timeout", "10ms"}, strings.NewReader(""), &out, &diag)
+	_, code = executeControlTestCommand(context.Background(), []string{"plugin", "dev", "start", "one", "--workspace", root, "--wait", "--timeout", "10ms"}, strings.NewReader(""), &out, &diag)
 	if code != 7 || !strings.Contains(out.String(), `"operationID":"op-1"`) {
 		t.Fatalf("timeout loses accepted operation: code=%d %s", code, out.String())
 	}
@@ -255,7 +283,7 @@ func TestControlCommandsListInstalledAndPreserveAcceptedTimeout(t *testing.T) {
 func TestControlLogsStayOnStderr(t *testing.T) {
 	root, _ := controlFixture(t, nil)
 	var out, diag bytes.Buffer
-	_, code := HandleControlCommand(context.Background(), []string{"plugin", "dev", "logs", "one", "--workspace", root}, strings.NewReader(""), &out, &diag)
+	_, code := executeControlTestCommand(context.Background(), []string{"plugin", "dev", "logs", "one", "--workspace", root}, strings.NewReader(""), &out, &diag)
 	if code != 0 || !strings.Contains(diag.String(), "[REDACTED]") || strings.Contains(out.String(), "build failed") {
 		t.Fatalf("code=%d stdout=%s stderr=%s", code, out.String(), diag.String())
 	}
@@ -265,10 +293,13 @@ func TestControlLogsStayOnStderr(t *testing.T) {
 	}
 }
 
-func TestControlHandlerDoesNotClaimWorkspaceCommands(t *testing.T) {
-	handled, _ := HandleControlCommand(context.Background(), []string{"workspace", "inspect"}, nil, &bytes.Buffer{}, &bytes.Buffer{})
-	if handled {
-		t.Fatal("workspace root handler was intercepted")
+func TestControlCommandTreeExcludesWorkspaceCommands(t *testing.T) {
+	root := &cobra.Command{Use: "omniview-dev"}
+	addControlCommands(root, nil)
+	for _, command := range root.Commands() {
+		if command.Name() == "workspace" {
+			t.Fatal("control command tree includes workspace commands")
+		}
 	}
 }
 
@@ -288,7 +319,7 @@ func TestControlMutationsAddressTwoPluginsWithoutTouchingArchive(t *testing.T) {
 	} {
 		var out, diag bytes.Buffer
 		args = append(args, "--workspace", root)
-		_, code := HandleControlCommand(context.Background(), args, strings.NewReader(""), &out, &diag)
+		_, code := executeControlTestCommand(context.Background(), args, strings.NewReader(""), &out, &diag)
 		if code != 0 || !strings.Contains(out.String(), `"operationID":"op-1"`) {
 			t.Fatalf("args=%v code=%d %s", args, code, out.String())
 		}
@@ -325,7 +356,7 @@ func TestControlForwardsBuildFailureAndRecovery(t *testing.T) {
 	})
 	for _, want := range []int{5, 0} {
 		var out, diag bytes.Buffer
-		_, code := HandleControlCommand(context.Background(), []string{"plugin", "dev", "rebuild", "one", "--generation", "build-2", "--workspace", root, "--wait"}, strings.NewReader(""), &out, &diag)
+		_, code := executeControlTestCommand(context.Background(), []string{"plugin", "dev", "rebuild", "one", "--generation", "build-2", "--workspace", root, "--wait"}, strings.NewReader(""), &out, &diag)
 		if code != want {
 			t.Fatalf("code=%d want=%d %s", code, want, out.String())
 		}
@@ -350,12 +381,12 @@ func TestControlForwardsSettingsValidationAndRedactedRead(t *testing.T) {
 		}
 	})
 	var out, diag bytes.Buffer
-	_, code := HandleControlCommand(context.Background(), []string{"settings", "set", "--scope", "plugin", "--plugin", "one", "--id", "enabled", "--value", `"wrong-type"`, "--workspace", root}, strings.NewReader(""), &out, &diag)
+	_, code := executeControlTestCommand(context.Background(), []string{"settings", "set", "--scope", "plugin", "--plugin", "one", "--id", "enabled", "--value", `"wrong-type"`, "--workspace", root}, strings.NewReader(""), &out, &diag)
 	if code != 2 || !strings.Contains(out.String(), "invalid_params") {
 		t.Fatalf("validation code=%d %s", code, out.String())
 	}
 	out.Reset()
-	_, code = HandleControlCommand(context.Background(), []string{"settings", "get", "--scope", "plugin", "--plugin", "one", "--workspace", root}, strings.NewReader(""), &out, &diag)
+	_, code = executeControlTestCommand(context.Background(), []string{"settings", "get", "--scope", "plugin", "--plugin", "one", "--workspace", root}, strings.NewReader(""), &out, &diag)
 	if code != 0 || !strings.Contains(out.String(), "[REDACTED]") || diag.Len() != 0 {
 		t.Fatalf("redaction code=%d stdout=%s stderr=%s", code, out.String(), diag.String())
 	}
@@ -364,7 +395,7 @@ func TestControlForwardsSettingsValidationAndRedactedRead(t *testing.T) {
 func TestControlRawLogsRequireDeliberateFlagAndWarning(t *testing.T) {
 	root, _ := controlFixture(t, nil)
 	var out, diag bytes.Buffer
-	_, code := HandleControlCommand(context.Background(), []string{"plugin", "dev", "logs", "one", "--workspace", root, "--unsafe-output"}, strings.NewReader(""), &out, &diag)
+	_, code := executeControlTestCommand(context.Background(), []string{"plugin", "dev", "logs", "one", "--workspace", root, "--unsafe-output"}, strings.NewReader(""), &out, &diag)
 	if code != 0 || !strings.Contains(out.String(), "build failed") || !strings.Contains(diag.String(), "WARNING") || !strings.Contains(diag.String(), "secrets") {
 		t.Fatalf("code=%d stdout=%s stderr=%s", code, out.String(), diag.String())
 	}
@@ -425,7 +456,7 @@ func TestControlWorkspaceLookupUsesActualRegistryAndEnclosingManifest(t *testing
 func TestControlSetManySendsAllowlistedBulkOperation(t *testing.T) {
 	root, requests := controlFixture(t, nil)
 	var out, diag bytes.Buffer
-	_, code := HandleControlCommand(context.Background(), []string{"settings", "set-many", "--workspace", root, "--scope", "plugin", "--plugin", "one", "--values", "-"}, strings.NewReader(`{"enabled":false,"size":14}`), &out, &diag)
+	_, code := executeControlTestCommand(context.Background(), []string{"settings", "set-many", "--workspace", root, "--scope", "plugin", "--plugin", "one", "--values", "-"}, strings.NewReader(`{"enabled":false,"size":14}`), &out, &diag)
 	if code != 0 {
 		t.Fatalf("code=%d stdout=%s stderr=%s", code, out.String(), diag.String())
 	}
@@ -501,7 +532,7 @@ func TestControlCustomStateUsesUUIDRuntimeNotAdjacentDiscovery(t *testing.T) {
 	for _, args := range [][]string{{"instance", "inspect"}, {"plugin", "dev", "stop", "one"}} {
 		var out, diagnostics bytes.Buffer
 		args = append(args, "--workspace", root)
-		handled, code := HandleControlCommand(context.Background(), args, strings.NewReader(""), &out, &diagnostics)
+		handled, code := executeControlTestCommand(context.Background(), args, strings.NewReader(""), &out, &diagnostics)
 		if !handled || code != 0 {
 			t.Fatalf("custom-profile command %v: handled=%v code=%d stdout=%s stderr=%s", args, handled, code, out.String(), diagnostics.String())
 		}

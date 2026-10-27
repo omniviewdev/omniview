@@ -3,28 +3,33 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 
 	"github.com/omniviewdev/omniview/internal/devworkspace"
+	"github.com/spf13/cobra"
 )
 
-func handleViteFeedbackRead(args []string, out, diagnostics io.Writer) (bool, int) {
-	if len(args) == 0 || args[0] != "vite-feedback-read" {
-		return false, 0
+func addViteFeedbackCommand(root *cobra.Command) {
+	var contextJSON string
+	command := &cobra.Command{
+		Use:    "vite-feedback-read",
+		Short:  "Read an explicitly owned Vite feedback receipt",
+		Hidden: true,
+		Args:   cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			held, err := devworkspace.ReadViteFeedbackContext(contextJSON)
+			if err != nil {
+				fmt.Fprintln(cmd.ErrOrStderr(), "feedback authority refused:", err)
+				return commandExit(4)
+			}
+			if err := json.NewEncoder(cmd.OutOrStdout()).Encode(struct {
+				Held bool `json:"held"`
+			}{Held: held}); err != nil {
+				return commandExit(1)
+			}
+			return nil
+		},
 	}
-	if len(args) != 3 || args[1] != "--context" {
-		fmt.Fprintln(diagnostics, "vite-feedback-read requires one explicit --context JSON argument")
-		return true, 2
-	}
-	held, err := devworkspace.ReadViteFeedbackContext(args[2])
-	if err != nil {
-		fmt.Fprintln(diagnostics, "feedback authority refused:", err)
-		return true, 4
-	}
-	if err := json.NewEncoder(out).Encode(struct {
-		Held bool `json:"held"`
-	}{Held: held}); err != nil {
-		return true, 1
-	}
-	return true, 0
+	command.Flags().StringVar(&contextJSON, "context", "", "explicit owned feedback context JSON")
+	_ = command.MarkFlagRequired("context")
+	root.AddCommand(command)
 }

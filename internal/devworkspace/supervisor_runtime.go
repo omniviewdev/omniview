@@ -655,7 +655,13 @@ func (r remoteManagedBuild) RebuildPluginGeneration(ctx context.Context, id, gen
 	return err
 }
 func (s *workspaceSupervisor) watchHooks() WatchHooks {
-	return WatchHooks{BeginFeedback: s.beginFeedback, CommitFeedback: s.commitFeedback, Managed: remoteManagedBuild{s: s}, Generations: func(ctx context.Context) (map[string]string, error) {
+	return WatchHooks{BeginFeedback: s.beginFeedback, CommitFeedback: func(ctx context.Context, change WatchChange) error {
+		if err := s.commitFeedback(ctx, change); err != nil {
+			return err
+		}
+		s.setPhase("ready", nil)
+		return nil
+	}, Managed: remoteManagedBuild{s: s}, Generations: func(ctx context.Context) (map[string]string, error) {
 		generations := map[string]string{}
 		for _, plugin := range s.workspace.Manifest.Plugins {
 			state, err := s.pluginState(ctx, plugin.ID)

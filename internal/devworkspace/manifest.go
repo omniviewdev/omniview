@@ -51,6 +51,9 @@ type CreateOptions struct {
 	Baseline     *string
 	Ports        *devcontract.PortPolicy
 	workspaceID  string
+	// pinnedCommits preserves existing resource metadata during selection edits.
+	// Unlike Refs, entries need not remain selected in the resulting manifest.
+	pinnedCommits map[string]string
 }
 
 type EditOptions struct {
@@ -149,7 +152,16 @@ func (m *Manager) plan(ctx context.Context, reg Registry, opts CreateOptions) (d
 		if r, ok := opts.Refs[s.ID]; ok {
 			ref = r
 		}
-		commit, err := resolveCommit(ctx, s.CommonDir, ref)
+		selection := ref
+		if pinned := opts.pinnedCommits[s.ID]; pinned != "" {
+			if _, explicit := opts.Refs[s.ID]; !explicit {
+				selection = pinned
+			}
+		}
+		if !selected[s.ID] && len(plugins) == 0 {
+			continue
+		}
+		commit, err := resolveSelectedCommit(ctx, s.CommonDir, selection)
 		if err != nil {
 			return manifest, err
 		}
