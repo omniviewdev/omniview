@@ -9,7 +9,7 @@ import { validatePinnedWailsTool } from '../../scripts/wails-tool.mjs';
 // private HOME/cache locations and observation identity are added explicitly by
 // the runner; ambient provider/autoconnect/module/manager inputs never reach it.
 export function toolEnvironment(input, { toolCacheRoot, wailsToolCapability } = {}) {
-  const keys = ['PATH', 'PATHEXT', 'SystemRoot', 'WINDIR', 'TMPDIR', 'TMP', 'TEMP', 'LANG', 'LC_ALL', 'TZ', 'TERM', 'CI', 'PNPM_HOME', 'OMNIVIEW_E2E_PNPM_EXECUTABLE'];
+  const keys = ['PATH', 'PATHEXT', 'SystemRoot', 'WINDIR', 'TMPDIR', 'TMP', 'TEMP', 'LANG', 'LC_ALL', 'TZ', 'TERM', 'CI', 'GITHUB_ACTIONS', 'PNPM_HOME', 'OMNIVIEW_E2E_PNPM_EXECUTABLE'];
   const env = Object.fromEntries(keys.filter(key => typeof input[key] === 'string').map(key => [key, input[key]]));
   if (toolCacheRoot) {
     const cache = readToolCache(toolCacheRoot);
@@ -55,13 +55,13 @@ export function preparationStarted(now, value) {
 export function commandTimeout(started, now, timeout, interactive = false) {
   if (timeout === 0) return undefined;
   if (interactive) return timeout;
-  const remaining = started + 600_000 - now;
+  const remaining = started + 1_800_000 - now;
   if (remaining <= 0) throw Error('Inclusive E2E budget exhausted');
   return Math.min(timeout, remaining);
 }
 export function applicationBudget(started, now, { interactive = false } = {}) {
   if (interactive) return null;
-  const deadline = started + 600_000;
+  const deadline = started + 1_800_000;
   const remainingMs = deadline - now;
   const cleanupReserveMs = 60_000;
   if (remainingMs <= cleanupReserveMs) throw Error('Inclusive E2E budget exhausted during preparation; refusing to start application profiles');

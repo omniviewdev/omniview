@@ -1,8 +1,18 @@
-import { defineConfig } from '@playwright/test';
+import { defineConfig, type ReporterDescription } from '@playwright/test';
 
 // The invocation owns build artifacts and isolated runtime profiles. Fixtures
 // authenticate actual descriptors; they never adopt an ambient listener.
 const observational = process.env.OMNIVIEW_E2E_MODE === 'observe';
+
+// Keep canonical runs and direct Playwright invocations on the same reporters.
+const reporters: ReporterDescription[] = [
+  ['html', { outputFolder: './playwright-report', open: 'never' }],
+  ['list'],
+  ['./scripts/timing-reporter.mjs'],
+];
+if (process.env.GITHUB_ACTIONS === 'true') {
+  reporters.push(['github']);
+}
 
 export default defineConfig({
   testDir: './tests',
@@ -13,10 +23,7 @@ export default defineConfig({
   retries: 0,
   maxFailures: 1,
   workers: 1,
-  reporter: [
-    ['html', { open: 'never' }],
-    ['list'],
-  ],
+  reporter: reporters,
   use: {
     // baseURL is resolved by fixtures from the authenticated backend descriptor.
     screenshot: 'only-on-failure',

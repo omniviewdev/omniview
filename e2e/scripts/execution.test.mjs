@@ -29,23 +29,23 @@ test('standalone bootstrap refuses enclosing managed manifests before package ma
   } finally { rmSync(arena, { recursive: true, force: true }); }
 });
 test('application deadline subtracts all preparation and reserves owned teardown time', () => {
-  assert.deepEqual(applicationBudget(1000, 151000), { deadline: 601000, remainingMs: 450000, interruptAfterMs: 390000, cleanupReserveMs: 60000 });
-  assert.throws(() => applicationBudget(1000, 541000), /budget/);
-  assert.throws(() => applicationBudget(1000, 601001), /budget/);
+  assert.deepEqual(applicationBudget(1000, 151000), { deadline: 1801000, remainingMs: 1650000, interruptAfterMs: 1590000, cleanupReserveMs: 60000 });
+  assert.throws(() => applicationBudget(1000, 1741000), /budget/);
+  assert.throws(() => applicationBudget(1000, 1801001), /budget/);
 });
 test('workflow provisioning is charged to the same inclusive deadline and cannot supply a future or malformed start', () => {
   assert.equal(preparationStarted(151000), 151000);
   assert.equal(preparationStarted(151000, '1000'), 1000);
   assert.equal(commandTimeout(preparationStarted(151000, '1000'), 151000, 180000), 180000);
-  assert.equal(commandTimeout(preparationStarted(591000, '1000'), 591000, 180000), 10000);
+  assert.equal(commandTimeout(preparationStarted(1791000, '1000'), 1791000, 180000), 10000);
   for (const value of ['', '151001', '-1', '1.5', '1e3', 'NaN', 'Infinity', ' 1000']) assert.throws(() => preparationStarted(151000, value), /preparation start/);
 });
 test('interactive sessions outlive acceptance while each command keeps a fresh bound', () => {
-  assert.equal(applicationBudget(1000, 901000, { interactive: true }), null);
-  assert.equal(commandTimeout(1000, 901000, 30000, true), 30000);
-  assert.equal(commandTimeout(1000, 901000, 60000, true), 60000);
-  assert.equal(commandTimeout(1000, 591000, 30000, false), 10000);
-  assert.throws(() => commandTimeout(1000, 901000, 30000, false), /budget/);
+  assert.equal(applicationBudget(1000, 2101000, { interactive: true }), null);
+  assert.equal(commandTimeout(1000, 2101000, 30000, true), 30000);
+  assert.equal(commandTimeout(1000, 2101000, 60000, true), 60000);
+  assert.equal(commandTimeout(1000, 1791000, 30000, false), 10000);
+  assert.throws(() => commandTimeout(1000, 2101000, 30000, false), /budget/);
 });
 test('source identity refuses an empty submodule resolving to the parent repository', () => {
   const arena = mkdtempSync(join(tmpdir(), 'omniview-e2e-repository-'));
