@@ -6,7 +6,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
+	"testing/synctest"
 )
 
 func TestApplicationProducerObserverCannotSkipRepeatOrSuppressFailure(t *testing.T) {
@@ -62,5 +64,105 @@ func TestApplicationProducerObserverCannotSkipRepeatOrSuppressFailure(t *testing
 				t.Fatalf("producer was not executed exactly once: %q %v", raw, readErr)
 			}
 		})
+	}
+}
+
+func TestApplicationProducerObserverRevokesRetainedCallback(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "late-producer-output")
+	var retained func() error
+	err := observeApplicationProducer("consumer", func(_ string, run func() error) error {
+		retained = run
+		return nil
+	}, func() error {
+		return os.WriteFile(path, []byte("unowned late work"), 0600)
+	})
+	if err == nil {
+		t.Fatal("observer skipped the producer without failing")
+	}
+	if err = retained(); err == nil {
+		t.Error("retained callback admitted a producer after observation returned")
+	}
+	if _, err = os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("late callback produced output after ownership returned", err)
+	}
+}
+
+func TestApplicationProducerObserverJoinsAdmittedAsyncFailure(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		entered := make(chan struct{})
+		release := make(chan struct{})
+		callbackDone := make(chan error, 1)
+		helperDone := make(chan error, 1)
+		failed := errors.New("admitted asynchronous producer failed")
+		go func() {
+			helperDone <- observeApplicationProducer("consumer", func(_ string, run func() error) error {
+				go func() { callbackDone <- run() }()
+				<-entered
+				return nil
+			}, func() error {
+				close(entered)
+				<-release
+				return failed
+			})
+		}()
+		<-entered
+		synctest.Wait()
+		var helperErr error
+		early := false
+		select {
+		case helperErr = <-helperDone:
+			early = true
+		default:
+		}
+		close(release)
+		if !early {
+			helperErr = <-helperDone
+		}
+		callbackErr := <-callbackDone
+		if early {
+			t.Error("observer helper returned before its admitted execution joined")
+		}
+		if !errors.Is(helperErr, failed) || !errors.Is(callbackErr, failed) {
+			t.Fatalf("admitted failure was lost: helper=%v callback=%v", helperErr, callbackErr)
+		}
+	})
+}
+
+func TestApplicationProducerObserverRetainsConcurrentDuplicateAndProducerErrors(t *testing.T) {
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	failed := errors.New("actual producer failed")
+	var duplicateErr error
+	err := observeApplicationProducer("consumer", func(_ string, run func() error) error {
+		done := make(chan error, 1)
+		go func() { done <- run() }()
+		<-entered
+		duplicateErr = run()
+		close(release)
+		<-done
+		return nil
+	}, func() error {
+		close(entered)
+		<-release
+		return failed
+	})
+	if duplicateErr == nil || !errors.Is(err, duplicateErr) || !errors.Is(err, failed) {
+		t.Fatalf("concurrent duplicate suppressed a failure: duplicate=%v helper=%v", duplicateErr, err)
+	}
+}
+
+func TestApplicationProducerObserverRetainsAbandonedExecutionUncertainty(t *testing.T) {
+	entered := make(chan struct{})
+	err := observeApplicationProducer("consumer", func(_ string, run func() error) error {
+		go func() { _ = run() }()
+		<-entered
+		return nil
+	}, func() error {
+		close(entered)
+		runtime.Goexit()
+		return nil
+	})
+	if !errors.Is(err, errOwnedCommandUncertain) {
+		t.Fatalf("abandoned execution authorized successful writer release: %v", err)
 	}
 }

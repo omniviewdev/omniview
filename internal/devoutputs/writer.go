@@ -513,6 +513,19 @@ func (build *ViteBuild) Environment(ctx context.Context, consumerRoot string) (s
 		if !sameSnapshot(actual, physical(entry.Expected)) {
 			return fmt.Errorf("consumer modules changed before build")
 		}
+		for _, kind := range []Producer{loaderCache, typeCache, viteCache, loaderFiles} {
+			spec, err := writer.s.spec(consumerRoot, kind)
+			if err != nil {
+				return err
+			}
+			cache := j.Entries[keyOf(spec)]
+			if cache == nil || cache.Pending != nil || cache.Cleanup != nil || len(cache.Live) != 1 || !cache.Live[writer.token] {
+				return fmt.Errorf("finite build cache reservation changed")
+			}
+			if err = validateLiveCacheRoot(cache); err != nil {
+				return err
+			}
+		}
 		return writer.validateBuildInputs()
 	})
 	return selected.environment, err

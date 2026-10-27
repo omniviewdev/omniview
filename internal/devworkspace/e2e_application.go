@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/omniviewdev/omniview/internal/devcompose"
@@ -159,20 +160,42 @@ func (m *Manager) ApplicationFixturePackageCommands(ctx context.Context, target 
 // An observer records timing but cannot skip/repeat a real producer or suppress
 // its failure. The fixed producer order remains owned by this transaction.
 func observeApplicationProducer(name string, observe func(string, func() error) error, produce func() error) error {
-	called := false
+	var mu sync.Mutex
+	var executions sync.WaitGroup
+	open, called := true, false
 	var producerErr, contractErr error
 	observedErr := observe(name, func() error {
+		mu.Lock()
+		if !open {
+			mu.Unlock()
+			return fmt.Errorf("application producer %s observation already returned", name)
+		}
 		if called {
 			contractErr = fmt.Errorf("application producer %s was invoked more than once", name)
-			return contractErr
+			err := contractErr
+			mu.Unlock()
+			return err
 		}
 		called = true
-		producerErr = produce()
-		return producerErr
+		// Abandoned execution must not turn into successful writer release.
+		producerErr = errOwnedCommandUncertain
+		executions.Add(1)
+		mu.Unlock()
+		defer executions.Done()
+		err := produce()
+		mu.Lock()
+		producerErr = err
+		mu.Unlock()
+		return err
 	})
+	mu.Lock()
+	// No execution can be admitted between closing admission and joining.
+	open = false
 	if !called {
 		contractErr = fmt.Errorf("application producer %s was not invoked", name)
 	}
+	mu.Unlock()
+	executions.Wait()
 	return errors.Join(observedErr, producerErr, contractErr)
 }
 

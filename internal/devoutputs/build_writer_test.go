@@ -208,6 +208,79 @@ func TestFiniteViteBuildChecksConsumerModulesAndInputsBeforeEachProducer(t *test
 	}
 }
 
+func TestFiniteViteBuildRefusesEachReplacedConsumerCacheBeforeProducer(t *testing.T) {
+	for _, kind := range []Producer{loaderCache, typeCache, viteCache, loaderFiles} {
+		t.Run(string(kind), func(t *testing.T) {
+			ctx := context.Background()
+			w, plan, consumers, _ := finiteBuildFixture(t)
+			build, err := BeginViteBuild(ctx, w, plan, consumers)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = build.Environment(ctx, consumers[0]); err != nil {
+				t.Fatal(err)
+			}
+			consumer := consumers[1]
+			target := consumer
+			switch kind {
+			case loaderCache:
+				target = filepath.Join(consumer, "node_modules/.vite-temp")
+			case typeCache:
+				target = filepath.Join(consumer, "node_modules/.tmp")
+			case viteCache:
+				environment, err := build.Environment(ctx, consumer)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var ok bool
+				target, ok = strings.CutPrefix(environment, "OMNIVIEW_VITE_CACHE_DIRECTORY=")
+				if !ok {
+					t.Fatal("consumer lacks its actual optimizer cache")
+				}
+			}
+			original, err := os.Stat(target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			retained := filepath.Join(t.TempDir(), "original-root")
+			if err = os.Rename(target, retained); err != nil {
+				t.Fatal(err)
+			}
+			if err = os.Mkdir(target, original.Mode().Perm()); err != nil {
+				t.Fatal(err)
+			}
+			if kind == loaderFiles {
+				// Keep every module/input inode and byte unchanged: only the
+				// consumer's independently reserved loader root is replaced.
+				children, err := os.ReadDir(retained)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, child := range children {
+					if err = os.Rename(filepath.Join(retained, child.Name()), filepath.Join(target, child.Name())); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			output := filepath.Join(target, "producer-output")
+			if _, err = build.Environment(ctx, consumer); err == nil {
+				writeOutput(t, output, "producer wrote into an unowned replacement")
+				t.Error("replaced cache root authorized the later producer")
+			}
+			if _, err = os.Stat(output); !os.IsNotExist(err) {
+				t.Fatal("producer wrote before replacement was refused", err)
+			}
+			current, err := os.Stat(retained)
+			if err != nil || !os.SameFile(original, current) {
+				t.Fatal("refusal discarded the original owned root", err)
+			}
+			if _, err = BeginCompositionInstall(ctx, w, plan); err == nil {
+				t.Fatal("refused cache replacement released the build reservation")
+			}
+		})
+	}
+}
+
 func TestFiniteViteBuildRefusesReplacementAndPreservesCanceledOwnership(t *testing.T) {
 	for _, kind := range []string{"replacement", "cancellation"} {
 		t.Run(kind, func(t *testing.T) {
