@@ -82,8 +82,10 @@ Actual application runs attempt both uploads on success, failure and cancellatio
 | `playwright-test-results` | `e2e/test-results/` | Raw retained test evidence, including failure screenshots, videos and redacted browser errors when produced |
 
 Both artifacts retain the existing seven-day lifetime. The job summary links
-directly to each uploaded artifact; absent files produce no artifact. Cache-only
-main runs produce neither application feedback summaries nor these uploads.
+directly to each uploaded artifact; absent files produce no artifact. HTML uploads
+require `index.html`; selection or invocation metadata alone does not publish an
+HTML artifact. Cache-only main runs produce neither application feedback summaries
+nor these uploads.
 Only these browser-output directories are uploaded, never private profiles,
 ownership receipts or general temporary logs. **Traces remain disabled**:
 authenticated Vite HMR URLs can contain tokens. Screenshots, videos and reports

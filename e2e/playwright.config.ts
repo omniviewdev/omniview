@@ -10,7 +10,9 @@ const reporters: ReporterDescription[] = [
   ['list'],
   ['./scripts/timing-reporter.mjs'],
 ];
-if (process.env.GITHUB_ACTIONS === 'true') reporters.push(['github']);
+if (process.env.GITHUB_ACTIONS === 'true') {
+  reporters.push(['github']);
+}
 
 export default defineConfig({
   testDir: './tests',

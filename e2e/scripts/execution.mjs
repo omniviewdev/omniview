@@ -9,7 +9,7 @@ import { validatePinnedWailsTool } from '../../scripts/wails-tool.mjs';
 // private HOME/cache locations and observation identity are added explicitly by
 // the runner; ambient provider/autoconnect/module/manager inputs never reach it.
 export function toolEnvironment(input, { toolCacheRoot, wailsToolCapability } = {}) {
-  const keys = ['PATH', 'PATHEXT', 'SystemRoot', 'WINDIR', 'TMPDIR', 'TMP', 'TEMP', 'LANG', 'LC_ALL', 'TZ', 'TERM', 'CI', 'PNPM_HOME', 'OMNIVIEW_E2E_PNPM_EXECUTABLE'];
+  const keys = ['PATH', 'PATHEXT', 'SystemRoot', 'WINDIR', 'TMPDIR', 'TMP', 'TEMP', 'LANG', 'LC_ALL', 'TZ', 'TERM', 'CI', 'GITHUB_ACTIONS', 'PNPM_HOME', 'OMNIVIEW_E2E_PNPM_EXECUTABLE'];
   const env = Object.fromEntries(keys.filter(key => typeof input[key] === 'string').map(key => [key, input[key]]));
   if (toolCacheRoot) {
     const cache = readToolCache(toolCacheRoot);
