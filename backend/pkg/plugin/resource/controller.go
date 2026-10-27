@@ -302,10 +302,10 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 			return
 		}
 		c.actions.stopPlugin(pluginID)
-		c.connsMu.Lock()
-		conns := c.connections[pluginID]
-		delete(c.connections, pluginID)
-		c.connsMu.Unlock()
+		// Normal failed-plugin stop must still persist its saved configuration.
+		c.connsMu.RLock()
+		conns := append([]types.Connection(nil), c.connections[pluginID]...)
+		c.connsMu.RUnlock()
 		c.clearAutoConnectAttempts(pluginID)
 		c.subs.RemoveAll(pluginID)
 		c.cleanupPluginGraphState(pluginID, conns)

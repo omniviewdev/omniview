@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
@@ -258,4 +259,135 @@ func TestWatchStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
 	present, err := ctrl.HasPlugin(testInvocationContext(), "proof")
 	require.NoError(t, err)
 	require.True(t, present)
+}
+
+func TestWatchStartupFailurePreservesPersistedConnectionsThroughFailedUnloadAndReload(t *testing.T) {
+	const pluginID = "failed-watch"
+	const otherID = "unrelated"
+	const resourceKey = "proof::v1::Task"
+	ctrl, _ := newTestControllerWithEmitter(t)
+	storeRoot, err := ctrl.pluginStoreFn(pluginID)
+	require.NoError(t, err)
+	otherRoot, err := ctrl.pluginStoreFn(otherID)
+	require.NoError(t, err)
+	saved := []types.Connection{
+		{
+			ID: "primary", Name: "Alpha saved configuration",
+			Data: map[string]any{"endpoint": "unix:///private-fixture/proof.sock", "context": "opaque/%2F"},
+			Lifecycle: types.ConnectionLifecycle{AutoConnect: &types.ConnectionAutoConnect{
+				Enabled: false, Triggers: []types.ConnectionAutoConnectTrigger{types.ConnectionAutoConnectTriggerPluginStart},
+				Retry: types.ConnectionAutoConnectRetryOnChange,
+			}},
+			LastRefresh: time.Date(2026, time.October, 26, 12, 0, 0, 0, time.UTC),
+		},
+		{ID: "secondary", Name: "Beta saved configuration", Data: map[string]any{"endpoint": "memory://secondary"}},
+	}
+	expected := append([]types.Connection(nil), saved...)
+	for i := range expected {
+		expected[i].LastRefresh = time.Time{}
+	}
+	unrelated := []types.Connection{{ID: "other", Name: "Unrelated configuration", Data: map[string]any{"marker": "untouched"}}}
+	require.NoError(t, saveToLocalStore(storeRoot, map[string][]types.Connection{pluginID: saved}))
+	require.NoError(t, saveToLocalStore(otherRoot, map[string][]types.Connection{otherID: unrelated}))
+	ctrl.OnPluginInit(pluginID, defaultMeta())
+	ctrl.OnPluginInit(otherID, defaultMeta())
+	loaded, err := ctrl.ListConnections(testInvocationContext(), pluginID)
+	require.NoError(t, err)
+	require.Equal(t, expected, loaded, "initialization must load the actual persisted configuration")
+
+	otherProvider := resourcetest.NewTestProvider(t,
+		resourcetest.WithLoadConnectionsFunc(func(context.Context) ([]types.Connection, error) {
+			return nil, nil
+		}),
+	)
+	otherBackend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": setupGRPCProvider(t, otherProvider)})
+	require.NoError(t, ctrl.OnPluginStart(otherID, defaultMeta(), otherBackend))
+	t.Cleanup(func() { require.NoError(t, ctrl.OnPluginShutdown(otherID, defaultMeta())) })
+	otherDeclaration := resource.RelationshipDescriptor{Type: resource.RelUses, TargetResourceKey: "proof::v1::Unrelated"}
+	seedRuntime := func(owner, connection string, declaration resource.RelationshipDescriptor) graph.GraphNode {
+		node := graph.GraphNode{PluginID: owner, ConnectionID: connection, ResourceKey: resourceKey, ID: "source"}
+		target := node
+		target.ID = "target"
+		ctrl.registryStore.Put(registry.ResourceEntry{PluginID: owner, ConnectionID: connection, ResourceKey: resourceKey, ID: node.ID})
+		ctrl.subs.Subscribe(owner, connection, resourceKey)
+		ctrl.graph.SetDeclarations(owner, resourceKey, []resource.RelationshipDescriptor{declaration})
+		ctrl.graph.AddEdge(graph.GraphEdge{Source: node, Target: target, Type: declaration.Type})
+		return node
+	}
+	retiredNode := seedRuntime(pluginID, expected[0].ID, resource.RelationshipDescriptor{Type: resource.RelOwns, TargetResourceKey: "proof::v1::Retired"})
+	unrelatedNode := seedRuntime(otherID, unrelated[0].ID, otherDeclaration)
+
+	var discoveries atomic.Int32
+	failedProvider := resourcetest.NewTestProvider(t,
+		resourcetest.WithLoadConnectionsFunc(func(context.Context) ([]types.Connection, error) {
+			discoveries.Add(1)
+			return nil, nil
+		}),
+		resourcetest.WithListenForEventsFunc(func(context.Context, resource.WatchEventSink, func() error) error {
+			return &resource.ResourceOperationError{Code: "FORBIDDEN", Message: "native registration denied"}
+		}),
+	)
+	failedBackend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": setupGRPCProvider(t, failedProvider)})
+	var denied *resource.ResourceOperationError
+	require.ErrorAs(t, ctrl.OnPluginStart(pluginID, defaultMeta(), failedBackend), &denied)
+	require.Equal(t, "FORBIDDEN", denied.Code)
+	require.Zero(t, discoveries.Load(), "failed registration must not rediscover or replace saved configuration")
+	present, err := ctrl.HasPlugin(testInvocationContext(), pluginID)
+	require.NoError(t, err)
+	require.False(t, present)
+	handle, err := ctrl.StreamAction(testInvocationContext(), pluginID, expected[0].ID, resourceKey, "unavailable", resource.ActionInput{})
+	require.Error(t, err)
+	require.Empty(t, handle)
+	require.False(t, ctrl.subs.IsSubscribed(pluginID, expected[0].ID, resourceKey))
+	require.Empty(t, ctrl.registryStore.ScanByResourceKey(pluginID, expected[0].ID, resourceKey))
+	retiredEdges, err := ctrl.graph.GetRelated(retiredNode, graph.Both, nil)
+	require.NoError(t, err)
+	require.Empty(t, retiredEdges)
+	require.Equal(t, []resource.RelationshipDescriptor{otherDeclaration}, ctrl.graph.GetDeclarations(resourceKey))
+	ctrl.actions.mu.Lock()
+	actionAdmissionStopped := ctrl.actions.blocked[pluginID]
+	ctrl.actions.mu.Unlock()
+	require.True(t, actionAdmissionStopped, "the failed generation's action ownership must retire")
+
+	// The loader records the failed start, then failed unload calls shutdown,
+	// which delegates to normal stop and persists before removing connections.
+	require.NoError(t, ctrl.OnPluginShutdown(pluginID, defaultMeta()))
+	stoppedConnections, err := ctrl.ListConnections(testInvocationContext(), pluginID)
+	require.Equal(t, "NOT_FOUND", requireAppError(t, err).Code)
+	require.Empty(t, stoppedConnections, "normal failed-plugin stop must still retire its in-memory connection cache")
+	persisted, err := loadFromLocalStore(storeRoot)
+	require.NoError(t, err)
+	require.Equal(t, expected, persisted[pluginID], "failed unload must not overwrite saved connections with an empty store")
+	persistedOther, err := loadFromLocalStore(otherRoot)
+	require.NoError(t, err)
+	require.Equal(t, unrelated, persistedOther[otherID])
+	otherConnections, err := ctrl.ListConnections(testInvocationContext(), otherID)
+	require.NoError(t, err)
+	require.Equal(t, unrelated, otherConnections)
+	otherPresent, err := ctrl.HasPlugin(testInvocationContext(), otherID)
+	require.NoError(t, err)
+	require.True(t, otherPresent)
+	require.True(t, ctrl.subs.IsSubscribed(otherID, unrelated[0].ID, resourceKey))
+	require.Len(t, ctrl.registryStore.ScanByResourceKey(otherID, unrelated[0].ID, resourceKey), 1)
+	unrelatedEdges, err := ctrl.graph.GetRelated(unrelatedNode, graph.Both, nil)
+	require.NoError(t, err)
+	require.Len(t, unrelatedEdges, 1)
+
+	fresh, _ := newTestControllerWithEmitter(t)
+	fresh.pluginStoreFn = ctrl.pluginStoreFn
+	fresh.OnPluginInit(pluginID, defaultMeta())
+	restored, err := fresh.ListConnections(testInvocationContext(), pluginID)
+	require.NoError(t, err)
+	require.Equal(t, expected, restored, "a fresh controller must recover configuration from disk, not the retired runtime")
+	replacement := resourcetest.NewTestProvider(t,
+		resourcetest.WithLoadConnectionsFunc(func(context.Context) ([]types.Connection, error) {
+			return nil, nil
+		}),
+	)
+	replacementBackend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": setupGRPCProvider(t, replacement)})
+	require.NoError(t, fresh.OnPluginStart(pluginID, defaultMeta(), replacementBackend))
+	t.Cleanup(func() { require.NoError(t, fresh.OnPluginShutdown(pluginID, defaultMeta())) })
+	restored, err = fresh.ListConnections(testInvocationContext(), pluginID)
+	require.NoError(t, err)
+	require.Equal(t, expected, restored, "successful replacement must retain saved configurations even without provider rediscovery")
 }
