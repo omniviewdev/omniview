@@ -27,7 +27,9 @@ describe('plugin settings validation', () => {
   it('validates through the plugin and preserves dotted setting IDs when saving', async () => {
     render(<PluginSettingsPage id='fixture.plugin' />);
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'good' } });
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save Changes' })); });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    });
     expect(mocks.validate).toHaveBeenCalledWith('fixture.plugin', 'tool.path', 'good');
     expect(mocks.save).toHaveBeenCalledWith({ 'tool.path': 'good' });
     expect(screen.queryByText('Unsaved change')).not.toBeInTheDocument();
@@ -37,7 +39,9 @@ describe('plugin settings validation', () => {
     mocks.validate.mockResolvedValue({ valid: false, code: 'failed', message: 'Select a working tool.' });
     render(<PluginSettingsPage id='fixture' />);
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'bad' } });
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save Changes' })); });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    });
     expect(mocks.save).not.toHaveBeenCalled();
     expect(screen.getByText('Select a working tool.')).toBeVisible();
     expect(screen.getByRole('textbox')).toHaveValue('bad');
@@ -51,9 +55,13 @@ describe('plugin settings validation', () => {
       mocks.validate.mockReturnValue(promise);
       const view = render(<PluginSettingsPage id='first' />);
       fireEvent.change(screen.getByRole('textbox'), { target: { value: 'old' } });
-      await act(async () => { vi.advanceTimersByTime(400); });
+      await act(async () => {
+        vi.advanceTimersByTime(400);
+      });
       view.rerender(<PluginSettingsPage id='second' />);
-      await act(async () => { resolve({ valid: false, code: 'old', message: 'Old plugin failure' }); });
+      await act(async () => {
+        resolve({ valid: false, code: 'old', message: 'Old plugin failure' });
+      });
       expect(screen.queryByText('Old plugin failure')).not.toBeInTheDocument();
       expect(screen.queryByText('Unsaved change')).not.toBeInTheDocument();
     } finally {

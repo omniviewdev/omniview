@@ -151,7 +151,9 @@ describe('CoreSettingsPage appearance settings', () => {
       mocks.validateSetting.mockReturnValue(promise);
       render(<CoreSettingsPage id='appearance' />);
       fireEvent.change(screen.getByRole('textbox'), { target: { value: 'draft' } });
-      await act(async () => { vi.advanceTimersByTime(400); });
+      await act(async () => {
+        vi.advanceTimersByTime(400);
+      });
       fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
       await act(async () => {
         resolve({ valid: false, code: 'stale', message: 'Old failure' });
