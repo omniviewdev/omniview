@@ -15,7 +15,7 @@ require (
 	github.com/hashicorp/go-plugin v1.7.0
 	github.com/nxadm/tail v1.4.11
 	github.com/omniviewdev/plugin-sdk v0.6.1-0.20261027043654-cae2a08cf2b9
-	github.com/omniviewdev/registry v0.2.1
+	github.com/omniviewdev/registry v0.2.3
 	github.com/stretchr/testify v1.11.1
 	github.com/tidwall/gjson v1.18.0
 	github.com/wailsapp/mimetype v1.4.1

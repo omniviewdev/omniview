@@ -128,6 +128,8 @@ github.com/omniviewdev/plugin-sdk v0.6.1-0.20261027043654-cae2a08cf2b9 h1:jSzc/Z
 github.com/omniviewdev/plugin-sdk v0.6.1-0.20261027043654-cae2a08cf2b9/go.mod h1:7EL5BfctDEQdflClkZMhgvSAGkDff79UteN7rcuBUho=
 github.com/omniviewdev/registry v0.2.1 h1:4CsiBZmlftBZV/3LyQNiI2plRkMAqgFD8Q4zffFCVYk=
 github.com/omniviewdev/registry v0.2.1/go.mod h1:/IZABypY6iIaHo2Gw5g5Ll4SIbUhEm5/02spR/svl3Q=
+github.com/omniviewdev/registry v0.2.3 h1:s9GYTZMqwMaUgvuHVTIOgHcRHK9C28O68EW3o+lHvIc=
+github.com/omniviewdev/registry v0.2.3/go.mod h1:wlpWX8JO05ctq2r+dC22E7C04wvsZSUAuWCUAnn6pP8=
 github.com/onsi/ginkgo/v2 v2.22.0 h1:Yed107/8DjTr0lKCNt7Dn8yQ6ybuDRQoMGrNFKzMfHg=
 github.com/onsi/ginkgo/v2 v2.22.0/go.mod h1:7Du3c42kxCUegi0IImZ1wUQzMBVecgIHjR1C+NkhLQo=
 github.com/onsi/gomega v1.36.1 h1:bJDPBO7ibjxcbHMgSCoo4Yj18UWbKDlLwX1x9sybDcw=
