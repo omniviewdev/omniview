@@ -317,12 +317,14 @@ export function attachManagedViteFeedback(server: ManagedFeedbackServer, raw = p
           || typeof process.getuid === 'function' && stat.uid !== process.getuid()) {
           throw new Error('Development status ownership changed');
         }
+
         const bytes = Buffer.alloc(stat.size);
         readSync(fd, bytes, 0, bytes.length, 0);
         const status = JSON.parse(bytes.toString('utf8'));
         if (status.generation !== context.generation || status.manifest?.workspaceID !== context.workspaceID) {
           throw new Error('Development status identity changed');
         }
+
         response.setHeader('Cache-Control', 'no-store');
         response.setHeader('Content-Type', 'application/json');
         response.end(JSON.stringify({
@@ -333,10 +335,14 @@ export function attachManagedViteFeedback(server: ManagedFeedbackServer, raw = p
       } catch {
         response.writeHead(503).end();
       } finally {
-        if (fd !== undefined) closeSync(fd);
+        if (fd !== undefined) {
+          closeSync(fd);
+        }
       }
+
       return;
     }
+
     if (request.headers.accept !== 'text/x-vite-ping') {
       next(); return;
     }
@@ -423,7 +429,10 @@ export function managedViteFeedback() {
     apply: 'serve' as const,
     enforce: 'pre' as const,
     transformIndexHtml() {
-      if (!process.env.OMNIVIEW_VITE_FEEDBACK) return [];
+      if (!process.env.OMNIVIEW_VITE_FEEDBACK) {
+        return [];
+      }
+
       return [{
         tag: 'script',
         attrs: { type: 'module' },
