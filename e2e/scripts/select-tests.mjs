@@ -15,10 +15,12 @@ const prose = new Set([
   'README.md',
   'docs/development-cli.md',
   'docs/plugin-development.md',
+  'docs/roadmap/2026-10-17-product-roadmap.md',
   'docs/roadmap/2026-10-17-resource-intelligence-baseline.md',
   'docs/roadmap/2026-10-17-resource-intelligence-contract-readiness.md',
   'docs/roadmap/2026-10-17-resource-intelligence-work-packages.md',
   'docs/roadmap/2026-10-23-resource-intelligence-remote-index.md',
+  'docs/roadmap/2026-10-25-global-command-search-acceptance.md',
 ]);
 const specGroups = new Map([
   ['e2e/tests/layout/app-shell.spec.ts', ['layout', 'workspaces']],
