@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -47,10 +48,43 @@ func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
 // structured error; it does not represent a ready installation.
 func (pm *pluginManager) InstallDevPluginFromPath(path string) (info sdktypes.PluginInfo, err error) {
 	l := pm.logger.Named("InstallDevPluginFromPath")
+	var pluginID string
 	defer func() {
 		if r := recover(); r != nil {
 			l.Errorw(pm.ctx, "panic in dev install", "panic", r, "stack", string(debug.Stack()))
 			err = apperror.Internal(fmt.Errorf("panic: %v", r), "Install in dev mode failed")
+		}
+		if err != nil {
+			var appErr *apperror.AppError
+			if !errors.As(err, &appErr) {
+				appErr = apperror.Wrap(err, apperror.TypePluginInstallFailed,
+					http.StatusInternalServerError, "Dev mode installation failed")
+			}
+			// Copy before adding occurrence-specific context.
+			diagnostic := *appErr
+			var detail strings.Builder
+			fmt.Fprintf(&detail, "Source: %s\n", path)
+			if pluginID != "" {
+				fmt.Fprintf(&detail, "Plugin: %s\n", pluginID)
+				diagnostic.Instance = pluginID
+			}
+			fmt.Fprintf(&detail, "\n%s", appErr.Detail)
+			if logsSource, ok := pm.devServerMgr.(interface {
+				GetDevServerLogs(string, int) []devserver.LogEntry
+			}); pluginID != "" && ok {
+				logs := logsSource.GetDevServerLogs(pluginID, 200)
+				if len(logs) > 0 {
+					detail.WriteString("\n\nBuild output (last 200 retained lines; older output may be omitted):\n")
+					for _, entry := range logs {
+						fmt.Fprintf(&detail, "[%s] [%s] %s\n", entry.Timestamp, entry.Source, entry.Message)
+					}
+				}
+			}
+			diagnostic.Detail = detail.String()
+			if runes := []rune(diagnostic.Detail); len(runes) > 1800 {
+				diagnostic.Detail = string(runes[:1800]) + "\n[Diagnostic truncated; open Build Output for retained logs.]"
+			}
+			err = &diagnostic
 		}
 	}()
 
@@ -65,6 +99,7 @@ func (pm *pluginManager) InstallDevPluginFromPath(path string) (info sdktypes.Pl
 	if err != nil {
 		return info, apperror.Wrap(err, apperror.TypePluginInstallFailed, http.StatusUnprocessableEntity, "Failed to parse plugin metadata")
 	}
+	pluginID = metadata.ID
 	if pm.devServerMgr == nil {
 		return info, apperror.New(
 			apperror.TypeSettingsMissingConfig, http.StatusUnprocessableEntity,

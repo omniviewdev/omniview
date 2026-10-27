@@ -27,6 +27,11 @@ type transactionDevServers struct {
 	stopErr    error
 	startErr   error
 	buildError string
+	logs       []devserver.LogEntry
+}
+
+func (d *transactionDevServers) GetDevServerLogs(string, int) []devserver.LogEntry {
+	return d.logs
 }
 
 func (d *transactionDevServers) SupervisorOwnsStartup() bool {
@@ -72,6 +77,20 @@ func devSourceFixture(t *testing.T, metadata string) string {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(path, "plugin.yaml"), []byte(metadata), 0644))
 	return path
+}
+
+func TestInstallDevPluginFromPath_EarlyFailureIncludesSource(t *testing.T) {
+	pm := newTestManager(t)
+	source := t.TempDir()
+	_, err := pm.InstallDevPluginFromPath(source)
+	require.Error(t, err)
+	var diagnostic *apperror.AppError
+	require.ErrorAs(t, err, &diagnostic)
+	canonical, resolveErr := filepath.EvalSymlinks(source)
+	require.NoError(t, resolveErr)
+	assert.Contains(t, diagnostic.Detail, "Source: "+canonical)
+	assert.Contains(t, diagnostic.Detail, "plugin.yaml")
+	assert.Empty(t, diagnostic.Instance)
 }
 
 func TestInstallDevPluginFromPath_RebindsManagedSourceAndPersists(t *testing.T) {
@@ -140,7 +159,10 @@ func TestInstallDevPluginFromPath_RebindFailureDoesNotReplaceSource(t *testing.T
 
 func TestInstallDevPluginFromPath_FailedBuildIsErrorAndRecoverable(t *testing.T) {
 	pm := newTestManager(t)
-	pm.devServerMgr = &transactionDevServers{buildError: "compiler rejected source"}
+	pm.devServerMgr = &transactionDevServers{
+		buildError: "compiler rejected source",
+		logs:       []devserver.LogEntry{{Source: "go-build", Message: "main.go:42: undefined: resource"}},
+	}
 	emitter := &testRecordingEmitter{}
 	pm.emitter = emitter
 	source := devSourceFixture(t, backendYaml)
@@ -150,6 +172,10 @@ func TestInstallDevPluginFromPath_FailedBuildIsErrorAndRecoverable(t *testing.T)
 	var appErr *apperror.AppError
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginBuildFailed, appErr.Type)
+	assert.Contains(t, appErr.Detail, "Source: "+source)
+	assert.Contains(t, appErr.Detail, "main.go:42: undefined: resource")
+	assert.Contains(t, appErr.Detail, "older output may be omitted")
+	assert.Equal(t, "kubernetes", appErr.Instance)
 	assert.Equal(t, string(lifecycle.PhaseBuildFailed), info.Phase)
 	assert.Equal(t, source, info.DevPath)
 	assert.Contains(t, info.LastError, "compiler rejected source")

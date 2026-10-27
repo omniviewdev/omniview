@@ -170,6 +170,25 @@ The host will:
 - Start a Go file watcher for auto-rebuilds
 - Display status indicators in the footer
 
+#### A local plugin is rejected before building
+
+A named workspace accepts only plugin repositories selected in its manifest. The
+file picker does not add repositories or change workspace ownership. Selecting a
+checkout outside that workspace is rejected even if it builds successfully on its
+own. Check the instance's repository and plugin selections before changing tool
+paths.
+
+Use the notification's **Details** action for the rejected source and underlying
+reason. The footer notification bell retains errors for the current session;
+**Copy details** copies diagnostics explicitly. Build output may contain local
+paths or secrets, so review it before sharing.
+
+To add a plugin, stop the workspace, register/select its repository through the
+[workspace CLI workflow](development-workspaces.md), add the repository and plugin
+with `workspace edit`, then restart and select the resulting workspace checkout.
+Do not bypass source admission or copy a binary into another profile. A separate
+workspace avoids interrupting an instance already in use.
+
 ### 2.2 Development Workflow
 
 Once your plugin is installed in dev mode:
