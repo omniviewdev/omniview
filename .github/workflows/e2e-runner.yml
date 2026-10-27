@@ -14,11 +14,17 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   application:
     if: ${{ !inputs.cache-only || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     # Safety watchdog only; both runner modes keep the inclusive 600-second clock.
     timeout-minutes: 15
     defaults:
@@ -33,6 +39,7 @@ jobs:
       REVIEWED_SDK_REVISION: ${{ vars.OMNIVIEW_E2E_REVIEWED_SDK_REVISION }}
       UI_SOURCE_REF: ${{ vars.OMNIVIEW_E2E_UI_REF }}
       CACHE_ONLY: ${{ inputs.cache-only && 'true' || 'false' }}
+      OMNIVIEW_E2E_PREINSTALLED_LINUX: "true"
       SELECTION_BASE: ${{ inputs.base }}
     steps:
       - name: Checkout host implementation
@@ -82,7 +89,7 @@ jobs:
           node-version: "24.14.0"
 
       - name: Selector and cache-mode boundary contracts
-        run: node --test e2e/scripts/*.test.mjs scripts/verify-apt-archives.test.mjs
+        run: node --test e2e/scripts/*.test.mjs
 
       - name: Select conservative application impact
         id: selection
@@ -173,25 +180,6 @@ jobs:
         if: inputs.cache-only && steps.preparation.outputs.required == 'false'
         run: echo "All three exact main-scope native payloads already exist; no install, compile, browser tests or application acceptance was performed."
 
-      - name: Prepare Linux package archive cache
-        id: linux-packages
-        if: steps.preparation.outputs.required == 'true' && steps.selection.outputs.requires_application != 'false'
-        run: |
-          directory=/tmp/omniview-e2e-apt
-          mkdir -m 0755 "$directory"
-          sudo install -d -m 0700 -o _apt -g root "$directory/partial"
-          echo "directory=$directory" >> "$GITHUB_OUTPUT"
-          sudo apt-get update
-          echo "indexes=$(sha256sum /var/lib/apt/lists/*_InRelease | sha256sum | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
-
-      - name: Restore Linux package archives
-        id: linux-package-cache
-        if: steps.preparation.outputs.required == 'true' && steps.selection.outputs.requires_application != 'false'
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ steps.linux-packages.outputs.directory }}/*.deb
-          key: ${{ runner.os }}-${{ runner.arch }}-ubuntu24-e2e-apt-v1-${{ hashFiles('host/.github/workflows/e2e-runner.yml', 'host/e2e/scripts/browser-dependencies.mjs', 'host/e2e/package.json', 'host/pnpm-lock.yaml') }}-${{ steps.linux-packages.outputs.indexes }}
-
       - name: Setup pinned pnpm
         if: steps.preparation.outputs.required == 'true'
         uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
@@ -259,7 +247,6 @@ jobs:
           UI_SOURCE: ${{ github.workspace }}/ui
           KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
           SELECTION: ${{ steps.selection.outputs.kind }}
-          OMNIVIEW_E2E_APT_ARCHIVES_DIRECTORY: ${{ steps.linux-packages.outputs.directory }}
         run: |
           if [[ "$CACHE_ONLY" == true ]]; then
             node e2e/scripts/run.mjs --cache-only
@@ -268,13 +255,6 @@ jobs:
           else
             node e2e/scripts/run.mjs --full --base "$SELECTION_BASE"
           fi
-
-      - name: Save validated Linux package archives
-        if: ${{ !cancelled() && steps.canonical.outputs.linux_dependencies_prepared == 'true' && steps.linux-package-cache.outputs.cache-hit != 'true' && (!inputs.cache-only || steps.canonical.outcome == 'success') }}
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ steps.linux-packages.outputs.directory }}/*.deb
-          key: ${{ steps.linux-package-cache.outputs.cache-primary-key }}
 
       - name: Save pinned Chromium payload independently of application assertions
         if: ${{ !cancelled() && steps.canonical.outputs.browser_prepared == 'true' && steps.browser-cache.outputs.cache-hit != 'true' && (!inputs.cache-only || steps.canonical.outcome == 'success') }}
