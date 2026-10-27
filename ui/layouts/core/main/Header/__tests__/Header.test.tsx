@@ -261,6 +261,68 @@ it('ignores both IME composition and legacy229 shortcut events without preventin
   }
 });
 
+it.each(['ctrlKey', 'metaKey'] as const)('toggles with exact %s+K and restores focus', async (modifier) => {
+  renderSearchHeader();
+  const opener = screen.getByRole('button', { name: /search/i });
+  act(() => {
+    opener.focus();
+  });
+  fireEvent.keyDown(opener, { key: 'k', [modifier]: true });
+  const input = await screen.findByRole('combobox', { name: /search/i });
+  expect(input).toHaveFocus();
+  fireEvent.keyDown(input, { key: 'k', [modifier]: true });
+  await waitFor(() => {
+    expect(screen.queryByRole('dialog', { name: /search/i })).not.toBeInTheDocument();
+  });
+  expect(opener).toHaveFocus();
+});
+
+it('leaves modifier variants, held keys and consumed shortcuts to their owner', async () => {
+  renderSearchHeader();
+  for (const detail of [
+    { ctrlKey: true, shiftKey: true },
+    { metaKey: true, shiftKey: true },
+    { ctrlKey: true, altKey: true },
+    { ctrlKey: true, metaKey: true },
+    { ctrlKey: true, repeat: true },
+  ]) {
+    const event = new KeyboardEvent('keydown', { key: 'k', bubbles: true, cancelable: true, ...detail });
+    act(() => {
+      document.dispatchEvent(event);
+    });
+    expect(event.defaultPrevented).toBe(false);
+    expect(screen.queryByRole('dialog', { name: /search/i })).not.toBeInTheDocument();
+  }
+
+  const consumed = new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true, cancelable: true });
+  consumed.preventDefault();
+  act(() => {
+    document.dispatchEvent(consumed);
+  });
+  expect(screen.queryByRole('dialog', { name: /search/i })).not.toBeInTheDocument();
+});
+
+it.each(['dialog', 'alertdialog', 'menu', 'listbox'])('does not steal focus from another %s', async (role) => {
+  renderSearchHeader();
+  const owner = document.createElement('div');
+  owner.setAttribute('role', role);
+  const input = document.createElement('input');
+  owner.append(input);
+  document.body.append(owner);
+  try {
+    input.focus();
+    const event = new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true, cancelable: true });
+    act(() => {
+      input.dispatchEvent(event);
+    });
+    expect(event.defaultPrevented).toBe(false);
+    expect(input).toHaveFocus();
+    expect(screen.queryByRole('dialog', { name: /search/i })).not.toBeInTheDocument();
+  } finally {
+    owner.remove();
+  }
+});
+
 it('opens from the accessible trigger, closes on Escape and restores the connected opener', async () => {
   renderSearchHeader();
   const opener = screen.getByRole('button', { name: /search/i });
