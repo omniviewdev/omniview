@@ -37,14 +37,14 @@ DEV="$(task --silent dev:cli:build)"
   --source "plugin-sdk=$FIXED_SDK_SOURCE" \
   --source "plugin-a=$PLUGIN_A_SOURCE" \
   --source "plugin-b=$PLUGIN_B_SOURCE" \
-  --source-ref "plugin-sdk=v0.6.0" --json
+  --source-ref "plugin-sdk=v0.7.0" --json
 ```
 
 Each source is an explicit local normal or bare Git repository. Use repeatable `--source-ref ID=REF` and `--source-directory ID=DIRECTORY` when defaults differ. Plugin IDs are read from committed `plugin.yaml` at the selected ref, never inferred from a directory name. Selected host refs must contain the tooling; creating a worktree does not copy uncommitted host changes from another checkout.
 
 Register every repository/plugin source needed by the collection up front. Registry source mappings are deliberately immutable: repeating the same initialization is allowed, but changing or adding mappings returns `registry_exists` with conflict exit4 and leaves the existing registry intact. Initialize another collection for a different source set; `workspace edit --add-plugin` selects an already registered plugin, not a new repository registration.
 
-The reviewed published SDK `v0.6.0` commit is `1e92fb518b117814acb504aaae1772ff39abcdef`, including the shared read-only profile contract required by this host. Select that release or a reviewed descendant; SDK `v0.5.2` and earlier lack the contract. Subsequent ordinary edits in the selected feature SDK worktree are live development input and do not require per-edit commits. Protected isolation implementation changes require the explicit warning-bearing `--allow-isolation-source-changes` flag; it is scoped to this workspace's child processes and is not a sandbox.
+The reviewed published SDK `v0.7.0` commit is `5b3ef764d1cf738835a723a749a0cb6c45f85e44`, including the shared read-only profile contract and single structured settings validator required by this host. Select that release or a reviewed descendant; older SDK releases do not provide the current settings contract. Subsequent ordinary edits in the selected feature SDK worktree are live development input and do not require per-edit commits. Protected isolation implementation changes require the explicit warning-bearing `--allow-isolation-source-changes` flag; it is scoped to this workspace's child processes and is not a sandbox.
 
 Local package linking requires the actual successful pinned pnpm protocol probe report, not manually asserted booleans. Run the probe once on the integrated host source with its effective SDK-aware module selection, then pass the report explicitly (or place it at `$COLLECTION/.omniview-dev/link-protocol.json`):
 
@@ -71,14 +71,14 @@ The probe performs real native12 recursive peer, singleton, live-export and atom
   --repo ui --repo plugin-sdk \
   --plugin "$PLUGIN_A_ID" --plugin "$PLUGIN_B_ID" \
   --start --mode browser \
-  --reviewed-sdk-revision 1e92fb518b117814acb504aaae1772ff39abcdef \
+  --reviewed-sdk-revision 5b3ef764d1cf738835a723a749a0cb6c45f85e44 \
   --link-evidence "$LINK_EVIDENCE" --json
 
 # The same plugin ID can run independently in another profile.
 "$DEV" workspace create feature-b --root "$COLLECTION" \
   --repo ui --repo plugin-sdk --plugin "$PLUGIN_A_ID" \
   --start --mode browser \
-  --reviewed-sdk-revision 1e92fb518b117814acb504aaae1772ff39abcdef \
+  --reviewed-sdk-revision 5b3ef764d1cf738835a723a749a0cb6c45f85e44 \
   --link-evidence "$LINK_EVIDENCE" --json
 
 "$DEV" workspace inspect feature-a --root "$COLLECTION" --json
