@@ -2,7 +2,9 @@ package categories
 
 import (
 	"context"
+	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"regexp"
@@ -47,7 +49,13 @@ func validateGoExecutable(value any) settings.ValidationResult {
 		return settings.ValidationResult{Valid: true, Code: "automatic", Message: "Automatic discovery enabled. Go will be located in PATH or common installation folders when needed."}
 	}
 	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
+	if errors.Is(err, fs.ErrNotExist) {
+		return fail("not_file", "Select an existing Go executable file.")
+	}
+	if err != nil {
+		return fail("unreadable", "Could not access the selected file. Check its permissions.")
+	}
+	if !info.Mode().IsRegular() {
 		return fail("not_file", "Select an existing Go executable file.")
 	}
 	if runtime.GOOS != "windows" && info.Mode().Perm()&0111 == 0 {

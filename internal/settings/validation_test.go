@@ -59,3 +59,26 @@ func TestGoExecutableValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestGoExecutableValidationInaccessiblePath(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("requires Unix permissions and an unprivileged user")
+	}
+	directory := t.TempDir()
+	path := filepath.Join(directory, "go")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(directory, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chmod(directory, 0700); err != nil {
+			t.Error(err)
+		}
+	})
+	result := validateGoExecutable(path)
+	if result.Valid || result.Code != "unreadable" || strings.Contains(result.Message, path) {
+		t.Fatalf("inaccessible executable feedback: %+v", result)
+	}
+}

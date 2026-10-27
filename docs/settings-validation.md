@@ -15,6 +15,7 @@ An empty Go path retains the existing optional default: automatic discovery in P
 - A reusable structured validator produces success/failure code and message; its failure prevents direct and bulk SDK saves.
 - The single registered callback enforces the same constraints during draft evaluation and writes.
 - Missing path, directory, non-executable file, nonzero smoke exit, timeout, or non-Go output fails without changing saved values.
+- Permission or other filesystem access failures return `unreadable` feedback instead of claiming that the selected executable does not exist.
 - A real Go executable succeeds. Empty path succeeds with an explicit automatic-discovery message, even without Go installed.
 - Delayed old results cannot overwrite newer drafts. Discard removes feedback. Category switches clear drafts and feedback.
 - Save revalidates; replacing a previously valid executable with a failing one cannot bypass enforcement.
