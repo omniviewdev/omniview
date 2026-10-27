@@ -2,8 +2,9 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/spf13/pflag"
 	"io"
+
+	"github.com/spf13/pflag"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devcontrol"
