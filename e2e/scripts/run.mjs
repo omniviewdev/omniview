@@ -4,15 +4,17 @@ import { tmpdir } from 'node:os';
 import { delimiter, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
-import { applicationBudget, assertStandaloneBootstrap, commandTimeout, repositoryCommit, runnerOptions, toolEnvironment } from './execution.mjs';
+import { applicationBudget, assertStandaloneBootstrap, commandTimeout, preparationStarted, repositoryCommit, runnerOptions, toolEnvironment } from './execution.mjs';
 import { cohortMatches, selectFromGit } from './select-tests.mjs';
 import { discoveredSpecs, forceRegExp, prepareApplication, requiresApplication, startApplicationBroker } from './application.mjs';
 import { retireApplicationCohort } from './cohort.mjs';
-import { initializeToolCache, retirePreparationHome } from './tool-cache.mjs';
+import { initializeToolCache, readToolCache, retirePreparationHome } from './tool-cache.mjs';
 import { preparePinnedWailsTool } from '../../scripts/wails-tool.mjs';
+import { prepareLinuxDependencies } from './browser-dependencies.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
-const started = Date.now();
+const processStarted = Date.now();
+let started = processStarted;
 const phases = [];
 let privateRoot;
 let selection;
@@ -22,13 +24,15 @@ let deadlineBudget;
 let launchBroker;
 let launchDrain;
 let toolCache;
+let linuxDependencies;
 let buildExecution;
 let interactive = false;
 let env = toolEnvironment(process.env);
-function execute(command, args, { capture = false, timeout = 180_000, extraEnv = {}, cwd = root } = {}) {
+function execute(command, args, { capture = false, timeout = 180_000, extraEnv = {}, cwd = root, acceptedExitCodes = [0] } = {}) {
   const boundedTimeout = commandTimeout(started, Date.now(), timeout, interactive);
-  const child = spawnSync(command, args, { cwd, env: { ...env, ...extraEnv }, encoding: 'utf8', stdio: capture ? ['ignore', 'pipe', 'inherit'] : 'inherit', timeout: boundedTimeout, maxBuffer: 16 * 1024 * 1024 });
-  if (child.error || child.status !== 0) throw Error(`${command} failed on its first attempt (${child.error?.code ?? child.status})`);
+  const child = spawnSync(command, args, { cwd, env: { ...env, ...extraEnv }, encoding: 'utf8', stdio: capture ? ['ignore', 'pipe', capture === 'result' ? 'pipe' : 'inherit'] : 'inherit', timeout: boundedTimeout, maxBuffer: 16 * 1024 * 1024 });
+  if (child.error || !acceptedExitCodes.includes(child.status)) throw Error(`${command} failed on its first attempt (${child.error?.code ?? child.status})`);
+  if (capture === 'result') return { stdout: child.stdout.trim(), stderr: child.stderr.trim(), status: child.status };
   return capture ? child.stdout.trim() : '';
 }
 function phase(name, fn) {
@@ -115,7 +119,7 @@ async function main() {
     assertStandaloneBootstrap(root);
     if (!process.env.OMNIVIEW_E2E_TOOL_CACHE_ROOT) throw Error('OMNIVIEW_E2E_TOOL_CACHE_ROOT must explicitly select a fresh or previously initialized private cache');
     toolCache = initializeToolCache(process.env.OMNIVIEW_E2E_TOOL_CACHE_ROOT, { protectedRoots: cacheProtectedRoots(sourceLocations()) });
-    if (process.env.GITHUB_ENV) appendFileSync(process.env.GITHUB_ENV, `OMNIVIEW_E2E_TOOL_CACHE_ROOT=${toolCache.root}\nGOCACHE=${toolCache.bootstrapGoCache}\nGOMODCACHE=${toolCache.goModCache}\n`);
+    if (process.env.GITHUB_ENV) appendFileSync(process.env.GITHUB_ENV, `OMNIVIEW_E2E_TOOL_CACHE_ROOT=${toolCache.root}\nGOCACHE=${toolCache.bootstrapGoCache}\nGOMODCACHE=${toolCache.goModCache}\nPLAYWRIGHT_BROWSERS_PATH=${toolCache.playwrightBrowsers}\n`);
     console.log('E2E native tool-cache container initialized; only native cache payloads may be restored');
     return;
   }
@@ -146,6 +150,10 @@ async function main() {
     return;
   }
   if (opts.observe) {
+    if (process.env.OMNIVIEW_E2E_TOOL_CACHE_ROOT !== undefined) {
+      toolCache = readToolCache(process.env.OMNIVIEW_E2E_TOOL_CACHE_ROOT, { protectedRoots: cacheProtectedRoots(sourceLocations()) });
+      env = toolEnvironment(process.env, { toolCacheRoot: toolCache.root });
+    }
     env.OMNIVIEW_E2E_MODE = 'observe';
     for (const key of ['OMNIVIEW_E2E_CLI', 'OMNIVIEW_E2E_ROOT', 'OMNIVIEW_E2E_WORKSPACE', 'OMNIVIEW_E2E_WORKSPACE_ID', 'OMNIVIEW_E2E_GENERATION']) {
       if (process.env[key]) env[key] = process.env[key];
@@ -153,6 +161,8 @@ async function main() {
     execute(process.execPath, [playwrightCLI(), ...playwrightArgs, '--global-timeout', opts.ui ? '0' : '600000', ...(opts.ui ? ['--ui'] : [])], { cwd: join(root, 'e2e'), timeout: 0 });
     return;
   }
+  started = preparationStarted(processStarted, process.env.OMNIVIEW_E2E_PREPARATION_STARTED_AT);
+  if (started < processStarted) phases.push({ name: 'workflow-preparation', elapsedMs: processStarted - started });
   // A single invocation owns ALL preparation and browser work. No retry loop,
   // setup job, prebuilt host, force-peer override, or fabricated link evidence.
   assertStandaloneBootstrap(root);
@@ -165,7 +175,7 @@ async function main() {
   if (process.env.OMNIVIEW_E2E_TOOL_CACHE_ROOT !== undefined) {
     toolCache = phase('tool-cache-validation', () => initializeToolCache(process.env.OMNIVIEW_E2E_TOOL_CACHE_ROOT, { protectedRoots: cacheProtectedRoots(sourceLocations(), privateRoot) }));
   }
-  env = { ...toolEnvironment(process.env, { toolCacheRoot: toolCache?.root }), HOME: home, XDG_CONFIG_HOME: join(home, '.config'), XDG_CACHE_HOME: join(home, '.cache'), XDG_DATA_HOME: join(home, '.local/share'), GOPATH: join(home, 'go'), GOCACHE: toolCache?.bootstrapGoCache ?? join(home, '.cache/go-build'), SDK_SOURCE: sources['plugin-sdk'], PATH: `${join(home, 'go/bin')}${delimiter}${process.env.PATH}`, OMNIVIEW_E2E_MODE: 'owned' };
+  env = { ...toolEnvironment(process.env, { toolCacheRoot: toolCache?.root }), HOME: home, XDG_CONFIG_HOME: join(home, '.config'), XDG_CACHE_HOME: join(home, '.cache'), XDG_DATA_HOME: join(home, '.local/share'), GOPATH: join(home, 'go'), GOCACHE: toolCache?.bootstrapGoCache ?? join(home, '.cache/go-build'), PLAYWRIGHT_BROWSERS_PATH: toolCache?.playwrightBrowsers ?? join(home, '.cache/ms-playwright'), SDK_SOURCE: sources['plugin-sdk'], PATH: `${join(home, 'go/bin')}${delimiter}${process.env.PATH}`, OMNIVIEW_E2E_MODE: 'owned' };
   env.OMNIVIEW_E2E_OWNERSHIP_DIR = join(privateRoot, 'ownership');
   mkdirSync(env.OMNIVIEW_E2E_OWNERSHIP_DIR, { mode: 0o700 });
   const pnpm = env.OMNIVIEW_E2E_PNPM_EXECUTABLE ?? 'pnpm';
@@ -200,7 +210,12 @@ async function main() {
     if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(process.env.REVIEWED_SDK_REVISION ?? '') || process.env.REVIEWED_SDK_REVISION !== refs['plugin-sdk']) throw Error('Set REVIEWED_SDK_REVISION to the independently reviewed full selected SDK commit');
     env.SDK_SOURCE = sources['plugin-sdk'];
   }
-  if (!opts.cacheOnly) phase('browser-install', () => execute(process.execPath, [playwrightCLI(), 'install', ...(process.platform === 'linux' ? ['--with-deps'] : []), 'chromium'], { cwd: join(root, 'e2e') }));
+  if (process.platform === 'linux') {
+    linuxDependencies = phase('linux-dependency-install', () => prepareLinuxDependencies({ execute, playwrightCLI: playwrightCLI(), archiveDirectory: process.env.OMNIVIEW_E2E_APT_ARCHIVES_DIRECTORY, native: needsApplication }));
+    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, 'linux_dependencies_prepared=true\n');
+  }
+  phase('browser-install', () => execute(process.execPath, [playwrightCLI(), 'install', 'chromium'], { cwd: join(root, 'e2e') }));
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, 'browser_prepared=true\n');
   if (needsApplication) {
   phase('pinned-native-wails-tool', () => {
     env.OMNIVIEW_WAILS_TOOL_CAPABILITY = preparePinnedWailsTool({
@@ -255,7 +270,7 @@ try { await main(); succeeded = true; } catch (error) {
     console.error('E2E inclusive600s budget exceeded; owned cleanup was allowed to finish, not force-killed');
   }
   if (privateRoot) console.error(`E2E private preparation retained: ${privateRoot}`);
-  const report = { succeeded, operation, interactive, elapsedMs: Date.now() - started, budgetMs: interactive ? null : 600_000, budgetExceeded, deadlineBudget, launchDrain, buildExecution, selection, phases, sourceRefs, nativeToolCache: toolCache ? 'explicit' : env.HOME ? 'private' : 'not-used', declaredFrontendModes: selection?.kind !== 'focused' && selection?.groups.includes('workspaces') ? ['embedded', 'live-smoke'] : [], retries: 0 };
+  const report = { succeeded, operation, interactive, elapsedMs: Date.now() - started, budgetMs: interactive ? null : 600_000, budgetExceeded, deadlineBudget, launchDrain, buildExecution, linuxDependencies, selection, phases, sourceRefs, nativeToolCache: toolCache ? 'explicit' : env.HOME ? 'private' : 'not-used', declaredFrontendModes: selection?.kind !== 'focused' && selection?.groups.includes('workspaces') ? ['embedded', 'live-smoke'] : [], retries: 0 };
   report.applicationAcceptance = operation === 'application' && succeeded && !interactive && selection?.kind === 'full';
   if (operation !== 'report' && operation !== 'cache-initialization') {
     mkdirSync(join(root, 'e2e/playwright-report'), { recursive: true });
