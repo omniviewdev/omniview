@@ -118,6 +118,17 @@ Managed installation/build/Vite commands establish native-free `internal/devoutp
 
 `BeginVite(ctx,resolvedWorkspace,consumerRoot)` covers typechecker/config-loader/Vite process lifetime and returns authoritative `OMNIVIEW_VITE_CACHE_DIRECTORY`. Optimizer cache is UUID-owned external storage; exact `.vite-temp` and `.tmp` children and Vite5 root loader stamps are separately controlled. An immutable modules snapshot excludes a cache subtree only with its matching independent journal record. Shared consumer cache writers remain live until the last actual process finishes, not until a transport request returns.
 
+The finite canonical E2E build instead uses `BeginViteBuild` for its fixed ordered
+producer transaction. It fully byte-validates the immutable aggregate at admission
+and completion, while reserving aggregate modules, every selected consumer's modules
+and their actual cache-writer lifetimes. Each consumer rechecks owned modules,
+directory identities and recorded composition input bytes before execution; the
+normal package-input, SDK, type/declaration, worker, shim and atomic-publication
+checks still run. Install/restore and other writers cannot cross this lifetime.
+Only joined owned commands permit completion. Cancellation, replacement, tamper or
+uncertain disposal retain reservations and fail the build; no validation cache,
+mtime shortcut, skipped producer or parallel profile lane is introduced.
+
 Managed frontend preparation, spawn/capture and publication share a start gate with shutdown. Process-map locking covers only short lookup/publication operations, so a second plugin's tool/output preparation cannot block the first plugin's log/status observations. Shutdown snapshots every accepted retained child under the same start gate, then releases locks before waiting for disposal. Observation deadlines are not increased to hide a healthy process stranded behind unrelated startup work.
 
 A lost retained-process observation is not proof of process exit. The producer stays unready with its owned handle retained; the actual cause is written to its existing local diagnostic log and bounded dev-log buffer. Read those logs deliberately with `--unsafe-output` on a private test instance, rather than inferring death from a live HTTP endpoint or an empty public `LastError`.

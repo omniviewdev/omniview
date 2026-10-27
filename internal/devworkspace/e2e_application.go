@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/omniviewdev/omniview/internal/devcompose"
 	"github.com/omniviewdev/omniview/internal/devcontract"
@@ -155,10 +156,32 @@ func (m *Manager) ApplicationFixturePackageCommands(ctx context.Context, target 
 	return result, err
 }
 
-// Build one actual planned producer without reuse/cache admission. The fixture
-// calls each producer once; repository outputs still use canonical capabilities,
-// so Unlink restores committed source instead of deleting ignored files.
-func (m *Manager) BuildApplicationFixtureProducer(ctx context.Context, target, id, artifacts, revision string) error {
+// An observer records timing but cannot skip/repeat a real producer or suppress
+// its failure. The fixed producer order remains owned by this transaction.
+func observeApplicationProducer(name string, observe func(string, func() error) error, produce func() error) error {
+	called := false
+	var producerErr, contractErr error
+	observedErr := observe(name, func() error {
+		if called {
+			contractErr = fmt.Errorf("application producer %s was invoked more than once", name)
+			return contractErr
+		}
+		called = true
+		producerErr = produce()
+		return producerErr
+	})
+	if !called {
+		contractErr = fmt.Errorf("application producer %s was not invoked", name)
+	}
+	return errors.Join(observedErr, producerErr, contractErr)
+}
+
+// BuildApplicationFixture executes the complete fixed ordered producer set in
+// one finite writer lifetime. It never reuses outputs or starts parallel lanes.
+func (m *Manager) BuildApplicationFixture(ctx context.Context, target, artifacts, revision string, observe func(string, func() error) error) error {
+	if observe == nil {
+		return fmt.Errorf("application build requires an execution observer")
+	}
 	scoped, err := m.linkCommandContext(ctx, target)
 	if err != nil {
 		return err
@@ -166,6 +189,9 @@ func (m *Manager) BuildApplicationFixtureProducer(ctx context.Context, target, i
 	g := scoped.Value(linkToolchainKey{}).(*BuildGraph)
 	if err = RequireStopped(scoped, g.workspace.ResolvedWorkspace); err != nil {
 		return err
+	}
+	if g.plan.Composition == nil {
+		return fmt.Errorf("selected dependency composition is absent")
 	}
 	canonical, err := devcontract.CanonicalPath(artifacts)
 	if err != nil || canonical != artifacts || !filepath.IsAbs(artifacts) || inside(g.workspace.Root, artifacts) {
@@ -179,32 +205,63 @@ func (m *Manager) BuildApplicationFixtureProducer(ctx context.Context, target, i
 	g.options.ExpectedSDKRevision = revision
 	g.options.VerifySDKSource = devsource.Verify
 	g.options.Output = os.Stderr
-	// linkCommandContext constructs a toolchain-only graph. Bind its existing
-	// production runners before SDK verification or any actual producer call.
 	g.run = g.command
 	g.runProducer = g.commandWithEnvironment
 	nodes, err := planBuildNodes(g.workspace)
 	if err != nil {
 		return err
 	}
+	var consumers []string
 	for _, node := range nodes {
-		if node.ID != id {
-			continue
+		if node.Kind == "javascript" {
+			consumers = append(consumers, node.Directory)
 		}
-		return g.withBuildLock(scoped, func() error {
-			switch node.Kind {
-			case "bindings":
-				return g.applicationFixtureBindings(scoped, node, artifacts)
-			case "javascript":
-				return g.applicationFixtureJavaScript(scoped, node)
-			case "host-backend":
-				return g.applicationFixtureServer(scoped, node, artifacts)
-			default:
-				return fmt.Errorf("producer %s uses an invocation-owned external binary output", id)
-			}
-		})
 	}
-	return fmt.Errorf("unknown application producer %s", id)
+	return g.withBuildLock(scoped, func() error {
+		var writer *devoutputs.ViteBuild
+		buildErr := observeApplicationProducer("application-vite-build-admission", observe, func() error {
+			var err error
+			writer, err = devoutputs.BeginViteBuild(scoped, g.workspace.ResolvedWorkspace, *g.plan.Composition, consumers)
+			return err
+		})
+		if buildErr == nil {
+			for _, node := range nodes {
+				if node.Kind != "bindings" && node.Kind != "javascript" && node.Kind != "host-backend" {
+					continue
+				}
+				if buildErr = ctx.Err(); buildErr != nil {
+					break
+				}
+				buildErr = observeApplicationProducer(node.ID+"-build-once", observe, func() error {
+					timeout := 180 * time.Second
+					if node.Kind == "host-backend" {
+						timeout = 480 * time.Second
+					}
+					producerCtx, cancel := context.WithTimeout(scoped, timeout)
+					defer cancel()
+					switch node.Kind {
+					case "bindings":
+						return g.applicationFixtureBindings(producerCtx, node, artifacts)
+					case "javascript":
+						return g.applicationFixtureJavaScript(producerCtx, node, writer)
+					default:
+						return g.applicationFixtureServer(producerCtx, node, artifacts)
+					}
+				})
+				if buildErr != nil {
+					break
+				}
+			}
+		}
+		// Every finite command joins its actual descendants before returning.
+		// Cancellation/uncertain ownership retains all durable reservations.
+		if writer == nil || ctx.Err() != nil || errors.Is(buildErr, context.Canceled) || errors.Is(buildErr, context.DeadlineExceeded) || errors.Is(buildErr, errOwnedCommandUncertain) {
+			return errors.Join(buildErr, ctx.Err())
+		}
+		return errors.Join(buildErr, observeApplicationProducer("application-vite-build-completion", observe, func() error {
+			return writer.Finish(scoped)
+		}))
+	})
 }
 
 func (g *BuildGraph) applicationFixtureBindings(ctx context.Context, node BuildNode, artifacts string) (resultErr error) {
@@ -239,26 +296,18 @@ func (g *BuildGraph) applicationFixtureBindings(ctx context.Context, node BuildN
 	return nil
 }
 
-func (g *BuildGraph) applicationFixtureJavaScript(ctx context.Context, node BuildNode) (resultErr error) {
+func (g *BuildGraph) applicationFixtureJavaScript(ctx context.Context, node BuildNode, writer *devoutputs.ViteBuild) (resultErr error) {
 	if g.plan.Composition == nil {
 		return fmt.Errorf("selected dependency composition is absent")
-	}
-	if err := devcompose.CheckInputs(*g.plan.Composition); err != nil {
-		return err
 	}
 	pkg, err := readLinkPackage(node.Directory)
 	if err != nil {
 		return err
 	}
-	writer, err := devoutputs.BeginVite(ctx, g.workspace.ResolvedWorkspace, node.Directory)
+	cacheEnvironment, err := writer.Environment(ctx, node.Directory)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if !errors.Is(resultErr, errOwnedCommandUncertain) {
-			resultErr = errors.Join(resultErr, writer.Finish(context.WithoutCancel(ctx)))
-		}
-	}()
 	var stages []*devoutputs.Stage
 	published := false
 	defer func() {
@@ -277,7 +326,7 @@ func (g *BuildGraph) applicationFixtureJavaScript(ctx context.Context, node Buil
 	if err != nil {
 		return err
 	}
-	environment := append(append([]string{}, writer.Environment...), "OMNIVIEW_BUILD_OUTPUT_DIRECTORY="+dist.Directory)
+	environment := []string{cacheEnvironment, "OMNIVIEW_BUILD_OUTPUT_DIRECTORY=" + dist.Directory}
 	var shims, worker *devoutputs.Stage
 	if node.ID == "vite-plugin" {
 		shims, err = prepare(devoutputs.Shims)
