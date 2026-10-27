@@ -10,10 +10,12 @@ import { cohortMatches, groups, parseNameStatus, selectChanges, selectFromGit } 
 const change = path => ({ status: 'M', paths: [path] });
 const selected = changes => selectChanges({ changes, complete: true, cohortUnchanged: true });
 const roadmapProse = [
+  'docs/roadmap/2026-10-17-product-roadmap.md',
   'docs/roadmap/2026-10-17-resource-intelligence-baseline.md',
   'docs/roadmap/2026-10-17-resource-intelligence-contract-readiness.md',
   'docs/roadmap/2026-10-17-resource-intelligence-work-packages.md',
   'docs/roadmap/2026-10-23-resource-intelligence-remote-index.md',
+  'docs/roadmap/2026-10-25-global-command-search-acceptance.md',
 ];
 test('full is default, explicit full overrides even prose, and unknown cohort is full', () => {
   assert.equal(selectChanges().kind, 'full');
@@ -89,7 +91,7 @@ test('only explicitly listed prose skips; empty, malformed and truncated data fa
   assert.equal(selectChanges({ changes: [change('README.md')], complete: false, cohortUnchanged: true }).kind, 'full');
   for (const data of ['M\0README.md', 'R100\0README.md\0', 'M\0README.md\0garbage\0']) assert.throws(() => parseNameStatus(data));
 });
-test('only the four approved roadmap Markdown paths are prose, with all conservative guards retained', () => {
+test('only approved roadmap Markdown paths are prose, with all conservative guards retained', () => {
   for (const path of roadmapProse) {
     for (const status of ['A', 'M', 'D']) assert.equal(selected([{ status, paths: [path] }]).kind, 'none', `${status} ${path}`);
     for (const unknown of ['docs/roadmap/new.md', 'docs/roadmap/2026-10-17-resource-intelligence-baseline.mdx', 'docs/roadmap/other/nested.md', 'internal/devworkspace/watch.go', 'e2e/source-cohort.json']) {
@@ -104,17 +106,17 @@ test('only the four approved roadmap Markdown paths are prose, with all conserva
   assert.deepEqual(selected([...roadmapProse.map(change), change('e2e/tests/settings/settings.spec.ts')]).groups, ['layout', 'settings', 'workspaces']);
 });
 
-test('actual four-file roadmap Git diff skips only while committed, complete and within the approved paths', () => {
+test('actual roadmap Git diff skips only while committed, complete and within the approved paths', () => {
   const root = mkdtempSync(join(tmpdir(), 'omniview-roadmap-selector-'));
   const git = (...args) => execFileSync('git', ['-C', root, '-c', 'user.name=Selector', '-c', 'user.email=selector@example.invalid', '-c', 'commit.gpgsign=false', '-c', `core.hooksPath=${devNull}`, ...args], { encoding: 'utf8' }).trim();
   try {
     git('init', '--initial-branch=main');
     mkdirSync(join(root, 'docs/roadmap'), { recursive: true });
-    for (const path of roadmapProse.slice(1)) writeFileSync(join(root, path), `original ${path}\n`);
+    for (const path of roadmapProse.slice(0, -1)) writeFileSync(join(root, path), `original ${path}\n`);
     git('add', '.'); git('commit', '-m', 'base');
     const base = git('rev-parse', 'HEAD');
     for (const path of roadmapProse) writeFileSync(join(root, path), `updated ${path}\n`);
-    git('add', '.'); git('commit', '-m', 'four approved roadmap documents');
+    git('add', '.'); git('commit', '-m', 'approved roadmap documents');
     assert.equal(selectFromGit({ root, base, cohortUnchanged: true }).kind, 'none');
     assert.equal(selectFromGit({ root, base, cohortUnchanged: false }).kind, 'full');
     assert.equal(selectFromGit({ root, base: 'missing-ref', cohortUnchanged: true }).kind, 'full');

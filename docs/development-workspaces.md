@@ -190,11 +190,13 @@ falls back to full for unknown/core changes, incomplete Git data or a changed
 source cohort. A focused `--grep` run is diagnostic evidence, not full acceptance.
 Tooling-only selections do not prepare a Go application.
 
-The prose-only allowlist includes exactly four resource-intelligence roadmap
-documents: `2026-10-17-resource-intelligence-baseline.md`,
+The prose-only allowlist includes these approved roadmap documents under
+`docs/roadmap/`: `2026-10-17-product-roadmap.md`,
+`2026-10-17-resource-intelligence-baseline.md`,
 `2026-10-17-resource-intelligence-contract-readiness.md`,
-`2026-10-17-resource-intelligence-work-packages.md` and
-`2026-10-23-resource-intelligence-remote-index.md`, each under `docs/roadmap/`.
+`2026-10-17-resource-intelligence-work-packages.md`,
+`2026-10-23-resource-intelligence-remote-index.md` and
+`2026-10-25-global-command-search-acceptance.md`.
 Other roadmap files are unclassified and still force full execution. Prose skips
 require a complete committed Git diff and an unchanged source cohort; renames
 classify both old and new paths, and uncommitted changes never skip.
