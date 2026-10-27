@@ -234,17 +234,21 @@ func (m *Manager) BuildApplicationFixture(ctx context.Context, target, artifacts
 	if err != nil {
 		return err
 	}
+	return g.buildApplicationFixture(scoped, nodes, artifacts, observe)
+}
+
+func (g *BuildGraph) buildApplicationFixture(ctx context.Context, nodes []BuildNode, artifacts string, observe func(string, func() error) error) error {
 	var consumers []string
 	for _, node := range nodes {
 		if node.Kind == "javascript" {
 			consumers = append(consumers, node.Directory)
 		}
 	}
-	return g.withBuildLock(scoped, func() error {
+	return g.withBuildLock(ctx, func() error {
 		var writer *devoutputs.ViteBuild
 		buildErr := observeApplicationProducer("application-vite-build-admission", observe, func() error {
 			var err error
-			writer, err = devoutputs.BeginViteBuild(scoped, g.workspace.ResolvedWorkspace, *g.plan.Composition, consumers)
+			writer, err = devoutputs.BeginViteBuild(ctx, g.workspace.ResolvedWorkspace, *g.plan.Composition, consumers)
 			return err
 		})
 		if buildErr == nil {
@@ -260,7 +264,7 @@ func (m *Manager) BuildApplicationFixture(ctx context.Context, target, artifacts
 					if node.Kind == "host-backend" {
 						timeout = 480 * time.Second
 					}
-					producerCtx, cancel := context.WithTimeout(scoped, timeout)
+					producerCtx, cancel := context.WithTimeout(ctx, timeout)
 					defer cancel()
 					switch node.Kind {
 					case "bindings":
@@ -277,12 +281,13 @@ func (m *Manager) BuildApplicationFixture(ctx context.Context, target, artifacts
 			}
 		}
 		// Every finite command joins its actual descendants before returning.
-		// Cancellation/uncertain ownership retains all durable reservations.
-		if writer == nil || ctx.Err() != nil || errors.Is(buildErr, context.Canceled) || errors.Is(buildErr, context.DeadlineExceeded) || errors.Is(buildErr, errOwnedCommandUncertain) {
+		// A determinate child deadline/cancel remains a build failure, but its
+		// authenticated partial caches can finish while this scoped owner lives.
+		if writer == nil || ctx.Err() != nil || errors.Is(buildErr, errOwnedCommandUncertain) {
 			return errors.Join(buildErr, ctx.Err())
 		}
 		return errors.Join(buildErr, observeApplicationProducer("application-vite-build-completion", observe, func() error {
-			return writer.Finish(scoped)
+			return writer.Finish(ctx)
 		}))
 	})
 }
