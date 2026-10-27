@@ -92,8 +92,12 @@ type controller struct {
 	settingsProvider pkgsettings.Provider
 	emitter          EventEmitter
 
-	pluginsMu sync.RWMutex
-	plugins   map[string]*pluginState
+	// lifecycleMu fences admission against the entire previous generation's
+	// retirement. Take it before subordinate state locks; never hold pluginsMu
+	// across cancellation, delivery retirement, or registry/graph cleanup.
+	lifecycleMu sync.Mutex
+	pluginsMu   sync.RWMutex
+	plugins     map[string]*pluginState
 
 	connsMu     sync.RWMutex
 	connections map[string][]types.Connection
@@ -113,6 +117,7 @@ type controller struct {
 
 	onCrashCallback func(pluginID string)
 	pluginStoreFn   func(pluginID string) (*appstate.ScopedRoot, error)
+	watchAfterFunc  func(time.Duration, func()) actionTimer
 }
 
 // compile-time assertions.
@@ -154,6 +159,7 @@ func NewController(
 		graphNotifier:       nil,
 		onCrashCallback:     nil,
 		pluginStoreFn:       pluginStoreFn,
+		watchAfterFunc:      func(d time.Duration, fn func()) actionTimer { return time.AfterFunc(d, fn) },
 	}
 	c.actions.emit = func(id string, snapshot ActionSnapshot) { c.emitter.Emit("action/stream/"+id, snapshot) }
 	// Read c.emitter at emit time: it is replaced when the app starts.
@@ -231,6 +237,8 @@ func dispenseProvider(pluginID string, backend plugintypes.PluginBackend) (Resou
 func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginInit")
+	c.lifecycleMu.Lock()
+	defer c.lifecycleMu.Unlock()
 
 	// Load persisted connections from disk.
 	var state map[string][]types.Connection
@@ -260,6 +268,7 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	if err != nil {
 		return err
 	}
+	c.lifecycleMu.Lock()
 	c.actions.stopPlugin(pluginID)
 	c.actions.startPlugin(pluginID)
 
@@ -269,16 +278,19 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 		version: version, watchCancel: watchCancel,
 	}
 	c.pluginsMu.Lock()
-	if existing, ok := c.plugins[pluginID]; ok {
-		existing.watchCancel()
-	}
+	existing := c.plugins[pluginID]
 	c.plugins[pluginID] = state
 	c.pluginsMu.Unlock()
+	if existing != nil {
+		existing.watchCancel()
+	}
 	defer func() {
 		if retErr == nil {
 			return
 		}
 		watchCancel()
+		c.lifecycleMu.Lock()
+		defer c.lifecycleMu.Unlock()
 		c.pluginsMu.Lock()
 		owned := c.plugins[pluginID] == state
 		if owned {
@@ -306,6 +318,7 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	if len(prevConns) > 0 {
 		c.cleanupPluginGraphState(pluginID, prevConns)
 	}
+	c.lifecycleMu.Unlock()
 
 	// Start watch event listener (uses WatchEventSink callback pattern).
 	sink := &engineWatchSink{
@@ -318,7 +331,8 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	go c.listenForWatchEvents(watchCtx, pluginID, provider, sink, watchReady)
 
 	// Only the provider's actual registration acknowledgement admits sources.
-	timer := time.NewTimer(watchStreamReadyTimeout)
+	expired := make(chan struct{})
+	timer := c.watchAfterFunc(watchStreamReadyTimeout, func() { close(expired) })
 	defer timer.Stop()
 	select {
 	case err := <-watchReady:
@@ -328,7 +342,7 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 		logger.Debugw(context.Background(), "watch event stream established")
 	case <-watchCtx.Done():
 		return watchCtx.Err()
-	case <-timer.C:
+	case <-expired:
 		return fmt.Errorf("watch event stream startup: %w", context.DeadlineExceeded)
 	}
 	c.pluginsMu.Lock()
@@ -375,6 +389,8 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginStop")
+	c.lifecycleMu.Lock()
+	defer c.lifecycleMu.Unlock()
 	c.actions.stopPlugin(pluginID)
 
 	// Persist only this plugin's connections.
@@ -392,11 +408,12 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 
 	// Cancel watch goroutines.
 	c.pluginsMu.Lock()
-	if ps, ok := c.plugins[pluginID]; ok {
-		ps.watchCancel()
-	}
+	stopped := c.plugins[pluginID]
 	delete(c.plugins, pluginID)
 	c.pluginsMu.Unlock()
+	if stopped != nil {
+		stopped.watchCancel()
+	}
 
 	// Capture connections before deleting them — needed for registry cleanup.
 	c.connsMu.RLock()

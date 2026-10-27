@@ -694,6 +694,7 @@ func newTestControllerWithEmitter(t *testing.T) (*controller, *recordingEmitter)
 		dispatcher:          disp,
 		graph:               g,
 		pluginStoreFn:       svc.PluginStore,
+		watchAfterFunc:      func(d time.Duration, fn func()) actionTimer { return time.AfterFunc(d, fn) },
 	}
 	ctrl.actions.emit = func(id string, snapshot ActionSnapshot) { emitter.Emit("action/stream/"+id, snapshot) }
 	t.Cleanup(ctrl.actions.stopAll)

@@ -2,10 +2,12 @@ package resource
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
@@ -75,19 +77,48 @@ func TestWatchStartupStopCancelsPendingActualRPC(t *testing.T) {
 
 func TestWatchStartupTimeoutReturnsFailureAndRetiresActualRPC(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
+	scheduled := make(chan *controlledActionTimer, 1)
+	ctrl.watchAfterFunc = func(d time.Duration, fn func()) actionTimer {
+		require.Equal(t, 10*time.Second, d, "production readiness deadline must remain unchanged")
+		timer := &controlledActionTimer{fn: fn}
+		scheduled <- timer
+		return timer
+	}
+	entered := make(chan struct{})
 	stopped := make(chan struct{})
 	provider := resourcetest.NewTestProvider(t,
 		resourcetest.WithListenForEventsFunc(func(ctx context.Context, _ resource.WatchEventSink, _ func() error) error {
 			defer close(stopped)
+			close(entered)
 			<-ctx.Done()
 			return ctx.Err()
 		}),
 	)
 	backend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": setupGRPCProvider(t, provider)})
 	t.Cleanup(func() { require.NoError(t, ctrl.OnPluginShutdown("proof", defaultMeta())) })
-	// Exercise the unchanged production readiness deadline, not a fake clock.
-	err := ctrl.OnPluginStart("proof", defaultMeta(), backend)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
+	done := make(chan error, 1)
+	go func() { done <- ctrl.OnPluginStart("proof", defaultMeta(), backend) }()
+	var timer *controlledActionTimer
+	select {
+	case timer = <-scheduled:
+	case <-time.After(time.Second):
+		t.Fatal("startup did not schedule its readiness deadline")
+	}
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("actual event RPC did not reach pending registration")
+	}
+	// Fire the production expiry callback only after the actual gRPC handler
+	// is blocked. No real deadline wait or fake transport is needed.
+	timer.fn()
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+	case <-time.After(time.Second):
+		t.Fatal("expired startup did not return failure")
+	}
+	require.True(t, timer.stopped)
 	select {
 	case <-stopped:
 	case <-time.After(time.Second):
@@ -96,4 +127,108 @@ func TestWatchStartupTimeoutReturnsFailureAndRetiresActualRPC(t *testing.T) {
 	present, inspectErr := ctrl.HasPlugin(testInvocationContext(), "proof")
 	require.NoError(t, inspectErr)
 	require.False(t, present)
+}
+
+type pausedFailedStartStore struct {
+	registry.Store
+	armed   atomic.Bool
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (s *pausedFailedStartStore) DeleteByConnection(pluginID, connectionID string) []registry.ResourceEntry {
+	if s.armed.CompareAndSwap(true, false) {
+		close(s.entered)
+		<-s.release
+	}
+	return s.Store.DeleteByConnection(pluginID, connectionID)
+}
+
+type replacementAttemptBackend struct {
+	plugintypes.PluginBackend
+	requested chan struct{}
+}
+
+func (b *replacementAttemptBackend) Dispense(name string) (interface{}, error) {
+	provider, err := b.PluginBackend.Dispense(name)
+	close(b.requested)
+	return provider, err
+}
+
+func TestWatchStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	store := &pausedFailedStartStore{Store: ctrl.registryStore, entered: make(chan struct{}), release: make(chan struct{})}
+	ctrl.registryStore = store
+	defer func() {
+		select {
+		case <-store.release:
+		default:
+			close(store.release)
+		}
+	}()
+	t.Cleanup(func() { require.NoError(t, ctrl.OnPluginShutdown("proof", defaultMeta())) })
+	ctrl.connections["proof"] = []types.Connection{{ID: "previous"}}
+	failed := errors.New("registration rejected")
+	oldProvider := resourcetest.NewTestProvider(t,
+		resourcetest.WithListenForEventsFunc(func(context.Context, resource.WatchEventSink, func() error) error {
+			store.armed.Store(true)
+			return failed
+		}),
+	)
+	oldDone := make(chan error, 1)
+	oldBackend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": oldProvider})
+	go func() { oldDone <- ctrl.OnPluginStart("proof", defaultMeta(), oldBackend) }()
+	<-store.entered
+	// Probe the transaction while only retired cleanup can own the gate.
+	// Unlike a negative-time window, TryLock gives an immediate outcome.
+	retirementFenced := !ctrl.lifecycleMu.TryLock()
+	if !retirementFenced {
+		ctrl.lifecycleMu.Unlock()
+	}
+
+	meta := resource.ResourceMeta{Group: "proof", Version: "v1", Kind: "Replacement"}
+	replacement := resourcetest.NewTestProvider(t,
+		resourcetest.WithLoadConnectionsFunc(func(context.Context) ([]types.Connection, error) {
+			return []types.Connection{{ID: "replacement"}}, nil
+		}),
+	)
+	replacement.GetResourceTypesFunc = func(context.Context, string) (map[string]resource.ResourceMeta, error) {
+		return map[string]resource.ResourceMeta{meta.Key(): meta}, nil
+	}
+	replacement.GetRelationshipsFunc = func(context.Context, string) ([]resource.RelationshipDescriptor, error) {
+		return []resource.RelationshipDescriptor{{Type: resource.RelOwns, TargetResourceKey: "replacement-target"}}, nil
+	}
+	replaced := make(chan error, 1)
+	replacementBackend := &replacementAttemptBackend{
+		PluginBackend: plugintypes.NewInProcessBackend(map[string]interface{}{"resource": replacement}),
+		requested:     make(chan struct{}),
+	}
+	go func() {
+		err := ctrl.OnPluginStart("proof", defaultMeta(), replacementBackend)
+		if err == nil {
+			ctrl.subs.Subscribe("proof", "replacement", meta.Key())
+		}
+		replaced <- err
+	}()
+	select {
+	case <-replacementBackend.requested:
+	case <-time.After(time.Second):
+		t.Fatal("replacement did not attempt actual provider negotiation")
+	}
+	close(store.release)
+	require.ErrorIs(t, <-oldDone, failed)
+	require.NoError(t, <-replaced)
+	require.True(t, retirementFenced, "retirement released admission before its graph cleanup completed")
+	require.Len(t, ctrl.graph.GetDeclarations(meta.Key()), 1, "retired cleanup erased replacement declarations")
+	connections := ctrl.getConnections("proof")
+	require.Len(t, connections, 1)
+	require.Equal(t, "replacement", connections[0].ID)
+	require.True(t, ctrl.subs.IsSubscribed("proof", "replacement", meta.Key()))
+	ctrl.actions.mu.Lock()
+	blocked := ctrl.actions.blocked["proof"]
+	ctrl.actions.mu.Unlock()
+	require.False(t, blocked, "retired cleanup blocked replacement action admission")
+	present, err := ctrl.HasPlugin(testInvocationContext(), "proof")
+	require.NoError(t, err)
+	require.True(t, present)
 }
