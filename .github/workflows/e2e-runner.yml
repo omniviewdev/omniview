@@ -179,8 +179,10 @@ jobs:
         run: |
           directory=/tmp/omniview-e2e-apt
           mkdir -m 0755 "$directory"
-          sudo install -d -m 0700 -o _apt -g root "$directory/partial"
           echo "directory=$directory" >> "$GITHUB_OUTPUT"
+          # Avoid the runner's region-specific Azure mirror for cold downloads.
+          # Ubuntu's HTTPS archive still requires the normal signed indexes.
+          printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
           sudo apt-get update
           echo "indexes=$(sha256sum /var/lib/apt/lists/*_InRelease | sha256sum | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
 
@@ -191,6 +193,8 @@ jobs:
         with:
           path: ${{ steps.linux-packages.outputs.directory }}/*.deb
           key: ${{ runner.os }}-${{ runner.arch }}-ubuntu24-e2e-apt-v1-${{ hashFiles('host/.github/workflows/e2e-runner.yml', 'host/e2e/scripts/browser-dependencies.mjs', 'host/e2e/package.json', 'host/pnpm-lock.yaml') }}-${{ steps.linux-packages.outputs.indexes }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-ubuntu24-e2e-apt-v1-${{ hashFiles('host/.github/workflows/e2e-runner.yml', 'host/e2e/scripts/browser-dependencies.mjs', 'host/e2e/package.json', 'host/pnpm-lock.yaml') }}-
 
       - name: Setup pinned pnpm
         if: steps.preparation.outputs.required == 'true'

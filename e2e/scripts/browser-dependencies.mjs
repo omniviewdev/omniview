@@ -20,7 +20,7 @@ export function prepareLinuxDependencies({ execute, playwrightCLI, archiveDirect
   if (archiveDirectory) {
     // The workflow refreshes authenticated indexes before restoring archives.
     // Cache bytes never authorize their own package names, versions or hashes.
-    execute(process.execPath, [archiveVerifier, archiveDirectory]);
+    execute(process.execPath, [archiveVerifier, archiveDirectory, '--prepare']);
   } else {
     execute(aptCommand, [...aptPrefix, 'update']);
   }

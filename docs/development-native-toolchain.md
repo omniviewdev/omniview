@@ -32,6 +32,12 @@ installation downloads/reuses browser binaries only, never another APT pass.
 Root Linux invokes `apt-get` directly; other UIDs use `sudo` for both index
 refresh and installation, so a root runner does not require `sudo`.
 
+CI selects Ubuntu's official HTTPS archive before refreshing signed indexes,
+rather than the runner's region-specific Azure mirror. Archive restoration may
+reuse the same OS/architecture/recipe key across index rotations, but every
+candidate is authenticated again before installation. Known obsolete versions
+are quarantined while unchanged, fully verified payloads remain reusable.
+
 The workflow starts the inclusive preparation clock before Node/Go setup and
 index refresh. Restore/setup time and canonical dependency/browser phases count
 toward600000ms; the default subprocess bound remains180000ms. A cold archive miss
@@ -73,9 +79,10 @@ Each job's opt-in `verify-apt-archives.mjs DIRECTORY --prepare` runs before
 creating APT's partial directory. It requires a canonical, current-UID-owned,
 non-public-writable, archive-only candidate and examines the **entire** bundle.
 Every indexed payload must still match authenticated package/version/architecture,
-size and SHA256. Only an absent version of a known package/architecture can retain
-the whole candidate in a private sibling and create a fresh empty active
-directory; none of those candidate bytes or ownership metadata is accepted.
+size and SHA256. An absent version of a known package/architecture retains the
+candidate in a private sibling. Only fully authenticated, identity-checked files
+return to the fresh active directory through exclusive links; obsolete archives
+remain quarantined and are never installed. Cache ownership metadata is not trusted.
 Unknown entries/packages/architectures, symlinks, malformed metadata and indexed
 tampering remain fatal. Nothing is deleted or repaired. The strict default
 verifier never performs this preparation.

@@ -1,11 +1,16 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createReadStream, lstatSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, renameSync } from 'node:fs';
+import { createReadStream, linkSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, renameSync, unlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const versionPattern = /^[0-9][0-9A-Za-z.+:~\-]*$/;
-class ObsoleteAptArchiveError extends Error {}
+class ObsoleteAptArchiveError extends Error {
+  constructor(obsolete, verifiedArchives) {
+    super(`Cached package is absent from authenticated indexes: ${obsolete.join(', ')}`);
+    this.verifiedArchives = verifiedArchives;
+  }
+}
 
 function archiveIdentity(filename) {
   const match = /^([a-z0-9][a-z0-9+.-]*)_([^_]+)_([a-z0-9][a-z0-9-]*)\.deb$/.exec(filename);
@@ -37,6 +42,7 @@ export async function verifyAptArchives(directory, metadata) {
     if (!/^[a-z0-9][a-z0-9+.-]*$/.test(record.Package ?? '') || !versionPattern.test(record.Version ?? '') || !/^[a-z0-9][a-z0-9-]*$/.test(record.Architecture ?? '') || !/^[a-f0-9]{64}$/.test(record.SHA256 ?? '') || !/^[0-9]+$/.test(record.Size ?? '')) throw new Error('Invalid authenticated package metadata');
   }
   const obsolete = [];
+  const verifiedArchives = [];
   for (const archive of archives) {
     const known = records.some(record => record.Package === archive.name && record.Architecture === archive.architecture);
     if (!known) throw new Error(`Cached package is absent from authenticated indexes: ${archive.filename}`);
@@ -52,10 +58,11 @@ export async function verifyAptArchives(directory, metadata) {
     for await (const chunk of createReadStream(path)) digest.update(chunk);
     const after = lstatSync(path);
     if (!after.isFile() || before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs || digest.digest('hex') !== expected.SHA256) throw new Error(`Cached package differs from authenticated indexes: ${archive.filename}`);
+    verifiedArchives.push({ filename: archive.filename, identity: after });
   }
   // Inspect every candidate first: an obsolete version cannot mask later
   // indexed corruption, an unknown package/architecture, or invalid metadata.
-  if (obsolete.length) throw new ObsoleteAptArchiveError(`Cached package is absent from authenticated indexes: ${obsolete.join(', ')}`);
+  if (obsolete.length) throw new ObsoleteAptArchiveError(obsolete, verifiedArchives);
   return archives.length;
 }
 
@@ -82,7 +89,19 @@ export async function prepareAptArchives(directory, metadata) {
     unchanged();
     renameSync(directory, retainedDirectory);
     mkdirSync(directory, { mode: Number(before.mode & 0o777n) });
-    return { count: 0, retainedDirectory };
+    for (const archive of error.verifiedArchives) {
+      const source = join(retainedDirectory, archive.filename);
+      const target = join(directory, archive.filename);
+      const current = lstatSync(source);
+      if (!current.isFile() || !['dev', 'ino', 'mode', 'uid', 'gid', 'size', 'mtimeMs', 'ctimeMs'].every(key => current[key] === archive.identity[key])) throw new Error('Authenticated package changed before reuse');
+      // Exclusive links cannot overwrite an unexpected target entry.
+      linkSync(source, target);
+      const linked = lstatSync(target);
+      const original = lstatSync(source);
+      if (!linked.isFile() || !original.isFile() || linked.dev !== current.dev || linked.ino !== current.ino || original.dev !== current.dev || original.ino !== current.ino) throw new Error('Package identity changed during reuse');
+      unlinkSync(source);
+    }
+    return { count: error.verifiedArchives.length, retainedDirectory };
   }
 }
 
@@ -90,6 +109,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const prepare = process.argv[3] === '--prepare';
   if (process.argv.length !== 3 && !(process.argv.length === 4 && prepare)) throw new Error('Usage: verify-apt-archives.mjs DIRECTORY [--prepare]');
   const report = prepare ? await prepareAptArchives(process.argv[2]) : { count: await verifyAptArchives(process.argv[2]), retainedDirectory: null };
-  if (report.retainedDirectory) console.log(`Obsolete archive candidate retained at ${report.retainedDirectory}; active archive directory starts empty`);
+  if (report.retainedDirectory) console.log(`Obsolete archive candidates retained at ${report.retainedDirectory}`);
   console.log(`Verified ${report.count} cached Linux package archives against authenticated indexes`);
 }

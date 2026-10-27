@@ -78,7 +78,7 @@ test('index rotation reuses every still-indexed verified payload without replaci
   assert.deepEqual(readFileSync(f.filename), f.content);
 });
 
-test('obsolete known versions retain the entire owned bundle and start an empty archive directory', async t => {
+test('obsolete known versions are quarantined while still-indexed authenticated payloads remain reusable', async t => {
   const f = candidateFixture(t);
   const extra = Buffer.from('another indexed payload');
   const extraFilename = 'extra_1_all.deb';
@@ -86,14 +86,15 @@ test('obsolete known versions retain the entire owned bundle and start an empty 
   const metadata = `Package: extra\nVersion: 1\nArchitecture: all\nSize: ${extra.length}\nSHA256: ${createHash('sha256').update(extra).digest('hex')}\n\n` + newerMetadata(f);
   const inode = lstatSync(f.directory).ino;
   const report = await prepareAptArchives(f.directory, metadata);
-  assert.equal(report.count, 0);
+  assert.equal(report.count, 1);
   assert.equal(lstatSync(report.retainedDirectory).ino, inode);
   assert.notEqual(lstatSync(f.directory).ino, inode);
   assert.equal(lstatSync(f.directory).uid, process.getuid());
   assert.deepEqual(readFileSync(join(report.retainedDirectory, basename(f.filename))), f.content);
-  assert.deepEqual(readFileSync(join(report.retainedDirectory, extraFilename)), extra);
+  assert.equal(existsSync(join(report.retainedDirectory, extraFilename)), false);
+  assert.deepEqual(readFileSync(join(f.directory, extraFilename)), extra);
   assert.equal(existsSync(f.filename), false, 'no obsolete archive enters the fresh active directory');
-  assert.deepEqual(readdirSync(f.directory), []);
+  assert.deepEqual(readdirSync(f.directory), [extraFilename]);
 });
 
 test('strict verifier still rejects obsolete versions rather than performing preparation', async t => {
