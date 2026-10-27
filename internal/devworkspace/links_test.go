@@ -478,3 +478,42 @@ func TestCompositionInstallDoesNotAdoptSourceEditAtTerminalBoundary(t *testing.T
 	require.Equal(t, edit, actual)
 	require.ErrorContains(t, restoreLinkFiles(w.Root, j), "unverified")
 }
+
+func TestDeselectedSourceDoesNotBlockUnlinkOrRemoval(t *testing.T) {
+	m, root := fixtureManager(t)
+	ctx := context.Background()
+	w, err := m.Create(ctx, CreateOptions{Slug: "deselected", Repositories: []string{"ui"}})
+	require.NoError(t, err)
+	ui := filepath.Join(w.Root, "ui")
+	fixtureGit(t, ui, "commit", "--allow-empty", "-m", "retained feature work")
+	tip := fixtureGit(t, ui, "rev-parse", "HEAD")
+	branch := fixtureGit(t, ui, "branch", "--show-current")
+	_, err = m.Edit(ctx, w.Manifest.Slug, EditOptions{RemoveRepositories: []string{"ui"}})
+	require.NoError(t, err)
+	require.NoDirExists(t, ui)
+
+	report, err := m.Unlink(ctx, w.Manifest.Slug)
+	require.NoError(t, err)
+	require.Equal(t, "unlinked", report.Phase)
+	_, err = m.RemoveWorkspace(ctx, w.Manifest.Slug, RemoveOptions{}, nil)
+	require.NoError(t, err)
+	require.NoDirExists(t, w.Root)
+	require.Equal(t, tip, fixtureGit(t, filepath.Join(root, "ui", ".bare"), "rev-parse", branch))
+}
+
+func TestUnlinkStillRejectsMissingSelectedWorktree(t *testing.T) {
+	m, _ := fixtureManager(t)
+	ctx := context.Background()
+	w, err := m.Create(ctx, CreateOptions{Slug: "missing-selected", Repositories: []string{"ui"}})
+	require.NoError(t, err)
+	ui := filepath.Join(w.Root, "ui")
+	moved := filepath.Join(t.TempDir(), "moved-ui")
+	require.NoError(t, os.Rename(ui, moved))
+
+	_, err = m.Unlink(ctx, w.Manifest.Slug)
+	var typed *devcontract.Error
+	require.ErrorAs(t, err, &typed)
+	require.Equal(t, "foreign_worktree", typed.Code)
+	require.FileExists(t, filepath.Join(moved, "README"))
+	require.FileExists(t, filepath.Join(w.Root, "omniview", "README"))
+}

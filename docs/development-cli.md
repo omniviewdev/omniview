@@ -115,6 +115,21 @@ fast-forwards selected repositories before refreshing; it does not discard dirty
 edits or reset branches. `recover` resumes refresh work using its durable journal.
 Existing `resume` and `rollback` commands handle interrupted workspace creation.
 
+Removing a repository selection retires its worktree but keeps its branch
+ownership record for later reselection or explicit branch deletion. Link, unlink,
+refresh, and workspace removal validate only live worktrees; a deliberately
+retired source is not a missing checkout. A missing or replaced selected worktree
+still blocks these operations.
+
+An externally changed dependency tree is a different failure. For example,
+running an unmanaged `pnpm exec` can trigger a standalone installation and change
+`node_modules` outside the recorded producer transaction. The resulting
+`owned generated tree changed` refusal protects unverified bytes. Neither
+`workspace recover` nor `workspace refresh` authorizes deleting or adopting that
+tree. Keep the workspace and output journal intact for reconciliation; do not
+delete the tree or rewrite its ownership record to force cleanup. Use the managed
+launcher for package commands to retain pre-run dependency verification.
+
 Refresh commands reuse saved launch settings and protocol evidence. Supply launch
 flags for a workspace that has never launched, or override saved settings
 explicitly. `workspace evidence` inspects reusable protocol proof;
