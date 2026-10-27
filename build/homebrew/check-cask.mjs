@@ -76,7 +76,8 @@ try {
     assert.match(result.stdout, /workspace/);
     const resolved = await execute('/bin/sh', ['-c', 'command -v omniview-dev'], { env: { ...environment, PATH: `${prefix}/bin:${environment.PATH}` } });
     assert.equal(resolved.stdout.trim(), link);
-    assert.ok((await brew('list', '--cask', '--versions', qualified)).endsWith(` ${version}`));
+    // Installed-cask listing uses the token, not the tap-qualified install name.
+    assert.equal(await brew('list', '--cask', '--versions', token), `${token} ${version}`);
   }
   async function install() {
     // Mark before invoking Homebrew so a partially failed install is cleaned up.

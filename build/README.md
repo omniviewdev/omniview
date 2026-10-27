@@ -85,6 +85,10 @@ Apple Silicon (`macos-15`) and Intel (`macos-15-intel`) runners to:
 The lifecycle checks use the real release archive, a temporary HTTP download
 server, and a temporary local tap. They do not launch a GUI or access profiles.
 PR checks run the publication updater tests and shell syntax checks.
+Installed-version checks query `brew list --cask --versions` with the cask token;
+tap-qualified names are reserved for selecting the candidate during installation
+and upgrade. A failed lifecycle check blocks GitHub Release and tap publication,
+even if the temporary CI installation itself succeeded.
 
 Run lightweight checks locally:
 
