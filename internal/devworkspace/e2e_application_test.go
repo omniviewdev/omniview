@@ -457,7 +457,13 @@ func TestApplicationFixtureFinalizesOnlyDeterminateChildCancellation(t *testing.
 			descendantOwner := owner
 			descendantOwner.Role = "application-deadline-descendant"
 			g.runProducer = func(ctx context.Context, directory string, environment []string, _ string, _ ...string) ([]byte, error) {
-				childCtx, cancelChild := context.WithTimeout(ctx, 2*time.Second)
+				var childCtx context.Context
+				var cancelChild context.CancelFunc
+				if test.name == "child-deadline" {
+					childCtx, cancelChild = context.WithTimeout(ctx, 2*time.Second)
+				} else {
+					childCtx, cancelChild = context.WithCancel(ctx)
+				}
 				defer cancelChild()
 				command := exec.Command(os.Args[0], "-test.run=^TestApplicationFixtureDeadlineProducerProcess$")
 				command.Dir = directory

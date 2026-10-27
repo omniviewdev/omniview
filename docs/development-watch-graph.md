@@ -127,7 +127,7 @@ and their actual cache-writer lifetimes. Each consumer rechecks owned modules,
 directory identities and recorded composition input bytes before execution; the
 normal package-input, SDK, type/declaration, worker, shim and atomic-publication
 checks still run. Install/restore and other writers cannot cross this lifetime.
-Only joined owned commands permit completion. Cancellation, replacement, tamper or
+Only joined owned commands permit completion. Scoped-operation cancellation, replacement, tamper or
 uncertain disposal retain reservations and fail the build; no validation cache,
 mtime shortcut, skipped producer or parallel profile lane is introduced.
 
