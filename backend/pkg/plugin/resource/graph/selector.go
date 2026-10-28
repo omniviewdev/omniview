@@ -16,7 +16,7 @@ const (
 	// MethodLabelSelectorObject reads a Kubernetes LabelSelector object
 	// ({matchLabels, matchExpressions}, e.g. a NetworkPolicy's
 	// spec.podSelector). An empty object selects every target in the
-	// namespace; an absent one selects nothing.
+	// declared target scope; an absent one selects nothing.
 	MethodLabelSelectorObject = "labelSelectorObject"
 )
 

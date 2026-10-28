@@ -43,9 +43,22 @@ func graphPipelineRecord(t *testing.T, ctrl *controller, resourceType, id, body 
 	return target.Route, record
 }
 
+func setPipelineDeclarations(t *testing.T, ctrl *controller, g *graph.RelationshipGraph, plugin string, route resourcev2.AccessRoute, sourceType string, decls []resourcev2.RelationshipDescriptor) {
+	t.Helper()
+	source := admittedReadTarget(t, ctrl, plugin, route.Connection, sourceType).Target
+	bindings := graph.DeclarationBindings{Source: graph.TargetBinding{Target: source, IdentityDimensions: []resourcev2.Dimension{{Name: "shard"}}}}
+	for _, decl := range decls {
+		target := admittedReadTarget(t, ctrl, plugin, route.Connection, decl.TargetType).Target
+		var dimensions []resourcev2.Dimension
+		if decl.TargetType == "owner" { dimensions = []resourcev2.Dimension{{Name: "shard"}} }
+		bindings.Targets = append(bindings.Targets, graph.TargetBinding{Target: target, IdentityDimensions: dimensions})
+	}
+	require.NoError(t, g.SetBoundDeclarations(plugin, route, sourceType, decls, bindings))
+}
+
 func TestIntegration_WatchEventToGraphQuery(t *testing.T) {
 	sink, ctrl, g, dispatcher := newGraphPipeline(t)
-	g.SetDeclarations("plugin-a", resourcev2.AccessRoute{Connection: "route/one"}, "workload", []resourcev2.RelationshipDescriptor{{Type: resourcev2.RelRunsOn, TargetType: "machine", Label: "runs on", TargetScope: []resourcev2.ScopeEntry{}, Extractor: &resourcev2.RelationshipExtractor{Method: "fieldPath", FieldPath: "machine"}}})
+	setPipelineDeclarations(t, ctrl, g, "plugin-a", resourcev2.AccessRoute{Connection: "route/one"}, "workload", []resourcev2.RelationshipDescriptor{{Type: resourcev2.RelRunsOn, TargetType: "machine", Label: "runs on", TargetScope: []resourcev2.ScopeEntry{}, Extractor: &resourcev2.RelationshipExtractor{Method: "fieldPath", FieldPath: "machine"}}})
 	route, record := graphPipelineRecord(t, ctrl, "workload", "object/one", `{"machine":"worker/one"}`)
 	sink.OnAdd(resourcev2.WatchAddPayload{Route: route, Record: record})
 	dispatcher.Flush()
@@ -68,7 +81,7 @@ func TestIntegration_WatchEventToGraphQuery(t *testing.T) {
 
 func TestIntegration_OwnershipChain(t *testing.T) {
 	sink, ctrl, g, dispatcher := newGraphPipeline(t)
-	g.SetDeclarations("plugin-a", resourcev2.AccessRoute{Connection: "route/one"}, "workload", []resourcev2.RelationshipDescriptor{{Type: resourcev2.RelOwns, TargetType: "owner", Label: "owned by", Direction: resourcev2.EdgeIncoming, ScopeExtractors: []resourcev2.ScopeExtractor{{Dimension: "shard", FieldPath: "placement"}}, Extractor: &resourcev2.RelationshipExtractor{Method: "fieldPath", FieldPath: "owner"}}})
+	setPipelineDeclarations(t, ctrl, g, "plugin-a", resourcev2.AccessRoute{Connection: "route/one"}, "workload", []resourcev2.RelationshipDescriptor{{Type: resourcev2.RelOwns, TargetType: "owner", Label: "owned by", Direction: resourcev2.EdgeIncoming, ScopeExtractors: []resourcev2.ScopeExtractor{{Dimension: "shard", FieldPath: "placement"}}, Extractor: &resourcev2.RelationshipExtractor{Method: "fieldPath", FieldPath: "owner"}}})
 	route, record := graphPipelineRecord(t, ctrl, "workload", "child", `{"placement":"west","owner":"parent"}`)
 	sink.OnAdd(resourcev2.WatchAddPayload{Route: route, Record: record})
 	dispatcher.Flush()
@@ -84,7 +97,7 @@ func TestIntegration_OwnershipChain(t *testing.T) {
 
 func TestIntegration_ClusterScopedTarget(t *testing.T) {
 	sink, ctrl, g, dispatcher := newGraphPipeline(t)
-	g.SetDeclarations("plugin-a", resourcev2.AccessRoute{Connection: "route/one"}, "workload", []resourcev2.RelationshipDescriptor{{Type: resourcev2.RelUses, TargetType: "machine", TargetScope: []resourcev2.ScopeEntry{}, Extractor: &resourcev2.RelationshipExtractor{Method: "fieldPath", FieldPath: "volume"}}})
+	setPipelineDeclarations(t, ctrl, g, "plugin-a", resourcev2.AccessRoute{Connection: "route/one"}, "workload", []resourcev2.RelationshipDescriptor{{Type: resourcev2.RelUses, TargetType: "machine", TargetScope: []resourcev2.ScopeEntry{}, Extractor: &resourcev2.RelationshipExtractor{Method: "fieldPath", FieldPath: "volume"}}})
 	route, record := graphPipelineRecord(t, ctrl, "workload", "claim", `{"volume":"disk"}`)
 	sink.OnAdd(resourcev2.WatchAddPayload{Route: route, Record: record})
 	dispatcher.Flush()
@@ -96,7 +109,7 @@ func TestIntegration_ClusterScopedTarget(t *testing.T) {
 
 func TestIntegration_ConnectionTeardown(t *testing.T) {
 	sink, ctrl, g, dispatcher := newGraphPipeline(t)
-	g.SetDeclarations("plugin-a", resourcev2.AccessRoute{Connection: "route/one"}, "workload", []resourcev2.RelationshipDescriptor{{Type: resourcev2.RelRunsOn, TargetType: "machine", Extractor: &resourcev2.RelationshipExtractor{Method: "fieldPath", FieldPath: "machine"}}})
+	setPipelineDeclarations(t, ctrl, g, "plugin-a", resourcev2.AccessRoute{Connection: "route/one"}, "workload", []resourcev2.RelationshipDescriptor{{Type: resourcev2.RelRunsOn, TargetType: "machine", Extractor: &resourcev2.RelationshipExtractor{Method: "fieldPath", FieldPath: "machine"}}})
 	var first resourcev2.ResourceReference
 	for _, id := range []string{"one", "two", "three"} {
 		route, record := graphPipelineRecord(t, ctrl, "workload", id, `{"machine":"worker"}`)

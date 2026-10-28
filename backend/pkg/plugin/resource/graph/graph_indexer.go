@@ -21,6 +21,7 @@ func NewGraphIndexer(graph *RelationshipGraph, store registry.Store) *Indexer {
 func (gi *Indexer) Name() string { return "relationship-graph" }
 
 func (gi *Indexer) OnAdd(entry registry.ResourceEntry, raw json.RawMessage) {
+	gi.graph.RemoveDerivedEdges(entry.EntryKey())
 	gi.extractEdges(entry, raw)
 	gi.CheckLabelSelectorsForEntry(entry)
 }
@@ -70,15 +71,37 @@ func scopeMatches(scope, target []resource.ScopeEntry) bool {
 }
 
 func (gi *Indexer) extractEdges(entry registry.ResourceEntry, raw json.RawMessage) {
-	decls := gi.graph.GetDeclarations(entry.PluginID, entry.Route, entry.Reference.Address.Type)
-	if len(decls) == 0 {
+	snapshot, bound := gi.graph.boundSnapshot(entry.PluginID, entry.Route, entry.Reference.Address.Type)
+	if bound && snapshot.noRules { return }
+	if !bound || !bindingMatches(snapshot.bindings.Source, nodeFromEntry(entry)) || !exactScope(snapshot.bindings.Source, entry.Reference.Address.Scope) {
+		gi.graph.unresolvedNode(nodeFromEntry(entry), "source declaration binding unavailable or stale")
 		return
 	}
+	decls, bindings := snapshot.declarations, snapshot.bindings
 
 	sourceNode := nodeFromEntry(entry)
 
 	for _, decl := range decls {
 		if decl.Extractor == nil {
+			continue
+		}
+		// Optional absent relationship fields are known absence, not failed mapping.
+		field := gjson.GetBytes(raw, decl.Extractor.FieldPath)
+		if !field.Exists() || (decl.Extractor.Method == MethodFieldPath && field.Type == gjson.String && field.String() == "") {
+			continue
+		}
+		if decl.Extractor.Method == MethodFieldPath && field.IsArray() && len(field.Array()) == 0 { continue }
+		if decl.Extractor.Method == MethodLabelSelector && field.IsObject() && len(field.Map()) == 0 { continue }
+		var targetBinding TargetBinding
+		found := false
+		for _, candidate := range bindings.Targets {
+			if candidate.Target.Type == decl.TargetType {
+				if found { found = false; break }
+				targetBinding, found = candidate, true
+			}
+		}
+		if !found || targetBinding.Target.Provider == "" || targetBinding.Target.Authority == "" || targetBinding.Target.Route.Connection == "" {
+			gi.graph.unresolvedNode(sourceNode, "target declaration binding unavailable or ambiguous")
 			continue
 		}
 		scope := append([]resource.ScopeEntry(nil), decl.TargetScope...)
@@ -100,15 +123,16 @@ func (gi *Indexer) extractEdges(entry registry.ResourceEntry, raw json.RawMessag
 			seen[extractor.Dimension] = true
 			scope = append(scope, resource.ScopeEntry{Dimension: extractor.Dimension, Value: value.String()})
 		}
-		if !valid {
+		if !valid || !exactScope(targetBinding, scope) || !queryScopeMatches(targetBinding.Target.Scope, scope) {
+			gi.graph.unresolvedNode(sourceNode, "target identity scope mapping incomplete")
 			continue
 		}
 		decl.TargetScope = scope
 		switch decl.Extractor.Method {
 		case MethodFieldPath:
-			gi.extractFieldPath(sourceNode, entry, raw, decl)
+			gi.extractFieldPath(sourceNode, entry, raw, decl, targetBinding, snapshot)
 		case MethodLabelSelector, MethodLabelSelectorObject:
-			gi.extractLabelSelector(sourceNode, entry, raw, decl)
+			gi.extractLabelSelector(sourceNode, entry, raw, decl, targetBinding, snapshot)
 		}
 	}
 }
@@ -118,6 +142,8 @@ func (gi *Indexer) extractFieldPath(
 	entry registry.ResourceEntry,
 	raw json.RawMessage,
 	decl resource.RelationshipDescriptor,
+	binding TargetBinding,
+	snapshot *boundSet,
 ) {
 	path := decl.Extractor.FieldPath
 	if path == "" {
@@ -125,52 +151,62 @@ func (gi *Indexer) extractFieldPath(
 	}
 
 	result := gjson.GetBytes(raw, path)
-	if !result.Exists() || result.String() == "" {
+	if !result.Exists() || (result.Type == gjson.String && result.String() == "") {
 		return
 	}
 
 	var targetIDs []string
 	if result.IsArray() {
 		result.ForEach(func(_, value gjson.Result) bool {
-			if v := value.String(); v != "" {
+			if value.Type != gjson.String {
+				gi.graph.unresolvedNode(source, "target ID must be a native string")
+			} else if v := value.String(); v != "" {
 				targetIDs = append(targetIDs, v)
 			}
 			return true
 		})
-	} else {
+	} else if result.Type == gjson.String {
 		targetIDs = []string{result.String()}
+	} else {
+		gi.graph.unresolvedNode(source, "target ID must be a native string")
+		return
 	}
 
 	for _, targetID := range targetIDs {
-		address := entry.Reference.Address
-		address.Type = decl.TargetType
-		address.Scope = decl.TargetScope
-		address.ID = targetID
-		if err := resource.ValidateAddress(address); err != nil {
+		address := resource.ResourceAddress{
+			Provider: binding.Target.Provider, Authority: binding.Target.Authority,
+			Type: binding.Target.Type, Scope: decl.TargetScope, ID: targetID,
+		}
+		if err := resource.ValidateAddress(address, binding.IdentityDimensions); err != nil {
+			gi.graph.unresolvedNode(source, "target address is invalid")
 			continue
 		}
 		target := GraphNode{
 			PluginID:  entry.PluginID,
 			Reference: resource.ResourceReference{Address: address},
-			Route:     entry.Route,
+			Route:     binding.Target.Route,
+		}
+		if !bindingMatches(binding, target) {
+			gi.graph.unresolvedNode(source, "target scope exceeds admitted query scope")
+			continue
 		}
 
 		// EdgeIncoming reverses edge direction (used for ownership). Either
 		// way the declaring resource is the source node.
 		if decl.Direction == resource.EdgeIncoming {
-			gi.graph.AddDeclaredEdge(GraphEdge{
+			gi.graph.addBoundEdge(GraphEdge{
 				Source: target,
 				Target: source,
 				Type:   decl.Type,
 				Label:  decl.Label,
-			}, source.Key(), false)
+			}, source, false, snapshot)
 		} else {
-			gi.graph.AddDeclaredEdge(GraphEdge{
+			gi.graph.addBoundEdge(GraphEdge{
 				Source: source,
 				Target: target,
 				Type:   decl.Type,
 				Label:  decl.Label,
-			}, source.Key(), false)
+			}, source, false, snapshot)
 		}
 	}
 }
@@ -180,8 +216,11 @@ func (gi *Indexer) extractLabelSelector(
 	entry registry.ResourceEntry,
 	raw json.RawMessage,
 	decl resource.RelationshipDescriptor,
+	binding TargetBinding,
+	snapshot *boundSet,
 ) {
 	if gi.store == nil {
+		gi.graph.unresolvedNode(source, "selector registry unavailable")
 		return
 	}
 
@@ -199,6 +238,7 @@ func (gi *Indexer) extractLabelSelector(
 	if decl.Extractor.Method == MethodLabelSelectorObject {
 		sel, ok := parseLabelSelectorObject(result)
 		if !ok {
+			gi.graph.unresolvedNode(source, "invalid label selector object")
 			return
 		}
 		selector = sel
@@ -211,31 +251,30 @@ func (gi *Indexer) extractLabelSelector(
 		}
 	}
 
-	gi.graph.setSelector(source, decl, selector)
+	gi.graph.setSelector(source, decl, selector, binding, snapshot)
 
 	// Narrow candidates by the exact-match labels when there are any.
 	var candidates []registry.ResourceEntry
 	if len(selector.matchLabels) > 0 {
 		candidates = gi.store.ScanByLabel(
-			entry.PluginID, entry.Route.Connection,
-			decl.TargetType, selector.matchLabels,
+			entry.PluginID, binding.Target.Route.Connection,
+			binding.Target.Type, selector.matchLabels,
 		)
 	} else {
-		candidates = gi.store.ScanByResourceKey(entry.PluginID, entry.Route.Connection, decl.TargetType)
+		candidates = gi.store.ScanByResourceKey(entry.PluginID, binding.Target.Route.Connection, binding.Target.Type)
 	}
 
 	for _, match := range candidates {
-		if match.Reference.Address.Provider != entry.Reference.Address.Provider ||
-			match.Reference.Address.Authority != entry.Reference.Address.Authority ||
+		if !bindingMatches(binding, nodeFromEntry(match)) ||
 			!scopeMatches(decl.TargetScope, match.Reference.Address.Scope) || !selector.matches(match.Labels) {
 			continue
 		}
-		gi.graph.AddDeclaredEdge(GraphEdge{
+		gi.graph.addBoundEdge(GraphEdge{
 			Source: source,
 			Target: nodeFromEntry(match),
 			Type:   decl.Type,
 			Label:  decl.Label,
-		}, source.Key(), true)
+		}, source, true, snapshot)
 	}
 }
 
@@ -253,9 +292,7 @@ func (gi *Indexer) CheckLabelSelectorsForEntry(entry registry.ResourceEntry) {
 		selectorNode := cached.node
 
 		// Match only the declared provider authority, type and exact scope.
-		if selectorNode.PluginID != entry.PluginID || selectorNode.Route.Connection != entry.Route.Connection ||
-			selectorNode.Reference.Address.Provider != entry.Reference.Address.Provider ||
-			selectorNode.Reference.Address.Authority != entry.Reference.Address.Authority {
+		if selectorNode.PluginID != entry.PluginID || !bindingMatches(cached.binding, entryNode) {
 			continue
 		}
 		if cached.decl.TargetType != entry.Reference.Address.Type {
@@ -268,12 +305,12 @@ func (gi *Indexer) CheckLabelSelectorsForEntry(entry registry.ResourceEntry) {
 			continue
 		}
 
-		gi.graph.AddDeclaredEdge(GraphEdge{
+		gi.graph.addBoundEdge(GraphEdge{
 			Source: selectorNode,
 			Target: entryNode,
 			Type:   cached.decl.Type,
 			Label:  cached.decl.Label,
-		}, selectorNode.Key(), true)
+		}, selectorNode, true, cached.snapshot)
 	}
 }
 

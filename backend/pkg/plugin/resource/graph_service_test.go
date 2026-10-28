@@ -258,3 +258,26 @@ func TestGraphService_CurrentPeerCohortRetainsIndependentCitation(t *testing.T) 
 		t.Fatalf("current peer cohort did not retain original citation: %v", actual)
 	}
 }
+
+func TestGraphService_DeclarationFailureRejectsWholeResults(t *testing.T) {
+	g := graph.NewRelationshipGraph()
+	svc := NewGraphService(g, nil, nil, validateGraphTestReference)
+	root := graphTestNode("provider", "route", "source", "", "one")
+	g.RecordDeclarationError(root.PluginID, root.Route, root.Reference.Address.Type, errors.New("target binding missing"))
+	if result, err := svc.GetRelated(testInvocationContext(), root.PluginID, root.Reference, root.Route, "both", nil); err == nil || result != nil {
+		t.Fatalf("incomplete related result returned as complete: %v %v", result, err)
+	}
+	if result, err := svc.GetRelationshipChain(testInvocationContext(), root.PluginID, root.Reference, root.Route, string(sdkresource.RelUses), 3); err == nil || result != nil {
+		t.Fatalf("incomplete chain returned as complete: %v %v", result, err)
+	}
+	if result, err := svc.GetDependencyTree(testInvocationContext(), root.PluginID, root.Reference, root.Route, 3); err == nil || result != nil {
+		t.Fatalf("incomplete tree returned as complete: %v %v", result, err)
+	}
+	if result, err := svc.GetSubgraph(testInvocationContext(), root.PluginID, root.Reference, root.Route, 3, 3); err == nil || result != nil {
+		t.Fatalf("incomplete subgraph returned as complete: %v %v", result, err)
+	}
+	g.ClearDeclarationsForConnection(root.PluginID, root.Route)
+	if _, err := svc.GetRelated(testInvocationContext(), root.PluginID, root.Reference, root.Route, "both", nil); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -11,8 +11,9 @@ type RelationshipGraph struct {
 	mu            sync.RWMutex
 	forward       map[string][]storedEdge
 	reverse       map[string][]storedEdge
-	declarations  map[declMapKey][]resource.RelationshipDescriptor
-	pluginDecls   map[string][]declMapKey
+	boundDeclarations map[declMapKey]*boundSet
+	unresolved map[string]unresolvedEntry
+	declarationProblems map[declMapKey]error
 	selectorCache map[string]map[string]selectorEntry
 	strings       *stringInterner
 
@@ -49,6 +50,8 @@ type storedEdge struct {
 type selectorEntry struct {
 	node     GraphNode
 	decl     resource.RelationshipDescriptor
+	binding TargetBinding
+	snapshot *boundSet
 	selector labelSelector
 }
 
@@ -57,8 +60,6 @@ func NewRelationshipGraph() *RelationshipGraph {
 		mu:            sync.RWMutex{},
 		forward:       make(map[string][]storedEdge),
 		reverse:       make(map[string][]storedEdge),
-		declarations:  make(map[declMapKey][]resource.RelationshipDescriptor),
-		pluginDecls:   make(map[string][]declMapKey),
 		selectorCache: make(map[string]map[string]selectorEntry),
 		strings:       newStringInterner(),
 		dirty:         make(map[ConnectionRef]struct{}),
@@ -86,6 +87,10 @@ func (g *RelationshipGraph) AddDeclaredEdge(edge GraphEdge, declarerKey string, 
 func (g *RelationshipGraph) addEdge(se storedEdge) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	g.addEdgeLocked(se)
+}
+
+func (g *RelationshipGraph) addEdgeLocked(se storedEdge) {
 
 	edge := se.GraphEdge
 	srcKey := edge.Source.Key()
@@ -205,6 +210,7 @@ func (g *RelationshipGraph) RemoveDerivedEdges(nodeKey string) {
 	g.removeMatching(g.reverse, g.forward, nodeKey, derived, false)
 
 	delete(g.selectorCache, nodeKey)
+	delete(g.unresolved, nodeKey)
 }
 
 // removeMatching drops the edges in idx[nodeKey] for which drop returns true,
@@ -321,44 +327,42 @@ type declMapKey struct {
 	resourceKey  string
 }
 
-func (g *RelationshipGraph) SetDeclarations(pluginID string, route resource.AccessRoute, resourceKey string, decls []resource.RelationshipDescriptor) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	dk := declMapKey{pluginID: pluginID, connectionID: route.Connection, resourceKey: resourceKey}
-	if _, exists := g.declarations[dk]; !exists {
-		g.pluginDecls[pluginID] = append(g.pluginDecls[pluginID], dk)
-	}
-	g.declarations[dk] = decls
-}
-
-// GetDeclarations returns declarations owned by the exact plugin, route and type.
-func (g *RelationshipGraph) GetDeclarations(pluginID string, route resource.AccessRoute, resourceKey string) []resource.RelationshipDescriptor {
-	g.mu.RLock()
-	defer g.mu.RUnlock()
-	return append([]resource.RelationshipDescriptor(nil), g.declarations[declMapKey{pluginID: pluginID, connectionID: route.Connection, resourceKey: resourceKey}]...)
-}
 
 func (g *RelationshipGraph) ClearDeclarationsForPlugin(pluginID string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	for _, dk := range g.pluginDecls[pluginID] {
-		delete(g.declarations, dk)
+	for dk := range g.boundDeclarations {
+		if dk.pluginID == pluginID {
+			delete(g.boundDeclarations, dk)
+		}
 	}
-	delete(g.pluginDecls, pluginID)
+	for key, entry := range g.unresolved {
+		if entry.node.PluginID == pluginID { delete(g.unresolved, key) }
+	}
+	for key := range g.declarationProblems {
+		if key.pluginID == pluginID { delete(g.declarationProblems, key) }
+	}
+	for key, entries := range g.selectorCache {
+		for _, entry := range entries {
+			if entry.node.PluginID == pluginID { delete(g.selectorCache, key) }
+			break
+		}
+	}
 }
 
 // setSelector caches a label selector the node declared, replacing any
 // earlier one for the same declaration.
-func (g *RelationshipGraph) setSelector(node GraphNode, decl resource.RelationshipDescriptor, sel labelSelector) {
+func (g *RelationshipGraph) setSelector(node GraphNode, decl resource.RelationshipDescriptor, sel labelSelector, binding TargetBinding, snapshot *boundSet) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	if snapshot != nil && !g.currentSnapshot(node, snapshot) { return }
 	key := node.Key()
 	if g.selectorCache[key] == nil {
 		g.selectorCache[key] = make(map[string]selectorEntry)
 	}
 	node = cloneNode(node)
 	node.addressKey = key
-	g.selectorCache[key][declID(decl)] = selectorEntry{node: node, decl: decl, selector: sel}
+	g.selectorCache[key][declID(decl)] = selectorEntry{node: node, decl: decl, selector: sel, binding: binding, snapshot: snapshot}
 }
 
 // hasSelectors reports whether the node has cached selectors.

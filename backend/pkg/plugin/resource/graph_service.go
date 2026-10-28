@@ -10,7 +10,7 @@ import (
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
-// GraphService exposes best-effort observed relationships, not a query planner.
+// GraphService exposes observed relationships and rejects incomplete whole results.
 type GraphService struct {
 	graph             *graph.RelationshipGraph
 	realm             *invocation.Scope
@@ -135,6 +135,9 @@ func (s *GraphService) admit(ctx context.Context, operation, pluginID string, re
 		return admitted, resourcev2.NewError("UNAVAILABLE", "graph route validation is unavailable")
 	}
 	if err := s.validateReference(admitted, pluginID, route, reference); err != nil {
+		return admitted, err
+	}
+	if err := s.graph.CheckComplete(pluginID, route); err != nil {
 		return admitted, err
 	}
 	return admitted, nil

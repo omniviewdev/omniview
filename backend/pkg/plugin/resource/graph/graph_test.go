@@ -116,6 +116,8 @@ func TestGraph_RemoveEdgesForConnection_SlashInID(t *testing.T) {
 			node("k8s", conn, "core::v1::Service", "default", "s1"),
 			resource.RelationshipDescriptor{Type: resource.RelSelects, TargetType: "core::v1::Pod"},
 			labelSelector{matchLabels: map[string]string{"app": "web"}},
+			TargetBinding{},
+			nil,
 		)
 	}
 
@@ -214,9 +216,9 @@ func TestGraph_CanonicalAddressKeyIgnoresScopeOrderAndRoute(t *testing.T) {
 
 func TestGraph_DeclarationsStayWithPlugin(t *testing.T) {
 	g := NewRelationshipGraph()
-	g.SetDeclarations("one", resource.AccessRoute{Connection: "c1"}, "shared/type", []resource.RelationshipDescriptor{{Type: resource.RelUses, TargetType: "one/target"}})
-	g.SetDeclarations("two", resource.AccessRoute{Connection: "c1"}, "shared/type", []resource.RelationshipDescriptor{{Type: resource.RelUses, TargetType: "two/target"}})
-	decls := g.GetDeclarations("one", resource.AccessRoute{Connection: "c1"}, "shared/type")
+	setTestDeclarations(g, "one", resource.AccessRoute{Connection: "c1"}, "shared/type", []resource.RelationshipDescriptor{{Type: resource.RelUses, TargetType: "one/target"}})
+	setTestDeclarations(g, "two", resource.AccessRoute{Connection: "c1"}, "shared/type", []resource.RelationshipDescriptor{{Type: resource.RelUses, TargetType: "two/target"}})
+	decls, _, _ := g.GetBoundDeclarations("one", resource.AccessRoute{Connection: "c1"}, "shared/type")
 	if len(decls) != 1 || decls[0].TargetType != "one/target" {
 		t.Fatalf("cross-plugin declarations leaked: %v", decls)
 	}
@@ -266,10 +268,10 @@ func TestGraphNode_JSONContainsHostKey(t *testing.T) {
 func TestGraph_DeclarationsStayWithExactRoute(t *testing.T) {
 	g := NewRelationshipGraph()
 	for _, connection := range []string{"route", "route/child"} {
-		g.SetDeclarations("plugin", resource.AccessRoute{Connection: connection}, "shared/type", []resource.RelationshipDescriptor{{Type: resource.RelUses, TargetType: connection + "/target"}})
+		setTestDeclarations(g, "plugin", resource.AccessRoute{Connection: connection}, "shared/type", []resource.RelationshipDescriptor{{Type: resource.RelUses, TargetType: connection + "/target"}})
 	}
 	for _, connection := range []string{"route", "route/child"} {
-		decls := g.GetDeclarations("plugin", resource.AccessRoute{Connection: connection}, "shared/type")
+		decls, _, _ := g.GetBoundDeclarations("plugin", resource.AccessRoute{Connection: connection}, "shared/type")
 		if len(decls) != 1 || decls[0].TargetType != connection+"/target" {
 			t.Fatalf("route %q received another route's declarations: %v", connection, decls)
 		}

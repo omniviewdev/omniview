@@ -33,7 +33,7 @@ func TestGraphIndexer_Name(t *testing.T) {
 func TestGraphIndexer_FieldPathExtraction(t *testing.T) {
 	g, _, idx := setupIndexer()
 
-	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Pod", []resource.RelationshipDescriptor{
+	setTestDeclarations(g, "k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Pod", []resource.RelationshipDescriptor{
 		{
 			Type:       resource.RelRunsOn,
 			TargetType: "core::v1::Node",
@@ -72,7 +72,7 @@ func TestGraphIndexer_FieldPathExtraction(t *testing.T) {
 func TestGraphIndexer_FieldPathWithIncomingDirection(t *testing.T) {
 	g, _, idx := setupIndexer()
 
-	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Pod", []resource.RelationshipDescriptor{
+	setTestDeclarations(g, "k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Pod", []resource.RelationshipDescriptor{
 		{
 			Type:        resource.RelOwns,
 			TargetType:  "apps::v1::ReplicaSet",
@@ -114,7 +114,7 @@ func TestGraphIndexer_FieldPathWithIncomingDirection(t *testing.T) {
 func TestGraphIndexer_OnDelete(t *testing.T) {
 	g, _, idx := setupIndexer()
 
-	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Pod", []resource.RelationshipDescriptor{
+	setTestDeclarations(g, "k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Pod", []resource.RelationshipDescriptor{
 		{
 			Type:       resource.RelRunsOn,
 			TargetType: "core::v1::Node",
@@ -147,7 +147,7 @@ func TestGraphIndexer_OnDelete(t *testing.T) {
 func TestGraphIndexer_OnUpdate(t *testing.T) {
 	g, _, idx := setupIndexer()
 
-	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Pod", []resource.RelationshipDescriptor{
+	setTestDeclarations(g, "k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Pod", []resource.RelationshipDescriptor{
 		{
 			Type:       resource.RelRunsOn,
 			TargetType: "core::v1::Node",
@@ -185,7 +185,7 @@ func TestGraphIndexer_OnUpdate(t *testing.T) {
 func TestGraphIndexer_FieldPath_EmptyValue(t *testing.T) {
 	g, _, idx := setupIndexer()
 
-	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Pod", []resource.RelationshipDescriptor{
+	setTestDeclarations(g, "k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Pod", []resource.RelationshipDescriptor{
 		{
 			Type:       resource.RelRunsOn,
 			TargetType: "core::v1::Node",
@@ -212,7 +212,7 @@ func TestGraphIndexer_FieldPath_EmptyValue(t *testing.T) {
 func TestGraphIndexer_LabelSelector_SelectorBeforePods(t *testing.T) {
 	g, store, idx := setupIndexer()
 
-	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Service", []resource.RelationshipDescriptor{
+	setTestDeclarations(g, "k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Service", []resource.RelationshipDescriptor{
 		{
 			Type:        resource.RelSelects,
 			TargetType:  "core::v1::Pod",
@@ -259,7 +259,7 @@ func TestGraphIndexer_LabelSelector_SelectorBeforePods(t *testing.T) {
 func TestGraphIndexer_LabelSelector_PodsBeforeSelector(t *testing.T) {
 	g, store, idx := setupIndexer()
 
-	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Service", []resource.RelationshipDescriptor{
+	setTestDeclarations(g, "k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Service", []resource.RelationshipDescriptor{
 		{
 			Type:        resource.RelSelects,
 			TargetType:  "core::v1::Pod",
@@ -308,7 +308,7 @@ func TestGraphIndexer_LabelSelector_PodsBeforeSelector(t *testing.T) {
 func TestGraphIndexer_LabelSelector_LabelUpdateBreaksMatch(t *testing.T) {
 	g, store, idx := setupIndexer()
 
-	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Service", []resource.RelationshipDescriptor{
+	setTestDeclarations(g, "k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Service", []resource.RelationshipDescriptor{
 		{
 			Type:        resource.RelSelects,
 			TargetType:  "core::v1::Pod",
@@ -358,7 +358,7 @@ func TestGraphIndexer_LabelSelector_LabelUpdateBreaksMatch(t *testing.T) {
 func TestGraphIndexer_FieldPath_ClusterScopedTarget(t *testing.T) {
 	g, _, idx := setupIndexer()
 
-	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Pod", []resource.RelationshipDescriptor{
+	setTestDeclarations(g, "k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Pod", []resource.RelationshipDescriptor{
 		{
 			Type:        resource.RelRunsOn,
 			TargetType:  "core::v1::Node",
@@ -394,7 +394,7 @@ func TestGraphIndexer_FieldPath_ClusterScopedTarget(t *testing.T) {
 func TestGraphIndexer_FieldPath_ExplicitScope(t *testing.T) {
 	g, _, idx := setupIndexer()
 
-	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Pod", []resource.RelationshipDescriptor{
+	setTestDeclarations(g, "k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Pod", []resource.RelationshipDescriptor{
 		{
 			Type:        resource.RelUses,
 			TargetType:  "core::v1::ConfigMap",
@@ -425,7 +425,7 @@ func TestGraphIndexer_FieldPath_ExplicitScope(t *testing.T) {
 // declareK8sSubset declares the Pod/ReplicaSet/Service relationships the
 // regression tests below rely on, mirroring the kubernetes plugin's table.
 func declareK8sSubset(g *RelationshipGraph, route resource.AccessRoute) {
-	g.SetDeclarations("k8s", route, "core::v1::Pod", []resource.RelationshipDescriptor{
+	setTestDeclarations(g, "k8s", route, "core::v1::Pod", []resource.RelationshipDescriptor{
 		{
 			Type: resource.RelOwns, TargetType: "apps::v1::ReplicaSet",
 			TargetScope: []resource.ScopeEntry{{Dimension: "namespace", Value: "default"}},
@@ -440,7 +440,7 @@ func declareK8sSubset(g *RelationshipGraph, route resource.AccessRoute) {
 			Extractor: &resource.RelationshipExtractor{Method: "fieldPath", FieldPath: "spec.nodeName"},
 		},
 	})
-	g.SetDeclarations("k8s", route, "apps::v1::ReplicaSet", []resource.RelationshipDescriptor{
+	setTestDeclarations(g, "k8s", route, "apps::v1::ReplicaSet", []resource.RelationshipDescriptor{
 		{
 			Type: resource.RelOwns, TargetType: "apps::v1::Deployment",
 			TargetScope: []resource.ScopeEntry{{Dimension: "namespace", Value: "default"}},
@@ -450,7 +450,7 @@ func declareK8sSubset(g *RelationshipGraph, route resource.AccessRoute) {
 			},
 		},
 	})
-	g.SetDeclarations("k8s", route, "core::v1::Service", []resource.RelationshipDescriptor{
+	setTestDeclarations(g, "k8s", route, "core::v1::Service", []resource.RelationshipDescriptor{
 		{
 			Type: resource.RelSelects, TargetType: "core::v1::Pod", Label: "selects",
 			TargetScope: []resource.ScopeEntry{{Dimension: "namespace", Value: "default"}},
@@ -651,11 +651,13 @@ func TestGraphIndexer_LabelSelector_SlashInConnectionID(t *testing.T) {
 	declareK8sSubset(g, resource.AccessRoute{Connection: conn})
 	svc := makeEntry("core::v1::Service", "default", "web")
 	svc.Route.Connection = conn
+	svc.Reference.Address.Authority = "authority:" + conn
 	store.Put(svc)
 	idx.OnAdd(svc, json.RawMessage(`{"spec":{"selector":{"app":"web"}}}`))
 
 	pod := makeEntry("core::v1::Pod", "default", "web-1")
 	pod.Route.Connection = conn
+	pod.Reference.Address.Authority = "authority:" + conn
 	pod.Labels = map[string]string{"app": "web"}
 	store.Put(pod)
 	idx.OnAdd(pod, json.RawMessage(`{}`))
@@ -668,7 +670,7 @@ func TestGraphIndexer_LabelSelector_SlashInConnectionID(t *testing.T) {
 
 // declareNetworkPolicy declares NetworkPolicy -> Pod via a full LabelSelector.
 func declareNetworkPolicy(g *RelationshipGraph) {
-	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "networking::v1::NetworkPolicy", []resource.RelationshipDescriptor{
+	setTestDeclarations(g, "k8s", resource.AccessRoute{Connection: "c1"}, "networking::v1::NetworkPolicy", []resource.RelationshipDescriptor{
 		{
 			Type: resource.RelSelects, TargetType: "core::v1::Pod", Label: "selects",
 			TargetScope: []resource.ScopeEntry{{Dimension: "namespace", Value: "default"}},
@@ -795,7 +797,7 @@ func TestGraphIndexer_PlainSelectorStillNeedsLabels(t *testing.T) {
 // declarations keeps both cached (they used to overwrite each other).
 func TestGraphIndexer_TwoSelectorDeclarations(t *testing.T) {
 	g, store, idx := setupIndexer()
-	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "example::v1::Group", []resource.RelationshipDescriptor{
+	setTestDeclarations(g, "k8s", resource.AccessRoute{Connection: "c1"}, "example::v1::Group", []resource.RelationshipDescriptor{
 		{
 			Type: resource.RelSelects, TargetType: "core::v1::Pod", Label: "selects",
 			TargetScope: []resource.ScopeEntry{{Dimension: "namespace", Value: "default"}},
@@ -837,7 +839,7 @@ func TestGraphIndexer_ExplicitScopeExtractors(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			g, _, idx := setupIndexer()
-			g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "source/type", []resource.RelationshipDescriptor{{Type: resource.RelUses, TargetType: "target/type", TargetScope: tc.literal, ScopeExtractors: tc.extractors, Extractor: &resource.RelationshipExtractor{Method: MethodFieldPath, FieldPath: "target"}}})
+			setTestDeclarations(g, "k8s", resource.AccessRoute{Connection: "c1"}, "source/type", []resource.RelationshipDescriptor{{Type: resource.RelUses, TargetType: "target/type", TargetScope: tc.literal, ScopeExtractors: tc.extractors, Extractor: &resource.RelationshipExtractor{Method: MethodFieldPath, FieldPath: "target"}}})
 			entry := makeEntry("source/type", "", "source")
 			idx.OnAdd(entry, json.RawMessage(tc.body))
 			edges := g.EdgesFrom(entry.EntryKey())
@@ -855,7 +857,7 @@ func TestGraphIndexer_UsesRouteQualifiedDeclarations(t *testing.T) {
 	g, _, idx := setupIndexer()
 	for _, connection := range []string{"route", "route/child"} {
 		route := resource.AccessRoute{Connection: connection}
-		g.SetDeclarations("k8s", route, "source/type", []resource.RelationshipDescriptor{{Type: resource.RelUses, TargetType: connection + "/target", Extractor: &resource.RelationshipExtractor{Method: MethodFieldPath, FieldPath: "target"}}})
+		setTestDeclarations(g, "k8s", route, "source/type", []resource.RelationshipDescriptor{{Type: resource.RelUses, TargetType: connection + "/target", Extractor: &resource.RelationshipExtractor{Method: MethodFieldPath, FieldPath: "target"}}})
 	}
 	for _, connection := range []string{"route", "route/child"} {
 		n := node("k8s", connection, "source/type", "", "source")
