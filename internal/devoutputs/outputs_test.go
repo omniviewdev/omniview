@@ -419,7 +419,9 @@ func TestFilteredViteBaselineStillRejectsSelectedNonregularEntry(t *testing.T) {
 func TestSnapshotKeepsFileDigestsIndependentAndObservesPreservedMetadataEdits(t *testing.T) {
 	root := t.TempDir()
 	expected := make(map[string]string)
-	for index, size := range []int{65553, 0, 32768, 1, 32767, 32769} {
+	sizes := []int{65553, 0, 32768, 1, 32767, 32769}
+	for index := range 48 {
+		size := sizes[index%len(sizes)]
 		data := make([]byte, size)
 		for offset := range data {
 			data[offset] = byte((index*17 + offset) % 251)

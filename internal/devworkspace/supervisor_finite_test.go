@@ -26,7 +26,6 @@ func TestFiniteCommandFixture(t *testing.T) {
 	}
 	fmt.Fprintln(os.Stdout, `{"ok":true}`)
 	fmt.Fprintln(os.Stderr, "private diagnostic")
-	time.Sleep(200 * time.Millisecond)
 	os.Exit(0)
 }
 
@@ -166,7 +165,7 @@ func TestFiniteCommandReturnsReapedOutputFailure(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	owner := devsession.ProcessOwner{WorkspaceID: "f14566c4-5130-4e3f-aa09-3e49c63b29a6", Generation: NewGeneration(), Role: "build", Source: root}
-	child, err := startOwnedChildCommand(ctx, command, owner, nil)
+	child, err := startOwnedChildCommand(ctx, command, owner, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,5 +190,36 @@ func TestFiniteCommandReturnsReapedOutputFailure(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal("finite caller kept retrying disposal after its actual child was reaped")
+	}
+}
+
+func TestFiniteCommandPreservesImmediateFailureStatus(t *testing.T) {
+	root := t.TempDir()
+	command := exec.Command("/bin/sh", "-c", "printf 'failed-smoke'; exit 17")
+	command.Dir = root
+	var stdout strings.Builder
+	command.Stdout = &stdout
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	owner := devsession.ProcessOwner{WorkspaceID: "f14566c4-5130-4e3f-aa09-3e49c63b29a6", Generation: NewGeneration(), Role: "build", Source: root}
+	err := RunRepositoryCommand(ctx, command, owner)
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 17 || stdout.String() != "failed-smoke" {
+		t.Fatalf("finite failure lost its actual status or output: output=%q err=%v", stdout.String(), err)
+	}
+}
+
+func TestFiniteCommandRejectsInvalidOwnerBeforeSideEffects(t *testing.T) {
+	root := t.TempDir()
+	marker := filepath.Join(root, "unexpected-launch")
+	command := exec.Command("/bin/sh", "-c", `printf started > "$1"`, "fixture", marker)
+	command.Dir = root
+	owner := devsession.ProcessOwner{Generation: NewGeneration(), Role: "build", Source: root}
+	err := RunRepositoryCommand(context.Background(), command, owner)
+	if !errors.Is(err, devsession.ErrOwnership) {
+		t.Fatalf("invalid finite owner accepted: %v", err)
+	}
+	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("invalid owner executed command side effects: %v", err)
 	}
 }

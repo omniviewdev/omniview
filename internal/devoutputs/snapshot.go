@@ -8,8 +8,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 )
 
 type item struct {
@@ -47,6 +49,17 @@ func snapshotPath(spec specification, exclude []string) (snapshot, error) {
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return nil, fmt.Errorf("producer directory was replaced: %s", spec.Target)
 	}
+	// File observations are independent. Join bounded readers before returning
+	// an image; mutation admission and per-leaf deletion checks remain separate.
+	type fileRead struct {
+		path, relative string
+		info           os.FileInfo
+	}
+	workers := min(4, runtime.GOMAXPROCS(0))
+	var files chan fileRead
+	var readErrors chan error
+	var readers sync.WaitGroup
+	var resultMu sync.Mutex
 	err = filepath.WalkDir(spec.Target, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -83,13 +96,58 @@ func snapshotPath(spec specification, exclude []string) (snapshot, error) {
 		if err != nil {
 			return err
 		}
+		if workers > 1 && spec.Mode != "filter" && info.Mode().IsRegular() {
+			if files == nil {
+				files = make(chan fileRead, workers*2)
+				readErrors = make(chan error, workers)
+				for range workers {
+					readers.Add(1)
+					go func() {
+						defer readers.Done()
+						var reader snapshotReader
+						for file := range files {
+							value, readErr := reader.item(file.path, file.info, false)
+							if readErr != nil {
+								readErrors <- readErr
+								return
+							}
+							resultMu.Lock()
+							result[file.relative] = value
+							resultMu.Unlock()
+						}
+					}()
+				}
+			}
+			select {
+			case files <- fileRead{path: path, relative: relative, info: info}:
+				return nil
+			case readErr := <-readErrors:
+				return readErr
+			}
+		}
 		value, err := reader.item(path, info, spec.Kind == modules)
 		if err != nil {
 			return err
 		}
-		result[relative] = value
+		if files == nil {
+			result[relative] = value
+		} else {
+			resultMu.Lock()
+			result[relative] = value
+			resultMu.Unlock()
+		}
 		return nil
 	})
+	if files != nil {
+		close(files)
+		readers.Wait()
+		if err == nil {
+			select {
+			case err = <-readErrors:
+			default:
+			}
+		}
+	}
 	return result, err
 }
 func (reader *snapshotReader) item(path string, info os.FileInfo, allowLinks bool) (item, error) {

@@ -2,6 +2,10 @@
 
 The host-owned CLI manages independent Git worktrees, one pnpm workspace per feature, isolated development profiles and persistent launch supervisors. Commands below replace manual developer-settings dialogs and global links. Runtime/platform acceptance is recorded separately; source implementation is not proof that every native, plugin and HMR combination has passed.
 
+The browser development-status banner stays above the bottom status bar and does
+not intercept input. Notification history, terminal controls, and underlying
+application actions remain usable while development status is visible.
+
 The [workspace roadmap](development-workspaces-roadmap.md) records research decisions, repository routing, ordered parallel work packets, exercised evidence and remaining acceptance gates.
 
 ## Bootstrap the local CLI and sources
@@ -22,6 +26,19 @@ export PATH="$(dirname "$OMNIVIEW_PNPM_EXECUTABLE"):$PATH"
 The pnpm12 workspace policy retains 24-hour release-age protection (`minimumReleaseAge: 1440`), with immediate registry updates exempted only for `@omniviewdev/*`. Managed composition rejects conflicting release-age settings rather than silently disabling protection. Linked source worktrees do not require newly published registry versions. Strict peers, exact manager pins, frozen-lockfile verification and managed `--ignore-scripts` remain. Non-auth `.npmrc` settings live in workspace YAML; native12 lockfile metadata remains package-manager-owned.
 
 Choose source refs that satisfy the actual peer contracts: compare the host's `packages/omniviewdev-runtime/package.json` with the selected UI's `packages/base-ui/package.json`. A checkout can lag an existing compatible release tag. Select compatible released source while preserving feature changes; do not invent a package version or weaken peer validation to make an older source pass.
+
+Host `0.7.3` consumes published `@omniviewdev/base-ui` `~0.7.1` and `@omniviewdev/ai-ui`/`@omniviewdev/editors` `~6.0.1`; the runtime's base-ui peer lower bound is also `0.7.1`. Select UI source refs that satisfy these contracts.
+
+The published UI cohort comes from `omniviewdev/ui` commit
+`11a55a53acb67328f743c512757cabd29135f5fc`. Canonical CI selects that same
+reviewed source through `OMNIVIEW_E2E_UI_REF`; older `0.7.0` UI source cannot
+satisfy the host's updated lower bounds.
+
+Runtime UI preflight checks the host, selected plugin frontends, and linked shared
+packages. Other discovered workspace packages, such as standalone comparison or
+benchmark apps, retain their own dependencies; their private UI libraries do not
+become host-shared dependencies. Selected runtime consumers must still migrate
+legacy UI, MUI, and Emotion dependencies to the supported base-ui contract.
 
 The generated package root is `$COLLECTION/workspaces/<feature>`, above its host/UI/plugin worktrees. Managed native12 commands keep the actual consumer cwd/argv while enforcing this root through `PNPM_CONFIG_WORKSPACE_DIR`. Source configs/lockfiles remain standalone; compatible policies and locked registry resolutions are reconciled explicitly, and conflicts refuse mutation. Do not hand-edit generated root files or run independent plugin installs inside a managed feature.
 
@@ -163,7 +180,19 @@ Generated config, secrets, logs and build outputs have a private external UUID o
 
 Ignored dependency/build/cache outputs have exact producer-scoped ownership, not blanket `.local`/`node_modules`/`dist` exemptions. One aggregate installer preserves lockfile provenance, uses strict peers and `--ignore-scripts`, then runs a recursive peer audit; the graph owns generation. Vite/cache lifetimes end only after actual process/descendant exit. Tracked generated bindings/shims still require the developer's normal commit/discard decision. Interrupted cleanup resumes only its recorded per-path progress.
 
+Fresh tree observations use at most four file readers, bounded by available Go
+parallelism. Each reader hashes actual bytes and checks file identity, size, and
+modification time. All readers finish before an image can authorize a transition.
+Checkpoint ordering, complete-workspace refusal checks, and fresh per-leaf
+verification before deletion remain unchanged.
+
 Managed children receive nonsecret `OMNIVIEW_DEV_CLI` from the captured supervisor executable. Bridge token references and native-removal FD capabilities remain host/helper-only. Authenticated `/v1/process` accepts only fixed selected plugin dev commands with exact composition root/version, actual frontend paths and current host leases—not arbitrary commands/cwd. Second plugin installs are rejected; startup consumes the completed aggregate receipt. The outer supervisor retains actual children independently of the desktop host for crash cleanup.
+
+Finite repository commands validate their provenance before launch and retain the
+actual `exec.Cmd` until leader exit, descendant disposal, and output draining
+finish. They do not publish process identities or require a live executable
+snapshot after a short-lived command exits. Published services still require
+kernel-sourced identity capture; permission and inspection failures remain errors.
 
 ## Output and references
 

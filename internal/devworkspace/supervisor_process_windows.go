@@ -36,7 +36,7 @@ func attachOwnedCommand(child *ownedChild) error {
 		windows.CloseHandle(job)
 		return err
 	}
-	leader, err := windows.OpenProcess(windows.PROCESS_SET_QUOTA|windows.PROCESS_TERMINATE|windows.PROCESS_SUSPEND_RESUME|windows.SYNCHRONIZE, false, uint32(child.identity.PID))
+	leader, err := windows.OpenProcess(windows.PROCESS_SET_QUOTA|windows.PROCESS_TERMINATE|windows.PROCESS_SUSPEND_RESUME|windows.SYNCHRONIZE, false, uint32(child.command.Process.Pid))
 	if err != nil {
 		windows.CloseHandle(job)
 		return err
