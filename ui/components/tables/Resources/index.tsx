@@ -76,11 +76,11 @@ const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
       } });
     },
   });
-  const { resources } = useResources({
+  const { resources, membershipStale } = useResources({
     pluginID,
     request: target.data ? { targetId: target.data.targetId, request: { target: target.data.target, pageSize: 1000, cursor } } : undefined,
     enabled: canEnumerate,
-    live: false,
+    live: true,
   });
   const rows = useMemo(() => resources.data?.records.map((record) => ({
     record,
@@ -95,6 +95,7 @@ const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
   const controls = <Stack direction="row" spacing={2}>
     <Button size="sm" disabled={cursors.length === 1} onClick={() => setCursors((pages) => pages.slice(0, -1))}>Previous page</Button>
     <Text>Source page {cursors.length}</Text>
+    <Button size="sm" disabled={resources.isFetching} onClick={() => { void resources.refetch(); }}>Refresh source page</Button>
   </Stack>;
 
   if (resourceType.data && !canEnumerate && !canGet && !(isError && presentationFailure)) {
@@ -229,6 +230,7 @@ const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
           if (next) setCursors((pages) => [...pages, next]);
         }}>Next page</Button>
       </Stack>
+      {membershipStale && <Text tone="muted">Source membership may have changed. Visible-row updates are best effort; refresh this source page to reacquire its membership.</Text>}
       <ResourceTableContainer
         columns={columns.defs.length ? columns.defs : genericColumns}
         data={rows}
