@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Button, DescriptionList, Dialog } from '@omniviewdev/base-ui';
+import { useState, type ReactNode } from 'react';
+import { Button, Chip, DescriptionList, Dialog, Heading, Text } from '@omniviewdev/base-ui';
 import { useInstance } from '@/features/instance/InstanceContext';
 import { LuInfo, LuRefreshCw } from 'react-icons/lu';
 import { Dot, FooterPopover, FooterTrigger, PopoverAction, PopoverHeader, footerStyles } from '@/components/displays/Footer/parts';
@@ -31,6 +31,15 @@ function safeEndpoint(endpoint: string): string {
   }
 }
 
+function DetailSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className={styles.InstanceSection} aria-label={title}>
+      <Heading level={3} size='xs' className={styles.InstanceSectionTitle}>{title}</Heading>
+      {children}
+    </section>
+  );
+}
+
 export default function InstanceIndicator() {
   const { identity, info, status, refreshInfo } = useInstance();
   const [open, setOpen] = useState(false);
@@ -55,18 +64,31 @@ export default function InstanceIndicator() {
         {(close) => <>
           <PopoverHeader title={identity ? `Development instance · ${identity.displayName}` : 'Instance unavailable'} />
           <div className={footerStyles.Details}>
-            <p role='status'>{host.label === 'Ready' ? 'Host readiness confirmed. Plugin readiness is reported separately.' : 'Host status is not ready. Inspect the observations below.'}</p>
-            <DescriptionList layout='vertical' size='sm'>
-            {[
-              ['Host build', development?.health.build ?? (development ? Object.entries(development.builds).filter(([name]) => name.startsWith('host')).map(([name, build]) => `${name}: ${build.phase}`).join(', ') || 'Unknown' : 'Unavailable')],
-              ['HMR', development?.health.hmr ?? 'Unverified'],
-              ['Source freshness', development?.health.servedSource ?? 'Unknown'],
-              ['Source reload proof', development?.health.sourceReload ?? 'Unverified'],
-              ['Selected plugins', development?.selectedPluginCount === null || !development ? 'Unknown' : `${development.selectedPluginCount} selected (not a readiness check)`],
-              ['Failure stage', development?.failedStage ?? 'None reported'],
-              ['Recovery', development?.recoveryCommand ?? 'Inspect workspace status before trusting served source'],
-            ].map(([name, value]) => <DescriptionList.Item label={name} key={name}>{value}</DescriptionList.Item>)}
-            </DescriptionList>
+            <div className={styles.InstanceSummary}>
+              <Chip size='sm' variant='soft' color={host.tone}><Dot status={host.tone} />{host.label}</Chip>
+              <Text size='xs' tone='muted'>Host status; plugin servers report readiness separately.</Text>
+            </div>
+            <DetailSection title='Host'>
+              <DescriptionList layout='horizontal' size='sm' className={styles.InstanceDetails}>
+                <DescriptionList.Item label='Host build'>{development?.health.build ?? (development ? Object.entries(development.builds).filter(([name]) => name.startsWith('host')).map(([name, build]) => `${name.replace('host-', '')}: ${build.phase}`).join(' · ') || 'Unknown' : 'Unavailable')}</DescriptionList.Item>
+                <DescriptionList.Item label='HMR'>{development?.health.hmr ?? 'Unverified'}</DescriptionList.Item>
+              </DescriptionList>
+            </DetailSection>
+            <DetailSection title='Source & plugins'>
+              <DescriptionList layout='horizontal' size='sm' className={styles.InstanceDetails}>
+                <DescriptionList.Item label='Source freshness'>{development?.health.servedSource ?? 'Unknown'}</DescriptionList.Item>
+                <DescriptionList.Item label='Source reload proof'>{development?.health.sourceReload ?? 'Unverified'}</DescriptionList.Item>
+                <DescriptionList.Item label='Selected plugins'>{development?.selectedPluginCount === null || !development ? 'Unknown' : `${development.selectedPluginCount} selected (not a readiness check)`}</DescriptionList.Item>
+              </DescriptionList>
+            </DetailSection>
+            {host.label !== 'Ready' && (
+              <DetailSection title='Recovery'>
+                <DescriptionList layout='horizontal' size='sm' className={styles.InstanceDetails}>
+                  <DescriptionList.Item label='Failure stage'>{development?.failedStage ?? 'None reported'}</DescriptionList.Item>
+                  <DescriptionList.Item label='Command' copyable={Boolean(development?.recoveryCommand)}>{development?.recoveryCommand ?? 'Inspect workspace status before trusting served source'}</DescriptionList.Item>
+                </DescriptionList>
+              </DetailSection>
+            )}
           </div>
           <div className={footerStyles.Actions}>
             <PopoverAction icon={<LuInfo size={12} />} label='Full instance details' onClick={() => { close(); setOpen(true); void refreshInfo(); }} />
@@ -76,44 +98,62 @@ export default function InstanceIndicator() {
       </FooterPopover>
       <Dialog open={open} onClose={() => {
         setOpen(false); 
-      }} size='md'>
+      }} size='lg'>
         <Dialog.Title>{identity ? `Development instance · ${identity.displayName}` : 'Instance unavailable'}</Dialog.Title>
         <Dialog.Body>
-          <p role='status'>{STATUS_LABEL[status]}</p>
+          <div className={styles.InstanceSummary}>
+            <Chip size='sm' variant='soft' color={status === 'confirmed' ? 'success' : 'neutral'}>{status === 'confirmed' ? 'Identity confirmed' : 'Identity pending'}</Chip>
+            <Text size='sm' tone='muted' role='status'>{STATUS_LABEL[status]}</Text>
+          </div>
           {identity && (
-            <DescriptionList layout='vertical' size='sm' className={styles.InstanceDetails}>
-              <DescriptionList.Item label='Instance' copyable>{identity.instanceID}</DescriptionList.Item>
-              <DescriptionList.Item label='Kind'>{identity.kind}</DescriptionList.Item>
-              {info && <>
-                <DescriptionList.Item label='Workspace' copyable>{info.workspaceID || 'Not set'}</DescriptionList.Item>
-                <DescriptionList.Item label='State root' copyable>{info.stateRoot}</DescriptionList.Item>
-                <DescriptionList.Item label='Generation' copyable>{info.generation || 'Not set'}</DescriptionList.Item>
-                <DescriptionList.Item label='Channel'>{info.channel}</DescriptionList.Item>
-                <DescriptionList.Item label='Readiness'>{info.readiness || 'Not reported'}</DescriptionList.Item>
-                <DescriptionList.Item label='Version'>{info.version || 'Not reported'}</DescriptionList.Item>
-                <DescriptionList.Item label='Commit' copyable>{info.commit || 'Not reported'}</DescriptionList.Item>
-              </>}
-            </DescriptionList>
+            <DetailSection title='Identity'>
+              <DescriptionList layout='horizontal' size='sm' className={styles.InstanceDetails}>
+                <DescriptionList.Item label='Instance' copyable>{identity.instanceID}</DescriptionList.Item>
+                <DescriptionList.Item label='Kind'><Chip size='xs' variant='soft' color='neutral'>{identity.kind}</Chip></DescriptionList.Item>
+                {info && <DescriptionList.Item label='Workspace' copyable>{info.workspaceID || 'Not set'}</DescriptionList.Item>}
+              </DescriptionList>
+            </DetailSection>
           )}
           {info && <>
-            <h3>Repositories</h3>
-            {(info.repositories ?? []).length === 0 ? <p>No repositories reported.</p> : (
-              <DescriptionList layout='vertical' size='sm' className={styles.InstanceDetails}>
-                {info.repositories?.map((repo) => (
-                  <DescriptionList.Item label={repo.id} key={repo.id}>
-                    {repo.path}<br />{repo.ref}{repo.commit ? ` · ${repo.commit}` : ''}
+            <DetailSection title='Runtime'>
+              <DescriptionList layout='horizontal' size='sm' className={styles.InstanceDetails}>
+                <DescriptionList.Item label='Readiness'><Chip size='xs' variant='soft' color={info.readiness === 'host-ready' && status === 'confirmed' ? 'success' : 'neutral'}>{info.readiness || 'Not reported'}</Chip></DescriptionList.Item>
+                <DescriptionList.Item label='Channel'>{info.channel}</DescriptionList.Item>
+                <DescriptionList.Item label='Generation' copyable>{info.generation || 'Not set'}</DescriptionList.Item>
+                <DescriptionList.Item label='State root' copyable>{info.stateRoot}</DescriptionList.Item>
+              </DescriptionList>
+            </DetailSection>
+            <DetailSection title='Build'>
+              <DescriptionList layout='horizontal' size='sm' className={styles.InstanceDetails}>
+                <DescriptionList.Item label='Version'>{info.version || 'Not reported'}</DescriptionList.Item>
+                <DescriptionList.Item label='Commit' copyable>{info.commit || 'Not reported'}</DescriptionList.Item>
+              </DescriptionList>
+            </DetailSection>
+            <DetailSection title='Repositories'>
+              {(info.repositories ?? []).length === 0 ? <Text size='sm' tone='muted'>No repositories reported.</Text> : (
+                <div className={styles.InstanceRepositories}>
+                  {info.repositories?.map((repo) => (
+                    <section key={repo.id} className={styles.InstanceRepository} aria-label={repo.id}>
+                      <Heading level={4} size='xs'>{repo.id}</Heading>
+                      <DescriptionList layout='horizontal' size='sm' className={styles.InstanceDetails}>
+                        <DescriptionList.Item label='Path' copyable>{repo.path}</DescriptionList.Item>
+                        <DescriptionList.Item label='Ref' copyable>{repo.ref}</DescriptionList.Item>
+                        {repo.commit && repo.commit !== repo.ref && <DescriptionList.Item label='Commit' copyable>{repo.commit}</DescriptionList.Item>}
+                      </DescriptionList>
+                    </section>
+                  ))}
+                </div>
+              )}
+            </DetailSection>
+            <DetailSection title='Actual endpoints'>
+              <DescriptionList layout='horizontal' size='sm' className={styles.InstanceDetails}>
+                {ENDPOINT_NAMES.map((name) => (
+                  <DescriptionList.Item label={name} key={name} copyable={Boolean(info.endpoints[name])}>
+                    {info.endpoints[name] ? safeEndpoint(info.endpoints[name]) : <Text size='sm' tone='muted'>Not running</Text>}
                   </DescriptionList.Item>
                 ))}
               </DescriptionList>
-            )}
-            <h3>Actual endpoints</h3>
-            <DescriptionList layout='vertical' size='sm' className={styles.InstanceDetails}>
-              {ENDPOINT_NAMES.map((name) => (
-                <DescriptionList.Item label={name} key={name} copyable={Boolean(info.endpoints[name])}>
-                  {info.endpoints[name] ? safeEndpoint(info.endpoints[name]) : 'Not running'}
-                </DescriptionList.Item>
-              ))}
-            </DescriptionList>
+            </DetailSection>
           </>}
         </Dialog.Body>
         <Dialog.Footer>

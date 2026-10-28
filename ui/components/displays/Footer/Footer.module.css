@@ -358,10 +358,51 @@ button.Chip:hover {
 
 
 
+.InstanceDetails[data-ov-layout='horizontal'] > div {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+}
+
 .InstanceDetails dd {
   margin: 0;
+  min-inline-size: 0;
   overflow-wrap: anywhere;
   user-select: text;
   -webkit-user-select: text;
+}
+
+.InstanceSummary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--ov-space-2);
+  padding-block: var(--ov-space-2);
+}
+
+.InstanceSection {
+  padding-block: var(--ov-space-3);
+  border-top: 1px solid var(--ov-color-border-muted);
+}
+
+.InstanceSectionTitle {
+  margin: 0 0 var(--ov-space-2);
+  color: var(--ov-color-fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.InstanceRepositories {
+  display: grid;
+  gap: var(--ov-space-2);
+}
+
+.InstanceRepository {
+  min-inline-size: 0;
+  padding: var(--ov-space-3);
+  border: 1px solid var(--ov-color-border-muted);
+  border-radius: var(--ov-radius-sm, 4px);
+}
+
+.InstanceRepository h4 {
+  margin: 0 0 var(--ov-space-2);
 }
 
