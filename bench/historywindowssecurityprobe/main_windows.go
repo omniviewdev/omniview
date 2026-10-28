@@ -64,6 +64,15 @@ func get(target string) ([]byte, error) {
 		return nil, err
 	}
 	defer credFree.Call(uintptr(unsafe.Pointer(c)))
+	return consumeCredential(c)
+}
+
+// consumeCredential clears native key material before get releases its allocation.
+// CredReadW owns the blob bounds, including when its shape is not our key format.
+func consumeCredential(c *credential) ([]byte, error) {
+	if c != nil && c.Blob != nil {
+		defer wipe(unsafe.Slice(c.Blob, int(c.BlobSize)))
+	}
 	if c == nil || c.Type != 1 || c.BlobSize != 32 || c.Blob == nil {
 		return nil, errors.New("invalid stored key shape")
 	}
@@ -82,6 +91,15 @@ func remove(target string) error {
 	return nil
 }
 func wipe(b []byte) { clear(b); runtime.KeepAlive(b) }
+
+func requireAbsent(target string) error {
+	existing, err := get(target)
+	wipe(existing)
+	if !errors.Is(err, windows.ERROR_NOT_FOUND) {
+		return errors.New("fresh credential was not missing")
+	}
+	return nil
+}
 
 // checkACL rejects every ACE except explicit full-control allows for this user and SYSTEM.
 func checkACL(path, user string) error {
@@ -150,6 +168,9 @@ func run() (result map[string]any, err error) {
 		return result, err
 	}
 	target := "Omniview-HR02-Proof/" + hex.EncodeToString(nonce)
+	if e := requireAbsent(target); e != nil {
+		return result, e
+	}
 	// Register cleanup before the first write, including partial write failures.
 	defer func() {
 		e := remove(target)
@@ -157,9 +178,6 @@ func run() (result map[string]any, err error) {
 			err = errors.Join(err, errors.New("credential cleanup failed"))
 		}
 	}()
-	if _, e := get(target); !errors.Is(e, windows.ERROR_NOT_FOUND) {
-		return result, errors.New("fresh credential was not missing")
-	}
 	a, b := make([]byte, 32), make([]byte, 32)
 	defer wipe(a)
 	defer wipe(b)

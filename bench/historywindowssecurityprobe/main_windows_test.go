@@ -2,7 +2,16 @@
 
 package main
 
-import "testing"
+import (
+	"bytes"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"testing"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
+)
 
 func TestAllowedACE(t *testing.T) {
 	user := "S-1-5-21-123-456-789-1001"
@@ -38,5 +47,79 @@ func TestRejectInvalidKeyBeforeVaultWrite(t *testing.T) {
 	}
 	if _, err := get("invalid\x00target"); err == nil {
 		t.Fatal("accepted embedded NUL")
+	}
+}
+
+func TestConsumeCredentialClearsNativeBuffer(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		kind  uint32
+		size  int
+		valid bool
+	}{
+		{"valid", 1, 32, true},
+		{"wrong_length", 1, 31, false},
+		{"wrong_type", 2, 32, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ptr, err := windows.LocalAlloc(0, uint32(tc.size))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				if _, err := windows.LocalFree(windows.Handle(ptr)); err != nil {
+					t.Error(err)
+				}
+			}()
+			native := unsafe.Slice((*byte)(unsafe.Pointer(ptr)), tc.size)
+			copy(native, bytes.Repeat([]byte{0xa5}, tc.size))
+			c := credential{Type: tc.kind, BlobSize: uint32(len(native)), Blob: &native[0]}
+			got, err := consumeCredential(&c)
+			defer wipe(got)
+			if (err == nil) != tc.valid {
+				t.Fatal("unexpected key shape result")
+			}
+			if !bytes.Equal(native, make([]byte, len(native))) {
+				t.Fatal("native credential buffer was not cleared before release")
+			}
+			if tc.valid && !bytes.Equal(got, bytes.Repeat([]byte{0xa5}, 32)) {
+				t.Fatal("returned key was not independently cloned")
+			}
+		})
+	}
+}
+
+func TestNativeExistingCredentialRemainsUnchanged(t *testing.T) {
+	nonce := make([]byte, 16)
+	key := make([]byte, 32)
+	defer wipe(key)
+	if _, err := rand.Read(nonce); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rand.Read(key); err != nil {
+		t.Fatal(err)
+	}
+	target := "Omniview-HR02-Proof/test-" + hex.EncodeToString(nonce)
+	if err := requireAbsent(target); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := remove(target); err != nil && !errors.Is(err, windows.ERROR_NOT_FOUND) {
+			t.Error("owned credential cleanup failed")
+		}
+	})
+	if err := put(target, key); err != nil {
+		t.Fatal(err)
+	}
+	if err := requireAbsent(target); err == nil {
+		t.Fatal("existing credential accepted as fresh")
+	}
+	got, err := get(target)
+	defer wipe(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, key) {
+		t.Fatal("freshness rejection changed existing credential")
 	}
 }
