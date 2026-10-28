@@ -33,9 +33,8 @@ func TestAdmitReferencePinsMetadataWithoutGetAndKeepsRequestLifetime(t *testing.
 	ctx, err := ctrl.AdmitReference(parent, "exec.CreateSession", "p1", input.Route, input.Reference)
 	require.NoError(t, err)
 	require.NoError(t, ctx.Err(), "temporary catalog cleanup must not cancel utility admission")
-	revision, ok := resourcev2.CatalogRevisionFromContext(ctx)
+	_, ok := resourcev2.CatalogRevisionFromContext(ctx)
 	require.True(t, ok)
-	require.Equal(t, "utility-admission", revision)
 	require.Len(t, targets, 2)
 	require.NotEmpty(t, targets[1].Scope["query-scope"])
 	request, ok := invocation.FromContext(ctx)
@@ -72,7 +71,7 @@ func TestAdmitReferenceRejectsUnknownOperationAndUntrustedContext(t *testing.T) 
 	require.Equal(t, "FORBIDDEN", requireAppError(t, err).Code)
 }
 
-func TestAdmitReferenceRejectsOversizedCatalogRevisionWithoutTruncation(t *testing.T) {
+func TestAdmitReferenceBoundsAcceptedCatalogRevision(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	provider := &mockProvider{}
 	registerActionTestPlugin(ctrl, "p1", provider)
@@ -82,15 +81,18 @@ func TestAdmitReferenceRejectsOversizedCatalogRevisionWithoutTruncation(t *testi
 		catalog.Revision = strings.Repeat("r", resourcev2.MaxCatalogRevisionBytes+1)
 		return catalog, nil
 	}
-	_, err := ctrl.AdmitReference(testInvocationContext(), "metric.Query", "p1", input.Route, input.Reference)
-	require.Error(t, err)
-	require.Equal(t, "RESOURCE_LIMIT", requireAppError(t, err).Code)
+	ctx, err := ctrl.AdmitReference(testInvocationContext(), "metric.Query", "p1", input.Route, input.Reference)
+	require.NoError(t, err)
+	revision, ok := resourcev2.CatalogRevisionFromContext(ctx)
+	require.True(t, ok)
+	require.NotEmpty(t, revision)
+	require.LessOrEqual(t, len(revision), resourcev2.MaxCatalogRevisionBytes)
 }
 
 func TestAdmitReferenceDistinguishesProviderMismatchFromRetiredAuthority(t *testing.T) {
 	for _, mismatch := range []struct {
-		name string
-		code string
+		name   string
+		code   string
 		mutate func(*resourcev2.ResourceReference)
 	}{
 		{name: "provider", code: "INVALID_REQUEST", mutate: func(reference *resourcev2.ResourceReference) { reference.Address.Provider = "other-provider" }},

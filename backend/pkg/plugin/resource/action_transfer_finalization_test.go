@@ -16,6 +16,7 @@ import (
 // descriptor and producer alive until the accepted handle is canceled.
 type transferFileResourcer struct {
 	root         string
+	catalogEpoch string
 	continueWork chan struct{}
 	continued    chan error
 	opened       chan *os.File
@@ -23,8 +24,14 @@ type transferFileResourcer struct {
 	stopped      chan struct{}
 }
 
-func (*transferFileResourcer) Catalog(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
-	return canonicalTestCatalog("native", "native::v1::File"), nil
+func (r *transferFileResourcer) Catalog(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+	catalog := canonicalTestCatalog("native", "native::v1::File")
+	revision, err := resource.BindCatalogRevision(r.catalogEpoch, catalog.Revision)
+	if err != nil {
+		return resource.Catalog{}, err
+	}
+	catalog.Revision = revision
+	return catalog, nil
 }
 
 func (r *transferFileResourcer) StreamAction(ctx context.Context, _ resource.ActionRequest, events chan<- resource.ActionEvent) error {
@@ -66,8 +73,13 @@ func (r *transferFileResourcer) StreamAction(ctx context.Context, _ resource.Act
 func TestStreamActionCommittedNativeHandleSurvivesReturnCancellation(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	root := t.TempDir()
+	epoch, err := resource.NewCatalogBindingEpoch()
+	if err != nil {
+		t.Fatal(err)
+	}
 	native := &transferFileResourcer{
 		root:         root,
+		catalogEpoch: epoch,
 		continueWork: make(chan struct{}),
 		continued:    make(chan error, 1),
 		opened:       make(chan *os.File, 1),

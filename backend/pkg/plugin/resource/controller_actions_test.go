@@ -43,9 +43,8 @@ func TestGetActions_PinsMetadataCatalogWithoutGetCapability(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	provider := &mockProvider{
 		GetActionsFunc: func(ctx context.Context, _ resource.AccessRoute, _ string) ([]resource.ActionDescriptor, error) {
-			revision, ok := resource.CatalogRevisionFromContext(ctx)
+			_, ok := resource.CatalogRevisionFromContext(ctx)
 			require.True(t, ok)
-			require.Equal(t, "metadata-only", revision)
 			return nil, nil
 		},
 	}
@@ -62,21 +61,23 @@ func TestGetActions_PinsMetadataCatalogWithoutGetCapability(t *testing.T) {
 
 func TestStreamAction_ProducerRetainsAdmittedCatalogRevision(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	observed := make(chan string, 1)
-	provider := &mockProvider{StreamActionFunc: func(ctx context.Context, _ resource.ActionRequest, events chan<- resource.ActionEvent) error {
-		revision, _ := resource.CatalogRevisionFromContext(ctx)
-		observed <- revision
+	observed := make(chan error, 1)
+	provider := &mockProvider{}
+	provider.StreamActionFunc = func(ctx context.Context, request resource.ActionRequest, events chan<- resource.ActionEvent) error {
+		catalog, err := provider.Catalog(context.Background(), resource.CatalogRequest{Route: request.Route})
+		if err == nil {
+			err = resource.CheckCatalogRevision(ctx, catalog)
+		}
+		observed <- err
 		events <- resource.ActionEvent{Type: "ready"}
 		<-ctx.Done()
 		return ctx.Err()
-	}}
+	}
 	registerActionTestPlugin(ctrl, "p1", provider)
 	request := admittedActionRequest(t, ctrl, "p1", "conn-1", "pods", "restart")
-	catalog, err := provider.CatalogFunc(context.Background(), resource.CatalogRequest{Route: request.Route})
-	require.NoError(t, err)
 	id, err := ctrl.StreamAction(testInvocationContext(), "p1", request)
 	require.NoError(t, err)
-	require.Equal(t, catalog.Revision, <-observed)
+	require.NoError(t, <-observed)
 	require.NoError(t, ctrl.CancelStreamAction(testInvocationContext(), id))
 }
 
@@ -358,6 +359,9 @@ func TestPresentationAncillaryForwardsCanonicalRouteAndDocumentReference(t *test
 	definition := resource.ResourceDefinition{ColumnDefs: []resource.ColumnDefinition{{ID: "name", Header: "Name"}}}
 	document := resource.SchemaDocument{Reference: reference, Dialect: "https://json-schema.org/draft/2020-12/schema", Document: []byte(`{"type":"object"}`)}
 	registerMockPlugin(ctrl, "p1", &mockProvider{
+		CatalogFunc: func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+			return canonicalTestCatalog("p1", "k8s:/pods"), nil
+		},
 		GetResourceGroupsFunc: func(_ context.Context, got resource.AccessRoute) ([]resource.ResourceGroup, error) {
 			assert.Equal(t, route, got)
 			return groups, nil

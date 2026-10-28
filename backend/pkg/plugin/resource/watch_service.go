@@ -59,11 +59,11 @@ func (c *controller) StartConnectionWatch(ctx context.Context, pluginID string, 
 	// Complete all authorization and capability admission before starting any
 	// source. A later denied target must not leave earlier sources running.
 	type watchBatchKey struct {
-		route resourcev2.AccessRoute
+		route    resourcev2.AccessRoute
 		revision string
 	}
 	type watchBatch struct {
-		ctx context.Context
+		ctx     context.Context
 		targets []resourcev2.ReadTarget
 	}
 	batches := make([]watchBatch, 0, len(targets))
@@ -117,10 +117,18 @@ func (c *controller) GetWatchState(ctx context.Context, pluginID string, route r
 		return nil, err
 	}
 	defer finishResource(ctx, &retErr)
-	provider, err := c.updateProvider(ctx, pluginID)
-	if err != nil {
-		return nil, err
-	}
+	raw, generation, ctx, cleanup, err := c.operationGeneration(ctx, pluginID, route)
+	if err != nil { return nil,err }
+	defer cleanup()
+	features,err := c.providerFeatures(ctx,pluginID,raw)
+	if err != nil { return nil,err }
+	provider,ok := raw.(resourcev2.BestEffortUpdateProvider)
+	if !ok || !features.Has(resourcev2.FeatureBestEffortUpdates) { return nil,resourcev2.NewError("UNSUPPORTED","Best-effort updates are not supported.") }
+	catalog,err := raw.Catalog(ctx,resourcev2.CatalogRequest{Route:route})
+	if err != nil { return nil,err }
+	if err := resourcev2.ValidateCatalog(catalog); err != nil { return nil,err }
+	if err := c.observeCatalogBinding(ctx,pluginID,route,catalog,captureCatalogAdmission(ctx,generation)); err != nil { return nil,err }
+	ctx = resourcev2.WithCatalogRevision(ctx,catalog.Revision)
 	summary, err := provider.GetWatchState(ctx, route)
 	if err != nil {
 		return nil, err
@@ -128,6 +136,7 @@ func (c *controller) GetWatchState(ctx context.Context, pluginID string, route r
 	if summary == nil || summary.Route != route || summary.Guarantee != resourcev2.BestEffortGuarantee {
 		return nil, resourcev2.NewError("INVALID_REQUEST", "Invalid best-effort update summary.")
 	}
+	if err := c.currentGeneration(ctx,pluginID,generation); err != nil { return nil,err }
 	return summary, nil
 }
 func (c *controller) EnsureResourceWatch(ctx context.Context, pluginID string, target resourcev2.ReadTarget) (retErr error) {

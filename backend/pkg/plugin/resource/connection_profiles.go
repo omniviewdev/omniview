@@ -197,13 +197,15 @@ func (c *controller) connectionProfileSource(ctx context.Context, pluginID strin
 func (c *controller) replayConnectionProfiles(ctx context.Context, pluginID string, loaded []types.Connection) ([]types.Connection, error) {
 	c.profilesMu.Lock()
 	defer c.profilesMu.Unlock()
-	return c.replayConnectionProfilesLocked(ctx,pluginID,loaded)
+	return c.replayConnectionProfilesLocked(ctx, pluginID, loaded)
 }
 
 // Caller holds profilesMu across native discovery and overlay replay.
-func (c *controller) replayConnectionProfilesLocked(ctx context.Context, pluginID string, loaded []types.Connection) ([]types.Connection,error) {
+func (c *controller) replayConnectionProfilesLocked(ctx context.Context, pluginID string, loaded []types.Connection) ([]types.Connection, error) {
 	_, generation, ctx, cleanup, err := c.operationGeneration(ctx, pluginID, resourcev2.AccessRoute{})
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer cleanup()
 	root, err := c.pluginStoreFn(pluginID)
 	if err != nil {
@@ -221,13 +223,21 @@ func (c *controller) replayConnectionProfilesLocked(ctx context.Context, pluginI
 		return nil, err
 	}
 	native, err := source.NativeConnections(ctx)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	current, err := source.ListConnections(ctx)
-	if err != nil { return nil, err }
-	routes, retire := profileConnectionChanges(current,native,state)
-	release, err := c.beginConfigurationChanges(ctx,pluginID,generation,routes,retire)
-	if err != nil { return nil, err }
-	if release != nil { defer release() }
+	if err != nil {
+		return nil, err
+	}
+	routes, retire := profileConnectionChanges(current, native, state)
+	release, err := c.beginConfigurationChanges(ctx, pluginID, generation, routes, retire)
+	if err != nil {
+		return nil, err
+	}
+	if release != nil {
+		defer release()
+	}
 	if err := source.ApplyConnectionOverlay(ctx, state.overlay()); err != nil {
 		return nil, err
 	}
@@ -243,7 +253,9 @@ func (c *controller) refreshProfileConnections(ctx context.Context, pluginID str
 	if err != nil {
 		return nil, err
 	}
-	if err := c.publishProfileConnections(ctx,pluginID,generation,native,effective); err != nil { return nil,err }
+	if err := c.publishProfileConnections(ctx, pluginID, generation, native, effective); err != nil {
+		return nil, err
+	}
 	return effective, nil
 }
 
@@ -386,18 +398,15 @@ func withoutDesiredConnection(state desiredConnectionState, id string) desiredCo
 }
 
 func (c *controller) changeConnectionProfile(ctx context.Context, pluginID, id, operation string, connection *types.Connection) (_result ConnectionProfileResult, retErr error) {
-	defer func() {
-		if retErr != nil && (resourcev2.ErrorCode(retErr) == "INTERNAL" || resourcev2.ErrorCode(retErr) == "PROVIDER_ERROR") {
-			retErr = resourcev2.NewError("CONFLICT", "Connection profile was not applied; configuration or storage could not be read safely.")
-		}
-	}()
 	if id == "" || !utf8.ValidString(id) {
 		return ConnectionProfileResult{}, resourcev2.NewError("INVALID_REQUEST", "An explicit UTF-8 connection ID is required.")
 	}
 	c.profilesMu.Lock()
 	defer c.profilesMu.Unlock()
-	_, generation, ctx, cleanup, err := c.operationGeneration(ctx, pluginID, resourcev2.AccessRoute{Connection:id})
-	if err != nil { return ConnectionProfileResult{}, err }
+	_, generation, ctx, cleanup, err := c.operationGeneration(ctx, pluginID, resourcev2.AccessRoute{Connection: id})
+	if err != nil {
+		return ConnectionProfileResult{}, err
+	}
 	defer cleanup()
 	source, err := c.connectionProfileSource(ctx, pluginID)
 	if err != nil {
@@ -499,16 +508,24 @@ func (c *controller) changeConnectionProfile(ctx context.Context, pluginID, id, 
 		return ConnectionProfileResult{}, resourcev2.NewError("INVALID_REQUEST", "Unknown connection profile operation.")
 	}
 	current, err := source.ListConnections(ctx)
-	if err != nil { return ConnectionProfileResult{}, err }
-	routes, retire := profileConnectionChanges(current,native,next)
-	release, err := c.beginConfigurationChanges(ctx,pluginID,generation,routes,retire)
-	if err != nil { return ConnectionProfileResult{}, err }
-	if release != nil { defer release() }
+	if err != nil {
+		return ConnectionProfileResult{}, err
+	}
+	routes, retire := profileConnectionChanges(current, native, next)
+	release, err := c.beginConfigurationChanges(ctx, pluginID, generation, routes, retire)
+	if err != nil {
+		return ConnectionProfileResult{}, err
+	}
+	if release != nil {
+		defer release()
+	}
 	effective, err := applyDesiredConnections(ctx, source, root, previous, next)
 	if err != nil {
 		return ConnectionProfileResult{}, err
 	}
-	if err := c.publishProfileConnections(ctx,pluginID,generation,native,effective); err != nil { return ConnectionProfileResult{},err }
+	if err := c.publishProfileConnections(ctx, pluginID, generation, native, effective); err != nil {
+		return ConnectionProfileResult{}, err
+	}
 	result := ConnectionProfile{ID: id, Source: "absent", Active: false}
 	for _, profile := range listConnectionProfiles(next, native, effective, nil) {
 		if profile.ID == id {

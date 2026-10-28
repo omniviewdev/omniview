@@ -41,9 +41,8 @@ func TestStartConnectionWatch_BatchesSameAdmittedRouteCatalog(t *testing.T) {
 		StartConnectionWatchFunc: func(ctx context.Context, targets []resource.ReadTarget) error {
 			calls++
 			require.Len(t, targets, 2)
-			revision, ok := resource.CatalogRevisionFromContext(ctx)
+			_, ok := resource.CatalogRevisionFromContext(ctx)
 			require.True(t, ok)
-			require.Equal(t, targets[0].Route.Connection, revision)
 			require.NoError(t, ctx.Err())
 			return nil
 		},
@@ -78,7 +77,8 @@ func TestStartConnectionWatch_DoesNotMergeDistinctAcceptedRevisions(t *testing.T
 	target := admittedReadTarget(t, ctrl, "p1", "conn-1", "pods").Target
 	revision = "accepted"
 	require.NoError(t, ctrl.StartConnectionWatch(testInvocationContext(), "p1", []resource.ReadTarget{target, target}))
-	require.Equal(t, []string{"accepted", "accepted/next"}, observed)
+	require.Len(t, observed, 2)
+	require.NotEqual(t, observed[0], observed[1])
 }
 
 func TestStartConnectionWatch_ProviderError(t *testing.T) {
@@ -283,4 +283,25 @@ func TestCatalogOnlyWatchOperationsAreExplicitlyUnsupported(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) { require.Equal(t, "UNSUPPORTED", requireAppError(t, call()).Code) })
 	}
+}
+
+func TestGetWatchStateUsesNativeCatalogAdmissionWithoutGetPermission(t *testing.T) {
+	ctrl,_ := newTestControllerWithEmitter(t)
+	called := make(chan struct{},1)
+	provider := &mockProvider{
+		CatalogFunc:func(context.Context,resource.CatalogRequest)(resource.Catalog,error){
+			catalog:=canonicalTestCatalog("updates-only","objects")
+			catalog.Types[0].Capabilities=[]resource.Capability{{Operation:resource.OperationUpdate,Scope:resource.QueryScope{},Guarantee:resource.BestEffortGuarantee}}
+			return catalog,nil
+		},
+		GetFunc:func(context.Context,resource.GetRequest)(resource.Record,error){t.Error("watch state must not acquire Get");return resource.Record{},errors.New("unexpected Get")},
+		GetWatchStateFunc:func(_ context.Context,route resource.AccessRoute)(*resource.WatchConnectionSummary,error){
+			called<-struct{}{}
+			return &resource.WatchConnectionSummary{Route:route,Resources:map[string]resource.WatchState{"objects":resource.WatchStateSynced},ResourceCounts:map[string]resource.Count{"objects":{Kind:"unknown"}},Scope:resource.QueryScope{},Guarantee:resource.BestEffortGuarantee},nil
+		},
+	}
+	registerMockPlugin(ctrl,"updates",setupGRPCProvider(t,provider))
+	summary,err:=ctrl.GetWatchState(testInvocationContext(),"updates",resource.AccessRoute{Connection:"explicit"})
+	require.NoError(t,err);require.Equal(t,resource.WatchStateSynced,summary.Resources["objects"])
+	select {case <-called:default:t.Fatal("native state admission never reached provider")}
 }

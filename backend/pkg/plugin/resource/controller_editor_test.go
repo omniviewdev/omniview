@@ -17,6 +17,7 @@ func TestGetEditorSchemas_Success(t *testing.T) {
 	revision := "schema-r1"
 	documentRef := &resource.SchemaDocumentReference{ID: "kubernetes-openapi", Revision: revision}
 	mock := &mockProvider{
+		CatalogFunc: lifecycleTestCatalog("k8s:/pods", "k8s:apps/deployments"),
 		GetEditorSchemasFunc: func(_ context.Context, route resource.AccessRoute) ([]resource.EditorSchema, error) {
 			assert.Equal(t, "conn-1", route.Connection)
 			return []resource.EditorSchema{
@@ -41,6 +42,7 @@ func TestGetEditorSchemas_Success(t *testing.T) {
 func TestGetEditorSchemas_ProviderError(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
+		CatalogFunc: lifecycleTestCatalog("k8s:/pods"),
 		GetEditorSchemasFunc: func(_ context.Context, _ resource.AccessRoute) ([]resource.EditorSchema, error) {
 			return nil, errors.New("schemas unavailable")
 		},
@@ -63,6 +65,7 @@ func TestGetEditorSchemas_PluginNotFound(t *testing.T) {
 func TestGetEditorSchemas_EmptyResult(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
+		CatalogFunc: lifecycleTestCatalog("k8s:/pods"),
 		GetEditorSchemasFunc: func(_ context.Context, _ resource.AccessRoute) ([]resource.EditorSchema, error) {
 			return []resource.EditorSchema{}, nil
 		},
@@ -78,7 +81,8 @@ func TestGetEditorSchemas_RequestCancellationIsTyped(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	ctx, cancel := context.WithCancel(testInvocationContext())
 	defer cancel()
-	registerMockPlugin(ctrl, "p1", &mockProvider{GetEditorSchemasFunc: func(context.Context, resource.AccessRoute) ([]resource.EditorSchema, error) {
+	registerMockPlugin(ctrl, "p1", &mockProvider{CatalogFunc: lifecycleTestCatalog("k8s:/pods"), GetEditorSchemasFunc: func(context.Context, resource.AccessRoute) ([]resource.EditorSchema, error) {
+		// Cancel only after valid catalog admission reaches the provider.
 		cancel()
 		return nil, context.Canceled
 	}})
@@ -88,7 +92,7 @@ func TestGetEditorSchemas_RequestCancellationIsTyped(t *testing.T) {
 
 func TestGetEditorSchemasRejectsRetiredGenerationResult(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	registerMockPlugin(ctrl, "p1", &mockProvider{GetEditorSchemasFunc: func(context.Context, resource.AccessRoute) ([]resource.EditorSchema, error) {
+	registerMockPlugin(ctrl, "p1", &mockProvider{CatalogFunc: lifecycleTestCatalog("k8s:/pods"), GetEditorSchemasFunc: func(context.Context, resource.AccessRoute) ([]resource.EditorSchema, error) {
 		registerMockPlugin(ctrl, "p1", &mockProvider{})
 		return []resource.EditorSchema{{Type: "retired-generation"}}, nil
 	}})

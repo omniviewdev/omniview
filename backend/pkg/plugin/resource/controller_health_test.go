@@ -129,17 +129,39 @@ func TestGetResourceEvents_PluginNotFound(t *testing.T) {
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 }
 
-func ancillaryPodRequest(t *testing.T, ctrl *controller, mock *mockProvider) resource.GetRequest {
+func ancillaryPodRequest(t *testing.T, ctrl *controller, mock *mockProvider, targetTypes ...string) resource.GetRequest {
 	t.Helper()
 	mock.CatalogFunc = func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
 		catalog := canonicalTestCatalog("p1", "k8s:/pods")
 		catalog.Types[0].IdentityDimensions = []resource.Dimension{{Name: "namespace"}}
 		catalog.Types[0].QueryDimensions = []resource.Dimension{{Name: "namespace"}}
+		for i := range catalog.Types[0].Capabilities {
+			catalog.Types[0].Capabilities[i].Scope = resource.QueryScope{{Dimension: "namespace", Match: resource.ScopeAny}}
+		}
+		for _, targetType := range targetTypes {
+			target := canonicalTestCatalog("p1", targetType).Types[0]
+			target.IdentityDimensions = []resource.Dimension{{Name: "namespace"}}
+			target.QueryDimensions = []resource.Dimension{{Name: "namespace"}}
+			for i := range target.Capabilities {
+				target.Capabilities[i].Scope = resource.QueryScope{{Dimension: "namespace", Match: resource.ScopeAny}}
+			}
+			target.DefaultRepresentation = canonicalTestRepresentation().ID
+			catalog.Types = append(catalog.Types, target)
+		}
 		return catalog, nil
 	}
 	registerMockPlugin(ctrl, "p1", mock)
-	request := admittedGetRequest(t, ctrl, "p1", "conn-1", "k8s:/pods", "my-pod").Request
-	request.Reference.Address.Scope = []resource.ScopeEntry{{Dimension: "namespace", Value: "default"}}
+	resolved, err := ctrl.ResolveTarget(testInvocationContext(), "p1", ResolveTargetRequest{
+		Route: resource.AccessRoute{Connection: "conn-1"}, Type: "k8s:/pods", Representation: "native",
+		Scope: resource.QueryScope{{Dimension: "namespace", Match: resource.ScopeAny}},
+	})
+	require.NoError(t, err)
+	request := resource.GetRequest{Route: resolved.Target.Route, Representation: resolved.Target.Representation,
+		Reference: resource.ResourceReference{Address: resource.ResourceAddress{
+			Provider: resolved.Target.Provider, Authority: resolved.Target.Authority, Type: resolved.Target.Type, ID: "my-pod",
+			Scope: []resource.ScopeEntry{{Dimension: "namespace", Value: "default"}},
+		}},
+	}
 	return request
 }
 

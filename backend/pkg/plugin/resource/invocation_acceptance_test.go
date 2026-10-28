@@ -279,7 +279,7 @@ func TestConnectionStateAggregateFailsClosedThroughTransport(t *testing.T) {
 	for _, code := range []string{"FORBIDDEN", "CANCELLED", "PARTIAL_RESULT", "PROVIDER_ERROR", "INTERNAL"} {
 		t.Run(code, func(t *testing.T) {
 			ctrl, _ := newTestControllerWithEmitter(t)
-			provider := &mockProvider{}
+			provider := &mockProvider{CatalogFunc: lifecycleTestCatalog("cloud::v1::Machine")}
 			provider.GetWatchStateFunc = func(context.Context, resource.AccessRoute) (*resource.WatchConnectionSummary, error) {
 				return &resource.WatchConnectionSummary{Resources: map[string]resource.WatchState{"secret": resource.WatchStateSynced}}, &resource.ResourceOperationError{Code: code, Title: "private", Message: "private"}
 			}
@@ -295,7 +295,7 @@ func TestConnectionStateAggregateFailsClosedThroughTransport(t *testing.T) {
 
 func TestConnectionStateAggregateCancellationStopsNativeRead(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	provider := &mockProvider{}
+	provider := &mockProvider{CatalogFunc: lifecycleTestCatalog("cloud::v1::Machine")}
 	started, stopped := make(chan struct{}), make(chan struct{})
 	provider.GetWatchStateFunc = func(ctx context.Context, _ resource.AccessRoute) (*resource.WatchConnectionSummary, error) {
 		close(started)

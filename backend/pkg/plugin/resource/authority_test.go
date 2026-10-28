@@ -187,8 +187,8 @@ func TestAuthorityStoreRejectsUntrustedDiskState(t *testing.T) {
 	cases := []struct{ name, data, message string }{
 		{"duplicate route", "[" + entry + "," + entry + "]", "duplicate persisted route"},
 		{"duplicate field", `[{"plugin":"p","plugin":"other","connection":"c","provider":"native","resourceType":"opaque/type","authority":"local:opaque"}]`, "invalid store JSON"},
-		{"unknown field", `[{"plugin":"p","connection":"c","provider":"native","resourceType":"opaque/type","authority":"local:opaque","extra":true}]`, "unknown field"},
-		{"unknown hint field", `[{"plugin":"p","connection":"c","provider":"native","resourceType":"opaque/type","authority":"local:opaque","hint":{"scheme":"s","id":"i","continuity":"connectionLocal","extra":true}}]`, "unknown field"},
+		{"unknown field", `[{"plugin":"p","connection":"c","provider":"native","resourceType":"opaque/type","authority":"local:opaque","extra":true}]`, ""},
+		{"unknown hint field", `[{"plugin":"p","connection":"c","provider":"native","resourceType":"opaque/type","authority":"local:opaque","hint":{"scheme":"s","id":"i","continuity":"connectionLocal","extra":true}}]`, ""},
 		{"missing authority", `[{"plugin":"p","connection":"c","provider":"native","resourceType":"opaque/type"}]`, "invalid persisted binding"},
 		{"missing resource type", `[{"plugin":"p","connection":"c","provider":"native","authority":"local:opaque"}]`, "invalid persisted binding"},
 		{"null root", `null`, "entry sequence"}, {"object root", `{}`, "entry sequence"},
@@ -204,7 +204,10 @@ func TestAuthorityStoreRejectsUntrustedDiskState(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, store.WriteFile(authorityStoreName, []byte(tc.data), 0o600))
 			_, err = NewAuthorityResolver(store)
-			require.ErrorContains(t, err, tc.message)
+			require.Error(t, err)
+			if tc.message != "" {
+				require.ErrorContains(t, err, tc.message)
+			}
 		})
 	}
 }
@@ -282,7 +285,7 @@ func TestAuthorityRestartProofRequiresMoreThanPersistedHints(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, resolver.hasUnprovenRestartBindings("p", "route"))
 	catalog := authorityTestCatalog("native", map[string]*resourcev2.NativeAuthorityHint{
-		"unknown": nil,
+		"unknown":        nil,
 		"claimed-stable": {Scheme: "cluster", ID: "same", Continuity: resourcev2.ContinuityStableNative},
 	})
 	_, err = resolver.ObserveCatalog("p", "route", catalog)

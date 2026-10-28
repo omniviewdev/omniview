@@ -20,6 +20,7 @@ import (
 func TestGetRelationships_Success(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
+		CatalogFunc: lifecycleTestCatalog("k8s:/pods", "k8s:apps/replicasets", "k8s:/configmaps"),
 		GetRelationshipsFunc: func(_ context.Context, route resource.AccessRoute, key string) ([]resource.RelationshipDescriptor, error) {
 			assert.Equal(t, "conn-1", route.Connection)
 			assert.Equal(t, "k8s:/pods", key)
@@ -52,6 +53,7 @@ func TestGetRelationships_Success(t *testing.T) {
 func TestGetRelationships_ProviderError(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
+		CatalogFunc: lifecycleTestCatalog("k8s:/pods"),
 		GetRelationshipsFunc: func(_ context.Context, _ resource.AccessRoute, _ string) ([]resource.RelationshipDescriptor, error) {
 			return nil, errors.New("relationships unavailable")
 		},

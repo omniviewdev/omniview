@@ -6,10 +6,11 @@ import (
 	"sync"
 	"testing"
 
+	"time"
+
 	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"time"
 )
 
 func finiteTestProvider(provider string) *mockProvider {
@@ -119,7 +120,9 @@ func TestGet_UntypedProviderError(t *testing.T) {
 		return resource.Record{}, errors.New("private")
 	}
 	_, err := ctrl.Get(testInvocationContext(), "p1", request)
-	assert.Equal(t, "INTERNAL", requireAppError(t, err).Code)
+	app := requireAppError(t, err)
+	assert.Equal(t, "PROVIDER_ERROR", app.Code)
+	assert.NotContains(t, app.Error(), "private")
 }
 
 func TestGet_ContextHasSession(t *testing.T) {

@@ -149,6 +149,10 @@ func TestC02RegisteredFileWatchSubscriptionLifecycle(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("registered event RPC did not complete plugin startup")
 	}
+	connections, loadErr := ctrl.LoadConnections(ctx, "proof")
+	require.NoError(t, loadErr)
+	require.Len(t, connections, 1)
+	require.Equal(t, "local", connections[0].ID)
 	connection, connectionErr := ctrl.GetConnection(ctx, "proof", "local")
 	require.NoError(t, connectionErr)
 	require.Equal(t, path, connection.Data["path"])

@@ -47,18 +47,13 @@ func grpcGetRequest() resource.GetRequest {
 func TestL3_01_EnumerateRoundTrip(t *testing.T) {
 	provider := grpcFiniteFixture()
 	record := canonicalTestRecord("p1", "authority", "native::Pod", "pod-1")
-	var acceptedRevision string
 	provider.EnumerateFunc = func(ctx context.Context, request resource.EnumerateRequest) (resource.SourcePage, error) {
-		revision, ok := resource.CatalogRevisionFromContext(ctx)
-		assert.True(t, ok)
-		assert.Equal(t, acceptedRevision, revision)
 		assert.Equal(t, "conn-1", request.Target.Route.Connection)
 		return resource.SourcePage{Records: []resource.Record{record}, Count: resource.Count{Kind: "unknown"}, Coverage: resource.Coverage{Kind: "complete"}, Consistency: "bestEffort"}, nil
 	}
 	client := setupGRPCProvider(t, provider)
 	catalog, err := client.Catalog(context.Background(), resource.CatalogRequest{Route: grpcGetRequest().Route})
 	require.NoError(t, err)
-	acceptedRevision = catalog.Revision
 	ctx := resource.WithCatalogRevision(context.Background(), catalog.Revision)
 	result, err := client.Enumerate(ctx, resource.EnumerateRequest{Target: resource.ReadTarget{Route: grpcGetRequest().Route, Provider: "p1", Authority: "authority", Type: "native::Pod", Representation: "native"}})
 	require.NoError(t, err)
@@ -71,18 +66,13 @@ func TestL3_02_GetRoundTrip(t *testing.T) {
 	provider := grpcFiniteFixture()
 	record := canonicalTestRecord("p1", "authority", "native::Pod", "pod-1")
 	record.Body.Map["exact"] = resource.Value{Kind: "uint64", Uint: "18446744073709551615"}
-	var acceptedRevision string
 	provider.GetFunc = func(ctx context.Context, request resource.GetRequest) (resource.Record, error) {
-		revision, ok := resource.CatalogRevisionFromContext(ctx)
-		assert.True(t, ok)
-		assert.Equal(t, acceptedRevision, revision)
 		assert.Equal(t, grpcGetRequest(), request)
 		return record, nil
 	}
 	client := setupGRPCProvider(t, provider)
 	catalog, err := client.Catalog(context.Background(), resource.CatalogRequest{Route: grpcGetRequest().Route})
 	require.NoError(t, err)
-	acceptedRevision = catalog.Revision
 	ctx := resource.WithCatalogRevision(context.Background(), catalog.Revision)
 	result, err := client.Get(ctx, grpcGetRequest())
 	require.NoError(t, err)
@@ -135,7 +125,34 @@ func TestL3_03_WatchEventsFlowThroughGRPC(t *testing.T) {
 	for _, want := range payloads {
 		select {
 		case got := <-sink.events:
-			assert.Equal(t, want, got)
+			switch expected := want.(type) {
+			case resource.WatchAddPayload:
+				actual, ok := got.(resource.WatchAddPayload)
+				require.True(t, ok)
+				assert.Equal(t, expected.Route, actual.Route)
+				assert.Equal(t, expected.Guarantee, actual.Guarantee)
+				assert.Equal(t, expected.Record, actual.Record)
+				assert.Empty(t, actual.Metadata.Labels)
+				assert.Equal(t, expected.Metadata.CreatedAt, actual.Metadata.CreatedAt)
+			case resource.WatchUpdatePayload:
+				actual, ok := got.(resource.WatchUpdatePayload)
+				require.True(t, ok)
+				assert.Equal(t, expected.Route, actual.Route)
+				assert.Equal(t, expected.Guarantee, actual.Guarantee)
+				assert.Equal(t, expected.Record, actual.Record)
+				assert.Empty(t, actual.Metadata.Labels)
+				assert.Equal(t, expected.Metadata.CreatedAt, actual.Metadata.CreatedAt)
+			case resource.WatchDeletePayload:
+				actual, ok := got.(resource.WatchDeletePayload)
+				require.True(t, ok)
+				assert.Equal(t, expected.Route, actual.Route)
+				assert.Equal(t, expected.Guarantee, actual.Guarantee)
+				assert.Equal(t, expected.Reference, actual.Reference)
+				require.NotNil(t, actual.LastKnown)
+				assert.Equal(t, expected.LastKnown, actual.LastKnown)
+			default:
+				assert.Equal(t, want, got)
+			}
 		case <-time.After(5 * time.Second):
 			t.Fatal("watch payload timed out")
 		}
@@ -152,7 +169,7 @@ func TestL3_04_ConnectionLifecycleViaGRPC(t *testing.T) {
 	provider := grpcFiniteFixture()
 	provider.StartConnectionFunc = func(_ context.Context, id string) (types.ConnectionStatus, error) {
 		assert.Equal(t, "conn-1", id)
-		return types.ConnectionStatus{Status: types.ConnectionStatusConnected}, nil
+		return types.ConnectionStatus{Connection: &types.Connection{ID: id}, Status: types.ConnectionStatusConnected}, nil
 	}
 	result, err := setupGRPCProvider(t, provider).StartConnection(context.Background(), "conn-1")
 	require.NoError(t, err)
@@ -177,7 +194,7 @@ func TestL3_06_ErrorPropagationViaGRPC(t *testing.T) {
 		name string
 		err  error
 		code string
-	}{{"typed", resource.NewError("FORBIDDEN", "secret"), "FORBIDDEN"}, {"untyped", errors.New("secret"), "INTERNAL"}} {
+	}{{"typed", resource.NewError("FORBIDDEN", "secret"), "FORBIDDEN"}, {"untyped", errors.New("secret"), "PROVIDER_ERROR"}} {
 		t.Run(test.name, func(t *testing.T) {
 			provider := grpcFiniteFixture()
 			provider.GetFunc = func(context.Context, resource.GetRequest) (resource.Record, error) {
@@ -209,4 +226,32 @@ func TestL3_07_InvalidRequestDoesNotDispatch(t *testing.T) {
 	_, err = client.Get(ctx, resource.GetRequest{})
 	assert.Equal(t, "INVALID_REQUEST", resource.ErrorCode(err))
 	assert.False(t, called)
+}
+
+func TestGRPCGetRequiresAcceptedCatalogPin(t *testing.T) {
+	provider := grpcFiniteFixture()
+	calls := 0
+	record := canonicalTestRecord("p1", "authority", "native::Pod", "pod-1")
+	provider.GetFunc = func(context.Context, resource.GetRequest) (resource.Record, error) {
+		calls++
+		return record, nil
+	}
+	client := setupGRPCProvider(t, provider)
+	catalog, err := client.Catalog(context.Background(), resource.CatalogRequest{Route: grpcGetRequest().Route})
+	require.NoError(t, err)
+	for _, ctx := range []context.Context{
+		context.Background(),
+		resource.WithCatalogRevision(context.Background(), "wrong-catalog"),
+	} {
+		_, err := client.Get(ctx, grpcGetRequest())
+		require.Equal(t, "RESET_REQUIRED", resource.ErrorCode(err))
+	}
+	require.Zero(t, calls)
+	ctx := resource.WithCatalogRevision(context.Background(), catalog.Revision)
+	_, err = client.Get(ctx, grpcGetRequest())
+	require.NoError(t, err)
+	require.Equal(t, 1, calls)
+	_, err = client.Get(ctx, grpcGetRequest())
+	require.NoError(t, err)
+	require.Equal(t, 2, calls)
 }

@@ -30,6 +30,7 @@ func TestRelationshipBootstrapPinsOneCompleteCatalog(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	catalog := bootstrapTestCatalog("accepted")
 	catalogCalls, declarationCalls := 0, 0
+	var accepted string
 	registerMockPlugin(ctrl, "p1", &mockProvider{
 		CatalogFunc: func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
 			catalogCalls++
@@ -39,7 +40,10 @@ func TestRelationshipBootstrapPinsOneCompleteCatalog(t *testing.T) {
 			declarationCalls++
 			revision, ok := resourcev2.CatalogRevisionFromContext(ctx)
 			require.True(t, ok)
-			require.Equal(t, catalog.Revision, revision)
+			if declarationCalls == 1 {
+				accepted = revision
+			}
+			require.Equal(t, accepted, revision)
 			return []resourcev2.RelationshipDescriptor{}, nil
 		},
 	})
@@ -51,7 +55,9 @@ func TestRelationshipBootstrapPinsOneCompleteCatalog(t *testing.T) {
 func TestBlockedBootstrapCannotPublishAfterProfileEpochReset(t *testing.T) {
 	for _, oldEmpty := range []bool{false, true} {
 		name := "old-rules"
-		if oldEmpty { name = "old-empty-rules" }
+		if oldEmpty {
+			name = "old-empty-rules"
+		}
 		t.Run(name, func(t *testing.T) {
 			ctrl, _ := newTestControllerWithEmitter(t)
 			oldCatalog, newCatalog := bootstrapTestCatalog("A"), bootstrapTestCatalog("B")
@@ -62,13 +68,23 @@ func TestBlockedBootstrapCannotPublishAfterProfileEpochReset(t *testing.T) {
 			defer releaseOnce.Do(func() { close(release) })
 			var calls atomic.Int32
 			provider := &mockProvider{
-				CatalogFunc: func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) { return *current.Load(), nil },
+				CatalogFunc: func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
+					return *current.Load(), nil
+				},
 				GetRelationshipsFunc: func(ctx context.Context, _ resourcev2.AccessRoute, resourceType string) ([]resourcev2.RelationshipDescriptor, error) {
-					if resourceType != "objects" { return []resourcev2.RelationshipDescriptor{}, nil }
+					if resourceType != "objects" {
+						return []resourcev2.RelationshipDescriptor{}, nil
+					}
 					if calls.Add(1) == 1 {
 						close(entered)
-						select { case <-release: case <-ctx.Done(): return nil, ctx.Err() }
-						if oldEmpty { return []resourcev2.RelationshipDescriptor{}, nil }
+						select {
+						case <-release:
+						case <-ctx.Done():
+							return nil, ctx.Err()
+						}
+						if oldEmpty {
+							return []resourcev2.RelationshipDescriptor{}, nil
+						}
 						return []resourcev2.RelationshipDescriptor{bootstrapTestDeclaration("old")}, nil
 					}
 					return []resourcev2.RelationshipDescriptor{bootstrapTestDeclaration("new")}, nil
@@ -78,7 +94,11 @@ func TestBlockedBootstrapCannotPublishAfterProfileEpochReset(t *testing.T) {
 			route := resourcev2.AccessRoute{Connection: "route/opaque"}
 			finished := make(chan struct{})
 			go func() { defer close(finished); ctrl.bootstrapRelationships(testInvocationContext(), "p1", route) }()
-			select { case <-entered: case <-time.After(time.Second): t.Fatal("old bootstrap did not reach declaration barrier") }
+			select {
+			case <-entered:
+			case <-time.After(time.Second):
+				t.Fatal("old bootstrap did not reach declaration barrier")
+			}
 
 			require.NoError(t, ctrl.invalidateProfileRoutes("p1", []string{route.Connection}))
 			current.Store(&newCatalog)
@@ -92,7 +112,11 @@ func TestBlockedBootstrapCannotPublishAfterProfileEpochReset(t *testing.T) {
 			require.NoError(t, ctrl.graph.CheckComplete("p1", route))
 
 			releaseOnce.Do(func() { close(release) })
-			select { case <-finished: case <-time.After(time.Second): t.Fatal("old bootstrap did not retire") }
+			select {
+			case <-finished:
+			case <-time.After(time.Second):
+				t.Fatal("old bootstrap did not retire")
+			}
 			after, afterBindings, ok := ctrl.graph.GetBoundDeclarations("p1", route, "objects")
 			require.True(t, ok)
 			require.Equal(t, declarations, after)
@@ -108,7 +132,9 @@ func TestProfileResetRetiresRouteDeclarationsAndCoverage(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", &mockProvider{
 		CatalogFunc: func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) { return catalog, nil },
 		GetRelationshipsFunc: func(_ context.Context, _ resourcev2.AccessRoute, resourceType string) ([]resourcev2.RelationshipDescriptor, error) {
-			if resourceType == "objects" { return []resourcev2.RelationshipDescriptor{bootstrapTestDeclaration("current")}, nil }
+			if resourceType == "objects" {
+				return []resourcev2.RelationshipDescriptor{bootstrapTestDeclaration("current")}, nil
+			}
 			return []resourcev2.RelationshipDescriptor{}, nil
 		},
 	})

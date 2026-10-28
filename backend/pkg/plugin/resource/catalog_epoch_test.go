@@ -45,7 +45,7 @@ func requireCurrentAuthoritySurvivesRestart(t *testing.T, ctrl *controller, rout
 
 func TestCapturedRouteCatalogEpochFencesAuthorityPersistence(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	oldCatalog, newCatalog := epochTestCatalog("A"), epochTestCatalog("B")
+	oldCatalog, newCatalog := bindingTestCatalog(t, bindingTestEpoch(t), "observation", "A"), bindingTestCatalog(t, bindingTestEpoch(t), "observation", "B")
 	var current atomic.Pointer[resourcev2.Catalog]
 	current.Store(&oldCatalog)
 	registerMockPlugin(ctrl, "p1", &catalogOnlyProvider{CatalogFunc: func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
@@ -69,7 +69,7 @@ func TestCapturedRouteCatalogEpochFencesAuthorityPersistence(t *testing.T) {
 
 func TestResolveReferenceStaleCatalogCannotPolluteNewRouteAuthority(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	oldCatalog, newCatalog := epochTestCatalog("A"), epochTestCatalog("B")
+	oldCatalog, newCatalog := bindingTestCatalog(t, bindingTestEpoch(t), "observation", "A"), bindingTestCatalog(t, bindingTestEpoch(t), "observation", "B")
 	entered, release := make(chan struct{}), make(chan struct{})
 	var releaseOnce sync.Once
 	defer releaseOnce.Do(func() { close(release) })
@@ -88,7 +88,10 @@ func TestResolveReferenceStaleCatalogCannotPolluteNewRouteAuthority(t *testing.T
 	}})
 	route := resourcev2.AccessRoute{Connection: "route/opaque"}
 	input := ResolveReferenceRequest{Route: route, Type: "objects", Scope: []resourcev2.ScopeEntry{}, ID: "opaque/a::雪", Representation: "native"}
-	type outcome struct { reference ResolvedReference; err error }
+	type outcome struct {
+		reference ResolvedReference
+		err       error
+	}
 	finished := make(chan outcome, 1)
 	go func() {
 		reference, err := ctrl.ResolveReference(testInvocationContext(), "p1", input)

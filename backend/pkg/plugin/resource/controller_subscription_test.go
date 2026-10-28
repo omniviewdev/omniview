@@ -45,7 +45,7 @@ func TestControllerSubscriptionRejectsUnsupportedUpdatesAndForgedTarget(t *testi
 	require.False(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
 	ctrl, subscription = subscriptionTestController(t, true)
 	subscription.Target.Authority = "forged"
-	require.Equal(t, "INVALID_REQUEST", requireAppError(t, ctrl.SubscribeResource(testInvocationContext(), "p1", subscription)).Code)
+	require.Equal(t, "RESET_REQUIRED", requireAppError(t, ctrl.SubscribeResource(testInvocationContext(), "p1", subscription)).Code)
 	require.False(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
 }
 

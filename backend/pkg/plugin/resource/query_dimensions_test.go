@@ -36,7 +36,9 @@ func hostSelectionProvider(t *testing.T, restrictedGet bool) (resource.Provider,
 		{Operation: resource.OperationEnumerate, Scope: hostSelectionScope("")},
 		{Operation: resource.OperationNativeQuery, Scope: hostSelectionScope("")},
 	}
-	if restrictedGet { descriptor.Capabilities[0].Scope = hostSelectionScope("repository-X") }
+	if restrictedGet {
+		descriptor.Capabilities[0].Scope = hostSelectionScope("repository-X")
+	}
 	native := []struct{ id, repository string }{{"repository-X/opaque-looking-ID", "repository-Y"}, {"native::雪%2F", "repository-X"}}
 	record := func(authority, id, repository string) resource.Record {
 		row := canonicalTestRecord(catalog.Provider, authority, descriptor.Type, id)
@@ -53,12 +55,16 @@ func hostSelectionProvider(t *testing.T, restrictedGet bool) (resource.Provider,
 				repository = (*constraint.Values)[0]
 			}
 		}
-		if repository == "" { return resource.SourcePage{}, resource.NewError("INVALID_REQUEST", "Select a native repository.") }
+		if repository == "" {
+			return resource.SourcePage{}, resource.NewError("INVALID_REQUEST", "Select a native repository.")
+		}
 		rows := []resource.Record{}
 		for _, row := range native {
-			if row.repository == repository { rows = append(rows, record(target.Authority, row.id, row.repository)) }
+			if row.repository == repository {
+				rows = append(rows, record(target.Authority, row.id, row.repository))
+			}
 		}
-		return resource.SourcePage{Records: rows, Count: resource.Count{Kind: "unknown"}, Coverage: resource.Coverage{Kind: "partial", Paths: []string{}}, Consistency: "bestEffort"}, nil
+		return resource.SourcePage{Records: rows, Count: resource.Count{Kind: "unknown"}, Coverage: resource.Coverage{Kind: "partial", Paths: []string{}, Reason: "Only the selected native repository was acquired."}, Consistency: "bestEffort"}, nil
 	}
 	provider, err := resource.NewController(resource.Config[struct{}]{
 		Catalog: func(ctx context.Context, _ resource.CatalogRequest) (resource.Catalog, error) {
@@ -70,15 +76,23 @@ func hostSelectionProvider(t *testing.T, restrictedGet bool) (resource.Provider,
 			Get: func(_ context.Context, _ *struct{}, request resource.GetRequest) (resource.Record, error) {
 				calls.Add(1)
 				for _, row := range native {
-					if row.id == request.Reference.Address.ID { return record(request.Reference.Address.Authority, row.id, row.repository), nil }
+					if row.id == request.Reference.Address.ID {
+						return record(request.Reference.Address.Authority, row.id, row.repository), nil
+					}
 				}
 				return resource.Record{}, resource.NewError("NOT_FOUND", "Native row not found.")
 			},
-			Enumerate: func(_ context.Context, _ *struct{}, request resource.EnumerateRequest) (resource.SourcePage, error) { return page(request.Target) },
-			NativeQuery: func(_ context.Context, _ *struct{}, request resource.NativeQueryRequest) (resource.SourcePage, error) { return page(request.Target) },
+			Enumerate: func(_ context.Context, _ *struct{}, request resource.EnumerateRequest) (resource.SourcePage, error) {
+				return page(request.Target)
+			},
+			NativeQuery: func(_ context.Context, _ *struct{}, request resource.NativeQueryRequest) (resource.SourcePage, error) {
+				return page(request.Target)
+			},
 		}},
 	})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() { _ = provider.Close() })
 	return setupGRPCProvider(t, provider), calls, sessions
 }
@@ -89,7 +103,9 @@ func hostSelectionReference(t *testing.T, ctrl *controller) ResolvedReference {
 		Route: resource.AccessRoute{Connection: "explicit-native-route"}, Type: "opaque/charts", Representation: "native",
 		Scope: []resource.ScopeEntry{{Dimension: "domain", Value: "helm-client"}}, ID: "repository-X/opaque-looking-ID",
 	})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	return resolved
 }
 
@@ -101,11 +117,20 @@ func TestHostGetQueryOnlyScopePolicyDenialPreventsNativeAcquisition(t *testing.T
 	<-sessions // Reference metadata, not the subsequent Get's correlation.
 	identityAllowed, derivedDenied := false, false
 	ctrl.boundary = invocation.NewBoundary(invocation.AuthorizeFunc(func(_ invocation.Principal, operation string, target invocation.Target) error {
-		if operation != "resource.Get" { return nil }
-		if target.Scope["query-scope"] == "" { identityAllowed = true; return nil }
+		if operation != "resource.Get" {
+			return nil
+		}
+		if target.Scope["query-scope"] == "" {
+			identityAllowed = true
+			return nil
+		}
 		var scope resource.QueryScope
-		if err := json.Unmarshal([]byte(target.Scope["query-scope"]), &scope); err != nil { t.Fatal(err) }
-		if !reflect.DeepEqual(scope, hostSelectionScope("")) { t.Fatalf("derived selection was guessed or narrowed: %+v", scope) }
+		if err := json.Unmarshal([]byte(target.Scope["query-scope"]), &scope); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(scope, hostSelectionScope("")) {
+			t.Fatalf("derived selection was guessed or narrowed: %+v", scope)
+		}
 		derivedDenied = true
 		return errors.New("private repository access policy")
 	}))
@@ -115,8 +140,12 @@ func TestHostGetQueryOnlyScopePolicyDenialPreventsNativeAcquisition(t *testing.T
 	if app.Code != "FORBIDDEN" || app.RequestID == "" || app.RequestID != metadataSession.RequestID || !identityAllowed || !derivedDenied {
 		t.Fatalf("derived policy admission/correlation lost: %+v metadata=%+v", app, metadataSession)
 	}
-	if calls.Load() != 0 || result.Key != "" { t.Fatal("denial acquired or published a native row") }
-	if _, found := ctrl.registryStore.Get("helm-fixture", resolved.Reference, resolved.Route); found { t.Fatal("denial populated registry state") }
+	if calls.Load() != 0 || result.Key != "" {
+		t.Fatal("denial acquired or published a native row")
+	}
+	if _, found := ctrl.registryStore.Get("helm-fixture", resolved.Reference, resolved.Route); found {
+		t.Fatal("denial populated registry state")
+	}
 }
 
 func TestHostGetQueryOnlyDimensionNeverBecomesIdentityOrIDInference(t *testing.T) {
@@ -128,10 +157,14 @@ func TestHostGetQueryOnlyDimensionNeverBecomesIdentityOrIDInference(t *testing.T
 			resolved := hostSelectionReference(t, ctrl)
 			result, err := ctrl.Get(testInvocationContext(), "helm-fixture", HostGetRequest{TargetID: resolved.TargetID, Request: resource.GetRequest{Route: resolved.Route, Reference: resolved.Reference, Representation: resolved.Representation}})
 			if restricted {
-				if requireAppError(t, err).Code != "UNSUPPORTED" || calls.Load() != 0 { t.Fatal("Get inferred a restricted repository from an opaque ID") }
+				if requireAppError(t, err).Code != "UNSUPPORTED" || calls.Load() != 0 {
+					t.Fatal("Get inferred a restricted repository from an opaque ID")
+				}
 				return
 			}
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			if calls.Load() != 1 || !reflect.DeepEqual(result.Record.Reference, resolved.Reference) || result.Record.Body.Map["nativeRepository"].String != "repository-Y" {
 				t.Fatalf("Get changed native identity or guessed repository: %+v", result)
 			}
@@ -150,7 +183,9 @@ func TestHostNativeQueryOnlySelectionRetainsNativePages(t *testing.T) {
 	registerMockPlugin(ctrl, "helm-fixture", provider)
 	for _, repository := range []string{"repository-X", "repository-Y"} {
 		resolved, err := ctrl.ResolveTarget(testInvocationContext(), "helm-fixture", ResolveTargetRequest{Route: resource.AccessRoute{Connection: "explicit-native-route"}, Type: "opaque/charts", Representation: "native", Scope: hostSelectionScope(repository)})
-		if err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
 		for _, query := range []bool{false, true} {
 			var result HostSourcePage
 			if query {
@@ -158,7 +193,9 @@ func TestHostNativeQueryOnlySelectionRetainsNativePages(t *testing.T) {
 			} else {
 				result, err = ctrl.Enumerate(testInvocationContext(), "helm-fixture", HostEnumerateRequest{TargetID: resolved.TargetID, Request: resource.EnumerateRequest{Target: resolved.Target, PageSize: 1}})
 			}
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			if len(result.Records) != 1 || result.Records[0].Record.Body.Map["nativeRepository"].String != repository || len(result.Records[0].Record.Reference.Address.Scope) != 1 {
 				t.Fatalf("native selection or identity changed: %+v", result)
 			}
@@ -173,14 +210,20 @@ func TestExactReadTargetProjectsOnlyDeclaredQueryDimensions(t *testing.T) {
 	descriptor := resource.ResourceType{IdentityDimensions: []resource.Dimension{{Name: "domain"}, {Name: "identity-only"}}, QueryDimensions: []resource.Dimension{{Name: "repository"}, {Name: "domain"}}}
 	request := resource.GetRequest{Route: resource.AccessRoute{Connection: "explicit"}, Reference: resource.ResourceReference{Address: resource.ResourceAddress{Provider: "provider", Authority: "host-issued", Type: "opaque/type", ID: "repository-X/not-a-query-proof", Scope: []resource.ScopeEntry{{Dimension: "identity-only", Value: "opaque"}, {Dimension: "domain", Value: "helm-client"}}}}, Representation: "native"}
 	target, err := exactReadTarget(request, descriptor)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(target.Scope) != 2 || target.Scope[0].Dimension != "repository" || target.Scope[0].Match != resource.ScopeAny || target.Scope[1].Dimension != "domain" || target.Scope[1].Values == nil || !reflect.DeepEqual(*target.Scope[1].Values, []string{"helm-client"}) {
 		t.Fatalf("identity-only dimensions leaked or query-only scope was guessed: %+v", target)
 	}
-	if !targetContainsReference(target, request.Route, request.Reference) { t.Fatal("query-only any rejected exact identity") }
+	if !targetContainsReference(target, request.Route, request.Reference) {
+		t.Fatal("query-only any rejected exact identity")
+	}
 	repository := []string{"repository-X"}
 	target.Scope[0] = resource.ScopeConstraint{Dimension: "repository", Match: resource.ScopeOneOf, Values: &repository}
-	if targetContainsReference(target, request.Route, request.Reference) { t.Fatal("address matching claimed unproven query-only membership") }
+	if targetContainsReference(target, request.Route, request.Reference) {
+		t.Fatal("address matching claimed unproven query-only membership")
+	}
 }
 
 func TestHostGetReauthorizationKeepsCapturedRouteEpoch(t *testing.T) {
@@ -190,7 +233,10 @@ func TestHostGetReauthorizationKeepsCapturedRouteEpoch(t *testing.T) {
 	resolved := hostSelectionReference(t, ctrl)
 	entered, resume := make(chan struct{}), make(chan struct{})
 	ctrl.boundary = invocation.NewBoundary(invocation.AuthorizeFunc(func(_ invocation.Principal, operation string, target invocation.Target) error {
-		if operation == "resource.Get" && target.Scope["query-scope"] != "" { close(entered); <-resume }
+		if operation == "resource.Get" && target.Scope["query-scope"] != "" {
+			close(entered)
+			<-resume
+		}
 		return nil
 	}))
 	done := make(chan error, 1)
@@ -201,9 +247,13 @@ func TestHostGetReauthorizationKeepsCapturedRouteEpoch(t *testing.T) {
 	<-entered
 	invalidationErr := ctrl.invalidateProfileRoutes("helm-fixture", []string{resolved.Route.Connection})
 	close(resume)
-	if invalidationErr != nil { t.Fatal(invalidationErr) }
+	if invalidationErr != nil {
+		t.Fatal(invalidationErr)
+	}
 	if err := <-done; requireAppError(t, err).Code != "RESET_REQUIRED" || calls.Load() != 0 {
 		t.Fatalf("policy callback replaced captured source generation: %v", err)
 	}
-	if _, found := ctrl.registryStore.Get("helm-fixture", resolved.Reference, resolved.Route); found { t.Fatal("retired target populated registry") }
+	if _, found := ctrl.registryStore.Get("helm-fixture", resolved.Reference, resolved.Route); found {
+		t.Fatal("retired target populated registry")
+	}
 }

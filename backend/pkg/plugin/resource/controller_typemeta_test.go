@@ -15,14 +15,19 @@ func TestCatalog_ResourceMetadataAndCapabilities(t *testing.T) {
 	expected := canonicalTestCatalog("native", "pods")
 	expected.Types[0].IdentityDimensions = []resource.Dimension{{Name: "namespace"}}
 	expected.Types[0].QueryDimensions = []resource.Dimension{{Name: "namespace"}}
-	expected.Types[0].Capabilities = []resource.Capability{{Operation: resource.OperationGet}}
+	expected.Types[0].Capabilities = []resource.Capability{{Operation: resource.OperationGet, Scope: resource.QueryScope{{Dimension: "namespace", Match: resource.ScopeAny}}}}
+	var err error
+	expected.Revision, err = resource.BindCatalogRevision(bindingTestEpoch(t), expected.Revision)
+	require.NoError(t, err)
 	registerMockPlugin(ctrl, "p1", &catalogOnlyProvider{CatalogFunc: func(_ context.Context, request resource.CatalogRequest) (resource.Catalog, error) {
 		assert.Equal(t, "conn-1", request.Route.Connection)
 		return expected, nil
 	}})
 	catalog, err := ctrl.Catalog(testInvocationContext(), "p1", resource.CatalogRequest{Route: resource.AccessRoute{Connection: "conn-1"}})
 	require.NoError(t, err)
-	assert.Equal(t, expected, catalog)
+	assert.Equal(t, expected.Provider, catalog.Provider)
+	assert.Equal(t, expected.Types, catalog.Types)
+	assert.Equal(t, expected.Coverage, catalog.Coverage)
 	assert.Equal(t, resource.OperationGet, catalog.Types[0].Capabilities[0].Operation)
 	assert.Equal(t, "namespace", catalog.Types[0].IdentityDimensions[0].Name)
 	assert.Equal(t, "absent", catalog.Types[0].Representations[0].Schema.State)

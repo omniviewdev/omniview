@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 
-	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"google.golang.org/protobuf/proto"
@@ -73,12 +72,12 @@ func (m *subscriptionManager) Subscribe(ctx context.Context, owner invocation.Pr
 	entry, exists := m.subscriptions[key]
 	if !exists {
 		if len(m.subscriptions) >= maxResourceSubscriptions {
-			return apperror.New(apperror.TypeResourceLimit, 429, "Resource limit", "Too many live resource subscriptions.")
+			return resourcev2.NewError("RESOURCE_LIMIT", "Too many live resource subscriptions.")
 		}
 		entry = subscription{Context: context.WithoutCancel(ctx), Owner: owner, TargetID: request.TargetID, Target: target}
 	}
 	if entry.count == ^uint64(0) {
-		return apperror.New(apperror.TypeResourceLimit, 429, "Resource limit", "The subscription reference count exceeds the host limit.")
+		return resourcev2.NewError("RESOURCE_LIMIT", "The subscription reference count exceeds the host limit.")
 	}
 	entry.count++
 	m.subscriptions[key] = entry
