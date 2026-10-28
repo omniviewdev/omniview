@@ -72,7 +72,7 @@ func TestSubscriptionMembershipBoundsAndSnapshotsTargets(t *testing.T) {
 		require.NoError(t, manager.Subscribe(ctx, owner.Principal(), "plugin", request))
 	}
 	request.TargetID = "overflow"
-	require.Equal(t, "RESOURCE_LIMIT", requireAppError(t, manager.Subscribe(ctx, owner.Principal(), "plugin", request)).Code)
+	require.Equal(t, "RESOURCE_LIMIT", resourcev2.ErrorCode(manager.Subscribe(ctx, owner.Principal(), "plugin", request)))
 	require.NoError(t, manager.Unsubscribe(owner.Principal(), "plugin", HostSubscription{TargetID: "1", Target: request.Target}))
 	require.NoError(t, manager.Subscribe(ctx, owner.Principal(), "plugin", request))
 }

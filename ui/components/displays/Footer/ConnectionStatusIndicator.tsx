@@ -36,13 +36,21 @@ function ConnectionRow({
   onRetry: (pluginID: string, connectionID: string) => void;
   onRetryPlugin: (pluginID: string) => void;
 }) {
-  const { pluginID, connectionID, name, sync, isSyncing, hasErrors, pluginFailed } = entry;
+  const { pluginID, connectionID, name, readiness, sync, isSyncing, hasErrors, pluginFailed } = entry;
 
-  const status = pluginFailed || hasErrors ? 'danger' : isSyncing ? 'info' : 'success';
+  const status = pluginFailed || hasErrors ? 'danger' : isSyncing || readiness !== 'CONNECTED' ? 'info' : 'success';
 
   let statusText = 'Connected';
   if (pluginFailed) {
     statusText = 'Plugin crashed — recovery failed';
+  } else if (readiness !== 'CONNECTED') {
+    statusText = {
+      UNKNOWN: 'Connection readiness unknown',
+      DISCONNECTED: 'Disconnected',
+      PENDING: 'Connecting',
+      FAILED: 'Connection failed',
+    }[readiness];
+    if (entry.readinessError) statusText += ` · ${entry.readinessError.title}`;
   } else if (isSyncing && sync) {
     statusText = `Syncing ${sync.doneCount}/${sync.watchedTotal} resources`;
   } else if (hasErrors && sync) {
@@ -94,7 +102,7 @@ function ConnectionRow({
             tone='info'
           />
         )}
-        {hasErrors && !pluginFailed && (
+        {hasErrors && !pluginFailed && readiness === 'CONNECTED' && (
           <PopoverAction
             icon={<LuRefreshCw size={11} />}
             label='Retry'
@@ -103,6 +111,7 @@ function ConnectionRow({
             }}
           />
         )}
+        {readiness === 'CONNECTED' && (
         <PopoverAction
           icon={<LuUnplug size={11} />}
           label='Disconnect'
@@ -111,6 +120,7 @@ function ConnectionRow({
           }}
           tone='danger'
         />
+        )}
       </div>
     </div>
   );
@@ -122,6 +132,7 @@ function ConnectionRow({
 
 export default function ConnectionStatusIndicator() {
   const {
+    entries,
     grouped,
     connectedCount,
     syncingCount,
@@ -135,12 +146,15 @@ export default function ConnectionStatusIndicator() {
   } = useConnectionStatus();
 
   // Nothing to show
-  if (connectedCount === 0) {
+  if (entries.length === 0) {
     return null;
   }
 
   let status: 'success' | 'danger' | 'info' = 'success';
   let label = `${connectedCount} connected`;
+  const unknownCount = entries.filter((entry) => entry.readiness === 'UNKNOWN').length;
+  const pendingCount = entries.filter((entry) => entry.readiness === 'PENDING').length;
+  const disconnectedCount = entries.filter((entry) => entry.readiness === 'DISCONNECTED').length;
 
   if (failedCount > 0) {
     status = 'danger';
@@ -154,9 +168,18 @@ export default function ConnectionStatusIndicator() {
   } else if (hasSyncing) {
     status = 'info';
     label = `${syncingCount} syncing`;
+  } else if (unknownCount > 0) {
+    status = 'info';
+    label = `${connectedCount} connected, ${unknownCount} unknown`;
+  } else if (pendingCount > 0) {
+    status = 'info';
+    label = `${pendingCount} connecting`;
+  } else if (disconnectedCount > 0) {
+    status = 'info';
+    label = `${connectedCount} connected, ${disconnectedCount} disconnected`;
   }
 
-  const tooltipText = `${connectedCount} connection${connectedCount !== 1 ? 's' : ''} active`;
+  const tooltipText = `${entries.length} connection${entries.length !== 1 ? 's' : ''}; ${connectedCount} connected`;
 
   const onDisconnect = (p: string, c: string) => {
     void disconnect(p, c).catch((err: unknown) => {
@@ -194,7 +217,7 @@ export default function ConnectionStatusIndicator() {
           <>
             <PopoverHeader
               icon={<LuPlug size={12} className={styles.MutedIcon} />}
-              title={`Active Connections (${connectedCount})`}
+              title={`Connections (${entries.length})`}
             />
             {/* Connection list grouped by plugin */}
             <div className={styles.List} data-size='lg'>

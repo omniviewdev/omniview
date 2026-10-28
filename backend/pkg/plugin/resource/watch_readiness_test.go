@@ -184,11 +184,15 @@ func TestWatchStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
 	}}
 	replacement.CatalogFunc = func(ctx context.Context, request resource.CatalogRequest) (resource.Catalog, error) {
 		catalog, err := lifecycleTestCatalog(resourceType, "replacement-target")(ctx, request)
-		for i := range catalog.Types { catalog.Types[i].DefaultRepresentation = "native" }
+		for i := range catalog.Types {
+			catalog.Types[i].DefaultRepresentation = "native"
+		}
 		return catalog, err
 	}
 	replacement.GetRelationshipsFunc = func(_ context.Context, _ resource.AccessRoute, sourceType string) ([]resource.RelationshipDescriptor, error) {
-		if sourceType != resourceType { return []resource.RelationshipDescriptor{}, nil }
+		if sourceType != resourceType {
+			return []resource.RelationshipDescriptor{}, nil
+		}
 		return []resource.RelationshipDescriptor{{Type: resource.RelOwns, TargetType: "replacement-target", TargetScope: []resource.ScopeEntry{}}}, nil
 	}
 	actionStopped := make(chan struct{})
@@ -258,6 +262,17 @@ func TestWatchStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
 	require.True(t, present)
 }
 
+type readinessCloseProvider struct {
+	*mockProvider
+	closeCalls atomic.Int32
+	closeErr   error
+}
+
+func (p *readinessCloseProvider) Close() error {
+	p.closeCalls.Add(1)
+	return p.closeErr
+}
+
 func TestWatchStartupFailurePreservesDesiredProfilesThroughFailedUnloadAndReload(t *testing.T) {
 	const pluginID = "failed-watch"
 	const otherID = "unrelated"
@@ -300,7 +315,8 @@ func TestWatchStartupFailurePreservesDesiredProfilesThroughFailedUnloadAndReload
 	require.NoError(t, err)
 	require.ElementsMatch(t, expected, loaded, "explicit save must apply effective source configuration and persist desired profiles")
 
-	otherProvider := connectionOverlayTestProvider()
+	otherProvider := &readinessCloseProvider{mockProvider: connectionOverlayTestProvider()}
+	otherProvider.CatalogFunc = lifecycleTestCatalog(resourceKey, "proof::v1::Unrelated")
 	otherBackend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": setupGRPCProvider(t, otherProvider)})
 	require.NoError(t, ctrl.OnPluginStart(otherID, defaultMeta(), otherBackend))
 	t.Cleanup(func() { require.NoError(t, ctrl.OnPluginShutdown(otherID, defaultMeta())) })
@@ -320,8 +336,8 @@ func TestWatchStartupFailurePreservesDesiredProfilesThroughFailedUnloadAndReload
 		epoch := ctrl.plugins[owner].sourceEpoch[connection]
 		ctrl.pluginsMu.RUnlock()
 		require.NoError(t, ctrl.graph.SetBoundDeclarations(owner, node.Route, resourceKey, []resource.RelationshipDescriptor{declaration}, graph.DeclarationBindings{
-			Source: graph.TargetBinding{Target: subscription.Target, IdentityDimensions: []resource.Dimension{}},
-			Targets: []graph.TargetBinding{{Target: resource.ReadTarget{Route: target.Route, Provider: target.Reference.Address.Provider, Authority: target.Reference.Address.Authority, Type: declaration.TargetType, Scope: resource.QueryScope{}, Representation: "native"}, IdentityDimensions: []resource.Dimension{}}},
+			Source:      graph.TargetBinding{Target: subscription.Target, IdentityDimensions: []resource.Dimension{}},
+			Targets:     []graph.TargetBinding{{Target: resource.ReadTarget{Route: target.Route, Provider: target.Reference.Address.Provider, Authority: target.Reference.Address.Authority, Type: declaration.TargetType, Scope: resource.QueryScope{}, Representation: "native"}, IdentityDimensions: []resource.Dimension{}}},
 			SourceEpoch: epoch,
 		}))
 		ctrl.graph.AddEdge(graph.GraphEdge{Source: node, Target: target, Type: declaration.Type})
@@ -331,17 +347,19 @@ func TestWatchStartupFailurePreservesDesiredProfilesThroughFailedUnloadAndReload
 	unrelatedNode := seedRuntime(otherID, unrelated[0].ID, otherDeclaration)
 
 	var discoveries atomic.Int32
-	failedProvider := &mockProvider{LoadConnectionsFunc: func(context.Context) ([]types.Connection, error) {
+	closeFailure := &resource.ResourceOperationError{Code: "PROVIDER_ERROR", Message: "native close failed"}
+	failedProvider := &readinessCloseProvider{closeErr: closeFailure, mockProvider: &mockProvider{LoadConnectionsFunc: func(context.Context) ([]types.Connection, error) {
 		discoveries.Add(1)
 		return nil, nil
 	}, ListenForEventsFunc: func(context.Context, resource.WatchEventSink, func() error) error {
 		return &resource.ResourceOperationError{Code: "FORBIDDEN", Message: "native registration denied"}
-	}}
+	}}}
 	failedBackend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": setupGRPCProvider(t, failedProvider)})
 	var denied *resource.ResourceOperationError
 	require.ErrorAs(t, ctrl.OnPluginStart(pluginID, defaultMeta(), failedBackend), &denied)
 	require.Equal(t, "FORBIDDEN", denied.Code)
 	require.Zero(t, discoveries.Load(), "failed registration must not rediscover or replace saved configuration")
+	require.EqualValues(t, 1, failedProvider.closeCalls.Load(), "failed registration must close its source even when native close fails")
 	present, err := ctrl.HasPlugin(testInvocationContext(), pluginID)
 	require.NoError(t, err)
 	require.False(t, present)
@@ -364,6 +382,7 @@ func TestWatchStartupFailurePreservesDesiredProfilesThroughFailedUnloadAndReload
 	// Failed unload retires runtime state, never replacing desired profiles with
 	// a discovery snapshot or an empty runtime inventory.
 	require.NoError(t, ctrl.OnPluginShutdown(pluginID, defaultMeta()))
+	require.EqualValues(t, 1, failedProvider.closeCalls.Load(), "later unload must not close the failed source twice")
 	stoppedConnections, err := ctrl.ListConnections(testInvocationContext(), pluginID)
 	require.Equal(t, "NOT_FOUND", requireAppError(t, err).Code)
 	require.Empty(t, stoppedConnections, "normal failed-plugin stop must still retire its in-memory connection cache")
@@ -391,7 +410,7 @@ func TestWatchStartupFailurePreservesDesiredProfilesThroughFailedUnloadAndReload
 	beforeReplay, err := fresh.ListConnections(testInvocationContext(), pluginID)
 	require.NoError(t, err)
 	require.Empty(t, beforeReplay, "desired profiles are inactive until the fresh provider applies their overlay")
-	replacement := connectionOverlayTestProvider()
+	replacement := &readinessCloseProvider{mockProvider: connectionOverlayTestProvider()}
 	replacementBackend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": setupGRPCProvider(t, replacement)})
 	require.NoError(t, fresh.OnPluginStart(pluginID, defaultMeta(), replacementBackend))
 	t.Cleanup(func() { require.NoError(t, fresh.OnPluginShutdown(pluginID, defaultMeta())) })

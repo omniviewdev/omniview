@@ -83,17 +83,26 @@ type Controller interface {
 
 // pluginState holds per-plugin runtime state.
 type pluginState struct {
-	provider      ResourceProvider
-	version       int
-	watchCancel   context.CancelFunc
-	ctx           context.Context
-	generationID  string
-	features      resource.FeatureSet
-	featuresReady bool
-	sourceEpoch   map[string]uint64
-	sourceChanging map[string]bool
+	provider        ResourceProvider
+	version         int
+	watchCancel     context.CancelFunc
+	ctx             context.Context
+	generationID    string
+	features        resource.FeatureSet
+	featuresReady   bool
+	sourceEpoch     map[string]uint64
+	sourceChanging  map[string]bool
 	catalogBindings map[string]catalogBindingState
-	crashOnce     sync.Once
+	crashOnce       sync.Once
+	closeOnce       sync.Once
+	closeErr        error
+}
+
+func (s *pluginState) closeSource(provider ResourceProvider) error {
+	closer,ok := provider.(resource.Closer)
+	if s == nil || !ok { return nil }
+	s.closeOnce.Do(func(){s.closeErr = closer.Close()})
+	return s.closeErr
 }
 
 // controller manages resource plugins on the engine side.
@@ -110,10 +119,10 @@ type controller struct {
 	pluginsMu   sync.RWMutex
 	plugins     map[string]*pluginState
 
-	connsMu       sync.RWMutex
-	connections   map[string][]types.Connection
-	profilesMu    sync.Mutex
-	profileNative map[string][]types.Connection
+	connsMu              sync.RWMutex
+	connections          map[string][]types.Connection
+	profilesMu           sync.Mutex
+	profileNative        map[string][]types.Connection
 	connectionChangeHook func(pluginID, connectionID string) func()
 
 	autoConnectMu       sync.Mutex
@@ -272,6 +281,8 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	}
 	c.pluginsMu.Lock()
 	existing := c.plugins[pluginID]
+	var previousProvider ResourceProvider
+	if existing != nil { previousProvider = existing.provider }
 	c.plugins[pluginID] = state
 	c.pluginsMu.Unlock()
 	if existing != nil {
@@ -282,6 +293,11 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 			return
 		}
 		watchCancel()
+		// The dispensed source is owned even before publication/readiness.
+		// Close after lifecycle retirement, preserving the original startup error.
+		defer func(){
+			if closeErr := state.closeSource(provider); closeErr != nil { logger.Warnw(context.Background(),"failed resource source teardown failed","error",closeErr) }
+		}()
 		c.lifecycleMu.Lock()
 		defer c.lifecycleMu.Unlock()
 		c.pluginsMu.Lock()
@@ -317,10 +333,8 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	}
 	c.lifecycleMu.Unlock()
 	if existing != nil {
-		if closer, ok := existing.provider.(resource.Closer); ok {
-			if err := closer.Close(); err != nil {
-				logger.Warnw(watchCtx, "previous resource source teardown failed", "error", err)
-			}
+		if err := existing.closeSource(previousProvider); err != nil {
+			logger.Warnw(watchCtx, "previous resource source teardown failed", "error", err)
 		}
 	}
 	featureCtx, featureCancel := context.WithTimeout(watchCtx, watchStreamReadyTimeout)
@@ -432,11 +446,7 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	c.pluginsMu.Lock()
 	delete(c.plugins, pluginID)
 	c.pluginsMu.Unlock()
-	if closer, ok := retired.(resource.Closer); ok {
-		return closer.Close()
-	}
-
-	return nil
+	return stopped.closeSource(retired)
 }
 
 // cleanupPluginGraphState removes registry entries, graph edges, and
@@ -535,7 +545,9 @@ func (c *controller) StartConnection(ctx context.Context, pluginID, connectionID
 	defer finishResource(ctx, &retErr)
 	c.profilesMu.Lock()
 	defer c.profilesMu.Unlock()
-	if release := c.beginMetricConnectionChange(pluginID, connectionID); release != nil { defer release() }
+	if release := c.beginMetricConnectionChange(pluginID, connectionID); release != nil {
+		defer release()
+	}
 	ctx, span := tracer.Start(ctx, "resource.StartConnection")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
@@ -591,7 +603,9 @@ func (c *controller) StopConnection(ctx context.Context, pluginID, connectionID 
 	defer finishResource(ctx, &retErr)
 	c.profilesMu.Lock()
 	defer c.profilesMu.Unlock()
-	if release := c.beginMetricConnectionChange(pluginID, connectionID); release != nil { defer release() }
+	if release := c.beginMetricConnectionChange(pluginID, connectionID); release != nil {
+		defer release()
+	}
 	ctx, span := tracer.Start(ctx, "resource.StopConnection")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
@@ -741,56 +755,11 @@ func (c *controller) GetAllConnectionStates(ctx context.Context) (_result map[st
 
 	for pluginID, conns := range connsCopy {
 		states := make([]ConnectionState, 0, len(conns))
-		provider, err := c.getProvider(pluginID)
-		if err != nil {
-			return nil, err
-		}
-		features, err := c.providerFeatures(ctx, pluginID, provider)
-		if err != nil {
-			return nil, err
-		}
 
 		for _, conn := range conns {
-			cs := ConnectionState{
-				Connection:     conn,
-				Started:        !conn.LastRefresh.IsZero(),
-				Resources:      make(map[string]resource.WatchState),
-				ResourceCounts: make(map[string]resource.Count),
-				TotalResources: 0,
-				SyncedCount:    0,
-				ErrorCount:     0,
-				LastSyncTime:   "",
-			}
-			if !features.Has(resource.FeatureBestEffortUpdates) {
-				states = append(states, cs)
-				continue
-			}
-
-			// An absent watch represents an unstarted connection, not a failed read.
-			summary, err := c.GetWatchState(ctx, pluginID, resource.AccessRoute{Connection: conn.ID})
+			cs, err := c.connectionState(ctx, pluginID, conn)
 			if err != nil {
-				var app *apperror.AppError
-				if !errors.As(err, &app) || app.Code != "NOT_FOUND" || app.Type != apperror.TypeResourceNotFound {
-					return nil, err
-				}
-			}
-			if err == nil && summary != nil && len(summary.Resources) > 0 {
-				cs.Started = true
-				cs.Resources = summary.Resources
-				cs.ResourceCounts = summary.ResourceCounts
-
-				for _, state := range summary.Resources {
-					cs.TotalResources++
-					switch state {
-					case resource.WatchStateSynced:
-						cs.SyncedCount++
-					case resource.WatchStateError, resource.WatchStateFailed:
-						cs.ErrorCount++
-					case resource.WatchStateIdle, resource.WatchStateSyncing, resource.WatchStateStopped,
-						resource.WatchStateForbidden, resource.WatchStateSkipped:
-						// Neither synced nor failed; only counted in TotalResources.
-					}
-				}
+				return nil, err
 			}
 
 			states = append(states, cs)
@@ -802,6 +771,92 @@ func (c *controller) GetAllConnectionStates(ctx context.Context) (_result map[st
 	return result, nil
 
 }
+// connectionState snapshots registration before attempting any active-source
+// catalog/watch work. The outer generation fence covers both observations.
+func (c *controller) connectionState(ctx context.Context, pluginID string, conn types.Connection) (state ConnectionState, retErr error) {
+	ctx, err := c.admit(ctx, "resource.GetConnectionStatus", invocation.Target{Provider: pluginID, Connection: conn.ID})
+	if err != nil {
+		return state, err
+	}
+	provider, generation, ctx, cleanup, err := c.operationGeneration(ctx, pluginID, resource.AccessRoute{Connection: conn.ID})
+	if err != nil {
+		return state, err
+	}
+	defer cleanup()
+	defer func() {
+		if retErr == nil {
+			retErr = c.currentGeneration(ctx, pluginID, generation)
+		}
+	}()
+	state = ConnectionState{
+		Connection: conn,
+		Readiness: types.ConnectionStatusUnknown,
+		Resources: make(map[string]resource.WatchState),
+		ResourceCounts: make(map[string]resource.Count),
+	}
+	features, err := c.providerFeatures(ctx, pluginID, provider)
+	if err != nil {
+		return state, err
+	}
+	unavailable := func(err error) {
+		request, _ := invocation.FromContext(ctx)
+		state.ReadinessError = apperror.ForResource(err, request.ID())
+	}
+	if !features.Has(resource.FeatureConnectionReadiness) {
+		unavailable(resource.NewError("UNSUPPORTED", "Registered connection state is unavailable."))
+		return state, nil
+	}
+	readiness, ok := provider.(resource.ConnectionReadinessProvider)
+	if !ok {
+		return state, resource.NewError("INVALID_REQUEST", "Provider advertised an unavailable connection readiness trait.")
+	}
+	status, err := readiness.GetConnectionStatus(ctx, conn.ID)
+	if err != nil {
+		if resource.ErrorCode(err) == "UNSUPPORTED" {
+			unavailable(err)
+			return state, nil
+		}
+		return state, err
+	}
+	switch status.Status {
+	case types.ConnectionStatusDisconnected, types.ConnectionStatusPending, types.ConnectionStatusConnected, types.ConnectionStatusFailed:
+		state.Readiness = status.Status
+	default:
+		return state, resource.NewError("INVALID_REQUEST", "Provider returned an invalid registered connection state.")
+	}
+	if err := c.currentGeneration(ctx, pluginID, generation); err != nil {
+		return state, err
+	}
+	if state.Readiness != types.ConnectionStatusConnected || !features.Has(resource.FeatureBestEffortUpdates) {
+		return state, nil
+	}
+	summary, err := c.GetWatchState(ctx, pluginID, resource.AccessRoute{Connection: conn.ID})
+	if err != nil {
+		var app *apperror.AppError
+		if !errors.As(err, &app) || app.Code != "NOT_FOUND" || app.Type != apperror.TypeResourceNotFound {
+			return state, err
+		}
+	}
+	if summary == nil {
+		return state, nil
+	}
+	state.Resources = summary.Resources
+	state.ResourceCounts = summary.ResourceCounts
+	for _, watchState := range summary.Resources {
+		state.TotalResources++
+		switch watchState {
+		case resource.WatchStateSynced:
+			state.SyncedCount++
+		case resource.WatchStateError, resource.WatchStateFailed:
+			state.ErrorCount++
+		case resource.WatchStateIdle, resource.WatchStateSyncing, resource.WatchStateStopped,
+			resource.WatchStateForbidden, resource.WatchStateSkipped:
+			// Neither synced nor failed; only counted in TotalResources.
+		}
+	}
+	return state, nil
+}
+
 
 func (c *controller) GetConnection(ctx context.Context, pluginID, connectionID string) (_result types.Connection, retErr error) {
 	ctx, admissionErr := c.admit(ctx, "resource.GetConnection", invocation.Target{Provider: pluginID, Connection: connectionID})

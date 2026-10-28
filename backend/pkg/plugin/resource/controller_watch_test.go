@@ -155,6 +155,11 @@ func TestGetWatchState_PreservesExactNativeCount(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	count := "9007199254740993"
 	registerMockPlugin(ctrl, "p1", &mockProvider{
+		CatalogFunc:func(context.Context,resource.CatalogRequest)(resource.Catalog,error){
+			catalog:=canonicalTestCatalog("updates","pods")
+			catalog.Types[0].Capabilities=[]resource.Capability{{Operation:resource.OperationUpdate,Scope:resource.QueryScope{},Guarantee:resource.BestEffortGuarantee}}
+			return catalog,nil
+		},
 		GetWatchStateFunc: func(_ context.Context, route resource.AccessRoute) (*resource.WatchConnectionSummary, error) {
 			return &resource.WatchConnectionSummary{
 				Route: route, Resources: map[string]resource.WatchState{"pods": resource.WatchStateSynced},
@@ -286,22 +291,30 @@ func TestCatalogOnlyWatchOperationsAreExplicitlyUnsupported(t *testing.T) {
 }
 
 func TestGetWatchStateUsesNativeCatalogAdmissionWithoutGetPermission(t *testing.T) {
-	ctrl,_ := newTestControllerWithEmitter(t)
-	called := make(chan struct{},1)
+	ctrl, _ := newTestControllerWithEmitter(t)
+	called := make(chan struct{}, 1)
 	provider := &mockProvider{
-		CatalogFunc:func(context.Context,resource.CatalogRequest)(resource.Catalog,error){
-			catalog:=canonicalTestCatalog("updates-only","objects")
-			catalog.Types[0].Capabilities=[]resource.Capability{{Operation:resource.OperationUpdate,Scope:resource.QueryScope{},Guarantee:resource.BestEffortGuarantee}}
-			return catalog,nil
+		CatalogFunc: func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+			catalog := canonicalTestCatalog("updates-only", "objects")
+			catalog.Types[0].Capabilities = []resource.Capability{{Operation: resource.OperationUpdate, Scope: resource.QueryScope{}, Guarantee: resource.BestEffortGuarantee}}
+			return catalog, nil
 		},
-		GetFunc:func(context.Context,resource.GetRequest)(resource.Record,error){t.Error("watch state must not acquire Get");return resource.Record{},errors.New("unexpected Get")},
-		GetWatchStateFunc:func(_ context.Context,route resource.AccessRoute)(*resource.WatchConnectionSummary,error){
-			called<-struct{}{}
-			return &resource.WatchConnectionSummary{Route:route,Resources:map[string]resource.WatchState{"objects":resource.WatchStateSynced},ResourceCounts:map[string]resource.Count{"objects":{Kind:"unknown"}},Scope:resource.QueryScope{},Guarantee:resource.BestEffortGuarantee},nil
+		GetFunc: func(context.Context, resource.GetRequest) (resource.Record, error) {
+			t.Error("watch state must not acquire Get")
+			return resource.Record{}, errors.New("unexpected Get")
+		},
+		GetWatchStateFunc: func(_ context.Context, route resource.AccessRoute) (*resource.WatchConnectionSummary, error) {
+			called <- struct{}{}
+			return &resource.WatchConnectionSummary{Route: route, Resources: map[string]resource.WatchState{"objects": resource.WatchStateSynced}, ResourceCounts: map[string]resource.Count{"objects": {Kind: "unknown"}}, Scope: resource.QueryScope{}, Guarantee: resource.BestEffortGuarantee}, nil
 		},
 	}
-	registerMockPlugin(ctrl,"updates",setupGRPCProvider(t,provider))
-	summary,err:=ctrl.GetWatchState(testInvocationContext(),"updates",resource.AccessRoute{Connection:"explicit"})
-	require.NoError(t,err);require.Equal(t,resource.WatchStateSynced,summary.Resources["objects"])
-	select {case <-called:default:t.Fatal("native state admission never reached provider")}
+	registerMockPlugin(ctrl, "updates", setupGRPCProvider(t, provider))
+	summary, err := ctrl.GetWatchState(testInvocationContext(), "updates", resource.AccessRoute{Connection: "explicit"})
+	require.NoError(t, err)
+	require.Equal(t, resource.WatchStateSynced, summary.Resources["objects"])
+	select {
+	case <-called:
+	default:
+		t.Fatal("native state admission never reached provider")
+	}
 }

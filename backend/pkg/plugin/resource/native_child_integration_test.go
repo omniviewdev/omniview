@@ -256,11 +256,25 @@ func TestActualSDKChildHostCatalogGenerationFence(t *testing.T) {
 			require.True(t, os.IsNotExist(err), "stale admission must fail before native Get")
 			_, found := ctrl.registryStore.Get(nativeChildPluginID, request.Request.Reference, route)
 			assert.False(t, found, "rejected native data must not enter host registry")
-			// A separate, explicitly resolved observation may read the active source.
+			// Observing the replacement binding closes this request first.
+			rejected, err := ctrl.ResolveTarget(testInvocationContext(), nativeChildPluginID, ResolveTargetRequest{
+				Route: route, Type: "native/object", Representation: "document", Scope: resource.QueryScope{},
+			})
+			require.Equal(t, "RESET_REQUIRED", requireAppError(t, err).Code)
+			require.Empty(t, rejected.TargetID)
+			require.Empty(t, rejected.Target.Authority)
+			require.Zero(t, aReads.Load())
+			require.Zero(t, bReads.Load())
+			_, err = os.Stat(filepath.Join(control, "entered-1"))
+			require.True(t, os.IsNotExist(err), "binding transition must not dispatch native Get")
+			require.Empty(t, ctrl.registryStore.ScanByResourceKey(nativeChildPluginID, route.Connection, "native/object"))
+			// A new caller request explicitly acquires the active observation.
 			current, err := ctrl.ResolveTarget(testInvocationContext(), nativeChildPluginID, ResolveTargetRequest{
 				Route: route, Type: "native/object", Representation: "document", Scope: resource.QueryScope{},
 			})
 			require.NoError(t, err)
+			require.NotEqual(t, target.TargetID, current.TargetID)
+			require.NotEqual(t, target.Target.Authority, current.Target.Authority, "A/B/A must not restore retired authority")
 			request.TargetID = current.TargetID
 			request.Request.Reference.Address.Authority = current.Target.Authority
 			record, err := ctrl.Get(testInvocationContext(), nativeChildPluginID, request)

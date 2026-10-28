@@ -214,6 +214,20 @@ fence for cache publication, sync events, and auto-connect scheduling. It never
 reapplies an overlay while consuming the stream, and an older queued frame
 cannot resurrect a disabled profile or overwrite a newer transaction.
 
+`GetAllConnectionStates` exposes `readiness`, not an inferred `started` flag.
+The optional `connectionReadiness` trait snapshots only the source's registered
+client state: `DISCONNECTED`, `PENDING`, `CONNECTED`, or `FAILED`. It neither
+probes the network nor starts a client. `CONNECTED` is registration, not network
+health; the host obtains an exact catalog pin before any subsequent watch-state
+read and fences both observations against source-generation changes. A stopped
+connection needs no catalog, resource Get, or watch. Providers without this
+optional trait stay visible as `UNKNOWN` with a safe `readinessError`; timestamps
+and watch notifications never turn unknown into connected or disconnected.
+Runtime and UI connected counts and sync controls use only explicit `CONNECTED`.
+Failed plugin startup closes its dispensed source exactly once even when the
+provider was never published; saved desired profiles and the original typed
+startup failure survive that teardown.
+
 Use `valueToJSON` only for presentation: signed and unsigned integers within the
 JavaScript safe-integer range project exactly to `number`; wider integers remain
 `bigint`. This projection does not retain signedness or integral-double intent:
@@ -260,8 +274,14 @@ The UI composition supplies its realm-bound resource wrapper for that lookup;
 the typed native `Service` is not the encoded Wails transport interface.
 
 Use the handwritten resource, exec, logs, metric and networker clients for
-Value-bearing requests. Their
-Wails adapter carries exact canonical JSON as a string so outer `JSON.stringify`
+Value-bearing requests. Construct typed object literals using `LogSessionRequest`,
+`MetricQueryRequest`, or `PortForwardSessionRequest` (with
+`ResourcePortForwardTarget` for a resource connection), exported from
+`@omniviewdev/runtime/models` and their corresponding client modules. These
+inputs are not generated Wails classes and have no `.createFrom` constructor.
+`PluginCapability` names plugin services; `ResourceCapability` describes a
+catalog operation and scope. There is no ambiguous public `Capability` alias.
+The Wails adapter carries exact canonical JSON as a string so outer `JSON.stringify`
 cannot normalize double `-0` to `0`; Go decodes through existing strict SDK DTO
 admission, without another semantic Value format. The SDK profile remains 32 MiB
 per inner message, 16 MiB per body, depth 64, 262144 nodes and 1048576 fields.

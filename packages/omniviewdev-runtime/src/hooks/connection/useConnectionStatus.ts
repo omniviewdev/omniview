@@ -11,7 +11,7 @@ import {
 import { RetryFailedPlugin } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/servicewrapper';
 import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 import { WatchState } from '../../types/watch';
-import type { HostWatchStateEvent } from '../../resource/v2/host';
+import type { ConnectionReadiness, HostConnectionState, HostWatchStateEvent } from '../../resource/v2/host';
 import {
   type ActiveSync,
   type ResourceTracker,
@@ -28,7 +28,8 @@ export interface ConnectionStatusEntry {
   connectionID: string;
   name: string;
   avatar: string;
-  isStarted: boolean;
+  readiness: ConnectionReadiness;
+  readinessError?: HostConnectionState['readinessError'];
   sync?: ActiveSync;
   isSyncing: boolean;
   hasErrors: boolean;
@@ -60,8 +61,9 @@ export interface ConnectionStatusSummary {
  * Combines ListAllConnections query + connection/status events + watch/STATE events.
  */
 export function useConnectionStatus(): ConnectionStatusSummary {
-  // Set of "pluginID/connectionID" keys for started connections
-  const [startedKeys, setStartedKeys] = useState<Set<string>>(new Set());
+  const [readiness, setReadiness] = useState<Map<string, Pick<HostConnectionState, 'readiness' | 'readinessError'>>>(new Map());
+  const readinessRef = useRef(readiness);
+  const statusEventsRef = useRef(new Map<string, Pick<HostConnectionState, 'readiness' | 'readinessError'>>());
   // Connection metadata from ListAllConnections
   const [allConnections, setAllConnections] = useState<Record<string, Connection[]>>({});
   // Sync state per connection
@@ -109,7 +111,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
         if (!result) return;
 
         const conns: Record<string, Connection[]> = {};
-        const keys = new Set<string>();
+        const statesByKey = new Map<string, Pick<HostConnectionState, 'readiness' | 'readinessError'>>();
         const newSyncs = new Map<string, ActiveSync>();
 
         for (const [pluginID, states] of Object.entries(result)) {
@@ -117,10 +119,10 @@ export function useConnectionStatus(): ConnectionStatusSummary {
           conns[pluginID] = states.map((s) => s.connection);
 
           for (const s of states) {
-            if (!s.started) continue;
-
             const key = JSON.stringify([pluginID, s.connection.id]);
-            keys.add(key);
+            const state = statusEventsRef.current.get(key) ?? { readiness: s.readiness, readinessError: s.readinessError };
+            statesByKey.set(key, state);
+            if (state.readiness !== 'CONNECTED') continue;
 
             // Build a tracker from the backend's resource states
             const tracker: ResourceTracker = {
@@ -139,7 +141,9 @@ export function useConnectionStatus(): ConnectionStatusSummary {
         }
 
         setAllConnections(conns);
-        setStartedKeys(keys);
+        for (const [key, state] of statusEventsRef.current) statesByKey.set(key, state);
+        readinessRef.current = statesByKey;
+        setReadiness(statesByKey);
         setSyncs(newSyncs);
       })
       .catch(() => {
@@ -153,12 +157,16 @@ export function useConnectionStatus(): ConnectionStatusSummary {
       const event = ev.data;
       const key = JSON.stringify([event.pluginID, event.connectionID]);
 
-      if (event.status === 'DISCONNECTED') {
-        setStartedKeys((prev) => {
-          const next = new Set(prev);
-          next.delete(key);
-          return next;
-        });
+      const status: ConnectionReadiness = ['DISCONNECTED', 'PENDING', 'CONNECTED', 'FAILED'].includes(event.status)
+        ? event.status : 'UNKNOWN';
+      const state = { readiness: status };
+      statusEventsRef.current.set(key, state);
+      const next = new Map(readinessRef.current);
+      next.set(key, state);
+      readinessRef.current = next;
+      setReadiness(next);
+
+      if (status !== 'CONNECTED') {
         // Clean up sync data
         setSyncs((prev) => {
           const next = new Map(prev);
@@ -166,13 +174,6 @@ export function useConnectionStatus(): ConnectionStatusSummary {
           return next;
         });
         trackersRef.current.delete(key);
-      } else {
-        // CONNECTED or other non-disconnected status
-        setStartedKeys((prev) => {
-          const next = new Set(prev);
-          next.add(key);
-          return next;
-        });
       }
 
       // Re-fetch connections to get latest metadata
@@ -195,14 +196,9 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   const handleWatchEvent = useCallback((ev: Events.WailsEvent) => {
     const event = ev.data as HostWatchStateEvent;
     const key = trackerKey(event.pluginID, event);
+    // Watch activity never proves that a native client is registered.
+    if (readinessRef.current.get(key)?.readiness !== 'CONNECTED') return;
 
-    // If we get watch events for a connection, it's started
-    setStartedKeys((prev) => {
-      if (prev.has(key)) return prev;
-      const next = new Set(prev);
-      next.add(key);
-      return next;
-    });
 
     const tracker = updateTracker(trackersRef.current, event.pluginID, event);
     const activeSync = computeActiveSync(tracker);
@@ -225,6 +221,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   }, []);
 
   const retryWatch = useCallback(async (pluginID: string, connectionID: string) => {
+    if (readinessRef.current.get(JSON.stringify([pluginID, connectionID]))?.readiness !== 'CONNECTED') return;
     const route = { connection: connectionID };
     const catalog = await Catalog(pluginID, { route });
     const resolved = await Promise.all(catalog.types
@@ -255,13 +252,18 @@ export function useConnectionStatus(): ConnectionStatusSummary {
     }
   }, [failedPlugins]);
 
-  // Build entries from started connections
+  // Keep every discovered connection visible, including unknown and stopped clients.
   const entries: ConnectionStatusEntry[] = [];
-  for (const key of startedKeys) {
+  const keys = new Set(readiness.keys());
+  for (const [pluginID, connections] of Object.entries(allConnections)) {
+    for (const connection of connections) keys.add(JSON.stringify([pluginID, connection.id]));
+  }
+  for (const key of keys) {
     const [pluginID, connectionID] = JSON.parse(key) as [string, string];
     const pluginConns = allConnections[pluginID] ?? [];
     const connMeta = pluginConns.find((c) => c.id === connectionID);
-    const sync = syncs.get(key);
+    const state: Pick<HostConnectionState, 'readiness' | 'readinessError'> = readiness.get(key) ?? { readiness: 'UNKNOWN' };
+    const sync = state.readiness === 'CONNECTED' ? syncs.get(key) : undefined;
     const syncing = sync != null && !isSyncDone(sync);
     const hasErrors = sync != null && sync.errorCount > 0;
     const pluginError = failedPlugins.get(pluginID);
@@ -271,10 +273,11 @@ export function useConnectionStatus(): ConnectionStatusSummary {
       connectionID,
       name: connMeta?.name ?? connectionID,
       avatar: connMeta?.avatar ?? '',
-      isStarted: true,
+      readiness: state.readiness,
+      readinessError: state.readinessError,
       sync,
       isSyncing: syncing,
-      hasErrors: hasErrors || pluginError != null,
+      hasErrors: hasErrors || pluginError != null || state.readiness === 'FAILED' || state.readinessError != null,
       pluginFailed: pluginError != null,
       pluginError,
     });
@@ -289,7 +292,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   }
 
   // Derived counts
-  const syncArray = Array.from(syncs.values());
+  const syncArray = entries.flatMap((entry) => entry.sync ? [entry.sync] : []);
   const syncingEntries = entries.filter((e) => e.isSyncing);
   const errorEntries = entries.filter((e) => e.hasErrors);
   const failedEntries = entries.filter((e) => e.pluginFailed);
@@ -297,7 +300,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   return {
     entries,
     grouped,
-    connectedCount: entries.length,
+    connectedCount: entries.filter((entry) => entry.readiness === 'CONNECTED').length,
     syncingCount: syncingEntries.length,
     errorCount: errorEntries.length,
     failedCount: failedEntries.length,

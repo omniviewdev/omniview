@@ -1,6 +1,7 @@
 import type { AccessRoute, Count, EnumerateRequest, GetRequest, NativeQueryRequest, QueryScope, ReadTarget, Record as ResourceRecord, ResourceReference, ScopeEntry, SourcePage } from './domain';
 import type { ResourceMetadata, WatchState, WatchStateEvent } from '../../types/watch';
 import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
+import type { AppError } from '../../errors/types';
 
 /** Keys come from the host. Neither routes nor display fields mint identity. */
 export interface HostRecord {
@@ -13,12 +14,15 @@ export interface HostRecord {
 export interface HostSourcePage { records: readonly HostRecord[]; sourcePage: Omit<SourcePage, 'records'> }
 /** Client cache overlay; sourcePage remains immutable native acquisition metadata. */
 export interface ResourceView extends HostSourcePage {
-  view?: { guarantee: 'bestEffort'; count: Count; sourceRevision?: string };
+  view?: { guarantee: 'bestEffort'; count: Count; sourceRevision?: string; membershipStale: boolean };
 }
 export interface HostWatchStateEvent extends WatchStateEvent { pluginID: string }
+/** Native client readiness, not network health. UNKNOWN is not disconnected. */
+export type ConnectionReadiness = 'UNKNOWN' | 'DISCONNECTED' | 'PENDING' | 'CONNECTED' | 'FAILED';
 export interface HostConnectionState {
   connection: Connection;
-  started: boolean;
+  readiness: ConnectionReadiness;
+  readinessError?: AppError;
   resources: { [type: string]: WatchState };
   resourceCounts: { [type: string]: Count };
   totalResources: number;

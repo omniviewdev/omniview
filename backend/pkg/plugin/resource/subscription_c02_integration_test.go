@@ -61,7 +61,18 @@ func TestC02RegisteredFileWatchSubscriptionLifecycle(t *testing.T) {
 	writeNative("first")
 	stopped := make(chan struct{})
 	registered, buildErr := sdkresource.NewController(sdkresource.Config[subscriptionFileClient]{
-		Catalog: lifecycleTestCatalog(subscriptionFileType),
+		Catalog: func(context.Context, sdkresource.CatalogRequest) (sdkresource.Catalog, error) {
+			catalog := canonicalTestCatalog("proof", subscriptionFileType)
+			descriptor := &catalog.Types[0]
+			// Require explicit representation selection so connection startup
+			// cannot emit the initial add before frontend subscription admission.
+			descriptor.Capabilities = []sdkresource.Capability{
+				{Operation: sdkresource.OperationGet, Scope: sdkresource.QueryScope{}},
+				{Operation: sdkresource.OperationEnumerate, Scope: sdkresource.QueryScope{}},
+				{Operation: sdkresource.OperationUpdate, Scope: sdkresource.QueryScope{}, Guarantee: sdkresource.BestEffortGuarantee},
+			}
+			return catalog, nil
+		},
 		Lifecycle: &sdkresource.Lifecycle[subscriptionFileClient]{
 			LoadConnections: func(context.Context) ([]types.Connection, error) {
 				return []types.Connection{{ID: "local", Name: "Private watched file", Data: map[string]interface{}{"path": path}}}, nil
@@ -83,6 +94,7 @@ func TestC02RegisteredFileWatchSubscriptionLifecycle(t *testing.T) {
 		},
 		Registrations: []sdkresource.Registration[subscriptionFileClient]{{
 			Type: subscriptionFileType,
+			Scope: sdkresource.QueryScope{},
 			Get: func(_ context.Context, client *subscriptionFileClient, request sdkresource.GetRequest) (sdkresource.Record, error) {
 				if request.Reference.Address.ID != subscriptionFileID {
 					return sdkresource.Record{}, sdkresource.NewError("NOT_FOUND", "File does not exist.")
@@ -156,12 +168,13 @@ func TestC02RegisteredFileWatchSubscriptionLifecycle(t *testing.T) {
 	connection, connectionErr := ctrl.GetConnection(ctx, "proof", "local")
 	require.NoError(t, connectionErr)
 	require.Equal(t, path, connection.Data["path"])
+	// The SDK catalog leases a real native client; acquisition requires startup.
+	_, startErr := ctrl.StartConnection(ctx, "proof", "local")
+	require.NoError(t, startErr)
 	target := admittedReadTarget(t, ctrl, "proof", "local", subscriptionFileType).Target
 	subscription := HostSubscription{TargetID: "native-file-subscription", Target: target}
 	require.NoError(t, ctrl.SubscribeResource(ctx, "proof", subscription))
 	require.NoError(t, ctrl.SubscribeResource(ctx, "proof", subscription))
-	_, startErr := ctrl.StartConnection(ctx, "proof", "local")
-	require.NoError(t, startErr)
 	require.NoError(t, ctrl.StartConnectionWatch(ctx, "proof", []sdkresource.ReadTarget{target}))
 	initial := emitter.WaitForEvent(t, "/ADD", 2*time.Second)
 	payload, ok := initial.Data[0].(HostWatchRecordEvent)
