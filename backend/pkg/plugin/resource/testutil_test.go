@@ -168,7 +168,7 @@ type mockProvider struct {
 	GetEditorSchemasFunc       func(ctx context.Context, route resource.AccessRoute) ([]resource.EditorSchema, error)
 	GetSchemaDocumentFunc      func(ctx context.Context, route resource.AccessRoute, reference resource.SchemaDocumentReference) (resource.SchemaDocument, error)
 	GetRelationshipsFunc       func(ctx context.Context, route resource.AccessRoute, resourceType string) ([]resource.RelationshipDescriptor, error)
-	ResolveRelationshipsFunc   func(ctx context.Context, request resource.GetRequest) ([]resource.ResolvedRelationship, error)
+	ResolveRelationshipsFunc   func(ctx context.Context, request resource.RelationshipResolutionRequest) ([]resource.ResolvedRelationship, error)
 	GetHealthFunc              func(ctx context.Context, request resource.GetRequest, body resource.Value) (*resource.ResourceHealth, error)
 	GetResourceEventsFunc      func(ctx context.Context, request resource.GetRequest, limit uint32) ([]resource.ResourceEvent, error)
 }
@@ -576,7 +576,7 @@ func (m *mockProvider) GetRelationships(ctx context.Context, route resource.Acce
 	return zero, nil
 }
 
-func (m *mockProvider) ResolveRelationships(ctx context.Context, request resource.GetRequest) ([]resource.ResolvedRelationship, error) {
+func (m *mockProvider) ResolveRelationships(ctx context.Context, request resource.RelationshipResolutionRequest) ([]resource.ResolvedRelationship, error) {
 	if m.ResolveRelationshipsFunc != nil {
 		return m.ResolveRelationshipsFunc(ctx, request)
 	}

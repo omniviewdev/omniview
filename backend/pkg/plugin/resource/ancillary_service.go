@@ -115,8 +115,32 @@ func (c *controller) ResolveRelationships(ctx context.Context, pluginID string, 
 	if err := c.validateReference(sessionCtx, pluginID, request.Route, request.Reference); err != nil {
 		return out, err
 	}
-	out, err = ancillary.ResolveRelationships(sessionCtx, request)
-	return ancillaryResult(c, sessionCtx, pluginID, generation, out, err)
+	resolution, err := c.relationshipRequest(sessionCtx, pluginID, provider, generation, ancillary, request)
+	if err != nil {
+		return nil, err
+	}
+	if err := resourcev2.ValidateRelationshipResolutionRequest(resolution); err != nil {
+		return nil, err
+	}
+	out, err = ancillary.ResolveRelationships(sessionCtx, resolution)
+	if err != nil {
+		return nil, err
+	}
+	if err := resourcev2.ValidateRelationshipResolutionResult(resolution, out); err != nil {
+		return nil, err
+	}
+	for _, relationship := range out {
+		for _, target := range relationship.Targets {
+			targetCtx, err := c.admit(sessionCtx, "resource.ResolveRelationships", referenceTarget(pluginID, target.Route, target.Reference))
+			if err != nil {
+				return nil, err
+			}
+			if err := c.validateReference(targetCtx, pluginID, target.Route, target.Reference); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return ancillaryResult(c, sessionCtx, pluginID, generation, out, nil)
 }
 
 func (c *controller) GetHealth(ctx context.Context, pluginID string, request resourcev2.GetRequest, value resourcev2.Value) (out *resourcev2.ResourceHealth, retErr error) {
@@ -219,4 +243,71 @@ func ancillaryResult[T any](c *controller, ctx context.Context, pluginID string,
 		return zero, err
 	}
 	return value, nil
+}
+
+func (c *controller) relationshipRequest(ctx context.Context, pluginID string, provider ResourceProvider, generation *pluginState, ancillary resourcev2.RelationshipProvider, source resourcev2.GetRequest) (resourcev2.RelationshipResolutionRequest, error) {
+	request := resourcev2.RelationshipResolutionRequest{Source: source, Targets: []resourcev2.ReadTarget{}}
+	descriptors, err := ancillary.GetRelationships(ctx, source.Route, source.Reference.Address.Type)
+	if err != nil {
+		return request, err
+	}
+	catalog, err := provider.Catalog(ctx, resourcev2.CatalogRequest{Route: source.Route})
+	if err != nil {
+		return request, err
+	}
+	if err := resourcev2.ValidateCatalog(catalog); err != nil {
+		return request, err
+	}
+	if catalog.Coverage.Kind != "complete" {
+		return request, resourcev2.NewError("UNSUPPORTED", "Relationship target binding requires a complete route catalog.")
+	}
+	if err := c.currentGeneration(ctx, pluginID, generation); err != nil {
+		return request, err
+	}
+	authority, err := c.resolveAuthority(ctx, pluginID, source.Route, catalog, generation, source.Reference.Address.Type)
+	if err != nil {
+		return request, err
+	}
+	if catalog.Provider != source.Reference.Address.Provider || authority.Authority != source.Reference.Address.Authority {
+		return request, resourcev2.NewError("INVALID_REQUEST", "Relationship source is not bound to the current route authority.")
+	}
+	seen := make(map[string]bool, min(len(descriptors), resourcev2.MaxRelationshipTargets))
+	for _, relationship := range descriptors {
+		if seen[relationship.TargetType] {
+			continue
+		}
+		seen[relationship.TargetType] = true
+		if len(request.Targets) >= resourcev2.MaxRelationshipTargets {
+			return request, resourcev2.NewError("RESOURCE_LIMIT", "Too many relationship target bindings.")
+		}
+		var descriptor *resourcev2.ResourceType
+		for i := range catalog.Types {
+			if catalog.Types[i].Type == relationship.TargetType {
+				descriptor = &catalog.Types[i]
+				break
+			}
+		}
+		if descriptor == nil || descriptor.DefaultRepresentation == "" {
+			return request, resourcev2.NewError("UNSUPPORTED", "Relationship target requires a catalog type and an explicit default representation.")
+		}
+		target := resourcev2.ReadTarget{
+			Route: source.Route, Provider: catalog.Provider, Type: descriptor.Type,
+			Representation: descriptor.DefaultRepresentation,
+			Scope:          make(resourcev2.QueryScope, 0, len(descriptor.QueryDimensions)),
+		}
+		for _, dimension := range descriptor.QueryDimensions {
+			target.Scope = append(target.Scope, resourcev2.ScopeConstraint{Dimension: dimension.Name, Match: resourcev2.ScopeAny})
+		}
+		targetCtx, err := c.admit(ctx, "resource.ResolveRelationships", readTarget(pluginID, target))
+		if err != nil {
+			return request, err
+		}
+		targetAuthority, err := c.resolveAuthority(targetCtx, pluginID, target.Route, catalog, generation, target.Type)
+		if err != nil {
+			return request, err
+		}
+		target.Authority = targetAuthority.Authority
+		request.Targets = append(request.Targets, target)
+	}
+	return request, nil
 }
