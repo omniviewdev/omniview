@@ -121,6 +121,10 @@ routes show an actionable failure instead of waiting indefinitely for a port.
 The failure view exposes restart and build output even when no footer server
 indicator exists. A live ready server takes precedence over stale inventory
 failure metadata, allowing startup to recover without another inventory fetch.
+Inventory failure details take precedence over server-discovery failures when no
+server state exists. Route recovery tracks the restart request and displays its
+rejection inline even when the backend emits no status event. Production plugin
+failures do not offer development-only restart instructions or actions.
 
 The provider releases its plugin registrations and native-import refresh ownership
 on unmount, not just its event listeners. The extension registry is retained across
