@@ -255,6 +255,10 @@ interests. Recoverable polling errors keep that ownership so later samples and
 explicit native unsubscribe remain useful. Only unsubscribe or lane termination
 retires the interest.
 
+Native utility controllers depend only on the `ConnectionReader` lookup contract.
+The UI composition supplies its realm-bound resource wrapper for that lookup;
+the typed native `Service` is not the encoded Wails transport interface.
+
 Use the handwritten resource, exec, logs, metric and networker clients for
 Value-bearing requests. Their
 Wails adapter carries exact canonical JSON as a string so outer `JSON.stringify`

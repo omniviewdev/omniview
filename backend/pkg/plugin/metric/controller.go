@@ -3,6 +3,7 @@ package metric
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -62,49 +63,51 @@ type Controller interface {
 
 // SubscribeRequest contains parameters for subscribing to a metric stream.
 type SubscribeRequest struct {
-	ResourceKey       string                 `json:"resource_key"`
-	ResourceID        string                 `json:"resource_id"`
-	ResourceNamespace string                 `json:"resource_namespace"`
-	ResourceData      *resourcev2.Value `json:"resource_data,omitempty"`
+	ResourceKey       string                        `json:"resource_key"`
+	ResourceID        string                        `json:"resource_id"`
+	ResourceNamespace string                        `json:"resource_namespace"`
+	ResourceData      *resourcev2.Value             `json:"resource_data,omitempty"`
 	Reference         *resourcev2.ResourceReference `json:"reference,omitempty"`
-	Route             *resourcev2.AccessRoute `json:"route,omitempty"`
-	MetricIDs         []string               `json:"metric_ids"`
-	Interval          time.Duration          `json:"interval"`
-	Params            map[string]string `json:"params,omitempty"`
+	Route             *resourcev2.AccessRoute       `json:"route,omitempty"`
+	MetricIDs         []string                      `json:"metric_ids"`
+	Interval          time.Duration                 `json:"interval"`
+	Params            map[string]string             `json:"params,omitempty"`
 }
 
 type subscriptionIndex struct {
-	stream         *metricStream
-	wireID         string
+	stream *metricStream
+	wireID string
 }
 
 var _ Controller = (*controller)(nil)
 
 type controller struct {
-	emitter          resource.EventEmitter
-	ctx              context.Context
-	logger           logging.Logger
-	settingsProvider pkgsettings.Provider
-	clients          map[string]Provider
-	providerInfos    map[string]*metric.ProviderInfo // pluginID -> provider info
-	handlerMap       map[string][]metric.Handler     // pluginID -> handlers
-	resourceIndex    map[string][]string             // resource key -> []pluginID
-	subscriptions    map[string]subscriptionIndex    // subscriptionID -> index
-	streams          map[metricStreamKey]*metricStream
-	streamErrors     map[metricStreamKey]error
-	streamBlocked    map[metricStreamKey]int
-	resourceClient   resource.Service
+	emitter           resource.EventEmitter
+	ctx               context.Context
+	logger            logging.Logger
+	settingsProvider  pkgsettings.Provider
+	clients           map[string]Provider
+	providerInfos     map[string]*metric.ProviderInfo // pluginID -> provider info
+	handlerMap        map[string][]metric.Handler     // pluginID -> handlers
+	resourceIndex     map[string][]string             // resource key -> []pluginID
+	subscriptions     map[string]subscriptionIndex    // subscriptionID -> index
+	streams           map[metricStreamKey]*metricStream
+	streamErrors      map[metricStreamKey]error
+	streamBlocked     map[metricStreamKey]int
+	resourceClient    resource.ConnectionReader
 	referenceAdmitter resource.ReferenceAdmitter
-	mux              sync.RWMutex
+	mux               sync.RWMutex
 }
 
 // SetReferenceAdmitter is configured by native composition before startup.
-func (c *controller) SetReferenceAdmitter(admit resource.ReferenceAdmitter) { c.referenceAdmitter = admit }
+func (c *controller) SetReferenceAdmitter(admit resource.ReferenceAdmitter) {
+	c.referenceAdmitter = admit
+}
 
 func NewController(
 	logger logging.Logger,
 	sp pkgsettings.Provider,
-	resourceClient resource.Service,
+	resourceClient resource.ConnectionReader,
 ) Controller {
 	return &controller{
 		ctx:              nil,
@@ -236,9 +239,16 @@ func (c *controller) removePlugin(pluginID string) {
 	c.mux.Lock()
 	var retired []*metricStream
 	for key, state := range c.streams {
-		if key.plugin == pluginID { retired = append(retired, state); delete(c.streams, key) }
+		if key.plugin == pluginID {
+			retired = append(retired, state)
+			delete(c.streams, key)
+		}
 	}
-	for key := range c.streamErrors { if key.plugin == pluginID { delete(c.streamErrors, key) } }
+	for key := range c.streamErrors {
+		if key.plugin == pluginID {
+			delete(c.streamErrors, key)
+		}
+	}
 
 	delete(c.clients, pluginID)
 	delete(c.providerInfos, pluginID)
@@ -260,7 +270,9 @@ func (c *controller) removePlugin(pluginID string) {
 	}
 
 	c.mux.Unlock()
-	for _, state := range retired { c.endStream(state, closedStreamError()) }
+	for _, state := range retired {
+		c.endStream(state, closedStreamError())
+	}
 }
 
 func (c *controller) handleStreamOutput(output metric.StreamOutput) {
@@ -370,10 +382,16 @@ func (c *controller) Query(
 		attribute.String("resource_key", req.ResourceKey),
 	)
 	if req.Reference != nil {
-		if c.referenceAdmitter == nil { return nil, resourcev2.NewError("UNSUPPORTED", "Resource reference admission is unavailable.") }
-		if req.Route == nil || req.Route.Connection != connectionID { return nil, resourcev2.NewError("INVALID_REQUEST", "Resource route does not match the selected connection.") }
+		if c.referenceAdmitter == nil {
+			return nil, resourcev2.NewError("UNSUPPORTED", "Resource reference admission is unavailable.")
+		}
+		if req.Route == nil || req.Route.Connection != connectionID {
+			return nil, resourcev2.NewError("INVALID_REQUEST", "Resource route does not match the selected connection.")
+		}
 		admitted, err := c.referenceAdmitter(ctx, "metric.Query", pluginID, *req.Route, *req.Reference)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		ctx = admitted
 	}
 
@@ -417,7 +435,6 @@ func (c *controller) QueryAll(
 		return nil, nil
 	}
 
-
 	results := make(map[string]*metric.QueryResponse)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -431,7 +448,9 @@ func (c *controller) QueryAll(
 			if err != nil {
 				if req.Reference != nil {
 					mu.Lock()
-					if referenceErr == nil { referenceErr = err }
+					if referenceErr == nil {
+						referenceErr = err
+					}
 					mu.Unlock()
 				}
 				c.logger.Warnw(ctx, "error querying metric provider", "pluginID", pid, "error", err)
@@ -446,7 +465,9 @@ func (c *controller) QueryAll(
 	wg.Wait()
 	// A denied or failed reference-bearing operation is not successful partial
 	// metric availability. Preserve ordinary nonresource aggregation behavior.
-	if referenceErr != nil { return nil, referenceErr }
+	if referenceErr != nil {
+		return nil, referenceErr
+	}
 	return results, nil
 }
 
@@ -467,12 +488,20 @@ func (c *controller) Subscribe(pluginID, connectionID string, req SubscribeReque
 		MetricIDs: req.MetricIDs, Interval: req.Interval, Params: req.Params,
 	}
 	if req.Reference != nil {
-		if c.referenceAdmitter == nil { return "", apperror.ForResource(resourcev2.NewError("UNSUPPORTED", "Resource reference admission is unavailable."), subscriptionID) }
-		if req.Route == nil || req.Route.Connection != connectionID { return "", apperror.ForResource(resourcev2.NewError("INVALID_REQUEST", "Resource route does not match the selected connection."), subscriptionID) }
+		if c.referenceAdmitter == nil {
+			return "", apperror.ForResource(resourcev2.NewError("UNSUPPORTED", "Resource reference admission is unavailable."), subscriptionID)
+		}
+		if req.Route == nil || req.Route.Connection != connectionID {
+			return "", apperror.ForResource(resourcev2.NewError("INVALID_REQUEST", "Resource route does not match the selected connection."), subscriptionID)
+		}
 		admitted, err := c.referenceAdmitter(ctx, "metric.Subscribe", pluginID, *req.Route, *req.Reference)
-		if err != nil { return "", err }
+		if err != nil {
+			return "", err
+		}
 		revision, ok := resourcev2.CatalogRevisionFromContext(admitted)
-		if !ok || revision == "" { return "", apperror.ForResource(resourcev2.NewError("UNSUPPORTED", "Resource catalog admission is unavailable."), subscriptionID) }
+		if !ok || revision == "" {
+			return "", apperror.ForResource(resourcev2.NewError("UNSUPPORTED", "Resource catalog admission is unavailable."), subscriptionID)
+		}
 		input.CatalogRevision = revision
 	}
 	// Admit the complete canonical frame before it can affect the shared lane.
@@ -483,7 +512,15 @@ func (c *controller) Subscribe(pluginID, connectionID string, req SubscribeReque
 		return "", apperror.ForResource(resourcev2.NewError("INVALID_REQUEST", "Metric route does not match the selected connection."), subscriptionID)
 	}
 	state, err := c.ensureStream(pluginID, connectionID)
-	if err != nil { return "", apperror.ForResource(err, subscriptionID) }
+	if err != nil {
+		var missing *apperror.AppError
+		if errors.As(err, &missing) && missing.Type == apperror.TypePluginNotFound {
+			classified := *missing
+			classified.RequestID = subscriptionID
+			return "", &classified
+		}
+		return "", apperror.ForResource(err, subscriptionID)
+	}
 	c.mux.Lock()
 	if c.streams[state.key] != state || c.streamBlocked[state.key] > 0 {
 		c.mux.Unlock()
@@ -510,9 +547,16 @@ func (c *controller) Subscribe(pluginID, connectionID string, req SubscribeReque
 func (c *controller) Unsubscribe(subscriptionID string) error {
 	c.mux.Lock()
 	sub, ok := c.subscriptions[subscriptionID]
-	if ok { delete(c.subscriptions, subscriptionID); delete(sub.stream.wireSubscriptions, sub.wireID) }
+	if ok {
+		delete(c.subscriptions, subscriptionID)
+		delete(sub.stream.wireSubscriptions, sub.wireID)
+	}
 	c.mux.Unlock()
-	if !ok { return apperror.ForResource(resourcev2.NewError("NOT_FOUND", "Metric subscription was not found."), uuid.NewString()) }
+	if !ok {
+		missing := apperror.SessionNotFound(subscriptionID)
+		missing.RequestID = uuid.NewString()
+		return missing
+	}
 	// No blocking send holds the controller lock and no input channel is closed
 	// beneath senders. Retirement always releases this wait.
 	select {

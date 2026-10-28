@@ -59,13 +59,13 @@ type sessionIndex struct {
 var _ Controller = (*controller)(nil)
 
 type controller struct {
-	app              *application.App
-	ctx              context.Context
-	logger           logging.Logger
-	settingsProvider pkgsettings.Provider
-	resourceClient   resource.Service
+	app               *application.App
+	ctx               context.Context
+	logger            logging.Logger
+	settingsProvider  pkgsettings.Provider
+	resourceClient    resource.ConnectionReader
 	referenceAdmitter resource.ReferenceAdmitter
-	outputMux        chan logs.StreamOutput
+	outputMux         chan logs.StreamOutput
 
 	mu           sync.RWMutex
 	clients      map[string]Provider
@@ -79,7 +79,9 @@ type controller struct {
 }
 
 // SetReferenceAdmitter is configured by native composition before startup.
-func (c *controller) SetReferenceAdmitter(admit resource.ReferenceAdmitter) { c.referenceAdmitter = admit }
+func (c *controller) SetReferenceAdmitter(admit resource.ReferenceAdmitter) {
+	c.referenceAdmitter = admit
+}
 
 type logBatch struct {
 	lines []logs.LogLine
@@ -89,7 +91,7 @@ type logBatch struct {
 func NewController(
 	logger logging.Logger,
 	sp pkgsettings.Provider,
-	resourceClient resource.Service,
+	resourceClient resource.ConnectionReader,
 ) Controller {
 	return &controller{
 		app:              nil,
@@ -421,10 +423,16 @@ func (c *controller) CreateSession(
 		attribute.String("connection_id", connectionID),
 	)
 	if opts.Reference != nil {
-		if c.referenceAdmitter == nil { return nil, resourcev2.NewError("UNSUPPORTED", "Resource reference admission is unavailable.") }
-		if opts.Route == nil || opts.Route.Connection != connectionID { return nil, resourcev2.NewError("INVALID_REQUEST", "Resource route does not match the selected connection.") }
+		if c.referenceAdmitter == nil {
+			return nil, resourcev2.NewError("UNSUPPORTED", "Resource reference admission is unavailable.")
+		}
+		if opts.Route == nil || opts.Route.Connection != connectionID {
+			return nil, resourcev2.NewError("INVALID_REQUEST", "Resource route does not match the selected connection.")
+		}
 		admitted, err := c.referenceAdmitter(ctx, "logs.CreateSession", pluginID, *opts.Route, *opts.Reference)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		ctx = admitted
 	}
 

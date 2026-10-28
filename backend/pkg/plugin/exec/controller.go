@@ -56,7 +56,7 @@ type sessionIndex struct {
 func NewController(
 	logger logging.Logger,
 	sp pkgsettings.Provider,
-	resourceClient resource.Service,
+	resourceClient resource.ConnectionReader,
 ) Controller {
 	return &controller{
 		app:              nil,
@@ -96,13 +96,15 @@ type controller struct {
 	outputMux chan exec.StreamOutput
 	resizeMux chan exec.StreamResize
 
-	resourceClient  resource.Service
+	resourceClient    resource.ConnectionReader
 	referenceAdmitter resource.ReferenceAdmitter
-	terminalManager *terminal.Manager
+	terminalManager   *terminal.Manager
 }
 
 // SetReferenceAdmitter is configured by native composition before startup.
-func (c *controller) SetReferenceAdmitter(admit resource.ReferenceAdmitter) { c.referenceAdmitter = admit }
+func (c *controller) SetReferenceAdmitter(admit resource.ReferenceAdmitter) {
+	c.referenceAdmitter = admit
+}
 
 func (c *controller) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
 	c.app = application.Get()
@@ -507,15 +509,23 @@ func (c *controller) CreateSession(
 		attribute.String("connection_id", connectionID),
 	)
 	if opts.Reference != nil {
-		if c.referenceAdmitter == nil { return nil, resourcev2.NewError("UNSUPPORTED", "Resource reference admission is unavailable.") }
-		if opts.Route == nil || opts.Route.Connection != connectionID { return nil, resourcev2.NewError("INVALID_REQUEST", "Resource route does not match the selected connection.") }
+		if c.referenceAdmitter == nil {
+			return nil, resourcev2.NewError("UNSUPPORTED", "Resource reference admission is unavailable.")
+		}
+		if opts.Route == nil || opts.Route.Connection != connectionID {
+			return nil, resourcev2.NewError("INVALID_REQUEST", "Resource route does not match the selected connection.")
+		}
 		ctx, err = c.referenceAdmitter(ctx, "exec.CreateSession", plugin, *opts.Route, *opts.Reference)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	var session *exec.Session
 	if plugin == "local" {
-		if opts.HasResourceIntent() { return nil, resourcev2.NewError("INVALID_REQUEST", "A local terminal cannot execute a resource request.") }
+		if opts.HasResourceIntent() {
+			return nil, resourcev2.NewError("INVALID_REQUEST", "A local terminal cannot execute a resource request.")
+		}
 		// start local terminal
 		session, err = c.terminalManager.StartSession(
 			c.getUnconnectedCtx(ctx, plugin),

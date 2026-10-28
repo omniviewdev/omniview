@@ -2,12 +2,18 @@ package resource
 
 import (
 	"context"
+
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
-// Service is the actual Wails/headless resource boundary. Canonical SDK values
-// cross explicit transport adapters; only host envelopes add row membership.
+// ConnectionReader is the native connection lookup required by resource utilities.
+type ConnectionReader interface {
+	GetConnection(ctx context.Context, pluginID string, connectionID string) (types.Connection, error)
+}
+
+// Service is the typed native resource boundary. Wails uses explicit transport
+// adapters; only host envelopes add row membership.
 type Service interface {
 	ListPlugins(ctx context.Context) ([]string, error)
 	HasPlugin(ctx context.Context, pluginID string) (bool, error)
