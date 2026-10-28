@@ -78,6 +78,7 @@ type subscriptionIndex struct {
 	connectionID   string
 	subscriptionID string
 	stream         *metricStream
+	wireID         string
 }
 
 var _ Controller = (*controller)(nil)
@@ -458,11 +459,12 @@ func (c *controller) Subscribe(pluginID, connectionID string, req SubscribeReque
 	ctx, span := tracer.Start(context.Background(), "metric.Subscribe")
 	defer span.End()
 	subscriptionID := uuid.NewString()
+	wireID := uuid.NewString()
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID),
 		attribute.String("resource_key", req.ResourceKey), attribute.String("resource_id", req.ResourceID),
 		attribute.String("subscription_id", subscriptionID))
 	input := metric.StreamInput{
-		SubscriptionID: subscriptionID, Command: metric.StreamCommandSubscribe,
+		SubscriptionID: wireID, Command: metric.StreamCommandSubscribe,
 		ResourceKey: req.ResourceKey, ResourceID: req.ResourceID, ResourceNamespace: req.ResourceNamespace,
 		ResourceData: req.ResourceData, Reference: req.Reference, Route: req.Route,
 		MetricIDs: req.MetricIDs, Interval: req.Interval, Params: req.Params,
@@ -490,20 +492,20 @@ func (c *controller) Subscribe(pluginID, connectionID string, req SubscribeReque
 		c.mux.Unlock()
 		return "", apperror.ForResource(profileChangingError(), subscriptionID)
 	}
-	c.subscriptions[subscriptionID] = subscriptionIndex{pluginID: pluginID, connectionID: connectionID, subscriptionID: subscriptionID, stream: state}
+	c.subscriptions[subscriptionID] = subscriptionIndex{pluginID: pluginID, connectionID: connectionID, subscriptionID: subscriptionID, stream: state, wireID: wireID}
+	state.wireSubscriptions[wireID] = subscriptionID
 	c.mux.Unlock()
 	select {
 	case state.input <- input:
 		select {
 		case <-state.done:
+			c.forgetInterest(subscriptionID, wireID, state)
 			return "", apperror.ForResource(closedStreamError(), subscriptionID)
 		default:
 			return subscriptionID, nil
 		}
 	case <-state.done:
-		c.mux.Lock()
-		delete(c.subscriptions, subscriptionID)
-		c.mux.Unlock()
+		c.forgetInterest(subscriptionID, wireID, state)
 		return "", apperror.ForResource(closedStreamError(), subscriptionID)
 	}
 }
@@ -511,7 +513,7 @@ func (c *controller) Subscribe(pluginID, connectionID string, req SubscribeReque
 func (c *controller) Unsubscribe(subscriptionID string) error {
 	c.mux.Lock()
 	sub, ok := c.subscriptions[subscriptionID]
-	if ok { delete(c.subscriptions, subscriptionID) }
+	if ok { delete(c.subscriptions, subscriptionID); delete(sub.stream.wireSubscriptions, sub.wireID) }
 	c.mux.Unlock()
 	if !ok { return apperror.ForResource(resourcev2.NewError("NOT_FOUND", "Metric subscription was not found."), uuid.NewString()) }
 	// No blocking send holds the controller lock and no input channel is closed
@@ -522,7 +524,7 @@ func (c *controller) Unsubscribe(subscriptionID string) error {
 	default:
 	}
 	select {
-	case sub.stream.input <- metric.StreamInput{SubscriptionID: subscriptionID, Command: metric.StreamCommandUnsubscribe}:
+	case sub.stream.input <- metric.StreamInput{SubscriptionID: sub.wireID, Command: metric.StreamCommandUnsubscribe}:
 		return nil
 	case <-sub.stream.done:
 		return apperror.ForResource(closedStreamError(), uuid.NewString())

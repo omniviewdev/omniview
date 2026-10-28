@@ -59,7 +59,7 @@ func TestStreamOnlyProviderProducesActualNativeMetric(t *testing.T) {
 func testMetricStream() *metricStream {
  _,cancel:=context.WithCancel(context.Background())
  ready:=make(chan struct{});close(ready)
- return &metricStream{key:metricStreamKey{"metrics","connection"},input:make(chan sdkmetric.StreamInput),ready:ready,done:make(chan struct{}),cancel:cancel}
+ return &metricStream{key:metricStreamKey{"metrics","connection"},input:make(chan sdkmetric.StreamInput),ready:ready,done:make(chan struct{}),cancel:cancel,wireSubscriptions:make(map[string]string)}
 }
 
 func TestInvalidSubscriptionCannotPoisonSharedLane(t *testing.T) {

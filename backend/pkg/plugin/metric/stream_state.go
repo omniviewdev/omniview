@@ -21,6 +21,7 @@ type metricStream struct {
  done chan struct{}
  cancel context.CancelFunc
  once sync.Once
+ wireSubscriptions map[string]string
 }
 func (s *metricStream) stop() { s.once.Do(func(){ close(s.done); s.cancel() }) }
 
@@ -46,7 +47,7 @@ func (c *controller) ensureStream(pluginID, connectionID string) (*metricStream,
  provider:=c.clients[pluginID]
  if provider==nil {c.mux.Unlock();return nil,closedStreamError()}
  ctx,cancel:=context.WithCancel(c.ctx)
- state:=&metricStream{key:key,input:make(chan metric.StreamInput),ready:make(chan struct{}),done:make(chan struct{}),cancel:cancel}
+ state:=&metricStream{key:key,input:make(chan metric.StreamInput),ready:make(chan struct{}),done:make(chan struct{}),cancel:cancel,wireSubscriptions:make(map[string]string)}
  c.streams[key]=state
  c.mux.Unlock()
  defer close(state.ready)
@@ -81,14 +82,31 @@ func (c *controller) ensureStream(pluginID, connectionID string) (*metricStream,
     if failure==nil{failure=&resourcev2.ResourceOperationError{Code:"PROVIDER_ERROR",Message:"The metric stream failed."}}
     c.endStream(state,failure);return
    }
-   c.mux.RLock()
-   interest,exists:=c.subscriptions[event.SubscriptionID]
-   owned:=exists&&interest.stream==state&&c.streams[key]==state
-   c.mux.RUnlock()
-   if owned { c.handleStreamOutput(event) }
+   if translated,owned:=c.translateStreamOutput(state,event);owned { c.handleStreamOutput(translated) }
   }}
  }()
  return state,nil
+}
+
+// A wire ID is immutable and never rebound, even if a public interest is reused.
+// Check both directions and the exact lane before exposing its external event ID.
+func (c *controller) translateStreamOutput(state *metricStream, output metric.StreamOutput) (metric.StreamOutput,bool) {
+ c.mux.Lock()
+ defer c.mux.Unlock()
+ wireID:=output.SubscriptionID
+ publicID,exists:=state.wireSubscriptions[wireID]
+ interest,current:=c.subscriptions[publicID]
+ if !exists||!current||interest.stream!=state||interest.wireID!=wireID||c.streams[state.key]!=state{return metric.StreamOutput{},false}
+ if output.OperationError!=nil {delete(c.subscriptions,publicID);delete(state.wireSubscriptions,wireID)}
+ output.SubscriptionID=publicID
+ return output,true
+}
+
+func (c *controller) forgetInterest(publicID,wireID string,state *metricStream) {
+ c.mux.Lock()
+ defer c.mux.Unlock()
+ if interest,ok:=c.subscriptions[publicID];ok&&interest.stream==state&&interest.wireID==wireID{delete(c.subscriptions,publicID)}
+ delete(state.wireSubscriptions,wireID)
 }
 
 func (c *controller) retireStream(stream *metricStream, failure *resourcev2.ResourceOperationError) []metric.StreamOutput {
@@ -102,6 +120,7 @@ func (c *controller) retireStream(stream *metricStream, failure *resourcev2.Reso
   delete(c.subscriptions,id)
   terminal=append(terminal,metric.StreamOutput{SubscriptionID:id,Error:failure.Message,OperationError:failure})
  }
+ clear(stream.wireSubscriptions)
  return terminal
 }
 func (c *controller) endStream(stream *metricStream, failure *resourcev2.ResourceOperationError) {

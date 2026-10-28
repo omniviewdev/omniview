@@ -84,13 +84,21 @@ type metricRecordedEvent struct{key string;data []any}
 type metricRecordingEmitter struct{events chan metricRecordedEvent}
 func (emitter metricRecordingEmitter) Emit(key string,data ...any){emitter.events<-metricRecordedEvent{key:key,data:data}}
 
-func TestReferenceSubscriptionCarriesHostOnlyFramePinThroughActualGRPC(t *testing.T) {
+func TestReferenceSubscriptionPinsAndDropsQueuedSamplesAcrossPublicIDReuse(t *testing.T) {
  received:=make(chan string,1)
+ ordinary:=make(chan struct{},1)
  fixture:=newNativeMetricFixture(t,func(ctx *sdkmetric.QueryContext,req sdkmetric.QueryRequest)(*sdkmetric.QueryResponse,error){
   pin,ok:=resourcev2.CatalogRevisionFromContext(ctx.Context)
-  if !ok||pin==""||req.Reference==nil{return nil,resourcev2.NewError("INVALID_REQUEST","Native poll did not receive its admitted frame catalog pin.")}
-  select{case received<-pin:default:}
-  return sampleNativeRuntimeMetric(nativeRuntimeMetricName,sdkmetric.ShapeCurrent)
+  if req.Reference!=nil {
+   if !ok||pin==""{return nil,resourcev2.NewError("INVALID_REQUEST","Native poll did not receive its admitted frame catalog pin.")}
+   select{case received<-pin:default:}
+  } else {
+   if pin!=""{return nil,resourcev2.NewError("INVALID_REQUEST","Ordinary subscription inherited an old reference pin.")}
+   select{case ordinary<-struct{}{}:default:}
+  }
+  result,err:=sampleNativeRuntimeMetric(nativeRuntimeMetricName,sdkmetric.ShapeCurrent)
+  if err==nil{result.Results[0].CurrentValue.Labels["catalog_revision"]=pin}
+  return result,err
  })
  observed:=nativeObservedMetricRecord(t,fixture)
  ctx,cancel:=context.WithCancel(context.Background());defer cancel()
@@ -108,15 +116,52 @@ func TestReferenceSubscriptionCarriesHostOnlyFramePinThroughActualGRPC(t *testin
  id,err:=ctrl.Subscribe(nativeMetricPluginID,nativeMetricConnectionID,SubscribeRequest{ResourceKey:nativeMetricResourceKey,ResourceID:observed.Record.Reference.Address.ID,ResourceData:&observed.Record.Body,Reference:&observed.Record.Reference,Route:&observed.Route,Interval:time.Second})
  require.NoError(t,err);fixture.waitMetricRPCStarted(t)
  select{case pin:=<-received:require.Equal(t,<-accepted,pin);case <-time.After(5*time.Second):t.Fatal("host-only catalog pin did not cross the actual metric frame boundary")}
+ var queued sdkmetric.StreamOutput
  select{case event:=<-events:
   require.Equal(t,"core/metrics/data/"+id,event.key)
   payload,ok:=event.data[0].(string);require.True(t,ok)
-  var output sdkmetric.StreamOutput;require.NoError(t,json.Unmarshal([]byte(payload),&output))
-  require.Equal(t,id,output.SubscriptionID);require.Equal(t,float64(runtime.GOMAXPROCS(0)),output.Results[0].CurrentValue.Value)
+  require.NoError(t,json.Unmarshal([]byte(payload),&queued))
+  require.Equal(t,id,queued.SubscriptionID);require.Equal(t,float64(runtime.GOMAXPROCS(0)),queued.Results[0].CurrentValue.Value)
+  require.NotEmpty(t,queued.Results[0].CurrentValue.Labels["catalog_revision"])
  case <-time.After(5*time.Second):t.Fatal("native metric result did not reach its real subscription event")}
+ ctrl.mux.RLock();first:=ctrl.subscriptions[id];ctrl.mux.RUnlock()
+ require.NotEqual(t,id,first.wireID)
+ // Keep this actual native RefA sample queued in wire form until after its
+ // interest is removed. The public event had translated only this ID field.
+ queued.SubscriptionID=first.wireID
  require.NoError(t,ctrl.Unsubscribe(id))
- require.NoError(t,ctrl.OnPluginStop(nativeMetricPluginID,config.PluginMeta{}))
- fixture.waitMetricRPCStopped(t)
+ replacement,err:=ctrl.Subscribe(nativeMetricPluginID,nativeMetricConnectionID,SubscribeRequest{ResourceKey:nativeMetricResourceKey,Interval:time.Second})
+ require.NoError(t,err)
+ // The public API currently mints fresh IDs too. Simulate an external adapter
+ // reusing its old public identity without ever reusing the SDK wire identity.
+ ctrl.mux.Lock()
+ current,registered:=ctrl.subscriptions[replacement]
+ if registered {
+  delete(ctrl.subscriptions,replacement)
+  current.subscriptionID=id
+  ctrl.subscriptions[id]=current
+  current.stream.wireSubscriptions[current.wireID]=id
+ }
+ ctrl.mux.Unlock()
+ require.True(t,registered,"ordinary replacement must remain a live SDK interest")
+ require.NotEqual(t,first.wireID,current.wireID)
+ _,owned:=ctrl.translateStreamOutput(first.stream,queued)
+ require.False(t,owned,"queued RefA must never be repainted as the new ordinary interest")
+ select{case <-ordinary:case <-time.After(5*time.Second):t.Fatal("ordinary replacement did not reach the real native collector")}
+ deadline:=time.After(5*time.Second)
+ for {
+  select{case event:=<-events:
+   if event.key!="core/metrics/data/"+id{continue}
+   payload,ok:=event.data[0].(string);require.True(t,ok)
+   var output sdkmetric.StreamOutput;require.NoError(t,json.Unmarshal([]byte(payload),&output))
+   require.Empty(t,output.Results[0].CurrentValue.Labels["catalog_revision"])
+   require.Equal(t,float64(runtime.GOMAXPROCS(0)),output.Results[0].CurrentValue.Value)
+   require.NoError(t,ctrl.Unsubscribe(id))
+   require.NoError(t,ctrl.OnPluginStop(nativeMetricPluginID,config.PluginMeta{}))
+   fixture.waitMetricRPCStopped(t)
+   return
+  case <-deadline:t.Fatal("ordinary replacement did not publish under its current external identity")}
+ }
 }
 
 func TestQueryAllPropagatesReferenceAdmissionDenial(t *testing.T) {
