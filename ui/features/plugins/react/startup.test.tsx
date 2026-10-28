@@ -264,7 +264,9 @@ describe('plugin startup navigation', () => {
     backend.restart.mockRejectedValue(new Error('Workspace selection changed'));
     renderWorkspace();
     const button = await screen.findByRole('button', { name: 'Restart dev server' });
-    await act(async () => { button.click(); });
+    await act(async () => {
+      button.click();
+    });
     expect(await screen.findByText('Workspace selection changed')).toBeVisible();
     expect(button).toBeEnabled();
   });

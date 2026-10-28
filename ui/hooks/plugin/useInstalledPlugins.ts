@@ -73,7 +73,7 @@ export function useInstalledPlugins(): {
       id: plugin.id,
       dev,
       phase: plugin.phase,
-      lastError: plugin.lastError || undefined,
+      lastError: plugin.lastError === '' ? undefined : plugin.lastError,
       // The backend allocates the port before starting Vite.
       devPort: server?.viteStatus === DevProcessStatus.DevProcessStatusReady && server.vitePort > 0 ? server.vitePort : undefined,
       devStatus: server?.viteStatus,
