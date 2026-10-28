@@ -14,7 +14,7 @@ import (
 // including on cancellation, before returning authority to restore its inputs.
 // The command must not use exec.CommandContext's independent leader-only kill.
 func RunRepositoryCommand(ctx context.Context, command *exec.Cmd, owner devsession.ProcessOwner) error {
-	child, err := startOwnedChildCommand(ctx, command, owner, nil)
+	child, err := startOwnedChildCommand(ctx, command, owner, nil, false)
 	if child == nil {
 		return err
 	}

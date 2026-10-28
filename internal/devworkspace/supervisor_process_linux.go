@@ -32,7 +32,7 @@ func attachOwnedCommand(child *ownedChild) error {
 		if force {
 			signal = unix.SIGKILL
 		}
-		err := unix.Kill(-child.identity.PID, signal)
+		err := unix.Kill(-child.command.Process.Pid, signal)
 		if errors.Is(err, unix.ESRCH) {
 			return nil
 		}
@@ -47,7 +47,7 @@ func waitOwnedCommand(child *ownedChild) error {
 func waitLinuxOwnedCommand(child *ownedChild, proc fs.FS) error {
 	var information unix.Siginfo
 	for {
-		err := unix.Waitid(unix.P_PID, child.identity.PID, &information, unix.WEXITED|unix.WNOWAIT, nil)
+		err := unix.Waitid(unix.P_PID, child.command.Process.Pid, &information, unix.WEXITED|unix.WNOWAIT, nil)
 		if errors.Is(err, unix.EINTR) {
 			continue
 		}
@@ -58,10 +58,10 @@ func waitLinuxOwnedCommand(child *ownedChild, proc fs.FS) error {
 	}
 	child.mu.Lock()
 	defer child.mu.Unlock()
-	if err := signalUnreapedGroup(child.identity.PID, unix.SIGKILL); err != nil {
+	if err := signalUnreapedGroup(child.command.Process.Pid, unix.SIGKILL); err != nil {
 		return errors.Join(errOwnedCommandUncertain, fmt.Errorf("terminate unreaped owned group: %w", err))
 	}
-	if err := waitLinuxUnreapedGroupExit(child.identity.PID, proc, 5*time.Second); err != nil {
+	if err := waitLinuxUnreapedGroupExit(child.command.Process.Pid, proc, 5*time.Second); err != nil {
 		// The unreaped leader pins this exact PGID. Keep both its Cmd and the
 		// writer lifetime pending when descendants might still produce output.
 		return errors.Join(errOwnedCommandUncertain, err)

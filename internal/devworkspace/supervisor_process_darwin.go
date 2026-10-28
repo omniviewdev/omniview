@@ -28,7 +28,7 @@ func attachOwnedCommand(child *ownedChild) error {
 		if force {
 			signal = unix.SIGKILL
 		}
-		return signalUnreapedGroup(child.identity.PID, signal)
+		return signalUnreapedGroup(child.command.Process.Pid, signal)
 	}
 	return nil
 }
@@ -40,18 +40,18 @@ func waitOwnedCommand(child *ownedChild) error {
 		err = fmt.Errorf("create owned-child kqueue: %w", err)
 	} else {
 		defer unix.Close(queue)
-		changes := []unix.Kevent_t{{Ident: uint64(child.identity.PID), Filter: unix.EVFILT_PROC, Flags: unix.EV_ADD | unix.EV_ENABLE | unix.EV_ONESHOT, Fflags: unix.NOTE_EXIT}}
+		changes := []unix.Kevent_t{{Ident: uint64(child.command.Process.Pid), Filter: unix.EVFILT_PROC, Flags: unix.EV_ADD | unix.EV_ENABLE | unix.EV_ONESHOT, Fflags: unix.NOTE_EXIT}}
 		_, err = unix.Kevent(queue, changes, nil, nil)
 		if err != nil {
 			// A fast direct child can be an unreaped zombie before registration.
 			// ESRCH alone is not exit proof: bind the exact retained Cmd/PID to
 			// its kernel zombie record, and still require group disposal + Wait.
-			if errors.Is(err, unix.ESRCH) && child.command.Process != nil && child.command.ProcessState == nil && child.command.Process.Pid == child.identity.PID {
-				members, inspectErr := unix.SysctlKinfoProcSlice("kern.proc.pid", child.identity.PID)
+			if errors.Is(err, unix.ESRCH) && child.command.Process != nil && child.command.ProcessState == nil {
+				members, inspectErr := unix.SysctlKinfoProcSlice("kern.proc.pid", child.command.Process.Pid)
 				if inspectErr != nil {
 					err = errors.Join(err, fmt.Errorf("inspect retained owned-child exit: %w", inspectErr))
 				} else {
-					alreadyExited = len(members) == 1 && int(members[0].Proc.P_pid) == child.identity.PID && members[0].Proc.P_stat == 5
+					alreadyExited = len(members) == 1 && int(members[0].Proc.P_pid) == child.command.Process.Pid && members[0].Proc.P_stat == 5
 				}
 			}
 			err = fmt.Errorf("register owned-child exit: %w", err)
@@ -65,7 +65,7 @@ func waitOwnedCommand(child *ownedChild) error {
 				}
 				if err != nil {
 					err = fmt.Errorf("observe owned-child exit: %w", err)
-				} else if count != 1 || event[0].Ident != uint64(child.identity.PID) || event[0].Filter != unix.EVFILT_PROC {
+				} else if count != 1 || event[0].Ident != uint64(child.command.Process.Pid) || event[0].Filter != unix.EVFILT_PROC {
 					err = fmt.Errorf("observe owned-child exit: unexpected kernel event")
 				} else if event[0].Flags&unix.EV_ERROR != 0 {
 					err = fmt.Errorf("observe owned-child exit event: %w", syscall.Errno(event[0].Data))
@@ -77,10 +77,10 @@ func waitOwnedCommand(child *ownedChild) error {
 		}
 	}
 	child.mu.Lock()
-	killErr := signalUnreapedGroup(child.identity.PID, unix.SIGKILL)
+	killErr := signalUnreapedGroup(child.command.Process.Pid, unix.SIGKILL)
 	var groupErr error
 	if killErr == nil {
-		groupErr = waitUnreapedGroupExit(child.identity.PID)
+		groupErr = waitUnreapedGroupExit(child.command.Process.Pid)
 	}
 	if killErr != nil || groupErr != nil {
 		// Keep the leader unreaped on uncertain disposal: its actual Cmd lifetime
