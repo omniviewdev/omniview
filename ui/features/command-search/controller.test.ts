@@ -4,6 +4,7 @@ import { ensureBuiltinExtensionPointsRegistered } from '../extensions/registerBu
 import { createDeferred } from '../plugins/testing/helpers';
 import { createGlobalSearchController } from './controller';
 import type { GlobalSearchController } from './controller';
+import { searchResource, searchType } from './searchFixtures';
 
 const point = 'omniview/global-search';
 const navigation = () => ({ schemaVersion: 1, kind: 'navigation', target: { kind: 'core', path: '/plugins' } });
@@ -118,9 +119,9 @@ describe('universal scoped provider contracts', () => {
     await h.controller.activate(key('Healthy'));
     expect(h.navigate).toHaveBeenCalledWith('/plugins');
   });
-  it('blocks resource opening when an immutable UID has no provider identity validator', async () => {
-    const target = { kind: 'resource' as const, pluginId: 'probe', connectionId: 'prod', resourceKey: 'instances',
-      resourceId: 'opaque', namespace: 'region', uid: 'version-1', label: 'Instance' };
+  it('opens canonical incarnations through host validation without requiring a provider validator', async () => {
+    const base = searchResource('instances', 'opaque', [{ dimension: 'region', value: 'region' }]);
+    const target = { ...base, reference: { ...base.reference, incarnation: 'version-1' } };
     h.register('probe/open', {
       schemaVersion: 1, kind: 'provider',
       search: async () => ({ items: [{ id: 'open', label: 'Open', value: {
@@ -133,16 +134,15 @@ describe('universal scoped provider contracts', () => {
     h.controller.open();
     await flush();
     await h.controller.activate(key('Open'));
-    expect(h.openResource).not.toHaveBeenCalled();
-    expect(h.controller.getSnapshot()).toMatchObject({ isOpen: true, executionPending: false });
+    expect(h.openResource).toHaveBeenCalledWith(target, expect.any(AbortSignal), undefined);
+    expect(h.controller.getSnapshot()).toMatchObject({ isOpen: false, executionPending: false });
   });
   it.each([
     ['foreign owner', { pluginId: 'foreign' }],
     ['non-resource scope', { kind: 'connection' }],
-    ['malformed identity', { resourceId: 42 }],
+    ['malformed identity', { reference: 42 }],
   ])('rejects action resource destinations with %s', async (_name, invalid) => {
-    const target = { kind: 'resource' as const, pluginId: 'probe', connectionId: 'prod',
-      resourceKey: 'instances', resourceId: 'vm', namespace: '', label: 'Instance' };
+    const target = searchResource('instances', 'vm', []);
     h.register('probe/open', {
       schemaVersion: 1, kind: 'provider',
       search: async () => ({ items: [{ id: 'open', label: 'Open', value: {
@@ -158,8 +158,8 @@ describe('universal scoped provider contracts', () => {
     expect(h.openResource).not.toHaveBeenCalled();
     expect(h.controller.getSnapshot()).toMatchObject({ isOpen: true, executionPending: false });
   });
-  const type = { ...connection, kind: 'resource-type' as const, resourceKey: 'cloud/instances', namespaces: ['tenant'], label: 'Instances' };
-  const resource = { ...connection, kind: 'resource' as const, resourceKey: type.resourceKey, resourceId: 'ocid1.instance.' + 'x'.repeat(500), namespace: 'tenant', label: 'Instance' };
+  const type = { ...searchType('cloud/instances', [{ dimension: 'tenant', match: 'oneOf', values: ['tenant'] }]), label: 'Instances' };
+  const resource = { ...searchResource(type.target.type, 'ocid1.instance.' + 'x'.repeat(500), [{ dimension: 'tenant', value: 'tenant' }]), label: 'Instance' };
   const action = (id: string, target: unknown, recovery?: string) => ({ id, label: id, value: { schemaVersion: 1, kind: 'action', action: { id, target, ...(recovery ? { recovery } : {}) } } });
 
   it('filters foreign and unsupported providers before applying provider cap', async () => {
@@ -188,7 +188,7 @@ describe('universal scoped provider contracts', () => {
     h.register('probe/static', action('probe:static', type).value);
     h.register('probe/no-executor', { schemaVersion: 1, kind: 'provider', search: async () => ({ items: [action('probe:no-op', type)], completion: 'complete' }) });
     h.register('probe/actions', { schemaVersion: 1, kind: 'provider', executeAction: vi.fn(), search: async () => ({
-      items: [action('foreign:bad', type), action('probe:all', { ...type, namespaces: undefined }), action('probe:other', { ...type, namespaces: ['other'] }), action('probe:list', type)],
+      items: [action('foreign:bad', type), action('probe:all', searchType(type.target.type)), action('probe:other', searchType(type.target.type, [{ dimension: 'tenant', match: 'oneOf', values: ['other'] }])), action('probe:list', type)],
       completion: 'complete',
     }) });
     h.controller.open({ scope: type });
@@ -1059,8 +1059,8 @@ describe('current typed dispatch, native service authority and execution lifecyc
 
 describe('scoped provider interaction and identity fences', () => {
   const connection = { kind: 'connection' as const, pluginId: 'probe', connectionId: 'prod', label: 'Production' };
-  const resourceType = { kind: 'resource-type' as const, pluginId: 'probe', connectionId: 'prod', resourceKey: 'pods', label: 'Pods' };
-  const resource = { kind: 'resource' as const, pluginId: 'probe', connectionId: 'prod', resourceKey: 'pods', resourceId: 'api', namespace: 'apps', uid: 'uid-1', label: 'api' };
+  const resourceType = searchType();
+  const resource = { ...searchResource(), reference: { ...searchResource().reference, incarnation: 'uid-1' } };
 
   it('scopes without navigation and restores parent query and selected identity', async () => {
     h.provider('probe/scoped', async (request) => {
@@ -1093,7 +1093,7 @@ describe('scoped provider interaction and identity fences', () => {
       search: async () => ({
         items: [
           { id: 'valid', label: 'Logs', value: { schemaVersion: 1, kind: 'action', action: { id: 'probe:logs', target: resource } } },
-          { id: 'foreign', label: 'Other connection', value: { schemaVersion: 1, kind: 'action', action: { id: 'probe:logs', target: { ...resource, connectionId: 'other' } } } },
+          { id: 'foreign', label: 'Other connection', value: { schemaVersion: 1, kind: 'action', action: { id: 'probe:logs', target: { ...resource, route: { connection: 'other' } } } } },
         ], completion: 'complete',
       }),
     });
@@ -1108,7 +1108,7 @@ describe('scoped provider interaction and identity fences', () => {
   it('preserves stable selection across events and rejects a replaced UID key', async () => {
     let uid = 'uid-1';
     h.provider('probe/objects', async () => ({
-      items: [{ id: 'api', label: 'api', value: { ...navigation(), scope: { ...resource, uid } } }],
+      items: [{ id: 'api', label: 'api', value: { ...navigation(), scope: { ...resource, reference: { ...resource.reference, incarnation: uid } } } }],
       completion: 'complete',
     }));
     h.controller.open({ scope: resourceType });
@@ -1123,6 +1123,21 @@ describe('scoped provider interaction and identity fences', () => {
     expect(key('api')).not.toBe(first);
     await h.controller.activate(first);
     expect(h.navigate).not.toHaveBeenCalled();
+  });
+
+  it('keeps canonical selection when only request-local target labels change', async () => {
+    let targetId = 'first-request';
+    h.provider('probe/objects', async () => ({
+      items: [{ id: 'api', label: 'api', value: { ...navigation(), scope: { ...resource, targetId } } }],
+      completion: 'complete',
+    }));
+    h.controller.open({ scope: resourceType });
+    await flush();
+    const first = key('api');
+    targetId = 'next-request';
+    h.controller.refresh();
+    await flush();
+    expect(key('api')).toBe(first);
   });
 
   it('retains typed denial and partial state without claiming empty success', async () => {

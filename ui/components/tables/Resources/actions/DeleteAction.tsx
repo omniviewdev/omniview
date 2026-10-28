@@ -4,14 +4,12 @@ import { Banner, Button, Dialog, Menu, Spinner, Stack, Text } from '@omniviewdev
 
 // icons
 import { LuCircleAlert, LuTrash, LuTriangleAlert } from 'react-icons/lu';
-import { useResource, parseAppError } from '@omniviewdev/runtime';
+import { parseAppError, useResourceMutations, type AccessRoute, type ResourceReference } from '@omniviewdev/runtime';
 
 type Props = {
   plugin: string;
-  connection: string;
-  resource: string;
-  namespace: string;
-  id: string;
+  route: AccessRoute;
+  reference: ResourceReference;
   handleSelect: () => void;
   handleDeselect: () => void;
   handleDismiss: () => void;
@@ -21,12 +19,13 @@ type Props = {
  * "Delete" menu item plus its confirmation dialog. Must be rendered inside a `Menu.Popup`;
  * the parent menu should keep its popup mounted so the dialog survives the menu closing.
  */
-export const DeleteAction: React.FC<Props> = ({ id, resource, plugin, connection, namespace, handleSelect, handleDeselect, handleDismiss }) => {
+export const DeleteAction: React.FC<Props> = ({ reference, plugin, route, handleSelect, handleDeselect, handleDismiss }) => {
   const [open, setOpen] = React.useState<boolean>(false);
   const [pending, setPending] = React.useState<boolean>(false);
   const [alert, setAlert] = React.useState<string>('');
 
-  const { remove } = useResource({ pluginID: plugin, connectionID: connection, resourceKey: resource, resourceID: id, namespace });
+  const { mutate } = useResourceMutations({ pluginID: plugin });
+  const { id, type: resource } = reference.address;
 
   return (
     <React.Fragment>
@@ -72,7 +71,7 @@ export const DeleteAction: React.FC<Props> = ({ id, resource, plugin, connection
         <Dialog.Footer>
           <Button variant="solid" color="danger" disabled={pending} onClick={() => {
             setPending(true);
-            remove({}).then(() => {
+            mutate({ route, reference, operation: 'delete', input: { kind: 'null' } }).then(() => {
               setOpen(false);
               handleDismiss();
             }).catch((e: unknown) => {

@@ -6,9 +6,10 @@ import { Chip } from '@omniviewdev/base-ui';
 import get from 'lodash.get';
 
 // types
-import type { ResourceLink } from '@omniviewdev/runtime/models';
+import type { ResourceLink } from '@omniviewdev/runtime';
+import { ResourceClient } from '@omniviewdev/runtime/api';
 import useRightDrawer from '@/hooks/useRightDrawer';
-import { showAppError, useSnackbar } from '@omniviewdev/runtime';
+import { showAppError, useSnackbar, valueToJSON } from '@omniviewdev/runtime';
 import { type ResourceMetadata } from '@/hooks/resource/useResourceDefinition';
 import HintTooltip from '@/components/base/HintTooltip';
 import styles from './cells.module.css';
@@ -25,24 +26,17 @@ const ResourceLinkCell: React.FC<Props> = ({
   value,
   metadata,
   idAccessor,
-  namespaceAccessor,
-  resourceKey,
-  keyAccessor,
-  keyMap,
-  namespaced,
+  type,
+  typeAccessor,
+  typeMap,
+  scopeAccessors,
   displayId,
 }) => {
   const { showResourceSidebar } = useRightDrawer();
   const { showSnackbar } = useSnackbar();
 
-  if (resourceKey === '') {
-    resourceKey = get(value, keyAccessor, '');
-  }
-
-  let namespace = '';
-  if (namespaced) {
-    namespace = get(value, namespaceAccessor, metadata?.namespace ?? '');
-  }
+  const extractedType = type || get(value, typeAccessor ?? '', '');
+  const resourceKey = typeMap?.[extractedType] ?? extractedType;
 
   const resourceID = typeof value === 'string' ? value : get(value, idAccessor, '');
 
@@ -57,25 +51,32 @@ const ResourceLinkCell: React.FC<Props> = ({
     e.stopPropagation();
     e.preventDefault();
 
-    console.log('opening resource sidebar', {
-      pluginID: metadata.pluginID,
-      connectionID: metadata.connectionID,
-      resourceKey: keyMap ? keyMap[resourceKey] ?? resourceKey : resourceKey,
-      resourceID,
-      namespace,
-    });
-
-    void showResourceSidebar({
-      pluginID: metadata.pluginID,
-      connectionID: metadata.connectionID,
-      resourceKey: keyMap ? keyMap[resourceKey] ?? resourceKey : resourceKey,
-      resourceID,
-      namespace,
-    }).catch((error: unknown) => {
+    void (async () => {
+      const source = valueToJSON(metadata.record.record.body);
+      const scope = (scopeAccessors ?? []).map(({ dimension, fieldPath }) => {
+        const entry = get(source, fieldPath);
+        if (typeof entry !== 'string') {
+          throw new Error(`Linked resource scope ${dimension} is unavailable.`);
+        }
+        return { dimension, value: entry };
+      });
+      const resolved = await ResourceClient.ResolveReference(metadata.pluginID, {
+        route: metadata.route,
+        type: resourceKey,
+        id: resourceID,
+        scope,
+      });
+      await showResourceSidebar({
+        pluginID: metadata.pluginID,
+        route: resolved.route,
+        reference: resolved.reference,
+        representation: resolved.representation,
+        targetId: resolved.targetId,
+      });
+    })().catch((error: unknown) => {
       if (error instanceof DOMException && error.name === 'AbortError') {
         return;
       }
-
       showAppError(showSnackbar, error, `Failed to load resource: ${resourceID}`);
     });
   };

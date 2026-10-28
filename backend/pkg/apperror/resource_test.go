@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

@@ -29,13 +29,11 @@ import (
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	"github.com/omniviewdev/plugin-sdk/pkg/interceptors"
+	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	resourceplugin "github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	sdkexec "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
-	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
-	resourceplugin "github.com/omniviewdev/plugin-sdk/pkg/v1/resource/plugin"
-	"github.com/omniviewdev/plugin-sdk/pkg/v1/resource/resourcetest"
-	resourcepb "github.com/omniviewdev/plugin-sdk/proto/v1/resource"
 )
 
 // This exercises the non-local consumer: native connection discovery -> SDK
@@ -63,10 +61,12 @@ func TestRegisteredExecConsumesNativeConnectionAndCleansUpSession(t *testing.T) 
 	require.NoError(t, err)
 	manifestPath := filepath.Join(root, "connections.json")
 	require.NoError(t, os.WriteFile(manifestPath, manifest, 0600))
-	resourceProvider, err := sdkresource.BuildResourceController(ctx, sdkresource.ResourcePluginConfig[string]{
-		Logger: logger,
-		Connections: &resourcetest.StubConnectionProvider[string]{
-			LoadConnectionsFunc: func(context.Context) ([]sdktypes.Connection, error) {
+	resourceProvider, err := sdkresource.NewController(sdkresource.Config[os.Root]{
+		Catalog: func(context.Context, sdkresource.CatalogRequest) (sdkresource.Catalog, error) {
+			return sdkresource.Catalog{Provider: pluginID, Revision: "native:1", Types: []sdkresource.ResourceType{}, Coverage: sdkresource.Coverage{Kind: "complete"}}, nil
+		},
+		Lifecycle: &sdkresource.Lifecycle[os.Root]{
+			LoadConnections: func(context.Context) ([]sdktypes.Connection, error) {
 				data, readErr := os.ReadFile(manifestPath)
 				if readErr != nil {
 					return nil, readErr
@@ -77,14 +77,18 @@ func TestRegisteredExecConsumesNativeConnectionAndCleansUpSession(t *testing.T) 
 				}
 				return discovered, nil
 			},
+			CreateClient: func(_ context.Context, connection sdktypes.Connection) (*os.Root, error) {
+				directory, ok := connection.Data["directory"].(string)
+				if !ok {
+					return nil, fmt.Errorf("native connection has no directory")
+				}
+				return os.OpenRoot(directory)
+			},
+			DestroyClient: func(_ context.Context, directory *os.Root) error { return directory.Close() },
 		},
-		Resources: []sdkresource.ResourceRegistration[string]{{
-			Meta:      sdkresource.ResourceMeta{Group: "cloud", Version: "v1", Kind: "Machine"},
-			Resourcer: &resourcetest.StubResourcer[string]{},
-		}},
 	})
 	require.NoError(t, err)
-	t.Cleanup(resourceProvider.Close)
+	t.Cleanup(func() { require.NoError(t, resourceProvider.Close()) })
 
 	type nativeProcess struct {
 		command *osexec.Cmd
@@ -142,7 +146,7 @@ while IFS= read -r ignored; do :; done`)
 
 	listener := bufconn.Listen(1024 * 1024)
 	server := grpc.NewServer(grpc.UnaryInterceptor(interceptors.UnaryPluginContext()), grpc.StreamInterceptor(interceptors.StreamPluginContext()))
-	resourcepb.RegisterResourcePluginServer(server, resourceplugin.NewServer(resourceProvider, nil))
+	resourceplugin.RegisterServer(server, resourceProvider)
 	execPlugin := &sdkexec.Plugin{Impl: manager}
 	require.NoError(t, execPlugin.GRPCServer(nil, server))
 	go func() { _ = server.Serve(listener) }()
@@ -157,7 +161,7 @@ while IFS= read -r ignored; do :; done`)
 	execClient, err := execPlugin.GRPCClient(ctx, nil, connection)
 	require.NoError(t, err)
 	backend := plugintypes.NewInProcessBackend(map[string]interface{}{
-		"resource": resourceplugin.NewClient(resourcepb.NewResourcePluginClient(connection)),
+		"resource": resourceplugin.NewClient(connection),
 		"exec":     execClient,
 	})
 	resources := hostresource.NewController(logger, nil, state.PluginStore, invocation.NewBoundary(nil))

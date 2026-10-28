@@ -160,6 +160,13 @@ other plugins load, and saved card order is not pruned against a partial registr
   extension points, then applies contributions and routes. Cancelled participants
   do not publish.
 
+### Connection Profiles
+
+Connection editing distinguishes explicit desired profiles from the last observed effective source configuration. **Save and apply** reports success only after source application and durable host storage complete. Typed failures remain visible; an unknown source state never displays an old endpoint as current.
+
+Native **Disable in Omniview** writes a host-owned tombstone; it does not modify native configuration files. Manual **Delete saved profile** removes the owned profile. **Reset / restore native configuration** removes an override or tombstone. Old saved discovery entries appear as inactive review candidates and activate only through explicit Import or Save; native discovery is never automatically replayed as desired configuration.
+
+
 ## Extension Points
 
 Extension points are the primary way plugins contribute UI to the host.
@@ -178,6 +185,12 @@ Defined in `ui/features/extensions/registerBuiltinExtensionPoints.ts`:
 - `dashboard:widget` — Dashboard widgets
 - `homepage:card` — Homepage cards
 - `logviewer:toolbar:action` — Log viewer toolbar actions
+
+Resource drawers receive canonical `reference`, `route`, `representation`, and host-issued `targetId` independently. Observed table rows also pass their `HostRecord`, so opening a row does not issue another read. Linked resources resolve through the host and perform a fresh canonical `Get`; cancellation and optional incarnation checks remain active. Resource bodies are presentation data, never authority or cache identity.
+
+The generic resource table uses catalog type IDs without parsing provider-specific group/version tuples. It uses only an explicit provider default representation or a user selection, exposes declared query scope dimensions, and follows native page cursors. Watch counts retain their decimal strings and count kind instead of converting them to JavaScript numbers.
+
+Editor schemas carry canonical schema bindings. The host fetches each referenced schema document once per route and revision, registers that shared document, and links each resource editor to its declared root. YAML editor parsing retains integer precision before canonical mutation encoding.
 
 ### Error Isolation
 

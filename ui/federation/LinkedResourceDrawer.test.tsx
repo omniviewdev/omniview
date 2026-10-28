@@ -24,6 +24,10 @@ const mocks = vi.hoisted(() => {
   };
 });
 
+vi.mock('@/providers/monaco/useSchemaRegistration', () => ({
+  useSchemaRegistration: () => ({ error: null, isLoading: false }),
+}));
+
 vi.mock('@omniviewdev/base-ui', () => ({
   useTheme: () => ({ activeTheme: mocks.activeTheme }),
   Stack: forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
@@ -65,7 +69,13 @@ import { createLinkedResourceDrawer } from './LinkedResourceDrawer';
 
 const ctx: DrawerContext = {
   data: { apiVersion: 'v1', kind: 'Pod' },
-  resource: { id: 'pod-1', key: 'pods', connectionID: 'test-connection' },
+  resource: {
+    pluginID: 'test',
+    targetId: 'host-target',
+    reference: { address: { provider: 'test', authority: 'host-authority', type: 'pods', id: 'pod-1', scope: [] } },
+    route: { connection: 'test-connection' },
+    representation: 'json',
+  },
 };
 
 function createDrawer() {

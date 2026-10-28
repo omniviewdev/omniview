@@ -1,114 +1,71 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { GetConnection, UpdateConnection, RemoveConnection, StartConnection, StopConnection } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
+import { GetConnection, SaveConnectionProfile, ImportConnectionProfile, ResetConnectionProfile, RemoveConnection, StartConnection, StopConnection } from '../../resource/v2/client';
 import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
+import type { ConnectionProfileResult } from '../../resource/v2/host';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
+import { resourceQueryKeys } from '../../resourceQueryKeys';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
-type UseConnectionOptions = {
-  /**
-   * The name of the plugin we're interacting with
-   */
-  pluginID?: string;
+function requireAppliedProfile(result: ConnectionProfileResult) {
+  if (!result.applied) throw new Error('Connection profile was not applied');
+  return result;
+}
 
-  /**
-   * The ID of the connection
-   */
-  connectionID: string;
-};
-
-/**
- * Get and retreive connections from a plugin's connection manager..
- */
-export const useConnection = ({ pluginID: explicitPluginID, connectionID }: UseConnectionOptions) => {
+/** Connection lifecycle and explicit desired profiles remain separate from native discovery. */
+export const useConnection = ({
+  pluginID: explicitPluginID, connectionID, enabled = true,
+}: { pluginID?: string; connectionID: string; enabled?: boolean }) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
-
   const queryKey = [pluginID, 'connection', 'detail', connectionID];
-
-  // === Mutations === //
+  const invalidateEffectiveState = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: [pluginID, 'connection'] }),
+      queryClient.invalidateQueries({ queryKey: resourceQueryKeys.all(pluginID) }),
+      queryClient.invalidateQueries({ queryKey: ['EDITOR_SCHEMAS', pluginID] }),
+    ]);
+  };
   const { mutateAsync: startConnection } = useMutation({
-    mutationFn: async () => StartConnection(pluginID, connectionID),
-    onSuccess(data) {
-      // update the cache
-      queryClient.setQueryData(queryKey, data);
-      // Invalidate editor schemas so they get fetched for the new connection
-      void queryClient.invalidateQueries({
-        queryKey: ['EDITOR_SCHEMAS', pluginID, connectionID],
-      });
-    },
+    mutationFn: () => StartConnection(pluginID, connectionID),
+    // Start returns ConnectionStatus, never a Connection detail-cache replacement.
+    onSuccess: invalidateEffectiveState,
     onError: createErrorHandler(showSnackbar, 'Failed to start connection'),
   });
-
   const { mutateAsync: stopConnection } = useMutation({
-    mutationFn: async () => StopConnection(pluginID, connectionID),
-    onSuccess(data) {
-      // update the cache
-      queryClient.setQueryData(queryKey, data);
-    },
+    mutationFn: () => StopConnection(pluginID, connectionID),
+    onSuccess: invalidateEffectiveState,
     onError: createErrorHandler(showSnackbar, 'Failed to stop connection'),
   });
-
-  const { mutateAsync: updateConnection } = useMutation({
-    mutationFn: async (conn: Connection) => UpdateConnection(pluginID, conn),
-    onSuccess(data, { name }) {
-      showSnackbar({ message: `Connection ${name} successfully updated`, status: 'success' });
-      // Update the list and detail
-      queryClient.setQueryData(queryKey, data);
-      queryClient.setQueriesData(
-        { queryKey: [pluginID, 'connection', 'list'] },
-        (previous: Connection[] | undefined) => previous?.map(conn => conn.id === connectionID ? data : conn),
-      );
-    },
-    onError: createErrorHandler(showSnackbar, 'Failed to update connection'),
+  const { mutateAsync: saveConnectionProfile } = useMutation({
+    mutationFn: (connection: Connection) => SaveConnectionProfile(pluginID, connection).then(requireAppliedProfile),
+    onSuccess: () => { showSnackbar('Connection profile saved', 'success'); },
+    onError: createErrorHandler(showSnackbar, 'Failed to save connection profile'),
+    onSettled: invalidateEffectiveState,
   });
-
-  const { mutateAsync: deleteConnection } = useMutation({
-    mutationFn: async () => RemoveConnection(pluginID, connectionID),
-    onSuccess() {
-      showSnackbar({ message: 'Connection successfully removed', status: 'success' });
-
-      queryClient.setQueryData(queryKey, undefined);
-      queryClient.setQueriesData(
-        { queryKey: [pluginID, 'connection', 'list'] },
-        (previous: Connection[] | undefined) => previous?.filter(conn => conn.id !== connectionID),
-      );
-    },
-    onError: createErrorHandler(showSnackbar, 'Failed to remove connection'),
+  const { mutateAsync: importConnectionProfile } = useMutation({
+    mutationFn: () => ImportConnectionProfile(pluginID, connectionID).then(requireAppliedProfile),
+    onSuccess: () => { showSnackbar('Connection profile imported', 'success'); },
+    onError: createErrorHandler(showSnackbar, 'Failed to import connection profile'),
+    onSettled: invalidateEffectiveState,
   });
-
-  // === Queries === //
-
+  const { mutateAsync: resetConnectionProfile } = useMutation({
+    mutationFn: () => ResetConnectionProfile(pluginID, connectionID).then(requireAppliedProfile),
+    onSuccess: () => { showSnackbar('Connection profile reset', 'success'); },
+    onError: createErrorHandler(showSnackbar, 'Failed to reset connection profile'),
+    onSettled: invalidateEffectiveState,
+  });
+  const { mutateAsync: removeConnection } = useMutation({
+    mutationFn: () => RemoveConnection(pluginID, connectionID),
+    onSuccess: () => { showSnackbar('Connection disabled', 'success'); },
+    onError: createErrorHandler(showSnackbar, 'Failed to disable connection'),
+    onSettled: invalidateEffectiveState,
+  });
   const connection = useQuery({
     queryKey,
-    queryFn: async () => GetConnection(pluginID, connectionID),
+    queryFn: () => GetConnection(pluginID, connectionID),
+    enabled: enabled && !!connectionID,
   });
-
-  return {
-    /**
-     * Get the connection
-     */
-    connection,
-
-    /**
-     * Start the connection
-     */
-    startConnection,
-
-    /**
-     * Stop the connection
-     */
-    stopConnection,
-
-    /**
-     * Update the connection.
-     */
-    updateConnection,
-
-    /**
-     * Delete the connection
-     */
-    deleteConnection,
-  };
+  return { connection, startConnection, stopConnection, saveConnectionProfile, importConnectionProfile, resetConnectionProfile, removeConnection };
 };

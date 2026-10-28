@@ -1,9 +1,11 @@
-/** Shared keys for native ListResult/GetResult snapshots, never display labels or search text. */
+import type { ReadTarget } from './resource/v2/domain';
+import type { HostEnumerateRequest, HostGetRequest, HostNativeQueryRequest } from './resource/v2/host';
+
+/** React Query partitions include route and representation, not display fields. */
 export const resourceQueryKeys = {
-  scope: (pluginId: string, connectionId: string, resourceKey: string) =>
-    [pluginId, connectionId, resourceKey] as const,
-  list: (pluginId: string, connectionId: string, resourceKey: string, namespaces: readonly string[] = []) =>
-    [pluginId, connectionId, resourceKey, namespaces, 'list'] as const,
-  resource: (pluginId: string, connectionId: string, resourceKey: string, resourceId: string, namespace = '') =>
-    [pluginId, connectionId, resourceKey, namespace, resourceId] as const,
+  all: (pluginID: string) => [pluginID, 'resource-v2'] as const,
+  scope: (pluginID: string, target: ReadTarget) => [pluginID, 'resource-v2', 'target', target] as const,
+  list: (pluginID: string, request?: HostEnumerateRequest) => [pluginID, 'resource-v2', 'enumerate', request] as const,
+  nativeQuery: (pluginID: string, request?: HostNativeQueryRequest) => [pluginID, 'resource-v2', 'native-query', request] as const,
+  resource: (pluginID: string, request?: HostGetRequest) => [pluginID, 'resource-v2', 'get', request] as const,
 };

@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -31,8 +32,8 @@ import (
 	"github.com/omniviewdev/omniview/internal/appstate"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
@@ -54,7 +55,7 @@ type ConnectionStatusPayload struct {
 
 func init() {
 	application.RegisterEvent[ConnectionStatusPayload](EventConnectionStatus)
-	application.RegisterEvent[resource.WatchStateEvent](EventWatchState)
+	application.RegisterEvent[HostWatchStateEvent](EventWatchState)
 }
 
 var tracer = otel.Tracer("omniview.resource")
@@ -75,14 +76,20 @@ type Controller interface {
 	Service
 	SetCrashCallback(cb func(pluginID string))
 	Graph() *graph.RelationshipGraph
+	ValidateReference(context.Context, string, resource.AccessRoute, resource.ResourceReference) error
 }
 
 // pluginState holds per-plugin runtime state.
 type pluginState struct {
-	provider    ResourceProvider
-	version     int
-	watchCancel context.CancelFunc
-	crashOnce   sync.Once
+	provider      ResourceProvider
+	version       int
+	watchCancel   context.CancelFunc
+	ctx           context.Context
+	generationID  string
+	features      resource.FeatureSet
+	featuresReady bool
+	sourceEpoch   map[string]uint64
+	crashOnce     sync.Once
 }
 
 // controller manages resource plugins on the engine side.
@@ -99,8 +106,10 @@ type controller struct {
 	pluginsMu   sync.RWMutex
 	plugins     map[string]*pluginState
 
-	connsMu     sync.RWMutex
-	connections map[string][]types.Connection
+	connsMu       sync.RWMutex
+	connections   map[string][]types.Connection
+	profilesMu    sync.Mutex
+	profileNative map[string][]types.Connection
 
 	autoConnectMu       sync.Mutex
 	autoConnectAttempts map[string]string
@@ -108,6 +117,7 @@ type controller struct {
 	subs     *subscriptionManager
 	boundary *invocation.Boundary
 	actions  *actionRegistry
+	finite   finiteState
 
 	// Resource registry and relationship graph
 	registryStore registry.Store
@@ -210,28 +220,19 @@ func (c *controller) ServiceShutdown() error {
 	return nil
 }
 
-// dispenseProvider creates a ResourceProvider from a PluginBackend using version negotiation.
+// dispenseProvider admits only the canonical resource-v2 boundary. The shared
+// go-plugin cohort version is independent of resource wire negotiation.
 func dispenseProvider(pluginID string, backend plugintypes.PluginBackend) (ResourceProvider, int, error) {
 	raw, err := backend.Dispense(PluginName)
 	if err != nil {
 		return nil, 0, err
 	}
-
-	version := backend.NegotiatedVersion()
-	switch version {
-	case 1:
-		v1, ok := raw.(resource.Provider)
-		if !ok {
-			return nil, 0, apperror.New(apperror.TypePluginLoadFailed, http.StatusInternalServerError,
-				"Plugin type mismatch",
-				fmt.Sprintf("Expected resource.Provider for v1, got %T", raw))
-		}
-		return NewAdapterV1(v1), version, nil
-	default:
+	provider, ok := raw.(resource.Provider)
+	if !ok {
 		return nil, 0, apperror.New(apperror.TypePluginLoadFailed, http.StatusInternalServerError,
-			"Unsupported SDK protocol version",
-			fmt.Sprintf("Plugin '%s' negotiated v%d, engine supports v1", pluginID, version))
+			"Plugin type mismatch", fmt.Sprintf("Plugin %q does not expose resource wire v2", pluginID))
 	}
+	return provider, backend.NegotiatedVersion(), nil
 }
 
 func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
@@ -275,7 +276,7 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	watchCtx, watchCancel := context.WithCancel(context.Background())
 
 	state := &pluginState{
-		version: version, watchCancel: watchCancel,
+		version: version, watchCancel: watchCancel, ctx: watchCtx, generationID: uuid.NewString(),
 	}
 	c.pluginsMu.Lock()
 	existing := c.plugins[pluginID]
@@ -323,31 +324,45 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 		c.cleanupPluginGraphState(pluginID, prevConns)
 	}
 	c.lifecycleMu.Unlock()
-
-	// Start watch event listener (uses WatchEventSink callback pattern).
-	sink := &engineWatchSink{
-		pluginID:   pluginID,
-		ctrl:       c,
-		store:      c.registryStore,
-		dispatcher: c.dispatcher,
-	}
-	watchReady := make(chan error, 1)
-	go c.listenForWatchEvents(watchCtx, pluginID, provider, sink, watchReady)
-
-	// Only the provider's actual registration acknowledgement admits sources.
-	expired := make(chan struct{})
-	timer := c.watchAfterFunc(watchStreamReadyTimeout, func() { close(expired) })
-	defer timer.Stop()
-	select {
-	case err := <-watchReady:
-		if err != nil {
-			return fmt.Errorf("watch event stream startup: %w", err)
+	if existing != nil {
+		if closer, ok := existing.provider.(resource.Closer); ok {
+			if err := closer.Close(); err != nil {
+				logger.Warnw(watchCtx, "previous resource source teardown failed", "error", err)
+			}
 		}
-		logger.Debugw(context.Background(), "watch event stream established")
-	case <-watchCtx.Done():
-		return watchCtx.Err()
-	case <-expired:
-		return fmt.Errorf("watch event stream startup: %w", context.DeadlineExceeded)
+	}
+	featureCtx, featureCancel := context.WithTimeout(watchCtx, watchStreamReadyTimeout)
+	features, featureErr := resource.DetectFeatures(featureCtx, provider)
+	featureCancel()
+	if featureErr != nil {
+		return featureErr
+	}
+
+	// Advisory updates remain optional. Finite/catalog-only providers must not
+	// implement a pretend listener, but real listeners still acknowledge native
+	// establishment before any source or resource call becomes available.
+	if features.Has(resource.FeatureBestEffortUpdates) {
+		updates, ok := provider.(resource.BestEffortUpdateProvider)
+		if !ok {
+			return resource.NewError("INVALID_REQUEST", "Provider advertised an unavailable update trait.")
+		}
+		sink := &engineWatchSink{pluginID: pluginID, ctrl: c, store: c.registryStore,
+			dispatcher: c.dispatcher, ctx: invocation.HostContext(watchCtx), generationID: state.generationID}
+		watchReady := make(chan error, 1)
+		go c.listenForWatchEvents(watchCtx, pluginID, updates, sink, watchReady)
+		expired := make(chan struct{})
+		timer := c.watchAfterFunc(watchStreamReadyTimeout, func() { close(expired) })
+		defer timer.Stop()
+		select {
+		case err := <-watchReady:
+			if err != nil {
+				return fmt.Errorf("best-effort update registration: %w", err)
+			}
+		case <-watchCtx.Done():
+			return watchCtx.Err()
+		case <-expired:
+			return fmt.Errorf("best-effort update registration: %w", context.DeadlineExceeded)
+		}
 	}
 	c.pluginsMu.Lock()
 	if c.plugins[pluginID] != state || watchCtx.Err() != nil {
@@ -356,36 +371,30 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	}
 	// Keep concurrent resource calls from starting sources during registration.
 	state.provider = provider
+	state.features, state.featuresReady = features, true
 	c.pluginsMu.Unlock()
 
-	// Load connections from the plugin.
-	if conns, loadErr := c.LoadConnections(invocation.HostContext(watchCtx), pluginID); loadErr != nil {
-		logger.Errorw(context.Background(), "failed to load connections from plugin", "error", loadErr)
-	} else if len(conns) > 0 {
-		eventKey := pluginID + "/connection/sync"
-		c.emitter.Emit(eventKey, c.getConnections(pluginID))
-		c.scheduleAutoConnect(pluginID, conns, types.ConnectionAutoConnectTriggerPluginStart)
-	}
-
-	// Bootstrap relationship declarations for the graph indexer.
-	bootstrapCtx, bootstrapCancel := context.WithTimeout(watchCtx, relationshipBootstrapTimeout)
-	defer bootstrapCancel()
-	if resourceTypes, discoveryErr := provider.GetResourceTypes(bootstrapCtx, ""); discoveryErr == nil {
-		for rk := range resourceTypes {
-			decls, relErr := provider.GetRelationships(bootstrapCtx, rk)
-			if relErr != nil {
-				logger.Warnw(bootstrapCtx, "failed to get relationships", "resourceKey", rk, "error", relErr)
-				continue
-			}
-			if len(decls) > 0 {
-				c.graph.SetDeclarations(pluginID, rk, decls)
-				logger.Debugw(bootstrapCtx, "cached relationship declarations", "resourceKey", rk, "count", len(decls))
-			}
+	// Connections and their event source are independently optional.
+	if features.Has(resource.FeatureConnections) {
+		if conns, loadErr := c.LoadConnections(invocation.HostContext(watchCtx), pluginID); loadErr != nil {
+			logger.Errorw(watchCtx, "failed to load connections", "error", loadErr)
+		} else if len(conns) > 0 {
+			c.emitter.Emit(pluginID+"/connection/sync", c.getConnections(pluginID))
+			c.scheduleAutoConnect(pluginID, conns, types.ConnectionAutoConnectTriggerPluginStart)
 		}
 	}
-
-	// Start connection watcher.
-	go c.listenForConnectionEvents(watchCtx, pluginID, provider)
+	if features.Has(resource.FeatureRelationships) {
+		for _, connection := range c.getConnections(pluginID) {
+			c.bootstrapRelationships(invocation.HostContext(watchCtx), pluginID, resource.AccessRoute{Connection: connection.ID})
+		}
+	}
+	if features.Has(resource.FeatureConnectionBrowser) {
+		browser, ok := provider.(resource.ConnectionBrowser)
+		if !ok {
+			return resource.NewError("INVALID_REQUEST", "Provider advertised an unavailable connection browser.")
+		}
+		go c.listenForConnectionEvents(watchCtx, pluginID, browser)
+	}
 
 	return watchCtx.Err()
 }
@@ -420,8 +429,10 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	// Cancel first so a concurrent readiness acknowledgement cannot republish
 	// the retiring provider after invalidation.
 	c.pluginsMu.Lock()
+	var retired ResourceProvider
 	// Make calls unavailable now; release ownership only after retirement.
 	if stopped != nil {
+		retired = stopped.provider
 		stopped.provider = nil
 	}
 	c.pluginsMu.Unlock()
@@ -442,6 +453,9 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	c.pluginsMu.Lock()
 	delete(c.plugins, pluginID)
 	c.pluginsMu.Unlock()
+	if closer, ok := retired.(resource.Closer); ok {
+		return closer.Close()
+	}
 
 	return nil
 }
@@ -524,190 +538,6 @@ func (c *controller) getProvider(pluginID string) (ResourceProvider, error) {
 	return ps.provider, nil
 }
 
-// withSession returns the provider and a context with session info for connection-scoped calls.
-// The parent context is preserved so that span context propagates to gRPC calls.
-func (c *controller) withSession(
-	ctx context.Context,
-	pluginID, connectionID string,
-) (ResourceProvider, context.Context, error) {
-	provider, err := c.getProvider(pluginID)
-	if err != nil {
-		return nil, nil, err
-	}
-	request, _ := invocation.FromContext(ctx)
-	ctx = resource.WithSession(ctx, &resource.Session{
-		Connection:   &types.Connection{ID: connectionID},
-		PluginConfig: nil,
-		GlobalConfig: nil,
-		RequestID:    request.ID(),
-		RequesterID:  string(request.Principal().Origin()),
-	})
-	return provider, ctx, nil
-}
-
-// ============================================================================
-// CRUD
-// ============================================================================
-
-// startResourceSpan starts a span for a resource-scoped call and tags it with
-// the plugin, connection and resource key.
-func startResourceSpan(ctx context.Context, name, pluginID, connectionID, key string) (context.Context, trace.Span) {
-	ctx, span := tracer.Start(ctx, name)
-	span.SetAttributes(
-		attribute.String("plugin_id", pluginID),
-		attribute.String("connection_id", connectionID),
-		attribute.String("resource_key", key),
-	)
-	return ctx, span
-}
-
-// rpcFailed records and logs a failed resource RPC, checks it for connection
-// errors, and returns it converted to an AppError.
-func (c *controller) rpcFailed(ctx context.Context, span trace.Span, op, pluginID, key string, err error) error {
-	telemetryutil.RecordError(span, err)
-	c.logger.Errorw(ctx, "RPC failed", "op", op, "pluginID", pluginID, "key", key, "error", err)
-	c.checkConnectionError(pluginID, err)
-	return err
-}
-
-func (c *controller) Get(ctx context.Context, pluginID, connectionID, key string, input resource.GetInput) (_result *resource.GetResult, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.Get", invocation.Target{Provider: pluginID, Connection: connectionID, ResourceType: key, Scope: namespaceScope(input.Namespace), Object: input.ID})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := startResourceSpan(ctx, "resource.Get", pluginID, connectionID, key)
-	defer span.End()
-	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	result, err := provider.Get(ctx, key, input)
-	if err != nil {
-		return nil, c.rpcFailed(ctx, span, "Get", pluginID, key, err)
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if result != nil && len(result.Result) > 0 {
-		c.observeResponse(pluginID, connectionID, key, input.ID, input.Namespace, result.Result)
-	}
-	return result, nil
-
-}
-
-func (c *controller) List(ctx context.Context, pluginID, connectionID, key string, input resource.ListInput) (_result *resource.ListResult, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.List", invocation.Target{Provider: pluginID, Connection: connectionID, ResourceType: key, Scope: namespaceScope(input.Namespaces...)})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := startResourceSpan(ctx, "resource.List", pluginID, connectionID, key)
-	defer span.End()
-	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	result, err := provider.List(ctx, key, input)
-	if err != nil {
-		return nil, c.rpcFailed(ctx, span, "List", pluginID, key, err)
-	}
-	return result, nil
-
-}
-
-func (c *controller) Find(ctx context.Context, pluginID, connectionID, key string, input resource.FindInput) (_result *resource.FindResult, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.Find", invocation.Target{Provider: pluginID, Connection: connectionID, ResourceType: key, Scope: namespaceScope(input.Namespaces...)})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := startResourceSpan(ctx, "resource.Find", pluginID, connectionID, key)
-	defer span.End()
-	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	result, err := provider.Find(ctx, key, input)
-	if err != nil {
-		return nil, c.rpcFailed(ctx, span, "Find", pluginID, key, err)
-	}
-	return result, nil
-
-}
-
-func (c *controller) Create(ctx context.Context, pluginID, connectionID, key string, input resource.CreateInput) (_result *resource.CreateResult, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.Create", invocation.Target{Provider: pluginID, Connection: connectionID, ResourceType: key, Scope: namespaceScope(input.Namespace)})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := startResourceSpan(ctx, "resource.Create", pluginID, connectionID, key)
-	defer span.End()
-	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	result, err := provider.Create(ctx, key, input)
-	if err != nil {
-		return nil, c.rpcFailed(ctx, span, "Create", pluginID, key, err)
-	}
-	return result, nil
-
-}
-
-func (c *controller) Update(ctx context.Context, pluginID, connectionID, key string, input resource.UpdateInput) (_result *resource.UpdateResult, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.Update", invocation.Target{Provider: pluginID, Connection: connectionID, ResourceType: key, Scope: namespaceScope(input.Namespace), Object: input.ID})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := startResourceSpan(ctx, "resource.Update", pluginID, connectionID, key)
-	defer span.End()
-	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	result, err := provider.Update(ctx, key, input)
-	if err != nil {
-		return nil, c.rpcFailed(ctx, span, "Update", pluginID, key, err)
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if result != nil && len(result.Result) > 0 {
-		c.observeResponse(pluginID, connectionID, key, input.ID, input.Namespace, result.Result)
-	}
-	return result, nil
-
-}
-
-func (c *controller) Delete(ctx context.Context, pluginID, connectionID, key string, input resource.DeleteInput) (_result *resource.DeleteResult, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.Delete", invocation.Target{Provider: pluginID, Connection: connectionID, ResourceType: key, Scope: namespaceScope(input.Namespace), Object: input.ID})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := startResourceSpan(ctx, "resource.Delete", pluginID, connectionID, key)
-	defer span.End()
-	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	result, err := provider.Delete(ctx, key, input)
-	if err != nil {
-		return nil, c.rpcFailed(ctx, span, "Delete", pluginID, key, err)
-	}
-	return result, nil
-
-}
-
 // ============================================================================
 // Connection Management
 // ============================================================================
@@ -724,10 +554,12 @@ func (c *controller) StartConnection(ctx context.Context, pluginID, connectionID
 		return _result, admissionErr
 	}
 	defer finishResource(ctx, &retErr)
+	c.profilesMu.Lock()
+	defer c.profilesMu.Unlock()
 	ctx, span := tracer.Start(ctx, "resource.StartConnection")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
-	provider, err := c.getProvider(pluginID)
+	provider, err := c.getLifecycle(ctx, pluginID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
 		return types.ConnectionStatus{}, err
@@ -760,6 +592,12 @@ func (c *controller) StartConnection(ctx context.Context, pluginID, connectionID
 		Status:       string(conn.Status),
 		Name:         connName,
 	})
+	if conn.Status == types.ConnectionStatusConnected {
+		c.bootstrapRelationships(ctx, pluginID, resource.AccessRoute{Connection: connectionID})
+		if err := c.startConnectionUpdates(ctx, pluginID, resource.AccessRoute{Connection: connectionID}); err != nil {
+			return conn, err
+		}
+	}
 
 	return conn, nil
 
@@ -774,7 +612,7 @@ func (c *controller) StopConnection(ctx context.Context, pluginID, connectionID 
 	ctx, span := tracer.Start(ctx, "resource.StopConnection")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
-	provider, err := c.getProvider(pluginID)
+	provider, err := c.getLifecycle(ctx, pluginID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
 		return types.Connection{}, err
@@ -812,7 +650,7 @@ func (c *controller) CheckConnection(ctx context.Context, pluginID, connectionID
 	ctx, span := tracer.Start(ctx, "resource.CheckConnection")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
-	provider, err := c.getProvider(pluginID)
+	provider, err := c.getLifecycle(ctx, pluginID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
 		return types.ConnectionStatus{}, err
@@ -849,7 +687,7 @@ func (c *controller) LoadConnections(ctx context.Context, pluginID string) (_res
 	ctx, span := tracer.Start(ctx, "resource.LoadConnections")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID))
-	provider, err := c.getProvider(pluginID)
+	provider, err := c.getLifecycle(ctx, pluginID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
 		return nil, err
@@ -858,6 +696,10 @@ func (c *controller) LoadConnections(ctx context.Context, pluginID string) (_res
 	conns, err := provider.LoadConnections(ctx)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
+		return nil, err
+	}
+	conns, err = c.replayConnectionProfiles(ctx, pluginID, conns)
+	if err != nil {
 		return nil, err
 	}
 
@@ -941,21 +783,33 @@ func (c *controller) GetAllConnectionStates(ctx context.Context) (_result map[st
 
 	for pluginID, conns := range connsCopy {
 		states := make([]ConnectionState, 0, len(conns))
+		provider, err := c.getProvider(pluginID)
+		if err != nil {
+			return nil, err
+		}
+		features, err := c.providerFeatures(ctx, pluginID, provider)
+		if err != nil {
+			return nil, err
+		}
 
 		for _, conn := range conns {
 			cs := ConnectionState{
 				Connection:     conn,
-				Started:        false,
+				Started:        !conn.LastRefresh.IsZero(),
 				Resources:      make(map[string]resource.WatchState),
-				ResourceCounts: make(map[string]int),
+				ResourceCounts: make(map[string]resource.Count),
 				TotalResources: 0,
 				SyncedCount:    0,
 				ErrorCount:     0,
 				LastSyncTime:   "",
 			}
+			if !features.Has(resource.FeatureBestEffortUpdates) {
+				states = append(states, cs)
+				continue
+			}
 
 			// An absent watch represents an unstarted connection, not a failed read.
-			summary, err := c.GetWatchState(ctx, pluginID, conn.ID)
+			summary, err := c.GetWatchState(ctx, pluginID, resource.AccessRoute{Connection: conn.ID})
 			if err != nil {
 				var app *apperror.AppError
 				if !errors.As(err, &app) || app.Code != "NOT_FOUND" || app.Type != apperror.TypeResourceNotFound {
@@ -1013,685 +867,38 @@ func (c *controller) GetConnection(ctx context.Context, pluginID, connectionID s
 
 }
 
-func (c *controller) GetConnectionNamespaces(ctx context.Context, pluginID, connectionID string) (_result []string, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.GetConnectionNamespaces", invocation.Target{Provider: pluginID, Connection: connectionID})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := tracer.Start(ctx, "resource.GetConnectionNamespaces")
-	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
-	provider, err := c.getProvider(pluginID)
+func (c *controller) ScopeValues(ctx context.Context, pluginID string, route resource.AccessRoute, dimension string) (_result []string, retErr error) {
+	ctx, err := c.admit(ctx, "resource.ScopeValues", invocation.Target{Provider: pluginID, Connection: route.Connection, Scope: map[string]string{"dimension": dimension}})
 	if err != nil {
-		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
-	result, err := provider.GetConnectionNamespaces(ctx, connectionID)
+	defer finishResource(ctx, &retErr)
+	provider, generation, ctx, cleanup, err := c.operationGeneration(ctx, pluginID, route)
 	if err != nil {
-		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
-	return result, nil
-
-}
-
-func (c *controller) AddConnection(ctx context.Context, pluginID string, connection types.Connection) (retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.AddConnection", invocation.Target{Provider: pluginID, Connection: connection.ID})
-	if admissionErr != nil {
-		return admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	c.connsMu.Lock()
-	c.connections[pluginID] = append(c.connections[pluginID], connection)
-	c.connsMu.Unlock()
-	return nil
-
-}
-
-func (c *controller) UpdateConnection(ctx context.Context, pluginID string, connection types.Connection) (_result types.Connection, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.UpdateConnection", invocation.Target{Provider: pluginID, Connection: connection.ID})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	c.connsMu.Lock()
-	defer c.connsMu.Unlock()
-	conns, ok := c.connections[pluginID]
+	defer cleanup()
+	browser, ok := provider.(resource.ScopeValuesProvider)
 	if !ok {
-		return types.Connection{}, apperror.New(apperror.TypeConnectionNotFound, http.StatusNotFound,
-			"No connections", fmt.Sprintf("Plugin '%s' has no connections configured.", pluginID))
+		return nil, resource.NewError("UNSUPPORTED", "Scope value discovery is not supported.")
 	}
-	for i, conn := range conns {
-		if conn.ID == connection.ID {
-			conns[i] = connection
-			return connection, nil
-		}
+	values, err := browser.ScopeValues(ctx, route, dimension)
+	if err != nil {
+		return nil, err
 	}
-	return types.Connection{}, apperror.ConnectionNotFound(pluginID, connection.ID)
-
-}
-
-func (c *controller) RemoveConnection(ctx context.Context, pluginID, connectionID string) (retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.RemoveConnection", invocation.Target{Provider: pluginID, Connection: connectionID})
-	if admissionErr != nil {
-		return admissionErr
+	if err := c.currentGeneration(ctx, pluginID, generation); err != nil {
+		return nil, err
 	}
-	defer finishResource(ctx, &retErr)
-	c.connsMu.Lock()
-	defer c.connsMu.Unlock()
-	conns, ok := c.connections[pluginID]
-	if !ok {
-		return apperror.New(apperror.TypeConnectionNotFound, http.StatusNotFound,
-			"No connections", fmt.Sprintf("Plugin '%s' has no connections configured.", pluginID))
-	}
-	for i, conn := range conns {
-		if conn.ID == connectionID {
-			c.connections[pluginID] = slices.Delete(conns, i, i+1)
-			return nil
-		}
-	}
-	return apperror.ConnectionNotFound(pluginID, connectionID)
-
+	return values, nil
 }
 
 // ============================================================================
 // Watch
 // ============================================================================
 
-func (c *controller) StartConnectionWatch(ctx context.Context, pluginID, connectionID string) (retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.StartConnectionWatch", invocation.Target{Provider: pluginID, Connection: connectionID})
-	if admissionErr != nil {
-		return admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := tracer.Start(ctx, "resource.StartConnectionWatch")
-	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
-	provider, err := c.getProvider(pluginID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return err
-	}
-	if err = provider.StartConnectionWatch(ctx, connectionID); err != nil {
-		telemetryutil.RecordError(span, err)
-		return err
-	}
-	return nil
-
-}
-
-func (c *controller) StopConnectionWatch(ctx context.Context, pluginID, connectionID string) (retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.StopConnectionWatch", invocation.Target{Provider: pluginID, Connection: connectionID})
-	if admissionErr != nil {
-		return admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := tracer.Start(ctx, "resource.StopConnectionWatch")
-	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
-	provider, err := c.getProvider(pluginID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return err
-	}
-	if err = provider.StopConnectionWatch(ctx, connectionID); err != nil {
-		telemetryutil.RecordError(span, err)
-		return err
-	}
-	return nil
-
-}
-
-func (c *controller) GetWatchState(ctx context.Context, pluginID, connectionID string) (_result *resource.WatchConnectionSummary, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.GetWatchState", invocation.Target{Provider: pluginID, Connection: connectionID})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := tracer.Start(ctx, "resource.GetWatchState")
-	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
-	provider, err := c.getProvider(pluginID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	summary, err := provider.GetWatchState(ctx, connectionID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	var nonIdle int
-	for key, state := range summary.Resources {
-		if state != resource.WatchStateIdle {
-			nonIdle++
-			c.logger.Debugw(ctx, "[watch-state] GetWatchState non-idle",
-				"pluginID", pluginID, "connectionID", connectionID,
-				"key", key, "state", state,
-			)
-		}
-	}
-	c.logger.Infow(ctx, "[watch-state] GetWatchState response",
-		"pluginID", pluginID, "connectionID", connectionID,
-		"totalResources", len(summary.Resources), "nonIdle", nonIdle,
-	)
-	return summary, nil
-
-}
-
-func (c *controller) EnsureResourceWatch(ctx context.Context, pluginID, connectionID, resourceKey string) (retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.EnsureResourceWatch", invocation.Target{Provider: pluginID, Connection: connectionID, ResourceType: resourceKey})
-	if admissionErr != nil {
-		return admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := tracer.Start(ctx, "resource.EnsureResourceWatch")
-	defer span.End()
-	span.SetAttributes(
-		attribute.String("plugin_id", pluginID),
-		attribute.String("connection_id", connectionID),
-		attribute.String("resource_key", resourceKey),
-	)
-	provider, err := c.getProvider(pluginID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return err
-	}
-	if err = provider.EnsureResourceWatch(ctx, connectionID, resourceKey); err != nil {
-		telemetryutil.RecordError(span, err)
-		return err
-	}
-	return nil
-
-}
-
-func (c *controller) StopResourceWatch(ctx context.Context, pluginID, connectionID, resourceKey string) (retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.StopResourceWatch", invocation.Target{Provider: pluginID, Connection: connectionID, ResourceType: resourceKey})
-	if admissionErr != nil {
-		return admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := tracer.Start(ctx, "resource.StopResourceWatch")
-	defer span.End()
-	span.SetAttributes(
-		attribute.String("plugin_id", pluginID),
-		attribute.String("connection_id", connectionID),
-		attribute.String("resource_key", resourceKey),
-	)
-	provider, err := c.getProvider(pluginID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return err
-	}
-	if err = provider.StopResourceWatch(ctx, connectionID, resourceKey); err != nil {
-		telemetryutil.RecordError(span, err)
-		return err
-	}
-	return nil
-
-}
-
-func (c *controller) RestartResourceWatch(ctx context.Context, pluginID, connectionID, resourceKey string) (retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.RestartResourceWatch", invocation.Target{Provider: pluginID, Connection: connectionID, ResourceType: resourceKey})
-	if admissionErr != nil {
-		return admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := tracer.Start(ctx, "resource.RestartResourceWatch")
-	defer span.End()
-	span.SetAttributes(
-		attribute.String("plugin_id", pluginID),
-		attribute.String("connection_id", connectionID),
-		attribute.String("resource_key", resourceKey),
-	)
-	provider, err := c.getProvider(pluginID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return err
-	}
-	if err = provider.RestartResourceWatch(ctx, connectionID, resourceKey); err != nil {
-		telemetryutil.RecordError(span, err)
-		return err
-	}
-	return nil
-
-}
-
-func (c *controller) IsResourceWatchRunning(ctx context.Context, pluginID, connectionID, resourceKey string) (_result bool, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.IsResourceWatchRunning", invocation.Target{Provider: pluginID, Connection: connectionID, ResourceType: resourceKey})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := tracer.Start(ctx, "resource.IsResourceWatchRunning")
-	defer span.End()
-	span.SetAttributes(
-		attribute.String("plugin_id", pluginID),
-		attribute.String("connection_id", connectionID),
-		attribute.String("resource_key", resourceKey),
-	)
-	provider, err := c.getProvider(pluginID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return false, err
-	}
-	result, err := provider.IsResourceWatchRunning(ctx, connectionID, resourceKey)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return false, err
-	}
-	return result, nil
-
-}
-
 // ============================================================================
 // Subscriptions
 // ============================================================================
-
-func (c *controller) SubscribeResource(ctx context.Context, pluginID, connectionID, resourceKey string) (retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.SubscribeResource", invocation.Target{Provider: pluginID, Connection: connectionID, ResourceType: resourceKey})
-	if admissionErr != nil {
-		return admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	count := c.subs.Subscribe(pluginID, connectionID, resourceKey)
-	c.logger.Debugw(context.Background(), "resource subscribed",
-		"key", subscriptionKey(pluginID, connectionID, resourceKey), "refcount", count)
-	return nil
-
-}
-
-func (c *controller) UnsubscribeResource(ctx context.Context, pluginID, connectionID, resourceKey string) (retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.UnsubscribeResource", invocation.Target{Provider: pluginID, Connection: connectionID, ResourceType: resourceKey})
-	if admissionErr != nil {
-		return admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	count := c.subs.Unsubscribe(pluginID, connectionID, resourceKey)
-	c.logger.Debugw(context.Background(), "resource unsubscribed",
-		"key", subscriptionKey(pluginID, connectionID, resourceKey), "refcount", count)
-	return nil
-
-}
-
-func (c *controller) isSubscribed(pluginID, connectionID, resourceKey string) bool {
-	return c.subs.IsSubscribed(pluginID, connectionID, resourceKey)
-}
-
-// ============================================================================
-// Type Metadata
-// ============================================================================
-
-func (c *controller) GetResourceGroups(ctx context.Context, pluginID, connectionID string) (_result map[string]resource.ResourceGroup, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.GetResourceGroups", invocation.Target{Provider: pluginID, Connection: connectionID})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := tracer.Start(ctx, "resource.GetResourceGroups")
-	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
-	provider, err := c.getProvider(pluginID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	return provider.GetResourceGroups(ctx, connectionID)
-
-}
-
-func (c *controller) GetResourceGroup(ctx context.Context, pluginID, groupID string) (_result resource.ResourceGroup, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.GetResourceGroup", invocation.Target{Provider: pluginID})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := tracer.Start(ctx, "resource.GetResourceGroup")
-	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("group_id", groupID))
-	provider, err := c.getProvider(pluginID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return resource.ResourceGroup{}, err
-	}
-	result, err := provider.GetResourceGroup(ctx, groupID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return resource.ResourceGroup{}, err
-	}
-	return result, nil
-
-}
-
-func (c *controller) GetResourceTypes(ctx context.Context, pluginID, connectionID string) (_result map[string]resource.ResourceMeta, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.GetResourceTypes", invocation.Target{Provider: pluginID, Connection: connectionID})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := tracer.Start(ctx, "resource.GetResourceTypes")
-	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
-	provider, err := c.getProvider(pluginID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	return provider.GetResourceTypes(ctx, connectionID)
-
-}
-
-func (c *controller) GetResourceType(ctx context.Context, pluginID, typeID string) (_result *resource.ResourceMeta, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.GetResourceType", invocation.Target{Provider: pluginID, ResourceType: typeID})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := tracer.Start(ctx, "resource.GetResourceType")
-	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("type_id", typeID))
-	provider, err := c.getProvider(pluginID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	result, err := provider.GetResourceType(ctx, typeID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	return result, nil
-
-}
-
-func (c *controller) HasResourceType(ctx context.Context, pluginID, typeID string) (_result bool, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.HasResourceType", invocation.Target{Provider: pluginID, ResourceType: typeID})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := tracer.Start(ctx, "resource.HasResourceType")
-	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("type_id", typeID))
-	provider, err := c.getProvider(pluginID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return false, err
-	}
-	return provider.HasResourceType(ctx, typeID)
-
-}
-
-func (c *controller) GetResourceDefinition(ctx context.Context, pluginID, typeID string) (_result resource.ResourceDefinition, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.GetResourceDefinition", invocation.Target{Provider: pluginID, ResourceType: typeID})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := tracer.Start(ctx, "resource.GetResourceDefinition")
-	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("type_id", typeID))
-	provider, err := c.getProvider(pluginID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return resource.ResourceDefinition{}, err
-	}
-	result, err := provider.GetResourceDefinition(ctx, typeID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return resource.ResourceDefinition{}, err
-	}
-	return result, nil
-
-}
-
-func (c *controller) GetResourceCapabilities(ctx context.Context, pluginID, key string) (_result *resource.ResourceCapabilities, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.GetResourceCapabilities", invocation.Target{Provider: pluginID, ResourceType: key})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := tracer.Start(ctx, "resource.GetResourceCapabilities")
-	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("resource_key", key))
-	provider, err := c.getProvider(pluginID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	result, err := provider.GetResourceCapabilities(ctx, key)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	return result, nil
-
-}
-
-func (c *controller) GetFilterFields(ctx context.Context, pluginID, connectionID, key string) (_result []resource.FilterField, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.GetFilterFields", invocation.Target{Provider: pluginID, Connection: connectionID, ResourceType: key})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := startResourceSpan(ctx, "resource.GetFilterFields", pluginID, connectionID, key)
-	defer span.End()
-	provider, err := c.getProvider(pluginID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	result, err := provider.GetFilterFields(ctx, connectionID, key)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	return result, nil
-
-}
-
-func (c *controller) GetResourceSchema(ctx context.Context, pluginID, connectionID, key string) (_result json.RawMessage, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.GetResourceSchema", invocation.Target{Provider: pluginID, Connection: connectionID, ResourceType: key})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := startResourceSpan(ctx, "resource.GetResourceSchema", pluginID, connectionID, key)
-	defer span.End()
-	provider, err := c.getProvider(pluginID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	result, err := provider.GetResourceSchema(ctx, connectionID, key)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	return result, nil
-
-}
-
-// ============================================================================
-// Actions
-// ============================================================================
-
-func (c *controller) GetActions(ctx context.Context, pluginID, connectionID, key string) (_result []resource.ActionDescriptor, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.GetActions", invocation.Target{Provider: pluginID, Connection: connectionID, ResourceType: key})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := startResourceSpan(ctx, "resource.GetActions", pluginID, connectionID, key)
-	defer span.End()
-	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	result, err := provider.GetActions(ctx, key)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	return result, nil
-
-}
-
-func (c *controller) ExecuteAction(ctx context.Context, pluginID, connectionID, key, actionID string, input resource.ActionInput) (_result *resource.ActionResult, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.ExecuteAction", invocation.Target{Provider: pluginID, Connection: connectionID, ResourceType: key, Action: actionID, Scope: namespaceScope(input.Namespace), Object: input.ID})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := tracer.Start(ctx, "resource.ExecuteAction")
-	defer span.End()
-	span.SetAttributes(
-		attribute.String("plugin_id", pluginID),
-		attribute.String("connection_id", connectionID),
-		attribute.String("resource_key", key),
-		attribute.String("action_id", actionID),
-	)
-	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	result, err := provider.ExecuteAction(ctx, key, actionID, input)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		c.logger.Errorw(ctx, "RPC failed", "op", "ExecuteAction", "pluginID", pluginID,
-			"key", key, "actionID", actionID, "error", err)
-		return nil, err
-	}
-	return result, nil
-
-}
-
-// ============================================================================
-// Editor Schemas
-// ============================================================================
-
-func (c *controller) GetEditorSchemas(ctx context.Context, pluginID, connectionID string) (_result []resource.EditorSchema, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.GetEditorSchemas", invocation.Target{Provider: pluginID, Connection: connectionID})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := tracer.Start(ctx, "resource.GetEditorSchemas")
-	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
-	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	result, err := provider.GetEditorSchemas(ctx, connectionID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	return result, nil
-
-}
-
-// ============================================================================
-// Relationships
-// ============================================================================
-
-func (c *controller) GetRelationships(ctx context.Context, pluginID, key string) (_result []resource.RelationshipDescriptor, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.GetRelationships", invocation.Target{Provider: pluginID, ResourceType: key})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := tracer.Start(ctx, "resource.GetRelationships")
-	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("resource_key", key))
-	provider, err := c.getProvider(pluginID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	result, err := provider.GetRelationships(ctx, key)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	return result, nil
-
-}
-
-func (c *controller) ResolveRelationships(ctx context.Context, pluginID, connectionID, key, id, namespace string) (_result []resource.ResolvedRelationship, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.ResolveRelationships", invocation.Target{Provider: pluginID, Connection: connectionID, ResourceType: key, Object: id, Scope: namespaceScope(namespace)})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := startResourceSpan(ctx, "resource.ResolveRelationships", pluginID, connectionID, key)
-	defer span.End()
-	provider, err := c.getProvider(pluginID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	result, err := provider.ResolveRelationships(ctx, connectionID, key, id, namespace)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	return result, nil
-
-}
-
-// ============================================================================
-// Health
-// ============================================================================
-
-func (c *controller) GetHealth(ctx context.Context, pluginID, connectionID, key string, data json.RawMessage) (_result *resource.ResourceHealth, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.GetHealth", invocation.Target{Provider: pluginID, Connection: connectionID, ResourceType: key})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := startResourceSpan(ctx, "resource.GetHealth", pluginID, connectionID, key)
-	defer span.End()
-	provider, err := c.getProvider(pluginID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	result, err := provider.GetHealth(ctx, connectionID, key, data)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	return result, nil
-
-}
-
-func (c *controller) GetResourceEvents(ctx context.Context, pluginID, connectionID, key, id, namespace string, limit int32) (_result []resource.ResourceEvent, retErr error) {
-	ctx, admissionErr := c.admit(ctx, "resource.GetResourceEvents", invocation.Target{Provider: pluginID, Connection: connectionID, ResourceType: key, Object: id, Scope: namespaceScope(namespace)})
-	if admissionErr != nil {
-		return _result, admissionErr
-	}
-	defer finishResource(ctx, &retErr)
-	ctx, span := startResourceSpan(ctx, "resource.GetResourceEvents", pluginID, connectionID, key)
-	defer span.End()
-	provider, err := c.getProvider(pluginID)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	result, err := provider.GetResourceEvents(ctx, connectionID, key, id, namespace, limit)
-	if err != nil {
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	return result, nil
-
-}
 
 // ============================================================================
 // Background Listeners
@@ -1707,7 +914,7 @@ func (c *controller) GetResourceEvents(ctx context.Context, pluginID, connection
 func (c *controller) listenForWatchEvents(
 	ctx context.Context,
 	pluginID string,
-	provider ResourceProvider,
+	provider resource.BestEffortUpdateProvider,
 	sink resource.WatchEventSink,
 	ready chan<- error,
 ) {
@@ -1737,7 +944,7 @@ func (c *controller) listenForWatchEvents(
 // NOTE: No span wraps the entire stream — it runs for the plugin lifetime.
 // Instead, each batch of received connections gets a short-lived span so
 // that connection discovery is observable without bloating Tempo.
-func (c *controller) listenForConnectionEvents(ctx context.Context, pluginID string, provider ResourceProvider) {
+func (c *controller) listenForConnectionEvents(ctx context.Context, pluginID string, provider resource.ConnectionBrowser) {
 	c.logger.Infow(ctx, "connection event listener started", "pluginID", pluginID)
 	connStream := make(chan []types.Connection, streamChannelBuffer)
 
@@ -1834,15 +1041,6 @@ func (c *controller) scheduleAutoConnect(
 				"trigger", string(trigger),
 			)
 
-			// Start watches for the newly connected connection so resource
-			// syncing begins automatically (especially important after crash recovery).
-			if err = c.StartConnectionWatch(invocation.HostContext(context.Background()), pluginID, conn.ID); err != nil {
-				c.logger.Warnw(context.Background(), "auto-connect: failed to start connection watch",
-					"pluginID", pluginID,
-					"connectionID", conn.ID,
-					"error", err,
-				)
-			}
 		}()
 	}
 }
@@ -1969,48 +1167,5 @@ func (c *controller) triggerCrashRecovery(pluginID string, err error, listener s
 	c.pluginsMu.RUnlock()
 	if ok && c.onCrashCallback != nil {
 		ps.crashOnce.Do(func() { go c.onCrashCallback(pluginID) })
-	}
-}
-
-// observeResponse updates the registry from a CRUD response. Unlike watch
-// events (which carry ResourceMetadata from the plugin), CRUD responses
-// only have raw JSON. We build a minimal entry from the known request
-// parameters. The full metadata (UID, Labels, CreatedAt) will be populated
-// when the corresponding watch event arrives — watch events are authoritative.
-//
-// This ensures resources discovered via Get or Update are at least present
-// in the registry (for graph edge resolution), even before the
-// watch event confirms them.
-func (c *controller) observeResponse(pluginID, connectionID, resourceKey, id, namespace string, data json.RawMessage) {
-	if len(data) == 0 || id == "" {
-		return
-	}
-
-	rawCopy := make(json.RawMessage, len(data))
-	copy(rawCopy, data)
-
-	entry := registry.ResourceEntry{
-		PluginID:     pluginID,
-		ConnectionID: connectionID,
-		ResourceKey:  resourceKey,
-		ID:           id,
-		Namespace:    namespace,
-		UID:          "",
-		Labels:       nil,
-		CreatedAt:    time.Time{},
-	}
-
-	// Atomically insert only if no entry exists yet. If a watch event already
-	// populated the entry with authoritative metadata (Labels, UID, CreatedAt),
-	// PutIfAbsent returns the existing entry and we re-index with the new raw
-	// data without overwriting that metadata.
-	if existing, loaded := c.registryStore.PutIfAbsent(entry); loaded {
-		c.dispatcher.Enqueue(indexer.Event{
-			Type: indexer.EventUpdate, Entry: *existing, Old: existing, Raw: rawCopy,
-		})
-	} else {
-		c.dispatcher.Enqueue(indexer.Event{
-			Type: indexer.EventAdd, Entry: entry, Old: nil, Raw: rawCopy,
-		})
 	}
 }

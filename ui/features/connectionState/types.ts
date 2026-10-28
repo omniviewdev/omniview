@@ -1,4 +1,4 @@
-import type { WatchState } from '@omniviewdev/runtime';
+import type { Count, WatchState } from '@omniviewdev/runtime';
 
 /** Identifies the target connection for the state dialog */
 export type ConnectionStateTarget = {
@@ -12,7 +12,7 @@ export type ResourceStateItem = {
   key: string;
   kind: string;
   state: WatchState;
-  count: number;
+  count?: Count;
 };
 
 /** Grouped resources: [groupLabel, items] */

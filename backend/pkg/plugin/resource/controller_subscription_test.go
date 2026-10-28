@@ -1,145 +1,70 @@
 package resource
 
 import (
+	"context"
 	"testing"
-	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/omniviewdev/omniview/backend/pkg/invocation"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/stretchr/testify/require"
-
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 )
 
-// ============================================================================
-// Subscribe / Unsubscribe via controller
-// ============================================================================
-
-func TestSubscribeResource_Success(t *testing.T) {
+func subscriptionTestController(t *testing.T, updateSupport bool) (*controller, HostSubscription) {
+	t.Helper()
 	ctrl, _ := newTestControllerWithEmitter(t)
-	registerMockPlugin(ctrl, "p1", &mockProvider{})
-
-	err := ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
-	require.NoError(t, err)
-	assert.True(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
+	registerMockPlugin(ctrl, "p1", &mockProvider{CatalogFunc: func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
+		catalog := canonicalTestCatalog("p1", "pods")
+		if updateSupport {
+			catalog.Types[0].Capabilities = append(catalog.Types[0].Capabilities, resourcev2.Capability{Operation: resourcev2.OperationUpdate, Guarantee: resourcev2.BestEffortGuarantee})
+		}
+		return catalog, nil
+	}})
+	target := admittedReadTarget(t, ctrl, "p1", "conn-1", "pods").Target
+	return ctrl, HostSubscription{TargetID: "opaque/target", Target: target}
 }
 
-func TestSubscribeResource_RefCounting(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	registerMockPlugin(ctrl, "p1", &mockProvider{})
-
-	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
-	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
-	assert.True(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
+func TestControllerSubscriptionRefcountsAndForeignUnsubscribe(t *testing.T) {
+	ctrl, subscription := subscriptionTestController(t, true)
+	owner := invocation.NewScope(invocation.TrustedUI)
+	ctx := owner.Context(context.Background())
+	require.NoError(t, ctrl.SubscribeResource(ctx, "p1", subscription))
+	require.NoError(t, ctrl.SubscribeResource(ctx, "p1", subscription))
+	foreign := invocation.NewScope(invocation.TrustedUI).Context(context.Background())
+	require.NoError(t, ctrl.UnsubscribeResource(foreign, "p1", subscription))
+	require.Len(t, ctrl.subs.Matching("p1", "conn-1", "pods"), 1)
+	require.NoError(t, ctrl.UnsubscribeResource(ctx, "p1", subscription))
+	require.True(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
+	require.NoError(t, ctrl.UnsubscribeResource(ctx, "p1", subscription))
+	require.False(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
+	require.NoError(t, ctrl.UnsubscribeResource(ctx, "p1", subscription))
 }
 
-func TestUnsubscribeResource_Success(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	registerMockPlugin(ctrl, "p1", &mockProvider{})
-
-	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
-	err := ctrl.UnsubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
-	require.NoError(t, err)
-	assert.False(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
+func TestControllerSubscriptionRejectsUnsupportedUpdatesAndForgedTarget(t *testing.T) {
+	ctrl, subscription := subscriptionTestController(t, false)
+	require.Equal(t, "UNSUPPORTED", requireAppError(t, ctrl.SubscribeResource(testInvocationContext(), "p1", subscription)).Code)
+	require.False(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
+	ctrl, subscription = subscriptionTestController(t, true)
+	subscription.Target.Authority = "forged"
+	require.Equal(t, "INVALID_REQUEST", requireAppError(t, ctrl.SubscribeResource(testInvocationContext(), "p1", subscription)).Code)
+	require.False(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
 }
 
-func TestUnsubscribeResource_AtZero(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	registerMockPlugin(ctrl, "p1", &mockProvider{})
-
-	err := ctrl.UnsubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
-	require.NoError(t, err) // no error even when already 0
+func TestControllerSubscriptionsRemovedOnPluginStop(t *testing.T) {
+	ctrl, subscription := subscriptionTestController(t, true)
+	require.NoError(t, ctrl.SubscribeResource(testInvocationContext(), "p1", subscription))
+	require.NoError(t, ctrl.OnPluginStop("p1", defaultMeta()))
+	require.False(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
 }
 
-func TestIsSubscribed_AfterSubscribe(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
-	assert.True(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
-}
-
-func TestIsSubscribed_AfterUnsubscribe(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
-	_ = ctrl.UnsubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
-	assert.False(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
-}
-
-func TestIsSubscribed_RefCounted(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
-	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
-	_ = ctrl.UnsubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
-	assert.True(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
-}
-
-func TestSubscription_DifferentResources(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
-	assert.True(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
-	assert.False(t, ctrl.isSubscribed("p1", "conn-1", "services"))
-}
-
-func TestSubscription_DifferentConnections(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
-	assert.True(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
-	assert.False(t, ctrl.isSubscribed("p1", "conn-2", "pods"))
-}
-
-func TestSubscription_DifferentPlugins(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
-	assert.True(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
-	assert.False(t, ctrl.isSubscribed("p2", "conn-1", "pods"))
-}
-
-func TestSubscription_RemoveAllOnStop(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	registerMockPlugin(ctrl, "p1", &mockProvider{})
-	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
-	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "services")
-
-	_ = ctrl.OnPluginStop("p1", defaultMeta())
-
-	assert.False(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
-	assert.False(t, ctrl.isSubscribed("p1", "conn-1", "services"))
-}
-
-// ============================================================================
-// Subscription gating of events through the sink
-// ============================================================================
-
-func TestSubscription_GatesADD(t *testing.T) {
-	ctrl, emitter := newTestControllerWithEmitter(t)
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
-
-	// Not subscribed — should not emit.
-	sink.OnAdd(resource.WatchAddPayload{Connection: "conn-1", Key: "pods"})
-	assert.Empty(t, emitter.EventsWithKey("ADD"))
-
-	// Subscribe — should emit.
-	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
-	sink.OnAdd(resource.WatchAddPayload{Connection: "conn-1", Key: "pods"})
-
-	ev := emitter.WaitForEvent(t, "ADD", time.Second)
-	assert.Contains(t, ev.Key, "ADD")
-}
-
-func TestSubscription_GatesUPDATE_DELETE(t *testing.T) {
-	ctrl, emitter := newTestControllerWithEmitter(t)
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
-
-	// Not subscribed.
-	sink.OnUpdate(resource.WatchUpdatePayload{Connection: "conn-1", Key: "pods"})
-	sink.OnDelete(resource.WatchDeletePayload{Connection: "conn-1", Key: "pods"})
-	assert.Empty(t, emitter.EventsWithKey("UPDATE"))
-	assert.Empty(t, emitter.EventsWithKey("DELETE"))
-}
-
-func TestSubscription_STATEBypassesGate(t *testing.T) {
-	ctrl, emitter := newTestControllerWithEmitter(t)
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
-
-	// Not subscribed — STATE should still emit.
-	sink.OnStateChange(resource.WatchStateEvent{ResourceKey: "pods", State: resource.WatchStateSynced})
-	assert.NotEmpty(t, emitter.EventsWithKey("STATE"))
+func TestControllerSubscriptionSeparatesOpaqueTargetIDs(t *testing.T) {
+	ctrl, subscription := subscriptionTestController(t, true)
+	require.NoError(t, ctrl.SubscribeResource(testInvocationContext(), "p1", subscription))
+	second := subscription
+	second.TargetID = "opaque/target/other"
+	require.NoError(t, ctrl.SubscribeResource(testInvocationContext(), "p1", second))
+	require.Len(t, ctrl.subs.Matching("p1", "conn-1", "pods"), 2)
+	require.NoError(t, ctrl.UnsubscribeResource(testInvocationContext(), "p1", subscription))
+	matches := ctrl.subs.Matching("p1", "conn-1", "pods")
+	require.Len(t, matches, 1)
+	require.Equal(t, second.TargetID, matches[0].TargetID)
 }

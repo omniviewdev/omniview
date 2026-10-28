@@ -1,6 +1,8 @@
-import { act, render } from '@testing-library/react';
+import { act, render as renderView } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 import { useContext } from 'react';
-import { RightDrawerContext, type RightDrawerContextType } from '@omniviewdev/runtime';
+import { RightDrawerContext, jsonToValue, type HostRecord, type RightDrawerContextType } from '@omniviewdev/runtime';
 import type * as Runtime from '@omniviewdev/runtime';
 import type * as RuntimeApi from '@omniviewdev/runtime/api';
 import RightDrawerProvider from '../RightDrawerProvider';
@@ -33,10 +35,36 @@ function DrawerProbe() {
   return null;
 }
 
-const target = { pluginID: 'test', connectionID: 'connection', resourceKey: 'core::v1::Pod', resourceID: 'pod', namespace: 'ns' };
+const target = {
+  pluginID: 'test',
+  targetId: 'host-target',
+  route: { connection: 'connection' },
+  reference: { address: { provider: 'test', authority: 'host-issued', type: 'pods', id: 'pod', scope: [] } },
+  representation: 'json',
+};
+
+function render(element: ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return renderView(<QueryClientProvider client={client}>{element}</QueryClientProvider>);
+}
+
+function observed(data: unknown): HostRecord {
+  return {
+    key: 'host-key',
+    addressKey: 'host-address',
+    targetId: target.targetId,
+    route: target.route,
+    record: {
+      reference: target.reference,
+      body: jsonToValue(data),
+      representation: { id: 'json', revision: '', schema: { state: 'unknown', validation: 'none', unvalidated: [] } },
+      coverage: { kind: 'complete', paths: [] },
+    },
+  };
+}
 
 function pendingRead() {
-  const read = Promise.withResolvers<{ success: boolean; result: { metadata: { namespace: string; uid: string } } }>();
+  const read = Promise.withResolvers<HostRecord | null>();
   const cancel = vi.fn();
   return { ...read, promise: Object.assign(read.promise, { cancel }), cancel };
 }
@@ -51,15 +79,18 @@ describe('resource drawer request fences', () => {
     const view = render(<RightDrawerProvider><DrawerProbe /></RightDrawerProvider>);
     const older = drawer.showResourceSidebar(target);
     const rejected = expect(older).rejects.toMatchObject({ name: 'AbortError' });
-    const newer = drawer.showResourceSidebar({ ...target, resourceID: 'newer' });
+    const newer = drawer.showResourceSidebar({
+      ...target,
+      reference: { address: { ...target.reference.address, id: 'newer' } },
+    });
     expect(first.cancel).toHaveBeenCalledOnce();
     await act(async () => {
-      second.resolve({ success: true, result: { metadata: { namespace: 'ns', uid: 'new' } } });
+      second.resolve(observed({ metadata: { namespace: 'ns', uid: 'new' } }));
       await newer;
     });
     expect(view.container.lastElementChild).toHaveAttribute('data-open', 'true');
     await act(async () => {
-      first.resolve({ success: true, result: { metadata: { namespace: 'ns', uid: 'old' } } });
+      first.resolve(observed({ metadata: { namespace: 'ns', uid: 'old' } }));
       await rejected;
     });
     expect(drawer.isOpen).toBe(true);
@@ -82,7 +113,7 @@ describe('resource drawer request fences', () => {
     });
     expect(read.cancel).toHaveBeenCalledOnce();
     await act(async () => {
-      read.resolve({ success: true, result: { metadata: { namespace: 'ns', uid: 'uid' } } });
+      read.resolve(observed({ metadata: { namespace: 'ns', uid: 'uid' } }));
       await rejected;
     });
     expect(view.container.lastElementChild).not.toHaveAttribute('data-open');
@@ -93,7 +124,7 @@ describe('resource drawer request fences', () => {
     { namespace: 'other', uid: 'expected' },
     { namespace: 'ns', uid: 'replacement' },
   ])('rejects changed resource identity %j', async (metadata) => {
-    native.get.mockResolvedValueOnce({ success: true, result: { metadata } });
+    native.get.mockResolvedValueOnce(observed({ metadata }));
     const view = render(<RightDrawerProvider><DrawerProbe /></RightDrawerProvider>);
     await expect(drawer.showResourceSidebar({
       ...target,
@@ -114,7 +145,7 @@ describe('resource drawer request fences', () => {
     const rejected = expect(result).rejects.toMatchObject({ name: 'AbortError' });
     view.unmount();
     expect(read.cancel).toHaveBeenCalledOnce();
-    read.resolve({ success: true, result: { metadata: { namespace: 'ns', uid: 'uid' } } });
+    read.resolve(observed({ metadata: { namespace: 'ns', uid: 'uid' } }));
     await rejected;
   });
 
@@ -126,7 +157,7 @@ describe('resource drawer request fences', () => {
     const remove = vi.spyOn(cancellation.signal, 'removeEventListener');
     const result = drawer.showResourceSidebar({ ...target, signal: cancellation.signal });
     await act(async () => {
-      read.resolve({ success: true, result: { metadata: { namespace: 'ns', uid: 'uid' } } });
+      read.resolve(observed({ metadata: { namespace: 'ns', uid: 'uid' } }));
       await result;
     });
     expect(remove).toHaveBeenCalledWith('abort', expect.any(Function));
@@ -137,7 +168,7 @@ describe('resource drawer request fences', () => {
 
   it('opens opaque native region data without Kubernetes metadata', async () => {
     const data = { id: 'instance', region: 'eu-west-1' };
-    native.get.mockResolvedValueOnce({ success: true, result: data });
+    native.get.mockResolvedValueOnce(observed(data));
     const view = render(<RightDrawerProvider><DrawerProbe /></RightDrawerProvider>);
     const validateData = (value: unknown) => {
       const resource = value as { id?: string; region?: string };
@@ -145,16 +176,38 @@ describe('resource drawer request fences', () => {
     };
 
     await act(async () => {
-      await drawer.showResourceSidebar({ ...target, namespace: '', validateData });
+      await drawer.showResourceSidebar({ ...target, validateData });
     });
     expect(drawer.isOpen).toBe(true);
     view.unmount();
   });
 
-  it('rejects unsuccessful native reads even when data exists', async () => {
-    native.get.mockResolvedValueOnce({ success: false, result: { id: 'instance', region: 'region' } });
+  it('rejects missing native records', async () => {
+    native.get.mockResolvedValueOnce(null);
     const view = render(<RightDrawerProvider><DrawerProbe /></RightDrawerProvider>);
     await expect(drawer.showResourceSidebar(target)).rejects.toThrow(/no longer available/);
+    expect(drawer.isOpen).toBe(false);
+    view.unmount();
+  });
+
+  it('opens an observed row without another native read', async () => {
+    const view = render(<RightDrawerProvider><DrawerProbe /></RightDrawerProvider>);
+    await act(async () => {
+      await drawer.showResourceSidebar({ ...target, record: observed({ id: 'pod' }) });
+    });
+    expect(native.get).not.toHaveBeenCalled();
+    expect(drawer.isOpen).toBe(true);
+    view.unmount();
+  });
+
+  it('rejects a linked record with a changed incarnation', async () => {
+    const record = observed({ id: 'pod' });
+    native.get.mockResolvedValueOnce({ ...record, record: { ...record.record, reference: { ...target.reference, incarnation: 'replacement' } } });
+    const view = render(<RightDrawerProvider><DrawerProbe /></RightDrawerProvider>);
+    await expect(drawer.showResourceSidebar({
+      ...target,
+      reference: { ...target.reference, incarnation: 'expected' },
+    })).rejects.toThrow(/identity changed/);
     expect(drawer.isOpen).toBe(false);
     view.unmount();
   });

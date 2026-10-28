@@ -5,11 +5,13 @@ import {
   GetAllConnectionStates,
   StopConnection,
   StartConnectionWatch,
-} from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
+  Catalog,
+  ResolveTarget,
+} from '../../resource/v2/client';
 import { RetryFailedPlugin } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/servicewrapper';
 import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 import { WatchState } from '../../types/watch';
-import type { WatchStateEvent } from '../../types/watch';
+import type { HostWatchStateEvent } from '../../resource/v2/host';
 import {
   type ActiveSync,
   type ResourceTracker,
@@ -117,7 +119,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
           for (const s of states) {
             if (!s.started) continue;
 
-            const key = `${pluginID}/${s.connection.id}`;
+            const key = JSON.stringify([pluginID, s.connection.id]);
             keys.add(key);
 
             // Build a tracker from the backend's resource states
@@ -149,7 +151,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   useEffect(() => {
     const cancel = Events.On('connection/status', (ev) => {
       const event = ev.data;
-      const key = `${event.pluginID}/${event.connectionID}`;
+      const key = JSON.stringify([event.pluginID, event.connectionID]);
 
       if (event.status === 'DISCONNECTED') {
         setStartedKeys((prev) => {
@@ -191,8 +193,8 @@ export function useConnectionStatus(): ConnectionStatusSummary {
 
   // Listen for watch/STATE events
   const handleWatchEvent = useCallback((ev: Events.WailsEvent) => {
-    const event = ev.data as WatchStateEvent;
-    const key = trackerKey(event);
+    const event = ev.data as HostWatchStateEvent;
+    const key = trackerKey(event.pluginID, event);
 
     // If we get watch events for a connection, it's started
     setStartedKeys((prev) => {
@@ -202,7 +204,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
       return next;
     });
 
-    const tracker = updateTracker(trackersRef.current, event);
+    const tracker = updateTracker(trackersRef.current, event.pluginID, event);
     const activeSync = computeActiveSync(tracker);
 
     setSyncs((prev) => {
@@ -223,7 +225,12 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   }, []);
 
   const retryWatch = useCallback(async (pluginID: string, connectionID: string) => {
-    await StartConnectionWatch(pluginID, connectionID);
+    const route = { connection: connectionID };
+    const catalog = await Catalog(pluginID, { route });
+    const resolved = await Promise.all(catalog.types
+      .filter((type) => type.capabilities.some((capability) => capability.operation === 'update'))
+      .map((type) => ResolveTarget(pluginID, { route, type: type.type })));
+    await StartConnectionWatch(pluginID, resolved.map((target) => target.target));
   }, []);
 
   const retryPlugin = useCallback(async (pluginID: string) => {
@@ -251,7 +258,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   // Build entries from started connections
   const entries: ConnectionStatusEntry[] = [];
   for (const key of startedKeys) {
-    const [pluginID, connectionID] = key.split('/', 2);
+    const [pluginID, connectionID] = JSON.parse(key) as [string, string];
     const pluginConns = allConnections[pluginID] ?? [];
     const connMeta = pluginConns.find((c) => c.id === connectionID);
     const sync = syncs.get(key);

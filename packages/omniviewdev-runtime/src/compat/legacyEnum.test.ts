@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 
-import { WatchState } from '../types/watch';
 import { ConnectionStatusCode } from './types';
 import { withLegacyNames } from './legacyEnum';
 
@@ -27,14 +26,6 @@ describe('withLegacyNames', () => {
 });
 
 describe('plugin-facing enums', () => {
-  it('exposes WatchState under both spellings', () => {
-    const states = WatchState as unknown as Record<string, number>;
-    expect(states.SYNCED).toBe(WatchState.WatchStateSynced);
-    expect(states.IDLE).toBe(WatchState.WatchStateIdle);
-    expect(states.FORBIDDEN).toBe(WatchState.WatchStateForbidden);
-    expect(states.SKIPPED).toBe(WatchState.WatchStateSkipped);
-  });
-
   it('exposes ConnectionStatusCode under both spellings', () => {
     const codes = ConnectionStatusCode as unknown as Record<string, string>;
     expect(codes.CONNECTED).toBe('CONNECTED');

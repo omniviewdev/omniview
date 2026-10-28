@@ -10,8 +10,8 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/internal/appstate"
 	logging "github.com/omniviewdev/plugin-sdk/log"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 )
 
 // newTestController creates a controller with a no-op logger and no settings
@@ -68,7 +68,7 @@ func TestLoadConnections_PluginNotFound(t *testing.T) {
 
 func TestGetConnectionNamespaces_PluginNotFound(t *testing.T) {
 	ctrl := newTestController()
-	_, err := ctrl.GetConnectionNamespaces(testInvocationContext(), "nonexistent", "conn")
+	_, err := ctrl.ScopeValues(testInvocationContext(), "nonexistent", resource.AccessRoute{Connection: "conn"}, "namespace")
 	appErr := requireAppError(t, err)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 	assert.Equal(t, 404, appErr.Status)
@@ -76,78 +76,47 @@ func TestGetConnectionNamespaces_PluginNotFound(t *testing.T) {
 
 func TestGet_PluginNotFound(t *testing.T) {
 	ctrl := newTestController()
-	_, err := ctrl.Get(testInvocationContext(), "nonexistent", "conn", "key", resource.GetInput{})
+	_, err := ctrl.Get(testInvocationContext(), "nonexistent", HostGetRequest{TargetID: "request-label", Request: grpcGetRequest()})
 	appErr := requireAppError(t, err)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 	assert.Equal(t, 404, appErr.Status)
 }
 
-func TestGetResourceGroup_PluginNotFound(t *testing.T) {
+func TestCatalog_PluginNotFound(t *testing.T) {
 	ctrl := newTestController()
-	_, err := ctrl.GetResourceGroup(testInvocationContext(), "nonexistent", "group")
+	_, err := ctrl.Catalog(testInvocationContext(), "nonexistent", resource.CatalogRequest{Route: resource.AccessRoute{Connection: "conn"}})
 	appErr := requireAppError(t, err)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 	assert.Equal(t, 404, appErr.Status)
 }
 
-func TestGetResourceType_PluginNotFound(t *testing.T) {
+func TestFiniteMethods_PluginNotFound(t *testing.T) {
 	ctrl := newTestController()
-	_, err := ctrl.GetResourceType(testInvocationContext(), "nonexistent", "type")
-	appErr := requireAppError(t, err)
-	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
-	assert.Equal(t, 404, appErr.Status)
-}
-
-// TestCRUDMethods_PluginNotFound verifies that all CRUD methods (List, Find,
-// Create, Update, Delete) return a PluginNotFound AppError when invoked with a
-// non-existent plugin ID.
-func TestCRUDMethods_PluginNotFound(t *testing.T) {
-	ctrl := newTestController()
-
+	target := resource.ReadTarget{Route: grpcGetRequest().Route, Provider: "p1", Authority: "authority", Type: "native::Pod", Representation: "native"}
 	tests := []struct {
 		name string
 		fn   func() error
 	}{
-		{
-			name: "List",
-			fn: func() error {
-				_, err := ctrl.List(testInvocationContext(), "nonexistent", "conn", "key", resource.ListInput{})
-				return err
-			},
-		},
-		{
-			name: "Find",
-			fn: func() error {
-				_, err := ctrl.Find(testInvocationContext(), "nonexistent", "conn", "key", resource.FindInput{})
-				return err
-			},
-		},
-		{
-			name: "Create",
-			fn: func() error {
-				_, err := ctrl.Create(testInvocationContext(), "nonexistent", "conn", "key", resource.CreateInput{})
-				return err
-			},
-		},
-		{
-			name: "Update",
-			fn: func() error {
-				_, err := ctrl.Update(testInvocationContext(), "nonexistent", "conn", "key", resource.UpdateInput{})
-				return err
-			},
-		},
-		{
-			name: "Delete",
-			fn: func() error {
-				_, err := ctrl.Delete(testInvocationContext(), "nonexistent", "conn", "key", resource.DeleteInput{})
-				return err
-			},
-		},
+		{"Enumerate", func() error {
+			_, err := ctrl.Enumerate(testInvocationContext(), "nonexistent", HostEnumerateRequest{TargetID: "label", Request: resource.EnumerateRequest{Target: target}})
+			return err
+		}},
+		{"NativeQuery", func() error {
+			_, err := ctrl.NativeQuery(testInvocationContext(), "nonexistent", HostNativeQueryRequest{TargetID: "label", Request: resource.NativeQueryRequest{Target: target, Language: "native", Query: resource.Value{Kind: "null"}}})
+			return err
+		}},
+		{"Mutate", func() error {
+			_, err := ctrl.Mutate(testInvocationContext(), "nonexistent", resource.MutationRequest{Route: grpcGetRequest().Route, Reference: grpcGetRequest().Reference, Operation: "update", Input: resource.Value{Kind: "null"}})
+			return err
+		}},
+		{"Action", func() error {
+			_, err := ctrl.Action(testInvocationContext(), "nonexistent", resource.ActionRequest{Route: grpcGetRequest().Route, Reference: grpcGetRequest().Reference, Action: "inspect", Input: resource.Value{Kind: "null"}})
+			return err
+		}},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			appErr := requireAppError(t, tt.fn())
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			appErr := requireAppError(t, test.fn())
 			assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 			assert.Equal(t, 404, appErr.Status)
 		})
@@ -166,53 +135,53 @@ func TestAdditionalMethods_PluginNotFound(t *testing.T) {
 		{
 			name: "StartConnectionWatch",
 			fn: func() error {
-				return ctrl.StartConnectionWatch(testInvocationContext(), "nonexistent", "conn")
+				return ctrl.StartConnectionWatch(testInvocationContext(), "nonexistent", []resource.ReadTarget{{Route: resource.AccessRoute{Connection: "conn"}, Provider: "p1", Authority: "authority", Type: "native::Pod", Representation: "native"}})
 			},
 		},
 		{
 			name: "StopConnectionWatch",
 			fn: func() error {
-				return ctrl.StopConnectionWatch(testInvocationContext(), "nonexistent", "conn")
+				return ctrl.StopConnectionWatch(testInvocationContext(), "nonexistent", resource.AccessRoute{Connection: "conn"})
 			},
 		},
 		{
 			name: "GetEditorSchemas",
 			fn: func() error {
-				_, err := ctrl.GetEditorSchemas(testInvocationContext(), "nonexistent", "conn")
+				_, err := ctrl.GetEditorSchemas(testInvocationContext(), "nonexistent", resource.AccessRoute{Connection: "conn"})
 				return err
 			},
 		},
 		{
 			name: "GetActions",
 			fn: func() error {
-				_, err := ctrl.GetActions(testInvocationContext(), "nonexistent", "conn", "key")
+				_, err := ctrl.GetActions(testInvocationContext(), "nonexistent", resource.AccessRoute{Connection: "conn"}, "key")
 				return err
 			},
 		},
 		{
-			name: "ExecuteAction",
+			name: "Action",
 			fn: func() error {
-				_, err := ctrl.ExecuteAction(testInvocationContext(), "nonexistent", "conn", "key", "action", resource.ActionInput{})
+				_, err := ctrl.Action(testInvocationContext(), "nonexistent", resource.ActionRequest{Route: grpcGetRequest().Route, Reference: grpcGetRequest().Reference, Action: "inspect", Input: resource.Value{Kind: "null"}})
 				return err
 			},
 		},
 		{
 			name: "GetWatchState",
 			fn: func() error {
-				_, err := ctrl.GetWatchState(testInvocationContext(), "nonexistent", "conn")
+				_, err := ctrl.GetWatchState(testInvocationContext(), "nonexistent", resource.AccessRoute{Connection: "conn"})
 				return err
 			},
 		},
 		{
 			name: "EnsureResourceWatch",
 			fn: func() error {
-				return ctrl.EnsureResourceWatch(testInvocationContext(), "nonexistent", "conn", "key")
+				return ctrl.EnsureResourceWatch(testInvocationContext(), "nonexistent", resource.ReadTarget{Route: resource.AccessRoute{Connection: "conn"}, Provider: "p1", Authority: "authority", Type: "native::Pod", Representation: "native"})
 			},
 		},
 		{
 			name: "GetResourceDefinition",
 			fn: func() error {
-				_, err := ctrl.GetResourceDefinition(testInvocationContext(), "nonexistent", "type")
+				_, err := ctrl.GetResourceDefinition(testInvocationContext(), "nonexistent", resource.AccessRoute{Connection: "conn"}, "type")
 				return err
 			},
 		},
@@ -249,10 +218,7 @@ func TestGetConnection_NoConnectionsConfigured(t *testing.T) {
 	assert.Equal(t, 404, appErr.Status)
 }
 
-// TestConnectionMethods_NoConnectionsConfigured verifies that methods which
-// check c.connections return TypeConnectionNotFound when the plugin has no
-// connection entries.
-func TestConnectionMethods_NoConnectionsConfigured(t *testing.T) {
+func TestConnectionProfileMethods_PluginNotFound(t *testing.T) {
 	ctrl := newTestController()
 
 	tests := []struct {
@@ -260,9 +226,9 @@ func TestConnectionMethods_NoConnectionsConfigured(t *testing.T) {
 		fn   func() error
 	}{
 		{
-			name: "UpdateConnection",
+			name: "SaveConnectionProfile",
 			fn: func() error {
-				_, err := ctrl.UpdateConnection(testInvocationContext(), "nonexistent", types.Connection{ID: "conn"})
+				_, err := ctrl.SaveConnectionProfile(testInvocationContext(), "nonexistent", types.Connection{ID: "conn"})
 				return err
 			},
 		},
@@ -277,7 +243,7 @@ func TestConnectionMethods_NoConnectionsConfigured(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			appErr := requireAppError(t, tt.fn())
-			assert.Equal(t, apperror.TypeConnectionNotFound, appErr.Type)
+			assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 			assert.Equal(t, 404, appErr.Status)
 		})
 	}

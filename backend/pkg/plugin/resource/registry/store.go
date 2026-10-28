@@ -1,14 +1,15 @@
 package registry
 
-// Store abstracts the storage backend for resource entries.
+import resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+
+// Store isolates observations by plugin ownership and access route, while using
+// exact canonical address identity within each projection.
 type Store interface {
 	Put(entry ResourceEntry) (old *ResourceEntry, existed bool)
-	// PutIfAbsent inserts the entry only if no entry with the same key exists.
-	// Returns the existing entry and true if one was already present.
 	PutIfAbsent(entry ResourceEntry) (existing *ResourceEntry, loaded bool)
-	Get(pluginID, connectionID, resourceKey, namespace, id string) (*ResourceEntry, bool)
-	Delete(pluginID, connectionID, resourceKey, namespace, id string) (*ResourceEntry, bool)
+	Get(pluginID string, reference resourcev2.ResourceReference, route resourcev2.AccessRoute) (*ResourceEntry, bool)
+	Delete(pluginID string, reference resourcev2.ResourceReference, route resourcev2.AccessRoute) (*ResourceEntry, bool)
 	DeleteByConnection(pluginID, connectionID string) []ResourceEntry
-	ScanByLabel(pluginID, connectionID, resourceKey string, selector map[string]string) []ResourceEntry
-	ScanByResourceKey(pluginID, connectionID, resourceKey string) []ResourceEntry
+	ScanByLabel(pluginID, connectionID, resourceType string, selector map[string]string) []ResourceEntry
+	ScanByResourceKey(pluginID, connectionID, resourceType string) []ResourceEntry
 }

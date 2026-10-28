@@ -2,7 +2,6 @@ package resource
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
 
@@ -10,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
 // ============================================================================
@@ -20,10 +19,10 @@ import (
 func TestGetHealth_Success(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		GetHealthFunc: func(_ context.Context, connID, key string, data json.RawMessage) (*resource.ResourceHealth, error) {
-			assert.Equal(t, "conn-1", connID)
-			assert.Equal(t, "core::v1::Pod", key)
-			assert.JSONEq(t, `{"name":"my-pod"}`, string(data))
+		GetHealthFunc: func(_ context.Context, request resource.GetRequest, data resource.Value) (*resource.ResourceHealth, error) {
+			assert.Equal(t, "conn-1", request.Route.Connection)
+			assert.Equal(t, "k8s:/pods", request.Reference.Address.Type)
+			assert.Equal(t, "my-pod", data.Map["name"].String)
 			return &resource.ResourceHealth{
 				Status:  resource.HealthHealthy,
 				Reason:  "AllConditionsMet",
@@ -31,10 +30,9 @@ func TestGetHealth_Success(t *testing.T) {
 			}, nil
 		},
 	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	data := json.RawMessage(`{"name":"my-pod"}`)
-	health, err := ctrl.GetHealth(testInvocationContext(), "p1", "conn-1", "core::v1::Pod", data)
+	request := ancillaryPodRequest(t, ctrl, mock)
+	data := resource.Value{Kind: "map", Map: map[string]resource.Value{"name": {Kind: "string", String: "my-pod"}}}
+	health, err := ctrl.GetHealth(testInvocationContext(), "p1", request, data)
 	require.NoError(t, err)
 	require.NotNil(t, health)
 	assert.Equal(t, resource.HealthHealthy, health.Status)
@@ -45,13 +43,12 @@ func TestGetHealth_Success(t *testing.T) {
 func TestGetHealth_ProviderError(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		GetHealthFunc: func(_ context.Context, _, _ string, _ json.RawMessage) (*resource.ResourceHealth, error) {
+		GetHealthFunc: func(_ context.Context, _ resource.GetRequest, _ resource.Value) (*resource.ResourceHealth, error) {
 			return nil, errors.New("health check failed")
 		},
 	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	health, err := ctrl.GetHealth(testInvocationContext(), "p1", "conn-1", "core::v1::Pod", nil)
+	request := ancillaryPodRequest(t, ctrl, mock)
+	health, err := ctrl.GetHealth(testInvocationContext(), "p1", request, resource.Value{Kind: "null"})
 	require.Error(t, err)
 	assert.Nil(t, health)
 	assert.Equal(t, "PROVIDER_ERROR", requireAppError(t, err).Code)
@@ -59,7 +56,7 @@ func TestGetHealth_ProviderError(t *testing.T) {
 
 func TestGetHealth_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	health, err := ctrl.GetHealth(testInvocationContext(), "nonexistent", "conn-1", "pods", nil)
+	health, err := ctrl.GetHealth(testInvocationContext(), "nonexistent", resource.GetRequest{Route: resource.AccessRoute{Connection: "conn-1"}, Reference: actionTestRequest("nonexistent", "pods", "").Reference, Representation: "native"}, resource.Value{Kind: "null"})
 	var appErr *apperror.AppError
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
@@ -73,16 +70,12 @@ func TestGetHealth_PluginNotFound(t *testing.T) {
 func TestGetResourceEvents_Success(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		GetResourceEventsFunc: func(
-			_ context.Context,
-			connID, key, id, ns string,
-			limit int32,
-		) ([]resource.ResourceEvent, error) {
-			assert.Equal(t, "conn-1", connID)
-			assert.Equal(t, "core::v1::Pod", key)
-			assert.Equal(t, "my-pod", id)
-			assert.Equal(t, "default", ns)
-			assert.Equal(t, int32(10), limit)
+		GetResourceEventsFunc: func(_ context.Context, request resource.GetRequest, limit uint32) ([]resource.ResourceEvent, error) {
+			assert.Equal(t, "conn-1", request.Route.Connection)
+			assert.Equal(t, "k8s:/pods", request.Reference.Address.Type)
+			assert.Equal(t, "my-pod", request.Reference.Address.ID)
+			assert.Equal(t, []resource.ScopeEntry{{Dimension: "namespace", Value: "default"}}, request.Reference.Address.Scope)
+			assert.Equal(t, uint32(10), limit)
 			return []resource.ResourceEvent{
 				{
 					Type:    resource.SeverityNormal,
@@ -100,9 +93,8 @@ func TestGetResourceEvents_Success(t *testing.T) {
 			}, nil
 		},
 	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	events, err := ctrl.GetResourceEvents(testInvocationContext(), "p1", "conn-1", "core::v1::Pod", "my-pod", "default", 10)
+	request := ancillaryPodRequest(t, ctrl, mock)
+	events, err := ctrl.GetResourceEvents(testInvocationContext(), "p1", request, 10)
 	require.NoError(t, err)
 	require.Len(t, events, 2)
 
@@ -119,21 +111,64 @@ func TestGetResourceEvents_Success(t *testing.T) {
 func TestGetResourceEvents_ProviderError(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		GetResourceEventsFunc: func(_ context.Context, _, _, _, _ string, _ int32) ([]resource.ResourceEvent, error) {
+		GetResourceEventsFunc: func(_ context.Context, _ resource.GetRequest, _ uint32) ([]resource.ResourceEvent, error) {
 			return nil, errors.New("events unavailable")
 		},
 	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	_, err := ctrl.GetResourceEvents(testInvocationContext(), "p1", "conn-1", "core::v1::Pod", "my-pod", "default", 10)
+	request := ancillaryPodRequest(t, ctrl, mock)
+	_, err := ctrl.GetResourceEvents(testInvocationContext(), "p1", request, 10)
 	require.Error(t, err)
 	assert.Equal(t, "PROVIDER_ERROR", requireAppError(t, err).Code)
 }
 
 func TestGetResourceEvents_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	_, err := ctrl.GetResourceEvents(testInvocationContext(), "nonexistent", "conn-1", "pods", "pod-1", "default", 10)
+	_, err := ctrl.GetResourceEvents(testInvocationContext(), "nonexistent", resource.GetRequest{Route: resource.AccessRoute{Connection: "conn-1"}, Reference: actionTestRequest("nonexistent", "pods", "").Reference, Representation: "native"}, 10)
 	var appErr *apperror.AppError
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
+}
+
+func ancillaryPodRequest(t *testing.T, ctrl *controller, mock *mockProvider) resource.GetRequest {
+	t.Helper()
+	mock.CatalogFunc = func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+		catalog := canonicalTestCatalog("p1", "k8s:/pods")
+		catalog.Types[0].IdentityDimensions = []resource.Dimension{{Name: "namespace"}}
+		catalog.Types[0].QueryDimensions = []resource.Dimension{{Name: "namespace"}}
+		return catalog, nil
+	}
+	registerMockPlugin(ctrl, "p1", mock)
+	request := admittedGetRequest(t, ctrl, "p1", "conn-1", "k8s:/pods", "my-pod").Request
+	request.Reference.Address.Scope = []resource.ScopeEntry{{Dimension: "namespace", Value: "default"}}
+	return request
+}
+
+func TestHealthAncillaryPreservesTypedUnsupportedAndCancellation(t *testing.T) {
+	for _, failure := range []struct {
+		name string
+		err  error
+		code string
+	}{
+		{"unsupported", resource.NewError("UNSUPPORTED", "Health is unavailable."), "UNSUPPORTED"},
+		{"canceled", context.Canceled, "CANCELLED"},
+	} {
+		t.Run(failure.name, func(t *testing.T) {
+			ctrl, _ := newTestControllerWithEmitter(t)
+			mock := &mockProvider{
+				GetHealthFunc: func(context.Context, resource.GetRequest, resource.Value) (*resource.ResourceHealth, error) {
+					return nil, failure.err
+				},
+				GetResourceEventsFunc: func(context.Context, resource.GetRequest, uint32) ([]resource.ResourceEvent, error) {
+					return nil, failure.err
+				},
+			}
+			request := ancillaryPodRequest(t, ctrl, mock)
+			health, err := ctrl.GetHealth(testInvocationContext(), "p1", request, resource.Value{Kind: "null"})
+			assert.Nil(t, health)
+			assert.Equal(t, failure.code, requireAppError(t, err).Code)
+			events, err := ctrl.GetResourceEvents(testInvocationContext(), "p1", request, 10)
+			assert.Nil(t, events)
+			assert.Equal(t, failure.code, requireAppError(t, err).Code)
+		})
+	}
 }

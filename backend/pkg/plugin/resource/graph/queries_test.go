@@ -3,7 +3,7 @@ package graph
 import (
 	"testing"
 
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
 func buildTestGraph() *RelationshipGraph {
@@ -127,8 +127,8 @@ func TestGetDependencyTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tree.Root.ID != "web" {
-		t.Fatalf("expected root=web, got %s", tree.Root.ID)
+	if tree.Root.Reference.Address.ID != "web" {
+		t.Fatalf("expected root=web, got %s", tree.Root.Reference.Address.ID)
 	}
 	if len(tree.Children) != 1 {
 		t.Fatalf("expected 1 child (rs), got %d", len(tree.Children))

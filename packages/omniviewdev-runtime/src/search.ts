@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react';
+import type { AccessRoute, ReadTarget, ResourceReference } from './resource/v2/domain';
 
-/** Native IDs remain opaque. `namespace` is a real provider namespace, never a synthetic region or node. */
+/** Resource scopes carry host-admitted canonical targets, never native lookup tuples. */
 export type SearchScopeV1 =
   | {
     kind: 'connection';
@@ -11,22 +12,19 @@ export type SearchScopeV1 =
   | {
     kind: 'resource-type';
     pluginId: string;
-    connectionId: string;
-    resourceKey: string;
+    target: ReadTarget;
+    targetId: string;
     label: string;
-    namespaces?: readonly string[];
     /** Display label only; never part of native lookup identity. */
     scopeLabel?: string;
   }
   | {
     kind: 'resource';
     pluginId: string;
-    connectionId: string;
-    resourceKey: string;
-    resourceId: string;
-    namespace: string;
-    /** Optional immutable incarnation, validated by the owning provider. */
-    uid?: string;
+    reference: ResourceReference;
+    route: AccessRoute;
+    representation: string;
+    targetId: string;
     label: string;
     scopeLabel?: string;
   };
@@ -104,7 +102,7 @@ export type SearchProviderV1 = {
   supportsScope?: (scopes: readonly SearchScopeV1[]) => boolean;
   /** Defaults to host. `connectionTarget` changes navigation, not recovery ownership. */
   connectionRecovery?: 'host' | 'provider';
-  /** Validate provider-specific object identity after the host's native Get. Required when a UID is supplied. */
+  /** Optional provider-specific validation after the host's canonical Get. */
   validateResource?: (target: Extract<SearchScopeV1, { kind: 'resource' }>, data: unknown) => boolean;
   /** Cancellable, side-effect-free discovery. Respect limit and report partial/truncated results honestly. */
   search(request: SearchProviderRequestV1): Promise<SearchProviderResponseV1>;

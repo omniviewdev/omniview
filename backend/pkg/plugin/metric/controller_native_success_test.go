@@ -2,7 +2,6 @@ package metric
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -26,13 +25,12 @@ import (
 	"github.com/omniviewdev/omniview/internal/appstate"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
+	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	resourceplugin "github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/utils"
 	sdkmetric "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
-	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
-	resourceplugin "github.com/omniviewdev/plugin-sdk/pkg/v1/resource/plugin"
-	resourcepb "github.com/omniviewdev/plugin-sdk/proto/v1/resource"
 )
 
 const (
@@ -187,15 +185,19 @@ func newNativeMetricFixture(t *testing.T, query sdkmetric.QueryFunc) *nativeMetr
 	t.Cleanup(cancel)
 	state := appstate.NewTestService(t)
 	connections := &nativeRuntimeConnections{released: make(chan error, 1)}
-	resourceManager, err := sdkresource.BuildResourceController(rootCtx, sdkresource.ResourcePluginConfig[os.Process]{
-		Connections: connections,
-		Resources: []sdkresource.ResourceRegistration[os.Process]{{
-			Meta:      sdkresource.ResourceMeta{Group: "native", Version: "v1", Kind: "Process"},
-			Resourcer: nativeRuntimeResourcer{},
-		}},
+	resourcer := nativeRuntimeResourcer{}
+	resourceManager, err := sdkresource.NewController(sdkresource.Config[os.Process]{
+		Catalog: func(context.Context, sdkresource.CatalogRequest) (sdkresource.Catalog, error) {
+			return sdkresource.Catalog{Provider: nativeMetricPluginID, Revision: "native:1", Coverage: sdkresource.Coverage{Kind: "complete"}, Types: []sdkresource.ResourceType{{
+				Type: nativeMetricResourceKey, DisplayName: "Owned process", Representations: []sdkresource.Representation{nativeRuntimeRepresentation()},
+				Capabilities: []sdkresource.Capability{{Operation: sdkresource.OperationGet}, {Operation: sdkresource.OperationEnumerate}},
+			}}}, nil
+		},
+		Lifecycle:     &sdkresource.Lifecycle[os.Process]{LoadConnections: connections.LoadConnections, CreateClient: connections.CreateClient, DestroyClient: connections.DestroyClient, CheckConnection: connections.CheckConnection},
+		Registrations: []sdkresource.Registration[os.Process]{{Type: nativeMetricResourceKey, Get: resourcer.Get, Enumerate: resourcer.Enumerate}},
 	})
 	require.NoError(t, err)
-	t.Cleanup(resourceManager.Close)
+	t.Cleanup(func() { require.NoError(t, resourceManager.Close()) })
 	manager := sdkmetric.NewManager(logging.NewNop(), nil,
 		sdkmetric.ProviderInfo{ID: nativeMetricPluginID, Name: "Owned Go runtime"},
 		map[string]sdkmetric.Handler{nativeMetricResourceKey: {
@@ -214,7 +216,7 @@ func newNativeMetricFixture(t *testing.T, query sdkmetric.QueryFunc) *nativeMetr
 		return handler(server, stream)
 	}))
 	server := grpc.NewServer(options...)
-	resourcepb.RegisterResourcePluginServer(server, resourceplugin.NewServer(resourceManager, nil))
+	resourceplugin.RegisterServer(server, resourceManager)
 	metricPlugin := &sdkmetric.Plugin{Impl: manager}
 	require.NoError(t, metricPlugin.GRPCServer(nil, server))
 	listener := bufconn.Listen(1024 * 1024)
@@ -254,7 +256,7 @@ func newNativeMetricFixture(t *testing.T, query sdkmetric.QueryFunc) *nativeMetr
 	client, ok := metricClient.(sdkmetric.Provider)
 	require.True(t, ok)
 	backend := plugintypes.NewInProcessBackend(map[string]interface{}{
-		"resource": resourceplugin.NewClient(resourcepb.NewResourcePluginClient(connection)),
+		"resource": resourceplugin.NewClient(connection),
 		"metric":   client,
 	})
 	resources := hostresource.NewController(logging.NewNop(), nil, state.PluginStore, invocation.NewBoundary(nil))
@@ -322,9 +324,8 @@ func (nativeRuntimeConnections) LoadConnections(context.Context) ([]sdktypes.Con
 	}}}, nil
 }
 
-func (nativeRuntimeConnections) CreateClient(ctx context.Context) (*os.Process, error) {
-	session := sdkresource.SessionFromContext(ctx)
-	if session == nil || session.Connection == nil || session.Connection.Data["process_id"] != strconv.Itoa(os.Getpid()) {
+func (nativeRuntimeConnections) CreateClient(_ context.Context, connection sdktypes.Connection) (*os.Process, error) {
+	if connection.Data["process_id"] != strconv.Itoa(os.Getpid()) {
 		return nil, errors.New("native connection does not select this process")
 	}
 	return os.FindProcess(os.Getpid())
@@ -336,50 +337,45 @@ func (c nativeRuntimeConnections) DestroyClient(_ context.Context, process *os.P
 	return err
 }
 
-func (nativeRuntimeConnections) CheckConnection(_ context.Context, connection *sdktypes.Connection, process *os.Process) (sdktypes.ConnectionStatus, error) {
+func (nativeRuntimeConnections) CheckConnection(_ context.Context, connection sdktypes.Connection, process *os.Process) (sdktypes.ConnectionStatus, error) {
 	if process.Pid != os.Getpid() {
 		return sdktypes.ConnectionStatus{}, errors.New("native connection selected another process")
 	}
-	return sdktypes.ConnectionStatus{Connection: connection, Status: sdktypes.ConnectionStatusConnected}, nil
-}
-
-func (nativeRuntimeConnections) GetNamespaces(context.Context, *os.Process) ([]string, error) {
-	return nil, nil
+	return sdktypes.ConnectionStatus{Connection: &connection, Status: sdktypes.ConnectionStatusConnected}, nil
 }
 
 type nativeRuntimeResourcer struct{}
 
-func (nativeRuntimeResourcer) Get(_ context.Context, process *os.Process, _ sdkresource.ResourceMeta, input sdkresource.GetInput) (*sdkresource.GetResult, error) {
-	if input.ID != strconv.Itoa(process.Pid) {
-		return nil, errors.New("native process resource not found")
+func nativeRuntimeRepresentation() sdkresource.Representation {
+	return sdkresource.Representation{ID: "native", Revision: "native:1", Schema: sdkresource.SchemaBinding{State: "absent", Validation: "none"}}
+}
+
+func (nativeRuntimeResourcer) Get(ctx context.Context, process *os.Process, input sdkresource.GetRequest) (sdkresource.Record, error) {
+	if err := ctx.Err(); err != nil {
+		return sdkresource.Record{}, err
 	}
-	data, err := json.Marshal(map[string]interface{}{"pid": process.Pid, "gomaxprocs": runtime.GOMAXPROCS(0)})
+	if input.Reference.Address.ID != strconv.Itoa(process.Pid) {
+		return sdkresource.Record{}, sdkresource.NewError("NOT_FOUND", "Native process resource not found.")
+	}
+	return sdkresource.Record{
+		Reference: input.Reference, Representation: nativeRuntimeRepresentation(), Coverage: sdkresource.Coverage{Kind: "complete"},
+		Body: sdkresource.Value{Kind: "map", Map: map[string]sdkresource.Value{
+			"pid":        {Kind: "int64", Int: strconv.Itoa(process.Pid)},
+			"gomaxprocs": {Kind: "int64", Int: strconv.Itoa(runtime.GOMAXPROCS(0))},
+		}},
+	}, nil
+}
+
+func (r nativeRuntimeResourcer) Enumerate(ctx context.Context, process *os.Process, input sdkresource.EnumerateRequest) (sdkresource.SourcePage, error) {
+	record, err := r.Get(ctx, process, sdkresource.GetRequest{
+		Route: input.Target.Route, Representation: input.Target.Representation,
+		Reference: sdkresource.ResourceReference{Address: sdkresource.ResourceAddress{
+			Provider: input.Target.Provider, Authority: input.Target.Authority, Type: input.Target.Type, ID: strconv.Itoa(process.Pid), Scope: []sdkresource.ScopeEntry{},
+		}},
+	})
 	if err != nil {
-		return nil, err
+		return sdkresource.SourcePage{}, err
 	}
-	return &sdkresource.GetResult{Success: true, Result: data}, nil
-}
-
-func (r nativeRuntimeResourcer) List(ctx context.Context, process *os.Process, meta sdkresource.ResourceMeta, _ sdkresource.ListInput) (*sdkresource.ListResult, error) {
-	result, err := r.Get(ctx, process, meta, sdkresource.GetInput{ID: strconv.Itoa(process.Pid)})
-	if err != nil {
-		return nil, err
-	}
-	return &sdkresource.ListResult{Success: true, Result: []json.RawMessage{result.Result}}, nil
-}
-
-func (nativeRuntimeResourcer) Find(context.Context, *os.Process, sdkresource.ResourceMeta, sdkresource.FindInput) (*sdkresource.FindResult, error) {
-	return nil, errors.New("native runtime resources do not support search")
-}
-
-func (nativeRuntimeResourcer) Create(context.Context, *os.Process, sdkresource.ResourceMeta, sdkresource.CreateInput) (*sdkresource.CreateResult, error) {
-	return nil, errors.New("native runtime resources are read-only")
-}
-
-func (nativeRuntimeResourcer) Update(context.Context, *os.Process, sdkresource.ResourceMeta, sdkresource.UpdateInput) (*sdkresource.UpdateResult, error) {
-	return nil, errors.New("native runtime resources are read-only")
-}
-
-func (nativeRuntimeResourcer) Delete(context.Context, *os.Process, sdkresource.ResourceMeta, sdkresource.DeleteInput) (*sdkresource.DeleteResult, error) {
-	return nil, errors.New("native runtime resources are read-only")
+	count := "1"
+	return sdkresource.SourcePage{Records: []sdkresource.Record{record}, Count: sdkresource.Count{Kind: "exact", Value: &count}, Coverage: sdkresource.Coverage{Kind: "complete"}, Consistency: "bestEffort"}, nil
 }

@@ -88,26 +88,27 @@ export function aggregateProgress(syncs: ActiveSync[]): number {
 }
 
 /** Build a tracker key from an event */
-export function trackerKey(event: WatchStateEvent): string {
-  return `${event.pluginId}/${event.connection}`;
+export function trackerKey(pluginID: string, event: WatchStateEvent): string {
+  return JSON.stringify([pluginID, event.route.connection]);
 }
 
 /** Update a trackers map with a new event, returning the updated tracker */
 export function updateTracker(
   trackers: Map<string, ResourceTracker>,
+  pluginID: string,
   event: WatchStateEvent,
 ): ResourceTracker {
-  const key = trackerKey(event);
+  const key = trackerKey(pluginID, event);
 
   if (!trackers.has(key)) {
     trackers.set(key, {
       states: {},
-      pluginID: event.pluginId,
-      connectionID: event.connection,
+      pluginID,
+      connectionID: event.route.connection,
     });
   }
 
   const tracker = trackers.get(key)!;
-  tracker.states[event.resourceKey] = event.state;
+  tracker.states[event.type] = event.state;
   return tracker;
 }

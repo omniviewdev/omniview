@@ -22,7 +22,7 @@ import { getAggregateStatus } from '@/features/devtools/types';
 import { useDevServer } from '@/hooks/plugin/useDevServer';
 import { usePluginService } from '@/features/plugins';
 import { usePortForwardSessions, useOperations, useSnackbar } from '@omniviewdev/runtime';
-import type { Operation } from '@omniviewdev/runtime';
+import type { BackgroundOperation } from '@omniviewdev/runtime';
 import HintTooltip from '@/components/base/HintTooltip';
 
 import ConnectionStatusIndicator from './ConnectionStatusIndicator';
@@ -488,7 +488,7 @@ function PortForwardIndicator() {
 // OperationsIndicator — chip + popover listing active/recent operations
 // ---------------------------------------------------------------------------
 
-function OperationsList({ operations, onRemove }: { operations: Operation[]; onRemove: (id: string) => void }) {
+function OperationsList({ operations, onRemove }: { operations: BackgroundOperation[]; onRemove: (id: string) => void }) {
   const running = operations.filter((o) => o.status === 'running');
 
   return (

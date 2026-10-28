@@ -1,181 +1,90 @@
 import { useCallback, useEffect, useRef } from 'react';
-import type { QueryClient, QueryKey } from '@tanstack/react-query';
-import get from 'lodash.get';
-import type { WatchState } from '../../types/watch';
+import { hashKey, type QueryClient, type QueryKey } from '@tanstack/react-query';
+import type { HostRecord, HostSourcePage, HostWatchAddPayload, HostWatchDeletePayload, HostWatchUpdatePayload, ResourceView } from '../../resource/v2/host';
+import { WatchState } from '../../types/watch';
 
-// Re-use the payload shapes already defined in useResources.
-export type AddPayload = {
-  data: any;
-  key: string;
-  connection: string;
-  id: string;
-  namespace: string;
-};
-
-export type UpdatePayload = {
-  data: any;
-  key: string;
-  connection: string;
-  id: string;
-  namespace: string;
-};
-
-export type DeletePayload = {
-  data: any;
-  key: string;
-  connection: string;
-  id: string;
-  namespace: string;
-};
-
-export type ResourceEvent =
+export type AddPayload = HostWatchAddPayload;
+export type UpdatePayload = HostWatchUpdatePayload;
+export type DeletePayload = HostWatchDeletePayload;
+export type ResourceUpdateEvent =
   | { type: 'ADD'; payload: AddPayload }
   | { type: 'UPDATE'; payload: UpdatePayload }
   | { type: 'DELETE'; payload: DeletePayload };
 
-/**
- * Apply a batch of resource events to a list query cache entry.
- * Extracted for testability — this is the core batching logic.
- *
- * Returns a new plain object (immutable-style) without relying on Immer,
- * avoiding issues with Wails binding class instances that Immer cannot draft.
- */
-export function applyBatch(
-  oldData: any,
-  events: ResourceEvent[],
-  idAccessor: string,
-): any {
-  const base = oldData ?? { result: [], success: true, totalCount: 0 };
-  // Shallow-copy the result array so we never mutate the cached version.
-  const result = [...(base.result ?? [])];
-
+/** Host membership keys, including incarnation, prevent stale deletes replacing current rows. */
+export function applyBatch(oldData: HostSourcePage | undefined, events: readonly ResourceUpdateEvent[]): ResourceView | undefined {
+  if (!oldData) return oldData;
+  const records = [...oldData.records];
   for (const event of events) {
-    const eventId = get(event.payload.data, idAccessor);
-
-    switch (event.type) {
-      case 'ADD': {
-        const idx = result.findIndex((item: any) => get(item, idAccessor) === eventId);
-        if (idx === -1) {
-          result.push(event.payload.data);
-        }
-        break;
-      }
-      case 'UPDATE': {
-        const idx = result.findIndex((item: any) => get(item, idAccessor) === eventId);
-        if (idx !== -1) {
-          result[idx] = event.payload.data;
-        }
-        break;
-      }
-      case 'DELETE': {
-        const idx = result.findIndex((item: any) => get(item, idAccessor) === eventId);
-        if (idx !== -1) {
-          result.splice(idx, 1);
-        }
-        break;
-      }
+    if (event.type === 'DELETE') {
+      const index = records.findIndex((row) => row.key === event.payload.key);
+      if (index !== -1) records.splice(index, 1);
+    } else {
+      const row = event.payload.record;
+      const index = records.findIndex((existing) => existing.addressKey === row.addressKey && existing.targetId === row.targetId);
+      if (index === -1) records.push(row);
+      else records[index] = row;
     }
   }
-
-  return { ...base, result };
+  // Keep native acquisition provenance separate from the advisory modified view.
+  return { records, sourcePage: oldData.sourcePage, view: { guarantee: 'bestEffort', count: { kind: 'unknown' } } };
 }
 
-/**
- * Adaptive two-mode event batcher for resource watch events.
- *
- * **Mode 1 — Initial Sync (SYNCING state):** Uses `setTimeout` with a larger
- * window (default 500ms) to batch the initial ADD flood into 1-2 flushes.
- * Satisfies REQ-BATCH-2.
- *
- * **Mode 2 — Live Updates (all other states):** Races `requestAnimationFrame`
- * against the same bounded window, retaining next-frame batching while allowing
- * already-delivered data to progress when painting is withheld but timers run.
- * This does not promise progress while the entire event loop is frozen.
- *
- * Mode transitions happen automatically when `watchState` changes.
- * Pending timers flush normally; subsequent events use the new scheduling.
- */
+/** Advisory updates use adaptive batching; no snapshot/update continuity is claimed. */
 export function useEventBatcher(
   queryClient: QueryClient,
   queryKey: QueryKey,
-  getResourceKey: (id: string, ns: string) => QueryKey,
-  idAccessor: string | undefined,
   watchState: WatchState,
   options?: { syncWindowMs?: number },
 ) {
-  const syncWindowMs = options?.syncWindowMs ?? 500;
-
-  const bufferRef = useRef<ResourceEvent[]>([]);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const rafRef = useRef<number | null>(null);
-
-  // Track watchState in a ref so flush callback always reads the latest
-  // value without needing to be re-created on every state change.
-  const stateRef = useRef(watchState);
-  stateRef.current = watchState;
-
+  const buffer = useRef<ResourceUpdateEvent[]>([]);
+  const timer = useRef<number | undefined>(undefined);
+  const frame = useRef<number | undefined>(undefined);
+  const state = useRef(watchState);
+  state.current = watchState;
+  const windowMs = options?.syncWindowMs ?? 500;
   const flush = useCallback(() => {
-    const events = bufferRef.current;
-    bufferRef.current = [];
-    if (timerRef.current !== null) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    if (rafRef.current !== null) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
-
-    if (events.length === 0 || !idAccessor) return;
-
-    // Single cache update for the list query.
-    queryClient.setQueryData(queryKey, (oldData: any) =>
-      applyBatch(oldData, events, idAccessor),
-    );
-
-    // Update individual resource caches.
+    window.clearTimeout(timer.current);
+    if (frame.current !== undefined) cancelAnimationFrame(frame.current);
+    timer.current = undefined;
+    frame.current = undefined;
+    if (!buffer.current.length) return;
+    // Retain updates until the real native baseline exists; never synthesize a page.
+    if (!queryClient.getQueryData<HostSourcePage>(queryKey)) return;
+    const events = buffer.current;
+    buffer.current = [];
+    queryClient.setQueryData<ResourceView>(queryKey, (old) => applyBatch(old, events));
     for (const event of events) {
-      if (event.type === 'ADD' || event.type === 'UPDATE') {
-        queryClient.setQueryData(
-          getResourceKey(event.payload.id, event.payload.namespace),
-          { success: true, result: event.payload.data },
+      if (event.type === 'DELETE') {
+        void queryClient.invalidateQueries({
+          queryKey: [queryKey[0], 'resource-v2', 'get'],
+          predicate: (query) => (query.state.data as HostRecord | undefined)?.key === event.payload.key,
+        });
+      } else {
+        queryClient.setQueriesData<HostRecord>({ queryKey: [queryKey[0], 'resource-v2', 'get'] }, (old) =>
+          old?.key === event.payload.record.key ? event.payload.record : old,
         );
       }
     }
-  }, [queryClient, queryKey, getResourceKey, idAccessor]);
-
-  const enqueue = useCallback(
-    (event: ResourceEvent) => {
-      bufferRef.current.push(event);
-
-      // Already have a pending flush scheduled — just buffer.
-      if (timerRef.current !== null || rafRef.current !== null) {
-        return;
-      }
-
-      // One timer bounds both modes; live updates normally win on the next frame.
-      // Whichever callback flushes first cancels the other schedule.
-      timerRef.current = setTimeout(flush, syncWindowMs);
-      if (stateRef.current !== 1) {
-        rafRef.current = requestAnimationFrame(flush);
-      }
-    },
-    [flush, syncWindowMs],
-  );
-
-  // Cancel pending timer/RAF on unmount.
+  }, [queryClient, queryKey]);
+  const enqueue = useCallback((event: ResourceUpdateEvent) => {
+    buffer.current.push(event);
+    if (timer.current !== undefined || frame.current !== undefined) return;
+    timer.current = window.setTimeout(flush, windowMs);
+    if (state.current !== WatchState.WatchStateSyncing) frame.current = requestAnimationFrame(flush);
+  }, [flush, windowMs]);
   useEffect(() => {
+    const cancel = queryClient.getQueryCache().subscribe((event) => {
+      if (event.type === 'updated' && event.query.queryHash === hashKey(queryKey) && event.action.type === 'success') flush();
+    });
     return () => {
-      if (timerRef.current !== null) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-      if (rafRef.current !== null) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
+      cancel();
+      window.clearTimeout(timer.current);
+      if (frame.current !== undefined) cancelAnimationFrame(frame.current);
+      buffer.current = [];
+      timer.current = undefined;
+      frame.current = undefined;
     };
-  }, []);
-
+  }, [queryClient, queryKey, flush]);
   return enqueue;
 }

@@ -6,37 +6,27 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
-// GraphService exposes graph query methods to the frontend via Wails binding.
+// GraphService exposes best-effort observed relationships, not a query planner.
 type GraphService struct {
-	graph    *graph.RelationshipGraph
-	realm    *invocation.Scope
-	boundary *invocation.Boundary
+	graph             *graph.RelationshipGraph
+	realm             *invocation.Scope
+	boundary          *invocation.Boundary
+	validateReference func(context.Context, string, resourcev2.AccessRoute, resourcev2.ResourceReference) error
 }
 
-// NewGraphService creates a new GraphService.
-func NewGraphService(g *graph.RelationshipGraph, realm *invocation.Scope, boundary *invocation.Boundary) *GraphService {
-	return &GraphService{graph: g, realm: realm, boundary: boundary}
+func NewGraphService(g *graph.RelationshipGraph, realm *invocation.Scope, boundary *invocation.Boundary, validateReference func(context.Context, string, resourcev2.AccessRoute, resourcev2.ResourceReference) error) *GraphService {
+	return &GraphService{graph: g, realm: realm, boundary: boundary, validateReference: validateReference}
 }
 
-// GetRelated returns edges connected to the given node.
-func (s *GraphService) GetRelated(
-	ctx context.Context,
-	pluginID, connectionID, resourceKey, namespace, id string,
-	direction string,
-	relType *string,
-) (_result []graph.GraphEdge, retErr error) {
-	ctx, err := s.admit(ctx, "graph.GetRelated", pluginID, connectionID, resourceKey, namespace, id)
+func (s *GraphService) GetRelated(ctx context.Context, pluginID string, reference resourcev2.ResourceReference, route resourcev2.AccessRoute, direction string, relType *string) (_result []graph.GraphEdge, retErr error) {
+	ctx, err := s.admit(ctx, "graph.GetRelated", pluginID, reference, route)
 	if err != nil {
 		return nil, err
 	}
 	defer finishResource(ctx, &retErr)
-	ref := graph.GraphNode{
-		PluginID: pluginID, ConnectionID: connectionID,
-		ResourceKey: resourceKey, ID: id, Namespace: namespace,
-	}
-
 	var dir graph.Direction
 	switch direction {
 	case "outgoing":
@@ -48,66 +38,61 @@ func (s *GraphService) GetRelated(
 	default:
 		return nil, apperror.New(apperror.TypeValidation, 400, "Invalid direction", "Direction must be outgoing, incoming, or both.")
 	}
-
 	var rt *graph.RelationshipType
 	if relType != nil {
 		t := graph.RelationshipType(*relType)
 		rt = &t
 	}
-
-	return s.graph.GetRelated(ref, dir, rt)
+	return s.graph.GetRelated(graph.GraphNode{PluginID: pluginID, Reference: reference, Route: route}, dir, rt)
 }
 
-// GetRelationshipChain follows edges of a specific type up to maxDepth hops.
-func (s *GraphService) GetRelationshipChain(ctx context.Context, pluginID, connectionID, resourceKey, namespace, id string,
-	relType string, maxDepth int) (_result [][]graph.GraphEdge, retErr error) {
-	ctx, err := s.admit(ctx, "graph.GetRelationshipChain", pluginID, connectionID, resourceKey, namespace, id)
+func (s *GraphService) GetRelationshipChain(ctx context.Context, pluginID string, reference resourcev2.ResourceReference, route resourcev2.AccessRoute, relType string, maxDepth int) (_result [][]graph.GraphEdge, retErr error) {
+	ctx, err := s.admit(ctx, "graph.GetRelationshipChain", pluginID, reference, route)
 	if err != nil {
 		return nil, err
 	}
 	defer finishResource(ctx, &retErr)
-	ref := graph.GraphNode{
-		PluginID: pluginID, ConnectionID: connectionID,
-		ResourceKey: resourceKey, ID: id, Namespace: namespace,
-	}
-	return s.graph.GetRelationshipChain(ref, graph.RelationshipType(relType), maxDepth)
+	return s.graph.GetRelationshipChain(graph.GraphNode{PluginID: pluginID, Reference: reference, Route: route}, graph.RelationshipType(relType), maxDepth)
 }
 
-// GetDependencyTree follows all outgoing edges recursively.
-func (s *GraphService) GetDependencyTree(ctx context.Context, pluginID, connectionID, resourceKey, namespace, id string,
-	maxDepth int) (_result *graph.DependencyTree, retErr error) {
-	ctx, err := s.admit(ctx, "graph.GetDependencyTree", pluginID, connectionID, resourceKey, namespace, id)
+func (s *GraphService) GetDependencyTree(ctx context.Context, pluginID string, reference resourcev2.ResourceReference, route resourcev2.AccessRoute, maxDepth int) (_result *graph.DependencyTree, retErr error) {
+	ctx, err := s.admit(ctx, "graph.GetDependencyTree", pluginID, reference, route)
 	if err != nil {
 		return nil, err
 	}
 	defer finishResource(ctx, &retErr)
-	ref := graph.GraphNode{
-		PluginID: pluginID, ConnectionID: connectionID,
-		ResourceKey: resourceKey, ID: id, Namespace: namespace,
-	}
-	return s.graph.GetDependencyTree(ref, maxDepth)
+	return s.graph.GetDependencyTree(graph.GraphNode{PluginID: pluginID, Reference: reference, Route: route}, maxDepth)
 }
 
-// GetSubgraph returns the resources around one resource: up to upDepth hops
-// against edge direction (owners, selectors) and downDepth hops along it
-// (dependencies), with every edge between them.
-func (s *GraphService) GetSubgraph(ctx context.Context, pluginID, connectionID, resourceKey, namespace, id string,
-	upDepth, downDepth int) (_result *graph.Subgraph, retErr error) {
-	ctx, err := s.admit(ctx, "graph.GetSubgraph", pluginID, connectionID, resourceKey, namespace, id)
+func (s *GraphService) GetSubgraph(ctx context.Context, pluginID string, reference resourcev2.ResourceReference, route resourcev2.AccessRoute, upDepth, downDepth int) (_result *graph.Subgraph, retErr error) {
+	ctx, err := s.admit(ctx, "graph.GetSubgraph", pluginID, reference, route)
 	if err != nil {
 		return nil, err
 	}
 	defer finishResource(ctx, &retErr)
-	ref := graph.GraphNode{
-		PluginID: pluginID, ConnectionID: connectionID,
-		ResourceKey: resourceKey, ID: id, Namespace: namespace,
-	}
-	return s.graph.GetSubgraph(ref, upDepth, downDepth), nil
+	return s.graph.GetSubgraph(graph.GraphNode{PluginID: pluginID, Reference: reference, Route: route}, upDepth, downDepth), nil
 }
 
-func (s *GraphService) admit(ctx context.Context, operation, provider, connection, key, namespace, id string) (context.Context, error) {
+func (s *GraphService) admit(ctx context.Context, operation, pluginID string, reference resourcev2.ResourceReference, route resourcev2.AccessRoute) (admitted context.Context, retErr error) {
 	if s.realm != nil {
 		ctx = s.realm.Context(ctx)
 	}
-	return s.boundary.Admit(ctx, operation, invocation.Target{Provider: provider, Connection: connection, ResourceType: key, Object: id, Scope: namespaceScope(namespace)})
+	admitted, retErr = s.boundary.Admit(ctx, operation, referenceTarget(pluginID, route, reference))
+	if retErr != nil {
+		return admitted, retErr
+	}
+	defer finishResource(admitted, &retErr)
+	if err := resourcev2.ValidateAddress(reference.Address); err != nil {
+		return admitted, err
+	}
+	if route.Connection == "" {
+		return admitted, resourcev2.NewError("INVALID_REQUEST", "connection route is required")
+	}
+	if s.validateReference == nil {
+		return admitted, resourcev2.NewError("UNAVAILABLE", "graph route validation is unavailable")
+	}
+	if err := s.validateReference(admitted, pluginID, route, reference); err != nil {
+		return admitted, err
+	}
+	return admitted, nil
 }

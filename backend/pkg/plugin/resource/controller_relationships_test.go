@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
 // ============================================================================
@@ -19,51 +19,52 @@ import (
 func TestGetRelationships_Success(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		GetRelationshipsFunc: func(_ context.Context, key string) ([]resource.RelationshipDescriptor, error) {
-			assert.Equal(t, "core::v1::Pod", key)
+		GetRelationshipsFunc: func(_ context.Context, route resource.AccessRoute, key string) ([]resource.RelationshipDescriptor, error) {
+			assert.Equal(t, "conn-1", route.Connection)
+			assert.Equal(t, "k8s:/pods", key)
 			return []resource.RelationshipDescriptor{
 				{
-					Type:              resource.RelOwns,
-					TargetResourceKey: "apps::v1::ReplicaSet",
-					Label:             "owned by",
+					Type:       resource.RelOwns,
+					TargetType: "k8s:apps/replicasets",
+					Label:      "owned by",
 				},
 				{
-					Type:              resource.RelUses,
-					TargetResourceKey: "core::v1::ConfigMap",
-					Label:             "uses",
+					Type:       resource.RelUses,
+					TargetType: "k8s:/configmaps",
+					Label:      "uses",
 				},
 			}, nil
 		},
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	rels, err := ctrl.GetRelationships(testInvocationContext(), "p1", "core::v1::Pod")
+	rels, err := ctrl.GetRelationships(testInvocationContext(), "p1", resource.AccessRoute{Connection: "conn-1"}, "k8s:/pods")
 	require.NoError(t, err)
 	require.Len(t, rels, 2)
 	assert.Equal(t, resource.RelOwns, rels[0].Type)
-	assert.Equal(t, "apps::v1::ReplicaSet", rels[0].TargetResourceKey)
+	assert.Equal(t, "k8s:apps/replicasets", rels[0].TargetType)
 	assert.Equal(t, "owned by", rels[0].Label)
 	assert.Equal(t, resource.RelUses, rels[1].Type)
-	assert.Equal(t, "core::v1::ConfigMap", rels[1].TargetResourceKey)
+	assert.Equal(t, "k8s:/configmaps", rels[1].TargetType)
 }
 
 func TestGetRelationships_ProviderError(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		GetRelationshipsFunc: func(_ context.Context, _ string) ([]resource.RelationshipDescriptor, error) {
+		GetRelationshipsFunc: func(_ context.Context, _ resource.AccessRoute, _ string) ([]resource.RelationshipDescriptor, error) {
 			return nil, errors.New("relationships unavailable")
 		},
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, err := ctrl.GetRelationships(testInvocationContext(), "p1", "core::v1::Pod")
+	_, err := ctrl.GetRelationships(testInvocationContext(), "p1", resource.AccessRoute{Connection: "conn-1"}, "k8s:/pods")
 	require.Error(t, err)
 	assert.Equal(t, "PROVIDER_ERROR", requireAppError(t, err).Code)
 }
 
 func TestGetRelationships_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	_, err := ctrl.GetRelationships(testInvocationContext(), "nonexistent", "pods")
+	_, err := ctrl.GetRelationships(testInvocationContext(), "nonexistent", resource.AccessRoute{Connection: "conn-1"}, "pods")
 	var appErr *apperror.AppError
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
@@ -76,58 +77,89 @@ func TestGetRelationships_PluginNotFound(t *testing.T) {
 func TestResolveRelationships_Success(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		ResolveRelationshipsFunc: func(
-			_ context.Context,
-			connID, key, id, ns string,
-		) ([]resource.ResolvedRelationship, error) {
-			assert.Equal(t, "conn-1", connID)
-			assert.Equal(t, "core::v1::Pod", key)
-			assert.Equal(t, "my-pod", id)
-			assert.Equal(t, "default", ns)
+		ResolveRelationshipsFunc: func(_ context.Context, request resource.GetRequest) ([]resource.ResolvedRelationship, error) {
+			assert.Equal(t, "conn-1", request.Route.Connection)
+			assert.Equal(t, "k8s:/pods", request.Reference.Address.Type)
+			assert.Equal(t, "my-pod", request.Reference.Address.ID)
+			assert.Equal(t, []resource.ScopeEntry{{Dimension: "namespace", Value: "default"}}, request.Reference.Address.Scope)
 			return []resource.ResolvedRelationship{
 				{
 					Descriptor: resource.RelationshipDescriptor{
-						Type:              resource.RelOwns,
-						TargetResourceKey: "apps::v1::ReplicaSet",
-						Label:             "owned by",
+						Type:       resource.RelOwns,
+						TargetType: "k8s:apps/replicasets",
+						Label:      "owned by",
 					},
-					Targets: []resource.ResourceRef{
-						{ID: "my-rs", Namespace: "default"},
-					},
+					Targets: []resource.RelationshipTarget{{
+						Route: request.Route,
+						Reference: resource.ResourceReference{Address: resource.ResourceAddress{
+							Provider: request.Reference.Address.Provider, Authority: request.Reference.Address.Authority,
+							Type: "k8s:apps/replicasets", ID: "my-rs", Scope: request.Reference.Address.Scope,
+						}},
+					}},
 				},
 			}, nil
 		},
 	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	resolved, err := ctrl.ResolveRelationships(testInvocationContext(), "p1", "conn-1", "core::v1::Pod", "my-pod", "default")
+	request := ancillaryPodRequest(t, ctrl, mock)
+	resolved, err := ctrl.ResolveRelationships(testInvocationContext(), "p1", request)
 	require.NoError(t, err)
 	require.Len(t, resolved, 1)
 	assert.Equal(t, resource.RelOwns, resolved[0].Descriptor.Type)
-	assert.Equal(t, "apps::v1::ReplicaSet", resolved[0].Descriptor.TargetResourceKey)
+	assert.Equal(t, "k8s:apps/replicasets", resolved[0].Descriptor.TargetType)
 	require.Len(t, resolved[0].Targets, 1)
-	assert.Equal(t, "my-rs", resolved[0].Targets[0].ID)
-	assert.Equal(t, "default", resolved[0].Targets[0].Namespace)
+	assert.Equal(t, "my-rs", resolved[0].Targets[0].Reference.Address.ID)
+	assert.Equal(t, request.Reference.Address.Scope, resolved[0].Targets[0].Reference.Address.Scope)
+	assert.Equal(t, request.Reference.Address.Authority, resolved[0].Targets[0].Reference.Address.Authority)
+	assert.Equal(t, request.Route, resolved[0].Targets[0].Route)
 }
 
 func TestResolveRelationships_ProviderError(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		ResolveRelationshipsFunc: func(_ context.Context, _, _, _, _ string) ([]resource.ResolvedRelationship, error) {
+		ResolveRelationshipsFunc: func(_ context.Context, _ resource.GetRequest) ([]resource.ResolvedRelationship, error) {
 			return nil, errors.New("resolve failed")
 		},
 	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	_, err := ctrl.ResolveRelationships(testInvocationContext(), "p1", "conn-1", "pods", "pod-1", "default")
+	request := ancillaryPodRequest(t, ctrl, mock)
+	_, err := ctrl.ResolveRelationships(testInvocationContext(), "p1", request)
 	require.Error(t, err)
 	assert.Equal(t, "PROVIDER_ERROR", requireAppError(t, err).Code)
 }
 
 func TestResolveRelationships_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	_, err := ctrl.ResolveRelationships(testInvocationContext(), "nonexistent", "conn-1", "pods", "pod-1", "default")
+	_, err := ctrl.ResolveRelationships(testInvocationContext(), "nonexistent", resource.GetRequest{Route: resource.AccessRoute{Connection: "conn-1"}, Reference: actionTestRequest("nonexistent", "pods", "").Reference, Representation: "native"})
 	var appErr *apperror.AppError
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
+}
+
+func TestRelationshipAncillaryPreservesTypedUnsupportedAndCancellation(t *testing.T) {
+	for _, failure := range []struct {
+		name string
+		err  error
+		code string
+	}{
+		{"unsupported", resource.NewError("UNSUPPORTED", "Relationships are unavailable."), "UNSUPPORTED"},
+		{"canceled", context.Canceled, "CANCELLED"},
+	} {
+		t.Run(failure.name, func(t *testing.T) {
+			ctrl, _ := newTestControllerWithEmitter(t)
+			mock := &mockProvider{
+				GetRelationshipsFunc: func(context.Context, resource.AccessRoute, string) ([]resource.RelationshipDescriptor, error) {
+					return nil, failure.err
+				},
+				ResolveRelationshipsFunc: func(context.Context, resource.GetRequest) ([]resource.ResolvedRelationship, error) {
+					return nil, failure.err
+				},
+			}
+			request := ancillaryPodRequest(t, ctrl, mock)
+			descriptors, err := ctrl.GetRelationships(testInvocationContext(), "p1", request.Route, request.Reference.Address.Type)
+			assert.Nil(t, descriptors)
+			assert.Equal(t, failure.code, requireAppError(t, err).Code)
+			resolved, err := ctrl.ResolveRelationships(testInvocationContext(), "p1", request)
+			assert.Nil(t, resolved)
+			assert.Equal(t, failure.code, requireAppError(t, err).Code)
+		})
+	}
 }

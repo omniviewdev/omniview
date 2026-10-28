@@ -5,7 +5,7 @@ import { Avatar, Breadcrumbs, IconButton, Stack, Text } from '@omniviewdev/base-
 
 // Project imports
 import { usePluginContext } from '@/contexts/PluginContext';
-import { useConnection } from '@omniviewdev/runtime';
+import { useConnectionProfiles, parseAppError } from '@omniviewdev/runtime';
 
 // Layout
 import Layout from '@/layouts/core/sidenav';
@@ -35,16 +35,16 @@ export default function EditConnectionPage(): React.ReactElement {
   const navigate = useNavigate();
   const { connectionID = '' } = useParams<{ pluginID: string; connectionID: string }>();
 
-  const [selected, useSelected] = React.useState<string | undefined>(undefined);
 
-  const { connection } = useConnection({ pluginID: plugin.id, connectionID });
+  const { profiles } = useConnectionProfiles({ pluginID: plugin.id });
+  const profile = profiles.data?.find((entry) => entry.id === connectionID);
 
-  if (connection.isLoading) {
+  if (profiles.isLoading) {
     return (<></>);
   }
 
-  if (connection.isError) {
-    return (<>{connection.error}</>);
+  if (profiles.isError) {
+    return <Text tone="danger">{parseAppError(profiles.error).detail}</Text>;
   }
 
   return (
@@ -63,7 +63,7 @@ export default function EditConnectionPage(): React.ReactElement {
             </Link>
           </Breadcrumbs.Item>
           <Breadcrumbs.Item active>
-            <Text>{connection.data?.name}</Text>
+            <Text>{profile?.connection?.name ?? connectionID}</Text>
           </Breadcrumbs.Item>
         </Breadcrumbs>
         <IconButton
@@ -81,7 +81,7 @@ export default function EditConnectionPage(): React.ReactElement {
 
       <Layout.Root style={{ padding: 64, gap: 64 }}>
         <Layout.SideNav>
-          <NavMenu items={items} selected={selected} onSelect={useSelected} />
+          <NavMenu items={items} selected="details" onSelect={() => navigate('details')} />
         </Layout.SideNav>
         <Layout.Main>
           <Outlet />

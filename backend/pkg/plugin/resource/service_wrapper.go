@@ -2,19 +2,14 @@ package resource
 
 import (
 	"context"
-	"encoding/json"
-
-	"github.com/wailsapp/wails/v3/pkg/application"
-
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
-	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
-	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// ServiceWrapper is an explicit delegation wrapper around resource.Controller.
-// Excluded: OnPluginInit, OnPluginStart, OnPluginStop, OnPluginShutdown,
-//
-//	OnPluginDestroy, Run, SetCrashCallback, Graph
+// ServiceWrapper binds only admitted resource operations. Native lifecycle and
+// graph reference validation are deliberately not frontend methods.
 type ServiceWrapper struct {
 	Ctrl  Controller
 	Realm *invocation.Scope
@@ -26,198 +21,155 @@ func (s *ServiceWrapper) realmContext(ctx context.Context) context.Context {
 	}
 	return s.Realm.Context(ctx)
 }
-
 func (s *ServiceWrapper) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
-	if ss, ok := s.Ctrl.(interface {
+	if service, ok := s.Ctrl.(interface {
 		ServiceStartup(context.Context, application.ServiceOptions) error
 	}); ok {
-		return ss.ServiceStartup(ctx, options)
+		return service.ServiceStartup(ctx, options)
 	}
 	return nil
 }
-
 func (s *ServiceWrapper) ServiceShutdown() error {
-	if ss, ok := s.Ctrl.(interface{ ServiceShutdown() error }); ok {
-		return ss.ServiceShutdown()
+	if service, ok := s.Ctrl.(interface{ ServiceShutdown() error }); ok {
+		return service.ServiceShutdown()
 	}
 	return nil
 }
-
-// CRUD.
-func (s *ServiceWrapper) Get(ctx context.Context, pluginID, connectionID, key string,
-	input sdkresource.GetInput) (*sdkresource.GetResult, error) {
-	return s.Ctrl.Get(s.realmContext(ctx), pluginID, connectionID, key, input)
+func (s *ServiceWrapper) ListPlugins(ctx context.Context) ([]string, error) {
+	return s.Ctrl.ListPlugins(s.realmContext(ctx))
 }
-func (s *ServiceWrapper) List(ctx context.Context, pluginID, connectionID, key string,
-	input sdkresource.ListInput) (*sdkresource.ListResult, error) {
-	return s.Ctrl.List(s.realmContext(ctx), pluginID, connectionID, key, input)
+func (s *ServiceWrapper) HasPlugin(ctx context.Context, pluginID string) (bool, error) {
+	return s.Ctrl.HasPlugin(s.realmContext(ctx), pluginID)
 }
-func (s *ServiceWrapper) Find(ctx context.Context, pluginID, connectionID, key string,
-	input sdkresource.FindInput) (*sdkresource.FindResult, error) {
-	return s.Ctrl.Find(s.realmContext(ctx), pluginID, connectionID, key, input)
+func (s *ServiceWrapper) Features(ctx context.Context, pluginID string) (resourcev2.FeatureSet, error) {
+	return s.Ctrl.Features(s.realmContext(ctx), pluginID)
 }
-func (s *ServiceWrapper) Create(ctx context.Context, pluginID, connectionID, key string,
-	input sdkresource.CreateInput) (*sdkresource.CreateResult, error) {
-	return s.Ctrl.Create(s.realmContext(ctx), pluginID, connectionID, key, input)
+func (s *ServiceWrapper) Catalog(ctx context.Context, pluginID string, request resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
+	return s.Ctrl.Catalog(s.realmContext(ctx), pluginID, request)
 }
-func (s *ServiceWrapper) Update(ctx context.Context, pluginID, connectionID, key string,
-	input sdkresource.UpdateInput) (*sdkresource.UpdateResult, error) {
-	return s.Ctrl.Update(s.realmContext(ctx), pluginID, connectionID, key, input)
+func (s *ServiceWrapper) ResolveTarget(ctx context.Context, pluginID string, request ResolveTargetRequest) (ResolvedTarget, error) {
+	return s.Ctrl.ResolveTarget(s.realmContext(ctx), pluginID, request)
 }
-func (s *ServiceWrapper) Delete(ctx context.Context, pluginID, connectionID, key string,
-	input sdkresource.DeleteInput) (*sdkresource.DeleteResult, error) {
-	return s.Ctrl.Delete(s.realmContext(ctx), pluginID, connectionID, key, input)
+func (s *ServiceWrapper) ResolveReference(ctx context.Context, pluginID string, request ResolveReferenceRequest) (ResolvedReference, error) {
+	return s.Ctrl.ResolveReference(s.realmContext(ctx), pluginID, request)
 }
-
-// Connection lifecycle.
-func (s *ServiceWrapper) StartConnection(ctx context.Context, pluginID, connectionID string) (sdktypes.ConnectionStatus, error) {
+func (s *ServiceWrapper) Get(ctx context.Context, pluginID string, request HostGetRequest) (HostRecord, error) {
+	return s.Ctrl.Get(s.realmContext(ctx), pluginID, request)
+}
+func (s *ServiceWrapper) Enumerate(ctx context.Context, pluginID string, request HostEnumerateRequest) (HostSourcePage, error) {
+	return s.Ctrl.Enumerate(s.realmContext(ctx), pluginID, request)
+}
+func (s *ServiceWrapper) NativeQuery(ctx context.Context, pluginID string, request HostNativeQueryRequest) (HostSourcePage, error) {
+	return s.Ctrl.NativeQuery(s.realmContext(ctx), pluginID, request)
+}
+func (s *ServiceWrapper) Mutate(ctx context.Context, pluginID string, request resourcev2.MutationRequest) (resourcev2.Record, error) {
+	return s.Ctrl.Mutate(s.realmContext(ctx), pluginID, request)
+}
+func (s *ServiceWrapper) Action(ctx context.Context, pluginID string, request resourcev2.ActionRequest) (resourcev2.Value, error) {
+	return s.Ctrl.Action(s.realmContext(ctx), pluginID, request)
+}
+func (s *ServiceWrapper) StartConnection(ctx context.Context, pluginID string, connectionID string) (types.ConnectionStatus, error) {
 	return s.Ctrl.StartConnection(s.realmContext(ctx), pluginID, connectionID)
 }
-func (s *ServiceWrapper) StopConnection(ctx context.Context, pluginID, connectionID string) (sdktypes.Connection, error) {
+func (s *ServiceWrapper) StopConnection(ctx context.Context, pluginID string, connectionID string) (types.Connection, error) {
 	return s.Ctrl.StopConnection(s.realmContext(ctx), pluginID, connectionID)
 }
-func (s *ServiceWrapper) CheckConnection(ctx context.Context, pluginID, connectionID string) (sdktypes.ConnectionStatus, error) {
+func (s *ServiceWrapper) CheckConnection(ctx context.Context, pluginID string, connectionID string) (types.ConnectionStatus, error) {
 	return s.Ctrl.CheckConnection(s.realmContext(ctx), pluginID, connectionID)
 }
-func (s *ServiceWrapper) LoadConnections(ctx context.Context, pluginID string) ([]sdktypes.Connection, error) {
+func (s *ServiceWrapper) LoadConnections(ctx context.Context, pluginID string) ([]types.Connection, error) {
 	return s.Ctrl.LoadConnections(s.realmContext(ctx), pluginID)
 }
-func (s *ServiceWrapper) ListConnections(ctx context.Context, pluginID string) ([]sdktypes.Connection, error) {
+func (s *ServiceWrapper) ListConnections(ctx context.Context, pluginID string) ([]types.Connection, error) {
 	return s.Ctrl.ListConnections(s.realmContext(ctx), pluginID)
 }
-func (s *ServiceWrapper) ListAllConnections(ctx context.Context) (map[string][]sdktypes.Connection, error) {
+func (s *ServiceWrapper) ListAllConnections(ctx context.Context) (map[string][]types.Connection, error) {
 	return s.Ctrl.ListAllConnections(s.realmContext(ctx))
 }
 func (s *ServiceWrapper) GetAllConnectionStates(ctx context.Context) (map[string][]ConnectionState, error) {
 	return s.Ctrl.GetAllConnectionStates(s.realmContext(ctx))
 }
-func (s *ServiceWrapper) GetConnection(ctx context.Context, pluginID, connectionID string) (sdktypes.Connection, error) {
+func (s *ServiceWrapper) GetConnection(ctx context.Context, pluginID string, connectionID string) (types.Connection, error) {
 	return s.Ctrl.GetConnection(s.realmContext(ctx), pluginID, connectionID)
 }
-func (s *ServiceWrapper) GetConnectionNamespaces(ctx context.Context, pluginID, connectionID string) ([]string, error) {
-	return s.Ctrl.GetConnectionNamespaces(s.realmContext(ctx), pluginID, connectionID)
+func (s *ServiceWrapper) ScopeValues(ctx context.Context, pluginID string, route resourcev2.AccessRoute, dimension string) ([]string, error) {
+	return s.Ctrl.ScopeValues(s.realmContext(ctx), pluginID, route, dimension)
 }
-func (s *ServiceWrapper) AddConnection(ctx context.Context, pluginID string, connection sdktypes.Connection) error {
-	return s.Ctrl.AddConnection(s.realmContext(ctx), pluginID, connection)
+func (s *ServiceWrapper) SaveConnectionProfile(ctx context.Context, pluginID string, connection types.Connection) (ConnectionProfileResult, error) {
+	return s.Ctrl.SaveConnectionProfile(s.realmContext(ctx), pluginID, connection)
 }
-func (s *ServiceWrapper) UpdateConnection(ctx context.Context, pluginID string,
-	connection sdktypes.Connection) (sdktypes.Connection, error) {
-	return s.Ctrl.UpdateConnection(s.realmContext(ctx), pluginID, connection)
+func (s *ServiceWrapper) ListConnectionProfiles(ctx context.Context, pluginID string) ([]ConnectionProfile, error) {
+	return s.Ctrl.ListConnectionProfiles(s.realmContext(ctx), pluginID)
 }
-func (s *ServiceWrapper) RemoveConnection(ctx context.Context, pluginID, connectionID string) error {
+func (s *ServiceWrapper) ImportConnectionProfile(ctx context.Context, pluginID string, connectionID string) (ConnectionProfileResult, error) {
+	return s.Ctrl.ImportConnectionProfile(s.realmContext(ctx), pluginID, connectionID)
+}
+func (s *ServiceWrapper) ResetConnectionProfile(ctx context.Context, pluginID string, connectionID string) (ConnectionProfileResult, error) {
+	return s.Ctrl.ResetConnectionProfile(s.realmContext(ctx), pluginID, connectionID)
+}
+func (s *ServiceWrapper) RemoveConnection(ctx context.Context, pluginID string, connectionID string) error {
 	return s.Ctrl.RemoveConnection(s.realmContext(ctx), pluginID, connectionID)
 }
-
-// Watch lifecycle.
-func (s *ServiceWrapper) StartConnectionWatch(ctx context.Context, pluginID, connectionID string) error {
-	return s.Ctrl.StartConnectionWatch(s.realmContext(ctx), pluginID, connectionID)
+func (s *ServiceWrapper) StartConnectionWatch(ctx context.Context, pluginID string, targets []resourcev2.ReadTarget) error {
+	return s.Ctrl.StartConnectionWatch(s.realmContext(ctx), pluginID, targets)
 }
-func (s *ServiceWrapper) StopConnectionWatch(ctx context.Context, pluginID, connectionID string) error {
-	return s.Ctrl.StopConnectionWatch(s.realmContext(ctx), pluginID, connectionID)
+func (s *ServiceWrapper) StopConnectionWatch(ctx context.Context, pluginID string, route resourcev2.AccessRoute) error {
+	return s.Ctrl.StopConnectionWatch(s.realmContext(ctx), pluginID, route)
 }
-func (s *ServiceWrapper) GetWatchState(ctx context.Context, pluginID, connectionID string) (*sdkresource.WatchConnectionSummary, error) {
-	return s.Ctrl.GetWatchState(s.realmContext(ctx), pluginID, connectionID)
+func (s *ServiceWrapper) GetWatchState(ctx context.Context, pluginID string, route resourcev2.AccessRoute) (*resourcev2.WatchConnectionSummary, error) {
+	return s.Ctrl.GetWatchState(s.realmContext(ctx), pluginID, route)
 }
-func (s *ServiceWrapper) EnsureResourceWatch(ctx context.Context, pluginID, connectionID, resourceKey string) error {
-	return s.Ctrl.EnsureResourceWatch(s.realmContext(ctx), pluginID, connectionID, resourceKey)
+func (s *ServiceWrapper) EnsureResourceWatch(ctx context.Context, pluginID string, target resourcev2.ReadTarget) error {
+	return s.Ctrl.EnsureResourceWatch(s.realmContext(ctx), pluginID, target)
 }
-func (s *ServiceWrapper) StopResourceWatch(ctx context.Context, pluginID, connectionID, resourceKey string) error {
-	return s.Ctrl.StopResourceWatch(s.realmContext(ctx), pluginID, connectionID, resourceKey)
+func (s *ServiceWrapper) StopResourceWatch(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) error {
+	return s.Ctrl.StopResourceWatch(s.realmContext(ctx), pluginID, route, resourceType)
 }
-func (s *ServiceWrapper) RestartResourceWatch(ctx context.Context, pluginID, connectionID, resourceKey string) error {
-	return s.Ctrl.RestartResourceWatch(s.realmContext(ctx), pluginID, connectionID, resourceKey)
+func (s *ServiceWrapper) RestartResourceWatch(ctx context.Context, pluginID string, target resourcev2.ReadTarget) error {
+	return s.Ctrl.RestartResourceWatch(s.realmContext(ctx), pluginID, target)
 }
-func (s *ServiceWrapper) IsResourceWatchRunning(ctx context.Context, pluginID, connectionID, resourceKey string) (bool, error) {
-	return s.Ctrl.IsResourceWatchRunning(s.realmContext(ctx), pluginID, connectionID, resourceKey)
+func (s *ServiceWrapper) IsResourceWatchRunning(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) (bool, error) {
+	return s.Ctrl.IsResourceWatchRunning(s.realmContext(ctx), pluginID, route, resourceType)
 }
-
-// Subscriptions.
-func (s *ServiceWrapper) SubscribeResource(ctx context.Context, pluginID, connectionID, resourceKey string) error {
-	return s.Ctrl.SubscribeResource(s.realmContext(ctx), pluginID, connectionID, resourceKey)
+func (s *ServiceWrapper) SubscribeResource(ctx context.Context, pluginID string, subscription HostSubscription) error {
+	return s.Ctrl.SubscribeResource(s.realmContext(ctx), pluginID, subscription)
 }
-func (s *ServiceWrapper) UnsubscribeResource(ctx context.Context, pluginID, connectionID, resourceKey string) error {
-	return s.Ctrl.UnsubscribeResource(s.realmContext(ctx), pluginID, connectionID, resourceKey)
+func (s *ServiceWrapper) UnsubscribeResource(ctx context.Context, pluginID string, subscription HostSubscription) error {
+	return s.Ctrl.UnsubscribeResource(s.realmContext(ctx), pluginID, subscription)
 }
-
-// Type metadata.
-func (s *ServiceWrapper) GetResourceGroups(ctx context.Context, pluginID, connectionID string) (map[string]sdkresource.ResourceGroup, error) {
-	return s.Ctrl.GetResourceGroups(s.realmContext(ctx), pluginID, connectionID)
+func (s *ServiceWrapper) GetResourceGroups(ctx context.Context, pluginID string, route resourcev2.AccessRoute) ([]resourcev2.ResourceGroup, error) {
+	return s.Ctrl.GetResourceGroups(s.realmContext(ctx), pluginID, route)
 }
-func (s *ServiceWrapper) GetResourceGroup(ctx context.Context, pluginID, groupID string) (sdkresource.ResourceGroup, error) {
-	return s.Ctrl.GetResourceGroup(s.realmContext(ctx), pluginID, groupID)
+func (s *ServiceWrapper) GetResourceDefinition(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) (resourcev2.ResourceDefinition, error) {
+	return s.Ctrl.GetResourceDefinition(s.realmContext(ctx), pluginID, route, resourceType)
 }
-func (s *ServiceWrapper) GetResourceTypes(ctx context.Context, pluginID, connectionID string) (map[string]sdkresource.ResourceMeta, error) {
-	return s.Ctrl.GetResourceTypes(s.realmContext(ctx), pluginID, connectionID)
+func (s *ServiceWrapper) GetEditorSchemas(ctx context.Context, pluginID string, route resourcev2.AccessRoute) ([]resourcev2.EditorSchema, error) {
+	return s.Ctrl.GetEditorSchemas(s.realmContext(ctx), pluginID, route)
 }
-func (s *ServiceWrapper) GetResourceType(ctx context.Context, pluginID, typeID string) (*sdkresource.ResourceMeta, error) {
-	return s.Ctrl.GetResourceType(s.realmContext(ctx), pluginID, typeID)
+func (s *ServiceWrapper) GetSchemaDocument(ctx context.Context, pluginID string, route resourcev2.AccessRoute, reference resourcev2.SchemaDocumentReference) (resourcev2.SchemaDocument, error) {
+	return s.Ctrl.GetSchemaDocument(s.realmContext(ctx), pluginID, route, reference)
 }
-func (s *ServiceWrapper) HasResourceType(ctx context.Context, pluginID, typeID string) (bool, error) {
-	return s.Ctrl.HasResourceType(s.realmContext(ctx), pluginID, typeID)
+func (s *ServiceWrapper) GetRelationships(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) ([]resourcev2.RelationshipDescriptor, error) {
+	return s.Ctrl.GetRelationships(s.realmContext(ctx), pluginID, route, resourceType)
 }
-func (s *ServiceWrapper) GetResourceDefinition(ctx context.Context, pluginID, typeID string) (sdkresource.ResourceDefinition, error) {
-	return s.Ctrl.GetResourceDefinition(s.realmContext(ctx), pluginID, typeID)
+func (s *ServiceWrapper) ResolveRelationships(ctx context.Context, pluginID string, request resourcev2.GetRequest) ([]resourcev2.ResolvedRelationship, error) {
+	return s.Ctrl.ResolveRelationships(s.realmContext(ctx), pluginID, request)
 }
-func (s *ServiceWrapper) GetResourceCapabilities(ctx context.Context, pluginID, key string) (*sdkresource.ResourceCapabilities, error) {
-	return s.Ctrl.GetResourceCapabilities(s.realmContext(ctx), pluginID, key)
+func (s *ServiceWrapper) GetHealth(ctx context.Context, pluginID string, request resourcev2.GetRequest, body resourcev2.Value) (*resourcev2.ResourceHealth, error) {
+	return s.Ctrl.GetHealth(s.realmContext(ctx), pluginID, request, body)
 }
-func (s *ServiceWrapper) GetFilterFields(ctx context.Context, pluginID, connectionID, key string) ([]sdkresource.FilterField, error) {
-	return s.Ctrl.GetFilterFields(s.realmContext(ctx), pluginID, connectionID, key)
+func (s *ServiceWrapper) GetResourceEvents(ctx context.Context, pluginID string, request resourcev2.GetRequest, limit uint32) ([]resourcev2.ResourceEvent, error) {
+	return s.Ctrl.GetResourceEvents(s.realmContext(ctx), pluginID, request, limit)
 }
-func (s *ServiceWrapper) GetResourceSchema(ctx context.Context, pluginID, connectionID, key string) (json.RawMessage, error) {
-	return s.Ctrl.GetResourceSchema(s.realmContext(ctx), pluginID, connectionID, key)
+func (s *ServiceWrapper) GetActions(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) ([]resourcev2.ActionDescriptor, error) {
+	return s.Ctrl.GetActions(s.realmContext(ctx), pluginID, route, resourceType)
 }
-
-// Actions.
-func (s *ServiceWrapper) GetActions(ctx context.Context, pluginID, connectionID, key string) ([]sdkresource.ActionDescriptor, error) {
-	return s.Ctrl.GetActions(s.realmContext(ctx), pluginID, connectionID, key)
+func (s *ServiceWrapper) StreamAction(ctx context.Context, pluginID string, request resourcev2.ActionRequest) (string, error) {
+	return s.Ctrl.StreamAction(s.realmContext(ctx), pluginID, request)
 }
-func (s *ServiceWrapper) ExecuteAction(ctx context.Context, pluginID, connectionID, key, actionID string,
-	input sdkresource.ActionInput) (*sdkresource.ActionResult, error) {
-	return s.Ctrl.ExecuteAction(s.realmContext(ctx), pluginID, connectionID, key, actionID, input)
-}
-func (s *ServiceWrapper) StreamAction(ctx context.Context, pluginID, connectionID, key, actionID string,
-	input sdkresource.ActionInput) (string, error) {
-	return s.Ctrl.StreamAction(s.realmContext(ctx), pluginID, connectionID, key, actionID, input)
-}
-
-// Editor schemas.
-func (s *ServiceWrapper) GetEditorSchemas(ctx context.Context, pluginID, connectionID string) ([]sdkresource.EditorSchema, error) {
-	return s.Ctrl.GetEditorSchemas(s.realmContext(ctx), pluginID, connectionID)
-}
-
-// Relationships.
-func (s *ServiceWrapper) GetRelationships(ctx context.Context, pluginID, key string) ([]sdkresource.RelationshipDescriptor, error) {
-	return s.Ctrl.GetRelationships(s.realmContext(ctx), pluginID, key)
-}
-func (s *ServiceWrapper) ResolveRelationships(ctx context.Context, pluginID, connectionID, key, id, namespace string) ([]sdkresource.ResolvedRelationship, error) {
-	return s.Ctrl.ResolveRelationships(s.realmContext(ctx), pluginID, connectionID, key, id, namespace)
-}
-
-// Health.
-func (s *ServiceWrapper) GetHealth(ctx context.Context, pluginID, connectionID, key string,
-	data json.RawMessage) (*sdkresource.ResourceHealth, error) {
-	return s.Ctrl.GetHealth(s.realmContext(ctx), pluginID, connectionID, key, data)
-}
-func (s *ServiceWrapper) GetResourceEvents(ctx context.Context, pluginID, connectionID, key, id, namespace string,
-	limit int32) ([]sdkresource.ResourceEvent, error) {
-	return s.Ctrl.GetResourceEvents(s.realmContext(ctx), pluginID, connectionID, key, id, namespace, limit)
-}
-
-// ListPlugins.
-func (s *ServiceWrapper) ListPlugins(ctx context.Context) ([]string, error) {
-	return s.Ctrl.ListPlugins(s.realmContext(ctx))
-}
-
-// HasPlugin.
-func (s *ServiceWrapper) HasPlugin(ctx context.Context, pluginID string) (bool, error) {
-	return s.Ctrl.HasPlugin(s.realmContext(ctx), pluginID)
-}
-
 func (s *ServiceWrapper) AttachStreamAction(ctx context.Context, handleID string) (ActionSnapshot, error) {
 	return s.Ctrl.AttachStreamAction(s.realmContext(ctx), handleID)
 }
-
 func (s *ServiceWrapper) CancelStreamAction(ctx context.Context, handleID string) error {
 	return s.Ctrl.CancelStreamAction(s.realmContext(ctx), handleID)
 }

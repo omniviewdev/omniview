@@ -10,9 +10,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 )
 
 // ============================================================================
@@ -152,8 +153,8 @@ func TestOnPluginStop_RemovesConnections(t *testing.T) {
 
 func TestOnPluginStop_RemovesSubscriptions(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	registerMockPlugin(ctrl, "p1", &mockProvider{})
-	ctrl.subs.Subscribe("p1", "c1", "pods")
+	registerMockPlugin(ctrl, "p1", &mockProvider{CatalogFunc: lifecycleTestCatalog("pods")})
+	require.NoError(t, ctrl.SubscribeResource(testInvocationContext(), "p1", admittedSubscription(t, ctrl, "p1", "c1", "pods")))
 
 	_ = ctrl.OnPluginStop("p1", defaultMeta())
 
@@ -357,4 +358,32 @@ func TestListenForConnectionEvents_EmitsSync(t *testing.T) {
 
 func defaultMeta() config.PluginMeta {
 	return config.PluginMeta{}
+}
+
+func lifecycleTestCatalog(resourceTypes ...string) func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+	return func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+		catalog := canonicalTestCatalog("proof", resourceTypes[0])
+		catalog.Types = nil
+		for _, resourceType := range resourceTypes {
+			descriptor := canonicalTestCatalog("proof", resourceType).Types[0]
+			descriptor.Capabilities = append(descriptor.Capabilities, resource.Capability{Operation: resource.OperationUpdate, Guarantee: resource.BestEffortGuarantee})
+			catalog.Types = append(catalog.Types, descriptor)
+		}
+		return catalog, nil
+	}
+}
+
+func TestOnPluginStart_CatalogOnlyDoesNotRequireUpdateListener(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	provider := &catalogOnlyProvider{CatalogFunc: func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+		catalog := canonicalTestCatalog("proof", "pods")
+		catalog.Types[0].Capabilities = nil
+		return catalog, nil
+	}}
+	backend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": provider})
+	require.NoError(t, ctrl.OnPluginStart("catalog-only", defaultMeta(), backend))
+	t.Cleanup(func() { require.NoError(t, ctrl.OnPluginStop("catalog-only", defaultMeta())) })
+	catalog, err := ctrl.Catalog(testInvocationContext(), "catalog-only", resource.CatalogRequest{Route: resource.AccessRoute{Connection: "explicit"}})
+	require.NoError(t, err)
+	require.Equal(t, "pods", catalog.Types[0].Type)
 }

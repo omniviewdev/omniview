@@ -6,6 +6,7 @@ import {
   getNavigationHref,
   isSearchQueryAllowed,
 } from './admission';
+import { searchResource, searchType } from './searchFixtures';
 
 const navigation = () => ({
   schemaVersion: 1,
@@ -20,11 +21,12 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('universal provider admission', () => {
   it('accepts opaque cloud identity limits and preserves presentation', () => {
-    const scope = { kind: 'resource', pluginId: 'oci', connectionId: 'prod', resourceKey: 'k'.repeat(512), resourceId: 'r'.repeat(4096), namespace: 'n'.repeat(1024), label: 'Instance', scopeLabel: 'Instance details' };
+    const scope = { ...searchResource('k'.repeat(512), 'r'.repeat(4096), [{ dimension: 'region', value: 'n'.repeat(1024) }]), pluginId: 'oci', label: 'Instance', scopeLabel: 'Instance details' };
     expect(admitSearchEntry({ ...navigation(), scope })).toMatchObject({ scope });
-    expect(admitSearchEntry({ ...navigation(), scope: { ...scope, resourceId: 'r'.repeat(4097) } })).toBeUndefined();
-    expect(admitSearchEntry({ ...navigation(), scope: { ...scope, namespace: 'n'.repeat(1025) } })).toBeUndefined();
-    expect(admitSearchEntry({ ...navigation(), scope: { ...scope, resourceKey: 'k'.repeat(513) } })).toBeUndefined();
+    const withAddress = (address: typeof scope.reference.address) => ({ ...navigation(), scope: { ...scope, reference: { address } } });
+    expect(admitSearchEntry(withAddress({ ...scope.reference.address, id: 'r'.repeat(4097) }))).toBeUndefined();
+    expect(admitSearchEntry(withAddress({ ...scope.reference.address, scope: [{ dimension: 'region', value: 'n'.repeat(1025) }] }))).toBeUndefined();
+    expect(admitSearchEntry(withAddress({ ...scope.reference.address, type: 'k'.repeat(513) }))).toBeUndefined();
     const value = { ...item('cloud'), id: 'i'.repeat(8192) };
     expect(admitProviderResponse({ items: [value], completion: 'complete' })?.items[0].id).toBe(value.id);
     expect(admitProviderResponse({ items: [{ ...value, id: `${value.id}x` }], completion: 'complete' })).toBeUndefined();
@@ -47,7 +49,7 @@ describe('universal provider admission', () => {
     const value = { schemaVersion: 1, kind: 'action', action: { id: 'probe:reconnect', target, recovery: 'connection' } };
     expect(admitSearchEntry(value)).toEqual(value);
     expect(admitSearchContribution({ ...contribution(), value })).toBeUndefined();
-    expect(admitSearchEntry({ ...value, action: { ...value.action, target: { ...target, kind: 'resource-type', resourceKey: 'instances' } } })).toBeUndefined();
+    expect(admitSearchEntry({ ...value, action: { ...value.action, target: searchType('instances') } })).toBeUndefined();
   });
 });
 describe('global search v1 admission', () => {
@@ -76,15 +78,16 @@ describe('global search v1 admission', () => {
     });
   });
 
-  it('admits namespace and UID identity while stripping callback authority from action results', () => {
-    const target = { kind: 'resource', pluginId: 'probe', connectionId: 'prod', resourceKey: 'pods', resourceId: 'api', namespace: 'apps', uid: 'one', label: 'api' };
+  it('admits canonical reference identity while stripping callback authority from action results', () => {
+    const base = searchResource();
+    const target = { ...base, reference: { ...base.reference, incarnation: 'one' } };
     const execute = vi.fn();
     expect(admitSearchEntry({ schemaVersion: 1, kind: 'action', action: { id: 'probe:logs', target, execute }, execute })).toEqual({
       schemaVersion: 1, kind: 'action', action: { id: 'probe:logs', target },
     });
     expect(execute).not.toHaveBeenCalled();
     expect(admitSearchEntry({ schemaVersion: 1, kind: 'action', action: { id: 'logs', target } })).toBeUndefined();
-    expect(admitSearchEntry({ ...navigation(), scope: { ...target, namespace: undefined } })).toBeUndefined();
+    expect(admitSearchEntry({ ...navigation(), scope: { ...target, reference: undefined } })).toBeUndefined();
     const unicodeQuery = '😀'.repeat(256);
     expect(admitSearchEntry({ schemaVersion: 1, kind: 'action', action: { id: 'probe:open-list', target, query: unicodeQuery } })).toMatchObject({ action: { query: unicodeQuery } });
     expect(admitSearchEntry({ schemaVersion: 1, kind: 'action', action: { id: 'probe:open-list', target, query: `${unicodeQuery}x` } })).toBeUndefined();
@@ -94,11 +97,11 @@ describe('global search v1 admission', () => {
     expect(getNavigationHref({ kind: 'plugin', pluginId: 'probe', path: `/${'x'.repeat(2048)}?q=ok` })).toBeUndefined();
   });
 
-  it('copies scoped namespace facets and admits only bounded typed source states', () => {
-    const namespaces = ['apps'];
-    const result = admitSearchEntry({ ...navigation(), scope: { kind: 'resource-type', pluginId: 'probe', connectionId: 'prod', resourceKey: 'pods', label: 'Pods', namespaces } });
-    namespaces.push('other');
-    expect(result?.scope?.kind === 'resource-type' && result.scope.namespaces).toEqual(['apps']);
+  it('copies scoped query constraints and admits only bounded typed source states', () => {
+    const values = ['apps'];
+    const result = admitSearchEntry({ ...navigation(), scope: searchType('pods', [{ dimension: 'namespace', match: 'oneOf', values }]) });
+    values.push('other');
+    expect(result?.scope?.kind === 'resource-type' && result.scope.target.scope).toEqual([{ dimension: 'namespace', match: 'oneOf', values: ['apps'] }]);
     expect(admitProviderResponse({ items: [], completion: 'complete', status: 'forbidden', message: 'Denied.' })).toMatchObject({ status: 'forbidden', message: 'Denied.' });
     expect(admitProviderResponse({ items: [], completion: 'complete', status: 'guessed-auth-error' })).toBeUndefined();
     expect(admitProviderResponse({ items: [], completion: 'complete', message: 'x'.repeat(1025) })).toBeUndefined();

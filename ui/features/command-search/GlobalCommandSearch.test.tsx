@@ -6,15 +6,12 @@ import { ensureBuiltinExtensionPointsRegistered } from '../extensions/registerBu
 import { createGlobalSearchController, type GlobalSearchController } from './controller';
 import { GlobalCommandSearch } from './GlobalCommandSearch';
 import type { SearchScopeV1, SearchSnapshot } from './types';
+import { searchResource, searchType } from './searchFixtures';
 
 const connection: SearchScopeV1 = { kind: 'connection', pluginId: 'probe', connectionId: 'prod-id', label: 'prod' };
-const resourceType: SearchScopeV1 = {
-  kind: 'resource-type', pluginId: 'probe', connectionId: 'prod-id', resourceKey: 'core::v1::Pod', label: 'Pods',
-};
-const resource: SearchScopeV1 = {
-  kind: 'resource', pluginId: 'probe', connectionId: 'prod-id', resourceKey: 'core::v1::Pod',
-  resourceId: 'api', namespace: 'payments', uid: 'api-uid', label: 'api',
-};
+const resourceType = { ...searchType('k8s:/pods'), target: { ...searchType('k8s:/pods').target, route: { connection: 'prod-id' } } };
+const baseResource = searchResource('k8s:/pods', 'api', [{ dimension: 'namespace', value: 'payments' }]);
+const resource = { ...baseResource, route: { connection: 'prod-id' }, reference: { ...baseResource.reference, incarnation: 'api-uid' } };
 const controllers: GlobalSearchController[] = [];
 
 afterEach(() => {
@@ -340,8 +337,7 @@ it.each(['Enter', 'pointer'] as const)('keeps dialog and input after a registere
   expect(input).toHaveFocus();
   expect(input).toHaveValue('Choose log container');
   expect(controller.getSnapshot().scopes).toEqual([
-    expect.objectContaining({ kind: 'connection', pluginId: resource.pluginId, connectionId: resource.connectionId }),
-    expect.objectContaining({ kind: 'resource-type', pluginId: resource.pluginId, connectionId: resource.connectionId, resourceKey: resource.resourceKey }),
+    expect.objectContaining({ kind: 'connection', pluginId: resource.pluginId, connectionId: resource.route.connection }),
     resource,
   ]);
   expect(close).not.toHaveBeenCalled();

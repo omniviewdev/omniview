@@ -17,9 +17,9 @@ describe('computeActiveSync', () => {
       pluginID: 'k8s',
       connectionID: 'cluster1',
       states: {
-        'core::v1::Pod': WatchState.WatchStateSynced,
-        'core::v1::Service': WatchState.WatchStateSynced,
-        'apps::v1::Deployment': WatchState.WatchStateSynced,
+        'k8s:/pods': WatchState.WatchStateSynced,
+        'k8s:/services': WatchState.WatchStateSynced,
+        'k8s:apps/deployments': WatchState.WatchStateSynced,
       },
     };
 
@@ -36,10 +36,10 @@ describe('computeActiveSync', () => {
       pluginID: 'k8s',
       connectionID: 'cluster1',
       states: {
-        'core::v1::Pod': WatchState.WatchStateSynced,
-        'core::v1::Service': WatchState.WatchStateSyncing,
-        'apps::v1::Deployment': WatchState.WatchStateError,
-        'core::v1::Secret': WatchState.WatchStateIdle,
+        'k8s:/pods': WatchState.WatchStateSynced,
+        'k8s:/services': WatchState.WatchStateSyncing,
+        'k8s:apps/deployments': WatchState.WatchStateError,
+        'k8s:/secrets': WatchState.WatchStateIdle,
       },
     };
 
@@ -56,8 +56,8 @@ describe('computeActiveSync', () => {
       pluginID: 'k8s',
       connectionID: 'cluster1',
       states: {
-        'core::v1::Pod': WatchState.WatchStateSynced,
-        'core::v1::Service': WatchState.WatchStateError,
+        'k8s:/pods': WatchState.WatchStateSynced,
+        'k8s:/services': WatchState.WatchStateError,
       },
     };
 
@@ -73,8 +73,8 @@ describe('computeActiveSync', () => {
       pluginID: 'k8s',
       connectionID: 'cluster1',
       states: {
-        'core::v1::Pod': WatchState.WatchStateSynced,
-        'core::v1::Service': WatchState.WatchStateStopped,
+        'k8s:/pods': WatchState.WatchStateSynced,
+        'k8s:/services': WatchState.WatchStateStopped,
       },
     };
 
@@ -103,8 +103,8 @@ describe('computeActiveSync', () => {
       pluginID: 'k8s',
       connectionID: 'cluster1',
       states: {
-        'core::v1::Pod': WatchState.WatchStateIdle,
-        'core::v1::Service': WatchState.WatchStateIdle,
+        'k8s:/pods': WatchState.WatchStateIdle,
+        'k8s:/services': WatchState.WatchStateIdle,
       },
     };
 
@@ -121,11 +121,11 @@ describe('computeActiveSync', () => {
       pluginID: 'k8s',
       connectionID: 'cluster1',
       states: {
-        'core::v1::Pod': WatchState.WatchStateSynced,
-        'core::v1::Service': WatchState.WatchStateSynced,
-        'resource::v1alpha3::DeviceClass': WatchState.WatchStateSkipped,
-        'resource::v1alpha3::ResourceClaim': WatchState.WatchStateSkipped,
-        'resource::v1alpha3::ResourceSlice': WatchState.WatchStateSkipped,
+        'k8s:/pods': WatchState.WatchStateSynced,
+        'k8s:/services': WatchState.WatchStateSynced,
+        'opaque.example.io/deviceclasses': WatchState.WatchStateSkipped,
+        'opaque.example.io/resourceclaims': WatchState.WatchStateSkipped,
+        'opaque.example.io/resourceslices': WatchState.WatchStateSkipped,
       },
     };
 
@@ -248,13 +248,13 @@ describe('aggregateProgress', () => {
 describe('trackerKey', () => {
   it('creates key from event fields', () => {
     const event: WatchStateEvent = {
-      pluginId: 'kubernetes',
-      connection: 'cluster-1',
-      resourceKey: 'core::v1::Pod',
+      route: { connection: 'cluster-1' },
+      type: 'k8s:/pods',
       state: WatchState.WatchStateSyncing,
-      resourceCount: 0,
+      count: { kind: 'unknown' },
+      guarantee: 'bestEffort',
     };
-    expect(trackerKey(event)).toBe('kubernetes/cluster-1');
+    expect(trackerKey('kubernetes', event)).toBe(JSON.stringify(['kubernetes', 'cluster-1']));
   });
 });
 
@@ -262,53 +262,64 @@ describe('updateTracker', () => {
   it('creates a new tracker for unknown connection', () => {
     const trackers = new Map<string, ResourceTracker>();
     const event: WatchStateEvent = {
-      pluginId: 'k8s',
-      connection: 'c1',
-      resourceKey: 'core::v1::Pod',
+      route: { connection: 'c1' },
+      type: 'k8s:/pods',
       state: WatchState.WatchStateSyncing,
-      resourceCount: 0,
+      count: { kind: 'unknown' },
+      guarantee: 'bestEffort',
     };
 
-    const tracker = updateTracker(trackers, event);
+    const tracker = updateTracker(trackers, 'k8s', event);
     expect(tracker.pluginID).toBe('k8s');
     expect(tracker.connectionID).toBe('c1');
-    expect(tracker.states['core::v1::Pod']).toBe(WatchState.WatchStateSyncing);
+    expect(tracker.states['k8s:/pods']).toBe(WatchState.WatchStateSyncing);
   });
 
   it('updates existing tracker state', () => {
     const trackers = new Map<string, ResourceTracker>();
-    trackers.set('k8s/c1', {
+    trackers.set(JSON.stringify(['k8s', 'c1']), {
       pluginID: 'k8s',
       connectionID: 'c1',
-      states: { 'core::v1::Pod': WatchState.WatchStateSyncing },
+      states: { 'k8s:/pods': WatchState.WatchStateSyncing },
     });
 
     const event: WatchStateEvent = {
-      pluginId: 'k8s',
-      connection: 'c1',
-      resourceKey: 'core::v1::Pod',
+      route: { connection: 'c1' },
+      type: 'k8s:/pods',
       state: WatchState.WatchStateSynced,
-      resourceCount: 42,
+      count: { kind: 'exact', value: '42' },
+      guarantee: 'bestEffort',
     };
 
-    const tracker = updateTracker(trackers, event);
-    expect(tracker.states['core::v1::Pod']).toBe(WatchState.WatchStateSynced);
+    const tracker = updateTracker(trackers, 'k8s', event);
+    expect(tracker.states['k8s:/pods']).toBe(WatchState.WatchStateSynced);
   });
 
   it('tracks multiple resources per connection', () => {
     const trackers = new Map<string, ResourceTracker>();
 
-    updateTracker(trackers, {
-      pluginId: 'k8s', connection: 'c1', resourceKey: 'core::v1::Pod',
-      state: WatchState.WatchStateSynced, resourceCount: 10,
+    updateTracker(trackers, 'k8s', {
+      route: { connection: 'c1' }, type: 'k8s:/pods',
+      state: WatchState.WatchStateSynced, count: { kind: 'exact', value: '10' }, guarantee: 'bestEffort',
     });
-    const tracker = updateTracker(trackers, {
-      pluginId: 'k8s', connection: 'c1', resourceKey: 'core::v1::Service',
-      state: WatchState.WatchStateSyncing, resourceCount: 0,
+    const tracker = updateTracker(trackers, 'k8s', {
+      route: { connection: 'c1' }, type: 'k8s:/services',
+      state: WatchState.WatchStateSyncing, count: { kind: 'unknown' }, guarantee: 'bestEffort',
     });
 
     expect(Object.keys(tracker.states)).toHaveLength(2);
-    expect(tracker.states['core::v1::Pod']).toBe(WatchState.WatchStateSynced);
-    expect(tracker.states['core::v1::Service']).toBe(WatchState.WatchStateSyncing);
+    expect(tracker.states['k8s:/pods']).toBe(WatchState.WatchStateSynced);
+    expect(tracker.states['k8s:/services']).toBe(WatchState.WatchStateSyncing);
   });
+});
+
+it('isolates opaque plugin and connection IDs even when slash tuples would collide', () => {
+  const trackers = new Map<string, ResourceTracker>();
+  const first: WatchStateEvent = { route: { connection: 'c/雪' }, type: 'opaque/type', state: WatchState.WatchStateSyncing, count: { kind: 'unknown' }, guarantee: 'bestEffort' };
+  const second: WatchStateEvent = { ...first, route: { connection: 'b/c/雪' }, state: WatchState.WatchStateSynced };
+  updateTracker(trackers, 'a/b', first);
+  updateTracker(trackers, 'a', second);
+  expect(trackers.size).toBe(2);
+  expect(trackers.get(trackerKey('a/b', first))!.states['opaque/type']).toBe(WatchState.WatchStateSyncing);
+  expect(trackers.get(trackerKey('a', second))!.states['opaque/type']).toBe(WatchState.WatchStateSynced);
 });

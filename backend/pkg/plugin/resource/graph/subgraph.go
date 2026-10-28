@@ -45,13 +45,13 @@ func (g *RelationshipGraph) GetSubgraph(ref GraphNode, upDepth, downDepth int) *
 		Truncated: false,
 	}
 	seen := map[string]bool{ref.Key(): true}
-	seenEdges := map[string]bool{}
+	seenEdges := map[[4]string]bool{}
 
 	addEdge := func(e GraphEdge) {
 		ek := edgeKey(e)
 		if !seenEdges[ek] {
 			seenEdges[ek] = true
-			sg.Edges = append(sg.Edges, e)
+			sg.Edges = append(sg.Edges, cloneEdge(e))
 		}
 	}
 
@@ -82,7 +82,7 @@ func (g *RelationshipGraph) GetSubgraph(ref GraphNode, upDepth, downDepth int) *
 						if !downstream {
 							d = -step
 						}
-						sg.Nodes = append(sg.Nodes, SubgraphNode{Node: other, Depth: d})
+						sg.Nodes = append(sg.Nodes, SubgraphNode{Node: cloneNode(other), Depth: d})
 						next = append(next, otherKey)
 					}
 					addEdge(se.GraphEdge)

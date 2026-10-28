@@ -25,6 +25,7 @@ import (
 	"github.com/omniviewdev/omniview/internal/instance"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
+	resourceplugin "github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	ep "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
@@ -32,7 +33,6 @@ import (
 	lp "github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 	mp "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 	np "github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
-	rpv1 "github.com/omniviewdev/plugin-sdk/pkg/v1/resource/plugin"
 	sp "github.com/omniviewdev/plugin-sdk/pkg/v1/settings"
 )
 
@@ -427,7 +427,7 @@ func (pm *pluginManager) createBackend(
 		HandshakeConfig: metadata.GenerateHandshakeConfig(),
 		VersionedPlugins: map[int]goplugin.PluginSet{
 			1: {
-				"resource":  &rpv1.GRPCPlugin{Plugin: nil, Impl: nil, SettingsProvider: nil},
+				"resource":  &resourceplugin.GRPCPlugin{},
 				"exec":      &ep.Plugin{Plugin: nil, Impl: nil},
 				"networker": &np.Plugin{Plugin: nil, Impl: nil},
 				"log":       &lp.Plugin{Plugin: nil, Impl: nil},

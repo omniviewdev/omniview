@@ -9,8 +9,7 @@ import (
 	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
-	"github.com/omniviewdev/plugin-sdk/pkg/v1/resource/resourcetest"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
 type controlledActionTimer struct {
@@ -86,14 +85,17 @@ func TestActionRegistryForeignAccessDoesNotReleaseOwner(t *testing.T) {
 
 func TestActionQuotaCountsPendingAndReleasesFailedOpens(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	provider := resourcetest.NewTestProvider(t)
+	provider := &mockProvider{CatalogFunc: func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+		return canonicalTestCatalog("flat", "opaque"), nil
+	}}
 	started := make(chan struct{}, 33)
-	provider.StreamActionFunc = func(ctx context.Context, _ string, _ string, _ resource.ActionInput, _ chan<- resource.ActionEvent) error {
+	provider.StreamActionFunc = func(ctx context.Context, _ resource.ActionRequest, _ chan<- resource.ActionEvent) error {
 		started <- struct{}{}
 		<-ctx.Done()
 		return ctx.Err()
 	}
 	registerMockPlugin(ctrl, "flat", setupGRPCProvider(t, provider))
+	request := admittedActionRequest(t, ctrl, "flat", "conn-1", "opaque", "start")
 	owner := invocation.NewScope(invocation.TrustedUI)
 	var cancels []context.CancelFunc
 	done := make(chan error, 33)
@@ -117,7 +119,7 @@ func TestActionQuotaCountsPendingAndReleasesFailedOpens(t *testing.T) {
 		cancels = append(cancels, cancel)
 		opened++
 		go func() {
-			_, err := ctrl.StreamAction(ctx, "flat", "route", "opaque", "start", resource.ActionInput{})
+			_, err := ctrl.StreamAction(ctx, "flat", request)
 			done <- err
 		}()
 		select {
@@ -129,7 +131,7 @@ func TestActionQuotaCountsPendingAndReleasesFailedOpens(t *testing.T) {
 	for range 32 {
 		open()
 	}
-	id, err := ctrl.StreamAction(owner.Context(context.Background()), "flat", "route", "opaque", "start", resource.ActionInput{})
+	id, err := ctrl.StreamAction(owner.Context(context.Background()), "flat", request)
 	if id != "" || requireAppError(t, err).Code != "RESOURCE_LIMIT" {
 		t.Fatal("public pending quota was bypassed")
 	}

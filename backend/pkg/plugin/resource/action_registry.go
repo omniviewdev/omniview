@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
 const (
@@ -22,7 +23,7 @@ const (
 
 type ActionEventDTO struct {
 	Type  string             `json:"type"`
-	Data  map[string]any     `json:"data,omitempty"`
+	Data  *resourcev2.Value  `json:"data,omitempty"`
 	Error *apperror.AppError `json:"error,omitempty"`
 }
 type ActionSnapshot struct {
@@ -110,7 +111,7 @@ func (r *actionRegistry) commit(reservation *actionReservation, ctx context.Cont
 		return nil, err
 	}
 	delete(r.pending, reservation)
-	handle := &actionHandle{id: uuid.NewString(), request: reservation.request, provider: reservation.provider, cancel: reservation.cancel, snapshot: ActionSnapshot{Sequence: 1, Event: ActionEventDTO{Type: "progress", Data: map[string]any{"message": "Started"}}}}
+	handle := &actionHandle{id: uuid.NewString(), request: reservation.request, provider: reservation.provider, cancel: reservation.cancel, snapshot: ActionSnapshot{Sequence: 1, Event: ActionEventDTO{Type: "progress", Data: &resourcev2.Value{Kind: "map", Map: map[string]resourcev2.Value{"message": {Kind: "string", String: "Started"}}}}}}
 	r.entries[handle.id] = handle
 	handle.attachTimer = r.afterFunc(actionAttachTimeout, func() { r.expireUnattached(handle) })
 	handle.lifetimeTimer = r.afterFunc(actionLifetime, func() { r.expire(handle, true) })

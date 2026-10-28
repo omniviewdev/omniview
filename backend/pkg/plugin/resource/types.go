@@ -1,8 +1,8 @@
 package resource
 
 import (
+	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
-	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 )
 
 // ConnectionState is the full state snapshot for a single connection,
@@ -18,8 +18,8 @@ type ConnectionState struct {
 	// Per-resource watch states (resource key → WatchState enum).
 	Resources map[string]sdkresource.WatchState `json:"resources"`
 
-	// Per-resource object counts (resource key → count of cached objects).
-	ResourceCounts map[string]int `json:"resourceCounts"`
+	// Observed cache membership, not source totals.
+	ResourceCounts map[string]sdkresource.Count `json:"resourceCounts"`
 
 	// Aggregate counts computed server-side.
 	TotalResources int `json:"totalResources"`

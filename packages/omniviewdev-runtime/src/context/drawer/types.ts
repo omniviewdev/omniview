@@ -1,4 +1,6 @@
 import { ReactNode } from "react";
+import type { AccessRoute, ResourceReference } from '../../resource/v2/domain';
+import type { HostRecord } from '../../resource/v2/host';
 
 /**
  * A factory function that produces a DrawerComponent for a given resource.
@@ -136,32 +138,16 @@ export type DrawerContext<T = any> = {
    * Resource information (if this drawer is being displayed as part of a resource)
    */
   resource?: {
-    /**
-     * The id of the resource in question
-     */
-    id: string;
-
-    /**
-     * A human-readable display name for the resource, shown in the drawer header.
-     */
+    reference: ResourceReference;
+    targetId: string;
+    route: AccessRoute;
+    representation: string;
+    /** Opaque host-minted address key, when supplied by the host. */
+    key?: string;
     name?: string;
-
-    /**
-     * The resource key that defines the globally-recognizable key
-     */
-    key: string;
-
-    /**
-    * A connection id, if this drawer is displaying something in the context
-    * of a connection.
-    */
-    connectionID: string;
-
-    /**
-     * The plugin that owns this resource. When provided, host-level features
-     * like the Events tab can be injected automatically.
-     */
-    pluginID?: string;
+    pluginID: string;
+    /** Original observed record, not a re-fetched replacement. */
+    record?: HostRecord;
   }
 }
 

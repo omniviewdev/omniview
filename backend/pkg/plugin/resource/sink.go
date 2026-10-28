@@ -5,175 +5,278 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
-	"time"
-
-	"github.com/tidwall/gjson"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/indexer"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
-// engineWatchSink implements resource.WatchEventSink on the engine side.
-// Routes events through the subscription gate and emits to the frontend via EventEmitter.
-// Registry updates and indexer enqueuing happen unconditionally; only the Wails
-// emit is gated by subscription status.
+// HostWatchRecordEvent retains the acquisition membership of each live consumer.
+type HostWatchRecordEvent struct {
+	Route     resource.AccessRoute      `json:"route"`
+	Record    HostRecord                `json:"record"`
+	Metadata  resource.ResourceMetadata `json:"metadata"`
+	Guarantee string                    `json:"guarantee"`
+}
+
+type HostWatchDeleteEvent struct {
+	Route      resource.AccessRoute       `json:"route"`
+	Reference  resource.ResourceReference `json:"reference"`
+	Key        string                     `json:"key"`
+	AddressKey string                     `json:"addressKey"`
+	TargetID   string                     `json:"targetId"`
+	LastKnown  *HostRecord                `json:"lastKnown,omitempty"`
+	Guarantee  string                     `json:"guarantee"`
+}
+
+// HostWatchStateEvent adds host provenance only to the global state channel.
+type HostWatchStateEvent struct {
+	resource.WatchStateEvent
+	PluginID string `json:"pluginID"`
+}
+
+// engineWatchSink retains advisory updates independently of frontend subscriptions.
+// Best-effort updates do not establish snapshot, replay, or gap-free continuity.
 type engineWatchSink struct {
-	pluginID   string
-	ctrl       *controller
-	store      registry.Store
-	dispatcher *indexer.Dispatcher
+	ctx          context.Context
+	generationID string
+	pluginID     string
+	ctrl         *controller
+	store        registry.Store
+	dispatcher   *indexer.Dispatcher
 }
 
 var _ resource.WatchEventSink = (*engineWatchSink)(nil)
 
-func (s *engineWatchSink) entryFromAddPayload(p resource.WatchAddPayload) registry.ResourceEntry {
-	p.Metadata = completeMetadata(p.Metadata, p.Data)
-	entry := registry.ResourceEntry{
-		PluginID:     s.pluginID,
-		ConnectionID: p.Connection,
-		ResourceKey:  p.Key,
-		ID:           p.ID,
-		Namespace:    p.Namespace,
-		UID:          p.Metadata.UID,
-		Labels:       maps.Clone(p.Metadata.Labels),
-		CreatedAt:    time.Time{},
-	}
-	if p.Metadata.CreatedAt != nil {
-		entry.CreatedAt = *p.Metadata.CreatedAt
-	}
-	return entry
+// activeLocked requires pluginsMu.RLock. Holding the lock through mutation keeps
+// a retired generation from writing after its replacement becomes visible.
+func (s *engineWatchSink) activeLocked() bool {
+	state := s.ctrl.plugins[s.pluginID]
+	return s.ctx != nil && s.ctx.Err() == nil && state != nil && state.ctx != nil && s.generationID != "" && state.generationID == s.generationID && state.ctx.Err() == nil
 }
 
-func (s *engineWatchSink) entryFromUpdatePayload(p resource.WatchUpdatePayload) registry.ResourceEntry {
-	p.Metadata = completeMetadata(p.Metadata, p.Data)
-	entry := registry.ResourceEntry{
-		PluginID:     s.pluginID,
-		ConnectionID: p.Connection,
-		ResourceKey:  p.Key,
-		ID:           p.ID,
-		Namespace:    p.Namespace,
-		UID:          p.Metadata.UID,
-		Labels:       maps.Clone(p.Metadata.Labels),
-		CreatedAt:    time.Time{},
+func (s *engineWatchSink) observe(route resource.AccessRoute, record resource.Record, metadata *resource.ResourceMetadata) error {
+	if s.ctx == nil {
+		return resource.NewError("INVALID_REQUEST", "observation context is required")
 	}
-	if p.Metadata.CreatedAt != nil {
-		entry.CreatedAt = *p.Metadata.CreatedAt
+	if err := s.ctx.Err(); err != nil {
+		return err
 	}
-	return entry
+	if err := s.ctrl.validateReference(s.ctx, s.pluginID, route, record.Reference); err != nil {
+		return err
+	}
+	if err := resource.ValidateRecord(record); err != nil {
+		return err
+	}
+	native, err := resource.NativeFromValue(record.Body)
+	if err != nil {
+		return err
+	}
+	raw, err := json.Marshal(native)
+	if err != nil {
+		return err
+	}
+	s.ctrl.pluginsMu.RLock()
+	defer s.ctrl.pluginsMu.RUnlock()
+	if !s.activeLocked() || !s.ctrl.referenceCurrentLocked(s.pluginID, route, record.Reference) {
+		return resource.NewError("CANCELLED", "observation generation or route authority retired")
+	}
+	entry := registry.ResourceEntry{PluginID: s.pluginID, Reference: record.Reference, Route: route}
+	entry.Reference.Address.Scope = append([]resource.ScopeEntry{}, record.Reference.Address.Scope...)
+	if record.Reference.Incarnation != nil {
+		token := *record.Reference.Incarnation
+		entry.Reference.Incarnation = &token
+	}
+	if metadata != nil {
+		entry.Labels = maps.Clone(metadata.Labels)
+		if metadata.CreatedAt != nil {
+			entry.CreatedAt = *metadata.CreatedAt
+		}
+	} else if previous, ok := s.store.Get(s.pluginID, record.Reference, route); ok {
+		entry.Labels = previous.Labels
+		entry.CreatedAt = previous.CreatedAt
+	}
+	old, existed := s.store.Put(entry)
+	event := indexer.Event{Type: indexer.EventAdd, Entry: entry, Old: old, Raw: raw}
+	if existed {
+		event.Type = indexer.EventUpdate
+	}
+	s.dispatcher.Enqueue(event)
+	return nil
+}
+
+// observeRecord indexes a finite observation without fabricating live readiness.
+func (c *controller) observeRecord(ctx context.Context, pluginID string, route resource.AccessRoute, record resource.Record) error {
+	c.pluginsMu.RLock()
+	state := c.plugins[pluginID]
+	generationID := ""
+	if state != nil {
+		generationID = state.generationID
+	}
+	c.pluginsMu.RUnlock()
+	sink := engineWatchSink{ctx: ctx, generationID: generationID, pluginID: pluginID, ctrl: c, store: c.registryStore, dispatcher: c.dispatcher}
+	return sink.observe(route, record, nil)
+}
+
+func targetContainsReference(target resource.ReadTarget, route resource.AccessRoute, reference resource.ResourceReference) bool {
+	address := reference.Address
+	if target.Route != route || target.Provider != address.Provider || target.Authority != address.Authority || target.Type != address.Type {
+		return false
+	}
+	for _, constraint := range target.Scope {
+		found := false
+		for _, entry := range address.Scope {
+			if entry.Dimension != constraint.Dimension {
+				continue
+			}
+			if constraint.Match == resource.ScopeAny {
+				found = true
+				break
+			}
+			if constraint.Match == resource.ScopeOneOf && constraint.Values != nil {
+				for _, value := range *constraint.Values {
+					if value == entry.Value {
+						found = true
+						break
+					}
+				}
+			}
+			break
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *engineWatchSink) deliver(sub subscription, route resource.AccessRoute, reference resource.ResourceReference, emit func(context.Context) error) {
+	if sub.Context == nil || !targetContainsReference(sub.Target, route, reference) {
+		return
+	}
+	ctx, err := s.ctrl.admit(sub.Context, "resource.WatchDelivery", referenceTarget(s.pluginID, route, reference))
+	if err != nil {
+		s.reject(err)
+		return
+	}
+	defer finishResource(ctx, &err)
+	if err = s.ctrl.validateReadTarget(ctx, s.pluginID, sub.Target); err != nil {
+		s.reject(err)
+		return
+	}
+	s.ctrl.pluginsMu.RLock()
+	defer s.ctrl.pluginsMu.RUnlock()
+	if !s.activeLocked() || !s.ctrl.referenceCurrentLocked(s.pluginID, route, reference) {
+		return
+	}
+	err = emit(ctx)
+	if err != nil {
+		s.reject(err)
+	}
+}
+
+func (s *engineWatchSink) emitRecord(kind string, route resource.AccessRoute, record resource.Record, metadata resource.ResourceMetadata) {
+	for _, sub := range s.ctrl.subs.Matching(s.pluginID, route.Connection, record.Reference.Address.Type) {
+		if sub.Target.Representation != record.Representation.ID {
+			continue
+		}
+		s.deliver(sub, route, record.Reference, func(context.Context) error {
+			envelope, err := envelopeRecord(s.generationID, sub.Owner.Owner(), sub.TargetID, sub.Target, record)
+			if err != nil {
+				return err
+			}
+			s.ctrl.emitter.Emit(fmt.Sprintf("%s/%s/%s/%s", s.pluginID, route.Connection, record.Reference.Address.Type, kind), HostWatchRecordEvent{Route: route, Record: envelope, Metadata: metadata, Guarantee: resource.BestEffortGuarantee})
+			return nil
+		})
+	}
 }
 
 func (s *engineWatchSink) OnAdd(p resource.WatchAddPayload) {
-	p.PluginID = s.pluginID
-
-	// 1. Registry update (unconditional)
-	entry := s.entryFromAddPayload(p)
-	old, existed := s.store.Put(entry)
-
-	// 2. Subscription gate — ONLY controls Wails emit
-	if s.ctrl.isSubscribed(s.pluginID, p.Connection, p.Key) {
-		eventKey := fmt.Sprintf("%s/%s/%s/ADD", s.pluginID, p.Connection, p.Key)
-		s.ctrl.emitter.Emit(eventKey, p)
+	if err := s.observe(p.Route, p.Record, &p.Metadata); err != nil {
+		s.reject(err)
+		return
 	}
-
-	// 3. Enqueue indexer event (unconditional)
-	rawCopy := make(json.RawMessage, len(p.Data))
-	copy(rawCopy, p.Data)
-
-	if existed {
-		s.dispatcher.Enqueue(indexer.Event{
-			Type: indexer.EventUpdate, Entry: entry, Old: old, Raw: rawCopy,
-		})
-	} else {
-		s.dispatcher.Enqueue(indexer.Event{
-			Type: indexer.EventAdd, Entry: entry, Old: nil, Raw: rawCopy,
-		})
-	}
+	s.emitRecord("ADD", p.Route, p.Record, p.Metadata)
 }
 
 func (s *engineWatchSink) OnUpdate(p resource.WatchUpdatePayload) {
-	p.PluginID = s.pluginID
-
-	entry := s.entryFromUpdatePayload(p)
-	old, _ := s.store.Put(entry)
-
-	if s.ctrl.isSubscribed(s.pluginID, p.Connection, p.Key) {
-		eventKey := fmt.Sprintf("%s/%s/%s/UPDATE", s.pluginID, p.Connection, p.Key)
-		s.ctrl.emitter.Emit(eventKey, p)
+	if err := s.observe(p.Route, p.Record, &p.Metadata); err != nil {
+		s.reject(err)
+		return
 	}
-
-	rawCopy := make(json.RawMessage, len(p.Data))
-	copy(rawCopy, p.Data)
-
-	s.dispatcher.Enqueue(indexer.Event{
-		Type: indexer.EventUpdate, Entry: entry, Old: old, Raw: rawCopy,
-	})
+	s.emitRecord("UPDATE", p.Route, p.Record, p.Metadata)
 }
 
 func (s *engineWatchSink) OnDelete(p resource.WatchDeletePayload) {
-	p.PluginID = s.pluginID
-
-	old, existed := s.store.Delete(s.pluginID, p.Connection, p.Key, p.Namespace, p.ID)
-
-	if s.ctrl.isSubscribed(s.pluginID, p.Connection, p.Key) {
-		eventKey := fmt.Sprintf("%s/%s/%s/DELETE", s.pluginID, p.Connection, p.Key)
-		s.ctrl.emitter.Emit(eventKey, p)
+	if s.ctx == nil || s.ctx.Err() != nil {
+		return
 	}
-
+	if err := s.ctrl.validateReference(s.ctx, s.pluginID, p.Route, p.Reference); err != nil {
+		s.reject(err)
+		return
+	}
+	if p.LastKnown != nil {
+		if err := resource.ValidateRecord(*p.LastKnown); err != nil {
+			s.reject(err)
+			return
+		}
+		expected, err := registry.CanonicalAddressKey(p.Reference.Address)
+		if err != nil {
+			s.reject(err)
+			return
+		}
+		actual, err := registry.CanonicalAddressKey(p.LastKnown.Reference.Address)
+		if err != nil {
+			s.reject(err)
+			return
+		}
+		if expected != actual || (p.Reference.Incarnation != nil && (p.LastKnown.Reference.Incarnation == nil || *p.Reference.Incarnation != *p.LastKnown.Reference.Incarnation)) {
+			s.reject(resource.NewError("INVALID_REQUEST", "last-known record does not match deletion reference"))
+			return
+		}
+	}
+	s.ctrl.pluginsMu.RLock()
+	if !s.activeLocked() || !s.ctrl.referenceCurrentLocked(s.pluginID, p.Route, p.Reference) {
+		s.ctrl.pluginsMu.RUnlock()
+		return
+	}
+	old, existed := s.store.Delete(s.pluginID, p.Reference, p.Route)
 	if existed && old != nil {
-		s.dispatcher.Enqueue(indexer.Event{
-			Type: indexer.EventDelete, Entry: *old, Old: nil, Raw: nil,
+		s.dispatcher.Enqueue(indexer.Event{Type: indexer.EventDelete, Entry: *old})
+	}
+	s.ctrl.pluginsMu.RUnlock()
+	for _, sub := range s.ctrl.subs.Matching(s.pluginID, p.Route.Connection, p.Reference.Address.Type) {
+		s.deliver(sub, p.Route, p.Reference, func(context.Context) error {
+			// Deletion has no body. Use only its canonical reference to derive membership.
+			key, addressKey, err := rowIdentity(s.generationID, sub.Owner.Owner(), sub.TargetID, sub.Target, p.Reference)
+			if err != nil {
+				return err
+			}
+			event := HostWatchDeleteEvent{Route: p.Route, Reference: p.Reference, Key: key, AddressKey: addressKey, TargetID: sub.TargetID, Guarantee: resource.BestEffortGuarantee}
+			if p.LastKnown != nil && p.LastKnown.Representation.ID == sub.Target.Representation {
+				known, err := envelopeRecord(s.generationID, sub.Owner.Owner(), sub.TargetID, sub.Target, *p.LastKnown)
+				if err != nil {
+					return err
+				}
+				event.LastKnown = &known
+			}
+			s.ctrl.emitter.Emit(fmt.Sprintf("%s/%s/%s/DELETE", s.pluginID, p.Route.Connection, p.Reference.Address.Type), event)
+			return nil
 		})
 	}
 }
 
 func (s *engineWatchSink) OnStateChange(e resource.WatchStateEvent) {
-	// Enrich with plugin identity (Connection is already set by the SDK's
-	// connectionEnrichingSink wrapper).
-	e.PluginID = s.pluginID
-
-	s.ctrl.logger.Infow(context.Background(), "[watch-state] engine sink received",
-		"pluginID", s.pluginID,
-		"connection", e.Connection,
-		"resourceKey", e.ResourceKey,
-		"state", e.State,
-		"resourceCount", e.ResourceCount,
-	)
-
-	// STATE events always flow regardless of subscription status.
-	// Emit per-plugin/connection state event so per-connection hooks can match.
-	eventKey := fmt.Sprintf("%s/%s/watch/STATE", s.pluginID, e.Connection)
-	s.ctrl.emitter.Emit(eventKey, e)
-	// Global event for footer/status bar aggregation.
-	s.ctrl.emitter.Emit("watch/STATE", e)
+	s.ctrl.pluginsMu.RLock()
+	defer s.ctrl.pluginsMu.RUnlock()
+	if !s.activeLocked() {
+		return
+	}
+	e.Guarantee = resource.BestEffortGuarantee
+	s.ctrl.emitter.Emit(fmt.Sprintf("%s/%s/watch/STATE", s.pluginID, e.Route.Connection), e)
+	s.ctrl.emitter.Emit("watch/STATE", HostWatchStateEvent{WatchStateEvent: e, PluginID: s.pluginID})
 }
 
-// completeMetadata fills metadata the payload lacks from the object's own
-// "metadata" block (uid, labels, creationTimestamp), the shape Kubernetes and
-// Kubernetes-like objects use. The SDK's gRPC watch messages carry only id,
-// namespace and data, so payload metadata set by the plugin never arrives;
-// without this, label selectors (Service, NetworkPolicy) match nothing.
-func completeMetadata(meta resource.ResourceMetadata, data json.RawMessage) resource.ResourceMetadata {
-	if meta.UID != "" && len(meta.Labels) > 0 && meta.CreatedAt != nil {
-		return meta
-	}
-	fields := gjson.GetManyBytes(data, "metadata.uid", "metadata.labels", "metadata.creationTimestamp")
-
-	if meta.UID == "" {
-		meta.UID = fields[0].String()
-	}
-	if len(meta.Labels) == 0 && fields[1].IsObject() {
-		labels := make(map[string]string)
-		fields[1].ForEach(func(k, v gjson.Result) bool {
-			labels[k.String()] = v.String()
-			return true
-		})
-		meta.Labels = labels
-	}
-	if meta.CreatedAt == nil && fields[2].Exists() {
-		if t, err := time.Parse(time.RFC3339, fields[2].String()); err == nil {
-			meta.CreatedAt = &t
-		}
-	}
-	return meta
+func (s *engineWatchSink) reject(err error) {
+	s.ctrl.logger.Errorw(s.ctx, "resource observation rejected", "pluginID", s.pluginID, "error", err)
 }

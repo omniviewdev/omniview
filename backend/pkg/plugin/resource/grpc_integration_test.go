@@ -1,379 +1,185 @@
 package resource
 
-// Level 3 integration tests: Engine Controller → gRPC → SDK Provider.
-//
-// These tests wire a real gRPC server (via bufconn) backed by an SDK
-// TestProvider, register the resulting gRPC client as the engine
-// controller's provider, and exercise the full data flow.
-
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net"
 	"testing"
 	"time"
 
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	grpcplugin "github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
+	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
-
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
-	grpcplugin "github.com/omniviewdev/plugin-sdk/pkg/v1/resource/plugin"
-	"github.com/omniviewdev/plugin-sdk/pkg/v1/resource/resourcetest"
-	resourcepb "github.com/omniviewdev/plugin-sdk/proto/v1/resource"
 )
 
 const grpcTestBufSize = 1024 * 1024
 
-// setupGRPCProvider creates an in-process gRPC server backed by the given
-// SDK Provider, and returns a ResourceProvider (gRPC client) that the engine
-// controller can use directly.
-func setupGRPCProvider(t *testing.T, sdkProvider resource.Provider) ResourceProvider {
+// setupGRPCProvider uses the production raw-validating codec and service handlers.
+func setupGRPCProvider(t *testing.T, provider resource.Provider) *grpcplugin.Client {
 	t.Helper()
-	lis := bufconn.Listen(grpcTestBufSize)
+	listener := bufconn.Listen(grpcTestBufSize)
+	server := grpc.NewServer(grpcplugin.ServerOptions()...)
+	grpcplugin.RegisterServer(server, provider)
+	go func() { _ = server.Serve(listener) }()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, err := grpc.DialContext(ctx, "passthrough:///resource-test", grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return listener.DialContext(ctx) }), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close(); server.Stop(); _ = listener.Close() })
+	return grpcplugin.NewClient(conn)
+}
 
-	s := grpc.NewServer()
-	resourcepb.RegisterResourcePluginServer(s, grpcplugin.NewServer(sdkProvider, nil))
-	go func() { _ = s.Serve(lis) }()
+func grpcFiniteFixture() *mockProvider {
+	return &mockProvider{CatalogFunc: func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+		return canonicalTestCatalog("p1", "native::Pod"), nil
+	}}
+}
 
-	dialer := func(ctx context.Context, _ string) (net.Conn, error) {
-		return lis.DialContext(ctx)
+func grpcGetRequest() resource.GetRequest {
+	return resource.GetRequest{Route: resource.AccessRoute{Connection: "conn-1"}, Reference: canonicalTestRecord("p1", "authority", "native::Pod", "pod-1").Reference, Representation: "native"}
+}
+
+func TestL3_01_EnumerateRoundTrip(t *testing.T) {
+	provider := grpcFiniteFixture()
+	record := canonicalTestRecord("p1", "authority", "native::Pod", "pod-1")
+	provider.EnumerateFunc = func(_ context.Context, request resource.EnumerateRequest) (resource.SourcePage, error) {
+		assert.Equal(t, "conn-1", request.Target.Route.Connection)
+		return resource.SourcePage{Records: []resource.Record{record}, Count: resource.Count{Kind: "unknown"}, Coverage: resource.Coverage{Kind: "complete"}, Consistency: "bestEffort"}, nil
 	}
-	//nolint:staticcheck // grpc.DialContext needed for grpc v1.61
-	conn, err := grpc.DialContext(context.Background(), "bufnet",
-		grpc.WithContextDialer(dialer),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	result, err := setupGRPCProvider(t, provider).Enumerate(context.Background(), resource.EnumerateRequest{Target: resource.ReadTarget{Route: grpcGetRequest().Route, Provider: "p1", Authority: "authority", Type: "native::Pod", Representation: "native"}})
 	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		conn.Close()
-		s.Stop()
-		lis.Close()
-	})
-
-	return grpcplugin.NewClient(resourcepb.NewResourcePluginClient(conn))
+	require.Len(t, result.Records, 1)
+	assert.Equal(t, record, result.Records[0])
+	assert.Equal(t, "unknown", result.Count.Kind)
 }
-
-// ============================================================================
-// L3-01: List round-trip via gRPC
-// ============================================================================
-
-func TestL3_01_ListRoundTrip(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-
-	sdkProvider := resourcetest.NewTestProvider(t,
-		resourcetest.WithListFunc(func(_ context.Context, _ string, _ resource.ListInput) (*resource.ListResult, error) {
-			return &resource.ListResult{
-				Success: true,
-				Result:  []json.RawMessage{json.RawMessage(`{"name":"pod-1"}`)},
-			}, nil
-		}),
-	)
-
-	grpcProvider := setupGRPCProvider(t, sdkProvider)
-	registerMockPlugin(ctrl, "p1", grpcProvider)
-
-	result, err := ctrl.List(testInvocationContext(), "p1", "conn-1", "core::v1::Pod", resource.ListInput{})
-	require.NoError(t, err)
-	require.True(t, result.Success)
-	require.Len(t, result.Result, 1)
-	assert.JSONEq(t, `{"name":"pod-1"}`, string(result.Result[0]))
-}
-
-// ============================================================================
-// L3-02: Get round-trip via gRPC
-// ============================================================================
 
 func TestL3_02_GetRoundTrip(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-
-	sdkProvider := resourcetest.NewTestProvider(t,
-		resourcetest.WithGetFunc(func(_ context.Context, _ string, input resource.GetInput) (*resource.GetResult, error) {
-			return &resource.GetResult{
-				Success: true,
-				Result:  json.RawMessage(`{"name":"` + input.ID + `"}`),
-			}, nil
-		}),
-	)
-
-	grpcProvider := setupGRPCProvider(t, sdkProvider)
-	registerMockPlugin(ctrl, "p1", grpcProvider)
-
-	result, err := ctrl.Get(testInvocationContext(), "p1", "conn-1", "core::v1::Pod", resource.GetInput{ID: "my-pod"})
+	provider := grpcFiniteFixture()
+	record := canonicalTestRecord("p1", "authority", "native::Pod", "pod-1")
+	record.Body.Map["exact"] = resource.Value{Kind: "uint64", Uint: "18446744073709551615"}
+	provider.GetFunc = func(_ context.Context, request resource.GetRequest) (resource.Record, error) {
+		assert.Equal(t, grpcGetRequest(), request)
+		return record, nil
+	}
+	result, err := setupGRPCProvider(t, provider).Get(context.Background(), grpcGetRequest())
 	require.NoError(t, err)
-	require.True(t, result.Success)
-	assert.JSONEq(t, `{"name":"my-pod"}`, string(result.Result))
+	assert.Equal(t, record, result)
 }
 
-// ============================================================================
-// L3-03: Watch events flow through gRPC and reach engine emitter
-// ============================================================================
+type grpcRecordingSink struct{ events chan any }
+
+func (s *grpcRecordingSink) OnAdd(p resource.WatchAddPayload)         { s.events <- p }
+func (s *grpcRecordingSink) OnUpdate(p resource.WatchUpdatePayload)   { s.events <- p }
+func (s *grpcRecordingSink) OnDelete(p resource.WatchDeletePayload)   { s.events <- p }
+func (s *grpcRecordingSink) OnStateChange(p resource.WatchStateEvent) { s.events <- p }
 
 func TestL3_03_WatchEventsFlowThroughGRPC(t *testing.T) {
-	ctrl, emitter := newTestControllerWithEmitter(t)
-
-	// ready channel signals when ListenForEvents has delivered the sink.
-	ready := make(chan resource.WatchEventSink, 1)
-
-	sdkProvider := resourcetest.NewTestProvider(t,
-		resourcetest.WithListenForEventsFunc(func(ctx context.Context, sink resource.WatchEventSink, onReady func() error) error {
-			if onReady != nil {
-				if err := onReady(); err != nil {
-					return err
-				}
-			}
-			ready <- sink
-			<-ctx.Done()
-			return nil
-		}),
-	)
-
-	grpcProvider := setupGRPCProvider(t, sdkProvider)
-	registerMockPlugin(ctrl, "p1", grpcProvider)
-
-	// Subscribe so ADD events pass the gate.
-	ctrl.subs.Subscribe("p1", "conn-1", "core::v1::Pod")
-
-	// Start the watch listener (same as OnPluginStart does).
-	watchCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
-	watchReady := make(chan error, 1)
-	go ctrl.listenForWatchEvents(watchCtx, "p1", grpcProvider, sink, watchReady)
-
-	// Wait for the SDK provider to receive the sink.
-	select {
-	case sdkSink := <-ready:
-		// Send an ADD event from the "plugin side".
-		sdkSink.OnAdd(resource.WatchAddPayload{
-			Connection: "conn-1",
-			Key:        "core::v1::Pod",
-			ID:         "pod-1",
-			Data:       json.RawMessage(`{"name":"pod-1"}`),
-		})
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for ListenForEvents to start")
+	provider := grpcFiniteFixture()
+	native := make(chan resource.WatchEventSink, 1)
+	provider.ListenForEventsFunc = func(ctx context.Context, sink resource.WatchEventSink, ready func() error) error {
+		if err := ready(); err != nil {
+			return err
+		}
+		native <- sink
+		<-ctx.Done()
+		return nil
 	}
-
-	// Verify the event arrived at the engine emitter.
-	ev := emitter.WaitForEvent(t, "ADD", 5*time.Second)
-	assert.Equal(t, "p1/conn-1/core::v1::Pod/ADD", ev.Key)
-
-	payload, ok := ev.Data[0].(resource.WatchAddPayload)
-	require.True(t, ok)
-	assert.Equal(t, "p1", payload.PluginID)
-	assert.Equal(t, "conn-1", payload.Connection)
-	assert.Equal(t, "pod-1", payload.ID)
+	client := setupGRPCProvider(t, provider)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sink := &grpcRecordingSink{events: make(chan any, 4)}
+	ready := make(chan struct{})
+	done := make(chan error, 1)
+	go func() { done <- client.ListenForEvents(ctx, sink, func() error { close(ready); return nil }) }()
+	select {
+	case <-ready:
+	case <-time.After(5 * time.Second):
+		t.Fatal("watch readiness timed out")
+	}
+	var source resource.WatchEventSink
+	select {
+	case source = <-native:
+	case <-time.After(5 * time.Second):
+		t.Fatal("native sink timed out")
+	}
+	route := resource.AccessRoute{Connection: "conn-1"}
+	record := canonicalTestRecord("p1", "authority", "native::Pod", "pod-1")
+	payloads := []any{resource.WatchAddPayload{Route: route, Record: record, Guarantee: resource.BestEffortGuarantee}, resource.WatchUpdatePayload{Route: route, Record: record, Guarantee: resource.BestEffortGuarantee}, resource.WatchDeletePayload{Route: route, Reference: record.Reference, LastKnown: &record, Guarantee: resource.BestEffortGuarantee}, resource.WatchStateEvent{Route: route, Type: "native::Pod", State: resource.WatchStateSynced, Count: resource.Count{Kind: "unknown"}, Guarantee: resource.BestEffortGuarantee}}
+	source.OnAdd(payloads[0].(resource.WatchAddPayload))
+	source.OnUpdate(payloads[1].(resource.WatchUpdatePayload))
+	source.OnDelete(payloads[2].(resource.WatchDeletePayload))
+	source.OnStateChange(payloads[3].(resource.WatchStateEvent))
+	for _, want := range payloads {
+		select {
+		case got := <-sink.events:
+			assert.Equal(t, want, got)
+		case <-time.After(5 * time.Second):
+			t.Fatal("watch payload timed out")
+		}
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("watch teardown timed out")
+	}
 }
 
-// ============================================================================
-// L3-04: Subscription gating works across gRPC boundary
-// ============================================================================
-
-func TestL3_04_SubscriptionGatingViaGRPC(t *testing.T) {
-	ctrl, emitter := newTestControllerWithEmitter(t)
-
-	ready := make(chan resource.WatchEventSink, 1)
-	sdkProvider := resourcetest.NewTestProvider(t,
-		resourcetest.WithListenForEventsFunc(func(ctx context.Context, sink resource.WatchEventSink, onReady func() error) error {
-			if onReady != nil {
-				if err := onReady(); err != nil {
-					return err
-				}
-			}
-			ready <- sink
-			<-ctx.Done()
-			return nil
-		}),
-	)
-
-	grpcProvider := setupGRPCProvider(t, sdkProvider)
-	registerMockPlugin(ctrl, "p1", grpcProvider)
-
-	// Do NOT subscribe — events should be suppressed.
-
-	watchCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
-	watchReady := make(chan error, 1)
-	go ctrl.listenForWatchEvents(watchCtx, "p1", grpcProvider, sink, watchReady)
-
-	select {
-	case sdkSink := <-ready:
-		sdkSink.OnAdd(resource.WatchAddPayload{
-			Connection: "conn-1",
-			Key:        "core::v1::Pod",
-			ID:         "pod-1",
-		})
-		// Also send a STATE event — those always flow.
-		sdkSink.OnStateChange(resource.WatchStateEvent{
-			Connection:  "conn-1",
-			ResourceKey: "core::v1::Pod",
-			State:       resource.WatchStateSynced,
-		})
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for ListenForEvents to start")
+func TestL3_04_ConnectionLifecycleViaGRPC(t *testing.T) {
+	provider := grpcFiniteFixture()
+	provider.StartConnectionFunc = func(_ context.Context, id string) (types.ConnectionStatus, error) {
+		assert.Equal(t, "conn-1", id)
+		return types.ConnectionStatus{Status: types.ConnectionStatusConnected}, nil
 	}
-
-	// STATE should arrive.
-	emitter.WaitForEvent(t, "watch/STATE", 5*time.Second)
-
-	// ADD should NOT arrive (not subscribed).
-	adds := emitter.EventsWithKey("ADD")
-	assert.Empty(t, adds, "ADD should be suppressed without subscription")
+	result, err := setupGRPCProvider(t, provider).StartConnection(context.Background(), "conn-1")
+	require.NoError(t, err)
+	assert.Equal(t, types.ConnectionStatusConnected, result.Status)
 }
 
-// ============================================================================
-// L3-05: STATE events carry correct key format via gRPC
-// ============================================================================
-
-func TestL3_05_StateEventKeyFormatViaGRPC(t *testing.T) {
-	ctrl, emitter := newTestControllerWithEmitter(t)
-
-	ready := make(chan resource.WatchEventSink, 1)
-	sdkProvider := resourcetest.NewTestProvider(t,
-		resourcetest.WithListenForEventsFunc(func(ctx context.Context, sink resource.WatchEventSink, onReady func() error) error {
-			if onReady != nil {
-				if err := onReady(); err != nil {
-					return err
-				}
-			}
-			ready <- sink
-			<-ctx.Done()
-			return nil
-		}),
-	)
-
-	grpcProvider := setupGRPCProvider(t, sdkProvider)
-	registerMockPlugin(ctrl, "p1", grpcProvider)
-
-	watchCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
-	watchReady := make(chan error, 1)
-	go ctrl.listenForWatchEvents(watchCtx, "p1", grpcProvider, sink, watchReady)
-
-	select {
-	case sdkSink := <-ready:
-		sdkSink.OnStateChange(resource.WatchStateEvent{
-			Connection:    "my-cluster",
-			ResourceKey:   "core::v1::Pod",
-			State:         resource.WatchStateSyncing,
-			ResourceCount: 42,
-		})
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for ListenForEvents to start")
-	}
-
-	// Should emit 2 events: per-connection + global.
-	events := emitter.WaitForNEvents(t, "STATE", 2, 5*time.Second)
-
-	// Per-connection key: ${pluginID}/${connectionID}/watch/STATE
-	assert.Equal(t, "p1/my-cluster/watch/STATE", events[0].Key)
-	// Global key
-	assert.Equal(t, "watch/STATE", events[1].Key)
-
-	// Verify payload enrichment.
-	payload, ok := events[0].Data[0].(resource.WatchStateEvent)
-	require.True(t, ok)
-	assert.Equal(t, "p1", payload.PluginID)
-	assert.Equal(t, "my-cluster", payload.Connection)
-	assert.Equal(t, "core::v1::Pod", payload.ResourceKey)
-	assert.Equal(t, resource.WatchStateSyncing, payload.State)
-	assert.Equal(t, 42, payload.ResourceCount)
+func TestL3_05_CatalogOnlyProviderViaGRPC(t *testing.T) {
+	provider := &catalogOnlyProvider{CatalogFunc: func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+		return canonicalTestCatalog("p1", "native::Pod"), nil
+	}}
+	client := setupGRPCProvider(t, provider)
+	catalog, err := client.Catalog(context.Background(), resource.CatalogRequest{Route: grpcGetRequest().Route})
+	require.NoError(t, err)
+	assert.Equal(t, "p1", catalog.Provider)
+	_, err = client.Get(context.Background(), grpcGetRequest())
+	assert.Equal(t, "UNSUPPORTED", resource.ErrorCode(err))
 }
-
-// ============================================================================
-// L3-06: Error from SDK provider propagates through gRPC
-// ============================================================================
 
 func TestL3_06_ErrorPropagationViaGRPC(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-
-	sdkProvider := resourcetest.NewTestProvider(t,
-		resourcetest.WithListFunc(func(_ context.Context, _ string, _ resource.ListInput) (*resource.ListResult, error) {
-			return nil, errors.New("connection refused")
-		}),
-	)
-
-	grpcProvider := setupGRPCProvider(t, sdkProvider)
-	registerMockPlugin(ctrl, "p1", grpcProvider)
-
-	_, err := ctrl.List(testInvocationContext(), "p1", "conn-1", "core::v1::Pod", resource.ListInput{})
-	require.Error(t, err)
-	assert.Equal(t, "PROVIDER_ERROR", requireAppError(t, err).Code)
+	for _, test := range []struct {
+		name string
+		err  error
+		code string
+	}{{"typed", resource.NewError("FORBIDDEN", "secret"), "FORBIDDEN"}, {"untyped", errors.New("secret"), "INTERNAL"}} {
+		t.Run(test.name, func(t *testing.T) {
+			provider := grpcFiniteFixture()
+			provider.GetFunc = func(context.Context, resource.GetRequest) (resource.Record, error) {
+				return resource.Record{}, test.err
+			}
+			_, err := setupGRPCProvider(t, provider).Get(context.Background(), grpcGetRequest())
+			require.Error(t, err)
+			assert.Equal(t, test.code, resource.ErrorCode(err))
+			assert.NotContains(t, err.Error(), "secret")
+		})
+	}
 }
 
-// ============================================================================
-// L3-07: Multiple event types flow concurrently via gRPC
-// ============================================================================
-
-func TestL3_07_MixedEventsViaGRPC(t *testing.T) {
-	ctrl, emitter := newTestControllerWithEmitter(t)
-
-	ready := make(chan resource.WatchEventSink, 1)
-	sdkProvider := resourcetest.NewTestProvider(t,
-		resourcetest.WithListenForEventsFunc(func(ctx context.Context, sink resource.WatchEventSink, onReady func() error) error {
-			if onReady != nil {
-				if err := onReady(); err != nil {
-					return err
-				}
-			}
-			ready <- sink
-			<-ctx.Done()
-			return nil
-		}),
-	)
-
-	grpcProvider := setupGRPCProvider(t, sdkProvider)
-	registerMockPlugin(ctrl, "p1", grpcProvider)
-
-	// Subscribe to pods.
-	ctrl.subs.Subscribe("p1", "conn-1", "core::v1::Pod")
-
-	watchCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
-	watchReady := make(chan error, 1)
-	go ctrl.listenForWatchEvents(watchCtx, "p1", grpcProvider, sink, watchReady)
-
-	select {
-	case sdkSink := <-ready:
-		// Send ADD, UPDATE, DELETE in sequence.
-		sdkSink.OnAdd(resource.WatchAddPayload{
-			Connection: "conn-1", Key: "core::v1::Pod", ID: "pod-1",
-			Data: json.RawMessage(`{"name":"pod-1"}`),
-		})
-		sdkSink.OnUpdate(resource.WatchUpdatePayload{
-			Connection: "conn-1", Key: "core::v1::Pod", ID: "pod-1",
-			Data: json.RawMessage(`{"name":"pod-1","status":"Running"}`),
-		})
-		sdkSink.OnDelete(resource.WatchDeletePayload{
-			Connection: "conn-1", Key: "core::v1::Pod", ID: "pod-1",
-			Data: json.RawMessage(`{"name":"pod-1"}`),
-		})
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for ListenForEvents to start")
+func TestL3_07_InvalidRequestDoesNotDispatch(t *testing.T) {
+	provider := grpcFiniteFixture()
+	called := false
+	provider.GetFunc = func(context.Context, resource.GetRequest) (resource.Record, error) {
+		called = true
+		return resource.Record{}, nil
 	}
-
-	// Wait for all 3 events.
-	emitter.WaitForEvent(t, "ADD", 5*time.Second)
-	emitter.WaitForEvent(t, "UPDATE", 5*time.Second)
-	emitter.WaitForEvent(t, "DELETE", 5*time.Second)
-
-	adds := emitter.EventsWithKey("ADD")
-	updates := emitter.EventsWithKey("UPDATE")
-	deletes := emitter.EventsWithKey("DELETE")
-
-	require.Len(t, adds, 1)
-	require.Len(t, updates, 1)
-	require.Len(t, deletes, 1)
-
-	assert.Equal(t, "p1/conn-1/core::v1::Pod/ADD", adds[0].Key)
-	assert.Equal(t, "p1/conn-1/core::v1::Pod/UPDATE", updates[0].Key)
-	assert.Equal(t, "p1/conn-1/core::v1::Pod/DELETE", deletes[0].Key)
+	_, err := setupGRPCProvider(t, provider).Get(context.Background(), resource.GetRequest{})
+	assert.Equal(t, "INVALID_REQUEST", resource.ErrorCode(err))
+	assert.False(t, called)
 }

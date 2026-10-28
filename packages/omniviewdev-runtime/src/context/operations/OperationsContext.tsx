@@ -1,11 +1,11 @@
 import React from 'react';
 
-export type Operation = {
+export type BackgroundOperation = {
   id: string;
   label: string;
   resourceKey: string;
   resourceName: string;
-  namespace: string;
+  namespace?: string;
   connectionID: string;
   status: 'running' | 'completed' | 'error' | 'cancelled';
   progress?: { ready: number; desired: number };
@@ -15,9 +15,9 @@ export type Operation = {
 };
 
 export type OperationsContextType = {
-  operations: Operation[];
-  addOperation: (op: Operation) => void;
-  updateOperation: (id: string, updates: Partial<Operation>) => void;
+  operations: BackgroundOperation[];
+  addOperation: (op: BackgroundOperation) => void;
+  updateOperation: (id: string, updates: Partial<BackgroundOperation>) => void;
   removeOperation: (id: string) => void;
 };
 
@@ -26,13 +26,13 @@ export const OperationsContext = React.createContext<OperationsContextType | und
 const AUTO_REMOVE_DELAY = 30_000;
 
 export const OperationsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [operations, setOperations] = React.useState<Operation[]>([]);
+  const [operations, setOperations] = React.useState<BackgroundOperation[]>([]);
 
-  const addOperation = React.useCallback((op: Operation) => {
+  const addOperation = React.useCallback((op: BackgroundOperation) => {
     setOperations((prev) => [op, ...prev]);
   }, []);
 
-  const updateOperation = React.useCallback((id: string, updates: Partial<Operation>) => {
+  const updateOperation = React.useCallback((id: string, updates: Partial<BackgroundOperation>) => {
     setOperations((prev) =>
       prev.map((op) => (op.id === id ? { ...op, ...updates } : op)),
     );

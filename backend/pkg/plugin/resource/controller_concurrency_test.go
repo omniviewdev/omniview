@@ -2,7 +2,6 @@ package resource
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math/rand"
 	"sync"
@@ -11,25 +10,31 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 )
 
 // ============================================================================
-// Concurrent CRUD (20 goroutines)
+// Concurrent finite operations (20 goroutines)
 // ============================================================================
 
-func TestConcurrent_CRUD_20Goroutines(t *testing.T) {
+func TestConcurrent_FiniteOperations_20Goroutines(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
+	resourceTypes := make([]string, 20)
+	for i := range resourceTypes {
+		resourceTypes[i] = fmt.Sprintf("core::v1::Pod%d", i)
+	}
 	mock := &mockProvider{
-		GetFunc: func(_ context.Context, key string, _ resource.GetInput) (*resource.GetResult, error) {
-			return &resource.GetResult{Result: json.RawMessage(`{"key":"` + key + `"}`), Success: true}, nil
+		CatalogFunc: lifecycleTestCatalog(resourceTypes...),
+		GetFunc: func(_ context.Context, request resource.GetRequest) (resource.Record, error) {
+			record := canonicalTestRecord(request.Reference.Address.Provider, request.Reference.Address.Authority, request.Reference.Address.Type, request.Reference.Address.ID)
+			return record, nil
 		},
-		ListFunc: func(_ context.Context, _ string, _ resource.ListInput) (*resource.ListResult, error) {
-			return &resource.ListResult{}, nil
+		EnumerateFunc: func(_ context.Context, request resource.EnumerateRequest) (resource.SourcePage, error) {
+			return resource.SourcePage{Records: []resource.Record{}, Count: resource.Count{Kind: "unknown"}, Coverage: resource.Coverage{Kind: "complete"}, Consistency: "bestEffort"}, nil
 		},
-		CreateFunc: func(_ context.Context, _ string, _ resource.CreateInput) (*resource.CreateResult, error) {
-			return &resource.CreateResult{}, nil
+		MutateFunc: func(_ context.Context, request resource.MutationRequest) (resource.Record, error) {
+			return canonicalTestRecord(request.Reference.Address.Provider, request.Reference.Address.Authority, request.Reference.Address.Type, request.Reference.Address.ID), nil
 		},
 	}
 	registerMockPlugin(ctrl, "p1", mock)
@@ -41,14 +46,16 @@ func TestConcurrent_CRUD_20Goroutines(t *testing.T) {
 			defer wg.Done()
 			key := fmt.Sprintf("core::v1::Pod%d", idx)
 
-			result, err := ctrl.Get(testInvocationContext(), "p1", "conn-1", key, resource.GetInput{})
+			request := admittedGetRequest(t, ctrl, "p1", "conn-1", key, "opaque")
+			result, err := ctrl.Get(testInvocationContext(), "p1", request)
 			assert.NoError(t, err)
-			assert.NotNil(t, result)
+			assert.Equal(t, request.Request.Reference, result.Record.Reference)
 
-			_, err = ctrl.List(testInvocationContext(), "p1", "conn-1", key, resource.ListInput{})
+			target := admittedReadTarget(t, ctrl, "p1", "conn-1", key)
+			_, err = ctrl.Enumerate(testInvocationContext(), "p1", HostEnumerateRequest{TargetID: target.TargetID, Request: resource.EnumerateRequest{Target: target.Target, PageSize: 20}})
 			assert.NoError(t, err)
 
-			_, err = ctrl.Create(testInvocationContext(), "p1", "conn-1", key, resource.CreateInput{})
+			_, err = ctrl.Mutate(testInvocationContext(), "p1", resource.MutationRequest{Route: request.Request.Route, Reference: request.Request.Reference, Operation: "create", Input: resource.Value{Kind: "null"}})
 			assert.NoError(t, err)
 		}(i)
 	}
@@ -61,7 +68,11 @@ func TestConcurrent_CRUD_20Goroutines(t *testing.T) {
 
 func TestConcurrent_SubscribeUnsubscribe_100Cycles(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	registerMockPlugin(ctrl, "p1", &mockProvider{})
+	resourceTypes := make([]string, 10)
+	for i := range resourceTypes {
+		resourceTypes[i] = fmt.Sprintf("type-%d", i)
+	}
+	registerMockPlugin(ctrl, "p1", &mockProvider{CatalogFunc: lifecycleTestCatalog(resourceTypes...)})
 
 	var wg sync.WaitGroup
 	for g := 0; g < 10; g++ {
@@ -69,9 +80,10 @@ func TestConcurrent_SubscribeUnsubscribe_100Cycles(t *testing.T) {
 		go func(gID int) {
 			defer wg.Done()
 			key := fmt.Sprintf("type-%d", gID)
+			subscription := admittedSubscription(t, ctrl, "p1", "conn-1", key)
 			for i := 0; i < 100; i++ {
-				_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", key)
-				_ = ctrl.UnsubscribeResource(testInvocationContext(), "p1", "conn-1", key)
+				assert.NoError(t, ctrl.SubscribeResource(testInvocationContext(), "p1", subscription))
+				assert.NoError(t, ctrl.UnsubscribeResource(testInvocationContext(), "p1", subscription))
 			}
 		}(g)
 	}
@@ -127,7 +139,7 @@ func TestConcurrent_PluginStartStop(t *testing.T) {
 
 func TestConcurrent_ConnectionOps(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	registerMockPlugin(ctrl, "p1", &mockProvider{})
+	registerMockPlugin(ctrl, "p1", connectionOverlayTestProvider())
 
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
@@ -139,19 +151,22 @@ func TestConcurrent_ConnectionOps(t *testing.T) {
 				Name: fmt.Sprintf("Connection %d", idx),
 			}
 
-			// Add
-			err := ctrl.AddConnection(testInvocationContext(), "p1", conn)
+			// Create explicit desired configuration.
+			saved, err := ctrl.SaveConnectionProfile(testInvocationContext(), "p1", conn)
 			assert.NoError(t, err)
+			assert.True(t, saved.Applied)
 
-			// Update
+			// Edit the same desired profile.
 			conn.Name = fmt.Sprintf("Updated Connection %d", idx)
-			_, _ = ctrl.UpdateConnection(testInvocationContext(), "p1", conn)
+			updated, err := ctrl.SaveConnectionProfile(testInvocationContext(), "p1", conn)
+			assert.NoError(t, err)
+			assert.True(t, updated.Applied)
 
 			// List
 			_, _ = ctrl.ListConnections(testInvocationContext(), "p1")
 
 			// Remove
-			_ = ctrl.RemoveConnection(testInvocationContext(), "p1", conn.ID)
+			assert.NoError(t, ctrl.RemoveConnection(testInvocationContext(), "p1", conn.ID))
 		}(i)
 	}
 	wg.Wait()
@@ -163,10 +178,11 @@ func TestConcurrent_ConnectionOps(t *testing.T) {
 
 func TestConcurrent_SinkEmission(t *testing.T) {
 	ctrl, emitter := newTestControllerWithEmitter(t)
-	registerMockPlugin(ctrl, "p1", &mockProvider{})
-	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
+	registerMockPlugin(ctrl, "p1", &mockProvider{CatalogFunc: lifecycleTestCatalog("pods")})
+	target := admittedReadTarget(t, ctrl, "p1", "conn-1", "pods").Target
+	require.NoError(t, ctrl.SubscribeResource(testInvocationContext(), "p1", admittedSubscription(t, ctrl, "p1", "conn-1", "pods")))
 
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
+	sink := &engineWatchSink{ctx: testInvocationContext(), generationID: ctrl.plugins["p1"].generationID, pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {
@@ -174,9 +190,9 @@ func TestConcurrent_SinkEmission(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			sink.OnAdd(resource.WatchAddPayload{
-				Connection: "conn-1",
-				Key:        "pods",
-				ID:         fmt.Sprintf("pod-%d", idx),
+				Route:     target.Route,
+				Record:    canonicalTestRecord(target.Provider, target.Authority, target.Type, fmt.Sprintf("pod-%d", idx)),
+				Guarantee: resource.BestEffortGuarantee,
 			})
 		}(i)
 	}
@@ -276,11 +292,7 @@ func TestConcurrent_HasPlugin_DuringStartStop(t *testing.T) {
 
 func TestConcurrent_GetProvider_DuringStop(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	registerMockPlugin(ctrl, "p1", &mockProvider{
-		GetFunc: func(_ context.Context, _ string, _ resource.GetInput) (*resource.GetResult, error) {
-			return &resource.GetResult{}, nil
-		},
-	})
+	registerMockPlugin(ctrl, "p1", &mockProvider{CatalogFunc: lifecycleTestCatalog("pods")})
 
 	var wg sync.WaitGroup
 
@@ -292,7 +304,7 @@ func TestConcurrent_GetProvider_DuringStop(t *testing.T) {
 			for j := 0; j < 50; j++ {
 				provider, err := ctrl.getProvider("p1")
 				if err == nil && provider != nil {
-					_, _ = provider.Get(context.Background(), "pods", resource.GetInput{})
+					_, _ = provider.Catalog(context.Background(), resource.CatalogRequest{Route: resource.AccessRoute{Connection: "conn-1"}})
 				}
 			}
 		}()
@@ -320,19 +332,18 @@ func TestConcurrent_GetProvider_DuringStop(t *testing.T) {
 func TestConcurrent_WatchOps(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		StartConnectionWatchFunc: func(_ context.Context, _ string) error {
+		CatalogFunc:              lifecycleTestCatalog("pods"),
+		StartConnectionWatchFunc: func(_ context.Context, _ []resource.ReadTarget) error { return nil },
+		StopConnectionWatchFunc: func(_ context.Context, _ resource.AccessRoute) error {
 			return nil
 		},
-		StopConnectionWatchFunc: func(_ context.Context, _ string) error {
+		EnsureResourceWatchFunc: func(_ context.Context, _ resource.ReadTarget) error {
 			return nil
 		},
-		EnsureResourceWatchFunc: func(_ context.Context, _, _ string) error {
+		RestartResourceWatchFunc: func(_ context.Context, _ resource.ReadTarget) error {
 			return nil
 		},
-		RestartResourceWatchFunc: func(_ context.Context, _, _ string) error {
-			return nil
-		},
-		IsResourceWatchRunningFunc: func(_ context.Context, _, _ string) (bool, error) {
+		IsResourceWatchRunningFunc: func(_ context.Context, _ resource.AccessRoute, _ string) (bool, error) {
 			return true, nil
 		},
 	}
@@ -340,13 +351,23 @@ func TestConcurrent_WatchOps(t *testing.T) {
 
 	var wg sync.WaitGroup
 	ops := []func(){
-		func() { _ = ctrl.StartConnectionWatch(testInvocationContext(), "p1", "conn-1") },
-		func() { _ = ctrl.StopConnectionWatch(testInvocationContext(), "p1", "conn-1") },
-		func() { _ = ctrl.EnsureResourceWatch(testInvocationContext(), "p1", "conn-1", "pods") },
-		func() { _ = ctrl.StopResourceWatch(testInvocationContext(), "p1", "conn-1", "pods") },
-		func() { _ = ctrl.RestartResourceWatch(testInvocationContext(), "p1", "conn-1", "pods") },
 		func() {
-			_, _ = ctrl.IsResourceWatchRunning(testInvocationContext(), "p1", "conn-1", "pods")
+			_ = ctrl.StartConnectionWatch(testInvocationContext(), "p1", []resource.ReadTarget{admittedReadTarget(t, ctrl, "p1", "conn-1", "pods").Target})
+		},
+		func() {
+			_ = ctrl.StopConnectionWatch(testInvocationContext(), "p1", resource.AccessRoute{Connection: "conn-1"})
+		},
+		func() {
+			_ = ctrl.EnsureResourceWatch(testInvocationContext(), "p1", admittedReadTarget(t, ctrl, "p1", "conn-1", "pods").Target)
+		},
+		func() {
+			_ = ctrl.StopResourceWatch(testInvocationContext(), "p1", resource.AccessRoute{Connection: "conn-1"}, "pods")
+		},
+		func() {
+			_ = ctrl.RestartResourceWatch(testInvocationContext(), "p1", admittedReadTarget(t, ctrl, "p1", "conn-1", "pods").Target)
+		},
+		func() {
+			_, _ = ctrl.IsResourceWatchRunning(testInvocationContext(), "p1", resource.AccessRoute{Connection: "conn-1"}, "pods")
 		},
 	}
 
@@ -370,26 +391,15 @@ func TestConcurrent_WatchOps(t *testing.T) {
 func TestConcurrent_MixedOps_StressTest(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		GetFunc: func(_ context.Context, _ string, _ resource.GetInput) (*resource.GetResult, error) {
-			return &resource.GetResult{}, nil
+		CatalogFunc: lifecycleTestCatalog("pods", "type-0", "type-1", "type-2"),
+		GetFunc: func(_ context.Context, request resource.GetRequest) (resource.Record, error) {
+			return canonicalTestRecord(request.Reference.Address.Provider, request.Reference.Address.Authority, request.Reference.Address.Type, request.Reference.Address.ID), nil
 		},
-		ListFunc: func(_ context.Context, _ string, _ resource.ListInput) (*resource.ListResult, error) {
-			return &resource.ListResult{}, nil
+		EnumerateFunc: func(_ context.Context, _ resource.EnumerateRequest) (resource.SourcePage, error) {
+			return resource.SourcePage{Records: []resource.Record{}, Count: resource.Count{Kind: "unknown"}, Coverage: resource.Coverage{Kind: "complete"}, Consistency: "bestEffort"}, nil
 		},
-		StartConnectionWatchFunc: func(_ context.Context, _ string) error {
-			return nil
-		},
-		StopConnectionWatchFunc: func(_ context.Context, _ string) error {
-			return nil
-		},
-		EnsureResourceWatchFunc: func(_ context.Context, _, _ string) error {
-			return nil
-		},
-		GetResourceGroupsFunc: func(_ context.Context, _ string) (map[string]resource.ResourceGroup, error) {
-			return map[string]resource.ResourceGroup{"core": {ID: "core"}}, nil
-		},
-		HasResourceTypeFunc: func(_ context.Context, _ string) (bool, error) {
-			return true, nil
+		GetResourceGroupsFunc: func(_ context.Context, _ resource.AccessRoute) ([]resource.ResourceGroup, error) {
+			return []resource.ResourceGroup{{ID: "core"}}, nil
 		},
 	}
 	registerMockPlugin(ctrl, "p1", mock)
@@ -404,28 +414,29 @@ func TestConcurrent_MixedOps_StressTest(t *testing.T) {
 
 			switch idx % 10 {
 			case 0:
-				_, _ = ctrl.Get(testInvocationContext(), "p1", connID, key, resource.GetInput{})
+				_, _ = ctrl.Get(testInvocationContext(), "p1", admittedGetRequest(t, ctrl, "p1", connID, key, "opaque"))
 			case 1:
-				_, _ = ctrl.List(testInvocationContext(), "p1", connID, key, resource.ListInput{})
+				target := admittedReadTarget(t, ctrl, "p1", connID, key)
+				_, _ = ctrl.Enumerate(testInvocationContext(), "p1", HostEnumerateRequest{TargetID: target.TargetID, Request: resource.EnumerateRequest{Target: target.Target, PageSize: 20}})
 			case 2:
-				_ = ctrl.SubscribeResource(testInvocationContext(), "p1", connID, key)
+				_ = ctrl.SubscribeResource(testInvocationContext(), "p1", admittedSubscription(t, ctrl, "p1", connID, key))
 			case 3:
-				_ = ctrl.UnsubscribeResource(testInvocationContext(), "p1", connID, key)
+				_ = ctrl.UnsubscribeResource(testInvocationContext(), "p1", admittedSubscription(t, ctrl, "p1", connID, key))
 			case 4:
-				_ = ctrl.AddConnection(testInvocationContext(), "p1", types.Connection{
+				_, _ = ctrl.SaveConnectionProfile(testInvocationContext(), "p1", types.Connection{
 					ID:   fmt.Sprintf("new-conn-%d", idx),
 					Name: fmt.Sprintf("New Connection %d", idx),
 				})
 			case 5:
 				_, _ = ctrl.ListConnections(testInvocationContext(), "p1")
 			case 6:
-				_ = ctrl.StartConnectionWatch(testInvocationContext(), "p1", connID)
+				_ = ctrl.StartConnectionWatch(testInvocationContext(), "p1", []resource.ReadTarget{admittedReadTarget(t, ctrl, "p1", connID, "pods").Target})
 			case 7:
-				_ = ctrl.EnsureResourceWatch(testInvocationContext(), "p1", connID, key)
+				_ = ctrl.EnsureResourceWatch(testInvocationContext(), "p1", admittedReadTarget(t, ctrl, "p1", connID, key).Target)
 			case 8:
-				_, _ = ctrl.GetResourceGroups(testInvocationContext(), "p1", connID)
+				_, _ = ctrl.GetResourceGroups(testInvocationContext(), "p1", resource.AccessRoute{Connection: connID})
 			case 9:
-				_, _ = ctrl.HasResourceType(testInvocationContext(), "p1", key)
+				_, _ = ctrl.Catalog(testInvocationContext(), "p1", resource.CatalogRequest{Route: resource.AccessRoute{Connection: connID}})
 			}
 		}(i)
 	}

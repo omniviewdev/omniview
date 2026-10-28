@@ -284,7 +284,7 @@ func main() {
 	resourceBoundary := invocation.NewBoundary(nil)
 	resourceUIRealm := invocation.NewScope(invocation.TrustedUI)
 	resourceController := resource.NewController(log, settingsProvider, stateDir.PluginStore, resourceBoundary)
-	graphService := resource.NewGraphService(resourceController.Graph(), resourceUIRealm, resourceBoundary)
+	graphService := resource.NewGraphService(resourceController.Graph(), resourceUIRealm, resourceBoundary, resourceController.ValidateReference)
 
 	settingsController := settings.NewController(log, settingsProvider, settingsStore)
 

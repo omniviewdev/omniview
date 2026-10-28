@@ -3,7 +3,7 @@ import React from 'react';
 import { Button, Dialog, IconButton, Progress, Spinner, Text } from '@omniviewdev/base-ui';
 
 import { LuCircleCheck, LuCircleAlert, LuCircleSlash, LuShieldAlert, LuX } from 'react-icons/lu';
-import { WatchState, parseResourceKey, formatGroup } from '@omniviewdev/runtime';
+import { WatchState, type Count } from '@omniviewdev/runtime';
 
 import type { ResourceStateItem } from './types';
 import styles from './ConnectionStateDialog.module.css';
@@ -19,7 +19,7 @@ export type ConnectionStateDialogProps = {
   /** Per-resource watch states from useWatchState */
   resources: Record<string, WatchState>;
   /** Per-resource cached object counts */
-  resourceCounts: Record<string, number>;
+  resourceCounts: Record<string, Count>;
   /** Called when user clicks Retry on an errored resource */
   onRetryResource: (resourceKey: string) => void;
 };
@@ -122,33 +122,14 @@ export default function ConnectionStateDialog({
     return { watchedTotal: watched, watchedDone: done, skippedCount: skipped };
   }, [resources]);
 
-  // Group resources by API group
-  const grouped = React.useMemo(() => {
-    const groups: Record<string, ResourceStateItem[]> = {};
-
-    for (const [key, state] of Object.entries(resources)) {
-      const { group, kind } = parseResourceKey(key);
-      const label = formatGroup(group);
-      if (!groups[label]) {
-        groups[label] = [];
-      }
-
-      groups[label].push({ key, kind, state, count: resourceCounts[key] ?? 0 });
-    }
-
-    // Sort groups alphabetically, but put "Core" first
-    return Object.entries(groups).sort(([a], [b]) => {
-      if (a === 'Core') {
-        return -1;
-      }
-
-      if (b === 'Core') {
-        return 1;
-      }
-
-      return a.localeCompare(b);
-    });
-  }, [resources, resourceCounts]);
+  const grouped = React.useMemo<Array<[string, ResourceStateItem[]]>>(() => [
+    ['Resources', Object.entries(resources).map(([key, state]) => ({
+      key,
+      kind: key,
+      state,
+      count: resourceCounts[key],
+    }))],
+  ], [resources, resourceCounts]);
 
   // Progress based on watched resources only (SKIPPED excluded from denominator)
   const watchedAllDone = watchedTotal > 0 && watchedDone === watchedTotal;
@@ -222,9 +203,9 @@ export default function ConnectionStateDialog({
                     Stopped
                   </Text>
                 )}
-                {state === WatchState.WatchStateSynced && count > 0 && (
+                {state === WatchState.WatchStateSynced && count && (
                   <Text size="xs" tone="subtle" mono>
-                    {count}
+                    {count.value === undefined ? count.kind : `${count.value} (${count.kind})`}
                   </Text>
                 )}
                 {(state === WatchState.WatchStateError || state === WatchState.WatchStateFailed) && (

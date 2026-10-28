@@ -2,7 +2,9 @@ import React from 'react';
 
 // project imports
 import { usePluginContext } from '@/contexts/PluginContext';
-import { useConnections } from '@omniviewdev/runtime';
+import { parseAppError, useConnections, useConnectionProfiles } from '@omniviewdev/runtime';
+import { Stack, Text } from '@omniviewdev/base-ui';
+import { Link } from 'react-router-dom';
 import ConnectionTable from './ConnectionTable';
 import ConnectionListHeader from './ConnectionListHeader';
 import PluginBackdrop from './PluginBackdrop';
@@ -19,6 +21,7 @@ export default function PluginHome(): React.ReactElement {
 
   const plugin = usePluginContext();
   const { connections } = useConnections({ plugin: plugin.id });
+  const { profiles } = useConnectionProfiles({ pluginID: plugin.id });
 
   return (
     <div className={styles.Root}>
@@ -33,6 +36,18 @@ export default function PluginHome(): React.ReactElement {
         {/* List of connections */}
         {Boolean(connections.data?.length) && (
           <ConnectionTable connections={connections.data ?? []} />
+        )}
+        {profiles.isError && <Text tone="danger">{parseAppError(profiles.error).detail}</Text>}
+        {profiles.data?.some((profile) => !profile.active) && (
+          <Stack direction="column" spacing={2}>
+            <Text weight="semibold">Inactive connection profiles</Text>
+            <Text>Disabled connections and saved discovery entries are not active source connections.</Text>
+            {profiles.data.filter((profile) => !profile.active).map((profile) => (
+              <Link key={profile.id} to={`/plugin/${encodeURIComponent(plugin.id)}/connection/${encodeURIComponent(profile.id)}/edit`}>
+                {profile.connection?.name ?? profile.id} — {profile.source === 'review' ? 'Review before import' : profile.source}
+              </Link>
+            ))}
+          </Stack>
         )}
       </div>
     </div>

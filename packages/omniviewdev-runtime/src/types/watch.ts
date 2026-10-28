@@ -1,36 +1,35 @@
-/**
- * Re-export Wails-generated enums from Go source of truth.
- * These are generated from plugin-sdk/pkg/v1/resource via Wails v3 bindings.
- */
-import { WatchState as GeneratedWatchState } from '../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/resource/models';
-import { withLegacyNames } from '../compat/legacyEnum';
+// Handwritten projection of plugin-sdk/pkg/resource/v2/updates.go.
+import type { AccessRoute, Count, QueryScope, Record as ResourceRecord, ResourceReference } from '../resource/v2/domain';
+import type { ResourceOperationError } from '../resource/v2/ancillary';
 
-/** Carries both the v3 member names and the ones plugins were built against. */
-export const WatchState = withLegacyNames(GeneratedWatchState, 'WatchState');
-export type WatchState = GeneratedWatchState;
-
-/**
- * WatchStateEvent is emitted when a resource's watch state changes.
- * Matches Go type: plugin-sdk/pkg/v1/resource.WatchStateEvent
- */
+export enum WatchState {
+  WatchStateIdle = 0,
+  WatchStateSyncing = 1,
+  WatchStateSynced = 2,
+  WatchStateError = 3,
+  WatchStateStopped = 4,
+  WatchStateFailed = 5,
+  WatchStateForbidden = 6,
+  WatchStateSkipped = 7,
+}
+export enum SyncPolicy { SyncOnConnect = 0, SyncOnFirstQuery = 1, SyncNever = 2 }
 export interface WatchStateEvent {
-  pluginId: string;
-  connection: string;
-  resourceKey: string;
+  route: AccessRoute;
+  type: string;
   state: WatchState;
-  resourceCount: number;
+  count: Count;
+  error?: ResourceOperationError;
   message?: string;
-  errorCode?: string;
+  guarantee: 'bestEffort';
 }
-
-/**
- * WatchConnectionSummary provides an aggregate view of all watch states for a connection.
- */
 export interface WatchConnectionSummary {
-  connection: string;
+  route: AccessRoute;
   resources: Record<string, WatchState>;
-  resourceCounts: Record<string, number>;
-  totalResources: number;
-  syncedCount: number;
-  errorCount: number;
+  resourceCounts: Record<string, Count>;
+  scope: QueryScope;
+  guarantee: 'bestEffort';
 }
+export interface ResourceMetadata { labels?: Record<string, string>; createdAt?: string }
+export interface WatchAddPayload { route: AccessRoute; record: ResourceRecord; metadata: ResourceMetadata; guarantee: 'bestEffort' }
+export interface WatchUpdatePayload { route: AccessRoute; record: ResourceRecord; metadata: ResourceMetadata; guarantee: 'bestEffort' }
+export interface WatchDeletePayload { route: AccessRoute; reference: ResourceReference; lastKnown?: ResourceRecord; guarantee: 'bestEffort' }

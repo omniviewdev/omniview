@@ -1,14 +1,13 @@
 import { monaco, monacoYaml } from '@/providers/monaco/bootstrap';
+import type { EditorSchema, SchemaDocument } from '@omniviewdev/runtime';
 
 /**
  * EditorSchemaEntry represents a schema registered with the registry.
  */
 export type EditorSchemaEntry = {
-  resourceKey: string;
+  type: string;
   fileMatch: string;
   uri: string;
-  /** URL to fetch schema from (mutually exclusive with schema) */
-  url?: string;
   /** Inline JSON schema content */
   schema?: Record<string, unknown>;
   language: 'yaml' | 'json';
@@ -18,8 +17,8 @@ export type EditorSchemaEntry = {
  * SchemaRegistry collects editor schemas from all plugins/connections
  * and pushes updates to Monaco (YAML via monaco-yaml, JSON via jsonDefaults).
  *
- * Schemas are keyed by `pluginID:connectionID:resourceKey` to allow
- * add/remove/replace per plugin+connection pair.
+ * Schemas are registered per plugin and access route. Shared schema documents
+ * are registered once per route; each resource entry points at its declared root.
  */
 class SchemaRegistry {
   private readonly schemas = new Map<string, EditorSchemaEntry[]>();
@@ -33,49 +32,56 @@ class SchemaRegistry {
   register(
     pluginID: string,
     connectionID: string,
-    schemas: Array<{
-      resourceKey: string;
-      fileMatch: string;
-      uri: string;
-      url?: string;
-      content?: number[] | string;
-      language: string;
-    }>,
+    schemas: readonly EditorSchema[],
+    documents: readonly SchemaDocument[] = [],
   ): void {
     const key = `${pluginID}:${connectionID}`;
 
-    const entries: EditorSchemaEntry[] = schemas.map((s) => {
-      const entry: EditorSchemaEntry = {
-        resourceKey: s.resourceKey,
-        fileMatch: s.fileMatch,
-        uri: s.uri,
-        language: (s.language as 'yaml' | 'json') || 'yaml',
-      };
-
-      if (s.url) {
-        entry.url = s.url;
-      } else if (s.content && s.content.length > 0) {
-        // Go's json.Marshal encodes []byte as base64 string; Wails may
-        // pass it through as-is (string) or as number[].
-        try {
-          let text: string;
-          if (typeof s.content === 'string') {
-            // base64-encoded JSON from Go
-            text = atob(s.content);
-          } else {
-            // number[] (raw bytes)
-            text = new TextDecoder().decode(new Uint8Array(s.content));
+    const entries: EditorSchemaEntry[] = [];
+    const registeredDocuments = new Map<string, string>();
+    for (const schema of schemas) {
+      if (schema.language !== 'yaml' && schema.language !== 'json') {
+        continue;
+      }
+      let document = schema.binding.document;
+      let documentURI = `${schema.uri}/document`;
+      if (schema.binding.documentRef) {
+        const reference = schema.binding.documentRef;
+        const documentKey = JSON.stringify([reference.id, reference.revision, schema.language]);
+        const existingURI = registeredDocuments.get(documentKey);
+        documentURI = existingURI ?? `omniview-schema:///${encodeURIComponent(pluginID)}/${encodeURIComponent(connectionID)}/${encodeURIComponent(reference.id)}/${encodeURIComponent(reference.revision)}`;
+        if (!existingURI) {
+          document = documents.find((entry) => entry.reference.id === reference.id && entry.reference.revision === reference.revision)?.document;
+          if (document === undefined) {
+            throw new Error(`Editor schema document ${reference.id} is unavailable.`);
           }
-
-          entry.schema = JSON.parse(text);
-        } catch {
-          // skip invalid schema content
-          return null;
+          registeredDocuments.set(documentKey, documentURI);
+        } else {
+          document = undefined;
         }
       }
-
-      return entry;
-    }).filter((e): e is EditorSchemaEntry => e !== null);
+      if (document !== undefined) {
+        entries.push({
+          type: schema.type,
+          fileMatch: '',
+          uri: documentURI,
+          language: schema.language,
+          schema: document as Record<string, unknown>,
+        });
+      } else if (!schema.binding.documentRef || !registeredDocuments.has(JSON.stringify([
+        schema.binding.documentRef.id, schema.binding.documentRef.revision, schema.language,
+      ]))) {
+        continue;
+      }
+      const root = schema.binding.root ?? '';
+      entries.push({
+        type: schema.type,
+        fileMatch: schema.fileMatch,
+        uri: schema.uri,
+        language: schema.language,
+        schema: { $ref: `${documentURI}${root.startsWith('#') ? root : `#${root}`}` },
+      });
+    }
 
     this.schemas.set(key, entries);
     this.scheduleFlush();
@@ -176,9 +182,9 @@ class SchemaRegistry {
     for (const entries of this.schemas.values()) {
       for (const entry of entries) {
         const schemaConfig = {
-          uri: entry.url ?? entry.uri,
-          fileMatch: [entry.fileMatch],
-          ...(entry.schema ? { schema: entry.schema } : {}),
+          uri: entry.uri,
+          fileMatch: entry.fileMatch ? [entry.fileMatch] : [],
+          ...(entry.schema !== undefined ? { schema: entry.schema } : {}),
         };
 
         if (entry.language === 'json') {

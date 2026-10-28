@@ -7,8 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
-	"github.com/omniviewdev/plugin-sdk/pkg/v1/resource/resourcetest"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
 // Optional artifact is consumed by the runtime parser transport acceptance test.
@@ -21,12 +20,12 @@ func TestC02ErrorTransportCorpus(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.code, func(t *testing.T) {
 			ctrl, _ := newTestControllerWithEmitter(t)
-			provider := resourcetest.NewTestProvider(t)
-			provider.GetActionsFunc = func(context.Context, string) ([]resource.ActionDescriptor, error) {
-				return nil, &resource.ResourceOperationError{Code: tc.code, Title: "secret-title", Message: "secret-detail"}
+			provider := &mockProvider{}
+			provider.CatalogFunc = func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+				return resource.Catalog{}, &resource.ResourceOperationError{Code: tc.code, Title: "secret-title", Message: "secret-detail"}
 			}
 			registerMockPlugin(ctrl, "neutral", setupGRPCProvider(t, provider))
-			_, err := ctrl.GetActions(testInvocationContext(), "neutral", "route", "opaque")
+			_, err := ctrl.Catalog(testInvocationContext(), "neutral", resource.CatalogRequest{Route: resource.AccessRoute{Connection: "route"}})
 			app := requireAppError(t, err)
 			if app.Code != tc.code || app.Type != tc.uri || app.Status != tc.status || app.RequestID == "" {
 				t.Fatalf("lost actual transport error: %s", app.Error())

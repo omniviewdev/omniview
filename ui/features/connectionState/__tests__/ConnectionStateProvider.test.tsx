@@ -15,27 +15,18 @@ const mockWatchStateReturn = {
 
 vi.mock('@omniviewdev/runtime', () => ({
   useWatchState: () => mockWatchStateReturn,
-  WatchState: { IDLE: 0, SYNCING: 1, SYNCED: 2, ERROR: 3, FAILED: 4, FORBIDDEN: 5, STOPPED: 6, SKIPPED: 7 },
-  parseResourceKey: (key: string) => {
-    const parts = key.split('::');
-    if (parts.length === 1) {
-      return { group: 'core', version: '', kind: parts[0] };
-    }
-
-    return { group: parts[0] || 'core', version: parts[1] || '', kind: parts[2] || parts[0] };
-  },
-  formatGroup: (group: string) => {
-    if (!group || group === 'core') {
-      return 'Core';
-    }
-
-    return group.charAt(0).toUpperCase() + group.slice(1);
+  WatchState: {
+    WatchStateIdle: 0, WatchStateSyncing: 1, WatchStateSynced: 2, WatchStateError: 3,
+    WatchStateStopped: 4, WatchStateFailed: 5, WatchStateForbidden: 6, WatchStateSkipped: 7,
   },
 }));
 
 const mockEnsureResourceWatch = vi.fn().mockResolvedValue(undefined);
+const admittedTarget = { route: { connection: 'c1' }, provider: 'test', authority: 'host', type: 'opaque/type', scope: [], representation: 'json' };
+const mockResolveTarget = vi.fn().mockResolvedValue({ targetId: 'admitted', target: admittedTarget });
 vi.mock('@omniviewdev/runtime/api', () => ({
   ResourceClient: {
+    ResolveTarget: (...args: unknown[]) => mockResolveTarget(...args),
     EnsureResourceWatch: (...args: any[]) => mockEnsureResourceWatch(...args),
   },
 }));
@@ -148,6 +139,17 @@ describe('ConnectionStateProvider', () => {
 
     // Dialog should still be open (manual open = no auto-close)
     expect(screen.getByTestId('dialog')).toBeTruthy();
+  });
+
+  it('retries the host-resolved canonical target', async () => {
+    mockWatchStateReturn.summary = { data: { resources: { 'opaque/type': 3 }, resourceCounts: {}, scope: [] } };
+    render(<ConnectionStateProvider><TestConsumer /></ConnectionStateProvider>);
+    act(() => showFn({ pluginID: 'provider', connectionID: 'c1', connectionName: 'Production' }));
+    await act(async () => screen.getByText('Retry').click());
+    expect(mockResolveTarget).toHaveBeenCalledWith('provider', {
+      route: { connection: 'c1' }, type: 'opaque/type', scope: [],
+    });
+    expect(mockEnsureResourceWatch).toHaveBeenCalledWith('provider', admittedTarget);
   });
 
   it('throws when useConnectionStateDialog is used outside provider', () => {

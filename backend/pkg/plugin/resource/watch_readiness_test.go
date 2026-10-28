@@ -8,27 +8,24 @@ import (
 	"testing"
 	"time"
 
+	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
-	"github.com/omniviewdev/plugin-sdk/pkg/v1/resource/resourcetest"
 	"github.com/stretchr/testify/require"
 )
 
 func TestWatchStartupFailureRollsBackBeforeSourcesStart(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	var loaded atomic.Int32
-	provider := resourcetest.NewTestProvider(t,
-		resourcetest.WithLoadConnectionsFunc(func(context.Context) ([]types.Connection, error) {
-			loaded.Add(1)
-			return nil, nil
-		}),
-		resourcetest.WithListenForEventsFunc(func(context.Context, resource.WatchEventSink, func() error) error {
-			return &resource.ResourceOperationError{Code: "FORBIDDEN", Message: "native event access denied"}
-		}),
-	)
+	provider := &mockProvider{LoadConnectionsFunc: func(context.Context) ([]types.Connection, error) {
+		loaded.Add(1)
+		return nil, nil
+	}, ListenForEventsFunc: func(context.Context, resource.WatchEventSink, func() error) error {
+		return &resource.ResourceOperationError{Code: "FORBIDDEN", Message: "native event access denied"}
+	}}
 	backend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": setupGRPCProvider(t, provider)})
 	err := ctrl.OnPluginStart("proof", defaultMeta(), backend)
 	var denied *resource.ResourceOperationError
@@ -44,14 +41,12 @@ func TestWatchStartupStopCancelsPendingActualRPC(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	entered := make(chan struct{})
 	stopped := make(chan struct{})
-	provider := resourcetest.NewTestProvider(t,
-		resourcetest.WithListenForEventsFunc(func(ctx context.Context, _ resource.WatchEventSink, _ func() error) error {
-			defer close(stopped)
-			close(entered)
-			<-ctx.Done()
-			return ctx.Err()
-		}),
-	)
+	provider := &mockProvider{ListenForEventsFunc: func(ctx context.Context, _ resource.WatchEventSink, _ func() error) error {
+		defer close(stopped)
+		close(entered)
+		<-ctx.Done()
+		return ctx.Err()
+	}}
 	backend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": setupGRPCProvider(t, provider)})
 	done := make(chan error, 1)
 	go func() { done <- ctrl.OnPluginStart("proof", defaultMeta(), backend) }()
@@ -88,14 +83,12 @@ func TestWatchStartupTimeoutReturnsFailureAndRetiresActualRPC(t *testing.T) {
 	}
 	entered := make(chan struct{})
 	stopped := make(chan struct{})
-	provider := resourcetest.NewTestProvider(t,
-		resourcetest.WithListenForEventsFunc(func(ctx context.Context, _ resource.WatchEventSink, _ func() error) error {
-			defer close(stopped)
-			close(entered)
-			<-ctx.Done()
-			return ctx.Err()
-		}),
-	)
+	provider := &mockProvider{ListenForEventsFunc: func(ctx context.Context, _ resource.WatchEventSink, _ func() error) error {
+		defer close(stopped)
+		close(entered)
+		<-ctx.Done()
+		return ctx.Err()
+	}}
 	backend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": setupGRPCProvider(t, provider)})
 	t.Cleanup(func() { require.NoError(t, ctrl.OnPluginShutdown("proof", defaultMeta())) })
 	done := make(chan error, 1)
@@ -171,12 +164,10 @@ func TestWatchStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, ctrl.OnPluginShutdown("proof", defaultMeta())) })
 	ctrl.connections["proof"] = []types.Connection{{ID: "previous"}}
 	failed := errors.New("registration rejected")
-	oldProvider := resourcetest.NewTestProvider(t,
-		resourcetest.WithListenForEventsFunc(func(context.Context, resource.WatchEventSink, func() error) error {
-			store.armed.Store(true)
-			return failed
-		}),
-	)
+	oldProvider := &mockProvider{ListenForEventsFunc: func(context.Context, resource.WatchEventSink, func() error) error {
+		store.armed.Store(true)
+		return failed
+	}}
 	oldDone := make(chan error, 1)
 	oldBackend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": oldProvider})
 	go func() { oldDone <- ctrl.OnPluginStart("proof", defaultMeta(), oldBackend) }()
@@ -187,20 +178,16 @@ func TestWatchStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
 	require.NoError(t, err)
 	retirementFenced := slices.Contains(retiring, "proof")
 
-	meta := resource.ResourceMeta{Group: "proof", Version: "v1", Kind: "Replacement"}
-	replacement := resourcetest.NewTestProvider(t,
-		resourcetest.WithLoadConnectionsFunc(func(context.Context) ([]types.Connection, error) {
-			return []types.Connection{{ID: "replacement"}}, nil
-		}),
-	)
-	replacement.GetResourceTypesFunc = func(context.Context, string) (map[string]resource.ResourceMeta, error) {
-		return map[string]resource.ResourceMeta{meta.Key(): meta}, nil
-	}
-	replacement.GetRelationshipsFunc = func(context.Context, string) ([]resource.RelationshipDescriptor, error) {
-		return []resource.RelationshipDescriptor{{Type: resource.RelOwns, TargetResourceKey: "replacement-target"}}, nil
+	const resourceType = "proof::v1::Replacement"
+	replacement := &mockProvider{LoadConnectionsFunc: func(context.Context) ([]types.Connection, error) {
+		return []types.Connection{{ID: "replacement"}}, nil
+	}}
+	replacement.CatalogFunc = lifecycleTestCatalog(resourceType)
+	replacement.GetRelationshipsFunc = func(context.Context, resource.AccessRoute, string) ([]resource.RelationshipDescriptor, error) {
+		return []resource.RelationshipDescriptor{{Type: resource.RelOwns, TargetType: "replacement-target", TargetScope: []resource.ScopeEntry{}}}, nil
 	}
 	actionStopped := make(chan struct{})
-	replacement.StreamActionFunc = func(ctx context.Context, _ string, _ string, _ resource.ActionInput, events chan<- resource.ActionEvent) error {
+	replacement.StreamActionFunc = func(ctx context.Context, _ resource.ActionRequest, events chan<- resource.ActionEvent) error {
 		defer close(actionStopped)
 		events <- resource.ActionEvent{Type: "ready"}
 		<-ctx.Done()
@@ -211,10 +198,12 @@ func TestWatchStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
 		PluginBackend: plugintypes.NewInProcessBackend(map[string]interface{}{"resource": replacement}),
 		requested:     make(chan struct{}),
 	}
+	var replacementSubscription HostSubscription
 	go func() {
 		err := ctrl.OnPluginStart("proof", defaultMeta(), replacementBackend)
 		if err == nil {
-			ctrl.subs.Subscribe("proof", "replacement", meta.Key())
+			replacementSubscription = admittedSubscription(t, ctrl, "proof", "replacement", resourceType)
+			err = ctrl.SubscribeResource(testInvocationContext(), "proof", replacementSubscription)
 		}
 		replaced <- err
 	}()
@@ -236,17 +225,18 @@ func TestWatchStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
 	}
 	require.NoError(t, replacementErr)
 	ctx := testInvocationContext()
-	discovered, err := ctrl.GetResourceTypes(ctx, "proof", "replacement")
+	discovered, err := ctrl.Catalog(ctx, "proof", resource.CatalogRequest{Route: resource.AccessRoute{Connection: "replacement"}})
 	require.NoError(t, err)
-	require.Contains(t, discovered, meta.Key())
+	require.Equal(t, resourceType, discovered.Types[0].Type)
 	connection, err := ctrl.GetConnection(ctx, "proof", "replacement")
 	require.NoError(t, err)
 	require.Equal(t, "replacement", connection.ID)
-	require.NoError(t, ctrl.SubscribeResource(ctx, "proof", "replacement", meta.Key()))
-	sink := &engineWatchSink{pluginID: "proof", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
-	sink.OnAdd(resource.WatchAddPayload{Connection: "replacement", Key: meta.Key(), ID: "replacement-visible"})
-	require.Len(t, emitter.EventsWithKey("proof/replacement/"+meta.Key()+"/ADD"), 1)
-	handle, err := ctrl.StreamAction(ctx, "proof", "replacement", meta.Key(), "verify-admission", resource.ActionInput{})
+	require.NoError(t, ctrl.SubscribeResource(ctx, "proof", replacementSubscription))
+	target := replacementSubscription.Target
+	sink := &engineWatchSink{ctx: ctx, generationID: ctrl.plugins["proof"].generationID, pluginID: "proof", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
+	sink.OnAdd(resource.WatchAddPayload{Route: target.Route, Record: canonicalTestRecord(target.Provider, target.Authority, target.Type, "replacement-visible"), Guarantee: resource.BestEffortGuarantee})
+	require.Len(t, emitter.EventsWithKey("proof/replacement/"+resourceType+"/ADD"), 1)
+	handle, err := ctrl.StreamAction(ctx, "proof", admittedActionRequest(t, ctrl, "proof", "replacement", resourceType, "verify-admission"))
 	require.NoError(t, err)
 	require.NotEmpty(t, handle)
 	require.NoError(t, ctrl.CancelStreamAction(ctx, handle))
@@ -255,13 +245,13 @@ func TestWatchStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("replacement action did not retire after consumer cancellation")
 	}
-	require.Len(t, ctrl.graph.GetDeclarations(meta.Key()), 1, "retired cleanup erased replacement declarations")
+	require.Len(t, ctrl.graph.GetDeclarations("proof", target.Route, resourceType), 1, "retired cleanup erased replacement declarations")
 	present, err := ctrl.HasPlugin(testInvocationContext(), "proof")
 	require.NoError(t, err)
 	require.True(t, present)
 }
 
-func TestWatchStartupFailurePreservesPersistedConnectionsThroughFailedUnloadAndReload(t *testing.T) {
+func TestWatchStartupFailurePreservesDesiredProfilesThroughFailedUnloadAndReload(t *testing.T) {
 	const pluginID = "failed-watch"
 	const otherID = "unrelated"
 	const resourceKey = "proof::v1::Task"
@@ -287,46 +277,50 @@ func TestWatchStartupFailurePreservesPersistedConnectionsThroughFailedUnloadAndR
 		expected[i].LastRefresh = time.Time{}
 	}
 	unrelated := []types.Connection{{ID: "other", Name: "Unrelated configuration", Data: map[string]any{"marker": "untouched"}}}
-	require.NoError(t, saveToLocalStore(storeRoot, map[string][]types.Connection{pluginID: saved}))
-	require.NoError(t, saveToLocalStore(otherRoot, map[string][]types.Connection{otherID: unrelated}))
-	ctrl.OnPluginInit(pluginID, defaultMeta())
-	ctrl.OnPluginInit(otherID, defaultMeta())
+	registerMockPlugin(ctrl, pluginID, connectionOverlayTestProvider())
+	registerMockPlugin(ctrl, otherID, connectionOverlayTestProvider())
+	for _, connection := range saved {
+		requireSavedConnectionProfile(t, ctrl, pluginID, connection)
+	}
+	for _, connection := range unrelated {
+		requireSavedConnectionProfile(t, ctrl, otherID, connection)
+	}
+	expectedStored, err := readDesiredConnections(storeRoot)
+	require.NoError(t, err)
+	expectedOtherStored, err := readDesiredConnections(otherRoot)
+	require.NoError(t, err)
 	loaded, err := ctrl.ListConnections(testInvocationContext(), pluginID)
 	require.NoError(t, err)
-	require.Equal(t, expected, loaded, "initialization must load the actual persisted configuration")
+	require.ElementsMatch(t, expected, loaded, "explicit save must apply effective source configuration and persist desired profiles")
 
-	otherProvider := resourcetest.NewTestProvider(t,
-		resourcetest.WithLoadConnectionsFunc(func(context.Context) ([]types.Connection, error) {
-			return nil, nil
-		}),
-	)
+	otherProvider := connectionOverlayTestProvider()
 	otherBackend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": setupGRPCProvider(t, otherProvider)})
 	require.NoError(t, ctrl.OnPluginStart(otherID, defaultMeta(), otherBackend))
 	t.Cleanup(func() { require.NoError(t, ctrl.OnPluginShutdown(otherID, defaultMeta())) })
-	otherDeclaration := resource.RelationshipDescriptor{Type: resource.RelUses, TargetResourceKey: "proof::v1::Unrelated"}
+	otherDeclaration := resource.RelationshipDescriptor{Type: resource.RelUses, TargetType: "proof::v1::Unrelated", TargetScope: []resource.ScopeEntry{}}
 	seedRuntime := func(owner, connection string, declaration resource.RelationshipDescriptor) graph.GraphNode {
-		node := graph.GraphNode{PluginID: owner, ConnectionID: connection, ResourceKey: resourceKey, ID: "source"}
+		reference := canonicalTestRecord("proof", "fixture:"+connection, resourceKey, "source").Reference
+		node := graph.GraphNode{PluginID: owner, Reference: reference, Route: resource.AccessRoute{Connection: connection}}
 		target := node
-		target.ID = "target"
-		ctrl.registryStore.Put(registry.ResourceEntry{PluginID: owner, ConnectionID: connection, ResourceKey: resourceKey, ID: node.ID})
-		ctrl.subs.Subscribe(owner, connection, resourceKey)
-		ctrl.graph.SetDeclarations(owner, resourceKey, []resource.RelationshipDescriptor{declaration})
+		target.Reference.Address.ID = "target"
+		ctrl.registryStore.Put(registry.ResourceEntry{PluginID: owner, Reference: reference, Route: node.Route})
+		scope := invocation.NewScope(invocation.Host)
+		subscription := HostSubscription{TargetID: "seed:" + owner + ":" + connection, Target: resource.ReadTarget{Route: node.Route, Provider: reference.Address.Provider, Authority: reference.Address.Authority, Type: resourceKey, Scope: resource.QueryScope{}, Representation: "native"}}
+		require.NoError(t, ctrl.subs.Subscribe(scope.Context(context.Background()), scope.Principal(), owner, subscription))
+		ctrl.graph.SetDeclarations(owner, node.Route, resourceKey, []resource.RelationshipDescriptor{declaration})
 		ctrl.graph.AddEdge(graph.GraphEdge{Source: node, Target: target, Type: declaration.Type})
 		return node
 	}
-	retiredNode := seedRuntime(pluginID, expected[0].ID, resource.RelationshipDescriptor{Type: resource.RelOwns, TargetResourceKey: "proof::v1::Retired"})
+	retiredNode := seedRuntime(pluginID, expected[0].ID, resource.RelationshipDescriptor{Type: resource.RelOwns, TargetType: "proof::v1::Retired", TargetScope: []resource.ScopeEntry{}})
 	unrelatedNode := seedRuntime(otherID, unrelated[0].ID, otherDeclaration)
 
 	var discoveries atomic.Int32
-	failedProvider := resourcetest.NewTestProvider(t,
-		resourcetest.WithLoadConnectionsFunc(func(context.Context) ([]types.Connection, error) {
-			discoveries.Add(1)
-			return nil, nil
-		}),
-		resourcetest.WithListenForEventsFunc(func(context.Context, resource.WatchEventSink, func() error) error {
-			return &resource.ResourceOperationError{Code: "FORBIDDEN", Message: "native registration denied"}
-		}),
-	)
+	failedProvider := &mockProvider{LoadConnectionsFunc: func(context.Context) ([]types.Connection, error) {
+		discoveries.Add(1)
+		return nil, nil
+	}, ListenForEventsFunc: func(context.Context, resource.WatchEventSink, func() error) error {
+		return &resource.ResourceOperationError{Code: "FORBIDDEN", Message: "native registration denied"}
+	}}
 	failedBackend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": setupGRPCProvider(t, failedProvider)})
 	var denied *resource.ResourceOperationError
 	require.ErrorAs(t, ctrl.OnPluginStart(pluginID, defaultMeta(), failedBackend), &denied)
@@ -335,7 +329,7 @@ func TestWatchStartupFailurePreservesPersistedConnectionsThroughFailedUnloadAndR
 	present, err := ctrl.HasPlugin(testInvocationContext(), pluginID)
 	require.NoError(t, err)
 	require.False(t, present)
-	handle, err := ctrl.StreamAction(testInvocationContext(), pluginID, expected[0].ID, resourceKey, "unavailable", resource.ActionInput{})
+	handle, err := ctrl.StreamAction(testInvocationContext(), pluginID, resource.ActionRequest{Route: resource.AccessRoute{Connection: expected[0].ID}, Reference: retiredNode.Reference, Action: "unavailable", Input: resource.Value{Kind: "null"}})
 	require.Error(t, err)
 	require.Empty(t, handle)
 	require.False(t, ctrl.subs.IsSubscribed(pluginID, expected[0].ID, resourceKey))
@@ -343,24 +337,24 @@ func TestWatchStartupFailurePreservesPersistedConnectionsThroughFailedUnloadAndR
 	retiredEdges, err := ctrl.graph.GetRelated(retiredNode, graph.Both, nil)
 	require.NoError(t, err)
 	require.Empty(t, retiredEdges)
-	require.Equal(t, []resource.RelationshipDescriptor{otherDeclaration}, ctrl.graph.GetDeclarations(resourceKey))
+	require.Equal(t, []resource.RelationshipDescriptor{otherDeclaration}, ctrl.graph.GetDeclarations(otherID, unrelatedNode.Route, resourceKey))
 	ctrl.actions.mu.Lock()
 	actionAdmissionStopped := ctrl.actions.blocked[pluginID]
 	ctrl.actions.mu.Unlock()
 	require.True(t, actionAdmissionStopped, "the failed generation's action ownership must retire")
 
-	// The loader records the failed start, then failed unload calls shutdown,
-	// which delegates to normal stop and persists before removing connections.
+	// Failed unload retires runtime state, never replacing desired profiles with
+	// a discovery snapshot or an empty runtime inventory.
 	require.NoError(t, ctrl.OnPluginShutdown(pluginID, defaultMeta()))
 	stoppedConnections, err := ctrl.ListConnections(testInvocationContext(), pluginID)
 	require.Equal(t, "NOT_FOUND", requireAppError(t, err).Code)
 	require.Empty(t, stoppedConnections, "normal failed-plugin stop must still retire its in-memory connection cache")
-	persisted, err := loadFromLocalStore(storeRoot)
+	persisted, err := readDesiredConnections(storeRoot)
 	require.NoError(t, err)
-	require.Equal(t, expected, persisted[pluginID], "failed unload must not overwrite saved connections with an empty store")
-	persistedOther, err := loadFromLocalStore(otherRoot)
+	require.Equal(t, expectedStored, persisted, "failed unload must preserve explicit desired profiles")
+	persistedOther, err := readDesiredConnections(otherRoot)
 	require.NoError(t, err)
-	require.Equal(t, unrelated, persistedOther[otherID])
+	require.Equal(t, expectedOtherStored, persistedOther)
 	otherConnections, err := ctrl.ListConnections(testInvocationContext(), otherID)
 	require.NoError(t, err)
 	require.Equal(t, unrelated, otherConnections)
@@ -376,18 +370,14 @@ func TestWatchStartupFailurePreservesPersistedConnectionsThroughFailedUnloadAndR
 	fresh, _ := newTestControllerWithEmitter(t)
 	fresh.pluginStoreFn = ctrl.pluginStoreFn
 	fresh.OnPluginInit(pluginID, defaultMeta())
-	restored, err := fresh.ListConnections(testInvocationContext(), pluginID)
+	beforeReplay, err := fresh.ListConnections(testInvocationContext(), pluginID)
 	require.NoError(t, err)
-	require.Equal(t, expected, restored, "a fresh controller must recover configuration from disk, not the retired runtime")
-	replacement := resourcetest.NewTestProvider(t,
-		resourcetest.WithLoadConnectionsFunc(func(context.Context) ([]types.Connection, error) {
-			return nil, nil
-		}),
-	)
+	require.Empty(t, beforeReplay, "desired profiles are inactive until the fresh provider applies their overlay")
+	replacement := connectionOverlayTestProvider()
 	replacementBackend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": setupGRPCProvider(t, replacement)})
 	require.NoError(t, fresh.OnPluginStart(pluginID, defaultMeta(), replacementBackend))
 	t.Cleanup(func() { require.NoError(t, fresh.OnPluginShutdown(pluginID, defaultMeta())) })
-	restored, err = fresh.ListConnections(testInvocationContext(), pluginID)
+	restored, err := fresh.ListConnections(testInvocationContext(), pluginID)
 	require.NoError(t, err)
-	require.Equal(t, expected, restored, "successful replacement must retain saved configurations even without provider rediscovery")
+	require.ElementsMatch(t, expected, restored, "successful replacement must apply durable desired profiles even without native rediscovery")
 }

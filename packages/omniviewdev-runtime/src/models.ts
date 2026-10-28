@@ -1,18 +1,11 @@
 export * from './bindings/github.com/omniviewdev/omniview/models';
 export * from './bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 export * from './bindings/github.com/omniviewdev/plugin-sdk/pkg/config/models';
-export * from './bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/resource/models';
-// graph: RelationshipType is already exported from the SDK resource models.
-export {
-  DependencyNode,
-  DependencyTree,
-  GraphEdge,
-  GraphNode,
-  Subgraph,
-  SubgraphNode,
-} from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph/models';
-// Shadows the generated WatchState with the alias-carrying one.
-export { WatchState } from './compat/resource';
+export * from './resource/v2/domain';
+export * from './resource/v2/ancillary';
+export * from './resource/v2/host';
+export * from './resource/v2/graph';
+export { WatchState, SyncPolicy } from './types/watch';
 
 // exec: selectively re-export to avoid Handler/ActionTargetBuilder collisions
 // with logs and metric packages. The UI only uses exec's Handler.
@@ -94,7 +87,6 @@ export * as exec from './bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/exec/
 export * as logs from './bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/logs/models';
 export * as metric from './bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
 export * as networker from './bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/networker/models';
-export * as resource from './compat/resource';
 export * as settings from './bindings/github.com/omniviewdev/plugin-sdk/settings/models';
 export * as devserver from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/devserver/models';
 export * as pluginlog from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/pluginlog/models';

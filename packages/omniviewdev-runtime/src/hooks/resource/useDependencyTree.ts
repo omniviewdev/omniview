@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { GetDependencyTree } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graphservice';
+import { GetDependencyTree } from '../../resource/v2/graph-client';
+import type { AccessRoute, ResourceReference } from '../../resource/v2/domain';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 import { useRefetchOnGraphChange } from './useRefetchOnGraphChange';
 
@@ -10,20 +11,8 @@ type UseDependencyTreeOptions = {
    */
   pluginID?: string;
 
-  /** The connection ID the resource belongs to */
-  connectionID: string;
-
-  /**
-   * The resource key of the root resource
-   * @example "apps::v1::Deployment"
-   */
-  resourceKey: string;
-
-  /** The ID of the root resource */
-  resourceID: string;
-
-  /** Namespace of the root resource, if the backend has namespaces */
-  namespace?: string;
+  reference: ResourceReference;
+  route: AccessRoute;
 
   /** How many edges deep to follow. The host caps this at 5. */
   maxDepth?: number;
@@ -46,24 +35,22 @@ type UseDependencyTreeOptions = {
  */
 export const useDependencyTree = ({
   pluginID: explicitPluginID,
-  connectionID,
-  resourceKey,
-  resourceID,
-  namespace = '',
+  reference,
+  route,
   maxDepth = 3,
   enabled = true,
   refetchInterval = false,
 }: UseDependencyTreeOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
 
-  const queryKey = ['RESOURCE_DEPENDENCY_TREE', pluginID, connectionID, resourceKey, namespace, resourceID, maxDepth];
-  const queryEnabled = enabled && !!pluginID && !!connectionID && !!resourceKey && !!resourceID;
+  const queryKey = ['RESOURCE_DEPENDENCY_TREE', pluginID, reference, route, maxDepth];
+  const queryEnabled = enabled && !!pluginID && !!route.connection && !!reference.address.id;
 
-  useRefetchOnGraphChange(pluginID, connectionID, queryKey, queryEnabled);
+  useRefetchOnGraphChange(pluginID, route.connection, queryKey, queryEnabled);
 
   const query = useQuery({
     queryKey,
-    queryFn: async () => GetDependencyTree(pluginID, connectionID, resourceKey, namespace, resourceID, maxDepth),
+    queryFn: async () => GetDependencyTree(pluginID, reference, route, maxDepth),
     enabled: queryEnabled,
     refetchInterval,
   });

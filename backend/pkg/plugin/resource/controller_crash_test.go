@@ -5,13 +5,14 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
 // ======================== isConnectionError tests ======================== //
@@ -245,4 +246,23 @@ func TestSetCrashCallback(t *testing.T) {
 	// Invoke to verify it's wired correctly.
 	ctrl.onCrashCallback("test")
 	assert.True(t, invoked)
+}
+
+func TestFiniteRawTransportFailureTriggersCrashRecovery(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	var crashes atomic.Int32
+	ctrl.onCrashCallback = func(pluginID string) {
+		assert.Equal(t, "transport", pluginID)
+		crashes.Add(1)
+	}
+	registerMockPlugin(ctrl, "transport", &mockProvider{
+		CatalogFunc: lifecycleTestCatalog("native-object"),
+		GetFunc: func(context.Context, resource.GetRequest) (resource.Record, error) {
+			return resource.Record{}, status.Error(codes.Unavailable, "native transport disconnected")
+		},
+	})
+	request := admittedGetRequest(t, ctrl, "transport", "explicit", "native-object", "opaque")
+	_, err := ctrl.Get(testInvocationContext(), "transport", request)
+	assert.Error(t, err)
+	assert.Eventually(t, func() bool { return crashes.Load() == 1 }, 2*time.Second, time.Millisecond)
 }

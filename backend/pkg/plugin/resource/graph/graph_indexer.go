@@ -6,7 +6,7 @@ import (
 	"github.com/tidwall/gjson"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
 type Indexer struct {
@@ -43,23 +43,34 @@ func (gi *Indexer) OnDelete(entry registry.ResourceEntry) {
 
 func nodeFromEntry(entry registry.ResourceEntry) GraphNode {
 	return GraphNode{
-		PluginID:     entry.PluginID,
-		ConnectionID: entry.ConnectionID,
-		ResourceKey:  entry.ResourceKey,
-		ID:           entry.ID,
-		Namespace:    entry.Namespace,
+		PluginID:  entry.PluginID,
+		Reference: entry.Reference,
+		Route:     entry.Route,
 	}
 }
 
-// selectorReaches reports whether a selector declared in selectorNS may match
-// a resource in targetNS. Kubernetes selectors (Service, NetworkPolicy) only
-// match within their own namespace; a cluster-scoped declarer is unrestricted.
-func selectorReaches(selectorNS, targetNS string) bool {
-	return selectorNS == "" || selectorNS == targetNS
+// scopeMatches compares explicit canonical scope dimensions, never metadata.
+func scopeMatches(scope, target []resource.ScopeEntry) bool {
+	if len(scope) != len(target) {
+		return false
+	}
+	for _, expected := range scope {
+		found := false
+		for _, actual := range target {
+			if expected == actual {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 func (gi *Indexer) extractEdges(entry registry.ResourceEntry, raw json.RawMessage) {
-	decls := gi.graph.GetDeclarations(entry.ResourceKey)
+	decls := gi.graph.GetDeclarations(entry.PluginID, entry.Route, entry.Reference.Address.Type)
 	if len(decls) == 0 {
 		return
 	}
@@ -70,6 +81,29 @@ func (gi *Indexer) extractEdges(entry registry.ResourceEntry, raw json.RawMessag
 		if decl.Extractor == nil {
 			continue
 		}
+		scope := append([]resource.ScopeEntry(nil), decl.TargetScope...)
+		seen := make(map[string]bool, len(scope)+len(decl.ScopeExtractors))
+		valid := true
+		for _, item := range scope {
+			if seen[item.Dimension] {
+				valid = false
+				break
+			}
+			seen[item.Dimension] = true
+		}
+		for _, extractor := range decl.ScopeExtractors {
+			value := gjson.GetBytes(raw, extractor.FieldPath)
+			if seen[extractor.Dimension] || !value.Exists() || value.Type != gjson.String {
+				valid = false
+				break
+			}
+			seen[extractor.Dimension] = true
+			scope = append(scope, resource.ScopeEntry{Dimension: extractor.Dimension, Value: value.String()})
+		}
+		if !valid {
+			continue
+		}
+		decl.TargetScope = scope
 		switch decl.Extractor.Method {
 		case MethodFieldPath:
 			gi.extractFieldPath(sourceNode, entry, raw, decl)
@@ -108,17 +142,17 @@ func (gi *Indexer) extractFieldPath(
 	}
 
 	for _, targetID := range targetIDs {
-		targetNS := entry.Namespace
-		if decl.TargetNamespaced != nil && !*decl.TargetNamespaced {
-			targetNS = ""
+		address := entry.Reference.Address
+		address.Type = decl.TargetType
+		address.Scope = decl.TargetScope
+		address.ID = targetID
+		if err := resource.ValidateAddress(address); err != nil {
+			continue
 		}
-
 		target := GraphNode{
-			PluginID:     entry.PluginID,
-			ConnectionID: entry.ConnectionID,
-			ResourceKey:  decl.TargetResourceKey,
-			ID:           targetID,
-			Namespace:    targetNS,
+			PluginID:  entry.PluginID,
+			Reference: resource.ResourceReference{Address: address},
+			Route:     entry.Route,
 		}
 
 		// EdgeIncoming reverses edge direction (used for ownership). Either
@@ -183,15 +217,17 @@ func (gi *Indexer) extractLabelSelector(
 	var candidates []registry.ResourceEntry
 	if len(selector.matchLabels) > 0 {
 		candidates = gi.store.ScanByLabel(
-			entry.PluginID, entry.ConnectionID,
-			decl.TargetResourceKey, selector.matchLabels,
+			entry.PluginID, entry.Route.Connection,
+			decl.TargetType, selector.matchLabels,
 		)
 	} else {
-		candidates = gi.store.ScanByResourceKey(entry.PluginID, entry.ConnectionID, decl.TargetResourceKey)
+		candidates = gi.store.ScanByResourceKey(entry.PluginID, entry.Route.Connection, decl.TargetType)
 	}
 
 	for _, match := range candidates {
-		if !selectorReaches(source.Namespace, match.Namespace) || !selector.matches(match.Labels) {
+		if match.Reference.Address.Provider != entry.Reference.Address.Provider ||
+			match.Reference.Address.Authority != entry.Reference.Address.Authority ||
+			!scopeMatches(decl.TargetScope, match.Reference.Address.Scope) || !selector.matches(match.Labels) {
 			continue
 		}
 		gi.graph.AddDeclaredEdge(GraphEdge{
@@ -216,14 +252,16 @@ func (gi *Indexer) CheckLabelSelectorsForEntry(entry registry.ResourceEntry) {
 	for _, cached := range gi.graph.selectorSnapshot() {
 		selectorNode := cached.node
 
-		// Only match selectors within the same plugin, connection and namespace.
-		if selectorNode.PluginID != entry.PluginID || selectorNode.ConnectionID != entry.ConnectionID {
+		// Match only the declared provider authority, type and exact scope.
+		if selectorNode.PluginID != entry.PluginID || selectorNode.Route.Connection != entry.Route.Connection ||
+			selectorNode.Reference.Address.Provider != entry.Reference.Address.Provider ||
+			selectorNode.Reference.Address.Authority != entry.Reference.Address.Authority {
 			continue
 		}
-		if cached.decl.TargetResourceKey != entry.ResourceKey {
+		if cached.decl.TargetType != entry.Reference.Address.Type {
 			continue
 		}
-		if !selectorReaches(selectorNode.Namespace, entry.Namespace) {
+		if !scopeMatches(cached.decl.TargetScope, entry.Reference.Address.Scope) {
 			continue
 		}
 		if !cached.selector.matches(entry.Labels) {

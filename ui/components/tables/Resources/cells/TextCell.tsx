@@ -3,7 +3,7 @@ import React from 'react';
 import { Text, type TypographyTone } from '@omniviewdev/base-ui';
 import { formatTimeDifference } from '@/utils/time';
 import { convertByteUnits } from '@/utils/units';
-import type { ResourceLink } from '@omniviewdev/runtime/models';
+import type { ResourceLink } from '@omniviewdev/runtime';
 import { type ResourceMetadata } from '@/hooks/resource/useResourceDefinition';
 import ResourceLinkCell from './ResourceLinkCell';
 import styles from './cells.module.css';

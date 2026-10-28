@@ -2,79 +2,60 @@ package resource
 
 import (
 	"context"
-	"encoding/json"
-
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 )
 
-// Service is the Wails-bound public API for resource operations.
-// Every method prefixes with pluginID to route to the correct plugin's ResourceProvider.
+// Service is the actual Wails/headless resource boundary. Canonical SDK values
+// cross explicit transport adapters; only host envelopes add row membership.
 type Service interface {
 	ListPlugins(ctx context.Context) ([]string, error)
 	HasPlugin(ctx context.Context, pluginID string) (bool, error)
+	Features(ctx context.Context, pluginID string) (resourcev2.FeatureSet, error)
+	Catalog(ctx context.Context, pluginID string, request resourcev2.CatalogRequest) (resourcev2.Catalog, error)
+	ResolveTarget(ctx context.Context, pluginID string, request ResolveTargetRequest) (ResolvedTarget, error)
+	ResolveReference(ctx context.Context, pluginID string, request ResolveReferenceRequest) (ResolvedReference, error)
+	Get(ctx context.Context, pluginID string, request HostGetRequest) (HostRecord, error)
+	Enumerate(ctx context.Context, pluginID string, request HostEnumerateRequest) (HostSourcePage, error)
+	NativeQuery(ctx context.Context, pluginID string, request HostNativeQueryRequest) (HostSourcePage, error)
+	Mutate(ctx context.Context, pluginID string, request resourcev2.MutationRequest) (resourcev2.Record, error)
+	Action(ctx context.Context, pluginID string, request resourcev2.ActionRequest) (resourcev2.Value, error)
 
-	// CRUD
-	Get(ctx context.Context, pluginID, connectionID, key string, input resource.GetInput) (*resource.GetResult, error)
-	List(ctx context.Context, pluginID, connectionID, key string, input resource.ListInput) (*resource.ListResult, error)
-	Find(ctx context.Context, pluginID, connectionID, key string, input resource.FindInput) (*resource.FindResult, error)
-	Create(ctx context.Context, pluginID, connectionID, key string, input resource.CreateInput) (*resource.CreateResult, error)
-	Update(ctx context.Context, pluginID, connectionID, key string, input resource.UpdateInput) (*resource.UpdateResult, error)
-	Delete(ctx context.Context, pluginID, connectionID, key string, input resource.DeleteInput) (*resource.DeleteResult, error)
-
-	// Connection lifecycle
-	StartConnection(ctx context.Context, pluginID, connectionID string) (types.ConnectionStatus, error)
-	StopConnection(ctx context.Context, pluginID, connectionID string) (types.Connection, error)
-	CheckConnection(ctx context.Context, pluginID, connectionID string) (types.ConnectionStatus, error)
+	StartConnection(ctx context.Context, pluginID string, connectionID string) (types.ConnectionStatus, error)
+	StopConnection(ctx context.Context, pluginID string, connectionID string) (types.Connection, error)
+	CheckConnection(ctx context.Context, pluginID string, connectionID string) (types.ConnectionStatus, error)
 	LoadConnections(ctx context.Context, pluginID string) ([]types.Connection, error)
 	ListConnections(ctx context.Context, pluginID string) ([]types.Connection, error)
 	ListAllConnections(ctx context.Context) (map[string][]types.Connection, error)
 	GetAllConnectionStates(ctx context.Context) (map[string][]ConnectionState, error)
-	GetConnection(ctx context.Context, pluginID, connectionID string) (types.Connection, error)
-	GetConnectionNamespaces(ctx context.Context, pluginID, connectionID string) ([]string, error)
-	AddConnection(ctx context.Context, pluginID string, connection types.Connection) error
-	UpdateConnection(ctx context.Context, pluginID string, connection types.Connection) (types.Connection, error)
-	RemoveConnection(ctx context.Context, pluginID, connectionID string) error
+	GetConnection(ctx context.Context, pluginID string, connectionID string) (types.Connection, error)
+	ScopeValues(ctx context.Context, pluginID string, route resourcev2.AccessRoute, dimension string) ([]string, error)
+	SaveConnectionProfile(ctx context.Context, pluginID string, connection types.Connection) (ConnectionProfileResult, error)
+	ListConnectionProfiles(ctx context.Context, pluginID string) ([]ConnectionProfile, error)
+	ImportConnectionProfile(ctx context.Context, pluginID string, connectionID string) (ConnectionProfileResult, error)
+	ResetConnectionProfile(ctx context.Context, pluginID string, connectionID string) (ConnectionProfileResult, error)
+	RemoveConnection(ctx context.Context, pluginID string, connectionID string) error
 
-	// Watch lifecycle
-	StartConnectionWatch(ctx context.Context, pluginID, connectionID string) error
-	StopConnectionWatch(ctx context.Context, pluginID, connectionID string) error
-	GetWatchState(ctx context.Context, pluginID, connectionID string) (*resource.WatchConnectionSummary, error)
-	EnsureResourceWatch(ctx context.Context, pluginID, connectionID, resourceKey string) error
-	StopResourceWatch(ctx context.Context, pluginID, connectionID, resourceKey string) error
-	RestartResourceWatch(ctx context.Context, pluginID, connectionID, resourceKey string) error
-	IsResourceWatchRunning(ctx context.Context, pluginID, connectionID, resourceKey string) (bool, error)
+	StartConnectionWatch(ctx context.Context, pluginID string, targets []resourcev2.ReadTarget) error
+	StopConnectionWatch(ctx context.Context, pluginID string, route resourcev2.AccessRoute) error
+	GetWatchState(ctx context.Context, pluginID string, route resourcev2.AccessRoute) (*resourcev2.WatchConnectionSummary, error)
+	EnsureResourceWatch(ctx context.Context, pluginID string, target resourcev2.ReadTarget) error
+	StopResourceWatch(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) error
+	RestartResourceWatch(ctx context.Context, pluginID string, target resourcev2.ReadTarget) error
+	IsResourceWatchRunning(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) (bool, error)
+	SubscribeResource(ctx context.Context, pluginID string, subscription HostSubscription) error
+	UnsubscribeResource(ctx context.Context, pluginID string, subscription HostSubscription) error
 
-	// Subscriptions (engine-side, ref-counted)
-	SubscribeResource(ctx context.Context, pluginID, connectionID, resourceKey string) error
-	UnsubscribeResource(ctx context.Context, pluginID, connectionID, resourceKey string) error
-
-	// Type metadata
-	GetResourceGroups(ctx context.Context, pluginID, connectionID string) (map[string]resource.ResourceGroup, error)
-	GetResourceGroup(ctx context.Context, pluginID, groupID string) (resource.ResourceGroup, error)
-	GetResourceTypes(ctx context.Context, pluginID, connectionID string) (map[string]resource.ResourceMeta, error)
-	GetResourceType(ctx context.Context, pluginID, typeID string) (*resource.ResourceMeta, error)
-	HasResourceType(ctx context.Context, pluginID, typeID string) (bool, error)
-	GetResourceDefinition(ctx context.Context, pluginID, typeID string) (resource.ResourceDefinition, error)
-	GetResourceCapabilities(ctx context.Context, pluginID, key string) (*resource.ResourceCapabilities, error)
-	GetFilterFields(ctx context.Context, pluginID, connectionID, key string) ([]resource.FilterField, error)
-	GetResourceSchema(ctx context.Context, pluginID, connectionID, key string) (json.RawMessage, error)
-
-	// Actions
-	GetActions(ctx context.Context, pluginID, connectionID, key string) ([]resource.ActionDescriptor, error)
-	ExecuteAction(ctx context.Context, pluginID, connectionID, key, actionID string, input resource.ActionInput) (*resource.ActionResult, error)
-	StreamAction(ctx context.Context, pluginID, connectionID, key, actionID string, input resource.ActionInput) (string, error)
+	GetResourceGroups(ctx context.Context, pluginID string, route resourcev2.AccessRoute) ([]resourcev2.ResourceGroup, error)
+	GetResourceDefinition(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) (resourcev2.ResourceDefinition, error)
+	GetEditorSchemas(ctx context.Context, pluginID string, route resourcev2.AccessRoute) ([]resourcev2.EditorSchema, error)
+	GetSchemaDocument(ctx context.Context, pluginID string, route resourcev2.AccessRoute, reference resourcev2.SchemaDocumentReference) (resourcev2.SchemaDocument, error)
+	GetRelationships(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) ([]resourcev2.RelationshipDescriptor, error)
+	ResolveRelationships(ctx context.Context, pluginID string, request resourcev2.GetRequest) ([]resourcev2.ResolvedRelationship, error)
+	GetHealth(ctx context.Context, pluginID string, request resourcev2.GetRequest, body resourcev2.Value) (*resourcev2.ResourceHealth, error)
+	GetResourceEvents(ctx context.Context, pluginID string, request resourcev2.GetRequest, limit uint32) ([]resourcev2.ResourceEvent, error)
+	GetActions(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) ([]resourcev2.ActionDescriptor, error)
+	StreamAction(ctx context.Context, pluginID string, request resourcev2.ActionRequest) (string, error)
 	AttachStreamAction(ctx context.Context, handleID string) (ActionSnapshot, error)
 	CancelStreamAction(ctx context.Context, handleID string) error
-
-	// Editor schemas
-	GetEditorSchemas(ctx context.Context, pluginID, connectionID string) ([]resource.EditorSchema, error)
-
-	// Relationships
-	GetRelationships(ctx context.Context, pluginID, key string) ([]resource.RelationshipDescriptor, error)
-	ResolveRelationships(ctx context.Context, pluginID, connectionID, key, id, namespace string) ([]resource.ResolvedRelationship, error)
-
-	// Health
-	GetHealth(ctx context.Context, pluginID, connectionID, key string, data json.RawMessage) (*resource.ResourceHealth, error)
-	GetResourceEvents(ctx context.Context, pluginID, connectionID, key, id, namespace string, limit int32) ([]resource.ResourceEvent, error)
 }

@@ -1,132 +1,78 @@
 package resource
 
 import (
-	"sync"
+	"context"
+	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/omniviewdev/omniview/backend/pkg/invocation"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	"github.com/stretchr/testify/require"
 )
 
-func TestSubscriptionManager_Subscribe_FirstSubscriber(t *testing.T) {
-	m := newSubscriptionManager()
-	count := m.Subscribe("p1", "c1", "pods")
-	assert.Equal(t, 1, count)
+func subscriptionTestTarget() HostSubscription {
+	return HostSubscription{TargetID: "opaque/target:%2F", Target: resourcev2.ReadTarget{Route: resourcev2.AccessRoute{Connection: "route/opaque"}, Provider: "provider", Authority: "authority", Type: "type/opaque", Representation: "native", Scope: resourcev2.QueryScope{}}}
 }
 
-func TestSubscriptionManager_Subscribe_Increments(t *testing.T) {
-	m := newSubscriptionManager()
-	m.Subscribe("p1", "c1", "pods")
-	count := m.Subscribe("p1", "c1", "pods")
-	assert.Equal(t, 2, count)
+func TestSubscriptionMembershipRefcountsAndOwnership(t *testing.T) {
+	manager := newSubscriptionManager()
+	owner := invocation.NewScope(invocation.TrustedUI)
+	foreign := invocation.NewScope(invocation.TrustedUI)
+	ctx, cancel := context.WithCancel(owner.Context(context.Background()))
+	request := subscriptionTestTarget()
+	require.NoError(t, manager.Subscribe(ctx, owner.Principal(), "plugin", request))
+	require.NoError(t, manager.Subscribe(ctx, owner.Principal(), "plugin", request))
+	cancel()
+	matches := manager.Matching("plugin", request.Target.Route.Connection, request.Target.Type)
+	require.Len(t, matches, 1)
+	require.Equal(t, owner.Principal(), matches[0].Owner)
+	require.NoError(t, matches[0].Context.Err())
+	require.NoError(t, manager.Unsubscribe(foreign.Principal(), "plugin", request))
+	require.Len(t, manager.Matching("plugin", request.Target.Route.Connection, request.Target.Type), 1)
+	require.NoError(t, manager.Unsubscribe(owner.Principal(), "plugin", request))
+	require.True(t, manager.IsSubscribed("plugin", request.Target.Route.Connection, request.Target.Type))
+	require.NoError(t, manager.Unsubscribe(owner.Principal(), "plugin", request))
+	require.False(t, manager.IsSubscribed("plugin", request.Target.Route.Connection, request.Target.Type))
+	require.NoError(t, manager.Unsubscribe(owner.Principal(), "plugin", request))
 }
 
-func TestSubscriptionManager_Unsubscribe_Decrements(t *testing.T) {
-	m := newSubscriptionManager()
-	m.Subscribe("p1", "c1", "pods")
-	m.Subscribe("p1", "c1", "pods")
-	count := m.Unsubscribe("p1", "c1", "pods")
-	assert.Equal(t, 1, count)
+func TestSubscriptionMembershipUsesWholeTargetAndOpaqueComponents(t *testing.T) {
+	manager := newSubscriptionManager()
+	owner := invocation.NewScope(invocation.TrustedUI)
+	ctx := owner.Context(context.Background())
+	request := subscriptionTestTarget()
+	require.NoError(t, manager.Subscribe(ctx, owner.Principal(), "a/b", request))
+	other := request
+	other.Target.Authority = "other"
+	require.NoError(t, manager.Subscribe(ctx, owner.Principal(), "a/b", other))
+	otherID := request
+	otherID.TargetID = "another"
+	require.NoError(t, manager.Subscribe(ctx, owner.Principal(), "a/b", otherID))
+	require.Len(t, manager.Matching("a/b", request.Target.Route.Connection, request.Target.Type), 3)
+	manager.RemoveAll("a")
+	require.Len(t, manager.Matching("a/b", request.Target.Route.Connection, request.Target.Type), 3)
+	manager.RemoveAll("a/b")
+	require.Empty(t, manager.Matching("a/b", request.Target.Route.Connection, request.Target.Type))
 }
 
-func TestSubscriptionManager_Unsubscribe_RemovesAtZero(t *testing.T) {
-	m := newSubscriptionManager()
-	m.Subscribe("p1", "c1", "pods")
-	count := m.Unsubscribe("p1", "c1", "pods")
-	assert.Equal(t, 0, count)
-
-	// Key should be deleted from the map entirely.
-	m.mu.RLock()
-	_, exists := m.subscriptions[subscriptionKey("p1", "c1", "pods")]
-	m.mu.RUnlock()
-	assert.False(t, exists)
-}
-
-func TestSubscriptionManager_Unsubscribe_NeverNegative(t *testing.T) {
-	m := newSubscriptionManager()
-	count := m.Unsubscribe("p1", "c1", "pods")
-	assert.Equal(t, 0, count)
-	// Unsubscribe again — still 0, no panic.
-	count = m.Unsubscribe("p1", "c1", "pods")
-	assert.Equal(t, 0, count)
-}
-
-func TestSubscriptionManager_IsSubscribed_True(t *testing.T) {
-	m := newSubscriptionManager()
-	m.Subscribe("p1", "c1", "pods")
-	assert.True(t, m.IsSubscribed("p1", "c1", "pods"))
-}
-
-func TestSubscriptionManager_IsSubscribed_False(t *testing.T) {
-	m := newSubscriptionManager()
-	assert.False(t, m.IsSubscribed("p1", "c1", "pods"))
-}
-
-func TestSubscriptionManager_IsSubscribed_AfterRemoveAll(t *testing.T) {
-	m := newSubscriptionManager()
-	m.Subscribe("p1", "c1", "pods")
-	m.Subscribe("p1", "c1", "svcs")
-	m.RemoveAll("p1")
-	assert.False(t, m.IsSubscribed("p1", "c1", "pods"))
-	assert.False(t, m.IsSubscribed("p1", "c1", "svcs"))
-}
-
-func TestSubscriptionManager_RemoveAll_OnlyTargetPlugin(t *testing.T) {
-	m := newSubscriptionManager()
-	m.Subscribe("p1", "c1", "pods")
-	m.Subscribe("p2", "c1", "pods")
-	m.RemoveAll("p1")
-	assert.False(t, m.IsSubscribed("p1", "c1", "pods"))
-	assert.True(t, m.IsSubscribed("p2", "c1", "pods"))
-}
-
-func TestSubscriptionManager_RemoveAll_EmptyMap(t *testing.T) {
-	m := newSubscriptionManager()
-	assert.NotPanics(t, func() {
-		m.RemoveAll("nonexistent")
-	})
-}
-
-func TestSubscriptionManager_DifferentKeys(t *testing.T) {
-	m := newSubscriptionManager()
-	m.Subscribe("p1", "c1", "pods")
-	m.Subscribe("p1", "c2", "svcs")
-	assert.True(t, m.IsSubscribed("p1", "c1", "pods"))
-	assert.True(t, m.IsSubscribed("p1", "c2", "svcs"))
-	assert.False(t, m.IsSubscribed("p1", "c1", "svcs"))
-}
-
-func TestSubscriptionManager_Concurrent_SubscribeUnsubscribe(_ *testing.T) {
-	m := newSubscriptionManager()
-	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			m.Subscribe("p1", "c1", "pods")
-			m.Unsubscribe("p1", "c1", "pods")
-		}()
+func TestSubscriptionMembershipBoundsAndSnapshotsTargets(t *testing.T) {
+	manager := newSubscriptionManager()
+	owner := invocation.NewScope(invocation.TrustedUI)
+	ctx := owner.Context(context.Background())
+	request := subscriptionTestTarget()
+	values := []string{"original"}
+	request.Target.Scope = resourcev2.QueryScope{{Dimension: "zone", Match: resourcev2.ScopeOneOf, Values: &values}}
+	require.NoError(t, manager.Subscribe(ctx, owner.Principal(), "plugin", request))
+	values[0] = "changed"
+	matches := manager.Matching("plugin", request.Target.Route.Connection, request.Target.Type)
+	require.Equal(t, "original", (*matches[0].Target.Scope[0].Values)[0])
+	request = subscriptionTestTarget()
+	for i := 1; i < maxResourceSubscriptions; i++ {
+		request.TargetID = fmt.Sprint(i)
+		require.NoError(t, manager.Subscribe(ctx, owner.Principal(), "plugin", request))
 	}
-	wg.Wait()
-}
-
-func TestSubscriptionManager_Concurrent_RemoveAll(_ *testing.T) {
-	m := newSubscriptionManager()
-	var wg sync.WaitGroup
-	for i := 0; i < 20; i++ {
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			m.Subscribe("p1", "c1", "pods")
-		}()
-		go func() {
-			defer wg.Done()
-			m.RemoveAll("p1")
-		}()
-	}
-	wg.Wait()
-}
-
-func TestSubscriptionManager_SubscriptionKey_Format(t *testing.T) {
-	key := subscriptionKey("plugin-a", "conn-1", "core::v1::Pod")
-	assert.Equal(t, "plugin-a/conn-1/core::v1::Pod", key)
+	request.TargetID = "overflow"
+	require.Equal(t, "RESOURCE_LIMIT", requireAppError(t, manager.Subscribe(ctx, owner.Principal(), "plugin", request)).Code)
+	require.NoError(t, manager.Unsubscribe(owner.Principal(), "plugin", HostSubscription{TargetID: "1", Target: request.Target}))
+	require.NoError(t, manager.Subscribe(ctx, owner.Principal(), "plugin", request))
 }

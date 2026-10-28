@@ -8,40 +8,25 @@ import {
 import useRightDrawer from '@/hooks/useRightDrawer';
 import { showAppError, useSnackbar } from '@omniviewdev/runtime';
 
-import { type Memoizer } from './ResourceTableContainer';
 import { type Virtualizer, type VirtualItem } from '@tanstack/react-virtual';
+import type { ResourceTableRow } from '@/hooks/resource/useResourceDefinition';
 
 export type Props = {
   /** ID of the plugin */
   pluginID: string;
-  /** ID of the connection */
-  connectionID: string;
-  /** ID of this resource */
-  resourceID: string;
-  /** The hash key of this resource type. For exaample, 'core::v1::Pod' */
-  resourceKey: string;
-  /** The resource namespace is the backend used the namespacing support. */
-  namespace?: string;
-  /** An optional memoizer function to optimize rendering */
-  memoizer?: Memoizer;
   virtualizer: Virtualizer<HTMLDivElement, Element>;
   virtualRow: VirtualItem;
   isSelected: boolean;
   /** The row data */
-  row: Row<any>;
+  row: Row<ResourceTableRow>;
   columnVisibility: string;
 };
 
 /**
- * The row container component for the resource table. Responsible for rendering the row contents, and optionally
- * memoizing the cells based on the memoizer function provided.
+ * Render an observed canonical resource row and open its drawer without another read.
  */
 export const RowContainer: React.FC<Props> = ({ 
   pluginID, 
-  connectionID, 
-  resourceID,
-  resourceKey,
-  namespace = '',
   virtualizer,
   virtualRow,
   isSelected,
@@ -49,6 +34,7 @@ export const RowContainer: React.FC<Props> = ({
 }) => {
   const { showResourceSidebar } = useRightDrawer();
   const { showSnackbar } = useSnackbar();
+  const resourceID = row.original.record.record.reference.address.id;
 
   // Use the provided ref callback to measure items
   const ref = React.useCallback((node: HTMLTableRowElement) => {
@@ -59,10 +45,11 @@ export const RowContainer: React.FC<Props> = ({
     if (column !== 'select' && column !== 'menu') {
       void showResourceSidebar({
         pluginID, 
-        connectionID, 
-        resourceKey, 
-        resourceID,
-        namespace,
+        targetId: row.original.record.targetId,
+        route: row.original.record.route,
+        reference: row.original.record.record.reference,
+        representation: row.original.record.record.representation.id,
+        record: row.original.record,
       }).catch((error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') {
           return;

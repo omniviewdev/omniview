@@ -1,289 +1,118 @@
 package resource
 
 import (
-	"encoding/json"
+	"context"
 	"testing"
 
+	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/indexer"
-	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
-	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	"github.com/stretchr/testify/require"
 )
 
-func TestIntegration_WatchEventToGraphQuery(t *testing.T) {
-	// Setup: registry + graph + dispatcher + sink
-	store := registry.NewMemoryStore()
-	g := graph.NewRelationshipGraph()
-	graphIdx := graph.NewGraphIndexer(g, store)
-	disp := indexer.NewDispatcher([]indexer.ResourceIndexer{graphIdx})
-	disp.Start()
-	defer disp.Stop()
-
+func newGraphPipeline(t *testing.T) (*engineWatchSink, *controller, *graph.RelationshipGraph, *indexer.Dispatcher) {
+	t.Helper()
 	ctrl, _ := newTestControllerWithEmitter(t)
-	ctrl.registryStore = store
-	ctrl.dispatcher = disp
-	ctrl.graph = g
+	catalog := canonicalTestCatalog("provider-a", "workload")
+	catalog.Types[0].IdentityDimensions = []resourcev2.Dimension{{Name: "shard", AllowEmpty: false}}
+	owner := catalog.Types[0]
+	owner.Type = "owner"
+	machine := canonicalTestCatalog("provider-a", "machine").Types[0]
+	catalog.Types = append(catalog.Types, owner, machine)
+	registerMockPlugin(ctrl, "plugin-a", &mockProvider{CatalogFunc: func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) { return catalog, nil }})
+	dispatcher := indexer.NewDispatcher([]indexer.ResourceIndexer{graph.NewGraphIndexer(ctrl.graph, ctrl.registryStore)})
+	dispatcher.Start()
+	t.Cleanup(dispatcher.Stop)
+	ctrl.dispatcher = dispatcher
+	ctx, cancel := context.WithCancel(invocation.HostContext(context.Background()))
+	t.Cleanup(cancel)
+	return &engineWatchSink{ctx: ctx, generationID: ctrl.plugins["plugin-a"].generationID, pluginID: "plugin-a", ctrl: ctrl, store: ctrl.registryStore, dispatcher: dispatcher}, ctrl, ctrl.graph, dispatcher
+}
 
-	sink := &engineWatchSink{
-		pluginID:   "k8s",
-		ctrl:       ctrl,
-		store:      store,
-		dispatcher: disp,
+func graphPipelineRecord(t *testing.T, ctrl *controller, resourceType, id, body string) (resourcev2.AccessRoute, resourcev2.Record) {
+	t.Helper()
+	target := admittedReadTarget(t, ctrl, "plugin-a", "route/one", resourceType).Target
+	record := canonicalTestRecord(target.Provider, target.Authority, resourceType, id)
+	if resourceType != "machine" {
+		record.Reference.Address.Scope = []resourcev2.ScopeEntry{{Dimension: "shard", Value: "west"}}
 	}
+	value, err := resourcev2.JSONToValue([]byte(body))
+	require.NoError(t, err)
+	record.Body = value
+	return target.Route, record
+}
 
-	// Declare: Pod runs_on Node via spec.nodeName
-	g.SetDeclarations("k8s", "core::v1::Pod", []sdkresource.RelationshipDescriptor{
-		{
-			Type:              sdkresource.RelRunsOn,
-			TargetResourceKey: "core::v1::Node",
-			Label:             "runs on",
-			Extractor: &sdkresource.RelationshipExtractor{
-				Method:    "fieldPath",
-				FieldPath: "spec.nodeName",
-			},
-		},
-	})
-
-	// Simulate watch events
-	sink.OnAdd(sdkresource.WatchAddPayload{
-		Key: "core::v1::Pod", Connection: "c1",
-		ID: "nginx", Namespace: "default",
-		Metadata: sdkresource.ResourceMetadata{UID: "pod-uid-1"},
-		Data: json.RawMessage(`{
-			"metadata": {"name":"nginx","namespace":"default","uid":"pod-uid-1"},
-			"spec": {"nodeName": "worker-1"}
-		}`),
-	})
-
-	disp.Flush()
-
-	// Verify: registry has the entry
-	entry, ok := store.Get("k8s", "c1", "core::v1::Pod", "default", "nginx")
-	if !ok || entry == nil {
-		t.Fatal("expected registry entry")
-	}
-
-	// Verify: graph has the edge
-	podNode := graph.GraphNode{
-		PluginID: "k8s", ConnectionID: "c1",
-		ResourceKey: "core::v1::Pod", ID: "nginx", Namespace: "default",
-	}
-	edges, err := g.GetRelated(podNode, graph.Outgoing, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(edges) != 1 {
-		t.Fatalf("expected 1 edge (runs_on), got %d", len(edges))
-	}
-	if edges[0].Target.ID != "worker-1" {
-		t.Fatalf("expected target worker-1, got %s", edges[0].Target.ID)
-	}
-
-	// Simulate delete
-	sink.OnDelete(sdkresource.WatchDeletePayload{
-		Key: "core::v1::Pod", Connection: "c1",
-		ID: "nginx", Namespace: "default",
-		Data: json.RawMessage(`{"metadata":{"name":"nginx","namespace":"default","uid":"pod-uid-1"}}`),
-	})
-
-	disp.Flush()
-
-	// Verify: registry entry removed
-	_, ok = store.Get("k8s", "c1", "core::v1::Pod", "default", "nginx")
-	if ok {
-		t.Fatal("expected registry entry removed after delete")
-	}
-
-	// Verify: graph edges removed
-	edges, _ = g.GetRelated(podNode, graph.Outgoing, nil)
-	if len(edges) != 0 {
-		t.Fatalf("expected 0 edges after delete, got %d", len(edges))
-	}
+func TestIntegration_WatchEventToGraphQuery(t *testing.T) {
+	sink, ctrl, g, dispatcher := newGraphPipeline(t)
+	g.SetDeclarations("plugin-a", resourcev2.AccessRoute{Connection: "route/one"}, "workload", []resourcev2.RelationshipDescriptor{{Type: resourcev2.RelRunsOn, TargetType: "machine", Label: "runs on", TargetScope: []resourcev2.ScopeEntry{}, Extractor: &resourcev2.RelationshipExtractor{Method: "fieldPath", FieldPath: "machine"}}})
+	route, record := graphPipelineRecord(t, ctrl, "workload", "object/one", `{"machine":"worker/one"}`)
+	sink.OnAdd(resourcev2.WatchAddPayload{Route: route, Record: record})
+	dispatcher.Flush()
+	entry, ok := ctrl.registryStore.Get("plugin-a", record.Reference, route)
+	require.True(t, ok)
+	node := graph.GraphNode{PluginID: "plugin-a", Reference: entry.Reference, Route: entry.Route}
+	edges, err := g.GetRelated(node, graph.Outgoing, nil)
+	require.NoError(t, err)
+	require.Len(t, edges, 1)
+	require.Equal(t, "worker/one", edges[0].Target.Reference.Address.ID)
+	require.Equal(t, record.Reference.Address.Authority, edges[0].Target.Reference.Address.Authority)
+	sink.OnDelete(resourcev2.WatchDeletePayload{Route: route, Reference: record.Reference})
+	dispatcher.Flush()
+	_, ok = ctrl.registryStore.Get("plugin-a", record.Reference, route)
+	require.False(t, ok)
+	edges, err = g.GetRelated(node, graph.Outgoing, nil)
+	require.NoError(t, err)
+	require.Empty(t, edges)
 }
 
 func TestIntegration_OwnershipChain(t *testing.T) {
-	store := registry.NewMemoryStore()
-	g := graph.NewRelationshipGraph()
-	graphIdx := graph.NewGraphIndexer(g, store)
-	disp := indexer.NewDispatcher([]indexer.ResourceIndexer{graphIdx})
-	disp.Start()
-	defer disp.Stop()
-
-	ctrl, _ := newTestControllerWithEmitter(t)
-	ctrl.registryStore = store
-	ctrl.dispatcher = disp
-	ctrl.graph = g
-
-	sink := &engineWatchSink{
-		pluginID: "k8s", ctrl: ctrl,
-		store: store, dispatcher: disp,
-	}
-
-	// Declare: Pod owned by ReplicaSet via fieldPath + EdgeIncoming
-	g.SetDeclarations("k8s", "core::v1::Pod", []sdkresource.RelationshipDescriptor{
-		{
-			Type:              sdkresource.RelOwns,
-			TargetResourceKey: "apps::v1::ReplicaSet",
-			Label:             "owned by",
-			Direction:         sdkresource.EdgeIncoming,
-			Extractor: &sdkresource.RelationshipExtractor{
-				Method:    "fieldPath",
-				FieldPath: `metadata.ownerReferences.#(kind=="ReplicaSet").name`,
-			},
-		},
-	})
-
-	// Add Pod with ownerReference to ReplicaSet
-	sink.OnAdd(sdkresource.WatchAddPayload{
-		Key: "core::v1::Pod", Connection: "c1",
-		ID: "web-abc-1", Namespace: "default",
-		Data: json.RawMessage(`{
-			"metadata": {
-				"name": "web-abc-1",
-				"namespace": "default",
-				"uid": "pod-uid-1",
-				"ownerReferences": [
-					{"apiVersion":"apps/v1","kind":"ReplicaSet","name":"web-abc","uid":"rs-uid-1"}
-				]
-			}
-		}`),
-		Metadata: sdkresource.ResourceMetadata{UID: "pod-uid-1"},
-	})
-
-	disp.Flush()
-
-	// Verify: ownership edge exists (ReplicaSet → Pod)
-	// The extractor inherits the Pod's namespace ("default") for the target.
-	rsNode := graph.GraphNode{
-		PluginID: "k8s", ConnectionID: "c1",
-		ResourceKey: "apps::v1::ReplicaSet", ID: "web-abc", Namespace: "default",
-	}
-	edges, _ := g.GetRelated(rsNode, graph.Outgoing, nil)
-	if len(edges) != 1 {
-		t.Fatalf("expected 1 owns edge from RS, got %d", len(edges))
-	}
-	if edges[0].Target.ID != "web-abc-1" || edges[0].Type != sdkresource.RelOwns {
-		t.Fatalf("unexpected edge: %+v", edges[0])
-	}
+	sink, ctrl, g, dispatcher := newGraphPipeline(t)
+	g.SetDeclarations("plugin-a", resourcev2.AccessRoute{Connection: "route/one"}, "workload", []resourcev2.RelationshipDescriptor{{Type: resourcev2.RelOwns, TargetType: "owner", Label: "owned by", Direction: resourcev2.EdgeIncoming, ScopeExtractors: []resourcev2.ScopeExtractor{{Dimension: "shard", FieldPath: "placement"}}, Extractor: &resourcev2.RelationshipExtractor{Method: "fieldPath", FieldPath: "owner"}}})
+	route, record := graphPipelineRecord(t, ctrl, "workload", "child", `{"placement":"west","owner":"parent"}`)
+	sink.OnAdd(resourcev2.WatchAddPayload{Route: route, Record: record})
+	dispatcher.Flush()
+	parent := record.Reference
+	parent.Address.Type = "owner"
+	parent.Address.ID = "parent"
+	edges, err := g.GetRelated(graph.GraphNode{PluginID: "plugin-a", Reference: parent, Route: route}, graph.Outgoing, nil)
+	require.NoError(t, err)
+	require.Len(t, edges, 1)
+	require.Equal(t, resourcev2.RelOwns, edges[0].Type)
+	require.Equal(t, record.Reference, edges[0].Target.Reference)
 }
 
 func TestIntegration_ClusterScopedTarget(t *testing.T) {
-	store := registry.NewMemoryStore()
-	g := graph.NewRelationshipGraph()
-	graphIdx := graph.NewGraphIndexer(g, store)
-	disp := indexer.NewDispatcher([]indexer.ResourceIndexer{graphIdx})
-	disp.Start()
-	defer disp.Stop()
-
-	ctrl, _ := newTestControllerWithEmitter(t)
-	ctrl.registryStore = store
-	ctrl.dispatcher = disp
-	ctrl.graph = g
-
-	sink := &engineWatchSink{
-		pluginID: "k8s", ctrl: ctrl,
-		store: store, dispatcher: disp,
-	}
-
-	clusterScoped := false
-	g.SetDeclarations("k8s", "core::v1::PersistentVolumeClaim", []sdkresource.RelationshipDescriptor{
-		{
-			Type:              sdkresource.RelUses,
-			TargetResourceKey: "core::v1::PersistentVolume",
-			Label:             "uses",
-			TargetNamespaced:  &clusterScoped,
-			Extractor: &sdkresource.RelationshipExtractor{
-				Method:    "fieldPath",
-				FieldPath: "spec.volumeName",
-			},
-		},
-	})
-
-	sink.OnAdd(sdkresource.WatchAddPayload{
-		Key: "core::v1::PersistentVolumeClaim", Connection: "c1",
-		ID: "data-pvc", Namespace: "default",
-		Metadata: sdkresource.ResourceMetadata{UID: "pvc-uid-1"},
-		Data:     json.RawMessage(`{"spec":{"volumeName":"pv-0001"}}`),
-	})
-
-	disp.Flush()
-
-	pvcNode := graph.GraphNode{
-		PluginID: "k8s", ConnectionID: "c1",
-		ResourceKey: "core::v1::PersistentVolumeClaim", ID: "data-pvc", Namespace: "default",
-	}
-	edges, err := g.GetRelated(pvcNode, graph.Outgoing, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(edges) != 1 {
-		t.Fatalf("expected 1 edge, got %d", len(edges))
-	}
-	if edges[0].Target.Namespace != "" {
-		t.Errorf("expected empty namespace for PV target, got %q", edges[0].Target.Namespace)
-	}
-	if edges[0].Target.ID != "pv-0001" {
-		t.Errorf("expected target pv-0001, got %s", edges[0].Target.ID)
-	}
+	sink, ctrl, g, dispatcher := newGraphPipeline(t)
+	g.SetDeclarations("plugin-a", resourcev2.AccessRoute{Connection: "route/one"}, "workload", []resourcev2.RelationshipDescriptor{{Type: resourcev2.RelUses, TargetType: "machine", TargetScope: []resourcev2.ScopeEntry{}, Extractor: &resourcev2.RelationshipExtractor{Method: "fieldPath", FieldPath: "volume"}}})
+	route, record := graphPipelineRecord(t, ctrl, "workload", "claim", `{"volume":"disk"}`)
+	sink.OnAdd(resourcev2.WatchAddPayload{Route: route, Record: record})
+	dispatcher.Flush()
+	edges := g.EdgesFrom((graph.GraphNode{PluginID: "plugin-a", Reference: record.Reference, Route: route}).Key())
+	require.Len(t, edges, 1)
+	require.Empty(t, edges[0].Target.Reference.Address.Scope)
+	require.Equal(t, "disk", edges[0].Target.Reference.Address.ID)
 }
 
 func TestIntegration_ConnectionTeardown(t *testing.T) {
-	store := registry.NewMemoryStore()
-	g := graph.NewRelationshipGraph()
-	graphIdx := graph.NewGraphIndexer(g, store)
-	disp := indexer.NewDispatcher([]indexer.ResourceIndexer{graphIdx})
-	disp.Start()
-	defer disp.Stop()
-
-	ctrl, _ := newTestControllerWithEmitter(t)
-	ctrl.registryStore = store
-	ctrl.dispatcher = disp
-	ctrl.graph = g
-	sink := &engineWatchSink{
-		pluginID: "k8s", ctrl: ctrl,
-		store: store, dispatcher: disp,
+	sink, ctrl, g, dispatcher := newGraphPipeline(t)
+	g.SetDeclarations("plugin-a", resourcev2.AccessRoute{Connection: "route/one"}, "workload", []resourcev2.RelationshipDescriptor{{Type: resourcev2.RelRunsOn, TargetType: "machine", Extractor: &resourcev2.RelationshipExtractor{Method: "fieldPath", FieldPath: "machine"}}})
+	var first resourcev2.ResourceReference
+	for _, id := range []string{"one", "two", "three"} {
+		route, record := graphPipelineRecord(t, ctrl, "workload", id, `{"machine":"worker"}`)
+		if id == "one" {
+			first = record.Reference
+		}
+		sink.OnAdd(resourcev2.WatchAddPayload{Route: route, Record: record})
 	}
-
-	g.SetDeclarations("k8s", "core::v1::Pod", []sdkresource.RelationshipDescriptor{
-		{
-			Type: sdkresource.RelRunsOn, TargetResourceKey: "core::v1::Node",
-			Label:     "runs on",
-			Extractor: &sdkresource.RelationshipExtractor{Method: "fieldPath", FieldPath: "spec.nodeName"},
-		},
-	})
-
-	// Add 3 pods
-	for i, name := range []string{"p1", "p2", "p3"} {
-		sink.OnAdd(sdkresource.WatchAddPayload{
-			Key: "core::v1::Pod", Connection: "c1",
-			ID: name, Namespace: "default",
-			Metadata: sdkresource.ResourceMetadata{UID: "uid-" + string(rune('0'+i))},
-			Data: json.RawMessage(`{"metadata":{"name":"` + name +
-				`","namespace":"default","uid":"uid-` + string(rune('0'+i)) +
-				`"},"spec":{"nodeName":"worker-1"}}`),
-		})
-	}
-
-	disp.Flush()
-
-	// Verify 3 entries + 3 edges
-	results := store.ScanByResourceKey("k8s", "c1", "core::v1::Pod")
-	if len(results) != 3 {
-		t.Fatalf("expected 3 registry entries, got %d", len(results))
-	}
-
-	// Tear down connection
-	removed := store.DeleteByConnection("k8s", "c1")
+	dispatcher.Flush()
+	require.Len(t, ctrl.registryStore.ScanByResourceKey("plugin-a", "route/one", "workload"), 3)
+	removed := ctrl.registryStore.DeleteByConnection("plugin-a", "route/one")
 	for _, entry := range removed {
-		disp.Enqueue(indexer.Event{Type: indexer.EventDelete, Entry: entry})
+		dispatcher.Enqueue(indexer.Event{Type: indexer.EventDelete, Entry: entry})
 	}
-	g.RemoveEdgesForConnection("k8s", "c1")
-
-	disp.Flush()
-
-	// Verify all cleaned up
-	results = store.ScanByResourceKey("k8s", "c1", "core::v1::Pod")
-	if len(results) != 0 {
-		t.Fatalf("expected 0 entries after teardown, got %d", len(results))
-	}
+	g.RemoveEdgesForConnection("plugin-a", "route/one")
+	dispatcher.Flush()
+	require.Empty(t, ctrl.registryStore.ScanByResourceKey("plugin-a", "route/one", "workload"))
+	require.Empty(t, g.EdgesFrom((graph.GraphNode{PluginID: "plugin-a", Reference: first, Route: resourcev2.AccessRoute{Connection: "route/one"}}).Key()))
 }

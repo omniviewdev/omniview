@@ -9,14 +9,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
 // StreamAction commits a public handle only after concrete native provider ready.
 // The producer owns its lifetime before it starts; request cancellation is bridged
 // through the commit, never reparented after a request-bound producer has started.
-func (c *controller) StreamAction(ctx context.Context, pluginID, connectionID, key, actionID string, input resource.ActionInput) (id string, retErr error) {
-	ctx, err := c.admit(ctx, "resource.StreamAction", invocation.Target{Provider: pluginID, Connection: connectionID, ResourceType: key, Object: input.ID, Action: actionID, Scope: namespaceScope(input.Namespace)})
+func (c *controller) StreamAction(ctx context.Context, pluginID string, input resource.ActionRequest) (id string, retErr error) {
+	ctx, err := c.admit(ctx, "resource.StreamAction", ancillaryTarget(pluginID, input.Route, input.Reference.Address.Type, input.Reference, input.Action))
 	if err != nil {
 		return "", err
 	}
@@ -26,12 +26,27 @@ func (c *controller) StreamAction(ctx context.Context, pluginID, connectionID, k
 			finishResource(ctx, &retErr)
 		}
 	}()
-	provider, sessionCtx, err := c.withSession(ctx, pluginID, connectionID)
+	if err := resource.ValidateActionRequest(input); err != nil {
+		return "", err
+	}
+	provider, generation, sessionCtx, cleanup, err := c.operationGeneration(ctx, pluginID, input.Route)
 	if err != nil {
 		return "", err
 	}
+	defer cleanup()
+	streamer, ok := provider.(resource.StreamingActioner)
+	if !ok {
+		return "", ancillaryUnsupported()
+	}
+	if err := c.validateReference(sessionCtx, pluginID, input.Route, input.Reference); err != nil {
+		return "", err
+	}
 	producerCtx, cancelCause := context.WithCancelCause(context.WithoutCancel(sessionCtx))
-	cancel := func() { cancelCause(context.Canceled) }
+	stopGeneration := context.AfterFunc(generation.ctx, func() { cancelCause(context.Canceled) })
+	cancel := func() {
+		stopGeneration()
+		cancelCause(context.Canceled)
+	}
 	request, _ := invocation.FromContext(ctx)
 	reservation, err := c.actions.reserve(request, cancel)
 	if err != nil {
@@ -66,7 +81,7 @@ func (c *controller) StreamAction(ctx context.Context, pluginID, connectionID, k
 	}()
 	events := make(chan resource.ActionEvent, streamChannelBuffer)
 	result := make(chan error, 1)
-	go func() { result <- provider.StreamAction(producerCtx, key, actionID, input, events) }()
+	go func() { result <- streamer.StreamAction(producerCtx, input, events) }()
 	var completed bool
 	var resultErr error
 	for {
@@ -103,6 +118,9 @@ func (c *controller) StreamAction(ctx context.Context, pluginID, connectionID, k
 			if err == nil && !time.Now().Before(startupDeadline) {
 				err = context.DeadlineExceeded
 			}
+			if err == nil {
+				err = c.currentGeneration(sessionCtx, pluginID, generation)
+			}
 			var handle *actionHandle
 			if err == nil {
 				handle, err = c.actions.commit(reservation, producerCtx)
@@ -135,7 +153,11 @@ func actionEvent(event resource.ActionEvent, requestID string) (ActionEventDTO, 
 	if event.Type != "progress" && event.Type != "output" && event.Type != "complete" {
 		return ActionEventDTO{}, actionProtocolError("The provider sent an invalid action event.")
 	}
-	encoded, err := json.Marshal(ActionSnapshot{Sequence: 9007199254740991, Event: ActionEventDTO{Type: event.Type, Data: event.Data}, Terminal: true})
+	data := event.Data
+	if data == nil && event.Type != "complete" {
+		return ActionEventDTO{}, actionProtocolError("The provider omitted action data.")
+	}
+	encoded, err := json.Marshal(ActionSnapshot{Sequence: 9007199254740991, Event: ActionEventDTO{Type: event.Type, Data: data}, Terminal: true})
 	if err != nil {
 		return ActionEventDTO{}, actionProtocolError("The provider sent invalid action data.")
 	}
@@ -154,7 +176,7 @@ func (c *controller) runActionStream(ctx context.Context, handle *actionHandle, 
 			if resultErr != nil {
 				c.actions.update(handle, ActionEventDTO{Type: "error", Error: apperror.ForResource(resultErr, handle.request.ID())}, true)
 			} else {
-				c.actions.update(handle, ActionEventDTO{Type: "complete", Data: map[string]any{"message": "Completed"}}, true)
+				c.actions.update(handle, ActionEventDTO{Type: "complete"}, true)
 			}
 			return
 		}

@@ -9,14 +9,13 @@ import (
 	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
-	"github.com/omniviewdev/plugin-sdk/pkg/v1/resource/resourcetest"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
-// This registered resourcer establishes a real native file before ready, then
-// keeps its descriptor and producer alive until the accepted handle is canceled.
+// This provider establishes a real native file before ready, then keeps its
+// descriptor and producer alive until the accepted handle is canceled.
 type transferFileResourcer struct {
-	resourcetest.StubResourcer[string]
+	root         string
 	continueWork chan struct{}
 	continued    chan error
 	opened       chan *os.File
@@ -24,18 +23,14 @@ type transferFileResourcer struct {
 	stopped      chan struct{}
 }
 
-func (*transferFileResourcer) GetActions(context.Context, *string, resource.ResourceMeta) ([]resource.ActionDescriptor, error) {
-	return []resource.ActionDescriptor{{ID: "append", Label: "Append"}}, nil
+func (*transferFileResourcer) Catalog(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+	return canonicalTestCatalog("native", "native::v1::File"), nil
 }
 
-func (*transferFileResourcer) ExecuteAction(context.Context, *string, resource.ResourceMeta, string, resource.ActionInput) (*resource.ActionResult, error) {
-	return nil, &resource.ResourceOperationError{Code: "UNSUPPORTED", Title: "Streaming action required", Message: "Use the append stream."}
-}
-
-func (r *transferFileResourcer) StreamAction(ctx context.Context, root *string, _ resource.ResourceMeta, _ string, _ resource.ActionInput, events chan<- resource.ActionEvent) error {
+func (r *transferFileResourcer) StreamAction(ctx context.Context, _ resource.ActionRequest, events chan<- resource.ActionEvent) error {
 	close(r.started)
 	defer close(r.stopped)
-	file, err := os.OpenFile(filepath.Join(*root, "action.txt"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	file, err := os.OpenFile(filepath.Join(r.root, "action.txt"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}
@@ -72,30 +67,14 @@ func TestStreamActionCommittedNativeHandleSurvivesReturnCancellation(t *testing.
 	ctrl, _ := newTestControllerWithEmitter(t)
 	root := t.TempDir()
 	native := &transferFileResourcer{
+		root:         root,
 		continueWork: make(chan struct{}),
 		continued:    make(chan error, 1),
 		opened:       make(chan *os.File, 1),
 		started:      make(chan struct{}),
 		stopped:      make(chan struct{}),
 	}
-	provider, err := resource.BuildResourceController(context.Background(), resource.ResourcePluginConfig[string]{
-		Connections: &resourcetest.StubConnectionProvider[string]{CreateClientFunc: func(context.Context) (*string, error) { return &root, nil }},
-		Resources: []resource.ResourceRegistration[string]{{
-			Meta:      resource.ResourceMeta{Group: "native", Version: "v1", Kind: "File"},
-			Resourcer: native,
-		}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(provider.Close)
-	if _, err := provider.LoadConnections(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := provider.StartConnection(context.Background(), "conn-1"); err != nil {
-		t.Fatal(err)
-	}
-	registerMockPlugin(ctrl, "native", setupGRPCProvider(t, provider))
+	registerMockPlugin(ctrl, "native", setupGRPCProvider(t, native))
 
 	owner := invocation.NewScope(invocation.TrustedUI)
 	openCtx, cancelOpen := context.WithCancel(owner.Context(context.Background()))
@@ -135,7 +114,7 @@ func TestStreamActionCommittedNativeHandleSurvivesReturnCancellation(t *testing.
 		}
 		return timer
 	}
-	id, err := ctrl.StreamAction(openCtx, "native", "conn-1", "native::v1::File", "append", resource.ActionInput{})
+	id, err := ctrl.StreamAction(openCtx, "native", admittedActionRequest(t, ctrl, "native", "conn-1", "native::v1::File", "append"))
 	if !errors.Is(openCtx.Err(), context.Canceled) {
 		t.Fatal("the request was not canceled at the registry commit boundary")
 	}

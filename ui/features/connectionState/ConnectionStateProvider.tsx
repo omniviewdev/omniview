@@ -44,7 +44,7 @@ function ActiveConnectionStateDialog({
 }) {
   const { summary, isFullySynced } = useWatchState({
     pluginID: target.pluginID,
-    connectionID: target.connectionID,
+    route: { connection: target.connectionID },
   });
 
   const resources = summary.data?.resources ?? {};
@@ -52,11 +52,16 @@ function ActiveConnectionStateDialog({
 
   const handleRetryResource = useCallback(async (resourceKey: string) => {
     try {
-      await ResourceClient.EnsureResourceWatch(target.pluginID, target.connectionID, resourceKey);
+      const resolved = await ResourceClient.ResolveTarget(target.pluginID, {
+        route: { connection: target.connectionID },
+        type: resourceKey,
+        scope: summary.data?.scope,
+      });
+      await ResourceClient.EnsureResourceWatch(target.pluginID, resolved.target);
     } catch (err) {
       console.error('Failed to retry watch:', err);
     }
-  }, [target.pluginID, target.connectionID]);
+  }, [target.pluginID, target.connectionID, summary.data?.scope]);
 
   // Auto-close after sync completes (only for auto-opened dialogs)
   useEffect(() => {

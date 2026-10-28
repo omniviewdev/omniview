@@ -7,7 +7,6 @@ import { LuChevronDown } from 'react-icons/lu';
 import {
   type ColumnDef,
   type ColumnFiltersState,
-  type FilterFn,
   type SortingState,
   type VisibilityState,
   flexRender,
@@ -17,21 +16,15 @@ import {
   useReactTable,
   type RowSelectionState,
 } from '@tanstack/react-table';
-import get from 'lodash.get';
 
 // Project imports
-// import NamespaceSelect from '@/components/selects/NamespaceSelect';
 import styles from './ResourceTableContainer.module.css';
 import { DebouncedInput } from './DebouncedInput';
 import { RowContainer } from './RowContainer';
-import { plural } from '@/utils/language';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import ColumnFilter from './ColumnFilter';
-import NamespaceSelect from '@/components/selects/NamespaceSelect';
 import { readProfileStorage, writeProfileStorage } from '@/features/instance/boot';
-
-export type Memoizer = string | string[] | ((data: any) => string);
-export type IdAccessor = string | ((data: any) => string);
+import type { ResourceTableRow } from '@/hooks/resource/useResourceDefinition';
 
 export type Props = {
   /**
@@ -42,38 +35,13 @@ export type Props = {
   /**
    * The data coming in
    */
-  data: any[];
-
-  /**
-   * The available namespaces for viewing, if the resource is namespaced.
-   */
-  namespaces?: string[];
+  data: ResourceTableRow[];
 
   /**
    * The visibility state to start with for the columns.
    */
   initialColumnVisibility?: VisibilityState;
 
-  /**
-   * The ID accessor for the data.
-   */
-  idAccessor: IdAccessor;
-
-  /**
-   * Namespace accessor
-   */
-  namespaceAccessor?: string;
-
-  /**
-   * Memoizer is a function that takes in the data and returns a key or hash
-   * to determine if the data has changed or not. If provided, it will be used
-   * to optimize rerenders of columns.
-   *
-   * This can either be a single string key accessor, an array of string key accessors,
-   * of a function that takes in the data and returns a key. If provided as a function,
-   * limit the comparison work to only what is required.
-   */
-  memoizer?: Memoizer;
 
   /**
    * ID for the plugin.
@@ -91,35 +59,10 @@ export type Props = {
   resourceKey: string;
 };
 
-const idAccessorResolver = (data: any, accessor: IdAccessor): string => {
-  switch (typeof accessor) {
-    case 'function':
-      return accessor(data);
-    case 'string':
-      return get(data, accessor);
-    case 'number':
-    case 'bigint':
-    case 'boolean':
-    case 'symbol':
-    case 'undefined':
-    case 'object':
-      throw new Error('Invalid ID accessor');
-  }
-};
-
-export const namespaceFilter: FilterFn<any> = (row, columnId, value: string[]) => {
-  // If not selected namespaces, return true
-  if (!value?.length) {
-    return true;
-  }
-
-  return value.includes(row.getValue(columnId));
-};
-
 
 /**
   * Render a generic resource table with sorting, filtering, column visibility and row selection.
-  * Use this component to display a generic table for any Kubernetes resource using tanstack/react-table.
+  * Use this component to display canonical provider records using tanstack/react-table.
   *
   * @param columns - The columns to display in the table.
   * @param data - The data to display in the table.
@@ -128,21 +71,12 @@ export const namespaceFilter: FilterFn<any> = (row, columnId, value: string[]) =
 const ResourceTableContainer: React.FC<Props> = ({
   columns,
   data,
-  namespaces,
-  idAccessor,
-  namespaceAccessor,
-  memoizer,
   pluginID,
   connectionID,
   resourceKey,
   initialColumnVisibility,
 }) => {
 
-  // Monkey patch the namespace column so it uses the namespace filter
-  const namespaced = columns.some(c => c.id === 'namespace');
-  if (namespaced) {
-    columns.find(c => c.id === 'namespace')!.filterFn = namespaceFilter;
-  }
 
   const [filterAnchor, setFilterAnchor] = React.useState<undefined | HTMLElement>(undefined);
 
@@ -155,25 +89,10 @@ const ResourceTableContainer: React.FC<Props> = ({
   };
 
   const [sorting, setSorting] = useState<SortingState>([{ id: 'name', desc: false }]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(namespaced ? [
-    { id: 'namespace', value: [] },
-  ] : []);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
 
-  /**
-  * Set the namespaces filter
-  */
-  const setNamespaces = (value: string[]) => {
-    setColumnFilters((prev) => {
-      const namespaceFilter = prev.find(f => f.id === 'namespace');
-      if (namespaceFilter) {
-        return prev.map(f => f.id === 'namespace' ? { ...f, value } : f);
-      }
-
-      return [...prev, { id: 'namespace', value }];
-    });
-  };
 
   // we have to use layout effect to set the column visibility before the table is repainted, use effect will cause a flicker
   // also can't just put it in the initial state because it will cause an issue with table render as well
@@ -217,7 +136,7 @@ const ResourceTableContainer: React.FC<Props> = ({
     getFilteredRowModel: getFilteredRowModel(),
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
-    getRowId: (row) => idAccessorResolver(row, idAccessor),
+    getRowId: (row) => row.record.key,
     state: {
       sorting,
       columnFilters,
@@ -249,11 +168,6 @@ const ResourceTableContainer: React.FC<Props> = ({
         : undefined,
   });
 
-  const placeHolderText = () => {
-    const keyparts = resourceKey.split('::');
-    const resource = plural(keyparts[keyparts.length - 1]);
-    return `Search ${data.length} ${resource}...`;
-  };
 
   return (
     <div className={styles.Root}>
@@ -263,16 +177,9 @@ const ResourceTableContainer: React.FC<Props> = ({
           onChange={value => {
             setSearch(String(value));
           }}
-          placeholder={placeHolderText()}
+          placeholder={`Search ${data.length} resources...`}
         />
         <Stack direction='row' spacing={2}>
-          {namespaced &&
-            <NamespaceSelect
-              available={namespaces ?? []}
-              selected={columnFilters.find(f => f.id === 'namespace')?.value as string[] || []}
-              setNamespaces={setNamespaces}
-            />
-          }
           <ColumnFilter
             anchorEl={filterAnchor}
             onClose={handleFilterClose}
@@ -353,15 +260,10 @@ const ResourceTableContainer: React.FC<Props> = ({
             {virtualizer.getVirtualItems().map(virtualRow => {
               const row = rows[virtualRow.index];
               return (
-                <MemoizedRow
+                <RowContainer
                   key={row.id}
                   pluginID={pluginID}
-                  connectionID={connectionID}
-                  resourceID={row.id}
-                  resourceKey={resourceKey}
-                  namespace={namespaceAccessor ? get(row.original, namespaceAccessor) : undefined}
                   row={row}
-                  memoizer={memoizer}
                   virtualizer={virtualizer}
                   virtualRow={virtualRow}
                   isSelected={rowSelection[row.id]}
@@ -376,43 +278,6 @@ const ResourceTableContainer: React.FC<Props> = ({
   );
 };
 
-/**
-* Calculate the memo key based on the memoizer function provided, fallback to default if not provided.
-*/
-const calcMemoKey = (data: any, memoizer?: Memoizer) => {
-  if (typeof memoizer === 'function') {
-    return memoizer(data);
-  }
-
-  if (Array.isArray(memoizer)) {
-    return memoizer.map(key => get(data, key)).join('-');
-  }
-
-  if (typeof memoizer === 'string') {
-    return memoizer.split(',').map(key => get(data, key)).join('-');
-  }
-
-  // memoizer is not provided, so there isn't really a way we can memoize this.
-  return null;
-};
-
-const MemoizedRow = React.memo(RowContainer, (prev, next) => {
-  const prevMemoKey = calcMemoKey(prev.row.original, prev.memoizer);
-  const nextMemoKey = calcMemoKey(next.row.original, next.memoizer);
-  if (prevMemoKey !== nextMemoKey) {
-    console.log(`recalculated ${prev.row.id}`, {
-      prevMemoKey,
-      nextMemoKey,
-    });
-  }
-
-  return prevMemoKey === nextMemoKey
-    && prev.virtualRow.start === next.virtualRow.start && prev.isSelected === next.isSelected
-    && prev.columnVisibility === next.columnVisibility;
-});
-
-MemoizedRow.displayName = 'MemoizedRow';
-MemoizedRow.whyDidYouRender = true;
 
 ResourceTableContainer.displayName = 'ResourceTableContainer';
 ResourceTableContainer.whyDidYouRender = true;

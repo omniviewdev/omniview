@@ -1,4 +1,5 @@
 export * from './useConnection'
 export * from './useConnections'
-export * from './useConnectionNamespaces'
+export * from './useScopeValues'
 export * from './useConnectionStatus'
+export * from './useConnectionProfiles'

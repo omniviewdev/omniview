@@ -1,39 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
-
-// Underlying client
-import { GetResourceGroups } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
+import { GetResourceGroups } from '../../resource/v2/client';
+import type { AccessRoute } from '../../resource/v2/domain';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
-type UseResourceGroupsOptions = {
-  /**
-   * The ID of the plugin
-   */
-  pluginID?: string;
-  /**
-   * The ID of the connection
-   */
-  connectionID: string;
-};
-
-/**
- * Fetch the resource groups for a given plugin and connection.
- */
-export const useResourceGroups = ({ pluginID: explicitPluginID, connectionID }: UseResourceGroupsOptions) => {
+export const useResourceGroups = ({ pluginID: explicitPluginID, route }: { pluginID?: string; route: AccessRoute }) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
-  const queryKey = [pluginID, 'resource_groups', 'list'];
-
   const groups = useQuery({
-    queryKey,
-    queryFn: async () => GetResourceGroups(pluginID, connectionID),
+    queryKey: [pluginID, 'resource-v2', 'groups', route],
+    queryFn: () => GetResourceGroups(pluginID, route),
     retry: false,
   });
-
-  return {
-    /**
-     * The resource groups for the given plugin and connection.
-     */
-    groups,
-  };
+  return { groups };
 };
 
 export default useResourceGroups;

@@ -5,20 +5,13 @@ import (
 	"testing"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
 // makeEntry builds a ResourceEntry for tests.
 func makeEntry(key, ns, id string) registry.ResourceEntry {
-	return registry.ResourceEntry{
-		PluginID:     "k8s",
-		ConnectionID: "c1",
-		ResourceKey:  key,
-		ID:           id,
-		Namespace:    ns,
-		UID:          "uid-" + id,
-		Labels:       map[string]string{},
-	}
+	n := node("k8s", "c1", key, ns, id)
+	return registry.ResourceEntry{PluginID: n.PluginID, Reference: n.Reference, Route: n.Route, Labels: map[string]string{}}
 }
 
 func setupIndexer() (*RelationshipGraph, *registry.MemoryStore, *Indexer) {
@@ -40,11 +33,11 @@ func TestGraphIndexer_Name(t *testing.T) {
 func TestGraphIndexer_FieldPathExtraction(t *testing.T) {
 	g, _, idx := setupIndexer()
 
-	g.SetDeclarations("k8s", "core::v1::Pod", []resource.RelationshipDescriptor{
+	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Pod", []resource.RelationshipDescriptor{
 		{
-			Type:              resource.RelRunsOn,
-			TargetResourceKey: "core::v1::Node",
-			Label:             "runs on",
+			Type:       resource.RelRunsOn,
+			TargetType: "core::v1::Node",
+			Label:      "runs on",
 			Extractor: &resource.RelationshipExtractor{
 				Method:    "fieldPath",
 				FieldPath: "spec.nodeName",
@@ -57,20 +50,17 @@ func TestGraphIndexer_FieldPathExtraction(t *testing.T) {
 
 	idx.OnAdd(pod, raw)
 
-	podNode := GraphNode{
-		PluginID: "k8s", ConnectionID: "c1",
-		ResourceKey: "core::v1::Pod", ID: "nginx", Namespace: "default",
-	}
+	podNode := node("k8s", "c1", "core::v1::Pod", "default", "nginx")
 	edges := g.EdgesFrom(podNode.Key())
 	if len(edges) != 1 {
 		t.Fatalf("expected 1 edge, got %d", len(edges))
 	}
 	e := edges[0]
-	if e.Target.ID != "worker-1" {
-		t.Errorf("expected target ID 'worker-1', got %q", e.Target.ID)
+	if e.Target.Reference.Address.ID != "worker-1" {
+		t.Errorf("expected target ID 'worker-1', got %q", e.Target.Reference.Address.ID)
 	}
-	if e.Target.ResourceKey != "core::v1::Node" {
-		t.Errorf("expected target ResourceKey 'core::v1::Node', got %q", e.Target.ResourceKey)
+	if e.Target.Reference.Address.Type != "core::v1::Node" {
+		t.Errorf("expected target ResourceKey 'core::v1::Node', got %q", e.Target.Reference.Address.Type)
 	}
 	if e.Type != resource.RelRunsOn {
 		t.Errorf("expected type RelRunsOn, got %q", e.Type)
@@ -82,12 +72,13 @@ func TestGraphIndexer_FieldPathExtraction(t *testing.T) {
 func TestGraphIndexer_FieldPathWithIncomingDirection(t *testing.T) {
 	g, _, idx := setupIndexer()
 
-	g.SetDeclarations("k8s", "core::v1::Pod", []resource.RelationshipDescriptor{
+	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Pod", []resource.RelationshipDescriptor{
 		{
-			Type:              resource.RelOwns,
-			TargetResourceKey: "apps::v1::ReplicaSet",
-			Label:             "owns",
-			Direction:         resource.EdgeIncoming,
+			Type:        resource.RelOwns,
+			TargetType:  "apps::v1::ReplicaSet",
+			TargetScope: []resource.ScopeEntry{{Dimension: "namespace", Value: "default"}},
+			Label:       "owns",
+			Direction:   resource.EdgeIncoming,
 			Extractor: &resource.RelationshipExtractor{
 				Method:    "fieldPath",
 				FieldPath: "metadata.ownerReferences.0.name",
@@ -101,22 +92,18 @@ func TestGraphIndexer_FieldPathWithIncomingDirection(t *testing.T) {
 	idx.OnAdd(pod, raw)
 
 	// With EdgeIncoming the edge should point FROM the ReplicaSet TO the Pod.
-	// The ReplicaSet inherits the Pod's namespace since fieldPath extraction
-	// defaults to the source entry's namespace.
-	rsNode := GraphNode{
-		PluginID: "k8s", ConnectionID: "c1",
-		ResourceKey: "apps::v1::ReplicaSet", ID: "nginx-rs", Namespace: "default",
-	}
+	// The descriptor supplies the target's exact namespace scope.
+	rsNode := node("k8s", "c1", "apps::v1::ReplicaSet", "default", "nginx-rs")
 	edges := g.EdgesFrom(rsNode.Key())
 	if len(edges) != 1 {
 		t.Fatalf("expected 1 edge from ReplicaSet, got %d", len(edges))
 	}
 	e := edges[0]
-	if e.Source.ID != "nginx-rs" {
-		t.Errorf("expected source ID 'nginx-rs', got %q", e.Source.ID)
+	if e.Source.Reference.Address.ID != "nginx-rs" {
+		t.Errorf("expected source ID 'nginx-rs', got %q", e.Source.Reference.Address.ID)
 	}
-	if e.Target.ID != "nginx-abc" {
-		t.Errorf("expected target ID 'nginx-abc', got %q", e.Target.ID)
+	if e.Target.Reference.Address.ID != "nginx-abc" {
+		t.Errorf("expected target ID 'nginx-abc', got %q", e.Target.Reference.Address.ID)
 	}
 	if e.Type != resource.RelOwns {
 		t.Errorf("expected type RelOwns, got %q", e.Type)
@@ -127,11 +114,11 @@ func TestGraphIndexer_FieldPathWithIncomingDirection(t *testing.T) {
 func TestGraphIndexer_OnDelete(t *testing.T) {
 	g, _, idx := setupIndexer()
 
-	g.SetDeclarations("k8s", "core::v1::Pod", []resource.RelationshipDescriptor{
+	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Pod", []resource.RelationshipDescriptor{
 		{
-			Type:              resource.RelRunsOn,
-			TargetResourceKey: "core::v1::Node",
-			Label:             "runs on",
+			Type:       resource.RelRunsOn,
+			TargetType: "core::v1::Node",
+			Label:      "runs on",
 			Extractor: &resource.RelationshipExtractor{
 				Method:    "fieldPath",
 				FieldPath: "spec.nodeName",
@@ -144,10 +131,7 @@ func TestGraphIndexer_OnDelete(t *testing.T) {
 
 	idx.OnAdd(pod, raw)
 
-	podNode := GraphNode{
-		PluginID: "k8s", ConnectionID: "c1",
-		ResourceKey: "core::v1::Pod", ID: "nginx", Namespace: "default",
-	}
+	podNode := node("k8s", "c1", "core::v1::Pod", "default", "nginx")
 	if len(g.EdgesFrom(podNode.Key())) != 1 {
 		t.Fatal("expected 1 edge before delete")
 	}
@@ -163,11 +147,11 @@ func TestGraphIndexer_OnDelete(t *testing.T) {
 func TestGraphIndexer_OnUpdate(t *testing.T) {
 	g, _, idx := setupIndexer()
 
-	g.SetDeclarations("k8s", "core::v1::Pod", []resource.RelationshipDescriptor{
+	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Pod", []resource.RelationshipDescriptor{
 		{
-			Type:              resource.RelRunsOn,
-			TargetResourceKey: "core::v1::Node",
-			Label:             "runs on",
+			Type:       resource.RelRunsOn,
+			TargetType: "core::v1::Node",
+			Label:      "runs on",
 			Extractor: &resource.RelationshipExtractor{
 				Method:    "fieldPath",
 				FieldPath: "spec.nodeName",
@@ -179,12 +163,9 @@ func TestGraphIndexer_OnUpdate(t *testing.T) {
 	raw1 := json.RawMessage(`{"spec":{"nodeName":"worker-1"}}`)
 	idx.OnAdd(pod, raw1)
 
-	podNode := GraphNode{
-		PluginID: "k8s", ConnectionID: "c1",
-		ResourceKey: "core::v1::Pod", ID: "nginx", Namespace: "default",
-	}
+	podNode := node("k8s", "c1", "core::v1::Pod", "default", "nginx")
 	edges := g.EdgesFrom(podNode.Key())
-	if len(edges) != 1 || edges[0].Target.ID != "worker-1" {
+	if len(edges) != 1 || edges[0].Target.Reference.Address.ID != "worker-1" {
 		t.Fatalf("expected edge to worker-1, got %v", edges)
 	}
 
@@ -195,8 +176,8 @@ func TestGraphIndexer_OnUpdate(t *testing.T) {
 	if len(edges) != 1 {
 		t.Fatalf("expected 1 edge after update, got %d", len(edges))
 	}
-	if edges[0].Target.ID != "worker-2" {
-		t.Errorf("expected edge to worker-2, got %q", edges[0].Target.ID)
+	if edges[0].Target.Reference.Address.ID != "worker-2" {
+		t.Errorf("expected edge to worker-2, got %q", edges[0].Target.Reference.Address.ID)
 	}
 }
 
@@ -204,11 +185,11 @@ func TestGraphIndexer_OnUpdate(t *testing.T) {
 func TestGraphIndexer_FieldPath_EmptyValue(t *testing.T) {
 	g, _, idx := setupIndexer()
 
-	g.SetDeclarations("k8s", "core::v1::Pod", []resource.RelationshipDescriptor{
+	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Pod", []resource.RelationshipDescriptor{
 		{
-			Type:              resource.RelRunsOn,
-			TargetResourceKey: "core::v1::Node",
-			Label:             "runs on",
+			Type:       resource.RelRunsOn,
+			TargetType: "core::v1::Node",
+			Label:      "runs on",
 			Extractor: &resource.RelationshipExtractor{
 				Method:    "fieldPath",
 				FieldPath: "spec.nodeName",
@@ -221,10 +202,7 @@ func TestGraphIndexer_FieldPath_EmptyValue(t *testing.T) {
 
 	idx.OnAdd(pod, raw)
 
-	podNode := GraphNode{
-		PluginID: "k8s", ConnectionID: "c1",
-		ResourceKey: "core::v1::Pod", ID: "nginx", Namespace: "default",
-	}
+	podNode := node("k8s", "c1", "core::v1::Pod", "default", "nginx")
 	if len(g.EdgesFrom(podNode.Key())) != 0 {
 		t.Fatal("expected no edges when field is missing")
 	}
@@ -234,11 +212,12 @@ func TestGraphIndexer_FieldPath_EmptyValue(t *testing.T) {
 func TestGraphIndexer_LabelSelector_SelectorBeforePods(t *testing.T) {
 	g, store, idx := setupIndexer()
 
-	g.SetDeclarations("k8s", "core::v1::Service", []resource.RelationshipDescriptor{
+	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Service", []resource.RelationshipDescriptor{
 		{
-			Type:              resource.RelSelects,
-			TargetResourceKey: "core::v1::Pod",
-			Label:             "selects",
+			Type:        resource.RelSelects,
+			TargetType:  "core::v1::Pod",
+			TargetScope: []resource.ScopeEntry{{Dimension: "namespace", Value: "default"}},
+			Label:       "selects",
 			Extractor: &resource.RelationshipExtractor{
 				Method:    "labelSelector",
 				FieldPath: "spec.selector",
@@ -252,10 +231,7 @@ func TestGraphIndexer_LabelSelector_SelectorBeforePods(t *testing.T) {
 	store.Put(svc)
 	idx.OnAdd(svc, svcRaw)
 
-	svcNode := GraphNode{
-		PluginID: "k8s", ConnectionID: "c1",
-		ResourceKey: "core::v1::Service", ID: "web-svc", Namespace: "default",
-	}
+	svcNode := node("k8s", "c1", "core::v1::Service", "default", "web-svc")
 	// No pods yet — no edges.
 	if len(g.EdgesFrom(svcNode.Key())) != 0 {
 		t.Fatal("expected no edges before pods arrive")
@@ -271,8 +247,8 @@ func TestGraphIndexer_LabelSelector_SelectorBeforePods(t *testing.T) {
 	if len(edges) != 1 {
 		t.Fatalf("expected 1 edge from Service to Pod, got %d", len(edges))
 	}
-	if edges[0].Target.ID != "web-pod-1" {
-		t.Errorf("expected target ID 'web-pod-1', got %q", edges[0].Target.ID)
+	if edges[0].Target.Reference.Address.ID != "web-pod-1" {
+		t.Errorf("expected target ID 'web-pod-1', got %q", edges[0].Target.Reference.Address.ID)
 	}
 	if edges[0].Type != resource.RelSelects {
 		t.Errorf("expected type RelSelects, got %q", edges[0].Type)
@@ -283,11 +259,12 @@ func TestGraphIndexer_LabelSelector_SelectorBeforePods(t *testing.T) {
 func TestGraphIndexer_LabelSelector_PodsBeforeSelector(t *testing.T) {
 	g, store, idx := setupIndexer()
 
-	g.SetDeclarations("k8s", "core::v1::Service", []resource.RelationshipDescriptor{
+	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Service", []resource.RelationshipDescriptor{
 		{
-			Type:              resource.RelSelects,
-			TargetResourceKey: "core::v1::Pod",
-			Label:             "selects",
+			Type:        resource.RelSelects,
+			TargetType:  "core::v1::Pod",
+			TargetScope: []resource.ScopeEntry{{Dimension: "namespace", Value: "default"}},
+			Label:       "selects",
 			Extractor: &resource.RelationshipExtractor{
 				Method:    "labelSelector",
 				FieldPath: "spec.selector",
@@ -312,10 +289,7 @@ func TestGraphIndexer_LabelSelector_PodsBeforeSelector(t *testing.T) {
 	store.Put(svc)
 	idx.OnAdd(svc, svcRaw)
 
-	svcNode := GraphNode{
-		PluginID: "k8s", ConnectionID: "c1",
-		ResourceKey: "core::v1::Service", ID: "web-svc", Namespace: "default",
-	}
+	svcNode := node("k8s", "c1", "core::v1::Service", "default", "web-svc")
 	edges := g.EdgesFrom(svcNode.Key())
 	if len(edges) != 2 {
 		t.Fatalf("expected 2 edges from Service to Pods, got %d", len(edges))
@@ -323,7 +297,7 @@ func TestGraphIndexer_LabelSelector_PodsBeforeSelector(t *testing.T) {
 
 	targetIDs := map[string]bool{}
 	for _, e := range edges {
-		targetIDs[e.Target.ID] = true
+		targetIDs[e.Target.Reference.Address.ID] = true
 	}
 	if !targetIDs["web-pod-1"] || !targetIDs["web-pod-2"] {
 		t.Errorf("expected edges to web-pod-1 and web-pod-2, got %v", targetIDs)
@@ -334,11 +308,12 @@ func TestGraphIndexer_LabelSelector_PodsBeforeSelector(t *testing.T) {
 func TestGraphIndexer_LabelSelector_LabelUpdateBreaksMatch(t *testing.T) {
 	g, store, idx := setupIndexer()
 
-	g.SetDeclarations("k8s", "core::v1::Service", []resource.RelationshipDescriptor{
+	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Service", []resource.RelationshipDescriptor{
 		{
-			Type:              resource.RelSelects,
-			TargetResourceKey: "core::v1::Pod",
-			Label:             "selects",
+			Type:        resource.RelSelects,
+			TargetType:  "core::v1::Pod",
+			TargetScope: []resource.ScopeEntry{{Dimension: "namespace", Value: "default"}},
+			Label:       "selects",
 			Extractor: &resource.RelationshipExtractor{
 				Method:    "labelSelector",
 				FieldPath: "spec.selector",
@@ -358,10 +333,7 @@ func TestGraphIndexer_LabelSelector_LabelUpdateBreaksMatch(t *testing.T) {
 	store.Put(svc)
 	idx.OnAdd(svc, svcRaw)
 
-	svcNode := GraphNode{
-		PluginID: "k8s", ConnectionID: "c1",
-		ResourceKey: "core::v1::Service", ID: "web-svc", Namespace: "default",
-	}
+	svcNode := node("k8s", "c1", "core::v1::Service", "default", "web-svc")
 	if len(g.EdgesFrom(svcNode.Key())) != 1 {
 		t.Fatal("expected 1 edge before label change")
 	}
@@ -382,17 +354,16 @@ func TestGraphIndexer_LabelSelector_LabelUpdateBreaksMatch(t *testing.T) {
 	}
 }
 
-// TestGraphIndexer_FieldPath_ClusterScopedTarget — TargetNamespaced=false gives empty namespace.
+// TestGraphIndexer_FieldPath_ClusterScopedTarget uses explicit empty target scope.
 func TestGraphIndexer_FieldPath_ClusterScopedTarget(t *testing.T) {
 	g, _, idx := setupIndexer()
 
-	clusterScoped := false
-	g.SetDeclarations("k8s", "core::v1::Pod", []resource.RelationshipDescriptor{
+	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Pod", []resource.RelationshipDescriptor{
 		{
-			Type:              resource.RelRunsOn,
-			TargetResourceKey: "core::v1::Node",
-			Label:             "runs on",
-			TargetNamespaced:  &clusterScoped,
+			Type:        resource.RelRunsOn,
+			TargetType:  "core::v1::Node",
+			Label:       "runs on",
+			TargetScope: []resource.ScopeEntry{},
 			Extractor: &resource.RelationshipExtractor{
 				Method:    "fieldPath",
 				FieldPath: "spec.nodeName",
@@ -405,32 +376,30 @@ func TestGraphIndexer_FieldPath_ClusterScopedTarget(t *testing.T) {
 
 	idx.OnAdd(pod, raw)
 
-	podNode := GraphNode{
-		PluginID: "k8s", ConnectionID: "c1",
-		ResourceKey: "core::v1::Pod", ID: "nginx", Namespace: "default",
-	}
+	podNode := node("k8s", "c1", "core::v1::Pod", "default", "nginx")
 	edges := g.EdgesFrom(podNode.Key())
 	if len(edges) != 1 {
 		t.Fatalf("expected 1 edge, got %d", len(edges))
 	}
 	e := edges[0]
-	if e.Target.Namespace != "" {
-		t.Errorf("expected empty namespace for cluster-scoped target, got %q", e.Target.Namespace)
+	if testNamespace(e.Target.Reference) != "" {
+		t.Errorf("expected empty namespace for cluster-scoped target, got %q", testNamespace(e.Target.Reference))
 	}
-	if e.Target.ID != "worker-1" {
-		t.Errorf("expected target ID 'worker-1', got %q", e.Target.ID)
+	if e.Target.Reference.Address.ID != "worker-1" {
+		t.Errorf("expected target ID 'worker-1', got %q", e.Target.Reference.Address.ID)
 	}
 }
 
-// TestGraphIndexer_FieldPath_NamespacedTargetDefault — nil TargetNamespaced inherits source namespace.
-func TestGraphIndexer_FieldPath_NamespacedTargetDefault(t *testing.T) {
+// TestGraphIndexer_FieldPath_ExplicitScope uses canonical literal target scope.
+func TestGraphIndexer_FieldPath_ExplicitScope(t *testing.T) {
 	g, _, idx := setupIndexer()
 
-	g.SetDeclarations("k8s", "core::v1::Pod", []resource.RelationshipDescriptor{
+	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "core::v1::Pod", []resource.RelationshipDescriptor{
 		{
-			Type:              resource.RelUses,
-			TargetResourceKey: "core::v1::ConfigMap",
-			Label:             "uses",
+			Type:        resource.RelUses,
+			TargetType:  "core::v1::ConfigMap",
+			TargetScope: []resource.ScopeEntry{{Dimension: "namespace", Value: "production"}},
+			Label:       "uses",
 			Extractor: &resource.RelationshipExtractor{
 				Method:    "fieldPath",
 				FieldPath: "spec.volumes.0.configMap.name",
@@ -443,50 +412,49 @@ func TestGraphIndexer_FieldPath_NamespacedTargetDefault(t *testing.T) {
 
 	idx.OnAdd(pod, raw)
 
-	podNode := GraphNode{
-		PluginID: "k8s", ConnectionID: "c1",
-		ResourceKey: "core::v1::Pod", ID: "app-pod", Namespace: "production",
-	}
+	podNode := node("k8s", "c1", "core::v1::Pod", "production", "app-pod")
 	edges := g.EdgesFrom(podNode.Key())
 	if len(edges) != 1 {
 		t.Fatalf("expected 1 edge, got %d", len(edges))
 	}
-	if edges[0].Target.Namespace != "production" {
-		t.Errorf("expected namespace 'production', got %q", edges[0].Target.Namespace)
+	if testNamespace(edges[0].Target.Reference) != "production" {
+		t.Errorf("expected namespace 'production', got %q", testNamespace(edges[0].Target.Reference))
 	}
 }
 
 // declareK8sSubset declares the Pod/ReplicaSet/Service relationships the
 // regression tests below rely on, mirroring the kubernetes plugin's table.
-func declareK8sSubset(g *RelationshipGraph) {
-	clusterScoped := false
-	g.SetDeclarations("k8s", "core::v1::Pod", []resource.RelationshipDescriptor{
+func declareK8sSubset(g *RelationshipGraph, route resource.AccessRoute) {
+	g.SetDeclarations("k8s", route, "core::v1::Pod", []resource.RelationshipDescriptor{
 		{
-			Type: resource.RelOwns, TargetResourceKey: "apps::v1::ReplicaSet",
-			Label: "owned by", Direction: resource.EdgeIncoming,
+			Type: resource.RelOwns, TargetType: "apps::v1::ReplicaSet",
+			TargetScope: []resource.ScopeEntry{{Dimension: "namespace", Value: "default"}},
+			Label:       "owned by", Direction: resource.EdgeIncoming,
 			Extractor: &resource.RelationshipExtractor{
 				Method: "fieldPath", FieldPath: `metadata.ownerReferences.#(kind=="ReplicaSet").name`,
 			},
 		},
 		{
-			Type: resource.RelRunsOn, TargetResourceKey: "core::v1::Node",
-			Label: "runs on", TargetNamespaced: &clusterScoped,
+			Type: resource.RelRunsOn, TargetType: "core::v1::Node",
+			Label: "runs on", TargetScope: []resource.ScopeEntry{},
 			Extractor: &resource.RelationshipExtractor{Method: "fieldPath", FieldPath: "spec.nodeName"},
 		},
 	})
-	g.SetDeclarations("k8s", "apps::v1::ReplicaSet", []resource.RelationshipDescriptor{
+	g.SetDeclarations("k8s", route, "apps::v1::ReplicaSet", []resource.RelationshipDescriptor{
 		{
-			Type: resource.RelOwns, TargetResourceKey: "apps::v1::Deployment",
-			Label: "owned by", Direction: resource.EdgeIncoming,
+			Type: resource.RelOwns, TargetType: "apps::v1::Deployment",
+			TargetScope: []resource.ScopeEntry{{Dimension: "namespace", Value: "default"}},
+			Label:       "owned by", Direction: resource.EdgeIncoming,
 			Extractor: &resource.RelationshipExtractor{
 				Method: "fieldPath", FieldPath: `metadata.ownerReferences.#(kind=="Deployment").name`,
 			},
 		},
 	})
-	g.SetDeclarations("k8s", "core::v1::Service", []resource.RelationshipDescriptor{
+	g.SetDeclarations("k8s", route, "core::v1::Service", []resource.RelationshipDescriptor{
 		{
-			Type: resource.RelSelects, TargetResourceKey: "core::v1::Pod", Label: "selects",
-			Extractor: &resource.RelationshipExtractor{Method: "labelSelector", FieldPath: "spec.selector"},
+			Type: resource.RelSelects, TargetType: "core::v1::Pod", Label: "selects",
+			TargetScope: []resource.ScopeEntry{{Dimension: "namespace", Value: "default"}},
+			Extractor:   &resource.RelationshipExtractor{Method: "labelSelector", FieldPath: "spec.selector"},
 		},
 	})
 }
@@ -498,7 +466,7 @@ const podOnWorker1 = `{"metadata":{"ownerReferences":[{"kind":"ReplicaSet","name
 // not drop the ownership edges its Pods declared.
 func TestGraphIndexer_UpdateKeepsEdgesDeclaredByOthers(t *testing.T) {
 	g, store, idx := setupIndexer()
-	declareK8sSubset(g)
+	declareK8sSubset(g, resource.AccessRoute{Connection: "c1"})
 
 	nodeEntry := makeEntry("core::v1::Node", "", "worker-1")
 	rs := makeEntry("apps::v1::ReplicaSet", "default", "web-abc")
@@ -514,13 +482,13 @@ func TestGraphIndexer_UpdateKeepsEdgesDeclaredByOthers(t *testing.T) {
 	idx.OnUpdate(nodeEntry, nodeEntry, json.RawMessage(`{"status":{"conditions":[]}}`))
 	idx.OnUpdate(rs, rs, rsRaw)
 
-	if got := g.EdgesTo(nodeEntry.EntryKey()); len(got) != 1 || got[0].Source.ID != "web-abc-1" {
+	if got := g.EdgesTo(nodeEntry.EntryKey()); len(got) != 1 || got[0].Source.Reference.Address.ID != "web-abc-1" {
 		t.Errorf("after Node update: want pod->node edge, got %v", got)
 	}
-	if got := g.EdgesFrom(rs.EntryKey()); len(got) != 1 || got[0].Target.ID != "web-abc-1" {
+	if got := g.EdgesFrom(rs.EntryKey()); len(got) != 1 || got[0].Target.Reference.Address.ID != "web-abc-1" {
 		t.Errorf("after ReplicaSet update: want rs->pod ownership edge, got %v", got)
 	}
-	if got := g.EdgesTo(rs.EntryKey()); len(got) != 1 || got[0].Source.ID != "web" {
+	if got := g.EdgesTo(rs.EntryKey()); len(got) != 1 || got[0].Source.Reference.Address.ID != "web" {
 		t.Errorf("after ReplicaSet update: want deployment->rs edge re-derived once, got %v", got)
 	}
 }
@@ -529,14 +497,14 @@ func TestGraphIndexer_UpdateKeepsEdgesDeclaredByOthers(t *testing.T) {
 // owner moves its incoming ownership edge instead of keeping the old one.
 func TestGraphIndexer_UpdateReplacesOwnIncomingDeclaration(t *testing.T) {
 	g, _, idx := setupIndexer()
-	declareK8sSubset(g)
+	declareK8sSubset(g, resource.AccessRoute{Connection: "c1"})
 
 	pod := makeEntry("core::v1::Pod", "default", "p1")
 	idx.OnAdd(pod, json.RawMessage(podOnWorker1))
 	idx.OnUpdate(pod, pod, json.RawMessage(`{"metadata":{"ownerReferences":[{"kind":"ReplicaSet","name":"web-def"}]}}`))
 
 	got := g.EdgesTo(pod.EntryKey())
-	if len(got) != 1 || got[0].Source.ID != "web-def" {
+	if len(got) != 1 || got[0].Source.Reference.Address.ID != "web-def" {
 		t.Fatalf("want only web-def->pod, got %v", got)
 	}
 	if out := g.EdgesFrom(pod.EntryKey()); len(out) != 0 {
@@ -549,7 +517,7 @@ func TestGraphIndexer_UpdateReplacesOwnIncomingDeclaration(t *testing.T) {
 // Deleting a Pod removes its own edges and the selector edges matching it.
 func TestGraphIndexer_DeleteKeepsEdgesDeclaredByOthers(t *testing.T) {
 	g, store, idx := setupIndexer()
-	declareK8sSubset(g)
+	declareK8sSubset(g, resource.AccessRoute{Connection: "c1"})
 
 	nodeEntry := makeEntry("core::v1::Node", "", "worker-1")
 	pod := makeEntry("core::v1::Pod", "default", "web-abc-1")
@@ -562,13 +530,13 @@ func TestGraphIndexer_DeleteKeepsEdgesDeclaredByOthers(t *testing.T) {
 	idx.OnAdd(pod, json.RawMessage(podOnWorker1))
 	idx.OnAdd(svc, json.RawMessage(`{"spec":{"selector":{"app":"web"}}}`))
 
-	store.Delete("k8s", "c1", "core::v1::Node", "", "worker-1")
+	store.Delete("k8s", nodeEntry.Reference, nodeEntry.Route)
 	idx.OnDelete(nodeEntry)
-	if got := g.EdgesFrom(pod.EntryKey()); len(got) != 1 || got[0].Target.ID != "worker-1" {
+	if got := g.EdgesFrom(pod.EntryKey()); len(got) != 1 || got[0].Target.Reference.Address.ID != "worker-1" {
 		t.Fatalf("after Node delete: want pod->node edge kept, got %v", got)
 	}
 
-	store.Delete("k8s", "c1", "core::v1::Pod", "default", "web-abc-1")
+	store.Delete("k8s", pod.Reference, pod.Route)
 	idx.OnDelete(pod)
 	if got := g.EdgesFrom(pod.EntryKey()); len(got) != 0 {
 		t.Errorf("after Pod delete: want no pod edges, got %v", got)
@@ -589,7 +557,7 @@ func TestGraphIndexer_DeleteKeepsEdgesDeclaredByOthers(t *testing.T) {
 // relinked) without the Service being re-processed.
 func TestGraphIndexer_PodLabelChangeAloneUpdatesSelectorEdges(t *testing.T) {
 	g, store, idx := setupIndexer()
-	declareK8sSubset(g)
+	declareK8sSubset(g, resource.AccessRoute{Connection: "c1"})
 
 	pod := makeEntry("core::v1::Pod", "default", "p1")
 	pod.Labels = map[string]string{"app": "web"}
@@ -618,7 +586,7 @@ func TestGraphIndexer_PodLabelChangeAloneUpdatesSelectorEdges(t *testing.T) {
 // removed stops matching Pods that appear later.
 func TestGraphIndexer_ServiceSelectorRemoved(t *testing.T) {
 	g, store, idx := setupIndexer()
-	declareK8sSubset(g)
+	declareK8sSubset(g, resource.AccessRoute{Connection: "c1"})
 
 	svc := makeEntry("core::v1::Service", "default", "web")
 	store.Put(svc)
@@ -643,7 +611,7 @@ func TestGraphIndexer_ServiceSelectorRemoved(t *testing.T) {
 func TestGraphIndexer_LabelSelector_SameNamespaceOnly(t *testing.T) {
 	for _, svcFirst := range []bool{true, false} {
 		g, store, idx := setupIndexer()
-		declareK8sSubset(g)
+		declareK8sSubset(g, resource.AccessRoute{Connection: "c1"})
 
 		svc := makeEntry("core::v1::Service", "default", "web")
 		svcRaw := json.RawMessage(`{"spec":{"selector":{"app":"web"}}}`)
@@ -668,7 +636,7 @@ func TestGraphIndexer_LabelSelector_SameNamespaceOnly(t *testing.T) {
 		}
 
 		got := g.EdgesFrom(svc.EntryKey())
-		if len(got) != 1 || got[0].Target.Namespace != "default" {
+		if len(got) != 1 || testNamespace(got[0].Target.Reference) != "default" {
 			t.Errorf("svcFirst=%v: want only the default/web-1 pod selected, got %v", svcFirst, got)
 		}
 	}
@@ -679,32 +647,32 @@ func TestGraphIndexer_LabelSelector_SameNamespaceOnly(t *testing.T) {
 // that appear after their Service must still be linked.
 func TestGraphIndexer_LabelSelector_SlashInConnectionID(t *testing.T) {
 	g, store, idx := setupIndexer()
-	declareK8sSubset(g)
-
 	const conn = "arn:aws:eks:us-east-1:123456789012:cluster/prod"
+	declareK8sSubset(g, resource.AccessRoute{Connection: conn})
 	svc := makeEntry("core::v1::Service", "default", "web")
-	svc.ConnectionID = conn
+	svc.Route.Connection = conn
 	store.Put(svc)
 	idx.OnAdd(svc, json.RawMessage(`{"spec":{"selector":{"app":"web"}}}`))
 
 	pod := makeEntry("core::v1::Pod", "default", "web-1")
-	pod.ConnectionID = conn
+	pod.Route.Connection = conn
 	pod.Labels = map[string]string{"app": "web"}
 	store.Put(pod)
 	idx.OnAdd(pod, json.RawMessage(`{}`))
 
 	got := g.EdgesFrom(svc.EntryKey())
-	if len(got) != 1 || got[0].Target.ConnectionID != conn || got[0].Target.ID != "web-1" {
+	if len(got) != 1 || got[0].Target.Route.Connection != conn || got[0].Target.Reference.Address.ID != "web-1" {
 		t.Fatalf("want 1 selector edge to %s/web-1, got %v", conn, got)
 	}
 }
 
 // declareNetworkPolicy declares NetworkPolicy -> Pod via a full LabelSelector.
 func declareNetworkPolicy(g *RelationshipGraph) {
-	g.SetDeclarations("k8s", "networking::v1::NetworkPolicy", []resource.RelationshipDescriptor{
+	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "networking::v1::NetworkPolicy", []resource.RelationshipDescriptor{
 		{
-			Type: resource.RelSelects, TargetResourceKey: "core::v1::Pod", Label: "selects",
-			Extractor: &resource.RelationshipExtractor{Method: MethodLabelSelectorObject, FieldPath: "spec.podSelector"},
+			Type: resource.RelSelects, TargetType: "core::v1::Pod", Label: "selects",
+			TargetScope: []resource.ScopeEntry{{Dimension: "namespace", Value: "default"}},
+			Extractor:   &resource.RelationshipExtractor{Method: MethodLabelSelectorObject, FieldPath: "spec.podSelector"},
 		},
 	})
 }
@@ -720,7 +688,7 @@ func addPod(store *registry.MemoryStore, idx *Indexer, ns, id string, labels map
 func targetIDs(edges []GraphEdge) map[string]bool {
 	ids := make(map[string]bool, len(edges))
 	for _, e := range edges {
-		ids[e.Target.Namespace+"/"+e.Target.ID] = true
+		ids[testNamespace(e.Target.Reference)+"/"+e.Target.Reference.Address.ID] = true
 	}
 	return ids
 }
@@ -810,7 +778,7 @@ func TestGraphIndexer_SelectorObject_AbsentOrInvalidSelectsNothing(t *testing.T)
 // selector selects nothing, unlike an empty LabelSelector object.
 func TestGraphIndexer_PlainSelectorStillNeedsLabels(t *testing.T) {
 	g, store, idx := setupIndexer()
-	declareK8sSubset(g)
+	declareK8sSubset(g, resource.AccessRoute{Connection: "c1"})
 	addPod(store, idx, "default", "p1", nil)
 
 	svc := makeEntry("core::v1::Service", "default", "headless")
@@ -827,14 +795,16 @@ func TestGraphIndexer_PlainSelectorStillNeedsLabels(t *testing.T) {
 // declarations keeps both cached (they used to overwrite each other).
 func TestGraphIndexer_TwoSelectorDeclarations(t *testing.T) {
 	g, store, idx := setupIndexer()
-	g.SetDeclarations("k8s", "example::v1::Group", []resource.RelationshipDescriptor{
+	g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "example::v1::Group", []resource.RelationshipDescriptor{
 		{
-			Type: resource.RelSelects, TargetResourceKey: "core::v1::Pod", Label: "selects",
-			Extractor: &resource.RelationshipExtractor{Method: MethodLabelSelector, FieldPath: "spec.pods"},
+			Type: resource.RelSelects, TargetType: "core::v1::Pod", Label: "selects",
+			TargetScope: []resource.ScopeEntry{{Dimension: "namespace", Value: "default"}},
+			Extractor:   &resource.RelationshipExtractor{Method: MethodLabelSelector, FieldPath: "spec.pods"},
 		},
 		{
-			Type: resource.RelSelects, TargetResourceKey: "core::v1::Service", Label: "selects",
-			Extractor: &resource.RelationshipExtractor{Method: MethodLabelSelector, FieldPath: "spec.services"},
+			Type: resource.RelSelects, TargetType: "core::v1::Service", Label: "selects",
+			TargetScope: []resource.ScopeEntry{{Dimension: "namespace", Value: "default"}},
+			Extractor:   &resource.RelationshipExtractor{Method: MethodLabelSelector, FieldPath: "spec.services"},
 		},
 	})
 
@@ -850,5 +820,50 @@ func TestGraphIndexer_TwoSelectorDeclarations(t *testing.T) {
 
 	if got := g.EdgesFrom(grp.EntryKey()); len(got) != 2 {
 		t.Fatalf("want edges to the pod and the service, got %v", got)
+	}
+}
+
+func TestGraphIndexer_ExplicitScopeExtractors(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		literal    []resource.ScopeEntry
+		extractors []resource.ScopeExtractor
+		body       string
+		want       int
+	}{
+		{name: "native dimension", extractors: []resource.ScopeExtractor{{Dimension: "account", FieldPath: "placement.account"}}, body: `{"target":"opaque/id","placement":{"account":"a/b"}}`, want: 1},
+		{name: "missing dimension", extractors: []resource.ScopeExtractor{{Dimension: "account", FieldPath: "placement.account"}}, body: `{"target":"opaque/id"}`, want: 0},
+		{name: "duplicate dimension", literal: []resource.ScopeEntry{{Dimension: "account", Value: "one"}}, extractors: []resource.ScopeExtractor{{Dimension: "account", FieldPath: "account"}}, body: `{"target":"opaque/id","account":"two"}`, want: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			g, _, idx := setupIndexer()
+			g.SetDeclarations("k8s", resource.AccessRoute{Connection: "c1"}, "source/type", []resource.RelationshipDescriptor{{Type: resource.RelUses, TargetType: "target/type", TargetScope: tc.literal, ScopeExtractors: tc.extractors, Extractor: &resource.RelationshipExtractor{Method: MethodFieldPath, FieldPath: "target"}}})
+			entry := makeEntry("source/type", "", "source")
+			idx.OnAdd(entry, json.RawMessage(tc.body))
+			edges := g.EdgesFrom(entry.EntryKey())
+			if len(edges) != tc.want {
+				t.Fatalf("want %d edges, got %v", tc.want, edges)
+			}
+			if tc.want == 1 && !scopeMatches(edges[0].Target.Reference.Address.Scope, []resource.ScopeEntry{{Dimension: "account", Value: "a/b"}}) {
+				t.Fatalf("target scope was not extracted explicitly: %v", edges[0].Target)
+			}
+		})
+	}
+}
+
+func TestGraphIndexer_UsesRouteQualifiedDeclarations(t *testing.T) {
+	g, _, idx := setupIndexer()
+	for _, connection := range []string{"route", "route/child"} {
+		route := resource.AccessRoute{Connection: connection}
+		g.SetDeclarations("k8s", route, "source/type", []resource.RelationshipDescriptor{{Type: resource.RelUses, TargetType: connection + "/target", Extractor: &resource.RelationshipExtractor{Method: MethodFieldPath, FieldPath: "target"}}})
+	}
+	for _, connection := range []string{"route", "route/child"} {
+		n := node("k8s", connection, "source/type", "", "source")
+		entry := registry.ResourceEntry{PluginID: n.PluginID, Reference: n.Reference, Route: n.Route}
+		idx.OnAdd(entry, json.RawMessage(`{"target":"target/id"}`))
+		edges := g.EdgesFrom(entry.EntryKey())
+		if len(edges) != 1 || edges[0].Target.Reference.Address.Type != connection+"/target" {
+			t.Fatalf("route %q indexed another route's declaration: %v", connection, edges)
+		}
 	}
 }

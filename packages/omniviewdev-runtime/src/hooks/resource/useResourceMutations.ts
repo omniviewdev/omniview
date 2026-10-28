@@ -1,128 +1,23 @@
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
-import { showAppError } from '../../errors/parseAppError';
-import { CreateInput, UpdateInput, DeleteInput } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/resource/models';
-import { Create, Update, Delete } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
+import { createErrorHandler } from '../../errors/parseAppError';
+import { Mutate } from '../../resource/v2/client';
+import type { MutationRequest } from '../../resource/v2/domain';
+import { resourceQueryKeys } from '../../resourceQueryKeys';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
-type ResourceMutationOptions = {
-  /**
-   * The connection ID to scope the resource to
-   * @example "integration"
-   */
-  connectionID: string;
-
-  /**
-   * The GVR (Group, Version, Resource) identifier to fetch
-   * @example "core::v1::pods"
-   */
-  resourceKey: string;
-
-  /**
-   * The ID of the resource to fetch
-   * @example "nginx-1452"
-   */
-  resourceID: string;
-
-  /**
-   * Optional namespace to scope the resource to, if the backend
-   * supports the concept of namespaces of resources.
-   * @example "default"
-   */
-  namespace?: string;
-
-
-  /**
-   * Optional parameters to pass to the call
-   * @example { labelSelector: "app=nginx" }
-   */
-  params?: Record<string, unknown>;
-}
-
-type UseResourceMutationsOptions = {
-  /**
-   * The ID of the plugin responsible for this resource
-   * @example "kubernetes"
-   */
-  pluginID?: string;
-
-};
-
-/**
- * The useResource hook returns a hook, scoped to the desired resource and connection, that allows for interacting
- * with, and fetching, the resource data.
- *
- * It should be noted that this hook does not perform any logic to ensure that either the resource exists,
- * @throws If the resourceID is invalid
- */
-export const useResourceMutations = ({ pluginID: explicitPluginID }: UseResourceMutationsOptions) => {
+export const useResourceMutations = ({ pluginID: explicitPluginID }: { pluginID?: string }) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
+  const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
-
-  const createMutation = useMutation({
-    mutationFn: async ({ opts, input }: { opts: ResourceMutationOptions; input: { input?: any; namespace?: string } }) =>
-      Create(
-        pluginID,
-        opts.connectionID,
-        opts.resourceKey,
-        CreateInput.createFrom({
-          input: input.input,
-          namespace: input.namespace ?? opts.namespace ?? '',
-        })
-      ),
-    onSuccess: (_, { opts }) => {
-      showSnackbar(`Resource ${opts.resourceID} created`, 'success');
+  const mutation = useMutation({
+    mutationFn: (request: MutationRequest) => Mutate(pluginID, request),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: resourceQueryKeys.all(pluginID) });
     },
-    onError(error: unknown, { opts }) {
-      showAppError(showSnackbar, error, `Failed to create resource ${opts.resourceID}`);
-    },
+    onError: createErrorHandler(showSnackbar, 'Failed to mutate resource'),
   });
-
-  const updateMutation = useMutation({
-    mutationFn: async ({ opts, input }: { opts: ResourceMutationOptions; input: { input?: any } }) =>
-      Update(
-        pluginID,
-        opts.connectionID,
-        opts.resourceKey,
-        UpdateInput.createFrom({
-          input: input.input,
-          id: opts.resourceID,
-          namespace: opts.namespace ?? '',
-        })
-      ),
-    onSuccess: (_, { opts }) => {
-      showSnackbar(`Resource ${opts.resourceID} updated`, 'success');
-    },
-    onError(error: unknown, { opts }) {
-      showAppError(showSnackbar, error, `Failed to update resource ${opts.resourceID}`);
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async ({ opts, input }: { opts: ResourceMutationOptions; input: { gracePeriodSeconds?: number } }) =>
-      Delete(
-        pluginID,
-        opts.connectionID,
-        opts.resourceKey,
-        DeleteInput.createFrom({
-          id: opts.resourceID,
-          namespace: opts.namespace ?? '',
-          gracePeriodSeconds: input.gracePeriodSeconds,
-        })
-      ),
-    onSuccess: (_, { opts }) => {
-      showSnackbar(`Resource ${opts.resourceID} deleted`, 'success');
-    },
-    onError(error: unknown, { opts }) {
-      showAppError(showSnackbar, error, `Failed to delete resource ${opts.resourceID}`);
-    },
-  });
-
-  return {
-    create: createMutation.mutateAsync,
-    update: updateMutation.mutateAsync,
-    remove: deleteMutation.mutateAsync,
-  };
+  return { mutate: mutation.mutateAsync, mutation };
 };
 
 export default useResourceMutations;

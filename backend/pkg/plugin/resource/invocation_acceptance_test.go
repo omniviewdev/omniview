@@ -2,7 +2,6 @@ package resource
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -10,18 +9,17 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
-	"github.com/omniviewdev/plugin-sdk/pkg/v1/resource/resourcetest"
 )
 
 func TestUnissuedResourceInvocationCannotObserveOrSubscribe(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	_, err := ctrl.Get(context.Background(), "supplied-actor", "root", "opaque", resource.GetInput{ID: "x"})
+	_, err := ctrl.Get(context.Background(), "supplied-actor", HostGetRequest{Request: resource.GetRequest{Route: resource.AccessRoute{Connection: "root"}, Reference: resource.ResourceReference{Address: resource.ResourceAddress{Provider: "supplied-actor", Authority: "unissued", Type: "opaque", ID: "x", Scope: []resource.ScopeEntry{}}}, Representation: "native"}})
 	if err == nil {
 		t.Fatal("unissued request admitted")
 	}
-	if err := ctrl.SubscribeResource(context.Background(), "supplied-actor", "root", "opaque"); err == nil {
+	if err := ctrl.SubscribeResource(context.Background(), "supplied-actor", HostSubscription{TargetID: "unissued", Target: resource.ReadTarget{Route: resource.AccessRoute{Connection: "root"}, Provider: "supplied-actor", Authority: "unissued", Type: "opaque", Scope: resource.QueryScope{}, Representation: "native"}}); err == nil {
 		t.Fatal("unissued subscription admitted")
 	}
 	if ctrl.isSubscribed("supplied-actor", "root", "opaque") {
@@ -31,28 +29,34 @@ func TestUnissuedResourceInvocationCannotObserveOrSubscribe(t *testing.T) {
 
 func TestProviderDenialThroughRealGRPCDoesNotObserveResult(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	provider := resourcetest.NewTestProvider(t, resourcetest.WithGetFunc(func(context.Context, string, resource.GetInput) (*resource.GetResult, error) {
-		return &resource.GetResult{Success: true, Result: json.RawMessage(`{"secret":"denied"}`)}, &resource.ResourceOperationError{Code: "FORBIDDEN", Title: "private-title", Message: "private-body"}
-	}))
+	provider := &mockProvider{
+		CatalogFunc: lifecycleTestCatalog("opaque"),
+		GetFunc: func(_ context.Context, request resource.GetRequest) (resource.Record, error) {
+			record := canonicalTestRecord(request.Reference.Address.Provider, request.Reference.Address.Authority, request.Reference.Address.Type, request.Reference.Address.ID)
+			record.Body = resource.Value{Kind: "map", Map: map[string]resource.Value{"secret": {Kind: "string", String: "denied"}}}
+			return record, &resource.ResourceOperationError{Code: "FORBIDDEN", Title: "private-title", Message: "private-body"}
+		},
+	}
 	registerMockPlugin(ctrl, "cloud", setupGRPCProvider(t, provider))
-	_, err := ctrl.Get(testInvocationContext(), "cloud", "conn", "opaque", resource.GetInput{ID: "secret"})
+	request := admittedGetRequest(t, ctrl, "cloud", "conn", "opaque", "secret")
+	_, err := ctrl.Get(testInvocationContext(), "cloud", request)
 	var app *apperror.AppError
 	if !errors.As(err, &app) || app.Code != "FORBIDDEN" || app.RequestID == "" {
 		t.Fatalf("denial lost through transport: %v", err)
 	}
-	if _, found := ctrl.registryStore.Get("cloud", "conn", "opaque", "", "secret"); found {
+	if _, found := ctrl.registryStore.Get("cloud", request.Request.Reference, request.Request.Route); found {
 		t.Fatal("denial populated registry")
 	}
 }
 
 func TestDeniedNativeReadyOpenCreatesNoHandle(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	provider := resourcetest.NewTestProvider(t)
-	provider.StreamActionFunc = func(context.Context, string, string, resource.ActionInput, chan<- resource.ActionEvent) error {
+	provider := &mockProvider{CatalogFunc: lifecycleTestCatalog("opaque")}
+	provider.StreamActionFunc = func(context.Context, resource.ActionRequest, chan<- resource.ActionEvent) error {
 		return &resource.ResourceOperationError{Code: "FORBIDDEN", Title: "private", Message: "private"}
 	}
 	registerMockPlugin(ctrl, "container", setupGRPCProvider(t, provider))
-	id, err := ctrl.StreamAction(testInvocationContext(), "container", "conn", "opaque", "start", resource.ActionInput{})
+	id, err := ctrl.StreamAction(testInvocationContext(), "container", admittedActionRequest(t, ctrl, "container", "conn", "opaque", "start"))
 	if err == nil || id != "" || actionCount(ctrl.actions) != 0 {
 		t.Fatalf("denied open left handle: id=%q err=%v count=%d", id, err, actionCount(ctrl.actions))
 	}
@@ -60,9 +64,9 @@ func TestDeniedNativeReadyOpenCreatesNoHandle(t *testing.T) {
 
 func TestReadyFastTerminalIsReconciledAndForeignOwnerCannotAttach(t *testing.T) {
 	ctrl, emitter := newTestControllerWithEmitter(t)
-	provider := resourcetest.NewTestProvider(t)
-	provider.StreamActionFunc = func(ctx context.Context, _ string, _ string, _ resource.ActionInput, ch chan<- resource.ActionEvent) error {
-		for _, ev := range []resource.ActionEvent{{Type: "ready"}, {Type: "complete", Data: map[string]any{"message": "complete"}}} {
+	provider := &mockProvider{CatalogFunc: lifecycleTestCatalog("opaque")}
+	provider.StreamActionFunc = func(ctx context.Context, _ resource.ActionRequest, ch chan<- resource.ActionEvent) error {
+		for _, ev := range []resource.ActionEvent{{Type: "ready"}, {Type: "complete", Data: &resource.Value{Kind: "map", Map: map[string]resource.Value{"message": {Kind: "string", String: "complete"}}}}} {
 			select {
 			case ch <- ev:
 			case <-ctx.Done():
@@ -74,7 +78,7 @@ func TestReadyFastTerminalIsReconciledAndForeignOwnerCannotAttach(t *testing.T) 
 	registerMockPlugin(ctrl, "hypervisor", setupGRPCProvider(t, provider))
 	owner := invocation.NewScope(invocation.TrustedUI)
 	ctx := owner.Context(context.Background())
-	id, err := ctrl.StreamAction(ctx, "hypervisor", "conn", "opaque", "start", resource.ActionInput{})
+	id, err := ctrl.StreamAction(ctx, "hypervisor", admittedActionRequest(t, ctrl, "hypervisor", "conn", "opaque", "start"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,13 +116,23 @@ func TestReadyFastTerminalIsReconciledAndForeignOwnerCannotAttach(t *testing.T) 
 }
 
 func TestRegisteredSDKResourcerPreservesHostCorrelationThroughGRPC(t *testing.T) {
-	seen := make(chan *resource.Session, 1)
-	provider, err := resource.BuildResourceController(context.Background(), resource.ResourcePluginConfig[string]{Connections: &resourcetest.StubConnectionProvider[string]{}, Resources: []resource.ResourceRegistration[string]{{Meta: resource.ResourceMeta{Group: "cloud", Version: "v1", Kind: "Machine"}, Resourcer: &resourcetest.StubResourcer[string]{GetFunc: func(ctx context.Context, _ *string, _ resource.ResourceMeta, _ resource.GetInput) (*resource.GetResult, error) {
-		session := resource.SessionFromContext(ctx)
-		copy := *session
-		seen <- &copy
-		return nil, &resource.ResourceOperationError{Code: "FORBIDDEN", Title: "secret-title", Message: "secret-body"}
-	}}}}})
+	seen := make(chan resource.Session, 1)
+	provider, err := resource.NewController(resource.Config[string]{
+		Catalog: lifecycleTestCatalog("cloud::v1::Machine"),
+		Lifecycle: &resource.Lifecycle[string]{
+			LoadConnections: func(context.Context) ([]types.Connection, error) { return []types.Connection{{ID: "conn-1"}}, nil },
+			CreateClient:    func(context.Context, types.Connection) (*string, error) { client := "native"; return &client, nil },
+			DestroyClient:   func(context.Context, *string) error { return nil },
+		},
+		Registrations: []resource.Registration[string]{{Type: "cloud::v1::Machine", Get: func(ctx context.Context, _ *string, _ resource.GetRequest) (resource.Record, error) {
+			session, ok := resource.SessionFromContext(ctx)
+			if !ok {
+				return resource.Record{}, errors.New("missing host session")
+			}
+			seen <- session
+			return resource.Record{}, &resource.ResourceOperationError{Code: "FORBIDDEN", Title: "secret-title", Message: "secret-body"}
+		}}},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +145,7 @@ func TestRegisteredSDKResourcerPreservesHostCorrelationThroughGRPC(t *testing.T)
 	}
 	ctrl, _ := newTestControllerWithEmitter(t)
 	registerMockPlugin(ctrl, "cloud", setupGRPCProvider(t, provider))
-	_, err = ctrl.Get(testInvocationContext(), "cloud", "conn-1", "cloud::v1::Machine", resource.GetInput{ID: "opaque"})
+	_, err = ctrl.Get(testInvocationContext(), "cloud", admittedGetRequest(t, ctrl, "cloud", "conn-1", "cloud::v1::Machine", "opaque"))
 	app := requireAppError(t, err)
 	session := <-seen
 	if session.RequestID == "" || session.RequestID != app.RequestID || session.RequesterID != "host" {
@@ -144,13 +158,13 @@ func TestRegisteredSDKResourcerPreservesHostCorrelationThroughGRPC(t *testing.T)
 
 func TestResourceDiscoveryTransportFailureIsNotEmptySuccess(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	provider := resourcetest.NewTestProvider(t)
-	provider.GetResourceTypesFunc = func(context.Context, string) (map[string]resource.ResourceMeta, error) {
-		return map[string]resource.ResourceMeta{"secret": {}}, &resource.ResourceOperationError{Code: "FORBIDDEN", Title: "secret-title", Message: "secret-body"}
+	provider := &mockProvider{}
+	provider.CatalogFunc = func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+		return canonicalTestCatalog("proof", "secret"), &resource.ResourceOperationError{Code: "FORBIDDEN", Title: "secret-title", Message: "secret-body"}
 	}
 	registerMockPlugin(ctrl, "container", setupGRPCProvider(t, provider))
-	result, err := ctrl.GetResourceTypes(testInvocationContext(), "container", "route")
-	if result != nil || requireAppError(t, err).Code != "FORBIDDEN" {
+	result, err := ctrl.Catalog(testInvocationContext(), "container", resource.CatalogRequest{Route: resource.AccessRoute{Connection: "route"}})
+	if result.Provider != "" || requireAppError(t, err).Code != "FORBIDDEN" {
 		t.Fatal("denied discovery became empty/successful inventory")
 	}
 }
@@ -158,8 +172,8 @@ func TestResourceDiscoveryTransportFailureIsNotEmptySuccess(t *testing.T) {
 func TestOpenCancellationBeforeReadyLeavesNoHandle(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	started := make(chan struct{})
-	provider := resourcetest.NewTestProvider(t)
-	provider.StreamActionFunc = func(ctx context.Context, _ string, _ string, _ resource.ActionInput, _ chan<- resource.ActionEvent) error {
+	provider := &mockProvider{CatalogFunc: lifecycleTestCatalog("opaque")}
+	provider.StreamActionFunc = func(ctx context.Context, _ resource.ActionRequest, _ chan<- resource.ActionEvent) error {
 		close(started)
 		<-ctx.Done()
 		return ctx.Err()
@@ -168,7 +182,7 @@ func TestOpenCancellationBeforeReadyLeavesNoHandle(t *testing.T) {
 	ctx, cancel := context.WithCancel(testInvocationContext())
 	result := make(chan error, 1)
 	go func() {
-		_, err := ctrl.StreamAction(ctx, "flat", "route", "opaque", "start", resource.ActionInput{})
+		_, err := ctrl.StreamAction(ctx, "flat", admittedActionRequest(t, ctrl, "flat", "route", "opaque", "start"))
 		result <- err
 	}()
 	<-started
@@ -189,8 +203,8 @@ func TestOpenCancellationBeforeReadyLeavesNoHandle(t *testing.T) {
 func TestAcceptedProducerSurvivesCompletedOpenRequestCancellation(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	stopped := make(chan struct{})
-	provider := resourcetest.NewTestProvider(t)
-	provider.StreamActionFunc = func(ctx context.Context, _ string, _ string, _ resource.ActionInput, events chan<- resource.ActionEvent) error {
+	provider := &mockProvider{CatalogFunc: lifecycleTestCatalog("opaque")}
+	provider.StreamActionFunc = func(ctx context.Context, _ resource.ActionRequest, events chan<- resource.ActionEvent) error {
 		events <- resource.ActionEvent{Type: "ready"}
 		<-ctx.Done()
 		close(stopped)
@@ -199,7 +213,7 @@ func TestAcceptedProducerSurvivesCompletedOpenRequestCancellation(t *testing.T) 
 	registerMockPlugin(ctrl, "flat", setupGRPCProvider(t, provider))
 	owner := invocation.NewScope(invocation.TrustedUI)
 	ctx, cancel := context.WithCancel(owner.Context(context.Background()))
-	id, err := ctrl.StreamAction(ctx, "flat", "route", "opaque", "start", resource.ActionInput{})
+	id, err := ctrl.StreamAction(ctx, "flat", admittedActionRequest(t, ctrl, "flat", "route", "opaque", "start"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,9 +238,17 @@ func TestAcceptedProducerSurvivesCompletedOpenRequestCancellation(t *testing.T) 
 }
 
 func TestConnectionStateAggregatePreservesUnstartedNativeConnection(t *testing.T) {
-	provider, err := resource.BuildResourceController(context.Background(), resource.ResourcePluginConfig[string]{
-		Connections: &resourcetest.StubConnectionProvider[string]{},
-		Resources:   []resource.ResourceRegistration[string]{{Meta: resource.ResourceMeta{Group: "cloud", Version: "v1", Kind: "Machine"}, Resourcer: &resourcetest.StubResourcer[string]{}}},
+	provider, err := resource.NewController(resource.Config[string]{
+		Catalog: lifecycleTestCatalog("cloud::v1::Machine"),
+		Lifecycle: &resource.Lifecycle[string]{
+			LoadConnections: func(context.Context) ([]types.Connection, error) { return []types.Connection{{ID: "conn-1"}}, nil },
+			CreateClient:    func(context.Context, types.Connection) (*string, error) { client := "native"; return &client, nil },
+			DestroyClient:   func(context.Context, *string) error { return nil },
+		},
+		Registrations: []resource.Registration[string]{{Type: "cloud::v1::Machine", Watch: func(context.Context, *string, resource.ReadTarget, resource.Representation, resource.WatchEventSink) error {
+			t.Error("unstarted native connection opened an update source")
+			return errors.New("unstarted native update source")
+		}}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -257,8 +279,8 @@ func TestConnectionStateAggregateFailsClosedThroughTransport(t *testing.T) {
 	for _, code := range []string{"FORBIDDEN", "CANCELLED", "PARTIAL_RESULT", "PROVIDER_ERROR", "INTERNAL"} {
 		t.Run(code, func(t *testing.T) {
 			ctrl, _ := newTestControllerWithEmitter(t)
-			provider := resourcetest.NewTestProvider(t)
-			provider.GetWatchStateFunc = func(context.Context, string) (*resource.WatchConnectionSummary, error) {
+			provider := &mockProvider{}
+			provider.GetWatchStateFunc = func(context.Context, resource.AccessRoute) (*resource.WatchConnectionSummary, error) {
 				return &resource.WatchConnectionSummary{Resources: map[string]resource.WatchState{"secret": resource.WatchStateSynced}}, &resource.ResourceOperationError{Code: code, Title: "private", Message: "private"}
 			}
 			registerMockPlugin(ctrl, "cloud", setupGRPCProvider(t, provider))
@@ -273,9 +295,9 @@ func TestConnectionStateAggregateFailsClosedThroughTransport(t *testing.T) {
 
 func TestConnectionStateAggregateCancellationStopsNativeRead(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	provider := resourcetest.NewTestProvider(t)
+	provider := &mockProvider{}
 	started, stopped := make(chan struct{}), make(chan struct{})
-	provider.GetWatchStateFunc = func(ctx context.Context, _ string) (*resource.WatchConnectionSummary, error) {
+	provider.GetWatchStateFunc = func(ctx context.Context, _ resource.AccessRoute) (*resource.WatchConnectionSummary, error) {
 		close(started)
 		<-ctx.Done()
 		close(stopped)
@@ -331,8 +353,8 @@ func TestConnectionStateAggregateRejectsDeniedMemberBeforeNativeRead(t *testing.
 		}
 		return nil
 	}))
-	provider := resourcetest.NewTestProvider(t)
-	provider.GetWatchStateFunc = func(context.Context, string) (*resource.WatchConnectionSummary, error) {
+	provider := &mockProvider{}
+	provider.GetWatchStateFunc = func(context.Context, resource.AccessRoute) (*resource.WatchConnectionSummary, error) {
 		t.Error("denied member reached native watch read")
 		return nil, errors.New("unexpected native read")
 	}

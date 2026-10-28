@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
 // ---------------------------------------------------------------------------
@@ -125,12 +126,12 @@ func waitFor(t *testing.T, condition func() bool, timeout time.Duration, msg str
 
 func testEntry(id string) registry.ResourceEntry {
 	return registry.ResourceEntry{
-		PluginID:     "k8s",
-		ConnectionID: "c1",
-		ResourceKey:  "core::v1::Pod",
-		ID:           id,
-		Namespace:    "default",
-		UID:          "uid-" + id,
+		PluginID: "provider",
+		Route:    resourcev2.AccessRoute{Connection: "c1"},
+		Reference: resourcev2.ResourceReference{Address: resourcev2.ResourceAddress{
+			Provider: "provider", Authority: "host-issued", Type: "opaque/type", ID: id,
+			Scope: []resourcev2.ScopeEntry{{Dimension: "region", Value: "default"}},
+		}},
 	}
 }
 
@@ -250,7 +251,7 @@ func TestDispatcher_OrderPreserved(t *testing.T) {
 		onAdd: func(entry registry.ResourceEntry, _ json.RawMessage) {
 			mu.Lock()
 			defer mu.Unlock()
-			received = append(received, entry.ID)
+			received = append(received, entry.Reference.Address.ID)
 		},
 	}
 

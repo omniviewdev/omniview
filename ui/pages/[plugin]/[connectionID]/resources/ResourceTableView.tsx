@@ -13,9 +13,6 @@ import {
   parseAppError,
 } from '@omniviewdev/runtime';
 
-// Types
-import type { ResourceMeta } from '@omniviewdev/runtime/models';
-
 // Layout
 import Layout from '@/layouts/core/sidenav';
 
@@ -31,11 +28,6 @@ import { Link } from '@infraview/router';
 // Icons
 import { LuCircleAlert, LuCog } from 'react-icons/lu';
 import styles from './ResourceTableView.module.css';
-
-/**
- * Get the ID from the meta object
- */
-const toID = (meta: ResourceMeta) => `${meta.group}::${meta.version}::${meta.kind}`;
 
 /**
  * Initials avatar for a connection without an image avatar.
@@ -58,8 +50,8 @@ export default function ResourceTableView(): React.ReactElement {
   const { pluginID = '', connectionID = '' } = useParams<{ pluginID: string; connectionID: string }>();
   const [selected, setSelected] = React.useState<string | undefined>(undefined);
 
-  useResourceTypes({ pluginID, connectionID });
-  const { groups } = useResourceGroups({ pluginID, connectionID });
+  const { resourceTypes } = useResourceTypes({ pluginID, route: { connection: connectionID } });
+  const { groups } = useResourceGroups({ pluginID, route: { connection: connectionID } });
   const { connection } = useConnection({ pluginID, connectionID });
 
   const navigate = useNavigate();
@@ -78,8 +70,8 @@ export default function ResourceTableView(): React.ReactElement {
     }
   }, []);
 
-  if (groups.isError) {
-    const appErr = parseAppError(groups.error);
+  if (resourceTypes.isError || groups.isError) {
+    const appErr = parseAppError(resourceTypes.error ?? groups.error);
     return (
       <div className={styles.ErrorRoot}>
         <Banner color='danger' className={styles.ErrorBanner}>
@@ -103,58 +95,30 @@ export default function ResourceTableView(): React.ReactElement {
     );
   }
 
-  if (groups.isLoading || connection.isLoading || !groups.data || !connection.data) {
+  if (resourceTypes.isLoading || groups.isLoading || connection.isLoading || !resourceTypes.data || !connection.data) {
     return (<></>);
   }
 
-  const getSections = () => {
-    const coreSection: SidebarItem[] = [];
-
-    const crdSection: SidebarItem[] = [];
-
-    const grouped: SidebarItem[] = Object.values(groups.data).flatMap((group) => {
-      if (!group) {
-        return [];
-      }
-
-      const item: SidebarItem = {
-        id: group.id,
-        label: group.name,
-        icon: group.icon,
-        children: [],
-      };
-
-      Object.entries(group.resources).forEach(([version, metas]) => {
-        metas?.forEach((meta) => {
-          item.children?.push({
-            id: toID(meta),
-            label: meta.kind,
-            icon: meta.icon,
-            decorator: version,
-          });
-        });
-      });
-
-      // Sort the children
-      item.children = item.children?.sort((a, b) => a.label.localeCompare(b.label));
-      return item;
-    }).sort((a, b) => a.label.localeCompare(b.label));
-
-    grouped.forEach((group) => {
-      // This is kubernetes specific, let's eventually allow plugins to define this somehow
-      if (group.label.includes('.') && !group.label.includes('k8s.io')) {
-        // custom resource definition
-        crdSection.push(group);
-      } else {
-        coreSection.push(group);
-      }
+  const getSections = (): SidebarSection[] => {
+    const types = new Map(resourceTypes.data.map((type) => [type.type, type]));
+    const grouped = new Set(groups.data?.flatMap((group) => group.resources) ?? []);
+    const item = (type: string): SidebarItem => ({
+      id: type,
+      label: types.get(type)?.displayName || type,
     });
-
-    const sections: SidebarSection[] = [
-      { id: 'core', title: '', items: coreSection },
-      { id: 'crd', title: 'Custom Resource Definitions', items: crdSection },
-    ];
-    return sections;
+    const items: SidebarItem[] = (groups.data ?? []).map((group) => ({
+      id: group.id,
+      label: group.name,
+      icon: group.icon,
+      children: group.resources.filter((type) => types.has(type)).map(item)
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    }));
+    items.push(...resourceTypes.data.filter((type) => !grouped.has(type.type)).map((type) => item(type.type)));
+    return [{
+      id: 'resources',
+      title: '',
+      items: items.sort((a, b) => a.label.localeCompare(b.label)),
+    }];
   };
 
   return (
@@ -181,7 +145,7 @@ export default function ResourceTableView(): React.ReactElement {
               <Text weight='semibold' size='sm' className={styles.ConnectionName}>{connection.data?.name}</Text>
             </Stack>
             <Stack direction='row' align='center' spacing={2}>
-              <Link to={`/connection/${connectionID}/edit`}>
+              <Link to={`/connection/${encodeURIComponent(connectionID)}/edit`}>
                 <IconButton variant='soft' size='sm' color='neutral' aria-label='Edit connection'>
                   <LuCog size={20} className={styles.SettingsIcon} />
                 </IconButton>
@@ -197,7 +161,7 @@ export default function ResourceTableView(): React.ReactElement {
          just end up creating a gutter at the top equal to the top and bottom padding combined) */}
         <div className={styles.MainInner}>
           {selected &&
-            <ResourceTable resourceKey={selected} pluginID={pluginID} connectionID={connectionID} />
+            <ResourceTable key={`${pluginID}/${connectionID}/${selected}`} resourceKey={selected} pluginID={pluginID} connectionID={connectionID} />
           }
         </div>
       </Layout.Main>

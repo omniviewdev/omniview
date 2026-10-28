@@ -9,47 +9,52 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
 func TestGetEditorSchemas_Success(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
+	revision := "schema-r1"
+	documentRef := &resource.SchemaDocumentReference{ID: "kubernetes-openapi", Revision: revision}
 	mock := &mockProvider{
-		GetEditorSchemasFunc: func(_ context.Context, connID string) ([]resource.EditorSchema, error) {
-			assert.Equal(t, "conn-1", connID)
+		GetEditorSchemasFunc: func(_ context.Context, route resource.AccessRoute) ([]resource.EditorSchema, error) {
+			assert.Equal(t, "conn-1", route.Connection)
 			return []resource.EditorSchema{
-				{ResourceKey: "core::v1::Pod", Language: "yaml", URI: "k8s://pod.yaml"},
-				{ResourceKey: "apps::v1::Deployment", Language: "yaml", URI: "k8s://deployment.yaml"},
+				{Type: "k8s:/pods", Language: "yaml", URI: "k8s://pod.yaml", Binding: resource.SchemaBinding{State: "available", Revision: &revision, Dialect: "https://json-schema.org/draft/2020-12/schema", Root: "#/$defs/Pod", DocumentRef: documentRef, Validation: "none"}},
+				{Type: "k8s:apps/deployments", Language: "yaml", URI: "k8s://deployment.yaml", Binding: resource.SchemaBinding{State: "available", Revision: &revision, Dialect: "https://json-schema.org/draft/2020-12/schema", Root: "#/$defs/Deployment", DocumentRef: documentRef, Validation: "none"}},
 			}, nil
 		},
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	schemas, err := ctrl.GetEditorSchemas(testInvocationContext(), "p1", "conn-1")
+	schemas, err := ctrl.GetEditorSchemas(testInvocationContext(), "p1", resource.AccessRoute{Connection: "conn-1"})
 	require.NoError(t, err)
 	require.Len(t, schemas, 2)
-	assert.Equal(t, "core::v1::Pod", schemas[0].ResourceKey)
+	assert.Equal(t, "k8s:/pods", schemas[0].Type)
 	assert.Equal(t, "yaml", schemas[0].Language)
-	assert.Equal(t, "apps::v1::Deployment", schemas[1].ResourceKey)
+	assert.Equal(t, "k8s:apps/deployments", schemas[1].Type)
+	assert.Equal(t, documentRef, schemas[0].Binding.DocumentRef)
+	assert.Equal(t, schemas[0].Binding.DocumentRef, schemas[1].Binding.DocumentRef)
+	assert.NotEqual(t, schemas[0].Binding.Root, schemas[1].Binding.Root)
 }
 
 func TestGetEditorSchemas_ProviderError(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		GetEditorSchemasFunc: func(_ context.Context, _ string) ([]resource.EditorSchema, error) {
+		GetEditorSchemasFunc: func(_ context.Context, _ resource.AccessRoute) ([]resource.EditorSchema, error) {
 			return nil, errors.New("schemas unavailable")
 		},
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, err := ctrl.GetEditorSchemas(testInvocationContext(), "p1", "conn-1")
+	_, err := ctrl.GetEditorSchemas(testInvocationContext(), "p1", resource.AccessRoute{Connection: "conn-1"})
 	require.Error(t, err)
 	assert.Equal(t, "PROVIDER_ERROR", requireAppError(t, err).Code)
 }
 
 func TestGetEditorSchemas_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	_, err := ctrl.GetEditorSchemas(testInvocationContext(), "nonexistent", "conn-1")
+	_, err := ctrl.GetEditorSchemas(testInvocationContext(), "nonexistent", resource.AccessRoute{Connection: "conn-1"})
 	var appErr *apperror.AppError
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
@@ -58,13 +63,37 @@ func TestGetEditorSchemas_PluginNotFound(t *testing.T) {
 func TestGetEditorSchemas_EmptyResult(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		GetEditorSchemasFunc: func(_ context.Context, _ string) ([]resource.EditorSchema, error) {
+		GetEditorSchemasFunc: func(_ context.Context, _ resource.AccessRoute) ([]resource.EditorSchema, error) {
 			return []resource.EditorSchema{}, nil
 		},
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	schemas, err := ctrl.GetEditorSchemas(testInvocationContext(), "p1", "conn-1")
+	schemas, err := ctrl.GetEditorSchemas(testInvocationContext(), "p1", resource.AccessRoute{Connection: "conn-1"})
 	require.NoError(t, err)
 	assert.Empty(t, schemas)
+}
+
+func TestGetEditorSchemas_RequestCancellationIsTyped(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	ctx, cancel := context.WithCancel(testInvocationContext())
+	defer cancel()
+	registerMockPlugin(ctrl, "p1", &mockProvider{GetEditorSchemasFunc: func(context.Context, resource.AccessRoute) ([]resource.EditorSchema, error) {
+		cancel()
+		return nil, context.Canceled
+	}})
+	_, err := ctrl.GetEditorSchemas(ctx, "p1", resource.AccessRoute{Connection: "conn-1"})
+	assert.Equal(t, "CANCELLED", requireAppError(t, err).Code)
+}
+
+func TestGetEditorSchemasRejectsRetiredGenerationResult(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	registerMockPlugin(ctrl, "p1", &mockProvider{GetEditorSchemasFunc: func(context.Context, resource.AccessRoute) ([]resource.EditorSchema, error) {
+		registerMockPlugin(ctrl, "p1", &mockProvider{})
+		return []resource.EditorSchema{{Type: "retired-generation"}}, nil
+	}})
+	schemas, err := ctrl.GetEditorSchemas(testInvocationContext(), "p1", resource.AccessRoute{Connection: "conn-1"})
+	require.Error(t, err)
+	assert.Nil(t, schemas)
+	assert.Contains(t, []string{"CANCELLED", "RESET_REQUIRED"}, requireAppError(t, err).Code)
 }

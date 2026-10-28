@@ -12,13 +12,13 @@ import { LuEllipsis } from 'react-icons/lu';
 import { type Actions } from './types';
 import DeleteAction from './DeleteAction';
 import styles from './ActionMenu.module.css';
+import type { HostRecord } from '@omniviewdev/runtime';
 
 type Props = {
   plugin: string;
   connection: string;
   resource: string;
-  namespace: string;
-  id: string;
+  record: HostRecord;
   data: Record<string, unknown>;
   actions: Actions;
 };
@@ -90,8 +90,7 @@ const ActionsMenuList: React.FC<ActionMenuListProps> = ({
   resource,
   data,
   actions,
-  id,
-  namespace,
+  record,
   dismissMenu,
 }) => {
   const [menuSelected, setMenuSelected] = React.useState<undefined | string>(undefined);
@@ -139,10 +138,8 @@ const ActionsMenuList: React.FC<ActionMenuListProps> = ({
       />}
       <DeleteAction
         plugin={plugin}
-        connection={connection}
-        resource={resource}
-        namespace={namespace}
-        id={id}
+        route={record.route}
+        reference={record.record.reference}
         handleSelect={() => {
           setMenuSelected('delete');
         }}

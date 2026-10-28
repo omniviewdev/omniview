@@ -1,7 +1,7 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { PluginManager, ResourceClient } from '@omniviewdev/runtime/api';
 import { GLOBAL_SEARCH_OPEN_EVENT, resourceQueryKeys } from '@omniviewdev/runtime';
-import type { ExtensionContributionRegistration, NavigationTargetV1, OpenGlobalSearchOptions, SearchProviderV1, SearchProviderItemV1 } from '@omniviewdev/runtime';
+import type { ExtensionContributionRegistration, NavigationTargetV1, OpenGlobalSearchOptions, ReadTarget, SearchProviderV1, SearchProviderItemV1 } from '@omniviewdev/runtime';
 import { ConnectionStatusCode } from '@omniviewdev/runtime/models';
 import { Events } from '@wailsio/runtime';
 import useRightDrawer from '@/hooks/useRightDrawer';
@@ -23,6 +23,7 @@ import type { GlobalSearchController } from './controller';
 import type { SearchSnapshot } from './types';
 import type { SearchProviderContextRegistration } from './SearchProviderContexts';
 import { normalizePluginRoutes } from '../plugins/react/normalizePluginRoutes';
+import { scopeConnection } from './scope';
 import { resolveRouteSearchScope, resolveSearchOpenOptions } from './routeScope';
 
 const closed: SearchSnapshot = { isOpen: false, query: '', scopes: [], rows: [], sources: [], searchPending: false, executionPending: false };
@@ -125,7 +126,7 @@ export function useGlobalCommandSearch() {
         }
 
         signal.throwIfAborted();
-        const status = await checkConnection(target.pluginId, target.connectionId, signal);
+        const status = await checkConnection(target.pluginId, target.route.connection, signal);
         signal.throwIfAborted();
         if (status.status !== ConnectionStatusCode.ConnectionStatusConnected) {
           throw new Error(status.details || status.error || 'Connection is not ready.');
@@ -133,10 +134,10 @@ export function useGlobalCommandSearch() {
 
         await latestDrawer.current({
           pluginID: target.pluginId,
-          connectionID: target.connectionId,
-          resourceKey: target.resourceKey,
-          resourceID: target.resourceId,
-          namespace: target.namespace,
+          route: target.route,
+          reference: target.reference,
+          representation: target.representation,
+          targetId: target.targetId,
           resourceName: target.label,
           validateData,
           signal,
@@ -347,7 +348,7 @@ export function useGlobalCommandSearch() {
             if (Array.isArray(event.data)) {
               const connectionIds = new Set(event.data.map((connection: { id: string }) => connection.id));
               const scopes = next.getSnapshot().scopes;
-              const removed = scopes.findIndex((scope) => scope.pluginId === id && !connectionIds.has(scope.connectionId));
+              const removed = scopes.findIndex((scope) => scope.pluginId === id && !connectionIds.has(scopeConnection(scope)));
               if (removed >= 0) {
                 next.removeScope(removed, 'Connection was removed.');
               }
@@ -575,12 +576,18 @@ export function useGlobalCommandSearch() {
   }, [controller]);
   useEffect(() => {
     const desired = new Set<string>();
-    const resources = new Map<string, { pluginId: string; connectionId: string; resourceKey: string }>();
+    const resources = new Map<string, { pluginId: string; target: ReadTarget; targetId: string }>();
     const connections = new Map<string, { pluginId: string; connectionId: string }>();
     for (const scope of snapshot.scopes) {
-      connections.set(JSON.stringify([scope.pluginId, scope.connectionId]), scope);
+      const connectionId = scopeConnection(scope);
+      connections.set(JSON.stringify([scope.pluginId, connectionId]), { pluginId: scope.pluginId, connectionId });
       if (scope.kind !== 'connection') {
-        resources.set(JSON.stringify([scope.pluginId, scope.connectionId, scope.resourceKey]), scope);
+        const target: ReadTarget = scope.kind === 'resource-type' ? scope.target : {
+          route: scope.route, provider: scope.reference.address.provider, authority: scope.reference.address.authority,
+          type: scope.reference.address.type, representation: scope.representation,
+          scope: scope.reference.address.scope.map(entry => ({ dimension: entry.dimension, match: 'oneOf', values: [entry.value] })),
+        };
+        resources.set(JSON.stringify([scope.pluginId, scope.targetId, target]), { pluginId: scope.pluginId, target, targetId: scope.targetId });
       }
     }
 
@@ -599,7 +606,9 @@ export function useGlobalCommandSearch() {
         nativeSubscriptions.current.set(subscriptionKey, stop);
       }
 
-      for (const [key, { pluginId, connectionId, resourceKey }] of resources) {
+      for (const [key, { pluginId, target, targetId }] of resources) {
+        const connectionId = target.route.connection;
+        const resourceKey = target.type;
         const subscriptionKey = `resource:${key}`;
         desired.add(subscriptionKey);
         if (nativeSubscriptions.current.has(subscriptionKey)) {
@@ -607,7 +616,7 @@ export function useGlobalCommandSearch() {
         }
 
         let active = true;
-        const queryKey = resourceQueryKeys.scope(pluginId, connectionId, resourceKey);
+        const queryKey = resourceQueryKeys.all(pluginId);
         const queryCache = queryClient.getQueryCache();
         const dirtyQueries = new Set<string>();
         const stopCache = queryCache.subscribe((event) => {
@@ -627,7 +636,9 @@ export function useGlobalCommandSearch() {
           }
         });
         const stops = ['ADD', 'UPDATE', 'DELETE'].map((type) =>
-          Events.On(`${pluginId}/${connectionId}/${resourceKey}/${type}`, () => {
+          Events.On(`${pluginId}/${connectionId}/${resourceKey}/${type}`, (event) => {
+            const payload = event.data;
+            if ((type === 'DELETE' ? payload?.targetId : payload?.record?.targetId) !== targetId) return;
             for (const query of queryCache.findAll({ queryKey })) {
               if (query.state.fetchStatus !== 'idle') {
                 dirtyQueries.add(query.queryHash);
@@ -643,7 +654,7 @@ export function useGlobalCommandSearch() {
             return false;
           }
 
-          await ResourceClient.SubscribeResource(pluginId, connectionId, resourceKey);
+          await ResourceClient.SubscribeResource(pluginId, { targetId, target });
           return true;
         }).catch(() => {
           if (active) {
@@ -663,7 +674,7 @@ export function useGlobalCommandSearch() {
           });
           void acquired.then(async (success) => {
             if (success) {
-              await ResourceClient.UnsubscribeResource(pluginId, connectionId, resourceKey);
+              await ResourceClient.UnsubscribeResource(pluginId, { targetId, target });
             }
           }).catch(() => undefined);
         });

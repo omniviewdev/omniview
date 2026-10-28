@@ -1,16 +1,28 @@
 package graph
 
 import (
+	"encoding/json"
 	"testing"
 
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
 func node(plugin, conn, key, ns, id string) GraphNode {
-	return GraphNode{
-		PluginID: plugin, ConnectionID: conn,
-		ResourceKey: key, ID: id, Namespace: ns,
+	scope := []resource.ScopeEntry{}
+	if ns != "" {
+		scope = append(scope, resource.ScopeEntry{Dimension: "namespace", Value: ns})
 	}
+	return GraphNode{PluginID: plugin, Route: resource.AccessRoute{Connection: conn},
+		Reference: resource.ResourceReference{Address: resource.ResourceAddress{Provider: plugin, Authority: "authority:" + conn, Type: key, Scope: scope, ID: id}}}
+}
+
+func testNamespace(ref resource.ResourceReference) string {
+	for _, item := range ref.Address.Scope {
+		if item.Dimension == "namespace" {
+			return item.Value
+		}
+	}
+	return ""
 }
 
 func TestGraph_AddAndGetEdges(t *testing.T) {
@@ -22,12 +34,12 @@ func TestGraph_AddAndGetEdges(t *testing.T) {
 	g.AddEdge(edge)
 
 	fwd := g.EdgesFrom(src.Key())
-	if len(fwd) != 1 || fwd[0].Target.ID != "worker-1" {
+	if len(fwd) != 1 || fwd[0].Target.Reference.Address.ID != "worker-1" {
 		t.Fatalf("expected 1 forward edge to worker-1, got %v", fwd)
 	}
 
 	rev := g.EdgesTo(tgt.Key())
-	if len(rev) != 1 || rev[0].Source.ID != "nginx" {
+	if len(rev) != 1 || rev[0].Source.Reference.Address.ID != "nginx" {
 		t.Fatalf("expected 1 reverse edge from nginx, got %v", rev)
 	}
 }
@@ -102,7 +114,7 @@ func TestGraph_RemoveEdgesForConnection_SlashInID(t *testing.T) {
 		})
 		g.setSelector(
 			node("k8s", conn, "core::v1::Service", "default", "s1"),
-			resource.RelationshipDescriptor{Type: resource.RelSelects, TargetResourceKey: "core::v1::Pod"},
+			resource.RelationshipDescriptor{Type: resource.RelSelects, TargetType: "core::v1::Pod"},
 			labelSelector{matchLabels: map[string]string{"app": "web"}},
 		)
 	}
@@ -182,5 +194,84 @@ func TestGraph_ChangeTracking(t *testing.T) {
 	g.RemoveDerivedEdges(pod.Key())
 	if got := g.TakeChanged(); len(got) != 0 {
 		t.Fatalf("want no change when nothing was removed, got %v", got)
+	}
+}
+
+func TestGraph_CanonicalAddressKeyIgnoresScopeOrderAndRoute(t *testing.T) {
+	first := node("provider", "route/one", "opaque/type", "", "opaque/id")
+	first.Reference.Address.Scope = []resource.ScopeEntry{{Dimension: "zone", Value: "a/b"}, {Dimension: "account", Value: "雪"}}
+	second := first
+	second.Route.Connection = "another-route"
+	second.Reference.Address.Scope = []resource.ScopeEntry{{Dimension: "account", Value: "雪"}, {Dimension: "zone", Value: "a/b"}}
+	if first.Key() != second.Key() {
+		t.Fatal("canonical address identity depends on scope order or route")
+	}
+	second.Reference.Address.ID = "other/id"
+	if first.Key() == second.Key() {
+		t.Fatal("different opaque identifiers collided")
+	}
+}
+
+func TestGraph_DeclarationsStayWithPlugin(t *testing.T) {
+	g := NewRelationshipGraph()
+	g.SetDeclarations("one", resource.AccessRoute{Connection: "c1"}, "shared/type", []resource.RelationshipDescriptor{{Type: resource.RelUses, TargetType: "one/target"}})
+	g.SetDeclarations("two", resource.AccessRoute{Connection: "c1"}, "shared/type", []resource.RelationshipDescriptor{{Type: resource.RelUses, TargetType: "two/target"}})
+	decls := g.GetDeclarations("one", resource.AccessRoute{Connection: "c1"}, "shared/type")
+	if len(decls) != 1 || decls[0].TargetType != "one/target" {
+		t.Fatalf("cross-plugin declarations leaked: %v", decls)
+	}
+}
+
+func TestGraph_CanonicalReferenceSnapshots(t *testing.T) {
+	g := NewRelationshipGraph()
+	source := node("p", "route", "source/type", "source-scope", "source")
+	target := node("p", "route", "target/type", "target-scope", "target")
+	token := "incarnation-one"
+	target.Reference.Incarnation = &token
+	key := source.Key()
+	g.AddEdge(GraphEdge{Source: source, Target: target, Type: RelUses})
+	source.Reference.Address.Scope[0].Value = "changed-input"
+	token = "changed-input"
+	edges := g.EdgesFrom(key)
+	if len(edges) != 1 || testNamespace(edges[0].Source.Reference) != "source-scope" || *edges[0].Target.Reference.Incarnation != "incarnation-one" {
+		t.Fatalf("stored references alias caller memory: %v", edges)
+	}
+	edges[0].Source.Reference.Address.Scope[0].Value = "changed-output"
+	*edges[0].Target.Reference.Incarnation = "changed-output"
+	fresh := g.EdgesFrom(key)
+	if testNamespace(fresh[0].Source.Reference) != "source-scope" || *fresh[0].Target.Reference.Incarnation != "incarnation-one" {
+		t.Fatalf("query output aliases graph storage: %v", fresh)
+	}
+}
+
+func TestGraphNode_JSONContainsHostKey(t *testing.T) {
+	n := node("p", "route/one", "opaque/type", "scope/one", "opaque/id")
+	encoded, err := json.Marshal(n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result struct {
+		Key       string                     `json:"key"`
+		Reference resource.ResourceReference `json:"reference"`
+		Route     resource.AccessRoute       `json:"route"`
+	}
+	if err = json.Unmarshal(encoded, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Key != n.Key() || result.Reference.Address.ID != "opaque/id" || result.Route != n.Route {
+		t.Fatalf("missing canonical graph identity: %s", encoded)
+	}
+}
+
+func TestGraph_DeclarationsStayWithExactRoute(t *testing.T) {
+	g := NewRelationshipGraph()
+	for _, connection := range []string{"route", "route/child"} {
+		g.SetDeclarations("plugin", resource.AccessRoute{Connection: connection}, "shared/type", []resource.RelationshipDescriptor{{Type: resource.RelUses, TargetType: connection + "/target"}})
+	}
+	for _, connection := range []string{"route", "route/child"} {
+		decls := g.GetDeclarations("plugin", resource.AccessRoute{Connection: connection}, "shared/type")
+		if len(decls) != 1 || decls[0].TargetType != connection+"/target" {
+			t.Fatalf("route %q received another route's declarations: %v", connection, decls)
+		}
 	}
 }

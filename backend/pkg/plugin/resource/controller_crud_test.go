@@ -2,480 +2,286 @@ package resource
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"sync"
-	"sync/atomic"
 	"testing"
-	"time"
 
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
-	"github.com/omniviewdev/omniview/backend/pkg/apperror"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
+	"time"
 )
 
-// ============================================================================
-// Get
-// ============================================================================
-
-func TestGet_Success(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	mock := &mockProvider{
-		GetFunc: func(_ context.Context, key string, _ resource.GetInput) (*resource.GetResult, error) {
-			return &resource.GetResult{Success: true, Result: json.RawMessage(`{"key":"` + key + `"}`)}, nil
-		},
+func finiteTestProvider(provider string) *mockProvider {
+	p := &mockProvider{CatalogFunc: func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+		return canonicalTestCatalog(provider, "pods"), nil
+	}}
+	p.GetFunc = func(_ context.Context, r resource.GetRequest) (resource.Record, error) {
+		return canonicalTestRecord(r.Reference.Address.Provider, r.Reference.Address.Authority, r.Reference.Address.Type, r.Reference.Address.ID), nil
 	}
-	registerMockPlugin(ctrl, "p1", mock)
+	page := func(target resource.ReadTarget) resource.SourcePage {
+		return resource.SourcePage{Records: []resource.Record{canonicalTestRecord(target.Provider, target.Authority, target.Type, "pod-1")}, Count: resource.Count{Kind: "unknown"}, Coverage: resource.Coverage{Kind: "complete"}, Consistency: "bestEffort"}
+	}
+	p.EnumerateFunc = func(_ context.Context, r resource.EnumerateRequest) (resource.SourcePage, error) {
+		return page(r.Target), nil
+	}
+	p.NativeQueryFunc = func(_ context.Context, r resource.NativeQueryRequest) (resource.SourcePage, error) {
+		return page(r.Target), nil
+	}
+	p.MutateFunc = func(_ context.Context, r resource.MutationRequest) (resource.Record, error) {
+		return canonicalTestRecord(r.Reference.Address.Provider, r.Reference.Address.Authority, r.Reference.Address.Type, r.Reference.Address.ID), nil
+	}
+	p.ActionFunc = func(context.Context, resource.ActionRequest) (resource.Value, error) {
+		return resource.Value{Kind: "bool", Bool: true}, nil
+	}
+	return p
+}
 
-	result, err := ctrl.Get(testInvocationContext(), "p1", "conn-1", "pods", resource.GetInput{})
+func TestFiniteOperations_Success(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	registerMockPlugin(ctrl, "p1", finiteTestProvider("native"))
+	get := admittedGetRequest(t, ctrl, "p1", "conn-1", "pods", "pod-1")
+	record, err := ctrl.Get(testInvocationContext(), "p1", get)
 	require.NoError(t, err)
-	assert.True(t, result.Success)
-	assert.Contains(t, string(result.Result), "pods")
-}
-
-func TestGet_ProviderError(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	mock := &mockProvider{
-		GetFunc: func(_ context.Context, _ string, _ resource.GetInput) (*resource.GetResult, error) {
-			return nil, errors.New("not found")
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	_, err := ctrl.Get(testInvocationContext(), "p1", "conn-1", "pods", resource.GetInput{})
-	require.Error(t, err)
-	assert.Equal(t, "PROVIDER_ERROR", requireAppError(t, err).Code)
-}
-
-func TestGet_ConnectionError_TriggersCrash(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	var called atomic.Int32
-	ctrl.onCrashCallback = func(_ string) { called.Add(1) }
-	mock := &mockProvider{
-		GetFunc: func(_ context.Context, _ string, _ resource.GetInput) (*resource.GetResult, error) {
-			return nil, status.Error(codes.Unavailable, "connection lost")
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	_, err := ctrl.Get(testInvocationContext(), "p1", "conn-1", "pods", resource.GetInput{})
-	require.Error(t, err)
-
-	assert.Eventually(t, func() bool { return called.Load() >= 1 }, 2*time.Second, 10*time.Millisecond)
-}
-
-func TestGet_NonConnectionError_NoCrash(t *testing.T) {
-	ctrl, emitter := newTestControllerWithEmitter(t)
-	mock := &mockProvider{
-		GetFunc: func(_ context.Context, _ string, _ resource.GetInput) (*resource.GetResult, error) {
-			return nil, status.Error(codes.NotFound, "resource not found")
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	_, _ = ctrl.Get(testInvocationContext(), "p1", "conn-1", "pods", resource.GetInput{})
-
-	events := emitter.EventsWithKey("plugin/crash")
-	assert.Empty(t, events)
-}
-
-func TestGet_ContextHasSession(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	mock := &mockProvider{
-		GetFunc: func(ctx context.Context, _ string, _ resource.GetInput) (*resource.GetResult, error) {
-			session := resource.SessionFromContext(ctx)
-			assert.NotNil(t, session)
-			assert.Equal(t, "conn-1", session.Connection.ID)
-			return &resource.GetResult{Success: true}, nil
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	_, err := ctrl.Get(testInvocationContext(), "p1", "conn-1", "pods", resource.GetInput{})
+	assert.Equal(t, get.Request.Reference, record.Record.Reference)
+	assert.NotEmpty(t, record.Key)
+	assert.NotEmpty(t, record.AddressKey)
+	assert.Equal(t, get.TargetID, record.TargetID)
+	target := admittedReadTarget(t, ctrl, "p1", "conn-1", "pods")
+	page, err := ctrl.Enumerate(testInvocationContext(), "p1", HostEnumerateRequest{TargetID: target.TargetID, Request: resource.EnumerateRequest{Target: target.Target}})
 	require.NoError(t, err)
-}
-
-// ============================================================================
-// List
-// ============================================================================
-
-func TestList_Success(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	mock := &mockProvider{
-		ListFunc: func(_ context.Context, _ string, _ resource.ListInput) (*resource.ListResult, error) {
-			return &resource.ListResult{Success: true}, nil
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	result, err := ctrl.List(testInvocationContext(), "p1", "conn-1", "pods", resource.ListInput{})
+	require.Len(t, page.Records, 1)
+	assert.Equal(t, "unknown", page.SourcePage.Count.Kind)
+	assert.Equal(t, "bestEffort", page.SourcePage.Consistency)
+	query, err := ctrl.NativeQuery(testInvocationContext(), "p1", HostNativeQueryRequest{TargetID: target.TargetID, Request: resource.NativeQueryRequest{Target: target.Target, Language: "native", Query: resource.Value{Kind: "null"}}})
 	require.NoError(t, err)
-	assert.True(t, result.Success)
-}
-
-func TestList_ProviderError(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	mock := &mockProvider{
-		ListFunc: func(_ context.Context, _ string, _ resource.ListInput) (*resource.ListResult, error) {
-			return nil, errors.New("list error")
-		},
+	require.Len(t, query.Records, 1)
+	for _, operation := range []string{"create", "update", "delete"} {
+		t.Run(operation, func(t *testing.T) {
+			result, err := ctrl.Mutate(testInvocationContext(), "p1", resource.MutationRequest{Route: get.Request.Route, Reference: get.Request.Reference, Operation: operation, Input: resource.Value{Kind: "null"}})
+			require.NoError(t, err)
+			assert.Equal(t, get.Request.Reference, result.Reference)
+		})
 	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	_, err := ctrl.List(testInvocationContext(), "p1", "conn-1", "pods", resource.ListInput{})
-	assert.Error(t, err)
-}
-
-func TestList_ConnectionError_TriggersCrash(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	var called atomic.Int32
-	ctrl.onCrashCallback = func(_ string) { called.Add(1) }
-	mock := &mockProvider{
-		ListFunc: func(_ context.Context, _ string, _ resource.ListInput) (*resource.ListResult, error) {
-			return nil, status.Error(codes.Unavailable, "dead")
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	_, _ = ctrl.List(testInvocationContext(), "p1", "conn-1", "pods", resource.ListInput{})
-	assert.Eventually(t, func() bool { return called.Load() >= 1 }, 2*time.Second, 10*time.Millisecond)
-}
-
-// ============================================================================
-// Find
-// ============================================================================
-
-func TestFind_Success(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	mock := &mockProvider{
-		FindFunc: func(_ context.Context, _ string, _ resource.FindInput) (*resource.FindResult, error) {
-			return &resource.FindResult{Success: true}, nil
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	result, err := ctrl.Find(testInvocationContext(), "p1", "conn-1", "pods", resource.FindInput{})
+	value, err := ctrl.Action(testInvocationContext(), "p1", admittedActionRequest(t, ctrl, "p1", "conn-1", "pods", "inspect"))
 	require.NoError(t, err)
-	assert.True(t, result.Success)
+	assert.True(t, value.Bool)
 }
 
-func TestFind_ProviderError(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	mock := &mockProvider{
-		FindFunc: func(_ context.Context, _ string, _ resource.FindInput) (*resource.FindResult, error) {
-			return nil, errors.New("find error")
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	_, err := ctrl.Find(testInvocationContext(), "p1", "conn-1", "pods", resource.FindInput{})
-	assert.Error(t, err)
-}
-
-func TestFind_ConnectionError_TriggersCrash(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	var called atomic.Int32
-	ctrl.onCrashCallback = func(_ string) { called.Add(1) }
-	mock := &mockProvider{
-		FindFunc: func(_ context.Context, _ string, _ resource.FindInput) (*resource.FindResult, error) {
-			return nil, status.Error(codes.Unavailable, "dead")
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	_, _ = ctrl.Find(testInvocationContext(), "p1", "conn-1", "pods", resource.FindInput{})
-	assert.Eventually(t, func() bool { return called.Load() >= 1 }, 2*time.Second, 10*time.Millisecond)
-}
-
-// ============================================================================
-// Create
-// ============================================================================
-
-func TestCreate_Success(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	mock := &mockProvider{
-		CreateFunc: func(_ context.Context, _ string, _ resource.CreateInput) (*resource.CreateResult, error) {
-			return &resource.CreateResult{Success: true}, nil
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	result, err := ctrl.Create(testInvocationContext(), "p1", "conn-1", "pods", resource.CreateInput{})
-	require.NoError(t, err)
-	assert.True(t, result.Success)
-}
-
-func TestCreate_ProviderError(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	mock := &mockProvider{
-		CreateFunc: func(_ context.Context, _ string, _ resource.CreateInput) (*resource.CreateResult, error) {
-			return nil, errors.New("create error")
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	_, err := ctrl.Create(testInvocationContext(), "p1", "conn-1", "pods", resource.CreateInput{})
-	assert.Error(t, err)
-}
-
-func TestCreate_ConnectionError_TriggersCrash(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	var called atomic.Int32
-	ctrl.onCrashCallback = func(_ string) { called.Add(1) }
-	mock := &mockProvider{
-		CreateFunc: func(_ context.Context, _ string, _ resource.CreateInput) (*resource.CreateResult, error) {
-			return nil, status.Error(codes.Unavailable, "dead")
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	_, _ = ctrl.Create(testInvocationContext(), "p1", "conn-1", "pods", resource.CreateInput{})
-	assert.Eventually(t, func() bool { return called.Load() >= 1 }, 2*time.Second, 10*time.Millisecond)
-}
-
-// ============================================================================
-// Update
-// ============================================================================
-
-func TestUpdate_Success(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	mock := &mockProvider{
-		UpdateFunc: func(_ context.Context, _ string, _ resource.UpdateInput) (*resource.UpdateResult, error) {
-			return &resource.UpdateResult{Success: true}, nil
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	result, err := ctrl.Update(testInvocationContext(), "p1", "conn-1", "pods", resource.UpdateInput{})
-	require.NoError(t, err)
-	assert.True(t, result.Success)
-}
-
-func TestUpdate_ProviderError(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	mock := &mockProvider{
-		UpdateFunc: func(_ context.Context, _ string, _ resource.UpdateInput) (*resource.UpdateResult, error) {
-			return nil, errors.New("update error")
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	_, err := ctrl.Update(testInvocationContext(), "p1", "conn-1", "pods", resource.UpdateInput{})
-	assert.Error(t, err)
-}
-
-func TestUpdate_ConnectionError_TriggersCrash(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	var called atomic.Int32
-	ctrl.onCrashCallback = func(_ string) { called.Add(1) }
-	mock := &mockProvider{
-		UpdateFunc: func(_ context.Context, _ string, _ resource.UpdateInput) (*resource.UpdateResult, error) {
-			return nil, status.Error(codes.Unavailable, "dead")
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	_, _ = ctrl.Update(testInvocationContext(), "p1", "conn-1", "pods", resource.UpdateInput{})
-	assert.Eventually(t, func() bool { return called.Load() >= 1 }, 2*time.Second, 10*time.Millisecond)
-}
-
-// ============================================================================
-// Delete
-// ============================================================================
-
-func TestDelete_Success(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	mock := &mockProvider{
-		DeleteFunc: func(_ context.Context, _ string, _ resource.DeleteInput) (*resource.DeleteResult, error) {
-			return &resource.DeleteResult{Success: true}, nil
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	result, err := ctrl.Delete(testInvocationContext(), "p1", "conn-1", "pods", resource.DeleteInput{})
-	require.NoError(t, err)
-	assert.True(t, result.Success)
-}
-
-func TestDelete_ProviderError(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	mock := &mockProvider{
-		DeleteFunc: func(_ context.Context, _ string, _ resource.DeleteInput) (*resource.DeleteResult, error) {
-			return nil, errors.New("delete error")
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	_, err := ctrl.Delete(testInvocationContext(), "p1", "conn-1", "pods", resource.DeleteInput{})
-	assert.Error(t, err)
-}
-
-func TestDelete_ConnectionError_TriggersCrash(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	var called atomic.Int32
-	ctrl.onCrashCallback = func(_ string) { called.Add(1) }
-	mock := &mockProvider{
-		DeleteFunc: func(_ context.Context, _ string, _ resource.DeleteInput) (*resource.DeleteResult, error) {
-			return nil, status.Error(codes.Unavailable, "dead")
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock)
-
-	_, _ = ctrl.Delete(testInvocationContext(), "p1", "conn-1", "pods", resource.DeleteInput{})
-	assert.Eventually(t, func() bool { return called.Load() >= 1 }, 2*time.Second, 10*time.Millisecond)
-}
-
-// ============================================================================
-// Cross-cutting CRUD tests
-// ============================================================================
-
-func TestCRUD_PluginNotFound(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-
-	ops := []struct {
-		name string
-		fn   func() error
-	}{
-		{"Get", func() error { _, e := ctrl.Get(testInvocationContext(), "x", "c", "k", resource.GetInput{}); return e }},
-		{"List", func() error {
-			_, e := ctrl.List(testInvocationContext(), "x", "c", "k", resource.ListInput{})
-			return e
-		}},
-		{"Find", func() error {
-			_, e := ctrl.Find(testInvocationContext(), "x", "c", "k", resource.FindInput{})
-			return e
-		}},
-		{"Create", func() error {
-			_, e := ctrl.Create(testInvocationContext(), "x", "c", "k", resource.CreateInput{})
-			return e
-		}},
-		{"Update", func() error {
-			_, e := ctrl.Update(testInvocationContext(), "x", "c", "k", resource.UpdateInput{})
-			return e
-		}},
-		{"Delete", func() error {
-			_, e := ctrl.Delete(testInvocationContext(), "x", "c", "k", resource.DeleteInput{})
-			return e
-		}},
-	}
-
-	for _, op := range ops {
-		t.Run(op.name, func(t *testing.T) {
-			err := op.fn()
-			var appErr *apperror.AppError
-			require.ErrorAs(t, err, &appErr)
-			assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
+func TestFiniteOperations_ProviderErrors(t *testing.T) {
+	for _, code := range []string{"NOT_FOUND", "FORBIDDEN", "UNAVAILABLE", "CANCELLED", "TIMEOUT", "INTERNAL"} {
+		t.Run(code, func(t *testing.T) {
+			ctrl, _ := newTestControllerWithEmitter(t)
+			p := finiteTestProvider("native")
+			registerMockPlugin(ctrl, "p1", p)
+			get := admittedGetRequest(t, ctrl, "p1", "conn-1", "pods", "pod-1")
+			target := admittedReadTarget(t, ctrl, "p1", "conn-1", "pods")
+			failure := resource.NewError(code, "provider detail")
+			p.GetFunc = func(context.Context, resource.GetRequest) (resource.Record, error) { return resource.Record{}, failure }
+			p.EnumerateFunc = func(context.Context, resource.EnumerateRequest) (resource.SourcePage, error) {
+				return resource.SourcePage{}, failure
+			}
+			p.NativeQueryFunc = func(context.Context, resource.NativeQueryRequest) (resource.SourcePage, error) {
+				return resource.SourcePage{}, failure
+			}
+			p.MutateFunc = func(context.Context, resource.MutationRequest) (resource.Record, error) {
+				return resource.Record{}, failure
+			}
+			p.ActionFunc = func(context.Context, resource.ActionRequest) (resource.Value, error) {
+				return resource.Value{}, failure
+			}
+			operations := []func() error{func() error { _, e := ctrl.Get(testInvocationContext(), "p1", get); return e }, func() error {
+				_, e := ctrl.Enumerate(testInvocationContext(), "p1", HostEnumerateRequest{TargetID: target.TargetID, Request: resource.EnumerateRequest{Target: target.Target}})
+				return e
+			}, func() error {
+				_, e := ctrl.NativeQuery(testInvocationContext(), "p1", HostNativeQueryRequest{TargetID: target.TargetID, Request: resource.NativeQueryRequest{Target: target.Target, Language: "native", Query: resource.Value{Kind: "null"}}})
+				return e
+			}, func() error {
+				_, e := ctrl.Mutate(testInvocationContext(), "p1", resource.MutationRequest{Route: get.Request.Route, Reference: get.Request.Reference, Operation: "update", Input: resource.Value{Kind: "null"}})
+				return e
+			}, func() error {
+				_, e := ctrl.Action(testInvocationContext(), "p1", resource.ActionRequest{Route: get.Request.Route, Reference: get.Request.Reference, Action: "inspect", Input: resource.Value{Kind: "null"}})
+				return e
+			}}
+			for _, operation := range operations {
+				assert.Equal(t, code, requireAppError(t, operation()).Code)
+			}
 		})
 	}
 }
 
-func TestCRUD_EmptyKey(t *testing.T) {
+func TestGet_UntypedProviderError(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	mock := &mockProvider{
-		GetFunc: func(_ context.Context, _ string, _ resource.GetInput) (*resource.GetResult, error) {
-			return &resource.GetResult{Success: true}, nil
-		},
+	p := finiteTestProvider("native")
+	registerMockPlugin(ctrl, "p1", p)
+	request := admittedGetRequest(t, ctrl, "p1", "conn-1", "pods", "pod-1")
+	p.GetFunc = func(context.Context, resource.GetRequest) (resource.Record, error) {
+		return resource.Record{}, errors.New("private")
 	}
-	registerMockPlugin(ctrl, "p1", mock)
+	_, err := ctrl.Get(testInvocationContext(), "p1", request)
+	assert.Equal(t, "INTERNAL", requireAppError(t, err).Code)
+}
 
-	result, err := ctrl.Get(testInvocationContext(), "p1", "conn-1", "", resource.GetInput{})
+func TestGet_ContextHasSession(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	p := finiteTestProvider("native")
+	registerMockPlugin(ctrl, "p1", p)
+	request := admittedGetRequest(t, ctrl, "p1", "conn-1", "pods", "pod-1")
+	original := p.GetFunc
+	p.GetFunc = func(ctx context.Context, r resource.GetRequest) (resource.Record, error) {
+		session, ok := resource.SessionFromContext(ctx)
+		require.True(t, ok)
+		require.NotNil(t, session.Connection)
+		assert.Equal(t, "conn-1", session.Connection.ID)
+		return original(ctx, r)
+	}
+	_, err := ctrl.Get(testInvocationContext(), "p1", request)
 	require.NoError(t, err)
-	assert.True(t, result.Success)
 }
 
-func TestCRUD_NilInput(t *testing.T) {
+func TestFiniteGet_RejectsEmptyRequest(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	registerMockPlugin(ctrl, "p1", &mockProvider{})
-
-	// Zero-value inputs should pass through without panic.
-	_, err := ctrl.Get(testInvocationContext(), "p1", "c1", "k", resource.GetInput{})
-	assert.NoError(t, err)
+	p := finiteTestProvider("native")
+	called := false
+	p.GetFunc = func(context.Context, resource.GetRequest) (resource.Record, error) {
+		called = true
+		return resource.Record{}, nil
+	}
+	registerMockPlugin(ctrl, "p1", p)
+	_, err := ctrl.Get(testInvocationContext(), "p1", HostGetRequest{})
+	require.Error(t, err)
+	assert.False(t, called)
 }
 
-func TestWithSession_CreatesSessionContext(t *testing.T) {
+func TestOperationGeneration_RouteSessionAndCancellationOwnership(t *testing.T) {
+	for _, source := range []string{"invocation", "generation", "cleanup"} {
+		t.Run(source, func(t *testing.T) {
+			ctrl, _ := newTestControllerWithEmitter(t)
+			expected := &mockProvider{}
+			registerMockPlugin(ctrl, "p1", expected)
+			route := resource.AccessRoute{Connection: "conn/opaque"}
+			caller, cancelCaller := context.WithCancel(testInvocationContext())
+			defer cancelCaller()
+			admitted, err := ctrl.admit(caller, "resource.Get", referenceTarget("p1", route, canonicalTestRecord("native", "authority", "pods", "pod-1").Reference))
+			require.NoError(t, err)
+			defer finishResource(admitted, &err)
+			provider, generation, operation, cleanup, err := ctrl.operationGeneration(admitted, "p1", route)
+			require.NoError(t, err)
+			defer cleanup()
+			assert.Same(t, expected, provider)
+			require.NotNil(t, generation)
+			assert.NotEmpty(t, generation.generationID)
+			session, ok := resource.SessionFromContext(operation)
+			require.True(t, ok)
+			require.NotNil(t, session.Connection)
+			assert.Equal(t, route.Connection, session.Connection.ID)
+			assert.Equal(t, "p1", session.PluginID)
+			assert.NotEmpty(t, session.RequestID)
+			assert.NoError(t, operation.Err())
+			switch source {
+			case "invocation":
+				cancelCaller()
+			case "generation":
+				generation.watchCancel()
+			case "cleanup":
+				cleanup()
+			}
+			select {
+			case <-operation.Done():
+				assert.ErrorIs(t, operation.Err(), context.Canceled)
+			case <-time.After(time.Second):
+				t.Fatal("native operation outlived its owner")
+			}
+		})
+	}
+}
+
+func TestOperationGeneration_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	registerMockPlugin(ctrl, "p1", &mockProvider{})
-
-	provider, ctx, err := ctrl.withSession(context.Background(), "p1", "conn-1")
-	require.NoError(t, err)
-	assert.NotNil(t, provider)
-
-	session := resource.SessionFromContext(ctx)
-	require.NotNil(t, session)
-	assert.Equal(t, "conn-1", session.Connection.ID)
+	_, _, _, _, err := ctrl.operationGeneration(testInvocationContext(), "absent", resource.AccessRoute{Connection: "conn-1"})
+	require.Error(t, err)
 }
-
-func TestWithSession_PluginNotFound(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-
-	_, _, err := ctrl.withSession(context.Background(), "nonexistent", "c1")
-	assert.Error(t, err)
-}
-
 func TestGetProvider_ReturnsCorrectProvider(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	expected := &mockProvider{}
 	registerMockPlugin(ctrl, "p1", expected)
-
 	provider, err := ctrl.getProvider("p1")
 	require.NoError(t, err)
-	assert.Equal(t, expected, provider)
+	assert.Same(t, expected, provider)
 }
-
 func TestGetProvider_Concurrency(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
-
 	var wg sync.WaitGroup
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			p, err := ctrl.getProvider("p1")
+			provider, err := ctrl.getProvider("p1")
 			assert.NoError(t, err)
-			assert.NotNil(t, p)
+			assert.NotNil(t, provider)
 		}()
 	}
 	wg.Wait()
 }
-
-func TestCRUD_MultiplePlugins_Isolation(t *testing.T) {
+func TestFiniteGet_MultiplePluginsIsolation(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-
-	mock1 := &mockProvider{
-		GetFunc: func(_ context.Context, _ string, _ resource.GetInput) (*resource.GetResult, error) {
-			return &resource.GetResult{Success: true, Result: json.RawMessage(`"p1"`)}, nil
-		},
+	for _, id := range []string{"p1", "p2"} {
+		registerMockPlugin(ctrl, id, finiteTestProvider(id))
 	}
-	mock2 := &mockProvider{
-		GetFunc: func(_ context.Context, _ string, _ resource.GetInput) (*resource.GetResult, error) {
-			return &resource.GetResult{Success: true, Result: json.RawMessage(`"p2"`)}, nil
-		},
-	}
-	registerMockPlugin(ctrl, "p1", mock1)
-	registerMockPlugin(ctrl, "p2", mock2)
-
-	r1, err := ctrl.Get(testInvocationContext(), "p1", "c1", "k", resource.GetInput{})
+	one := admittedGetRequest(t, ctrl, "p1", "conn-1", "pods", "pod-1")
+	two := admittedGetRequest(t, ctrl, "p2", "conn-1", "pods", "pod-1")
+	r1, err := ctrl.Get(testInvocationContext(), "p1", one)
 	require.NoError(t, err)
-	assert.Contains(t, string(r1.Result), "p1")
-
-	r2, err := ctrl.Get(testInvocationContext(), "p2", "c1", "k", resource.GetInput{})
+	r2, err := ctrl.Get(testInvocationContext(), "p2", two)
 	require.NoError(t, err)
-	assert.Contains(t, string(r2.Result), "p2")
+	assert.NotEqual(t, r1.AddressKey, r2.AddressKey)
+	assert.NotEqual(t, r1.Key, r2.Key)
+}
+func TestFiniteGet_AfterPluginStopFails(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	registerMockPlugin(ctrl, "p1", finiteTestProvider("native"))
+	request := admittedGetRequest(t, ctrl, "p1", "conn-1", "pods", "pod-1")
+	require.NoError(t, ctrl.OnPluginStop("p1", defaultMeta()))
+	_, err := ctrl.Get(testInvocationContext(), "p1", request)
+	require.Error(t, err)
 }
 
-func TestCRUD_AfterPluginStop_Fails(t *testing.T) {
+func TestFiniteGet_RequestLabelIsNotAuthority(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	registerMockPlugin(ctrl, "p1", &mockProvider{})
+	provider := finiteTestProvider("native")
+	registerMockPlugin(ctrl, "p1", provider)
+	request := admittedGetRequest(t, ctrl, "p1", "conn-1", "pods", "pod-1")
+	request.TargetID = "request-local-label"
+	_, err := ctrl.Get(testInvocationContext(), "p1", request)
+	require.NoError(t, err, "request-local labels need no target registry")
+	called := false
+	provider.GetFunc = func(context.Context, resource.GetRequest) (resource.Record, error) {
+		called = true
+		return resource.Record{}, nil
+	}
+	request.Request.Reference.Address.Authority = "unissued"
+	_, err = ctrl.Get(testInvocationContext(), "p1", request)
+	require.Error(t, err, "known labels must not grant authority")
+	assert.False(t, called)
+}
 
-	_ = ctrl.OnPluginStop("p1", defaultMeta())
-
-	_, err := ctrl.Get(testInvocationContext(), "p1", "c1", "k", resource.GetInput{})
-	var appErr *apperror.AppError
-	require.ErrorAs(t, err, &appErr)
-	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
+func TestFiniteGet_RevalidatesCurrentCatalog(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	provider := finiteTestProvider("native")
+	registerMockPlugin(ctrl, "p1", provider)
+	request := admittedGetRequest(t, ctrl, "p1", "conn-1", "pods", "pod-1")
+	provider.CatalogFunc = func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+		catalog := canonicalTestCatalog("native", "pods")
+		catalog.Types[0].Capabilities = []resource.Capability{}
+		return catalog, nil
+	}
+	called := false
+	provider.GetFunc = func(context.Context, resource.GetRequest) (resource.Record, error) {
+		called = true
+		return resource.Record{}, nil
+	}
+	_, err := ctrl.Get(testInvocationContext(), "p1", request)
+	assert.Equal(t, "UNSUPPORTED", requireAppError(t, err).Code)
+	assert.False(t, called, "old labels must not retain removed support")
 }

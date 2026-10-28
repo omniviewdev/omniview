@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { GetSubgraph } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graphservice';
+import { GetSubgraph } from '../../resource/v2/graph-client';
+import type { AccessRoute, ResourceReference } from '../../resource/v2/domain';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 import { useRefetchOnGraphChange } from './useRefetchOnGraphChange';
 
@@ -10,20 +11,8 @@ type UseResourceGraphOptions = {
    */
   pluginID?: string;
 
-  /** The connection ID the resource belongs to */
-  connectionID: string;
-
-  /**
-   * The resource key of the root resource
-   * @example "core::v1::Pod"
-   */
-  resourceKey: string;
-
-  /** The ID of the root resource */
-  resourceID: string;
-
-  /** Namespace of the root resource, if the backend has namespaces */
-  namespace?: string;
+  reference: ResourceReference;
+  route: AccessRoute;
 
   /**
    * How many hops to follow against edge direction: owners, selectors and
@@ -51,24 +40,22 @@ type UseResourceGraphOptions = {
  */
 export const useResourceGraph = ({
   pluginID: explicitPluginID,
-  connectionID,
-  resourceKey,
-  resourceID,
-  namespace = '',
+  reference,
+  route,
   upDepth = 2,
   downDepth = 3,
   enabled = true,
 }: UseResourceGraphOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
 
-  const queryKey = ['RESOURCE_GRAPH', pluginID, connectionID, resourceKey, namespace, resourceID, upDepth, downDepth];
-  const queryEnabled = enabled && !!pluginID && !!connectionID && !!resourceKey && !!resourceID;
+  const queryKey = ['RESOURCE_GRAPH', pluginID, reference, route, upDepth, downDepth];
+  const queryEnabled = enabled && !!pluginID && !!route.connection && !!reference.address.id;
 
-  useRefetchOnGraphChange(pluginID, connectionID, queryKey, queryEnabled);
+  useRefetchOnGraphChange(pluginID, route.connection, queryKey, queryEnabled);
 
   const query = useQuery({
     queryKey,
-    queryFn: async () => GetSubgraph(pluginID, connectionID, resourceKey, namespace, resourceID, upDepth, downDepth),
+    queryFn: async () => GetSubgraph(pluginID, reference, route, upDepth, downDepth),
     enabled: queryEnabled,
   });
 

@@ -1,4 +1,4 @@
-import type { ExtensionContributionRegistration } from '@omniviewdev/runtime';
+import type { ExtensionContributionRegistration, ScopeConstraint } from '@omniviewdev/runtime';
 import type {
   AvailabilityV1,
   GlobalSearchContributionV1,
@@ -89,41 +89,66 @@ export function getNavigationHref(target: unknown): string | undefined {
   }
 }
 
+function admitRoute(input: unknown) {
+  return record(input) && identifier(input.connection) ? { connection: input.connection } : undefined;
+}
+
+function admitReference(input: unknown) {
+  if (!record(input) || !record(input.address)) return undefined;
+  const address = input.address;
+  if (!identifier(address.provider) || !opaqueIdentifier(address.authority, 4096)
+    || !opaqueIdentifier(address.type, 512) || !opaqueIdentifier(address.id, 4096)
+    || !Array.isArray(address.scope) || address.scope.length > 256
+    || (input.incarnation !== undefined && !opaqueIdentifier(input.incarnation, 4096))) return undefined;
+  const scope: { dimension: string; value: string }[] = [];
+  for (const entry of address.scope) {
+    if (!record(entry) || !identifier(entry.dimension) || typeof entry.value !== 'string'
+      || entry.value.length > 1024 || scope.some(other => other.dimension === entry.dimension)) return undefined;
+    scope.push({ dimension: entry.dimension, value: entry.value });
+  }
+  return {
+    address: { provider: address.provider, authority: address.authority, type: address.type, id: address.id, scope },
+    ...(input.incarnation !== undefined ? { incarnation: input.incarnation as string } : {}),
+  };
+}
+
 export function admitSearchScope(input: unknown): SearchScopeV1 | undefined {
-  if (!record(input) || !identifier(input.pluginId) || !identifier(input.connectionId) || !identifier(input.label)) {
-    return undefined;
-  }
-
-  const common = { pluginId: input.pluginId, connectionId: input.connectionId, label: input.label };
+  if (!record(input) || !identifier(input.pluginId) || !identifier(input.label)) return undefined;
+  const common = { pluginId: input.pluginId, label: input.label };
   if (input.kind === 'connection') {
-    return { ...common, kind: 'connection' };
+    return identifier(input.connectionId) ? { ...common, kind: 'connection', connectionId: input.connectionId } : undefined;
   }
-
-  if (!opaqueIdentifier(input.resourceKey, 512)) {
-    return undefined;
+  if (!opaqueIdentifier(input.targetId, 8192)
+    || (input.scopeLabel !== undefined && !identifier(input.scopeLabel))) return undefined;
+  const scoped = { ...common, targetId: input.targetId, ...(input.scopeLabel ? { scopeLabel: input.scopeLabel as string } : {}) };
+  if (input.kind === 'resource') {
+    const reference = admitReference(input.reference);
+    const route = admitRoute(input.route);
+    return reference && route && identifier(input.representation)
+      ? { ...scoped, kind: 'resource', reference, route, representation: input.representation } : undefined;
   }
-
-  if (input.kind === 'resource-type') {
-    if (input.namespaces !== undefined && (!Array.isArray(input.namespaces) || input.namespaces.length > 256 || !input.namespaces.every((namespace) => opaqueIdentifier(namespace, 1024)))) {
-      return undefined;
-    }
-
-    if (input.scopeLabel !== undefined && !identifier(input.scopeLabel)) {
-      return undefined;
-    }
-
-    return { ...common, kind: 'resource-type', resourceKey: input.resourceKey, ...(input.scopeLabel ? { scopeLabel: input.scopeLabel } : {}), ...(input.namespaces ? { namespaces: [...input.namespaces] } : {}) };
+  if (input.kind !== 'resource-type' || !record(input.target)) return undefined;
+  const target = input.target;
+  const route = admitRoute(target.route);
+  if (!route || !identifier(target.provider) || !opaqueIdentifier(target.authority, 4096)
+    || !opaqueIdentifier(target.type, 512) || !identifier(target.representation)
+    || !Array.isArray(target.scope) || target.scope.length > 256) return undefined;
+  const scope: ScopeConstraint[] = [];
+  for (const constraint of target.scope) {
+    if (!record(constraint) || !identifier(constraint.dimension)
+      || scope.some(other => other.dimension === constraint.dimension)) return undefined;
+    if (constraint.match === 'any') {
+      scope.push({ dimension: constraint.dimension, match: 'any' });
+    } else if (constraint.match === 'oneOf' && Array.isArray(constraint.values)
+      && constraint.values.length <= 256
+      && constraint.values.every(value => typeof value === 'string' && value.length <= 1024)) {
+      scope.push({ dimension: constraint.dimension, match: 'oneOf', values: [...constraint.values] });
+    } else return undefined;
   }
-
-  if (input.kind !== 'resource' || !opaqueIdentifier(input.resourceId, 4096) || typeof input.namespace !== 'string' || input.namespace.length > 1024 || (input.uid !== undefined && !identifier(input.uid))) {
-    return undefined;
-  }
-
-  if (input.scopeLabel !== undefined && !identifier(input.scopeLabel)) {
-    return undefined;
-  }
-
-  return { ...common, kind: 'resource', resourceKey: input.resourceKey, resourceId: input.resourceId, namespace: input.namespace, ...(input.scopeLabel ? { scopeLabel: input.scopeLabel } : {}), ...(input.uid ? { uid: input.uid } : {}) };
+  return { ...scoped, kind: 'resource-type', target: {
+    route, provider: target.provider, authority: target.authority, type: target.type,
+    representation: target.representation, scope,
+  } };
 }
 
 export function admitSearchEntry(input: unknown): SearchEntryV1 | undefined {

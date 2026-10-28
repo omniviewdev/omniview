@@ -1,9 +1,9 @@
-// v3 generated bindings — paths match `wails3 generate bindings -d packages/omniviewdev-runtime/src/bindings`
+// Handwritten resource boundaries hide generated transport DTOs from consumers.
 export * as ExecClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/exec/servicewrapper';
 export * as NetworkerClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/networker/servicewrapper';
 export * as PluginManager from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/servicewrapper';
-export * as ResourceClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
-export * as GraphClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graphservice';
+export * as ResourceClient from './resource/v2/client';
+export * as GraphClient from './resource/v2/graph-client';
 export * as SettingsClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/settings/servicewrapper';
 export * as SettingsProvider from './bindings/github.com/omniviewdev/omniview/internal/settings/servicewrapper';
 export * as UtilsClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/utils/client';

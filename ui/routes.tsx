@@ -92,6 +92,10 @@ export const scoped: RouteObject[] = [
                     Component: EditConnectionPage,
                     children: [
                       {
+                        index: true,
+                        Component: ConnectionDetails,
+                      },
+                      {
                         path: 'details',
                         Component: ConnectionDetails,
                       },

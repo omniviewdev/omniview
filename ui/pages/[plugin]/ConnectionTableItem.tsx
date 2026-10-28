@@ -15,7 +15,7 @@ import { stringToColor } from '@/utils/color';
 import { type Connection, type ConnectionStatus, ConnectionStatusCode } from '@omniviewdev/runtime/models';
 
 // Icons
-import { LuEllipsisVertical } from 'react-icons/lu';
+import { LuPencil } from 'react-icons/lu';
 
 // Third-party
 import { usePluginRouter } from '@infraview/router';
@@ -198,12 +198,16 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
       <td>
         <div className={styles.Actions}>
           <IconButton
-            aria-label='More'
+            aria-label={`Edit ${name}`}
             size='sm'
             variant='ghost'
             color='neutral'
+            onClick={(event) => {
+              event.stopPropagation();
+              navigate(`/connection/${encodeURIComponent(id)}/edit`);
+            }}
           >
-            <LuEllipsisVertical />
+            <LuPencil />
           </IconButton>
         </div>
       </td>

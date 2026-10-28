@@ -105,6 +105,110 @@ export default {
 EOF
 ```
 
+### Canonical resource runtime boundary
+
+Import handwritten resource domain types from `@omniviewdev/runtime` and the
+typed client from `@omniviewdev/runtime/api`. Generated Wails resource DTOs,
+legacy CRUD inputs, resource namespaces, and tuple-based forwarding methods are
+not public resource APIs.
+
+Resource identity is a canonical `ResourceReference`: provider, host-admitted
+authority, opaque logical type, exact scope entries, native ID, and optional
+incarnation. `AccessRoute` is separate access context. Types do not embed served
+API versions, and generic host code must not parse provider type strings.
+
+Call `ResourceClient.ResolveTarget(pluginID, { route, type, scope,
+representation })` before acquiring resources. The host resolves authority and
+returns a target and request-local `targetId`. Omit representation only to use
+the provider's explicit catalog `defaultRepresentation`; neither the host nor
+the runtime guesses the first or sole representation. Missing declared query
+dimensions resolve to explicit `any` within the admitted route, never a broader
+route. Exact reference links use `ResolveReference` with literal scope entries,
+native ID, and an optional incarnation instead of constructing host authority.
+
+`Get`, `Enumerate`, and `NativeQuery` take `(pluginID, { targetId, request })`,
+where `request` is the corresponding canonical SDK request. `Get` returns
+`HostRecord { key, addressKey, targetId, record, route }`. Acquisition pages return
+`HostSourcePage { records, sourcePage }`; `sourcePage` carries native cursor,
+count, coverage, consistency, and revision metadata, not host query guarantees.
+Host row keys are opaque and include target membership and incarnation. Never
+derive them from display fields or calculate them in plugin JavaScript.
+
+`useResolvedResourceTarget` exposes target resolution as a query.
+`useResource({ pluginID, request })` accepts a host Get request.
+`useResources({ pluginID, request, live: true })` follows native continuation
+pages for its initial view, then uses the actual advisory native update source.
+It registers listeners before subscribing and starting native work, filters
+host target membership, batches canonical row updates, and owns cancellation and
+unsubscription. Its `bestEffort` guarantee and native cache readiness do not
+promise an atomic snapshot/update cutover, replay, gap detection, or P05
+continuity. `live: false` is explicitly finite acquisition, not a subscription.
+
+`Mutate` and `Action` consume canonical SDK requests with explicit references and
+tagged `Value` inputs. `useResourceMutations` exposes `mutate(request)` without
+triggering a Get; action hooks similarly consume canonical requests.
+`useStreamAction` keeps native readiness, listener-first attachment, terminal
+errors, and owning cancellation. Presentation, schemas, relationships, health,
+events, and action discovery use canonical ancillary types. Scope discovery uses
+`useScopeValues({ route, dimension })`, not a host namespace assumption.
+
+Connection editing uses explicit host-owned desired profiles, separate from
+native discovery snapshots. The negotiated `connectionOverlay` trait installs a
+transactional full replacement of `{ upserts, disabledIDs }` in provider memory;
+providers never persist that overlay or modify native configuration files.
+Save and Import record only the user's explicit profile. Remove stores a
+disabled-ID tombstone, and Reset restores native discovery or removes a manual
+profile with no native fallback. Never replay a cached discovery list as desired
+configuration. Profile mutation success requires `applied: true`; an error never
+means that desired state became effective, and a failed rollback leaves actual
+state unknown. Profile `active` means effective discovery membership, not an
+established connection or live resource readiness.
+
+Use `valueToJSON` only for presentation: exact signed and unsigned integers remain
+`bigint`. Use `valueToJSONText` and `jsonTextToValue` for JSON editors so large
+integer literals never pass through lossy JavaScript numbers. Editor schema
+bindings retain shared document references and exact root pointers; acquire a
+referenced document through `GetSchemaDocument` rather than copying it per type.
+
+Observed-row drawers receive their original `HostRecord` and open directly.
+Linked-reference drawers perform a fresh canonical Get with the resolved
+`targetId`, retain incarnation checks, and cancel superseded navigation.
+
+The resource wire major is 2; unrelated go-plugin services still negotiate their
+existing cohort version. The host registers only the canonical resource service.
+`Features` negotiates optional ancillary traits before connection or update
+startup; a remote client's Go method set is not evidence of provider support.
+Finite support remains connection/type/scope-qualified catalog data.
+
+Authority hints are untrusted backing-identity observations, never canonical
+authority or permission. The host persists isolated connection-local bindings;
+equal hints do not merge route aliases. A changed hint rotates authority.
+No native scheme currently qualifies for stable-native continuity. Losing local
+state or unreported retargeting limits continuity; unknown incarnation stays
+absent. Request-local target labels do not create leases, permissions, or saved
+resource identity.
+
+Graph queries take `(pluginID, reference, route, ...)`, never namespace/name
+tuples. Each returned graph node carries its canonical reference, independent
+access route, and host-issued address `key`; clients must not reconstruct keys
+from labels, paths, or route IDs. Graph keys identify addresses, while live and
+finite row keys also identify acquisition membership and incarnation. Relationship
+descriptors belong to the exact plugin, access route, and opaque type. They use
+`TargetType`, literal `TargetScope`, and explicit `ScopeExtractors` for native
+body fields. No namespace, UID, label, or timestamp
+is inferred from Kubernetes-shaped metadata. Advisory `bestEffort` updates keep
+the registry and relationship index current even without a frontend subscriber;
+subscribed delivery rechecks the original caller's access and target membership.
+This observed graph is not a planner, a complete query result, or a P05
+continuity guarantee.
+
+The implementation-candidate `omniview.resource-wire-policy.v1` bounds frames at
+32 MiB, resource bodies at 16 MiB, depth at 64, nodes at 262144, fields at 1048576,
+and native pages at 256 records. Aggregate pages remain frame-bounded before
+generated decoding. These finite transport ceilings require final policy review;
+they do not change the separate predicate/projection policy or promise latency.
+
+
 ### Scoped global search
 
 Register `SearchProviderV1` contributions on `omniview/global-search` through the plugin's existing `extensionRegistrations`. Import the contracts, `resourceQueryKeys`, and `openGlobalSearch` from `@omniviewdev/runtime`. The host alone owns Cmd/Ctrl-K. Sidebar controls call `openGlobalSearch({ scope })`; they do not install another shortcut or overlay.
@@ -156,7 +260,7 @@ An explicit `openGlobalSearch({ scope })` still supports deeper scopes. `openGlo
 | `search(request)` | Receives immutable scopes, literal query text, limit, generation, and abort signal. Discovery must not connect or mutate resources. Return bounded items and honest `complete`/`truncated` completion and typed availability. |
 | `validateAction(action, context)` | Optional availability gate against the current registered action inventory. Avoid repeating the authoritative object read in both this gate and execution. |
 | `executeAction(action, context)` | Required for action rows. Revalidate the native target and permissions at dispatch. Await actual session/action setup; do not report success before a rejected promise settles. |
-| `validateResource(target, data)` | Pure provider-owned identity check after the host's authoritative native Get. Required when a target includes an immutable `uid`. The host does not inspect Kubernetes metadata or invent another plugin's object schema. |
+| `validateResource(target, data)` | Optional provider-owned validation after the host's canonical Get. Canonical incarnation checks do not depend on this callback. The host does not inspect Kubernetes metadata or invent another plugin's object schema. |
 | `Context` | Optional headless action/dialog root with the owner's real plugin context. Memo, forwardRef, and lazy components are accepted. Contexts share metadata/settings loading per plugin and survive palette closure. Replacement/unregister ends their lifetime. A failed context disables only its source; other plugins remain usable. |
 
 Results contain serializable intents, not executable callbacks. Action IDs must have the owning plugin's `pluginId:` prefix. Only responses from the current owning provider may contain executable action references; static action registrations and action rows without an executor are rejected.
@@ -167,11 +271,11 @@ Use existing action inventories and confirmation/parameter components. Keep them
 
 #### Native identity, not Kubernetes-shaped data
 
-Identity contains the plugin, connection, exact resource key, native ID, actual namespace, and optional immutable incarnation. Labels and `scopeLabel` are presentation only. Set a result's `scope` for Tab/pointer exploration; Enter executes its intent.
+Resource-type scopes contain `{kind:'resource-type',pluginId,target:ReadTarget,targetId,label,scopeLabel?}`. Resource scopes contain `{kind:'resource',pluginId,reference:ResourceReference,route:AccessRoute,representation,targetId,label,scopeLabel?}`. Connection scopes retain `connectionId`. Resource identity includes provider, host authority, native type, exact scope dimensions, opaque ID, and optional incarnation; the access route stays separate. Labels are presentation only. `targetId` is a bounded request-local context label, not a persistent key or authorization grant. The host validates every actual request independently.
 
-Keep ARNs, OCIDs, VM IDs, and other native IDs opaque. Keep region, account, project, engine, and node fields in their native data. Do not encode them into a fake namespace or rewrite native IDs merely to satisfy search. An empty namespace is not a claim that a cloud resource is globally scoped.
+Obtain references and targets from host resolution or observed host envelopes. Keep native IDs opaque and encode region, account, project, namespace, engine, or node as their declared scope dimensions. Never mint canonical keys, infer authority, fabricate namespaces, or concatenate lookup tuples in the browser. Direct resource scope overrides add only a connection ancestor; they do not invent a broader resource-type target. Set a result's `scope` for Tab/pointer exploration; Enter executes its intent.
 
-The current SDK Get wire cannot address every native scope collision. A provider must reject ambiguous generic lookups or use distinct provider-owned navigation/action entries with its own native UI. Search does not add missing SDK addressing semantics. See the SDK's provider-neutral conformance document before claiming cross-region or cross-node identity support.
+Canonical Get requests carry the full reference, separate route, and representation. A provider must reject unavailable or ambiguous references rather than fall back to a same-name object. Provider-owned navigation/actions remain available, but cannot bypass host authority validation or native preconditions.
 
 #### Shared resource icon sets
 
@@ -189,12 +293,13 @@ The host acquires native resource subscriptions while resource scopes are open, 
 
 Use the public cache keys when storing native snapshots:
 
-- `resourceQueryKeys.scope(pluginId, connectionId, resourceKey)` is the invalidation prefix.
-- `resourceQueryKeys.list(..., namespaces)` stores the shared native ListResult for page 1, 200 objects, name ascending, without text filtering.
-- `resourceQueryKeys.resource(..., resourceId, namespace)` stores a successful native GetResult, not a display projection. Resource hooks, batched updates, and search share this shape.
-- Different pagination, filters, projections, or server-search inputs need distinct keys beneath the scope prefix. Never replace a canonical snapshot with query-filtered results.
+- `resourceQueryKeys.all(pluginId)` is the resourcev2 invalidation prefix.
+- `resourceQueryKeys.scope(pluginId,target:ReadTarget)` partitions a canonical read target.
+- `resourceQueryKeys.list(pluginId,{targetId,request:EnumerateRequest})` stores `HostSourcePage`, with host-keyed records and separate native source-page metadata.
+- `resourceQueryKeys.resource(pluginId,{targetId,request:GetRequest})` stores `HostRecord`, never a display projection or legacy GetResult.
+- Pagination, representation, query scope, and native query inputs remain explicit request fields; never replace an unfiltered acquisition page with search-filtered rows.
 
-Native ADD/UPDATE/DELETE events invalidate the scope prefix and coalesce search refreshes without rediscovering connections, clearing stable rows, or resetting selection. Events received during an in-flight fetch re-invalidate its settled snapshot before the trailing refresh, so a pre-event result cannot erase the final update.
+Subscribe and unsubscribe using `(pluginId,{targetId,target:ReadTarget})`. Advisory ADD/UPDATE payloads carry `record:HostRecord`; DELETE carries host keys and canonical reference. Search filters matching request-context events, invalidates the plugin's resourcev2 cache, and coalesces refreshes without rediscovering connections or resetting selection. Events received during an in-flight fetch re-invalidate its settled snapshot before the trailing refresh. BEST_EFFORT updates do not establish snapshot/update continuity.
 
 Use the cache query's signal for shared native work and the request signal to fence obsolete search publication. Cancelling a search must not cancel another table's shared fetch. Resource/action execution still performs its own fresh identity and authorization checks instead of trusting discovery cache freshness.
 

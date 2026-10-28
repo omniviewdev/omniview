@@ -5,9 +5,10 @@ import type { RouteObject } from 'react-router-dom';
 import { normalizePluginRoutes } from '../plugins/react/normalizePluginRoutes';
 import { createGlobalSearchController } from './controller';
 import { resolveRouteSearchScope, resolveSearchOpenOptions } from './routeScope';
+import { searchResource, searchType } from './searchFixtures';
 
 const connection: SearchScopeV1 = { kind: 'connection', pluginId: 'provider', connectionId: 'west', label: 'west' };
-const resource: SearchScopeV1 = { ...connection, kind: 'resource-type', resourceKey: 'opaque/native/key', label: 'Machines' };
+const resource = { ...searchType('opaque/native/key'), pluginId: 'provider', label: 'Machines', target: { ...searchType('opaque/native/key').target, route: { connection: 'west' } } };
 function harness() {
   let location = { pathname: '/_plugin/provider/accounts/west', search: '?tab=all' };
   let ready = true;
@@ -21,7 +22,7 @@ function harness() {
     } },
     children: [
       { path: '/machines/:category', handle: { searchScope: resource } },
-      { path: 'object', handle: { searchScope: { ...resource, kind: 'resource', resourceId: 'machine-1' } } },
+      { path: 'object', handle: { searchScope: { ...searchResource('opaque/native/key', 'machine-1', []), pluginId: 'provider', route: { connection: 'west' } } } },
       { path: 'dashboard' },
       { path: 'global', handle: { searchScope: null } },
       { path: 'throws', handle: { searchScope: () => {
@@ -140,10 +141,10 @@ describe('registered route search context and opening', () => {
     expect(h.controller.getSnapshot().scopes).toEqual([]);
     h.open({ scope: resource });
     expect(h.controller.getSnapshot().scopes).toEqual([connection, resource]);
-    const object: SearchScopeV1 = { ...resource, kind: 'resource', resourceId: 'machine-1', namespace: '' };
+    const object = { ...searchResource(resource.target.type, 'machine-1', []), pluginId: 'provider', route: { connection: 'west' } };
     h.open({ scope: object });
     expect(h.controller.getSnapshot().scopes).toEqual([
-      connection, { ...connection, kind: 'resource-type', resourceKey: resource.resourceKey, label: resource.resourceKey }, object,
+      connection, object,
     ]);
     h.open({ scope: null });
     expect(h.controller.getSnapshot().scopes).toEqual([]);

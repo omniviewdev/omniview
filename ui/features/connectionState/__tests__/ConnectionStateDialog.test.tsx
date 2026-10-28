@@ -1,8 +1,8 @@
 import { render, screen, fireEvent } from '@testing-library/react';
-import { WatchState } from '@omniviewdev/runtime';
+import { WatchState, type Count } from '@omniviewdev/runtime';
 import ConnectionStateDialog from '../ConnectionStateDialog';
 
-// Mock @omniviewdev/runtime — we only need WatchState and the resource key utils.
+// Mock watch states without provider-specific resource type parsing.
 // Values must be defined inside the factory because vi.mock is hoisted.
 vi.mock('@omniviewdev/runtime', () => ({
   WatchState: {
@@ -14,21 +14,6 @@ vi.mock('@omniviewdev/runtime', () => ({
     WatchStateFailed: 5,
     WatchStateForbidden: 6,
     WatchStateSkipped: 7,
-  },
-  parseResourceKey: (key: string) => {
-    const parts = key.split('::');
-    if (parts.length === 1) {
-      return { group: 'core', version: '', kind: parts[0] };
-    }
-
-    return { group: parts[0] || 'core', version: parts[1] || '', kind: parts[2] || parts[0] };
-  },
-  formatGroup: (group: string) => {
-    if (!group || group === 'core') {
-      return 'Core';
-    }
-
-    return group.charAt(0).toUpperCase() + group.slice(1);
   },
 }));
 
@@ -58,7 +43,7 @@ vi.mock('react-icons/lu', () => ({
 }));
 
 const resources: Record<string, number> = {};
-const resourceCounts: Record<string, number> = {};
+const resourceCounts: Record<string, Count> = {};
 
 const defaultProps = {
   open: true,
@@ -107,25 +92,18 @@ describe('ConnectionStateDialog', () => {
     expect(screen.getByText(/Synced "my-cluster"/)).toBeTruthy();
   });
 
-  it('groups resources by API group with "Core" first', () => {
-    const { container } = render(
+  it('keeps resource types opaque rather than parsing provider-specific keys', () => {
+    render(
       <ConnectionStateDialog
         {...defaultProps}
         resources={{
           'apps::v1::Deployment': WatchState.WatchStateSynced,
-          'core::v1::Pod': WatchState.WatchStateSynced,
+          'native/resource/type': WatchState.WatchStateSynced,
         }}
       />,
     );
-    const content = container.textContent!;
-    const coreIdx = content.indexOf('CORE');
-    const appsIdx = content.indexOf('APPS');
-    // Allow either uppercase or natural case — just ensure Core comes first
-    const coreLower = content.indexOf('Core');
-    const appsLower = content.indexOf('Apps');
-    const corePos = coreIdx >= 0 ? coreIdx : coreLower;
-    const appsPos = appsIdx >= 0 ? appsIdx : appsLower;
-    expect(corePos).toBeLessThan(appsPos);
+    expect(screen.getByText('apps::v1::Deployment')).toBeTruthy();
+    expect(screen.getByText('native/resource/type')).toBeTruthy();
   });
 
   it('shows retry button for ERROR state', () => {
@@ -166,10 +144,10 @@ describe('ConnectionStateDialog', () => {
       <ConnectionStateDialog
         {...defaultProps}
         resources={{ 'core::v1::Pod': WatchState.WatchStateSynced }}
-        resourceCounts={{ 'core::v1::Pod': 42 }}
+        resourceCounts={{ 'core::v1::Pod': { kind: 'exact', value: '9007199254740993' } }}
       />,
     );
-    expect(screen.getByText('42')).toBeTruthy();
+    expect(screen.getByText('9007199254740993 (exact)')).toBeTruthy();
   });
 
   it('excludes SKIPPED resources from progress denominator', () => {
@@ -185,7 +163,7 @@ describe('ConnectionStateDialog', () => {
     );
     // 2 watched, 2 done → 100%  (SKIPPED excluded)
     expect(screen.getByText(/100%/)).toBeTruthy();
-    expect(screen.getByText(/2\/2/)).toBeTruthy();
+    expect(screen.getAllByText(/2\/2/).length).toBeGreaterThan(0);
     // Skipped count shown
     expect(screen.getByText(/1 resource skipped/)).toBeTruthy();
   });
@@ -204,7 +182,7 @@ describe('ConnectionStateDialog', () => {
     );
     // 4 watched, 2 done → 50%
     expect(screen.getByText(/50%/)).toBeTruthy();
-    expect(screen.getByText(/2\/4/)).toBeTruthy();
+    expect(screen.getAllByText(/2\/4/).length).toBeGreaterThan(0);
   });
 
   it('calls onClose when dismiss button is clicked', () => {

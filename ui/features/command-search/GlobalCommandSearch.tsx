@@ -8,6 +8,7 @@ import { IsImage } from '@/utils/url';
 import type { GlobalSearchController } from './controller';
 import type { SearchRow, SearchScopeV1, SearchSnapshot, SearchSource } from './types';
 import { SearchProviderContexts, type SearchProviderContextRegistration } from './SearchProviderContexts';
+import { scopeConnection, scopeDetails, scopeType } from './scope';
 import styles from './GlobalCommandSearch.module.css';
 
 const kindLabels = { command: 'Commands', setting: 'Settings', navigation: 'Navigation', action: 'Actions' };
@@ -19,22 +20,24 @@ const rowLabel = (row: SearchRow) => row.label;
 // Providers/controller already filter and rank, including matches outside the display label.
 const includeRankedRow = () => true;
 
+// Local presentation IDs are not canonical resource keys.
+const scopeIds = new WeakMap<SearchScopeV1, number>();
+let nextScopeId = 0;
 function scopeKey(scope: SearchScopeV1) {
-  return JSON.stringify([
-    scope.kind, scope.pluginId, scope.connectionId,
-    scope.kind !== 'connection' ? scope.resourceKey : undefined,
-    scope.kind === 'resource-type' ? scope.namespaces : undefined,
-    scope.kind === 'resource' ? [scope.namespace, scope.resourceId, scope.uid] : undefined,
-  ]);
+  let id = scopeIds.get(scope);
+  if (id === undefined) {
+    id = ++nextScopeId;
+    scopeIds.set(scope, id);
+  }
+  return String(id);
 }
 
 function scopeDescription(scope: SearchScopeV1) {
   return [
-    `${scopeLabels[scope.kind]}: ${scope.label}`, scope.pluginId, scope.connectionId,
-    scope.kind !== 'connection' && scope.resourceKey,
-    scope.kind === 'resource-type' && scope.namespaces?.length && `${scope.scopeLabel ?? 'Scope'}: ${scope.namespaces.join(', ')}`,
-    scope.kind === 'resource' && scope.namespace && `${scope.scopeLabel ?? 'Scope'}: ${scope.namespace}`,
-    scope.kind === 'resource' && scope.resourceId,
+    `${scopeLabels[scope.kind]}: ${scope.label}`, scope.pluginId, scopeConnection(scope),
+    scopeType(scope),
+    scopeDetails(scope),
+    scope.kind === 'resource' && scope.reference.address.id,
   ].filter(Boolean).join(' · ');
 }
 
@@ -96,7 +99,7 @@ function ScopeIcon({ scope, pluginIcons }: { scope: SearchScopeV1; pluginIcons?:
 
   const Fallback = scopeIcons[scope.kind];
   return scope.kind === 'connection' ? <Fallback aria-hidden='true' /> : (
-    <ResourceIcon pluginId={scope.pluginId} resourceKey={scope.resourceKey} size={16}
+    <ResourceIcon pluginId={scope.pluginId} resourceKey={scopeType(scope)!} size={16}
       aria-hidden='true' fallback={<Fallback aria-hidden='true' />} />
   );
 }
@@ -281,7 +284,7 @@ function SearchInput({ controller, snapshot, input, onClose, pluginIcons }: Pale
                       setSelectedScope(key); input.current?.focus(); 
                     }}>
                     {scope.label}
-                    {scope.kind === 'resource' && scope.namespace && <span> · {scope.namespace}</span>}
+                    {scope.kind === 'resource' && scopeDetails(scope) && <span> · {scopeDetails(scope)}</span>}
                   </Button>
                 </Chip>
               );
@@ -521,8 +524,8 @@ export function GlobalCommandSearch({ controller, snapshot, input, onClose, cata
                     <CommandList.ItemLabel>{row.label}</CommandList.ItemLabel>
                     {breadcrumb && <CommandList.ItemMeta>{breadcrumb}</CommandList.ItemMeta>}
                     {!row.value.description && !breadcrumb && <CommandList.ItemMeta>
-                      {resultScope?.kind === 'resource' ? resultScope.namespace || undefined
-                        : resultScope?.kind === 'resource-type' ? resultScope.resourceKey.replaceAll('::', '/')
+                      {resultScope?.kind === 'resource' ? scopeDetails(resultScope) || undefined
+                        : resultScope?.kind === 'resource-type' ? resultScope.target.type
                           : resultScope?.kind === 'connection' ? resultScope.pluginId
                             : kindLabels[row.value.kind]}
                     </CommandList.ItemMeta>}

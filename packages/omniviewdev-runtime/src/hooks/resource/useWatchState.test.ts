@@ -15,7 +15,7 @@ vi.mock('../useResolvedPluginId', () => ({
 
 // Mock GetWatchState — controlled via mockGetWatchState.
 let mockGetWatchState: Mock;
-vi.mock('../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper', () => ({
+vi.mock('../../resource/v2/client', () => ({
   get GetWatchState() { return mockGetWatchState; },
 }));
 
@@ -27,22 +27,13 @@ vi.mock('@wailsio/runtime', () => ({
   Events: {
     get On() { return mockEventsOn; },
   },
-  // The generated bindings build field creators at module scope.
-  Create: {
-    Any: (v: any) => v,
-    Array: () => (v: any) => v,
-    ByteSlice: (v: any) => v,
-    Events: (v: any) => v,
-    Map: () => (v: any) => v,
-    Nullable: () => (v: any) => v,
-  },
 }));
 
 // Import after mocks
 import { useWatchState } from './useWatchState';
 import type { WatchConnectionSummary } from '../../types/watch';
 
-// WatchState enum values (matches Wails-generated).
+// Handwritten canonical SDK readiness values.
 const IDLE = 0;
 const SYNCING = 1;
 const SYNCED = 2;
@@ -78,18 +69,18 @@ function emitStateEvent(pluginID: string, connectionID: string, resourceKey: str
   listener({
     name: topic,
     data: {
-      pluginId: pluginID,
-      connection: connectionID,
-      resourceKey,
+      route: { connection: connectionID },
+      type: resourceKey,
       state,
-      resourceCount,
+      count: { kind: 'exact', value: String(resourceCount) },
+      guarantee: 'bestEffort',
     },
   });
 }
 
-/** Build a mock GetWatchState result (mimics Wails WatchConnectionSummary class) */
-function makeWatchResult(connectionId: string, resources: Record<string, number>, resourceCounts: Record<string, number> = {}) {
-  return { connectionId, resources, resourceCounts };
+/** Build a canonical provider-neutral readiness summary. */
+function makeWatchResult(connection: string, resources: Record<string, number>, resourceCounts: Record<string, number> = {}): WatchConnectionSummary {
+  return { route: { connection }, resources, resourceCounts: Object.fromEntries(Object.entries(resourceCounts).map(([type, count]) => [type, { kind: 'exact', value: String(count) }])), scope: [], guarantee: 'bestEffort' };
 }
 
 // --- Setup/teardown ---
@@ -116,15 +107,15 @@ describe('useWatchState — initial data fetch', () => {
     const qc = makeQueryClient();
     mockGetWatchState.mockResolvedValue(
       makeWatchResult('conn-1', {
-        'core::v1::Pod': SYNCED,
-        'apps::v1::Deployment': SYNCING,
+        'k8s:/pods': SYNCED,
+        'k8s:apps/deployments': SYNCING,
       }, {
-        'core::v1::Pod': 14,
+        'k8s:/pods': 14,
       }),
     );
 
     const { result } = renderHook(
-      () => useWatchState({ pluginID: 'k8s', connectionID: 'conn-1' }),
+      () => useWatchState({ pluginID: 'k8s', route: { connection: 'conn-1' } }),
       { wrapper: makeWrapper(qc) },
     );
 
@@ -134,22 +125,22 @@ describe('useWatchState — initial data fetch', () => {
     expect(data.totalResources).toBe(2);
     expect(data.syncedCount).toBe(1);
     expect(data.errorCount).toBe(0);
-    expect(data.resources['core::v1::Pod']).toBe(SYNCED);
-    expect(data.resources['apps::v1::Deployment']).toBe(SYNCING);
-    expect(data.resourceCounts['core::v1::Pod']).toBe(14);
+    expect(data.resources['k8s:/pods']).toBe(SYNCED);
+    expect(data.resources['k8s:apps/deployments']).toBe(SYNCING);
+    expect(data.resourceCounts['k8s:/pods']).toEqual({ kind: 'exact', value: String(14) });
   });
 
   it('computes syncProgress and isFullySynced correctly', async () => {
     const qc = makeQueryClient();
     mockGetWatchState.mockResolvedValue(
       makeWatchResult('conn-1', {
-        'core::v1::Pod': SYNCED,
-        'apps::v1::Deployment': SYNCED,
+        'k8s:/pods': SYNCED,
+        'k8s:apps/deployments': SYNCED,
       }),
     );
 
     const { result } = renderHook(
-      () => useWatchState({ pluginID: 'k8s', connectionID: 'conn-1' }),
+      () => useWatchState({ pluginID: 'k8s', route: { connection: 'conn-1' } }),
       { wrapper: makeWrapper(qc) },
     );
 
@@ -164,15 +155,15 @@ describe('useWatchState — initial data fetch', () => {
     const qc = makeQueryClient();
     mockGetWatchState.mockResolvedValue(
       makeWatchResult('conn-1', {
-        'core::v1::Pod': SYNCED,
-        'apps::v1::Deployment': ERROR,
-        'core::v1::Service': STOPPED,
-        'batch::v1::Job': SYNCING,
+        'k8s:/pods': SYNCED,
+        'k8s:apps/deployments': ERROR,
+        'k8s:/services': STOPPED,
+        'k8s:batch/jobs': SYNCING,
       }),
     );
 
     const { result } = renderHook(
-      () => useWatchState({ pluginID: 'k8s', connectionID: 'conn-1' }),
+      () => useWatchState({ pluginID: 'k8s', route: { connection: 'conn-1' } }),
       { wrapper: makeWrapper(qc) },
     );
 
@@ -191,7 +182,7 @@ describe('useWatchState — initial data fetch', () => {
     );
 
     const { result } = renderHook(
-      () => useWatchState({ pluginID: 'k8s', connectionID: 'conn-1' }),
+      () => useWatchState({ pluginID: 'k8s', route: { connection: 'conn-1' } }),
       { wrapper: makeWrapper(qc) },
     );
 
@@ -201,23 +192,23 @@ describe('useWatchState — initial data fetch', () => {
     expect(result.current.isFullySynced).toBe(false);
   });
 
-  it('handles null/undefined resources from backend', async () => {
+  it('rejects malformed null resources rather than fabricating readiness', async () => {
     const qc = makeQueryClient();
     mockGetWatchState.mockResolvedValue({
-      connectionId: 'conn-1',
+      route: { connection: 'conn-1' },
       resources: null,
       resourceCounts: null,
     });
 
     const { result } = renderHook(
-      () => useWatchState({ pluginID: 'k8s', connectionID: 'conn-1' }),
+      () => useWatchState({ pluginID: 'k8s', route: { connection: 'conn-1' } }),
       { wrapper: makeWrapper(qc) },
     );
 
-    await waitFor(() => expect(result.current.summary.data).toBeDefined());
-
-    expect(result.current.summary.data!.totalResources).toBe(0);
+    await waitFor(() => expect(result.current.summary.isError).toBe(true));
+    expect(result.current.summary.data).toBeUndefined();
     expect(result.current.syncProgress).toBe(0);
+    expect(result.current.isFullySynced).toBe(false);
   });
 });
 
@@ -230,13 +221,13 @@ describe('useWatchState — live events', () => {
     const qc = makeQueryClient();
     mockGetWatchState.mockResolvedValue(
       makeWatchResult('conn-1', {
-        'core::v1::Pod': SYNCING,
-        'apps::v1::Deployment': SYNCING,
+        'k8s:/pods': SYNCING,
+        'k8s:apps/deployments': SYNCING,
       }),
     );
 
     const { result } = renderHook(
-      () => useWatchState({ pluginID: 'k8s', connectionID: 'conn-1' }),
+      () => useWatchState({ pluginID: 'k8s', route: { connection: 'conn-1' } }),
       { wrapper: makeWrapper(qc) },
     );
 
@@ -247,15 +238,15 @@ describe('useWatchState — live events', () => {
 
     // Emit SYNCED event
     act(() => {
-      emitStateEvent('k8s', 'conn-1', 'core::v1::Pod', SYNCED, 14);
+      emitStateEvent('k8s', 'conn-1', 'k8s:/pods', SYNCED, 14);
     });
 
     await waitFor(() =>
       expect(result.current.summary.data!.syncedCount).toBe(1),
     );
 
-    expect(result.current.summary.data!.resources['core::v1::Pod']).toBe(SYNCED);
-    expect(result.current.summary.data!.resourceCounts['core::v1::Pod']).toBe(14);
+    expect(result.current.summary.data!.resources['k8s:/pods']).toBe(SYNCED);
+    expect(result.current.summary.data!.resourceCounts['k8s:/pods']).toEqual({ kind: 'exact', value: String(14) });
     expect(result.current.syncProgress).toBe(0.5);
   });
 
@@ -263,23 +254,23 @@ describe('useWatchState — live events', () => {
     const qc = makeQueryClient();
     mockGetWatchState.mockResolvedValue(
       makeWatchResult('conn-1', {
-        'core::v1::Pod': SYNCING,
-        'apps::v1::Deployment': SYNCING,
-        'core::v1::Service': SYNCING,
+        'k8s:/pods': SYNCING,
+        'k8s:apps/deployments': SYNCING,
+        'k8s:/services': SYNCING,
       }),
     );
 
     const { result } = renderHook(
-      () => useWatchState({ pluginID: 'k8s', connectionID: 'conn-1' }),
+      () => useWatchState({ pluginID: 'k8s', route: { connection: 'conn-1' } }),
       { wrapper: makeWrapper(qc) },
     );
 
     await waitFor(() => expect(result.current.summary.data).toBeDefined());
 
     act(() => {
-      emitStateEvent('k8s', 'conn-1', 'core::v1::Pod', SYNCED, 14);
-      emitStateEvent('k8s', 'conn-1', 'apps::v1::Deployment', ERROR);
-      emitStateEvent('k8s', 'conn-1', 'core::v1::Service', SYNCED, 5);
+      emitStateEvent('k8s', 'conn-1', 'k8s:/pods', SYNCED, 14);
+      emitStateEvent('k8s', 'conn-1', 'k8s:apps/deployments', ERROR);
+      emitStateEvent('k8s', 'conn-1', 'k8s:/services', SYNCED, 5);
     });
 
     await waitFor(() =>
@@ -295,20 +286,20 @@ describe('useWatchState — live events', () => {
     const qc = makeQueryClient();
     mockGetWatchState.mockResolvedValue(
       makeWatchResult('conn-1', {
-        'core::v1::Pod': SYNCING,
-        'apps::v1::Deployment': SYNCED,
+        'k8s:/pods': SYNCING,
+        'k8s:apps/deployments': SYNCED,
       }),
     );
 
     const { result } = renderHook(
-      () => useWatchState({ pluginID: 'k8s', connectionID: 'conn-1' }),
+      () => useWatchState({ pluginID: 'k8s', route: { connection: 'conn-1' } }),
       { wrapper: makeWrapper(qc) },
     );
 
     await waitFor(() => expect(result.current.summary.data).toBeDefined());
 
-    expect(result.current.getResourceState('core::v1::Pod')).toBe(SYNCING);
-    expect(result.current.getResourceState('apps::v1::Deployment')).toBe(SYNCED);
+    expect(result.current.getResourceState('k8s:/pods')).toBe(SYNCING);
+    expect(result.current.getResourceState('k8s:apps/deployments')).toBe(SYNCED);
     expect(result.current.getResourceState('nonexistent')).toBeUndefined();
   });
 });
@@ -328,7 +319,7 @@ describe('useWatchState — event buffering', () => {
     );
 
     const { result } = renderHook(
-      () => useWatchState({ pluginID: 'k8s', connectionID: 'conn-1' }),
+      () => useWatchState({ pluginID: 'k8s', route: { connection: 'conn-1' } }),
       { wrapper: makeWrapper(qc) },
     );
 
@@ -337,17 +328,17 @@ describe('useWatchState — event buffering', () => {
 
     // Events arrive while fetch is in-flight — should be buffered.
     act(() => {
-      emitStateEvent('k8s', 'conn-1', 'core::v1::Pod', SYNCED, 14);
-      emitStateEvent('k8s', 'conn-1', 'apps::v1::Deployment', SYNCED, 3);
+      emitStateEvent('k8s', 'conn-1', 'k8s:/pods', SYNCED, 14);
+      emitStateEvent('k8s', 'conn-1', 'k8s:apps/deployments', SYNCED, 3);
     });
 
     // Now resolve the initial fetch — returns all as SYNCING (stale snapshot).
     await act(async () => {
       resolveGetWatchState(
         makeWatchResult('conn-1', {
-          'core::v1::Pod': SYNCING,
-          'apps::v1::Deployment': SYNCING,
-          'core::v1::Service': SYNCING,
+          'k8s:/pods': SYNCING,
+          'k8s:apps/deployments': SYNCING,
+          'k8s:/services': SYNCING,
         }),
       );
     });
@@ -358,10 +349,10 @@ describe('useWatchState — event buffering', () => {
       expect(result.current.summary.data!.syncedCount).toBe(2),
     );
 
-    expect(result.current.summary.data!.resources['core::v1::Pod']).toBe(SYNCED);
-    expect(result.current.summary.data!.resources['apps::v1::Deployment']).toBe(SYNCED);
-    expect(result.current.summary.data!.resources['core::v1::Service']).toBe(SYNCING);
-    expect(result.current.summary.data!.resourceCounts['core::v1::Pod']).toBe(14);
+    expect(result.current.summary.data!.resources['k8s:/pods']).toBe(SYNCED);
+    expect(result.current.summary.data!.resources['k8s:apps/deployments']).toBe(SYNCED);
+    expect(result.current.summary.data!.resources['k8s:/services']).toBe(SYNCING);
+    expect(result.current.summary.data!.resourceCounts['k8s:/pods']).toEqual({ kind: 'exact', value: String(14) });
   });
 
   it('transitions from buffering to live mode after replay', async () => {
@@ -373,37 +364,37 @@ describe('useWatchState — event buffering', () => {
     );
 
     const { result } = renderHook(
-      () => useWatchState({ pluginID: 'k8s', connectionID: 'conn-1' }),
+      () => useWatchState({ pluginID: 'k8s', route: { connection: 'conn-1' } }),
       { wrapper: makeWrapper(qc) },
     );
 
     // Buffer one event.
     act(() => {
-      emitStateEvent('k8s', 'conn-1', 'core::v1::Pod', SYNCED, 14);
+      emitStateEvent('k8s', 'conn-1', 'k8s:/pods', SYNCED, 14);
     });
 
     // Resolve fetch.
     await act(async () => {
       resolveGetWatchState(
         makeWatchResult('conn-1', {
-          'core::v1::Pod': SYNCING,
-          'core::v1::Service': SYNCING,
+          'k8s:/pods': SYNCING,
+          'k8s:/services': SYNCING,
         }),
       );
     });
 
     // Wait for buffered replay.
     await waitFor(() =>
-      expect(result.current.summary.data!.resources['core::v1::Pod']).toBe(SYNCED),
+      expect(result.current.summary.data!.resources['k8s:/pods']).toBe(SYNCED),
     );
 
     // Now a NEW event arrives (live mode) — should apply immediately.
     act(() => {
-      emitStateEvent('k8s', 'conn-1', 'core::v1::Service', SYNCED, 5);
+      emitStateEvent('k8s', 'conn-1', 'k8s:/services', SYNCED, 5);
     });
 
     await waitFor(() =>
-      expect(result.current.summary.data!.resources['core::v1::Service']).toBe(SYNCED),
+      expect(result.current.summary.data!.resources['k8s:/services']).toBe(SYNCED),
     );
 
     expect(result.current.isFullySynced).toBe(true);
@@ -418,7 +409,7 @@ describe('useWatchState — event buffering', () => {
     );
 
     const { result } = renderHook(
-      () => useWatchState({ pluginID: 'k8s', connectionID: 'conn-1' }),
+      () => useWatchState({ pluginID: 'k8s', route: { connection: 'conn-1' } }),
       { wrapper: makeWrapper(qc) },
     );
 
@@ -426,7 +417,7 @@ describe('useWatchState — event buffering', () => {
     const resourceKeys: string[] = [];
     act(() => {
       for (let i = 0; i < 88; i++) {
-        const key = `group::v1::Kind${i}`;
+        const key = `opaque/group/resource${i}`;
         resourceKeys.push(key);
         emitStateEvent('k8s', 'conn-1', key, SYNCED, i);
       }
@@ -461,7 +452,7 @@ describe('useWatchState — key changes and disabled state', () => {
     const qc = makeQueryClient();
 
     const { result } = renderHook(
-      () => useWatchState({ pluginID: 'k8s', connectionID: 'conn-1', enabled: false }),
+      () => useWatchState({ pluginID: 'k8s', route: { connection: 'conn-1' }, enabled: false }),
       { wrapper: makeWrapper(qc) },
     );
 
@@ -480,11 +471,11 @@ describe('useWatchState — key changes and disabled state', () => {
   it('cleans up event listener on unmount', async () => {
     const qc = makeQueryClient();
     mockGetWatchState.mockResolvedValue(
-      makeWatchResult('conn-1', { 'core::v1::Pod': SYNCING }),
+      makeWatchResult('conn-1', { 'k8s:/pods': SYNCING }),
     );
 
     const { result, unmount } = renderHook(
-      () => useWatchState({ pluginID: 'k8s', connectionID: 'conn-1' }),
+      () => useWatchState({ pluginID: 'k8s', route: { connection: 'conn-1' } }),
       { wrapper: makeWrapper(qc) },
     );
 
@@ -502,12 +493,12 @@ describe('useWatchState — key changes and disabled state', () => {
   it('resubscribes when connectionID changes', async () => {
     const qc = makeQueryClient();
     mockGetWatchState.mockResolvedValue(
-      makeWatchResult('conn-1', { 'core::v1::Pod': SYNCED }),
+      makeWatchResult('conn-1', { 'k8s:/pods': SYNCED }),
     );
 
     const { result, rerender } = renderHook(
       ({ connectionID }: { connectionID: string }) =>
-        useWatchState({ pluginID: 'k8s', connectionID }),
+        useWatchState({ pluginID: 'k8s', route: { connection: connectionID } }),
       { wrapper: makeWrapper(qc), initialProps: { connectionID: 'conn-1' } },
     );
 
@@ -515,7 +506,7 @@ describe('useWatchState — key changes and disabled state', () => {
 
     // Switch connection.
     mockGetWatchState.mockResolvedValue(
-      makeWatchResult('conn-2', { 'core::v1::Pod': SYNCING }),
+      makeWatchResult('conn-2', { 'k8s:/pods': SYNCING }),
     );
 
     rerender({ connectionID: 'conn-2' });
@@ -538,25 +529,25 @@ describe('useWatchState — event ordering', () => {
   it('later events for the same resource overwrite earlier ones', async () => {
     const qc = makeQueryClient();
     mockGetWatchState.mockResolvedValue(
-      makeWatchResult('conn-1', { 'core::v1::Pod': IDLE }),
+      makeWatchResult('conn-1', { 'k8s:/pods': IDLE }),
     );
 
     const { result } = renderHook(
-      () => useWatchState({ pluginID: 'k8s', connectionID: 'conn-1' }),
+      () => useWatchState({ pluginID: 'k8s', route: { connection: 'conn-1' } }),
       { wrapper: makeWrapper(qc) },
     );
 
     await waitFor(() => expect(result.current.summary.data).toBeDefined());
 
     act(() => {
-      emitStateEvent('k8s', 'conn-1', 'core::v1::Pod', SYNCING);
-      emitStateEvent('k8s', 'conn-1', 'core::v1::Pod', SYNCED, 14);
+      emitStateEvent('k8s', 'conn-1', 'k8s:/pods', SYNCING);
+      emitStateEvent('k8s', 'conn-1', 'k8s:/pods', SYNCED, 14);
     });
 
     await waitFor(() =>
-      expect(result.current.summary.data!.resources['core::v1::Pod']).toBe(SYNCED),
+      expect(result.current.summary.data!.resources['k8s:/pods']).toBe(SYNCED),
     );
 
-    expect(result.current.summary.data!.resourceCounts['core::v1::Pod']).toBe(14);
+    expect(result.current.summary.data!.resourceCounts['k8s:/pods']).toEqual({ kind: 'exact', value: String(14) });
   });
 });

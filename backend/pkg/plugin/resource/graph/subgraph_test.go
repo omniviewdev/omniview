@@ -31,7 +31,7 @@ func deploymentGraph() (*RelationshipGraph, GraphNode, GraphNode, []GraphNode) {
 func depths(sg *Subgraph) map[string]int {
 	out := make(map[string]int, len(sg.Nodes))
 	for _, n := range sg.Nodes {
-		out[n.Node.ResourceKey+"/"+n.Node.ID] = n.Depth
+		out[n.Node.Reference.Address.Type+"/"+n.Node.Reference.Address.ID] = n.Depth
 	}
 	return out
 }

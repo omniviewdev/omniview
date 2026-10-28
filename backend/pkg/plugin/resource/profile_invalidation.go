@@ -1,0 +1,78 @@
+package resource
+
+import (
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/indexer"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+)
+
+// A profile edit is a configuration reset, not resource identity continuity.
+// SDK overlay application has already canceled and drained affected clients.
+// These bounded epochs fence responses and queued observations acquired before
+// the reset; they are not target handles, query leases, or a live-session API.
+func (c *controller) invalidateProfileRoutes(pluginID string, connections []string) error {
+	c.pluginsMu.Lock()
+	defer c.pluginsMu.Unlock()
+	generation := c.plugins[pluginID]
+	if generation == nil || generation.provider == nil {
+		return resourcev2.NewError("UNAVAILABLE", "Provider generation retired during profile apply.")
+	}
+	newRoutes := 0
+	seen := make(map[string]bool, len(connections))
+	for _, connection := range connections {
+		if connection == "" {
+			return resourcev2.NewError("INVALID_REQUEST", "Empty profile route.")
+		}
+		if seen[connection] {
+			continue
+		}
+		seen[connection] = true
+		if _, exists := generation.sourceEpoch[connection]; !exists {
+			newRoutes++
+		}
+	}
+	if len(generation.sourceEpoch)+newRoutes > maxAuthorityBindings {
+		return resourcev2.NewError("RESOURCE_LIMIT", "Source configuration generation limit reached.")
+	}
+	c.finite.mu.Lock()
+	resolver := c.finite.authorities[pluginID]
+	if resolver != nil {
+		for connection := range seen {
+			if err := resolver.InvalidateConnection(pluginID, connection); err != nil {
+				c.finite.mu.Unlock()
+				return err
+			}
+		}
+	}
+	c.finite.mu.Unlock()
+	if generation.sourceEpoch == nil {
+		generation.sourceEpoch = make(map[string]uint64)
+	}
+	for connection := range seen {
+		generation.sourceEpoch[connection]++
+		for _, entry := range c.registryStore.DeleteByConnection(pluginID, connection) {
+			c.dispatcher.Enqueue(indexer.Event{Type: indexer.EventDelete, Entry: entry})
+		}
+		c.graph.RemoveEdgesForConnection(pluginID, connection)
+		c.subs.RemoveRoute(pluginID, connection)
+		c.connsMu.Lock()
+		cached := c.connections[pluginID]
+		for i := range cached {
+			if cached[i].ID == connection {
+				cached = append(cached[:i], cached[i+1:]...)
+				break
+			}
+		}
+		c.connections[pluginID] = cached
+		c.connsMu.Unlock()
+	}
+	return nil
+}
+
+// Caller holds pluginsMu.RLock across its final mutation/delivery fence.
+// This read never issues authority, performs provider IO, or normalizes identity.
+func (c *controller) referenceCurrentLocked(pluginID string, route resourcev2.AccessRoute, reference resourcev2.ResourceReference) bool {
+	c.finite.mu.Lock()
+	defer c.finite.mu.Unlock()
+	resolver := c.finite.authorities[pluginID]
+	return resolver != nil && resolver.Matches(pluginID, route.Connection, reference.Address.Provider, reference.Address.Authority)
+}

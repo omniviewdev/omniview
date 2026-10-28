@@ -1,13 +1,13 @@
-import { type FC } from 'react';
+import { type FC, useMemo, useState } from 'react';
 
-import { Banner, Heading, Spinner, Stack, Text } from '@omniviewdev/base-ui';
+import { Banner, Button, Heading, Spinner, Stack, Text } from '@omniviewdev/base-ui';
 
 // icons
 import { LuCircleAlert } from 'react-icons/lu';
 
 // project imports
 import useResourceDefinition from '@/hooks/resource/useResourceDefinition';
-import { useResources } from '@omniviewdev/runtime';
+import { useResources, useResourceType, useResolvedResourceTarget, valueToJSON, type QueryScope } from '@omniviewdev/runtime';
 import ResourceTableContainer from './ResourceTableContainer';
 import styles from './index.module.css';
 
@@ -27,50 +27,50 @@ type Props = {
   resourceKey: string;
 };
 
-/**
- * if for some reasong the plugin developer hasn't supplied an id accessor, attempt to fix it for them
- */
-const wellKnownIDAccessors = (data: any) => {
-  if (data.id) {
-    return 'id';
-  }
-
-  if (data.Id) {
-    return 'Id';
-  }
-
-  if (data.metadata?.name) {
-    return 'metadata.name';
-  }
-
-  if (data.metadata?.uid) {
-    return 'metadata.uid';
-  }
-
-  if (data.metadata?.id) {
-    return 'metadata.id';
-  }
-
-  if (data.id) {
-    return 'id';
-  }
-
-  throw new Error('No ID accessor found, and no well known ID accessors found');
-};
 
 /**
  * Display a table of the deployments
  */
 const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
-  if (!pluginID || !connectionID || !resourceKey) {
-    return null;
+
+  const [representation, setRepresentation] = useState('');
+  const [cursors, setCursors] = useState<Array<string | undefined>>([undefined]);
+  const cursor = cursors[cursors.length - 1];
+  const [scope, setScope] = useState<QueryScope>([]);
+  const { resourceType } = useResourceType({ pluginID, route: { connection: connectionID }, type: resourceKey });
+  const selectedRepresentation = representation || resourceType.data?.defaultRepresentation || '';
+  const target = useResolvedResourceTarget({
+    pluginID,
+    route: { connection: connectionID },
+    type: resourceKey,
+    scope,
+    representation: selectedRepresentation,
+    enabled: selectedRepresentation !== '',
+  });
+  const { isLoading, isError, data, columns } = useResourceDefinition({ pluginID, connectionID, resourceKey });
+  const { resources } = useResources({
+    pluginID,
+    request: target.data ? { targetId: target.data.targetId, request: { target: target.data.target, pageSize: 1000, cursor } } : undefined,
+  });
+  const rows = useMemo(() => resources.data?.records.map((record) => ({
+    record,
+    data: valueToJSON(record.record.body),
+  })) ?? [], [resources.data]);
+
+  if (!selectedRepresentation) {
+    return (
+      <Stack direction="column" spacing={2}>
+        <Text>Select a representation for {resourceKey}.</Text>
+        <select aria-label="Resource representation" value={representation} onChange={(event) => setRepresentation(event.target.value)}>
+          <option value="">Select representation</option>
+          {resourceType.data?.representations.map((item) => <option key={item.id} value={item.id}>{item.id}</option>)}
+        </select>
+        {resourceType.isError && <Text tone="danger">{String(resourceType.error)}</Text>}
+      </Stack>
+    );
   }
 
-  const { isLoading, isError, data, columns, namespaces } = useResourceDefinition({ pluginID, connectionID, resourceKey });
-  const { resources } = useResources({ pluginID, connectionID, resourceKey });
-
-  // TODO: replace these with loaders
-  if (isLoading || resources.isLoading || namespaces.isLoading) {
+  if (isLoading || target.isLoading || resources.isLoading) {
     console.log('Loading resources...');
     return (
       <div className={styles.Loading}>
@@ -82,9 +82,9 @@ const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
     );
   }
 
-  if (isError || resources.isError) {
+  if (isError || target.isError || resources.isError) {
     // Wails may reject with a bare string; toString() covers both shapes.
-    const errstring = resources.error?.toString() ?? '';
+    const errstring = (resources.error ?? target.error)?.toString() ?? '';
     console.error('Failed loading resources', errstring);
 
     // Try to parse structured error JSON from the plugin (ResourceOperationError.Error()
@@ -142,33 +142,49 @@ const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
     return null;
   }
 
-  /**
-   * if for some reasong the plugin developer hasn't supplied an id accessor, attempt to fix it for them
-   * @returns {string} the id accessor
-   * @throws {Error} if no id accessor is found and no well known id accessors are found in the first object
-   */
-  const getIDAccessor = (): string => {
-    if (data.id_accessor) {
-      return data.id_accessor;
-    }
-
-    // attempt to find a well known id accessor
-    return wellKnownIDAccessors(listResult.result[0]);
-  };
 
   return (
-    <ResourceTableContainer
-      columns={columns.defs}
-      data={Object.values(listResult.result)}
-      namespaces={namespaces.data ?? []}
-      idAccessor={getIDAccessor()}
-      namespaceAccessor={data.namespace_accessor}
-      memoizer={data.memoizer_accessor}
-      pluginID={pluginID}
-      connectionID={connectionID}
-      resourceKey={resourceKey}
-      initialColumnVisibility={columns.visibility}
-    />
+    <Stack direction="column" spacing={2}>
+      <Stack direction="row" spacing={2}>
+        <select aria-label="Resource representation" value={selectedRepresentation} onChange={(event) => {
+          setRepresentation(event.target.value);
+          setCursors([undefined]);
+        }}>
+          {resourceType.data?.representations.map((item) => <option key={item.id} value={item.id}>{item.id}</option>)}
+        </select>
+        {resourceType.data?.queryDimensions.map((dimension) => (
+          <label key={dimension.name}>
+            {dimension.name}
+            <input
+              aria-label={`Filter scope ${dimension.name}`}
+              placeholder="Any"
+              defaultValue={scope.flatMap((entry) => entry.dimension === dimension.name && entry.match === 'oneOf' ? entry.values : [])[0] ?? ''}
+              onBlur={(event) => {
+                const value = event.currentTarget.value;
+                setScope((current) => [
+                  ...current.filter((entry) => entry.dimension !== dimension.name),
+                  ...(value ? [{ dimension: dimension.name, match: 'oneOf' as const, values: [value] }] : []),
+                ]);
+                setCursors([undefined]);
+              }}
+            />
+          </label>
+        ))}
+        <Button size="sm" disabled={cursors.length === 1} onClick={() => setCursors((pages) => pages.slice(0, -1))}>Previous page</Button>
+        <Button size="sm" disabled={!listResult.sourcePage.nextCursor} onClick={() => {
+          const next = listResult.sourcePage.nextCursor;
+          if (next) setCursors((pages) => [...pages, next]);
+        }}>Next page</Button>
+      </Stack>
+      <ResourceTableContainer
+        columns={columns.defs}
+        data={rows}
+        pluginID={pluginID}
+        connectionID={connectionID}
+        resourceKey={resourceKey}
+        initialColumnVisibility={columns.visibility}
+      />
+    </Stack>
   );
 };
 

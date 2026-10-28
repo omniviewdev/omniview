@@ -1,21 +1,27 @@
 package registry
 
-import "time"
+import (
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	"time"
+)
 
-// ResourceEntry is the lightweight metadata the engine stores per resource.
+// ResourceEntry stores provider-neutral identity and route-local projection metadata.
+// Incarnation remains optional provider evidence, never synthesized from metadata.
 type ResourceEntry struct {
-	PluginID     string
-	ConnectionID string
-	ResourceKey  string            // e.g. "core::v1::Pod", "ec2::Instance"
-	ID           string            // resource name/identifier
-	Namespace    string            // scope within connection (empty if unscoped)
-	UID          string            // dedup key
-	Labels       map[string]string // for selector-based relationship resolution
-	CreatedAt    time.Time
+	PluginID  string
+	Reference resourcev2.ResourceReference
+	Route     resourcev2.AccessRoute
+	Labels    map[string]string
+	CreatedAt time.Time
 }
 
-// EntryKey returns the unique key for this entry within the registry.
-// Format: "pluginID/connectionID/resourceKey/namespace/id".
+// EntryKey returns canonical identity only. Store ownership and access route are
+// separate projection keys and never grant permission to merge observations.
+// Invalid addresses have no key and must not be admitted to the registry.
 func (e ResourceEntry) EntryKey() string {
-	return e.PluginID + "/" + e.ConnectionID + "/" + e.ResourceKey + "/" + e.Namespace + "/" + e.ID
+	key, err := CanonicalAddressKey(e.Reference.Address)
+	if err != nil {
+		return ""
+	}
+	return key
 }

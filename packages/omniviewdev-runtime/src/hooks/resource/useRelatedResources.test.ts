@@ -10,7 +10,7 @@ vi.mock('../useResolvedPluginId', () => ({
 let mockGetRelated: Mock;
 let mockGetDependencyTree: Mock;
 let mockGetSubgraph: Mock;
-vi.mock('../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graphservice', () => ({
+vi.mock('../../resource/v2/graph-client', () => ({
   get GetRelated() {
     return mockGetRelated;
   },
@@ -44,18 +44,23 @@ function emit(name: string) {
 import { relationshipLabel, toRelatedResources, useRelatedResources } from './useRelatedResources';
 import { useDependencyTree } from './useDependencyTree';
 import { useResourceGraph } from './useResourceGraph';
+import { sameGraphNode } from '../../resource/v2/graph';
 
-const node = (resourceKey: string, id: string, namespace = '') => ({
+const node = (type: string, id: string, namespace = '') => ({
   pluginId: 'kubernetes',
-  connectionId: 'c1',
-  resourceKey,
-  id,
-  namespace,
+  key: 'host-issued-test-key',
+  route: { connection: 'c1' },
+  reference: {
+    address: {
+      provider: 'kubernetes', authority: 'host-issued-authority', type, id,
+      scope: namespace ? [{ dimension: 'namespace', value: namespace }] : [],
+    },
+  },
 });
 
-const pod = node('core::v1::Pod', 'web-1', 'default');
-const rs = node('apps::v1::ReplicaSet', 'web-abc', 'default');
-const worker = node('core::v1::Node', 'worker-1');
+const pod = node('k8s:/pods', 'web-1', 'default');
+const rs = node('k8s:apps/replicasets', 'web-abc', 'default');
+const worker = node('k8s:/nodes', 'worker-1');
 
 function wrapper({ children }: { children: React.ReactNode }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -83,12 +88,29 @@ describe('toRelatedResources', () => {
     ]);
   });
 
-  it('treats a missing namespace as empty', () => {
-    const self = { ...worker, namespace: undefined };
+  it('ignores the access route when comparing identity', () => {
+    const self = { ...worker, route: { connection: 'alternate' } };
     const [related] = toRelatedResources(self as any, [
       { source: pod, target: worker, type: 'runs_on', label: 'runs on' },
     ] as any);
     expect(related.direction).toBe('incoming');
+  });
+
+  it('compares scope dimensions independent of order and includes incarnation', () => {
+    const scope = [
+      { dimension: 'cluster', value: 'cluster-a' },
+      { dimension: 'namespace', value: 'default' },
+    ];
+    const first = {
+      ...pod,
+      reference: { ...pod.reference, incarnation: 'first', address: { ...pod.reference.address, scope } },
+    };
+    const reordered = {
+      ...first,
+      reference: { ...first.reference, address: { ...first.reference.address, scope: [...scope].reverse() } },
+    };
+    expect(sameGraphNode(first, reordered)).toBe(true);
+    expect(sameGraphNode(first, { ...reordered, reference: { ...reordered.reference, incarnation: 'second' } })).toBe(false);
   });
 });
 
@@ -110,13 +132,13 @@ describe('useRelatedResources', () => {
     mockGetRelated.mockResolvedValue([{ source: pod, target: worker, type: 'runs_on', label: 'runs on' }]);
 
     const { result } = renderHook(() => useRelatedResources({
-      connectionID: 'c1', resourceKey: 'core::v1::Pod', resourceID: 'web-1', namespace: 'default',
+      reference: pod.reference, route: pod.route,
     }), { wrapper });
 
     await waitFor(() => {
       expect(result.current.related).toHaveLength(1);
     });
-    expect(mockGetRelated).toHaveBeenCalledWith('kubernetes', 'c1', 'core::v1::Pod', 'default', 'web-1', 'both', null);
+    expect(mockGetRelated).toHaveBeenCalledWith('kubernetes', pod.reference, pod.route, 'both', null);
     expect(result.current.related[0]).toMatchObject({ resource: worker, direction: 'outgoing' });
   });
 
@@ -124,19 +146,19 @@ describe('useRelatedResources', () => {
     mockGetRelated.mockResolvedValue([]);
 
     renderHook(() => useRelatedResources({
-      pluginID: 'other', connectionID: 'c1', resourceKey: 'core::v1::Node', resourceID: 'worker-1',
+      pluginID: 'other', reference: worker.reference, route: worker.route,
       direction: 'incoming', relationshipType: 'runs_on',
     }), { wrapper });
 
     await waitFor(() => {
       expect(mockGetRelated).toHaveBeenCalled();
     });
-    expect(mockGetRelated).toHaveBeenCalledWith('other', 'c1', 'core::v1::Node', '', 'worker-1', 'incoming', 'runs_on');
+    expect(mockGetRelated).toHaveBeenCalledWith('other', worker.reference, worker.route, 'incoming', 'runs_on');
   });
 
   it('does not query without a resource ID', () => {
     const { result } = renderHook(() => useRelatedResources({
-      connectionID: 'c1', resourceKey: 'core::v1::Pod', resourceID: '',
+      reference: node('k8s:/pods', '').reference, route: pod.route,
     }), { wrapper });
 
     expect(mockGetRelated).not.toHaveBeenCalled();
@@ -149,7 +171,7 @@ describe('graph change events', () => {
     mockGetRelated.mockResolvedValueOnce([]).mockResolvedValue([{ source: pod, target: worker, type: 'runs_on', label: 'runs on' }]);
 
     const { result } = renderHook(() => useRelatedResources({
-      connectionID: 'c1', resourceKey: 'core::v1::Pod', resourceID: 'web-1', namespace: 'default',
+      reference: pod.reference, route: pod.route,
     }), { wrapper });
 
     await waitFor(() => {
@@ -175,7 +197,7 @@ describe('graph change events', () => {
     mockGetRelated.mockResolvedValue([]);
 
     const { unmount } = renderHook(() => useRelatedResources({
-      connectionID: 'c1', resourceKey: 'core::v1::Pod', resourceID: 'web-1',
+      reference: pod.reference, route: pod.route,
     }), { wrapper });
 
     expect(listeners.get('kubernetes/c1/graph/CHANGED')?.size).toBe(1);
@@ -183,7 +205,7 @@ describe('graph change events', () => {
     expect(listeners.get('kubernetes/c1/graph/CHANGED')?.size).toBe(0);
 
     renderHook(() => useRelatedResources({
-      connectionID: 'c1', resourceKey: 'core::v1::Pod', resourceID: 'web-1', enabled: false,
+      reference: pod.reference, route: pod.route, enabled: false,
     }), { wrapper });
     expect(listeners.get('kubernetes/c1/graph/CHANGED')?.size ?? 0).toBe(0);
   });
@@ -192,7 +214,7 @@ describe('graph change events', () => {
     mockGetDependencyTree.mockResolvedValue({ root: rs, children: [] });
 
     renderHook(() => useDependencyTree({
-      connectionID: 'c1', resourceKey: 'apps::v1::ReplicaSet', resourceID: 'web-abc', namespace: 'default',
+      reference: rs.reference, route: rs.route,
     }), { wrapper });
 
     await waitFor(() => {
@@ -213,13 +235,13 @@ describe('useDependencyTree', () => {
     mockGetDependencyTree.mockResolvedValue(tree);
 
     const { result } = renderHook(() => useDependencyTree({
-      connectionID: 'c1', resourceKey: 'apps::v1::ReplicaSet', resourceID: 'web-abc', namespace: 'default', maxDepth: 2,
+      reference: rs.reference, route: rs.route, maxDepth: 2,
     }), { wrapper });
 
     await waitFor(() => {
       expect(result.current.tree).toEqual(tree);
     });
-    expect(mockGetDependencyTree).toHaveBeenCalledWith('kubernetes', 'c1', 'apps::v1::ReplicaSet', 'default', 'web-abc', 2);
+    expect(mockGetDependencyTree).toHaveBeenCalledWith('kubernetes', rs.reference, rs.route, 2);
   });
 });
 
@@ -229,13 +251,13 @@ describe('useResourceGraph', () => {
     mockGetSubgraph.mockResolvedValue(sg);
 
     const { result } = renderHook(() => useResourceGraph({
-      connectionID: 'c1', resourceKey: 'core::v1::Pod', resourceID: 'web-1', namespace: 'default',
+      reference: pod.reference, route: pod.route,
     }), { wrapper });
 
     await waitFor(() => {
       expect(result.current.graph).toEqual(sg);
     });
-    expect(mockGetSubgraph).toHaveBeenCalledWith('kubernetes', 'c1', 'core::v1::Pod', 'default', 'web-1', 2, 3);
+    expect(mockGetSubgraph).toHaveBeenCalledWith('kubernetes', pod.reference, pod.route, 2, 3);
 
     act(() => {
       emit('kubernetes/c1/graph/CHANGED');

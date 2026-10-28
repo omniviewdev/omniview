@@ -1,795 +1,184 @@
-import { renderHook, act } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { QueryClient } from '@tanstack/react-query';
 import { WatchState } from '../../types/watch';
-import {
-  applyBatch,
-  useEventBatcher,
-  type ResourceEvent,
-} from './useEventBatcher';
+import type { HostRecord, HostSourcePage } from '../../resource/v2/host';
+import { applyBatch, useEventBatcher, type ResourceUpdateEvent } from './useEventBatcher';
 
-// WatchState enum values (matches Wails-generated enum).
-const IDLE = 0;
-const SYNCING = 1;
-const SYNCED = 2;
-
-// ---------------------------------------------------------------------------
-// applyBatch (pure function) — no timers needed
-// ---------------------------------------------------------------------------
-
-describe('applyBatch', () => {
-  const idAccessor = 'metadata.name';
-
-  const makeItem = (name: string, extra?: Record<string, unknown>) => ({
-    metadata: { name },
-    ...extra,
-  });
-
-  const baseData = {
-    result: [makeItem('pod-1'), makeItem('pod-2')],
-    success: true,
-    totalCount: 2,
-  };
-
-  it('adds a new item via ADD', () => {
-    const events: ResourceEvent[] = [
-      {
-        type: 'ADD',
-        payload: { data: makeItem('pod-3'), key: 'k', connection: 'c', id: 'pod-3', namespace: 'default' },
-      },
-    ];
-    const result = applyBatch(baseData, events, idAccessor);
-    expect(result.result).toHaveLength(3);
-    expect(result.result[2].metadata.name).toBe('pod-3');
-  });
-
-  it('deduplicates ADD for an existing item', () => {
-    const events: ResourceEvent[] = [
-      {
-        type: 'ADD',
-        payload: { data: makeItem('pod-1'), key: 'k', connection: 'c', id: 'pod-1', namespace: 'default' },
-      },
-    ];
-    const result = applyBatch(baseData, events, idAccessor);
-    expect(result.result).toHaveLength(2);
-  });
-
-  it('updates an existing item via UPDATE', () => {
-    const events: ResourceEvent[] = [
-      {
-        type: 'UPDATE',
-        payload: {
-          data: makeItem('pod-1', { status: 'Running' }),
-          key: 'k', connection: 'c', id: 'pod-1', namespace: 'default',
-        },
-      },
-    ];
-    const result = applyBatch(baseData, events, idAccessor);
-    expect(result.result).toHaveLength(2);
-    expect(result.result[0].status).toBe('Running');
-  });
-
-  it('ignores UPDATE for non-existent item', () => {
-    const events: ResourceEvent[] = [
-      {
-        type: 'UPDATE',
-        payload: {
-          data: makeItem('pod-999'),
-          key: 'k', connection: 'c', id: 'pod-999', namespace: 'default',
-        },
-      },
-    ];
-    const result = applyBatch(baseData, events, idAccessor);
-    expect(result.result).toHaveLength(2);
-  });
-
-  it('removes an item via DELETE', () => {
-    const events: ResourceEvent[] = [
-      {
-        type: 'DELETE',
-        payload: { data: makeItem('pod-1'), key: 'k', connection: 'c', id: 'pod-1', namespace: 'default' },
-      },
-    ];
-    const result = applyBatch(baseData, events, idAccessor);
-    expect(result.result).toHaveLength(1);
-    expect(result.result[0].metadata.name).toBe('pod-2');
-  });
-
-  it('ignores DELETE for non-existent item', () => {
-    const events: ResourceEvent[] = [
-      {
-        type: 'DELETE',
-        payload: { data: makeItem('pod-999'), key: 'k', connection: 'c', id: 'pod-999', namespace: 'default' },
-      },
-    ];
-    const result = applyBatch(baseData, events, idAccessor);
-    expect(result.result).toHaveLength(2);
-  });
-
-  it('applies multiple events in sequence', () => {
-    const events: ResourceEvent[] = [
-      { type: 'ADD', payload: { data: makeItem('pod-3'), key: 'k', connection: 'c', id: 'pod-3', namespace: 'default' } },
-      { type: 'UPDATE', payload: { data: makeItem('pod-1', { status: 'Running' }), key: 'k', connection: 'c', id: 'pod-1', namespace: 'default' } },
-      { type: 'DELETE', payload: { data: makeItem('pod-2'), key: 'k', connection: 'c', id: 'pod-2', namespace: 'default' } },
-    ];
-    const result = applyBatch(baseData, events, idAccessor);
-    expect(result.result).toHaveLength(2);
-    expect(result.result[0].metadata.name).toBe('pod-1');
-    expect(result.result[0].status).toBe('Running');
-    expect(result.result[1].metadata.name).toBe('pod-3');
-  });
-
-  it('handles undefined oldData by creating a fresh structure', () => {
-    const events: ResourceEvent[] = [
-      { type: 'ADD', payload: { data: makeItem('pod-1'), key: 'k', connection: 'c', id: 'pod-1', namespace: 'default' } },
-    ];
-    const result = applyBatch(undefined, events, idAccessor);
-    expect(result.result).toHaveLength(1);
-    expect(result.success).toBe(true);
-  });
-
-  it('handles class instances (non-plain objects) as oldData', () => {
-    class ListResult {
-      result: any[];
-      success: boolean;
-      totalCount: number;
-      constructor() {
-        this.result = [makeItem('pod-1')];
-        this.success = true;
-        this.totalCount = 1;
-      }
-    }
-    const classData = new ListResult();
-    const events: ResourceEvent[] = [
-      { type: 'ADD', payload: { data: makeItem('pod-2'), key: 'k', connection: 'c', id: 'pod-2', namespace: 'default' } },
-    ];
-    const result = applyBatch(classData, events, idAccessor);
-    expect(result.result).toHaveLength(2);
-  });
-
-  it('supports nested id accessor paths', () => {
-    const deepAccessor = 'spec.id';
-    const data = {
-      result: [{ spec: { id: 'a' } }],
-      success: true,
-      totalCount: 1,
-    };
-    const events: ResourceEvent[] = [
-      { type: 'UPDATE', payload: { data: { spec: { id: 'a' }, updated: true }, key: 'k', connection: 'c', id: 'a', namespace: 'default' } },
-    ];
-    const result = applyBatch(data, events, deepAccessor);
-    expect(result.result[0].updated).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// useEventBatcher (hook) — adaptive batching
-// ---------------------------------------------------------------------------
-
-// Shared helpers.
-const queryKey = ['resources', 'test'];
-const getResourceKey = (id: string, ns: string) => ['resource', ns, id];
-const idAccessor = 'metadata.name';
-
-const makePayload = (id: string, type: 'ADD' | 'UPDATE' | 'DELETE'): ResourceEvent => ({
-  type,
-  payload: {
-    data: { metadata: { name: id } },
-    key: 'core::v1::Pod',
-    connection: 'cluster-1',
-    id,
-    namespace: 'default',
-  },
-} as ResourceEvent);
-
-function makeQueryClient() {
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  qc.setQueryData(queryKey, { result: [], success: true, totalCount: 0 });
-  return qc;
+const queryKey = ['provider', 'resource-v2', 'enumerate', 'target'];
+const detailKey = ['provider', 'resource-v2', 'get', 'one'];
+function row(id: string, incarnation = 'current', targetId = 'target'): HostRecord {
+  return { key: `host-membership:${targetId}:${id}:${incarnation}`, addressKey: `host-address:${id}`, targetId, route: { connection: 'route' }, record: {
+    reference: { address: { provider: 'provider', authority: 'host-authority', type: 'opaque/type', scope: [{ dimension: 'region', value: '雪/a' }], id }, incarnation },
+    body: { kind: 'map', value: { label: { kind: 'string', value: id } } },
+    representation: { id: 'native', revision: '1', schema: { state: 'unavailable', validation: 'unvalidated', unvalidated: [] } }, coverage: { kind: 'complete', paths: [] },
+  } };
+}
+function page(records: HostRecord[] = []): HostSourcePage {
+  return { records, sourcePage: { count: { kind: 'exact', value: String(records.length) }, coverage: { kind: 'complete', paths: [] }, consistency: 'bestEffort', sourceRevision: 'native-revision' } };
+}
+function event(type: ResourceUpdateEvent['type'], record: HostRecord): ResourceUpdateEvent {
+  return type === 'DELETE' ? { type, payload: { route: record.route, reference: record.record.reference, key: record.key, addressKey: record.addressKey, targetId: record.targetId, guarantee: 'bestEffort' } } : { type, payload: { route: record.route, record, metadata: {}, guarantee: 'bestEffort' } };
 }
 
-// ---------------------------------------------------------------------------
-// Sync-mode tests (REQ-BATCH-2)
-// ---------------------------------------------------------------------------
-
-describe('useEventBatcher — sync mode (SYNCING)', () => {
-  let queryClient: QueryClient;
-
-  beforeEach(() => {
-    vi.useFakeTimers();
-    queryClient = makeQueryClient();
+describe('applyBatch canonical identity', () => {
+  it('adds, replaces duplicate adds, updates and deletes in sequence without changing the baseline', () => {
+    const baseline = page([row('one'), row('two')]);
+    const changed = row('one');
+    changed.record.body = { kind: 'map', value: { status: { kind: 'string', value: 'Running' } } };
+    const result = applyBatch(baseline, [event('ADD', row('three')), event('ADD', row('three')), event('UPDATE', changed), event('DELETE', row('two'))])!;
+    expect(result.records).toEqual([changed, row('three')]);
+    expect(baseline.records).toEqual([row('one'), row('two')]);
+    expect(result.sourcePage).toBe(baseline.sourcePage);
+    expect(result.sourcePage.count).toEqual({ kind: 'exact', value: '2' });
+    expect(result.sourcePage.sourceRevision).toBe('native-revision');
+    expect(result.view).toEqual({ guarantee: 'bestEffort', count: { kind: 'unknown' } });
   });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    queryClient.clear();
+  it('admits an update for an address not yet in this best-effort page', () => {
+    expect(applyBatch(page(), [event('UPDATE', row('new'))])!.records).toEqual([row('new')]);
   });
-
-  it('events during SYNCING buffer for 500ms before flush', () => {
-    const { result } = renderHook(() =>
-      useEventBatcher(queryClient, queryKey, getResourceKey, idAccessor, SYNCING as any),
-    );
-
-    act(() => {
-      result.current(makePayload('pod-1', 'ADD'));
-    });
-
-    // Before 500ms — cache should still be empty.
-    const cached = queryClient.getQueryData(queryKey) as any;
-    expect(cached.result).toHaveLength(0);
-
-    // At 499ms — still empty.
-    act(() => { vi.advanceTimersByTime(499); });
-    expect((queryClient.getQueryData(queryKey) as any).result).toHaveLength(0);
-
-    // At 500ms — flushed.
-    act(() => { vi.advanceTimersByTime(1); });
-    expect((queryClient.getQueryData(queryKey) as any).result).toHaveLength(1);
+  it('ignores a delete for an unknown membership key', () => {
+    expect(applyBatch(page([row('one')]), [event('DELETE', row('other'))])!.records).toEqual([row('one')]);
   });
-
-  it('multiple events in sync window produce single setQueryData call', () => {
-    const setQueryDataSpy = vi.spyOn(queryClient, 'setQueryData');
-
-    const { result } = renderHook(() =>
-      useEventBatcher(queryClient, queryKey, getResourceKey, idAccessor, SYNCING as any),
-    );
-
-    act(() => {
-      for (let i = 0; i < 50; i++) {
-        result.current(makePayload(`pod-${i}`, 'ADD'));
-      }
-    });
-
-    setQueryDataSpy.mockClear();
-
-    act(() => { vi.advanceTimersByTime(500); });
-
-    // 1 list update + 50 individual resource updates = 51 calls total.
-    expect(setQueryDataSpy).toHaveBeenCalledTimes(51);
-
-    const cached = queryClient.getQueryData(queryKey) as any;
-    expect(cached.result).toHaveLength(50);
-    setQueryDataSpy.mockRestore();
+  it('does not manufacture a source page before native acquisition', () => {
+    expect(applyBatch(undefined, [event('ADD', row('one'))])).toBeUndefined();
   });
-
-  it('custom syncWindowMs is respected', () => {
-    const { result } = renderHook(() =>
-      useEventBatcher(queryClient, queryKey, getResourceKey, idAccessor, SYNCING as any, { syncWindowMs: 200 }),
-    );
-
-    act(() => { result.current(makePayload('pod-1', 'ADD')); });
-
-    // At 199ms — still empty.
-    act(() => { vi.advanceTimersByTime(199); });
-    expect((queryClient.getQueryData(queryKey) as any).result).toHaveLength(0);
-
-    // At 200ms — flushed.
-    act(() => { vi.advanceTimersByTime(1); });
-    expect((queryClient.getQueryData(queryKey) as any).result).toHaveLength(1);
+  it('accepts non-plain page instances without losing canonical envelopes', () => {
+    class NativePage { records = [row('one')]; sourcePage = page().sourcePage; }
+    expect(applyBatch(new NativePage(), [event('ADD', row('two'))])!.records).toHaveLength(2);
+  });
+  it('uses host keys, not nested body identity or slash/unicode parsing', () => {
+    const opaque = row('opaque/slash/雪');
+    opaque.record.body = { kind: 'map', value: { spec: { kind: 'map', value: { id: { kind: 'string', value: 'not-the-address' } } } } };
+    expect(applyBatch(page([opaque]), [event('UPDATE', opaque)])!.records).toEqual([opaque]);
+  });
+  it('keeps target projections separate and ignores stale-incarnation deletes', () => {
+    const current = row('same', 'new');
+    expect(applyBatch(page([current]), [event('DELETE', row('same', 'old')), event('ADD', row('same', 'new', 'other-target'))])!.records).toEqual([current, row('same', 'new', 'other-target')]);
   });
 });
 
-// ---------------------------------------------------------------------------
-// RAF-mode tests (REQ-BATCH-1)
-// ---------------------------------------------------------------------------
-
-describe('useEventBatcher — RAF mode (SYNCED)', () => {
-  let queryClient: QueryClient;
-  let rafCallbacks: Array<FrameRequestCallback>;
-
-  beforeEach(() => {
-    vi.useFakeTimers();
-    queryClient = makeQueryClient();
-    rafCallbacks = [];
-
-    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
-      rafCallbacks.push(cb);
-      return rafCallbacks.length;
-    });
-    vi.stubGlobal('cancelAnimationFrame', (id: number) => {
-      // Mark as cancelled by clearing entry.
-      if (id > 0 && id <= rafCallbacks.length) {
-        rafCallbacks[id - 1] = () => {};
-      }
-    });
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.unstubAllGlobals();
-    queryClient.clear();
-  });
-
-  function flushRAF() {
-    const cbs = [...rafCallbacks];
-    rafCallbacks = [];
-    for (const cb of cbs) {
-      cb(performance.now());
-    }
-  }
-
-  it('events during SYNCED flush on next animation frame', () => {
-    const { result } = renderHook(() =>
-      useEventBatcher(queryClient, queryKey, getResourceKey, idAccessor, SYNCED as any),
-    );
-
-    act(() => {
-      result.current(makePayload('pod-1', 'ADD'));
-    });
-
-    // Before RAF fires — cache should still be empty.
-    expect((queryClient.getQueryData(queryKey) as any).result).toHaveLength(0);
-
-    // Trigger RAF.
-    act(() => { flushRAF(); });
-    expect((queryClient.getQueryData(queryKey) as any).result).toHaveLength(1);
-  });
-
-  it('multiple events within one frame are batched into single update', () => {
-    const setQueryDataSpy = vi.spyOn(queryClient, 'setQueryData');
-
-    const { result } = renderHook(() =>
-      useEventBatcher(queryClient, queryKey, getResourceKey, idAccessor, SYNCED as any),
-    );
-
-    act(() => {
-      result.current(makePayload('pod-1', 'ADD'));
-      result.current(makePayload('pod-2', 'ADD'));
-      result.current(makePayload('pod-3', 'ADD'));
-    });
-
-    setQueryDataSpy.mockClear();
-
-    act(() => { flushRAF(); });
-
-    // 1 list update + 3 individual resource updates = 4 calls.
-    expect(setQueryDataSpy).toHaveBeenCalledTimes(4);
-    expect((queryClient.getQueryData(queryKey) as any).result).toHaveLength(3);
-    setQueryDataSpy.mockRestore();
-  });
-
-  it('RAF cancelled on unmount', () => {
-    const { result, unmount } = renderHook(() =>
-      useEventBatcher(queryClient, queryKey, getResourceKey, idAccessor, SYNCED as any),
-    );
-
-    act(() => {
-      result.current(makePayload('pod-1', 'ADD'));
-    });
-
-    unmount();
-
-    act(() => { flushRAF(); });
-
-    // Should NOT have flushed since we unmounted.
-    expect((queryClient.getQueryData(queryKey) as any).result).toHaveLength(0);
-  });
-
-  it('updates individual resource caches on ADD', () => {
-    const { result } = renderHook(() =>
-      useEventBatcher(queryClient, queryKey, getResourceKey, idAccessor, SYNCED as any),
-    );
-
-    act(() => { result.current(makePayload('pod-1', 'ADD')); });
-    act(() => { flushRAF(); });
-
-    const individual = queryClient.getQueryData(getResourceKey('pod-1', 'default')) as any;
-    expect(individual.result.metadata.name).toBe('pod-1');
-  });
-
-  it('updates individual resource caches on UPDATE', () => {
-    queryClient.setQueryData(queryKey, {
-      result: [{ metadata: { name: 'pod-1' } }],
-      success: true,
-      totalCount: 1,
-    });
-
-    const { result } = renderHook(() =>
-      useEventBatcher(queryClient, queryKey, getResourceKey, idAccessor, SYNCED as any),
-    );
-
-    const updateEvent: ResourceEvent = {
-      type: 'UPDATE',
-      payload: {
-        data: { metadata: { name: 'pod-1' }, status: 'Running' },
-        key: 'core::v1::Pod',
-        connection: 'cluster-1',
-        id: 'pod-1',
-        namespace: 'default',
-      },
-    };
-
-    act(() => { result.current(updateEvent); });
-    act(() => { flushRAF(); });
-
-    const individual = queryClient.getQueryData(getResourceKey('pod-1', 'default')) as any;
-    expect(individual.result.status).toBe('Running');
-  });
-
-  it('does NOT set individual cache on DELETE', () => {
-    queryClient.setQueryData(queryKey, {
-      result: [{ metadata: { name: 'pod-1' } }],
-      success: true,
-      totalCount: 1,
-    });
-
-    const { result } = renderHook(() =>
-      useEventBatcher(queryClient, queryKey, getResourceKey, idAccessor, SYNCED as any),
-    );
-
-    act(() => { result.current(makePayload('pod-1', 'DELETE')); });
-    act(() => { flushRAF(); });
-
-    expect((queryClient.getQueryData(queryKey) as any).result).toHaveLength(0);
-    const individual = queryClient.getQueryData(getResourceKey('pod-1', 'default'));
-    expect(individual).toBeUndefined();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Mode transition tests
-// ---------------------------------------------------------------------------
-
-describe('useEventBatcher — mode transitions', () => {
-  let queryClient: QueryClient;
-  let rafCallbacks: Array<FrameRequestCallback>;
-
-  beforeEach(() => {
-    vi.useFakeTimers();
-    queryClient = makeQueryClient();
-    rafCallbacks = [];
-
-    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
-      rafCallbacks.push(cb);
-      return rafCallbacks.length;
-    });
-    vi.stubGlobal('cancelAnimationFrame', (id: number) => {
-      if (id > 0 && id <= rafCallbacks.length) {
-        rafCallbacks[id - 1] = () => {};
-      }
-    });
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.unstubAllGlobals();
-    queryClient.clear();
-  });
-
-  function flushRAF() {
-    const cbs = [...rafCallbacks];
-    rafCallbacks = [];
-    for (const cb of cbs) {
-      cb(performance.now());
-    }
-  }
-
-  it('SYNCING→SYNCED: pending sync window finishes and later live batches remain bounded', () => {
-    // Start in SYNCING.
-    const { result, rerender } = renderHook(
-      ({ state }: { state: any }) =>
-        useEventBatcher(queryClient, queryKey, getResourceKey, idAccessor, state),
-      { initialProps: { state: SYNCING } },
-    );
-
-    // Enqueue during sync mode.
-    act(() => { result.current(makePayload('pod-1', 'ADD')); });
-
-    // Transition to SYNCED.
-    rerender({ state: SYNCED });
-
-    // The pending setTimeout should still fire.
-    act(() => { vi.advanceTimersByTime(500); });
-    expect((queryClient.getQueryData(queryKey) as any).result).toHaveLength(1);
-
-    // New live events retain the frame fast path and a bounded timer.
-    act(() => { result.current(makePayload('pod-2', 'ADD')); });
-
-    // Withheld frames cannot prevent the already-delivered event from committing.
-    act(() => { vi.advanceTimersByTime(500); });
-    expect(queryClient.getQueryState(queryKey)?.data).toMatchObject({ result: [{ metadata: { name: 'pod-1' } }, { metadata: { name: 'pod-2' } }] });
-
-    // A losing frame must not duplicate the committed batch.
-    act(() => { flushRAF(); });
-    expect((queryClient.getQueryData(queryKey) as any).result).toHaveLength(2);
-  });
-
-  it('re-renders with new watchState do not lose buffered events', () => {
-    const { result, rerender } = renderHook(
-      ({ state }: { state: any }) =>
-        useEventBatcher(queryClient, queryKey, getResourceKey, idAccessor, state),
-      { initialProps: { state: SYNCING } },
-    );
-
-    act(() => {
-      result.current(makePayload('pod-1', 'ADD'));
-      result.current(makePayload('pod-2', 'ADD'));
-    });
-
-    // Transition mid-batch.
-    rerender({ state: SYNCED });
-
-    // Original timer still fires and includes all buffered events.
-    act(() => { vi.advanceTimersByTime(500); });
-    expect((queryClient.getQueryData(queryKey) as any).result).toHaveLength(2);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Performance tests
-// ---------------------------------------------------------------------------
-
-describe('useEventBatcher — performance', () => {
-  let queryClient: QueryClient;
-
-  beforeEach(() => {
-    vi.useFakeTimers();
-    queryClient = makeQueryClient();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    queryClient.clear();
-  });
-
-  it('1000 ADD events during sync: single batch application', () => {
-    const setQueryDataSpy = vi.spyOn(queryClient, 'setQueryData');
-
-    const { result } = renderHook(() =>
-      useEventBatcher(queryClient, queryKey, getResourceKey, idAccessor, SYNCING as any),
-    );
-
-    act(() => {
-      for (let i = 0; i < 1000; i++) {
-        result.current(makePayload(`pod-${i}`, 'ADD'));
-      }
-    });
-
-    setQueryDataSpy.mockClear();
-
-    act(() => { vi.advanceTimersByTime(500); });
-
-    // 1 list update + 1000 individual = 1001 calls, but only 1 batch computation.
-    expect(setQueryDataSpy).toHaveBeenCalledTimes(1001);
-    expect((queryClient.getQueryData(queryKey) as any).result).toHaveLength(1000);
-    setQueryDataSpy.mockRestore();
-  });
-
-  it('mixed ADD/UPDATE/DELETE preserves correctness', () => {
-    const { result } = renderHook(() =>
-      useEventBatcher(queryClient, queryKey, getResourceKey, idAccessor, SYNCING as any),
-    );
-
-    act(() => {
-      // Add 10 pods.
-      for (let i = 0; i < 10; i++) {
-        result.current(makePayload(`pod-${i}`, 'ADD'));
-      }
-      // Update 5.
-      for (let i = 0; i < 5; i++) {
-        result.current({
-          type: 'UPDATE',
-          payload: {
-            data: { metadata: { name: `pod-${i}` }, status: 'Running' },
-            key: 'core::v1::Pod',
-            connection: 'cluster-1',
-            id: `pod-${i}`,
-            namespace: 'default',
-          },
-        });
-      }
-      // Delete 3.
-      for (let i = 7; i < 10; i++) {
-        result.current(makePayload(`pod-${i}`, 'DELETE'));
-      }
-    });
-
-    act(() => { vi.advanceTimersByTime(500); });
-
-    const cached = queryClient.getQueryData(queryKey) as any;
-    expect(cached.result).toHaveLength(7);
-
-    // First 5 should have status: Running.
-    for (let i = 0; i < 5; i++) {
-      const pod = cached.result.find((p: any) => p.metadata.name === `pod-${i}`);
-      expect(pod.status).toBe('Running');
-    }
-    // Pods 7-9 should be deleted.
-    for (let i = 7; i < 10; i++) {
-      const pod = cached.result.find((p: any) => p.metadata.name === `pod-${i}`);
-      expect(pod).toBeUndefined();
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Edge cases
-// ---------------------------------------------------------------------------
-
-describe('useEventBatcher — edge cases', () => {
-  let queryClient: QueryClient;
-
-  beforeEach(() => {
-    vi.useFakeTimers();
-    queryClient = makeQueryClient();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    queryClient.clear();
-  });
-
-  it('skips flush when idAccessor is undefined', () => {
-    const { result } = renderHook(() =>
-      useEventBatcher(queryClient, queryKey, getResourceKey, undefined, SYNCED as any),
-    );
-
-    act(() => { result.current(makePayload('pod-1', 'ADD')); });
-    act(() => { vi.advanceTimersByTime(500); });
-
-    expect((queryClient.getQueryData(queryKey) as any).result).toHaveLength(0);
-  });
-
-  it('clears timer on unmount and does not flush (sync mode)', () => {
-    const { result, unmount } = renderHook(() =>
-      useEventBatcher(queryClient, queryKey, getResourceKey, idAccessor, SYNCING as any),
-    );
-
-    act(() => { result.current(makePayload('pod-1', 'ADD')); });
-
-    unmount();
-
-    act(() => { vi.advanceTimersByTime(500); });
-
-    expect((queryClient.getQueryData(queryKey) as any).result).toHaveLength(0);
-  });
-
-  it('starts a new batch window after the previous one flushes', () => {
-    const { result } = renderHook(() =>
-      useEventBatcher(queryClient, queryKey, getResourceKey, idAccessor, SYNCING as any),
-    );
-
-    // First batch.
-    act(() => { result.current(makePayload('pod-1', 'ADD')); });
-    act(() => { vi.advanceTimersByTime(500); });
-    expect((queryClient.getQueryData(queryKey) as any).result).toHaveLength(1);
-
-    // Second batch.
-    act(() => { result.current(makePayload('pod-2', 'ADD')); });
-    expect((queryClient.getQueryData(queryKey) as any).result).toHaveLength(1);
-
-    act(() => { vi.advanceTimersByTime(500); });
-    expect((queryClient.getQueryData(queryKey) as any).result).toHaveLength(2);
-  });
-
-  it('IDLE state uses RAF mode', () => {
-    let rafCalled = false;
-    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
-      rafCalled = true;
-      // Execute immediately for this test.
-      cb(performance.now());
-      return 1;
-    });
-    vi.stubGlobal('cancelAnimationFrame', () => {});
-
-    const { result } = renderHook(() =>
-      useEventBatcher(queryClient, queryKey, getResourceKey, idAccessor, IDLE as any),
-    );
-
-    act(() => { result.current(makePayload('pod-1', 'ADD')); });
-
-    expect(rafCalled).toBe(true);
-    expect((queryClient.getQueryData(queryKey) as any).result).toHaveLength(1);
-
-    vi.unstubAllGlobals();
-  });
-});
-
-describe('useEventBatcher — bounded live progress', () => {
-  const nativeQueryKey = ['workspace-probe', 'local', 'probe::v1::Task', [], 'list'];
-  const nativeResourceKey = (id: string, namespace: string) => ['workspace-probe', 'local', 'probe::v1::Task', namespace, id];
-  const initial = { id: 'task/opaque:%2F', name: 'Native local task', done: false };
-  const created = { id: 'subscription/opaque:%2F', name: 'Created through native watch', done: false };
-  const nativeADD: ResourceEvent = {
-    type: 'ADD',
-    payload: {
-      data: created,
-      key: 'probe::v1::Task',
-      connection: 'local',
-      id: created.id,
-      namespace: '',
-    },
-  };
-  let queryClient: QueryClient;
+describe('useEventBatcher adaptive scheduling', () => {
+  let client: QueryClient;
   let frames: Map<number, FrameRequestCallback>;
   let nextFrame: number;
-
+  const flushFrames = () => { const pending = [...frames.values()]; frames.clear(); act(() => { pending.forEach(callback => callback(0)); }); };
+  const cached = () => client.getQueryData<HostSourcePage>(queryKey)!;
   beforeEach(() => {
-    vi.useFakeTimers();
-    frames = new Map();
-    nextFrame = 0;
-    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
-      const id = ++nextFrame;
-      frames.set(id, callback);
-      return id;
-    });
-    vi.stubGlobal('cancelAnimationFrame', (id: number) => { frames.delete(id); });
-    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
-    queryClient.setQueryData(nativeQueryKey, { result: [initial], success: true, totalCount: 1 });
+    vi.useFakeTimers(); frames = new Map(); nextFrame = 0;
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => { frames.set(++nextFrame, callback); return nextFrame; }));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn((id: number) => frames.delete(id)));
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(queryKey, page());
   });
+  afterEach(() => { client.clear(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
-  afterEach(() => {
-    queryClient.clear();
-    vi.unstubAllGlobals();
-    vi.useRealTimers();
+  it('buffers syncing events for 500ms and applies one list batch', () => {
+    const writes = vi.spyOn(client, 'setQueryData');
+    const hook = renderHook(() => useEventBatcher(client, queryKey, WatchState.WatchStateSyncing));
+    act(() => { for (let n = 0; n < 50; n++) hook.result.current(event('ADD', row(String(n)))); });
+    act(() => vi.advanceTimersByTime(499));
+    expect(cached().records).toHaveLength(0);
+    expect(frames.size).toBe(0);
+    act(() => vi.advanceTimersByTime(1));
+    expect(cached().records).toHaveLength(50);
+    expect(writes).toHaveBeenCalledTimes(1);
   });
-
-  it.each([WatchState.WatchStateIdle, WatchState.WatchStateSynced])('commits a delivered native ADD within the bounded window when frames are withheld (state %s)', (state) => {
-    const { result } = renderHook(() =>
-      useEventBatcher(queryClient, nativeQueryKey, nativeResourceKey, 'id', state),
-    );
-    act(() => { result.current(nativeADD); });
-    act(() => { vi.advanceTimersByTime(499); });
-    expect(queryClient.getQueryData(nativeQueryKey)).toMatchObject({ result: [initial] });
-    act(() => { vi.advanceTimersByTime(1); });
-    expect(queryClient.getQueryData(nativeQueryKey)).toMatchObject({ result: [initial, created] });
-    expect(queryClient.getQueryData(nativeResourceKey(created.id, ''))).toEqual({ result: created });
+  it('respects a custom sync window', () => {
+    const hook = renderHook(() => useEventBatcher(client, queryKey, WatchState.WatchStateSyncing, { syncWindowMs: 200 }));
+    act(() => hook.result.current(event('ADD', row('one'))));
+    act(() => vi.advanceTimersByTime(199)); expect(cached().records).toHaveLength(0);
+    act(() => vi.advanceTimersByTime(1)); expect(cached().records).toHaveLength(1);
   });
-
-  it('retains the normal next-frame fast path and cancels its timer', () => {
-    const { result } = renderHook(() =>
-      useEventBatcher(queryClient, nativeQueryKey, nativeResourceKey, 'id', WatchState.WatchStateSynced),
-    );
-    act(() => { result.current(nativeADD); });
-    const frame = frames.get(nextFrame)!;
-    act(() => { frame(16); });
-    const committed = queryClient.getQueryData(nativeQueryKey);
-    const updates = queryClient.getQueryState(nativeQueryKey)!.dataUpdateCount;
-    expect(committed).toMatchObject({ result: [initial, created] });
-    act(() => { vi.advanceTimersByTime(500); });
-    expect(queryClient.getQueryData(nativeQueryKey)).toBe(committed);
-    expect(queryClient.getQueryState(nativeQueryKey)!.dataUpdateCount).toBe(updates);
+  it.each([WatchState.WatchStateSynced, WatchState.WatchStateIdle])('uses next-frame batching in live state %s', state => {
+    const writes = vi.spyOn(client, 'setQueryData');
+    const hook = renderHook(() => useEventBatcher(client, queryKey, state));
+    act(() => { hook.result.current(event('ADD', row('one'))); hook.result.current(event('ADD', row('two'))); });
+    expect(cached().records).toHaveLength(0); expect(frames.size).toBe(1);
+    flushFrames();
+    expect(cached().records).toHaveLength(2); expect(writes).toHaveBeenCalledTimes(1);
+    act(() => vi.advanceTimersByTime(500)); expect(writes).toHaveBeenCalledTimes(1);
   });
-
-  it('does not apply a drained batch again if its losing frame callback arrives late', () => {
-    const { result } = renderHook(() =>
-      useEventBatcher(queryClient, nativeQueryKey, nativeResourceKey, 'id', WatchState.WatchStateIdle),
-    );
-    act(() => { result.current(nativeADD); });
-    const lateFrame = frames.get(nextFrame)!;
-    act(() => { vi.advanceTimersByTime(500); });
-    const committed = queryClient.getQueryData(nativeQueryKey);
-    const updates = queryClient.getQueryState(nativeQueryKey)!.dataUpdateCount;
-    expect(committed).toMatchObject({ result: [initial, created] });
-    act(() => { lateFrame(501); });
-    expect(queryClient.getQueryData(nativeQueryKey)).toBe(committed);
-    expect(queryClient.getQueryState(nativeQueryKey)!.dataUpdateCount).toBe(updates);
+  it.each([WatchState.WatchStateSynced, WatchState.WatchStateIdle])('bounds progress when frames are withheld in state %s', state => {
+    const hook = renderHook(() => useEventBatcher(client, queryKey, state));
+    act(() => hook.result.current(event('ADD', row('opaque/slash/雪'))));
+    act(() => vi.advanceTimersByTime(500));
+    expect(cached().records).toHaveLength(1); expect(frames.size).toBe(0);
   });
-
-  it('cancels both schedules on unmount without updating list or individual caches', () => {
-    const { result, unmount } = renderHook(() =>
-      useEventBatcher(queryClient, nativeQueryKey, nativeResourceKey, 'id', WatchState.WatchStateIdle),
-    );
-    act(() => { result.current(nativeADD); });
-    const original = queryClient.getQueryData(nativeQueryKey);
-    unmount();
-    act(() => {
-      vi.advanceTimersByTime(500);
-      for (const frame of frames.values()) frame(501);
-    });
-    expect(queryClient.getQueryData(nativeQueryKey)).toBe(original);
-    expect(queryClient.getQueryData(nativeResourceKey(created.id, ''))).toBeUndefined();
+  it('bounds a live batch by the configured window', () => {
+    const hook = renderHook(() => useEventBatcher(client, queryKey, WatchState.WatchStateSynced, { syncWindowMs: 200 }));
+    act(() => hook.result.current(event('ADD', row('one'))));
+    act(() => vi.advanceTimersByTime(200)); expect(cached().records).toHaveLength(1);
   });
-
-  it('uses the existing configured window to bound a live batch', () => {
-    const { result } = renderHook(() =>
-      useEventBatcher(queryClient, nativeQueryKey, nativeResourceKey, 'id', WatchState.WatchStateSynced, { syncWindowMs: 200 }),
-    );
-    act(() => { result.current(nativeADD); });
-    act(() => { vi.advanceTimersByTime(199); });
-    expect(queryClient.getQueryData(nativeQueryKey)).toMatchObject({ result: [initial] });
-    act(() => { vi.advanceTimersByTime(1); });
-    expect(queryClient.getQueryData(nativeQueryKey)).toMatchObject({ result: [initial, created] });
+  it('does not apply a drained batch again when its losing callback arrives late', () => {
+    const writes = vi.spyOn(client, 'setQueryData');
+    const hook = renderHook(() => useEventBatcher(client, queryKey, WatchState.WatchStateSynced));
+    act(() => hook.result.current(event('ADD', row('one'))));
+    const late = [...frames.values()][0];
+    act(() => vi.advanceTimersByTime(500)); act(() => late(0));
+    expect(writes).toHaveBeenCalledTimes(1);
+  });
+  it.each([WatchState.WatchStateSyncing, WatchState.WatchStateSynced])('cancels pending schedules on unmount in state %s', state => {
+    client.setQueryData(detailKey, row('one'));
+    const writes = vi.spyOn(client, 'setQueryData');
+    const hook = renderHook(() => useEventBatcher(client, queryKey, state));
+    act(() => hook.result.current(event('UPDATE', row('one')))); hook.unmount();
+    expect(frames.size).toBe(0); act(() => vi.advanceTimersByTime(1000));
+    expect(writes).not.toHaveBeenCalled(); expect(cached().records).toHaveLength(0);
+    expect(client.getQueryData(detailKey)).toEqual(row('one'));
+  });
+  it('preserves buffered events through state changes and opens another batch window', () => {
+    const hook = renderHook(({ state }) => useEventBatcher(client, queryKey, state), { initialProps: { state: WatchState.WatchStateSyncing } });
+    act(() => hook.result.current(event('ADD', row('one'))));
+    hook.rerender({ state: WatchState.WatchStateSynced });
+    act(() => vi.advanceTimersByTime(500)); expect(cached().records).toHaveLength(1);
+    act(() => hook.result.current(event('ADD', row('two')))); flushFrames();
+    expect(cached().records).toHaveLength(2);
+  });
+  it('handles 1000 mixed events in a single sync batch', () => {
+    const writes = vi.spyOn(client, 'setQueryData');
+    const hook = renderHook(() => useEventBatcher(client, queryKey, WatchState.WatchStateSyncing));
+    act(() => { for (let n = 0; n < 1000; n++) hook.result.current(event('ADD', row(String(n)))); hook.result.current(event('UPDATE', row('0', 'replacement'))); hook.result.current(event('DELETE', row('1'))); });
+    act(() => vi.advanceTimersByTime(500));
+    expect(cached().records).toHaveLength(999); expect(cached().records[0].key).toBe(row('0', 'replacement').key); expect(writes).toHaveBeenCalledTimes(1);
+  });
+  it.each(['ADD', 'UPDATE'] as const)('updates only existing matching detail caches on %s', type => {
+    const original = row('one'); const updated = row('one'); updated.record.body = { kind: 'null' };
+    client.setQueryData(detailKey, original); client.setQueryData([...detailKey, 'other'], row('other'));
+    const hook = renderHook(() => useEventBatcher(client, queryKey, WatchState.WatchStateSynced));
+    act(() => hook.result.current(event(type, updated))); flushFrames();
+    expect(client.getQueryData(detailKey)).toEqual(updated);
+    expect(client.getQueryData([...detailKey, 'other'])).toEqual(row('other'));
+  });
+  it('does not synthesize detail caches on add or overwrite a detail with another incarnation', () => {
+    client.setQueryData(detailKey, row('one', 'new'));
+    const hook = renderHook(() => useEventBatcher(client, queryKey, WatchState.WatchStateSynced));
+    act(() => hook.result.current(event('ADD', row('one', 'old')))); flushFrames();
+    expect(client.getQueryData(detailKey)).toEqual(row('one', 'new'));
+    expect(client.getQueryData([...detailKey, 'absent'])).toBeUndefined();
+  });
+  it('deletes list membership without replacing an unrelated detail cache', () => {
+    client.setQueryData(queryKey, page([row('one')])); client.setQueryData(detailKey, row('other'));
+    const hook = renderHook(() => useEventBatcher(client, queryKey, WatchState.WatchStateSynced));
+    act(() => hook.result.current(event('DELETE', row('one')))); flushFrames();
+    expect(cached().records).toHaveLength(0); expect(client.getQueryData(detailKey)).toEqual(row('other'));
+  });
+  it('invalidates only the matching deleted membership detail without claiming it is absent', () => {
+    client.setQueryData(queryKey, page([row('one')]));
+    client.setQueryData(detailKey, row('one'));
+    client.setQueryData([...detailKey, 'other-incarnation'], row('one', 'older'));
+    const hook = renderHook(() => useEventBatcher(client, queryKey, WatchState.WatchStateSynced));
+    act(() => hook.result.current(event('DELETE', row('one')))); flushFrames();
+    expect(cached().records).toHaveLength(0);
+    expect(client.getQueryState(detailKey)?.isInvalidated).toBe(true);
+    expect(client.getQueryData(detailKey)).toEqual(row('one'));
+    expect(client.getQueryState([...detailKey, 'other-incarnation'])?.isInvalidated).toBe(false);
+  });
+  it('retains events until the real native baseline arrives instead of manufacturing a page', () => {
+    client.removeQueries({ queryKey });
+    const hook = renderHook(() => useEventBatcher(client, queryKey, WatchState.WatchStateSyncing));
+    act(() => hook.result.current(event('ADD', row('one')))); act(() => vi.advanceTimersByTime(500));
+    expect(client.getQueryData(queryKey)).toBeUndefined();
+    act(() => client.setQueryData(queryKey, page()));
+    expect(cached().records).toEqual([row('one')]);
   });
 });

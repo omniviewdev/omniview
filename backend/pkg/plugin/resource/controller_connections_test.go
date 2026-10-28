@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
@@ -80,24 +81,25 @@ func TestListConnections_EmptySlice(t *testing.T) {
 }
 
 // ============================================================================
-// AddConnection
+// SaveConnectionProfile: new desired records
 // ============================================================================
 
-func TestAddConnection_ThenList(t *testing.T) {
-	ctrl := newTestController()
-	ctrl.connections["plugin-a"] = []types.Connection{}
+func TestSaveConnectionProfile_ThenList(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	registerMockPlugin(ctrl, "plugin-a", connectionOverlayTestProvider())
 
-	require.NoError(t, ctrl.AddConnection(testInvocationContext(), "plugin-a", types.Connection{ID: "conn-1", Name: "First"}))
-	require.NoError(t, ctrl.AddConnection(testInvocationContext(), "plugin-a", types.Connection{ID: "conn-2", Name: "Second"}))
+	requireSavedConnectionProfile(t, ctrl, "plugin-a", types.Connection{ID: "conn-1", Name: "First"})
+	requireSavedConnectionProfile(t, ctrl, "plugin-a", types.Connection{ID: "conn-2", Name: "Second"})
 
 	result, err := ctrl.ListConnections(testInvocationContext(), "plugin-a")
 	require.NoError(t, err)
 	assert.Len(t, result, 2)
 }
 
-func TestAddConnection_NewPlugin(t *testing.T) {
-	ctrl := newTestController()
-	require.NoError(t, ctrl.AddConnection(testInvocationContext(), "new-plugin", types.Connection{ID: "conn-1", Name: "First"}))
+func TestSaveConnectionProfile_NewPlugin(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	registerMockPlugin(ctrl, "new-plugin", connectionOverlayTestProvider())
+	requireSavedConnectionProfile(t, ctrl, "new-plugin", types.Connection{ID: "conn-1", Name: "First"})
 
 	result, err := ctrl.ListConnections(testInvocationContext(), "new-plugin")
 	require.NoError(t, err)
@@ -105,16 +107,17 @@ func TestAddConnection_NewPlugin(t *testing.T) {
 	assert.Equal(t, "First", result[0].Name)
 }
 
-func TestAddConnection_ConcurrentSafe(t *testing.T) {
+func TestSaveConnectionProfile_ConcurrentCreates(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	registerMockPlugin(ctrl, "p1", &mockProvider{})
+	registerMockPlugin(ctrl, "p1", connectionOverlayTestProvider())
 
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			_ = ctrl.AddConnection(testInvocationContext(), "p1", types.Connection{ID: fmt.Sprintf("c%d", idx)})
+			_, err := ctrl.SaveConnectionProfile(testInvocationContext(), "p1", types.Connection{ID: fmt.Sprintf("c%d", idx)})
+			assert.NoError(t, err)
 		}(i)
 	}
 	wg.Wait()
@@ -153,11 +156,10 @@ func TestGetConnection_NotFound(t *testing.T) {
 // ============================================================================
 
 func TestRemoveConnection_Success(t *testing.T) {
-	ctrl := newTestController()
-	ctrl.connections["p"] = []types.Connection{
-		{ID: "c1", Name: "one"},
-		{ID: "c2", Name: "two"},
-	}
+	ctrl, _ := newTestControllerWithEmitter(t)
+	registerMockPlugin(ctrl, "p", connectionOverlayTestProvider(types.Connection{ID: "c1", Name: "one"}, types.Connection{ID: "c2", Name: "two"}))
+	_, err := ctrl.LoadConnections(testInvocationContext(), "p")
+	require.NoError(t, err)
 
 	require.NoError(t, ctrl.RemoveConnection(testInvocationContext(), "p", "c1"))
 
@@ -168,8 +170,8 @@ func TestRemoveConnection_Success(t *testing.T) {
 }
 
 func TestRemoveConnection_NotFound(t *testing.T) {
-	ctrl := newTestController()
-	ctrl.connections["p"] = []types.Connection{{ID: "c1", Name: "one"}}
+	ctrl, _ := newTestControllerWithEmitter(t)
+	registerMockPlugin(ctrl, "p", connectionOverlayTestProvider(types.Connection{ID: "c1", Name: "one"}))
 
 	err := ctrl.RemoveConnection(testInvocationContext(), "p", "missing")
 	require.Error(t, err)
@@ -177,10 +179,9 @@ func TestRemoveConnection_NotFound(t *testing.T) {
 
 func TestRemoveConnection_LastConnection(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	registerMockPlugin(ctrl, "p1", &mockProvider{})
-	ctrl.connsMu.Lock()
-	ctrl.connections["p1"] = []types.Connection{{ID: "c1"}}
-	ctrl.connsMu.Unlock()
+	registerMockPlugin(ctrl, "p1", connectionOverlayTestProvider(types.Connection{ID: "c1"}))
+	_, err := ctrl.LoadConnections(testInvocationContext(), "p1")
+	require.NoError(t, err)
 
 	require.NoError(t, ctrl.RemoveConnection(testInvocationContext(), "p1", "c1"))
 
@@ -190,43 +191,45 @@ func TestRemoveConnection_LastConnection(t *testing.T) {
 }
 
 // ============================================================================
-// UpdateConnection
+// SaveConnectionProfile: edits and overrides
 // ============================================================================
 
-func TestUpdateConnection_Success(t *testing.T) {
-	ctrl := newTestController()
-	ctrl.connections["p"] = []types.Connection{{ID: "c1", Name: "old-name"}}
+func TestSaveConnectionProfile_UpdatesExisting(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	registerMockPlugin(ctrl, "p", connectionOverlayTestProvider(types.Connection{ID: "c1", Name: "old-name"}))
 
-	updated, err := ctrl.UpdateConnection(testInvocationContext(), "p", types.Connection{ID: "c1", Name: "new-name"})
-	require.NoError(t, err)
-	assert.Equal(t, "new-name", updated.Name)
+	updated := requireSavedConnectionProfile(t, ctrl, "p", types.Connection{ID: "c1", Name: "new-name"})
+	require.NotNil(t, updated.Profile.Connection)
+	assert.Equal(t, "new-name", updated.Profile.Connection.Name)
+	assert.Equal(t, "override", updated.Profile.Source)
 
 	conn, err := ctrl.GetConnection(testInvocationContext(), "p", "c1")
 	require.NoError(t, err)
 	assert.Equal(t, "new-name", conn.Name)
 }
 
-func TestUpdateConnection_NotFound(t *testing.T) {
-	ctrl := newTestController()
-	ctrl.connections["p"] = []types.Connection{{ID: "c1", Name: "one"}}
+func TestSaveConnectionProfile_CreatesMissingManualProfile(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	registerMockPlugin(ctrl, "p", connectionOverlayTestProvider(types.Connection{ID: "c1", Name: "one"}))
 
-	_, err := ctrl.UpdateConnection(testInvocationContext(), "p", types.Connection{ID: "missing", Name: "x"})
-	require.Error(t, err)
+	result := requireSavedConnectionProfile(t, ctrl, "p", types.Connection{ID: "missing", Name: "x"})
+	assert.Equal(t, "manual", result.Profile.Source)
+	connection, err := ctrl.GetConnection(testInvocationContext(), "p", "missing")
+	require.NoError(t, err)
+	assert.Equal(t, "x", connection.Name)
 }
 
-func TestUpdateConnection_ConcurrentSafe(t *testing.T) {
+func TestSaveConnectionProfile_ConcurrentUpdates(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	registerMockPlugin(ctrl, "p1", &mockProvider{})
-	ctrl.connsMu.Lock()
-	ctrl.connections["p1"] = []types.Connection{{ID: "c1", Name: "initial"}}
-	ctrl.connsMu.Unlock()
+	registerMockPlugin(ctrl, "p1", connectionOverlayTestProvider(types.Connection{ID: "c1", Name: "initial"}))
 
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, _ = ctrl.UpdateConnection(testInvocationContext(), "p1", types.Connection{ID: "c1", Name: "updated"})
+			_, err := ctrl.SaveConnectionProfile(testInvocationContext(), "p1", types.Connection{ID: "c1", Name: "updated"})
+			assert.NoError(t, err)
 		}()
 	}
 	wg.Wait()
@@ -422,35 +425,76 @@ func TestListAllConnections_MultiplePlugins(t *testing.T) {
 }
 
 // ============================================================================
-// GetConnectionNamespaces
+// ScopeValues
 // ============================================================================
 
-func TestGetConnectionNamespaces_Success(t *testing.T) {
+func TestScopeValues_Success(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		GetConnectionNamespacesFunc: func(_ context.Context, _ string) ([]string, error) {
+		ScopeValuesFunc: func(_ context.Context, route resource.AccessRoute, dimension string) ([]string, error) {
+			assert.Equal(t, "conn-1", route.Connection)
+			assert.Equal(t, "namespace", dimension)
 			return []string{"default", "kube-system"}, nil
 		},
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	ns, err := ctrl.GetConnectionNamespaces(testInvocationContext(), "p1", "conn-1")
+	ns, err := ctrl.ScopeValues(testInvocationContext(), "p1", resource.AccessRoute{Connection: "conn-1"}, "namespace")
 	require.NoError(t, err)
 	assert.Contains(t, ns, "default")
 	assert.Contains(t, ns, "kube-system")
 }
 
-func TestGetConnectionNamespaces_ProviderError(t *testing.T) {
+func TestScopeValues_ProviderError(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		GetConnectionNamespacesFunc: func(_ context.Context, _ string) ([]string, error) {
+		ScopeValuesFunc: func(_ context.Context, _ resource.AccessRoute, _ string) ([]string, error) {
 			return nil, errors.New("ns error")
 		},
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, err := ctrl.GetConnectionNamespaces(testInvocationContext(), "p1", "conn-1")
+	_, err := ctrl.ScopeValues(testInvocationContext(), "p1", resource.AccessRoute{Connection: "conn-1"}, "namespace")
 	assert.Error(t, err)
+}
+
+func TestCatalogOnlyConnectionOperationsAreExplicitlyUnsupported(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	registerMockPlugin(ctrl, "catalog-only", &catalogOnlyProvider{CatalogFunc: func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+		catalog := canonicalTestCatalog("proof", "pods")
+		catalog.Types[0].Capabilities = nil
+		return catalog, nil
+	}})
+	for name, call := range map[string]func() error{
+		"load": func() error { _, err := ctrl.LoadConnections(testInvocationContext(), "catalog-only"); return err },
+		"start": func() error {
+			_, err := ctrl.StartConnection(testInvocationContext(), "catalog-only", "explicit")
+			return err
+		},
+		"stop": func() error {
+			_, err := ctrl.StopConnection(testInvocationContext(), "catalog-only", "explicit")
+			return err
+		},
+		"check": func() error {
+			_, err := ctrl.CheckConnection(testInvocationContext(), "catalog-only", "explicit")
+			return err
+		},
+		"scope": func() error {
+			_, err := ctrl.ScopeValues(testInvocationContext(), "catalog-only", resource.AccessRoute{Connection: "explicit"}, "namespace")
+			return err
+		},
+		"save-profile": func() error {
+			_, err := ctrl.SaveConnectionProfile(testInvocationContext(), "catalog-only", types.Connection{ID: "explicit"})
+			return err
+		},
+		"remove-profile": func() error { return ctrl.RemoveConnection(testInvocationContext(), "catalog-only", "explicit") },
+		"reset-profile": func() error {
+			_, err := ctrl.ResetConnectionProfile(testInvocationContext(), "catalog-only", "explicit")
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) { require.Equal(t, "UNSUPPORTED", requireAppError(t, call()).Code) })
+	}
 }
 
 // ============================================================================
@@ -459,17 +503,17 @@ func TestGetConnectionNamespaces_ProviderError(t *testing.T) {
 
 func TestConnectionLifecycle_FullRoundTrip(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	registerMockPlugin(ctrl, "p1", &mockProvider{})
+	registerMockPlugin(ctrl, "p1", connectionOverlayTestProvider())
 
-	require.NoError(t, ctrl.AddConnection(testInvocationContext(), "p1", types.Connection{ID: "c1", Name: "Test"}))
+	requireSavedConnectionProfile(t, ctrl, "p1", types.Connection{ID: "c1", Name: "Test"})
 
 	conns, err := ctrl.ListConnections(testInvocationContext(), "p1")
 	require.NoError(t, err)
 	require.Len(t, conns, 1)
 
-	updated, err := ctrl.UpdateConnection(testInvocationContext(), "p1", types.Connection{ID: "c1", Name: "Updated"})
-	require.NoError(t, err)
-	assert.Equal(t, "Updated", updated.Name)
+	updated := requireSavedConnectionProfile(t, ctrl, "p1", types.Connection{ID: "c1", Name: "Updated"})
+	require.NotNil(t, updated.Profile.Connection)
+	assert.Equal(t, "Updated", updated.Profile.Connection.Name)
 
 	got, err := ctrl.GetConnection(testInvocationContext(), "p1", "c1")
 	require.NoError(t, err)
@@ -480,4 +524,15 @@ func TestConnectionLifecycle_FullRoundTrip(t *testing.T) {
 	conns, err = ctrl.ListConnections(testInvocationContext(), "p1")
 	require.NoError(t, err)
 	assert.Empty(t, conns)
+}
+
+func requireSavedConnectionProfile(t *testing.T, ctrl *controller, pluginID string, connection types.Connection) ConnectionProfileResult {
+	t.Helper()
+	result, err := ctrl.SaveConnectionProfile(testInvocationContext(), pluginID, connection)
+	require.NoError(t, err)
+	require.True(t, result.Applied)
+	require.True(t, result.Profile.Active)
+	require.NotNil(t, result.Profile.Connection)
+	require.Equal(t, connection.ID, result.Profile.Connection.ID)
+	return result
 }

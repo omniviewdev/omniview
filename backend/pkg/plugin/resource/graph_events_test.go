@@ -27,8 +27,8 @@ func (e *emitted) snapshot() []string {
 
 func edgeIn(conn, pod string) graph.GraphEdge {
 	return graph.GraphEdge{
-		Source: graph.GraphNode{PluginID: "k8s", ConnectionID: conn, ResourceKey: "core::v1::Pod", Namespace: "default", ID: pod},
-		Target: graph.GraphNode{PluginID: "k8s", ConnectionID: conn, ResourceKey: "core::v1::Node", ID: "n1"},
+		Source: graphTestNode("k8s", conn, "core::v1::Pod", "default", pod),
+		Target: graphTestNode("k8s", conn, "core::v1::Node", "", "n1"),
 		Type:   graph.RelRunsOn,
 	}
 }

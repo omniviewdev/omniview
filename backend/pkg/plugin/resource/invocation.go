@@ -6,18 +6,23 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
+	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
-	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 )
 
-// Current provider adapter scope is losslessly represented as a JSON namespace
-// selection. This is not canonical identity; invocation core assumes no namespace.
-func namespaceScope(namespaces ...string) map[string]string {
-	if namespaces == nil {
-		namespaces = []string{}
-	}
-	encoded, _ := json.Marshal(namespaces)
-	return map[string]string{"namespace-selection": string(encoded)}
+// Admission retains the declared sequence until domain validation rejects
+// duplicate dimensions. Invocation targets are route inputs, never grants.
+func referenceTarget(pluginID string, route sdkresource.AccessRoute, reference sdkresource.ResourceReference) invocation.Target {
+	encoded, _ := json.Marshal(reference.Address.Scope)
+	return invocation.Target{Provider: pluginID, Connection: route.Connection,
+		ResourceType: reference.Address.Type, Object: reference.Address.ID,
+		Scope: map[string]string{"resource-scope": string(encoded), "authority": reference.Address.Authority}}
+}
+
+func readTarget(pluginID string, target sdkresource.ReadTarget) invocation.Target {
+	encoded, _ := json.Marshal(target.Scope)
+	return invocation.Target{Provider: pluginID, Connection: target.Route.Connection,
+		ResourceType: target.Type, Scope: map[string]string{"query-scope": string(encoded), "authority": target.Authority}}
 }
 
 func finishResource(ctx context.Context, err *error) {
@@ -37,7 +42,7 @@ func (c *controller) admit(ctx context.Context, operation string, target invocat
 		return ctx, err
 	}
 	request, _ := invocation.FromContext(ctx)
-	session := &sdkresource.Session{RequestID: request.ID(), RequesterID: string(request.Principal().Origin())}
+	session := sdkresource.Session{RequestID: request.ID(), RequesterID: string(request.Principal().Origin()), PluginID: target.Provider}
 	if target.Connection != "" {
 		session.Connection = &sdktypes.Connection{ID: target.Connection}
 	}

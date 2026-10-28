@@ -2,12 +2,12 @@ package logs
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -23,14 +23,13 @@ import (
 	"github.com/omniviewdev/omniview/internal/appstate"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
+	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	resourceplugin "github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	sdkutils "github.com/omniviewdev/plugin-sdk/pkg/utils"
 	sdklogs "github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
-	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
-	resourceplugin "github.com/omniviewdev/plugin-sdk/pkg/v1/resource/plugin"
 	logspb "github.com/omniviewdev/plugin-sdk/proto/v1/logs"
-	resourcepb "github.com/omniviewdev/plugin-sdk/proto/v1/resource"
 )
 
 // This provider exposes a private, real file directory. The selected connection
@@ -59,12 +58,8 @@ func (s *nativeLogFileStore) LoadConnections(ctx context.Context) ([]sdktypes.Co
 	return []sdktypes.Connection{s.connection}, nil
 }
 
-func (*nativeLogFileStore) CreateClient(ctx context.Context) (*os.Root, error) {
-	session := sdkresource.SessionFromContext(ctx)
-	if session == nil || session.Connection == nil {
-		return nil, errors.New("native file connection is missing")
-	}
-	root, ok := session.Connection.Data["logRoot"].(string)
+func (*nativeLogFileStore) CreateClient(_ context.Context, connection sdktypes.Connection) (*os.Root, error) {
+	root, ok := connection.Data["logRoot"].(string)
 	if !ok {
 		return nil, errors.New("native file connection directory is missing")
 	}
@@ -75,70 +70,60 @@ func (*nativeLogFileStore) DestroyClient(_ context.Context, root *os.Root) error
 	return root.Close()
 }
 
-func (*nativeLogFileStore) CheckConnection(_ context.Context, connection *sdktypes.Connection, root *os.Root) (sdktypes.ConnectionStatus, error) {
+func (*nativeLogFileStore) CheckConnection(_ context.Context, connection sdktypes.Connection, root *os.Root) (sdktypes.ConnectionStatus, error) {
 	if _, err := root.Stat("."); err != nil {
 		return sdktypes.ConnectionStatus{}, err
 	}
-	return sdktypes.ConnectionStatus{Connection: connection, Status: sdktypes.ConnectionStatusConnected}, nil
+	return sdktypes.ConnectionStatus{Connection: &connection, Status: sdktypes.ConnectionStatusConnected}, nil
 }
 
-func (*nativeLogFileStore) GetNamespaces(context.Context, *os.Root) ([]string, error) {
-	return nil, nil
+func nativeLogRepresentation() sdkresource.Representation {
+	return sdkresource.Representation{ID: "native", Revision: "native:1", Schema: sdkresource.SchemaBinding{State: "absent", Validation: "none"}}
 }
 
-func (*nativeLogFileStore) Get(ctx context.Context, root *os.Root, _ sdkresource.ResourceMeta, input sdkresource.GetInput) (*sdkresource.GetResult, error) {
+func nativeLogRecord(target sdkresource.ReadTarget, name string, body sdkresource.Value) sdkresource.Record {
+	return sdkresource.Record{
+		Reference: sdkresource.ResourceReference{Address: sdkresource.ResourceAddress{Provider: target.Provider, Authority: target.Authority, Type: target.Type, ID: name, Scope: []sdkresource.ScopeEntry{}}},
+		Body:      body, Representation: nativeLogRepresentation(), Coverage: sdkresource.Coverage{Kind: "complete"},
+	}
+}
+
+func (*nativeLogFileStore) Get(ctx context.Context, root *os.Root, input sdkresource.GetRequest) (sdkresource.Record, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return sdkresource.Record{}, err
 	}
-	body, err := root.ReadFile(input.ID)
+	body, err := root.ReadFile(input.Reference.Address.ID)
 	if err != nil {
-		return nil, err
+		return sdkresource.Record{}, err
 	}
-	result, err := json.Marshal(map[string]string{"name": input.ID, "content": string(body)})
-	if err != nil {
-		return nil, err
-	}
-	return &sdkresource.GetResult{Success: true, Result: result}, nil
+	address := input.Reference.Address
+	record := nativeLogRecord(sdkresource.ReadTarget{Provider: address.Provider, Authority: address.Authority, Type: address.Type}, address.ID, sdkresource.Value{Kind: "map", Map: map[string]sdkresource.Value{
+		"name": {Kind: "string", String: address.ID}, "content": {Kind: "string", String: string(body)},
+	}})
+	return record, nil
 }
 
-func (*nativeLogFileStore) List(ctx context.Context, root *os.Root, _ sdkresource.ResourceMeta, _ sdkresource.ListInput) (*sdkresource.ListResult, error) {
+func (*nativeLogFileStore) Enumerate(ctx context.Context, root *os.Root, input sdkresource.EnumerateRequest) (sdkresource.SourcePage, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return sdkresource.SourcePage{}, err
 	}
 	directory, err := root.Open(".")
 	if err != nil {
-		return nil, err
+		return sdkresource.SourcePage{}, err
 	}
 	defer directory.Close()
 	entries, err := directory.ReadDir(-1)
 	if err != nil {
-		return nil, err
+		return sdkresource.SourcePage{}, err
 	}
-	result := make([]json.RawMessage, 0, len(entries))
+	records := make([]sdkresource.Record, 0, len(entries))
 	for _, entry := range entries {
-		if !entry.Type().IsRegular() {
-			continue
+		if entry.Type().IsRegular() {
+			records = append(records, nativeLogRecord(input.Target, entry.Name(), sdkresource.Value{Kind: "map", Map: map[string]sdkresource.Value{"name": {Kind: "string", String: entry.Name()}}}))
 		}
-		body, marshalErr := json.Marshal(map[string]string{"name": entry.Name()})
-		if marshalErr != nil {
-			return nil, marshalErr
-		}
-		result = append(result, body)
 	}
-	return &sdkresource.ListResult{Success: true, Result: result, TotalCount: len(result)}, nil
-}
-
-func (*nativeLogFileStore) Find(context.Context, *os.Root, sdkresource.ResourceMeta, sdkresource.FindInput) (*sdkresource.FindResult, error) {
-	return nil, errors.New("native log file search is unsupported")
-}
-func (*nativeLogFileStore) Create(context.Context, *os.Root, sdkresource.ResourceMeta, sdkresource.CreateInput) (*sdkresource.CreateResult, error) {
-	return nil, errors.New("native log files are read-only")
-}
-func (*nativeLogFileStore) Update(context.Context, *os.Root, sdkresource.ResourceMeta, sdkresource.UpdateInput) (*sdkresource.UpdateResult, error) {
-	return nil, errors.New("native log files are read-only")
-}
-func (*nativeLogFileStore) Delete(context.Context, *os.Root, sdkresource.ResourceMeta, sdkresource.DeleteInput) (*sdkresource.DeleteResult, error) {
-	return nil, errors.New("native log files are read-only")
+	count := strconv.Itoa(len(records))
+	return sdkresource.SourcePage{Records: records, Count: sdkresource.Count{Kind: "exact", Value: &count}, Coverage: sdkresource.Coverage{Kind: "complete"}, Consistency: "bestEffort"}, nil
 }
 
 // Follow a bounded real file until its SDK source context is cancelled. Close
@@ -180,12 +165,18 @@ func TestNativeLogSessionConsumesRegisteredConnectionAndClosesFile(t *testing.T)
 	require.NoError(t, os.WriteFile(filepath.Join(root, fileName), []byte(wantLines[0]+"\n"+wantLines[1]+"\n"), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(decoy, fileName), []byte("wrong connection: must not be read\n"), 0600))
 	store := &nativeLogFileStore{connection: sdktypes.Connection{ID: connectionID, Name: "Private native log directory", Data: map[string]interface{}{"logRoot": root}}}
-	resourceManager, err := sdkresource.BuildResourceController(ctx, sdkresource.ResourcePluginConfig[os.Root]{
-		Connections: store,
-		Patterns:    map[string]sdkresource.Resourcer[os.Root]{"native-log-file": store},
+	resourceManager, err := sdkresource.NewController(sdkresource.Config[os.Root]{
+		Catalog: func(context.Context, sdkresource.CatalogRequest) (sdkresource.Catalog, error) {
+			return sdkresource.Catalog{Provider: pluginID, Revision: "native:1", Coverage: sdkresource.Coverage{Kind: "complete"}, Types: []sdkresource.ResourceType{{
+				Type: "native-log-file", DisplayName: "Native log file", Representations: []sdkresource.Representation{nativeLogRepresentation()},
+				Capabilities: []sdkresource.Capability{{Operation: sdkresource.OperationGet}, {Operation: sdkresource.OperationEnumerate}},
+			}}}, nil
+		},
+		Lifecycle:     &sdkresource.Lifecycle[os.Root]{LoadConnections: store.LoadConnections, CreateClient: store.CreateClient, DestroyClient: store.DestroyClient, CheckConnection: store.CheckConnection},
+		Registrations: []sdkresource.Registration[os.Root]{{Type: "native-log-file", Get: store.Get, Enumerate: store.Enumerate}},
 	})
 	require.NoError(t, err)
-	t.Cleanup(resourceManager.Close)
+	t.Cleanup(func() { require.NoError(t, resourceManager.Close()) })
 
 	opened := make(chan *nativeFollowingLogFile, 1)
 	allowRead := make(chan struct{})
@@ -265,7 +256,7 @@ func TestNativeLogSessionConsumesRegisteredConnectionAndClosesFile(t *testing.T)
 		}
 		return err
 	})}, logging.NewNop())...)
-	resourcepb.RegisterResourcePluginServer(server, resourceplugin.NewServer(resourceManager, nil))
+	resourceplugin.RegisterServer(server, resourceManager)
 	logPlugin := &sdklogs.Plugin{Impl: logManager}
 	require.NoError(t, logPlugin.GRPCServer(nil, server))
 	listener := bufconn.Listen(1024 * 1024)
@@ -285,7 +276,7 @@ func TestNativeLogSessionConsumesRegisteredConnectionAndClosesFile(t *testing.T)
 	logClient, err := logPlugin.GRPCClient(ctx, nil, transport)
 	require.NoError(t, err)
 	backend := plugintypes.NewInProcessBackend(map[string]interface{}{
-		"resource": resourceplugin.NewClient(resourcepb.NewResourcePluginClient(transport)),
+		"resource": resourceplugin.NewClient(transport),
 		"log":      logClient,
 	})
 	state := appstate.NewTestService(t)
@@ -300,12 +291,12 @@ func TestNativeLogSessionConsumesRegisteredConnectionAndClosesFile(t *testing.T)
 	nativeCtx := invocation.HostContext(ctx)
 	_, err = resources.StartConnection(nativeCtx, pluginID, connectionID)
 	require.NoError(t, err)
-	listing, err := resources.List(nativeCtx, pluginID, connectionID, "native-log-file", sdkresource.ListInput{})
+	target, err := resources.ResolveTarget(nativeCtx, pluginID, hostresource.ResolveTargetRequest{Route: sdkresource.AccessRoute{Connection: connectionID}, Type: "native-log-file", Representation: "native"})
 	require.NoError(t, err)
-	require.True(t, listing.Success)
-	require.Len(t, listing.Result, 1)
-	var fileData map[string]interface{}
-	require.NoError(t, json.Unmarshal(listing.Result[0], &fileData))
+	listing, err := resources.Enumerate(nativeCtx, pluginID, hostresource.HostEnumerateRequest{TargetID: target.TargetID, Request: sdkresource.EnumerateRequest{Target: target.Target}})
+	require.NoError(t, err)
+	require.Len(t, listing.Records, 1)
+	fileData := map[string]interface{}{"name": listing.Records[0].Record.Body.Map["name"].String}
 	// This request-side decoy must not override the actual registered connection.
 	fileData["logRoot"] = decoy
 	ctrl := NewController(logging.NewNop(), nil, resources).(*controller)
