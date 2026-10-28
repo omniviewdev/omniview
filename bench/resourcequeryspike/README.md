@@ -1,6 +1,6 @@
 # P01 canonical contract semantic / codec spike
 
-This is a **verification-only design/spike**, not a host product query service, public SDK contract, accepted numeric dependency or complete planner. Its nested module deliberately does not alter/import the product host module. `cel.dev/cel-go v0.32.0` is an **UNSAFE EXPERIMENTAL PIN**: native mixed-number helpers and optimized membership remain a production blocker. This probe makes no integer-only production proposal and does not duplicate/retest the accepted unsafe mixed-double findings.
+This is a **verification-only design/spike**, not a host product query service, public SDK contract or complete planner. Its nested module deliberately does not alter/import the product host module. The coordinator admitted immutable maintained fork `github.com/omniviewdev/cel-go v0.33.2-0.20261028172556-d7bb038d8c7b` for actual P01 verification under the single `cel.dev/cel-go` import identity. Independent P01/profile acceptance remains required; this is not product-host dependency admission. Historical unsafe v0.32.0 receipts below remain labeled historical.
 
 The [canonical proposal R2](../../docs/superpowers/specs/2026-10-24-resource-query-contracts.md) selects one canonical Go/proto/TS domain with repeated duplicate-preserving scope entries, explicit multi-field text ANY semantics, dynamic checked Boolean admission, declaration/environment-bound authoring and a small recursive builder grammar. Independent C01/C07 and C06/C09 design reviews approved this exact draft; production numeric admission and dependent contract freeze remain blocked. This packet is a design/spike: downstream catalog/editor/planner/source/result-lease implementation is excluded, not an invented extra P01 completion gate.
 
@@ -53,7 +53,7 @@ The exporter behavioral regression uses its own disposable SDK clone with a brok
 
 ## Numeric gate and acceptance status
 
-No full P01 closure/C06 profile freeze: need an official corrected dependency covering both mixed-numeric helper semantics and optimized set aliases plus actual selected-pin mixed-numeric/optimized/nullable conformance and pin/license/performance acceptance; alternatively a separately authorized bounded reviewed temporary dependency patch with update/removal owner. On 2026-10-28 the user authorized that temporary-patch work, but no safe candidate is admitted here. Upstream-first strategy does not authorize a host equality engine or dynamic ban. Independent review must precede candidate adoption or upstream publication.
+The user selected a maintained Omniview CEL fork as the primary path; upstream submission/CLA approval is not a delivery gate. The actual selected remote candidate now passes the retained numeric/optimized/nullable/transport corpus and new computed-result proof. Exact source/checksums, lifecycle ownership, reference policy and measured bounded-profile results are in canonical §§9–10. P01 closure/C06 handoff still requires independent review and coordinator acceptance, not an upstream wait or a new P45/P13 implementation inside this packet.
 
 Test code was written before implementation under the coordinator's no-mid-flight-check barrier. No red run is claimed. Execution receipts are recorded only after the settled barrier in the coordinator report; source presence alone is not a passing result.
 
@@ -127,3 +127,23 @@ The [canonical handoff §8](../../docs/superpowers/specs/2026-10-24-resource-que
 After source edits settled, the owner ran the actual exporter, scoped Go tests, build and Node driver sequentially with `GOWORK=off`, using `/usr/bin/env` as the exporter launcher. This run did not use the historical private-HOME launcher and does not claim isolated application or credential-boundary acceptance. Export used an owned committed SDK clone at exact `da0c53be2da636d3833b7ca1e73f8a6c8d26b5c7`; the exporter itself built from its separate committed-only private copy and removed that copy. Corpus SHA256 remained `a9d39f6e56aef5d8b2568332d9d93b5dd602e6fe96f5342abf0f4b1e8e50b1a0`.
 
 `go test ./... -count=1` passed (`0.168s`), `go build -o p01-probe .` succeeded, and actual driver stdout was **`Node -> Go -> native CEL -> Node: 241 independently expected observations passed; numeric production gate BLOCKED`**. Eleven new observations cover pre-epoch nanoseconds, year boundaries, offset normalization across the epoch, actual native timestamp arithmetic and invalid/out-of-range instants. No codec implementation changed: these extend the real native predicate transport evidence for existing admission behavior. Normalized input echoes remain input echoes, not proof of new-major result encoding. No race/performance/new-pin check ran in this receipt. Known unsafe mixed-number failures were not rerun.
+
+### Actual admitted-candidate and computed-result proof
+
+See [canonical §10](../../docs/superpowers/specs/2026-10-24-resource-query-contracts.md#10-selected-immutable-fork-and-actual-p01-proof--2026-10-28) for immutable module/checksum provenance, complete outcomes, artifact hashes and measured reference-policy limits. The selected candidate was fetched remotely with checksums enabled; no local/workspace dependency replacement was used.
+
+The new private `mode:"valueProof"` accepts a complete recursive tagged map document and evaluates an expression through native CEL. `evaluated` is encoded from that actual native result, not an input echo. Arbitrary nonboolean results are allowed only in this codec proof mode; ordinary query membership remains Boolean-only. This closes the P01 resource-body/computed-result semantic proof gap without implementing P45 protobuf/gRPC, schema normalization or a planner.
+
+Actual settled selected-candidate results: Go normal/race pass (`0.228s`/`1.612s`), build success, original Node driver241, new computed-result driver37; retained native numeric64/typed72 (four expected checker rejections), rational oracle100816 per lane with zero failures, transport124, schema75, nullable131, builder269. Optimizer off/on and static checker/explicit conversion distinctions remain exercised. The driver still says production gate BLOCKED because independent admission remains pending, not because this candidate failed.
+
+After the existing committed-corpus export and build, additional reproduction commands are:
+
+```sh
+GOWORK=off node value-driver.mjs
+GOWORK=off GOPROXY=direct node retained-driver.mjs
+GOWORK=off GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkValueProof$' -benchmem -benchtime=200ms -count=3 -cpu=1
+GOWORK=off go mod verify
+GOWORK=off GOPROXY=direct go mod download -json github.com/omniviewdev/cel-go@v0.33.2-0.20261028172556-d7bb038d8c7b
+```
+
+The retained runner uses unchanged archived Go harness source and independently checks corrected mathematical expectations, including the five pre-recorded transport `semanticExpected` values and exactly three stale schema equality expectations. Its schema subprocess intentionally returns1 for those historical unsafe expected booleans; the outer runner checks all75 actual outcomes and that exact status. No other failed assertion is filtered. Temporary extraction is exclusively owned and removed before receipt publication. `value-results.json` and `retained-results.json` are ignored evidence outputs.

@@ -93,7 +93,7 @@ func AnalyzeDraft(source string, cursor int) (Draft, error) {
 		return out, err
 	}
 	out.UTF16Start = units
-	env, err := cel.NewEnv(cel.Variable("resource", cel.DynType), cel.ParserRecursionLimit(64), cel.ParserExpressionSizeLimit(maxSourceBytes))
+	env, err := cel.NewEnv(cel.Variable("resource", cel.DynType), cel.CrossTypeNumericComparisons(true), cel.ParserRecursionLimit(64), cel.ParserExpressionSizeLimit(maxSourceBytes))
 	if err != nil {
 		return out, fail("INTERNAL", "draft environment")
 	}

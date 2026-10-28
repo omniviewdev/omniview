@@ -45,7 +45,7 @@ func AnalyzeDraftEnvironment(r DraftRequest) (Draft, error) {
 	if len(r.Declarations) > 128 {
 		return out, fail("RESOURCE_LIMIT", "draft declaration budget")
 	}
-	opts := []cel.EnvOption{cel.Variable("resource", cel.DynType), cel.ParserRecursionLimit(64), cel.ParserExpressionSizeLimit(maxSourceBytes)}
+	opts := []cel.EnvOption{cel.Variable("resource", cel.DynType), cel.CrossTypeNumericComparisons(true), cel.ParserRecursionLimit(64), cel.ParserExpressionSizeLimit(maxSourceBytes)}
 	for name, t := range r.Declarations {
 		if !validParameter(name) {
 			return out, fail("INVALID_REQUEST", "invalid authoring parameter")

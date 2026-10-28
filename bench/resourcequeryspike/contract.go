@@ -66,6 +66,7 @@ type Request struct {
 	CostLimit                uint64                 `json:"costLimit,omitempty"`
 	Draft                    *DraftRequest          `json:"draft,omitempty"`
 	IncompleteRepresentation bool                   `json:"incompleteRepresentation,omitempty"` // conservative coverage negative control
+	Document                 *Value                 `json:"document,omitempty"`                 // tagged-value proof only, never a source transport
 }
 
 type DraftRequest struct {
@@ -126,6 +127,7 @@ type Response struct {
 	Freshness string            `json:"freshness"`
 	Draft     *Draft            `json:"draft,omitempty"`
 	Error     *ObservationError `json:"error,omitempty"`
+	Evaluated *Value            `json:"evaluated,omitempty"` // encoded native CEL result, not admitted-input echo
 }
 
 type Row struct {
