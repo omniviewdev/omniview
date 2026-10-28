@@ -145,9 +145,13 @@ func (c *controller) resolveAuthority(ctx context.Context, pluginID string, rout
 		}
 		c.finite.authorities[pluginID] = resolver
 	}
-	resolution, err := resolver.Resolve(pluginID, route.Connection, catalog.Provider, resourceType, descriptor.NativeAuthorityHint)
+	resolutions, err := resolver.ObserveCatalog(pluginID, route.Connection, catalog)
 	if err != nil {
 		return AuthorityResolution{}, err
+	}
+	resolution, ok := resolutions[resourceType]
+	if !ok {
+		return AuthorityResolution{}, resourcev2.NewError("NOT_FOUND", "Resource type is not in the observed catalog.")
 	}
 	return resolution, nil
 }

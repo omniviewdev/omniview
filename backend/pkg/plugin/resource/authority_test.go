@@ -2,6 +2,7 @@ package resource
 
 import (
 	"os"
+	"sort"
 	"strings"
 	"testing"
 
@@ -11,45 +12,151 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAuthorityConnectionIsolationHintChangesAndRestart(t *testing.T) {
+func authorityTestCatalog(provider string, hints map[string]*resourcev2.NativeAuthorityHint) resourcev2.Catalog {
+	catalog := resourcev2.Catalog{Provider: provider, Revision: "coherent-observation", Coverage: resourcev2.Coverage{Kind: "complete", Paths: []string{}}, Types: []resourcev2.ResourceType{}}
+	for resourceType, hint := range hints {
+		catalog.Types = append(catalog.Types, resourcev2.ResourceType{Type: resourceType, DisplayName: resourceType, IdentityDimensions: []resourcev2.Dimension{}, QueryDimensions: []resourcev2.Dimension{}, Representations: []resourcev2.Representation{canonicalTestRepresentation()}, NativeAuthorityHint: hint})
+	}
+	sort.Slice(catalog.Types, func(i, j int) bool { return catalog.Types[i].Type < catalog.Types[j].Type })
+	return catalog
+}
+
+func TestAuthorityCoherentHintsShareBackingOnlyWithinRouteAndPersist(t *testing.T) {
 	store, err := appstate.NewTestService(t).PluginStore("test")
 	require.NoError(t, err)
 	resolver, err := NewAuthorityResolver(store)
 	require.NoError(t, err)
-	hint := &resourcev2.NativeAuthorityHint{Scheme: "unreviewed/native", ID: "opaque/雪", Continuity: resourcev2.ContinuityStableNative}
-	first, err := resolver.Resolve("plugin/雪", "connection/a", "provider/x", "opaque/type", hint)
+	hint := &resourcev2.NativeAuthorityHint{Scheme: "cluster-uid", ID: "opaque/雪", Continuity: resourcev2.ContinuityConnectionLocal}
+	catalog := authorityTestCatalog("provider/x", map[string]*resourcev2.NativeAuthorityHint{"k8s:/pods": hint, "k8s:apps/deployments": hint, "helm:releases": hint, "unknown/one": nil, "unknown/two": nil})
+	first, err := resolver.ObserveCatalog("plugin/雪", "connection/a", catalog)
 	require.NoError(t, err)
-	require.NotEqual(t, hint.ID, first.Authority)
-	require.Equal(t, resourcev2.ContinuityConnectionLocal, first.Continuity)
-	require.NotEmpty(t, first.Limitations)
-	require.False(t, first.Changed)
-	for _, route := range [][3]string{{"plugin/雪", "alias", "provider/x"}, {"other", "connection/a", "provider/x"}, {"plugin/雪", "connection/a", "provider/y"}} {
-		alias, err := resolver.Resolve(route[0], route[1], route[2], "opaque/type", hint)
+	backing := first["k8s:/pods"].Authority
+	require.NotEqual(t, hint.ID, backing)
+	require.Equal(t, backing, first["k8s:apps/deployments"].Authority)
+	require.Equal(t, backing, first["helm:releases"].Authority)
+	require.NotEqual(t, backing, first["unknown/one"].Authority)
+	require.NotEqual(t, first["unknown/one"].Authority, first["unknown/two"].Authority)
+	for _, resolution := range first {
+		require.Equal(t, resourcev2.ContinuityConnectionLocal, resolution.Continuity)
+		require.NotEmpty(t, resolution.Limitations)
+		require.False(t, resolution.Changed)
+	}
+	for _, route := range [][2]string{{"plugin/雪", "alias"}, {"other", "connection/a"}} {
+		alias, err := resolver.ObserveCatalog(route[0], route[1], catalog)
 		require.NoError(t, err)
-		require.NotEqual(t, first.Authority, alias.Authority)
+		require.NotEqual(t, backing, alias["k8s:/pods"].Authority)
 	}
 	restarted, err := NewAuthorityResolver(store)
 	require.NoError(t, err)
-	same, err := restarted.Resolve("plugin/雪", "connection/a", "provider/x", "opaque/type", hint)
+	same, err := restarted.ObserveCatalog("plugin/雪", "connection/a", catalog)
 	require.NoError(t, err)
-	require.Equal(t, first.Authority, same.Authority)
-	require.False(t, same.Changed)
-	changedHint := *hint
-	changedHint.ID = "other/native"
-	changed, err := restarted.Resolve("plugin/雪", "connection/a", "provider/x", "opaque/type", &changedHint)
+	for resourceType, resolution := range first {
+		require.Equal(t, resolution.Authority, same[resourceType].Authority)
+		require.False(t, same[resourceType].Changed)
+		require.True(t, restarted.Matches("plugin/雪", "connection/a", catalog.Provider, resourceType, resolution.Authority))
+	}
+}
+
+func TestAuthorityHintChangesDoNotThrashIndependentTypesOrResurrect(t *testing.T) {
+	store, err := appstate.NewTestService(t).PluginStore("test")
 	require.NoError(t, err)
-	require.True(t, changed.Changed)
-	require.NotEqual(t, first.Authority, changed.Authority)
-	returned, err := restarted.Resolve("plugin/雪", "connection/a", "provider/x", "opaque/type", hint)
+	resolver, err := NewAuthorityResolver(store)
 	require.NoError(t, err)
-	require.True(t, returned.Changed)
-	require.NotEqual(t, first.Authority, returned.Authority)
-	unknown, err := restarted.Resolve("plugin/雪", "connection/a", "provider/x", "opaque/type", nil)
+	a := &resourcev2.NativeAuthorityHint{Scheme: "native", ID: "A", Continuity: resourcev2.ContinuityConnectionLocal}
+	b := &resourcev2.NativeAuthorityHint{Scheme: "native", ID: "B", Continuity: resourcev2.ContinuityConnectionLocal}
+	catalog := authorityTestCatalog("provider", map[string]*resourcev2.NativeAuthorityHint{"opaque/type/雪": a, "opaque//type/雪": b, "peer": a})
+	first, err := resolver.ObserveCatalog("p", "route", catalog)
 	require.NoError(t, err)
-	require.True(t, unknown.Changed)
-	unknownAgain, err := restarted.Resolve("plugin/雪", "connection/a", "provider/x", "opaque/type", nil)
+	again, err := resolver.ObserveCatalog("p", "route", catalog)
 	require.NoError(t, err)
-	require.Equal(t, unknown.Authority, unknownAgain.Authority)
+	require.Equal(t, first, again, "independent descriptor hints must not alternate one route-global binding")
+	catalog = authorityTestCatalog("provider", map[string]*resourcev2.NativeAuthorityHint{"opaque/type/雪": b, "opaque//type/雪": b, "peer": a})
+	changed, err := resolver.ObserveCatalog("p", "route", catalog)
+	require.NoError(t, err)
+	require.NotEqual(t, first["opaque/type/雪"].Authority, changed["opaque/type/雪"].Authority)
+	require.Equal(t, changed["opaque/type/雪"].Authority, changed["opaque//type/雪"].Authority)
+	require.Equal(t, first["peer"].Authority, changed["peer"].Authority)
+	catalog = authorityTestCatalog("provider", map[string]*resourcev2.NativeAuthorityHint{"opaque/type/雪": a, "opaque//type/雪": b, "peer": a})
+	returned, err := resolver.ObserveCatalog("p", "route", catalog)
+	require.NoError(t, err)
+	require.NotEqual(t, first["opaque/type/雪"].Authority, returned["opaque/type/雪"].Authority, "A -> B -> A must not resurrect the old ID, even while a peer kept A")
+	require.Equal(t, returned["peer"].Authority, returned["opaque/type/雪"].Authority)
+	require.False(t, resolver.Matches("p", "route", "provider", "opaque/type/雪", first["opaque/type/雪"].Authority))
+}
+
+func TestAuthorityMissingTypesAndProviderReplacementRetireAssignments(t *testing.T) {
+	store, err := appstate.NewTestService(t).PluginStore("test")
+	require.NoError(t, err)
+	resolver, err := NewAuthorityResolver(store)
+	require.NoError(t, err)
+	hint := &resourcev2.NativeAuthorityHint{Scheme: "native", ID: "same", Continuity: resourcev2.ContinuityStableNative}
+	both := authorityTestCatalog("one", map[string]*resourcev2.NativeAuthorityHint{"one": hint, "two": hint})
+	first, err := resolver.ObserveCatalog("p", "c", both)
+	require.NoError(t, err)
+	_, err = resolver.ObserveCatalog("p", "c", authorityTestCatalog("one", map[string]*resourcev2.NativeAuthorityHint{"two": hint}))
+	require.NoError(t, err)
+	require.False(t, resolver.Matches("p", "c", "one", "one", first["one"].Authority))
+	returned, err := resolver.ObserveCatalog("p", "c", both)
+	require.NoError(t, err)
+	require.NotEqual(t, first["one"].Authority, returned["one"].Authority)
+	require.Equal(t, resourcev2.ContinuityConnectionLocal, returned["one"].Continuity, "provider stableNative claim cannot upgrade host continuity")
+	_, err = resolver.ObserveCatalog("p", "c", authorityTestCatalog("two", map[string]*resourcev2.NativeAuthorityHint{"one": hint}))
+	require.NoError(t, err)
+	require.False(t, resolver.Matches("p", "c", "one", "two", returned["two"].Authority))
+	_, err = resolver.ObserveCatalog("p", "c", authorityTestCatalog("two", nil))
+	require.NoError(t, err)
+	require.Empty(t, resolver.bindings)
+}
+
+func TestAuthorityExplicitRetargetAndPersistenceFailure(t *testing.T) {
+	store, err := appstate.NewTestService(t).PluginStore("test")
+	require.NoError(t, err)
+	resolver, err := NewAuthorityResolver(store)
+	require.NoError(t, err)
+	catalog := authorityTestCatalog("native", map[string]*resourcev2.NativeAuthorityHint{"one": nil, "two": nil})
+	first, err := resolver.ObserveCatalog("p", "c", catalog)
+	require.NoError(t, err)
+	other, err := resolver.ObserveCatalog("p", "other", catalog)
+	require.NoError(t, err)
+	require.NoError(t, resolver.InvalidateConnection("p", "c"))
+	for resourceType, resolution := range first {
+		require.False(t, resolver.Matches("p", "c", "native", resourceType, resolution.Authority))
+	}
+	require.True(t, resolver.Matches("p", "other", "native", "one", other["one"].Authority))
+	restarted, err := NewAuthorityResolver(store)
+	require.NoError(t, err)
+	next, err := restarted.ObserveCatalog("p", "c", catalog)
+	require.NoError(t, err)
+	require.NotEqual(t, first["one"].Authority, next["one"].Authority)
+	require.NoError(t, store.Remove(authorityStoreName))
+	require.NoError(t, store.MkdirAll(authorityStoreName, 0o700))
+	require.Error(t, restarted.InvalidateConnection("p", "c"))
+	require.True(t, restarted.Matches("p", "c", "native", "one", next["one"].Authority))
+	_, err = restarted.ObserveCatalog("p", "c", authorityTestCatalog("native", map[string]*resourcev2.NativeAuthorityHint{"replacement": nil}))
+	require.Error(t, err)
+	require.True(t, restarted.Matches("p", "c", "native", "one", next["one"].Authority))
+	require.False(t, restarted.Matches("p", "c", "native", "one", ""))
+}
+
+func TestAuthorityRejectsMalformedHintsAndRoutesWithoutMutation(t *testing.T) {
+	store, err := appstate.NewTestService(t).PluginStore("test")
+	require.NoError(t, err)
+	resolver, err := NewAuthorityResolver(store)
+	require.NoError(t, err)
+	valid := authorityTestCatalog("native", map[string]*resourcev2.NativeAuthorityHint{"type": nil})
+	first, err := resolver.ObserveCatalog("p", "c", valid)
+	require.NoError(t, err)
+	for _, hint := range []*resourcev2.NativeAuthorityHint{
+		{}, {Scheme: "s", ID: "i", Continuity: "unknown"}, {Scheme: "s", ID: string([]byte{0xff}), Continuity: resourcev2.ContinuityConnectionLocal},
+	} {
+		_, err := resolver.ObserveCatalog("p", "c", authorityTestCatalog("native", map[string]*resourcev2.NativeAuthorityHint{"type": hint}))
+		require.Error(t, err, "malformed nonnil hints must never become isolated success")
+		require.True(t, resolver.Matches("p", "c", "native", "type", first["type"].Authority))
+	}
+	_, err = resolver.ObserveCatalog("", "c", valid)
+	require.Error(t, err)
+	_, err = resolver.ObserveCatalog("p", string([]byte{0xff}), valid)
+	require.Error(t, err)
 }
 
 func TestAuthorityCanonicalAddressOpaqueTuple(t *testing.T) {
@@ -57,7 +164,7 @@ func TestAuthorityCanonicalAddressOpaqueTuple(t *testing.T) {
 	key, err := registry.CanonicalAddressKey(address)
 	require.NoError(t, err)
 	require.Equal(t, `["omniview.address.v1","p/雪","a/b","group/type",[["a","é"],["雪","x/y"]],"opaque/id<>&\u2028\u2029\"\\\n"]`, key)
-	require.Equal(t, "雪", address.Scope[0].Dimension, "canonicalization must not mutate caller scope")
+	require.Equal(t, "雪", address.Scope[0].Dimension)
 	address.Scope[0], address.Scope[1] = address.Scope[1], address.Scope[0]
 	reordered, err := registry.CanonicalAddressKey(address)
 	require.NoError(t, err)
@@ -68,49 +175,23 @@ func TestAuthorityCanonicalAddressOpaqueTuple(t *testing.T) {
 	require.NotEqual(t, key, different)
 	address.Scope = append(address.Scope, address.Scope[0])
 	_, err = registry.CanonicalAddressKey(address)
-	require.Error(t, err, "duplicate dimensions must fail")
+	require.Error(t, err)
 	address.Scope = nil
 	empty, err := registry.CanonicalAddressKey(address)
 	require.NoError(t, err)
 	require.Contains(t, empty, `,[],`)
 }
 
-func TestAuthorityUnknownIsolationAndPersistenceFailure(t *testing.T) {
-	store, err := appstate.NewTestService(t).PluginStore("test")
-	require.NoError(t, err)
-	resolver, err := NewAuthorityResolver(store)
-	require.NoError(t, err)
-	one, err := resolver.Resolve("p", "one", "provider", "opaque/type", nil)
-	require.NoError(t, err)
-	two, err := resolver.Resolve("p", "two", "provider", "opaque/type", nil)
-	require.NoError(t, err)
-	require.NotEqual(t, one.Authority, two.Authority)
-	_, err = resolver.Resolve("", "one", "provider", "opaque/type", nil)
-	require.Error(t, err)
-	// Replacing the store path with a directory makes atomic replacement fail.
-	require.NoError(t, store.Remove(authorityStoreName))
-	require.NoError(t, store.MkdirAll(authorityStoreName, 0o700))
-	_, err = resolver.Resolve("p", "one", "provider", "opaque/type", &resourcev2.NativeAuthorityHint{ID: "new"})
-	require.Error(t, err)
-	same, err := resolver.Resolve("p", "one", "provider", "opaque/type", nil)
-	require.NoError(t, err)
-	require.Equal(t, one.Authority, same.Authority, "failed persistence must not change live binding")
-}
-
 func TestAuthorityStoreRejectsUntrustedDiskState(t *testing.T) {
 	const entry = `{"plugin":"p","connection":"c","provider":"native","resourceType":"opaque/type","authority":"local:opaque"}`
-	cases := []struct {
-		name, data string
-		message    string
-	}{
+	cases := []struct{ name, data, message string }{
 		{"duplicate route", "[" + entry + "," + entry + "]", "duplicate persisted route"},
 		{"duplicate field", `[{"plugin":"p","plugin":"other","connection":"c","provider":"native","resourceType":"opaque/type","authority":"local:opaque"}]`, "invalid store JSON"},
 		{"unknown field", `[{"plugin":"p","connection":"c","provider":"native","resourceType":"opaque/type","authority":"local:opaque","extra":true}]`, "unknown field"},
 		{"unknown hint field", `[{"plugin":"p","connection":"c","provider":"native","resourceType":"opaque/type","authority":"local:opaque","hint":{"scheme":"s","id":"i","continuity":"connectionLocal","extra":true}}]`, "unknown field"},
 		{"missing authority", `[{"plugin":"p","connection":"c","provider":"native","resourceType":"opaque/type"}]`, "invalid persisted binding"},
 		{"missing resource type", `[{"plugin":"p","connection":"c","provider":"native","authority":"local:opaque"}]`, "invalid persisted binding"},
-		{"null root", `null`, "entry sequence"},
-		{"object root", `{}`, "entry sequence"},
+		{"null root", `null`, "entry sequence"}, {"object root", `{}`, "entry sequence"},
 		{"trailing input", "[" + entry + "][]", "invalid store JSON"},
 		{"invalid UTF-8", "[\"" + string([]byte{0xff}) + "\"]", "invalid store JSON"},
 		{"invalid surrogate", `["\ud800"]`, "invalid store JSON"},
@@ -137,97 +218,4 @@ func TestAuthorityStoreByteLimitBeforeDecode(t *testing.T) {
 	require.NoError(t, file.Close())
 	_, err = NewAuthorityResolver(store)
 	require.ErrorContains(t, err, "store exceeds byte limit")
-}
-
-func TestAuthorityRejectsInvalidUTF8WithoutChangingBinding(t *testing.T) {
-	store, err := appstate.NewTestService(t).PluginStore("test")
-	require.NoError(t, err)
-	resolver, err := NewAuthorityResolver(store)
-	require.NoError(t, err)
-	first, err := resolver.Resolve("p", "c", "native", "opaque/type", nil)
-	require.NoError(t, err)
-	_, err = resolver.Resolve("p", "c", "native", "opaque/type", &resourcev2.NativeAuthorityHint{ID: string([]byte{0xff})})
-	require.Error(t, err)
-	_, err = resolver.Resolve("p", string([]byte{0xff}), "native", "opaque/type", nil)
-	require.Error(t, err)
-	same, err := resolver.Resolve("p", "c", "native", "opaque/type", nil)
-	require.NoError(t, err)
-	require.Equal(t, first.Authority, same.Authority)
-}
-
-func TestAuthorityExplicitRetargetInvalidatesAllProvidersAndPersists(t *testing.T) {
-	store, err := appstate.NewTestService(t).PluginStore("test")
-	require.NoError(t, err)
-	resolver, err := NewAuthorityResolver(store)
-	require.NoError(t, err)
-	hint := &resourcev2.NativeAuthorityHint{Scheme: "native", ID: "same-reported-hint", Continuity: resourcev2.ContinuityConnectionLocal}
-	first, err := resolver.Resolve("p", "changed/雪", "one", "opaque/type", hint)
-	require.NoError(t, err)
-	second, err := resolver.Resolve("p", "changed/雪", "two", "opaque/type", hint)
-	require.NoError(t, err)
-	untouched, err := resolver.Resolve("p", "other", "one", "opaque/type", hint)
-	require.NoError(t, err)
-	require.True(t, resolver.Matches("p", "changed/雪", "one", "opaque/type", first.Authority))
-	require.False(t, resolver.Matches("p", "changed/雪", "one", "opaque/type", second.Authority))
-	require.NoError(t, resolver.InvalidateConnection("p", "changed/雪"))
-	require.False(t, resolver.Matches("p", "changed/雪", "one", "opaque/type", first.Authority))
-	require.False(t, resolver.Matches("p", "changed/雪", "two", "opaque/type", second.Authority))
-	require.True(t, resolver.Matches("p", "other", "one", "opaque/type", untouched.Authority))
-	restarted, err := NewAuthorityResolver(store)
-	require.NoError(t, err)
-	require.False(t, restarted.Matches("p", "changed/雪", "one", "opaque/type", first.Authority))
-	next, err := restarted.Resolve("p", "changed/雪", "one", "opaque/type", hint)
-	require.NoError(t, err)
-	require.NotEqual(t, first.Authority, next.Authority, "equal hints after explicit retarget must not resurrect identity")
-}
-
-func TestAuthorityRetargetInvalidationFailureRestoresBinding(t *testing.T) {
-	store, err := appstate.NewTestService(t).PluginStore("test")
-	require.NoError(t, err)
-	resolver, err := NewAuthorityResolver(store)
-	require.NoError(t, err)
-	first, err := resolver.Resolve("p", "c", "native", "opaque/type", nil)
-	require.NoError(t, err)
-	require.NoError(t, store.Remove(authorityStoreName))
-	require.NoError(t, store.MkdirAll(authorityStoreName, 0o700))
-	require.Error(t, resolver.InvalidateConnection("p", "c"))
-	require.True(t, resolver.Matches("p", "c", "native", "opaque/type", first.Authority))
-	require.False(t, resolver.Matches("p", "c", "native", "opaque/type", ""))
-}
-
-func TestAuthorityResourceTypeHintsAreIndependentAndNeverMerge(t *testing.T) {
-	store, err := appstate.NewTestService(t).PluginStore("test")
-	require.NoError(t, err)
-	resolver, err := NewAuthorityResolver(store)
-	require.NoError(t, err)
-	firstHint := &resourcev2.NativeAuthorityHint{Scheme: "unreviewed", ID: "one", Continuity: resourcev2.ContinuityConnectionLocal}
-	secondHint := &resourcev2.NativeAuthorityHint{Scheme: "unreviewed", ID: "two", Continuity: resourcev2.ContinuityConnectionLocal}
-	first, err := resolver.Resolve("p", "route", "provider", "opaque/type/雪", firstHint)
-	require.NoError(t, err)
-	second, err := resolver.Resolve("p", "route", "provider", "opaque//type/雪", secondHint)
-	require.NoError(t, err)
-	require.NotEqual(t, first.Authority, second.Authority)
-	sameFirst, err := resolver.Resolve("p", "route", "provider", "opaque/type/雪", firstHint)
-	require.NoError(t, err)
-	require.Equal(t, first.Authority, sameFirst.Authority)
-	require.False(t, sameFirst.Changed, "another Type's hint must not thrash this binding")
-	sameSecond, err := resolver.Resolve("p", "route", "provider", "opaque//type/雪", secondHint)
-	require.NoError(t, err)
-	require.Equal(t, second.Authority, sameSecond.Authority)
-	sharedHint, err := resolver.Resolve("p", "route", "provider", "different-type", firstHint)
-	require.NoError(t, err)
-	require.NotEqual(t, first.Authority, sharedHint.Authority, "equal unreviewed hints never merge Types")
-	alias, err := resolver.Resolve("p", "route-alias", "provider", "opaque/type/雪", firstHint)
-	require.NoError(t, err)
-	require.NotEqual(t, first.Authority, alias.Authority)
-	unknownOne, err := resolver.Resolve("p", "route", "provider", "unknown/one", nil)
-	require.NoError(t, err)
-	unknownTwo, err := resolver.Resolve("p", "route", "provider", "unknown/two", nil)
-	require.NoError(t, err)
-	require.NotEqual(t, unknownOne.Authority, unknownTwo.Authority)
-	require.False(t, resolver.Matches("p", "route", "provider", "unknown/two", unknownOne.Authority))
-	restarted, err := NewAuthorityResolver(store)
-	require.NoError(t, err)
-	require.True(t, restarted.Matches("p", "route", "provider", "unknown/one", unknownOne.Authority))
-	require.True(t, restarted.Matches("p", "route", "provider", "unknown/two", unknownTwo.Authority))
 }

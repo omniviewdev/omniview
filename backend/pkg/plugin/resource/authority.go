@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"sync"
 	"unicode/utf8"
@@ -53,8 +54,8 @@ type authorityDiskEntry struct {
 
 // AuthorityResolver owns one plugin-scoped store. The controller must retain one
 // resolver per store; concurrent resolver instances must not write the same store.
-// No native scheme is reviewed for stable identity yet. All hints therefore bind
-// only within an exact connection and Type, even when claiming stableNative.
+// Equal validated hints may share only within one coherent connection catalog.
+// No native scheme is reviewed for stable continuity across routes or epochs.
 // Missing hints cannot detect retargeting. Deleting local state loses continuity.
 // No incarnation is inferred. Neither endpoints nor credentials are inspected.
 type AuthorityResolver struct {
@@ -117,60 +118,99 @@ func NewAuthorityResolver(root *appstate.ScopedRoot) (*AuthorityResolver, error)
 	return r, nil
 }
 
-// Resolve issues an opaque local ID. Hints are untrusted observations, not IDs.
-// A changed hint replaces the current binding; returning to an old hint does not
-// resurrect an old authority. Route aliases never merge, even with equal hints.
-func (r *AuthorityResolver) Resolve(pluginID, connectionID, provider, resourceType string, hint *resourcev2.NativeAuthorityHint) (AuthorityResolution, error) {
+// ObserveCatalog atomically assigns all Types in one validated source observation.
+// Nil hints remain Type-local. Equal typed hints share a host-issued backing ID
+// only in this route's current catalog. New/reintroduced members or changed hints
+// rotate their whole current group, so stale assignments can never resurrect.
+// Removed Types (and a replaced provider) are retired, not retained as aliases.
+// Membership changes may invalidate the entire current group, including stable
+// peers; saved references are never rewritten to the replacement authority.
+func (r *AuthorityResolver) ObserveCatalog(pluginID, connectionID string, catalog resourcev2.Catalog) (map[string]AuthorityResolution, error) {
+	if pluginID == "" || connectionID == "" || !utf8.ValidString(pluginID) || !utf8.ValidString(connectionID) {
+		return nil, errors.New("authority: explicit UTF-8 plugin and connection required")
+	}
+	if err := resourcev2.ValidateCatalog(catalog); err != nil {
+		return nil, err
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if pluginID == "" || connectionID == "" || provider == "" || resourceType == "" {
-		return AuthorityResolution{}, errors.New("authority: plugin, connection, provider and resource type required")
-	}
-	for _, text := range []string{pluginID, connectionID, provider, resourceType} {
-		if !utf8.ValidString(text) {
-			return AuthorityResolution{}, errors.New("authority: route must be UTF-8")
+	previous := make(map[authorityRoute]authorityBinding)
+	for route, binding := range r.bindings {
+		if route.Plugin == pluginID && route.Connection == connectionID {
+			previous[route] = binding
 		}
 	}
-	if hint != nil {
-		for _, text := range []string{hint.Scheme, hint.ID, hint.Continuity} {
-			if !utf8.ValidString(text) {
-				return AuthorityResolution{}, errors.New("authority: hint must be UTF-8")
+	if len(r.bindings)-len(previous)+len(catalog.Types) > maxAuthorityBindings {
+		return nil, errors.New("authority: binding limit exceeded")
+	}
+	type hintGroup struct {
+		Hint        resourcev2.NativeAuthorityHint
+		HasHint     bool
+		UnknownType string
+	}
+	groups := make(map[hintGroup][]string)
+	for _, descriptor := range catalog.Types {
+		group := hintGroup{UnknownType: descriptor.Type}
+		if descriptor.NativeAuthorityHint != nil {
+			group = hintGroup{Hint: *descriptor.NativeAuthorityHint, HasHint: true}
+		}
+		groups[group] = append(groups[group], descriptor.Type)
+	}
+	next := make(map[authorityRoute]authorityBinding, len(catalog.Types))
+	results := make(map[string]AuthorityResolution, len(catalog.Types))
+	for group, resourceTypes := range groups {
+		authority := ""
+		reuse := true
+		for _, resourceType := range resourceTypes {
+			old, exists := previous[authorityRoute{pluginID, connectionID, catalog.Provider, resourceType}]
+			if !exists || old.HasHint != group.HasHint || old.Hint != group.Hint {
+				reuse = false
+				continue
+			}
+			if authority == "" {
+				authority = old.Authority
+			} else if authority != old.Authority {
+				reuse = false
 			}
 		}
+		if !reuse || authority == "" {
+			id, err := uuid.NewRandom()
+			if err != nil {
+				return nil, fmt.Errorf("authority: issue ID: %w", err)
+			}
+			authority = "local:" + id.String()
+		}
+		for _, resourceType := range resourceTypes {
+			route := authorityRoute{pluginID, connectionID, catalog.Provider, resourceType}
+			next[route] = authorityBinding{Authority: authority, HasHint: group.HasHint, Hint: group.Hint}
+			old, existed := previous[route]
+			results[resourceType] = authorityResult(authority, existed && old.Authority != authority)
+		}
 	}
-	candidate := authorityBinding{HasHint: hint != nil}
-	if hint != nil {
-		candidate.Hint = *hint
+	if maps.Equal(previous, next) {
+		return results, nil
 	}
-	route := authorityRoute{pluginID, connectionID, provider, resourceType}
-	previous, exists := r.bindings[route]
-	changed := exists && (previous.HasHint != candidate.HasHint || previous.Hint != candidate.Hint)
-	if exists && !changed {
-		return authorityResult(previous.Authority, false), nil
+	for route := range previous {
+		delete(r.bindings, route)
 	}
-	if !exists && len(r.bindings) >= maxAuthorityBindings {
-		return AuthorityResolution{}, errors.New("authority: binding limit exceeded")
+	for route, binding := range next {
+		r.bindings[route] = binding
 	}
-	id, err := uuid.NewRandom()
-	if err != nil {
-		return AuthorityResolution{}, fmt.Errorf("authority: issue ID: %w", err)
-	}
-	candidate.Authority = "local:" + id.String()
-	r.bindings[route] = candidate
 	if err := r.persist(); err != nil {
-		if exists {
-			r.bindings[route] = previous
-		} else {
+		for route := range next {
 			delete(r.bindings, route)
 		}
-		return AuthorityResolution{}, err
+		for route, binding := range previous {
+			r.bindings[route] = binding
+		}
+		return nil, err
 	}
-	return authorityResult(candidate.Authority, changed), nil
+	return results, nil
 }
 
 func authorityResult(id string, changed bool) AuthorityResolution {
 	return AuthorityResolution{Authority: id, Continuity: resourcev2.ContinuityConnectionLocal, Changed: changed, Limitations: []string{
-		"Connection- and Type-local identity only; aliases are isolated and no stable native scheme is approved.",
+		"Connection-local identity only; equal hints share only within the current catalog and aliases remain isolated.",
 		"Continuity requires this local store; unreported retargeting cannot be detected.",
 	}}
 }

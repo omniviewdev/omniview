@@ -183,9 +183,13 @@ existing cohort version. The host registers only the canonical resource service.
 startup; a remote client's Go method set is not evidence of provider support.
 Finite support remains connection/type/scope-qualified catalog data.
 
-Authority hints are untrusted backing-identity observations, never canonical
-authority or permission. The host persists isolated connection-local bindings;
-equal hints do not merge route aliases. A changed hint rotates authority.
+Authority hints are untrusted observations on each catalog type descriptor,
+never canonical authority or permission. The host observes the complete admitted
+catalog coherently. Equal validated hints can share one connection-local backing
+authority within that observation and route; they never merge route aliases.
+Absent hints isolate each Type. A changed, new, or reintroduced group member
+rotates the whole group's authority conservatively, preventing historical ID
+resurrection. Existing saved citations are never rewritten to the new authority.
 No native scheme currently qualifies for stable-native continuity. Losing local
 state or unreported retargeting limits continuity; unknown incarnation stays
 absent. Request-local target labels do not create leases, permissions, or saved
