@@ -173,6 +173,12 @@ Generated config, secrets, logs and build outputs have a private external UUID o
 
 Ignored dependency/build/cache outputs have exact producer-scoped ownership, not blanket `.local`/`node_modules`/`dist` exemptions. One aggregate installer preserves lockfile provenance, uses strict peers and `--ignore-scripts`, then runs a recursive peer audit; the graph owns generation. Vite/cache lifetimes end only after actual process/descendant exit. Tracked generated bindings/shims still require the developer's normal commit/discard decision. Interrupted cleanup resumes only its recorded per-path progress.
 
+Fresh tree observations use at most four file readers, bounded by available Go
+parallelism. Each reader hashes actual bytes and checks file identity, size, and
+modification time. All readers finish before an image can authorize a transition.
+Checkpoint ordering, complete-workspace refusal checks, and fresh per-leaf
+verification before deletion remain unchanged.
+
 Managed children receive nonsecret `OMNIVIEW_DEV_CLI` from the captured supervisor executable. Bridge token references and native-removal FD capabilities remain host/helper-only. Authenticated `/v1/process` accepts only fixed selected plugin dev commands with exact composition root/version, actual frontend paths and current host leases—not arbitrary commands/cwd. Second plugin installs are rejected; startup consumes the completed aggregate receipt. The outer supervisor retains actual children independently of the desktop host for crash cleanup.
 
 ## Output and references
