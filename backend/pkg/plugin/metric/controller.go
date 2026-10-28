@@ -56,6 +56,7 @@ type Controller interface {
 	// Streaming
 	Subscribe(pluginID, connectionID string, req SubscribeRequest) (string, error)
 	Unsubscribe(subscriptionID string) error
+	BeginConnectionChange(pluginID, connectionID string) func()
 }
 
 // SubscribeRequest contains parameters for subscribing to a metric stream.
@@ -90,8 +91,9 @@ type controller struct {
 	handlerMap       map[string][]metric.Handler     // pluginID -> handlers
 	resourceIndex    map[string][]string             // resource key -> []pluginID
 	subscriptions    map[string]subscriptionIndex    // subscriptionID -> index
-	streams          map[string]*metricStream
-	streamErrors     map[string]error
+	streams          map[metricStreamKey]*metricStream
+	streamErrors     map[metricStreamKey]error
+	streamBlocked    map[metricStreamKey]int
 	resourceClient   resource.Service
 	mux              sync.RWMutex
 }
@@ -111,8 +113,9 @@ func NewController(
 		handlerMap:       make(map[string][]metric.Handler),
 		resourceIndex:    make(map[string][]string),
 		subscriptions:    make(map[string]subscriptionIndex),
-		streams:          make(map[string]*metricStream),
-		streamErrors:     make(map[string]error),
+		streams:          make(map[metricStreamKey]*metricStream),
+		streamErrors:     make(map[metricStreamKey]error),
+		streamBlocked:    make(map[metricStreamKey]int),
 		resourceClient:   resourceClient,
 		mux:              sync.RWMutex{},
 	}
@@ -176,59 +179,17 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	// Get supported resources before acquiring the lock (this makes an RPC call).
 	info, handlers := provider.GetSupportedResources(c.getUnconnectedCtx(context.Background()))
 
-	streamCtx, cancelStream := context.WithCancel(c.ctx)
-	state := &metricStream{input: make(chan metric.StreamInput), done: make(chan struct{}), cancel: cancelStream}
-	// Complete canonical readiness before publishing this generation's sender.
-	stream, streamErr := provider.StreamResourceMetrics(streamCtx, state.input)
-	if streamErr == nil && stream == nil {
-		streamErr = resourcev2.NewError("INVALID_REQUEST", "Metric provider returned no ready stream.")
-	}
-	if streamErr != nil {
-		state.stop()
-		logger.Errorw(context.Background(), "error starting canonical metric stream", "error", streamErr)
-		state = nil
-	}
-
+	// Query discovery is independent of stream capability. A trusted connection
+	// profile and canonical readiness are resolved lazily at first subscription.
+	c.removePlugin(pluginID)
 	c.mux.Lock()
-	previous := c.streams[pluginID]
 	c.clients[pluginID] = provider
 	c.providerInfos[pluginID] = info
 	c.handlerMap[pluginID] = handlers
 	for _, h := range handlers {
 		c.resourceIndex[h.Resource] = append(c.resourceIndex[h.Resource], pluginID)
 	}
-	if state != nil {
-		c.streams[pluginID] = state
-		delete(c.streamErrors, pluginID)
-	} else {
-		delete(c.streams, pluginID)
-		c.streamErrors[pluginID] = streamErr
-	}
 	c.mux.Unlock()
-	if previous != nil { c.endStream(pluginID, previous, closedStreamError()) }
-	if state == nil { return nil } // Query support is independent of streaming.
-
-	go func() {
-		defer c.endStream(pluginID, state, closedStreamError())
-
-		for {
-			select {
-			case <-streamCtx.Done():
-				return
-			case output, ok := <-stream:
-				if !ok {
-					return // stream closed, plugin exited
-				}
-				if output.SubscriptionID == "" && (output.OperationError != nil || output.Error != "") {
-					failure := output.OperationError
-					if failure == nil { failure = &resourcev2.ResourceOperationError{Code: "PROVIDER_ERROR", Message: "The metric stream failed."} }
-					c.endStream(pluginID, state, failure)
-					return
-				}
-				c.handleStreamOutput(output)
-			}
-		}
-	}()
 
 	return nil
 }
@@ -271,9 +232,11 @@ func (c *controller) HasPlugin(pluginID string) bool {
 
 func (c *controller) removePlugin(pluginID string) {
 	c.mux.Lock()
-	state := c.streams[pluginID]
-	delete(c.streams, pluginID)
-	delete(c.streamErrors, pluginID)
+	var retired []*metricStream
+	for key, state := range c.streams {
+		if key.plugin == pluginID { retired = append(retired, state); delete(c.streams, key) }
+	}
+	for key := range c.streamErrors { if key.plugin == pluginID { delete(c.streamErrors, key) } }
 
 	delete(c.clients, pluginID)
 	delete(c.providerInfos, pluginID)
@@ -295,7 +258,7 @@ func (c *controller) removePlugin(pluginID string) {
 	}
 
 	c.mux.Unlock()
-	if state != nil { c.endStream(pluginID, state, closedStreamError()) }
+	for _, state := range retired { c.endStream(state, closedStreamError()) }
 }
 
 func (c *controller) handleStreamOutput(output metric.StreamOutput) {
@@ -491,13 +454,12 @@ func (c *controller) Subscribe(pluginID, connectionID string, req SubscribeReque
 	if req.Route != nil && req.Route.Connection != connectionID {
 		return "", apperror.ForResource(resourcev2.NewError("INVALID_REQUEST", "Metric route does not match the selected connection."), subscriptionID)
 	}
+	state, err := c.ensureStream(pluginID, connectionID)
+	if err != nil { return "", apperror.ForResource(err, subscriptionID) }
 	c.mux.Lock()
-	state := c.streams[pluginID]
-	if state == nil {
-		err := c.streamErrors[pluginID]
+	if c.streams[state.key] != state || c.streamBlocked[state.key] > 0 {
 		c.mux.Unlock()
-		if err == nil { err = closedStreamError() }
-		return "", apperror.ForResource(err, subscriptionID)
+		return "", apperror.ForResource(profileChangingError(), subscriptionID)
 	}
 	c.subscriptions[subscriptionID] = subscriptionIndex{pluginID: pluginID, connectionID: connectionID, subscriptionID: subscriptionID, stream: state}
 	c.mux.Unlock()

@@ -5,6 +5,7 @@ import (
  "testing"
  "time"
 
+ "github.com/omniviewdev/omniview/backend/pkg/invocation"
  plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
  logging "github.com/omniviewdev/plugin-sdk/log"
  "github.com/omniviewdev/plugin-sdk/pkg/config"
@@ -56,12 +57,13 @@ func TestStreamOnlyProviderProducesActualNativeMetric(t *testing.T) {
 
 func testMetricStream() *metricStream {
  _,cancel:=context.WithCancel(context.Background())
- return &metricStream{input:make(chan sdkmetric.StreamInput),done:make(chan struct{}),cancel:cancel}
+ ready:=make(chan struct{});close(ready)
+ return &metricStream{key:metricStreamKey{"metrics","connection"},input:make(chan sdkmetric.StreamInput),ready:ready,done:make(chan struct{}),cancel:cancel}
 }
 
 func TestInvalidSubscriptionCannotPoisonSharedLane(t *testing.T) {
  ctrl:=NewController(logging.NewNop(),nil,nil).(*controller)
- state:=testMetricStream();defer state.stop();ctrl.streams["metrics"]=state
+ state:=testMetricStream();defer state.stop();ctrl.streams[state.key]=state
  _,err:=ctrl.Subscribe("metrics","connection",SubscribeRequest{ResourceKey:"pods",ResourceID:"pod",Interval:time.Second,Reference:&resourcev2.ResourceReference{Address:resourcev2.ResourceAddress{Provider:"owner",Authority:"cluster",Type:"nodes",ID:"pod",Scope:[]resourcev2.ScopeEntry{}}},Route:&resourcev2.AccessRoute{Connection:"connection"}})
  require.Equal(t,"INVALID_REQUEST",resourcev2.ErrorCode(err));require.Empty(t,ctrl.subscriptions)
  select{case <-state.done:t.Fatal("bad subscription terminated shared lane");default:}
@@ -69,7 +71,7 @@ func TestInvalidSubscriptionCannotPoisonSharedLane(t *testing.T) {
 
 func TestMetricRetirementUnblocksCommandsAndFansOutExactInterests(t *testing.T) {
  ctrl:=NewController(logging.NewNop(),nil,nil).(*controller)
- state:=testMetricStream();ctrl.streams["metrics"]=state
+ state:=testMetricStream();ctrl.streams[state.key]=state
  subscribe:=func()string{
   result:=make(chan string,1);failure:=make(chan error,1)
   go func(){id,err:=ctrl.Subscribe("metrics","connection",SubscribeRequest{ResourceKey:"cluster::metrics",Interval:time.Second,Params:map[string]string{"prometheus_service_port":"9090"}});if err!=nil{failure<-err}else{result<-id}}()
@@ -84,13 +86,92 @@ func TestMetricRetirementUnblocksCommandsAndFansOutExactInterests(t *testing.T) 
  locked:=make(chan struct{})
  go func(){ctrl.mux.Lock();ctrl.mux.Unlock();close(locked)}()
  select{case <-locked:case <-time.After(time.Second):t.Fatal("unsubscribe held controller lock")}
- terminal:=ctrl.retireStream("metrics",state,closedStreamError())
+ terminal:=ctrl.retireStream(state,closedStreamError())
  found:=false;for _,output:=range terminal{if output.SubscriptionID==second{found=true;require.Equal(t,"UNAVAILABLE",output.OperationError.Code)}}
  require.True(t,found);require.Empty(t,ctrl.subscriptions)
  select{case err:=<-completion:require.Error(t,err);case <-time.After(time.Second):t.Fatal("retirement did not release unsubscribe")}
  _,err:=ctrl.Subscribe("metrics","connection",SubscribeRequest{ResourceKey:"cluster::metrics",Interval:time.Second});require.Equal(t,"UNAVAILABLE",resourcev2.ErrorCode(err))
- newer:=testMetricStream();defer newer.stop();ctrl.streams["metrics"]=newer
+ newer:=testMetricStream();defer newer.stop();ctrl.streams[newer.key]=newer
+ delete(ctrl.streamErrors,newer.key) // A new admitted generation clears the old failure.
  ctrl.subscriptions["new"] = subscriptionIndex{pluginID:"metrics",stream:newer}
- require.Empty(t,ctrl.retireStream("metrics",state,closedStreamError()))
- require.Same(t,newer,ctrl.streams["metrics"]);require.Contains(t,ctrl.subscriptions,"new")
+ require.Empty(t,ctrl.retireStream(state,closedStreamError()))
+ require.Same(t,newer,ctrl.streams[newer.key]);require.Contains(t,ctrl.subscriptions,"new")
+}
+
+func TestProfileTransactionFencesOnlyItsConnectionLane(t *testing.T) {
+ ctrl:=NewController(logging.NewNop(),nil,nil).(*controller)
+ old:=testMetricStream();ctrl.streams[old.key]=old
+ other:=testMetricStream();other.key.connection="other";defer other.stop();ctrl.streams[other.key]=other
+ release:=ctrl.BeginConnectionChange("metrics","connection")
+ select{case <-old.done:default:t.Fatal("profile change did not cancel old lane")}
+ _,err:=ctrl.ensureStream("metrics","connection");require.Equal(t,"RESET_REQUIRED",resourcev2.ErrorCode(err))
+ retained,err:=ctrl.ensureStream("metrics","other");require.NoError(t,err);require.Same(t,other,retained)
+ nested:=ctrl.BeginConnectionChange("metrics","connection")
+ release();release()
+ _,err=ctrl.ensureStream("metrics","connection");require.Equal(t,"RESET_REQUIRED",resourcev2.ErrorCode(err))
+ nested()
+ newer:=testMetricStream();defer newer.stop();ctrl.streams[newer.key]=newer
+ active,err:=ctrl.ensureStream("metrics","connection");require.NoError(t,err);require.Same(t,newer,active)
+}
+
+func TestConnectionScopedLaneUsesTrustedProfileThroughActualGRPC(t *testing.T) {
+ sampled:=make(chan string,1)
+ fixture:=newNativeMetricFixture(t,func(ctx *sdkmetric.QueryContext,req sdkmetric.QueryRequest)(*sdkmetric.QueryResponse,error){
+  if ctx.Connection==nil||ctx.Connection.ID!=nativeMetricConnectionID||ctx.Connection.Data["runtime_metric"]!=nativeRuntimeMetricName {
+   return nil,resourcev2.NewError("INVALID_REQUEST","Native stream has no selected registered profile.")
+  }
+  if req.ResourceData!=nil||req.Reference!=nil||req.Route!=nil {
+   return nil,resourcev2.NewError("INVALID_REQUEST","Ordinary metric utility fabricated a resource body or route.")
+  }
+  response,err:=sampleNativeRuntimeMetric(nativeRuntimeMetricName,sdkmetric.ShapeCurrent)
+  if err==nil{select{case sampled<-ctx.Connection.ID:default:}}
+  return response,err
+ })
+ ctx,cancel:=context.WithCancel(context.Background());defer cancel()
+ ctrl:=NewController(logging.NewNop(),nil,fixture.resources).(*controller)
+ require.NoError(t,ctrl.ServiceStartup(ctx,application.ServiceOptions{}))
+ require.NoError(t,ctrl.OnPluginStart(nativeMetricPluginID,config.PluginMeta{},fixture.backend))
+ t.Cleanup(func(){_ = ctrl.OnPluginStop(nativeMetricPluginID,config.PluginMeta{})})
+ state,err:=ctrl.ensureStream(nativeMetricPluginID,nativeMetricConnectionID);require.NoError(t,err)
+ fixture.waitMetricRPCStarted(t)
+ select{case state.input<-sdkmetric.StreamInput{SubscriptionID:"native-connection",Command:sdkmetric.StreamCommandSubscribe,ResourceKey:nativeMetricResourceKey,Interval:time.Second}:case <-time.After(time.Second):t.Fatal("actual native lane did not accept input")}
+ select{case id:=<-sampled:require.Equal(t,nativeMetricConnectionID,id);case <-time.After(5*time.Second):t.Fatal("actual native stream did not sample its registered profile")}
+ require.Empty(t,ctrl.retireStream(state,closedStreamError()))
+ fixture.waitMetricRPCStopped(t)
+}
+
+func TestStoppedProfileCannotOpenMetricSubscriptionUntilExplicitStart(t *testing.T) {
+ sampled:=make(chan struct{},1)
+ fixture:=newNativeMetricFixture(t,func(_ *sdkmetric.QueryContext,_ sdkmetric.QueryRequest)(*sdkmetric.QueryResponse,error){
+  response,err:=sampleNativeRuntimeMetric(nativeRuntimeMetricName,sdkmetric.ShapeCurrent)
+  if err==nil{select{case sampled<-struct{}{}:default:}}
+  return response,err
+ })
+ select{case <-fixture.connectionCreated:case <-time.After(time.Second):t.Fatal("fixture did not start its native connection")}
+ ctx,cancel:=context.WithCancel(context.Background());defer cancel()
+ ctrl:=NewController(logging.NewNop(),nil,fixture.resources).(*controller)
+ require.NoError(t,ctrl.ServiceStartup(ctx,application.ServiceOptions{}))
+ require.NoError(t,ctrl.OnPluginStart(nativeMetricPluginID,config.PluginMeta{},fixture.backend))
+ t.Cleanup(func(){_ = ctrl.OnPluginStop(nativeMetricPluginID,config.PluginMeta{})})
+ fixture.resources.SetConnectionChangeHook(ctrl.BeginConnectionChange)
+ _,err:=fixture.resources.StopConnection(invocation.HostContext(ctx),nativeMetricPluginID,nativeMetricConnectionID)
+ require.NoError(t,err)
+ select{case err:=<-fixture.connectionReleased:require.NoError(t,err);case <-time.After(time.Second):t.Fatal("native connection did not stop")}
+ id,err:=ctrl.Subscribe(nativeMetricPluginID,nativeMetricConnectionID,SubscribeRequest{ResourceKey:nativeMetricResourceKey,Interval:time.Second})
+ if err==nil{_ = ctrl.Unsubscribe(id)}
+ require.Error(t,err,"stopped profile must not establish a sampling lane")
+ require.Equal(t,"CONNECTION_ERROR",resourcev2.ErrorCode(err))
+ fixture.waitMetricRPCStarted(t)
+ fixture.waitMetricRPCStopped(t)
+ select{case <-fixture.connectionCreated:t.Fatal("subscribe automatically restarted the stopped native client");default:}
+ select{case <-sampled:t.Fatal("stopped profile sampled a native metric");default:}
+ status,err:=fixture.resources.StartConnection(invocation.HostContext(ctx),nativeMetricPluginID,nativeMetricConnectionID)
+ require.NoError(t,err);require.Equal(t,types.ConnectionStatusConnected,status.Status)
+ select{case <-fixture.connectionCreated:case <-time.After(time.Second):t.Fatal("explicit start did not create its native client")}
+ state,err:=ctrl.ensureStream(nativeMetricPluginID,nativeMetricConnectionID);require.NoError(t,err)
+ fixture.waitMetricRPCStarted(t)
+ select{case state.input<-sdkmetric.StreamInput{SubscriptionID:"explicit-start",Command:sdkmetric.StreamCommandSubscribe,ResourceKey:nativeMetricResourceKey,Interval:time.Second}:case <-time.After(time.Second):t.Fatal("restarted lane did not accept input")}
+ select{case <-sampled:case <-time.After(5*time.Second):t.Fatal("explicit start did not permit native sampling")}
+ require.Empty(t,ctrl.retireStream(state,closedStreamError()))
+ fixture.waitMetricRPCStopped(t)
 }

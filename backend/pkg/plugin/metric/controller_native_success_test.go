@@ -76,9 +76,7 @@ func TestQueryRegisteredNativeRuntimeMetricThroughConnectionGRPC(t *testing.T) {
 			t.Errorf("metric plugin shutdown failed: %v", err)
 		}
 		cancel()
-		fixture.waitMetricRPCStopped(t)
 	})
-	fixture.waitMetricRPCStarted(t)
 
 	providers := ctrl.GetProvidersForResource(nativeMetricResourceKey)
 	require.Len(t, providers, 1)
@@ -176,6 +174,8 @@ type nativeMetricFixture struct {
 	resources     hostresource.Controller
 	backend       *plugintypes.InProcessBackend
 	metricStarted <-chan struct{}
+	connectionCreated <-chan struct{}
+	connectionReleased <-chan error
 	metricStopped <-chan struct{}
 }
 
@@ -184,7 +184,7 @@ func newNativeMetricFixture(t *testing.T, query sdkmetric.QueryFunc) *nativeMetr
 	rootCtx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	state := appstate.NewTestService(t)
-	connections := &nativeRuntimeConnections{released: make(chan error, 1)}
+	connections := &nativeRuntimeConnections{released: make(chan error, 1), created: make(chan struct{}, 8)}
 	resourcer := nativeRuntimeResourcer{}
 	resourceManager, err := sdkresource.NewController(sdkresource.Config[os.Process]{
 		Catalog: func(context.Context, sdkresource.CatalogRequest) (sdkresource.Catalog, error) {
@@ -205,6 +205,7 @@ func newNativeMetricFixture(t *testing.T, query sdkmetric.QueryFunc) *nativeMetr
 			Metrics: []sdkmetric.MetricDescriptor{{ID: nativeRuntimeMetricID, Name: "GOMAXPROCS", Unit: sdkmetric.UnitCount,
 				SupportedShapes: []sdkmetric.MetricShape{sdkmetric.ShapeCurrent, sdkmetric.ShapeTimeseries}}},
 		}}, query, nil)
+	manager.BindConnectionContextProvider(resourceManager)
 	started := make(chan struct{}, 1)
 	stopped := make(chan struct{}, 1)
 	options := utils.RegisterServerOpts(nil, logging.NewNop())
@@ -290,7 +291,7 @@ func newNativeMetricFixture(t *testing.T, query sdkmetric.QueryFunc) *nativeMetr
 	status, err := resources.StartConnection(invocation.HostContext(connectionCtx), nativeMetricPluginID, nativeMetricConnectionID)
 	require.NoError(t, err)
 	require.Equal(t, sdktypes.ConnectionStatusConnected, status.Status)
-	return &nativeMetricFixture{resources: resources, backend: backend, metricStarted: started, metricStopped: stopped}
+	return &nativeMetricFixture{resources: resources, backend: backend, metricStarted: started, metricStopped: stopped, connectionCreated: connections.created, connectionReleased: connections.released}
 }
 
 func (f *nativeMetricFixture) waitMetricRPCStarted(t *testing.T) {
@@ -316,6 +317,7 @@ func (f *nativeMetricFixture) waitMetricRPCStopped(t *testing.T) {
 // that handle on disconnect; no host GetConnection substitute is installed.
 type nativeRuntimeConnections struct {
 	released chan error
+	created chan struct{}
 }
 
 func (nativeRuntimeConnections) LoadConnections(context.Context) ([]sdktypes.Connection, error) {
@@ -324,11 +326,13 @@ func (nativeRuntimeConnections) LoadConnections(context.Context) ([]sdktypes.Con
 	}}}, nil
 }
 
-func (nativeRuntimeConnections) CreateClient(_ context.Context, connection sdktypes.Connection) (*os.Process, error) {
+func (c nativeRuntimeConnections) CreateClient(_ context.Context, connection sdktypes.Connection) (*os.Process, error) {
 	if connection.Data["process_id"] != strconv.Itoa(os.Getpid()) {
 		return nil, errors.New("native connection does not select this process")
 	}
-	return os.FindProcess(os.Getpid())
+	process, err := os.FindProcess(os.Getpid())
+	if err == nil { c.created <- struct{}{} }
+	return process, err
 }
 
 func (c nativeRuntimeConnections) DestroyClient(_ context.Context, process *os.Process) error {
