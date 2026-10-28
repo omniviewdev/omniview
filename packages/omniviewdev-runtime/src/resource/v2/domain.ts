@@ -30,6 +30,8 @@ export type Value =
 
 export interface SchemaBinding {
   state: string;
+  /** Only for unavailable state: known SDK error code, at most 64 ASCII uppercase/underscore bytes. Never a backend message. */
+  unavailableReason?: string;
   revision?: string;
   dialect?: string;
   root?: string;
