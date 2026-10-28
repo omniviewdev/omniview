@@ -116,6 +116,17 @@ func (c *controller) Get(ctx context.Context, pluginID string, input HostGetRequ
 	if err != nil {
 		return _result, err
 	}
+	target, err := exactReadTarget(request, descriptor)
+	if err != nil {
+		return _result, err
+	}
+	ctx, err = c.boundary.Reauthorize(ctx, referenceQueryTarget(pluginID, target, request.Reference))
+	if err != nil {
+		return _result, err
+	}
+	if err := c.currentGeneration(ctx, pluginID, generation); err != nil {
+		return _result, err
+	}
 	record, err := getter.Get(ctx, request)
 	if err != nil {
 		c.checkConnectionError(pluginID, err)
@@ -131,7 +142,7 @@ func (c *controller) Get(ctx context.Context, pluginID string, input HostGetRequ
 		return _result, err
 	}
 	principal, _ := invocation.FromContext(ctx)
-	out, err := envelopeRecord(generation.generationID, principal.Principal().Owner(), input.TargetID, exactReadTarget(request), record)
+	out, err := envelopeRecord(generation.generationID, principal.Principal().Owner(), input.TargetID, target, record)
 	if err != nil {
 		return _result, err
 	}
@@ -141,13 +152,12 @@ func (c *controller) Get(ctx context.Context, pluginID string, input HostGetRequ
 	return out, nil
 }
 
-func exactReadTarget(request resourcev2.GetRequest) resourcev2.ReadTarget {
-	scope := make(resourcev2.QueryScope, 0, len(request.Reference.Address.Scope))
-	for _, entry := range request.Reference.Address.Scope {
-		values := []string{entry.Value}
-		scope = append(scope, resourcev2.ScopeConstraint{Dimension: entry.Dimension, Match: resourcev2.ScopeOneOf, Values: &values})
+func exactReadTarget(request resourcev2.GetRequest, descriptor resourcev2.ResourceType) (resourcev2.ReadTarget, error) {
+	scope, err := resourcev2.ScopeForAddress(request.Reference.Address, descriptor)
+	if err != nil {
+		return resourcev2.ReadTarget{}, err
 	}
-	return resourcev2.ReadTarget{Route: request.Route, Provider: request.Reference.Address.Provider, Authority: request.Reference.Address.Authority, Type: request.Reference.Address.Type, Scope: scope, Representation: request.Representation}
+	return resourcev2.ReadTarget{Route: request.Route, Provider: request.Reference.Address.Provider, Authority: request.Reference.Address.Authority, Type: request.Reference.Address.Type, Scope: scope, Representation: request.Representation}, nil
 }
 
 func (c *controller) Enumerate(ctx context.Context, pluginID string, input HostEnumerateRequest) (_result HostSourcePage, retErr error) {

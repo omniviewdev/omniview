@@ -85,12 +85,16 @@ func (c *controller) ResolveReference(ctx context.Context, pluginID string, inpu
 	if err := resourcev2.ValidateGetRequest(request); err != nil {
 		return _result, err
 	}
+	target, err := exactReadTarget(request, *descriptor)
+	if err != nil {
+		return _result, err
+	}
 	if err := c.currentGeneration(ctx, pluginID, generation); err != nil {
 		return _result, err
 	}
 	principal, _ := invocation.FromContext(ctx)
 	targetID := uuid.NewString()
-	key, addressKey, err := rowIdentity(generation.generationID, principal.Principal().Owner(), targetID, exactReadTarget(request), reference)
+	key, addressKey, err := rowIdentity(generation.generationID, principal.Principal().Owner(), targetID, target, reference)
 	if err != nil {
 		return _result, err
 	}

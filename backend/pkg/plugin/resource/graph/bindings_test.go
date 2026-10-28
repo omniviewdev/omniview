@@ -211,3 +211,27 @@ func TestQueuedRetiredSourceCannotPoisonReplacementCoverage(t *testing.T) {
 		if len(g.EdgesFrom(current.EntryKey())) != 1 { t.Fatal("current source did not use replacement declarations") }
 	}) }
 }
+
+func TestBoundGraphQueryOnlyDimensionsStayOutsideIdentity(t *testing.T) {
+ g,_,idx,source,bindings,decl := boundFixture(t,MethodFieldPath)
+ tenant,account := []string{"source"},[]string{"a/b"}
+ bindings.Source.Target.Scope = resource.QueryScope{{Dimension:"tenant",Match:resource.ScopeOneOf,Values:&tenant},{Dimension:"repository",Match:resource.ScopeAny}}
+ bindings.Targets[0].Target.Scope = resource.QueryScope{{Dimension:"account",Match:resource.ScopeOneOf,Values:&account},{Dimension:"zone",Match:resource.ScopeAny},{Dimension:"repository",Match:resource.ScopeAny}}
+ if err := g.SetBoundDeclarations(source.PluginID,source.Route,source.Reference.Address.Type,[]resource.RelationshipDescriptor{decl},bindings); err != nil { t.Fatal(err) }
+ idx.OnAdd(source,json.RawMessage(`{"link":"repository-X/opaque-looking-ID","account":"a/b"}`))
+ edges := g.EdgesFrom(source.EntryKey())
+ if len(edges) != 1 || len(edges[0].Target.Reference.Address.Scope) != 2 { t.Fatalf("query-only dimension became identity or rejected exact mapping: %+v",edges) }
+ if err := g.CheckComplete(source.PluginID,source.Route); err != nil { t.Fatal(err) }
+ malformed := nodeFromEntry(source)
+ malformed.Reference.Address.Scope = nil
+ if bindingMatches(bindings.Source,malformed) { t.Fatal("any query selection accepted missing identity dimensions") }
+ for _,target := range []bool{false,true} {
+  candidate := cloneBoundSet(boundSet{bindings:bindings}).bindings
+  repository := []string{"repository-X"}
+  constraint := resource.ScopeConstraint{Dimension:"repository",Match:resource.ScopeOneOf,Values:&repository}
+  if target { candidate.Targets[0].Target.Scope[2] = constraint } else { candidate.Source.Target.Scope[1] = constraint }
+  if err := g.SetBoundDeclarations(source.PluginID,source.Route,source.Reference.Address.Type,[]resource.RelationshipDescriptor{decl},candidate); resource.ErrorCode(err) != "UNSUPPORTED" {
+   t.Fatalf("graph admitted unproven query-only membership: %v",err)
+  }
+ }
+}

@@ -129,6 +129,24 @@ dimensions resolve to explicit `any` within the admitted route, never a broader
 route. Exact reference links use `ResolveReference` with literal scope entries,
 native ID, and an optional incarnation instead of constructing host authority.
 
+Only `identityDimensions` belong in an exact address. A `queryDimensions` entry
+may instead be selection-only (for example a repository filter). `Get` derives
+exact constraints for shared identity/query dimensions and explicit `any` for
+query-only dimensions, using the SDK's `ScopeForAddress`. It never parses an ID
+to guess a narrower filter. Both actual source support and a fresh trusted-policy
+check must cover that entire derived scope; `any` is not permission proof.
+Reauthorization preserves the original request ID, principal, session, resource,
+and captured source epoch. Restricted query-only support or policy is rejected
+before native `Get` or registry publication.
+
+`Enumerate` and `NativeQuery` retain their explicitly requested query scope.
+The native adapter establishes query-only filter truth and coverage; matching
+an address proves only identity and shared-dimension membership, never complete
+query coverage. Best-effort events and registry-derived graph rules carry no
+query-only filter provenance: unrestricted `any` needs no extra identity entry,
+but an absent constrained dimension cannot establish membership. Such events
+remain unmatched and constrained graph bindings are explicitly unsupported.
+
 `Get`, `Enumerate`, and `NativeQuery` take `(pluginID, { targetId, request })`,
 where `request` is the corresponding canonical SDK request. `Get` returns
 `HostRecord { key, addressKey, targetId, record, route }`. Acquisition pages return
@@ -139,13 +157,20 @@ derive them from display fields or calculate them in plugin JavaScript.
 
 `useResolvedResourceTarget` exposes target resolution as a query.
 `useResource({ pluginID, request })` accepts a host Get request.
-`useResources({ pluginID, request, live: true })` follows native continuation
-pages for its initial view, then uses the actual advisory native update source.
-It registers listeners before subscribing and starting native work, filters
-host target membership, batches canonical row updates, and owns cancellation and
-unsubscription. Its `bestEffort` guarantee and native cache readiness do not
-promise an atomic snapshot/update cutover, replay, gap detection, or P05
-continuity. `live: false` is explicitly finite acquisition, not a subscription.
+`useResources({ pluginID, request, live: true })` acquires exactly one bounded
+native page. Callers own continuation cursors; inactive page queries discard
+their rows, so Previous re-fetches instead of retaining row history. The hook
+uses the actual advisory native update source, registers listeners before
+subscribing and starting native work, and owns cancellation and unsubscription.
+Live updates patch only exact host keys already observed on the visible page.
+Unknown additions/updates never expand membership or replace an incarnation.
+They set `membershipStale`, as do deletes that may leave a page gap; the UI must
+offer an explicit page refresh. Pending events are coalesced by observed key,
+and unseen bodies are not retained. Native `sourcePage` metadata remains
+acquisition provenance; modified view count/revision claims are separate.
+Its `bestEffort` guarantee and native cache readiness do not promise an atomic
+snapshot/update cutover, replay, gap detection, or P05 continuity.
+`live: false` is explicitly finite acquisition, not a subscription.
 
 `Mutate` and `Action` consume canonical SDK requests with explicit references and
 tagged `Value` inputs. `useResourceMutations` exposes `mutate(request)` without
@@ -187,6 +212,12 @@ integers and negative zero. Resource exec, logs, metrics and port forwarding
 receive the observed tagged body, reference and route, not the display projection.
 True nonresource utilities omit those canonical fields; cluster metric keys do
 not imply a fabricated resource reference or body.
+Metric query and stream hooks accept utility `params` separately from the body;
+provider configuration belongs there, including connection-specific Prometheus
+overrides, rather than in invented fields of a canonical resource body.
+Queries remain usable if canonical metric streaming is unsupported. A failed
+stream retires its exact subscription interests and releases pending commands;
+it does not fall back to the legacy resource-data wire.
 
 Use the handwritten resource, exec, logs, metric and networker clients for
 Value-bearing requests. Their

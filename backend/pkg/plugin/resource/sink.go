@@ -118,13 +118,17 @@ func (c *controller) observeRecord(ctx context.Context, pluginID string, route r
 	return sink.observe(route, record, nil)
 }
 
+// targetContainsReference only handles already-validated exact identities.
+// An unrestricted query-only dimension need not appear in the address. A
+// constrained dimension absent from identity is unknown, not membership proof;
+// these best-effort events carry no native query-target provenance.
 func targetContainsReference(target resource.ReadTarget, route resource.AccessRoute, reference resource.ResourceReference) bool {
 	address := reference.Address
 	if target.Route != route || target.Provider != address.Provider || target.Authority != address.Authority || target.Type != address.Type {
 		return false
 	}
 	for _, constraint := range target.Scope {
-		found := false
+		found := constraint.Match == resource.ScopeAny
 		for _, entry := range address.Scope {
 			if entry.Dimension != constraint.Dimension {
 				continue

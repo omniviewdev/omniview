@@ -19,6 +19,13 @@ func referenceTarget(pluginID string, route sdkresource.AccessRoute, reference s
 		Scope: map[string]string{"resource-scope": string(encoded), "authority": reference.Address.Authority}}
 }
 
+func referenceQueryTarget(pluginID string, target sdkresource.ReadTarget, reference sdkresource.ResourceReference) invocation.Target {
+	out := referenceTarget(pluginID, target.Route, reference)
+	encoded, _ := json.Marshal(target.Scope)
+	out.Scope["query-scope"] = string(encoded)
+	return out
+}
+
 func readTarget(pluginID string, target sdkresource.ReadTarget) invocation.Target {
 	encoded, _ := json.Marshal(target.Scope)
 	return invocation.Target{Provider: pluginID, Connection: target.Route.Connection,

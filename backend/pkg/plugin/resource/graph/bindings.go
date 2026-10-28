@@ -35,6 +35,8 @@ func (g *RelationshipGraph) SetBoundDeclarations(plugin string, route resource.A
  if route.Connection == "" || sourceType == "" || bindings.Source.Target.Route != route || bindings.Source.Target.Type != sourceType || bindings.Source.Target.Provider == "" || bindings.Source.Target.Authority == "" {
   return fmt.Errorf("invalid graph source binding")
  }
+ if err := admitBindingScopeProof(bindings.Source); err != nil { return err }
+ for _,target := range bindings.Targets { if err := admitBindingScopeProof(target); err != nil { return err } }
  candidate := boundSet{declarations: decls, bindings: bindings}
  g.mu.Lock()
  defer g.mu.Unlock()
@@ -49,6 +51,17 @@ func (g *RelationshipGraph) SetBoundDeclarations(plugin string, route resource.A
  delete(g.declarationProblems,declMapKey{pluginID:plugin,connectionID:route.Connection,resourceKey:sourceType})
  g.markChanged(plugin,route.Connection)
  g.boundDeclarations[declMapKey{pluginID:plugin, connectionID:route.Connection, resourceKey:sourceType}] = &snapshot
+ return nil
+}
+
+// Registry observations carry exact identity, not native query-filter provenance.
+func admitBindingScopeProof(binding TargetBinding) error {
+ for _,constraint := range binding.Target.Scope {
+  if constraint.Match == resource.ScopeAny { continue }
+  identity := false
+  for _,dimension := range binding.IdentityDimensions { if dimension.Name == constraint.Dimension { identity = true; break } }
+  if !identity { return resource.NewError("UNSUPPORTED","Graph observations do not prove constrained query-only membership.") }
+ }
  return nil
 }
 
@@ -155,12 +168,15 @@ func (g *RelationshipGraph) CheckComplete(plugin string, route resource.AccessRo
 func bindingMatches(binding TargetBinding, node GraphNode) bool {
  target,address := binding.Target,node.Reference.Address
  if target.Route != node.Route || target.Provider != address.Provider || target.Authority != address.Authority || target.Type != address.Type { return false }
- return queryScopeMatches(target.Scope,address.Scope)
+ return exactScope(binding,address.Scope) && queryScopeMatches(target.Scope,address.Scope)
 }
 
+// Query-only any imposes no identity requirement. Restricted dimensions missing
+// from identity remain unproven: address matching never establishes native filter
+// truth or complete query coverage.
 func queryScopeMatches(query resource.QueryScope, scope []resource.ScopeEntry) bool {
  for _,constraint := range query {
-  found := false
+  found := constraint.Match == resource.ScopeAny
   for _,item := range scope { if item.Dimension == constraint.Dimension {
    if constraint.Match == resource.ScopeAny { found = true } else if constraint.Match == resource.ScopeOneOf && constraint.Values != nil { for _,value := range *constraint.Values { if value == item.Value { found = true } } }
   } }
