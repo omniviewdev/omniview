@@ -61,6 +61,8 @@ tags:
   - devops
 ```
 
+For `exec` sessions, the host owns terminal tab state. When a provider supplies retryable shell errors and alternate commands, “Try a different shell” replaces the session in the existing tab, preserving tab order and focus. The host closes the old backend session; a failed retry stays in that same tab.
+
 ### 1.4 Creating a New Plugin
 
 ```bash

@@ -106,10 +106,8 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
       connection: props.connectionID as string,
       opts,
       label: tab?.title,
+      replaceSessionId: sessionId,
     });
-
-    // Close the errored tab
-    bottomDrawerChannel.emit('onSessionClosed', { id: sessionId });
   }, [tab, sessionId]);
 
   // Keep a ref to the latest settings so the session-lifecycle effect can
