@@ -1,4 +1,5 @@
-// Models (auto-generated from Go types)
+// Legacy nonresource models and shared connection/plugin/exec/log utility types.
+// Resource operations and DTOs belong to the runtime resource-v2 API.
 export * from './internal/models';
 
 // Wails binding clients
