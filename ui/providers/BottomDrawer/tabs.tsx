@@ -156,6 +156,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
       } else {
         createTab(pendingTab);
       }
+
       ExecClient.CreateSession(plugin, connection, opts)
         .then((session: any) => {
           updateTab(
