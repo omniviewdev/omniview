@@ -53,39 +53,40 @@ jobs:
           if-no-files-found: error
 
   windows-vault:
-    name: Windows credential and ACL boundaries
+    name: Windows encrypted history and credential boundaries
     runs-on: windows-latest
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: bench/historywindowssecurityprobe
-        shell: pwsh
-    env:
-      CGO_ENABLED: '0'
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26'
           cache-dependency-path: bench/historywindowssecurityprobe/go.sum
-      - name: Exercise real credential storage and protected ACLs
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          path-type: inherit
+          update: true
+          install: >-
+            git make mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-tcl mingw-w64-x86_64-pkgconf
+      - name: Exercise official encrypted core, credential storage and protected ACLs
+        shell: msys2 {0}
         run: |
-          go env -json GOVERSION GOOS GOARCH CGO_ENABLED
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          go test ./... -count=1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          go run . | Tee-Object -FilePath "$env:RUNNER_TEMP/history-windows-proof.json"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          set -euo pipefail
+          cd "$(cygpath -u "$GITHUB_WORKSPACE")"
+          GOWORK=off go env -json GOVERSION GOOS GOARCH CGO_ENABLED
+          bash bench/historywindowssecurityprobe/native-windows.sh | tee "$(cygpath -u "$RUNNER_TEMP")/history-windows-proof.txt"
       - uses: actions/upload-artifact@v4
         with:
           name: history-windows-vault
-          path: ${{ runner.temp }}/history-windows-proof.json
+          path: ${{ runner.temp }}/history-windows-proof.txt
           if-no-files-found: error
 
   linux-vault:
-    name: Linux Secret Service and filesystem boundaries
+    name: Linux encrypted history and Secret Service boundaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -93,15 +94,14 @@ jobs:
           go-version: '1.26'
           cache-dependency-path: bench/historylinuxsecurityprobe/go.sum
       - name: Install isolated-session proof prerequisites
-        run: sudo apt-get update && sudo apt-get install -y dbus gnome-keyring libglib2.0-bin coreutils
-      - name: Exercise real Secret Service, denial and private files
+        run: sudo apt-get update && sudo apt-get install -y build-essential git tcl pkg-config libssl-dev openssl dbus gnome-keyring libglib2.0-bin coreutils util-linux
+      - name: Exercise official encrypted core, Secret Service and private files
         working-directory: bench/historylinuxsecurityprobe
         shell: bash
         run: |
           set -euo pipefail
           GOWORK=off go env -json GOVERSION GOOS GOARCH CGO_ENABLED
-          GOWORK=off go vet ./...
-          sh smoke.sh | tee "$RUNNER_TEMP/history-linux-proof.txt"
+          bash native-linux.sh | tee "$RUNNER_TEMP/history-linux-proof.txt"
       - uses: actions/upload-artifact@v4
         with:
           name: history-linux-vault
