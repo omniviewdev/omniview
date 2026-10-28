@@ -264,7 +264,7 @@ func (c *controller) relationshipRequest(ctx context.Context, pluginID string, p
 	if err := c.currentGeneration(ctx, pluginID, generation); err != nil {
 		return request, err
 	}
-	authority, err := c.resolveAuthority(ctx, pluginID, source.Route, catalog, generation, source.Reference.Address.Type)
+	authority, err := c.resolveAuthority(ctx, pluginID, source.Route, catalog, captureCatalogAdmission(ctx, generation), source.Reference.Address.Type)
 	if err != nil {
 		return request, err
 	}
@@ -302,7 +302,7 @@ func (c *controller) relationshipRequest(ctx context.Context, pluginID string, p
 		if err != nil {
 			return request, err
 		}
-		targetAuthority, err := c.resolveAuthority(targetCtx, pluginID, target.Route, catalog, generation, target.Type)
+		targetAuthority, err := c.resolveAuthority(targetCtx, pluginID, target.Route, catalog, captureCatalogAdmission(targetCtx, generation), target.Type)
 		if err != nil {
 			return request, err
 		}

@@ -77,7 +77,7 @@ func (c *controller) admitOperationCatalog(ctx context.Context, pluginID string,
 	if err != nil {
 		return resourcev2.ResourceType{}, err
 	}
-	resolved, err := c.resolveAuthority(ctx, pluginID, route, catalog, generation, descriptor.Type)
+	resolved, err := c.resolveAuthority(ctx, pluginID, route, catalog, captureCatalogAdmission(ctx, generation), descriptor.Type)
 	if err != nil {
 		return resourcev2.ResourceType{}, err
 	}

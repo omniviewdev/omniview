@@ -196,6 +196,10 @@ No native scheme currently qualifies for stable-native continuity. Losing local
 state or unreported retargeting limits continuity; unknown incarnation stays
 absent. Request-local target labels do not create leases, permissions, or saved
 resource identity.
+Catalog acquisition captures the route's configuration epoch before provider IO.
+The host checks that captured epoch under the same fence as authority persistence
+and route invalidation. A stale catalog cannot replace a newer durable binding,
+even when its caller would later reject the stale result.
 
 Graph queries take `(pluginID, reference, route, ...)`, never namespace/name
 tuples. Each returned graph node carries its canonical reference, independent

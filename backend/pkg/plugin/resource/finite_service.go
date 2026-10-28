@@ -87,29 +87,42 @@ func (c *controller) getLifecycle(ctx context.Context, pluginID string) (resourc
 	return lifecycle, nil
 }
 
-func (c *controller) routeCatalog(ctx context.Context, pluginID string, route resourcev2.AccessRoute) (*pluginState, resourcev2.Catalog, error) {
+// catalogAdmission retains the route epoch captured before acquisition. Looking
+// up the current epoch after fetching a catalog would bless stale source data.
+type catalogAdmission struct {
+	generation *pluginState
+	epoch sourceEpochSnapshot
+}
+
+func captureCatalogAdmission(ctx context.Context, generation *pluginState) catalogAdmission {
+	epoch, ok := ctx.Value(sourceEpochKey{}).(sourceEpochSnapshot)
+	if !ok { return catalogAdmission{} }
+	return catalogAdmission{generation: generation, epoch: epoch}
+}
+
+func (c *controller) routeCatalog(ctx context.Context, pluginID string, route resourcev2.AccessRoute) (catalogAdmission, resourcev2.Catalog, error) {
 	if route.Connection == "" {
-		return nil, resourcev2.Catalog{}, resourcev2.NewError("INVALID_REQUEST", "An explicit access route is required.")
+		return catalogAdmission{}, resourcev2.Catalog{}, resourcev2.NewError("INVALID_REQUEST", "An explicit access route is required.")
 	}
 	provider, generation, ctx, cleanup, err := c.operationGeneration(ctx, pluginID, route)
 	if err != nil {
-		return nil, resourcev2.Catalog{}, err
+		return catalogAdmission{}, resourcev2.Catalog{}, err
 	}
 	defer cleanup()
 	catalog, err := provider.Catalog(ctx, resourcev2.CatalogRequest{Route: route})
 	if err != nil {
-		return nil, resourcev2.Catalog{}, err
+		return catalogAdmission{}, resourcev2.Catalog{}, err
 	}
 	if err = resourcev2.ValidateCatalog(catalog); err != nil {
-		return nil, resourcev2.Catalog{}, err
+		return catalogAdmission{}, resourcev2.Catalog{}, err
 	}
 	if err = c.currentGeneration(ctx, pluginID, generation); err != nil {
-		return nil, resourcev2.Catalog{}, err
+		return catalogAdmission{}, resourcev2.Catalog{}, err
 	}
-	return generation, catalog, nil
+	return captureCatalogAdmission(ctx, generation), catalog, nil
 }
 
-func (c *controller) resolveAuthority(ctx context.Context, pluginID string, route resourcev2.AccessRoute, catalog resourcev2.Catalog, generation *pluginState, resourceType string) (AuthorityResolution, error) {
+func (c *controller) resolveAuthority(ctx context.Context, pluginID string, route resourcev2.AccessRoute, catalog resourcev2.Catalog, admission catalogAdmission, resourceType string) (AuthorityResolution, error) {
 	var descriptor *resourcev2.ResourceType
 	for i := range catalog.Types {
 		if catalog.Types[i].Type == resourceType {
@@ -125,8 +138,14 @@ func (c *controller) resolveAuthority(ctx context.Context, pluginID string, rout
 	}
 	c.pluginsMu.RLock()
 	defer c.pluginsMu.RUnlock()
-	if c.plugins[pluginID] != generation || generation.provider == nil || generation.ctx.Err() != nil {
+	generation := admission.generation
+	if generation == nil || c.plugins[pluginID] != generation || generation.provider == nil || generation.ctx.Err() != nil {
 		return AuthorityResolution{}, resourcev2.NewError("RESET_REQUIRED", "Provider generation retired.")
+	}
+	// Keep this check and ObserveCatalog under the same pluginsMu read fence
+	// used by invalidateProfileRoutes' write-locked epoch/authority reset.
+	if admission.epoch.Connection != route.Connection || generation.sourceEpoch[route.Connection] != admission.epoch.Epoch {
+		return AuthorityResolution{}, resourcev2.NewError("RESET_REQUIRED", "Connection configuration changed during catalog acquisition.")
 	}
 	c.finite.mu.Lock()
 	defer c.finite.mu.Unlock()
