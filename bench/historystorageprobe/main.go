@@ -180,5 +180,6 @@ func main() {
 	must(err)
 	expect(string(before) == "not a sqlite database", "corrupt database replaced")
 	report := map[string]any{"driver": "modernc.org/sqlite v1.61.0", "sqlite": version, "target": runtime.GOOS + "/" + runtime.GOARCH, "journal": mode, "synchronous": "FULL", "fts5": true, "unicode61_controls": true, "fts_is_not_substring": true, "equal_time_keyset": true, "wal_reader_snapshot": true, "process_exit_before_commit": "rolled back evidence and checkpoint", "process_exit_after_commit": "retained evidence and checkpoint", "page_quota_failure": "checkpoint unchanged", "corruption": "rejected without replacement", "permissions": modes, "synthetic_rows_inserted": 10000, "insert_elapsed_ms": elapsed.Milliseconds(), "database_bytes": size.Size(), "limits": "Synthetic local driver mechanics only; no authorization, redaction, encryption, canonical domain, power-loss, OS disk-full or cross-platform execution proof"}
+	report["transaction_boundaries"] = boundaryProof(root)
 	must(json.NewEncoder(os.Stdout).Encode(report))
 }
