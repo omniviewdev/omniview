@@ -20,6 +20,7 @@ import (
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
@@ -40,6 +41,7 @@ type Controller interface {
 	internaltypes.Controller
 	ServiceStartup(ctx context.Context, options application.ServiceOptions) error
 	ServiceShutdown() error
+	SetReferenceAdmitter(resource.ReferenceAdmitter)
 	GetSupportedResources(pluginID string) []logs.Handler
 	CreateSession(plugin, connectionID string, opts logs.CreateSessionOptions) (*logs.LogSession, error)
 	GetSession(sessionID string) (*logs.LogSession, error)
@@ -62,6 +64,7 @@ type controller struct {
 	logger           logging.Logger
 	settingsProvider pkgsettings.Provider
 	resourceClient   resource.Service
+	referenceAdmitter resource.ReferenceAdmitter
 	outputMux        chan logs.StreamOutput
 
 	mu           sync.RWMutex
@@ -74,6 +77,9 @@ type controller struct {
 	batches  map[string]*logBatch
 	batchMux sync.Mutex
 }
+
+// SetReferenceAdmitter is configured by native composition before startup.
+func (c *controller) SetReferenceAdmitter(admit resource.ReferenceAdmitter) { c.referenceAdmitter = admit }
 
 type logBatch struct {
 	lines []logs.LogLine
@@ -414,6 +420,13 @@ func (c *controller) CreateSession(
 		attribute.String("plugin_id", pluginID),
 		attribute.String("connection_id", connectionID),
 	)
+	if opts.Reference != nil {
+		if c.referenceAdmitter == nil { return nil, resourcev2.NewError("UNSUPPORTED", "Resource reference admission is unavailable.") }
+		if opts.Route == nil || opts.Route.Connection != connectionID { return nil, resourcev2.NewError("INVALID_REQUEST", "Resource route does not match the selected connection.") }
+		admitted, err := c.referenceAdmitter(ctx, "logs.CreateSession", pluginID, *opts.Route, *opts.Reference)
+		if err != nil { return nil, err }
+		ctx = admitted
+	}
 
 	c.mu.RLock()
 	client, ok := c.clients[pluginID]

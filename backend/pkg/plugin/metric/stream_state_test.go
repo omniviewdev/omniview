@@ -6,6 +6,7 @@ import (
  "time"
 
  "github.com/omniviewdev/omniview/backend/pkg/invocation"
+ hostresource "github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
  plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
  logging "github.com/omniviewdev/plugin-sdk/log"
  "github.com/omniviewdev/plugin-sdk/pkg/config"
@@ -62,9 +63,17 @@ func testMetricStream() *metricStream {
 }
 
 func TestInvalidSubscriptionCannotPoisonSharedLane(t *testing.T) {
- ctrl:=NewController(logging.NewNop(),nil,nil).(*controller)
- state:=testMetricStream();defer state.stop();ctrl.streams[state.key]=state
- _,err:=ctrl.Subscribe("metrics","connection",SubscribeRequest{ResourceKey:"pods",ResourceID:"pod",Interval:time.Second,Reference:&resourcev2.ResourceReference{Address:resourcev2.ResourceAddress{Provider:"owner",Authority:"cluster",Type:"nodes",ID:"pod",Scope:[]resourcev2.ScopeEntry{}}},Route:&resourcev2.AccessRoute{Connection:"connection"}})
+ fixture:=newNativeMetricFixture(t,func(_ *sdkmetric.QueryContext,req sdkmetric.QueryRequest)(*sdkmetric.QueryResponse,error){return sampleNativeRuntimeMetric(nativeRuntimeMetricName,req.Shape)})
+ native:=invocation.HostContext(context.Background())
+ target,err:=fixture.resources.ResolveTarget(native,nativeMetricPluginID,hostresource.ResolveTargetRequest{Route:resourcev2.AccessRoute{Connection:nativeMetricConnectionID},Type:nativeMetricResourceKey,Representation:"native"})
+ require.NoError(t,err)
+ page,err:=fixture.resources.Enumerate(native,nativeMetricPluginID,hostresource.HostEnumerateRequest{TargetID:target.TargetID,Request:resourcev2.EnumerateRequest{Target:target.Target}})
+ require.NoError(t,err);require.Len(t,page.Records,1)
+ observed:=page.Records[0]
+ ctrl:=NewController(logging.NewNop(),nil,fixture.resources).(*controller)
+ ctrl.SetReferenceAdmitter(func(ctx context.Context,operation,plugin string,route resourcev2.AccessRoute,reference resourcev2.ResourceReference)(context.Context,error){return fixture.resources.AdmitReference(invocation.HostContext(ctx),operation,plugin,route,reference)})
+ state:=testMetricStream();state.key=metricStreamKey{nativeMetricPluginID,nativeMetricConnectionID};defer state.stop();ctrl.streams[state.key]=state
+ _,err=ctrl.Subscribe(nativeMetricPluginID,nativeMetricConnectionID,SubscribeRequest{ResourceKey:"different-type",ResourceID:observed.Record.Reference.Address.ID,Interval:time.Second,Reference:&observed.Record.Reference,Route:&observed.Route})
  require.Equal(t,"INVALID_REQUEST",resourcev2.ErrorCode(err));require.Empty(t,ctrl.subscriptions)
  select{case <-state.done:t.Fatal("bad subscription terminated shared lane");default:}
 }

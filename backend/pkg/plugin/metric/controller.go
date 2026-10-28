@@ -44,6 +44,7 @@ type Controller interface {
 	internaltypes.Controller
 	ServiceStartup(ctx context.Context, options application.ServiceOptions) error
 	ServiceShutdown() error
+	SetReferenceAdmitter(resource.ReferenceAdmitter)
 
 	// Discovery
 	GetProviders() []MetricProviderSummary
@@ -82,7 +83,7 @@ type subscriptionIndex struct {
 var _ Controller = (*controller)(nil)
 
 type controller struct {
-	app              *application.App
+	emitter          resource.EventEmitter
 	ctx              context.Context
 	logger           logging.Logger
 	settingsProvider pkgsettings.Provider
@@ -95,8 +96,12 @@ type controller struct {
 	streamErrors     map[metricStreamKey]error
 	streamBlocked    map[metricStreamKey]int
 	resourceClient   resource.Service
+	referenceAdmitter resource.ReferenceAdmitter
 	mux              sync.RWMutex
 }
+
+// SetReferenceAdmitter is configured by native composition before startup.
+func (c *controller) SetReferenceAdmitter(admit resource.ReferenceAdmitter) { c.referenceAdmitter = admit }
 
 func NewController(
 	logger logging.Logger,
@@ -104,7 +109,6 @@ func NewController(
 	resourceClient resource.Service,
 ) Controller {
 	return &controller{
-		app:              nil,
 		ctx:              nil,
 		logger:           logger.Named("MetricController"),
 		settingsProvider: sp,
@@ -122,7 +126,7 @@ func NewController(
 }
 
 func (c *controller) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
-	c.app = application.Get()
+	c.emitter = resource.NewAppEmitter(application.Get())
 	c.ctx = ctx
 	return nil
 }
@@ -270,10 +274,10 @@ func (c *controller) handleStreamOutput(output metric.StreamOutput) {
 
 	if output.Error != "" || output.OperationError != nil {
 		eventKey := "core/metrics/error/" + output.SubscriptionID
-		c.app.Event.Emit(eventKey, string(data))
+		c.emitter.Emit(eventKey, string(data))
 	} else {
 		eventKey := "core/metrics/data/" + output.SubscriptionID
-		c.app.Event.Emit(eventKey, string(data))
+		c.emitter.Emit(eventKey, string(data))
 	}
 }
 
@@ -367,6 +371,13 @@ func (c *controller) Query(
 		attribute.String("connection_id", connectionID),
 		attribute.String("resource_key", req.ResourceKey),
 	)
+	if req.Reference != nil {
+		if c.referenceAdmitter == nil { return nil, resourcev2.NewError("UNSUPPORTED", "Resource reference admission is unavailable.") }
+		if req.Route == nil || req.Route.Connection != connectionID { return nil, resourcev2.NewError("INVALID_REQUEST", "Resource route does not match the selected connection.") }
+		admitted, err := c.referenceAdmitter(ctx, "metric.Query", pluginID, *req.Route, *req.Reference)
+		if err != nil { return nil, err }
+		ctx = admitted
+	}
 
 	c.mux.RLock()
 	client, ok := c.clients[pluginID]
@@ -435,7 +446,7 @@ func (c *controller) QueryAll(
 // ================================ Streaming ================================ //
 
 func (c *controller) Subscribe(pluginID, connectionID string, req SubscribeRequest) (string, error) {
-	_, span := tracer.Start(context.Background(), "metric.Subscribe")
+	ctx, span := tracer.Start(context.Background(), "metric.Subscribe")
 	defer span.End()
 	subscriptionID := uuid.NewString()
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID),
@@ -446,6 +457,15 @@ func (c *controller) Subscribe(pluginID, connectionID string, req SubscribeReque
 		ResourceKey: req.ResourceKey, ResourceID: req.ResourceID, ResourceNamespace: req.ResourceNamespace,
 		ResourceData: req.ResourceData, Reference: req.Reference, Route: req.Route,
 		MetricIDs: req.MetricIDs, Interval: req.Interval, Params: req.Params,
+	}
+	if req.Reference != nil {
+		if c.referenceAdmitter == nil { return "", apperror.ForResource(resourcev2.NewError("UNSUPPORTED", "Resource reference admission is unavailable."), subscriptionID) }
+		if req.Route == nil || req.Route.Connection != connectionID { return "", apperror.ForResource(resourcev2.NewError("INVALID_REQUEST", "Resource route does not match the selected connection."), subscriptionID) }
+		admitted, err := c.referenceAdmitter(ctx, "metric.Subscribe", pluginID, *req.Route, *req.Reference)
+		if err != nil { return "", err }
+		revision, ok := resourcev2.CatalogRevisionFromContext(admitted)
+		if !ok || revision == "" { return "", apperror.ForResource(resourcev2.NewError("UNSUPPORTED", "Resource catalog admission is unavailable."), subscriptionID) }
+		input.CatalogRevision = revision
 	}
 	// Admit the complete canonical frame before it can affect the shared lane.
 	if err := metric.ValidateStreamInput(input); err != nil {

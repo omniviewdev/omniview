@@ -17,6 +17,7 @@ import (
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
@@ -42,6 +43,7 @@ type Controller interface {
 	ServiceStartup(ctx context.Context, options application.ServiceOptions) error
 	// ServiceShutdown cleans up resources during application shutdown.
 	ServiceShutdown() error
+	SetReferenceAdmitter(resource.ReferenceAdmitter)
 
 	// GetSupportedPortForwardTargets returns the supported targets for port forwarding
 	GetSupportedPortForwardTargets(pluginID string) ([]string, error)
@@ -104,12 +106,16 @@ type controller struct {
 	logger           logging.Logger
 	settingsProvider pkgsettings.Provider
 	resourceClient   resource.Service
+	referenceAdmitter resource.ReferenceAdmitter
 
 	mu           sync.RWMutex
 	clients      map[string]Provider
 	sessionIndex map[string]sessionIndex
 	stops        map[string]chan struct{}
 }
+
+// SetReferenceAdmitter is configured by native composition before startup.
+func (c *controller) SetReferenceAdmitter(admit resource.ReferenceAdmitter) { c.referenceAdmitter = admit }
 
 // ServiceStartup initialises the controller during application startup.
 func (c *controller) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
@@ -452,6 +458,21 @@ func (c *controller) StartResourcePortForwardingSession(
 		attribute.Int("local_port", int(opts.LocalPort)),
 		attribute.Int("remote_port", int(opts.RemotePort)),
 	)
+	var reference *resourcev2.ResourceReference
+	var route *resourcev2.AccessRoute
+	switch connection := opts.Connection.(type) {
+	case networker.PortForwardResourceConnection:
+		reference, route = connection.Reference, connection.Route
+	case *networker.PortForwardResourceConnection:
+		if connection != nil { reference, route = connection.Reference, connection.Route }
+	}
+	if reference != nil {
+		if c.referenceAdmitter == nil { return nil, resourcev2.NewError("UNSUPPORTED", "Resource reference admission is unavailable.") }
+		if route == nil || route.Connection != connectionID { return nil, resourcev2.NewError("INVALID_REQUEST", "Resource route does not match the selected connection.") }
+		admitted, err := c.referenceAdmitter(ctx, "networker.StartResourcePortForwardingSession", pluginID, *route, *reference)
+		if err != nil { return nil, err }
+		ctx = admitted
+	}
 
 	c.logger.Infow(ctx, "StartResourcePortForwardingSession: request received",
 		"pluginID", pluginID,

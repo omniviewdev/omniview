@@ -18,6 +18,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/terminal"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
@@ -29,6 +30,7 @@ type Controller interface {
 	internaltypes.Controller
 	ServiceStartup(ctx context.Context, options application.ServiceOptions) error
 	ServiceShutdown() error
+	SetReferenceAdmitter(resource.ReferenceAdmitter)
 	GetPluginHandlers(plugin string) map[string]exec.Handler
 	GetHandlers() map[string]map[string]exec.Handler
 	GetHandler(plugin, resource string) *exec.Handler
@@ -95,8 +97,12 @@ type controller struct {
 	resizeMux chan exec.StreamResize
 
 	resourceClient  resource.Service
+	referenceAdmitter resource.ReferenceAdmitter
 	terminalManager *terminal.Manager
 }
+
+// SetReferenceAdmitter is configured by native composition before startup.
+func (c *controller) SetReferenceAdmitter(admit resource.ReferenceAdmitter) { c.referenceAdmitter = admit }
 
 func (c *controller) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
 	c.app = application.Get()
@@ -500,9 +506,16 @@ func (c *controller) CreateSession(
 		attribute.String("plugin_id", plugin),
 		attribute.String("connection_id", connectionID),
 	)
+	if opts.Reference != nil {
+		if c.referenceAdmitter == nil { return nil, resourcev2.NewError("UNSUPPORTED", "Resource reference admission is unavailable.") }
+		if opts.Route == nil || opts.Route.Connection != connectionID { return nil, resourcev2.NewError("INVALID_REQUEST", "Resource route does not match the selected connection.") }
+		ctx, err = c.referenceAdmitter(ctx, "exec.CreateSession", plugin, *opts.Route, *opts.Reference)
+		if err != nil { return nil, err }
+	}
 
 	var session *exec.Session
 	if plugin == "local" {
+		if opts.HasResourceIntent() { return nil, resourcev2.NewError("INVALID_REQUEST", "A local terminal cannot execute a resource request.") }
 		// start local terminal
 		session, err = c.terminalManager.StartSession(
 			c.getUnconnectedCtx(ctx, plugin),
