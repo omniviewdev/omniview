@@ -6,15 +6,21 @@ package transportjson
 import (
  "bytes"
  "encoding/json"
+ "errors"
  "unicode/utf8"
 
+ "github.com/google/uuid"
+ "github.com/omniviewdev/omniview/backend/pkg/apperror"
  resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
 // Decode bounds the inner request before allocation or domain decoding. The
 // Wails transport profile separately allows 64 MiB, reserving 64 KiB for routing
 // arguments and the method/envelope outside the encoded request string.
-func Decode(encoded string, out any, routing ...string) error {
+func Decode(encoded string, out any, routing ...string) (retErr error) {
+ defer func() {
+  if retErr != nil { retErr = apperror.ForResource(retErr, uuid.NewString()) }
+ }()
  if len(encoded) > resourcev2.MaxMessageBytes {
   return resourcev2.NewError("RESOURCE_LIMIT", "Encoded request JSON exceeds byte limit.")
  }
@@ -38,6 +44,10 @@ func Decode(encoded string, out any, routing ...string) error {
  decoder := json.NewDecoder(bytes.NewReader(data))
  decoder.DisallowUnknownFields()
  decoder.UseNumber()
- if err := decoder.Decode(out); err != nil { return err }
+ if err := decoder.Decode(out); err != nil {
+  var classified *resourcev2.ResourceOperationError
+  if errors.As(err, &classified) { return err }
+  return resourcev2.NewError("INVALID_REQUEST", "Invalid encoded request JSON.")
+ }
  return nil
 }

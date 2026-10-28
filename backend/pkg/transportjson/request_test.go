@@ -3,12 +3,14 @@ package transportjson
 import (
  "bytes"
  "encoding/json"
+ "errors"
  "math"
  "os/exec"
  "path/filepath"
  "strings"
  "testing"
 
+ "github.com/omniviewdev/omniview/backend/pkg/apperror"
  resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
  execsdk "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
  resourcepb "github.com/omniviewdev/plugin-sdk/proto/resource/v2"
@@ -62,4 +64,18 @@ func TestEncodedRequestRejectsRawAndEscapedOversize(t *testing.T) {
  // independent 64 MiB profile after the reserved routing/envelope allowance.
  encoded := `"`+strings.Repeat(`\\`, (32<<20)/2-2)+`"`
  if err := Decode(encoded, &value); resourcev2.ErrorCode(err) != "RESOURCE_LIMIT" { t.Fatalf("outer escaped limit: %v", err) }
+}
+
+func TestDecodeFailuresUseCanonicalHostErrors(t *testing.T) {
+ var envelope struct { Body resourcev2.Value `json:"body"` }
+ err := Decode(`{"body":{"kind":"double","value":-0},"unknown":true}`, &envelope)
+ var classified *apperror.AppError
+ if !errors.As(err, &classified) || classified.Code != "INVALID_REQUEST" || classified.RequestID == "" {
+  t.Fatalf("missing canonical host error/correlation: %v", err)
+ }
+ first := classified.RequestID
+ err = Decode(`{"body":{"kind":"unknown"}}`, &envelope)
+ if !errors.As(err, &classified) || classified.Code != "INVALID_REQUEST" || classified.RequestID == "" || classified.RequestID == first {
+  t.Fatalf("typed SDK error/correlation not preserved: %v", err)
+ }
 }
