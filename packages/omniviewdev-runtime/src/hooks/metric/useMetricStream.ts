@@ -102,6 +102,8 @@ export const useMetricStream = (
           const output = JSON.parse(rawData);
           if (output.results) {
             setData(output.results);
+            setIsStreaming(true);
+            setError(null);
           }
         } catch (e) {
           console.error('Failed to parse metric stream data:', e);

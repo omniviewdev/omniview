@@ -102,7 +102,7 @@ func TestMetricRetirementUnblocksCommandsAndFansOutExactInterests(t *testing.T) 
  _,err:=ctrl.Subscribe("metrics","connection",SubscribeRequest{ResourceKey:"cluster::metrics",Interval:time.Second});require.Equal(t,"UNAVAILABLE",resourcev2.ErrorCode(err))
  newer:=testMetricStream();defer newer.stop();ctrl.streams[newer.key]=newer
  delete(ctrl.streamErrors,newer.key) // A new admitted generation clears the old failure.
- ctrl.subscriptions["new"] = subscriptionIndex{pluginID:"metrics",stream:newer}
+ ctrl.subscriptions["new"] = subscriptionIndex{stream:newer}
  require.Empty(t,ctrl.retireStream(state,closedStreamError()))
  require.Same(t,newer,ctrl.streams[newer.key]);require.Contains(t,ctrl.subscriptions,"new")
 }

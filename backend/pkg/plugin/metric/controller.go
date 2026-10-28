@@ -74,9 +74,6 @@ type SubscribeRequest struct {
 }
 
 type subscriptionIndex struct {
-	pluginID       string
-	connectionID   string
-	subscriptionID string
 	stream         *metricStream
 	wireID         string
 }
@@ -492,7 +489,7 @@ func (c *controller) Subscribe(pluginID, connectionID string, req SubscribeReque
 		c.mux.Unlock()
 		return "", apperror.ForResource(profileChangingError(), subscriptionID)
 	}
-	c.subscriptions[subscriptionID] = subscriptionIndex{pluginID: pluginID, connectionID: connectionID, subscriptionID: subscriptionID, stream: state, wireID: wireID}
+	c.subscriptions[subscriptionID] = subscriptionIndex{stream: state, wireID: wireID}
 	state.wireSubscriptions[wireID] = subscriptionID
 	c.mux.Unlock()
 	select {

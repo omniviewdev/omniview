@@ -91,13 +91,14 @@ func (c *controller) ensureStream(pluginID, connectionID string) (*metricStream,
 // A wire ID is immutable and never rebound, even if a public interest is reused.
 // Check both directions and the exact lane before exposing its external event ID.
 func (c *controller) translateStreamOutput(state *metricStream, output metric.StreamOutput) (metric.StreamOutput,bool) {
- c.mux.Lock()
- defer c.mux.Unlock()
+ c.mux.RLock()
+ defer c.mux.RUnlock()
  wireID:=output.SubscriptionID
  publicID,exists:=state.wireSubscriptions[wireID]
  interest,current:=c.subscriptions[publicID]
  if !exists||!current||interest.stream!=state||interest.wireID!=wireID||c.streams[state.key]!=state{return metric.StreamOutput{},false}
- if output.OperationError!=nil {delete(c.subscriptions,publicID);delete(state.wireSubscriptions,wireID)}
+ // Operation errors may be recoverable polling failures. Retain ownership
+ // until explicit unsubscribe or actual lane termination cancels native work.
  output.SubscriptionID=publicID
  return output,true
 }

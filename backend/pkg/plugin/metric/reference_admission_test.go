@@ -4,6 +4,7 @@ import (
  "context"
  "encoding/json"
  "runtime"
+ "sync/atomic"
  "testing"
  "time"
 
@@ -138,7 +139,6 @@ func TestReferenceSubscriptionPinsAndDropsQueuedSamplesAcrossPublicIDReuse(t *te
  current,registered:=ctrl.subscriptions[replacement]
  if registered {
   delete(ctrl.subscriptions,replacement)
-  current.subscriptionID=id
   ctrl.subscriptions[id]=current
   current.stream.wireSubscriptions[current.wireID]=id
  }
@@ -173,4 +173,46 @@ func TestQueryAllPropagatesReferenceAdmissionDenial(t *testing.T) {
   Route:&resourcev2.AccessRoute{Connection:"connection"},
  })
  require.Nil(t,result);require.Equal(t,"FORBIDDEN",resourcev2.ErrorCode(err))
+}
+
+func TestPollingOperationErrorRetainsInterestAndUnsubscribeCancelsNativeWork(t *testing.T) {
+ var calls atomic.Int32
+ waiting:=make(chan struct{},1)
+ cancelled:=make(chan struct{},1)
+ fixture:=newNativeMetricFixture(t,func(ctx *sdkmetric.QueryContext,_ sdkmetric.QueryRequest)(*sdkmetric.QueryResponse,error){
+  switch calls.Add(1) {
+  case 1:return nil,resourcev2.NewError("TIMEOUT","Temporary native sampler timeout.")
+  case 2:return sampleNativeRuntimeMetric(nativeRuntimeMetricName,sdkmetric.ShapeCurrent)
+  default:
+   select{case waiting<-struct{}{}:default:}
+   <-ctx.Done()
+   select{case cancelled<-struct{}{}:default:}
+   return nil,ctx.Err()
+  }
+ })
+ ctx,cancel:=context.WithCancel(context.Background());defer cancel()
+ ctrl:=NewController(logging.NewNop(),nil,fixture.resources).(*controller)
+ require.NoError(t,ctrl.ServiceStartup(ctx,application.ServiceOptions{}))
+ events:=make(chan metricRecordedEvent,32);ctrl.emitter=metricRecordingEmitter{events:events}
+ require.NoError(t,ctrl.OnPluginStart(nativeMetricPluginID,config.PluginMeta{},fixture.backend))
+ t.Cleanup(func(){_ = ctrl.OnPluginStop(nativeMetricPluginID,config.PluginMeta{})})
+ id,err:=ctrl.Subscribe(nativeMetricPluginID,nativeMetricConnectionID,SubscribeRequest{ResourceKey:nativeMetricResourceKey,Interval:200*time.Millisecond})
+ require.NoError(t,err);fixture.waitMetricRPCStarted(t)
+ select{case event:=<-events:
+  require.Equal(t,"core/metrics/error/"+id,event.key)
+  payload,ok:=event.data[0].(string);require.True(t,ok)
+  var output sdkmetric.StreamOutput;require.NoError(t,json.Unmarshal([]byte(payload),&output))
+  require.Equal(t,"TIMEOUT",output.OperationError.Code)
+ case <-time.After(5*time.Second):t.Fatal("native polling error did not reach its interest")}
+ select{case event:=<-events:
+  require.Equal(t,"core/metrics/data/"+id,event.key)
+  payload,ok:=event.data[0].(string);require.True(t,ok)
+  var output sdkmetric.StreamOutput;require.NoError(t,json.Unmarshal([]byte(payload),&output))
+  require.Equal(t,float64(runtime.GOMAXPROCS(0)),output.Results[0].CurrentValue.Value)
+ case <-time.After(5*time.Second):t.Fatal("successful native recovery was silently discarded")}
+ select{case <-waiting:case <-time.After(5*time.Second):t.Fatal("native polling interest did not remain active")}
+ require.NoError(t,ctrl.Unsubscribe(id))
+ select{case <-cancelled:case <-time.After(5*time.Second):t.Fatal("wire unsubscribe did not cancel the actual native operation")}
+ require.NoError(t,ctrl.OnPluginStop(nativeMetricPluginID,config.PluginMeta{}))
+ fixture.waitMetricRPCStopped(t)
 }
