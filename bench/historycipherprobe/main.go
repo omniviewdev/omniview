@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -11,11 +12,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 
-	_ "github.com/WissCore/go-sqlcipher/v4"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func must(err error) {
@@ -36,22 +38,59 @@ func randomKey() []byte {
 }
 func keySQL(key []byte) string { return `"x'` + hex.EncodeToString(key) + `'"` }
 func openCipher(path string, key []byte) (*sql.DB, error) {
-	// Driver must install the key before its own connection initialization.
-	// DSNs stay backend-only and are never returned in errors or diagnostics.
-	dsn := path
+	// Official SQLCipher consumes URI key before mattn initialization PRAGMAs.
+	// ConnectHook runs too late for initial keying. Never log this URI.
+	uri := &url.URL{Scheme: "file", Path: path}
 	if len(key) != 0 {
-		dsn += "?_pragma_key=x'" + hex.EncodeToString(key) + "'"
+		values := url.Values{"key": {"x'" + hex.EncodeToString(key) + "'"}}
+		uri.RawQuery = values.Encode()
 	}
-	db, err := sql.Open("sqlite3", dsn)
+	db, err := sql.Open("sqlite3", uri.String())
 	if err != nil {
 		return nil, errors.New("driver open failed")
 	}
-	db.SetMaxOpenConns(1)
+	db.SetMaxOpenConns(2)
 	var count int
 	if err = db.QueryRow("SELECT count(*) FROM sqlite_master").Scan(&count); err != nil {
 		db.Close()
 		return nil, errors.New("encrypted database rejected")
 	}
+	// Hold both pooled connections so each must open and admit its own key.
+	first, err := db.Conn(context.Background())
+	if err != nil {
+		db.Close()
+		return nil, errors.New("first keyed connection rejected")
+	}
+	defer first.Close()
+	second, err := db.Conn(context.Background())
+	if err != nil {
+		db.Close()
+		return nil, errors.New("second keyed connection rejected")
+	}
+	defer second.Close()
+	for _, conn := range []*sql.Conn{first, second} {
+		var cipher, core, provider string
+		if conn.QueryRowContext(context.Background(), "PRAGMA cipher_version").Scan(&cipher) != nil ||
+			conn.QueryRowContext(context.Background(), "SELECT sqlite_version()").Scan(&core) != nil ||
+			conn.QueryRowContext(context.Background(), "PRAGMA cipher_provider").Scan(&provider) != nil {
+			db.Close()
+			return nil, errors.New("codec identity unavailable")
+		}
+		if cipher != "4.20.0 community" || core != "3.54.1" || provider != "commoncrypto" {
+			db.Close()
+			return nil, errors.New("unapproved codec version or provider")
+		}
+		for _, option := range []string{"HAS_CODEC", "ENABLE_FTS5", "TEMP_STORE=2", "THREADSAFE=1"} {
+			var enabled int
+			if conn.QueryRowContext(context.Background(), "SELECT sqlite_compileoption_used(?)", option).Scan(&enabled) != nil || enabled != 1 {
+				db.Close()
+				return nil, errors.New("required codec compile option unavailable")
+			}
+		}
+	}
+	// Codec mechanics below use one serialized handle. In particular, changing
+	// journal mode/rekey cannot run while another pooled handle keeps WAL open.
+	db.SetMaxOpenConns(1)
 	return db, nil
 }
 func reject(path string, key []byte) {
@@ -207,7 +246,9 @@ func run() {
 	files = files + scanPrivate(root, []string{metadata, payload, indexed})
 	must(json.NewEncoder(os.Stdout).Encode(map[string]any{
 		"target": runtime.GOOS + "/" + runtime.GOARCH, "sqlcipher": cipher, "sqlite": sqlite,
-		"native_private_keychain": true, "locked_vault_denied": true, "partition_key_lookup_isolated": true,
+		"keyed_pool_connections_verified": 2, "crypto_provider": "commoncrypto",
+		"required_codec_compile_options": true,
+		"native_private_keychain":        true, "locked_vault_denied": true, "partition_key_lookup_isolated": true,
 		"metadata_payload_fts_db_wal_no_plaintext_sentinels": true, "private_artifacts_scanned": files,
 		"wrong_and_missing_database_key_rejected": true, "encrypted_backup_distinct_key_reopen": true,
 		"rekey_old_key_rejected_new_key_reopens": true, "native_key_retirement": true,
