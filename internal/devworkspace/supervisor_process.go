@@ -45,12 +45,14 @@ func startOwnedChild(ctx context.Context, directory string, env []string, output
 	command.Env = env
 	command.Stdout = output
 	command.Stderr = output
-	return startOwnedChildCommand(ctx, command, owner, finalize)
+	return startOwnedChildCommand(ctx, command, owner, finalize, true)
 }
 
 // The caller configures streams/cwd/env, but only this retained lifecycle may
-// start, cancel, observe and dispose the command. It is not a public exec API.
-func startOwnedChildCommand(ctx context.Context, command *exec.Cmd, owner devsession.ProcessOwner, finalize func() error) (*ownedChild, error) {
+// start, cancel, observe and dispose the command. Published services require a
+// live kernel identity; finite commands retain their Cmd through disposal and
+// never publish or adopt a process identity.
+func startOwnedChildCommand(ctx context.Context, command *exec.Cmd, owner devsession.ProcessOwner, finalize func() error, identityRequired bool) (*ownedChild, error) {
 	failed := func(err error) (*ownedChild, error) {
 		if finalize != nil {
 			err = errors.Join(err, finalize())
@@ -69,6 +71,11 @@ func startOwnedChildCommand(ctx context.Context, command *exec.Cmd, owner devses
 	if err := ctx.Err(); err != nil {
 		return failed(err)
 	}
+	if !identityRequired {
+		if err := owner.Validate(); err != nil {
+			return failed(err)
+		}
+	}
 	switch runtime.GOOS {
 	case "darwin", "linux", "windows":
 	default:
@@ -79,9 +86,11 @@ func startOwnedChildCommand(ctx context.Context, command *exec.Cmd, owner devses
 		return failed(err)
 	}
 	child := &ownedChild{command: command, done: make(chan struct{}), finalize: finalize}
-	identity, err := devsession.CaptureProcess(command.Process.Pid, owner)
+	var err error
+	if identityRequired {
+		child.identity, err = devsession.CaptureProcess(command.Process.Pid, owner)
+	}
 	if err == nil {
-		child.identity = identity
 		err = attachOwnedCommand(child)
 	}
 	if err != nil {

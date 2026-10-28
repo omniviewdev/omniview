@@ -272,7 +272,7 @@ func TestLinuxOwnedChildFinishesOnlyAfterRedirectedDescendantExit(t *testing.T) 
 		}
 		finished <- nil
 		return nil
-	})
+	}, true)
 	if err != nil {
 		t.Fatal(err)
 	}

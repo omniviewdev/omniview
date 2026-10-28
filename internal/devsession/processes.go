@@ -37,7 +37,8 @@ func validLabel(value string) bool {
 	return strings.TrimSpace(value) != "" && !strings.ContainsAny(value, "\x00\r\n")
 }
 
-func (o ProcessOwner) validate() error {
+// Validate checks provenance before a caller starts or records an owned child.
+func (o ProcessOwner) Validate() error {
 	if !validWorkspace(o.WorkspaceID) || !validLabel(o.Generation) || !validLabel(o.Role) || !validLabel(o.Source) {
 		return fmt.Errorf("%w: workspace, generation, role and source are required", ErrOwnership)
 	}
@@ -53,7 +54,7 @@ func ownerOf(identity devcontract.ProcessIdentity) ProcessOwner {
 // persist the result privately. This is an ownership attestation, not adoption
 // or authorization of arbitrary processes discovered by PID.
 func CaptureProcess(pid int, owner ProcessOwner) (devcontract.ProcessIdentity, error) {
-	if err := owner.validate(); err != nil {
+	if err := owner.Validate(); err != nil {
 		return devcontract.ProcessIdentity{}, err
 	}
 	if pid <= 0 {
@@ -70,7 +71,7 @@ func CaptureProcess(pid int, owner ProcessOwner) (devcontract.ProcessIdentity, e
 }
 
 func validateOwnedRecord(record devcontract.ProcessIdentity, expected ProcessOwner) error {
-	if err := expected.validate(); err != nil {
+	if err := expected.Validate(); err != nil {
 		return err
 	}
 	if record.PID <= 0 || record.StartIdentity == "" || !filepath.IsAbs(record.Executable) || ownerOf(record) != expected {

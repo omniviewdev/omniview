@@ -181,6 +181,12 @@ verification before deletion remain unchanged.
 
 Managed children receive nonsecret `OMNIVIEW_DEV_CLI` from the captured supervisor executable. Bridge token references and native-removal FD capabilities remain host/helper-only. Authenticated `/v1/process` accepts only fixed selected plugin dev commands with exact composition root/version, actual frontend paths and current host leases—not arbitrary commands/cwd. Second plugin installs are rejected; startup consumes the completed aggregate receipt. The outer supervisor retains actual children independently of the desktop host for crash cleanup.
 
+Finite repository commands validate their provenance before launch and retain the
+actual `exec.Cmd` until leader exit, descendant disposal, and output draining
+finish. They do not publish process identities or require a live executable
+snapshot after a short-lived command exits. Published services still require
+kernel-sourced identity capture; permission and inspection failures remain errors.
+
 ## Output and references
 
 `--json` emits one machine-readable result on stdout; process/compiler output stays in the private supervisor log, and CLI warnings/diagnostics use stderr. Token **values** never enter descriptors or ordinary startup output. Error responses remain JSON on stdout. Exit codes are 0 success, 2 invalid request, 3 missing target/dependency evidence, 4 identity/state/ownership/port conflict, 5 operation/build failure, 6 unauthorized and 7 timeout.
