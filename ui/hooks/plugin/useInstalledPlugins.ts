@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PluginManager } from '@omniviewdev/runtime/api';
-import { DevProcessStatus } from '@omniviewdev/runtime/models';
+import { DevProcessStatus, type PluginInfo } from '@omniviewdev/runtime/models';
 import { useDevServers } from '@/features/devtools/useDevServers';
 import { Events } from '@omniviewdev/runtime/runtime';
 
@@ -16,6 +16,8 @@ import { Events } from '@omniviewdev/runtime/runtime';
 export type InstalledPluginDescriptor = {
   readonly id: string;
   readonly dev: boolean;
+  readonly phase?: PluginInfo['phase'];
+  readonly lastError?: string;
   readonly devPort?: number;
   readonly devStatus?: DevProcessStatus;
   readonly devError?: string;
@@ -70,6 +72,8 @@ export function useInstalledPlugins(): {
     return {
       id: plugin.id,
       dev,
+      phase: plugin.phase,
+      lastError: plugin.lastError === '' ? undefined : plugin.lastError,
       // The backend allocates the port before starting Vite.
       devPort: server?.viteStatus === DevProcessStatus.DevProcessStatusReady && server.vitePort > 0 ? server.vitePort : undefined,
       devStatus: server?.viteStatus,

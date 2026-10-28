@@ -17,6 +17,7 @@ import type * as RuntimeCore from '@omniviewdev/runtime/runtime';
 const backend = vi.hoisted(() => ({
   listPlugins: vi.fn(),
   listServers: vi.fn(),
+  restart: vi.fn(),
   deps: null as PluginServiceDeps | null,
 }));
 vi.mock('@omniviewdev/runtime/api', async (importOriginal) => {
@@ -24,7 +25,7 @@ vi.mock('@omniviewdev/runtime/api', async (importOriginal) => {
   return {
     ...original,
     PluginManager: { ...original.PluginManager, ListPlugins: backend.listPlugins },
-    DevServerManager: { ...original.DevServerManager, ListDevServerStates: backend.listServers },
+    DevServerManager: { ...original.DevServerManager, ListDevServerStates: backend.listServers, RestartDevServer: backend.restart },
   };
 });
 vi.mock('@omniviewdev/runtime/runtime', async (importOriginal) => {
@@ -86,6 +87,7 @@ describe('plugin startup navigation', () => {
     backend.deps = testDeps.deps;
     backend.listPlugins.mockReset().mockResolvedValue([{ id: 'kubernetes', devMode: true }]);
     backend.listServers.mockReset().mockResolvedValue([server(DevProcessStatus.DevProcessStatusStarting)]);
+    backend.restart.mockReset().mockResolvedValue(undefined);
     window.location.hash = '#/_plugin/kubernetes';
   });
 
@@ -223,6 +225,104 @@ describe('plugin startup navigation', () => {
 
     expect(await screen.findByText('Vite could not start')).toBeVisible();
     expect(testDeps.importer.importCount).toBe(0);
+  });
+
+  it.each(['Stopped', 'Failed', 'BuildFailed'])('shows %s inventory without a dev server and exposes recovery tools', async (phase) => {
+    backend.listPlugins.mockResolvedValue([{ id: 'kubernetes', devMode: true, phase }]);
+    backend.listServers.mockResolvedValue([]);
+    renderWorkspace();
+    expect(await screen.findByRole('heading', { name: 'Unable to load kubernetes' })).toBeVisible();
+    expect(screen.getByRole('alert')).toBeVisible();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(testDeps.importer.importCount).toBe(0);
+    expect(screen.getByRole('button', { name: 'Restart dev server' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Open build output' })).toBeVisible();
+  });
+
+  it('does not offer development recovery for failed production inventory', async () => {
+    backend.listPlugins.mockResolvedValue([{ id: 'kubernetes', devMode: false, phase: 'BuildFailed' }]);
+    backend.listServers.mockResolvedValue([]);
+    const pendingImport = createDeferred<PluginModule>();
+    testDeps.importer.register('kubernetes', async () => pendingImport.promise);
+    renderWorkspace();
+    expect(await screen.findByRole('heading', { name: 'Unable to load kubernetes' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Restart dev server' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open build output' })).not.toBeInTheDocument();
+  });
+
+  it('preserves inventory failure details when server discovery also fails', async () => {
+    backend.listPlugins.mockResolvedValue([{ id: 'kubernetes', devMode: true, phase: 'BuildFailed', lastError: 'Compiler rejected resource handler' }]);
+    backend.listServers.mockRejectedValue(new Error('Server discovery unavailable'));
+    renderWorkspace();
+    expect(await screen.findByText('Compiler rejected resource handler')).toBeVisible();
+    expect(screen.queryByText('Server discovery unavailable')).not.toBeInTheDocument();
+  });
+
+  it('reports restart rejection without needing a backend status event', async () => {
+    backend.listPlugins.mockResolvedValue([{ id: 'kubernetes', devMode: true, phase: 'Stopped' }]);
+    backend.listServers.mockResolvedValue([]);
+    backend.restart.mockRejectedValue(new Error('Workspace selection changed'));
+    renderWorkspace();
+    const button = await screen.findByRole('button', { name: 'Restart dev server' });
+    await act(async () => {
+      button.click();
+    });
+    expect(await screen.findByText('Workspace selection changed')).toBeVisible();
+    expect(button).toBeEnabled();
+  });
+
+  it('waits for an absent server while inventory is starting, then loads on readiness', async () => {
+    backend.listPlugins.mockResolvedValue([{ id: 'kubernetes', devMode: true, phase: 'Starting' }]);
+    backend.listServers.mockResolvedValue([]);
+    testDeps.importer.register('kubernetes', pluginModule());
+    renderWorkspace();
+
+    expect(await screen.findByText(/Waiting for the plugin development server/)).toBeVisible();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(testDeps.importer.importCount).toBe(0);
+    await act(async () => {
+      devToolsChannel.emit('onStatusChange', server(DevProcessStatus.DevProcessStatusReady));
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Kubernetes clusters' })).toBeVisible();
+  });
+
+  it('clears failed inventory feedback during recovery and loads at the same URL', async () => {
+    backend.listPlugins.mockResolvedValue([{
+      id: 'kubernetes', devMode: true, phase: 'Failed', lastError: 'Plugin handshake failed',
+    }]);
+    backend.listServers.mockResolvedValue([]);
+    testDeps.importer.register('kubernetes', pluginModule());
+    renderWorkspace();
+    await screen.findByText('Plugin handshake failed');
+
+    backend.listPlugins.mockResolvedValue([{
+      id: 'kubernetes', devMode: true, phase: 'Starting', lastError: '',
+    }]);
+    await act(async () => {
+      testDeps.eventBus.emit('plugin/inventory_changed', { id: 'kubernetes' });
+    });
+    expect(await screen.findByText(/Waiting for the plugin development server/)).toBeVisible();
+    expect(screen.queryByText('Plugin handshake failed')).not.toBeInTheDocument();
+    await act(async () => {
+      devToolsChannel.emit('onStatusChange', server(DevProcessStatus.DevProcessStatusReady));
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Kubernetes clusters' })).toBeVisible();
+    expect(window.location.hash).toBe('#/_plugin/kubernetes');
+  });
+
+  it('accepts server readiness before stale stopped inventory refreshes', async () => {
+    backend.listPlugins.mockResolvedValue([{ id: 'kubernetes', devMode: true, phase: 'Stopped' }]);
+    backend.listServers.mockResolvedValue([]);
+    testDeps.importer.register('kubernetes', pluginModule());
+    renderWorkspace();
+    await screen.findByRole('alert');
+    await act(async () => {
+      devToolsChannel.emit('onStatusChange', server(DevProcessStatus.DevProcessStatusReady));
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Kubernetes clusters' })).toBeVisible();
   });
 
   it.each(['/_plugin/not-installed', '/_plugin/kubernetes/not-a-page'])(
