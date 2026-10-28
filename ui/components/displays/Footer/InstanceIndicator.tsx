@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Button, Chip, DescriptionList, Dialog, Heading, Text } from '@omniviewdev/base-ui';
+import { Button, DescriptionList, Dialog, Heading, Text } from '@omniviewdev/base-ui';
 import { useInstance } from '@/features/instance/InstanceContext';
 import { LuInfo, LuRefreshCw } from 'react-icons/lu';
 import { Dot, FooterPopover, FooterTrigger, PopoverAction, PopoverHeader, footerStyles } from '@/components/displays/Footer/parts';
@@ -40,6 +40,18 @@ function DetailSection({ title, children }: { title: string; children: ReactNode
   );
 }
 
+function Observation({ value }: { value: string }) {
+  const tone = ['ready', 'host-ready', 'connected', 'current'].includes(value) ? 'success'
+    : ['failed', 'error', 'invalidated'].includes(value) ? 'danger'
+      : ['building', 'starting'].includes(value) ? 'warning' : 'neutral';
+  return (
+    <span className={styles.InstanceObservation} data-tone={tone}>
+      <Dot status={tone} pulse={tone === 'warning'} />
+      <span>{value.charAt(0).toUpperCase() + value.slice(1)}</span>
+    </span>
+  );
+}
+
 export default function InstanceIndicator() {
   const { identity, info, status, refreshInfo } = useInstance();
   const [open, setOpen] = useState(false);
@@ -62,23 +74,22 @@ export default function InstanceIndicator() {
         trigger={<FooterTrigger className={styles.StatusChip} aria-label={`${label} · ${host.label}`}><Dot status={host.tone} pulse={host.tone === 'warning'} />{label} · {host.label}</FooterTrigger>}
       >
         {(close) => <>
-          <PopoverHeader title={identity ? `Development instance · ${identity.displayName}` : 'Instance unavailable'} />
+          <PopoverHeader title={identity ? `Development instance · ${identity.displayName}` : 'Instance unavailable'}>
+            <span className={styles.InstanceObservation}><Dot status={host.tone} />{host.label}</span>
+          </PopoverHeader>
           <div className={footerStyles.Details}>
-            <div className={styles.InstanceSummary}>
-              <Chip size='sm' variant='soft' color={host.tone}><Dot status={host.tone} />{host.label}</Chip>
-              <Text size='xs' tone='muted'>Host status; plugin servers report readiness separately.</Text>
-            </div>
             <DetailSection title='Host'>
               <DescriptionList layout='horizontal' size='sm' className={styles.InstanceDetails}>
-                <DescriptionList.Item label='Host build'>{development?.health.build ?? (development ? Object.entries(development.builds).filter(([name]) => name.startsWith('host')).map(([name, build]) => `${name.replace('host-', '')}: ${build.phase}`).join(' · ') || 'Unknown' : 'Unavailable')}</DescriptionList.Item>
-                <DescriptionList.Item label='HMR'>{development?.health.hmr ?? 'Unverified'}</DescriptionList.Item>
+                <DescriptionList.Item label='Backend'><Observation value={development?.builds['host-backend']?.phase ?? development?.health.build ?? 'Unknown'} /></DescriptionList.Item>
+                <DescriptionList.Item label='Frontend'><Observation value={development?.builds['host-frontend']?.phase ?? development?.health.build ?? 'Unknown'} /></DescriptionList.Item>
+                <DescriptionList.Item label='HMR'><Observation value={development?.health.hmr ?? 'Unverified'} /></DescriptionList.Item>
               </DescriptionList>
             </DetailSection>
             <DetailSection title='Source & plugins'>
               <DescriptionList layout='horizontal' size='sm' className={styles.InstanceDetails}>
-                <DescriptionList.Item label='Source freshness'>{development?.health.servedSource ?? 'Unknown'}</DescriptionList.Item>
-                <DescriptionList.Item label='Source reload proof'>{development?.health.sourceReload ?? 'Unverified'}</DescriptionList.Item>
-                <DescriptionList.Item label='Selected plugins'>{development?.selectedPluginCount === null || !development ? 'Unknown' : `${development.selectedPluginCount} selected (not a readiness check)`}</DescriptionList.Item>
+                <DescriptionList.Item label='Source freshness'><Observation value={development?.health.servedSource ?? 'Unknown'} /></DescriptionList.Item>
+                <DescriptionList.Item label='Source reload proof'><Observation value={development?.health.sourceReload ?? 'Unverified'} /></DescriptionList.Item>
+                <DescriptionList.Item label='Selected plugins'><span title='Selection does not imply plugin readiness'>{development?.selectedPluginCount ?? 'Unknown'}</span></DescriptionList.Item>
               </DescriptionList>
             </DetailSection>
             {host.label !== 'Ready' && (
@@ -101,15 +112,12 @@ export default function InstanceIndicator() {
       }} size='lg'>
         <Dialog.Title>{identity ? `Development instance · ${identity.displayName}` : 'Instance unavailable'}</Dialog.Title>
         <Dialog.Body>
-          <div className={styles.InstanceSummary}>
-            <Chip size='sm' variant='soft' color={status === 'confirmed' ? 'success' : 'neutral'}>{status === 'confirmed' ? 'Identity confirmed' : 'Identity pending'}</Chip>
-            <Text size='sm' tone='muted' role='status'>{STATUS_LABEL[status]}</Text>
-          </div>
+          <Text size='sm' tone='muted' role='status' className={styles.InstanceIdentityStatus}>{STATUS_LABEL[status]}</Text>
           {identity && (
             <DetailSection title='Identity'>
               <DescriptionList layout='horizontal' size='sm' className={styles.InstanceDetails}>
                 <DescriptionList.Item label='Instance' copyable>{identity.instanceID}</DescriptionList.Item>
-                <DescriptionList.Item label='Kind'><Chip size='xs' variant='soft' color='neutral'>{identity.kind}</Chip></DescriptionList.Item>
+                <DescriptionList.Item label='Kind'>{identity.kind}</DescriptionList.Item>
                 {info && <DescriptionList.Item label='Workspace' copyable>{info.workspaceID || 'Not set'}</DescriptionList.Item>}
               </DescriptionList>
             </DetailSection>
@@ -117,7 +125,7 @@ export default function InstanceIndicator() {
           {info && <>
             <DetailSection title='Runtime'>
               <DescriptionList layout='horizontal' size='sm' className={styles.InstanceDetails}>
-                <DescriptionList.Item label='Readiness'><Chip size='xs' variant='soft' color={info.readiness === 'host-ready' && status === 'confirmed' ? 'success' : 'neutral'}>{info.readiness || 'Not reported'}</Chip></DescriptionList.Item>
+                <DescriptionList.Item label='Readiness'><Observation value={status === 'confirmed' ? info.readiness || 'Unknown' : 'Unverified'} /></DescriptionList.Item>
                 <DescriptionList.Item label='Channel'>{info.channel}</DescriptionList.Item>
                 <DescriptionList.Item label='Generation' copyable>{info.generation || 'Not set'}</DescriptionList.Item>
                 <DescriptionList.Item label='State root' copyable>{info.stateRoot}</DescriptionList.Item>

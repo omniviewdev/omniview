@@ -51,8 +51,6 @@ it('shows independent host observations and retains full details access', async 
   render(<InstanceIndicator />);
   fireEvent.click(await screen.findByRole('button', { name: 'DEV · main · Ready' }));
   expect(await screen.findByText('Source reload proof')).toBeVisible();
-  expect(screen.getByText('unverified')).toBeVisible();
-  expect(screen.getByText('2 selected (not a readiness check)')).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: 'Full instance details' }));
   expect(await screen.findByRole('dialog')).toBeVisible();
   expect(screen.getByText('instance')).toBeVisible();

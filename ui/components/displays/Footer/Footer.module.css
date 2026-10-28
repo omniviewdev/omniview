@@ -360,6 +360,8 @@ button.Chip:hover {
 
 .InstanceDetails[data-ov-layout='horizontal'] > div {
   grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  align-items: center;
+  padding-block: 2px;
 }
 
 .InstanceDetails dd {
@@ -370,24 +372,41 @@ button.Chip:hover {
   -webkit-user-select: text;
 }
 
-.InstanceSummary {
-  display: flex;
+.InstanceObservation {
+  display: inline-flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: var(--ov-space-2);
-  padding-block: var(--ov-space-2);
+  gap: 6px;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+}
+
+.InstanceObservation[data-tone='neutral'] {
+  color: var(--ov-color-fg-muted);
+}
+
+.InstanceIdentityStatus {
+  display: block;
+  margin-bottom: var(--ov-space-2);
 }
 
 .InstanceSection {
-  padding-block: var(--ov-space-3);
+  padding-block: var(--ov-space-2);
   border-top: 1px solid var(--ov-color-border-muted);
 }
 
-.InstanceSectionTitle {
+.InstanceSection:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.InstanceSection > .InstanceSectionTitle {
   margin: 0 0 var(--ov-space-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
   color: var(--ov-color-fg-muted);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
 }
 
 .InstanceRepositories {
@@ -404,5 +423,8 @@ button.Chip:hover {
 
 .InstanceRepository h4 {
   margin: 0 0 var(--ov-space-2);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
