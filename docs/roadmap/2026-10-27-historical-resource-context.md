@@ -174,7 +174,7 @@ Each normalized evidence record contains:
 - Source-native correlation keys, audit/request ID, stage, provenance locator, and evidence links.
 - Text summary and separately indexed structured fields.
 - Optional request, response, patch, snapshot, and attachment references.
-- Representation state: present, missing, not-recorded, redacted, truncated, expired, denied, or unsupported.
+- Representation state: `present`, `missing`, `notRecorded`, `redacted`, `truncated`, `expired`, `denied`, or `unsupported`.
 - Quality: source-observed versus derived, attribution certainty, identity certainty, and reconstruction limits.
 
 Keep integer revisions and timestamps lossless across Go/JSON/JavaScript. Native resource versions are opaque, not portable integers or global ordering keys.

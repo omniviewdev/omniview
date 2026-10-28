@@ -81,7 +81,8 @@ EvidenceEnvelope {
   principals: {authenticated?, effective?, impersonator?, attributionBasis?},
   times: [{axis, instant: RI lossless timestamp, precision, basis}],
   summary?, extensions: schema-admitted bounded source fields,
-  representations: [{kind, revision, state, payloadRef?, coverage?, reason?}],
+  representations: [{kind, revision, state, format?, schema?, patchMediaType?,
+                     payloadRef?, coverage?, reason?}],
   quality: {observationBasis, identityCertainty, attributionCertainty, limitations[]},
   lineage: [{relation, citation, basis, confidence?}]
 }
@@ -93,7 +94,9 @@ Authenticated/effective/impersonating identities are separate optional facts. Mi
 
 ### 3.4 Representation and citation lifecycle
 
-Representation state is one of `present`, `missing`, `notRecorded`, `redacted`, `truncated`, `expired`, `denied`, `unsupported`. Each representation is independently versioned and bounded. `present` requires an admitted payload reference and format/schema; truncation records retained extent and unknown remainder. `missing` means expected but unavailable, not known absent. `denied` is request-relative and must not disclose protected existence. `notRecorded` is source policy knowledge. Unknown path coverage must not become null or false.
+Representation state is one of `present`, `missing`, `notRecorded`, `redacted`, `truncated`, `expired`, `denied`, `unsupported`. These exact proposed serialized spellings apply across the architecture and handoff. Each representation is independently versioned and bounded. `present` requires an admitted payload reference, `format: {mediaType, encoding}`, and an explicit schema availability descriptor: `{state: known, ref}` or `{state: absent | unavailable | unsupported}`. A schema-less source remains valid without inventing a schema. The envelope's `sourceSchema` does not substitute for payload schema availability. Truncation records retained extent and unknown remainder. `missing` means expected but unavailable, not known absent. `denied` is request-relative and must not disclose protected existence. `notRecorded` is source policy knowledge. Unknown path coverage must not become null or false.
+
+For recorded patches, `patchMediaType` preserves the native request patch media type only when known; absent means unknown, not a default patch algorithm. Payload `format.mediaType` such as JSON describes its stored encoding and does not establish JSON Patch, merge-patch, or strategic-merge semantics. Payload/snapshot resolution returns the representation's admitted format, schema availability, and patch metadata for its pinned revision. `SnapshotRef` identifies that stored representation; callers cannot override these facts through request fields. Unknown patch media type remains raw intent only.
 
 Redaction occurs before summaries, text/structured indexes, correlation fields, payload persistence, diagnostics, and exports. Redacted paths remain unknown for evaluation and comparison. Raw-sensitive retention is disabled unless HC02 explicitly approves its storage/access/key policy. Credentials never enter evidence. Redacted evidence remains useful through permitted provenance and normalized metadata.
 
@@ -298,6 +301,7 @@ HistoryContext {
          authority(scopeRef) | plugin(scopeRef) | global(explicitTargets),
   time: absolute(axis,start,end) | relative(axis,duration,anchorPolicy),
   selectedEvidence: citation[],
+  budgetPolicyRef,
   queryDocumentRef?, comparisonRefs?
 }
 PivotIntent {
@@ -309,6 +313,8 @@ PivotIntent {
 Namespace/cluster scope uses canonical admitted authority/query dimensions, not a hard-coded namespace identity model. Graph selection creates an explicit bounded resource set; current edges do not establish historical topology. Plugin/global scopes resolve explicit authorized targets in the host, never implicit all-connections scans.
 
 Context is a versioned navigation/query document, not authority, result lease, or job. Host resolves supplied scope and reauthorizes each operation. Resource, resource set, graph, namespace/cluster, plugin, and global clients use the same services without mounting a built-in view.
+
+`budgetPolicyRef` selects an existing host-resolved acquisition policy; it is neither a reservation nor approval nor a permission grant. The host rejects unknown, expired or inaccessible policy references. A policy/context change invalidates incompatible plans and requires revalidation; saved/imported contexts cannot silently fall back to a broader policy.
 
 Pivot transition: validate expected revision; resolve/admit new scope; retain selected citations and time intent; invalidate incompatible results/plans; cancel only superseded consumer interest; publish a new context revision. Broader scope requires explicit user intent and new approved acquisition plan. Failure leaves the previous admitted context intact. Stale async responses must match context revision plus result/request identity before application. A retained citation outside the new scope stays an explicit selection, not permission to disclose it.
 
