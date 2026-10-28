@@ -155,6 +155,36 @@ func TestBoundPermissionDenialDominatesPartialState(t *testing.T) {
 	g.RecordDeclarationError("p", route, "unavailable", resource.NewError("UNAVAILABLE", "catalog unavailable"))
 	denied := resource.NewError("FORBIDDEN", "target denied")
 	g.RecordDeclarationError("p", route, "denied", denied)
-	g.unresolvedNode(node("p", "route", "source", "", "id"), "mapping missing")
+	missing, _ := g.boundSnapshot("p", route, "source")
+	g.unresolvedNode(node("p", "route", "source", "", "id"), "mapping missing", missing)
 	if got := g.CheckComplete("p", route); got != denied { t.Fatalf("permission denial classification lost: %v", got) }
+}
+
+func TestRetiredExtractionCannotPublishIncompleteCoverage(t *testing.T) {
+	g, _, idx, source, bindings, decl := boundFixture(t, MethodFieldPath)
+	old, _ := g.boundSnapshot(source.PluginID, source.Route, source.Reference.Address.Type)
+	bindings.SourceEpoch++
+	if err := g.SetBoundDeclarations(source.PluginID, source.Route, source.Reference.Address.Type, []resource.RelationshipDescriptor{decl}, bindings); err != nil { t.Fatal(err) }
+	// Resume old extraction after replacement. Invalid IDs must not poison
+	// the current snapshot's whole-result coverage.
+	idx.extractFieldPath(nodeFromEntry(source), source, json.RawMessage(`{"link":123}`), old.declarations[0], old.bindings.Targets[0], old)
+	g.unresolvedNode(nodeFromEntry(source), "retired missing scope", old)
+	g.unresolvedNode(nodeFromEntry(source), "retired missing source binding", nil)
+	if err := g.CheckComplete(source.PluginID, source.Route); err != nil { t.Fatal(err) }
+	current, _ := g.boundSnapshot(source.PluginID, source.Route, source.Reference.Address.Type)
+	g.unresolvedNode(nodeFromEntry(source), "current missing scope", current)
+	if g.CheckComplete(source.PluginID, source.Route) == nil { t.Fatal("current extraction failure was dropped") }
+}
+
+func TestRetiredMissingSourceCannotRepublishAfterRouteClear(t *testing.T) {
+	g := NewRelationshipGraph()
+	source := node("p", "route", "source", "", "id")
+	old, bound := g.boundSnapshot(source.PluginID, source.Route, source.Reference.Address.Type)
+	if bound { t.Fatal("unexpected source binding") }
+	g.ClearDeclarationsForConnection(source.PluginID, source.Route)
+	current, _ := g.boundSnapshot(source.PluginID, source.Route, source.Reference.Address.Type)
+	g.unresolvedNode(source, "retired missing source", old)
+	if err := g.CheckComplete(source.PluginID, source.Route); err != nil { t.Fatal(err) }
+	g.unresolvedNode(source, "current missing source", current)
+	if g.CheckComplete(source.PluginID, source.Route) == nil { t.Fatal("current missing source was dropped") }
 }

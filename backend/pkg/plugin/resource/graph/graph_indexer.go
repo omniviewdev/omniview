@@ -74,7 +74,7 @@ func (gi *Indexer) extractEdges(entry registry.ResourceEntry, raw json.RawMessag
 	snapshot, bound := gi.graph.boundSnapshot(entry.PluginID, entry.Route, entry.Reference.Address.Type)
 	if bound && snapshot.noRules { return }
 	if !bound || !bindingMatches(snapshot.bindings.Source, nodeFromEntry(entry)) || !exactScope(snapshot.bindings.Source, entry.Reference.Address.Scope) {
-		gi.graph.unresolvedNode(nodeFromEntry(entry), "source declaration binding unavailable or stale")
+		gi.graph.unresolvedNode(nodeFromEntry(entry), "source declaration binding unavailable or stale", snapshot)
 		return
 	}
 	decls, bindings := snapshot.declarations, snapshot.bindings
@@ -101,7 +101,7 @@ func (gi *Indexer) extractEdges(entry registry.ResourceEntry, raw json.RawMessag
 			}
 		}
 		if !found || targetBinding.Target.Provider == "" || targetBinding.Target.Authority == "" || targetBinding.Target.Route.Connection == "" {
-			gi.graph.unresolvedNode(sourceNode, "target declaration binding unavailable or ambiguous")
+			gi.graph.unresolvedNode(sourceNode, "target declaration binding unavailable or ambiguous", snapshot)
 			continue
 		}
 		scope := append([]resource.ScopeEntry(nil), decl.TargetScope...)
@@ -124,7 +124,7 @@ func (gi *Indexer) extractEdges(entry registry.ResourceEntry, raw json.RawMessag
 			scope = append(scope, resource.ScopeEntry{Dimension: extractor.Dimension, Value: value.String()})
 		}
 		if !valid || !exactScope(targetBinding, scope) || !queryScopeMatches(targetBinding.Target.Scope, scope) {
-			gi.graph.unresolvedNode(sourceNode, "target identity scope mapping incomplete")
+			gi.graph.unresolvedNode(sourceNode, "target identity scope mapping incomplete", snapshot)
 			continue
 		}
 		decl.TargetScope = scope
@@ -159,7 +159,7 @@ func (gi *Indexer) extractFieldPath(
 	if result.IsArray() {
 		result.ForEach(func(_, value gjson.Result) bool {
 			if value.Type != gjson.String {
-				gi.graph.unresolvedNode(source, "target ID must be a native string")
+				gi.graph.unresolvedNode(source, "target ID must be a native string", snapshot)
 			} else if v := value.String(); v != "" {
 				targetIDs = append(targetIDs, v)
 			}
@@ -168,7 +168,7 @@ func (gi *Indexer) extractFieldPath(
 	} else if result.Type == gjson.String {
 		targetIDs = []string{result.String()}
 	} else {
-		gi.graph.unresolvedNode(source, "target ID must be a native string")
+		gi.graph.unresolvedNode(source, "target ID must be a native string", snapshot)
 		return
 	}
 
@@ -178,7 +178,7 @@ func (gi *Indexer) extractFieldPath(
 			Type: binding.Target.Type, Scope: decl.TargetScope, ID: targetID,
 		}
 		if err := resource.ValidateAddress(address, binding.IdentityDimensions); err != nil {
-			gi.graph.unresolvedNode(source, "target address is invalid")
+			gi.graph.unresolvedNode(source, "target address is invalid", snapshot)
 			continue
 		}
 		target := GraphNode{
@@ -187,7 +187,7 @@ func (gi *Indexer) extractFieldPath(
 			Route:     binding.Target.Route,
 		}
 		if !bindingMatches(binding, target) {
-			gi.graph.unresolvedNode(source, "target scope exceeds admitted query scope")
+			gi.graph.unresolvedNode(source, "target scope exceeds admitted query scope", snapshot)
 			continue
 		}
 
@@ -220,7 +220,7 @@ func (gi *Indexer) extractLabelSelector(
 	snapshot *boundSet,
 ) {
 	if gi.store == nil {
-		gi.graph.unresolvedNode(source, "selector registry unavailable")
+		gi.graph.unresolvedNode(source, "selector registry unavailable", snapshot)
 		return
 	}
 
@@ -238,7 +238,7 @@ func (gi *Indexer) extractLabelSelector(
 	if decl.Extractor.Method == MethodLabelSelectorObject {
 		sel, ok := parseLabelSelectorObject(result)
 		if !ok {
-			gi.graph.unresolvedNode(source, "invalid label selector object")
+			gi.graph.unresolvedNode(source, "invalid label selector object", snapshot)
 			return
 		}
 		selector = sel

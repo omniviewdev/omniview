@@ -90,10 +90,13 @@ func (g *RelationshipGraph) GetBoundDeclarations(plugin string, route resource.A
 }
 
 func (g *RelationshipGraph) boundSnapshot(plugin string, route resource.AccessRoute, sourceType string) (*boundSet,bool) {
- g.mu.RLock()
- defer g.mu.RUnlock()
- set,ok := g.boundDeclarations[declMapKey{pluginID:plugin,connectionID:route.Connection,resourceKey:sourceType}]
- return set,ok
+ g.mu.Lock()
+ defer g.mu.Unlock()
+ key := declMapKey{pluginID:plugin,connectionID:route.Connection,resourceKey:sourceType}
+ if set,ok := g.boundDeclarations[key]; ok { return set,true }
+ if g.missingSnapshots == nil { g.missingSnapshots = make(map[declMapKey]*boundSet) }
+ if g.missingSnapshots[key] == nil { g.missingSnapshots[key] = &boundSet{} }
+ return g.missingSnapshots[key],false
 }
 
 // currentSnapshot is checked while holding g.mu at every derived publication.
@@ -118,8 +121,14 @@ func (g *RelationshipGraph) ClearDeclarationsForConnection(plugin string, route 
  for key := range g.declarationProblems { if key.pluginID == plugin && key.connectionID == route.Connection { delete(g.declarationProblems,key) } }
 }
 
-func (g *RelationshipGraph) unresolvedNode(node GraphNode, reason string) {
+func (g *RelationshipGraph) unresolvedNode(node GraphNode, reason string, snapshot *boundSet) {
  g.mu.Lock(); defer g.mu.Unlock()
+ // Missing declarations also have a snapshot token. Retirement changes that
+ // token, so absence -> publication -> absence cannot admit an old error.
+ key := declMapKey{pluginID:node.PluginID,connectionID:node.Route.Connection,resourceKey:node.Reference.Address.Type}
+ current := g.boundDeclarations[key]
+ if current == nil { current = g.missingSnapshots[key] }
+ if snapshot == nil || current != snapshot { return }
  if g.unresolved == nil { g.unresolved = make(map[string]unresolvedEntry) }
  g.unresolved[node.Key()] = unresolvedEntry{node,reason}
  g.markChanged(node.PluginID,node.Route.Connection)
@@ -191,6 +200,9 @@ func (g *RelationshipGraph) RecordDeclarationError(plugin string, route resource
 
 // retireDeclarationsLocked withdraws derived observations before rules change.
 func (g *RelationshipGraph) retireDeclarationsLocked(plugin string, route resource.AccessRoute, sourceType string) {
+ for key := range g.missingSnapshots {
+  if key.pluginID == plugin && key.connectionID == route.Connection && (sourceType == "" || key.resourceKey == sourceType) { delete(g.missingSnapshots,key) }
+ }
  matches := func(node GraphNode) bool { return node.PluginID == plugin && node.Route == route && (sourceType == "" || node.Reference.Address.Type == sourceType) }
  for key := range g.forward {
   g.removeMatching(g.forward,g.reverse,key,func(edge storedEdge) bool {
