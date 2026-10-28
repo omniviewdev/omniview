@@ -210,6 +210,11 @@ the registry and relationship index current even without a frontend subscriber;
 subscribed delivery rechecks the original caller's access and target membership.
 This observed graph is not a planner, a complete query result, or a P05
 continuity guarantee.
+Before returning graph data, the host independently admits each cited node's
+actual plugin and route and validates its reference against the current target
+type's catalog binding. An inaccessible, removed-type, or stale-authority target
+fails the entire graph request: nodes are neither silently filtered nor rekeyed
+to a new authority, and the root's authority never substitutes for a peer's.
 
 The implementation-candidate `omniview.resource-wire-policy.v1` bounds frames at
 32 MiB, resource bodies at 16 MiB, depth at 64, nodes at 262144, fields at 1048576,
