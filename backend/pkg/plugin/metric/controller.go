@@ -514,7 +514,7 @@ func (c *controller) Subscribe(pluginID, connectionID string, req SubscribeReque
 	state, err := c.ensureStream(pluginID, connectionID)
 	if err != nil {
 		var missing *apperror.AppError
-		if errors.As(err, &missing) && missing.Type == apperror.TypePluginNotFound {
+		if errors.As(err, &missing) && missing != nil && missing.Type == apperror.TypePluginNotFound {
 			classified := *missing
 			classified.RequestID = subscriptionID
 			return "", &classified

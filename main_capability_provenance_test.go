@@ -17,9 +17,9 @@ import (
 	"github.com/omniviewdev/omniview/internal/appstate"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
+	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	sdkmetric "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
-	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
 // This invokes the production composition's metric consumer and the real
@@ -82,6 +82,7 @@ func TestCapabilityConnectionAdmissionPreservesUIAndNativeOrigins(t *testing.T) 
 					}
 					return &sdkmetric.QueryResponse{Success: true, Results: []sdkmetric.MetricResult{{CurrentValue: &sdkmetric.CurrentValue{MetricID: "gomaxprocs", Value: float64(runtime.GOMAXPROCS(0))}}}}, nil
 				}, nil)
+			manager.BindConnectionContextProvider(provider)
 			backend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": provider, "metric": manager})
 			resources := hostresource.NewController(logger, nil, state.PluginStore, boundary)
 			resources.Run(ctx)
@@ -91,6 +92,9 @@ func TestCapabilityConnectionAdmissionPreservesUIAndNativeOrigins(t *testing.T) 
 			})
 			resources.OnPluginInit(pluginID, config.PluginMeta{})
 			require.NoError(t, resources.OnPluginStart(pluginID, config.PluginMeta{}, backend))
+			status, startErr := resources.StartConnection(invocation.HostContext(ctx), pluginID, connectionID)
+			require.NoError(t, startErr)
+			require.Equal(t, sdktypes.ConnectionStatusConnected, status.Status)
 
 			var metrics pluginmetric.Controller
 			if tc.ui {

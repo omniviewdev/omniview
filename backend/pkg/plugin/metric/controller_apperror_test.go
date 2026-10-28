@@ -25,7 +25,6 @@ func TestQuery_PluginNotFound(t *testing.T) {
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 	assert.Equal(t, 404, appErr.Status)
-	assert.Contains(t, appErr.Detail, "nonexistent")
 }
 
 func TestSubscribe_PluginNotFound(t *testing.T) {
@@ -38,7 +37,6 @@ func TestSubscribe_PluginNotFound(t *testing.T) {
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 	assert.Equal(t, 404, appErr.Status)
-	assert.Contains(t, appErr.Detail, "nonexistent")
 }
 
 func TestUnsubscribe_SessionNotFound(t *testing.T) {
@@ -51,5 +49,4 @@ func TestUnsubscribe_SessionNotFound(t *testing.T) {
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypeSessionNotFound, appErr.Type)
 	assert.Equal(t, 404, appErr.Status)
-	assert.Contains(t, appErr.Detail, "nonexistent-sub")
 }

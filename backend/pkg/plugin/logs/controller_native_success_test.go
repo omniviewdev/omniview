@@ -221,7 +221,7 @@ func TestNativeLogSessionConsumesRegisteredConnectionAndClosesFile(t *testing.T)
 			},
 		},
 		Resolvers: map[string]sdklogs.SourceResolver{
-			"native-log-group": func(pctx *sdktypes.PluginContext, data map[string]interface{}, _ sdklogs.SourceResolverOptions) (*sdklogs.SourceResolverResult, error) {
+			"native-log-group": func(pctx *sdktypes.PluginContext, data *sdkresource.Value, _ sdklogs.SourceResolverOptions) (*sdklogs.SourceResolverResult, error) {
 				if pctx.Connection == nil {
 					return nil, errors.New("log resolver did not receive the registered connection")
 				}
@@ -229,8 +229,11 @@ func TestNativeLogSessionConsumesRegisteredConnectionAndClosesFile(t *testing.T)
 				if !ok {
 					return nil, errors.New("log resolver connection directory is missing")
 				}
-				name, ok := data["name"].(string)
-				if !ok {
+				if data == nil || data.Kind != "map" {
+					return nil, errors.New("native log file body is missing")
+				}
+				name := data.Map["name"]
+				if name.Kind != "string" {
 					return nil, errors.New("native log file name is missing")
 				}
 				directory, openErr := os.OpenRoot(connectionRoot)
@@ -238,7 +241,7 @@ func TestNativeLogSessionConsumesRegisteredConnectionAndClosesFile(t *testing.T)
 					return nil, openErr
 				}
 				defer directory.Close()
-				info, statErr := directory.Stat(name)
+				info, statErr := directory.Stat(name.String)
 				if statErr != nil {
 					return nil, statErr
 				}
@@ -246,6 +249,7 @@ func TestNativeLogSessionConsumesRegisteredConnectionAndClosesFile(t *testing.T)
 			},
 		},
 	})
+	logManager.BindConnectionContextProvider(resourceManager)
 	t.Cleanup(logManager.Close)
 
 	streamStopped := make(chan struct{})

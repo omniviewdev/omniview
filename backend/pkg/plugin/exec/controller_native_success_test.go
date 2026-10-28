@@ -142,6 +142,7 @@ while IFS= read -r ignored; do :; done`)
 			return terminal, factoryErr
 		},
 	})
+	manager.BindConnectionContextProvider(resourceProvider)
 	t.Cleanup(manager.Close)
 
 	listener := bufconn.Listen(1024 * 1024)
@@ -173,6 +174,11 @@ while IFS= read -r ignored; do :; done`)
 	})
 	resources.OnPluginInit(pluginID, config.PluginMeta{})
 	require.NoError(t, resources.OnPluginStart(pluginID, config.PluginMeta{}, backend))
+	for _, selected := range connections {
+		status, startErr := resources.StartConnection(invocation.HostContext(ctx), pluginID, selected.ID)
+		require.NoError(t, startErr)
+		require.Equal(t, sdktypes.ConnectionStatusConnected, status.Status)
+	}
 
 	ctrl := NewController(logger, nil, resources).(*controller)
 	ctrl.ctx = ctx // No local terminal manager/UI runtime is needed for plugin exec.
