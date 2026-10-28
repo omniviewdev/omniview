@@ -93,6 +93,7 @@ func (g *RelationshipGraph) boundSnapshot(plugin string, route resource.AccessRo
  g.mu.Lock()
  defer g.mu.Unlock()
  key := declMapKey{pluginID:plugin,connectionID:route.Connection,resourceKey:sourceType}
+ if g.sourceTypeExcluded(plugin,route,sourceType) { return nil,false }
  if set,ok := g.boundDeclarations[key]; ok { return set,true }
  if g.missingSnapshots == nil { g.missingSnapshots = make(map[declMapKey]*boundSet) }
  if g.missingSnapshots[key] == nil { g.missingSnapshots[key] = &boundSet{} }
@@ -114,6 +115,7 @@ func (g *RelationshipGraph) addBoundEdge(edge GraphEdge, source GraphNode, selec
 func (g *RelationshipGraph) ClearDeclarationsForConnection(plugin string, route resource.AccessRoute) {
  g.mu.Lock()
  defer g.mu.Unlock()
+ delete(g.declarationCatalogs,ConnectionRef{plugin,route.Connection})
  g.retireDeclarationsLocked(plugin,route,"")
  for key := range g.boundDeclarations { if key.pluginID == plugin && key.connectionID == route.Connection { delete(g.boundDeclarations,key) } }
  for key,entries := range g.selectorCache { for _,entry := range entries { if entry.node.PluginID == plugin && entry.node.Route == route { delete(g.selectorCache,key) }; break } }

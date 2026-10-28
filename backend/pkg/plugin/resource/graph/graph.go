@@ -13,6 +13,7 @@ type RelationshipGraph struct {
 	reverse       map[string][]storedEdge
 	boundDeclarations map[declMapKey]*boundSet
 	missingSnapshots map[declMapKey]*boundSet
+	declarationCatalogs map[ConnectionRef]declarationCatalog
 	unresolved map[string]unresolvedEntry
 	declarationProblems map[declMapKey]error
 	selectorCache map[string]map[string]selectorEntry
@@ -332,6 +333,9 @@ type declMapKey struct {
 func (g *RelationshipGraph) ClearDeclarationsForPlugin(pluginID string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	for key := range g.declarationCatalogs {
+		if key.PluginID == pluginID { delete(g.declarationCatalogs, key) }
+	}
 	for key := range g.missingSnapshots {
 		if key.pluginID == pluginID { delete(g.missingSnapshots, key) }
 	}

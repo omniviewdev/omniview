@@ -72,6 +72,8 @@ func scopeMatches(scope, target []resource.ScopeEntry) bool {
 
 func (gi *Indexer) extractEdges(entry registry.ResourceEntry, raw json.RawMessage) {
 	snapshot, bound := gi.graph.boundSnapshot(entry.PluginID, entry.Route, entry.Reference.Address.Type)
+	// A nil witness means a complete current catalog excludes this Type.
+	if snapshot == nil { return }
 	if bound && snapshot.noRules { return }
 	if !bound {
 		gi.graph.unresolvedNode(nodeFromEntry(entry), "source declaration binding unavailable", snapshot)
