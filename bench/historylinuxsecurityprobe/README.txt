@@ -1,76 +1,111 @@
-Linux Secret Service prerequisite proof (HR02)
+Linux Secret Service + official SQLCipher prerequisite proof (HR02)
 
-This standalone module uses real org.freedesktop.secrets calls through
-maintained github.com/godbus/dbus/v5 v5.1.0 (BSD-2-Clause). It adds no host
-API or dependency. All keys/passwords are synthetic random values. Keys
-never enter process arguments, environment variables, files, or output.
-The daemon's synthetic unlock password goes through stdin. Output is JSON.
-The Secret Service "plain" session algorithm means local authenticated
-D-Bus transport, NOT encrypted transport or a claim about daemon disk
-implementation. No plaintext fallback exists. SQLite below contains only
-random synthetic test data; its encryption is explicitly NOT claimed.
+Standalone synthetic verification only. No production history API or root
+module dependency. SQLCipher encrypts the SQLite database/WAL containing
+metadata, ordinary index, FTS index and synthetic snapshot/diff payload.
+No plaintext database driver or storage fallback exists.
 
-Linux/Ubuntu packages:
+Pinned maintained dependencies:
+  github.com/godbus/dbus/v5 v5.1.0 (BSD-2-Clause)
+  github.com/mattn/go-sqlite3 v1.14.52 (MIT)
+  official github.com/sqlcipher/sqlcipher commit
+  355d4db92d3404e71faa8088d071a71d767807f4
+  SQLCipher 4.20.0 community, SQLite 3.54.1 (BSD-3-Clause;
+  bundled SQLite public domain; retain upstream LICENSE.md notices)
+  OpenSSL 3 provider from distribution libssl-dev/libcrypto (Apache-2.0;
+  retain distribution notices). No old fork or custom crypto.
+Go 1.26.0+; CGO enabled; Linux C compiler and native architecture required.
+
+Ubuntu setup and exact run (parent owns CI workflow):
   sudo apt-get update
-  sudo apt-get install -y dbus gnome-keyring libglib2.0-bin coreutils
-Go 1.26.0+ required. From this module:
+  sudo apt-get install -y build-essential git tcl pkg-config libssl-dev \
+    openssl dbus gnome-keyring libglib2.0-bin coreutils util-linux
+  cd bench/historylinuxsecurityprobe
   GOWORK=off go mod download
-  sh smoke.sh
+  bash native-linux.sh
+For a bounded external job: timeout 900s bash native-linux.sh
+No production credentials or cloud queries are needed.
 
-smoke.sh builds a temporary binary, creates fresh owner-only HOME/XDG
-paths, and starts an isolated dbus-run-session. It runs an owned foreground
-gnome-keyring daemon. A random password travels through stdin, not argv.
-It never touches the user's daemon or bus. Daemon startup polls at most
-five seconds; session execution is bounded by timeout 40s. Every exit
-removes owned files and stops the owned process. Never run inner directly.
+The builder fetches only the pinned official source commit, checks identity,
+generates the unchanged amalgamation and compiles a private static archive
+and matching header. No system library installation occurs. It sets:
+  GOWORK=off CGO_ENABLED=1
+  CGO_CFLAGS=-I<private>/include -DSQLITE_HAS_CODEC
+  CGO_LDFLAGS=<private>/lib/libsqlite3.a -L<private>/lib -lcrypto -lm -ldl -lpthread
+  go build -tags libsqlite3 ...
+Codec flags: SQLITE_HAS_CODEC, SQLITE_TEMP_STORE=2, SQLITE_THREADSAFE=1,
+SQLITE_EXTRA_INIT=sqlcipher_extra_init,
+SQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown,
+SQLCIPHER_CRYPTO_OPENSSL, SQLITE_ENABLE_FTS5.
+ldd must show OpenSSL libcrypto and must NOT show dynamic SQLite/SQLCipher.
+The proof rejects wrong codec/core/provider/options on two simultaneously
+held actual pool connections. URI keying happens before mattn startup
+PRAGMAs. DSNs/SQL/errors containing keys are never logged.
 
-Individual commands, ONLY inside an owned disposable session/environment:
+Build and go vet run BEFORE isolation of runtime HOME. Go caches stay
+outside owned runtime state; readonly Go module files cannot break runtime
+cleanup. Earlier PR183 Ubuntu run40734298355/job122978578015 passed all
+three vault JSON assertions but FAILED cleanup because that older runner
+built after HOME isolation. This extension removes that build step rather
+than chmodding caches or ignoring cleanup failures. That old CI result is
+not a passing job; new-head Ubuntu CI is parent-owned and remains pending.
+
+smoke.sh accepts only PROOF_BINARY produced by native-linux.sh. It creates
+fresh owner-only HOME/XDG paths and an isolated dbus-run-session, starts an
+owned foreground gnome-keyring daemon, and supplies a random synthetic
+password over stdin, never argv. Daemon startup is bounded to five seconds.
+No user bus/daemon is touched. Per-process credential/database work has a
+30-second context; wrapper/session commands also have timeout bounds.
+On every exit the owned daemon and temporary state are cleaned up.
+Never invoke smoke.sh inner against an existing/user session.
+
+Inside the owned disposable session only:
   HISTORY_PROOF_OWNED_SESSION=1 /absolute/path/to/proof available
+Without a running Secret Service:
   dbus-run-session -- /absolute/path/to/proof unavailable
-The first needs an unlocked default collection; it creates, reads, replaces,
-deletes a unique owned item, confirms deletion, locks the disposable
-collection, and confirms a write is denied. It never unlocks user state.
-An absent or locked collection is a hard error, never fallback.
-The wrapper then stops its daemon and runs unavailable on the SAME bus,
-proving stale service disappearance is denied without activation/fallback.
-A separate fresh bus covers a service that was never present. These
-unavailable scenarios succeed only when NameHasOwner returns false.
-D-Bus errors and calls are bounded by a 25-second context.
+The complete wrapper covers both stopped-daemon absence on the same bus
+and never-present service absence on a fresh bus. Unavailable paths do
+not activate the service, generate replacement keys, or open databases.
+For unavailable mutation assertions, an encrypted synthetic comparison DB
+is separately constructed by fixture setup, before the denied caller runs.
+The denied caller must leave that actual DB unchanged and create no new DB.
 
-Filesystem assertions use fresh 0700 directories, process umask 0077,
-and real modernc SQLite WAL files. DB/WAL/SHM must have effective-UID
-ownership and mode 0600 while open. Preexisting symlinks at each name
-must fail preflight. This is NOT a race-proof VFS or os.Root proof.
-Private parent ownership excludes other UIDs; hostile same-UID processes,
-root, hardlink attacks, inherited ACLs, power loss, and SQLite encryption
-are not proven. Production must separately resolve these requirements.
+Assertions: native key create/read/replace/delete; actual vault-read keys
+used for encrypted DB/backup/rekey; exact codec identity/options/provider;
+two keyed pool connections; populated real WAL; DB/WAL/SHM owner UID and
+0600 permissions, fresh 0700 parent; metadata/payload/index/FTS sentinels
+absent from encrypted artifacts; keyless/wrong-key rejection; payload/FTS
+reopen; distinct-key encrypted export/restore; rekey retires old key;
+deleted/locked/absent vault gates prevent actual DB mutation/new creation.
+The Secret Service plain session algorithm uses authenticated local D-Bus;
+this is NOT a claim of encrypted transport or daemon at-rest internals.
 
-Runtime observed 2026-10-28: Docker Desktop Linux ARM64 container on
-Darwin ARM64. Image golang:1.26-bookworm, manifest digest
-sha256:23ce71337b726608afb1bc00986e630a05034a87a87ea1fc2cd1ae5cf33387eb.
-Actual Linux ARM64 execution, not an AMD64 emulation/performance claim.
-Native Ubuntu CI remains for parent integration; no claim it ran here.
+Containment is ONLY preexisting DB/WAL/SHM symlink rejection. No race-proof
+SQLite VFS/os.Root guarantee, hostile same-UID/plugin/root isolation,
+hardlink/inherited-ACL proof, signed-app access policy, production schema,
+crash-safe rotation, physical erasure, or full HR02 acceptance is claimed.
+The database has synthetic snapshot/diff bodies, not a production history
+implementation. No signed/native Ubuntu desktop behavior is inferred.
 
-Completed verification: GOWORK=off go vet ./... passed in that container.
-sh smoke.sh passed the key lifecycle/locked-write/private-file scenario,
-then stale-daemon absence and fresh-bus absence. Each emitted status=passed.
-No user credentials, production cloud calls, or user's session were used.
+Artifact identity is emitted by the builder: official source commit,
+Linux architecture, OpenSSL version, executable SHA256/size, private static
+archive SHA256, amalgamation SHA256. Runtime evidence must distinguish
+Linux ARM64 Docker on Darwin ARM64 from native Ubuntu AMD64 CI.
 
-Exact Go dependencies are pinned in go.mod/go.sum. Primary licenses:
-  github.com/godbus/dbus/v5 v5.1.0: BSD-2-Clause
-  modernc.org/sqlite v1.61.0: BSD-3-Clause; SQLite public domain;
-    bundled third-party notices: LICENSE-3RD-PARTY.md, LICENSE-SQLITE_VEC
-  github.com/dustin/go-humanize v1.1.0: MIT
-  github.com/google/uuid v1.6.0: BSD-3-Clause
-  github.com/mattn/go-isatty v0.0.24: MIT
-  github.com/ncruces/go-strftime v1.1.0: MIT
-  github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec: BSD-3-Clause
-  golang.org/x/sys v0.49.0: BSD-3-Clause
-  modernc.org/libc v1.79.0: BSD-3-Clause plus LICENSE-3RD-PARTY.md
-  modernc.org/mathutil v1.7.1: BSD-3-Clause
-  modernc.org/memory v1.12.1: BSD-3-Clause plus LICENSE-GO/LICENSE-MMAP-GO
-Distribution must preserve upstream notices, not just this inventory.
-Debian/Ubuntu runner packages retain their distro copyright notices:
-D-Bus (AFL-2.1 OR GPL-2.0-or-later), GNOME Keyring (GPL-2.0-or-later,
-with library-specific exceptions), GLib (LGPL-2.1-or-later), coreutils
-(GPL-3.0-or-later). They are runtime tools, not vendored dependencies.
+Observed final execution 2026-10-28:
+  Docker Desktop Linux ARM64 on Darwin ARM64, golang:1.26-bookworm.
+  Container build/proof/cleanup ran as unprivileged UID 10001, not root,
+  with module bind-mounted read-only. No AMD64 CPU/emulation claim.
+  go build, go vet, encrypted/locked/retired-key proof, stopped-daemon
+  absence proof, fresh-bus absence proof and cleanup all exited zero.
+  OpenSSL 3.0.22 25 Aug 2026, libcrypto.so.3.
+  Executable SHA256:
+    6e0fa458195c98d452819dc9a0d44936ed71a68ecad4561101d8c0edd21d2d37
+  Executable bytes: 6648656.
+  Private static codec archive SHA256:
+    cabfffd722cea33b4df9e54920ee3977a180337c0f0e2bac98cde92cdbedbf50
+  Official generated amalgamation SHA256:
+    8cd2347d18886fee4651153fabeeeffb7cec008700987dab1c00261febc4220f
+  Expected SQLCipher wrong-key HMAC errors were visible without key/SQL
+  disclosure; they are not suppressed to manufacture success.
+  All owned runtime/build state was removed; no artifact binary is shipped.

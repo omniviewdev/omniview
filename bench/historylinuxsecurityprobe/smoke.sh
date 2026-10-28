@@ -26,10 +26,10 @@ case "${1:-}" in
   '')
     root=$(mktemp -d)
     trap 'rm -rf "$root"' EXIT HUP INT TERM
-    export PROOF_BINARY="$root/proof"
-    GOWORK=off go build -o "$PROOF_BINARY" .
     export HOME="$root/home" XDG_DATA_HOME="$root/data" XDG_CONFIG_HOME="$root/config" XDG_CACHE_HOME="$root/cache" XDG_RUNTIME_DIR="$root/runtime"
     mkdir -m 700 "$HOME" "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR"
+    : "${PROOF_BINARY:?Run bash native-linux.sh; unpinned builds are not accepted}"
+    [ -x "$PROOF_BINARY" ]
     timeout 40s dbus-run-session -- sh "$0" inner
     timeout 10s dbus-run-session -- "$PROOF_BINARY" unavailable
     ;;
