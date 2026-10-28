@@ -231,7 +231,7 @@ test('real supervisor authority subprocess rereads state and refuses foreign or 
 });
 
 for (const framework of frameworks) {
-  test(`${framework.name}: development status rejects foreign generations and exposes only banner fields`, { timeout: 10000 }, async t => {
+  test(`${framework.name}: development status rejects foreign generations and exposes safe host observations`, { timeout: 10000 }, async t => {
     const f = await fixture(t, framework);
     const local = path.join(f.workspaceRoot, '.local');
     mkdirSync(local, { mode: 0o700 });
@@ -249,6 +249,11 @@ for (const framework of frameworks) {
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('cache-control'), 'no-store');
     assert.deepEqual(await response.json(), {
+      workspaceID: f.context.workspaceID,
+      generation: f.context.generation,
+      health: {},
+      builds: {},
+      selectedPluginCount: null,
       phase: 'build-error',
       failedStage: 'host-backend',
       recoveryCommand: `omniview-dev workspace refresh ${f.context.workspaceID}`,

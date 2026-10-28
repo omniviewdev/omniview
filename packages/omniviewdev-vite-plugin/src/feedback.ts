@@ -329,6 +329,14 @@ export function attachManagedViteFeedback(server: ManagedFeedbackServer, raw = p
         response.setHeader('Cache-Control', 'no-store');
         response.setHeader('Content-Type', 'application/json');
         response.end(JSON.stringify({
+          workspaceID: context.workspaceID,
+          generation: context.generation,
+          health: Object.fromEntries(['build', 'hmr', 'servedSource', 'sourceReload', 'dependencies', 'readiness'].flatMap((key) =>
+            typeof status.health?.[key] === 'string' && status.health[key] ? [[key, status.health[key]]] : [])),
+          builds: Object.fromEntries(Object.entries(status.builds ?? {}).map(([name, build]) => [name, {
+            phase: build && typeof build === 'object' && 'phase' in build && typeof build.phase === 'string' ? build.phase : 'unknown',
+          }])),
+          selectedPluginCount: Array.isArray(status.manifest?.plugins) ? status.manifest.plugins.length : null,
           phase: status.launchPhase,
           failedStage: status.failedStage,
           recoveryCommand: `omniview-dev workspace refresh ${context.workspaceID}`,
@@ -429,36 +437,6 @@ export function managedViteFeedback() {
     name: 'omniview-managed-vite-feedback',
     apply: 'serve' as const,
     enforce: 'pre' as const,
-    transformIndexHtml() {
-      if (!process.env.OMNIVIEW_VITE_FEEDBACK) {
-        return [];
-      }
-
-      return [{
-        tag: 'script',
-        attrs: { type: 'module' },
-        injectTo: 'body' as const,
-        children: `
-const banner = document.createElement('div');
-banner.id = 'omniview-development-banner';
-banner.setAttribute('role', 'status');
-banner.style.cssText = 'position:fixed;bottom:32px;left:12px;max-width:calc(100vw - 24px);box-sizing:border-box;pointer-events:none;z-index:2147483647;padding:6px 12px;background:#172554;color:#fff;font:12px monospace;white-space:pre-wrap';
-document.body.append(banner);
-async function refreshDevelopmentStatus() {
-  try {
-    const response = await fetch('/__omniview_development_status', { cache: 'no-store' });
-    if (!response.ok) throw new Error('status unavailable');
-    const status = await response.json();
-    banner.textContent = 'DEVELOPMENT — ' + status.phase + (status.failedStage ? ' — failed stage: ' + status.failedStage + ' — recover: ' + status.recoveryCommand : '');
-  } catch {
-    banner.textContent = 'DEVELOPMENT — supervisor status unavailable; inspect workspace status before trusting served source';
-  }
-}
-refreshDevelopmentStatus();
-setInterval(refreshDevelopmentStatus, 1500);
-`,
-      }];
-    },
     configureServer(server: ManagedFeedbackServer) {
       attachManagedViteFeedback(server);
     },

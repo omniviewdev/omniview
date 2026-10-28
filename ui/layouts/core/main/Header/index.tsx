@@ -12,7 +12,6 @@ import HeaderTabsArea from './areas/HeaderTabsArea';
 import { WindowContext } from '@/contexts/WindowContext';
 import { toggleMaximiseOnDoubleClick } from './toggleMaximise';
 import styles from './Header.module.css';
-import InstanceIndicator from './InstanceIndicator';
 import { GlobalCommandSearch } from '@/features/command-search/GlobalCommandSearch';
 import { useGlobalCommandSearch } from '@/features/command-search/useGlobalCommandSearch';
 
@@ -38,7 +37,6 @@ const CoreLayoutHeader: React.FC = () => {
         style={style}
         onClick={toggleMaximiseOnDoubleClick}
       >
-        <InstanceIndicator />
         {areas?.left.visible && <HeaderItemAreaComponent area={areas.left} onOpenSearch={search.open} />}
         {areas?.center.visible && <HeaderItemAreaComponent area={areas.center} onOpenSearch={search.open} />}
         {areas?.right.visible && <HeaderItemAreaComponent area={areas.right} onOpenSearch={search.open} />}
