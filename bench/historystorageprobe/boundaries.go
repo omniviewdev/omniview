@@ -11,8 +11,10 @@ func boundaryProof(root string) map[string]bool {
 	path := filepath.Join(root, "boundaries.db")
 	writer := open(path)
 	defer writer.Close()
-	_, err := writer.Exec(`PRAGMA journal_mode=WAL;
-CREATE TABLE evidence(id INTEGER PRIMARY KEY, summary TEXT);
+	var mode string
+	must(writer.QueryRow("PRAGMA journal_mode=WAL").Scan(&mode))
+	expect(mode == "wal", "WAL not enabled for boundary proof")
+	_, err := writer.Exec(`CREATE TABLE evidence(id INTEGER PRIMARY KEY, summary TEXT);
 CREATE VIRTUAL TABLE search USING fts5(summary);
 CREATE TABLE recovery(position INTEGER);
 INSERT INTO recovery VALUES(0);
@@ -36,8 +38,15 @@ PRAGMA user_version=1;`)
 	must(err)
 	_, err = migration.Exec("ALTER TABLE evidence ADD COLUMN revision INTEGER; PRAGMA user_version=2")
 	must(err)
+	var inTx int64
+	must(migration.QueryRow("PRAGMA user_version").Scan(&inTx))
+	expect(inTx == 2, "migration version not applied inside transaction")
+	must(migration.QueryRow("SELECT count(*) FROM pragma_table_info('evidence') WHERE name='revision'").Scan(&inTx))
+	expect(inTx == 1, "migration DDL not applied inside transaction")
+	must(migration.QueryRow("SELECT count(*) FROM sqlite_schema WHERE name='absent_table'").Scan(&inTx))
+	expect(inTx == 0, "failure target table unexpectedly exists")
 	_, err = migration.Exec("INSERT INTO absent_table VALUES(1)")
-	expect(err != nil, "migration failure missing")
+	expect(sqliteCode(err, 1), fmt.Sprintf("expected SQLITE_ERROR for missing table, got %v", err))
 	must(migration.Rollback())
 	expect(number(writer, "PRAGMA user_version") == 1, "failed migration advanced version")
 	expect(number(writer, "SELECT count(*) FROM pragma_table_info('evidence') WHERE name='revision'") == 0, "failed migration retained DDL")

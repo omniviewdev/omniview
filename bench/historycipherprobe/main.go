@@ -129,6 +129,14 @@ func run() {
 	vault, err := newVault(filepath.Join(root, "private.keychain"), password)
 	must(err)
 	defer func() { must(vault.close()) }()
+	openFromVault := func(path, account string) (*sql.DB, error) {
+		key, err := vault.get(account)
+		if err != nil {
+			return nil, err
+		}
+		defer clear(key)
+		return openCipher(path, key)
+	}
 	// Native Keychain creation can use 0644 inside our private 0700 directory.
 	// Restrict only these freshly created owned regular files, before storing keys.
 	entries, err := os.ReadDir(root)
@@ -157,7 +165,7 @@ func run() {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
 	must(err)
 	must(file.Close())
-	db, err := openCipher(path, loaded)
+	db, err := openFromVault(path, "partition-a-v1")
 	must(err)
 	defer db.Close()
 	var cipher, sqlite, journal string
@@ -187,7 +195,7 @@ func run() {
 	reject(path, nil)
 	reject(path, randomKey())
 	must(db.Close())
-	db, err = openCipher(path, loaded)
+	db, err = openFromVault(path, "partition-a-v1")
 	must(err)
 	var actual string
 	must(db.QueryRow("SELECT payload FROM evidence").Scan(&actual))
@@ -208,7 +216,7 @@ func run() {
 	must(err)
 	reject(backup, nil)
 	reject(backup, loaded)
-	copyDB, err := openCipher(backup, backupKey)
+	copyDB, err := openFromVault(backup, "backup-v1")
 	must(err)
 	must(copyDB.QueryRow("SELECT payload FROM evidence").Scan(&actual))
 	expect(actual == payload, "encrypted backup restore changed payload")
@@ -225,7 +233,7 @@ func run() {
 	must(err)
 	must(db.Close())
 	reject(path, loaded)
-	rotated, err := openCipher(path, newKey)
+	rotated, err := openFromVault(path, "partition-a-v2")
 	must(err)
 	must(rotated.QueryRow("SELECT payload FROM evidence").Scan(&actual))
 	expect(actual == payload, "rotation lost payload")
@@ -236,9 +244,19 @@ func run() {
 	must(vault.remove("partition-a-v2"))
 	before, err := os.ReadFile(path)
 	must(err)
-	_, err = vault.get("partition-a-v2")
-	expect(err != nil, "deleted key still available")
-	// Missing key stops before opening: never create a replacement or plaintext store.
+	denied, err := openFromVault(path, "partition-a-v2")
+	if denied != nil {
+		must(denied.Close())
+	}
+	expect(err != nil, "deleted key admitted existing database")
+	fresh := filepath.Join(root, "must-not-exist.db")
+	denied, err = openFromVault(fresh, "partition-a-v2")
+	if denied != nil {
+		must(denied.Close())
+	}
+	expect(err != nil, "deleted key admitted fresh database")
+	_, err = os.Lstat(fresh)
+	expect(os.IsNotExist(err), "missing key created database")
 	after, err := os.ReadFile(path)
 	must(err)
 	expect(sha256.Sum256(before) == sha256.Sum256(after), "missing key changed database")

@@ -48,7 +48,8 @@ cleanup. Earlier PR183 Ubuntu run40734298355/job122978578015 passed all
 three vault JSON assertions but FAILED cleanup because that older runner
 built after HOME isolation. This extension removes that build step rather
 than chmodding caches or ignoring cleanup failures. That old CI result is
-not a passing job; new-head Ubuntu CI is parent-owned and remains pending.
+not a passing job. Native Ubuntu AMD64 encrypted CI subsequently passed in
+run40748839203/job123029744193, including checked cleanup.
 
 smoke.sh accepts only PROOF_BINARY produced by native-linux.sh. It creates
 fresh owner-only HOME/XDG paths and an isolated dbus-run-session, starts an
@@ -92,7 +93,7 @@ Linux architecture, OpenSSL version, executable SHA256/size, private static
 archive SHA256, amalgamation SHA256. Runtime evidence must distinguish
 Linux ARM64 Docker on Darwin ARM64 from native Ubuntu AMD64 CI.
 
-Observed final execution 2026-10-28:
+Observed Linux ARM64 container execution 2026-10-28:
   Docker Desktop Linux ARM64 on Darwin ARM64, golang:1.26-bookworm.
   Container build/proof/cleanup ran as unprivileged UID 10001, not root,
   with module bind-mounted read-only. No AMD64 CPU/emulation claim.
@@ -109,3 +110,17 @@ Observed final execution 2026-10-28:
   Expected SQLCipher wrong-key HMAC errors were visible without key/SQL
   disclosure; they are not suppressed to manufacture success.
   All owned runtime/build state was removed; no artifact binary is shipped.
+
+Observed native Ubuntu AMD64 CI execution 2026-10-28:
+  https://github.com/omniviewdev/omniview/actions/runs/40748839203/job/123029744193
+  Head fdd73376e9d2aade8030fe026cb9c34d797ca544; OpenSSL 3.0.13
+  maintained Ubuntu package; actual encrypted executable and isolated real
+  Secret Service lifecycle passed, including locked/retired/absent custody,
+  private artifacts, fresh-bus refusal and checked cleanup.
+  Executable SHA256:
+    f56680e213806e5d46b71c27611037d32110c8975ef68ff3919ea7def3158ef3
+  Executable bytes: 7062656.
+  Private static codec archive SHA256:
+    b417c9ab064c289dd6a6d6e6a4c9105d061116e76c247bc2cabe6c8e4c5d9baf
+  This does not establish signed desktop packaging, interactive prompts,
+  logout handling, race-proof containment or production history acceptance.

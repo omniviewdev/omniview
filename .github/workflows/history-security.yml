@@ -35,8 +35,10 @@ jobs:
           - runner: macos-15-intel
             arch: darwin-amd64
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: '1.26'
           cache-dependency-path: bench/historycipherprobe/go.sum
@@ -46,7 +48,7 @@ jobs:
           set -euo pipefail
           GOWORK=off go env -json GOVERSION GOOS GOARCH CGO_ENABLED
           bash bench/historycipherprobe/native-darwin.sh | tee "$RUNNER_TEMP/history-cipher-proof.txt"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: history-cipher-${{ matrix.arch }}
           path: ${{ runner.temp }}/history-cipher-proof.txt
@@ -57,12 +59,14 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: '1.26'
           cache-dependency-path: bench/historywindowssecurityprobe/go.sum
-      - uses: msys2/setup-msys2@v2
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
         with:
           msystem: MINGW64
           path-type: inherit
@@ -77,7 +81,7 @@ jobs:
           cd "$(cygpath -u "$GITHUB_WORKSPACE")"
           GOWORK=off go env -json GOVERSION GOOS GOARCH CGO_ENABLED
           bash bench/historywindowssecurityprobe/native-windows.sh | tee "$(cygpath -u "$RUNNER_TEMP")/history-windows-proof.txt"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: history-windows-vault
           path: ${{ runner.temp }}/history-windows-proof.txt
@@ -88,8 +92,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: '1.26'
           cache-dependency-path: bench/historylinuxsecurityprobe/go.sum
@@ -102,7 +108,7 @@ jobs:
           set -euo pipefail
           GOWORK=off go env -json GOVERSION GOOS GOARCH CGO_ENABLED
           bash native-linux.sh | tee "$RUNNER_TEMP/history-linux-proof.txt"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: history-linux-vault
           path: ${{ runner.temp }}/history-linux-proof.txt
