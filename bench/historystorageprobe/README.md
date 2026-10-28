@@ -21,6 +21,10 @@ It asserts:
 - Abrupt child-process exit before and after a transaction commit, with evidence and checkpoint visibility remaining atomic.
 - SQLITE_FULL from an explicit page quota, followed by an unchanged checkpoint.
 - SQLITE_NOTADB for corrupt input without silently replacing the corrupt bytes.
+- Competing writer rejection without partial checkpoint visibility.
+- Transactional migration DDL and schema-version rollback after an actual SQL failure.
+- Atomic evidence/FTS purge rollback and removal from token queries after commit.
+- Read-only SQLite connection rejecting a write; this is not an authorization boundary.
 
 The timed 10,000-row insert is one synthetic transaction, not an ingestion throughput SLO. Its rows are not all FTS-indexed. JSON reports the elapsed insertion time and final database size; these are observations, not a comparative driver benchmark.
 
@@ -42,3 +46,5 @@ A Darwin ARM host may execute the Linux amd64 binary through Docker emulation; r
 No encryption, redaction pipeline, access partition authorization, upstream revocation, source checkpoints, schema migration, crash-safe driver integration with `os.Root`, or complete production query contract is established. FTS token semantics must not replace Resource Intelligence substring semantics. SQLCipher/key management, alternative-driver comparison, real disk-pressure probes, and all supported platform runtime checks remain HR02 work.
 
 See the [implementation receipt](../../docs/roadmap/2026-10-28-history-prerequisite-execution.md) for exercised results and the remaining production gates.
+
+See the [HR02 security decision](../../docs/superpowers/specs/2026-10-28-history-storage-security.md) for proposed profiles and unresolved platform/privacy gates.
