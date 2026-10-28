@@ -29,6 +29,11 @@ Choose source refs that satisfy the actual peer contracts: compare the host's `p
 
 Host `0.7.1` consumes published `@omniviewdev/base-ui` `~0.7.1` and `@omniviewdev/ai-ui`/`@omniviewdev/editors` `~6.0.1`; the runtime's base-ui peer lower bound is also `0.7.1`. Select UI source refs that satisfy these contracts.
 
+The published UI cohort comes from `omniviewdev/ui` commit
+`11a55a53acb67328f743c512757cabd29135f5fc`. Canonical CI selects that same
+reviewed source through `OMNIVIEW_E2E_UI_REF`; older `0.7.0` UI source cannot
+satisfy the host's updated lower bounds.
+
 Runtime UI preflight checks the host, selected plugin frontends, and linked shared
 packages. Other discovered workspace packages, such as standalone comparison or
 benchmark apps, retain their own dependencies; their private UI libraries do not
