@@ -70,7 +70,8 @@ export default function ResourceTableView(): React.ReactElement {
     }
   }, []);
 
-  if (resourceTypes.isError || groups.isError) {
+  const groupsError = groups.isError && parseAppError(groups.error).code !== 'UNSUPPORTED';
+  if (resourceTypes.isError || groupsError) {
     const appErr = parseAppError(resourceTypes.error ?? groups.error);
     return (
       <div className={styles.ErrorRoot}>

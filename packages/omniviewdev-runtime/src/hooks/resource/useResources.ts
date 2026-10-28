@@ -2,7 +2,7 @@ import React from 'react';
 import { hashKey, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Events, type CancellablePromise } from '@wailsio/runtime';
 import { Enumerate, EnsureResourceWatch, GetWatchState, SubscribeResource, UnsubscribeResource } from '../../resource/v2/client';
-import type { HostEnumerateRequest, HostRecord, HostSourcePage, HostSubscriptionRequest, ResourceView } from '../../resource/v2/host';
+import type { HostEnumerateRequest, HostSourcePage, HostSubscriptionRequest, ResourceView } from '../../resource/v2/host';
 import { resourceQueryKeys } from '../../resourceQueryKeys';
 import { WatchState, type WatchStateEvent } from '../../types/watch';
 import { useResolvedPluginId } from '../useResolvedPluginId';
@@ -16,7 +16,9 @@ export interface UseResourcesOptions {
   live?: boolean;
 }
 
-/** Acquire bounded pages and retain the existing explicitly BEST_EFFORT native live workflow. */
+/** Acquire exactly one native source page. Callers own continuation; this is not a host query page.
+ * Native live overlays remain explicitly BEST_EFFORT and can be disabled for finite page browsing.
+ */
 export const useResources = ({ pluginID: explicitPluginID, request, enabled = true, live = true }: UseResourcesOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
   const queryClient = useQueryClient();
@@ -35,20 +37,9 @@ export const useResources = ({ pluginID: explicitPluginID, request, enabled = tr
       const cancel = () => { void pending?.cancel(); };
       signal.addEventListener('abort', cancel, { once: true });
       try {
-        let cursor = stableRequest.request.cursor;
-        const records = new Map<string, HostRecord>();
-        let page: HostSourcePage;
-        do {
-          signal.throwIfAborted();
-          pending = Enumerate(pluginID, { ...stableRequest, request: { ...stableRequest.request, cursor } });
-          page = await pending;
-          for (const row of page.records) records.set(row.key, row);
-          cursor = page.sourcePage.nextCursor;
-        } while (cursor);
-        return {
-          records: [...records.values()],
-          sourcePage: page.sourcePage,
-        };
+        signal.throwIfAborted();
+        pending = Enumerate(pluginID, stableRequest);
+        return await pending;
       } finally {
         signal.removeEventListener('abort', cancel);
       }
