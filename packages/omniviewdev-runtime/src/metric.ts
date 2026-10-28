@@ -14,6 +14,7 @@ export interface SubscribeRequest {
   route?: AccessRoute;
   metric_ids: string[];
   interval: number;
+  params?: Record<string, string>;
 }
 
 const service = 'github.com/omniviewdev/omniview/backend/pkg/plugin/metric.ServiceWrapper';

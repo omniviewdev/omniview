@@ -68,12 +68,14 @@ type SubscribeRequest struct {
 	Route             *resourcev2.AccessRoute `json:"route,omitempty"`
 	MetricIDs         []string               `json:"metric_ids"`
 	Interval          time.Duration          `json:"interval"`
+	Params            map[string]string `json:"params,omitempty"`
 }
 
 type subscriptionIndex struct {
 	pluginID       string
 	connectionID   string
 	subscriptionID string
+	stream         *metricStream
 }
 
 var _ Controller = (*controller)(nil)
@@ -88,7 +90,8 @@ type controller struct {
 	handlerMap       map[string][]metric.Handler     // pluginID -> handlers
 	resourceIndex    map[string][]string             // resource key -> []pluginID
 	subscriptions    map[string]subscriptionIndex    // subscriptionID -> index
-	inChans          map[string]chan metric.StreamInput
+	streams          map[string]*metricStream
+	streamErrors     map[string]error
 	resourceClient   resource.Service
 	mux              sync.RWMutex
 }
@@ -108,7 +111,8 @@ func NewController(
 		handlerMap:       make(map[string][]metric.Handler),
 		resourceIndex:    make(map[string][]string),
 		subscriptions:    make(map[string]subscriptionIndex),
-		inChans:          make(map[string]chan metric.StreamInput),
+		streams:          make(map[string]*metricStream),
+		streamErrors:     make(map[string]error),
 		resourceClient:   resourceClient,
 		mux:              sync.RWMutex{},
 	}
@@ -172,34 +176,54 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	// Get supported resources before acquiring the lock (this makes an RPC call).
 	info, handlers := provider.GetSupportedResources(c.getUnconnectedCtx(context.Background()))
 
-	inchan := make(chan metric.StreamInput)
-	// The canonical SDK lane completes its protocol handshake before publishing
-	// readiness or allowing subscription commands into an unconsumed channel.
-	stream, streamErr := provider.StreamResourceMetrics(c.ctx, inchan)
+	streamCtx, cancelStream := context.WithCancel(c.ctx)
+	state := &metricStream{input: make(chan metric.StreamInput), done: make(chan struct{}), cancel: cancelStream}
+	// Complete canonical readiness before publishing this generation's sender.
+	stream, streamErr := provider.StreamResourceMetrics(streamCtx, state.input)
+	if streamErr == nil && stream == nil {
+		streamErr = resourcev2.NewError("INVALID_REQUEST", "Metric provider returned no ready stream.")
+	}
 	if streamErr != nil {
+		state.stop()
 		logger.Errorw(context.Background(), "error starting canonical metric stream", "error", streamErr)
-		return streamErr
+		state = nil
 	}
 
 	c.mux.Lock()
+	previous := c.streams[pluginID]
 	c.clients[pluginID] = provider
 	c.providerInfos[pluginID] = info
 	c.handlerMap[pluginID] = handlers
 	for _, h := range handlers {
 		c.resourceIndex[h.Resource] = append(c.resourceIndex[h.Resource], pluginID)
 	}
-	c.inChans[pluginID] = inchan
+	if state != nil {
+		c.streams[pluginID] = state
+		delete(c.streamErrors, pluginID)
+	} else {
+		delete(c.streams, pluginID)
+		c.streamErrors[pluginID] = streamErr
+	}
 	c.mux.Unlock()
+	if previous != nil { c.endStream(pluginID, previous, closedStreamError()) }
+	if state == nil { return nil } // Query support is independent of streaming.
 
 	go func() {
+		defer c.endStream(pluginID, state, closedStreamError())
 
 		for {
 			select {
-			case <-c.ctx.Done():
+			case <-streamCtx.Done():
 				return
 			case output, ok := <-stream:
 				if !ok {
 					return // stream closed, plugin exited
+				}
+				if output.SubscriptionID == "" && (output.OperationError != nil || output.Error != "") {
+					failure := output.OperationError
+					if failure == nil { failure = &resourcev2.ResourceOperationError{Code: "PROVIDER_ERROR", Message: "The metric stream failed."} }
+					c.endStream(pluginID, state, failure)
+					return
 				}
 				c.handleStreamOutput(output)
 			}
@@ -247,7 +271,9 @@ func (c *controller) HasPlugin(pluginID string) bool {
 
 func (c *controller) removePlugin(pluginID string) {
 	c.mux.Lock()
-	defer c.mux.Unlock()
+	state := c.streams[pluginID]
+	delete(c.streams, pluginID)
+	delete(c.streamErrors, pluginID)
 
 	delete(c.clients, pluginID)
 	delete(c.providerInfos, pluginID)
@@ -268,10 +294,8 @@ func (c *controller) removePlugin(pluginID string) {
 		}
 	}
 
-	if ch, ok := c.inChans[pluginID]; ok {
-		close(ch)
-		delete(c.inChans, pluginID)
-	}
+	c.mux.Unlock()
+	if state != nil { c.endStream(pluginID, state, closedStreamError()) }
 }
 
 func (c *controller) handleStreamOutput(output metric.StreamOutput) {
@@ -447,94 +471,69 @@ func (c *controller) QueryAll(
 
 // ================================ Streaming ================================ //
 
-func (c *controller) Subscribe(
-	pluginID, connectionID string,
-	req SubscribeRequest,
-) (string, error) {
+func (c *controller) Subscribe(pluginID, connectionID string, req SubscribeRequest) (string, error) {
 	_, span := tracer.Start(context.Background(), "metric.Subscribe")
 	defer span.End()
-	span.SetAttributes(
-		attribute.String("plugin_id", pluginID),
-		attribute.String("connection_id", connectionID),
-		attribute.String("resource_key", req.ResourceKey),
-		attribute.String("resource_id", req.ResourceID),
-	)
-
-	c.mux.RLock()
-	inchan, ok := c.inChans[pluginID]
-	c.mux.RUnlock()
-	if !ok {
-		err := apperror.PluginNotFound(pluginID)
-		telemetryutil.RecordError(span, err)
-		return "", err
-	}
-
 	subscriptionID := uuid.NewString()
-	span.SetAttributes(attribute.String("subscription_id", subscriptionID))
-
+	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID),
+		attribute.String("resource_key", req.ResourceKey), attribute.String("resource_id", req.ResourceID),
+		attribute.String("subscription_id", subscriptionID))
+	input := metric.StreamInput{
+		SubscriptionID: subscriptionID, Command: metric.StreamCommandSubscribe,
+		ResourceKey: req.ResourceKey, ResourceID: req.ResourceID, ResourceNamespace: req.ResourceNamespace,
+		ResourceData: req.ResourceData, Reference: req.Reference, Route: req.Route,
+		MetricIDs: req.MetricIDs, Interval: req.Interval, Params: req.Params,
+	}
+	// Admit the complete canonical frame before it can affect the shared lane.
+	if err := metric.ValidateStreamInput(input); err != nil {
+		return "", apperror.ForResource(err, subscriptionID)
+	}
+	if req.Route != nil && req.Route.Connection != connectionID {
+		return "", apperror.ForResource(resourcev2.NewError("INVALID_REQUEST", "Metric route does not match the selected connection."), subscriptionID)
+	}
 	c.mux.Lock()
-	c.subscriptions[subscriptionID] = subscriptionIndex{
-		pluginID:       pluginID,
-		connectionID:   connectionID,
-		subscriptionID: subscriptionID,
+	state := c.streams[pluginID]
+	if state == nil {
+		err := c.streamErrors[pluginID]
+		c.mux.Unlock()
+		if err == nil { err = closedStreamError() }
+		return "", apperror.ForResource(err, subscriptionID)
 	}
+	c.subscriptions[subscriptionID] = subscriptionIndex{pluginID: pluginID, connectionID: connectionID, subscriptionID: subscriptionID, stream: state}
 	c.mux.Unlock()
-
-	inchan <- metric.StreamInput{
-		SubscriptionID:    subscriptionID,
-		Command:           metric.StreamCommandSubscribe,
-		ResourceKey:       req.ResourceKey,
-		ResourceID:        req.ResourceID,
-		ResourceNamespace: req.ResourceNamespace,
-		ResourceData:      req.ResourceData,
-		Reference:         req.Reference,
-		Route:             req.Route,
-		MetricIDs:         req.MetricIDs,
-		Interval:          req.Interval,
+	select {
+	case state.input <- input:
+		select {
+		case <-state.done:
+			return "", apperror.ForResource(closedStreamError(), subscriptionID)
+		default:
+			return subscriptionID, nil
+		}
+	case <-state.done:
+		c.mux.Lock()
+		delete(c.subscriptions, subscriptionID)
+		c.mux.Unlock()
+		return "", apperror.ForResource(closedStreamError(), subscriptionID)
 	}
-
-	return subscriptionID, nil
 }
 
 func (c *controller) Unsubscribe(subscriptionID string) error {
-	_, span := tracer.Start(context.Background(), "metric.Unsubscribe")
-	defer span.End()
-	span.SetAttributes(attribute.String("subscription_id", subscriptionID))
-
 	c.mux.Lock()
 	sub, ok := c.subscriptions[subscriptionID]
-	if !ok {
-		c.mux.Unlock()
-		err := apperror.New(
-			apperror.TypeSessionNotFound,
-			http.StatusNotFound,
-			"Subscription not found",
-			fmt.Sprintf("Subscription '%s' was not found.", subscriptionID),
-		)
-		telemetryutil.RecordError(span, err)
-		return err
-	}
-	span.SetAttributes(attribute.String("plugin_id", sub.pluginID))
-	inchan, chanOk := c.inChans[sub.pluginID]
-	delete(c.subscriptions, subscriptionID)
-	if !chanOk {
-		c.mux.Unlock()
-		err := apperror.PluginNotFound(sub.pluginID)
-		telemetryutil.RecordError(span, err)
-		return err
-	}
-	// Send while holding the lock to prevent removePlugin from closing
-	// the channel concurrently.
-	inchan <- metric.StreamInput{
-		SubscriptionID:    subscriptionID,
-		Command:           metric.StreamCommandUnsubscribe,
-		ResourceKey:       "",
-		ResourceID:        "",
-		ResourceNamespace: "",
-		ResourceData:      nil,
-		MetricIDs:         nil,
-		Interval:          0,
-	}
+	if ok { delete(c.subscriptions, subscriptionID) }
 	c.mux.Unlock()
-	return nil
+	if !ok { return apperror.ForResource(resourcev2.NewError("NOT_FOUND", "Metric subscription was not found."), uuid.NewString()) }
+	// No blocking send holds the controller lock and no input channel is closed
+	// beneath senders. Retirement always releases this wait.
+	select {
+	case <-sub.stream.done:
+		return apperror.ForResource(closedStreamError(), uuid.NewString())
+	default:
+	}
+	select {
+	case sub.stream.input <- metric.StreamInput{SubscriptionID: subscriptionID, Command: metric.StreamCommandUnsubscribe}:
+		return nil
+	case <-sub.stream.done:
+		return apperror.ForResource(closedStreamError(), uuid.NewString())
+	}
 }

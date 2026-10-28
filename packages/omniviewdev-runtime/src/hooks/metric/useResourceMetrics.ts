@@ -20,6 +20,7 @@ export type UseResourceMetricsOptions = {
   resourceData?: Value;
   reference?: ResourceReference;
   route?: AccessRoute;
+  params?: Record<string, string>;
   /** Specific metric IDs to fetch (empty = all) */
   metricIDs?: string[];
   /** The shape of metric data to request */
@@ -60,6 +61,7 @@ export const useResourceMetrics = (
     resourceData,
     reference,
     route,
+    params,
     metricIDs = [],
     shape = 0, // CURRENT
     timeRange,
@@ -95,6 +97,7 @@ export const useResourceMetrics = (
       resourceNamespace,
       reference,
       route,
+      params,
       metricIDs,
       shape,
       timeRange?.start?.getTime(),
@@ -108,6 +111,7 @@ export const useResourceMetrics = (
         resource_data: resourceData,
         reference,
         route,
+        params,
         metric_ids: metricIDs,
         shape,
         start_time: (timeRange?.start ?? new Date(0)).toISOString(),
@@ -120,7 +124,7 @@ export const useResourceMetrics = (
       }
       return filtered;
     },
-    enabled: enabled && !!connectionID && !!resourceKey && (resourceKey.startsWith('cluster::') || !!resourceID) && providers.length > 0,
+    enabled: enabled && !!connectionID && !!resourceKey && providers.length > 0,
     refetchInterval: refreshInterval > 0 ? refreshInterval : undefined,
     staleTime: 5_000,
     // Keep previous data visible while fetching new data (e.g. on time range change)

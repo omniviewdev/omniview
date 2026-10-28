@@ -30,12 +30,13 @@ const route = { connection: 'connection' };
 describe('canonical resource utility Wails adapters', () => {
   it('serializes logs, metric query/stream, and networker using exact generated option shapes', async () => {
     const resource = { resource_key: 'pods', resource_id: 'pod', resource_data: body, reference, route };
-    const query = QueryRequest.createFrom(resource);
+    const params = { prometheus_service_name: 'owned-prometheus', prometheus_service_namespace: 'observability', prometheus_service_port: '9090' };
+    const query = QueryRequest.createFrom({ ...resource, params });
     const calls = [
       () => CreateSession('test', 'connection', CreateSessionOptions.createFrom(resource)),
       () => Query('test', 'connection', query),
       () => QueryAll('connection', query),
-      () => Subscribe('test', 'connection', { ...resource, resource_namespace: '', metric_ids: [], interval: 1000000000 }),
+      () => Subscribe('test', 'connection', { ...resource, resource_namespace: '', metric_ids: [], interval: 1000000000, params }),
       () => StartResourcePortForwardingSession('test', 'connection', PortForwardSessionOptions.createFrom({ connection_type: 'RESOURCE', connection: { ...resource, connection_id: 'connection', plugin_id: 'test' }, remote_port: 80, protocol: 'TCP' })),
     ];
     for (const call of calls) {
@@ -47,6 +48,20 @@ describe('canonical resource utility Wails adapters', () => {
       expect(Object.is(target.resource_data.value.nested.value[2].value, -0)).toBe(true);
       expect(target.reference).toEqual(reference);
       expect(target.route).toEqual(route);
+      if (frame.method.endsWith('.Query') || frame.method.endsWith('.QueryAll') || frame.method.endsWith('.Subscribe')) expect(request.params).toEqual(params);
     }
+  });
+  it('keeps cluster metric configuration in params without inventing resource intent', async () => {
+    const params = { prometheus_service_port: '9090' };
+    await expect(Subscribe('test', 'connection', {
+      resource_key: 'cluster::metrics', resource_id: '', resource_namespace: '',
+      metric_ids: [], interval: 1000000000, params,
+    })).rejects.toThrow('Transport stopped after serialization');
+    const frame = JSON.parse(transport.frames[transport.frames.length - 1]);
+    const request = JSON.parse(frame.args[frame.args.length - 1]);
+    expect(request.params).toEqual(params);
+    expect(request).not.toHaveProperty('resource_data');
+    expect(request).not.toHaveProperty('reference');
+    expect(request).not.toHaveProperty('route');
   });
 });

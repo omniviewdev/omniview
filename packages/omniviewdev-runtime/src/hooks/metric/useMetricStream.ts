@@ -20,6 +20,7 @@ export type UseMetricStreamOptions = {
   resourceData?: Value;
   reference?: ResourceReference;
   route?: AccessRoute;
+  params?: Record<string, string>;
   /** Specific metric IDs to stream */
   metricIDs?: string[];
   /** Polling interval in milliseconds (default 10000) */
@@ -59,6 +60,7 @@ export const useMetricStream = (
     resourceData,
     reference,
     route,
+    params,
     metricIDs = [],
     interval = 10000,
     enabled = true,
@@ -72,7 +74,7 @@ export const useMetricStream = (
   const cleanupRef = useRef<(() => void) | null>(null);
 
   const start = useCallback(async () => {
-    if (!enabled || !pluginID || !connectionID || !resourceKey || !resourceID) {
+    if (!enabled || !pluginID || !connectionID || !resourceKey) {
       return;
     }
 
@@ -84,6 +86,7 @@ export const useMetricStream = (
         resource_data: resourceData,
         reference,
         route,
+        params,
         metric_ids: metricIDs,
         interval: interval * 1_000_000, // ms to nanoseconds for Go time.Duration
       });
@@ -132,7 +135,7 @@ export const useMetricStream = (
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [pluginID, connectionID, resourceKey, resourceID, resourceNamespace, resourceData, reference, route, metricIDs, interval, enabled]);
+  }, [pluginID, connectionID, resourceKey, resourceID, resourceNamespace, resourceData, reference, route, params, metricIDs, interval, enabled]);
 
   const stop = useCallback(async () => {
     if (subscriptionID) {
