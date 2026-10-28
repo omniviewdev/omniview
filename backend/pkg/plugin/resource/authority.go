@@ -120,11 +120,11 @@ func NewAuthorityResolver(root *appstate.ScopedRoot) (*AuthorityResolver, error)
 
 // ObserveCatalog atomically assigns all Types in one validated source observation.
 // Nil hints remain Type-local. Equal typed hints share a host-issued backing ID
-// only in this route's current catalog. New/reintroduced members or changed hints
-// rotate their whole current group, so stale assignments can never resurrect.
-// Removed Types (and a replaced provider) are retired, not retained as aliases.
-// Membership changes may invalidate the entire current group, including stable
-// peers; saved references are never rewritten to the replacement authority.
+// only in this route's current catalog. A surviving member with the same typed
+// hint justifies reusing its active cohort ID when Types join, leave, or return.
+// With no such current member, a fresh ID is issued; historical cohorts are never
+// searched or resurrected. Removed Types and replaced providers are retired.
+// Saved references are never rewritten to a replacement authority.
 func (r *AuthorityResolver) ObserveCatalog(pluginID, connectionID string, catalog resourcev2.Catalog) (map[string]AuthorityResolution, error) {
 	if pluginID == "" || connectionID == "" || !utf8.ValidString(pluginID) || !utf8.ValidString(connectionID) {
 		return nil, errors.New("authority: explicit UTF-8 plugin and connection required")
@@ -164,7 +164,6 @@ func (r *AuthorityResolver) ObserveCatalog(pluginID, connectionID string, catalo
 		for _, resourceType := range resourceTypes {
 			old, exists := previous[authorityRoute{pluginID, connectionID, catalog.Provider, resourceType}]
 			if !exists || old.HasHint != group.HasHint || old.Hint != group.Hint {
-				reuse = false
 				continue
 			}
 			if authority == "" {

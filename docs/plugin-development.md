@@ -187,9 +187,11 @@ Authority hints are untrusted observations on each catalog type descriptor,
 never canonical authority or permission. The host observes the complete admitted
 catalog coherently. Equal validated hints can share one connection-local backing
 authority within that observation and route; they never merge route aliases.
-Absent hints isolate each Type. A changed, new, or reintroduced group member
-rotates the whole group's authority conservatively, preventing historical ID
-resurrection. Existing saved citations are never rewritten to the new authority.
+Absent hints isolate each Type. Joining, leaving, or returning Types preserve a
+same-hint authority justified by a surviving current member. A fully retired
+cohort receives a fresh authority if it returns; historical cohorts are never
+resurrected. Explicit backing-config retargeting invalidates current assignments.
+Existing saved citations are never rewritten to a new authority.
 No native scheme currently qualifies for stable-native continuity. Losing local
 state or unreported retargeting limits continuity; unknown incarnation stays
 absent. Request-local target labels do not create leases, permissions, or saved

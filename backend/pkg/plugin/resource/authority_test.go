@@ -57,7 +57,7 @@ func TestAuthorityCoherentHintsShareBackingOnlyWithinRouteAndPersist(t *testing.
 	}
 }
 
-func TestAuthorityHintChangesDoNotThrashIndependentTypesOrResurrect(t *testing.T) {
+func TestAuthorityChangedTypeRejoinsStillActiveHintCohort(t *testing.T) {
 	store, err := appstate.NewTestService(t).PluginStore("test")
 	require.NoError(t, err)
 	resolver, err := NewAuthorityResolver(store)
@@ -79,9 +79,9 @@ func TestAuthorityHintChangesDoNotThrashIndependentTypesOrResurrect(t *testing.T
 	catalog = authorityTestCatalog("provider", map[string]*resourcev2.NativeAuthorityHint{"opaque/type/雪": a, "opaque//type/雪": b, "peer": a})
 	returned, err := resolver.ObserveCatalog("p", "route", catalog)
 	require.NoError(t, err)
-	require.NotEqual(t, first["opaque/type/雪"].Authority, returned["opaque/type/雪"].Authority, "A -> B -> A must not resurrect the old ID, even while a peer kept A")
+	require.Equal(t, first["opaque/type/雪"].Authority, returned["opaque/type/雪"].Authority, "a surviving peer justifies the still-active A cohort")
 	require.Equal(t, returned["peer"].Authority, returned["opaque/type/雪"].Authority)
-	require.False(t, resolver.Matches("p", "route", "provider", "opaque/type/雪", first["opaque/type/雪"].Authority))
+	require.True(t, resolver.Matches("p", "route", "provider", "opaque/type/雪", first["opaque/type/雪"].Authority))
 }
 
 func TestAuthorityMissingTypesAndProviderReplacementRetireAssignments(t *testing.T) {
@@ -98,7 +98,7 @@ func TestAuthorityMissingTypesAndProviderReplacementRetireAssignments(t *testing
 	require.False(t, resolver.Matches("p", "c", "one", "one", first["one"].Authority))
 	returned, err := resolver.ObserveCatalog("p", "c", both)
 	require.NoError(t, err)
-	require.NotEqual(t, first["one"].Authority, returned["one"].Authority)
+	require.Equal(t, first["one"].Authority, returned["one"].Authority, "returning Type rejoins the surviving cohort without rekeying peers")
 	require.Equal(t, resourcev2.ContinuityConnectionLocal, returned["one"].Continuity, "provider stableNative claim cannot upgrade host continuity")
 	_, err = resolver.ObserveCatalog("p", "c", authorityTestCatalog("two", map[string]*resourcev2.NativeAuthorityHint{"one": hint}))
 	require.NoError(t, err)
@@ -218,4 +218,59 @@ func TestAuthorityStoreByteLimitBeforeDecode(t *testing.T) {
 	require.NoError(t, file.Close())
 	_, err = NewAuthorityResolver(store)
 	require.ErrorContains(t, err, "store exceeds byte limit")
+}
+
+func TestAuthorityCatalogMembershipChangesPreserveActiveCohort(t *testing.T) {
+	store, err := appstate.NewTestService(t).PluginStore("test")
+	require.NoError(t, err)
+	resolver, err := NewAuthorityResolver(store)
+	require.NoError(t, err)
+	hint := &resourcev2.NativeAuthorityHint{Scheme: "cluster", ID: "stable-observation", Continuity: resourcev2.ContinuityConnectionLocal}
+	base := authorityTestCatalog("provider", map[string]*resourcev2.NativeAuthorityHint{"pods": hint})
+	first, err := resolver.ObserveCatalog("p", "c", base)
+	require.NoError(t, err)
+	joinedCatalog := authorityTestCatalog("provider", map[string]*resourcev2.NativeAuthorityHint{"pods": hint, "new/crd": hint})
+	joined, err := resolver.ObserveCatalog("p", "c", joinedCatalog)
+	require.NoError(t, err)
+	require.Equal(t, first["pods"].Authority, joined["pods"].Authority)
+	require.Equal(t, first["pods"].Authority, joined["new/crd"].Authority)
+	require.False(t, joined["pods"].Changed)
+	remaining, err := resolver.ObserveCatalog("p", "c", base)
+	require.NoError(t, err)
+	require.Equal(t, first["pods"].Authority, remaining["pods"].Authority)
+	require.False(t, resolver.Matches("p", "c", "provider", "new/crd", joined["new/crd"].Authority))
+	restarted, err := NewAuthorityResolver(store)
+	require.NoError(t, err)
+	returned, err := restarted.ObserveCatalog("p", "c", joinedCatalog)
+	require.NoError(t, err)
+	require.Equal(t, first["pods"].Authority, returned["pods"].Authority)
+	require.Equal(t, first["pods"].Authority, returned["new/crd"].Authority)
+}
+
+func TestAuthorityFullyRetiredHintCohortsNeverResurrect(t *testing.T) {
+	store, err := appstate.NewTestService(t).PluginStore("test")
+	require.NoError(t, err)
+	resolver, err := NewAuthorityResolver(store)
+	require.NoError(t, err)
+	a := &resourcev2.NativeAuthorityHint{Scheme: "cluster", ID: "A", Continuity: resourcev2.ContinuityConnectionLocal}
+	b := &resourcev2.NativeAuthorityHint{Scheme: "cluster", ID: "B", Continuity: resourcev2.ContinuityConnectionLocal}
+	catalogA := authorityTestCatalog("provider", map[string]*resourcev2.NativeAuthorityHint{"pods": a, "deployments": a})
+	catalogB := authorityTestCatalog("provider", map[string]*resourcev2.NativeAuthorityHint{"pods": b, "deployments": b})
+	first, err := resolver.ObserveCatalog("p", "c", catalogA)
+	require.NoError(t, err)
+	changed, err := resolver.ObserveCatalog("p", "c", catalogB)
+	require.NoError(t, err)
+	require.NotEqual(t, first["pods"].Authority, changed["pods"].Authority)
+	returned, err := resolver.ObserveCatalog("p", "c", catalogA)
+	require.NoError(t, err)
+	require.NotEqual(t, first["pods"].Authority, returned["pods"].Authority)
+	require.Equal(t, returned["pods"].Authority, returned["deployments"].Authority)
+	_, err = resolver.ObserveCatalog("p", "c", authorityTestCatalog("provider", nil))
+	require.NoError(t, err)
+	restarted, err := NewAuthorityResolver(store)
+	require.NoError(t, err)
+	afterAbsent, err := restarted.ObserveCatalog("p", "c", catalogA)
+	require.NoError(t, err)
+	require.NotEqual(t, returned["pods"].Authority, afterAbsent["pods"].Authority)
+	require.Equal(t, afterAbsent["pods"].Authority, afterAbsent["deployments"].Authority)
 }
