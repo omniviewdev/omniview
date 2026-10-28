@@ -74,5 +74,5 @@ func (c *controller) referenceCurrentLocked(pluginID string, route resourcev2.Ac
 	c.finite.mu.Lock()
 	defer c.finite.mu.Unlock()
 	resolver := c.finite.authorities[pluginID]
-	return resolver != nil && resolver.Matches(pluginID, route.Connection, reference.Address.Provider, reference.Address.Authority)
+	return resolver != nil && resolver.Matches(pluginID, route.Connection, reference.Address.Provider, reference.Address.Type, reference.Address.Authority)
 }

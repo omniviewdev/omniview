@@ -109,7 +109,17 @@ func (c *controller) routeCatalog(ctx context.Context, pluginID string, route re
 	return generation, catalog, nil
 }
 
-func (c *controller) resolveAuthority(ctx context.Context, pluginID string, route resourcev2.AccessRoute, catalog resourcev2.Catalog, generation *pluginState) (AuthorityResolution, error) {
+func (c *controller) resolveAuthority(ctx context.Context, pluginID string, route resourcev2.AccessRoute, catalog resourcev2.Catalog, generation *pluginState, resourceType string) (AuthorityResolution, error) {
+	var descriptor *resourcev2.ResourceType
+	for i := range catalog.Types {
+		if catalog.Types[i].Type == resourceType {
+			descriptor = &catalog.Types[i]
+			break
+		}
+	}
+	if descriptor == nil {
+		return AuthorityResolution{}, resourcev2.NewError("NOT_FOUND", "Resource type is not in the route catalog.")
+	}
 	if err := ctx.Err(); err != nil {
 		return AuthorityResolution{}, err
 	}
@@ -135,7 +145,7 @@ func (c *controller) resolveAuthority(ctx context.Context, pluginID string, rout
 		}
 		c.finite.authorities[pluginID] = resolver
 	}
-	resolution, err := resolver.Resolve(pluginID, route.Connection, catalog.Provider, catalog.NativeAuthorityHint)
+	resolution, err := resolver.Resolve(pluginID, route.Connection, catalog.Provider, resourceType, descriptor.NativeAuthorityHint)
 	if err != nil {
 		return AuthorityResolution{}, err
 	}
@@ -210,7 +220,7 @@ func (c *controller) ResolveTarget(ctx context.Context, pluginID string, request
 	if !found {
 		return _result, resourcev2.NewError("INVALID_REQUEST", "Select an explicit catalog representation.")
 	}
-	authority, err := c.resolveAuthority(ctx, pluginID, request.Route, catalog, generation)
+	authority, err := c.resolveAuthority(ctx, pluginID, request.Route, catalog, generation, request.Type)
 	if err != nil {
 		return _result, err
 	}
@@ -231,7 +241,7 @@ func (c *controller) validateReference(ctx context.Context, pluginID string, rou
 	if err != nil {
 		return err
 	}
-	authority, err := c.resolveAuthority(ctx, pluginID, route, catalog, generation)
+	authority, err := c.resolveAuthority(ctx, pluginID, route, catalog, generation, reference.Address.Type)
 	if err != nil {
 		return err
 	}
@@ -251,7 +261,7 @@ func (c *controller) validateReadTarget(ctx context.Context, pluginID string, ta
 	if err != nil {
 		return err
 	}
-	authority, err := c.resolveAuthority(ctx, pluginID, target.Route, catalog, generation)
+	authority, err := c.resolveAuthority(ctx, pluginID, target.Route, catalog, generation, target.Type)
 	if err != nil {
 		return err
 	}

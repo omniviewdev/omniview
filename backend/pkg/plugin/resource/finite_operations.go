@@ -73,14 +73,18 @@ func (c *controller) admitOperationCatalog(ctx context.Context, pluginID string,
 	if err = c.currentGeneration(ctx, pluginID, generation); err != nil {
 		return resourcev2.ResourceType{}, err
 	}
-	resolved, err := c.resolveAuthority(ctx, pluginID, route, catalog, generation)
+	descriptor, err := resourcev2.AdmitCatalogOperation(catalog, request)
+	if err != nil {
+		return resourcev2.ResourceType{}, err
+	}
+	resolved, err := c.resolveAuthority(ctx, pluginID, route, catalog, generation, descriptor.Type)
 	if err != nil {
 		return resourcev2.ResourceType{}, err
 	}
 	if catalog.Provider != canonicalProvider || resolved.Authority != authority {
 		return resourcev2.ResourceType{}, resourcev2.NewError("INVALID_REQUEST", "Request is not bound to this route authority.")
 	}
-	return resourcev2.AdmitCatalogOperation(catalog, request)
+	return descriptor, nil
 }
 
 func (c *controller) Get(ctx context.Context, pluginID string, input HostGetRequest) (_result HostRecord, retErr error) {

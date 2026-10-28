@@ -116,6 +116,9 @@ Resource identity is a canonical `ResourceReference`: provider, host-admitted
 authority, opaque logical type, exact scope entries, native ID, and optional
 incarnation. `AccessRoute` is separate access context. Types do not embed served
 API versions, and generic host code must not parse provider type strings.
+`ResourceType.nativeAuthorityHint` is optional, nonauthoritative metadata for that
+specific type. It is not a catalog-wide authority, a sharing grant, or permission
+for JavaScript to construct host identity; target resolution remains host-owned.
 
 Call `ResourceClient.ResolveTarget(pluginID, { route, type, scope,
 representation })` before acquiring resources. The host resolves authority and

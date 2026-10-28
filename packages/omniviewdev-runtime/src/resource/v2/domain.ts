@@ -52,6 +52,7 @@ export interface ResourceType {
   representations: readonly Representation[];
   defaultRepresentation?: string;
   capabilities: readonly Capability[];
+  nativeAuthorityHint?: NativeAuthorityHint;
 }
 export interface CatalogRequest { route: AccessRoute }
 /** Provider metadata never grants authority or permission to share identity. */
@@ -60,7 +61,6 @@ export interface Catalog {
   provider: string;
   types: readonly ResourceType[];
   revision: string;
-  nativeAuthorityHint?: NativeAuthorityHint;
   coverage: Coverage;
 }
 export interface ReadTarget {

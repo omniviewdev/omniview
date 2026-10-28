@@ -72,7 +72,7 @@ func (c *controller) ResolveReference(ctx context.Context, pluginID string, inpu
 	if !found {
 		return _result, resourcev2.NewError("INVALID_REQUEST", "Select an explicit catalog representation.")
 	}
-	authority, err := c.resolveAuthority(ctx, pluginID, input.Route, catalog, generation)
+	authority, err := c.resolveAuthority(ctx, pluginID, input.Route, catalog, generation, descriptor.Type)
 	if err != nil {
 		return _result, err
 	}

@@ -33,7 +33,7 @@ type AuthorityResolution struct {
 	Changed     bool
 }
 
-type authorityRoute struct{ Plugin, Connection, Provider string }
+type authorityRoute struct{ Plugin, Connection, Provider, ResourceType string }
 type authorityBinding struct {
 	Authority string
 	HasHint   bool
@@ -43,17 +43,18 @@ type authorityBinding struct {
 // authorityDiskEntry is private persistence data, not a public resource DTO.
 // A sequence permits detecting duplicate routes before inserting into the map.
 type authorityDiskEntry struct {
-	Plugin     string                          `json:"plugin"`
-	Connection string                          `json:"connection"`
-	Provider   string                          `json:"provider"`
-	Authority  string                          `json:"authority"`
-	Hint       *resourcev2.NativeAuthorityHint `json:"hint,omitempty"`
+	Plugin       string                          `json:"plugin"`
+	Connection   string                          `json:"connection"`
+	Provider     string                          `json:"provider"`
+	ResourceType string                          `json:"resourceType"`
+	Authority    string                          `json:"authority"`
+	Hint         *resourcev2.NativeAuthorityHint `json:"hint,omitempty"`
 }
 
 // AuthorityResolver owns one plugin-scoped store. The controller must retain one
 // resolver per store; concurrent resolver instances must not write the same store.
 // No native scheme is reviewed for stable identity yet. All hints therefore bind
-// only within a connection, including hints claiming stableNative continuity.
+// only within an exact connection and Type, even when claiming stableNative.
 // Missing hints cannot detect retargeting. Deleting local state loses continuity.
 // No incarnation is inferred. Neither endpoints nor credentials are inspected.
 type AuthorityResolver struct {
@@ -100,8 +101,8 @@ func NewAuthorityResolver(root *appstate.ScopedRoot) (*AuthorityResolver, error)
 		return nil, errors.New("authority: binding limit exceeded")
 	}
 	for _, entry := range entries {
-		route := authorityRoute{entry.Plugin, entry.Connection, entry.Provider}
-		if route.Plugin == "" || route.Connection == "" || route.Provider == "" || entry.Authority == "" {
+		route := authorityRoute{entry.Plugin, entry.Connection, entry.Provider, entry.ResourceType}
+		if route.Plugin == "" || route.Connection == "" || route.Provider == "" || route.ResourceType == "" || entry.Authority == "" {
 			return nil, errors.New("authority: invalid persisted binding")
 		}
 		if _, duplicate := r.bindings[route]; duplicate {
@@ -119,13 +120,13 @@ func NewAuthorityResolver(root *appstate.ScopedRoot) (*AuthorityResolver, error)
 // Resolve issues an opaque local ID. Hints are untrusted observations, not IDs.
 // A changed hint replaces the current binding; returning to an old hint does not
 // resurrect an old authority. Route aliases never merge, even with equal hints.
-func (r *AuthorityResolver) Resolve(pluginID, connectionID, provider string, hint *resourcev2.NativeAuthorityHint) (AuthorityResolution, error) {
+func (r *AuthorityResolver) Resolve(pluginID, connectionID, provider, resourceType string, hint *resourcev2.NativeAuthorityHint) (AuthorityResolution, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if pluginID == "" || connectionID == "" || provider == "" {
-		return AuthorityResolution{}, errors.New("authority: plugin, connection and provider required")
+	if pluginID == "" || connectionID == "" || provider == "" || resourceType == "" {
+		return AuthorityResolution{}, errors.New("authority: plugin, connection, provider and resource type required")
 	}
-	for _, text := range []string{pluginID, connectionID, provider} {
+	for _, text := range []string{pluginID, connectionID, provider, resourceType} {
 		if !utf8.ValidString(text) {
 			return AuthorityResolution{}, errors.New("authority: route must be UTF-8")
 		}
@@ -141,7 +142,7 @@ func (r *AuthorityResolver) Resolve(pluginID, connectionID, provider string, hin
 	if hint != nil {
 		candidate.Hint = *hint
 	}
-	route := authorityRoute{pluginID, connectionID, provider}
+	route := authorityRoute{pluginID, connectionID, provider, resourceType}
 	previous, exists := r.bindings[route]
 	changed := exists && (previous.HasHint != candidate.HasHint || previous.Hint != candidate.Hint)
 	if exists && !changed {
@@ -169,7 +170,7 @@ func (r *AuthorityResolver) Resolve(pluginID, connectionID, provider string, hin
 
 func authorityResult(id string, changed bool) AuthorityResolution {
 	return AuthorityResolution{Authority: id, Continuity: resourcev2.ContinuityConnectionLocal, Changed: changed, Limitations: []string{
-		"Connection-local identity only; aliases are isolated and no stable native scheme is approved.",
+		"Connection- and Type-local identity only; aliases are isolated and no stable native scheme is approved.",
 		"Continuity requires this local store; unreported retargeting cannot be detected.",
 	}}
 }
@@ -177,7 +178,7 @@ func authorityResult(id string, changed bool) AuthorityResolution {
 func (r *AuthorityResolver) persist() error {
 	entries := make([]authorityDiskEntry, 0, len(r.bindings))
 	for route, binding := range r.bindings {
-		entry := authorityDiskEntry{Plugin: route.Plugin, Connection: route.Connection, Provider: route.Provider, Authority: binding.Authority}
+		entry := authorityDiskEntry{Plugin: route.Plugin, Connection: route.Connection, Provider: route.Provider, ResourceType: route.ResourceType, Authority: binding.Authority}
 		if binding.HasHint {
 			hint := binding.Hint
 			entry.Hint = &hint
@@ -241,9 +242,9 @@ func (r *AuthorityResolver) InvalidateConnection(pluginID, connectionID string) 
 }
 
 // Matches checks a current host-issued binding without creating identity state.
-func (r *AuthorityResolver) Matches(pluginID, connectionID, provider, authority string) bool {
+func (r *AuthorityResolver) Matches(pluginID, connectionID, provider, resourceType, authority string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	binding, exists := r.bindings[authorityRoute{pluginID, connectionID, provider}]
+	binding, exists := r.bindings[authorityRoute{pluginID, connectionID, provider, resourceType}]
 	return exists && authority != "" && binding.Authority == authority
 }

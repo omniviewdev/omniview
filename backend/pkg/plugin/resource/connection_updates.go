@@ -24,10 +24,6 @@ func (c *controller) startConnectionUpdates(ctx context.Context, pluginID string
 	if err != nil {
 		return err
 	}
-	authority, err := c.resolveAuthority(ctx, pluginID, route, catalog, generation)
-	if err != nil {
-		return err
-	}
 	targets := make([]resourcev2.ReadTarget, 0)
 	for _, descriptor := range catalog.Types {
 		// No provider default means explicit UI selection is required. Never
@@ -38,6 +34,10 @@ func (c *controller) startConnectionUpdates(ctx context.Context, pluginID string
 		for _, capability := range descriptor.Capabilities {
 			if capability.Operation != resourcev2.OperationUpdate {
 				continue
+			}
+			authority, err := c.resolveAuthority(ctx, pluginID, route, catalog, generation, descriptor.Type)
+			if err != nil {
+				return err
 			}
 			targets = append(targets, resourcev2.ReadTarget{Route: route, Provider: catalog.Provider, Authority: authority.Authority, Type: descriptor.Type, Scope: capability.Scope, Representation: descriptor.DefaultRepresentation})
 		}
