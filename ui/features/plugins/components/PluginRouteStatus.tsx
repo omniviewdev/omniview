@@ -16,7 +16,7 @@ type Props = { pluginId?: string };
 export default function PluginRouteStatus({ pluginId }: Props) {
   const params = useParams<{ pluginId: string }>();
   const id = pluginId ?? params.pluginId ?? '';
-  const restart = useMutation({ mutationFn: (target: string) => DevServerManager.RestartDevServer(target) });
+  const restart = useMutation({ mutationFn: async (target: string) => DevServerManager.RestartDevServer(target) });
   const { plugins } = usePluginService();
   const { plugins: installed, isLoading, error } = useInstalledPlugins();
   const plugin = installed.find((candidate) => candidate.id === id);
