@@ -39,7 +39,7 @@ export function FooterLabel({ label, icon, tone }: { label: React.ReactNode; ico
 }
 
 /** Plain text + status dot item that opens a popover. */
-export const FooterTrigger = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement>>(
+export const FooterTrigger = React.forwardRef<HTMLButtonElement, Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'color'>>(
   function FooterTrigger({ className, ...props }, ref) {
     return <Button ref={ref} type='button' variant='ghost' color='neutral' size='xs' className={cx(styles.Trigger, className)} {...props} />;
   },
