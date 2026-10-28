@@ -91,7 +91,8 @@ const ExecAction: React.FC<Props> = ({
    */
   const handlePerformExec = (label: string, params: Record<string, string>) => {
     const opts = resourceExecOptions(plugin, resource, record.record.body, params,
-      action.default_command?.length ? action.default_command : ['/bin/sh']);
+      action.default_command?.length ? action.default_command : ['/bin/sh'],
+      record.record.reference, record.route);
 
     bottomDrawerChannel.emit('onCreateSession', { plugin, connection, opts, label });
   };
