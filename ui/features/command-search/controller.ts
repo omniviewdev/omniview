@@ -8,6 +8,7 @@ import {
   admitProviderResponse,
   admitSearchContribution,
   admitSearchEntry,
+  admitSearchScope,
   getNavigationHref,
   isSearchQueryAllowed,
 } from './admission';
@@ -20,6 +21,8 @@ import type {
   SearchRow,
   SearchSnapshot,
   SearchSource,
+  SearchScopeV1,
+  NavigationTargetV1,
 } from './types';
 
 type ControllerDependencies = {
@@ -29,13 +32,20 @@ type ControllerDependencies = {
   listResourcePlugins: () => Promise<readonly string[]>;
   loadConnections: (pluginId: string) => Promise<unknown>;
   navigate: (href: string) => void;
+  openResource?: (target: Extract<SearchScopeV1, { kind: 'resource' }>, signal: AbortSignal, validateData?: (data: unknown) => boolean) => Promise<void>;
 };
 
 export type GlobalSearchController = {
-  open: () => void;
+  open: (options?: { scope?: SearchScopeV1 | null }) => void;
+  scope: (key: string) => boolean;
+  removeScope: (index: number, reason?: string) => void;
+  setSelectedKey: (key?: string) => void;
   close: () => void;
   setQuery: (query: string) => void;
   refresh: () => void;
+  notifyDataChanged: () => void;
+  retrySource: (sourceID: string) => void;
+  setProviderContextError: (sourceID: string, message?: string) => boolean;
   activate: (key: string) => Promise<void>;
   getSnapshot: () => SearchSnapshot;
   subscribe: (listener: () => void) => () => void;
@@ -173,6 +183,10 @@ function staticScore(query: string, label: string, value: SearchEntryV1): number
 }
 
 function sameIntent(left: SearchEntryV1, right: SearchEntryV1): boolean {
+  if (left.kind === 'action' && right.kind === 'action') {
+    return JSON.stringify(left.action) === JSON.stringify(right.action);
+  }
+
   if (left.kind === 'command' && right.kind === 'command') {
     return left.command.pluginId === right.command.pluginId;
   }
@@ -214,7 +228,13 @@ function sameIntent(left: SearchEntryV1, right: SearchEntryV1): boolean {
 }
 
 export function createGlobalSearchController(deps: ControllerDependencies): GlobalSearchController {
-  let snapshot: SearchSnapshot = { isOpen: false, query: '', rows: [], sources: [], executionPending: false };
+  let snapshot: SearchSnapshot = { isOpen: false, query: '', scopes: [], rows: [], sources: [], searchPending: false, executionPending: false };
+  const parents: Array<{ query: string; selectedKey?: string }> = [];
+  let actionExecution: AbortController | undefined;
+  let actionAccepted = false;
+  let deferredLiveRefresh = false;
+  const registrationIds = new WeakMap<ExtensionContributionRegistration, number>();
+  let nextRegistrationId = 0;
   const listeners = new Set<() => void>();
   let store: ExtensionPointStoreContract | undefined;
   let unsubscribeStore: (() => void) | undefined;
@@ -231,7 +251,6 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
   const otherSources: SearchSource[] = [];
   const actions = new Map<string, AcceptedEntry>();
   let active = 0;
-  let nextAttempt = 0;
   let staticOverflow = false;
   let displayOverflow = false;
   let feedback: SearchFeedback | undefined;
@@ -239,6 +258,26 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
   let launchToken: number | undefined;
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
   let debounceSearch = false;
+  let awaitingLaunch = false;
+  let retainQueryRows = false;
+  let resetQuerySelection = false;
+  let dataRefreshQueued = false;
+  let liveRefresh = false;
+  const retainedItems = new Map<ExtensionContributionRegistration, AcceptedEntry[]>();
+  const contextErrors = new WeakMap<ExtensionContributionRegistration, string>();
+
+  function scopeIdentity(scope: SearchScopeV1 | undefined) {
+    if (!scope) {
+      return undefined;
+    }
+
+    if (scope.kind === 'connection') {
+      return { kind: scope.kind, pluginId: scope.pluginId, connectionId: scope.connectionId };
+    }
+
+    const { label: _label, scopeLabel: _scopeLabel, ...identity } = scope;
+    return identity;
+  }
 
   function emit() {
     for (const listener of listeners) {
@@ -293,11 +332,37 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
     return undefined;
   }
 
+  function withinScope(value: SearchEntryV1, owner: string): boolean {
+    const parent = snapshot.scopes.at(-1);
+    if (!parent) {
+      return true;
+    }
+
+    const target = value.kind === 'action' ? value.action.target : value.scope;
+    if (!target) {
+      return owner === parent.pluginId && value.kind === 'navigation';
+    }
+
+    if (value.kind === 'action' && value.action.recovery === 'connection') {
+      return target.kind === 'connection' && owner === parent.pluginId &&
+        target.pluginId === parent.pluginId && target.connectionId === parent.connectionId;
+    }
+
+    return target.pluginId === parent.pluginId && target.connectionId === parent.connectionId &&
+      (parent.kind === 'connection' || (target.kind !== 'connection' && target.resourceKey === parent.resourceKey)) &&
+      (parent.kind !== 'resource-type' || target.kind !== 'resource' || !parent.namespaces?.length || parent.namespaces.includes(target.namespace)) &&
+      (parent.kind !== 'resource-type' || target.kind !== 'resource-type' || !parent.namespaces?.length ||
+        !!target.namespaces?.length && target.namespaces.every((namespace) => parent.namespaces!.includes(namespace))) &&
+      (parent.kind !== 'resource' || (target.kind === 'resource' && target.resourceId === parent.resourceId && target.namespace === parent.namespace && target.uid === parent.uid));
+  }
+
   function publish() {
     if (disposed) {
       return;
     }
 
+    const searchPending = awaitingLaunch || attempts.some((attempt) => !attempt.settled);
+    const retainRows = retainQueryRows && searchPending;
     const rows: SearchRow[] = [];
     actions.clear();
     const sources = [...otherSources];
@@ -308,8 +373,12 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
         return;
       }
 
+      if (!registrationIds.has(entry.registration)) {
+        registrationIds.set(entry.registration, ++nextRegistrationId);
+      }
+
       const key = encodeURIComponent(
-        JSON.stringify([epoch, entry.registration.plugin, entry.registration.id, entry.itemId]),
+        JSON.stringify([registrationIds.get(entry.registration), entry.registration.plugin, entry.registration.id, entry.itemId, scopeIdentity(entry.value.scope), entry.value.kind === 'action' ? { ...entry.value.action, target: scopeIdentity(entry.value.action.target) } : undefined]),
       );
       rows.push({ key, label: entry.label, value: entry.value, disabledReason: disabledReason(entry.value) });
       actions.set(key, entry);
@@ -348,8 +417,12 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       sources.push(
         attempt.items.length > quotas[index + 1] && attempt.source.state === 'complete'
           ? { ...attempt.source, state: 'truncated' }
-          : { ...attempt.source },
+          : { ...attempt.source, retryable: !contextErrors.has(attempt.registration) && attempt.settled && (attempt.source.state === 'unavailable' || attempt.source.state === 'partial') },
       );
+    }
+
+    if (!snapshot.scopes.length) {
+      rows.sort((left, right) => (right.value.scope?.kind === 'connection' ? 1 : 0) - (left.value.scope?.kind === 'connection' ? 1 : 0));
     }
 
     const messages: string[] = [];
@@ -369,12 +442,27 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       messages.push('Result limit reached. Narrow your search; additional results are not displayed.');
     }
 
+    const selectedKey = retainRows
+      ? snapshot.selectedKey
+      : !resetQuerySelection && snapshot.selectedKey && (rows.some((row) => row.key === snapshot.selectedKey && !row.disabledReason) || searchPending)
+        ? snapshot.selectedKey
+        : rows.find((row) => !row.disabledReason)?.key;
+    if (retainRows) {
+      // Retained rows describe the previous query, never current executable actions.
+      actions.clear();
+    } else {
+      retainQueryRows = false;
+      resetQuerySelection = false;
+    }
+
     snapshot = {
       ...snapshot,
-      rows,
+      rows: retainRows ? snapshot.rows : rows,
       sources,
+      searchPending,
+      selectedKey,
       message: messages.length ? messages.join(' ') : undefined,
-      executionPending: nativeExecution !== undefined,
+      executionPending: nativeExecution !== undefined || actionExecution !== undefined,
       feedback,
     };
     emit();
@@ -394,7 +482,6 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
     otherSources.length = 0;
     actions.clear();
     active = 0;
-    nextAttempt = 0;
     staticOverflow = false;
     displayOverflow = false;
   }
@@ -432,14 +519,20 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       if (!response) {
         attempt.source.state = 'unavailable';
       } else {
-        attempt.source.state = response.completion;
-        attempt.items = response.items.map((item: SearchProviderItemV1) => ({
-          registration: attempt.registration,
-          label: item.label,
-          itemId: item.id,
-          value: item.value,
-          provider: attempt.provider.search,
-        }));
+        attempt.source.state = response.status && response.status !== 'ready' ? response.status : response.completion;
+        attempt.source.message = response.message;
+        attempt.items = response.items
+          .filter((item) => withinScope(item.value, attempt.registration.plugin) &&
+            (item.value.kind !== 'action' || !!attempt.provider.executeAction &&
+              item.value.action.id.startsWith(`${attempt.registration.plugin}:`) &&
+              item.value.action.id.length > attempt.registration.plugin.length + 1))
+          .map((item: SearchProviderItemV1) => ({
+            registration: attempt.registration,
+            label: item.label,
+            itemId: item.id,
+            value: item.value,
+            provider: attempt.provider.search,
+          }));
       }
     }
 
@@ -451,8 +544,12 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       return;
     }
 
-    while (active < 4 && nextAttempt < attempts.length) {
-      const attempt = attempts[nextAttempt++];
+    while (active < 4) {
+      const attempt = attempts.find((candidate) => !candidate.settled && candidate.source.state === 'queued');
+      if (!attempt) {
+        break;
+      }
+
       if (!current(token, attempt)) {
         attempt.settled = true;
         attempt.controller.abort();
@@ -477,6 +574,8 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
             query: snapshot.query,
             signal: attempt.controller.signal,
             limit: 20,
+            scopes: Object.freeze(snapshot.scopes.map((scope) => Object.freeze(scope.kind === 'resource-type' && scope.namespaces ? { ...scope, namespaces: Object.freeze([...scope.namespaces]) } : { ...scope }))),
+            generation: token,
           }),
         ).then(
           (value) => {
@@ -492,11 +591,24 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
     }
 
     publish();
+    if (dataRefreshQueued && attempts.every((attempt) => attempt.settled) && !actionExecution) {
+      dataRefreshQueued = false;
+      queueMicrotask(() => {
+        if (!disposed && snapshot.isOpen && token === epoch) {
+          refreshData();
+        }
+      });
+    }
   }
 
-  function invalidate(debounce = false) {
+  function invalidate(debounce = false, preserveFeedback = false, preserveRows = false) {
     debounceSearch = debounce;
+    dataRefreshQueued = false;
+    liveRefresh = false;
+    retainedItems.clear();
     ++epoch;
+    actionExecution?.abort();
+    deferredLiveRefresh = false;
     if (nativeExecution && !isExecutionCurrent(nativeExecution)) {
       // A later ready phase must not revive feedback from a retired owner.
       nativeExecution.valid = false;
@@ -506,9 +618,32 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       return;
     }
 
+    const canRetainRows = (debounce || preserveRows) &&
+      store === deps.registry.getExtensionPoint(GLOBAL_SEARCH_EXTENSION_POINT_ID) &&
+      store?.version === capturedVersion &&
+      statics.every((entry) => ownerReady(entry.registration.plugin)) &&
+      attempts.every((attempt) => ownerReady(attempt.registration.plugin));
     abortSearch();
-    feedback = nativeExecution?.valid ? feedback : undefined;
-    snapshot = { ...snapshot, rows: [], sources: [], feedback };
+    feedback = nativeExecution ? (nativeExecution.valid ? feedback : undefined) : (preserveFeedback ? feedback : undefined);
+    const unavailableScope = snapshot.scopes.findIndex((scope) => !ownerReady(scope.pluginId));
+    if (unavailableScope !== -1) {
+      const parent = parents[unavailableScope];
+      snapshot = { ...snapshot, scopes: snapshot.scopes.slice(0, unavailableScope), query: parent?.query ?? snapshot.query, selectedKey: parent?.selectedKey };
+      parents.length = unavailableScope;
+      feedback = { message: 'The scoped plugin is unavailable. Choose another connection.' };
+    }
+
+    awaitingLaunch = true;
+    retainQueryRows = canRetainRows && unavailableScope === -1;
+    snapshot = {
+      ...snapshot,
+      rows: retainQueryRows ? snapshot.rows : [],
+      sources: retainQueryRows
+        ? snapshot.sources.map<SearchSource>((source) => ({ ...source, state: source.state === 'source-limit' ? 'source-limit' : 'queued', retryable: false }))
+        : [],
+      searchPending: true,
+      feedback,
+    };
     emit();
     if (debounce) {
       launchToken = undefined;
@@ -537,6 +672,7 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
   }
 
   function launch(token: number) {
+    awaitingLaunch = false;
     store = deps.registry.getExtensionPoint(GLOBAL_SEARCH_EXTENSION_POINT_ID);
     capturedVersion = store?.version ?? -1;
     if (!isSearchQueryAllowed(snapshot.query)) {
@@ -568,6 +704,34 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       }
 
       if (value.kind === 'provider') {
+        const parent = snapshot.scopes.at(-1);
+        if (parent && registration.plugin !== 'core' && registration.plugin !== parent.pluginId) {
+          continue;
+        }
+
+        const contextError = contextErrors.get(registration);
+        if (contextError) {
+          otherSources.push({ id: registration.id, label: registration.label, state: 'unavailable', message: contextError });
+          continue;
+        }
+
+        if (value.supportsScope) {
+          try {
+            const supported = value.supportsScope.call(registration.value, Object.freeze(snapshot.scopes.map((scope) => Object.freeze({ ...scope, ...(scope.kind === 'resource-type' && scope.namespaces ? { namespaces: Object.freeze([...scope.namespaces]) } : {}) }))));
+            if (typeof supported !== 'boolean') {
+              otherSources.push({ id: registration.id, label: registration.label, state: 'unavailable' });
+              continue;
+            }
+
+            if (!supported) {
+              continue;
+            }
+          } catch {
+            otherSources.push({ id: registration.id, label: registration.label, state: 'unavailable' });
+            continue;
+          }
+        }
+
         if (attempts.length >= 8) {
           if (!overflowProvider) {
             otherSources.push({ id: registration.id, label: registration.label, state: 'source-limit' });
@@ -583,11 +747,11 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
           receiver: registration.value,
           source: { id: registration.id, label: registration.label, state: 'queued' },
           controller: new AbortController(),
-          items: [],
+          items: liveRefresh ? retainedItems.get(registration) ?? [] : [],
           settled: false,
         });
       } else {
-        const score = staticScore(query, registration.label, value);
+        const score = withinScope(value, registration.plugin) ? staticScore(query, registration.label, value) : 0;
         if (score > 0) {
           ranked.push({ entry: { registration, label: registration.label, itemId: '', value }, score });
         }
@@ -597,8 +761,9 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
     ranked.sort((left, right) => right.score - left.score);
     displayOverflow = ranked.length > 100;
     statics.push(...ranked.slice(0, 100).map(({ entry }) => entry));
-    publish();
+    // Immediate launches publish once sources are pending, not queued then pending.
     if (debounceSearch) {
+      publish();
       searchTimer = setTimeout(() => {
         searchTimer = undefined;
         pump(token);
@@ -606,6 +771,29 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
     } else {
       pump(token);
     }
+  }
+
+  function refreshData() {
+    if (disposed || !snapshot.isOpen) {
+      return;
+    }
+
+    if (Boolean(actionExecution) || attempts.some((attempt) => !attempt.settled) || launchQueued || searchTimer !== undefined) {
+      dataRefreshQueued = true;
+      return;
+    }
+
+    retainedItems.clear();
+    for (const attempt of attempts) {
+      retainedItems.set(attempt.registration, attempt.items);
+    }
+
+    abortSearch();
+    liveRefresh = true;
+    debounceSearch = false;
+    launch(++epoch);
+    liveRefresh = false;
+    retainedItems.clear();
   }
 
   function attachStore() {
@@ -674,19 +862,37 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
         listeners.delete(listener);
       };
     },
-    open() {
-      if (disposed || snapshot.isOpen) {
+    open(options) {
+      if (disposed || snapshot.isOpen && options?.scope === undefined) {
         return;
       }
 
       ++session;
+      const initialScope = admitSearchScope(options?.scope);
+      const scopes: SearchScopeV1[] = [];
+      if (initialScope) {
+        if (initialScope.kind !== 'connection') {
+          scopes.push({ kind: 'connection', pluginId: initialScope.pluginId, connectionId: initialScope.connectionId, label: initialScope.connectionId });
+        }
+
+        if (initialScope.kind === 'resource') {
+          scopes.push({ kind: 'resource-type', pluginId: initialScope.pluginId, connectionId: initialScope.connectionId, resourceKey: initialScope.resourceKey, label: initialScope.resourceKey });
+        }
+
+        scopes.push(initialScope);
+      }
+
       snapshot = {
         ...snapshot,
         isOpen: true,
         query: '',
+        scopes,
+        selectedKey: undefined,
         feedback: undefined,
         executionPending: nativeExecution !== undefined,
       };
+      parents.length = 0;
+      parents.push(...snapshot.scopes.map(() => ({ query: '' })));
       discover();
       invalidate();
     },
@@ -705,22 +911,159 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       launchToken = undefined;
       abortSearch();
       feedback = undefined;
-      snapshot = { isOpen: false, query: '', rows: [], sources: [], executionPending: nativeExecution !== undefined };
+      actionExecution?.abort();
+      deferredLiveRefresh = false;
+      parents.length = 0;
+      awaitingLaunch = false;
+      retainQueryRows = false;
+      resetQuerySelection = false;
+      snapshot = { isOpen: false, query: '', scopes: [], rows: [], sources: [], searchPending: false, executionPending: nativeExecution !== undefined };
       emit();
+    },
+    setSelectedKey(key) {
+      if (key && !snapshot.rows.some((row) => row.key === key && !row.disabledReason)) {
+        return;
+      }
+
+      snapshot = { ...snapshot, selectedKey: key };
+      emit();
+    },
+    scope(key) {
+      const entry = actions.get(key);
+      const scope = entry?.value.scope;
+      if (!scope || Boolean(disabledReason(entry.value)) || !ownerReady(entry.registration.plugin) || store?.version !== capturedVersion || !withinScope(entry.value, entry.registration.plugin)) {
+        return false;
+      }
+
+      const parent = snapshot.scopes.at(-1);
+      if (scope.kind === 'connection' && Boolean(parent) || scope.kind === 'resource-type' && parent?.kind !== 'connection' || scope.kind === 'resource' && parent?.kind !== 'resource-type') {
+        return false;
+      }
+
+      parents.push({ query: snapshot.query, selectedKey: snapshot.selectedKey });
+      snapshot = { ...snapshot, scopes: [...snapshot.scopes, scope], query: '', selectedKey: undefined };
+      invalidate();
+      return true;
+    },
+    removeScope(index, reason) {
+      if (index < 0 || index >= snapshot.scopes.length) {
+        return;
+      }
+
+      const parent = parents[index] ?? { query: '' };
+      parents.length = index;
+      snapshot = { ...snapshot, scopes: snapshot.scopes.slice(0, index), query: parent.query, selectedKey: parent.selectedKey };
+      if (reason) {
+        feedback = { message: reason };
+      }
+
+      invalidate(false, !!reason);
     },
     setQuery(query) {
       if (!snapshot.isOpen || disposed || snapshot.query === query) {
         return;
       }
 
+      resetQuerySelection = true;
       snapshot = { ...snapshot, query };
       invalidate(true);
+    },
+    retrySource(sourceID) {
+      if (disposed || !snapshot.isOpen || Boolean(actionExecution) || Boolean(nativeExecution) ||
+        store !== deps.registry.getExtensionPoint(GLOBAL_SEARCH_EXTENSION_POINT_ID) || store?.version !== capturedVersion) {
+        return;
+      }
+
+      const index = attempts.findIndex((attempt) => attempt.source.id === sourceID);
+      const previous = attempts[index];
+      if (!previous?.settled || contextErrors.has(previous.registration) || !ownerReady(previous.registration.plugin) ||
+        (previous.source.state !== 'unavailable' && previous.source.state !== 'partial')) {
+        return;
+      }
+
+      let contribution;
+      try {
+        contribution = admitSearchContribution(previous.registration); 
+      } catch {
+        return; 
+      }
+
+      if (contribution?.kind !== 'provider' || contribution.search !== previous.provider.search) {
+        return;
+      }
+
+      previous.settled = true;
+      previous.controller.abort();
+      clearTimeout(previous.timer);
+      attempts[index] = {
+        registration: previous.registration,
+        provider: contribution,
+        receiver: previous.receiver,
+        source: { id: previous.source.id, label: previous.source.label, state: 'queued' },
+        controller: new AbortController(),
+        items: previous.items,
+        settled: false,
+      };
+      pump(epoch);
+    },
+    setProviderContextError(sourceID, message) {
+      if (disposed) {
+        return false;
+      }
+
+      const registration = deps.registry.getExtensionPoint(GLOBAL_SEARCH_EXTENSION_POINT_ID)?.listAll().find((entry) => entry.id === sourceID);
+      if (!registration) {
+        return false;
+      }
+
+      if (message === undefined) {
+        if (!contextErrors.has(registration)) {
+          return false;
+        }
+
+        contextErrors.delete(registration);
+        refreshData();
+        return true;
+      }
+
+      const safeMessage = message.trim().slice(0, 1024) || 'Provider context is unavailable.';
+      if (contextErrors.get(registration) === safeMessage) {
+        return false;
+      }
+
+      contextErrors.set(registration, safeMessage);
+      for (const attempt of attempts) {
+        if (attempt.registration !== registration) {
+          continue;
+        }
+
+        if (!attempt.settled && attempt.source.state === 'pending') {
+          active--;
+        }
+
+        attempt.settled = true;
+        attempt.controller.abort();
+        clearTimeout(attempt.timer);
+        attempt.items = [];
+        attempt.source = { ...attempt.source, state: 'unavailable', message: safeMessage, retryable: false };
+      }
+
+      pump(epoch);
+      return true;
+    },
+    notifyDataChanged() {
+      refreshData();
     },
     refresh() {
       attachStore();
       if (snapshot.isOpen && !disposed) {
+        if (actionExecution && actionAccepted && !actionExecution.signal.aborted) {
+          deferredLiveRefresh = true;
+          return;
+        }
+
         discover();
-        invalidate();
+        invalidate(false, true, true);
       }
     },
     async activate(key) {
@@ -734,7 +1077,7 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
         !store ||
         store !== deps.registry.getExtensionPoint(GLOBAL_SEARCH_EXTENSION_POINT_ID) ||
         store.version !== capturedVersion ||
-        !ownerReady(entry.registration.plugin)
+        !ownerReady(entry.registration.plugin) || contextErrors.has(entry.registration)
       ) {
         return;
       }
@@ -763,6 +1106,99 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       }
 
       if (!value) {
+        return;
+      }
+
+      if (!withinScope(value, entry.registration.plugin)) {
+        return;
+      }
+
+      const unavailable = disabledReason(value);
+      if (unavailable) {
+        feedback = { message: unavailable }; publish(); return; 
+      }
+
+      if (value.kind === 'action') {
+        if (Boolean(actionExecution) || currentValue?.kind !== 'provider' || !currentValue.executeAction || !value.action.id.startsWith(`${entry.registration.plugin}:`)) {
+          return;
+        }
+
+        const execution = new AbortController();
+        actionExecution = execution;
+        const token = epoch;
+        const actionSession = session;
+        const validator = currentValue.validateResource;
+        const context = {
+          signal: execution.signal,
+          generation: token,
+          navigate: (target: NavigationTargetV1) => {
+            const href = getNavigationHref(target);
+            if (execution.signal.aborted || contextErrors.has(entry.registration) || token !== epoch || session !== actionSession || !snapshot.isOpen || !href ||
+              target.kind === 'plugin' && (!deps.isPluginReady(target.pluginId) || !deps.hasPluginRoute(target.pluginId, target.path))) {
+              throw new Error('This destination is no longer available.');
+            }
+
+            deps.navigate(href);
+          },
+          openResource: async (target: Extract<SearchScopeV1, { kind: 'resource' }>) => {
+            if (execution.signal.aborted || contextErrors.has(entry.registration) || token !== epoch || session !== actionSession || !snapshot.isOpen || !deps.openResource) {
+              throw new Error('Resource destination is no longer available.');
+            }
+
+            const admitted = admitSearchScope(target);
+            if (admitted?.kind !== 'resource' || admitted.pluginId !== entry.registration.plugin) {
+              throw new Error('Resource destination is invalid for this provider.');
+            }
+
+            if (admitted.uid && !validator) {
+              throw new Error('Resource identity cannot be verified.');
+            }
+
+            await deps.openResource(admitted, execution.signal, validator ? (data) => validator.call(entry.registration.value, admitted, data) : undefined);
+          },
+        };
+        snapshot = { ...snapshot, executionPending: true };
+        emit();
+        try {
+          if (currentValue.validateAction && !await currentValue.validateAction.call(entry.registration.value, value.action, context)) {
+            throw new Error('This action is no longer available.');
+          }
+
+          if (execution.signal.aborted || contextErrors.has(entry.registration) || token !== epoch || store?.version !== capturedVersion || !ownerReady(entry.registration.plugin)) {
+            return;
+          }
+
+          actionAccepted = true;
+          const outcome = await currentValue.executeAction.call(entry.registration.value, value.action, context);
+          if (!execution.signal.aborted && token === epoch && session === actionSession) {
+            if (outcome?.keepOpen) {
+              controller.refresh();
+            } else {
+              controller.close();
+            }
+          }
+        } catch (error) {
+          if (!execution.signal.aborted && token === epoch && session === actionSession) {
+            feedback = { message: parseAppError(error).detail };
+          }
+        } finally {
+          if (actionExecution === execution) {
+            actionExecution = undefined;
+            actionAccepted = false;
+          }
+
+          if (snapshot.isOpen && deferredLiveRefresh) {
+            deferredLiveRefresh = false;
+            controller.notifyDataChanged();
+          } else if (snapshot.isOpen) {
+            publish();
+            if (dataRefreshQueued) {
+              dataRefreshQueued = false;
+              refreshData();
+            }
+          }
+        }
+
         return;
       }
 

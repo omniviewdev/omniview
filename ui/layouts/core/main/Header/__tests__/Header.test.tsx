@@ -5,11 +5,12 @@ import type { ReactNode } from 'react';
 import { Provider } from 'react-redux';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ExtensionProvider, PluginWindow } from '@omniviewdev/runtime';
-import { Category, Setting, SettingType } from '@omniviewdev/runtime/models';
+import { ExtensionProvider, GLOBAL_SEARCH_OPEN_EVENT, PluginWindow, usePluginContext } from '@omniviewdev/runtime';
+import { Category, ConnectionStatusCode, Setting, SettingType } from '@omniviewdev/runtime/models';
 import type * as RuntimeAPI from '@omniviewdev/runtime/api';
 import type * as RuntimeCore from '@omniviewdev/runtime';
 import type * as RuntimeWindow from '@omniviewdev/runtime/runtime';
+import type * as WailsRuntime from '@wailsio/runtime';
 import { afterAll, afterEach, expect, it, vi } from 'vitest';
 
 import { InstanceProvider } from '@/features/instance/InstanceContext';
@@ -38,10 +39,43 @@ const fixture = vi.hoisted(() => {
 
 const native = vi.hoisted(() => ({
   listPlugins: vi.fn(async (): Promise<string[]> => []),
+  listAllConnections: vi.fn(async () => ({})),
   loadConnections: vi.fn(async (_pluginId: string): Promise<never[]> => []),
+  checkConnection: vi.fn(async () => ({ status: '', details: '', error: '' })),
+  subscribeResource: vi.fn(async (): Promise<void> => undefined),
+  unsubscribeResource: vi.fn(async (): Promise<void> => undefined),
+  listeners: new Map<string, Set<(event: { data: unknown }) => void>>(),
+  showResourceSidebar: vi.fn(async () => true),
   isMaximised: vi.fn(async () => false),
   maximise: vi.fn(async () => undefined),
   unMaximise: vi.fn(async () => undefined),
+}));
+
+vi.mock('@wailsio/runtime', async (importOriginal) => {
+  const original = await importOriginal<typeof WailsRuntime>();
+  return {
+    ...original,
+    Events: {
+      ...original.Events,
+      On: (name: string, callback: (event: { data: unknown }) => void) => {
+        const listeners = native.listeners.get(name) ?? new Set();
+        listeners.add(callback);
+        native.listeners.set(name, listeners);
+        return () => {
+          listeners.delete(callback); 
+        };
+      },
+    },
+  };
+});
+
+vi.mock('../../../../../../packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/servicewrapper', async (importOriginal) => ({
+  ...await importOriginal<Record<string, unknown>>(),
+  GetPluginMeta: async (pluginId: string) => ({ id: pluginId, name: pluginId, version: 'test' }),
+}));
+vi.mock('../../../../../../packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/settings/servicewrapper', async (importOriginal) => ({
+  ...await importOriginal<Record<string, unknown>>(),
+  PluginValues: async () => ({}),
 }));
 
 vi.mock('@omniviewdev/runtime/api', async (importOriginal) => {
@@ -62,7 +96,13 @@ vi.mock('@omniviewdev/runtime/api', async (importOriginal) => {
     ResourceClient: {
       ...original.ResourceClient,
       ListPlugins: native.listPlugins,
+      // eslint-disable-next-line @typescript-eslint/promise-function-async -- Async wrapping discards the native cancel method.
+      ListAllConnections: () => Object.assign(native.listAllConnections(), { cancel: vi.fn() }),
       LoadConnections: native.loadConnections,
+      // eslint-disable-next-line @typescript-eslint/promise-function-async -- Async wrapping discards the native cancel method.
+      CheckConnection: () => Object.assign(native.checkConnection(), { cancel: vi.fn() }),
+      SubscribeResource: native.subscribeResource,
+      UnsubscribeResource: native.unsubscribeResource,
     },
     SettingsProvider: {
       ...original.SettingsProvider,
@@ -97,18 +137,28 @@ vi.mock('@omniviewdev/runtime', async (importOriginal) => {
 });
 
 vi.mock('@/hooks/useDevMode', () => ({ useDevMode: () => false }));
+vi.mock('@/hooks/useRightDrawer', () => ({
+  default: () => ({ showResourceSidebar: native.showResourceSidebar }),
+}));
 
 afterEach(() => {
   cleanup();
   native.listPlugins.mockReset().mockResolvedValue([]);
+  native.listAllConnections.mockReset().mockResolvedValue({});
   native.loadConnections.mockReset().mockResolvedValue([]);
+  native.checkConnection.mockReset().mockResolvedValue({ status: '', details: '', error: '' });
+  native.subscribeResource.mockReset().mockResolvedValue(undefined);
+  native.unsubscribeResource.mockReset().mockResolvedValue(undefined);
+  native.listeners.clear();
   native.isMaximised.mockClear();
   native.maximise.mockClear();
   native.unMaximise.mockClear();
 });
 
-function HeaderProviders({ children, service: suppliedService }: { children: ReactNode; service?: PluginService }) {
-  const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }));
+function HeaderProviders({ children, service: suppliedService, client: suppliedClient }: {
+  children: ReactNode; service?: PluginService; client?: QueryClient;
+}) {
+  const [client] = useState(() => suppliedClient ?? new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }));
   const [service] = useState(() => suppliedService ?? new PluginService(createTestDeps().deps));
   return (
     <QueryClientProvider client={client}>
@@ -182,7 +232,7 @@ function CurrentLocation() {
   );
 }
 
-function renderSearchHeader(searchVisible = true, service?: PluginService) {
+function renderSearchHeader(searchVisible = true, service?: PluginService, client?: QueryClient) {
   const header: HeaderState = {
     visible: true,
     areas: {
@@ -196,7 +246,7 @@ function renderSearchHeader(searchVisible = true, service?: PluginService) {
     <StrictMode>
       <Provider store={store}>
         <MemoryRouter initialEntries={['/plugins']}>
-          <HeaderProviders service={service}>
+          <HeaderProviders service={service} client={client}>
             <InstanceProvider>
               <button type='button'>Before header</button>
               <CoreLayoutHeader />
@@ -229,6 +279,18 @@ it.each(['ctrlKey', 'metaKey'] as const)(
     expect(document.getElementById(listId!)).toHaveAttribute('role', 'listbox');
   },
 );
+
+it('opens a focused global search when an external event has null detail', async () => {
+  renderSearchHeader();
+  act(() => {
+    window.dispatchEvent(new CustomEvent(GLOBAL_SEARCH_OPEN_EVENT, { detail: null }));
+  });
+  const input = await screen.findByRole('combobox', { name: /search/i });
+  expect(input).toHaveFocus();
+  expect(await screen.findByRole('option', { name: /^Home/ })).toBeVisible();
+  fireEvent.keyDown(input, { key: 'Escape' });
+  expect(screen.queryByRole('dialog', { name: /search/i })).not.toBeInTheDocument();
+});
 
 it('keeps palette double-clicks outside native title-bar maximize behavior', async () => {
   renderSearchHeader();
@@ -344,7 +406,10 @@ it('uses the actual input for controlled matching, current active-option ownersh
   fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
   const input = await screen.findByRole('combobox', { name: /search/i });
   fireEvent.change(input, { target: { value: 'Home' } });
-  await screen.findByRole('option', { name: /home/i });
+  const home = await screen.findByRole('option', { name: /home/i });
+  await waitFor(() => {
+    expect(home).not.toHaveAttribute('aria-disabled', 'true'); 
+  });
   fireEvent.keyDown(input, { key: 'ArrowDown' });
   const activeId = input.getAttribute('aria-activedescendant');
   expect(activeId).toBeTruthy();
@@ -498,6 +563,9 @@ it('refuses a real row click in the same task that reload moves its owner to loa
     const input = await screen.findByRole('combobox', { name: /search/i });
     fireEvent.change(input, { target: { value: 'Lifecycle navigation target' } });
     const oldRow = await screen.findByRole('option', { name: /Lifecycle navigation target/ });
+    await waitFor(() => {
+      expect(oldRow).not.toHaveAttribute('aria-disabled', 'true'); 
+    });
     expect(screen.getByTestId('current-location').textContent).toBe('/plugins');
     let phaseAtClick: string | undefined;
 
@@ -646,3 +714,381 @@ it.each([
     }
   },
 );
+
+it.each(['close', 'unmount', 'scope-change'] as const)('releases late native acquisition after %s without duplicate type ownership', async (operation) => {
+  const acquisition = createDeferred();
+  native.subscribeResource.mockReturnValueOnce(acquisition.promise);
+  const { service, importer } = createHeaderPluginEnvironment();
+  importer.register('opaque', { plugin: new PluginWindow() });
+  await service.load('opaque');
+  const view = renderSearchHeader(true, service);
+  act(() => {
+    window.dispatchEvent(new CustomEvent(GLOBAL_SEARCH_OPEN_EVENT, { detail: {
+      scope: { kind: 'resource', pluginId: 'opaque', connectionId: 'project', resourceKey: 'instance',
+        resourceId: 'vm', namespace: 'region', label: 'Virtual machine' },
+    } }));
+  });
+  await screen.findByRole('combobox', { name: /search/i });
+  await waitFor(() => {
+    expect(native.subscribeResource).toHaveBeenCalledExactlyOnceWith('opaque', 'project', 'instance'); 
+  });
+  act(() => {
+    // Moving from an instance to its type keeps the existing native subscription.
+    window.dispatchEvent(new CustomEvent(GLOBAL_SEARCH_OPEN_EVENT, { detail: {
+      scope: { kind: 'resource-type', pluginId: 'opaque', connectionId: 'project', resourceKey: 'instance', label: 'Instances' },
+    } }));
+  });
+  expect(native.subscribeResource).toHaveBeenCalledOnce();
+  if (operation === 'unmount') {
+    view.unmount();
+  } else if (operation === 'scope-change') {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(GLOBAL_SEARCH_OPEN_EVENT, { detail: {
+        scope: { kind: 'connection', pluginId: 'opaque', connectionId: 'project', label: 'Project' },
+      } }));
+    });
+  } else {
+    fireEvent.keyDown(document, { key: 'Escape' });
+  }
+
+  expect(native.unsubscribeResource).not.toHaveBeenCalled();
+  await act(async () => {
+    acquisition.resolve();
+    await acquisition.promise;
+  });
+  expect(native.unsubscribeResource).toHaveBeenCalledExactlyOnceWith('opaque', 'project', 'instance');
+  expect(native.listeners.get('opaque/project/instance/UPDATE')?.size).toBe(0);
+  view.unmount();
+  expect(native.unsubscribeResource).toHaveBeenCalledOnce();
+  await act(async () => {
+    await service.unload('opaque'); 
+  });
+});
+
+it('coalesces native resource bursts without rediscovering plugins', async () => {
+  const { service, importer } = createHeaderPluginEnvironment();
+  let version = 0;
+  const search = vi.fn(async (): Promise<RuntimeCore.SearchProviderResponseV1> => ({
+    items: [{
+      id: 'snapshot', label: `Snapshot ${version}`,
+      value: { schemaVersion: 1, kind: 'navigation',
+        scope: { kind: 'resource-type', pluginId: 'opaque', connectionId: 'project', resourceKey: 'instance', label: 'Instances' },
+        target: { kind: 'plugin', pluginId: 'opaque', path: '/' } },
+    }],
+    completion: 'complete',
+  }));
+  importer.register('opaque', {
+    plugin: new PluginWindow().withRoutes([{ path: '/', Component: () => null }]),
+    extensionRegistrations: [{
+      extensionPointId: 'omniview/global-search',
+      registration: { id: 'opaque-live', label: 'Opaque resources', value: {
+        schemaVersion: 1, kind: 'provider', connectionRecovery: 'provider', search,
+      } },
+    }],
+  });
+  await service.load('opaque');
+  renderSearchHeader(true, service);
+  act(() => {
+    window.dispatchEvent(new CustomEvent(GLOBAL_SEARCH_OPEN_EVENT, { detail: {
+      scope: { kind: 'resource-type', pluginId: 'opaque', connectionId: 'project', resourceKey: 'instance', label: 'Instances' },
+    } }));
+  });
+  await screen.findByRole('combobox', { name: /search/i });
+  await waitFor(() => {
+    expect(native.listPlugins).toHaveBeenCalled(); 
+  });
+  await screen.findByRole('option', { name: /Snapshot 0/ });
+  const searches = search.mock.calls.length;
+  const discoveries = native.listPlugins.mock.calls.length;
+  const invalidate = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+  try {
+    await act(async () => {
+      for (let index = 0; index < 10; index++) {
+        version = index + 1;
+        native.listeners.get('opaque/project/instance/UPDATE')?.forEach((listener) => {
+          listener({ data: {} }); 
+        });
+      }
+
+      await Promise.resolve();
+    });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['opaque', 'project', 'instance'], refetchType: 'none' });
+    expect(native.listPlugins).toHaveBeenCalledTimes(discoveries);
+    expect(native.subscribeResource).toHaveBeenCalledOnce();
+    expect(await screen.findByRole('option', { name: /Snapshot 10/ })).toBeVisible();
+    // An idle burst can start one read immediately and one trailing read for changes
+    // arriving during it. Ten events must not become ten provider reads.
+    expect(search.mock.calls.length - searches).toBeGreaterThan(0);
+    expect(search.mock.calls.length - searches).toBeLessThanOrEqual(2);
+  } finally {
+    invalidate.mockRestore();
+    await act(async () => {
+      await service.unload('opaque'); 
+    });
+  }
+});
+
+it('updates provider Context identity without freezing same-length context metadata', async () => {
+  const { service, importer } = createHeaderPluginEnvironment();
+  const pluginId = 'dynamic-context';
+  const search = async () => ({ items: [], completion: 'complete' as const });
+  function FirstContext() {
+    const owner = usePluginContext();
+    return <span>First context {owner.pluginId}</span>;
+  }
+
+  function ReplacementContext() {
+    const owner = usePluginContext();
+    return <span>Replacement context {owner.pluginId}</span>;
+  }
+
+  importer.register(pluginId, {
+    plugin: new PluginWindow(),
+    extensionRegistrations: [{
+      extensionPointId: 'omniview/global-search',
+      registration: { id: 'dynamic-context', label: 'Dynamic context', value: {
+        schemaVersion: 1, kind: 'provider', search,
+        Context: FirstContext,
+      } },
+    }],
+  });
+  await service.load(pluginId);
+  try {
+    renderSearchHeader(true, service);
+    fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
+    expect(await screen.findByText('First context dynamic-context')).toBeVisible();
+    expect(screen.getByRole('dialog', { name: /search/i })).toBeVisible();
+    act(() => {
+      const store = EXTENSION_REGISTRY.getExtensionPoint('omniview/global-search')!;
+      const id = store.listAll().find((entry) => entry.plugin === pluginId)!.id;
+      store.unregister(id);
+      store.register({ id, plugin: pluginId, label: 'Dynamic context', value: {
+        schemaVersion: 1, kind: 'provider', search,
+        Context: ReplacementContext,
+      } });
+    });
+    expect(await screen.findByText('Replacement context dynamic-context')).toBeVisible();
+    expect(screen.queryByText('First context dynamic-context')).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: /search/i })).toBeVisible();
+  } finally {
+    await act(async () => {
+      await service.unload(pluginId); 
+    });
+  }
+});
+
+it('uses connection-depth adapter targets and isolates throwing adapters', async () => {
+  const { service, importer } = createHeaderPluginEnvironment();
+  const pluginId = 'adapter-targets';
+  const search = async () => ({ items: [], completion: 'complete' as const });
+  const target = { kind: 'plugin' as const, pluginId, path: '/dashboard' };
+  const supportsScope = vi.fn((scopes: readonly RuntimeCore.SearchScopeV1[]) => scopes[0]?.kind === 'connection');
+  importer.register(pluginId, {
+    plugin: new PluginWindow().withRoutes([{ path: '/dashboard', Component: () => null }]),
+    extensionRegistrations: [
+      { extensionPointId: 'omniview/global-search', registration: { id: 'broken-scope', label: 'Broken scope', value: {
+        schemaVersion: 1, kind: 'provider', search, connectionRecovery: 'provider',
+        supportsScope: () => {
+          throw new Error('private adapter details'); 
+        },
+        connectionTarget: () => target,
+      } } },
+      { extensionPointId: 'omniview/global-search', registration: { id: 'broken-target', label: 'Broken target', value: {
+        schemaVersion: 1, kind: 'provider', search,
+        connectionTarget: () => {
+          throw new Error('private target details'); 
+        },
+      } } },
+      { extensionPointId: 'omniview/global-search', registration: { id: 'healthy-target', label: 'Healthy target', value: {
+        schemaVersion: 1, kind: 'provider', search, supportsScope, connectionTarget: () => target,
+      } } },
+    ],
+  });
+  await service.load(pluginId);
+  native.listAllConnections.mockResolvedValue({ [pluginId]: [{ id: 'cluster', name: 'Cluster' }] });
+  native.checkConnection.mockResolvedValue({ status: ConnectionStatusCode.ConnectionStatusDisconnected, details: '', error: '' });
+  try {
+    renderSearchHeader(true, service);
+    const provider = EXTENSION_REGISTRY.getExtensionPoint('omniview/global-search')!.listAll()
+      .find((entry) => entry.id === 'core/global-search/connections')!.value as RuntimeCore.SearchProviderV1;
+    const request = { query: '', scopes: [], signal: new AbortController().signal, limit: 20, generation: 1 };
+    const root = await provider.search(request);
+    expect(root.items[0]?.value).toMatchObject({ target });
+    expect(supportsScope).toHaveBeenCalledWith([{ kind: 'connection', pluginId, connectionId: 'cluster', label: 'Cluster' }]);
+    const scoped = await provider.search({ ...request, scopes: [
+      { kind: 'connection', pluginId, connectionId: 'cluster', label: 'Cluster' },
+      { kind: 'resource-type', pluginId, connectionId: 'cluster', resourceKey: 'instance', label: 'Instances' },
+    ] });
+    expect(scoped.items[0]?.value).toMatchObject({ action: { recovery: 'connection', target: { kind: 'connection' } } });
+  } finally {
+    await act(async () => {
+      await service.unload(pluginId); 
+    });
+  }
+});
+
+it('reports native subscription failure and retries without replacing the healthy connection watcher', async () => {
+  native.subscribeResource.mockRejectedValueOnce(new Error('private backend path'));
+  const { service, importer } = createHeaderPluginEnvironment();
+  importer.register('opaque', { plugin: new PluginWindow() });
+  await service.load('opaque');
+  const view = renderSearchHeader(true, service);
+  act(() => {
+    window.dispatchEvent(new CustomEvent(GLOBAL_SEARCH_OPEN_EVENT, { detail: {
+      scope: { kind: 'resource-type', pluginId: 'opaque', connectionId: 'project', resourceKey: 'instance', label: 'Instances' },
+    } }));
+  });
+  expect(await screen.findByText('Live updates are unavailable. Results may be out of date.')).toBeVisible();
+  expect(screen.queryByText('private backend path')).not.toBeInTheDocument();
+  const watcher = Array.from(native.listeners.get('opaque/project/watch/STATE') ?? []);
+  fireEvent.click(screen.getByRole('button', { name: /retry live updates/i }));
+  await waitFor(() => {
+    expect(native.subscribeResource).toHaveBeenCalledTimes(2); 
+  });
+  await waitFor(() => {
+    expect(screen.queryByText('Live updates are unavailable. Results may be out of date.')).not.toBeInTheDocument(); 
+  });
+  expect(Array.from(native.listeners.get('opaque/project/watch/STATE') ?? [])).toEqual(watcher);
+  expect(native.unsubscribeResource).not.toHaveBeenCalled();
+  expect(native.listeners.get('opaque/project/instance/UPDATE')?.size).toBe(1);
+  view.unmount();
+  await act(async () => {
+    await service.unload('opaque'); 
+  });
+});
+
+it.each(['close', 'unmount'] as const)('ignores late native subscription failure after %s', async (operation) => {
+  const acquisition = createDeferred();
+  native.subscribeResource.mockReturnValueOnce(acquisition.promise);
+  const { service, importer } = createHeaderPluginEnvironment();
+  importer.register('opaque', { plugin: new PluginWindow() });
+  await service.load('opaque');
+  const view = renderSearchHeader(true, service);
+  act(() => {
+    window.dispatchEvent(new CustomEvent(GLOBAL_SEARCH_OPEN_EVENT, { detail: {
+      scope: { kind: 'resource-type', pluginId: 'opaque', connectionId: 'project', resourceKey: 'instance', label: 'Instances' },
+    } }));
+  });
+  await screen.findByRole('combobox', { name: /search/i });
+  await waitFor(() => {
+    expect(native.subscribeResource).toHaveBeenCalledOnce(); 
+  });
+  if (operation === 'unmount') {
+    view.unmount();
+  } else {
+    fireEvent.keyDown(document, { key: 'Escape' });
+  }
+
+  await act(async () => {
+    acquisition.reject(new Error('retired subscription failure'));
+    await acquisition.promise.catch(() => undefined);
+  });
+  if (operation === 'close') {
+    fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
+    await screen.findByRole('combobox', { name: /search/i });
+    expect(screen.queryByText('Live updates are unavailable. Results may be out of date.')).not.toBeInTheDocument();
+  }
+
+  expect(native.unsubscribeResource).not.toHaveBeenCalled();
+  view.unmount();
+  await act(async () => {
+    await service.unload('opaque'); 
+  });
+});
+
+it.each(['publish', 'close'] as const)('preserves an event during a canonical query fetch until %s without leaking cache listeners', async (operation) => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  const queryKey = ['opaque', 'project', 'instance', 'list'];
+  const cache = client.getQueryCache();
+  const cacheListeners = new Set<unknown>();
+  const subscribe = cache.subscribe.bind(cache);
+  vi.spyOn(cache, 'subscribe').mockImplementation((listener) => {
+    cacheListeners.add(listener);
+    const stop = subscribe(listener);
+    return () => {
+      cacheListeners.delete(listener);
+      stop();
+    };
+  });
+  const initialRead = createDeferred();
+  let backend = 'old';
+  const fetchSnapshot = vi.fn(async () => {
+    const snapshot = backend;
+    if (snapshot === 'old') {
+      await initialRead.promise;
+    }
+
+    return snapshot;
+  });
+  const search = async (): Promise<RuntimeCore.SearchProviderResponseV1> => {
+    const snapshot = await client.fetchQuery({ queryKey, queryFn: fetchSnapshot, staleTime: 15_000 });
+    return { items: [{
+      id: 'snapshot', label: `Snapshot ${snapshot}`,
+      value: { schemaVersion: 1, kind: 'navigation',
+        scope: { kind: 'resource-type', pluginId: 'opaque', connectionId: 'project', resourceKey: 'instance', label: 'Instances' },
+        target: { kind: 'plugin', pluginId: 'opaque', path: '/' } },
+    }], completion: 'complete' };
+  };
+
+  const { service, importer } = createHeaderPluginEnvironment();
+  importer.register('opaque', {
+    plugin: new PluginWindow().withRoutes([{ path: '/', Component: () => null }]),
+    extensionRegistrations: [{
+      extensionPointId: 'omniview/global-search',
+      registration: { id: 'canonical-snapshot', label: 'Canonical snapshot', value: {
+        schemaVersion: 1, kind: 'provider', connectionRecovery: 'provider', search,
+      } },
+    }],
+  });
+  await service.load('opaque');
+  const view = renderSearchHeader(true, service, client);
+  const idleListeners = cacheListeners.size;
+  try {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(GLOBAL_SEARCH_OPEN_EVENT, { detail: {
+        scope: { kind: 'resource-type', pluginId: 'opaque', connectionId: 'project', resourceKey: 'instance', label: 'Instances' },
+      } }));
+    });
+    await waitFor(() => {
+      expect(fetchSnapshot).toHaveBeenCalledOnce(); 
+    });
+    await waitFor(() => {
+      expect(native.subscribeResource).toHaveBeenCalledOnce(); 
+    });
+    expect(cacheListeners.size).toBe(idleListeners + 1);
+    act(() => {
+      backend = 'new';
+      for (let index = 0; index < 10; index++) {
+        native.listeners.get('opaque/project/instance/UPDATE')?.forEach((listener) => {
+          listener({ data: {} }); 
+        });
+      }
+    });
+    expect(client.getQueryState(queryKey)?.isInvalidated).toBe(true);
+    if (operation === 'close') {
+      fireEvent.keyDown(document, { key: 'Escape' });
+    }
+
+    await act(async () => {
+      initialRead.resolve();
+      await initialRead.promise;
+    });
+    if (operation === 'publish') {
+      expect(await screen.findByRole('option', { name: /Snapshot new/ })).toBeVisible();
+      expect(screen.queryByRole('option', { name: /Snapshot old/ })).not.toBeInTheDocument();
+      expect(fetchSnapshot).toHaveBeenCalledTimes(2);
+      fireEvent.keyDown(document, { key: 'Escape' });
+    } else {
+      expect(fetchSnapshot).toHaveBeenCalledOnce();
+      expect(client.getQueryState(queryKey)?.isInvalidated).toBe(false);
+    }
+
+    expect(cacheListeners.size).toBe(idleListeners);
+  } finally {
+    view.unmount();
+    await act(async () => {
+      await service.unload('opaque'); 
+    });
+    client.clear();
+  }
+});

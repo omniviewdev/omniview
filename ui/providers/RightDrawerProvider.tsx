@@ -12,11 +12,9 @@ import {
   RightDrawerContext,
   type RightDrawerContextType,
   type ShowResourceSidebarParams,
-  useSnackbar,
-  showAppError,
 } from '@omniviewdev/runtime';
 import { ResourceClient } from '@omniviewdev/runtime/api';
-import { UpdateInput, GetInput } from '@omniviewdev/runtime/models';
+import { UpdateInput, GetInput, type GetResult } from '@omniviewdev/runtime/models';
 import RightDrawer from '@/components/displays/RightDrawer';
 import { bottomDrawerChannel, getBottomDrawerHeight } from './BottomDrawer/events';
 import { createLinkedResourceDrawer } from '@/federation/LinkedResourceDrawer';
@@ -27,7 +25,6 @@ import { createResourceExtensionRenderContext } from '@/features/extensions/reso
 import type { DrawerFactory as PluginDrawerFactory } from '@/features/plugins/core/types';
 import type { SidebarComponent } from '@/features/plugins/core/types';
 import type { ResourceExtensionRenderContext } from '@/features/plugins/core/types';
-import log from '@/features/logger';
 import handleStyles from '@/components/base/ResizeHandle.module.css';
 import styles from './RightDrawerProvider.module.css';
 
@@ -48,8 +45,14 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [content, setContent] = useState<DrawerComponent | null>(null);
   const [context, setContext] = useState<DrawerContext | undefined>(undefined);
+  const resourceRequest = useRef(0);
+  const cancelResourceRead = useRef<(() => void) | null>(null);
+  React.useEffect(() => () => {
+    resourceRequest.current += 1;
+    cancelResourceRead.current?.();
+    cancelResourceRead.current = null;
+  }, []);
 
-  const { showSnackbar } = useSnackbar();
 
   // Extension point hooks for plugin sidebar/drawer resolution
   const drawerEP = useExtensionPoint<PluginDrawerFactory, ResourceExtensionRenderContext>(
@@ -193,10 +196,15 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
    * Close the resource drawer
    */
   const closeDrawer = useCallback(() => {
+    const closedRequest = ++resourceRequest.current;
+    cancelResourceRead.current?.();
+    cancelResourceRead.current = null;
     setIsOpen(false);
     // clear the content after the drawer is closed
     setTimeout(() => {
-      setContent(null);
+      if (resourceRequest.current === closedRequest) {
+        setContent(null);
+      }
     }, 150);
   }, []);
 
@@ -228,6 +236,9 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
    * mounts as a low-priority transition so the browser can paint first.
    */
   const openDrawer: RightDrawerContextType['openDrawer'] = useCallback((DrawerComponent, ctx) => {
+    resourceRequest.current += 1;
+    cancelResourceRead.current?.();
+    cancelResourceRead.current = null;
     setIsOpen(true);
     setContent(DrawerComponent);
     setContext(ctx);
@@ -237,7 +248,11 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
    * Show a linked resource in the sidebar drawer.
    * Fetches data first, then opens the drawer with ctx.data — same flow as row clicks.
    */
-  const showResourceSidebar = useCallback((params: ShowResourceSidebarParams) => {
+  const showResourceSidebar = useCallback(async (params: ShowResourceSidebarParams) => {
+    const request = ++resourceRequest.current;
+    cancelResourceRead.current?.();
+    cancelResourceRead.current = null;
+    params.signal?.throwIfAborted();
     const onSubmit = (_ctx: DrawerContext, value: Record<string, any>) => {
       void ResourceClient.Update(
         params.pluginID,
@@ -271,7 +286,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
       );
 
     // Fetch the resource, then open the drawer with data in ctx — same as row clicks
-    ResourceClient.Get(
+    const read = ResourceClient.Get(
       params.pluginID,
       params.connectionID,
       params.resourceKey,
@@ -280,20 +295,53 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
         namespace: params.namespace ?? '',
         params: {},
       }),
-    ).then((result) => {
-      openDrawer(drawer, {
-        data: result?.result,
-        resource: {
-          id: params.resourceID,
-          name: params.resourceName ?? params.resourceID,
-          key: params.resourceKey,
-          connectionID: params.connectionID,
-          pluginID: params.pluginID,
-        },
-      });
-    }).catch((err: unknown) => {
-      log.error(err instanceof Error ? err : new Error(String(err)), { event: 'fetch_linked_resource', resourceID: params.resourceID });
-      showAppError(showSnackbar, err, `Failed to load resource: ${params.resourceID}`);
+    );
+    const cancel = () => {
+      void read.cancel();
+    };
+
+    cancelResourceRead.current = cancel;
+    params.signal?.addEventListener('abort', cancel, { once: true });
+    let result: GetResult | null;
+    try {
+      params.signal?.throwIfAborted();
+      result = await read;
+    } catch (error) {
+      if (Boolean(params.signal?.aborted) || request !== resourceRequest.current) {
+        throw new DOMException('Resource request cancelled.', 'AbortError');
+      }
+
+      throw error;
+    } finally {
+      params.signal?.removeEventListener('abort', cancel);
+      if (cancelResourceRead.current === cancel) {
+        cancelResourceRead.current = null;
+      }
+    }
+
+    params.signal?.throwIfAborted();
+    if (request !== resourceRequest.current) {
+      throw new DOMException('Resource request superseded.', 'AbortError');
+    }
+
+    const data = result?.result;
+    if (!result?.success || data == null) {
+      throw new Error('Resource is no longer available.');
+    }
+
+    if (params.validateData && !params.validateData(data)) {
+      throw new Error('Resource identity changed. Search again.');
+    }
+
+    openDrawer(drawer, {
+      data,
+      resource: {
+        id: params.resourceID,
+        name: params.resourceName ?? params.resourceID,
+        key: params.resourceKey,
+        connectionID: params.connectionID,
+        pluginID: params.pluginID,
+      },
     });
   }, [closeDrawer, openDrawer, drawerEP, sidebarEP]);
 
@@ -302,7 +350,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
     openDrawer,
     showResourceSidebar,
     isOpen,
-  }), [openDrawer, closeDrawer, showResourceSidebar]);
+  }), [openDrawer, closeDrawer, showResourceSidebar, isOpen]);
 
   return (
     <RightDrawerContext.Provider value={contextValue}>

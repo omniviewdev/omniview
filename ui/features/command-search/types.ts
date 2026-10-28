@@ -1,51 +1,10 @@
-export type AvailabilityV1 = { state: 'enabled' } | { state: 'disabled'; reason: string };
-
-export type SettingTargetV1 =
-  | { section: 'core'; categoryId: string; settingId?: string }
-  | { section: 'plugins'; pluginId: string; settingId?: string }
-  | { section: 'extensions' };
-
-export type NavigationTargetV1 =
-  | { kind: 'core'; path: '/' | '/plugins' }
-  | { kind: 'plugin'; pluginId: string; path: string };
-
-export type HostCommandV1 = { kind: 'reload-connections'; pluginId: string };
-
-export type SearchEntryV1 = {
-  schemaVersion: 1;
-  description?: string;
-  keywords?: readonly string[];
-  availability?: AvailabilityV1;
-} & (
-  | { kind: 'command'; command: HostCommandV1 }
-  | { kind: 'setting'; target: SettingTargetV1 }
-  | { kind: 'navigation'; target: NavigationTargetV1 }
-);
-
-export type SearchProviderItemV1 = {
-  id: string;
-  label: string;
-  value: SearchEntryV1;
-};
-
-export type SearchProviderResponseV1 = {
-  items: readonly SearchProviderItemV1[];
-  completion: 'complete' | 'truncated';
-};
-
-export type SearchProviderRequestV1 = {
-  query: string;
-  signal: AbortSignal;
-  limit: number;
-};
-
-export type SearchProviderV1 = {
-  schemaVersion: 1;
-  kind: 'provider';
-  search(request: SearchProviderRequestV1): Promise<SearchProviderResponseV1>;
-};
-
-export type GlobalSearchContributionV1 = SearchEntryV1 | SearchProviderV1;
+import type { SearchEntryV1, SearchScopeV1, SearchProviderStatusV1 } from '@omniviewdev/runtime';
+export type {
+  AvailabilityV1, SettingTargetV1, NavigationTargetV1, HostCommandV1, SearchEntryV1,
+  SearchProviderItemV1, SearchProviderResponseV1, SearchProviderRequestV1, SearchProviderV1,
+  GlobalSearchContributionV1, SearchScopeV1, SearchActionReferenceV1, SearchExecutionContextV1,
+  SearchProviderStatusV1,
+} from '@omniviewdev/runtime';
 
 export type SearchRow = {
   key: string;
@@ -57,7 +16,9 @@ export type SearchRow = {
 export type SearchSource = {
   id: string;
   label: string;
-  state: 'queued' | 'pending' | 'complete' | 'truncated' | 'unavailable' | 'source-limit';
+  state: 'queued' | 'pending' | 'complete' | 'truncated' | 'unavailable' | 'source-limit' | Exclude<SearchProviderStatusV1, 'ready'>;
+  message?: string;
+  retryable?: boolean;
 };
 
 export type SearchFeedback = {
@@ -69,9 +30,13 @@ export type SearchFeedback = {
 export type SearchSnapshot = {
   isOpen: boolean;
   query: string;
+  scopes: readonly SearchScopeV1[];
+  selectedKey?: string;
   rows: readonly SearchRow[];
   sources: readonly SearchSource[];
   message?: string;
+  /** Pending sources may leave previous-query rows visible but non-actionable. */
+  searchPending: boolean;
   executionPending: boolean;
   feedback?: SearchFeedback;
 };

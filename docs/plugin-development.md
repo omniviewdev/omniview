@@ -105,6 +105,105 @@ export default {
 EOF
 ```
 
+### Scoped global search
+
+Register `SearchProviderV1` contributions on `omniview/global-search` through the plugin's existing `extensionRegistrations`. Import the contracts, `resourceQueryKeys`, and `openGlobalSearch` from `@omniviewdev/runtime`. The host alone owns Cmd/Ctrl-K. Sidebar controls call `openGlobalSearch({ scope })`; they do not install another shortcut or overlay.
+
+Kubernetes registers its real provider using the normal extension-point contract:
+
+```ts
+{
+  extensionPointId: 'omniview/global-search',
+  registration: {
+    id: 'kubernetes/global-search',
+    plugin: 'kubernetes',
+    label: 'Kubernetes',
+    value: kubernetesSearchProvider,
+  },
+}
+```
+
+#### Default connection context
+
+Declare `SearchRouteHandleV1.searchScope` on a plugin's connection route `handle`. This is ordinary route metadata, not another registry or a provider-specific host URL parser.
+
+```ts
+import type { SearchRouteHandleV1 } from '@omniviewdev/runtime';
+
+export const connectionSearchHandle: SearchRouteHandleV1 = {
+  searchScope: ({ pluginId, params }) => params.connectionId ? {
+    kind: 'connection',
+    pluginId,
+    connectionId: params.connectionId,
+    label: params.connectionId,
+  } : undefined,
+};
+```
+
+Attach this handle to the connection parent route. Parameter names belong to the plugin; `connectionId` above is an example, not a host convention. Callbacks receive frozen parameters decoded exactly once, the owning plugin ID, the raw plugin-relative pathname, and the query string. Keep resolution synchronous and free of native calls.
+
+Header search, Cmd/Ctrl-K, and `openGlobalSearch()` seed only a connection scope. Resource pages inherit that connection; they do not automatically add resource-type or object chips. The nearest valid owner-matching connection handle wins. Undefined, invalid, foreign, or throwing children inherit an ancestor; a null handle explicitly opts out.
+
+An explicit `openGlobalSearch({ scope })` still supports deeper scopes. `openGlobalSearch({ scope: null })` forces an unscoped search. Removing chips stays unscoped for that session; a later open resolves the current route again. Global search and the resource table's own find field remain separate controls.
+
+#### Provider lifecycle and execution
+
+| Member | Contract |
+| --- | --- |
+| `supportsScope(scopes)` | Pure synchronous routing before bounded scheduling. Return false at unsupported depths. The host routes owner scopes before applying its source cap; unrelated plugins cannot starve the scoped owner. |
+| `connectionTarget(connectionID)` | Optional validated connection destination. Without it, Enter opens the plugin root. This callback does not transfer connection recovery ownership. Adapter failures remain isolated to that adapter. |
+| `connectionRecovery` | Defaults to `host`. Set `provider` only when the provider supplies recovery throughout its supported scope depths. |
+| `search(request)` | Receives immutable scopes, literal query text, limit, generation, and abort signal. Discovery must not connect or mutate resources. Return bounded items and honest `complete`/`truncated` completion and typed availability. |
+| `validateAction(action, context)` | Optional availability gate against the current registered action inventory. Avoid repeating the authoritative object read in both this gate and execution. |
+| `executeAction(action, context)` | Required for action rows. Revalidate the native target and permissions at dispatch. Await actual session/action setup; do not report success before a rejected promise settles. |
+| `validateResource(target, data)` | Pure provider-owned identity check after the host's authoritative native Get. Required when a target includes an immutable `uid`. The host does not inspect Kubernetes metadata or invent another plugin's object schema. |
+| `Context` | Optional headless action/dialog root with the owner's real plugin context. Memo, forwardRef, and lazy components are accepted. Contexts share metadata/settings loading per plugin and survive palette closure. Replacement/unregister ends their lifetime. A failed context disables only its source; other plugins remain usable. |
+
+Results contain serializable intents, not executable callbacks. Action IDs must have the owning plugin's `pluginId:` prefix. Only responses from the current owning provider may contain executable action references; static action registrations and action rows without an executor are rejected.
+
+Execution context supplies fenced `openResource` and validated `navigate` helpers. Set `action.recovery: 'connection'` only for recovery targeting the same connection ancestor. Return `{ keepOpen: true }` after successful recovery to preserve the query and all resource scopes. Searching never automatically connects, refreshes credentials, or treats forbidden access as a reconnect workaround.
+
+Use existing action inventories and confirmation/parameter components. Keep them in `Context`, not a hidden resource table or a second palette. The host's activation check is not an atomic transaction: plugin backends must enforce permissions and any native mutation preconditions. Closing search fences obsolete feedback; it does not roll back an accepted mutation.
+
+#### Native identity, not Kubernetes-shaped data
+
+Identity contains the plugin, connection, exact resource key, native ID, actual namespace, and optional immutable incarnation. Labels and `scopeLabel` are presentation only. Set a result's `scope` for Tab/pointer exploration; Enter executes its intent.
+
+Keep ARNs, OCIDs, VM IDs, and other native IDs opaque. Keep region, account, project, engine, and node fields in their native data. Do not encode them into a fake namespace or rewrite native IDs merely to satisfy search. An empty namespace is not a claim that a cloud resource is globally scoped.
+
+The current SDK Get wire cannot address every native scope collision. A provider must reject ambiguous generic lookups or use distinct provider-owned navigation/action entries with its own native UI. Search does not add missing SDK addressing semantics. See the SDK's provider-neutral conformance document before claiming cross-region or cross-node identity support.
+
+#### Shared resource icon sets
+
+Register `ResourceIconSetV1` at `RESOURCE_ICON_EXTENSION_POINT_ID` (`omniview/resource/icons`) using the same `extensionRegistrations` mechanism. Its value contains `schemaVersion: 1` and `resolve(resourceKey)`, returning a React component accepting `ResourceIconProps`, or undefined for an unknown key.
+
+Render `ResourceIcon` with `pluginId`, `resourceKey`, optional `size`, and optional `fallback`. The host keeps keys opaque and consults only sets owned by that plugin. Reuse this component in the plugin sidebar; search uses the same set for resource rows and scope chips. Missing sets, unknown keys, resolver/render errors, and lazy loading use a local fallback without replacing the surrounding search UI. Replacement and unload update mounted consumers.
+
+Resource glyphs should inherit `currentColor` and match adjacent monochrome controls; connection branding is separate. Kubernetes adapts the upstream glyphs into trusted, sanitized inline SVG without blue badge backgrounds. Attribution and modification notes are bundled with the artwork. Do not inline runtime-provided SVG text. For file-based icons, resolve imported URLs against the plugin's `import.meta.url`; a root-relative plugin development URL must not resolve against the host origin.
+
+The reference set is `kubernetes/ui/src/icons/resourceIcons.tsx`. Other plugins can supply their own SVG components or icon libraries without adding those libraries to the host.
+
+#### Live data, cache ownership, and failures
+
+The host acquires native resource subscriptions while resource scopes are open, deduplicates them, and releases them on scope changes, close, and unmount. Late successful acquisitions are also released. Failed acquisition leaves existing results visible with a **Retry live updates** banner; retry does not replace healthy watchers.
+
+Use the public cache keys when storing native snapshots:
+
+- `resourceQueryKeys.scope(pluginId, connectionId, resourceKey)` is the invalidation prefix.
+- `resourceQueryKeys.list(..., namespaces)` stores the shared native ListResult for page 1, 200 objects, name ascending, without text filtering.
+- `resourceQueryKeys.resource(..., resourceId, namespace)` stores a successful native GetResult, not a display projection. Resource hooks, batched updates, and search share this shape.
+- Different pagination, filters, projections, or server-search inputs need distinct keys beneath the scope prefix. Never replace a canonical snapshot with query-filtered results.
+
+Native ADD/UPDATE/DELETE events invalidate the scope prefix and coalesce search refreshes without rediscovering connections, clearing stable rows, or resetting selection. Events received during an in-flight fetch re-invalidate its settled snapshot before the trailing refresh, so a pre-event result cannot erase the final update.
+
+Use the cache query's signal for shared native work and the request signal to fence obsolete search publication. Cancelling a search must not cancel another table's shared fetch. Resource/action execution still performs its own fresh identity and authorization checks instead of trusting discovery cache freshness.
+
+Distinguish disconnected, connecting, authentication-required, forbidden, unavailable, and partial states. Return safe actionable messages, not raw credentials or backend internals. Treat a deleted/replaced object as an object failure, not a reason to reconnect. Plugin registration, replacement, unload, and authoritative connection removal update the current search and fence retired results.
+
+Query edits retain the previous result surface, disable obsolete activation, and publish the replacement query wave coherently after its sources settle. CommandList does not apply another label-only filter to provider-ranked results. Compact icon/status badges carry availability; full source messages remain under Details. Providers must still report truthful typed states and bounded completion.
+
+Kubernetes is the reference integration in `ui/src/search/provider.tsx`. It caches resource snapshots for 15 seconds and readiness for 2 seconds, scans at most 200 objects, reports incomplete results, and transfers exact list text without changing structured filters. See [scoped search design and acceptance cases](scoped-search-design.md).
+
 ### 1.5 Contributing a Theme
 
 UI plugins can contribute themes through the `omniview/theme` extension point. A contribution contains the theme definition without an `id`; the host derives the globally unique ID from the plugin and registration IDs.

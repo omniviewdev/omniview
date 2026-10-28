@@ -138,7 +138,7 @@ export function useEventBatcher(
       if (event.type === 'ADD' || event.type === 'UPDATE') {
         queryClient.setQueryData(
           getResourceKey(event.payload.id, event.payload.namespace),
-          { result: event.payload.data },
+          { success: true, result: event.payload.data },
         );
       }
     }

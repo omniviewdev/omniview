@@ -126,6 +126,7 @@ export const SubgraphNode = mod.SubgraphNode;
 export const TimeSeries = mod.TimeSeries;
 export const UpdateInput = mod.UpdateInput;
 export const UpdateResult = mod.UpdateResult;
+export const ValidationResult = mod.ValidationResult;
 export const WatchConnectionSummary = mod.WatchConnectionSummary;
 export const WatchScope = mod.WatchScope;
 export const WatchState = mod.WatchState;

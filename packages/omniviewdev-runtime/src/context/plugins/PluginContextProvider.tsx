@@ -9,10 +9,12 @@ import { parseAppError } from '../../errors/parseAppError';
 
 export type PluginContextProviderProps = {
   pluginId: string;
+  /** Background extension contexts render no loading surface and delegate failures to their local error boundary. */
+  headless?: boolean;
 };
 
-export function PluginContextProvider(props: React.PropsWithChildren<PluginContextProviderProps>): React.ReactElement {
-  const { children, pluginId } = props;
+export function PluginContextProvider(props: React.PropsWithChildren<PluginContextProviderProps>): React.ReactElement | null {
+  const { children, pluginId, headless = false } = props;
   const [settings, setSettings] = React.useState<Record<string, any>>({});
   const [meta, setMeta] = React.useState<PluginMeta>(new PluginMeta);
   const [metaLoaded, setMetaLoaded] = React.useState(false);
@@ -108,6 +110,7 @@ export function PluginContextProvider(props: React.PropsWithChildren<PluginConte
   }, [pluginId, fetchSettings, fetchMeta]);
 
   if (metaError) {
+    if (headless) throw new Error(metaError);
     return (
       <div style={{
         display: 'flex',
@@ -159,6 +162,7 @@ export function PluginContextProvider(props: React.PropsWithChildren<PluginConte
   }
 
   if (!metaLoaded) {
+    if (headless) return null;
     return (
       <div style={{
         display: 'flex',

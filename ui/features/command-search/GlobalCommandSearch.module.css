@@ -1,12 +1,161 @@
+.PluginIcon {
+  inline-size: 1em;
+  block-size: 1em;
+  object-fit: contain;
+}
+
+.QueryBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ov-space-2);
+  min-inline-size: 0;
+}
+
+.Scopes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ov-space-2);
+  max-inline-size: 100%;
+}
+
+.ScopeToken {
+  display: inline-flex;
+  align-items: center;
+  max-inline-size: 100%;
+  border-radius: var(--ov-radius-sm, 0.25rem);
+}
+
+.ScopeToken[data-selected="true"] {
+  outline: 2px solid var(--ov-color-fg-default, currentColor);
+  outline-offset: 2px;
+}
+
+.ScopeLabel {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  color: inherit;
+  font: inherit;
+}
+
+.RemoveScope {
+  flex: 0 0 auto;
+  inline-size: 1.25rem;
+  min-inline-size: 1.25rem;
+  block-size: 1.25rem;
+  min-block-size: 1.25rem;
+  padding: 0;
+  color: inherit;
+}
+
+.QueryInput {
+  flex: 1 1 12rem;
+  min-inline-size: min(12rem, 100%);
+  max-inline-size: 100%;
+}
+
+div.ResultContent {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: flex-start;
+  min-inline-size: 0;
+  gap: var(--ov-space-1);
+}
+
+.ResultContent > * {
+  flex: none;
+  max-inline-size: 100%;
+  margin: 0;
+  text-align: start;
+}
+
+.ScopeControl {
+  flex: 0 0 auto;
+  inline-size: 1.5rem;
+  min-inline-size: 1.5rem;
+  block-size: 1.5rem;
+  padding: 0;
+  color: var(--ov-color-fg-muted);
+}
+
+.VisuallyHidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 .Results {
+  padding-block-start: var(--ov-space-1);
   max-block-size: min(50vh, 28rem);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
+.EmptyState {
+  min-block-size: 3.25rem;
+  display: grid;
+  place-items: center;
+}
+
+.StatusRail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ov-space-2);
+  min-block-size: 2rem;
+}
+
+.StatusIndicators {
+  display: flex;
+  align-items: center;
+  gap: var(--ov-space-2);
+  flex: 1 1 0;
+  min-inline-size: 0;
+  overflow: hidden;
+}
+
+.StatusItem,
+.StatusIndicator {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ov-space-1);
+  white-space: nowrap;
+}
+
+.StatusIndicator {
+  color: var(--ov-color-fg-muted);
+  font-size: var(--ov-font-size-caption);
+}
+
+.StatusIndicator > svg,
+.SourceDetails summary > svg {
+  inline-size: 1rem;
+  block-size: 1rem;
+  flex: none;
+}
+
+.StatusSpinner {
+  animation: search-spin 1s linear infinite;
+}
+
+@keyframes search-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .StatusSpinner { animation: none; }
+}
+
 
 .SourceDetails {
-  margin-block-start: var(--ov-space-2);
+  margin-inline-start: auto;
   color: var(--ov-color-fg-muted);
   font-size: var(--ov-font-size-caption);
 }
@@ -14,14 +163,34 @@
 .SourceDetails summary {
   cursor: pointer;
   padding-block: var(--ov-space-1);
+  display: flex;
+  align-items: center;
+  gap: var(--ov-space-1);
+  list-style: none;
+}
+
+.SourceDetails summary::-webkit-details-marker {
+  display: none;
+}
+
+.SourceDetails[open] {
+  flex-basis: 100%;
 }
 
 .Sources {
   margin-block: var(--ov-space-2) 0;
-  padding-inline-start: var(--ov-space-4);
+  padding-inline-start: 0;
   max-block-size: 8rem;
   overflow-y: auto;
   overflow-wrap: anywhere;
+  list-style: none;
+}
+
+.Sources > li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ov-space-1);
+  padding-block: var(--ov-space-1);
 }
 
 .KeyboardHints,

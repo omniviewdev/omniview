@@ -8,6 +8,7 @@ import get from 'lodash.get';
 // types
 import type { ResourceLink } from '@omniviewdev/runtime/models';
 import useRightDrawer from '@/hooks/useRightDrawer';
+import { showAppError, useSnackbar } from '@omniviewdev/runtime';
 import { type ResourceMetadata } from '@/hooks/resource/useResourceDefinition';
 import HintTooltip from '@/components/base/HintTooltip';
 import styles from './cells.module.css';
@@ -32,6 +33,7 @@ const ResourceLinkCell: React.FC<Props> = ({
   displayId,
 }) => {
   const { showResourceSidebar } = useRightDrawer();
+  const { showSnackbar } = useSnackbar();
 
   if (resourceKey === '') {
     resourceKey = get(value, keyAccessor, '');
@@ -63,12 +65,18 @@ const ResourceLinkCell: React.FC<Props> = ({
       namespace,
     });
 
-    showResourceSidebar({
+    void showResourceSidebar({
       pluginID: metadata.pluginID,
       connectionID: metadata.connectionID,
       resourceKey: keyMap ? keyMap[resourceKey] ?? resourceKey : resourceKey,
       resourceID,
       namespace,
+    }).catch((error: unknown) => {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return;
+      }
+
+      showAppError(showSnackbar, error, `Failed to load resource: ${resourceID}`);
     });
   };
 

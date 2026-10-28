@@ -6,6 +6,7 @@ import {
   flexRender,
 } from '@tanstack/react-table';
 import useRightDrawer from '@/hooks/useRightDrawer';
+import { showAppError, useSnackbar } from '@omniviewdev/runtime';
 
 import { type Memoizer } from './ResourceTableContainer';
 import { type Virtualizer, type VirtualItem } from '@tanstack/react-virtual';
@@ -47,6 +48,7 @@ export const RowContainer: React.FC<Props> = ({
   row,
 }) => {
   const { showResourceSidebar } = useRightDrawer();
+  const { showSnackbar } = useSnackbar();
 
   // Use the provided ref callback to measure items
   const ref = React.useCallback((node: HTMLTableRowElement) => {
@@ -55,12 +57,18 @@ export const RowContainer: React.FC<Props> = ({
 
   const handleRowClick = (column: string) => {
     if (column !== 'select' && column !== 'menu') {
-      showResourceSidebar({ 
+      void showResourceSidebar({
         pluginID, 
         connectionID, 
         resourceKey, 
         resourceID,
         namespace,
+      }).catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return;
+        }
+
+        showAppError(showSnackbar, error, `Failed to load resource: ${resourceID}`);
       });
     }
   };

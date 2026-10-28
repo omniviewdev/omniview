@@ -7,6 +7,7 @@ import type {
   SearchProviderResponseV1,
   SearchProviderV1,
   SettingTargetV1,
+  SearchScopeV1,
 } from './types';
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -15,6 +16,18 @@ function record(value: unknown): value is Record<string, unknown> {
 
 function identifier(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= 256 && value.trim().length > 0;
+}
+
+function opaqueIdentifier(value: unknown, limit: number): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= limit && value.trim().length > 0;
+}
+
+function component(value: unknown): boolean {
+  if (typeof value === 'function') {
+    return true;
+  }
+
+  return record(value) && [Symbol.for('react.memo'), Symbol.for('react.forward_ref'), Symbol.for('react.lazy')].includes(value.$$typeof as symbol);
 }
 
 export function isSearchQueryAllowed(query: string): boolean {
@@ -47,13 +60,14 @@ export function getNavigationHref(target: unknown): string | undefined {
   }
 
   const path = target.path;
-  if (path.length === 0 || path.length > 2048 || !path.startsWith('/') || path.startsWith('//')) {
+  const pathname = path.split(/[?#]/, 1)[0];
+  if (pathname.length === 0 || pathname.length > 2048 || path.length - pathname.length > 8192 || !path.startsWith('/') || path.startsWith('//')) {
     return undefined;
   }
 
   let decoded: string;
   try {
-    decoded = decodeURIComponent(path.split(/[?#]/, 1)[0]);
+    decoded = decodeURIComponent(pathname);
   } catch {
     return undefined;
   }
@@ -73,6 +87,43 @@ export function getNavigationHref(target: unknown): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+export function admitSearchScope(input: unknown): SearchScopeV1 | undefined {
+  if (!record(input) || !identifier(input.pluginId) || !identifier(input.connectionId) || !identifier(input.label)) {
+    return undefined;
+  }
+
+  const common = { pluginId: input.pluginId, connectionId: input.connectionId, label: input.label };
+  if (input.kind === 'connection') {
+    return { ...common, kind: 'connection' };
+  }
+
+  if (!opaqueIdentifier(input.resourceKey, 512)) {
+    return undefined;
+  }
+
+  if (input.kind === 'resource-type') {
+    if (input.namespaces !== undefined && (!Array.isArray(input.namespaces) || input.namespaces.length > 256 || !input.namespaces.every((namespace) => opaqueIdentifier(namespace, 1024)))) {
+      return undefined;
+    }
+
+    if (input.scopeLabel !== undefined && !identifier(input.scopeLabel)) {
+      return undefined;
+    }
+
+    return { ...common, kind: 'resource-type', resourceKey: input.resourceKey, ...(input.scopeLabel ? { scopeLabel: input.scopeLabel } : {}), ...(input.namespaces ? { namespaces: [...input.namespaces] } : {}) };
+  }
+
+  if (input.kind !== 'resource' || !opaqueIdentifier(input.resourceId, 4096) || typeof input.namespace !== 'string' || input.namespace.length > 1024 || (input.uid !== undefined && !identifier(input.uid))) {
+    return undefined;
+  }
+
+  if (input.scopeLabel !== undefined && !identifier(input.scopeLabel)) {
+    return undefined;
+  }
+
+  return { ...common, kind: 'resource', resourceKey: input.resourceKey, resourceId: input.resourceId, namespace: input.namespace, ...(input.scopeLabel ? { scopeLabel: input.scopeLabel } : {}), ...(input.uid ? { uid: input.uid } : {}) };
 }
 
 export function admitSearchEntry(input: unknown): SearchEntryV1 | undefined {
@@ -128,12 +179,35 @@ export function admitSearchEntry(input: unknown): SearchEntryV1 | undefined {
     }
   }
 
+  const scope = input.scope === undefined ? undefined : admitSearchScope(input.scope);
+  if (input.scope !== undefined && !scope) {
+    return undefined;
+  }
+
   const common = {
     schemaVersion: 1 as const,
     ...(description !== undefined ? { description } : {}),
     ...(keywords !== undefined ? { keywords } : {}),
     ...(availability ? { availability } : {}),
+    ...(scope ? { scope } : {}),
   };
+  if (input.kind === 'action') {
+    if (!record(input.action) || !identifier(input.action.id) || !input.action.id.includes(':')) {
+      return undefined;
+    }
+
+    const target = admitSearchScope(input.action.target);
+    if (!target || (input.action.recovery !== undefined && (input.action.recovery !== 'connection' || target.kind !== 'connection'))) {
+      return undefined;
+    }
+
+    if (input.action.query !== undefined && (typeof input.action.query !== 'string' || !isSearchQueryAllowed(input.action.query))) {
+      return undefined;
+    }
+
+    return { ...common, kind: 'action', action: { id: input.action.id, target, ...(input.action.recovery === 'connection' ? { recovery: 'connection' as const } : {}), ...(input.action.query !== undefined ? { query: input.action.query } : {}) } };
+  }
+
   if (input.kind === 'command') {
     if (!record(input.command) || input.command.kind !== 'reload-connections' || !identifier(input.command.pluginId)) {
       return undefined;
@@ -202,10 +276,42 @@ export function admitSearchContribution(
       return undefined;
     }
 
-    return { schemaVersion: 1, kind: 'provider', search: value.search as SearchProviderV1['search'] };
+    if ((value.executeAction !== undefined && typeof value.executeAction !== 'function') || (value.validateAction !== undefined && typeof value.validateAction !== 'function')) {
+      return undefined;
+    }
+
+    if (value.connectionTarget !== undefined && typeof value.connectionTarget !== 'function') {
+      return undefined;
+    }
+
+    if (value.supportsScope !== undefined && typeof value.supportsScope !== 'function') {
+      return undefined;
+    }
+
+    if (value.validateResource !== undefined && typeof value.validateResource !== 'function') {
+      return undefined;
+    }
+
+    if (value.connectionRecovery !== undefined && value.connectionRecovery !== 'host' && value.connectionRecovery !== 'provider') {
+      return undefined;
+    }
+
+    if (value.Context !== undefined && !component(value.Context)) {
+      return undefined;
+    }
+
+    return { schemaVersion: 1, kind: 'provider', search: value.search as SearchProviderV1['search'],
+      ...(value.executeAction ? { executeAction: value.executeAction as SearchProviderV1['executeAction'] } : {}),
+      ...(value.validateAction ? { validateAction: value.validateAction as SearchProviderV1['validateAction'] } : {}),
+      ...(value.connectionTarget ? { connectionTarget: value.connectionTarget as SearchProviderV1['connectionTarget'] } : {}),
+      ...(value.supportsScope ? { supportsScope: value.supportsScope as SearchProviderV1['supportsScope'] } : {}),
+      ...(value.validateResource ? { validateResource: value.validateResource as SearchProviderV1['validateResource'] } : {}),
+      ...(value.connectionRecovery ? { connectionRecovery: value.connectionRecovery as SearchProviderV1['connectionRecovery'] } : {}),
+      ...(value.Context !== undefined ? { Context: value.Context as SearchProviderV1['Context'] } : {}) };
   }
 
-  return admitSearchEntry(value);
+  const entry = admitSearchEntry(value);
+  return entry?.kind === 'action' ? undefined : entry;
 }
 
 export function admitProviderResponse(input: unknown): SearchProviderResponseV1 | undefined {
@@ -217,12 +323,21 @@ export function admitProviderResponse(input: unknown): SearchProviderResponseV1 
     return undefined;
   }
 
+  const statuses = ['ready', 'disconnected', 'connecting', 'authentication-required', 'forbidden', 'unavailable', 'partial'] as const;
+  if (input.status !== undefined && !statuses.includes(input.status as typeof statuses[number])) {
+    return undefined;
+  }
+
+  if (input.message !== undefined && (typeof input.message !== 'string' || input.message.length > 1024)) {
+    return undefined;
+  }
+
   const items: SearchProviderItemV1[] = [];
   const seen = new Set<string>();
   const length = Math.min(input.items.length, 20);
   for (let index = 0; index < length; index++) {
     const item: unknown = input.items[index];
-    if (!record(item) || !identifier(item.id) || !identifier(item.label) || seen.has(item.id)) {
+    if (!record(item) || !opaqueIdentifier(item.id, 8192) || !identifier(item.label) || seen.has(item.id)) {
       return undefined;
     }
 
@@ -235,5 +350,7 @@ export function admitProviderResponse(input: unknown): SearchProviderResponseV1 
     items.push({ id: item.id, label: item.label, value });
   }
 
-  return { items, completion: input.items.length > 20 ? 'truncated' : input.completion };
+  return { items, completion: input.items.length > 20 ? 'truncated' : input.completion,
+    ...(input.status ? { status: input.status as SearchProviderResponseV1['status'] } : {}),
+    ...(input.message ? { message: input.message } : {}) };
 }

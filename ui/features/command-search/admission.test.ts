@@ -17,6 +17,39 @@ const contribution = () => ({ id: 'probe/nav', plugin: 'probe', label: 'Tasks', 
 
 afterEach(() => vi.restoreAllMocks());
 
+
+describe('universal provider admission', () => {
+  it('accepts opaque cloud identity limits and preserves presentation', () => {
+    const scope = { kind: 'resource', pluginId: 'oci', connectionId: 'prod', resourceKey: 'k'.repeat(512), resourceId: 'r'.repeat(4096), namespace: 'n'.repeat(1024), label: 'Instance', scopeLabel: 'Instance details' };
+    expect(admitSearchEntry({ ...navigation(), scope })).toMatchObject({ scope });
+    expect(admitSearchEntry({ ...navigation(), scope: { ...scope, resourceId: 'r'.repeat(4097) } })).toBeUndefined();
+    expect(admitSearchEntry({ ...navigation(), scope: { ...scope, namespace: 'n'.repeat(1025) } })).toBeUndefined();
+    expect(admitSearchEntry({ ...navigation(), scope: { ...scope, resourceKey: 'k'.repeat(513) } })).toBeUndefined();
+    const value = { ...item('cloud'), id: 'i'.repeat(8192) };
+    expect(admitProviderResponse({ items: [value], completion: 'complete' })?.items[0].id).toBe(value.id);
+    expect(admitProviderResponse({ items: [{ ...value, id: `${value.id}x` }], completion: 'complete' })).toBeUndefined();
+  });
+
+  it('preserves provider callbacks and accepts React exotic Context tags', () => {
+    const callbacks = { supportsScope: vi.fn(), validateResource: vi.fn(), connectionRecovery: 'provider' as const };
+    for (const tag of ['react.memo', 'react.forward_ref', 'react.lazy']) {
+      const Context = { $$typeof: Symbol.for(tag) };
+      expect(admitSearchContribution({ ...contribution(), value: { schemaVersion: 1, kind: 'provider', search: vi.fn(), ...callbacks, Context } })).toMatchObject({ ...callbacks, Context });
+    }
+
+    for (const Context of [null, {}, 'div', 1]) {
+      expect(admitSearchContribution({ ...contribution(), value: { schemaVersion: 1, kind: 'provider', search: vi.fn(), Context } })).toBeUndefined();
+    }
+  });
+
+  it('rejects static actions and non-connection recovery targets', () => {
+    const target = { kind: 'connection', pluginId: 'probe', connectionId: 'prod', label: 'Production' };
+    const value = { schemaVersion: 1, kind: 'action', action: { id: 'probe:reconnect', target, recovery: 'connection' } };
+    expect(admitSearchEntry(value)).toEqual(value);
+    expect(admitSearchContribution({ ...contribution(), value })).toBeUndefined();
+    expect(admitSearchEntry({ ...value, action: { ...value.action, target: { ...target, kind: 'resource-type', resourceKey: 'instances' } } })).toBeUndefined();
+  });
+});
 describe('global search v1 admission', () => {
   it.each([
     null,
@@ -41,6 +74,34 @@ describe('global search v1 admission', () => {
       kind: 'setting',
       target: { section: 'extensions' },
     });
+  });
+
+  it('admits namespace and UID identity while stripping callback authority from action results', () => {
+    const target = { kind: 'resource', pluginId: 'probe', connectionId: 'prod', resourceKey: 'pods', resourceId: 'api', namespace: 'apps', uid: 'one', label: 'api' };
+    const execute = vi.fn();
+    expect(admitSearchEntry({ schemaVersion: 1, kind: 'action', action: { id: 'probe:logs', target, execute }, execute })).toEqual({
+      schemaVersion: 1, kind: 'action', action: { id: 'probe:logs', target },
+    });
+    expect(execute).not.toHaveBeenCalled();
+    expect(admitSearchEntry({ schemaVersion: 1, kind: 'action', action: { id: 'logs', target } })).toBeUndefined();
+    expect(admitSearchEntry({ ...navigation(), scope: { ...target, namespace: undefined } })).toBeUndefined();
+    const unicodeQuery = '😀'.repeat(256);
+    expect(admitSearchEntry({ schemaVersion: 1, kind: 'action', action: { id: 'probe:open-list', target, query: unicodeQuery } })).toMatchObject({ action: { query: unicodeQuery } });
+    expect(admitSearchEntry({ schemaVersion: 1, kind: 'action', action: { id: 'probe:open-list', target, query: `${unicodeQuery}x` } })).toBeUndefined();
+    const targetPath = `/cluster/prod/resources/pods?search=${encodeURIComponent(unicodeQuery)}`;
+    expect(getNavigationHref({ kind: 'plugin', pluginId: 'probe', path: targetPath })).toBe(`/_plugin/probe${targetPath}`);
+    expect(getNavigationHref({ kind: 'plugin', pluginId: 'probe', path: `/objects?search=${'x'.repeat(8193)}` })).toBeUndefined();
+    expect(getNavigationHref({ kind: 'plugin', pluginId: 'probe', path: `/${'x'.repeat(2048)}?q=ok` })).toBeUndefined();
+  });
+
+  it('copies scoped namespace facets and admits only bounded typed source states', () => {
+    const namespaces = ['apps'];
+    const result = admitSearchEntry({ ...navigation(), scope: { kind: 'resource-type', pluginId: 'probe', connectionId: 'prod', resourceKey: 'pods', label: 'Pods', namespaces } });
+    namespaces.push('other');
+    expect(result?.scope?.kind === 'resource-type' && result.scope.namespaces).toEqual(['apps']);
+    expect(admitProviderResponse({ items: [], completion: 'complete', status: 'forbidden', message: 'Denied.' })).toMatchObject({ status: 'forbidden', message: 'Denied.' });
+    expect(admitProviderResponse({ items: [], completion: 'complete', status: 'guessed-auth-error' })).toBeUndefined();
+    expect(admitProviderResponse({ items: [], completion: 'complete', message: 'x'.repeat(1025) })).toBeUndefined();
   });
 
   it.each(['id', 'plugin', 'label'] as const)('rejects empty/oversized outer %s before reading value', (field) => {

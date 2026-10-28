@@ -8,12 +8,14 @@ export type ShowResourceSidebarParams = {
   resourceID: string;
   resourceName?: string;
   namespace?: string;
+  validateData?: (data: unknown) => boolean;
+  signal?: AbortSignal;
 };
 
 export interface RightDrawerContextType {
   openDrawer: (component: DrawerComponent, ctx: DrawerContext) => void;
   closeDrawer: () => void;
-  showResourceSidebar: (params: ShowResourceSidebarParams) => void;
+  showResourceSidebar: (params: ShowResourceSidebarParams) => Promise<void>;
   isOpen: boolean;
 }
 

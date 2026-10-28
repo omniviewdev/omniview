@@ -2,6 +2,7 @@ import React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
+import { resourceQueryKeys } from '../../resourceQueryKeys';
 
 // Types
 import { CreateInput, ListInput } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/resource/models';
@@ -71,11 +72,11 @@ export const useResources = ({
 
   const stableNamespaces = React.useMemo(() => namespaces ?? [], [namespaces]);
   const queryKey = React.useMemo(
-    () => [pluginID, connectionID, resourceKey, stableNamespaces, 'list'],
+    () => resourceQueryKeys.list(pluginID, connectionID, resourceKey, stableNamespaces),
     [pluginID, connectionID, resourceKey, stableNamespaces],
   );
   const getResourceKey = React.useCallback(
-    (id: string, namespace: string) => [pluginID, connectionID, resourceKey, namespace, id],
+    (id: string, namespace: string) => resourceQueryKeys.resource(pluginID, connectionID, resourceKey, id, namespace),
     [pluginID, connectionID, resourceKey],
   );
 
