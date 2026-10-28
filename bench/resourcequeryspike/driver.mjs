@@ -52,6 +52,33 @@ observe('excess precision rejects rather than truncates', r, 'INVALID_REQUEST');
 r.bindings.when = scalar('timestamp', '2026-10-17T12:00:00+24:00');
 observe('invalid timestamp offset rejects', r, 'INVALID_REQUEST');
 
+for (const [name, input, instant] of [
+  ['pre-epoch nanosecond', '1969-12-31T23:59:59.999999999Z', '1969-12-31T23:59:59.999999999Z'],
+  ['Gregorian minimum', '0001-01-01T00:00:00Z', '0001-01-01T00:00:00Z'],
+  ['Gregorian maximum', '9999-12-31T23:59:59.999999999Z', '9999-12-31T23:59:59.999999999Z'],
+  ['offset crosses epoch', '1970-01-01T00:59:59.999999999+01:00', '1969-12-31T23:59:59.999999999Z'],
+]) {
+  r = request(`when == timestamp("${instant}")`);
+  r.declarations.when = { kind: 'timestamp' }; r.bindings.when = scalar('timestamp', input);
+  out = observe(`timestamp ${name} exact instant`, r, ['cloud-arn', 'cloud-ocid']);
+  assert.equal(out.bindings.when.value, instant);
+}
+r = request('when + duration("0.000000001s") == timestamp("1970-01-01T00:00:00Z")');
+r.declarations.when = { kind: 'timestamp' };
+r.bindings.when = scalar('timestamp', '1969-12-31T23:59:59.999999999Z');
+observe('native timestamp arithmetic retains pre-epoch nanosecond', r, ['cloud-arn', 'cloud-ocid']);
+for (const input of [
+  '0001-01-01T00:00:00+00:01',
+  '9999-12-31T23:59:59-00:01',
+  '0000-01-01T00:00:00Z',
+  '2026-02-29T00:00:00Z',
+  '2026-10-17T12:00:60Z',
+  '2026-10-17T12:00:00',
+]) {
+  r.bindings.when = scalar('timestamp', input);
+  observe(`timestamp rejects invalid instant ${input}`, r, 'INVALID_REQUEST');
+}
+
 r = request('size(xs) == 0 && size(m) == 0 && n == null && nested["k"][0] == "雪😀" && d == 0.5');
 r.declarations = { xs: { kind: 'list', element: { kind: 'uint64' } }, m: { kind: 'map', value: { kind: 'bool' } }, n: { kind: 'nullable', value: { kind: 'timestamp' } }, nested: { kind: 'map', value: { kind: 'list', element: { kind: 'string' } } }, d: { kind: 'double' } };
 r.bindings = { xs: scalar('list', []), m: scalar('map', {}), n: { kind: 'null' }, nested: scalar('map', { k: scalar('list', [scalar('string', '雪😀')]) }), d: scalar('double', 0.5) };

@@ -53,7 +53,7 @@ The exporter behavioral regression uses its own disposable SDK clone with a brok
 
 ## Numeric gate and acceptance status
 
-No full P01 closure/C06 profile freeze: need an official corrected dependency covering both mixed-numeric helper semantics and optimized set aliases plus actual selected-pin mixed-numeric/optimized/nullable conformance and pin/license/performance acceptance; alternatively a separately authorized bounded reviewed temporary dependency patch with update/removal owner. No such safe candidate or authorization exists. Upstream-first accepted strategy does not authorize a fork/host equality engine/dynamic ban/upstream mutation.
+No full P01 closure/C06 profile freeze: need an official corrected dependency covering both mixed-numeric helper semantics and optimized set aliases plus actual selected-pin mixed-numeric/optimized/nullable conformance and pin/license/performance acceptance; alternatively a separately authorized bounded reviewed temporary dependency patch with update/removal owner. On 2026-10-28 the user authorized that temporary-patch work, but no safe candidate is admitted here. Upstream-first strategy does not authorize a host equality engine or dynamic ban. Independent review must precede candidate adoption or upstream publication.
 
 Test code was written before implementation under the coordinator's no-mid-flight-check barrier. No red run is claimed. Execution receipts are recorded only after the settled barrier in the coordinator report; source presence alone is not a passing result.
 
@@ -119,3 +119,11 @@ After explicit coordinator GREEN grant, sequential scoped `gofmt -w authoring.go
 - Real exporter contamination regression: **1 passed, 0 failed/skipped**; committed corpus digest and unchanged caller bytes/status held.
 
 This 230-observation cohort supersedes historical 92 for the changed lowerer source. It remains bounded design/spike evidence, not schema normalization, production authorization/planner/provider filtering or mixed-number/optimized-membership safety. Numeric production remains BLOCKED.
+
+### Conditional P45 handoff and timestamp edge receipt — 2026-10-28
+
+The [canonical handoff §8](../../docs/superpowers/specs/2026-10-24-resource-query-contracts.md#8-conditional-implementation-handoff--2026-10-28) now fixes profile-manifest requirements, schema admission/authoring ownership, recursive tagged resource-document transport, protobuf value semantics and criterion-level P01/P45 ownership. These are review proposals, not installed SDK contracts. No public SDK source, dependency pin, planner, generated bindings or compatibility alias changed.
+
+After source edits settled, the owner ran the actual exporter, scoped Go tests, build and Node driver sequentially with `GOWORK=off`, using `/usr/bin/env` as the exporter launcher. This run did not use the historical private-HOME launcher and does not claim isolated application or credential-boundary acceptance. Export used an owned committed SDK clone at exact `da0c53be2da636d3833b7ca1e73f8a6c8d26b5c7`; the exporter itself built from its separate committed-only private copy and removed that copy. Corpus SHA256 remained `a9d39f6e56aef5d8b2568332d9d93b5dd602e6fe96f5342abf0f4b1e8e50b1a0`.
+
+`go test ./... -count=1` passed (`0.168s`), `go build -o p01-probe .` succeeded, and actual driver stdout was **`Node -> Go -> native CEL -> Node: 241 independently expected observations passed; numeric production gate BLOCKED`**. Eleven new observations cover pre-epoch nanoseconds, year boundaries, offset normalization across the epoch, actual native timestamp arithmetic and invalid/out-of-range instants. No codec implementation changed: these extend the real native predicate transport evidence for existing admission behavior. Normalized input echoes remain input echoes, not proof of new-major result encoding. No race/performance/new-pin check ran in this receipt. Known unsafe mixed-number failures were not rerun.
