@@ -1,10 +1,12 @@
-// EXPERIMENT ONLY: upstream v0.32.0 is numerically UNSAFE for production.
-// This isolated design/spike module is not imported by the host product.
+// Verification-only selected candidate; not imported by the host product.
+// Remote immutable fork admission is scoped to P01 conformance, not production.
 module github.com/omniviewdev/omniview/bench/resourcequeryspike
 
 go 1.26.0
 
-require cel.dev/cel-go v0.32.0
+require cel.dev/cel-go v0.33.1
+
+replace cel.dev/cel-go => github.com/omniviewdev/cel-go v0.33.2-0.20261028172556-d7bb038d8c7b
 
 require (
 	cel.dev/expr v0.25.1 // indirect

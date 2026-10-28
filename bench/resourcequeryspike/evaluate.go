@@ -17,6 +17,12 @@ func Execute(ctx context.Context, r Request, corpus Corpus) (Response, error) {
 	if r.Version != probeVersion {
 		return out, fail("UNSUPPORTED", "unknown experimental request version")
 	}
+	if r.Mode == "valueProof" {
+		return executeValueProof(ctx, r)
+	}
+	if r.Document != nil {
+		return out, fail("INVALID_REQUEST", "tagged document requires valueProof mode")
+	}
 	if r.Draft != nil {
 		if r.Source != "" || r.Builder != nil {
 			return out, fail("INVALID_REQUEST", "draft and execution are distinct")
@@ -83,7 +89,7 @@ func Execute(ctx context.Context, r Request, corpus Corpus) (Response, error) {
 	if len(source) > maxSourceBytes {
 		return out, fail("RESOURCE_LIMIT", "predicate source bytes")
 	}
-	opts = append(opts, cel.ParserRecursionLimit(64), cel.ParserExpressionSizeLimit(maxSourceBytes))
+	opts = append(opts, cel.CrossTypeNumericComparisons(true), cel.ParserRecursionLimit(64), cel.ParserExpressionSizeLimit(maxSourceBytes))
 	env, err := cel.NewEnv(opts...)
 	if err != nil {
 		return out, fail("INVALID_REQUEST", "invalid predicate environment")

@@ -164,7 +164,7 @@ SourceSession sequence/generation/coverage and result-lease sequence/generation 
 
 ## 8. Conditional implementation handoff — 2026-10-28
 
-This section completes design decisions missing from R2; it does not approve a dependency or publish an SDK API. P04 is accepted through host PR136 / commit `e1e09f2668dc553ee0b4b1960aa92da475bc0254`. Its native invocation and AppError implementations, not the earlier proposal's approval label, govern consumers. The user now permits a narrowly scoped temporary CEL correction. Permission is not admission: both numeric helpers and optimized membership, immutable source, license/performance/conformance review, upstream submission and named update/removal ownership remain required. The dependency owner supplies that receipt; the integration owner approves it independently. P01 must not invent a version or consume an unapproved checkout.
+This section completes design decisions missing from R2; it does not approve a dependency or publish an SDK API. P04 is accepted through host PR136 / commit `e1e09f2668dc553ee0b4b1960aa92da475bc0254`. Its native invocation and AppError implementations, not the earlier proposal's approval label, govern consumers. The user's subsequent fork-first decision selects a maintained Omniview CEL fork as the primary dependency path. Upstream submission/CLA approval is optional, not a delivery gate; this supersedes historical upstream-first/temporary-only wording in §§3/7 and the earlier evidence. Both numeric helpers and optimized membership, immutable source, license/performance/conformance review and named update ownership remain required. The dependency owner supplies that receipt; the integration owner approves it independently. P01 must not invent a version or consume an unapproved checkout. Any future upstream replacement requires equivalent conformance and explicit cutover review; no promise to remove the maintained fork on an unreviewed upstream release is made.
 
 ### 8.1 Profile manifest and implementation ownership
 
@@ -209,15 +209,88 @@ P45 acceptance must run actual new-major provider → gRPC → handwritten adapt
 | P01 requirement | Existing evidence / concrete decision | Remaining acceptance, owner |
 | --- | --- | --- |
 | Canonical request/result/error and typed identity | §§1–6; accepted P04 native AppError/invocation; one Go/proto/TS domain mapping | Independent review of this amendment; P01. Actual generated public implementation belongs P45/P47, not P01 planner work |
-| Safe profile and dependency | §8.1 defines exact environment and manifest requirements | Immutable corrected candidate, both correction paths, actual conformance/license/performance, upstream submission, named update/removal owner, integration approval; dependency owner + P01 |
+| Safe profile and dependency | §§8.1/10 define exact environment, remote immutable fork and actual selected-pin receipt | Independent acceptance of candidate/profile/license/performance and named maintained-fork lifecycle owners; dependency owner + P01/integration coordinator. Upstream PR/CLA is not a gate |
 | Schema admission and absent/unknown state | §§3, 8.2 plus retained schema/nullable evidence | Review explicit admission capabilities and ownership; P01. Product dialect normalization/catalog implementation remains P07, not claimed by raw P44 schema bytes |
 | Authoring and incomplete drafts | §§4–5, 8.2; actual native diagnostics and bounded member recovery in merged PR130 | Review full path/conditional/operator/stale identity contract; P01. Production service and UI remain P16/P17/P19/P21 |
-| Maps/tags/correlation/quantifiers/quoted paths | Merged PR130 native CEL corpus and retained union evidence | Corrected selected-pin rerun; P01. Spike builder subset is not full grammar implementation |
+| Maps/tags/correlation/quantifiers/quoted paths | PR130 corpus plus §10 actual corrected selected-pin rerun and retained schema/nullable/builder controls | Independent review of scoped proof and limits; P01. Spike builder subset is not full grammar implementation |
 | Opaque IDs/scopes, absent schema/incarnation | Merged PR130 canonical keys and deterministic incarnation ties | Review provider-neutral mapping unchanged; P01. Real new-major providers and authority resolution remain P45/P03 |
-| Exact integers/timestamps/typed data/injection | Merged Node→Go→CEL→Node predicates; §8.3 wire rules | Expanded timestamp boundary predicates below; P01. New-major output codec and gRPC remain P45, cannot be marked available now |
+| Exact integers/timestamps/typed data/injection | §10 actual tagged body → native computed result → tagged output transport, plus timestamp boundary predicates and retained 124 transport cases | Independent review; P01. New-major protobuf decoder/gRPC remain P45, cannot be marked available now |
 | Text/predicate/scope and global order/page | Merged finite ANY/scope/residual/global-page controls | Review full semantic order and continuation contract; P01. Full numeric comparator, target unions, planner and host cursor implementation remain P13/P14 |
 | Invalid/unsupported/limits | Merged strict codec, native checker/cost/cancel outcomes; §§8.1–8.3 | Selected corrected-pin outcomes and measured profile ceilings before production install; P01/P02 |
 | Builder/text/native/residual agreement | Merged supported native-CEL lowering and candidate/residual controls; P44 explicitly has no native filtering | Preserve unsupported native path; no fabricated provider equivalence. Actual supported native-query implementation and comparison belong P45/P13 |
 | Evidence, review and callers | PR130 records 230 native subprocess observations and contamination regression | Current scoped receipt, independent review and parent reconciliation of readiness/issue status; P01/integration owner |
 
 P45's concrete next change is the reviewed domain/Value IDL and handwritten adapters, required catalog, independently optional operations and the final finite snapshot portion of the P05 source contract. It must not ship a throwaway List protocol, claim source pages as final host pages, require fake mutation methods, infer unknown totals, or treat missing incarnation/schema as fabricated tokens. P05 still owns update negotiation/continuity; P13 still owns the planner. P45 remains blocked until P01's reviewed admission receipt exists. This amendment is a conditional handoff, not that receipt.
+
+## 9. Bounded policy and implementation admission
+
+The reference policy proposed for P01 review is `omniview.predicate-policy.v1`. Policy limits are finite safety ceilings, not inventory-size/latency promises; hosts may lower them without changing CEL semantics. Raising a ceiling requires a reviewed policy revision and corresponding boundary measurements. This does not install a production service: P13 owns enforcement during production compiler/evaluator installation; P07/P16 own schema/authoring enforcement. P45 consumes value bounds at its actual transport decoder boundary.
+
+| Work | Exact reference ceiling | Admission owner / required outcome |
+| --- | --- | --- |
+| Request / admitted document / encoded result | 65536 UTF-8 bytes each; decoded/decompressed bytes, not compressed frame size | P45 transport and P13 query boundary; reject before unbounded allocation, RESOURCE_LIMIT |
+| CEL source | 16384 UTF-8 bytes; parser recursion 64; parsed expression nodes 4096 including macro-expanded nodes | P13 compiler; byte bound before parse, node bound before program creation |
+| Declarations / typed or tagged values | 128 declarations; declaration/value depth 32; 4096 wire JSON values and 4096 native result nodes; no omitted limits | P45/P13; stricter wire nesting may reject before semantic depth, RESOURCE_LIMIT |
+| CEL execution | 100000 native runtime cost units; ContextEval interruption check frequency 1; 5 seconds maximum invocation deadline | P13; preflight and postwork cancellation; RESOURCE_LIMIT/CANCELLED/TIMEOUT, never false membership |
+| Schema catalog binding | 65536 schema bytes, 32 definitions, 512 schema nodes/reference visits, depth 12, 4 union branches per node, 512 shared admission work units | P07; reference/branch work shares one request budget, no reset per alternative |
+| Catalog fixture collection admission | 64 elements per schema-admitted collection, 16384 string bytes | P07 reference adapter policy only; not a claim that all product resource arrays must use that fixture policy |
+| Authoring | 128 suggestions, 65536 encoded response bytes, 4096 field/path visits, 250ms request deadline; one active request per admitted document/owner | P16; cancellation/supersession, explicit truncation reason, no unbounded keystroke queue |
+| Predicate work scheduling | One active evaluation per admitted invocation; no implicit acquisition or fan-out inside CEL | P13/P04; service-wide concurrent request/acquisition quotas remain separately admitted host policy, not request-controlled |
+
+Only the limits actually implemented in a given proof are reported as exercised. The existing spike enforces wire structure/source/declarations, native cost/polling/deadline and finite result encoding. It does not implement a macro-expanded AST-node gate, the production schema catalog, an authoring scheduler or global host quotas. Retained schema/nullable probes exercise their own stated fixture bounds; they are not relabeled as the production P07 implementation. These are explicit downstream enforcement tasks, not additional P01 planner implementations.
+
+The resource-body proof uses the §8.3 tagged map document directly as the native `resource` activation and serializes the native evaluated value recursively, including computed integers/timestamps/heterogeneous containers. It must not return the admitted input as the claimed evaluated output. Bytes/duration/type values and nonstring map keys have no public value variant and return UNSUPPORTED; nonfinite numeric results and invalid timestamp ranges reject. This private expression-value mode is a codec proof only; resource query membership still requires a native Boolean. Neither mode implements P45 gRPC or P13 planning.
+
+## 10. Selected immutable fork and actual P01 proof — 2026-10-28
+
+Status: selected-candidate verification admitted by the integration coordinator, exercised below; **independent P01 acceptance remains required**. This receipt supersedes historical “no authorized/admissible candidate” statements above, not the unsafe findings or scope boundaries. The nested spike alone consumes the fork; product host go.mod, SDK, Wails and generated bindings remain unchanged.
+
+- Canonical import: `cel.dev/cel-go`, required version `v0.33.1`, replaced remotely by `github.com/omniviewdev/cel-go v0.33.2-0.20261028172556-d7bb038d8c7b`.
+- Actual Go download Origin.Hash: `d7bb038d8c7b6f26225d4fbd210ca2b3c60a6774`; authenticated module sum `h1:HxSRMZlGZZifltDzxCQusazlIHNkqyN3YiLVf1IXa7k=`, go.mod sum `h1:DnVip7tpJSsgZymwfT+m1tnEVy3ivAjSMXPx12YrMkU=`.
+- Selected corrected conformance corpus: Omniview cel-spec `50a95f64a56bcb1cb8b23b98fcc500f5841a1146`. The independently reviewed dependency receipt retains corrected **2380 pass / 0 fail / 59 existing skips**, original **2376 pass / 4 fail / the same 59 skips**. These counts are consumed evidence, not a new conformance execution by P01.
+- Exact dependency review: [immutable fork receipt](https://github.com/omniviewdev/cel-go/blob/d7bb038d8c7b6f26225d4fbd210ca2b3c60a6774/docs/numeric-comparison-review.md). It contains both correction paths, native/spec/license notices, measured unchanged-baseline comparison, source derivation and retained original/corrected raw evidence.
+- Maintenance owner is the **Omniview query/runtime maintainer**; accountable update/admission/future-removal coordinator is the **Omniview integration coordinator**, recorded in issue80. Every update is immutable and reruns both correction paths, oracle/spec/profile/nullable/transport evidence plus dependency/license/performance review. Replacement by upstream is optional and requires equivalent verified behavior; no upstream PR/CLA gate or implicit removal deadline exists.
+
+### Exercised barrier and independent expectations
+
+All Go invocations used `GOWORK=off`. Remote tidy/list/download used `GOPROXY=direct`, without disabling checksums. `go list -m -json cel.dev/cel-go` resolved the remote fork in the module cache, not a workspace/local replacement. `go mod verify` reported all modules verified; `go mod download -json` reported the exact Origin.Hash and sums above. The nested Go lock files are committed. Scoped gofmt ran only after source edits settled.
+
+| Actual selected-candidate check | Observed result |
+| --- | --- |
+| Scoped normal / race Go tests | pass, final `0.228s` / `1.612s`; native cost exhaustion, cancellation and nonfinite result encoding included |
+| Native probe build and original Node driver | build success; **241** independently expected observations |
+| New actual Node → tagged Go document admission → optimized native CEL → recursive native-result encoding → Node | **37** observations; computed signed/unsigned large integers, timestamp arithmetic across epoch, heterogeneous nested results, exact dynamic equality/order/optimized membership, checker rejection, explicit lossy conversion, missing/null, injection data, unsupported variants and expanded output bounds |
+| Retained numeric native / checked-ordering lanes | **64 / 72** observations, zero mathematical mismatches/runtime rejections; checked lane retains **4** expected mixed-equality rejections; optimizer off/on included |
+| Retained rational oracle | **100816** directional checks per lane, zero pair failures |
+| Retained actual transport | **124** expected outcomes |
+| Retained schema / nullable admission / builder | **75 / 131 / 269** expected outcomes |
+
+`retained-driver.mjs` extracts the committed archives into its exclusively owned temporary directory and applies only the selected remote fork module replacement. It does not modify archived evaluator/schema/builder source. For transport, the five archived unsafe expected results are replaced only with each request's already retained `semanticExpected`. For schema, exactly three named archived unsafe equality expectations become mathematically correct false. The historical schema process therefore intentionally exits1 for those three stale fixture expectations; the outer runner independently checks all75 actual outcomes, asserts those exact three cases and that exit status, and reports the corrected-candidate lane separately. No other failed assertion is ignored. Archived source labels still say v0.32.0; the outer module-resolution receipt, not those unchanged labels, identifies the actual dependency.
+
+The actual current body/result proof is no longer an admitted-input echo: it computes integer additions/subtractions, timestamp duration arithmetic, list/map construction and native Boolean outcomes, then serializes actual native values. This proves the bounded JSON/tagged semantic seam, not P45 protobuf/gRPC or production schema normalization. The original P44 driver still uses its documented integer-only fixture-body reader; the new heterogeneous tagged-body proof covers binary64 without changing that reader into an unsupported production policy.
+
+Final retained replay removed its private checkout before publishing its receipt. Local result artifacts remain ignored and reproducible:
+
+| Artifact | SHA256 |
+| --- | --- |
+| `results.json` (241 original-driver observations) | `2260065a160e83b6af4a3f1ec37b33c88729be751bfd72abd317034b2049f9f4` |
+| `value-results.json` (37 computed-result observations) | `03fe263479660fdf16ab1ce5ae607b9762f39de2d82cadc9f9ba3b4283f73651` |
+| `retained-results.json` (actual resolved module, archive digests, all retained outcomes and command receipts) | `2eb139bd96f31b465016879a7bc4886b77a4f2e608629ae3067434b5d1a4d6be` |
+
+### Bounded profile measurements and review limit
+
+On darwin/arm64, Apple M5 Max, the selected fork ran `GOMAXPROCS=1 go test -run '^$' -bench '^BenchmarkValueProof$' -benchmem -benchtime=200ms -count=3 -cpu=1`. It includes strict request/document admission, native compilation/optimized evaluation, native-result encoding, final JSON serialization and a5s deadline per invocation; no compiled-program cache is claimed.
+
+| Tagged input elements | Three measured ns/op | Approximate median | Allocations/op |
+| --- | --- | --- | --- |
+| 1 | 50367, 55695, 48820 | 50.4µs | 1037 |
+| 64 | 391525, 392137, 461694 | 392µs | 7991 |
+| 256 | 1402412, 1598386, 1421160 | 1.42ms | 29135 |
+
+These measurements justify only bounded feasibility under the reference policy. The prototype repeatedly parses tagged wrappers for strict admission and does not represent an optimized production catalog/codec. No latency-tail, max-budget load, large-inventory, cross-platform or application benchmark is claimed. Native dependency comparison/performance deltas are reviewed separately in the immutable fork receipt; P13 must measure its actual installed service rather than copy these throughput/allocation numbers.
+
+### Exact remaining acceptance and P45 release condition
+
+P01's remaining gate is independent review/acceptance of this selected-pin receipt, the §9 reference policy and §§1–8 canonical contracts, including raw-wire admission and schema/authoring ownership. No additional P13 planner or P45 gRPC implementation is imposed on this design/spike packet. The integration owner then records the accepted artifact and releases P45's native dependency gate. Until that explicit acceptance, this remains a conditional handoff.
+
+P45 must implement the one reviewed domain/Value mapping, raw protobuf validator and handwritten adapters, required catalog and independently optional operations, plus actual finite snapshot/Get/native-query paths and P44 new-wire acceptance. It must prove its own result codec over actual gRPC; it cannot cite this JSON proof as that implementation. P07/P16/P13 respectively enforce production schema, authoring and compiler/planner budgets at their named installation boundaries. No new identity, public dual stack or alternate numeric engine is authorized.
