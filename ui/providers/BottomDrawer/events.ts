@@ -7,6 +7,8 @@ type OnCreateSessionOpts = {
   opts: SessionOptions;
   icon?: string;
   label?: string;
+  /** Replace an existing session without changing tab position or focus. */
+  replaceSessionId?: string;
 };
 
 type OnCreateLogSessionOpts = {

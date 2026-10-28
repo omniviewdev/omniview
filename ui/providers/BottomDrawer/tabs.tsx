@@ -133,20 +133,29 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
 
   // handle signals from across the app through the event bus
   React.useEffect(() => {
-    const unsubscribeCreateSession = bottomDrawerChannel.on('onCreateSession', ({ plugin, connection, opts, icon, label }) => {
+    const unsubscribeCreateSession = bottomDrawerChannel.on('onCreateSession', ({ plugin, connection, opts, icon, label, replaceSessionId }) => {
       const tempId = `pending-${crypto.randomUUID()}`;
-      createTab({
+      const pendingTab = {
         id: tempId,
         title: label ?? 'Connecting...',
-        variant: 'terminal',
+        variant: 'terminal' as const,
         icon: icon ?? 'LuSquareTerminal',
         properties: {
           status: 'connecting',
+          error: undefined,
           pluginID: plugin,
           connectionID: connection,
           opts: { ...opts },
         },
-      });
+      };
+      if (replaceSessionId) {
+        updateTab({ id: replaceSessionId }, pendingTab);
+        ExecClient.CloseSession(replaceSessionId).catch((err: unknown) => {
+          console.error('Failed to close replaced session:', err);
+        });
+      } else {
+        createTab(pendingTab);
+      }
       ExecClient.CreateSession(plugin, connection, opts)
         .then((session: any) => {
           updateTab(
