@@ -109,8 +109,17 @@ export const useMetricStream = (
       const errorCleanup = Events.On(`core/metrics/error/${subID}`, (ev) => {
         const rawData = ev.data as string;
         try {
-          const output = JSON.parse(rawData);
-          setError(output.error || 'Unknown error');
+          const output: unknown = JSON.parse(rawData);
+          let message = 'Unknown error';
+          if (output && typeof output === 'object') {
+            if ('error' in output && typeof output.error === 'string' && output.error) message = output.error;
+            if ('operation_error' in output) {
+              const operationError = output.operation_error;
+              if (operationError && typeof operationError === 'object' && 'message' in operationError && typeof operationError.message === 'string') message = operationError.message;
+            }
+          }
+          setError(message);
+          setIsStreaming(false);
         } catch (e) {
           setError('Failed to parse metric stream error');
         }
