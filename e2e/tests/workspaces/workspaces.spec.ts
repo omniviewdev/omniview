@@ -8,11 +8,9 @@ test.describe('Owned application profiles', () => {
     expect(descriptor.kind).toBe('development');
     expect(descriptor.endpoints.vite).toBeNull();
     await expect(appPage).toHaveTitle(`Omniview — DEV · ${descriptor.displayName}`);
-    const chip = appPage.getByRole('button', { name: `DEV · ${descriptor.displayName} — instance details`, exact: true });
-    await expect(chip).toBeVisible();
-    await chip.click();
+    await appPage.getByRole('button').filter({ hasText: `DEV · ${descriptor.displayName} ·` }).click();
+    await appPage.getByRole('button', { name: 'Full instance details', exact: true }).click();
     const dialog = appPage.getByRole('dialog');
-    await expect(dialog.getByText('Identity confirmed by the host.', { exact: true })).toBeVisible();
     await expect(dialog.getByText(descriptor.instanceID, { exact: true }).first()).toBeVisible();
     await expect(dialog.getByText(descriptor.generation, { exact: true })).toBeVisible();
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();

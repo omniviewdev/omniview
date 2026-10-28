@@ -1,5 +1,5 @@
 import React from 'react';
-import { Popover, StatusDot, type StatusDotStatus } from '@omniviewdev/base-ui';
+import { Button, Popover, StatusDot, type StatusDotStatus } from '@omniviewdev/base-ui';
 import HintTooltip from '@/components/base/HintTooltip';
 import styles from './Footer.module.css';
 
@@ -39,9 +39,9 @@ export function FooterLabel({ label, icon, tone }: { label: React.ReactNode; ico
 }
 
 /** Plain text + status dot item that opens a popover. */
-export const FooterTrigger = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement>>(
+export const FooterTrigger = React.forwardRef<HTMLButtonElement, Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'color'>>(
   function FooterTrigger({ className, ...props }, ref) {
-    return <button ref={ref} type='button' className={cx(styles.Trigger, className)} {...props} />;
+    return <Button ref={ref} type='button' variant='ghost' color='neutral' size='xs' className={cx(styles.Trigger, className)} {...props} />;
   },
 );
 

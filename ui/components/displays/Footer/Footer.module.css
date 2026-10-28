@@ -62,6 +62,28 @@ button.Chip:hover {
   background: var(--ov-color-state-hover);
 }
 
+.Trigger.StatusChip {
+  box-sizing: border-box;
+  height: 22px;
+  max-width: none;
+  gap: 7px;
+  padding-inline: 9px;
+  border: 1px solid var(--ov-color-border-muted);
+  border-radius: 5px;
+  background: var(--ov-color-bg-surface);
+  font-size: 0.6875rem;
+  line-height: 1;
+}
+
+.Trigger.StatusChip:hover {
+  background: var(--ov-color-state-hover);
+}
+
+.Trigger.StatusChip:focus-visible {
+  outline: 2px solid var(--ov-color-border-focus);
+  outline-offset: -2px;
+}
+
 .Truncate {
   min-inline-size: 0;
   overflow: hidden;
@@ -325,3 +347,89 @@ button.Chip:hover {
 .DangerIcon { color: var(--ov-color-danger); }
 .InfoIcon { color: var(--ov-color-info); }
 .MutedIcon { color: var(--ov-color-fg-muted); }
+.InstanceControl {
+  --wails-draggable: no-drag;
+  flex: 0 0 auto;
+  min-inline-size: 0;
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+}
+
+
+
+.InstanceDetails[data-ov-layout='horizontal'] {
+  row-gap: 2px;
+}
+
+.InstanceDetails[data-ov-layout='horizontal'] > div {
+  grid-template-columns: minmax(0, 112px) minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: center;
+  padding-block: 0;
+}
+
+.InstanceDetails dd {
+  margin: 0;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.InstanceObservation {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+}
+
+.InstanceObservation[data-tone='neutral'] {
+  color: var(--ov-color-fg-muted);
+}
+
+.InstanceIdentityStatus {
+  display: block;
+  margin-bottom: var(--ov-space-2);
+}
+
+.InstanceSection {
+  padding-block: 6px;
+  border-top: 1px solid var(--ov-color-border-muted);
+}
+
+.InstanceSection:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.InstanceSection > .InstanceSectionTitle {
+  margin: 0 0 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--ov-color-fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.InstanceRepositories {
+  display: grid;
+  gap: var(--ov-space-2);
+}
+
+.InstanceRepository {
+  min-inline-size: 0;
+  padding: var(--ov-space-2);
+  border: 1px solid var(--ov-color-border-muted);
+  border-radius: var(--ov-radius-sm, 4px);
+}
+
+.InstanceRepository h4 {
+  margin: 0 0 4px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+

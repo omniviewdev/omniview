@@ -89,7 +89,7 @@ vi.mock('@omniviewdev/runtime/api', async (importOriginal) => {
       stateRoot: '/disposable/header/state',
       version: 'test',
       commit: 'test',
-      readiness: 'ready',
+      readiness: 'host-ready',
       repositories: [],
       endpoints: { browser: null, vite: null, hmr: null, mcp: null, control: null, health: null },
     }),
@@ -173,7 +173,7 @@ afterAll(() => {
   window.__OMNIVIEW_BOOTSTRAP__ = fixture.previousBootstrap;
 });
 
-it('keeps development identity and details available when optional header controls are hidden', async () => {
+it('leaves instance controls out of the header when optional controls are hidden', async () => {
   const item: HeaderIconLink = {
     id: 'optional-settings',
     type: HeaderAreaItemType.LINK,
@@ -211,15 +211,10 @@ it('keeps development identity and details available when optional header contro
   });
 
   expect(screen.queryByRole('button', { name: 'Optional settings tool' })).not.toBeInTheDocument();
-  const instanceButton = screen.getByRole('button', { name: 'DEV · Header profile — instance details' });
-  expect(instanceButton).toBeVisible();
+  expect(screen.queryByRole('button', { name: /DEV · Header profile/ })).not.toBeInTheDocument();
   await waitFor(() => {
     expect(document.title).toBe('Omniview — DEV · Header profile');
   });
-  fireEvent.click(instanceButton);
-  expect(await screen.findByRole('dialog')).toBeVisible();
-  expect(await screen.findByText('Identity confirmed by the host.')).toBeVisible();
-  expect(screen.getByText(fixture.identity.instanceID)).toBeVisible();
 });
 
 function CurrentLocation() {

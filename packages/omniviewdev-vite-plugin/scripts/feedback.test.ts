@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter, once } from 'node:events';
 import {
   chmodSync, closeSync, fstatSync, fsyncSync, ftruncateSync, mkdirSync, mkdtempSync, openSync,
-  realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync, writeSync,
+  readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync, writeSync,
 } from 'node:fs';
 import { get } from 'node:http';
 import type { ClientRequest } from 'node:http';
@@ -61,7 +61,7 @@ type NavigationPayload = Extract<HMRPayload, { type: 'update' | 'prune' | 'full-
 type Feedback = { type: string; [key: string]: unknown };
 const navigationTypes: Record<string, true> = { update: true, 'full-reload': true, prune: true };
 
-async function fixture(t: TestContext, framework: Framework, managed = true, initiallyHeld = true) {
+async function fixture(t: TestContext, framework: Framework, managed = true, initiallyHeld = true, inspection = false) {
   assert.equal(Number(framework.version.split('.')[0]), framework.major, 'exercise two actual installed Vite majors');
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'omniview feedback ')));
   const workspaceRoot = path.join(root, 'workspace');
@@ -76,6 +76,37 @@ async function fixture(t: TestContext, framework: Framework, managed = true, ini
     workspaceRoot,
   };
   const descriptor = openSync(file, 'wx+', 0o600);
+  const inspectionReply = path.join(runtime, 'inspection-reply.json');
+  const inspectionLog = path.join(runtime, 'inspection-calls.txt');
+  const inspectionRelease = path.join(runtime, 'inspection-release');
+  let authority: { executable: string; identity: { volume: string; fileID: string } } | undefined;
+  if (inspection) {
+    const executable = path.join(runtime, 'inspect-cli.cjs');
+    writeFileSync(executable, `#!${process.execPath}
+const fs = require('node:fs');
+const expected = ['workspace', 'inspect', '--workspace', ${JSON.stringify(workspaceRoot)}, '--json'];
+if (JSON.stringify(process.argv.slice(2)) !== JSON.stringify(expected)) process.exit(2);
+fs.appendFileSync(${JSON.stringify(inspectionLog)}, 'inspection\\n');
+const reply = JSON.parse(fs.readFileSync(${JSON.stringify(inspectionReply)}, 'utf8'));
+let watcher;
+let sent = false;
+function send() {
+  if (sent) return;
+  sent = true;
+  watcher?.close();
+  process.stdout.write(typeof reply.output === 'string' ? reply.output : JSON.stringify(reply.output));
+}
+if (reply.hold || reply.hang) {
+  watcher = fs.watch(${JSON.stringify(runtime)}, (_event, name) => {
+    if (!reply.hang && String(name) === 'inspection-release') send();
+  });
+  if (!reply.hang && fs.existsSync(${JSON.stringify(inspectionRelease)})) send();
+} else send();
+`, { mode: 0o700 });
+    writeFileSync(inspectionLog, '', { mode: 0o600 });
+    const stat = fstatSync(descriptor, { bigint: true });
+    authority = { executable, identity: { volume: String(stat.dev), fileID: stat.ino.toString(16).padStart(32, '0') } };
+  }
   const publishRaw = (raw: string) => {
     // Match the supervisor's stable-inode, bounded in-place publication, not rename.
     const bytes = Buffer.from(raw);
@@ -92,7 +123,7 @@ async function fixture(t: TestContext, framework: Framework, managed = true, ini
   const environmentKeys = ['OMNIVIEW_VITE_FEEDBACK', 'OMNIVIEW_VITE_ALLOWED_ROOTS', 'OMNIVIEW_VITE_PORT', 'OMNIVIEW_VITE_CACHE_DIRECTORY', 'OMNIVIEW_BUILD_OUTPUT_DIRECTORY'] as const;
   const previousEnvironment = environmentKeys.map(key => [key, process.env[key]] as const);
   for (const key of environmentKeys) delete process.env[key];
-  if (managed) process.env.OMNIVIEW_VITE_FEEDBACK = JSON.stringify({ ...context, file });
+  if (managed) process.env.OMNIVIEW_VITE_FEEDBACK = JSON.stringify({ ...context, file, ...(authority ? { authority } : {}) });
   let server: FixtureServer | undefined;
   const sockets: WebSocket[] = [];
   const requests: ClientRequest[] = [];
@@ -180,7 +211,7 @@ async function fixture(t: TestContext, framework: Framework, managed = true, ini
     return { socket: probe, opened: () => opened };
   };
   const navigation = () => messages.filter(message => navigationTypes[message.type]);
-  return { server, root, workspaceRoot, file, context, publish, publishRaw, read, change, messages, navigation, httpPing, websocketPing, hotUpdates, socket, connect };
+  return { server, root, workspaceRoot, file, context, publish, publishRaw, read, change, messages, navigation, httpPing, websocketPing, hotUpdates, socket, connect, inspectionReply, inspectionLog, inspectionRelease };
 }
 
 async function eventually(predicate: () => boolean, description: string) {
@@ -231,7 +262,7 @@ test('real supervisor authority subprocess rereads state and refuses foreign or 
 });
 
 for (const framework of frameworks) {
-  test(`${framework.name}: development status rejects foreign generations and exposes only banner fields`, { timeout: 10000 }, async t => {
+  test(`${framework.name}: development status rejects foreign generations and exposes safe host observations`, { timeout: 10000 }, async t => {
     const f = await fixture(t, framework);
     const local = path.join(f.workspaceRoot, '.local');
     mkdirSync(local, { mode: 0o700 });
@@ -242,6 +273,8 @@ for (const framework of frameworks) {
       launchPhase: 'build-error',
       failedStage: 'host-backend',
       lastError: { message: 'PRIVATE_COMPILER_DIAGNOSTIC' },
+      // Persisted fields are not authenticated live observations.
+      health: { readiness: 'authenticated', servedSource: 'current', dependencies: 'current', build: 'ready' },
     };
     const endpoint = `${f.server.resolvedUrls!.local[0]}__omniview_development_status`;
     writeFileSync(file, JSON.stringify(status), { mode: 0o600 });
@@ -249,6 +282,11 @@ for (const framework of frameworks) {
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('cache-control'), 'no-store');
     assert.deepEqual(await response.json(), {
+      workspaceID: f.context.workspaceID,
+      generation: f.context.generation,
+      health: {},
+      builds: {},
+      selectedPluginCount: null,
       phase: 'build-error',
       failedStage: 'host-backend',
       recoveryCommand: `omniview-dev workspace refresh ${f.context.workspaceID}`,
@@ -264,6 +302,65 @@ for (const framework of frameworks) {
       assert.equal(response.status, 503);
       assert.equal(await response.text(), '');
     }
+  });
+
+  test(`${framework.name}: authenticated inspection shares concurrent reads and rejects invalid or timed-out observations`, {
+    timeout: 15000,
+    skip: process.platform === 'win32' ? 'POSIX executable fixture; native Windows authority is covered by Go tests' : false,
+  }, async t => {
+    const f = await fixture(t, framework, true, false, true);
+    const local = path.join(f.workspaceRoot, '.local');
+    mkdirSync(local, { mode: 0o700 });
+    writeFileSync(path.join(local, 'launch-status.json'), JSON.stringify({
+      generation: f.context.generation,
+      manifest: { workspaceID: f.context.workspaceID, plugins: [] },
+      launchPhase: 'build-error',
+    }), { mode: 0o600 });
+    const observed = {
+      generation: f.context.generation,
+      manifest: { workspaceID: f.context.workspaceID, plugins: [{ id: 'selected' }] },
+      launchPhase: 'ready',
+      health: { readiness: 'authenticated', dependencies: 'current', servedSource: 'current', build: 'ready', secret: 'PRIVATE_OBSERVATION' },
+      lastError: { message: 'PRIVATE_DIAGNOSTIC' },
+    };
+    const endpoint = `${f.server.resolvedUrls!.local[0]}__omniview_development_status`;
+    writeFileSync(f.inspectionReply, JSON.stringify({ output: observed, hold: true }));
+    const accepted = new EventEmitter();
+    const allAccepted = once(accepted, 'all');
+    let received = 0;
+    const onRequest = (request: { url?: string }) => {
+      if (request.url === '/__omniview_development_status' && ++received === 3) accepted.emit('all');
+    };
+    f.server.httpServer!.on('request', onRequest);
+    const pending = Promise.all([fetch(endpoint), fetch(endpoint), fetch(endpoint)]);
+    await allAccepted;
+    f.server.httpServer!.off('request', onRequest);
+    writeFileSync(f.inspectionRelease, 'release');
+    const concurrent = await pending;
+    for (const response of concurrent) {
+      const status = await response.json();
+      assert.equal(status.phase, 'ready');
+      assert.equal(status.selectedPluginCount, 1);
+      assert.deepEqual(status.health, { readiness: 'authenticated', dependencies: 'current', servedSource: 'current', build: 'ready' });
+      assert.ok(!JSON.stringify(status).includes('PRIVATE_'), 'inspection exposes only allowlisted observations');
+    }
+    assert.equal(readFileSync(f.inspectionLog, 'utf8').split('\n').filter(Boolean).length, 1, 'concurrent clients share one authenticated inspection');
+    for (const invalid of [
+      { ...observed, generation: 'foreign' },
+      { ...observed, manifest: { workspaceID: 'foreign' } },
+      '{malformed',
+    ]) {
+      writeFileSync(f.inspectionReply, JSON.stringify({ output: invalid }));
+      const status = await (await fetch(endpoint)).json();
+      assert.equal(status.phase, 'build-error');
+      assert.deepEqual(status.health, {}, 'invalid inspection cannot reuse an earlier successful observation');
+    }
+    // Exercise the real OS subprocess deadline; fake clocks cannot terminate
+    // a child process whose native filesystem watcher deliberately stays open.
+    writeFileSync(f.inspectionReply, JSON.stringify({ output: observed, hang: true }));
+    const timedOut = await (await fetch(endpoint)).json();
+    assert.equal(timedOut.phase, 'build-error');
+    assert.deepEqual(timedOut.health, {}, 'timed-out inspection cannot reuse an earlier successful observation');
   });
 
   test(`${framework.name}: held source publication stays HTTP-readable without HMR navigation, then releases one fresh reload`, { timeout: 10000 }, async t => {

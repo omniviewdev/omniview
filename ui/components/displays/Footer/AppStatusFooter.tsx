@@ -1,7 +1,6 @@
 import React from 'react';
 import { Spinner, StatusBar } from '@omniviewdev/base-ui';
 import {
-  LuPlug,
   LuBell,
   LuHammer,
   LuSquare,
@@ -27,6 +26,7 @@ import type { Operation } from '@omniviewdev/runtime';
 import HintTooltip from '@/components/base/HintTooltip';
 
 import ConnectionStatusIndicator from './ConnectionStatusIndicator';
+import InstanceIndicator from './InstanceIndicator';
 import {
   Dot,
   FooterChip,
@@ -37,7 +37,6 @@ import {
   PopoverHeader,
   cx,
   footerStyles as styles,
-  type FooterTone,
 } from './parts';
 
 // ---------------------------------------------------------------------------
@@ -162,9 +161,9 @@ function DevServerChip({ pluginId, state }: { pluginId: string; state: DevServer
       tooltip={tooltipText}
       width='narrow'
       trigger={
-        <FooterTrigger>
-          <span className={styles.Truncate}>{pluginId}</span>
+        <FooterTrigger className={styles.StatusChip}>
           <Dot status={tone} pulse={aggStatus === 'building'} />
+          <span className={styles.Truncate}>{pluginId} · {STATUS_LABELS[aggStatus]}</span>
         </FooterTrigger>
       }
     >
@@ -184,17 +183,10 @@ function DevServerIndicators() {
     return null;
   }
 
-  const tone: FooterTone = summary.error > 0 ? 'danger' : summary.building > 0 ? 'warning' : 'success';
   const entries = Array.from(servers.entries());
 
   return (
     <>
-      <HintTooltip content={`${summary.total} dev server${summary.total !== 1 ? 's' : ''} active`} side='top'>
-        <span className={styles.Chip} data-tone={tone} tabIndex={-1}>
-          <LuPlug size={9} />
-          DEV
-        </span>
-      </HintTooltip>
       {entries.map(([pluginId, state]) => (
         <DevServerChip key={pluginId} pluginId={pluginId} state={state} />
       ))}
@@ -576,6 +568,7 @@ export default function AppStatusFooter() {
   return (
     <StatusBar data-testid='app-footer' size='sm' className={styles.Bar}>
       <StatusBar.Section align='start'>
+        <InstanceIndicator />
         <DevServerIndicators />
         <FailedPluginIndicator />
         <PortForwardIndicator />
