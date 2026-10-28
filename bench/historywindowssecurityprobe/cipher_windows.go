@@ -32,6 +32,18 @@ func cipherURI(path string, key []byte) string {
 	}
 	return u.String()
 }
+
+// openVaultCipher is the real vault-gated entry path for encrypted database opens.
+// A missing or unavailable vault key must stop before SQLite sees the path.
+func openVaultCipher(path, target string) (*sql.DB, error) {
+	key, err := get(target)
+	if err != nil {
+		return nil, err
+	}
+	defer wipe(key)
+	return openCipher(path, key)
+}
+
 func openCipher(path string, key []byte) (*sql.DB, error) {
 	// SQLCipher URI key processing runs before mattn's initialization PRAGMAs.
 	// This URI contains a key: never log it or propagate driver errors containing it.
@@ -156,7 +168,7 @@ func encryptedProof(root, user, target string, key []byte, result map[string]any
 	if !bytes.Equal(loaded, key) {
 		return errors.New("vault key mismatch")
 	}
-	db, err := openCipher(path, loaded)
+	db, err := openVaultCipher(path, target)
 	if err != nil {
 		return err
 	}
@@ -225,13 +237,7 @@ func encryptedProof(root, user, target string, key []byte, result map[string]any
 		return err
 	}
 	stage = "vault-backed reopen"
-	wipe(loaded)
-	loaded, err = get(target)
-	if err != nil {
-		return err
-	}
-	defer wipe(loaded)
-	db, err = openCipher(path, loaded)
+	db, err = openVaultCipher(path, target)
 	if err != nil {
 		return err
 	}
@@ -286,7 +292,7 @@ func encryptedProof(root, user, target string, key []byte, result map[string]any
 	if err = denyCipher(backup, loaded); err != nil {
 		return err
 	}
-	copyDB, err := openCipher(backup, backupLoaded)
+	copyDB, err := openVaultCipher(backup, backupTarget)
 	if err != nil {
 		return err
 	}
@@ -337,12 +343,7 @@ func encryptedProof(root, user, target string, key []byte, result map[string]any
 	if err = denyCipher(path, loaded); err != nil {
 		return err
 	}
-	rotatedKey, err := get(nextTarget)
-	if err != nil {
-		return err
-	}
-	defer wipe(rotatedKey)
-	rotated, err := openCipher(path, rotatedKey)
+	rotated, err := openVaultCipher(path, nextTarget)
 	if err != nil {
 		return err
 	}
@@ -370,12 +371,23 @@ func encryptedProof(root, user, target string, key []byte, result map[string]any
 	if err != nil {
 		return err
 	}
-	missing, e := get(nextTarget)
-	wipe(missing)
-	if !errors.Is(e, windows.ERROR_NOT_FOUND) {
-		return errors.New("retired key still available")
+	freshPath := filepath.Join(root, "missing-key-must-not-create.db")
+	if _, e := os.Lstat(freshPath); !errors.Is(e, os.ErrNotExist) {
+		return errors.New("missing-key fresh path was not absent")
 	}
-	// Stop on the absent key: no open, recreation, replacement, or plaintext fallback.
+	for _, candidate := range []string{path, freshPath} {
+		denied, e := openVaultCipher(candidate, nextTarget)
+		if denied != nil {
+			denied.Close()
+			return errors.New("missing vault key opened a database")
+		}
+		if !errors.Is(e, windows.ERROR_NOT_FOUND) {
+			return errors.New("missing vault key did not return ERROR_NOT_FOUND")
+		}
+	}
+	if _, e := os.Lstat(freshPath); !errors.Is(e, os.ErrNotExist) {
+		return errors.New("missing vault key created a fresh database artifact")
+	}
 	after, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -403,6 +415,7 @@ func encryptedProof(root, user, target string, key []byte, result map[string]any
 	result["rekey_old_key_denied_new_key_reopens"] = true
 	result["native_key_retirement"] = true
 	result["missing_vault_key_preserves_database"] = true
+	result["missing_vault_key_prevents_fresh_database_creation"] = true
 	result["limits"] = "synthetic native Windows proof; no crash-safe rotation; no hostile same-user/admin/memory isolation; no production schema or physical erasure guarantee"
 	return nil
 }

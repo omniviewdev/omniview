@@ -183,6 +183,22 @@ func run() (result map[string]any, err error) {
 	if user == "S-1-5-18" {
 		return result, errors.New("interactive non-SYSTEM user required")
 	}
+	// SQLite-created sidecars use the token default owner, not the directory
+	// owner. Diagnose unsupported tokens before creating a database or vault key.
+	var ownerSize uint32
+	if e := windows.GetTokenInformation(token, windows.TokenOwner, nil, 0, &ownerSize); !errors.Is(e, windows.ERROR_INSUFFICIENT_BUFFER) || ownerSize < uint32(unsafe.Sizeof(uintptr(0))) {
+		return result, errors.New("cannot inspect token default owner")
+	}
+	ownerBuffer := make([]byte, ownerSize)
+	if e := windows.GetTokenInformation(token, windows.TokenOwner, &ownerBuffer[0], ownerSize, &ownerSize); e != nil {
+		return result, errors.New("cannot read token default owner")
+	}
+	defaultOwner := (*struct{ Owner *windows.SID })(unsafe.Pointer(&ownerBuffer[0]))
+	supportedOwner := defaultOwner.Owner != nil && defaultOwner.Owner.String() == user
+	runtime.KeepAlive(ownerBuffer)
+	if !supportedOwner {
+		return result, errors.New("unsupported token default owner: current-user ownership is required for SQLite sidecars")
+	}
 	nonce := make([]byte, 16)
 	if _, err = rand.Read(nonce); err != nil {
 		return result, err
