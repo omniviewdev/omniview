@@ -101,7 +101,8 @@ func requireAbsent(target string) error {
 	return nil
 }
 
-// checkACL rejects every ACE except explicit full-control allows for this user and SYSTEM.
+// checkACL admits only owner/SYSTEM rights, whether explicit or inherited from
+// the protected directory. SQLite-created sidecars must inherit this policy.
 func checkACL(path, user string) error {
 	sd, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
 	if err != nil {
@@ -118,7 +119,20 @@ func checkACL(path, user string) error {
 	if err != nil {
 		return err
 	}
-	if control&windows.SE_DACL_PROTECTED == 0 {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("reparse artifact rejected")
+	}
+	wantFlags := uint8(0)
+	if info.IsDir() {
+		wantFlags = 3
+	} else if control&windows.SE_DACL_PROTECTED == 0 {
+		wantFlags = 0x10
+	}
+	if info.IsDir() && control&windows.SE_DACL_PROTECTED == 0 {
 		return errors.New("DACL inheritance not protected")
 	}
 	acl, _, err := sd.DACL()
@@ -135,6 +149,9 @@ func checkACL(path, user string) error {
 			return err
 		}
 		sid := (*windows.SID)(unsafe.Pointer(&raw.SidStart)).String()
+		if raw.Header.AceFlags != wantFlags {
+			return errors.New("unexpected artifact inheritance policy")
+		}
 		if err := allowedACE(raw.Header.AceType, raw.Header.AceFlags, uint32(raw.Mask), sid, user); err != nil {
 			return err
 		}
@@ -146,14 +163,17 @@ func checkACL(path, user string) error {
 	return nil
 }
 func allowedACE(kind, flags uint8, mask uint32, sid, user string) error {
-	if kind != windows.ACCESS_ALLOWED_ACE_TYPE || flags != 0 || mask != 0x1f01ff || (sid != user && sid != "S-1-5-18") {
+	if kind != windows.ACCESS_ALLOWED_ACE_TYPE || (flags != 0 && flags != 3 && flags != 0x10) || mask != 0x1f01ff || (sid != user && sid != "S-1-5-18") {
 		return errors.New("unexpected ACL trustee, rights, type, or inheritance")
 	}
 	return nil
 }
 
 func run() (result map[string]any, err error) {
-	result = map[string]any{"platform": "windows", "status": "failed", "secrets": "redacted", "encrypted_database": "not_exercised"}
+	result = map[string]any{"platform": "windows", "status": "failed", "secrets": "redacted"}
+	if err = requireCipherSupport(); err != nil {
+		return result, err
+	}
 	token := windows.GetCurrentProcessToken()
 	tu, err := token.GetTokenUser()
 	if err != nil {
@@ -235,7 +255,7 @@ func run() (result map[string]any, err error) {
 		return result, errors.New("recreated credential mismatch")
 	}
 	result["credential_lifecycle"] = "passed"
-	sd, err := windows.SecurityDescriptorFromString("O:" + user + "D:P(A;;FA;;;" + user + ")(A;;FA;;;SY)")
+	sd, err := windows.SecurityDescriptorFromString("O:" + user + "D:P(A;OICI;FA;;;" + user + ")(A;OICI;FA;;;SY)")
 	if err != nil {
 		return result, err
 	}
@@ -256,42 +276,9 @@ func run() (result map[string]any, err error) {
 	if err = checkACL(dir, user); err != nil {
 		return result, err
 	}
-	// Synthetic stand-ins test native creation/open/reopen policy, not SQLite or SQLCipher behavior.
-	for _, base := range []string{"history.db", "history.db-wal", "history.db-shm"} {
-		path := filepath.Join(dir, base)
-		p, e := windows.UTF16PtrFromString(path)
-		if e != nil {
-			return result, e
-		}
-		h, e := windows.CreateFile(p, windows.GENERIC_READ|windows.GENERIC_WRITE, 0, &sa, windows.CREATE_NEW, windows.FILE_ATTRIBUTE_NORMAL, 0)
-		if e != nil {
-			return result, e
-		}
-		if e = windows.CloseHandle(h); e != nil {
-			return result, e
-		}
-		if err = checkACL(path, user); err != nil {
-			return result, err
-		}
-		f, e := os.OpenFile(path, os.O_RDWR, 0)
-		if e != nil {
-			return result, e
-		}
-		if e = f.Close(); e != nil {
-			return result, e
-		}
-		if err = checkACL(path, user); err != nil {
-			return result, err
-		}
+	if err = encryptedProof(dir, user, target, c, result); err != nil {
+		return result, err
 	}
-	entries, e := os.ReadDir(dir)
-	if e != nil {
-		return result, e
-	}
-	if len(entries) != 3 {
-		return result, errors.New("unexpected sidecar containment")
-	}
-	result["protected_dacl_create_reopen_sidecars"] = "passed"
 	result["status"] = "passed"
 	return result, nil
 }

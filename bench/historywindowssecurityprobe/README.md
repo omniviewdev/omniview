@@ -1,47 +1,55 @@
-# Windows Resource History security proof
+# Native Windows encrypted Resource History proof
 
-Standalone HR02 acceptance probe. This is not production storage and does not implement SQLite, SQLCipher, or a plaintext fallback. Native execution is pending Windows CI; Darwin cross-builds do not prove Windows behavior.
+Standalone HR02 acceptance command, not production storage. The old vault-only/empty-sidecar smoke is replaced: successful execution now requires actual SQLCipher encryption, WinCred keys, and real SQLite-created WAL/SHM under a private Windows DACL. Native encrypted Windows execution is **pending parent CI**. Darwin cross-builds do not establish runtime evidence.
 
-## Native CI
+## Native CI prerequisites and command
 
-Use `windows-latest`, a normal non-SYSTEM runner account, and Go 1.25 or newer. Dependency: `golang.org/x/sys v0.49.0`, BSD-3-Clause (module LICENSE); Go standard library uses the Go BSD-3-Clause license. Windows Credential Manager and security APIs ship with Windows. No third-party executable, CGO, compiler, administrator rights, or external installer is needed.
+Use `windows-latest`, Windows AMD64 Go **1.26+**, MSYS2 **MINGW64**, and these maintained MSYS2 packages:
 
-PowerShell, from this directory:
-
-```powershell
-$env:GOWORK = 'off'
-$env:CGO_ENABLED = '0'
-go mod download
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-go test ./... -count=1
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-go run .
-exit $LASTEXITCODE
+```text
+git
+make
+mingw-w64-x86_64-gcc
+mingw-w64-x86_64-openssl
+mingw-w64-x86_64-tcl
+mingw-w64-x86_64-pkgconf
 ```
 
-Actual executable smoke is `GOWORK=off go run .` on native Windows (use environment syntax above). Output is one redacted JSON result. Any OS error, failed assertion, or cleanup error produces `status=failed` and nonzero exit. A successful CI result must retain the JSON and runner identity; a build alone is not native evidence.
-
-Darwin compile-only check:
+Parent workflow owns setup-go and `msys2/setup-msys2@v2` with `msystem: MINGW64`, the package list above, and Go available in the MSYS shell PATH. No custom crypto bundle, system-wide library installation, or arbitrary external installer is used by this command. From the repository root, under `shell: msys2 {0}`:
 
 ```sh
-GOWORK=off CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o /tmp/historywindowssecurityprobe.exe .
-GOWORK=off CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go test -c -o /tmp/historywindowssecurityprobe.test.exe
+bash bench/historywindowssecurityprobe/native-windows.sh
 ```
 
-A later shared SQLCipher probe will need its selected driver's Windows CGO/toolchain and encryption-library prerequisites. This proof has none and does not establish that a particular Windows SQLCipher toolchain works. Pin those dependencies in that module before claiming encrypted Windows runtime acceptance.
+The script requires native Windows Go, GCC targeting `x86_64-w64-mingw32`, and MSYS2 OpenSSL 3. It sets `GOWORK=off`, `CGO_ENABLED=1`, `CC=gcc`; builds the pinned official SQLCipher amalgamation into a private static `libsqlite3.a`; exposes only its private header/archive paths to the maintained mattn driver using `-tags libsqlite3`; and links maintained MSYS2 OpenSSL. The runtime DLL remains on MINGW64 PATH. It runs focused module tests, vet, and the actual executable. Source fetch, compilation, tests, linking checks, smoke, or cleanup failures are nonzero. Temporary source/build/executable artifacts are removed by the shell trap; owned vault items and database directory are removed by the executable's deferred cleanup. A killed process/machine cannot guarantee deferred cleanup.
 
-## Guarantees exercised by native smoke
+The executable emits redacted structured JSON; the script records native architecture, exact Go/GCC/OpenSSL versions, installed MSYS2 package versions, official source commit, executable/archive/OpenSSL DLL/license SHA256, and imported DLL identities. The private SQLite archive must not resolve to any dynamic SQLite/SQLCipher core. Exact codec/provider/core/options are additionally admitted on each of two genuinely open pooled connections. Raw SQL errors are not logged because ATTACH/rekey SQL and connection URIs contain synthetic key material. No key is passed in process arguments.
 
-- Native `CredWriteW`, `CredReadW`, `CredDeleteW`, and `CredFree`, using generic credentials with local-machine persistence under the current user's vault, not a machine-wide secret.
-- Random unique owned target only; no credential enumeration and no production targets. Two random 256-bit keys prove create/read and replace/read. Delete/read and repeated delete must return `ERROR_NOT_FOUND`.
-- Missing keys never regenerate implicitly. Explicit recreation uses a third independent random key and proves readback. Existing ciphertext must be treated as unrecoverable when its original key is lost; this probe does not claim recreated keys recover old data.
-- Every OS failure propagates, including unavailable credential service/logon session and access denial. Locked/unavailable vault failures are explicit failed outcomes, never a fallback. This probe does not lock the runner's vault or simulate an OS failure and does not claim to prove vault-lock behavior under every logon type.
-- A random fresh directory is created atomically with a protected DACL. Only current user and SYSTEM receive full control. SYSTEM is allowed for OS maintenance; Administrators, Everyone, Users, inherited ACEs, and inheritance propagation flags are rejected. Exact owner, protected control bit, two unique trustees, ACE kind and rights are checked from native security descriptors.
-- Three empty synthetic stand-ins named `history.db`, `history.db-wal`, and `history.db-shm` are created atomically with the same explicit protected DACL. Each is closed/reopened and its DACL rechecked. Directory enumeration requires exactly those three entries. These are filesystem security checks, NOT SQLite-created sidecar evidence. Real driver sidecar creation, journaling, reparse-point races, wrong-key rejection, and encrypted data-at-rest checks remain shared encrypted-probe work.
-- Deferred credential cleanup is registered only after `ERROR_NOT_FOUND` establishes target absence, before the first write. An existing target is rejected without deletion or replacement. Cleanup deletes only the random owned vault item and owned directory, including after assertion failure. Cleanup errors fail the run. Process termination or machine failure can interrupt cleanup; no external resource cleanup can be guaranteed after forced termination.
+Direct smoke after this script's private build is the executable invocation inside the script, not a separately configured `go run .`. An ordinary build without the pinned encrypted archive cannot pass runtime identity checks. No-CGO builds explicitly fail before vault access; unsupported non-Windows builds do not build. No unsupported mode can report the vault-only subset as encrypted acceptance.
 
-Deterministic tests cover broad/admin/inherited/partial-rights ACL rejection, intended owner/SYSTEM acceptance, malformed key lengths before vault writes, and embedded-NUL target rejection. Native buffer tests use `LocalAlloc` to verify clearing both accepted and rejected credential blobs before release, while preserving the independent returned key. A native vault regression proves freshness rejection preserves an existing synthetic credential. These native tests remain pending Windows execution. Smoke covers actual native API behavior.
+## Pins, licenses, and artifact policy
 
-## Threat limits
+- `github.com/mattn/go-sqlite3 v1.14.52`: MIT. Maintained driver, `libsqlite3` tag; no stale bundled codec.
+- Official SQLCipher **4.20.0**, commit [`355d4db92d3404e71faa8088d071a71d767807f4`](https://github.com/sqlcipher/sqlcipher/tree/355d4db92d3404e71faa8088d071a71d767807f4): [BSD-3-Clause](https://github.com/sqlcipher/sqlcipher/blob/355d4db92d3404e71faa8088d071a71d767807f4/LICENSE.md). Embedded upstream SQLite **3.54.1** is public domain. Required options: `HAS_CODEC`, `ENABLE_FTS5`, `TEMP_STORE=2`, `THREADSAFE=1`; explicit SQLCipher extra init/shutdown and OpenSSL provider.
+- OpenSSL **3.x**, maintained MSYS2 `mingw-w64-x86_64-openssl`: Apache-2.0. Exact resolved version/package/DLL hash is recorded per run, not falsely claimed as a fixed package version. Provider admission requires `openssl`; the build script rejects another OpenSSL major/provider DLL. The executable identity is recorded with that provider artifact.
+- `golang.org/x/sys v0.49.0`: BSD-3-Clause. Go standard library: Go BSD-3-Clause license. Native WinCred/security APIs ship with Windows.
 
-Credential Manager and DACLs do not isolate hostile code running as the same user. Administrators with privilege, SYSTEM, debugging, memory capture, and compromised OS are outside this boundary. Keys briefly live in Go and native process memory; returned Go buffers are wiped, and native credential blobs are wiped before `CredFree`, including rejected key shapes. Compiler/runtime copies and paging cannot be proven erased. No key bytes are logged, written to files, or passed as process arguments. Stand-in database files contain no keys or real resource data.
+No proof binary is distributed by this module. A later production distribution must ship applicable notices/licenses and establish reproducible packaged-toolchain provenance; runner package receipts do not establish release-binary reproducibility or signing.
+
+## Assertions
+
+- Native `CredWriteW`, `CredReadW`, `CredDeleteW`, `CredFree`: generic per-user credentials with local-machine persistence. Unique random targets only; no enumeration or production target access. Create/read/replace/delete/missing/repeated-delete/explicit fresh recreation are exercised. `ERROR_NOT_FOUND` is required before cleanup ownership is registered. Existing synthetic targets survive freshness rejection.
+- All keys are synthetic random 256-bit values. Original DB, distinct-key backup and rekey credentials use owned targets. Missing keys never regenerate implicitly. Native credential blobs, including rejected shapes, are wiped before `CredFree`; caller Go buffers are wiped on exit.
+- The fresh root has a protected DACL with exactly current user and SYSTEM full-control ACEs, `OI/CI` inheritance only. SYSTEM is retained for OS maintenance. Explicit DB/backup files have protected user/SYSTEM DACLs at atomic creation. Actual SQLite sidecars inherit only these private ACEs; inherited broad allows, unexpected trustees/rights/types, unexpected artifacts and reparse artifacts are rejected. Each scanned artifact must retain the current user owner; an elevated token whose default owner is Administrators fails rather than silently broadening policy. Use a user-owned/non-SYSTEM runner execution context.
+- URI key admission occurs before mattn initialization PRAGMAs. Both held pooled connections require exact SQLCipher `4.20.0 community`, SQLite `3.54.1`, provider `openssl`, and required compile options. Missing/wrong DB keys must fail.
+- Actual evidence metadata and snapshot-like payload are stored in ordinary tables; actual search index text is stored in FTS5 and queried successfully. Populated actual `history.db-wal` and `history.db-shm` must exist. DB/WAL/SHM and other remaining owned artifacts are scanned for all three plaintext sentinels and checked for private DACLs. DB/backup plaintext SQLite headers are forbidden.
+- Vault-backed DB close/reopen preserves payload. `sqlcipher_export` creates an independently keyed encrypted backup without a plaintext intermediate; keyless and original-key opens fail, backup-key reopen preserves payload.
+- Checkpoint plus DELETE-journal transition precedes rekey. The old key fails after rekey; a new vault-loaded key reopens the payload. Native key retirement is verified. Missing retired key lookup stops before reopening and leaves ciphertext hash unchanged. Final artifacts are rescanned.
+
+Tests cover ACL trustee/rights/inheritance boundaries, malformed key lengths/NUL targets, native allocated-buffer wiping for valid/invalid credential shapes, native existing-target preservation, and Windows drive-path/key URI construction. Native tests and smoke must pass on Windows before acceptance is claimed. Only no-CGO Windows cross-builds and shell syntax checks are available on the Darwin host; they cannot verify the encrypted executable.
+
+## Threat and acceptance limits
+
+WinCred/DACLs do not isolate malicious same-user code. Administrator/SYSTEM privilege, debugging, process memory capture, compromised OS, runtime copies and paging remain outside this boundary. No physical-erasure claim is made. All OS vault failures, including access denial/unavailable logon session, fail explicitly; there is no plaintext fallback. The proof does not lock the runner's vault and does not claim all locked/logon-state behaviors were exercised.
+
+This proves mechanics only after native CI passes: no production schema, signed app/package proof, hostile plugin isolation, crash-safe key rotation, retention policy, or full Resource History acceptance. Transient rollback-journal DACLs are bounded by the directory inheritance policy but are not claimed as separately observed while populated. Sidecar/header/sentinel checks are not a general cryptographic audit of SQLCipher or OpenSSL.

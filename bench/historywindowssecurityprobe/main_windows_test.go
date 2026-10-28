@@ -26,8 +26,11 @@ func TestAllowedACE(t *testing.T) {
 		{"system", 0, 0, 0x1f01ff, "S-1-5-18", true},
 		{"everyone", 0, 0, 0x1f01ff, "S-1-1-0", false},
 		{"administrators", 0, 0, 0x1f01ff, "S-1-5-32-544", false},
-		{"inherited", 0, 0x10, 0x1f01ff, user, false},
-		{"inherit_children", 0, 3, 0x1f01ff, user, false},
+		{"inherited_private_owner", 0, 0x10, 0x1f01ff, user, true},
+		{"inherit_private_children", 0, 3, 0x1f01ff, user, true},
+		{"inherited_everyone", 0, 0x10, 0x1f01ff, "S-1-1-0", false},
+		{"inherit_everyone", 0, 3, 0x1f01ff, "S-1-1-0", false},
+		{"unexpected_flags", 0, 8, 0x1f01ff, user, false},
 		{"deny", 1, 0, 0x1f01ff, user, false},
 		{"partial_rights", 0, 0, 0x120089, user, false},
 	} {
