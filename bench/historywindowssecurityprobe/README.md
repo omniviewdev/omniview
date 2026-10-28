@@ -46,7 +46,7 @@ No proof binary is distributed by this module. A later production distribution m
 - Vault-backed DB close/reopen preserves payload. `sqlcipher_export` creates an independently keyed encrypted backup without a plaintext intermediate; keyless and original-key opens fail, backup-key reopen preserves payload.
 - Checkpoint plus DELETE-journal transition precedes rekey. The old key fails after rekey; a new vault-loaded key reopens the payload. Native key retirement is verified. Missing retired key lookup stops before reopening and leaves ciphertext hash unchanged. Final artifacts are rescanned.
 
-Tests cover ACL trustee/rights/inheritance boundaries, malformed key lengths/NUL targets, native allocated-buffer wiping for valid/invalid credential shapes, native existing-target preservation, and Windows drive-path/key URI construction. Native tests and smoke must pass on Windows before acceptance is claimed. Only no-CGO Windows cross-builds and shell syntax checks are available on the Darwin host; they cannot verify the encrypted executable.
+Tests cover ACL trustee/rights/inheritance boundaries, malformed key lengths/NUL targets, exposed credential-blob buffer wiping for valid/invalid credential shapes, native existing-target preservation, and Windows drive-path/key URI construction. The wiping unit test uses Go-owned backing memory; the separate real WinCred lifecycle exercises the native read/copy/wipe/free path. Native tests and smoke must pass on Windows before acceptance is claimed. Only no-CGO Windows cross-builds and shell syntax checks are available on the Darwin host; they cannot verify the encrypted executable.
 
 ## Threat and acceptance limits
 

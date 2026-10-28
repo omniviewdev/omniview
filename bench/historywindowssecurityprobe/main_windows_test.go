@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"testing"
-	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -53,7 +52,7 @@ func TestRejectInvalidKeyBeforeVaultWrite(t *testing.T) {
 	}
 }
 
-func TestConsumeCredentialClearsNativeBuffer(t *testing.T) {
+func TestConsumeCredentialClearsBlobBuffer(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		kind  uint32
@@ -65,17 +64,7 @@ func TestConsumeCredentialClearsNativeBuffer(t *testing.T) {
 		{"wrong_type", 2, 32, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			ptr, err := windows.LocalAlloc(0, uint32(tc.size))
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer func() {
-				if _, err := windows.LocalFree(windows.Handle(ptr)); err != nil {
-					t.Error(err)
-				}
-			}()
-			native := unsafe.Slice((*byte)(unsafe.Pointer(ptr)), tc.size)
-			copy(native, bytes.Repeat([]byte{0xa5}, tc.size))
+			native := bytes.Repeat([]byte{0xa5}, tc.size)
 			c := credential{Type: tc.kind, BlobSize: uint32(len(native)), Blob: &native[0]}
 			got, err := consumeCredential(&c)
 			defer wipe(got)
