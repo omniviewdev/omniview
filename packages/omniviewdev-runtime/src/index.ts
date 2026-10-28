@@ -5,3 +5,6 @@ export * from './hooks';
 export * from './router';
 export * from './types';
 export * from './utils/resourceKey';
+export * from './search';
+export * from './resourceQueryKeys';
+export * from './resourceIcons';

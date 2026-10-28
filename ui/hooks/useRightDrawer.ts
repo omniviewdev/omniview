@@ -1,5 +1,5 @@
 import { useContext } from 'react';
-import RightDrawerContext from '@/contexts/RightDrawerContext';
+import { RightDrawerContext } from '@omniviewdev/runtime';
 
 const useRightDrawer = () => {
   const context = useContext(RightDrawerContext);

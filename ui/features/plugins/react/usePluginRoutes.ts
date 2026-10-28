@@ -4,6 +4,7 @@ import { usePluginService } from './usePluginService';
 import PluginRenderer from '../components/PluginRenderer';
 import PluginNotFoundPage from '../components/PluginNotFoundPage';
 import { RouterErrorBoundary } from '@/features/router/components/ErrorBoundary';
+import { normalizePluginRoutes } from './normalizePluginRoutes';
 
 export type UsePluginRoutesResult = {
   readonly ready: boolean;
@@ -11,26 +12,6 @@ export type UsePluginRoutesResult = {
   readonly routes: RouteObject[];
 };
 
-/**
- * Recursively normalizes a plugin's route tree so it can be safely nested
- * under a parent path (e.g., /_plugin/{pluginId}).
- *
- * - Strips leading slashes from child paths
- * - Preserves index routes
- */
-function normalizePluginRoutes(routes: RouteObject[]): RouteObject[] {
-  return routes.map((route) => {
-    const normalized: RouteObject = {
-      ...route,
-      path: route.index ? undefined : route.path?.replace(/^\/+/, ''),
-    };
-    if (route.children) {
-      normalized.children = normalizePluginRoutes(route.children);
-    }
-
-    return normalized;
-  });
-}
 
 const notFoundRoute: RouteObject = {
   path: '*',

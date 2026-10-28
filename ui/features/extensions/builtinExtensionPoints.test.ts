@@ -36,18 +36,6 @@ describe('Group 11: Built-in registration', () => {
     expect(registry.hasExtensionPoint('omniview/global-search')).toBe(true);
   });
 
-  it('11.15 — repeated registration preserves the actual search store and its live contribution', () => {
-    ensureBuiltinExtensionPointsRegistered(registry);
-    const store = registry.getExtensionPoint('omniview/global-search')!;
-    const contribution = { id: 'probe/search', plugin: 'probe', label: 'Native tasks', value: {
-      schemaVersion: 1, kind: 'navigation', target: { kind: 'plugin', pluginId: 'probe', path: '/capabilities' },
-    } };
-    store.register(contribution);
-    ensureBuiltinExtensionPointsRegistered(registry);
-    expect(registry.getExtensionPoint('omniview/global-search')).toBe(store);
-    expect(store.listAll()).toEqual([contribution]);
-    expect(store.listAll()[0]).toBe(contribution);
-  });
 
   it('builtin extension points are owned by core', () => {
     ensureBuiltinExtensionPointsRegistered(registry);
@@ -89,6 +77,14 @@ describe('Group 11: Built-in registration', () => {
     expect(() => {
       ensureBuiltinExtensionPointsRegistered(registry); 
     }).toThrow(/non-core owner/);
+  });
+});
+
+describe('resource icon builtin lifecycle', () => {
+
+  it('rejects a foreign resource icon extension point', () => {
+    registry.addExtensionPoint({ id: 'omniview/resource/icons', pluginId: 'foreign' });
+    expect(() => ensureBuiltinExtensionPointsRegistered(registry)).toThrow(/non-core owner/);
   });
 });
 

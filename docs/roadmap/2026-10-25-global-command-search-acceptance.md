@@ -108,3 +108,7 @@ The user subsequently authorized bypassing performance benchmarks for this relea
 UI version PR75 merged as `a33879bcdcfc4971c3bcd98f23d657c6f5572307`. Release workflow `40436600552` published `@omniviewdev/base-ui@0.7.0`, `@omniviewdev/ai-ui@6.0.0` and `@omniviewdev/editors@6.0.0`. Public registry version metadata independently exposed all three tarballs, integrity hashes and trusted-publisher provenance; ai-ui and editors require base-ui `0.7.0`. The host's immutable E2E UI cohort now selects that release commit.
 
 Standalone host adoption of the published cohort retained strict peers and release-age policy. Providers, runtime, Vite-plugin shim generation/export verification and the production application build passed in dependency order. The complete host UI suite passed 1,058 tests across 67 files against registry packages, not source-linked UI.
+
+### Pending-query row stability
+
+Query edits retain previous result rows and selection through debounce and provider completion, but retained actions cannot execute or deepen scope. Replacement rows publish together after current sources settle; the existing five-second source timeout and failure/retry feedback remain intact. Final typed results select the best new match. Controller regressions cover retention, stale activation, final activation, slow-source rejection/timeout and ignored late completion. Verification of these changes is pending.

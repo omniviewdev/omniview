@@ -120,7 +120,7 @@ export default defineConfig({
     },
   ],
   resolve: {
-    dedupe: ['react', 'react-dom', '@omniviewdev/runtime', '@omniviewdev/base-ui', '@omniviewdev/ai-ui', '@omniviewdev/editors'],
+    dedupe: ['react', 'react-dom', '@tanstack/react-query', '@omniviewdev/runtime', '@omniviewdev/base-ui', '@omniviewdev/ai-ui', '@omniviewdev/editors'],
     alias: {
       '@/providers/monaco/bootstrap': process.env.VITEST
         ? path.resolve(__dirname, './ui/providers/monaco/bootstrap.mock.ts')

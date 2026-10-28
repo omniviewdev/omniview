@@ -12,6 +12,7 @@ import {
   createThemeExtensionPoint,
 } from './theme/extensionPoint';
 import { GLOBAL_SEARCH_EXTENSION_POINT_ID, createGlobalSearchExtensionPoint } from '../command-search/extensionPoint';
+import { RESOURCE_ICON_EXTENSION_POINT_ID } from '@omniviewdev/runtime';
 
 /**
  * Ensure host-owned builtin extension points are registered.
@@ -29,6 +30,11 @@ export function ensureBuiltinExtensionPointsRegistered(
   registerIfAbsent(registry, RESOURCE_DRAWER_EXTENSION_POINT_ID, createResourceDrawerExtensionPoint);
   registerIfAbsent(registry, THEME_EXTENSION_POINT_ID, createThemeExtensionPoint);
   registerIfAbsent(registry, GLOBAL_SEARCH_EXTENSION_POINT_ID, createGlobalSearchExtensionPoint);
+  registerIfAbsent(registry, RESOURCE_ICON_EXTENSION_POINT_ID, () => ({
+    id: RESOURCE_ICON_EXTENSION_POINT_ID,
+    pluginId: 'core',
+    mode: 'multiple',
+  }));
 }
 
 function registerIfAbsent(

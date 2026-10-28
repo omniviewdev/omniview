@@ -4,6 +4,7 @@ import { createErrorHandler } from '../../errors/parseAppError';
 import { UpdateInput, DeleteInput, GetInput } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/resource/models';
 import { Get, Update, Delete } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
 import { useResolvedPluginId } from '../useResolvedPluginId';
+import { resourceQueryKeys } from '../../resourceQueryKeys';
 
 type UseResourceOptions = {
   /**
@@ -57,7 +58,7 @@ export const useResource = ({
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
 
-  const queryKey = ['RESOURCE', pluginID, connectionID, resourceKey, resourceID, namespace];
+  const queryKey = resourceQueryKeys.resource(pluginID, connectionID, resourceKey, resourceID, namespace);
 
   // === Mutations === //
 
