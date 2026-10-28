@@ -1,5 +1,5 @@
 // Handwritten resource boundaries hide generated transport DTOs from consumers.
-export * as ExecClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/exec/servicewrapper';
+export * as ExecClient from './exec';
 export * as NetworkerClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/networker/servicewrapper';
 export * as PluginManager from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/servicewrapper';
 export * as ResourceClient from './resource/v2/client';

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/omniviewdev/omniview/backend/pkg/transportjson"
 
 	execsdk "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 )
@@ -32,8 +33,10 @@ func (s *ServiceWrapper) ServiceShutdown() error {
 }
 func (s *ServiceWrapper) CreateSession(
 	plugin, connectionID string,
-	opts execsdk.SessionOptions,
+	encoded string,
 ) (*execsdk.Session, error) {
+	var opts execsdk.SessionOptions
+	if err := transportjson.Decode(encoded, &opts, plugin, connectionID); err != nil { return nil, err }
 	return s.Ctrl.CreateSession(plugin, connectionID, opts)
 }
 func (s *ServiceWrapper) CreateTerminal(opts execsdk.SessionOptions) (*execsdk.Session, error) {

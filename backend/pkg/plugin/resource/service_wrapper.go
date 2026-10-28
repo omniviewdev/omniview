@@ -2,7 +2,9 @@ package resource
 
 import (
 	"context"
+
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
+	"github.com/omniviewdev/omniview/backend/pkg/transportjson"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -59,13 +61,19 @@ func (s *ServiceWrapper) Get(ctx context.Context, pluginID string, request HostG
 func (s *ServiceWrapper) Enumerate(ctx context.Context, pluginID string, request HostEnumerateRequest) (HostSourcePage, error) {
 	return s.Ctrl.Enumerate(s.realmContext(ctx), pluginID, request)
 }
-func (s *ServiceWrapper) NativeQuery(ctx context.Context, pluginID string, request HostNativeQueryRequest) (HostSourcePage, error) {
+func (s *ServiceWrapper) NativeQuery(ctx context.Context, pluginID string, encoded string) (HostSourcePage, error) {
+	var request HostNativeQueryRequest
+	if err := transportjson.Decode(encoded, &request, pluginID); err != nil { return HostSourcePage{}, err }
 	return s.Ctrl.NativeQuery(s.realmContext(ctx), pluginID, request)
 }
-func (s *ServiceWrapper) Mutate(ctx context.Context, pluginID string, request resourcev2.MutationRequest) (resourcev2.Record, error) {
+func (s *ServiceWrapper) Mutate(ctx context.Context, pluginID string, encoded string) (resourcev2.Record, error) {
+	var request resourcev2.MutationRequest
+	if err := transportjson.Decode(encoded, &request, pluginID); err != nil { return resourcev2.Record{}, err }
 	return s.Ctrl.Mutate(s.realmContext(ctx), pluginID, request)
 }
-func (s *ServiceWrapper) Action(ctx context.Context, pluginID string, request resourcev2.ActionRequest) (resourcev2.Value, error) {
+func (s *ServiceWrapper) Action(ctx context.Context, pluginID string, encoded string) (resourcev2.Value, error) {
+	var request resourcev2.ActionRequest
+	if err := transportjson.Decode(encoded, &request, pluginID); err != nil { return resourcev2.Value{}, err }
 	return s.Ctrl.Action(s.realmContext(ctx), pluginID, request)
 }
 func (s *ServiceWrapper) StartConnection(ctx context.Context, pluginID string, connectionID string) (types.ConnectionStatus, error) {
@@ -155,8 +163,13 @@ func (s *ServiceWrapper) GetRelationships(ctx context.Context, pluginID string, 
 func (s *ServiceWrapper) ResolveRelationships(ctx context.Context, pluginID string, request resourcev2.GetRequest) ([]resourcev2.ResolvedRelationship, error) {
 	return s.Ctrl.ResolveRelationships(s.realmContext(ctx), pluginID, request)
 }
-func (s *ServiceWrapper) GetHealth(ctx context.Context, pluginID string, request resourcev2.GetRequest, body resourcev2.Value) (*resourcev2.ResourceHealth, error) {
-	return s.Ctrl.GetHealth(s.realmContext(ctx), pluginID, request, body)
+func (s *ServiceWrapper) GetHealth(ctx context.Context, pluginID string, encoded string) (*resourcev2.ResourceHealth, error) {
+	var args struct {
+		Request resourcev2.GetRequest `json:"request"`
+		Body resourcev2.Value `json:"body"`
+	}
+	if err := transportjson.Decode(encoded, &args, pluginID); err != nil { return nil, err }
+	return s.Ctrl.GetHealth(s.realmContext(ctx), pluginID, args.Request, args.Body)
 }
 func (s *ServiceWrapper) GetResourceEvents(ctx context.Context, pluginID string, request resourcev2.GetRequest, limit uint32) ([]resourcev2.ResourceEvent, error) {
 	return s.Ctrl.GetResourceEvents(s.realmContext(ctx), pluginID, request, limit)
@@ -164,7 +177,9 @@ func (s *ServiceWrapper) GetResourceEvents(ctx context.Context, pluginID string,
 func (s *ServiceWrapper) GetActions(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) ([]resourcev2.ActionDescriptor, error) {
 	return s.Ctrl.GetActions(s.realmContext(ctx), pluginID, route, resourceType)
 }
-func (s *ServiceWrapper) StreamAction(ctx context.Context, pluginID string, request resourcev2.ActionRequest) (string, error) {
+func (s *ServiceWrapper) StreamAction(ctx context.Context, pluginID string, encoded string) (string, error) {
+	var request resourcev2.ActionRequest
+	if err := transportjson.Decode(encoded, &request, pluginID); err != nil { return "", err }
 	return s.Ctrl.StreamAction(s.realmContext(ctx), pluginID, request)
 }
 func (s *ServiceWrapper) AttachStreamAction(ctx context.Context, handleID string) (ActionSnapshot, error) {

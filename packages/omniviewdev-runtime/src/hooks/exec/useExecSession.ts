@@ -2,7 +2,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { parseAppError, showAppError } from '../../errors/parseAppError';
 import { SessionOptions } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/exec/models';
-import { CreateSession } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/exec/servicewrapper';
+import { CreateSession } from '../../exec';
 import { useBottomDrawer } from '../drawer';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
