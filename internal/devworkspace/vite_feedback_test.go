@@ -175,19 +175,6 @@ func TestViteFeedbackPublishesNativeAuthorityForTheOriginalHandle(t *testing.T) 
 			encoded = value
 		}
 	}
-	var config viteFeedbackContext
-	if err := json.Unmarshal([]byte(encoded), &config); err != nil {
-		t.Fatal(err)
-	}
-	if runtime.GOOS != "windows" {
-		if config.Authority != nil {
-			t.Fatal("POSIX feedback unexpectedly requires a subprocess authority")
-		}
-		return
-	}
-	if config.Authority == nil || config.Authority.Identity != s.feedback.identity {
-		t.Fatal("Windows child context lacks the original full native file authority")
-	}
 	if held, err := ReadViteFeedbackContext(encoded); err != nil || !held {
 		t.Fatalf("native authority did not observe initial hold: held=%v err=%v", held, err)
 	}

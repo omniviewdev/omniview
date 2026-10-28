@@ -140,18 +140,16 @@ func (s *workspaceSupervisor) createFeedbackLocked(ctx context.Context) error {
 			return err
 		}
 	}
-	if runtime.GOOS == "windows" {
-		identity, err := feedbackFileIdentity(file)
-		if err != nil {
-			return err
-		}
-		feedback.identity = identity
-		executable, err := canonicalFeedbackExecutable()
-		if err != nil {
-			return err
-		}
-		config.Authority = &viteFeedbackAuthority{Executable: executable, Identity: identity}
+	identity, err := feedbackFileIdentity(file)
+	if err != nil {
+		return err
 	}
+	feedback.identity = identity
+	executable, err := canonicalFeedbackExecutable()
+	if err != nil {
+		return err
+	}
+	config.Authority = &viteFeedbackAuthority{Executable: executable, Identity: identity}
 	encoded, err := json.Marshal(config)
 	if err != nil {
 		return err

@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import {
   closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync,
   statSync, watch,
@@ -8,6 +8,9 @@ import type { EventEmitter } from 'node:events';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import type { Duplex } from 'node:stream';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 
 type FeedbackContext = {
   schemaVersion: 1;
@@ -19,6 +22,15 @@ type FeedbackContext = {
     executable: string;
     identity: { volume: string; fileID: string };
   };
+};
+
+type ObservedStatus = {
+  generation?: string;
+  manifest?: { workspaceID?: string; plugins?: unknown[] };
+  health?: Record<string, unknown>;
+  builds?: Record<string, unknown>;
+  launchPhase?: string;
+  failedStage?: string;
 };
 
 type FeedbackChannel = {
@@ -228,6 +240,32 @@ export function attachManagedViteFeedback(server: ManagedFeedbackServer, raw = p
     throw new Error('Managed Vite feedback requires HMR on its owned HTTP listener');
   }
 
+  // Ask the owned CLI for authenticated live observations, not its persisted
+  // launch snapshot. Share concurrent requests without blocking Vite's event loop.
+  let observing: Promise<ObservedStatus | null> | undefined;
+  const observe = async (): Promise<ObservedStatus | null> => {
+    if (!context.authority) {
+      return Promise.resolve(null);
+    }
+
+    observing ??= execFileAsync(context.authority.executable, [
+      'workspace', 'inspect', '--workspace', context.workspaceRoot, '--json',
+    ], { encoding: 'utf8', shell: false, windowsHide: true, timeout: 5000, maxBuffer: 2 * 1024 * 1024 })
+      .then(({ stdout }) => {
+        const value: ObservedStatus | null = JSON.parse(stdout);
+        if (value?.generation !== context.generation || value?.manifest?.workspaceID !== context.workspaceID) {
+          throw new Error('Observed development status identity changed');
+        }
+
+        return value;
+      })
+      .catch(() => null)
+      .finally(() => {
+        observing = undefined; 
+      });
+    return observing;
+  };
+
   const authority = feedbackAuthorityReader(context, raw);
   let closed = false;
   let watchFailed = false;
@@ -307,7 +345,7 @@ export function attachManagedViteFeedback(server: ManagedFeedbackServer, raw = p
     };
   }
 
-  server.middlewares.use((request, response, next) => {
+  server.middlewares.use(async (request, response, next) => {
     if (request.url === '/__omniview_development_status') {
       let fd: number | undefined;
       try {
@@ -326,19 +364,22 @@ export function attachManagedViteFeedback(server: ManagedFeedbackServer, raw = p
           throw new Error('Development status identity changed');
         }
 
+        const observed = await observe();
+        const current = observed ?? status;
+
         response.setHeader('Cache-Control', 'no-store');
         response.setHeader('Content-Type', 'application/json');
         response.end(JSON.stringify({
           workspaceID: context.workspaceID,
           generation: context.generation,
           health: Object.fromEntries(['build', 'hmr', 'servedSource', 'sourceReload', 'dependencies', 'readiness'].flatMap((key) =>
-            typeof status.health?.[key] === 'string' && status.health[key] ? [[key, status.health[key]]] : [])),
-          builds: Object.fromEntries(Object.entries(status.builds ?? {}).map(([name, build]) => [name, {
+            typeof observed?.health?.[key] === 'string' && observed.health[key] ? [[key, observed.health[key]]] : [])),
+          builds: Object.fromEntries(Object.entries(current.builds ?? {}).map(([name, build]) => [name, {
             phase: build && typeof build === 'object' && 'phase' in build && typeof build.phase === 'string' ? build.phase : 'unknown',
           }])),
-          selectedPluginCount: Array.isArray(status.manifest?.plugins) ? status.manifest.plugins.length : null,
-          phase: status.launchPhase,
-          failedStage: status.failedStage,
+          selectedPluginCount: Array.isArray(current.manifest?.plugins) ? current.manifest.plugins.length : null,
+          phase: current.launchPhase,
+          failedStage: current.failedStage,
           recoveryCommand: `omniview-dev workspace refresh ${context.workspaceID}`,
         }));
       } catch {

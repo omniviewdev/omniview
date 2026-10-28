@@ -41,7 +41,7 @@ function DetailSection({ title, children }: { title: string; children: ReactNode
 }
 
 function Observation({ value }: { value: string }) {
-  const tone = ['ready', 'host-ready', 'connected', 'current'].includes(value) ? 'success'
+  const tone = ['ready', 'host-ready', 'backend-ready', 'connected', 'current'].includes(value) ? 'success'
     : ['failed', 'error', 'invalidated'].includes(value) ? 'danger'
       : ['building', 'starting'].includes(value) ? 'warning' : 'neutral';
   return (
@@ -56,7 +56,9 @@ export default function InstanceIndicator() {
   const { identity, info, status, refreshInfo } = useInstance();
   const [open, setOpen] = useState(false);
   const development = useDevelopmentStatus(info, status === 'confirmed' && identity?.kind === 'development');
-  const host = hostStatus(development, status === 'confirmed' && info?.readiness === 'host-ready');
+  const hostReady = status === 'confirmed' && (info?.readiness === 'host-ready'
+    || info?.readiness === 'backend-ready' && Boolean(info.endpoints.browser));
+  const host = hostStatus(development, hostReady);
   if (identity?.kind === 'production') {
     return null;
   }
@@ -102,8 +104,12 @@ export default function InstanceIndicator() {
             )}
           </div>
           <div className={footerStyles.Actions}>
-            <PopoverAction icon={<LuInfo size={12} />} label='Full instance details' onClick={() => { close(); setOpen(true); void refreshInfo(); }} />
-            <PopoverAction icon={<LuRefreshCw size={12} />} label='Refresh host identity' onClick={() => { void refreshInfo(); }} />
+            <PopoverAction icon={<LuInfo size={12} />} label='Full instance details' onClick={() => {
+              close(); setOpen(true); void refreshInfo(); 
+            }} />
+            <PopoverAction icon={<LuRefreshCw size={12} />} label='Refresh host identity' onClick={() => {
+              void refreshInfo(); 
+            }} />
           </div>
         </>}
       </FooterPopover>

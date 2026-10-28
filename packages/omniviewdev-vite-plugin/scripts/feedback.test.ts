@@ -242,6 +242,8 @@ for (const framework of frameworks) {
       launchPhase: 'build-error',
       failedStage: 'host-backend',
       lastError: { message: 'PRIVATE_COMPILER_DIAGNOSTIC' },
+      // Persisted fields are not authenticated live observations.
+      health: { readiness: 'authenticated', servedSource: 'current', dependencies: 'current', build: 'ready' },
     };
     const endpoint = `${f.server.resolvedUrls!.local[0]}__omniview_development_status`;
     writeFileSync(file, JSON.stringify(status), { mode: 0o600 });
