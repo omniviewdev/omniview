@@ -55,8 +55,6 @@ func TestBoundExtractionReportsIncomplete(t *testing.T) {
   {name:"numeric ID",body:`{"link":123,"account":"a"}`},
   {name:"missing binding",body:`{"link":"id","account":"a"}`,change:func(b *DeclarationBindings){b.Targets=nil}},
   {name:"no inherited dimension",body:`{"link":"id","account":"a"}`,change:func(b *DeclarationBindings){b.Targets[0].IdentityDimensions=append(b.Targets[0].IdentityDimensions,resource.Dimension{Name:"tenant"})}},
-  {name:"stale source",body:`{"link":"id","account":"a"}`,change:func(b *DeclarationBindings){b.Source.Target.Authority="new:source"}},
-  {name:"stale source scope",body:`{"link":"id","account":"a"}`,change:func(b *DeclarationBindings){values:=[]string{"new"};b.Source.Target.Scope=resource.QueryScope{{Dimension:"tenant",Match:resource.ScopeOneOf,Values:&values}}}},
  } { t.Run(tc.name,func(t *testing.T){
   g,_,idx,source,bindings,decl:=boundFixture(t,MethodFieldPath)
   if tc.change!=nil {tc.change(&bindings);if err:=g.SetBoundDeclarations(source.PluginID,source.Route,source.Reference.Address.Type,[]resource.RelationshipDescriptor{decl},bindings);err!=nil{t.Fatal(err)}}
@@ -187,4 +185,29 @@ func TestRetiredMissingSourceCannotRepublishAfterRouteClear(t *testing.T) {
 	if err := g.CheckComplete(source.PluginID, source.Route); err != nil { t.Fatal(err) }
 	g.unresolvedNode(source, "current missing source", current)
 	if g.CheckComplete(source.PluginID, source.Route) == nil { t.Fatal("current missing source was dropped") }
+}
+
+func TestQueuedRetiredSourceCannotPoisonReplacementCoverage(t *testing.T) {
+	for _,change := range []string{"authority", "scope"} { t.Run(change,func(t *testing.T) {
+		g, _, idx, source, bindings, decl := boundFixture(t, MethodFieldPath)
+		bindings.SourceEpoch++
+		current := source
+		if change == "authority" {
+			bindings.Source.Target.Authority = "replacement:source"
+			current.Reference.Address.Authority = "replacement:source"
+		} else {
+			values := []string{"replacement"}
+			bindings.Source.Target.Scope = resource.QueryScope{{Dimension:"tenant",Match:resource.ScopeOneOf,Values:&values}}
+			current.Reference.Address.Scope = []resource.ScopeEntry{{Dimension:"tenant",Value:"replacement"}}
+		}
+		if err := g.SetBoundDeclarations(source.PluginID, source.Route, source.Reference.Address.Type, []resource.RelationshipDescriptor{decl}, bindings); err != nil { t.Fatal(err) }
+		// Both observations capture replacement declarations; only the current
+		// source can derive edges or report incomplete replacement coverage.
+		idx.OnAdd(source,json.RawMessage(`{"link":123}`))
+		if err := g.CheckComplete(source.PluginID,source.Route); err != nil { t.Fatal(err) }
+		if len(g.EdgesFrom(source.EntryKey())) != 0 { t.Fatal("retired source derived an edge") }
+		idx.OnAdd(current,json.RawMessage(`{"link":"id","account":"a"}`))
+		if err := g.CheckComplete(source.PluginID,source.Route); err != nil { t.Fatal(err) }
+		if len(g.EdgesFrom(current.EntryKey())) != 1 { t.Fatal("current source did not use replacement declarations") }
+	}) }
 }
