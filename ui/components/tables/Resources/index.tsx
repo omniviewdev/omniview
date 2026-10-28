@@ -76,7 +76,7 @@ const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
       } });
     },
   });
-  const { resources, membershipStale } = useResources({
+  const { resources, membershipStale, isAcquiredRequestCurrent } = useResources({
     pluginID,
     request: target.data ? { targetId: target.data.targetId, request: { target: target.data.target, pageSize: 1000, cursor } } : undefined,
     enabled: canEnumerate,
@@ -230,7 +230,7 @@ const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
           if (next) setCursors((pages) => [...pages, next]);
         }}>Next page</Button>
       </Stack>
-      {membershipStale && <Text tone="muted">Source membership may have changed. Visible-row updates are best effort; refresh this source page to reacquire its membership.</Text>}
+      {isAcquiredRequestCurrent && membershipStale && <Text tone="muted">Source membership may have changed. Visible-row updates are best effort; refresh this source page to reacquire its membership.</Text>}
       <ResourceTableContainer
         columns={columns.defs.length ? columns.defs : genericColumns}
         data={rows}
