@@ -3,8 +3,8 @@ package metric
 import (
 	"context"
 	"errors"
-	"time"
 
+	"github.com/omniviewdev/omniview/backend/pkg/transportjson"
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	metricsdk "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
@@ -43,20 +43,20 @@ func (s *ServiceWrapper) GetProvidersForResource(resourceKey string) []MetricPro
 }
 func (s *ServiceWrapper) Query(
 	pluginID, connectionID string,
-	req metricsdk.QueryRequest,
+	encoded string,
 ) (*metricsdk.QueryResponse, error) {
+	var req metricsdk.QueryRequest
+	if err := transportjson.Decode(encoded, &req, pluginID, connectionID); err != nil { return nil, err }
 	return s.Ctrl.Query(pluginID, connectionID, req)
 }
-func (s *ServiceWrapper) QueryAll(connectionID, resourceKey, resourceID, namespace string,
-	resourceData map[string]interface{}, metricIDs []string,
-	shape metricsdk.MetricShape, startTime, endTime time.Time, step time.Duration,
-) (map[string]*metricsdk.QueryResponse, error) {
-	return s.Ctrl.QueryAll(
-		connectionID, resourceKey, resourceID, namespace, resourceData,
-		metricIDs, shape, startTime, endTime, step,
-	)
+func (s *ServiceWrapper) QueryAll(connectionID, encoded string) (map[string]*metricsdk.QueryResponse, error) {
+	var req metricsdk.QueryRequest
+	if err := transportjson.Decode(encoded, &req, connectionID); err != nil { return nil, err }
+	return s.Ctrl.QueryAll(connectionID, req)
 }
-func (s *ServiceWrapper) Subscribe(pluginID, connectionID string, req SubscribeRequest) (string, error) {
+func (s *ServiceWrapper) Subscribe(pluginID, connectionID, encoded string) (string, error) {
+	var req SubscribeRequest
+	if err := transportjson.Decode(encoded, &req, pluginID, connectionID); err != nil { return "", err }
 	return s.Ctrl.Subscribe(pluginID, connectionID, req)
 }
 func (s *ServiceWrapper) Unsubscribe(subscriptionID string) error {

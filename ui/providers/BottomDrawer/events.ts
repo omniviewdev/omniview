@@ -1,5 +1,6 @@
 import { eventbus } from '@/events/eventbus';
 import type { SessionOptions } from '@omniviewdev/runtime/models';
+import type { Value, ResourceReference, AccessRoute } from '@omniviewdev/runtime';
 
 type OnCreateSessionOpts = {
   plugin: string;
@@ -14,7 +15,9 @@ type OnCreateLogSessionOpts = {
   connection: string;
   resourceKey: string;
   resourceID: string;
-  resourceData: Record<string, any>;
+  resourceData: Value;
+  reference?: ResourceReference;
+  route?: AccessRoute;
   target?: string;
   follow?: boolean;
   tailLines?: number;

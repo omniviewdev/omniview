@@ -296,9 +296,11 @@ func TestNativeLogSessionConsumesRegisteredConnectionAndClosesFile(t *testing.T)
 	listing, err := resources.Enumerate(nativeCtx, pluginID, hostresource.HostEnumerateRequest{TargetID: target.TargetID, Request: sdkresource.EnumerateRequest{Target: target.Target}})
 	require.NoError(t, err)
 	require.Len(t, listing.Records, 1)
-	fileData := map[string]interface{}{"name": listing.Records[0].Record.Body.Map["name"].String}
-	// This request-side decoy must not override the actual registered connection.
-	fileData["logRoot"] = decoy
+	fileData := &sdkresource.Value{Kind: "map", Map: map[string]sdkresource.Value{
+		"name": {Kind: "string", String: listing.Records[0].Record.Body.Map["name"].String},
+		// This request-side decoy must not override the registered connection.
+		"logRoot": {Kind: "string", String: decoy},
+	}}
 	ctrl := NewController(logging.NewNop(), nil, resources).(*controller)
 	ctrl.ctx = ctx // Native controller lifetime; deliberately no Wails singleton.
 	t.Cleanup(func() { cancel(); _ = ctrl.OnPluginStop(pluginID, config.PluginMeta{ID: pluginID}) })

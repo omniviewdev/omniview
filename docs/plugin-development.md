@@ -172,18 +172,24 @@ activates an old cache for Get/List or utility capability lookups. Legacy mixed
 cache bytes remain untouched for inactive review/import, including stop/restart;
 removed source IDs do not survive by union-merging refresh snapshots.
 
-Use `valueToJSON` only for presentation: exact signed and unsigned integers remain
-`bigint`. Use `valueToJSONText` and `jsonTextToValue` for JSON editors so large
-integer literals never pass through lossy JavaScript numbers. Editor schema
+Use `valueToJSON` only for presentation: signed and unsigned integers within the
+JavaScript safe-integer range project exactly to `number`; wider integers remain
+`bigint`. This projection does not retain signedness or integral-double intent:
+never reconstruct RPC/write bodies from it. Use the original tagged `Value`.
+Use `valueToJSONText` and `jsonTextToValue` for JSON editors so large integer
+literals never pass through lossy JavaScript numbers. Editor schema
 bindings retain shared document references and exact root pointers; acquire a
 referenced document through `GetSchemaDocument` rather than copying it per type.
 
 Generic YAML editing preserves canonical scalar intent through native YAML float
 nodes and the original scalar AST, including untouched integral doubles, unsigned
-integers and negative zero. Resource exec receives the observed tagged body,
-reference and route, not the bigint-bearing presentation projection.
+integers and negative zero. Resource exec, logs, metrics and port forwarding
+receive the observed tagged body, reference and route, not the display projection.
+True nonresource utilities omit those canonical fields; cluster metric keys do
+not imply a fabricated resource reference or body.
 
-Use the handwritten resource and exec clients for Value-bearing requests. Their
+Use the handwritten resource, exec, logs, metric and networker clients for
+Value-bearing requests. Their
 Wails adapter carries exact canonical JSON as a string so outer `JSON.stringify`
 cannot normalize double `-0` to `0`; Go decodes through existing strict SDK DTO
 admission, without another semantic Value format. The SDK profile remains 32 MiB

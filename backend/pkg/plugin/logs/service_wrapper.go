@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/omniviewdev/omniview/backend/pkg/transportjson"
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	logssdk "github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
@@ -39,8 +40,10 @@ func (s *ServiceWrapper) GetSupportedResources(pluginID string) []logssdk.Handle
 }
 func (s *ServiceWrapper) CreateSession(
 	plugin, connectionID string,
-	opts logssdk.CreateSessionOptions,
+	encoded string,
 ) (*logssdk.LogSession, error) {
+	var opts logssdk.CreateSessionOptions
+	if err := transportjson.Decode(encoded, &opts, plugin, connectionID); err != nil { return nil, err }
 	return s.Ctrl.CreateSession(plugin, connectionID, opts)
 }
 func (s *ServiceWrapper) GetSession(sessionID string) (*logssdk.LogSession, error) {

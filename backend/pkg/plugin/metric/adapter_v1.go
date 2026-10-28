@@ -3,13 +3,13 @@ package metric
 import (
 	"context"
 
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 )
 
-// AdapterV1 wraps SDK v1 metric.Provider as the engine canonical Provider.
-// For v1, all methods are direct delegation (types identical).
-// When v2 ships and canonical types diverge, AdapterV1 translates v1 → canonical.
+// AdapterV1 delegates the unchanged utility cohort and explicitly selects the
+// canonical resource stream extension; it never falls back to native Struct.
 type AdapterV1 struct {
 	inner metric.Provider
 }
@@ -29,6 +29,8 @@ func (a *AdapterV1) Query(ctx *types.PluginContext, req metric.QueryRequest) (*m
 	return a.inner.Query(ctx, req)
 }
 
-func (a *AdapterV1) StreamMetrics(ctx context.Context, in chan metric.StreamInput) (chan metric.StreamOutput, error) {
-	return a.inner.StreamMetrics(ctx, in)
+func (a *AdapterV1) StreamResourceMetrics(ctx context.Context, in chan metric.StreamInput) (chan metric.StreamOutput, error) {
+	provider, ok := a.inner.(metric.ResourceStreamProvider)
+	if !ok { return nil, resourcev2.NewError("UNSUPPORTED", "Canonical metric streaming is unavailable.") }
+	return provider.StreamResourceMetrics(ctx, in)
 }

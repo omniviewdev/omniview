@@ -1,4 +1,4 @@
-import { PortForwardResourceOpts } from './types';
+import type { PortForwardResourceOpts } from './types';
 import { ALL_SESSIONS_KEY } from './usePortForwardSessions';
 import { FindPortForwardSessionRequest, PortForwardSessionOptions } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/networker/models';
 import { Browser } from '@wailsio/runtime';
@@ -6,7 +6,7 @@ import {
   ClosePortForwardSession,
   FindPortForwardSessions,
   StartResourcePortForwardingSession,
-} from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/networker/servicewrapper';
+} from '../../networker';
 import { useSnackbar } from '../snackbar';
 import { createErrorHandler, parseAppError } from '../../errors/parseAppError';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -48,6 +48,8 @@ export function useResourcePortForwarder({ pluginID: explicitPluginID, connectio
         connection_type: 'RESOURCE',
         connection: {
           resource_data: opts.resource,
+          reference: opts.reference,
+          route: opts.route,
           connection_id: connectionID,
           plugin_id: pluginID,
           resource_id: opts.resourceId,

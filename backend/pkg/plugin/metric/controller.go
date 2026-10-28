@@ -20,6 +20,7 @@ import (
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
@@ -50,10 +51,7 @@ type Controller interface {
 
 	// Querying
 	Query(pluginID, connectionID string, req metric.QueryRequest) (*metric.QueryResponse, error)
-	QueryAll(connectionID, resourceKey, resourceID, namespace string,
-		resourceData map[string]interface{}, metricIDs []string,
-		shape metric.MetricShape, startTime, endTime time.Time, step time.Duration,
-	) (map[string]*metric.QueryResponse, error)
+	QueryAll(connectionID string, req metric.QueryRequest) (map[string]*metric.QueryResponse, error)
 
 	// Streaming
 	Subscribe(pluginID, connectionID string, req SubscribeRequest) (string, error)
@@ -65,7 +63,9 @@ type SubscribeRequest struct {
 	ResourceKey       string                 `json:"resource_key"`
 	ResourceID        string                 `json:"resource_id"`
 	ResourceNamespace string                 `json:"resource_namespace"`
-	ResourceData      map[string]interface{} `json:"resource_data"`
+	ResourceData      *resourcev2.Value `json:"resource_data,omitempty"`
+	Reference         *resourcev2.ResourceReference `json:"reference,omitempty"`
+	Route             *resourcev2.AccessRoute `json:"route,omitempty"`
 	MetricIDs         []string               `json:"metric_ids"`
 	Interval          time.Duration          `json:"interval"`
 }
@@ -173,6 +173,13 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	info, handlers := provider.GetSupportedResources(c.getUnconnectedCtx(context.Background()))
 
 	inchan := make(chan metric.StreamInput)
+	// The canonical SDK lane completes its protocol handshake before publishing
+	// readiness or allowing subscription commands into an unconsumed channel.
+	stream, streamErr := provider.StreamResourceMetrics(c.ctx, inchan)
+	if streamErr != nil {
+		logger.Errorw(context.Background(), "error starting canonical metric stream", "error", streamErr)
+		return streamErr
+	}
 
 	c.mux.Lock()
 	c.clients[pluginID] = provider
@@ -185,11 +192,6 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	c.mux.Unlock()
 
 	go func() {
-		stream, streamErr := provider.StreamMetrics(c.ctx, inchan)
-		if streamErr != nil {
-			logger.Errorw(context.Background(), "error starting metric stream", "error", streamErr)
-			return
-		}
 
 		for {
 			select {
@@ -279,7 +281,7 @@ func (c *controller) handleStreamOutput(output metric.StreamOutput) {
 		return
 	}
 
-	if output.Error != "" {
+	if output.Error != "" || output.OperationError != nil {
 		eventKey := "core/metrics/error/" + output.SubscriptionID
 		c.app.Event.Emit(eventKey, string(data))
 	} else {
@@ -400,42 +402,25 @@ func (c *controller) Query(
 }
 
 func (c *controller) QueryAll(
-	connectionID, resourceKey, resourceID, namespace string,
-	resourceData map[string]interface{},
-	metricIDs []string,
-	shape metric.MetricShape,
-	startTime, endTime time.Time,
-	step time.Duration,
+	connectionID string, req metric.QueryRequest,
 ) (map[string]*metric.QueryResponse, error) {
 	ctx, span := tracer.Start(context.Background(), "metric.QueryAll")
 	defer span.End()
 	span.SetAttributes(
 		attribute.String("connection_id", connectionID),
-		attribute.String("resource_key", resourceKey),
-		attribute.String("resource_id", resourceID),
-		attribute.String("namespace", namespace),
+		attribute.String("resource_key", req.ResourceKey),
+		attribute.String("resource_id", req.ResourceID),
+		attribute.String("namespace", req.ResourceNamespace),
 	)
 
 	c.mux.RLock()
-	pluginIDs, ok := c.resourceIndex[resourceKey]
+	pluginIDs, ok := c.resourceIndex[req.ResourceKey]
 	c.mux.RUnlock()
 
 	if !ok || len(pluginIDs) == 0 {
 		return nil, nil
 	}
 
-	req := metric.QueryRequest{
-		ResourceKey:       resourceKey,
-		ResourceID:        resourceID,
-		ResourceNamespace: namespace,
-		ResourceData:      resourceData,
-		MetricIDs:         metricIDs,
-		Shape:             shape,
-		StartTime:         startTime,
-		EndTime:           endTime,
-		Step:              step,
-		Params:            nil,
-	}
 
 	results := make(map[string]*metric.QueryResponse)
 	var mu sync.Mutex
@@ -502,6 +487,8 @@ func (c *controller) Subscribe(
 		ResourceID:        req.ResourceID,
 		ResourceNamespace: req.ResourceNamespace,
 		ResourceData:      req.ResourceData,
+		Reference:         req.Reference,
+		Route:             req.Route,
 		MetricIDs:         req.MetricIDs,
 		Interval:          req.Interval,
 	}

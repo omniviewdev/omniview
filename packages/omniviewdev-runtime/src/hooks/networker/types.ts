@@ -1,4 +1,5 @@
 import type { PortForwardSession } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/networker/models';
+import type { Value, ResourceReference, AccessRoute } from '../../resource/v2/domain';
 
 export type PortForwardResourceOpts = {
   /**
@@ -12,9 +13,11 @@ export type PortForwardResourceOpts = {
   */
   resourceId: string;
   /**
-  * The resource data object
+  * The canonical resource body, never the presentation projection.
   */
-  resource: any;
+  resource: Value;
+  reference?: ResourceReference;
+  route?: AccessRoute;
   /**
   * The port to forward on the resource
   * @example 8080

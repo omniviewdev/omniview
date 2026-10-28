@@ -181,12 +181,14 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
     });
 
     const unsubscribeCreateLogSession = bottomDrawerChannel.on('onCreateLogSession', ({
-      plugin, connection, resourceKey, resourceID, resourceData, target, follow, tailLines, icon, label, params,
+      plugin, connection, resourceKey, resourceID, resourceData, reference, route, target, follow, tailLines, icon, label, params,
     }) => {
       const opts = CreateSessionOptions.createFrom({
         resource_key: resourceKey,
         resource_id: resourceID,
         resource_data: resourceData,
+        reference,
+        route,
         options: LogSessionOptions.createFrom({
           target: target ?? '',
           follow: follow ?? true,

@@ -1,6 +1,6 @@
 // Handwritten resource boundaries hide generated transport DTOs from consumers.
 export * as ExecClient from './exec';
-export * as NetworkerClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/networker/servicewrapper';
+export * as NetworkerClient from './networker';
 export * as PluginManager from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/servicewrapper';
 export * as ResourceClient from './resource/v2/client';
 export * as GraphClient from './resource/v2/graph-client';
@@ -9,8 +9,8 @@ export * as SettingsProvider from './bindings/github.com/omniviewdev/omniview/in
 export * as UtilsClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/utils/client';
 export * as UIClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/ui/servicewrapper';
 export * as DiagnosticsClient from './bindings/github.com/omniviewdev/omniview/backend/diagnostics/diagnosticsclient';
-export * as LogsClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/logs/servicewrapper';
-export * as MetricClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/servicewrapper';
+export * as LogsClient from './logs';
+export * as MetricClient from './metric';
 export * as DataClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/data/servicewrapper';
 
 export * as DevServerManager from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/devserver/servicewrapper';

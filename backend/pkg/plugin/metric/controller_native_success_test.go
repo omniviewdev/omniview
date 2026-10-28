@@ -209,7 +209,7 @@ func newNativeMetricFixture(t *testing.T, query sdkmetric.QueryFunc) *nativeMetr
 	stopped := make(chan struct{}, 1)
 	options := utils.RegisterServerOpts(nil, logging.NewNop())
 	options = append(options, grpc.ChainStreamInterceptor(func(server any, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		if strings.HasSuffix(info.FullMethod, "/StreamMetrics") {
+		if strings.HasSuffix(info.FullMethod, "/StreamResourceMetrics") {
 			started <- struct{}{}
 			defer func() { stopped <- struct{}{} }()
 		}

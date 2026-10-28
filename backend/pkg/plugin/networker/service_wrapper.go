@@ -3,6 +3,7 @@ package networker
 import (
 	"context"
 
+	"github.com/omniviewdev/omniview/backend/pkg/transportjson"
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	networkersdk "github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
@@ -52,8 +53,10 @@ func (s *ServiceWrapper) FindPortForwardSessions(
 }
 func (s *ServiceWrapper) StartResourcePortForwardingSession(
 	pluginID, connectionID string,
-	opts networkersdk.PortForwardSessionOptions,
+	encoded string,
 ) (*networkersdk.PortForwardSession, error) {
+	var opts networkersdk.PortForwardSessionOptions
+	if err := transportjson.Decode(encoded, &opts, pluginID, connectionID); err != nil { return nil, err }
 	return s.Ctrl.StartResourcePortForwardingSession(pluginID, connectionID, opts)
 }
 func (s *ServiceWrapper) ClosePortForwardSession(sessionID string) (*networkersdk.PortForwardSession, error) {

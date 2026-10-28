@@ -34,12 +34,24 @@ describe('exact resource integer conversions', () => {
     expect(() => jsonToValue(Number.MIN_SAFE_INTEGER - 1)).toThrow(RangeError);
   });
 
-  it('retains an explicitly unsigned zero during presentation and text output', () => {
+  it('projects unsigned zero exactly without changing the canonical kind', () => {
     const value: Value = { kind: 'uint64', value: '0' };
-    expect(valueToJSON(value)).toBe(0n);
+    expect(valueToJSON(value)).toBe(0);
     expect(valueToJSONText(value)).toBe('0');
     // Native JSON has no signedness tag. Authored integer lexemes use int64 when representable.
     expect(jsonTextToValue('0')).toEqual({ kind: 'int64', value: '0' });
+  });
+
+  it.each([
+    ['-9007199254740991', 'int64', -9007199254740991],
+    ['9007199254740991', 'int64', 9007199254740991],
+    ['7', 'uint64', 7],
+    ['-9007199254740992', 'int64', -9007199254740992n],
+    ['9007199254740992', 'uint64', 9007199254740992n],
+  ] as const)('projects only exactly safe integer %s', (decimal, kind, expected) => {
+    const value: Value = { kind, value: decimal };
+    expect(valueToJSON(value)).toBe(expected);
+    expect(value).toEqual({ kind, value: decimal });
   });
 });
 

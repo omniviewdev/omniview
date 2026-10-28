@@ -1,11 +1,14 @@
 import type { Value } from './domain';
 
-/** Decode for presentation. Exact integers remain bigint, never lossy numbers. */
+/** Presentation projection only: exact safe integers are numbers; wider integers stay bigint. */
 export function valueToJSON(value: Value): unknown {
   switch (value.kind) {
     case 'null': return null;
     case 'bool': case 'string': case 'double': case 'timestamp': return value.value;
-    case 'int64': case 'uint64': return BigInt(value.value);
+    case 'int64': case 'uint64': {
+      const integer = BigInt(value.value);
+      return integer >= -9007199254740991n && integer <= 9007199254740991n ? Number(integer) : integer;
+    }
     case 'list': return value.value.map(valueToJSON);
     case 'map': return Object.fromEntries(Object.entries(value.value).map(([key, item]) => [key, valueToJSON(item)]));
   }
