@@ -53,12 +53,16 @@ function Harness({ index }: { index: number }) {
         { id: 'other', title: 'Other', variant: 'logs' },
       ]);
     }}>Seed</button>
-    <button onClick={() => drawer.focusTab({ index })}>Focus</button>
-    <button onClick={() => bottomDrawerChannel.emit('onCreateSession', {
-      plugin: 'kubernetes', connection: 'kind-kind',
-      opts: SessionOptions.createFrom({ command: ['sh'] }),
-      label: 'Exec', replaceSessionId: 'exec-old',
-    })}>Retry</button>
+    <button onClick={() => {
+      drawer.focusTab({ index });
+    }}>Focus</button>
+    <button onClick={() => {
+      bottomDrawerChannel.emit('onCreateSession', {
+        plugin: 'kubernetes', connection: 'kind-kind',
+        opts: SessionOptions.createFrom({ command: ['sh'] }),
+        label: 'Exec', replaceSessionId: 'exec-old',
+      });
+    }}>Retry</button>
     <output data-testid="state">{JSON.stringify({
       ids: drawer.tabs.map(tab => tab.id),
       focused: drawer.tabs[drawer.focused]?.title,
@@ -66,7 +70,7 @@ function Harness({ index }: { index: number }) {
       error: drawer.tabs[0]?.properties?.error,
     })}</output>
     <BottomDrawerTabs hasTabs={drawer.tabs.length > 0} isMinimized={false} isFullscreen={false}
-      onMinimize={() => {}} onExpand={() => {}} onFullscreen={() => {}} />
+      onMinimize={vi.fn()} onExpand={vi.fn()} onFullscreen={vi.fn()} />
   </>;
 }
 
@@ -86,7 +90,9 @@ it.each([0, 1, 2])('keeps tab order and focused tab %i while retry connects', as
   fireEvent.click(screen.getByText('Retry'));
   expect(state()).toEqual({ ids: [expect.stringMatching(/^pending-/), 'logs', 'other'],
     focused: ['Exec', 'Logs', 'Other'][index], status: 'connecting' });
-  await act(async () => { resolve({ id: 'exec-new' }); });
+  await act(async () => {
+    resolve({ id: 'exec-new' });
+  });
   expect(state()).toEqual({ ids: ['exec-new', 'logs', 'other'],
     focused: ['Exec', 'Logs', 'Other'][index], status: 'connected' });
   expect(backend.close).toHaveBeenCalledWith('exec-old');
@@ -95,12 +101,14 @@ it.each([0, 1, 2])('keeps tab order and focused tab %i while retry connects', as
 it('keeps failed retry in its original slot without selecting logs', async () => {
   const { promise, reject } = Promise.withResolvers<{ id: string }>();
   backend.create.mockReturnValue(promise);
-  const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const errorLog = vi.spyOn(console, 'error').mockImplementation(vi.fn());
   try {
     render(<BottomDrawerProvider><Harness index={0} /></BottomDrawerProvider>);
     fireEvent.click(screen.getByText('Seed'));
     fireEvent.click(screen.getByText('Retry'));
-    await act(async () => { reject(new Error('Shell not found')); });
+    await act(async () => {
+      reject(new Error('Shell not found'));
+    });
     expect(state()).toEqual({ ids: [expect.stringMatching(/^pending-/), 'logs', 'other'],
       focused: 'Exec', status: 'error', error: 'Shell not found' });
   } finally {
