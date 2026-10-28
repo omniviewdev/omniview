@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en" data-ov-theme="void">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Resource History — design prototypes</title>
+<link rel="stylesheet" href="theme.css">
+<style>
+main{max-width:900px;margin:70px auto;padding:0 28px}h1{font-size:22px;font-weight:550;margin-bottom:8px}p{color:var(--muted)}nav{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:28px 0}nav a{display:block;padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:5px}nav a:hover{border-color:var(--accent)}h2{font-size:14px;margin:0 0 10px}nav p{margin:0;line-height:1.7}.preview{display:block;width:100%;margin-top:16px;border:1px solid var(--border);border-radius:3px}@media(max-width:650px){nav{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header class="app-header"><span class="badge">Omniview</span><span class="prototype">RESOURCE HISTORY · INTERACTIVE DESIGN PROTOTYPES</span></header>
+<main>
+<h1>Resource history, in context</h1>
+<p>History first. Filters, activity charts, record details, and sync setup open only when needed.</p>
+<nav aria-label="Design prototypes">
+<a href="resource.html"><h2>Resource drawer <span class="muted">↗</span></h2><p>History beside the resource inventory. Expand for investigation, then restore the original context.</p><img class="preview" src="resource-preview.png" alt="Compact resource history drawer with most of its height reserved for events"></a>
+<a href="connection.html"><h2>Kubernetes sidebar → History <span class="muted">↗</span></h2><p>A dedicated connection-wide view. Full-width events by default; filters and sync setup stay on demand.</p><img class="preview" src="connection-preview.png" alt="Kubernetes History sidebar view with full-width event results"></a>
+<a href="resource.html?expanded=1"><h2>Expanded resource investigation <span class="muted">↗</span></h2><p>More room for the timeline and selected evidence without keeping the inventory open.</p><img class="preview" src="resource-expanded-preview.png" alt="Expanded resource timeline and optional evidence inspector"></a>
+</nav>
+<p>All records, status updates, and backend usage are simulated. These studies do not enable production history services.</p>
+</main>
+</body></html>
