@@ -9,10 +9,12 @@ import jsonpath from 'jsonpath';
 import { LuSquareTerminal } from 'react-icons/lu';
 
 // types
-import { type Handler, SessionOptions } from '@omniviewdev/runtime/models';
+import { type Handler } from '@omniviewdev/runtime/models';
+import type { HostRecord } from '@omniviewdev/runtime';
 
 // project imports
 import ActionMenuListItem from './ActionMenuListItem';
+import { resourceExecOptions } from './resourceExecOptions';
 import { bottomDrawerChannel } from '@/providers/BottomDrawer/events';
 
 type Props = {
@@ -27,6 +29,7 @@ type Props = {
   connection: string;
   resource: string;
   data: Record<string, unknown>;
+  record: HostRecord;
 };
 
 type ExecTarget = {
@@ -77,6 +80,7 @@ const ExecAction: React.FC<Props> = ({
   connection,
   resource,
   data,
+  record,
   itemProps,
   handleDismiss,
 }) => {
@@ -86,14 +90,8 @@ const ExecAction: React.FC<Props> = ({
    * Perform the exec action on the resource target.
    */
   const handlePerformExec = (label: string, params: Record<string, string>) => {
-    const opts = SessionOptions.createFrom({
-      params,
-      resource_plugin: plugin,
-      resource_key: resource,
-      resource_data: data,
-      command: action.default_command?.length ? action.default_command : ['/bin/sh'],
-      tty: true,
-    });
+    const opts = resourceExecOptions(plugin, resource, record.record.body, params,
+      action.default_command?.length ? action.default_command : ['/bin/sh']);
 
     bottomDrawerChannel.emit('onCreateSession', { plugin, connection, opts, label });
   };

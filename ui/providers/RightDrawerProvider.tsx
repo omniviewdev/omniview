@@ -14,7 +14,7 @@ import {
   type ShowResourceSidebarParams,
 } from '@omniviewdev/runtime';
 import { ResourceClient } from '@omniviewdev/runtime/api';
-import { jsonToValue, valueToJSON, resourceQueryKeys, type HostRecord } from '@omniviewdev/runtime';
+import { jsonToValue, valueToJSON, resourceQueryKeys, type HostRecord, type Value } from '@omniviewdev/runtime';
 import { useQueryClient } from '@tanstack/react-query';
 import RightDrawer from '@/components/displays/RightDrawer';
 import { bottomDrawerChannel, getBottomDrawerHeight } from './BottomDrawer/events';
@@ -257,7 +257,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
     params.signal?.throwIfAborted();
     const resourceKey = params.reference.address.type;
     const resourceID = params.reference.address.id;
-    const onSubmit = (ctx: DrawerContext, value: Record<string, any>) => {
+    const onSubmit = (ctx: DrawerContext, value: Record<string, any>, canonical?: Value) => {
       if (!ctx.resource) {
         throw new Error('Resource editor has no canonical target.');
       }
@@ -265,7 +265,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
         route: ctx.resource.route,
         reference: ctx.resource.reference,
         operation: 'update',
-        input: jsonToValue(value),
+        input: canonical ?? jsonToValue(value),
       }).then(() => {
         void queryClient.invalidateQueries({ queryKey: resourceQueryKeys.all(params.pluginID) });
         closeDrawer();

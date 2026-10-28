@@ -135,6 +135,7 @@ const ActionsMenuList: React.FC<ActionMenuListProps> = ({
         connection={connection}
         resource={resource}
         data={data}
+        record={record}
       />}
       <DeleteAction
         plugin={plugin}

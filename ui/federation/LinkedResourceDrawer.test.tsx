@@ -6,6 +6,7 @@ import {
 } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { DrawerContext } from '@omniviewdev/runtime';
+import type * as Runtime from '@omniviewdev/runtime';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
@@ -46,9 +47,10 @@ vi.mock('@omniviewdev/editors', () => ({
   OV_MONACO_THEME: 'ov-theme',
 }));
 
-vi.mock('@omniviewdev/runtime', () => ({
-  useSettings: () => ({ settings: mocks.settings }),
-}));
+vi.mock('@omniviewdev/runtime', async (importOriginal) => {
+  const runtime = await importOriginal<typeof Runtime>();
+  return { ...runtime, useSettings: () => ({ settings: mocks.settings }) };
+});
 
 vi.mock('@monaco-editor/react', () => ({
   default: (props: { theme?: string }) => <div data-testid="linked-editor" data-theme={props.theme} />,

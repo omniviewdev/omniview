@@ -6,13 +6,14 @@ import { Button, Stack, Text } from '@omniviewdev/base-ui';
 import { InlineErrorFallback } from '@/components/errors/ErrorFallback';
 
 // types
-import type { DrawerComponent, DrawerContext } from '@omniviewdev/runtime';
+import { jsonToValue, valueToJSON, type Value, type DrawerComponent, type DrawerContext } from '@omniviewdev/runtime';
+import { resourceYaml, parseResourceYaml } from './resourceYaml';
 
 // icons
 import { LuCode, LuFileDiff, LuFileCode, LuLink, LuRotateCw, LuSquareChartGantt } from 'react-icons/lu';
 
 // third-party
-import { parse, stringify } from 'yaml';
+import { stringify } from 'yaml';
 import MonacoEditor, { DiffEditor } from '@monaco-editor/react';
 import { useResolvedMonacoTheme } from '@/components/displays/CodeEditor';
 import { useSchemaRegistration } from '@/providers/monaco/useSchemaRegistration';
@@ -63,10 +64,11 @@ function ResourceEditorSchemas({ resource }: { resource: NonNullable<DrawerConte
  */
 const LinkedResourceEditor: React.FC<{
   ctx: DrawerContext;
-  onSubmit: (ctx: DrawerContext, value: Record<string, any>) => void;
+  onSubmit: (ctx: DrawerContext, value: Record<string, any>, canonical?: Value) => void;
   onClose: () => void;
 }> = ({ ctx, onSubmit, onClose }) => {
-  const originalData = ctx.data ? stringify(ctx.data, null, 2) : '';
+  const original = React.useMemo(() => ctx.resource?.record?.record.body ?? jsonToValue(ctx.data ?? null), [ctx]);
+  const originalData = React.useMemo(() => resourceYaml(original), [original]);
   const editorPath = ctx.resource
     ? `file:///resource/${encodeURIComponent(ctx.resource.pluginID)}/${encodeURIComponent(ctx.resource.route.connection)}/${encodeURIComponent(ctx.resource.reference.address.type)}/draft.yaml`
     : 'file:///resource/draft.yaml';
@@ -94,8 +96,8 @@ const LinkedResourceEditor: React.FC<{
   };
 
   const handleSubmit = () => {
-    const parsed = parse(value, { intAsBigInt: true });
-    onSubmit(ctx, parsed);
+    const parsed = parseResourceYaml(value, original, originalData);
+    onSubmit(ctx, valueToJSON(parsed) as Record<string, any>, parsed);
   };
 
   return (
@@ -175,7 +177,7 @@ const LinkedResourceEditor: React.FC<{
  */
 export const createLinkedResourceDrawer = (
   resourceKey: string,
-  onSubmit: (ctx: DrawerContext, value: Record<string, any>) => void,
+  onSubmit: (ctx: DrawerContext, value: Record<string, any>, canonical?: Value) => void,
   onClose: () => void,
   SidebarComponent?: React.ComponentType<{ ctx: DrawerContext }>,
 ): DrawerComponent => ({
