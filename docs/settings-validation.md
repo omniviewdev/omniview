@@ -45,7 +45,7 @@ SDK `v0.7.0` contains the single structured `Validator` callback and draft
 validation RPC. Rebuild plugins against this release. Source selection requires
 an absolute path when testing a local SDK; normal builds use the released
 dependency pinned in `go.mod`. Host, providers, runtime, and Vite plugin versions
-are aligned at `0.7.1`; normal release tags use the existing release workflow.
+are aligned at `0.7.3`; normal release tags use the existing release workflow.
 
 The E2E runner checks out the independently reviewed SDK revision selected by
 `OMNIVIEW_E2E_REVIEWED_SDK_REVISION`. After reviewing the SDK change, advance that
