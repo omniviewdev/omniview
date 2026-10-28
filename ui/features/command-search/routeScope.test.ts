@@ -24,7 +24,9 @@ function harness() {
       { path: 'object', handle: { searchScope: { ...resource, kind: 'resource', resourceId: 'machine-1' } } },
       { path: 'dashboard' },
       { path: 'global', handle: { searchScope: null } },
-      { path: 'throws', handle: { searchScope: () => { throw new Error('plugin failure'); } } },
+      { path: 'throws', handle: { searchScope: () => {
+        throw new Error('plugin failure'); 
+      } } },
       { path: 'foreign', handle: { searchScope: { ...resource, pluginId: 'other' } } },
       { path: 'invalid', handle: { searchScope: { kind: 'resource-type' } } },
       { path: 'undefined', handle: { searchScope: () => undefined } },
@@ -36,11 +38,20 @@ function harness() {
   }]);
   const resolve = () => resolveRouteSearchScope(location, (id) => id === 'provider' && registered ? routes : undefined, () => ready);
   const controller = createGlobalSearchController({ registry: new ExtensionPointRegistry(), isPluginReady: () => ready,
-    hasPluginRoute: () => registered, listResourcePlugins: async () => [], loadConnections: async () => [], navigate: () => {} });
-  const open = (options = {}) => controller.open(resolveSearchOpenOptions(options, controller.getSnapshot().isOpen, resolve));
+    hasPluginRoute: () => registered, listResourcePlugins: async () => [], loadConnections: async () => [], navigate: () => undefined });
+  const open = (options = {}) => {
+    controller.open(resolveSearchOpenOptions(options, controller.getSnapshot().isOpen, resolve)); 
+  };
+
   return { controller, resolve, open, context: () => context,
-    go: (suffix: string) => { location = { ...location, pathname: '/_plugin/provider/accounts/west' + suffix }; },
-    unload: () => { ready = false; }, unregister: () => { registered = false; } };
+    go: (suffix: string) => {
+      location = { ...location, pathname: '/_plugin/provider/accounts/west' + suffix }; 
+    },
+    unload: () => {
+      ready = false; 
+    }, unregister: () => {
+      registered = false; 
+    } };
 }
 
 describe('registered route search context and opening', () => {

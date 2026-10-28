@@ -84,7 +84,9 @@ describe('resource icon builtin lifecycle', () => {
 
   it('rejects a foreign resource icon extension point', () => {
     registry.addExtensionPoint({ id: 'omniview/resource/icons', pluginId: 'foreign' });
-    expect(() => ensureBuiltinExtensionPointsRegistered(registry)).toThrow(/non-core owner/);
+    expect(() => {
+      ensureBuiltinExtensionPointsRegistered(registry); 
+    }).toThrow(/non-core owner/);
   });
 });
 

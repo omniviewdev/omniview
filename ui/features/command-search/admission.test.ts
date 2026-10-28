@@ -36,6 +36,7 @@ describe('universal provider admission', () => {
       const Context = { $$typeof: Symbol.for(tag) };
       expect(admitSearchContribution({ ...contribution(), value: { schemaVersion: 1, kind: 'provider', search: vi.fn(), ...callbacks, Context } })).toMatchObject({ ...callbacks, Context });
     }
+
     for (const Context of [null, {}, 'div', 1]) {
       expect(admitSearchContribution({ ...contribution(), value: { schemaVersion: 1, kind: 'provider', search: vi.fn(), Context } })).toBeUndefined();
     }

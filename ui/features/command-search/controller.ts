@@ -183,7 +183,10 @@ function staticScore(query: string, label: string, value: SearchEntryV1): number
 }
 
 function sameIntent(left: SearchEntryV1, right: SearchEntryV1): boolean {
-  if (left.kind === 'action' && right.kind === 'action') return JSON.stringify(left.action) === JSON.stringify(right.action);
+  if (left.kind === 'action' && right.kind === 'action') {
+    return JSON.stringify(left.action) === JSON.stringify(right.action);
+  }
+
   if (left.kind === 'command' && right.kind === 'command') {
     return left.command.pluginId === right.command.pluginId;
   }
@@ -264,8 +267,14 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
   const contextErrors = new WeakMap<ExtensionContributionRegistration, string>();
 
   function scopeIdentity(scope: SearchScopeV1 | undefined) {
-    if (!scope) return undefined;
-    if (scope.kind === 'connection') return { kind: scope.kind, pluginId: scope.pluginId, connectionId: scope.connectionId };
+    if (!scope) {
+      return undefined;
+    }
+
+    if (scope.kind === 'connection') {
+      return { kind: scope.kind, pluginId: scope.pluginId, connectionId: scope.connectionId };
+    }
+
     const { label: _label, scopeLabel: _scopeLabel, ...identity } = scope;
     return identity;
   }
@@ -322,15 +331,23 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
 
     return undefined;
   }
+
   function withinScope(value: SearchEntryV1, owner: string): boolean {
     const parent = snapshot.scopes.at(-1);
-    if (!parent) return true;
+    if (!parent) {
+      return true;
+    }
+
     const target = value.kind === 'action' ? value.action.target : value.scope;
-    if (!target) return owner === parent.pluginId && value.kind === 'navigation';
+    if (!target) {
+      return owner === parent.pluginId && value.kind === 'navigation';
+    }
+
     if (value.kind === 'action' && value.action.recovery === 'connection') {
       return target.kind === 'connection' && owner === parent.pluginId &&
         target.pluginId === parent.pluginId && target.connectionId === parent.connectionId;
     }
+
     return target.pluginId === parent.pluginId && target.connectionId === parent.connectionId &&
       (parent.kind === 'connection' || (target.kind !== 'connection' && target.resourceKey === parent.resourceKey)) &&
       (parent.kind !== 'resource-type' || target.kind !== 'resource' || !parent.namespaces?.length || parent.namespaces.includes(target.namespace)) &&
@@ -355,7 +372,10 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
         clipped = true;
         return;
       }
-      if (!registrationIds.has(entry.registration)) registrationIds.set(entry.registration, ++nextRegistrationId);
+
+      if (!registrationIds.has(entry.registration)) {
+        registrationIds.set(entry.registration, ++nextRegistrationId);
+      }
 
       const key = encodeURIComponent(
         JSON.stringify([registrationIds.get(entry.registration), entry.registration.plugin, entry.registration.id, entry.itemId, scopeIdentity(entry.value.scope), entry.value.kind === 'action' ? { ...entry.value.action, target: scopeIdentity(entry.value.action.target) } : undefined]),
@@ -404,6 +424,7 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
     if (!snapshot.scopes.length) {
       rows.sort((left, right) => (right.value.scope?.kind === 'connection' ? 1 : 0) - (left.value.scope?.kind === 'connection' ? 1 : 0));
     }
+
     const messages: string[] = [];
     if (!isSearchQueryAllowed(snapshot.query)) {
       messages.push('Search is too long. Narrow your query to 256 characters.');
@@ -525,7 +546,10 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
 
     while (active < 4) {
       const attempt = attempts.find((candidate) => !candidate.settled && candidate.source.state === 'queued');
-      if (!attempt) break;
+      if (!attempt) {
+        break;
+      }
+
       if (!current(token, attempt)) {
         attempt.settled = true;
         attempt.controller.abort();
@@ -570,7 +594,9 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
     if (dataRefreshQueued && attempts.every((attempt) => attempt.settled) && !actionExecution) {
       dataRefreshQueued = false;
       queueMicrotask(() => {
-        if (!disposed && snapshot.isOpen && token === epoch) refreshData();
+        if (!disposed && snapshot.isOpen && token === epoch) {
+          refreshData();
+        }
       });
     }
   }
@@ -606,6 +632,7 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       parents.length = unavailableScope;
       feedback = { message: 'The scoped plugin is unavailable. Choose another connection.' };
     }
+
     awaitingLaunch = true;
     retainQueryRows = canRetainRows && unavailableScope === -1;
     snapshot = {
@@ -678,12 +705,16 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
 
       if (value.kind === 'provider') {
         const parent = snapshot.scopes.at(-1);
-        if (parent && registration.plugin !== 'core' && registration.plugin !== parent.pluginId) continue;
+        if (parent && registration.plugin !== 'core' && registration.plugin !== parent.pluginId) {
+          continue;
+        }
+
         const contextError = contextErrors.get(registration);
         if (contextError) {
           otherSources.push({ id: registration.id, label: registration.label, state: 'unavailable', message: contextError });
           continue;
         }
+
         if (value.supportsScope) {
           try {
             const supported = value.supportsScope.call(registration.value, Object.freeze(snapshot.scopes.map((scope) => Object.freeze({ ...scope, ...(scope.kind === 'resource-type' && scope.namespaces ? { namespaces: Object.freeze([...scope.namespaces]) } : {}) }))));
@@ -691,12 +722,16 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
               otherSources.push({ id: registration.id, label: registration.label, state: 'unavailable' });
               continue;
             }
-            if (!supported) continue;
+
+            if (!supported) {
+              continue;
+            }
           } catch {
             otherSources.push({ id: registration.id, label: registration.label, state: 'unavailable' });
             continue;
           }
         }
+
         if (attempts.length >= 8) {
           if (!overflowProvider) {
             otherSources.push({ id: registration.id, label: registration.label, state: 'source-limit' });
@@ -739,13 +774,20 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
   }
 
   function refreshData() {
-    if (disposed || !snapshot.isOpen) return;
-    if (actionExecution || attempts.some((attempt) => !attempt.settled) || launchQueued || searchTimer !== undefined) {
+    if (disposed || !snapshot.isOpen) {
+      return;
+    }
+
+    if (Boolean(actionExecution) || attempts.some((attempt) => !attempt.settled) || launchQueued || searchTimer !== undefined) {
       dataRefreshQueued = true;
       return;
     }
+
     retainedItems.clear();
-    for (const attempt of attempts) retainedItems.set(attempt.registration, attempt.items);
+    for (const attempt of attempts) {
+      retainedItems.set(attempt.registration, attempt.items);
+    }
+
     abortSearch();
     liveRefresh = true;
     debounceSearch = false;
@@ -829,10 +871,17 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       const initialScope = admitSearchScope(options?.scope);
       const scopes: SearchScopeV1[] = [];
       if (initialScope) {
-        if (initialScope.kind !== 'connection') scopes.push({ kind: 'connection', pluginId: initialScope.pluginId, connectionId: initialScope.connectionId, label: initialScope.connectionId });
-        if (initialScope.kind === 'resource') scopes.push({ kind: 'resource-type', pluginId: initialScope.pluginId, connectionId: initialScope.connectionId, resourceKey: initialScope.resourceKey, label: initialScope.resourceKey });
+        if (initialScope.kind !== 'connection') {
+          scopes.push({ kind: 'connection', pluginId: initialScope.pluginId, connectionId: initialScope.connectionId, label: initialScope.connectionId });
+        }
+
+        if (initialScope.kind === 'resource') {
+          scopes.push({ kind: 'resource-type', pluginId: initialScope.pluginId, connectionId: initialScope.connectionId, resourceKey: initialScope.resourceKey, label: initialScope.resourceKey });
+        }
+
         scopes.push(initialScope);
       }
+
       snapshot = {
         ...snapshot,
         isOpen: true,
@@ -872,27 +921,42 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       emit();
     },
     setSelectedKey(key) {
-      if (key && !snapshot.rows.some((row) => row.key === key && !row.disabledReason)) return;
+      if (key && !snapshot.rows.some((row) => row.key === key && !row.disabledReason)) {
+        return;
+      }
+
       snapshot = { ...snapshot, selectedKey: key };
       emit();
     },
     scope(key) {
       const entry = actions.get(key);
       const scope = entry?.value.scope;
-      if (!scope || disabledReason(entry.value) || !ownerReady(entry.registration.plugin) || store?.version !== capturedVersion || !withinScope(entry.value, entry.registration.plugin)) return false;
+      if (!scope || Boolean(disabledReason(entry.value)) || !ownerReady(entry.registration.plugin) || store?.version !== capturedVersion || !withinScope(entry.value, entry.registration.plugin)) {
+        return false;
+      }
+
       const parent = snapshot.scopes.at(-1);
-      if (scope.kind === 'connection' && parent || scope.kind === 'resource-type' && parent?.kind !== 'connection' || scope.kind === 'resource' && parent?.kind !== 'resource-type') return false;
+      if (scope.kind === 'connection' && Boolean(parent) || scope.kind === 'resource-type' && parent?.kind !== 'connection' || scope.kind === 'resource' && parent?.kind !== 'resource-type') {
+        return false;
+      }
+
       parents.push({ query: snapshot.query, selectedKey: snapshot.selectedKey });
       snapshot = { ...snapshot, scopes: [...snapshot.scopes, scope], query: '', selectedKey: undefined };
       invalidate();
       return true;
     },
     removeScope(index, reason) {
-      if (index < 0 || index >= snapshot.scopes.length) return;
+      if (index < 0 || index >= snapshot.scopes.length) {
+        return;
+      }
+
       const parent = parents[index] ?? { query: '' };
       parents.length = index;
       snapshot = { ...snapshot, scopes: snapshot.scopes.slice(0, index), query: parent.query, selectedKey: parent.selectedKey };
-      if (reason) feedback = { message: reason };
+      if (reason) {
+        feedback = { message: reason };
+      }
+
       invalidate(false, !!reason);
     },
     setQuery(query) {
@@ -905,15 +969,29 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       invalidate(true);
     },
     retrySource(sourceID) {
-      if (disposed || !snapshot.isOpen || actionExecution || nativeExecution ||
-        store !== deps.registry.getExtensionPoint(GLOBAL_SEARCH_EXTENSION_POINT_ID) || store?.version !== capturedVersion) return;
+      if (disposed || !snapshot.isOpen || Boolean(actionExecution) || Boolean(nativeExecution) ||
+        store !== deps.registry.getExtensionPoint(GLOBAL_SEARCH_EXTENSION_POINT_ID) || store?.version !== capturedVersion) {
+        return;
+      }
+
       const index = attempts.findIndex((attempt) => attempt.source.id === sourceID);
       const previous = attempts[index];
       if (!previous?.settled || contextErrors.has(previous.registration) || !ownerReady(previous.registration.plugin) ||
-        (previous.source.state !== 'unavailable' && previous.source.state !== 'partial')) return;
+        (previous.source.state !== 'unavailable' && previous.source.state !== 'partial')) {
+        return;
+      }
+
       let contribution;
-      try { contribution = admitSearchContribution(previous.registration); } catch { return; }
-      if (contribution?.kind !== 'provider' || contribution.search !== previous.provider.search) return;
+      try {
+        contribution = admitSearchContribution(previous.registration); 
+      } catch {
+        return; 
+      }
+
+      if (contribution?.kind !== 'provider' || contribution.search !== previous.provider.search) {
+        return;
+      }
+
       previous.settled = true;
       previous.controller.abort();
       clearTimeout(previous.timer);
@@ -929,27 +1007,47 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       pump(epoch);
     },
     setProviderContextError(sourceID, message) {
-      if (disposed) return false;
+      if (disposed) {
+        return false;
+      }
+
       const registration = deps.registry.getExtensionPoint(GLOBAL_SEARCH_EXTENSION_POINT_ID)?.listAll().find((entry) => entry.id === sourceID);
-      if (!registration) return false;
+      if (!registration) {
+        return false;
+      }
+
       if (message === undefined) {
-        if (!contextErrors.has(registration)) return false;
+        if (!contextErrors.has(registration)) {
+          return false;
+        }
+
         contextErrors.delete(registration);
         refreshData();
         return true;
       }
+
       const safeMessage = message.trim().slice(0, 1024) || 'Provider context is unavailable.';
-      if (contextErrors.get(registration) === safeMessage) return false;
+      if (contextErrors.get(registration) === safeMessage) {
+        return false;
+      }
+
       contextErrors.set(registration, safeMessage);
       for (const attempt of attempts) {
-        if (attempt.registration !== registration) continue;
-        if (!attempt.settled && attempt.source.state === 'pending') active--;
+        if (attempt.registration !== registration) {
+          continue;
+        }
+
+        if (!attempt.settled && attempt.source.state === 'pending') {
+          active--;
+        }
+
         attempt.settled = true;
         attempt.controller.abort();
         clearTimeout(attempt.timer);
         attempt.items = [];
         attempt.source = { ...attempt.source, state: 'unavailable', message: safeMessage, retryable: false };
       }
+
       pump(epoch);
       return true;
     },
@@ -963,6 +1061,7 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
           deferredLiveRefresh = true;
           return;
         }
+
         discover();
         invalidate(false, true, true);
       }
@@ -1006,12 +1105,24 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
         value = currentValue;
       }
 
-      if (!value) return;
-      if (!withinScope(value, entry.registration.plugin)) return;
+      if (!value) {
+        return;
+      }
+
+      if (!withinScope(value, entry.registration.plugin)) {
+        return;
+      }
+
       const unavailable = disabledReason(value);
-      if (unavailable) { feedback = { message: unavailable }; publish(); return; }
+      if (unavailable) {
+        feedback = { message: unavailable }; publish(); return; 
+      }
+
       if (value.kind === 'action') {
-        if (actionExecution || currentValue?.kind !== 'provider' || !currentValue.executeAction || !value.action.id.startsWith(`${entry.registration.plugin}:`)) return;
+        if (Boolean(actionExecution) || currentValue?.kind !== 'provider' || !currentValue.executeAction || !value.action.id.startsWith(`${entry.registration.plugin}:`)) {
+          return;
+        }
+
         const execution = new AbortController();
         actionExecution = execution;
         const token = epoch;
@@ -1023,25 +1134,48 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
           navigate: (target: NavigationTargetV1) => {
             const href = getNavigationHref(target);
             if (execution.signal.aborted || contextErrors.has(entry.registration) || token !== epoch || session !== actionSession || !snapshot.isOpen || !href ||
-              target.kind === 'plugin' && (!deps.isPluginReady(target.pluginId) || !deps.hasPluginRoute(target.pluginId, target.path))) throw new Error('This destination is no longer available.');
+              target.kind === 'plugin' && (!deps.isPluginReady(target.pluginId) || !deps.hasPluginRoute(target.pluginId, target.path))) {
+              throw new Error('This destination is no longer available.');
+            }
+
             deps.navigate(href);
           },
           openResource: async (target: Extract<SearchScopeV1, { kind: 'resource' }>) => {
-            if (execution.signal.aborted || contextErrors.has(entry.registration) || token !== epoch || session !== actionSession || !snapshot.isOpen || !deps.openResource) throw new Error('Resource destination is no longer available.');
-            if (target.uid && !validator) throw new Error('Resource identity cannot be verified.');
-            await deps.openResource(target, execution.signal, validator ? (data) => validator.call(entry.registration.value, target, data) === true : undefined);
+            if (execution.signal.aborted || contextErrors.has(entry.registration) || token !== epoch || session !== actionSession || !snapshot.isOpen || !deps.openResource) {
+              throw new Error('Resource destination is no longer available.');
+            }
+
+            const admitted = admitSearchScope(target);
+            if (admitted?.kind !== 'resource' || admitted.pluginId !== entry.registration.plugin) {
+              throw new Error('Resource destination is invalid for this provider.');
+            }
+
+            if (admitted.uid && !validator) {
+              throw new Error('Resource identity cannot be verified.');
+            }
+
+            await deps.openResource(admitted, execution.signal, validator ? (data) => validator.call(entry.registration.value, admitted, data) : undefined);
           },
         };
         snapshot = { ...snapshot, executionPending: true };
         emit();
         try {
-          if (currentValue.validateAction && !await currentValue.validateAction.call(entry.registration.value, value.action, context)) throw new Error('This action is no longer available.');
-          if (execution.signal.aborted || contextErrors.has(entry.registration) || token !== epoch || store?.version !== capturedVersion || !ownerReady(entry.registration.plugin)) return;
+          if (currentValue.validateAction && !await currentValue.validateAction.call(entry.registration.value, value.action, context)) {
+            throw new Error('This action is no longer available.');
+          }
+
+          if (execution.signal.aborted || contextErrors.has(entry.registration) || token !== epoch || store?.version !== capturedVersion || !ownerReady(entry.registration.plugin)) {
+            return;
+          }
+
           actionAccepted = true;
           const outcome = await currentValue.executeAction.call(entry.registration.value, value.action, context);
           if (!execution.signal.aborted && token === epoch && session === actionSession) {
-            if (outcome?.keepOpen) controller.refresh();
-            else controller.close();
+            if (outcome?.keepOpen) {
+              controller.refresh();
+            } else {
+              controller.close();
+            }
           }
         } catch (error) {
           if (!execution.signal.aborted && token === epoch && session === actionSession) {
@@ -1052,6 +1186,7 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
             actionExecution = undefined;
             actionAccepted = false;
           }
+
           if (snapshot.isOpen && deferredLiveRefresh) {
             deferredLiveRefresh = false;
             controller.notifyDataChanged();
@@ -1063,6 +1198,7 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
             }
           }
         }
+
         return;
       }
 

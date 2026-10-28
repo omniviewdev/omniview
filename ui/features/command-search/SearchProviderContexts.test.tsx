@@ -14,15 +14,21 @@ const native = vi.hoisted(() => ({
 vi.mock('../../../packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/servicewrapper', () => ({ GetPluginMeta: native.metadata }));
 vi.mock('../../../packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/settings/servicewrapper', () => ({ PluginValues: native.settings }));
 
-afterEach(() => { cleanup(); vi.clearAllMocks(); vi.restoreAllMocks(); });
+afterEach(() => {
+  cleanup(); vi.clearAllMocks(); vi.restoreAllMocks(); 
+});
 
 function SettingsContext() {
   const { pluginId } = usePluginContext();
   const [open, setOpen] = useState(false);
   return <>
-    <button onClick={() => setOpen(true)}>Settings for {pluginId}</button>
+    <button onClick={() => {
+      setOpen(true); 
+    }}>Settings for {pluginId}</button>
     {open && <div role='dialog' aria-label={`Settings ${pluginId}`}>
-      <button onClick={() => setOpen(false)}>Cancel {pluginId}</button>
+      <button onClick={() => {
+        setOpen(false); 
+      }}>Cancel {pluginId}</button>
     </div>}
   </>;
 }
@@ -48,11 +54,13 @@ describe('search provider contexts', () => {
 
   it('loads lazy contexts without replacing the shell and removes their dialogs on unregister', async () => {
     const module = createDeferred<{ default: typeof SettingsContext }>();
-    const Component = lazy(() => module.promise);
+    const Component = lazy(async () => module.promise);
     const entries = [{ key: 'proxmox/a/1', sourceId: 'proxmox/a', pluginId: 'proxmox', Component }];
     const view = render(<><button>Host navigation</button><SearchProviderContexts contexts={entries} controller={null} /></>);
     fireEvent.click(screen.getByRole('button', { name: 'Host navigation' }));
-    await act(async () => module.resolve({ default: SettingsContext }));
+    await act(async () => {
+      module.resolve({ default: SettingsContext }); 
+    });
     fireEvent.click(await screen.findByRole('button', { name: 'Settings for proxmox' }));
     expect(screen.getByRole('dialog', { name: 'Settings proxmox' })).toBeVisible();
     view.rerender(<><button>Host navigation</button><SearchProviderContexts contexts={[]} controller={null} /></>);
@@ -74,9 +82,14 @@ describe('search provider contexts', () => {
     const controller = createGlobalSearchController({ registry, isPluginReady: () => true, hasPluginRoute: () => true,
       listResourcePlugins: async () => [], loadConnections: async () => [], navigate });
     controller.open();
-    function Broken(): never { throw new Error('Plugin context failed'); }
+    function Broken(): never {
+      throw new Error('Plugin context failed'); 
+    }
+
     render(<SearchProviderContexts contexts={[{ key: 'aws/broken/1', sourceId: 'aws/broken', pluginId: 'aws', Component: Broken }]} controller={controller} />);
-    await waitFor(() => expect(controller.getSnapshot().sources.find(source => source.id === 'aws/broken')?.state).toBe('unavailable'));
+    await waitFor(() => {
+      expect(controller.getSnapshot().sources.find(source => source.id === 'aws/broken')?.state).toBe('unavailable'); 
+    });
     expect(controller.getSnapshot().rows.some(row => row.label === 'Broken result')).toBe(false);
     const row = controller.getSnapshot().rows.find(item => item.label === 'Healthy result');
     expect(row).toBeDefined();

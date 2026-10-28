@@ -74,8 +74,11 @@ describe('resource drawer request fences', () => {
     const result = drawer.showResourceSidebar({ ...target, signal: cancellation.signal });
     const rejected = expect(result).rejects.toMatchObject({ name: 'AbortError' });
     act(() => {
-      if (operation === 'close') drawer.closeDrawer();
-      else cancellation.abort();
+      if (operation === 'close') {
+        drawer.closeDrawer();
+      } else {
+        cancellation.abort();
+      }
     });
     expect(read.cancel).toHaveBeenCalledOnce();
     await act(async () => {
@@ -140,6 +143,7 @@ describe('resource drawer request fences', () => {
       const resource = value as { id?: string; region?: string };
       return resource.id === 'instance' && resource.region === 'eu-west-1';
     };
+
     await act(async () => {
       await drawer.showResourceSidebar({ ...target, namespace: '', validateData });
     });

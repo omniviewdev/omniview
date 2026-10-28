@@ -19,7 +19,7 @@ function setup() {
   const listResourcePlugins = vi.fn(async () => ['probe']);
   const loadConnections = vi.fn(async (_plugin: string) => []);
   const navigate = vi.fn();
-  const openResource = vi.fn(async (_target: unknown, _signal: AbortSignal, _validateData?: (data: unknown) => boolean) => {});
+  const openResource = vi.fn(async (_target: unknown, _signal: AbortSignal, _validateData?: (data: unknown) => boolean) => undefined);
   const controller = createGlobalSearchController({
     openResource,
     registry,
@@ -136,6 +136,28 @@ describe('universal scoped provider contracts', () => {
     expect(h.openResource).not.toHaveBeenCalled();
     expect(h.controller.getSnapshot()).toMatchObject({ isOpen: true, executionPending: false });
   });
+  it.each([
+    ['foreign owner', { pluginId: 'foreign' }],
+    ['non-resource scope', { kind: 'connection' }],
+    ['malformed identity', { resourceId: 42 }],
+  ])('rejects action resource destinations with %s', async (_name, invalid) => {
+    const target = { kind: 'resource' as const, pluginId: 'probe', connectionId: 'prod',
+      resourceKey: 'instances', resourceId: 'vm', namespace: '', label: 'Instance' };
+    h.register('probe/open', {
+      schemaVersion: 1, kind: 'provider',
+      search: async () => ({ items: [{ id: 'open', label: 'Open', value: {
+        schemaVersion: 1, kind: 'action', action: { id: 'probe:open', target },
+      } }], completion: 'complete' }),
+      executeAction: async (_action: unknown, context: { openResource: (value: unknown) => Promise<void> }) => {
+        await context.openResource({ ...target, ...invalid });
+      },
+    });
+    h.controller.open();
+    await flush();
+    await h.controller.activate(key('Open'));
+    expect(h.openResource).not.toHaveBeenCalled();
+    expect(h.controller.getSnapshot()).toMatchObject({ isOpen: true, executionPending: false });
+  });
   const type = { ...connection, kind: 'resource-type' as const, resourceKey: 'cloud/instances', namespaces: ['tenant'], label: 'Instances' };
   const resource = { ...connection, kind: 'resource' as const, resourceKey: type.resourceKey, resourceId: 'ocid1.instance.' + 'x'.repeat(500), namespace: 'tenant', label: 'Instance' };
   const action = (id: string, target: unknown, recovery?: string) => ({ id, label: id, value: { schemaVersion: 1, kind: 'action', action: { id, target, ...(recovery ? { recovery } : {}) } } });
@@ -143,10 +165,15 @@ describe('universal scoped provider contracts', () => {
   it('filters foreign and unsupported providers before applying provider cap', async () => {
     h.ready.add('foreign');
     const foreign = vi.fn(async () => response('foreign'));
-    for (let index = 0; index < 9; index++) h.register(`foreign/${index}`, { schemaVersion: 1, kind: 'provider', search: foreign }, 'Foreign', 'foreign');
+    for (let index = 0; index < 9; index++) {
+      h.register(`foreign/${index}`, { schemaVersion: 1, kind: 'provider', search: foreign }, 'Foreign', 'foreign');
+    }
+
     const unsupported = vi.fn(async () => response('unsupported'));
     h.register('probe/unsupported', { schemaVersion: 1, kind: 'provider', supportsScope: () => false, search: unsupported });
-    h.register('probe/throws', { schemaVersion: 1, kind: 'provider', supportsScope: () => { throw new Error('bad callback'); }, search: unsupported });
+    h.register('probe/throws', { schemaVersion: 1, kind: 'provider', supportsScope: () => {
+      throw new Error('bad callback'); 
+    }, search: unsupported });
     const own = vi.fn(async () => ({ items: [action('probe:reconnect', connection, 'connection')], completion: 'complete' }));
     h.register('probe/own', { schemaVersion: 1, kind: 'provider', search: own, executeAction: vi.fn() });
     h.controller.open({ scope: resource });
@@ -181,7 +208,10 @@ describe('universal scoped provider contracts', () => {
     const selected = key('Stable');
     h.controller.setSelectedKey(selected);
     h.controller.notifyDataChanged();
-    for (let index = 0; index < 100; index++) h.controller.notifyDataChanged();
+    for (let index = 0; index < 100; index++) {
+      h.controller.notifyDataChanged();
+    }
+
     expect(requests).toHaveLength(2);
     expect(requests[1].signal.aborted).toBe(false);
     expect(labels()).toEqual(['Stable']);
@@ -376,6 +406,7 @@ describe('actual registry and async epochs', () => {
         slow.reject(new Error('Provider unavailable.'));
         await flush();
       }
+
       expect(labels()).toEqual(['new-fast']);
       expect(h.controller.getSnapshot()).toMatchObject({
         searchPending: false,
@@ -1056,7 +1087,7 @@ describe('scoped provider interaction and identity fences', () => {
   });
 
   it('rejects out-of-scope identities and dispatches only registered owner-qualified actions', async () => {
-    const executeAction = vi.fn(async (_action: unknown, _context: unknown) => {});
+    const executeAction = vi.fn(async (_action: unknown, _context: unknown) => undefined);
     h.register('probe/actions', {
       schemaVersion: 1, kind: 'provider', executeAction,
       search: async () => ({
@@ -1107,7 +1138,7 @@ describe('scoped provider interaction and identity fences', () => {
 
   it('cancels validation on refresh before dispatching an accepted action', async () => {
     const validation = createDeferred<boolean>();
-    const executeAction = vi.fn(async () => {});
+    const executeAction = vi.fn(async () => undefined);
     h.register('probe/validate', {
       schemaVersion: 1, kind: 'provider', executeAction,
       validateAction: async () => validation.promise,
@@ -1139,7 +1170,7 @@ describe('scoped provider interaction and identity fences', () => {
   });
 
   it('defers a connection status refresh until failed connect settles and preserves its feedback', async () => {
-    const connectionResult = createDeferred<void>();
+    const connectionResult = createDeferred();
     let acceptedSignal: AbortSignal | undefined;
     const executeAction = vi.fn(async (_action: unknown, context: { signal: AbortSignal }) => {
       acceptedSignal = context.signal;

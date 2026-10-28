@@ -64,7 +64,10 @@ export const RowContainer: React.FC<Props> = ({
         resourceID,
         namespace,
       }).catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === 'AbortError') return;
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return;
+        }
+
         showAppError(showSnackbar, error, `Failed to load resource: ${resourceID}`);
       });
     }

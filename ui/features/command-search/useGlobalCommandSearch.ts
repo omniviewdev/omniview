@@ -1,7 +1,7 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { PluginManager, ResourceClient } from '@omniviewdev/runtime/api';
 import { GLOBAL_SEARCH_OPEN_EVENT, resourceQueryKeys } from '@omniviewdev/runtime';
-import type { NavigationTargetV1, OpenGlobalSearchOptions, SearchProviderV1, SearchProviderItemV1 } from '@omniviewdev/runtime';
+import type { ExtensionContributionRegistration, NavigationTargetV1, OpenGlobalSearchOptions, SearchProviderV1, SearchProviderItemV1 } from '@omniviewdev/runtime';
 import { ConnectionStatusCode } from '@omniviewdev/runtime/models';
 import { Events } from '@wailsio/runtime';
 import useRightDrawer from '@/hooks/useRightDrawer';
@@ -32,7 +32,10 @@ const closedSnapshot = () => closed;
 async function checkConnection(pluginId: string, connectionId: string, signal: AbortSignal) {
   signal.throwIfAborted();
   const request = ResourceClient.CheckConnection(pluginId, connectionId);
-  const cancel = () => { request.cancel(); };
+  const cancel = () => {
+    void request.cancel();
+  };
+
   signal.addEventListener('abort', cancel, { once: true });
   try {
     const status = await request;
@@ -117,13 +120,17 @@ export function useGlobalCommandSearch() {
       listResourcePlugins: ResourceClient.ListPlugins,
       loadConnections: async (id) => reloadConnections(queryClient, id),
       openResource: async (target, signal, validateData) => {
-        if (pluginService.getPluginState(target.pluginId)?.phase !== 'ready') throw new Error('Resource plugin is unavailable.');
+        if (pluginService.getPluginState(target.pluginId)?.phase !== 'ready') {
+          throw new Error('Resource plugin is unavailable.');
+        }
+
         signal.throwIfAborted();
         const status = await checkConnection(target.pluginId, target.connectionId, signal);
         signal.throwIfAborted();
         if (status.status !== ConnectionStatusCode.ConnectionStatusConnected) {
           throw new Error(status.details || status.error || 'Connection is not ready.');
         }
+
         await latestDrawer.current({
           pluginID: target.pluginId,
           connectionID: target.connectionId,
@@ -152,11 +159,15 @@ export function useGlobalCommandSearch() {
         const adapters = new Map<string, SearchProviderV1[]>();
         for (const contribution of store?.listAll() ?? []) {
           const admitted = admitSearchContribution(contribution);
-          if (contribution.plugin === 'core' || admitted?.kind !== 'provider') continue;
+          if (contribution.plugin === 'core' || admitted?.kind !== 'provider') {
+            continue;
+          }
+
           const providers = adapters.get(contribution.plugin) ?? [];
           providers.push(admitted);
           adapters.set(contribution.plugin, providers);
         }
+
         if (deepestScope) {
           const ownsRecovery = (adapters.get(deepestScope.pluginId) ?? []).some((adapter) => {
             try {
@@ -165,20 +176,25 @@ export function useGlobalCommandSearch() {
               return false;
             }
           });
-          if (ownsRecovery) return { items: [], completion: 'complete' };
+          if (ownsRecovery) {
+            return { items: [], completion: 'complete' };
+          }
+
           if (pluginService.getPluginState(deepestScope.pluginId)?.phase !== 'ready') {
             return { items: [], completion: 'complete', status: 'unavailable', message: 'Connection plugin is unavailable.' };
           }
+
           const connection = await checkConnection(deepestScope.pluginId, deepestScope.connectionId, signal);
           signal.throwIfAborted();
           if (connection.status === ConnectionStatusCode.ConnectionStatusConnected) {
             return { items: [], completion: 'complete', status: 'ready' };
           }
+
           const status =
             connection.status === ConnectionStatusCode.ConnectionStatusPending ? 'connecting' :
-            connection.status === ConnectionStatusCode.ConnectionStatusUnauthorized ? 'authentication-required' :
-            connection.status === ConnectionStatusCode.ConnectionStatusForbidden ? 'forbidden' :
-            connection.status === ConnectionStatusCode.ConnectionStatusDisconnected ? 'disconnected' : 'unavailable';
+              connection.status === ConnectionStatusCode.ConnectionStatusUnauthorized ? 'authentication-required' :
+                connection.status === ConnectionStatusCode.ConnectionStatusForbidden ? 'forbidden' :
+                  connection.status === ConnectionStatusCode.ConnectionStatusDisconnected ? 'disconnected' : 'unavailable';
           const label = `Connect ${deepestScope.label}`;
           const matches = !query.trim() || label.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
           const canConnect = status !== 'connecting' && status !== 'forbidden';
@@ -194,8 +210,9 @@ export function useGlobalCommandSearch() {
             message: (connection.details || connection.error || 'Connection is not ready.').slice(0, 1024),
           };
         }
+
         const request = ResourceClient.ListAllConnections();
-        const cancel = () => request.cancel();
+        const cancel = async () => request.cancel();
         signal.addEventListener('abort', cancel, { once: true });
         let all: Awaited<typeof request>;
         try {
@@ -205,20 +222,33 @@ export function useGlobalCommandSearch() {
         } finally {
           signal.removeEventListener('abort', cancel);
         }
+
         const items: SearchProviderItemV1[] = [];
         const needle = query.trim().toLocaleLowerCase();
         let truncated = false;
         for (const [pluginId, connections] of Object.entries(all)) {
-          if (pluginService.getPluginState(pluginId)?.phase !== 'ready') continue;
+          if (pluginService.getPluginState(pluginId)?.phase !== 'ready') {
+            continue;
+          }
+
           for (const connection of connections ?? []) {
             const label = connection.name || connection.id;
-            if (needle && !`${label} ${pluginId} ${connection.id}`.toLocaleLowerCase().includes(needle)) continue;
-            if (items.length >= limit) { truncated = true; break; }
+            if (needle && !`${label} ${pluginId} ${connection.id}`.toLocaleLowerCase().includes(needle)) {
+              continue;
+            }
+
+            if (items.length >= limit) {
+              truncated = true; break; 
+            }
+
             const scope = { kind: 'connection' as const, pluginId, connectionId: connection.id, label };
             let target: NavigationTargetV1 = { kind: 'plugin', pluginId, path: '/' };
             for (const adapter of adapters.get(pluginId) ?? []) {
               try {
-                if (!adapter.connectionTarget || !(adapter.supportsScope?.([scope]) ?? true)) continue;
+                if (!adapter.connectionTarget || !(adapter.supportsScope?.([scope]) ?? true)) {
+                  continue;
+                }
+
                 const candidate = adapter.connectionTarget(connection.id);
                 if (getNavigationHref(candidate) && candidate.kind === 'plugin' && candidate.pluginId === pluginId) {
                   target = candidate;
@@ -228,6 +258,7 @@ export function useGlobalCommandSearch() {
                 // A broken adapter cannot hide other connections or their healthy adapters.
               }
             }
+
             items.push({
               id: `${pluginId}/${connection.id}`, label,
               value: {
@@ -238,14 +269,24 @@ export function useGlobalCommandSearch() {
             });
           }
         }
+
         return { items, completion: truncated ? 'truncated' : 'complete' };
       },
       async validateAction(action, { signal }) {
-        if (action.id !== 'core:connect' || action.target.kind !== 'connection') return false;
-        if (pluginService.getPluginState(action.target.pluginId)?.phase !== 'ready') return false;
+        if (action.id !== 'core:connect' || action.target.kind !== 'connection') {
+          return false;
+        }
+
+        if (pluginService.getPluginState(action.target.pluginId)?.phase !== 'ready') {
+          return false;
+        }
+
         const connections = await ResourceClient.ListConnections(action.target.pluginId);
         signal.throwIfAborted();
-        if (!connections.some((connection) => connection.id === action.target.connectionId)) return false;
+        if (!connections.some((connection) => connection.id === action.target.connectionId)) {
+          return false;
+        }
+
         const current = await checkConnection(action.target.pluginId, action.target.connectionId, signal);
         signal.throwIfAborted();
         return current.status !== ConnectionStatusCode.ConnectionStatusConnected &&
@@ -254,18 +295,28 @@ export function useGlobalCommandSearch() {
       },
       async executeAction(action, { signal }) {
         signal.throwIfAborted();
-        if (action.id !== 'core:connect') throw new Error('Unknown connection action.');
-        if (pluginService.getPluginState(action.target.pluginId)?.phase !== 'ready') throw new Error('Connection plugin is unavailable.');
+        if (action.id !== 'core:connect') {
+          throw new Error('Unknown connection action.');
+        }
+
+        if (pluginService.getPluginState(action.target.pluginId)?.phase !== 'ready') {
+          throw new Error('Connection plugin is unavailable.');
+        }
+
         const status = await ResourceClient.StartConnection(action.target.pluginId, action.target.connectionId);
         if (status.status !== ConnectionStatusCode.ConnectionStatusConnected) {
           throw new Error(status.details || status.error || 'Connection is not ready.');
         }
+
         signal.throwIfAborted();
         return { keepOpen: true };
       },
     };
     const registration = { id: 'core/global-search/connections', plugin: 'core', label: 'Connections', value: provider };
-    if (store && admitSearchContribution(registration)) store.register(registration);
+    if (store && admitSearchContribution(registration)) {
+      store.register(registration);
+    }
+
     const stopEvents = [
       Events.On('connection/status', (event) => {
         void queryClient.invalidateQueries({
@@ -274,37 +325,56 @@ export function useGlobalCommandSearch() {
         });
         next.notifyDataChanged();
       }),
-      Events.On('watch/STATE', () => next.notifyDataChanged()),
+      Events.On('watch/STATE', () => {
+        next.notifyDataChanged(); 
+      }),
       Events.On('plugin/inventory_changed', next.refresh),
     ];
     const connectionEvents = new Map<string, () => void>();
     const syncConnectionEvents = () => {
       const ids = new Set(pluginService.getSnapshot().plugins.keys());
       for (const [id, stop] of connectionEvents) {
-        if (!ids.has(id)) { stop(); connectionEvents.delete(id); }
+        if (!ids.has(id)) {
+          stop(); connectionEvents.delete(id); 
+        }
       }
+
       for (const id of ids) {
-        if (!connectionEvents.has(id)) connectionEvents.set(id, Events.On(`${id}/connection/sync`, (event) => {
-          void queryClient.invalidateQueries({ queryKey: ['search-connection-status', id], refetchType: 'none' });
-          // Only a successful native sync is authoritative about removal.
-          if (Array.isArray(event.data)) {
-            const connectionIds = new Set(event.data.map((connection: { id: string }) => connection.id));
-            const scopes = next.getSnapshot().scopes;
-            const removed = scopes.findIndex((scope) => scope.pluginId === id && !connectionIds.has(scope.connectionId));
-            if (removed >= 0) next.removeScope(removed, 'Connection was removed.');
-          }
-          next.notifyDataChanged();
-        }));
+        if (!connectionEvents.has(id)) {
+          connectionEvents.set(id, Events.On(`${id}/connection/sync`, (event) => {
+            void queryClient.invalidateQueries({ queryKey: ['search-connection-status', id], refetchType: 'none' });
+            // Only a successful native sync is authoritative about removal.
+            if (Array.isArray(event.data)) {
+              const connectionIds = new Set(event.data.map((connection: { id: string }) => connection.id));
+              const scopes = next.getSnapshot().scopes;
+              const removed = scopes.findIndex((scope) => scope.pluginId === id && !connectionIds.has(scope.connectionId));
+              if (removed >= 0) {
+                next.removeScope(removed, 'Connection was removed.');
+              }
+            }
+
+            next.notifyDataChanged();
+          }));
+        }
       }
+
       next.refresh();
     };
+
     syncConnectionEvents();
     const unsubscribeService = pluginService.subscribe(syncConnectionEvents);
     return () => {
       unsubscribeService();
-      stopEvents.forEach((stop) => stop());
-      connectionEvents.forEach((stop) => stop());
-      if (store?.listAll().includes(registration)) store.unregister(registration.id);
+      stopEvents.forEach((stop) => {
+        stop(); 
+      });
+      connectionEvents.forEach((stop) => {
+        stop(); 
+      });
+      if (store?.listAll().includes(registration)) {
+        store.unregister(registration.id);
+      }
+
       const wasOpen = next.getSnapshot().isOpen;
       next.dispose();
       controllerRef.current = null;
@@ -365,7 +435,10 @@ export function useGlobalCommandSearch() {
     const resolved = resolveSearchOpenOptions(options, controllerRef.current?.getSnapshot().isOpen ?? false, () =>
       resolveRouteSearchScope(latestLocation.current, (id) => {
         const registration = pluginService.getSnapshot().registrations.get(id);
-        if (!registration) return undefined;
+        if (!registration) {
+          return undefined;
+        }
+
         return latestRoutingContext.current.registrations.get(id) === registration
           ? latestRoutingContext.current.routeTrees.get(id)
           : normalizePluginRoutes(registration.routes);
@@ -378,9 +451,15 @@ export function useGlobalCommandSearch() {
   }, []);
 
   useEffect(() => {
-    const requested = (event: Event) => open((event as CustomEvent<OpenGlobalSearchOptions>).detail);
+    const requested = (event: Event) => {
+      const detail: unknown = (event as CustomEvent<unknown>).detail;
+      open(detail !== null && typeof detail === 'object' ? detail as OpenGlobalSearchOptions : {});
+    };
+
     window.addEventListener(GLOBAL_SEARCH_OPEN_EVENT, requested);
-    return () => window.removeEventListener(GLOBAL_SEARCH_OPEN_EVENT, requested);
+    return () => {
+      window.removeEventListener(GLOBAL_SEARCH_OPEN_EVENT, requested); 
+    };
   }, [open]);
 
   useEffect(() => {
@@ -433,20 +512,27 @@ export function useGlobalCommandSearch() {
   }, [snapshot.isOpen]);
 
   const [contexts, setContexts] = useState<readonly SearchProviderContextRegistration[]>([]);
-  const contextIncarnations = useRef(new WeakMap<object, number>());
+  const contextIncarnations = useRef(new WeakMap<ExtensionContributionRegistration, number>());
   const nextContextIncarnation = useRef(0);
   useEffect(() => {
     const refresh = () => {
       const store = EXTENSION_REGISTRY.getExtensionPoint(GLOBAL_SEARCH_EXTENSION_POINT_ID);
       const next = (store?.listAll() ?? []).flatMap((registration) => {
         const admitted = admitSearchContribution(registration);
-        if (!admitted || admitted.kind !== 'provider' || !admitted.Context) return [];
-        if (registration.plugin !== 'core' && pluginService.getPluginState(registration.plugin)?.phase !== 'ready') return [];
+        if (!admitted || admitted.kind !== 'provider' || !admitted.Context) {
+          return [];
+        }
+
+        if (registration.plugin !== 'core' && pluginService.getPluginState(registration.plugin)?.phase !== 'ready') {
+          return [];
+        }
+
         let incarnation = contextIncarnations.current.get(registration);
         if (incarnation === undefined) {
           incarnation = ++nextContextIncarnation.current;
           contextIncarnations.current.set(registration, incarnation);
         }
+
         return [{
           key: `${registration.plugin}/${registration.id}/${incarnation}`,
           sourceId: registration.id,
@@ -457,10 +543,13 @@ export function useGlobalCommandSearch() {
       setContexts((current) => current.length === next.length &&
         current.every((item, index) => item.key === next[index].key && item.Component === next[index].Component) ? current : next);
     };
+
     const stopRegistry = EXTENSION_REGISTRY.subscribe(refresh);
     const stopService = pluginService.subscribe(refresh);
     refresh();
-    return () => { stopRegistry(); stopService(); };
+    return () => {
+      stopRegistry(); stopService(); 
+    };
   }, [pluginService]);
 
   const nativeSubscriptions = useRef(new Map<string, () => void>());
@@ -472,12 +561,15 @@ export function useGlobalCommandSearch() {
       nativeSubscriptions.current.get(key)?.();
       nativeSubscriptions.current.delete(key);
     }
+
     failedSubscriptions.current.clear();
     setLiveFailureCount(0);
     setLiveRetry((value) => value + 1);
   }, []);
   useEffect(() => () => {
-    nativeSubscriptions.current.forEach((release) => release());
+    nativeSubscriptions.current.forEach((release) => {
+      release(); 
+    });
     nativeSubscriptions.current.clear();
     failedSubscriptions.current.clear();
   }, [controller]);
@@ -491,28 +583,39 @@ export function useGlobalCommandSearch() {
         resources.set(JSON.stringify([scope.pluginId, scope.connectionId, scope.resourceKey]), scope);
       }
     }
+
     if (snapshot.isOpen && controller) {
       for (const [key, { pluginId, connectionId }] of connections) {
         const subscriptionKey = `connection:${key}`;
         desired.add(subscriptionKey);
-        if (nativeSubscriptions.current.has(subscriptionKey)) continue;
+        if (nativeSubscriptions.current.has(subscriptionKey)) {
+          continue;
+        }
+
         const stop = Events.On(`${pluginId}/${connectionId}/watch/STATE`, () => {
           void queryClient.invalidateQueries({ queryKey: ['search-connection-status', pluginId, connectionId], refetchType: 'none' });
           controller.notifyDataChanged();
         });
         nativeSubscriptions.current.set(subscriptionKey, stop);
       }
+
       for (const [key, { pluginId, connectionId, resourceKey }] of resources) {
         const subscriptionKey = `resource:${key}`;
         desired.add(subscriptionKey);
-        if (nativeSubscriptions.current.has(subscriptionKey)) continue;
+        if (nativeSubscriptions.current.has(subscriptionKey)) {
+          continue;
+        }
+
         let active = true;
         const queryKey = resourceQueryKeys.scope(pluginId, connectionId, resourceKey);
         const queryCache = queryClient.getQueryCache();
         const dirtyQueries = new Set<string>();
         const stopCache = queryCache.subscribe((event) => {
           const query = event.query;
-          if (!active || !dirtyQueries.has(query.queryHash)) return;
+          if (!active || !dirtyQueries.has(query.queryHash)) {
+            return;
+          }
+
           if (event.type === 'removed') {
             dirtyQueries.delete(query.queryHash);
           } else if (query.state.fetchStatus === 'idle') {
@@ -526,14 +629,20 @@ export function useGlobalCommandSearch() {
         const stops = ['ADD', 'UPDATE', 'DELETE'].map((type) =>
           Events.On(`${pluginId}/${connectionId}/${resourceKey}/${type}`, () => {
             for (const query of queryCache.findAll({ queryKey })) {
-              if (query.state.fetchStatus !== 'idle') dirtyQueries.add(query.queryHash);
+              if (query.state.fetchStatus !== 'idle') {
+                dirtyQueries.add(query.queryHash);
+              }
             }
+
             void queryClient.invalidateQueries({ queryKey, refetchType: 'none' });
             controller.notifyDataChanged();
           }));
         // Deferring acquisition also catches synchronous native failures.
         const acquired = Promise.resolve().then(async () => {
-          if (!active) return false;
+          if (!active) {
+            return false;
+          }
+
           await ResourceClient.SubscribeResource(pluginId, connectionId, resourceKey);
           return true;
         }).catch(() => {
@@ -541,6 +650,7 @@ export function useGlobalCommandSearch() {
             failedSubscriptions.current.add(subscriptionKey);
             setLiveFailureCount(failedSubscriptions.current.size);
           }
+
           return false;
         });
         nativeSubscriptions.current.set(subscriptionKey, () => {
@@ -548,19 +658,25 @@ export function useGlobalCommandSearch() {
           stopCache();
           dirtyQueries.clear();
           failedSubscriptions.current.delete(subscriptionKey);
-          stops.forEach((stop) => stop());
+          stops.forEach((stop) => {
+            stop(); 
+          });
           void acquired.then(async (success) => {
-            if (success) await ResourceClient.UnsubscribeResource(pluginId, connectionId, resourceKey);
+            if (success) {
+              await ResourceClient.UnsubscribeResource(pluginId, connectionId, resourceKey);
+            }
           }).catch(() => undefined);
         });
       }
     }
+
     for (const [key, release] of nativeSubscriptions.current) {
       if (!desired.has(key)) {
         release();
         nativeSubscriptions.current.delete(key);
       }
     }
+
     setLiveFailureCount(failedSubscriptions.current.size);
   }, [controller, queryClient, snapshot.isOpen, snapshot.scopes, liveRetry]);
 

@@ -61,7 +61,9 @@ vi.mock('@wailsio/runtime', async (importOriginal) => {
         const listeners = native.listeners.get(name) ?? new Set();
         listeners.add(callback);
         native.listeners.set(name, listeners);
-        return () => { listeners.delete(callback); };
+        return () => {
+          listeners.delete(callback); 
+        };
       },
     },
   };
@@ -94,8 +96,10 @@ vi.mock('@omniviewdev/runtime/api', async (importOriginal) => {
     ResourceClient: {
       ...original.ResourceClient,
       ListPlugins: native.listPlugins,
+      // eslint-disable-next-line @typescript-eslint/promise-function-async -- Async wrapping discards the native cancel method.
       ListAllConnections: () => Object.assign(native.listAllConnections(), { cancel: vi.fn() }),
       LoadConnections: native.loadConnections,
+      // eslint-disable-next-line @typescript-eslint/promise-function-async -- Async wrapping discards the native cancel method.
       CheckConnection: () => Object.assign(native.checkConnection(), { cancel: vi.fn() }),
       SubscribeResource: native.subscribeResource,
       UnsubscribeResource: native.unsubscribeResource,
@@ -276,6 +280,18 @@ it.each(['ctrlKey', 'metaKey'] as const)(
   },
 );
 
+it('opens a focused global search when an external event has null detail', async () => {
+  renderSearchHeader();
+  act(() => {
+    window.dispatchEvent(new CustomEvent(GLOBAL_SEARCH_OPEN_EVENT, { detail: null }));
+  });
+  const input = await screen.findByRole('combobox', { name: /search/i });
+  expect(input).toHaveFocus();
+  expect(await screen.findByRole('option', { name: /^Home/ })).toBeVisible();
+  fireEvent.keyDown(input, { key: 'Escape' });
+  expect(screen.queryByRole('dialog', { name: /search/i })).not.toBeInTheDocument();
+});
+
 it('keeps palette double-clicks outside native title-bar maximize behavior', async () => {
   renderSearchHeader();
   fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
@@ -391,7 +407,9 @@ it('uses the actual input for controlled matching, current active-option ownersh
   const input = await screen.findByRole('combobox', { name: /search/i });
   fireEvent.change(input, { target: { value: 'Home' } });
   const home = await screen.findByRole('option', { name: /home/i });
-  await waitFor(() => expect(home).not.toHaveAttribute('aria-disabled', 'true'));
+  await waitFor(() => {
+    expect(home).not.toHaveAttribute('aria-disabled', 'true'); 
+  });
   fireEvent.keyDown(input, { key: 'ArrowDown' });
   const activeId = input.getAttribute('aria-activedescendant');
   expect(activeId).toBeTruthy();
@@ -545,7 +563,9 @@ it('refuses a real row click in the same task that reload moves its owner to loa
     const input = await screen.findByRole('combobox', { name: /search/i });
     fireEvent.change(input, { target: { value: 'Lifecycle navigation target' } });
     const oldRow = await screen.findByRole('option', { name: /Lifecycle navigation target/ });
-    await waitFor(() => expect(oldRow).not.toHaveAttribute('aria-disabled', 'true'));
+    await waitFor(() => {
+      expect(oldRow).not.toHaveAttribute('aria-disabled', 'true'); 
+    });
     expect(screen.getByTestId('current-location').textContent).toBe('/plugins');
     let phaseAtClick: string | undefined;
 
@@ -696,7 +716,7 @@ it.each([
 );
 
 it.each(['close', 'unmount', 'scope-change'] as const)('releases late native acquisition after %s without duplicate type ownership', async (operation) => {
-  const acquisition = createDeferred<void>();
+  const acquisition = createDeferred();
   native.subscribeResource.mockReturnValueOnce(acquisition.promise);
   const { service, importer } = createHeaderPluginEnvironment();
   importer.register('opaque', { plugin: new PluginWindow() });
@@ -709,7 +729,9 @@ it.each(['close', 'unmount', 'scope-change'] as const)('releases late native acq
     } }));
   });
   await screen.findByRole('combobox', { name: /search/i });
-  await waitFor(() => expect(native.subscribeResource).toHaveBeenCalledExactlyOnceWith('opaque', 'project', 'instance'));
+  await waitFor(() => {
+    expect(native.subscribeResource).toHaveBeenCalledExactlyOnceWith('opaque', 'project', 'instance'); 
+  });
   act(() => {
     // Moving from an instance to its type keeps the existing native subscription.
     window.dispatchEvent(new CustomEvent(GLOBAL_SEARCH_OPEN_EVENT, { detail: {
@@ -717,13 +739,18 @@ it.each(['close', 'unmount', 'scope-change'] as const)('releases late native acq
     } }));
   });
   expect(native.subscribeResource).toHaveBeenCalledOnce();
-  if (operation === 'unmount') view.unmount();
-  else if (operation === 'scope-change') act(() => {
-    window.dispatchEvent(new CustomEvent(GLOBAL_SEARCH_OPEN_EVENT, { detail: {
-      scope: { kind: 'connection', pluginId: 'opaque', connectionId: 'project', label: 'Project' },
-    } }));
-  });
-  else fireEvent.keyDown(document, { key: 'Escape' });
+  if (operation === 'unmount') {
+    view.unmount();
+  } else if (operation === 'scope-change') {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(GLOBAL_SEARCH_OPEN_EVENT, { detail: {
+        scope: { kind: 'connection', pluginId: 'opaque', connectionId: 'project', label: 'Project' },
+      } }));
+    });
+  } else {
+    fireEvent.keyDown(document, { key: 'Escape' });
+  }
+
   expect(native.unsubscribeResource).not.toHaveBeenCalled();
   await act(async () => {
     acquisition.resolve();
@@ -733,7 +760,9 @@ it.each(['close', 'unmount', 'scope-change'] as const)('releases late native acq
   expect(native.listeners.get('opaque/project/instance/UPDATE')?.size).toBe(0);
   view.unmount();
   expect(native.unsubscribeResource).toHaveBeenCalledOnce();
-  await act(async () => { await service.unload('opaque'); });
+  await act(async () => {
+    await service.unload('opaque'); 
+  });
 });
 
 it('coalesces native resource bursts without rediscovering plugins', async () => {
@@ -765,7 +794,9 @@ it('coalesces native resource bursts without rediscovering plugins', async () =>
     } }));
   });
   await screen.findByRole('combobox', { name: /search/i });
-  await waitFor(() => expect(native.listPlugins).toHaveBeenCalled());
+  await waitFor(() => {
+    expect(native.listPlugins).toHaveBeenCalled(); 
+  });
   await screen.findByRole('option', { name: /Snapshot 0/ });
   const searches = search.mock.calls.length;
   const discoveries = native.listPlugins.mock.calls.length;
@@ -774,8 +805,11 @@ it('coalesces native resource bursts without rediscovering plugins', async () =>
     await act(async () => {
       for (let index = 0; index < 10; index++) {
         version = index + 1;
-        native.listeners.get('opaque/project/instance/UPDATE')?.forEach((listener) => listener({ data: {} }));
+        native.listeners.get('opaque/project/instance/UPDATE')?.forEach((listener) => {
+          listener({ data: {} }); 
+        });
       }
+
       await Promise.resolve();
     });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['opaque', 'project', 'instance'], refetchType: 'none' });
@@ -788,7 +822,9 @@ it('coalesces native resource bursts without rediscovering plugins', async () =>
     expect(search.mock.calls.length - searches).toBeLessThanOrEqual(2);
   } finally {
     invalidate.mockRestore();
-    await act(async () => { await service.unload('opaque'); });
+    await act(async () => {
+      await service.unload('opaque'); 
+    });
   }
 });
 
@@ -800,10 +836,12 @@ it('updates provider Context identity without freezing same-length context metad
     const owner = usePluginContext();
     return <span>First context {owner.pluginId}</span>;
   }
+
   function ReplacementContext() {
     const owner = usePluginContext();
     return <span>Replacement context {owner.pluginId}</span>;
   }
+
   importer.register(pluginId, {
     plugin: new PluginWindow(),
     extensionRegistrations: [{
@@ -833,7 +871,9 @@ it('updates provider Context identity without freezing same-length context metad
     expect(screen.queryByText('First context dynamic-context')).not.toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: /search/i })).toBeVisible();
   } finally {
-    await act(async () => { await service.unload(pluginId); });
+    await act(async () => {
+      await service.unload(pluginId); 
+    });
   }
 });
 
@@ -848,12 +888,16 @@ it('uses connection-depth adapter targets and isolates throwing adapters', async
     extensionRegistrations: [
       { extensionPointId: 'omniview/global-search', registration: { id: 'broken-scope', label: 'Broken scope', value: {
         schemaVersion: 1, kind: 'provider', search, connectionRecovery: 'provider',
-        supportsScope: () => { throw new Error('private adapter details'); },
+        supportsScope: () => {
+          throw new Error('private adapter details'); 
+        },
         connectionTarget: () => target,
       } } },
       { extensionPointId: 'omniview/global-search', registration: { id: 'broken-target', label: 'Broken target', value: {
         schemaVersion: 1, kind: 'provider', search,
-        connectionTarget: () => { throw new Error('private target details'); },
+        connectionTarget: () => {
+          throw new Error('private target details'); 
+        },
       } } },
       { extensionPointId: 'omniview/global-search', registration: { id: 'healthy-target', label: 'Healthy target', value: {
         schemaVersion: 1, kind: 'provider', search, supportsScope, connectionTarget: () => target,
@@ -877,7 +921,9 @@ it('uses connection-depth adapter targets and isolates throwing adapters', async
     ] });
     expect(scoped.items[0]?.value).toMatchObject({ action: { recovery: 'connection', target: { kind: 'connection' } } });
   } finally {
-    await act(async () => { await service.unload(pluginId); });
+    await act(async () => {
+      await service.unload(pluginId); 
+    });
   }
 });
 
@@ -896,17 +942,23 @@ it('reports native subscription failure and retries without replacing the health
   expect(screen.queryByText('private backend path')).not.toBeInTheDocument();
   const watcher = Array.from(native.listeners.get('opaque/project/watch/STATE') ?? []);
   fireEvent.click(screen.getByRole('button', { name: /retry live updates/i }));
-  await waitFor(() => expect(native.subscribeResource).toHaveBeenCalledTimes(2));
-  await waitFor(() => expect(screen.queryByText('Live updates are unavailable. Results may be out of date.')).not.toBeInTheDocument());
+  await waitFor(() => {
+    expect(native.subscribeResource).toHaveBeenCalledTimes(2); 
+  });
+  await waitFor(() => {
+    expect(screen.queryByText('Live updates are unavailable. Results may be out of date.')).not.toBeInTheDocument(); 
+  });
   expect(Array.from(native.listeners.get('opaque/project/watch/STATE') ?? [])).toEqual(watcher);
   expect(native.unsubscribeResource).not.toHaveBeenCalled();
   expect(native.listeners.get('opaque/project/instance/UPDATE')?.size).toBe(1);
   view.unmount();
-  await act(async () => { await service.unload('opaque'); });
+  await act(async () => {
+    await service.unload('opaque'); 
+  });
 });
 
 it.each(['close', 'unmount'] as const)('ignores late native subscription failure after %s', async (operation) => {
-  const acquisition = createDeferred<void>();
+  const acquisition = createDeferred();
   native.subscribeResource.mockReturnValueOnce(acquisition.promise);
   const { service, importer } = createHeaderPluginEnvironment();
   importer.register('opaque', { plugin: new PluginWindow() });
@@ -918,9 +970,15 @@ it.each(['close', 'unmount'] as const)('ignores late native subscription failure
     } }));
   });
   await screen.findByRole('combobox', { name: /search/i });
-  await waitFor(() => expect(native.subscribeResource).toHaveBeenCalledOnce());
-  if (operation === 'unmount') view.unmount();
-  else fireEvent.keyDown(document, { key: 'Escape' });
+  await waitFor(() => {
+    expect(native.subscribeResource).toHaveBeenCalledOnce(); 
+  });
+  if (operation === 'unmount') {
+    view.unmount();
+  } else {
+    fireEvent.keyDown(document, { key: 'Escape' });
+  }
+
   await act(async () => {
     acquisition.reject(new Error('retired subscription failure'));
     await acquisition.promise.catch(() => undefined);
@@ -930,9 +988,12 @@ it.each(['close', 'unmount'] as const)('ignores late native subscription failure
     await screen.findByRole('combobox', { name: /search/i });
     expect(screen.queryByText('Live updates are unavailable. Results may be out of date.')).not.toBeInTheDocument();
   }
+
   expect(native.unsubscribeResource).not.toHaveBeenCalled();
   view.unmount();
-  await act(async () => { await service.unload('opaque'); });
+  await act(async () => {
+    await service.unload('opaque'); 
+  });
 });
 
 it.each(['publish', 'close'] as const)('preserves an event during a canonical query fetch until %s without leaking cache listeners', async (operation) => {
@@ -949,11 +1010,14 @@ it.each(['publish', 'close'] as const)('preserves an event during a canonical qu
       stop();
     };
   });
-  const initialRead = createDeferred<void>();
+  const initialRead = createDeferred();
   let backend = 'old';
   const fetchSnapshot = vi.fn(async () => {
     const snapshot = backend;
-    if (snapshot === 'old') await initialRead.promise;
+    if (snapshot === 'old') {
+      await initialRead.promise;
+    }
+
     return snapshot;
   });
   const search = async (): Promise<RuntimeCore.SearchProviderResponseV1> => {
@@ -965,6 +1029,7 @@ it.each(['publish', 'close'] as const)('preserves an event during a canonical qu
         target: { kind: 'plugin', pluginId: 'opaque', path: '/' } },
     }], completion: 'complete' };
   };
+
   const { service, importer } = createHeaderPluginEnvironment();
   importer.register('opaque', {
     plugin: new PluginWindow().withRoutes([{ path: '/', Component: () => null }]),
@@ -984,17 +1049,26 @@ it.each(['publish', 'close'] as const)('preserves an event during a canonical qu
         scope: { kind: 'resource-type', pluginId: 'opaque', connectionId: 'project', resourceKey: 'instance', label: 'Instances' },
       } }));
     });
-    await waitFor(() => expect(fetchSnapshot).toHaveBeenCalledOnce());
-    await waitFor(() => expect(native.subscribeResource).toHaveBeenCalledOnce());
+    await waitFor(() => {
+      expect(fetchSnapshot).toHaveBeenCalledOnce(); 
+    });
+    await waitFor(() => {
+      expect(native.subscribeResource).toHaveBeenCalledOnce(); 
+    });
     expect(cacheListeners.size).toBe(idleListeners + 1);
     act(() => {
       backend = 'new';
       for (let index = 0; index < 10; index++) {
-        native.listeners.get('opaque/project/instance/UPDATE')?.forEach((listener) => listener({ data: {} }));
+        native.listeners.get('opaque/project/instance/UPDATE')?.forEach((listener) => {
+          listener({ data: {} }); 
+        });
       }
     });
     expect(client.getQueryState(queryKey)?.isInvalidated).toBe(true);
-    if (operation === 'close') fireEvent.keyDown(document, { key: 'Escape' });
+    if (operation === 'close') {
+      fireEvent.keyDown(document, { key: 'Escape' });
+    }
+
     await act(async () => {
       initialRead.resolve();
       await initialRead.promise;
@@ -1008,10 +1082,13 @@ it.each(['publish', 'close'] as const)('preserves an event during a canonical qu
       expect(fetchSnapshot).toHaveBeenCalledOnce();
       expect(client.getQueryState(queryKey)?.isInvalidated).toBe(false);
     }
+
     expect(cacheListeners.size).toBe(idleListeners);
   } finally {
     view.unmount();
-    await act(async () => { await service.unload('opaque'); });
+    await act(async () => {
+      await service.unload('opaque'); 
+    });
     client.clear();
   }
 });

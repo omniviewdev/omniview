@@ -32,16 +32,25 @@ function scopeDescription(scope: SearchScopeV1) {
   return [
     `${scopeLabels[scope.kind]}: ${scope.label}`, scope.pluginId, scope.connectionId,
     scope.kind !== 'connection' && scope.resourceKey,
-    scope.kind === 'resource-type' && scope.namespaces?.length && `${scope.scopeLabel || 'Scope'}: ${scope.namespaces.join(', ')}`,
-    scope.kind === 'resource' && scope.namespace && `${scope.scopeLabel || 'Scope'}: ${scope.namespace}`,
+    scope.kind === 'resource-type' && scope.namespaces?.length && `${scope.scopeLabel ?? 'Scope'}: ${scope.namespaces.join(', ')}`,
+    scope.kind === 'resource' && scope.namespace && `${scope.scopeLabel ?? 'Scope'}: ${scope.namespace}`,
     scope.kind === 'resource' && scope.resourceId,
   ].filter(Boolean).join(' · ');
 }
 
 function getSettingBreadcrumb({ value }: SearchRow) {
-  if (value.kind !== 'setting') return undefined;
-  if (value.target.section === 'extensions') return 'Settings › Extensions';
-  if (value.target.section === 'plugins') return 'Settings › Plugins';
+  if (value.kind !== 'setting') {
+    return undefined;
+  }
+
+  if (value.target.section === 'extensions') {
+    return 'Settings › Extensions';
+  }
+
+  if (value.target.section === 'plugins') {
+    return 'Settings › Plugins';
+  }
+
   // The catalogue supplies the public category label as its first keyword.
   const category = value.target.settingId ? value.keywords?.[0] : undefined;
   return category ? `Settings › ${category}` : 'Settings › Application';
@@ -84,6 +93,7 @@ function ScopeIcon({ scope, pluginIcons }: { scope: SearchScopeV1; pluginIcons?:
       ? <img src={icon} alt='' className={styles.PluginIcon} />
       : <Icon name={icon} aria-hidden='true' />;
   }
+
   const Fallback = scopeIcons[scope.kind];
   return scope.kind === 'connection' ? <Fallback aria-hidden='true' /> : (
     <ResourceIcon pluginId={scope.pluginId} resourceKey={scope.resourceKey} size={16}
@@ -111,6 +121,7 @@ function SearchInput({ controller, snapshot, input, onClose, pluginIcons }: Pale
     if (snapshot.isOpen && previousScope.current.isOpen && previousScope.current.key !== scopeStackKey) {
       input.current?.focus();
     }
+
     previousScope.current = { isOpen: snapshot.isOpen, key: scopeStackKey };
   }, [scopeStackKey, snapshot.isOpen, input]);
   useEffect(() => {
@@ -133,31 +144,40 @@ function SearchInput({ controller, snapshot, input, onClose, pluginIcons }: Pale
       event.stopPropagation();
       return;
     }
+
     if (isComposing(event)) {
       event.stopPropagation();
       return;
     }
+
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
       onClose();
       return;
     }
+
     if (event.key === 'Home' || event.key === 'End') {
       // Keep native caret and text-selection behavior out of CommandList's handler.
       event.stopPropagation();
       return;
     }
+
     if (event.altKey || event.ctrlKey || event.metaKey) {
-      if (['ArrowUp', 'ArrowDown', 'Enter'].includes(event.key)) event.stopPropagation();
+      if (['ArrowUp', 'ArrowDown', 'Enter'].includes(event.key)) {
+        event.stopPropagation();
+      }
+
       // Global shortcuts such as Cmd/Ctrl-K still belong to the host listener.
       return;
     }
+
     if (snapshot.searchPending && (['Enter', 'ArrowUp', 'ArrowDown'].includes(event.key) || (event.key === 'Tab' && !event.shiftKey))) {
       event.preventDefault();
       event.stopPropagation();
       return;
     }
+
     if (event.key === 'Tab' && !event.shiftKey && scopeableRow && controller?.scope(scopeableRow.key)) {
       event.preventDefault();
       event.stopPropagation();
@@ -165,15 +185,24 @@ function SearchInput({ controller, snapshot, input, onClose, pluginIcons }: Pale
       input.current?.focus();
       return;
     }
+
     if (event.key === 'Backspace' && snapshot.query === '' && snapshot.scopes.length) {
       event.preventDefault();
       event.stopPropagation();
       // Holding Backspace must not turn chip selection into accidental removal.
-      if (event.repeat) return;
-      if (selectedScopeIndex >= 0) removeScope(selectedScopeIndex);
-      else setSelectedScope(scopeKey(snapshot.scopes[snapshot.scopes.length - 1]!));
+      if (event.repeat) {
+        return;
+      }
+
+      if (selectedScopeIndex >= 0) {
+        removeScope(selectedScopeIndex);
+      } else {
+        setSelectedScope(scopeKey(snapshot.scopes[snapshot.scopes.length - 1]));
+      }
+
       return;
     }
+
     if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && !event.shiftKey) {
       const atStart = input.current?.selectionStart === 0 && input.current.selectionEnd === 0;
       if (selectedScopeIndex >= 0 || (event.key === 'ArrowLeft' && atStart && snapshot.scopes.length)) {
@@ -181,10 +210,11 @@ function SearchInput({ controller, snapshot, input, onClose, pluginIcons }: Pale
         event.stopPropagation();
         const index = selectedScopeIndex < 0 ? snapshot.scopes.length - 1
           : selectedScopeIndex + (event.key === 'ArrowLeft' ? -1 : 1);
-        setSelectedScope(index >= snapshot.scopes.length ? undefined : scopeKey(snapshot.scopes[Math.max(0, index)]!));
+        setSelectedScope(index >= snapshot.scopes.length ? undefined : scopeKey(snapshot.scopes[Math.max(0, index)]));
         return;
       }
     }
+
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
       event.stopPropagation();
@@ -193,22 +223,34 @@ function SearchInput({ controller, snapshot, input, onClose, pluginIcons }: Pale
       const index = rows.findIndex((row) => row.key === snapshot.selectedKey);
       const direction = event.key === 'ArrowDown' ? 1 : -1;
       const next = index < 0 ? (direction === 1 ? 0 : rows.length - 1) : (index + direction + rows.length) % rows.length;
-      if (rows[next]) controller?.setSelectedKey(rows[next].key);
+      if (rows[next]) {
+        controller?.setSelectedKey(rows[next].key);
+      }
+
       return;
     }
+
     if (event.key === 'Enter') {
       event.preventDefault();
       event.stopPropagation();
-      if (selectedScopeIndex < 0 && eligibleRow) void controller?.activate(eligibleRow.key);
+      if (selectedScopeIndex < 0 && eligibleRow) {
+        void controller?.activate(eligibleRow.key);
+      }
+
       return;
     }
-    if (event.key !== 'Tab') setSelectedScope(undefined);
+
+    if (event.key !== 'Tab') {
+      setSelectedScope(undefined);
+    }
   }
 
   return (
     <>
       <div className={styles.QueryBar} onKeyDownCapture={(event) => {
-        if (event.target === input.current) handleInputKey(event);
+        if (event.target === input.current) {
+          handleInputKey(event);
+        }
       }}>
         {snapshot.scopes.length > 0 && (
           <div className={styles.Scopes} role='group' aria-label='Search scopes'>
@@ -226,14 +268,18 @@ function SearchInput({ controller, snapshot, input, onClose, pluginIcons }: Pale
                   startDecorator={<ScopeIcon scope={scope} pluginIcons={pluginIcons} />}
                   endDecorator={<IconButton size='sm' variant='ghost' className={styles.RemoveScope}
                     aria-label={`Remove ${scopeLabels[scope.kind].toLowerCase()} scope ${scope.label}${index < snapshot.scopes.length - 1 ? ' and dependent scopes' : ''}`}
-                    onClick={(event) => { event.stopPropagation(); removeScope(index); }}>
+                    onClick={(event) => {
+                      event.stopPropagation(); removeScope(index); 
+                    }}>
                     <LuX size={12} aria-hidden='true' />
                   </IconButton>}
                 >
                   <Button size='sm' variant='ghost' className={styles.ScopeLabel}
                     style={{ minBlockSize: 0, blockSize: 'auto', padding: 0 }}
                     aria-label={scopeDescription(scope)} aria-pressed={selectedScope === key}
-                    onClick={() => { setSelectedScope(key); input.current?.focus(); }}>
+                    onClick={() => {
+                      setSelectedScope(key); input.current?.focus(); 
+                    }}>
                     {scope.label}
                     {scope.kind === 'resource' && scope.namespace && <span> · {scope.namespace}</span>}
                   </Button>
@@ -258,12 +304,14 @@ function SearchInput({ controller, snapshot, input, onClose, pluginIcons }: Pale
           aria-haspopup='listbox'
           aria-describedby={descriptionId}
           aria-activedescendant={selectedScopeIndex < 0 && selectedRow ? `${config.listId}-item-${selectedRow.key}` : undefined}
-          onClick={() => setSelectedScope(undefined)}
+          onClick={() => {
+            setSelectedScope(undefined); 
+          }}
         />
       </div>
       <p id={descriptionId} className={styles.VisuallyHidden} role='status' aria-live='polite'>
         {selectedScopeIndex >= 0
-          ? `${scopeDescription(snapshot.scopes[selectedScopeIndex]!)} selected. Backspace removes this scope and dependent scopes. Left and right select scopes.`
+          ? `${scopeDescription(snapshot.scopes[selectedScopeIndex])} selected. Backspace removes this scope and dependent scopes. Left and right select scopes.`
           : `${snapshot.scopes.length ? `${snapshot.scopes.map(scopeDescription).join('; ')}. ` : 'Searching all sources. '}Enter opens a result. Tab explores an eligible result. Empty-input Backspace selects the last scope.`}
       </p>
       <CommandList.Results className={styles.Results} />
@@ -292,29 +340,47 @@ export function GlobalCommandSearch({ controller, snapshot, input, onClose, cata
     dismissed.current = true;
     onClose();
   }
+
   function isTopmost() {
     const dialogs = document.querySelectorAll('[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]');
     return dialogs[dialogs.length - 1] === surface.current;
   }
+
   useLayoutEffect(() => {
-    if (snapshot.isOpen) opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (snapshot.isOpen) {
+      opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    }
   }, [snapshot.isOpen]);
   useEffect(() => {
-    if (!snapshot.isOpen) return;
+    if (!snapshot.isOpen) {
+      return;
+    }
+
     dismissed.current = false;
     input.current?.focus();
     const overlay = surface.current?.parentElement;
     const background = Array.from(document.body.children).filter((node) => node !== overlay);
     const previous = background.map((node) => [node, node.hasAttribute('inert')] as const);
-    background.forEach((node) => node.setAttribute('inert', ''));
+    background.forEach((node) => {
+      node.setAttribute('inert', ''); 
+    });
     function retainFocus(event: FocusEvent) {
-      if (isTopmost() && event.target instanceof Node && !surface.current?.contains(event.target)) input.current?.focus();
+      if (isTopmost() && event.target instanceof Node && !surface.current?.contains(event.target)) {
+        input.current?.focus();
+      }
     }
+
     document.addEventListener('focusin', retainFocus);
     return () => {
       document.removeEventListener('focusin', retainFocus);
-      previous.forEach(([node, wasInert]) => { if (!wasInert) node.removeAttribute('inert'); });
-      if (dismissed.current && opener.current?.isConnected) opener.current.focus();
+      previous.forEach(([node, wasInert]) => {
+        if (!wasInert) {
+          node.removeAttribute('inert');
+        } 
+      });
+      if (dismissed.current && opener.current?.isConnected) {
+        opener.current.focus();
+      }
     };
   }, [snapshot.isOpen, input]);
   const disabledKeys = useMemo(
@@ -326,7 +392,10 @@ export function GlobalCommandSearch({ controller, snapshot, input, onClose, cata
   const selectedCanExplore = snapshot.rows.some((row) => row.key === snapshot.selectedKey
     && !isDisabled(row, snapshot.executionPending)
     && supportsScope(row.value.scope, snapshot.scopes.at(-1)));
-  if (!snapshot.searchPending) previousExploreHint.current = selectedCanExplore;
+  if (!snapshot.searchPending) {
+    previousExploreHint.current = selectedCanExplore;
+  }
+
   const canExplore = snapshot.searchPending ? previousExploreHint.current : selectedCanExplore;
   const statusSources = snapshot.sources.filter((source) => !['queued', 'pending', 'complete'].includes(source.state));
 
@@ -335,14 +404,22 @@ export function GlobalCommandSearch({ controller, snapshot, input, onClose, cata
       event.stopPropagation();
       return;
     }
-    if (!isTopmost()) return;
+
+    if (!isTopmost()) {
+      return;
+    }
+
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
       dismiss();
       return;
     }
-    if (event.key !== 'Tab') return;
+
+    if (event.key !== 'Tab') {
+      return;
+    }
+
     const targets = surface.current?.querySelectorAll<HTMLElement>(
       'button, summary, input, select, textarea, a[href], [tabindex]',
     );
@@ -367,10 +444,16 @@ export function GlobalCommandSearch({ controller, snapshot, input, onClose, cata
   return (
     <>
       {contexts && <SearchProviderContexts contexts={contexts} controller={controller} />}
-      <Dialog ref={surface} open={snapshot.isOpen} onClose={() => { if (isTopmost()) dismiss(); }} size='lg'
-        onKeyDown={containFocus} onKeyDownCapture={(event) => {
-          if (isComposing(event) || event.defaultPrevented) event.stopPropagation();
-        }}>
+      <Dialog ref={surface} open={snapshot.isOpen} onClose={() => {
+        if (isTopmost()) {
+          dismiss();
+        } 
+      }} size='lg'
+      onKeyDown={containFocus} onKeyDownCapture={(event) => {
+        if (isComposing(event) || event.defaultPrevented) {
+          event.stopPropagation();
+        }
+      }}>
         <Dialog.Title>Search Omniview</Dialog.Title>
         <Dialog.Close aria-label='Close search' />
         <Dialog.Body>
@@ -392,12 +475,20 @@ export function GlobalCommandSearch({ controller, snapshot, input, onClose, cata
             loading={loading}
             aria-busy={loading || snapshot.executionPending || undefined}
             placeholder='Search anything…'
-            onAction={(key) => { void controller?.activate(String(key)); }}
+            onAction={(key) => {
+              void controller?.activate(String(key)); 
+            }}
             onDismiss={dismiss}
             onKeyDownCapture={(event) => {
-              if (event.target !== input.current && ['Enter', ' ', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) event.stopPropagation();
+              if (event.target !== input.current && ['Enter', ' ', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
+                event.stopPropagation();
+              }
             }}
-            onKeyDown={(event) => { if (event.defaultPrevented) event.stopPropagation(); }}
+            onKeyDown={(event) => {
+              if (event.defaultPrevented) {
+                event.stopPropagation();
+              } 
+            }}
             onMouseMoveCapture={(event) => {
               const previous = pointerMotion.current;
               pointerMotion.current = {
@@ -432,8 +523,8 @@ export function GlobalCommandSearch({ controller, snapshot, input, onClose, cata
                     {!row.value.description && !breadcrumb && <CommandList.ItemMeta>
                       {resultScope?.kind === 'resource' ? resultScope.namespace || undefined
                         : resultScope?.kind === 'resource-type' ? resultScope.resourceKey.replaceAll('::', '/')
-                        : resultScope?.kind === 'connection' ? resultScope.pluginId
-                        : kindLabels[row.value.kind]}
+                          : resultScope?.kind === 'connection' ? resultScope.pluginId
+                            : kindLabels[row.value.kind]}
                     </CommandList.ItemMeta>}
                     {row.value.description && <CommandList.ItemDescription>{row.value.description}</CommandList.ItemDescription>}
                     {row.disabledReason && <CommandList.ItemDisabledReason>{row.disabledReason}</CommandList.ItemDisabledReason>}
@@ -445,11 +536,15 @@ export function GlobalCommandSearch({ controller, snapshot, input, onClose, cata
                       disabled={snapshot.searchPending}
                       className={styles.ScopeControl}
                       aria-label={`Scope to ${row.label}`}
-                      onMouseDown={(event) => event.preventDefault()}
+                      onMouseDown={(event) => {
+                        event.preventDefault(); 
+                      }}
                       onClick={(event) => {
                         event.stopPropagation();
                         controller?.setSelectedKey(row.key);
-                        if (controller?.scope(row.key)) input.current?.focus();
+                        if (controller?.scope(row.key)) {
+                          input.current?.focus();
+                        }
                       }}
                     ><LuChevronRight size={14} aria-hidden='true' /></IconButton>
                   )}
@@ -468,7 +563,9 @@ export function GlobalCommandSearch({ controller, snapshot, input, onClose, cata
           {liveUpdateError && <Banner color='warning' variant='soft' size='sm' role='status' aria-live='polite'>
             <Banner.Content>{liveUpdateError}</Banner.Content>
             {retryLiveUpdates && <Button size='sm' variant='ghost' disabled={snapshot.executionPending}
-              onClick={() => { retryLiveUpdates(); input.current?.focus(); }}>Retry live updates</Button>}
+              onClick={() => {
+                retryLiveUpdates(); input.current?.focus(); 
+              }}>Retry live updates</Button>}
           </Banner>}
           <div className={styles.StatusRail} role='status' aria-live='polite' aria-label='Search availability'>
             <div className={styles.StatusIndicators}>
@@ -477,17 +574,19 @@ export function GlobalCommandSearch({ controller, snapshot, input, onClose, cata
                   const visual = sourceVisuals[source.state];
                   return <span className={styles.StatusItem} key={source.id}>
                     <Chip size='sm' variant='soft' color={visual.color}
-                      title={`${source.label}: ${source.message || visual.label}`}
+                      title={`${source.label}: ${source.message ?? visual.label}`}
                       aria-label={`${source.label}: ${visual.label}`} startDecorator={<visual.Icon aria-hidden='true' />}>
                       {visual.label}
                     </Chip>
                     {source.retryable && <IconButton size='sm' variant='ghost' disabled={snapshot.executionPending}
-                      aria-label={`Retry ${source.label}`} onClick={() => { controller?.retrySource(source.id); input.current?.focus(); }}>
+                      aria-label={`Retry ${source.label}`} onClick={() => {
+                        controller?.retrySource(source.id); input.current?.focus(); 
+                      }}>
                       <LuRefreshCw size={14} aria-hidden='true' />
                     </IconButton>}
                   </span>;
                 }) : <span className={styles.StatusIndicator}><LuCircleCheck aria-hidden='true' />Ready</span>}
-              {(snapshot.message || catalogueMessage) && <Chip size='sm' variant='soft' color='warning'
+              {(Boolean(snapshot.message) || Boolean(catalogueMessage)) && <Chip size='sm' variant='soft' color='warning'
                 title={[snapshot.message, catalogueMessage].filter(Boolean).join(' ')}
                 startDecorator={<LuTriangleAlert aria-hidden='true' />}>Search notice</Chip>}
             </div>

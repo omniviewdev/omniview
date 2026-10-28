@@ -18,9 +18,11 @@ function ContextReady({ controller, sourceId, children }: {
   children: ReactNode;
 }) {
   useEffect(() => {
-    if (!controller?.setProviderContextError(sourceId)) controller?.notifyDataChanged();
+    if (!controller?.setProviderContextError(sourceId)) {
+      controller?.notifyDataChanged();
+    }
   }, [controller, sourceId]);
-  return children;
+  return <>{children}</>;
 }
 
 /** Keep execution/dialog contexts alive outside the palette, with one runtime context per plugin. */
@@ -35,6 +37,7 @@ export function SearchProviderContexts({ contexts, controller }: {
       group.push(context);
       result.set(context.pluginId, group);
     }
+
     return result;
   }, [contexts]);
 
@@ -54,7 +57,9 @@ export function SearchProviderContexts({ contexts, controller }: {
 
   return <>{Array.from(groups, ([pluginId, entries]) => {
     const children = entries.map(({ Component, ...entry }) => (
-      <ErrorBoundary key={entry.key} fallback={null} onError={(error) => failed([{ ...entry, Component }], error)}>
+      <ErrorBoundary key={entry.key} fallback={null} onError={(error) => {
+        failed([{ ...entry, Component }], error); 
+      }}>
         <Suspense fallback={null}>
           <ContextReady controller={controller} sourceId={entry.sourceId}>
             <Component />
@@ -64,7 +69,9 @@ export function SearchProviderContexts({ contexts, controller }: {
     ));
     return (
       <ErrorBoundary key={pluginId} resetKeys={entries.map(entry => entry.key)} fallback={null}
-        onError={(error) => failed(entries, error)}>
+        onError={(error) => {
+          failed(entries, error); 
+        }}>
         {pluginId === 'core' ? children : (
           <PluginContextProvider pluginId={pluginId} headless>{children}</PluginContextProvider>
         )}

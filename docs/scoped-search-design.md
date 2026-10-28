@@ -7,7 +7,7 @@ Status: design approved; production implementation uses the shared runtime V1 co
 Active managed collection: `workspaces/scoped-search-design`, feature `scoped-search-reviewed`, UUID `084c795e-273e-441b-b7c3-deafd689e315`. Browser endpoint: `http://127.0.0.1:23887/`.
 Selected source repositories: host, plugin SDK v0.7.0, and Kubernetes. The managed runtime uses the compatible published base-ui 0.7.0 cohort. The `scoped-search` approval and `scoped-search-implementation` verification workspaces remain preserved and stopped. Source-only migration avoided adopting generated dependency trees rejected by the ownership guard.
 
-Open `scoped-search-mock.html` through a local HTTP server. The standalone mock uses synthetic data and custom HTML/CSS, not production base-ui components. It cannot connect to a cluster or run real actions. Its state selector simulates failures, not real authentication or subscriptions.
+The standalone synthetic-data mock supported design approval and remains in the preserved design workspace. It is not shipped with the production implementation; the actual shared palette is the interactive reference.
 
 ## Business requirements
 
@@ -231,3 +231,13 @@ Settled screenshots captured both desktop and narrow layouts. Sidebar also rende
 | Kubernetes UI suite, including native artwork behavior | 38 suites, 379 tests passed |
 | Runtime icon ownership, lazy loading, failures, and replacement | 1 suite, 6 tests passed |
 | Host and Kubernetes TypeScript; runtime TypeScript and production build | Passed |
+
+## PR review and release integration
+
+CodeRabbit reviewed the host, Kubernetes, and SDK changes. Review corrections admit action-provided resource destinations before dispatch, enforce provider ownership, normalize absent or malformed global-open event details, and update Kubernetes action dependencies only after commit. Native cancellation fixtures preserve the cancellable promise rather than wrapping it in an async function.
+
+The resource cache regression now runs without an external Kubernetes checkout. Keyboard E2E checks validate the actual first/last focus boundary instead of pinning an incidental control order. The obsolete approval mock is excluded from the release.
+
+Foreign-owner, wrong-kind, and malformed resource destinations reproduced erroneous dispatch before the fix. A null-detail global-open event reproduced failure to open before the fix. The corrected host cohort passed 230 focused tests, full host lint, and TypeScript. The real managed application opened a focused dialog for null detail and wrapped keyboard focus between the first control and the final Details control.
+
+Release integration targets SDK v0.7.1, host/runtime/providers/Vite plugin v0.7.4, and Kubernetes v0.7.1. Consumer manifests use published dependencies, never local replacement paths.

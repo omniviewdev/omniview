@@ -19,7 +19,9 @@ const controllers: GlobalSearchController[] = [];
 
 afterEach(() => {
   cleanup();
-  controllers.splice(0).forEach((controller) => controller.dispose());
+  controllers.splice(0).forEach((controller) => {
+    controller.dispose(); 
+  });
   vi.restoreAllMocks();
 });
 
@@ -33,6 +35,7 @@ async function setup() {
       value: { schemaVersion: 1, kind: 'navigation', target: { kind: 'plugin', pluginId: 'probe', path: `/${id}` }, scope },
     });
   }
+
   store.register({
     id: 'probe/settings', plugin: 'probe', label: 'Settings',
     value: { schemaVersion: 1, kind: 'setting', target: { section: 'extensions' } },
@@ -47,19 +50,26 @@ async function setup() {
     navigate,
   });
   controllers.push(controller);
-  const close = vi.fn(() => controller.close());
+  const close = vi.fn(() => {
+    controller.close(); 
+  });
   function Harness() {
     const input = useRef<HTMLInputElement>(null);
     const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
     return <>
-      <button type='button' onClick={() => controller.open()}>Open search</button>
+      <button type='button' onClick={() => {
+        controller.open(); 
+      }}>Open search</button>
       <GlobalCommandSearch controller={controller} snapshot={snapshot} input={input} onClose={close} />
     </>;
   }
+
   render(<Harness />);
   const opener = screen.getByRole('button', { name: 'Open search' });
   opener.focus();
-  await act(async () => { fireEvent.click(opener); });
+  await act(async () => {
+    fireEvent.click(opener); 
+  });
   const input = screen.getByRole<HTMLInputElement>('combobox', { name: 'Search Omniview' });
   return { controller, navigate, close, opener, input, store };
 }
@@ -90,10 +100,14 @@ describe('GlobalCommandSearch scoped interaction', () => {
     expect(screen.getByRole('option', { name: /Worker machines/ })).toBeVisible();
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(navigate).not.toHaveBeenCalled();
-    await waitFor(() => expect(controller.getSnapshot().searchPending).toBe(false));
+    await waitFor(() => {
+      expect(controller.getSnapshot().searchPending).toBe(false); 
+    });
     expect(screen.getByRole('option', { name: /Worker machines/ })).toBeVisible();
     fireEvent.click(screen.getByRole('option', { name: /Worker machines/ }));
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/_plugin/probe/workers'));
+    await waitFor(() => {
+      expect(navigate).toHaveBeenCalledWith('/_plugin/probe/workers'); 
+    });
   });
 
   it('scopes consecutive Tab presses without moving input focus and restores parent query and selection', async () => {
@@ -135,13 +149,19 @@ describe('GlobalCommandSearch scoped interaction', () => {
     expect(input).toHaveFocus();
     type(input, 'pod');
     fireEvent.keyDown(input, { key: 'Enter' });
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/_plugin/probe/pods'));
+    await waitFor(() => {
+      expect(navigate).toHaveBeenCalledWith('/_plugin/probe/pods'); 
+    });
     expect(controller.getSnapshot().isOpen).toBe(false);
 
-    await act(async () => { controller.open(); });
+    await act(async () => {
+      controller.open(); 
+    });
     type(screen.getByRole<HTMLInputElement>('combobox'), 'pro');
     fireEvent.click(screen.getByRole('option', { name: /prod/ }));
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/_plugin/probe/connection'));
+    await waitFor(() => {
+      expect(navigate).toHaveBeenCalledWith('/_plugin/probe/connection'); 
+    });
   });
 
   it('selects chips with left and right, removes ancestors and ignores repeated Backspace', async () => {
@@ -171,14 +191,18 @@ describe('GlobalCommandSearch scoped interaction', () => {
     expect(fireEvent.keyDown(input, { key: 'Tab', shiftKey: true })).toBe(true);
     expect(controller.getSnapshot().scopes).toEqual([]);
     const close = screen.getByRole('button', { name: 'Close search' });
-    act(() => close.focus());
+    act(() => {
+      close.focus(); 
+    });
     expect(fireEvent.keyDown(close, { key: 'Tab', shiftKey: true })).toBe(false);
     const lastControl = document.activeElement as HTMLElement;
     expect(screen.getByRole('dialog', { name: 'Search Omniview' }).contains(lastControl)).toBe(true);
     expect(lastControl).not.toBe(close);
     fireEvent.keyDown(lastControl, { key: 'Tab' });
     expect(close).toHaveFocus();
-    act(() => input.focus());
+    act(() => {
+      input.focus(); 
+    });
     const consumed = createEvent.keyDown(input, { key: 'Tab' });
     consumed.preventDefault();
     fireEvent(input, consumed);
@@ -196,6 +220,7 @@ describe('GlobalCommandSearch scoped interaction', () => {
     for (const eventKey of ['Tab', 'Enter', 'Escape', 'ArrowDown', 'Backspace']) {
       fireEvent.keyDown(input, { key: eventKey, isComposing: true });
     }
+
     fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 });
     expect(controller.getSnapshot().isOpen).toBe(true);
     expect(controller.getSnapshot().scopes).toEqual([]);
@@ -214,15 +239,21 @@ describe('GlobalCommandSearch scoped interaction', () => {
   it('holds selected object identity across refreshed controller results', async () => {
     const { controller, input, navigate } = await setup();
     const pods = controller.getSnapshot().rows.find((row) => row.label === 'Pods')!;
-    act(() => controller.setSelectedKey(pods.key));
+    act(() => {
+      controller.setSelectedKey(pods.key); 
+    });
     const descendant = input.getAttribute('aria-activedescendant');
     expect(document.getElementById(descendant!)).toHaveAttribute('aria-selected', 'true');
-    await act(async () => controller.refresh());
+    await act(async () => {
+      controller.refresh(); 
+    });
     expect(input).toHaveAttribute('aria-activedescendant', descendant);
     expect(controller.getSnapshot().selectedKey).toBe(pods.key);
     expect(controller.getSnapshot().rows.find((row) => row.key === pods.key)?.value.scope).toEqual(resourceType);
     expect(document.getElementById(descendant!)).toHaveAttribute('aria-selected', 'true');
-    act(() => controller.setSelectedKey(undefined));
+    act(() => {
+      controller.setSelectedKey(undefined); 
+    });
     expect(input).not.toHaveAttribute('aria-activedescendant');
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(navigate).not.toHaveBeenCalled();
@@ -234,19 +265,22 @@ describe('GlobalCommandSearch scoped interaction', () => {
     function Context() {
       useEffect(() => {
         mounted();
-        return () => { unmounted(); };
+        return () => {
+          unmounted(); 
+        };
       }, []);
       return null;
     }
+
     const input = { current: null };
     const snapshot: SearchSnapshot = { isOpen: false, query: '', scopes: [], rows: [], sources: [], executionPending: false, searchPending: false };
     const contexts = [{ key: 'core/context/1', sourceId: 'core/context', pluginId: 'core', Component: Context }];
-    const view = render(<GlobalCommandSearch controller={null} snapshot={snapshot} input={input} onClose={() => {}} contexts={contexts} />);
+    const view = render(<GlobalCommandSearch controller={null} snapshot={snapshot} input={input} onClose={() => undefined} contexts={contexts} />);
     expect(mounted).toHaveBeenCalledTimes(1);
-    view.rerender(<GlobalCommandSearch controller={null} snapshot={{ ...snapshot, isOpen: true }} input={input} onClose={() => {}} contexts={contexts} />);
-    view.rerender(<GlobalCommandSearch controller={null} snapshot={snapshot} input={input} onClose={() => {}} contexts={contexts} />);
+    view.rerender(<GlobalCommandSearch controller={null} snapshot={{ ...snapshot, isOpen: true }} input={input} onClose={() => undefined} contexts={contexts} />);
+    view.rerender(<GlobalCommandSearch controller={null} snapshot={snapshot} input={input} onClose={() => undefined} contexts={contexts} />);
     expect(unmounted).not.toHaveBeenCalled();
-    view.rerender(<GlobalCommandSearch controller={null} snapshot={snapshot} input={input} onClose={() => {}} contexts={[]} />);
+    view.rerender(<GlobalCommandSearch controller={null} snapshot={snapshot} input={input} onClose={() => undefined} contexts={[]} />);
     expect(unmounted).toHaveBeenCalledTimes(1);
   });
 });
@@ -288,11 +322,18 @@ it.each(['Enter', 'pointer'] as const)('keeps dialog and input after a registere
   });
   const row = await screen.findByRole('option', { name: /Choose log container/ });
   await act(async () => {
-    if (activation === 'Enter') fireEvent.keyDown(input, { key: 'Enter' });
-    else fireEvent.click(row);
+    if (activation === 'Enter') {
+      fireEvent.keyDown(input, { key: 'Enter' });
+    } else {
+      fireEvent.click(row);
+    }
   });
-  await waitFor(() => expect(executeAction).toHaveBeenCalledTimes(1));
-  await waitFor(() => expect(search.mock.calls.length).toBeGreaterThanOrEqual(2));
+  await waitFor(() => {
+    expect(executeAction).toHaveBeenCalledTimes(1); 
+  });
+  await waitFor(() => {
+    expect(search.mock.calls.length).toBeGreaterThanOrEqual(2); 
+  });
   expect(controller.getSnapshot().isOpen).toBe(true);
   expect(screen.getByRole('dialog', { name: 'Search Omniview' })).toBeInTheDocument();
   expect(screen.getByRole('combobox', { name: 'Search Omniview' })).toBe(input);

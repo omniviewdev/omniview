@@ -202,7 +202,9 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
     setIsOpen(false);
     // clear the content after the drawer is closed
     setTimeout(() => {
-      if (resourceRequest.current === closedRequest) setContent(null);
+      if (resourceRequest.current === closedRequest) {
+        setContent(null);
+      }
     }, 150);
   }, []);
 
@@ -294,7 +296,10 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
         params: {},
       }),
     );
-    const cancel = () => { read.cancel(); };
+    const cancel = () => {
+      void read.cancel();
+    };
+
     cancelResourceRead.current = cancel;
     params.signal?.addEventListener('abort', cancel, { once: true });
     let result: GetResult | null;
@@ -302,31 +307,42 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
       params.signal?.throwIfAborted();
       result = await read;
     } catch (error) {
-      if (params.signal?.aborted || request !== resourceRequest.current) {
+      if (Boolean(params.signal?.aborted) || request !== resourceRequest.current) {
         throw new DOMException('Resource request cancelled.', 'AbortError');
       }
+
       throw error;
     } finally {
       params.signal?.removeEventListener('abort', cancel);
-      if (cancelResourceRead.current === cancel) cancelResourceRead.current = null;
+      if (cancelResourceRead.current === cancel) {
+        cancelResourceRead.current = null;
+      }
     }
+
     params.signal?.throwIfAborted();
-    if (request !== resourceRequest.current) throw new DOMException('Resource request superseded.', 'AbortError');
+    if (request !== resourceRequest.current) {
+      throw new DOMException('Resource request superseded.', 'AbortError');
+    }
+
     const data = result?.result;
-    if (!result?.success || data == null) throw new Error('Resource is no longer available.');
+    if (!result?.success || data == null) {
+      throw new Error('Resource is no longer available.');
+    }
+
     if (params.validateData && !params.validateData(data)) {
       throw new Error('Resource identity changed. Search again.');
     }
+
     openDrawer(drawer, {
-        data,
-        resource: {
-          id: params.resourceID,
-          name: params.resourceName ?? params.resourceID,
-          key: params.resourceKey,
-          connectionID: params.connectionID,
-          pluginID: params.pluginID,
-        },
-      });
+      data,
+      resource: {
+        id: params.resourceID,
+        name: params.resourceName ?? params.resourceID,
+        key: params.resourceKey,
+        connectionID: params.connectionID,
+        pluginID: params.pluginID,
+      },
+    });
   }, [closeDrawer, openDrawer, drawerEP, sidebarEP]);
 
   const contextValue = useMemo(() => ({
