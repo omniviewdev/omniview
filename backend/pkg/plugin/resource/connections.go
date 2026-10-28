@@ -11,23 +11,20 @@ import (
 
 const storeName = "connections"
 
-// mergeConnections deduplicates connections by ID, newer entries win.
-func mergeConnections(existing, incoming []types.Connection) []types.Connection {
-	merged := make(map[string]types.Connection, len(existing)+len(incoming))
-	for _, c := range existing {
-		merged[c.ID] = c
+// upsertEffectiveConnectionStatus accepts only configuration returned by an
+// acknowledged source lifecycle operation, never persisted cache entries.
+// Full inventory snapshots must replace the inventory instead.
+func upsertEffectiveConnectionStatus(existing []types.Connection, current types.Connection) []types.Connection {
+	for i := range existing {
+		if existing[i].ID == current.ID {
+			existing[i] = current
+			return existing
+		}
 	}
-	for _, c := range incoming {
-		merged[c.ID] = c
-	}
-	result := make([]types.Connection, 0, len(merged))
-	for _, c := range merged {
-		result = append(result, c)
-	}
-	return result
+	return append(existing, current)
 }
 
-// saveToLocalStore persists the controller's connection map to a GOB file.
+// saveToLocalStore writes the legacy mixed cache for migration fixtures.
 func saveToLocalStore(storeRoot *appstate.ScopedRoot, connections map[string][]types.Connection) error {
 	gob.Register(map[string]interface{}{})
 	store, err := utils.GetStore(storeName, storeRoot)

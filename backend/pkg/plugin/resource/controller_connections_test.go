@@ -17,43 +17,6 @@ import (
 )
 
 // ============================================================================
-// mergeConnections
-// ============================================================================
-
-func TestMergeConnections_Empty(t *testing.T) {
-	result := mergeConnections(nil, nil)
-	assert.Empty(t, result)
-}
-
-func TestMergeConnections_NoOverlap(t *testing.T) {
-	a := []types.Connection{{ID: "a", Name: "Alpha"}}
-	b := []types.Connection{{ID: "b", Name: "Bravo"}}
-	result := mergeConnections(a, b)
-	assert.Len(t, result, 2)
-}
-
-func TestMergeConnections_Deduplicates(t *testing.T) {
-	existing := []types.Connection{
-		{ID: "ctx-1", Name: "old-name"},
-		{ID: "ctx-2", Name: "keep"},
-	}
-	incoming := []types.Connection{
-		{ID: "ctx-1", Name: "new-name"},
-		{ID: "ctx-3", Name: "brand-new"},
-	}
-	result := mergeConnections(existing, incoming)
-	assert.Len(t, result, 3)
-
-	byID := make(map[string]types.Connection)
-	for _, c := range result {
-		byID[c.ID] = c
-	}
-	assert.Equal(t, "new-name", byID["ctx-1"].Name, "newer connection should win")
-	assert.Equal(t, "keep", byID["ctx-2"].Name)
-	assert.Equal(t, "brand-new", byID["ctx-3"].Name)
-}
-
-// ============================================================================
 // ListConnections
 // ============================================================================
 

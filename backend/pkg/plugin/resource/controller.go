@@ -241,23 +241,10 @@ func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
 	c.lifecycleMu.Lock()
 	defer c.lifecycleMu.Unlock()
 
-	// Load persisted connections from disk.
-	var state map[string][]types.Connection
-	if storeRoot, err := c.pluginStoreFn(pluginID); err != nil {
-		logger.Errorw(context.Background(), "failed to resolve plugin store root", "error", err)
-		state = make(map[string][]types.Connection)
-	} else if state, err = loadFromLocalStore(storeRoot); err != nil {
-		logger.Errorw(context.Background(), "failed to load connections from local store", "error", err)
-		state = make(map[string][]types.Connection)
-	}
-
+	// The legacy mixed cache is passive review/import data, not source truth.
+	// Leave its bytes untouched so failed discovery and restarts cannot erase it.
 	c.connsMu.Lock()
-	for k, v := range state {
-		c.connections[k] = v
-	}
-	if _, ok := c.connections[pluginID]; !ok {
-		c.connections[pluginID] = make([]types.Connection, 0)
-	}
+	c.connections[pluginID] = make([]types.Connection, 0)
 	c.connsMu.Unlock()
 }
 
@@ -405,19 +392,6 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	c.lifecycleMu.Lock()
 	defer c.lifecycleMu.Unlock()
 	c.actions.stopPlugin(pluginID)
-
-	// Persist only this plugin's connections.
-	c.connsMu.RLock()
-	pluginConnsForPersist := make(map[string][]types.Connection, 1)
-	if pcs, ok := c.connections[pluginID]; ok {
-		pluginConnsForPersist[pluginID] = pcs
-	}
-	c.connsMu.RUnlock()
-	if storeRoot, err := c.pluginStoreFn(pluginID); err != nil {
-		logger.Errorw(context.Background(), "failed to resolve plugin store root", "error", err)
-	} else if err = saveToLocalStore(storeRoot, pluginConnsForPersist); err != nil {
-		logger.Errorw(context.Background(), "failed to save connections to local store", "error", err)
-	}
 
 	// Cancel watch goroutines.
 	c.pluginsMu.RLock()
@@ -578,7 +552,7 @@ func (c *controller) StartConnection(ctx context.Context, pluginID, connectionID
 			conn.Connection.ExpiryTime = types.ConnectionDefaultExpiryTime
 		}
 		c.connsMu.Lock()
-		c.connections[pluginID] = mergeConnections(c.connections[pluginID], []types.Connection{*conn.Connection})
+		c.connections[pluginID] = upsertEffectiveConnectionStatus(c.connections[pluginID], *conn.Connection)
 		c.connsMu.Unlock()
 	}
 
@@ -627,7 +601,7 @@ func (c *controller) StopConnection(ctx context.Context, pluginID, connectionID 
 	// Clear LastRefresh so the frontend TTL check shows disconnected.
 	conn.LastRefresh = time.Time{}
 	c.connsMu.Lock()
-	c.connections[pluginID] = mergeConnections(c.connections[pluginID], []types.Connection{conn})
+	c.connections[pluginID] = upsertEffectiveConnectionStatus(c.connections[pluginID], conn)
 	c.connsMu.Unlock()
 
 	c.emitter.Emit(EventConnectionStatus, ConnectionStatusPayload{
@@ -695,28 +669,23 @@ func (c *controller) LoadConnections(ctx context.Context, pluginID string) (_res
 
 	conns, err := provider.LoadConnections(ctx)
 	if err != nil {
+		c.connsMu.Lock()
+		c.connections[pluginID] = nil
+		c.connsMu.Unlock()
 		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	conns, err = c.replayConnectionProfiles(ctx, pluginID, conns)
 	if err != nil {
+		c.connsMu.Lock()
+		c.connections[pluginID] = nil
+		c.connsMu.Unlock()
 		return nil, err
 	}
 
 	c.connsMu.Lock()
-	c.connections[pluginID] = mergeConnections(c.connections[pluginID], conns)
+	c.connections[pluginID] = conns
 	c.connsMu.Unlock()
-
-	// Best-effort persist — only this plugin's connections.
-	if storeRoot, storeErr := c.pluginStoreFn(pluginID); storeErr == nil {
-		c.connsMu.RLock()
-		pluginConns := make(map[string][]types.Connection, 1)
-		if pcs, ok := c.connections[pluginID]; ok {
-			pluginConns[pluginID] = pcs
-		}
-		c.connsMu.RUnlock()
-		_ = saveToLocalStore(storeRoot, pluginConns)
-	}
 
 	return conns, nil
 
@@ -972,8 +941,10 @@ func (c *controller) listenForConnectionEvents(ctx context.Context, pluginID str
 					attribute.String("plugin_id", pluginID),
 					attribute.Int("connection_count", len(conns)),
 				))
+			// Watch snapshots already contain the source's applied overlay.
+			// Reapplying it here can publish another snapshot recursively.
 			c.connsMu.Lock()
-			c.connections[pluginID] = mergeConnections(c.connections[pluginID], conns)
+			c.connections[pluginID] = conns
 			c.connsMu.Unlock()
 
 			eventKey := pluginID + "/connection/sync"

@@ -182,8 +182,13 @@ func TestWatchStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
 	replacement := &mockProvider{LoadConnectionsFunc: func(context.Context) ([]types.Connection, error) {
 		return []types.Connection{{ID: "replacement"}}, nil
 	}}
-	replacement.CatalogFunc = lifecycleTestCatalog(resourceType)
-	replacement.GetRelationshipsFunc = func(context.Context, resource.AccessRoute, string) ([]resource.RelationshipDescriptor, error) {
+	replacement.CatalogFunc = func(ctx context.Context, request resource.CatalogRequest) (resource.Catalog, error) {
+		catalog, err := lifecycleTestCatalog(resourceType, "replacement-target")(ctx, request)
+		for i := range catalog.Types { catalog.Types[i].DefaultRepresentation = "native" }
+		return catalog, err
+	}
+	replacement.GetRelationshipsFunc = func(_ context.Context, _ resource.AccessRoute, sourceType string) ([]resource.RelationshipDescriptor, error) {
+		if sourceType != resourceType { return []resource.RelationshipDescriptor{}, nil }
 		return []resource.RelationshipDescriptor{{Type: resource.RelOwns, TargetType: "replacement-target", TargetScope: []resource.ScopeEntry{}}}, nil
 	}
 	actionStopped := make(chan struct{})
@@ -245,7 +250,9 @@ func TestWatchStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("replacement action did not retire after consumer cancellation")
 	}
-	require.Len(t, ctrl.graph.GetDeclarations("proof", target.Route, resourceType), 1, "retired cleanup erased replacement declarations")
+	declarations, _, declared := ctrl.graph.GetBoundDeclarations("proof", target.Route, resourceType)
+	require.True(t, declared)
+	require.Len(t, declarations, 1, "retired cleanup erased replacement declarations")
 	present, err := ctrl.HasPlugin(testInvocationContext(), "proof")
 	require.NoError(t, err)
 	require.True(t, present)
@@ -303,11 +310,20 @@ func TestWatchStartupFailurePreservesDesiredProfilesThroughFailedUnloadAndReload
 		node := graph.GraphNode{PluginID: owner, Reference: reference, Route: resource.AccessRoute{Connection: connection}}
 		target := node
 		target.Reference.Address.ID = "target"
+		target.Reference.Address.Type = declaration.TargetType
+		target.Reference.Address.Authority = "fixture:target:" + connection
 		ctrl.registryStore.Put(registry.ResourceEntry{PluginID: owner, Reference: reference, Route: node.Route})
 		scope := invocation.NewScope(invocation.Host)
 		subscription := HostSubscription{TargetID: "seed:" + owner + ":" + connection, Target: resource.ReadTarget{Route: node.Route, Provider: reference.Address.Provider, Authority: reference.Address.Authority, Type: resourceKey, Scope: resource.QueryScope{}, Representation: "native"}}
 		require.NoError(t, ctrl.subs.Subscribe(scope.Context(context.Background()), scope.Principal(), owner, subscription))
-		ctrl.graph.SetDeclarations(owner, node.Route, resourceKey, []resource.RelationshipDescriptor{declaration})
+		ctrl.pluginsMu.RLock()
+		epoch := ctrl.plugins[owner].sourceEpoch[connection]
+		ctrl.pluginsMu.RUnlock()
+		require.NoError(t, ctrl.graph.SetBoundDeclarations(owner, node.Route, resourceKey, []resource.RelationshipDescriptor{declaration}, graph.DeclarationBindings{
+			Source: graph.TargetBinding{Target: subscription.Target, IdentityDimensions: []resource.Dimension{}},
+			Targets: []graph.TargetBinding{{Target: resource.ReadTarget{Route: target.Route, Provider: target.Reference.Address.Provider, Authority: target.Reference.Address.Authority, Type: declaration.TargetType, Scope: resource.QueryScope{}, Representation: "native"}, IdentityDimensions: []resource.Dimension{}}},
+			SourceEpoch: epoch,
+		}))
 		ctrl.graph.AddEdge(graph.GraphEdge{Source: node, Target: target, Type: declaration.Type})
 		return node
 	}
@@ -337,7 +353,9 @@ func TestWatchStartupFailurePreservesDesiredProfilesThroughFailedUnloadAndReload
 	retiredEdges, err := ctrl.graph.GetRelated(retiredNode, graph.Both, nil)
 	require.NoError(t, err)
 	require.Empty(t, retiredEdges)
-	require.Equal(t, []resource.RelationshipDescriptor{otherDeclaration}, ctrl.graph.GetDeclarations(otherID, unrelatedNode.Route, resourceKey))
+	otherDeclarations, _, declared := ctrl.graph.GetBoundDeclarations(otherID, unrelatedNode.Route, resourceKey)
+	require.True(t, declared)
+	require.Equal(t, []resource.RelationshipDescriptor{otherDeclaration}, otherDeclarations)
 	ctrl.actions.mu.Lock()
 	actionAdmissionStopped := ctrl.actions.blocked[pluginID]
 	ctrl.actions.mu.Unlock()

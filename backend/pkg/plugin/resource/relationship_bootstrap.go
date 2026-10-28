@@ -2,56 +2,85 @@ package resource
 
 import (
 	"context"
+
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
+	resourcegraph "github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
-// Bootstrap retains existing declaration discovery without assuming a first
-// connection or requiring a namespace/GVK-shaped catalog. Each route keeps its
-// own declarations and generation retirement fences all graph mutations.
+// Declarations and their target bindings come from one actual catalog/route
+// observation. This is metadata admission, never a scan of resource inventory.
 func (c *controller) bootstrapRelationships(parent context.Context, pluginID string, route resourcev2.AccessRoute) {
 	ctx, cancel := context.WithTimeout(parent, relationshipBootstrapTimeout)
 	defer cancel()
 	provider, generation, ctx, cleanup, err := c.operationGeneration(ctx, pluginID, route)
-	if err != nil {
-		return
-	}
+	if err != nil { return }
 	defer cleanup()
 	features, err := c.providerFeatures(ctx, pluginID, provider)
-	if err != nil || !features.Has(resourcev2.FeatureRelationships) {
-		return
-	}
+	if err != nil || !features.Has(resourcev2.FeatureRelationships) { return }
 	relations, ok := provider.(resourcev2.RelationshipProvider)
-	if !ok {
-		return
-	}
+	if !ok { return }
+	c.publishRelationshipDeclarations(ctx, pluginID, route, "", generation, nil, resourcegraph.DeclarationBindings{}, resourcev2.NewError("UNAVAILABLE", "Relationship declarations are being refreshed."))
 	catalog, err := provider.Catalog(ctx, resourcev2.CatalogRequest{Route: route})
+	if err == nil { err = resourcev2.ValidateCatalog(catalog) }
+	if err == nil && catalog.Coverage.Kind != "complete" { err = resourcev2.NewError("UNSUPPORTED", "Relationship declaration binding requires a complete route catalog.") }
 	if err != nil {
-		c.logger.Warnw(ctx, "relationship catalog unavailable", "pluginID", pluginID, "error", err)
+		c.publishRelationshipDeclarations(ctx, pluginID, route, "", generation, nil, resourcegraph.DeclarationBindings{}, err)
 		return
 	}
-	if err := resourcev2.ValidateCatalog(catalog); err != nil {
-		c.logger.Warnw(ctx, "invalid relationship catalog", "pluginID", pluginID, "error", err)
-		return
+	admission := captureCatalogAdmission(ctx, generation)
+	types := make(map[string]*resourcev2.ResourceType, len(catalog.Types))
+	observedTypes := make([]string, len(catalog.Types))
+	for i := range catalog.Types {
+		types[catalog.Types[i].Type] = &catalog.Types[i]
+		observedTypes[i] = catalog.Types[i].Type
 	}
+	c.pluginsMu.RLock()
+	if c.currentGenerationLocked(ctx, pluginID, generation) != nil { c.pluginsMu.RUnlock(); return }
+	c.graph.ObserveDeclarationCatalog(pluginID, route, catalog.Revision, admission.epoch.Epoch, observedTypes)
+	c.pluginsMu.RUnlock()
 	for _, descriptor := range catalog.Types {
-		if err := ctx.Err(); err != nil {
-			return
+		if err := c.currentGeneration(ctx, pluginID, generation); err != nil { return }
+		admitted, err := c.admit(ctx, "resource.GetRelationships", invocation.Target{Provider: pluginID, Connection: route.Connection, ResourceType: descriptor.Type})
+		var declarations []resourcev2.RelationshipDescriptor
+		if err == nil { declarations, err = relations.GetRelationships(admitted, route, descriptor.Type) }
+		bindings := resourcegraph.DeclarationBindings{SourceEpoch: admission.epoch.Epoch}
+		if err == nil && len(declarations) > 0 {
+			var source resourcev2.ReadTarget
+			var dimensions []resourcev2.Dimension
+			source, dimensions, err = c.relationshipTypeTarget(admitted, pluginID, route, catalog, admission, descriptor.Type, "resource.GetRelationships")
+			bindings.Source = resourcegraph.TargetBinding{Target: source, IdentityDimensions: dimensions}
+			if err == nil {
+				var targets []resourcev2.ReadTarget
+				targets, err = c.relationshipTargets(admitted, pluginID, route, catalog, admission, declarations, "resource.GetRelationships")
+				if err == nil {
+					bindings.Targets = make([]resourcegraph.TargetBinding, 0, len(targets))
+					for _, target := range targets {
+						bindings.Targets = append(bindings.Targets, resourcegraph.TargetBinding{Target: target, IdentityDimensions: types[target.Type].IdentityDimensions})
+					}
+				}
+			}
 		}
-		if _, err := c.admit(ctx, "resource.GetRelationships", invocation.Target{Provider: pluginID, Connection: route.Connection, ResourceType: descriptor.Type}); err != nil {
-			continue
-		}
-		declarations, err := relations.GetRelationships(ctx, route, descriptor.Type)
-		if err != nil {
-			c.logger.Warnw(ctx, "relationship declarations unavailable", "pluginID", pluginID, "type", descriptor.Type, "error", err)
-			continue
-		}
-		c.pluginsMu.RLock()
-		if c.plugins[pluginID] != generation || generation.provider == nil || ctx.Err() != nil {
-			c.pluginsMu.RUnlock()
-			return
-		}
-		c.graph.SetDeclarations(pluginID, route, descriptor.Type, declarations)
-		c.pluginsMu.RUnlock()
+		c.publishRelationshipDeclarations(ctx, pluginID, route, descriptor.Type, generation, declarations, bindings, err)
+	}
+	c.publishRelationshipDeclarations(ctx, pluginID, route, "", generation, nil, resourcegraph.DeclarationBindings{}, nil)
+}
+
+// Epoch validation and mutation use the same fence as route invalidation. An old
+// blocked metadata call cannot republish rules, selectors, or coverage afterward.
+func (c *controller) publishRelationshipDeclarations(ctx context.Context, pluginID string, route resourcev2.AccessRoute, sourceType string, generation *pluginState, declarations []resourcev2.RelationshipDescriptor, bindings resourcegraph.DeclarationBindings, err error) {
+	c.pluginsMu.RLock()
+	defer c.pluginsMu.RUnlock()
+	if c.currentGenerationLocked(ctx, pluginID, generation) != nil { return }
+	if err != nil || sourceType == "" {
+		c.graph.RecordDeclarationError(pluginID, route, sourceType, err)
+		return
+	}
+	if len(declarations) == 0 {
+		c.graph.SetNoDeclarations(pluginID, route, sourceType)
+		return
+	}
+	if err := c.graph.SetBoundDeclarations(pluginID, route, sourceType, declarations, bindings); err != nil {
+		c.graph.RecordDeclarationError(pluginID, route, sourceType, err)
 	}
 }

@@ -48,12 +48,15 @@ func (c *controller) operationGeneration(ctx context.Context, pluginID string, r
 }
 
 func (c *controller) currentGeneration(ctx context.Context, pluginID string, generation *pluginState) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
 	c.pluginsMu.RLock()
 	defer c.pluginsMu.RUnlock()
-	if c.plugins[pluginID] != generation || generation.provider == nil {
+	return c.currentGenerationLocked(ctx, pluginID, generation)
+}
+
+// Caller holds pluginsMu at the final mutation fence; never recursively RLock.
+func (c *controller) currentGenerationLocked(ctx context.Context, pluginID string, generation *pluginState) error {
+	if err := ctx.Err(); err != nil { return err }
+	if generation == nil || c.plugins[pluginID] != generation || generation.provider == nil {
 		return resourcev2.NewError("RESET_REQUIRED", "Provider generation retired.")
 	}
 	if epoch, ok := ctx.Value(sourceEpochKey{}).(sourceEpochSnapshot); ok && generation.sourceEpoch[epoch.Connection] != epoch.Epoch {

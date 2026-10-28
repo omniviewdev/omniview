@@ -271,43 +271,6 @@ func (c *controller) relationshipRequest(ctx context.Context, pluginID string, p
 	if catalog.Provider != source.Reference.Address.Provider || authority.Authority != source.Reference.Address.Authority {
 		return request, resourcev2.NewError("INVALID_REQUEST", "Relationship source is not bound to the current route authority.")
 	}
-	seen := make(map[string]bool, min(len(descriptors), resourcev2.MaxRelationshipTargets))
-	for _, relationship := range descriptors {
-		if seen[relationship.TargetType] {
-			continue
-		}
-		seen[relationship.TargetType] = true
-		if len(request.Targets) >= resourcev2.MaxRelationshipTargets {
-			return request, resourcev2.NewError("RESOURCE_LIMIT", "Too many relationship target bindings.")
-		}
-		var descriptor *resourcev2.ResourceType
-		for i := range catalog.Types {
-			if catalog.Types[i].Type == relationship.TargetType {
-				descriptor = &catalog.Types[i]
-				break
-			}
-		}
-		if descriptor == nil || descriptor.DefaultRepresentation == "" {
-			return request, resourcev2.NewError("UNSUPPORTED", "Relationship target requires a catalog type and an explicit default representation.")
-		}
-		target := resourcev2.ReadTarget{
-			Route: source.Route, Provider: catalog.Provider, Type: descriptor.Type,
-			Representation: descriptor.DefaultRepresentation,
-			Scope:          make(resourcev2.QueryScope, 0, len(descriptor.QueryDimensions)),
-		}
-		for _, dimension := range descriptor.QueryDimensions {
-			target.Scope = append(target.Scope, resourcev2.ScopeConstraint{Dimension: dimension.Name, Match: resourcev2.ScopeAny})
-		}
-		targetCtx, err := c.admit(ctx, "resource.ResolveRelationships", readTarget(pluginID, target))
-		if err != nil {
-			return request, err
-		}
-		targetAuthority, err := c.resolveAuthority(targetCtx, pluginID, target.Route, catalog, captureCatalogAdmission(targetCtx, generation), target.Type)
-		if err != nil {
-			return request, err
-		}
-		target.Authority = targetAuthority.Authority
-		request.Targets = append(request.Targets, target)
-	}
-	return request, nil
+	request.Targets, err = c.relationshipTargets(ctx, pluginID, source.Route, catalog, captureCatalogAdmission(ctx, generation), descriptors, "resource.ResolveRelationships")
+	return request, err
 }

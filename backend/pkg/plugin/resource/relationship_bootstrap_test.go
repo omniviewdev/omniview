@@ -1,0 +1,103 @@
+package resource
+
+import (
+	"context"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	"github.com/stretchr/testify/require"
+)
+
+func bootstrapTestCatalog(backing string) resourcev2.Catalog {
+	catalog := canonicalTestCatalog("native", "objects")
+	catalog.Revision = backing
+	catalog.Types = append(catalog.Types, canonicalTestCatalog("native", "peers").Types[0])
+	for i := range catalog.Types {
+		catalog.Types[i].DefaultRepresentation = "native"
+		catalog.Types[i].NativeAuthorityHint = &resourcev2.NativeAuthorityHint{Scheme: "fixture/graph-backing/v1", ID: backing + "/" + catalog.Types[i].Type, Continuity: resourcev2.ContinuityConnectionLocal}
+	}
+	return catalog
+}
+
+func bootstrapTestDeclaration(label string) resourcev2.RelationshipDescriptor {
+	return resourcev2.RelationshipDescriptor{Type: resourcev2.RelUses, TargetType: "peers", TargetScope: []resourcev2.ScopeEntry{}, Label: label, Extractor: &resourcev2.RelationshipExtractor{Method: "fieldPath", FieldPath: "spec.peer"}}
+}
+
+func TestBlockedBootstrapCannotPublishAfterProfileEpochReset(t *testing.T) {
+	for _, oldEmpty := range []bool{false, true} {
+		name := "old-rules"
+		if oldEmpty { name = "old-empty-rules" }
+		t.Run(name, func(t *testing.T) {
+			ctrl, _ := newTestControllerWithEmitter(t)
+			oldCatalog, newCatalog := bootstrapTestCatalog("A"), bootstrapTestCatalog("B")
+			var current atomic.Pointer[resourcev2.Catalog]
+			current.Store(&oldCatalog)
+			entered, release := make(chan struct{}), make(chan struct{})
+			var releaseOnce sync.Once
+			defer releaseOnce.Do(func() { close(release) })
+			var calls atomic.Int32
+			provider := &mockProvider{
+				CatalogFunc: func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) { return *current.Load(), nil },
+				GetRelationshipsFunc: func(ctx context.Context, _ resourcev2.AccessRoute, resourceType string) ([]resourcev2.RelationshipDescriptor, error) {
+					if resourceType != "objects" { return []resourcev2.RelationshipDescriptor{}, nil }
+					if calls.Add(1) == 1 {
+						close(entered)
+						select { case <-release: case <-ctx.Done(): return nil, ctx.Err() }
+						if oldEmpty { return []resourcev2.RelationshipDescriptor{}, nil }
+						return []resourcev2.RelationshipDescriptor{bootstrapTestDeclaration("old")}, nil
+					}
+					return []resourcev2.RelationshipDescriptor{bootstrapTestDeclaration("new")}, nil
+				},
+			}
+			registerMockPlugin(ctrl, "p1", provider)
+			route := resourcev2.AccessRoute{Connection: "route/opaque"}
+			finished := make(chan struct{})
+			go func() { defer close(finished); ctrl.bootstrapRelationships(testInvocationContext(), "p1", route) }()
+			select { case <-entered: case <-time.After(time.Second): t.Fatal("old bootstrap did not reach declaration barrier") }
+
+			require.NoError(t, ctrl.invalidateProfileRoutes("p1", []string{route.Connection}))
+			current.Store(&newCatalog)
+			ctrl.bootstrapRelationships(testInvocationContext(), "p1", route)
+			declarations, bindings, ok := ctrl.graph.GetBoundDeclarations("p1", route, "objects")
+			require.True(t, ok)
+			require.Len(t, declarations, 1)
+			require.Equal(t, "new", declarations[0].Label)
+			require.Equal(t, uint64(1), bindings.SourceEpoch)
+			require.NotEqual(t, bindings.Source.Target.Authority, bindings.Targets[0].Target.Authority, "target authority must not be copied from source")
+			require.NoError(t, ctrl.graph.CheckComplete("p1", route))
+
+			releaseOnce.Do(func() { close(release) })
+			select { case <-finished: case <-time.After(time.Second): t.Fatal("old bootstrap did not retire") }
+			after, afterBindings, ok := ctrl.graph.GetBoundDeclarations("p1", route, "objects")
+			require.True(t, ok)
+			require.Equal(t, declarations, after)
+			require.Equal(t, bindings, afterBindings)
+			require.NoError(t, ctrl.graph.CheckComplete("p1", route), "stale failure must not poison newer coverage either")
+		})
+	}
+}
+
+func TestProfileResetRetiresRouteDeclarationsAndCoverage(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	catalog := bootstrapTestCatalog("A")
+	registerMockPlugin(ctrl, "p1", &mockProvider{
+		CatalogFunc: func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) { return catalog, nil },
+		GetRelationshipsFunc: func(_ context.Context, _ resourcev2.AccessRoute, resourceType string) ([]resourcev2.RelationshipDescriptor, error) {
+			if resourceType == "objects" { return []resourcev2.RelationshipDescriptor{bootstrapTestDeclaration("current")}, nil }
+			return []resourcev2.RelationshipDescriptor{}, nil
+		},
+	})
+	route := resourcev2.AccessRoute{Connection: "route/opaque"}
+	ctrl.bootstrapRelationships(testInvocationContext(), "p1", route)
+	_, _, ok := ctrl.graph.GetBoundDeclarations("p1", route, "objects")
+	require.True(t, ok)
+	ctrl.graph.RecordDeclarationError("p1", route, "objects", resourcev2.NewError("FORBIDDEN", "blocked"))
+	require.Error(t, ctrl.graph.CheckComplete("p1", route))
+	require.NoError(t, ctrl.invalidateProfileRoutes("p1", []string{route.Connection}))
+	_, _, ok = ctrl.graph.GetBoundDeclarations("p1", route, "objects")
+	require.False(t, ok)
+	require.NoError(t, ctrl.graph.CheckComplete("p1", route))
+}

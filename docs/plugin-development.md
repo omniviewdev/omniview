@@ -166,12 +166,32 @@ configuration. Profile mutation success requires `applied: true`; an error never
 means that desired state became effective, and a failed rollback leaves actual
 state unknown. Profile `active` means effective discovery membership, not an
 established connection or live resource readiness.
+Effective connection inventory starts empty and is replaced only by successful
+fresh source snapshots plus actually applied overlays. Failed discovery never
+activates an old cache for Get/List or utility capability lookups. Legacy mixed
+cache bytes remain untouched for inactive review/import, including stop/restart;
+removed source IDs do not survive by union-merging refresh snapshots.
 
 Use `valueToJSON` only for presentation: exact signed and unsigned integers remain
 `bigint`. Use `valueToJSONText` and `jsonTextToValue` for JSON editors so large
 integer literals never pass through lossy JavaScript numbers. Editor schema
 bindings retain shared document references and exact root pointers; acquire a
 referenced document through `GetSchemaDocument` rather than copying it per type.
+
+Generic YAML editing preserves canonical scalar intent through native YAML float
+nodes and the original scalar AST, including untouched integral doubles, unsigned
+integers and negative zero. Resource exec receives the observed tagged body,
+reference and route, not the bigint-bearing presentation projection.
+
+Use the handwritten resource and exec clients for Value-bearing requests. Their
+Wails adapter carries exact canonical JSON as a string so outer `JSON.stringify`
+cannot normalize double `-0` to `0`; Go decodes through existing strict SDK DTO
+admission, without another semantic Value format. The SDK profile remains 32 MiB
+per inner message, 16 MiB per body, depth 64, 262144 nodes and 1048576 fields.
+The separate outer Wails request profile is 64 MiB, reserving 64 KiB for routing
+arguments and the method/envelope (including 8 KiB for the latter). Escaped
+strings count toward the outer ceiling independently; raw generated
+Value-bearing request methods are transport internals, not public author APIs.
 
 Observed-row drawers receive their original `HostRecord` and open directly.
 Linked-reference drawers perform a fresh canonical Get with the resolved
@@ -214,6 +234,16 @@ the registry and relationship index current even without a frontend subscriber;
 subscribed delivery rechecks the original caller's access and target membership.
 This observed graph is not a planner, a complete query result, or a P05
 continuity guarantee.
+Extraction rules carry explicit host-admitted source and target bindings from
+one catalog observation, including target identity dimensions and the captured
+route configuration epoch. Field-path targets use the target's authority and
+declared exact scope mapping; selectors do not assume source/target authorities
+are equal. Absent optional links are known absence. A present link with missing
+binding, unmapped required dimension, or invalid native ID produces an explicit
+whole-result error, never a fabricated reference or silently complete graph.
+Rule, selector, and coverage publication uses the same captured-epoch fence as
+route invalidation, which retires all three. Identical admitted metadata does not
+discard existing derived observations.
 Before returning graph data, the host independently admits each cited node's
 actual plugin and route and validates its reference against the current target
 type's catalog binding. An inaccessible, removed-type, or stale-authority target

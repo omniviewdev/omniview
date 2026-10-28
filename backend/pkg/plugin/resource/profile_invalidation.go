@@ -53,6 +53,7 @@ func (c *controller) invalidateProfileRoutes(pluginID string, connections []stri
 			c.dispatcher.Enqueue(indexer.Event{Type: indexer.EventDelete, Entry: entry})
 		}
 		c.graph.RemoveEdgesForConnection(pluginID, connection)
+		c.graph.ClearDeclarationsForConnection(pluginID, resourcev2.AccessRoute{Connection: connection})
 		c.subs.RemoveRoute(pluginID, connection)
 		c.connsMu.Lock()
 		cached := c.connections[pluginID]

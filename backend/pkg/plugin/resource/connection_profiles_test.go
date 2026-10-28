@@ -100,6 +100,102 @@ func TestConnectionProfilesManualRemovalAndFreshNativePriority(t *testing.T) {
 	require.Equal(t, ConnectionProfile{ID: manual.ID, Source: "absent", Active: false}, reset.Profile)
 }
 
+func TestLegacyCacheStaysPassiveAcrossDiscoveryFailureAndRestart(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	root, err := ctrl.pluginStoreFn("plugin")
+	require.NoError(t, err)
+	candidate := profileTestConnection("legacy", "old-endpoint")
+	require.NoError(t, saveToLocalStore(root, map[string][]types.Connection{"plugin": {candidate}}))
+	before, err := root.ReadFile(storeName)
+	require.NoError(t, err)
+	failed := connectionOverlayTestProvider()
+	failed.LoadConnectionsFunc = func(context.Context) ([]types.Connection, error) {
+		return nil, errors.New("discovery unavailable")
+	}
+	registerMockPlugin(ctrl, "plugin", failed)
+	ctrl.OnPluginInit("plugin", defaultMeta())
+	_, err = ctrl.LoadConnections(testInvocationContext(), "plugin")
+	require.Error(t, err)
+	_, err = ctrl.GetConnection(testInvocationContext(), "plugin", candidate.ID)
+	require.Error(t, err, "metric and native utility callbacks use this GetConnection boundary")
+	require.Empty(t, ctrl.getConnections("plugin"))
+	listed, err := ctrl.ListConnections(testInvocationContext(), "plugin")
+	require.NoError(t, err)
+	require.Empty(t, listed)
+	profiles, err := ctrl.ListConnectionProfiles(testInvocationContext(), "plugin")
+	require.NoError(t, err)
+	require.Len(t, profiles, 1)
+	require.Equal(t, "review", profiles[0].Source)
+	require.False(t, profiles[0].Active)
+	require.NoError(t, ctrl.OnPluginStop("plugin", defaultMeta()))
+	ctrl.OnPluginInit("plugin", defaultMeta())
+	after, err := root.ReadFile(storeName)
+	require.NoError(t, err)
+	require.Equal(t, before, after)
+	provider := connectionOverlayTestProvider()
+	registerMockPlugin(ctrl, "plugin", provider)
+	imported, err := ctrl.ImportConnectionProfile(testInvocationContext(), "plugin", candidate.ID)
+	require.NoError(t, err)
+	require.True(t, imported.Applied)
+	effective, err := provider.ListConnections(context.Background())
+	require.NoError(t, err)
+	require.Len(t, effective, 1)
+	require.Equal(t, candidate.Data, effective[0].Data)
+	current, err := ctrl.GetConnection(testInvocationContext(), "plugin", candidate.ID)
+	require.NoError(t, err)
+	require.Equal(t, candidate.Data, current.Data)
+}
+
+func TestLoadConnectionsReplacesRemovedSourceIDs(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	current := []types.Connection{profileTestConnection("removed", "old-endpoint")}
+	provider := &mockProvider{LoadConnectionsFunc: func(context.Context) ([]types.Connection, error) {
+		return current, nil
+	}}
+	registerMockPlugin(ctrl, "plugin", provider)
+	_, err := ctrl.LoadConnections(testInvocationContext(), "plugin")
+	require.NoError(t, err)
+	current = []types.Connection{profileTestConnection("fresh", "new-endpoint")}
+	_, err = ctrl.LoadConnections(testInvocationContext(), "plugin")
+	require.NoError(t, err)
+	_, err = ctrl.GetConnection(testInvocationContext(), "plugin", "removed")
+	require.Error(t, err)
+	listed, err := ctrl.ListConnections(testInvocationContext(), "plugin")
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	require.Equal(t, "fresh", listed[0].ID)
+}
+
+func TestConnectionWatchReplacesSnapshotWithoutReapplyingOverlay(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	provider := connectionOverlayTestProvider()
+	provider.ApplyConnectionOverlayFunc = func(context.Context, resourcev2.ConnectionOverlay) error {
+		t.Error("watch snapshots must not reapply desired overlays")
+		return errors.New("unexpected overlay replay")
+	}
+	provider.NativeConnectionsFunc = func(context.Context) ([]types.Connection, error) {
+		t.Error("watch snapshots must not reload native configuration")
+		return nil, errors.New("unexpected native reload")
+	}
+	provider.WatchConnectionsFunc = func(ctx context.Context, stream chan<- []types.Connection) error {
+		stream <- []types.Connection{profileTestConnection("removed", "old-endpoint")}
+		stream <- []types.Connection{profileTestConnection("fresh", "new-endpoint")}
+		close(stream)
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	registerMockPlugin(ctrl, "plugin", provider)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ctrl.listenForConnectionEvents(ctx, "plugin", provider)
+	listed, err := ctrl.ListConnections(testInvocationContext(), "plugin")
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	require.Equal(t, "fresh", listed[0].ID)
+	_, err = ctrl.GetConnection(testInvocationContext(), "plugin", "removed")
+	require.Error(t, err)
+}
+
 func TestConnectionProfilesPersistOnlyExplicitConfiguration(t *testing.T) {
 	store, err := appstate.NewTestService(t).PluginStore("test")
 	require.NoError(t, err)

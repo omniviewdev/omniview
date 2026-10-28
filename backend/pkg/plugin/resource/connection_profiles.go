@@ -304,10 +304,8 @@ func (c *controller) ListConnectionProfiles(ctx context.Context, pluginID string
 	defer finishResource(ctx, &retErr)
 	c.profilesMu.Lock()
 	defer c.profilesMu.Unlock()
-	source, err := c.connectionProfileSource(ctx, pluginID)
-	if err != nil {
-		return nil, err
-	}
+	// Listing review data must work even when initial source discovery fails.
+	// It must not publish a source snapshot as effective configuration.
 	root, err := c.pluginStoreFn(pluginID)
 	if err != nil {
 		return nil, err
@@ -316,15 +314,21 @@ func (c *controller) ListConnectionProfiles(ctx context.Context, pluginID string
 	if err != nil {
 		return nil, err
 	}
-	effective, err := c.refreshProfileConnections(ctx, pluginID, source)
-	if err != nil {
+	var native []types.Connection
+	if source, sourceErr := c.connectionProfileSource(ctx, pluginID); sourceErr == nil {
+		native, _ = source.NativeConnections(ctx)
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	c.connsMu.RLock()
+	effective := append([]types.Connection(nil), c.connections[pluginID]...)
+	c.connsMu.RUnlock()
 	candidates, err := legacyConnectionCandidates(root, pluginID)
 	if err != nil {
 		return nil, err
 	}
-	return listConnectionProfiles(state, c.profileNative[pluginID], effective, candidates), nil
+	return listConnectionProfiles(state, native, effective, candidates), nil
 }
 
 // applyDesiredConnections reports success only after both source application and
