@@ -115,6 +115,13 @@ becomes ready. Both paths consume the same reconciled state. Initial-batch IDs
 remain reserved until the batch settles, including plugins queued behind its
 concurrency limit, so a status update cannot start a competing import.
 
+Installed development inventory can remain stopped or failed without an active
+dev-server instance. Discovery preserves the inventory phase and error so these
+routes show an actionable failure instead of waiting indefinitely for a port.
+The failure view exposes restart and build output even when no footer server
+indicator exists. A live ready server takes precedence over stale inventory
+failure metadata, allowing startup to recover without another inventory fetch.
+
 The provider releases its plugin registrations and native-import refresh ownership
 on unmount, not just its event listeners. The extension registry is retained across
 live module updates, so a replacement provider must be able to register the same

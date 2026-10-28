@@ -32,16 +32,33 @@ export default function PluginRouteStatus({ pluginId }: Props) {
     || plugin.devStatus === DevProcessStatus.DevProcessStatusStopped
     || Boolean(plugin.devError)
   );
-  if (error !== null || devFailed) {
+  const inventoryFailed = !plugin?.devPort && (
+    plugin?.phase === 'Stopped'
+    || plugin?.phase === 'Failed'
+    || plugin?.phase === 'BuildFailed'
+  );
+  if (error !== null || devFailed || inventoryFailed) {
     return (
       <div className={styles.Root} role="alert">
         <Heading level={4}>Unable to load {id}</Heading>
-        <Text tone="muted">{error?.message ?? plugin?.devError ?? 'The plugin development server is not running.'}</Text>
-        {devFailed && (
+        <Text tone="muted">
+          {error?.message ?? plugin?.devError ?? plugin?.lastError
+            ?? (inventoryFailed
+              ? `The plugin is ${plugin?.phase?.toLowerCase()}. Restart the plugin to try again.`
+              : 'The plugin development server is not running.')}
+        </Text>
+        {plugin?.dev && (
           <Button size="sm" onClick={() => {
             devToolsChannel.emit('onRestartDevServer', id); 
           }}>
             Restart dev server
+          </Button>
+        )}
+        {plugin?.dev && (
+          <Button size="sm" onClick={() => {
+            devToolsChannel.emit('onOpenBuildOutput', id);
+          }}>
+            Open build output
           </Button>
         )}
       </div>

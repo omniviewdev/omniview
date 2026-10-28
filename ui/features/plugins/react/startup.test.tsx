@@ -225,6 +225,90 @@ describe('plugin startup navigation', () => {
     expect(testDeps.importer.importCount).toBe(0);
   });
 
+  it.each([
+    ['Stopped', '', 'The plugin is stopped. Restart the plugin to try again.'],
+    ['Failed', 'Plugin handshake failed', 'Plugin handshake failed'],
+    ['BuildFailed', 'Go compilation failed', 'Go compilation failed'],
+  ])('shows %s inventory without a dev server and exposes recovery tools', async (phase, lastError, message) => {
+    backend.listPlugins.mockResolvedValue([{ id: 'kubernetes', devMode: true, phase, lastError }]);
+    backend.listServers.mockResolvedValue([]);
+    const restart = vi.fn();
+    const openOutput = vi.fn();
+    const stopRestart = devToolsChannel.on('onRestartDevServer', restart);
+    const stopOutput = devToolsChannel.on('onOpenBuildOutput', openOutput);
+    try {
+      renderWorkspace();
+
+      expect(await screen.findByText(message)).toBeVisible();
+      expect(screen.getByRole('alert')).toBeVisible();
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      expect(testDeps.importer.importCount).toBe(0);
+      await act(async () => {
+        screen.getByRole('button', { name: 'Restart dev server' }).click();
+        screen.getByRole('button', { name: 'Open build output' }).click();
+      });
+      expect(restart).toHaveBeenCalledWith('kubernetes');
+      expect(openOutput).toHaveBeenCalledWith('kubernetes');
+    } finally {
+      stopRestart();
+      stopOutput();
+    }
+  });
+
+  it('waits for an absent server while inventory is starting, then loads on readiness', async () => {
+    backend.listPlugins.mockResolvedValue([{ id: 'kubernetes', devMode: true, phase: 'Starting' }]);
+    backend.listServers.mockResolvedValue([]);
+    testDeps.importer.register('kubernetes', pluginModule());
+    renderWorkspace();
+
+    expect(await screen.findByText(/Waiting for the plugin development server/)).toBeVisible();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(testDeps.importer.importCount).toBe(0);
+    await act(async () => {
+      devToolsChannel.emit('onStatusChange', server(DevProcessStatus.DevProcessStatusReady));
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Kubernetes clusters' })).toBeVisible();
+  });
+
+  it('clears failed inventory feedback during recovery and loads at the same URL', async () => {
+    backend.listPlugins.mockResolvedValue([{
+      id: 'kubernetes', devMode: true, phase: 'Failed', lastError: 'Plugin handshake failed',
+    }]);
+    backend.listServers.mockResolvedValue([]);
+    testDeps.importer.register('kubernetes', pluginModule());
+    renderWorkspace();
+    await screen.findByText('Plugin handshake failed');
+
+    backend.listPlugins.mockResolvedValue([{
+      id: 'kubernetes', devMode: true, phase: 'Starting', lastError: '',
+    }]);
+    await act(async () => {
+      testDeps.eventBus.emit('plugin/inventory_changed', { id: 'kubernetes' });
+    });
+    expect(await screen.findByText(/Waiting for the plugin development server/)).toBeVisible();
+    expect(screen.queryByText('Plugin handshake failed')).not.toBeInTheDocument();
+    await act(async () => {
+      devToolsChannel.emit('onStatusChange', server(DevProcessStatus.DevProcessStatusReady));
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Kubernetes clusters' })).toBeVisible();
+    expect(window.location.hash).toBe('#/_plugin/kubernetes');
+  });
+
+  it('accepts server readiness before stale stopped inventory refreshes', async () => {
+    backend.listPlugins.mockResolvedValue([{ id: 'kubernetes', devMode: true, phase: 'Stopped' }]);
+    backend.listServers.mockResolvedValue([]);
+    testDeps.importer.register('kubernetes', pluginModule());
+    renderWorkspace();
+    await screen.findByRole('alert');
+    await act(async () => {
+      devToolsChannel.emit('onStatusChange', server(DevProcessStatus.DevProcessStatusReady));
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Kubernetes clusters' })).toBeVisible();
+  });
+
   it.each(['/_plugin/not-installed', '/_plugin/kubernetes/not-a-page'])(
     'shows not-found feedback for %s',
     async (path) => {
