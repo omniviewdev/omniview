@@ -69,7 +69,7 @@ func TestIntegration_WatchEventToGraphQuery(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, edges, 1)
 	require.Equal(t, "worker/one", edges[0].Target.Reference.Address.ID)
-	require.Equal(t, record.Reference.Address.Authority, edges[0].Target.Reference.Address.Authority)
+	require.Equal(t, admittedReadTarget(t, ctrl, "plugin-a", route.Connection, "machine").Target.Authority, edges[0].Target.Reference.Address.Authority)
 	sink.OnDelete(resourcev2.WatchDeletePayload{Route: route, Reference: record.Reference})
 	dispatcher.Flush()
 	_, ok = ctrl.registryStore.Get("plugin-a", record.Reference, route)
@@ -87,6 +87,7 @@ func TestIntegration_OwnershipChain(t *testing.T) {
 	dispatcher.Flush()
 	parent := record.Reference
 	parent.Address.Type = "owner"
+	parent.Address.Authority = admittedReadTarget(t, ctrl, "plugin-a", route.Connection, "owner").Target.Authority
 	parent.Address.ID = "parent"
 	edges, err := g.GetRelated(graph.GraphNode{PluginID: "plugin-a", Reference: parent, Route: route}, graph.Outgoing, nil)
 	require.NoError(t, err)
