@@ -423,6 +423,7 @@ func (c *controller) QueryAll(
 	results := make(map[string]*metric.QueryResponse)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
+	var referenceErr error
 
 	for _, pluginID := range pluginIDs {
 		wg.Add(1)
@@ -430,6 +431,11 @@ func (c *controller) QueryAll(
 			defer wg.Done()
 			resp, err := c.Query(pid, connectionID, req)
 			if err != nil {
+				if req.Reference != nil {
+					mu.Lock()
+					if referenceErr == nil { referenceErr = err }
+					mu.Unlock()
+				}
 				c.logger.Warnw(ctx, "error querying metric provider", "pluginID", pid, "error", err)
 				return
 			}
@@ -440,6 +446,9 @@ func (c *controller) QueryAll(
 	}
 
 	wg.Wait()
+	// A denied or failed reference-bearing operation is not successful partial
+	// metric availability. Preserve ordinary nonresource aggregation behavior.
+	if referenceErr != nil { return nil, referenceErr }
 	return results, nil
 }
 

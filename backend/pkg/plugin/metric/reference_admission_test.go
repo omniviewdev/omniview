@@ -118,3 +118,14 @@ func TestReferenceSubscriptionCarriesHostOnlyFramePinThroughActualGRPC(t *testin
  require.NoError(t,ctrl.OnPluginStop(nativeMetricPluginID,config.PluginMeta{}))
  fixture.waitMetricRPCStopped(t)
 }
+
+func TestQueryAllPropagatesReferenceAdmissionDenial(t *testing.T) {
+ ctrl:=NewController(logging.NewNop(),nil,nil).(*controller)
+ ctrl.resourceIndex["pods"]=[]string{"denied-provider"}
+ ctrl.SetReferenceAdmitter(func(context.Context,string,string,resourcev2.AccessRoute,resourcev2.ResourceReference)(context.Context,error){return nil,resourcev2.NewError("FORBIDDEN","Reference metrics are denied.")})
+ result,err:=ctrl.QueryAll("connection",sdkmetric.QueryRequest{
+  ResourceKey:"pods",Reference:&resourcev2.ResourceReference{Address:resourcev2.ResourceAddress{Provider:"denied-provider",Authority:"cluster",Type:"pods",ID:"pod",Scope:[]resourcev2.ScopeEntry{}}},
+  Route:&resourcev2.AccessRoute{Connection:"connection"},
+ })
+ require.Nil(t,result);require.Equal(t,"FORBIDDEN",resourcev2.ErrorCode(err))
+}
