@@ -1,0 +1,115 @@
+name: History security proofs
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'bench/historycipherprobe/**'
+      - 'bench/historywindowssecurityprobe/**'
+      - 'bench/historylinuxsecurityprobe/**'
+      - '.github/workflows/history-security.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: history-security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOWORK: 'off'
+  GOFLAGS: '-mod=readonly'
+
+jobs:
+  encrypted-macos:
+    name: Encrypted history (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: darwin-arm64
+          - runner: macos-15-intel
+            arch: darwin-amd64
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: bench/historycipherprobe/go.sum
+      - name: Exercise isolated official SQLCipher and native Keychain
+        shell: bash
+        run: |
+          set -euo pipefail
+          GOWORK=off go env -json GOVERSION GOOS GOARCH CGO_ENABLED
+          bash bench/historycipherprobe/native-darwin.sh | tee "$RUNNER_TEMP/history-cipher-proof.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: history-cipher-${{ matrix.arch }}
+          path: ${{ runner.temp }}/history-cipher-proof.txt
+          if-no-files-found: error
+
+  windows-vault:
+    name: Windows encrypted history and credential boundaries
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: bench/historywindowssecurityprobe/go.sum
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
+        with:
+          msystem: MINGW64
+          path-type: inherit
+          update: true
+          install: >-
+            git make mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-tcl mingw-w64-x86_64-pkgconf
+      - name: Exercise official encrypted core, credential storage and protected ACLs
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          cd "$(cygpath -u "$GITHUB_WORKSPACE")"
+          GOWORK=off go env -json GOVERSION GOOS GOARCH CGO_ENABLED
+          bash bench/historywindowssecurityprobe/native-windows.sh | tee "$(cygpath -u "$RUNNER_TEMP")/history-windows-proof.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: history-windows-vault
+          path: ${{ runner.temp }}/history-windows-proof.txt
+          if-no-files-found: error
+
+  linux-vault:
+    name: Linux encrypted history and Secret Service boundaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: bench/historylinuxsecurityprobe/go.sum
+      - name: Install isolated-session proof prerequisites
+        run: sudo apt-get update && sudo apt-get install -y build-essential git tcl pkg-config libssl-dev openssl dbus gnome-keyring libglib2.0-bin coreutils util-linux
+      - name: Exercise official encrypted core, Secret Service and private files
+        working-directory: bench/historylinuxsecurityprobe
+        shell: bash
+        run: |
+          set -euo pipefail
+          GOWORK=off go env -json GOVERSION GOOS GOARCH CGO_ENABLED
+          bash native-linux.sh | tee "$RUNNER_TEMP/history-linux-proof.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: history-linux-vault
+          path: ${{ runner.temp }}/history-linux-proof.txt
+          if-no-files-found: error
