@@ -19,10 +19,14 @@ import (
 )
 
 func must(err error) {
-	if err != nil { panic(err) }
+	if err != nil {
+		panic(err)
+	}
 }
 func expect(ok bool, message string) {
-	if !ok { panic(message) }
+	if !ok {
+		panic(message)
+	}
 }
 func randomKey() []byte {
 	key := make([]byte, 32)
@@ -35,9 +39,13 @@ func openCipher(path string, key []byte) (*sql.DB, error) {
 	// Driver must install the key before its own connection initialization.
 	// DSNs stay backend-only and are never returned in errors or diagnostics.
 	dsn := path
-	if len(key) != 0 { dsn += "?_pragma_key=x'" + hex.EncodeToString(key) + "'" }
+	if len(key) != 0 {
+		dsn += "?_pragma_key=x'" + hex.EncodeToString(key) + "'"
+	}
 	db, err := sql.Open("sqlite3", dsn)
-	if err != nil { return nil, errors.New("driver open failed") }
+	if err != nil {
+		return nil, errors.New("driver open failed")
+	}
 	db.SetMaxOpenConns(1)
 	var count int
 	if err = db.QueryRow("SELECT count(*) FROM sqlite_master").Scan(&count); err != nil {
@@ -48,7 +56,9 @@ func openCipher(path string, key []byte) (*sql.DB, error) {
 }
 func reject(path string, key []byte) {
 	db, err := openCipher(path, key)
-	if db != nil { db.Close() }
+	if db != nil {
+		db.Close()
+	}
 	expect(err != nil, "unexpected keyless or wrong-key access")
 }
 func scanPrivate(root string, sentinels []string) int {
@@ -56,7 +66,9 @@ func scanPrivate(root string, sentinels []string) int {
 	must(err)
 	count := 0
 	for _, entry := range entries {
-		if entry.IsDir() { continue }
+		if entry.IsDir() {
+			continue
+		}
 		path := filepath.Join(root, entry.Name())
 		data, err := os.ReadFile(path)
 		must(err)
@@ -73,7 +85,7 @@ func scanPrivate(root string, sentinels []string) int {
 func run() {
 	root, err := os.MkdirTemp("", "history-cipher-proof-")
 	must(err)
-	defer os.RemoveAll(root)
+	defer func() { must(os.RemoveAll(root)) }()
 	password := randomKey()
 	vault, err := newVault(filepath.Join(root, "private.keychain"), password)
 	must(err)
@@ -149,7 +161,7 @@ func run() {
 	backupFile, err := os.OpenFile(backup, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
 	must(err)
 	must(backupFile.Close())
-	_, err = db.Exec("ATTACH DATABASE ? AS backup KEY " + keySQL(backupKey), backup)
+	_, err = db.Exec("ATTACH DATABASE ? AS backup KEY "+keySQL(backupKey), backup)
 	must(err)
 	_, err = db.Exec("SELECT sqlcipher_export('backup')")
 	must(err)
@@ -194,13 +206,13 @@ func run() {
 	must(vault.remove("backup-v1"))
 	files = files + scanPrivate(root, []string{metadata, payload, indexed})
 	must(json.NewEncoder(os.Stdout).Encode(map[string]any{
-		"target": runtime.GOOS+"/"+runtime.GOARCH, "sqlcipher":cipher, "sqlite":sqlite,
-		"native_private_keychain":true, "locked_vault_denied":true, "partition_key_lookup_isolated":true,
-		"metadata_payload_fts_db_wal_no_plaintext_sentinels":true, "private_artifacts_scanned":files,
-		"wrong_and_missing_database_key_rejected":true, "encrypted_backup_distinct_key_reopen":true,
-		"rekey_old_key_rejected_new_key_reopens":true, "native_key_retirement":true,
-		"missing_vault_key_preserves_database":true,
-		"limits":"Synthetic native macOS proof only; no signed app, crash-safe rotation, hostile plugin isolation, production schema, Windows/Linux native evidence or physical erasure guarantee",
+		"target": runtime.GOOS + "/" + runtime.GOARCH, "sqlcipher": cipher, "sqlite": sqlite,
+		"native_private_keychain": true, "locked_vault_denied": true, "partition_key_lookup_isolated": true,
+		"metadata_payload_fts_db_wal_no_plaintext_sentinels": true, "private_artifacts_scanned": files,
+		"wrong_and_missing_database_key_rejected": true, "encrypted_backup_distinct_key_reopen": true,
+		"rekey_old_key_rejected_new_key_reopens": true, "native_key_retirement": true,
+		"missing_vault_key_preserves_database": true,
+		"limits":                               "Synthetic native macOS proof only; no signed app, crash-safe rotation, hostile plugin isolation, production schema, Windows/Linux native evidence or physical erasure guarantee",
 	}))
 }
 func main() { run(); fmt.Fprintln(os.Stderr, "owned temporary database and private keychain removed") }
