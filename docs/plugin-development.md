@@ -2,6 +2,18 @@
 
 This guide covers everything you need to know to develop plugins for Omniview with fast iteration cycles. You will learn how to set up your environment, choose a development workflow, and troubleshoot common issues.
 
+### Host drawer context
+
+`BottomDrawerProvider` must wrap `RightDrawerProvider` in `ui/App.tsx`.
+The right drawer renders plugin views beside its children, not inside them.
+Reversing these providers leaves sidebar log and terminal actions using the
+bottom drawer context's no-op defaults: backend sessions start, but no tab opens.
+Global search still works because it renders inside the bottom drawer provider.
+
+When checking sidebar actions, verify that Logs opens a log tab, Exec opens a
+terminal tab, and Delete opens its confirmation dialog (then cancel it).
+Container shell availability is separate from action dispatch.
+
 ---
 
 ## 1. Getting Started
