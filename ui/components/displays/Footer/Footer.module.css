@@ -358,10 +358,15 @@ button.Chip:hover {
 
 
 
+.InstanceDetails[data-ov-layout='horizontal'] {
+  row-gap: 2px;
+}
+
 .InstanceDetails[data-ov-layout='horizontal'] > div {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  grid-template-columns: minmax(0, 112px) minmax(0, 1fr);
+  column-gap: 12px;
   align-items: center;
-  padding-block: 2px;
+  padding-block: 0;
 }
 
 .InstanceDetails dd {
@@ -390,7 +395,7 @@ button.Chip:hover {
 }
 
 .InstanceSection {
-  padding-block: var(--ov-space-2);
+  padding-block: 6px;
   border-top: 1px solid var(--ov-color-border-muted);
 }
 
@@ -400,7 +405,7 @@ button.Chip:hover {
 }
 
 .InstanceSection > .InstanceSectionTitle {
-  margin: 0 0 var(--ov-space-2);
+  margin: 0 0 4px;
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 1.4;
@@ -416,13 +421,13 @@ button.Chip:hover {
 
 .InstanceRepository {
   min-inline-size: 0;
-  padding: var(--ov-space-3);
+  padding: var(--ov-space-2);
   border: 1px solid var(--ov-color-border-muted);
   border-radius: var(--ov-radius-sm, 4px);
 }
 
 .InstanceRepository h4 {
-  margin: 0 0 var(--ov-space-2);
+  margin: 0 0 4px;
   font-size: 0.6875rem;
   font-weight: 600;
   line-height: 1.4;

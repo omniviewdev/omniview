@@ -79,14 +79,14 @@ export default function InstanceIndicator() {
           </PopoverHeader>
           <div className={footerStyles.Details}>
             <DetailSection title='Host'>
-              <DescriptionList layout='horizontal' size='sm' className={styles.InstanceDetails}>
+              <DescriptionList layout='horizontal' size='xs' className={styles.InstanceDetails}>
                 <DescriptionList.Item label='Backend'><Observation value={development?.builds['host-backend']?.phase ?? development?.health.build ?? 'Unknown'} /></DescriptionList.Item>
                 <DescriptionList.Item label='Frontend'><Observation value={development?.builds['host-frontend']?.phase ?? development?.health.build ?? 'Unknown'} /></DescriptionList.Item>
                 <DescriptionList.Item label='HMR'><Observation value={development?.health.hmr ?? 'Unverified'} /></DescriptionList.Item>
               </DescriptionList>
             </DetailSection>
             <DetailSection title='Source & plugins'>
-              <DescriptionList layout='horizontal' size='sm' className={styles.InstanceDetails}>
+              <DescriptionList layout='horizontal' size='xs' className={styles.InstanceDetails}>
                 <DescriptionList.Item label='Source freshness'><Observation value={development?.health.servedSource ?? 'Unknown'} /></DescriptionList.Item>
                 <DescriptionList.Item label='Source reload proof'><Observation value={development?.health.sourceReload ?? 'Unverified'} /></DescriptionList.Item>
                 <DescriptionList.Item label='Selected plugins'><span title='Selection does not imply plugin readiness'>{development?.selectedPluginCount ?? 'Unknown'}</span></DescriptionList.Item>
@@ -94,7 +94,7 @@ export default function InstanceIndicator() {
             </DetailSection>
             {host.label !== 'Ready' && (
               <DetailSection title='Recovery'>
-                <DescriptionList layout='horizontal' size='sm' className={styles.InstanceDetails}>
+                <DescriptionList layout='horizontal' size='xs' className={styles.InstanceDetails}>
                   <DescriptionList.Item label='Failure stage'>{development?.failedStage ?? 'None reported'}</DescriptionList.Item>
                   <DescriptionList.Item label='Command' copyable={Boolean(development?.recoveryCommand)}>{development?.recoveryCommand ?? 'Inspect workspace status before trusting served source'}</DescriptionList.Item>
                 </DescriptionList>
@@ -115,7 +115,7 @@ export default function InstanceIndicator() {
           <Text size='sm' tone='muted' role='status' className={styles.InstanceIdentityStatus}>{STATUS_LABEL[status]}</Text>
           {identity && (
             <DetailSection title='Identity'>
-              <DescriptionList layout='horizontal' size='sm' className={styles.InstanceDetails}>
+              <DescriptionList layout='horizontal' size='xs' className={styles.InstanceDetails}>
                 <DescriptionList.Item label='Instance' copyable>{identity.instanceID}</DescriptionList.Item>
                 <DescriptionList.Item label='Kind'>{identity.kind}</DescriptionList.Item>
                 {info && <DescriptionList.Item label='Workspace' copyable>{info.workspaceID || 'Not set'}</DescriptionList.Item>}
@@ -124,7 +124,7 @@ export default function InstanceIndicator() {
           )}
           {info && <>
             <DetailSection title='Runtime'>
-              <DescriptionList layout='horizontal' size='sm' className={styles.InstanceDetails}>
+              <DescriptionList layout='horizontal' size='xs' className={styles.InstanceDetails}>
                 <DescriptionList.Item label='Readiness'><Observation value={status === 'confirmed' ? info.readiness || 'Unknown' : 'Unverified'} /></DescriptionList.Item>
                 <DescriptionList.Item label='Channel'>{info.channel}</DescriptionList.Item>
                 <DescriptionList.Item label='Generation' copyable>{info.generation || 'Not set'}</DescriptionList.Item>
@@ -132,7 +132,7 @@ export default function InstanceIndicator() {
               </DescriptionList>
             </DetailSection>
             <DetailSection title='Build'>
-              <DescriptionList layout='horizontal' size='sm' className={styles.InstanceDetails}>
+              <DescriptionList layout='horizontal' size='xs' className={styles.InstanceDetails}>
                 <DescriptionList.Item label='Version'>{info.version || 'Not reported'}</DescriptionList.Item>
                 <DescriptionList.Item label='Commit' copyable>{info.commit || 'Not reported'}</DescriptionList.Item>
               </DescriptionList>
@@ -143,7 +143,7 @@ export default function InstanceIndicator() {
                   {info.repositories?.map((repo) => (
                     <section key={repo.id} className={styles.InstanceRepository} aria-label={repo.id}>
                       <Heading level={4} size='xs'>{repo.id}</Heading>
-                      <DescriptionList layout='horizontal' size='sm' className={styles.InstanceDetails}>
+                      <DescriptionList layout='horizontal' size='xs' className={styles.InstanceDetails}>
                         <DescriptionList.Item label='Path' copyable>{repo.path}</DescriptionList.Item>
                         <DescriptionList.Item label='Ref' copyable>{repo.ref}</DescriptionList.Item>
                         {repo.commit && repo.commit !== repo.ref && <DescriptionList.Item label='Commit' copyable>{repo.commit}</DescriptionList.Item>}
@@ -154,7 +154,7 @@ export default function InstanceIndicator() {
               )}
             </DetailSection>
             <DetailSection title='Actual endpoints'>
-              <DescriptionList layout='horizontal' size='sm' className={styles.InstanceDetails}>
+              <DescriptionList layout='horizontal' size='xs' className={styles.InstanceDetails}>
                 {ENDPOINT_NAMES.map((name) => (
                   <DescriptionList.Item label={name} key={name} copyable={Boolean(info.endpoints[name])}>
                     {info.endpoints[name] ? safeEndpoint(info.endpoints[name]) : <Text size='sm' tone='muted'>Not running</Text>}
