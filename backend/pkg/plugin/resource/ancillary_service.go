@@ -18,6 +18,48 @@ func ancillaryUnsupported() error {
 	return resourcev2.NewError("UNSUPPORTED", "The provider does not support this ancillary operation.")
 }
 
+// admitAncillaryCatalog binds metadata admission without requiring Get support.
+func (c *controller) admitAncillaryCatalog(ctx context.Context, pluginID string, provider ResourceProvider, generation *pluginState, route resourcev2.AccessRoute, typ string, reference *resourcev2.ResourceReference) (context.Context, resourcev2.Catalog, error) {
+	catalog, err := provider.Catalog(ctx, resourcev2.CatalogRequest{Route: route})
+	if err == nil {
+		err = resourcev2.ValidateCatalog(catalog)
+	}
+	if err == nil {
+		err = c.currentGeneration(ctx, pluginID, generation)
+	}
+	if err != nil {
+		return ctx, catalog, err
+	}
+	if typ != "" {
+		authority, err := c.resolveAuthority(ctx, pluginID, route, catalog, captureCatalogAdmission(ctx, generation), typ)
+		if err != nil {
+			return ctx, catalog, err
+		}
+		if reference != nil {
+			if reference.Address.Provider != catalog.Provider {
+				return ctx, catalog, resourcev2.NewError("INVALID_REQUEST", "Reference provider does not match this route catalog.")
+			}
+			if reference.Address.Authority != authority.Authority {
+				return ctx, catalog, resourcev2.NewError("RESET_REQUIRED", "Reference authority is no longer current for this route.")
+			}
+			found := false
+			for _, descriptor := range catalog.Types {
+				if descriptor.Type == typ {
+					found = true
+					if err := resourcev2.ValidateAddress(reference.Address, descriptor.IdentityDimensions); err != nil {
+						return ctx, catalog, err
+					}
+					break
+				}
+			}
+			if !found {
+				return ctx, catalog, resourcev2.NewError("NOT_FOUND", "Resource type is not in the route catalog.")
+			}
+		}
+	}
+	return resourcev2.WithCatalogRevision(ctx, catalog.Revision), catalog, nil
+}
+
 func (c *controller) GetResourceGroups(ctx context.Context, pluginID string, route resourcev2.AccessRoute) (out []resourcev2.ResourceGroup, retErr error) {
 	ctx, err := c.admit(ctx, "resource.GetResourceGroups", ancillaryTarget(pluginID, route, "", resourcev2.ResourceReference{}, ""))
 	if err != nil {
@@ -32,6 +74,10 @@ func (c *controller) GetResourceGroups(ctx context.Context, pluginID string, rou
 	ancillary, ok := provider.(resourcev2.PresentationProvider)
 	if !ok {
 		return out, ancillaryUnsupported()
+	}
+	sessionCtx, _, err = c.admitAncillaryCatalog(sessionCtx, pluginID, provider, generation, route, "", nil)
+	if err != nil {
+		return out, err
 	}
 	out, err = ancillary.GetResourceGroups(sessionCtx, route)
 	return ancillaryResult(c, sessionCtx, pluginID, generation, out, err)
@@ -52,6 +98,10 @@ func (c *controller) GetResourceDefinition(ctx context.Context, pluginID string,
 	if !ok {
 		return out, ancillaryUnsupported()
 	}
+	sessionCtx, _, err = c.admitAncillaryCatalog(sessionCtx, pluginID, provider, generation, route, resourceType, nil)
+	if err != nil {
+		return out, err
+	}
 	out, err = ancillary.GetResourceDefinition(sessionCtx, route, resourceType)
 	return ancillaryResult(c, sessionCtx, pluginID, generation, out, err)
 }
@@ -71,6 +121,10 @@ func (c *controller) GetEditorSchemas(ctx context.Context, pluginID string, rout
 	if !ok {
 		return out, ancillaryUnsupported()
 	}
+	sessionCtx, _, err = c.admitAncillaryCatalog(sessionCtx, pluginID, provider, generation, route, "", nil)
+	if err != nil {
+		return out, err
+	}
 	out, err = ancillary.GetEditorSchemas(sessionCtx, route)
 	return ancillaryResult(c, sessionCtx, pluginID, generation, out, err)
 }
@@ -89,6 +143,10 @@ func (c *controller) GetRelationships(ctx context.Context, pluginID string, rout
 	ancillary, ok := provider.(resourcev2.RelationshipProvider)
 	if !ok {
 		return out, ancillaryUnsupported()
+	}
+	sessionCtx, _, err = c.admitAncillaryCatalog(sessionCtx, pluginID, provider, generation, route, resourceType, nil)
+	if err != nil {
+		return out, err
 	}
 	out, err = ancillary.GetRelationships(sessionCtx, route, resourceType)
 	return ancillaryResult(c, sessionCtx, pluginID, generation, out, err)
@@ -112,16 +170,25 @@ func (c *controller) ResolveRelationships(ctx context.Context, pluginID string, 
 	if !ok {
 		return out, ancillaryUnsupported()
 	}
-	if err := c.validateReference(sessionCtx, pluginID, request.Route, request.Reference); err != nil {
+	sessionCtx, catalog, err := c.admitAncillaryCatalog(sessionCtx, pluginID, provider, generation, request.Route, request.Reference.Address.Type, &request.Reference)
+	if err != nil {
 		return out, err
 	}
-	resolution, err := c.relationshipRequest(sessionCtx, pluginID, provider, generation, ancillary, request)
+	resolution, err := c.relationshipRequest(sessionCtx, pluginID, catalog, generation, ancillary, request)
 	if err != nil {
 		return nil, err
 	}
 	if err := resourcev2.ValidateRelationshipResolutionRequest(resolution); err != nil {
 		return nil, err
 	}
+	for _, target := range resolution.Targets {
+		if target.Route != request.Route || target.Provider != catalog.Provider {
+			return nil, resourcev2.NewError("UNSUPPORTED", "Cross-route relationship targets require their own catalog admission.")
+		}
+	}
+	// All current bindings share this complete catalog. Attach its qualified
+	// observation once, never copy a source token onto an unobserved route.
+	sessionCtx = resourcev2.WithCatalogRevisionForRoute(sessionCtx, catalog.Provider, request.Route, catalog.Revision)
 	out, err = ancillary.ResolveRelationships(sessionCtx, resolution)
 	if err != nil {
 		return nil, err
@@ -164,7 +231,8 @@ func (c *controller) GetHealth(ctx context.Context, pluginID string, request res
 	if !ok {
 		return out, ancillaryUnsupported()
 	}
-	if err := c.validateReference(sessionCtx, pluginID, request.Route, request.Reference); err != nil {
+	sessionCtx, _, err = c.admitAncillaryCatalog(sessionCtx, pluginID, provider, generation, request.Route, request.Reference.Address.Type, &request.Reference)
+	if err != nil {
 		return out, err
 	}
 	out, err = ancillary.GetHealth(sessionCtx, request, value)
@@ -189,7 +257,8 @@ func (c *controller) GetResourceEvents(ctx context.Context, pluginID string, req
 	if !ok {
 		return out, ancillaryUnsupported()
 	}
-	if err := c.validateReference(sessionCtx, pluginID, request.Route, request.Reference); err != nil {
+	sessionCtx, _, err = c.admitAncillaryCatalog(sessionCtx, pluginID, provider, generation, request.Route, request.Reference.Address.Type, &request.Reference)
+	if err != nil {
 		return out, err
 	}
 	out, err = ancillary.GetResourceEvents(sessionCtx, request, limit)
@@ -211,6 +280,10 @@ func (c *controller) GetActions(ctx context.Context, pluginID string, route reso
 	if !ok {
 		return out, ancillaryUnsupported()
 	}
+	sessionCtx, _, err = c.admitAncillaryCatalog(sessionCtx, pluginID, provider, generation, route, resourceType, nil)
+	if err != nil {
+		return out, err
+	}
 	out, err = ancillary.GetActions(sessionCtx, route, resourceType)
 	return ancillaryResult(c, sessionCtx, pluginID, generation, out, err)
 }
@@ -230,6 +303,10 @@ func (c *controller) GetSchemaDocument(ctx context.Context, pluginID string, rou
 	if !ok {
 		return out, ancillaryUnsupported()
 	}
+	sessionCtx, _, err = c.admitAncillaryCatalog(sessionCtx, pluginID, provider, generation, route, "", nil)
+	if err != nil {
+		return out, err
+	}
 	out, err = ancillary.GetSchemaDocument(sessionCtx, route, reference)
 	return ancillaryResult(c, sessionCtx, pluginID, generation, out, err)
 }
@@ -245,31 +322,17 @@ func ancillaryResult[T any](c *controller, ctx context.Context, pluginID string,
 	return value, nil
 }
 
-func (c *controller) relationshipRequest(ctx context.Context, pluginID string, provider ResourceProvider, generation *pluginState, ancillary resourcev2.RelationshipProvider, source resourcev2.GetRequest) (resourcev2.RelationshipResolutionRequest, error) {
+func (c *controller) relationshipRequest(ctx context.Context, pluginID string, catalog resourcev2.Catalog, generation *pluginState, ancillary resourcev2.RelationshipProvider, source resourcev2.GetRequest) (resourcev2.RelationshipResolutionRequest, error) {
 	request := resourcev2.RelationshipResolutionRequest{Source: source, Targets: []resourcev2.ReadTarget{}}
+	if catalog.Coverage.Kind != "complete" {
+		return request, resourcev2.NewError("UNSUPPORTED", "Relationship target binding requires a complete route catalog.")
+	}
 	descriptors, err := ancillary.GetRelationships(ctx, source.Route, source.Reference.Address.Type)
 	if err != nil {
 		return request, err
 	}
-	catalog, err := provider.Catalog(ctx, resourcev2.CatalogRequest{Route: source.Route})
-	if err != nil {
-		return request, err
-	}
-	if err := resourcev2.ValidateCatalog(catalog); err != nil {
-		return request, err
-	}
-	if catalog.Coverage.Kind != "complete" {
-		return request, resourcev2.NewError("UNSUPPORTED", "Relationship target binding requires a complete route catalog.")
-	}
 	if err := c.currentGeneration(ctx, pluginID, generation); err != nil {
 		return request, err
-	}
-	authority, err := c.resolveAuthority(ctx, pluginID, source.Route, catalog, captureCatalogAdmission(ctx, generation), source.Reference.Address.Type)
-	if err != nil {
-		return request, err
-	}
-	if catalog.Provider != source.Reference.Address.Provider || authority.Authority != source.Reference.Address.Authority {
-		return request, resourcev2.NewError("INVALID_REQUEST", "Relationship source is not bound to the current route authority.")
 	}
 	request.Targets, err = c.relationshipTargets(ctx, pluginID, source.Route, catalog, captureCatalogAdmission(ctx, generation), descriptors, "resource.ResolveRelationships")
 	return request, err

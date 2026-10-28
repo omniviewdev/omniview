@@ -197,6 +197,14 @@ func (c *controller) connectionProfileSource(ctx context.Context, pluginID strin
 func (c *controller) replayConnectionProfiles(ctx context.Context, pluginID string, loaded []types.Connection) ([]types.Connection, error) {
 	c.profilesMu.Lock()
 	defer c.profilesMu.Unlock()
+	return c.replayConnectionProfilesLocked(ctx,pluginID,loaded)
+}
+
+// Caller holds profilesMu across native discovery and overlay replay.
+func (c *controller) replayConnectionProfilesLocked(ctx context.Context, pluginID string, loaded []types.Connection) ([]types.Connection,error) {
+	_, generation, ctx, cleanup, err := c.operationGeneration(ctx, pluginID, resourcev2.AccessRoute{})
+	if err != nil { return nil, err }
+	defer cleanup()
 	root, err := c.pluginStoreFn(pluginID)
 	if err != nil {
 		return nil, err
@@ -212,13 +220,21 @@ func (c *controller) replayConnectionProfiles(ctx context.Context, pluginID stri
 		}
 		return nil, err
 	}
+	native, err := source.NativeConnections(ctx)
+	if err != nil { return nil, err }
+	current, err := source.ListConnections(ctx)
+	if err != nil { return nil, err }
+	routes, retire := profileConnectionChanges(current,native,state)
+	release, err := c.beginConfigurationChanges(ctx,pluginID,generation,routes,retire)
+	if err != nil { return nil, err }
+	if release != nil { defer release() }
 	if err := source.ApplyConnectionOverlay(ctx, state.overlay()); err != nil {
 		return nil, err
 	}
-	return c.refreshProfileConnections(ctx, pluginID, source)
+	return c.refreshProfileConnections(ctx, pluginID, source, generation)
 }
 
-func (c *controller) refreshProfileConnections(ctx context.Context, pluginID string, source connectionProfileSource) ([]types.Connection, error) {
+func (c *controller) refreshProfileConnections(ctx context.Context, pluginID string, source connectionProfileSource, generation *pluginState) ([]types.Connection, error) {
 	native, err := source.NativeConnections(ctx)
 	if err != nil {
 		return nil, err
@@ -227,13 +243,7 @@ func (c *controller) refreshProfileConnections(ctx context.Context, pluginID str
 	if err != nil {
 		return nil, err
 	}
-	if c.profileNative == nil {
-		c.profileNative = make(map[string][]types.Connection)
-	}
-	c.profileNative[pluginID] = native
-	c.connsMu.Lock()
-	c.connections[pluginID] = effective
-	c.connsMu.Unlock()
+	if err := c.publishProfileConnections(ctx,pluginID,generation,native,effective); err != nil { return nil,err }
 	return effective, nil
 }
 
@@ -334,7 +344,7 @@ func (c *controller) ListConnectionProfiles(ctx context.Context, pluginID string
 // applyDesiredConnections reports success only after both source application and
 // durable host save. A failed second phase reapplies the previous desired state.
 // Rollback failure is explicit unknown source state, never endpoint success.
-func applyDesiredConnections(ctx context.Context, source connectionProfileSource, root *appstate.ScopedRoot, previous, next desiredConnectionState, invalidate func() error) ([]types.Connection, error) {
+func applyDesiredConnections(ctx context.Context, source connectionProfileSource, root *appstate.ScopedRoot, previous, next desiredConnectionState) ([]types.Connection, error) {
 	data, err := encodeDesiredConnections(next)
 	if err != nil {
 		return nil, err
@@ -345,11 +355,7 @@ func applyDesiredConnections(ctx context.Context, source connectionProfileSource
 		}
 		return nil, resourcev2.NewError("CONFLICT", "Connection profile was not applied; the source rejected the configuration.")
 	}
-	err = invalidate()
-	var effective []types.Connection
-	if err == nil {
-		effective, err = source.ListConnections(ctx)
-	}
+	effective, err := source.ListConnections(ctx)
 	if err == nil {
 		err = writeDesiredConnections(root, data)
 	}
@@ -390,6 +396,9 @@ func (c *controller) changeConnectionProfile(ctx context.Context, pluginID, id, 
 	}
 	c.profilesMu.Lock()
 	defer c.profilesMu.Unlock()
+	_, generation, ctx, cleanup, err := c.operationGeneration(ctx, pluginID, resourcev2.AccessRoute{Connection:id})
+	if err != nil { return ConnectionProfileResult{}, err }
+	defer cleanup()
 	source, err := c.connectionProfileSource(ctx, pluginID)
 	if err != nil {
 		return ConnectionProfileResult{}, err
@@ -489,17 +498,17 @@ func (c *controller) changeConnectionProfile(ctx context.Context, pluginID, id, 
 	default:
 		return ConnectionProfileResult{}, resourcev2.NewError("INVALID_REQUEST", "Unknown connection profile operation.")
 	}
-	effective, err := applyDesiredConnections(ctx, source, root, previous, next, func() error { return c.invalidateProfileRoutes(pluginID, []string{id}) })
+	current, err := source.ListConnections(ctx)
+	if err != nil { return ConnectionProfileResult{}, err }
+	routes, retire := profileConnectionChanges(current,native,next)
+	release, err := c.beginConfigurationChanges(ctx,pluginID,generation,routes,retire)
+	if err != nil { return ConnectionProfileResult{}, err }
+	if release != nil { defer release() }
+	effective, err := applyDesiredConnections(ctx, source, root, previous, next)
 	if err != nil {
 		return ConnectionProfileResult{}, err
 	}
-	if c.profileNative == nil {
-		c.profileNative = make(map[string][]types.Connection)
-	}
-	c.profileNative[pluginID] = native
-	c.connsMu.Lock()
-	c.connections[pluginID] = effective
-	c.connsMu.Unlock()
+	if err := c.publishProfileConnections(ctx,pluginID,generation,native,effective); err != nil { return ConnectionProfileResult{},err }
 	result := ConnectionProfile{ID: id, Source: "absent", Active: false}
 	for _, profile := range listConnectionProfiles(next, native, effective, nil) {
 		if profile.ID == id {

@@ -26,6 +26,28 @@ func bootstrapTestDeclaration(label string) resourcev2.RelationshipDescriptor {
 	return resourcev2.RelationshipDescriptor{Type: resourcev2.RelUses, TargetType: "peers", TargetScope: []resourcev2.ScopeEntry{}, Label: label, Extractor: &resourcev2.RelationshipExtractor{Method: "fieldPath", FieldPath: "spec.peer"}}
 }
 
+func TestRelationshipBootstrapPinsOneCompleteCatalog(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	catalog := bootstrapTestCatalog("accepted")
+	catalogCalls, declarationCalls := 0, 0
+	registerMockPlugin(ctrl, "p1", &mockProvider{
+		CatalogFunc: func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
+			catalogCalls++
+			return catalog, nil
+		},
+		GetRelationshipsFunc: func(ctx context.Context, _ resourcev2.AccessRoute, _ string) ([]resourcev2.RelationshipDescriptor, error) {
+			declarationCalls++
+			revision, ok := resourcev2.CatalogRevisionFromContext(ctx)
+			require.True(t, ok)
+			require.Equal(t, catalog.Revision, revision)
+			return []resourcev2.RelationshipDescriptor{}, nil
+		},
+	})
+	ctrl.bootstrapRelationships(testInvocationContext(), "p1", resourcev2.AccessRoute{Connection: "route/opaque"})
+	require.Equal(t, 1, catalogCalls)
+	require.Equal(t, len(catalog.Types), declarationCalls)
+}
+
 func TestBlockedBootstrapCannotPublishAfterProfileEpochReset(t *testing.T) {
 	for _, oldEmpty := range []bool{false, true} {
 		name := "old-rules"

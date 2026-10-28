@@ -28,6 +28,59 @@ func TestStartConnectionWatch_Success(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestStartConnectionWatch_BatchesSameAdmittedRouteCatalog(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	catalogFor := lifecycleTestCatalog("pods")
+	calls := 0
+	provider := &mockProvider{
+		CatalogFunc: func(ctx context.Context, request resource.CatalogRequest) (resource.Catalog, error) {
+			catalog, err := catalogFor(ctx, request)
+			catalog.Revision = request.Route.Connection
+			return catalog, err
+		},
+		StartConnectionWatchFunc: func(ctx context.Context, targets []resource.ReadTarget) error {
+			calls++
+			require.Len(t, targets, 2)
+			revision, ok := resource.CatalogRevisionFromContext(ctx)
+			require.True(t, ok)
+			require.Equal(t, targets[0].Route.Connection, revision)
+			require.NoError(t, ctx.Err())
+			return nil
+		},
+	}
+	registerMockPlugin(ctrl, "p1", provider)
+	target := admittedReadTarget(t, ctrl, "p1", "conn-1", "pods").Target
+	require.NoError(t, ctrl.StartConnectionWatch(testInvocationContext(), "p1", []resource.ReadTarget{target, target}))
+	require.Equal(t, 1, calls)
+}
+
+func TestStartConnectionWatch_DoesNotMergeDistinctAcceptedRevisions(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	catalogFor := lifecycleTestCatalog("pods")
+	revision := "initial"
+	var observed []string
+	provider := &mockProvider{
+		CatalogFunc: func(ctx context.Context, request resource.CatalogRequest) (resource.Catalog, error) {
+			catalog, err := catalogFor(ctx, request)
+			catalog.Revision = revision
+			revision += "/next"
+			return catalog, err
+		},
+		StartConnectionWatchFunc: func(ctx context.Context, targets []resource.ReadTarget) error {
+			require.Len(t, targets, 1)
+			accepted, ok := resource.CatalogRevisionFromContext(ctx)
+			require.True(t, ok)
+			observed = append(observed, accepted)
+			return nil
+		},
+	}
+	registerMockPlugin(ctrl, "p1", provider)
+	target := admittedReadTarget(t, ctrl, "p1", "conn-1", "pods").Target
+	revision = "accepted"
+	require.NoError(t, ctrl.StartConnectionWatch(testInvocationContext(), "p1", []resource.ReadTarget{target, target}))
+	require.Equal(t, []string{"accepted", "accepted/next"}, observed)
+}
+
 func TestStartConnectionWatch_ProviderError(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{CatalogFunc: lifecycleTestCatalog("pods"), StartConnectionWatchFunc: func(_ context.Context, _ []resource.ReadTarget) error {

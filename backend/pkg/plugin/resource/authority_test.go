@@ -274,3 +274,24 @@ func TestAuthorityFullyRetiredHintCohortsNeverResurrect(t *testing.T) {
 	require.NotEqual(t, returned["pods"].Authority, afterAbsent["pods"].Authority)
 	require.Equal(t, afterAbsent["pods"].Authority, afterAbsent["deployments"].Authority)
 }
+
+func TestAuthorityRestartProofRequiresMoreThanPersistedHints(t *testing.T) {
+	store, err := appstate.NewTestService(t).PluginStore("restart-proof")
+	require.NoError(t, err)
+	resolver, err := NewAuthorityResolver(store)
+	require.NoError(t, err)
+	require.False(t, resolver.hasUnprovenRestartBindings("p", "route"))
+	catalog := authorityTestCatalog("native", map[string]*resourcev2.NativeAuthorityHint{
+		"unknown": nil,
+		"claimed-stable": {Scheme: "cluster", ID: "same", Continuity: resourcev2.ContinuityStableNative},
+	})
+	_, err = resolver.ObserveCatalog("p", "route", catalog)
+	require.NoError(t, err)
+	restarted, err := NewAuthorityResolver(store)
+	require.NoError(t, err)
+	require.True(t, restarted.hasUnprovenRestartBindings("p", "route"))
+	require.False(t, restarted.hasUnprovenRestartBindings("other-plugin", "route"))
+	require.False(t, restarted.hasUnprovenRestartBindings("p", "other-route"))
+	require.NoError(t, restarted.InvalidateConnection("p", "route"))
+	require.False(t, restarted.hasUnprovenRestartBindings("p", "route"))
+}

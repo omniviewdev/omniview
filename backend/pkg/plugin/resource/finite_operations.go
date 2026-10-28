@@ -31,6 +31,10 @@ func (c *controller) operationGeneration(ctx context.Context, pluginID string, r
 		c.pluginsMu.RUnlock()
 		return nil, nil, nil, nil, apperror.PluginNotFound(pluginID)
 	}
+	if generation.sourceChanging[route.Connection] {
+		c.pluginsMu.RUnlock()
+		return nil, nil, nil, nil, resourcev2.NewError("UNAVAILABLE", "Connection configuration is changing.")
+	}
 	epoch := sourceEpochSnapshot{Connection: route.Connection, Epoch: generation.sourceEpoch[route.Connection]}
 	provider := generation.provider
 	operationCtx, cancel := context.WithCancel(ctx)
@@ -62,32 +66,38 @@ func (c *controller) currentGenerationLocked(ctx context.Context, pluginID strin
 	if epoch, ok := ctx.Value(sourceEpochKey{}).(sourceEpochSnapshot); ok && generation.sourceEpoch[epoch.Connection] != epoch.Epoch {
 		return resourcev2.NewError("RESET_REQUIRED", "Connection configuration changed.")
 	}
+	if epoch, ok := ctx.Value(sourceEpochKey{}).(sourceEpochSnapshot); ok && generation.sourceChanging[epoch.Connection] {
+		return resourcev2.NewError("UNAVAILABLE", "Connection configuration is changing.")
+	}
 	return nil
 }
 
-func (c *controller) admitOperationCatalog(ctx context.Context, pluginID string, provider ResourceProvider, generation *pluginState, route resourcev2.AccessRoute, authority, canonicalProvider string, request any) (resourcev2.ResourceType, error) {
+func (c *controller) admitOperationCatalog(ctx context.Context, pluginID string, provider ResourceProvider, generation *pluginState, route resourcev2.AccessRoute, authority, canonicalProvider string, request any) (context.Context, resourcev2.ResourceType, error) {
 	catalog, err := provider.Catalog(ctx, resourcev2.CatalogRequest{Route: route})
 	if err != nil {
-		return resourcev2.ResourceType{}, err
+		return ctx, resourcev2.ResourceType{}, err
 	}
 	if err = resourcev2.ValidateCatalog(catalog); err != nil {
-		return resourcev2.ResourceType{}, err
+		return ctx, resourcev2.ResourceType{}, err
 	}
 	if err = c.currentGeneration(ctx, pluginID, generation); err != nil {
-		return resourcev2.ResourceType{}, err
+		return ctx, resourcev2.ResourceType{}, err
 	}
 	descriptor, err := resourcev2.AdmitCatalogOperation(catalog, request)
 	if err != nil {
-		return resourcev2.ResourceType{}, err
+		return ctx, resourcev2.ResourceType{}, err
 	}
 	resolved, err := c.resolveAuthority(ctx, pluginID, route, catalog, captureCatalogAdmission(ctx, generation), descriptor.Type)
 	if err != nil {
-		return resourcev2.ResourceType{}, err
+		return ctx, resourcev2.ResourceType{}, err
 	}
-	if catalog.Provider != canonicalProvider || resolved.Authority != authority {
-		return resourcev2.ResourceType{}, resourcev2.NewError("INVALID_REQUEST", "Request is not bound to this route authority.")
+	if catalog.Provider != canonicalProvider {
+		return ctx, resourcev2.ResourceType{}, resourcev2.NewError("INVALID_REQUEST", "Request provider is not bound to this route.")
 	}
-	return descriptor, nil
+	if resolved.Authority != authority {
+		return ctx, resourcev2.ResourceType{}, resourcev2.NewError("RESET_REQUIRED", "Request authority is not current for this route.")
+	}
+	return resourcev2.WithCatalogRevision(ctx, catalog.Revision), descriptor, nil
 }
 
 func (c *controller) Get(ctx context.Context, pluginID string, input HostGetRequest) (_result HostRecord, retErr error) {
@@ -112,7 +122,7 @@ func (c *controller) Get(ctx context.Context, pluginID string, input HostGetRequ
 	if !ok {
 		return _result, resourcev2.NewError("UNSUPPORTED", "Get is not supported.")
 	}
-	descriptor, err := c.admitOperationCatalog(ctx, pluginID, provider, generation, request.Route, request.Reference.Address.Authority, request.Reference.Address.Provider, request)
+	ctx, descriptor, err := c.admitOperationCatalog(ctx, pluginID, provider, generation, request.Route, request.Reference.Address.Authority, request.Reference.Address.Provider, request)
 	if err != nil {
 		return _result, err
 	}
@@ -182,7 +192,7 @@ func (c *controller) Enumerate(ctx context.Context, pluginID string, input HostE
 	if !ok {
 		return _result, resourcev2.NewError("UNSUPPORTED", "Enumeration is not supported.")
 	}
-	descriptor, err := c.admitOperationCatalog(ctx, pluginID, provider, generation, request.Target.Route, request.Target.Authority, request.Target.Provider, request)
+	ctx, descriptor, err := c.admitOperationCatalog(ctx, pluginID, provider, generation, request.Target.Route, request.Target.Authority, request.Target.Provider, request)
 	if err != nil {
 		return _result, err
 	}
@@ -229,7 +239,7 @@ func (c *controller) NativeQuery(ctx context.Context, pluginID string, input Hos
 	if !ok {
 		return _result, resourcev2.NewError("UNSUPPORTED", "Native query is not supported.")
 	}
-	descriptor, err := c.admitOperationCatalog(ctx, pluginID, provider, generation, request.Target.Route, request.Target.Authority, request.Target.Provider, request)
+	ctx, descriptor, err := c.admitOperationCatalog(ctx, pluginID, provider, generation, request.Target.Route, request.Target.Authority, request.Target.Provider, request)
 	if err != nil {
 		return _result, err
 	}
@@ -290,7 +300,7 @@ func (c *controller) Mutate(ctx context.Context, pluginID string, request resour
 	if !ok {
 		return _result, resourcev2.NewError("UNSUPPORTED", "Mutation is not supported.")
 	}
-	descriptor, err := c.admitOperationCatalog(ctx, pluginID, provider, generation, request.Route, request.Reference.Address.Authority, request.Reference.Address.Provider, request)
+	ctx, descriptor, err := c.admitOperationCatalog(ctx, pluginID, provider, generation, request.Route, request.Reference.Address.Authority, request.Reference.Address.Provider, request)
 	if err != nil {
 		return _result, err
 	}
@@ -327,7 +337,7 @@ func (c *controller) Action(ctx context.Context, pluginID string, request resour
 	if !ok {
 		return _result, resourcev2.NewError("UNSUPPORTED", "Action is not supported.")
 	}
-	descriptor, err := c.admitOperationCatalog(ctx, pluginID, provider, generation, request.Route, request.Reference.Address.Authority, request.Reference.Address.Provider, request)
+	ctx, descriptor, err := c.admitOperationCatalog(ctx, pluginID, provider, generation, request.Route, request.Reference.Address.Authority, request.Reference.Address.Provider, request)
 	if err != nil {
 		return _result, err
 	}

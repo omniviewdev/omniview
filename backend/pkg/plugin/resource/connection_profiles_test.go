@@ -177,6 +177,9 @@ func TestConnectionWatchReplacesSnapshotWithoutReapplyingOverlay(t *testing.T) {
 		t.Error("watch snapshots must not reload native configuration")
 		return nil, errors.New("unexpected native reload")
 	}
+	provider.ListConnectionsFunc = func(context.Context) ([]types.Connection,error) {
+		return []types.Connection{profileTestConnection("fresh","new-endpoint")},nil
+	}
 	provider.WatchConnectionsFunc = func(ctx context.Context, stream chan<- []types.Connection) error {
 		stream <- []types.Connection{profileTestConnection("removed", "old-endpoint")}
 		stream <- []types.Connection{profileTestConnection("fresh", "new-endpoint")}
@@ -187,7 +190,7 @@ func TestConnectionWatchReplacesSnapshotWithoutReapplyingOverlay(t *testing.T) {
 	registerMockPlugin(ctrl, "plugin", provider)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	ctrl.listenForConnectionEvents(ctx, "plugin", provider)
+	ctrl.listenForConnectionEvents(ctx, "plugin", provider, ctrl.plugins["plugin"])
 	listed, err := ctrl.ListConnections(testInvocationContext(), "plugin")
 	require.NoError(t, err)
 	require.Len(t, listed, 1)
@@ -220,8 +223,8 @@ func TestConnectionProfilesPersistOnlyExplicitConfiguration(t *testing.T) {
 	require.Zero(t, loaded.overlay().Upserts[0].LastRefresh)
 }
 
-func TestConnectionProfileCommitRollsBackOnInvalidationOrDiskFailure(t *testing.T) {
-	for _, phase := range []string{"invalidate", "persist", "rollback"} {
+func TestConnectionProfileCommitRollsBackOnDiskFailure(t *testing.T) {
+	for _, phase := range []string{"persist", "rollback"} {
 		t.Run(phase, func(t *testing.T) {
 			store, err := appstate.NewTestService(t).PluginStore("test")
 			require.NoError(t, err)
@@ -237,23 +240,16 @@ func TestConnectionProfileCommitRollsBackOnInvalidationOrDiskFailure(t *testing.
 			var active resourcev2.ConnectionOverlay
 			provider.ApplyConnectionOverlayFunc = func(ctx context.Context, overlay resourcev2.ConnectionOverlay) error {
 				applies++
-				if phase == "rollback" && applies == 2 {
-					return errors.New("private rollback detail")
-				}
+				if phase == "rollback" && applies == 2 { return errors.New("private rollback detail") }
 				active = overlay
+				if applies == 1 {
+					require.NoError(t, store.Remove(connectionProfileStoreName))
+					require.NoError(t, store.MkdirAll(connectionProfileStoreName, 0o700))
+				}
 				return nil
 			}
 			provider.ListConnectionsFunc = func(context.Context) ([]types.Connection, error) { return active.Upserts, nil }
-			invalidate := func() error {
-				if phase == "invalidate" || phase == "rollback" {
-					return errors.New("private invalidation detail")
-				}
-				// Force durable rename failure after the source accepted new config.
-				require.NoError(t, store.Remove(connectionProfileStoreName))
-				require.NoError(t, store.MkdirAll(connectionProfileStoreName, 0o700))
-				return nil
-			}
-			_, err = applyDesiredConnections(context.Background(), provider, store, previous, next, invalidate)
+			_, err = applyDesiredConnections(context.Background(), provider, store, previous, next)
 			require.Error(t, err)
 			require.Equal(t, 2, applies)
 			require.NotContains(t, err.Error(), "private")
@@ -264,27 +260,20 @@ func TestConnectionProfileCommitRollsBackOnInvalidationOrDiskFailure(t *testing.
 				require.Equal(t, "CONFLICT", resourcev2.ErrorCode(err))
 				require.Equal(t, "old", active.Upserts[0].Data["endpoint"])
 			}
-			if phase == "invalidate" {
-				after, err := store.ReadFile(connectionProfileStoreName)
-				require.NoError(t, err)
-				require.Equal(t, before, after)
-			}
 		})
 	}
 }
 
-func TestConnectionProfileSourceRejectionDoesNotPersistOrInvalidate(t *testing.T) {
+func TestConnectionProfileSourceRejectionDoesNotPersist(t *testing.T) {
 	store, err := appstate.NewTestService(t).PluginStore("test")
 	require.NoError(t, err)
 	provider := connectionOverlayTestProvider()
 	provider.ApplyConnectionOverlayFunc = func(context.Context, resourcev2.ConnectionOverlay) error {
 		return errors.New("private endpoint detail")
 	}
-	invalidated := false
-	_, err = applyDesiredConnections(context.Background(), provider, store, emptyDesiredConnections(), emptyDesiredConnections(), func() error { invalidated = true; return nil })
+	_, err = applyDesiredConnections(context.Background(), provider, store, emptyDesiredConnections(), emptyDesiredConnections())
 	require.Error(t, err)
 	require.Equal(t, "CONFLICT", resourcev2.ErrorCode(err))
-	require.False(t, invalidated)
 	_, err = store.Stat(connectionProfileStoreName)
 	require.True(t, os.IsNotExist(err))
 }

@@ -158,8 +158,19 @@ derive them from display fields or calculate them in plugin JavaScript.
 `useResolvedResourceTarget` exposes target resolution as a query.
 `useResource({ pluginID, request })` accepts a host Get request.
 `useResources({ pluginID, request, live: true })` acquires exactly one bounded
-native page. Callers own continuation cursors; inactive page queries discard
-their rows, so Previous re-fetches instead of retaining row history. The hook
+native page. Callers own continuation cursors. Unobserved pages discard their
+rows; only one displayed acquired page stays observed while another cursor is
+attempted. `acquired: { request, page }` retains the exact successful request and
+its actual cursor after a continuation failure; `resources` exposes the attempted
+request's loading/error state separately. Live flags and `membershipStale` follow
+the displayed acquired page, including while another attempted page fails.
+Consumers that deliberately display the attempted page instead must gate those
+acquired readiness flags with `isAcquiredRequestCurrent`; a failed Next attempt
+must not borrow the previous page's live membership claim.
+`refreshAcquiredPage()` refreshes that actual page, not the failed attempted
+cursor. Plugin or target identity changes, including scope/representation, and
+an undefined target clear acquired rows synchronously. Target resolution itself
+never exposes an old admission as loading/error placeholder data. The hook
 uses the actual advisory native update source, registers listeners before
 subscribing and starting native work, and owns cancellation and unsubscription.
 Live updates patch only exact host keys already observed on the visible page.
@@ -196,6 +207,12 @@ fresh source snapshots plus actually applied overlays. Failed discovery never
 activates an old cache for Get/List or utility capability lookups. Legacy mixed
 cache bytes remain untouched for inactive review/import, including stop/restart;
 removed source IDs do not survive by union-merging refresh snapshots.
+Load success/failure inventory publication stays inside the serialized
+configuration transaction. Native connection-watch frames are notifications:
+the host fetches fresh authoritative `ListConnections` facts under that same
+fence for cache publication, sync events, and auto-connect scheduling. It never
+reapplies an overlay while consuming the stream, and an older queued frame
+cannot resurrect a disabled profile or overwrite a newer transaction.
 
 Use `valueToJSON` only for presentation: signed and unsigned integers within the
 JavaScript safe-integer range project exactly to `number`; wider integers remain
@@ -218,6 +235,25 @@ overrides, rather than in invented fields of a canonical resource body.
 Queries remain usable if canonical metric streaming is unsupported. A failed
 stream retires its exact subscription interests and releases pending commands;
 it does not fall back to the legacy resource-data wire.
+Metric streaming opens a lazy lane for each `(pluginID, connectionID)` using its
+real host profile through the existing trusted PluginContext metadata seam.
+The SDK's sole connection registry admits the actual started client generation
+before ready acknowledgement and owns cancellation on stop/retarget; metadata
+alone is not a grant and does not auto-start a stopped profile. Host profile
+transactions cancel the old lane and block new opens until completion. Ordinary
+cluster metrics still omit canonical resource bodies/references/routes.
+Reference-bearing utilities use a native, operation-scoped reference-admission
+callback bound to the proper caller realm. It validates current catalog,
+authority, scope and source epoch without acquiring a resource Get permission or
+reading a body. The exact admitted catalog revision travels in unary SDK context
+or a host-derived metric subscription frame field; frontend callers cannot
+supply that pin. Missing reference admission fails closed before native work.
+Each new metric interest receives a fresh internal SDK wire subscription ID,
+separate from its public event ID. Output translation requires the current
+interest, matching wire ID and exact lane; retired wire IDs never bind to new
+interests. Recoverable polling errors keep that ownership so later samples and
+explicit native unsubscribe remain useful. Only unsubscribe or lane termination
+retires the interest.
 
 Use the handwritten resource, exec, logs, metric and networker clients for
 Value-bearing requests. Their
@@ -249,14 +285,41 @@ same-hint authority justified by a surviving current member. A fully retired
 cohort receives a fresh authority if it returns; historical cohorts are never
 resurrected. Explicit backing-config retargeting invalidates current assignments.
 Existing saved citations are never rewritten to a new authority.
-No native scheme currently qualifies for stable-native continuity. Losing local
-state or unreported retargeting limits continuity; unknown incarnation stays
-absent. Request-local target labels do not create leases, permissions, or saved
-resource identity.
+No native scheme currently qualifies for stable-native continuity. On the first
+fenced catalogue observation after host/plugin generation restart, persisted
+unknown/connection-local assignments are retired, including Types absent from
+that catalogue. A claimed native hint alone cannot prove cross-restart
+continuity. Existing historical facts keep their old authority; live use of a
+retired reference returns `RESET_REQUIRED`, never reinterpretation as the new
+backing. Unknown incarnation stays absent. Request-local target labels do not
+create leases, permissions, or saved resource identity.
 Catalog acquisition captures the route's configuration epoch before provider IO.
 The host checks that captured epoch under the same fence as authority persistence
 and route invalidation. A stale catalog cannot replace a newer durable binding,
 even when its caller would later reject the stale result.
+
+Native operations pin the **exact accepted** SDK `Catalog.Revision` through
+`WithCatalogRevision`; neither client nor host substitutes a latest-cache token.
+The SDK frames the actual source/client binding epoch separately from native
+catalogue metadata revision. The host uses `CatalogBindingEpoch`, never token
+parsing: metadata/CRD churn preserves existing authorities, while a changed
+binding retires the route and fails the current operation with `RESET_REQUIRED`.
+Late catalogues cannot flip the source back, and retired binding epochs are not
+reused. Custom providers use `NewCatalogBindingEpoch` and `BindCatalogRevision`,
+rotating the epoch on actual source/configuration generation changes; fixed
+stateless sources issue one per instance. Missing or stale pins fail closed.
+Relationship targets on another provider/route require their own exact accepted
+catalogue pin, never the source route's token. Current host declaration
+extraction binds targets within its observed source route; unobserved routes are
+unsupported rather than fabricated.
+
+Host configuration changes block affected routes **before** source mutation and
+keep them blocked through durable save and any rollback. Actual endpoint/auth or
+source-membership changes retire captured work; display-only renames preserve
+authority. Serialized start/stop/profile/host-triggered discovery transactions also retire
+the exact native metric lane before mutation and unblock it only after the
+transaction, without calling external hooks under the plugin-state lock.
+Rollback never restores a retired authority or old source epoch.
 
 Graph queries take `(pluginID, reference, route, ...)`, never namespace/name
 tuples. Each returned graph node carries its canonical reference, independent

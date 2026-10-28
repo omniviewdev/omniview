@@ -45,6 +45,7 @@ import (
 	"github.com/omniviewdev/omniview/internal/telemetry"
 	"github.com/omniviewdev/omniview/internal/version"
 	logging "github.com/omniviewdev/plugin-sdk/log"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
@@ -79,10 +80,18 @@ func newUICapabilityControllers(
 	resourceUIRealm *invocation.Scope,
 ) (exec.Controller, networker.Controller, pluginlogs.Controller, pluginmetric.Controller) {
 	uiResourceService := &resource.ServiceWrapper{Ctrl: resourceController, Realm: resourceUIRealm}
-	return exec.NewController(log, settingsProvider, uiResourceService),
-		networker.NewController(log, settingsProvider, uiResourceService),
-		pluginlogs.NewController(log, settingsProvider, uiResourceService),
-		pluginmetric.NewController(log, settingsProvider, uiResourceService)
+	admitReference := func(ctx context.Context, operation, pluginID string, route resourcev2.AccessRoute, ref resourcev2.ResourceReference) (context.Context, error) {
+		return resourceController.AdmitReference(resourceUIRealm.Context(ctx), operation, pluginID, route, ref)
+	}
+	execController := exec.NewController(log, settingsProvider, uiResourceService)
+	networkerController := networker.NewController(log, settingsProvider, uiResourceService)
+	logsController := pluginlogs.NewController(log, settingsProvider, uiResourceService)
+	metricController := pluginmetric.NewController(log, settingsProvider, uiResourceService)
+	execController.SetReferenceAdmitter(admitReference)
+	networkerController.SetReferenceAdmitter(admitReference)
+	logsController.SetReferenceAdmitter(admitReference)
+	metricController.SetReferenceAdmitter(admitReference)
+	return execController, networkerController, logsController, metricController
 }
 
 //nolint:funlen // main function is expected to be long
@@ -291,6 +300,7 @@ func main() {
 	execController, networkerController, logsController, metricController := newUICapabilityControllers(
 		log, settingsProvider, resourceController, resourceUIRealm,
 	)
+	resourceController.SetConnectionChangeHook(metricController.BeginConnectionChange)
 
 	dataController := data.NewController(log, stateDir.PluginData)
 

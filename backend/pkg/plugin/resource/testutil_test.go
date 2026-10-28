@@ -132,6 +132,9 @@ func (e *recordingEmitter) Reset() {
 
 // mockProvider exposes canonical operations through test closures.
 type mockProvider struct {
+	catalogEpochOnce           sync.Once
+	catalogEpoch               string
+	catalogEpochErr            error
 	CatalogFunc                func(ctx context.Context, request resource.CatalogRequest) (resource.Catalog, error)
 	GetFunc                    func(ctx context.Context, request resource.GetRequest) (resource.Record, error)
 	EnumerateFunc              func(ctx context.Context, request resource.EnumerateRequest) (resource.SourcePage, error)
@@ -247,7 +250,21 @@ func admittedSubscription(t *testing.T, ctrl *controller, pluginID, connectionID
 
 func (m *mockProvider) Catalog(ctx context.Context, request resource.CatalogRequest) (resource.Catalog, error) {
 	if m.CatalogFunc != nil {
-		return m.CatalogFunc(ctx, request)
+		catalog, err := m.CatalogFunc(ctx, request)
+		if err != nil {
+			return resource.Catalog{}, err
+		}
+		if _, err := resource.CatalogBindingEpoch(catalog.Revision); err == nil {
+			return catalog, nil
+		}
+		m.catalogEpochOnce.Do(func() {
+			m.catalogEpoch, m.catalogEpochErr = resource.NewCatalogBindingEpoch()
+		})
+		if m.catalogEpochErr != nil {
+			return resource.Catalog{}, m.catalogEpochErr
+		}
+		catalog.Revision, err = resource.BindCatalogRevision(m.catalogEpoch, catalog.Revision)
+		return catalog, err
 	}
 	var zero resource.Catalog
 	return zero, nil

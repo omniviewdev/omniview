@@ -38,7 +38,8 @@ func (c *controller) StreamAction(ctx context.Context, pluginID string, input re
 	if !ok {
 		return "", ancillaryUnsupported()
 	}
-	if err := c.validateReference(sessionCtx, pluginID, input.Route, input.Reference); err != nil {
+	sessionCtx, _, err = c.admitOperationCatalog(sessionCtx, pluginID, provider, generation, input.Route, input.Reference.Address.Authority, input.Reference.Address.Provider, input)
+	if err != nil {
 		return "", err
 	}
 	producerCtx, cancelCause := context.WithCancelCause(context.WithoutCancel(sessionCtx))

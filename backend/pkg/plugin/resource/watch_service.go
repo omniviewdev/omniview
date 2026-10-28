@@ -2,6 +2,7 @@ package resource
 
 import (
 	"context"
+
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
@@ -37,16 +38,13 @@ func (c *controller) updateProvider(ctx context.Context, pluginID string) (resou
 	return updates, nil
 }
 
-func (c *controller) admitUpdateTarget(ctx context.Context, pluginID string, target resourcev2.ReadTarget) error {
-	if err := c.validateReadTarget(ctx, pluginID, target); err != nil {
-		return err
-	}
-	_, catalog, err := c.routeCatalog(ctx, pluginID, target.Route)
+func (c *controller) admitUpdateTarget(ctx context.Context, pluginID string, target resourcev2.ReadTarget) (context.Context, func(), error) {
+	provider, generation, ctx, cleanup, err := c.operationGeneration(ctx, pluginID, target.Route)
 	if err != nil {
-		return err
+		return ctx, func() {}, err
 	}
-	_, err = resourcev2.AdmitCatalogOperation(catalog, target)
-	return err
+	ctx, _, err = c.admitOperationCatalog(ctx, pluginID, provider, generation, target.Route, target.Authority, target.Provider, target)
+	return ctx, cleanup, err
 }
 
 func (c *controller) StartConnectionWatch(ctx context.Context, pluginID string, targets []resourcev2.ReadTarget) (retErr error) {
@@ -60,19 +58,46 @@ func (c *controller) StartConnectionWatch(ctx context.Context, pluginID string, 
 	}
 	// Complete all authorization and capability admission before starting any
 	// source. A later denied target must not leave earlier sources running.
+	type watchBatchKey struct {
+		route resourcev2.AccessRoute
+		revision string
+	}
+	type watchBatch struct {
+		ctx context.Context
+		targets []resourcev2.ReadTarget
+	}
+	batches := make([]watchBatch, 0, len(targets))
+	batchIndexes := make(map[watchBatchKey]int, len(targets))
 	for _, target := range targets {
-		if _, err := c.admit(ctx, "resource.StartConnectionWatch", readTarget(pluginID, target)); err != nil {
+		targetCtx, err := c.admit(ctx, "resource.StartConnectionWatch", readTarget(pluginID, target))
+		if err != nil {
 			return err
 		}
-		if err := c.admitUpdateTarget(ctx, pluginID, target); err != nil {
+		targetCtx, cleanup, err := c.admitUpdateTarget(targetCtx, pluginID, target)
+		defer cleanup()
+		if err != nil {
 			return err
 		}
+		revision, _ := resourcev2.CatalogRevisionFromContext(targetCtx)
+		key := watchBatchKey{route: target.Route, revision: revision}
+		index, exists := batchIndexes[key]
+		if !exists {
+			index = len(batches)
+			batchIndexes[key] = index
+			batches = append(batches, watchBatch{ctx: targetCtx})
+		}
+		batches[index].targets = append(batches[index].targets, target)
 	}
 	provider, err := c.updateProvider(ctx, pluginID)
 	if err != nil {
 		return err
 	}
-	return provider.StartConnectionWatch(ctx, targets)
+	for _, batch := range batches {
+		if err := provider.StartConnectionWatch(batch.ctx, batch.targets); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 func (c *controller) StopConnectionWatch(ctx context.Context, pluginID string, route resourcev2.AccessRoute) (retErr error) {
 	ctx, err := c.admit(ctx, "resource.StopConnectionWatch", invocation.Target{Provider: pluginID, Connection: route.Connection})
@@ -111,7 +136,9 @@ func (c *controller) EnsureResourceWatch(ctx context.Context, pluginID string, t
 		return err
 	}
 	defer finishResource(ctx, &retErr)
-	if err := c.admitUpdateTarget(ctx, pluginID, target); err != nil {
+	ctx, cleanup, err := c.admitUpdateTarget(ctx, pluginID, target)
+	defer cleanup()
+	if err != nil {
 		return err
 	}
 	provider, err := c.updateProvider(ctx, pluginID)
@@ -138,7 +165,9 @@ func (c *controller) RestartResourceWatch(ctx context.Context, pluginID string, 
 		return err
 	}
 	defer finishResource(ctx, &retErr)
-	if err := c.admitUpdateTarget(ctx, pluginID, target); err != nil {
+	ctx, cleanup, err := c.admitUpdateTarget(ctx, pluginID, target)
+	defer cleanup()
+	if err != nil {
 		return err
 	}
 	provider, err := c.updateProvider(ctx, pluginID)

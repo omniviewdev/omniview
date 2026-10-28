@@ -280,6 +280,20 @@ func (r *AuthorityResolver) InvalidateConnection(pluginID, connectionID string) 
 	return nil
 }
 
+// hasUnprovenRestartBindings reports assignments requiring retirement before a
+// new native source generation can use this route. Persisted hints alone carry
+// no reviewed cross-restart continuity proof, including reliable hints.
+func (r *AuthorityResolver) hasUnprovenRestartBindings(pluginID, connectionID string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for route := range r.bindings {
+		if route.Plugin == pluginID && route.Connection == connectionID {
+			return true
+		}
+	}
+	return false
+}
+
 // Matches checks a current host-issued binding without creating identity state.
 func (r *AuthorityResolver) Matches(pluginID, connectionID, provider, resourceType, authority string) bool {
 	r.mu.Lock()

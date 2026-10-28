@@ -313,15 +313,17 @@ func TestListenForConnectionEvents_NewConnsMerged(t *testing.T) {
 	ctrl.connections["p1"] = []types.Connection{}
 
 	provider := &mockProvider{
+		ListConnectionsFunc: func(context.Context) ([]types.Connection,error) { return []types.Connection{{ID:"c1",Name:"New"}},nil },
 		WatchConnectionsFunc: func(ctx context.Context, stream chan<- []types.Connection) error {
 			stream <- []types.Connection{{ID: "c1", Name: "New"}}
 			<-ctx.Done()
 			return nil
 		},
 	}
+	registerMockPlugin(ctrl,"p1",provider)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go ctrl.listenForConnectionEvents(ctx, "p1", provider)
+	go ctrl.listenForConnectionEvents(ctx, "p1", provider, ctrl.plugins["p1"])
 
 	// Wait for merge.
 	assert.Eventually(t, func() bool {
@@ -338,15 +340,17 @@ func TestListenForConnectionEvents_EmitsSync(t *testing.T) {
 	ctrl.connections["p1"] = []types.Connection{}
 
 	provider := &mockProvider{
+		ListConnectionsFunc: func(context.Context) ([]types.Connection,error) { return []types.Connection{{ID:"c1"}},nil },
 		WatchConnectionsFunc: func(ctx context.Context, stream chan<- []types.Connection) error {
 			stream <- []types.Connection{{ID: "c1"}}
 			<-ctx.Done()
 			return nil
 		},
 	}
+	registerMockPlugin(ctrl,"p1",provider)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go ctrl.listenForConnectionEvents(ctx, "p1", provider)
+	go ctrl.listenForConnectionEvents(ctx, "p1", provider, ctrl.plugins["p1"])
 
 	emitter.WaitForEvent(t, "p1/connection/sync", 2*time.Second)
 	cancel()

@@ -2,10 +2,15 @@ package resource
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -34,6 +39,10 @@ func compileNativeChild(t *testing.T) string {
 }
 
 func startNativeChild(t *testing.T, binary, profile string) (resource.Provider, string, func()) {
+	return startSDKChild(t, binary, profile, "TestCurrentSDKChild", nil)
+}
+
+func startSDKChild(t *testing.T, binary, profile, testName string, childEnv []string) (resource.Provider, string, func()) {
 	t.Helper()
 	root := t.TempDir()
 	home := filepath.Join(root, "home")
@@ -45,7 +54,7 @@ func startNativeChild(t *testing.T, binary, profile string) (resource.Provider, 
 	t.Cleanup(func() { _ = os.RemoveAll(sockets) })
 	meta := config.PluginMeta{ID: nativeChildPluginID}
 	handshake := meta.GenerateHandshakeConfig()
-	command := exec.Command(binary, "-test.run=^TestCurrentSDKChild$")
+	command := exec.Command(binary, "-test.run=^"+testName+"$")
 	command.Env = []string{
 		"HOME=" + home, "USERPROFILE=" + home, "TMPDIR=" + sockets, "TMP=" + sockets, "TEMP=" + sockets,
 		"XDG_CONFIG_HOME=" + filepath.Join(home, "config"), "XDG_CACHE_HOME=" + filepath.Join(home, "cache"), "XDG_DATA_HOME=" + filepath.Join(home, "data"),
@@ -53,6 +62,7 @@ func startNativeChild(t *testing.T, binary, profile string) (resource.Provider, 
 		"P45_NATIVE_CHILD=1", "P45_NATIVE_PROFILE=" + profile, "P45_NATIVE_RECEIPTS=" + receipts,
 		handshake.MagicCookieKey + "=" + handshake.MagicCookieValue, "PLUGIN_PROTOCOL_VERSIONS=1",
 	}
+	command.Env = append(command.Env, childEnv...)
 	client := goplugin.NewClient(&goplugin.ClientConfig{
 		HandshakeConfig: handshake, SkipHostEnv: true, Cmd: command,
 		VersionedPlugins: map[int]goplugin.PluginSet{1: {"resource": &resourceplugin.GRPCPlugin{}}},
@@ -169,4 +179,118 @@ func verifyNativeChildCancellation(t *testing.T, ctrl *controller, request HostE
 		t.Fatal("host cancellation did not return")
 	}
 	require.Eventually(t, func() bool { _, err := os.Stat(filepath.Join(receipts, connection+".cancelled")); return err == nil }, 5*time.Second, 10*time.Millisecond)
+}
+
+// generationCatalogGate delays a genuine child catalog response while the child
+// refreshes its native source. It never changes the response or the Get context.
+type generationCatalogGate struct {
+	resource.Provider
+	resource.Getter
+	resource.ConnectionLifecycle
+	afterCatalog func()
+}
+
+func (p *generationCatalogGate) Catalog(ctx context.Context, request resource.CatalogRequest) (resource.Catalog, error) {
+	catalog, err := p.Provider.Catalog(ctx, request)
+	if err == nil && p.afterCatalog != nil {
+		after := p.afterCatalog
+		p.afterCatalog = nil
+		after()
+	}
+	return catalog, err
+}
+
+func TestActualSDKChildHostCatalogGenerationFence(t *testing.T) {
+	binary := compileNativeChild(t)
+	for _, restoreA := range []bool{false, true} {
+		t.Run(fmt.Sprintf("restore-A=%t", restoreA), func(t *testing.T) {
+			var aReads, bReads atomic.Int64
+			a := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				aReads.Add(1)
+				_, _ = w.Write([]byte("native-A"))
+			}))
+			defer a.Close()
+			b := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				bReads.Add(1)
+				_, _ = w.Write([]byte("native-B"))
+			}))
+			defer b.Close()
+			control := t.TempDir()
+			child, _, stop := startSDKChild(t, binary, "", "TestGenerationChild", []string{
+				"P45_GENERATION_CHILD=1", "P45_GENERATION_CONTROL=" + control, "P45_GENERATION_ENDPOINT=" + a.URL,
+			})
+			defer stop()
+			provider := &generationCatalogGate{Provider: child, Getter: child.(resource.Getter), ConnectionLifecycle: child.(resource.ConnectionLifecycle)}
+			_, err := provider.LoadConnections(context.Background())
+			require.NoError(t, err)
+			ctrl, _ := newTestControllerWithEmitter(t)
+			registerMockPlugin(ctrl, nativeChildPluginID, provider)
+			_, err = ctrl.StartConnection(testInvocationContext(), nativeChildPluginID, "generation")
+			require.NoError(t, err)
+			route := resource.AccessRoute{Connection: "generation"}
+			target, err := ctrl.ResolveTarget(testInvocationContext(), nativeChildPluginID, ResolveTargetRequest{
+				Route: route, Type: "native/object", Representation: "document", Scope: resource.QueryScope{},
+			})
+			require.NoError(t, err)
+			request := HostGetRequest{TargetID: target.TargetID, Request: resource.GetRequest{
+				Route: route, Representation: "document", Reference: resource.ResourceReference{Address: resource.ResourceAddress{
+					Provider: "generation", Authority: target.Target.Authority, Type: "native/object", ID: "object", Scope: []resource.ScopeEntry{},
+				}},
+			}}
+			provider.afterCatalog = func() {
+				refreshNativeGeneration(t, control, 1, b.URL)
+				if restoreA {
+					refreshNativeGeneration(t, control, 2, a.URL)
+				}
+			}
+			// Admission receives the real A observation only after B (or restored
+			// A) is active. Get must carry A, not the SDK's newest cached token.
+			_, err = ctrl.Get(testInvocationContext(), nativeChildPluginID, request)
+			require.Equal(t, "RESET_REQUIRED", requireAppError(t, err).Code)
+			assert.Zero(t, aReads.Load(), "retired A must not regain native access")
+			assert.Zero(t, bReads.Load(), "stale A must not dispatch against B")
+			_, err = os.Stat(filepath.Join(control, "entered-1"))
+			require.True(t, os.IsNotExist(err), "stale admission must fail before native Get")
+			_, found := ctrl.registryStore.Get(nativeChildPluginID, request.Request.Reference, route)
+			assert.False(t, found, "rejected native data must not enter host registry")
+			// A separate, explicitly resolved observation may read the active source.
+			current, err := ctrl.ResolveTarget(testInvocationContext(), nativeChildPluginID, ResolveTargetRequest{
+				Route: route, Type: "native/object", Representation: "document", Scope: resource.QueryScope{},
+			})
+			require.NoError(t, err)
+			request.TargetID = current.TargetID
+			request.Request.Reference.Address.Authority = current.Target.Authority
+			record, err := ctrl.Get(testInvocationContext(), nativeChildPluginID, request)
+			require.NoError(t, err)
+			if restoreA {
+				assert.Equal(t, "native-A", record.Record.Body.Map["native"].String)
+				assert.EqualValues(t, 1, aReads.Load())
+				assert.Zero(t, bReads.Load())
+			} else {
+				assert.Equal(t, "native-B", record.Record.Body.Map["native"].String)
+				assert.EqualValues(t, 1, bReads.Load())
+				assert.Zero(t, aReads.Load())
+			}
+		})
+	}
+}
+
+func refreshNativeGeneration(t *testing.T, control string, sequence int, endpoint string) {
+	t.Helper()
+	body, err := json.Marshal(struct {
+		Sequence int    `json:"sequence"`
+		Endpoint string `json:"endpoint"`
+	}{sequence, endpoint})
+	require.NoError(t, err)
+	temporary := filepath.Join(control, "command.tmp")
+	require.NoError(t, os.WriteFile(temporary, body, 0600))
+	require.NoError(t, os.Rename(temporary, filepath.Join(control, "command.json")))
+	var applied []byte
+	require.Eventually(t, func() bool {
+		failure, err := os.ReadFile(filepath.Join(control, "control-error"))
+		require.True(t, os.IsNotExist(err), "native refresh failed: %s (%v)", failure, err)
+		applied, err = os.ReadFile(filepath.Join(control, fmt.Sprintf("applied-%d", sequence)))
+		return err == nil
+	}, 10*time.Second, 10*time.Millisecond)
+	require.Equal(t, endpoint, string(applied))
 }

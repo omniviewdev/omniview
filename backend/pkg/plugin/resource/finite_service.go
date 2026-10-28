@@ -136,6 +136,9 @@ func (c *controller) resolveAuthority(ctx context.Context, pluginID string, rout
 	if err := ctx.Err(); err != nil {
 		return AuthorityResolution{}, err
 	}
+	if err := c.observeCatalogBinding(ctx, pluginID, route, catalog, admission); err != nil {
+		return AuthorityResolution{}, err
+	}
 	c.pluginsMu.RLock()
 	defer c.pluginsMu.RUnlock()
 	generation := admission.generation
@@ -144,7 +147,7 @@ func (c *controller) resolveAuthority(ctx context.Context, pluginID string, rout
 	}
 	// Keep this check and ObserveCatalog under the same pluginsMu read fence
 	// used by invalidateProfileRoutes' write-locked epoch/authority reset.
-	if admission.epoch.Connection != route.Connection || generation.sourceEpoch[route.Connection] != admission.epoch.Epoch {
+	if admission.epoch.Connection != route.Connection || generation.sourceEpoch[route.Connection] != admission.epoch.Epoch || generation.sourceChanging[route.Connection] {
 		return AuthorityResolution{}, resourcev2.NewError("RESET_REQUIRED", "Connection configuration changed during catalog acquisition.")
 	}
 	c.finite.mu.Lock()
@@ -268,8 +271,11 @@ func (c *controller) validateReference(ctx context.Context, pluginID string, rou
 	if err != nil {
 		return err
 	}
-	if reference.Address.Provider != catalog.Provider || reference.Address.Authority != authority.Authority {
-		return resourcev2.NewError("INVALID_REQUEST", "Reference is not bound to this route authority.")
+	if reference.Address.Provider != catalog.Provider {
+		return resourcev2.NewError("INVALID_REQUEST", "Reference provider is not bound to this route.")
+	}
+	if reference.Address.Authority != authority.Authority {
+		return resourcev2.NewError("RESET_REQUIRED", "Reference authority is not current for this route.")
 	}
 	for _, descriptor := range catalog.Types {
 		if descriptor.Type == reference.Address.Type {
@@ -288,8 +294,11 @@ func (c *controller) validateReadTarget(ctx context.Context, pluginID string, ta
 	if err != nil {
 		return err
 	}
-	if target.Provider != catalog.Provider || target.Authority != authority.Authority {
-		return resourcev2.NewError("INVALID_REQUEST", "Target is not bound to this route authority.")
+	if target.Provider != catalog.Provider {
+		return resourcev2.NewError("INVALID_REQUEST", "Target provider is not bound to this route.")
+	}
+	if target.Authority != authority.Authority {
+		return resourcev2.NewError("RESET_REQUIRED", "Target authority is not current for this route.")
 	}
 	for _, descriptor := range catalog.Types {
 		if descriptor.Type != target.Type {

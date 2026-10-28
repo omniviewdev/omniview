@@ -47,11 +47,20 @@ func grpcGetRequest() resource.GetRequest {
 func TestL3_01_EnumerateRoundTrip(t *testing.T) {
 	provider := grpcFiniteFixture()
 	record := canonicalTestRecord("p1", "authority", "native::Pod", "pod-1")
-	provider.EnumerateFunc = func(_ context.Context, request resource.EnumerateRequest) (resource.SourcePage, error) {
+	var acceptedRevision string
+	provider.EnumerateFunc = func(ctx context.Context, request resource.EnumerateRequest) (resource.SourcePage, error) {
+		revision, ok := resource.CatalogRevisionFromContext(ctx)
+		assert.True(t, ok)
+		assert.Equal(t, acceptedRevision, revision)
 		assert.Equal(t, "conn-1", request.Target.Route.Connection)
 		return resource.SourcePage{Records: []resource.Record{record}, Count: resource.Count{Kind: "unknown"}, Coverage: resource.Coverage{Kind: "complete"}, Consistency: "bestEffort"}, nil
 	}
-	result, err := setupGRPCProvider(t, provider).Enumerate(context.Background(), resource.EnumerateRequest{Target: resource.ReadTarget{Route: grpcGetRequest().Route, Provider: "p1", Authority: "authority", Type: "native::Pod", Representation: "native"}})
+	client := setupGRPCProvider(t, provider)
+	catalog, err := client.Catalog(context.Background(), resource.CatalogRequest{Route: grpcGetRequest().Route})
+	require.NoError(t, err)
+	acceptedRevision = catalog.Revision
+	ctx := resource.WithCatalogRevision(context.Background(), catalog.Revision)
+	result, err := client.Enumerate(ctx, resource.EnumerateRequest{Target: resource.ReadTarget{Route: grpcGetRequest().Route, Provider: "p1", Authority: "authority", Type: "native::Pod", Representation: "native"}})
 	require.NoError(t, err)
 	require.Len(t, result.Records, 1)
 	assert.Equal(t, record, result.Records[0])
@@ -62,11 +71,20 @@ func TestL3_02_GetRoundTrip(t *testing.T) {
 	provider := grpcFiniteFixture()
 	record := canonicalTestRecord("p1", "authority", "native::Pod", "pod-1")
 	record.Body.Map["exact"] = resource.Value{Kind: "uint64", Uint: "18446744073709551615"}
-	provider.GetFunc = func(_ context.Context, request resource.GetRequest) (resource.Record, error) {
+	var acceptedRevision string
+	provider.GetFunc = func(ctx context.Context, request resource.GetRequest) (resource.Record, error) {
+		revision, ok := resource.CatalogRevisionFromContext(ctx)
+		assert.True(t, ok)
+		assert.Equal(t, acceptedRevision, revision)
 		assert.Equal(t, grpcGetRequest(), request)
 		return record, nil
 	}
-	result, err := setupGRPCProvider(t, provider).Get(context.Background(), grpcGetRequest())
+	client := setupGRPCProvider(t, provider)
+	catalog, err := client.Catalog(context.Background(), resource.CatalogRequest{Route: grpcGetRequest().Route})
+	require.NoError(t, err)
+	acceptedRevision = catalog.Revision
+	ctx := resource.WithCatalogRevision(context.Background(), catalog.Revision)
+	result, err := client.Get(ctx, grpcGetRequest())
 	require.NoError(t, err)
 	assert.Equal(t, record, result)
 }
@@ -149,7 +167,8 @@ func TestL3_05_CatalogOnlyProviderViaGRPC(t *testing.T) {
 	catalog, err := client.Catalog(context.Background(), resource.CatalogRequest{Route: grpcGetRequest().Route})
 	require.NoError(t, err)
 	assert.Equal(t, "p1", catalog.Provider)
-	_, err = client.Get(context.Background(), grpcGetRequest())
+	ctx := resource.WithCatalogRevision(context.Background(), catalog.Revision)
+	_, err = client.Get(ctx, grpcGetRequest())
 	assert.Equal(t, "UNSUPPORTED", resource.ErrorCode(err))
 }
 
@@ -164,7 +183,11 @@ func TestL3_06_ErrorPropagationViaGRPC(t *testing.T) {
 			provider.GetFunc = func(context.Context, resource.GetRequest) (resource.Record, error) {
 				return resource.Record{}, test.err
 			}
-			_, err := setupGRPCProvider(t, provider).Get(context.Background(), grpcGetRequest())
+			client := setupGRPCProvider(t, provider)
+			catalog, err := client.Catalog(context.Background(), resource.CatalogRequest{Route: grpcGetRequest().Route})
+			require.NoError(t, err)
+			ctx := resource.WithCatalogRevision(context.Background(), catalog.Revision)
+			_, err = client.Get(ctx, grpcGetRequest())
 			require.Error(t, err)
 			assert.Equal(t, test.code, resource.ErrorCode(err))
 			assert.NotContains(t, err.Error(), "secret")
@@ -179,7 +202,11 @@ func TestL3_07_InvalidRequestDoesNotDispatch(t *testing.T) {
 		called = true
 		return resource.Record{}, nil
 	}
-	_, err := setupGRPCProvider(t, provider).Get(context.Background(), resource.GetRequest{})
+	client := setupGRPCProvider(t, provider)
+	catalog, err := client.Catalog(context.Background(), resource.CatalogRequest{Route: grpcGetRequest().Route})
+	require.NoError(t, err)
+	ctx := resource.WithCatalogRevision(context.Background(), catalog.Revision)
+	_, err = client.Get(ctx, resource.GetRequest{})
 	assert.Equal(t, "INVALID_REQUEST", resource.ErrorCode(err))
 	assert.False(t, called)
 }

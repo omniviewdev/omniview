@@ -39,6 +39,69 @@ func TestGetActions_Success(t *testing.T) {
 	assert.Equal(t, "delete", actions[1].ID)
 }
 
+func TestGetActions_PinsMetadataCatalogWithoutGetCapability(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	provider := &mockProvider{
+		GetActionsFunc: func(ctx context.Context, _ resource.AccessRoute, _ string) ([]resource.ActionDescriptor, error) {
+			revision, ok := resource.CatalogRevisionFromContext(ctx)
+			require.True(t, ok)
+			require.Equal(t, "metadata-only", revision)
+			return nil, nil
+		},
+	}
+	registerActionTestPlugin(ctrl, "p1", provider)
+	provider.CatalogFunc = func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+		catalog := canonicalTestCatalog("p1", "pods")
+		catalog.Revision = "metadata-only"
+		catalog.Types[0].Capabilities = nil
+		return catalog, nil
+	}
+	_, err := ctrl.GetActions(testInvocationContext(), "p1", resource.AccessRoute{Connection: "conn-1"}, "pods")
+	require.NoError(t, err)
+}
+
+func TestStreamAction_ProducerRetainsAdmittedCatalogRevision(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	observed := make(chan string, 1)
+	provider := &mockProvider{StreamActionFunc: func(ctx context.Context, _ resource.ActionRequest, events chan<- resource.ActionEvent) error {
+		revision, _ := resource.CatalogRevisionFromContext(ctx)
+		observed <- revision
+		events <- resource.ActionEvent{Type: "ready"}
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	registerActionTestPlugin(ctrl, "p1", provider)
+	request := admittedActionRequest(t, ctrl, "p1", "conn-1", "pods", "restart")
+	catalog, err := provider.CatalogFunc(context.Background(), resource.CatalogRequest{Route: request.Route})
+	require.NoError(t, err)
+	id, err := ctrl.StreamAction(testInvocationContext(), "p1", request)
+	require.NoError(t, err)
+	require.Equal(t, catalog.Revision, <-observed)
+	require.NoError(t, ctrl.CancelStreamAction(testInvocationContext(), id))
+}
+
+func TestGetActions_DoesNotRepairStaleCatalogAdmission(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	provider := &mockProvider{}
+	registerActionTestPlugin(ctrl, "p1", provider)
+	catalogCalls := 0
+	provider.CatalogFunc = func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+		catalogCalls++
+		catalog := canonicalTestCatalog("p1", "pods")
+		catalog.Revision = "accepted"
+		return catalog, nil
+	}
+	provider.GetActionsFunc = func(ctx context.Context, _ resource.AccessRoute, _ string) ([]resource.ActionDescriptor, error) {
+		current := canonicalTestCatalog("p1", "pods")
+		current.Revision = "replacement"
+		return nil, resource.CheckCatalogRevision(ctx, current)
+	}
+	_, err := ctrl.GetActions(testInvocationContext(), "p1", resource.AccessRoute{Connection: "conn-1"}, "pods")
+	require.Error(t, err)
+	require.Equal(t, "RESET_REQUIRED", requireAppError(t, err).Code)
+	require.Equal(t, 1, catalogCalls)
+}
+
 func TestGetActions_ProviderError(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{

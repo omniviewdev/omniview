@@ -28,6 +28,7 @@ func (c *controller) bootstrapRelationships(parent context.Context, pluginID str
 		c.publishRelationshipDeclarations(ctx, pluginID, route, "", generation, nil, resourcegraph.DeclarationBindings{}, err)
 		return
 	}
+	ctx = resourcev2.WithCatalogRevision(ctx, catalog.Revision)
 	admission := captureCatalogAdmission(ctx, generation)
 	types := make(map[string]*resourcev2.ResourceType, len(catalog.Types))
 	observedTypes := make([]string, len(catalog.Types))
@@ -43,6 +44,9 @@ func (c *controller) bootstrapRelationships(parent context.Context, pluginID str
 		if err := c.currentGeneration(ctx, pluginID, generation); err != nil { return }
 		admitted, err := c.admit(ctx, "resource.GetRelationships", invocation.Target{Provider: pluginID, Connection: route.Connection, ResourceType: descriptor.Type})
 		var declarations []resourcev2.RelationshipDescriptor
+		if err == nil {
+			_, err = c.resolveAuthority(admitted, pluginID, route, catalog, admission, descriptor.Type)
+		}
 		if err == nil { declarations, err = relations.GetRelationships(admitted, route, descriptor.Type) }
 		bindings := resourcegraph.DeclarationBindings{SourceEpoch: admission.epoch.Epoch}
 		if err == nil && len(declarations) > 0 {

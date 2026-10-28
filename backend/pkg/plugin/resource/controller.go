@@ -77,6 +77,8 @@ type Controller interface {
 	SetCrashCallback(cb func(pluginID string))
 	Graph() *graph.RelationshipGraph
 	ValidateReference(context.Context, string, resource.AccessRoute, resource.ResourceReference) error
+	SetConnectionChangeHook(func(pluginID, connectionID string) func())
+	AdmitReference(context.Context, string, string, resource.AccessRoute, resource.ResourceReference) (context.Context, error)
 }
 
 // pluginState holds per-plugin runtime state.
@@ -89,6 +91,8 @@ type pluginState struct {
 	features      resource.FeatureSet
 	featuresReady bool
 	sourceEpoch   map[string]uint64
+	sourceChanging map[string]bool
+	catalogBindings map[string]catalogBindingState
 	crashOnce     sync.Once
 }
 
@@ -110,6 +114,7 @@ type controller struct {
 	connections   map[string][]types.Connection
 	profilesMu    sync.Mutex
 	profileNative map[string][]types.Connection
+	connectionChangeHook func(pluginID, connectionID string) func()
 
 	autoConnectMu       sync.Mutex
 	autoConnectAttempts map[string]string
@@ -380,7 +385,7 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 		if !ok {
 			return resource.NewError("INVALID_REQUEST", "Provider advertised an unavailable connection browser.")
 		}
-		go c.listenForConnectionEvents(watchCtx, pluginID, browser)
+		go c.listenForConnectionEvents(watchCtx, pluginID, browser, state)
 	}
 
 	return watchCtx.Err()
@@ -530,6 +535,7 @@ func (c *controller) StartConnection(ctx context.Context, pluginID, connectionID
 	defer finishResource(ctx, &retErr)
 	c.profilesMu.Lock()
 	defer c.profilesMu.Unlock()
+	if release := c.beginMetricConnectionChange(pluginID, connectionID); release != nil { defer release() }
 	ctx, span := tracer.Start(ctx, "resource.StartConnection")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
@@ -583,6 +589,9 @@ func (c *controller) StopConnection(ctx context.Context, pluginID, connectionID 
 		return _result, admissionErr
 	}
 	defer finishResource(ctx, &retErr)
+	c.profilesMu.Lock()
+	defer c.profilesMu.Unlock()
+	if release := c.beginMetricConnectionChange(pluginID, connectionID); release != nil { defer release() }
 	ctx, span := tracer.Start(ctx, "resource.StopConnection")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
@@ -661,31 +670,11 @@ func (c *controller) LoadConnections(ctx context.Context, pluginID string) (_res
 	ctx, span := tracer.Start(ctx, "resource.LoadConnections")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID))
-	provider, err := c.getLifecycle(ctx, pluginID)
+	conns, err := c.loadConfiguredConnections(ctx, pluginID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
-
-	conns, err := provider.LoadConnections(ctx)
-	if err != nil {
-		c.connsMu.Lock()
-		c.connections[pluginID] = nil
-		c.connsMu.Unlock()
-		telemetryutil.RecordError(span, err)
-		return nil, err
-	}
-	conns, err = c.replayConnectionProfiles(ctx, pluginID, conns)
-	if err != nil {
-		c.connsMu.Lock()
-		c.connections[pluginID] = nil
-		c.connsMu.Unlock()
-		return nil, err
-	}
-
-	c.connsMu.Lock()
-	c.connections[pluginID] = conns
-	c.connsMu.Unlock()
 
 	return conns, nil
 
@@ -913,7 +902,7 @@ func (c *controller) listenForWatchEvents(
 // NOTE: No span wraps the entire stream — it runs for the plugin lifetime.
 // Instead, each batch of received connections gets a short-lived span so
 // that connection discovery is observable without bloating Tempo.
-func (c *controller) listenForConnectionEvents(ctx context.Context, pluginID string, provider resource.ConnectionBrowser) {
+func (c *controller) listenForConnectionEvents(ctx context.Context, pluginID string, provider resource.ConnectionBrowser, generation *pluginState) {
 	c.logger.Infow(ctx, "connection event listener started", "pluginID", pluginID)
 	connStream := make(chan []types.Connection, streamChannelBuffer)
 
@@ -932,24 +921,24 @@ func (c *controller) listenForConnectionEvents(ctx context.Context, pluginID str
 				c.triggerCrashRecovery(pluginID, err, "connection")
 			}
 			return
-		case conns, ok := <-connStream:
+		case _, ok := <-connStream:
 			if !ok {
 				return
 			}
 			_, span := tracer.Start(ctx, "resource.ConnectionSync",
 				trace.WithAttributes(
 					attribute.String("plugin_id", pluginID),
-					attribute.Int("connection_count", len(conns)),
 				))
-			// Watch snapshots already contain the source's applied overlay.
-			// Reapplying it here can publish another snapshot recursively.
-			c.connsMu.Lock()
-			c.connections[pluginID] = conns
-			c.connsMu.Unlock()
+			// Queued frames are notifications, not current configuration proof.
+			// Fetch current source facts under the same profile transaction fence.
+			conns, err := c.refreshWatchedConnections(ctx, pluginID, provider, generation)
+			if err != nil {
+				c.logger.Errorw(ctx, "connection snapshot refresh failed", "pluginID", pluginID, "error", err)
+				span.End()
+				continue
+			}
+			span.SetAttributes(attribute.Int("connection_count", len(conns)))
 
-			eventKey := pluginID + "/connection/sync"
-			c.emitter.Emit(eventKey, conns)
-			c.scheduleAutoConnect(pluginID, conns, types.ConnectionAutoConnectTriggerConnectionDiscovered)
 			span.End()
 		}
 	}

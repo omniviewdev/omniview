@@ -12,6 +12,11 @@ import (
 func (c *controller) invalidateProfileRoutes(pluginID string, connections []string) error {
 	c.pluginsMu.Lock()
 	defer c.pluginsMu.Unlock()
+	return c.invalidateProfileRoutesLocked(pluginID, connections)
+}
+
+// Caller holds pluginsMu across route retirement and its configuration fence.
+func (c *controller) invalidateProfileRoutesLocked(pluginID string, connections []string) error {
 	generation := c.plugins[pluginID]
 	if generation == nil || generation.provider == nil {
 		return resourcev2.NewError("UNAVAILABLE", "Provider generation retired during profile apply.")
@@ -33,6 +38,10 @@ func (c *controller) invalidateProfileRoutes(pluginID string, connections []stri
 	if len(generation.sourceEpoch)+newRoutes > maxAuthorityBindings {
 		return resourcev2.NewError("RESOURCE_LIMIT", "Source configuration generation limit reached.")
 	}
+	// Retire captured work even if a durable authority removal subsequently
+	// fails. A partial retirement must never let an old in-flight page publish.
+	if generation.sourceEpoch == nil { generation.sourceEpoch = make(map[string]uint64) }
+	for connection := range seen { generation.sourceEpoch[connection]++ }
 	c.finite.mu.Lock()
 	resolver := c.finite.authorities[pluginID]
 	if resolver != nil {
@@ -44,11 +53,7 @@ func (c *controller) invalidateProfileRoutes(pluginID string, connections []stri
 		}
 	}
 	c.finite.mu.Unlock()
-	if generation.sourceEpoch == nil {
-		generation.sourceEpoch = make(map[string]uint64)
-	}
 	for connection := range seen {
-		generation.sourceEpoch[connection]++
 		for _, entry := range c.registryStore.DeleteByConnection(pluginID, connection) {
 			c.dispatcher.Enqueue(indexer.Event{Type: indexer.EventDelete, Entry: entry})
 		}
@@ -72,6 +77,10 @@ func (c *controller) invalidateProfileRoutes(pluginID string, connections []stri
 // Caller holds pluginsMu.RLock across its final mutation/delivery fence.
 // This read never issues authority, performs provider IO, or normalizes identity.
 func (c *controller) referenceCurrentLocked(pluginID string, route resourcev2.AccessRoute, reference resourcev2.ResourceReference) bool {
+	generation := c.plugins[pluginID]
+	if generation == nil || generation.sourceChanging[route.Connection] {
+		return false
+	}
 	c.finite.mu.Lock()
 	defer c.finite.mu.Unlock()
 	resolver := c.finite.authorities[pluginID]

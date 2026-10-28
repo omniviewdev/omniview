@@ -81,10 +81,17 @@ func TestResolveRelationships_Success(t *testing.T) {
 		GetRelationshipsFunc: func(context.Context, resource.AccessRoute, string) ([]resource.RelationshipDescriptor, error) {
 			return []resource.RelationshipDescriptor{{Type: resource.RelOwns, TargetType: "k8s:apps/replicasets", Label: "owned by"}}, nil
 		},
-		ResolveRelationshipsFunc: func(_ context.Context, resolution resource.RelationshipResolutionRequest) ([]resource.ResolvedRelationship, error) {
+		ResolveRelationshipsFunc: func(ctx context.Context, resolution resource.RelationshipResolutionRequest) ([]resource.ResolvedRelationship, error) {
 			request := resolution.Source
 			require.Len(t, resolution.Targets, 1)
 			target := resolution.Targets[0]
+			sourceRevision, present := resource.CatalogRevisionFromContext(ctx)
+			require.True(t, present)
+			targetRevision, qualified := resource.QualifiedCatalogRevisionFromContext(ctx, target.Provider, target.Route)
+			require.True(t, qualified, "target binding must carry its explicit admitted route observation")
+			require.Equal(t, sourceRevision, targetRevision, "same-route targets share the one admitted complete catalog")
+			_, err := resource.MarshalCatalogRevisionRoutes(ctx)
+			require.NoError(t, err, "same-route targets must not append duplicate qualified observations")
 			assert.Equal(t, "k8s:apps/replicasets", target.Type)
 			assert.NotEqual(t, request.Reference.Address.Authority, target.Authority)
 			assert.Equal(t, "conn-1", request.Route.Connection)
