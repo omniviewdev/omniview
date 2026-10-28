@@ -1,6 +1,6 @@
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { QueryAll } from '../../metric';
-import { QueryRequest, type QueryResponse } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
+import type { QueryResponse } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
 import type { MetricProviderSummary } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/models';
 import { useMetricProvidersForResource } from './useMetricProviders';
 import type { Value, ResourceReference, AccessRoute } from '../../resource/v2/domain';
@@ -104,7 +104,7 @@ export const useResourceMetrics = (
       timeRange?.end?.getTime(),
     ],
     queryFn: async () => {
-      const raw = await QueryAll(connectionID, QueryRequest.createFrom({
+      const raw = await QueryAll(connectionID, {
         resource_key: resourceKey,
         resource_id: resourceID,
         resource_namespace: resourceNamespace,
@@ -117,7 +117,7 @@ export const useResourceMetrics = (
         start_time: (timeRange?.start ?? new Date(0)).toISOString(),
         end_time: (timeRange?.end ?? new Date(0)).toISOString(),
         step: stepNs,
-      }));
+      });
       const filtered: Record<string, QueryResponse> = {};
       for (const [k, v] of Object.entries(raw)) {
         if (v != null) filtered[k] = v;

@@ -1,8 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
 import { useSnackbar } from '../snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
-import { CreateSession, CloseSession } from '../../logs';
-import { CreateSessionOptions, LogSessionOptions } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/logs/models';
+import { CreateSession, CloseSession, type LogSessionRequest } from '../../logs';
 import { useBottomDrawer } from '../drawer';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 import type { Value, ResourceReference, AccessRoute } from '../../resource/v2/domain';
@@ -46,13 +45,13 @@ export const useLogs = ({ pluginID: explicitPluginID }: UseLogSessionOptions) =>
       tailLines = 1000,
       params,
     }: CreateLogSessionArgs) => {
-      const opts = CreateSessionOptions.createFrom({
+      const opts: LogSessionRequest = {
         resource_key: resourceKey,
         resource_id: resourceID,
         resource_data: resourceData,
         reference,
         route,
-        options: LogSessionOptions.createFrom({
+        options: {
           target: target ?? '',
           follow,
           include_previous: false,
@@ -62,8 +61,8 @@ export const useLogs = ({ pluginID: explicitPluginID }: UseLogSessionOptions) =>
           limit_bytes: 0,
           include_source_events: true,
           params: params ?? {},
-        }),
-      });
+        },
+      };
 
       const session = await CreateSession(pluginID, connectionID, opts);
       if (!session) throw new Error('Failed to create log session: null response');

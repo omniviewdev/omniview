@@ -1,11 +1,12 @@
 import type { PortForwardResourceOpts } from './types';
 import { ALL_SESSIONS_KEY } from './usePortForwardSessions';
-import { FindPortForwardSessionRequest, PortForwardSessionOptions } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/networker/models';
+import { FindPortForwardSessionRequest } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/networker/models';
 import { Browser } from '@wailsio/runtime';
 import {
   ClosePortForwardSession,
   FindPortForwardSessions,
   StartResourcePortForwardingSession,
+  type PortForwardSessionRequest,
 } from '../../networker';
 import { useSnackbar } from '../snackbar';
 import { createErrorHandler, parseAppError } from '../../errors/parseAppError';
@@ -40,8 +41,8 @@ export function useResourcePortForwarder({ pluginID: explicitPluginID, connectio
   });
 
   const forwardMutation = useMutation({
-    mutationFn: async ({ opts }: { opts: Partial<PortForwardResourceOpts> }) => {
-      const sessionOpts = PortForwardSessionOptions.createFrom({
+    mutationFn: async ({ opts }: { opts: PortForwardResourceOpts }) => {
+      const sessionOpts: PortForwardSessionRequest = {
         local_port: opts.localPort || 0,
         remote_port: opts.remotePort,
         protocol: opts.protocol || 'TCP',
@@ -57,7 +58,7 @@ export function useResourcePortForwarder({ pluginID: explicitPluginID, connectio
         },
         labels: opts.labels ?? {},
         params: opts.parameters ?? {},
-      });
+      };
 
       const result = await StartResourcePortForwardingSession(pluginID, connectionID, sessionOpts);
       if (!result) throw new Error('Failed to start port forwarding: null response');

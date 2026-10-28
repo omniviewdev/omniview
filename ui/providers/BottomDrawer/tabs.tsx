@@ -23,7 +23,7 @@ import {
 import Icon from '@/components/icons/Icon';
 import { LuChevronDown, LuChevronUp, LuMaximize, LuMinimize, LuPlus, LuX } from 'react-icons/lu';
 import { useSettings } from '@omniviewdev/runtime';
-import { SessionOptions, CreateSessionOptions, LogSessionOptions } from '@omniviewdev/runtime/models';
+import { SessionOptions, type LogSessionRequest } from '@omniviewdev/runtime/models';
 import { ExecClient, LogsClient } from '@omniviewdev/runtime/api';
 
 import { bottomDrawerChannel, restoredSessionIds } from './events';
@@ -183,13 +183,13 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
     const unsubscribeCreateLogSession = bottomDrawerChannel.on('onCreateLogSession', ({
       plugin, connection, resourceKey, resourceID, resourceData, reference, route, target, follow, tailLines, icon, label, params,
     }) => {
-      const opts = CreateSessionOptions.createFrom({
+      const opts: LogSessionRequest = {
         resource_key: resourceKey,
         resource_id: resourceID,
         resource_data: resourceData,
         reference,
         route,
-        options: LogSessionOptions.createFrom({
+        options: {
           target: target ?? '',
           follow: follow ?? true,
           include_previous: false,
@@ -199,8 +199,8 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
           limit_bytes: 0,
           include_source_events: true,
           params: params ?? {},
-        }),
-      });
+        },
+      };
       LogsClient.CreateSession(plugin, connection, opts)
         .then((session: any) => {
           createTab({

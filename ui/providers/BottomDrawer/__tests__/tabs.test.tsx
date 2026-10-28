@@ -50,12 +50,6 @@ vi.mock('@omniviewdev/runtime/models', () => ({
   SessionOptions: {
     createFrom: (opts: any) => opts,
   },
-  CreateSessionOptions: {
-    createFrom: (opts: any) => opts,
-  },
-  LogSessionOptions: {
-    createFrom: (opts: any) => opts,
-  },
 }));
 
 vi.mock('@omniviewdev/runtime/runtime', () => ({

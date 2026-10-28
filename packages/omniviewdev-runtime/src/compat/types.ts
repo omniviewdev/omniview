@@ -5,7 +5,16 @@
 import { ConnectionStatusCode as Generated } from '../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 import { withLegacyNames } from './legacyEnum';
 
-export * from '../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
+export {
+  Capability as PluginCapability,
+  Connection,
+  ConnectionAutoConnect,
+  ConnectionAutoConnectRetry,
+  ConnectionAutoConnectTrigger,
+  ConnectionLifecycle,
+  ConnectionStatus,
+  PluginInfo,
+} from '../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 
 export const ConnectionStatusCode = withLegacyNames(Generated, 'ConnectionStatus');
 export type ConnectionStatusCode = Generated;

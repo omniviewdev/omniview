@@ -45,7 +45,7 @@ export interface SchemaDocument { reference: SchemaDocumentReference; dialect: s
 export interface Representation { id: string; revision: string; schema: SchemaBinding }
 export interface Dimension { name: string; allowEmpty: boolean }
 export type Operation = 'enumerate' | 'get' | 'nativeQuery' | 'update' | 'mutation' | 'action';
-export interface Capability { operation: Operation; scope: QueryScope; guarantee?: string }
+export interface ResourceCapability { operation: Operation; scope: QueryScope; guarantee?: string }
 export interface ResourceType {
   type: string;
   displayName: string;
@@ -53,7 +53,7 @@ export interface ResourceType {
   queryDimensions: readonly Dimension[];
   representations: readonly Representation[];
   defaultRepresentation?: string;
-  capabilities: readonly Capability[];
+  capabilities: readonly ResourceCapability[];
   nativeAuthorityHint?: NativeAuthorityHint;
 }
 export interface CatalogRequest { route: AccessRoute }
