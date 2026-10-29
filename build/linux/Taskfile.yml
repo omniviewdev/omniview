@@ -36,7 +36,7 @@ tasks:
         HOST_MODFILE="$({{.HOST_BOOTSTRAP}})"
         GOWORK=off GOFLAGS= go build {{.BUILD_FLAGS}} -modfile="$HOST_MODFILE" -o "{{.OUTPUT}}"
     vars:
-      COMPOSED_BUILD_FLAGS: '{{if eq .RELEASE "true"}}-tags {{if eq .SERVER "true"}}production,server{{else}}production{{end}} {{else}}{{if .BUILD_TAGS}}-tags {{.BUILD_TAGS | shellQuote}} {{end}}{{end}}{{if and (eq .DEV "true") (ne .RELEASE "true")}}-buildvcs=false -gcflags=all="-l"{{else}}-trimpath -buildvcs=false -ldflags="-w -s"{{end}}'
+      COMPOSED_BUILD_FLAGS: '{{if eq .RELEASE "true"}}-tags {{if eq .SERVER "true"}}production,server{{else}}production{{end}} {{else}}{{if .BUILD_TAGS}}-tags {{.BUILD_TAGS | shellQuote}} {{end}}{{end}}{{if and (eq .DEV "true") (ne .RELEASE "true")}}-buildvcs=false -gcflags=all="-l"{{else}}-trimpath -buildvcs=false -ldflags="-w -s{{if eq .RELEASE "true"}} -X github.com/omniviewdev/omniview/internal/instance.buildChannel=stable -X github.com/omniviewdev/omniview/internal/version.Development=false{{end}}"{{end}}'
       BUILD_FLAGS: '{{if eq .RELEASE "true"}}{{.COMPOSED_BUILD_FLAGS}}{{else}}{{.BUILD_FLAGS | default .COMPOSED_BUILD_FLAGS}}{{end}}'
       DEFAULT_OUTPUT: '{{.BIN_DIR}}/{{.APP_NAME}}'
       OUTPUT: '{{ .OUTPUT | default .DEFAULT_OUTPUT }}'
@@ -51,7 +51,7 @@ tasks:
       RELEASE: "true"
       DEV: "false"
       TARGET_OS: linux
-      BUILD_FLAGS: '-tags production -trimpath -buildvcs=false -ldflags="-w -s"'
+      BUILD_FLAGS: '-tags production -trimpath -buildvcs=false -ldflags="-w -s -X github.com/omniviewdev/omniview/internal/instance.buildChannel=stable -X github.com/omniviewdev/omniview/internal/version.Development=false"'
     deps:
       - task: build
         vars:

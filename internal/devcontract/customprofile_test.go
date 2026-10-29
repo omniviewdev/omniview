@@ -32,6 +32,60 @@ func customFixture(t *testing.T) (ResolvedWorkspace, string, string) {
 	return w, home, filepath.Join(base, "custom", "state")
 }
 
+func TestProductionProfileIsolationWithMissingCustomOwner(t *testing.T) {
+	w, home, state := customFixture(t)
+	if _, err := SetCustomProfile(context.Background(), w, state, home); err != nil {
+		t.Fatal(err)
+	}
+	container := filepath.Dir(state)
+	owner := filepath.Join(container, ".omniview-profile.json")
+	if err := os.Remove(owner); err != nil {
+		t.Fatal(err)
+	}
+	registry := filepath.Join(home, ".omniview-dev", "custom-profiles.json")
+	before, err := os.ReadFile(registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name         string
+		root         string
+		wantConflict bool
+	}{
+		{"unrelated default", filepath.Join(home, ".omniview"), false},
+		{"unrelated sibling", container + "-production", false},
+		{"state", state, true},
+		{"container", container, true},
+		{"descendant", filepath.Join(state, "nested"), true},
+		{"container sibling state", filepath.Join(container, "runtime"), true},
+		{"ancestor", filepath.Dir(container), true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateProductionProfileIsolation(tc.root, home)
+			if tc.wantConflict {
+				if ExitCode(err) != 4 {
+					t.Fatalf("missing owner erased durable overlap protection: %v", err)
+				}
+			} else if err != nil {
+				t.Fatalf("unrelated missing owner blocked production: %v", err)
+			}
+		})
+	}
+	if err := ValidateCustomProfileClaim(state, w.Manifest.WorkspaceID, home); ExitCode(err) != 4 {
+		t.Fatalf("development accepted missing owner: %v", err)
+	}
+	if _, err := os.Lstat(owner); !os.IsNotExist(err) {
+		t.Fatalf("validation recreated missing owner: %v", err)
+	}
+	if _, err := os.Lstat(state); !os.IsNotExist(err) {
+		t.Fatalf("validation created state: %v", err)
+	}
+	after, err := os.ReadFile(registry)
+	if err != nil || string(after) != string(before) {
+		t.Fatalf("validation changed durable registry: %v", err)
+	}
+}
+
 func TestCustomProfileBindingPreservesAbsentStateAndResolves(t *testing.T) {
 	w, home, state := customFixture(t)
 	selected, err := SetCustomProfile(context.Background(), w, state, home)

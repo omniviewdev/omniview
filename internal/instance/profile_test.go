@@ -524,9 +524,65 @@ func TestProductionAllowsDisjointCustomProfileClaims(t *testing.T) {
 	}
 }
 
+func TestProductionStartsWithUnrelatedMissingCustomProfileOwner(t *testing.T) {
+	for _, channel := range []string{"stable", "nightly"} {
+		t.Run(channel, func(t *testing.T) {
+			home, bound, state := productionCustomProfileFixture(t)
+			container := filepath.Dir(state)
+			owner := filepath.Join(container, ".omniview-profile.json")
+			if err := os.Remove(owner); err != nil {
+				t.Fatal(err)
+			}
+			preserveProfileEvidence(t,
+				filepath.Join(home, ".omniview-dev", "custom-profiles.json"),
+				filepath.Join(bound.Root, ".local", "profile.json"),
+				filepath.Join(state, "sentinel"),
+			)
+			defaultName := ".omniview"
+			if channel == "nightly" {
+				defaultName = ".omniview-nightly"
+			}
+			for _, tc := range []struct{ name, root, want string }{
+				{"default", "", filepath.Join(home, defaultName)},
+				{"custom", container + "-production", container + "-production"},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					profile, err := Resolve(Options{Home: home, CWD: t.TempDir(), StateRoot: tc.root, Channel: channel})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if profile.Descriptor.Kind != "production" || profile.Descriptor.Channel != channel || profile.Descriptor.StateRoot != tc.want {
+						t.Fatalf("wrong production selection with stale development claim: %+v", profile.Descriptor)
+					}
+					service, err := appstate.New(appstate.WithRoot(profile.Descriptor.StateRoot))
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Cleanup(func() {
+						if err := service.Close(); err != nil {
+							t.Error(err)
+						}
+					})
+					if err := profile.PrepareRuntime(); err != nil {
+						t.Fatal(err)
+					}
+				})
+			}
+			for _, root := range []string{state, container, filepath.Join(state, "nested"), filepath.Dir(container)} {
+				if _, err := Resolve(Options{Home: home, CWD: t.TempDir(), StateRoot: root, Channel: channel}); err == nil {
+					t.Errorf("production accepted durable development overlap without owner marker: %s", root)
+				}
+			}
+			if _, err := os.Lstat(owner); !os.IsNotExist(err) {
+				t.Fatalf("production recreated missing development owner marker: %v", err)
+			}
+		})
+	}
+}
+
 func TestProductionRejectsInvalidCustomProfileEvidence(t *testing.T) {
 	for _, channel := range []string{"stable", "nightly"} {
-		for _, kind := range []string{"registry malformed", "registry schema", "registry symlink", "registry dangling", "owner malformed", "owner foreign", "owner symlink", "owner dangling", "owner missing", "registry missing with owner", "claim missing with owner"} {
+		for _, kind := range []string{"registry malformed", "registry schema", "registry symlink", "registry dangling", "owner malformed", "owner foreign", "owner symlink", "owner dangling", "registry missing with owner", "claim missing with owner"} {
 			t.Run(channel+"/"+kind, func(t *testing.T) {
 				home, bound, state := productionCustomProfileFixture(t)
 				registry := filepath.Join(home, ".omniview-dev", "custom-profiles.json")
@@ -572,7 +628,7 @@ func TestProductionRejectsInvalidCustomProfileEvidence(t *testing.T) {
 							t.Errorf("resolution changed redirected ownership evidence: %s %v", actual, err)
 						}
 					})
-				case "owner missing", "registry missing with owner":
+				case "registry missing with owner":
 					if err := os.Remove(path); err != nil {
 						t.Fatal(err)
 					}
