@@ -6,6 +6,99 @@ import (
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
+// catalogAdmission retains the route epoch captured before acquisition. Looking
+// up the current epoch after fetching a catalog would bless stale source data.
+type catalogAdmission struct {
+	generation *pluginState
+	epoch      sourceEpochSnapshot
+}
+
+func captureCatalogAdmission(ctx context.Context, generation *pluginState) catalogAdmission {
+	epoch, ok := ctx.Value(sourceEpochKey{}).(sourceEpochSnapshot)
+	if !ok {
+		return catalogAdmission{}
+	}
+	return catalogAdmission{generation: generation, epoch: epoch}
+}
+
+func (c *controller) routeCatalog(ctx context.Context, pluginID string, route resourcev2.AccessRoute) (catalogAdmission, resourcev2.Catalog, error) {
+	if route.Connection == "" {
+		return catalogAdmission{}, resourcev2.Catalog{}, resourcev2.NewError("INVALID_REQUEST", "An explicit access route is required.")
+	}
+	provider, generation, ctx, cleanup, err := c.operationGeneration(ctx, pluginID, route)
+	if err != nil {
+		return catalogAdmission{}, resourcev2.Catalog{}, err
+	}
+	defer cleanup()
+	catalog, err := provider.Catalog(ctx, resourcev2.CatalogRequest{Route: route})
+	if err != nil {
+		return catalogAdmission{}, resourcev2.Catalog{}, err
+	}
+	if err = resourcev2.ValidateCatalog(catalog); err != nil {
+		return catalogAdmission{}, resourcev2.Catalog{}, err
+	}
+	if err = c.currentGeneration(ctx, pluginID, generation); err != nil {
+		return catalogAdmission{}, resourcev2.Catalog{}, err
+	}
+	return captureCatalogAdmission(ctx, generation), catalog, nil
+}
+
+func (c *controller) resolveAuthority(ctx context.Context, pluginID string, route resourcev2.AccessRoute, catalog resourcev2.Catalog, admission catalogAdmission, resourceType string) (AuthorityResolution, error) {
+	var descriptor *resourcev2.ResourceType
+	for i := range catalog.Types {
+		if catalog.Types[i].Type == resourceType {
+			descriptor = &catalog.Types[i]
+			break
+		}
+	}
+	if descriptor == nil {
+		return AuthorityResolution{}, resourcev2.NewError("NOT_FOUND", "Resource type is not in the route catalog.")
+	}
+	if err := ctx.Err(); err != nil {
+		return AuthorityResolution{}, err
+	}
+	if err := c.observeCatalogBinding(ctx, pluginID, route, catalog, admission); err != nil {
+		return AuthorityResolution{}, err
+	}
+	c.pluginsMu.RLock()
+	defer c.pluginsMu.RUnlock()
+	generation := admission.generation
+	if generation == nil || c.plugins[pluginID] != generation || generation.provider == nil || generation.ctx.Err() != nil {
+		return AuthorityResolution{}, resourcev2.NewError("RESET_REQUIRED", "Provider generation retired.")
+	}
+	// Keep this check and ObserveCatalog under the same pluginsMu read fence
+	// used by invalidateProfileRoutes' write-locked epoch/authority reset.
+	if admission.epoch.Connection != route.Connection || generation.sourceEpoch[route.Connection] != admission.epoch.Epoch || generation.sourceChanging[route.Connection] {
+		return AuthorityResolution{}, resourcev2.NewError("RESET_REQUIRED", "Connection configuration changed during catalog acquisition.")
+	}
+	c.finite.mu.Lock()
+	defer c.finite.mu.Unlock()
+	if c.finite.authorities == nil {
+		c.finite.authorities = make(map[string]*AuthorityResolver)
+	}
+	resolver := c.finite.authorities[pluginID]
+	if resolver == nil {
+		root, err := c.pluginStoreFn(pluginID)
+		if err != nil {
+			return AuthorityResolution{}, err
+		}
+		resolver, err = NewAuthorityResolver(root)
+		if err != nil {
+			return AuthorityResolution{}, err
+		}
+		c.finite.authorities[pluginID] = resolver
+	}
+	resolutions, err := resolver.ObserveCatalog(pluginID, route.Connection, catalog)
+	if err != nil {
+		return AuthorityResolution{}, err
+	}
+	resolution, ok := resolutions[resourceType]
+	if !ok {
+		return AuthorityResolution{}, resourcev2.NewError("NOT_FOUND", "Resource type is not in the observed catalog.")
+	}
+	return resolution, nil
+}
+
 // catalogBindingState tracks native source generations, not resource identity.
 // Retired epochs remain proof against delayed observations for this generation.
 // All access is protected by pluginsMu.
