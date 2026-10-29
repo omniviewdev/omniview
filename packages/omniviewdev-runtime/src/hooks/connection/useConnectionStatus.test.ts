@@ -43,6 +43,57 @@ beforeEach(() => {
 });
 
 describe('connection readiness', () => {
+  it('preserves terminal watch events received while a refresh snapshot is pending', async () => {
+    const syncing = snapshot('CONNECTED');
+    syncing.resources.pods = WatchState.WatchStateSyncing;
+    native.states.mockResolvedValueOnce({ cloud: [syncing] });
+    const hook = renderHook(() => useConnectionStatus());
+    await waitFor(() => expect(hook.result.current.entries[0]?.isSyncing).toBe(true));
+    const pending = Promise.withResolvers<Record<string, HostConnectionState[]>>();
+    native.states.mockReturnValueOnce(pending.promise);
+    let refresh: Promise<void>;
+    act(() => { refresh = hook.result.current.refresh(); });
+    act(() => {
+      native.listeners.get('watch/STATE')?.({ data: {
+        pluginID: 'cloud', route: { connection: 'CONNECTED' }, type: 'pods',
+        state: WatchState.WatchStateSynced, guarantee: 'bestEffort',
+      } });
+    });
+    expect(hook.result.current.entries[0].isSyncing).toBe(false);
+    await act(async () => {
+      pending.resolve({ cloud: [syncing] });
+      await refresh!;
+    });
+    expect(hook.result.current.entries[0].isSyncing).toBe(false);
+    expect(hook.result.current.entries[0].hasErrors).toBe(false);
+    expect(hook.result.current.entries[0].readiness).toBe('CONNECTED');
+    hook.unmount();
+  });
+
+  it('does not restore watch events discarded by a disconnect during refresh', async () => {
+    native.states.mockResolvedValueOnce({ cloud: [snapshot('CONNECTED')] });
+    const hook = renderHook(() => useConnectionStatus());
+    await waitFor(() => expect(hook.result.current.connectedCount).toBe(1));
+    const pending = Promise.withResolvers<Record<string, HostConnectionState[]>>();
+    native.states.mockReturnValueOnce(pending.promise);
+    let refresh: Promise<void>;
+    act(() => { refresh = hook.result.current.refresh(); });
+    act(() => {
+      native.listeners.get('watch/STATE')?.({ data: {
+        pluginID: 'cloud', route: { connection: 'CONNECTED' }, type: 'pods',
+        state: WatchState.WatchStateSyncing, guarantee: 'bestEffort',
+      } });
+      emit('DISCONNECTED', 'CONNECTED');
+    });
+    await act(async () => {
+      pending.resolve({ cloud: [snapshot('CONNECTED')] });
+      await refresh!;
+    });
+    expect(hook.result.current.entries[0].readiness).toBe('DISCONNECTED');
+    expect(hook.result.current.entries[0].sync).toBeUndefined();
+    hook.unmount();
+  });
+
   it('exposes bootstrap denial without retry and recovers only after explicit refresh', async () => {
     const denied = { type: 'omniview:resource/forbidden', title: 'Access denied', detail: 'Access denied.',
       status: 403, code: 'FORBIDDEN', recovery: 'none' };

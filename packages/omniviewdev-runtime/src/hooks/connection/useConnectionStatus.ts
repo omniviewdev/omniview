@@ -70,6 +70,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   const [readiness, setReadiness] = useState<Map<string, Pick<HostConnectionState, 'readiness' | 'readinessError'>>>(new Map());
   const readinessRef = useRef(readiness);
   const statusEventsRef = useRef(new Map<string, Pick<HostConnectionState, 'readiness' | 'readinessError'>>());
+  const watchEventsRef = useRef<Map<string, ResourceTracker>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<AppError>();
   const requestRef = useRef(0);
@@ -113,10 +114,11 @@ export function useConnectionStatus(): ConnectionStatusSummary {
     };
   }, []);
 
-  // Each refresh accepts only lifecycle events newer than its own snapshot request.
+  // Each refresh accepts only lifecycle and watch events newer than its snapshot request.
   const refresh = useCallback(async () => {
     const request = ++requestRef.current;
     statusEventsRef.current.clear();
+    watchEventsRef.current.clear();
     setIsLoading(true);
     setError(undefined);
     try {
@@ -149,6 +151,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
                 tracker.states[resourceKey] = numericState as WatchState;
               }
             }
+            Object.assign(tracker.states, watchEventsRef.current.get(key)?.states);
             trackersRef.current.set(key, tracker);
             newSyncs.set(key, computeActiveSync(tracker));
           }
@@ -196,6 +199,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
           return next;
         });
         trackersRef.current.delete(key);
+        watchEventsRef.current.delete(key);
       }
 
       // Re-fetch connections to get latest metadata
@@ -223,6 +227,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
 
 
     const tracker = updateTracker(trackersRef.current, event.pluginID, event);
+    updateTracker(watchEventsRef.current, event.pluginID, event);
     const activeSync = computeActiveSync(tracker);
 
     setSyncs((prev) => {
