@@ -223,7 +223,8 @@ func (m *Manager) ServeSupervisor(ctx context.Context, name string, output io.Wr
 		return err
 	}
 	defer log.Close()
-	output = log
+	// Parallel graph producers, the bindings/host builds and children share it.
+	output = &lockedWriter{writer: log}
 	defer func() {
 		if resultErr != nil {
 			_, _ = fmt.Fprintln(log, "supervisor failed:", resultErr)

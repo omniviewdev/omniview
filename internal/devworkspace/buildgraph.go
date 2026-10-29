@@ -90,6 +90,7 @@ type BuildGraph struct {
 	toolInputs  func(context.Context, BuildNode) (string, error)
 	mu          sync.Mutex
 	eventMu     sync.Mutex
+	attestMu    sync.Mutex // serializes recordArtifact
 	toolchainMu sync.Mutex
 	toolchains  map[string]pnpmToolchain
 
@@ -156,6 +157,9 @@ func (m *Manager) NewBuildGraph(ctx context.Context, name string, opts BuildOpti
 
 var reviewedSDKRevision = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
 
+// compileBuildGraph validates build options against the linked plan and plans
+// the selected nodes. Producer output is wrapped once so parallel nodes never
+// write it concurrently.
 func compileBuildGraph(w Workspace, p linkPlan, opts BuildOptions) (*BuildGraph, error) {
 	if opts.Generation == "" {
 		return nil, fmt.Errorf("the current owned build generation is required")
@@ -388,6 +392,8 @@ func (g *BuildGraph) verifyUnchangedSDK(ctx context.Context, consumer string, be
 	return nil
 }
 
+// buildNode runs one node's producer and publishes its owned outputs. Go
+// nodes bind their outputs to an SDK identity verified before and after.
 func (g *BuildGraph) buildNode(ctx context.Context, n BuildNode) error {
 	switch n.Kind {
 	case "bindings":
@@ -432,7 +438,7 @@ func (g *BuildGraph) buildNode(ctx context.Context, n BuildNode) error {
 			return fmt.Errorf("built plugin does not include the selected SDK dependency")
 		}
 		// Trusted local rebuild binds binary bytes to the exact dirty source snapshot.
-		return instance.RecordBuiltArtifactSource(g.workspace.ResolvedWorkspace, n.PluginID, binary, before.ReviewedRevision, before.SourceDigest)
+		return g.recordArtifact(n.PluginID, binary, before)
 	case "host-backend":
 		before, err := g.verifySDK(ctx, n.Directory)
 		if err != nil {
@@ -445,6 +451,15 @@ func (g *BuildGraph) buildNode(ctx context.Context, n BuildNode) error {
 	default:
 		return fmt.Errorf("unknown build node kind %q", n.Kind)
 	}
+}
+
+// recordArtifact attests a plugin binary to its verified SDK source. The
+// profile lock it takes fails fast on contention, so parallel plugin nodes in
+// this graph take turns instead of failing each other with profile_busy.
+func (g *BuildGraph) recordArtifact(pluginID, binary string, source devsource.Identity) error {
+	g.attestMu.Lock()
+	defer g.attestMu.Unlock()
+	return instance.RecordBuiltArtifactSource(g.workspace.ResolvedWorkspace, pluginID, binary, source.ReviewedRevision, source.SourceDigest)
 }
 
 func (g *BuildGraph) withBuildLock(ctx context.Context, fn func() error) error {
@@ -472,6 +487,7 @@ func (g *BuildGraph) withBuildLock(ctx context.Context, fn func() error) error {
 // four nodes; more would only add compiler memory pressure.
 const maxParallelBuilds = 4
 
+// buildParallelism is the producer concurrency for this machine.
 func buildParallelism() int {
 	return max(1, min(maxParallelBuilds, runtime.NumCPU()/2))
 }
@@ -638,6 +654,7 @@ type lockedWriter struct {
 	writer io.Writer
 }
 
+// Write forwards p to the wrapped writer under the lock.
 func (w *lockedWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()

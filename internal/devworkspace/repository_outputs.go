@@ -67,6 +67,9 @@ func (g *BuildGraph) buildBindings(ctx context.Context, n BuildNode) (resultErr 
 	return nil
 }
 
+// buildJavaScript typechecks and builds one package into exclusive staged
+// outputs (dist, plus shims or the YAML worker for their owners) and
+// publishes them only after they validate.
 func (g *BuildGraph) buildJavaScript(ctx context.Context, n BuildNode) (resultErr error) {
 	if g.plan.Composition == nil {
 		return fmt.Errorf("selected dependency composition is absent")

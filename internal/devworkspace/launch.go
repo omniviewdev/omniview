@@ -302,6 +302,9 @@ func (s *workspaceSupervisor) runLaunchCommand(ctx context.Context, directory st
 	return []byte(stdout.String()), nil
 }
 
+// graph links the selected composition and builds the supervisor's build
+// graph, wiring the native/server host build, host reuse, bindings adapter and
+// launch-status events.
 func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 	o := s.options
 	if err := compatibilityPreflight(ctx, s.workspace, o); err != nil {
@@ -366,6 +369,8 @@ func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 	}})
 }
 
+// buildHost compiles the selected host against the owned host modfile into a
+// generated bin tree and adopts it as the launch binary once published.
 func (s *workspaceSupervisor) buildHost(ctx context.Context, request HostBuildRequest) (resultErr error) {
 	host, err := request.Workspace.RepositoryPath("omniview")
 	if err != nil {
@@ -477,6 +482,7 @@ func (s *workspaceSupervisor) hostVariant() string {
 	return fmt.Sprintf("mode=%s mcp=%t platform=%s/%s", s.options.Mode, s.options.MCP, runtime.GOOS, runtime.GOARCH)
 }
 
+// hostExecutable is the go build output name inside the host output tree.
 func (s *workspaceSupervisor) hostExecutable() string {
 	name := "Omniview"
 	if s.options.Mode == "browser" {

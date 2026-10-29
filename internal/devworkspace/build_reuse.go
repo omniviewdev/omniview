@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -19,7 +20,6 @@ import (
 	"github.com/omniviewdev/omniview/internal/devcompose"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
 	"github.com/omniviewdev/omniview/internal/devsession"
-	"github.com/omniviewdev/omniview/internal/instance"
 )
 
 // Bootstrap reuses a node only when its input fingerprint equals the one
@@ -40,6 +40,8 @@ type buildReuseState struct {
 
 const buildReuseSchema = 1
 
+// loadBuildReuse reads this workspace's reuse records. A missing, foreign or
+// older-schema record yields an empty state, so every node rebuilds.
 func (g *BuildGraph) loadBuildReuse() *buildReuseState {
 	state := &buildReuseState{SchemaVersion: buildReuseSchema, WorkspaceID: g.workspace.Manifest.WorkspaceID, Nodes: map[string]buildReuseRecord{}}
 	var stored buildReuseState
@@ -70,6 +72,7 @@ func (g *BuildGraph) setBuildReuse(state *buildReuseState, id string, record bui
 	return devsession.WritePrivateJSON(g.reusePath, state)
 }
 
+// recordOutput publishes a finished node's output digest to its dependents.
 func (g *BuildGraph) recordOutput(id, digest string) {
 	g.reuseMu.Lock()
 	defer g.reuseMu.Unlock()
@@ -79,6 +82,7 @@ func (g *BuildGraph) recordOutput(id, digest string) {
 	g.outputs[id] = digest
 }
 
+// outputOf returns a finished node's output digest within this execution.
 func (g *BuildGraph) outputOf(id string) (string, bool) {
 	g.reuseMu.Lock()
 	defer g.reuseMu.Unlock()
@@ -86,6 +90,7 @@ func (g *BuildGraph) outputOf(id string) (string, bool) {
 	return digest, ok
 }
 
+// logf writes one reuse diagnostic line to the producer output, if any.
 func (g *BuildGraph) logf(format string, args ...any) {
 	if g.options.Output != nil {
 		_, _ = fmt.Fprintf(g.options.Output, format+"\n", args...)
@@ -161,7 +166,7 @@ func (g *BuildGraph) reuseOutputs(ctx context.Context, n BuildNode) (string, err
 		if err != nil {
 			return "", err
 		}
-		if err = instance.RecordBuiltArtifactSource(g.workspace.ResolvedWorkspace, n.PluginID, filepath.Join(destination, "plugin"), identity.ReviewedRevision, identity.SourceDigest); err != nil {
+		if err = g.recordArtifact(n.PluginID, filepath.Join(destination, "plugin"), identity); err != nil {
 			return "", err
 		}
 		return digest, nil
@@ -289,6 +294,8 @@ func (g *BuildGraph) toolchainInputs(ctx context.Context, n BuildNode) (string, 
 	return b.String(), nil
 }
 
+// builderDigest hashes this builder executable once, so any builder change
+// (commands, environment, ownership rules) invalidates every reuse record.
 func (g *BuildGraph) builderDigest() (string, error) {
 	g.builderOnce.Do(func() {
 		executable, err := os.Executable()
@@ -315,6 +322,8 @@ func (g *BuildGraph) builderDigest() (string, error) {
 	return g.builder, g.builderErr
 }
 
+// goVersion reports the Go toolchain selected for directory, including any
+// go.mod toolchain switch.
 func goVersion(ctx context.Context, directory string) (string, error) {
 	cmd := exec.CommandContext(ctx, "go", "env", "GOVERSION")
 	cmd.Dir = directory
@@ -407,17 +416,15 @@ func (g *BuildGraph) sourceInputs(ctx context.Context, n BuildNode, hash io.Writ
 	return nil
 }
 
-func pathJoin(directory, name string) string {
-	if directory == "." {
-		return name
-	}
-	return directory + "/" + name
-}
-
+// underPath reports whether the slash path name is root or below it; "."
+// contains everything.
 func underPath(name, root string) bool {
 	return root == "." || name == root || strings.HasPrefix(name, root+"/")
 }
 
+// selectedSource reports whether a repository file is a node input: under one
+// of trees, or directly inside an ancestor of directory. Git, metadata and
+// dependency directories never are.
 func selectedSource(name, directory string, trees []string) bool {
 	for _, part := range strings.Split(name, "/") {
 		if part == ".git" || part == ".local" || part == "node_modules" {
@@ -430,17 +437,14 @@ func selectedSource(name, directory string, trees []string) bool {
 		}
 	}
 	// Files directly inside an ancestor of the node directory.
-	parent := pathDir(name)
+	parent := path.Dir(name)
 	return parent == "." || underPath(directory, parent)
 }
 
-func pathDir(name string) string {
-	if index := strings.LastIndex(name, "/"); index >= 0 {
-		return name[:index]
-	}
-	return "."
-}
-
+// hashSourceFile writes one source entry: content for regular files, target
+// for symlinks, type only for submodules and special files, and a deletion
+// marker for tracked files that no longer exist. A file that changes while
+// being read fails rather than hashing torn content.
 func hashSourceFile(hash io.Writer, repository, name string) error {
 	path := filepath.Join(repository, filepath.FromSlash(name))
 	info, err := os.Lstat(path)

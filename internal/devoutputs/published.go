@@ -53,6 +53,8 @@ func Published(ctx context.Context, w devcontract.ResolvedWorkspace, consumer st
 	return digest, err
 }
 
+// contentDigest hashes a snapshot's paths, kinds, content hashes, link
+// targets and modes, but not directory identities.
 func contentDigest(values snapshot) string {
 	paths := make([]string, 0, len(values))
 	for path := range values {
