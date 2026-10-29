@@ -321,9 +321,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
 
-    if (over && active.id !== over.id) {
-      // Dispatch an action to reorder the tabs in your store
-      // Replace this with your actual logic to update the order of tabs
+    if (over && typeof active.id === 'number' && typeof over.id === 'number' && active.id !== over.id) {
       reorderTab(active.id, over.id);
     }
   };

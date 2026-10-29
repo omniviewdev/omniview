@@ -73,7 +73,7 @@ const HomepageCard: React.FC<Props> = ({
     return null;
   }
 
-  const meta = registration.meta;
+  const meta = registration.meta as HomepageCardMeta | undefined;
   const Component = registration.value;
 
   return (
