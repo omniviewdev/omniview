@@ -40,6 +40,16 @@ Launch preflight validates the selected composition, reviewed SDK source, parsed
 
 Workspace status reports actual checkout commits, branches and dirty content fingerprints separately from manifest base commits. `health` separates supervisor liveness, build health, dependency freshness, served-source freshness, authenticated host readiness, HMR connectivity and source reload verification. A completed watch transaction captures the served checkout fingerprint; a failed build leaves the previous served fingerprint intact. Unknown or unverified observations never imply freshness.
 
+Remote observation is separate from this local graph. `workspace follow` polls
+explicit upstream policy in the foreground; it does not change `--watch` or add
+another compiler/installer. Observe-only follow never mutates worktrees.
+`--apply` schedules the existing update transaction, which quiesces producers
+and holds feedback before checkout. Source-only changes rebuild the affected
+closure; changed composition inputs pass through the owned stopped refresh
+before consumers resume. A failed or partial cohort never publishes new served
+evidence. See [workspace update/follow guidance](development-workspaces.md#update-configured-upstreams)
+for trust consent, saved launch options, cancellation and recovery.
+
 The development instance control lives in the footer, before the plugin dev-server indicators; managed Vite no longer injects a floating DEVELOPMENT overlay over the terminal. The control combines confirmed host identity with identity-checked supervisor status. It shows build progress, failures and unavailable or stale status without treating unknown observations as ready. Its base-ui popover lists host build, HMR, source freshness, reload proof, selected-plugin count, failed stage and recovery command. Full instance details use the existing base-ui dialog. Selected-plugin count is not a readiness check. Compiler summaries retain actionable diagnostics while redacting secret-like values and local workspace/home paths; full private logs remain available locally. HMR connectivity alone does not verify that a source edit reached the browser: `sourceReload` remains `unverified` until a separate source-edit/browser observation establishes that result.
 
 Both instance views use horizontal base-ui description lists with compact section headers and status-dot values. The popover groups backend, frontend and HMR observations separately from source/plugin observations, adding recovery details when the host is not ready. The full dialog separates identity, runtime, build, repository source details and actual endpoints; long paths and identifiers wrap without horizontal scrolling. Selection counts do not imply plugin readiness.

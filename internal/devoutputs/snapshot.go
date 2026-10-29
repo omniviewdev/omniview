@@ -76,7 +76,7 @@ func snapshotPath(spec specification, exclude []string) (snapshot, error) {
 				return nil
 			}
 		}
-		if spec.Mode == "filter" && relative != "." {
+		if spec.Mode == filteredOutputMode && relative != "." {
 			if entry.IsDir() {
 				if IsViteConfigTemporaryFile(entry.Name()) {
 					return fmt.Errorf("config-loader artifact was replaced by a directory")
@@ -96,7 +96,7 @@ func snapshotPath(spec specification, exclude []string) (snapshot, error) {
 		if err != nil {
 			return err
 		}
-		if workers > 1 && spec.Mode != "filter" && info.Mode().IsRegular() {
+		if workers > 1 && spec.Mode != filteredOutputMode && info.Mode().IsRegular() {
 			if files == nil {
 				files = make(chan fileRead, workers*2)
 				readErrors = make(chan error, workers)
@@ -319,7 +319,7 @@ func removeSnapshotLeaves(spec specification, expected snapshot) error {
 	sort.Slice(paths, func(i, j int) bool { return len(paths[i]) > len(paths[j]) })
 	var reader snapshotReader
 	for _, relative := range paths {
-		if spec.Mode == "filter" && relative == "." {
+		if spec.Mode == filteredOutputMode && relative == "." {
 			continue
 		}
 		path := spec.Target

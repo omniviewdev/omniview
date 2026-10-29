@@ -26,6 +26,9 @@ func (m *Manager) Reconfigure(ctx context.Context, name string, options EditOpti
 	if err != nil {
 		return ReconfigureResult{}, err
 	}
+	if err = m.preflightUpstreamEdit(ctx, before, options); err != nil {
+		return ReconfigureResult{}, err
+	}
 	unlock, err := withWorkspaceOperation(ctx, before)
 	if err != nil {
 		return ReconfigureResult{}, err
