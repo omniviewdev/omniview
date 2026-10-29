@@ -309,6 +309,8 @@ const BottomDrawerContainer: React.FC = () => {
       className={`BottomDrawer ${styles.Drawer}`}
       ref={drawerRef}
       style={{ height: minHeight, minHeight, maxHeight: minHeight }}
+      // Restored tabs are reconciled with live sessions; tests and benchmarks wait for it.
+      data-ov-drawer-restored={restoreComplete || undefined}
     >
       <div
         ref={dragHandleRef}

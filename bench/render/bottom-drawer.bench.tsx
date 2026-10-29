@@ -28,23 +28,17 @@ const lines1k = makeLogLines('_', 1_000);
 
 async function mountDrawer(): Promise<Mounted> {
   localStorage.clear();
-  // Until the terminal session restore settles and the drawer has rendered it,
-  // the drawer treats arriving tabs as restored and keeps them at the saved
-  // (minimized) height, so a logs tab opened earlier would never show its
-  // lines. Wait for it like a user would.
-  let restored = false;
-  const unsubscribe = bottomDrawerChannel.on('onSessionsRestored', () => { restored = true; });
+  // Until the drawer has reconciled its restored tabs with the live sessions,
+  // it treats arriving tabs as restored and keeps them at the saved (minimized)
+  // height, so a logs tab opened earlier would never show its lines. Wait for
+  // it like a user would.
   const m = mount(
     <AppProviders>
       <div style={{ flex: 1 }} />
       <BottomDrawerContainer />
     </AppProviders>,
   );
-  try {
-    await waitFor(() => restored, { label: 'terminal sessions restored' });
-  } finally {
-    unsubscribe();
-  }
+  await waitFor(() => m.container.querySelector('[data-ov-drawer-restored]'), { label: 'drawer restore settled' });
   // Let the drawer commit the restored state before anything adds a tab.
   await nextFrame();
   return m;
