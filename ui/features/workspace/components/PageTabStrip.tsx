@@ -63,6 +63,7 @@ export function PageTabStrip({ pane }: { pane: PagePane }) {
     >
       <EditorTabs
         className={styles.Strip}
+        aria-label={state.panes.length > 1 ? `Page tabs, pane ${state.panes.indexOf(pane) + 1}` : 'Page tabs'}
         variant='pill'
         size='sm'
         instanceId={pageStripInstanceId(pane.id)}

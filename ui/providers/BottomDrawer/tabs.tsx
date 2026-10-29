@@ -428,6 +428,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ resizeControls }) => {
           >
             <EditorTabs
               className={styles.Tabs}
+              aria-label='Bottom drawer tabs'
               tabs={tabDescriptors}
               activeId={tabs[focused]?.id ?? ''}
               onActiveChange={handleActiveChange}
