@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 	"testing"
 	"time"
 )
@@ -72,36 +71,80 @@ func TestLiveFrontendContentChangesDoNotReplaceHost(t *testing.T) {
 }
 
 func TestNativeContentInvalidatesBootstrapReuseButTimestampDoesNot(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary, err := os.ReadFile(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, extension := range []string{".c", ".h", ".m", ".mm", ".s", ".S"} {
-		t.Run(extension, func(t *testing.T) {
-			f := newReuseFixture(t)
-			path := filepath.Join(f.g.workspace.Root, "host", "internal", "native", "bridge"+extension)
-			writeGraphFixture(t, path, "original native input\n")
-			fixtureGit(t, filepath.Join(f.g.workspace.Root, "host"), "add", "internal/native")
-			fixtureGit(t, filepath.Join(f.g.workspace.Root, "host"), "commit", "-m", "native input")
-			f.bootstrap(t)
-			stamp := time.Unix(1234567890, 0)
-			if err := os.Chtimes(path, stamp, stamp); err != nil {
-				t.Fatal(err)
-			}
-			if built := f.bootstrap(t); len(built) != 0 {
-				t.Fatalf("timestamp-only change invalidated content reuse: %v", built)
-			}
-			for _, operation := range []string{"edit", "remove", "add"} {
+		for _, operation := range []string{"add", "edit", "remove"} {
+			t.Run(extension+"/"+operation, func(t *testing.T) {
+				g, node, supervisor, published := newHostReuseFixture(t, binary)
+				path := filepath.Join(g.workspace.Root, "host", "internal", "native", "bridge"+extension)
+				if operation != "add" {
+					writeGraphFixture(t, path, "original native input\n")
+					fixtureGit(t, node.Directory, "add", "internal/native")
+					fixtureGit(t, node.Directory, "commit", "-m", "native input")
+				}
+				ctx := context.Background()
+				inputs, err := g.nodeInputs(ctx, node)
+				if err != nil {
+					t.Fatal(err)
+				}
+				outputs, err := g.outputDigest(ctx, node)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = g.setBuildReuse(g.loadBuildReuse(), node.ID, buildReuseRecord{Inputs: inputs, Outputs: outputs}); err != nil {
+					t.Fatal(err)
+				}
+				refused := errors.New("native host producer refused compilation")
+				calls := 0
+				g.options.HostBuild = func(context.Context, HostBuildRequest) error {
+					calls++
+					raw, err := os.ReadFile(path)
+					if operation == "remove" {
+						if !os.IsNotExist(err) {
+							t.Fatalf("host producer did not see removal: %v", err)
+						}
+					} else if err != nil || string(raw) != operation+" native input\n" {
+						t.Fatalf("host producer saw stale source: %q, %v", raw, err)
+					}
+					return refused
+				}
+				if operation != "add" {
+					stamp := time.Unix(1234567890, 0)
+					if err = os.Chtimes(path, stamp, stamp); err != nil {
+						t.Fatal(err)
+					}
+				}
+				// A fresh bootstrap must select the actual owned executable,
+				// including after a timestamp-only change to an existing input.
+				if err = g.execute(ctx, []BuildNode{node}, g.loadBuildReuse()); err != nil {
+					t.Fatal(err)
+				}
+				if calls != 0 || supervisor.binary != published {
+					t.Fatalf("unchanged host not reused: producer calls=%d, binary=%q, want %q", calls, supervisor.binary, published)
+				}
+				supervisor.binary = ""
 				if operation == "remove" {
-					if err := os.Remove(path); err != nil {
+					if err = os.Remove(path); err != nil {
 						t.Fatal(err)
 					}
 				} else {
 					writeGraphFixture(t, path, operation+" native input\n")
 				}
-				if built := f.bootstrap(t); !slices.Contains(built, "bindings") {
-					t.Fatalf("native %s reused stale Go producer: %v", operation, built)
+				g.outputs = nil
+				if err = g.execute(ctx, []BuildNode{node}, g.loadBuildReuse()); !errors.Is(err, refused) {
+					t.Fatalf("native %s did not reach refusing host producer: %v", operation, err)
 				}
-				if built := f.bootstrap(t); len(built) != 0 {
-					t.Fatalf("unchanged native %s rebuilt: %v", operation, built)
+				if calls != 1 || supervisor.binary != "" {
+					t.Fatalf("stale host selected: producer calls=%d, binary=%q", calls, supervisor.binary)
 				}
-			}
-		})
+			})
+		}
 	}
 }

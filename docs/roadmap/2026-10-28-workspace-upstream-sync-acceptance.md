@@ -22,7 +22,7 @@ UUID foreground follow lease
         -> owned lifecycle/root/output guards
 ```
 
-No root lock spans a self-dependent supervisor stop. Public down revokes follow consent, joins in-flight transaction authority, then stops the supervisor. Idle revocation emits `consent_revoked` without the previous plan, pending cohort, or actionable commands; interrupted mutation retains recovery intent. Malformed or removed consent metadata fails closed with `follow_fence_invalid`, taking precedence over concurrent configuration consent revocation.
+No root lock spans a self-dependent supervisor stop. Public down revokes follow consent, joins in-flight transaction authority, then stops the supervisor. Idle revocation emits `consent_revoked` without the previous active-operation label, plan, pending cohort, or actionable commands; interrupted mutation retains recovery intent and diagnostics. Malformed or removed consent metadata fails closed with `follow_fence_invalid`, taking precedence over concurrent configuration consent revocation.
 
 Follow schedules only the same update transaction. It hashes immutable target cohorts, suppresses repeated failed attempts, retains recovery diagnostics even when checkout already equals upstream, and backs off network errors up to five minutes. Saved mode, MCP, local watch, live frontend, explicit false booleans, and timeout survive omitted flags.
 

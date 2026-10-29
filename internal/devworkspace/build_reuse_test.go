@@ -85,6 +85,38 @@ func newReuseFixture(t *testing.T) *reuseFixture {
 	return f
 }
 
+// newHostReuseFixture seeds an owned executable and its valid reuse receipt,
+// without pretending that a fixture producer compiled selected native sources.
+// Reuse goes through the real supervisor launch-artifact selection path.
+func newHostReuseFixture(t *testing.T, executable []byte) (*BuildGraph, BuildNode, *workspaceSupervisor, string) {
+	t.Helper()
+	f := newReuseFixture(t)
+	g := f.g
+	s := &workspaceSupervisor{workspace: g.workspace, options: LaunchOptions{Mode: "native"}}
+	g.options.HostOutput = s.hostOutput()
+	g.options.HostVariant = s.hostVariant()
+	g.options.ReuseHost = s.reuseHost
+	prepared, err := PrepareGeneratedTree(g.workspace, s.hostOutput(), NewGeneration())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(prepared.Directory, s.hostLaunchRelative())
+	if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(path, executable, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = RecordGeneratedTree(prepared); err != nil {
+		t.Fatal(err)
+	}
+	node := outputGraphNode(t, g, "host-backend")
+	// Isolate the host's own source fingerprint from bindings/frontend output
+	// changes. Those dependencies have separate regression coverage.
+	node.Dependencies = nil
+	return g, node, s, filepath.Join(prepared.Destination, s.hostLaunchRelative())
+}
+
 func (f *reuseFixture) record(id string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

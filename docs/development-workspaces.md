@@ -309,6 +309,9 @@ workspace policy captured when follow starts. Editing that policy revokes consen
 on the next observation before automatic apply. Successful updates may advance
 selected commits without revoking their own consent; changing an upstream or
 selection requires a new foreground follow session.
+Revocation clears the session's active-operation label and previous plan, pending
+cohort and commands. It does not erase retained on-disk recovery intent.
+An interrupted apply keeps its explicit recovery diagnostics.
 
 Ctrl-C while idle stops following and leaves the app running. Cancellation
 during apply retains the exact resumable operation and joins owned work.
@@ -385,9 +388,13 @@ Edits require a stopped supervisor and preserve UUID/profile/unaffected assignme
 
 `workspace edit --apply` validates canonical intent and the planned rename
 destination before capturing authenticated running state or stopping services.
-Occupied or redirected destinations are refused. The durable edit rechecks
-destination ownership before mutation. After the edit commits, refresh uses
-the committed selection and restarts only a previously running workspace.
+Occupied or redirected destinations are refused. Preflight also checks worktree
+ownership, required cleanliness, ref history and additions before downtime.
+Rename, ref changes and removal refuse authored dirt; metadata-only edits may
+retain it. Completed tracked producer overlays are projected without rewriting
+source files. Dirty originals, staged changes and tampered output still refuse.
+The stopped edit restores outputs and repeats strict mutation checks before
+refreshing the committed selection. Only a previously running workspace restarts.
 A previously stopped workspace remains stopped;
 `--apply` is not implicit startup consent. Missing dependency acceptance proof
 or launch configuration remains an explicit refresh failure, not fabricated

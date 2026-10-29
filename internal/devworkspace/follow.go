@@ -242,6 +242,7 @@ func finishFollow(
 		errors.Is(resultErr, errFollowConsentRevoked)) && !interruptedApply {
 		status.Result = "consent_revoked"
 		status.Enabled = false
+		status.ActiveOperation = ""
 		status.NextAttempt = time.Time{}
 		status.Plan = nil
 		status.PendingCohort = ""

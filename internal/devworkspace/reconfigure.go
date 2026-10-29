@@ -44,9 +44,11 @@ func (m *Manager) PreflightEdit(ctx context.Context, name string, options EditOp
 	if err != nil {
 		return err
 	}
-	if plan.manifest.Slug != j.Manifest.Slug {
-		_, err = m.renameDestination(plan.manifest.Slug)
+	w, err := m.inspectRoot(root)
+	if err != nil {
+		return err
 	}
+	_, err = m.validateEdit(ctx, root, j, w, plan)
 	return err
 }
 

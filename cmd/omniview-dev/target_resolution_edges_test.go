@@ -74,6 +74,12 @@ func TestWorkspaceLifecycleTargetFormsPreserveDecoyEdges(t *testing.T) {
 						t.Errorf("source-only recovery reached wrong prerequisite: code=%d out=%s err=%v", code, &out, err)
 					}
 				}
+				if verb == "resume" && code == 0 {
+					var resumed devworkspace.Workspace
+					if err := json.Unmarshal(out.Bytes(), &resumed); err != nil || resumed.Manifest.WorkspaceID != f.workspace.Manifest.WorkspaceID {
+						t.Errorf("resume returned wrong selected workspace: out=%s err=%v", &out, err)
+					}
+				}
 				if after, err := os.ReadFile(decoy.ManifestPath); err != nil || !bytes.Equal(decoyBefore, after) {
 					t.Fatalf("lifecycle target changed decoy: %s %v", after, err)
 				}

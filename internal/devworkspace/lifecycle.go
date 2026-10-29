@@ -230,6 +230,16 @@ func (m *Manager) apply(ctx context.Context, root string, j *journal) error {
 		if err = RestoreRepositoryOutputs(ctx, w); err != nil {
 			return err
 		}
+		// Projection authorizes no source mutation. Check the real restored
+		// worktrees before retiring generated resources or applying Git edits.
+		for i := range j.Resources {
+			r := &j.Resources[i]
+			if !r.Removed && r.GitDir != "" {
+				if err := verifyWorktree(ctx, r, true); err != nil {
+					return err
+				}
+			}
+		}
 		if err = CleanGenerated(w); err != nil {
 			return err
 		}
@@ -403,11 +413,106 @@ func (m *Manager) planEdit(ctx context.Context, j *journal, opts EditOptions) (e
 	return editPlan{registry: reg, manifest: desired}, nil
 }
 
+// editResourceTarget is the single source of the edit mutation predicate.
+func editResourceTarget(desired devcontract.WorkspaceManifest, r *resource, rename bool) (*devcontract.Repository, bool) {
+	for i := range desired.Repositories {
+		target := &desired.Repositories[i]
+		if target.ID == r.Repository.ID {
+			return target, rename || target.BaseCommit != r.Repository.BaseCommit
+		}
+	}
+	return nil, true
+}
+
+// validateEdit checks canonical intent without restoring overlays, recording
+// intent, or requiring a stopped supervisor. Edit repeats it under its guards.
+func (m *Manager) validateEdit(ctx context.Context, root string, j *journal, w Workspace, plan editPlan) (string, error) {
+	if err := m.captureProfileBinding(w.ResolvedWorkspace, j); err != nil {
+		return "", err
+	}
+	desired := plan.manifest
+	rename := desired.Slug != j.Manifest.Slug
+	destination := ""
+	if rename {
+		if err := preflightWorkspaceFiles(root, j, true); err != nil {
+			return "", err
+		}
+		if err := ValidateGenerated(ctx, w); err != nil {
+			return "", err
+		}
+		if err := ValidateRepositoryOutputs(ctx, w); err != nil {
+			return "", err
+		}
+		var err error
+		destination, err = m.renameDestination(desired.Slug)
+		if err != nil {
+			return "", err
+		}
+	}
+	for i := range j.Resources {
+		r := &j.Resources[i]
+		if r.Removed {
+			continue
+		}
+		target, mutating := editResourceTarget(desired, r, rename)
+		if err := verifyWorktree(ctx, r, false); err != nil {
+			return "", err
+		}
+		if mutating {
+			// The transaction will restore only these validated producer overlays.
+			// Unknown, staged, and authored changes remain refusal conditions.
+			if err := plannerCleanWorktree(ctx, w, *r); err != nil {
+				return "", err
+			}
+		}
+		if target != nil && target.BaseCommit != r.Repository.BaseCommit {
+			if refValue(ctx, r.CommonDir, "refs/heads/"+r.Repository.Branch) != r.Repository.BaseCommit {
+				return "", devcontract.Fail(4, "user_commits", "source ref edit would replace user commits")
+			}
+			if _, err := git(ctx, r.CommonDir, "", "merge-base", "--is-ancestor", r.Repository.BaseCommit, target.BaseCommit); err != nil {
+				return "", devcontract.Fail(4, "non_fast_forward", "source ref edits must fast-forward the owned branch; no branch history is rewritten")
+			}
+		}
+	}
+	for _, repo := range desired.Repositories {
+		var existing *resource
+		for i := range j.Resources {
+			if j.Resources[i].Repository.ID == repo.ID {
+				existing = &j.Resources[i]
+				break
+			}
+		}
+		if existing != nil && existing.Removed && existing.Repository.BaseCommit != repo.BaseCommit {
+			return "", devcontract.Fail(4, "retained_branch", "reselect retained source at its previous base before changing its ref")
+		}
+		if !rename || existing != nil && existing.GitDir != "" && !existing.Removed {
+			continue
+		}
+		if existing == nil {
+			for _, source := range plan.registry.Repositories {
+				if source.ID == repo.ID {
+					candidate := makeResource(root, j.Manifest.WorkspaceID, repo, source)
+					existing = &candidate
+					break
+				}
+			}
+		}
+		if existing != nil {
+			if err := preflightWorktreeAddition(ctx, root, existing); err != nil {
+				return "", err
+			}
+		}
+	}
+	return destination, ctx.Err()
+}
+
 // renameDestination validates the canonical destination without changing intent.
 func (m *Manager) renameDestination(slug string) (string, error) {
 	destination := filepath.Join(m.Root, "workspaces", slug)
-	if _, err := os.Lstat(destination); !os.IsNotExist(err) {
+	if _, err := os.Lstat(destination); err == nil {
 		return "", devcontract.Fail(4, "workspace_exists", "renamed workspace destination already exists")
+	} else if !os.IsNotExist(err) {
+		return "", err
 	}
 	canonical, err := devcontract.CanonicalPath(destination)
 	if err != nil {
@@ -448,72 +553,53 @@ func (m *Manager) Edit(ctx context.Context, name string, opts EditOptions) (Work
 		return Workspace{}, err
 	}
 	defer stopUnlock()
-	if err = m.captureProfileBinding(w.ResolvedWorkspace, j); err != nil {
-		return Workspace{}, err
-	}
 	old := j.Manifest
 	plan, err := m.planEdit(ctx, j, opts)
 	if err != nil {
 		return Workspace{}, err
 	}
 	desired, reg := plan.manifest, plan.registry
-	if desired.Slug != old.Slug {
-		if err = preflightWorkspaceFiles(root, j, true); err != nil {
-			return Workspace{}, err
-		}
-		if err = ValidateGenerated(ctx, w); err != nil {
-			return Workspace{}, err
-		}
-		if err = ValidateRepositoryOutputs(ctx, w); err != nil {
-			return Workspace{}, err
-		}
-		j.RenameTo, err = m.renameDestination(desired.Slug)
-		if err != nil {
-			return Workspace{}, err
-		}
+	destination, err := m.validateEdit(ctx, root, j, w, plan)
+	if err != nil {
+		return Workspace{}, err
 	}
-	// Reconfigure restores dependency/producer overlays before Edit. A rename
-	// must validate every clean worktree and ref before retiring generated output;
-	// non-rename edits retain their existing producer restoration behavior.
-	outputsRestored := false
-	for i := range j.Resources {
-		r := &j.Resources[i]
-		if r.Removed {
-			continue
-		}
-		var target *devcontract.Repository
-		for k := range desired.Repositories {
-			if desired.Repositories[k].ID == r.Repository.ID {
-				target = &desired.Repositories[k]
+	if destination == "" {
+		for i := range j.Resources {
+			r := &j.Resources[i]
+			if r.Removed {
+				continue
+			}
+			if _, mutating := editResourceTarget(desired, r, false); mutating {
+				if err = RestoreRepositoryOutputs(ctx, w); err != nil {
+					return Workspace{}, err
+				}
+				// Restoration must not hide a concurrent ownership/source change.
+				if _, err = m.validateEdit(ctx, root, j, w, plan); err != nil {
+					return Workspace{}, err
+				}
+				break
 			}
 		}
-		mutating := target == nil || target.BaseCommit != r.Repository.BaseCommit || j.RenameTo != ""
-		if mutating && !outputsRestored && j.RenameTo == "" {
-			if err = RestoreRepositoryOutputs(ctx, w); err != nil {
-				return Workspace{}, err
+		// No overlay exemption grants mutation authority. After restoration,
+		// require the same strict source cleanliness as the Git transaction.
+		for i := range j.Resources {
+			r := &j.Resources[i]
+			if r.Removed {
+				continue
 			}
-			outputsRestored = true
-		}
-		if err = verifyWorktree(ctx, r, mutating); err != nil {
-			return Workspace{}, err
-		}
-		if target != nil && target.BaseCommit != r.Repository.BaseCommit {
-			if refValue(ctx, r.CommonDir, "refs/heads/"+r.Repository.Branch) != r.Repository.BaseCommit {
-				return Workspace{}, devcontract.Fail(4, "user_commits", "source ref edit would replace user commits")
-			}
-			if _, err = git(ctx, r.CommonDir, "", "merge-base", "--is-ancestor", r.Repository.BaseCommit, target.BaseCommit); err != nil {
-				return Workspace{}, devcontract.Fail(4, "non_fast_forward", "source ref edits must fast-forward the owned branch; no branch history is rewritten")
+			if _, mutating := editResourceTarget(desired, r, false); mutating {
+				if err = verifyWorktree(ctx, r, true); err != nil {
+					return Workspace{}, err
+				}
 			}
 		}
 	}
+	j.RenameTo = destination
 	for _, repo := range desired.Repositories {
 		found := false
 		for i := range j.Resources {
 			if j.Resources[i].Repository.ID == repo.ID {
 				found = true
-				if j.Resources[i].Removed && j.Resources[i].Repository.BaseCommit != repo.BaseCommit {
-					return Workspace{}, devcontract.Fail(4, "retained_branch", "reselect retained source at its previous base before changing its ref")
-				}
 			}
 		}
 		if !found {
@@ -525,20 +611,6 @@ func (m *Manager) Edit(ctx context.Context, name string, opts EditOptions) (Work
 		}
 	}
 	if j.RenameTo != "" {
-		for i := range j.Resources {
-			r := &j.Resources[i]
-			if r.GitDir != "" && !r.Removed {
-				continue
-			}
-			for _, repo := range desired.Repositories {
-				if repo.ID == r.Repository.ID {
-					if err = preflightWorktreeAddition(ctx, root, r); err != nil {
-						return Workspace{}, err
-					}
-					break
-				}
-			}
-		}
 		if err = ctx.Err(); err != nil {
 			return Workspace{}, err
 		}

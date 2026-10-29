@@ -268,9 +268,10 @@ func TestFinishFollowIntegrityOverridesConcurrentConfigurationRevocation(t *test
 
 func TestFinishFollowConfigurationRevocationClearsActionableObservation(t *testing.T) {
 	status := FollowStatus{
-		Enabled: true, Result: updateBlocked, BlockedReason: "configuration_changed",
+		Enabled: true, Result: "blocked_recovery", BlockedReason: "configuration_changed",
 		Plan: &UpdatePlan{OperationID: "old-operation"}, PendingCohort: "old-cohort",
-		NextCommand: "omniview workspace update old", NextArgv: []string{"workspace", "update", "old"},
+		ActiveOperation: "old-operation",
+		NextCommand:     "omniview-dev workspace recover old", NextArgv: []string{"workspace", "recover", "old"},
 		NextAttempt: time.Now().Add(time.Minute),
 	}
 	published := 0
@@ -281,6 +282,7 @@ func TestFinishFollowConfigurationRevocationClearsActionableObservation(t *testi
 		require.True(t, status.NextAttempt.IsZero())
 		require.Nil(t, status.Plan)
 		require.Empty(t, status.PendingCohort)
+		require.Empty(t, status.ActiveOperation)
 		require.Empty(t, status.NextCommand)
 		require.Empty(t, status.NextArgv)
 		return nil
