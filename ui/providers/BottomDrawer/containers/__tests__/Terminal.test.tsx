@@ -440,7 +440,7 @@ describe('TerminalContainer', () => {
     expect(mocks.mockAttachSession).toHaveBeenCalledWith('test-session-123');
     expect(mocks.mockFit).toHaveBeenCalled();
     const fitCallsBefore = mocks.mockFit.mock.calls.length;
-    act(() => {
+    await act(async () => {
       mocks.state.onDataCallback!('ls\r');
       resizeObserverCallback!([], {} as ResizeObserver);
     });
@@ -475,7 +475,7 @@ describe('TerminalContainer', () => {
     expect(mocks.mockDispose).not.toHaveBeenCalled();
     expect(mocks.mockDetachSession).not.toHaveBeenCalled();
     const fitCallsBefore = mocks.mockFit.mock.calls.length;
-    act(() => {
+    await act(async () => {
       mocks.state.onDataCallback!('ls\r');
       resizeObserverCallback!([], {} as ResizeObserver);
     });
@@ -538,7 +538,7 @@ describe('TerminalContainer', () => {
 
     expect(mocks.state.onDataCallback).toBeTruthy();
 
-    act(() => {
+    await act(async () => {
       mocks.state.onDataCallback!('hello');
     });
 
@@ -621,7 +621,11 @@ describe('TerminalContainer', () => {
       });
     }
 
-    expect(mocks.mockWriteSession.mock.calls.map((call: unknown[]) => call[1]).join('')).toBe('id\r');
+    // Go decodes each []byte binding argument before assembling terminal input.
+    const writes = mocks.mockWriteSession.mock.calls.map(
+      (call: unknown[]) => Buffer.from(call[1] as string, 'base64'),
+    );
+    expect(Buffer.concat(writes).toString('utf8')).toBe('id\r');
   });
 
   it('does not dispatch queued input after the terminal detaches', async () => {
