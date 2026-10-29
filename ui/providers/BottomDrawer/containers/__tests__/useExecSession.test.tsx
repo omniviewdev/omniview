@@ -26,7 +26,9 @@ describe('exec session creation outcome', () => {
     mocks.create.mockResolvedValue(session);
     const view = setup();
     let outcome: unknown;
-    await act(async () => { outcome = await view.result.current.createSession({ connectionID: 'kind-kind', opts: { params: { mode: 'attach', container: 'debugger-1', pod_uid: 'original-pod' } } }); });
+    await act(async () => {
+      outcome = await view.result.current.createSession({ connectionID: 'kind-kind', opts: { params: { mode: 'attach', container: 'debugger-1', pod_uid: 'original-pod' } } }); 
+    });
     expect(outcome).toEqual(session);
     expect(mocks.updateTab.mock.calls[0][1]).toMatchObject({ id: 'actual-debug-stream', properties: { status: 'connected' } });
   });
@@ -35,7 +37,9 @@ describe('exec session creation outcome', () => {
     mocks.create.mockRejectedValue(new Error('Forbidden: pods/attach'));
     const view = setup();
     let outcome: unknown = 'not settled';
-    await act(async () => { outcome = await view.result.current.createSession({ connectionID: 'kind-kind', opts: { params: { mode: 'attach', container: 'debugger-1' } } }); });
+    await act(async () => {
+      outcome = await view.result.current.createSession({ connectionID: 'kind-kind', opts: { params: { mode: 'attach', container: 'debugger-1' } } }); 
+    });
     expect(outcome).toBeNull();
     expect(mocks.updateTab.mock.calls[0][1].properties).toMatchObject({ status: 'error', error: 'Forbidden: pods/attach' });
   });

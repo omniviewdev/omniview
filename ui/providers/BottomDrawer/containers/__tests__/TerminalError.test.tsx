@@ -15,20 +15,24 @@ describe('explicit terminal recovery', () => {
     render(<TerminalError error={error} onRetry={vi.fn()} recovery={{ label: 'Debug this container', run }} />);
     expect(run).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Debug this container' }));
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      await Promise.resolve(); 
+    });
     expect(run).toHaveBeenCalledTimes(1);
   });
 
   it('blocks duplicate recovery clicks and exposes a failed recovery without losing the original error', async () => {
     const deferred = Promise.withResolvers<void>();
-    const run = vi.fn(() => deferred.promise);
+    const run = vi.fn(async () => deferred.promise);
     render(<TerminalError error={error} onRetry={vi.fn()} recovery={{ label: 'Debug this container', run }} />);
     const button = screen.getByRole('button', { name: 'Debug this container' });
     fireEvent.click(button);
     fireEvent.click(button);
     expect(run).toHaveBeenCalledTimes(1);
     expect(button).toBeDisabled();
-    await act(async () => { deferred.reject(new Error('Debug access denied')); });
+    await act(async () => {
+      deferred.reject(new Error('Debug access denied')); 
+    });
     expect(screen.getByRole('alert')).toHaveTextContent('Debug access denied');
     expect(screen.getByText('Shell not found')).toBeVisible();
     expect(button).toBeEnabled();

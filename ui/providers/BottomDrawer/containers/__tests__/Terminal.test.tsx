@@ -468,7 +468,9 @@ describe('TerminalContainer', () => {
   });
 
   it('calls ExecClient.ResizeSession on terminal.onResize after attachment', async () => {
-    await act(async () => { render(<TerminalContainer sessionId="test-session-123" />); });
+    await act(async () => {
+      render(<TerminalContainer sessionId="test-session-123" />); 
+    });
 
     expect(mocks.state.onResizeCallback).toBeTruthy();
 
@@ -491,7 +493,9 @@ describe('TerminalContainer', () => {
     });
     expect(mocks.mockResizeSession).not.toHaveBeenCalled();
 
-    await act(async () => { resolveAttach([undefined, undefined]); });
+    await act(async () => {
+      resolveAttach([undefined, undefined]); 
+    });
     expect(mocks.mockResizeSession).toHaveBeenCalledExactlyOnceWith('late-attachment', 32, 100);
   });
 
@@ -564,17 +568,24 @@ describe('TerminalContainer', () => {
   it('preserves command bytes by waiting for each input write before dispatching the next', async () => {
     const first = Promise.withResolvers<void>();
     mocks.mockWriteSession.mockReturnValueOnce(first.promise);
-    await act(async () => { render(<TerminalContainer sessionId="ordered-input" />); });
+    await act(async () => {
+      render(<TerminalContainer sessionId="ordered-input" />); 
+    });
     act(() => {
       mocks.state.onDataCallback!('i');
       mocks.state.onDataCallback!('d\r');
     });
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      await Promise.resolve(); 
+    });
     try {
       expect(mocks.mockWriteSession).toHaveBeenCalledTimes(1);
     } finally {
-      await act(async () => { first.resolve(); });
+      await act(async () => {
+        first.resolve(); 
+      });
     }
+
     expect(mocks.mockWriteSession.mock.calls.map((call: unknown[]) => call[1]).join('')).toBe('id\r');
   });
 
@@ -582,36 +593,52 @@ describe('TerminalContainer', () => {
     const first = Promise.withResolvers<void>();
     mocks.mockWriteSession.mockReturnValueOnce(first.promise);
     const view = render(<TerminalContainer sessionId="disposed-input" />);
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      await Promise.resolve(); 
+    });
     act(() => {
       mocks.state.onDataCallback!('first');
       mocks.state.onDataCallback!('must-not-reach-detached-session');
     });
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      await Promise.resolve(); 
+    });
     view.unmount();
-    await act(async () => { first.resolve(); });
+    await act(async () => {
+      first.resolve(); 
+    });
     expect(mocks.mockWriteSession).toHaveBeenCalledTimes(1);
   });
 
   it('announces attachment failure and does not accept input for an unattached session', async () => {
     mocks.mockAttachSession.mockRejectedValueOnce(new Error('Session vanished'));
-    await act(async () => { render(<TerminalContainer sessionId="failed-attachment" />); });
+    await act(async () => {
+      render(<TerminalContainer sessionId="failed-attachment" />); 
+    });
     expect(screen.getByRole('alert')).toBeVisible();
     expect(mocks.state.onDataCallback).toBeNull();
   });
 
   it('stops queued and future input after an uncertain write failure', async () => {
     mocks.mockWriteSession.mockRejectedValueOnce(new Error('Connection lost'));
-    await act(async () => { render(<TerminalContainer sessionId="failed-input" />); });
+    await act(async () => {
+      render(<TerminalContainer sessionId="failed-input" />); 
+    });
     act(() => {
       mocks.state.onDataCallback!('first');
       mocks.state.onDataCallback!('must-not-follow-uncertain-write');
     });
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      await Promise.resolve(); 
+    });
     expect(screen.getByRole('alert')).toBeVisible();
     expect(mocks.mockWriteSession).toHaveBeenCalledTimes(1);
-    act(() => { mocks.state.onDataCallback!('must-not-send-after-error'); });
-    await act(async () => { await Promise.resolve(); });
+    act(() => {
+      mocks.state.onDataCallback!('must-not-send-after-error'); 
+    });
+    await act(async () => {
+      await Promise.resolve(); 
+    });
     expect(mocks.mockWriteSession).toHaveBeenCalledTimes(1);
   });
 
@@ -628,12 +655,18 @@ describe('TerminalContainer', () => {
     });
     const handler = mocks.mockEventsOn.mock.calls.find(([name]) => name === 'core/exec/signal/ERROR/recoverable-stream')?.[1];
     expect(handler).toBeDefined();
-    act(() => handler!({ data: { title: 'Permission denied', message: 'Forbidden: pods/exec', suggestion: 'Request access.' } }));
+    act(() => {
+      handler!({ data: { title: 'Permission denied', message: 'Forbidden: pods/exec', suggestion: 'Request access.' } }); 
+    });
     expect(screen.queryByRole('button', { name: 'Debug this container' })).not.toBeInTheDocument();
-    act(() => handler!({ data: { title: 'Shell not found', message: 'exec: sh: executable file not found', suggestion: 'No shell installed.' } }));
+    act(() => {
+      handler!({ data: { title: 'Shell not found', message: 'exec: sh: executable file not found', suggestion: 'No shell installed.' } }); 
+    });
     expect(recover).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Debug this container' }));
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      await Promise.resolve(); 
+    });
     expect(recover).toHaveBeenCalledTimes(1);
   });
 });

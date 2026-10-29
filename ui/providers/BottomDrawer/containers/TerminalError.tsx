@@ -24,7 +24,10 @@ export default function TerminalError({ error, onRetry, backgroundColor, recover
   const [recoveryError, setRecoveryError] = React.useState<string | null>(null);
   const recoveryPending = React.useRef(false);
   const recover = async () => {
-    if (!recovery || recoveryPending.current) return;
+    if (!recovery || recoveryPending.current) {
+      return;
+    }
+
     recoveryPending.current = true;
     setRecovering(true);
     setRecoveryError(null);
@@ -51,7 +54,9 @@ export default function TerminalError({ error, onRetry, backgroundColor, recover
       </Text>
 
       {recovery && (
-        <Button size='sm' disabled={recovering} aria-busy={recovering} onClick={() => { void recover(); }}>
+        <Button size='sm' disabled={recovering} aria-busy={recovering} onClick={() => {
+          void recover(); 
+        }}>
           {recovery.label}
         </Button>
       )}

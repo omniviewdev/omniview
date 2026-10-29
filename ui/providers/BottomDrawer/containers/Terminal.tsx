@@ -42,13 +42,21 @@ function recoveryFor(properties: Record<string, unknown> | undefined, error: Ter
   if (!recovery || typeof recovery !== 'object'
     || !('label' in recovery) || typeof recovery.label !== 'string'
     || !('canRecover' in recovery) || typeof recovery.canRecover !== 'function'
-    || !('run' in recovery) || typeof recovery.run !== 'function') return undefined;
+    || !('run' in recovery) || typeof recovery.run !== 'function') {
+    return undefined;
+  }
+
   const { label, canRecover, run } = recovery;
   try {
-    if (canRecover(error)) return { label, run: async () => { await run(); } };
+    if (canRecover(error)) {
+      return { label, run: async () => {
+        await run(); 
+      } };
+    }
   } catch {
     // An unavailable plugin recovery must not replace the original terminal error.
   }
+
   return undefined;
 }
 
@@ -260,8 +268,11 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
         log.error(new Error(parseAppError(err).detail), { event: 'resize_session', sessionId });
       });
     };
+
     terminal.onResize(({ rows, cols }) => {
-      if (attachedRef.current && inputActive) resizeSession(rows, cols);
+      if (attachedRef.current && inputActive) {
+        resizeSession(rows, cols);
+      }
     });
 
     const stdout = `core/exec/stream/stdout/${sessionId}`;
@@ -273,7 +284,10 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
     let inputActive = true;
     let inputWrites = Promise.resolve();
     const failTerminalIO = (cause: unknown, operation: 'attach' | 'write') => {
-      if (!inputActive) return;
+      if (!inputActive) {
+        return;
+      }
+
       inputActive = false;
       const appError = parseAppError(cause);
       const info: TerminalErrorInfo = {
@@ -288,6 +302,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
         errorRef.current = info;
         setError(info);
       }
+
       log.error(new Error(appError.detail), { event: `${operation}_session`, sessionId });
     };
 
@@ -378,6 +393,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
           const decoded = textDecoder.decode(Base64.toUint8Array(buffer));
           terminal.write(decoded);
         }
+
         return true;
       } catch (e) {
         failTerminalIO(e, 'attach');
@@ -386,16 +402,26 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
     };
 
     attachToSession().then((attached) => {
-      if (!attached || !inputActive) return;
+      if (!attached || !inputActive) {
+        return;
+      }
+
       fitAddon.fit();
       attachedRef.current = true;
       // A pre-attach fit can consume onResize; always send the current size after attachment.
       resizeSession(terminal.rows, terminal.cols);
       terminal.onData(data => {
-        if (!inputActive) return;
+        if (!inputActive) {
+          return;
+        }
+
         inputWrites = inputWrites.then(async () => {
-          if (inputActive) await ExecClient.WriteSession(sessionId, Base64.encode(data));
-        }).catch((cause: unknown) => failTerminalIO(cause, 'write'));
+          if (inputActive) {
+            await ExecClient.WriteSession(sessionId, Base64.encode(data));
+          }
+        }).catch((cause: unknown) => {
+          failTerminalIO(cause, 'write'); 
+        });
       });
 
     }).catch((err: unknown) => {
@@ -462,6 +488,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
         </div>
       );
     }
+
     return (
       <div ref={statusThemeRef} className={styles.Status} style={{ backgroundColor: bgColor }}>
         <div className={styles.StatusError}>Connection Failed</div>
