@@ -106,6 +106,7 @@ metadata from existing worktrees.
 "$DEV" workspace update feature --repo my-plugin
 "$DEV" workspace recover feature
 "$DEV" workspace evidence feature --json
+"$DEV" workspace reset-modules feature [--json]
 ```
 
 `edit` persists selection/ref/name/port edits. `--apply` also refreshes the workspace:
@@ -124,11 +125,33 @@ still blocks these operations.
 An externally changed dependency tree is a different failure. For example,
 running an unmanaged `pnpm exec` can trigger a standalone installation and change
 `node_modules` outside the recorded producer transaction. The resulting
-`owned generated tree changed` refusal protects unverified bytes. Neither
-`workspace recover` nor `workspace refresh` authorizes deleting or adopting that
-tree. Keep the workspace and output journal intact for reconciliation; do not
-delete the tree or rewrite its ownership record to force cleanup. Use the managed
-launcher for package commands to retain pre-run dependency verification.
+`owned generated tree changed`, `node_modules changed before Vite start`, or
+`repository output still has an active or interrupted writer` refusal protects
+unverified bytes. Neither `workspace recover` nor `workspace refresh` authorizes
+deleting or adopting that tree. Do not delete the tree or rewrite its ownership
+record by hand to force cleanup.
+
+`workspace reset-modules` is the explicit recovery. It requires a stopped
+workspace (the same lifecycle lock and stopped-profile guard as `link`; a running
+supervisor or live consumer is refused) whose dependency link is complete. It
+deletes every journal-owned `node_modules` tree, the TypeScript and Vite loader
+caches inside it, the external Vite optimizer cache, and any `node_modules` at the
+composition root or a selected package root, including trees left by an
+interrupted writer. It then reinstalls through the recorded composition installer,
+so the new trees are snapshotted by a recorded writer. Foreign bytes are never
+adopted. Distributions, bindings, shims, the YAML worker, loader files, their
+publications, and build reuse records stay untouched. A target that resolves
+through a symlink is refused. The result lists the removed paths; `--json` returns
+`{"workspaceID", "phase", "removed", "reinstalled"}`. If the reinstall fails, rerun
+the command; if the lockfile was left unverified, `unlink` and relink instead.
+
+When an `unlink` or `remove` was interrupted by such a refusal (link phase
+`unlinking`), `reset-modules` only deletes the same trees and forgets their
+records, without reinstalling into the partially restored overlay, and reports
+`reinstalled: false`. Every other output and its pending restoration stay for the
+rerun `workspace unlink` or `workspace remove`, which then completes. Other
+incomplete link phases are still refused. Use the managed launcher for package
+commands to retain pre-run dependency verification.
 
 Refresh commands reuse saved launch settings and protocol evidence. Supply launch
 flags for a workspace that has never launched, or override saved settings
