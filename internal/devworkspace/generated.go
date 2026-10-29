@@ -389,6 +389,16 @@ func RecordGeneratedTree(prepared *GeneratedTree) error {
 		if err != nil {
 			return err
 		}
+		// A concurrent sibling producer may have published this owned parent
+		// after preparation; adopt it only through its ledger record.
+		if actual, err := inspectGenerated(parentPath); err == nil {
+			if actual.Kind != "directory" || ledger.Entries[parent] != actual {
+				return devcontract.Fail(4, "generated_conflict", "generated output parent is not an owned directory")
+			}
+			continue
+		} else if !os.IsNotExist(err) {
+			return err
+		}
 		if err = os.Mkdir(parentPath, 0700); err != nil {
 			return err
 		}
@@ -430,6 +440,37 @@ func RecordGeneratedTree(prepared *GeneratedTree) error {
 		}
 	}
 	return nil
+}
+
+// publishedGeneratedTree returns the digest of a generated tree whose bytes
+// still exactly match its recorded publication. Pending, missing, empty or
+// changed trees are refused.
+func publishedGeneratedTree(w Workspace, relative string) (string, error) {
+	ledger, unlock, _, err := lockGenerated(w)
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
+	if _, pending := ledger.Pending[relative]; pending || ledger.Cleanup != nil {
+		return "", devcontract.Fail(4, "generated_pending", "generated output has an unfinished writer")
+	}
+	actual, err := scanGenerated(w, relative)
+	if err != nil {
+		return "", err
+	}
+	if len(actual) == 0 || !sameGenerated(actual, selectedGenerated(ledger.Entries, relative)) {
+		return "", devcontract.Fail(4, "generated_conflict", "generated output differs from its recorded publication: "+relative)
+	}
+	paths := make([]string, 0, len(actual))
+	for path := range actual {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	hash := sha256.New()
+	for _, path := range paths {
+		fmt.Fprintf(hash, "%q %s %s\n", filepath.ToSlash(path), actual[path].Kind, actual[path].SHA256)
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 func removeGeneratedSnapshot(root, relative string, entries map[string]generatedEntry) error {
 	paths := make([]string, 0, len(entries))

@@ -199,6 +199,9 @@ func (g *BuildGraph) disableManagedDependencies(ctx context.Context, h WatchHook
 	return generations, nil
 }
 
+// rebuildChange rebuilds the closure affected by changed paths under the
+// build lock and feedback hold, replaces the host and SDK-affected plugins when
+// needed, and refreshes consumers before releasing feedback.
 func (g *BuildGraph) rebuildChange(ctx context.Context, paths []string, h WatchHooks) error {
 	for _, path := range paths {
 		if sourceManifest(path) {
@@ -251,7 +254,7 @@ func (g *BuildGraph) rebuildChange(ctx context.Context, paths []string, h WatchH
 				}
 			}
 		}
-		if err := g.execute(ctx, javascript); err != nil {
+		if err := g.execute(ctx, javascript, nil); err != nil {
 			return err
 		}
 		alreadyReady := map[string]bool{}

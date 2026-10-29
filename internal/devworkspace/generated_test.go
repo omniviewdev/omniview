@@ -129,6 +129,37 @@ func TestGeneratedBuildCannotAdoptUnrecordedParentDirectory(t *testing.T) {
 	}
 }
 
+func TestGeneratedSiblingBuildsPreparedTogetherBothPublishUnderNewParent(t *testing.T) {
+	w := generatedFixture(t)
+	first, err := PrepareGeneratedTree(w, "build/first", "generation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := PrepareGeneratedTree(w, "build/second", "generation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, prepared := range []*GeneratedTree{first, second} {
+		if err = os.WriteFile(filepath.Join(prepared.Directory, "plugin"), []byte(prepared.relative), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err = RecordGeneratedTree(prepared); err != nil {
+			t.Fatalf("%s: %v", prepared.relative, err)
+		}
+	}
+	for _, relative := range []string{"build/first", "build/second"} {
+		if _, err := publishedGeneratedTree(w, relative); err != nil {
+			t.Fatalf("%s not published: %v", relative, err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(w.Root, ".local/build/first/plugin"), []byte("edited"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := publishedGeneratedTree(w, "build/first"); err == nil {
+		t.Fatal("edited generated output still validated as published")
+	}
+}
+
 func TestPreparedDirectoryReplacementCannotAcquireForeignBytes(t *testing.T) {
 	w := generatedFixture(t)
 	prepared, err := PrepareGeneratedTree(w, "bin", "generation")
