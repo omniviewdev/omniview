@@ -2,8 +2,8 @@ package categories
 
 import (
 	"os"
-	"os/exec"
-	"runtime"
+
+	"github.com/omniviewdev/omniview/internal/shellenv"
 
 	"github.com/omniviewdev/plugin-sdk/settings"
 )
@@ -29,7 +29,7 @@ var Terminal = settings.Category{
 				if !ok {
 					return settings.ValidationResult{Code: "shell_type", Message: "Enter a shell executable name or path."}
 				}
-				path, err := exec.LookPath(val)
+				path, _, err := shellenv.Resolve([]string{val})
 				if err != nil {
 					return settings.ValidationResult{Code: "shell_executable", Message: "Choose an executable shell installed on this system."}
 				}
@@ -115,21 +115,8 @@ func MigrateTerminalValues(values map[string]any) (map[string]any, bool) {
 	return migrated, false
 }
 
-// defaultShell picks a shell that exists on this machine: the user's $SHELL,
-// else the first common one found. A fixed /bin/zsh fails validation on
-// systems without zsh, which rejects every save that includes the default.
+// defaultShell also consults the account database before package-init defaults
+// are registered, so Finder launches do not bake in an arbitrary fallback.
 func defaultShell() string {
-	if runtime.GOOS == "windows" {
-		return "powershell.exe"
-	}
-	candidates := []string{os.Getenv("SHELL"), "/bin/zsh", "/bin/bash", "/bin/sh"}
-	for _, shell := range candidates {
-		if shell == "" {
-			continue
-		}
-		if _, err := exec.LookPath(shell); err == nil {
-			return shell
-		}
-	}
-	return "/bin/sh"
+	return shellenv.Default()
 }

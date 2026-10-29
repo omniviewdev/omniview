@@ -42,6 +42,7 @@ import (
 	"github.com/omniviewdev/omniview/internal/instance"
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
 	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
+	"github.com/omniviewdev/omniview/internal/shellenv"
 	"github.com/omniviewdev/omniview/internal/telemetry"
 	"github.com/omniviewdev/omniview/internal/version"
 	logging "github.com/omniviewdev/plugin-sdk/log"
@@ -96,6 +97,11 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: invalid runtime profile: %v\n", err)
 		os.Exit(1)
+	}
+	// Finder does not inherit a terminal's login PATH. Resolve it before any
+	// plugin or executable starts, while preserving host isolation authority.
+	if err := shellenv.Restore(context.Background()); err != nil {
+		fmt.Fprintln(os.Stderr, "warning: login environment unavailable; keeping inherited environment")
 	}
 	var pluginAssets, defaultAssets http.Handler
 	options := application.Options{

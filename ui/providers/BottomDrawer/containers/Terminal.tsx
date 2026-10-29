@@ -9,7 +9,6 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { WebLinksAddon } from '@xterm/addon-web-links';
-import { debounce } from '@/utils/debounce';
 import { orFallback } from '@/utils/orFallback';
 
 // project import
@@ -34,6 +33,10 @@ type Props = {
 const constructSignalHandler = (signal: string, sessionId: string) => {
   return `core/exec/signal/${signal}/${sessionId}`;
 };
+
+function terminalFontSize(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 12;
+}
 
 function recoveryFor(properties: Record<string, unknown> | undefined, error: TerminalErrorInfo) {
   const recovery = properties?.recovery;
@@ -86,7 +89,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
   const xtermRef = useRef<Terminal | undefined>(undefined);
   const terminalCleanupRef = useRef<(() => void) | null>(null);
 
-  const fitAddonRef = useRef<FitAddon | undefined>(undefined);
+  const fitTerminalRef = useRef<(() => void) | undefined>(undefined);
 
   // Error state (set by structured ERROR signal from plugin)
   const errorRef = useRef<TerminalErrorInfo | null>(null);
@@ -99,11 +102,9 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
 
   const [textDecoder] = useState(() => new TextDecoder());
 
-  const handleFit = () => {
-    if (fitAddonRef.current !== undefined) {
-      fitAddonRef.current.fit();
-    }
-  };
+  const handleFit = useCallback(() => {
+    fitTerminalRef.current?.();
+  }, []);
 
   const handleRetry = useCallback((command: string[]) => {
     const props = tab?.properties as Record<string, any> | undefined;
@@ -155,8 +156,12 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
     term.options.theme = getTerminalTheme(themeName, themeElement);
     term.options.cursorBlink = settings['terminal.cursorBlink'] as boolean;
     term.options.cursorStyle = settings['terminal.cursorStyle'] as 'block' | 'underline' | 'bar';
-    term.options.fontSize = (settings['terminal.fontSize'] as number) || 12;
-  }, [activeTheme, themeName, themeElement, settings]);
+    const fontSize = terminalFontSize(settings['terminal.fontSize']);
+    if (term.options.fontSize !== fontSize) {
+      term.options.fontSize = fontSize;
+      handleFit();
+    }
+  }, [activeTheme, themeName, themeElement, settings, handleFit]);
 
   // Own teardown separately from initialization so a post-commit theme
   // resolution can initialize or update xterm without recreating it.
@@ -193,7 +198,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
       allowTransparency: true,
       macOptionIsMeta: true,
       macOptionClickForcesSelection: true,
-      fontSize: orFallback(s['terminal.fontSize'], 12),
+      fontSize: terminalFontSize(s['terminal.fontSize']),
       fontFamily: 'Consolas,Liberation Mono,Menlo,Courier,monospace',
       fontWeight: 'normal',
       theme,
@@ -204,8 +209,6 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
     const fitAddon = new FitAddon();
 
     terminal.open(terminalElement);
-
-    fitAddonRef.current = fitAddon;
 
     terminal.loadAddon(fitAddon);
 
@@ -228,32 +231,69 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
 
     terminal.focus();
 
-    const debouncedFit = debounce(() => {
-      fitAddon.fit();
-    }, 10);
+    const attachedRef = { current: false };
+    let inputActive = true;
+    let fitFrame: number | undefined;
+    let pendingSize: { rows: number; cols: number } | undefined;
+    let resizing = false;
 
-    const handleWindowResize = () => {
-      handleFit();
+    // Keep one resize in flight. A later geometry must never lose to an older RPC.
+    const resizeSession = (rows: number, cols: number) => {
+      if (!inputActive || rows < 1 || cols < 1) {
+        return;
+      }
+
+      pendingSize = { rows, cols };
+      if (resizing) {
+        return;
+      }
+
+      resizing = true;
+      void (async () => {
+        try {
+          while (inputActive && pendingSize) {
+            const size = pendingSize;
+            pendingSize = undefined;
+            try {
+              await ExecClient.ResizeSession(sessionId, size.rows, size.cols);
+            } catch (err: unknown) {
+              log.error(new Error(parseAppError(err).detail), { event: 'resize_session', sessionId });
+            }
+          }
+        } finally {
+          resizing = false;
+        }
+      })();
     };
 
-    window.addEventListener('resize', handleWindowResize);
+    const fitVisibleTerminal = () => {
+      if (!inputActive || terminalElement.clientWidth === 0 || terminalElement.clientHeight === 0) {
+        return;
+      }
 
-    // Re-fit when the bottom drawer finishes a resize transition
-    const unsubscribeResizeReset = bottomDrawerChannel.on('onResizeReset', () => {
-      handleFit();
-    });
+      fitAddon.fit();
+    };
 
-    const resizeObserver = new ResizeObserver((_val) => {
-      debouncedFit();
-    });
+    const scheduleFit = () => {
+      if (!inputActive || fitFrame !== undefined) {
+        return;
+      }
 
-    resizeObserver.observe(terminalRef.current);
-
-    const resizeSession = (rows: number, cols: number) => {
-      ExecClient.ResizeSession(sessionId, rows, cols).catch((err: unknown) => {
-        log.error(new Error(parseAppError(err).detail), { event: 'resize_session', sessionId });
+      fitFrame = requestAnimationFrame(() => {
+        fitFrame = undefined;
+        fitVisibleTerminal();
       });
     };
+
+    fitTerminalRef.current = scheduleFit;
+    window.addEventListener('resize', scheduleFit);
+    const unsubscribeResizeReset = bottomDrawerChannel.on('onResizeReset', scheduleFit);
+    const resizeObserver = new ResizeObserver(scheduleFit);
+    resizeObserver.observe(terminalElement);
+    const fonts = document.fonts;
+    fonts?.addEventListener('loadingdone', scheduleFit);
+    void fonts?.ready.then(scheduleFit);
+    scheduleFit();
 
     terminal.onResize(({ rows, cols }) => {
       if (attachedRef.current && inputActive) {
@@ -264,10 +304,6 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
     const stdout = `core/exec/stream/stdout/${sessionId}`;
     const stderr = `core/exec/stream/stderr/${sessionId}`;
 
-    // Track whether the session has been attached so we can distinguish
-    // fast failures (CLOSE before/during attach) from normal session endings.
-    const attachedRef = { current: false };
-    let inputActive = true;
     let inputWrites = Promise.resolve();
     const failTerminalIO = (cause: unknown, operation: 'attach' | 'write') => {
       if (!inputActive) {
@@ -392,10 +428,11 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
         return;
       }
 
-      fitAddon.fit();
+      fitVisibleTerminal();
       attachedRef.current = true;
       // A pre-attach fit can consume onResize; always send the current size after attachment.
       resizeSession(terminal.rows, terminal.cols);
+      scheduleFit();
       terminal.onData(data => {
         if (!inputActive) {
           return;
@@ -423,7 +460,13 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
         disposer();
       });
 
-      window.removeEventListener('resize', handleWindowResize);
+      if (fitFrame !== undefined) {
+        cancelAnimationFrame(fitFrame);
+      }
+
+      fitTerminalRef.current = undefined;
+      window.removeEventListener('resize', scheduleFit);
+      fonts?.removeEventListener('loadingdone', scheduleFit);
       unsubscribeResizeReset();
 
       try {
@@ -434,7 +477,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
 
       xtermRef.current = undefined;
 
-      resizeObserver.unobserve(terminalElement);
+      resizeObserver.disconnect();
 
       // cleanup signal handlers
       ['ERROR', 'CLOSE', 'SIGINT', 'SIGQUIT', 'SIGTERM', 'SIGKILL', 'SIGHUP', 'SIGUSR1', 'SIGUSR2', 'SIGWINCH'].forEach((signal) => {
