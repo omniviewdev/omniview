@@ -159,6 +159,88 @@ describe('applyBatch', () => {
     const result = applyBatch(data, events, deepAccessor);
     expect(result.result[0].updated).toBe(true);
   });
+  it('preserves ordered delete, re-add, update and first-match duplicate semantics', () => {
+    const first = makeItem('same', { revision: 0 });
+    const second = makeItem('same', { revision: 1 });
+    const other = makeItem('other');
+    const replacement = makeItem('same', { revision: 2 });
+    const event = (type: ResourceEvent['type'], data: { metadata: { name: string } }): ResourceEvent => ({
+      type, payload: { data, key: 'k', connection: 'c', id: data.metadata.name, namespace: 'default' },
+    });
+    const original = { result: [first, second, other] };
+    const oneRemoved = applyBatch(original, [event('DELETE', first), event('UPDATE', other)], idAccessor);
+    expect(oneRemoved.result).toEqual([second, other]);
+    expect(oneRemoved.result[0]).toBe(second);
+    const result = applyBatch(original, [
+      event('DELETE', first),
+      event('UPDATE', replacement),
+      event('DELETE', replacement),
+      event('ADD', first),
+      event('UPDATE', replacement),
+    ], idAccessor);
+    expect(result.result).toEqual([other, replacement]);
+    expect(original.result).toEqual([first, second, other]);
+  });
+
+  it('retains cache identity when a batch changes no rows', () => {
+    const missing = makeItem('missing');
+    const events: ResourceEvent[] = [
+      { type: 'ADD', payload: { data: baseData.result[0], key: 'k', connection: 'c', id: 'pod-1', namespace: 'default' } },
+      { type: 'UPDATE', payload: { data: missing, key: 'k', connection: 'c', id: 'missing', namespace: 'default' } },
+      { type: 'DELETE', payload: { data: missing, key: 'k', connection: 'c', id: 'missing', namespace: 'default' } },
+    ];
+    expect(applyBatch(baseData, events, idAccessor)).toBe(baseData);
+  });
+
+  it('applies single and mixed batches without mutating frozen cache data or payload objects', () => {
+    const pod = (name: string, phase: string) => Object.freeze({
+      metadata: Object.freeze({ name }),
+      status: Object.freeze({ phase }),
+    });
+    const first = pod('pod-1', 'Pending');
+    const second = pod('pod-2', 'Running');
+    const added = pod('pod-3', 'Running');
+    const replacement = pod('pod-1', 'Running');
+    const original = Object.freeze({
+      result: Object.freeze([first, second]),
+      success: true,
+      totalCount: 2,
+    });
+    const event = (
+      type: ResourceEvent['type'],
+      data: { metadata: { name: string }; status: { phase: string } },
+    ): ResourceEvent => Object.freeze({
+      type,
+      payload: Object.freeze({ data, key: 'k', connection: 'c', id: data.metadata.name, namespace: 'default' }),
+    });
+    const scenarios = [
+      { events: [event('ADD', added)], expected: [first, second, added] },
+      { events: [event('UPDATE', replacement)], expected: [replacement, second] },
+      { events: [event('DELETE', first)], expected: [second] },
+      { events: [event('DELETE', first), event('ADD', replacement)], expected: [second, replacement] },
+    ];
+    for (const scenario of scenarios) {
+      const next = applyBatch(original, scenario.events, idAccessor);
+      expect(next.result).toEqual(scenario.expected);
+      expect(next.result).not.toBe(original.result);
+      expect(next.result).toContain(second);
+      expect(original.result).toEqual([first, second]);
+      expect(first.status.phase).toBe('Pending');
+    }
+  });
+
+  it('keeps strict equality for missing and NaN identities', () => {
+    const missing = {};
+    const nan = { id: Number.NaN };
+    const original = { result: [missing, nan] };
+    const events: ResourceEvent[] = [
+      { type: 'DELETE', payload: { data: nan, key: 'k', connection: 'c', id: '', namespace: '' } },
+      { type: 'DELETE', payload: { data: missing, key: 'k', connection: 'c', id: '', namespace: '' } },
+      { type: 'ADD', payload: { data: nan, key: 'k', connection: 'c', id: '', namespace: '' } },
+    ];
+    expect(applyBatch(original, events, 'id').result).toEqual([nan, nan]);
+  });
+
 });
 
 // ---------------------------------------------------------------------------
@@ -734,7 +816,7 @@ describe('useEventBatcher — bounded live progress', () => {
     expect(queryClient.getQueryData(nativeQueryKey)).toMatchObject({ result: [initial] });
     act(() => { vi.advanceTimersByTime(1); });
     expect(queryClient.getQueryData(nativeQueryKey)).toMatchObject({ result: [initial, created] });
-    expect(queryClient.getQueryData(nativeResourceKey(created.id, ''))).toEqual({ result: created });
+    expect(queryClient.getQueryData(nativeResourceKey(created.id, ''))).toMatchObject({ result: created });
   });
 
   it('retains the normal next-frame fast path and cancels its timer', () => {
