@@ -328,7 +328,7 @@ func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 		}
 		return identity, nil
 	}
-	return s.manager.NewBuildGraph(ctx, s.workspace.Manifest.WorkspaceID, BuildOptions{Generation: s.generation, GoBuildCacheDirectory: s.goBuildCache, ExpectedSDKRevision: o.ReviewedSDKRevision, VerifySDKSource: verify, HostBuild: s.buildHost, Bindings: func(ctx context.Context, host, outputDirectory string) (resultErr error) {
+	return s.manager.NewBuildGraph(ctx, s.workspace.Manifest.WorkspaceID, BuildOptions{Generation: s.generation, GoBuildCacheDirectory: s.goBuildCache, ExpectedSDKRevision: o.ReviewedSDKRevision, VerifySDKSource: verify, HostBuild: s.buildHost, HostVariant: s.hostVariant(), HostOutput: s.hostOutput(), ReuseHost: s.reuseHost, Bindings: func(ctx context.Context, host, outputDirectory string) (resultErr error) {
 		hostModOutput, err := prepareStableHostModTree(s.workspace, s.generation)
 		if err != nil {
 			return err
@@ -425,23 +425,19 @@ func (s *workspaceSupervisor) buildHost(ctx context.Context, request HostBuildRe
 	if before != request.SDKSource {
 		return fmt.Errorf("SDK source changed before native host build")
 	}
-	prepared, err := PrepareGeneratedTree(s.workspace, filepath.Join("bin", s.options.Mode), s.generation)
+	prepared, err := PrepareGeneratedTree(s.workspace, s.hostOutput(), s.generation)
 	if err != nil {
 		return err
 	}
 	bin := prepared.Directory
 	tags := "devcontrol"
-	binary := filepath.Join(bin, "Omniview")
 	if s.options.Mode == "browser" {
 		tags = "server," + tags
-		binary += "-server"
 	}
 	if s.options.MCP {
 		tags += ",mcp"
 	}
-	if runtime.GOOS == "windows" {
-		binary += ".exe"
-	}
+	binary := filepath.Join(bin, s.hostExecutable())
 	defer func() {
 		if errors.Is(resultErr, errOwnedCommandUncertain) {
 			_ = prepared.stageFile.Close()
@@ -450,13 +446,8 @@ func (s *workspaceSupervisor) buildHost(ctx context.Context, request HostBuildRe
 		recordErr := RecordGeneratedTree(prepared)
 		resultErr = errors.Join(resultErr, recordErr)
 		if resultErr == nil {
-			relative, err := filepath.Rel(prepared.Directory, binary)
-			if err != nil {
-				resultErr = err
-				return
-			}
 			s.mu.Lock()
-			s.binary = filepath.Join(prepared.Destination, relative)
+			s.binary = filepath.Join(prepared.Destination, s.hostLaunchRelative())
 			s.mu.Unlock()
 		}
 	}()
@@ -474,8 +465,55 @@ func (s *workspaceSupervisor) buildHost(ctx context.Context, request HostBuildRe
 		if _, err = s.runLaunchCommand(ctx, host, env, s.output, "task", "darwin:create:dev:app:bundle", "BIN_DIR="+bin, "HOST_MOD_OUTPUT_DIRECTORY="+hostModOutput.Directory, "GO_BUILD_CACHE_DIRECTORY="+s.goBuildCache); err != nil {
 			return err
 		}
-		binary = filepath.Join(bin, "Omniview.dev.app", "Contents", "MacOS", "Omniview")
 	}
+	return nil
+}
+
+// hostOutput is the generated tree buildHost publishes for this mode.
+func (s *workspaceSupervisor) hostOutput() string { return filepath.Join("bin", s.options.Mode) }
+
+// hostVariant names every host build setting that is not a source file.
+func (s *workspaceSupervisor) hostVariant() string {
+	return fmt.Sprintf("mode=%s mcp=%t platform=%s/%s", s.options.Mode, s.options.MCP, runtime.GOOS, runtime.GOARCH)
+}
+
+func (s *workspaceSupervisor) hostExecutable() string {
+	name := "Omniview"
+	if s.options.Mode == "browser" {
+		name += "-server"
+	}
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	return name
+}
+
+// hostLaunchRelative is the launched executable inside the host output tree.
+func (s *workspaceSupervisor) hostLaunchRelative() string {
+	if s.options.Mode == "native" && runtime.GOOS == "darwin" {
+		return filepath.Join("Omniview.dev.app", "Contents", "MacOS", "Omniview")
+	}
+	return s.hostExecutable()
+}
+
+// reuseHost adopts the published host from an unchanged previous build. The
+// graph has already verified the whole output tree against its ledger record.
+func (s *workspaceSupervisor) reuseHost(context.Context) error {
+	destination, err := generatedPath(s.workspace, s.hostOutput())
+	if err != nil {
+		return err
+	}
+	binary := filepath.Join(destination, s.hostLaunchRelative())
+	info, err := os.Lstat(binary)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("published host executable is not a regular file")
+	}
+	s.mu.Lock()
+	s.binary = binary
+	s.mu.Unlock()
 	return nil
 }
 

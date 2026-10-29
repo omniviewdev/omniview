@@ -251,7 +251,7 @@ func (g *BuildGraph) rebuildChange(ctx context.Context, paths []string, h WatchH
 				}
 			}
 		}
-		if err := g.execute(ctx, javascript); err != nil {
+		if err := g.execute(ctx, javascript, nil); err != nil {
 			return err
 		}
 		alreadyReady := map[string]bool{}

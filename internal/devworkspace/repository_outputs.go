@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/omniviewdev/omniview/internal/devcompose"
@@ -127,7 +128,9 @@ func (g *BuildGraph) buildJavaScript(ctx context.Context, n BuildNode) (resultEr
 		}
 		environment = append(environment, "OMNIVIEW_YAML_WORKER_OUTPUT_FILE="+filepath.Join(worker.Directory, "yaml.worker.bundle.js"))
 	}
-	if _, ok := scripts["typecheck"]; ok {
+	// A build script that already runs the typecheck script must not run it twice.
+	build, _ := scripts["build"].(string)
+	if _, ok := scripts["typecheck"]; ok && !buildRunsTypecheck.MatchString(build) {
 		if _, err = g.runProducer(ctx, n.Directory, environment, "pnpm", "run", "typecheck"); err != nil {
 			return err
 		}
@@ -157,6 +160,8 @@ func (g *BuildGraph) buildJavaScript(ctx context.Context, n BuildNode) (resultEr
 	published = true
 	return nil
 }
+
+var buildRunsTypecheck = regexp.MustCompile(`(^|[\s&;|(])(pnpm|npm|yarn)\s+(run\s+)?typecheck($|[\s&;|)])`)
 
 func requireProducerFile(path string) error {
 	info, err := os.Lstat(path)

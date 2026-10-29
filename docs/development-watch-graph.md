@@ -6,12 +6,14 @@
 
 `Manager.NewBuildGraph(ctx, name, BuildOptions)` resolves selected manifest directories and the installed overlay. `ExpectedSDKRevision` is an independently reviewed fixed-capability baseline, not an arbitrary base. Required `VerifySDKSource(ctx,directory,reviewedRevision)` returns `devsource.Identity`; inject real `devsource.Verify` or an explicit workspace-only options adapter. Required `HostBuild` receives `HostBuildRequest.SDKSource` and compiles the actual selected native/server host without a competing bindings/frontend writer. Optional `Bindings(ctx,hostDirectory,outputDirectory)` uses the exclusively allocated sibling output; its real Task default passes `BINDINGS_OUTPUT_DIRECTORY` and `GO_BUILD_CACHE_DIRECTORY`, never raw Wails generation. Required `GoBuildCacheDirectory` is the prepared owned UUID profile runtime `go-build` directory outside source; the constructor rejects missing, redirected or source-tree caches.
 
-`graph.Bootstrap(ctx)` serializes these output owners:
+`graph.Bootstrap(ctx)` builds these output owners in dependency order:
 
 1. Host bindings, through the Taskfile entry point.
 2. Selected base-ui, then ai-ui/editors.
 3. Selected providers/runtime, then Vite-plugin shim generation, export checking and distribution.
 4. Selected plugin frontends/backends, host frontend and host backend.
+
+Nodes whose dependencies have finished run in parallel, at most four at a time (half the CPUs on smaller machines), started in plan order: for example bindings, providers, base-ui and plugin backends start together, then ai-ui alongside editors, then every plugin frontend. Watch closures use the same scheduler. After the first failure or cancellation no further node starts; running siblings finish normally so their owned processes and outputs settle, then the first failure is returned, prefixed with its node. `OnEvent` calls are serialized and producer output shares one locked writer.
 
 The graph owns selected local nodes only. Generated aggregate pnpm files live at the registered feature root above independent Git repositories; source package manifests/workspace configs/lockfiles remain standalone inputs. One native12 install boundary and validated `PNPM_CONFIG_WORKSPACE_DIR` govern all managed package commands. Exact-file SDK replacement rewriting preserves unrelated module directives and existing replace blocks. Mixed manager pins, malformed sums, edited aggregate files or stale source fingerprints fail before publication/readiness.
 
@@ -22,6 +24,15 @@ Before and after backend compilation, effective `GOWORK=off go list -m -json git
 The custom-profile reader `pkg/state/custom.go` and shared native-independent ownership contract `pkg/profilecontract/profile.go` are also protected by exact reviewed-baseline bytes. Select a reviewed fixed SDK commit containing both files; a prior baseline missing either is not accepted. The host and SDK consume the shared contract directly, so host upgrades require the corresponding reviewed SDK cutover. Explicit workspace isolation-source opt-in applies to these files too.
 
 Managed plugin watcher/rebuild operations enforce the same exact selected SDK directory and profile identity even when the parent graph has `watch=false`. A sibling checkout sharing the reviewed baseline is not the selected source. Isolation-core opt-in permits deliberate edits within that validated selection, not substitution of another workspace.
+
+### Restart reuse
+
+`Bootstrap` skips a node whose inputs are unchanged since its last successful bootstrap build and whose owned outputs are still exactly that build's outputs. Records live in the UUID profile at `~/.omniview-dev/profiles/<uuid>/runtime/build-reuse.json`; a node's record is removed before it rebuilds and written only after its outputs validate.
+
+- **Inputs:** a SHA-256 over the builder executable's bytes, the node's identity, every dependency's output digest, the node's toolchain and the selected source files. JavaScript toolchain inputs are the installed composition plan, the resolved Node executable and the pinned pnpm launcher. Go nodes (bindings, plugin and host backends) use the selected SDK identity, `go env GOVERSION` and the host variant (mode, MCP, platform). Source files are the Git-visible files (tracked plus untracked, not ignored) below the node directory, files directly inside each of its ancestors up to the repository root, and paths outside the package that its `package.json` scripts reference through `../`. Sibling packages contribute only through dependency output digests. Tracked files the graph itself writes (bindings, shims, YAML worker, Vite config stamps) are never hashed as source.
+- **Outputs:** `devoutputs.Published` verifies a staged output (`dist`, bindings, shims, YAML worker) still matches its controlled publication and returns a content digest without directory identities. Plugin and host binaries use the generated ledger the same way. A reused plugin re-records its artifact SDK attestation; a reused host is adopted as the launch binary through `BuildOptions.ReuseHost`.
+
+Dependency output digests give early cutoff: an edit rebuilds the edited node, and its dependents rebuild only if its outputs actually change. Watch rebuilds and `BuildPluginUI` never consult or write records, so outputs they republish make the next bootstrap rebuild that node. Any fingerprint error (Git, toolchain or SDK probe) only disables reuse for that node.
 
 ## Launch and watch adapters
 
@@ -149,7 +160,7 @@ Managed frontend preparation, spawn/capture and publication share a start gate w
 
 A lost retained-process observation is not proof of process exit. The producer stays unready with its owned handle retained; the actual cause is written to its existing local diagnostic log and bounded dev-log buffer. Read those logs deliberately with `--unsafe-output` on a private test instance, rather than inferring death from a live HTTP endpoint or an empty public `LastError`.
 
-The serial graph prepares same-depth exclusive sibling stages using `Prepare` with `Distribution`, `Bindings`, `Shims`, or `YAMLWorker`. It runs actual compiler commands with:
+The graph prepares same-depth exclusive sibling stages using `Prepare` with `Distribution`, `Bindings`, `Shims`, or `YAMLWorker`. It runs actual compiler commands with:
 
 - `OMNIVIEW_BUILD_OUTPUT_DIRECTORY`: Vite/declaration outDir or argv-safe package-local tsup CLI out-dir.
 - `OMNIVIEW_SHIMS_OUTPUT_DIRECTORY` and read-only `OMNIVIEW_SHIMS_SOURCE_DIRECTORY`: generate/check new shims while preserving the established previous-export behavior.
@@ -158,7 +169,7 @@ The serial graph prepares same-depth exclusive sibling stages using `Prepare` wi
 
 Each UI package's `vite.config.ts` keeps custom/staged declaration output independent of the active distribution and stays inside that package's composite TypeScript boundary. Staged producers emit the complete declaration tree rooted at `src`; standalone publishing retains rolled declarations. API Extractor follows the fixed `package.json` dist entry, so it must not read an old active declaration or require one in a cold feature. Declaration compiler errors fail the actual producer rather than merely logging diagnostics and publishing output.
 
-UI composite build info and selected Kubernetes node-project build info use controlled `node_modules/.tmp`; type checking is not disabled. `Publish` preflights destinations/HEAD and captures all after-images before source renames, then records resumable progress. Empty/missing declared literal distribution exports, host index.html or exact worker fail before publication. Runtime build still precedes shim generation/check and Vite-plugin output; there is no second output watcher.
+UI composite build info, incremental typecheck build info and selected Kubernetes node-project build info use controlled `node_modules/.tmp`; type checking is not disabled. A package's `typecheck` script runs before `build` only when the build script does not already run it. `Publish` preflights destinations/HEAD and captures all after-images before source renames, then records resumable progress. Empty/missing declared literal distribution exports, host index.html or exact worker fail before publication. Runtime build still precedes shim generation/check and Vite-plugin output; there is no second output watcher.
 
 Root-level Vite loader ownership filters the tracked inventory before validating selected entry types. An unrelated tracked Git submodule is not a loader baseline and cannot block restoration; a nonregular entry that actually matches the exact owned loader-stamp pattern still refuses adoption.
 
