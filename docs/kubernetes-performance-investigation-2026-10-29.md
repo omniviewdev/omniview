@@ -288,3 +288,151 @@ into `base` would violate cache immutability. No universal claim that spread is
 slow, or that slice is faster for every engine/array shape, follows from this
 measurement. Sparse arrays, array subclasses, and custom iterator/species hooks
 are outside this dense JSON resource-array benchmark.
+
+## Wave 2: bounded rendering and visible metric demand
+
+The [performance tracker](https://github.com/omniviewdev/omniview/issues/212)
+contains ten scoped opportunities and supplements five existing, gated SDK-v2
+architecture issues instead of creating competing redesign tickets. Each item
+records discovery, source entry points, ownership, verification, and portability.
+The four local changes below preserve the current connection-readiness guards
+and dependency cohort. These receipts do not establish native CPU acceptance.
+
+### Event viewport
+
+The actual original component from plugin main `92c3185` and the candidate used
+identical synthetic Storybook fixtures. Chromium measured a 438px scroll viewport:
+
+| Source events | Original mounted rows | Candidate mounted rows | Original story DOM elements | Candidate story DOM elements |
+|---:|---:|---:|---:|---:|
+| 300 | 300 | 14 | 3,329 | 198 |
+| 3,000 | 3,000 | 14 | 33,029 | 198 |
+| 30,000 | 30,000 | 14 | 330,029 | 198 |
+
+Keyboard End reached event 30,000. Search found the final source event as one
+result and reset scroll; the Warning filter retained all 10,000 matches.
+Loading, empty recovery, reordering, and variable-height narrow rows were exercised.
+Browser smoke caught a measurement invalidation bug: unchanged-height mounted
+rows retained estimated sizes after a width change cleared their cache.
+Remeasuring the bounded mounted range fixed the 9.25px gaps; settled rounding
+differences were at most 0.25px. Permanent `Dashboard/EventsTable` stories retain
+the three fixture sizes and interaction controls.
+
+This bounds DOM and paint work, not event acquisition, deduplication, or sorting.
+Those still process the full input. See [plugin #53](https://github.com/omniviewdev/omniview-plugin-kubernetes/issues/53)
+for the receipt and limitations.
+
+### Dashboard Pod ingestion ownership
+
+The preserved overview/cards and candidate ran actual host `useResources`,
+`useEventBatcher`, QueryClient, and rendered summary/health UI. External Wails
+transport and connection readiness were controlled. Three bursts delivered
+100 ADD, 100 UPDATE to Failed, then 100 DELETE events:
+
+| Measured work | Original | Candidate |
+|---|---:|---:|
+| Pod ingestion owners | 2 | 1 |
+| Initial Pod List requests | 1 | 1 |
+| Callback deliveries for 300 source events | 600 | 300 |
+| List cache application attempts | 6 | 3 |
+| Individual resource-cache writes | 400 | 200 |
+
+Cache contents and visible Running/Failed/empty states were asserted after each
+burst, including failed-health reporting and listener cleanup. Initial List was
+already query-deduplicated: this is not a 50% initial network reduction.
+[Plugin #54](https://github.com/omniviewdev/omniview-plugin-kubernetes/issues/54)
+records the controlled actual-path measurement.
+
+### Shared age scheduler
+
+Both host TextCell and plugin AgeCell mounted 300 and 3,000 real cells against
+preserved original source and the candidate. Half the timestamps were five
+seconds old and half five days old. Under controlled time and jsdom:
+
+| 3,000-cell workload | Original | Candidate |
+|---|---:|---:|
+| Active timers | 3,000 | 1 |
+| Callbacks over 10 visible seconds | 30,000 | 10 |
+| Formatter calls over 10 visible seconds | 30,000 | 15,000 |
+| Callbacks over 60 hidden seconds | 180,000 | 0 |
+| Formatter calls over 60 hidden seconds | 180,000 | 0 |
+
+Final unsubscribe leaves no timers or visibility listeners. Bulk teardown
+schedules no replacement timers. Sixteen focused tests passed in each package
+under `America/New_York`, including epoch zero, invalid/future values, timestamp
+changes, formatter transitions, full-day/DST boundaries, and lifecycle.
+In an actual Chromium renderer, 300 AgeCells stayed at `50s` during 31 seconds
+of simulated hidden visibility and immediately caught up to `1m22s` on resume.
+Elapsed jsdom timings are not promoted as native speedups.
+
+Reproduce candidate counters from the appropriate checkout:
+
+```bash
+# Host root
+AGE_CLOCK_BENCH=1 ./node_modules/.bin/vitest run \
+  ui/components/tables/Resources/cells/TextCell.benchmark.test.tsx \
+  --silent=false --reporter=verbose
+
+# Plugin ui/
+AGE_CLOCK_BENCH=1 ./node_modules/.bin/vitest run \
+  src/components/kubernetes/table/shared/cells/AgeCell.benchmark.test.tsx \
+  --silent=false --reporter=verbose
+```
+
+For before/after reproduction, redirect the cell import to preserved source from
+host `316878a` or plugin `92c3185`, retaining the same benchmark entry and installed
+dependencies. Only that original-source run should set `AGE_CLOCK_BASELINE=1`;
+baseline assertions reject candidate timer behavior mislabeled as original.
+[Host #213](https://github.com/omniviewdev/omniview/issues/213) preserves the receipt.
+Native OS clock/timezone changes during a continuously visible session remain
+unexercised.
+
+### Visible metrics and stable dashboard layout
+
+The hook/query-client scenario recorded zero requests during 120 initially
+disabled seconds, three during 60 visible seconds, zero during 120 seconds with
+both columns hidden, and zero during a hidden connection switch. This measures
+the hook's enabled policy; caller integration requires separate proof.
+
+An actual Chromium fixture exercised the provider, SDK binding/parser, query,
+metric cell, and 300-row DOM with controlled backend responses. Initially hidden
+columns started no request; showing CPU started one. During 31 wall-clock seconds
+of simulated document hiding, including a pending retry, no new request started.
+Resume added one request. Selection, filter text/focus, DOM identity, and
+`scrollTop=240` survived. In-flight transport completion is not an abort guarantee.
+
+Review also caught dashboard layout loss in an initial pause implementation.
+Actual original chart/gauge components reduced scroll height from 1,242px to
+490px while hidden; a middle offset of 600px clamped to 140px and stayed there
+after resume. Stable presentation with independently gated observer sidecars
+retained the 1,242px height, 600px offset, and all 16 SVG node identities.
+At 980px width the responsive height was 1,016px and also remained unchanged
+across hide/resume. The controlled-cache geometry fixture used real runtime hooks
+with network offline; it is not acquisition-throughput evidence.
+[Plugin #55](https://github.com/omniviewdev/omniview-plugin-kubernetes/issues/55)
+tracks both acquisition and layout acceptance.
+
+### Integration and SDK-v2 carry-forward
+
+Host UI tests passed 1,187 cases; plugin tests passed 543, including three
+dashboard-layout regressions. Both production frontend builds passed. Plugin
+typecheck and lint passed with zero lint errors; repository warnings remain.
+Temporary browser/baseline source fixtures were removed after proof.
+
+Port the invariants rather than copying legacy APIs:
+
+- One acquisition/event-ingestion owner per resource scope; presentation consumers
+  must not each replay transport events into the same cache.
+- Visibility and column demand must apply before initial acquisition and cancel
+  observer retry/poll demand without removing presentation or its layout/state.
+- Bound mounted rows independently of complete membership, filtering, counts,
+  ordering, and identity. Never substitute client truncation for truthful paging.
+- Share a due-time scheduler, pause it when hidden, refresh on resume, and keep
+  teardown linear. Historical views must respect the SDK-v2 chosen view clock
+  rather than accidentally introducing live wall-clock ticks.
+- Keep immutable cache ownership and connection/namespace/generation isolation;
+  do not restore stale cross-connection placeholder data.
+
+The SDK-v2 workspace and public runtime API were not changed. Initial full-object
+List serialization, projected reads, native finite paging, bounded source demand,
+and matched FreeLens/native CPU acceptance remain separate tracked work.
