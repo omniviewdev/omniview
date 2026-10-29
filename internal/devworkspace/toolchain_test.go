@@ -3,6 +3,7 @@ package devworkspace
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -347,6 +348,78 @@ func TestNativePNPMLauncherRefusesVersionMismatchBeforeScript(t *testing.T) {
 	}
 	if _, err = os.Stat(sentinel); !os.IsNotExist(err) {
 		t.Fatalf("mismatched executable ran the requested script: %v", err)
+	}
+}
+
+// The launcher pins the workspace root, so a dependency-changing command from
+// any directory rewrites the owned composition node_modules. Only the recorded
+// composition install may pass; ordinary scripts and audits still run.
+func TestNativePNPMLauncherRefusesDependencyWritesOutsideCompositionInstall(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX fake native pnpm")
+	}
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("actual Node is required for launcher behavior")
+	}
+	node, err = filepath.EvalSymlinks(node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := linkFixtureRoot(t)
+	record := filepath.Join(root, "invocations")
+	fake := filepath.Join(root, "fake-pnpm")
+	script := "#!/bin/sh\nif [ \"$1\" = --version ]; then echo 12.14.0; exit 0; fi\nprintf '%s\\n' \"$*\" >> '" + record + "'\n"
+	if err = os.WriteFile(fake, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	files, err := nativePNPMLauncherFiles(node, fake, "12.14.0", root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	launcher := filepath.Join(root, "pnpm.cjs")
+	if err = os.WriteFile(launcher, files[0].Data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	run := func(authorized bool, args ...string) (string, error) {
+		t.Helper()
+		if err := os.RemoveAll(record); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(node, append([]string{launcher}, args...)...)
+		cmd.Dir = t.TempDir()
+		cmd.Env = append(os.Environ(), "OMNIVIEW_PNPM_NODE_PATH=", compositionInstallEnvironment+"=")
+		if authorized {
+			cmd.Env = append(cmd.Env, compositionInstallEnvironment+"=1")
+		}
+		raw, err := cmd.CombinedOutput()
+		recorded, _ := os.ReadFile(record)
+		if err != nil {
+			return string(recorded), fmt.Errorf("%w: %s", err, raw)
+		}
+		return string(recorded), nil
+	}
+	for _, args := range [][]string{{"install"}, {"i", "--offline"}, {"-C", "ui", "add", "left-pad"}, {"--filter", "base-ui", "remove", "react"}, {"-r", "update"}, {"dedupe"}} {
+		recorded, err := run(false, args...)
+		if err == nil || !strings.Contains(err.Error(), "omniview-dev workspace refresh") {
+			t.Fatalf("pnpm %q was not refused: %v", args, err)
+		}
+		if recorded != "" {
+			t.Fatalf("refused pnpm %q still reached native pnpm: %q", args, recorded)
+		}
+	}
+	for _, args := range [][]string{{"run", "build"}, {"exec", "tsc", "--noEmit"}, {"-r", "peers", "check", "--json", "--lockfile-only"}, {"--filter", "install", "test"}} {
+		recorded, err := run(false, args...)
+		if err != nil {
+			t.Fatalf("pnpm %q was refused: %v", args, err)
+		}
+		if want := "--config.verify-deps-before-run=error " + strings.Join(args, " ") + "\n"; recorded != want {
+			t.Fatalf("pnpm %q reached native pnpm as %q, want %q", args, recorded, want)
+		}
+	}
+	recorded, err := run(true, "install", "--ignore-scripts")
+	if err != nil || recorded != "--config.verify-deps-before-run=error install --ignore-scripts\n" {
+		t.Fatalf("composition install was not passed through: recorded=%q err=%v", recorded, err)
 	}
 }
 

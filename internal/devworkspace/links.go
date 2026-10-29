@@ -325,9 +325,11 @@ func (m *Manager) linkCommandContext(ctx context.Context, name string) (context.
 const dependencyCommandExitCode = 5
 
 // linkCommand deliberately ignores ambient go.work, GOFLAGS and package-manager
-// selectors. Every pnpm call uses the exact native12 composition launcher.
+// selectors. Every pnpm call uses the exact native12 composition launcher, and
+// only this recorded composition runner may change dependencies through it.
 func linkCommand(ctx context.Context, dir, program string, args ...string) ([]byte, error) {
-	if program == "pnpm" {
+	pnpm := program == "pnpm"
+	if pnpm {
 		graph, ok := ctx.Value(linkToolchainKey{}).(*BuildGraph)
 		if !ok {
 			return nil, fmt.Errorf("native pnpm requires the selected workspace toolchain context")
@@ -348,7 +350,7 @@ func linkCommand(ctx context.Context, dir, program string, args ...string) ([]by
 	cmd.Dir = dir
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
-		if workspaceRootEnvironment(key) {
+		if workspaceRootEnvironment(key) || key == compositionInstallEnvironment {
 			continue
 		}
 		if key != "GOWORK" && key != "GOFLAGS" && key != "NODE_PATH" && key != "GOCACHE" && key != "OMNIVIEW_PNPM_NODE_PATH" {
@@ -356,6 +358,9 @@ func linkCommand(ctx context.Context, dir, program string, args ...string) ([]by
 		}
 	}
 	cmd.Env = append(cmd.Env, "GOWORK=off", "GOFLAGS=", "OMNIVIEW_PNPM_NODE_PATH=")
+	if pnpm {
+		cmd.Env = append(cmd.Env, compositionInstallEnvironment+"=1")
+	}
 	if cache, ok := ctx.Value(linkBuildCacheKey{}).(string); ok {
 		cmd.Env = append(cmd.Env, "GOCACHE="+cache)
 	}
