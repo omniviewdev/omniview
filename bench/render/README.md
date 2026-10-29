@@ -37,6 +37,9 @@ Production React and JSX are the default. Use `BENCH_REACT_DEV=1` only for debug
   React Compiler setting is kept, so numbers resemble the shipped app.
 - **Fixtures** (`fixtures/`) are deterministic: seeded pods with realistic specs/status and
   metrics, and log lines with JSON and ANSI-coloured content.
+  Shared defaults explicitly answer `CheckConnection` with `CONNECTED` for the requested
+  synthetic connection ID. Render and whole-app profiles exercise the real readiness
+  guard; they do not bypass it or wait for watch synchronization to authorize reads.
 - The kubernetes Pod table is rendered from the `plugins/kubernetes` submodule source
   against the app's own `@omniviewdev/runtime` / `@omniviewdev/base-ui` (as plugins get them
   at runtime through the shared-deps import map). Run `git submodule update --init
