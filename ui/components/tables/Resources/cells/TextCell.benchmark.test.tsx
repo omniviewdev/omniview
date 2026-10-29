@@ -76,12 +76,16 @@ describe.skipIf(!enabled)('actual age cell scheduler smoke', () => {
     const hiddenFormats = format.mock.calls.length;
     if (baseline) {
       expect(activeTimers).toBe(count);
+      expect(visibleCallbacks).toBe(count * 10);
+      expect(visibleFormats).toBe(count * 10);
       expect(visibilityListeners).toBe(0);
       expect(hiddenTimers).toBe(count);
       expect(hiddenCallbacks).toBe(count * 60);
       expect(hiddenFormats).toBe(count * 60);
     } else {
       expect(activeTimers).toBe(1);
+      expect(visibleCallbacks).toBe(10);
+      expect(visibleFormats).toBe(count * 5);
       expect(visibilityListeners).toBe(1);
       expect(hiddenTimers).toBe(0);
       expect(hiddenCallbacks).toBe(0);
