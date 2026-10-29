@@ -46,37 +46,55 @@ export function applyBatch(
   idAccessor: string,
 ): any {
   const base = oldData ?? { result: [], success: true, totalCount: 0 };
-  // Shallow-copy the result array so we never mutate the cached version.
-  const result = [...(base.result ?? [])];
-
+  const original: unknown[] = base.result ?? [];
+  let result: unknown[] | undefined;
+  // Index a multi-event batch once. A single event needs only one scan.
+  const positions = events.length > 1 ? new Map<unknown, number>() : undefined;
+  const duplicates = new Map<number, number>();
+  if (positions) {
+    for (let i = original.length - 1; i >= 0; i--) {
+      const id = get(original[i], idAccessor);
+      // Match the previous strict-equality lookup: NaN never matches itself.
+      if (id !== id) continue;
+      const next = positions.get(id);
+      if (next !== undefined) duplicates.set(i, next);
+      positions.set(id, i);
+    }
+  }
+  const deleted = new Set<number>();
   for (const event of events) {
     const eventId = get(event.payload.data, idAccessor);
-
+    const rows = result ?? original;
+    const idx = positions
+      ? (eventId === eventId ? positions.get(eventId) ?? -1 : -1)
+      : rows.findIndex((item) => get(item, idAccessor) === eventId);
     switch (event.type) {
-      case 'ADD': {
-        const idx = result.findIndex((item: any) => get(item, idAccessor) === eventId);
+      case 'ADD':
         if (idx === -1) {
+          result ??= original.slice();
+          if (eventId === eventId) positions?.set(eventId, result.length);
           result.push(event.payload.data);
         }
         break;
-      }
-      case 'UPDATE': {
-        const idx = result.findIndex((item: any) => get(item, idAccessor) === eventId);
-        if (idx !== -1) {
+      case 'UPDATE':
+        if (idx !== -1 && rows[idx] !== event.payload.data) {
+          result ??= original.slice();
           result[idx] = event.payload.data;
         }
         break;
-      }
-      case 'DELETE': {
-        const idx = result.findIndex((item: any) => get(item, idAccessor) === eventId);
+      case 'DELETE':
         if (idx !== -1) {
-          result.splice(idx, 1);
+          result ??= original.slice();
+          deleted.add(idx);
+          const next = duplicates.get(idx);
+          if (next === undefined) positions?.delete(eventId);
+          else positions?.set(eventId, next);
         }
         break;
-      }
     }
   }
-
+  if (!result) return base;
+  if (deleted.size) result = result.filter((_, index) => !deleted.has(index));
   return { ...base, result };
 }
 

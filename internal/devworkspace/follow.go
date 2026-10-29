@@ -123,6 +123,16 @@ func cohortKey(plan UpdatePlan) string {
 	return hex.EncodeToString(hash[:])
 }
 
+func followConfigurationFingerprint(manifest devcontract.WorkspaceManifest) string {
+	// BaseCommit records update progress, including a failed apply that needs
+	// explicit recovery. It does not change the selected ref or upstream policy.
+	manifest.Repositories = append([]devcontract.Repository(nil), manifest.Repositories...)
+	for i := range manifest.Repositories {
+		manifest.Repositories[i].BaseCommit = ""
+	}
+	return UpdateConfigurationFingerprint(manifest)
+}
+
 // Follow owns scheduling only. Update and the existing supervisor own all producers.
 func (m *Manager) Follow(
 	ctx context.Context, name string, options FollowOptions, emit func(FollowStatus) error,
@@ -220,12 +230,6 @@ func newFollowStatus(w Workspace, apply bool) (FollowStatus, error) {
 func finishFollow(
 	ctx context.Context, status *FollowStatus, interruptedApply bool, publish func() error, resultErr error,
 ) error {
-	if errors.Is(context.Cause(ctx), errFollowConsentRevoked) && !interruptedApply {
-		status.Result = "consent_revoked"
-		status.Enabled = false
-		status.NextAttempt = time.Time{}
-		return publish()
-	}
 	if errors.Is(context.Cause(ctx), errFollowFenceIntegrity) {
 		status.Result = updateBlocked
 		status.Enabled = false
@@ -233,6 +237,18 @@ func finishFollow(
 		_ = publish()
 		return devcontract.Fail(followConflictExit, "follow_fence_invalid",
 			"follow consent metadata changed unexpectedly; no further updates are authorized")
+	}
+	if (errors.Is(context.Cause(ctx), errFollowConsentRevoked) ||
+		errors.Is(resultErr, errFollowConsentRevoked)) && !interruptedApply {
+		status.Result = "consent_revoked"
+		status.Enabled = false
+		status.ActiveOperation = ""
+		status.NextAttempt = time.Time{}
+		status.Plan = nil
+		status.PendingCohort = ""
+		status.NextCommand = ""
+		status.NextArgv = nil
+		return publish()
 	}
 	return resultErr
 }
@@ -271,12 +287,26 @@ func (m *Manager) runFollow(
 	status *FollowStatus, publish func() error, interruptedApply *bool,
 ) error {
 	var failedCohort followFailedCohort
+	var consent string
+	if options.Apply {
+		consent = followConfigurationFingerprint(w.Manifest)
+	}
 	delay := options.Interval
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		plan, observeErr := m.PlanUpdate(ctx, name, options.UpdateOptions)
+		if options.Apply {
+			current, err := m.Inspect(ctx, name)
+			if err != nil {
+				return err
+			}
+			if followConfigurationFingerprint(current.Manifest) != consent {
+				status.BlockedReason = "configuration_changed"
+				return errFollowConsentRevoked
+			}
+		}
 		resetFollowObservation(status, &plan)
 		observeErr = followObservationError(plan, observeErr)
 		retained, pending, pendingErr := m.pendingUpdatePlan(w)

@@ -334,3 +334,28 @@ root remount leaves the new source active. Its fixture stderr observations are
 correlated within the authenticated provider process lifetime, followed by
 canonical down/unlink and sampler retirement. This is not a new latency run and
 does not change or relabel the preserved historical baseline above.
+
+## Kubernetes resource cost and native idle CPU
+
+The [2026-10-29 investigation](../../docs/kubernetes-performance-investigation-2026-10-29.md)
+records staged fixes, FreeLens source comparisons, SDK-v2 carry-forward requirements,
+raw receipts, and unresolved native acceptance work.
+
+```bash
+# Actual runtime reducer, synthetic fixtures; no browser/native CPU claim.
+node bench/app/resource-batch.mjs /tmp/resource-batch.json
+
+# Explicit native PIDs; preserve cluster/build/route provenance separately.
+node bench/app/native-idle.mjs \
+  --pid host="$APP_PID" --pid webcontent="$WEB_PID" --pid graphics="$GPU_PID" \
+  --seconds 60 --scenario dashboard-idle-run-1 --out /tmp/dashboard-idle.json
+```
+
+The reducer runner accepts an optional second positional argument naming an original
+source snapshot for before/after comparison. It records the exact input source hash
+before bundling. The native sampler uses cumulative process CPU time rather than
+the rolling `%CPU` field, checks start identity in each CPU snapshot, and rejects
+exited PIDs or processes younger than two seconds. This age guard avoids the
+same-second ambiguity of `ps` start timestamps.
+Neither tool selects or mutates a cluster. Do not use an uncontrolled sampler smoke
+or a reducer speedup as evidence of lower native Graphics/WebContent CPU.
