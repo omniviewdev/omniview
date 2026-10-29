@@ -1,7 +1,7 @@
 import React from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
-import { createErrorHandler } from '../../errors/parseAppError';
+import { createErrorHandler, showAppError } from '../../errors/parseAppError';
 import { resourceQueryKeys } from '../../resourceQueryKeys';
 
 // Types
@@ -15,6 +15,9 @@ import { Events } from '@wailsio/runtime';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 import { useEventBatcher } from './useEventBatcher';
 import type { AddPayload, UpdatePayload, DeletePayload } from './useEventBatcher';
+import { useConnectionReadiness } from '../connection/useConnectionReadiness';
+import { useConnectionQueryGuard } from './useConnectionQueryGuard';
+import { requireConnectionReady } from '../../connection/connectionReadiness';
 
 type UseResourcesOptions = {
   /**
@@ -49,6 +52,7 @@ type UseResourcesOptions = {
    * live functionality to work, this must be set to the path on which the ID is located.
    */
   idAccessor?: string;
+  enabled?: boolean;
 
 };
 
@@ -65,10 +69,19 @@ export const useResources = ({
   resourceKey,
   idAccessor,
   namespaces,
+  enabled = true,
 }: UseResourcesOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
+  const readiness = useConnectionReadiness({ pluginID, connectionID, enabled: enabled && !!resourceKey });
+  const guardQuery = useConnectionQueryGuard(pluginID, connectionID);
+  const queryEnabled = enabled && !!resourceKey && readiness.phase === 'connected';
+  const subscriptionTask = React.useRef<Promise<void>>(Promise.resolve());
+  const showSnackbarRef = React.useRef(showSnackbar);
+  React.useLayoutEffect(() => {
+    showSnackbarRef.current = showSnackbar;
+  }, [showSnackbar]);
 
   const stableNamespaces = React.useMemo(() => namespaces ?? [], [namespaces]);
   const queryKey = React.useMemo(
@@ -83,10 +96,13 @@ export const useResources = ({
   // === Mutations === //
 
   const { mutateAsync: create } = useMutation({
-    mutationFn: async (opts: { input?: any; namespace?: string }) => Create(pluginID, connectionID, resourceKey, CreateInput.createFrom({
-      input: opts.input,
-      namespace: opts.namespace ?? (stableNamespaces.length === 1 ? stableNamespaces[0] : ''),
-    })),
+    mutationFn: async (opts: { input?: unknown; namespace?: string }) => {
+      await requireConnectionReady(pluginID, connectionID);
+      return Create(pluginID, connectionID, resourceKey, CreateInput.createFrom({
+        input: opts.input,
+        namespace: opts.namespace ?? (stableNamespaces.length === 1 ? stableNamespaces[0] : ''),
+      }));
+    },
     onSuccess: async (data) => {
       const result = data?.result as any;
       let foundID = '';
@@ -114,74 +130,98 @@ export const useResources = ({
 
   const resourceQuery = useQuery({
     queryKey,
-    queryFn: async () => List(pluginID, connectionID, resourceKey, ListInput.createFrom({
+    queryFn: queryEnabled ? ({ signal, queryKey }) => guardQuery(queryKey, signal, () => List(pluginID, connectionID, resourceKey, ListInput.createFrom({
       order: [{ field: 'name', descending: false }],
       pagination: { page: 1, pageSize: 200 },
       namespaces: stableNamespaces,
-    })),
+    }))) : skipToken,
     placeholderData: (previousData, _) => previousData,
     retry: false,
+    enabled: queryEnabled,
   });
 
 
   // === Watch State === //
 
-  const [watchState, setWatchState] = React.useState<WatchState>(
-    WatchState.WatchStateIdle
+  const watchScope = React.useMemo(
+    () => ({ pluginID, connectionID, resourceKey, enabled: queryEnabled }),
+    [pluginID, connectionID, resourceKey, queryEnabled],
   );
+  const [watchSnapshot, setWatchSnapshot] = React.useState<{ scope: typeof watchScope; state: WatchState }>();
+  const watchState = queryEnabled && watchSnapshot?.scope === watchScope
+    ? watchSnapshot.state
+    : WatchState.WatchStateIdle;
 
   React.useEffect(() => {
+    if (!queryEnabled) return;
     const cancel = Events.On(
       `${pluginID}/${connectionID}/watch/STATE`,
       (ev) => {
         const event = ev.data as WatchStateEvent;
         if (event.resourceKey === resourceKey) {
-          setWatchState(event.state);
+          setWatchSnapshot({ scope: watchScope, state: event.state });
         }
       },
     );
     return cancel;
-  }, [pluginID, connectionID, resourceKey]);
+  }, [pluginID, connectionID, resourceKey, queryEnabled, watchScope]);
 
   // === Watch Cache Updates (adaptive batching) === //
 
-  const enqueue = useEventBatcher(queryClient, queryKey, getResourceKey, idAccessor, watchState);
+  const enqueue = useEventBatcher(queryClient, queryKey, getResourceKey, idAccessor, watchState, { enabled: queryEnabled });
 
   // Subscribe to live resource events when this view mounts. The Go side only
   // forwards ADD/UPDATE/DELETE events over the Wails bridge for resources with
   // an active subscription, keeping the bridge silent during initial sync.
   React.useEffect(() => {
-    if (!idAccessor) {
+    if (!queryEnabled || !idAccessor) {
       return;
     }
 
-    // Tell Go we want live events for this resource. The initial List
-    // query already returns current data, and live ADD/UPDATE/DELETE
-    // events are applied to the cache via useEventBatcher from this
-    // point forward — no need to re-List after subscribing.
-    SubscribeResource(pluginID, connectionID, resourceKey);
+    let active = true;
+    let subscribed = false;
 
     const addCloser = Events.On(
       `${pluginID}/${connectionID}/${resourceKey}/ADD`,
-      (ev) => enqueue({ type: 'ADD', payload: ev.data as AddPayload }),
+      (ev) => { if (active) enqueue({ type: 'ADD', payload: ev.data as AddPayload }); },
     );
     const updateCloser = Events.On(
       `${pluginID}/${connectionID}/${resourceKey}/UPDATE`,
-      (ev) => enqueue({ type: 'UPDATE', payload: ev.data as UpdatePayload }),
+      (ev) => { if (active) enqueue({ type: 'UPDATE', payload: ev.data as UpdatePayload }); },
     );
     const deleteCloser = Events.On(
       `${pluginID}/${connectionID}/${resourceKey}/DELETE`,
-      (ev) => enqueue({ type: 'DELETE', payload: ev.data as DeletePayload }),
+      (ev) => { if (active) enqueue({ type: 'DELETE', payload: ev.data as DeletePayload }); },
     );
-
-    return () => {
+    const closeListeners = () => {
       addCloser();
       updateCloser();
       deleteCloser();
-      // Tell Go we no longer need live events
-      void UnsubscribeResource(pluginID, connectionID, resourceKey);
     };
-  }, [pluginID, connectionID, resourceKey, enqueue]);
+
+    // Serialize reacquisition behind cleanup, including when disconnect happens
+    // before the backend acknowledges the previous subscription.
+    const subscribe = subscriptionTask.current.then(async () => {
+      if (!active) return;
+      await SubscribeResource(pluginID, connectionID, resourceKey);
+      subscribed = true;
+    }).catch((error: unknown) => {
+      closeListeners();
+      if (active) setWatchSnapshot({ scope: watchScope, state: WatchState.WatchStateError });
+      showAppError(showSnackbarRef.current, error, 'Failed to subscribe to resource updates');
+    });
+    subscriptionTask.current = subscribe;
+
+    return () => {
+      active = false;
+      closeListeners();
+      subscriptionTask.current = subscribe.then(async () => {
+        if (subscribed) await UnsubscribeResource(pluginID, connectionID, resourceKey);
+      }).catch((error: unknown) => {
+        showAppError(showSnackbarRef.current, error, 'Failed to unsubscribe from resource updates');
+      });
+    };
+  }, [pluginID, connectionID, resourceKey, enqueue, idAccessor, queryEnabled, watchScope]);
 
   return {
     /**

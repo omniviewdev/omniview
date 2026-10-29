@@ -1,6 +1,8 @@
-import { useQuery } from '@tanstack/react-query';
+import { skipToken, useQuery } from '@tanstack/react-query';
 import { GetEditorSchemas } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
 import { useResolvedPluginId } from '../useResolvedPluginId';
+import { useConnectionReadiness } from '../connection/useConnectionReadiness';
+import { useConnectionQueryGuard } from './useConnectionQueryGuard';
 
 type UseEditorSchemasOptions = {
   /** The plugin ID to fetch schemas for */
@@ -24,10 +26,12 @@ export const useEditorSchemas = ({
   enabled = true,
 }: UseEditorSchemasOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
+  const readiness = useConnectionReadiness({ pluginID, connectionID, enabled });
+  const guardQuery = useConnectionQueryGuard(pluginID, connectionID);
   const query = useQuery({
     queryKey: ['EDITOR_SCHEMAS', pluginID, connectionID],
-    queryFn: () => GetEditorSchemas(pluginID, connectionID),
-    enabled: enabled && !!pluginID && !!connectionID,
+    queryFn: enabled && readiness.phase === 'connected' ? ({ signal, queryKey }) => guardQuery(queryKey, signal, () => GetEditorSchemas(pluginID, connectionID)) : skipToken,
+    enabled: enabled && !!pluginID && !!connectionID && readiness.phase === 'connected',
     staleTime: 10 * 60 * 1000, // schemas are fairly stable per connection
     retry: 1,
   });

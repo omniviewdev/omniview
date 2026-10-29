@@ -61,7 +61,7 @@ describe('plugin metadata after managed source publication', () => {
       .mockRejectedValueOnce(new Error("plugin 'probe' not found"))
       .mockResolvedValue(new PluginMeta({ id: 'probe', name: 'Recovered plugin' }));
     render(<PluginContextProvider pluginId="probe"><Consumer /></PluginContextProvider>);
-    await screen.findByText("plugin 'probe' not found");
+    await screen.findByRole('button', { name: 'Retry' });
     expect(screen.queryByLabelText('Plugin counter')).toBeNull();
 
     await act(async () => published());
@@ -97,7 +97,7 @@ describe('plugin metadata after managed source publication', () => {
       .mockRejectedValueOnce(new Error('Metadata unavailable'))
       .mockResolvedValue(new PluginMeta({ id: 'probe', name: 'Retry recovered plugin' }));
     render(<PluginContextProvider pluginId="probe"><Consumer /></PluginContextProvider>);
-    await screen.findByText('Metadata unavailable');
+    await screen.findByRole('button', { name: 'Retry' });
     expect(screen.queryByLabelText('Plugin counter')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));

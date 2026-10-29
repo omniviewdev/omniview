@@ -11,6 +11,10 @@ const add = vi.fn();
 const snackbar = vi.fn();
 const listeners = new Map<string, (event: { data: unknown }) => void>();
 vi.mock('../useResolvedPluginId', () => ({ useResolvedPluginId: () => 'neutral' }));
+const requireReady = vi.fn();
+vi.mock('../../connection/connectionReadiness', () => ({
+  requireConnectionReady: (...args: unknown[]) => requireReady(...args),
+}));
 vi.mock('../snackbar/useSnackbar', () => ({ useSnackbar: () => ({ showSnackbar: snackbar }) }));
 vi.mock('../operations/useOperations', () => ({ useOperations: () => ({ addOperation: add, updateOperation: update }) }));
 vi.mock('../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper', () => ({
@@ -24,6 +28,7 @@ import { useStreamAction } from './useStreamAction';
 const params = { actionID: 'start', id: 'opaque', namespace: '', label: 'Start' };
 
 beforeEach(() => { listeners.clear(); update.mockClear(); add.mockClear(); snackbar.mockClear(); open = vi.fn().mockResolvedValue('host-handle'); close = vi.fn().mockResolvedValue(undefined); attach = vi.fn(); });
+beforeEach(() => { requireReady.mockReset().mockResolvedValue(undefined); });
 
 it('attaches listener first and reconciles completion before attachment', async () => {
   attach.mockImplementation(() => {
@@ -93,4 +98,15 @@ it('does not reinterpret an owning cancellation as successful terminal cleanup',
   });
   expect(update.mock.calls.at(-1)?.[1]).toMatchObject({ status: 'cancelled' });
   expect(snackbar).not.toHaveBeenCalled();
+});
+
+it('blocks stream creation when the connection is not ready', async () => {
+  requireReady.mockRejectedValue(new Error('Connection is disconnected'));
+  const hook = renderHook(() => useStreamAction({ connectionID: 'c', resourceKey: 'opaque' }));
+  await act(async () => {
+    await expect(hook.result.current.startStreamAction(params)).rejects.toThrow('Connection is disconnected');
+  });
+  expect(requireReady).toHaveBeenCalledWith('neutral', 'c');
+  expect(open).not.toHaveBeenCalled();
+  expect(attach).not.toHaveBeenCalled();
 });

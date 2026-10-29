@@ -12,6 +12,7 @@ vi.mock('../../../packages/omniviewdev-runtime/src/hooks/snackbar/useSnackbar', 
 }));
 vi.mock('../../../packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper', () => ({
   Get: native.get, Update: vi.fn(), Delete: vi.fn(),
+  CheckConnection: vi.fn().mockResolvedValue({ status: 'CONNECTED', connection: null, error: '', details: '' }),
 }));
 afterEach(cleanup);
 

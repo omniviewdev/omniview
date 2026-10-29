@@ -12,9 +12,14 @@ import {
   RightDrawerContext,
   type RightDrawerContextType,
   type ShowResourceSidebarParams,
+  ConnectionBoundary,
+  ConnectionBoundaryFallback,
+  withConnectionReady,
+  useSnackbar,
 } from '@omniviewdev/runtime';
 import { ResourceClient } from '@omniviewdev/runtime/api';
 import { UpdateInput, GetInput, type GetResult } from '@omniviewdev/runtime/models';
+import { createErrorHandler } from '@omniviewdev/runtime';
 import RightDrawer from '@/components/displays/RightDrawer';
 import { bottomDrawerChannel, getBottomDrawerHeight } from './BottomDrawer/events';
 import { createLinkedResourceDrawer } from '@/federation/LinkedResourceDrawer';
@@ -47,6 +52,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
   const [context, setContext] = useState<DrawerContext | undefined>(undefined);
   const resourceRequest = useRef(0);
   const cancelResourceRead = useRef<(() => void) | null>(null);
+  const { showSnackbar } = useSnackbar();
   React.useEffect(() => () => {
     resourceRequest.current += 1;
     cancelResourceRead.current?.();
@@ -254,7 +260,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
     cancelResourceRead.current = null;
     params.signal?.throwIfAborted();
     const onSubmit = (_ctx: DrawerContext, value: Record<string, any>) => {
-      void ResourceClient.Update(
+      void withConnectionReady(params.pluginID, params.connectionID, async () => ResourceClient.Update(
         params.pluginID,
         params.connectionID,
         params.resourceKey,
@@ -264,9 +270,9 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
           id: params.resourceID,
           namespace: params.namespace ?? '',
         }),
-      ).then(() => {
-        closeDrawer(); 
-      });
+      )).then(() => {
+        closeDrawer();
+      }).catch(createErrorHandler(showSnackbar, 'Failed to update resource'));
     };
 
     // Resolve drawer/sidebar via extension points — synchronous lookup
@@ -285,39 +291,44 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
         sidebarComponent,
       );
 
-    // Fetch the resource, then open the drawer with data in ctx — same as row clicks
-    const read = ResourceClient.Get(
-      params.pluginID,
-      params.connectionID,
-      params.resourceKey,
-      GetInput.createFrom({
-        id: params.resourceID,
-        namespace: params.namespace ?? '',
-        params: {},
-      }),
-    );
-    const cancel = () => {
-      void read.cancel();
-    };
-
-    cancelResourceRead.current = cancel;
-    params.signal?.addEventListener('abort', cancel, { once: true });
-    let result: GetResult | null;
-    try {
+    const result: GetResult | null = await withConnectionReady(params.pluginID, params.connectionID, async () => {
       params.signal?.throwIfAborted();
-      result = await read;
-    } catch (error) {
-      if (Boolean(params.signal?.aborted) || request !== resourceRequest.current) {
-        throw new DOMException('Resource request cancelled.', 'AbortError');
+      if (request !== resourceRequest.current) {
+        throw new DOMException('Resource request superseded.', 'AbortError');
       }
 
-      throw error;
-    } finally {
-      params.signal?.removeEventListener('abort', cancel);
-      if (cancelResourceRead.current === cancel) {
-        cancelResourceRead.current = null;
+      const read = ResourceClient.Get(
+        params.pluginID,
+        params.connectionID,
+        params.resourceKey,
+        GetInput.createFrom({
+          id: params.resourceID,
+          namespace: params.namespace ?? '',
+          params: {},
+        }),
+      );
+      const cancel = () => {
+        void read.cancel();
+      };
+
+      cancelResourceRead.current = cancel;
+      params.signal?.addEventListener('abort', cancel, { once: true });
+      try {
+        params.signal?.throwIfAborted();
+        return await read;
+      } catch (error) {
+        if (Boolean(params.signal?.aborted) || request !== resourceRequest.current) {
+          throw new DOMException('Resource request cancelled.', 'AbortError');
+        }
+
+        throw error;
+      } finally {
+        params.signal?.removeEventListener('abort', cancel);
+        if (cancelResourceRead.current === cancel) {
+          cancelResourceRead.current = null;
+        }
       }
-    }
+    });
 
     params.signal?.throwIfAborted();
     if (request !== resourceRequest.current) {
@@ -343,7 +354,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
         pluginID: params.pluginID,
       },
     });
-  }, [closeDrawer, openDrawer, drawerEP, sidebarEP]);
+  }, [closeDrawer, openDrawer, drawerEP, sidebarEP, showSnackbar]);
 
   const contextValue = useMemo(() => ({
     closeDrawer,
@@ -361,14 +372,26 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
         data-open={isOpen || undefined}
         style={{ width: initialWidth }}
       >
-        {content &&
-          <RightDrawer
-            {...content}
-            ctx={context}
-            open={isOpen}
-            onClose={closeDrawer}
-          />
-        }
+        {content && (
+          context?.resource?.pluginID && context.resource.connectionID ? (
+            <ConnectionBoundary
+              pluginID={context.resource.pluginID}
+              connectionID={context.resource.connectionID}
+              fallback={(state) => (
+                <ConnectionBoundaryFallback
+                  state={state}
+                  connectionName={state.connection?.name?.trim() ? state.connection.name : context.resource?.connectionID}
+                  onBack={closeDrawer}
+                  backLabel="Close"
+                />
+              )}
+            >
+              <RightDrawer {...content} ctx={context} open={isOpen} onClose={closeDrawer} />
+            </ConnectionBoundary>
+          ) : (
+            <RightDrawer {...content} ctx={context} open={isOpen} onClose={closeDrawer} />
+          )
+        )}
         <div
           ref={dragHandleRef}
           className={handleStyles.Left}

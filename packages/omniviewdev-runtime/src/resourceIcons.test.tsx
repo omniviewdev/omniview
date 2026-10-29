@@ -25,14 +25,30 @@ describe('ResourceIcon', () => {
     expect(foreign).not.toHaveBeenCalled();
     expect(screen.getByText('fallback')).toBeTruthy();
   });
-  it('updates mounted consumers on replacement and unload', () => {
+  it('updates mounted consumers on replacement and unload', async () => {
     const { store, registry, show } = setup();
     store.register({ id: 'icons', plugin: 'native', label: '', value: icon('first') });
     show();
     expect(screen.getByText('first')).toBeTruthy();
-    act(() => { store.unregister('icons'); store.register({ id: 'icons', plugin: 'native', label: '', value: icon('second') }); });
-    expect(screen.getByText('second')).toBeTruthy();
-    act(() => registry.removeContributions('native'));
+    await act(async () => { store.unregister('icons'); store.register({ id: 'icons', plugin: 'native', label: '', value: icon('second') }); });
+    expect(await screen.findByText('second')).toBeTruthy();
+    await act(async () => registry.removeContributions('native'));
+    expect(await screen.findByText('fallback')).toBeTruthy();
+  });
+  it('follows a replaced extension point and its subsequent contribution updates', async () => {
+    const { registry, store, show } = setup();
+    store.register({ id: 'icons', plugin: 'native', label: '', value: icon('original') });
+    show();
+    expect(screen.getByText('original')).toBeTruthy();
+    await act(async () => registry.removeExtensionPoints('core'));
+    expect(screen.getByText('fallback')).toBeTruthy();
+    await act(async () => {
+      registry.addExtensionPoint<ResourceIconSetV1>({ id: RESOURCE_ICON_EXTENSION_POINT_ID, pluginId: 'core' });
+    });
+    const replacement = registry.getExtensionPoint<ResourceIconSetV1>(RESOURCE_ICON_EXTENSION_POINT_ID)!;
+    await act(async () => replacement.register({ id: 'new-icons', plugin: 'native', label: '', value: icon('replacement') }));
+    expect(screen.getByText('replacement')).toBeTruthy();
+    await act(async () => replacement.unregister('new-icons'));
     expect(screen.getByText('fallback')).toBeTruthy();
   });
   it('isolates resolver failures', () => {
@@ -41,16 +57,13 @@ describe('ResourceIcon', () => {
     show();
     expect(screen.getByText('fallback')).toBeTruthy();
   });
-  it('isolates render failures and recovers when contribution changes', () => {
-    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-    try {
-      const { store, show } = setup();
-      store.register({ id: 'icons', plugin: 'native', label: '', value: { schemaVersion: 1, resolve: () => () => { throw new Error('render'); } } });
-      show();
-      expect(screen.getByText('fallback')).toBeTruthy();
-      act(() => { store.unregister('icons'); store.register({ id: 'icons', plugin: 'native', label: '', value: icon('recovered') }); });
-      expect(screen.getByText('recovered')).toBeTruthy();
-    } finally { log.mockRestore(); }
+  it('isolates render failures and recovers when contribution changes', async () => {
+    const { store, show } = setup();
+    store.register({ id: 'icons', plugin: 'native', label: '', value: { schemaVersion: 1, resolve: () => () => { throw new Error('render'); } } });
+    show();
+    expect(screen.getByText('fallback')).toBeTruthy();
+    await act(async () => { store.unregister('icons'); store.register({ id: 'icons', plugin: 'native', label: '', value: icon('recovered') }); });
+    expect(await screen.findByText('recovered')).toBeTruthy();
   });
 });
 

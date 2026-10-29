@@ -1,9 +1,11 @@
-import { useQueries } from '@tanstack/react-query';
+import { skipToken, useQueries } from '@tanstack/react-query';
 
 // Types
 import { ListInput } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/resource/models';
 import { List } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
 import { useResolvedPluginId } from '../useResolvedPluginId';
+import { useConnectionReadiness } from '../connection/useConnectionReadiness';
+import { useConnectionQueryGuard } from './useConnectionQueryGuard';
 
 type UseResourceSearchOptions = {
   /**
@@ -22,6 +24,7 @@ type UseResourceSearchOptions = {
    * Entry for the resource search
    */
   searches: ResourceSearchEntry[];
+  enabled?: boolean;
 };
 
 type ResourceSearchEntry = {
@@ -49,8 +52,11 @@ export const useResourceSearch = ({
   pluginID: explicitPluginID,
   connectionID,
   searches,
+  enabled = true,
 }: UseResourceSearchOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
+  const readiness = useConnectionReadiness({ pluginID, connectionID, enabled: enabled && searches.length > 0 });
+  const guardQuery = useConnectionQueryGuard(pluginID, connectionID);
   /**
    * Use the list query key for now since we're kinda only using that for the time being
    */
@@ -62,11 +68,11 @@ export const useResourceSearch = ({
   const results = useQueries({
     queries: searches.map(search => ({
       queryKey: getQueryKey(search),
-      queryFn: async () => List(pluginID, connectionID, search.key, ListInput.createFrom({
+      queryFn: enabled && !!search.key && readiness.phase === 'connected' ? ({ signal, queryKey }) => guardQuery(queryKey, signal, () => List(pluginID, connectionID, search.key, ListInput.createFrom({
         order: [{ field: 'name', descending: false }],
         pagination: { page: 1, pageSize: 200 },
         namespaces: search.namespaces,
-      })).then((data) => {
+      }))).then((data) => {
         if (!data) return [];
         console.log(data.result);
         if (data.result && search.postFilter) {
@@ -74,8 +80,9 @@ export const useResourceSearch = ({
         }
 
         return Object.values(data.result || {});
-      }),
+      }) : skipToken,
       retry: false,
+      enabled: enabled && !!search.key && readiness.phase === 'connected',
     })),
   });
 
