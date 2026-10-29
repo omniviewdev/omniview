@@ -46,10 +46,17 @@ artifacts. Build and publish runtime before Vite-plugin so consumers receive
 matching exports and shims. The publisher uses npm bundled with pinned Node.
 
 Validate and merge consumer dependency updates against those published packages
-before pushing the ordinary `v0.9.0` desktop release tag at the same frozen
-producer commit. Keep this cohort a pre-1.0 minor release, not a major bump.
-Tag-driven desktop publication also requires successful npm publication; an npm
-failure cannot promote desktop or Homebrew artifacts.
+before pushing the ordinary `v0.9.0` desktop release tag. Prefer the frozen
+producer commit. If application, CLI, consumer, or documentation fixes land while
+coordinating the release, tag the validated integrated main commit only after
+confirming that producer sources and their build inputs are unchanged. npm
+provenance continues to identify the original producer commit; do not relabel it
+as the desktop commit. Changed producer inputs require a fresh package version,
+not replacement of an existing npm artifact.
+
+Keep this cohort a pre-1.0 minor release, not a major bump. Tag-driven desktop
+publication also requires successful npm publication; an npm failure cannot
+promote desktop or Homebrew artifacts.
 
 ## Protocol acceptance gate
 
