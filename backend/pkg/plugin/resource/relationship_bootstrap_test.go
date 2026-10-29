@@ -22,6 +22,15 @@ func bootstrapTestCatalog(backing string) resourcev2.Catalog {
 	return catalog
 }
 
+func bootstrapTestBoundCatalog(t *testing.T, backing string) resourcev2.Catalog {
+	t.Helper()
+	catalog := bootstrapTestCatalog(backing)
+	var err error
+	catalog.Revision, err = resourcev2.BindCatalogRevision(bindingTestEpoch(t), catalog.Revision)
+	require.NoError(t, err)
+	return catalog
+}
+
 func bootstrapTestDeclaration(label string) resourcev2.RelationshipDescriptor {
 	return resourcev2.RelationshipDescriptor{Type: resourcev2.RelUses, TargetType: "peers", TargetScope: []resourcev2.ScopeEntry{}, Label: label, Extractor: &resourcev2.RelationshipExtractor{Method: "fieldPath", FieldPath: "spec.peer"}}
 }
@@ -54,7 +63,7 @@ func TestRelationshipBootstrapPinsOneCompleteCatalog(t *testing.T) {
 
 func TestRelationshipBootstrapReacquiresAfterNativeBindingRetirement(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	catalog := bootstrapTestCatalog("before")
+	catalog := bootstrapTestBoundCatalog(t, "before")
 	catalogCalls := 0
 	route := resourcev2.AccessRoute{Connection: "route/opaque"}
 	registerMockPlugin(ctrl, "p1", &mockProvider{
@@ -72,7 +81,7 @@ func TestRelationshipBootstrapReacquiresAfterNativeBindingRetirement(t *testing.
 	ctrl.bootstrapRelationships(testInvocationContext(), "p1", route)
 	_, before, ok := ctrl.graph.GetBoundDeclarations("p1", route, "objects")
 	require.True(t, ok)
-	catalog = bootstrapTestCatalog("after")
+	catalog = bootstrapTestBoundCatalog(t, "after")
 	ctrl.bootstrapRelationships(testInvocationContext(), "p1", route)
 	declarations, after, ok := ctrl.graph.GetBoundDeclarations("p1", route, "objects")
 	require.True(t, ok, "binding retirement must not discard the replacement bootstrap")
@@ -85,7 +94,7 @@ func TestRelationshipBootstrapReacquiresAfterNativeBindingRetirement(t *testing.
 
 func TestRelationshipReacquisitionCannotCrossInterveningProfileReset(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	catalog := bootstrapTestCatalog("before")
+	catalog := bootstrapTestBoundCatalog(t, "before")
 	catalogCalls := 0
 	route := resourcev2.AccessRoute{Connection: "route/opaque"}
 	registerMockPlugin(ctrl, "p1", &mockProvider{
@@ -103,7 +112,7 @@ func TestRelationshipReacquisitionCannotCrossInterveningProfileReset(t *testing.
 	require.NoError(t, err)
 	defer cleanup()
 	admission := captureCatalogAdmission(operationCtx, generation)
-	catalog = bootstrapTestCatalog("after")
+	catalog = bootstrapTestBoundCatalog(t, "after")
 	err = ctrl.observeCatalogBinding(operationCtx, "p1", route, catalog, admission)
 	require.Equal(t, "RESET_REQUIRED", resourcev2.ErrorCode(err))
 	// Capture the precise epoch accepted by the retirement check, then force a
