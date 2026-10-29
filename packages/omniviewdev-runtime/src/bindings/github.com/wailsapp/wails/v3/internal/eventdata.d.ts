@@ -19,6 +19,9 @@ import type * as pluginlog$0 from "../../../../omniviewdev/omniview/backend/pkg/
 import type * as resource$0 from "../../../../omniviewdev/omniview/backend/pkg/plugin/resource/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as window$0 from "../../../../omniviewdev/omniview/backend/window/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as config$0 from "../../../../omniviewdev/plugin-sdk/pkg/config/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -65,6 +68,13 @@ declare module "@wailsio/runtime" {
             "plugin/update_started": plugin$0.UpdatePayload;
             "settings/changed": string;
             "watch/STATE": resource$1.WatchStateEvent;
+            "windows/changed": window$0.WindowsChangedEvent;
+            "windows/closed": window$0.WindowClosedEvent;
+            "windows/drag/begin": window$0.DragBeginEvent;
+            "windows/drag/drop": window$0.DragPointerEvent;
+            "windows/drag/end": window$0.DragEndEvent;
+            "windows/drag/hover": window$0.DragPointerEvent;
+            "windows/drag/leave": window$0.DragLeaveEvent;
         }
     }
 }

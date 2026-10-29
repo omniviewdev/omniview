@@ -1,8 +1,8 @@
 import React from 'react';
-import { useNavigate } from 'react-router';
 import { IconButton } from '@omniviewdev/base-ui';
 
 // Project imports
+import { useActivePageNavigation } from '@/features/workspace/activePageNavigation';
 import { type HeaderIconLink as HeaderIconLinkProps } from '@/store/header/types';
 import { Icon } from '@/components/icons/Icon';
 import HintTooltip from '@/components/base/HintTooltip';
@@ -15,7 +15,7 @@ type Props = HeaderIconLinkProps;
  * A header button that navigates to another page in the application.
  */
 const HeaderIconLink: React.FC<Props> = ({ id, helpText, icon, href }) => {
-  const navigate = useNavigate();
+  const { navigate } = useActivePageNavigation();
 
   return (
     <HintTooltip content={helpText}>
@@ -26,7 +26,7 @@ const HeaderIconLink: React.FC<Props> = ({ id, helpText, icon, href }) => {
         className={styles.NoDrag}
         aria-label={orFallback(helpText, id)}
         onClick={() => {
-          void navigate(href);
+          navigate(href);
         }}
       >
         <Icon name={icon} size={16} />

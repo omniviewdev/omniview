@@ -7,6 +7,7 @@
 
 .Strip {
   display: flex;
+  flex: 1;
   flex-direction: row;
   align-items: center;
   min-width: 0;
@@ -40,81 +41,14 @@
 .TabsViewport {
   display: flex;
   flex: 1;
+  align-self: stretch;
   min-width: 0;
   overflow: hidden;
 }
 
-.TabsScroller {
-  display: flex;
-  overflow: auto;
-  scroll-snap-type: x mandatory;
-  scrollbar-width: none;
-}
-
-.TabsScroller::-webkit-scrollbar {
-  display: none;
-}
-
-.Tab {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ov-space-4);
-  flex: none;
-  min-width: 150px;
-  height: 33px;
-  padding-inline: var(--ov-space-2);
-  scroll-snap-align: start;
-  cursor: pointer;
-  color: var(--ov-color-tab-inactive-fg, var(--ov-color-fg-muted));
-  background: transparent;
-  border-right: 1px solid var(--ov-color-border-muted);
-  border-left: 1px solid transparent;
-  border-bottom: 2px solid transparent;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.Tab:first-child {
-  border-left-color: var(--ov-color-border-muted);
-}
-
-.Tab:hover {
-  color: var(--ov-color-tab-hover-fg, var(--ov-color-fg-default));
-}
-
-.Tab[data-selected] {
-  color: var(--ov-color-tab-active-fg, var(--ov-color-fg-default));
-  background: var(--ov-color-state-selected);
-  border-bottom-color: var(--ov-color-accent-strong);
-}
-
-.TabLabel {
-  display: flex;
-  align-items: center;
-  gap: var(--ov-space-1);
+/* The strip is also the drop zone for drawer tabs from other windows, so it fills the viewport even when empty. */
+.Tabs {
+  flex: 1;
   min-width: 0;
-}
-
-.TabTitle {
-  font-size: 13px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.Tab[data-selected] .TabTitle {
-  font-weight: 500;
-}
-
-.TabClose {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 4px;
-  color: var(--ov-color-fg-muted);
-}
-
-.TabClose:hover {
-  color: var(--ov-color-fg-default);
-  background: var(--ov-color-state-hover);
+  height: 100%;
 }

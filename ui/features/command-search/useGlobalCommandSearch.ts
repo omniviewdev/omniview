@@ -7,7 +7,8 @@ import { Events } from '@wailsio/runtime';
 import useRightDrawer from '@/hooks/useRightDrawer';
 import { GLOBAL_SEARCH_EXTENSION_POINT_ID } from './extensionPoint';
 import { admitSearchContribution, getNavigationHref } from './admission';
-import { matchRoutes, useLocation, useNavigate } from 'react-router';
+import { matchRoutes } from 'react-router';
+import { useActivePageNavigation } from '../workspace/activePageNavigation';
 import type { RouteObject } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSettingsProvider } from '@/hooks/settings/useCoreSettings';
@@ -48,8 +49,9 @@ async function checkConnection(pluginId: string, connectionId: string, signal: A
 
 
 export function useGlobalCommandSearch() {
-  const navigate = useNavigate();
-  const location = useLocation();
+  // The palette lives in the shell, outside every page router: it reads and navigates the active page tab.
+  const { pathname, search, navigate } = useActivePageNavigation();
+  const location = useMemo(() => ({ pathname, search }), [pathname, search]);
   const latestLocation = useRef(location);
   const queryClient = useQueryClient();
   const { showResourceSidebar } = useRightDrawer();
@@ -146,7 +148,7 @@ export function useGlobalCommandSearch() {
       },
       navigate: (href) => {
         navigated.current = true;
-        void latestRoutingContext.current.navigate(href);
+        latestRoutingContext.current.navigate(href);
       },
     });
     controllerRef.current = next;

@@ -38,7 +38,9 @@ import { ConfirmationModalProvider } from './contexts/ConfirmationModalContext';
 import { ConnectionStateProvider } from './features/connectionState';
 import { OperationsProvider } from '@omniviewdev/runtime';
 import { PluginServiceProvider } from '@/features/plugins';
-import { RouteProvider } from './features/router/RouteProvider';
+import { currentWindow, WindowTabDragProvider } from './features/windows';
+import WorkspaceShell from './layouts/core/main/WorkspaceShell';
+import { PanelWindowShell } from './layouts/core/panel/PanelWindowShell';
 import log from '@/features/logger';
 import { orFallback } from '@/utils/orFallback';
 import { InstanceProvider } from '@/features/instance/InstanceContext';
@@ -95,7 +97,10 @@ const App: React.FC = () => {
                             <BottomDrawerProvider>
                               <RightDrawerProvider>
                                 <PluginServiceProvider>
-                                  <RouteProvider />
+                                  {/* One tab drag broker per window: page strips and the drawer strip share it. */}
+                                  <WindowTabDragProvider>
+                                    {currentWindow.kind === 'panel' ? <PanelWindowShell /> : <WorkspaceShell />}
+                                  </WindowTabDragProvider>
                                 </PluginServiceProvider>
                               </RightDrawerProvider>
                             </BottomDrawerProvider>

@@ -505,14 +505,10 @@ func main() {
 		windowTitle = appName + " — DEV · " + profile.Descriptor.DisplayName
 	}
 
-	// Create the main window
-	mainWindow := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name:      "main",
-		Title:     windowTitle,
-		Width:     DefaultWebviewWidth,
-		Height:    DefaultWebviewHeight,
-		MinWidth:  MinWebviewWidth,
-		MinHeight: MinWebviewHeight,
+	// Every window shares the main window's title and appearance; the window
+	// service overrides name, URL, size and position for secondary windows.
+	windowTemplate := application.WebviewWindowOptions{
+		Title: windowTitle,
 		BackgroundColour: application.NewRGBA(
 			backgroundRed,
 			backgroundGreen,
@@ -524,7 +520,16 @@ func main() {
 			TitleBar: application.MacTitleBarHidden,
 			Backdrop: application.MacBackdropTranslucent,
 		},
-	})
+	}
+
+	// Create the main window
+	mainWindowOptions := windowTemplate
+	mainWindowOptions.Name = window.MainWindowName
+	mainWindowOptions.Width = DefaultWebviewWidth
+	mainWindowOptions.Height = DefaultWebviewHeight
+	mainWindowOptions.MinWidth = MinWebviewWidth
+	mainWindowOptions.MinHeight = MinWebviewHeight
+	mainWindow := app.Window.NewWithOptions(mainWindowOptions)
 	if runtimeReady != nil {
 		mainWindow.OnWindowEvent(events.Common.WindowRuntimeReady, func(_ *application.WindowEvent) {
 			runtimeReady()
@@ -536,8 +541,14 @@ func main() {
 	menus.SetupKeyBindings(app)
 	menus.SetupContextMenus(app)
 
-	// Set up window manager (registers hide-on-close hook, etc.)
-	_ = window.NewManager(app, mainWindow)
+	// The window service keeps main hide-on-close, restores the saved
+	// secondary windows and coordinates cross-window tab drags.
+	windowService := window.NewService(app, mainWindow, window.ServiceOptions{
+		WindowTemplate: windowTemplate,
+		SessionPath:    stateDir.RootDir().ResolvePath(window.SessionFileName),
+		Log:            log.Named("window"),
+	})
+	app.RegisterService(application.NewService(windowService))
 
 	// Run the application
 	if runErr := app.Run(); runErr != nil {

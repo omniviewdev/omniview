@@ -127,8 +127,6 @@ export default defineConfig({
       '@/providers/monaco/bootstrap': process.env.VITEST
         ? path.resolve(__dirname, './ui/providers/monaco/bootstrap.mock.ts')
         : path.resolve(__dirname, './ui/providers/monaco/bootstrap.ts'),
-      // prepare for eventual package splitting
-      '@infraview': path.resolve(__dirname, './ui/pkg'),
       // core routes
       '@': path.resolve(__dirname, './ui'),
       '@components': path.resolve(__dirname, './ui/components'),

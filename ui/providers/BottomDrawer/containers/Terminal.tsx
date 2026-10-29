@@ -16,6 +16,7 @@ import { ExecClient } from '@omniviewdev/runtime/api';
 import { SessionOptions } from '@omniviewdev/runtime/models';
 import log from '@/features/logger';
 import { bottomDrawerChannel } from '../events';
+import { consumeTerminalSessionHandoff } from '../terminalHandoff';
 import { Events } from '@omniviewdev/runtime/runtime';
 import { Base64 } from 'js-base64';
 import { useSettings, parseAppError } from '@omniviewdev/runtime';
@@ -483,6 +484,11 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
       ['ERROR', 'CLOSE', 'SIGINT', 'SIGQUIT', 'SIGTERM', 'SIGKILL', 'SIGHUP', 'SIGUSR1', 'SIGUSR2', 'SIGWINCH'].forEach((signal) => {
         Events.Off(constructSignalHandler(signal, sessionId));
       });
+      // A session moved to another window stays attached for that window.
+      if (consumeTerminalSessionHandoff(sessionId)) {
+        return;
+      }
+
       ExecClient.DetachSession(sessionId).then(() => {
         // Nothing to do once detached.
       }).catch((err: unknown) => {

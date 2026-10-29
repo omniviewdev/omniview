@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { StrictMode, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Provider } from 'react-redux';
-import { MemoryRouter, Outlet, useLocation } from 'react-router';
+import { MemoryRouter, useLocation } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ExtensionProvider, GLOBAL_SEARCH_OPEN_EVENT, PluginWindow, usePluginContext } from '@omniviewdev/runtime';
 import { Category, ConnectionStatusCode, Setting, SettingType } from '@omniviewdev/runtime/models';
@@ -23,15 +23,7 @@ import { createDeferred, createTestDeps } from '@/features/plugins/testing/helpe
 import headerReducer, { actions } from '@/store/header/slice';
 import { HeaderAreaItemType, type HeaderIconLink, type HeaderState } from '@/store/header/types';
 import CoreLayoutHeader from '..';
-import { RouteProvider } from '@/features/router/RouteProvider';
-
-vi.mock('@/features/router/routes', () => ({
-  coreRoutes: [{
-    path: '/',
-    Component: () => <><CoreLayoutHeader /><CurrentLocation /><Outlet /></>,
-    children: [{ path: 'plugins', Component: () => <h1>Plugins</h1> }],
-  }],
-}));
+import { RouterBoundPageNavigation } from '@/features/workspace/testing/RouterBoundPageNavigation';
 
 const fixture = vi.hoisted(() => {
   const previousBootstrap = window.__OMNIVIEW_BOOTSTRAP__;
@@ -202,11 +194,13 @@ it('leaves instance controls out of the header when optional controls are hidden
   render(
     <Provider store={store}>
       <MemoryRouter>
-        <HeaderProviders>
-          <InstanceProvider>
-            <CoreLayoutHeader />
-          </InstanceProvider>
-        </HeaderProviders>
+        <RouterBoundPageNavigation>
+          <HeaderProviders>
+            <InstanceProvider>
+              <CoreLayoutHeader />
+            </InstanceProvider>
+          </HeaderProviders>
+        </RouterBoundPageNavigation>
       </MemoryRouter>
     </Provider>,
   );
@@ -250,13 +244,15 @@ function renderSearchHeader(searchVisible = true, service?: PluginService, clien
     <StrictMode>
       <Provider store={store}>
         <MemoryRouter initialEntries={['/plugins']}>
-          <HeaderProviders service={service} client={client}>
-            <InstanceProvider>
-              <button type='button'>Before header</button>
-              <CoreLayoutHeader />
-              <CurrentLocation />
-            </InstanceProvider>
-          </HeaderProviders>
+          <RouterBoundPageNavigation>
+            <HeaderProviders service={service} client={client}>
+              <InstanceProvider>
+                <button type='button'>Before header</button>
+                <CoreLayoutHeader />
+                <CurrentLocation />
+              </InstanceProvider>
+            </HeaderProviders>
+          </RouterBoundPageNavigation>
         </MemoryRouter>
       </Provider>
     </StrictMode>,
@@ -275,13 +271,19 @@ it('keeps the typed search session and opener across late plugin route publicati
     },
   };
   const store = configureStore({ reducer: { header: headerReducer }, preloadedState: { header } });
-  window.location.hash = '#/plugins';
   render(
     <StrictMode>
       <Provider store={store}>
-        <HeaderProviders service={service}>
-          <InstanceProvider><RouteProvider /></InstanceProvider>
-        </HeaderProviders>
+        <MemoryRouter initialEntries={['/plugins']}>
+          <RouterBoundPageNavigation>
+            <HeaderProviders service={service}>
+              <InstanceProvider>
+                <CoreLayoutHeader />
+                <CurrentLocation />
+              </InstanceProvider>
+            </HeaderProviders>
+          </RouterBoundPageNavigation>
+        </MemoryRouter>
       </Provider>
     </StrictMode>,
   );
@@ -335,7 +337,6 @@ it('keeps the typed search session and opener across late plugin route publicati
     expect(screen.queryByRole('dialog', { name: 'Search Omniview' })).not.toBeInTheDocument();
   } finally {
     cleanup();
-    window.location.hash = '';
   }
 });
 
