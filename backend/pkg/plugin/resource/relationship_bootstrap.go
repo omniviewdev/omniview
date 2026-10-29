@@ -55,7 +55,17 @@ func (c *controller) bootstrapRelationshipsCurrent(ctx context.Context, pluginID
 	// source epoch. Reacquire once under that new epoch, never reuse old work.
 	if err := c.observeCatalogBinding(ctx, pluginID, route, catalog, admission); err != nil {
 		if reacquire && resourcev2.ErrorCode(err) == "RESET_REQUIRED" {
-			c.bootstrapRelationshipsCurrent(ctx, pluginID, route, false)
+			binding, bindingErr := resourcev2.CatalogBindingEpoch(catalog.Revision)
+			c.pluginsMu.RLock()
+			retiredByObservation := bindingErr == nil &&
+				c.plugins[pluginID] == generation && generation.ctx.Err() == nil &&
+				!generation.sourceChanging[route.Connection] &&
+				generation.sourceEpoch[route.Connection] == admission.epoch.Epoch+1 &&
+				generation.catalogBindings[route.Connection].active == binding
+			c.pluginsMu.RUnlock()
+			if retiredByObservation {
+				c.bootstrapRelationshipsCurrent(ctx, pluginID, route, false)
+			}
 		}
 		return
 	}
