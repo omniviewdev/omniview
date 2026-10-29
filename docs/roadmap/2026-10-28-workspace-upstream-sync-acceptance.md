@@ -220,3 +220,11 @@ task --silent dev:cli:build SDK_SOURCE=/Users/joshuapare/Repos/omniviewdev/works
 Changed-code lint reported zero issues; all ten tested packages passed; vet passed. The resulting executable is cache binary `926375c9b23d9762b8279446d9f5b6e34360cf5929b38cca88861ca434cf9c1f/omniview-dev`.
 
 Parent then exercised that exact executable against a separate disposable local bare remote. Check-only fetched a changed commit while retaining the old source marker. One-shot apply advanced to the new marker, retained plan diagnostics, and did not start an instance. A repeated update returned `up_to_date`. Canonical remove retired the test-owned workspace, branch, and profile. Native/browser rendered acceptance above predates this upstream integration; the final executable received this additional real CLI smoke and the full integrated test/static gate.
+
+## Linear rebase and CI provisioning correction
+
+Rebased the PR onto `afde0a73` without retaining the merge commit. The rebased source tree exactly matched the backed-up pre-rebase tree (`84e6b8733313877573ad07d91ac6f4ac12cfabdf`), preserving upstream parallel execution and bootstrap reuse. Watch/source updates continue to use the affected closure without consulting bootstrap reuse records.
+
+The first Linux Go-check job failed `TestRefreshDurablePhaseRecovery` because its job had Node and Go but no native pnpm executable. The job now provisions native pnpm 12.14.0 using the same pinned `pnpm/setup` action as the existing workflows, with automatic dependency installation disabled. No recovery cases are skipped or weakened. Running the Go recovery integration suite locally requires that native executable on PATH or through canonical `OMNIVIEW_PNPM_EXECUTABLE`.
+
+Post-rebase verification passed unchanged-node reuse, changed dependency closure, externally replaced outputs, toolchain invalidation, independent-node parallelism, failure fencing, CSS/no-backend behavior, runtime-before-shims ordering, source-only backend preservation, and all six refresh recovery phases. `task check:go-test` then passed the entire repository Go suite using the SDK-aware modfile, followed by tagged changed-code lint with zero issues. Combined verification took 442.73s. Linux CI is the authoritative verification of the workflow provisioning change.
