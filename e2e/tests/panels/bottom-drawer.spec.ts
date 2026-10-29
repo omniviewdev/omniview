@@ -18,8 +18,19 @@ function drawer(page: Page) {
   };
 }
 
-async function openTerminal(page: Page) {
+/**
+ * The drawer once its restore has settled. Until then it can still show tabs
+ * saved by an earlier session whose terminals are gone, so tab counts and
+ * heights read before that are not the drawer's real state.
+ */
+async function restoredDrawer(page: Page) {
   const d = drawer(page);
+  await expect(d.root).toHaveAttribute('data-ov-drawer-restored', 'true');
+  return d;
+}
+
+async function openTerminal(page: Page) {
+  const d = await restoredDrawer(page);
   const before = await d.tabs.count();
   await d.newTerminal.click();
   await expect(d.tabs).toHaveCount(before + 1);
@@ -39,7 +50,7 @@ async function dragDrawerTo(page: Page, heightFromBottom: number) {
 
 test.describe('Bottom Drawer', () => {
   test('starts minimized to its tab strip with no tabs', async ({ appPage }) => {
-    const d = drawer(appPage);
+    const d = await restoredDrawer(appPage);
     await expect(d.handle).toBeAttached();
     await expect(d.tabs).toHaveCount(0);
     expect(await d.height()).toBeCloseTo(MINIMIZED, 0);
