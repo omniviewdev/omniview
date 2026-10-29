@@ -154,15 +154,19 @@ const Home: React.FC = () => {
   );
 
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(event.active.id as string);
+    setActiveId(typeof event.active.id === 'string' ? event.active.id : null);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveId(null);
     const { active, over } = event;
-    if (over && active.id !== over.id) {
+    if (over && typeof active.id === 'string' && typeof over.id === 'string' && active.id !== over.id) {
       const oldIndex = orderedIds.indexOf(active.id);
       const newIndex = orderedIds.indexOf(over.id);
+      if (oldIndex < 0 || newIndex < 0) {
+        return;
+      }
+
       setOrder(arrayMove(orderedIds, oldIndex, newIndex));
     }
   };

@@ -168,7 +168,7 @@ overrides:
   '@opentelemetry/api': 1.9.1
 
 patchedDependencies:
-  '@wailsio/runtime@3.0.0-beta.34': dabb203a4da4e8fc89694f2ba11be7cfd6d918a1ce1ce256a917c6c905f55947
+  '@wailsio/runtime@3.0.0-beta.34': c07536c6a63634b99b63cb3f02b0fc2e21063066b96ae8aa9dfa3069810ea862
 
 importers:
 
@@ -372,7 +372,7 @@ importers:
         version: 5.0.5(vitest@5.0.5)
       '@wailsio/runtime':
         specifier: 3.0.0-beta.34
-        version: 3.0.0-beta.34(patch_hash=dabb203a4da4e8fc89694f2ba11be7cfd6d918a1ce1ce256a917c6c905f55947)
+        version: 3.0.0-beta.34(patch_hash=c07536c6a63634b99b63cb3f02b0fc2e21063066b96ae8aa9dfa3069810ea862)
       '@welldone-software/why-did-you-render':
         specifier: 10.0.1
         version: 10.0.1(react@19.3.1)
@@ -432,7 +432,7 @@ importers:
     dependencies:
       '@wailsio/runtime':
         specifier: 3.0.0-beta.34
-        version: 3.0.0-beta.34(patch_hash=dabb203a4da4e8fc89694f2ba11be7cfd6d918a1ce1ce256a917c6c905f55947)
+        version: 3.0.0-beta.34(patch_hash=c07536c6a63634b99b63cb3f02b0fc2e21063066b96ae8aa9dfa3069810ea862)
     devDependencies:
       '@types/node':
         specifier: 26.6.5
@@ -463,7 +463,7 @@ importers:
     dependencies:
       '@wailsio/runtime':
         specifier: 3.0.0-beta.34
-        version: 3.0.0-beta.34(patch_hash=dabb203a4da4e8fc89694f2ba11be7cfd6d918a1ce1ce256a917c6c905f55947)
+        version: 3.0.0-beta.34(patch_hash=c07536c6a63634b99b63cb3f02b0fc2e21063066b96ae8aa9dfa3069810ea862)
       lodash.get:
         specifier: 4.4.2
         version: 4.4.2
@@ -5154,7 +5154,7 @@ snapshots:
 
   '@vscode/l10n@0.0.18': {}
 
-  '@wailsio/runtime@3.0.0-beta.34(patch_hash=dabb203a4da4e8fc89694f2ba11be7cfd6d918a1ce1ce256a917c6c905f55947)': {}
+  '@wailsio/runtime@3.0.0-beta.34(patch_hash=c07536c6a63634b99b63cb3f02b0fc2e21063066b96ae8aa9dfa3069810ea862)': {}
 
   '@welldone-software/why-did-you-render@10.0.1(react@19.3.1)':
     dependencies:

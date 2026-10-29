@@ -209,7 +209,14 @@ function ScopedThemeHarness({
     >
       <TerminalContainer
         sessionId={sessionId}
-        tab={{ title: revision, properties: {} }}
+        tab={{
+          id: sessionId,
+          title: revision,
+          variant: 'terminal',
+          createdAt: new Date(0),
+          updatedAt: new Date(0),
+          properties: {},
+        }}
       />
     </div>
   );

@@ -34,6 +34,11 @@ Plugin discovery reads local committed metadata without fetching unrelated repos
 
 Build outputs must exist for effective-resolution diagnostics to pass. A first link can install successfully and still return `link_resolution_failed` when a selected package has no `dist` entry yet. Its durable phase remains `linked`; build in the A15 dependency order, then call `InspectLinks` or re-link to recheck. Do not treat this error as proof of a successful bootstrap. Runtime must build before Vite-plugin shim generation; generated bindings remain the parent's `task bindings` operation.
 
+The pinned Wails runtime patch also skips its fallback drag-environment polling
+timer when drag handlers initialized synchronously. This avoids redundant browser
+work and prevents the timer from accessing a torn-down JSDOM window in component
+tests. Keep the patch and pnpm lockfile hash in sync when updating Wails.
+
 ## Protocol acceptance gate
 
 There is deliberately no unproved default. `LinkOptions.Evidence` must contain successful **workspace/12.14.0** output from the disposable composition probe. Historical independent-root `link` evidence cannot authorize this topology. Selected local exports use explicit workspace mappings with live directory outputs; no unproved `file:` materialization or global links are substituted.
