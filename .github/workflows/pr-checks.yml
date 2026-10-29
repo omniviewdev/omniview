@@ -245,6 +245,11 @@ jobs:
       - name: Component tests
         run: pnpm test
 
+      - name: Age clock DST regressions
+        run: pnpm exec vitest run ui/utils/ageClock.test.tsx
+        env:
+          TZ: America/New_York
+
       - name: Runtime resource batching regressions
         working-directory: packages/omniviewdev-runtime
         run: node ../../node_modules/vitest/vitest.mjs run src/hooks/resource/useEventBatcher.test.ts
