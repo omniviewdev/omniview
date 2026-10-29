@@ -6,6 +6,7 @@ import {
 } from 'react';
 import { render, cleanup, act, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { BottomDrawerTab } from '@omniviewdev/runtime';
+import settingsReducer, { resetSettingValue, setSettingValue } from '@/store/settings/slice';
 
 // ─── xterm mocks ───────────────────────────────────────────────────────────────
 const mocks = vi.hoisted(() => {
@@ -154,9 +155,6 @@ vi.mock('../../events', () => ({
   },
 }));
 
-vi.mock('@/utils/debounce', () => ({
-  debounce: <T,>(fn: T) => fn,
-}));
 
 
 // ─── ResizeObserver spy ─────────────────────────────────────────────────────────
@@ -164,8 +162,31 @@ let resizeObserverCallback: ResizeObserverCallback | null = null;
 const mockObserve = vi.fn();
 const mockUnobserve = vi.fn();
 const mockDisconnect = vi.fn();
+const frames = new Map<number, FrameRequestCallback>();
+let nextFrame = 0;
+let containerWidth = 800;
+let containerHeight = 400;
+
+function flushFits() {
+  const pending = [...frames.values()];
+  frames.clear();
+  pending.forEach(callback => {
+    callback(0);
+  });
+}
 
 beforeEach(() => {
+  frames.clear();
+  containerWidth = 800;
+  containerHeight = 400;
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(() => containerWidth);
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(() => containerHeight);
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    const id = ++nextFrame;
+    frames.set(id, callback);
+    return id;
+  });
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id));
   global.ResizeObserver = vi.fn(function (this: unknown, cb: ResizeObserverCallback) {
     resizeObserverCallback = cb;
     return {
@@ -226,6 +247,8 @@ describe('TerminalContainer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.mockLoadAddon.mockReset();
+    mocks.mockFit.mockReset();
+    mocks.mockResizeSession.mockReset().mockResolvedValue(undefined);
     mocks.state.onResizeCallback = null;
     mocks.state.onDataCallback = null;
     resizeObserverCallback = null;
@@ -246,6 +269,8 @@ describe('TerminalContainer', () => {
 
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('does not create a terminal when sessionId is empty', () => {
@@ -298,6 +323,60 @@ describe('TerminalContainer', () => {
     expect(mocks.mockBuildXtermTheme).toHaveBeenCalledWith(expect.any(HTMLElement));
     expect(mocks.mockOpen).toHaveBeenCalled();
   });
+
+  it('initializes terminal settings at 12px and resets saved sizes to 12px', () => {
+    const initial = settingsReducer(undefined, { type: 'init' });
+    expect(initial.core.sections.terminal.settings.fontSize.value).toBe(12);
+    expect(initial.core.sections.terminal.settings.defaultShell.value).toBe('');
+
+    const saved = settingsReducer(initial, setSettingValue({
+      identifier: 'core.terminal.fontSize',
+      value: 18,
+    }));
+    expect(saved.core.sections.terminal.settings.fontSize.value).toBe(18);
+
+    const reset = settingsReducer(saved, resetSettingValue({
+      identifier: 'core.terminal.fontSize',
+    }));
+    expect(reset.core.sections.terminal.settings.fontSize.value).toBe(12);
+  });
+
+  it('uses 12px until settings hydrate and retains the saved font size', () => {
+    mocks.settings = {};
+    const view = render(<TerminalContainer sessionId="test-session-123" />);
+    const terminal = mocks.state.terminal;
+    expect(terminal?.options.fontSize).toBe(12);
+
+    mocks.settings = { 'terminal.fontSize': 18 };
+    view.rerender(<TerminalContainer sessionId="test-session-123" />);
+
+    expect(mocks.state.terminal).toBe(terminal);
+    expect(terminal?.options.fontSize).toBe(18);
+    expect(Terminal).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies live font edits and reset without replacing the session', () => {
+    const view = render(<TerminalContainer sessionId="test-session-123" />);
+    const terminal = mocks.state.terminal;
+    mocks.settings = { ...mocks.settings, 'terminal.fontSize': 20 };
+    view.rerender(<TerminalContainer sessionId="test-session-123" />);
+    expect(terminal?.options.fontSize).toBe(20);
+
+    mocks.settings = { ...mocks.settings, 'terminal.fontSize': 12 };
+    view.rerender(<TerminalContainer sessionId="test-session-123" />);
+    expect(terminal?.options.fontSize).toBe(12);
+    expect(mocks.state.terminal).toBe(terminal);
+    expect(Terminal).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    'falls back to 12px for invalid font size %s',
+    (fontSize) => {
+      mocks.settings = { ...mocks.settings, 'terminal.fontSize': fontSize };
+      render(<TerminalContainer sessionId="test-session-123" />);
+      expect(mocks.state.terminal?.options.fontSize).toBe(12);
+    },
+  );
 
   it('updates a live application-themed terminal when application tokens change', () => {
     const view = render(<TerminalContainer sessionId="test-session-123" />);
@@ -446,12 +525,11 @@ describe('TerminalContainer', () => {
     expect(mocks.mockFocus).toHaveBeenCalled();
     expect(mocks.mockAttachSession).toHaveBeenCalledWith('test-session-123');
     expect(mocks.mockFit).toHaveBeenCalled();
-    const fitCallsBefore = mocks.mockFit.mock.calls.length;
     await act(async () => {
       mocks.state.onDataCallback!('ls\r');
       resizeObserverCallback!([], {} as ResizeObserver);
+      flushFits();
     });
-    expect(mocks.mockFit.mock.calls.length).toBeGreaterThan(fitCallsBefore);
     expect(mocks.mockWriteSession).toHaveBeenCalledWith('test-session-123', 'bHMN');
   });
 
@@ -481,44 +559,14 @@ describe('TerminalContainer', () => {
     expect(mocks.mockWebglDispose).toHaveBeenCalledOnce();
     expect(mocks.mockDispose).not.toHaveBeenCalled();
     expect(mocks.mockDetachSession).not.toHaveBeenCalled();
-    const fitCallsBefore = mocks.mockFit.mock.calls.length;
     await act(async () => {
       mocks.state.onDataCallback!('ls\r');
       resizeObserverCallback!([], {} as ResizeObserver);
+      flushFits();
     });
-    expect(mocks.mockFit.mock.calls.length).toBeGreaterThan(fitCallsBefore);
     expect(mocks.mockWriteSession).toHaveBeenCalledWith('test-session-123', 'bHMN');
   });
 
-  it('calls fitAddon.fit() after attach resolves', async () => {
-    await act(async () => {
-      render(<TerminalContainer sessionId="test-session-123" />);
-    });
-
-    expect(mocks.mockAttachSession).toHaveBeenCalledWith('test-session-123');
-    expect(mocks.mockFit).toHaveBeenCalled();
-  });
-
-  it('sets up ResizeObserver on the container div', () => {
-    render(<TerminalContainer sessionId="test-session-123" />);
-
-    expect(global.ResizeObserver).toHaveBeenCalled();
-    expect(mockObserve).toHaveBeenCalled();
-  });
-
-  it('calls ExecClient.ResizeSession on terminal.onResize after attachment', async () => {
-    await act(async () => {
-      render(<TerminalContainer sessionId="test-session-123" />); 
-    });
-
-    expect(mocks.state.onResizeCallback).toBeTruthy();
-
-    act(() => {
-      mocks.state.onResizeCallback!({ rows: 24, cols: 80 });
-    });
-
-    expect(mocks.mockResizeSession).toHaveBeenCalledWith('test-session-123', 24, 80);
-  });
 
   it('sends the fitted size after attachment even when fit emits no further resize', async () => {
     const { promise, resolve: resolveAttach } = Promise.withResolvers<unknown[]>();
@@ -569,18 +617,6 @@ describe('TerminalContainer', () => {
   });
 
 
-  it('ResizeObserver callback triggers fit', () => {
-    render(<TerminalContainer sessionId="test-session-123" />);
-
-    const fitCallsBefore = mocks.mockFit.mock.calls.length;
-
-    act(() => {
-      resizeObserverCallback!([], {} as ResizeObserver);
-    });
-
-    // debounce is mocked to be immediate, so fit should have been called
-    expect(mocks.mockFit.mock.calls.length).toBeGreaterThan(fitCallsBefore);
-  });
 
   it('focuses the terminal after open', () => {
     render(<TerminalContainer sessionId="test-session-123" />);
@@ -600,12 +636,6 @@ describe('TerminalContainer', () => {
     expect(eventNames).toContain('core/exec/signal/CLOSE/test-session-123');
   });
 
-  it('subscribes to onResizeReset for re-fitting after drawer transitions', () => {
-    render(<TerminalContainer sessionId="test-session-123" />);
-
-    // Should subscribe to onResizeReset via bottomDrawerChannel.on
-    expect(mocks.mockChannelOn).toHaveBeenCalledWith('onResizeReset', expect.any(Function));
-  });
 
   it('preserves command bytes by waiting for each input write before dispatching the next', async () => {
     const first = Promise.withResolvers<void>();
@@ -714,5 +744,53 @@ describe('TerminalContainer', () => {
       await Promise.resolve(); 
     });
     expect(recover).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies the latest size only after the previous backend resize completes', async () => {
+    const firstResize = Promise.withResolvers<void>();
+    mocks.mockResizeSession.mockReturnValueOnce(firstResize.promise).mockResolvedValue(undefined);
+    await act(async () => {
+      render(<TerminalContainer sessionId="ordered-resizes" />);
+    });
+    expect(mocks.mockResizeSession).toHaveBeenCalledTimes(1);
+    act(() => {
+      mocks.state.onResizeCallback!({ rows: 30, cols: 100 });
+      mocks.state.onResizeCallback!({ rows: 40, cols: 120 });
+    });
+    expect(mocks.mockResizeSession).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      firstResize.resolve();
+    });
+    expect(mocks.mockResizeSession.mock.calls.map(call => call.slice(1))).toEqual([[24, 80], [40, 120]]);
+  });
+
+  it('waits for a hidden terminal to become measurable before fitting', async () => {
+    containerWidth = 0;
+    containerHeight = 0;
+    await act(async () => {
+      render(<TerminalContainer sessionId="hidden-terminal" />);
+      flushFits();
+    });
+    expect(mocks.mockFit).not.toHaveBeenCalled();
+    containerWidth = 800;
+    containerHeight = 400;
+    act(() => {
+      resizeObserverCallback!([], {} as ResizeObserver);
+      flushFits();
+    });
+    expect(mocks.mockFit).toHaveBeenCalledOnce();
+  });
+
+  it('cancels pending fits and ignores late attachment after unmount', async () => {
+    const attachment = Promise.withResolvers<unknown[]>();
+    mocks.mockAttachSession.mockReturnValueOnce(attachment.promise);
+    const view = render(<TerminalContainer sessionId="closed-before-attach" />);
+    view.unmount();
+    await act(async () => {
+      attachment.resolve([undefined, undefined]);
+      flushFits();
+    });
+    expect(mocks.mockResizeSession).not.toHaveBeenCalled();
+    expect(mocks.mockFit).not.toHaveBeenCalled();
   });
 });

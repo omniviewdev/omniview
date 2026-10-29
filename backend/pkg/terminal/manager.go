@@ -18,18 +18,16 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/internal/instance"
+	"github.com/omniviewdev/omniview/internal/shellenv"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	sdkexec "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 )
 
 const (
-	DefaultLocalShell     = "/bin/zsh"
 	DefaultReadBufferSize = 20480
 	InitialRows           = 27
 	InitialCols           = 72
-
-	loginFlag = "--login"
 )
 
 // Manager manages terminal sessions, allowing creation, attachment, and more.
@@ -103,29 +101,9 @@ func (m *Manager) ListSessions(_ *types.PluginContext) []*sdkexec.Session {
 	return sessions
 }
 
-// resolveShell determines the shell to run from the requested command, adding login flags
-// for shells that support them. Unknown commands fall back to DefaultLocalShell with no args.
-func resolveShell(command []string) (string, []string) {
-	shell := DefaultLocalShell
-	newopts := []string{}
-
-	if len(command) > 0 {
-		switch command[0] {
-		// test for active shells
-		case "zsh", "/bin/zsh":
-			shell = command[0]
-			newopts = []string{loginFlag, "-i"}
-			newopts = append(newopts, command[1:]...)
-		case "bash", "/bin/bash":
-			shell = command[0]
-			newopts = []string{loginFlag}
-			newopts = append(newopts, command[1:]...)
-		case "sh", "/bin/sh":
-			shell = command[0]
-		}
-	}
-
-	return shell, newopts
+// resolveShell shares account-shell detection and login flags with startup.
+func resolveShell(command []string) (string, []string, error) {
+	return shellenv.Resolve(command)
 }
 
 // StartSession creates a new terminal session with a given command.
@@ -139,11 +117,21 @@ func (m *Manager) StartSession(
 	// Derive from manager context so shutdown cascades to all sessions.
 	ctx, cancel := context.WithCancel(m.ctx)
 
-	shell, newopts := resolveShell(opts.Command)
+	shell, newopts, err := resolveShell(opts.Command)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
 
 	// start default shell with commands appended to it. The whole point is to get a local
 	// shell from the local IDE, so this is going to be exactly what the user wants.
 	cmd := exec.CommandContext(ctx, shell, newopts...)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		cancel()
+		return nil, apperror.Wrap(err, apperror.TypeSessionFailed, http.StatusInternalServerError, "Cannot determine terminal home directory")
+	}
+	cmd.Dir = home
 
 	childEnvironment, err := instance.RestoreNativeChildEnvironment(os.Environ())
 	if err != nil {

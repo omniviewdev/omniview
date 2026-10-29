@@ -31,7 +31,6 @@ import { devToolsChannel } from '@/features/devtools/events';
 import { pluginLogChannel } from '@/features/pluginlogs/events';
 import { Events } from '@omniviewdev/runtime/runtime';
 import styles from './tabs.module.css';
-import { orFallback } from '@/utils/orFallback';
 
 type TabMenuItem = { key: string; label: string; onClick: () => void };
 
@@ -105,7 +104,8 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
           icon: 'LuSquareTerminal',
           properties: { status: 'connecting' },
         });
-        ExecClient.CreateTerminal(SessionOptions.createFrom({ command: [orFallback(settings['terminal.defaultShell'], '/bin/bash')] }))
+        const shell = settings['terminal.defaultShell'];
+        ExecClient.CreateTerminal(SessionOptions.createFrom({ command: typeof shell === 'string' && shell.length > 0 ? [shell] : [] }))
           .then((session: any) => {
             updateTab(
               { id: tempId },
@@ -494,7 +494,7 @@ const BottomDrawerTabComponent: React.FC<BottomDrawerTabProps> = ({ id, index, t
       role='tab'
       aria-selected={selected}
       className={styles.Tab}
-      data-selected={selected || undefined}
+      data-selected={selected ? true : undefined}
       style={{ transform: CSS.Translate.toString(transform), transition }}
       onClick={(e) => {
         onChange(e, index); 
