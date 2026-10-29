@@ -142,9 +142,16 @@ so the new trees are snapshotted by a recorded writer. Foreign bytes are never
 adopted. Distributions, bindings, shims, the YAML worker, loader files, their
 publications, and build reuse records stay untouched. A target that resolves
 through a symlink is refused. The result lists the removed paths; `--json` returns
-`{"workspaceID", "removed", "reinstalled"}`. If the reinstall fails, rerun the
-command; if the lockfile was left unverified, `unlink` and relink instead. Use the
-managed launcher for package commands to retain pre-run dependency verification.
+`{"workspaceID", "phase", "removed", "reinstalled"}`. If the reinstall fails, rerun
+the command; if the lockfile was left unverified, `unlink` and relink instead.
+
+When an `unlink` or `remove` was interrupted by such a refusal (link phase
+`unlinking`), `reset-modules` only deletes the same trees and forgets their
+records, without reinstalling into the partially restored overlay, and reports
+`reinstalled: false`. Every other output and its pending restoration stay for the
+rerun `workspace unlink` or `workspace remove`, which then completes. Other
+incomplete link phases are still refused. Use the managed launcher for package
+commands to retain pre-run dependency verification.
 
 Refresh commands reuse saved launch settings and protocol evidence. Supply launch
 flags for a workspace that has never launched, or override saved settings

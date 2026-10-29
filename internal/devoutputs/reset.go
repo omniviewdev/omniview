@@ -13,13 +13,17 @@ import (
 // ResetDependencyTrees deletes every journal-owned dependency tree and cache
 // (modules, TypeScript, Vite loader and Vite optimizer caches), forgets their
 // entries, and deletes any unrecorded node_modules directly below the supplied
-// package roots. It never adopts foreign bytes: the caller must reinstall
-// through a recorded writer. Other producer outputs and their journal entries
+// package roots. It never adopts foreign bytes: new trees come only from a
+// later recorded writer. Other producer outputs and their journal entries
 // are left untouched.
 //
 // Unfinished writer records of the reset kinds are discarded, so the caller
 // must hold the stopped-profile guard proving no producer process is alive.
-func ResetDependencyTrees(ctx context.Context, w devcontract.ResolvedWorkspace, roots []string) ([]string, error) {
+//
+// duringRestoration admits a journal whose restoration (unlink/remove) was
+// interrupted. Reset-kind removal intents complete by deleting their trees;
+// every other entry and the Restoring state stay for the resumed restoration.
+func ResetDependencyTrees(ctx context.Context, w devcontract.ResolvedWorkspace, roots []string, duringRestoration bool) ([]string, error) {
 	s, err := newScope(w)
 	if err != nil {
 		return nil, err
@@ -41,7 +45,7 @@ func ResetDependencyTrees(ctx context.Context, w devcontract.ResolvedWorkspace, 
 	}
 	var removed []string
 	err = locked(ctx, s, func(j *journal) error {
-		if j.Restoring {
+		if j.Restoring && !duringRestoration {
 			return fmt.Errorf("repository output restoration is incomplete; unlink before resetting modules")
 		}
 		// Preflight every target before deleting anything.

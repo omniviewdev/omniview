@@ -163,7 +163,8 @@ func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceComm
 			"The workspace must be stopped and linked. Every journal-owned node_modules tree and dependency cache " +
 			"(TypeScript, Vite loader and Vite optimizer caches) and any node_modules at the selected package roots " +
 			"is deleted and reinstalled through the recorded composition installer. Foreign bytes are never adopted; " +
-			"distributions, bindings, shims and other outputs are left untouched."
+			"distributions, bindings, shims and other outputs are left untouched. During an interrupted unlink or remove " +
+			"it only deletes those trees; rerun the interrupted command afterwards."
 	case "inspect", "paths", "list", "unlink", "resume", "rollback", "supervise":
 	}
 	cmd.RunE = func(cmd *cobra.Command, positionals []string) error {
@@ -768,6 +769,9 @@ func printWorkspaceValue(out io.Writer, value any) {
 		}
 		if result.Reinstalled {
 			fmt.Fprintln(out, "Reinstalled: dependency trees recorded by the composition installer")
+		} else {
+			fmt.Fprintln(out, "Not reinstalled: the dependency unlink was interrupted (phase "+result.Phase+"); "+
+				"rerun the interrupted `workspace unlink` or `workspace remove`")
 		}
 		return
 	case devworkspace.Registry:

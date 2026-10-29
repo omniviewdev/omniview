@@ -183,3 +183,43 @@ func TestResetModulesRefusesUnlessStopped(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "linked", j.Phase)
 }
+
+func TestResetModulesUnblocksInterruptedUnlinkWithoutReinstall(t *testing.T) {
+	ctx := context.Background()
+	f := newResetModulesFixture(t)
+	stage, err := devoutputs.Prepare(ctx, f.w.ResolvedWorkspace, f.host, devoutputs.Distribution)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(stage.Directory, "index.js"), []byte("published"), 0600))
+	require.NoError(t, devoutputs.Publish(ctx, stage))
+	distKey := filepath.Join(f.host, "dist") + "|" + string(devoutputs.Distribution)
+	// A manual vitest run leaves an unowned Vite loader cache in an owned tree.
+	runtime := filepath.Join(f.host, "packages", "omniviewdev-runtime", "node_modules")
+	require.NoError(t, os.Mkdir(filepath.Join(runtime, ".vite-temp"), 0700))
+	_, err = f.m.Unlink(ctx, f.w.Manifest.Slug)
+	require.ErrorContains(t, err, "owned generated tree changed")
+	j, err := loadLinkJournal(f.w)
+	require.NoError(t, err)
+	require.Equal(t, "unlinking", j.Phase)
+	dist := f.outputJournal(t)[distKey]
+
+	report, err := f.m.ResetModules(ctx, f.w.Manifest.Slug)
+	require.NoError(t, err)
+	require.False(t, report.Reinstalled)
+	require.Equal(t, "unlinking", report.Phase)
+	require.Contains(t, report.Removed, runtime)
+	require.Contains(t, report.Removed, filepath.Join(f.w.Root, "node_modules"))
+	require.Equal(t, 1, f.installs, "delete-only mode never reinstalls into a partial overlay")
+	require.NoDirExists(t, runtime)
+	entries := f.outputJournal(t)
+	require.JSONEq(t, string(dist), string(entries[distKey]), "other outputs stay for the resumed unlink")
+	for key := range entries {
+		require.Equal(t, distKey, key)
+	}
+
+	unlinked, err := f.m.Unlink(ctx, f.w.Manifest.Slug)
+	require.NoError(t, err)
+	require.Equal(t, "unlinked", unlinked.Phase)
+	require.NoDirExists(t, filepath.Join(f.host, "dist"))
+	_, err = os.Lstat(filepath.Join(f.w.Root, ".local", "links.json"))
+	require.True(t, os.IsNotExist(err))
+}
