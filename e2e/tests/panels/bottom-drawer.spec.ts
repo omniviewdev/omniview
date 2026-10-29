@@ -140,4 +140,25 @@ test.describe('Bottom Drawer', () => {
     await expect(d.tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
     await expect(d.tabs.nth(1)).toHaveAttribute('aria-selected', 'false');
   });
+
+  test('reorders terminal tabs when dragging the first numeric index', async ({ appPage }, testInfo) => {
+    await openTerminal(appPage);
+    const d = await openTerminal(appPage);
+    await expect(d.tabs.nth(0)).toContainText(/^Session /);
+    await expect(d.tabs.nth(1)).toContainText(/^Session /);
+    const titles = await d.tabs.allTextContents();
+    const first = (await d.tabs.nth(0).boundingBox())!;
+    const second = (await d.tabs.nth(1).boundingBox())!;
+
+    await appPage.mouse.move(first.x + first.width / 2, first.y + first.height / 2);
+    await appPage.mouse.down();
+    await appPage.mouse.move(second.x + second.width / 2, second.y + second.height / 2, { steps: 12 });
+    await appPage.mouse.up();
+
+    await expect(d.tabs).toHaveText([titles[1], titles[0]]);
+    await testInfo.attach('reordered-terminal-tabs', {
+      body: await appPage.screenshot(),
+      contentType: 'image/png',
+    });
+  });
 });
