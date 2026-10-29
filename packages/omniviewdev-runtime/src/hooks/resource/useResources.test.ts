@@ -234,7 +234,7 @@ it('guards every resource mutation before sending backend calls', async () => {
     for (const mutation of [
       () => result.current.list.create({ input: {} }),
       () => result.current.resource.update({ input: {} }),
-      () => result.current.resource.remove(),
+      () => result.current.resource.remove({}),
       () => result.current.mutations.create({ opts, input: { input: {} } }),
       () => result.current.mutations.update({ opts, input: { input: {} } }),
       () => result.current.mutations.remove({ opts, input: {} }),
