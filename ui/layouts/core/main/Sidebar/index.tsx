@@ -44,7 +44,7 @@ export default function CoreLayoutSidebar() {
         {!plugins.isLoading && navigable?.map(({ id, metadata }) => (
           <a
             key={id}
-            href={`/_plugin/${id}`}
+            href={`#/_plugin/${id}`}
             className={styles.Item}
             aria-label={orFallback(metadata?.name, id)}
             aria-current={matched === id ? 'page' : undefined}

@@ -84,6 +84,10 @@ export class PageTabRouters {
   private install(tabId: string, path: string): void {
     this.unsubscribers.get(tabId)?.();
     const router = createMemoryRouter(this.routes, { initialEntries: [path] });
+    // Links render the window's URL form (`#/path`): the window URL shows the
+    // active tab's route, and a plain `#/…` href navigates that tab too.
+    const createMemoryHref = router.createHref;
+    router.createHref = (location) => `#${createMemoryHref(location)}`;
     this.routers.set(tabId, router);
     this.unsubscribers.set(tabId, router.subscribe((state) => {
       this.onPathChange(tabId, routerPathOf(state.location));

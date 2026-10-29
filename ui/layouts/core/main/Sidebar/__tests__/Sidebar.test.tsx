@@ -21,7 +21,7 @@ vi.mock('@/features/plugins', () => ({
 }));
 
 const renderedPluginIds = () =>
-  screen.getAllByRole('link').map((link) => link.getAttribute('href')?.replace('/_plugin/', ''));
+  screen.getAllByRole('link').map((link) => link.getAttribute('href')?.replace('#/_plugin/', ''));
 
 describe('CoreLayoutSidebar', () => {
   it('hides loaded plugins that register no pages', () => {

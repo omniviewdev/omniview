@@ -6,6 +6,7 @@ import { usePagePresentation } from './pagePresentation';
 import { usePageRoutes } from './pageRoutes';
 import { getActiveTab, type PagesState } from './pagesState';
 import { readInitialPagesState, WorkspaceController } from './workspaceController';
+import { syncWindowUrlWithActiveTab } from './windowUrlSync';
 
 const WorkspaceControllerContext = createContext<WorkspaceController | null>(null);
 
@@ -122,6 +123,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   useEffect(() => registerActivePageNavigator((path) => {
     controller.navigateActive(path);
   }), [controller]);
+
+  useEffect(() => syncWindowUrlWithActiveTab(controller), [controller]);
 
   useTabDeliveries(PAGE_TAB_DRAG_TYPE, (payload) => controller.takeDeliveredTab(payload));
   usePageTabShortcuts(controller);
