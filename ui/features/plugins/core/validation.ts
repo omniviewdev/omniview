@@ -2,13 +2,12 @@ import { PluginValidationError } from './errors';
 import type { ValidatedExports, SidebarComponent, DrawerFactory } from './types';
 
 /**
- * Validate the format of a resource key.
- * Valid format: GROUP::VERSION::KIND (exactly 3 parts separated by ::).
- * Each part must be non-empty and not contain spaces.
+ * Validate a provider-defined opaque resource type ID.
+ * The host must not infer a group, version, kind, or delimiter grammar.
  *
- * @throws PluginValidationError if the key is malformed
+ * @throws PluginValidationError if the ID is empty or not a string
  */
-export function validateResourceKeyFormat(
+export function validateResourceTypeID(
   key: string,
   kind: 'sidebar' | 'drawer',
 ): void {
@@ -17,32 +16,6 @@ export function validateResourceKeyFormat(
       `${kind} key is empty or not a string`,
       { errors: [`${kind} key is empty or not a string`] },
     );
-  }
-
-  // Must not contain spaces
-  if (/\s/.test(key)) {
-    throw new PluginValidationError(
-      `${kind} key '${key}' is malformed, expected GROUP::VERSION::KIND (no spaces allowed)`,
-      { errors: [`${kind} key '${key}' is malformed, expected GROUP::VERSION::KIND`] },
-    );
-  }
-
-  const parts = key.split('::');
-  if (parts.length !== 3) {
-    throw new PluginValidationError(
-      `${kind} key '${key}' is malformed, expected GROUP::VERSION::KIND`,
-      { errors: [`${kind} key '${key}' is malformed, expected GROUP::VERSION::KIND`] },
-    );
-  }
-
-  // Each part must be non-empty
-  for (const part of parts) {
-    if (!part) {
-      throw new PluginValidationError(
-        `${kind} key '${key}' is malformed, expected GROUP::VERSION::KIND (empty segment)`,
-        { errors: [`${kind} key '${key}' is malformed, expected GROUP::VERSION::KIND`] },
-      );
-    }
   }
 }
 
@@ -135,7 +108,7 @@ export function validatePluginExports(exports: unknown): ValidatedExports {
 
     const sidebarMap = exp.sidebars as Record<string, unknown>;
     for (const [key, value] of Object.entries(sidebarMap)) {
-      validateResourceKeyFormat(key, 'sidebar');
+      validateResourceTypeID(key, 'sidebar');
       if (typeof value !== 'function') {
         errors.push(`sidebar value for key '${key}' must be a component (function), got ${typeof value}`);
       }
@@ -163,7 +136,7 @@ export function validatePluginExports(exports: unknown): ValidatedExports {
 
     const drawerMap = exp.drawers as Record<string, unknown>;
     for (const [key, value] of Object.entries(drawerMap)) {
-      validateResourceKeyFormat(key, 'drawer');
+      validateResourceTypeID(key, 'drawer');
       if (typeof value !== 'function') {
         errors.push(`drawer value for key '${key}' must be a factory function, got ${typeof value}`);
       }

@@ -449,6 +449,8 @@ Obtain references and targets from host resolution or observed host envelopes. K
 
 Canonical Get requests carry the full reference, separate route, and representation. A provider must reject unavailable or ambiguous references rather than fall back to a same-name object. Provider-owned navigation/actions remain available, but cannot bypass host authority validation or native preconditions.
 
+Sidebar and drawer maps use provider-defined, nonempty resource type IDs. The host does not require or parse a `GROUP::VERSION::KIND` grammar. For example, `k8s:/pods` and `k8s:core/pods` remain distinct keys; their labels or API-version metadata do not make them interchangeable.
+
 #### Shared resource icon sets
 
 Register `ResourceIconSetV1` at `RESOURCE_ICON_EXTENSION_POINT_ID` (`omniview/resource/icons`) using the same `extensionRegistrations` mechanism. Its value contains `schemaVersion: 1` and `resolve(resourceKey)`, returning a React component accepting `ResourceIconProps`, or undefined for an unknown key.

@@ -60,6 +60,17 @@ describe('Group 3: Load Operations', () => {
       expect(s.importer.importCount).toBe(1);
     });
 
+    it('loads resource views keyed by opaque native type IDs', async () => {
+      s.importer.register('A', validModule({
+        sidebars: { 'k8s:/pods': () => null, 'k8s:core/pods': () => null },
+        drawers: { 'k8s:apps/deployments': () => ({ views: [] }) },
+      }));
+      await s.service.load('A');
+      expect(s.service.getPluginState('A')?.phase).toBe('ready');
+      await s.service.unload('A');
+      expect(s.service.getPluginState('A')?.phase).toBe('idle');
+    });
+
     it('#2 load sets isDev=false for prod', async () => {
       s.importer.register('A', validModule());
       await s.service.load('A');
@@ -234,14 +245,6 @@ describe('Group 3: Load Operations', () => {
       expect(state?.error).toContain('plugin');
     });
 
-    it('#21 validation failure — malformed resource key', async () => {
-      s.importer.register('A', {
-        plugin: new PluginWindow(),
-        sidebars: { 'bad': () => null },
-      });
-      await s.service.load('A');
-      expect(s.service.getPluginState('A')?.phase).toBe('error');
-    });
 
     it('#22 load soft-resolves missing extension point (contribution held pending)', async () => {
       s.importer.register('A', validModule({

@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
-import { GetEditorSchemas } from '../../resource/v2/client';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { GetEditorSchemas, GetSchemaDocument } from '../../resource/v2/client';
 import type { AccessRoute } from '../../resource/v2/domain';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
@@ -16,8 +16,8 @@ type UseEditorSchemasOptions = {
  * useEditorSchemas fetches editor schemas for a plugin + connection pair
  * from the backend via Wails bindings.
  *
- * The caller is responsible for registering the returned schemas with
- * the SchemaRegistry (which lives in the host app's monaco provider).
+ * Shared documents are fetched once per exact reference and published together
+ * with the schema bindings. Callers must pass both to the host SchemaRegistry.
  */
 export const useEditorSchemas = ({
   pluginID: explicitPluginID,
@@ -25,16 +25,35 @@ export const useEditorSchemas = ({
   enabled = true,
 }: UseEditorSchemasOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
+  const queryClient = useQueryClient();
   const query = useQuery({
-    queryKey: ['EDITOR_SCHEMAS', pluginID, route],
-    queryFn: () => GetEditorSchemas(pluginID, route),
+    queryKey: [pluginID, 'resource-v2', 'editor-schemas', route],
+    queryFn: async () => {
+      const schemas = await GetEditorSchemas(pluginID, route);
+      const documents = [];
+      const resolved = new Set<string>();
+      for (const schema of schemas) {
+        const reference = schema.binding.documentRef;
+        if (!reference) continue;
+        const key = JSON.stringify([reference.id, reference.revision]);
+        if (resolved.has(key)) continue;
+        documents.push(await queryClient.fetchQuery({
+          queryKey: [pluginID, 'resource-v2', 'schema-document', route, reference],
+          queryFn: () => GetSchemaDocument(pluginID, route, reference),
+          staleTime: Infinity,
+        }));
+        resolved.add(key);
+      }
+      return { schemas, documents };
+    },
     enabled: enabled && !!pluginID && !!route.connection,
     staleTime: 10 * 60 * 1000, // schemas are fairly stable per connection
     retry: 1,
   });
 
   return {
-    schemas: query.data ?? [],
+    schemas: query.data?.schemas ?? [],
+    documents: query.data?.documents ?? [],
     isLoading: query.isLoading,
     error: query.error,
     refetch: query.refetch,
