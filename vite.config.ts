@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { workspaceViteCacheDirectory, workspaceVitePort, workspaceViteRoots } from './packages/omniviewdev-vite-plugin/src/workspace';
 import { managedViteFeedback } from './packages/omniviewdev-vite-plugin/src/feedback';
+import { vitestCaches } from './vitest.cache';
 
 // if in ESM context
 const __filename = fileURLToPath(import.meta.url);
@@ -19,6 +20,7 @@ const selectedRoots = workspaceViteRoots(process.env.OMNIVIEW_VITE_ALLOWED_ROOTS
 const ownedVitePort = workspaceVitePort(process.env.WAILS_VITE_PORT);
 const stagedYamlWorker = process.env.OMNIVIEW_YAML_WORKER_OUTPUT_FILE;
 const ownedViteCacheDirectory = workspaceViteCacheDirectory(process.env.OMNIVIEW_VITE_CACHE_DIRECTORY);
+const testCaches = vitestCaches(__dirname);
 if (selectedRoots && !ownedVitePort) {
   throw new Error('Managed host Vite requires its owned WAILS_VITE_PORT');
 }
@@ -26,8 +28,11 @@ if (selectedRoots && !ownedVitePort) {
 // https://vitejs.dev/config/
 export default defineConfig({
   // Source transforms must not recompile generated optimized dependencies.
-  cacheDir: ownedViteCacheDirectory ? path.join(ownedViteCacheDirectory, 'node_modules', '.vite') : undefined,
+  cacheDir: ownedViteCacheDirectory
+    ? path.join(ownedViteCacheDirectory, 'node_modules', '.vite')
+    : testCaches.cacheDir,
   test: {
+    fsModuleCachePath: testCaches.fsModuleCachePath,
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./ui/test-setup.ts'],

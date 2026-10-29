@@ -6,11 +6,13 @@ import react from "@vitejs/plugin-react";
 
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { vitestCaches } from '../../vitest.cache';
 
 // if in ESM context
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const outputDirectory = process.env.OMNIVIEW_BUILD_OUTPUT_DIRECTORY || 'dist';
+const testCaches = vitestCaches(__dirname);
 
 const externals = [
   // REACT
@@ -29,7 +31,7 @@ const externals = [
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  cacheDir: process.env.OMNIVIEW_VITE_CACHE_DIRECTORY,
+  cacheDir: process.env.OMNIVIEW_VITE_CACHE_DIRECTORY ?? testCaches.cacheDir,
   build: {
     outDir: outputDirectory,
     lib: {
@@ -59,6 +61,7 @@ export default defineConfig({
     dts({ tsconfigPath: './tsconfig.app.json', outDirs: outputDirectory })
   ],
   test: {
+    fsModuleCachePath: testCaches.fsModuleCachePath,
     globals: true,
     environment: 'jsdom',
   },
