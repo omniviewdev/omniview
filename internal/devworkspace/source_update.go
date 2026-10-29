@@ -294,7 +294,9 @@ func (s *workspaceSupervisor) startSourceWatcher(ctx context.Context) {
 }
 
 func (s *workspaceSupervisor) applySourceUpdate(ctx context.Context) (Status, error) {
-	s.sourceMu.Lock()
+	if err := s.sourceMu.LockContext(ctx); err != nil {
+		return s.snapshot(), err
+	}
 	defer s.sourceMu.Unlock()
 	intent, err := readSourceUpdate(s.manager, s.workspace)
 	if err != nil {

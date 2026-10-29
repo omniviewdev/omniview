@@ -25,7 +25,7 @@ type ownedChild struct {
 	command     *exec.Cmd
 	identity    devcontract.ProcessIdentity
 	done        chan struct{}
-	mu          sync.Mutex
+	mu          supervisorMutex
 	err         error
 	finalizeErr error
 	disposalErr error
@@ -38,7 +38,53 @@ type ownedChild struct {
 	disposed    bool
 	stopping    bool
 	stopTree    func(bool) error
+	signalMu    sync.Mutex
+	signal      *ownedSignal
 	monitorOnce sync.Once
+}
+
+// A canceled caller leaves one retained attempt, not an unowned signal worker
+// per retry. The actual platform callback still owns proof against reaping.
+type ownedSignal struct {
+	done  chan struct{}
+	force bool
+	err   error
+}
+
+func (c *ownedChild) signalTree(ctx context.Context, force bool) error {
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		c.signalMu.Lock()
+		if err := ctx.Err(); err != nil {
+			c.signalMu.Unlock()
+			return err
+		}
+		attempt := c.signal
+		if attempt == nil {
+			attempt = &ownedSignal{done: make(chan struct{}), force: force}
+			c.signal = attempt
+			go func() {
+				attempt.err = c.stopTree(force)
+				c.signalMu.Lock()
+				c.signal = nil
+				close(attempt.done)
+				c.signalMu.Unlock()
+			}()
+		}
+		c.signalMu.Unlock()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-attempt.done:
+			if force && !attempt.force {
+				// A concurrent graceful attempt cannot satisfy a force request.
+				continue
+			}
+			return attempt.err
+		}
+	}
 }
 
 func startOwnedChild(ctx context.Context, directory string, env []string, output io.Writer, owner devsession.ProcessOwner, finalize func() error, program string, args ...string) (*ownedChild, error) {
@@ -208,7 +254,9 @@ func (c *ownedChild) complete() {
 }
 
 func (c *ownedChild) retryStop(ctx context.Context) error {
-	c.mu.Lock()
+	if err := c.mu.LockContext(ctx); err != nil {
+		return err
+	}
 	if c.disposed && c.disposalErr == nil && c.finalizeErr == nil {
 		c.mu.Unlock()
 		return nil
@@ -228,7 +276,7 @@ func (c *ownedChild) retryStop(ctx context.Context) error {
 		go func() {
 			var stopErr error
 			if retryDisposal {
-				stopErr = c.stopTree(true)
+				stopErr = c.signalTree(context.Background(), true)
 			}
 			if stopErr == nil {
 				c.complete()
@@ -247,7 +295,7 @@ func (c *ownedChild) retryStop(ctx context.Context) error {
 	c.mu.Unlock()
 	select {
 	case <-done:
-		return c.terminalStopError()
+		return c.terminalStopError(ctx)
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -257,7 +305,9 @@ func (c *ownedChild) stop(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	c.mu.Lock()
+	if err := c.mu.LockContext(ctx); err != nil {
+		return err
+	}
 	c.stopping = true
 	c.mu.Unlock()
 	select {
@@ -266,30 +316,32 @@ func (c *ownedChild) stop(ctx context.Context) error {
 	default:
 	}
 	// stopTree owns synchronization against reaping, including exit cleanup.
-	if err := c.stopTree(false); err != nil {
+	if err := c.signalTree(ctx, false); err != nil {
 		return err
 	}
 	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
 	select {
 	case <-c.done:
-		return c.terminalStopError()
+		return c.terminalStopError(ctx)
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-timer.C:
 	}
-	if err := c.stopTree(true); err != nil {
+	if err := c.signalTree(ctx, true); err != nil {
 		return err
 	}
 	select {
 	case <-c.done:
-		return c.terminalStopError()
+		return c.terminalStopError(ctx)
 	case <-ctx.Done():
 		return ctx.Err()
 	}
 }
-func (c *ownedChild) terminalStopError() error {
-	c.mu.Lock()
+func (c *ownedChild) terminalStopError(ctx context.Context) error {
+	if err := c.mu.LockContext(ctx); err != nil {
+		return err
+	}
 	defer c.mu.Unlock()
 	if !c.disposed {
 		return errors.Join(errOwnedCommandUncertain, c.err)

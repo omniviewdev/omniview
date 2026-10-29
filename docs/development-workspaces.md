@@ -76,6 +76,16 @@ legacy UI, MUI, and Emotion dependencies to the supported base-ui contract.
 
 The generated package root is `$COLLECTION/workspaces/<feature>`, above its host/UI/plugin worktrees. Managed native12 commands keep the actual consumer cwd/argv while enforcing this root through `PNPM_CONFIG_WORKSPACE_DIR`. Source configs/lockfiles remain standalone; compatible policies and locked registry resolutions are reconciled explicitly, and conflicts refuse mutation. Do not hand-edit generated root files or run independent plugin installs inside a managed feature.
 
+Changing a source patch declaration can require regenerating that source
+workspace's standalone lockfile before managed refresh. A stale scalar-patch
+refusal identifies the exact lockfile and prints a lockfile-only repair command.
+Use the canonical native pnpm version selected by `OMNIVIEW_PNPM_EXECUTABLE`, not
+the managed launcher. The printed command verifies the pinned version, selects
+the exact standalone directory, overrides inherited workspace-directory aliases,
+and uses `--lockfile-only --ignore-scripts --no-frozen-lockfile`. This explicit
+source-lock reconciliation does not install or reset managed dependency trees.
+Run managed refresh after reviewing the resulting source lockfile change.
+
 The host workspace includes its packages and E2E tooling; host TypeScript projects own `ui/` and `packages/`, not plugin repositories under `plugins/`. Each plugin's own project owns its dependencies, aliases and tests. Managed features add only explicitly selected plugin repositories; initializing an unselected submodule must not change host compilation or dependency resolution.
 
 For standalone frontend checks, build providers, runtime, then the Vite plugin
@@ -152,6 +162,12 @@ The probe performs real native12 recursive peer, singleton, live-export and atom
 The persistent supervisor outlives the short CLI. `--timeout` bounds the caller/build/readiness wait; timeout does not turn unfinished work into success or authorize a PID kill. Inspect/down remain available for that recorded supervisor. The supervisor owns the actual host and Node/Vite commands and their process trees. On Darwin, it retains unreaped child leaders until owned group cleanup; detached numeric-PID termination is never used as a fallback.
 
 Browser mode starts the real Wails server. Use `instance.endpoints.browser`, **not** the asset-only Vite URL. `--live-frontend=false` serves built assets instead of launching host Vite. `--watch=false` disables the supervisor build graph; otherwise its lifetime owns serial source rebuilds and real managed-generation waits. Runtime/shim changes restart actual consumers; a successful compiler exit alone is not plugin readiness.
+
+Host native build inputs, including C/cgo, C++, Objective-C, headers, Fortran,
+assembly, SWIG and object files, enter the owned host rebuild path on addition,
+content edit or removal, including with live frontend enabled. JavaScript and
+CSS changes retain their frontend-only behavior. Cache identity continues to
+use source content and ownership rather than timestamps alone.
 
 Backend readiness is not browser-side plugin import readiness. A cold browser can render the shell before the initial plugin batch, route publication and loader resolution complete. Wait for the selected rendered plugin, not just a Vite socket or shell; live-mode inspection also exposes `window.__PLUGIN_SERVICE__.getDebugSnapshot()` with service/plugin phases and route version. After an automatic document replacement, repeat browser bootstrap before exercising its controls. A `framenavigated` event alone is not reload proof: same-URL router `history.replaceState` and fragment changes stay in the same document; compare `performance.timeOrigin` or browser protocol navigation events.
 
@@ -288,6 +304,15 @@ A failed build/dependency cohort is not rebuilt on every poll; use its recovery
 command or observe a new applicable target. The saved SDK review and protected
 source checks still apply when an SDK branch advances.
 
+Foreground apply consent is bound to the repository selection, upstream and
+workspace policy captured when follow starts. Editing that policy revokes consent
+on the next observation before automatic apply. Successful updates may advance
+selected commits without revoking their own consent; changing an upstream or
+selection requires a new foreground follow session.
+Revocation clears the session's active-operation label and previous plan, pending
+cohort and commands. It does not erase retained on-disk recovery intent.
+An interrupted apply keeps its explicit recovery diagnostics.
+
 Ctrl-C while idle stops following and leaves the app running. Cancellation
 during apply retains the exact resumable operation and joins owned work.
 `workspace down` cancels or fences the follower before stopping the app, so an
@@ -361,9 +386,16 @@ Profile isolation does not isolate HOME, kubeconfig, cloud credentials, terminal
 
 Edits require a stopped supervisor and preserve UUID/profile/unaffected assignments. The orchestrator preserves exact link evidence, unlinks the old overlay, invokes A03's validated durable intent transaction and relinks the committed selection. A validation failure with unchanged intent restores previous links. A Git failure after durable intent remains explicit/resumable (`workspace resume`), not a falsely promised inverse rollback. Ref/removal/rename operations refuse dirty or foreign worktrees. `link`, `unlink`, `list`, `resume` and `rollback` are real CLI lifecycle commands too; Task `workspace:<verb>` wrappers forward the same quoted arguments.
 
-`workspace edit --apply` captures authenticated running state before its
-intentional stop, then refreshes the edited selection and restarts only a
-previously running workspace. A previously stopped workspace remains stopped;
+`workspace edit --apply` validates canonical intent and the planned rename
+destination before capturing authenticated running state or stopping services.
+Occupied or redirected destinations are refused. Preflight also checks worktree
+ownership, required cleanliness, ref history and additions before downtime.
+Rename, ref changes and removal refuse authored dirt; metadata-only edits may
+retain it. Completed tracked producer overlays are projected without rewriting
+source files. Dirty originals, staged changes and tampered output still refuse.
+The stopped edit restores outputs and repeats strict mutation checks before
+refreshing the committed selection. Only a previously running workspace restarts.
+A previously stopped workspace remains stopped;
 `--apply` is not implicit startup consent. Missing dependency acceptance proof
 or launch configuration remains an explicit refresh failure, not fabricated
 readiness. Use `workspace up` separately to request startup.

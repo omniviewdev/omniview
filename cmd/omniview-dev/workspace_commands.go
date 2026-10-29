@@ -667,9 +667,11 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 						}
 					}
 					sort.Strings(ids)
-					fmt.Fprintf(diagnostics, "Follow apply trusts upstream code from selected repositories: %s. "+
+					if _, writeErr := fmt.Fprintf(diagnostics, "Follow apply trusts upstream code from selected repositories: %s. "+
 						"Updates may install dependencies and execute code with your local permissions; "+
-						"this is not a sandbox.\n", strings.Join(ids, ", "))
+						"this is not a sandbox.\n", strings.Join(ids, ", ")); writeErr != nil {
+						return true, 5
+					}
 				}
 				followContext, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 				defer cancel()
@@ -682,8 +684,9 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 					if c.json {
 						return json.NewEncoder(out).Encode(status)
 					}
-					printWorkspaceFollow(out, status)
-					return nil
+					delivery := &outputDelivery{writer: out}
+					printWorkspaceFollow(delivery, status)
+					return delivery.err
 				})
 				if err != nil && (followContext.Err() == nil || !errors.Is(err, context.Canceled)) {
 					return fail(err)
@@ -740,6 +743,9 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 			var refresh devworkspace.RefreshOptions
 			refresh.Diagnostics = diagnostics
 			if c.apply {
+				if preflightErr := manager.PreflightEdit(ctx, w.Manifest.WorkspaceID, options); preflightErr != nil {
+					return fail(preflightErr)
+				}
 				// Capture authenticated liveness before Down intentionally stops it.
 				status, statusErr := manager.Status(ctx, w.Manifest.WorkspaceID)
 				if statusErr != nil {
