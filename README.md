@@ -79,7 +79,7 @@ Compact filter popovers use `size="sm"` and let the shared popup own outer paddi
 
 Named workspaces use selected local source overlays rather than consuming unpublished sibling changes accidentally. Running `pnpm dev` directly starts only Vite, not an isolated host. See [development workspaces](docs/development-workspaces.md) and the [native toolchain](docs/development-native-toolchain.md) for explicit state selection and bootstrap-aware Go commands.
 
-The root manifest’s `packageManager` field is the single pnpm version source for local development and GitHub Actions. Workflow setup steps intentionally omit a separate pnpm version. CI and release workflows continue using frozen lockfile installs; review and commit intended lockfile changes from development.
+The root manifest’s `packageManager` field declares the repository's pnpm version. Keep workflow setup pins and managed policy aligned with it. CI and release workflows use frozen lockfile installs; review and commit intended lockfile changes from development.
 
 `task check:ui-typecheck` checks application and test programs separately. The test configuration explicitly loads React diagnostic augmentation types, so component flags such as `whyDidYouRender` do not depend on unrelated imports being present.
 
@@ -90,6 +90,8 @@ Monaco stays pinned to 0.52.2 while the current YAML worker integration requires
 Vite remains on 7.3.7 to preserve SystemJS plugin output. Vite 8 and newer pnpm versions require separate loader/backend work and are not part of this frontend-only upgrade. Keep strict peer validation and the 24-hour release-age policy enabled.
 
 Build the runtime before the Vite plugin: shim generation verifies the current runtime's exports. Host lint excludes generated bindings and linked plugin repositories; run each plugin's own lint and behavior suite. Owned Playwright runs use the existing isolated source-cohort runner, not ambient marketplace plugins or cluster credentials.
+
+Keep tracked `dist/.gitkeep` for Go's `all:dist` embed during clean pre-frontend compile checks. Production and application acceptance still require actual built frontend assets.
 
 Error reports retain their normalized error, reference ID, and timestamp as occurrence-owned state rather than compiler optimization caches. Inspecting or copying a report must not replace its identity; a new failure must. Metric stream starts capture the current resource payload, including payload-only updates.
 

@@ -14,10 +14,10 @@ node bench/render/report.mjs           # Markdown table from results/latest.json
 
 First run locally: `pnpm exec playwright install chromium` and `task packages`.
 
-Run the suite in a workspace with sibling host, UI, and Kubernetes repositories.
-The Kubernetes benchmark imports `../kubernetes/ui/src` from the host root; it
-does not require an installed marketplace plugin. Production React and production
-JSX are the default. Use `BENCH_REACT_DEV=1` only for debugging.
+Run the suite from the host checkout with its pinned Kubernetes submodule initialized.
+The Kubernetes benchmark imports `plugins/kubernetes/ui/src` against the host's
+shared packages; no installed marketplace plugin or cluster credentials are needed.
+Production React and JSX are the default. Use `BENCH_REACT_DEV=1` only for debugging.
 
 ## How it works
 

@@ -14,9 +14,9 @@ import { wailsBindingIndex } from './bench/vite/wails-binding-index';
 
 const root = import.meta.dirname;
 const bindingsRoot = path.join(root, 'packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview');
-const k8sPluginSrc = path.join(root, '../kubernetes/ui/src');
+const k8sPluginSrc = path.join(root, 'plugins/kubernetes/ui/src');
 
-// React, MUI and emotion ship much slower dev builds. Benchmark the production
+// React ships a slower dev build. Benchmark the production
 // builds unless BENCH_REACT_DEV=1 (useful for readable errors while writing a bench).
 const reactDev = process.env.BENCH_REACT_DEV === '1';
 const nodeEnv = JSON.stringify(reactDev ? 'development' : 'production');
