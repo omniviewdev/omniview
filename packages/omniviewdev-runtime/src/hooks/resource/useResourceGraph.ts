@@ -57,6 +57,7 @@ export const useResourceGraph = ({
     queryKey,
     queryFn: async () => GetSubgraph(pluginID, reference, route, upDepth, downDepth),
     enabled: queryEnabled,
+    retry: false,
   });
 
   return {

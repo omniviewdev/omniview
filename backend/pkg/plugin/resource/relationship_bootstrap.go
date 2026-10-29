@@ -13,6 +13,10 @@ import (
 func (c *controller) bootstrapRelationships(parent context.Context, pluginID string, route resourcev2.AccessRoute) {
 	ctx, cancel := context.WithTimeout(parent, relationshipBootstrapTimeout)
 	defer cancel()
+	c.bootstrapRelationshipsCurrent(ctx, pluginID, route, true)
+}
+
+func (c *controller) bootstrapRelationshipsCurrent(ctx context.Context, pluginID string, route resourcev2.AccessRoute, reacquire bool) {
 	provider, generation, ctx, cleanup, err := c.operationGeneration(ctx, pluginID, route)
 	if err != nil {
 		return
@@ -45,6 +49,15 @@ func (c *controller) bootstrapRelationships(parent context.Context, pluginID str
 	for i := range catalog.Types {
 		types[catalog.Types[i].Type] = &catalog.Types[i]
 		observedTypes[i] = catalog.Types[i].Type
+	}
+	// Admit native binding retirement before publishing declaration snapshots.
+	// A first observation can retire persisted restart bindings and advance the
+	// source epoch. Reacquire once under that new epoch, never reuse old work.
+	if err := c.observeCatalogBinding(ctx, pluginID, route, catalog, admission); err != nil {
+		if reacquire && resourcev2.ErrorCode(err) == "RESET_REQUIRED" {
+			c.bootstrapRelationshipsCurrent(ctx, pluginID, route, false)
+		}
+		return
 	}
 	c.pluginsMu.RLock()
 	if c.currentGenerationLocked(ctx, pluginID, generation) != nil {

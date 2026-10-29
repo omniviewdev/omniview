@@ -52,6 +52,37 @@ func TestRelationshipBootstrapPinsOneCompleteCatalog(t *testing.T) {
 	require.Equal(t, len(catalog.Types), declarationCalls)
 }
 
+func TestRelationshipBootstrapReacquiresAfterNativeBindingRetirement(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	catalog := bootstrapTestCatalog("before")
+	catalogCalls := 0
+	route := resourcev2.AccessRoute{Connection: "route/opaque"}
+	registerMockPlugin(ctrl, "p1", &mockProvider{
+		CatalogFunc: func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
+			catalogCalls++
+			return catalog, nil
+		},
+		GetRelationshipsFunc: func(_ context.Context, _ resourcev2.AccessRoute, resourceType string) ([]resourcev2.RelationshipDescriptor, error) {
+			if resourceType == "objects" {
+				return []resourcev2.RelationshipDescriptor{bootstrapTestDeclaration("current")}, nil
+			}
+			return []resourcev2.RelationshipDescriptor{}, nil
+		},
+	})
+	ctrl.bootstrapRelationships(testInvocationContext(), "p1", route)
+	_, before, ok := ctrl.graph.GetBoundDeclarations("p1", route, "objects")
+	require.True(t, ok)
+	catalog = bootstrapTestCatalog("after")
+	ctrl.bootstrapRelationships(testInvocationContext(), "p1", route)
+	declarations, after, ok := ctrl.graph.GetBoundDeclarations("p1", route, "objects")
+	require.True(t, ok, "binding retirement must not discard the replacement bootstrap")
+	require.Len(t, declarations, 1)
+	require.Greater(t, after.SourceEpoch, before.SourceEpoch)
+	require.NotEqual(t, before.Source.Target.Authority, after.Source.Target.Authority)
+	require.NoError(t, ctrl.graph.CheckComplete("p1", route))
+	require.Equal(t, 3, catalogCalls, "one bounded reacquisition, no inventory scan")
+}
+
 func TestBlockedBootstrapCannotPublishAfterProfileEpochReset(t *testing.T) {
 	for _, oldEmpty := range []bool{false, true} {
 		name := "old-rules"
