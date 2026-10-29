@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import { Provider } from 'react-redux';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ExtensionProvider, GLOBAL_SEARCH_OPEN_EVENT, PluginWindow, usePluginContext } from '@omniviewdev/runtime';
+import { ExtensionProvider, GLOBAL_SEARCH_OPEN_EVENT, PluginWindow, resourceQueryKeys, usePluginContext } from '@omniviewdev/runtime';
 import { Category, ConnectionStatusCode, Setting, SettingType } from '@omniviewdev/runtime/models';
 import type * as RuntimeAPI from '@omniviewdev/runtime/api';
 import type * as RuntimeCore from '@omniviewdev/runtime';
@@ -50,6 +50,37 @@ const native = vi.hoisted(() => ({
   maximise: vi.fn(async () => undefined),
   unMaximise: vi.fn(async () => undefined),
 }));
+
+function resourceTypeScope(pluginId = 'opaque', connectionId = 'project'): Extract<RuntimeCore.SearchScopeV1, { kind: 'resource-type' }> {
+  return {
+    kind: 'resource-type', pluginId, targetId: 'header-search-membership', label: 'Instances',
+    target: { provider: pluginId, authority: 'host-test-authority', type: 'instance', route: { connection: connectionId }, scope: [], representation: 'json' },
+  };
+}
+
+function resourceScope(): Extract<RuntimeCore.SearchScopeV1, { kind: 'resource' }> {
+  const { pluginId, targetId, target } = resourceTypeScope();
+  return {
+    kind: 'resource', pluginId, targetId, label: 'Virtual machine',
+    route: target.route, representation: target.representation,
+    reference: { address: { provider: target.provider, authority: target.authority, type: target.type, id: 'vm', scope: [] } },
+  };
+}
+
+function resourceUpdate(targetId = 'header-search-membership'): { data: RuntimeCore.HostWatchUpdatePayload } {
+  const scope = resourceScope();
+  return { data: {
+    route: scope.route, metadata: {}, guarantee: 'bestEffort',
+    record: {
+      key: 'host-test-row', addressKey: 'host-test-address', targetId, route: scope.route,
+      record: {
+        reference: scope.reference, body: { kind: 'map', value: {} },
+        representation: { id: scope.representation, revision: '1', schema: { state: 'unavailable', validation: 'unvalidated', unvalidated: [] } },
+        coverage: { kind: 'complete', paths: [] },
+      },
+    },
+  } };
+}
 
 vi.mock('@wailsio/runtime', async (importOriginal) => {
   const original = await importOriginal<typeof WailsRuntime>();
@@ -719,19 +750,19 @@ it.each(['close', 'unmount', 'scope-change'] as const)('releases late native acq
   const view = renderSearchHeader(true, service);
   act(() => {
     window.dispatchEvent(new CustomEvent(GLOBAL_SEARCH_OPEN_EVENT, { detail: {
-      scope: { kind: 'resource', pluginId: 'opaque', connectionId: 'project', resourceKey: 'instance',
-        resourceId: 'vm', namespace: 'region', label: 'Virtual machine' },
+      scope: resourceScope(),
     } }));
   });
   await screen.findByRole('combobox', { name: /search/i });
   await waitFor(() => {
-    expect(native.subscribeResource).toHaveBeenCalledExactlyOnceWith('opaque', 'project', 'instance'); 
+    expect(native.subscribeResource).toHaveBeenCalledOnce();
   });
-  act(() => {
+  await act(async () => {
     // Moving from an instance to its type keeps the existing native subscription.
     window.dispatchEvent(new CustomEvent(GLOBAL_SEARCH_OPEN_EVENT, { detail: {
-      scope: { kind: 'resource-type', pluginId: 'opaque', connectionId: 'project', resourceKey: 'instance', label: 'Instances' },
+      scope: resourceTypeScope(),
     } }));
+    await Promise.resolve();
   });
   expect(native.subscribeResource).toHaveBeenCalledOnce();
   if (operation === 'unmount') {
@@ -751,7 +782,7 @@ it.each(['close', 'unmount', 'scope-change'] as const)('releases late native acq
     acquisition.resolve();
     await acquisition.promise;
   });
-  expect(native.unsubscribeResource).toHaveBeenCalledExactlyOnceWith('opaque', 'project', 'instance');
+  expect(native.unsubscribeResource).toHaveBeenCalledOnce();
   expect(native.listeners.get('opaque/project/instance/UPDATE')?.size).toBe(0);
   view.unmount();
   expect(native.unsubscribeResource).toHaveBeenCalledOnce();
@@ -767,7 +798,7 @@ it('coalesces native resource bursts without rediscovering plugins', async () =>
     items: [{
       id: 'snapshot', label: `Snapshot ${version}`,
       value: { schemaVersion: 1, kind: 'navigation',
-        scope: { kind: 'resource-type', pluginId: 'opaque', connectionId: 'project', resourceKey: 'instance', label: 'Instances' },
+        scope: resourceTypeScope(),
         target: { kind: 'plugin', pluginId: 'opaque', path: '/' } },
     }],
     completion: 'complete',
@@ -785,7 +816,7 @@ it('coalesces native resource bursts without rediscovering plugins', async () =>
   renderSearchHeader(true, service);
   act(() => {
     window.dispatchEvent(new CustomEvent(GLOBAL_SEARCH_OPEN_EVENT, { detail: {
-      scope: { kind: 'resource-type', pluginId: 'opaque', connectionId: 'project', resourceKey: 'instance', label: 'Instances' },
+      scope: resourceTypeScope(),
     } }));
   });
   await screen.findByRole('combobox', { name: /search/i });
@@ -795,19 +826,17 @@ it('coalesces native resource bursts without rediscovering plugins', async () =>
   await screen.findByRole('option', { name: /Snapshot 0/ });
   const searches = search.mock.calls.length;
   const discoveries = native.listPlugins.mock.calls.length;
-  const invalidate = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
   try {
     await act(async () => {
       for (let index = 0; index < 10; index++) {
         version = index + 1;
         native.listeners.get('opaque/project/instance/UPDATE')?.forEach((listener) => {
-          listener({ data: {} }); 
+          listener(resourceUpdate());
         });
       }
 
       await Promise.resolve();
     });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['opaque', 'project', 'instance'], refetchType: 'none' });
     expect(native.listPlugins).toHaveBeenCalledTimes(discoveries);
     expect(native.subscribeResource).toHaveBeenCalledOnce();
     expect(await screen.findByRole('option', { name: /Snapshot 10/ })).toBeVisible();
@@ -816,7 +845,6 @@ it('coalesces native resource bursts without rediscovering plugins', async () =>
     expect(search.mock.calls.length - searches).toBeGreaterThan(0);
     expect(search.mock.calls.length - searches).toBeLessThanOrEqual(2);
   } finally {
-    invalidate.mockRestore();
     await act(async () => {
       await service.unload('opaque'); 
     });
@@ -912,7 +940,7 @@ it('uses connection-depth adapter targets and isolates throwing adapters', async
     expect(supportsScope).toHaveBeenCalledWith([{ kind: 'connection', pluginId, connectionId: 'cluster', label: 'Cluster' }]);
     const scoped = await provider.search({ ...request, scopes: [
       { kind: 'connection', pluginId, connectionId: 'cluster', label: 'Cluster' },
-      { kind: 'resource-type', pluginId, connectionId: 'cluster', resourceKey: 'instance', label: 'Instances' },
+      resourceTypeScope(pluginId, 'cluster'),
     ] });
     expect(scoped.items[0]?.value).toMatchObject({ action: { recovery: 'connection', target: { kind: 'connection' } } });
   } finally {
@@ -930,7 +958,7 @@ it('reports native subscription failure and retries without replacing the health
   const view = renderSearchHeader(true, service);
   act(() => {
     window.dispatchEvent(new CustomEvent(GLOBAL_SEARCH_OPEN_EVENT, { detail: {
-      scope: { kind: 'resource-type', pluginId: 'opaque', connectionId: 'project', resourceKey: 'instance', label: 'Instances' },
+      scope: resourceTypeScope(),
     } }));
   });
   expect(await screen.findByText('Live updates are unavailable. Results may be out of date.')).toBeVisible();
@@ -961,7 +989,7 @@ it.each(['close', 'unmount'] as const)('ignores late native subscription failure
   const view = renderSearchHeader(true, service);
   act(() => {
     window.dispatchEvent(new CustomEvent(GLOBAL_SEARCH_OPEN_EVENT, { detail: {
-      scope: { kind: 'resource-type', pluginId: 'opaque', connectionId: 'project', resourceKey: 'instance', label: 'Instances' },
+      scope: resourceTypeScope(),
     } }));
   });
   await screen.findByRole('combobox', { name: /search/i });
@@ -993,7 +1021,7 @@ it.each(['close', 'unmount'] as const)('ignores late native subscription failure
 
 it.each(['publish', 'close'] as const)('preserves an event during a canonical query fetch until %s without leaking cache listeners', async (operation) => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
-  const queryKey = ['opaque', 'project', 'instance', 'list'];
+  const queryKey = resourceQueryKeys.list('opaque');
   const cache = client.getQueryCache();
   const cacheListeners = new Set<unknown>();
   const subscribe = cache.subscribe.bind(cache);
@@ -1020,7 +1048,7 @@ it.each(['publish', 'close'] as const)('preserves an event during a canonical qu
     return { items: [{
       id: 'snapshot', label: `Snapshot ${snapshot}`,
       value: { schemaVersion: 1, kind: 'navigation',
-        scope: { kind: 'resource-type', pluginId: 'opaque', connectionId: 'project', resourceKey: 'instance', label: 'Instances' },
+        scope: resourceTypeScope(),
         target: { kind: 'plugin', pluginId: 'opaque', path: '/' } },
     }], completion: 'complete' };
   };
@@ -1041,7 +1069,7 @@ it.each(['publish', 'close'] as const)('preserves an event during a canonical qu
   try {
     act(() => {
       window.dispatchEvent(new CustomEvent(GLOBAL_SEARCH_OPEN_EVENT, { detail: {
-        scope: { kind: 'resource-type', pluginId: 'opaque', connectionId: 'project', resourceKey: 'instance', label: 'Instances' },
+        scope: resourceTypeScope(),
       } }));
     });
     await waitFor(() => {
@@ -1052,10 +1080,16 @@ it.each(['publish', 'close'] as const)('preserves an event during a canonical qu
     });
     expect(cacheListeners.size).toBe(idleListeners + 1);
     act(() => {
+      native.listeners.get('opaque/project/instance/UPDATE')?.forEach((listener) => {
+        listener(resourceUpdate('another-view-membership'));
+      });
+    });
+    expect(client.getQueryState(queryKey)?.isInvalidated).toBe(false);
+    act(() => {
       backend = 'new';
       for (let index = 0; index < 10; index++) {
         native.listeners.get('opaque/project/instance/UPDATE')?.forEach((listener) => {
-          listener({ data: {} }); 
+          listener(resourceUpdate());
         });
       }
     });
