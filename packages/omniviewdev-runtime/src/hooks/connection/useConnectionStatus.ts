@@ -12,6 +12,8 @@ import { RetryFailedPlugin } from '../../bindings/github.com/omniviewdev/omnivie
 import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 import { WatchState } from '../../types/watch';
 import type { ConnectionReadiness, HostConnectionState, HostWatchStateEvent } from '../../resource/v2/host';
+import { parseAppError } from '../../errors/parseAppError';
+import type { AppError } from '../../errors/types';
 import {
   type ActiveSync,
   type ResourceTracker,
@@ -40,6 +42,10 @@ export interface ConnectionStatusEntry {
 }
 
 export interface ConnectionStatusSummary {
+  isLoading: boolean;
+  error?: AppError;
+  /** Explicitly refresh native readiness; failures are never retried automatically. */
+  refresh: () => Promise<void>;
   entries: ConnectionStatusEntry[];
   grouped: Map<string, ConnectionStatusEntry[]>;
   connectedCount: number;
@@ -64,6 +70,9 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   const [readiness, setReadiness] = useState<Map<string, Pick<HostConnectionState, 'readiness' | 'readinessError'>>>(new Map());
   const readinessRef = useRef(readiness);
   const statusEventsRef = useRef(new Map<string, Pick<HostConnectionState, 'readiness' | 'readinessError'>>());
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<AppError>();
+  const requestRef = useRef(0);
   // Connection metadata from ListAllConnections
   const [allConnections, setAllConnections] = useState<Record<string, Connection[]>>({});
   // Sync state per connection
@@ -104,10 +113,15 @@ export function useConnectionStatus(): ConnectionStatusSummary {
     };
   }, []);
 
-  // Hydrate full connection + watch state on mount
-  useEffect(() => {
-    GetAllConnectionStates()
-      .then((result) => {
+  // Each refresh accepts only lifecycle events newer than its own snapshot request.
+  const refresh = useCallback(async () => {
+    const request = ++requestRef.current;
+    statusEventsRef.current.clear();
+    setIsLoading(true);
+    setError(undefined);
+    try {
+      const result = await GetAllConnectionStates();
+      if (request !== requestRef.current) return;
         if (!result) return;
 
         const conns: Record<string, Connection[]> = {};
@@ -145,11 +159,17 @@ export function useConnectionStatus(): ConnectionStatusSummary {
         readinessRef.current = statesByKey;
         setReadiness(statesByKey);
         setSyncs(newSyncs);
-      })
-      .catch(() => {
-        // silently ignore - connections may not be available yet
-      });
+    } catch (error) {
+      if (request === requestRef.current) setError(parseAppError(error));
+    } finally {
+      if (request === requestRef.current) setIsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void refresh();
+    return () => { ++requestRef.current; };
+  }, [refresh]);
 
   // Listen for connection/status events
   useEffect(() => {
@@ -300,6 +320,9 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   const failedEntries = entries.filter((e) => e.pluginFailed);
 
   return {
+    isLoading,
+    error,
+    refresh,
     entries,
     grouped,
     connectedCount: entries.filter((entry) => entry.readiness === 'CONNECTED').length,

@@ -43,6 +43,50 @@ beforeEach(() => {
 });
 
 describe('connection readiness', () => {
+  it('exposes bootstrap denial without retry and recovers only after explicit refresh', async () => {
+    const denied = { type: 'omniview:resource/forbidden', title: 'Access denied', detail: 'Access denied.',
+      status: 403, code: 'FORBIDDEN', recovery: 'none' };
+    native.states.mockRejectedValueOnce(denied);
+    const hook = renderHook(() => useConnectionStatus());
+    expect(hook.result.current.isLoading).toBe(true);
+    await waitFor(() => expect(hook.result.current.error?.code).toBe('FORBIDDEN'));
+    expect(hook.result.current.isLoading).toBe(false);
+    expect(hook.result.current.entries).toEqual([]);
+    expect(native.states).toHaveBeenCalledTimes(1);
+    act(() => { emit('CONNECTED'); });
+    expect(hook.result.current.error?.code).toBe('FORBIDDEN');
+    expect(native.states).toHaveBeenCalledTimes(1);
+    native.states.mockResolvedValueOnce({ cloud: [snapshot('DISCONNECTED')] });
+    await act(async () => { await hook.result.current.refresh(); });
+    expect(hook.result.current.error).toBeUndefined();
+    expect(hook.result.current.entries[0].readiness).toBe('DISCONNECTED');
+    expect(hook.result.current.connectedCount).toBe(0);
+    hook.unmount();
+  });
+
+  it('accepts a refreshed snapshot over events preceding that refresh', async () => {
+    native.states.mockResolvedValueOnce({ cloud: [snapshot('CONNECTED')] });
+    const hook = renderHook(() => useConnectionStatus());
+    await waitFor(() => expect(hook.result.current.connectedCount).toBe(1));
+    act(() => { emit('FAILED', 'CONNECTED'); });
+    native.states.mockResolvedValueOnce({ cloud: [snapshot('CONNECTED')] });
+    await act(async () => { await hook.result.current.refresh(); });
+    expect(hook.result.current.connectedCount).toBe(1);
+    hook.unmount();
+  });
+
+  it('ignores an older overlapping refresh response', async () => {
+    const older = Promise.withResolvers<Record<string, HostConnectionState[]>>();
+    native.states.mockReturnValueOnce(older.promise);
+    const hook = renderHook(() => useConnectionStatus());
+    native.states.mockResolvedValueOnce({ cloud: [snapshot('DISCONNECTED')] });
+    await act(async () => { await hook.result.current.refresh(); });
+    await act(async () => { older.resolve({ cloud: [snapshot('CONNECTED')] }); });
+    expect(hook.result.current.entries[0].readiness).toBe('DISCONNECTED');
+    expect(hook.result.current.connectedCount).toBe(0);
+    hook.unmount();
+  });
+
   it('keeps every readiness visible and counts only registered clients', async () => {
     const states = (['UNKNOWN', 'DISCONNECTED', 'PENDING', 'CONNECTED', 'FAILED'] as const).map(snapshot);
     states[0].readinessError = { type: 'omniview:not-implemented', title: 'Unsupported', detail: 'Readiness unavailable', status: 501, code: 'UNSUPPORTED' };
