@@ -38,6 +38,21 @@ describe('explicit terminal recovery', () => {
     expect(button).toBeEnabled();
   });
 
+  it('keeps alternate shell retries available after debugger recovery fails', async () => {
+    render(<TerminalError
+      error={{ ...error, retryable: true, retryCommands: ['/bin/ash'] }}
+      onRetry={vi.fn()}
+      recovery={{ label: 'Debug this container', run: async () => {
+        throw new Error('Debug access denied'); 
+      } }}
+    />);
+    expect(screen.getByRole('button', { name: '/bin/ash' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Debug this container' }));
+    await screen.findByRole('status');
+    expect(screen.getByRole('button', { name: '/bin/ash' })).toBeEnabled();
+    expect(screen.getByText('Shell not found')).toBeVisible();
+  });
+
   it('offers no mutation when the plugin did not supply a recovery action', () => {
     render(<TerminalError error={{ ...error, title: 'Permission denied' }} onRetry={vi.fn()} />);
     expect(screen.queryByRole('button', { name: 'Debug this container' })).not.toBeInTheDocument();

@@ -74,7 +74,7 @@ export default function TerminalError({ error, onRetry, backgroundColor, recover
       </div>
 
       {/* Retry buttons — only shown when error is retryable with commands */}
-      {!recovery && error.retryable !== false && error.retryCommands && error.retryCommands.length > 0 && (
+      {error.retryable !== false && error.retryCommands && error.retryCommands.length > 0 && (
         <div className={styles.Retry}>
           <Text size='sm' tone='muted'>Try a different shell:</Text>
           <div className={styles.RetryButtons}>
