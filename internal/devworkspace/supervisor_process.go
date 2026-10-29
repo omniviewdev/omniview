@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -88,7 +90,10 @@ func startOwnedChildCommand(ctx context.Context, command *exec.Cmd, owner devses
 	child := &ownedChild{command: command, done: make(chan struct{}), finalize: finalize}
 	var err error
 	if identityRequired {
-		child.identity, err = devsession.CaptureProcess(command.Process.Pid, owner)
+		pid := command.Process.Pid
+		child.identity, err = captureExecutedProcess(ctx, launchedExecutable(command), supervisorExecutable(), func() (devcontract.ProcessIdentity, error) {
+			return devsession.CaptureProcess(pid, owner)
+		})
 	}
 	if err == nil {
 		err = attachOwnedCommand(child)
@@ -117,6 +122,53 @@ func startOwnedChildCommand(ctx context.Context, command *exec.Cmd, owner devses
 		}
 	}()
 	return child, nil
+}
+
+// Bounds how long a started child may still report the supervisor's image.
+const execCaptureTimeout = 5 * time.Second
+
+var supervisorExecutable = sync.OnceValue(func() string {
+	path, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
+	}
+	return path
+})
+
+func launchedExecutable(command *exec.Cmd) string {
+	path := command.Path
+	if !filepath.IsAbs(path) && command.Dir != "" {
+		path = filepath.Join(command.Dir, path)
+	}
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
+	}
+	return path
+}
+
+// Start can return while the forked child still runs the supervisor's image, so
+// an immediate capture may record the supervisor's executable for the child PID.
+// That identity never matches the child's own report once exec completes.
+// Recapture until the child stops reporting the supervisor's executable.
+func captureExecutedProcess(ctx context.Context, launched, self string, capture func() (devcontract.ProcessIdentity, error)) (devcontract.ProcessIdentity, error) {
+	deadline := time.NewTimer(execCaptureTimeout)
+	defer deadline.Stop()
+	for {
+		identity, err := capture()
+		if err != nil || self == "" || launched == self || identity.Executable != self {
+			return identity, err
+		}
+		select {
+		case <-ctx.Done():
+			return devcontract.ProcessIdentity{}, ctx.Err()
+		case <-deadline.C:
+			return devcontract.ProcessIdentity{}, fmt.Errorf("%w: started child did not exec %s", devsession.ErrOwnership, launched)
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
 }
 
 // complete is called by one observer at a time. A disposal error is not an
