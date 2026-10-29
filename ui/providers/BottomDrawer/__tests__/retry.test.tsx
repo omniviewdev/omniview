@@ -22,6 +22,8 @@ vi.mock('@omniviewdev/runtime', async () => {
     BottomDrawerContext,
     useBottomDrawer: () => useContext(BottomDrawerContext),
     useSettings: () => ({ settings: {} }),
+    useSnackbar: () => ({ showSnackbar: vi.fn() }),
+    showAppError: vi.fn(),
     parseAppError: (error: Error) => ({ detail: error.message }),
   };
 });
@@ -32,7 +34,19 @@ vi.mock('@omniviewdev/runtime/api', () => ({
     CloseSession: backend.close,
     ListSessions: vi.fn().mockResolvedValue([]),
   },
-  LogsClient: {},
+  LogsClient: { ListSessions: vi.fn().mockResolvedValue([]) },
+  WindowClient: { ListStates: vi.fn().mockResolvedValue({}) },
+}));
+vi.mock('@/features/windows', () => ({
+  DRAWER_TAB_DRAG_TYPE: 'omniview/drawer-tab',
+  currentWindow: { name: 'main', kind: 'workspace', isMain: true },
+  readInitialSlot: () => null,
+  saveSlot: vi.fn(),
+  onWindowClosed: () => vi.fn(),
+  useTabDeliveries: vi.fn(),
+  useWindowsList: () => [],
+  openWindow: vi.fn(),
+  deliverTabToWindow: vi.fn(),
 }));
 vi.mock('@omniviewdev/runtime/models', () => ({
   SessionOptions: { createFrom: (value: unknown) => value },
@@ -69,8 +83,7 @@ function Harness({ index }: { index: number }) {
       status: drawer.tabs[0]?.properties?.status,
       error: drawer.tabs[0]?.properties?.error,
     })}</output>
-    <BottomDrawerTabs hasTabs={drawer.tabs.length > 0} isMinimized={false} isFullscreen={false}
-      onMinimize={vi.fn()} onExpand={vi.fn()} onFullscreen={vi.fn()} />
+    <BottomDrawerTabs />
   </>;
 }
 

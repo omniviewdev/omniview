@@ -18,7 +18,35 @@ import {
 } from '@omniviewdev/runtime';
 import { ExecClient } from '@omniviewdev/runtime/api';
 import log from '@/features/logger';
+import {
+  DRAWER_TAB_DRAG_TYPE,
+  currentWindow,
+  onWindowClosed,
+  readInitialSlot,
+  saveSlot,
+  useTabDeliveries,
+} from '@/features/windows';
 import { bottomDrawerChannel } from '@/providers/BottomDrawer/events';
+import {
+  type DrawerMode,
+  type DrawerSlot,
+  type SerializedDrawerTab,
+  buildDrawerSlot,
+  hydrateDrawerTab,
+  isPendingDrawerTab,
+  isTerminalSessionTab,
+  parseDrawerSlot,
+  parseSerializedDrawerTab,
+} from './drawerSlot';
+import { planDrawerRestore } from './drawerRestore';
+import { markTerminalSessionHandedOff } from './terminalHandoff';
+import {
+  type AdoptDrawerTabsPlacement,
+  type BottomDrawerWindowContextType,
+  type DrawerLayout,
+  BottomDrawerWindowContext,
+  DEFAULT_DRAWER_EXPANDED_HEIGHT,
+} from './windowContext';
 
 type BottomDrawerProviderProps = {
   children: ReactNode;
@@ -70,62 +98,50 @@ const findTabIndex = (tabs: BottomDrawerTab[], opts: FindTabOpts): number => {
   return -1;
 };
 
-export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ children }) => {
-  const defaultHeight = 32;
+// ===================================== TAB STATE ===================================== //
 
-  const [focused, setFocused] = React.useState<number>(0);
-  const [tabs, setTabs] = React.useState<BottomDrawerTab[]>([]);
-  const [drawerHeight, setDrawerHeight] = React.useState<number>(defaultHeight);
+type DrawerTabsState = {
+  tabs: BottomDrawerTab[];
+  focused: number;
+};
 
-  // ===================================== CONTEXT METHODS ===================================== //
+type DrawerTabsAction =
+  | { type: 'create'; tabs: BottomDrawerTab[]; focusCreated: boolean }
+  | { type: 'update'; find: FindTabOpts; updates: UpdateTabOpts }
+  | { type: 'focus'; find: FindTabOpts }
+  | { type: 'reorder'; from: number; to: number }
+  | { type: 'close'; ids: string[]; focus: 'before-first-closed' | 'last' }
+  | { type: 'remove'; ids: ReadonlySet<string> }
+  | { type: 'adopt'; tabs: BottomDrawerTab[]; index?: number; focusTabId?: string };
 
-  const createTab: CreateTab = (opts: CreateTabOpts) => {
-    const id = opts.id ?? window.crypto.randomUUID();
+/** Keeps the focused tab focused when other tabs disappear; falls back to its left neighbor. */
+function focusAfterRemoval(state: DrawerTabsState, remaining: BottomDrawerTab[]): number {
+  const focusedTab = state.tabs[state.focused];
+  const stillFocused = focusedTab === undefined ? -1 : remaining.indexOf(focusedTab);
+  if (stillFocused !== -1) {
+    return stillFocused;
+  }
 
-    const newTab: BottomDrawerTab = {
-      id,
-      icon: opts.icon,
-      title: opts.title,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      variant: opts.variant,
-      properties: opts.properties,
-    };
-    setTabs([...tabs, newTab]);
-    setFocused(tabs.length);
-    bottomDrawerChannel.emit('onTabCreated');
-  };
+  const removedBeforeFocus = state.tabs.slice(0, state.focused).filter((tab) => !remaining.includes(tab)).length;
+  return Math.max(Math.min(state.focused - removedBeforeFocus - 1, remaining.length - 1), 0);
+}
 
-  const createTabs: CreateTabs = (newTabs: CreateTabOpts[]) => {
-    if (newTabs.length === 0) {
-      return;
-    }
-
-    const toCreate = newTabs.map((opts) => {
-      const id = opts.id ?? window.crypto.randomUUID();
+function drawerTabsReducer(state: DrawerTabsState, action: DrawerTabsAction): DrawerTabsState {
+  switch (action.type) {
+    case 'create':
       return {
-        id,
-        icon: opts.icon,
-        title: opts.title,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        variant: opts.variant,
-        properties: opts.properties,
+        tabs: [...state.tabs, ...action.tabs],
+        focused: action.focusCreated ? state.tabs.length : state.focused,
       };
-    }) as BottomDrawerTab[];
 
-    setTabs([...tabs, ...toCreate]);
-    bottomDrawerChannel.emit('onTabCreated');
-  };
-
-  const updateTab: UpdateTab = (find: FindTabOpts, updates: UpdateTabOpts) => {
-    setTabs(prev => {
-      const idx = findTabIndex(prev, find);
-      if (idx === -1) {
-        return prev;
+    case 'update': {
+      const index = findTabIndex(state.tabs, action.find);
+      if (index === -1) {
+        return state;
       }
 
-      const tab = prev[idx];
+      const tab = state.tabs[index];
+      const { updates } = action;
       const updated: BottomDrawerTab = {
         ...tab,
         ...(updates.id !== undefined && { id: updates.id }),
@@ -136,88 +152,198 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
           : tab.properties,
         updatedAt: new Date(),
       };
-      const next = [...prev];
-      next[idx] = updated;
-      return next;
+      const tabs = [...state.tabs];
+      tabs[index] = updated;
+      return { ...state, tabs };
+    }
+
+    case 'focus': {
+      const index = findTabIndex(state.tabs, { actionOnMultiple: 'newest', ...action.find });
+      return index === -1 ? state : { ...state, focused: index };
+    }
+
+    case 'reorder': {
+      const { from, to } = action;
+      if (from === to || from < 0 || from >= state.tabs.length || to < 0 || to >= state.tabs.length) {
+        return state;
+      }
+
+      const tabs = [...state.tabs];
+      const [tab] = tabs.splice(from, 1);
+      tabs.splice(to, 0, tab);
+      return { tabs, focused: to };
+    }
+
+    case 'close': {
+      const closing = new Set(action.ids);
+      const firstClosedIndex = state.tabs.findIndex((tab) => closing.has(tab.id));
+      if (firstClosedIndex === -1) {
+        return state;
+      }
+
+      const tabs = state.tabs.filter((tab) => !closing.has(tab.id));
+      return {
+        tabs,
+        focused: action.focus === 'last' ? tabs.length - 1 : Math.max(firstClosedIndex - 1, 0),
+      };
+    }
+
+    case 'remove': {
+      const tabs = state.tabs.filter((tab) => !action.ids.has(tab.id));
+      if (tabs.length === state.tabs.length) {
+        return state;
+      }
+
+      return { tabs, focused: focusAfterRemoval(state, tabs) };
+    }
+
+    case 'adopt': {
+      const existingIds = new Set(state.tabs.map((tab) => tab.id));
+      const adopted = action.tabs.filter((tab) => !existingIds.has(tab.id));
+      if (adopted.length === 0) {
+        return state;
+      }
+
+      const insertAt = Math.min(Math.max(action.index ?? state.tabs.length, 0), state.tabs.length);
+      const tabs = [...state.tabs.slice(0, insertAt), ...adopted, ...state.tabs.slice(insertAt)];
+      const focusIndex = action.focusTabId === undefined
+        ? -1
+        : tabs.findIndex((tab) => tab.id === action.focusTabId);
+      if (focusIndex !== -1) {
+        return { tabs, focused: focusIndex };
+      }
+
+      const focusShift = state.tabs.length > 0 && insertAt <= state.focused ? adopted.length : 0;
+      return { tabs, focused: state.focused + focusShift };
+    }
+  }
+}
+
+function initialDrawerTabsState(slot: DrawerSlot | null): DrawerTabsState {
+  if (slot === null) {
+    return { tabs: [], focused: 0 };
+  }
+
+  const focused = slot.tabs.findIndex((tab) => tab.id === slot.focusedId);
+  return { tabs: slot.tabs.map(hydrateDrawerTab), focused: Math.max(focused, 0) };
+}
+
+// ===================================== PROVIDER ===================================== //
+
+export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ children }) => {
+  const defaultHeight = 32;
+
+  const [initialSlot] = React.useState(() => readInitialSlot('drawer', parseDrawerSlot));
+  const [state, dispatch] = React.useReducer(drawerTabsReducer, initialSlot, initialDrawerTabsState);
+  const [drawerHeight, setDrawerHeight] = React.useState<number>(defaultHeight);
+  const [layout, setLayout] = React.useState<DrawerLayout>(() => ({
+    mode: initialSlot?.mode ?? 'minimized',
+    expandedHeight: initialSlot?.height ?? DEFAULT_DRAWER_EXPANDED_HEIGHT,
+  }));
+  const [quietTabIds, setQuietTabIds] = React.useState<ReadonlySet<string>>(
+    () => new Set(initialSlot?.tabs.map((tab) => tab.id)),
+  );
+  const [restoreComplete, setRestoreComplete] = React.useState(false);
+
+  // Operations that run side effects for specific tabs read the latest committed tabs.
+  const stateRef = React.useRef(state);
+  React.useLayoutEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  // ===================================== CONTEXT METHODS ===================================== //
+
+  const createTab: CreateTab = React.useCallback((opts: CreateTabOpts) => {
+    const now = new Date();
+    dispatch({
+      type: 'create',
+      focusCreated: true,
+      tabs: [{
+        id: opts.id ?? window.crypto.randomUUID(),
+        icon: opts.icon,
+        title: opts.title,
+        createdAt: now,
+        updatedAt: now,
+        variant: opts.variant,
+        properties: opts.properties,
+      }],
     });
-  };
+    bottomDrawerChannel.emit('onTabCreated');
+  }, []);
 
-  const focusTab: FocusTab = (opts: FindTabOpts) => {
-    const foundIndex = findTabIndex(tabs, { actionOnMultiple: 'newest', ...opts });
-    if (foundIndex === -1) {
+  const createTabs: CreateTabs = React.useCallback((newTabs: CreateTabOpts[]) => {
+    if (newTabs.length === 0) {
       return;
     }
 
-    setFocused(foundIndex);
-  };
+    const now = new Date();
+    dispatch({
+      type: 'create',
+      focusCreated: false,
+      tabs: newTabs.map((opts) => ({
+        id: opts.id ?? window.crypto.randomUUID(),
+        icon: opts.icon,
+        title: opts.title,
+        createdAt: now,
+        updatedAt: now,
+        variant: opts.variant,
+        properties: opts.properties,
+      })),
+    });
+    bottomDrawerChannel.emit('onTabCreated');
+  }, []);
 
-  const reorderTab: ReorderTab = (from: number, to: number) => {
-    if (from === to) {
+  const updateTab: UpdateTab = React.useCallback((find: FindTabOpts, updates: UpdateTabOpts) => {
+    dispatch({ type: 'update', find, updates });
+  }, []);
+
+  const focusTab: FocusTab = React.useCallback((opts: FindTabOpts) => {
+    dispatch({ type: 'focus', find: opts });
+  }, []);
+
+  const reorderTab: ReorderTab = React.useCallback((from: number, to: number) => {
+    dispatch({ type: 'reorder', from, to });
+  }, []);
+
+  const closeTab: CloseTab = React.useCallback((opts: FindTabOpts) => {
+    const tab = stateRef.current.tabs[findTabIndex(stateRef.current.tabs, opts)];
+    if (tab === undefined) {
       return;
     }
-
-    if (from < 0 || from >= tabs.length || to < 0 || to >= tabs.length) {
-      return;
-    }
-
-    const draft = [...tabs];
-    const [tab] = draft.splice(from, 1);
-    draft.splice(to, 0, tab);
-    setTabs(draft);
-    setFocused(to);
-  };
-
-  const closeTab: CloseTab = (opts: FindTabOpts) => {
-    const foundIndex = findTabIndex(tabs, opts);
-    if (foundIndex === -1) {
-      return;
-    }
-
-    const tab = tabs[foundIndex];
 
     // if terminal with a real backend session, close it
-    if (tab.variant === 'terminal' && !tab.id.startsWith('pending-')) {
-      ExecClient.CloseSession(tab.id).catch((err) => {
+    if (isTerminalSessionTab(tab)) {
+      ExecClient.CloseSession(tab.id).catch((err: unknown) => {
         if (err instanceof Error) {
           log.error(err, { event: 'terminate_session', sessionId: tab.id });
-          return;
         }
       });
     }
 
-    setTabs((prevTabs) => prevTabs.filter((_, i) => i !== foundIndex));
-    setFocused(Math.max(foundIndex - 1, 0));
-  };
+    dispatch({ type: 'close', ids: [tab.id], focus: 'before-first-closed' });
+  }, []);
 
-  const closeTabs: CloseTabs = (opts: FindTabOpts[]) => {
-    const foundIndexes = opts.map((opt) => findTabIndex(tabs, opt)).filter((index) => index !== -1);
-    if (foundIndexes.length === 0) {
+  const closeTabs: CloseTabs = React.useCallback((opts: FindTabOpts[]) => {
+    const { tabs } = stateRef.current;
+    const closing = opts
+      .map((opt) => tabs[findTabIndex(tabs, opt)])
+      .filter((tab): tab is BottomDrawerTab => tab !== undefined);
+    if (closing.length === 0) {
       return;
     }
 
-    let terminalTabs: BottomDrawerTab[] = [];
-    foundIndexes.forEach((index) => {
-      const tab = tabs[index];
-      if (tab.variant === 'terminal' && !tab.id.startsWith('pending-')) {
-        terminalTabs.push(tab);
-      }
-    });
-
     // close all the selected sessions
-    const closesPromises = Promise.all(terminalTabs.map(async (tab) => ExecClient.CloseSession(tab.id)));
-    closesPromises.catch((err) => {
-      if (err instanceof Error) {
-        log.error(err, { event: 'terminate_sessions' });
-        return;
-      }
-    });
+    Promise.all(closing.filter(isTerminalSessionTab).map(async (tab) => ExecClient.CloseSession(tab.id)))
+      .catch((err: unknown) => {
+        if (err instanceof Error) {
+          log.error(err, { event: 'terminate_sessions' });
+        }
+      });
 
-    const newTabs = tabs.filter((_, i) => !foundIndexes.includes(i));
-    setTabs(newTabs);
-    setFocused(newTabs.length - 1);
-  };
+    dispatch({ type: 'close', ids: closing.map((tab) => tab.id), focus: 'last' });
+  }, []);
 
-  const resizeDrawer: ResizeDrawer = (height: number) => {
+  const resizeDrawer: ResizeDrawer = React.useCallback((height: number) => {
     if (height < defaultHeight) {
       setDrawerHeight(defaultHeight);
       return;
@@ -229,23 +355,133 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
     }
 
     setDrawerHeight(height);
-  };
+  }, []);
 
-  const closeDrawer: CloseDrawer = () => {
+  const closeDrawer: CloseDrawer = React.useCallback(() => {
     setDrawerHeight(defaultHeight);
-  };
+  }, []);
 
-  const fullscreenDrawer: FullscreenDrawer = () => {
-    // calculate from the window 
+  const fullscreenDrawer: FullscreenDrawer = React.useCallback(() => {
+    // calculate from the window
     setDrawerHeight(window.innerHeight);
-  };
+  }, []);
+
+  // ===================================== WINDOW METHODS ===================================== //
+
+  const transferTabOut = React.useCallback((id: string) => {
+    const tab = stateRef.current.tabs.find((candidate) => candidate.id === id);
+    if (tab === undefined) {
+      return;
+    }
+
+    // The session lives on in the target window: no CloseSession, and the
+    // unmounting terminal must not detach it from under the target.
+    if (isTerminalSessionTab(tab)) {
+      markTerminalSessionHandedOff(tab.id);
+    }
+
+    dispatch({ type: 'remove', ids: new Set([id]) });
+  }, []);
+
+  const adoptTabs = React.useCallback((incoming: SerializedDrawerTab[], placement: AdoptDrawerTabsPlacement) => {
+    const existingIds = new Set(stateRef.current.tabs.map((tab) => tab.id));
+    const adoptable = incoming.filter((tab) => !isPendingDrawerTab(tab) && !existingIds.has(tab.id));
+    if (adoptable.length === 0) {
+      return false;
+    }
+
+    if (placement.focusTabId === undefined) {
+      setQuietTabIds((previous) => new Set([...previous, ...adoptable.map((tab) => tab.id)]));
+    }
+
+    dispatch({
+      type: 'adopt',
+      tabs: adoptable.map(hydrateDrawerTab),
+      index: placement.index,
+      focusTabId: placement.focusTabId,
+    });
+    return true;
+  }, []);
+
+  const saveLayout = React.useCallback((mode: DrawerMode, expandedHeight?: number) => {
+    setLayout((previous) => ({ mode, expandedHeight: expandedHeight ?? previous.expandedHeight }));
+  }, []);
+
+  // ===================================== WINDOW WIRING ===================================== //
+
+  React.useEffect(() => {
+    saveSlot('drawer', buildDrawerSlot(
+      state.tabs,
+      state.tabs[state.focused]?.id,
+      layout.mode,
+      layout.expandedHeight,
+    ));
+  }, [state, layout]);
+
+  React.useEffect(() => {
+    let disposed = false;
+    planDrawerRestore(initialSlot?.tabs ?? [])
+      .then(({ deadTabIds, orphanedSessionTabs }) => {
+        if (disposed) {
+          return;
+        }
+
+        if (deadTabIds.size > 0) {
+          dispatch({ type: 'remove', ids: deadTabIds });
+        }
+
+        adoptTabs(orphanedSessionTabs, {});
+      })
+      .catch((err: unknown) => {
+        console.error('[drawer] failed to reconcile drawer tabs with live sessions', err);
+      })
+      .finally(() => {
+        if (!disposed) {
+          setRestoreComplete(true);
+        }
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [initialSlot, adoptTabs]);
+
+  // Drawer tabs of a closed window come back to the main window.
+  React.useEffect(() => {
+    if (!currentWindow.isMain) {
+      return undefined;
+    }
+
+    return onWindowClosed(({ name, states }) => {
+      if (!states.drawer) {
+        return;
+      }
+
+      let slot: DrawerSlot;
+      try {
+        slot = parseDrawerSlot(JSON.parse(states.drawer));
+      } catch (err) {
+        console.error(`[drawer] ignoring invalid drawer state of closed window "${name}"`, err);
+        return;
+      }
+
+      const drawerIsEmpty = stateRef.current.tabs.length === 0;
+      const focusTabId = drawerIsEmpty ? slot.focusedId ?? slot.tabs[0]?.id : undefined;
+      adoptTabs(slot.tabs, { focusTabId });
+    });
+  }, [adoptTabs]);
+
+  // Tabs moved here from another window's "Move to window" menu.
+  useTabDeliveries(DRAWER_TAB_DRAG_TYPE, (payload) => {
+    const tab = parseSerializedDrawerTab(payload);
+    return adoptTabs([tab], { focusTabId: tab.id });
+  });
 
   // ===================================== CONTEXT VALUE ===================================== //
 
   const value = React.useMemo(() => ({
     height: drawerHeight,
-    focused,
-    tabs,
+    focused: state.focused,
+    tabs: state.tabs,
     createTab,
     createTabs,
     updateTab,
@@ -256,11 +492,25 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
     resizeDrawer,
     closeDrawer,
     fullscreenDrawer,
-  }), [drawerHeight, focused, tabs]);
+  }), [
+    drawerHeight, state, createTab, createTabs, updateTab, focusTab, reorderTab, closeTab, closeTabs,
+    resizeDrawer, closeDrawer, fullscreenDrawer,
+  ]);
+
+  const windowValue: BottomDrawerWindowContextType = React.useMemo(() => ({
+    restoreComplete,
+    quietTabIds,
+    layout,
+    saveLayout,
+    transferTabOut,
+    adoptTabs,
+  }), [restoreComplete, quietTabIds, layout, saveLayout, transferTabOut, adoptTabs]);
 
   return (
     <BottomDrawerContext.Provider value={value}>
-      {children}
+      <BottomDrawerWindowContext.Provider value={windowValue}>
+        {children}
+      </BottomDrawerWindowContext.Provider>
     </BottomDrawerContext.Provider>
   );
 };

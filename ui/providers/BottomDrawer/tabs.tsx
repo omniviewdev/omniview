@@ -1,41 +1,57 @@
 import React from 'react';
 
-import { ContextMenu, IconButton, Separator, Spinner } from '@omniviewdev/base-ui';
-
-// third-party
 import {
-  DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  SortableContext, horizontalListSortingStrategy, useSortable,
-} from '@dnd-kit/sortable';
-import { restrictToHorizontalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
-import { CSS } from '@dnd-kit/utilities';
+  type AttachCommit,
+  type DetachCommit,
+  type TabDescriptor,
+  type TabTransferCommit,
+  ContextMenu,
+  EditorTabs,
+  IconButton,
+  Separator,
+  Spinner,
+} from '@omniviewdev/base-ui';
 
 // provider
 import {
   type BottomDrawerTab,
   useBottomDrawer,
+  useSettings,
+  useSnackbar,
   parseAppError,
+  showAppError,
 } from '@omniviewdev/runtime';
 
 // project imports
 import Icon from '@/components/icons/Icon';
-import { LuChevronDown, LuChevronUp, LuMaximize, LuMinimize, LuPlus, LuX } from 'react-icons/lu';
-import { useSettings } from '@omniviewdev/runtime';
+import { LuChevronDown, LuChevronUp, LuMaximize, LuMinimize, LuPlus } from 'react-icons/lu';
 import { SessionOptions, CreateSessionOptions, LogSessionOptions } from '@omniviewdev/runtime/models';
-import { ExecClient, LogsClient } from '@omniviewdev/runtime/api';
+import { ExecClient, LogsClient, WindowClient } from '@omniviewdev/runtime/api';
+import {
+  DRAWER_TAB_DRAG_TYPE,
+  type WindowClientPoint,
+  type WindowInfo,
+  currentWindow,
+  deliverTabToWindow,
+  openWindow,
+  useWindowsList,
+} from '@/features/windows';
 
-import { bottomDrawerChannel, restoredSessionIds } from './events';
+import { bottomDrawerChannel } from './events';
+import {
+  buildPanelDrawerSlot,
+  isPendingDrawerTab,
+  parseSerializedDrawerTab,
+  serializeDrawerTab,
+} from './drawerSlot';
+import { useBottomDrawerWindow } from './windowContext';
 import { devToolsChannel } from '@/features/devtools/events';
 import { pluginLogChannel } from '@/features/pluginlogs/events';
 import { Events } from '@omniviewdev/runtime/runtime';
 import styles from './tabs.module.css';
 
-type TabMenuItem = { key: string; label: string; onClick: () => void };
-
-type Props = {
-  hasTabs: boolean;
+/** Minimize/expand/fullscreen controls; only the workspace bottom drawer has them. */
+export type DrawerResizeControls = {
   isMinimized: boolean;
   isFullscreen: boolean;
   onMinimize: () => void;
@@ -43,93 +59,92 @@ type Props = {
   onFullscreen: () => void;
 };
 
+type Props = {
+  resizeControls?: DrawerResizeControls;
+};
+
+type WindowMenuTarget = { name: string; label: string };
+
+/** "Main window" for main, "Window N" for the others, numbered in creation order. */
+function labelOtherWindows(windows: WindowInfo[]): WindowMenuTarget[] {
+  const secondaryNames = windows.filter((window) => window.name !== 'main').map((window) => window.name);
+  return windows
+    .filter((window) => window.name !== currentWindow.name)
+    .map((window) => ({
+      name: window.name,
+      label: window.name === 'main' ? 'Main window' : `Window ${secondaryNames.indexOf(window.name) + 1}`,
+    }));
+}
+
+function renderTabIcon(tab: BottomDrawerTab): React.ReactNode {
+  if (tab.properties?.status === 'connecting') {
+    return <Spinner size='xs' />;
+  }
+
+  return typeof tab.icon === 'string' ? <Icon name={tab.icon} size={14} /> : tab.icon;
+}
 
 /**
- * Renders the tabs for the bottom drawer.
+ * Renders the tabs for the bottom drawer. Tabs move between windows by drag
+ * (onto another window's drawer strip, or released outside any window to tear
+ * off into a new panel window) and by the tab context menu.
  */
-const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen, onMinimize, onExpand, onFullscreen }) => {
-  const { tabs, focused, focusTab, closeTab, closeTabs, createTab, createTabs, updateTab, reorderTab } = useBottomDrawer();
-  const canResize = hasTabs;
-  // One context menu serves the whole strip; right-clicking a tab records which.
-  const [menuIndex, setMenuIndex] = React.useState(0);
+const BottomDrawerTabs: React.FC<Props> = ({ resizeControls }) => {
+  const { tabs, focused, focusTab, closeTab, closeTabs, createTab, updateTab, reorderTab } = useBottomDrawer();
+  const { transferTabOut, adoptTabs } = useBottomDrawerWindow();
+  const { showSnackbar } = useSnackbar();
   const { settings } = useSettings();
+  const windows = useWindowsList();
+  const canResize = tabs.length > 0;
+  // One context menu serves the whole strip; right-clicking a tab records which.
+  const [menuTabId, setMenuTabId] = React.useState<string | null>(null);
 
-  const getContextMenuItems = React.useCallback((index: number): TabMenuItem[] => [
-    { key: 'close', label: 'Close Tab', onClick: () => {
-      closeTab({ index }); 
-    } },
-    { key: 'close-right', label: 'Close Tabs to Right', onClick: () => {
-      const indices = [];
-      for (let i = index + 1; i < tabs.length; i++) {
-        indices.push(i);
-      }
+  const isPanelWindow = currentWindow.kind === 'panel';
+  // A panel holding a single tab has nothing to tear off; moving it to another window still works.
+  const canTearOff = !(isPanelWindow && tabs.length <= 1);
+  const otherWindows = React.useMemo(() => labelOtherWindows(windows), [windows]);
 
-      closeTabs(indices.map(i => ({ index: i })));
-    } },
-    { key: 'close-left', label: 'Close Tabs to Left', onClick: () => {
-      const indices = [];
-      for (let i = 0; i < index; i++) {
-        indices.push(i);
-      }
-
-      closeTabs(indices.map(i => ({ index: i })));
-    } },
-    { key: 'close-others', label: 'Close Other Tabs', onClick: () => {
-      const indices = [];
-      for (let i = 0; i < tabs.length; i++) {
-        if (i !== index) {
-          indices.push(i);
+  const createTerminal = React.useCallback(() => {
+    const tempId = `pending-${crypto.randomUUID()}`;
+    createTab({
+      id: tempId,
+      title: 'Connecting...',
+      variant: 'terminal',
+      icon: 'LuSquareTerminal',
+      properties: { status: 'connecting' },
+    });
+    // No configured shell: an empty command lets the backend start the user's login shell.
+    const shell = settings['terminal.defaultShell'];
+    ExecClient.CreateTerminal(SessionOptions.createFrom({ command: typeof shell === 'string' && shell.length > 0 ? [shell] : [] }))
+      .then((session) => {
+        if (!session) {
+          throw new Error('terminal session was not created');
         }
-      }
 
-      closeTabs(indices.map(i => ({ index: i })));
-    } },
-  ], [tabs, closeTab, closeTabs]);
+        updateTab(
+          { id: tempId },
+          {
+            id: session.id,
+            title: `Session ${session.id.substring(0, 8)}`,
+            properties: { status: 'connected' },
+          },
+        );
+      })
+      .catch((err: unknown) => {
+        updateTab(
+          { id: tempId },
+          { properties: { status: 'error', error: parseAppError(err).detail } },
+        );
+        console.error(err);
+      });
+  }, [createTab, updateTab, settings]);
 
-  // null is required by onChange
-  const handleChange = React.useCallback((_event: React.SyntheticEvent | null, newValue: string | number | null) => {
-    if (typeof newValue === 'number') {
-      focusTab({ index: newValue });
+  // The app menu event reaches every window; only the focused one opens a terminal.
+  React.useEffect(() => Events.On('menu/view/terminal/create', () => {
+    if (document.hasFocus()) {
+      createTerminal();
     }
-  }, [focusTab]);
-
-  const handleCreate = (variant: 'terminal' | 'browser') => {
-    switch (variant) {
-      case 'terminal': {
-        const tempId = `pending-${crypto.randomUUID()}`;
-        createTab({
-          id: tempId,
-          title: 'Connecting...',
-          variant: 'terminal',
-          icon: 'LuSquareTerminal',
-          properties: { status: 'connecting' },
-        });
-        const shell = settings['terminal.defaultShell'];
-        ExecClient.CreateTerminal(SessionOptions.createFrom({ command: typeof shell === 'string' && shell.length > 0 ? [shell] : [] }))
-          .then((session: any) => {
-            updateTab(
-              { id: tempId },
-              {
-                id: session.id,
-                title: `Session ${session.id.substring(0, 8)}`,
-                properties: { status: 'connected' },
-              },
-            );
-          })
-          .catch((err: unknown) => {
-            updateTab(
-              { id: tempId },
-              { properties: { status: 'error', error: parseAppError(err).detail } },
-            );
-            console.error(err);
-          });
-        break;
-      }
-
-      case 'browser':
-        break;
-    }
-  };
+  }), [createTerminal]);
 
   // handle signals from across the app through the event bus
   React.useEffect(() => {
@@ -158,7 +173,11 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
       }
 
       ExecClient.CreateSession(plugin, connection, opts)
-        .then((session: any) => {
+        .then((session) => {
+          if (!session) {
+            throw new Error('terminal session was not created');
+          }
+
           updateTab(
             { id: tempId },
             {
@@ -210,7 +229,11 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
         }),
       });
       LogsClient.CreateSession(plugin, connection, opts)
-        .then((session: any) => {
+        .then((session) => {
+          if (!session) {
+            throw new Error('log session was not created');
+          }
+
           createTab({
             id: session.id,
             title: label ?? `Logs ${session.id.substring(0, 8)}`,
@@ -224,7 +247,6 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
     });
 
     const unsubscribeSessionClosed = bottomDrawerChannel.on('onSessionClosed', ({ id: sessionId }) => {
-      console.log('onSessionClosed', sessionId);
       closeTab({ id: sessionId });
     });
 
@@ -301,76 +323,93 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
       unsubscribeOpenPluginLogs();
       document.removeEventListener('keydown', handleEditorDebugShortcut);
     };
-  }, [tabs]);
+  }, [tabs, createTab, updateTab, closeTab, focusTab]);
 
-  const handleRemove = React.useCallback((index: number) => {
-    closeTab({ index });
+  // ===================================== MOVING TABS ===================================== //
+
+  const moveTabToNewWindow = React.useCallback(async (tab: BottomDrawerTab, pointer?: WindowClientPoint) => {
+    try {
+      await openWindow({ kind: 'panel', slots: { drawer: buildPanelDrawerSlot(serializeDrawerTab(tab)) }, pointer });
+      transferTabOut(tab.id);
+    } catch (err) {
+      showAppError(showSnackbar, err, 'Failed to move the tab to a new window');
+    }
+  }, [transferTabOut, showSnackbar]);
+
+  const moveTabToWindow = React.useCallback(async (tab: BottomDrawerTab, target: WindowMenuTarget) => {
+    try {
+      await deliverTabToWindow(target.name, DRAWER_TAB_DRAG_TYPE, serializeDrawerTab(tab));
+      transferTabOut(tab.id);
+      WindowClient.Focus(target.name).catch((err: unknown) => {
+        console.error(`[drawer] failed to focus window "${target.name}"`, err);
+      });
+    } catch (err) {
+      showAppError(showSnackbar, err, `Failed to move the tab to ${target.label}`);
+    }
+  }, [transferTabOut, showSnackbar]);
+
+  const handleTearOff = React.useCallback(({ id, clientX, clientY }: DetachCommit) => {
+    const tab = tabs.find((candidate) => candidate.id === id);
+    if (tab) {
+      void moveTabToNewWindow(tab, { clientX, clientY });
+    }
+  }, [tabs, moveTabToNewWindow]);
+
+  const handleAttach = React.useCallback(({ tab, insertIndex }: AttachCommit) => {
+    let drawerTab;
+    try {
+      drawerTab = parseSerializedDrawerTab(tab.payload);
+    } catch (err) {
+      console.error('[drawer] dropped tab is not a drawer tab', err);
+      return;
+    }
+
+    adoptTabs([drawerTab], { index: insertIndex, focusTabId: drawerTab.id });
+  }, [adoptTabs]);
+
+  const handleTransferred = React.useCallback(({ id }: TabTransferCommit) => {
+    transferTabOut(id);
+  }, [transferTabOut]);
+
+  // ===================================== STRIP ===================================== //
+
+  const tabDescriptors = React.useMemo((): TabDescriptor[] => tabs.map((tab) => ({
+    id: tab.id,
+    title: tab.title,
+    icon: renderTabIcon(tab),
+    // A connecting terminal gets its session id in this window; it cannot leave yet.
+    detachable: !isPendingDrawerTab(tab),
+    payload: serializeDrawerTab(tab),
+  })), [tabs]);
+
+  const handleActiveChange = React.useCallback((id: string) => {
+    focusTab({ id });
+  }, [focusTab]);
+
+  const handleReorder = React.useCallback((_nextTabs: TabDescriptor[], { from, to }: { from: number; to: number }) => {
+    reorderTab(from, to);
+  }, [reorderTab]);
+
+  const handleCloseTab = React.useCallback((id: string) => {
+    closeTab({ id });
   }, [closeTab]);
 
-  // Sensors for DND Kit — pointer only, no keyboard sensor to avoid
-  // Space/Enter key conflicts when tabs have focus.
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-  );
-
-  // Handler for drag end
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-
-    if (over && typeof active.id === 'number' && typeof over.id === 'number' && active.id !== over.id) {
-      reorderTab(active.id, over.id);
+  // Right-clicks outside a tab open no menu.
+  const handleStripContextMenuCapture = React.useCallback((event: React.MouseEvent) => {
+    if (event.target instanceof Element && event.target.closest('[data-tab-id]')) {
+      return;
     }
-  };
 
-  React.useEffect(() => {
-    ExecClient.ListSessions()
-      .then((sessions: any) => {
-        const newTabs: BottomDrawerTab[] = [];
-
-        // find and upsert any missing sessions where the id doesn't exist
-        sessions.forEach((session: any) => {
-          const existing = tabs.find(tab => tab.id === session.id);
-          if (existing) {
-            return;
-          }
-
-          newTabs.push({
-            id: session.id,
-            title: `Session ${session.id.substring(0, 8)}`,
-            variant: 'terminal',
-            icon: 'LuSquareTerminal',
-            properties: session.labels,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          });
-        });
-
-        if (newTabs.length > 0) {
-          newTabs.forEach(tab => restoredSessionIds.add(tab.id));
-          createTabs(newTabs);
-        }
-      }).catch((err: unknown) => {
-        console.error(err);
-      }).finally(() => {
-        bottomDrawerChannel.emit('onSessionsRestored');
-      });
-
-    const closerTerminal = Events.On('menu/view/terminal/create', () => {
-      handleCreate('terminal'); 
-    });
-
-    return () => {
-      closerTerminal();
-    };
-
+    event.preventDefault();
+    event.stopPropagation();
   }, []);
 
+  const menuTabIndex = tabs.findIndex((tab) => tab.id === menuTabId);
+  const menuTab = menuTabIndex === -1 ? undefined : tabs[menuTabIndex];
+  const menuTabIsPending = menuTab !== undefined && isPendingDrawerTab(menuTab);
+
   return (
-    <div className={styles.Bar}>
+    <div className={styles.Bar} data-ov-drawer-strip=''>
       <div className={styles.Strip}>
         <IconButton
           size='sm'
@@ -378,164 +417,135 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
           color='neutral'
           aria-label='New terminal'
           className={styles.Button}
-          onClick={() => {
-            handleCreate('terminal');
-          }}
+          onClick={createTerminal}
         >
           <LuPlus size={16} />
         </IconButton>
         <Separator orientation='vertical' className={styles.StripSeparator} />
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-          modifiers={[restrictToParentElement, restrictToHorizontalAxis]}
-        >
-          <SortableContext items={tabs.map((_, index) => index)} strategy={horizontalListSortingStrategy}>
-            {tabs.length !== 0 &&
-              <ContextMenu.Root>
-                <ContextMenu.Trigger render={<div className={styles.TabsViewport} />}>
-                  <div className={styles.TabsScroller} role='tablist' aria-label='Bottom drawer tabs'>
-                    {tabs.map((tab, index) => (
-                      <MemoizedBottomDrawerTabComponent
-                        key={`bottom-drawer-tab-${index}`}
-                        {...tab}
-                        index={index}
-                        selected={focused === index}
-                        onRemove={handleRemove}
-                        onChange={handleChange}
-                        onContextMenu={setMenuIndex}
-                      />
-                    ))}
-                  </div>
-                </ContextMenu.Trigger>
-                <ContextMenu.Portal>
-                  <ContextMenu.Positioner>
-                    <ContextMenu.Popup>
-                      {getContextMenuItems(menuIndex).map(item => (
-                        <ContextMenu.Item key={item.key} onClick={item.onClick}>
-                          {item.label}
-                        </ContextMenu.Item>
-                      ))}
-                    </ContextMenu.Popup>
-                  </ContextMenu.Positioner>
-                </ContextMenu.Portal>
-              </ContextMenu.Root>
-            }
-          </SortableContext>
-        </DndContext>
+        <ContextMenu.Root>
+          <ContextMenu.Trigger
+            render={<div className={styles.TabsViewport} onContextMenuCapture={handleStripContextMenuCapture} />}
+          >
+            <EditorTabs
+              className={styles.Tabs}
+              tabs={tabDescriptors}
+              activeId={tabs[focused]?.id ?? ''}
+              onActiveChange={handleActiveChange}
+              onCloseTab={handleCloseTab}
+              onContextMenuTab={setMenuTabId}
+              onReorder={handleReorder}
+              instanceId={`drawer-${currentWindow.name}`}
+              dragType={DRAWER_TAB_DRAG_TYPE}
+              detachToBroker
+              onDetachCommit={canTearOff ? handleTearOff : undefined}
+              onAttachTab={handleAttach}
+              onTabTransferred={handleTransferred}
+            />
+          </ContextMenu.Trigger>
+          <ContextMenu.Portal>
+            <ContextMenu.Positioner>
+              {menuTab !== undefined && (
+                <ContextMenu.Popup>
+                  <ContextMenu.Item onClick={() => {
+                    closeTab({ id: menuTab.id });
+                  }}>
+                    Close Tab
+                  </ContextMenu.Item>
+                  <ContextMenu.Item onClick={() => {
+                    closeTabs(tabs.slice(menuTabIndex + 1).map((tab) => ({ id: tab.id })));
+                  }}>
+                    Close Tabs to Right
+                  </ContextMenu.Item>
+                  <ContextMenu.Item onClick={() => {
+                    closeTabs(tabs.slice(0, menuTabIndex).map((tab) => ({ id: tab.id })));
+                  }}>
+                    Close Tabs to Left
+                  </ContextMenu.Item>
+                  <ContextMenu.Item onClick={() => {
+                    closeTabs(tabs.filter((tab) => tab.id !== menuTab.id).map((tab) => ({ id: tab.id })));
+                  }}>
+                    Close Other Tabs
+                  </ContextMenu.Item>
+                  <ContextMenu.Separator />
+                  <ContextMenu.Item
+                    disabled={menuTabIsPending || !canTearOff}
+                    onClick={() => {
+                      void moveTabToNewWindow(menuTab);
+                    }}
+                  >
+                    Move to New Window
+                  </ContextMenu.Item>
+                  <ContextMenu.SubmenuRoot>
+                    <ContextMenu.SubmenuTrigger disabled={menuTabIsPending || otherWindows.length === 0}>
+                      Move to Window
+                    </ContextMenu.SubmenuTrigger>
+                    <ContextMenu.Portal>
+                      <ContextMenu.Positioner sideOffset={6}>
+                        <ContextMenu.Popup>
+                          {otherWindows.map((target) => (
+                            <ContextMenu.Item
+                              key={target.name}
+                              data-ov-window-target={target.name}
+                              onClick={() => {
+                                void moveTabToWindow(menuTab, target);
+                              }}
+                            >
+                              {target.label}
+                            </ContextMenu.Item>
+                          ))}
+                        </ContextMenu.Popup>
+                      </ContextMenu.Positioner>
+                    </ContextMenu.Portal>
+                  </ContextMenu.SubmenuRoot>
+                </ContextMenu.Popup>
+              )}
+            </ContextMenu.Positioner>
+          </ContextMenu.Portal>
+        </ContextMenu.Root>
       </div>
 
-      <div className={styles.Actions}>
-        <IconButton
-          size='sm'
-          variant='ghost'
-          color='neutral'
-          aria-label={isFullscreen ? 'Exit full screen' : 'Full screen'}
-          className={styles.Button}
-          disabled={!canResize}
-          onClick={() => {
-            if (canResize) {
-              onFullscreen();
-            }
-          }}
-        >
-          {isFullscreen ? <LuMinimize size={14} /> : <LuMaximize size={14} />}
-        </IconButton>
-        <IconButton
-          size='sm'
-          variant='ghost'
-          color='neutral'
-          aria-label={isMinimized ? 'Expand' : 'Minimize'}
-          className={styles.Button}
-          disabled={!canResize}
-          onClick={() => {
-            if (!canResize) {
-              return;
-            }
+      {resizeControls && (
+        <div className={styles.Actions}>
+          <IconButton
+            size='sm'
+            variant='ghost'
+            color='neutral'
+            aria-label={resizeControls.isFullscreen ? 'Exit full screen' : 'Full screen'}
+            className={styles.Button}
+            disabled={!canResize}
+            onClick={() => {
+              if (canResize) {
+                resizeControls.onFullscreen();
+              }
+            }}
+          >
+            {resizeControls.isFullscreen ? <LuMinimize size={14} /> : <LuMaximize size={14} />}
+          </IconButton>
+          <IconButton
+            size='sm'
+            variant='ghost'
+            color='neutral'
+            aria-label={resizeControls.isMinimized ? 'Expand' : 'Minimize'}
+            className={styles.Button}
+            disabled={!canResize}
+            onClick={() => {
+              if (!canResize) {
+                return;
+              }
 
-            if (isMinimized) {
-              onExpand();
-            } else {
-              onMinimize();
-            }
-          }}
-        >
-          {isMinimized ? <LuChevronUp size={14} /> : <LuChevronDown size={14} />}
-        </IconButton>
-      </div>
+              if (resizeControls.isMinimized) {
+                resizeControls.onExpand();
+              } else {
+                resizeControls.onMinimize();
+              }
+            }}
+          >
+            {resizeControls.isMinimized ? <LuChevronUp size={14} /> : <LuChevronDown size={14} />}
+          </IconButton>
+        </div>
+      )}
     </div>
   );
 };
-
-type BottomDrawerTabProps = BottomDrawerTab & {
-  index: number;
-  selected: boolean;
-  onRemove: (index: number) => void;
-  onChange: (event: React.SyntheticEvent, newValue: string | number) => void;
-  onContextMenu: (index: number) => void;
-};
-
-const BottomDrawerTabComponent: React.FC<BottomDrawerTabProps> = ({ id, index, title, icon, properties, selected, onRemove, onChange, onContextMenu }) => {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-  } = useSortable({ id: index });
-
-  return (
-    <div
-      key={`bottom-drawer-tab-${id}`}
-      ref={setNodeRef}
-      {...attributes}
-      {...listeners}
-      role='tab'
-      aria-selected={selected}
-      className={styles.Tab}
-      data-selected={selected ? true : undefined}
-      style={{ transform: CSS.Translate.toString(transform), transition }}
-      onClick={(e) => {
-        onChange(e, index); 
-      }}
-      onContextMenu={() => {
-        onContextMenu(index); 
-      }}
-    >
-      <span className={styles.TabLabel}>
-        {properties?.status === 'connecting' ? (
-          <Spinner size='xs' />
-        ) : icon !== undefined ? (
-          typeof icon === 'string' ? <Icon name={icon} size={14} /> : icon
-        ) : null}
-        <span className={styles.TabTitle}>{title}</span>
-      </span>
-      <span
-        className={styles.TabClose}
-        aria-label='Close tab'
-        onClick={(e) => {
-          e.stopPropagation();
-          onRemove(index);
-        }}
-        onKeyDown={(e) => {
-          e.stopPropagation(); 
-        }}
-      >
-        <LuX size={16} />
-      </span>
-    </div>
-  );
-};
-
-const MemoizedBottomDrawerTabComponent = React.memo(BottomDrawerTabComponent, (prev, next) => {
-  return prev.id === next.id
-    && prev.index === next.index
-    && prev.title === next.title
-    && prev.icon === next.icon
-    && prev.selected === next.selected
-    && prev.properties?.status === next.properties?.status
-    && prev.onContextMenu === next.onContextMenu;
-});
 
 export default BottomDrawerTabs;
