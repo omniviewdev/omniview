@@ -92,13 +92,13 @@ const App: React.FC = () => {
                       <OperationsProvider>
                         <ConfirmationModalProvider>
                           <ConnectionStateProvider>
-                            <RightDrawerProvider>
-                              <BottomDrawerProvider>
+                            <BottomDrawerProvider>
+                              <RightDrawerProvider>
                                 <PluginServiceProvider>
                                   <RouteProvider />
                                 </PluginServiceProvider>
-                              </BottomDrawerProvider>
-                            </RightDrawerProvider>
+                              </RightDrawerProvider>
+                            </BottomDrawerProvider>
                           </ConnectionStateProvider>
                         </ConfirmationModalProvider>
                       </OperationsProvider>

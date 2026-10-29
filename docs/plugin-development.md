@@ -299,6 +299,12 @@ Observed-row drawers receive their original `HostRecord` and open directly.
 Linked-reference drawers perform a fresh canonical Get with the resolved
 `targetId`, retain incarnation checks, and cancel superseded navigation.
 
+The host's bottom-drawer provider must enclose the right-drawer provider.
+Resource drawers render beside the right-drawer provider's children, so nesting
+the bottom-drawer provider inside those children leaves resource actions outside
+its context. Log and terminal actions must create visible, focused session tabs,
+not merely successful backend sessions.
+
 The resource wire major is 2; unrelated go-plugin services still negotiate their
 existing cohort version. The host registers only the canonical resource service.
 `Features` negotiates optional ancillary traits before connection or update
