@@ -83,6 +83,8 @@ The root manifest’s `packageManager` field declares the repository's pnpm vers
 
 `task check:ui-typecheck` checks application and test programs separately. The test configuration explicitly loads React diagnostic augmentation types, so component flags such as `whyDidYouRender` do not depend on unrelated imports being present.
 
+Drag-and-drop handlers preserve domain IDs: homepage contributions use strings; bottom-drawer tab positions use numbers, including zero. The owned Playwright drawer journey verifies real terminal-tab reordering rather than simulated drag callbacks.
+
 The frontend source cohort uses Node.js 26.13.0 LTS, pnpm 12.14.0, React 19.3.1, and the native TypeScript 7 compiler. TypeScript's JavaScript tooling uses the separate TypeScript 6 compatibility package. Nx is not required; pnpm workspace scripts own package builds.
 
 Monaco stays pinned to 0.52.2 while the current YAML worker integration requires its legacy API. A maintained YAML fork and coordinated newer-Monaco upgrade are tracked in the UI repository's `packages/editors/docs/MONACO_YAML_COMPAT.md`.
