@@ -17,15 +17,17 @@ beforeEach(() => {
   hidden = false;
   callbacks = 0;
   vi.spyOn(document, 'hidden', 'get').mockImplementation(() => hidden);
+  // These instrument browser timers, not Node's overloaded timer signatures.
+  const browserWindow: Window = window;
   const timeout = window.setTimeout.bind(window);
   const interval = window.setInterval.bind(window);
-  vi.spyOn(window, 'setTimeout').mockImplementation((callback, delay, ...args) => timeout(() => {
+  vi.spyOn(browserWindow, 'setTimeout').mockImplementation((callback, delay, ...args) => timeout(() => {
     callbacks++;
     if (typeof callback === 'function') {
       callback(...args);
     }
   }, delay));
-  vi.spyOn(window, 'setInterval').mockImplementation((callback, delay, ...args) => interval(() => {
+  vi.spyOn(browserWindow, 'setInterval').mockImplementation((callback, delay, ...args) => interval(() => {
     callbacks++;
     if (typeof callback === 'function') {
       callback(...args);
