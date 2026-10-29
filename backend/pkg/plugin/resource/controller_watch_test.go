@@ -155,10 +155,10 @@ func TestGetWatchState_PreservesExactNativeCount(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	count := "9007199254740993"
 	registerMockPlugin(ctrl, "p1", &mockProvider{
-		CatalogFunc:func(context.Context,resource.CatalogRequest)(resource.Catalog,error){
-			catalog:=canonicalTestCatalog("updates","pods")
-			catalog.Types[0].Capabilities=[]resource.Capability{{Operation:resource.OperationUpdate,Scope:resource.QueryScope{},Guarantee:resource.BestEffortGuarantee}}
-			return catalog,nil
+		CatalogFunc: func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+			catalog := canonicalTestCatalog("updates", "pods")
+			catalog.Types[0].Capabilities = []resource.Capability{{Operation: resource.OperationUpdate, Scope: resource.QueryScope{}, Guarantee: resource.BestEffortGuarantee}}
+			return catalog, nil
 		},
 		GetWatchStateFunc: func(_ context.Context, route resource.AccessRoute) (*resource.WatchConnectionSummary, error) {
 			return &resource.WatchConnectionSummary{

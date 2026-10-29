@@ -5,6 +5,10 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as resourcev2$0 from "../../resource/v2/models.js";
+
 /**
  * ActionTargetBuilder builds a dynamic list of targets for an action.
  */
@@ -159,7 +163,9 @@ export class SessionOptions {
     "id": string;
     "resource_plugin": string;
     "resource_key": string;
-    "resource_data": { [_ in string]?: any };
+    "resource_data"?: resourcev2$0.Value | null;
+    "reference"?: resourcev2$0.ResourceReference | null;
+    "route"?: resourcev2$0.AccessRoute | null;
     "command": string[];
     "tty": boolean;
 
@@ -180,9 +186,6 @@ export class SessionOptions {
         if (!("resource_key" in $$source)) {
             this["resource_key"] = "";
         }
-        if (!("resource_data" in $$source)) {
-            this["resource_data"] = {};
-        }
         if (!("command" in $$source)) {
             this["command"] = [];
         }
@@ -199,8 +202,9 @@ export class SessionOptions {
     static createFrom($$source: any = {}): SessionOptions {
         const $$createField0_0 = $$createType1;
         const $$createField1_0 = $$createType1;
-        const $$createField5_0 = $$createType3;
-        const $$createField6_0 = $$createType0;
+        const $$createField6_0 = $$createType4;
+        const $$createField7_0 = $$createType6;
+        const $$createField8_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("params" in $$parsedSource) {
             $$parsedSource["params"] = $$createField0_0($$parsedSource["params"]);
@@ -208,11 +212,14 @@ export class SessionOptions {
         if ("labels" in $$parsedSource) {
             $$parsedSource["labels"] = $$createField1_0($$parsedSource["labels"]);
         }
-        if ("resource_data" in $$parsedSource) {
-            $$parsedSource["resource_data"] = $$createField5_0($$parsedSource["resource_data"]);
+        if ("reference" in $$parsedSource) {
+            $$parsedSource["reference"] = $$createField6_0($$parsedSource["reference"]);
+        }
+        if ("route" in $$parsedSource) {
+            $$parsedSource["route"] = $$createField7_0($$parsedSource["route"]);
         }
         if ("command" in $$parsedSource) {
-            $$parsedSource["command"] = $$createField6_0($$parsedSource["command"]);
+            $$parsedSource["command"] = $$createField8_0($$parsedSource["command"]);
         }
         return new SessionOptions($$parsedSource as Partial<SessionOptions>);
     }
@@ -222,4 +229,7 @@ export class SessionOptions {
 const $$createType0 = $Create.Array($Create.Any);
 const $$createType1 = $Create.Map($Create.Any, $Create.Any);
 const $$createType2 = ActionTargetBuilder.createFrom;
-const $$createType3 = $Create.Map($Create.Any, $Create.Any);
+const $$createType3 = resourcev2$0.ResourceReference.createFrom;
+const $$createType4 = $Create.Nullable($$createType3);
+const $$createType5 = resourcev2$0.AccessRoute.createFrom;
+const $$createType6 = $Create.Nullable($$createType5);

@@ -73,15 +73,21 @@ func scopeMatches(scope, target []resource.ScopeEntry) bool {
 func (gi *Indexer) extractEdges(entry registry.ResourceEntry, raw json.RawMessage) {
 	snapshot, bound := gi.graph.boundSnapshot(entry.PluginID, entry.Route, entry.Reference.Address.Type)
 	// A nil witness means a complete current catalog excludes this Type.
-	if snapshot == nil { return }
-	if bound && snapshot.noRules { return }
+	if snapshot == nil {
+		return
+	}
+	if bound && snapshot.noRules {
+		return
+	}
 	if !bound {
 		gi.graph.unresolvedNode(nodeFromEntry(entry), "source declaration binding unavailable", snapshot)
 		return
 	}
 	// A queued observation outside the admitted source belongs to retired or
 	// unbound input, not to this declaration snapshot's coverage.
-	if !bindingMatches(snapshot.bindings.Source, nodeFromEntry(entry)) { return }
+	if !bindingMatches(snapshot.bindings.Source, nodeFromEntry(entry)) {
+		return
+	}
 	if !exactScope(snapshot.bindings.Source, entry.Reference.Address.Scope) {
 		gi.graph.unresolvedNode(nodeFromEntry(entry), "source identity dimensions do not match admitted declarations", snapshot)
 		return
@@ -99,13 +105,20 @@ func (gi *Indexer) extractEdges(entry registry.ResourceEntry, raw json.RawMessag
 		if !field.Exists() || (decl.Extractor.Method == MethodFieldPath && field.Type == gjson.String && field.String() == "") {
 			continue
 		}
-		if decl.Extractor.Method == MethodFieldPath && field.IsArray() && len(field.Array()) == 0 { continue }
-		if decl.Extractor.Method == MethodLabelSelector && field.IsObject() && len(field.Map()) == 0 { continue }
+		if decl.Extractor.Method == MethodFieldPath && field.IsArray() && len(field.Array()) == 0 {
+			continue
+		}
+		if decl.Extractor.Method == MethodLabelSelector && field.IsObject() && len(field.Map()) == 0 {
+			continue
+		}
 		var targetBinding TargetBinding
 		found := false
 		for _, candidate := range bindings.Targets {
 			if candidate.Target.Type == decl.TargetType {
-				if found { found = false; break }
+				if found {
+					found = false
+					break
+				}
 				targetBinding, found = candidate, true
 			}
 		}

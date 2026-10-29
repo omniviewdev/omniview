@@ -11,7 +11,6 @@ export {
     MetricResult,
     MetricShape,
     MetricUnit,
-    QueryRequest,
     QueryResponse,
     TimeSeries
 } from "./models.js";

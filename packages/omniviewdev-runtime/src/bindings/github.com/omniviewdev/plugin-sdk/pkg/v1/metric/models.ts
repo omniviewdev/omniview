@@ -351,78 +351,6 @@ export enum MetricUnit {
 };
 
 /**
- * QueryRequest is the Go-side representation of a metric query.
- */
-export class QueryRequest {
-    "resource_key": string;
-    "resource_id": string;
-    "resource_namespace": string;
-    "resource_data": { [_ in string]?: any };
-    "metric_ids": string[];
-    "shape": MetricShape;
-    "start_time": string;
-    "end_time": string;
-    "step": time$0.Duration;
-    "params": { [_ in string]?: string };
-
-    /** Creates a new QueryRequest instance. */
-    constructor($$source: Partial<QueryRequest> = {}) {
-        if (!("resource_key" in $$source)) {
-            this["resource_key"] = "";
-        }
-        if (!("resource_id" in $$source)) {
-            this["resource_id"] = "";
-        }
-        if (!("resource_namespace" in $$source)) {
-            this["resource_namespace"] = "";
-        }
-        if (!("resource_data" in $$source)) {
-            this["resource_data"] = {};
-        }
-        if (!("metric_ids" in $$source)) {
-            this["metric_ids"] = [];
-        }
-        if (!("shape" in $$source)) {
-            this["shape"] = MetricShape.$zero;
-        }
-        if (!("start_time" in $$source)) {
-            this["start_time"] = "0001-01-01T00:00:00.000Z";
-        }
-        if (!("end_time" in $$source)) {
-            this["end_time"] = "0001-01-01T00:00:00.000Z";
-        }
-        if (!("step" in $$source)) {
-            this["step"] = time$0.Duration.$zero;
-        }
-        if (!("params" in $$source)) {
-            this["params"] = {};
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new QueryRequest instance from a string or object.
-     */
-    static createFrom($$source: any = {}): QueryRequest {
-        const $$createField3_0 = $$createType12;
-        const $$createField4_0 = $$createType13;
-        const $$createField9_0 = $$createType0;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("resource_data" in $$parsedSource) {
-            $$parsedSource["resource_data"] = $$createField3_0($$parsedSource["resource_data"]);
-        }
-        if ("metric_ids" in $$parsedSource) {
-            $$parsedSource["metric_ids"] = $$createField4_0($$parsedSource["metric_ids"]);
-        }
-        if ("params" in $$parsedSource) {
-            $$parsedSource["params"] = $$createField9_0($$parsedSource["params"]);
-        }
-        return new QueryRequest($$parsedSource as Partial<QueryRequest>);
-    }
-}
-
-/**
  * QueryResponse is the Go-side representation of a metric query response.
  */
 export class QueryResponse {
@@ -449,7 +377,7 @@ export class QueryResponse {
      * Creates a new QueryResponse instance from a string or object.
      */
     static createFrom($$source: any = {}): QueryResponse {
-        const $$createField1_0 = $$createType15;
+        const $$createField1_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("results" in $$parsedSource) {
             $$parsedSource["results"] = $$createField1_0($$parsedSource["results"]);
@@ -485,7 +413,7 @@ export class TimeSeries {
      * Creates a new TimeSeries instance from a string or object.
      */
     static createFrom($$source: any = {}): TimeSeries {
-        const $$createField1_0 = $$createType17;
+        const $$createField1_0 = $$createType15;
         const $$createField2_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("data_points" in $$parsedSource) {
@@ -511,9 +439,7 @@ const $$createType8 = CurrentValue.createFrom;
 const $$createType9 = $Create.Nullable($$createType8);
 const $$createType10 = AggregateValue.createFrom;
 const $$createType11 = $Create.Nullable($$createType10);
-const $$createType12 = $Create.Map($Create.Any, $Create.Any);
-const $$createType13 = $Create.Array($Create.Any);
-const $$createType14 = MetricResult.createFrom;
+const $$createType12 = MetricResult.createFrom;
+const $$createType13 = $Create.Array($$createType12);
+const $$createType14 = DataPoint.createFrom;
 const $$createType15 = $Create.Array($$createType14);
-const $$createType16 = DataPoint.createFrom;
-const $$createType17 = $Create.Array($$createType16);

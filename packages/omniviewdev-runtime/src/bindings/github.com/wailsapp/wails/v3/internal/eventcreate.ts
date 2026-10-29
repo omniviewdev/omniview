@@ -24,9 +24,6 @@ import * as config$0 from "../../../../omniviewdev/plugin-sdk/pkg/config/models.
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as networker$0 from "../../../../omniviewdev/plugin-sdk/pkg/v1/networker/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as resource$1 from "../../../../omniviewdev/plugin-sdk/pkg/v1/resource/models.js";
 
 function configure() {
     Object.freeze(Object.assign($Create.Events, {
@@ -77,6 +74,6 @@ const $$createType13 = plugin$0.StateChangePayload.createFrom;
 const $$createType14 = plugin$0.StateWriteErrorPayload.createFrom;
 const $$createType15 = plugin$0.UpdatePayload.createFrom;
 const $$createType16 = plugin$0.UpdateErrorPayload.createFrom;
-const $$createType17 = resource$1.WatchStateEvent.createFrom;
+const $$createType17 = resource$0.HostWatchStateEvent.createFrom;
 
 configure();

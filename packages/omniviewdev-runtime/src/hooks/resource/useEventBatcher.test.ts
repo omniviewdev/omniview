@@ -1,68 +1,86 @@
 import { act, renderHook } from '@testing-library/react';
 import { QueryClient } from '@tanstack/react-query';
 import { WatchState } from '../../types/watch';
-import type { HostRecord, HostSourcePage } from '../../resource/v2/host';
+import type { HostRecord, HostSourcePage, ResourceView } from '../../resource/v2/host';
 import { applyBatch, useEventBatcher, type ResourceUpdateEvent } from './useEventBatcher';
 
 const queryKey = ['provider', 'resource-v2', 'enumerate', 'target'];
 const detailKey = ['provider', 'resource-v2', 'get', 'one'];
-function row(id: string, incarnation = 'current', targetId = 'target'): HostRecord {
+function row(id: string, incarnation = 'current', targetId = 'target', label = id): HostRecord {
   return { key: `host-membership:${targetId}:${id}:${incarnation}`, addressKey: `host-address:${id}`, targetId, route: { connection: 'route' }, record: {
     reference: { address: { provider: 'provider', authority: 'host-authority', type: 'opaque/type', scope: [{ dimension: 'region', value: '雪/a' }], id }, incarnation },
-    body: { kind: 'map', value: { label: { kind: 'string', value: id } } },
+    body: { kind: 'string', value: label },
     representation: { id: 'native', revision: '1', schema: { state: 'unavailable', validation: 'unvalidated', unvalidated: [] } }, coverage: { kind: 'complete', paths: [] },
   } };
 }
-function page(records: HostRecord[] = []): HostSourcePage {
-  return { records, sourcePage: { count: { kind: 'exact', value: String(records.length) }, coverage: { kind: 'complete', paths: [] }, consistency: 'bestEffort', sourceRevision: 'native-revision' } };
+function page(records: HostRecord[] = [row('one'), row('two')]): HostSourcePage {
+  return { records, sourcePage: { nextCursor: 'opaque-next', count: { kind: 'exact', value: '10000' }, coverage: { kind: 'complete', paths: [] }, consistency: 'bestEffort', sourceRevision: 'native-revision' } };
 }
 function event(type: ResourceUpdateEvent['type'], record: HostRecord): ResourceUpdateEvent {
   return type === 'DELETE' ? { type, payload: { route: record.route, reference: record.record.reference, key: record.key, addressKey: record.addressKey, targetId: record.targetId, guarantee: 'bestEffort' } } : { type, payload: { route: record.route, record, metadata: {}, guarantee: 'bestEffort' } };
 }
+const changed = (id: string, label = 'updated') => row(id, 'current', 'target', label);
 
-describe('applyBatch canonical identity', () => {
-  it('adds, replaces duplicate adds, updates and deletes in sequence without changing the baseline', () => {
-    const baseline = page([row('one'), row('two')]);
-    const changed = row('one');
-    changed.record.body = { kind: 'map', value: { status: { kind: 'string', value: 'Running' } } };
-    const result = applyBatch(baseline, [event('ADD', row('three')), event('ADD', row('three')), event('UPDATE', changed), event('DELETE', row('two'))])!;
-    expect(result.records).toEqual([changed, row('three')]);
+describe('applyBatch bounded native page membership', () => {
+  it('patches and deletes observed host keys without appending unknown rows', () => {
+    const baseline = page();
+    const result = applyBatch(baseline, [event('ADD', row('three')), event('UPDATE', changed('one')), event('DELETE', row('two'))])!;
+    expect(result.records).toEqual([changed('one')]);
     expect(baseline.records).toEqual([row('one'), row('two')]);
     expect(result.sourcePage).toBe(baseline.sourcePage);
-    expect(result.sourcePage.count).toEqual({ kind: 'exact', value: '2' });
+    expect(result.sourcePage.nextCursor).toBe('opaque-next');
+    expect(result.sourcePage.count).toEqual({ kind: 'exact', value: '10000' });
     expect(result.sourcePage.sourceRevision).toBe('native-revision');
-    expect(result.view).toEqual({ guarantee: 'bestEffort', count: { kind: 'unknown' } });
+    expect(result.view).toEqual({ guarantee: 'bestEffort', count: { kind: 'unknown' }, membershipStale: true });
   });
-  it('admits an update for an address not yet in this best-effort page', () => {
-    expect(applyBatch(page(), [event('UPDATE', row('new'))])!.records).toEqual([row('new')]);
+  it.each(['ADD', 'UPDATE'] as const)('marks unseen %s stale without expanding an empty native page', (type) => {
+    const result = applyBatch(page([]), [event(type, row('new'))])!;
+    expect(result.records).toEqual([]);
+    expect(result.view?.membershipStale).toBe(true);
   });
-  it('ignores a delete for an unknown membership key', () => {
-    expect(applyBatch(page([row('one')]), [event('DELETE', row('other'))])!.records).toEqual([row('one')]);
+  it.each(['ADD', 'UPDATE'] as const)('updates the exact observed membership on %s without declaring membership stale', (type) => {
+    const result = applyBatch(page(), [event(type, changed('one'))])!;
+    expect(result.records).toEqual([changed('one'), row('two')]);
+    expect(result.view?.membershipStale).toBe(false);
+  });
+  it('does not replace an observed incarnation or admit a different target projection', () => {
+    const current = row('same', 'new');
+    const result = applyBatch(page([current]), [event('DELETE', row('same', 'old')), event('ADD', row('same', 'replacement')), event('UPDATE', row('same', 'new', 'other-target'))])!;
+    expect(result.records).toEqual([current]);
+    expect(result.view?.membershipStale).toBe(true);
+  });
+  it('marks unknown deletes stale without guessing a current membership key', () => {
+    const result = applyBatch(page(), [event('DELETE', row('other'))])!;
+    expect(result.records).toEqual(page().records);
+    expect(result.view?.membershipStale).toBe(true);
   });
   it('does not manufacture a source page before native acquisition', () => {
     expect(applyBatch(undefined, [event('ADD', row('one'))])).toBeUndefined();
   });
-  it('accepts non-plain page instances without losing canonical envelopes', () => {
+  it('accepts native page instances and preserves their source metadata', () => {
     class NativePage { records = [row('one')]; sourcePage = page().sourcePage; }
-    expect(applyBatch(new NativePage(), [event('ADD', row('two'))])!.records).toHaveLength(2);
+    const baseline = new NativePage();
+    const result = applyBatch(baseline, [event('UPDATE', changed('one')), event('ADD', row('two'))])!;
+    expect(result.records).toEqual([changed('one')]);
+    expect(result.sourcePage).toBe(baseline.sourcePage);
   });
-  it('uses host keys, not nested body identity or slash/unicode parsing', () => {
-    const opaque = row('opaque/slash/雪');
-    opaque.record.body = { kind: 'map', value: { spec: { kind: 'map', value: { id: { kind: 'string', value: 'not-the-address' } } } } };
-    expect(applyBatch(page([opaque]), [event('UPDATE', opaque)])!.records).toEqual([opaque]);
+  it('uses host keys rather than body identity or slash/unicode parsing', () => {
+    const opaque = changed('opaque/slash/雪', 'body identity is not the address');
+    expect(applyBatch(page([row('opaque/slash/雪')]), [event('UPDATE', opaque)])!.records).toEqual([opaque]);
   });
-  it('keeps target projections separate and ignores stale-incarnation deletes', () => {
-    const current = row('same', 'new');
-    expect(applyBatch(page([current]), [event('DELETE', row('same', 'old')), event('ADD', row('same', 'new', 'other-target'))])!.records).toEqual([current, row('same', 'new', 'other-target')]);
+  it('keeps the stale flag until a fresh native response replaces the overlay', () => {
+    const stale = applyBatch(page(), [event('ADD', row('unknown'))])!;
+    expect(applyBatch(stale, [event('UPDATE', changed('one'))])!.view?.membershipStale).toBe(true);
+    expect(applyBatch(page(), [])?.view).toBeUndefined();
   });
 });
 
-describe('useEventBatcher adaptive scheduling', () => {
+describe('useEventBatcher bounded adaptive scheduling', () => {
   let client: QueryClient;
   let frames: Map<number, FrameRequestCallback>;
   let nextFrame: number;
   const flushFrames = () => { const pending = [...frames.values()]; frames.clear(); act(() => { pending.forEach(callback => callback(0)); }); };
-  const cached = () => client.getQueryData<HostSourcePage>(queryKey)!;
+  const cached = () => client.getQueryData<ResourceView>(queryKey)!;
   beforeEach(() => {
     vi.useFakeTimers(); frames = new Map(); nextFrame = 0;
     vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => { frames.set(++nextFrame, callback); return nextFrame; }));
@@ -72,47 +90,55 @@ describe('useEventBatcher adaptive scheduling', () => {
   });
   afterEach(() => { client.clear(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
-  it('buffers syncing events for 500ms and applies one list batch', () => {
+  it('coalesces 1000 observed-key updates into one syncing batch after 500ms', () => {
     const writes = vi.spyOn(client, 'setQueryData');
     const hook = renderHook(() => useEventBatcher(client, queryKey, WatchState.WatchStateSyncing));
-    act(() => { for (let n = 0; n < 50; n++) hook.result.current(event('ADD', row(String(n)))); });
+    act(() => { for (let n = 0; n < 1000; n++) hook.result.current(event('UPDATE', changed('one', String(n)))); });
     act(() => vi.advanceTimersByTime(499));
-    expect(cached().records).toHaveLength(0);
-    expect(frames.size).toBe(0);
+    expect(cached().records).toEqual(page().records); expect(frames.size).toBe(0);
     act(() => vi.advanceTimersByTime(1));
-    expect(cached().records).toHaveLength(50);
+    expect(cached().records).toEqual([changed('one', '999'), row('two')]);
     expect(writes).toHaveBeenCalledTimes(1);
+  });
+  it('collapses an arbitrary unseen-row flood into a stale flag without retaining page members', () => {
+    const writes = vi.spyOn(client, 'setQueryData');
+    const hook = renderHook(() => useEventBatcher(client, queryKey, WatchState.WatchStateSyncing));
+    act(() => { for (let n = 0; n < 1000; n++) hook.result.current(event(n % 2 ? 'UPDATE' : 'ADD', row(`unseen-${n}`))); });
+    act(() => vi.advanceTimersByTime(500));
+    expect(cached().records).toEqual(page().records);
+    expect(cached().view?.membershipStale).toBe(true); expect(writes).toHaveBeenCalledTimes(1);
   });
   it('respects a custom sync window', () => {
     const hook = renderHook(() => useEventBatcher(client, queryKey, WatchState.WatchStateSyncing, { syncWindowMs: 200 }));
-    act(() => hook.result.current(event('ADD', row('one'))));
-    act(() => vi.advanceTimersByTime(199)); expect(cached().records).toHaveLength(0);
-    act(() => vi.advanceTimersByTime(1)); expect(cached().records).toHaveLength(1);
+    act(() => hook.result.current(event('UPDATE', changed('one'))));
+    act(() => vi.advanceTimersByTime(199)); expect(cached().records[0]).toEqual(row('one'));
+    act(() => vi.advanceTimersByTime(1)); expect(cached().records[0]).toEqual(changed('one'));
   });
   it.each([WatchState.WatchStateSynced, WatchState.WatchStateIdle])('uses next-frame batching in live state %s', state => {
     const writes = vi.spyOn(client, 'setQueryData');
     const hook = renderHook(() => useEventBatcher(client, queryKey, state));
-    act(() => { hook.result.current(event('ADD', row('one'))); hook.result.current(event('ADD', row('two'))); });
-    expect(cached().records).toHaveLength(0); expect(frames.size).toBe(1);
+    act(() => { hook.result.current(event('UPDATE', changed('one'))); hook.result.current(event('UPDATE', changed('two'))); });
+    expect(cached().records).toEqual(page().records); expect(frames.size).toBe(1);
     flushFrames();
-    expect(cached().records).toHaveLength(2); expect(writes).toHaveBeenCalledTimes(1);
+    expect(cached().records).toEqual([changed('one'), changed('two')]); expect(writes).toHaveBeenCalledTimes(1);
     act(() => vi.advanceTimersByTime(500)); expect(writes).toHaveBeenCalledTimes(1);
   });
   it.each([WatchState.WatchStateSynced, WatchState.WatchStateIdle])('bounds progress when frames are withheld in state %s', state => {
+    client.setQueryData(queryKey, page([row('opaque/slash/雪')]));
     const hook = renderHook(() => useEventBatcher(client, queryKey, state));
-    act(() => hook.result.current(event('ADD', row('opaque/slash/雪'))));
+    act(() => hook.result.current(event('UPDATE', changed('opaque/slash/雪'))));
     act(() => vi.advanceTimersByTime(500));
-    expect(cached().records).toHaveLength(1); expect(frames.size).toBe(0);
+    expect(cached().records).toEqual([changed('opaque/slash/雪')]); expect(frames.size).toBe(0);
   });
   it('bounds a live batch by the configured window', () => {
     const hook = renderHook(() => useEventBatcher(client, queryKey, WatchState.WatchStateSynced, { syncWindowMs: 200 }));
-    act(() => hook.result.current(event('ADD', row('one'))));
-    act(() => vi.advanceTimersByTime(200)); expect(cached().records).toHaveLength(1);
+    act(() => hook.result.current(event('UPDATE', changed('one'))));
+    act(() => vi.advanceTimersByTime(200)); expect(cached().records[0]).toEqual(changed('one'));
   });
-  it('does not apply a drained batch again when its losing callback arrives late', () => {
+  it('does not reapply a drained batch when its losing callback arrives late', () => {
     const writes = vi.spyOn(client, 'setQueryData');
     const hook = renderHook(() => useEventBatcher(client, queryKey, WatchState.WatchStateSynced));
-    act(() => hook.result.current(event('ADD', row('one'))));
+    act(() => hook.result.current(event('UPDATE', changed('one'))));
     const late = [...frames.values()][0];
     act(() => vi.advanceTimersByTime(500)); act(() => late(0));
     expect(writes).toHaveBeenCalledTimes(1);
@@ -121,64 +147,56 @@ describe('useEventBatcher adaptive scheduling', () => {
     client.setQueryData(detailKey, row('one'));
     const writes = vi.spyOn(client, 'setQueryData');
     const hook = renderHook(() => useEventBatcher(client, queryKey, state));
-    act(() => hook.result.current(event('UPDATE', row('one')))); hook.unmount();
+    act(() => { hook.result.current(event('UPDATE', changed('one'))); hook.result.current(event('ADD', row('unseen'))); }); hook.unmount();
     expect(frames.size).toBe(0); act(() => vi.advanceTimersByTime(1000));
-    expect(writes).not.toHaveBeenCalled(); expect(cached().records).toHaveLength(0);
+    expect(writes).not.toHaveBeenCalled(); expect(cached().records).toEqual(page().records);
     expect(client.getQueryData(detailKey)).toEqual(row('one'));
   });
-  it('preserves buffered events through state changes and opens another batch window', () => {
+  it('preserves buffered updates through watch-state changes', () => {
     const hook = renderHook(({ state }) => useEventBatcher(client, queryKey, state), { initialProps: { state: WatchState.WatchStateSyncing } });
-    act(() => hook.result.current(event('ADD', row('one'))));
+    act(() => hook.result.current(event('UPDATE', changed('one'))));
     hook.rerender({ state: WatchState.WatchStateSynced });
-    act(() => vi.advanceTimersByTime(500)); expect(cached().records).toHaveLength(1);
-    act(() => hook.result.current(event('ADD', row('two')))); flushFrames();
-    expect(cached().records).toHaveLength(2);
+    act(() => vi.advanceTimersByTime(500)); expect(cached().records[0]).toEqual(changed('one'));
+    act(() => hook.result.current(event('UPDATE', changed('two')))); flushFrames();
+    expect(cached().records).toEqual([changed('one'), changed('two')]);
   });
-  it('handles 1000 mixed events in a single sync batch', () => {
-    const writes = vi.spyOn(client, 'setQueryData');
-    const hook = renderHook(() => useEventBatcher(client, queryKey, WatchState.WatchStateSyncing));
-    act(() => { for (let n = 0; n < 1000; n++) hook.result.current(event('ADD', row(String(n)))); hook.result.current(event('UPDATE', row('0', 'replacement'))); hook.result.current(event('DELETE', row('1'))); });
-    act(() => vi.advanceTimersByTime(500));
-    expect(cached().records).toHaveLength(999); expect(cached().records[0].key).toBe(row('0', 'replacement').key); expect(writes).toHaveBeenCalledTimes(1);
-  });
-  it.each(['ADD', 'UPDATE'] as const)('updates only existing matching detail caches on %s', type => {
-    const original = row('one'); const updated = row('one'); updated.record.body = { kind: 'null' };
-    client.setQueryData(detailKey, original); client.setQueryData([...detailKey, 'other'], row('other'));
+  it.each(['ADD', 'UPDATE'] as const)('updates only exact observed membership detail caches on %s', type => {
+    client.setQueryData(detailKey, row('one')); client.setQueryData([...detailKey, 'other'], row('other'));
     const hook = renderHook(() => useEventBatcher(client, queryKey, WatchState.WatchStateSynced));
-    act(() => hook.result.current(event(type, updated))); flushFrames();
-    expect(client.getQueryData(detailKey)).toEqual(updated);
+    act(() => hook.result.current(event(type, changed('one')))); flushFrames();
+    expect(client.getQueryData(detailKey)).toEqual(changed('one'));
     expect(client.getQueryData([...detailKey, 'other'])).toEqual(row('other'));
   });
-  it('does not synthesize detail caches on add or overwrite a detail with another incarnation', () => {
+  it('does not create detail caches or overwrite another incarnation', () => {
     client.setQueryData(detailKey, row('one', 'new'));
     const hook = renderHook(() => useEventBatcher(client, queryKey, WatchState.WatchStateSynced));
     act(() => hook.result.current(event('ADD', row('one', 'old')))); flushFrames();
     expect(client.getQueryData(detailKey)).toEqual(row('one', 'new'));
     expect(client.getQueryData([...detailKey, 'absent'])).toBeUndefined();
+    expect(cached().view?.membershipStale).toBe(true);
   });
-  it('deletes list membership without replacing an unrelated detail cache', () => {
-    client.setQueryData(queryKey, page([row('one')])); client.setQueryData(detailKey, row('other'));
+  it('invalidates only the matching deleted membership detail and marks the page gap stale', () => {
+    client.setQueryData(detailKey, row('one')); client.setQueryData([...detailKey, 'older'], row('one', 'older'));
     const hook = renderHook(() => useEventBatcher(client, queryKey, WatchState.WatchStateSynced));
     act(() => hook.result.current(event('DELETE', row('one')))); flushFrames();
-    expect(cached().records).toHaveLength(0); expect(client.getQueryData(detailKey)).toEqual(row('other'));
-  });
-  it('invalidates only the matching deleted membership detail without claiming it is absent', () => {
-    client.setQueryData(queryKey, page([row('one')]));
-    client.setQueryData(detailKey, row('one'));
-    client.setQueryData([...detailKey, 'other-incarnation'], row('one', 'older'));
-    const hook = renderHook(() => useEventBatcher(client, queryKey, WatchState.WatchStateSynced));
-    act(() => hook.result.current(event('DELETE', row('one')))); flushFrames();
-    expect(cached().records).toHaveLength(0);
+    expect(cached().records).toEqual([row('two')]); expect(cached().view?.membershipStale).toBe(true);
     expect(client.getQueryState(detailKey)?.isInvalidated).toBe(true);
     expect(client.getQueryData(detailKey)).toEqual(row('one'));
-    expect(client.getQueryState([...detailKey, 'other-incarnation'])?.isInvalidated).toBe(false);
+    expect(client.getQueryState([...detailKey, 'older'])?.isInvalidated).toBe(false);
   });
-  it('retains events until the real native baseline arrives instead of manufacturing a page', () => {
+  it('retains only a stale indication before the first native page, not unbounded event bodies', () => {
     client.removeQueries({ queryKey });
     const hook = renderHook(() => useEventBatcher(client, queryKey, WatchState.WatchStateSyncing));
-    act(() => hook.result.current(event('ADD', row('one')))); act(() => vi.advanceTimersByTime(500));
-    expect(client.getQueryData(queryKey)).toBeUndefined();
+    act(() => { for (let n = 0; n < 1000; n++) hook.result.current(event('ADD', row(`unseen-${n}`))); });
+    act(() => vi.advanceTimersByTime(500)); expect(client.getQueryData(queryKey)).toBeUndefined();
     act(() => client.setQueryData(queryKey, page()));
-    expect(cached().records).toEqual([row('one')]);
+    expect(cached().records).toEqual(page().records); expect(cached().view?.membershipStale).toBe(true);
+  });
+  it('clears stale disclosure when a new native response replaces the advisory overlay', () => {
+    const hook = renderHook(() => useEventBatcher(client, queryKey, WatchState.WatchStateSynced));
+    act(() => hook.result.current(event('ADD', row('unknown')))); flushFrames();
+    expect(cached().view?.membershipStale).toBe(true);
+    act(() => client.setQueryData(queryKey, page([row('newly-observed')])));
+    expect(cached().view).toBeUndefined(); expect(cached().records).toEqual([row('newly-observed')]);
   });
 });

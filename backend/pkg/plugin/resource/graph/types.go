@@ -2,6 +2,7 @@ package graph
 
 import (
 	"encoding/json"
+
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
 	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )

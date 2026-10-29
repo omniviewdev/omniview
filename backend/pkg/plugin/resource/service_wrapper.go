@@ -63,17 +63,23 @@ func (s *ServiceWrapper) Enumerate(ctx context.Context, pluginID string, request
 }
 func (s *ServiceWrapper) NativeQuery(ctx context.Context, pluginID string, encoded string) (HostSourcePage, error) {
 	var request HostNativeQueryRequest
-	if err := transportjson.Decode(encoded, &request, pluginID); err != nil { return HostSourcePage{}, err }
+	if err := transportjson.Decode(encoded, &request, pluginID); err != nil {
+		return HostSourcePage{}, err
+	}
 	return s.Ctrl.NativeQuery(s.realmContext(ctx), pluginID, request)
 }
 func (s *ServiceWrapper) Mutate(ctx context.Context, pluginID string, encoded string) (resourcev2.Record, error) {
 	var request resourcev2.MutationRequest
-	if err := transportjson.Decode(encoded, &request, pluginID); err != nil { return resourcev2.Record{}, err }
+	if err := transportjson.Decode(encoded, &request, pluginID); err != nil {
+		return resourcev2.Record{}, err
+	}
 	return s.Ctrl.Mutate(s.realmContext(ctx), pluginID, request)
 }
 func (s *ServiceWrapper) Action(ctx context.Context, pluginID string, encoded string) (resourcev2.Value, error) {
 	var request resourcev2.ActionRequest
-	if err := transportjson.Decode(encoded, &request, pluginID); err != nil { return resourcev2.Value{}, err }
+	if err := transportjson.Decode(encoded, &request, pluginID); err != nil {
+		return resourcev2.Value{}, err
+	}
 	return s.Ctrl.Action(s.realmContext(ctx), pluginID, request)
 }
 func (s *ServiceWrapper) StartConnection(ctx context.Context, pluginID string, connectionID string) (types.ConnectionStatus, error) {
@@ -166,9 +172,11 @@ func (s *ServiceWrapper) ResolveRelationships(ctx context.Context, pluginID stri
 func (s *ServiceWrapper) GetHealth(ctx context.Context, pluginID string, encoded string) (*resourcev2.ResourceHealth, error) {
 	var args struct {
 		Request resourcev2.GetRequest `json:"request"`
-		Body resourcev2.Value `json:"body"`
+		Body    resourcev2.Value      `json:"body"`
 	}
-	if err := transportjson.Decode(encoded, &args, pluginID); err != nil { return nil, err }
+	if err := transportjson.Decode(encoded, &args, pluginID); err != nil {
+		return nil, err
+	}
 	return s.Ctrl.GetHealth(s.realmContext(ctx), pluginID, args.Request, args.Body)
 }
 func (s *ServiceWrapper) GetResourceEvents(ctx context.Context, pluginID string, request resourcev2.GetRequest, limit uint32) ([]resourcev2.ResourceEvent, error) {
@@ -179,7 +187,9 @@ func (s *ServiceWrapper) GetActions(ctx context.Context, pluginID string, route 
 }
 func (s *ServiceWrapper) StreamAction(ctx context.Context, pluginID string, encoded string) (string, error) {
 	var request resourcev2.ActionRequest
-	if err := transportjson.Decode(encoded, &request, pluginID); err != nil { return "", err }
+	if err := transportjson.Decode(encoded, &request, pluginID); err != nil {
+		return "", err
+	}
 	return s.Ctrl.StreamAction(s.realmContext(ctx), pluginID, request)
 }
 func (s *ServiceWrapper) AttachStreamAction(ctx context.Context, handleID string) (ActionSnapshot, error) {

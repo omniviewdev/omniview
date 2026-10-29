@@ -171,12 +171,12 @@ func sampleNativeRuntimeMetric(name string, shape sdkmetric.MetricShape) (*sdkme
 }
 
 type nativeMetricFixture struct {
-	resources     hostresource.Controller
-	backend       *plugintypes.InProcessBackend
-	metricStarted <-chan struct{}
-	connectionCreated <-chan struct{}
+	resources          hostresource.Controller
+	backend            *plugintypes.InProcessBackend
+	metricStarted      <-chan struct{}
+	connectionCreated  <-chan struct{}
 	connectionReleased <-chan error
-	metricStopped <-chan struct{}
+	metricStopped      <-chan struct{}
 }
 
 func newNativeMetricFixture(t *testing.T, query sdkmetric.QueryFunc) *nativeMetricFixture {
@@ -317,7 +317,7 @@ func (f *nativeMetricFixture) waitMetricRPCStopped(t *testing.T) {
 // that handle on disconnect; no host GetConnection substitute is installed.
 type nativeRuntimeConnections struct {
 	released chan error
-	created chan struct{}
+	created  chan struct{}
 }
 
 func (nativeRuntimeConnections) LoadConnections(context.Context) ([]sdktypes.Connection, error) {
@@ -331,7 +331,9 @@ func (c nativeRuntimeConnections) CreateClient(_ context.Context, connection sdk
 		return nil, errors.New("native connection does not select this process")
 	}
 	process, err := os.FindProcess(os.Getpid())
-	if err == nil { c.created <- struct{}{} }
+	if err == nil {
+		c.created <- struct{}{}
+	}
 	return process, err
 }
 

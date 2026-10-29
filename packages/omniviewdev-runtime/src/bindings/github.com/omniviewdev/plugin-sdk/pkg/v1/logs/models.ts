@@ -50,50 +50,6 @@ export class ActionTargetBuilder {
 }
 
 /**
- * CreateSessionOptions contains everything needed to create a log session.
- */
-export class CreateSessionOptions {
-    "resource_key": string;
-    "resource_id": string;
-    "resource_data": { [_ in string]?: any };
-    "options": LogSessionOptions;
-
-    /** Creates a new CreateSessionOptions instance. */
-    constructor($$source: Partial<CreateSessionOptions> = {}) {
-        if (!("resource_key" in $$source)) {
-            this["resource_key"] = "";
-        }
-        if (!("resource_id" in $$source)) {
-            this["resource_id"] = "";
-        }
-        if (!("resource_data" in $$source)) {
-            this["resource_data"] = {};
-        }
-        if (!("options" in $$source)) {
-            this["options"] = (new LogSessionOptions());
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new CreateSessionOptions instance from a string or object.
-     */
-    static createFrom($$source: any = {}): CreateSessionOptions {
-        const $$createField2_0 = $$createType2;
-        const $$createField3_0 = $$createType3;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("resource_data" in $$parsedSource) {
-            $$parsedSource["resource_data"] = $$createField2_0($$parsedSource["resource_data"]);
-        }
-        if ("options" in $$parsedSource) {
-            $$parsedSource["options"] = $$createField3_0($$parsedSource["options"]);
-        }
-        return new CreateSessionOptions($$parsedSource as Partial<CreateSessionOptions>);
-    }
-}
-
-/**
  * Handler describes a log handler for a specific resource type.
  */
 export class Handler {
@@ -120,7 +76,7 @@ export class Handler {
      * Creates a new Handler instance from a string or object.
      */
     static createFrom($$source: any = {}): Handler {
-        const $$createField2_0 = $$createType4;
+        const $$createField2_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("target_builder" in $$parsedSource) {
             $$parsedSource["target_builder"] = $$createField2_0($$parsedSource["target_builder"]);
@@ -181,7 +137,7 @@ export class LogSession {
      */
     static createFrom($$source: any = {}): LogSession {
         const $$createField5_0 = $$createType3;
-        const $$createField7_0 = $$createType6;
+        const $$createField7_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("options" in $$parsedSource) {
             $$parsedSource["options"] = $$createField5_0($$parsedSource["options"]);
@@ -320,8 +276,7 @@ export enum LogStreamCommand {
 // Private type creation functions
 const $$createType0 = $Create.Array($Create.Any);
 const $$createType1 = $Create.Map($Create.Any, $Create.Any);
-const $$createType2 = $Create.Map($Create.Any, $Create.Any);
+const $$createType2 = ActionTargetBuilder.createFrom;
 const $$createType3 = LogSessionOptions.createFrom;
-const $$createType4 = ActionTargetBuilder.createFrom;
-const $$createType5 = LogSource.createFrom;
-const $$createType6 = $Create.Array($$createType5);
+const $$createType4 = LogSource.createFrom;
+const $$createType5 = $Create.Array($$createType4);

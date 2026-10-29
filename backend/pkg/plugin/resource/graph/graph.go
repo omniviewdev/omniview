@@ -8,16 +8,16 @@ import (
 )
 
 type RelationshipGraph struct {
-	mu            sync.RWMutex
-	forward       map[string][]storedEdge
-	reverse       map[string][]storedEdge
-	boundDeclarations map[declMapKey]*boundSet
-	missingSnapshots map[declMapKey]*boundSet
+	mu                  sync.RWMutex
+	forward             map[string][]storedEdge
+	reverse             map[string][]storedEdge
+	boundDeclarations   map[declMapKey]*boundSet
+	missingSnapshots    map[declMapKey]*boundSet
 	declarationCatalogs map[ConnectionRef]declarationCatalog
-	unresolved map[string]unresolvedEntry
+	unresolved          map[string]unresolvedEntry
 	declarationProblems map[declMapKey]error
-	selectorCache map[string]map[string]selectorEntry
-	strings       *stringInterner
+	selectorCache       map[string]map[string]selectorEntry
+	strings             *stringInterner
 
 	// dirty holds the connections whose edges changed since the last
 	// TakeChanged; changed is signalled (without blocking) when it becomes
@@ -52,7 +52,7 @@ type storedEdge struct {
 type selectorEntry struct {
 	node     GraphNode
 	decl     resource.RelationshipDescriptor
-	binding TargetBinding
+	binding  TargetBinding
 	snapshot *boundSet
 	selector labelSelector
 }
@@ -329,15 +329,18 @@ type declMapKey struct {
 	resourceKey  string
 }
 
-
 func (g *RelationshipGraph) ClearDeclarationsForPlugin(pluginID string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	for key := range g.declarationCatalogs {
-		if key.PluginID == pluginID { delete(g.declarationCatalogs, key) }
+		if key.PluginID == pluginID {
+			delete(g.declarationCatalogs, key)
+		}
 	}
 	for key := range g.missingSnapshots {
-		if key.pluginID == pluginID { delete(g.missingSnapshots, key) }
+		if key.pluginID == pluginID {
+			delete(g.missingSnapshots, key)
+		}
 	}
 	for dk := range g.boundDeclarations {
 		if dk.pluginID == pluginID {
@@ -345,14 +348,20 @@ func (g *RelationshipGraph) ClearDeclarationsForPlugin(pluginID string) {
 		}
 	}
 	for key, entry := range g.unresolved {
-		if entry.node.PluginID == pluginID { delete(g.unresolved, key) }
+		if entry.node.PluginID == pluginID {
+			delete(g.unresolved, key)
+		}
 	}
 	for key := range g.declarationProblems {
-		if key.pluginID == pluginID { delete(g.declarationProblems, key) }
+		if key.pluginID == pluginID {
+			delete(g.declarationProblems, key)
+		}
 	}
 	for key, entries := range g.selectorCache {
 		for _, entry := range entries {
-			if entry.node.PluginID == pluginID { delete(g.selectorCache, key) }
+			if entry.node.PluginID == pluginID {
+				delete(g.selectorCache, key)
+			}
 			break
 		}
 	}
@@ -363,7 +372,9 @@ func (g *RelationshipGraph) ClearDeclarationsForPlugin(pluginID string) {
 func (g *RelationshipGraph) setSelector(node GraphNode, decl resource.RelationshipDescriptor, sel labelSelector, binding TargetBinding, snapshot *boundSet) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if snapshot != nil && !g.currentSnapshot(node, snapshot) { return }
+	if snapshot != nil && !g.currentSnapshot(node, snapshot) {
+		return
+	}
 	key := node.Key()
 	if g.selectorCache[key] == nil {
 		g.selectorCache[key] = make(map[string]selectorEntry)

@@ -11,6 +11,20 @@ export {
 export {
     ActionEventDTO,
     ActionSnapshot,
+    AuthorityEvidence,
+    ConnectionProfile,
+    ConnectionProfileResult,
     ConnectionState,
-    ConnectionStatusPayload
+    ConnectionStatusPayload,
+    HostEnumerateRequest,
+    HostGetRequest,
+    HostRecord,
+    HostSourcePage,
+    HostSubscription,
+    HostWatchStateEvent,
+    ResolveReferenceRequest,
+    ResolveTargetRequest,
+    ResolvedReference,
+    ResolvedTarget,
+    SourcePageMetadata
 } from "./models.js";

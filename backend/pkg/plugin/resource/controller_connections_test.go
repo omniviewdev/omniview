@@ -209,8 +209,8 @@ func TestSaveConnectionProfile_ConcurrentUpdates(t *testing.T) {
 func TestStartConnection_Success(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		CatalogFunc: func(context.Context,resource.CatalogRequest)(resource.Catalog,error){
-			return resource.Catalog{Provider:"connections",Revision:"inventory",Types:[]resource.ResourceType{},Coverage:resource.Coverage{Kind:"complete",Paths:[]string{}}},nil
+		CatalogFunc: func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+			return resource.Catalog{Provider: "connections", Revision: "inventory", Types: []resource.ResourceType{}, Coverage: resource.Coverage{Kind: "complete", Paths: []string{}}}, nil
 		},
 		StartConnectionFunc: func(_ context.Context, id string) (types.ConnectionStatus, error) {
 			return types.ConnectionStatus{

@@ -177,8 +177,8 @@ func TestConnectionWatchReplacesSnapshotWithoutReapplyingOverlay(t *testing.T) {
 		t.Error("watch snapshots must not reload native configuration")
 		return nil, errors.New("unexpected native reload")
 	}
-	provider.ListConnectionsFunc = func(context.Context) ([]types.Connection,error) {
-		return []types.Connection{profileTestConnection("fresh","new-endpoint")},nil
+	provider.ListConnectionsFunc = func(context.Context) ([]types.Connection, error) {
+		return []types.Connection{profileTestConnection("fresh", "new-endpoint")}, nil
 	}
 	provider.WatchConnectionsFunc = func(ctx context.Context, stream chan<- []types.Connection) error {
 		stream <- []types.Connection{profileTestConnection("removed", "old-endpoint")}
@@ -240,7 +240,9 @@ func TestConnectionProfileCommitRollsBackOnDiskFailure(t *testing.T) {
 			var active resourcev2.ConnectionOverlay
 			provider.ApplyConnectionOverlayFunc = func(ctx context.Context, overlay resourcev2.ConnectionOverlay) error {
 				applies++
-				if phase == "rollback" && applies == 2 { return errors.New("private rollback detail") }
+				if phase == "rollback" && applies == 2 {
+					return errors.New("private rollback detail")
+				}
 				active = overlay
 				if applies == 1 {
 					require.NoError(t, store.Remove(connectionProfileStoreName))

@@ -40,8 +40,12 @@ func (c *controller) invalidateProfileRoutesLocked(pluginID string, connections 
 	}
 	// Retire captured work even if a durable authority removal subsequently
 	// fails. A partial retirement must never let an old in-flight page publish.
-	if generation.sourceEpoch == nil { generation.sourceEpoch = make(map[string]uint64) }
-	for connection := range seen { generation.sourceEpoch[connection]++ }
+	if generation.sourceEpoch == nil {
+		generation.sourceEpoch = make(map[string]uint64)
+	}
+	for connection := range seen {
+		generation.sourceEpoch[connection]++
+	}
 	c.finite.mu.Lock()
 	resolver := c.finite.authorities[pluginID]
 	if resolver != nil {

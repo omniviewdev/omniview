@@ -91,12 +91,14 @@ func (c *controller) getLifecycle(ctx context.Context, pluginID string) (resourc
 // up the current epoch after fetching a catalog would bless stale source data.
 type catalogAdmission struct {
 	generation *pluginState
-	epoch sourceEpochSnapshot
+	epoch      sourceEpochSnapshot
 }
 
 func captureCatalogAdmission(ctx context.Context, generation *pluginState) catalogAdmission {
 	epoch, ok := ctx.Value(sourceEpochKey{}).(sourceEpochSnapshot)
-	if !ok { return catalogAdmission{} }
+	if !ok {
+		return catalogAdmission{}
+	}
 	return catalogAdmission{generation: generation, epoch: epoch}
 }
 

@@ -3,7 +3,6 @@
 
 export {
     ActionTargetBuilder,
-    CreateSessionOptions,
     Handler,
     LogSession,
     LogSessionOptions,

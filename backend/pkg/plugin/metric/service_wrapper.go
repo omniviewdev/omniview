@@ -46,17 +46,23 @@ func (s *ServiceWrapper) Query(
 	encoded string,
 ) (*metricsdk.QueryResponse, error) {
 	var req metricsdk.QueryRequest
-	if err := transportjson.Decode(encoded, &req, pluginID, connectionID); err != nil { return nil, err }
+	if err := transportjson.Decode(encoded, &req, pluginID, connectionID); err != nil {
+		return nil, err
+	}
 	return s.Ctrl.Query(pluginID, connectionID, req)
 }
 func (s *ServiceWrapper) QueryAll(connectionID, encoded string) (map[string]*metricsdk.QueryResponse, error) {
 	var req metricsdk.QueryRequest
-	if err := transportjson.Decode(encoded, &req, connectionID); err != nil { return nil, err }
+	if err := transportjson.Decode(encoded, &req, connectionID); err != nil {
+		return nil, err
+	}
 	return s.Ctrl.QueryAll(connectionID, req)
 }
 func (s *ServiceWrapper) Subscribe(pluginID, connectionID, encoded string) (string, error) {
 	var req SubscribeRequest
-	if err := transportjson.Decode(encoded, &req, pluginID, connectionID); err != nil { return "", err }
+	if err := transportjson.Decode(encoded, &req, pluginID, connectionID); err != nil {
+		return "", err
+	}
 	return s.Ctrl.Subscribe(pluginID, connectionID, req)
 }
 func (s *ServiceWrapper) Unsubscribe(subscriptionID string) error {

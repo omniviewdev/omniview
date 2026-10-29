@@ -7,7 +7,7 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as resource$0 from "../../../../../../plugin-sdk/pkg/v1/resource/models.js";
+import * as resourcev2$0 from "../../../../../../plugin-sdk/pkg/resource/v2/models.js";
 
 export class DependencyNode {
     "edge": GraphEdge;
@@ -49,7 +49,7 @@ export class DependencyTree {
     /** Creates a new DependencyTree instance. */
     constructor($$source: Partial<DependencyTree> = {}) {
         if (!("root" in $$source)) {
-            this["root"] = (new GraphNode());
+            this["root"] = null;
         }
         if (!("children" in $$source)) {
             this["children"] = [];
@@ -62,12 +62,8 @@ export class DependencyTree {
      * Creates a new DependencyTree instance from a string or object.
      */
     static createFrom($$source: any = {}): DependencyTree {
-        const $$createField0_0 = $$createType3;
         const $$createField1_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("root" in $$parsedSource) {
-            $$parsedSource["root"] = $$createField0_0($$parsedSource["root"]);
-        }
         if ("children" in $$parsedSource) {
             $$parsedSource["children"] = $$createField1_0($$parsedSource["children"]);
         }
@@ -84,13 +80,13 @@ export class GraphEdge {
     /** Creates a new GraphEdge instance. */
     constructor($$source: Partial<GraphEdge> = {}) {
         if (!("source" in $$source)) {
-            this["source"] = (new GraphNode());
+            this["source"] = null;
         }
         if (!("target" in $$source)) {
-            this["target"] = (new GraphNode());
+            this["target"] = null;
         }
         if (!("type" in $$source)) {
-            this["type"] = resource$0.RelationshipType.$zero;
+            this["type"] = resourcev2$0.RelationshipType.$zero;
         }
         if (!("label" in $$source)) {
             this["label"] = "";
@@ -103,15 +99,7 @@ export class GraphEdge {
      * Creates a new GraphEdge instance from a string or object.
      */
     static createFrom($$source: any = {}): GraphEdge {
-        const $$createField0_0 = $$createType3;
-        const $$createField1_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("source" in $$parsedSource) {
-            $$parsedSource["source"] = $$createField0_0($$parsedSource["source"]);
-        }
-        if ("target" in $$parsedSource) {
-            $$parsedSource["target"] = $$createField1_0($$parsedSource["target"]);
-        }
         return new GraphEdge($$parsedSource as Partial<GraphEdge>);
     }
 }
@@ -119,44 +107,12 @@ export class GraphEdge {
 /**
  * GraphNode identifies a specific resource instance in the graph.
  */
-export class GraphNode {
-    "pluginId": string;
-    "connectionId": string;
-    "resourceKey": string;
-    "id": string;
-    "namespace"?: string;
-
-    /** Creates a new GraphNode instance. */
-    constructor($$source: Partial<GraphNode> = {}) {
-        if (!("pluginId" in $$source)) {
-            this["pluginId"] = "";
-        }
-        if (!("connectionId" in $$source)) {
-            this["connectionId"] = "";
-        }
-        if (!("resourceKey" in $$source)) {
-            this["resourceKey"] = "";
-        }
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new GraphNode instance from a string or object.
-     */
-    static createFrom($$source: any = {}): GraphNode {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new GraphNode($$parsedSource as Partial<GraphNode>);
-    }
-}
+export type GraphNode = any;
 
 /**
  * RelationshipType re-exports from SDK for convenience.
  */
-export type RelationshipType = resource$0.RelationshipType;
+export type RelationshipType = resourcev2$0.RelationshipType;
 
 /**
  * Subgraph is the neighbourhood of one resource: the nodes reached by
@@ -176,7 +132,7 @@ export class Subgraph {
     /** Creates a new Subgraph instance. */
     constructor($$source: Partial<Subgraph> = {}) {
         if (!("root" in $$source)) {
-            this["root"] = (new GraphNode());
+            this["root"] = null;
         }
         if (!("nodes" in $$source)) {
             this["nodes"] = [];
@@ -195,13 +151,9 @@ export class Subgraph {
      * Creates a new Subgraph instance from a string or object.
      */
     static createFrom($$source: any = {}): Subgraph {
-        const $$createField0_0 = $$createType3;
-        const $$createField1_0 = $$createType5;
-        const $$createField2_0 = $$createType6;
+        const $$createField1_0 = $$createType4;
+        const $$createField2_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("root" in $$parsedSource) {
-            $$parsedSource["root"] = $$createField0_0($$parsedSource["root"]);
-        }
         if ("nodes" in $$parsedSource) {
             $$parsedSource["nodes"] = $$createField1_0($$parsedSource["nodes"]);
         }
@@ -225,7 +177,7 @@ export class SubgraphNode {
     /** Creates a new SubgraphNode instance. */
     constructor($$source: Partial<SubgraphNode> = {}) {
         if (!("node" in $$source)) {
-            this["node"] = (new GraphNode());
+            this["node"] = null;
         }
         if (!("depth" in $$source)) {
             this["depth"] = 0;
@@ -238,11 +190,7 @@ export class SubgraphNode {
      * Creates a new SubgraphNode instance from a string or object.
      */
     static createFrom($$source: any = {}): SubgraphNode {
-        const $$createField0_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("node" in $$parsedSource) {
-            $$parsedSource["node"] = $$createField0_0($$parsedSource["node"]);
-        }
         return new SubgraphNode($$parsedSource as Partial<SubgraphNode>);
     }
 }
@@ -251,7 +199,6 @@ export class SubgraphNode {
 const $$createType0 = GraphEdge.createFrom;
 const $$createType1 = DependencyNode.createFrom;
 const $$createType2 = $Create.Array($$createType1);
-const $$createType3 = GraphNode.createFrom;
-const $$createType4 = SubgraphNode.createFrom;
-const $$createType5 = $Create.Array($$createType4);
-const $$createType6 = $Create.Array($$createType0);
+const $$createType3 = SubgraphNode.createFrom;
+const $$createType4 = $Create.Array($$createType3);
+const $$createType5 = $Create.Array($$createType0);

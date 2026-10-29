@@ -270,7 +270,7 @@ func TestConnectionStateAggregatePreservesUnstartedNativeConnection(t *testing.T
 				client := "native"
 				return &client, nil
 			},
-			DestroyClient:   func(context.Context, *string) error { return nil },
+			DestroyClient: func(context.Context, *string) error { return nil },
 		},
 		Registrations: []resource.Registration[string]{{Type: "cloud::v1::Machine", Watch: func(context.Context, *string, resource.ReadTarget, resource.Representation, resource.WatchEventSink) error {
 			t.Error("unstarted native connection opened an update source")
@@ -327,11 +327,11 @@ func TestConnectionStateAggregateKeepsUnsupportedReadinessUnknown(t *testing.T) 
 		CatalogFunc: lifecycleTestCatalog("cloud::v1::Machine"),
 		GetWatchStateFunc: func(_ context.Context, route resource.AccessRoute) (*resource.WatchConnectionSummary, error) {
 			return &resource.WatchConnectionSummary{
-				Route: route,
-				Resources: map[string]resource.WatchState{"cloud::v1::Machine": resource.WatchStateSynced},
+				Route:          route,
+				Resources:      map[string]resource.WatchState{"cloud::v1::Machine": resource.WatchStateSynced},
 				ResourceCounts: map[string]resource.Count{"cloud::v1::Machine": {Kind: "unknown"}},
-				Scope: resource.QueryScope{},
-				Guarantee: resource.BestEffortGuarantee,
+				Scope:          resource.QueryScope{},
+				Guarantee:      resource.BestEffortGuarantee,
 			}, nil
 		},
 	}

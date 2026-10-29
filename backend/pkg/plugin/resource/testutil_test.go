@@ -179,20 +179,26 @@ type mockProvider struct {
 var _ resource.Provider = (*mockProvider)(nil)
 
 type catalogOnlyProvider struct {
-	CatalogFunc func(context.Context, resource.CatalogRequest) (resource.Catalog, error)
+	CatalogFunc      func(context.Context, resource.CatalogRequest) (resource.Catalog, error)
 	catalogEpochOnce sync.Once
-	catalogEpoch string
-	catalogEpochErr error
+	catalogEpoch     string
+	catalogEpochErr  error
 }
 
 func (p *catalogOnlyProvider) Catalog(ctx context.Context, request resource.CatalogRequest) (resource.Catalog, error) {
 	catalog, err := p.CatalogFunc(ctx, request)
-	if err != nil { return resource.Catalog{}, err }
-	if _, err := resource.CatalogBindingEpoch(catalog.Revision); err == nil { return catalog,nil }
-	p.catalogEpochOnce.Do(func(){p.catalogEpoch,p.catalogEpochErr=resource.NewCatalogBindingEpoch()})
-	if p.catalogEpochErr != nil { return resource.Catalog{},p.catalogEpochErr }
-	catalog.Revision,err=resource.BindCatalogRevision(p.catalogEpoch,catalog.Revision)
-	return catalog,err
+	if err != nil {
+		return resource.Catalog{}, err
+	}
+	if _, err := resource.CatalogBindingEpoch(catalog.Revision); err == nil {
+		return catalog, nil
+	}
+	p.catalogEpochOnce.Do(func() { p.catalogEpoch, p.catalogEpochErr = resource.NewCatalogBindingEpoch() })
+	if p.catalogEpochErr != nil {
+		return resource.Catalog{}, p.catalogEpochErr
+	}
+	catalog.Revision, err = resource.BindCatalogRevision(p.catalogEpoch, catalog.Revision)
+	return catalog, err
 }
 
 func canonicalTestRepresentation() resource.Representation {
@@ -432,9 +438,9 @@ func (m *mockProvider) effectiveConnections(native []types.Connection) []types.C
 
 func connectionOverlayTestProvider(native ...types.Connection) *mockProvider {
 	snapshot := append([]types.Connection(nil), native...)
-	return &mockProvider{CatalogFunc: func(context.Context, resource.CatalogRequest) (resource.Catalog,error) {
-		return resource.Catalog{Provider:"connection-fixture",Revision:"inventory-1",Coverage:resource.Coverage{Kind:"complete",Paths:[]string{}},Types:[]resource.ResourceType{}},nil
-	},NativeConnectionsFunc: func(context.Context) ([]types.Connection, error) {
+	return &mockProvider{CatalogFunc: func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+		return resource.Catalog{Provider: "connection-fixture", Revision: "inventory-1", Coverage: resource.Coverage{Kind: "complete", Paths: []string{}}, Types: []resource.ResourceType{}}, nil
+	}, NativeConnectionsFunc: func(context.Context) ([]types.Connection, error) {
 		return append([]types.Connection(nil), snapshot...), nil
 	}}
 }

@@ -63,8 +63,8 @@ export function ListPortForwardSessions(pluginID: string, connectionID: string):
     });
 }
 
-export function StartResourcePortForwardingSession(pluginID: string, connectionID: string, opts: networker$0.PortForwardSessionOptions): $CancellablePromise<networker$0.PortForwardSession | null> {
-    return $Call.ByID(780445954, pluginID, connectionID, opts).then(($result: any) => {
+export function StartResourcePortForwardingSession(pluginID: string, connectionID: string, encoded: string): $CancellablePromise<networker$0.PortForwardSession | null> {
+    return $Call.ByID(780445954, pluginID, connectionID, encoded).then(($result: any) => {
         return $$createType1($result);
     });
 }

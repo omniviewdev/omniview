@@ -23,9 +23,6 @@ import type * as config$0 from "../../../../omniviewdev/plugin-sdk/pkg/config/mo
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as networker$0 from "../../../../omniviewdev/plugin-sdk/pkg/v1/networker/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import type * as resource$1 from "../../../../omniviewdev/plugin-sdk/pkg/v1/resource/models.js";
 
 declare module "@wailsio/runtime" {
     namespace Events {
@@ -64,7 +61,7 @@ declare module "@wailsio/runtime" {
             "plugin/update_error": plugin$0.UpdateErrorPayload;
             "plugin/update_started": plugin$0.UpdatePayload;
             "settings/changed": string;
-            "watch/STATE": resource$1.WatchStateEvent;
+            "watch/STATE": resource$0.HostWatchStateEvent;
         }
     }
 }

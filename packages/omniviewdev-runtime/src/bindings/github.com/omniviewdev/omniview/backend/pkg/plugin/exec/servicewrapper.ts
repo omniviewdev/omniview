@@ -29,8 +29,8 @@ export function CloseSession(sessionID: string): $CancellablePromise<void> {
     return $Call.ByID(1353297556, sessionID);
 }
 
-export function CreateSession(plugin: string, connectionID: string, opts: exec$0.SessionOptions): $CancellablePromise<exec$0.Session | null> {
-    return $Call.ByID(608251756, plugin, connectionID, opts).then(($result: any) => {
+export function CreateSession(plugin: string, connectionID: string, encoded: string): $CancellablePromise<exec$0.Session | null> {
+    return $Call.ByID(608251756, plugin, connectionID, encoded).then(($result: any) => {
         return $$createType1($result);
     });
 }

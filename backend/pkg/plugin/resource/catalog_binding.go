@@ -10,7 +10,7 @@ import (
 // Retired epochs remain proof against delayed observations for this generation.
 // All access is protected by pluginsMu.
 type catalogBindingState struct {
-	active string
+	active  string
 	retired map[string]struct{}
 }
 
@@ -44,7 +44,9 @@ func (c *controller) observeCatalogBinding(ctx context.Context, pluginID string,
 	// Bound all retained epochs per plugin. Never evict retirement proof.
 	retained := 0
 	for _, existing := range generation.catalogBindings {
-		if existing.active != "" { retained++ }
+		if existing.active != "" {
+			retained++
+		}
 		retained += len(existing.retired)
 	}
 	if retained >= maxAuthorityBindings {
@@ -55,7 +57,9 @@ func (c *controller) observeCatalogBinding(ctx context.Context, pluginID string,
 		// Load persisted assignments before admitting the first observation.
 		// No stored hint currently proves native continuity across restart.
 		c.finite.mu.Lock()
-		if c.finite.authorities == nil { c.finite.authorities = make(map[string]*AuthorityResolver) }
+		if c.finite.authorities == nil {
+			c.finite.authorities = make(map[string]*AuthorityResolver)
+		}
 		resolver := c.finite.authorities[pluginID]
 		if resolver == nil {
 			root, loadErr := c.pluginStoreFn(pluginID)
@@ -78,13 +82,17 @@ func (c *controller) observeCatalogBinding(ctx context.Context, pluginID string,
 			return err
 		}
 		if state.active != "" {
-			if state.retired == nil { state.retired = make(map[string]struct{}) }
+			if state.retired == nil {
+				state.retired = make(map[string]struct{})
+			}
 			state.retired[state.active] = struct{}{}
 		}
 	}
 	previous := state.active
 	state.active = binding
-	if generation.catalogBindings == nil { generation.catalogBindings = make(map[string]catalogBindingState) }
+	if generation.catalogBindings == nil {
+		generation.catalogBindings = make(map[string]catalogBindingState)
+	}
 	generation.catalogBindings[route.Connection] = state
 	if previous != "" || retireRestart {
 		return resourcev2.NewError("RESET_REQUIRED", "Native source binding changed; acquire a fresh catalog.")

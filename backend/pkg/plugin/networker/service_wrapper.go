@@ -56,7 +56,9 @@ func (s *ServiceWrapper) StartResourcePortForwardingSession(
 	encoded string,
 ) (*networkersdk.PortForwardSession, error) {
 	var opts networkersdk.PortForwardSessionOptions
-	if err := transportjson.Decode(encoded, &opts, pluginID, connectionID); err != nil { return nil, err }
+	if err := transportjson.Decode(encoded, &opts, pluginID, connectionID); err != nil {
+		return nil, err
+	}
 	return s.Ctrl.StartResourcePortForwardingSession(pluginID, connectionID, opts)
 }
 func (s *ServiceWrapper) ClosePortForwardSession(sessionID string) (*networkersdk.PortForwardSession, error) {

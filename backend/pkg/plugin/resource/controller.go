@@ -99,9 +99,11 @@ type pluginState struct {
 }
 
 func (s *pluginState) closeSource(provider ResourceProvider) error {
-	closer,ok := provider.(resource.Closer)
-	if s == nil || !ok { return nil }
-	s.closeOnce.Do(func(){s.closeErr = closer.Close()})
+	closer, ok := provider.(resource.Closer)
+	if s == nil || !ok {
+		return nil
+	}
+	s.closeOnce.Do(func() { s.closeErr = closer.Close() })
 	return s.closeErr
 }
 
@@ -282,7 +284,9 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	c.pluginsMu.Lock()
 	existing := c.plugins[pluginID]
 	var previousProvider ResourceProvider
-	if existing != nil { previousProvider = existing.provider }
+	if existing != nil {
+		previousProvider = existing.provider
+	}
 	c.plugins[pluginID] = state
 	c.pluginsMu.Unlock()
 	if existing != nil {
@@ -295,8 +299,10 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 		watchCancel()
 		// The dispensed source is owned even before publication/readiness.
 		// Close after lifecycle retirement, preserving the original startup error.
-		defer func(){
-			if closeErr := state.closeSource(provider); closeErr != nil { logger.Warnw(context.Background(),"failed resource source teardown failed","error",closeErr) }
+		defer func() {
+			if closeErr := state.closeSource(provider); closeErr != nil {
+				logger.Warnw(context.Background(), "failed resource source teardown failed", "error", closeErr)
+			}
 		}()
 		c.lifecycleMu.Lock()
 		defer c.lifecycleMu.Unlock()
@@ -771,6 +777,7 @@ func (c *controller) GetAllConnectionStates(ctx context.Context) (_result map[st
 	return result, nil
 
 }
+
 // connectionState snapshots registration before attempting any active-source
 // catalog/watch work. The outer generation fence covers both observations.
 func (c *controller) connectionState(ctx context.Context, pluginID string, conn types.Connection) (state ConnectionState, retErr error) {
@@ -789,9 +796,9 @@ func (c *controller) connectionState(ctx context.Context, pluginID string, conn 
 		}
 	}()
 	state = ConnectionState{
-		Connection: conn,
-		Readiness: types.ConnectionStatusUnknown,
-		Resources: make(map[string]resource.WatchState),
+		Connection:     conn,
+		Readiness:      types.ConnectionStatusUnknown,
+		Resources:      make(map[string]resource.WatchState),
 		ResourceCounts: make(map[string]resource.Count),
 	}
 	features, err := c.providerFeatures(ctx, pluginID, provider)
@@ -856,7 +863,6 @@ func (c *controller) connectionState(ctx context.Context, pluginID string, conn 
 	}
 	return state, nil
 }
-
 
 func (c *controller) GetConnection(ctx context.Context, pluginID, connectionID string) (_result types.Connection, retErr error) {
 	ctx, admissionErr := c.admit(ctx, "resource.GetConnection", invocation.Target{Provider: pluginID, Connection: connectionID})

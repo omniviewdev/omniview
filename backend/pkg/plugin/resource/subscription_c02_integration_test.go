@@ -93,7 +93,7 @@ func TestC02RegisteredFileWatchSubscriptionLifecycle(t *testing.T) {
 			},
 		},
 		Registrations: []sdkresource.Registration[subscriptionFileClient]{{
-			Type: subscriptionFileType,
+			Type:  subscriptionFileType,
 			Scope: sdkresource.QueryScope{},
 			Get: func(_ context.Context, client *subscriptionFileClient, request sdkresource.GetRequest) (sdkresource.Record, error) {
 				if request.Reference.Address.ID != subscriptionFileID {

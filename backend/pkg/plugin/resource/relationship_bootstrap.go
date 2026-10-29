@@ -14,16 +14,26 @@ func (c *controller) bootstrapRelationships(parent context.Context, pluginID str
 	ctx, cancel := context.WithTimeout(parent, relationshipBootstrapTimeout)
 	defer cancel()
 	provider, generation, ctx, cleanup, err := c.operationGeneration(ctx, pluginID, route)
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 	defer cleanup()
 	features, err := c.providerFeatures(ctx, pluginID, provider)
-	if err != nil || !features.Has(resourcev2.FeatureRelationships) { return }
+	if err != nil || !features.Has(resourcev2.FeatureRelationships) {
+		return
+	}
 	relations, ok := provider.(resourcev2.RelationshipProvider)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	c.publishRelationshipDeclarations(ctx, pluginID, route, "", generation, nil, resourcegraph.DeclarationBindings{}, resourcev2.NewError("UNAVAILABLE", "Relationship declarations are being refreshed."))
 	catalog, err := provider.Catalog(ctx, resourcev2.CatalogRequest{Route: route})
-	if err == nil { err = resourcev2.ValidateCatalog(catalog) }
-	if err == nil && catalog.Coverage.Kind != "complete" { err = resourcev2.NewError("UNSUPPORTED", "Relationship declaration binding requires a complete route catalog.") }
+	if err == nil {
+		err = resourcev2.ValidateCatalog(catalog)
+	}
+	if err == nil && catalog.Coverage.Kind != "complete" {
+		err = resourcev2.NewError("UNSUPPORTED", "Relationship declaration binding requires a complete route catalog.")
+	}
 	if err != nil {
 		c.publishRelationshipDeclarations(ctx, pluginID, route, "", generation, nil, resourcegraph.DeclarationBindings{}, err)
 		return
@@ -37,17 +47,24 @@ func (c *controller) bootstrapRelationships(parent context.Context, pluginID str
 		observedTypes[i] = catalog.Types[i].Type
 	}
 	c.pluginsMu.RLock()
-	if c.currentGenerationLocked(ctx, pluginID, generation) != nil { c.pluginsMu.RUnlock(); return }
+	if c.currentGenerationLocked(ctx, pluginID, generation) != nil {
+		c.pluginsMu.RUnlock()
+		return
+	}
 	c.graph.ObserveDeclarationCatalog(pluginID, route, catalog.Revision, admission.epoch.Epoch, observedTypes)
 	c.pluginsMu.RUnlock()
 	for _, descriptor := range catalog.Types {
-		if err := c.currentGeneration(ctx, pluginID, generation); err != nil { return }
+		if err := c.currentGeneration(ctx, pluginID, generation); err != nil {
+			return
+		}
 		admitted, err := c.admit(ctx, "resource.GetRelationships", invocation.Target{Provider: pluginID, Connection: route.Connection, ResourceType: descriptor.Type})
 		var declarations []resourcev2.RelationshipDescriptor
 		if err == nil {
 			_, err = c.resolveAuthority(admitted, pluginID, route, catalog, admission, descriptor.Type)
 		}
-		if err == nil { declarations, err = relations.GetRelationships(admitted, route, descriptor.Type) }
+		if err == nil {
+			declarations, err = relations.GetRelationships(admitted, route, descriptor.Type)
+		}
 		bindings := resourcegraph.DeclarationBindings{SourceEpoch: admission.epoch.Epoch}
 		if err == nil && len(declarations) > 0 {
 			var source resourcev2.ReadTarget
@@ -75,7 +92,9 @@ func (c *controller) bootstrapRelationships(parent context.Context, pluginID str
 func (c *controller) publishRelationshipDeclarations(ctx context.Context, pluginID string, route resourcev2.AccessRoute, sourceType string, generation *pluginState, declarations []resourcev2.RelationshipDescriptor, bindings resourcegraph.DeclarationBindings, err error) {
 	c.pluginsMu.RLock()
 	defer c.pluginsMu.RUnlock()
-	if c.currentGenerationLocked(ctx, pluginID, generation) != nil { return }
+	if c.currentGenerationLocked(ctx, pluginID, generation) != nil {
+		return
+	}
 	if err != nil || sourceType == "" {
 		c.graph.RecordDeclarationError(pluginID, route, sourceType, err)
 		return

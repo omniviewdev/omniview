@@ -7,7 +7,6 @@ export {
     PortForwardProtocol,
     PortForwardSession,
     PortForwardSessionEncryption,
-    PortForwardSessionOptions,
     SessionState
 } from "./models.js";
 

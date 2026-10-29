@@ -14,8 +14,8 @@ type ConnectionState struct {
 	Connection types.Connection `json:"connection"`
 
 	// Registered native-client state, not network health. UNKNOWN is not stopped.
-	Readiness types.ConnectionStatusCode `json:"readiness"`
-	ReadinessError *apperror.AppError `json:"readinessError,omitempty"`
+	Readiness      types.ConnectionStatusCode `json:"readiness"`
+	ReadinessError *apperror.AppError         `json:"readinessError,omitempty"`
 
 	// Per-resource watch states (resource key → WatchState enum).
 	Resources map[string]sdkresource.WatchState `json:"resources"`

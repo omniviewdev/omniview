@@ -142,9 +142,9 @@ func TestListenForConnectionEvents_AutoConnectsOnDiscoveredTrigger(t *testing.T)
 	ctrl, _ := newTestControllerWithEmitter(t)
 
 	var starts atomic.Int32
-	connection := types.Connection{ID:"conn-1",Lifecycle:types.ConnectionLifecycle{AutoConnect:&types.ConnectionAutoConnect{Enabled:true,Triggers:[]types.ConnectionAutoConnectTrigger{types.ConnectionAutoConnectTriggerConnectionDiscovered},Retry:types.ConnectionAutoConnectRetryNone}}}
+	connection := types.Connection{ID: "conn-1", Lifecycle: types.ConnectionLifecycle{AutoConnect: &types.ConnectionAutoConnect{Enabled: true, Triggers: []types.ConnectionAutoConnectTrigger{types.ConnectionAutoConnectTriggerConnectionDiscovered}, Retry: types.ConnectionAutoConnectRetryNone}}}
 	mock := &mockProvider{
-		ListConnectionsFunc: func(context.Context)([]types.Connection,error){ return []types.Connection{connection},nil },
+		ListConnectionsFunc: func(context.Context) ([]types.Connection, error) { return []types.Connection{connection}, nil },
 		StartConnectionFunc: func(_ context.Context, _ string) (types.ConnectionStatus, error) {
 			starts.Add(1)
 			return types.ConnectionStatus{Status: types.ConnectionStatusConnected}, nil

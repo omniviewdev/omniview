@@ -43,7 +43,9 @@ func (s *ServiceWrapper) CreateSession(
 	encoded string,
 ) (*logssdk.LogSession, error) {
 	var opts logssdk.CreateSessionOptions
-	if err := transportjson.Decode(encoded, &opts, plugin, connectionID); err != nil { return nil, err }
+	if err := transportjson.Decode(encoded, &opts, plugin, connectionID); err != nil {
+		return nil, err
+	}
 	return s.Ctrl.CreateSession(plugin, connectionID, opts)
 }
 func (s *ServiceWrapper) GetSession(sessionID string) (*logssdk.LogSession, error) {

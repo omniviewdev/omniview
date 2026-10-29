@@ -152,7 +152,7 @@ A lost retained-process observation is not proof of process exit. The producer s
 The serial graph prepares same-depth exclusive sibling stages using `Prepare` with `Distribution`, `Bindings`, `Shims`, or `YAMLWorker`. It runs actual compiler commands with:
 
 - `OMNIVIEW_BUILD_OUTPUT_DIRECTORY`: Vite/declaration outDir or argv-safe package-local tsup CLI out-dir.
-- `OMNIVIEW_SHIMS_OUTPUT_DIRECTORY` and read-only `OMNIVIEW_SHIMS_SOURCE_DIRECTORY`: generate/check new shims while preserving the established previous-export behavior.
+- `OMNIVIEW_SHIMS_OUTPUT_DIRECTORY` and read-only `OMNIVIEW_SHIMS_SOURCE_DIRECTORY`: generate/check new shims. Runtime entry points match the current bundle exactly; previous-export retention applies only to third-party packages.
 - `OMNIVIEW_YAML_WORKER_OUTPUT_FILE`: real esbuild output; host build resolver imports this staged worker, not stale tracked output.
 - `OMNIVIEW_VITE_CACHE_DIRECTORY`: owned optimizer-cache root. Host prebundles live beneath its `node_modules/.vite` child so Babel/React source transforms do not recompile generated dependencies. Linked UI stays excluded from optimization, while its two nested `use-sync-external-store/shim` entry points are explicitly included for [CommonJS interop](https://vite.dev/config/dep-optimization-options). Explicit conflicting plugin cache/output paths still fail rather than escaping controlled scope.
 

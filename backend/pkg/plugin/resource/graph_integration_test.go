@@ -50,7 +50,9 @@ func setPipelineDeclarations(t *testing.T, ctrl *controller, g *graph.Relationsh
 	for _, decl := range decls {
 		target := admittedReadTarget(t, ctrl, plugin, route.Connection, decl.TargetType).Target
 		var dimensions []resourcev2.Dimension
-		if decl.TargetType == "owner" { dimensions = []resourcev2.Dimension{{Name: "shard"}} }
+		if decl.TargetType == "owner" {
+			dimensions = []resourcev2.Dimension{{Name: "shard"}}
+		}
 		bindings.Targets = append(bindings.Targets, graph.TargetBinding{Target: target, IdentityDimensions: dimensions})
 	}
 	require.NoError(t, g.SetBoundDeclarations(plugin, route, sourceType, decls, bindings))

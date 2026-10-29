@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as WailsRuntime from '@wailsio/runtime';
 import { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 import type { ConnectionReadiness, HostConnectionState } from '../../resource/v2/host';
 import { WatchState } from '../../types/watch';
@@ -9,10 +10,19 @@ const native = vi.hoisted(() => ({
   states: vi.fn(), list: vi.fn(), stop: vi.fn(), catalog: vi.fn(), resolve: vi.fn(), watch: vi.fn(),
   listeners: new Map<string, (event: { data: unknown }) => void>(),
 }));
-vi.mock('@wailsio/runtime', () => ({ Events: { On: (name: string, handler: (event: { data: unknown }) => void) => {
-  native.listeners.set(name, handler);
-  return () => { native.listeners.delete(name); };
-} } }));
+vi.mock('@wailsio/runtime', async (importOriginal) => {
+  const actual = await importOriginal<typeof WailsRuntime>();
+  return {
+    ...actual,
+    Events: {
+      ...actual.Events,
+      On(name: string, handler: (event: { data: unknown }) => void) {
+        native.listeners.set(name, handler);
+        return () => { native.listeners.delete(name); };
+      },
+    },
+  };
+});
 vi.mock('../../resource/v2/client', () => ({
   GetAllConnectionStates: native.states, ListAllConnections: native.list, StopConnection: native.stop,
   Catalog: native.catalog, ResolveTarget: native.resolve, StartConnectionWatch: native.watch,

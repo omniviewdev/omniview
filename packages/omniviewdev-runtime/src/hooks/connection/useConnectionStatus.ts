@@ -157,8 +157,10 @@ export function useConnectionStatus(): ConnectionStatusSummary {
       const event = ev.data;
       const key = JSON.stringify([event.pluginID, event.connectionID]);
 
-      const status: ConnectionReadiness = ['DISCONNECTED', 'PENDING', 'CONNECTED', 'FAILED'].includes(event.status)
-        ? event.status : 'UNKNOWN';
+      const status: ConnectionReadiness =
+        event.status === 'DISCONNECTED' || event.status === 'PENDING' ||
+        event.status === 'CONNECTED' || event.status === 'FAILED'
+          ? event.status : 'UNKNOWN';
       const state = { readiness: status };
       statusEventsRef.current.set(key, state);
       const next = new Map(readinessRef.current);

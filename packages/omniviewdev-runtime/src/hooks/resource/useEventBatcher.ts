@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { hashKey, type QueryClient, type QueryKey } from '@tanstack/react-query';
-import type { HostRecord, HostSourcePage, HostWatchAddPayload, HostWatchDeletePayload, HostWatchUpdatePayload, ResourceView } from '../../resource/v2/host';
+import type { HostRecord, HostWatchAddPayload, HostWatchDeletePayload, HostWatchUpdatePayload, ResourceView } from '../../resource/v2/host';
 import { WatchState } from '../../types/watch';
 
 export type AddPayload = HostWatchAddPayload;
@@ -11,33 +11,40 @@ export type ResourceUpdateEvent =
   | { type: 'UPDATE'; payload: UpdatePayload }
   | { type: 'DELETE'; payload: DeletePayload };
 
-/** Host membership keys, including incarnation, prevent stale deletes replacing current rows. */
-export function applyBatch(oldData: HostSourcePage | undefined, events: readonly ResourceUpdateEvent[]): ResourceView | undefined {
-  if (!oldData) return oldData;
+/** Advisory events may patch observed host keys, never expand native page membership. */
+export function applyBatch(oldData: ResourceView | undefined, events: readonly ResourceUpdateEvent[], membershipChanged = false): ResourceView | undefined {
+  if (!oldData || (!events.length && !membershipChanged)) return oldData;
   const records = [...oldData.records];
+  let membershipStale = oldData.view?.membershipStale === true || membershipChanged;
   for (const event of events) {
     if (event.type === 'DELETE') {
       const index = records.findIndex((row) => row.key === event.payload.key);
       if (index !== -1) records.splice(index, 1);
+      // A deleted member can leave a page gap; unknown incarnations are never inferred.
+      membershipStale = true;
     } else {
       const row = event.payload.record;
-      const index = records.findIndex((existing) => existing.addressKey === row.addressKey && existing.targetId === row.targetId);
-      if (index === -1) records.push(row);
+      const index = records.findIndex((existing) => existing.key === row.key);
+      if (index === -1) membershipStale = true;
       else records[index] = row;
     }
   }
-  // Keep native acquisition provenance separate from the advisory modified view.
-  return { records, sourcePage: oldData.sourcePage, view: { guarantee: 'bestEffort', count: { kind: 'unknown' } } };
+  return {
+    records,
+    sourcePage: oldData.sourcePage,
+    view: { guarantee: 'bestEffort', count: { kind: 'unknown' }, membershipStale },
+  };
 }
 
-/** Advisory updates use adaptive batching; no snapshot/update continuity is claimed. */
+/** At most one pending event per observed page key; unseen row bodies are never retained. */
 export function useEventBatcher(
   queryClient: QueryClient,
   queryKey: QueryKey,
   watchState: WatchState,
   options?: { syncWindowMs?: number },
 ) {
-  const buffer = useRef<ResourceUpdateEvent[]>([]);
+  const buffer = useRef(new Map<string, ResourceUpdateEvent>());
+  const pendingMembershipChange = useRef(false);
   const timer = useRef<number | undefined>(undefined);
   const frame = useRef<number | undefined>(undefined);
   const state = useRef(watchState);
@@ -48,12 +55,13 @@ export function useEventBatcher(
     if (frame.current !== undefined) cancelAnimationFrame(frame.current);
     timer.current = undefined;
     frame.current = undefined;
-    if (!buffer.current.length) return;
-    // Retain updates until the real native baseline exists; never synthesize a page.
-    if (!queryClient.getQueryData<HostSourcePage>(queryKey)) return;
-    const events = buffer.current;
-    buffer.current = [];
-    queryClient.setQueryData<ResourceView>(queryKey, (old) => applyBatch(old, events));
+    if (!buffer.current.size && !pendingMembershipChange.current) return;
+    if (!queryClient.getQueryData<ResourceView>(queryKey)) return;
+    const events = [...buffer.current.values()];
+    const membershipChanged = pendingMembershipChange.current;
+    buffer.current.clear();
+    pendingMembershipChange.current = false;
+    queryClient.setQueryData<ResourceView>(queryKey, (old) => applyBatch(old, events, membershipChanged));
     for (const event of events) {
       if (event.type === 'DELETE') {
         void queryClient.invalidateQueries({
@@ -68,20 +76,30 @@ export function useEventBatcher(
     }
   }, [queryClient, queryKey]);
   const enqueue = useCallback((event: ResourceUpdateEvent) => {
-    buffer.current.push(event);
+    const key = event.type === 'DELETE' ? event.payload.key : event.payload.record.key;
+    const baseline = queryClient.getQueryData<ResourceView>(queryKey);
+    if (baseline?.records.some((row) => row.key === key)) buffer.current.set(key, event);
+    else pendingMembershipChange.current = true;
+    if (event.type === 'DELETE') pendingMembershipChange.current = true;
     if (timer.current !== undefined || frame.current !== undefined) return;
     timer.current = window.setTimeout(flush, windowMs);
     if (state.current !== WatchState.WatchStateSyncing) frame.current = requestAnimationFrame(flush);
-  }, [flush, windowMs]);
+  }, [queryClient, queryKey, flush, windowMs]);
   useEffect(() => {
     const cancel = queryClient.getQueryCache().subscribe((event) => {
-      if (event.type === 'updated' && event.query.queryHash === hashKey(queryKey) && event.action.type === 'success') flush();
+      if (event.type !== 'updated' || event.query.queryHash !== hashKey(queryKey)) return;
+      if (event.action.type === 'fetch') {
+        // A new native acquisition supersedes older queued advisory observations.
+        buffer.current.clear();
+        pendingMembershipChange.current = false;
+      } else if (event.action.type === 'success') flush();
     });
     return () => {
       cancel();
       window.clearTimeout(timer.current);
       if (frame.current !== undefined) cancelAnimationFrame(frame.current);
-      buffer.current = [];
+      buffer.current.clear();
+      pendingMembershipChange.current = false;
       timer.current = undefined;
       frame.current = undefined;
     };

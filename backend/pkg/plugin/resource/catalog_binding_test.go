@@ -110,7 +110,11 @@ func TestCatalogBindingBlockedOldCatalogCannotRevertNewBinding(t *testing.T) {
 		captured := *current.Load()
 		if block.CompareAndSwap(true, false) {
 			close(entered)
-			select { case <-release: case <-ctx.Done(): return resourcev2.Catalog{}, ctx.Err() }
+			select {
+			case <-release:
+			case <-ctx.Done():
+				return resourcev2.Catalog{}, ctx.Err()
+			}
 		}
 		return captured, nil
 	}})
@@ -120,7 +124,11 @@ func TestCatalogBindingBlockedOldCatalogCannotRevertNewBinding(t *testing.T) {
 	block.Store(true)
 	finished := make(chan error, 1)
 	go func() { _, err := ctrl.ResolveTarget(testInvocationContext(), "p1", request); finished <- err }()
-	select { case <-entered: case <-time.After(time.Second): t.Fatal("catalog did not block") }
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("catalog did not block")
+	}
 	current.Store(&b)
 	_, err = ctrl.ResolveTarget(testInvocationContext(), "p1", request)
 	require.Equal(t, "RESET_REQUIRED", requireAppError(t, err).Code)
@@ -129,8 +137,10 @@ func TestCatalogBindingBlockedOldCatalogCannotRevertNewBinding(t *testing.T) {
 	disk := authorityDiskBytes(t, ctrl)
 	unblock.Do(func() { close(release) })
 	select {
-	case err := <-finished: require.Equal(t, "RESET_REQUIRED", requireAppError(t, err).Code)
-	case <-time.After(time.Second): t.Fatal("stale catalog did not return")
+	case err := <-finished:
+		require.Equal(t, "RESET_REQUIRED", requireAppError(t, err).Code)
+	case <-time.After(time.Second):
+		t.Fatal("stale catalog did not return")
 	}
 	binding, err := resourcev2.CatalogBindingEpoch(b.Revision)
 	require.NoError(t, err)
@@ -153,7 +163,9 @@ func TestCatalogBindingUniqueReturnAndRetiredEpochRejection(t *testing.T) {
 		require.Equal(t, "RESET_REQUIRED", requireAppError(t, err).Code)
 		fresh, err := ctrl.ResolveTarget(testInvocationContext(), "p1", request)
 		require.NoError(t, err)
-		for _, previous := range authorities { require.NotEqual(t, previous, fresh.Target.Authority) }
+		for _, previous := range authorities {
+			require.NotEqual(t, previous, fresh.Target.Authority)
+		}
 		authorities = append(authorities, fresh.Target.Authority)
 	}
 	current := catalog
@@ -191,7 +203,9 @@ func TestCatalogBindingRetiredProofLimitNeverEvicts(t *testing.T) {
 	generation := ctrl.plugins["p1"]
 	state := generation.catalogBindings[request.Route.Connection]
 	state.retired = make(map[string]struct{}, maxAuthorityBindings-1)
-	for i := range maxAuthorityBindings-1 { state.retired[fmt.Sprintf("retired-%d", i)] = struct{}{} }
+	for i := range maxAuthorityBindings - 1 {
+		state.retired[fmt.Sprintf("retired-%d", i)] = struct{}{}
+	}
 	generation.catalogBindings[request.Route.Connection] = state
 	disk := authorityDiskBytes(t, ctrl)
 	catalog = bindingTestCatalog(t, bindingTestEpoch(t), "nativeB", "hintA")

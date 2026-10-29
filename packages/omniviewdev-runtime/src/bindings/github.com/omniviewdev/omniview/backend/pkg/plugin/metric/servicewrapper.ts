@@ -16,9 +16,6 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as metric$0 from "../../../../../plugin-sdk/pkg/v1/metric/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as time$0 from "../../../../../../../time/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -46,20 +43,20 @@ export function ListPlugins(): $CancellablePromise<string[]> {
     });
 }
 
-export function Query(pluginID: string, connectionID: string, req: metric$0.QueryRequest): $CancellablePromise<metric$0.QueryResponse | null> {
-    return $Call.ByID(3947209283, pluginID, connectionID, req).then(($result: any) => {
+export function Query(pluginID: string, connectionID: string, encoded: string): $CancellablePromise<metric$0.QueryResponse | null> {
+    return $Call.ByID(3947209283, pluginID, connectionID, encoded).then(($result: any) => {
         return $$createType4($result);
     });
 }
 
-export function QueryAll(connectionID: string, resourceKey: string, resourceID: string, $namespace: string, resourceData: { [_ in string]?: any }, metricIDs: string[], shape: metric$0.MetricShape, startTime: string, endTime: string, step: time$0.Duration): $CancellablePromise<{ [_ in string]?: metric$0.QueryResponse | null }> {
-    return $Call.ByID(2480040278, connectionID, resourceKey, resourceID, $namespace, resourceData, metricIDs, shape, startTime, endTime, step).then(($result: any) => {
+export function QueryAll(connectionID: string, encoded: string): $CancellablePromise<{ [_ in string]?: metric$0.QueryResponse | null }> {
+    return $Call.ByID(2480040278, connectionID, encoded).then(($result: any) => {
         return $$createType5($result);
     });
 }
 
-export function Subscribe(pluginID: string, connectionID: string, req: $models.SubscribeRequest): $CancellablePromise<string> {
-    return $Call.ByID(3738888803, pluginID, connectionID, req);
+export function Subscribe(pluginID: string, connectionID: string, encoded: string): $CancellablePromise<string> {
+    return $Call.ByID(3738888803, pluginID, connectionID, encoded);
 }
 
 export function Unsubscribe(subscriptionID: string): $CancellablePromise<void> {

@@ -7,6 +7,5 @@ export {
 };
 
 export {
-    MetricProviderSummary,
-    SubscribeRequest
+    MetricProviderSummary
 } from "./models.js";

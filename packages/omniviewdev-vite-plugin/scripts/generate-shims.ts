@@ -185,9 +185,9 @@ async function main(): Promise<void> {
     fs.mkdirSync(SHIMS_DIR, { recursive: true });
   }
 
-  // Remember what the current shims export. A shim never drops a name: a
-  // plugin importing a name the shim lacks fails to load in dev mode, while
-  // a name the host no longer provides is just undefined, as in production.
+  // Third-party packages retain their existing compatibility policy. Runtime
+  // shims must match the current host bundle: removed APIs must fail at import,
+  // not survive as undefined exports after a resource contract cutover.
   const previousExports = new Map<string, string[]>();
   for (const pkg of SHARED_PACKAGES) {
     previousExports.set(pkg, readShimExports(path.join(SHIMS_SOURCE_DIR, safeFilename(pkg) + '.mjs')));
@@ -207,7 +207,8 @@ async function main(): Promise<void> {
     const filepath = path.join(SHIMS_DIR, filename);
 
     const discovered = await discoverExports(pkg);
-    const kept = (previousExports.get(pkg) ?? []).filter(name => !discovered.includes(name));
+    const isRuntime = pkg === '@omniviewdev/runtime' || pkg.startsWith('@omniviewdev/runtime/');
+    const kept = isRuntime ? [] : (previousExports.get(pkg) ?? []).filter(name => !discovered.includes(name));
     const exports = discovered.length > 0 ? [...discovered, ...kept.sort()] : [];
     let content: string;
     if (exports.length > 0) {

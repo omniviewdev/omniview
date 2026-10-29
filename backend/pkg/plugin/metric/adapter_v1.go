@@ -31,6 +31,8 @@ func (a *AdapterV1) Query(ctx *types.PluginContext, req metric.QueryRequest) (*m
 
 func (a *AdapterV1) StreamResourceMetrics(ctx context.Context, in chan metric.StreamInput) (chan metric.StreamOutput, error) {
 	provider, ok := a.inner.(metric.ResourceStreamProvider)
-	if !ok { return nil, resourcev2.NewError("UNSUPPORTED", "Canonical metric streaming is unavailable.") }
+	if !ok {
+		return nil, resourcev2.NewError("UNSUPPORTED", "Canonical metric streaming is unavailable.")
+	}
 	return provider.StreamResourceMetrics(ctx, in)
 }
