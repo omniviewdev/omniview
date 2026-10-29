@@ -1,7 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
+import { skipToken, useQuery } from '@tanstack/react-query';
 import { GetRelated } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graphservice';
 import type { GraphEdge, GraphNode } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph/models';
 import { useResolvedPluginId } from '../useResolvedPluginId';
+import { useConnectionReadiness } from '../connection/useConnectionReadiness';
+import { useConnectionQueryGuard } from './useConnectionQueryGuard';
 import { useRefetchOnGraphChange } from './useRefetchOnGraphChange';
 
 /** Which side of the relationship the viewed resource is on. */
@@ -138,13 +140,15 @@ export const useRelatedResources = ({
   const pluginID = useResolvedPluginId(explicitPluginID);
 
   const queryKey = ['RESOURCE_RELATED', pluginID, connectionID, resourceKey, namespace, resourceID, direction, relationshipType ?? null];
-  const queryEnabled = enabled && !!pluginID && !!connectionID && !!resourceKey && !!resourceID;
+  const readiness = useConnectionReadiness({ pluginID, connectionID, enabled: enabled && !!resourceKey && !!resourceID });
+  const guardQuery = useConnectionQueryGuard(pluginID, connectionID);
+  const queryEnabled = enabled && !!pluginID && !!connectionID && !!resourceKey && !!resourceID && readiness.phase === 'connected';
 
   useRefetchOnGraphChange(pluginID, connectionID, queryKey, queryEnabled);
 
   const query = useQuery({
     queryKey,
-    queryFn: async () => GetRelated(pluginID, connectionID, resourceKey, namespace, resourceID, direction, relationshipType ?? null),
+    queryFn: queryEnabled ? ({ signal, queryKey }) => guardQuery(queryKey, signal, () => GetRelated(pluginID, connectionID, resourceKey, namespace, resourceID, direction, relationshipType ?? null)) : skipToken,
     enabled: queryEnabled,
     refetchInterval,
   });

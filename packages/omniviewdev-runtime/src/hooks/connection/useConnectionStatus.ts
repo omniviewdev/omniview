@@ -3,13 +3,13 @@ import { Events } from '@wailsio/runtime';
 import {
   ListAllConnections,
   GetAllConnectionStates,
-  StopConnection,
   StartConnectionWatch,
 } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
 import { RetryFailedPlugin } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/servicewrapper';
 import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 import { WatchState } from '../../types/watch';
 import type { WatchStateEvent } from '../../types/watch';
+import { stopConnectionWithReadiness } from '../../connection/connectionReadiness';
 import {
   type ActiveSync,
   type ResourceTracker,
@@ -219,7 +219,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
 
   // Actions
   const disconnect = useCallback(async (pluginID: string, connectionID: string) => {
-    await StopConnection(pluginID, connectionID);
+    await stopConnectionWithReadiness(pluginID, connectionID);
   }, []);
 
   const retryWatch = useCallback(async (pluginID: string, connectionID: string) => {

@@ -7,6 +7,7 @@ import { ActionInput } from '../../bindings/github.com/omniviewdev/plugin-sdk/pk
 import type { ActionSnapshot } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/models';
 import { StreamAction, AttachStreamAction, CancelStreamAction } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
 import { useResolvedPluginId } from '../useResolvedPluginId';
+import { requireConnectionReady } from '../../connection/connectionReadiness';
 
 type UseStreamActionOptions = { pluginID?: string; connectionID: string; resourceKey: string };
 type StartStreamActionParams = { actionID: string; id: string; namespace: string; label: string; params?: Record<string, unknown> };
@@ -48,6 +49,8 @@ export const useStreamAction = ({ pluginID: explicitPluginID, connectionID, reso
     const action: PendingAction = { disposed: false, terminal: false, sequence: 0 };
     actions.current.add(action);
     try {
+      await requireConnectionReady(pluginID, connectionID);
+      if (action.disposed) throw new Error('Stream action was cancelled before the connection became ready');
       action.open = StreamAction(pluginID, connectionID, resourceKey, actionID, ActionInput.createFrom({ id, namespace, params }));
       const handle = await action.open;
       action.open = undefined;

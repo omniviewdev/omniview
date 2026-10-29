@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { GetConnection, UpdateConnection, RemoveConnection, StartConnection, StopConnection } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
+import { GetConnection, UpdateConnection, RemoveConnection } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
 import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
 import { useResolvedPluginId } from '../useResolvedPluginId';
+import { invalidateConnectionReadiness, startConnectionWithReadiness, stopConnectionWithReadiness } from '../../connection/connectionReadiness';
 
 type UseConnectionOptions = {
   /**
@@ -29,10 +30,10 @@ export const useConnection = ({ pluginID: explicitPluginID, connectionID }: UseC
 
   // === Mutations === //
   const { mutateAsync: startConnection } = useMutation({
-    mutationFn: async () => StartConnection(pluginID, connectionID),
+    mutationFn: async () => startConnectionWithReadiness(pluginID, connectionID),
     onSuccess(data) {
-      // update the cache
-      queryClient.setQueryData(queryKey, data);
+      // StartConnection returns a status envelope, not connection metadata.
+      if (data.connection) queryClient.setQueryData(queryKey, data.connection);
       // Invalidate editor schemas so they get fetched for the new connection
       void queryClient.invalidateQueries({
         queryKey: ['EDITOR_SCHEMAS', pluginID, connectionID],
@@ -42,7 +43,7 @@ export const useConnection = ({ pluginID: explicitPluginID, connectionID }: UseC
   });
 
   const { mutateAsync: stopConnection } = useMutation({
-    mutationFn: async () => StopConnection(pluginID, connectionID),
+    mutationFn: async () => stopConnectionWithReadiness(pluginID, connectionID),
     onSuccess(data) {
       // update the cache
       queryClient.setQueryData(queryKey, data);
@@ -54,6 +55,7 @@ export const useConnection = ({ pluginID: explicitPluginID, connectionID }: UseC
     mutationFn: async (conn: Connection) => UpdateConnection(pluginID, conn),
     onSuccess(data, { name }) {
       showSnackbar({ message: `Connection ${name} successfully updated`, status: 'success' });
+      invalidateConnectionReadiness(pluginID, connectionID);
       // Update the list and detail
       queryClient.setQueryData(queryKey, data);
       queryClient.setQueriesData(
@@ -68,6 +70,7 @@ export const useConnection = ({ pluginID: explicitPluginID, connectionID }: UseC
     mutationFn: async () => RemoveConnection(pluginID, connectionID),
     onSuccess() {
       showSnackbar({ message: 'Connection successfully removed', status: 'success' });
+      invalidateConnectionReadiness(pluginID, connectionID, true);
 
       queryClient.setQueryData(queryKey, undefined);
       queryClient.setQueriesData(

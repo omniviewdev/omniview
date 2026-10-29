@@ -1,8 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
+import { skipToken, useQuery } from '@tanstack/react-query';
 
 // Underlying client
 import { GetResourceGroups } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
 import { useResolvedPluginId } from '../useResolvedPluginId';
+import { useConnectionReadiness } from '../connection/useConnectionReadiness';
+import { useConnectionQueryGuard } from './useConnectionQueryGuard';
 
 type UseResourceGroupsOptions = {
   /**
@@ -13,18 +15,22 @@ type UseResourceGroupsOptions = {
    * The ID of the connection
    */
   connectionID: string;
+  enabled?: boolean;
 };
 
 /**
  * Fetch the resource groups for a given plugin and connection.
  */
-export const useResourceGroups = ({ pluginID: explicitPluginID, connectionID }: UseResourceGroupsOptions) => {
+export const useResourceGroups = ({ pluginID: explicitPluginID, connectionID, enabled = true }: UseResourceGroupsOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
-  const queryKey = [pluginID, 'resource_groups', 'list'];
+  const readiness = useConnectionReadiness({ pluginID, connectionID, enabled });
+  const guardQuery = useConnectionQueryGuard(pluginID, connectionID);
+  const queryKey = [pluginID, 'resource_groups', 'list', connectionID];
 
   const groups = useQuery({
     queryKey,
-    queryFn: async () => GetResourceGroups(pluginID, connectionID),
+    queryFn: enabled && readiness.phase === 'connected' ? ({ signal, queryKey }) => guardQuery(queryKey, signal, () => GetResourceGroups(pluginID, connectionID)) : skipToken,
+    enabled: enabled && readiness.phase === 'connected',
     retry: false,
   });
 

@@ -734,7 +734,6 @@ describe('useEventBatcher — bounded live progress', () => {
     expect(queryClient.getQueryData(nativeQueryKey)).toMatchObject({ result: [initial] });
     act(() => { vi.advanceTimersByTime(1); });
     expect(queryClient.getQueryData(nativeQueryKey)).toMatchObject({ result: [initial, created] });
-    expect(queryClient.getQueryData(nativeResourceKey(created.id, ''))).toEqual({ result: created });
   });
 
   it('retains the normal next-frame fast path and cancels its timer', () => {

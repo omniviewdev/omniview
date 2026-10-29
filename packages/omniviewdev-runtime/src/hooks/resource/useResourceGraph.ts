@@ -1,7 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
+import { skipToken, useQuery } from '@tanstack/react-query';
 import { GetSubgraph } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graphservice';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 import { useRefetchOnGraphChange } from './useRefetchOnGraphChange';
+import { useConnectionReadiness } from '../connection/useConnectionReadiness';
+import { useConnectionQueryGuard } from './useConnectionQueryGuard';
 
 type UseResourceGraphOptions = {
   /**
@@ -62,13 +64,15 @@ export const useResourceGraph = ({
   const pluginID = useResolvedPluginId(explicitPluginID);
 
   const queryKey = ['RESOURCE_GRAPH', pluginID, connectionID, resourceKey, namespace, resourceID, upDepth, downDepth];
-  const queryEnabled = enabled && !!pluginID && !!connectionID && !!resourceKey && !!resourceID;
+  const readiness = useConnectionReadiness({ pluginID, connectionID, enabled: enabled && !!resourceKey && !!resourceID });
+  const guardQuery = useConnectionQueryGuard(pluginID, connectionID);
+  const queryEnabled = enabled && !!pluginID && !!connectionID && !!resourceKey && !!resourceID && readiness.phase === 'connected';
 
   useRefetchOnGraphChange(pluginID, connectionID, queryKey, queryEnabled);
 
   const query = useQuery({
     queryKey,
-    queryFn: async () => GetSubgraph(pluginID, connectionID, resourceKey, namespace, resourceID, upDepth, downDepth),
+    queryFn: queryEnabled ? ({ signal, queryKey }) => guardQuery(queryKey, signal, () => GetSubgraph(pluginID, connectionID, resourceKey, namespace, resourceID, upDepth, downDepth)) : skipToken,
     enabled: queryEnabled,
   });
 

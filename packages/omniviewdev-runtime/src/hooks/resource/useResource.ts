@@ -1,10 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
 import { UpdateInput, DeleteInput, GetInput } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/resource/models';
 import { Get, Update, Delete } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 import { resourceQueryKeys } from '../../resourceQueryKeys';
+import { useConnectionReadiness } from '../connection/useConnectionReadiness';
+import { useConnectionQueryGuard } from './useConnectionQueryGuard';
+import { requireConnectionReady } from '../../connection/connectionReadiness';
 
 type UseResourceOptions = {
   /**
@@ -37,6 +40,7 @@ type UseResourceOptions = {
    * @example "default"
    */
   namespace?: string;
+  enabled?: boolean;
 
 };
 
@@ -53,8 +57,11 @@ export const useResource = ({
   resourceKey,
   resourceID,
   namespace = '',
+  enabled = true,
 }: UseResourceOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
+  const readiness = useConnectionReadiness({ pluginID, connectionID, enabled: enabled && !!resourceKey && !!resourceID });
+  const guardQuery = useConnectionQueryGuard(pluginID, connectionID);
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
 
@@ -63,11 +70,14 @@ export const useResource = ({
   // === Mutations === //
 
   const { mutateAsync: update } = useMutation({
-    mutationFn: async (opts: { input?: any }) => Update(pluginID, connectionID, resourceKey, UpdateInput.createFrom({
-      input: opts.input,
-      id: resourceID,
-      namespace,
-    })),
+    mutationFn: async (opts: { input?: unknown }) => {
+      await requireConnectionReady(pluginID, connectionID);
+      return Update(pluginID, connectionID, resourceKey, UpdateInput.createFrom({
+        input: opts.input,
+        id: resourceID,
+        namespace,
+      }));
+    },
     onSuccess: async () => {
       showSnackbar(`Resource ${resourceID} updated`, 'success');
       await queryClient.invalidateQueries({ queryKey });
@@ -76,11 +86,14 @@ export const useResource = ({
   });
 
   const { mutateAsync: remove } = useMutation({
-    mutationFn: async (opts: { gracePeriodSeconds?: number } = {}) => Delete(pluginID, connectionID, resourceKey, DeleteInput.createFrom({
-      id: resourceID,
-      namespace,
-      gracePeriodSeconds: opts.gracePeriodSeconds,
-    })),
+    mutationFn: async (opts: { gracePeriodSeconds?: number } = {}) => {
+      await requireConnectionReady(pluginID, connectionID);
+      return Delete(pluginID, connectionID, resourceKey, DeleteInput.createFrom({
+        id: resourceID,
+        namespace,
+        gracePeriodSeconds: opts.gracePeriodSeconds,
+      }));
+    },
     onSuccess: async () => {
       showSnackbar(`Resource ${resourceID} deleted`, 'success');
       await queryClient.invalidateQueries({ queryKey });
@@ -90,11 +103,12 @@ export const useResource = ({
 
   const resourceQuery = useQuery({
     queryKey,
-    queryFn: async () => Get(pluginID, connectionID, resourceKey, GetInput.createFrom({
+    queryFn: enabled && !!resourceKey && !!resourceID && readiness.phase === 'connected' ? ({ signal, queryKey }) => guardQuery(queryKey, signal, () => Get(pluginID, connectionID, resourceKey, GetInput.createFrom({
       id: resourceID,
       namespace,
-    })),
+    }))) : skipToken,
     retry: false,
+    enabled: enabled && !!resourceKey && !!resourceID && readiness.phase === 'connected',
   });
 
   return {

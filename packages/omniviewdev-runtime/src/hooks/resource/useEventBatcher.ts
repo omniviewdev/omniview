@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { useCallback, useLayoutEffect, useRef } from 'react';
 import type { QueryClient, QueryKey } from '@tanstack/react-query';
 import get from 'lodash.get';
 import type { WatchState } from '../../types/watch';
@@ -101,9 +101,10 @@ export function useEventBatcher(
   getResourceKey: (id: string, ns: string) => QueryKey,
   idAccessor: string | undefined,
   watchState: WatchState,
-  options?: { syncWindowMs?: number },
+  options?: { syncWindowMs?: number; enabled?: boolean },
 ) {
   const syncWindowMs = options?.syncWindowMs ?? 500;
+  const enabled = options?.enabled ?? true;
 
   const bufferRef = useRef<ResourceEvent[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -147,6 +148,7 @@ export function useEventBatcher(
 
   const enqueue = useCallback(
     (event: ResourceEvent) => {
+      if (!enabled) return;
       bufferRef.current.push(event);
 
       // Already have a pending flush scheduled — just buffer.
@@ -161,12 +163,13 @@ export function useEventBatcher(
         rafRef.current = requestAnimationFrame(flush);
       }
     },
-    [flush, syncWindowMs],
+    [flush, syncWindowMs, enabled],
   );
 
-  // Cancel pending timer/RAF on unmount.
-  useEffect(() => {
+  // Discard work when disabled or when the cache target changes.
+  useLayoutEffect(() => {
     return () => {
+      bufferRef.current = [];
       if (timerRef.current !== null) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
@@ -176,7 +179,7 @@ export function useEventBatcher(
         rafRef.current = null;
       }
     };
-  }, []);
+  }, [enabled, flush]);
 
   return enqueue;
 }

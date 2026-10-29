@@ -1,9 +1,12 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { showAppError } from '../../errors/parseAppError';
 import { ActionInput } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/resource/models';
 import { GetActions, ExecuteAction } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
 import { useResolvedPluginId } from '../useResolvedPluginId';
+import { useConnectionReadiness } from '../connection/useConnectionReadiness';
+import { useConnectionQueryGuard } from './useConnectionQueryGuard';
+import { requireConnectionReady } from '../../connection/connectionReadiness';
 
 type UseResourceActionsOptions = {
   /**
@@ -42,10 +45,12 @@ export const useResourceActions = ({
   enabled = true,
 }: UseResourceActionsOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
+  const readiness = useConnectionReadiness({ pluginID, connectionID, enabled: enabled && !!resourceKey });
+  const guardQuery = useConnectionQueryGuard(pluginID, connectionID);
   const query = useQuery({
     queryKey: ['RESOURCE_ACTIONS', pluginID, connectionID, resourceKey],
-    queryFn: () => GetActions(pluginID, connectionID, resourceKey),
-    enabled: enabled && !!pluginID && !!connectionID && !!resourceKey,
+    queryFn: enabled && !!resourceKey && readiness.phase === 'connected' ? ({ signal, queryKey }) => guardQuery(queryKey, signal, () => GetActions(pluginID, connectionID, resourceKey)) : skipToken,
+    enabled: enabled && !!pluginID && !!connectionID && !!resourceKey && readiness.phase === 'connected',
     staleTime: 5 * 60 * 1000, // actions don't change often
   });
 
@@ -101,14 +106,16 @@ export const useExecuteAction = ({
   const { showSnackbar } = useSnackbar();
 
   const mutation = useMutation({
-    mutationFn: async ({ actionID, id = '', namespace = '', params = {} }: ExecuteActionParams) =>
-      ExecuteAction(
+    mutationFn: async ({ actionID, id = '', namespace = '', params = {} }: ExecuteActionParams) => {
+      await requireConnectionReady(pluginID, connectionID);
+      return ExecuteAction(
         pluginID,
         connectionID,
         resourceKey,
         actionID,
         ActionInput.createFrom({ id, namespace, params }),
-      ),
+      );
+    },
     onSuccess: (result) => {
       if (result?.message) {
         showSnackbar(result.message, 'success');

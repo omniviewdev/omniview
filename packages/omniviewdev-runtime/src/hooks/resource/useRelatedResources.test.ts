@@ -7,6 +7,16 @@ vi.mock('../useResolvedPluginId', () => ({
   useResolvedPluginId: (explicit?: string) => explicit ?? 'kubernetes',
 }));
 
+let connectionPhase = 'connected';
+vi.mock('../connection/useConnectionReadiness', () => ({
+  useConnectionReadiness: () => ({ phase: connectionPhase }),
+}));
+vi.mock('../../connection/connectionReadiness', () => ({
+  getConnectionReadinessGeneration: () => 1,
+  isConnectionReadinessCurrent: () => connectionPhase === 'connected',
+  connectionReadinessStore: () => ({ subscribe: () => () => {} }),
+}));
+
 let mockGetRelated: Mock;
 let mockGetDependencyTree: Mock;
 let mockGetSubgraph: Mock;
@@ -58,7 +68,7 @@ const rs = node('apps::v1::ReplicaSet', 'web-abc', 'default');
 const worker = node('core::v1::Node', 'worker-1');
 
 function wrapper({ children }: { children: React.ReactNode }) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const [client] = React.useState(() => new QueryClient({ defaultOptions: { queries: { retry: false } } }));
   return React.createElement(QueryClientProvider, { client }, children);
 }
 
@@ -67,6 +77,7 @@ beforeEach(() => {
   mockGetDependencyTree = vi.fn();
   mockGetSubgraph = vi.fn();
   listeners.clear();
+  connectionPhase = 'connected';
 });
 
 describe('toRelatedResources', () => {
@@ -141,6 +152,28 @@ describe('useRelatedResources', () => {
 
     expect(mockGetRelated).not.toHaveBeenCalled();
     expect(result.current.related).toEqual([]);
+  });
+
+  it('blocks disconnected queries and graph listeners, then resumes and cleans up on disconnect', async () => {
+    connectionPhase = 'disconnected';
+    mockGetRelated.mockResolvedValue([]);
+    const { rerender } = renderHook(() => useRelatedResources({
+      pluginID: 'kubernetes', connectionID: 'c1', resourceKey: 'core::v1::Pod', resourceID: 'web-1',
+    }), { wrapper });
+
+    expect(mockGetRelated).not.toHaveBeenCalled();
+    expect(listeners.get('kubernetes/c1/graph/CHANGED')?.size ?? 0).toBe(0);
+
+    connectionPhase = 'connected';
+    rerender();
+    await waitFor(() => expect(mockGetRelated).toHaveBeenCalledTimes(1));
+    expect(listeners.get('kubernetes/c1/graph/CHANGED')?.size).toBe(1);
+
+    connectionPhase = 'disconnected';
+    rerender();
+    expect(listeners.get('kubernetes/c1/graph/CHANGED')?.size).toBe(0);
+    act(() => emit('kubernetes/c1/graph/CHANGED'));
+    expect(mockGetRelated).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -4,6 +4,7 @@ import { showAppError } from '../../errors/parseAppError';
 import { CreateInput, UpdateInput, DeleteInput } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/resource/models';
 import { Create, Update, Delete } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
 import { useResolvedPluginId } from '../useResolvedPluginId';
+import { requireConnectionReady } from '../../connection/connectionReadiness';
 
 type ResourceMutationOptions = {
   /**
@@ -60,8 +61,9 @@ export const useResourceMutations = ({ pluginID: explicitPluginID }: UseResource
   const { showSnackbar } = useSnackbar();
 
   const createMutation = useMutation({
-    mutationFn: async ({ opts, input }: { opts: ResourceMutationOptions; input: { input?: any; namespace?: string } }) =>
-      Create(
+    mutationFn: async ({ opts, input }: { opts: ResourceMutationOptions; input: { input?: unknown; namespace?: string } }) => {
+      await requireConnectionReady(pluginID, opts.connectionID);
+      return Create(
         pluginID,
         opts.connectionID,
         opts.resourceKey,
@@ -69,7 +71,8 @@ export const useResourceMutations = ({ pluginID: explicitPluginID }: UseResource
           input: input.input,
           namespace: input.namespace ?? opts.namespace ?? '',
         })
-      ),
+      );
+    },
     onSuccess: (_, { opts }) => {
       showSnackbar(`Resource ${opts.resourceID} created`, 'success');
     },
@@ -79,8 +82,9 @@ export const useResourceMutations = ({ pluginID: explicitPluginID }: UseResource
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ opts, input }: { opts: ResourceMutationOptions; input: { input?: any } }) =>
-      Update(
+    mutationFn: async ({ opts, input }: { opts: ResourceMutationOptions; input: { input?: unknown } }) => {
+      await requireConnectionReady(pluginID, opts.connectionID);
+      return Update(
         pluginID,
         opts.connectionID,
         opts.resourceKey,
@@ -89,7 +93,8 @@ export const useResourceMutations = ({ pluginID: explicitPluginID }: UseResource
           id: opts.resourceID,
           namespace: opts.namespace ?? '',
         })
-      ),
+      );
+    },
     onSuccess: (_, { opts }) => {
       showSnackbar(`Resource ${opts.resourceID} updated`, 'success');
     },
@@ -99,8 +104,9 @@ export const useResourceMutations = ({ pluginID: explicitPluginID }: UseResource
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async ({ opts, input }: { opts: ResourceMutationOptions; input: { gracePeriodSeconds?: number } }) =>
-      Delete(
+    mutationFn: async ({ opts, input }: { opts: ResourceMutationOptions; input: { gracePeriodSeconds?: number } }) => {
+      await requireConnectionReady(pluginID, opts.connectionID);
+      return Delete(
         pluginID,
         opts.connectionID,
         opts.resourceKey,
@@ -109,7 +115,8 @@ export const useResourceMutations = ({ pluginID: explicitPluginID }: UseResource
           namespace: opts.namespace ?? '',
           gracePeriodSeconds: input.gracePeriodSeconds,
         })
-      ),
+      );
+    },
     onSuccess: (_, { opts }) => {
       showSnackbar(`Resource ${opts.resourceID} deleted`, 'success');
     },
