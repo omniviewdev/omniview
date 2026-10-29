@@ -438,11 +438,15 @@ func (m *Manager) Edit(ctx context.Context, name string, opts EditOptions) (Work
 		for _, previous := range j.Resources {
 			if desired.Repositories[i].ID == previous.Repository.ID {
 				desired.Repositories[i].Branch = previous.Repository.Branch
-				if _, changed := opts.Refs[previous.Repository.ID]; !changed {
+				desired.Repositories[i].Upstream = previous.Repository.Upstream
+				if _, changed := opts.Refs[previous.Repository.ID]; !changed || opts.PreserveSelection {
 					desired.Repositories[i].BaseRef = previous.Repository.BaseRef
 				}
 			}
 		}
+	}
+	if err = configureManifestUpstreams(ctx, reg, &desired, opts.Upstreams); err != nil {
+		return Workspace{}, err
 	}
 	// Reconfigure restores dependency/producer overlays before Edit. A rename
 	// must validate every clean worktree and ref before retiring generated output;

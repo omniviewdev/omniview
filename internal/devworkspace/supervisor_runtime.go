@@ -159,19 +159,7 @@ func (s *workspaceSupervisor) launch(ctx context.Context) error {
 	if err := s.commitFeedback(deadline, initialChange); err != nil {
 		return err
 	}
-	if s.options.Watch {
-		done := make(chan struct{})
-		s.mu.Lock()
-		s.watchDone = done
-		s.mu.Unlock()
-		go func() {
-			defer close(done)
-			err := graph.Watch(ctx, s.watchHooks())
-			if err != nil && ctx.Err() == nil {
-				s.failed(err)
-			}
-		}()
-	}
+	s.startSourceWatcher(ctx)
 	s.monitorChildren(ctx)
 	return nil
 }

@@ -29,6 +29,11 @@ type Status struct {
 	ServedCheckouts map[string]CheckoutStatus       `json:"servedCheckouts,omitempty"`
 	FailedStage     string                          `json:"failedStage,omitempty"`
 	RecoveryCommand string                          `json:"recoveryCommand,omitempty"`
+	Follow          *FollowStatus                   `json:"follow,omitempty"`
+	Update          *UpdatePlan                     `json:"update,omitempty"`
+
+	// SourceUpdateSupported is evidence only in an authenticated live response.
+	SourceUpdateSupported bool `json:"sourceUpdateSupported,omitempty"`
 }
 
 type ServiceStatus struct {
@@ -123,6 +128,14 @@ func ConnectWorkspaceControl(ctx context.Context, w Workspace, home, generation 
 }
 
 func (m *Manager) Status(ctx context.Context, name string) (Status, error) {
+	result, err := m.status(ctx, name)
+	if result.Manifest.WorkspaceID != "" {
+		m.addUpstreamStatus(&result)
+	}
+	return result, err
+}
+
+func (m *Manager) status(ctx context.Context, name string) (Status, error) {
 	w, err := m.Inspect(ctx, name)
 	if err != nil {
 		return Status{}, err
@@ -165,7 +178,7 @@ func (m *Manager) Status(ctx context.Context, name string) (Status, error) {
 	if err != nil {
 		return status, err
 	}
-	live, err := callSupervisor(ctx, record, token, "status")
+	live, err := callSupervisor(ctx, record, token, supervisorStatusCommand)
 	if err != nil {
 		return status, devcontract.Fail(4, "supervisor_unreachable", "live supervisor cannot be authenticated; refusing adoption or PID-only cleanup")
 	}

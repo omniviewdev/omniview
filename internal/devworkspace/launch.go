@@ -190,7 +190,21 @@ func (m *Manager) Start(ctx context.Context, name string, o LaunchOptions, execu
 }
 
 func (m *Manager) Down(ctx context.Context, name string) (Status, error) {
-	status, err := m.supervisorCommand(ctx, name, "stop")
+	return m.down(ctx, name, true)
+}
+
+func (m *Manager) down(ctx context.Context, name string, fence bool) (Status, error) {
+	if fence {
+		if err := m.fenceFollow(ctx, name); err != nil {
+			return Status{}, err
+		}
+		release, err := m.waitUpdateAuthority(ctx, name)
+		if err != nil {
+			return Status{}, err
+		}
+		defer release()
+	}
+	status, err := m.supervisorCommand(ctx, name, supervisorStopCommand)
 	if err != nil || status.Generation == "" || runtime.GOOS == "darwin" {
 		return status, err
 	}
@@ -229,7 +243,7 @@ func (m *Manager) Restart(ctx context.Context, name string) (Status, error) {
 	if err != nil {
 		return Status{}, err
 	}
-	stopped, err := m.supervisorCommand(ctx, name, "restart")
+	stopped, err := m.supervisorCommand(ctx, name, supervisorRestartCommand)
 	if err != nil {
 		return stopped, err
 	}
@@ -263,13 +277,13 @@ func (m *Manager) supervisorCommand(ctx context.Context, name, command string) (
 	}
 	var record supervisorRecord
 	if err = readLaunchJSON(launchPath(w, "supervisor.json"), &record); err != nil {
-		if os.IsNotExist(err) && command == "stop" {
+		if os.IsNotExist(err) && command == supervisorStopCommand {
 			return Status{Workspace: w, Phase: "stopped"}, nil
 		}
 		return Status{}, err
 	}
 	if err = verifySupervisor(record, w); err != nil {
-		if errors.Is(err, devsession.ErrProcessGone) && command == "stop" {
+		if errors.Is(err, devsession.ErrProcessGone) && command == supervisorStopCommand {
 			return Status{Workspace: w, Generation: record.Generation, Phase: "crashed"}, nil
 		}
 		return Status{}, err
@@ -277,6 +291,9 @@ func (m *Manager) supervisorCommand(ctx context.Context, name, command string) (
 	token, err := readSupervisorToken(w, record)
 	if err != nil {
 		return Status{}, err
+	}
+	if command != supervisorStopCommand && command != supervisorRestartCommand {
+		return callSupervisor(ctx, record, token, command)
 	}
 	return shutdownSupervisor(ctx, w, record, token, command)
 }
@@ -313,7 +330,7 @@ func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 	report, err := s.manager.Link(ctx, s.workspace.Manifest.WorkspaceID, LinkOptions{Evidence: o.LinkEvidence})
 	if err != nil {
 		var typed *devcontract.Error
-		if !errors.As(err, &typed) || typed.Code != "link_resolution_failed" || report.Phase != "linked" {
+		if !errors.As(err, &typed) || typed.Code != linkResolutionFailureCode || report.Phase != "linked" {
 			return nil, err
 		}
 	}

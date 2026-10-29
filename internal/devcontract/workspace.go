@@ -30,11 +30,16 @@ type WorkspaceManifest struct {
 	Ports         PortPolicy   `json:"ports"`
 }
 type Repository struct {
-	ID         string `json:"id"`
-	Directory  string `json:"directory"`
-	BaseRef    string `json:"baseRef"`
-	BaseCommit string `json:"baseCommit"`
-	Branch     string `json:"branch"`
+	ID         string              `json:"id"`
+	Directory  string              `json:"directory"`
+	BaseRef    string              `json:"baseRef"`
+	BaseCommit string              `json:"baseCommit"`
+	Branch     string              `json:"branch"`
+	Upstream   *RepositoryUpstream `json:"upstream,omitempty"`
+}
+type RepositoryUpstream struct {
+	Remote string `json:"remote"`
+	Branch string `json:"branch"`
 }
 type Plugin struct {
 	ID           string `json:"id"`
@@ -92,6 +97,11 @@ func (m WorkspaceManifest) Validate() error {
 		if strings.TrimSpace(r.BaseRef) == "" || !commitPattern.MatchString(r.BaseCommit) || strings.TrimSpace(r.Branch) == "" {
 			return Fail(2, "unresolved_repository", "repository requires base ref, resolved commit and branch")
 		}
+		if r.Upstream != nil {
+			if upstreamErr := r.Upstream.Validate(); upstreamErr != nil {
+				return upstreamErr
+			}
+		}
 	}
 	if !repos["omniview"] {
 		return Fail(2, "missing_host", "workspace must select omniview")
@@ -117,6 +127,32 @@ func (m WorkspaceManifest) Validate() error {
 			return Fail(2, "invalid_port", "port overrides must be valid distinct ports")
 		}
 		used[port] = true
+	}
+	return nil
+}
+
+const invalidUpstreamExitCode = 2
+
+// Validate accepts only named remotes and fully qualified branch references.
+func (u RepositoryUpstream) Validate() error {
+	for _, value := range []string{u.Remote, u.Branch} {
+		for _, character := range value {
+			if character < 0x20 || character == 0x7f {
+				return Fail(invalidUpstreamExitCode, "invalid_upstream", "upstream must not contain control characters")
+			}
+		}
+	}
+	if u.Remote == "" || strings.HasPrefix(u.Remote, "-") || strings.ContainsAny(u.Remote, "/\\: \t\x00\r\n") ||
+		!strings.HasPrefix(u.Branch, "refs/heads/") || strings.HasSuffix(u.Branch, "/") ||
+		strings.HasSuffix(u.Branch, ".") || strings.ContainsAny(u.Branch, " ~^:?*[\\\t\x00\r\n") ||
+		strings.Contains(u.Branch, "..") || strings.Contains(u.Branch, "@{") || strings.Contains(u.Branch, "//") {
+		return Fail(invalidUpstreamExitCode, "invalid_upstream",
+			"upstream requires a named remote and full refs/heads branch")
+	}
+	for _, component := range strings.Split(strings.TrimPrefix(u.Branch, "refs/heads/"), "/") {
+		if component == "" || strings.HasPrefix(component, ".") || strings.HasSuffix(component, ".lock") {
+			return Fail(invalidUpstreamExitCode, "invalid_upstream", "upstream branch is not a valid Git branch")
+		}
 	}
 	return nil
 }

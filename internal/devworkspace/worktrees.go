@@ -181,13 +181,21 @@ func verifyWorktree(ctx context.Context, r *resource, clean bool) error {
 }
 
 func (m *Manager) updateRef(ctx context.Context, root string, j *journal, r *resource, desired devcontract.Repository) error {
+	return m.updateRefChecked(ctx, root, j, r, desired, true)
+}
+
+// updateRefChecked permits the source transaction to retain separately validated
+// generated outputs while preserving all branch and marker protections.
+func (m *Manager) updateRefChecked(
+	ctx context.Context, root string, j *journal, r *resource, desired devcontract.Repository, clean bool,
+) error {
 	head := refValue(ctx, r.CommonDir, "refs/heads/"+r.Repository.Branch)
 	marker := refValue(ctx, r.CommonDir, r.Marker)
 	probe := *r
 	if r.RefTarget == desired.BaseCommit && head == desired.BaseCommit && marker == desired.BaseCommit {
 		probe.Repository.BaseCommit = desired.BaseCommit
 	}
-	if err := verifyWorktree(ctx, &probe, true); err != nil {
+	if err := verifyWorktree(ctx, &probe, clean); err != nil {
 		return err
 	}
 	if head != r.Repository.BaseCommit && !(r.RefTarget == desired.BaseCommit && head == desired.BaseCommit) {

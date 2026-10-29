@@ -2,6 +2,7 @@ package devoutputs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -89,24 +90,12 @@ func prepareRestorationIntents(ctx context.Context, s scope, j *journal, observa
 		if err != nil {
 			return err
 		}
-		if entry.Spec.Mode == "filter" {
-			baseline := baselineSnapshot(files)
-			retained, remove := snapshot{}, snapshot{}
-			for path, value := range current {
-				if path == "." {
-					retained[path] = value
-					continue
-				}
-				if committed, ok := baseline[path]; ok {
-					if !equalCommitted(value, true, committed, true) {
-						return fmt.Errorf("committed loader source differs; refusing source undo")
-					}
-					retained[path] = value
-				} else {
-					remove[path] = value
-				}
+		if entry.Spec.Mode == filteredOutputMode {
+			intent, cleanupErr := prepareFilteredCleanup(current, baselineSnapshot(files), head)
+			if cleanupErr != nil {
+				return cleanupErr
 			}
-			entry.Cleanup = &cleanup{Remove: remove, Retain: retained, Head: head}
+			entry.Cleanup = intent
 		} else {
 			parent := filepath.Dir(entry.Spec.Target)
 			identity, err := directoryIdentity(parent)
@@ -128,6 +117,26 @@ func prepareRestorationIntents(ctx context.Context, s scope, j *journal, observa
 		return save(s, j)
 	}
 	return nil
+}
+
+func prepareFilteredCleanup(current, baseline snapshot, head string) (*cleanup, error) {
+	retained, remove := snapshot{}, snapshot{}
+	for path, value := range current {
+		if path == "." {
+			retained[path] = value
+			continue
+		}
+		committed, ok := baseline[path]
+		if !ok {
+			remove[path] = value
+			continue
+		}
+		if !equalCommitted(value, true, committed, true) {
+			return nil, errors.New("committed loader source differs; refusing source undo")
+		}
+		retained[path] = value
+	}
+	return &cleanup{Remove: remove, Retain: retained, Head: head}, nil
 }
 
 func restoreOutputJournal(ctx context.Context, s scope, j *journal) error {
