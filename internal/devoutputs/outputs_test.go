@@ -351,7 +351,7 @@ func TestSharedCacheClosesOnlyAfterLastActualWriter(t *testing.T) {
 	}
 }
 
-func TestFilteredViteRestorationPreservesUnrelatedTrackedGitlink(t *testing.T) {
+func TestViteRestorationPreservesUnrelatedTrackedGitlink(t *testing.T) {
 	w, repo := outputFixture(t)
 	submodule := filepath.Join(repo, "plugins", "kubernetes")
 	if err := os.MkdirAll(submodule, 0700); err != nil {
@@ -372,7 +372,7 @@ func TestFilteredViteRestorationPreservesUnrelatedTrackedGitlink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stamp := filepath.Join(repo, "vite.config.ts.timestamp-123-abcdef.mjs")
+	stamp := filepath.Join(repo, "node_modules", ".vite-temp", "vite.config.ts.timestamp-123-abcdef.mjs")
 	writeOutput(t, stamp, "owned Vite loader output")
 	if err = vite.Finish(context.Background()); err != nil {
 		t.Fatal(err)
@@ -391,7 +391,7 @@ func TestFilteredViteRestorationPreservesUnrelatedTrackedGitlink(t *testing.T) {
 	}
 }
 
-func TestFilteredViteBaselineStillRejectsSelectedNonregularEntry(t *testing.T) {
+func TestVitePreservesUnmanagedRootLoaderBaseline(t *testing.T) {
 	w, repo := outputFixture(t)
 	selected := "vite.config.ts.timestamp-123-abcdef.mjs"
 	if err := os.Mkdir(filepath.Join(repo, selected), 0700); err != nil {
@@ -408,8 +408,15 @@ func TestFilteredViteBaselineStillRejectsSelectedNonregularEntry(t *testing.T) {
 	if err = install.Finish(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = BeginVite(context.Background(), w, repo); err == nil {
-		t.Fatal("nonregular selected loader baseline was adopted")
+	vite, err := BeginVite(context.Background(), w, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = vite.Finish(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err = Restore(context.Background(), w); err != nil {
+		t.Fatal(err)
 	}
 	if current := outputGit(t, repo, "ls-tree", "HEAD", "--", selected); current != baseline {
 		t.Fatal("refused baseline changed the selected submodule")

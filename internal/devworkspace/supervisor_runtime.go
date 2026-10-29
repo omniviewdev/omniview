@@ -662,7 +662,9 @@ func (s *workspaceSupervisor) watchHooks() WatchHooks {
 		}
 		return generations, nil
 	}, WaitPluginReady: s.waitPluginReady, HostRebuildAndWait: func(ctx context.Context, request HostBuildRequest) (map[string]bool, error) {
-		s.runMu.Lock()
+		if err := s.runMu.LockContext(ctx); err != nil {
+			return nil, err
+		}
 		defer s.runMu.Unlock()
 		if err := s.replaceHost(ctx, &request); err != nil {
 			return nil, err
@@ -674,7 +676,9 @@ func (s *workspaceSupervisor) watchHooks() WatchHooks {
 		}
 		return ready, nil
 	}, RefreshConsumers: func(ctx context.Context, change WatchChange) error {
-		s.runMu.Lock()
+		if err := s.runMu.LockContext(ctx); err != nil {
+			return err
+		}
 		defer s.runMu.Unlock()
 		hostRebuilt := feedbackReplacesHost(change)
 		if !hostRebuilt && !feedbackRestartsConsumers(change) {

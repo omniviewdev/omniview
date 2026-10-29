@@ -288,6 +288,12 @@ A failed build/dependency cohort is not rebuilt on every poll; use its recovery
 command or observe a new applicable target. The saved SDK review and protected
 source checks still apply when an SDK branch advances.
 
+Foreground apply consent is bound to the repository selection, upstream and
+workspace policy captured when follow starts. Editing that policy revokes consent
+on the next observation before automatic apply. Successful updates may advance
+selected commits without revoking their own consent; changing an upstream or
+selection requires a new foreground follow session.
+
 Ctrl-C while idle stops following and leaves the app running. Cancellation
 during apply retains the exact resumable operation and joins owned work.
 `workspace down` cancels or fences the follower before stopping the app, so an
@@ -361,8 +367,9 @@ Profile isolation does not isolate HOME, kubeconfig, cloud credentials, terminal
 
 Edits require a stopped supervisor and preserve UUID/profile/unaffected assignments. The orchestrator preserves exact link evidence, unlinks the old overlay, invokes A03's validated durable intent transaction and relinks the committed selection. A validation failure with unchanged intent restores previous links. A Git failure after durable intent remains explicit/resumable (`workspace resume`), not a falsely promised inverse rollback. Ref/removal/rename operations refuse dirty or foreign worktrees. `link`, `unlink`, `list`, `resume` and `rollback` are real CLI lifecycle commands too; Task `workspace:<verb>` wrappers forward the same quoted arguments.
 
-`workspace edit --apply` captures authenticated running state before its
-intentional stop, then refreshes the edited selection and restarts only a
+`workspace edit --apply` validates canonical intent before capturing authenticated
+running state and intentionally stopping services, then refreshes the edited
+selection and restarts only a
 previously running workspace. A previously stopped workspace remains stopped;
 `--apply` is not implicit startup consent. Missing dependency acceptance proof
 or launch configuration remains an explicit refresh failure, not fabricated

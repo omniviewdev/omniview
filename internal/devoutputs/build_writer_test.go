@@ -209,7 +209,7 @@ func TestFiniteViteBuildChecksConsumerModulesAndInputsBeforeEachProducer(t *test
 }
 
 func TestFiniteViteBuildRefusesEachReplacedConsumerCacheBeforeProducer(t *testing.T) {
-	for _, kind := range []Producer{loaderCache, typeCache, viteCache, loaderFiles} {
+	for _, kind := range []Producer{loaderCache, typeCache, viteCache} {
 		t.Run(string(kind), func(t *testing.T) {
 			ctx := context.Background()
 			w, plan, consumers, _ := finiteBuildFixture(t)
@@ -248,19 +248,6 @@ func TestFiniteViteBuildRefusesEachReplacedConsumerCacheBeforeProducer(t *testin
 			}
 			if err = os.Mkdir(target, original.Mode().Perm()); err != nil {
 				t.Fatal(err)
-			}
-			if kind == loaderFiles {
-				// Keep every module/input inode and byte unchanged: only the
-				// consumer's independently reserved loader root is replaced.
-				children, err := os.ReadDir(retained)
-				if err != nil {
-					t.Fatal(err)
-				}
-				for _, child := range children {
-					if err = os.Rename(filepath.Join(retained, child.Name()), filepath.Join(target, child.Name())); err != nil {
-						t.Fatal(err)
-					}
-				}
 			}
 			output := filepath.Join(target, "producer-output")
 			if _, err = build.Environment(ctx, consumer); err == nil {

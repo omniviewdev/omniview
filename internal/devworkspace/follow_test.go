@@ -191,6 +191,53 @@ func TestApplyFollowSerializesSuccessorAndSkipsDuplicateCohorts(t *testing.T) {
 	require.NoFileExists(t, sourceUpdatePath(m, w))
 }
 
+func TestApplyFollowDoesNotAdoptChangedPolicyAfterOwnProgress(t *testing.T) {
+	m, w, remote, source := upstreamFixture(t)
+	checkout := filepath.Join(w.Root, "omniview")
+	canonical := fixtureGit(t, source, "rev-parse", "HEAD")
+	first := upstreamCommit(t, remote, "component.ts", "export const revision = 1")
+	applied, waits := 0, 0
+	revoked := false
+	err := m.Follow(context.Background(), w.Manifest.WorkspaceID, FollowOptions{
+		Apply: true,
+		wait: func(ctx context.Context, _ time.Duration) error {
+			waits++
+			if waits > 1 {
+				return context.Canceled
+			}
+			current, inspectErr := m.Inspect(ctx, w.Manifest.WorkspaceID)
+			require.NoError(t, inspectErr)
+			require.NotEqual(t, UpdateConfigurationFingerprint(w.Manifest),
+				UpdateConfigurationFingerprint(current.Manifest))
+			require.Equal(t, followConfigurationFingerprint(w.Manifest),
+				followConfigurationFingerprint(current.Manifest))
+			fixtureGit(t, remote, "checkout", "-b", "alternate")
+			_, editErr := m.Edit(ctx, w.Manifest.WorkspaceID, EditOptions{
+				PreserveSelection: true, Upstreams: map[string]string{"omniview": "origin/alternate"},
+			})
+			require.NoError(t, editErr)
+			upstreamCommit(t, remote, "component.ts", "export const revision = 2")
+			return nil
+		},
+	}, func(status FollowStatus) error {
+		if status.Result == followApplied {
+			applied++
+		}
+		if status.Result == "consent_revoked" {
+			require.False(t, status.Enabled)
+			require.Equal(t, "configuration_changed", status.BlockedReason)
+			revoked = true
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	require.True(t, revoked)
+	require.Equal(t, 1, applied)
+	require.Equal(t, first, fixtureGit(t, checkout, "rev-parse", "HEAD"))
+	require.Equal(t, canonical, fixtureGit(t, source, "rev-parse", "HEAD"))
+	require.NoFileExists(t, sourceUpdatePath(m, w))
+}
+
 func TestApplyFollowPausesDirtySourceAndRevalidatesAfterUserFix(t *testing.T) {
 	m, w, remote, _ := upstreamFixture(t)
 	target := upstreamCommit(t, remote, "component.ts", "export const remote = true")

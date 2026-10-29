@@ -513,7 +513,7 @@ func (build *ViteBuild) Environment(ctx context.Context, consumerRoot string) (s
 		if !sameSnapshot(actual, physical(entry.Expected)) {
 			return fmt.Errorf("consumer modules changed before build")
 		}
-		for _, kind := range []Producer{loaderCache, typeCache, viteCache, loaderFiles} {
+		for _, kind := range []Producer{loaderCache, typeCache, viteCache} {
 			spec, err := writer.s.spec(consumerRoot, kind)
 			if err != nil {
 				return err
@@ -606,9 +606,9 @@ func (writer *Writer) beginViteConsumer(ctx context.Context, j *journal, consume
 	if len(current) == 0 {
 		return fmt.Errorf("controlled node_modules is missing; reinstall before starting Vite")
 	}
-	// Loader and compiler cache subtrees are explicitly transferred out of the
-	// immutable modules snapshot, with their own actual writer lifetimes.
-	for _, kind := range []Producer{loaderCache, typeCache, viteCache, loaderFiles} {
+	// Managed Vite uses the independently owned, preallocated node_modules
+	// loader directory. Root-level timestamp files are not managed outputs.
+	for _, kind := range []Producer{loaderCache, typeCache, viteCache} {
 		spec, err := s.spec(consumerRoot, kind)
 		if err != nil {
 			return err
@@ -643,13 +643,6 @@ func (writer *Writer) beginViteConsumer(ctx context.Context, j *journal, consume
 				}
 				parent.Expected = filtered
 				parent.Exclude = append(parent.Exclude, relative)
-			case loaderFiles:
-				if len(actual) > 1 {
-					return fmt.Errorf("preexisting config-loader artifacts are not owned")
-				}
-				if _, err = head(ctx, spec.Repository); err != nil {
-					return err
-				}
 			case viteCache:
 				if len(actual) > 0 {
 					return fmt.Errorf("preexisting optimizer cache is not owned")
@@ -686,7 +679,7 @@ func (writer *Writer) beginViteConsumer(ctx context.Context, j *journal, consume
 		}
 		writer.registered = true
 		expectedRoot := entry.Expected["."]
-		if kind != loaderFiles && (expectedRoot.Kind == "" || expectedRoot.Kind == "absent") {
+		if expectedRoot.Kind == "" || expectedRoot.Kind == "absent" {
 			if kind == viteCache {
 				if err = ensureMetadataDirectory(s, filepath.Dir(spec.Target)); err != nil {
 					return err

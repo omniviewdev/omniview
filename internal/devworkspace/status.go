@@ -28,6 +28,7 @@ type Status struct {
 	Checkouts       map[string]CheckoutStatus       `json:"checkouts,omitempty"`
 	ServedCheckouts map[string]CheckoutStatus       `json:"servedCheckouts,omitempty"`
 	FailedStage     string                          `json:"failedStage,omitempty"`
+	WaitStage       string                          `json:"waitStage,omitempty"`
 	RecoveryCommand string                          `json:"recoveryCommand,omitempty"`
 	Follow          *FollowStatus                   `json:"follow,omitempty"`
 	Update          *UpdatePlan                     `json:"update,omitempty"`
@@ -162,6 +163,7 @@ func (m *Manager) status(ctx context.Context, name string) (Status, error) {
 				status.Builds = saved.Builds
 				status.LastError = saved.LastError
 				status.FailedStage = saved.FailedStage
+				status.WaitStage = saved.WaitStage
 				status.RecoveryCommand = saved.RecoveryCommand
 				status.ServedCheckouts = saved.ServedCheckouts
 				if saved.Phase == "stopped" {
@@ -180,7 +182,19 @@ func (m *Manager) status(ctx context.Context, name string) (Status, error) {
 	}
 	live, err := callSupervisor(ctx, record, token, supervisorStatusCommand)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			return status, devcontract.Fail(7, "timeout", "workspace inspection timed out or was canceled; supervisor ownership is retained")
+		}
 		return status, devcontract.Fail(4, "supervisor_unreachable", "live supervisor cannot be authenticated; refusing adoption or PID-only cleanup")
+	}
+	// Authentication binds the response to the requested owner, not to the
+	// owner still selected after a concurrent restart publishes its successor.
+	var current supervisorRecord
+	if err = readLaunchJSON(launchPath(w, "supervisor.json"), &current); err != nil || current != record {
+		return status, devcontract.Fail(4, "stale_target", "workspace supervisor changed during inspection; retry the selected workspace")
+	}
+	if err = verifySupervisor(current, w); err != nil {
+		return status, err
 	}
 	live.Workspace = w
 	return live, nil

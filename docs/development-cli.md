@@ -139,10 +139,24 @@ metadata from existing worktrees.
 
 `edit` persists selection/ref/name/port edits. `--apply` also refreshes the workspace:
 stop owned services, relink dependencies, rebuild, restart, and verify readiness.
+Canonical edit intent is validated before `--apply` stops a healthy supervisor;
+the mutation repeats that planning under its lifecycle lock.
 `refresh` uses the current worktree contents without advancing Git refs. `update`
 fast-forwards selected repositories before refreshing; it does not discard dirty
 edits or reset branches. `recover` resumes refresh work using its durable journal.
 Existing `resume` and `rollback` commands handle interrupted workspace creation.
+
+Supervisor inspection does not queue behind a source or shutdown operation.
+During shutdown, `launchPhase: "stopping"` and `waitStage` identify the current
+wait, such as `build-authority`, `plugin-control`, `host`, or `leases`. A busy
+observation does not attest host readiness. A response from a replaced supervisor
+generation is refused rather than reported as the current ready application.
+The authenticated supervisor status request has a five-second total deadline,
+including its response body. A stalled observation returns exit 7 with
+`code: "timeout"` and retains ownership; it does not mark the supervisor dead.
+Canceling a queued request releases its wait without authorizing delayed
+mutations. Canceling an admitted shutdown does not prove disposal: exact process
+handles, output writers, and leases remain available for the owner's retry.
 
 Removing a repository selection retires its worktree but keeps its branch
 ownership record for later reselection or explicit branch deletion. Link, unlink,
@@ -167,9 +181,9 @@ caches inside it, the external Vite optimizer cache, and any `node_modules` at t
 composition root or a selected package root, including trees left by an
 interrupted writer. It then reinstalls through the recorded composition installer,
 so the new trees are snapshotted by a recorded writer. Foreign bytes are never
-adopted. Distributions, bindings, shims, the YAML worker, loader files, their
-publications, and build reuse records stay untouched. A target that resolves
-through a symlink is refused. The result lists the removed paths; `--json` returns
+adopted. Distributions, bindings, shims, the YAML worker, root-level config
+timestamp files, their publications, and build reuse records stay untouched. A
+target that resolves through a symlink is refused. The result lists the removed paths; `--json` returns
 `{"workspaceID", "phase", "removed", "reinstalled"}`. If the reinstall fails, rerun
 the command; if the lockfile was left unverified, `unlink` and relink instead.
 
@@ -180,6 +194,13 @@ records, without reinstalling into the partially restored overlay, and reports
 rerun `workspace unlink` or `workspace remove`, which then completes. Other
 incomplete link phases are still refused. Use the managed launcher for package
 commands to retain pre-run dependency verification.
+
+Managed Vite loaders use an owned, precreated `node_modules/.vite-temp` directory,
+so their interrupted writer is part of the explicit dependency reset. Fresh
+workspaces no longer register a separate root timestamp-file writer. Root-level
+timestamp artifacts remain unmanaged and are never adopted or deleted by this
+reset. A proofless live root-loader entry from an older journal remains a safe
+refusal; a writer token alone cannot prove that its producer stopped.
 
 Refresh commands reuse saved launch settings and protocol evidence. Supply launch
 flags for a workspace that has never launched, or override saved settings
@@ -273,6 +294,10 @@ redacted log metadata to stderr; stdout contains the response envelope and
 `{nextCursor,truncated,count}` metadata. Arbitrary plugin/build output has no
 authoritative sensitivity schema, so messages are not revealed by default.
 
+Output delivery failures return exit 5 in both text and JSON modes, including
+failures while writing an error or diagnostics. A completed mutation remains
+persisted even when its result cannot be delivered; inspect state before retrying.
+
 For deliberate troubleshooting, `plugin dev logs ID --unsafe-output` requests
 real bounded log text in JSON stdout and prints a clear warning to stderr.
 **Raw plugin/build messages may contain secrets.** This flag is not a promise that
@@ -291,7 +316,7 @@ write no setting values to stderr.
 | 2 | Usage, malformed JSON, or typed parameter/schema validation failure |
 | 3 | Missing/ambiguous target, unavailable instance or missing resource |
 | 4 | Target/generation/ownership conflict |
-| 5 | Build, runtime, persistence or protocol failure |
+| 5 | Build, runtime, persistence, protocol or output delivery failure |
 | 6 | Authentication failure |
 | 7 | Wait timeout; accepted mutation may still be running |
 

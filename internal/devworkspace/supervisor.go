@@ -39,8 +39,8 @@ type workspaceSupervisor struct {
 	registry         *devsession.Registry
 	output           io.Writer
 	mu               sync.Mutex
-	runMu            sync.Mutex
-	sourceMu         sync.Mutex
+	runMu            supervisorMutex
+	sourceMu         supervisorMutex
 	watchCancel      context.CancelFunc
 	status           Status
 	binary           string
@@ -118,6 +118,11 @@ func callSupervisor(ctx context.Context, record supervisorRecord, token []byte, 
 	transport := &http.Transport{Proxy: nil, DialContext: (&net.Dialer{Timeout: 3 * time.Second}).DialContext}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	if command == supervisorStatusCommand {
+		// Cover the response body too: a listener or flushed header does not
+		// prove the authenticated owner can complete an observation.
+		client.Timeout = supervisorStatusTimeout
+	}
 	response, err := client.Do(request)
 	if err != nil {
 		return status, err
@@ -151,6 +156,8 @@ const supervisorRestartCommand = "restart"
 const supervisorSourceUpdateCommand = "source-update"
 
 const supervisorStatusCommand = "status"
+
+const supervisorStatusTimeout = 5 * time.Second
 
 const supervisorStopCommand = "stop"
 
@@ -294,7 +301,7 @@ func (m *Manager) ServeSupervisor(ctx context.Context, name string, output io.Wr
 		if host != nil {
 			select {
 			case <-host.done:
-				if err := host.terminalStopError(); err != nil {
+				if err := host.terminalStopError(ctx); err != nil {
 					return errors.Join(devcontract.Fail(4, "workspace_running", "owned host disposal is unresolved"), err)
 				}
 			default:
@@ -412,6 +419,9 @@ func (s *workspaceSupervisor) setPhase(phase string, err error) {
 	s.mu.Lock()
 	if err != nil {
 		s.status.FailedStage = s.status.Phase
+		if s.status.WaitStage != "" {
+			s.status.FailedStage = s.status.WaitStage
+		}
 		s.status.RecoveryCommand = "omniview-dev workspace refresh " + s.workspace.Manifest.WorkspaceID
 	}
 	if phase == "ready" {
@@ -420,8 +430,11 @@ func (s *workspaceSupervisor) setPhase(phase string, err error) {
 		s.status.RecoveryCommand = ""
 	}
 	s.status.Phase = phase
+	if phase == "ready" || phase == "stopped" || phase == "error" {
+		s.status.WaitStage = ""
+	}
 	s.status.LastError = nil
-	if phase == "stopped" || phase == "error" {
+	if phase == "stopping" || phase == "stopped" || phase == "error" {
 		s.status.Instance = nil
 		for role, service := range s.status.Services {
 			service.Ready = false
@@ -435,18 +448,34 @@ func (s *workspaceSupervisor) setPhase(phase string, err error) {
 	s.persist()
 }
 func (s *workspaceSupervisor) failed(err error) { s.setPhase("error", err) }
+
+func (s *workspaceSupervisor) setWaitStage(stage string) {
+	s.mu.Lock()
+	s.status.WaitStage = stage
+	s.mu.Unlock()
+}
 func (s *workspaceSupervisor) execute(ctx context.Context, command string) (Status, error) {
 	if command == supervisorStatusCommand {
-		return s.statusResponse(ctx), nil
+		observation, cancel := context.WithTimeout(ctx, supervisorStatusTimeout)
+		defer cancel()
+		return s.statusResponse(observation), nil
 	}
 	if command == supervisorSourceUpdateCommand {
 		return s.applySourceUpdate(ctx)
 	}
 	if command == supervisorStopCommand || command == supervisorRestartCommand {
-		s.sourceMu.Lock()
+		if err := s.sourceMu.LockContext(ctx); err != nil {
+			return s.snapshot(), err
+		}
 		defer s.sourceMu.Unlock()
+		s.setWaitStage("build-authority")
+		s.setPhase("stopping", nil)
 		s.sessionCancel()
-		s.runMu.Lock()
+		if err := s.runMu.LockContext(ctx); err != nil {
+			s.failed(err)
+			return s.snapshot(), err
+		}
+		defer s.runMu.Unlock()
 		err := s.stopChildren(ctx)
 		if err != nil {
 			s.failed(err)
@@ -456,20 +485,23 @@ func (s *workspaceSupervisor) execute(ctx context.Context, command string) (Stat
 		if s.ownedCleanupComplete {
 			s.exitOnce.Do(func() { close(s.exit) })
 		}
-		s.runMu.Unlock()
 		return s.snapshot(), err
 	}
 	return Status{}, fmt.Errorf("unknown supervisor operation")
 }
 
 func (s *workspaceSupervisor) statusResponse(ctx context.Context) Status {
-	s.sourceMu.Lock()
-	defer s.sourceMu.Unlock()
+	// Observation must never queue behind a mutation or keep source authority
+	// while waiting for a host that may itself be paused in a debugger.
+	if !s.sourceMu.TryLock() {
+		return s.busyStatus()
+	}
 	status := s.snapshot()
+	s.sourceMu.Unlock()
 	if status.Phase != "ready" {
 		return s.observeStatus(ctx, status)
 	}
-	client, descriptor, err := ConnectWorkspaceControl(ctx, s.workspace, s.manager.options.Home, s.generation)
+	client, descriptor, err := ConnectWorkspaceControl(ctx, status.Workspace, s.manager.options.Home, status.Generation)
 	if err != nil {
 		status.Phase = followUnreachable
 		status.Instance = nil
@@ -480,7 +512,7 @@ func (s *workspaceSupervisor) statusResponse(ctx context.Context) Status {
 	// Reconcile live producer observations only in this response. A
 	// transient build failure or intentional plugin stop must neither
 	// poison the supervisor phase nor restart a managed generation.
-	for _, plugin := range s.workspace.Manifest.Plugins {
+	for _, plugin := range status.Manifest.Plugins {
 		state, stateErr := readPluginState(ctx, client, plugin.ID)
 		if stateErr != nil {
 			status.Phase = "error"
@@ -503,7 +535,35 @@ func (s *workspaceSupervisor) statusResponse(ctx context.Context) Status {
 			break
 		}
 	}
-	return s.observeStatus(ctx, status)
+	status = s.observeStatus(ctx, status)
+	if !s.sourceMu.TryLock() {
+		return s.busyStatus()
+	}
+	defer s.sourceMu.Unlock()
+	s.mu.Lock()
+	current := s.status.Phase == "ready" && sameManifest(s.status.Manifest, status.Manifest)
+	s.mu.Unlock()
+	if !current {
+		return s.busyStatus()
+	}
+	return status
+}
+
+func (s *workspaceSupervisor) busyStatus() Status {
+	status := s.snapshot()
+	if status.Phase == "ready" {
+		status.Phase = "busy"
+		if status.WaitStage == "" {
+			status.WaitStage = "source-authority"
+		}
+	}
+	status.Instance = nil
+	for role, service := range status.Services {
+		service.Ready = false
+		status.Services[role] = service
+	}
+	status.Health = RuntimeHealth{Liveness: "alive", Build: "unknown", Dependencies: "unknown", ServedSource: "unknown", Readiness: "unknown", HMR: "unverified", SourceReload: "unverified"}
+	return status
 }
 func (s *workspaceSupervisor) stopChildren(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
@@ -512,6 +572,7 @@ func (s *workspaceSupervisor) stopChildren(ctx context.Context) error {
 	if s.ownedCleanupComplete {
 		return s.feedbackShutdownError
 	}
+	s.setWaitStage("feedback")
 	integrityErr, holdErr := s.holdExistingFeedback(ctx)
 	if holdErr != nil {
 		return errors.Join(holdErr, s.feedbackShutdownError)
@@ -529,12 +590,16 @@ func (s *workspaceSupervisor) stopChildren(ctx context.Context) error {
 		}
 	}
 	// Ask A08 to shut down each exact managed generation before host teardown.
-	if client, _, err := ConnectWorkspaceControl(ctx, s.workspace, s.manager.options.Home, s.generation); err == nil {
+	s.setWaitStage("plugin-control")
+	controlCtx, cancelControl := context.WithTimeout(ctx, 30*time.Second)
+	if client, _, err := ConnectWorkspaceControl(controlCtx, s.workspace, s.manager.options.Home, s.generation); err == nil {
 		for _, plugin := range s.workspace.Manifest.Plugins {
-			_, _ = controlMutation(ctx, client, "plugin.dev.stop", map[string]string{"id": plugin.ID}, 30*time.Second)
+			_, _ = controlMutation(controlCtx, client, "plugin.dev.stop", map[string]string{"id": plugin.ID}, 30*time.Second)
 		}
 		client.Close()
 	}
+	cancelControl()
+	s.setWaitStage("managed-processes")
 	managedErr := s.stopManagedProcesses(ctx)
 	s.mu.Lock()
 	children := make(map[string]*ownedChild, len(s.children))
@@ -543,31 +608,39 @@ func (s *workspaceSupervisor) stopChildren(ctx context.Context) error {
 	}
 	s.mu.Unlock()
 	first := managedErr
+	failedStage := "managed-processes"
 	for _, role := range []string{"host", "vite"} {
 		if child := children[role]; child != nil {
+			s.setWaitStage(role)
 			if err := child.stop(ctx); err != nil {
 				if first == nil {
 					first = err
+					failedStage = role
 				}
 			}
 		}
 	}
+	s.setWaitStage("managed-processes")
 	if err := s.stopManagedProcesses(ctx); err != nil && first == nil {
 		first = err
+		failedStage = "managed-processes"
 	}
 	// Preserve every retained handle and capability if any disposal is still
 	// uncertain. A later authenticated Stop must be able to retry the real owner.
 	if first != nil {
+		s.setWaitStage(failedStage)
 		return errors.Join(first, s.feedbackShutdownError)
 	}
 	// The namespace may contain stale Unix socket inodes after a killed
 	// plugin. Only confirmed disposal of every owned group authorizes cleanup.
+	s.setWaitStage("sockets")
 	if s.unixSocketDirectory != nil {
 		if err := s.unixSocketDirectory.Close(); err != nil {
 			return errors.Join(err, s.feedbackShutdownError)
 		}
 		s.unixSocketDirectory = nil
 	}
+	s.setWaitStage("leases")
 	for role, lease := range s.leases {
 		if err := s.registry.Release(ctx, lease.Key, s.generation); err != nil {
 			if first == nil {
@@ -580,6 +653,7 @@ func (s *workspaceSupervisor) stopChildren(ctx context.Context) error {
 	if first != nil {
 		return errors.Join(first, s.feedbackShutdownError)
 	}
+	s.setWaitStage("discovery")
 	if err := s.clearHostDiscovery(ctx); err != nil {
 		return errors.Join(err, s.feedbackShutdownError)
 	}
@@ -590,9 +664,11 @@ func (s *workspaceSupervisor) stopChildren(ctx context.Context) error {
 		}
 	}
 	s.mu.Unlock()
+	s.setWaitStage("feedback")
 	if err := s.closeFeedback(); err != nil {
 		return errors.Join(err, s.feedbackShutdownError)
 	}
 	s.ownedCleanupComplete = true
+	s.setWaitStage("")
 	return s.feedbackShutdownError
 }

@@ -303,6 +303,106 @@ func (m *Manager) apply(ctx context.Context, root string, j *journal) error {
 	return saveJournal(root, j)
 }
 
+type editPlan struct {
+	registry Registry
+	manifest devcontract.WorkspaceManifest
+}
+
+func (m *Manager) planEdit(ctx context.Context, j *journal, opts EditOptions) (editPlan, error) {
+	old := j.Manifest
+	repos, plugins := map[string]bool{}, map[string]bool{}
+	for _, r := range old.Repositories {
+		repos[r.ID] = true
+	}
+	for _, p := range old.Plugins {
+		plugins[p.ID] = true
+	}
+	for _, id := range opts.RemovePlugins {
+		if !plugins[id] {
+			return editPlan{}, devcontract.Fail(2, "missing_selection", "plugin to remove is not selected")
+		}
+		delete(plugins, id)
+	}
+	for _, id := range opts.AddPlugins {
+		if plugins[id] {
+			return editPlan{}, devcontract.Fail(2, "duplicate_selection", "plugin is already selected")
+		}
+		plugins[id] = true
+	}
+	for _, id := range opts.RemoveRepositories {
+		if id == "omniview" {
+			return editPlan{}, devcontract.Fail(2, "missing_host", "host cannot be removed")
+		}
+		if !repos[id] {
+			return editPlan{}, devcontract.Fail(2, "missing_selection", "repository to remove is not selected")
+		}
+		for _, p := range old.Plugins {
+			if p.RepositoryID == id && plugins[p.ID] {
+				return editPlan{}, devcontract.Fail(2, "plugin_source_required", "remove the plugin selection before removing its source repository")
+			}
+		}
+		delete(repos, id)
+	}
+	for _, id := range opts.AddRepositories {
+		if repos[id] {
+			return editPlan{}, devcontract.Fail(2, "duplicate_selection", "repository is already selected")
+		}
+		repos[id] = true
+	}
+	create := CreateOptions{Slug: old.Slug, DisplayName: old.DisplayName, Baseline: old.Profile.Baseline, Refs: map[string]string{}, Ports: opts.Ports, workspaceID: old.WorkspaceID, pinnedCommits: map[string]string{}}
+	if opts.Slug != nil {
+		create.Slug = *opts.Slug
+	}
+	if opts.DisplayName != nil {
+		create.DisplayName = *opts.DisplayName
+		if create.DisplayName == "" {
+			return editPlan{}, devcontract.Fail(2, "invalid_name", "display name cannot be empty")
+		}
+	}
+	for id := range repos {
+		create.Repositories = append(create.Repositories, id)
+	}
+	for id := range plugins {
+		create.Plugins = append(create.Plugins, id)
+	}
+	// Resolve every existing plugin source from its selected commit, including
+	// a retained source that a plugin selection may reintroduce. Unchanged
+	// tracking names remain names; only explicit ref edits advance their SHAs.
+	for _, r := range j.Resources {
+		create.pinnedCommits[r.Repository.ID] = r.Repository.BaseCommit
+	}
+	for id, ref := range opts.Refs {
+		create.Refs[id] = ref
+	}
+	reg, err := LoadRegistry(m.Root)
+	if err != nil {
+		return editPlan{}, err
+	}
+	desired, err := m.plan(ctx, reg, create)
+	if err != nil {
+		return editPlan{}, err
+	}
+	if opts.Ports == nil {
+		desired.Ports = copyWorkspacePortPolicy(old.Ports)
+	}
+	desired.Links.HostPackages = old.Links.HostPackages
+	for i := range desired.Repositories {
+		for _, previous := range j.Resources {
+			if desired.Repositories[i].ID == previous.Repository.ID {
+				desired.Repositories[i].Branch = previous.Repository.Branch
+				desired.Repositories[i].Upstream = previous.Repository.Upstream
+				if _, changed := opts.Refs[previous.Repository.ID]; !changed || opts.PreserveSelection {
+					desired.Repositories[i].BaseRef = previous.Repository.BaseRef
+				}
+			}
+		}
+	}
+	if err = configureManifestUpstreams(ctx, reg, &desired, opts.Upstreams); err != nil {
+		return editPlan{}, err
+	}
+	return editPlan{registry: reg, manifest: desired}, nil
+}
+
 func (m *Manager) Edit(ctx context.Context, name string, opts EditOptions) (Workspace, error) {
 	unlock, err := lockRoot(m.Root)
 	if err != nil {
@@ -336,78 +436,11 @@ func (m *Manager) Edit(ctx context.Context, name string, opts EditOptions) (Work
 		return Workspace{}, err
 	}
 	old := j.Manifest
-	repos, plugins := map[string]bool{}, map[string]bool{}
-	for _, r := range old.Repositories {
-		repos[r.ID] = true
-	}
-	for _, p := range old.Plugins {
-		plugins[p.ID] = true
-	}
-	for _, id := range opts.RemovePlugins {
-		if !plugins[id] {
-			return Workspace{}, devcontract.Fail(2, "missing_selection", "plugin to remove is not selected")
-		}
-		delete(plugins, id)
-	}
-	for _, id := range opts.AddPlugins {
-		if plugins[id] {
-			return Workspace{}, devcontract.Fail(2, "duplicate_selection", "plugin is already selected")
-		}
-		plugins[id] = true
-	}
-	for _, id := range opts.RemoveRepositories {
-		if id == "omniview" {
-			return Workspace{}, devcontract.Fail(2, "missing_host", "host cannot be removed")
-		}
-		if !repos[id] {
-			return Workspace{}, devcontract.Fail(2, "missing_selection", "repository to remove is not selected")
-		}
-		for _, p := range old.Plugins {
-			if p.RepositoryID == id && plugins[p.ID] {
-				return Workspace{}, devcontract.Fail(2, "plugin_source_required", "remove the plugin selection before removing its source repository")
-			}
-		}
-		delete(repos, id)
-	}
-	for _, id := range opts.AddRepositories {
-		if repos[id] {
-			return Workspace{}, devcontract.Fail(2, "duplicate_selection", "repository is already selected")
-		}
-		repos[id] = true
-	}
-	create := CreateOptions{Slug: old.Slug, DisplayName: old.DisplayName, Baseline: old.Profile.Baseline, Refs: map[string]string{}, Ports: opts.Ports, workspaceID: old.WorkspaceID, pinnedCommits: map[string]string{}}
-	if opts.Slug != nil {
-		create.Slug = *opts.Slug
-	}
-	if opts.DisplayName != nil {
-		create.DisplayName = *opts.DisplayName
-		if create.DisplayName == "" {
-			return Workspace{}, devcontract.Fail(2, "invalid_name", "display name cannot be empty")
-		}
-	}
-	for id := range repos {
-		create.Repositories = append(create.Repositories, id)
-	}
-	for id := range plugins {
-		create.Plugins = append(create.Plugins, id)
-	}
-	// Resolve every existing plugin source from its selected commit, including
-	// a retained source that a plugin selection may reintroduce. Unchanged
-	// tracking names remain names; only explicit ref edits advance their SHAs.
-	for _, r := range j.Resources {
-		create.pinnedCommits[r.Repository.ID] = r.Repository.BaseCommit
-	}
-	for id, ref := range opts.Refs {
-		create.Refs[id] = ref
-	}
-	reg, err := LoadRegistry(m.Root)
+	plan, err := m.planEdit(ctx, j, opts)
 	if err != nil {
 		return Workspace{}, err
 	}
-	desired, err := m.plan(ctx, reg, create)
-	if err != nil {
-		return Workspace{}, err
-	}
+	desired, reg := plan.manifest, plan.registry
 	if desired.Slug != old.Slug {
 		if err = preflightWorkspaceFiles(root, j, true); err != nil {
 			return Workspace{}, err
@@ -429,24 +462,6 @@ func (m *Manager) Edit(ctx context.Context, name string, opts EditOptions) (Work
 		if canonical != j.RenameTo {
 			return Workspace{}, devcontract.Fail(4, "foreign_workspace", "rename target cannot be redirected through a symlink")
 		}
-	}
-	if opts.Ports == nil {
-		desired.Ports = copyWorkspacePortPolicy(old.Ports)
-	}
-	desired.Links.HostPackages = old.Links.HostPackages
-	for i := range desired.Repositories {
-		for _, previous := range j.Resources {
-			if desired.Repositories[i].ID == previous.Repository.ID {
-				desired.Repositories[i].Branch = previous.Repository.Branch
-				desired.Repositories[i].Upstream = previous.Repository.Upstream
-				if _, changed := opts.Refs[previous.Repository.ID]; !changed || opts.PreserveSelection {
-					desired.Repositories[i].BaseRef = previous.Repository.BaseRef
-				}
-			}
-		}
-	}
-	if err = configureManifestUpstreams(ctx, reg, &desired, opts.Upstreams); err != nil {
-		return Workspace{}, err
 	}
 	// Reconfigure restores dependency/producer overlays before Edit. A rename
 	// must validate every clean worktree and ref before retiring generated output;
