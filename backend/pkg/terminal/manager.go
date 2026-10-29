@@ -327,7 +327,10 @@ func (m *Manager) WriteSession(sessionID string, input []byte) error {
 	return m.writeToSession(sessionID, input)
 }
 
-// AttachToSession marks a session as attached and returns its current output buffer.
+// AttachSession marks a session as attached and returns its current output
+// buffer. The caller renders the returned buffer; it is not also sent on the
+// output stream, where any viewer already listening would print it twice. This
+// matches plugin sessions, whose SDK manager only returns the buffer.
 func (m *Manager) AttachSession(sessionID string) (*sdkexec.Session, []byte, error) {
 	m.mux.Lock()
 	defer m.mux.Unlock()
@@ -348,13 +351,6 @@ func (m *Manager) AttachSession(sessionID string) (*sdkexec.Session, []byte, err
 
 	// pointer, no need to reassign
 	session.Attached = true
-	m.outMux <- sdkexec.StreamOutput{
-		SessionID: sessionID,
-		Target:    sdkexec.StreamTargetStdOut,
-		Data:      data,
-		Signal:    sdkexec.StreamSignalNone,
-		Error:     nil,
-	}
 
 	m.log.Debugw(context.Background(), "session attached", "session", sessionID)
 	return session, data, nil
