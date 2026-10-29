@@ -250,16 +250,16 @@ const scenarios = {
       const logsMenu = s.page.getByRole('menuitem', { name: /Logs/ });
       await openRowMenu(s.page);
       await logsMenu.waitFor();
-      // The Logs submenu: "All Containers" for multi-container pods, else the container.
-      // Hovering while the menu is still animating in may not open it, so retry.
-      // (Matched by exclusion: MUI-era menus aria-hide the parent menu once the submenu opens.)
-      const logsItem = s.page.getByRole('menuitem').filter({ hasNotText: /^(Exec|Logs|Add Debug Container|Resize|Delete)\b/ }).first();
+      // Scope items to the Logs submenu; new parent actions are not log targets.
+      const logsItem = s.page.getByRole('menu')
+        .filter({ hasNot: logsMenu })
+        .getByRole('menuitem').first();
       for (let i = 0; !(await logsItem.isVisible()); i++) {
         if (i === 10) throw new Error('the Logs submenu did not open');
         await logsMenu.hover();
         await s.page.waitForTimeout(200);
       }
-      // Move onto it so the submenu stays open (MUI-era menus close it otherwise).
+      // Move onto the submenu item so it stays open before timing the click.
       await logsItem.hover();
       const open = await measure(s, async () => {
         const t0 = await s.page.evaluate(() => performance.now());
