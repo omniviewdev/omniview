@@ -57,7 +57,7 @@ func TestSupervisorShutdownEdgesHelper(t *testing.T) {
 func TestSupervisorShutdownEdgesCanceledStopEventuallyReleasesOwner(t *testing.T) {
 	s := supervisorEdgeFixture(t)
 	w := s.workspace
-	options := generationEdgeLaunchOptions(w)
+	options := LaunchOptions{Mode: "browser", ReviewedSDKRevision: w.Manifest.Repositories[0].BaseCommit, Timeout: 10 * time.Second}
 	require.NoError(t, saveLaunchJSON(launchPath(w, "launch.json"), options))
 	provider := filepath.Join(w.Root, "omniview", "packages", "omniviewdev-providers")
 	require.NoError(t, os.MkdirAll(provider, 0700))
