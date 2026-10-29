@@ -126,7 +126,7 @@ test.describe('Bottom Drawer', () => {
     const d = await openTerminal(appPage);
     await expect.poll(d.height).toBeCloseTo(DEFAULT_EXPANDED, 0);
 
-    await d.tabs.first().getByLabel('Close tab').click();
+    await d.tabs.first().getByRole('button', { name: /^Close / }).click();
     await expect(d.tabs).toHaveCount(0);
     await expect.poll(d.height).toBeCloseTo(MINIMIZED, 0);
   });
