@@ -27,10 +27,10 @@ The pnpm12 workspace policy retains 24-hour release-age protection (`minimumRele
 
 Choose source refs that satisfy the actual peer contracts: compare the host's `packages/omniviewdev-runtime/package.json` with the selected UI's `packages/base-ui/package.json`. A checkout can lag an existing compatible release tag. Select compatible released source while preserving feature changes; do not invent a package version or weaken peer validation to make an older source pass.
 
-Host `0.7.3` consumes published `@omniviewdev/base-ui` `~0.7.1` and `@omniviewdev/ai-ui`/`@omniviewdev/editors` `~6.0.1`; the runtime's base-ui peer lower bound is also `0.7.1`. Select UI source refs that satisfy these contracts.
+Host `0.7.4` consumes published `@omniviewdev/base-ui` `~0.7.2` and `@omniviewdev/ai-ui`/`@omniviewdev/editors` `~6.0.2`; the runtime's base-ui peer lower bound is also `0.7.2`. Select UI source refs that satisfy these contracts.
 
 The published UI cohort comes from `omniviewdev/ui` commit
-`11a55a53acb67328f743c512757cabd29135f5fc`. Canonical CI selects that same
+`e7915a071bbb890512d9a721f9ce6b51d8eb48d4`. Canonical CI selects that same
 reviewed source through `OMNIVIEW_E2E_UI_REF`; older `0.7.0` UI source cannot
 satisfy the host's updated lower bounds.
 
@@ -143,6 +143,150 @@ Available override keys are `browser`, `vite`, `mcp` and `plugin-vite:<selected-
 
 `--workspace PATH` or a positional manifest/directory is authoritative. Named/UUID targets use `--root COLLECTION` or an enclosing initialized collection. Invalid explicit context does not fall back to production, another workspace or an unrelated environment. Conflicting `OMNIVIEW_WORKSPACE_FILE`/`OMNIVIEW_STATE_DIR` selections fail closed; unset stale context before intentionally selecting another workspace.
 
+## Update configured upstreams
+
+The selected ref and the update policy are separate. `--ref` chooses source;
+`--upstream` names the remote branch that future updates may fast-forward to.
+Configure the policy explicitly while the workspace is stopped:
+
+```sh
+"$DEV" workspace edit feature-a --root "$COLLECTION" \
+  --upstream omniview=origin/main \
+  --upstream "plugin-a=origin/main" --json
+
+# Fetch and inspect without changing worktrees, dependencies or the running app.
+"$DEV" workspace update feature-a --root "$COLLECTION" --check --json
+
+# Apply one selected cohort using the existing workspace lifecycle.
+"$DEV" workspace update feature-a --root "$COLLECTION" --json
+
+# Limit either check or apply to named, already-selected repository IDs.
+"$DEV" workspace update feature-a --root "$COLLECTION" \
+  --repo omniview --repo plugin-a --check --json
+```
+
+Use repository IDs for `--upstream` and `--repo`, not plugin IDs.
+Repeat `--upstream ID=REMOTE/BRANCH` for each desired policy; branch names may
+contain slashes. The manifest stores the branch as a full `refs/heads/...` ref.
+An upstream-only edit changes policy without switching the selected ref.
+Combined selection and upstream edits validate together before changing source.
+
+A plain legacy selection such as `main` remains a local-ref selection. It does
+not silently become `origin/main`, even when that seems likely. An
+`upstream_not_configured` plan includes the explicit configuration command.
+An existing explicit remote-tracking selection such as `origin/main` can migrate
+to that exact named remote and branch. Commit pins and release tags stay pinned
+and are reported as skipped. Configuring an upstream does not unpin them.
+
+Only selected configured branches are fetched. The canonical source checkout,
+unselected repositories, sibling workspaces and production profiles are not
+update targets. Fetch/authentication failures and known cohort blockers are
+reported before stopping the current app. Configure a noninteractive Git
+credential helper for private sources; diagnostics do not expose remote
+credentials.
+
+The check plan reports each repository's old SHA, fetched target SHA, actual
+HEAD, ancestry classification, committed-tree equality and blocker paths.
+`update_available` is not an applied update; a blocked check can still complete
+successfully as a diagnostic request. Apply revalidates the captured cohort
+before writing source. A blocker in any selected repository blocks the cohort.
+
+Behind branches may fast-forward. Ahead-only commits remain untouched.
+Divergence requires an explicit developer decision, including when committed
+trees match after a squash merge. Equal trees do not authorize history
+replacement. Preserve staged, unstaged, untracked and unknown ignored files;
+review the reported paths and resolve their ownership or history deliberately.
+The command never automatically resets, stashes, cleans, merges or rebases.
+
+Unchanged source and composition return `up_to_date` without reinstalling or
+restarting. Dependency-changing updates use the owned aggregate refresh, not
+one install per repository. Source-only updates use the existing affected build
+graph. Omitted launch flags preserve saved browser/native mode, MCP, local
+watch, live/embedded frontend, reviewed SDK baseline and timeout. Explicit
+`--mcp=false`, `--watch=false` and `--live-frontend=false` remain real overrides.
+UUID, profile, settings and port policy remain workspace-owned and stable.
+An update returns a previously running workspace to ready; a stopped workspace
+stays stopped. Use `workspace up` separately when startup is intended.
+
+If the running supervisor predates source-update support, the current CLI
+refuses with `supervisor_upgrade_required` before recording a new update intent
+or changing source. Run the reported `workspace restart` command once using the
+current CLI, then retry the update. Restart preserves the saved launch options;
+it does not replace or download a CLI executable. An already retained intent
+remains preserved and receives the same actionable restart guidance.
+
+### Follow in the foreground
+
+```sh
+# Observe only. No source changes, dependency installs or runtime replacement.
+"$DEV" workspace follow feature-a --root "$COLLECTION" --interval 30s
+
+# Explicitly authorize automatic application of safe updates.
+"$DEV" workspace follow feature-a --root "$COLLECTION" \
+  --repo omniview --repo plugin-a --interval 30s --apply --json
+```
+
+The default interval is 30 seconds; values below 5 seconds are rejected.
+`--apply` grants trust to execute code from the named selected upstreams using
+your local development permissions. This is not a sandbox. The CLI prints
+the selected repository IDs and this warning on stderr. `--apply=false` is
+observe-only. Consent lasts only for this foreground follower; `up` or restart
+does not restore it. `--watch` still controls the local build graph, not remote
+polling, and disabling follow does not remove upstream configuration.
+
+One follower owns a workspace UUID. It schedules the same serialized update
+transaction rather than another compiler, installer or supervisor. Repeated
+observations coalesce; a newer cohort waits for the active transaction.
+Local changes pause automatic apply without deleting authored work. Network
+failures leave the runtime alone and back off, capped at five minutes.
+A failed build/dependency cohort is not rebuilt on every poll; use its recovery
+command or observe a new applicable target. The saved SDK review and protected
+source checks still apply when an SDK branch advances.
+
+Ctrl-C while idle stops following and leaves the app running. Cancellation
+during apply retains the exact resumable operation and joins owned work.
+`workspace down` cancels or fences the follower before stopping the app, so an
+old follower cannot relaunch it. A stopped workspace never starts merely
+because follow is enabled.
+
+### Dependency edits and recovery
+
+After local dependency-manifest, authoritative lockfile, patch or workspace
+policy edits, use `workspace refresh feature-a --root "$COLLECTION"` to
+reconcile the existing owned graph. Do not run standalone pnpm installs inside
+managed worktrees or hand-edit generated aggregate metadata. Managed SDK
+`go.mod` replacements are recorded overlays, not a reason to stash `go.mod`;
+refresh preserves non-overlapping authored edits through three-way recovery.
+Overlapping edits remain explicit conflicts with preserved evidence.
+
+For an interrupted update, inspect first, then run the reported recovery
+command against the same workspace:
+
+```sh
+"$DEV" workspace inspect feature-a --root "$COLLECTION" --json
+"$DEV" workspace recover feature-a --root "$COLLECTION" --json
+```
+
+Recovery resumes the recorded targets, not a newly fetched cohort. Do not
+change repository selections or launch arguments to bypass a pending intent.
+A partial multi-repository checkout is not a ready cohort. Build/install/plugin
+readiness failures remain failures even when old application pixels are visible.
+Compare actual checkout, built and served evidence rather than assuming fetch
+or compile success means the new source is running.
+
+A repeated successful `recover` does not start another install or restart when
+its private completion receipt still matches the exact source, launch options,
+validated outputs, and runtime state. Changed or uncertain state is not adopted.
+Missing completion proof keeps the existing recovery pipeline: a fresh workspace
+or failed initial bootstrap is not silently reported as recovered.
+
+Externally changed `node_modules`, generated files, missing receipts, symlink
+redirects or uncertain writers are ownership conflicts, not disposable output.
+Keep the reported private recovery evidence and preserve foreign bytes before
+following the specific next command. Recovery regenerates only with exact
+ownership and stopped-writer proof; otherwise it refuses. Deleting a tree or
+rehashing it does not establish ownership. No blanket force-clean option exists.
+
 ## Settings baseline and custom state roots
 
 Default state is `~/.omniview-dev/profiles/<UUID>/state`; runtime, artifacts and native/browser storage remain UUID-owned. A custom state location is a separate explicit machine-local binding:
@@ -172,7 +316,14 @@ Profile isolation does not isolate HOME, kubeconfig, cloud credentials, terminal
 
 Edits require a stopped supervisor and preserve UUID/profile/unaffected assignments. The orchestrator preserves exact link evidence, unlinks the old overlay, invokes A03's validated durable intent transaction and relinks the committed selection. A validation failure with unchanged intent restores previous links. A Git failure after durable intent remains explicit/resumable (`workspace resume`), not a falsely promised inverse rollback. Ref/removal/rename operations refuse dirty or foreign worktrees. `link`, `unlink`, `list`, `resume` and `rollback` are real CLI lifecycle commands too; Task `workspace:<verb>` wrappers forward the same quoted arguments.
 
-After editing source dependency/peer manifests or workspace policy, stop the instance and use the controlled unlink/link lifecycle to replan before `up`; do not keep a live Vite consumer on stale installed metadata. Source edits remain user-owned. The completed receipt is required by host and plugin startup, and a peer-only edit invalidates it even if pnpm's warm install would skip peer resolution.
+`workspace edit --apply` captures authenticated running state before its
+intentional stop, then refreshes the edited selection and restarts only a
+previously running workspace. A previously stopped workspace remains stopped;
+`--apply` is not implicit startup consent. Missing dependency acceptance proof
+or launch configuration remains an explicit refresh failure, not fabricated
+readiness. Use `workspace up` separately to request startup.
+
+After editing source dependency/peer manifests or workspace policy, use `workspace refresh` to reconcile the owned graph; do not keep a live Vite consumer on stale installed metadata or run an independent installer. Source edits remain user-owned. The completed receipt is required by host and plugin startup, and a peer-only edit invalidates it even if pnpm's warm install would skip peer resolution.
 
 Ordinary remove retains state and feature branches. `--delete-state` and `--delete-branches` are separate deliberate destructive selections. Filesystem profile purging includes UUID runtime/webview roots even with custom state; the external custom ownership marker/claim is retained. All canonical dirty/foreign/branch/profile refusal checks run before native deletion. Before its first native launch, the supervisor retains the complete hash-verified original `.app` in private UUID-owned external storage, preserving its immutable `dev.omniview.workspace.<UUID>` bundle identifier, executable, signatures and resources. This is not a naked executable or a differently named wrapper. Removal runs that actual patched bundle's native helper under A03's inherited UUID/state lock capabilities and requires its real WebKit callback. Failure retains state/worktrees and the bundle for retry; only committed removal retires the exact validated snapshot. Slug or custom-state-root changes do not rekey native storage.
 
@@ -196,7 +347,7 @@ kernel-sourced identity capture; permission and inspection failures remain error
 
 ## Output and references
 
-`--json` emits one machine-readable result on stdout; process/compiler output stays in the private supervisor log, and CLI warnings/diagnostics use stderr. Token **values** never enter descriptors or ordinary startup output. Error responses remain JSON on stdout. Exit codes are 0 success, 2 invalid request, 3 missing target/dependency evidence, 4 identity/state/ownership/port conflict, 5 operation/build failure, 6 unauthorized and 7 timeout.
+`--json` emits one machine-readable result on stdout, except foreground `workspace follow --json`, which streams one JSON diagnostic object per observation. Process/compiler output stays in the private supervisor log, and CLI warnings/diagnostics use stderr. Follow diagnostics include apply consent, owner, observation/schedule times, active operation, pending cohort, plan, result, blocker and next command. Token **values** never enter descriptors or ordinary startup output. Error responses remain JSON on stdout. Exit codes are 0 success, 2 invalid request, 3 missing target/dependency evidence, 4 identity/state/ownership/port conflict, 5 operation/build failure, 6 unauthorized and 7 timeout. A successful check can report available or blocked updates without claiming they were applied.
 
 ## Application E2E
 

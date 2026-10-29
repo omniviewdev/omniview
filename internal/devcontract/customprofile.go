@@ -280,11 +280,18 @@ func ValidateCustomProfileClaim(stateRoot, workspaceID, home string) error {
 }
 
 func validateCustomProfileOwner(record profilecontract.Record) error {
-	var owner profilecontract.Record
-	err := readProfileJSON(filepath.Join(filepath.Dir(record.StateRoot), ".omniview-profile.json"), &owner)
+	err := validateExistingCustomProfileOwner(record)
 	if os.IsNotExist(err) {
 		return profileConflict("custom profile binding is missing its owner marker")
 	}
+	return err
+}
+
+// validateExistingCustomProfileOwner preserves missing-path errors so production
+// can tolerate an incomplete disjoint reservation without weakening dev ownership.
+func validateExistingCustomProfileOwner(record profilecontract.Record) error {
+	var owner profilecontract.Record
+	err := readProfileJSON(filepath.Join(filepath.Dir(record.StateRoot), ".omniview-profile.json"), &owner)
 	if err != nil {
 		return err
 	}
@@ -296,7 +303,8 @@ func validateCustomProfileOwner(record profilecontract.Record) error {
 
 // ValidateProductionProfileIsolation rejects production state overlapping any
 // durable custom development container, including reservations retained after
-// rebinding. Existing claim and owner evidence must be valid even when disjoint.
+// rebinding. Claims remain authoritative without owner markers. Existing owner
+// evidence must be valid even when disjoint; an absent disjoint marker is allowed.
 // stateRoot must be canonical. This reads metadata only: it creates no locks or
 // files, repairs nothing, and never scans directory descendants.
 func ValidateProductionProfileIsolation(stateRoot, home string) error {
@@ -316,15 +324,15 @@ func ValidateProductionProfileIsolation(stateRoot, home string) error {
 		return err
 	}
 	for _, claim := range registry.Claims {
-		if err := validateCustomProfileOwner(claim); err != nil {
-			return err
-		}
 		overlap, err := ProfilePathsOverlap(stateRoot, filepath.Dir(claim.StateRoot))
 		if err != nil {
 			return err
 		}
 		if overlap {
 			return profileConflict("production state overlaps a custom development profile")
+		}
+		if err := validateExistingCustomProfileOwner(claim); err != nil && !os.IsNotExist(err) {
+			return err
 		}
 	}
 	// A missing registry or removed claim does not erase an external marker.

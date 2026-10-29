@@ -322,6 +322,8 @@ func (m *Manager) linkCommandContext(ctx context.Context, name string) (context.
 	return context.WithValue(ctx, linkCommandOwnerKey{}, devsession.ProcessOwner{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "dependency-command", Source: w.Root}), nil
 }
 
+const dependencyCommandExitCode = 5
+
 // linkCommand deliberately ignores ambient go.work, GOFLAGS and package-manager
 // selectors. Every pnpm call uses the exact native12 composition launcher.
 func linkCommand(ctx context.Context, dir, program string, args ...string) ([]byte, error) {
@@ -359,6 +361,8 @@ func linkCommand(ctx context.Context, dir, program string, args ...string) ([]by
 	}
 	var out bytes.Buffer
 	cmd.Stdout = &out
+	var diagnostic bytes.Buffer
+	cmd.Stderr = &diagnostic
 	var err error
 	if owned {
 		owner.Source = dir
@@ -367,13 +371,31 @@ func linkCommand(ctx context.Context, dir, program string, args ...string) ([]by
 		err = cmd.Run()
 	}
 	if err != nil {
+		evidence := ""
+		if graph, ok := ctx.Value(linkToolchainKey{}).(*BuildGraph); ok {
+			evidence = filepath.Join(graph.workspace.Root, ".local", "dependency-command-error.json")
+			record := struct {
+				WorkspaceID string   `json:"workspaceID"`
+				Directory   string   `json:"directory"`
+				Program     string   `json:"program"`
+				Arguments   []string `json:"arguments"`
+				Stdout      string   `json:"stdout"`
+				Stderr      string   `json:"stderr"`
+			}{graph.workspace.Manifest.WorkspaceID, dir, program, args, out.String(), diagnostic.String()}
+			if saveErr := saveLaunchJSON(evidence, record); saveErr != nil {
+				return nil, errors.Join(devcontract.Fail(dependencyCommandExitCode, "link_command_failed",
+					"dependency command failed and private diagnostics could not be retained"), saveErr)
+			}
+		}
 		if errors.Is(err, errOwnedCommandUncertain) {
 			return nil, errors.Join(errOwnedCommandUncertain, devcontract.Fail(5, "link_command_failed", "dependency command subtree termination is unproven; ownership intent retained"))
 		}
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return nil, devcontract.Fail(5, "link_command_failed", fmt.Sprintf("%s failed in %s (stderr withheld; may contain private registry credentials)", program, dir))
+		return nil, devcontract.Fail(dependencyCommandExitCode, "link_command_failed", fmt.Sprintf(
+			"%s failed in %s; private diagnostics: %s (contents withheld; may contain credentials); "+
+				"preserve evidence and run workspace recover", program, dir, evidence))
 	}
 	return out.Bytes(), nil
 }

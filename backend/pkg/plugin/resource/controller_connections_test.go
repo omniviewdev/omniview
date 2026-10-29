@@ -79,6 +79,26 @@ func TestListConnections_EmptySlice(t *testing.T) {
 	assert.Empty(t, result)
 }
 
+func TestListConnections_BeforeConnectionsLoad(t *testing.T) {
+	ctrl := newTestController()
+
+	result, err := ctrl.ListConnections(testInvocationContext(), "test-plugin")
+	require.NoError(t, err)
+	require.NotNil(t, result, "the binding must receive [] rather than null")
+	assert.Empty(t, result)
+
+	// A read before initialization must not prevent later discovery.
+	ctrl.connsMu.Lock()
+	ctrl.connections["test-plugin"] = mergeConnections(ctrl.connections["test-plugin"], []types.Connection{
+		{ID: "kind-kind", Name: "kind-kind"},
+	})
+	ctrl.connsMu.Unlock()
+
+	result, err = ctrl.ListConnections(testInvocationContext(), "test-plugin")
+	require.NoError(t, err)
+	assert.Equal(t, []types.Connection{{ID: "kind-kind", Name: "kind-kind"}}, result)
+}
+
 // ============================================================================
 // AddConnection
 // ============================================================================

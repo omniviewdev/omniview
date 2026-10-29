@@ -17,6 +17,35 @@ env:
   KUBERNETES_SOURCE_REF: ${{ vars.OMNIVIEW_APP_PROFILE_KUBERNETES_REF }}
 
 jobs:
+  production-profile:
+    name: Production profile (${{ matrix.channel }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [stable, nightly]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Exercise production resolution, state initialization, and runtime setup
+      # with a stale unrelated development claim, plus durable overlap guards.
+      # Keep this independent of reviewed UI/plugin source availability.
+      - name: Exercise production profile isolation
+        run: >-
+          go test -tags server ./internal/instance
+          -run '^TestProduction(StartsWithUnrelatedMissingCustomProfileOwner|RejectsDurableCustomProfileOverlap|RejectsInvalidCustomProfileEvidence|AllowsDisjointCustomProfileClaims)$/${{ matrix.channel }}$'
+          -count=1 -v
+
   app-profile:
     name: Whole-app profile
     # Playwright 1.50.1 supports Ubuntu 24.04, not ubuntu-latest's Ubuntu 26.04.

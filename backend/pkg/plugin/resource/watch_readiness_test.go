@@ -353,7 +353,7 @@ func TestWatchStartupFailurePreservesPersistedConnectionsThroughFailedUnloadAndR
 	// which delegates to normal stop and persists before removing connections.
 	require.NoError(t, ctrl.OnPluginShutdown(pluginID, defaultMeta()))
 	stoppedConnections, err := ctrl.ListConnections(testInvocationContext(), pluginID)
-	require.Equal(t, "NOT_FOUND", requireAppError(t, err).Code)
+	require.NoError(t, err)
 	require.Empty(t, stoppedConnections, "normal failed-plugin stop must still retire its in-memory connection cache")
 	persisted, err := loadFromLocalStore(storeRoot)
 	require.NoError(t, err)

@@ -64,14 +64,12 @@ func resolveSelectedCommit(ctx context.Context, common, ref string) (string, err
 // fetchSelectedBranch imports only credential helper settings from global
 // configuration. All other Git configuration remains isolated by git().
 func fetchSelectedBranch(ctx context.Context, common, remote, branch, tracking string) error {
-	fetchArgs := []string{"fetch", "--no-tags", "--no-recurse-submodules", "--", remote, "+refs/heads/" + branch + ":" + tracking}
 	remoteURL, err := git(ctx, common, "", "remote", "get-url", remote)
 	if err != nil {
 		return err
 	}
 	if !strings.HasPrefix(strings.ToLower(remoteURL), "https://") && !strings.HasPrefix(strings.ToLower(remoteURL), "http://") {
-		_, err = git(ctx, common, "", fetchArgs...)
-		return err
+		return fetchConfiguredBranch(ctx, common, remote, branch, tracking, nil)
 	}
 	query := exec.CommandContext(ctx, "git", "-C", common, "config", "--global", "--null", "--includes", "--get-regexp", `^credential(\..*)?\.helper$`)
 	// Global scope excludes local values while retaining gitdir include matching.
@@ -103,10 +101,32 @@ func fetchSelectedBranch(ctx context.Context, common, remote, branch, tracking s
 		}
 		args = append(args, "-c", key+"="+value)
 	}
-	args = append(args, fetchArgs...)
-	_, err = git(ctx, common, "", args...)
-	if err != nil && ctx.Err() == nil {
-		return devcontract.Fail(5, "git_failed", "cannot fetch selected source; check remote access and configured Git credential helpers")
+	return fetchConfiguredBranch(ctx, common, remote, branch, tracking, args)
+}
+
+const missingUpstreamExitCode = 4
+
+// A successful empty advertisement proves absence without interpreting Git's
+// credential-bearing stderr. A failed advertisement remains an access failure.
+func fetchConfiguredBranch(ctx context.Context, common, remote, branch, tracking string, credentials []string) error {
+	args := append([]string{}, credentials...)
+	args = append(args, "-c", "core.hooksPath="+os.DevNull, "fetch", "--no-tags", "--no-recurse-submodules",
+		"--", remote, "+refs/heads/"+branch+":"+tracking)
+	if _, err := git(ctx, common, "", args...); err == nil {
+		return nil
 	}
-	return err
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	args = append([]string{}, credentials...)
+	args = append(args, "-c", "core.hooksPath="+os.DevNull, "ls-remote", "--heads", "--", remote, "refs/heads/"+branch)
+	advertisement, err := git(ctx, common, "", args...)
+	if err == nil && advertisement == "" {
+		return devcontract.Fail(missingUpstreamExitCode, "upstream_missing", "configured upstream branch does not exist")
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return devcontract.Fail(dependencyCommandExitCode, "git_failed",
+		"cannot fetch selected source; check remote access and configured Git credential helpers")
 }

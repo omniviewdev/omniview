@@ -35,6 +35,8 @@ const (
 	loaderFiles  Producer = "vite-loader-files"
 )
 
+const filteredOutputMode = "filter"
+
 type scope struct {
 	workspace         devcontract.ResolvedWorkspace
 	repos, identities map[string]string
@@ -189,7 +191,7 @@ func (s scope) spec(consumer string, kind Producer) (specification, error) {
 		target = filepath.Join(consumer, "node_modules/.tmp")
 	case loaderFiles:
 		target = consumer
-		mode = "filter"
+		mode = filteredOutputMode
 	case viteCache:
 		sum := sha256.Sum256([]byte(consumer))
 		target = filepath.Join(s.directory, "cache", hex.EncodeToString(sum[:16]))
@@ -267,7 +269,8 @@ func tracked(ctx context.Context, spec specification) (map[string]committedFile,
 		if err != nil {
 			return nil, err
 		}
-		if spec.Mode == "filter" && (filepath.Dir(relative) != "." || !IsViteConfigTemporaryFile(filepath.Base(relative))) {
+		if spec.Mode == filteredOutputMode &&
+			(filepath.Dir(relative) != "." || !IsViteConfigTemporaryFile(filepath.Base(relative))) {
 			continue
 		}
 		fields := strings.Fields(string(metadata))

@@ -4,6 +4,8 @@
 
 A named workspace is selected by its canonical `workspace.json` (`OMNIVIEW_WORKSPACE_FILE` for a launched host), not its display name or frontend/build optimization flags. `internal/instance.Resolve` validates the manifest, context conflicts, canonical state path and channel before creating state. `ResolveEnvironment` applies host build/environment channel selection; `instance.buildChannel` can be stamped with `local`, `stable` or `nightly`. `version.Development` is not consulted. Existing nightly version/root stamps retain nightly classification; a source `-dev` build without a workspace fails rather than defaulting to production.
 
+For a local macOS production app, run `task darwin:package RELEASE=true DEV=false`. Release tasks stamp the stable production channel and `version.Development=false`, even when the source version remains `0.0.0-dev`; the app uses `~/.omniview`. `DEV=false` alone only changes optimization and does not select a production profile. Use `task dev` with a named workspace for development isolation. Published nightly builds retain their explicit nightly channel stamps.
+
 Default roots:
 
 | Kind/channel | State | Runtime | Webview |
@@ -12,7 +14,7 @@ Default roots:
 | Production/nightly | `~/.omniview-nightly` | inside selected state root | unchanged platform default |
 | Development/local | `~/.omniview-dev/profiles/<workspaceUUID>/state` | sibling `runtime` | sibling `webview` |
 
-Production selection also rejects overlap with durable custom-development **containers**, including historical claims retained after rebinding. Registry records and external owner markers must validate; missing, foreign, redirected or malformed ownership evidence fails closed without repair. Existing endpoint/ancestor identity checks catch physical aliases without treating distinct case-sensitive custom siblings as the same directory.
+Production selection also rejects overlap with durable custom-development **containers**, including historical claims retained after rebinding. Registry claims remain authoritative even when an external owner marker is missing: overlapping production paths fail closed, but an unrelated missing marker does not block production startup. Existing foreign, redirected or malformed ownership evidence still fails closed without repair. Development binding resolution still requires its matching owner marker. Existing endpoint/ancestor identity checks catch physical aliases without treating distinct case-sensitive custom siblings as the same directory.
 
 Custom-profile admission uses the same filesystem-aware overlap predicate for retained claims and protected boundaries. Case aliases of an existing ancestor cannot admit nested containers, while genuinely distinct case-sensitive siblings remain permitted. Binding/claim files publish with atomic replacement: Unix syncs the parent directory; Windows uses write-through `MoveFileEx` replacement rather than POSIX directory `Sync`. Windows runtime durability still requires platform evidence.
 

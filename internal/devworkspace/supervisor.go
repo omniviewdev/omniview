@@ -40,6 +40,8 @@ type workspaceSupervisor struct {
 	output           io.Writer
 	mu               sync.Mutex
 	runMu            sync.Mutex
+	sourceMu         sync.Mutex
+	watchCancel      context.CancelFunc
 	status           Status
 	binary           string
 	children         map[string]*ownedChild
@@ -144,6 +146,18 @@ func callSupervisor(ctx context.Context, record supervisorRecord, token []byte, 
 	return result.Status, nil
 }
 
+const supervisorRestartCommand = "restart"
+
+const supervisorSourceUpdateCommand = "source-update"
+
+const supervisorStatusCommand = "status"
+
+const supervisorStopCommand = "stop"
+
+const supervisorManagedMode = "managed"
+
+const supervisorPluginFailureExitCode = 5
+
 func supervisorHandler(workspaceID, generation string, token []byte, execute func(context.Context, string) (Status, error)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fail := func(code int, err *devcontract.Error) {
@@ -188,12 +202,13 @@ func supervisorHandler(workspaceID, generation string, token []byte, execute fun
 			return
 		}
 		switch request.Command {
-		case "status", "stop", "restart":
+		case supervisorStatusCommand, supervisorStopCommand, supervisorRestartCommand, supervisorSourceUpdateCommand:
 		default:
 			fail(400, devcontract.Fail(2, "invalid_request", "unknown supervisor command"))
 			return
 		}
 		status, err := execute(r.Context(), request.Command)
+		status.SourceUpdateSupported = true
 		w.Header().Set("Content-Type", "application/json")
 		failure := workspaceError(err)
 		_ = json.NewEncoder(w).Encode(map[string]any{"status": status, "error": failure})
@@ -223,7 +238,8 @@ func (m *Manager) ServeSupervisor(ctx context.Context, name string, output io.Wr
 		return err
 	}
 	defer log.Close()
-	output = log
+	// Parallel graph producers, the bindings/host builds and children share it.
+	output = &lockedWriter{writer: log}
 	defer func() {
 		if resultErr != nil {
 			_, _ = fmt.Fprintln(log, "supervisor failed:", resultErr)
@@ -367,6 +383,7 @@ func (s *workspaceSupervisor) snapshot() Status {
 	raw, _ := json.Marshal(s.status)
 	var status Status
 	_ = json.Unmarshal(raw, &status)
+	status.SourceUpdateSupported = true
 	return status
 }
 func (s *workspaceSupervisor) persist() {
@@ -419,40 +436,15 @@ func (s *workspaceSupervisor) setPhase(phase string, err error) {
 }
 func (s *workspaceSupervisor) failed(err error) { s.setPhase("error", err) }
 func (s *workspaceSupervisor) execute(ctx context.Context, command string) (Status, error) {
-	if command == "status" {
-		status := s.snapshot()
-		if status.Phase == "ready" {
-			client, descriptor, err := ConnectWorkspaceControl(ctx, s.workspace, s.manager.options.Home, s.generation)
-			if err != nil {
-				status.Phase = "unreachable"
-				status.Instance = nil
-			} else {
-				defer client.Close()
-				status.Instance = &descriptor
-				// Reconcile live producer observations only in this response. A
-				// transient build failure or intentional plugin stop must neither
-				// poison the supervisor phase nor restart a managed generation.
-				for _, plugin := range s.workspace.Manifest.Plugins {
-					state, stateErr := readPluginState(ctx, client, plugin.ID)
-					if stateErr != nil {
-						status.Phase = "error"
-						status.LastError = workspaceError(stateErr)
-						break
-					}
-					if stage := devcontract.FailedReadinessStage(state.BuildStatus, state.ViteStatus, state.RPCStatus, state.ControllerStatus); state.LastError != nil || stage != "" || !state.Ready || state.Generation == "" || state.Mode != "managed" {
-						status.Phase = "error"
-						status.LastError = state.LastError
-						if status.LastError == nil {
-							status.LastError = devcontract.Fail(5, "plugin_not_ready", fmt.Sprintf("managed plugin %s is not ready: build=%s Vite=%s RPC=%s controllers=%s", plugin.ID, state.BuildStatus, state.ViteStatus, state.RPCStatus, state.ControllerStatus))
-						}
-						break
-					}
-				}
-			}
-		}
-		return s.observeStatus(ctx, status), nil
+	if command == supervisorStatusCommand {
+		return s.statusResponse(ctx), nil
 	}
-	if command == "stop" || command == "restart" {
+	if command == supervisorSourceUpdateCommand {
+		return s.applySourceUpdate(ctx)
+	}
+	if command == supervisorStopCommand || command == supervisorRestartCommand {
+		s.sourceMu.Lock()
+		defer s.sourceMu.Unlock()
 		s.sessionCancel()
 		s.runMu.Lock()
 		err := s.stopChildren(ctx)
@@ -468,6 +460,50 @@ func (s *workspaceSupervisor) execute(ctx context.Context, command string) (Stat
 		return s.snapshot(), err
 	}
 	return Status{}, fmt.Errorf("unknown supervisor operation")
+}
+
+func (s *workspaceSupervisor) statusResponse(ctx context.Context) Status {
+	s.sourceMu.Lock()
+	defer s.sourceMu.Unlock()
+	status := s.snapshot()
+	if status.Phase != "ready" {
+		return s.observeStatus(ctx, status)
+	}
+	client, descriptor, err := ConnectWorkspaceControl(ctx, s.workspace, s.manager.options.Home, s.generation)
+	if err != nil {
+		status.Phase = followUnreachable
+		status.Instance = nil
+		return s.observeStatus(ctx, status)
+	}
+	defer client.Close()
+	status.Instance = &descriptor
+	// Reconcile live producer observations only in this response. A
+	// transient build failure or intentional plugin stop must neither
+	// poison the supervisor phase nor restart a managed generation.
+	for _, plugin := range s.workspace.Manifest.Plugins {
+		state, stateErr := readPluginState(ctx, client, plugin.ID)
+		if stateErr != nil {
+			status.Phase = "error"
+			status.LastError = workspaceError(stateErr)
+			break
+		}
+		stage := devcontract.FailedReadinessStage(
+			state.BuildStatus, state.ViteStatus, state.RPCStatus, state.ControllerStatus,
+		)
+		if state.LastError != nil || stage != "" || !state.Ready ||
+			state.Generation == "" || state.Mode != supervisorManagedMode {
+			status.Phase = "error"
+			status.LastError = state.LastError
+			if status.LastError == nil {
+				status.LastError = devcontract.Fail(supervisorPluginFailureExitCode, "plugin_not_ready", fmt.Sprintf(
+					"managed plugin %s is not ready: build=%s Vite=%s RPC=%s controllers=%s",
+					plugin.ID, state.BuildStatus, state.ViteStatus, state.RPCStatus, state.ControllerStatus,
+				))
+			}
+			break
+		}
+	}
+	return s.observeStatus(ctx, status)
 }
 func (s *workspaceSupervisor) stopChildren(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
