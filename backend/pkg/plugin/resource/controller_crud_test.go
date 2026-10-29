@@ -69,6 +69,32 @@ func TestFiniteOperations_Success(t *testing.T) {
 	assert.True(t, value.Bool)
 }
 
+func TestFiniteOperations_CreateOnlyRejectsUnsupportedWrites(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	p := finiteTestProvider("native")
+	p.CatalogFunc = func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+		catalog := canonicalTestCatalog("native", "pods")
+		catalog.Types[0].Capabilities = []resource.Capability{{Operation: resource.OperationGet}, {Operation: resource.OperationCreate}}
+		return catalog, nil
+	}
+	calls := 0
+	p.MutateFunc = func(_ context.Context, request resource.MutationRequest) (resource.Record, error) {
+		calls++
+		return canonicalTestRecord(request.Reference.Address.Provider, request.Reference.Address.Authority, request.Reference.Address.Type, request.Reference.Address.ID), nil
+	}
+	registerMockPlugin(ctrl, "p1", p)
+	get := admittedGetRequest(t, ctrl, "p1", "conn-1", "pods", "pod-1")
+	for _, verb := range []string{"update", "delete"} {
+		_, err := ctrl.Mutate(testInvocationContext(), "p1", resource.MutationRequest{Route: get.Request.Route, Reference: get.Request.Reference, Operation: verb, Input: resource.Value{Kind: "null"}})
+		require.Error(t, err)
+		assert.Equal(t, "UNSUPPORTED", requireAppError(t, err).Code)
+	}
+	assert.Zero(t, calls)
+	_, err := ctrl.Mutate(testInvocationContext(), "p1", resource.MutationRequest{Route: get.Request.Route, Reference: get.Request.Reference, Operation: "create", Input: resource.Value{Kind: "null"}})
+	require.NoError(t, err)
+	assert.Equal(t, 1, calls)
+}
+
 func TestFiniteOperations_ProviderErrors(t *testing.T) {
 	for _, code := range []string{"NOT_FOUND", "FORBIDDEN", "UNAVAILABLE", "CANCELLED", "TIMEOUT", "INTERNAL"} {
 		t.Run(code, func(t *testing.T) {

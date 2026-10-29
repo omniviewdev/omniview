@@ -209,7 +209,7 @@ func canonicalTestCatalog(provider, resourceType string) resource.Catalog {
 	return resource.Catalog{Provider: provider, Revision: "r1", Coverage: resource.Coverage{Kind: "complete", Paths: []string{}}, Types: []resource.ResourceType{{
 		Type: resourceType, DisplayName: resourceType, IdentityDimensions: []resource.Dimension{}, QueryDimensions: []resource.Dimension{},
 		Representations: []resource.Representation{canonicalTestRepresentation()},
-		Capabilities:    []resource.Capability{{Operation: resource.OperationGet}, {Operation: resource.OperationEnumerate}, {Operation: resource.OperationNativeQuery}, {Operation: resource.OperationMutation}, {Operation: resource.OperationAction}},
+		Capabilities:    []resource.Capability{{Operation: resource.OperationGet}, {Operation: resource.OperationEnumerate}, {Operation: resource.OperationNativeQuery}, {Operation: resource.OperationCreate}, {Operation: resource.OperationMutationUpdate}, {Operation: resource.OperationDelete}, {Operation: resource.OperationAction}},
 	}}}
 }
 

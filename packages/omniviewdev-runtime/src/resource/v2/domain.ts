@@ -44,7 +44,8 @@ export interface SchemaDocumentReference { id: string; revision: string }
 export interface SchemaDocument { reference: SchemaDocumentReference; dialect: string; document: unknown }
 export interface Representation { id: string; revision: string; schema: SchemaBinding }
 export interface Dimension { name: string; allowEmpty: boolean }
-export type Operation = 'enumerate' | 'get' | 'nativeQuery' | 'update' | 'mutation' | 'action';
+// "update" means advisory watches; "mutationUpdate" means a native update write.
+export type Operation = 'enumerate' | 'get' | 'nativeQuery' | 'update' | 'create' | 'mutationUpdate' | 'delete' | 'action';
 export interface ResourceCapability { operation: Operation; scope: QueryScope; guarantee?: string }
 export interface ResourceType {
   type: string;
