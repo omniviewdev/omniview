@@ -194,6 +194,13 @@ tasks:
         vars:
           CLI_COMMAND: workspace unlink
 
+  workspace:reset-modules:
+    summary: "Delete and reinstall owned dependency trees of a stopped workspace; forward arguments after --"
+    cmds:
+      - task: dev:cli:run
+        vars:
+          CLI_COMMAND: workspace reset-modules
+
   workspace:remove:
     summary: "Remove a stopped workspace; forward arguments after --"
     cmds:
