@@ -12,10 +12,10 @@ import (
 
 func TestLinkedPeerContractsDiagnoseSelectedSourceCohorts(t *testing.T) {
 	for _, test := range []struct {
-		name     string
-		query    string
-		vite     string
-		conflict bool
+		name          string
+		query         string
+		vite          string
+		conflict      bool
 		queryConflict bool
 	}{
 		{"reported installed pins as exact manifests", "5.90.21", "5.4.21", true, true},
