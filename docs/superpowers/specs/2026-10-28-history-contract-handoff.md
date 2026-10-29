@@ -1,6 +1,6 @@
 # Resource History: HR01 / HR03 / HR04 contract handoff
 
-Date: 2026-10-28.
+Date: 2026-10-28; HC01 scoped design review integrated 2026-10-29.
 Status: **design-only proposal; not approved, implemented, or a public API freeze**.
 
 This document supplies reviewable decisions for HC01, HC03–HC07. It does not authorize production ingestion, publish SDK messages, or replace the HR02 storage/privacy decision. Names and shapes below are proposed semantic messages, not available RPCs or generated bindings.
@@ -20,7 +20,7 @@ Canonical RI inputs in this host workspace:
 - Selected source: `backend/pkg/invocation/invocation.go:23–45,88–122` issues native principals and admits operations; generation `initial` explicitly does not implement revocation.
 - Selected source: `backend/pkg/plugin/resource/registry/memory_store.go:32–59,104–130` replaces current entries and deletes membership. These are not append-only history or checkpoint transactions.
 
-P01 is accepted using the reviewed immutable Omniview CEL fork `d7bb038d8c7b6f26225d4fbd210ca2b3c60a6774`, with the original upstream failing lane preserved. Upstream contribution/CLA is not a delivery gate. HR00 #179 and HR02 #180 are accepted. P45 SDK issue #12 remains in actual SDK/host/Kubernetes/runtime integration and independent review; source implementation alone is not acceptance. Production compiler/schema/result handoffs P07 #85, P12 #86, P13 #87, P14 #88 and P15 #89 remain required. No history-specific evaluator, result-lease system, identity fork or narrowed predicate fallback is approved.
+P01 is accepted using the reviewed immutable Omniview CEL fork `d7bb038d8c7b6f26225d4fbd210ca2b3c60a6774`, with the original upstream failing lane preserved. Upstream contribution/CLA is not a delivery gate. HR00 #179 and HR02 #180 are accepted. This does not accept the replacement SDK surface: SDK PR21 remains **draft**, and the user must review proposed-versus-resource-spec before SDK completion or merge. P45 SDK issue #12 still requires actual SDK/host/Kubernetes/runtime integration and independent acceptance. Production compiler/schema/result handoffs P07 #85, P12 #86, P13 #87, P14 #88 and P15 #89 remain required. No history-specific evaluator, result-lease system, identity fork or narrowed predicate fallback is approved.
 
 Assignable contract reviews: [HR01 / HC01 #186](https://github.com/omniviewdev/omniview/issues/186), [HR03 / HC03–HC04 #187](https://github.com/omniviewdev/omniview/issues/187), and [HR04 / HC05–HC07 #188](https://github.com/omniviewdev/omniview/issues/188). The following remains a review proposal, not public SDK messages or permission to ingest.
 
@@ -28,7 +28,7 @@ Assignable contract reviews: [HR01 / HC01 #186](https://github.com/omniviewdev/o
 
 | Area | Proposed decision | Required approval / remaining gate |
 | --- | --- | --- |
-| Canonical identity and values | Reference the accepted RI domain and lossless value adapters | Preserve P01 semantics; accept the usable P45 boundary after actual integration |
+| Canonical identity and values | Reuse the canonical RI candidate and lossless adapters, conditional on SDK user review | Preserve accepted P01 semantics; user review of SDK PR21 and usable P45 integration remain separate gates |
 | Evidence identity | Host citation identity independent of native delivery and logical grouping | HC01 domain and storage review |
 | Durability | Advance recovery only with corresponding durable evidence/rejections and qualified coverage | HC02 storage profile plus HC03 SDK/storage review |
 | Coverage and cost | Qualified searched-as-of claims; host reservation before shared acquisition | HC04 security/scheduler review |
@@ -55,17 +55,41 @@ Plugins may render an entire custom timeline, graph, dashboard, comparison, or i
 
 For Kubernetes, a logical request groups authority plus auditID; stage differentiates stage records. Stage alone is not guaranteed delivery uniqueness: adapters must declare repeated-stage behavior. Audit, authenticator, Event-series observations, and watched-state observations remain separate evidence even when correlated. Correlation carries basis and confidence; temporal proximity does not establish a definitive actor or causal transition.
 
-Deduplication uses a validated stable native key inside its source namespace/generation. A repeated key with contradictory admitted immutable content is a conflict: stop/quarantine and mark coverage partial, never overwrite cited evidence. The comparison basis and its policy version must be explicit; never retain hashes or fingerprints of forbidden raw fields to detect conflicts. A changed parser/redaction projection alone is not proof that native content changed. Without stable keys, retain distinct deliveries and declare duplicate uncertainty. Content hashes may locate possible duplicates but must not collapse identical legitimate messages. Parser changes alone must not create new native-record identities.
+Deduplication uses a validated stable native key inside its source namespace/generation. Without one, retain distinct deliveries and declare duplicate uncertainty; a message hash or audit stage cannot substitute for a uniqueness guarantee. Parser changes alone do not create new native-record identities.
+
+At first durable insertion, freeze a host-private **comparison-basis descriptor**: source-schema meaning, key capability, immutable field paths, relevant parser interpretation, retained-policy revision/classification, and exact equality rules. Its facts must already be admitted retained evidence, not an extra raw comparison copy. Eligible facts are source-declared immutable stage, operation, timestamp plus precision, or native revision only where declared immutable for that delivery. Exclude citation/commit time, acquisition attempt/sequence, local observation, summary, authority enrichment and parser/index artifacts. Compare canonical typed values directly, preserving absent/null/unknown/redacted/unavailable; no stringification or floating-point coercion.
+
+| Same validated native identity | Required disposition |
+| --- | --- |
+| Comparable required basis facts, at least one unequal known immutable value | Proven contradiction: preserve cited evidence; quarantine delivery, stop/fence acquisition and mark coverage partial. Never overwrite. |
+| All required basis facts comparable and equal | Replay-consistent **within retained basis**: reuse citation. Not raw-message equivalence; an empty basis cannot claim substantive equality. |
+| Required fact removed/not admitted, or incompatible parser/schema/policy interpretation | Incomparable, not conflict or duplicate-content equality. Preserve citation; do not advance recovery beyond unresolved replay without HC03-approved durable rejection/skip or replan. |
+
+A reviewed migration may prove a compatible common basis from retained permitted facts only; equal field names are insufficient. Stronger redaction removes affected comparison facts/caches too. Never keep hashes, fingerprints, encrypted forbidden fields or derived discriminators to preserve conflict detection. Looser policy does not restore removed facts; separately authorized acquisition needs a new representation revision and provenance. Parser corrections alone, including timestamp interpretation, cannot prove native contradiction.
 
 ### 3.2 Canonical resource references and authority
 
-Use the accepted `resourcev2.ResourceReference`, `ResourceAddress`, `AccessRoute`, `QueryScope`, `Representation`/`SchemaBinding`, and lossless tagged `Value` admission by reference to the owning canonical contract and actual P45 adapters. Timestamp values reuse the canonical timestamp scalar and its exact precision/range rules. This document declares no competing Go/proto/TS identity DTO or canonical key algorithm.
+Reuse the canonical candidate `resourcev2.ResourceReference`, `ResourceAddress`, `AccessRoute`, `QueryScope`, `Representation`/`SchemaBinding`, lossless tagged `Value`, and timestamp admission through their owning RI/P45 adapters, **conditional on the SDK user-review gate in §1**. Accepted P01 semantics do not approve every added SDK admission/lifecycle API. This document declares no competing Go/proto/TS identity DTO or canonical key algorithm.
 
-`resourceRefs` is a bounded ordered list of `{reference: RI.ResourceReference, role, certainty, nativeLocator?}`. Zero references is valid for authentication failures, non-resource endpoints, collection requests, and unresolved objects. Multiple references do not duplicate an evidence row. Roles distinguish subject, related object, and collection context; a collection selector is not a fabricated object ID. Preserve original GVR/API version/subresource and unknown type information in source schema fields.
+`resourceRefs` is an ordered list of `{reference: RI.ResourceReference, role, certainty, nativeLocator?}` bounded by §3.5. Exact roles are `subject|related`; certainty is `resolved|qualified`. Zero references is valid; multiple references do not duplicate an evidence row. Reject duplicate identical `(reference,role)` entries. This **amends the earlier collection-role inventory**: a collection selector cannot inhabit a canonical reference requiring an object ID. Collection context stays a native locator, never `*` or an empty fabricated ID.
 
 Canonical authority resolution is host-owned and does not require a currently live resource or type-catalog entry. An unresolved native locator stays unresolved until a justified mapping exists; no fabricated canonical type or UID. Opaque cloud IDs are not split by UI conventions. Incarnation absence means unknown, not any known UID. Name reuse and cluster recreation do not silently rekey old citations. Connection aliases, endpoints, credentials, and equal addresses do not prove shared authority or access. Unknown authority continuity remains isolated and explicit. Native revision is observation provenance, not identity or a portable ordering number.
 
 Source association is not an authority proof. In particular, a current EKS connection, matching cluster name/ARN, or default CloudWatch group name cannot alone bind older records to the current cluster incarnation. Resolution must retain its source/epoch/native-incarnation basis and uncertainty; records outside proven continuity remain unresolved or explicitly qualified. Discovery never repairs this by guessing an authority. CloudWatch APIs lacking a stable event ID must declare delivery-duplicate uncertainty rather than substitute a message hash or audit stage.
+
+| Historical admission concern | Proposed decision / owning handoff |
+| --- | --- |
+| Historical-only/deleted Type | **P07 owns reusable declaration admission; HR01 owns historical provenance/retention.** Providers propose existing `ResourceType` plus exact `IdentityDimensions`. Historical descriptors have empty capabilities/query dimensions/representations and no default representation/authority hint. They never enter the live catalog or resurrect Types through `ObserveCatalog`. |
+| Declaration evidence | Host retains provider ownership, source identity generation, authority-binding/declaration/mapping revisions, applicable record/epoch interval and proof. `declarationBasis=capturedDiscovery\|capturedCRD\|reviewedProviderContract`. A log assertion, missing namespace or current discovery alone is insufficient. Reuse/factor canonical SDK validation; validate addresses against the admitted identity dimensions, not structural validation alone. |
+| Kubernetes/deleted CRD | Reuse existing `native_catalog.go` mapping: `k8s:` + native API group + `/` + plural resource. API version/subresource remain provenance. A proven namespaced declaration requires exact `namespace` dimension, disallowing empty; cluster-scoped has none. Historical CRD scope needs applicable captured declaration or reviewed provider contract. Missing/conflicting proof leaves native locators unresolved. No per-record live lookup. |
+| Authority/epoch | Extend the existing host authority owner with versioned historical proof, not a second allocator. Its current resolver is connection-local and searches active route cohorts only; no cross-route/epoch stable scheme is approved. Provider `NativeAuthorityHint{scheme,id,continuity}` is evidence, not authority or permission. |
+| Cluster/EKS continuity | Current `kubernetes.namespace-uid.v1` hint is a backing observation, not a cluster UUID guarantee or proof of older logs. HC09 must bind verified account/region/native cluster locator, creation identity, log source and covered epoch/records. Names/ARN/default groups/current metadata or timestamps alone cannot establish this. Record-time uncertainty must lie inside a proven interval unless record-bound provenance proves the epoch independently. |
+| Recreation/restart | Detected backing/creation-identity change creates a new source identity generation and authority binding; fence acquisition/recovery, preserve old mappings/citations. Lost store, aliases, reused log groups and unproven restart continuity do not resurrect old authorities. A user override/import manifest is a claim, not proof. |
+| Live operations | Historical declaration/reference presence cannot authorize Get, CRUD, utilities or enumeration. Open identity-only read views. Live enrichment/actions require separate current route/catalog/capability/authority/incarnation admission and host authorization. |
+
+Host-private authority assessment uses `resolution=resolved|qualified|unresolved|conflict`, `basis=capturedNativeIdentity|declaredSourceEpoch|verifiedCreationInterval|none`, a resolution revision and applicable source/epoch proof. `qualified` requires a proven canonical address inside an isolated bounded source epoch; it never permits guessed authority/Type/dimensions/ID. Missing authority yields no canonical refs. `quality.identityCertainty` uses the same resolution vocabulary, folding conflict before unresolved before qualified before resolved; no applicable identity claim is unresolved with `IDENTITY_NOT_APPLICABLE`. Missing incarnation stays unknown, never a wildcard for a known UID.
+
+Native locators are schema-admitted `Value` maps `{scheme,kind,fields}`, with `kind=object|collection|nonResource|unknown`. Initial schemes: `kubernetes.audit.objectRef.v1` permits `apiGroup,apiVersion,resource,subresource,namespace,name,uid`; `kubernetes.audit.requestURI.v1` permits reviewed `path,selector` projections, not raw query strings; `aws.cloudwatch.event.v1` permits `account,region,logGroup,logStream,eventId`. Pinned source schema supplies required fields/classification. Unresolved object locators stay in bounded `extensions.unresolvedResourceLocators`; collection/non-resource context uses `native.locator`. Locator equality never establishes canonical identity. Identity limitation codes are `AUTHORITY_UNPROVEN`, `SOURCE_EPOCH_UNPROVEN`, `TYPE_UNDECLARED`, `TYPE_DECLARATION_CONFLICT`, `INCARNATION_UNKNOWN`, `CONTINUITY_CONNECTION_LOCAL`, `LOCATOR_INCOMPLETE`, `IDENTITY_NOT_APPLICABLE`.
 
 ### 3.3 Proposed feature envelope
 
@@ -92,9 +116,19 @@ EvidenceEnvelope {
 }
 ```
 
-Host fields are assigned after validation; provider-supplied citation/access labels are not trusted. Go uses the accepted canonical domain values, protobuf uses explicit reviewed transport conversions, and TS uses the accepted runtime domain facade. Integer counts/revisions that are numeric use the RI exact tagged/decimal encoding; native revision strings stay opaque. No JavaScript `number` conversion of large integers or nanosecond instants. Times distinguish event, request/stage, upstream ingestion, local observation, and durable commit. Unknown times are absent with a reason, not epoch zero. Native precision and translation uncertainty remain visible.
+Host fields are assigned after validation; provider-supplied citation/access labels are not trusted. Go/proto/TS reuse the reviewed canonical candidate through explicit owning adapters, conditional on §1; generated bindings are not public domain aliases. Integer counts/revisions that are numeric use the RI exact tagged/decimal encoding; native revision strings stay opaque. No JavaScript `number` conversion of large integers or nanosecond instants. Proposed time axes are `event|request|stage|upstreamIngestion|localObservation|durableCommit`. Unknown times are absent with a reason, not epoch zero; native precision and translation uncertainty remain visible.
 
-Authenticated/effective/impersonating identities are separate optional facts. Missing actor is valid. A cloud role/session identity is not automatically the human actor.
+`principals` contains **reported source actor facts**, never native `invocation.Principal` or a grant. The host alone supplies invocation provenance, `acquisition.accessPartitionRef` and `accessGeneration`; current generation `initial` does not implement history revocation.
+
+| Actor field / mapping | Exact proposed vocabulary and constraint |
+| --- | --- |
+| Three optional actor slots | `authenticated`, `effective`, `impersonator`: admitted `Value` maps with required `scheme,id`; optional `kind,uid,groups,issuer,session,attributes`. `kind=user\|serviceAccount\|service\|roleSession\|unknown`, only when supported by evidence. Actor schemes initially `kubernetes.userInfo.v1`, `aws.iam.principal.v1`, `aws.sts.assumedRoleSession.v1`; preserve opaque source spelling. Attributes require a source-schema allowlist. |
+| Structured `principals.attributionBasis` | Entries `{slot,basis,trust,evidence,mappingRevision?}`: `slot=authenticated\|effective\|impersonator`; `basis=sourceReported\|explicitCorrelation`; `trust=unverified\|hostBoundSource\|corroborated`. Evidence is admitted citations/record-local source field paths. Explicit correlation requires mapping revision. No arbitrary rationale text or numeric confidence. Do not flatten/relocate entries into extensions. |
+| Trust/certainty | `hostBoundSource` verifies acquisition provenance, not actor truth or host authentication. `corroborated` requires an independent admitted source and reviewed explicit correlation rule. `quality.attributionCertainty=reported\|corroborated\|unknown`: all present slots corroborated => corroborated; otherwise supported source facts => reported; no usable facts => unknown. |
+| Kubernetes audit | `user` => reported authenticated. If `impersonatedUser` exists: it => effective; `user` => impersonator. Otherwise copy authenticated to effective only when complete admitted schema establishes no impersonation, not when the field is redacted/unavailable. |
+| Authentication failure / IAM | Attempted identity stays classified `extensions.authenticationAttempt`, not authenticated/effective without successful-authentication evidence. Role/session names, ARN paths, usernames, groups, email-like strings and nearby authenticator timestamps never imply a human, cause, service account mapping or host principal. Cross-source evidence remains separate. |
+
+Same actor/address does not permit partition sharing. Actor searches/counts, source diagnostics, payloads and exports require current host authorization; missing actor is valid. Actor/native-locator/provenance text can be private or secret-bearing and follows §3.4 redaction.
 
 ### 3.4 Representation and citation lifecycle
 
@@ -106,11 +140,63 @@ Redaction occurs before summaries, text/structured indexes, correlation fields, 
 
 Citation `{storeId,evidenceId}` remains stable across parser and derived-index upgrades. A derived projection has its own parser/schema/index revision; a result can pin that revision when reproducibility requires it. Reparse does not redirect the citation to another source record. Stronger redaction can remove representation availability without reusing the identity; record policy lineage without retaining forbidden values. Source rebinding creates a new source identity generation, not a rewritten citation. Retention/purge produces an authorized unavailable outcome; tombstone retention itself follows privacy policy, not an unlimited promise. Imports get local citations plus origin/manifest lineage; origin IDs do not confer trust or globally deduplicate records. Frozen exports identify exact representation revisions and policy transformations.
 
+Retained record provenance (citation, source generation, native key, permitted native actor/locator facts and original acquisition binding) is immutable only while policy permits retention. Historical declarations/proofs are versioned provenance. Authority/resource resolution, actor normalization/correlation, certainty, summaries and indexes are versioned projections pinned to their source-schema/parser/resolver/mapping/policy revisions; later proof may create a new projection under the same citation, never rewrite an old pin silently. Current live enrichment is separately authorized/time-labeled and cannot supply historical facts.
+
+Proposed lineage relations are `derivedFrom|policyTransformedFrom|importedFrom|correlatedWith`; basis is a registered schema code and confidence `asserted|supported|uncertain`. Correlation does not assert causality/identity. If policy forbids key/locator/citation existence, lineage endpoints or revision history, remove those too. Authorize before distinguishing missing/expired/purged/denied; unauthorized resolution must not enumerate tombstones.
+
+Mandatory removal fences reads, commits, caches, pins, in-flight work and export staging. HR06/HR24 must reconcile permitted evidence/basis, blobs, schemas, lineage, changes, summaries/indexes, temporary files, WAL/journals, backups and tombstones with crash-safe cleanup; rebuild cannot rehydrate forbidden data. Pins cannot defeat deletion. HC02 owns bounded cleanup windows and platform/key/backup mechanics. SQL DELETE/unlink is not physical-erasure proof; SSD/filesystem snapshots, swap, unmanaged backups and prior external exports prevent a universal erasure promise.
+
 ### 3.5 Versioning and admission
 
 Negotiate envelope major version before ingest. Unknown mandatory envelope versions fail `UNSUPPORTED` before checkpoint advancement. Unknown fields in strict canonical RI DTOs follow RI admission; do not silently relax their rejection policy. Extensible provider data belongs only in a declared, bounded source-schema extension container. Unknown optional extensions may be retained only under approved redaction and size policy; they are not implicitly searchable. Required unknown semantic fields reject. Source schema, parser, redaction policy, config, access, and derived-index versions remain independent.
 
 Compatible optional additions do not redefine existing states or fields. Meaning changes require a new semantic/schema version and explicit migration/rebuild policy. Rebuild coverage is separate from acquisition coverage. Historical parser projections are not silently claimed equivalent after migration.
+
+#### Proposed composed limits
+
+These are unapproved starting ceilings requiring HC01/HC02/HC03/HC07/HC11 corpus and resource-cost review. They constrain the existing envelope/source containers, not canonical Value semantics or a second wire profile. Apply the tightest negotiated carrier/document and aggregate limits before allocation; overflow fails explicitly, never silently truncates identity/attribution.
+
+| Component | Proposed maximum |
+| --- | --- |
+| Envelope metadata, excluding separately admitted schemas/payload bytes | 256 KiB encoded, plus decoded counters |
+| Canonical refs / unresolved native locator entries | 64 each; all locator paths share 4 KiB/locator and 16 KiB aggregate |
+| Native key / revision; correlation keys | 4 KiB each key/revision; 16 correlation entries, 1 KiB each / 16 KiB total |
+| Ordinary noncanonical token / registered code / summary | 256 UTF-8 bytes / 128 bytes / 4 KiB; names do not certify secret-free content |
+| Actors and nested attribution | 4 KiB/slot, 12 KiB total; 32 groups/actor, 256 bytes/group; 16 allowlisted attributes/actor, 64 bytes/key; attribute source-container depth 4 / 128 nodes per actor, unchanged RI Value semantics |
+| Attribution entries | At most 3, exactly one per present actor slot; 4 evidence refs/entry; basis/mapping/field-path tokens 128 bytes. Charge nested evidence/paths/mapping once to associated actor, actor aggregate and envelope; applicable extension/lineage budgets also apply, without relocating fields. |
+| Times / representation descriptors and payload refs | 8 times, unique declared axis/basis tuple; 8 representations, one payload ref each; opaque host payload token 512 bytes, never provider-controlled URL/file traversal |
+| Lineage | 32 edges / 16 KiB total; reject self-derivation; traversal 128 visited citations / depth 8 per operation |
+| Extensions / quality limitations | 64 declared top-level names / 32 KiB admitted extension bytes; 16 limitation codes / 128 bytes each |
+| Representation bytes / schema documents per evidence admission | 16 MiB aggregate each, also subject to individual canonical document/transport bounds; payload reads remain lazy/bounded |
+
+The inspected SDK candidate has 16 MiB documents, depth 64, 262144 Value nodes, 32 MiB messages, 1048576 wire fields and 256 page records; these are **not approved history/predicate defaults**. Multiple envelopes, schemas and payloads must fit the actual carrier aggregate. Chunking requires HC03's reviewed transport mapping. HC01/source owners register finite family/representation/operation/category/outcome/basis vocabularies or bounded classified strings; unknown required semantics reject. HC10/HR25 separately own archive entry/decompression/path/count budgets.
+
+#### Admission order
+
+1. Bound transport bytes/fields/depth/allocation while decoding and negotiate versions; never log rejected raw input. Host authentication/authorization must precede semantic source/actor disclosure or acquisition; do not trust provider citations/access labels.
+2. Bind source/session/config/access/policy fences; transiently validate source schema, strict canonical values/timestamps, enum membership and aggregate counters. Missing privacy policy blocks ingestion.
+3. Classify/redact before persistence, summaries, indexes, correlation, comparison basis, diagnostics or export staging; then revalidate retained projection/representation/schema budgets and derive only from admitted facts.
+4. Resolve source epoch/authority and pinned historical declaration through owning canonical admission, validating addresses against declared dimensions. Valid missing proof produces native-only unresolved projection; malformed claimed canonical identity fails, not guessed success.
+5. Validate refs/actors/attribution, host blob refs and authorized lineage plus all composed limits. HC03 default is stop without checkpoint advancement; this proposal authorizes no new skip policy.
+6. Within the durable transaction recheck fences, expected commit, native-key comparison outcome, blobs/indexes/rejections/qualified coverage and recovery for exactly the approved contiguous prefix (§4.3). Commit before progress; incurred spend is not erased by rollback.
+7. Reauthorize current policy before reads/comparisons/export/output; invalidate incompatible pins rather than reveal old projections. Rebuild coverage remains separate from acquisition coverage.
+
+### 3.6 Identity and retention boundary matrix
+
+| Boundary | Required outcome |
+| --- | --- |
+| Deleted namespaced CRD, applicable declaration and proven epoch | Exact namespace/name/ref and recorded UID; identity-only navigation, no live CRUD grant. |
+| Unknown GVR/scope, current discovery absent or conflicting | Native locator and limitation, no invented Type/dimensions; later proof creates a projection under same citation. |
+| List/deletecollection/non-resource path or authentication failure | Zero refs unless named objects are actually recorded; collection locator, no `*` ID; attempt is not authenticated actor. |
+| Subject plus independently resolved related object | Multiple ordered refs, one evidence row; unresolved related locator remains native. |
+| Same name, UIDs A/B, third record without UID | Distinct known incarnations; third stays unknown, joins neither specific incarnation; address-wide scope explicit. |
+| Restart/alias/lost store; backing UID unavailable | Fence work; no old-authority resurrection. Only proven bounded isolated epochs qualify; otherwise native-only. |
+| EKS recreation or reused log group/name/ARN | New generation/binding; pre-creation/boundary-uncertain records remain unresolved without record-bound proof. |
+| User impersonates service account | Separate reported authenticated/impersonator/effective roles; none becomes host principal or partition grant. |
+| Nearby authenticator role/session, no reviewed join key | Separate citations; no human/causal attribution or actor replacement from time/name. |
+| Source supplies principal owner/access label; other partition has same address | Reject control claims; host binding and current authorization prevail; denial is not empty success. |
+| Same key after parser correction or stronger redaction | Comparable retained immutable contradiction => conflict; missing/incompatible required basis => incomparable, not conflict. Remove forbidden derivatives. |
+| Policy loosens or purged pin/export is reopened | Removed facts do not regenerate; new authorized representation has provenance; old pins cannot bypass policy or imply physical erasure. |
 
 ## 4. HR03 / HC03: acquisition and durable recovery
 
@@ -353,9 +439,41 @@ Known-empty create/delete sides require evidence establishing that semantic boun
 
 A structured-change predicate requiring an old value cannot match an unknown old value. “Requested field touched,” “observed field differs,” and “verified value transition” are distinct searchable concepts and fidelity labels. Host structured comparison remains canonical. Plugins may add native display or reviewed schema-aware matching, not overwrite evidence meaning.
 
+Schema `unavailable` forbids schema-dependent matching, not automatically every admitted generic comparison; schema `available` grants neither payload access nor unsupported-constraint validity. Resolve a pinned representation's stored format/schema/coverage/native patch metadata, never caller overrides. Policy/parser changes follow §3.1's retained-basis incomparability and §3.4's removal rules; forbidden facts cannot survive in comparison caches or frozen generations.
+
 ## 9. Review receipt required before implementation handoff
 
 Contract review must produce explicit accepted/rejected/amended outcomes, owning reviewers, exact input revisions, and remaining gates. A list of proposed DTO names is not an acceptance receipt.
+
+### Scoped HC01 semantic review, 2026-10-29
+
+Inputs were the two private drafting artifacts by `HC01IdentityGates` and `HC01RetentionGates`, now condensed into §3 and §8 rather than a parallel framework. Inspected bases: host `09bf38f914cba0cf8237d20f5e98634601fbd818`; SDK `a8416f844df1e7742217372ee12205001dca0805` (review document and canonical source; underlying implementation receipt `08421dc` is not user acceptance); Kubernetes `728009541a87d5f901362339e797a3ac66fda048`; UI cohort `11a55a53acb67328f743c512757cabd29135f5fc` (revision only, not reviewed UI behavior).
+
+Source anchors: this document's original §§3/8/9 (original lines 101/107 read raw); [work-package HC01/RI ownership](../../roadmap/2026-10-27-historical-resource-context-work-packages.md#3-required-contract-handoffs); SDK [`resource-v2-spec-review.md:1–54`](https://github.com/omniviewdev/plugin-sdk/blob/a8416f844df1e7742217372ee12205001dca0805/docs/resource-v2-spec-review.md#L1-L54), [`domain.go:16–137`](https://github.com/omniviewdev/plugin-sdk/blob/a8416f844df1e7742217372ee12205001dca0805/pkg/resource/v2/domain.go#L16-L137), [`validation.go:177–219,555–610`](https://github.com/omniviewdev/plugin-sdk/blob/a8416f844df1e7742217372ee12205001dca0805/pkg/resource/v2/validation.go#L177-L219); host [`authority.go:28–60,121–214`](https://github.com/omniviewdev/omniview/blob/09bf38f914cba0cf8237d20f5e98634601fbd818/backend/pkg/plugin/resource/authority.go#L28-L60), [`invocation.go:23–45,89–123`](https://github.com/omniviewdev/omniview/blob/09bf38f914cba0cf8237d20f5e98634601fbd818/backend/pkg/invocation/invocation.go#L23-L123); Kubernetes [`native_catalog.go:82–125,146–160`](https://github.com/omniviewdev/omniview-plugin-kubernetes/blob/728009541a87d5f901362339e797a3ac66fda048/pkg/plugin/resource/native_catalog.go#L82-L125).
+
+| Reviewers / scope | Observed outcome |
+| --- | --- |
+| `ReviewHC01Identity`: identity admission, actor/access separation, cross-artifact agreement | P2 structured-attribution shape/budget contradiction closed after alignment; no remaining scoped blocker. |
+| `ReviewHC01Retention`: retained comparison basis, policy removal, composed budgets and citation privacy | Same P2 closed; no remaining finding for that amendment. |
+
+Both reviews require structured per-slot attribution and charging nested evidence to actor/envelope plus applicable extension/lineage limits (§§3.3/3.5). These are **scoped semantic review receipts**, not approval of this integrated edit, a public freeze, ingestion/implementation acceptance, SDK completion, or closure of issue #186. Owning reviews below remain required.
+
+### Owning handoffs and execution order
+
+Concrete HC01 decisions above → external P07 declaration/authority, HC02 access/privacy and HC09 epoch-proof handoffs → HC03/HC04 plus RI query/result handoffs → production implementation/acceptance. Native P45 acceptance proceeds independently; SDK PR21 cannot be done/merged before user review.
+
+| Owner / language | Exact missing next handoff |
+| --- | --- |
+| P07 + P45 / Go; host authority owner + HR01 / Go | Factor existing canonical Type validation; admit versioned historical-only declarations independently of live catalog. Extend existing authority owner with retained source/epoch proofs and historical lookup, no second allocator. Preserve unknown/conflicting results. |
+| HC02 security/invocation + HR06/HR24 / Go | Actual partition/generation, revocation/offline actor policy, bounded cleanup/key/blob/backup guarantees and current read/output fences. `initial` invocation generation is insufficient. |
+| HC08 HR08 + HC09 HR15 Kubernetes/AWS / Go | Reuse existing Type mapping; supply source schemas/impersonation corpus and verified EKS creation/source-to-epoch proofs/key guarantees, not discovery-name heuristics. |
+| HC03/HC04 + HR06 / Go; HR05 / proto adapters | Map conflict/replay/incomparable and composed budgets into durable contiguous recovery/coverage/cost. After approvals, import existing canonical proto/reference/Value/schema definitions into optional negotiated transport; assign field numbers then, no duplicate DTOs. |
+| HC07 HR12 / Go; P47 HR11/HR14 / TS | Resolve actual pinned retained representations with truthful comparison fidelity. Consume existing `resource/v2/domain.ts`; identity-only navigation and source actor facts never invoke live CRUD or replace host access. No generated-model public ABI. |
+| P07/P12/P13/P14/P15 + HC05/HC06 | Deliver actual schema/source-result/compiler/result/runtime ownership; no narrowed evaluator, shadow lease, browser identity mapper or issue-closure substitute. |
+
+SDK admission/lifecycle/framing/ABI choices remain conditional on the user's proposed-versus-spec review; every implementation owner supplies deterministic boundary cases and actual usable handoffs rather than declarations-only completion.
+
+### Required owning approvals
 
 - **HC01 / HR01:** RI/domain and SDK reviewers approve canonical-reference reuse, no duplicate domain, native-key conflict behavior, stable citations, zero/multi-reference semantics, unknown authority/incarnation, principals, exact values/time, envelope evolution, and representation lineage. Cover CRDs/deleted types, opaque IDs, cluster/resource recreation, multiple stages, and cross-source non-deduplication.
 - **HC02 prerequisite:** storage/security reviewers approve retained classes, redaction, access partitions/offline revocation, encryption/key lifecycle, supported driver/platform profile, crash/corruption/migration behavior, purge/tombstone limits, and blob atomicity. No raw-sensitive ingest before this receipt.
