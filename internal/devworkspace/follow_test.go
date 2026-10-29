@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/omniviewdev/omniview/internal/devcontract"
 )
 
 func TestFollowRejectsFastPollingBeforeWorkspaceResolution(t *testing.T) {
@@ -91,7 +93,10 @@ func TestFollowFenceIntegrityChangesRevokeConsent(t *testing.T) {
 				}
 				return os.WriteFile(path, []byte("{"), 0600)
 			})
-			require.ErrorContains(t, err, "consent metadata changed unexpectedly")
+			var typed *devcontract.Error
+			require.ErrorAs(t, err, &typed)
+			require.Equal(t, "follow_fence_invalid", typed.Code)
+			require.Equal(t, followConflictExit, typed.Exit)
 			status, statusErr := m.Status(context.Background(), "fence-integrity")
 			require.NoError(t, statusErr)
 			require.Equal(t, "stopped", status.Phase)
@@ -226,6 +231,10 @@ func TestApplyFollowDoesNotAdoptChangedPolicyAfterOwnProgress(t *testing.T) {
 		if status.Result == "consent_revoked" {
 			require.False(t, status.Enabled)
 			require.Equal(t, "configuration_changed", status.BlockedReason)
+			require.Nil(t, status.Plan)
+			require.Empty(t, status.PendingCohort)
+			require.Empty(t, status.NextCommand)
+			require.Empty(t, status.NextArgv)
 			revoked = true
 		}
 		return nil
@@ -236,6 +245,66 @@ func TestApplyFollowDoesNotAdoptChangedPolicyAfterOwnProgress(t *testing.T) {
 	require.Equal(t, first, fixtureGit(t, checkout, "rev-parse", "HEAD"))
 	require.Equal(t, canonical, fixtureGit(t, source, "rev-parse", "HEAD"))
 	require.NoFileExists(t, sourceUpdatePath(m, w))
+}
+
+func TestFinishFollowIntegrityOverridesConcurrentConfigurationRevocation(t *testing.T) {
+	ctx, cancel := context.WithCancelCause(context.Background())
+	cancel(errFollowFenceIntegrity)
+	status := FollowStatus{Enabled: true, BlockedReason: "configuration_changed"}
+	published := 0
+	err := finishFollow(ctx, &status, false, func() error {
+		published++
+		require.False(t, status.Enabled)
+		require.Equal(t, updateBlocked, status.Result)
+		require.Equal(t, "follow_fence_invalid", status.BlockedReason)
+		return nil
+	}, errFollowConsentRevoked)
+	var typed *devcontract.Error
+	require.ErrorAs(t, err, &typed)
+	require.Equal(t, "follow_fence_invalid", typed.Code)
+	require.Equal(t, followConflictExit, typed.Exit)
+	require.Equal(t, 1, published)
+}
+
+func TestFinishFollowConfigurationRevocationClearsActionableObservation(t *testing.T) {
+	status := FollowStatus{
+		Enabled: true, Result: updateBlocked, BlockedReason: "configuration_changed",
+		Plan: &UpdatePlan{OperationID: "old-operation"}, PendingCohort: "old-cohort",
+		NextCommand: "omniview workspace update old", NextArgv: []string{"workspace", "update", "old"},
+		NextAttempt: time.Now().Add(time.Minute),
+	}
+	published := 0
+	err := finishFollow(context.Background(), &status, false, func() error {
+		published++
+		require.Equal(t, "consent_revoked", status.Result)
+		require.False(t, status.Enabled)
+		require.True(t, status.NextAttempt.IsZero())
+		require.Nil(t, status.Plan)
+		require.Empty(t, status.PendingCohort)
+		require.Empty(t, status.NextCommand)
+		require.Empty(t, status.NextArgv)
+		return nil
+	}, errFollowConsentRevoked)
+	require.NoError(t, err)
+	require.Equal(t, 1, published)
+}
+
+func TestFinishFollowInterruptedApplyRetainsRecoveryAuthority(t *testing.T) {
+	ctx, cancel := context.WithCancelCause(context.Background())
+	cancel(errFollowConsentRevoked)
+	plan := &UpdatePlan{OperationID: "interrupted-operation"}
+	status := FollowStatus{
+		Result: "blocked_recovery", BlockedReason: "explicit_recovery_required",
+		ActiveOperation: plan.OperationID, Plan: plan, PendingCohort: "captured-cohort",
+		NextCommand: "omniview workspace recover owned", NextArgv: []string{"workspace", "recover", "owned"},
+	}
+	before := status
+	err := finishFollow(ctx, &status, true, func() error {
+		t.Fatal("consent revocation must not replace interrupted recovery status")
+		return nil
+	}, context.Canceled)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, before, status)
 }
 
 func TestApplyFollowPausesDirtySourceAndRevalidatesAfterUserFix(t *testing.T) {

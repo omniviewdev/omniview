@@ -7,12 +7,13 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/gofrs/flock"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devworkspace"
 )
 
 func TestWorkspaceLifecycleTargetFormsPreserveDecoyEdges(t *testing.T) {
-	for _, verb := range []string{"resume", "rollback", "remove", "recover"} {
+	for _, verb := range []string{"resume", "remove", "recover"} {
 		for _, form := range []string{"slug", "uuid", "relative-directory", "absolute-directory", "manifest"} {
 			t.Run(verb+"/"+form, func(t *testing.T) {
 				f := newCLIEdgeFixture(t)
@@ -23,6 +24,25 @@ func TestWorkspaceLifecycleTargetFormsPreserveDecoyEdges(t *testing.T) {
 				decoyBefore, err := os.ReadFile(decoy.ManifestPath)
 				if err != nil {
 					t.Fatal(err)
+				}
+				if verb == "recover" {
+					base := filepath.Join(f.root, ".omniview-dev", "recovery", decoy.Manifest.WorkspaceID)
+					if err := os.MkdirAll(base, 0700); err != nil {
+						t.Fatal(err)
+					}
+					lock := flock.New(filepath.Join(base, "refresh.lock"))
+					if held, err := lock.TryLock(); err != nil || !held {
+						t.Fatalf("hold decoy refresh authority: held=%t err=%v", held, err)
+					}
+					t.Cleanup(func() { _ = lock.Unlock() })
+					var out, diagnostics bytes.Buffer
+					code := run([]string{"workspace", "recover", decoy.Manifest.Slug, "--root", f.root, "--json"}, &out, &diagnostics)
+					var result struct {
+						Error *devcontract.Error `json:"error"`
+					}
+					if err := json.Unmarshal(out.Bytes(), &result); err != nil || code != 4 || result.Error == nil || result.Error.Code != "workspace_busy" {
+						t.Fatalf("held decoy authority did not block recovery: code=%d out=%s err=%v", code, &out, err)
+					}
 				}
 				target := f.workspace.Manifest.Slug
 				switch form {
@@ -46,13 +66,6 @@ func TestWorkspaceLifecycleTargetFormsPreserveDecoyEdges(t *testing.T) {
 					if code != 0 {
 						t.Errorf("target form failed: code=%d stdout=%s stderr=%s", code, &out, &diagnostics)
 					}
-				} else if verb == "rollback" {
-					var result struct {
-						Error *devcontract.Error `json:"error"`
-					}
-					if err := json.Unmarshal(out.Bytes(), &result); err != nil || code != 4 || result.Error == nil || result.Error.Code != "rollback_not_allowed" {
-						t.Errorf("completed-workspace rollback reached wrong policy: code=%d out=%s err=%v", code, &out, err)
-					}
 				} else {
 					var result struct {
 						Error *devcontract.Error `json:"error"`
@@ -66,7 +79,7 @@ func TestWorkspaceLifecycleTargetFormsPreserveDecoyEdges(t *testing.T) {
 				}
 				if verb == "remove" && code == 0 {
 					if _, err := os.Stat(f.workspace.Root); !os.IsNotExist(err) {
-						t.Errorf("remove did not delete selected root: %v", err)
+						t.Errorf("%s did not delete selected root: %v", verb, err)
 					}
 				} else {
 					if raw, err := os.ReadFile(f.workspace.ManifestPath); err != nil || !bytes.Contains(raw, []byte(f.workspace.Manifest.WorkspaceID)) {
@@ -75,6 +88,22 @@ func TestWorkspaceLifecycleTargetFormsPreserveDecoyEdges(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestWorkspaceCompletedRollbackRefusesWithoutMutationEdges(t *testing.T) {
+	f := newCLIEdgeFixture(t)
+	before := f.manifest()
+	var out, diagnostics bytes.Buffer
+	code := run([]string{"workspace", "rollback", f.workspace.Manifest.Slug, "--root", f.root, "--json"}, &out, &diagnostics)
+	var result struct {
+		Error *devcontract.Error `json:"error"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil || code != 4 || result.Error == nil || result.Error.Code != "rollback_not_allowed" {
+		t.Errorf("completed rollback reached wrong policy: code=%d out=%s err=%v", code, &out, err)
+	}
+	if !bytes.Equal(before, f.manifest()) {
+		t.Fatal("refused rollback changed completed workspace")
 	}
 }
 

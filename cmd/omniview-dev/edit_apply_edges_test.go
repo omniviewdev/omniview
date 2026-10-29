@@ -22,10 +22,33 @@ func TestWorkspaceInvalidApplyNeverRequestsHealthySupervisorStopEdges(t *testing
 		{"--slug", "../escape"},
 		{"--add-repo", "unregistered"},
 		{"--upstream", "omniview=invalid"},
+		{"--slug", "occupied"},
+		{"--slug", "redirected"},
 	} {
-		t.Run(flags[0], func(t *testing.T) {
+		t.Run(strings.Join(flags, "/"), func(t *testing.T) {
 			f := newCLIEdgeFixture(t)
 			before := f.manifest()
+			var decoy devworkspace.Workspace
+			if err := json.Unmarshal(f.success("workspace", "create", "occupied", "--root", f.root, "--json"), &decoy); err != nil {
+				t.Fatal(err)
+			}
+			decoyBefore, err := os.ReadFile(decoy.ManifestPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			redirect := filepath.Join(filepath.Dir(f.workspace.Root), "redirected")
+			if err := os.Symlink(decoy.Root, redirect); err != nil {
+				t.Fatal(err)
+			}
+			preserved := map[string][]byte{}
+			for _, root := range []string{f.workspace.Root, decoy.Root} {
+				path := filepath.Join(root, "omniview", "tracked")
+				raw, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				preserved[path] = raw
+			}
 			generation := "edge-owned-supervisor"
 			token := strings.Repeat("e", 64)
 			owner, err := devsession.CaptureProcess(os.Getpid(), devsession.ProcessOwner{WorkspaceID: f.workspace.Manifest.WorkspaceID, Generation: generation, Role: "supervisor", Source: f.workspace.Root})
@@ -74,11 +97,30 @@ func TestWorkspaceInvalidApplyNeverRequestsHealthySupervisorStopEdges(t *testing
 			if code := run(args, &out, &diagnostics); code == 0 {
 				t.Errorf("invalid apply succeeded: %s", &out)
 			}
+			if flags[0] == "--slug" && (flags[1] == "occupied" || flags[1] == "redirected") {
+				var result struct {
+					Error *devcontract.Error `json:"error"`
+				}
+				if err := json.Unmarshal(out.Bytes(), &result); err != nil || result.Error == nil || result.Error.Code != "workspace_exists" {
+					t.Errorf("occupied destination did not reach canonical refusal: %s %v", &out, err)
+				}
+			}
 			if mutations.Load() != 0 {
 				t.Errorf("invalid edit attempted %d supervisor mutations before canonical refusal", mutations.Load())
 			}
 			if !bytes.Equal(before, f.manifest()) {
 				t.Fatal("invalid apply changed manifest")
+			}
+			if after, err := os.ReadFile(decoy.ManifestPath); err != nil || !bytes.Equal(decoyBefore, after) {
+				t.Fatalf("invalid apply changed destination workspace: %s %v", after, err)
+			}
+			if target, err := os.Readlink(redirect); err != nil || target != decoy.Root {
+				t.Fatalf("invalid apply changed destination redirect: %q %v", target, err)
+			}
+			for path, before := range preserved {
+				if after, err := os.ReadFile(path); err != nil || !bytes.Equal(before, after) {
+					t.Errorf("invalid apply changed source bytes at %s: %q %v", path, after, err)
+				}
 			}
 		})
 	}

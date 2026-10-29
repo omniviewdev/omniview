@@ -122,10 +122,14 @@ func (g *BuildGraph) affected(paths []string) ([]BuildNode, error) {
 			continue
 		}
 		if inside(host, path) {
-			if strings.HasSuffix(path, ".go") {
+			switch filepath.Ext(path) {
+			case ".go":
 				selected["bindings"] = true
 				selected["host-backend"] = true
-			} else {
+			case ".c", ".h", ".m", ".mm", ".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx",
+				".f", ".F", ".for", ".f90", ".s", ".S", ".sx", ".swig", ".swigcxx", ".syso":
+				selected["host-backend"] = true
+			default:
 				selected["host-frontend"] = true
 			}
 		}

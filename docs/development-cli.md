@@ -151,12 +151,18 @@ During shutdown, `launchPhase: "stopping"` and `waitStage` identify the current
 wait, such as `build-authority`, `plugin-control`, `host`, or `leases`. A busy
 observation does not attest host readiness. A response from a replaced supervisor
 generation is refused rather than reported as the current ready application.
+If the same owner exits before final verification, inspection restores its saved
+stopped proof or reports a crash; it never returns stale readiness.
 The authenticated supervisor status request has a five-second total deadline,
 including its response body. A stalled observation returns exit 7 with
 `code: "timeout"` and retains ownership; it does not mark the supervisor dead.
 Canceling a queued request releases its wait without authorizing delayed
 mutations. Canceling an admitted shutdown does not prove disposal: exact process
-handles, output writers, and leases remain available for the owner's retry.
+handles, output writers, and leases remain with the owner until cleanup completes.
+The owner continues cleanup after the caller's deadline, joins in-flight launch
+work, and releases its process and workspace lock only after confirmed disposal.
+Each shutdown wait-stage transition is saved for crash inspection. Late producer
+completion cannot restore readiness after shutdown has been admitted.
 
 Removing a repository selection retires its worktree but keeps its branch
 ownership record for later reselection or explicit branch deletion. Link, unlink,

@@ -76,6 +76,16 @@ legacy UI, MUI, and Emotion dependencies to the supported base-ui contract.
 
 The generated package root is `$COLLECTION/workspaces/<feature>`, above its host/UI/plugin worktrees. Managed native12 commands keep the actual consumer cwd/argv while enforcing this root through `PNPM_CONFIG_WORKSPACE_DIR`. Source configs/lockfiles remain standalone; compatible policies and locked registry resolutions are reconciled explicitly, and conflicts refuse mutation. Do not hand-edit generated root files or run independent plugin installs inside a managed feature.
 
+Changing a source patch declaration can require regenerating that source
+workspace's standalone lockfile before managed refresh. A stale scalar-patch
+refusal identifies the exact lockfile and prints a lockfile-only repair command.
+Use the canonical native pnpm version selected by `OMNIVIEW_PNPM_EXECUTABLE`, not
+the managed launcher. The printed command verifies the pinned version, selects
+the exact standalone directory, overrides inherited workspace-directory aliases,
+and uses `--lockfile-only --ignore-scripts --no-frozen-lockfile`. This explicit
+source-lock reconciliation does not install or reset managed dependency trees.
+Run managed refresh after reviewing the resulting source lockfile change.
+
 The host workspace includes its packages and E2E tooling; host TypeScript projects own `ui/` and `packages/`, not plugin repositories under `plugins/`. Each plugin's own project owns its dependencies, aliases and tests. Managed features add only explicitly selected plugin repositories; initializing an unselected submodule must not change host compilation or dependency resolution.
 
 For standalone frontend checks, build providers, runtime, then the Vite plugin
@@ -152,6 +162,12 @@ The probe performs real native12 recursive peer, singleton, live-export and atom
 The persistent supervisor outlives the short CLI. `--timeout` bounds the caller/build/readiness wait; timeout does not turn unfinished work into success or authorize a PID kill. Inspect/down remain available for that recorded supervisor. The supervisor owns the actual host and Node/Vite commands and their process trees. On Darwin, it retains unreaped child leaders until owned group cleanup; detached numeric-PID termination is never used as a fallback.
 
 Browser mode starts the real Wails server. Use `instance.endpoints.browser`, **not** the asset-only Vite URL. `--live-frontend=false` serves built assets instead of launching host Vite. `--watch=false` disables the supervisor build graph; otherwise its lifetime owns serial source rebuilds and real managed-generation waits. Runtime/shim changes restart actual consumers; a successful compiler exit alone is not plugin readiness.
+
+Host native build inputs, including C/cgo, C++, Objective-C, headers, Fortran,
+assembly, SWIG and object files, enter the owned host rebuild path on addition,
+content edit or removal, including with live frontend enabled. JavaScript and
+CSS changes retain their frontend-only behavior. Cache identity continues to
+use source content and ownership rather than timestamps alone.
 
 Backend readiness is not browser-side plugin import readiness. A cold browser can render the shell before the initial plugin batch, route publication and loader resolution complete. Wait for the selected rendered plugin, not just a Vite socket or shell; live-mode inspection also exposes `window.__PLUGIN_SERVICE__.getDebugSnapshot()` with service/plugin phases and route version. After an automatic document replacement, repeat browser bootstrap before exercising its controls. A `framenavigated` event alone is not reload proof: same-URL router `history.replaceState` and fragment changes stay in the same document; compare `performance.timeOrigin` or browser protocol navigation events.
 
@@ -367,10 +383,12 @@ Profile isolation does not isolate HOME, kubeconfig, cloud credentials, terminal
 
 Edits require a stopped supervisor and preserve UUID/profile/unaffected assignments. The orchestrator preserves exact link evidence, unlinks the old overlay, invokes A03's validated durable intent transaction and relinks the committed selection. A validation failure with unchanged intent restores previous links. A Git failure after durable intent remains explicit/resumable (`workspace resume`), not a falsely promised inverse rollback. Ref/removal/rename operations refuse dirty or foreign worktrees. `link`, `unlink`, `list`, `resume` and `rollback` are real CLI lifecycle commands too; Task `workspace:<verb>` wrappers forward the same quoted arguments.
 
-`workspace edit --apply` validates canonical intent before capturing authenticated
-running state and intentionally stopping services, then refreshes the edited
-selection and restarts only a
-previously running workspace. A previously stopped workspace remains stopped;
+`workspace edit --apply` validates canonical intent and the planned rename
+destination before capturing authenticated running state or stopping services.
+Occupied or redirected destinations are refused. The durable edit rechecks
+destination ownership before mutation. After the edit commits, refresh uses
+the committed selection and restarts only a previously running workspace.
+A previously stopped workspace remains stopped;
 `--apply` is not implicit startup consent. Missing dependency acceptance proof
 or launch configuration remains an explicit refresh failure, not fabricated
 readiness. Use `workspace up` separately to request startup.

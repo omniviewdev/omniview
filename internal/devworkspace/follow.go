@@ -230,13 +230,6 @@ func newFollowStatus(w Workspace, apply bool) (FollowStatus, error) {
 func finishFollow(
 	ctx context.Context, status *FollowStatus, interruptedApply bool, publish func() error, resultErr error,
 ) error {
-	if (errors.Is(context.Cause(ctx), errFollowConsentRevoked) ||
-		errors.Is(resultErr, errFollowConsentRevoked)) && !interruptedApply {
-		status.Result = "consent_revoked"
-		status.Enabled = false
-		status.NextAttempt = time.Time{}
-		return publish()
-	}
 	if errors.Is(context.Cause(ctx), errFollowFenceIntegrity) {
 		status.Result = updateBlocked
 		status.Enabled = false
@@ -244,6 +237,17 @@ func finishFollow(
 		_ = publish()
 		return devcontract.Fail(followConflictExit, "follow_fence_invalid",
 			"follow consent metadata changed unexpectedly; no further updates are authorized")
+	}
+	if (errors.Is(context.Cause(ctx), errFollowConsentRevoked) ||
+		errors.Is(resultErr, errFollowConsentRevoked)) && !interruptedApply {
+		status.Result = "consent_revoked"
+		status.Enabled = false
+		status.NextAttempt = time.Time{}
+		status.Plan = nil
+		status.PendingCohort = ""
+		status.NextCommand = ""
+		status.NextArgv = nil
+		return publish()
 	}
 	return resultErr
 }

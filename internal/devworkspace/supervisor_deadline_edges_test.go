@@ -4,6 +4,7 @@ package devworkspace
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -19,6 +20,15 @@ import (
 )
 
 func TestSupervisorDeadlineEdgesStalledStatusBodyRetainsOwner(t *testing.T) {
+	testSupervisorStalledStatusBody(t, false)
+}
+
+func TestSupervisorDeadlineEdgesCompleteStatusRequiresBoundedEOF(t *testing.T) {
+	testSupervisorStalledStatusBody(t, true)
+}
+
+func testSupervisorStalledStatusBody(t *testing.T, complete bool) {
+	t.Helper()
 	s := supervisorEdgeFixture(t)
 	owner := devsession.ProcessOwner{WorkspaceID: s.workspace.Manifest.WorkspaceID, Generation: s.generation, Role: "supervisor", Source: s.workspace.Root}
 	identity, err := devsession.CaptureProcess(os.Getpid(), owner)
@@ -32,7 +42,11 @@ func TestSupervisorDeadlineEdgesStalledStatusBodyRetainsOwner(t *testing.T) {
 			return
 		}
 		out.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(out, `{"status":`)
+		if complete {
+			_ = json.NewEncoder(out).Encode(map[string]any{"status": s.snapshot()})
+		} else {
+			_, _ = io.WriteString(out, `{"status":`)
+		}
 		out.(http.Flusher).Flush()
 		close(started)
 		select {

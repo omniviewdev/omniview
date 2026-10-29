@@ -374,10 +374,10 @@ func TestLifecycleEdgesRemoveContendsWithRemoveEditAndResume(t *testing.T) {
 			name := "must-not-publish"
 			contender := startLifecycleEdge(t, m, lifecycleEdgeConfig{Action: action, Name: w.Manifest.WorkspaceID, Edit: EditOptions{DisplayName: &name}})
 			contender.signal(t)
+			require.Equal(t, "workspace_busy", contender.result(t).Code)
 			_, err = gate.Write([]byte{1})
 			require.NoError(t, err)
 			require.Empty(t, remover.result(t).Error)
-			require.NotEmpty(t, contender.result(t).Error)
 			require.NoDirExists(t, w.Root)
 			require.FileExists(t, sentinel)
 			require.NoError(t, devcontract.ValidateDefaultProfileOwnership(m.options.Home, w.Manifest.WorkspaceID))

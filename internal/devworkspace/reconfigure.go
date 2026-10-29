@@ -40,7 +40,13 @@ func (m *Manager) PreflightEdit(ctx context.Context, name string, options EditOp
 	if err = checkManifest(root, j); err != nil {
 		return err
 	}
-	_, err = m.planEdit(ctx, j, options)
+	plan, err := m.planEdit(ctx, j, options)
+	if err != nil {
+		return err
+	}
+	if plan.manifest.Slug != j.Manifest.Slug {
+		_, err = m.renameDestination(plan.manifest.Slug)
+	}
 	return err
 }
 

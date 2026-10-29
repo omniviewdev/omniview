@@ -403,6 +403,22 @@ func (m *Manager) planEdit(ctx context.Context, j *journal, opts EditOptions) (e
 	return editPlan{registry: reg, manifest: desired}, nil
 }
 
+// renameDestination validates the canonical destination without changing intent.
+func (m *Manager) renameDestination(slug string) (string, error) {
+	destination := filepath.Join(m.Root, "workspaces", slug)
+	if _, err := os.Lstat(destination); !os.IsNotExist(err) {
+		return "", devcontract.Fail(4, "workspace_exists", "renamed workspace destination already exists")
+	}
+	canonical, err := devcontract.CanonicalPath(destination)
+	if err != nil {
+		return "", err
+	}
+	if canonical != destination {
+		return "", devcontract.Fail(4, "foreign_workspace", "rename target cannot be redirected through a symlink")
+	}
+	return destination, nil
+}
+
 func (m *Manager) Edit(ctx context.Context, name string, opts EditOptions) (Workspace, error) {
 	unlock, err := lockRoot(m.Root)
 	if err != nil {
@@ -451,16 +467,9 @@ func (m *Manager) Edit(ctx context.Context, name string, opts EditOptions) (Work
 		if err = ValidateRepositoryOutputs(ctx, w); err != nil {
 			return Workspace{}, err
 		}
-		j.RenameTo = filepath.Join(m.Root, "workspaces", desired.Slug)
-		if _, e := os.Lstat(j.RenameTo); !os.IsNotExist(e) {
-			return Workspace{}, devcontract.Fail(4, "workspace_exists", "renamed workspace destination already exists")
-		}
-		canonical, e := devcontract.CanonicalPath(j.RenameTo)
-		if e != nil {
-			return Workspace{}, e
-		}
-		if canonical != j.RenameTo {
-			return Workspace{}, devcontract.Fail(4, "foreign_workspace", "rename target cannot be redirected through a symlink")
+		j.RenameTo, err = m.renameDestination(desired.Slug)
+		if err != nil {
+			return Workspace{}, err
 		}
 	}
 	// Reconfigure restores dependency/producer overlays before Edit. A rename

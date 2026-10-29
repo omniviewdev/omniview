@@ -30,34 +30,36 @@ type supervisorRecord struct {
 }
 
 type workspaceSupervisor struct {
-	manager          *Manager
-	workspace        Workspace
-	options          LaunchOptions
-	generation       string
-	owner            devcontract.ProcessIdentity
-	record           supervisorRecord
-	registry         *devsession.Registry
-	output           io.Writer
-	mu               sync.Mutex
-	runMu            supervisorMutex
-	sourceMu         supervisorMutex
-	watchCancel      context.CancelFunc
-	status           Status
-	binary           string
-	children         map[string]*ownedChild
-	leases           map[string]devsession.Lease
-	graphInstance    *BuildGraph
-	sessionCancel    context.CancelFunc
-	sessionContext   context.Context
-	exit             chan struct{}
-	exitOnce         sync.Once
-	launchDone       chan struct{}
-	watchDone        chan struct{}
-	childContext     context.Context
-	goBuildCache     string
-	childCancel      context.CancelFunc
-	hostCaptureReady chan struct{}
-	lastHost         *ownedChild
+	manager           *Manager
+	workspace         Workspace
+	options           LaunchOptions
+	generation        string
+	owner             devcontract.ProcessIdentity
+	record            supervisorRecord
+	registry          *devsession.Registry
+	output            io.Writer
+	mu                sync.Mutex
+	persistMu         sync.Mutex
+	runMu             supervisorMutex
+	sourceMu          supervisorMutex
+	watchCancel       context.CancelFunc
+	status            Status
+	binary            string
+	children          map[string]*ownedChild
+	leases            map[string]devsession.Lease
+	graphInstance     *BuildGraph
+	sessionCancel     context.CancelFunc
+	sessionContext    context.Context
+	exit              chan struct{}
+	exitOnce          sync.Once
+	shutdownRequested chan struct{}
+	launchDone        chan struct{}
+	watchDone         chan struct{}
+	childContext      context.Context
+	goBuildCache      string
+	childCancel       context.CancelFunc
+	hostCaptureReady  chan struct{}
+	lastHost          *ownedChild
 	// Committed only after the host and all managed plugins become ready.
 	hostFrontendPort int
 	// A partial replacement remains owed even if Vite reuses the committed port.
@@ -136,7 +138,10 @@ func callSupervisor(ctx context.Context, record supervisorRecord, token []byte, 
 	if err = decoder.Decode(&result); err != nil {
 		return status, err
 	}
-	if decoder.Decode(new(any)) != io.EOF {
+	if err = decoder.Decode(new(any)); err != io.EOF {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return status, err
+		}
 		return status, devcontract.Fail(5, "invalid_response", "supervisor returned multiple JSON values")
 	}
 	if result.Error != nil {
@@ -285,6 +290,7 @@ func (m *Manager) ServeSupervisor(ctx context.Context, name string, output io.Wr
 	// while it applies the stopped overlay before any host child exists.
 	localManager := *m
 	s := &workspaceSupervisor{manager: &localManager, workspace: w, options: options, generation: generation, owner: owner, record: record, registry: registry, output: output, status: Status{Workspace: w, Generation: generation, Phase: "starting", Builds: map[string]BuildEvent{}}, children: map[string]*ownedChild{}, leases: map[string]devsession.Lease{}, exit: make(chan struct{})}
+	s.shutdownRequested = make(chan struct{})
 	s.sessionContext, s.sessionCancel = context.WithCancel(ctx)
 	s.childContext, s.childCancel = context.WithCancel(context.WithoutCancel(ctx))
 	defer s.childCancel()
@@ -333,6 +339,7 @@ func (m *Manager) ServeSupervisor(ctx context.Context, name string, output io.Wr
 	select {
 	case <-ctx.Done():
 	case <-s.exit:
+	case <-s.shutdownRequested:
 	case err = <-serverErrors:
 		if !errors.Is(err, http.ErrServerClosed) {
 			s.failed(err)
@@ -394,6 +401,8 @@ func (s *workspaceSupervisor) snapshot() Status {
 	return status
 }
 func (s *workspaceSupervisor) persist() {
+	s.persistMu.Lock()
+	defer s.persistMu.Unlock()
 	if err := saveLaunchJSON(launchPath(s.workspace, "launch-status.json"), s.snapshot()); err != nil {
 		s.mu.Lock()
 		s.status.Phase = "error"
@@ -408,6 +417,9 @@ func (s *workspaceSupervisor) persist() {
 func (s *workspaceSupervisor) setPhase(phase string, err error) {
 	var served map[string]CheckoutStatus
 	if phase == "ready" {
+		if s.sessionCanceled() {
+			return
+		}
 		parent := s.sessionContext
 		if parent == nil {
 			parent = context.Background()
@@ -417,6 +429,10 @@ func (s *workspaceSupervisor) setPhase(phase string, err error) {
 		cancel()
 	}
 	s.mu.Lock()
+	if phase == "ready" && s.sessionCanceled() {
+		s.mu.Unlock()
+		return
+	}
 	if err != nil {
 		s.status.FailedStage = s.status.Phase
 		if s.status.WaitStage != "" {
@@ -449,10 +465,23 @@ func (s *workspaceSupervisor) setPhase(phase string, err error) {
 }
 func (s *workspaceSupervisor) failed(err error) { s.setPhase("error", err) }
 
+func (s *workspaceSupervisor) sessionCanceled() bool {
+	if s.sessionContext != nil && s.sessionContext.Err() != nil {
+		return true
+	}
+	select {
+	case <-s.shutdownRequested:
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *workspaceSupervisor) setWaitStage(stage string) {
 	s.mu.Lock()
 	s.status.WaitStage = stage
 	s.mu.Unlock()
+	s.persist()
 }
 func (s *workspaceSupervisor) execute(ctx context.Context, command string) (Status, error) {
 	if command == supervisorStatusCommand {
@@ -470,6 +499,17 @@ func (s *workspaceSupervisor) execute(ctx context.Context, command string) (Stat
 		defer s.sourceMu.Unlock()
 		s.setWaitStage("build-authority")
 		s.setPhase("stopping", nil)
+		// Admission survives the caller's deadline. The owner joins launch and
+		// completes disposal before releasing its process and workspace lock.
+		s.mu.Lock()
+		if s.shutdownRequested != nil {
+			select {
+			case <-s.shutdownRequested:
+			default:
+				close(s.shutdownRequested)
+			}
+		}
+		s.mu.Unlock()
 		s.sessionCancel()
 		if err := s.runMu.LockContext(ctx); err != nil {
 			s.failed(err)
@@ -541,7 +581,7 @@ func (s *workspaceSupervisor) statusResponse(ctx context.Context) Status {
 	}
 	defer s.sourceMu.Unlock()
 	s.mu.Lock()
-	current := s.status.Phase == "ready" && sameManifest(s.status.Manifest, status.Manifest)
+	current := s.status.Phase == "ready" && !s.sessionCanceled() && sameManifest(s.status.Manifest, status.Manifest)
 	s.mu.Unlock()
 	if !current {
 		return s.busyStatus()

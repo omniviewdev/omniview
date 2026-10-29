@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/omniviewdev/omniview/internal/devcontract"
 )
 
 func TestSourceEdgesDependencyAuthorityBoundaries(t *testing.T) {
@@ -77,6 +79,7 @@ func TestSourceEdgesFollowConsentDoesNotExpandAfterEdit(t *testing.T) {
 			before := fixtureGit(t, checkout, "rev-parse", "HEAD")
 			var target string
 			waits, applied := 0, 0
+			revoked := 0
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 			err := m.Follow(ctx, w.Manifest.WorkspaceID, FollowOptions{
@@ -102,11 +105,19 @@ func TestSourceEdgesFollowConsentDoesNotExpandAfterEdit(t *testing.T) {
 				if status.Result == followApplied {
 					applied++
 				}
+				if status.Result == "consent_revoked" {
+					revoked++
+					require.False(t, status.Enabled)
+					require.Equal(t, "configuration_changed", status.BlockedReason)
+					require.Nil(t, status.Plan)
+					require.Empty(t, status.PendingCohort)
+					require.Empty(t, status.NextCommand)
+					require.Empty(t, status.NextArgv)
+				}
 				return nil
 			})
-			// Either typed consent revocation or an explicit disabled follower is
-			// acceptable. Applying a new configuration without new consent is not.
-			require.NotErrorIs(t, err, context.DeadlineExceeded, "a stalled follower is not proof that changed consent was refused")
+			require.NoError(t, err)
+			require.Equal(t, 1, revoked)
 			require.NotEmpty(t, target)
 			require.Zero(t, applied)
 			require.Equal(t, before, fixtureGit(t, checkout, "rev-parse", "HEAD"))
@@ -118,7 +129,7 @@ func TestSourceEdgesFollowConsentDoesNotExpandAfterEdit(t *testing.T) {
 	}
 }
 
-func TestSourceEdgesCanceledAuthorityWaitPreservesCapturedIntent(t *testing.T) {
+func TestSourceEdgesPreCanceledHeldAuthorityPreservesCapturedIntent(t *testing.T) {
 	m, w, plan := sourcePlanFixture(t)
 	intent := sourceUpdateIntent{WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, Plan: plan}
 	require.NoError(t, saveSourceUpdate(m, w, &intent, sourceUpdatePrepared))
@@ -133,6 +144,8 @@ func TestSourceEdgesCanceledAuthorityWaitPreservesCapturedIntent(t *testing.T) {
 			release()
 		}
 	}()
+	// The production wait has no lock-attempt admission hook. This checks a
+	// pre-canceled caller against a held lock, not cancellation after admission.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	unlock, err := m.waitUpdateAuthority(ctx, w.Manifest.WorkspaceID)
@@ -197,7 +210,9 @@ func TestSourceEdgesDependencyRecoveryRejectsLaunchOverrides(t *testing.T) {
 				override.Timeout = 2 * time.Minute
 			}
 			_, err = m.Recover(context.Background(), w.Manifest.WorkspaceID, RefreshOptions{Launch: &override})
-			require.Error(t, err)
+			var typed *devcontract.Error
+			require.ErrorAs(t, err, &typed)
+			require.Equal(t, "refresh_intent_mismatch", typed.Code)
 			after, readErr := os.ReadFile(path)
 			require.NoError(t, readErr)
 			require.Equal(t, before, after)

@@ -157,22 +157,7 @@ func (m *Manager) status(ctx context.Context, name string) (Status, error) {
 	status.Generation = record.Generation
 	if err = verifySupervisor(record, w); err != nil {
 		if errors.Is(err, devsession.ErrProcessGone) {
-			status.Checkouts = checkoutStatuses(ctx, w)
-			var saved Status
-			if readLaunchJSON(launchPath(w, "launch-status.json"), &saved) == nil && saved.Generation == record.Generation {
-				status.Builds = saved.Builds
-				status.LastError = saved.LastError
-				status.FailedStage = saved.FailedStage
-				status.WaitStage = saved.WaitStage
-				status.RecoveryCommand = saved.RecoveryCommand
-				status.ServedCheckouts = saved.ServedCheckouts
-				if saved.Phase == "stopped" {
-					return status, nil
-				}
-			}
-			status.Phase = "crashed"
-			status.Health.Liveness = "crashed"
-			return status, nil
+			return exitedSupervisorStatus(ctx, status), nil
 		}
 		return status, err
 	}
@@ -194,10 +179,34 @@ func (m *Manager) status(ctx context.Context, name string) (Status, error) {
 		return status, devcontract.Fail(4, "stale_target", "workspace supervisor changed during inspection; retry the selected workspace")
 	}
 	if err = verifySupervisor(current, w); err != nil {
+		if errors.Is(err, devsession.ErrProcessGone) {
+			return exitedSupervisorStatus(ctx, status), nil
+		}
 		return status, err
 	}
 	live.Workspace = w
 	return live, nil
+}
+
+// exitedSupervisorStatus preserves diagnostics without treating an obsolete
+// ready snapshot as evidence that an exited generation stopped cleanly.
+func exitedSupervisorStatus(ctx context.Context, status Status) Status {
+	status.Checkouts = checkoutStatuses(ctx, status.Workspace)
+	var saved Status
+	if readLaunchJSON(launchPath(status.Workspace, "launch-status.json"), &saved) == nil && saved.Generation == status.Generation {
+		status.Builds = saved.Builds
+		status.LastError = saved.LastError
+		status.FailedStage = saved.FailedStage
+		status.WaitStage = saved.WaitStage
+		status.RecoveryCommand = saved.RecoveryCommand
+		status.ServedCheckouts = saved.ServedCheckouts
+		if saved.Phase == "stopped" {
+			return status
+		}
+	}
+	status.Phase = "crashed"
+	status.Health.Liveness = "crashed"
+	return status
 }
 
 // RequireStopped is suitable for Manager.Options.Stopped. A live supervisor owns
