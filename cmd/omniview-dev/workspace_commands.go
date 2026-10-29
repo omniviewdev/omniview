@@ -26,6 +26,7 @@ const (
 	workspaceUsageExit    = 2
 	workspaceRecover      = "recover"
 	workspaceStopped      = "stopped"
+	workspaceResetModules = "reset-modules"
 	workspaceRefresh      = "refresh"
 	workspaceUpdate       = "update"
 )
@@ -55,7 +56,7 @@ func addWorkspaceCommands(root *cobra.Command) {
 	for _, verb := range []string{
 		"init", "create", "up", workspaceRefresh, workspaceUpdate, workspaceFollow, workspaceRecover, "evidence",
 		"verify-reload",
-		"down", "restart", "edit", "link", "remove", "profile", "inspect", "paths", "list", "unlink",
+		"down", "restart", "edit", "link", "remove", "profile", "inspect", "paths", "list", "unlink", workspaceResetModules,
 		"resume", "rollback", "supervise",
 	} {
 		group.AddCommand(newWorkspaceCommand(verb, func(cmd *cobra.Command, c workspaceCommand) error {
@@ -156,6 +157,13 @@ func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceComm
 		flags.BoolVar(&c.deleteBranches, "delete-branches", false, "explicitly delete owned feature branches")
 	case "profile":
 		flags.StringVar(&c.stateRoot, "state-root", "", "explicit custom state leaf under a new dedicated profile container")
+	case workspaceResetModules:
+		cmd.Short = "Delete and reinstall owned dependency trees of a stopped workspace"
+		cmd.Long = "Explicit recovery for an externally changed dependency tree (for example a stray pnpm install). " +
+			"The workspace must be stopped and linked. Every journal-owned node_modules tree and dependency cache " +
+			"(TypeScript, Vite loader and Vite optimizer caches) and any node_modules at the selected package roots " +
+			"is deleted and reinstalled through the recorded composition installer. Foreign bytes are never adopted; " +
+			"distributions, bindings, shims and other outputs are left untouched."
 	case "inspect", "paths", "list", "unlink", "resume", "rollback", "supervise":
 	}
 	cmd.RunE = func(cmd *cobra.Command, positionals []string) error {
@@ -590,6 +598,8 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 			value = map[string]any{"workspaceID": w.Manifest.WorkspaceID, workspaceStopped: err == nil}
 		case "unlink":
 			value, err = manager.Unlink(ctx, w.Manifest.WorkspaceID)
+		case workspaceResetModules:
+			value, err = manager.ResetModules(ctx, w.Manifest.WorkspaceID)
 		case "link":
 			options, optionErr := workspaceLaunchOptions(c, w)
 			if optionErr != nil {
@@ -750,6 +760,15 @@ func printWorkspaceValue(out io.Writer, value any) {
 		return
 	case devworkspace.UpdatePlan:
 		printWorkspaceUpdatePlan(out, result)
+		return
+	case devworkspace.ResetModulesReport:
+		fmt.Fprintf(out, "Reset modules: %s\n", result.WorkspaceID)
+		for _, path := range result.Removed {
+			fmt.Fprintf(out, "Removed: %s\n", path)
+		}
+		if result.Reinstalled {
+			fmt.Fprintln(out, "Reinstalled: dependency trees recorded by the composition installer")
+		}
 		return
 	case devworkspace.Registry:
 		for _, repository := range result.Repositories {

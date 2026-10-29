@@ -960,6 +960,88 @@ func (m *Manager) Unlink(ctx context.Context, name string) (LinkReport, error) {
 	return LinkReport{WorkspaceID: w.Manifest.WorkspaceID, Protocol: j.Evidence.Protocol, Phase: "unlinked"}, nil
 }
 
+// ResetModulesReport lists the dependency trees deleted before the recorded
+// composition reinstall.
+type ResetModulesReport struct {
+	WorkspaceID string   `json:"workspaceID"`
+	Removed     []string `json:"removed"`
+	Reinstalled bool     `json:"reinstalled"`
+}
+
+// ResetModules is the explicit recovery for an externally changed dependency
+// tree. In a stopped, linked workspace it deletes every owned modules tree and
+// dependency cache (plus stray node_modules at the selected package roots), then
+// reinstalls them through the recorded composition writer. It never adopts
+// foreign bytes and leaves every other repository output untouched.
+func (m *Manager) ResetModules(ctx context.Context, name string) (ResetModulesReport, error) {
+	scoped, err := m.linkCommandContext(ctx, name)
+	if err != nil {
+		return ResetModulesReport{}, err
+	}
+	return m.resetModules(scoped, name, linkCommand)
+}
+
+func (m *Manager) resetModules(ctx context.Context, name string, run func(context.Context, string, string, ...string) ([]byte, error)) (ResetModulesReport, error) {
+	w, unlock, err := m.linkWorkspace(ctx, name)
+	if err != nil {
+		return ResetModulesReport{}, err
+	}
+	defer unlock()
+	j, err := loadLinkJournal(w)
+	if os.IsNotExist(err) {
+		return ResetModulesReport{}, devcontract.Fail(4, "link_required", "workspace dependencies are not linked; link the workspace before resetting modules")
+	}
+	if err != nil {
+		return ResetModulesReport{}, err
+	}
+	if j.Phase != "linked" || j.Plan.Composition == nil {
+		return ResetModulesReport{}, devcontract.Fail(4, "link_interrupted", "dependency link is not complete (phase "+j.Phase+"); unlink the interrupted dependency transaction before resetting modules")
+	}
+	if !sameManifest(j.Manifest, w.Manifest) {
+		return ResetModulesReport{}, devcontract.Fail(4, "link_conflict", "workspace selection changed; unlink before resetting modules")
+	}
+	// Preflight the reinstall inputs before deleting anything.
+	if err = checkLinkFiles(w.Root, j); err != nil {
+		return ResetModulesReport{}, err
+	}
+	plan := *j.Plan.Composition
+	if err = devcompose.CheckInputs(plan); err != nil {
+		return ResetModulesReport{}, err
+	}
+	roots := make([]string, 0, 1+len(plan.Packages)+len(j.Plan.Consumers))
+	roots = append(roots, plan.Root)
+	for _, pkg := range plan.Packages {
+		roots = append(roots, pkg.Path)
+	}
+	for _, consumer := range j.Plan.Consumers {
+		roots = append(roots, consumer.Path)
+	}
+	report := ResetModulesReport{WorkspaceID: w.Manifest.WorkspaceID}
+	if report.Removed, err = devoutputs.ResetDependencyTrees(ctx, w.ResolvedWorkspace, roots); err != nil {
+		return report, err
+	}
+	// Same intent phase as Link: an interrupted reinstall is never "linked".
+	j.Phase = "applying"
+	if err = saveLinkJournal(j); err != nil {
+		return report, err
+	}
+	err = installComposition(ctx, w.ResolvedWorkspace, j, run)
+	for _, e := range j.Files {
+		if e.Pending {
+			// Unverified lock bytes remain explicit unlink recovery.
+			return report, err
+		}
+	}
+	// The attested lock is unchanged or reattested; a failed reinstall stays
+	// retryable by rerunning reset-modules.
+	j.Phase = "linked"
+	if err = errors.Join(err, saveLinkJournal(j)); err != nil {
+		return report, err
+	}
+	report.Reinstalled = true
+	return report, nil
+}
+
 func (m *Manager) InspectLinks(ctx context.Context, name string) (LinkReport, error) {
 	w, err := m.Inspect(ctx, name)
 	if err != nil {
