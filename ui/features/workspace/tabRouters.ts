@@ -1,4 +1,11 @@
-import { createMemoryRouter, type DataRouter, type Location, type RouteObject } from 'react-router';
+import {
+  createMemoryRouter,
+  type DataRouter,
+  type Location,
+  type RouteObject,
+  type RouterNavigateOptions,
+  type To,
+} from 'react-router';
 
 export function routerPathOf(location: Pick<Location, 'pathname' | 'search' | 'hash'>): string {
   return `${location.pathname}${location.search}${location.hash}`;
@@ -50,10 +57,21 @@ export class PageTabRouters {
       return;
     }
 
-    for (const [tabId, router] of [...this.routers]) {
+    for (const [tabId, previous] of [...this.routers]) {
       // Keep each tab where it is; only the route tree changes.
-      this.install(tabId, routerPathOf(router.state.location));
-      router.dispose();
+      this.install(tabId, routerPathOf(previous.state.location));
+      previous.dispose();
+      // Components rendered under the previous router can still call its
+      // navigate, e.g. from an async callback that settles after the route
+      // change. Send those calls to the tab's current router.
+      previous.navigate = async (to: To | number | null, options?: RouterNavigateOptions) => {
+        const current = this.routers.get(tabId);
+        if (!current) {
+          return;
+        }
+
+        await (typeof to === 'number' ? current.navigate(to) : current.navigate(to, options));
+      };
     }
 
     this.notify();
