@@ -15,9 +15,13 @@ node bench/app/report.mjs              # Markdown summary of results/latest.json
 
 Also `task perf:app -- <args>`. First run locally: `pnpm install --frozen-lockfile`,
 `task packages` (providers → runtime → Vite plugin) and
-`pnpm exec playwright install chromium`. The plugin must use the current base-ui/
-editors shared-dependency cohort; the historical bundled submodule is not a
-compatible source for this host.
+`pnpm exec playwright install chromium`. The pinned Kubernetes submodule consumes
+the published base-ui 0.8.0, editors 6.1.0, and runtime/Vite-plugin 0.9.0 cohort.
+Older plugin archives built against MUI or legacy UI contracts are incompatible.
+
+The Logs scenario selects a container from the opened Logs submenu, not from the
+parent action list. Adding actions such as Debug must not change which workload
+is measured; line counts, scrolling, drawer toggles, and run counts stay unchanged.
 
 ## Reproducible source cohort
 

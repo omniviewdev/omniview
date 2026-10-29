@@ -61,6 +61,13 @@ or a historical release's source pin. Previous `0.7.x` base-ui source cannot
 satisfy this frontend cohort. Keep each branch's source commits compatible with
 its actual package contracts so old main and upgraded PRs can validate independently.
 
+The owned `e2e/fixtures/workspace-probe/ui` frontend is also a public registry
+consumer. Its manifest and pnpm12 lockfile must select the released base-ui,
+runtime and Vite-plugin cohort; source linking during canonical E2E does not
+prove those public versions exist. Regenerate its lockfile from the registry
+only after publication succeeds, without workspace links or local package
+overrides. Keep the frozen producer source unchanged when updating this fixture.
+
 Runtime UI preflight checks the host, selected plugin frontends, and linked shared
 packages. Other discovered workspace packages, such as standalone comparison or
 benchmark apps, retain their own dependencies; their private UI libraries do not
@@ -481,6 +488,22 @@ The SDK SHA must still equal the independently approved repository variable
 change. Publish and review the source commits before selecting them. Source
 identity registration, mandatory probes, conservative selection, and native
 payload cache rules remain unchanged.
+
+Update Kubernetes cohort metadata and the gitlink together after the selected
+Kubernetes consumer commit is published and reviewed. Fetch that exact commit
+in `plugins/kubernetes`, check it out detached, replace only the `kubernetes`
+value in `e2e/source-cohort.json`, and stage both paths in the same host commit.
+Preserve the reviewed SDK pin and independently selected UI source. Do not
+replace a source SHA with a package version, release tag, or an uncommitted
+worktree identity.
+
+Run final acceptance only after committing the complete consumer cohort.
+Selected host, SDK, UI and Kubernetes sources must pass source admission;
+ignored dependency/build outputs are not source evidence. In particular, a
+worktree containing linked managed dependencies is not a standalone registry
+install root. Use independently owned dependencies, never mutate another
+workspace's `node_modules` through a symlink. Keep public-registry install/build
+evidence separate from canonical linked-source E2E and interactive visual review.
 
 The separate push-main cache primer first performs lookup-only requests for the
 same exact Go and native pnpm keys used by PRs. If both payloads exist, it skips
