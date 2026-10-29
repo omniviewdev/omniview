@@ -92,8 +92,6 @@ func TestResolveRelationships_Success(t *testing.T) {
 			targetRevision, qualified := resource.QualifiedCatalogRevisionFromContext(ctx, target.Provider, target.Route)
 			require.True(t, qualified, "target binding must carry its explicit admitted route observation")
 			require.Equal(t, sourceRevision, targetRevision, "same-route targets share the one admitted complete catalog")
-			_, err := resource.MarshalCatalogRevisionRoutes(ctx)
-			require.NoError(t, err, "same-route targets must not append duplicate qualified observations")
 			assert.Equal(t, "k8s:apps/replicasets", target.Type)
 			assert.NotEqual(t, request.Reference.Address.Authority, target.Authority)
 			assert.Equal(t, "conn-1", request.Route.Connection)

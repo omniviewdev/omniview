@@ -6,7 +6,6 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
-	"google.golang.org/protobuf/proto"
 )
 
 const maxResourceSubscriptions = 4096
@@ -47,19 +46,11 @@ func subscriptionIdentity(owner invocation.Principal, pluginID string, request H
 	if request.TargetID == "" || len(request.TargetID) > 4096 {
 		return subscriptionKey{}, resourcev2.ReadTarget{}, resourcev2.NewError("INVALID_REQUEST", "A bounded subscription target ID is required.")
 	}
-	wire, err := resourcev2.ToProtoReadTarget(request.Target)
+	target, fingerprint, err := resourcev2.CanonicalReadTarget(request.Target)
 	if err != nil {
 		return subscriptionKey{}, resourcev2.ReadTarget{}, err
 	}
-	fingerprint, err := (proto.MarshalOptions{Deterministic: true}).Marshal(wire)
-	if err != nil {
-		return subscriptionKey{}, resourcev2.ReadTarget{}, err
-	}
-	target, err := resourcev2.FromProtoReadTarget(wire)
-	if err != nil {
-		return subscriptionKey{}, resourcev2.ReadTarget{}, err
-	}
-	return subscriptionKey{Owner: owner, Plugin: pluginID, Connection: target.Route.Connection, Type: target.Type, TargetID: request.TargetID, Fingerprint: string(fingerprint)}, target, nil
+	return subscriptionKey{Owner: owner, Plugin: pluginID, Connection: target.Route.Connection, Type: target.Type, TargetID: request.TargetID, Fingerprint: fingerprint}, target, nil
 }
 
 func (m *subscriptionManager) Subscribe(ctx context.Context, owner invocation.Principal, pluginID string, request HostSubscription) error {
