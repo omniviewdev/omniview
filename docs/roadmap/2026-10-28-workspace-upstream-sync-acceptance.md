@@ -201,3 +201,22 @@ The focused ready-runtime preflight test passed in 1.60s. The complete tagged de
 Additional closure files are `upstream_preflight_retention_test.go`, `upstream_phase_recovery_test.go`, `follow_active_recovery_test.go`, `source_update_readiness_test.go`, and `source_update_compatibility{,_test}.go` under `internal/devworkspace`. These supplement the native/browser application evidence above rather than replacing it.
 
 Final post-closure CLI build passed in 2.06s and resolves to cache binary `df14ff943261d8f1cd3776b15fadab868cbe202298c6d7cb6b66d09bda1728d2/omniview-dev`. The implementation branch remains `feature/workspace-upstream-sync-b5b392df`; no disposable runtime remains running and no implementation branch was pushed.
+
+## Parent integration and publication gate
+
+Integrated upstream `afde0a73` (parallel build nodes and unchanged-node reuse) before publication. The watch merge preserves the source transaction's existing-lock path and calls the updated executor with explicit non-reuse semantics for changed-source rebuilds.
+
+Final independent review found and resolved two additional consumer issues: terminal recovery now observes legitimate live cache writers without granting installer/module adoption, and follow retains an old supervisor's typed restart guidance across repeated observations. The live-cache regression creates a committed package consumer before exercising actual output writers; no production ownership assertion was relaxed.
+
+The post-merge gate passed in 294.61s:
+
+```sh
+env GOWORK=off GOFLAGS= golangci-lint run --build-tags=devcontrol --new-from-rev=origin/main ./internal/dev... ./cmd/omniview-dev
+env GOWORK=off GOFLAGS= go test -tags=devcontrol -modfile=.local/hostmod/host.mod ./internal/dev... ./cmd/omniview-dev -count=1
+env GOWORK=off GOFLAGS= go vet -tags=devcontrol -modfile=.local/hostmod/host.mod ./internal/devworkspace ./internal/devoutputs ./internal/devsession ./internal/devcontract ./internal/devsource ./cmd/omniview-dev
+task --silent dev:cli:build SDK_SOURCE=/Users/joshuapare/Repos/omniviewdev/workspaces/main-dev/workspaces/workspace-upstream-sync/plugin-sdk
+```
+
+Changed-code lint reported zero issues; all ten tested packages passed; vet passed. The resulting executable is cache binary `926375c9b23d9762b8279446d9f5b6e34360cf5929b38cca88861ca434cf9c1f/omniview-dev`.
+
+Parent then exercised that exact executable against a separate disposable local bare remote. Check-only fetched a changed commit while retaining the old source marker. One-shot apply advanced to the new marker, retained plan diagnostics, and did not start an instance. A repeated update returned `up_to_date`. Canonical remove retired the test-owned workspace, branch, and profile. Native/browser rendered acceptance above predates this upstream integration; the final executable received this additional real CLI smoke and the full integrated test/static gate.

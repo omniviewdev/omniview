@@ -76,7 +76,7 @@ func (m *Manager) Reconfigure(ctx context.Context, name string, options EditOpti
 		result.Links = &report
 		if err != nil {
 			var typed *devcontract.Error
-			if !errors.As(err, &typed) || typed.Code != "link_resolution_failed" || report.Phase != "linked" {
+			if !errors.As(err, &typed) || typed.Code != linkResolutionFailureCode || report.Phase != "linked" {
 				return result, err
 			}
 		}

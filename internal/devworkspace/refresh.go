@@ -14,6 +14,8 @@ import (
 	"github.com/omniviewdev/omniview/internal/devoutputs"
 )
 
+const linkResolutionFailureCode = "link_resolution_failed"
+
 type RefreshOptions struct {
 	Executable  string
 	Diagnostics io.Writer
@@ -427,7 +429,7 @@ func (m *Manager) refresh(ctx context.Context, name string, options RefreshOptio
 			if err = os.Remove(path); err != nil {
 				return result, err
 			}
-			result.Phase = "complete"
+			result.Phase = sourceUpdateComplete
 			return result, syncDirectory(base)
 		}
 		intent.Launch.LinkEvidence = intent.Evidence
@@ -470,7 +472,7 @@ func (m *Manager) refresh(ctx context.Context, name string, options RefreshOptio
 		if err = syncDirectory(base); err != nil {
 			return result, err
 		}
-		result.Phase = "complete"
+		result.Phase = sourceUpdateComplete
 	}
 	return result, nil
 }
@@ -657,7 +659,7 @@ func (proof *recoveryReceipt) captureJournals(ctx context.Context, m *Manager, w
 				return err
 			}
 		case outputPath:
-			if err = devoutputs.Validate(ctx, w.ResolvedWorkspace); err != nil {
+			if _, err = devoutputs.ValidatedOwnedPaths(ctx, w.ResolvedWorkspace); err != nil {
 				return err
 			}
 		}
@@ -713,7 +715,7 @@ func (m *Manager) installRefresh(ctx context.Context, name string, intent *refre
 		return nil
 	}
 	var typed *devcontract.Error
-	if errors.As(err, &typed) && typed.Code == "link_resolution_failed" && report.Phase == "linked" {
+	if errors.As(err, &typed) && typed.Code == linkResolutionFailureCode && report.Phase == "linked" {
 		return nil
 	}
 	return err

@@ -330,7 +330,7 @@ func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 	report, err := s.manager.Link(ctx, s.workspace.Manifest.WorkspaceID, LinkOptions{Evidence: o.LinkEvidence})
 	if err != nil {
 		var typed *devcontract.Error
-		if !errors.As(err, &typed) || typed.Code != "link_resolution_failed" || report.Phase != "linked" {
+		if !errors.As(err, &typed) || typed.Code != linkResolutionFailureCode || report.Phase != "linked" {
 			return nil, err
 		}
 	}

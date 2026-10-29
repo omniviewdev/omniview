@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/omniviewdev/omniview/internal/devoutputs"
 	"github.com/omniviewdev/omniview/internal/devsession"
 )
 
@@ -108,6 +109,12 @@ func runRefreshPhaseRecovery(t *testing.T, phase string) {
 		if current == "start" && !attached {
 			attached = true
 			assertSupervisor = phaseRecoverySupervisor(t, m, w)
+			writer, err := devoutputs.BeginVite(context.Background(), w.ResolvedWorkspace, filepath.Join(w.Root, "omniview"))
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, writer.Finish(context.Background())) })
+			cache := filepath.Join(w.Root, "omniview", "node_modules", ".vite-temp", "live-recovery-cache")
+			require.NoError(t, os.MkdirAll(filepath.Dir(cache), 0700))
+			require.NoError(t, os.WriteFile(cache, []byte("live cache bytes"), 0600))
 		}
 	}
 	observed := false
@@ -156,6 +163,8 @@ func runRefreshPhaseRecovery(t *testing.T, phase string) {
 	_, err = m.InspectLinks(context.Background(), w.Manifest.WorkspaceID)
 	require.NoError(t, err)
 	assertTerminalRecoveryIdempotent(t, m, w)
+	require.Error(t, devoutputs.Validate(context.Background(), w.ResolvedWorkspace),
+		"terminal recovery must not retire the actual live Vite writer")
 	assertSupervisor()
 	assertCanaries()
 }
@@ -451,4 +460,54 @@ func TestTerminalRecoveryReceiptDoesNotAdoptChangedState(t *testing.T) {
 			require.Equal(t, before, after, "recovery must not replace terminal evidence by adopting changed state")
 		})
 	}
+}
+
+func TestReadyRecoveryProofKeepsInstallAndModuleOwnershipStrict(t *testing.T) {
+	ctx := context.Background()
+	m, root := fixtureManager(t)
+	source := filepath.Join(root, "omniview")
+	packagePath := filepath.Join(source, "package.json")
+	require.NoError(t, os.WriteFile(packagePath, []byte(`{"name":"recovery-proof","private":true}`), 0600))
+	fixtureGit(t, source, "add", "package.json")
+	fixtureGit(t, source, "commit", "-m", "add actual package consumer")
+	w, err := m.Create(ctx, CreateOptions{Slug: "ready-proof"})
+	require.NoError(t, err)
+	assertSupervisor := phaseRecoverySupervisor(t, m, w)
+	repo := filepath.Join(w.Root, "omniview")
+	install, err := devoutputs.BeginInstall(ctx, w.ResolvedWorkspace, repo)
+	require.NoError(t, err)
+	_, status, err := m.recoveryProof(ctx, w.Manifest.WorkspaceID)
+	require.Equal(t, "ready", status.Phase)
+	require.Error(t, err, "ready proof must refuse an actual active installer")
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, "node_modules"), 0700))
+	require.NoError(t, install.Finish(ctx))
+
+	writer, err := devoutputs.BeginVite(ctx, w.ResolvedWorkspace, repo)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, writer.Finish(ctx)) })
+	cache := filepath.Join(repo, "node_modules", ".vite-temp", "live-cache.mjs")
+	require.NoError(t, os.WriteFile(cache, []byte("live cache"), 0600))
+	journal := filepath.Join(m.Root, ".omniview-dev", "repository-outputs", w.Manifest.WorkspaceID, "journal.json")
+	before, err := os.ReadFile(journal)
+	require.NoError(t, err)
+	_, status, err = m.recoveryProof(ctx, w.Manifest.WorkspaceID)
+	require.NoError(t, err)
+	require.Equal(t, "ready", status.Phase)
+	after, err := os.ReadFile(journal)
+	require.NoError(t, err)
+	require.Equal(t, before, after, "ready observation must not adopt live bytes or retire writers")
+	require.Error(t, devoutputs.Validate(ctx, w.ResolvedWorkspace))
+
+	foreign := filepath.Join(repo, "node_modules", "foreign.js")
+	require.NoError(t, os.WriteFile(foreign, []byte("authored module"), 0600))
+	t.Cleanup(func() { require.NoError(t, os.Remove(foreign)) })
+	_, _, err = m.recoveryProof(ctx, w.Manifest.WorkspaceID)
+	require.Error(t, err, "live cache allowance must not hide foreign immutable modules")
+	raw, err := os.ReadFile(foreign)
+	require.NoError(t, err)
+	require.Equal(t, "authored module", string(raw))
+	after, err = os.ReadFile(journal)
+	require.NoError(t, err)
+	require.Equal(t, before, after, "failed observation must not adopt foreign modules")
+	assertSupervisor()
 }

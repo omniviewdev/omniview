@@ -196,3 +196,83 @@ func TestSupervisorSnapshotAdvertisesSourceUpdateSupport(t *testing.T) {
 	supervisor := &workspaceSupervisor{status: Status{Phase: "ready"}}
 	require.True(t, supervisor.snapshot().SourceUpdateSupported)
 }
+
+func TestFollowOldSupervisorRetainsRestartGuidanceAcrossObservations(t *testing.T) {
+	m, w, remote, source := upstreamFixture(t)
+	_, commands := sourceCompatibilitySupervisor(t, w, false)
+	require.NoError(t, rawSaveLaunchJSON(launchPath(w, "launch.json"), LaunchOptions{Mode: "native"}))
+	first := upstreamCommit(t, remote, "component.ts", "export const revision = 1")
+	canonical := fixtureGit(t, source, "rev-parse", "HEAD")
+	checkout := filepath.Join(w.Root, "omniview")
+	head := fixtureGit(t, checkout, "rev-parse", "HEAD")
+	before := make(map[string][]byte)
+	for _, path := range []string{
+		w.ManifestPath, launchPath(w, "ownership.json"), launchPath(w, "launch.json"), launchPath(w, "supervisor.json"),
+	} {
+		raw, err := os.ReadFile(path)
+		require.NoError(t, err)
+		before[path] = raw
+	}
+	argv := []string{"omniview-dev", "workspace", "restart", w.Manifest.WorkspaceID, "--root", m.Root}
+	waits, applying, failed, blocked := 0, 0, 0, 0
+	target := first
+	var firstCohort string
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	err := m.Follow(ctx, w.Manifest.Slug, FollowOptions{
+		Apply: true,
+		wait: func(context.Context, time.Duration) error {
+			waits++
+			if waits == 2 {
+				target = upstreamCommit(t, remote, "component.ts", "export const revision = 2")
+			}
+			if waits == 4 {
+				return context.Canceled
+			}
+			return nil
+		},
+	}, func(status FollowStatus) error {
+		require.NoFileExists(t, sourceUpdatePath(m, w))
+		switch status.Result {
+		case followApplying:
+			applying++
+			require.Empty(t, status.BlockedReason)
+			require.Empty(t, status.NextArgv)
+			require.Empty(t, status.NextCommand)
+			if applying == 1 {
+				firstCohort = status.PendingCohort
+			} else {
+				require.NotEqual(t, firstCohort, status.PendingCohort)
+			}
+		case followApplyFailed, "blocked_failed_cohort":
+			require.Equal(t, "supervisor_upgrade_required", status.BlockedReason)
+			require.Equal(t, argv, status.NextArgv)
+			require.Equal(t, shellCommand(argv), status.NextCommand)
+			require.Equal(t, target, status.Plan.Repositories[0].TargetSHA)
+			if status.Result == followApplyFailed {
+				failed++
+			} else {
+				blocked++
+			}
+		default:
+			t.Fatalf("unexpected follow result: %s", status.Result)
+		}
+		return nil
+	})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, 2, applying, "apply once per distinct target, never retry the failed cohort")
+	require.Equal(t, 4, failed, "each initial failure is emitted before and after scheduling")
+	require.Equal(t, 2, blocked, "each failed cohort retains guidance on its next observation")
+	require.Equal(t, canonical, fixtureGit(t, source, "rev-parse", "HEAD"))
+	require.Equal(t, head, fixtureGit(t, checkout, "rev-parse", "HEAD"))
+	require.Empty(t, fixtureGit(t, checkout, "status", "--porcelain"))
+	for path, expected := range before {
+		raw, readErr := os.ReadFile(path)
+		require.NoError(t, readErr)
+		require.Equal(t, expected, raw, path)
+	}
+	require.NotEmpty(t, commands, "follow must authenticate the retained supervisor")
+	for len(commands) > 0 {
+		require.Equal(t, supervisorStatusCommand, <-commands, "follow must not send mutation or restart commands")
+	}
+}

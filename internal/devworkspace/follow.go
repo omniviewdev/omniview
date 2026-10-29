@@ -32,6 +32,7 @@ const followBackoffFactor = 2
 const followUnreachable = "unreachable"
 const followApplying = "applying"
 const followApplied = "applied"
+const followApplyFailed = "apply_failed"
 
 type FollowOptions struct {
 	UpdateOptions
@@ -269,7 +270,7 @@ func (m *Manager) runFollow(
 	ctx context.Context, name string, w Workspace, options FollowOptions,
 	status *FollowStatus, publish func() error, interruptedApply *bool,
 ) error {
-	failedCohort := ""
+	var failedCohort followFailedCohort
 	delay := options.Interval
 	for {
 		if err := ctx.Err(); err != nil {
@@ -359,17 +360,26 @@ func (m *Manager) followRecoveryCommand(name string, status *FollowStatus) {
 	status.NextCommand = shellCommand(status.NextArgv)
 }
 
+type followFailedCohort struct {
+	key           string
+	blockedReason string
+	nextCommand   string
+	nextArgv      []string
+}
+
 func (m *Manager) followObservedPlan(
 	ctx context.Context, name string, options FollowOptions, status *FollowStatus, plan UpdatePlan,
-	failedCohort *string, publish func() error, interruptedApply *bool,
+	failedCohort *followFailedCohort, publish func() error, interruptedApply *bool,
 ) error {
 	key := status.PendingCohort
 	if !options.Apply || plan.Result != updateAvailable {
 		return nil
 	}
-	if *failedCohort == key {
+	if failedCohort.key == key {
 		status.Result = "blocked_failed_cohort"
-		status.BlockedReason = "explicit_recovery_required"
+		status.BlockedReason = failedCohort.blockedReason
+		status.NextCommand = failedCohort.nextCommand
+		status.NextArgv = failedCohort.nextArgv
 		return nil
 	}
 	status.ActiveOperation = plan.OperationID
@@ -384,13 +394,25 @@ func (m *Manager) followObservedPlan(
 	status.ActiveOperation = ""
 	if applyErr == nil {
 		status.Result = followApplied
-		*failedCohort = ""
+		var cleared followFailedCohort
+		*failedCohort = cleared
 		return nil
 	}
-	*failedCohort = key
-	status.Result = "apply_failed"
+	status.Result = followApplyFailed
 	status.BlockedReason = followErrorCode(applyErr, "update_failed")
 	m.followRecoveryCommand(name, status)
+	var typed *devcontract.Error
+	if errors.As(applyErr, &typed) && typed.Code == "supervisor_upgrade_required" {
+		status.NextArgv, _ = typed.Details["nextArgv"].([]string)
+		status.NextCommand, _ = typed.Details["nextCommand"].(string)
+	}
+	*failedCohort = followFailedCohort{
+		key: key, blockedReason: "explicit_recovery_required",
+		nextCommand: status.NextCommand, nextArgv: status.NextArgv,
+	}
+	if status.BlockedReason == "supervisor_upgrade_required" {
+		failedCohort.blockedReason = status.BlockedReason
+	}
 	if err := publish(); err != nil {
 		return err
 	}
