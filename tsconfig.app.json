@@ -34,9 +34,6 @@
       "@hooks/*": [
         "./ui/hooks/*"
       ],
-      "@infraview/*": [
-        "./ui/pkg/*"
-      ],
       "@layouts/*": [
         "./ui/layouts/*"
       ],

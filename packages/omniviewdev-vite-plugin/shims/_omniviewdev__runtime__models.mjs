@@ -272,3 +272,5 @@ const binding133 = mod["ui"];
 export { binding133 as "ui" };
 const binding134 = mod["utils"];
 export { binding134 as "utils" };
+const binding135 = mod["window"];
+export { binding135 as "window" };

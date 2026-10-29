@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
+import { RouterBoundPageNavigation } from '@/features/workspace/testing/RouterBoundPageNavigation';
 import { describe, expect, it, vi } from 'vitest';
 
 import CoreLayoutSidebar from '..';
@@ -30,7 +31,7 @@ describe('CoreLayoutSidebar', () => {
       ['flux', { routes: [] }],
     ]);
 
-    render(<MemoryRouter><CoreLayoutSidebar /></MemoryRouter>);
+    render(<MemoryRouter><RouterBoundPageNavigation><CoreLayoutSidebar /></RouterBoundPageNavigation></MemoryRouter>);
 
     expect(renderedPluginIds()).toEqual(['kubernetes']);
   });
@@ -39,7 +40,7 @@ describe('CoreLayoutSidebar', () => {
     mocks.plugins = [plugin('kubernetes'), plugin('aws')];
     mocks.registrations = new Map([['kubernetes', { routes: [{ path: '' }] }]]);
 
-    render(<MemoryRouter><CoreLayoutSidebar /></MemoryRouter>);
+    render(<MemoryRouter><RouterBoundPageNavigation><CoreLayoutSidebar /></RouterBoundPageNavigation></MemoryRouter>);
 
     expect(renderedPluginIds()).toEqual(['kubernetes', 'aws']);
   });

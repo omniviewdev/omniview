@@ -17,7 +17,7 @@ export type PluginServiceProviderProps = {
  * - Starts/stops event listeners on mount/unmount
  * - Orchestrates initial loadAll + markReady
  * - Provides the service via context
- * - Always renders children (RouteProvider handles loading state)
+ * - Always renders children (page tab routers handle loading state)
  * - Defers dev plugin loading until dev server reports ready
  */
 export function PluginServiceProvider({ children }: PluginServiceProviderProps) {
