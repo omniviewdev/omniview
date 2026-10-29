@@ -31,6 +31,15 @@ import {
 } from './pagesState';
 import { PageTabRouters } from './tabRouters';
 
+/**
+ * Whether a tab may leave this window, for the given tabs. Components pass the
+ * state they render: a call on the stable controller would be memoized by the
+ * React Compiler and keep the answer from the first render.
+ */
+export function canTabLeaveWindow(state: PagesState): boolean {
+  return !(currentWindow.isMain && countTabs(state) === 1);
+}
+
 const createId = () => crypto.randomUUID();
 
 export const pageStripInstanceId = (paneId: string) => `pages-${currentWindow.name}-${paneId}`;
@@ -134,7 +143,7 @@ export class WorkspaceController {
 
   /** Tear-off and "Move to window": not for the last tab of the main window. */
   canTabLeave(): boolean {
-    return !(currentWindow.isMain && countTabs(this.state) === 1);
+    return canTabLeaveWindow(this.state);
   }
 
   /** Ctrl+Tab: next (`step` 1) or previous (-1) tab of the active pane, wrapping around. */

@@ -3,6 +3,7 @@ import { Button, Dialog, Input, Menu } from '@omniviewdev/base-ui';
 import { currentWindow, useWindowsList } from '@/features/windows';
 import { HOME_PATH } from '../pagePaths';
 import { countTabs, findPaneOfTab, PAGE_GROUP_COLORS, type PageGroupColor, type PageTab } from '../pagesState';
+import { canTabLeaveWindow } from '../workspaceController';
 import { usePagesState, useWorkspaceController } from '../WorkspaceProvider';
 import styles from './Workspace.module.css';
 
@@ -80,7 +81,7 @@ export function PageTabMenu({ tabId, point, onClose }: { tabId: string; point: M
   const isSplit = state.panes.length > 1;
   const index = pane.tabIds.indexOf(tabId);
   const otherWorkspaceWindows = windows.filter((window) => window.kind === 'workspace' && window.name !== currentWindow.name);
-  const canLeave = controller.canTabLeave();
+  const canLeave = canTabLeaveWindow(state);
   // The only tab of a secondary window already is "a new window".
   const canMoveToNewWindow = canLeave && countTabs(state) > 1;
 

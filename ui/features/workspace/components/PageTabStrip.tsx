@@ -4,7 +4,7 @@ import { EditorTabs, IconButton, type TabDescriptor, type TabGroupDescriptor } f
 import { PAGE_TAB_DRAG_TYPE } from '@/features/windows';
 import { usePagePresentation } from '../pagePresentation';
 import { toPageTabTransfer, type PagePane } from '../pagesState';
-import { pageStripInstanceId } from '../workspaceController';
+import { canTabLeaveWindow, pageStripInstanceId } from '../workspaceController';
 import { usePagesState, useWorkspaceController } from '../WorkspaceProvider';
 import { PAGE_GROUP_COLOR_VALUES, PageGroupMenu, PageTabMenu, RenameGroupDialog, type MenuPoint } from './PageTabMenus';
 import styles from './Workspace.module.css';
@@ -68,7 +68,7 @@ export function PageTabStrip({ pane }: { pane: PagePane }) {
         instanceId={pageStripInstanceId(pane.id)}
         dragType={PAGE_TAB_DRAG_TYPE}
         detachToBroker
-        detachable={controller.canTabLeave()}
+        detachable={canTabLeaveWindow(state)}
         tabs={tabs}
         groups={groups}
         activeId={pane.activeTabId ?? undefined}
