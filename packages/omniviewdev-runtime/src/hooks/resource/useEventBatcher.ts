@@ -71,20 +71,20 @@ export function applyBatch(
     switch (event.type) {
       case 'ADD':
         if (idx === -1) {
-          result ??= [...original];
+          result ??= original.slice();
           if (eventId === eventId) positions?.set(eventId, result.length);
           result.push(event.payload.data);
         }
         break;
       case 'UPDATE':
         if (idx !== -1 && rows[idx] !== event.payload.data) {
-          result ??= [...original];
+          result ??= original.slice();
           result[idx] = event.payload.data;
         }
         break;
       case 'DELETE':
         if (idx !== -1) {
-          result ??= [...original];
+          result ??= original.slice();
           deleted.add(idx);
           const next = duplicates.get(idx);
           if (next === undefined) positions?.delete(eventId);

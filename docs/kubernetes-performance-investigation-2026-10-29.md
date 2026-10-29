@@ -247,3 +247,40 @@ Unchanged replay handling measured zero allocations. Changed updates allocated a
 | Unsynced fake client | 3,000 | 119.392 | 14,529,000 |
 
 This confirms that the current List path still serializes every full object, even with a warm informer cache. It provides a reproducible baseline for projections, paging, demand-driven acquisition, and avoiding repeated List conversions; it does not measure cluster connection latency.
+
+## Spread versus slice: target-engine follow-up
+
+The release branch uses `original.slice()` at the three copy-on-first-change sites.
+Both spread and slice allocate a new array of references; neither deep-clones
+resource objects. The reducer changes only entries in its new array and never
+writes nested resource fields. No-op batches still return the original cache.
+A frozen-cache regression covers single ADD/UPDATE/DELETE and mixed delete/re-add
+batches, with frozen rows, metadata, status, and event payloads.
+
+Run `node bench/app/resource-copy.mjs /tmp/resource-copy.json` after
+`node node_modules/playwright/cli.js install webkit`. This compares spread,
+slice, and a preallocated manual loop using dense plain arrays and generated
+variants of the production reducer. Warmup, calibrated aggregate timings, an
+escaping output ring, and 15 rotating-order samples reduce timer/JIT/order bias.
+The raw receipt is `bench/app/resource-copy-webkit-2026-10-29.json`.
+
+WebKit 27.2, macOS arm64, Apple M5 Max. Isolated copy medians in microseconds:
+
+| References | Spread | Slice |
+|---:|---:|---:|
+| 300 | 0.140 | 0.128 |
+| 3,000 | 2.176 | 1.353 |
+| 10,000 | 6.533 | 3.467 |
+
+Slice helps the isolated larger copies, but whole-reducer results are much closer.
+In the preserved run, 10,000-row full-update batches tied at 0.825 ms; an earlier
+run showed a small difference. Copy syntax is not the main source of the
+quadratic-work reduction and does not explain the reported idle CPU by itself.
+Manual loops were not a consistently better choice.
+
+The small `{ ...base, result }` metadata copy remains: it preserves additional
+response fields without mutating the old response. Replacing it with assignment
+into `base` would violate cache immutability. No universal claim that spread is
+slow, or that slice is faster for every engine/array shape, follows from this
+measurement. Sparse arrays, array subclasses, and custom iterator/species hooks
+are outside this dense JSON resource-array benchmark.

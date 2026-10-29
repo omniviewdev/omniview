@@ -189,6 +189,43 @@ describe('applyBatch', () => {
     expect(applyBatch(baseData, events, idAccessor)).toBe(baseData);
   });
 
+  it('applies single and mixed batches without mutating frozen cache data or payload objects', () => {
+    const pod = (name: string, phase: string) => Object.freeze({
+      metadata: Object.freeze({ name }),
+      status: Object.freeze({ phase }),
+    });
+    const first = pod('pod-1', 'Pending');
+    const second = pod('pod-2', 'Running');
+    const added = pod('pod-3', 'Running');
+    const replacement = pod('pod-1', 'Running');
+    const original = Object.freeze({
+      result: Object.freeze([first, second]),
+      success: true,
+      totalCount: 2,
+    });
+    const event = (
+      type: ResourceEvent['type'],
+      data: { metadata: { name: string }; status: { phase: string } },
+    ): ResourceEvent => Object.freeze({
+      type,
+      payload: Object.freeze({ data, key: 'k', connection: 'c', id: data.metadata.name, namespace: 'default' }),
+    });
+    const scenarios = [
+      { events: [event('ADD', added)], expected: [first, second, added] },
+      { events: [event('UPDATE', replacement)], expected: [replacement, second] },
+      { events: [event('DELETE', first)], expected: [second] },
+      { events: [event('DELETE', first), event('ADD', replacement)], expected: [second, replacement] },
+    ];
+    for (const scenario of scenarios) {
+      const next = applyBatch(original, scenario.events, idAccessor);
+      expect(next.result).toEqual(scenario.expected);
+      expect(next.result).not.toBe(original.result);
+      expect(next.result).toContain(second);
+      expect(original.result).toEqual([first, second]);
+      expect(first.status.phase).toBe('Pending');
+    }
+  });
+
   it('keeps strict equality for missing and NaN identities', () => {
     const missing = {};
     const nan = { id: Number.NaN };
