@@ -8,6 +8,27 @@ application actions remain usable while development status is visible.
 
 The [workspace roadmap](development-workspaces-roadmap.md) records research decisions, repository routing, ordered parallel work packets, exercised evidence and remaining acceptance gates.
 
+## Check launch prerequisites
+
+Creating a workspace without `--start` remains useful for source editing and does
+not require launch evidence. Before launching, run:
+
+```sh
+"$DEV" workspace preflight FEATURE --root "$COLLECTION" --json
+```
+
+Preflight reports all missing launch inputs together and exits 3 when blocked.
+Supply `--link-evidence /path/to/probe.json` with a successful pinned protocol
+probe and `--reviewed-sdk-revision FULL_COMMIT` with an independently reviewed
+SDK commit. Saved launch options and retained protocol evidence are reused.
+Launching requires selecting `--repo plugin-sdk` even when you do not intend
+to develop the SDK. For an existing workspace, use
+`workspace edit FEATURE --root "$COLLECTION" --add-repo plugin-sdk`.
+
+Preflight does not install dependencies, start processes, or authorize unreviewed
+source. A ready report covers launch inputs only; launch still validates source
+trust, strict peer dependencies, and runtime compatibility.
+
 ## Bootstrap the local CLI and sources
 
 Use the bootstrap-aware Task entry point. Ordinary bootstrap consumes the published SDK version declared by the host's `go.mod`. For local SDK development, `SDK_SOURCE` is explicit: there is no inferred sibling replacement, global `go.work`, global `GOFLAGS`, package upgrade or canonical-source mutation.
