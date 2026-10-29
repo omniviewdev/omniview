@@ -6,6 +6,7 @@ import { formatTimeDifference } from './time';
 const stores = new Set<AgeStore>();
 let timer: number | undefined;
 let timerAt = Infinity;
+let timezoneOffset: number | undefined;
 
 function stopTimer() {
   window.clearTimeout(timer);
@@ -14,11 +15,15 @@ function stopTimer() {
 }
 
 function schedule(at: number) {
-  if (document.hidden || at === Infinity || timerAt <= at) {
+  // Keep one shared heartbeat to detect wall-clock/timezone changes even when
+  // every label's next display boundary is hours away.
+  at = Math.min(at, Date.now() + 1000);
+  if (document.hidden || stores.size === 0 || timerAt <= at) {
     return;
   }
 
   stopTimer();
+  timezoneOffset ??= new Date().getTimezoneOffset();
   timerAt = at;
   timer = window.setTimeout(tick, Math.max(1, at - Date.now()));
 }
@@ -33,14 +38,18 @@ function scheduleRemaining() {
 }
 
 function tick() {
+  const expected = timerAt;
   stopTimer();
   if (document.hidden) {
     return;
   }
 
   const now = Date.now();
+  const offset = new Date(now).getTimezoneOffset();
+  const clockChanged = Math.abs(now - expected) > 100 || offset !== timezoneOffset;
+  timezoneOffset = offset;
   for (const store of stores) {
-    if (store.next <= now) {
+    if (clockChanged || store.next <= now) {
       store.update(now);
     }
   }
@@ -177,6 +186,7 @@ class AgeStore {
       // Retain one early alarm rather than rescan all stores on each unmount.
       if (stores.size === 0) {
         stopTimer();
+        timezoneOffset = undefined;
         document.removeEventListener('visibilitychange', visibilityChanged);
       }
     };

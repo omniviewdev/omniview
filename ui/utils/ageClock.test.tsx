@@ -38,10 +38,10 @@ describe('renderer age clock', () => {
     [86_399_999, '23h59m', 1, '1d'],
     [172_799_999, '1d', 1, '2d'],
   ])('changes %ims at its displayed boundary', (age, before, advance, after) => {
-    const value = ago(age as number);
+    const value = ago(age);
     const { result, unmount } = renderHook(() => useAge(value));
     expect(result.current).toBe(before);
-    act(() => vi.advanceTimersByTime(advance as number));
+    act(() => { vi.advanceTimersByTime(advance); });
     expect(result.current).toBe(after);
     unmount();
     expect(vi.getTimerCount()).toBe(0);
@@ -54,7 +54,7 @@ describe('renderer age clock', () => {
       const springValue = '2026-03-07T02:30:00-05:00';
       const spring = renderHook(() => useAge(springValue));
       expect(spring.result.current).toBe('23h29m');
-      act(() => vi.advanceTimersByTime(1));
+      act(() => { vi.advanceTimersByTime(1); });
       expect(spring.result.current).toBe('1d');
       spring.unmount();
 
@@ -62,9 +62,9 @@ describe('renderer age clock', () => {
       const fallValue = '2026-10-31T01:30:00-04:00';
       const fall = renderHook(() => useAge(fallValue));
       expect(fall.result.current).toBe('1d');
-      act(() => vi.advanceTimersByTime(1));
+      act(() => { vi.advanceTimersByTime(1); });
       expect(fall.result.current).toBe('24h30m');
-      act(() => vi.advanceTimersByTime(30 * 60_000));
+      act(() => { vi.advanceTimersByTime(30 * 60_000); });
       expect(fall.result.current).toBe('1d');
     },
   );
@@ -92,7 +92,7 @@ describe('renderer age clock', () => {
       initialProps: { value: 0 as string | number | Date | null | undefined },
     });
     expect(result.current).toBe('59s');
-    act(() => vi.advanceTimersByTime(1));
+    act(() => { vi.advanceTimersByTime(1); });
     expect(result.current).toBe('1m');
     rerender({ value: new Date(0) });
     expect(result.current).toBe('1m');
@@ -107,13 +107,13 @@ describe('renderer age clock', () => {
     const timestamp = new Date(start + 2000).toISOString();
     const { result } = renderHook(() => useAge(timestamp));
     expect(result.current).toBe('-2s');
-    act(() => vi.advanceTimersByTime(1));
+    act(() => { vi.advanceTimersByTime(1); });
     expect(result.current).toBe('-1s');
-    act(() => vi.advanceTimersByTime(1000));
+    act(() => { vi.advanceTimersByTime(1000); });
     expect(result.current).toBe('0s');
-    act(() => vi.advanceTimersByTime(1998));
+    act(() => { vi.advanceTimersByTime(1998); });
     expect(result.current).toBe('0s');
-    act(() => vi.advanceTimersByTime(1));
+    act(() => { vi.advanceTimersByTime(1); });
     expect(result.current).toBe('1s');
     expect(vi.getTimerCount()).toBe(1);
   });
@@ -127,7 +127,7 @@ describe('renderer age clock', () => {
     setHidden(true);
     expect(vi.getTimerCount()).toBe(0);
     const format = vi.spyOn(time, 'formatTimeDifference');
-    act(() => vi.advanceTimersByTime(60_000));
+    act(() => { vi.advanceTimersByTime(60_000); });
     expect(result.current).toBe('5s');
     expect(format).not.toHaveBeenCalled();
     setHidden(false);
@@ -147,13 +147,13 @@ describe('renderer age clock', () => {
     const first = renderHook(() => useAge(value), { wrapper });
     expect(first.result.current).toBe('1h');
     expect(vi.getTimerCount()).toBe(0);
-    act(() => vi.advanceTimersByTime(60_000));
+    act(() => { vi.advanceTimersByTime(60_000); });
     setHidden(false);
     expect(first.result.current).toBe('1h1m');
     expect(vi.getTimerCount()).toBe(1);
     first.unmount();
     expect(vi.getTimerCount()).toBe(0);
-    act(() => vi.advanceTimersByTime(60_000));
+    act(() => { vi.advanceTimersByTime(60_000); });
     const second = renderHook(() => useAge(value), { wrapper });
     expect(second.result.current).toBe('1h2m');
     expect(vi.getTimerCount()).toBe(1);
@@ -172,11 +172,35 @@ describe('renderer age clock', () => {
     const young = renderHook(() => useAge(youngValue));
     const renders = oldRenders;
     const format = vi.spyOn(time, 'formatTimeDifference');
-    act(() => vi.advanceTimersByTime(1000));
+    act(() => { vi.advanceTimersByTime(1000); });
     expect(old.result.current).toBe('5d');
     expect(young.result.current).toBe('6s');
     expect(oldRenders).toBe(renders);
     expect(format).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([-2, 2])('refreshes old labels after a visible %i-day wall-clock jump', (days) => {
+    const value = ago(5 * 86_400_000);
+    const { result, unmount } = renderHook(() => useAge(value));
+    expect(result.current).toBe('5d');
+    vi.setSystemTime(start + days * 86_400_000);
+    act(() => { vi.advanceTimersByTime(1000); });
+    expect(result.current).toBe(`${5 + days}d`);
+    expect(vi.getTimerCount()).toBe(1);
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('refreshes old labels when the visible timezone offset changes', () => {
+    const value = ago(5 * 86_400_000);
+    const { result } = renderHook(() => useAge(value));
+    const format = vi.spyOn(time, 'formatTimeDifference');
+    const offset = new Date().getTimezoneOffset();
+    vi.spyOn(Date.prototype, 'getTimezoneOffset').mockReturnValue(offset + 60);
+    act(() => { vi.advanceTimersByTime(1000); });
+    expect(format).toHaveBeenCalledTimes(1);
+    expect(result.current).toBe('5d');
+    expect(vi.getTimerCount()).toBe(1);
   });
 
   it.each([300, 3000])('bounds %i mounted subscribers to one timer and listener', (count) => {
@@ -186,15 +210,16 @@ describe('renderer age clock', () => {
     function Cell() {
       return <span>{useAge(value)}</span>;
     }
+
     const view = render(<>{Array.from({ length: count }, (_, index) => <Cell key={index} />)}</>);
     expect(view.container.textContent).toBe('5s'.repeat(count));
     expect(vi.getTimerCount()).toBe(1);
     expect(added.mock.calls.filter(([event]) => event === 'visibilitychange')).toHaveLength(1);
-    act(() => vi.advanceTimersByTime(1000));
+    act(() => { vi.advanceTimersByTime(1000); });
     expect(view.container.textContent).toBe('6s'.repeat(count));
     expect(vi.getTimerCount()).toBe(1);
     setHidden(true);
-    act(() => vi.advanceTimersByTime(60_000));
+    act(() => { vi.advanceTimersByTime(60_000); });
     expect(view.container.textContent).toBe('6s'.repeat(count));
     expect(vi.getTimerCount()).toBe(0);
     setHidden(false);

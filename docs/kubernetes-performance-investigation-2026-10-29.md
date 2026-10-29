@@ -384,8 +384,11 @@ host `316878a` or plugin `92c3185`, retaining the same benchmark entry and insta
 dependencies. Only that original-source run should set `AGE_CLOCK_BASELINE=1`;
 baseline assertions reject candidate timer behavior mislabeled as original.
 [Host #213](https://github.com/omniviewdev/omniview/issues/213) preserves the receipt.
-Native OS clock/timezone changes during a continuously visible session remain
-unexercised.
+Review identified stale day-old labels after a continuously visible wall-clock
+jump. The sole timer now wakes at least once per second while visible, compares
+its expected wall-clock deadline and timezone offset, and refreshes all labels
+only after a discontinuity. Added controlled forward/backward clock-jump and
+offset-change regressions. Native OS clock/timezone changes remain unexercised.
 
 ### Visible metrics and stable dashboard layout
 

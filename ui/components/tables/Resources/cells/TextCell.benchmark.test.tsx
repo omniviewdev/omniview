@@ -21,11 +21,15 @@ beforeEach(() => {
   const interval = window.setInterval.bind(window);
   vi.spyOn(window, 'setTimeout').mockImplementation((callback, delay, ...args) => timeout(() => {
     callbacks++;
-    if (typeof callback === 'function') callback(...args);
+    if (typeof callback === 'function') {
+      callback(...args);
+    }
   }, delay));
   vi.spyOn(window, 'setInterval').mockImplementation((callback, delay, ...args) => interval(() => {
     callbacks++;
-    if (typeof callback === 'function') callback(...args);
+    if (typeof callback === 'function') {
+      callback(...args);
+    }
   }, delay));
 });
 
@@ -52,7 +56,7 @@ describe.skipIf(!enabled)('actual age cell scheduler smoke', () => {
     callbacks = 0;
     format.mockClear();
     const visibleStart = performance.now();
-    act(() => vi.advanceTimersByTime(10_000));
+    act(() => { vi.advanceTimersByTime(10_000); });
     const visibleMs = performance.now() - visibleStart;
     const visibleCallbacks = callbacks;
     const visibleFormats = format.mock.calls.length;
@@ -66,7 +70,7 @@ describe.skipIf(!enabled)('actual age cell scheduler smoke', () => {
     callbacks = 0;
     format.mockClear();
     const hiddenStart = performance.now();
-    act(() => vi.advanceTimersByTime(60_000));
+    act(() => { vi.advanceTimersByTime(60_000); });
     const hiddenMs = performance.now() - hiddenStart;
     const hiddenCallbacks = callbacks;
     const hiddenFormats = format.mock.calls.length;
@@ -84,6 +88,7 @@ describe.skipIf(!enabled)('actual age cell scheduler smoke', () => {
       expect(hiddenFormats).toBe(0);
       expect(view.container.textContent).toBe('15s'.repeat(count / 2) + '5d'.repeat(count / 2));
     }
+
     act(() => {
       hidden = false;
       document.dispatchEvent(new Event('visibilitychange'));
@@ -99,6 +104,7 @@ describe.skipIf(!enabled)('actual age cell scheduler smoke', () => {
     if (!baseline) {
       expect(remove.mock.calls.filter(([event]) => event === 'visibilitychange')).toHaveLength(1);
     }
+
     console.info(JSON.stringify({
       source: baseline ? 'baseline' : 'shared-clock',
       environment: 'jsdom-fake-time-real-cells',
