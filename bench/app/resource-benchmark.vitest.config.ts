@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 
 import { vitestCaches } from "../../vitest.cache";
 
-const testCaches = vitestCaches(fileURLToPath(new URL("../..", import.meta.url)));
+const testCaches = vitestCaches(
+  fileURLToPath(new URL("../..", import.meta.url)),
+);
 
 export default defineConfig({
   plugins: [react()],
