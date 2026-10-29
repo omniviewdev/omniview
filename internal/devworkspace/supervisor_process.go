@@ -91,7 +91,7 @@ func startOwnedChildCommand(ctx context.Context, command *exec.Cmd, owner devses
 	var err error
 	if identityRequired {
 		pid := command.Process.Pid
-		child.identity, err = captureExecutedProcess(ctx, launchedExecutable(command), supervisorExecutable(), func() (devcontract.ProcessIdentity, error) {
+		child.identity, err = captureExecutedProcess(ctx, launchedExecutable(command), supervisorExecutable(), execCaptureTimeout, func() (devcontract.ProcessIdentity, error) {
 			return devsession.CaptureProcess(pid, owner)
 		})
 	}
@@ -153,8 +153,8 @@ func launchedExecutable(command *exec.Cmd) string {
 // an immediate capture may record the supervisor's executable for the child PID.
 // That identity never matches the child's own report once exec completes.
 // Recapture until the child stops reporting the supervisor's executable.
-func captureExecutedProcess(ctx context.Context, launched, self string, capture func() (devcontract.ProcessIdentity, error)) (devcontract.ProcessIdentity, error) {
-	deadline := time.NewTimer(execCaptureTimeout)
+func captureExecutedProcess(ctx context.Context, launched, self string, timeout time.Duration, capture func() (devcontract.ProcessIdentity, error)) (devcontract.ProcessIdentity, error) {
+	deadline := time.NewTimer(timeout)
 	defer deadline.Stop()
 	for {
 		identity, err := capture()
