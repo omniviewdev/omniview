@@ -25,11 +25,21 @@ type sourceEpochSnapshot struct {
 // operationGeneration joins native plugin ownership to the actual invocation.
 // A target label is never consulted for authorization, lookup, or source access.
 func (c *controller) operationGeneration(ctx context.Context, pluginID string, route resourcev2.AccessRoute) (ResourceProvider, *pluginState, context.Context, func(), error) {
+	return c.operationGenerationExpected(ctx, pluginID, route, nil)
+}
+
+// Expected admission is checked under the same lock that captures the new
+// operation epoch. Stale work must never promote itself across a profile reset.
+func (c *controller) operationGenerationExpected(ctx context.Context, pluginID string, route resourcev2.AccessRoute, expected *catalogAdmission) (ResourceProvider, *pluginState, context.Context, func(), error) {
 	c.pluginsMu.RLock()
 	generation := c.plugins[pluginID]
 	if generation == nil || generation.provider == nil || generation.ctx == nil {
 		c.pluginsMu.RUnlock()
 		return nil, nil, nil, nil, apperror.PluginNotFound(pluginID)
+	}
+	if expected != nil && (generation != expected.generation || expected.epoch.Connection != route.Connection || generation.sourceEpoch[route.Connection] != expected.epoch.Epoch) {
+		c.pluginsMu.RUnlock()
+		return nil, nil, nil, nil, resourcev2.NewError("RESET_REQUIRED", "Expected source generation retired before acquisition.")
 	}
 	if generation.sourceChanging[route.Connection] {
 		c.pluginsMu.RUnlock()

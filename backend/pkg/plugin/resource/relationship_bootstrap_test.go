@@ -83,6 +83,49 @@ func TestRelationshipBootstrapReacquiresAfterNativeBindingRetirement(t *testing.
 	require.Equal(t, 3, catalogCalls, "one bounded reacquisition, no inventory scan")
 }
 
+func TestRelationshipReacquisitionCannotCrossInterveningProfileReset(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	catalog := bootstrapTestCatalog("before")
+	catalogCalls := 0
+	route := resourcev2.AccessRoute{Connection: "route/opaque"}
+	registerMockPlugin(ctrl, "p1", &mockProvider{
+		CatalogFunc: func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
+			catalogCalls++
+			return catalog, nil
+		},
+		GetRelationshipsFunc: func(context.Context, resourcev2.AccessRoute, string) ([]resourcev2.RelationshipDescriptor, error) {
+			return []resourcev2.RelationshipDescriptor{}, nil
+		},
+	})
+	ctx := testInvocationContext()
+	ctrl.bootstrapRelationships(ctx, "p1", route)
+	_, generation, operationCtx, cleanup, err := ctrl.operationGeneration(ctx, "p1", route)
+	require.NoError(t, err)
+	defer cleanup()
+	admission := captureCatalogAdmission(operationCtx, generation)
+	catalog = bootstrapTestCatalog("after")
+	err = ctrl.observeCatalogBinding(operationCtx, "p1", route, catalog, admission)
+	require.Equal(t, "RESET_REQUIRED", resourcev2.ErrorCode(err))
+	// Capture the precise epoch accepted by the retirement check, then force a
+	// profile reset before the replacement operation acquires its source lock.
+	expected := catalogAdmission{generation: generation, epoch: sourceEpochSnapshot{Connection: route.Connection, Epoch: admission.epoch.Epoch + 1}}
+	ctrl.pluginsMu.Lock()
+	checkedEpoch := generation.sourceEpoch[route.Connection]
+	err = ctrl.invalidateSourceRoutesLocked("p1", []string{route.Connection}, false)
+	ctrl.pluginsMu.Unlock()
+	require.Equal(t, expected.epoch.Epoch, checkedEpoch)
+	require.NoError(t, err)
+	callsBefore := catalogCalls
+	ctrl.bootstrapRelationshipsCurrent(operationCtx, "p1", route, false, &expected)
+	require.Equal(t, callsBefore, catalogCalls, "retired bootstrap must not acquire a post-reset catalog")
+	_, _, ok := ctrl.graph.GetBoundDeclarations("p1", route, "objects")
+	require.False(t, ok, "retired bootstrap must not publish post-reset declarations")
+	// A separately initiated bootstrap still owns the new profile epoch.
+	ctrl.bootstrapRelationships(ctx, "p1", route)
+	_, _, ok = ctrl.graph.GetBoundDeclarations("p1", route, "objects")
+	require.True(t, ok)
+}
+
 func TestBlockedBootstrapCannotPublishAfterProfileEpochReset(t *testing.T) {
 	for _, oldEmpty := range []bool{false, true} {
 		name := "old-rules"

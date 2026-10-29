@@ -13,11 +13,11 @@ import (
 func (c *controller) bootstrapRelationships(parent context.Context, pluginID string, route resourcev2.AccessRoute) {
 	ctx, cancel := context.WithTimeout(parent, relationshipBootstrapTimeout)
 	defer cancel()
-	c.bootstrapRelationshipsCurrent(ctx, pluginID, route, true)
+	c.bootstrapRelationshipsCurrent(ctx, pluginID, route, true, nil)
 }
 
-func (c *controller) bootstrapRelationshipsCurrent(ctx context.Context, pluginID string, route resourcev2.AccessRoute, reacquire bool) {
-	provider, generation, ctx, cleanup, err := c.operationGeneration(ctx, pluginID, route)
+func (c *controller) bootstrapRelationshipsCurrent(ctx context.Context, pluginID string, route resourcev2.AccessRoute, reacquire bool, expected *catalogAdmission) {
+	provider, generation, ctx, cleanup, err := c.operationGenerationExpected(ctx, pluginID, route, expected)
 	if err != nil {
 		return
 	}
@@ -64,7 +64,8 @@ func (c *controller) bootstrapRelationshipsCurrent(ctx context.Context, pluginID
 				generation.catalogBindings[route.Connection].active == binding
 			c.pluginsMu.RUnlock()
 			if retiredByObservation {
-				c.bootstrapRelationshipsCurrent(ctx, pluginID, route, false)
+				expected := catalogAdmission{generation: generation, epoch: sourceEpochSnapshot{Connection: route.Connection, Epoch: admission.epoch.Epoch + 1}}
+				c.bootstrapRelationshipsCurrent(ctx, pluginID, route, false, &expected)
 			}
 		}
 		return
