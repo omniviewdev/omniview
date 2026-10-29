@@ -1,6 +1,12 @@
 name: Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Publish npm packages only (for example v0.9.0); desktop still requires a v* tag"
+        required: true
+        type: string
   push:
     tags:
       - "v*"
@@ -33,6 +39,7 @@ jobs:
   # macOS (darwin/universal) — sign, notarize, DMG
   # ─────────────────────────────────────────────────────────────────────────────
   build-macos:
+    if: github.event_name == 'push'
     runs-on: macos-latest
     steps:
       - name: Normalize version
@@ -213,6 +220,7 @@ jobs:
   # Linux (linux/amd64)
   # ─────────────────────────────────────────────────────────────────────────────
   build-linux:
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     container:
       image: ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1
@@ -310,6 +318,7 @@ jobs:
   # Windows (windows/amd64)
   # ─────────────────────────────────────────────────────────────────────────────
   build-windows:
+    if: github.event_name == 'push'
     runs-on: windows-latest
     steps:
       - name: Normalize version
@@ -400,7 +409,7 @@ jobs:
   publish-npm:
     uses: ./.github/workflows/npm-publish.yml
     with:
-      version: ${{ github.ref_name }}
+      version: ${{ inputs.version || github.ref_name }}
       dist-tag: latest
 
   # ─────────────────────────────────────────────────────────────────────────────
@@ -408,7 +417,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   publish:
     runs-on: ubuntu-latest
-    needs: [build-macos, build-linux, build-windows, check-homebrew]
+    needs: [build-macos, build-linux, build-windows, check-homebrew, publish-npm]
     steps:
       - name: Verify Homebrew publication credentials
         if: ${{ !contains(github.ref_name, '-') }}

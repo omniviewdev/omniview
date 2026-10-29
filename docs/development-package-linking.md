@@ -39,6 +39,18 @@ timer when drag handlers initialized synchronously. This avoids redundant browse
 work and prevents the timer from accessing a torn-down JSDOM window in component
 tests. Keep the patch and pnpm lockfile hash in sync when updating Wails.
 
+For a coordinated release, freeze a reviewed source ref and manually dispatch the
+existing `release.yaml` workflow with `version=v0.9.0`. Manual dispatch runs only
+the existing npm producer job; it does not build or publish desktop/Homebrew
+artifacts. Build and publish runtime before Vite-plugin so consumers receive
+matching exports and shims. The publisher uses npm bundled with pinned Node.
+
+Validate and merge consumer dependency updates against those published packages
+before pushing the ordinary `v0.9.0` desktop release tag at the same frozen
+producer commit. Keep this cohort a pre-1.0 minor release, not a major bump.
+Tag-driven desktop publication also requires successful npm publication; an npm
+failure cannot promote desktop or Homebrew artifacts.
+
 ## Protocol acceptance gate
 
 There is deliberately no unproved default. `LinkOptions.Evidence` must contain successful **workspace/12.14.0** output from the disposable composition probe. Historical independent-root `link` evidence cannot authorize this topology. Selected local exports use explicit workspace mappings with live directory outputs; no unproved `file:` materialization or global links are substituted.
