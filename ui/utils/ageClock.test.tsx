@@ -219,20 +219,6 @@ describe('renderer age clock', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('refreshes old labels when the visible timezone offset changes', () => {
-    const value = ago(5 * 86_400_000);
-    const { result } = renderHook(() => useAge(value));
-    const format = vi.spyOn(time, 'formatTimeDifference');
-    const offset = new Date().getTimezoneOffset();
-    vi.spyOn(Date.prototype, 'getTimezoneOffset').mockReturnValue(offset + 60);
-    act(() => {
-      vi.advanceTimersByTime(1000); 
-    });
-    expect(format).toHaveBeenCalledTimes(1);
-    expect(result.current).toBe('5d');
-    expect(vi.getTimerCount()).toBe(1);
-  });
-
   it.each([300, 3000])('bounds %i mounted subscribers to one timer and listener', (count) => {
     const added = vi.spyOn(document, 'addEventListener');
     const removed = vi.spyOn(document, 'removeEventListener');

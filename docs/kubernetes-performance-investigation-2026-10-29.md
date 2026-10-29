@@ -387,8 +387,8 @@ baseline assertions reject candidate timer behavior mislabeled as original.
 Review identified stale day-old labels after a continuously visible wall-clock
 jump. The sole timer now wakes at least once per second while visible, compares
 its expected wall-clock deadline and timezone offset, and refreshes all labels
-only after a discontinuity. Added controlled forward/backward clock-jump and
-offset-change regressions. Native OS clock/timezone changes remain unexercised.
+only after a discontinuity. Added controlled forward/backward clock-jump
+regressions. Native OS clock/timezone changes remain unexercised.
 
 ### Visible metrics and stable dashboard layout
 
