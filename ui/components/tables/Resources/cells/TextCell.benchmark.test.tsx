@@ -56,7 +56,9 @@ describe.skipIf(!enabled)('actual age cell scheduler smoke', () => {
     callbacks = 0;
     format.mockClear();
     const visibleStart = performance.now();
-    act(() => { vi.advanceTimersByTime(10_000); });
+    act(() => {
+      vi.advanceTimersByTime(10_000); 
+    });
     const visibleMs = performance.now() - visibleStart;
     const visibleCallbacks = callbacks;
     const visibleFormats = format.mock.calls.length;
@@ -70,7 +72,9 @@ describe.skipIf(!enabled)('actual age cell scheduler smoke', () => {
     callbacks = 0;
     format.mockClear();
     const hiddenStart = performance.now();
-    act(() => { vi.advanceTimersByTime(60_000); });
+    act(() => {
+      vi.advanceTimersByTime(60_000); 
+    });
     const hiddenMs = performance.now() - hiddenStart;
     const hiddenCallbacks = callbacks;
     const hiddenFormats = format.mock.calls.length;
