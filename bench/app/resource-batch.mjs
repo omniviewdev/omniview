@@ -26,9 +26,13 @@ for (const count of [300, 3000, 10000]) {
     }));
     const check = applyBatch(base, events, 'metadata.name');
     assert.equal(check.result.length, workload === 'delete-all' ? 0 : count);
-    assert.equal(rows.at(-1).status.revision, 0);
-    if (workload.startsWith('update')) assert.equal(check.result.at(-1).status.revision, 1);
-    if (workload === 'duplicate-adds') assert.equal(check.result.at(-1).status.revision, 0);
+    assert.ok(rows.every(row => row.status.revision === 0), 'Cached rows must remain unchanged');
+    if (workload === 'update-all') assert.ok(check.result.every(row => row.status.revision === 1), 'Every updated row must carry the new revision');
+    if (workload === 'update-one') {
+      assert.equal(check.result.at(-1).status.revision, 1);
+      assert.ok(check.result.slice(0, -1).every(row => row.status.revision === 0), 'A single update must not change other rows');
+    }
+    if (workload === 'duplicate-adds') assert.ok(check.result.every(row => row.status.revision === 0), 'Duplicate ADDs must not replace existing rows');
     for (let warmup = 0; warmup < 3; warmup++) applyBatch(base, events, 'metadata.name');
     const milliseconds = [];
     for (let repeat = 0; repeat < 9; repeat++) {

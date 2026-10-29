@@ -168,6 +168,9 @@ describe('applyBatch', () => {
       type, payload: { data, key: 'k', connection: 'c', id: data.metadata.name, namespace: 'default' },
     });
     const original = { result: [first, second, other] };
+    const oneRemoved = applyBatch(original, [event('DELETE', first), event('UPDATE', other)], idAccessor);
+    expect(oneRemoved.result).toEqual([second, other]);
+    expect(oneRemoved.result[0]).toBe(second);
     const result = applyBatch(original, [
       event('DELETE', first),
       event('UPDATE', replacement),

@@ -22,7 +22,7 @@ const processes = values.pid.map((value) => {
 });
 if (new Set(processes.map(p => p.pid)).size !== processes.length || new Set(processes.map(p => p.label)).size !== processes.length) throw new Error('Labels and PIDs must be unique');
 function ps(pid, format) {
-  return execFileSync('/bin/ps', ['-p', String(pid), '-o', format], { encoding: 'utf8' }).trim();
+  return execFileSync('/bin/ps', ['-p', String(pid), '-o', format], { encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' } }).trim();
 }
 function cpuMilliseconds(value) {
   const match = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+(?:\.\d+)?)$/.exec(value);
@@ -31,14 +31,20 @@ function cpuMilliseconds(value) {
 }
 function snapshot(process) {
   const started = performance.now();
-  const row = ps(process.pid, 'pid=,time=,rss=,stat=,comm=');
-  const match = /^(\d+)\s+(\S+)\s+(\d+)\s+(\S+)\s+(.+)$/.exec(row);
-  if (!match || Number(match[1]) !== process.pid || match[4].includes('Z')) throw new Error(`Unavailable or exited process sample: ${row}`);
-  return { atMs: performance.now(), samplingMs: performance.now() - started, cpuMs: cpuMilliseconds(match[2]), rssKiB: Number(match[3]), state: match[4], command: match[5] };
+  const row = ps(process.pid, 'pid=,lstart=,etime=,time=,rss=,stat=,comm=');
+  const match = /^(\d+)\s+([A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+(\S+)\s+(\S+)\s+(\d+)\s+(\S+)\s+(.+)$/.exec(row);
+  if (!match || Number(match[1]) !== process.pid || match[6].includes('Z')) throw new Error(`Unavailable or exited process sample: ${row}`);
+  const ageMs = cpuMilliseconds(match[3]);
+  // lstart has second precision. Require an older process to exclude same-second reuse.
+  if (ageMs < 2000) throw new Error(`Process is too new for unambiguous start identity: ${process.pid}; wait at least 2 seconds`);
+  const startTime = match[2].replace(/\s+/g, ' ');
+  if (process.startTime && startTime !== process.startTime) throw new Error(`PID reused during capture: ${process.pid}`);
+  return { atMs: performance.now(), samplingMs: performance.now() - started, startTime, ageMs, cpuMs: cpuMilliseconds(match[4]), rssKiB: Number(match[5]), state: match[6], command: match[7] };
 }
 for (const process of processes) {
-  process.startTime = ps(process.pid, 'lstart=');
-  process.samples = [snapshot(process)];
+  const first = snapshot(process);
+  process.startTime = first.startTime;
+  process.samples = [first];
 }
 const started = performance.now();
 while (performance.now() - started < seconds * 1000) {
@@ -46,7 +52,6 @@ while (performance.now() - started < seconds * 1000) {
   for (const process of processes) process.samples.push(snapshot(process));
 }
 for (const process of processes) {
-  if (ps(process.pid, 'lstart=') !== process.startTime) throw new Error(`PID reused during capture: ${process.pid}`);
   const first = process.samples[0], last = process.samples.at(-1);
   process.elapsedMs = last.atMs - first.atMs;
   process.cpuMs = last.cpuMs - first.cpuMs;

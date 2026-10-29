@@ -354,6 +354,8 @@ node bench/app/native-idle.mjs \
 The reducer runner accepts an optional second positional argument naming an original
 source snapshot for before/after comparison. It records the exact input source hash
 before bundling. The native sampler uses cumulative process CPU time rather than
-the rolling `%CPU` field, checks process start identity, and rejects exited PIDs.
+the rolling `%CPU` field, checks start identity in each CPU snapshot, and rejects
+exited PIDs or processes younger than two seconds. This age guard avoids the
+same-second ambiguity of `ps` start timestamps.
 Neither tool selects or mutates a cluster. Do not use an uncontrolled sampler smoke
 or a reducer speedup as evidence of lower native Graphics/WebContent CPU.

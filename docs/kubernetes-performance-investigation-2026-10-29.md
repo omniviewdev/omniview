@@ -188,6 +188,10 @@ node bench/app/native-idle.mjs \
 
 The sampler records raw cumulative CPU times, interval CPU, mean CPU as percent of one logical core, RSS, process start identity, and sampling overhead. It rejects missing/exited processes rather than reporting fake zero. PID selection, cluster/build provenance, and route attestation remain operator responsibilities. Short captures are quantized by ps time precision. This sampler was smoke-tested against a running native host and against an exited PID; no target dashboard/Graphics acceptance capture occurred.
 
+Each `ps` snapshot captures start identity, process age, and CPU together under the
+C locale. Processes younger than two seconds are rejected to prevent same-second
+PID-reuse ambiguity; warm the app before sampling.
+
 Proposed gates, not achieved claims: native WebContent and Graphics each below 1% mean during controlled no-events idle, no ongoing paints/commits with unchanged visible data, and lower CPU than matched FreeLens runs during real-cluster idle. At least three runs must show the result. Retain responsive input during bursts; don't trade away correctness or defer unbounded work to navigation. Agree on real-cluster event-rate and peak-loading budgets from matched baseline receipts rather than asserting a synthetic speedup beats Lens.
 
 ## Integration checks and environment limits
