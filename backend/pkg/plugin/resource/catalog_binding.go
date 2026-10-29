@@ -78,7 +78,7 @@ func (c *controller) observeCatalogBinding(ctx context.Context, pluginID string,
 		c.finite.mu.Unlock()
 	}
 	if state.active != "" || retireRestart {
-		if err := c.invalidateProfileRoutesLocked(pluginID, []string{route.Connection}); err != nil {
+		if err := c.invalidateSourceRoutesLocked(pluginID, []string{route.Connection}, false); err != nil {
 			return err
 		}
 		if state.active != "" {

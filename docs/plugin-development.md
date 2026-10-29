@@ -213,6 +213,11 @@ the host fetches fresh authoritative `ListConnections` facts under that same
 fence for cache publication, sync events, and auto-connect scheduling. It never
 reapplies an overlay while consuming the stream, and an older queued frame
 cannot resurrect a disabled profile or overwrite a newer transaction.
+Native catalog binding retirement clears source-bound authorities, resource
+observations, graph declarations, and subscriptions, but retains configured
+connection metadata. A reconnect must not remove the route from connection
+inventory or aggregate readiness. Only authoritative inventory/profile changes
+remove configured membership; readiness still comes from the native trait.
 
 `GetAllConnectionStates` exposes `readiness`, not an inferred `started` flag.
 The optional `connectionReadiness` trait snapshots only the source's registered

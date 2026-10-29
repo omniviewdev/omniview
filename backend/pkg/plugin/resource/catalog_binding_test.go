@@ -9,6 +9,7 @@ import (
 	"time"
 
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,6 +38,80 @@ func bindingTestCatalog(t *testing.T, epoch, revision, hint string) resourcev2.C
 	catalog.Revision, err = resourcev2.BindCatalogRevision(epoch, revision)
 	require.NoError(t, err)
 	return catalog
+}
+
+type bindingInventoryProvider struct {
+	*bindingTestProvider
+	status types.ConnectionStatus
+}
+
+func (p *bindingInventoryProvider) GetConnectionStatus(context.Context, string) (types.ConnectionStatus, error) {
+	return p.status, nil
+}
+
+func TestCatalogBindingConnectPreservesConfiguredInventory(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	ctx := testInvocationContext()
+	connection := types.Connection{ID: "binding-route", Name: "Configured cluster"}
+	catalog := bindingTestCatalog(t, bindingTestEpoch(t), "native", "hintA")
+	provider := &bindingInventoryProvider{
+		bindingTestProvider: &bindingTestProvider{
+			mockProvider: &mockProvider{},
+			catalog: func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
+				return catalog, nil
+			},
+		},
+		status: types.ConnectionStatus{Status: types.ConnectionStatusDisconnected},
+	}
+	provider.LoadConnectionsFunc = func(context.Context) ([]types.Connection, error) {
+		return []types.Connection{connection}, nil
+	}
+	provider.GetWatchStateFunc = func(_ context.Context, route resourcev2.AccessRoute) (*resourcev2.WatchConnectionSummary, error) {
+		return &resourcev2.WatchConnectionSummary{
+			Route: route, Resources: map[string]resourcev2.WatchState{},
+			ResourceCounts: map[string]resourcev2.Count{}, Scope: resourcev2.QueryScope{},
+			Guarantee: resourcev2.BestEffortGuarantee,
+		}, nil
+	}
+	provider.StartConnectionFunc = func(context.Context, string) (types.ConnectionStatus, error) {
+		catalog = bindingTestCatalog(t, bindingTestEpoch(t), "native", "hintB")
+		provider.status = types.ConnectionStatus{Status: types.ConnectionStatusConnected, Connection: &connection}
+		return provider.status, nil
+	}
+	registerMockPlugin(ctrl, "p1", provider)
+	_, err := ctrl.LoadConnections(ctx, "p1")
+	require.NoError(t, err)
+	states, err := ctrl.GetAllConnectionStates(ctx)
+	require.NoError(t, err)
+	require.Len(t, states["p1"], 1)
+	require.Equal(t, types.ConnectionStatusDisconnected, states["p1"][0].Readiness)
+	old, err := ctrl.ResolveTarget(ctx, "p1", bindingTestRequest())
+	require.NoError(t, err)
+
+	status, err := ctrl.StartConnection(ctx, "p1", connection.ID)
+	require.NoError(t, err)
+	require.Equal(t, types.ConnectionStatusConnected, status.Status)
+	require.NotZero(t, ctrl.plugins["p1"].sourceEpoch[connection.ID], "Connect bootstrap must exercise native binding retirement")
+	configured, err := ctrl.GetConnection(ctx, "p1", connection.ID)
+	require.NoError(t, err)
+	require.Equal(t, connection.Name, configured.Name)
+	all, err := ctrl.ListAllConnections(ctx)
+	require.NoError(t, err)
+	require.Len(t, all["p1"], 1)
+	states, err = ctrl.GetAllConnectionStates(ctx)
+	require.NoError(t, err)
+	require.Len(t, states["p1"], 1)
+	require.Equal(t, connection.Name, states["p1"][0].Connection.Name)
+	require.Equal(t, types.ConnectionStatusConnected, states["p1"][0].Readiness)
+	fresh, err := ctrl.ResolveTarget(ctx, "p1", bindingTestRequest())
+	require.NoError(t, err)
+	require.NotEqual(t, old.Target.Authority, fresh.Target.Authority, "configured metadata must not preserve retired authority")
+
+	provider.status = types.ConnectionStatus{Status: types.ConnectionStatusDisconnected}
+	states, err = ctrl.GetAllConnectionStates(ctx)
+	require.NoError(t, err)
+	require.Len(t, states["p1"], 1)
+	require.Equal(t, types.ConnectionStatusDisconnected, states["p1"][0].Readiness)
 }
 
 func bindingTestRequest() ResolveTargetRequest {
