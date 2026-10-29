@@ -12,6 +12,7 @@ export * as DiagnosticsClient from './bindings/github.com/omniviewdev/omniview/b
 export * as LogsClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/logs/servicewrapper';
 export * as MetricClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/servicewrapper';
 export * as DataClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/data/servicewrapper';
+export * as WindowClient from './bindings/github.com/omniviewdev/omniview/backend/window/service';
 
 export * as DevServerManager from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/devserver/servicewrapper';
 export * as PluginLogManager from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/pluginlog/servicewrapper';

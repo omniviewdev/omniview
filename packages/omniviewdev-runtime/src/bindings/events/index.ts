@@ -183,3 +183,38 @@ export const SettingsChanged = "settings/changed";
  */
 export const WatchSTATE = "watch/STATE";
 
+/**
+ * Name of the custom event "windows/changed".
+ */
+export const WindowsChanged = "windows/changed";
+
+/**
+ * Name of the custom event "windows/closed".
+ */
+export const WindowsClosed = "windows/closed";
+
+/**
+ * Name of the custom event "windows/drag/begin".
+ */
+export const WindowsDragBegin = "windows/drag/begin";
+
+/**
+ * Name of the custom event "windows/drag/drop".
+ */
+export const WindowsDragDrop = "windows/drag/drop";
+
+/**
+ * Name of the custom event "windows/drag/end".
+ */
+export const WindowsDragEnd = "windows/drag/end";
+
+/**
+ * Name of the custom event "windows/drag/hover".
+ */
+export const WindowsDragHover = "windows/drag/hover";
+
+/**
+ * Name of the custom event "windows/drag/leave".
+ */
+export const WindowsDragLeave = "windows/drag/leave";
+
