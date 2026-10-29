@@ -4,7 +4,7 @@ import {
   type ButtonHTMLAttributes,
   type HTMLAttributes,
 } from 'react';
-import { render, cleanup, act, screen, waitFor } from '@testing-library/react';
+import { render, cleanup, act, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { BottomDrawerTab } from '@omniviewdev/runtime';
 
 // ─── xterm mocks ───────────────────────────────────────────────────────────────
@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => {
   const state = {
     onResizeCallback: null as ((e: { rows: number; cols: number }) => void) | null,
     onDataCallback: null as ((data: string) => void) | null,
-    terminal: null as { options: Record<string, unknown> } | null,
+    terminal: null as { options: Record<string, unknown>; rows: number; cols: number } | null,
     applicationTheme: {
       background: '#102030',
       foreground: '#f0e0d0',
@@ -50,7 +50,7 @@ const mocks = vi.hoisted(() => {
       state.onDataCallback = cb; 
     }),
     mockFit: vi.fn(),
-    mockEventsOn: vi.fn(() => vi.fn()),
+    mockEventsOn: vi.fn((_name: string, _handler: (event: { data: unknown }) => void) => vi.fn()),
     mockEventsOff: vi.fn(),
     mockAttachSession: vi.fn().mockResolvedValue([undefined, undefined]),
     mockDetachSession: vi.fn().mockResolvedValue(undefined),
@@ -65,6 +65,8 @@ vi.mock('@xterm/xterm', () => ({
   Terminal: vi.fn(function (this: unknown, opts: Record<string, unknown>) {
     const terminal = {
       options: opts,
+      rows: 24,
+      cols: 80,
       open: mocks.mockOpen,
       loadAddon: mocks.mockLoadAddon,
       focus: mocks.mockFocus,
@@ -465,8 +467,8 @@ describe('TerminalContainer', () => {
     expect(mockObserve).toHaveBeenCalled();
   });
 
-  it('calls ExecClient.ResizeSession on terminal.onResize', () => {
-    render(<TerminalContainer sessionId="test-session-123" />);
+  it('calls ExecClient.ResizeSession on terminal.onResize after attachment', async () => {
+    await act(async () => { render(<TerminalContainer sessionId="test-session-123" />); });
 
     expect(mocks.state.onResizeCallback).toBeTruthy();
 
@@ -477,18 +479,20 @@ describe('TerminalContainer', () => {
     expect(mocks.mockResizeSession).toHaveBeenCalledWith('test-session-123', 24, 80);
   });
 
-  it('calls ExecClient.WriteSession on terminal.onData', async () => {
-    await act(async () => {
-      render(<TerminalContainer sessionId="test-session-123" />);
-    });
-
-    expect(mocks.state.onDataCallback).toBeTruthy();
+  it('sends the fitted size after attachment even when fit emits no further resize', async () => {
+    const { promise, resolve: resolveAttach } = Promise.withResolvers<unknown[]>();
+    mocks.mockAttachSession.mockReturnValueOnce(promise);
+    render(<TerminalContainer sessionId="late-attachment" />);
 
     act(() => {
-      mocks.state.onDataCallback!('hello');
+      mocks.state.terminal!.rows = 32;
+      mocks.state.terminal!.cols = 100;
+      mocks.state.onResizeCallback!({ rows: 32, cols: 100 });
     });
+    expect(mocks.mockResizeSession).not.toHaveBeenCalled();
 
-    expect(mocks.mockWriteSession).toHaveBeenCalledWith('test-session-123', 'hello');
+    await act(async () => { resolveAttach([undefined, undefined]); });
+    expect(mocks.mockResizeSession).toHaveBeenCalledExactlyOnceWith('late-attachment', 32, 100);
   });
 
   it('cleans up on unmount', async () => {
@@ -555,5 +559,81 @@ describe('TerminalContainer', () => {
 
     // Should subscribe to onResizeReset via bottomDrawerChannel.on
     expect(mocks.mockChannelOn).toHaveBeenCalledWith('onResizeReset', expect.any(Function));
+  });
+
+  it('preserves command bytes by waiting for each input write before dispatching the next', async () => {
+    const first = Promise.withResolvers<void>();
+    mocks.mockWriteSession.mockReturnValueOnce(first.promise);
+    await act(async () => { render(<TerminalContainer sessionId="ordered-input" />); });
+    act(() => {
+      mocks.state.onDataCallback!('i');
+      mocks.state.onDataCallback!('d\r');
+    });
+    await act(async () => { await Promise.resolve(); });
+    try {
+      expect(mocks.mockWriteSession).toHaveBeenCalledTimes(1);
+    } finally {
+      await act(async () => { first.resolve(); });
+    }
+    expect(mocks.mockWriteSession.mock.calls.map((call: unknown[]) => call[1]).join('')).toBe('id\r');
+  });
+
+  it('does not dispatch queued input after the terminal detaches', async () => {
+    const first = Promise.withResolvers<void>();
+    mocks.mockWriteSession.mockReturnValueOnce(first.promise);
+    const view = render(<TerminalContainer sessionId="disposed-input" />);
+    await act(async () => { await Promise.resolve(); });
+    act(() => {
+      mocks.state.onDataCallback!('first');
+      mocks.state.onDataCallback!('must-not-reach-detached-session');
+    });
+    await act(async () => { await Promise.resolve(); });
+    view.unmount();
+    await act(async () => { first.resolve(); });
+    expect(mocks.mockWriteSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('announces attachment failure and does not accept input for an unattached session', async () => {
+    mocks.mockAttachSession.mockRejectedValueOnce(new Error('Session vanished'));
+    await act(async () => { render(<TerminalContainer sessionId="failed-attachment" />); });
+    expect(screen.getByRole('alert')).toBeVisible();
+    expect(mocks.state.onDataCallback).toBeNull();
+  });
+
+  it('stops queued and future input after an uncertain write failure', async () => {
+    mocks.mockWriteSession.mockRejectedValueOnce(new Error('Connection lost'));
+    await act(async () => { render(<TerminalContainer sessionId="failed-input" />); });
+    act(() => {
+      mocks.state.onDataCallback!('first');
+      mocks.state.onDataCallback!('must-not-follow-uncertain-write');
+    });
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByRole('alert')).toBeVisible();
+    expect(mocks.mockWriteSession).toHaveBeenCalledTimes(1);
+    act(() => { mocks.state.onDataCallback!('must-not-send-after-error'); });
+    await act(async () => { await Promise.resolve(); });
+    expect(mocks.mockWriteSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers an explicit plugin recovery only for eligible stream errors', async () => {
+    const recover = vi.fn().mockResolvedValue(undefined);
+    const canRecover = vi.fn((info: { title: string }) => info.title === 'Shell not found');
+    await act(async () => {
+      render(<TerminalContainer sessionId="recoverable-stream" tab={{
+        title: 'app/main', properties: {
+          pluginID: 'kubernetes', connectionID: 'kind-kind',
+          recovery: { label: 'Debug this container', canRecover, run: recover },
+        },
+      } as unknown as BottomDrawerTab} />);
+    });
+    const handler = mocks.mockEventsOn.mock.calls.find(([name]) => name === 'core/exec/signal/ERROR/recoverable-stream')?.[1];
+    expect(handler).toBeDefined();
+    act(() => handler!({ data: { title: 'Permission denied', message: 'Forbidden: pods/exec', suggestion: 'Request access.' } }));
+    expect(screen.queryByRole('button', { name: 'Debug this container' })).not.toBeInTheDocument();
+    act(() => handler!({ data: { title: 'Shell not found', message: 'exec: sh: executable file not found', suggestion: 'No shell installed.' } }));
+    expect(recover).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Debug this container' }));
+    await act(async () => { await Promise.resolve(); });
+    expect(recover).toHaveBeenCalledTimes(1);
   });
 });
