@@ -312,7 +312,7 @@ func (g *BuildGraph) commandWithEnvironment(ctx context.Context, dir string, env
 		switch key {
 		case "GOWORK", "GOFLAGS", "GOROOT", "GOCACHE", "NODE_PATH", "GO_MODFILE", "OMNIVIEW_PNPM_NODE_PATH",
 			"OMNIVIEW_BUILD_OUTPUT_DIRECTORY", "OMNIVIEW_SHIMS_OUTPUT_DIRECTORY", "OMNIVIEW_SHIMS_SOURCE_DIRECTORY",
-			"OMNIVIEW_YAML_WORKER_OUTPUT_FILE", "OMNIVIEW_VITE_CACHE_DIRECTORY":
+			"OMNIVIEW_YAML_WORKER_OUTPUT_FILE", "OMNIVIEW_VITE_CACHE_DIRECTORY", compositionInstallEnvironment:
 			continue
 		}
 		cmd.Env = append(cmd.Env, entry)

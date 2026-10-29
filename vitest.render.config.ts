@@ -11,8 +11,10 @@ import path from 'node:path';
 
 import appConfig from './vite.config';
 import { wailsBindingIndex } from './bench/vite/wails-binding-index';
+import { vitestCaches } from './vitest.cache';
 
 const root = import.meta.dirname;
+const testCaches = vitestCaches(root);
 const bindingsRoot = path.join(root, 'packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview');
 const k8sPluginSrc = path.join(root, 'plugins/kubernetes/ui/src');
 
@@ -76,6 +78,7 @@ const app = appConfig as UserConfig;
 const appAliases = Object.keys((app.resolve?.alias ?? {}) as Record<string, string>);
 
 export default defineConfig({
+  cacheDir: testCaches.cacheDir,
   plugins: [k8sPluginAlias(), wailsBindingIndex(bindingsRoot), ...(app.plugins ?? [])],
   resolve: {
     ...app.resolve,
@@ -98,6 +101,7 @@ export default defineConfig({
     esbuildOptions: { define: { 'process.env.NODE_ENV': nodeEnv } },
   },
   test: {
+    fsModuleCachePath: testCaches.fsModuleCachePath,
     include: [],
     setupFiles: ['./bench/render/setup.ts'],
     reporters: ['default', 'json'],

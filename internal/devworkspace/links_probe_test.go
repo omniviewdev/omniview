@@ -163,6 +163,8 @@ func probePinnedLinkProtocol(t *testing.T, version string) {
 			command.Env = append(command.Env, entry)
 		}
 		command.Env = append(command.Env, "GOWORK=off", "GOFLAGS=", "NODE_PATH=", "OMNIVIEW_PNPM_NODE_PATH=", "HOME="+privateHome, "USERPROFILE="+privateHome, "XDG_CONFIG_HOME="+filepath.Join(privateHome, "config"), "XDG_CACHE_HOME="+filepath.Join(privateHome, "cache"), "PNPM_HOME="+filepath.Join(privateHome, "pnpm"), "NPM_CONFIG_USERCONFIG="+os.DevNull, "NPM_CONFIG_GLOBALCONFIG="+os.DevNull)
+		// The probe is the recorded composition installer (BeginCompositionInstall above).
+		command.Env = append(command.Env, compositionInstallEnvironment+"=1")
 		var stdout, stderr strings.Builder
 		command.Stdout, command.Stderr = &stdout, &stderr
 		err = RunRepositoryCommand(ctx, command, devsession.ProcessOwner{WorkspaceID: w.Manifest.WorkspaceID, Generation: graph.options.Generation, Role: "protocol-command", Source: root})
