@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import type { QueryClient, QueryKey } from '@tanstack/react-query';
 import get from 'lodash.get';
 import type { WatchState } from '../../types/watch';
@@ -109,10 +109,11 @@ export function useEventBatcher(
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rafRef = useRef<number | null>(null);
 
-  // Track watchState in a ref so flush callback always reads the latest
-  // value without needing to be re-created on every state change.
+  // Scheduling reads only the committed watch state, never an abandoned render.
   const stateRef = useRef(watchState);
-  stateRef.current = watchState;
+  useLayoutEffect(() => {
+    stateRef.current = watchState;
+  }, [watchState]);
 
   const flush = useCallback(() => {
     const events = bufferRef.current;

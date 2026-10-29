@@ -1,6 +1,6 @@
 import { createSlice } from '@reduxjs/toolkit';
 import type { PayloadAction } from '@reduxjs/toolkit';
-import type { Setting, SettingsState } from './types';
+import type { SettingsState } from './types';
 
 import { initialState as appearanceInitialState } from './sections/appearance';
 import { initialState as editorInitialState } from './sections/editor';
@@ -129,7 +129,7 @@ export const slice = createSlice({
           continue;
         }
 
-        const validationError = validateSettingValue(setting as Setting, values[identifier]);
+        const validationError = validateSettingValue(setting, values[identifier]);
         if (validationError) {
           throw new Error(validationError);
         }

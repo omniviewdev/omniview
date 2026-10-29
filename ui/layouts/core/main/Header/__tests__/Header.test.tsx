@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { StrictMode, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Provider } from 'react-redux';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, Outlet, useLocation } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ExtensionProvider, GLOBAL_SEARCH_OPEN_EVENT, PluginWindow, usePluginContext } from '@omniviewdev/runtime';
 import { Category, ConnectionStatusCode, Setting, SettingType } from '@omniviewdev/runtime/models';
@@ -23,6 +23,15 @@ import { createDeferred, createTestDeps } from '@/features/plugins/testing/helpe
 import headerReducer, { actions } from '@/store/header/slice';
 import { HeaderAreaItemType, type HeaderIconLink, type HeaderState } from '@/store/header/types';
 import CoreLayoutHeader from '..';
+import { RouteProvider } from '@/features/router/RouteProvider';
+
+vi.mock('@/features/router/routes', () => ({
+  coreRoutes: [{
+    path: '/',
+    Component: () => <><CoreLayoutHeader /><CurrentLocation /><Outlet /></>,
+    children: [{ path: 'plugins', Component: () => <h1>Plugins</h1> }],
+  }],
+}));
 
 const fixture = vi.hoisted(() => {
   const previousBootstrap = window.__OMNIVIEW_BOOTSTRAP__;
@@ -253,6 +262,82 @@ function renderSearchHeader(searchVisible = true, service?: PluginService, clien
     </StrictMode>,
   );
 }
+
+it('keeps the typed search session and opener across late plugin route publication, reload and removal', async () => {
+  const testDeps = createTestDeps();
+  const service = new PluginService(testDeps.deps);
+  const header: HeaderState = {
+    visible: true,
+    areas: {
+      left: { visible: false, type: 'items', items: [] },
+      center: { visible: true, type: 'search', items: [] },
+      right: { visible: false, type: 'items', items: [] },
+    },
+  };
+  const store = configureStore({ reducer: { header: headerReducer }, preloadedState: { header } });
+  window.location.hash = '#/plugins';
+  render(
+    <StrictMode>
+      <Provider store={store}>
+        <HeaderProviders service={service}>
+          <InstanceProvider><RouteProvider /></InstanceProvider>
+        </HeaderProviders>
+      </Provider>
+    </StrictMode>,
+  );
+  try {
+    const opener = await screen.findByRole('button', { name: 'Search Omniview' });
+    opener.focus();
+    fireEvent.keyDown(opener, { key: 'k', metaKey: true });
+    const input = await screen.findByRole('combobox', { name: 'Search Omniview' });
+    fireEvent.change(input, { target: { value: 'Home' } });
+    await screen.findByRole('option', { name: /^Home/ });
+
+    testDeps.importer.register('late-search', {
+      plugin: new PluginWindow().withRoutes([{ index: true, Component: () => <h1>Late plugin</h1> }]),
+    });
+    await act(async () => {
+      await service.load('late-search');
+    });
+    expect(screen.getByRole('combobox', { name: 'Search Omniview' })).toBe(input);
+    expect(input).toHaveValue('Home');
+    expect(input).toHaveFocus();
+
+    await act(async () => {
+      await service.reload('late-search');
+    });
+    expect(screen.getByRole('combobox', { name: 'Search Omniview' })).toBe(input);
+    expect(input).toHaveValue('Home');
+    expect(input).toHaveFocus();
+
+    await act(async () => {
+      await service.unload('late-search');
+    });
+    expect(screen.getByRole('combobox', { name: 'Search Omniview' })).toBe(input);
+    expect(input).toHaveValue('Home');
+    fireEvent.keyDown(input, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Search Omniview' })).not.toBeInTheDocument();
+    });
+    expect(opener).toHaveFocus();
+
+    fireEvent.click(opener);
+    const reopened = await screen.findByRole('combobox', { name: 'Search Omniview' });
+    fireEvent.change(reopened, { target: { value: 'Home' } });
+    const home = await screen.findByRole('option', { name: /^Home/ });
+    await waitFor(() => {
+      expect(home).not.toHaveAttribute('aria-disabled', 'true');
+    });
+    fireEvent.keyDown(reopened, { key: 'Enter' });
+    await waitFor(() => {
+      expect(screen.getByTestId('current-location')).toHaveTextContent(/^\/$/);
+    });
+    expect(screen.queryByRole('dialog', { name: 'Search Omniview' })).not.toBeInTheDocument();
+  } finally {
+    cleanup();
+    window.location.hash = '';
+  }
+});
 
 it.each(['ctrlKey', 'metaKey'] as const)(
   'opens one real header session with %s+K even when the configurable search area is hidden',

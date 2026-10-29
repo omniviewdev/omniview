@@ -7,7 +7,7 @@ import Layout from '@/layouts/core/sidenav';
 import PluginsNav from './PluginsNav';
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
 import { parseAppError } from '@omniviewdev/runtime';
-import { Outlet } from 'react-router-dom';
+import { Outlet } from 'react-router';
 
 /**
  * The plugin management page.

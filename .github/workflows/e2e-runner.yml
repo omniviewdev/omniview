@@ -38,7 +38,6 @@ jobs:
       GO_VERSION: "1.26"
       NODE_OPTIONS: "--max-old-space-size=4096"
       REVIEWED_SDK_REVISION: ${{ vars.OMNIVIEW_E2E_REVIEWED_SDK_REVISION }}
-      UI_SOURCE_REF: ${{ vars.OMNIVIEW_E2E_UI_REF }}
       CACHE_ONLY: ${{ inputs.cache-only && 'true' || 'false' }}
       OMNIVIEW_E2E_PREINSTALLED_LINUX: "true"
       SELECTION_BASE: ${{ inputs.base }}
@@ -52,15 +51,25 @@ jobs:
           persist-credentials: false
 
       - name: Require independently reviewed published source inputs
+        id: cohort
         run: |
           if [[ ! "$REVIEWED_SDK_REVISION" =~ ^([a-f0-9]{40}|[a-f0-9]{64})$ ]]; then
             echo "::error::Set repository variable OMNIVIEW_E2E_REVIEWED_SDK_REVISION to the independently reviewed full SDK commit, published and reachable in omniviewdev/plugin-sdk. No unpublished/default revision is accepted."
             exit 1
           fi
-          if [[ -z "$UI_SOURCE_REF" ]]; then
-            echo "::error::Set repository variable OMNIVIEW_E2E_UI_REF to the UI implementation ref to check out; its resolved full commit is registered."
+          jq -e 'type == "object" and (keys == ["kubernetes", "plugin-sdk", "ui"]) and all(.[]; type == "string" and test("^([a-f0-9]{40}|[a-f0-9]{64})$"))' e2e/source-cohort.json > /dev/null
+          sdk=$(jq -r '."plugin-sdk"' e2e/source-cohort.json)
+          ui=$(jq -r '.ui' e2e/source-cohort.json)
+          kubernetes=$(jq -r '.kubernetes' e2e/source-cohort.json)
+          if [[ "$sdk" != "$REVIEWED_SDK_REVISION" ]]; then
+            echo "::error::The committed source cohort SDK must match the independently reviewed repository pin. A branch cannot approve its own SDK revision."
             exit 1
           fi
+          if [[ "$(git ls-tree HEAD -- plugins/kubernetes)" != "160000 commit $kubernetes"$'\tplugins/kubernetes' ]] || [[ "$(git -C plugins/kubernetes rev-parse HEAD)" != "$kubernetes" ]]; then
+            echo "::error::The committed Kubernetes cohort must match both the host gitlink and checked-out submodule."
+            exit 1
+          fi
+          echo "ui=$ui" >> "$GITHUB_OUTPUT"
 
       - name: Checkout reviewed SDK source
         uses: actions/checkout@v4
@@ -74,7 +83,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: omniviewdev/ui
-          ref: ${{ vars.OMNIVIEW_E2E_UI_REF }}
+          ref: ${{ steps.cohort.outputs.ui }}
           path: ui
           persist-credentials: false
 
@@ -98,7 +107,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "24.14.0"
+          node-version: "26.13.0"
 
       - name: Selector and cache-mode boundary contracts
         run: node --test e2e/scripts/*.test.mjs

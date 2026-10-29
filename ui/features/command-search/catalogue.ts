@@ -92,12 +92,12 @@ export function registerCoreSearchCatalogue(
         continue;
       }
 
-      if (!settingKey || category.id.length + 1 + settingKey.length > 256) {
+      const fullId = `${category.id}.${settingKey}`;
+      if (!settingKey || fullId.length > 256) {
         unavailable = true;
         continue;
       }
 
-      const fullId = `${category.id}.${settingKey}`;
       const keywords: string[] = [];
       if (category.label.length > 0 && category.label.length <= 128) {
         keywords.push(category.label);

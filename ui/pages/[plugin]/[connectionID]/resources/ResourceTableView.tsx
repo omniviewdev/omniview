@@ -1,5 +1,5 @@
 import React from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router';
 
 // ui
 import { Avatar, Banner, Button, IconButton, Stack, Text } from '@omniviewdev/base-ui';
@@ -76,7 +76,7 @@ export default function ResourceTableView(): React.ReactElement {
         autoHideDuration: 15000,
       });
     }
-  }, []);
+  }, [showSnackbar]);
 
   if (groups.isError) {
     const appErr = parseAppError(groups.error);
@@ -97,7 +97,7 @@ export default function ResourceTableView(): React.ReactElement {
           </Banner.Content>
         </Banner>
         <Button variant='outline' color='neutral' size='sm' onClick={() => {
-          navigate(-1); 
+          void navigate(-1);
         }}>Go Back</Button>
       </div>
     );

@@ -1,5 +1,5 @@
-import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { useMemo } from 'react';
+import { useNavigate, useParams, useLocation } from 'react-router';
+import { useCallback, useMemo } from 'react';
 
 /**
  * Options for customizing navigation behavior
@@ -42,7 +42,7 @@ function usePluginRouter() {
    * @param opts.toContext Navigate to a specific known context. For example, switching between account authorization contexts within a cloud.
    * @throws If both `withinContext` and `toContext` are provided together
    */
-  const navigate = (path: string, opts?: PluginNavigateOptions) => {
+  const navigate = useCallback((path: string, opts?: PluginNavigateOptions) => {
     const { withinContext, toContext, ...rest } = opts ?? {};
 
     const resolvedTo = Boolean(withinContext) && pluginID
@@ -54,14 +54,14 @@ function usePluginRouter() {
     }
 
     // Account for possible leading slashes
-    originalNavigate(resolvedTo, rest);
-  };
+    void originalNavigate(resolvedTo, rest);
+  }, [originalNavigate, pluginID, connectionID]);
 
   return useMemo(() => ({
     location,
     contextID: connectionID ?? '',
     navigate,
-  }), [connectionID, location.pathname]);
+  }), [connectionID, location, navigate]);
 }
 
 export default usePluginRouter;

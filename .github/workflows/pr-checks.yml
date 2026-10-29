@@ -15,7 +15,7 @@ permissions:
 
 env:
   GO_VERSION: "1.26"
-  NODE_VERSION: "24"
+  NODE_VERSION: "26.13.0"
   GOWORK: "off"
 
 jobs:
@@ -58,7 +58,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "24.14.0"
+          node-version: "26.13.0"
 
       - name: Setup native pnpm for recovery integration tests
         uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
@@ -148,7 +148,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "24.14.0"
+          node-version: "26.13.0"
 
       - uses: actions/setup-go@v5
         with:
@@ -241,3 +241,6 @@ jobs:
 
       - name: Typecheck
         run: task check:ui-typecheck
+
+      - name: Component tests
+        run: pnpm test

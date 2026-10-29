@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { IconButton } from '@omniviewdev/base-ui';
 
 // Project imports
@@ -26,7 +26,7 @@ const HeaderIconLink: React.FC<Props> = ({ id, helpText, icon, href }) => {
         className={styles.NoDrag}
         aria-label={orFallback(helpText, id)}
         onClick={() => {
-          navigate(href); 
+          void navigate(href);
         }}
       >
         <Icon name={icon} size={16} />

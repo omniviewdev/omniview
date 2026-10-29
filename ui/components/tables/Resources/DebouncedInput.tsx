@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 
 import { SearchInput } from '@omniviewdev/base-ui';
 import { LuSearch } from 'react-icons/lu';
@@ -23,19 +23,26 @@ export function DebouncedInput({
 }: DebounceProps & Record<string, any>) {
   const [value, setValue] = useState(initialValue);
 
-  useEffect(() => {
+  const [previousInitialValue, setPreviousInitialValue] = useState(initialValue);
+  if (previousInitialValue !== initialValue) {
+    setPreviousInitialValue(initialValue);
     setValue(initialValue);
-  }, [initialValue]);
+  }
+
+  const onChangeRef = useRef(onChange);
+  useLayoutEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
-      onChange(value);
+      onChangeRef.current(value);
     }, debounce);
 
     return () => {
       clearTimeout(timeout);
     };
-  }, [value]);
+  }, [value, debounce]);
 
   return (
     <SearchInput

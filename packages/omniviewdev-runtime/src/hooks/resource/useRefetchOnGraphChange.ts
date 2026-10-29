@@ -1,6 +1,6 @@
 import { useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { Events } from '@wailsio/runtime';
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 
 /**
  * graphChangedEvent is the event the host emits, at most about once a second,
@@ -24,7 +24,9 @@ export function useRefetchOnGraphChange(
 
   // The key array is rebuilt every render; subscribe per distinct key only.
   const keyRef = useRef(queryKey);
-  keyRef.current = queryKey;
+  useLayoutEffect(() => {
+    keyRef.current = queryKey;
+  }, [queryKey]);
   const keyHash = JSON.stringify(queryKey);
 
   useEffect(() => {

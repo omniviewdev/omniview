@@ -62,9 +62,12 @@ const wellKnownIDAccessors = (data: any) => {
  * Display a table of the deployments
  */
 const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
-  if (!pluginID || !connectionID || !resourceKey) {
-    return null;
-  }
+  return pluginID && connectionID && resourceKey
+    ? <ConnectedResourceTable pluginID={pluginID} connectionID={connectionID} resourceKey={resourceKey} />
+    : null;
+};
+
+const ConnectedResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
 
   const { isLoading, isError, data, columns, namespaces } = useResourceDefinition({ pluginID, connectionID, resourceKey });
   const { resources } = useResources({ pluginID, connectionID, resourceKey });

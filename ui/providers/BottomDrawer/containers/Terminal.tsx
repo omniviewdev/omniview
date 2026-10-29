@@ -1,14 +1,12 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 
 // ui
-import { Spinner, useTheme, type ThemeSummary } from '@omniviewdev/base-ui';
+import { Spinner, useTheme } from '@omniviewdev/base-ui';
 import styles from './Terminal.module.css';
 
 // xterm
 import { Terminal } from '@xterm/xterm';
-import type { ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
-import { CanvasAddon } from '@xterm/addon-canvas';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { debounce } from '@/utils/debounce';
@@ -74,13 +72,6 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
 
   const terminalRef = useRef<HTMLDivElement>(null);
   const [themeElement, setThemeElement] = useState<HTMLDivElement | null>(null);
-  const [themeResolution, setThemeResolution] = useState<{
-    activeTheme: Readonly<ThemeSummary>;
-    element: HTMLDivElement;
-    name: string;
-    theme: ITheme;
-  } | null>(null);
-  const resolvedThemeRef = useRef<ITheme | null>(null);
 
   const statusThemeRef = useCallback((element: HTMLDivElement | null) => {
     setThemeElement(element);
@@ -96,14 +87,17 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
   const terminalCleanupRef = useRef<(() => void) | null>(null);
 
   const fitAddonRef = useRef<FitAddon | undefined>(undefined);
-  const canvasAddonRef = useRef<CanvasAddon | undefined>(undefined);
-  const webglAddonRef = useRef<WebglAddon | undefined>(undefined);
 
   // Error state (set by structured ERROR signal from plugin)
   const errorRef = useRef<TerminalErrorInfo | null>(null);
   const [error, setError] = useState<TerminalErrorInfo | null>(null);
+  const [errorContext, setErrorContext] = useState({ sessionId, tabStatus, themeElement });
+  if (errorContext.sessionId !== sessionId || errorContext.tabStatus !== tabStatus || errorContext.themeElement !== themeElement) {
+    setErrorContext({ sessionId, tabStatus, themeElement });
+    setError(null);
+  }
 
-  const textDecoder = new TextDecoder();
+  const [textDecoder] = useState(() => new TextDecoder());
 
   const handleFit = () => {
     if (fitAddonRef.current !== undefined) {
@@ -136,46 +130,33 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
   // Keep a ref to the latest settings so the session-lifecycle effect can
   // read current values without re-running when settings change.
   const settingsRef = useRef(settings);
-  settingsRef.current = settings;
+  useLayoutEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
 
-  // CSS variables are committed by ThemeProvider after render. Resolve from
-  // the mounted element in a passive effect so scoped tokens are current.
   useEffect(() => {
-    if (themeElement === null) {
+    if (!themeElement) {
       return;
     }
 
-    setThemeResolution({
-      activeTheme,
-      element: themeElement,
-      name: themeName,
-      theme: getTerminalTheme(themeName, themeElement),
-    });
-  }, [activeTheme, themeElement, themeName]);
-
-  const resolvedTheme = themeResolution?.activeTheme === activeTheme
-    && themeResolution.element === themeElement
-    && themeResolution.name === themeName
-    ? themeResolution.theme
-    : null;
-  const resolvedElement = themeResolution?.element === themeElement
-    ? themeElement
-    : null;
-  resolvedThemeRef.current = resolvedTheme;
+    const background = getTerminalTheme(themeName, themeElement).background ?? '';
+    themeElement.style.setProperty('--terminal-background', background);
+    themeElement.parentElement?.style.setProperty('--terminal-background', background);
+  }, [activeTheme, themeName, themeElement]);
 
   // Apply settings and the post-commit theme to a live terminal without
   // recreating it.
   useEffect(() => {
     const term = xtermRef.current;
-    if (!term || resolvedTheme === null) {
+    if (!term || themeElement === null) {
       return;
     }
 
-    term.options.theme = resolvedTheme;
+    term.options.theme = getTerminalTheme(themeName, themeElement);
     term.options.cursorBlink = settings['terminal.cursorBlink'] as boolean;
     term.options.cursorStyle = settings['terminal.cursorStyle'] as 'block' | 'underline' | 'bar';
     term.options.fontSize = (settings['terminal.fontSize'] as number) || 12;
-  }, [resolvedTheme, settings]);
+  }, [activeTheme, themeName, themeElement, settings]);
 
   // Own teardown separately from initialization so a post-commit theme
   // resolution can initialize or update xterm without recreating it.
@@ -184,15 +165,14 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
       terminalCleanupRef.current?.();
       terminalCleanupRef.current = null;
     };
-  }, [resolvedElement, sessionId, tabStatus]);
+  }, [themeElement, sessionId, tabStatus]);
 
   useEffect(() => {
     if (
       tabStatus === 'connecting'
       || tabStatus === 'error'
       || terminalRef.current === null
-      || resolvedElement === null
-      || resolvedThemeRef.current === null
+      || themeElement === null
       || xtermRef.current !== undefined
       || sessionId === ''
     ) {
@@ -200,11 +180,10 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
     }
 
     // Reset error state on new session
-    setError(null);
     errorRef.current = null;
 
     const s = settingsRef.current;
-    const theme = resolvedThemeRef.current;
+    const theme = getTerminalTheme(themeName, terminalRef.current);
     const terminalElement = terminalRef.current;
     // Initialize Terminal
     const terminal = new Terminal({
@@ -230,13 +209,20 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
 
     terminal.loadAddon(fitAddon);
 
-    const canvasAddon = new CanvasAddon();
-    canvasAddonRef.current = canvasAddon;
-    terminal.loadAddon(canvasAddon);
-
-    const webglAddon = new WebglAddon();
-    webglAddonRef.current = webglAddon;
-    terminal.loadAddon(webglAddon);
+    let webglAddon: WebglAddon | undefined;
+    try {
+      webglAddon = new WebglAddon();
+      const renderer = webglAddon;
+      renderer.onContextLoss(() => {
+        // Disposing WebGL restores xterm's built-in DOM renderer.
+        renderer.dispose();
+      });
+      terminal.loadAddon(renderer);
+    } catch (error) {
+      webglAddon?.dispose();
+      // WebGL is optional; the built-in DOM renderer keeps the session usable.
+      log.error(new Error(parseAppError(error).detail), { event: 'terminal_webgl' });
+    }
 
     terminal.loadAddon(new WebLinksAddon());
 
@@ -441,15 +427,11 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
       unsubscribeResizeReset();
 
       try {
-        canvasAddonRef.current?.dispose();
-        webglAddonRef.current?.dispose();
         terminal.dispose();
       } catch (e) {
         console.log(e);
       }
 
-      canvasAddonRef.current = undefined;
-      webglAddonRef.current = undefined;
       xtermRef.current = undefined;
 
       resizeObserver.unobserve(terminalElement);
@@ -464,9 +446,9 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
         log.error(new Error(parseAppError(err).detail), { event: 'detach_session', sessionId });
       });
     };
-  }, [resolvedElement, resolvedTheme, sessionId, tabStatus]);
+  }, [themeElement, themeName, activeTheme, sessionId, tabStatus, textDecoder]);
 
-  const bgColor = resolvedTheme?.background;
+  const bgColor = 'var(--terminal-background)';
 
   if (tabStatus === 'connecting') {
     return (

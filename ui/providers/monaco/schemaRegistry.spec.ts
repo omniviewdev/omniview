@@ -5,15 +5,11 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/providers/monaco/bootstrap', () => ({
   monacoYaml: { update: mocks.mockYamlUpdate },
-  monaco: {
-    languages: {
-      json: {
-        jsonDefaults: {
-          setDiagnosticsOptions: mocks.mockSetDiagnosticsOptions,
-        },
-      },
+  monaco: { languages: { json: {
+    jsonDefaults: {
+      setDiagnosticsOptions: mocks.mockSetDiagnosticsOptions,
     },
-  },
+  } } },
 }));
 
 import { schemaRegistry } from './schemaRegistry';

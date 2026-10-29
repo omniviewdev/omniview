@@ -2,7 +2,7 @@ import type { FC } from 'react';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 import { ExtensionProvider, PluginWindow } from '@omniviewdev/runtime';
 import type { ExtensionRegistration, HomepageCardProps } from '@omniviewdev/runtime';
 import { DevProcessStatus, DevServerState } from '@omniviewdev/runtime/models';

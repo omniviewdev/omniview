@@ -32,7 +32,6 @@ export type BottomDrawerContextType = {
 };
 
 // Create a context with a default dummy implementation to avoid the need to check for undefined
-/* eslint-disable @typescript-eslint/no-empty-function */
 export const defaultState: BottomDrawerContextType = {
   height: 32,
   focused: 0,

@@ -45,7 +45,7 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState<number>();
   const [copyError, setCopyError] = React.useState('');
-  const nextId = React.useRef(Date.now());
+  const nextId = React.useRef(0);
   const panelRef = React.useRef<HTMLElement>(null);
 
   React.useEffect(() => {

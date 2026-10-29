@@ -41,6 +41,8 @@ const mocks = vi.hoisted(() => {
     }),
     mockOpen: vi.fn(),
     mockLoadAddon: vi.fn(),
+    mockWebglDispose: vi.fn(),
+    mockWebglContextLoss: vi.fn<(callback: () => void) => void>(),
     mockFocus: vi.fn(),
     mockDispose: vi.fn(),
     mockOnResize: vi.fn((cb) => {
@@ -89,15 +91,12 @@ vi.mock('@xterm/addon-fit', () => ({
   }),
 }));
 
-vi.mock('@xterm/addon-canvas', () => ({
-  CanvasAddon: vi.fn(function (this: unknown) {
-    return { dispose: vi.fn() }; 
-  }),
-}));
-
 vi.mock('@xterm/addon-webgl', () => ({
   WebglAddon: vi.fn(function (this: unknown) {
-    return { dispose: vi.fn() }; 
+    return {
+      dispose: mocks.mockWebglDispose,
+      onContextLoss: mocks.mockWebglContextLoss,
+    };
   }),
 }));
 
@@ -159,12 +158,6 @@ vi.mock('@/utils/debounce', () => ({
   debounce: <T,>(fn: T) => fn,
 }));
 
-vi.mock('js-base64', () => ({
-  Base64: {
-    toUint8Array: vi.fn((_s: string) => new Uint8Array()),
-    encode: vi.fn((value: string) => value),
-  },
-}));
 
 // ─── ResizeObserver spy ─────────────────────────────────────────────────────────
 let resizeObserverCallback: ResizeObserverCallback | null = null;
@@ -180,12 +173,13 @@ beforeEach(() => {
       unobserve: mockUnobserve,
       disconnect: mockDisconnect,
     };
-  }) as unknown as typeof ResizeObserver;
+  });
 });
 
 // ─── Import after mocks ────────────────────────────────────────────────────────
 import TerminalContainer from '../Terminal';
 import { Terminal } from '@xterm/xterm';
+import { WebglAddon } from '@xterm/addon-webgl';
 
 function ScopedThemeHarness({
   background,
@@ -215,7 +209,7 @@ function ScopedThemeHarness({
     >
       <TerminalContainer
         sessionId={sessionId}
-        tab={{ title: revision, properties: {} } as unknown as BottomDrawerTab}
+        tab={{ title: revision, properties: {} }}
       />
     </div>
   );
@@ -224,6 +218,7 @@ function ScopedThemeHarness({
 describe('TerminalContainer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.mockLoadAddon.mockReset();
     mocks.state.onResizeCallback = null;
     mocks.state.onDataCallback = null;
     resizeObserverCallback = null;
@@ -253,26 +248,24 @@ describe('TerminalContainer', () => {
     expect(mocks.mockOpen).not.toHaveBeenCalled();
   });
 
-  it('uses the application background while a session is connecting', () => {
+  it('shows connecting status without creating a terminal', () => {
     // This is the minimal controlled fixture consumed by TerminalContainer.
     const tab = { properties: { status: 'connecting' } } as unknown as BottomDrawerTab;
-    const { container } = render(<TerminalContainer sessionId="test-session-123" tab={tab} />);
+    render(<TerminalContainer sessionId="test-session-123" tab={tab} />);
 
     expect(screen.getByText('Connecting...')).toBeInTheDocument();
-    expect((container.firstElementChild as HTMLElement).style.backgroundColor).toBe('rgb(16, 32, 48)');
     expect(Terminal).not.toHaveBeenCalled();
   });
 
-  it('uses the application background for session creation errors', () => {
+  it('shows session creation errors without creating a terminal', () => {
     // This is the minimal controlled fixture consumed by TerminalContainer.
     const tab = {
       properties: { status: 'error', error: 'permission denied' },
     } as unknown as BottomDrawerTab;
-    const { container } = render(<TerminalContainer sessionId="test-session-123" tab={tab} />);
+    render(<TerminalContainer sessionId="test-session-123" tab={tab} />);
 
     expect(screen.getByText('Connection Failed')).toBeInTheDocument();
     expect(screen.getByText('permission denied')).toBeInTheDocument();
-    expect((container.firstElementChild as HTMLElement).style.backgroundColor).toBe('rgb(16, 32, 48)');
     expect(Terminal).not.toHaveBeenCalled();
   });
 
@@ -316,7 +309,7 @@ describe('TerminalContainer', () => {
     }));
   });
 
-  it('resolves scoped application tokens after the theme commit and updates shared chrome', async () => {
+  it('resolves scoped application tokens after the theme commit', async () => {
     const view = render(
       <ScopedThemeHarness
         background="#123456"
@@ -324,16 +317,13 @@ describe('TerminalContainer', () => {
         revision="void"
       />,
     );
-    const scope = screen.getByTestId('terminal-theme-scope');
-    const terminalElement = scope.firstElementChild?.firstElementChild as HTMLElement;
 
     await waitFor(() => {
-      expect(terminalElement.style.backgroundColor).toBe('rgb(18, 52, 86)');
+      expect(mocks.state.terminal?.options.theme).toEqual(expect.objectContaining({
+        background: '#123456',
+        foreground: '#fefefe',
+      }));
     });
-    expect(mocks.state.terminal?.options.theme).toEqual(expect.objectContaining({
-      background: '#123456',
-      foreground: '#fefefe',
-    }));
 
     mocks.state.activeTheme = { id: 'plugin:acme/scoped' };
     view.rerender(
@@ -345,18 +335,11 @@ describe('TerminalContainer', () => {
     );
 
     await waitFor(() => {
-      expect(mocks.mockBuildXtermTheme).toHaveLastReturnedWith(expect.objectContaining({
+      expect(mocks.state.terminal?.options.theme).toEqual(expect.objectContaining({
         background: '#654321',
+        foreground: '#eeeeee',
       }));
     });
-
-    await waitFor(() => {
-      expect(terminalElement.style.backgroundColor).toBe('rgb(101, 67, 33)');
-    });
-    expect(mocks.state.terminal?.options.theme).toEqual(expect.objectContaining({
-      background: '#654321',
-      foreground: '#eeeeee',
-    }));
     expect(Terminal).toHaveBeenCalledTimes(1);
   });
 
@@ -369,11 +352,12 @@ describe('TerminalContainer', () => {
         revision="first registration"
       />,
     );
-    const scope = screen.getByTestId('terminal-theme-scope');
-    const terminalElement = scope.firstElementChild?.firstElementChild as HTMLElement;
 
     await waitFor(() => {
-      expect(terminalElement.style.backgroundColor).toBe('rgb(18, 52, 86)');
+      expect(mocks.state.terminal?.options.theme).toEqual(expect.objectContaining({
+        background: '#123456',
+        foreground: '#fefefe',
+      }));
     });
 
     mocks.state.activeTheme = { id: 'plugin:acme/scoped' };
@@ -386,19 +370,15 @@ describe('TerminalContainer', () => {
     );
 
     await waitFor(() => {
-      expect(mocks.mockBuildXtermTheme).toHaveLastReturnedWith(expect.objectContaining({
+      expect(mocks.state.terminal?.options.theme).toEqual(expect.objectContaining({
         background: '#654321',
         foreground: '#eeeeee',
       }));
     });
-    await waitFor(() => {
-      expect(terminalElement.style.backgroundColor).toBe('rgb(101, 67, 33)');
-    });
-    expect(mocks.state.terminal?.options.theme).toEqual(expect.objectContaining({
-      background: '#654321',
-      foreground: '#eeeeee',
-    }));
     expect(Terminal).toHaveBeenCalledTimes(1);
+    expect(mocks.mockAttachSession).toHaveBeenCalledTimes(1);
+    expect(mocks.mockDispose).not.toHaveBeenCalled();
+    expect(mocks.mockDetachSession).not.toHaveBeenCalled();
   });
 
   it('preserves an explicit terminal override during live application theme changes', () => {
@@ -444,11 +424,63 @@ describe('TerminalContainer', () => {
     }));
   });
 
-  it('loads FitAddon, CanvasAddon, and WebglAddon', () => {
-    render(<TerminalContainer sessionId="test-session-123" />);
+  it('keeps session input and fitting usable when WebGL activation fails', async () => {
+    mocks.mockLoadAddon.mockImplementation((addon) => {
+      if (addon.dispose === mocks.mockWebglDispose) {
+        throw new Error('WebGL unavailable');
+      }
+    });
 
-    // FitAddon + CanvasAddon + WebglAddon + WebLinksAddon = 4
-    expect(mocks.mockLoadAddon).toHaveBeenCalledTimes(4);
+    await act(async () => {
+      render(<TerminalContainer sessionId="test-session-123" />);
+    });
+
+    expect(mocks.mockWebglDispose).toHaveBeenCalledOnce();
+    expect(mocks.mockFocus).toHaveBeenCalled();
+    expect(mocks.mockAttachSession).toHaveBeenCalledWith('test-session-123');
+    expect(mocks.mockFit).toHaveBeenCalled();
+    const fitCallsBefore = mocks.mockFit.mock.calls.length;
+    await act(async () => {
+      mocks.state.onDataCallback!('ls\r');
+      resizeObserverCallback!([], {} as ResizeObserver);
+    });
+    expect(mocks.mockFit.mock.calls.length).toBeGreaterThan(fitCallsBefore);
+    expect(mocks.mockWriteSession).toHaveBeenCalledWith('test-session-123', 'bHMN');
+  });
+
+  it('attaches the session when WebGL construction fails', async () => {
+    vi.mocked(WebglAddon).mockImplementationOnce(function () {
+      throw new Error('WebGL unavailable');
+    });
+
+    await act(async () => {
+      render(<TerminalContainer sessionId="test-session-123" />);
+    });
+
+    expect(mocks.mockAttachSession).toHaveBeenCalledWith('test-session-123');
+    expect(mocks.mockFocus).toHaveBeenCalled();
+  });
+
+  it('restores the built-in renderer after WebGL context loss without closing the session', async () => {
+    await act(async () => {
+      render(<TerminalContainer sessionId="test-session-123" />);
+    });
+
+    const onContextLoss = mocks.mockWebglContextLoss.mock.calls[0][0];
+    act(() => {
+      onContextLoss();
+    });
+
+    expect(mocks.mockWebglDispose).toHaveBeenCalledOnce();
+    expect(mocks.mockDispose).not.toHaveBeenCalled();
+    expect(mocks.mockDetachSession).not.toHaveBeenCalled();
+    const fitCallsBefore = mocks.mockFit.mock.calls.length;
+    await act(async () => {
+      mocks.state.onDataCallback!('ls\r');
+      resizeObserverCallback!([], {} as ResizeObserver);
+    });
+    expect(mocks.mockFit.mock.calls.length).toBeGreaterThan(fitCallsBefore);
+    expect(mocks.mockWriteSession).toHaveBeenCalledWith('test-session-123', 'bHMN');
   });
 
   it('calls fitAddon.fit() after attach resolves', async () => {
@@ -499,6 +531,20 @@ describe('TerminalContainer', () => {
     expect(mocks.mockResizeSession).toHaveBeenCalledExactlyOnceWith('late-attachment', 32, 100);
   });
 
+  it('encodes terminal input as base64 for the byte-slice session binding', async () => {
+    await act(async () => {
+      render(<TerminalContainer sessionId="test-session-123" />);
+    });
+
+    expect(mocks.state.onDataCallback).toBeTruthy();
+
+    await act(async () => {
+      mocks.state.onDataCallback!('hello');
+    });
+
+    expect(mocks.mockWriteSession).toHaveBeenCalledWith('test-session-123', 'aGVsbG8=');
+  });
+
   it('cleans up on unmount', async () => {
     const { unmount } = render(<TerminalContainer sessionId="test-session-123" />);
 
@@ -515,17 +561,6 @@ describe('TerminalContainer', () => {
     expect(mocks.mockEventsOff).toHaveBeenCalled();
   });
 
-  it('uses the application background for the terminal container', () => {
-    const { container } = render(<TerminalContainer sessionId="test-session-123" />);
-
-    // The outer div is position:relative wrapper, the inner div has the terminal bg
-    const divs = container.querySelectorAll('div');
-    const terminalDiv = divs[1]; // inner div with ref + background
-    expect(terminalDiv).toBeTruthy();
-    expect(terminalDiv.style.backgroundColor).toBe('rgb(16, 32, 48)');
-    expect(terminalDiv.style.height).toBe('100%');
-    expect(terminalDiv.style.width).toBe('100%');
-  });
 
   it('ResizeObserver callback triggers fit', () => {
     render(<TerminalContainer sessionId="test-session-123" />);
@@ -586,7 +621,11 @@ describe('TerminalContainer', () => {
       });
     }
 
-    expect(mocks.mockWriteSession.mock.calls.map((call: unknown[]) => call[1]).join('')).toBe('id\r');
+    // Go decodes each []byte binding argument before assembling terminal input.
+    const writes = mocks.mockWriteSession.mock.calls.map(
+      (call: unknown[]) => Buffer.from(call[1] as string, 'base64'),
+    );
+    expect(Buffer.concat(writes).toString('utf8')).toBe('id\r');
   });
 
   it('does not dispatch queued input after the terminal detaches', async () => {

@@ -16,7 +16,9 @@ const externals = [
   // REACT
   "react",
   "react/jsx-runtime",
-  "react-router-dom",
+  "react/compiler-runtime",
+  "react-router",
+  "react-router/dom",
   "react-dom",
   "react-icons",
   "@tanstack/react-query",
@@ -45,15 +47,16 @@ export default defineConfig({
         globals: {
           'react': 'react',
           'react-dom': 'ReactDOM',
-          'react-router-dom': 'ReactRouterDOM',
+          'react-router': 'ReactRouter',
+          'react-router/dom': 'ReactRouterDOM',
           'react/jsx-runtime': 'react/jsx-runtime',
         },
       },
     }
   },
   plugins: [
-    react(),
-    dts({ tsconfigPath: './tsconfig.app.json', outDir: outputDirectory })
+    react({ babel: { plugins: [["babel-plugin-react-compiler", { target: "19" }]] } }),
+    dts({ tsconfigPath: './tsconfig.app.json', outDirs: outputDirectory })
   ],
   test: {
     globals: true,

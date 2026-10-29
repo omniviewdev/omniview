@@ -13,7 +13,7 @@ import Layout from '@/layouts/core/sidenav';
 // Third-party
 import {
   useParams, Link, useNavigate, Outlet,
-} from 'react-router-dom';
+} from 'react-router';
 import NavMenu from '@infraview/navigation/NavMenu';
 import { type SidebarItem } from '@infraview/navigation/types';
 import { LuClipboardList, LuX } from 'react-icons/lu';
@@ -72,7 +72,7 @@ export default function EditConnectionPage(): React.ReactElement {
           size='sm'
           aria-label='Close'
           onClick={() => {
-            navigate(-1);
+            void navigate(-1);
           }}
         >
           <LuX />

@@ -1,10 +1,11 @@
-'use no memo';
 import React, { useContext, useSyncExternalStore } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 import type { FallbackProps } from 'react-error-boundary';
 
-import { useExtensionPoint } from '@omniviewdev/runtime';
-import type { ExtensionRenderContext, ExtensionContributionRegistration } from '@omniviewdev/runtime';
+import { useExtensionRegistry } from '@omniviewdev/runtime';
+import type { ExtensionRenderContext, ExtensionContributionRegistration, ExtensionPointRegistryContract, ExtensionPointStoreContract } from '@omniviewdev/runtime';
+import type { PluginService } from '../core/PluginService';
+import type { PluginServiceSnapshot } from '../core/types';
 
 import {
   DefaultExtensionFallback,
@@ -50,7 +51,8 @@ function ContributionWrapper({
   const service = useContext(PluginServiceContext);
 
   const handleError = React.useCallback(
-    (error: Error, info: React.ErrorInfo) => {
+    (caught: unknown, info: React.ErrorInfo) => {
+      const error = caught instanceof Error ? caught : new Error(String(caught));
       logPluginBoundaryError({
         pluginId,
         boundary: 'ExtensionPointRenderer',
@@ -78,7 +80,7 @@ function ContributionWrapper({
   const renderFallback = React.useCallback(
     ({ error: fallbackError }: FallbackProps) => (
       <FallbackComponent
-        error={fallbackError}
+        error={fallbackError instanceof Error ? fallbackError : new Error(String(fallbackError))}
         pluginId={pluginId}
         extensionPointId={extensionPointId}
         contributionId={contributionId}
@@ -96,6 +98,47 @@ function ContributionWrapper({
       <Component {...(context ?? {})} {...(componentProps ?? {})} />
     </ErrorBoundary>
   );
+}
+
+function createContributionStore<TContext extends ExtensionRenderContext>(
+  registry: ExtensionPointRegistryContract | undefined,
+  service: PluginService | null,
+  extensionPointId: string,
+  context: TContext | undefined,
+) {
+  type Registration = ExtensionContributionRegistration<React.ComponentType<any>>;
+  let point: ExtensionPointStoreContract<React.ComponentType<any>, TContext> | undefined;
+  let version = -1;
+  let serviceVersion: PluginServiceSnapshot | undefined;
+  let snapshot: Array<{ registration: Registration; quarantined: boolean; crashCount: number }> = [];
+
+  return {
+    subscribe: (notify: () => void) => {
+      const stopRegistry = registry?.subscribe(notify);
+      const stopService = service?.subscribe(notify);
+      return () => {
+        stopRegistry?.();
+        stopService?.();
+      };
+    },
+    getSnapshot: () => {
+      const current = registry?.getExtensionPoint<React.ComponentType<any>, TContext>(extensionPointId);
+      const currentVersion = current?.version ?? -1;
+      const currentServiceVersion = service?.getSnapshot();
+      if (current !== point || currentVersion !== version || currentServiceVersion !== serviceVersion) {
+        point = current;
+        version = currentVersion;
+        serviceVersion = currentServiceVersion;
+        snapshot = (current?.list(context) ?? []).map(registration => ({
+          registration,
+          quarantined: service?.isQuarantined(registration.id) ?? false,
+          crashCount: service?.getCrashCount(registration.id) ?? 0,
+        }));
+      }
+
+      return snapshot;
+    },
+  };
 }
 
 // ─── ExtensionPointRenderer ─────────────────────────────────────────
@@ -116,19 +159,13 @@ export function ExtensionPointRenderer<TContext extends ExtensionRenderContext =
   fallback = DefaultExtensionFallback,
   componentProps,
 }: ExtensionPointRendererProps<TContext>): React.ReactElement | null {
-  const extensionPoint = useExtensionPoint<React.ComponentType<any>, TContext>(extensionPointId);
-  const registrations = extensionPoint?.list(context) ?? [];
-
+  const registry = useExtensionRegistry();
   const service = useContext(PluginServiceContext);
-
-  // Subscribe to service snapshot so quarantine state changes trigger re-render
-  useSyncExternalStore(
-    service?.subscribe.bind(service) ?? (() => () => undefined),
-    service?.getSnapshot.bind(service) ?? (() => null),
+  const store = React.useMemo(
+    () => createContributionStore(registry, service, extensionPointId, context),
+    [registry, service, extensionPointId, context],
   );
-
-  const isQuarantined = (contributionId: string) => service?.isQuarantined(contributionId) ?? false;
-  const unquarantine = (contributionId: string) => service?.unquarantine(contributionId);
+  const registrations = useSyncExternalStore(store.subscribe, store.getSnapshot);
 
   if (registrations.length === 0) {
     return null;
@@ -136,8 +173,8 @@ export function ExtensionPointRenderer<TContext extends ExtensionRenderContext =
 
   return (
     <>
-      {registrations.map((registration) => {
-        if (isQuarantined(registration.id)) {
+      {registrations.map(({ registration, quarantined, crashCount }) => {
+        if (quarantined) {
           if (import.meta.env.DEV) {
             return (
               <QuarantinedContributionFallback
@@ -145,8 +182,8 @@ export function ExtensionPointRenderer<TContext extends ExtensionRenderContext =
                 pluginId={registration.plugin}
                 extensionPointId={extensionPointId}
                 contributionId={registration.id}
-                crashCount={service?.getCrashCount(registration.id) ?? 0}
-                onReEnable={() => unquarantine(registration.id)}
+                crashCount={crashCount}
+                onReEnable={() => service?.unquarantine(registration.id)}
               />
             );
           }

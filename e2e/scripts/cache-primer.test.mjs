@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -24,8 +24,8 @@ function script(block) {
   assert.ok(inline, 'step must expose its real executable shell contract');
   return inline[1];
 }
-function shell(block, env = {}) {
-  return spawnSync('/bin/bash', ['-e', '-o', 'pipefail', '-c', script(block)], { env: { ...toolEnvironment(process.env), ...env }, encoding: 'utf8' });
+function shell(block, env = {}, cwd) {
+  return spawnSync('/bin/bash', ['-e', '-o', 'pipefail', '-c', script(block)], { cwd, env: { ...toolEnvironment(process.env), ...env }, encoding: 'utf8' });
 }
 
 test('main primer skips native preparation only for all three exact lookup hits, never a fallback or missing output', () => {
@@ -63,3 +63,48 @@ test('stable e2e-tests gate accepts only a successful canonical result', () => {
   for (const result of ['success', 'failure', 'cancelled', 'skipped', '', 'unavailable']) assert.equal(shell(gate, { RESULT: result }).status === 0, result === 'success', result);
 });
 
+test('source selection uses branch-owned full commits and cannot self-approve SDK or change the Kubernetes gitlink', () => {
+  const arena = mkdtempSync(join(tmpdir(), 'omniview-source-cohort-'));
+  const git = (cwd, ...args) => {
+    const child = spawnSync('git', args, { cwd, encoding: 'utf8' });
+    assert.equal(child.status, 0, child.stderr);
+    return child.stdout.trim();
+  };
+  const init = cwd => {
+    mkdirSync(cwd, { recursive: true });
+    git(cwd, 'init');
+    git(cwd, 'config', 'commit.gpgsign', 'false');
+    git(cwd, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '--allow-empty', '-m', 'Source fixture');
+  };
+  try {
+    init(arena);
+    const plugin = join(arena, 'plugins/kubernetes');
+    init(plugin);
+    const kubernetes = git(plugin, 'rev-parse', 'HEAD');
+    git(arena, 'update-index', '--add', '--cacheinfo', `160000,${kubernetes},plugins/kubernetes`);
+    git(arena, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-m', 'Pin Kubernetes');
+    mkdirSync(join(arena, 'e2e'));
+    const sdk = 'a'.repeat(40);
+    const ui = 'b'.repeat(40);
+    for (const [source, name] of [[shared, 'Require independently reviewed published source inputs'], [workflow('app-profile.yml'), 'Require reviewed source cohort']]) {
+      const block = step(source, name);
+      const output = join(arena, 'output');
+      const invoke = cohort => {
+        rmSync(output, { force: true });
+        writeFileSync(join(arena, 'e2e/source-cohort.json'), JSON.stringify(cohort));
+        return shell(block, { REVIEWED_SDK_REVISION: sdk, GITHUB_OUTPUT: output }, arena);
+      };
+      const cohort = { 'plugin-sdk': sdk, ui, kubernetes };
+      assert.equal(invoke(cohort).status, 0);
+      assert.match(readFileSync(output, 'utf8'), new RegExp(`^ui=${ui}$`, 'm'));
+      const upgradedUI = 'e'.repeat(40);
+      assert.equal(invoke({ ...cohort, ui: upgradedUI }).status, 0);
+      assert.match(readFileSync(output, 'utf8'), new RegExp(`^ui=${upgradedUI}$`, 'm'));
+      for (const [key, value] of [['plugin-sdk', 'c'.repeat(40)], ['ui', 'main'], ['ui', 123], ['kubernetes', 'd'.repeat(40)]]) {
+        assert.notEqual(invoke({ ...cohort, [key]: value }).status, 0, `${name}: ${key}=${value}`);
+      }
+      assert.notEqual(invoke({ ...cohort, extra: ui }).status, 0);
+      assert.notEqual(invoke({ ui, kubernetes }).status, 0);
+    }
+  } finally { rmSync(arena, { recursive: true, force: true }); }
+});

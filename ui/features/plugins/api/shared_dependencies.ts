@@ -24,7 +24,8 @@ export const shared = {
         key !== undefined ? prodRuntime.jsx(type, { ...props, key }) : prodRuntime.jsx(type, props),
     };
   },
-  'react-router-dom': async () => import('react-router-dom'),
+  'react-router': async () => import('react-router'),
+  'react-router/dom': async () => import('react-router/dom'),
   'react-dom': async () => import('react-dom'),
   'react-icons': async () => import('react-icons'),
   'react-icons/lu': async () => import('react-icons/lu'),

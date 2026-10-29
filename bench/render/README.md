@@ -14,6 +14,11 @@ node bench/render/report.mjs           # Markdown table from results/latest.json
 
 First run locally: `pnpm exec playwright install chromium` and `task packages`.
 
+Run the suite from the host checkout with its pinned Kubernetes submodule initialized.
+The Kubernetes benchmark imports `plugins/kubernetes/ui/src` against the host's
+shared packages; no installed marketplace plugin or cluster credentials are needed.
+Production React and JSX are the default. Use `BENCH_REACT_DEV=1` only for debugging.
+
 ## How it works
 
 - **No Wails backend.** `harness/backend.ts` installs a custom `@wailsio/runtime`
@@ -56,9 +61,18 @@ Compare runs on the same machine only. CI numbers (ubuntu-latest, shared runners
 are for spotting large regressions; look at the job summary or the
 `render-bench-results` artifact.
 
+Vitest's default reporter keeps benchmark tables in the console. Its JSON reporter
+writes `results/latest.json`; `report.mjs` reads each test's `benchmarks` tasks and
+their latency statistics in milliseconds. Failed tests and missing samples fail
+the report command instead of producing successful empty reports.
+
 ## Adding a bench
 
 Use `screenBench(name, fn, { setup, teardown, iterations })` from `harness/bench.ts`.
+The helper registers an enclosing `test` and awaits its context `bench` fixture;
+keep callers in files matched by `benchmark.include` (`*.bench.tsx` here).
+Iteration, timing, and warmup budgets go to `.run()`. Setup and teardown use
+per-benchmark `beforeAll` and `afterAll` hooks outside the measured workload.
 Do expensive preparation in `setup` (it runs once before warmup and once before the
 measured run), assert in `setup` that the interaction changes what is on screen, and
 wait for visible results with `waitFor` from `harness/dom.ts`.

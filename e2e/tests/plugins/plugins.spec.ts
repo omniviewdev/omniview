@@ -14,7 +14,7 @@ type Calls = Record<string, unknown[][]>;
  */
 async function fakeMarketplace(
   page: Page,
-  { installed = [] as unknown[], listings = LISTINGS as unknown[] | BindingError } = {},
+  { installed = [], listings = LISTINGS }: { installed?: unknown[]; listings?: unknown[] | BindingError } = {},
 ): Promise<Calls> {
   const calls: Calls = { InstallPluginVersion: [], UninstallPlugin: [] };
   await mockBindings(page, Service.plugins, {

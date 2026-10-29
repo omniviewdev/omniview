@@ -1,6 +1,7 @@
+import type { DataTableFeatures } from '@omniviewdev/base-ui';
 import React, { useState } from 'react';
 
-import { Stack } from '@omniviewdev/base-ui';
+import { Stack, dataTableFeatures } from '@omniviewdev/base-ui';
 import { LuChevronDown } from 'react-icons/lu';
 
 // Tanstack/react-table
@@ -9,12 +10,9 @@ import {
   type ColumnFiltersState,
   type FilterFn,
   type SortingState,
-  type VisibilityState,
+  type ColumnVisibilityState as VisibilityState,
   flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getSortedRowModel,
-  useReactTable,
+  useTable,
   type RowSelectionState,
 } from '@tanstack/react-table';
 import get from 'lodash.get';
@@ -37,7 +35,7 @@ export type Props = {
   /**
    * Column defenition for the table.
    */
-  columns: Array<ColumnDef<any>>;
+  columns: Array<ColumnDef<DataTableFeatures, any>>;
 
   /**
    * The data coming in
@@ -107,7 +105,7 @@ const idAccessorResolver = (data: any, accessor: IdAccessor): string => {
   }
 };
 
-export const namespaceFilter: FilterFn<any> = (row, columnId, value: string[]) => {
+export const namespaceFilter: FilterFn<DataTableFeatures, any> = (row, columnId, value: string[]) => {
   // If not selected namespaces, return true
   if (!value?.length) {
     return true;
@@ -206,15 +204,16 @@ const ResourceTableContainer: React.FC<Props> = ({
 
   const [search, setSearch] = useState<string>('');
 
-  const table = useReactTable({
+  const table = useTable({
+    features: dataTableFeatures,
+    enableRowRangeSelection: false,
+    manualPagination: true,
+    manualExpanding: true,
     data,
     columns,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
-    getCoreRowModel: getCoreRowModel(),
-    // GetPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
+    onGlobalFilterChange: setSearch,
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
     getRowId: (row) => idAccessorResolver(row, idAccessor),

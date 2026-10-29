@@ -73,7 +73,7 @@ export function useDevServer(pluginID?: string) {
     const offStatus = Events.On(
       'plugin/devserver/status',
       (ev) => {
-        const state = ev.data as DevServerState;
+        const state = ev.data;
         // Update single-plugin cache
         queryClient.setQueryData(KEYS.one(state.pluginID), state);
 
@@ -190,7 +190,7 @@ export function useDevBuildStream(
     const offError = Events.On(
       'plugin/devserver/error',
       (ev) => {
-        const payload = ev.data as { pluginID: string; errors: DevBuildError[] };
+        const payload = ev.data;
         if (payload.pluginID !== pluginID) {
           return;
         }

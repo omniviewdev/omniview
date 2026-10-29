@@ -95,8 +95,8 @@ const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
       selectedKeys={new Set([selectedKey])}
       onSelectedKeysChange={(keys) => {
         const [key] = Array.from(keys);
-        if (key !== undefined) {
-          onChange(decodeKey(String(key)));
+        if (typeof key === 'string') {
+          onChange(decodeKey(key));
         }
       }}
       className={styles.Root}

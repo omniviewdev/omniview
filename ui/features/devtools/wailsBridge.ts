@@ -1,7 +1,7 @@
 import { Events } from '@omniviewdev/runtime/runtime';
 import { DevServerManager } from '@omniviewdev/runtime/api';
 import { devToolsChannel } from './events';
-import type { DevServerState, DevBuildLine, DevBuildError } from './types';
+import type { DevBuildLine, DevBuildError } from './types';
 
 /**
  * Initializes the bridge between Go-side Wails events and the
@@ -13,7 +13,7 @@ export function initDevToolsBridge(): () => void {
 
   cleanups.push(
     Events.On('plugin/devserver/status', (ev) => {
-      devToolsChannel.emit('onStatusChange', ev.data as DevServerState);
+      devToolsChannel.emit('onStatusChange', ev.data);
     }),
   );
 

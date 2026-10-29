@@ -1,3 +1,4 @@
+import type { DataTableFeatures } from '@omniviewdev/base-ui';
 import React from 'react';
 
 // Tanstack/react-table
@@ -28,7 +29,7 @@ export type Props = {
   virtualRow: VirtualItem;
   isSelected: boolean;
   /** The row data */
-  row: Row<any>;
+  row: Row<DataTableFeatures, any>;
   columnVisibility: string;
 };
 

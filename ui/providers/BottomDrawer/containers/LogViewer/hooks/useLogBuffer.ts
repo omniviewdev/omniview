@@ -20,8 +20,8 @@ type UseLogBufferResult = {
 
 export function useLogBuffer(opts: UseLogBufferOpts = {}): UseLogBufferResult {
   const maxLines = opts.maxLines ?? DEFAULT_MAX_LINES;
-  const bufferRef = useRef<LogEntry[]>([]);
-  const [version, setVersion] = useState(0);
+  const [snapshot, setSnapshot] = useState({ entries: [] as LogEntry[], version: 0, evictionCount: 0 });
+  const bufferRef = useRef<LogEntry[]>(snapshot.entries);
   const rafRef = useRef<number | null>(null);
   const evictionCountRef = useRef(0);
 
@@ -32,7 +32,13 @@ export function useLogBuffer(opts: UseLogBufferOpts = {}): UseLogBufferResult {
 
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = null;
-      setVersion((v) => v + 1);
+      const entries = bufferRef.current;
+      const evictionCount = evictionCountRef.current;
+      setSnapshot((previous) => ({
+        entries,
+        version: previous.version + 1,
+        evictionCount,
+      }));
     });
   }, []);
 
@@ -56,18 +62,24 @@ export function useLogBuffer(opts: UseLogBufferOpts = {}): UseLogBufferResult {
   const clear = useCallback(() => {
     bufferRef.current = [];
     evictionCountRef.current++;
-    setVersion((v) => v + 1);
+    const entries = bufferRef.current;
+    const evictionCount = evictionCountRef.current;
+    setSnapshot((previous) => ({
+      entries,
+      version: previous.version + 1,
+      evictionCount,
+    }));
   }, []);
 
   const getEntries = useCallback(() => bufferRef.current, []);
 
   return {
-    entries: bufferRef.current,
-    version,
+    entries: snapshot.entries,
+    version: snapshot.version,
     append,
     clear,
     getEntries,
-    lineCount: bufferRef.current.length,
-    evictionCount: evictionCountRef.current,
+    lineCount: snapshot.entries.length,
+    evictionCount: snapshot.evictionCount,
   };
 }

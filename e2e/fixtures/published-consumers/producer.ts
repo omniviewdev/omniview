@@ -1,13 +1,13 @@
 import { execFile } from 'node:child_process';
-import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
 import { createServer as createPortServer, type Server as PortLease } from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { build as bundleGenerator } from 'esbuild';
-import { createServer as createHost, version as hostVersion } from 'vite';
+import { createServer as createHost } from 'vite';
 import type { ViteDevServer } from 'vite';
-import { build, createServer, version as pluginVersion } from '../../../packages/omniviewdev-vite-plugin/node_modules/vite/dist/node/index.js';
+import { build, createServer } from '../../../packages/omniviewdev-vite-plugin/node_modules/vite/dist/node/index.js';
 import { omniviewExternals } from '../../../packages/omniviewdev-vite-plugin/src/index';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -32,9 +32,6 @@ async function put(file: string, contents: string) {
 
 
 async function resources() {
-  if (!hostVersion.startsWith('8.') || !pluginVersion.startsWith('5.')) {
-    throw new Error(`Expected the pinned real Vite 8 host and Vite 5 plugin, got ${hostVersion}/${pluginVersion}`);
-  }
   const root = process.env.OMNIVIEW_PUBLISHED_ROOT;
   if (!root) throw new Error('Producer requires its controller-owned private root');
   const servers = new Set<Server>();
@@ -162,7 +159,7 @@ async function runtimeConsumer(r: Resources, name: string, generator: string, ma
   const materialize = async (revised: boolean) => {
     await put(runtimeSource, `export function runtimeLabel(who: string): string { return ${JSON.stringify(revised ? 'revised:' : 'baseline:')} + who; }\n${revised ? 'export function newlyPublishedLabel(who: string): string { return runtimeLabel(who) + ":fresh"; }' : ''}\n`);
     // Same relevant production producer as runtime/vite.config.ts: a typed
-    // library entry compiled by Vite 5 to published ES modules. No React/dts or
+    // library entry compiled by Vite to published ES modules. No React/dts or
     // unrelated runtime graph is needed by this dependency-free entry.
     await build({
       ...common(path.dirname(runtimeSource)),
@@ -235,9 +232,11 @@ document.querySelector('#new-export').textContent = typeof runtime.newlyPublishe
 export async function publishedRuntime() {
   const r = await resources();
   try {
+    // Keep native Node tools intact while each consumer shadows only the published runtime.
+    await symlink(path.join(repo, 'node_modules'), path.join(r.root, 'node_modules'), 'dir');
     const generator = path.join(r.root, 'generate-shims.mjs');
     await bundleGenerator({ entryPoints: [path.join(pluginRoot, 'scripts/generate-shims.ts')],
-      bundle: true, platform: 'node', format: 'esm', target: 'node24', outfile: generator, logLevel: 'silent' });
+      bundle: true, packages: 'external', platform: 'node', format: 'esm', target: 'node26', outfile: generator, logLevel: 'silent' });
     const manifest = await readFile(path.join(repo, 'packages/omniviewdev-runtime/package.json'), 'utf8');
     const a = await runtimeConsumer(r, 'a', generator, manifest);
     const b = await runtimeConsumer(r, 'b', generator, manifest);

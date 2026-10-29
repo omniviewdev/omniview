@@ -38,7 +38,7 @@ function ConnectionRow({
 }) {
   const { pluginID, connectionID, name, sync, isSyncing, hasErrors, pluginFailed } = entry;
 
-  const status = pluginFailed || hasErrors ? 'danger' : isSyncing ? 'info' : 'success';
+  const status = pluginFailed ? 'danger' : hasErrors ? 'danger' : isSyncing ? 'info' : 'success';
 
   let statusText = 'Connected';
   if (pluginFailed) {

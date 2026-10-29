@@ -1,4 +1,4 @@
-import { matchRoutes, type RouteObject } from 'react-router-dom';
+import { matchRoutes, type RouteObject } from 'react-router';
 import type { OpenGlobalSearchOptions, SearchRouteContextV1, SearchRouteHandleV1, SearchScopeV1 } from '@omniviewdev/runtime';
 import { admitSearchScope } from './admission';
 

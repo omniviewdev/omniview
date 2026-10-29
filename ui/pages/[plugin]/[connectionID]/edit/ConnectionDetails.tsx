@@ -5,7 +5,7 @@ import { Avatar, Grid, Stack, TextArea, TextField } from '@omniviewdev/base-ui';
 
 // Project imports
 import { useConnection } from '@omniviewdev/runtime';
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 import styles from './ConnectionDetails.module.css';
 
 export default function ConnectionDetails(): React.ReactElement {

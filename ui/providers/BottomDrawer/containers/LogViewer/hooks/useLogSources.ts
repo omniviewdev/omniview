@@ -65,19 +65,20 @@ export function useLogSources({ sessionId, events, entries, version, declaredDim
   // Per-dimension selection state: dimensionKey → Set of selected values
   const [selectionMap, setSelectionMap] = useState<Record<string, Set<string>>>({});
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const processedEventCount = useRef(0);
+  const [processedEventCount, setProcessedEventCount] = useState(0);
 
   // Declared dimension keys from session params or prop (empty = auto-derive)
   const [declaredDimensions, setDeclaredDimensions] = useState<Array<{ key: string; displayName?: string }> | null>(
     propDeclaredDimensions ?? null,
   );
 
-  // Use prop-provided dimensions when available (e.g. from LogDataSource)
-  useEffect(() => {
+  const [previousDeclaredDimensions, setPreviousDeclaredDimensions] = useState(propDeclaredDimensions);
+  if (previousDeclaredDimensions !== propDeclaredDimensions) {
+    setPreviousDeclaredDimensions(propDeclaredDimensions);
     if (propDeclaredDimensions) {
       setDeclaredDimensions(propDeclaredDimensions);
     }
-  }, [propDeclaredDimensions]);
+  }
 
   // Fetch initial session sources + params on mount (only for SDK sessions)
   useEffect(() => {
@@ -106,8 +107,10 @@ export function useLogSources({ sessionId, events, entries, version, declaredDim
       });
   }, [sessionId]);
 
-  // Derive sources from actual log entries as a fallback
-  useEffect(() => {
+  // Retain discovered sources even after their entries leave the buffer.
+  const [previousEntries, setPreviousEntries] = useState({ entries: null as LogEntry[] | null, version: -1 });
+  if (previousEntries.entries !== entries || previousEntries.version !== version) {
+    setPreviousEntries({ entries, version });
     const sourceMap = new Map<string, LogSourceInfo>();
     for (const entry of entries) {
       if (entry.sourceId && !sourceMap.has(entry.sourceId)) {
@@ -118,40 +121,34 @@ export function useLogSources({ sessionId, events, entries, version, declaredDim
       }
     }
 
-    if (sourceMap.size === 0) {
-      return;
-    }
-
-    setSources((prev) => {
-      const merged = new Map<string, LogSourceInfo>();
-      for (const s of prev) {
-        merged.set(s.id, s);
-      }
-
-      let changed = false;
-      for (const [id, info] of sourceMap) {
-        if (!merged.has(id)) {
-          merged.set(id, info);
-          changed = true;
+    if (sourceMap.size > 0) {
+      setSources((prev) => {
+        const merged = new Map<string, LogSourceInfo>();
+        for (const s of prev) {
+          merged.set(s.id, s);
         }
-      }
 
-      if (!changed) {
-        return prev;
-      }
+        let changed = false;
+        for (const [id, info] of sourceMap) {
+          if (!merged.has(id)) {
+            merged.set(id, info);
+            changed = true;
+          }
+        }
 
-      return Array.from(merged.values());
-    });
-  }, [version]);
+        if (!changed) {
+          return prev;
+        }
+
+        return Array.from(merged.values());
+      });
+    }
+  }
 
   // Track SOURCE_ADDED/SOURCE_REMOVED events
-  useEffect(() => {
-    if (events.length <= processedEventCount.current) {
-      return;
-    }
-
-    const newEvents = events.slice(processedEventCount.current);
-    processedEventCount.current = events.length;
+  if (events.length > processedEventCount) {
+    const newEvents = events.slice(processedEventCount);
+    setProcessedEventCount(events.length);
 
     for (const event of newEvents) {
       if (!event.source_id) {
@@ -171,7 +168,7 @@ export function useLogSources({ sessionId, events, entries, version, declaredDim
       // The dropdown should always show all known sources so users can
       // re-select them. Removal would cause items to vanish when deselected.
     }
-  }, [events]);
+  }
 
   // Build dimensions from sources + declared/auto-derived keys
   const dimensionKeys = useMemo(() => {
@@ -221,7 +218,9 @@ export function useLogSources({ sessionId, events, entries, version, declaredDim
   }, [dimensionKeys, sources, selectionMap]);
 
   // Auto-select new values when sources change
-  useEffect(() => {
+  const [selectionSources, setSelectionSources] = useState({ sources, dimensionKeys });
+  if (selectionSources.sources !== sources || selectionSources.dimensionKeys !== dimensionKeys) {
+    setSelectionSources({ sources, dimensionKeys });
     setSelectionMap((prev) => {
       let changed = false;
       const next = { ...prev };
@@ -250,7 +249,7 @@ export function useLogSources({ sessionId, events, entries, version, declaredDim
 
       return changed ? next : prev;
     });
-  }, [sources, dimensionKeys]);
+  }
 
   // Compute selectedSourceIds: a source is included if all its dimension labels are selected
   const selectedSourceIds = useMemo(() => {

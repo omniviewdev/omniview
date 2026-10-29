@@ -1,45 +1,66 @@
-// Auto-generated shim for '@dnd-kit/core'
+// Auto-generated shim for "@dnd-kit/core"
 // DO NOT EDIT -- regenerate with: pnpm --filter @omniviewdev/vite-plugin generate-shims
-
-const mod = window.__OMNIVIEW_SHARED__['@dnd-kit/core'];
-
-if (!mod) {
-  throw new Error(
-    '[omniview] Shared dependency "@dnd-kit/core" is not available on window.__OMNIVIEW_SHARED__. ' +
-    'Ensure the Omniview host app is running and shared deps are exported before loading this plugin.'
-  );
-}
-
-export const KeyboardCode = mod.KeyboardCode;
-export const AutoScrollActivator = mod.AutoScrollActivator;
-export const TraversalOrder = mod.TraversalOrder;
-export const MeasuringStrategy = mod.MeasuringStrategy;
-export const MeasuringFrequency = mod.MeasuringFrequency;
-export const DndContext = mod.DndContext;
-export const DragOverlay = mod.DragOverlay;
-export const KeyboardSensor = mod.KeyboardSensor;
-export const MouseSensor = mod.MouseSensor;
-export const PointerSensor = mod.PointerSensor;
-export const TouchSensor = mod.TouchSensor;
-export const applyModifiers = mod.applyModifiers;
-export const closestCenter = mod.closestCenter;
-export const closestCorners = mod.closestCorners;
-export const defaultAnnouncements = mod.defaultAnnouncements;
-export const defaultCoordinates = mod.defaultCoordinates;
-export const defaultDropAnimation = mod.defaultDropAnimation;
-export const defaultDropAnimationSideEffects = mod.defaultDropAnimationSideEffects;
-export const defaultKeyboardCoordinateGetter = mod.defaultKeyboardCoordinateGetter;
-export const defaultScreenReaderInstructions = mod.defaultScreenReaderInstructions;
-export const getClientRect = mod.getClientRect;
-export const getFirstCollision = mod.getFirstCollision;
-export const getScrollableAncestors = mod.getScrollableAncestors;
-export const pointerWithin = mod.pointerWithin;
-export const rectIntersection = mod.rectIntersection;
-export const useDndContext = mod.useDndContext;
-export const useDndMonitor = mod.useDndMonitor;
-export const useDraggable = mod.useDraggable;
-export const useDroppable = mod.useDroppable;
-export const useSensor = mod.useSensor;
-export const useSensors = mod.useSensors;
-
-export default mod.default !== undefined ? mod.default : mod;
+const mod = window.__OMNIVIEW_SHARED__["@dnd-kit/core"];
+if (!mod) throw new Error('[omniview] Shared dependency ' + "@dnd-kit/core" + ' is not available on window.__OMNIVIEW_SHARED__.');
+const binding0 = mod["AutoScrollActivator"];
+export { binding0 as "AutoScrollActivator" };
+const binding1 = mod["DndContext"];
+export { binding1 as "DndContext" };
+const binding2 = mod["DragOverlay"];
+export { binding2 as "DragOverlay" };
+const binding3 = mod["KeyboardCode"];
+export { binding3 as "KeyboardCode" };
+const binding4 = mod["KeyboardSensor"];
+export { binding4 as "KeyboardSensor" };
+const binding5 = mod["MeasuringFrequency"];
+export { binding5 as "MeasuringFrequency" };
+const binding6 = mod["MeasuringStrategy"];
+export { binding6 as "MeasuringStrategy" };
+const binding7 = mod["MouseSensor"];
+export { binding7 as "MouseSensor" };
+const binding8 = mod["PointerSensor"];
+export { binding8 as "PointerSensor" };
+const binding9 = mod["TouchSensor"];
+export { binding9 as "TouchSensor" };
+const binding10 = mod["TraversalOrder"];
+export { binding10 as "TraversalOrder" };
+const binding11 = mod["applyModifiers"];
+export { binding11 as "applyModifiers" };
+const binding12 = mod["closestCenter"];
+export { binding12 as "closestCenter" };
+const binding13 = mod["closestCorners"];
+export { binding13 as "closestCorners" };
+const binding14 = mod["defaultAnnouncements"];
+export { binding14 as "defaultAnnouncements" };
+const binding15 = mod["defaultCoordinates"];
+export { binding15 as "defaultCoordinates" };
+const binding16 = mod["defaultDropAnimation"];
+export { binding16 as "defaultDropAnimation" };
+const binding17 = mod["defaultDropAnimationSideEffects"];
+export { binding17 as "defaultDropAnimationSideEffects" };
+const binding18 = mod["defaultKeyboardCoordinateGetter"];
+export { binding18 as "defaultKeyboardCoordinateGetter" };
+const binding19 = mod["defaultScreenReaderInstructions"];
+export { binding19 as "defaultScreenReaderInstructions" };
+const binding20 = mod["getClientRect"];
+export { binding20 as "getClientRect" };
+const binding21 = mod["getFirstCollision"];
+export { binding21 as "getFirstCollision" };
+const binding22 = mod["getScrollableAncestors"];
+export { binding22 as "getScrollableAncestors" };
+const binding23 = mod["pointerWithin"];
+export { binding23 as "pointerWithin" };
+const binding24 = mod["rectIntersection"];
+export { binding24 as "rectIntersection" };
+const binding25 = mod["useDndContext"];
+export { binding25 as "useDndContext" };
+const binding26 = mod["useDndMonitor"];
+export { binding26 as "useDndMonitor" };
+const binding27 = mod["useDraggable"];
+export { binding27 as "useDraggable" };
+const binding28 = mod["useDroppable"];
+export { binding28 as "useDroppable" };
+const binding29 = mod["useSensor"];
+export { binding29 as "useSensor" };
+const binding30 = mod["useSensors"];
+export { binding30 as "useSensors" };

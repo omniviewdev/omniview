@@ -1,4 +1,5 @@
-import { type Table } from '@tanstack/react-table';
+import type { DataTableFeatures } from '@omniviewdev/base-ui';
+import { Subscribe, type Table } from '@tanstack/react-table';
 
 import { Checkbox } from '@omniviewdev/base-ui';
 import styles from './cells.module.css';
@@ -6,17 +7,21 @@ import styles from './cells.module.css';
 /**
  * Render a selectbox for the header of the generic resource table.
  */
-export const SelectBoxHeader = ({ table }: { table: Table<any> }) => (
-  <div className={styles.SelectBox}>
-    <Checkbox
-      size='sm'
-      checked={table.getIsAllPageRowsSelected()}
-      onCheckedChange={checked => {
-        table.toggleAllPageRowsSelected(checked);
-      }}
-      aria-label='Select all nodes'
-    />
-  </div>
+export const SelectBoxHeader = ({ table }: { table: Table<DataTableFeatures, any> }) => (
+  <Subscribe source={table.store} selector={(state) => [state.rowSelection, state.columnFilters, state.globalFilter, state.pagination]}>
+    {() => (
+      <div className={styles.SelectBox}>
+        <Checkbox
+          size='sm'
+          checked={table.getIsAllPageRowsSelected()}
+          onCheckedChange={checked => {
+            table.toggleAllPageRowsSelected(checked);
+          }}
+          aria-label='Select all nodes'
+        />
+      </div>
+    )}
+  </Subscribe>
 );
 
 SelectBoxHeader.displayName = 'SelectBoxHeader';

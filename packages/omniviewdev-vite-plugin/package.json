@@ -42,12 +42,14 @@
   ],
   "dependencies": {},
   "devDependencies": {
-    "tsup": "^8.0.2",
-    "tsx": "^4.7.0",
-    "typescript": "^5.8.3",
-    "vite": "^5.2.0"
+    "tsup": "9.0.0",
+    "tsx": "4.23.15",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "vite": "7.3.7",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "esbuild": "0.28.2"
   },
   "peerDependencies": {
-    "vite": ">=5.0.0"
+    "vite": "^7.3.7"
   }
 }
