@@ -135,7 +135,13 @@ func (m *Manager) Start(ctx context.Context, name string, o LaunchOptions, execu
 		return status, err
 	}
 	if status.Phase != "stopped" && status.Phase != "crashed" {
-		return status, devcontract.Fail(4, "workspace_running", "workspace already has an owned supervisor; use restart")
+		recovery := shellCommand([]string{"omniview-dev", "workspace", "restart", w.Manifest.WorkspaceID, "--root", m.Root})
+		if status.RecoveryCommand != "" {
+			recovery = status.RecoveryCommand + " --root " + shellArgument(m.Root)
+		} else if status.Phase == "error" {
+			recovery = shellCommand([]string{"omniview-dev", "workspace", "refresh", w.Manifest.WorkspaceID, "--root", m.Root})
+		}
+		return status, devcontract.Fail(4, "workspace_running", fmt.Sprintf("workspace has an owned supervisor in launch phase %q; recover with: %s", status.Phase, recovery))
 	}
 	if w.Manifest.Links.SDKRepositoryID == nil {
 		return Status{}, devcontract.Fail(2, "sdk_source_required", "select the plugin-sdk repository before launching")

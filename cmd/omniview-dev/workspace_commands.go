@@ -54,7 +54,7 @@ type workspaceCommand struct {
 func addWorkspaceCommands(root *cobra.Command) {
 	group := &cobra.Command{Use: "workspace", Short: "Manage development workspaces"}
 	for _, verb := range []string{
-		"init", "create", "up", workspaceRefresh, workspaceUpdate, workspaceFollow, workspaceRecover, "evidence",
+		"init", "create", "up", "preflight", workspaceRefresh, workspaceUpdate, workspaceFollow, workspaceRecover, "evidence",
 		"verify-reload",
 		"down", "restart", "edit", "link", "remove", "profile", "inspect", "paths", "list", "unlink", workspaceResetModules,
 		"resume", "rollback", "supervise",
@@ -104,8 +104,11 @@ func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceComm
 		flags.BoolVar(&c.start, "start", false, "build and launch after creation")
 		flags.StringVar(&c.stateRoot, "state-root", "", "explicit custom state leaf under a new dedicated profile container")
 		launchFlags()
-	case "up":
+	case "up", "preflight":
 		launchFlags()
+		if c.verb == "preflight" {
+			cmd.Short = "Report all launch input prerequisites without installing or starting"
+		}
 	case workspaceRefresh, workspaceUpdate, workspaceFollow, workspaceRecover:
 		if c.verb == workspaceUpdate || c.verb == workspaceFollow {
 			flags.Var(&c.repositories, "repo", "selected repository ID to observe or fast-forward (repeatable)")
@@ -300,7 +303,7 @@ func workspaceLaunchOptions(c workspaceCommand, w devworkspace.Workspace) (devwo
 	if previous, err := devworkspace.LoadLaunchOptions(w); err == nil {
 		options.LinkEvidence = previous.LinkEvidence
 		if c.verb == "up" || c.verb == workspaceRefresh || c.verb == workspaceUpdate ||
-			c.verb == workspaceFollow || c.verb == workspaceRecover {
+			c.verb == workspaceFollow || c.verb == workspaceRecover || c.verb == "preflight" {
 			if !c.supplied["mode"] {
 				options.Mode = previous.Mode
 			}
@@ -540,7 +543,7 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 		if manager != nil {
 			c.root = manager.Root
 		}
-		if manager != nil && (c.verb == "up" || c.verb == "link") && c.linkEvidence == "" {
+		if manager != nil && (c.verb == "up" || c.verb == "link" || c.verb == "preflight") && c.linkEvidence == "" {
 			evidence, evidenceErr := manager.LinkEvidence(ctx, w.Manifest.WorkspaceID)
 			if evidenceErr == nil {
 				c.launch.LinkEvidence = evidence
@@ -549,6 +552,40 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 			}
 		}
 		switch c.verb {
+		case "preflight":
+			options, optionErr := workspaceLaunchOptions(c, w)
+			report := devworkspace.PreflightLaunch(w, options)
+			if optionErr != nil {
+				var issue *devcontract.Error
+				if !errors.As(optionErr, &issue) {
+					return fail(optionErr)
+				}
+				issues := []*devcontract.Error{issue}
+				for _, existing := range report.Issues {
+					evidenceError := issue.Code == "link_evidence_required" || issue.Code == "invalid_link_evidence"
+					if existing.Code != issue.Code && !(evidenceError && existing.Code == "link_evidence_required") {
+						issues = append(issues, existing)
+					}
+				}
+				report.Issues = issues
+				report.Ready = false
+			}
+			if c.json {
+				if encodeErr := json.NewEncoder(out).Encode(report); encodeErr != nil {
+					return fail(encodeErr)
+				}
+			} else {
+				for _, issue := range report.Issues {
+					fmt.Fprintf(out, "%s: %s\n", issue.Code, issue.Message)
+				}
+				if report.Ready {
+					fmt.Fprintln(out, "Launch inputs ready; launch still checks source trust, dependencies and runtime compatibility.")
+				}
+			}
+			if !report.Ready {
+				return true, 3
+			}
+			return true, 0
 		case "inspect":
 			if manager == nil {
 				value = w

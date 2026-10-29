@@ -31,6 +31,34 @@ guesses a sibling. Do not use an ad hoc Go replacement or install a CLI into the
 feature checkout. Keep using the returned `"$DEV"` path rather than guessing a
 `bin` location.
 
+Build the CLI from the selected host worktree when switching source cohorts.
+An immutable CLI built from an older checkout retains that checkout's validation
+rules; selecting a newer host does not update the executable. Current UI checks
+exclude comparison benchmarks while still rejecting legacy dependencies in
+runtime consumers.
+
+Source refs across repositories are not automatically compatible. The reported
+host commit `187e5336f1c9a4b9d58d32890649d7db9d80d413` and Kubernetes commit
+`f366018a7fac1fbd91c43bb2abb6dcfc9149a5b1` fail strict peers: Kubernetes selects
+React Query 5.90.21 and Vite 5.4.21, while linked host packages require
+`^5.105.0` and `^7.3.7`. Kubernetes commit
+`4fab2158ad2531bdba37782567b794b5e34cf726` on
+`origin/feature/frontend-upgrade-3bd7bcc6` declares those newer versions.
+This is a manifest-compatible candidate, not a runtime-tested cohort. Select refs
+explicitly and verify the resulting application; never disable strict peers.
+
+Link planning reports provable conflicts between ordinary exact, caret, and tilde
+manifest ranges before installation, naming both consumer and linked manifests.
+Overlapping ranges are not proof that a selected lockfile resolves compatible
+versions. Complex ranges and policy-adjusted peers remain the native resolver's
+decision; a clean planning result does not replace strict installation.
+
+An owned supervisor can remain alive after a launch failure. `workspace up`
+refuses to replace it and reports its launch phase and recovery command, including
+the collection root. Use the reported command: failed builds normally need
+`workspace refresh`, not another `workspace up`. A retained supervisor is not
+evidence that the application is ready.
+
 The target application must have been built with `devcontrol` enabled and launched
 against the workspace. Release builds do not advertise a control endpoint.
 

@@ -284,6 +284,9 @@ func makeLinkPlan(w Workspace) (linkPlan, error) {
 	for _, pkg := range composition.Packages {
 		p.Consumers = append(p.Consumers, linkConsumer{Path: pkg.Path, Targets: composition.Targets})
 	}
+	if err := validateLinkedPeerContracts(w, p); err != nil {
+		return p, err
+	}
 	return p, nil
 }
 
