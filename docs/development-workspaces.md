@@ -362,6 +362,11 @@ finish. They do not publish process identities or require a live executable
 snapshot after a short-lived command exits. Published services still require
 kernel-sourced identity capture; permission and inspection failures remain errors.
 
+Linux procfs inspection treats `ENOENT` and `ESRCH` as process disappearance,
+including exit between opening and reading procfs. Permission failures and other
+inspection errors still refuse the operation; this does not authorize numeric-PID
+fallback termination.
+
 ## Output and references
 
 `--json` emits one machine-readable result on stdout, except foreground `workspace follow --json`, which streams one JSON diagnostic object per observation. Process/compiler output stays in the private supervisor log, and CLI warnings/diagnostics use stderr. Follow diagnostics include apply consent, owner, observation/schedule times, active operation, pending cohort, plan, result, blocker and next command. Token **values** never enter descriptors or ordinary startup output. Error responses remain JSON on stdout. Exit codes are 0 success, 2 invalid request, 3 missing target/dependency evidence, 4 identity/state/ownership/port conflict, 5 operation/build failure, 6 unauthorized and 7 timeout. A successful check can report available or blocked updates without claiming they were applied.

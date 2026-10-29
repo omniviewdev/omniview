@@ -24,7 +24,7 @@ var linuxBoot struct {
 func linuxStartIdentity(pid int) (string, error) {
 	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, unix.ESRCH) {
 			return "", ErrProcessGone
 		}
 		return "", fmt.Errorf("inspect process start: %w", err)
@@ -62,7 +62,7 @@ func inspectProcess(pid int) (string, string, error) {
 	}
 	executable, err := os.Readlink("/proc/" + strconv.Itoa(pid) + "/exe")
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, unix.ESRCH) {
 			return "", "", ErrProcessGone
 		}
 		return "", "", fmt.Errorf("inspect process executable: %w", err)
