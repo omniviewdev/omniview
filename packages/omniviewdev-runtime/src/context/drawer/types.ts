@@ -84,12 +84,13 @@ export type DrawerComponentAction<T = any> = {
 
   /**
    * The function to run for the drawer component on click.
+   * Async actions return a promise so renderers can report rejected operations.
    *
    * When a plugin is extending with an action, the component may choose to
    * pass data about what is inside the component. This is typically the case
    * with drawers that display resource information.
    */
-  action?: (ctx: DrawerContext<T>) => void
+  action?: (ctx: DrawerContext<T>) => void | Promise<unknown>
 
   /**
    * Have the action provide a list of actions underneath when clicked rather than
@@ -119,7 +120,7 @@ export type DrawerComponentActionListItem<T = any> = {
    * pass data about what is inside the component. This is typically the case
    * with drawers that display resource information.
    */
-  action: (ctx: DrawerContext<T>) => void
+  action: (ctx: DrawerContext<T>) => void | Promise<unknown>
 }
 
 /**

@@ -20,6 +20,12 @@ type CreateSessionOptions = {
   icon?: string | React.ReactNode;
   label?: string;
   opts: Partial<SessionOptions>
+  /** UI-only explicit recovery; never serialized into session options. */
+  recovery?: {
+    label: string;
+    canRecover: (error: { title: string; suggestion: string; raw: string }) => boolean;
+    run: () => Promise<void>;
+  };
 }
 
 /**
@@ -31,7 +37,7 @@ export const useExec = ({ pluginID: explicitPluginID }: UseResourceMutationsOpti
   const { createTab, updateTab } = useBottomDrawer();
 
   const createSessionMutation = useMutation({
-    mutationFn: async ({ connectionID, icon, label, opts }: CreateSessionOptions) => {
+    mutationFn: async ({ connectionID, icon, label, opts, recovery }: CreateSessionOptions) => {
       const tempId = `pending-${crypto.randomUUID()}`;
 
       // Create tab immediately with connecting status
@@ -45,6 +51,7 @@ export const useExec = ({ pluginID: explicitPluginID }: UseResourceMutationsOpti
           pluginID,
           connectionID,
           opts: { ...opts },
+          recovery,
         },
       });
 
@@ -63,19 +70,24 @@ export const useExec = ({ pluginID: explicitPluginID }: UseResourceMutationsOpti
           {
             id: session.id,
             title: label ?? `Session ${session.id.substring(0, 8)}`,
-            properties: { status: 'connected', pluginID, connectionID, opts: { ...opts } },
+            properties: { status: 'connected', pluginID, connectionID, opts: { ...opts }, recovery },
           },
         );
+        return session;
       } catch (error) {
         const appErr = parseAppError(error);
         // Mark tab as errored
         updateTab(
           { id: tempId },
           {
-            properties: { status: 'error', error: appErr.detail, pluginID, connectionID, opts: { ...opts } },
+            properties: {
+              status: 'error', error: appErr.detail, pluginID, connectionID, opts: { ...opts }, recovery,
+              errorInfo: { title: appErr.title || 'Session error', suggestion: appErr.detail, raw: appErr.detail },
+            },
           },
         );
         showAppError(showSnackbar, error, 'Failed to start session');
+        return null;
       }
     },
   })

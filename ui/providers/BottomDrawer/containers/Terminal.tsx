@@ -37,6 +37,29 @@ const constructSignalHandler = (signal: string, sessionId: string) => {
   return `core/exec/signal/${signal}/${sessionId}`;
 };
 
+function recoveryFor(properties: Record<string, unknown> | undefined, error: TerminalErrorInfo) {
+  const recovery = properties?.recovery;
+  if (!recovery || typeof recovery !== 'object'
+    || !('label' in recovery) || typeof recovery.label !== 'string'
+    || !('canRecover' in recovery) || typeof recovery.canRecover !== 'function'
+    || !('run' in recovery) || typeof recovery.run !== 'function') {
+    return undefined;
+  }
+
+  const { label, canRecover, run } = recovery;
+  try {
+    if (canRecover(error)) {
+      return { label, run: async () => {
+        await run(); 
+      } };
+    }
+  } catch {
+    // An unavailable plugin recovery must not replace the original terminal error.
+  }
+
+  return undefined;
+}
+
 /**
  * Terminal view attaches to an existing terminal session and displays the output, as well as
  * allows the user to input commands. This component is used in the terminal tab of the lower
@@ -240,12 +263,16 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
 
     resizeObserver.observe(terminalRef.current);
 
-    terminal.onResize((event) => {
-      const rows = event.rows;
-      const cols = event.cols;
+    const resizeSession = (rows: number, cols: number) => {
       ExecClient.ResizeSession(sessionId, rows, cols).catch((err: unknown) => {
         log.error(new Error(parseAppError(err).detail), { event: 'resize_session', sessionId });
       });
+    };
+
+    terminal.onResize(({ rows, cols }) => {
+      if (attachedRef.current && inputActive) {
+        resizeSession(rows, cols);
+      }
     });
 
     const stdout = `core/exec/stream/stdout/${sessionId}`;
@@ -254,6 +281,30 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
     // Track whether the session has been attached so we can distinguish
     // fast failures (CLOSE before/during attach) from normal session endings.
     const attachedRef = { current: false };
+    let inputActive = true;
+    let inputWrites = Promise.resolve();
+    const failTerminalIO = (cause: unknown, operation: 'attach' | 'write') => {
+      if (!inputActive) {
+        return;
+      }
+
+      inputActive = false;
+      const appError = parseAppError(cause);
+      const info: TerminalErrorInfo = {
+        title: operation === 'attach' ? 'Terminal attachment failed' : 'Terminal input failed',
+        suggestion: operation === 'attach'
+          ? 'Reconnect to the existing session before sending input.'
+          : 'Input delivery is uncertain. Reconnect before sending more input; do not automatically resend it.',
+        raw: appError.detail,
+        retryable: false,
+      };
+      if (!errorRef.current) {
+        errorRef.current = info;
+        setError(info);
+      }
+
+      log.error(new Error(appError.detail), { event: `${operation}_session`, sessionId });
+    };
 
     // Setup signal handlers.
     // Registered BEFORE attach so we don't miss fast signals on sessions
@@ -263,6 +314,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
       Events.On(constructSignalHandler('ERROR', sessionId), (ev) => {
         const errorInfo = ev.data;
         if (errorInfo && typeof errorInfo === 'object') {
+          inputActive = false;
           const info: TerminalErrorInfo = {
             title: orFallback(orFallback(errorInfo.title, errorInfo.Title), 'Session error'),
             suggestion: orFallback(orFallback(errorInfo.suggestion, errorInfo.Suggestion), 'The session encountered an error.'),
@@ -277,6 +329,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
 
       // CLOSE signal: session is done
       Events.On(constructSignalHandler('CLOSE', sessionId), () => {
+        inputActive = false;
         // If an error overlay is already showing, don't auto-close the tab
         if (errorRef.current) {
           return;
@@ -340,19 +393,35 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
           const decoded = textDecoder.decode(Base64.toUint8Array(buffer));
           terminal.write(decoded);
         }
+
+        return true;
       } catch (e) {
-        log.error(new Error(parseAppError(e).detail), { event: 'attach_session', sessionId });
+        failTerminalIO(e, 'attach');
+        return false;
       }
     };
 
-    attachToSession().then(() => {
-      attachedRef.current = true;
+    attachToSession().then((attached) => {
+      if (!attached || !inputActive) {
+        return;
+      }
+
       fitAddon.fit();
+      attachedRef.current = true;
+      // A pre-attach fit can consume onResize; always send the current size after attachment.
+      resizeSession(terminal.rows, terminal.cols);
       terminal.onData(data => {
-        ExecClient.WriteSession(sessionId, Base64.encode(data))
-          .catch((err: unknown) => {
-            log.error(new Error(parseAppError(err).detail), { event: 'write_session', sessionId });
-          });
+        if (!inputActive) {
+          return;
+        }
+
+        inputWrites = inputWrites.then(async () => {
+          if (inputActive) {
+            await ExecClient.WriteSession(sessionId, Base64.encode(data));
+          }
+        }).catch((cause: unknown) => {
+          failTerminalIO(cause, 'write'); 
+        });
       });
 
     }).catch((err: unknown) => {
@@ -362,6 +431,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
 
     // Cleanup function to detach from the session and remove listeners
     terminalCleanupRef.current = () => {
+      inputActive = false;
       // run our disposers
       disposers.current.forEach((disposer) => {
         disposer();
@@ -409,6 +479,16 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
 
   if (tabStatus === 'error') {
     const errorMsg = tab?.properties?.error as string | undefined;
+    const initialError = tab?.properties?.errorInfo as TerminalErrorInfo | undefined;
+    const recovery = initialError ? recoveryFor(tab?.properties, initialError) : undefined;
+    if (initialError && recovery) {
+      return (
+        <div ref={statusThemeRef} className={styles.Status} style={{ backgroundColor: bgColor }}>
+          <TerminalError error={initialError} onRetry={handleRetry} backgroundColor={bgColor} recovery={recovery} />
+        </div>
+      );
+    }
+
     return (
       <div ref={statusThemeRef} className={styles.Status} style={{ backgroundColor: bgColor }}>
         <div className={styles.StatusError}>Connection Failed</div>
@@ -427,7 +507,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
           width: '100%',
         }}
       />
-      {error && <TerminalError error={error} onRetry={handleRetry} backgroundColor={bgColor} />}
+      {error && <TerminalError error={error} onRetry={handleRetry} backgroundColor={bgColor} recovery={recoveryFor(tab?.properties, error)} />}
     </div>
   );
 }
