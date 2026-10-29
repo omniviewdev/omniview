@@ -220,7 +220,7 @@ function PluginLoadingSpinner() {
     const cancelUpdateStart = Events.On(
       'plugin/update_started',
       (ev) => {
-        const payload = ev.data as { pluginID: string; version: string };
+        const payload = ev.data;
         setLoading((prev) => ({
           ...prev,
           [payload.pluginID]: `Updating plugin '${payload.pluginID}' to '${payload.version}'`,
@@ -490,6 +490,24 @@ function PortForwardIndicator() {
 
 function OperationsList({ operations, onRemove }: { operations: Operation[]; onRemove: (id: string) => void }) {
   const running = operations.filter((o) => o.status === 'running');
+  const [now, setNow] = React.useState<number | null>(null);
+  const hasRunning = running.length > 0;
+  React.useEffect(() => {
+    if (!hasRunning) {
+      return;
+    }
+
+    const updateClock = () => {
+      setNow(Date.now());
+    };
+
+    const initialTimer = window.setTimeout(updateClock, 0);
+    const timer = window.setInterval(updateClock, 1000);
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearInterval(timer);
+    };
+  }, [hasRunning]);
 
   return (
     <>
@@ -500,7 +518,7 @@ function OperationsList({ operations, onRemove }: { operations: Operation[]; onR
       <div className={styles.List}>
         {operations.length === 0 && <div className={styles.Empty}>No recent operations</div>}
         {operations.map((op) => {
-          const elapsed = Math.round(((op.completedAt ?? Date.now()) - op.startedAt) / 1000);
+          const elapsed = Math.max(0, Math.round(((op.completedAt ?? now ?? op.startedAt) - op.startedAt) / 1000));
           const status = op.status === 'completed' ? 'success' : op.status === 'error' ? 'danger' : 'warning';
           return (
             <div key={op.id} className={styles.ListItem}>

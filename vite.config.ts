@@ -1,6 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import react, { reactCompilerPreset } from '@vitejs/plugin-react';
-import babel from '@rolldown/plugin-babel';
+import react from '@vitejs/plugin-react';
 import wails from '@wailsio/runtime/plugins/vite';
 
 import path from 'path';
@@ -49,7 +48,6 @@ export default defineConfig({
     // Fallback to 9245 to match the default in Taskfile.yml.
     port: ownedVitePort ?? 9245,
     strictPort: true,
-    forwardConsole: false,
     fs: selectedRoots ? { strict: true, allow: [__dirname, ...selectedRoots] } : undefined,
     // Wails webview loads from wails://localhost. Point HMR at the same IPv4
     // listener used by the asset proxy.
@@ -92,11 +90,10 @@ export default defineConfig({
         return null;
       },
     },
-    react(),
-    babel({
+    react({
       // Linked package dist files are already compiled; keep app and benchmark sources live.
       include: new RegExp(String.raw`^${reactCompilerSourceRoot}[/\\](?:ui[/\\]|bench[/\\]|packages[/\\][^/\\]+[/\\]src[/\\]|plugins[/\\][^/\\]+[/\\]ui[/\\]src[/\\]).*\.(?:[jt]sx?|[cm][jt]s)(?:$|\?)`),
-      presets: [reactCompilerPreset({ target: '19' })],
+      babel: { plugins: [['babel-plugin-react-compiler', { target: '19' }]] },
     }),
     wails('./packages/omniviewdev-runtime/src/bindings'),
     {

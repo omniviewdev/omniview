@@ -24,10 +24,31 @@ export function createErrorMeta(boundary?: string): ErrorMeta {
   };
 }
 
+function createErrorReport(caught: unknown, boundary?: string) {
+  return {
+    caught,
+    boundary,
+    error: caught instanceof Error ? caught : new Error(String(caught)),
+    meta: createErrorMeta(boundary),
+  };
+}
+
+function useErrorReport(caught: unknown, boundary?: string) {
+  // Report identity belongs to the error occurrence, not an optimization cache.
+  const [report, setReport] = React.useState(() => createErrorReport(caught, boundary));
+  if (!Object.is(report.caught, caught) || report.boundary !== boundary) {
+    const nextReport = createErrorReport(caught, boundary);
+    setReport(nextReport);
+    return nextReport;
+  }
+
+  return report;
+}
+
 // ─── Shared onError handler ─────────────────────────────────────────────────
 
-export function onBoundaryError(error: Error, info: { componentStack?: string | null }, meta?: ErrorMeta) {
-  log.error(error, {
+export function onBoundaryError(error: unknown, info: { componentStack?: string | null }, meta?: ErrorMeta) {
+  log.error(error instanceof Error ? error : String(error), {
     componentStack: info.componentStack ?? 'unavailable',
     ...(meta ? { errorId: meta.errorId, boundary: meta.boundary } : {}),
   });
@@ -39,10 +60,10 @@ type FullPageErrorFallbackProps = FallbackProps & {
   boundary?: string;
 };
 
-export function FullPageErrorFallback({ error, resetErrorBoundary, boundary }: FullPageErrorFallbackProps) {
+export function FullPageErrorFallback({ error: caught, resetErrorBoundary, boundary }: FullPageErrorFallbackProps) {
   const [showStack, setShowStack] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
-  const meta = React.useMemo(() => createErrorMeta(boundary), [error]);
+  const { error, meta } = useErrorReport(caught, boundary);
   const dev = isDev();
 
   const copyError = () => {
@@ -144,10 +165,10 @@ type PanelErrorFallbackProps = FallbackProps & {
   boundary?: string;
 };
 
-export function PanelErrorFallback({ error, resetErrorBoundary, label, boundary }: PanelErrorFallbackProps) {
+export function PanelErrorFallback({ error: caught, resetErrorBoundary, label, boundary }: PanelErrorFallbackProps) {
   const [showStack, setShowStack] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
-  const meta = React.useMemo(() => createErrorMeta(boundary), [error]);
+  const { error, meta } = useErrorReport(caught, boundary);
   const dev = isDev();
 
   const copyError = () => {
@@ -237,7 +258,7 @@ type InlineErrorFallbackProps = FallbackProps & {
 };
 
 export function InlineErrorFallback({ error, resetErrorBoundary, label }: InlineErrorFallbackProps) {
-  const meta = React.useMemo(() => createErrorMeta(), [error]);
+  const { meta } = useErrorReport(error);
 
   return (
     <Stack direction="row" spacing={2} align="center" className={styles.InlineRoot}>
@@ -264,8 +285,8 @@ export function InlineErrorFallback({ error, resetErrorBoundary, label }: Inline
 
 // ─── Unstyled Root Fallback (outside theme providers) ─────────────────────────
 
-export function RootErrorFallback({ error }: { error: Error }) {
-  const meta = React.useMemo(() => createErrorMeta(), [error]);
+export function RootErrorFallback({ error: caught }: { error: unknown }) {
+  const { error, meta } = useErrorReport(caught);
   const dev = isDev();
 
   return (

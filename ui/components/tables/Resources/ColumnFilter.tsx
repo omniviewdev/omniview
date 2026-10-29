@@ -1,3 +1,4 @@
+import type { DataTableFeatures } from '@omniviewdev/base-ui';
 import React from 'react';
 
 import { Checkbox, IconButton, Popover, Separator, Text } from '@omniviewdev/base-ui';
@@ -10,7 +11,7 @@ import styles from './ColumnFilter.module.css';
 
 type Props = {
   anchorEl: HTMLElement | undefined;
-  columns: Array<Column<any>>;
+  columns: Array<Column<DataTableFeatures, any>>;
   onClose: () => void;
   onClick: React.MouseEventHandler<HTMLAnchorElement>;
 };

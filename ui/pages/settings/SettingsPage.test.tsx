@@ -3,7 +3,8 @@ import { ExtensionPointRegistry, ExtensionProvider } from '@omniviewdev/runtime'
 import { Category, Setting, SettingType } from '@omniviewdev/runtime/models';
 import type * as RuntimeCore from '@omniviewdev/runtime';
 import type * as AppThemeController from '@/theme/AppThemeController';
-import { createMemoryRouter, RouterProvider } from 'react-router-dom';
+import { createMemoryRouter } from 'react-router';
+import { RouterProvider } from 'react-router/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ setSettings: vi.fn(), selectTheme: vi.fn(), reload: vi.fn() }));

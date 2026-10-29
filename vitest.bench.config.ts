@@ -8,9 +8,10 @@ export default defineConfig({
     },
   },
   test: {
+    reporters: ['default', 'json'],
+    outputFile: { json: './benchmarks/results.json' },
     benchmark: {
       include: ['**/*.bench.ts'],
-      outputJson: './benchmarks/results.json',
     },
   },
 });

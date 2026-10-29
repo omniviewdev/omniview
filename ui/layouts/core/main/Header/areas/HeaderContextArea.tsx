@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { IconButton, Text } from '@omniviewdev/base-ui';
 
 // Project imports

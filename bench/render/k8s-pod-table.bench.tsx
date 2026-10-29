@@ -1,10 +1,10 @@
 /**
  * Kubernetes plugin Pod list (the heaviest resource table), rendered from the
- * plugin source in plugins/kubernetes against the app's shared packages, with
+ * sibling workspace plugin source against the app's shared packages, with
  * List/metrics answered by fixtures.
  */
 import { describe } from 'vitest';
-import PodTable from '../../plugins/kubernetes/ui/src/components/kubernetes/table/corev1/Pod/Table';
+import PodTable from '../../../kubernetes/ui/src/components/kubernetes/table/corev1/Pod/Table';
 
 import { screenBench } from './harness/bench';
 import { PluginScreen } from './harness/providers';

@@ -1,39 +1,54 @@
-// Auto-generated shim for '@dnd-kit/utilities'
+// Auto-generated shim for "@dnd-kit/utilities"
 // DO NOT EDIT -- regenerate with: pnpm --filter @omniviewdev/vite-plugin generate-shims
-
-const mod = window.__OMNIVIEW_SHARED__['@dnd-kit/utilities'];
-
-if (!mod) {
-  throw new Error(
-    '[omniview] Shared dependency "@dnd-kit/utilities" is not available on window.__OMNIVIEW_SHARED__. ' +
-    'Ensure the Omniview host app is running and shared deps are exported before loading this plugin.'
-  );
-}
-
-export const CSS = mod.CSS;
-export const add = mod.add;
-export const canUseDOM = mod.canUseDOM;
-export const findFirstFocusableNode = mod.findFirstFocusableNode;
-export const getEventCoordinates = mod.getEventCoordinates;
-export const getOwnerDocument = mod.getOwnerDocument;
-export const getWindow = mod.getWindow;
-export const hasViewportRelativeCoordinates = mod.hasViewportRelativeCoordinates;
-export const isDocument = mod.isDocument;
-export const isHTMLElement = mod.isHTMLElement;
-export const isKeyboardEvent = mod.isKeyboardEvent;
-export const isNode = mod.isNode;
-export const isSVGElement = mod.isSVGElement;
-export const isTouchEvent = mod.isTouchEvent;
-export const isWindow = mod.isWindow;
-export const subtract = mod.subtract;
-export const useCombinedRefs = mod.useCombinedRefs;
-export const useEvent = mod.useEvent;
-export const useInterval = mod.useInterval;
-export const useIsomorphicLayoutEffect = mod.useIsomorphicLayoutEffect;
-export const useLatestValue = mod.useLatestValue;
-export const useLazyMemo = mod.useLazyMemo;
-export const useNodeRef = mod.useNodeRef;
-export const usePrevious = mod.usePrevious;
-export const useUniqueId = mod.useUniqueId;
-
-export default mod.default !== undefined ? mod.default : mod;
+const mod = window.__OMNIVIEW_SHARED__["@dnd-kit/utilities"];
+if (!mod) throw new Error('[omniview] Shared dependency ' + "@dnd-kit/utilities" + ' is not available on window.__OMNIVIEW_SHARED__.');
+const binding0 = mod["CSS"];
+export { binding0 as "CSS" };
+const binding1 = mod["add"];
+export { binding1 as "add" };
+const binding2 = mod["canUseDOM"];
+export { binding2 as "canUseDOM" };
+const binding3 = mod["findFirstFocusableNode"];
+export { binding3 as "findFirstFocusableNode" };
+const binding4 = mod["getEventCoordinates"];
+export { binding4 as "getEventCoordinates" };
+const binding5 = mod["getOwnerDocument"];
+export { binding5 as "getOwnerDocument" };
+const binding6 = mod["getWindow"];
+export { binding6 as "getWindow" };
+const binding7 = mod["hasViewportRelativeCoordinates"];
+export { binding7 as "hasViewportRelativeCoordinates" };
+const binding8 = mod["isDocument"];
+export { binding8 as "isDocument" };
+const binding9 = mod["isHTMLElement"];
+export { binding9 as "isHTMLElement" };
+const binding10 = mod["isKeyboardEvent"];
+export { binding10 as "isKeyboardEvent" };
+const binding11 = mod["isNode"];
+export { binding11 as "isNode" };
+const binding12 = mod["isSVGElement"];
+export { binding12 as "isSVGElement" };
+const binding13 = mod["isTouchEvent"];
+export { binding13 as "isTouchEvent" };
+const binding14 = mod["isWindow"];
+export { binding14 as "isWindow" };
+const binding15 = mod["subtract"];
+export { binding15 as "subtract" };
+const binding16 = mod["useCombinedRefs"];
+export { binding16 as "useCombinedRefs" };
+const binding17 = mod["useEvent"];
+export { binding17 as "useEvent" };
+const binding18 = mod["useInterval"];
+export { binding18 as "useInterval" };
+const binding19 = mod["useIsomorphicLayoutEffect"];
+export { binding19 as "useIsomorphicLayoutEffect" };
+const binding20 = mod["useLatestValue"];
+export { binding20 as "useLatestValue" };
+const binding21 = mod["useLazyMemo"];
+export { binding21 as "useLazyMemo" };
+const binding22 = mod["useNodeRef"];
+export { binding22 as "useNodeRef" };
+const binding23 = mod["usePrevious"];
+export { binding23 as "usePrevious" };
+const binding24 = mod["useUniqueId"];
+export { binding24 as "useUniqueId" };

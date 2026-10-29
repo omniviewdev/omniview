@@ -3,7 +3,7 @@ import React from 'react';
 import { Avatar, Spinner } from '@omniviewdev/base-ui';
 
 import { LuAtom, LuBadgeCheck, LuCheck, LuDownload, LuStar, LuSettings } from 'react-icons/lu';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { IsImage } from '@/utils/url';
 import Icon from '@/components/icons/Icon';
 import styles from './PluginListItem.module.css';

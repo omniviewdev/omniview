@@ -4,6 +4,8 @@ import { Subscribe, Unsubscribe } from '../../bindings/github.com/omniviewdev/om
 import type { MetricResult } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
+const EMPTY_RESOURCE_DATA: Record<string, unknown> = {};
+
 export type UseMetricStreamOptions = {
   /** The plugin providing metrics */
   pluginID?: string;
@@ -53,7 +55,7 @@ export const useMetricStream = (
     resourceKey,
     resourceID,
     resourceNamespace = '',
-    resourceData = {},
+    resourceData = EMPTY_RESOURCE_DATA,
     metricIDs = [],
     interval = 10000,
     enabled = true,
@@ -116,7 +118,7 @@ export const useMetricStream = (
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [pluginID, connectionID, resourceKey, resourceID, resourceNamespace, metricIDs, interval, enabled]);
+  }, [pluginID, connectionID, resourceKey, resourceID, resourceNamespace, resourceData, metricIDs, interval, enabled]);
 
   const stop = useCallback(async () => {
     if (subscriptionID) {

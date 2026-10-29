@@ -75,7 +75,7 @@ function Harness({ index }: { index: number }) {
 }
 
 function state() {
-  return JSON.parse(screen.getByTestId('state').textContent!);
+  return JSON.parse(screen.getByTestId('state').textContent);
 }
 
 afterEach(cleanup);

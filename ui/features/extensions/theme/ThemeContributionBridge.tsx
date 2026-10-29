@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ThemeValidationError,
   type ThemeRegistry,
@@ -52,10 +52,7 @@ export function ThemeContributionBridge({
 }: ThemeContributionBridgeProps): null {
   const store = useExtensionPoint<ThemeContribution>(THEME_EXTENSION_POINT_ID);
   const storeVersion = store?.version;
-  const activeRef = useRef<Map<string, ActiveThemeRegistration> | null>(null);
-  activeRef.current ??= new Map();
-
-  const activeRegistrations = activeRef.current;
+  const [activeRegistrations] = useState(() => new Map<string, ActiveThemeRegistration>());
 
   useEffect(() => {
     const registrations = store?.listAll() ?? [];

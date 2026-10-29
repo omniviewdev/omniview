@@ -166,7 +166,8 @@ export function PluginSurfaceBoundary({
   const service = useContext(PluginServiceContext);
 
   const handleError = React.useCallback(
-    (error: Error, info: React.ErrorInfo) => {
+    (caught: unknown, info: React.ErrorInfo) => {
+      const error = caught instanceof Error ? caught : new Error(String(caught));
       logPluginBoundaryError({
         pluginId,
         boundary,
@@ -195,7 +196,7 @@ export function PluginSurfaceBoundary({
   const renderFallback = React.useCallback(
     ({ error: fallbackError }: FallbackProps) => (
       <FallbackComponent
-        error={fallbackError}
+        error={fallbackError instanceof Error ? fallbackError : new Error(String(fallbackError))}
         pluginId={pluginId}
         boundary={boundary}
         resourceKey={resourceKey}

@@ -25,14 +25,20 @@ export PATH="$(dirname "$OMNIVIEW_PNPM_EXECUTABLE"):$PATH"
 
 The pnpm12 workspace policy retains 24-hour release-age protection (`minimumReleaseAge: 1440`), with immediate registry updates exempted only for `@omniviewdev/*`. Managed composition rejects conflicting release-age settings rather than silently disabling protection. Linked source worktrees do not require newly published registry versions. Strict peers, exact manager pins, frozen-lockfile verification and managed `--ignore-scripts` remain. Non-auth `.npmrc` settings live in workspace YAML; native12 lockfile metadata remains package-manager-owned.
 
+Standalone installs allow the reviewed `esbuild` and `protobufjs` lifecycle
+scripts. Like the Kubernetes frontend, the host explicitly denies
+`unrs-resolver`'s fallback installer: its pinned optional platform package ships
+the native ESLint resolver binding. Do not disable ignored-build failures or
+approve every dependency script; managed installs still use `--ignore-scripts`.
+
 Choose source refs that satisfy the actual peer contracts: compare the host's `packages/omniviewdev-runtime/package.json` with the selected UI's `packages/base-ui/package.json`. A checkout can lag an existing compatible release tag. Select compatible released source while preserving feature changes; do not invent a package version or weaken peer validation to make an older source pass.
 
-Host `0.7.4` consumes published `@omniviewdev/base-ui` `~0.7.2` and `@omniviewdev/ai-ui`/`@omniviewdev/editors` `~6.0.2`; the runtime's base-ui peer lower bound is also `0.7.2`. Select UI source refs that satisfy these contracts.
+The frontend cohort consumes `@omniviewdev/base-ui` `~0.8.0` and `@omniviewdev/ai-ui`/`@omniviewdev/editors` `~6.1.0`; the runtime's base-ui peer lower bound is also `0.8.0`. These minor releases move together with React 19.3 and TanStack Table 9.
 
-The published UI cohort comes from `omniviewdev/ui` commit
-`e7915a071bbb890512d9a721f9ce6b51d8eb48d4`. Canonical CI selects that same
-reviewed source through `OMNIVIEW_E2E_UI_REF`; older `0.7.0` UI source cannot
-satisfy the host's updated lower bounds.
+Select the UI source commit from `e2e/source-cohort.json`, not a global UI ref
+or a historical release's source pin. Previous `0.7.x` base-ui source cannot
+satisfy this frontend cohort. Keep each branch's source commits compatible with
+its actual package contracts so old main and upgraded PRs can validate independently.
 
 Runtime UI preflight checks the host, selected plugin frontends, and linked shared
 packages. Other discovered workspace packages, such as standalone comparison or
@@ -43,6 +49,17 @@ legacy UI, MUI, and Emotion dependencies to the supported base-ui contract.
 The generated package root is `$COLLECTION/workspaces/<feature>`, above its host/UI/plugin worktrees. Managed native12 commands keep the actual consumer cwd/argv while enforcing this root through `PNPM_CONFIG_WORKSPACE_DIR`. Source configs/lockfiles remain standalone; compatible policies and locked registry resolutions are reconciled explicitly, and conflicts refuse mutation. Do not hand-edit generated root files or run independent plugin installs inside a managed feature.
 
 The host workspace includes its packages and E2E tooling; host TypeScript projects own `ui/` and `packages/`, not plugin repositories under `plugins/`. Each plugin's own project owns its dependencies, aliases and tests. Managed features add only explicitly selected plugin repositories; initializing an unselected submodule must not change host compilation or dependency resolution.
+
+For standalone frontend checks, build providers, runtime, then the Vite plugin
+before type-aware linting; workspace imports need the runtime's declarations.
+The host declares its own interaction-test dependencies rather than relying on
+the UI repository's managed install. The existing UI checks job runs component
+tests after build, lint, and typechecks, reusing its runner and frozen install.
+
+Workspace Probe is a managed-source fixture. Its bootstrap registry pins remain
+at the last compatible runtime/shim release until the new cohort publishes;
+managed composition resolves its actual UI/runtime imports from selected source.
+Update those pins and their lock together after runtime/shim publication.
 
 ```sh
 # Run from the host checkout containing the workspace implementation.
@@ -352,7 +369,7 @@ kernel-sourced identity capture; permission and inspection failures remain error
 ## Application E2E
 
 Run the canonical suite from a clean, committed standalone host checkout with
-Node 24.14.0, native pnpm 12.14.0 and Playwright 1.64.1. A managed feature
+Node 26.13.0, native pnpm 12.14.0 and Playwright 1.64.1. A managed feature
 worktree is a source input, not a second package-install root.
 
 ```sh
@@ -426,6 +443,18 @@ PRs execute the selected application suite once. The small, always-evaluated
 `e2e-tests` check preserves the required check name and succeeds only when that
 canonical job succeeded, including an explicitly proven prose-only skip. Failed,
 cancelled, missing or skipped jobs cannot make the gate green.
+
+Canonical E2E and whole-app profiling read the checked-out host's
+`e2e/source-cohort.json`: `plugin-sdk`, `ui`, and `kubernetes` must each contain a
+full commit SHA. UI checkout uses the validated cohort SHA. Kubernetes must match
+the host's `plugins/kubernetes` gitlink; canonical E2E also verifies the recursive
+submodule checkout. PR branches and `main` can therefore select different
+compatible UI/Kubernetes sources without changing repository variables.
+The SDK SHA must still equal the independently approved repository variable
+`OMNIVIEW_E2E_REVIEWED_SDK_REVISION`; changing the cohort cannot approve an SDK
+change. Publish and review the source commits before selecting them. Source
+identity registration, mandatory probes, conservative selection, and native
+payload cache rules remain unchanged.
 
 The separate push-main cache primer first performs lookup-only requests for the
 same exact Go and native pnpm keys used by PRs. If both payloads exist, it skips

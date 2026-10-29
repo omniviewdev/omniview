@@ -1,5 +1,8 @@
-import { bench, describe } from 'vitest';
-import { parseAnsi } from './parseAnsi';
+import { test, describe } from 'vitest';
+import * as ansiParser from './parseAnsi';
+
+// Capture exports outside timed work to exclude module-runner getter overhead.
+const { parseAnsi } = ansiParser;
 
 // ---------------------------------------------------------------------------
 // Test data — representative of real Kubernetes / application log lines
@@ -57,73 +60,97 @@ const BATCH_COLORED_100 = Array.from({ length: 100 }, (_, i) =>
 
 describe('parseAnsi', () => {
   describe('single line', () => {
-    bench('plain short (fast path — indexOf bail)', () => {
-      parseAnsi(PLAIN_SHORT);
+    test('plain short (fast path — indexOf bail)', async ({ bench }) => {
+      await bench('plain short (fast path — indexOf bail)', () => {
+        parseAnsi(PLAIN_SHORT);
+      }).run(); 
     });
 
-    bench('plain long (fast path)', () => {
-      parseAnsi(PLAIN_LONG);
+    test('plain long (fast path)', async ({ bench }) => {
+      await bench('plain long (fast path)', () => {
+        parseAnsi(PLAIN_LONG);
+      }).run(); 
     });
 
-    bench('colored typical (4 SGR pairs, Go logger)', () => {
-      parseAnsi(COLORED_TYPICAL);
+    test('colored typical (4 SGR pairs, Go logger)', async ({ bench }) => {
+      await bench('colored typical (4 SGR pairs, Go logger)', () => {
+        parseAnsi(COLORED_TYPICAL);
+      }).run(); 
     });
 
-    bench('colored heavy (256-color, RGB, attrs)', () => {
-      parseAnsi(COLORED_HEAVY);
+    test('colored heavy (256-color, RGB, attrs)', async ({ bench }) => {
+      await bench('colored heavy (256-color, RGB, attrs)', () => {
+        parseAnsi(COLORED_HEAVY);
+      }).run(); 
     });
 
-    bench('python traceback (multi-line, many SGR)', () => {
-      parseAnsi(PYTHON_TRACEBACK);
+    test('python traceback (multi-line, many SGR)', async ({ bench }) => {
+      await bench('python traceback (multi-line, many SGR)', () => {
+        parseAnsi(PYTHON_TRACEBACK);
+      }).run(); 
     });
 
-    bench('pathological (50 rapid color changes)', () => {
-      parseAnsi(PATHOLOGICAL);
+    test('pathological (50 rapid color changes)', async ({ bench }) => {
+      await bench('pathological (50 rapid color changes)', () => {
+        parseAnsi(PATHOLOGICAL);
+      }).run(); 
     });
 
-    bench('OSC hyperlinks + SGR', () => {
-      parseAnsi(OSC_LINKS);
+    test('OSC hyperlinks + SGR', async ({ bench }) => {
+      await bench('OSC hyperlinks + SGR', () => {
+        parseAnsi(OSC_LINKS);
+      }).run(); 
     });
   });
 
   describe('batch ingest (100 lines)', () => {
-    bench('100 mixed lines (plain + colored)', () => {
-      for (const line of BATCH_MIXED_100) {
-        parseAnsi(line);
-      }
+    test('100 mixed lines (plain + colored)', async ({ bench }) => {
+      await bench('100 mixed lines (plain + colored)', () => {
+        for (const line of BATCH_MIXED_100) {
+          parseAnsi(line);
+        }
+      }).run(); 
     });
 
-    bench('100 plain lines (all fast path)', () => {
-      for (const line of BATCH_PLAIN_100) {
-        parseAnsi(line);
-      }
+    test('100 plain lines (all fast path)', async ({ bench }) => {
+      await bench('100 plain lines (all fast path)', () => {
+        for (const line of BATCH_PLAIN_100) {
+          parseAnsi(line);
+        }
+      }).run(); 
     });
 
-    bench('100 colored lines (worst case)', () => {
-      for (const line of BATCH_COLORED_100) {
-        parseAnsi(line);
-      }
+    test('100 colored lines (worst case)', async ({ bench }) => {
+      await bench('100 colored lines (worst case)', () => {
+        for (const line of BATCH_COLORED_100) {
+          parseAnsi(line);
+        }
+      }).run(); 
     });
   });
 
   describe('buffer fill (100k lines — full log buffer)', () => {
     // This simulates filling the entire 100k circular buffer.
     // Target: under 500ms for the full buffer on modern hardware.
-    bench('100k plain lines', () => {
-      for (let i = 0; i < 1000; i++) {
+    test('100k plain lines', async ({ bench }) => {
+      await bench('100k plain lines', () => {
+        for (let i = 0; i < 1000; i++) {
         // Inner loop of 100 to reach 100k total
-        for (const line of BATCH_PLAIN_100) {
-          parseAnsi(line);
+          for (const line of BATCH_PLAIN_100) {
+            parseAnsi(line);
+          }
         }
-      }
-    }, { iterations: 3, warmupIterations: 1 });
+      }).run({ iterations: 3, warmupIterations: 1 }); 
+    });
 
-    bench('100k mixed lines', () => {
-      for (let i = 0; i < 1000; i++) {
-        for (const line of BATCH_MIXED_100) {
-          parseAnsi(line);
+    test('100k mixed lines', async ({ bench }) => {
+      await bench('100k mixed lines', () => {
+        for (let i = 0; i < 1000; i++) {
+          for (const line of BATCH_MIXED_100) {
+            parseAnsi(line);
+          }
         }
-      }
-    }, { iterations: 3, warmupIterations: 1 });
+      }).run({ iterations: 3, warmupIterations: 1 }); 
+    });
   });
 });

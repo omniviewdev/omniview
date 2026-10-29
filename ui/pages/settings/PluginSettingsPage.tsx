@@ -17,22 +17,26 @@ type Props = {
 /**
  * View and modify settings for a given plugin.
  */
-const PluginSettingsPage: React.FC<Props> = ({ id }) => {
+const PluginSettingsPage: React.FC<Props> = ({ id }) => <PluginSettingsForm key={id} id={id} />;
+
+const PluginSettingsForm: React.FC<Props> = ({ id }) => {
   const [draftValues, setDraftValues] = React.useState<Record<string, any>>({});
   const [validation, setValidation] = React.useState<Record<string, { valid: boolean; message: string }>>({});
   const [saving, setSaving] = React.useState(false);
   const revision = React.useRef(0);
   const settingID = (key: string) => key.slice(id.length + 1);
 
-  React.useEffect(() => {
-    setDraftValues({});
-    setValidation({});
-  }, [id]);
+  const [validatedDraft, setValidatedDraft] = React.useState(draftValues);
+  if (validatedDraft !== draftValues) {
+    setValidatedDraft(draftValues);
+    setValidation(Object.fromEntries(Object.entries(draftValues)
+      .filter(([, value]) => value !== undefined)
+      .map(([key]) => [key, { valid: false, message: 'Checking…' }])));
+  }
 
   React.useEffect(() => {
     const current = ++revision.current;
     const entries = Object.entries(draftValues).filter(([, value]) => value !== undefined);
-    setValidation(Object.fromEntries(entries.map(([key]) => [key, { valid: false, message: 'Checking…' }])));
     const timer = window.setTimeout(() => {
       entries.forEach(([key, value]) => {
         SettingsClient.ValidateSetting(id, key.slice(id.length + 1), value).then(result => {

@@ -172,7 +172,7 @@ function retainUnixFeedbackAuthority(context: FeedbackContext): FeedbackAuthorit
         identity = stat;
       }
 
-      if (!identity || stat.dev !== identity.dev || stat.ino !== identity.ino) {
+      if (stat.dev !== identity?.dev || stat.ino !== identity.ino) {
         return true;
       }
 

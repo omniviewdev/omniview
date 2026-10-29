@@ -1,9 +1,8 @@
-import { bench, describe } from 'vitest';
-import {
-  compileSearchPattern,
-  execSafeSearch,
-  execSafeSearchRange,
-} from './regexSafety';
+import { test, describe } from 'vitest';
+import * as search from './regexSafety';
+
+// Capture exports outside timed work to exclude module-runner getter overhead.
+const { compileSearchPattern, execSafeSearch, execSafeSearchRange } = search;
 
 // ---------------------------------------------------------------------------
 // Test data — representative of real Kubernetes / application log lines
@@ -40,24 +39,34 @@ function buildMatch(lineIndex: number, start: number, end: number) {
 // ---------------------------------------------------------------------------
 
 describe('compileSearchPattern', () => {
-  bench('literal string', () => {
-    compileSearchPattern('error', { isRegex: false, caseSensitive: false });
+  test('literal string', async ({ bench }) => {
+    await bench('literal string', () => {
+      compileSearchPattern('error', { isRegex: false, caseSensitive: false });
+    }).run(); 
   });
 
-  bench('literal string (case sensitive)', () => {
-    compileSearchPattern('ERROR', { isRegex: false, caseSensitive: true });
+  test('literal string (case sensitive)', async ({ bench }) => {
+    await bench('literal string (case sensitive)', () => {
+      compileSearchPattern('ERROR', { isRegex: false, caseSensitive: true });
+    }).run(); 
   });
 
-  bench('regex pattern', () => {
-    compileSearchPattern('pod[s]?', { isRegex: true, caseSensitive: false });
+  test('regex pattern', async ({ bench }) => {
+    await bench('regex pattern', () => {
+      compileSearchPattern('pod[s]?', { isRegex: true, caseSensitive: false });
+    }).run(); 
   });
 
-  bench('complex regex (IP address)', () => {
-    compileSearchPattern('\\b\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\b', { isRegex: true, caseSensitive: false });
+  test('complex regex (IP address)', async ({ bench }) => {
+    await bench('complex regex (IP address)', () => {
+      compileSearchPattern('\\b\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\b', { isRegex: true, caseSensitive: false });
+    }).run(); 
   });
 
-  bench('invalid regex (returns null)', () => {
-    compileSearchPattern('[unclosed', { isRegex: true, caseSensitive: false });
+  test('invalid regex (returns null)', async ({ bench }) => {
+    await bench('invalid regex (returns null)', () => {
+      compileSearchPattern('[unclosed', { isRegex: true, caseSensitive: false });
+    }).run(); 
   });
 });
 
@@ -67,59 +76,83 @@ describe('compileSearchPattern', () => {
 
 describe('execSafeSearch — full scan', () => {
   describe('100 lines', () => {
-    bench('literal (case insensitive)', () => {
-      execSafeSearch(LITERAL_PATTERN, LINES_100.length, (i) => LINES_100[i], buildMatch);
+    test('literal (case insensitive)', async ({ bench }) => {
+      await bench('literal (case insensitive)', () => {
+        execSafeSearch(LITERAL_PATTERN, LINES_100.length, (i) => LINES_100[i], buildMatch);
+      }).run(); 
     });
 
-    bench('literal (case sensitive)', () => {
-      execSafeSearch(LITERAL_CASE_PATTERN, LINES_100.length, (i) => LINES_100[i], buildMatch);
+    test('literal (case sensitive)', async ({ bench }) => {
+      await bench('literal (case sensitive)', () => {
+        execSafeSearch(LITERAL_CASE_PATTERN, LINES_100.length, (i) => LINES_100[i], buildMatch);
+      }).run(); 
     });
 
-    bench('regex (pod[s]?)', () => {
-      execSafeSearch(REGEX_PATTERN, LINES_100.length, (i) => LINES_100[i], buildMatch);
+    test('regex (pod[s]?)', async ({ bench }) => {
+      await bench('regex (pod[s]?)', () => {
+        execSafeSearch(REGEX_PATTERN, LINES_100.length, (i) => LINES_100[i], buildMatch);
+      }).run(); 
     });
   });
 
   describe('1k lines', () => {
-    bench('literal (case insensitive)', () => {
-      execSafeSearch(LITERAL_PATTERN, LINES_1K.length, (i) => LINES_1K[i], buildMatch);
+    test('literal (case insensitive)', async ({ bench }) => {
+      await bench('literal (case insensitive)', () => {
+        execSafeSearch(LITERAL_PATTERN, LINES_1K.length, (i) => LINES_1K[i], buildMatch);
+      }).run(); 
     });
 
-    bench('regex (pod[s]?)', () => {
-      execSafeSearch(REGEX_PATTERN, LINES_1K.length, (i) => LINES_1K[i], buildMatch);
+    test('regex (pod[s]?)', async ({ bench }) => {
+      await bench('regex (pod[s]?)', () => {
+        execSafeSearch(REGEX_PATTERN, LINES_1K.length, (i) => LINES_1K[i], buildMatch);
+      }).run(); 
     });
 
-    bench('complex regex (IP address)', () => {
-      execSafeSearch(COMPLEX_REGEX, LINES_1K.length, (i) => LINES_1K[i], buildMatch);
+    test('complex regex (IP address)', async ({ bench }) => {
+      await bench('complex regex (IP address)', () => {
+        execSafeSearch(COMPLEX_REGEX, LINES_1K.length, (i) => LINES_1K[i], buildMatch);
+      }).run(); 
     });
   });
 
   describe('10k lines', () => {
-    bench('literal (case insensitive)', () => {
-      execSafeSearch(LITERAL_PATTERN, LINES_10K.length, (i) => LINES_10K[i], buildMatch);
+    test('literal (case insensitive)', async ({ bench }) => {
+      await bench('literal (case insensitive)', () => {
+        execSafeSearch(LITERAL_PATTERN, LINES_10K.length, (i) => LINES_10K[i], buildMatch);
+      }).run(); 
     });
 
-    bench('regex (pod[s]?)', () => {
-      execSafeSearch(REGEX_PATTERN, LINES_10K.length, (i) => LINES_10K[i], buildMatch);
+    test('regex (pod[s]?)', async ({ bench }) => {
+      await bench('regex (pod[s]?)', () => {
+        execSafeSearch(REGEX_PATTERN, LINES_10K.length, (i) => LINES_10K[i], buildMatch);
+      }).run(); 
     });
 
-    bench('rare term (1 in 3 lines)', () => {
-      execSafeSearch(RARE_PATTERN, LINES_10K.length, (i) => LINES_10K[i], buildMatch);
+    test('rare term (1 in 3 lines)', async ({ bench }) => {
+      await bench('rare term (1 in 3 lines)', () => {
+        execSafeSearch(RARE_PATTERN, LINES_10K.length, (i) => LINES_10K[i], buildMatch);
+      }).run(); 
     });
   });
 
   describe('100k lines — full log buffer', () => {
-    bench('literal (case insensitive)', () => {
-      execSafeSearch(LITERAL_PATTERN, LINES_100K.length, (i) => LINES_100K[i], buildMatch);
-    }, { iterations: 3, warmupIterations: 1 });
+    test('literal (case insensitive)', async ({ bench }) => {
+      await bench('literal (case insensitive)', () => {
+        execSafeSearch(LITERAL_PATTERN, LINES_100K.length, (i) => LINES_100K[i], buildMatch);
+      }).run({ iterations: 3, warmupIterations: 1 }); 
+    });
 
-    bench('rare term', () => {
-      execSafeSearch(RARE_PATTERN, LINES_100K.length, (i) => LINES_100K[i], buildMatch);
-    }, { iterations: 3, warmupIterations: 1 });
+    test('rare term', async ({ bench }) => {
+      await bench('rare term', () => {
+        execSafeSearch(RARE_PATTERN, LINES_100K.length, (i) => LINES_100K[i], buildMatch);
+      }).run({ iterations: 3, warmupIterations: 1 }); 
+    });
 
-    bench('complex regex (IP address)', () => {
-      execSafeSearch(COMPLEX_REGEX, LINES_100K.length, (i) => LINES_100K[i], buildMatch);
-    }, { iterations: 3, warmupIterations: 1 });
+    test('complex regex (IP address)', async ({ bench }) => {
+      await bench('complex regex (IP address)', () => {
+        execSafeSearch(COMPLEX_REGEX, LINES_100K.length, (i) => LINES_100K[i], buildMatch);
+      }).run({ iterations: 3, warmupIterations: 1 }); 
+    });
   });
 });
 
@@ -132,46 +165,64 @@ describe('execSafeSearchRange — incremental append', () => {
   // search only the newly appended tail.
 
   describe('append 10 lines to 10k buffer', () => {
-    bench('literal', () => {
-      execSafeSearchRange(LITERAL_PATTERN, 10_000 - 10, 10_000, (i) => LINES_10K[i], buildMatch);
+    test('literal', async ({ bench }) => {
+      await bench('literal', () => {
+        execSafeSearchRange(LITERAL_PATTERN, 10_000 - 10, 10_000, (i) => LINES_10K[i], buildMatch);
+      }).run(); 
     });
 
-    bench('regex (pod[s]?)', () => {
-      execSafeSearchRange(REGEX_PATTERN, 10_000 - 10, 10_000, (i) => LINES_10K[i], buildMatch);
+    test('regex (pod[s]?)', async ({ bench }) => {
+      await bench('regex (pod[s]?)', () => {
+        execSafeSearchRange(REGEX_PATTERN, 10_000 - 10, 10_000, (i) => LINES_10K[i], buildMatch);
+      }).run(); 
     });
   });
 
   describe('append 100 lines to 100k buffer', () => {
-    bench('literal', () => {
-      execSafeSearchRange(LITERAL_PATTERN, 100_000 - 100, 100_000, (i) => LINES_100K[i], buildMatch);
+    test('literal', async ({ bench }) => {
+      await bench('literal', () => {
+        execSafeSearchRange(LITERAL_PATTERN, 100_000 - 100, 100_000, (i) => LINES_100K[i], buildMatch);
+      }).run(); 
     });
 
-    bench('regex (pod[s]?)', () => {
-      execSafeSearchRange(REGEX_PATTERN, 100_000 - 100, 100_000, (i) => LINES_100K[i], buildMatch);
+    test('regex (pod[s]?)', async ({ bench }) => {
+      await bench('regex (pod[s]?)', () => {
+        execSafeSearchRange(REGEX_PATTERN, 100_000 - 100, 100_000, (i) => LINES_100K[i], buildMatch);
+      }).run(); 
     });
 
-    bench('complex regex (IP address)', () => {
-      execSafeSearchRange(COMPLEX_REGEX, 100_000 - 100, 100_000, (i) => LINES_100K[i], buildMatch);
+    test('complex regex (IP address)', async ({ bench }) => {
+      await bench('complex regex (IP address)', () => {
+        execSafeSearchRange(COMPLEX_REGEX, 100_000 - 100, 100_000, (i) => LINES_100K[i], buildMatch);
+      }).run(); 
     });
   });
 
   describe('append 1k lines to 100k buffer', () => {
-    bench('literal', () => {
-      execSafeSearchRange(LITERAL_PATTERN, 100_000 - 1_000, 100_000, (i) => LINES_100K[i], buildMatch);
+    test('literal', async ({ bench }) => {
+      await bench('literal', () => {
+        execSafeSearchRange(LITERAL_PATTERN, 100_000 - 1_000, 100_000, (i) => LINES_100K[i], buildMatch);
+      }).run(); 
     });
 
-    bench('complex regex (IP address)', () => {
-      execSafeSearchRange(COMPLEX_REGEX, 100_000 - 1_000, 100_000, (i) => LINES_100K[i], buildMatch);
+    test('complex regex (IP address)', async ({ bench }) => {
+      await bench('complex regex (IP address)', () => {
+        execSafeSearchRange(COMPLEX_REGEX, 100_000 - 1_000, 100_000, (i) => LINES_100K[i], buildMatch);
+      }).run(); 
     });
   });
 
   describe('incremental with custom matchBudget', () => {
-    bench('budget=100 on 1k lines', () => {
-      execSafeSearchRange(LITERAL_PATTERN, 0, 1_000, (i) => LINES_1K[i], buildMatch, 100);
+    test('budget=100 on 1k lines', async ({ bench }) => {
+      await bench('budget=100 on 1k lines', () => {
+        execSafeSearchRange(LITERAL_PATTERN, 0, 1_000, (i) => LINES_1K[i], buildMatch, 100);
+      }).run(); 
     });
 
-    bench('budget=10 on 1k lines (early bail)', () => {
-      execSafeSearchRange(LITERAL_PATTERN, 0, 1_000, (i) => LINES_1K[i], buildMatch, 10);
+    test('budget=10 on 1k lines (early bail)', async ({ bench }) => {
+      await bench('budget=10 on 1k lines (early bail)', () => {
+        execSafeSearchRange(LITERAL_PATTERN, 0, 1_000, (i) => LINES_1K[i], buildMatch, 10);
+      }).run(); 
     });
   });
 });
@@ -181,11 +232,15 @@ describe('execSafeSearchRange — incremental append', () => {
 // ---------------------------------------------------------------------------
 
 describe('full scan vs incremental — 100k buffer, 100 new lines', () => {
-  bench('FULL: re-scan all 100k lines', () => {
-    execSafeSearch(LITERAL_PATTERN, LINES_100K.length, (i) => LINES_100K[i], buildMatch);
-  }, { iterations: 3, warmupIterations: 1 });
+  test('FULL: re-scan all 100k lines', async ({ bench }) => {
+    await bench('FULL: re-scan all 100k lines', () => {
+      execSafeSearch(LITERAL_PATTERN, LINES_100K.length, (i) => LINES_100K[i], buildMatch);
+    }).run({ iterations: 3, warmupIterations: 1 }); 
+  });
 
-  bench('INCREMENTAL: scan only last 100 lines', () => {
-    execSafeSearchRange(LITERAL_PATTERN, 100_000 - 100, 100_000, (i) => LINES_100K[i], buildMatch);
-  }, { iterations: 3, warmupIterations: 1 });
+  test('INCREMENTAL: scan only last 100 lines', async ({ bench }) => {
+    await bench('INCREMENTAL: scan only last 100 lines', () => {
+      execSafeSearchRange(LITERAL_PATTERN, 100_000 - 100, 100_000, (i) => LINES_100K[i], buildMatch);
+    }).run({ iterations: 3, warmupIterations: 1 }); 
+  });
 });

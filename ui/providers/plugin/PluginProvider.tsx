@@ -1,5 +1,5 @@
 import React, { type ReactNode } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 
 import { PluginContext } from '@/contexts/PluginContext';
 import { usePlugin } from '@/hooks/plugin/usePluginManager';

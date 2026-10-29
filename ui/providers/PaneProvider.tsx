@@ -1,8 +1,9 @@
 import { scoped } from '@/routes';
 import React, { useMemo } from 'react';
 import {
-  createHashRouter, createMemoryRouter, Outlet, RouterProvider, UNSAFE_LocationContext, useLocation,
-} from 'react-router-dom';
+  createHashRouter, createMemoryRouter, Outlet, UNSAFE_LocationContext, useLocation,
+} from 'react-router';
+import { RouterProvider } from 'react-router/dom';
 import PaneProviderContext, { PaneContext, type PaneProviderContextType, type Pane } from '@/contexts/PaneContext';
 import usePanes from '@/hooks/usePanes';
 import BottomDrawerProvider from './BottomDrawer/provider';
@@ -87,7 +88,7 @@ export default function PaneRenderer() {
                   {/* @ts-expect-error - Dirty hack to kill the route context propogation https://github.com/remix-run/react-router/issues/7375#issuecomment-975431736 */}
                   <UNSAFE_LocationContext.Provider value={null}>
                     <BottomDrawerProvider>
-                      <RouterProvider router={pane.router} fallbackElement={<div>Loading...</div>} />
+                      <RouterProvider router={pane.router} />
                     </BottomDrawerProvider>
                   </UNSAFE_LocationContext.Provider>
                 </PaneContext.Provider>

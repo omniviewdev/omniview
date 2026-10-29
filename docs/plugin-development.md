@@ -23,7 +23,7 @@ Container shell availability is separate from action dispatch.
 | Tool | Version | Purpose |
 |------|---------|---------|
 | Go | 1.24+ | Plugin backend |
-| Node.js | 20+ | UI development |
+| Node.js | 26.13.0 | UI development |
 | pnpm | 9+ | Package management |
 | Omniview | Latest | The IDE |
 

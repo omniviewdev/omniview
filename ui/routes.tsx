@@ -1,5 +1,5 @@
 /* eslint @typescript-eslint/naming-convention: 0 */  // firing on the route objects
-import { Outlet, type RouteObject } from 'react-router-dom';
+import { Outlet, type RouteObject } from 'react-router';
 
 import CoreLayout from './layouts/core/main/CoreLayout';
 
@@ -40,6 +40,7 @@ export const scoped: RouteObject[] = [
     path: '/',
     Component: CoreLayout,
     ErrorBoundary: RouterErrorBoundary,
+    hydrateFallbackElement: <div>Loading...</div>,
     children: [
       {
         path: '/',

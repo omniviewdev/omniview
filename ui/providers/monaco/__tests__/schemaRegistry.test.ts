@@ -5,15 +5,11 @@ const mockUpdate = vi.fn();
 const mockSetDiagnosticsOptions = vi.fn();
 
 vi.mock('../bootstrap', () => ({
-  monaco: {
-    languages: {
-      json: {
-        jsonDefaults: {
-          setDiagnosticsOptions: mockSetDiagnosticsOptions,
-        },
-      },
+  monaco: { languages: { json: {
+    jsonDefaults: {
+      setDiagnosticsOptions: mockSetDiagnosticsOptions,
     },
-  },
+  } } },
   monacoYaml: {
     update: mockUpdate,
   },

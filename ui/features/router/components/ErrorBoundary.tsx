@@ -1,5 +1,5 @@
 import React from 'react';
-import { useRouteError } from 'react-router-dom';
+import { useRouteError } from 'react-router';
 import { FullPageErrorFallback } from '@/components/errors/ErrorFallback';
 import log from '@/features/logger';
 

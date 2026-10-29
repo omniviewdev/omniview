@@ -34,6 +34,20 @@ class IconBoundary extends Component<{
   render() { return this.state.failed ? this.props.fallback : this.props.children; }
 }
 
+function resolveIcon(set: ResourceIconSetV1, resourceKey: string) {
+  try {
+    if (set?.schemaVersion !== 1 || typeof set.resolve !== 'function') return undefined;
+    return set.resolve(resourceKey);
+  } catch {
+    // A plugin resolver must not prevent other sets or the generic fallback from rendering.
+    return undefined;
+  }
+}
+
+function IconContent({ icon: Icon, ...props }: ResourceIconProps & { icon: ComponentType<ResourceIconProps> }) {
+  return <Icon {...props} aria-hidden={props['aria-hidden'] ?? true} />;
+}
+
 /** Uses only sets registered by the requested plugin; registry mutations invalidate rendering. */
 export function ResourceIcon({ pluginId, resourceKey, fallback, ...props }: ResourceIconComponentProps) {
   const store = useExtensionPoint<ResourceIconSetV1>(RESOURCE_ICON_EXTENSION_POINT_ID);
@@ -42,19 +56,13 @@ export function ResourceIcon({ pluginId, resourceKey, fallback, ...props }: Reso
     : fallback;
   for (const contribution of store?.listAll() ?? []) {
     if (contribution.plugin !== pluginId) continue;
-    try {
-      const set = contribution.value;
-      if (set?.schemaVersion !== 1 || typeof set.resolve !== 'function') continue;
-      const Icon = set.resolve(resourceKey);
-      if (!Icon) continue;
-      return <IconBoundary key={JSON.stringify([pluginId, resourceKey, store?.version, contribution.id])} resetToken={contribution} fallback={defaultFallback}>
-        <React.Suspense fallback={defaultFallback}>
-          <Icon {...props} aria-hidden={props['aria-hidden'] ?? true} />
-        </React.Suspense>
-      </IconBoundary>;
-    } catch {
-      // A plugin resolver must not prevent other sets or the generic fallback from rendering.
-    }
+    const icon = resolveIcon(contribution.value, resourceKey);
+    if (!icon) continue;
+    return <IconBoundary key={JSON.stringify([pluginId, resourceKey, store?.version, contribution.id])} resetToken={contribution} fallback={defaultFallback}>
+      <React.Suspense fallback={defaultFallback}>
+        <IconContent icon={icon} {...props} />
+      </React.Suspense>
+    </IconBoundary>;
   }
   return <>{defaultFallback}</>;
 }

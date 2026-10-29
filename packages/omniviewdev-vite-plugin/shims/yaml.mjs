@@ -1,43 +1,64 @@
-// Auto-generated shim for 'yaml'
+// Auto-generated shim for "yaml"
 // DO NOT EDIT -- regenerate with: pnpm --filter @omniviewdev/vite-plugin generate-shims
-
-const mod = window.__OMNIVIEW_SHARED__['yaml'];
-
-if (!mod) {
-  throw new Error(
-    '[omniview] Shared dependency "yaml" is not available on window.__OMNIVIEW_SHARED__. ' +
-    'Ensure the Omniview host app is running and shared deps are exported before loading this plugin.'
-  );
-}
-
-export const Alias = mod.Alias;
-export const CST = mod.CST;
-export const Composer = mod.Composer;
-export const Document = mod.Document;
-export const Lexer = mod.Lexer;
-export const LineCounter = mod.LineCounter;
-export const Pair = mod.Pair;
-export const Parser = mod.Parser;
-export const Scalar = mod.Scalar;
-export const Schema = mod.Schema;
-export const YAMLError = mod.YAMLError;
-export const YAMLMap = mod.YAMLMap;
-export const YAMLParseError = mod.YAMLParseError;
-export const YAMLSeq = mod.YAMLSeq;
-export const YAMLWarning = mod.YAMLWarning;
-export const isAlias = mod.isAlias;
-export const isCollection = mod.isCollection;
-export const isDocument = mod.isDocument;
-export const isMap = mod.isMap;
-export const isNode = mod.isNode;
-export const isPair = mod.isPair;
-export const isScalar = mod.isScalar;
-export const isSeq = mod.isSeq;
-export const parse = mod.parse;
-export const parseAllDocuments = mod.parseAllDocuments;
-export const parseDocument = mod.parseDocument;
-export const stringify = mod.stringify;
-export const visit = mod.visit;
-export const visitAsync = mod.visitAsync;
-
-export default mod.default !== undefined ? mod.default : mod;
+const mod = window.__OMNIVIEW_SHARED__["yaml"];
+if (!mod) throw new Error('[omniview] Shared dependency ' + "yaml" + ' is not available on window.__OMNIVIEW_SHARED__.');
+const binding0 = mod["Alias"];
+export { binding0 as "Alias" };
+const binding1 = mod["CST"];
+export { binding1 as "CST" };
+const binding2 = mod["Composer"];
+export { binding2 as "Composer" };
+const binding3 = mod["Document"];
+export { binding3 as "Document" };
+const binding4 = mod["Lexer"];
+export { binding4 as "Lexer" };
+const binding5 = mod["LineCounter"];
+export { binding5 as "LineCounter" };
+const binding6 = mod["Pair"];
+export { binding6 as "Pair" };
+const binding7 = mod["Parser"];
+export { binding7 as "Parser" };
+const binding8 = mod["Scalar"];
+export { binding8 as "Scalar" };
+const binding9 = mod["Schema"];
+export { binding9 as "Schema" };
+const binding10 = mod["YAMLError"];
+export { binding10 as "YAMLError" };
+const binding11 = mod["YAMLMap"];
+export { binding11 as "YAMLMap" };
+const binding12 = mod["YAMLParseError"];
+export { binding12 as "YAMLParseError" };
+const binding13 = mod["YAMLSeq"];
+export { binding13 as "YAMLSeq" };
+const binding14 = mod["YAMLWarning"];
+export { binding14 as "YAMLWarning" };
+const binding15 = mod["default"];
+export { binding15 as "default" };
+const binding16 = mod["isAlias"];
+export { binding16 as "isAlias" };
+const binding17 = mod["isCollection"];
+export { binding17 as "isCollection" };
+const binding18 = mod["isDocument"];
+export { binding18 as "isDocument" };
+const binding19 = mod["isMap"];
+export { binding19 as "isMap" };
+const binding20 = mod["isNode"];
+export { binding20 as "isNode" };
+const binding21 = mod["isPair"];
+export { binding21 as "isPair" };
+const binding22 = mod["isScalar"];
+export { binding22 as "isScalar" };
+const binding23 = mod["isSeq"];
+export { binding23 as "isSeq" };
+const binding24 = mod["parse"];
+export { binding24 as "parse" };
+const binding25 = mod["parseAllDocuments"];
+export { binding25 as "parseAllDocuments" };
+const binding26 = mod["parseDocument"];
+export { binding26 as "parseDocument" };
+const binding27 = mod["stringify"];
+export { binding27 as "stringify" };
+const binding28 = mod["visit"];
+export { binding28 as "visit" };
+const binding29 = mod["visitAsync"];
+export { binding29 as "visitAsync" };

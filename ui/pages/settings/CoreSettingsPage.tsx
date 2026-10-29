@@ -26,21 +26,25 @@ const APPEARANCE_SETTING_RENDERERS = {
 /**
  * View and modify settings for a given namespace and section.
  */
-const CoreSettingsPage: React.FC<Props> = ({ id: categoryID }) => {
+const CoreSettingsPage: React.FC<Props> = ({ id }) => <CoreSettingsForm key={id} id={id} />;
+
+const CoreSettingsForm: React.FC<Props> = ({ id: categoryID }) => {
   const [draftValues, setDraftValues] = React.useState<Record<string, any>>({});
   const [validation, setValidation] = React.useState<Record<string, { valid: boolean; message: string }>>({});
   const [saving, setSaving] = React.useState(false);
   const revision = React.useRef(0);
 
-  React.useEffect(() => {
-    setDraftValues({});
-    setValidation({});
-  }, [categoryID]);
+  const [validatedDraft, setValidatedDraft] = React.useState(draftValues);
+  if (validatedDraft !== draftValues) {
+    setValidatedDraft(draftValues);
+    setValidation(Object.fromEntries(Object.entries(draftValues)
+      .filter(([, value]) => value !== undefined)
+      .map(([id]) => [id, { valid: false, message: 'Checking…' }])));
+  }
 
   React.useEffect(() => {
     const current = ++revision.current;
     const entries = Object.entries(draftValues).filter(([, value]) => value !== undefined);
-    setValidation(Object.fromEntries(entries.map(([id]) => [id, { valid: false, message: 'Checking…' }])));
     const timer = window.setTimeout(() => {
       entries.forEach(([id, value]) => {
         SettingsProvider.ValidateSetting(id, value).then(result => {

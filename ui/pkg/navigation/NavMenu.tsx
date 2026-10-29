@@ -116,9 +116,10 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
     }
   };
 
+  const isOpen = openState[id];
   const MemoizedIcon = React.useMemo(() => (
-    <LuChevronDown size={16} className={styles.Chevron} data-open={openState[id] ? 'true' : undefined} />
-  ), [openState[id]]);
+    <LuChevronDown size={16} className={styles.Chevron} data-open={isOpen ? 'true' : undefined} />
+  ), [isOpen]);
 
   const hasChildren = Boolean(item.children?.length);
 

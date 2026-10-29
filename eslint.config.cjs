@@ -73,7 +73,6 @@ const sharedConfig = {
   languageOptions: {
     parser: require('@typescript-eslint/parser'),
     parserOptions: {
-      warnOnUnsupportedTypeScriptVersion: false,
       sourceType: 'module',
       ecmaFeatures: { jsx: true },
     },
@@ -81,15 +80,15 @@ const sharedConfig = {
   plugins: {
     '@typescript-eslint': require('@typescript-eslint/eslint-plugin'),
     '@stylistic': require('@stylistic/eslint-plugin'),
-    import: require('eslint-plugin-import'),
+    'import-x': require('eslint-plugin-import-x'),
   },
   settings: {
-    'import/resolver': {
+    'import-x/resolver': {
       node: {
         extensions: ['.js', '.jsx', '.ts', '.tsx'],
       },
     },
-    'import/parsers': {
+    'import-x/parsers': {
       [require.resolve('@typescript-eslint/parser')]: ['.ts', '.tsx'],
     },
   },
@@ -700,18 +699,35 @@ const sharedConfig = {
     // 'unicorn/no-null': 'off',
 
     // The rule is buggy with TS and it's not needed as TS already enforces valid imports and references at compile-time.
-    'import/namespace': 'off',
+    'import-x/namespace': 'off',
 
     // TypeScript already does a better job at this.
-    'import/named': 'off',
+    'import-x/named': 'off',
 
-    // `import/no-duplicates` works better with TypeScript.
+    // `import-x/no-duplicates` works better with TypeScript.
     'no-duplicate-imports': 'off',
   },
 };
 
 module.exports = [
-  { ignores: ['**/node_modules/**', '**/dist/**', '**/shims/**', 'ui/providers/monaco/yaml.worker.bundle.js'] },
+  { ignores: ['**/node_modules/**', '**/dist/**', '**/shims/**', 'plugins/**', 'packages/omniviewdev-providers/internal/**', 'packages/omniviewdev-runtime/src/bindings/**', 'ui/providers/monaco/yaml.worker.bundle.js'] },
+  {
+    // Linked plugins lint their compiler-owned source in their own repositories.
+    files: [
+      'ui/**/*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}',
+      'bench/**/*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}',
+      'packages/*/src/**/*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}',
+    ],
+    ignores: ['**/*.test.*', '**/*.spec.*', '**/*.stories.*', '**/test-setup.*', '**/__tests__/**'],
+    languageOptions: {
+      parser: require('@typescript-eslint/parser'),
+      parserOptions: { ecmaFeatures: { jsx: true } },
+    },
+    plugins: { 'react-hooks': require('eslint-plugin-react-hooks') },
+    rules: {
+      ...require('eslint-plugin-react-hooks').configs.flat['recommended-latest'].rules,
+    },
+  },
   {
     ...sharedConfig,
     files: ['ui/**/*.{ts,tsx}'],

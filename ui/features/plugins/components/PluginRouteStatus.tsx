@@ -2,7 +2,7 @@ import { Button, Heading, Spinner, Text } from '@omniviewdev/base-ui';
 import { DevProcessStatus } from '@omniviewdev/runtime/models';
 import { DevServerManager } from '@omniviewdev/runtime/api';
 import { useMutation } from '@tanstack/react-query';
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 import { useInstalledPlugins } from '@/hooks/plugin/useInstalledPlugins';
 import { devToolsChannel } from '@/features/devtools/events';
 import { usePluginService } from '../react/usePluginService';

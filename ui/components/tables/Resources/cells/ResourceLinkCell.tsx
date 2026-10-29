@@ -26,7 +26,7 @@ const ResourceLinkCell: React.FC<Props> = ({
   metadata,
   idAccessor,
   namespaceAccessor,
-  resourceKey,
+  resourceKey: suppliedResourceKey,
   keyAccessor,
   keyMap,
   namespaced,
@@ -35,9 +35,7 @@ const ResourceLinkCell: React.FC<Props> = ({
   const { showResourceSidebar } = useRightDrawer();
   const { showSnackbar } = useSnackbar();
 
-  if (resourceKey === '') {
-    resourceKey = get(value, keyAccessor, '');
-  }
+  const resourceKey = suppliedResourceKey === '' ? get(value, keyAccessor, '') : suppliedResourceKey;
 
   let namespace = '';
   if (namespaced) {

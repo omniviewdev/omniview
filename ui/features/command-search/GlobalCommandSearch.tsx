@@ -129,9 +129,12 @@ function SearchInput({ controller, snapshot, input, onClose, pluginIcons }: Pale
       document.getElementById(`${config.listId}-item-${snapshot.selectedKey}`)?.scrollIntoView({ block: 'nearest' });
     }
   }, [snapshot.selectedKey, config.listId]);
-  useEffect(() => {
+  const [scopeSelectionContext, setScopeSelectionContext] = useState({ query: snapshot.query, scopeStackKey, isOpen: snapshot.isOpen });
+  if (scopeSelectionContext.query !== snapshot.query || scopeSelectionContext.scopeStackKey !== scopeStackKey
+    || scopeSelectionContext.isOpen !== snapshot.isOpen) {
+    setScopeSelectionContext({ query: snapshot.query, scopeStackKey, isOpen: snapshot.isOpen });
     setSelectedScope(undefined);
-  }, [snapshot.query, scopeStackKey, snapshot.isOpen]);
+  }
 
   function removeScope(index: number) {
     setSelectedScope(undefined);
@@ -388,15 +391,15 @@ export function GlobalCommandSearch({ controller, snapshot, input, onClose, cata
     [snapshot.rows, snapshot.executionPending, snapshot.searchPending],
   );
   const loading = snapshot.searchPending || snapshot.sources.some((source) => source.state === 'queued' || source.state === 'pending');
-  const previousExploreHint = useRef(false);
+  const [previousExploreHint, setPreviousExploreHint] = useState(false);
   const selectedCanExplore = snapshot.rows.some((row) => row.key === snapshot.selectedKey
     && !isDisabled(row, snapshot.executionPending)
     && supportsScope(row.value.scope, snapshot.scopes.at(-1)));
-  if (!snapshot.searchPending) {
-    previousExploreHint.current = selectedCanExplore;
+  if (!snapshot.searchPending && previousExploreHint !== selectedCanExplore) {
+    setPreviousExploreHint(selectedCanExplore);
   }
 
-  const canExplore = snapshot.searchPending ? previousExploreHint.current : selectedCanExplore;
+  const canExplore = snapshot.searchPending ? previousExploreHint : selectedCanExplore;
   const statusSources = snapshot.sources.filter((source) => !['queued', 'pending', 'complete'].includes(source.state));
 
   function containFocus(event: KeyboardEvent<HTMLDivElement>) {
@@ -521,7 +524,7 @@ export function GlobalCommandSearch({ controller, snapshot, input, onClose, cata
                     <CommandList.ItemLabel>{row.label}</CommandList.ItemLabel>
                     {breadcrumb && <CommandList.ItemMeta>{breadcrumb}</CommandList.ItemMeta>}
                     {!row.value.description && !breadcrumb && <CommandList.ItemMeta>
-                      {resultScope?.kind === 'resource' ? resultScope.namespace || undefined
+                      {resultScope?.kind === 'resource' ? (resultScope.namespace ? resultScope.namespace : undefined)
                         : resultScope?.kind === 'resource-type' ? resultScope.resourceKey.replaceAll('::', '/')
                           : resultScope?.kind === 'connection' ? resultScope.pluginId
                             : kindLabels[row.value.kind]}

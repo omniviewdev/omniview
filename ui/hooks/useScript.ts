@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 
 export type UseScriptStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -22,22 +22,19 @@ function getScriptNode(src: string) {
   };
 }
 
+const getServerSnapshot = (): UseScriptStatus => 'loading';
+
 function useScript(src: string): UseScriptStatus {
-  const [status, setStatus] = useState<UseScriptStatus>(() => {
-    if (typeof window === 'undefined') {
-      // SSR Handling - always return 'loading'
-      return 'loading';
-    }
+  const getSnapshot = useCallback((): UseScriptStatus => {
+    return cachedScriptStatuses[src] ?? getScriptNode(src).status ?? 'loading';
+  }, [src]);
 
-    return cachedScriptStatuses[src] ?? 'loading';
-  });
-
-  useEffect(() => {
+  const subscribe = useCallback((notify: () => void) => {
     const cachedScriptStatus = cachedScriptStatuses[src];
     if (cachedScriptStatus === 'ready' || cachedScriptStatus === 'error') {
-      // If the script is already cached, set its status immediately
-      setStatus(cachedScriptStatus);
-      return;
+      return () => {
+        // Settled scripts do not install listeners.
+      };
     }
 
     // Fetch existing script element by src
@@ -64,9 +61,6 @@ function useScript(src: string): UseScriptStatus {
 
       scriptNode.addEventListener('load', setAttributeFromEvent);
       scriptNode.addEventListener('error', setAttributeFromEvent);
-    } else {
-      // Grab existing script status from attribute and set to state.
-      setStatus(script.status ?? cachedScriptStatus ?? 'loading');
     }
 
     // Script event handler to update status in state
@@ -74,8 +68,8 @@ function useScript(src: string): UseScriptStatus {
     // event handlers to update the state for *this* hook instance.
     const setStateFromEvent = (event: Event) => {
       const newStatus = event.type === 'load' ? 'ready' : 'error';
-      setStatus(newStatus);
       cachedScriptStatuses[src] = newStatus;
+      notify();
     };
 
     // Add event listeners
@@ -100,7 +94,7 @@ function useScript(src: string): UseScriptStatus {
     };
   }, [src]);
 
-  return status;
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
 
 export default useScript;

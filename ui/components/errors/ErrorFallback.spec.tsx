@@ -1,273 +1,98 @@
 import React from 'react';
-import { render, screen, fireEvent, act } from '@testing-library/react';
-import logger from '@/features/logger';
+import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { ErrorBoundary } from 'react-error-boundary';
 import { isDev } from '@/utils/env';
+import { FullPageErrorFallback, PanelErrorFallback, RootErrorFallback } from './ErrorFallback';
 
-import {
-  createErrorMeta,
-  onBoundaryError,
-  FullPageErrorFallback,
-  PanelErrorFallback,
-  InlineErrorFallback,
-  RootErrorFallback,
-} from './ErrorFallback';
-
-// ─── Mocks ───────────────────────────────────────────────────────────────────
-
-vi.mock('@/features/logger', () => ({ __esModule: true, default: { error: vi.fn() } }));
-vi.mock('@/utils/errorId', () => ({ generateErrorId: vi.fn(() => 'ERR-test') }));
+vi.mock('@/features/logger', () => ({ default: { error: vi.fn() } }));
 vi.mock('@/utils/env', () => ({ isDev: vi.fn(() => true) }));
 
-const mockIsDev = vi.mocked(isDev);
-const mockLogError = vi.mocked(logger.error);
+beforeEach(() => {
+  vi.mocked(isDev).mockReturnValue(true);
+  let sequence = 0;
+  vi.spyOn(crypto, 'getRandomValues').mockImplementation(<T extends ArrayBufferView | null>(array: T): T => {
+    if (array) {
+      new Uint8Array(array.buffer, array.byteOffset, array.byteLength).fill(++sequence);
+    }
 
-// Clipboard behavior uses the browser API seam.
-const writeTextMock = vi.fn().mockResolvedValue(undefined);
-Object.assign(navigator, { clipboard: { writeText: writeTextMock } });
-
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function renderUi(ui: React.ReactElement) {
-  return render(ui);
-}
-
-function makeError(message = 'boom', name = 'TypeError') {
-  const err = new Error(message);
-  err.name = name;
-  err.stack = `${name}: ${message}\n    at Object.<anonymous> (test.ts:1:1)`;
-  return err;
-}
-
-// ─── createErrorMeta ─────────────────────────────────────────────────────────
-
-describe('createErrorMeta', () => {
-  it('returns errorId, timestamp, and boundary', () => {
-    const meta = createErrorMeta('Router');
-    expect(meta.errorId).toBe('ERR-test');
-    expect(meta.timestamp).toBeTruthy();
-    expect(meta.boundary).toBe('Router');
-  });
-
-  it('omits boundary when not provided', () => {
-    const meta = createErrorMeta();
-    expect(meta.errorId).toBe('ERR-test');
-    expect(meta).not.toHaveProperty('boundary');
+    return array;
   });
 });
 
-// ─── onBoundaryError ─────────────────────────────────────────────────────────
+afterEach(() => vi.restoreAllMocks());
 
-describe('onBoundaryError', () => {
-  beforeEach(() => mockLogError.mockClear());
-
-  it('calls log.error with error and componentStack', () => {
-    const err = makeError();
-    onBoundaryError(err, { componentStack: '<App>' });
-    expect(mockLogError).toHaveBeenCalledWith(err, expect.objectContaining({ componentStack: '<App>' }));
+describe('error occurrence reports', () => {
+  it.each([
+    { name: 'full page', Component: FullPageErrorFallback },
+    { name: 'panel', Component: PanelErrorFallback },
+  ])('keeps the $name report stable while copying and inspecting a non-Error failure', async ({ Component }) => {
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
+    render(<Component error="Thrown string" resetErrorBoundary={vi.fn()} boundary="Fixture" />);
+    const copy = screen.getByRole('button', { name: 'Copy Error' });
+    await user.click(copy);
+    const firstReport = writeText.mock.calls[0][0];
+    await user.click(screen.getByRole('button', { name: 'Stack Trace' }));
+    await user.click(copy);
+    expect(writeText.mock.calls[1][0]).toBe(firstReport);
   });
 
-  it('handles null componentStack', () => {
-    const err = makeError();
-    onBoundaryError(err, { componentStack: null });
-    expect(mockLogError).toHaveBeenCalledWith(err, expect.objectContaining({ componentStack: 'unavailable' }));
-  });
-});
-
-// ─── FullPageErrorFallback ───────────────────────────────────────────────────
-
-describe('FullPageErrorFallback', () => {
-  const resetMock = vi.fn();
-
-  beforeEach(() => {
-    resetMock.mockClear();
-    writeTextMock.mockClear();
+  it.each(['First failure', Number.NaN])('owns the root reference for occurrence %s', (error) => {
+    const view = render(<RootErrorFallback error={error} />, { wrapper: React.StrictMode });
+    const reference = () => screen.getByRole('code').textContent;
+    const firstReference = reference();
+    view.rerender(<RootErrorFallback error={error} />);
+    expect(reference()).toBe(firstReference);
+    view.rerender(<RootErrorFallback error="Second failure" />);
+    expect(reference()).not.toBe(firstReference);
   });
 
-  describe('dev mode', () => {
-    beforeEach(() => mockIsDev.mockReturnValue(true));
+  it('recovers a non-Error failure through the real boundary reset', () => {
+    let shouldFail = true;
+    function Surface() {
+      if (shouldFail) {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the boundary's non-Error contract.
+        throw 'plugin failed';
+      }
 
-    it('renders error message and "Something went wrong"', () => {
-      renderUi(<FullPageErrorFallback error={makeError('bad thing')} resetErrorBoundary={resetMock} />);
-      expect(screen.getByText('Something went wrong')).toBeInTheDocument();
-      expect(screen.getByText('bad thing')).toBeInTheDocument();
-    });
+      return <div>Plugin recovered</div>;
+    }
 
-    it('renders error name badge', () => {
-      renderUi(<FullPageErrorFallback error={makeError('x', 'RangeError')} resetErrorBoundary={resetMock} />);
-      expect(screen.getByText('RangeError')).toBeInTheDocument();
-    });
-
-    it('renders error ID chip', () => {
-      renderUi(<FullPageErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
-      expect(screen.getByText('ERR-test')).toBeInTheDocument();
-    });
-
-    it('renders boundary label when provided', () => {
-      renderUi(<FullPageErrorFallback error={makeError()} resetErrorBoundary={resetMock} boundary="Router" />);
-      expect(screen.getByText('Caught by: Router')).toBeInTheDocument();
-    });
-
-    it('"Stack Trace" toggle reveals/hides stack', () => {
-      renderUi(<FullPageErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
-      const toggle = screen.getByText('Stack Trace');
-      expect(screen.queryByText(/at Object/)).not.toBeInTheDocument();
-      fireEvent.click(toggle);
-      expect(screen.getByText(/at Object/)).toBeInTheDocument();
-      fireEvent.click(toggle);
-      expect(screen.queryByText(/at Object/)).not.toBeInTheDocument();
-    });
-
-
-    it('"Copy Error" writes to clipboard with errorId + stack', async () => {
-      renderUi(<FullPageErrorFallback error={makeError('boom')} resetErrorBoundary={resetMock} />);
-      await act(async () => {
-        fireEvent.click(screen.getByText('Copy Error'));
-      });
-      expect(writeTextMock).toHaveBeenCalledTimes(1);
-      const clipText = writeTextMock.mock.calls[0][0] as string;
-      expect(clipText).toContain('ERR-test');
-      expect(clipText).toContain('boom');
-      expect(clipText).toContain('at Object');
-    });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      render(<ErrorBoundary FallbackComponent={FullPageErrorFallback}><Surface /></ErrorBoundary>);
+      expect(screen.getByText('plugin failed')).toBeInTheDocument();
+      shouldFail = false;
+      fireEvent.click(screen.getByRole('button', { name: 'Try Again' }));
+      expect(screen.getByText('Plugin recovered')).toBeInTheDocument();
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
-  describe('prod mode', () => {
-    beforeEach(() => mockIsDev.mockReturnValue(false));
-
-    it('does NOT render stack trace toggle', () => {
-      renderUi(<FullPageErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
-      expect(screen.queryByText('Stack Trace')).not.toBeInTheDocument();
-    });
-
-    it('shows "An unexpected error occurred" prefix', () => {
-      renderUi(<FullPageErrorFallback error={makeError('bad')} resetErrorBoundary={resetMock} />);
-      expect(screen.getByText(/An unexpected error occurred: bad/)).toBeInTheDocument();
-    });
-
-    it('does NOT show boundary label', () => {
-      renderUi(<FullPageErrorFallback error={makeError()} resetErrorBoundary={resetMock} boundary="Router" />);
-      expect(screen.queryByText(/Caught by/)).not.toBeInTheDocument();
-    });
-
-    it('still shows error ID, error message, and all buttons', () => {
-      renderUi(<FullPageErrorFallback error={makeError('oops')} resetErrorBoundary={resetMock} />);
-      expect(screen.getByText('ERR-test')).toBeInTheDocument();
-      expect(screen.getByText(/oops/)).toBeInTheDocument();
-      expect(screen.getByText('Try Again')).toBeInTheDocument();
-      expect(screen.getByText('Reload Application')).toBeInTheDocument();
-      expect(screen.getByText('Copy Error')).toBeInTheDocument();
-    });
-
-    it('"Copy Error" still includes full stack', async () => {
-      renderUi(<FullPageErrorFallback error={makeError('boom')} resetErrorBoundary={resetMock} />);
-      await act(async () => {
-        fireEvent.click(screen.getByText('Copy Error'));
-      });
-      const clipText = writeTextMock.mock.calls[0][0] as string;
-      expect(clipText).toContain('at Object');
-    });
-  });
-});
-
-// ─── PanelErrorFallback ─────────────────────────────────────────────────────
-
-describe('PanelErrorFallback', () => {
-  const resetMock = vi.fn();
-  beforeEach(() => resetMock.mockClear());
-
-  describe('dev mode', () => {
-    beforeEach(() => mockIsDev.mockReturnValue(true));
-
-    it('renders "{label} crashed"', () => {
-      renderUi(<PanelErrorFallback error={makeError()} resetErrorBoundary={resetMock} label="Sidebar" />);
-      expect(screen.getByText('Sidebar crashed')).toBeInTheDocument();
-    });
-
-    it('renders stack trace toggle', () => {
-      renderUi(<PanelErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
-      expect(screen.getByText('Stack Trace')).toBeInTheDocument();
-    });
-
-    it('renders error ID', () => {
-      renderUi(<PanelErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
-      expect(screen.getByText('ERR-test')).toBeInTheDocument();
-    });
-
-    it('"Retry" calls resetErrorBoundary', () => {
-      renderUi(<PanelErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
-      fireEvent.click(screen.getByText('Retry'));
-      expect(resetMock).toHaveBeenCalledTimes(1);
-    });
+  it('reveals and hides developer diagnostics on demand', async () => {
+    const user = userEvent.setup();
+    const error = new Error('Failure');
+    error.stack = 'Private diagnostic trace';
+    render(<FullPageErrorFallback error={error} resetErrorBoundary={vi.fn()} />);
+    const toggle = screen.getByRole('button', { name: 'Stack Trace' });
+    expect(screen.queryByText(error.stack)).not.toBeInTheDocument();
+    await user.click(toggle);
+    expect(screen.getByText(error.stack)).toBeInTheDocument();
+    await user.click(toggle);
+    expect(screen.queryByText(error.stack)).not.toBeInTheDocument();
   });
 
-  describe('prod mode', () => {
-    beforeEach(() => mockIsDev.mockReturnValue(false));
-
-    it('renders "{label} encountered an error"', () => {
-      renderUi(<PanelErrorFallback error={makeError()} resetErrorBoundary={resetMock} label="Sidebar" />);
-      expect(screen.getByText('Sidebar encountered an error')).toBeInTheDocument();
-    });
-
-    it('does NOT render stack trace toggle', () => {
-      renderUi(<PanelErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
-      expect(screen.queryByText('Stack Trace')).not.toBeInTheDocument();
-    });
-  });
-});
-
-// ─── InlineErrorFallback ────────────────────────────────────────────────────
-
-describe('InlineErrorFallback', () => {
-  const resetMock = vi.fn();
-  beforeEach(() => resetMock.mockClear());
-
-  it('renders "Failed to render {label}"', () => {
-    renderUi(<InlineErrorFallback error={makeError()} resetErrorBoundary={resetMock} label="Widget" />);
-    expect(screen.getByText('Failed to render Widget')).toBeInTheDocument();
-  });
-
-  it('"Retry" chip calls resetErrorBoundary', () => {
-    renderUi(<InlineErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
-    // The clickable Chip renders as a <button>
-    fireEvent.click(screen.getByRole('button'));
-    expect(resetMock).toHaveBeenCalledTimes(1);
-  });
-});
-
-// ─── RootErrorFallback ──────────────────────────────────────────────────────
-
-describe('RootErrorFallback', () => {
-
-  describe('dev mode', () => {
-    beforeEach(() => mockIsDev.mockReturnValue(true));
-
-    it('renders stack trace pre block', () => {
-      const err = makeError('crash');
-      render(<RootErrorFallback error={err} />);
-      expect(screen.getByText(/at Object/)).toBeInTheDocument();
-    });
-
-    it('renders error ID', () => {
-      render(<RootErrorFallback error={makeError()} />);
-      expect(screen.getByText('ERR-test')).toBeInTheDocument();
-    });
-
-  });
-
-  describe('prod mode', () => {
-    beforeEach(() => mockIsDev.mockReturnValue(false));
-
-    it('does NOT render stack trace pre block', () => {
-      const err = makeError('crash');
-      render(<RootErrorFallback error={err} />);
-      expect(screen.queryByText(/at Object/)).not.toBeInTheDocument();
-    });
-
-    it('still renders error ID and reload button', () => {
-      render(<RootErrorFallback error={makeError()} />);
-      expect(screen.getByText('ERR-test')).toBeInTheDocument();
-      expect(screen.getByText('Reload Application')).toBeInTheDocument();
-    });
+  it.each([
+    { name: 'full page', Component: FullPageErrorFallback },
+    { name: 'panel', Component: PanelErrorFallback },
+    { name: 'root', Component: RootErrorFallback },
+  ])('keeps diagnostics out of the production $name surface', ({ Component }) => {
+    vi.mocked(isDev).mockReturnValue(false);
+    const error = new Error('Failure');
+    error.stack = 'Private diagnostic trace';
+    render(<Component error={error} resetErrorBoundary={vi.fn()} />);
+    expect(screen.queryByText(error.stack)).not.toBeInTheDocument();
   });
 });

@@ -61,7 +61,7 @@ export function useExtensionPoint<
         }
       };
     },
-    [registry, id, store],
+    [registry, store],
   );
 
   const getSnapshot = useCallback(() => {
@@ -98,16 +98,16 @@ export function useExtensionPoint<
  * functionality (such as components).
  */
 export const ExtensionProvider: React.FC<ExtensionProviderProps> = ({ registry, children }) => {
-  const initialRegistry = React.useRef<ExtensionPointRegistryContract>(registry);
+  const [initialRegistry] = React.useState<ExtensionPointRegistryContract>(() => registry);
 
   // Synchronous check — throw before children render with a different registry
   invariant(
-    initialRegistry.current === registry,
+    initialRegistry === registry,
     'You can\'t change the extension registry after it has been rendered',
   );
 
   return (
-    <ExtensionRegistryContext.Provider value={initialRegistry.current}>
+    <ExtensionRegistryContext.Provider value={initialRegistry}>
       {children}
     </ExtensionRegistryContext.Provider>
   );

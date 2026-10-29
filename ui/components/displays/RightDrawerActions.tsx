@@ -59,8 +59,8 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
       return action.list(ctx);
     }
 
-    return action.list || [];
-  }, [action.list, ctx]);
+    return action.list;
+  }, [action, ctx]);
 
   const actionTitle = typeof action.title === 'string' ? action.title : '';
   const dividerBefore = actionTitle === 'Start' || actionTitle === 'Delete';

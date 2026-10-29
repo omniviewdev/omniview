@@ -181,7 +181,7 @@ async function main() {
   const pnpm = env.OMNIVIEW_E2E_PNPM_EXECUTABLE ?? 'pnpm';
   if (env.OMNIVIEW_E2E_PNPM_EXECUTABLE && !isAbsolute(pnpm)) throw Error('OMNIVIEW_E2E_PNPM_EXECUTABLE must be an absolute native pnpm executable');
   phase('bootstrap-tools', () => {
-    if (process.versions.node !== '24.14.0') throw Error('E2E requires native Node 24.14.0');
+    if (process.versions.node !== '26.13.0') throw Error('E2E requires native Node 26.13.0');
     if (execute(pnpm, ['--version'], { capture: true }) !== '12.14.0') throw Error('E2E requires native pnpm 12.14.0');
   });
   phase('dependency-install', () => {

@@ -8,7 +8,7 @@ import { usePluginContext } from '@/contexts/PluginContext';
 import { useConnection } from '@omniviewdev/runtime';
 
 // Third-party
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router';
 import { LuX } from 'react-icons/lu';
 import PluginBackdrop from '../PluginBackdrop';
 import styles from './EditConnection.module.css';
@@ -61,7 +61,7 @@ export default function EditConnection(): React.ReactElement {
           size='sm'
           aria-label='Close'
           onClick={() => {
-            navigate(-1);
+            void navigate(-1);
           }}
         >
           <LuX />

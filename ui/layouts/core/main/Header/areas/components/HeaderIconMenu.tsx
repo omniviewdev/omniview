@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { IconButton, Menu } from '@omniviewdev/base-ui';
 
 // Project imports
@@ -36,7 +36,7 @@ const HeaderIconMenu: React.FC<Props> = ({ id, icon, helpText, items }) => {
                 key={label}
                 startDecorator={itemIcon ? <Icon name={itemIcon} /> : undefined}
                 onClick={link ? () => {
-                  navigate(link); 
+                  void navigate(link);
                 } : undefined}
               >
                 {label}

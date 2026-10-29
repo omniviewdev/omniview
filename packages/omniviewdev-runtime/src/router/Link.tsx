@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link as OriginalLink, type LinkProps as OriginalLinkProps } from 'react-router-dom';
+import { Link as OriginalLink, type LinkProps as OriginalLinkProps } from 'react-router';
 import { usePluginContext } from '../context';
 
 type LinkProps = {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link as OriginalLink, type LinkProps as OriginalLinkProps, useParams } from 'react-router-dom';
+import { Link as OriginalLink, type LinkProps as OriginalLinkProps, useParams } from 'react-router';
 
 type LinkProps = {
   /** The path to link to */

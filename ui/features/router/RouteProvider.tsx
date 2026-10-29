@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useState } from 'react';
-import { createHashRouter, RouterProvider, type NonIndexRouteObject, type RouteObject } from 'react-router-dom';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { createHashRouter, type DataRouter, type NonIndexRouteObject, type RouteObject } from 'react-router';
+import { RouterProvider } from 'react-router/dom';
 import { usePluginRoutes } from '@/features/plugins';
 import { coreRoutes } from './routes';
 import PrimaryLoading from '@/components/util/PrimaryLoading';
@@ -27,7 +28,11 @@ const buildPluginRouteWrapper = (pluginRoutes: RouteObject[]) => {
     ],
   });
 
-  const root: RouteObject = { ...(coreRoutes[0] as NonIndexRouteObject), children: coreChildren };
+  const root: RouteObject = {
+    ...(coreRoutes[0] as NonIndexRouteObject),
+    children: coreChildren,
+    hydrateFallbackElement: <PrimaryLoading message="Loading workspace..." />,
+  };
 
   // Preserve any additional top-level routes (e.g., catch-all)
   return [
@@ -36,24 +41,55 @@ const buildPluginRouteWrapper = (pluginRoutes: RouteObject[]) => {
   ];
 };
 
-export const RouteProvider = () => {
-  const { routeVersion, routes: pluginRoutes } = usePluginRoutes();
-  const [router, setRouter] = useState<ReturnType<typeof createHashRouter>>();
+// Construct only inert ownership during render. Replace committed routers without
+// publishing a null snapshot: a loading gap would unmount the shell and its dialogs.
+function createRouterOwner(initialRoutes: RouteObject[]) {
+  let routes = initialRoutes;
+  let router: DataRouter | null = null;
+  const listeners = new Set<() => void>();
+  return {
+    getSnapshot: () => router,
+    setRoutes: (nextRoutes: RouteObject[]) => {
+      if (routes === nextRoutes) {
+        return;
+      }
 
-  /**
-   * Build the router immediately with whatever plugin routes are available
-   * (could be zero on the first render). The router is rebuilt each time
-   * routeVersion bumps, so plugins that finish loading later are picked up
-   * incrementally without blocking the initial render.
-   */
-  useLayoutEffect(() => {
-    const newRouter = createHashRouter(buildPluginRouteWrapper(pluginRoutes));
-    setRouter(newRouter);
-    console.debug('[RouteProvider] router created', { routeVersion });
-    return () => {
-      newRouter.dispose(); 
-    };
-  }, [routeVersion]);
+      routes = nextRoutes;
+      if (!listeners.size) {
+        return;
+      }
+
+      const previous = router;
+      router = createHashRouter(routes);
+      listeners.forEach((notify) => {
+        notify();
+      });
+      previous?.dispose();
+    },
+    subscribe: (notify: () => void) => {
+      listeners.add(notify);
+      router ??= createHashRouter(routes);
+
+      notify();
+      return () => {
+        listeners.delete(notify);
+        if (!listeners.size) {
+          router?.dispose();
+          router = null;
+        }
+      };
+    },
+  };
+}
+
+export const RouteProvider = () => {
+  const { routes: pluginRoutes } = usePluginRoutes();
+  const routes = useMemo(() => buildPluginRouteWrapper(pluginRoutes), [pluginRoutes]);
+  const [owner] = useState(() => createRouterOwner(routes));
+  const router = useSyncExternalStore(owner.subscribe, owner.getSnapshot, owner.getSnapshot);
+  useEffect(() => {
+    owner.setRoutes(routes);
+  }, [owner, routes]);
 
   // The shell counts as interactive once the first router has rendered.
   useEffect(() => {
@@ -63,9 +99,8 @@ export const RouteProvider = () => {
   }, [router]);
 
   if (!router) {
-    console.debug('[RouteProvider] rendering PrimaryLoading (first render)');
     return <PrimaryLoading message="Preparing workspace..." />;
   }
 
-  return <RouterProvider router={router} fallbackElement={<PrimaryLoading message="Loading workspace..." />} />;
+  return <RouterProvider router={router} />;
 };

@@ -17,7 +17,7 @@ concurrency:
 env:
   NODE_OPTIONS: "--max-old-space-size=4096"
   GO_VERSION: "1.26"
-  NODE_VERSION: "24"
+  NODE_VERSION: "26.13.0"
   # Nightly is an optimized production profile, not a development tooling build.
   GOWORK: "off"
   GOFLAGS: ""
@@ -90,10 +90,9 @@ jobs:
           version: 12.14.0
           install: false
 
-      - name: Install dependencies and global TypeScript
+      - name: Install dependencies
         run: |
           pnpm install --frozen-lockfile
-          pnpm add --global typescript
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -279,10 +278,9 @@ jobs:
           version: 12.14.0
           install: false
 
-      - name: Install dependencies and global TypeScript
+      - name: Install dependencies
         run: |
           pnpm install --frozen-lockfile
-          pnpm add --global typescript
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -360,10 +358,9 @@ jobs:
           version: 12.14.0
           install: false
 
-      - name: Install dependencies and global TypeScript
+      - name: Install dependencies
         run: |
           pnpm install --frozen-lockfile
-          pnpm add --global typescript
 
       - name: Setup Go
         uses: actions/setup-go@v5

@@ -117,7 +117,7 @@ describe('ConnectionStateDialog', () => {
         }}
       />,
     );
-    const content = container.textContent!;
+    const content = container.textContent;
     const coreIdx = content.indexOf('CORE');
     const appsIdx = content.indexOf('APPS');
     // Allow either uppercase or natural case — just ensure Core comes first

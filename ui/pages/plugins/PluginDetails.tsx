@@ -4,7 +4,7 @@ import { Avatar, Button, Chip, Heading, Separator, Stack, Tabs, Text } from '@om
 
 // Third party
 import MarkdownPreview from '@uiw/react-markdown-preview';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router';
 import { LuDownload, LuExternalLink } from 'react-icons/lu';
 import { usePluginManager, usePlugin } from '@/hooks/plugin/usePluginManager';
 import { Browser } from '@omniviewdev/runtime/runtime';
@@ -161,7 +161,7 @@ const PluginDetails: FC = () => {
         devMode={!!installed?.devMode}
         uninstall={() => {
           void uninstall().then(() => {
-            navigate('/plugins');
+            void navigate('/plugins');
           });
         }}
       />

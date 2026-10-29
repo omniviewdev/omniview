@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ExtensionPointRegistry } from '@omniviewdev/runtime';
 import type { SearchRouteContextV1, SearchScopeV1 } from '@omniviewdev/runtime';
-import type { RouteObject } from 'react-router-dom';
+import type { RouteObject } from 'react-router';
 import { normalizePluginRoutes } from '../plugins/react/normalizePluginRoutes';
 import { createGlobalSearchController } from './controller';
 import { resolveRouteSearchScope, resolveSearchOpenOptions } from './routeScope';

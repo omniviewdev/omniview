@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Turn bench/render/results/latest.json into a Markdown table (stdout, and the
- * GitHub job summary when $GITHUB_STEP_SUMMARY is set). Exits 1 if a bench
- * recorded no samples, which is how tinybench reports a bench that threw.
+ * GitHub job summary when $GITHUB_STEP_SUMMARY is set). Exits 1 if a test
+ * failed, a benchmark recorded no samples, or the report has no benchmarks.
  *
  *   node bench/render/report.mjs [results.json] [--title "..."]
  */
@@ -19,17 +19,26 @@ const ms = (v) => (v == null ? '–' : v >= 100 ? v.toFixed(0) : v.toFixed(1));
 const lines = [`### ${title}`, '', '| Scenario | Bench | mean ms | median ms | p75 ms | p99 ms | ±% | n |', '|---|---|--:|--:|--:|--:|--:|--:|'];
 const failed = [];
 
-for (const f of data.files) {
-  for (const g of f.groups) {
-    const group = g.fullName.split(' > ').slice(1).join(' > ') || path.basename(f.filepath);
-    for (const b of g.benchmarks) {
-      if (!b.sampleCount) failed.push(`${group} > ${b.name}`);
-      lines.push(`| ${group} | ${b.name} | ${ms(b.mean)} | ${ms(b.median)} | ${ms(b.p75)} | ${ms(b.p99)} | ${b.rme == null ? '–' : b.rme.toFixed(1)} | ${b.sampleCount ?? 0} |`);
+let benchmarkCount = 0;
+for (const file of data.testResults) {
+  if (file.status === 'failed') failed.push(file.name);
+  for (const test of file.assertionResults) {
+    const group = test.ancestorTitles.join(' > ') || path.basename(file.name);
+    if (test.status === 'failed') failed.push(`${group} > ${test.title}`);
+    for (const benchmark of test.benchmarks ?? []) {
+      for (const task of benchmark.tasks) {
+        benchmarkCount++;
+        const b = task.latency;
+        if (!b.samplesCount) failed.push(`${group} > ${task.name}`);
+        lines.push(`| ${group} | ${task.name} | ${ms(b.mean)} | ${ms(b.p50)} | ${ms(b.p75)} | ${ms(b.p99)} | ${b.rme == null ? '–' : b.rme.toFixed(1)} | ${b.samplesCount ?? 0} |`);
+      }
     }
   }
 }
+if (!benchmarkCount) failed.push('No benchmark results');
+if (!data.success && !failed.length) failed.push('Vitest run failed');
 
-if (failed.length) lines.push('', `**No samples (bench threw):** ${failed.join(', ')}`);
+if (failed.length) lines.push('', `**Failed tests or missing benchmark samples:** ${failed.join(', ')}`);
 const out = lines.join('\n') + '\n';
 process.stdout.write(out);
 if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, out + '\n');

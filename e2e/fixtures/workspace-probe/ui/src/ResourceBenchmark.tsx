@@ -1,15 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { DataTable } from "@omniviewdev/base-ui";
+import { DataTable, dataTableFeatures } from "@omniviewdev/base-ui";
 import { useResources } from "@omniviewdev/runtime";
 import { ResourceClient } from "@omniviewdev/runtime/api";
 import { ListInput } from "@omniviewdev/runtime/models";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  getCoreRowModel,
-  getExpandedRowModel,
-  getFilteredRowModel,
-  getGroupedRowModel,
-  useReactTable,
+  useTable,
   type ColumnDef,
   type ExpandedState,
   type GroupingState,
@@ -80,7 +76,7 @@ function TransportTable({ bodies }: { bodies: Body[] }) {
       })),
     [bodies],
   );
-  const columns = useMemo<ColumnDef<Row>[]>(
+  const columns = useMemo<ColumnDef<typeof dataTableFeatures, Row>[]>(
     () => [
       {
         id: "expand",
@@ -106,17 +102,17 @@ function TransportTable({ bodies }: { bodies: Body[] }) {
     ],
     [],
   );
-  const table = useReactTable({
+  const table = useTable({
+    features: dataTableFeatures,
+    enableRowRangeSelection: false,
+    manualPagination: true,
     data: rows,
     columns,
     state: { globalFilter: filter, grouping, expanded },
     onGroupingChange: setGrouping,
     onExpandedChange: setExpanded,
     onGlobalFilterChange: setFilter,
-    getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getGroupedRowModel: getGroupedRowModel(),
-    getExpandedRowModel: getExpandedRowModel(),
+    manualSorting: true,
     getRowCanExpand: () => true,
     getRowId: (row) => String(row.copy),
     autoResetExpanded: false,

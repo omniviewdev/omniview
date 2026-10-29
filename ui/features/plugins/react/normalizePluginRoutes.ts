@@ -1,4 +1,4 @@
-import type { RouteObject } from 'react-router-dom';
+import type { RouteObject } from 'react-router';
 
 /** Normalize registered routes for nesting below the host's plugin-owned path. */
 export function normalizePluginRoutes(routes: RouteObject[]): RouteObject[] {

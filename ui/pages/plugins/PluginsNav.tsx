@@ -21,13 +21,14 @@ import {
   LuAtom,
   LuTriangleAlert,
 } from 'react-icons/lu';
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSnackbar, createErrorHandler } from '@omniviewdev/runtime';
 import { PluginManager } from '@omniviewdev/runtime/api';
 
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
 import { usePluginService } from '@/features/plugins';
+import { orFallback } from '@/utils/orFallback';
 import PluginListItem from './PluginListItem';
 import PluginFilterPopover, {
   getActiveFilterCount,
@@ -290,7 +291,7 @@ const PluginsNav: React.FC = () => {
                 <PluginListItem
                   key={p.id}
                   id={p.id}
-                  name={p.metadata?.name || p.id}
+                  name={orFallback(p.metadata?.name, p.id)}
                   description={p.metadata?.description}
                   icon={p.metadata?.icon}
                   active={id === p.id}

@@ -21,11 +21,16 @@ compatible source for this host.
 
 ## Reproducible source cohort
 
-CI requires `OMNIVIEW_APP_PROFILE_UI_REF` and
-`OMNIVIEW_APP_PROFILE_KUBERNETES_REF` repository variables containing independently
-reviewed, public full commits. It checks those sources out explicitly, rather
-than changing the bundled submodule or waiting for an unpublished host npm release.
-The host input is the exact checked-out PR commit.
+CI reads the checked-out host's `e2e/source-cohort.json`, with full commit strings
+for `plugin-sdk`, `ui`, and `kubernetes`. UI and Kubernetes checkouts use validated
+cohort outputs; Kubernetes must match the host's `plugins/kubernetes` gitlink.
+The SDK entry must equal the independently reviewed repository variable
+`OMNIVIEW_E2E_REVIEWED_SDK_REVISION`, even though this frontend-only profile does
+not build SDK code. A branch cannot approve its own SDK change.
+Publish and review selected commits before updating the branch-owned cohort and
+gitlink. This avoids global UI/Kubernetes ref changes when older `main` and an
+upgraded PR need different compatible sources. The host input remains the exact
+checked-out PR commit, or selected branch commit for manual dispatch.
 
 The source builder reuses canonical workspace `Init`/`Create`/`Link`, native pnpm
 12.14.0, the actual protocol-probe report, and the existing JavaScript build graph

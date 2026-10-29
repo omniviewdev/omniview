@@ -2,7 +2,7 @@ import { StrictMode } from 'react';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Link, Outlet } from 'react-router-dom';
+import { Link, Outlet } from 'react-router';
 import { DevProcessStatus, DevServerState } from '@omniviewdev/runtime/models';
 import { PluginWindow } from '@omniviewdev/runtime';
 import { PluginServiceProvider } from './PluginServiceProvider';
@@ -205,9 +205,16 @@ describe('plugin startup navigation', () => {
     testDeps.importer.register('kubernetes', () => {
       throw new Error('Plugin entry unavailable'); 
     });
-    renderWorkspace();
+    const client = renderWorkspace();
 
-    expect(await screen.findByText('Plugin entry unavailable')).toBeVisible();
+    await waitFor(() => {
+      expect(screen.getByText('Plugin entry unavailable')).toBeVisible();
+    });
+    // A refreshed inventory must leave failed imports available for recovery.
+    await act(async () => {
+      await client.refetchQueries({ queryKey: ['plugins'] });
+    });
+    expect(screen.getByText('Plugin entry unavailable')).toBeVisible();
     testDeps.importer.register('kubernetes', pluginModule());
     await act(async () => {
       screen.getByRole('button', { name: action }).click();
@@ -333,7 +340,11 @@ describe('plugin startup navigation', () => {
       window.location.hash = `#${path}`;
       renderWorkspace();
 
-      expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeVisible();
+      // Registering the installed plugin replaces the data router and may run
+      // loaders before the final not-found page commits.
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: 'Page not found' })).toBeVisible();
+      });
     },
   );
 

@@ -149,7 +149,7 @@ export const usePluginManager = () => {
           ...(appErr.instance ? [{
             label: 'Build Output',
             onClick: () => {
-              devToolsChannel.emit('onOpenBuildOutput', appErr.instance!);
+              devToolsChannel.emit('onOpenBuildOutput', appErr.instance);
             },
           }] : []),
           ...(appErr.actions?.map(actionToSnackbar) ?? []),

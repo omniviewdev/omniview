@@ -1,5 +1,5 @@
 import React from 'react';
-import { type createMemoryRouter } from 'react-router-dom';
+import { type createMemoryRouter } from 'react-router';
 
 export type Pane = {
   id: string;

@@ -1,4 +1,4 @@
-import type { RouteObject } from 'react-router-dom';
+import type { RouteObject } from 'react-router';
 import { assertValidTransition } from './transitions';
 import { normalizeContributions, extractDeclaredDependencies } from './normalization';
 import { DependencyAnalyzer } from './DependencyAnalyzer';
@@ -134,8 +134,8 @@ export class PluginService {
     }
 
     this.cachedSnapshot = Object.freeze({
-      plugins: new Map(this.state) as ReadonlyMap<string, PluginState>,
-      registrations: new Map(this.registrations) as ReadonlyMap<string, PluginRegistrations>,
+      plugins: new Map(this.state),
+      registrations: new Map(this.registrations),
       ready: this.ready,
       routeVersion: this.routeVersion,
     });
@@ -379,7 +379,7 @@ export class PluginService {
 
   async retry(pluginId: string, opts?: PluginLoadOpts): Promise<void> {
     const current = this.state.get(pluginId);
-    if (!current || current.phase !== 'error') {
+    if (current?.phase !== 'error') {
       throw new Error(`Cannot retry plugin "${pluginId}" — not in error state`);
     }
 
@@ -1369,7 +1369,7 @@ export class PluginService {
       }
 
       const pluginState = this.state.get(pid);
-      if (!pluginState || pluginState.phase !== 'ready') {
+      if (pluginState?.phase !== 'ready') {
         continue;
       }
 
@@ -1580,7 +1580,7 @@ export class PluginService {
     const current = this.state.get(pluginId);
     this.state.set(pluginId, {
       ...(current ?? createDefaultPluginState(pluginId)),
-      phase: 'error' as PluginPhase,
+      phase: 'error',
       error: message,
       validationErrors,
       retryCount,

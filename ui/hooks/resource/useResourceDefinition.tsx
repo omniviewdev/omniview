@@ -1,3 +1,4 @@
+import type { DataTableFeatures } from '@omniviewdev/base-ui';
 import { useQuery } from '@tanstack/react-query';
 
 // third party
@@ -80,7 +81,7 @@ const parseColumnDef = ({
     };
   }
 
-  const defs: Array<ColumnDef<any>> = [
+  const defs: Array<ColumnDef<DataTableFeatures, any>> = [
     {
       id: 'select',
       header: SelectBoxHeader,
@@ -92,7 +93,7 @@ const parseColumnDef = ({
   ];
 
   columnDefs.forEach((def) => {
-    let column: ColumnDef<any> = {
+    let column: ColumnDef<DataTableFeatures, any> = {
       id: def.id,
       header: def.header,
       accessorFn: (data) => {
@@ -147,7 +148,7 @@ const parseColumnDef = ({
           // in-house component
           : <TextCell
             align={getAlignment(def.align)}
-            value={getValue() as string}
+            value={getValue()}
             formatter={def.formatter}
             colorMap={def.colorMap}
             resourceLink={def.resourceLink}

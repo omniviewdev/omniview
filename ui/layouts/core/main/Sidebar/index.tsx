@@ -1,4 +1,4 @@
-import { useLocation, Link } from 'react-router-dom';
+import { useLocation, Link } from 'react-router';
 import { AppShell } from '@omniviewdev/base-ui';
 
 // Icons
@@ -8,6 +8,7 @@ import { usePluginService } from '@/features/plugins';
 
 // Project imports
 import { IsImage } from '@/utils/url';
+import { orFallback } from '@/utils/orFallback';
 import styles from './Sidebar.module.css';
 
 /**
@@ -32,12 +33,12 @@ export default function CoreLayoutSidebar() {
             key={id}
             to={`/_plugin/${id}`}
             className={styles.Item}
-            aria-label={metadata?.name || id}
+            aria-label={orFallback(metadata?.name, id)}
             aria-current={matched === id ? 'page' : undefined}
           >
             {IsImage(metadata?.icon)
               ? <img src={metadata.icon} alt='' className={styles.Image} />
-              : <Icon name={metadata?.icon || ''} size={26} />}
+              : <Icon name={orFallback(metadata?.icon, '')} size={26} />}
           </Link>
         ))}
       </nav>
