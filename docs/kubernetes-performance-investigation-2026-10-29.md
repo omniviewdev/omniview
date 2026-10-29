@@ -49,7 +49,7 @@ node bench/app/resource-batch.mjs /tmp/resource-batch-baseline.json /path/to/ori
 
 The runner bundles the actual reducer, captures source bytes before compilation, builds fixtures outside timing, warms each case three times, and records nine samples. Reports include all samples and the source SHA-256. The original snapshot used here reconstructs the exact pre-edit file observed during investigation; its SHA-256 is `ddb0093f4e7b89fa5424ae4daccb75307f18f00421b8870fec7ea4ef1df582c8`.
 
-Receipts: `bench/app/resource-batch-before-2026-10-29.json` and `bench/app/resource-batch-after-2026-10-29.json`. Node v26.12.0, macOS arm64, Apple M5 Max. Medians in milliseconds:
+The [preserved PR evidence](https://github.com/omniviewdev/omniview/pull/210#issuecomment-6505282754) contains both original reducer receipts, including source fingerprints and all samples. Node v26.12.0, macOS arm64, Apple M5 Max. Medians in milliseconds:
 
 | Resources | Workload | Before | After |
 |---:|---|---:|---:|
@@ -192,7 +192,7 @@ Proposed gates, not achieved claims: native WebContent and Graphics each below 1
 
 ## Integration checks and environment limits
 
-- Host reducer regression: 36 tests passed, including through the runtime package's existing Vite/Vitest config. From `packages/omniviewdev-runtime`, run `node ../../node_modules/vitest/vitest.mjs run src/hooks/resource/useEventBatcher.test.ts`. The host root default Vitest include covers only `ui/`, so invoking the runtime test through that root config finds no tests. The package config emitted Vite esbuild/oxc deprecation warnings but passed.
+- Host reducer regression: 37 tests passed after adding the frozen-cache safety regression, using the runtime package's existing Vite/Vitest config. From `packages/omniviewdev-runtime`, run `node ../../node_modules/vitest/vitest.mjs run src/hooks/resource/useEventBatcher.test.ts`. The host root default Vitest include covers only `ui/`, so invoking the runtime test through that root config finds no tests.
 - Kubernetes dynamic-column regression: one test passed. Production-hook Chromium interaction also verified 3,000 rows, 20 status updates without storage writes, retained selected columns, and discovery of a new label.
 - Runtime reducer language-server diagnostics: clean.
 - Plugin `tsc --noEmit` did not pass. Its installed `@omniviewdev/runtime` lacks search/icon exports used elsewhere in the checkout (`SearchActionReferenceV1`, `SearchScopeV1`, `ResourceIcon`, `resourceQueryKeys`, among others); further errors occur in those same search/icon consumers. No reported error names either changed column file. A fully composed plugin build remains an integration prerequisite; these focused checks do not certify the complete release.
@@ -205,7 +205,7 @@ reported 197 passing tests, four failures in resource-icon/plugin-context consum
 two stale exact-shape assertions in the bounded-batcher tests, and a missing
 `C02_ERROR_CORPUS` CI fixture. The bounded-batcher assertions now check delivered
 resource data without pinning incidental response defaults. These unrelated suite
-failures were not suppressed. Focused batch regressions pass (36 tests).
+failures were not suppressed. Focused batch regressions now pass (37 tests).
 
 The production-reducer benchmark smoke and live/missing/invalid-PID sampler smoke
 passed. Scoped ESLint reported no errors; its configuration ignores the test file.
@@ -229,7 +229,7 @@ GOWORK=off go test ./pkg/plugin/resource/resourcers -count=1 -timeout=90s
 
 Both commands passed. The complete resourcer suite took 4.649 seconds. An earlier combined run hung in the newly added test teardown because the shared informer factory owns a stop channel separate from the watch context. The test now calls `StopFactory()` before `Shutdown()`; the production connection lifecycle was not changed.
 
-Receipt: `bench/app/resource-provider-2026-10-29.txt`, including all three benchmark samples and source hashes. Each callback operation visits 300 realistic synthetic pods with managedFields; List uses a fake Kubernetes client/informer. The local sink counts serialized bytes without retaining bodies. These measurements exclude a real API server, gRPC, host ingestion, Wails, and rendering. The callback rows compare different workloads on the new handler, not a measured before/after release.
+The [preserved provider receipt](https://github.com/omniviewdev/omniview-plugin-kubernetes/pull/51#issuecomment-6505283224) includes all three benchmark samples and source hashes. Each callback operation visits 300 realistic synthetic pods with managedFields; List uses a fake Kubernetes client/informer. The local sink counts serialized bytes without retaining bodies. These measurements exclude a real API server, gRPC, host ingestion, Wails, and rendering. The callback rows compare different workloads on the new handler, not a measured before/after release.
 
 | Workload | Median ms/op | Encoded body bytes/op | Delivered events/op |
 |---|---:|---:|---:|
@@ -262,7 +262,7 @@ Run `node bench/app/resource-copy.mjs /tmp/resource-copy.json` after
 slice, and a preallocated manual loop using dense plain arrays and generated
 variants of the production reducer. Warmup, calibrated aggregate timings, an
 escaping output ring, and 15 rotating-order samples reduce timer/JIT/order bias.
-The raw receipt is `bench/app/resource-copy-webkit-2026-10-29.json`.
+The raw receipt is preserved in the [PR evidence comment](https://github.com/omniviewdev/omniview/pull/210#issuecomment-6505282754), not in the source tree.
 
 WebKit 27.2, macOS arm64, Apple M5 Max. Isolated copy medians in microseconds:
 
