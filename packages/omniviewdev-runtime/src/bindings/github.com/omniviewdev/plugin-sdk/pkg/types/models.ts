@@ -29,6 +29,7 @@ export enum Capability {
     CapabilityLog = "log",
     CapabilityMetric = "metric",
     CapabilitySettings = "settings",
+    CapabilityTools = "tools",
     CapabilityUI = "ui",
 };
 

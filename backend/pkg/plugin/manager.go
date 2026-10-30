@@ -19,6 +19,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/registry"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/tools"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/internal/appstate"
 	logging "github.com/omniviewdev/plugin-sdk/log"
@@ -108,6 +109,7 @@ func NewManager(
 	networkerController networker.Controller,
 	logsController pluginlogs.Controller,
 	metricController pluginmetric.Controller,
+	toolsController tools.Controller,
 	managers map[string]plugintypes.PluginManager,
 	settingsProvider pkgsettings.Provider,
 	registryClient *registry.Client,
@@ -126,6 +128,7 @@ func NewManager(
 			sdktypes.CapabilityNetworker: networkerController,
 			sdktypes.CapabilityLog:       logsController,
 			sdktypes.CapabilityMetric:    metricController,
+			sdktypes.CapabilityTools:     toolsController,
 		},
 		connfullControllers: map[sdktypes.Capability]plugintypes.LifecycleController{
 			sdktypes.CapabilityResource: resourceController,

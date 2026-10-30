@@ -23,6 +23,9 @@ import * as resource$0 from "../../../../omniviewdev/omniview/backend/pkg/plugin
 import * as window$0 from "../../../../omniviewdev/omniview/backend/window/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as mcprelay$0 from "../../../../omniviewdev/omniview/internal/mcprelay/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as config$0 from "../../../../omniviewdev/plugin-sdk/pkg/config/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -36,36 +39,39 @@ function configure() {
         "connection/status": $$createType0,
         "core/networker/portforward/closed": $$createType2,
         "core/networker/portforward/created": $$createType2,
-        "plugin/crash": $$createType3,
-        "plugin/crash_recovery_failed": $$createType3,
-        "plugin/deprecated_protocol": $$createType4,
-        "plugin/dev_install_complete": $$createType6,
-        "plugin/dev_install_error": $$createType6,
-        "plugin/dev_install_start": $$createType6,
-        "plugin/dev_reload_complete": $$createType6,
-        "plugin/dev_reload_error": $$createType7,
-        "plugin/dev_reload_start": $$createType6,
-        "plugin/devserver/error": $$createType8,
-        "plugin/devserver/log": $$createType10,
-        "plugin/devserver/status": $$createType11,
-        "plugin/install_error": $$createType6,
-        "plugin/install_finished": $$createType6,
-        "plugin/install_started": $$createType6,
-        "plugin/process/log": $$createType12,
-        "plugin/recovered": $$createType3,
-        "plugin/state_change": $$createType13,
-        "plugin/state_write_error": $$createType14,
-        "plugin/update_complete": $$createType15,
-        "plugin/update_error": $$createType16,
-        "plugin/update_started": $$createType15,
-        "watch/STATE": $$createType17,
-        "windows/changed": $$createType18,
-        "windows/closed": $$createType19,
-        "windows/drag/begin": $$createType20,
-        "windows/drag/drop": $$createType21,
-        "windows/drag/end": $$createType22,
-        "windows/drag/hover": $$createType21,
-        "windows/drag/leave": $$createType23,
+        "mcp/confirmation/requested": $$createType3,
+        "mcp/confirmation/resolved": $$createType4,
+        "mcp/status": $$createType5,
+        "plugin/crash": $$createType6,
+        "plugin/crash_recovery_failed": $$createType6,
+        "plugin/deprecated_protocol": $$createType7,
+        "plugin/dev_install_complete": $$createType9,
+        "plugin/dev_install_error": $$createType9,
+        "plugin/dev_install_start": $$createType9,
+        "plugin/dev_reload_complete": $$createType9,
+        "plugin/dev_reload_error": $$createType10,
+        "plugin/dev_reload_start": $$createType9,
+        "plugin/devserver/error": $$createType11,
+        "plugin/devserver/log": $$createType13,
+        "plugin/devserver/status": $$createType14,
+        "plugin/install_error": $$createType9,
+        "plugin/install_finished": $$createType9,
+        "plugin/install_started": $$createType9,
+        "plugin/process/log": $$createType15,
+        "plugin/recovered": $$createType6,
+        "plugin/state_change": $$createType16,
+        "plugin/state_write_error": $$createType17,
+        "plugin/update_complete": $$createType18,
+        "plugin/update_error": $$createType19,
+        "plugin/update_started": $$createType18,
+        "watch/STATE": $$createType20,
+        "windows/changed": $$createType21,
+        "windows/closed": $$createType22,
+        "windows/drag/begin": $$createType23,
+        "windows/drag/drop": $$createType24,
+        "windows/drag/end": $$createType25,
+        "windows/drag/hover": $$createType24,
+        "windows/drag/leave": $$createType26,
     }));
 }
 
@@ -73,26 +79,29 @@ function configure() {
 const $$createType0 = resource$0.ConnectionStatusPayload.createFrom;
 const $$createType1 = networker$0.PortForwardSession.createFrom;
 const $$createType2 = $Create.Nullable($$createType1);
-const $$createType3 = plugin$0.PluginErrorPayload.createFrom;
-const $$createType4 = plugin$0.DeprecatedProtocolPayload.createFrom;
-const $$createType5 = config$0.PluginMeta.createFrom;
-const $$createType6 = $Create.Nullable($$createType5);
-const $$createType7 = $Create.Array($Create.Any);
-const $$createType8 = devserver$0.DevServerErrorPayload.createFrom;
-const $$createType9 = devserver$0.LogEntry.createFrom;
-const $$createType10 = $Create.Array($$createType9);
-const $$createType11 = devserver$0.DevServerState.createFrom;
-const $$createType12 = pluginlog$0.LogEntry.createFrom;
-const $$createType13 = plugin$0.StateChangePayload.createFrom;
-const $$createType14 = plugin$0.StateWriteErrorPayload.createFrom;
-const $$createType15 = plugin$0.UpdatePayload.createFrom;
-const $$createType16 = plugin$0.UpdateErrorPayload.createFrom;
-const $$createType17 = resource$1.WatchStateEvent.createFrom;
-const $$createType18 = window$0.WindowsChangedEvent.createFrom;
-const $$createType19 = window$0.WindowClosedEvent.createFrom;
-const $$createType20 = window$0.DragBeginEvent.createFrom;
-const $$createType21 = window$0.DragPointerEvent.createFrom;
-const $$createType22 = window$0.DragEndEvent.createFrom;
-const $$createType23 = window$0.DragLeaveEvent.createFrom;
+const $$createType3 = mcprelay$0.PendingConfirmation.createFrom;
+const $$createType4 = mcprelay$0.ConfirmationResolved.createFrom;
+const $$createType5 = mcprelay$0.Status.createFrom;
+const $$createType6 = plugin$0.PluginErrorPayload.createFrom;
+const $$createType7 = plugin$0.DeprecatedProtocolPayload.createFrom;
+const $$createType8 = config$0.PluginMeta.createFrom;
+const $$createType9 = $Create.Nullable($$createType8);
+const $$createType10 = $Create.Array($Create.Any);
+const $$createType11 = devserver$0.DevServerErrorPayload.createFrom;
+const $$createType12 = devserver$0.LogEntry.createFrom;
+const $$createType13 = $Create.Array($$createType12);
+const $$createType14 = devserver$0.DevServerState.createFrom;
+const $$createType15 = pluginlog$0.LogEntry.createFrom;
+const $$createType16 = plugin$0.StateChangePayload.createFrom;
+const $$createType17 = plugin$0.StateWriteErrorPayload.createFrom;
+const $$createType18 = plugin$0.UpdatePayload.createFrom;
+const $$createType19 = plugin$0.UpdateErrorPayload.createFrom;
+const $$createType20 = resource$1.WatchStateEvent.createFrom;
+const $$createType21 = window$0.WindowsChangedEvent.createFrom;
+const $$createType22 = window$0.WindowClosedEvent.createFrom;
+const $$createType23 = window$0.DragBeginEvent.createFrom;
+const $$createType24 = window$0.DragPointerEvent.createFrom;
+const $$createType25 = window$0.DragEndEvent.createFrom;
+const $$createType26 = window$0.DragLeaveEvent.createFrom;
 
 configure();

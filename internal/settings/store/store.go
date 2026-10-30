@@ -14,6 +14,9 @@ import (
 var (
 	coreBucket    = []byte("core")
 	pluginsBucket = []byte("plugins")
+	mcpBucket     = []byte("mcp")
+
+	mcpRelayConfigKey = []byte("relay")
 )
 
 // isCorruptionError returns true if err indicates database corruption (invalid
@@ -93,6 +96,9 @@ func Open(path string, opts ...Option) (*Store, error) {
 		if _, bucketErr := tx.CreateBucketIfNotExists(pluginsBucket); bucketErr != nil {
 			return fmt.Errorf("create plugins bucket: %w", bucketErr)
 		}
+		if _, bucketErr := tx.CreateBucketIfNotExists(mcpBucket); bucketErr != nil {
+			return fmt.Errorf("create mcp bucket: %w", bucketErr)
+		}
 		return nil
 	}); updateErr != nil {
 		db.Close()
@@ -140,6 +146,36 @@ func (s *Store) LoadCategory(categoryID string) (map[string]any, error) {
 		return nil, fmt.Errorf("load category %q: %w", categoryID, err)
 	}
 	return result, nil
+}
+
+// SaveMCPRelayConfig persists the MCP relay configuration document under the
+// "mcp" bucket.
+func (s *Store) SaveMCPRelayConfig(cfg any) error {
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal mcp relay config: %w", err)
+	}
+	return s.db.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(mcpBucket).Put(mcpRelayConfigKey, data)
+	})
+}
+
+// LoadMCPRelayConfig decodes the MCP relay configuration into out. found is
+// false when no document was saved yet.
+func (s *Store) LoadMCPRelayConfig(out any) (bool, error) {
+	found := false
+	err := s.db.View(func(tx *bolt.Tx) error {
+		data := tx.Bucket(mcpBucket).Get(mcpRelayConfigKey)
+		if data == nil {
+			return nil
+		}
+		found = true
+		return json.Unmarshal(data, out)
+	})
+	if err != nil {
+		return false, fmt.Errorf("load mcp relay config: %w", err)
+	}
+	return found, nil
 }
 
 // SavePluginSettings persists a plugin's settings under the "plugins" bucket.
