@@ -37,7 +37,8 @@ jobs:
       GOFLAGS: ""
       GO_VERSION: "1.26"
       NODE_OPTIONS: "--max-old-space-size=4096"
-      REVIEWED_SDK_REVISION: ${{ vars.OMNIVIEW_E2E_REVIEWED_SDK_REVISION }}
+      REVIEWED_SDK_REVISION: ${{ vars.OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION }}
+      UI_SOURCE_REF: ${{ vars.OMNIVIEW_E2E_UI_REF }}
       CACHE_ONLY: ${{ inputs.cache-only && 'true' || 'false' }}
       OMNIVIEW_E2E_PREINSTALLED_LINUX: "true"
       SELECTION_BASE: ${{ inputs.base }}
@@ -50,45 +51,38 @@ jobs:
           submodules: recursive
           persist-credentials: false
 
-      - name: Require independently reviewed published source inputs
-        id: cohort
-        run: |
-          if [[ ! "$REVIEWED_SDK_REVISION" =~ ^([a-f0-9]{40}|[a-f0-9]{64})$ ]]; then
-            echo "::error::Set repository variable OMNIVIEW_E2E_REVIEWED_SDK_REVISION to the independently reviewed full SDK commit, published and reachable in omniviewdev/plugin-sdk. No unpublished/default revision is accepted."
-            exit 1
-          fi
-          jq -e 'type == "object" and (keys == ["kubernetes", "plugin-sdk", "ui"]) and all(.[]; type == "string" and test("^([a-f0-9]{40}|[a-f0-9]{64})$"))' e2e/source-cohort.json > /dev/null
-          sdk=$(jq -r '."plugin-sdk"' e2e/source-cohort.json)
-          ui=$(jq -r '.ui' e2e/source-cohort.json)
-          kubernetes=$(jq -r '.kubernetes' e2e/source-cohort.json)
-          if [[ "$sdk" != "$REVIEWED_SDK_REVISION" ]]; then
-            echo "::error::The committed source cohort SDK must match the independently reviewed repository pin. A branch cannot approve its own SDK revision."
-            exit 1
-          fi
-          if [[ "$(git ls-tree HEAD -- plugins/kubernetes)" != "160000 commit $kubernetes"$'\tplugins/kubernetes' ]] || [[ "$(git -C plugins/kubernetes rev-parse HEAD)" != "$kubernetes" ]]; then
-            echo "::error::The committed Kubernetes cohort must match both the host gitlink and checked-out submodule."
-            exit 1
-          fi
-          echo "ui=$ui" >> "$GITHUB_OUTPUT"
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "26.13.0"
+
+      - name: Admit independently reviewed candidate cohort
+        id: candidate
+        run: node e2e/scripts/candidate-source.mjs resolve
 
       - name: Checkout reviewed SDK source
         uses: actions/checkout@v4
         with:
           repository: omniviewdev/plugin-sdk
-          ref: ${{ vars.OMNIVIEW_E2E_REVIEWED_SDK_REVISION }}
+          ref: ${{ steps.candidate.outputs.sdk }}
           path: plugin-sdk
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Checkout UI implementation
         uses: actions/checkout@v4
         with:
           repository: omniviewdev/ui
-          ref: ${{ steps.cohort.outputs.ui }}
+          ref: ${{ steps.candidate.outputs.ui }}
           path: ui
           persist-credentials: false
 
-      - name: Verify SDK checkout matches reviewed pin
-        run: test "$(git -C "$GITHUB_WORKSPACE/plugin-sdk" rev-parse HEAD)" = "$REVIEWED_SDK_REVISION"
+      - name: Verify exact candidate checkouts
+        env:
+          SDK_SOURCE: ${{ github.workspace }}/plugin-sdk
+          UI_SOURCE: ${{ github.workspace }}/ui
+          KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
+        run: node e2e/scripts/candidate-source.mjs verify
 
       - name: Resolve container source and native payload paths
         # Shell paths use the container mounts, unlike host-side workflow contexts.
@@ -104,10 +98,6 @@ jobs:
       - name: Start inclusive preparation clock
         run: echo "OMNIVIEW_E2E_PREPARATION_STARTED_AT=$(date +%s%3N)" >> "$GITHUB_ENV"
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "26.13.0"
 
       - name: Selector and cache-mode boundary contracts
         run: node --test e2e/scripts/*.test.mjs
@@ -141,7 +131,7 @@ jobs:
         if: steps.selection.outputs.kind != 'none'
         env:
           PNPM_KEY: ${{ runner.os }}-${{ runner.arch }}-e2e-native-pnpm-12.14.0-v1-${{ hashFiles('host/pnpm-lock.yaml', 'ui/pnpm-lock.yaml', 'host/plugins/kubernetes/ui/pnpm-lock.yaml') }}
-          GO_KEY: setup-go-Linux-x64-ubuntu24-go-${{ steps.go.outputs.go-version }}-${{ hashFiles('host/go.sum', 'plugin-sdk/go.sum', 'host/plugins/kubernetes/go.sum', 'host/e2e/fixtures/workspace-probe/go.sum', 'host/e2e/scripts/tool-cache.mjs') }}
+          GO_KEY: setup-go-Linux-x64-ubuntu24-go-${{ steps.go.outputs.go-version }}-${{ hashFiles('host/go.sum', 'plugin-sdk/go.sum', 'host/plugins/kubernetes/go.sum', 'host/e2e/source-cohort.json', 'host/e2e/fixtures/workspace-probe/go.sum', 'host/e2e/scripts/tool-cache.mjs') }}
           BROWSER_KEY: ${{ runner.os }}-${{ runner.arch }}-ubuntu24-e2e-chromium-v1-${{ hashFiles('host/pnpm-lock.yaml', 'host/e2e/package.json') }}
         run: |
           echo "pnpm=$PNPM_KEY" >> "$GITHUB_OUTPUT"

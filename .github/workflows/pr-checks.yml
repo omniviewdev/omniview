@@ -2,7 +2,6 @@ name: PR Checks
 
 on:
   pull_request:
-    branches: [main]
 
 concurrency:
   group: pr-checks-${{ github.event.pull_request.number }}
@@ -17,6 +16,7 @@ env:
   GO_VERSION: "1.26"
   NODE_VERSION: "26.13.0"
   GOWORK: "off"
+  REVIEWED_SDK_REVISION: ${{ vars.OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION }}
 
 jobs:
   release-packaging-checks:
@@ -66,10 +66,32 @@ jobs:
           version: 12.14.0
           install: false
 
+      - name: Admit reviewed candidate cohort
+        id: candidate
+        run: node e2e/scripts/candidate-source.mjs resolve
+
+      - name: Checkout reviewed SDK
+        uses: actions/checkout@v4
+        with:
+          repository: omniviewdev/plugin-sdk
+          ref: ${{ steps.candidate.outputs.sdk }}
+          path: .candidate-sources/sdk
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select reviewed SDK source
+        run: |
+          export SDK_SOURCE="$(realpath .candidate-sources/sdk)"
+          node e2e/scripts/candidate-source.mjs verify-sdk
+          echo "SDK_SOURCE=$SDK_SOURCE" >> "$GITHUB_ENV"
+
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+          cache-dependency-path: |
+            go.sum
+            .candidate-sources/sdk/go.sum
 
       - name: Select restored Go cache for Task
         id: go-cache
@@ -117,6 +139,10 @@ jobs:
       - name: Format check
         run: task check:fmt-check GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
 
+      - name: Select effective candidate module for lint
+        run: |
+          printf 'GOFLAGS=%s\n' "$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go --root "$PWD" --sdk-source "$SDK_SOURCE" --format goflags)" >> "$GITHUB_ENV"
+
       # Reports only issues the PR introduces; the existing backlog is not fixed yet.
       - name: Lint
         uses: golangci/golangci-lint-action@v7
@@ -150,10 +176,32 @@ jobs:
         with:
           node-version: "26.13.0"
 
+      - name: Admit reviewed candidate cohort
+        id: candidate
+        run: node e2e/scripts/candidate-source.mjs resolve
+
+      - name: Checkout reviewed SDK
+        uses: actions/checkout@v4
+        with:
+          repository: omniviewdev/plugin-sdk
+          ref: ${{ steps.candidate.outputs.sdk }}
+          path: .candidate-sources/sdk
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select reviewed SDK source
+        run: |
+          export SDK_SOURCE="$(realpath .candidate-sources/sdk)"
+          node e2e/scripts/candidate-source.mjs verify-sdk
+          echo "SDK_SOURCE=$SDK_SOURCE" >> "$GITHUB_ENV"
+
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+          cache-dependency-path: |
+            go.sum
+            .candidate-sources/sdk/go.sum
 
       - name: Select restored Go cache for Task
         id: go-cache

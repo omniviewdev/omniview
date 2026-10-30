@@ -63,3 +63,4 @@ e2e/playwright-report/
 .task
 /omniview
 docs/superpowers/
+.tools/
