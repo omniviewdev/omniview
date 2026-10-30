@@ -61,12 +61,36 @@ its base-ui peer range is `^0.2.1`, not the host source runtime's `~0.4.3`.
 
 With installed/built host packages and the reviewed sources checked out:
 
+Candidate CI uses `e2e/source-cohort.json` as its exact SDK/UI/Kubernetes
+selection. `OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION` must equal that SDK commit;
+configured E2E UI and profile UI/Kubernetes variables must match the cohort.
+The Kubernetes gitlink must also match. Commits must be reachable by checkout,
+but candidate testing does not require a module or npm publication.
+The candidate workflows map this dedicated repository variable to their internal
+`REVIEWED_SDK_REVISION` environment variable. They never fall back to
+`OMNIVIEW_E2E_REVIEWED_SDK_REVISION`. Keep that legacy variable unchanged while
+stable `main` still consumes the earlier SDK; candidate approval must not change
+unrelated pre-merge CI. Configure the new variable only after independent review.
+An absent repository-level legacy variable does not prove that no effective
+organization-level variable exists.
+The independent SDK isolation-core baseline remains
+`5b3ef764d1cf738835a723a749a0cb6c45f85e44`; candidate approval does not
+authorize protected isolation changes or replace review with release-tag trust.
+PR validation runs for stacked PR bases as well as `main`, with read-only
+permissions. Release and nightly workflows retain published dependencies.
+
+Prepare the effective host module with the selected SDK before running the
+probe or builder; keep the generated modfile outside the source checkout:
+
 ```bash
+HOST_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go \
+  --root "$PWD" --sdk-source "$SDK_SOURCE")"
 A11_PROTOCOL_PROBE=1 A11_PROTOCOL_REPORT=/absolute/path/link-protocol.json \
-  GOWORK=off GOFLAGS= go test -tags server ./internal/devworkspace \
+  GOWORK=off GOFLAGS= go test -modfile="$HOST_MODFILE" -tags server ./internal/devworkspace \
   -run '^TestLinkPinnedProtocolProbe$' -count=1
-GOWORK=off GOFLAGS= go run -tags server ./bench/app/build-plugin \
+GOWORK=off GOFLAGS= go run -modfile="$HOST_MODFILE" -tags server ./bench/app/build-plugin \
   --host \"$PWD\" --host-ref \"$(git rev-parse HEAD)\" \
+  --sdk "$SDK_SOURCE" --sdk-ref "$REVIEWED_SDK_COMMIT" \
   --ui /absolute/path/ui --ui-ref \"$REVIEWED_UI_COMMIT\" \
   --kubernetes /absolute/path/kubernetes --kubernetes-ref \"$REVIEWED_KUBERNETES_COMMIT\" \
   --link-evidence /absolute/path/link-protocol.json -- --runs 3
