@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { admitCandidate, verifyCandidate, verifyIsolation, isolationBaseline, verifyGitlink } from './candidate-source.mjs';
+import { admitCandidate, verifyCandidate, verifyIsolation, isolationBaseline, reviewedIsolationCheckpoint, verifyGitlink } from './candidate-source.mjs';
 
 const cohort = { 'plugin-sdk': 'a'.repeat(40), ui: 'b'.repeat(40), kubernetes: 'c'.repeat(40) };
 const env = { REVIEWED_SDK_REVISION: cohort['plugin-sdk'] };
@@ -26,17 +26,68 @@ test('candidate verification rejects wrong, dirty and missing source checkouts',
   assert.throws(() => verifyCandidate(refs, sources, (path, args) => args[0] === 'status' ? ' M go.mod' : git(path, args)));
 });
 
-test('independent isolation review stays distinct from candidate source approval', () => {
-  const git = (_source, args) => args[0] === 'show' ? 'reviewed bytes' : '';
-  assert.doesNotThrow(() => verifyIsolation('/sdk', git));
-  assert.throws(() => verifyIsolation('/sdk', (_source, args) => {
-    if (args[0] === 'merge-base') throw Error('not a reviewed descendant');
-    return 'reviewed bytes';
-  }));
-  assert.throws(() => verifyIsolation('/sdk', (_source, args) => {
-    if (args[0] !== 'show') return '';
-    return args[1].startsWith(isolationBaseline) ? 'reviewed bytes' : 'changed isolation';
-  }));
+const baselineCommit = '5b3ef764d1cf738835a723a749a0cb6c45f85e44';
+const checkpointCommit = '3a795257a7256c21ea68b1c6ea047c2fdf6b7c03';
+const protectedPaths = ['pkg/state/root.go', 'pkg/state/custom.go', 'pkg/profilecontract/profile.go', 'pkg/utils/store.go', 'pkg/sdk/plugin.go'];
+
+function isolationRepository() {
+  const baselineTree = Object.fromEntries(protectedPaths.map(path => [path, `baseline contents of ${path}`]));
+  const reviewedTree = Object.fromEntries(protectedPaths.map(path => [path, `reviewed contents of ${path}`]));
+  const commits = new Map([
+    [baselineCommit, { parent: null, tree: baselineTree }],
+    [checkpointCommit, { parent: baselineCommit, tree: reviewedTree }],
+    ['candidate', { parent: checkpointCommit, tree: { ...reviewedTree } }],
+  ]);
+  let head = 'candidate';
+  const git = (_source, args) => {
+    const revision = ref => ref === 'HEAD' ? head : ref;
+    if (args[0] === 'merge-base') {
+      assert.equal(args[1], '--is-ancestor');
+      const ancestor = revision(args[2]);
+      let current = revision(args[3]);
+      if (!commits.has(ancestor) || !commits.has(current)) throw Error('missing commit');
+      while (current && current !== ancestor) current = commits.get(current)?.parent;
+      if (current !== ancestor) throw Error('not an ancestor');
+      return '';
+    }
+    assert.equal(args[0], 'show');
+    const [ref, path] = args[1].split(':');
+    const contents = commits.get(revision(ref))?.tree[path];
+    if (contents === undefined) throw Error('missing protected blob');
+    return contents;
+  };
+  return { commits, git, setHead: ref => { head = ref; } };
+}
+
+test('separate reviewed checkpoint preserves the original ancestry minimum and accepts its unchanged descendants', () => {
+  assert.equal(isolationBaseline, baselineCommit);
+  assert.equal(reviewedIsolationCheckpoint, checkpointCommit);
+  const repository = isolationRepository();
+  assert.doesNotThrow(() => verifyIsolation('/sdk', repository.git));
+  repository.setHead(checkpointCommit);
+  assert.doesNotThrow(() => verifyIsolation('/sdk', repository.git));
+});
+
+test('each protected file remains byte-sensitive against the pinned checkpoint, not candidate approval', () => {
+  for (const path of protectedPaths) {
+    const repository = isolationRepository();
+    repository.commits.get('candidate').tree[path] += '\nunauthorized change';
+    assert.throws(() => verifyIsolation('/sdk', repository.git), /changes independently reviewed isolation core/);
+  }
+});
+
+test('isolation admission rejects broken baseline ancestry, pre-checkpoint heads and an unavailable pinned checkpoint', () => {
+  const disconnected = isolationRepository();
+  disconnected.commits.get(checkpointCommit).parent = null;
+  assert.throws(() => verifyIsolation('/sdk', disconnected.git), /not an ancestor/);
+  const oldHead = isolationRepository();
+  oldHead.setHead(baselineCommit);
+  assert.throws(() => verifyIsolation('/sdk', oldHead.git), /not an ancestor/);
+  const substituted = isolationRepository();
+  substituted.commits.set('unreviewed-checkpoint', substituted.commits.get(checkpointCommit));
+  substituted.commits.delete(checkpointCommit);
+  substituted.commits.get('candidate').parent = 'unreviewed-checkpoint';
+  assert.throws(() => verifyIsolation('/sdk', substituted.git), /missing commit/);
 });
 
 test('candidate Kubernetes source must equal the committed gitlink, not an unrelated checkout or ordinary tree', () => {
