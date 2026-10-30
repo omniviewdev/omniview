@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   setEnabled: vi.fn(),
   confirmShow: vi.fn(),
   writeText: vi.fn(),
+  listeners: new Map<string, (event: { data: unknown }) => void>(),
 }));
 
 vi.mock('@omniviewdev/runtime/api', () => ({
@@ -43,7 +44,10 @@ vi.mock('@wailsio/runtime', async (importOriginal) => {
   const original = await importOriginal<typeof WailsRuntime>();
   return {
     ...original,
-    Events: { ...original.Events, On: () => () => undefined },
+    Events: { ...original.Events, On: (name: string, handler: (event: { data: unknown }) => void) => {
+      mocks.listeners.set(name, handler);
+      return () => mocks.listeners.delete(name);
+    } },
   };
 });
 
@@ -58,6 +62,9 @@ const tool = (overrides: Record<string, unknown>) => ({
   description: 'List namespaces',
   scope: 'connection',
   status: 'ok',
+  ready: true,
+  listed: true,
+  connectionID: 'prod',
   builtIn: false,
   readOnly: true,
   destructive: false,
@@ -98,6 +105,7 @@ function renderPage() {
 
 describe('AiToolsSettingsPage', () => {
   beforeEach(() => {
+    mocks.listeners.clear();
     mocks.getStatus.mockReset().mockResolvedValue({ enabled: true, running: true, endpoint: 'http://127.0.0.1:9590/mcp', error: '' });
     mocks.getConfig.mockReset().mockResolvedValue({
       enabled: true,
@@ -129,7 +137,7 @@ describe('AiToolsSettingsPage', () => {
 
   afterEach(cleanup);
 
-  it('groups tools by plugin and writes an override when a tool is toggled', async () => {
+  it('groups tools and edits the bound connection rather than granting global access', async () => {
     renderPage();
 
     const kubernetes = await screen.findByRole('group', { name: 'Kubernetes' });
@@ -137,20 +145,23 @@ describe('AiToolsSettingsPage', () => {
     expect(within(kubernetes).getByText('kubernetes_delete_resource')).toBeInTheDocument();
     const alpha = screen.getByRole('group', { name: 'Alpha' });
     expect(within(alpha).getByText('alpha_ping')).toBeInTheDocument();
-    expect(within(kubernetes).getByText('destructive')).toBeInTheDocument();
+    expect(within(kubernetes).getByText('destructive hint')).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(screen.getByRole('switch', { name: 'Enable kubernetes_list_namespaces' }));
     });
 
     expect(mocks.setToolOverride).toHaveBeenCalledWith(
-      { pluginID: '', connectionID: '' },
+      { pluginID: 'kubernetes', connectionID: 'prod' },
       'kubernetes_list_namespaces',
       { enabled: false, confirm: null },
     );
   });
 
   it('switches to a connection scope and exposes the access select', async () => {
+    mocks.listTools.mockImplementation(async (scope: { connectionID: string }) => scope.connectionID
+      ? [tool({ mcpName: 'production_only', connectionID: 'prod', ready: false, listed: false })]
+      : [tool({}), tool({ mcpName: 'global_only' })]);
     renderPage();
     await screen.findByRole('group', { name: 'Kubernetes' });
     expect(screen.queryByRole('combobox', { name: 'Connection access' })).not.toBeInTheDocument();
@@ -164,6 +175,10 @@ describe('AiToolsSettingsPage', () => {
 
     expect(await screen.findByRole('combobox', { name: 'Connection access' })).toBeInTheDocument();
     expect(mocks.listTools).toHaveBeenCalledWith({ pluginID: 'kubernetes', connectionID: 'prod' });
+    expect(await screen.findByText('production_only')).toBeInTheDocument();
+    expect(screen.queryByText('global_only')).not.toBeInTheDocument();
+    expect(screen.queryByText('kubernetes_list_namespaces')).not.toBeInTheDocument();
+    expect(screen.getByText('Route: prod · not ready · not advertised')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('combobox', { name: 'Connection access' }));
     const blocked = within(screen.getByRole('listbox')).getByRole('option', { name: 'Blocked' });
@@ -204,5 +219,69 @@ describe('AiToolsSettingsPage', () => {
       await mocks.confirmShow.mock.calls[0][0].onConfirm();
     });
     expect(mocks.applyPreset).toHaveBeenCalledWith({ pluginID: '', connectionID: '' }, 'all');
+  });
+
+  it('preserves a status event when the initial status read finishes late', async () => {
+    const { promise, resolve } = Promise.withResolvers<unknown>();
+    mocks.getStatus.mockReturnValue(promise);
+    renderPage();
+    await screen.findByRole('group', { name: 'Kubernetes' });
+    await act(async () => {
+      mocks.listeners.get('mcp/status')?.({ data: { running: true, endpoint: 'new-endpoint', error: '' } });
+      resolve({ running: false, endpoint: '', error: '' });
+    });
+    expect(await screen.findByText('Running at new-endpoint')).toBeInTheDocument();
+    expect(screen.queryByText('Stopped')).not.toBeInTheDocument();
+  });
+
+  it('shows tool failure instead of empty inventory and recovers on retry', async () => {
+    mocks.listTools.mockRejectedValueOnce(new Error('offline')).mockResolvedValue([tool({})]);
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry tools' }));
+    expect(await screen.findByText('kubernetes_list_namespaces')).toBeInTheDocument();
+    expect(screen.queryByText('No plugin exposes tools yet.')).not.toBeInTheDocument();
+  });
+
+  it('blocks writes after failed authoritative configuration load', async () => {
+    mocks.getConfig.mockRejectedValue(new Error('offline'));
+    renderPage();
+    await screen.findByRole('button', { name: 'Retry configuration' });
+    expect(screen.getByRole('switch', { name: 'Enabled' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Rotate token' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Apply port' })).toBeDisabled();
+    expect(mocks.setEnabled).not.toHaveBeenCalled();
+  });
+
+  it('refreshes visible tools and connection inventory on the same committed event', async () => {
+    renderPage();
+    await screen.findByRole('group', { name: 'Alpha' });
+    mocks.listTools.mockResolvedValue([tool({ mcpName: 'replacement_tool' })]);
+    mocks.listConnectionPolicies.mockResolvedValue([{ ...connections[0], connectionName: 'Replacement cluster' }]);
+    await act(async () => mocks.listeners.get('mcp/tools_changed')?.({ data: undefined }));
+    expect(await screen.findByText('replacement_tool')).toBeInTheDocument();
+    expect(screen.queryByText('alpha_ping')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('combobox', { name: 'Policy scope' }));
+    expect(await screen.findByRole('option', { name: 'Kubernetes · Replacement cluster' })).toBeInTheDocument();
+  });
+
+  it.each([
+    ['Server status', 'getStatus'],
+    ['Connection inventory', 'listConnectionPolicies'],
+    ['Presets', 'listPresets'],
+  ] as const)('shows recoverable %s failure instead of silently assuming state', async (label, method) => {
+    mocks[method].mockRejectedValueOnce(new Error('offline'));
+    renderPage();
+    const retry = await screen.findByRole('button', { name: `Retry ${label.toLowerCase()}` });
+    expect(screen.getByText(`${label} could not be loaded.`)).toBeInTheDocument();
+    if (method === 'getStatus') expect(screen.queryByText('Stopped')).not.toBeInTheDocument();
+    await act(async () => fireEvent.click(retry));
+    expect(screen.queryByText(`${label} could not be loaded.`)).not.toBeInTheDocument();
+  });
+
+  it('does not disguise an unbound connection tool as a ready plugin route', async () => {
+    mocks.listTools.mockResolvedValue([tool({ connectionID: '', ready: false, listed: false })]);
+    renderPage();
+    expect(await screen.findByText('Route: connection (not bound) · not ready · not advertised')).toBeInTheDocument();
+    expect(screen.queryByText('Route: plugin · ready · advertised')).not.toBeInTheDocument();
   });
 });

@@ -1,10 +1,10 @@
 package mcprelay
 
 import (
-	"encoding/json"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 )
 
 // Wails event names emitted by the relay.
@@ -32,8 +32,17 @@ type PendingConfirmation struct {
 	PluginName     string          `json:"pluginName"`
 	ConnectionID   string          `json:"connectionID"`
 	ConnectionName string          `json:"connectionName"`
-	Arguments      json.RawMessage `json:"arguments"`
+	// ArgumentsJSON is text, not embedded JSON: JavaScript must not round
+	// integer literals or erase negative zero before showing consent.
+	ArgumentsJSON string `json:"argumentsJSON"`
 	RequestedAt    time.Time       `json:"requestedAt"`
+	Origin string `json:"origin"`
+	CredentialID string `json:"credentialID"`
+	SessionID string `json:"sessionID"`
+	InvocationID string `json:"invocationID"`
+	Target invocation.Target `json:"target"`
+	PolicyRevision uint64 `json:"policyRevision"`
+	CatalogRevision uint64 `json:"catalogRevision"`
 }
 
 // ConfirmationResolved reports how a pending confirmation ended.

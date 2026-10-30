@@ -299,11 +299,10 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 
 	c.mu.Lock()
 	c.clients[pluginID] = provider
-	for _, handler := range handlers {
-		if _, ok := c.handlerMap[handler.Plugin]; !ok {
-			c.handlerMap[handler.Plugin] = make(map[string]exec.Handler)
-		}
-		c.handlerMap[handler.Plugin][handler.Resource] = handler
+	// Installation ownership is separate from the handler's canonical selector.
+	c.handlerMap[pluginID] = make(map[string]exec.Handler, len(handlers))
+	for i := range handlers {
+		c.handlerMap[pluginID][handlers[i].Resource] = handlers[i]
 	}
 	c.inChans[pluginID] = inchan
 	c.mu.Unlock()
@@ -342,16 +341,7 @@ func (c *controller) cleanupPluginLocked(pluginID string) (Provider, bool) {
 			delete(c.sessionIndex, sid)
 		}
 	}
-	for plugin, resources := range c.handlerMap {
-		for resKey, handler := range resources {
-			if handler.Plugin == pluginID {
-				delete(resources, resKey)
-			}
-		}
-		if len(resources) == 0 {
-			delete(c.handlerMap, plugin)
-		}
-	}
+	delete(c.handlerMap, pluginID)
 	return provider, ok
 }
 

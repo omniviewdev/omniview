@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -16,9 +17,12 @@ import (
 type fakeProvider struct {
 	descriptors []sdktools.Descriptor
 	listErr     error
+	listStarted chan struct{}
+	listRelease chan struct{}
 }
 
 func (f *fakeProvider) ListTools(*sdktypes.PluginContext) ([]sdktools.Descriptor, error) {
+	if f.listStarted != nil { close(f.listStarted); <-f.listRelease }
 	return f.descriptors, f.listErr
 }
 
@@ -44,7 +48,7 @@ func (b *fakeBackend) Exited() bool           { return false }
 func (b *fakeBackend) NegotiatedVersion() int { return b.version }
 
 func TestControllerCachesToolsAndNotifies(t *testing.T) {
-	ctrl := NewController(logging.NewNop())
+	ctrl := NewController(logging.NewNop(), nil)
 	changes := 0
 	ctrl.OnChange(func() { changes++ })
 
@@ -70,21 +74,65 @@ func TestControllerCachesToolsAndNotifies(t *testing.T) {
 }
 
 func TestControllerStartFailsOnListError(t *testing.T) {
-	ctrl := NewController(logging.NewNop())
+	ctrl := NewController(logging.NewNop(), nil)
 	provider := &fakeProvider{listErr: errors.New("boom")}
 	err := ctrl.OnPluginStart("alpha", config.PluginMeta{ID: "alpha"}, &fakeBackend{provider: provider, version: 1})
 	require.ErrorContains(t, err, "boom")
 	require.False(t, ctrl.HasPlugin("alpha"))
 }
 
-func TestControllerRejectsUnsupportedVersion(t *testing.T) {
-	ctrl := NewController(logging.NewNop())
-	err := ctrl.OnPluginStart("alpha", config.PluginMeta{ID: "alpha"}, &fakeBackend{provider: &fakeProvider{}, version: 2})
-	require.ErrorContains(t, err, "Unsupported SDK protocol version")
+func TestControllerDoesNotConfusePluginProtocolWithToolsContract(t *testing.T) {
+	ctrl := NewController(logging.NewNop(), nil)
+	require.NoError(t, ctrl.OnPluginStart("alpha", config.PluginMeta{ID: "alpha"}, &fakeBackend{provider: &fakeProvider{}, version: 2}))
 }
 
 func TestControllerRejectsUnknownPlugin(t *testing.T) {
-	ctrl := NewController(logging.NewNop())
+	ctrl := NewController(logging.NewNop(), nil)
 	_, err := ctrl.CallTool(context.Background(), "missing", nil, "ping", nil)
 	require.ErrorContains(t, err, "missing")
+}
+
+func TestFailedReplacementRetiresOldTools(t *testing.T) {
+	ctrl := NewController(logging.NewNop(), nil)
+	meta := config.PluginMeta{ID: "alpha"}
+	require.NoError(t, ctrl.OnPluginStart("alpha", meta, &fakeBackend{provider: &fakeProvider{}, version: 1}))
+	old := ctrl.ListAll()["alpha"].Generation
+	require.NotZero(t, old)
+	require.Error(t, ctrl.OnPluginStart("alpha", meta, &fakeBackend{
+		provider: &fakeProvider{listErr: errors.New("failed replacement")}, version: 1,
+	}))
+	require.Empty(t, ctrl.ListAll())
+	_, err := ctrl.CallTool(WithGeneration(context.Background(), old), "alpha", nil, "ping", nil)
+	require.Error(t, err)
+}
+
+func TestDispatchRejectsReplacedGeneration(t *testing.T) {
+	ctrl := NewController(logging.NewNop(), nil)
+	meta := config.PluginMeta{ID: "alpha"}
+	backend := &fakeBackend{provider: &fakeProvider{}, version: 1}
+	require.NoError(t, ctrl.OnPluginStart("alpha", meta, backend))
+	old := ctrl.ListAll()["alpha"].Generation
+	require.NoError(t, ctrl.OnPluginStart("alpha", meta, backend))
+	require.NotEqual(t, old, ctrl.ListAll()["alpha"].Generation)
+	_, err := ctrl.CallTool(WithGeneration(context.Background(), old), "alpha", nil, "ping", nil)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestStopCancelsDiscoveryAndFencesLatePublication(t *testing.T) {
+	ctrl := NewController(logging.NewNop(), nil)
+	provider := &fakeProvider{listStarted: make(chan struct{}), listRelease: make(chan struct{})}
+	defer close(provider.listRelease)
+	started := make(chan error, 1)
+	meta := config.PluginMeta{ID: "alpha"}
+	go func() { started <- ctrl.OnPluginStart("alpha", meta, &fakeBackend{provider: provider, version: 1}) }()
+	select {
+	case <-provider.listStarted:
+	case <-time.After(time.Second): t.Fatal("tool discovery did not start")
+	}
+	require.NoError(t, ctrl.OnPluginStop("alpha", meta))
+	select {
+	case err := <-started: require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second): t.Fatal("stop did not cancel discovery")
+	}
+	require.Empty(t, ctrl.ListAll())
 }

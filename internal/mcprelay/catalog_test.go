@@ -12,11 +12,12 @@ import (
 )
 
 func TestBuildCatalogNamespacesAndInjectsConnection(t *testing.T) {
+	readOnly := true
 	catalog := BuildCatalog(map[string]tools.PluginTools{
 		"kubernetes": {
 			Meta: config.PluginMeta{ID: "kubernetes", Name: "Kubernetes"},
 			Tools: []sdktools.Descriptor{
-				{Name: "list_pods", Scope: sdktools.ScopeConnection, InputSchema: sdktools.ObjectSchema(map[string]any{"namespace": map[string]any{"type": "string"}}, "namespace"), OutputSchema: json.RawMessage(`{"type":"object"}`), Annotations: sdktools.Annotations{ReadOnly: true}},
+				{Name: "list_pods", Scope: sdktools.ScopeConnection, InputSchema: sdktools.ObjectSchema(map[string]any{"namespace": map[string]any{"type": "string"}}, "namespace"), OutputSchema: json.RawMessage(`{"type":"object"}`), Annotations: sdktools.Annotations{ReadOnly: &readOnly}},
 				{Name: "bad schema", Scope: sdktools.ScopePlugin, InputSchema: json.RawMessage(`{"type":"string"}`)},
 				{Name: "no_schema", Scope: sdktools.ScopePlugin, InputSchema: json.RawMessage(`{"type":"string"}`)},
 			},

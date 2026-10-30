@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"strconv"
 	"sync"
 	"testing"
@@ -18,6 +21,7 @@ import (
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	sdktools "github.com/omniviewdev/plugin-sdk/pkg/v1/tools"
 )
@@ -60,6 +64,8 @@ type fakeTools struct {
 	mu        sync.Mutex
 	plugins   map[string]tools.PluginTools
 	listeners []func()
+	callErr error
+	callHook func(context.Context) error
 	calls     []recordedCall
 }
 
@@ -83,10 +89,13 @@ func (f *fakeTools) ListAll() map[string]tools.PluginTools {
 	return out
 }
 
-func (f *fakeTools) CallTool(_ context.Context, pluginID string, connection *sdktypes.Connection, name string, arguments json.RawMessage) (*sdktools.Result, error) {
+func (f *fakeTools) CallTool(ctx context.Context, pluginID string, connection *sdktypes.Connection, name string, arguments json.RawMessage) (*sdktools.Result, error) {
 	f.mu.Lock()
 	f.calls = append(f.calls, recordedCall{pluginID: pluginID, connection: connection, name: name, arguments: arguments})
+	callErr, hook := f.callErr, f.callHook
 	f.mu.Unlock()
+	if hook != nil { if err := hook(ctx); err != nil { return nil, err } }
+	if callErr != nil { return nil, callErr }
 	if name == "ping" {
 		return sdktools.JSONResult(map[string]any{"pong": true})
 	}
@@ -104,13 +113,33 @@ func (f *fakeTools) lastCall() recordedCall {
 type fakeConnections struct {
 	resource.Service
 	connections map[string][]sdktypes.Connection
+	states map[string][]resource.ConnectionState
+	stateErr error
+	stateHook func()
+	listHook func()
 }
 
 func (f *fakeConnections) ListAllConnections(context.Context) (map[string][]sdktypes.Connection, error) {
 	return f.connections, nil
 }
 
+func (f *fakeConnections) GetAllConnectionStates(context.Context) (map[string][]resource.ConnectionState, error) {
+	if f.stateHook != nil { f.stateHook() }
+	if f.stateErr != nil { return nil, f.stateErr }
+	if f.states != nil { return f.states, nil }
+	out := make(map[string][]resource.ConnectionState)
+	for plugin, connections := range f.connections {
+		for _, connection := range connections {
+			out[plugin] = append(out[plugin], resource.ConnectionState{
+				Connection: connection, Readiness: sdktypes.ConnectionStatusConnected,
+			})
+		}
+	}
+	return out, nil
+}
+
 func (f *fakeConnections) ListConnections(_ context.Context, pluginID string) ([]sdktypes.Connection, error) {
+	if f.listHook != nil { f.listHook() }
 	return f.connections[pluginID], nil
 }
 
@@ -140,24 +169,26 @@ func newHarness(t *testing.T) *harness {
 		"kubernetes": {
 			Meta: config.PluginMeta{ID: "kubernetes", Name: "Kubernetes"},
 			Tools: []sdktools.Descriptor{
-				{Name: "list_namespaces", Description: "lists", Scope: sdktools.ScopeConnection, InputSchema: sdktools.ObjectSchema(nil), Annotations: sdktools.Annotations{ReadOnly: true}},
-				{Name: "delete_resource", Description: "deletes", Scope: sdktools.ScopeConnection, InputSchema: sdktools.ObjectSchema(map[string]any{"name": map[string]any{"type": "string"}}, "name"), Annotations: sdktools.Annotations{Destructive: true}},
+				{Name: "list_namespaces", Description: "lists", Scope: sdktools.ScopeConnection, InputSchema: sdktools.ObjectSchema(nil), Annotations: sdktools.Annotations{ReadOnly: new(true)}},
+				{Name: "delete_resource", Description: "deletes", Scope: sdktools.ScopeConnection, InputSchema: sdktools.ObjectSchema(map[string]any{"name": map[string]any{"type": "string"}}, "name"), Annotations: sdktools.Annotations{Destructive: new(true)}},
 			},
 		},
 		"alpha": {
 			Meta:  config.PluginMeta{ID: "alpha", Name: "Alpha"},
-			Tools: []sdktools.Descriptor{{Name: "ping", Scope: sdktools.ScopePlugin, InputSchema: sdktools.ObjectSchema(nil), Annotations: sdktools.Annotations{ReadOnly: true}}},
+			Tools: []sdktools.Descriptor{{Name: "ping", Scope: sdktools.ScopePlugin, InputSchema: sdktools.ObjectSchema(nil), Annotations: sdktools.Annotations{ReadOnly: new(true)}}},
 		},
 	}}
 	connections := &fakeConnections{connections: map[string][]sdktypes.Connection{
 		"kubernetes": {{ID: "prod", Name: "Production"}, {ID: "test", Name: "Test cluster"}},
 	}}
 	store := &memoryStore{}
-	relay := New(Options{Log: logging.NewNop(), Store: store, Tools: fakeTools, Connections: connections, Version: "test"})
+	relay := New(Options{Log: logging.NewNop(), Store: store, Tools: fakeTools, Connections: connections, Version: "test", ShowConfirmation: func() error { return nil }})
 	relay.listenAddr = "127.0.0.1:0"
 	service := &ServiceWrapper{Relay: relay}
 
 	require.NoError(t, relay.loadConfig())
+	require.NoError(t, service.SetToolOverride(Scope{}, "alpha_ping", ToolOverride{Enabled: new(true)}))
+	require.NoError(t, service.SetToolOverride(Scope{}, "kubernetes_list_namespaces", ToolOverride{Enabled: new(true)}))
 	require.NoError(t, service.SetEnabled(true))
 	t.Cleanup(relay.stopListener)
 
@@ -203,12 +234,27 @@ func callText(t *testing.T, session *mcp.ClientSession, name string, args map[st
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	if args == nil { args = map[string]any{} }
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
 	require.NoError(t, err)
 	require.NotEmpty(t, result.Content)
 	text, ok := result.Content[0].(*mcp.TextContent)
 	require.True(t, ok)
 	return text.Text, result.IsError
+}
+
+func approveNext(t *testing.T, service *ServiceWrapper) {
+	t.Helper()
+	go func() {
+		deadline := time.Now().Add(5*time.Second)
+		for time.Now().Before(deadline) {
+			if pending := service.ListPendingConfirmations(); len(pending) > 0 {
+				_ = service.ResolveConfirmation(pending[0].ID, true)
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
 }
 
 // ---- tests ----
@@ -345,8 +391,9 @@ func TestRelayConnectionPolicyAndConfirmation(t *testing.T) {
 	require.Equal(t, "kubernetes_delete_resource", deniedRequest.MCPName)
 	require.Equal(t, "Test cluster", deniedRequest.ConnectionName)
 
-	// Confirm override off: the call goes straight through.
+	// A false custom hint/override cannot suppress required conservative consent.
 	require.NoError(t, h.service.SetToolOverride(Scope{"kubernetes", "test"}, "kubernetes_delete_resource", ToolOverride{Confirm: new(false)}))
+	approveNext(t, h.service)
 	text, isError = callText(t, session, "kubernetes_delete_resource", map[string]any{"connection_id": "test", "name": "cm2"})
 	require.False(t, isError, text)
 	require.Empty(t, h.service.ListPendingConfirmations())
@@ -381,12 +428,14 @@ func TestRelayListConnectionsHonoursAccess(t *testing.T) {
 	require.True(t, isError)
 	require.Contains(t, text, "not permitted")
 
+	approveNext(t, h.service)
 	text, isError = callText(t, session, "kubernetes_list_namespaces", map[string]any{"connection_id": "test"})
 	require.False(t, isError, text)
 
 	// Plugin-scoped tool with structured content.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	approveNext(t, h.service)
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "alpha_ping"})
 	require.NoError(t, err)
 	require.False(t, result.IsError)
@@ -405,7 +454,7 @@ func TestRelayViewsAndPresets(t *testing.T) {
 	}
 	require.Len(t, byName, 4)
 	require.True(t, byName["kubernetes_list_namespaces"].Enabled)
-	require.Equal(t, "preset", byName["kubernetes_list_namespaces"].EnabledSource)
+	require.Equal(t, "inherited", byName["kubernetes_list_namespaces"].EnabledSource)
 	require.False(t, byName["kubernetes_delete_resource"].Enabled)
 	require.True(t, byName["kubernetes_delete_resource"].Confirm)
 	require.Equal(t, "default", byName["kubernetes_delete_resource"].ConfirmSource)
@@ -473,8 +522,8 @@ type arithmeticProvider struct{}
 func (arithmeticProvider) ListTools(*sdktypes.PluginContext) ([]sdktools.Descriptor, error) {
 	schema := sdktools.ObjectSchema(map[string]any{"value": map[string]any{"type": "integer"}}, "value")
 	return []sdktools.Descriptor{
-		{Name: "plugin_next", Scope: sdktools.ScopePlugin, InputSchema: schema, Annotations: sdktools.Annotations{ReadOnly: true}},
-		{Name: "connection_next", Scope: sdktools.ScopeConnection, InputSchema: schema, Annotations: sdktools.Annotations{ReadOnly: true}},
+		{Name: "plugin_next", Scope: sdktools.ScopePlugin, InputSchema: schema, Annotations: sdktools.Annotations{ReadOnly: new(true)}},
+		{Name: "connection_next", Scope: sdktools.ScopeConnection, InputSchema: schema, Annotations: sdktools.Annotations{ReadOnly: new(true)}},
 	}, nil
 }
 
@@ -503,15 +552,16 @@ func (arithmeticBackend) Dispense(string) (interface{}, error) { return arithmet
 func (arithmeticBackend) NegotiatedVersion() int               { return 1 }
 
 func TestRelayHTTPUsesHostControllerRoutesAndPreservesIntegers(t *testing.T) {
-	ctrl := tools.NewController(logging.NewNop())
+	ctrl := tools.NewController(logging.NewNop(), nil)
 	require.NoError(t, ctrl.OnPluginStart("arithmetic", config.PluginMeta{ID: "arithmetic"}, arithmeticBackend{}))
 	connections := &fakeConnections{connections: map[string][]sdktypes.Connection{
 		"arithmetic": {{ID: "prod", Name: "Production"}},
 	}}
-	relay := New(Options{Log: logging.NewNop(), Store: &memoryStore{}, Tools: ctrl, Connections: connections, Version: "test"})
+	relay := New(Options{Log: logging.NewNop(), Store: &memoryStore{}, Tools: ctrl, Connections: connections, Version: "test", ShowConfirmation: func() error { return nil }})
 	relay.listenAddr = "127.0.0.1:0"
 	service := &ServiceWrapper{Relay: relay}
 	require.NoError(t, relay.loadConfig())
+	require.NoError(t, service.ApplyPreset(Scope{}, PresetAll))
 	require.NoError(t, service.SetEnabled(true))
 	t.Cleanup(relay.stopListener)
 	h := &harness{url: service.GetStatus().Endpoint, token: service.GetConfig().Token}
@@ -522,9 +572,360 @@ func TestRelayHTTPUsesHostControllerRoutesAndPreservesIntegers(t *testing.T) {
 			if scope == "connection" {
 				args[connectionIDArg] = "prod"
 			}
+			approveNext(t, service)
 			text, failed := callText(t, session, "arithmetic_"+scope+"_next", args)
 			require.False(t, failed, text)
 			require.Equal(t, "9007199254740994", text)
 		})
+	}
+}
+
+func TestAuthenticatedPostRejectsOversizeBeforeDispatch(t *testing.T) {
+	h := newHarness(t)
+	reached := false
+	handler := h.relay.auth(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached = true }))
+	request := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(strings.Repeat("x", maxRequestBytes+1)))
+	request.RemoteAddr = "127.0.0.1:1234"
+	request.Header.Set("Authorization", "Bearer "+h.token)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	require.Equal(t, http.StatusRequestEntityTooLarge, response.Code)
+	require.False(t, reached)
+}
+
+func TestSameNameReplacementPublishesNewDescriptor(t *testing.T) {
+	h := newHarness(t)
+	session := h.connect(t, nil)
+	h.tools.mu.Lock()
+	entry := h.tools.plugins["alpha"]
+	entry.Tools[0].Description = "replacement process"
+	entry.Generation++
+	h.tools.plugins["alpha"] = entry
+	h.tools.mu.Unlock()
+	h.relay.resync()
+	result, err := session.ListTools(context.Background(), nil)
+	require.NoError(t, err)
+	for _, tool := range result.Tools {
+		if tool.Name == "alpha_ping" {
+			require.Equal(t, "replacement process", tool.Description)
+			return
+		}
+	}
+	t.Fatal("replacement tool missing")
+}
+
+func TestStoppedRelayIgnoresLateInventory(t *testing.T) {
+	h := newHarness(t)
+	require.NoError(t, h.relay.ServiceShutdown())
+	h.tools.mu.Lock()
+	delete(h.tools.plugins, "alpha")
+	h.tools.mu.Unlock()
+	h.relay.resync()
+	views, err := h.service.ListTools(Scope{})
+	require.NoError(t, err)
+	require.Len(t, views, 6, "late callback must not republish stopped inventory")
+}
+
+func TestScopedCustomToolReadinessUsesNativeState(t *testing.T) {
+	h := newHarness(t)
+	connections := h.relay.connections.(*fakeConnections)
+	connections.states = map[string][]resource.ConnectionState{
+		"kubernetes": {{Connection: sdktypes.Connection{ID:"prod"}, Readiness: sdktypes.ConnectionStatusDisconnected}},
+	}
+	views, err := h.service.ListTools(Scope{"kubernetes", "prod"})
+	require.NoError(t, err)
+	require.NotEmpty(t, views)
+	for _, view := range views {
+		require.Equal(t, "prod", view.ConnectionID)
+		require.False(t, view.Ready)
+		require.False(t, view.Listed)
+	}
+	connections.stateErr = errors.New("readiness unavailable")
+	_, err = h.service.ListTools(Scope{"kubernetes", "prod"})
+	require.ErrorContains(t, err, "readiness unavailable")
+}
+
+func TestArgumentsRejectDuplicateFieldsBeforeRoutingRemarshal(t *testing.T) {
+	for _, raw := range []string{
+		`{"connection_id":"first","connection_id":"second"}`,
+		`{"input":{"name":"first","name":"second"}}`,
+		`{"input":[{"name":"first","name":"second"}]}`,
+	} {
+		require.Error(t, rejectDuplicateFields([]byte(raw)))
+	}
+	require.NoError(t, rejectDuplicateFields([]byte(`{"value":9007199254740993,"input":{"name":"one"}}`)))
+}
+
+func TestPolicyChangeBeforeBindRequiresFreshBuiltinConsent(t *testing.T) {
+	h := newHarness(t)
+	session := h.connect(t, nil)
+	connections := h.relay.connections.(*fakeConnections)
+	armed := make(chan struct{}, 1)
+	armed <- struct{}{}
+	entered, release := make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	defer unblock()
+	connections.stateHook = func() {
+		select {
+		case <-armed: close(entered); <-release
+		default:
+		}
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name:"kubernetes_list_connections"})
+		done <- err
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5*time.Second): t.Fatal("builtin did not enter discovery")
+	}
+	require.NoError(t, h.service.SetToolOverride(Scope{}, "kubernetes_list_connections", ToolOverride{Confirm:new(true)}))
+	unblock()
+	require.Eventually(t, func() bool { return len(h.service.ListPendingConfirmations()) == 1 }, time.Second, time.Millisecond)
+	pending := h.service.ListPendingConfirmations()
+	require.NoError(t, h.service.ResolveConfirmation(pending[0].ID, true))
+	select {
+	case err := <-done: require.NoError(t, err)
+	case <-time.After(time.Second): t.Fatal("confirmed builtin did not finish")
+	}
+}
+
+func TestBuiltinFencesResultAfterPolicyRevocation(t *testing.T) {
+	h := newHarness(t)
+	session := h.connect(t, nil)
+	connections := h.relay.connections.(*fakeConnections)
+	entered, release := make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	defer unblock()
+	connections.listHook = func() { close(entered); <-release }
+	type outcome struct { result *mcp.CallToolResult; err error }
+	done := make(chan outcome, 1)
+	go func() {
+		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name:"kubernetes_list_connections"})
+		done <- outcome{result,err}
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5*time.Second): t.Fatal("builtin did not enter native listing")
+	}
+	require.NoError(t, h.service.SetConnectionAccess("kubernetes","prod",AccessBlocked))
+	unblock()
+	select {
+	case got := <-done: require.True(t, got.err != nil || (got.result != nil && got.result.IsError))
+	case <-time.After(time.Second): t.Fatal("revoked builtin did not finish")
+	}
+}
+
+func TestShutdownBoundsBlockedSessionClose(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	entered, release := make(chan struct{}), make(chan struct{})
+	defer close(release)
+	done := make(chan error, 1)
+	go func() {
+		done <- drainHTTPServer(ctx, &http.Server{}, func() { close(entered); <-release })
+	}()
+	select {
+	case <-entered:
+	case <-time.After(time.Second): t.Fatal("session drain did not start")
+	}
+	cancel()
+	select {
+	case err := <-done: require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second): t.Fatal("blocked session close escaped shutdown deadline")
+	}
+}
+
+func TestSaveGlobalPresetDoesNotPromoteConnectionGrant(t *testing.T) {
+	h := newHarness(t)
+	require.NoError(t, h.service.SetToolOverride(Scope{"kubernetes","prod"}, "kubernetes_delete_resource", ToolOverride{Enabled:new(true)}))
+	require.NoError(t, h.service.SaveUserPreset("GlobalOnly"))
+	h.relay.mu.Lock()
+	saved := h.relay.cfg.UserPresets["GlobalOnly"]
+	h.relay.mu.Unlock()
+	require.NotContains(t, saved.Tools, "kubernetes_delete_resource")
+	require.Contains(t, saved.Tools, "alpha_ping")
+}
+
+func TestGeneratedViewUsesPinnedRoutePolicy(t *testing.T) {
+	h := newHarness(t)
+	const name = "resource_route_policy"
+	require.NoError(t, h.service.SetToolOverride(Scope{}, name, ToolOverride{Enabled:new(false),Confirm:new(false)}))
+	require.NoError(t, h.service.SetToolOverride(Scope{"kubernetes","prod"}, name, ToolOverride{Enabled:new(true),Confirm:new(true)}))
+	h.relay.mu.Lock()
+	h.relay.catalog = append(h.relay.catalog, ToolInfo{
+		MCPName:name, PluginID:"kubernetes", Scope:ScopeConnection, Status:StatusOK, ReadOnly:true,
+		Resource:&ResourceBinding{PluginID:"kubernetes",Route:resourcev2.AccessRoute{Connection:"prod"},Operation:"resource.Get"},
+	})
+	h.relay.mu.Unlock()
+	views, err := h.service.ListTools(Scope{})
+	require.NoError(t, err)
+	for _, view := range views {
+		if view.MCPName == name {
+			require.Equal(t, "prod", view.ConnectionID)
+			require.True(t, view.Enabled)
+			require.True(t, view.Confirm)
+			require.Equal(t, "override", view.EnabledSource)
+			return
+		}
+	}
+	t.Fatal("generated route view missing")
+}
+
+func TestActualHTTPCallsRetainOneHostSessionAfterInitializeResponse(t *testing.T) {
+	h := newHarness(t)
+	session := h.connect(t, nil)
+	var mu sync.Mutex
+	var accepted []AuditEvent
+	h.relay.authority.SetAudit(func(event AuditEvent) {
+		if event.Outcome == "admitted" {
+			mu.Lock()
+			accepted = append(accepted, event)
+			mu.Unlock()
+		}
+	})
+	for range 2 {
+		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name:"kubernetes_list_connections"})
+		require.NoError(t, err)
+		require.False(t, result.IsError, "real HTTP session must outlive the initialize POST")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, accepted, 2)
+	require.NotEmpty(t, accepted[0].SessionID)
+	require.Equal(t, accepted[0].SessionID, accepted[1].SessionID)
+	require.Equal(t, accepted[0].CredentialID, accepted[1].CredentialID)
+}
+
+func TestActualHTTPDeleteCancelsPendingConsentBeforeSDKDrain(t *testing.T) {
+	h := newHarness(t)
+	session := h.connect(t, nil)
+	callCtx, cancelCall := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelCall()
+	callDone := make(chan struct{})
+	go func() {
+		defer close(callDone)
+		_, _ = session.CallTool(callCtx, &mcp.CallToolParams{
+			Name:"kubernetes_list_namespaces", Arguments:map[string]any{"connection_id":"prod"},
+		})
+	}()
+	require.Eventually(t, func() bool { return len(h.service.ListPendingConfirmations()) == 1 }, 5*time.Second, time.Millisecond)
+	pending := h.service.ListPendingConfirmations()[0]
+	sessionID := ""
+	for native := range h.relay.server.Sessions() { sessionID = native.ID() }
+	require.NotEmpty(t, sessionID, "stateful HTTP must expose the host-issued SDK selector")
+	deleteCtx, cancelDelete := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelDelete()
+	// The SDK consumes Header.Get; reject duplicates rather than bypassing
+	// authority retirement while the SDK drains the first selected session.
+	duplicate, err := http.NewRequestWithContext(deleteCtx, http.MethodDelete, h.url, nil)
+	require.NoError(t, err)
+	duplicate.Header.Set("Authorization", "Bearer "+h.token)
+	duplicate.Header.Add("Mcp-Session-Id", sessionID)
+	duplicate.Header.Add("Mcp-Session-Id", sessionID)
+	rejected, err := http.DefaultClient.Do(duplicate)
+	require.NoError(t, err)
+	rejected.Body.Close()
+	require.Equal(t, http.StatusBadRequest, rejected.StatusCode)
+	require.Len(t, h.service.ListPendingConfirmations(), 1, "rejected selector must not enter SDK drain")
+	request, err := http.NewRequestWithContext(deleteCtx, http.MethodDelete, h.url, nil)
+	require.NoError(t, err)
+	request.Header.Set("Authorization", "Bearer "+h.token)
+	request.Header.Set("Mcp-Session-Id", sessionID)
+	deleteDone := make(chan error, 1)
+	go func() {
+		response, err := http.DefaultClient.Do(request)
+		if err == nil {
+			response.Body.Close()
+			if response.StatusCode != http.StatusNoContent { err = fmt.Errorf("DELETE returned %d", response.StatusCode) }
+		}
+		deleteDone <- err
+	}()
+	require.Eventually(t, func() bool { return len(h.service.ListPendingConfirmations()) == 0 }, 3*time.Second, time.Millisecond)
+	require.Error(t, h.service.ResolveConfirmation(pending.ID, true), "DELETE must make late approval impossible")
+	select {
+	case err := <-deleteDone: require.NoError(t, err)
+	case <-deleteCtx.Done(): t.Fatal("DELETE waited for consent instead of canceling it")
+	}
+	select {
+	case <-callDone:
+	case <-callCtx.Done(): t.Fatal("deleted session retained its accepted RPC")
+	}
+	h.tools.mu.Lock()
+	defer h.tools.mu.Unlock()
+	require.Empty(t, h.tools.calls, "deleted consent must not dispatch native tools")
+}
+
+func TestActualHTTPRejectsNullObjectArguments(t *testing.T) {
+	h := newHarness(t)
+	session := h.connect(t, nil)
+	_, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:"kubernetes_list_connections", Arguments:json.RawMessage(`null`),
+	})
+	require.Error(t, err)
+}
+
+func TestActualHTTPNativeFailureIsSafeToolErrorNotCancellation(t *testing.T) {
+	h := newHarness(t)
+	session := h.connect(t, nil)
+	h.tools.mu.Lock()
+	h.tools.callErr = errors.New("private native diagnostic")
+	h.tools.mu.Unlock()
+	approveNext(t, h.service)
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name:"alpha_ping", Arguments:map[string]any{}})
+	require.NoError(t, err, "authority cleanup cancellation must not replace a native error")
+	require.True(t, result.IsError)
+	require.Len(t, result.Content, 1)
+	require.Equal(t, "tool invocation failed", result.Content[0].(*mcp.TextContent).Text)
+	h.tools.mu.Lock()
+	firstCalls := len(h.tools.calls)
+	h.tools.callErr = nil
+	h.tools.mu.Unlock()
+	require.Equal(t, 1, firstCalls, "regression must reach real provider dispatch")
+	approveNext(t, h.service)
+	next, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name:"alpha_ping", Arguments:map[string]any{}})
+	require.NoError(t, err, "a provider error must not retire the actual MCP session")
+	require.False(t, next.IsError)
+	require.Equal(t, map[string]any{"pong":true}, next.StructuredContent)
+	h.tools.mu.Lock()
+	defer h.tools.mu.Unlock()
+	require.Len(t, h.tools.calls, 2)
+}
+
+func TestActualHTTPCallerCancellationStillCancelsNativeWork(t *testing.T) {
+	h := newHarness(t)
+	session := h.connect(t, nil)
+	entered, cancelled := make(chan struct{}), make(chan struct{})
+	h.tools.mu.Lock()
+	h.tools.callHook = func(ctx context.Context) error {
+		close(entered)
+		<-ctx.Done()
+		close(cancelled)
+		return ctx.Err()
+	}
+	h.tools.mu.Unlock()
+	approveNext(t, h.service)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := session.CallTool(ctx, &mcp.CallToolParams{Name:"alpha_ping", Arguments:map[string]any{}})
+		done <- err
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5*time.Second): t.Fatal("native dispatch did not start")
+	}
+	cancel()
+	select {
+	case err := <-done: require.Error(t, err)
+	case <-time.After(time.Second): t.Fatal("caller cancellation did not end the RPC")
+	}
+	select {
+	case <-cancelled:
+	case <-time.After(time.Second): t.Fatal("caller cancellation did not reach native work")
 	}
 }

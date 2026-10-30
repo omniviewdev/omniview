@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sync"
 	"time"
+	"github.com/google/uuid"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.opentelemetry.io/otel"
@@ -42,8 +43,10 @@ type Controller interface {
 	ServiceStartup(ctx context.Context, options application.ServiceOptions) error
 	ServiceShutdown() error
 	SetReferenceAdmitter(resource.ReferenceAdmitter)
+	SetUIReferenceAdmitter(resource.ReferenceAdmitter)
 	GetSupportedResources(pluginID string) []logs.Handler
 	CreateSession(plugin, connectionID string, opts logs.CreateSessionOptions) (*logs.LogSession, error)
+	ReadResourceLogs(context.Context, string, logs.CreateSessionOptions) (*HeadlessResult, error)
 	GetSession(sessionID string) (*logs.LogSession, error)
 	ListSessions() ([]*logs.LogSession, error)
 	CloseSession(sessionID string) error
@@ -65,6 +68,7 @@ type controller struct {
 	settingsProvider  pkgsettings.Provider
 	resourceClient    resource.ConnectionReader
 	referenceAdmitter resource.ReferenceAdmitter
+	uiReferenceAdmitter resource.ReferenceAdmitter
 	outputMux         chan logs.StreamOutput
 
 	mu           sync.RWMutex
@@ -72,15 +76,22 @@ type controller struct {
 	sessionIndex map[string]sessionIndex
 	inChans      map[string]chan logs.StreamInput
 	handlerMap   map[string]map[string]logs.Handler
+	headless map[string]*headlessRead
 
 	// batch flush state
 	batches  map[string]*logBatch
 	batchMux sync.Mutex
 }
 
-// SetReferenceAdmitter is configured by native composition before startup.
+// SetReferenceAdmitter binds native admission without changing invocation identity.
 func (c *controller) SetReferenceAdmitter(admit resource.ReferenceAdmitter) {
 	c.referenceAdmitter = admit
+}
+
+// SetUIReferenceAdmitter binds the UI-only entry point to its host-issued realm.
+// Headless consumption never invokes this callback.
+func (c *controller) SetUIReferenceAdmitter(admit resource.ReferenceAdmitter) {
+	c.uiReferenceAdmitter = admit
 }
 
 type logBatch struct {
@@ -118,6 +129,15 @@ func (c *controller) ServiceStartup(ctx context.Context, _ application.ServiceOp
 }
 
 func (c *controller) ServiceShutdown() error {
+	c.mu.RLock()
+	plugins := make([]string, 0, len(c.clients))
+	for pluginID := range c.clients {
+		plugins = append(plugins, pluginID)
+	}
+	c.mu.RUnlock()
+	for _, pluginID := range plugins {
+		_ = c.OnPluginStop(pluginID, config.PluginMeta{})
+	}
 	return nil
 }
 
@@ -133,6 +153,17 @@ func (c *controller) runMux() {
 }
 
 func (c *controller) handleOutput(output logs.StreamOutput) {
+	c.mu.RLock()
+	read := c.headless[output.SessionID]
+	_, indexed := c.sessionIndex[output.SessionID]
+	c.mu.RUnlock()
+	if read != nil {
+		read.accept(output)
+		return
+	}
+	if !indexed {
+		return
+	}
 	if output.Line != nil {
 		c.bufferLine(output.SessionID, *output.Line)
 	} else if output.Event != nil {
@@ -259,6 +290,16 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	inchan := make(chan logs.StreamInput)
 
 	c.mu.Lock()
+	if previous, ok := c.inChans[pluginID]; ok {
+		close(previous)
+	}
+	for _, read := range c.headless {
+		if read.pluginID == pluginID {
+			read.mu.Lock()
+			read.finish(resourcev2.NewError("CONNECTION_ERROR", "Log provider replaced."))
+			read.mu.Unlock()
+		}
+	}
 	c.clients[pluginID] = provider
 	for _, handler := range handlers {
 		if _, ok := c.handlerMap[handler.Plugin]; !ok {
@@ -289,7 +330,11 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 				if !ok {
 					return // stream closed, plugin exited
 				}
-				c.outputMux <- output
+				select {
+				case c.outputMux <- output:
+				case <-streamCtx.Done():
+					return
+				}
 			}
 		}
 	}()
@@ -305,6 +350,13 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 		delete(c.inChans, pluginID)
 	}
 	delete(c.clients, pluginID)
+	for _, read := range c.headless {
+		if read.pluginID == pluginID {
+			read.mu.Lock()
+			read.finish(resourcev2.NewError("CONNECTION_ERROR", "Log provider stopped."))
+			read.mu.Unlock()
+		}
+	}
 	// Clean up handler map entries so stale plugins don't advertise resources.
 	for plugin, resources := range c.handlerMap {
 		for resKey, handler := range resources {
@@ -328,6 +380,13 @@ func (c *controller) OnPluginShutdown(pluginID string, _ config.PluginMeta) erro
 		delete(c.inChans, pluginID)
 	}
 	delete(c.clients, pluginID)
+	for _, read := range c.headless {
+		if read.pluginID == pluginID {
+			read.mu.Lock()
+			read.finish(resourcev2.NewError("CONNECTION_ERROR", "Log provider stopped."))
+			read.mu.Unlock()
+		}
+	}
 	for plugin, resources := range c.handlerMap {
 		for resKey, handler := range resources {
 			if handler.Plugin == pluginID {
@@ -423,13 +482,13 @@ func (c *controller) CreateSession(
 		attribute.String("connection_id", connectionID),
 	)
 	if opts.Reference != nil {
-		if c.referenceAdmitter == nil {
+		if c.uiReferenceAdmitter == nil {
 			return nil, resourcev2.NewError("UNSUPPORTED", "Resource reference admission is unavailable.")
 		}
 		if opts.Route == nil || opts.Route.Connection != connectionID {
 			return nil, resourcev2.NewError("INVALID_REQUEST", "Resource route does not match the selected connection.")
 		}
-		admitted, err := c.referenceAdmitter(ctx, "logs.CreateSession", pluginID, *opts.Route, *opts.Reference)
+		admitted, err := c.uiReferenceAdmitter(ctx, "logs.CreateSession", pluginID, *opts.Route, *opts.Reference)
 		if err != nil {
 			return nil, err
 		}
@@ -445,11 +504,37 @@ func (c *controller) CreateSession(
 		return nil, err
 	}
 
+	// Pre-register the correlation before the RPC so immediate UI output cannot
+	// race session indexing. This ID is not authority and does not permit retries.
+	opts.SessionID = uuid.NewString()
+	c.mu.Lock()
+	c.sessionIndex[opts.SessionID] = sessionIndex{pluginID: pluginID, connectionID: connectionID}
+	c.mu.Unlock()
 	session, err := client.CreateSession(
 		c.getConnectedCtx(ctx, pluginID, connectionID),
 		opts,
 	)
+	if err == nil && (session == nil || session.ID != opts.SessionID) {
+		err = resourcev2.NewError("PROVIDER_ERROR", "Log provider returned an invalid session.")
+	}
 	if err != nil {
+		closeCtx, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer stop()
+		closeErr := client.CloseSession(resourceLogPluginContext(closeCtx, connectionID), opts.SessionID)
+		if closeErr != nil && resourcev2.ErrorCode(closeErr) != "NOT_FOUND" {
+			c.logger.Errorw(closeCtx, "resource log session cleanup failed", "session_id", opts.SessionID, "error", closeErr)
+		}
+		c.mu.Lock()
+		delete(c.sessionIndex, opts.SessionID)
+		c.mu.Unlock()
+		c.batchMux.Lock()
+		if batch := c.batches[opts.SessionID]; batch != nil {
+			if batch.timer != nil {
+				batch.timer.Stop()
+			}
+			delete(c.batches, opts.SessionID)
+		}
+		c.batchMux.Unlock()
 		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
@@ -457,12 +542,6 @@ func (c *controller) CreateSession(
 	session.PluginID = pluginID
 	session.ConnectionID = connectionID
 
-	c.mu.Lock()
-	c.sessionIndex[session.ID] = sessionIndex{
-		pluginID:     pluginID,
-		connectionID: connectionID,
-	}
-	c.mu.Unlock()
 
 	return session, nil
 }

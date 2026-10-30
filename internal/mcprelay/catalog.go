@@ -42,6 +42,8 @@ type ToolInfo struct {
 	OutputSchema map[string]any
 	BuiltIn      bool
 	Status       string
+	Generation uint64
+	Resource *ResourceBinding `json:"-"`
 }
 
 // BuildCatalog namespaces every plugin tool, injects connection_id into
@@ -69,6 +71,7 @@ func BuildCatalog(all map[string]tools.PluginTools) []ToolInfo {
 		hasConnectionScoped := false
 		for _, d := range descriptors {
 			info := toolInfo(pluginID, pluginName, d)
+			info.Generation = entry.Generation
 			if info.Scope == ScopeConnection {
 				hasConnectionScoped = true
 			}
@@ -92,6 +95,7 @@ func BuildCatalog(all map[string]tools.PluginTools) []ToolInfo {
 }
 
 func toolInfo(pluginID, pluginName string, d sdktools.Descriptor) ToolInfo {
+	annotations := d.Annotations.Resolve()
 	info := ToolInfo{
 		MCPName:     pluginID + "_" + d.Name,
 		PluginID:    pluginID,
@@ -100,10 +104,10 @@ func toolInfo(pluginID, pluginName string, d sdktools.Descriptor) ToolInfo {
 		Title:       d.Title,
 		Description: d.Description,
 		Scope:       string(d.Scope),
-		ReadOnly:    d.Annotations.ReadOnly,
-		Destructive: d.Annotations.Destructive,
-		Idempotent:  d.Annotations.Idempotent,
-		OpenWorld:   d.Annotations.OpenWorld,
+		ReadOnly:    annotations.ReadOnly,
+		Destructive: annotations.Destructive,
+		Idempotent:  annotations.Idempotent,
+		OpenWorld:   annotations.OpenWorld,
 		Status:      StatusOK,
 	}
 	if !mcpToolNamePattern.MatchString(info.MCPName) {

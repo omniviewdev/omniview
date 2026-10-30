@@ -33,6 +33,7 @@ export const useMcpRelay = (scope: McpScope = GLOBAL_SCOPE) => {
     const offConfig = Events.On('mcp/config_changed', invalidate);
     const offTools = Events.On('mcp/tools_changed', invalidate);
     const offStatus = Events.On('mcp/status', (event) => {
+      void queryClient.cancelQueries({ queryKey: [...ROOT_KEY, 'status'], exact: true });
       queryClient.setQueryData([...ROOT_KEY, 'status'], event.data);
     });
     return () => {
@@ -44,7 +45,11 @@ export const useMcpRelay = (scope: McpScope = GLOBAL_SCOPE) => {
 
   const status = useQuery({
     queryKey: [...ROOT_KEY, 'status'],
-    queryFn: async () => McpRelayClient.GetStatus(),
+    queryFn: async ({ signal }) => {
+      const result = await McpRelayClient.GetStatus();
+      signal.throwIfAborted();
+      return result;
+    },
   });
 
   const config = useQuery({
@@ -68,6 +73,11 @@ export const useMcpRelay = (scope: McpScope = GLOBAL_SCOPE) => {
   });
 
   const mutationOptions = (failure: string) => ({
+    onMutate: () => {
+      if (!config.isSuccess || config.isFetching) {
+        throw new Error('Load the current MCP configuration before changing policy.');
+      }
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ROOT_KEY });
     },

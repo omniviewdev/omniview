@@ -40,6 +40,9 @@ func (c *controller) routeCatalog(ctx context.Context, pluginID string, route re
 	if err = c.currentGeneration(ctx, pluginID, generation); err != nil {
 		return catalogAdmission{}, resourcev2.Catalog{}, err
 	}
+	if err = checkObservedCatalog(ctx, pluginID, route, catalog); err != nil {
+		return catalogAdmission{}, resourcev2.Catalog{}, err
+	}
 	return captureCatalogAdmission(ctx, generation), catalog, nil
 }
 

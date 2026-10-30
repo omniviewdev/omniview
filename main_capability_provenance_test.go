@@ -20,6 +20,7 @@ import (
 	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	sdkmetric "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
+	sdklogs "github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 )
 
 // This invokes the production composition's metric consumer and the real
@@ -125,4 +126,29 @@ func TestCapabilityConnectionAdmissionPreservesUIAndNativeOrigins(t *testing.T) 
 			require.Equal(t, float64(runtime.GOMAXPROCS(0)), response.Results[0].CurrentValue.Value)
 		})
 	}
+}
+
+func TestProductionHeadlessLogsPreserveExternalAuthority(t *testing.T) {
+	logger := logging.NewNop()
+	state := appstate.NewTestService(t)
+	var observed invocation.Origin
+	boundary := invocation.NewBoundary(invocation.AuthorizeFunc(func(principal invocation.Principal, operation string, _ invocation.Target) error {
+		if operation == "logs.CreateSession" {
+			observed = principal.Origin()
+			if observed == invocation.ExternalAgent { return fmt.Errorf("external logs denied") }
+		}
+		return nil
+	}))
+	resources := hostresource.NewController(logger, nil, state.PluginStore, boundary)
+	_, _, logs, _ := newUICapabilityControllers(logger, nil, resources, invocation.NewScope(invocation.TrustedUI))
+	ctx := invocation.NewScope(invocation.ExternalAgent).Context(context.Background())
+	_, err := logs.ReadResourceLogs(ctx, "plugin", sdklogs.CreateSessionOptions{
+		ResourceKey:"pod", ResourceID:"pod",
+		Route:&sdkresource.AccessRoute{Connection:"route"},
+		Reference:&sdkresource.ResourceReference{Address:sdkresource.ResourceAddress{
+			Provider:"provider", Authority:"authority", Type:"pod", ID:"pod", Scope:[]sdkresource.ScopeEntry{},
+		}},
+	})
+	require.Error(t, err)
+	require.Equal(t, invocation.ExternalAgent, observed, "production composition must not stamp the UI realm")
 }

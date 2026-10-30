@@ -442,13 +442,18 @@ func TestMCPRelayConfig_RoundTrip(t *testing.T) {
 	type document struct {
 		Enabled bool   `json:"enabled"`
 		Token   string `json:"token"`
+		Policies map[string]map[string]*bool `json:"policies"`
 	}
 	var loaded document
 	found, err := s.LoadMCPRelayConfig(&loaded)
 	require.NoError(t, err)
 	assert.False(t, found, "fresh store has no relay config")
 
-	require.NoError(t, s.SaveMCPRelayConfig(document{Enabled: true, Token: "secret"}))
+	denied := false
+	want := document{Enabled: true, Token: "secret", Policies: map[string]map[string]*bool{
+		"plugin": {"inherit": nil, "deny": &denied},
+	}}
+	require.NoError(t, s.SaveMCPRelayConfig(want))
 	require.NoError(t, s.Close())
 
 	s2, err := Open(path)
@@ -457,5 +462,9 @@ func TestMCPRelayConfig_RoundTrip(t *testing.T) {
 	found, err = s2.LoadMCPRelayConfig(&loaded)
 	require.NoError(t, err)
 	assert.True(t, found)
-	assert.Equal(t, document{Enabled: true, Token: "secret"}, loaded)
+	assert.Equal(t, want, loaded)
+	require.Contains(t, loaded.Policies["plugin"], "inherit")
+	require.Nil(t, loaded.Policies["plugin"]["inherit"])
+	require.NotNil(t, loaded.Policies["plugin"]["deny"])
+	require.False(t, *loaded.Policies["plugin"]["deny"])
 }

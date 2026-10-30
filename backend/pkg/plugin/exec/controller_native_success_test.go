@@ -41,6 +41,7 @@ import (
 // -> real SDK manager/PTY -> native file IO. No provider forwards a canned result.
 func TestRegisteredExecConsumesNativeConnectionAndCleansUpSession(t *testing.T) {
 	const pluginID = "native-exec-proof"
+	const providerID = "native-machine-provider"
 	const resourceKey = "cloud::v1::Machine"
 	logger := logging.NewNop()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -63,7 +64,7 @@ func TestRegisteredExecConsumesNativeConnectionAndCleansUpSession(t *testing.T) 
 	require.NoError(t, os.WriteFile(manifestPath, manifest, 0600))
 	resourceProvider, err := sdkresource.NewController(sdkresource.Config[os.Root]{
 		Catalog: func(context.Context, sdkresource.CatalogRequest) (sdkresource.Catalog, error) {
-			return sdkresource.Catalog{Provider: pluginID, Revision: "native:1", Types: []sdkresource.ResourceType{}, Coverage: sdkresource.Coverage{Kind: "complete"}}, nil
+			return sdkresource.Catalog{Provider: providerID, Revision: "native:1", Types: []sdkresource.ResourceType{}, Coverage: sdkresource.Coverage{Kind: "complete"}}, nil
 		},
 		Lifecycle: &sdkresource.Lifecycle[os.Root]{
 			LoadConnections: func(context.Context) ([]sdktypes.Connection, error) {
@@ -98,7 +99,7 @@ func TestRegisteredExecConsumesNativeConnectionAndCleansUpSession(t *testing.T) 
 	terminals := make(chan sdkexec.Terminal, len(connections))
 	realTerminal := sdkexec.NewRealTerminalFactory()
 	handler := sdkexec.Handler{
-		Plugin: pluginID, Resource: resourceKey,
+		Plugin: providerID, Resource: resourceKey,
 		TTYHandler: func(pctx *sdktypes.PluginContext, _ sdkexec.SessionOptions, tty *os.File, stop chan error, _ <-chan sdkexec.SessionResizeInput) error {
 			if pctx == nil || pctx.Connection == nil {
 				return fmt.Errorf("native exec requires a selected connection")
@@ -190,7 +191,7 @@ while IFS= read -r ignored; do :; done`)
 
 	for i, selected := range connections {
 		t.Run(selected.Name, func(t *testing.T) {
-			session, createErr := ctrl.CreateSession(pluginID, selected.ID, sdkexec.SessionOptions{ResourcePlugin: pluginID, ResourceKey: resourceKey, Command: []string{"native-file-apply"}})
+			session, createErr := ctrl.CreateSession(pluginID, selected.ID, sdkexec.SessionOptions{ResourcePlugin: providerID, ResourceKey: resourceKey, Command: []string{"native-file-apply"}})
 			require.NoError(t, createErr)
 			setupCtx, setupCancel := context.WithTimeout(ctx, 5*time.Second)
 			defer setupCancel()
@@ -265,7 +266,7 @@ while IFS= read -r ignored; do :; done`)
 	ctrl.mu.RUnlock()
 	require.Zero(t, indexCount)
 	require.Zero(t, inputCount)
-	_, err = ctrl.CreateSession(pluginID, connections[0].ID, sdkexec.SessionOptions{ResourcePlugin: pluginID, ResourceKey: resourceKey})
+	_, err = ctrl.CreateSession(pluginID, connections[0].ID, sdkexec.SessionOptions{ResourcePlugin: providerID, ResourceKey: resourceKey})
 	var appError *apperror.AppError
 	require.ErrorAs(t, err, &appError)
 	require.Equal(t, apperror.TypePluginNotFound, appError.Type)

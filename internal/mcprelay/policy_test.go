@@ -7,8 +7,8 @@ import (
 )
 
 var (
-	listTool   = ToolInfo{MCPName: "kubernetes_list_namespaces", PluginID: "kubernetes", Scope: ScopeConnection, ReadOnly: true, Status: StatusOK}
-	deleteTool = ToolInfo{MCPName: "kubernetes_delete_resource", PluginID: "kubernetes", Scope: ScopeConnection, Destructive: true, Status: StatusOK}
+	listTool   = ToolInfo{MCPName: "kubernetes_list_namespaces", PluginID: "kubernetes", Scope: ScopeConnection, ReadOnly: true, Status: StatusOK, BuiltIn: true}
+	deleteTool = ToolInfo{MCPName: "kubernetes_delete_resource", PluginID: "kubernetes", Scope: ScopeConnection, Destructive: true, Status: StatusOK, BuiltIn: true}
 	pingTool   = ToolInfo{MCPName: "alpha_ping", PluginID: "alpha", Scope: ScopePlugin, Status: StatusOK}
 )
 
@@ -21,7 +21,7 @@ func TestDefaultConfigIsReadOnlyAndOff(t *testing.T) {
 	require.False(t, cfg.GlobalEnabled(deleteTool))
 	require.False(t, cfg.GlobalEnabled(pingTool))
 	require.False(t, cfg.Listed(deleteTool, []string{"prod"}))
-	require.True(t, cfg.Listed(listTool, nil))
+	require.False(t, cfg.Listed(listTool, nil), "connection tools need at least one eligible route")
 }
 
 func TestValidateRejectsBadValues(t *testing.T) {
@@ -161,4 +161,31 @@ func TestCloneIsIndependent(t *testing.T) {
 	copied.PluginEnabled["alpha"] = false
 	require.True(t, cfg.ConnectionEnabled("kubernetes", "prod", deleteTool))
 	require.True(t, cfg.PluginOn("alpha"))
+}
+
+func TestCustomHintsNeverGrantReadOnlyAccessOrWaiveConsent(t *testing.T) {
+	cfg := DefaultConfig("tok")
+	custom := ToolInfo{MCPName: "plugin_safe_hint", PluginID: "plugin", Scope: ScopePlugin, ReadOnly: true}
+	require.False(t, cfg.GlobalEnabled(custom))
+	require.True(t, cfg.Confirm(custom.PluginID, "", custom))
+	require.NoError(t, cfg.SetToolOverride(Scope{}, custom.MCPName, ToolOverride{Enabled: new(true), Confirm: new(false)}))
+	require.True(t, cfg.GlobalEnabled(custom), "explicit policy grants custom tool access")
+	require.True(t, cfg.Confirm(custom.PluginID, "", custom), "custom code always needs conservative consent")
+}
+
+func TestCloneOwnsOverrideValues(t *testing.T) {
+	cfg := DefaultConfig("tok")
+	cfg.Global.ToolOverrides["custom"] = ToolOverride{Enabled: new(true), Confirm: new(true)}
+	cfg.Connections["plugin"] = map[string]ConnectionPolicy{
+		"route": {Policy: Policy{ToolOverrides: map[string]ToolOverride{"custom": {Enabled: new(true), Confirm: new(true)}}}},
+	}
+	copied := cfg.clone()
+	*cfg.Global.ToolOverrides["custom"].Enabled = false
+	*cfg.Global.ToolOverrides["custom"].Confirm = false
+	*cfg.Connections["plugin"]["route"].ToolOverrides["custom"].Enabled = false
+	*cfg.Connections["plugin"]["route"].ToolOverrides["custom"].Confirm = false
+	require.True(t, *copied.Global.ToolOverrides["custom"].Enabled)
+	require.True(t, *copied.Global.ToolOverrides["custom"].Confirm)
+	require.True(t, *copied.Connections["plugin"]["route"].ToolOverrides["custom"].Enabled)
+	require.True(t, *copied.Connections["plugin"]["route"].ToolOverrides["custom"].Confirm)
 }

@@ -15,6 +15,7 @@ type Origin string
 const (
 	Host      Origin = "host"
 	TrustedUI Origin = "trusted-ui"
+	ExternalAgent Origin = "external-agent"
 )
 
 type principalKey struct{}
@@ -32,10 +33,11 @@ func (p Principal) Owner() string      { return p.owner }
 func (p Principal) Origin() Origin     { return p.origin }
 func (p Principal) Generation() string { return p.generation }
 
+
 type Scope struct{ principal Principal }
 
 func NewScope(origin Origin) *Scope {
-	if origin != Host && origin != TrustedUI {
+	if origin != Host && origin != TrustedUI && origin != ExternalAgent {
 		panic("invalid host invocation origin")
 	}
 	return &Scope{principal: Principal{owner: uuid.NewString(), origin: origin, generation: "initial"}}
@@ -107,13 +109,18 @@ func (b *Boundary) Admit(ctx context.Context, operation string, target Target) (
 		return ctx, apperror.ForResource(err, requestID)
 	}
 	principal, ok := ctx.Value(principalKey{}).(Principal)
-	if !ok || principal.owner == "" || (principal.origin != Host && principal.origin != TrustedUI) {
+	if !ok || principal.owner == "" || (principal.origin != Host && principal.origin != TrustedUI && principal.origin != ExternalAgent) {
 		return ctx, apperror.ForResource(apperror.Forbidden("Access denied", "This operation requires a host-issued invocation."), requestID)
 	}
 	if operation == "" {
 		return ctx, apperror.ForResource(apperror.New(apperror.TypeValidation, 400, "Invalid request", "An operation is required."), requestID)
 	}
 	target = target.clone()
+	// External callers always require the host's authorizer. A missing policy
+	// dependency must not turn an authenticated credential into unrestricted access.
+	if principal.origin == ExternalAgent && (b == nil || b.authorizer == nil) {
+		return ctx, apperror.ForResource(apperror.Forbidden("Access denied", "External operations require host authorization."), requestID)
+	}
 	if b != nil && b.authorizer != nil {
 		if err := b.authorizer.Authorize(principal, operation, target.clone()); err != nil {
 			return ctx, apperror.ForResource(apperror.Forbidden("Access denied", "The operation is not permitted."), requestID)

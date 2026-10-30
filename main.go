@@ -91,7 +91,8 @@ func newUICapabilityControllers(
 	metricController := pluginmetric.NewController(log, settingsProvider, uiResourceService)
 	execController.SetReferenceAdmitter(admitReference)
 	networkerController.SetReferenceAdmitter(admitReference)
-	logsController.SetReferenceAdmitter(admitReference)
+	logsController.SetReferenceAdmitter(resourceController.AdmitReference)
+	logsController.SetUIReferenceAdmitter(admitReference)
 	metricController.SetReferenceAdmitter(admitReference)
 	return execController, networkerController, logsController, metricController
 }
@@ -292,7 +293,8 @@ func main() {
 	utilsClient := utils.NewClient()
 
 	// Setup the plugin systems
-	resourceBoundary := invocation.NewBoundary(nil)
+	mcpAuthority := mcprelay.NewAuthority()
+	resourceBoundary := invocation.NewBoundary(mcpAuthority)
 	resourceUIRealm := invocation.NewScope(invocation.TrustedUI)
 	resourceController := resource.NewController(log, settingsProvider, stateDir.PluginStore, resourceBoundary)
 	graphService := resource.NewGraphService(resourceController.Graph(), resourceUIRealm, resourceBoundary, resourceController.ValidateReference)
@@ -303,7 +305,7 @@ func main() {
 		log, settingsProvider, resourceController, resourceUIRealm,
 	)
 	resourceController.SetConnectionChangeHook(metricController.BeginConnectionChange)
-	toolsController := tools.NewController(log)
+	toolsController := tools.NewController(log, resourceBoundary)
 
 	dataController := data.NewController(log, stateDir.PluginData)
 
@@ -460,6 +462,9 @@ func main() {
 		Tools:       toolsController,
 		Connections: resourceController,
 		Version:     version.Version,
+		Authority:   mcpAuthority,
+		Boundary:    resourceBoundary,
+		Logs: logsController,
 	})
 
 	// Register controllers before bootstrap: bootstrap loads plugins and their

@@ -121,6 +121,17 @@ describe('actual SettingsPage query-driven navigation', () => {
     expect(mocks.setSettings).not.toHaveBeenCalled();
     expect(mocks.selectTheme).not.toHaveBeenCalled();
   });
+
+  it.each([
+    '/settings?section=ai-tools&setting=enabled',
+    '/settings?section=core&category=ai-tools&setting=enabled',
+  ])('rejects unsupported AI Tools focus without breaking later valid navigation: %s', async (url) => {
+    const { router } = renderSettings(url);
+    expect(screen.getByText('Requested settings are unavailable.')).toBeVisible();
+    await act(async () => router.navigate('/settings?category=general&setting=general.first'));
+    await expectFocusedSetting('First option', 'general.first');
+    expect(mocks.setSettings).not.toHaveBeenCalled();
+  });
 });
 
 it('refocuses the actual Theme editor when navigation requests the same already-mounted settings URL again', async () => {

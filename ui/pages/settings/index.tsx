@@ -43,7 +43,7 @@ export default function SettingsPage() {
   const malformed =
     !validSection ||
     id.length > 256 ||
-    (focusTarget !== null && (!focusTarget || focusTarget.length > 256 || !id || specialId !== null));
+    (focusTarget !== null && (!focusTarget || focusTarget.length > 256 || !id || specialId !== null || (section === Section.Core && (id === 'ai-tools' || id === 'extensions'))));
   const selected: SectionSelection = { section: section ?? Section.Core, id };
   const loading =
     (section === Section.Core && settings.isLoading) || (section === Section.Plugins && plugins.isLoading);

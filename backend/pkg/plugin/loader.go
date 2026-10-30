@@ -599,6 +599,22 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 
 	ctx := context.Background()
 	pluginID := record.ID
+	// Retire the previous process advertisement before any replacement startup
+	// can fail, including capability detection and manager initialization.
+	if ctrl := pm.connlessControllers[sdktypes.CapabilityTools]; ctrl != nil {
+		if err := ctrl.OnPluginStop(pluginID, record.Metadata); err != nil {
+			return fmt.Errorf("retire previous tools controller: %w", err)
+		}
+	}
+	var started []plugintypes.LifecycleController
+	committed := false
+	defer func() {
+		if !committed {
+			for i := len(started)-1; i >= 0; i-- {
+				_ = started[i].OnPluginStop(pluginID, record.Metadata)
+			}
+		}
+	}()
 
 	// Record the negotiated SDK protocol version.
 	version := backend.NegotiatedVersion()
@@ -621,6 +637,7 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 	}
 
 	if ctrl := pm.connlessControllers[sdktypes.CapabilitySettings]; ctrl != nil {
+		started = append(started, ctrl)
 		if err := ctrl.OnPluginStart(pluginID, record.Metadata, backend); err != nil {
 			return fmt.Errorf("error starting settings plugin: %w", err)
 		}
@@ -648,6 +665,7 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 		if ctrl == nil {
 			continue
 		}
+		started = append(started, ctrl)
 		if err := ctrl.OnPluginStart(pluginID, record.Metadata, backend); err != nil {
 			return fmt.Errorf("start %s controller: %w", cap.String(), err)
 		}
@@ -658,6 +676,7 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 		"capabilities", record.Capabilities,
 	)
 
+	committed = true
 	return nil
 }
 

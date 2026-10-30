@@ -3,6 +3,7 @@ package mcprelay
 import (
 	"context"
 	"errors"
+	"maps"
 	"sort"
 	"time"
 
@@ -19,6 +20,18 @@ type pendingEntry struct {
 // awaitConfirmation publishes the request and blocks until the user decides,
 // the caller gives up, or the timeout passes.
 func (r *Relay) awaitConfirmation(ctx context.Context, payload PendingConfirmation) (approved bool, reason string) {
+	if ctx.Err() != nil { return false, "cancelled" }
+	// Consent must be reachable before the caller is allowed to wait for it.
+	// No window manager (or a failed focus request) is not implicit consent.
+	if r.showConfirmation == nil || r.showConfirmation() != nil {
+		if r.authority != nil { r.authority.Record(ctx, "consent-unavailable") }
+		return false, "unavailable"
+	}
+	if r.authority != nil {
+		payload = r.authority.Confirmation(ctx, payload)
+		r.authority.Record(ctx, "consent-requested")
+	}
+	payload.Target.Scope = maps.Clone(payload.Target.Scope)
 	payload.ID = uuid.NewString()
 	payload.RequestedAt = time.Now()
 	entry := &pendingEntry{payload: payload, decision: make(chan bool, 1)}
@@ -50,6 +63,9 @@ func (r *Relay) awaitConfirmation(ctx context.Context, payload PendingConfirmati
 	r.confirmMu.Unlock()
 
 	r.emit(EventConfirmationResolved, ConfirmationResolved{ID: payload.ID, Approved: approved, Reason: reason})
+	if r.authority != nil {
+		r.authority.Record(ctx, "consent-"+reason)
+	}
 	return approved, reason
 }
 
@@ -57,6 +73,7 @@ func (r *Relay) awaitConfirmation(ctx context.Context, payload PendingConfirmati
 func (r *Relay) ResolveConfirmation(id string, approved bool) error {
 	r.confirmMu.Lock()
 	entry, ok := r.pending[id]
+	if ok { delete(r.pending, id) }
 	r.confirmMu.Unlock()
 	if !ok {
 		return errors.New("no pending confirmation " + id)
@@ -73,7 +90,9 @@ func (r *Relay) ListPendingConfirmations() []PendingConfirmation {
 	r.confirmMu.Lock()
 	out := make([]PendingConfirmation, 0, len(r.pending))
 	for _, entry := range r.pending {
-		out = append(out, entry.payload)
+		payload := entry.payload
+		payload.Target.Scope = maps.Clone(payload.Target.Scope)
+		out = append(out, payload)
 	}
 	r.confirmMu.Unlock()
 	sort.Slice(out, func(i, j int) bool { return out[i].RequestedAt.Before(out[j].RequestedAt) })

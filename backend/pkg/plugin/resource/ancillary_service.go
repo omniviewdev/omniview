@@ -25,6 +25,9 @@ func (c *controller) admitAncillaryCatalog(ctx context.Context, pluginID string,
 		err = resourcev2.ValidateCatalog(catalog)
 	}
 	if err == nil {
+		err = checkObservedCatalog(ctx, pluginID, route, catalog)
+	}
+	if err == nil {
 		err = c.currentGeneration(ctx, pluginID, generation)
 	}
 	if err != nil {

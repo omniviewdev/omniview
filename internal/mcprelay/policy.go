@@ -105,7 +105,7 @@ func (c *Config) normalize() {
 // current config untouched.
 func (c Config) clone() Config {
 	out := c
-	out.Global.ToolOverrides = maps.Clone(c.Global.ToolOverrides)
+	out.Global.ToolOverrides = cloneOverrides(c.Global.ToolOverrides)
 	out.PluginEnabled = maps.Clone(c.PluginEnabled)
 	out.UserPresets = make(map[string]UserPreset, len(c.UserPresets))
 	for name, preset := range c.UserPresets {
@@ -115,13 +115,23 @@ func (c Config) clone() Config {
 	for pluginID, policies := range c.Connections {
 		copied := make(map[string]ConnectionPolicy, len(policies))
 		for connectionID, policy := range policies {
-			policy.ToolOverrides = maps.Clone(policy.ToolOverrides)
+			policy.ToolOverrides = cloneOverrides(policy.ToolOverrides)
 			copied[connectionID] = policy
 		}
 		out.Connections[pluginID] = copied
 	}
 	out.normalize()
 	return out
+}
+
+func cloneOverrides(source map[string]ToolOverride) map[string]ToolOverride {
+	result := make(map[string]ToolOverride, len(source))
+	for name, override := range source {
+		if override.Enabled != nil { override.Enabled = new(*override.Enabled) }
+		if override.Confirm != nil { override.Confirm = new(*override.Confirm) }
+		result[name] = override
+	}
+	return result
 }
 
 func isBuiltInPreset(name string) bool {
@@ -179,7 +189,8 @@ func (c *Config) presetRule(name string, t ToolInfo) (bool, error) {
 	case PresetNone:
 		return false, nil
 	case PresetReadOnly:
-		return t.ReadOnly, nil
+		// Custom tool annotations are provider hints, not host authority.
+		return (t.BuiltIn || t.Resource != nil) && t.ReadOnly, nil
 	}
 	preset, ok := c.UserPresets[name]
 	if !ok {
@@ -248,6 +259,11 @@ func (c *Config) ConnectionEnabled(pluginID, connectionID string, t ToolInfo) bo
 // Confirm reports whether a call must be confirmed by the user. connectionID
 // is empty for plugin-scoped tools.
 func (c *Config) Confirm(pluginID, connectionID string, t ToolInfo) bool {
+	// A custom handler may do arbitrary native work despite its hints. Always
+	// ask for consent, even when a preset or override explicitly enables it.
+	if !t.BuiltIn && t.Resource == nil {
+		return true
+	}
 	if connectionID != "" {
 		policy := c.connectionPolicy(pluginID, connectionID)
 		if o, ok := policy.ToolOverrides[t.MCPName]; ok && o.Confirm != nil {
@@ -267,10 +283,8 @@ func (c *Config) Listed(t ToolInfo, allowedConnections []string) bool {
 	if t.Scope != ScopeConnection {
 		return c.GlobalEnabled(t)
 	}
-	if c.GlobalEnabled(t) {
-		return true
-	}
 	for _, connectionID := range allowedConnections {
+		if t.Resource != nil && t.Resource.Route.Connection != connectionID { continue }
 		if c.ConnectionEnabled(t.PluginID, connectionID, t) {
 			return true
 		}

@@ -2,6 +2,7 @@ package logs
 
 import (
 	"context"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
@@ -27,6 +28,15 @@ func (a *AdapterV1) GetSupportedResources(ctx *types.PluginContext) []logs.Handl
 
 func (a *AdapterV1) CreateSession(ctx *types.PluginContext, opts logs.CreateSessionOptions) (*logs.LogSession, error) {
 	return a.inner.CreateSession(ctx, opts)
+}
+
+// CreateResourceSession preserves the resource-only lane without legacy fallback.
+func (a *AdapterV1) CreateResourceSession(ctx *types.PluginContext, opts logs.CreateSessionOptions) (*logs.LogSession, error) {
+	provider, ok := a.inner.(logs.ResourceSessionProvider)
+	if !ok {
+		return nil, resourcev2.NewError("UNSUPPORTED", "Resource logs provider unavailable.")
+	}
+	return provider.CreateResourceSession(ctx, opts)
 }
 
 func (a *AdapterV1) GetSession(ctx *types.PluginContext, sessionID string) (*logs.LogSession, error) {

@@ -93,7 +93,7 @@ const AiToolsSettingsPage: React.FC = () => {
   const [presetName, setPresetName] = React.useState('');
 
   const status = relay.status.data;
-  const config = relay.config.data;
+  const config = relay.config.isError ? undefined : relay.config.data;
   const presets = relay.presets.data ?? [];
   const connections = relay.connections.data ?? [];
   const tools = relay.tools.data;
@@ -157,6 +157,19 @@ const AiToolsSettingsPage: React.FC = () => {
       </div>
 
       <div className={styles.Body}>
+        {([
+          ['Configuration', relay.config],
+          ['Server status', relay.status],
+          ['Connection inventory', relay.connections],
+          ['Tools', relay.tools],
+          ['Presets', relay.presets],
+        ] as const).map(([label, query]) => query.isError && (
+          <div role='alert' key={label}>
+            {label} could not be loaded.
+            <Button size='sm' onClick={() => void query.refetch()}>Retry {label.toLowerCase()}</Button>
+          </div>
+        ))}
+        <fieldset disabled={!config || relay.config.isFetching} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <Card className={styles.Card}>
           <div className={styles.CardTitle}>
             <Text size='md' weight='semibold'>Server</Text>
@@ -171,7 +184,11 @@ const AiToolsSettingsPage: React.FC = () => {
             </Switch>
           </div>
           <div className={styles.Status} role='status'>
-            {status?.error ? (
+            {relay.status.isError ? (
+              <Chip variant='soft' color='danger' size='sm'>Status unavailable</Chip>
+            ) : relay.status.isLoading ? (
+              <Text size='sm'>Loading server status…</Text>
+            ) : status?.error ? (
               <Chip variant='soft' color='danger' size='sm'>Error: {status.error}</Chip>
             ) : status?.running ? (
               <Chip variant='soft' color='success' size='sm'>Running at {status.endpoint}</Chip>
@@ -364,8 +381,9 @@ const AiToolsSettingsPage: React.FC = () => {
           <Text size='md' weight='semibold'>
             {isGlobal ? 'Tools' : `Tools on ${selectedConnection?.connectionName ?? scope.connectionID}`}
           </Text>
+          <Text size='xs'>Tool annotations are provider hints, not permissions. Host policy and native authorization still apply.</Text>
           {relay.tools.isLoading && <Text size='sm' role='status'>Loading tools…</Text>}
-          {!relay.tools.isLoading && grouped.length === 0 && (
+          {!relay.tools.isLoading && !relay.tools.isError && grouped.length === 0 && (
             <Text size='sm' className={styles.Muted}>No plugin exposes tools yet.</Text>
           )}
           {grouped.map(([pluginID, group]) => (
@@ -378,12 +396,13 @@ const AiToolsSettingsPage: React.FC = () => {
               onPluginEnabled={(enabled) => {
                 relay.setPluginEnabled.mutate({ pluginID, enabled }); 
               }}
-              onOverride={(mcpName, override) => {
-                relay.setToolOverride.mutate({ scope, mcpName, override }); 
+              onOverride={(rowScope, mcpName, override) => {
+                relay.setToolOverride.mutate({ scope: rowScope, mcpName, override });
               }}
             />
           ))}
         </Card>
+        </fieldset>
       </div>
     </div>
   );
@@ -430,7 +449,7 @@ type PluginToolGroupProps = {
   tools: McpToolView[];
   scope: McpScope;
   onPluginEnabled: (enabled: boolean) => void;
-  onOverride: (mcpName: string, override: { enabled: boolean | null; confirm: boolean | null }) => void;
+  onOverride: (scope: McpScope, mcpName: string, override: { enabled: boolean | null; confirm: boolean | null }) => void;
 };
 
 const PluginToolGroup: React.FC<PluginToolGroupProps> = ({
@@ -459,7 +478,18 @@ const PluginToolGroup: React.FC<PluginToolGroupProps> = ({
         )}
       </div>
       {tools.map((tool) => (
-        <ToolRow key={tool.mcpName} tool={tool} pluginID={pluginID} onOverride={onOverride} />
+        <ToolRow
+          key={`${tool.pluginID}\u0000${tool.connectionID}\u0000${tool.mcpName}`}
+          tool={tool}
+          pluginID={pluginID}
+          onOverride={(mcpName, override) => onOverride(
+            tool.scope === 'connection' && tool.connectionID
+              ? { pluginID: tool.pluginID, connectionID: tool.connectionID }
+              : scope,
+            mcpName,
+            override,
+          )}
+        />
       ))}
     </div>
   );
@@ -468,7 +498,7 @@ const PluginToolGroup: React.FC<PluginToolGroupProps> = ({
 type ToolRowProps = {
   tool: McpToolView;
   pluginID: string;
-  onOverride: PluginToolGroupProps['onOverride'];
+  onOverride: (mcpName: string, override: { enabled: boolean | null; confirm: boolean | null }) => void;
 };
 
 const ToolRow: React.FC<ToolRowProps> = ({ tool, onOverride }) => {
@@ -483,12 +513,14 @@ const ToolRow: React.FC<ToolRowProps> = ({ tool, onOverride }) => {
       <div className={styles.ToolInfo}>
         <Text size='sm' className={styles.ToolName}>{tool.mcpName}</Text>
         {tool.description && <Text size='xs' className={styles.Muted}>{tool.description}</Text>}
+        <Text size='xs'>Policy: {tool.enabled ? 'enabled' : 'disabled'} ({tool.enabledSource}); consent {tool.confirm ? 'required' : 'not required'} ({tool.confirmSource})</Text>
+        <Text size='xs'>Route: {tool.connectionID || (tool.scope === 'connection' ? 'connection (not bound)' : 'plugin')} · {tool.ready ? 'ready' : 'not ready'} · {tool.listed ? 'advertised' : 'not advertised'}</Text>
         <div className={styles.Chips}>
           {tool.status !== 'ok' && (
             <Chip variant='soft' color='danger' size='xs'>{statusLabel[tool.status] ?? tool.status}</Chip>
           )}
-          {tool.readOnly && <Chip variant='soft' color='success' size='xs'>read-only</Chip>}
-          {tool.destructive && <Chip variant='soft' color='danger' size='xs'>destructive</Chip>}
+          {tool.readOnly && <Chip variant='soft' color='success' size='xs'>read-only hint</Chip>}
+          {tool.destructive && <Chip variant='soft' color='danger' size='xs'>destructive hint</Chip>}
           {tool.scope === 'connection' && <Chip variant='outline' color='neutral' size='xs'>connection</Chip>}
           {tool.builtIn && <Chip variant='outline' color='neutral' size='xs'>built-in</Chip>}
         </div>
