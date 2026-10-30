@@ -9,7 +9,8 @@
 set -euo pipefail
 
 module=github.com/omniviewdev/plugin-sdk
-repository=https://github.com/omniviewdev/plugin-sdk
+# Tests point this at a local fixture repository.
+repository=${OMNIVIEW_PLUGIN_SDK_REPOSITORY:-https://github.com/omniviewdev/plugin-sdk}
 modfile=${1:-go.mod}
 
 if grep -Eq "^[[:space:]]*(replace[[:space:]]+)?${module//./\\.}([[:space:]]|$).*=>" "$modfile"; then
