@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	"sort"
 	"time"
-	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -262,14 +262,18 @@ func (s *ServiceWrapper) ListTools(scope Scope) ([]ToolView, error) {
 	cfg := r.cfg.clone()
 	catalog := append([]ToolInfo(nil), r.catalog...)
 	listed := make(map[string]bool, len(r.registered))
-	for name, registered := range r.registered { listed[name] = registered && !r.stopped && r.cfg.Enabled && r.listener != nil }
+	for name, registered := range r.registered {
+		listed[name] = registered && !r.stopped && r.cfg.Enabled && r.listener != nil
+	}
 	r.mu.Unlock()
 	ready := map[string]map[string]bool{}
 	if r.connections != nil {
 		ctx, cancel := context.WithTimeout(invocation.HostContext(context.Background()), 10*time.Second)
 		defer cancel()
 		states, err := r.connections.GetAllConnectionStates(ctx)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		for pluginID, connections := range states {
 			ready[pluginID] = map[string]bool{}
 			for _, state := range connections {
@@ -290,10 +294,12 @@ func (s *ServiceWrapper) ListTools(scope Scope) ([]ToolView, error) {
 		}
 		if scope.global() && t.Scope == ScopeConnection && t.Resource == nil && len(ready[t.PluginID]) > 0 {
 			ids := make([]string, 0, len(ready[t.PluginID]))
-			for id := range ready[t.PluginID] { ids = append(ids, id) }
+			for id := range ready[t.PluginID] {
+				ids = append(ids, id)
+			}
 			sort.Strings(ids)
 			for _, id := range ids {
-				view := toolView(&cfg, Scope{PluginID:t.PluginID, ConnectionID:id}, t)
+				view := toolView(&cfg, Scope{PluginID: t.PluginID, ConnectionID: id}, t)
 				view.ConnectionID = id
 				view.Ready = ready[t.PluginID][id] && t.Status == StatusOK
 				view.Listed = listed[t.MCPName] && view.Ready && cfg.ConnectionEnabled(t.PluginID, id, t)
@@ -303,23 +309,31 @@ func (s *ServiceWrapper) ListTools(scope Scope) ([]ToolView, error) {
 		}
 		effectiveScope := scope
 		if t.Resource != nil {
-			effectiveScope = Scope{PluginID:t.PluginID, ConnectionID:t.Resource.Route.Connection}
+			effectiveScope = Scope{PluginID: t.PluginID, ConnectionID: t.Resource.Route.Connection}
 		}
 		view := toolView(&cfg, effectiveScope, t)
 		view.Listed = listed[t.MCPName]
 		view.Ready = t.Status == StatusOK
 		if t.Scope == ScopeConnection {
 			view.ConnectionID = scope.ConnectionID
-			if t.Resource != nil { view.ConnectionID = t.Resource.Route.Connection }
+			if t.Resource != nil {
+				view.ConnectionID = t.Resource.Route.Connection
+			}
 			view.Ready = false
 			if view.ConnectionID != "" {
 				view.Ready = ready[t.PluginID][view.ConnectionID]
 			} else {
-				for _, connected := range ready[t.PluginID] { view.Ready = view.Ready || connected }
+				for _, connected := range ready[t.PluginID] {
+					view.Ready = view.Ready || connected
+				}
 			}
 			view.Ready = view.Ready && t.Status == StatusOK
-			if !view.Ready { view.Listed = false }
-			if view.ConnectionID != "" { view.Listed = view.Listed && cfg.ConnectionEnabled(t.PluginID, view.ConnectionID, t) }
+			if !view.Ready {
+				view.Listed = false
+			}
+			if view.ConnectionID != "" {
+				view.Listed = view.Listed && cfg.ConnectionEnabled(t.PluginID, view.ConnectionID, t)
+			}
 		}
 		out = append(out, view)
 	}

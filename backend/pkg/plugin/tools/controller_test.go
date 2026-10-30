@@ -22,7 +22,10 @@ type fakeProvider struct {
 }
 
 func (f *fakeProvider) ListTools(*sdktypes.PluginContext) ([]sdktools.Descriptor, error) {
-	if f.listStarted != nil { close(f.listStarted); <-f.listRelease }
+	if f.listStarted != nil {
+		close(f.listStarted)
+		<-f.listRelease
+	}
 	return f.descriptors, f.listErr
 }
 
@@ -127,12 +130,15 @@ func TestStopCancelsDiscoveryAndFencesLatePublication(t *testing.T) {
 	go func() { started <- ctrl.OnPluginStart("alpha", meta, &fakeBackend{provider: provider, version: 1}) }()
 	select {
 	case <-provider.listStarted:
-	case <-time.After(time.Second): t.Fatal("tool discovery did not start")
+	case <-time.After(time.Second):
+		t.Fatal("tool discovery did not start")
 	}
 	require.NoError(t, ctrl.OnPluginStop("alpha", meta))
 	select {
-	case err := <-started: require.ErrorIs(t, err, context.Canceled)
-	case <-time.After(time.Second): t.Fatal("stop did not cancel discovery")
+	case err := <-started:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("stop did not cancel discovery")
 	}
 	require.Empty(t, ctrl.ListAll())
 }

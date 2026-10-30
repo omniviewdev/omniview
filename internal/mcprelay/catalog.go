@@ -42,8 +42,8 @@ type ToolInfo struct {
 	OutputSchema map[string]any
 	BuiltIn      bool
 	Status       string
-	Generation uint64
-	Resource *ResourceBinding `json:"-"`
+	Generation   uint64
+	Resource     *ResourceBinding `json:"-"`
 }
 
 // BuildCatalog namespaces every plugin tool, injects connection_id into

@@ -20,11 +20,15 @@ type pendingEntry struct {
 // awaitConfirmation publishes the request and blocks until the user decides,
 // the caller gives up, or the timeout passes.
 func (r *Relay) awaitConfirmation(ctx context.Context, payload PendingConfirmation) (approved bool, reason string) {
-	if ctx.Err() != nil { return false, "cancelled" }
+	if ctx.Err() != nil {
+		return false, "cancelled"
+	}
 	// Consent must be reachable before the caller is allowed to wait for it.
 	// No window manager (or a failed focus request) is not implicit consent.
 	if r.showConfirmation == nil || r.showConfirmation() != nil {
-		if r.authority != nil { r.authority.Record(ctx, "consent-unavailable") }
+		if r.authority != nil {
+			r.authority.Record(ctx, "consent-unavailable")
+		}
 		return false, "unavailable"
 	}
 	if r.authority != nil {
@@ -73,7 +77,9 @@ func (r *Relay) awaitConfirmation(ctx context.Context, payload PendingConfirmati
 func (r *Relay) ResolveConfirmation(id string, approved bool) error {
 	r.confirmMu.Lock()
 	entry, ok := r.pending[id]
-	if ok { delete(r.pending, id) }
+	if ok {
+		delete(r.pending, id)
+	}
 	r.confirmMu.Unlock()
 	if !ok {
 		return errors.New("no pending confirmation " + id)

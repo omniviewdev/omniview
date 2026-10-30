@@ -13,8 +13,8 @@ import (
 type Origin string
 
 const (
-	Host      Origin = "host"
-	TrustedUI Origin = "trusted-ui"
+	Host          Origin = "host"
+	TrustedUI     Origin = "trusted-ui"
 	ExternalAgent Origin = "external-agent"
 )
 
@@ -32,7 +32,6 @@ type Principal struct {
 func (p Principal) Owner() string      { return p.owner }
 func (p Principal) Origin() Origin     { return p.origin }
 func (p Principal) Generation() string { return p.generation }
-
 
 type Scope struct{ principal Principal }
 

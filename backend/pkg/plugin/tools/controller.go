@@ -11,8 +11,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	logging "github.com/omniviewdev/plugin-sdk/log"
@@ -29,8 +29,8 @@ type Provider = sdktools.Provider
 
 // PluginTools is the cached tool list of one running plugin.
 type PluginTools struct {
-	Meta  config.PluginMeta
-	Tools []sdktools.Descriptor
+	Meta       config.PluginMeta
+	Tools      []sdktools.Descriptor
 	Generation uint64
 }
 
@@ -57,39 +57,39 @@ type Controller interface {
 
 func NewController(logger logging.Logger, boundary *invocation.Boundary) Controller {
 	return &controller{
-		logger:  logger.Named("ToolsController"),
+		logger:   logger.Named("ToolsController"),
 		boundary: boundary,
-		clients: make(map[string]Provider),
-		cache:   make(map[string]PluginTools),
+		clients:  make(map[string]Provider),
+		cache:    make(map[string]PluginTools),
 	}
 }
 
 var _ Controller = (*controller)(nil)
 
 type controller struct {
-	logger logging.Logger
+	logger   logging.Logger
 	boundary *invocation.Boundary
 
-	mu        sync.RWMutex
-	clients   map[string]Provider
-	cache     map[string]PluginTools
-	listeners []func()
-	generations map[string]*toolGeneration
+	mu             sync.RWMutex
+	clients        map[string]Provider
+	cache          map[string]PluginTools
+	listeners      []func()
+	generations    map[string]*toolGeneration
 	nextGeneration uint64
 }
 
 type toolGeneration struct {
-	id uint64
-	ctx context.Context
+	id     uint64
+	ctx    context.Context
 	cancel context.CancelFunc
 }
-
 
 type expectedGenerationKey struct{}
 
 func WithGeneration(ctx context.Context, generation uint64) context.Context {
 	return context.WithValue(ctx, expectedGenerationKey{}, generation)
 }
+
 // ====================================== Controller Implementation ====================================== //
 
 func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
@@ -117,7 +117,9 @@ func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Pro
 func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, backend internaltypes.PluginBackend) error {
 	c.forget(pluginID)
 	c.mu.Lock()
-	if c.generations == nil { c.generations = make(map[string]*toolGeneration) }
+	if c.generations == nil {
+		c.generations = make(map[string]*toolGeneration)
+	}
 	c.nextGeneration++
 	generationCtx, generationCancel := context.WithCancel(context.Background())
 	generation := &toolGeneration{id: c.nextGeneration, ctx: generationCtx, cancel: generationCancel}
@@ -130,7 +132,9 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 		if !committed {
 			generationCancel()
 			c.mu.Lock()
-			if c.generations[pluginID] == generation { delete(c.generations, pluginID) }
+			if c.generations[pluginID] == generation {
+				delete(c.generations, pluginID)
+			}
 			c.mu.Unlock()
 		}
 	}()
@@ -141,7 +145,10 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(ctx, "OnPluginStart")
 
-	type providerResult struct { provider Provider; err error }
+	type providerResult struct {
+		provider Provider
+		err      error
+	}
 	dispensed := make(chan providerResult, 1)
 	go func() {
 		provider, err := dispenseProvider(pluginID, backend)
@@ -150,7 +157,8 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	var provider Provider
 	var err error
 	select {
-	case <-ctx.Done(): return ctx.Err()
+	case <-ctx.Done():
+		return ctx.Err()
 	case result := <-dispensed:
 		provider, err = result.provider, result.err
 	}
@@ -159,7 +167,10 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 		return err
 	}
 
-	type discoveryResult struct { descriptors []sdktools.Descriptor; err error }
+	type discoveryResult struct {
+		descriptors []sdktools.Descriptor
+		err         error
+	}
 	discovered := make(chan discoveryResult, 1)
 	go func() {
 		descriptors, err := provider.ListTools(sdktypes.NewPluginContext(ctx, "mcp", nil, nil, nil))
@@ -167,7 +178,8 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	}()
 	var descriptors []sdktools.Descriptor
 	select {
-	case <-ctx.Done(): return ctx.Err()
+	case <-ctx.Done():
+		return ctx.Err()
 	case result := <-discovered:
 		descriptors, err = result.descriptors, result.err
 	}
@@ -230,7 +242,9 @@ func (c *controller) forget(pluginID string) {
 
 func notify(listeners []func()) {
 	for _, fn := range listeners {
-		if fn != nil { fn() }
+		if fn != nil {
+			fn()
+		}
 	}
 }
 
@@ -281,16 +295,22 @@ func (c *controller) CallTool(
 	if !ok {
 		return nil, apperror.PluginNotFound(pluginID)
 	}
-	if generation == nil { return nil, context.Canceled }
+	if generation == nil {
+		return nil, context.Canceled
+	}
 	if expected, ok := ctx.Value(expectedGenerationKey{}).(uint64); ok && expected != generation.id {
 		return nil, context.Canceled
 	}
 	if c.boundary != nil {
 		target := invocation.Target{Provider: pluginID, Action: name}
-		if connection != nil { target.Connection = connection.ID }
+		if connection != nil {
+			target.Connection = connection.ID
+		}
 		var err error
 		ctx, err = c.boundary.Admit(ctx, "tools.call", target)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 	}
 	callCtx, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(generation.ctx, cancel)
@@ -308,11 +328,15 @@ func (c *controller) CallTool(
 	}
 
 	result, err := provider.CallTool(pluginCtx, sdktools.CallInput{Name: name, Arguments: arguments, Route: route})
-	if ctx.Err() != nil { return nil, ctx.Err() }
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	c.mu.RLock()
 	current := c.generations[pluginID] == generation
 	c.mu.RUnlock()
-	if !current { return nil, context.Canceled }
+	if !current {
+		return nil, context.Canceled
+	}
 	if err != nil {
 		telemetryutil.RecordError(span, err)
 		return nil, err

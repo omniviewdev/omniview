@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -64,8 +64,8 @@ type fakeTools struct {
 	mu        sync.Mutex
 	plugins   map[string]tools.PluginTools
 	listeners []func()
-	callErr error
-	callHook func(context.Context) error
+	callErr   error
+	callHook  func(context.Context) error
 	calls     []recordedCall
 }
 
@@ -94,8 +94,14 @@ func (f *fakeTools) CallTool(ctx context.Context, pluginID string, connection *s
 	f.calls = append(f.calls, recordedCall{pluginID: pluginID, connection: connection, name: name, arguments: arguments})
 	callErr, hook := f.callErr, f.callHook
 	f.mu.Unlock()
-	if hook != nil { if err := hook(ctx); err != nil { return nil, err } }
-	if callErr != nil { return nil, callErr }
+	if hook != nil {
+		if err := hook(ctx); err != nil {
+			return nil, err
+		}
+	}
+	if callErr != nil {
+		return nil, callErr
+	}
 	if name == "ping" {
 		return sdktools.JSONResult(map[string]any{"pong": true})
 	}
@@ -113,10 +119,10 @@ func (f *fakeTools) lastCall() recordedCall {
 type fakeConnections struct {
 	resource.Service
 	connections map[string][]sdktypes.Connection
-	states map[string][]resource.ConnectionState
-	stateErr error
-	stateHook func()
-	listHook func()
+	states      map[string][]resource.ConnectionState
+	stateErr    error
+	stateHook   func()
+	listHook    func()
 }
 
 func (f *fakeConnections) ListAllConnections(context.Context) (map[string][]sdktypes.Connection, error) {
@@ -124,9 +130,15 @@ func (f *fakeConnections) ListAllConnections(context.Context) (map[string][]sdkt
 }
 
 func (f *fakeConnections) GetAllConnectionStates(context.Context) (map[string][]resource.ConnectionState, error) {
-	if f.stateHook != nil { f.stateHook() }
-	if f.stateErr != nil { return nil, f.stateErr }
-	if f.states != nil { return f.states, nil }
+	if f.stateHook != nil {
+		f.stateHook()
+	}
+	if f.stateErr != nil {
+		return nil, f.stateErr
+	}
+	if f.states != nil {
+		return f.states, nil
+	}
 	out := make(map[string][]resource.ConnectionState)
 	for plugin, connections := range f.connections {
 		for _, connection := range connections {
@@ -139,7 +151,9 @@ func (f *fakeConnections) GetAllConnectionStates(context.Context) (map[string][]
 }
 
 func (f *fakeConnections) ListConnections(_ context.Context, pluginID string) ([]sdktypes.Connection, error) {
-	if f.listHook != nil { f.listHook() }
+	if f.listHook != nil {
+		f.listHook()
+	}
 	return f.connections[pluginID], nil
 }
 
@@ -234,7 +248,9 @@ func callText(t *testing.T, session *mcp.ClientSession, name string, args map[st
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if args == nil { args = map[string]any{} }
+	if args == nil {
+		args = map[string]any{}
+	}
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
 	require.NoError(t, err)
 	require.NotEmpty(t, result.Content)
@@ -246,7 +262,7 @@ func callText(t *testing.T, session *mcp.ClientSession, name string, args map[st
 func approveNext(t *testing.T, service *ServiceWrapper) {
 	t.Helper()
 	go func() {
-		deadline := time.Now().Add(5*time.Second)
+		deadline := time.Now().Add(5 * time.Second)
 		for time.Now().Before(deadline) {
 			if pending := service.ListPendingConfirmations(); len(pending) > 0 {
 				_ = service.ResolveConfirmation(pending[0].ID, true)
@@ -630,7 +646,7 @@ func TestScopedCustomToolReadinessUsesNativeState(t *testing.T) {
 	h := newHarness(t)
 	connections := h.relay.connections.(*fakeConnections)
 	connections.states = map[string][]resource.ConnectionState{
-		"kubernetes": {{Connection: sdktypes.Connection{ID:"prod"}, Readiness: sdktypes.ConnectionStatusDisconnected}},
+		"kubernetes": {{Connection: sdktypes.Connection{ID: "prod"}, Readiness: sdktypes.ConnectionStatusDisconnected}},
 	}
 	views, err := h.service.ListTools(Scope{"kubernetes", "prod"})
 	require.NoError(t, err)
@@ -668,27 +684,32 @@ func TestPolicyChangeBeforeBindRequiresFreshBuiltinConsent(t *testing.T) {
 	defer unblock()
 	connections.stateHook = func() {
 		select {
-		case <-armed: close(entered); <-release
+		case <-armed:
+			close(entered)
+			<-release
 		default:
 		}
 	}
 	done := make(chan error, 1)
 	go func() {
-		_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name:"kubernetes_list_connections"})
+		_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "kubernetes_list_connections"})
 		done <- err
 	}()
 	select {
 	case <-entered:
-	case <-time.After(5*time.Second): t.Fatal("builtin did not enter discovery")
+	case <-time.After(5 * time.Second):
+		t.Fatal("builtin did not enter discovery")
 	}
-	require.NoError(t, h.service.SetToolOverride(Scope{}, "kubernetes_list_connections", ToolOverride{Confirm:new(true)}))
+	require.NoError(t, h.service.SetToolOverride(Scope{}, "kubernetes_list_connections", ToolOverride{Confirm: new(true)}))
 	unblock()
 	require.Eventually(t, func() bool { return len(h.service.ListPendingConfirmations()) == 1 }, time.Second, time.Millisecond)
 	pending := h.service.ListPendingConfirmations()
 	require.NoError(t, h.service.ResolveConfirmation(pending[0].ID, true))
 	select {
-	case err := <-done: require.NoError(t, err)
-	case <-time.After(time.Second): t.Fatal("confirmed builtin did not finish")
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("confirmed builtin did not finish")
 	}
 }
 
@@ -701,21 +722,27 @@ func TestBuiltinFencesResultAfterPolicyRevocation(t *testing.T) {
 	unblock := func() { releaseOnce.Do(func() { close(release) }) }
 	defer unblock()
 	connections.listHook = func() { close(entered); <-release }
-	type outcome struct { result *mcp.CallToolResult; err error }
+	type outcome struct {
+		result *mcp.CallToolResult
+		err    error
+	}
 	done := make(chan outcome, 1)
 	go func() {
-		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name:"kubernetes_list_connections"})
-		done <- outcome{result,err}
+		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "kubernetes_list_connections"})
+		done <- outcome{result, err}
 	}()
 	select {
 	case <-entered:
-	case <-time.After(5*time.Second): t.Fatal("builtin did not enter native listing")
+	case <-time.After(5 * time.Second):
+		t.Fatal("builtin did not enter native listing")
 	}
-	require.NoError(t, h.service.SetConnectionAccess("kubernetes","prod",AccessBlocked))
+	require.NoError(t, h.service.SetConnectionAccess("kubernetes", "prod", AccessBlocked))
 	unblock()
 	select {
-	case got := <-done: require.True(t, got.err != nil || (got.result != nil && got.result.IsError))
-	case <-time.After(time.Second): t.Fatal("revoked builtin did not finish")
+	case got := <-done:
+		require.True(t, got.err != nil || (got.result != nil && got.result.IsError))
+	case <-time.After(time.Second):
+		t.Fatal("revoked builtin did not finish")
 	}
 }
 
@@ -730,18 +757,21 @@ func TestShutdownBoundsBlockedSessionClose(t *testing.T) {
 	}()
 	select {
 	case <-entered:
-	case <-time.After(time.Second): t.Fatal("session drain did not start")
+	case <-time.After(time.Second):
+		t.Fatal("session drain did not start")
 	}
 	cancel()
 	select {
-	case err := <-done: require.ErrorIs(t, err, context.Canceled)
-	case <-time.After(time.Second): t.Fatal("blocked session close escaped shutdown deadline")
+	case err := <-done:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("blocked session close escaped shutdown deadline")
 	}
 }
 
 func TestSaveGlobalPresetDoesNotPromoteConnectionGrant(t *testing.T) {
 	h := newHarness(t)
-	require.NoError(t, h.service.SetToolOverride(Scope{"kubernetes","prod"}, "kubernetes_delete_resource", ToolOverride{Enabled:new(true)}))
+	require.NoError(t, h.service.SetToolOverride(Scope{"kubernetes", "prod"}, "kubernetes_delete_resource", ToolOverride{Enabled: new(true)}))
 	require.NoError(t, h.service.SaveUserPreset("GlobalOnly"))
 	h.relay.mu.Lock()
 	saved := h.relay.cfg.UserPresets["GlobalOnly"]
@@ -753,12 +783,12 @@ func TestSaveGlobalPresetDoesNotPromoteConnectionGrant(t *testing.T) {
 func TestGeneratedViewUsesPinnedRoutePolicy(t *testing.T) {
 	h := newHarness(t)
 	const name = "resource_route_policy"
-	require.NoError(t, h.service.SetToolOverride(Scope{}, name, ToolOverride{Enabled:new(false),Confirm:new(false)}))
-	require.NoError(t, h.service.SetToolOverride(Scope{"kubernetes","prod"}, name, ToolOverride{Enabled:new(true),Confirm:new(true)}))
+	require.NoError(t, h.service.SetToolOverride(Scope{}, name, ToolOverride{Enabled: new(false), Confirm: new(false)}))
+	require.NoError(t, h.service.SetToolOverride(Scope{"kubernetes", "prod"}, name, ToolOverride{Enabled: new(true), Confirm: new(true)}))
 	h.relay.mu.Lock()
 	h.relay.catalog = append(h.relay.catalog, ToolInfo{
-		MCPName:name, PluginID:"kubernetes", Scope:ScopeConnection, Status:StatusOK, ReadOnly:true,
-		Resource:&ResourceBinding{PluginID:"kubernetes",Route:resourcev2.AccessRoute{Connection:"prod"},Operation:"resource.Get"},
+		MCPName: name, PluginID: "kubernetes", Scope: ScopeConnection, Status: StatusOK, ReadOnly: true,
+		Resource: &ResourceBinding{PluginID: "kubernetes", Route: resourcev2.AccessRoute{Connection: "prod"}, Operation: "resource.Get"},
 	})
 	h.relay.mu.Unlock()
 	views, err := h.service.ListTools(Scope{})
@@ -788,7 +818,7 @@ func TestActualHTTPCallsRetainOneHostSessionAfterInitializeResponse(t *testing.T
 		}
 	})
 	for range 2 {
-		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name:"kubernetes_list_connections"})
+		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "kubernetes_list_connections"})
 		require.NoError(t, err)
 		require.False(t, result.IsError, "real HTTP session must outlive the initialize POST")
 	}
@@ -809,13 +839,15 @@ func TestActualHTTPDeleteCancelsPendingConsentBeforeSDKDrain(t *testing.T) {
 	go func() {
 		defer close(callDone)
 		_, _ = session.CallTool(callCtx, &mcp.CallToolParams{
-			Name:"kubernetes_list_namespaces", Arguments:map[string]any{"connection_id":"prod"},
+			Name: "kubernetes_list_namespaces", Arguments: map[string]any{"connection_id": "prod"},
 		})
 	}()
 	require.Eventually(t, func() bool { return len(h.service.ListPendingConfirmations()) == 1 }, 5*time.Second, time.Millisecond)
 	pending := h.service.ListPendingConfirmations()[0]
 	sessionID := ""
-	for native := range h.relay.server.Sessions() { sessionID = native.ID() }
+	for native := range h.relay.server.Sessions() {
+		sessionID = native.ID()
+	}
 	require.NotEmpty(t, sessionID, "stateful HTTP must expose the host-issued SDK selector")
 	deleteCtx, cancelDelete := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelDelete()
@@ -840,19 +872,24 @@ func TestActualHTTPDeleteCancelsPendingConsentBeforeSDKDrain(t *testing.T) {
 		response, err := http.DefaultClient.Do(request)
 		if err == nil {
 			response.Body.Close()
-			if response.StatusCode != http.StatusNoContent { err = fmt.Errorf("DELETE returned %d", response.StatusCode) }
+			if response.StatusCode != http.StatusNoContent {
+				err = fmt.Errorf("DELETE returned %d", response.StatusCode)
+			}
 		}
 		deleteDone <- err
 	}()
 	require.Eventually(t, func() bool { return len(h.service.ListPendingConfirmations()) == 0 }, 3*time.Second, time.Millisecond)
 	require.Error(t, h.service.ResolveConfirmation(pending.ID, true), "DELETE must make late approval impossible")
 	select {
-	case err := <-deleteDone: require.NoError(t, err)
-	case <-deleteCtx.Done(): t.Fatal("DELETE waited for consent instead of canceling it")
+	case err := <-deleteDone:
+		require.NoError(t, err)
+	case <-deleteCtx.Done():
+		t.Fatal("DELETE waited for consent instead of canceling it")
 	}
 	select {
 	case <-callDone:
-	case <-callCtx.Done(): t.Fatal("deleted session retained its accepted RPC")
+	case <-callCtx.Done():
+		t.Fatal("deleted session retained its accepted RPC")
 	}
 	h.tools.mu.Lock()
 	defer h.tools.mu.Unlock()
@@ -863,7 +900,7 @@ func TestActualHTTPRejectsNullObjectArguments(t *testing.T) {
 	h := newHarness(t)
 	session := h.connect(t, nil)
 	_, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name:"kubernetes_list_connections", Arguments:json.RawMessage(`null`),
+		Name: "kubernetes_list_connections", Arguments: json.RawMessage(`null`),
 	})
 	require.Error(t, err)
 }
@@ -875,7 +912,7 @@ func TestActualHTTPNativeFailureIsSafeToolErrorNotCancellation(t *testing.T) {
 	h.tools.callErr = errors.New("private native diagnostic")
 	h.tools.mu.Unlock()
 	approveNext(t, h.service)
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name:"alpha_ping", Arguments:map[string]any{}})
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "alpha_ping", Arguments: map[string]any{}})
 	require.NoError(t, err, "authority cleanup cancellation must not replace a native error")
 	require.True(t, result.IsError)
 	require.Len(t, result.Content, 1)
@@ -886,10 +923,10 @@ func TestActualHTTPNativeFailureIsSafeToolErrorNotCancellation(t *testing.T) {
 	h.tools.mu.Unlock()
 	require.Equal(t, 1, firstCalls, "regression must reach real provider dispatch")
 	approveNext(t, h.service)
-	next, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name:"alpha_ping", Arguments:map[string]any{}})
+	next, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "alpha_ping", Arguments: map[string]any{}})
 	require.NoError(t, err, "a provider error must not retire the actual MCP session")
 	require.False(t, next.IsError)
-	require.Equal(t, map[string]any{"pong":true}, next.StructuredContent)
+	require.Equal(t, map[string]any{"pong": true}, next.StructuredContent)
 	h.tools.mu.Lock()
 	defer h.tools.mu.Unlock()
 	require.Len(t, h.tools.calls, 2)
@@ -912,20 +949,24 @@ func TestActualHTTPCallerCancellationStillCancelsNativeWork(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		_, err := session.CallTool(ctx, &mcp.CallToolParams{Name:"alpha_ping", Arguments:map[string]any{}})
+		_, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "alpha_ping", Arguments: map[string]any{}})
 		done <- err
 	}()
 	select {
 	case <-entered:
-	case <-time.After(5*time.Second): t.Fatal("native dispatch did not start")
+	case <-time.After(5 * time.Second):
+		t.Fatal("native dispatch did not start")
 	}
 	cancel()
 	select {
-	case err := <-done: require.Error(t, err)
-	case <-time.After(time.Second): t.Fatal("caller cancellation did not end the RPC")
+	case err := <-done:
+		require.Error(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("caller cancellation did not end the RPC")
 	}
 	select {
 	case <-cancelled:
-	case <-time.After(time.Second): t.Fatal("caller cancellation did not reach native work")
+	case <-time.After(time.Second):
+		t.Fatal("caller cancellation did not reach native work")
 	}
 }

@@ -19,8 +19,8 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
-	sdkmetric "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 	sdklogs "github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
+	sdkmetric "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 )
 
 // This invokes the production composition's metric consumer and the real
@@ -135,7 +135,9 @@ func TestProductionHeadlessLogsPreserveExternalAuthority(t *testing.T) {
 	boundary := invocation.NewBoundary(invocation.AuthorizeFunc(func(principal invocation.Principal, operation string, _ invocation.Target) error {
 		if operation == "logs.CreateSession" {
 			observed = principal.Origin()
-			if observed == invocation.ExternalAgent { return fmt.Errorf("external logs denied") }
+			if observed == invocation.ExternalAgent {
+				return fmt.Errorf("external logs denied")
+			}
 		}
 		return nil
 	}))
@@ -143,10 +145,10 @@ func TestProductionHeadlessLogsPreserveExternalAuthority(t *testing.T) {
 	_, _, logs, _ := newUICapabilityControllers(logger, nil, resources, invocation.NewScope(invocation.TrustedUI))
 	ctx := invocation.NewScope(invocation.ExternalAgent).Context(context.Background())
 	_, err := logs.ReadResourceLogs(ctx, "plugin", sdklogs.CreateSessionOptions{
-		ResourceKey:"pod", ResourceID:"pod",
-		Route:&sdkresource.AccessRoute{Connection:"route"},
-		Reference:&sdkresource.ResourceReference{Address:sdkresource.ResourceAddress{
-			Provider:"provider", Authority:"authority", Type:"pod", ID:"pod", Scope:[]sdkresource.ScopeEntry{},
+		ResourceKey: "pod", ResourceID: "pod",
+		Route: &sdkresource.AccessRoute{Connection: "route"},
+		Reference: &sdkresource.ResourceReference{Address: sdkresource.ResourceAddress{
+			Provider: "provider", Authority: "authority", Type: "pod", ID: "pod", Scope: []sdkresource.ScopeEntry{},
 		}},
 	})
 	require.Error(t, err)

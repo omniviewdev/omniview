@@ -187,4 +187,3 @@ func TestReauthorizeRejectsForgedForeignAndRetargetedRequests(t *testing.T) {
 		}
 	}
 }
-

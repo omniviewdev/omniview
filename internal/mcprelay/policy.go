@@ -127,8 +127,12 @@ func (c Config) clone() Config {
 func cloneOverrides(source map[string]ToolOverride) map[string]ToolOverride {
 	result := make(map[string]ToolOverride, len(source))
 	for name, override := range source {
-		if override.Enabled != nil { override.Enabled = new(*override.Enabled) }
-		if override.Confirm != nil { override.Confirm = new(*override.Confirm) }
+		if override.Enabled != nil {
+			override.Enabled = new(*override.Enabled)
+		}
+		if override.Confirm != nil {
+			override.Confirm = new(*override.Confirm)
+		}
 		result[name] = override
 	}
 	return result
@@ -284,7 +288,9 @@ func (c *Config) Listed(t ToolInfo, allowedConnections []string) bool {
 		return c.GlobalEnabled(t)
 	}
 	for _, connectionID := range allowedConnections {
-		if t.Resource != nil && t.Resource.Route.Connection != connectionID { continue }
+		if t.Resource != nil && t.Resource.Route.Connection != connectionID {
+			continue
+		}
 		if c.ConnectionEnabled(t.PluginID, connectionID, t) {
 			return true
 		}

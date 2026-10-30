@@ -440,8 +440,8 @@ func TestMCPRelayConfig_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 
 	type document struct {
-		Enabled bool   `json:"enabled"`
-		Token   string `json:"token"`
+		Enabled  bool                        `json:"enabled"`
+		Token    string                      `json:"token"`
 		Policies map[string]map[string]*bool `json:"policies"`
 	}
 	var loaded document

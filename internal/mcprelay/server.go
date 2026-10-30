@@ -27,9 +27,9 @@ import (
 	"github.com/omniviewdev/omniview/internal/devsession"
 	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
 	logging "github.com/omniviewdev/plugin-sdk/log"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	sdktools "github.com/omniviewdev/plugin-sdk/pkg/v1/tools"
-	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
 const (
@@ -39,8 +39,8 @@ const (
 	listenHost        = "127.0.0.1"
 	mcpPath           = "/mcp"
 	keepAliveInterval = 30 * time.Second
-	maxRequestBytes = 1 << 20
-	bodyReadTimeout = 5 * time.Second
+	maxRequestBytes   = 1 << 20
+	bodyReadTimeout   = 5 * time.Second
 
 	instructions = "Omniview exposes tools from installed plugins. Tool names are `<plugin>_<tool>`. " +
 		"Tools that take `connection_id` act on one plugin connection (for example one Kubernetes cluster); " +
@@ -58,48 +58,48 @@ var _ ConfigStore = (*settingsstore.Store)(nil)
 
 // Options are the relay dependencies.
 type Options struct {
-	Log         logging.Logger
-	Store       ConfigStore
-	Tools       tools.Controller
-	Connections resource.Service
-	Version     string
-	Authority   *Authority
-	Boundary *invocation.Boundary
+	Log              logging.Logger
+	Store            ConfigStore
+	Tools            tools.Controller
+	Connections      resource.Service
+	Version          string
+	Authority        *Authority
+	Boundary         *invocation.Boundary
 	ShowConfirmation func() error
-	Logs ResourceLogsReader
+	Logs             ResourceLogsReader
 }
 
 // Relay owns the MCP server, the policy document and the HTTP listener.
 type Relay struct {
-	log         logging.Logger
-	store       ConfigStore
-	tools       tools.Controller
-	connections resource.Service
-	server      *mcp.Server
-	app         *application.App
-	authority   *Authority
-	showConfirmation func() error
-	logs ResourceLogsReader
-	transitionMu sync.Mutex
-	resyncMu sync.Mutex
-	stopped bool
-	listenerCancel context.CancelFunc
+	log                  logging.Logger
+	store                ConfigStore
+	tools                tools.Controller
+	connections          resource.Service
+	server               *mcp.Server
+	app                  *application.App
+	authority            *Authority
+	showConfirmation     func() error
+	logs                 ResourceLogsReader
+	transitionMu         sync.Mutex
+	resyncMu             sync.Mutex
+	stopped              bool
+	listenerCancel       context.CancelFunc
 	unsubscribeInventory func()
-	lifecycleCtx context.Context
-	lifecycleCancel context.CancelFunc
-	unsubscribeTools func()
+	lifecycleCtx         context.Context
+	lifecycleCancel      context.CancelFunc
+	unsubscribeTools     func()
 
-	mu         sync.Mutex // guards cfg, catalog, registered, listener state
-	cfg        Config
-	loaded     bool
-	catalog    []ToolInfo
+	mu             sync.Mutex // guards cfg, catalog, registered, listener state
+	cfg            Config
+	loaded         bool
+	catalog        []ToolInfo
 	configRevision uint64
-	registered map[string]bool
-	published map[string]ToolInfo
-	listener   net.Listener
-	httpServer *http.Server
-	listenErr  string
-	listenAddr string // tests set "127.0.0.1:0"; empty means the configured port
+	registered     map[string]bool
+	published      map[string]ToolInfo
+	listener       net.Listener
+	httpServer     *http.Server
+	listenErr      string
+	listenAddr     string // tests set "127.0.0.1:0"; empty means the configured port
 
 	confirmMu sync.Mutex
 	pending   map[string]*pendingEntry
@@ -151,12 +151,14 @@ func (r *Relay) ServiceStartup(_ context.Context, _ application.ServiceOptions) 
 	r.resync()
 	r.restartListener()
 	go func() {
-		ticker := time.NewTicker(30*time.Second)
+		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 		for {
 			select {
-			case <-r.lifecycleCtx.Done(): return
-			case <-ticker.C: r.resync()
+			case <-r.lifecycleCtx.Done():
+				return
+			case <-ticker.C:
+				r.resync()
 			}
 		}
 	}()
@@ -172,8 +174,12 @@ func (r *Relay) ServiceShutdown() error {
 	r.mu.Unlock()
 	r.resyncMu.Lock()
 	r.resyncMu.Unlock()
-	if r.unsubscribeInventory != nil { r.unsubscribeInventory() }
-	if r.unsubscribeTools != nil { r.unsubscribeTools() }
+	if r.unsubscribeInventory != nil {
+		r.unsubscribeInventory()
+	}
+	if r.unsubscribeTools != nil {
+		r.unsubscribeTools()
+	}
 	r.stopListener()
 	return nil
 }
@@ -423,7 +429,9 @@ func unauthorized(w http.ResponseWriter) {
 // allowedConnections lists, per plugin, the connection IDs the policy lets
 // the relay target.
 func (r *Relay) allowedConnections(parent context.Context, cfg *Config) map[string][]string {
-	if r.connections == nil { return nil }
+	if r.connections == nil {
+		return nil
+	}
 	ctx, cancel := context.WithTimeout(invocation.HostContext(parent), 10*time.Second)
 	defer cancel()
 	all, err := r.connections.GetAllConnectionStates(ctx)
@@ -473,10 +481,16 @@ func (r *Relay) resync() {
 			}
 			generated, err := BuildResourceCatalogWithLogs(discoveryCtx, r.connections, routes, r.logs)
 			catalog = append(catalog, generated...)
-			if err != nil { r.log.Warnw(discoveryCtx, "resource tool discovery incomplete", "error", err) }
+			if err != nil {
+				r.log.Warnw(discoveryCtx, "resource tool discovery incomplete", "error", err)
+			}
 		}
 		builtins := map[string]bool{}
-		for _, tool := range catalog { if tool.BuiltIn { builtins[tool.PluginID] = true } }
+		for _, tool := range catalog {
+			if tool.BuiltIn {
+				builtins[tool.PluginID] = true
+			}
+		}
 		for _, tool := range catalog {
 			if tool.Resource != nil && !builtins[tool.PluginID] {
 				builtins[tool.PluginID] = true
@@ -487,13 +501,19 @@ func (r *Relay) resync() {
 	allowed := r.allowedConnections(discoveryCtx, &cfg)
 
 	sort.SliceStable(catalog, func(i, j int) bool {
-		if catalog[i].MCPName != catalog[j].MCPName { return catalog[i].MCPName < catalog[j].MCPName }
+		if catalog[i].MCPName != catalog[j].MCPName {
+			return catalog[i].MCPName < catalog[j].MCPName
+		}
 		return catalog[i].PluginID < catalog[j].PluginID
 	})
 	counts := make(map[string]int, len(catalog))
-	for _, tool := range catalog { counts[tool.MCPName]++ }
+	for _, tool := range catalog {
+		counts[tool.MCPName]++
+	}
 	for i := range catalog {
-		if counts[catalog[i].MCPName] > 1 { catalog[i].Status = StatusConflict }
+		if counts[catalog[i].MCPName] > 1 {
+			catalog[i].Status = StatusConflict
+		}
 	}
 	desired := map[string]ToolInfo{}
 	for _, t := range catalog {
@@ -503,7 +523,9 @@ func (r *Relay) resync() {
 	}
 
 	r.mu.Lock()
-	if r.published == nil { r.published = make(map[string]ToolInfo) }
+	if r.published == nil {
+		r.published = make(map[string]ToolInfo)
+	}
 	if r.stopped || r.configRevision != revision {
 		r.mu.Unlock()
 		return
@@ -571,16 +593,22 @@ func (r *Relay) handler(t ToolInfo) mcp.ToolHandler {
 		requestCtx := ctx
 		var sessionErr error
 		ctx, sessionErr = r.authority.Session(ctx, req.Session)
-		if sessionErr != nil { return errorResult("authenticated session is unavailable"), nil }
+		if sessionErr != nil {
+			return errorResult("authenticated session is unavailable"), nil
+		}
 		args := map[string]any{}
 		if len(req.Params.Arguments) > 0 {
-			if err := rejectDuplicateFields(req.Params.Arguments); err != nil { return nil, err }
+			if err := rejectDuplicateFields(req.Params.Arguments); err != nil {
+				return nil, err
+			}
 			decoder := json.NewDecoder(bytes.NewReader(req.Params.Arguments))
 			decoder.UseNumber()
 			if err := decoder.Decode(&args); err != nil {
 				return nil, fmt.Errorf("arguments must be a JSON object: %w", err)
 			}
-			if args == nil { return nil, errors.New("arguments must be a JSON object") }
+			if args == nil {
+				return nil, errors.New("arguments must be a JSON object")
+			}
 			var trailing any
 			if err := decoder.Decode(&trailing); err != io.EOF {
 				return nil, errors.New("arguments must contain one JSON object")
@@ -594,7 +622,6 @@ func (r *Relay) handler(t ToolInfo) mcp.ToolHandler {
 		if !cfg.Listed(t, allowed[t.PluginID]) {
 			return errorResult(fmt.Sprintf("tool %s is disabled in Omniview AI Tools settings", t.MCPName)), nil
 		}
-
 
 		var connection *sdktypes.Connection
 		connectionID := ""
@@ -626,16 +653,20 @@ func (r *Relay) handler(t ToolInfo) mcp.ToolHandler {
 			return nil, err
 		}
 		ctx, err = r.authority.Bind(ctx, t, connectionID, argsJSON)
-		if err != nil { return errorResult("tool authorization expired"), nil }
+		if err != nil {
+			return errorResult("tool authorization expired"), nil
+		}
 
 		requiresConfirmation, err := r.authority.Confirm(ctx)
-		if err != nil { return errorResult("tool authorization expired"), nil }
+		if err != nil {
+			return errorResult("tool authorization expired"), nil
+		}
 		if requiresConfirmation {
 			payload := PendingConfirmation{
-				MCPName:      t.MCPName,
-				PluginID:     t.PluginID,
-				PluginName:   t.PluginName,
-				ConnectionID: connectionID,
+				MCPName:       t.MCPName,
+				PluginID:      t.PluginID,
+				PluginName:    t.PluginName,
+				ConnectionID:  connectionID,
 				ArgumentsJSON: string(argsJSON),
 			}
 			if connection != nil {
@@ -649,7 +680,9 @@ func (r *Relay) handler(t ToolInfo) mcp.ToolHandler {
 				case "unavailable":
 					return errorResult("confirmation window is unavailable"), nil
 				case "cancelled":
-					if requestCtx.Err() != nil { return nil, requestCtx.Err() }
+					if requestCtx.Err() != nil {
+						return nil, requestCtx.Err()
+					}
 					return errorResult("tool authorization expired"), nil
 				default:
 					return errorResult("the user denied this call"), nil
@@ -668,15 +701,21 @@ func (r *Relay) handler(t ToolInfo) mcp.ToolHandler {
 			var callErr error
 			if t.BuiltIn {
 				policy, err := r.authority.Policy(dispatchCtx)
-				if err != nil { return err }
+				if err != nil {
+					return err
+				}
 				builtinResult, err = r.listConnections(dispatchCtx, &policy, t)
 				return err
 			}
 			if t.Resource != nil {
 				value, resourceErr := DispatchResource(dispatchCtx, r.connections, t, argsJSON)
-				if resourceErr != nil { return resourceErr }
+				if resourceErr != nil {
+					return resourceErr
+				}
 				encoded, encodeErr := json.Marshal(value)
-				if encodeErr != nil { return encodeErr }
+				if encodeErr != nil {
+					return encodeErr
+				}
 				result = &sdktools.Result{StructuredContent: encoded}
 				return nil
 			}
@@ -684,10 +723,14 @@ func (r *Relay) handler(t ToolInfo) mcp.ToolHandler {
 			return callErr
 		})
 		if err != nil {
-			if requestCtx.Err() != nil { return nil, requestCtx.Err() }
+			if requestCtx.Err() != nil {
+				return nil, requestCtx.Err()
+			}
 			return errorResult("tool invocation failed"), nil
 		}
-		if t.BuiltIn { return builtinResult, nil }
+		if t.BuiltIn {
+			return builtinResult, nil
+		}
 
 		out := &mcp.CallToolResult{IsError: result.IsError, Content: make([]mcp.Content, 0, len(result.Content))}
 		for _, c := range result.Content {
@@ -716,7 +759,9 @@ func (r *Relay) listConnections(ctx context.Context, cfg *Config, t ToolInfo) (*
 	r.mu.Lock()
 	catalog := r.catalog
 	listed := make(map[string]bool, len(r.registered))
-	for name, enabled := range r.registered { listed[name] = enabled }
+	for name, enabled := range r.registered {
+		listed[name] = enabled
+	}
 	r.mu.Unlock()
 
 	listings := make([]connectionListing, 0, len(connections))
@@ -764,30 +809,48 @@ func rejectDuplicateFields(raw []byte) error {
 	var value func() error
 	value = func() error {
 		token, err := decoder.Token()
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		delimiter, container := token.(json.Delim)
-		if !container { return nil }
+		if !container {
+			return nil
+		}
 		switch delimiter {
 		case '{':
 			seen := map[string]bool{}
 			for decoder.More() {
 				key, err := decoder.Token()
-				if err != nil { return err }
+				if err != nil {
+					return err
+				}
 				name, ok := key.(string)
-				if !ok || seen[name] { return errors.New("arguments contain duplicate object fields") }
+				if !ok || seen[name] {
+					return errors.New("arguments contain duplicate object fields")
+				}
 				seen[name] = true
-				if err := value(); err != nil { return err }
+				if err := value(); err != nil {
+					return err
+				}
 			}
 		case '[':
-			for decoder.More() { if err := value(); err != nil { return err } }
+			for decoder.More() {
+				if err := value(); err != nil {
+					return err
+				}
+			}
 		default:
 			return errors.New("arguments contain malformed JSON")
 		}
 		_, err = decoder.Token()
 		return err
 	}
-	if err := value(); err != nil { return err }
-	if _, err := decoder.Token(); err != io.EOF { return errors.New("arguments must contain one JSON object") }
+	if err := value(); err != nil {
+		return err
+	}
+	if _, err := decoder.Token(); err != io.EOF {
+		return errors.New("arguments must contain one JSON object")
+	}
 	return nil
 }
 
@@ -796,7 +859,9 @@ func (r *Relay) inventoryChanged() {
 	r.mu.Lock()
 	active := r.loaded && !r.stopped
 	r.mu.Unlock()
-	if active { r.emit(EventToolsChanged, "") }
+	if active {
+		r.emit(EventToolsChanged, "")
+	}
 }
 
 // Session.Close waits for handlers; its drain shares the HTTP shutdown deadline.
@@ -818,6 +883,8 @@ func drainHTTPServer(ctx context.Context, server *http.Server, closeSessions fun
 			shutdownDone = nil
 		}
 	}
-	if shutdownErr != nil { _ = server.Close() }
+	if shutdownErr != nil {
+		_ = server.Close()
+	}
 	return shutdownErr
 }

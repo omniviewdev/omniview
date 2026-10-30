@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
 	"net/http"
 	"sync"
 	"time"
-	"github.com/google/uuid"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.opentelemetry.io/otel"
@@ -62,21 +62,21 @@ type sessionIndex struct {
 var _ Controller = (*controller)(nil)
 
 type controller struct {
-	app               *application.App
-	ctx               context.Context
-	logger            logging.Logger
-	settingsProvider  pkgsettings.Provider
-	resourceClient    resource.ConnectionReader
-	referenceAdmitter resource.ReferenceAdmitter
+	app                 *application.App
+	ctx                 context.Context
+	logger              logging.Logger
+	settingsProvider    pkgsettings.Provider
+	resourceClient      resource.ConnectionReader
+	referenceAdmitter   resource.ReferenceAdmitter
 	uiReferenceAdmitter resource.ReferenceAdmitter
-	outputMux         chan logs.StreamOutput
+	outputMux           chan logs.StreamOutput
 
 	mu           sync.RWMutex
 	clients      map[string]Provider
 	sessionIndex map[string]sessionIndex
 	inChans      map[string]chan logs.StreamInput
 	handlerMap   map[string]map[string]logs.Handler
-	headless map[string]*headlessRead
+	headless     map[string]*headlessRead
 
 	// batch flush state
 	batches  map[string]*logBatch
@@ -541,7 +541,6 @@ func (c *controller) CreateSession(
 
 	session.PluginID = pluginID
 	session.ConnectionID = connectionID
-
 
 	return session, nil
 }

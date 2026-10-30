@@ -464,7 +464,7 @@ func main() {
 		Version:     version.Version,
 		Authority:   mcpAuthority,
 		Boundary:    resourceBoundary,
-		Logs: logsController,
+		Logs:        logsController,
 	})
 
 	// Register controllers before bootstrap: bootstrap loads plugins and their
