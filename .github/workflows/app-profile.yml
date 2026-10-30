@@ -2,17 +2,20 @@ name: Whole-App Profile
 
 on:
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
   group: app-profile-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 env:
   NODE_VERSION: "24"
   GOWORK: "off"
   GOFLAGS: ""
+  REVIEWED_SDK_REVISION: ${{ vars.OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION }}
   UI_SOURCE_REF: ${{ vars.OMNIVIEW_APP_PROFILE_UI_REF }}
   KUBERNETES_SOURCE_REF: ${{ vars.OMNIVIEW_APP_PROFILE_KUBERNETES_REF }}
 
@@ -28,19 +31,30 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Require reviewed source cohort
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Admit reviewed candidate cohort
+        id: candidate
         shell: bash
-        run: |
-          if [[ ! "$UI_SOURCE_REF" =~ ^([a-f0-9]{40}|[a-f0-9]{64})$ ]] || [[ ! "$KUBERNETES_SOURCE_REF" =~ ^([a-f0-9]{40}|[a-f0-9]{64})$ ]]; then
-            echo "::error::Set OMNIVIEW_APP_PROFILE_UI_REF and OMNIVIEW_APP_PROFILE_KUBERNETES_REF to reviewed, published full commits. No default branch or future npm version is substituted."
-            exit 1
-          fi
+        run: node e2e/scripts/candidate-source.mjs resolve
+
+      - name: Checkout reviewed SDK source
+        uses: actions/checkout@v4
+        with:
+          repository: omniviewdev/plugin-sdk
+          ref: ${{ steps.candidate.outputs.sdk }}
+          fetch-depth: 0
+          path: .app-profile-sources/sdk
+          persist-credentials: false
 
       - name: Checkout reviewed UI source
         uses: actions/checkout@v4
         with:
           repository: omniviewdev/ui
-          ref: ${{ env.UI_SOURCE_REF }}
+          ref: ${{ steps.candidate.outputs.ui }}
           path: .app-profile-sources/ui
           persist-credentials: false
 
@@ -48,9 +62,22 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: omniviewdev/omniview-plugin-kubernetes
-          ref: ${{ env.KUBERNETES_SOURCE_REF }}
+          ref: ${{ steps.candidate.outputs.kubernetes }}
           path: .app-profile-sources/kubernetes
           persist-credentials: false
+
+      - name: Verify exact candidate sources
+        shell: bash
+        run: |
+          export SDK_SOURCE="$GITHUB_WORKSPACE/.app-profile-sources/sdk"
+          export UI_SOURCE="$GITHUB_WORKSPACE/.app-profile-sources/ui"
+          export KUBERNETES_SOURCE="$GITHUB_WORKSPACE/.app-profile-sources/kubernetes"
+          node e2e/scripts/candidate-source.mjs verify
+          {
+            echo "SDK_SOURCE=$SDK_SOURCE"
+            echo "UI_SOURCE_REF=${{ steps.candidate.outputs.ui }}"
+            echo "KUBERNETES_SOURCE_REF=${{ steps.candidate.outputs.kubernetes }}"
+          } >> "$GITHUB_ENV"
 
       - name: Setup pnpm
         uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
@@ -67,8 +94,11 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: "1.26"
           cache: true
+          cache-dependency-path: |
+            go.sum
+            .app-profile-sources/sdk/go.sum
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -79,6 +109,11 @@ jobs:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+
+      - name: Select effective reviewed host module
+        shell: bash
+        run: |
+          printf 'GOFLAGS=%s\n' "$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go --root "$PWD" --sdk-source "$SDK_SOURCE" --format goflags)" >> "$GITHUB_ENV"
       - name: Build workspace packages
         run: task packages
 
@@ -99,6 +134,7 @@ jobs:
         run: |
           go run -tags server ./bench/app/build-plugin \
             --host "$GITHUB_WORKSPACE" --host-ref "$(git rev-parse HEAD)" \
+            --sdk "$SDK_SOURCE" --sdk-ref "${{ steps.candidate.outputs.sdk }}" \
             --ui "$GITHUB_WORKSPACE/.app-profile-sources/ui" --ui-ref "$UI_SOURCE_REF" \
             --kubernetes "$GITHUB_WORKSPACE/.app-profile-sources/kubernetes" --kubernetes-ref "$KUBERNETES_SOURCE_REF" \
             --link-evidence "$RUNNER_TEMP/app-profile-link-protocol.json" \

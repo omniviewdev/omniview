@@ -1,0 +1,55 @@
+// Candidate source admission is separate from published release dependency policy.
+import { readFileSync, appendFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
+
+// Independently reviewed isolation-core baseline; candidate/tag selection cannot replace this trust decision.
+export const isolationBaseline = '5b3ef764d1cf738835a723a749a0cb6c45f85e44';
+const isolationFiles = ['pkg/state/root.go', 'pkg/state/custom.go', 'pkg/profilecontract/profile.go', 'pkg/utils/store.go', 'pkg/sdk/plugin.go'];
+
+export function verifyIsolation(source, git) {
+  git(source, ['merge-base', '--is-ancestor', isolationBaseline, 'HEAD']);
+  for (const path of isolationFiles) {
+    if (git(source, ['show', `${isolationBaseline}:${path}`]) !== git(source, ['show', `HEAD:${path}`])) {
+      throw Error(`Candidate SDK changes independently reviewed isolation core: ${path}`);
+    }
+  }
+}
+export function admitCandidate(cohort, env) {
+  for (const id of ['plugin-sdk', 'ui', 'kubernetes']) {
+    if (!/^[a-f0-9]{40}$/.test(cohort?.[id] ?? '')) throw Error(`Missing immutable candidate ${id} commit`);
+  }
+  if (env.REVIEWED_SDK_REVISION !== cohort['plugin-sdk']) throw Error('OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION must equal the independently reviewed candidate SDK commit');
+  for (const [key, id] of [['UI_SOURCE_REF', 'ui'], ['KUBERNETES_SOURCE_REF', 'kubernetes']]) {
+    if (env[key] && env[key] !== cohort[id]) throw Error(`${key} conflicts with checked-in candidate cohort`);
+  }
+  return { sdk: cohort['plugin-sdk'], ui: cohort.ui, kubernetes: cohort.kubernetes };
+}
+
+export function verifyGitlink(refs, entry) {
+  if (entry.trim() !== `160000 commit ${refs.kubernetes}\tplugins/kubernetes`) throw Error('Kubernetes gitlink differs from reviewed candidate cohort');
+}
+
+export function verifyCandidate(refs, sources, git) {
+  for (const [id, path] of Object.entries(sources)) {
+    if (!path || git(path, ['rev-parse', 'HEAD']).trim() !== refs[id]) throw Error(`Candidate ${id} checkout differs from reviewed cohort`);
+    if (git(path, ['status', '--porcelain', '--untracked-files=all']).trim()) throw Error(`Candidate ${id} source is not clean`);
+  }
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const root = fileURLToPath(new URL('../../', import.meta.url));
+  const refs = admitCandidate(JSON.parse(readFileSync(resolve(root, 'e2e/source-cohort.json'), 'utf8')), process.env);
+  const git = (path, args) => execFileSync('git', ['-C', path, ...args], { encoding: 'utf8' });
+  if (process.argv[2] === 'verify-sdk') {
+    verifyCandidate(refs, { sdk: process.env.SDK_SOURCE }, git);
+    verifyIsolation(process.env.SDK_SOURCE, git);
+  } else if (process.argv[2] === 'resolve') {
+    verifyGitlink(refs, git(root, ['ls-tree', 'HEAD', 'plugins/kubernetes']));
+    appendFileSync(process.env.GITHUB_OUTPUT, Object.entries(refs).map(([key, value]) => `${key}=${value}\n`).join(''));
+  } else if (process.argv[2] === 'verify') {
+    verifyCandidate(refs, { sdk: process.env.SDK_SOURCE, ui: process.env.UI_SOURCE, kubernetes: process.env.KUBERNETES_SOURCE }, git);
+    verifyIsolation(process.env.SDK_SOURCE, git);
+  } else throw Error('Expected resolve, verify-sdk or verify');
+}
