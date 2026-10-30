@@ -1,3 +1,4 @@
+import type { DataTableFeatures } from '@omniviewdev/base-ui';
 import React from 'react';
 
 import { Checkbox, IconButton, Popover, Separator, Text } from '@omniviewdev/base-ui';
@@ -5,12 +6,13 @@ import { Checkbox, IconButton, Popover, Separator, Text } from '@omniviewdev/bas
 // icons
 import { LuColumns2, LuSettings2 } from 'react-icons/lu';
 import { type Column } from '@tanstack/react-table';
+import type { ResourceTableRow } from '@/hooks/resource/useResourceDefinition';
 
 import styles from './ColumnFilter.module.css';
 
 type Props = {
   anchorEl: HTMLElement | undefined;
-  columns: Array<Column<any>>;
+  columns: Array<Column<DataTableFeatures, ResourceTableRow>>;
   onClose: () => void;
   onClick: React.MouseEventHandler<HTMLAnchorElement>;
 };

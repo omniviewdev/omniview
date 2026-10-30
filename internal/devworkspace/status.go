@@ -28,7 +28,13 @@ type Status struct {
 	Checkouts       map[string]CheckoutStatus       `json:"checkouts,omitempty"`
 	ServedCheckouts map[string]CheckoutStatus       `json:"servedCheckouts,omitempty"`
 	FailedStage     string                          `json:"failedStage,omitempty"`
+	WaitStage       string                          `json:"waitStage,omitempty"`
 	RecoveryCommand string                          `json:"recoveryCommand,omitempty"`
+	Follow          *FollowStatus                   `json:"follow,omitempty"`
+	Update          *UpdatePlan                     `json:"update,omitempty"`
+
+	// SourceUpdateSupported is evidence only in an authenticated live response.
+	SourceUpdateSupported bool `json:"sourceUpdateSupported,omitempty"`
 }
 
 type ServiceStatus struct {
@@ -123,6 +129,14 @@ func ConnectWorkspaceControl(ctx context.Context, w Workspace, home, generation 
 }
 
 func (m *Manager) Status(ctx context.Context, name string) (Status, error) {
+	result, err := m.status(ctx, name)
+	if result.Manifest.WorkspaceID != "" {
+		m.addUpstreamStatus(&result)
+	}
+	return result, err
+}
+
+func (m *Manager) status(ctx context.Context, name string) (Status, error) {
 	w, err := m.Inspect(ctx, name)
 	if err != nil {
 		return Status{}, err
@@ -143,21 +157,7 @@ func (m *Manager) Status(ctx context.Context, name string) (Status, error) {
 	status.Generation = record.Generation
 	if err = verifySupervisor(record, w); err != nil {
 		if errors.Is(err, devsession.ErrProcessGone) {
-			status.Checkouts = checkoutStatuses(ctx, w)
-			var saved Status
-			if readLaunchJSON(launchPath(w, "launch-status.json"), &saved) == nil && saved.Generation == record.Generation {
-				status.Builds = saved.Builds
-				status.LastError = saved.LastError
-				status.FailedStage = saved.FailedStage
-				status.RecoveryCommand = saved.RecoveryCommand
-				status.ServedCheckouts = saved.ServedCheckouts
-				if saved.Phase == "stopped" {
-					return status, nil
-				}
-			}
-			status.Phase = "crashed"
-			status.Health.Liveness = "crashed"
-			return status, nil
+			return exitedSupervisorStatus(ctx, status), nil
 		}
 		return status, err
 	}
@@ -165,12 +165,48 @@ func (m *Manager) Status(ctx context.Context, name string) (Status, error) {
 	if err != nil {
 		return status, err
 	}
-	live, err := callSupervisor(ctx, record, token, "status")
+	live, err := callSupervisor(ctx, record, token, supervisorStatusCommand)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			return status, devcontract.Fail(7, "timeout", "workspace inspection timed out or was canceled; supervisor ownership is retained")
+		}
 		return status, devcontract.Fail(4, "supervisor_unreachable", "live supervisor cannot be authenticated; refusing adoption or PID-only cleanup")
+	}
+	// Authentication binds the response to the requested owner, not to the
+	// owner still selected after a concurrent restart publishes its successor.
+	var current supervisorRecord
+	if err = readLaunchJSON(launchPath(w, "supervisor.json"), &current); err != nil || current != record {
+		return status, devcontract.Fail(4, "stale_target", "workspace supervisor changed during inspection; retry the selected workspace")
+	}
+	if err = verifySupervisor(current, w); err != nil {
+		if errors.Is(err, devsession.ErrProcessGone) {
+			return exitedSupervisorStatus(ctx, status), nil
+		}
+		return status, err
 	}
 	live.Workspace = w
 	return live, nil
+}
+
+// exitedSupervisorStatus preserves diagnostics without treating an obsolete
+// ready snapshot as evidence that an exited generation stopped cleanly.
+func exitedSupervisorStatus(ctx context.Context, status Status) Status {
+	status.Checkouts = checkoutStatuses(ctx, status.Workspace)
+	var saved Status
+	if readLaunchJSON(launchPath(status.Workspace, "launch-status.json"), &saved) == nil && saved.Generation == status.Generation {
+		status.Builds = saved.Builds
+		status.LastError = saved.LastError
+		status.FailedStage = saved.FailedStage
+		status.WaitStage = saved.WaitStage
+		status.RecoveryCommand = saved.RecoveryCommand
+		status.ServedCheckouts = saved.ServedCheckouts
+		if saved.Phase == "stopped" {
+			return status
+		}
+	}
+	status.Phase = "crashed"
+	status.Health.Liveness = "crashed"
+	return status
 }
 
 // RequireStopped is suitable for Manager.Options.Stopped. A live supervisor owns

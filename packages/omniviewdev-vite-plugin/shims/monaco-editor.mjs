@@ -1,14 +1,32 @@
-// Auto-generated shim for 'monaco-editor'
+// Auto-generated shim for "monaco-editor"
 // DO NOT EDIT -- regenerate with: pnpm --filter @omniviewdev/vite-plugin generate-shims
-
-const mod = window.__OMNIVIEW_SHARED__['monaco-editor'];
-
-if (!mod) {
-  throw new Error(
-    '[omniview] Shared dependency "monaco-editor" is not available on window.__OMNIVIEW_SHARED__. ' +
-    'Ensure the Omniview host app is running and shared deps are exported before loading this plugin.'
-  );
-}
-
-// Default export: prefer mod.default, fall back to the module namespace itself.
-export default mod.default !== undefined ? mod.default : mod;
+const mod = window.__OMNIVIEW_SHARED__["monaco-editor"];
+if (!mod) throw new Error('[omniview] Shared dependency ' + "monaco-editor" + ' is not available on window.__OMNIVIEW_SHARED__.');
+const binding0 = mod["CancellationTokenSource"];
+export { binding0 as "CancellationTokenSource" };
+const binding1 = mod["Emitter"];
+export { binding1 as "Emitter" };
+const binding2 = mod["KeyCode"];
+export { binding2 as "KeyCode" };
+const binding3 = mod["KeyMod"];
+export { binding3 as "KeyMod" };
+const binding4 = mod["MarkerSeverity"];
+export { binding4 as "MarkerSeverity" };
+const binding5 = mod["MarkerTag"];
+export { binding5 as "MarkerTag" };
+const binding6 = mod["Position"];
+export { binding6 as "Position" };
+const binding7 = mod["Range"];
+export { binding7 as "Range" };
+const binding8 = mod["Selection"];
+export { binding8 as "Selection" };
+const binding9 = mod["SelectionDirection"];
+export { binding9 as "SelectionDirection" };
+const binding10 = mod["Token"];
+export { binding10 as "Token" };
+const binding11 = mod["Uri"];
+export { binding11 as "Uri" };
+const binding12 = mod["editor"];
+export { binding12 as "editor" };
+const binding13 = mod["languages"];
+export { binding13 as "languages" };

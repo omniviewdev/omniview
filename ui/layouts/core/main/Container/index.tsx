@@ -1,15 +1,15 @@
-import { Outlet } from 'react-router-dom';
 import Layout from '@/layouts/core/main';
+import { WorkspacePanes } from '@/features/workspace';
 import styles from './Container.module.css';
 
 /**
- * The routed page area, with the bottom drawer docked underneath it.
+ * The page tab panes, with the bottom drawer docked underneath them.
  */
 export default function Container() {
   return (
     <div className={`Container ${styles.Container}`}>
       <div className={styles.Page}>
-        <Outlet />
+        <WorkspacePanes />
       </div>
       <Layout.BottomDrawer />
     </div>

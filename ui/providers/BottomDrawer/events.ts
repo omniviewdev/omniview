@@ -8,6 +8,8 @@ type OnCreateSessionOpts = {
   opts: SessionOptions;
   icon?: string;
   label?: string;
+  /** Replace an existing session without changing tab position or focus. */
+  replaceSessionId?: string;
 };
 
 type OnCreateLogSessionOpts = {
@@ -40,8 +42,6 @@ type BottomDrawerEvents = {
   onHeightChange: (height: number) => void;
   /** Fired when a new tab is created so the drawer can auto-expand. */
   onTabCreated: () => void;
-  /** Fired once terminal sessions that survived a reload have been restored as tabs (or the lookup failed). */
-  onSessionsRestored: () => void;
   onCreateSession: (opts: OnCreateSessionOpts) => void;
   onCreateLogSession: (opts: OnCreateLogSessionOpts) => void;
   onSessionClosed: (opts: OnSessionClosedOpts) => void;
@@ -49,6 +49,7 @@ type BottomDrawerEvents = {
 
 export const bottomDrawerChannel = eventbus<BottomDrawerEvents>();
 
+// Module state is per window (each window is its own document), like the drawer it mirrors.
 let bottomDrawerHeight = 32;
 
 /** The bottom drawer's last committed height, for panels that mount after it. */
@@ -65,10 +66,3 @@ export function setBottomDrawerHeight(height: number): void {
   bottomDrawerHeight = height;
   bottomDrawerChannel.emit('onHeightChange', height);
 }
-
-/**
- * IDs of terminal sessions that survived a reload and were restored as tabs.
- * Filled before the tabs are created, so the drawer can tell a restored tab
- * from one the user opened while the restore was still running.
- */
-export const restoredSessionIds = new Set<string>();

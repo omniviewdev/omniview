@@ -19,9 +19,16 @@ type ModelInfo = {
 const AUTO_REFRESH_MS = 5000;
 
 const EditorDebugPanel: React.FC = () => {
-  const [snapshot, setSnapshot] = useState<SchemaSnapshot>({});
-  const [models, setModels] = useState<ModelInfo[]>([]);
-  const [flushedSchemas, setFlushedSchemas] = useState<Array<{ uri: string; fileMatch: string[]; schema?: Record<string, unknown> }>>([]);
+  const [snapshot, setSnapshot] = useState<SchemaSnapshot>(() => schemaRegistry.getSnapshot());
+  const [models, setModels] = useState<ModelInfo[]>(() => monaco.editor.getModels().map((m) => ({
+    uri: m.uri.toString(),
+    language: m.getLanguageId(),
+    version: m.getVersionId(),
+    contentLength: m.getValue().length,
+  })));
+  const [flushedSchemas, setFlushedSchemas] = useState<Array<{ uri: string; fileMatch: string[]; schema?: Record<string, unknown> }>>(
+    () => schemaRegistry.getLastFlushedYamlSchemas(),
+  );
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
   const [showFlushed, setShowFlushed] = useState(false);
 
@@ -39,7 +46,6 @@ const EditorDebugPanel: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    refresh();
     const id = setInterval(refresh, AUTO_REFRESH_MS);
     return () => {
       clearInterval(id); 
@@ -102,7 +108,7 @@ const EditorDebugPanel: React.FC = () => {
               </Row>
               {isExpanded && entries.map((entry, i) => (
                 <Row key={i} indent={3}>
-                  <Text size='xs' mono tone='muted'>{entry.resourceKey}</Text>
+                  <Text size='xs' mono tone='muted'>{entry.type}</Text>
                   <Text size='xs' mono tone='subtle'>
                     match={entry.fileMatch} uri={entry.uri} lang={entry.language}
                     {entry.schema ? ` schema=${JSON.stringify(entry.schema).slice(0, 80)}...` : ''}

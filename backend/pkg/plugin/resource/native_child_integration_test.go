@@ -29,10 +29,13 @@ func compileNativeChild(t *testing.T) string {
 	_, source, _, ok := runtime.Caller(0)
 	require.True(t, ok)
 	sdkRoot := filepath.Clean(filepath.Join(filepath.Dir(source), "../../../../../plugin-sdk"))
+	if selectedSource := os.Getenv("SDK_SOURCE"); selectedSource != "" {
+		sdkRoot = selectedSource
+	}
 	binary := filepath.Join(t.TempDir(), "p45-native-fixture")
 	command := exec.Command("go", "test", "-c", "-o", binary, "./internal/resourceconformance")
 	command.Dir = sdkRoot
-	command.Env = append(os.Environ(), "GOWORK=off")
+	command.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=")
 	output, err := command.CombinedOutput()
 	require.NoError(t, err, "compile actual SDK fixture: %s", output)
 	return binary

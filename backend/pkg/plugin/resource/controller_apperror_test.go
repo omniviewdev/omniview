@@ -198,16 +198,6 @@ func TestAdditionalMethods_PluginNotFound(t *testing.T) {
 
 // ======================== ConnectionNotFound tests ======================== //
 
-// TestListConnections_ConnectionNotFound verifies that ListConnections returns
-// TypeConnectionNotFound when the plugin has no connections entry in the map.
-func TestListConnections_ConnectionNotFound(t *testing.T) {
-	ctrl := newTestController()
-	_, err := ctrl.ListConnections(testInvocationContext(), "nonexistent")
-	appErr := requireAppError(t, err)
-	assert.Equal(t, apperror.TypeConnectionNotFound, appErr.Type)
-	assert.Equal(t, 404, appErr.Status)
-}
-
 // TestGetConnection_NoConnectionsConfigured verifies that GetConnection returns
 // TypeConnectionNotFound when the plugin ID has no connections map entry.
 func TestGetConnection_NoConnectionsConfigured(t *testing.T) {

@@ -68,7 +68,7 @@ function setupSingleEP(registry: ExtensionPointRegistry) {
     mode: 'single',
     matcher: (contrib, ctx) => {
       const meta = contrib.meta as { key?: string } | undefined;
-      const ctxKey = (ctx as any)?.key;
+      const ctxKey = (ctx as { key?: string } | undefined)?.key;
       return meta?.key === ctxKey;
     },
   });

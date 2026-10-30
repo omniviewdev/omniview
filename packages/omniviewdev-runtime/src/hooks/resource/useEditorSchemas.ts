@@ -1,7 +1,9 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GetEditorSchemas, GetSchemaDocument } from '../../resource/v2/client';
 import type { AccessRoute } from '../../resource/v2/domain';
 import { useResolvedPluginId } from '../useResolvedPluginId';
+import { useConnectionReadiness } from '../connection/useConnectionReadiness';
+import { useConnectionQueryGuard } from './useConnectionQueryGuard';
 
 type UseEditorSchemasOptions = {
   /** The plugin ID to fetch schemas for */
@@ -26,10 +28,13 @@ export const useEditorSchemas = ({
 }: UseEditorSchemasOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
   const queryClient = useQueryClient();
+  const readiness = useConnectionReadiness({ pluginID, connectionID: route.connection, enabled });
+  const guardQuery = useConnectionQueryGuard(pluginID, route.connection);
+  const queryEnabled = enabled && !!pluginID && !!route.connection && readiness.phase === 'connected';
   const query = useQuery({
     queryKey: [pluginID, 'resource-v2', 'editor-schemas', route],
-    queryFn: async () => {
-      const schemas = await GetEditorSchemas(pluginID, route);
+    queryFn: queryEnabled ? ({ signal, queryKey }) => guardQuery(queryKey, signal, async () => {
+      const schemas = await guardQuery(queryKey, signal, () => GetEditorSchemas(pluginID, route));
       const documents = [];
       const resolved = new Set<string>();
       for (const schema of schemas) {
@@ -39,14 +44,14 @@ export const useEditorSchemas = ({
         if (resolved.has(key)) continue;
         documents.push(await queryClient.fetchQuery({
           queryKey: [pluginID, 'resource-v2', 'schema-document', route, reference],
-          queryFn: () => GetSchemaDocument(pluginID, route, reference),
+          queryFn: ({ signal: documentSignal, queryKey }) => guardQuery(queryKey, AbortSignal.any([signal, documentSignal]), () => GetSchemaDocument(pluginID, route, reference)),
           staleTime: Infinity,
         }));
         resolved.add(key);
       }
       return { schemas, documents };
-    },
-    enabled: enabled && !!pluginID && !!route.connection,
+    }) : skipToken,
+    enabled: queryEnabled,
     staleTime: 10 * 60 * 1000, // schemas are fairly stable per connection
     retry: 1,
   });

@@ -104,3 +104,4 @@ export * as registry from './bindings/github.com/omniviewdev/omniview/backend/pk
 export * as ui from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/ui/models';
 export * as utils from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/utils/models';
 export * as time from './bindings/time/models';
+export * as window from './bindings/github.com/omniviewdev/omniview/backend/window/models';

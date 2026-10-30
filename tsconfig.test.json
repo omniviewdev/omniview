@@ -5,8 +5,8 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "lib": ["ES2023", "ES2024.Promise", "DOM", "DOM.Iterable"],
-    "types": ["vitest/globals", "node", "@testing-library/jest-dom", "vite/client", "systemjs", "@welldone-software/why-did-you-render"]
+    "types": ["vitest/globals", "node", "@testing-library/jest-dom/vitest", "vite/client", "systemjs", "@welldone-software/why-did-you-render"]
   },
-  "include": ["ui/vite-env.d.ts", "ui/**/*.spec.ts", "ui/**/*.spec.tsx", "ui/**/*.bench.ts", "ui/**/*.test.ts", "ui/**/*.test.tsx", "packages/**/*.test.ts", "packages/**/*.test.tsx"],
+  "include": ["ui/vite-env.d.ts", "ui/test-setup.ts", "ui/**/*.spec.ts", "ui/**/*.spec.tsx", "ui/**/*.bench.ts", "ui/**/*.test.ts", "ui/**/*.test.tsx", "packages/**/*.test.ts", "packages/**/*.test.tsx"],
   "exclude": ["node_modules", "dist", "build"]
 }

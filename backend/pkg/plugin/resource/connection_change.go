@@ -244,6 +244,7 @@ func (c *controller) publishProfileConnections(ctx context.Context, pluginID str
 }
 
 func (c *controller) refreshWatchedConnections(ctx context.Context, pluginID string, provider resourcev2.ConnectionBrowser, generation *pluginState) ([]types.Connection, error) {
+	defer c.notifyInventory()
 	c.profilesMu.Lock()
 	defer c.profilesMu.Unlock()
 	c.pluginsMu.RLock()

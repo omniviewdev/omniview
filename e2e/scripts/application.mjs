@@ -45,6 +45,7 @@ export function requiresApplication(specs) {
 }
 export function validateApplicationDescriptor(descriptor, expected) {
   if (descriptor?.schemaVersion !== 1 || descriptor.kind !== 'development' || descriptor.workspaceID !== expected.workspaceID || descriptor.instanceID !== expected.workspaceID || descriptor.generation !== expected.generation || descriptor.stateRoot !== expected.stateRoot || !['backend-ready', 'host-ready'].includes(descriptor.readiness) || descriptor.endpoints?.browser !== expected.browser || descriptor.process?.pid !== expected.pid || descriptor.process.executable !== expected.binary || descriptor.process.startIdentity !== expected.startIdentity || descriptor.process.workspaceID !== expected.workspaceID || descriptor.process.generation !== expected.generation || descriptor.process.role !== 'host') throw Error('Application is not authentically ready');
+  if (expected.vite && descriptor.endpoints.vite !== expected.vite) throw Error('Application live frontend is not authentically ready');
   return { ...descriptor, plugins: descriptor.plugins ?? [] };
 }
 export function prepareApplication({ root, privateRoot, sources, refs, env, execute, phase, recordBuildExecution }) {
@@ -210,7 +211,7 @@ export async function startApplicationBroker({ application, ownershipDir, env, p
     // The actual host observer has independently fetched identity-bearing HTML
     // before advertising this endpoint; controller/bootstrap startup precedes it.
     const process = ownedIdentity(profile.host);
-    return validateApplicationDescriptor(result.result, { workspaceID: profile.descriptor.workspaceID, stateRoot: profile.descriptor.stateRoot, generation: profile.generation, pid: process.pid, startIdentity: process.startIdentity, binary: artifact.binary, browser: `http://127.0.0.1:${profile.port}/` });
+    return validateApplicationDescriptor(result.result, { workspaceID: profile.descriptor.workspaceID, stateRoot: profile.descriptor.stateRoot, generation: profile.generation, pid: process.pid, startIdentity: process.startIdentity, binary: artifact.binary, browser: `http://127.0.0.1:${profile.port}/`, vite: profile.liveFrontend ? profile.viteURL : undefined });
   };
   const ready = async profile => {
     const deadline = Date.now() + 30_000;

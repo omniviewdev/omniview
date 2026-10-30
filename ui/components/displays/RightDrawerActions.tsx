@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 
 import { IconButton, Menu } from '@omniviewdev/base-ui';
 
-import { type DrawerComponentAction, type DrawerContext, type DrawerComponentActionListItem } from '@omniviewdev/runtime';
+import { parseAppError, useSnackbar, type DrawerComponentAction, type DrawerContext, type DrawerComponentActionListItem } from '@omniviewdev/runtime';
 import HintTooltip from '@/components/base/HintTooltip';
 import styles from './RightDrawerActions.module.css';
 
@@ -28,6 +28,15 @@ const RightDrawerActions: React.FC<Props> = ({ ctx, actions }) => {
 
 const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentAction }> = ({ ctx, action }) => {
   const [open, setOpen] = useState(false);
+  const { showSnackbar } = useSnackbar();
+  const runAction = async (callback: () => void | Promise<unknown>) => {
+    try {
+      await callback();
+    } catch (cause) {
+      const error = parseAppError(cause);
+      showSnackbar({ message: error.title || 'Action failed', status: 'error', details: error.detail });
+    }
+  };
 
   const checkIsDisabled = () => {
     if (action.enabled === undefined) {
@@ -50,8 +59,8 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
       return action.list(ctx);
     }
 
-    return action.list || [];
-  }, [action.list, ctx]);
+    return action.list;
+  }, [action, ctx]);
 
   const actionTitle = typeof action.title === 'string' ? action.title : '';
   const dividerBefore = actionTitle === 'Start' || actionTitle === 'Delete';
@@ -73,7 +82,9 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
             color='neutral'
             aria-label={actionTitle === '' ? undefined : actionTitle}
             disabled={checkIsDisabled()}
-            onClick={() => action.action?.(ctx)}
+            onClick={() => {
+              void runAction(async () => action.action?.(ctx));
+            }}
           >
             {action.icon}
           </IconButton>
@@ -94,7 +105,7 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
             aria-label={actionTitle === '' ? undefined : actionTitle}
             disabled={checkIsDisabled()}
             onClick={() => {
-              listItems[0].action(ctx); 
+              void runAction(async () => listItems[0].action(ctx));
             }}
           >
             {action.icon}
@@ -134,7 +145,7 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
                   key={i}
                   startDecorator={item.icon}
                   onClick={() => {
-                    item.action(ctx);
+                    void runAction(async () => item.action(ctx));
                     setOpen(false);
                   }}
                 >

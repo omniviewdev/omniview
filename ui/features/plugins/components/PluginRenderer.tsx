@@ -2,7 +2,7 @@ import React from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 
 import { PluginContextProvider } from '@omniviewdev/runtime';
-import { Outlet, useLoaderData } from 'react-router-dom';
+import { Outlet, useLoaderData } from 'react-router';
 import PluginDevOverlay from '@/features/devtools/components/PluginDevOverlay';
 import { PanelErrorFallback, onBoundaryError } from '@/components/errors/ErrorFallback';
 import { usePluginService } from '@/features/plugins';
@@ -23,7 +23,7 @@ export type PluginRendererProps = Record<string, unknown>;
  * Refresh with no re-mount needed.
  */
 const PluginRenderer: React.FC<PluginRendererProps> = () => {
-  const data = useLoaderData() as { pluginID: string } | undefined;
+  const data = useLoaderData<{ pluginID: string } | undefined>();
   const { plugins } = usePluginService();
 
   const pluginState = data?.pluginID ? plugins.get(data.pluginID) : undefined;

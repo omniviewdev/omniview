@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useCallback, useSyncExternalStore } from 'react';
 import invariant from 'ts-invariant';
-import type { ExtensionPointRegistryContract, ExtensionPointStoreContract, ExtensionRenderContext } from '../types/extensions';
+import type { ExtensionContributionRegistration, ExtensionPointRegistryContract, ExtensionPointStoreContract, ExtensionRenderContext } from '../types/extensions';
 
 type ExtensionProviderProps = {
   /** Allow passing in a custom registry, purely for testing purposes */
@@ -17,80 +17,58 @@ export const useExtensionRegistry = (): ExtensionPointRegistryContract | undefin
   return registry;
 };
 
-/**
- * Hook to get an extension point store that reactively updates when contributions change.
- * Mounted consumers rerender when matching registry data changes.
- *
- * Uses a sentinel-based snapshot so that useSyncExternalStore detects contribution
- * mutations even though the store object reference is stable. The store exposes a
- * monotonically increasing `version` counter that increments on every register/unregister.
- */
+export interface ExtensionPointSnapshot<TValue = unknown, TContext = ExtensionRenderContext> {
+  readonly store: ExtensionPointStoreContract<TValue, TContext> | undefined;
+  readonly version: number;
+  readonly contributions: readonly ExtensionContributionRegistration<TValue>[];
+}
+
+/** Immutable render input; a stable mutable store is not a React Compiler dependency. */
+export function useExtensionPointSnapshot<
+  TValue = unknown,
+  TContext = ExtensionRenderContext,
+>(id: string): ExtensionPointSnapshot<TValue, TContext> {
+  const registry = useExtensionRegistry();
+  const cacheRef = React.useRef<ExtensionPointSnapshot<TValue, TContext> | null>(null);
+  const subscribe = useCallback((onStoreChange: () => void) => {
+    let store = registry?.getExtensionPoint<TValue, TContext>(id);
+    let unsubscribeStore = store?.subscribe(onStoreChange);
+    const unsubscribeRegistry = registry?.subscribe(() => {
+      const next = registry.getExtensionPoint<TValue, TContext>(id);
+      if (next !== store) {
+        unsubscribeStore?.();
+        store = next;
+        unsubscribeStore = store?.subscribe(onStoreChange);
+      }
+      onStoreChange();
+    });
+    return () => {
+      unsubscribeStore?.();
+      unsubscribeRegistry?.();
+    };
+  }, [registry, id]);
+  const getSnapshot = useCallback(() => {
+    const store = registry?.getExtensionPoint<TValue, TContext>(id);
+    const version = store?.version ?? -1;
+    const cached = cacheRef.current;
+    if (cached && cached.store === store && cached.version === version) return cached;
+    const snapshot: ExtensionPointSnapshot<TValue, TContext> = {
+      store,
+      version,
+      contributions: store?.listAll() ?? [],
+    };
+    cacheRef.current = snapshot;
+    return snapshot;
+  }, [registry, id]);
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+/** Access the live store for imperative matching and registration. */
 export function useExtensionPoint<
   TValue = unknown,
   TContext = ExtensionRenderContext,
 >(id: string): ExtensionPointStoreContract<TValue, TContext> | undefined {
-  const registry = useExtensionRegistry();
-
-  // Cache: tracks the last-seen store + version and the sentinel object returned
-  // for that combination. A new sentinel is created only when something changed.
-  const cacheRef = React.useRef<{
-    store: ExtensionPointStoreContract<TValue, TContext> | undefined;
-    version: number;
-    sentinel: object;
-  } | null>(null);
-
-  // Resolve store outside subscribe so it can be included in the dependency array.
-  // This ensures re-subscription when the store instance is replaced (EP removed & re-added).
-  const store = registry?.getExtensionPoint<TValue, TContext>(id);
-
-  const subscribe = useCallback(
-    (onStoreChange: () => void) => {
-      const unsubs: Array<() => void> = [];
-
-      if (registry) {
-        unsubs.push(registry.subscribe(onStoreChange));
-      }
-
-      if (store) {
-        unsubs.push(store.subscribe(onStoreChange));
-      }
-
-      return () => {
-        for (const unsub of unsubs) {
-          unsub();
-        }
-      };
-    },
-    [registry, id, store],
-  );
-
-  const getSnapshot = useCallback(() => {
-    const store = registry?.getExtensionPoint<TValue, TContext>(id);
-
-    if (!store) {
-      if (cacheRef.current && cacheRef.current.store === undefined) {
-        return cacheRef.current.sentinel;
-      }
-      const sentinel = {};
-      cacheRef.current = { store: undefined, version: -1, sentinel };
-      return sentinel;
-    }
-
-    const cached = cacheRef.current;
-    if (cached && cached.store === store && cached.version === store.version) {
-      return cached.sentinel;
-    }
-
-    const sentinel = {};
-    cacheRef.current = { store, version: store.version, sentinel };
-    return sentinel;
-  }, [registry, id]);
-
-  // Drive re-renders via sentinel identity changes
-  useSyncExternalStore(subscribe, getSnapshot);
-
-  // Return the actual store for consumer use
-  return registry?.getExtensionPoint<TValue, TContext>(id);
+  return useExtensionPointSnapshot<TValue, TContext>(id).store;
 }
 
 /**
@@ -98,16 +76,16 @@ export function useExtensionPoint<
  * functionality (such as components).
  */
 export const ExtensionProvider: React.FC<ExtensionProviderProps> = ({ registry, children }) => {
-  const initialRegistry = React.useRef<ExtensionPointRegistryContract>(registry);
+  const [initialRegistry] = React.useState<ExtensionPointRegistryContract>(() => registry);
 
   // Synchronous check — throw before children render with a different registry
   invariant(
-    initialRegistry.current === registry,
+    initialRegistry === registry,
     'You can\'t change the extension registry after it has been rendered',
   );
 
   return (
-    <ExtensionRegistryContext.Provider value={initialRegistry.current}>
+    <ExtensionRegistryContext.Provider value={initialRegistry}>
       {children}
     </ExtensionRegistryContext.Provider>
   );

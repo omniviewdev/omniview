@@ -22,6 +22,10 @@ Compilation never sets `grpcConnected`. Entering a replacement build invalidates
 
 `WaitReady(ctx, id, generation)` returns only the requested generation's actual ready state, a stage error, a generation-change error, or cancellation. It does not manufacture a ready result from an advertised endpoint.
 
+Frontend inventory refreshes do not retry failed plugin imports. The error page stays available for Retry or Reset; a new development-server lifecycle event can also trigger recovery. Homepage contributions subscribe to extension-store versions so late registrations update the compiled UI without dropping saved card order during startup.
+
+Connection inventory is a cached collection, not a readiness signal. `ListConnections` returns an empty array without an error before the cache exists and when a user has no configured connections. Startup discovery publishes populated inventory through the existing `<pluginID>/connection/sync` event. Requests for a specific missing connection still return a not-found error.
+
 ## Source changes, stop, and restart
 
 The same-ID existing-instance path only accepts the same canonical source directory. Rebinding uses the install transaction: stop the old managed watcher/Vite child, unload the old backend/controllers, prepare the new source installation, build, and load. A request for source B cannot silently reuse source A.

@@ -11,12 +11,14 @@ import path from 'node:path';
 
 import appConfig from './vite.config';
 import { wailsBindingIndex } from './bench/vite/wails-binding-index';
+import { vitestCaches } from './vitest.cache';
 
 const root = import.meta.dirname;
+const testCaches = vitestCaches(root);
 const bindingsRoot = path.join(root, 'packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview');
 const k8sPluginSrc = path.join(root, 'plugins/kubernetes/ui/src');
 
-// React, MUI and emotion ship much slower dev builds. Benchmark the production
+// React ships a slower dev build. Benchmark the production
 // builds unless BENCH_REACT_DEV=1 (useful for readable errors while writing a bench).
 const reactDev = process.env.BENCH_REACT_DEV === '1';
 const nodeEnv = JSON.stringify(reactDev ? 'development' : 'production');
@@ -76,17 +78,18 @@ const app = appConfig as UserConfig;
 const appAliases = Object.keys((app.resolve?.alias ?? {}) as Record<string, string>);
 
 export default defineConfig({
+  cacheDir: testCaches.cacheDir,
   plugins: [k8sPluginAlias(), wailsBindingIndex(bindingsRoot), ...(app.plugins ?? [])],
   resolve: {
     ...app.resolve,
-    dedupe: [...(app.resolve?.dedupe ?? []), '@wailsio/runtime', '@tanstack/react-query', 'react-router-dom', 'react-router'],
+    dedupe: [...(app.resolve?.dedupe ?? []), '@wailsio/runtime', '@tanstack/react-query', 'react-router'],
   },
   define: {
     'process.env.NODE_ENV': nodeEnv,
     'import.meta.env.BENCH_QUICK': JSON.stringify(process.env.BENCH_QUICK ?? ''),
     'import.meta.env.BENCH_VERBOSE': JSON.stringify(process.env.BENCH_VERBOSE ?? ''),
   },
-  esbuild: { jsx: 'automatic' },
+  esbuild: { jsx: 'automatic', jsxDev: reactDev },
   optimizeDeps: {
     // Discovering a dep mid-run makes Vite re-optimize and reload the page,
     // which aborts the bench file. Pre-bundle the discovered list only.
@@ -98,11 +101,13 @@ export default defineConfig({
     esbuildOptions: { define: { 'process.env.NODE_ENV': nodeEnv } },
   },
   test: {
+    fsModuleCachePath: testCaches.fsModuleCachePath,
     include: [],
     setupFiles: ['./bench/render/setup.ts'],
+    reporters: ['default', 'json'],
+    outputFile: { json: './bench/render/results/latest.json' },
     benchmark: {
       include: ['bench/render/**/*.bench.{ts,tsx}'],
-      outputJson: './bench/render/results/latest.json',
     },
     browser: {
       enabled: true,

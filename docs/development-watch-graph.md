@@ -6,12 +6,14 @@
 
 `Manager.NewBuildGraph(ctx, name, BuildOptions)` resolves selected manifest directories and the installed overlay. `ExpectedSDKRevision` is an independently reviewed fixed-capability baseline, not an arbitrary base. Required `VerifySDKSource(ctx,directory,reviewedRevision)` returns `devsource.Identity`; inject real `devsource.Verify` or an explicit workspace-only options adapter. Required `HostBuild` receives `HostBuildRequest.SDKSource` and compiles the actual selected native/server host without a competing bindings/frontend writer. Optional `Bindings(ctx,hostDirectory,outputDirectory)` uses the exclusively allocated sibling output; its real Task default passes `BINDINGS_OUTPUT_DIRECTORY` and `GO_BUILD_CACHE_DIRECTORY`, never raw Wails generation. Required `GoBuildCacheDirectory` is the prepared owned UUID profile runtime `go-build` directory outside source; the constructor rejects missing, redirected or source-tree caches.
 
-`graph.Bootstrap(ctx)` serializes these output owners:
+`graph.Bootstrap(ctx)` builds these output owners in dependency order:
 
 1. Host bindings, through the Taskfile entry point.
 2. Selected base-ui, then ai-ui/editors.
 3. Selected providers/runtime, then Vite-plugin shim generation, export checking and distribution.
 4. Selected plugin frontends/backends, host frontend and host backend.
+
+Nodes whose dependencies have finished run in parallel, at most four at a time (half the CPUs on smaller machines), started in plan order: for example bindings, providers, base-ui and plugin backends start together, then ai-ui alongside editors, then every plugin frontend. Watch closures use the same scheduler. After the first failure or cancellation no further node starts; running siblings finish normally so their owned processes and outputs settle, then the first failure is returned, prefixed with its node. `OnEvent` calls are serialized and producer output shares one locked writer.
 
 The graph owns selected local nodes only. Generated aggregate pnpm files live at the registered feature root above independent Git repositories; source package manifests/workspace configs/lockfiles remain standalone inputs. One native12 install boundary and validated `PNPM_CONFIG_WORKSPACE_DIR` govern all managed package commands. Exact-file SDK replacement rewriting preserves unrelated module directives and existing replace blocks. Mixed manager pins, malformed sums, edited aggregate files or stale source fingerprints fail before publication/readiness.
 
@@ -23,11 +25,30 @@ The custom-profile reader `pkg/state/custom.go` and shared native-independent ow
 
 Managed plugin watcher/rebuild operations enforce the same exact selected SDK directory and profile identity even when the parent graph has `watch=false`. A sibling checkout sharing the reviewed baseline is not the selected source. Isolation-core opt-in permits deliberate edits within that validated selection, not substitution of another workspace.
 
+### Restart reuse
+
+`Bootstrap` skips a node whose inputs are unchanged since its last successful bootstrap build and whose owned outputs are still exactly that build's outputs. Records live in the UUID profile at `~/.omniview-dev/profiles/<uuid>/runtime/build-reuse.json`; a node's record is removed before it rebuilds and written only after its outputs validate.
+
+- **Inputs:** a SHA-256 over the builder executable's bytes, the node's identity, every dependency's output digest, the node's toolchain and the selected source files. JavaScript toolchain inputs are the installed composition plan, the resolved Node executable and the pinned pnpm launcher. Go nodes (bindings, plugin and host backends) use the selected SDK identity, `go env GOVERSION` and the host variant (mode, MCP, platform). Source files are the Git-visible files (tracked plus untracked, not ignored) below the node directory, files directly inside each of its ancestors up to the repository root, and paths outside the package that its `package.json` scripts reference through `../`. Sibling packages contribute only through dependency output digests. Tracked files the graph itself writes (bindings, shims, YAML worker, Vite config stamps) are never hashed as source.
+- **Outputs:** `devoutputs.Published` verifies a staged output (`dist`, bindings, shims, YAML worker) still matches its controlled publication and returns a content digest without directory identities. Plugin and host binaries use the generated ledger the same way. A reused plugin re-records its artifact SDK attestation; a reused host is adopted as the launch binary through `BuildOptions.ReuseHost`.
+
+Dependency output digests give early cutoff: an edit rebuilds the edited node, and its dependents rebuild only if its outputs actually change. Watch rebuilds and `BuildPluginUI` never consult or write records, so outputs they republish make the next bootstrap rebuild that node. Any fingerprint error (Git, toolchain or SDK probe) only disables reuse for that node.
+
 ## Launch and watch adapters
 
 Launch preflight validates the selected composition, reviewed SDK source, parsed Go module contracts and shared UI dependencies before install or compilation. The selected SDK must declare `github.com/omniviewdev/plugin-sdk`; host and Go plugins must require that module. Comments containing its name do not satisfy the contract. Legacy MUI, Emotion and `@omniviewdev/ui` dependencies require migration to the current host contract.
 
 Workspace status reports actual checkout commits, branches and dirty content fingerprints separately from manifest base commits. `health` separates supervisor liveness, build health, dependency freshness, served-source freshness, authenticated host readiness, HMR connectivity and source reload verification. A completed watch transaction captures the served checkout fingerprint; a failed build leaves the previous served fingerprint intact. Unknown or unverified observations never imply freshness.
+
+Remote observation is separate from this local graph. `workspace follow` polls
+explicit upstream policy in the foreground; it does not change `--watch` or add
+another compiler/installer. Observe-only follow never mutates worktrees.
+`--apply` schedules the existing update transaction, which quiesces producers
+and holds feedback before checkout. Source-only changes rebuild the affected
+closure; changed composition inputs pass through the owned stopped refresh
+before consumers resume. A failed or partial cohort never publishes new served
+evidence. See [workspace update/follow guidance](development-workspaces.md#update-configured-upstreams)
+for trust consent, saved launch options, cancellation and recovery.
 
 The development instance control lives in the footer, before the plugin dev-server indicators; managed Vite no longer injects a floating DEVELOPMENT overlay over the terminal. The control combines confirmed host identity with identity-checked supervisor status. It shows build progress, failures and unavailable or stale status without treating unknown observations as ready. Its base-ui popover lists host build, HMR, source freshness, reload proof, selected-plugin count, failed stage and recovery command. Full instance details use the existing base-ui dialog. Selected-plugin count is not a readiness check. Compiler summaries retain actionable diagnostics while redacting secret-like values and local workspace/home paths; full private logs remain available locally. HMR connectivity alone does not verify that a source edit reached the browser: `sourceReload` remains `unverified` until a separate source-edit/browser observation establishes that result.
 
@@ -121,6 +142,8 @@ Authenticated descriptor admission and stage readiness belong to the same bounde
 
 The graph's `PNPMCommand(ctx,pin,args...)` returns an argv-safe Node launcher through a ledger-owned `.local/toolchains/pnpm-12.14.0/pnpm.cjs`. It validates and directly spawns the actual native **12.14.0** executable—not Node/Corepack. Set canonical `OMNIVIEW_PNPM_EXECUTABLE` when PATH exposes another manager or a shell wrapper. Wrong versions fail without fallback. The launcher clears inherited workspace-dir aliases, assigns the validated feature root, preserves actual consumer cwd/argv, and uses private aliases for nested `pnpm`; no global installation or package script changes.
 
+Because the launcher pins the feature root, a dependency-changing command through it (`install`, `add`, `remove`, `update`, `dedupe`, `prune`, `link`, `rebuild` and their aliases) would rewrite the owned composition `node_modules` from any cwd. The launcher refuses those commands unless `OMNIVIEW_PNPM_COMPOSITION_INSTALL=1`, which only the recorded composition install (`linkCommand`) sets; graph build commands strip it. Scripts, `exec` and audits still run, with `verify-deps-before-run=error`. Change dependencies through `workspace refresh`.
+
 Parent-only real nested probe: `A15_PINNED_PNPM_PROBE=1 GOWORK=off GOFLAGS= go test ./internal/devworkspace -run '^TestPinnedPNPMNestedScriptProbe$' -count=1 -v`, with the effective SDK/native module selection and explicit native executable when needed. It exercises actual native12 scripts, inherited wrong-manager/root markers, nested child configs, spaced paths/arguments and the authoritative feature-root context. Historical pnpm10 results do not authorize managed12 composition.
 
 Graph build/watch operation locks use `devsession.AcquirePrivateLock` on their external UUID paths, retaining a stable no-follow private inode through operation completion. Acquisition has a bounded contention context; an acquired lock is closed only when its operation/watcher ends. Lock paths are not atomically replaced or adopted through symlinks.
@@ -134,6 +157,8 @@ Private `node`/`node.cmd` aliases in the same recorded toolchain ensure bare `no
 Managed installation/build/Vite commands establish native-free `internal/devoutputs` capabilities BEFORE starting their actual processes. The external private UUID journal is `<collection>/.omniview-dev/repository-outputs/<uuid>`; it records selected source roots, exact directory identities, before/after bytes and durable publication/restoration progress. Existing ignored `dist`, `node_modules` or cache data without independent ownership is refused, never adopted by a posthoc tree hash.
 
 `BeginCompositionInstall(ctx,resolvedWorkspace,plan)` preflights aggregate and selected package modules/cache scopes before the single install. Every retained consumer lifetime blocks shared-store replacement, including packages omitted by a new negative glob and interrupted writers known only from persisted receipts. Unknown outputs and foreign roots refuse admission. Installs suppress scripts and audit peers recursively before builds/readiness. Only terminal process/descendant proof permits `Writer.Finish`; uncertainty stays pending. Plugin startup consumes `devcompose.Installed`; second plugin installs are rejected.
+
+`ResetDependencyTrees(ctx,resolvedWorkspace,roots,duringRestoration)` backs the explicit `workspace reset-modules` recovery. Under the journal lock it deletes every modules, TypeScript-cache, Vite-loader-cache and Vite-cache target (including interrupted writer intent and its temporary directories) plus any `node_modules` directly below the supplied composition/package roots, then forgets those entries. Targets redirected through symlinks or outside the feature root (or, for the optimizer cache, the private cache root) refuse before anything is deleted. Other producers and their publications are untouched. It adopts nothing: the caller holds the stopped-profile guard and reinstalls through `BeginCompositionInstall`. With `duringRestoration` it also admits an interrupted restoration, keeping `Restoring` and every other intent for the resumed `Restore`; no reinstall follows.
 
 `BeginVite(ctx,resolvedWorkspace,consumerRoot)` covers typechecker/config-loader/Vite process lifetime and returns authoritative `OMNIVIEW_VITE_CACHE_DIRECTORY`. Optimizer cache is UUID-owned external storage; exact `.vite-temp` and `.tmp` children and Vite5 root loader stamps are separately controlled. An immutable modules snapshot excludes a cache subtree only with its matching independent journal record. Shared consumer cache writers remain live until the last actual process finishes, not until a transport request returns.
 
@@ -152,7 +177,7 @@ Managed frontend preparation, spawn/capture and publication share a start gate w
 
 A lost retained-process observation is not proof of process exit. The producer stays unready with its owned handle retained; the actual cause is written to its existing local diagnostic log and bounded dev-log buffer. Read those logs deliberately with `--unsafe-output` on a private test instance, rather than inferring death from a live HTTP endpoint or an empty public `LastError`.
 
-The serial graph prepares same-depth exclusive sibling stages using `Prepare` with `Distribution`, `Bindings`, `Shims`, or `YAMLWorker`. It runs actual compiler commands with:
+The graph prepares same-depth exclusive sibling stages using `Prepare` with `Distribution`, `Bindings`, `Shims`, or `YAMLWorker`. It runs actual compiler commands with:
 
 - `OMNIVIEW_BUILD_OUTPUT_DIRECTORY`: Vite/declaration outDir or argv-safe package-local tsup CLI out-dir.
 - `OMNIVIEW_SHIMS_OUTPUT_DIRECTORY` and read-only `OMNIVIEW_SHIMS_SOURCE_DIRECTORY`: generate/check new shims. Runtime entry points match the current bundle exactly; previous-export retention applies only to third-party packages.
@@ -161,7 +186,9 @@ The serial graph prepares same-depth exclusive sibling stages using `Prepare` wi
 
 Each UI package's `vite.config.ts` keeps custom/staged declaration output independent of the active distribution and stays inside that package's composite TypeScript boundary. Staged producers emit the complete declaration tree rooted at `src`; standalone publishing retains rolled declarations. API Extractor follows the fixed `package.json` dist entry, so it must not read an old active declaration or require one in a cold feature. Declaration compiler errors fail the actual producer rather than merely logging diagnostics and publishing output.
 
-UI composite build info and selected Kubernetes node-project build info use controlled `node_modules/.tmp`; type checking is not disabled. `Publish` preflights destinations/HEAD and captures all after-images before source renames, then records resumable progress. Empty/missing declared literal distribution exports, host index.html or exact worker fail before publication. Runtime build still precedes shim generation/check and Vite-plugin output; there is no second output watcher.
+UI composite build info, incremental typecheck build info and selected Kubernetes node-project build info use controlled `node_modules/.tmp`; type checking is not disabled. A package's `typecheck` script runs before `build` only when the build script does not already run it. `Publish` preflights destinations/HEAD and captures all after-images before source renames, then records resumable progress. Empty/missing declared literal distribution exports, host index.html or exact worker fail before publication. Runtime build still precedes shim generation/check and Vite-plugin output; there is no second output watcher.
+
+Vitest is not a managed producer. Host Vitest configs route its run-result cache (Vite `cacheDir`) and module cache (`fsModuleCachePath`, default `node_modules/.vitest-cache`) to a per-checkout temp directory through `vitest.cache.ts`, so a manual `node_modules/.bin/vitest run` in a feature does not change an owned `node_modules`. The UI and Kubernetes Vitest configs do the same within their own package boundaries. Vite's default `bundle` config loader still writes a temporary bundle to `node_modules/.vite-temp`, which is owned only in packages the graph has built since the last install. Pass `--configLoader runner` to a manual `vitest`/`vite` run in a feature; it loads the config without writing that directory.
 
 Root-level Vite loader ownership filters the tracked inventory before validating selected entry types. An unrelated tracked Git submodule is not a loader baseline and cannot block restoration; a nonregular entry that actually matches the exact owned loader-stamp pattern still refuses adoption.
 

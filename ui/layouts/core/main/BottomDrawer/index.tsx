@@ -4,33 +4,14 @@ import { Separator } from '@omniviewdev/base-ui';
 
 // project imports
 import BottomDrawerTabs from '@/providers/BottomDrawer/tabs';
-import TerminalContainer from '@/providers/BottomDrawer/containers/Terminal';
-import LogViewerContainer from '@/providers/BottomDrawer/containers/LogViewer';
-import DevBuildViewer from '@/providers/BottomDrawer/containers/DevBuildViewer';
-import PluginLogViewer from '@/providers/BottomDrawer/containers/PluginLogViewer';
-import EditorDebugPanel from '@/providers/BottomDrawer/containers/EditorDebugPanel';
+import DrawerTabPanels from '@/providers/BottomDrawer/DrawerTabPanels';
 import { useBottomDrawer } from '@omniviewdev/runtime';
-import { bottomDrawerChannel, restoredSessionIds, setBottomDrawerHeight } from '@/providers/BottomDrawer/events';
+import { bottomDrawerChannel, setBottomDrawerHeight } from '@/providers/BottomDrawer/events';
+import { DEFAULT_DRAWER_EXPANDED_HEIGHT, useBottomDrawerWindow } from '@/providers/BottomDrawer/windowContext';
+import type { DrawerMode } from '@/providers/BottomDrawer/drawerSlot';
 import { Events } from '@omniviewdev/runtime/runtime';
 import handleStyles from '@/components/base/ResizeHandle.module.css';
 import styles from './BottomDrawer.module.css';
-import { readProfileStorage, writeProfileStorage } from '@/features/instance/boot';
-
-const TerminalContainerMemo = React.memo(TerminalContainer, (prev, next) => {
-  return prev.sessionId === next.sessionId
-    && prev.tab?.properties?.status === next.tab?.properties?.status;
-});
-
-const LogViewerContainerMemo = React.memo(LogViewerContainer, (prev, next) => {
-  return prev.sessionId === next.sessionId;
-});
-
-type DrawerStartupMode = 'minimized' | 'expanded';
-
-const drawerModeStorageKey = 'omniview.bottomDrawer.mode';
-// Upper bound on waiting for the terminal session restore (see onSessionsRestored).
-const sessionRestoreTimeoutMs = 3000;
-const drawerExpandedHeightStorageKey = 'omniview.bottomDrawer.expandedHeight';
 
 /**
  * Sticky resizable drawer at the bottom of the screen used to display
@@ -38,13 +19,14 @@ const drawerExpandedHeightStorageKey = 'omniview.bottomDrawer.expandedHeight';
  */
 const BottomDrawerContainer: React.FC = () => {
   const minHeight = 32;
-  const defaultHeight = 550;
+  const defaultHeight = DEFAULT_DRAWER_EXPANDED_HEIGHT;
 
-  const { tabs, focused } = useBottomDrawer();
+  const { tabs } = useBottomDrawer();
+  const { restoreComplete, quietTabIds, layout, saveLayout } = useBottomDrawerWindow();
   const hasTabs = tabs.length > 0;
 
   const [height, setDrawerHeight] = React.useState<number>(minHeight);
-  const lastExpandedHeightRef = React.useRef<number>(defaultHeight);
+  const lastExpandedHeightRef = React.useRef<number>(Math.max(layout.expandedHeight, minHeight));
 
   // State for drag operation
   const [isDragging, setIsDragging] = React.useState(false);
@@ -52,28 +34,10 @@ const BottomDrawerContainer: React.FC = () => {
   // Ref for the sidebar to calculate changes in width
   const drawerRef = React.useRef<HTMLDivElement>(null);
   const dragHandleRef = React.useRef<HTMLDivElement>(null);
-  const startupModeRef = React.useRef<DrawerStartupMode>('minimized');
+  const startupModeRef = React.useRef<DrawerMode>(layout.mode);
   const startupResolvedRef = React.useRef(false);
-  const prevTabCountRef = React.useRef(0);
+  const previousTabIdsRef = React.useRef<ReadonlySet<string>>(new Set());
   const mountedRef = React.useRef(false);
-  // Terminal sessions that survived a reload are restored as tabs after mount
-  // (BottomDrawerTabs lists them asynchronously). Until that has finished, a tab
-  // appearing is a restored one, not a new one, and must not auto-expand.
-  const [sessionsRestored, setSessionsRestored] = React.useState(false);
-
-  React.useEffect(() => {
-    const unsubscribe = bottomDrawerChannel.on('onSessionsRestored', () => {
-      setSessionsRestored(true);
-    });
-    const timer = window.setTimeout(() => {
-      setSessionsRestored(true);
-    }, sessionRestoreTimeoutMs);
-
-    return () => {
-      unsubscribe();
-      window.clearTimeout(timer);
-    };
-  }, []);
 
   // Other panels (the right drawer) size themselves against the drawer height.
   // They set it as a CSS variable on themselves: on <html> every change would
@@ -82,38 +46,11 @@ const BottomDrawerContainer: React.FC = () => {
     setBottomDrawerHeight(height);
   }, [height]);
 
-  const persistDrawerState = React.useCallback((mode: DrawerStartupMode, expandedHeight?: number) => {
+  // The mode and expanded height are part of this window's saved drawer state.
+  const persistDrawerState = React.useCallback((mode: DrawerMode, expandedHeight?: number) => {
     startupModeRef.current = mode;
-    try {
-      writeProfileStorage(drawerModeStorageKey, mode);
-
-      if (mode === 'expanded') {
-        const height = expandedHeight ?? lastExpandedHeightRef.current;
-        writeProfileStorage(drawerExpandedHeightStorageKey, String(height));
-      }
-    } catch {
-      // storage is best-effort only
-    }
-  }, []);
-
-  React.useEffect(() => {
-    try {
-      const savedMode = readProfileStorage(drawerModeStorageKey);
-      if (savedMode === 'expanded' || savedMode === 'minimized') {
-        startupModeRef.current = savedMode;
-      }
-
-      const savedHeightRaw = readProfileStorage(drawerExpandedHeightStorageKey);
-      if (savedHeightRaw !== null) {
-        const savedHeight = Number.parseInt(savedHeightRaw, 10);
-        if (!Number.isNaN(savedHeight)) {
-          lastExpandedHeightRef.current = Math.max(savedHeight, minHeight);
-        }
-      }
-    } catch {
-      // storage read failures should not block UI rendering
-    }
-  }, []);
+    saveLayout(mode, mode === 'expanded' ? expandedHeight ?? lastExpandedHeightRef.current : undefined);
+  }, [saveLayout]);
 
   // common methods
   const expandDrawerToHeight = React.useCallback((height: number) => {
@@ -191,15 +128,20 @@ const BottomDrawerContainer: React.FC = () => {
       expandDrawerToHeight(height);
     });
 
+    // Menu events reach every window; only the focused one acts on them.
     const closerFullScreen = Events.On('menu/view/bottomdrawer/fullscreen', () => {
-      fullscreen();
+      if (document.hasFocus()) {
+        fullscreen();
+      }
     });
     const unsubscribeOnFullScreen = bottomDrawerChannel.on('onFullscreen', () => {
       fullscreen();
     });
 
     const closerMinimize = Events.On('menu/view/bottomdrawer/minimize', () => {
-      minimize();
+      if (document.hasFocus()) {
+        minimize();
+      }
     });
     const unsubscribeOnMinimize = bottomDrawerChannel.on('onMinimize', () => {
       minimize();
@@ -223,22 +165,22 @@ const BottomDrawerContainer: React.FC = () => {
     // Tabs already present on the first run were not opened just now.
     const atMount = !mountedRef.current;
     mountedRef.current = true;
-    const nextTabCount = tabs.length;
-    const prevTabCount = prevTabCountRef.current;
+    const previousTabIds = previousTabIdsRef.current;
+    previousTabIdsRef.current = new Set(tabs.map((tab) => tab.id));
     const currentHeight = parseInt(drawerRef.current.style.height, 10);
 
     if (!startupResolvedRef.current) {
       // No tabs yet and the restore may still bring some back: stay minimized
       // and resolve the startup state once tabs arrive or the restore is done.
-      if (nextTabCount === 0 && !sessionsRestored) {
+      if (tabs.length === 0 && !restoreComplete) {
         expandDrawerToHeight(minHeight);
         return;
       }
 
       startupResolvedRef.current = true;
-      const userOpenedTab = tabs.some((tab) => !restoredSessionIds.has(tab.id));
+      const userOpenedTab = tabs.some((tab) => !quietTabIds.has(tab.id));
 
-      if (nextTabCount === 0) {
+      if (tabs.length === 0) {
         expandDrawerToHeight(minHeight);
       } else if (startupModeRef.current === 'expanded') {
         expandDrawerToHeight(lastExpandedHeightRef.current);
@@ -249,23 +191,22 @@ const BottomDrawerContainer: React.FC = () => {
         expandDrawerToHeight(minHeight);
       }
 
-      prevTabCountRef.current = nextTabCount;
       return;
     }
 
-    if (nextTabCount === 0) {
+    if (tabs.length === 0) {
       expandDrawerToHeight(minHeight);
-      prevTabCountRef.current = 0;
       return;
     }
 
-    // Auto-expand only when a new tab is added after startup resolution.
-    if (nextTabCount > prevTabCount && (isNaN(currentHeight) || currentHeight < defaultHeight)) {
+    // Auto-expand only for a tab that was opened (or moved here) after startup;
+    // a retry swapping a tab's id or a quiet adoption does not count.
+    const openedTab = tabs.length > previousTabIds.size
+      && tabs.some((tab) => !previousTabIds.has(tab.id) && !quietTabIds.has(tab.id));
+    if (openedTab && (isNaN(currentHeight) || currentHeight < defaultHeight)) {
       expandDrawerToHeight(defaultHeight);
     }
-
-    prevTabCountRef.current = nextTabCount;
-  }, [tabs, sessionsRestored, expandDrawerToHeight]);
+  }, [tabs, quietTabIds, restoreComplete, expandDrawerToHeight, defaultHeight]);
 
   const handleClick = React.useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!drawerRef.current || !hasTabs) {
@@ -292,7 +233,7 @@ const BottomDrawerContainer: React.FC = () => {
       persistDrawerState('minimized');
       bottomDrawerChannel.emit('onResizeReset');
     }
-  }, [hasTabs, persistDrawerState]);
+  }, [hasTabs, persistDrawerState, defaultHeight]);
 
   const handleMouseDown = React.useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!hasTabs) {
@@ -349,10 +290,6 @@ const BottomDrawerContainer: React.FC = () => {
   }, [hasTabs, persistDrawerState]);
 
   React.useEffect(() => {
-    // const handleMouseUpGlobal = () => {
-    //   setIsDragging(false);
-    // };
-
     if (isDragging) {
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
@@ -372,6 +309,8 @@ const BottomDrawerContainer: React.FC = () => {
       className={`BottomDrawer ${styles.Drawer}`}
       ref={drawerRef}
       style={{ height: minHeight, minHeight, maxHeight: minHeight }}
+      // Restored tabs are reconciled with live sessions; tests and benchmarks wait for it.
+      data-ov-drawer-restored={restoreComplete || undefined}
     >
       <div
         ref={dragHandleRef}
@@ -386,36 +325,15 @@ const BottomDrawerContainer: React.FC = () => {
       <div className={`BottomDrawerContainer ${styles.Container}`}>
         <Separator />
         <BottomDrawerTabs
-          hasTabs={hasTabs}
-          isMinimized={height === minHeight}
-          isFullscreen={height >= window.innerHeight}
-          onMinimize={minimize}
-          onExpand={expand}
-          onFullscreen={fullscreen}
+          resizeControls={{
+            isMinimized: height === minHeight,
+            isFullscreen: height >= window.innerHeight,
+            onMinimize: minimize,
+            onExpand: expand,
+            onFullscreen: fullscreen,
+          }}
         />
-        <div className={styles.Panels}>
-          {tabs.map((tab) => (
-            <div
-              key={tab.id}
-              className={styles.Panel}
-              // visibility (not display:none) keeps xterm measured and fitted,
-              // which avoids a flash of doubled lines when switching tabs.
-              data-active={tabs[focused]?.id === tab.id || undefined}
-            >
-              {tab.variant === 'editor-debug' ? (
-                <EditorDebugPanel />
-              ) : tab.variant === 'devbuild' ? (
-                <DevBuildViewer pluginId={tab.id.replace(/^devbuild-/, '')} />
-              ) : tab.variant === 'plugin-logs' ? (
-                <PluginLogViewer pluginId={tab.id.replace(/^pluginlogs-/, '')} />
-              ) : tab.variant === 'logs' ? (
-                <LogViewerContainerMemo sessionId={tab.id} />
-              ) : (
-                <TerminalContainerMemo sessionId={tab.id} tab={tab} />
-              )}
-            </div>
-          ))}
-        </div>
+        <DrawerTabPanels />
       </div>
     </div>
   );

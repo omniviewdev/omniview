@@ -28,11 +28,8 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: "26.13.0"
           registry-url: https://registry.npmjs.org
-
-      - name: Setup npm
-        run: npm install --global npm@11.6.2
 
       - name: Setup pnpm
         uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
@@ -46,14 +43,17 @@ jobs:
       - name: Normalize version
         id: version
         shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          version=$(echo "${{ inputs.version }}" | sed 's/^v//')
+          version="${INPUT_VERSION#v}"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
       - name: Stamp package versions
         shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
           for pkg in \
             packages/omniviewdev-providers/package.json \
             packages/omniviewdev-runtime/package.json \
@@ -75,11 +75,11 @@ jobs:
 
       - name: Publish packages
         shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ inputs.dist-tag }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          TAG="${{ inputs.dist-tag }}"
-
-          for pkg in providers vite-plugin runtime; do
+          for pkg in providers runtime vite-plugin; do
             PKG_NAME="@omniviewdev/${pkg}"
 
             # Check if this exact version already exists on the registry

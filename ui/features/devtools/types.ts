@@ -35,7 +35,7 @@ export type DevServerAggregateStatus = 'ready' | 'building' | 'error' | 'stopped
 
 /** Derive the aggregate status from a DevServerState. */
 export function getAggregateStatus(state: DevServerState): DevServerAggregateStatus {
-  if (state.lastError || state.buildStatus === LifecycleStage.StageError || state.rpcStatus === LifecycleStage.StageError || state.controllerStatus === LifecycleStage.StageError || state.viteStatus === DevProcessStatus.DevProcessStatusError) {
+  if (Boolean(state.lastError) || state.buildStatus === LifecycleStage.StageError || state.rpcStatus === LifecycleStage.StageError || state.controllerStatus === LifecycleStage.StageError || state.viteStatus === DevProcessStatus.DevProcessStatusError) {
     return 'error';
   }
 

@@ -38,14 +38,17 @@ func (m *Manager) BuildPluginUI(ctx context.Context, name, pluginID string, outp
 	if err != nil {
 		return "", err
 	}
-	g := &BuildGraph{workspace: w, plan: j.Plan, Nodes: nodes, options: BuildOptions{Generation: uuid.NewString(), Output: output}}
+	g := &BuildGraph{workspace: w, plan: j.Plan, Nodes: nodes, options: BuildOptions{Generation: uuid.NewString()}}
+	if output != nil {
+		g.options.Output = &lockedWriter{writer: output}
+	}
 	g.run = g.command
 	g.runProducer = g.commandWithEnvironment
 	if err = g.withBuildLock(ctx, func() error {
 		if err := g.auditComposition(ctx); err != nil {
 			return err
 		}
-		if err := g.execute(ctx, nodes); err != nil {
+		if err := g.execute(ctx, nodes, nil); err != nil {
 			return err
 		}
 		// Resolve actual public JS exports after publication, just as Bootstrap

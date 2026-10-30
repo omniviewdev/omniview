@@ -9,6 +9,12 @@ import { useEditorSchemas } from './useEditorSchemas';
 const native = vi.hoisted(() => ({ schemas: vi.fn(), document: vi.fn() }));
 vi.mock('../../resource/v2/client', () => ({ GetEditorSchemas: native.schemas, GetSchemaDocument: native.document }));
 vi.mock('../useResolvedPluginId', () => ({ useResolvedPluginId: (id?: string) => id ?? 'provider' }));
+vi.mock('../connection/useConnectionReadiness', () => ({ useConnectionReadiness: () => ({ phase: 'connected' }) }));
+vi.mock('../../connection/connectionReadiness', () => ({
+  getConnectionReadinessGeneration: () => 1,
+  isConnectionReadinessCurrent: () => true,
+  connectionReadinessStore: () => ({ subscribe: () => () => {} }),
+}));
 
 it('keeps bindings unpublished while a later document is pending or fails', async () => {
   const dialect = 'https://json-schema.org/draft/2020-12/schema';
@@ -53,4 +59,26 @@ it('keeps bindings unpublished while a later document is pending or fails', asyn
     hook.unmount();
     client.clear();
   }
+});
+
+it('cancels an owned schema-document request when its consumer unmounts', async () => {
+  const reference = { id: 'shared', revision: 'r1' };
+  const schema: EditorSchema = {
+    type: 'opaque/type', fileMatch: 'file:///item.yaml', uri: 'schema:///item', language: 'yaml',
+    binding: { state: 'available', documentRef: reference, validation: 'none', unvalidated: [] },
+  };
+  native.schemas.mockResolvedValue([schema]);
+  const pending = Promise.withResolvers<SchemaDocument>();
+  const cancel = vi.fn().mockResolvedValue(undefined);
+  native.document.mockReturnValue(Object.assign(pending.promise, { cancel }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  const wrapper = ({ children }: { children: React.ReactNode }) => React.createElement(QueryClientProvider, { client }, children);
+  const route = { connection: 'cluster' };
+  const hook = renderHook(() => useEditorSchemas({ pluginID: 'provider', route }), { wrapper });
+  await waitFor(() => expect(native.document).toHaveBeenCalledWith('provider', route, reference));
+  hook.unmount();
+  expect(cancel).toHaveBeenCalledTimes(1);
+  await act(async () => { pending.resolve({ reference, dialect: 'https://json-schema.org/draft/2020-12/schema', document: {} }); });
+  expect(client.getQueryData(['provider', 'resource-v2', 'schema-document', route, reference])).toBeUndefined();
+  client.clear();
 });

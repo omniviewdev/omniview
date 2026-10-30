@@ -43,6 +43,28 @@ func TestListConnections_EmptySlice(t *testing.T) {
 	assert.Empty(t, result)
 }
 
+func TestListConnections_BeforeConnectionsLoad(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+
+	result, err := ctrl.ListConnections(testInvocationContext(), "test-plugin")
+	require.NoError(t, err)
+	require.NotNil(t, result, "the binding must receive [] rather than null")
+	assert.Empty(t, result)
+
+	// A read before initialization must not prevent later discovery.
+	registerMockPlugin(ctrl, "test-plugin", &mockProvider{
+		LoadConnectionsFunc: func(context.Context) ([]types.Connection, error) {
+			return []types.Connection{{ID: "kind-kind", Name: "kind-kind"}}, nil
+		},
+	})
+	_, err = ctrl.LoadConnections(testInvocationContext(), "test-plugin")
+	require.NoError(t, err)
+
+	result, err = ctrl.ListConnections(testInvocationContext(), "test-plugin")
+	require.NoError(t, err)
+	assert.Equal(t, []types.Connection{{ID: "kind-kind", Name: "kind-kind"}}, result)
+}
+
 // ============================================================================
 // SaveConnectionProfile: new desired records
 // ============================================================================

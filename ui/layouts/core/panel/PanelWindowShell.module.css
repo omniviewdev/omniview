@@ -1,0 +1,28 @@
+.Shell {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+  /* Keep base-ui popups, which portal to <body>, above the shell. */
+  isolation: isolate;
+  background: var(--ov-color-bg-surface);
+}
+
+/*
+ * The strip doubles as the window title bar: its background drags the window,
+ * tabs and buttons stay interactive. The inset leaves room for the macOS
+ * window controls (set inline from the platform).
+ */
+.TitleBar {
+  flex: none;
+  padding-left: var(--PanelWindow-controls-inset, 0px);
+  --wails-draggable: drag;
+  user-select: none;
+  -webkit-user-select: none;
+  background: var(--ov-color-bg-base);
+}
+
+.TitleBar [role='tab'],
+.TitleBar button {
+  --wails-draggable: no-drag;
+}

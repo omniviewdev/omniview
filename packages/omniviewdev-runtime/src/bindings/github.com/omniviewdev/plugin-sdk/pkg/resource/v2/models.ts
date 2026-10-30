@@ -9,6 +9,10 @@ import { Create as $Create } from "@wailsio/runtime";
 // @ts-ignore: Unused imports
 import * as json$0 from "../../../../../../encoding/json/models.js";
 
+/**
+ * AccessRoute selects a configured connection, not an identity or permission.
+ * Connection must be explicit; an empty route never selects a default client.
+ */
 export class AccessRoute {
     "connection": string;
 
@@ -30,6 +34,10 @@ export class AccessRoute {
     }
 }
 
+/**
+ * ActionDescriptor advertises one named action's presentation and input/output
+ * hints. Catalog action capability and invocation admission remain independent.
+ */
 export class ActionDescriptor {
     "id": string;
     "label": string;
@@ -37,8 +45,17 @@ export class ActionDescriptor {
     "icon": string;
     "scope": ActionScope;
     "streaming": boolean;
+
+    /**
+     * Nil schemas mean no schema was supplied, not that all inputs or outputs
+     * have been validated. Dispatch does not fill defaults from these schemas.
+     */
     "paramsSchema"?: Schema | null;
     "outputSchema"?: Schema | null;
+
+    /**
+     * Dangerous is a UI warning hint, never an authorization decision.
+     */
     "dangerous"?: boolean;
 
     /** Creates a new ActionDescriptor instance. */
@@ -74,18 +91,38 @@ export class ActionDescriptor {
     }
 }
 
+/**
+ * ActionScope distinguishes object actions from type-level actions. It is
+ * descriptive metadata, not authority to widen a request's admitted reference.
+ */
 export enum ActionScope {
     /**
      * The Go zero value for the underlying type of the enum.
      */
     $zero = "",
 
+    /**
+     * ActionScopeInstance associates an action with an exact resource reference.
+     */
     ActionScopeInstance = "instance",
+
+    /**
+     * ActionScopeType associates an action with a resource type rather than an instance.
+     */
     ActionScopeType = "type",
 };
 
+/**
+ * Catalog describes support observed through the requested route. Revision is
+ * an opaque observation used for admission, not an authorization credential.
+ * Failed or denied discovery is an error, not an empty complete catalog.
+ */
 export type Catalog = any;
 
+/**
+ * CatalogRequest discovers support through one explicit access route. Discovery
+ * does not start a connection or grant authority over the returned types.
+ */
 export class CatalogRequest {
     "route": AccessRoute;
 
@@ -111,6 +148,11 @@ export class CatalogRequest {
     }
 }
 
+/**
+ * ColumnDefinition describes client-side display and extraction hints. Accessors
+ * are presentation expressions, not canonical addresses or server query predicates.
+ * Maps, ComponentParams, and ResourceLink remain mutable caller-visible metadata.
+ */
 export class ColumnDefinition {
     "id": string;
     "header": string;
@@ -163,6 +205,11 @@ export class ColumnDefinition {
     }
 }
 
+/**
+ * Count distinguishes unknown cardinality from an observed zero. Unknown requires
+ * nil Value; exact and estimate require a canonical unsigned 64-bit decimal string.
+ * A page's record count does not by itself establish total source cardinality.
+ */
 export class Count {
     "kind": string;
     "value"?: string | null;
@@ -185,21 +232,38 @@ export class Count {
     }
 }
 
+/**
+ * Coverage states known acquisition limitations, not operation success alone.
+ * Complete forbids Paths and Reason. Partial and unknown require a public-safe
+ * Reason; preserve any reported path limitations rather than claiming completeness.
+ */
 export type Coverage = any;
 
+/**
+ * EdgeDirection orients a descriptor relative to the source resource.
+ * The empty value is the explicit outgoing direction, not unknown direction.
+ */
 export enum EdgeDirection {
     /**
      * The Go zero value for the underlying type of the enum.
      */
     $zero = "",
 
+    /**
+     * EdgeOutgoing places the source at the origin of the relationship.
+     */
     EdgeOutgoing = "",
+
+    /**
+     * EdgeIncoming places the source at the destination of the relationship.
+     */
     EdgeIncoming = "incoming",
 };
 
 /**
- * These presentation and diagnostic declarations are not resource identity and
- * do not imply finite-operation support or a live continuity guarantee.
+ * EditorSchema associates editor selection metadata with an explicit schema
+ * binding. URI is editor metadata, not permission to fetch an external document;
+ * Binding distinguishes unavailable acquisition from known schema absence.
  */
 export class EditorSchema {
     "type": string;
@@ -238,9 +302,18 @@ export class EditorSchema {
     }
 }
 
+/**
+ * EnumerateRequest asks for one finite source page, not a subscription or a
+ * host-planned query result. A valid empty oneOf must return an empty page.
+ */
 export class EnumerateRequest {
     "target": ReadTarget;
     "pageSize": number;
+
+    /**
+     * Cursor is nil for an initial acquisition. A nonnil source token is opaque
+     * and must not be reused after the target or source generation changes.
+     */
     "cursor"?: string | null;
 
     /** Creates a new EnumerateRequest instance. */
@@ -268,14 +341,28 @@ export class EnumerateRequest {
     }
 }
 
+/**
+ * EventSeverity classifies diagnostic events, not operation errors or watch state.
+ */
 export enum EventSeverity {
     /**
      * The Go zero value for the underlying type of the enum.
      */
     $zero = "",
 
+    /**
+     * SeverityNormal marks informational resource events.
+     */
     SeverityNormal = "normal",
+
+    /**
+     * SeverityWarning marks resource events requiring attention.
+     */
     SeverityWarning = "warning",
+
+    /**
+     * SeverityError marks resource events reporting a failure.
+     */
     SeverityError = "error",
 };
 
@@ -289,21 +376,77 @@ export enum Feature {
      */
     $zero = "",
 
+    /**
+     * FeatureConnections enables explicit connection lifecycle operations.
+     */
     FeatureConnections = "connections",
+
+    /**
+     * FeatureConnectionReadiness enables nonblocking registered-state inspection.
+     */
     FeatureConnectionReadiness = "connectionReadiness",
+
+    /**
+     * FeatureConnectionBrowser enables native configured-profile discovery.
+     */
     FeatureConnectionBrowser = "connectionBrowser",
+
+    /**
+     * FeatureConnectionOverlay enables replacement of the desired in-memory profile overlay.
+     */
     FeatureConnectionOverlay = "connectionOverlay",
+
+    /**
+     * FeatureScopeValues enables discovery of values for declared scope dimensions.
+     */
     FeatureScopeValues = "scopeValues",
+
+    /**
+     * FeaturePresentation enables resource presentation metadata.
+     */
     FeaturePresentation = "presentation",
+
+    /**
+     * FeatureEditorSchemas enables editor schema bindings.
+     */
     FeatureEditorSchemas = "editorSchemas",
+
+    /**
+     * FeatureSchemaDocuments enables acquisition of shared schema documents.
+     */
     FeatureSchemaDocuments = "schemaDocuments",
+
+    /**
+     * FeatureRelationships enables scoped relationship resolution.
+     */
     FeatureRelationships = "relationships",
+
+    /**
+     * FeatureHealth enables explicit native health acquisition, not lifecycle readiness.
+     */
     FeatureHealth = "health",
+
+    /**
+     * FeatureActionCatalog enables discovery of available action descriptors.
+     */
     FeatureActionCatalog = "actionCatalog",
+
+    /**
+     * FeatureStreamingActions enables ready-gated action event streams.
+     */
     FeatureStreamingActions = "streamingActions",
+
+    /**
+     * FeatureBestEffortUpdates enables advisory updates without replay guarantees.
+     */
     FeatureBestEffortUpdates = "bestEffortUpdates",
 };
 
+/**
+ * FeatureSet lists ancillary traits available on this provider or transport.
+ * Nil or empty Traits advertises none; duplicates and unknown traits are invalid.
+ * Callers must not mutate returned Traits concurrently with SDK use.
+ */
 export class FeatureSet {
     "traits": Feature[];
 
@@ -329,6 +472,11 @@ export class FeatureSet {
     }
 }
 
+/**
+ * GetRequest selects one reference through a route, with an explicit body format.
+ * Request containers are borrowed for the call; retaining or mutating them
+ * requires an independent copy.
+ */
 export class GetRequest {
     "route": AccessRoute;
     "reference": ResourceReference;
@@ -366,6 +514,11 @@ export class GetRequest {
     }
 }
 
+/**
+ * HealthCondition retains a provider-defined condition type and status without
+ * interpreting native condition vocabularies. Optional nil times are unknown,
+ * not the zero instant. Reason and Message must be safe for public display.
+ */
 export class HealthCondition {
     "type": string;
     "status": string;
@@ -395,21 +548,56 @@ export class HealthCondition {
     }
 }
 
+/**
+ * HealthStatus describes observed resource health, not connection readiness.
+ * Unknown is explicit uncertainty; the zero string is not a health observation.
+ */
 export enum HealthStatus {
     /**
      * The Go zero value for the underlying type of the enum.
      */
     $zero = "",
 
+    /**
+     * HealthHealthy reports normal observed resource health.
+     */
     HealthHealthy = "healthy",
+
+    /**
+     * HealthDegraded reports impaired but not wholly failed resource health.
+     */
     HealthDegraded = "degraded",
+
+    /**
+     * HealthUnhealthy reports failed resource health.
+     */
     HealthUnhealthy = "unhealthy",
+
+    /**
+     * HealthPending reports health assessment or establishment still in progress.
+     */
     HealthPending = "pending",
+
+    /**
+     * HealthUnknown explicitly reports insufficient evidence to assess health.
+     */
     HealthUnknown = "unknown",
 };
 
+/**
+ * QueryScope intersects constraints across dimensions. Each declared query
+ * dimension must appear exactly once, including unrestricted dimensions.
+ * Nil or empty scope therefore applies only to a type with no query dimensions;
+ * it does not mean all dimensions. Constraint and selection order is immaterial.
+ * JSON requires a nonnull array; Go nil scopes serialize as an empty array.
+ */
 export type QueryScope = any;
 
+/**
+ * ReadTarget binds a scoped acquisition to an explicit route and host authority.
+ * Representation must already be resolved from catalog metadata; empty is invalid.
+ * Scope selects query dimensions, not merely the dimensions present in identity.
+ */
 export class ReadTarget {
     "route": AccessRoute;
     "provider": string;
@@ -455,11 +643,21 @@ export class ReadTarget {
     }
 }
 
+/**
+ * Record carries one map-root body with explicit identity, representation, and
+ * coverage provenance. Return independently owned mutable containers; do not
+ * reuse backing maps, slices, or schema bytes while a caller may consume them.
+ */
 export class Record {
     "reference": ResourceReference;
     "body": Value;
     "representation": Representation;
     "coverage": Coverage;
+
+    /**
+     * SourceRevision optionally observes native content state. Nil makes no
+     * revision claim; a token is opaque and is neither identity nor incarnation.
+     */
     "sourceRevision"?: string | null;
 
     /** Creates a new Record instance. */
@@ -497,6 +695,11 @@ export class Record {
     }
 }
 
+/**
+ * RelationshipDescriptor combines observed-link extraction and presentation.
+ * It does not admit a target route, imply enumeration support, or prove that
+ * every possible link has been resolved.
+ */
 export class RelationshipDescriptor {
     "type": RelationshipType;
     "targetType": string;
@@ -504,7 +707,17 @@ export class RelationshipDescriptor {
     "inverseLabel"?: string;
     "cardinality"?: string;
     "direction"?: EdgeDirection;
+
+    /**
+     * Nil Extractor leaves native resolution to the provider; it is not an
+     * instruction for the host to scan for matching resources.
+     */
     "extractor"?: RelationshipExtractor | null;
+
+    /**
+     * TargetScope contains literal dimensions; ScopeExtractors derive the rest.
+     * A dimension must not occur in both or repeat within either collection.
+     */
     "targetScope": ScopeEntry[];
     "scopeExtractors": ScopeExtractor[];
 
@@ -550,6 +763,10 @@ export class RelationshipDescriptor {
     }
 }
 
+/**
+ * RelationshipExtractor describes how native link evidence is found. Native
+ * labels and field values cannot supply target authority or replace host bindings.
+ */
 export class RelationshipExtractor {
     "method": string;
     "fieldPath"?: string;
@@ -577,6 +794,10 @@ export class RelationshipExtractor {
     }
 }
 
+/**
+ * RelationshipTarget carries independently bound target identity and access.
+ * Route must come from an explicit matching host binding, not source authority.
+ */
 export class RelationshipTarget {
     "reference": ResourceReference;
     "route": AccessRoute;
@@ -611,21 +832,56 @@ export class RelationshipTarget {
     }
 }
 
+/**
+ * RelationshipType describes the semantic link; it does not authorize following
+ * that link or accessing its target.
+ */
 export enum RelationshipType {
     /**
      * The Go zero value for the underlying type of the enum.
      */
     $zero = "",
 
+    /**
+     * RelOwns links an owner to an owned resource.
+     */
     RelOwns = "owns",
+
+    /**
+     * RelRunsOn links a workload to its execution resource.
+     */
     RelRunsOn = "runs_on",
+
+    /**
+     * RelUses links a consumer to a dependency.
+     */
     RelUses = "uses",
+
+    /**
+     * RelExposes links an exposing resource to the resource it makes accessible.
+     */
     RelExposes = "exposes",
+
+    /**
+     * RelManages links a manager to a managed resource.
+     */
     RelManages = "manages",
+
+    /**
+     * RelMemberOf links a member to its containing group.
+     */
     RelMemberOf = "member_of",
+
+    /**
+     * RelSelects links a selector to a matching resource.
+     */
     RelSelects = "selects",
 };
 
+/**
+ * Representation declares a body format and its schema observation. Revision
+ * tracks that format's contract, independently of record or catalog revisions.
+ */
 export class Representation {
     "id": string;
     "revision": string;
@@ -655,6 +911,11 @@ export class Representation {
     }
 }
 
+/**
+ * ResolvedRelationship returns concrete observed links under one descriptor.
+ * Empty Targets cannot stand in for unsupported resolution or a missing binding.
+ * Result slices and nested descriptor containers must remain stable for callers.
+ */
 export class ResolvedRelationship {
     "descriptor": RelationshipDescriptor;
     "targets": RelationshipTarget[];
@@ -688,8 +949,17 @@ export class ResolvedRelationship {
     }
 }
 
+/**
+ * ResourceAddress identifies an object independently of the connection used to
+ * access it. Type and ID are opaque; callers must not parse native syntax from
+ * them. Authority is host-issued, not a provider's native authority hint.
+ */
 export type ResourceAddress = any;
 
+/**
+ * ResourceDefinition supplies display columns without changing record bodies.
+ * Return stable column slices and nested metadata rather than mutable shared buffers.
+ */
 export class ResourceDefinition {
     "columnDefs": ColumnDefinition[];
 
@@ -715,6 +985,11 @@ export class ResourceDefinition {
     }
 }
 
+/**
+ * ResourceEvent is a diagnostic observation, not advisory add/update/delete
+ * delivery or a continuity log. Count cannot be negative and LastSeen must not
+ * precede FirstSeen. Reason, Message, and Source must be safe for public display.
+ */
 export class ResourceEvent {
     "type": EventSeverity;
     "reason": string;
@@ -754,6 +1029,10 @@ export class ResourceEvent {
     }
 }
 
+/**
+ * ResourceGroup organizes opaque resource type IDs for presentation. Group
+ * membership does not add capabilities or change identity and authority.
+ */
 export class ResourceGroup {
     "id": string;
     "name": string;
@@ -795,6 +1074,11 @@ export class ResourceGroup {
     }
 }
 
+/**
+ * ResourceHealth is a health observation, independent of lifecycle registration
+ * and finite-operation support. Nil Since means no transition time was supplied;
+ * an empty Conditions slice does not establish healthy status.
+ */
 export class ResourceHealth {
     "status": HealthStatus;
     "reason"?: string;
@@ -829,6 +1113,10 @@ export class ResourceHealth {
  * ResourceReference; access routes are supplied independently by the host.
  */
 export class ResourceLink {
+    /**
+     * Type is a literal canonical type. Otherwise TypeAccessor and an explicit
+     * TypeMap translate observed native values; the two selection forms conflict.
+     */
     "type"?: string;
     "typeAccessor"?: string;
     "typeMap"?: { [_ in string]?: string };
@@ -870,8 +1158,12 @@ export class ResourceLink {
 
 /**
  * ResourceOperationError preserves provider classification across the resource
- * transport. The host converts it into its canonical AppError with host-owned
- * provenance; provider titles, messages and suggestions are never trusted grants.
+ * transport. Title, Message, and Suggestions must contain public-safe text:
+ * never include credentials, private configuration, or raw native diagnostics.
+ * Put native diagnostics in Err, which is excluded from JSON and exposed only
+ * through Unwrap. Error serializes classification and public text, not Err.
+ * The host still owns redaction, canonical AppError provenance, and recovery
+ * policy; provider text and classification never grant permission.
  */
 export class ResourceOperationError {
     "code": string;
@@ -907,6 +1199,11 @@ export class ResourceOperationError {
     }
 }
 
+/**
+ * ResourceReference adds an optional native incarnation observation to identity.
+ * A nil Incarnation makes no claim about object recreation; it is not a source
+ * revision or an access route.
+ */
 export class ResourceReference {
     "address": ResourceAddress;
     "incarnation"?: string | null;
@@ -936,11 +1233,18 @@ export class ResourceReference {
 export type Schema = any;
 
 /**
- * SchemaBinding reports absence separately from failed acquisition. Source
- * revisions and schema revisions are opaque equality tokens, never identity.
+ * SchemaBinding distinguishes known absence from failed schema acquisition.
+ * Available schemas require a revision, dialect, and exactly one inline Document
+ * or DocumentRef. Absent schemas have no document binding. Unavailable schemas
+ * cannot carry inline documents and must not be reported as absent.
+ * Revisions are opaque equality observations, never object identity.
  */
 export type SchemaBinding = any;
 
+/**
+ * SchemaDocument is a bounded raw schema shared by reference across bindings.
+ * Document is not normalized; its mutable bytes must remain stable during use.
+ */
 export class SchemaDocument {
     "reference": SchemaDocumentReference;
     "dialect": string;
@@ -1002,6 +1306,10 @@ export class SchemaDocumentReference {
     }
 }
 
+/**
+ * ScopeEntry is one literal identity dimension, not a query constraint.
+ * Empty Value is meaningful only when the declared dimension permits it.
+ */
 export class ScopeEntry {
     "dimension": string;
     "value": string;
@@ -1057,16 +1365,31 @@ export class ScopeExtractor {
 }
 
 /**
- * Value carries scalar intent, including exact signed and unsigned integers.
- * Only the payload selected by Kind may be populated. Int and Uint use canonical
- * decimal strings; Timestamp uses UTC RFC3339 with nanosecond precision.
+ * Value preserves scalar intent rather than reducing every number to float64.
+ * Kind is null, bool, string, int64, uint64, double, timestamp, list, or map; the
+ * zero Value is invalid. Only the selected payload may be populated. Int and Uint
+ * use canonical decimal strings within their respective 64-bit ranges. Double
+ * must be finite and preserves negative zero. Timestamp uses UTC RFC3339 with
+ * nanosecond precision. A selected nil List or Map is an empty container, not null.
+ * Nested containers remain mutable: copy them before retaining borrowed input
+ * or sharing values with code that may mutate them.
  */
 export type Value = any;
 
+/**
+ * WatchConnectionSummary is a source-state observation, not a total inventory.
+ * Resources and ResourceCounts are keyed by opaque resource type; unknown counts
+ * must not be treated as zero or inferred from the number of map entries.
+ */
 export class WatchConnectionSummary {
     "route": AccessRoute;
     "resources": { [_ in string]?: WatchState };
     "resourceCounts": { [_ in string]?: Count };
+
+    /**
+     * Scope is optional summary metadata, not permission to widen individual
+     * admitted targets. Nil does not establish unrestricted acquisition.
+     */
     "scope": QueryScope;
     "guarantee": string;
 
@@ -1112,19 +1435,54 @@ export class WatchConnectionSummary {
     }
 }
 
+/**
+ * WatchState describes one advisory source's lifecycle, not connection health or
+ * source completeness. In particular, synced cannot prove gap-free delivery.
+ */
 export enum WatchState {
     /**
      * The Go zero value for the underlying type of the enum.
      */
     $zero = 0,
 
+    /**
+     * WatchStateIdle means the source is registered but has not begun syncing.
+     */
     WatchStateIdle = 0,
+
+    /**
+     * WatchStateSyncing means native cache acquisition is in progress.
+     */
     WatchStateSyncing = 1,
+
+    /**
+     * WatchStateSynced means the native cache reports readiness, not continuity.
+     */
     WatchStateSynced = 2,
+
+    /**
+     * WatchStateError means an attempt failed and may be retried.
+     */
     WatchStateError = 3,
+
+    /**
+     * WatchStateStopped means the source ended without a terminal failure.
+     */
     WatchStateStopped = 4,
+
+    /**
+     * WatchStateFailed means the source exhausted retries or failed admission.
+     */
     WatchStateFailed = 5,
+
+    /**
+     * WatchStateForbidden means source access was denied.
+     */
     WatchStateForbidden = 6,
+
+    /**
+     * WatchStateSkipped means startup was intentionally omitted.
+     */
     WatchStateSkipped = 7,
 };
 

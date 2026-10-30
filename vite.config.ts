@@ -1,6 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import react, { reactCompilerPreset } from '@vitejs/plugin-react';
-import babel from '@rolldown/plugin-babel';
+import react from '@vitejs/plugin-react';
 import wails from '@wailsio/runtime/plugins/vite';
 
 import path from 'path';
@@ -8,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { workspaceViteCacheDirectory, workspaceVitePort, workspaceViteRoots } from './packages/omniviewdev-vite-plugin/src/workspace';
 import { managedViteFeedback } from './packages/omniviewdev-vite-plugin/src/feedback';
+import { vitestCaches } from './vitest.cache';
 
 // if in ESM context
 const __filename = fileURLToPath(import.meta.url);
@@ -20,6 +20,7 @@ const selectedRoots = workspaceViteRoots(process.env.OMNIVIEW_VITE_ALLOWED_ROOTS
 const ownedVitePort = workspaceVitePort(process.env.WAILS_VITE_PORT);
 const stagedYamlWorker = process.env.OMNIVIEW_YAML_WORKER_OUTPUT_FILE;
 const ownedViteCacheDirectory = workspaceViteCacheDirectory(process.env.OMNIVIEW_VITE_CACHE_DIRECTORY);
+const testCaches = vitestCaches(__dirname);
 if (selectedRoots && !ownedVitePort) {
   throw new Error('Managed host Vite requires its owned WAILS_VITE_PORT');
 }
@@ -27,8 +28,11 @@ if (selectedRoots && !ownedVitePort) {
 // https://vitejs.dev/config/
 export default defineConfig({
   // Source transforms must not recompile generated optimized dependencies.
-  cacheDir: ownedViteCacheDirectory ? path.join(ownedViteCacheDirectory, 'node_modules', '.vite') : undefined,
+  cacheDir: ownedViteCacheDirectory
+    ? path.join(ownedViteCacheDirectory, 'node_modules', '.vite')
+    : testCaches.cacheDir,
   test: {
+    fsModuleCachePath: testCaches.fsModuleCachePath,
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./ui/test-setup.ts'],
@@ -49,7 +53,6 @@ export default defineConfig({
     // Fallback to 9245 to match the default in Taskfile.yml.
     port: ownedVitePort ?? 9245,
     strictPort: true,
-    forwardConsole: false,
     fs: selectedRoots ? { strict: true, allow: [__dirname, ...selectedRoots] } : undefined,
     // Wails webview loads from wails://localhost. Point HMR at the same IPv4
     // listener used by the asset proxy.
@@ -92,11 +95,10 @@ export default defineConfig({
         return null;
       },
     },
-    react(),
-    babel({
+    react({
       // Linked package dist files are already compiled; keep app and benchmark sources live.
       include: new RegExp(String.raw`^${reactCompilerSourceRoot}[/\\](?:ui[/\\]|bench[/\\]|packages[/\\][^/\\]+[/\\]src[/\\]|plugins[/\\][^/\\]+[/\\]ui[/\\]src[/\\]).*\.(?:[jt]sx?|[cm][jt]s)(?:$|\?)`),
-      presets: [reactCompilerPreset({ target: '19' })],
+      babel: { plugins: [['babel-plugin-react-compiler', { target: '19' }]] },
     }),
     wails('./packages/omniviewdev-runtime/src/bindings'),
     {
@@ -125,8 +127,6 @@ export default defineConfig({
       '@/providers/monaco/bootstrap': process.env.VITEST
         ? path.resolve(__dirname, './ui/providers/monaco/bootstrap.mock.ts')
         : path.resolve(__dirname, './ui/providers/monaco/bootstrap.ts'),
-      // prepare for eventual package splitting
-      '@infraview': path.resolve(__dirname, './ui/pkg'),
       // core routes
       '@': path.resolve(__dirname, './ui'),
       '@components': path.resolve(__dirname, './ui/components'),

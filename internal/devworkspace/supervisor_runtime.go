@@ -159,19 +159,7 @@ func (s *workspaceSupervisor) launch(ctx context.Context) error {
 	if err := s.commitFeedback(deadline, initialChange); err != nil {
 		return err
 	}
-	if s.options.Watch {
-		done := make(chan struct{})
-		s.mu.Lock()
-		s.watchDone = done
-		s.mu.Unlock()
-		go func() {
-			defer close(done)
-			err := graph.Watch(ctx, s.watchHooks())
-			if err != nil && ctx.Err() == nil {
-				s.failed(err)
-			}
-		}()
-	}
+	s.startSourceWatcher(ctx)
 	s.monitorChildren(ctx)
 	return nil
 }
@@ -674,7 +662,9 @@ func (s *workspaceSupervisor) watchHooks() WatchHooks {
 		}
 		return generations, nil
 	}, WaitPluginReady: s.waitPluginReady, HostRebuildAndWait: func(ctx context.Context, request HostBuildRequest) (map[string]bool, error) {
-		s.runMu.Lock()
+		if err := s.runMu.LockContext(ctx); err != nil {
+			return nil, err
+		}
 		defer s.runMu.Unlock()
 		if err := s.replaceHost(ctx, &request); err != nil {
 			return nil, err
@@ -686,7 +676,9 @@ func (s *workspaceSupervisor) watchHooks() WatchHooks {
 		}
 		return ready, nil
 	}, RefreshConsumers: func(ctx context.Context, change WatchChange) error {
-		s.runMu.Lock()
+		if err := s.runMu.LockContext(ctx); err != nil {
+			return err
+		}
 		defer s.runMu.Unlock()
 		hostRebuilt := feedbackReplacesHost(change)
 		if !hostRebuilt && !feedbackRestartsConsumers(change) {

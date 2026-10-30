@@ -219,11 +219,34 @@ export enum LogSessionStatus {
      */
     $zero = 0,
 
+    /**
+     * LogSessionStatusActive indicates that the session is delivering logs.
+     */
     LogSessionStatusActive = 0,
+
+    /**
+     * LogSessionStatusPaused indicates that log delivery is suspended.
+     */
     LogSessionStatusPaused = 1,
+
+    /**
+     * LogSessionStatusClosed indicates that the session has ended.
+     */
     LogSessionStatusClosed = 2,
+
+    /**
+     * LogSessionStatusError indicates that the session encountered a failure.
+     */
     LogSessionStatusError = 3,
+
+    /**
+     * LogSessionStatusConnecting indicates that native source acquisition is pending.
+     */
     LogSessionStatusConnecting = 4,
+
+    /**
+     * LogSessionStatusInitializing indicates that session setup is in progress.
+     */
     LogSessionStatusInitializing = 5,
 };
 
@@ -268,8 +291,19 @@ export enum LogStreamCommand {
      */
     $zero = 0,
 
+    /**
+     * StreamCommandPause requests suspension of log delivery.
+     */
     StreamCommandPause = 0,
+
+    /**
+     * StreamCommandResume requests continuation of log delivery.
+     */
     StreamCommandResume = 1,
+
+    /**
+     * StreamCommandClose requests termination of the session.
+     */
     StreamCommandClose = 2,
 };
 

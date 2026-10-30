@@ -15,10 +15,12 @@ describe('resource exec Wails JSON arguments', () => {
     } };
     const reference = { address: { provider: 'kubernetes', authority: 'cluster', type: 'pods', id: 'pod-1', scope: [] } };
     const route = { connection: 'connection' };
-    const opts = resourceExecOptions('kubernetes', 'pods', body, { container: 'app' }, ['/bin/sh'], reference, route);
+    const opts = resourceExecOptions(body, { container: 'app' }, ['/bin/sh'], reference, route);
     // Wails serializes the full argument array, not just resource_data.
-    const wire = JSON.stringify(['kubernetes', 'connection', opts]);
+    const wire = JSON.stringify(['alternate-kubernetes-installation', 'connection', opts]);
     const decoded = JSON.parse(wire);
+    expect(decoded[2].resource_plugin).toBe(reference.address.provider);
+    expect(decoded[2].resource_key).toBe(reference.address.type);
     expect(decoded[2].resource_data).toEqual(body);
     expect(decoded[2].reference).toEqual(reference);
     expect(decoded[2].route).toEqual(route);

@@ -1,8 +1,8 @@
 import * as React from 'react';
-import { useNavigate } from 'react-router-dom';
 import { IconButton, Menu } from '@omniviewdev/base-ui';
 
 // Project imports
+import { useActivePageNavigation } from '@/features/workspace/activePageNavigation';
 import Icon from '@/components/icons/Icon';
 import { type HeaderIconMenu as HeaderIconMenuProps } from '@/store/header/types';
 import HintTooltip from '@/components/base/HintTooltip';
@@ -15,7 +15,7 @@ type Props = HeaderIconMenuProps;
  * Display a drop down menu as a header icon
  */
 const HeaderIconMenu: React.FC<Props> = ({ id, icon, helpText, items }) => {
-  const navigate = useNavigate();
+  const { navigate } = useActivePageNavigation();
 
   return (
     <Menu.Root>
@@ -36,7 +36,7 @@ const HeaderIconMenu: React.FC<Props> = ({ id, icon, helpText, items }) => {
                 key={label}
                 startDecorator={itemIcon ? <Icon name={itemIcon} /> : undefined}
                 onClick={link ? () => {
-                  navigate(link); 
+                  navigate(link);
                 } : undefined}
               >
                 {label}

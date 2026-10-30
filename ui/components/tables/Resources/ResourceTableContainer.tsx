@@ -1,6 +1,7 @@
+import type { DataTableFeatures } from '@omniviewdev/base-ui';
 import React, { useState } from 'react';
 
-import { Stack } from '@omniviewdev/base-ui';
+import { Stack, dataTableFeatures } from '@omniviewdev/base-ui';
 import { LuChevronDown } from 'react-icons/lu';
 
 // Tanstack/react-table
@@ -8,12 +9,9 @@ import {
   type ColumnDef,
   type ColumnFiltersState,
   type SortingState,
-  type VisibilityState,
+  type ColumnVisibilityState as VisibilityState,
   flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getSortedRowModel,
-  useReactTable,
+  useTable,
   type RowSelectionState,
 } from '@tanstack/react-table';
 
@@ -30,7 +28,7 @@ export type Props = {
   /**
    * Column defenition for the table.
    */
-  columns: Array<ColumnDef<any>>;
+  columns: Array<ColumnDef<DataTableFeatures, ResourceTableRow>>;
 
   /**
    * The data coming in
@@ -125,15 +123,16 @@ const ResourceTableContainer: React.FC<Props> = ({
 
   const [search, setSearch] = useState<string>('');
 
-  const table = useReactTable({
+  const table = useTable<DataTableFeatures, ResourceTableRow>({
+    features: dataTableFeatures,
+    enableRowRangeSelection: false,
+    manualPagination: true,
+    manualExpanding: true,
     data,
     columns,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
-    getCoreRowModel: getCoreRowModel(),
-    // GetPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
+    onGlobalFilterChange: setSearch,
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
     getRowId: (row) => row.record.key,

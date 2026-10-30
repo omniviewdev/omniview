@@ -3,22 +3,21 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { loadConfigFromFile } from 'vite';
+import { resolveConfig } from 'vite';
 import { transform as lowerJSX } from 'esbuild';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
-const loaded = await loadConfigFromFile(
-  { command: 'serve', mode: 'test' }, path.join(root, 'vite.config.ts'), root,
-);
-assert.ok(loaded, 'load the actual host Vite configuration');
-const plugins = (await Promise.all(loaded.config.plugins)).flat(Infinity);
-const compiler = plugins.find((plugin) => plugin?.name === '@rolldown/plugin-babel');
-assert.ok(compiler, 'load the actual configured Babel transform');
-compiler.configResolved(loaded.config);
-assert.equal(compiler.applyToEnvironment({ name: 'client', config: { consumer: 'client' } }), true);
+const config = await resolveConfig({
+  configFile: path.join(root, 'vite.config.ts'),
+  configLoader: 'runner',
+  root,
+  server: { hmr: false },
+}, 'serve', 'test');
+const compiler = config.plugins.find((plugin) => plugin.name === 'vite:react-babel');
+assert.ok(compiler?.transform, 'load the actual configured React transform');
 
 const component = `
 export function SourcePanel({ label }) {
@@ -44,9 +43,8 @@ export function BuiltPanel({ label }) {
 
 function transform(code, filename) {
   return compiler.transform.handler.call({
-    environment: { name: 'client' },
     error(error) { throw new Error(error.message, { cause: error.cause }); },
-  }, code, filename, { moduleType: filename.endsWith('.tsx') ? 'tsx' : 'js' });
+  }, code, filename, { ssr: false });
 }
 
 for (const filename of [

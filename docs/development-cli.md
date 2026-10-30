@@ -31,6 +31,34 @@ guesses a sibling. Do not use an ad hoc Go replacement or install a CLI into the
 feature checkout. Keep using the returned `"$DEV"` path rather than guessing a
 `bin` location.
 
+Build the CLI from the selected host worktree when switching source cohorts.
+An immutable CLI built from an older checkout retains that checkout's validation
+rules; selecting a newer host does not update the executable. Current UI checks
+exclude comparison benchmarks while still rejecting legacy dependencies in
+runtime consumers.
+
+Source refs across repositories are not automatically compatible. The reported
+host commit `187e5336f1c9a4b9d58d32890649d7db9d80d413` and Kubernetes commit
+`f366018a7fac1fbd91c43bb2abb6dcfc9149a5b1` fail strict peers: Kubernetes selects
+React Query 5.90.21 and Vite 5.4.21, while linked host packages require
+`^5.105.0` and `^7.3.7`. Kubernetes commit
+`4fab2158ad2531bdba37782567b794b5e34cf726` on
+`origin/feature/frontend-upgrade-3bd7bcc6` declares those newer versions.
+This is a manifest-compatible candidate, not a runtime-tested cohort. Select refs
+explicitly and verify the resulting application; never disable strict peers.
+
+Link planning reports provable conflicts between ordinary exact, caret, and tilde
+manifest ranges before installation, naming both consumer and linked manifests.
+Overlapping ranges are not proof that a selected lockfile resolves compatible
+versions. Complex ranges and policy-adjusted peers remain the native resolver's
+decision; a clean planning result does not replace strict installation.
+
+An owned supervisor can remain alive after a launch failure. `workspace up`
+refuses to replace it and reports its launch phase and recovery command, including
+the collection root. Use the reported command: failed builds normally need
+`workspace refresh`, not another `workspace up`. A retained supervisor is not
+evidence that the application is ready.
+
 The target application must have been built with `devcontrol` enabled and launched
 against the workspace. Release builds do not advertise a control endpoint.
 
@@ -106,14 +134,35 @@ metadata from existing worktrees.
 "$DEV" workspace update feature --repo my-plugin
 "$DEV" workspace recover feature
 "$DEV" workspace evidence feature --json
+"$DEV" workspace reset-modules feature [--json]
 ```
 
 `edit` persists selection/ref/name/port edits. `--apply` also refreshes the workspace:
 stop owned services, relink dependencies, rebuild, restart, and verify readiness.
+Canonical edit intent is validated before `--apply` stops a healthy supervisor;
+the mutation repeats that planning under its lifecycle lock.
 `refresh` uses the current worktree contents without advancing Git refs. `update`
 fast-forwards selected repositories before refreshing; it does not discard dirty
 edits or reset branches. `recover` resumes refresh work using its durable journal.
 Existing `resume` and `rollback` commands handle interrupted workspace creation.
+
+Supervisor inspection does not queue behind a source or shutdown operation.
+During shutdown, `launchPhase: "stopping"` and `waitStage` identify the current
+wait, such as `build-authority`, `plugin-control`, `host`, or `leases`. A busy
+observation does not attest host readiness. A response from a replaced supervisor
+generation is refused rather than reported as the current ready application.
+If the same owner exits before final verification, inspection restores its saved
+stopped proof or reports a crash; it never returns stale readiness.
+The authenticated supervisor status request has a five-second total deadline,
+including its response body. A stalled observation returns exit 7 with
+`code: "timeout"` and retains ownership; it does not mark the supervisor dead.
+Canceling a queued request releases its wait without authorizing delayed
+mutations. Canceling an admitted shutdown does not prove disposal: exact process
+handles, output writers, and leases remain with the owner until cleanup completes.
+The owner continues cleanup after the caller's deadline, joins in-flight launch
+work, and releases its process and workspace lock only after confirmed disposal.
+Each shutdown wait-stage transition is saved for crash inspection. Late producer
+completion cannot restore readiness after shutdown has been admitted.
 
 Removing a repository selection retires its worktree but keeps its branch
 ownership record for later reselection or explicit branch deletion. Link, unlink,
@@ -124,11 +173,40 @@ still blocks these operations.
 An externally changed dependency tree is a different failure. For example,
 running an unmanaged `pnpm exec` can trigger a standalone installation and change
 `node_modules` outside the recorded producer transaction. The resulting
-`owned generated tree changed` refusal protects unverified bytes. Neither
-`workspace recover` nor `workspace refresh` authorizes deleting or adopting that
-tree. Keep the workspace and output journal intact for reconciliation; do not
-delete the tree or rewrite its ownership record to force cleanup. Use the managed
-launcher for package commands to retain pre-run dependency verification.
+`owned generated tree changed`, `node_modules changed before Vite start`, or
+`repository output still has an active or interrupted writer` refusal protects
+unverified bytes. Neither `workspace recover` nor `workspace refresh` authorizes
+deleting or adopting that tree. Do not delete the tree or rewrite its ownership
+record by hand to force cleanup.
+
+`workspace reset-modules` is the explicit recovery. It requires a stopped
+workspace (the same lifecycle lock and stopped-profile guard as `link`; a running
+supervisor or live consumer is refused) whose dependency link is complete. It
+deletes every journal-owned `node_modules` tree, the TypeScript and Vite loader
+caches inside it, the external Vite optimizer cache, and any `node_modules` at the
+composition root or a selected package root, including trees left by an
+interrupted writer. It then reinstalls through the recorded composition installer,
+so the new trees are snapshotted by a recorded writer. Foreign bytes are never
+adopted. Distributions, bindings, shims, the YAML worker, root-level config
+timestamp files, their publications, and build reuse records stay untouched. A
+target that resolves through a symlink is refused. The result lists the removed paths; `--json` returns
+`{"workspaceID", "phase", "removed", "reinstalled"}`. If the reinstall fails, rerun
+the command; if the lockfile was left unverified, `unlink` and relink instead.
+
+When an `unlink` or `remove` was interrupted by such a refusal (link phase
+`unlinking`), `reset-modules` only deletes the same trees and forgets their
+records, without reinstalling into the partially restored overlay, and reports
+`reinstalled: false`. Every other output and its pending restoration stay for the
+rerun `workspace unlink` or `workspace remove`, which then completes. Other
+incomplete link phases are still refused. Use the managed launcher for package
+commands to retain pre-run dependency verification.
+
+Managed Vite loaders use an owned, precreated `node_modules/.vite-temp` directory,
+so their interrupted writer is part of the explicit dependency reset. Fresh
+workspaces no longer register a separate root timestamp-file writer. Root-level
+timestamp artifacts remain unmanaged and are never adopted or deleted by this
+reset. A proofless live root-loader entry from an older journal remains a safe
+refusal; a writer token alone cannot prove that its producer stopped.
 
 Refresh commands reuse saved launch settings and protocol evidence. Supply launch
 flags for a workspace that has never launched, or override saved settings
@@ -222,6 +300,10 @@ redacted log metadata to stderr; stdout contains the response envelope and
 `{nextCursor,truncated,count}` metadata. Arbitrary plugin/build output has no
 authoritative sensitivity schema, so messages are not revealed by default.
 
+Output delivery failures return exit 5 in both text and JSON modes, including
+failures while writing an error or diagnostics. A completed mutation remains
+persisted even when its result cannot be delivered; inspect state before retrying.
+
 For deliberate troubleshooting, `plugin dev logs ID --unsafe-output` requests
 real bounded log text in JSON stdout and prints a clear warning to stderr.
 **Raw plugin/build messages may contain secrets.** This flag is not a promise that
@@ -240,7 +322,7 @@ write no setting values to stderr.
 | 2 | Usage, malformed JSON, or typed parameter/schema validation failure |
 | 3 | Missing/ambiguous target, unavailable instance or missing resource |
 | 4 | Target/generation/ownership conflict |
-| 5 | Build, runtime, persistence or protocol failure |
+| 5 | Build, runtime, persistence, protocol or output delivery failure |
 | 6 | Authentication failure |
 | 7 | Wait timeout; accepted mutation may still be running |
 

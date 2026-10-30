@@ -11,11 +11,11 @@ export const initialState: TerminalSettings = {
   settings: {
     defaultShell: {
       label: 'Default Shell',
-      description: 'The default shell to use for new terminals',
+      description: 'The shell executable for new terminals; leave empty to use your login shell',
       visible: true,
       type: 'text',
-      default: '/bin/sh',
-      value: '/bin/sh',
+      default: '',
+      value: '',
     },
     theme: {
       label: 'Theme',
@@ -31,8 +31,8 @@ export const initialState: TerminalSettings = {
       description: 'Set the font size for the terminal',
       visible: true,
       type: 'integer',
-      default: 14,
-      value: 14,
+      default: 12,
+      value: 12,
     },
     fontFamily: {
       label: 'Font Family',

@@ -14,6 +14,10 @@ export type PluginContextProviderProps = {
 };
 
 export function PluginContextProvider(props: React.PropsWithChildren<PluginContextProviderProps>): React.ReactElement | null {
+  return <PluginContextSession key={props.pluginId} {...props} />;
+}
+
+function PluginContextSession(props: React.PropsWithChildren<PluginContextProviderProps>): React.ReactElement | null {
   const { children, pluginId, headless = false } = props;
   const [settings, setSettings] = React.useState<Record<string, any>>({});
   const [meta, setMeta] = React.useState<PluginMeta>(new PluginMeta);
@@ -58,7 +62,6 @@ export function PluginContextProvider(props: React.PropsWithChildren<PluginConte
     const request = ++metadataRequest.current;
 
     console.debug(`[PluginContextProvider] fetching meta for "${pluginId}"`);
-    setMetaError(null);
 
     GetPluginMeta(pluginId)
       .then((values) => {
@@ -81,6 +84,7 @@ export function PluginContextProvider(props: React.PropsWithChildren<PluginConte
     // must not be replaced by a candidate before its install transaction commits.
     if (metaLoaded) return;
     const refresh = () => {
+      setMetaError(null);
       fetchSettings();
       fetchMeta();
     };
@@ -98,9 +102,6 @@ export function PluginContextProvider(props: React.PropsWithChildren<PluginConte
 
   React.useEffect(() => {
     console.debug(`[PluginContextProvider] useEffect — pluginId changed to "${pluginId}"`);
-    setMetaLoaded(false);
-    setMetaError(null);
-    setSettings({});
     fetchSettings();
     fetchMeta();
     return () => {
@@ -142,7 +143,10 @@ export function PluginContextProvider(props: React.PropsWithChildren<PluginConte
             {metaError}
           </p>
           <button
-            onClick={() => fetchMeta()}
+            onClick={() => {
+              setMetaError(null);
+              fetchMeta();
+            }}
             style={{
               background: 'transparent',
               color: '#F87171',

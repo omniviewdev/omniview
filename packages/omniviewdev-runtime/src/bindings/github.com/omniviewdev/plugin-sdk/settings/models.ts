@@ -49,6 +49,10 @@ export class Category {
     }
 }
 
+/**
+ * Setting describes a typed preference, its default, and optional validation.
+ * Sensitive values are hidden by GetValue; validators must not disclose secrets.
+ */
 export class Setting {
     /**
      * ID is the unique identifier of the setting
@@ -154,6 +158,10 @@ export class Setting {
     }
 }
 
+/**
+ * SettingFileSelection describes file-picker capabilities and initial selection.
+ * Extensions is caller-owned; an empty slice does not restrict extensions.
+ */
 export class SettingFileSelection {
     /**
      * Whether file selection should be allowed.
@@ -222,6 +230,9 @@ export class SettingFileSelection {
     }
 }
 
+/**
+ * SettingOption pairs a selectable value with its display metadata.
+ */
 export class SettingOption {
     /**
      * Label is the human readable label of the option
@@ -262,6 +273,9 @@ export class SettingOption {
     }
 }
 
+/**
+ * SettingType identifies the form control and expected value family for a preference.
+ */
 export enum SettingType {
     /**
      * The Go zero value for the underlying type of the enum.
@@ -309,15 +323,13 @@ export enum SettingType {
     DateTime = "datetime",
 
     /**
-     * SettingTypePassword is the type for a password field entry.
+     * Password is the type for a password field entry.
      */
     Password = "password",
 };
 
 /**
- * The settings store is a map of maps. The first map is the category of the settings, and the second
- * map is the settings themselves. The key of the first map is the category name, and the key of the
- * second map is the setting ID.
+ * Store groups settings by category ID, then by setting ID.
  */
 export type Store = { [_ in string]?: Category };
 

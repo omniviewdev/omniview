@@ -98,8 +98,9 @@ export class Handler {
 }
 
 /**
- * Session is a snapshot value type — safe for concurrent reads, returned by
- * the public API. It carries no mutable internal state.
+ * Session is a snapshot of public terminal-session metadata, not a live view.
+ * Manager snapshots own their maps and command slice. Callers may read a snapshot
+ * concurrently, but must synchronize mutations to those containers.
  */
 export class Session {
     "created_at": string;
@@ -155,7 +156,15 @@ export class Session {
 }
 
 /**
- * SessionOptions contains options for creating a new terminal session.
+ * SessionOptions describes a terminal session and optional resource intent.
+ * ResourcePlugin and ResourceKey are opaque selectors, not authorization.
+ * ResourceData, when present, must be a canonical tagged map; scalar types remain
+ * exact through JSON and protobuf conversion. A Reference requires an explicit
+ * Route and must agree with any supplied selectors. Neither selectors nor a
+ * reference require a body or an unrelated resource Get operation.
+ * 
+ * Validation and normalization do not acquire a connection or copy mutable
+ * containers. Callers must not mutate options concurrently with SDK use.
  */
 export class SessionOptions {
     "params": { [_ in string]?: string };

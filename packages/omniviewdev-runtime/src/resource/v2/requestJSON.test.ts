@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { encodeRequestJSON } from './requestJSON';
+import type { ActionRequest } from './domain';
 
 describe('exact Wails request text', () => {
   it('preserves negative zero through ordinary outer JSON.stringify', () => {
@@ -20,5 +21,17 @@ describe('exact Wails request text', () => {
     expect(() => encodeRequestJSON({ input: NaN })).toThrow(TypeError);
     expect(() => encodeRequestJSON({ input: '\ud800' })).toThrow(TypeError);
     expect(() => encodeRequestJSON(new Array(1))).toThrow(TypeError);
+  });
+  it('preserves an advertised descriptor, type target and exact query scope without inventing instance identity', () => {
+    const request: ActionRequest = {
+      route: { connection: 'route/雪' },
+      typeTarget: { provider: 'provider', authority: 'host-authority', type: 'helm:releases', scope: [{ dimension: 'namespace', match: 'oneOf', values: ['team/雪'] }] },
+      action: 'install',
+      expectedDescriptor: { id: 'install', label: 'Install', description: 'Install a release', icon: '', scope: 'type', streaming: false, paramsSchema: { properties: { name: { type: 'string' } }, required: ['name'] } },
+      input: { kind: 'map', value: { name: { kind: 'string', value: 'release' }, revision: { kind: 'uint64', value: '18446744073709551615' } } },
+    };
+    const decoded = JSON.parse(encodeRequestJSON(request));
+    expect(decoded).toEqual(request);
+    expect(decoded).not.toHaveProperty('reference');
   });
 });

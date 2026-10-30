@@ -18,7 +18,8 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useExtensionPoint } from '@omniviewdev/runtime';
+import { useExtensionRegistry } from '@omniviewdev/runtime';
+import type { ExtensionPointRegistryContract, ExtensionPointStoreContract, ExtensionContributionRegistration } from '@omniviewdev/runtime';
 import { Button, Grid, Spinner, Text } from '@omniviewdev/base-ui';
 import type { GridItemProps } from '@omniviewdev/base-ui';
 import { LuCheck, LuPencil } from 'react-icons/lu';
@@ -70,11 +71,37 @@ const SortableCard: React.FC<SortableCardProps> = ({ id, children, gridSize, isD
 
 // ── Home page ─────────────────────────────────────────────────────────────────
 
+// Expose immutable contribution snapshots, not the registry's mutable store.
+function createHomepageStore(registry: ExtensionPointRegistryContract | undefined) {
+  type Card = React.FC<HomepageCardProps>;
+  let store: ExtensionPointStoreContract<Card> | undefined;
+  let version = -1;
+  let snapshot: Array<ExtensionContributionRegistration<Card>> = [];
+
+  return {
+    subscribe: (notify: () => void) => registry?.subscribe(notify) ?? (() => {
+      // No registry means no listener was installed.
+    }),
+    getSnapshot: () => {
+      const current = registry?.getExtensionPoint<Card>('omniview/home/card');
+      const currentVersion = current?.version ?? -1;
+      if (current !== store || currentVersion !== version) {
+        store = current;
+        version = currentVersion;
+        snapshot = current?.list() ?? [];
+      }
+
+      return snapshot;
+    },
+  };
+}
+
 const Home: React.FC = () => {
   const [isEditMode, setIsEditMode] = React.useState(false);
   const [activeId, setActiveId] = React.useState<string | null>(null);
-  const ep = useExtensionPoint<React.FC<HomepageCardProps>>('omniview/home/card');
-  const registrations = ep?.list() ?? [];
+  const registry = useExtensionRegistry();
+  const contributions = React.useMemo(() => createHomepageStore(registry), [registry]);
+  const registrations = React.useSyncExternalStore(contributions.subscribe, contributions.getSnapshot);
   const { ready, plugins } = usePluginService();
   const { plugins: installedPlugins, isLoading, error } = useInstalledPlugins();
   const pluginsPending = !ready || isLoading || installedPlugins.some((plugin) => {
@@ -93,14 +120,9 @@ const Home: React.FC = () => {
   const { settings, setOrder, toggleHidden, updateCardConfig, isHidden, getCardConfig } =
     useHomepageCardSettings();
 
-  // Stable primitive dep: join IDs so the memo only recomputes when the set of registered IDs changes,
-  // not on every render where the `registrations` array reference is new.
-  const registrationIds = registrations.map((r) => r.id).join(',');
-
   const regMap = React.useMemo(
     () => Object.fromEntries(registrations.map((r) => [r.id, r])),
-    // Keyed on registrationIds, not registrations (see above).
-    [registrationIds],
+    [registrations],
   );
 
   // Sync order: append newly registered IDs, prune IDs for plugins that are no longer loaded.
@@ -115,17 +137,15 @@ const Home: React.FC = () => {
     if (newIds.length > 0 || pruned.length !== settings.order.length) {
       setOrder([...pruned, ...newIds]);
     }
-    // Keyed on registrationIds, not registrations (see above).
-  }, [registrationIds, pluginsPending, error]);
+  }, [registrations, pluginsPending, error, settings.order, setOrder]);
 
-  // Build ordered list — memoized; only recalculates when order or known IDs change
+  // Build the ordered list from current registrations and saved order.
   const orderedIds = React.useMemo(
     () => [
       ...settings.order.filter((id) => regMap[id]),
       ...registrations.map((r) => r.id).filter((id) => !settings.order.includes(id)),
     ],
-    // Keyed on registrationIds, not registrations (see above).
-    [settings.order, registrationIds],
+    [settings.order, registrations, regMap],
   );
 
   const sensors = useSensors(
@@ -134,15 +154,19 @@ const Home: React.FC = () => {
   );
 
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(event.active.id as string);
+    setActiveId(typeof event.active.id === 'string' ? event.active.id : null);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveId(null);
     const { active, over } = event;
-    if (over && active.id !== over.id) {
-      const oldIndex = orderedIds.indexOf(active.id as string);
-      const newIndex = orderedIds.indexOf(over.id as string);
+    if (over && typeof active.id === 'string' && typeof over.id === 'string' && active.id !== over.id) {
+      const oldIndex = orderedIds.indexOf(active.id);
+      const newIndex = orderedIds.indexOf(over.id);
+      if (oldIndex < 0 || newIndex < 0) {
+        return;
+      }
+
       setOrder(arrayMove(orderedIds, oldIndex, newIndex));
     }
   };

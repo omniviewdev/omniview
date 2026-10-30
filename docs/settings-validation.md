@@ -21,6 +21,66 @@ An empty Go path retains the existing optional default: automatic discovery in P
 - Save revalidates; replacing a previously valid executable with a failing one cannot bypass enforcement.
 - No validation response contains secret input or arbitrary subprocess output.
 
+### Terminal defaults
+
+New terminal settings use a 12px font. Saved font sizes remain unchanged, and
+font size changes apply to open terminals without recreating their sessions.
+Reset restores 12px. Until settings load, terminals also use 12px.
+
+An empty Default Shell delegates shell discovery to the backend instead of
+forcing Bash or `/bin/sh`. An explicitly saved shell executable remains intact.
+
+Local terminals start in the user's home directory, independent of the app's
+launch directory. A missing or inaccessible home fails terminal creation rather
+than silently opening at the filesystem root.
+
+The PTY starts with a provisional nonzero grid. After attachment, the terminal
+always sends its measured grid, even if fitting before attachment consumed the
+resize event. Fits wait for visible layout and run again after font loading,
+container changes, and drawer transitions. Backend resize requests are ordered
+and coalesce pending sizes so an older response cannot leave the PTY at stale
+dimensions. Closing a terminal cancels queued fits and ignores late attachment.
+
+Shell discovery uses `SHELL`, then the account login shell when `SHELL` is absent,
+then an installed system fallback. This also applies while registering settings
+defaults, before GUI startup. Explicit installed paths and custom symlinks remain
+unchanged. Bash, Zsh, Fish, Sh, Dash, Ksh, Nushell, Xonsh, Csh, Tcsh, and
+PowerShell use their shell-family-specific interactive login startup.
+Unsupported explicit shells fail rather than silently starting a different shell.
+
+Shell frameworks, prompt themes, and environment managers load through the
+selected shell's normal startup files; no specific prompt framework is required.
+For Bash, a login profile must source `.bashrc` if that is where interactive
+customizations live. Fish loads `config.fish`; Zsh loads `.zprofile` and `.zshrc`.
+
+On macOS, startup resolves the interactive login environment before launching
+plugins or tools, including when Finder supplies only a sparse `PATH`. Resolution
+has a ten-second deadline and bounded output; failure keeps the inherited
+environment and emits a generic warning without shell output or secret values.
+Host-owned `OMNIVIEW_*`, `PLUGIN_*`, `XDG_*`, `HOME`, temporary roots, and `GOWORK`
+remain unchanged, including native-child restoration metadata. Shell startup
+files must not require input without a TTY. User shell configuration still
+controls the tool `PATH`; GUI startup cannot repair a broken login profile.
+
+#### Verify a production macOS build
+
+Run `task package` from the changed host checkout. This produces the optimized,
+production-channel `bin/Omniview.app` with embedded frontend assets, not the
+development bundle or a Vite-backed window. The local bundle is ad-hoc signed;
+this is not a notarized distribution.
+
+Quit other stable Omniview instances first: the stable-channel singleton can
+otherwise activate an older instance instead of running the changed binary.
+Open this exact bundle in Finder, not its executable from a terminal.
+Verify that new local terminals start at home with the expected shell and tool
+`PATH`. Existing shell overrides and font sizes remain unchanged; clear an old
+shell override to verify automatic discovery.
+
+Change Terminal Font Size and confirm the open terminal resizes without losing
+its session. Relaunch to verify persistence and reset to verify the 12px default.
+Resize the drawer, hide and reveal it, and open a fresh terminal to check that
+the displayed grid and the shell's reported terminal size agree.
+
 ## Plugin settings transport
 
 Plugin settings use the same draft UX and save enforcement. Validators execute inside the plugin process, never on serialized host copies of settings. A dedicated settings gRPC method accepts a draft and returns only valid/code/message. The host controller delegates to the live plugin and never treats cached schema or persisted values as evidence of validation. Missing plugins and transport failures retain drafts and block save. The SDK wrapper evaluates the original registered setting, including sensitive redaction. This protocol addition requires plugins rebuilt against the updated SDK; old plugin processes report unsupported validation rather than silently approving drafts.

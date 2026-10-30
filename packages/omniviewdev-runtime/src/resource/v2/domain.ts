@@ -1,5 +1,6 @@
 // Handwritten projection of plugin-sdk/pkg/resource/v2/domain.go.
 // Generated bindings are transport details, not public resource domain types.
+import type { ActionDescriptor, Schema } from './ancillary';
 
 export interface ScopeEntry { dimension: string; value: string }
 export interface ResourceAddress {
@@ -47,6 +48,8 @@ export interface Dimension { name: string; allowEmpty: boolean }
 // "update" means advisory watches; "mutationUpdate" means a native update write.
 export type Operation = 'enumerate' | 'get' | 'nativeQuery' | 'update' | 'create' | 'mutationUpdate' | 'delete' | 'action';
 export interface ResourceCapability { operation: Operation; scope: QueryScope; guarantee?: string }
+/** Declared native query input; capability and source-page coverage remain independent. */
+export interface NativeQueryDescriptor { language: string; description?: string; inputSchema: Schema }
 export interface ResourceType {
   type: string;
   displayName: string;
@@ -54,6 +57,8 @@ export interface ResourceType {
   queryDimensions: readonly Dimension[];
   representations: readonly Representation[];
   defaultRepresentation?: string;
+  modelRepresentation?: string;
+  nativeQueries?: readonly NativeQueryDescriptor[];
   capabilities: readonly ResourceCapability[];
   nativeAuthorityHint?: NativeAuthorityHint;
 }
@@ -108,9 +113,20 @@ export interface MutationRequest {
   input: Value;
   expectedRevision?: string;
 }
-export interface ActionRequest {
+/** A type target selects query scope without inventing an instance address. */
+export interface TypeActionTarget {
+  provider: string;
+  authority: string;
+  type: string;
+  scope: QueryScope;
+}
+export type ActionRequest = {
   route: AccessRoute;
-  reference: ResourceReference;
   action: string;
   input: Value;
-}
+  /** Retained advertised metadata; omission supplies no descriptor expectation. */
+  expectedDescriptor?: ActionDescriptor;
+} & (
+  | { reference: ResourceReference; typeTarget?: never }
+  | { reference?: never; typeTarget: TypeActionTarget }
+);

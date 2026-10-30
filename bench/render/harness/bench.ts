@@ -1,4 +1,4 @@
-import { bench, type BenchOptions } from 'vitest';
+import { test } from 'vitest';
 
 export interface ScreenBenchOptions {
   /** Minimum measured iterations. */
@@ -14,9 +14,9 @@ export interface ScreenBenchOptions {
 const QUICK = import.meta.env.BENCH_QUICK === '1';
 
 /**
- * vitest `bench` with defaults sized for whole-screen work, and errors logged
- * loudly (tinybench otherwise records a failed task as "0 samples" silently).
- * report.mjs fails the run when any bench has no samples.
+ * Register a Vitest test using its benchmark fixture with whole-screen defaults.
+ * Log workload and lifecycle errors before Vitest fails the test.
+ * report.mjs also rejects failed tests and benchmarks without samples.
  */
 export function screenBench(name: string, fn: () => void | Promise<void>, opts: ScreenBenchOptions = {}): void {
   const { setup, teardown, iterations = 10, time = 1500, warmupIterations = 2 } = opts;
@@ -29,13 +29,15 @@ export function screenBench(name: string, fn: () => void | Promise<void>, opts: 
         throw err;
       }
     });
-  const options: BenchOptions = {
-    iterations: QUICK ? Math.min(iterations, 3) : iterations,
-    time: QUICK ? 0 : time,
-    warmupIterations: QUICK ? 1 : warmupIterations,
-    warmupTime: 0,
-    setup: wrap('setup', setup) as BenchOptions['setup'],
-    teardown: wrap('teardown', teardown) as BenchOptions['teardown'],
-  };
-  bench(name, wrap('run', fn)!, options);
+  test(name, async ({ bench }) => {
+    await bench(name, {
+      beforeAll: wrap('setup', setup),
+      afterAll: wrap('teardown', teardown),
+    }, wrap('run', fn)!).run({
+      iterations: QUICK ? Math.min(iterations, 3) : iterations,
+      time: QUICK ? 0 : time,
+      warmupIterations: QUICK ? 1 : warmupIterations,
+      warmupTime: 0,
+    });
+  });
 }

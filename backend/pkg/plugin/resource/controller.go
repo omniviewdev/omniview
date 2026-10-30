@@ -134,6 +134,7 @@ type controller struct {
 	boundary *invocation.Boundary
 	actions  *actionRegistry
 	finite   finiteState
+	inventory inventorySubscriptions
 
 	// Resource registry and relationship graph
 	registryStore registry.Store
@@ -265,6 +266,7 @@ func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
 }
 
 func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend plugintypes.PluginBackend) (retErr error) {
+	defer c.notifyInventory()
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginStart")
 
@@ -412,6 +414,7 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 }
 
 func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
+	defer c.notifyInventory()
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginStop")
 	c.lifecycleMu.Lock()
@@ -544,6 +547,7 @@ func (c *controller) getConnections(pluginID string) []types.Connection {
 }
 
 func (c *controller) StartConnection(ctx context.Context, pluginID, connectionID string) (_result types.ConnectionStatus, retErr error) {
+	defer c.notifyInventory()
 	ctx, admissionErr := c.admit(ctx, "resource.StartConnection", invocation.Target{Provider: pluginID, Connection: connectionID})
 	if admissionErr != nil {
 		return _result, admissionErr
@@ -602,6 +606,7 @@ func (c *controller) StartConnection(ctx context.Context, pluginID, connectionID
 }
 
 func (c *controller) StopConnection(ctx context.Context, pluginID, connectionID string) (_result types.Connection, retErr error) {
+	defer c.notifyInventory()
 	ctx, admissionErr := c.admit(ctx, "resource.StopConnection", invocation.Target{Provider: pluginID, Connection: connectionID})
 	if admissionErr != nil {
 		return _result, admissionErr
@@ -620,6 +625,11 @@ func (c *controller) StopConnection(ctx context.Context, pluginID, connectionID 
 		telemetryutil.RecordError(span, err)
 		return types.Connection{}, err
 	}
+	releaseObservation, err := c.fenceStoppedRoute(pluginID, connectionID)
+	if err != nil {
+		return types.Connection{}, err
+	}
+	defer releaseObservation()
 
 	conn, err := provider.StopConnection(ctx, connectionID)
 	if err != nil {
@@ -682,6 +692,7 @@ func (c *controller) CheckConnection(ctx context.Context, pluginID, connectionID
 }
 
 func (c *controller) LoadConnections(ctx context.Context, pluginID string) (_result []types.Connection, retErr error) {
+	defer c.notifyInventory()
 	ctx, admissionErr := c.admit(ctx, "resource.LoadConnections", invocation.Target{Provider: pluginID})
 	if admissionErr != nil {
 		return _result, admissionErr
@@ -707,12 +718,9 @@ func (c *controller) ListConnections(ctx context.Context, pluginID string) (_res
 	}
 	defer finishResource(ctx, &retErr)
 	c.connsMu.RLock()
-	src, ok := c.connections[pluginID]
-	if !ok {
-		c.connsMu.RUnlock()
-		return nil, apperror.New(apperror.TypeConnectionNotFound, http.StatusNotFound,
-			"No connections", fmt.Sprintf("Plugin '%s' has no connections configured.", pluginID))
-	}
+	// The cache may not exist yet during plugin startup. An empty collection
+	// is valid both before discovery and when no connections are configured.
+	src := c.connections[pluginID]
 	conns := make([]types.Connection, len(src))
 	copy(conns, src)
 	c.connsMu.RUnlock()
@@ -900,6 +908,18 @@ func (c *controller) ScopeValues(ctx context.Context, pluginID string, route res
 	browser, ok := provider.(resource.ScopeValuesProvider)
 	if !ok {
 		return nil, resource.NewError("UNSUPPORTED", "Scope value discovery is not supported.")
+	}
+	if _, retained := ctx.Value(observationKey{}).(Observation); retained {
+		_, catalog, err := c.routeCatalog(ctx, pluginID, route)
+		if err != nil { return nil, err }
+		declared := false
+		for _, descriptor := range catalog.Types {
+			for _, candidate := range descriptor.QueryDimensions {
+				if candidate.Name == dimension { declared = true; break }
+			}
+		}
+		if !declared { return nil, resource.NewError("UNSUPPORTED", "Scope discovery dimension is not declared on this route.") }
+		ctx = resource.WithCatalogRevision(ctx, catalog.Revision)
 	}
 	values, err := browser.ScopeValues(ctx, route, dimension)
 	if err != nil {

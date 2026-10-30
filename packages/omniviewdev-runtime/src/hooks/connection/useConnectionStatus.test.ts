@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as WailsRuntime from '@wailsio/runtime';
 import { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
-import type { ConnectionReadiness, HostConnectionState } from '../../resource/v2/host';
+import type { NativeConnectionReadiness, HostConnectionState } from '../../resource/v2/host';
 import { WatchState } from '../../types/watch';
 import { useConnectionStatus } from './useConnectionStatus';
 
@@ -29,7 +29,7 @@ vi.mock('../../resource/v2/client', () => ({
 }));
 vi.mock('../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/servicewrapper', () => ({ RetryFailedPlugin: vi.fn() }));
 
-function snapshot(readiness: ConnectionReadiness): HostConnectionState {
+function snapshot(readiness: NativeConnectionReadiness): HostConnectionState {
   return { connection: Connection.createFrom({ id: readiness, name: readiness }), readiness,
     resources: { pods: WatchState.WatchStateSynced }, resourceCounts: {}, totalResources: 0, syncedCount: 0, errorCount: 0 };
 }

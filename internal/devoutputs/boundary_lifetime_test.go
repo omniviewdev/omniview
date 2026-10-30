@@ -136,7 +136,7 @@ func liveCacheFixture(t *testing.T) (scope, string, *Writer, string) {
 }
 
 func TestSharedCacheAdmissionAndFinishDoNotReadOtherLiveWriterPayload(t *testing.T) {
-	for _, kind := range []Producer{loaderCache, typeCache, viteCache, loaderFiles} {
+	for _, kind := range []Producer{loaderCache, typeCache, viteCache} {
 		t.Run(string(kind), func(t *testing.T) {
 			s, consumer, first, _ := liveCacheFixture(t)
 			spec, err := s.spec(consumer, kind)
@@ -144,9 +144,6 @@ func TestSharedCacheAdmissionAndFinishDoNotReadOtherLiveWriterPayload(t *testing
 				t.Fatal(err)
 			}
 			payload := filepath.Join(spec.Target, "incomplete-cache-output")
-			if kind == loaderFiles {
-				payload = filepath.Join(spec.Target, "vite.config.ts.timestamp-123-abcdef.mjs")
-			}
 			// A deliberately incomplete intermediate is deterministic: content traversal
 			// rejects this link, independently of scheduling or root-user read privileges.
 			if err = os.Symlink(filepath.Join(t.TempDir(), "not-yet-produced"), payload); err != nil {

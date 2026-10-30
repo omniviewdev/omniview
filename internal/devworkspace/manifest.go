@@ -22,8 +22,16 @@ type Options struct {
 }
 
 type Manager struct {
-	Root    string
-	options Options
+	Root              string
+	options           Options
+	afterDurablePhase func(kind, phase string) error
+}
+
+func (m *Manager) durablePhase(kind, phase string) error {
+	if m.afterDurablePhase != nil {
+		return m.afterDurablePhase(kind, phase)
+	}
+	return nil
 }
 
 type Workspace struct {
@@ -64,6 +72,8 @@ type EditOptions struct {
 	RemovePlugins      []string
 	Slug               *string
 	Refs               map[string]string
+	Upstreams          map[string]string
+	PreserveSelection  bool
 	Ports              *devcontract.PortPolicy
 }
 
@@ -249,6 +259,12 @@ func (m *Manager) plan(ctx context.Context, reg Registry, opts CreateOptions) (d
 			ref = r
 		}
 		manifest.Repositories = append(manifest.Repositories, devcontract.Repository{ID: s.ID, Directory: s.Directory, BaseRef: ref, BaseCommit: commits[s.ID], Branch: "feature/" + opts.Slug + "-" + id[:8]})
+		repository := &manifest.Repositories[len(manifest.Repositories)-1]
+		upstream, upstreamErr := ResolveRepositoryUpstream(ctx, s.CommonDir, *repository)
+		if upstreamErr != nil {
+			return manifest, upstreamErr
+		}
+		repository.Upstream = upstream
 		if s.ID == "ui" {
 			v := s.ID
 			manifest.Links.UIRepositoryID = &v

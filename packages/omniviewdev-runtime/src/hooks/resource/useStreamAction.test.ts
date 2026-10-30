@@ -12,6 +12,10 @@ const add = vi.fn();
 const snackbar = vi.fn();
 const listeners = new Map<string, (event: { data: unknown }) => void>();
 vi.mock('../useResolvedPluginId', () => ({ useResolvedPluginId: () => 'neutral' }));
+const requireReady = vi.fn();
+vi.mock('../../connection/connectionReadiness', () => ({
+  requireConnectionReady: (...args: unknown[]) => requireReady(...args),
+}));
 vi.mock('../snackbar/useSnackbar', () => ({ useSnackbar: () => ({ showSnackbar: snackbar }) }));
 vi.mock('../operations/useOperations', () => ({ useOperations: () => ({ addOperation: add, updateOperation: update }) }));
 vi.mock('../../resource/v2/client', () => ({
@@ -27,6 +31,7 @@ const params = { request, label: 'Start' };
 const message = (value: string) => ({ kind: 'map' as const, value: { message: { kind: 'string' as const, value } } });
 
 beforeEach(() => { listeners.clear(); update.mockClear(); add.mockClear(); snackbar.mockClear(); open = vi.fn().mockResolvedValue('host-handle'); close = vi.fn().mockResolvedValue(undefined); attach = vi.fn(); });
+beforeEach(() => { requireReady.mockReset().mockResolvedValue(undefined); });
 
 it('attaches listener first and reconciles completion before attachment', async () => {
   attach.mockImplementation(() => {
@@ -95,5 +100,47 @@ it('does not reinterpret an owning cancellation as successful terminal cleanup',
     await rejected;
   });
   expect(update.mock.calls.at(-1)?.[1]).toMatchObject({ status: 'cancelled' });
+  expect(snackbar).not.toHaveBeenCalled();
+});
+
+it('blocks stream creation when the connection is not ready', async () => {
+  requireReady.mockRejectedValue(new Error('Connection is disconnected'));
+  const hook = renderHook(() => useStreamAction({}));
+  await act(async () => {
+    await expect(hook.result.current.startStreamAction(params)).rejects.toThrow('Connection is disconnected');
+  });
+  expect(requireReady).toHaveBeenCalledWith('neutral', 'c');
+  expect(open).not.toHaveBeenCalled();
+  expect(attach).not.toHaveBeenCalled();
+});
+
+it('forwards a type action without inventing an instance reference', async () => {
+  attach.mockResolvedValue({ sequence: 1, terminal: false, event: { type: 'progress', data: message('Started') } });
+  const typeRequest: ActionRequest = {
+    route: { connection: 'c' },
+    typeTarget: { provider: 'neutral', authority: 'host-issued', type: 'helm:releases', scope: [{ dimension: 'namespace', match: 'oneOf', values: ['team/雪'] }] },
+    action: 'install',
+    input: { kind: 'map', value: { name: { kind: 'string', value: 'release' } } },
+  };
+  const hook = renderHook(() => useStreamAction({}));
+  await act(async () => { await hook.result.current.startStreamAction({ request: typeRequest, label: 'Install' }); });
+  expect(open).toHaveBeenCalledWith('neutral', typeRequest);
+  expect(open.mock.calls[0][1]).not.toHaveProperty('reference');
+  expect(add).toHaveBeenCalledWith(expect.objectContaining({ resourceKey: 'helm:releases', resourceName: '', connectionID: 'c' }));
+  hook.unmount();
+});
+
+it('does not open work after unmount while readiness is pending', async () => {
+  const pending = Promise.withResolvers<void>();
+  requireReady.mockReturnValueOnce(pending.promise);
+  const hook = renderHook(() => useStreamAction({}));
+  let start!: Promise<string>;
+  act(() => { start = hook.result.current.startStreamAction(params); });
+  hook.unmount();
+  await act(async () => {
+    pending.resolve();
+    await expect(start).rejects.toThrow('Stream action was cancelled before the connection became ready');
+  });
+  expect(open).not.toHaveBeenCalled();
   expect(snackbar).not.toHaveBeenCalled();
 });

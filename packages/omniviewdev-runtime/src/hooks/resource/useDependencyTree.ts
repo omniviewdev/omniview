@@ -1,8 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
+import { skipToken, useQuery } from '@tanstack/react-query';
 import { GetDependencyTree } from '../../resource/v2/graph-client';
 import type { AccessRoute, ResourceReference } from '../../resource/v2/domain';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 import { useRefetchOnGraphChange } from './useRefetchOnGraphChange';
+import { useConnectionReadiness } from '../connection/useConnectionReadiness';
+import { useConnectionQueryGuard } from './useConnectionQueryGuard';
 
 type UseDependencyTreeOptions = {
   /**
@@ -44,13 +46,15 @@ export const useDependencyTree = ({
   const pluginID = useResolvedPluginId(explicitPluginID);
 
   const queryKey = ['RESOURCE_DEPENDENCY_TREE', pluginID, reference, route, maxDepth];
-  const queryEnabled = enabled && !!pluginID && !!route.connection && !!reference.address.id;
+  const readiness = useConnectionReadiness({ pluginID, connectionID: route.connection, enabled: enabled && !!reference.address.id });
+  const guardQuery = useConnectionQueryGuard(pluginID, route.connection);
+  const queryEnabled = enabled && !!pluginID && !!route.connection && !!reference.address.id && readiness.phase === 'connected';
 
   useRefetchOnGraphChange(pluginID, route.connection, queryKey, queryEnabled);
 
   const query = useQuery({
     queryKey,
-    queryFn: async () => GetDependencyTree(pluginID, reference, route, maxDepth),
+    queryFn: queryEnabled ? ({ signal, queryKey }) => guardQuery(queryKey, signal, () => GetDependencyTree(pluginID, reference, route, maxDepth)) : skipToken,
     enabled: queryEnabled,
     refetchInterval,
   });

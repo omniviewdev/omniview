@@ -5,6 +5,9 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+/**
+ * PluginAuthor identifies the original author and optional contact links.
+ */
 export class PluginAuthor {
     "name": string;
     "email": string;
@@ -34,16 +37,29 @@ export class PluginAuthor {
     }
 }
 
+/**
+ * PluginComponentArea selects the host surface where a resource component appears.
+ */
 export enum PluginComponentArea {
     /**
      * The Go zero value for the underlying type of the enum.
      */
     $zero = "",
 
+    /**
+     * PluginComponentAreaEditor places a component in the resource editor.
+     */
     PluginComponentAreaEditor = "EDITOR",
+
+    /**
+     * PluginComponentAreaSidebar places a component in the resource sidebar.
+     */
     PluginComponentAreaSidebar = "SIDEBAR",
 };
 
+/**
+ * PluginComponents declares frontend components associated with resource views.
+ */
 export class PluginComponents {
     "resource": PluginResourceComponent[];
 
@@ -69,6 +85,9 @@ export class PluginComponents {
     }
 }
 
+/**
+ * PluginMaintainer identifies a contact responsible for maintaining the plugin.
+ */
 export class PluginMaintainer {
     "name": string;
     "email": string;
@@ -225,6 +244,9 @@ export class PluginMeta {
     }
 }
 
+/**
+ * PluginResourceComponent binds a named frontend extension to resource types and a host surface.
+ */
 export class PluginResourceComponent {
     "name": string;
     "plugin": string;
@@ -266,6 +288,9 @@ export class PluginResourceComponent {
     }
 }
 
+/**
+ * PluginTheme supplies presentation defaults for the plugin's frontend.
+ */
 export class PluginTheme {
     "colors": PluginThemeColors;
 
@@ -291,6 +316,9 @@ export class PluginTheme {
     }
 }
 
+/**
+ * PluginThemeColors defines the plugin's primary, secondary, and tertiary accent colors.
+ */
 export class PluginThemeColors {
     "primary": string;
     "secondary": string;

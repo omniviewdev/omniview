@@ -15,7 +15,7 @@ permissions:
 
 env:
   GO_VERSION: "1.26"
-  NODE_VERSION: "24"
+  NODE_VERSION: "26.13.0"
   GOWORK: "off"
 
 jobs:
@@ -58,7 +58,13 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "24.14.0"
+          node-version: "26.13.0"
+
+      - name: Setup native pnpm for recovery integration tests
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with:
+          version: 12.14.0
+          install: false
 
       - uses: actions/setup-go@v5
         with:
@@ -142,7 +148,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "24.14.0"
+          node-version: "26.13.0"
 
       - uses: actions/setup-go@v5
         with:
@@ -235,3 +241,15 @@ jobs:
 
       - name: Typecheck
         run: task check:ui-typecheck
+
+      - name: Component tests
+        run: pnpm test
+
+      - name: Age clock DST regressions
+        run: pnpm exec vitest run ui/utils/ageClock.test.tsx
+        env:
+          TZ: America/New_York
+
+      - name: Runtime resource batching regressions
+        working-directory: packages/omniviewdev-runtime
+        run: node ../../node_modules/vitest/vitest.mjs run src/hooks/resource/useEventBatcher.test.ts

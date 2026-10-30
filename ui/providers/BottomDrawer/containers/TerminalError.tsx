@@ -15,13 +15,34 @@ type Props = {
   error: TerminalErrorInfo;
   onRetry: (command: string[]) => void;
   backgroundColor?: string;
+  recovery?: { label: string; run: () => Promise<void> };
 };
 
-export default function TerminalError({ error, onRetry, backgroundColor }: Props) {
+export default function TerminalError({ error, onRetry, backgroundColor, recovery }: Props) {
   const [showRaw, setShowRaw] = React.useState(false);
+  const [recovering, setRecovering] = React.useState(false);
+  const [recoveryError, setRecoveryError] = React.useState<string | null>(null);
+  const recoveryPending = React.useRef(false);
+  const recover = async () => {
+    if (!recovery || recoveryPending.current) {
+      return;
+    }
+
+    recoveryPending.current = true;
+    setRecovering(true);
+    setRecoveryError(null);
+    try {
+      await recovery.run();
+    } catch (cause) {
+      setRecoveryError(cause instanceof Error ? cause.message : 'Recovery failed. Review the resource and try again.');
+    } finally {
+      recoveryPending.current = false;
+      setRecovering(false);
+    }
+  };
 
   return (
-    <div className={styles.Root} style={{ backgroundColor: backgroundColor ?? 'black' }}>
+    <div role='alert' className={styles.Root} style={{ backgroundColor: backgroundColor ?? 'black' }}>
       <LuTriangleAlert size={32} className={styles.Icon} />
 
       <Text weight='semibold' className={styles.Title}>
@@ -31,6 +52,15 @@ export default function TerminalError({ error, onRetry, backgroundColor }: Props
       <Text size='sm' tone='muted' className={styles.Suggestion}>
         {error.suggestion}
       </Text>
+
+      {recovery && (
+        <Button size='sm' disabled={recovering} aria-busy={recovering} onClick={() => {
+          void recover(); 
+        }}>
+          {recovery.label}
+        </Button>
+      )}
+      {recoveryError && <Text role='status' size='sm'>{recoveryError}</Text>}
 
       {/* Collapsible raw error */}
       <div className={styles.Details}>

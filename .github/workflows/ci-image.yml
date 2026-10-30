@@ -58,7 +58,7 @@ jobs:
         run: |
           docker run --rm --init omniview-ci:smoke bash -euo pipefail -c '
             test "$(id -u)" = 0
-            node --version | grep -E "^v24\."
+            test "$(node --version)" = "v26.13.0"
             zstd --version
             pkg-config --exists gtk4 webkitgtk-6.0 wayland-client
             pkg-config --modversion gtk4 webkitgtk-6.0 wayland-client

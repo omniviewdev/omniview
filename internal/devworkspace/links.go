@@ -284,6 +284,9 @@ func makeLinkPlan(w Workspace) (linkPlan, error) {
 	for _, pkg := range composition.Packages {
 		p.Consumers = append(p.Consumers, linkConsumer{Path: pkg.Path, Targets: composition.Targets})
 	}
+	if err := validateLinkedPeerContracts(w, p); err != nil {
+		return p, err
+	}
 	return p, nil
 }
 
@@ -322,10 +325,14 @@ func (m *Manager) linkCommandContext(ctx context.Context, name string) (context.
 	return context.WithValue(ctx, linkCommandOwnerKey{}, devsession.ProcessOwner{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "dependency-command", Source: w.Root}), nil
 }
 
+const dependencyCommandExitCode = 5
+
 // linkCommand deliberately ignores ambient go.work, GOFLAGS and package-manager
-// selectors. Every pnpm call uses the exact native12 composition launcher.
+// selectors. Every pnpm call uses the exact native12 composition launcher, and
+// only this recorded composition runner may change dependencies through it.
 func linkCommand(ctx context.Context, dir, program string, args ...string) ([]byte, error) {
-	if program == "pnpm" {
+	pnpm := program == "pnpm"
+	if pnpm {
 		graph, ok := ctx.Value(linkToolchainKey{}).(*BuildGraph)
 		if !ok {
 			return nil, fmt.Errorf("native pnpm requires the selected workspace toolchain context")
@@ -346,7 +353,7 @@ func linkCommand(ctx context.Context, dir, program string, args ...string) ([]by
 	cmd.Dir = dir
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
-		if workspaceRootEnvironment(key) {
+		if workspaceRootEnvironment(key) || key == compositionInstallEnvironment {
 			continue
 		}
 		if key != "GOWORK" && key != "GOFLAGS" && key != "NODE_PATH" && key != "GOCACHE" && key != "OMNIVIEW_PNPM_NODE_PATH" {
@@ -354,11 +361,16 @@ func linkCommand(ctx context.Context, dir, program string, args ...string) ([]by
 		}
 	}
 	cmd.Env = append(cmd.Env, "GOWORK=off", "GOFLAGS=", "OMNIVIEW_PNPM_NODE_PATH=")
+	if pnpm {
+		cmd.Env = append(cmd.Env, compositionInstallEnvironment+"=1")
+	}
 	if cache, ok := ctx.Value(linkBuildCacheKey{}).(string); ok {
 		cmd.Env = append(cmd.Env, "GOCACHE="+cache)
 	}
 	var out bytes.Buffer
 	cmd.Stdout = &out
+	var diagnostic bytes.Buffer
+	cmd.Stderr = &diagnostic
 	var err error
 	if owned {
 		owner.Source = dir
@@ -367,13 +379,31 @@ func linkCommand(ctx context.Context, dir, program string, args ...string) ([]by
 		err = cmd.Run()
 	}
 	if err != nil {
+		evidence := ""
+		if graph, ok := ctx.Value(linkToolchainKey{}).(*BuildGraph); ok {
+			evidence = filepath.Join(graph.workspace.Root, ".local", "dependency-command-error.json")
+			record := struct {
+				WorkspaceID string   `json:"workspaceID"`
+				Directory   string   `json:"directory"`
+				Program     string   `json:"program"`
+				Arguments   []string `json:"arguments"`
+				Stdout      string   `json:"stdout"`
+				Stderr      string   `json:"stderr"`
+			}{graph.workspace.Manifest.WorkspaceID, dir, program, args, out.String(), diagnostic.String()}
+			if saveErr := saveLaunchJSON(evidence, record); saveErr != nil {
+				return nil, errors.Join(devcontract.Fail(dependencyCommandExitCode, "link_command_failed",
+					"dependency command failed and private diagnostics could not be retained"), saveErr)
+			}
+		}
 		if errors.Is(err, errOwnedCommandUncertain) {
 			return nil, errors.Join(errOwnedCommandUncertain, devcontract.Fail(5, "link_command_failed", "dependency command subtree termination is unproven; ownership intent retained"))
 		}
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return nil, devcontract.Fail(5, "link_command_failed", fmt.Sprintf("%s failed in %s (stderr withheld; may contain private registry credentials)", program, dir))
+		return nil, devcontract.Fail(dependencyCommandExitCode, "link_command_failed", fmt.Sprintf(
+			"%s failed in %s; private diagnostics: %s (contents withheld; may contain credentials); "+
+				"preserve evidence and run workspace recover", program, dir, evidence))
 	}
 	return out.Bytes(), nil
 }
@@ -936,6 +966,111 @@ func (m *Manager) Unlink(ctx context.Context, name string) (LinkReport, error) {
 		return LinkReport{}, err
 	}
 	return LinkReport{WorkspaceID: w.Manifest.WorkspaceID, Protocol: j.Evidence.Protocol, Phase: "unlinked"}, nil
+}
+
+// ResetModulesReport lists the deleted dependency trees. Phase is the link
+// phase the reset ran in: "linked" reinstalls through the recorded composition
+// writer; "unlinking" only deletes, leaving the interrupted unlink/remove to
+// be rerun.
+type ResetModulesReport struct {
+	WorkspaceID string   `json:"workspaceID"`
+	Phase       string   `json:"phase"`
+	Removed     []string `json:"removed"`
+	Reinstalled bool     `json:"reinstalled"`
+}
+
+// ResetModules is the explicit recovery for an externally changed dependency
+// tree. In a stopped, linked workspace it deletes every owned modules tree and
+// dependency cache (plus stray node_modules at the selected package roots), then
+// reinstalls them through the recorded composition writer. During an
+// interrupted unlink it only deletes them so the teardown can resume. It never
+// adopts foreign bytes and leaves every other repository output untouched.
+func (m *Manager) ResetModules(ctx context.Context, name string) (ResetModulesReport, error) {
+	w, err := m.Inspect(ctx, name)
+	if err != nil {
+		return ResetModulesReport{}, err
+	}
+	// Delete-only recovery never runs the installer or prepares its toolchain.
+	// resetModules rechecks the phase under the lifecycle lock.
+	if j, journalErr := loadLinkJournal(w); journalErr == nil && j.Phase == "unlinking" {
+		return m.resetModules(ctx, name, nil)
+	}
+	scoped, err := m.linkCommandContext(ctx, name)
+	if err != nil {
+		return ResetModulesReport{}, err
+	}
+	return m.resetModules(scoped, name, linkCommand)
+}
+
+func (m *Manager) resetModules(ctx context.Context, name string, run func(context.Context, string, string, ...string) ([]byte, error)) (ResetModulesReport, error) {
+	w, unlock, err := m.linkWorkspace(ctx, name)
+	if err != nil {
+		return ResetModulesReport{}, err
+	}
+	defer unlock()
+	j, err := loadLinkJournal(w)
+	if os.IsNotExist(err) {
+		return ResetModulesReport{}, devcontract.Fail(4, "link_required", "workspace dependencies are not linked; link the workspace before resetting modules")
+	}
+	if err != nil {
+		return ResetModulesReport{}, err
+	}
+	report := ResetModulesReport{WorkspaceID: w.Manifest.WorkspaceID, Phase: j.Phase}
+	var roots []string
+	if j.Plan.Composition != nil {
+		roots = append(roots, j.Plan.Composition.Root)
+		for _, pkg := range j.Plan.Composition.Packages {
+			roots = append(roots, pkg.Path)
+		}
+	}
+	for _, consumer := range j.Plan.Consumers {
+		roots = append(roots, consumer.Path)
+	}
+	if j.Phase == "unlinking" {
+		// The overlay is partially restored: never reinstall into it. Deleting
+		// the dependency trees lets the interrupted unlink/remove resume.
+		report.Removed, err = devoutputs.ResetDependencyTrees(ctx, w.ResolvedWorkspace, roots, true)
+		return report, err
+	}
+	if j.Phase != "linked" || j.Plan.Composition == nil {
+		return ResetModulesReport{}, devcontract.Fail(4, "link_interrupted", "dependency link is not complete (phase "+j.Phase+"); unlink the interrupted dependency transaction before resetting modules")
+	}
+	if run == nil {
+		return ResetModulesReport{}, devcontract.Fail(4, "link_conflict", "dependency link phase changed during reset-modules; rerun it")
+	}
+	if !sameManifest(j.Manifest, w.Manifest) {
+		return ResetModulesReport{}, devcontract.Fail(4, "link_conflict", "workspace selection changed; unlink before resetting modules")
+	}
+	// Preflight the reinstall inputs before deleting anything.
+	if err = checkLinkFiles(w.Root, j); err != nil {
+		return ResetModulesReport{}, err
+	}
+	if err = devcompose.CheckInputs(*j.Plan.Composition); err != nil {
+		return ResetModulesReport{}, err
+	}
+	if report.Removed, err = devoutputs.ResetDependencyTrees(ctx, w.ResolvedWorkspace, roots, false); err != nil {
+		return report, err
+	}
+	// Same intent phase as Link: an interrupted reinstall is never "linked".
+	j.Phase = "applying"
+	if err = saveLinkJournal(j); err != nil {
+		return report, err
+	}
+	err = installComposition(ctx, w.ResolvedWorkspace, j, run)
+	for _, e := range j.Files {
+		if e.Pending {
+			// Unverified lock bytes remain explicit unlink recovery.
+			return report, err
+		}
+	}
+	// The attested lock is unchanged or reattested; a failed reinstall stays
+	// retryable by rerunning reset-modules.
+	j.Phase = "linked"
+	if err = errors.Join(err, saveLinkJournal(j)); err != nil {
+		return report, err
+	}
+	report.Reinstalled = true
+	return report, nil
 }
 
 func (m *Manager) InspectLinks(ctx context.Context, name string) (LinkReport, error) {

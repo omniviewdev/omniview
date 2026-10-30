@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { Events } from '@omniviewdev/runtime/runtime';
 import type { LogEntry, LogStreamEvent, RawLogLine } from '../types';
 import { parseRawLogLine } from '../utils/parseLogLine';
@@ -12,7 +12,9 @@ type UseLogStreamOpts = {
 
 export function useLogStream({ sessionId, onLines, onEvent, paused }: UseLogStreamOpts): void {
   const pausedRef = useRef(paused);
-  pausedRef.current = paused;
+  useLayoutEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
 
   const lineCounterRef = useRef(0);
   const pauseBufferRef = useRef<LogEntry[]>([]);

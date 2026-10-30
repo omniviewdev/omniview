@@ -31,6 +31,15 @@ func (c *controller) operationGeneration(ctx context.Context, pluginID string, r
 // Expected admission is checked under the same lock that captures the new
 // operation epoch. Stale work must never promote itself across a profile reset.
 func (c *controller) operationGenerationExpected(ctx context.Context, pluginID string, route resourcev2.AccessRoute, expected *catalogAdmission) (ResourceProvider, *pluginState, context.Context, func(), error) {
+	if observed, ok := ctx.Value(observationKey{}).(Observation); ok {
+		if observed.plugin != pluginID || observed.route != route {
+			return nil, nil, nil, nil, resourcev2.NewError("RESET_REQUIRED", "Advertised resource route changed.")
+		}
+		if expected != nil && *expected != observed.admission {
+			return nil, nil, nil, nil, resourcev2.NewError("RESET_REQUIRED", "Conflicting retained source observations.")
+		}
+		expected = &observed.admission
+	}
 	c.pluginsMu.RLock()
 	generation := c.plugins[pluginID]
 	if generation == nil || generation.provider == nil || generation.ctx == nil {
@@ -90,6 +99,9 @@ func (c *controller) admitOperationCatalog(ctx context.Context, pluginID string,
 		return ctx, resourcev2.ResourceType{}, err
 	}
 	if err = resourcev2.ValidateCatalog(catalog); err != nil {
+		return ctx, resourcev2.ResourceType{}, err
+	}
+	if err := checkObservedCatalog(ctx, pluginID, route, catalog); err != nil {
 		return ctx, resourcev2.ResourceType{}, err
 	}
 	if err = c.currentGeneration(ctx, pluginID, generation); err != nil {
@@ -255,6 +267,9 @@ func (c *controller) NativeQuery(ctx context.Context, pluginID string, input Hos
 	if err != nil {
 		return _result, err
 	}
+	if err := resourcev2.ValidateNativeQueryInput(descriptor, request); err != nil {
+		return _result, err
+	}
 	page, err := querier.NativeQuery(ctx, request)
 	if err != nil {
 		c.checkConnectionError(pluginID, err)
@@ -330,8 +345,7 @@ func (c *controller) Mutate(ctx context.Context, pluginID string, request resour
 }
 
 func (c *controller) Action(ctx context.Context, pluginID string, request resourcev2.ActionRequest) (_result resourcev2.Value, retErr error) {
-	target := referenceTarget(pluginID, request.Route, request.Reference)
-	target.Action = request.Action
+	target := actionTarget(pluginID, request)
 	ctx, err := c.admit(ctx, "resource.Action", target)
 	if err != nil {
 		return _result, err
@@ -349,8 +363,17 @@ func (c *controller) Action(ctx context.Context, pluginID string, request resour
 	if !ok {
 		return _result, resourcev2.NewError("UNSUPPORTED", "Action is not supported.")
 	}
-	ctx, descriptor, err := c.admitOperationCatalog(ctx, pluginID, provider, generation, request.Route, request.Reference.Address.Authority, request.Reference.Address.Provider, request)
+	authority, canonicalProvider := actionIdentity(request)
+	ctx, descriptor, err := c.admitOperationCatalog(ctx, pluginID, provider, generation, request.Route, authority, canonicalProvider, request)
 	if err != nil {
+		return _result, err
+	}
+	actionDescriptor, err := resourcev2.ResolveActionDescriptor(ctx, provider, request, false)
+	if err != nil {
+		return _result, err
+	}
+	request.ExpectedDescriptor = actionDescriptor
+	if err := c.currentGeneration(ctx, pluginID, generation); err != nil {
 		return _result, err
 	}
 	value, err := actioner.Action(ctx, request)
@@ -359,6 +382,11 @@ func (c *controller) Action(ctx context.Context, pluginID string, request resour
 	}
 	if err := resourcev2.ValidateOperationResult(request, value, descriptor); err != nil {
 		return _result, err
+	}
+	if actionDescriptor != nil {
+		if err := resourcev2.ValidateActionOutput(*actionDescriptor, value); err != nil {
+			return _result, err
+		}
 	}
 	if err := c.currentGeneration(ctx, pluginID, generation); err != nil {
 		return _result, err

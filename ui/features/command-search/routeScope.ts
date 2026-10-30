@@ -1,6 +1,7 @@
-import { matchRoutes, type RouteObject } from 'react-router-dom';
+import { matchRoutes, type RouteObject } from 'react-router';
 import type { OpenGlobalSearchOptions, SearchRouteContextV1, SearchRouteHandleV1, SearchScopeV1 } from '@omniviewdev/runtime';
 import { admitSearchScope } from './admission';
+import { parsePagePath } from '@/features/workspace/pagePaths';
 
 function protectRoutePercents(routes: RouteObject[]): RouteObject[] {
   return routes.map((route): RouteObject => {
@@ -21,6 +22,10 @@ export function resolveRouteSearchScope(
   routesForPlugin: (pluginId: string) => RouteObject[] | undefined,
   isPluginReady: (pluginId: string) => boolean,
 ): SearchScopeV1 | null | undefined {
+  const hostPage = /^\/(?:resources|connections)\//.test(location.pathname) ? parsePagePath(location.pathname) : undefined;
+  if (hostPage?.kind === 'connection' && isPluginReady(hostPage.pluginId)) {
+    return { kind: 'connection', pluginId: hostPage.pluginId, connectionId: hostPage.connectionId, label: hostPage.connectionId };
+  }
   const rawOwner = /^\/_plugin\/([^/]+)(?=\/|$)/.exec(location.pathname);
   if (!rawOwner) {
     return undefined;

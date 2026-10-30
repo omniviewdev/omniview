@@ -78,6 +78,12 @@ test('server admission uses authenticated backend-ready plus observed browser be
   const descriptor = { schemaVersion: 1, kind: 'development', workspaceID: expected.workspaceID, instanceID: expected.workspaceID, stateRoot: expected.stateRoot, generation: expected.generation, readiness: 'backend-ready', process: { pid: expected.pid, executable: expected.binary, startIdentity: 'kernel-start', workspaceID: expected.workspaceID, generation: expected.generation, role: 'host' }, endpoints: { browser: expected.browser }, plugins: null };
   assert.deepEqual(validateApplicationDescriptor(descriptor, expected).plugins, []);
   for (const changed of [{ readiness: 'starting' }, { generation: 'old' }, { stateRoot: '/foreign' }, { endpoints: { browser: 'http://127.0.0.1:32000/' } }]) assert.throws(() => validateApplicationDescriptor({ ...descriptor, ...changed }, expected));
+  const live = { ...expected, vite: 'http://127.0.0.1:31001' };
+  // Browser readiness can arrive before the host observes the Vite endpoint.
+  for (const vite of [undefined, null, 'http://127.0.0.1:32001']) {
+    assert.throws(() => validateApplicationDescriptor({ ...descriptor, endpoints: { ...descriptor.endpoints, vite } }, live), /ready/);
+  }
+  assert.equal(validateApplicationDescriptor({ ...descriptor, endpoints: { ...descriptor.endpoints, vite: live.vite } }, live).endpoints.vite, live.vite);
 });
 
 test('retirement requires the actual owned lifecycle proof for the exact captured child', () => {

@@ -11,6 +11,10 @@ import { Create as $Create } from "@wailsio/runtime";
  */
 export type Connection = any;
 
+/**
+ * FindPortForwardSessionRequest filters sessions by opaque resource and connection
+ * selectors. Empty selectors do not restrict that dimension.
+ */
 export class FindPortForwardSessionRequest {
     "resource_id": string;
     "connection_id": string;
@@ -36,23 +40,43 @@ export class FindPortForwardSessionRequest {
     }
 }
 
+/**
+ * PortForwardConnectionType distinguishes resource and static forwarding targets.
+ */
 export enum PortForwardConnectionType {
     /**
      * The Go zero value for the underlying type of the enum.
      */
     $zero = "",
 
+    /**
+     * PortForwardConnectionTypeResource selects a registered resource forwarder.
+     */
     PortForwardConnectionTypeResource = "RESOURCE",
+
+    /**
+     * PortForwardConnectionTypeStatic selects a registered address forwarder.
+     */
     PortForwardConnectionTypeStatic = "STATIC",
 };
 
+/**
+ * PortForwardProtocol selects the native transport protocol.
+ */
 export enum PortForwardProtocol {
     /**
      * The Go zero value for the underlying type of the enum.
      */
     $zero = "",
 
+    /**
+     * PortForwardProtocolTCP requests a TCP tunnel.
+     */
     PortForwardProtocolTCP = "TCP",
+
+    /**
+     * PortForwardProtocolUDP requests a UDP tunnel.
+     */
     PortForwardProtocolUDP = "UDP",
 };
 
@@ -128,6 +152,10 @@ export class PortForwardSession {
     }
 }
 
+/**
+ * PortForwardSessionEncryption carries forwarder-specific encryption settings.
+ * The manager transports these settings; the native forwarder enforces support.
+ */
 export class PortForwardSessionEncryption {
     "algorithm": string;
     "key": string;
@@ -157,15 +185,33 @@ export class PortForwardSessionEncryption {
     }
 }
 
+/**
+ * SessionState describes tunnel availability; stopped and failed states are terminal.
+ */
 export enum SessionState {
     /**
      * The Go zero value for the underlying type of the enum.
      */
     $zero = "",
 
+    /**
+     * SessionStateActive means the forwarder has reported readiness.
+     */
     SessionStateActive = "ACTIVE",
+
+    /**
+     * SessionStatePaused permits resumption or termination.
+     */
     SessionStatePaused = "PAUSED",
+
+    /**
+     * SessionStateStopped marks intentional termination.
+     */
     SessionStateStopped = "STOPPED",
+
+    /**
+     * SessionStateFailed marks unexpected termination.
+     */
     SessionStateFailed = "FAILED",
 };
 

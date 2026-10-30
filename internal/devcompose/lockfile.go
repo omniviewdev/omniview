@@ -548,7 +548,13 @@ func mergeLockedPatches(w devcontract.ResolvedWorkspace, dst, src, policy map[st
 func validateNativeScalarPatch(w devcontract.ResolvedWorkspace, policy map[string]any, sourceHashes map[string]string, repo, source, name, lockedHash string) error {
 	patch, declared := mapping(policy["patchedDependencies"])[name].(string)
 	if !declared {
-		return refusal("locked scalar patch in %s lacks a reconciled source declaration", source)
+		lockPath := filepath.Join(w.Root, filepath.FromSlash(source))
+		directory := "'" + strings.ReplaceAll(filepath.Dir(lockPath), "'", "'\\''") + "'"
+		command := "(export PNPM_CONFIG_WORKSPACE_DIR=" + directory + " npm_config_workspace_dir=" + directory + " pnpm_config_pm_on_fail=error; " +
+			"native=\"${OMNIVIEW_PNPM_EXECUTABLE:?Set canonical native pnpm " + Version + " executable}\"; " +
+			"test \"$(\"$native\" --version)\" = '" + Version + "' && " +
+			"\"$native\" --dir " + directory + " install --lockfile-only --ignore-scripts --no-frozen-lockfile)"
+		return refusal("locked scalar patch in %s lacks a reconciled source declaration; regenerate standalone lockfile %s using canonical native pnpm %s (not the managed launcher): %s", source, lockPath, Version, command)
 	}
 	absolute := filepath.Join(w.Root, filepath.FromSlash(patch))
 	if !within(repo, absolute) || exactPath(absolute) != nil {

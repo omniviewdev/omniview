@@ -58,10 +58,8 @@ vi.mock('@monaco-editor/react', () => ({
   useMonaco: () => mocks.monaco,
   loader: {
     init: vi.fn().mockResolvedValue({
-      languages: {
-        typescript: {
-          javascriptDefaults: { setEagerModelSync: vi.fn() },
-        },
+      typescript: {
+        javascriptDefaults: { setEagerModelSync: vi.fn() },
       },
     }),
   },

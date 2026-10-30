@@ -1,4 +1,4 @@
-import React, { useRef, useMemo, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { PluginServiceContext } from './context';
 import { PluginService } from '../core/PluginService';
 import { createProductionDeps } from '../adapters/createProductionDeps';
@@ -13,20 +13,15 @@ export type PluginServiceProviderProps = {
 
 /**
  * Owns the single PluginService instance.
- * - Creates service once (via ref)
+ * - Creates service once (via lazy state)
  * - Starts/stops event listeners on mount/unmount
  * - Orchestrates initial loadAll + markReady
  * - Provides the service via context
- * - Always renders children (RouteProvider handles loading state)
+ * - Always renders children (page tab routers handle loading state)
  * - Defers dev plugin loading until dev server reports ready
  */
 export function PluginServiceProvider({ children }: PluginServiceProviderProps) {
-  const serviceRef = useRef<PluginService | null>(null);
-  const deps = useMemo(() => createProductionDeps(), []);
-
-  serviceRef.current ??= new PluginService(deps);
-
-  const service = serviceRef.current;
+  const [service] = useState(() => new PluginService(createProductionDeps()));
 
   // Read-only startup data — acyclic, does not use the service consumer hook
   const { plugins: installedPlugins, isLoading, error } = useInstalledPlugins();
@@ -103,11 +98,11 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
 
       const state = service.getPluginState(plugin.id);
       const opts = { dev: true, devPort: plugin.devPort };
-      const loading = state?.phase === 'error'
-        ? service.retry(plugin.id, opts)
-        : !state || state.phase === 'idle'
-          ? service.load(plugin.id, opts)
-          : undefined;
+      // Inventory refreshes must not dismiss a failed import. Recovery belongs
+      // to Retry/Reset or a new development-server lifecycle event.
+      const loading = !state || state.phase === 'idle'
+        ? service.load(plugin.id, opts)
+        : undefined;
       void loading?.catch((err: unknown) => {
         console.error(`[PluginServiceProvider] dev load failed for ${plugin.id}:`, err);
       });

@@ -44,21 +44,19 @@ const initialValue: InstanceState = {
 const InstanceContext = createContext<InstanceContextValue | null>(null);
 
 export function InstanceProvider({ children }: { children: ReactNode }) {
-  const [value, setValue] = useState<InstanceState>(initialValue);
+  const [value, setValue] = useState<InstanceState>(() => (
+    initialIdentity === null ? initialValue : { ...initialValue, status: 'refreshing' }
+  ));
   const requestSequence = useRef(0);
 
-  const refreshInfo = useCallback(async () => {
+  const requestInfo = useCallback(async () => {
     // Plain browser previews have no host or binding endpoint; never invent one.
     if (initialIdentity === null) {
       return;
     }
 
     const request = ++requestSequence.current;
-    // Hide the previous snapshot: it must not be presented as current/confirmed
-    // while a fresh authoritative host read is pending or after it fails.
-    setValue((current) => ({ ...current, info: null, status: 'refreshing' }));
-    try {
-      const info = await GetInstanceInfo();
+    await GetInstanceInfo().then(info => {
       if (request !== requestSequence.current) {
         return;
       }
@@ -76,19 +74,29 @@ export function InstanceProvider({ children }: { children: ReactNode }) {
         info,
         status: 'confirmed',
       });
-    } catch {
+    }, () => {
       if (request === requestSequence.current) {
         setValue({ identity: initialIdentity, info: null, status: 'error' });
       }
-    }
+    });
   }, []);
 
+  const refreshInfo = useCallback(async () => {
+    if (initialIdentity === null) {
+      return;
+    }
+
+    // Hide stale host data while an explicit refresh is pending.
+    setValue(current => ({ ...current, info: null, status: 'refreshing' }));
+    await requestInfo();
+  }, [requestInfo]);
+
   useEffect(() => {
-    void refreshInfo();
+    void requestInfo();
     return () => {
       ++requestSequence.current; 
     };
-  }, [refreshInfo]);
+  }, [requestInfo]);
 
   useEffect(() => {
     document.title = value.identity === null

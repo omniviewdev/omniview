@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { RouteObject } from 'react-router-dom';
+import type { RouteObject } from 'react-router';
 import { usePluginService } from './usePluginService';
 import PluginRenderer from '../components/PluginRenderer';
 import PluginNotFoundPage from '../components/PluginNotFoundPage';

@@ -16,7 +16,7 @@ import (
 // The producer owns its lifetime before it starts; request cancellation is bridged
 // through the commit, never reparented after a request-bound producer has started.
 func (c *controller) StreamAction(ctx context.Context, pluginID string, input resource.ActionRequest) (id string, retErr error) {
-	ctx, err := c.admit(ctx, "resource.StreamAction", ancillaryTarget(pluginID, input.Route, input.Reference.Address.Type, input.Reference, input.Action))
+	ctx, err := c.admit(ctx, "resource.StreamAction", actionTarget(pluginID, input))
 	if err != nil {
 		return "", err
 	}
@@ -38,8 +38,17 @@ func (c *controller) StreamAction(ctx context.Context, pluginID string, input re
 	if !ok {
 		return "", ancillaryUnsupported()
 	}
-	sessionCtx, _, err = c.admitOperationCatalog(sessionCtx, pluginID, provider, generation, input.Route, input.Reference.Address.Authority, input.Reference.Address.Provider, input)
+	authority, canonicalProvider := actionIdentity(input)
+	sessionCtx, _, err = c.admitOperationCatalog(sessionCtx, pluginID, provider, generation, input.Route, authority, canonicalProvider, input)
 	if err != nil {
+		return "", err
+	}
+	actionDescriptor, err := resource.ResolveActionDescriptor(sessionCtx, provider, input, true)
+	if err != nil {
+		return "", err
+	}
+	input.ExpectedDescriptor = actionDescriptor
+	if err := c.currentGeneration(sessionCtx, pluginID, generation); err != nil {
 		return "", err
 	}
 	producerCtx, cancelCause := context.WithCancelCause(context.WithoutCancel(sessionCtx))
@@ -82,7 +91,13 @@ func (c *controller) StreamAction(ctx context.Context, pluginID string, input re
 	}()
 	events := make(chan resource.ActionEvent, streamChannelBuffer)
 	result := make(chan error, 1)
-	go func() { result <- streamer.StreamAction(producerCtx, input, events) }()
+	go func() {
+		if err := c.currentGeneration(sessionCtx, pluginID, generation); err != nil {
+			result <- err
+			return
+		}
+		result <- streamer.StreamAction(producerCtx, input, events)
+	}()
 	var completed bool
 	var resultErr error
 	for {
@@ -134,7 +149,7 @@ func (c *controller) StreamAction(ctx context.Context, pluginID string, input re
 			stopOpen()
 			startup.Stop()
 			transferred = true
-			go c.runActionStream(producerCtx, handle, events, result, completed, resultErr)
+			go c.runActionStream(producerCtx, handle, events, result, completed, resultErr, actionDescriptor)
 			return handle.id, nil
 		}
 	}
@@ -171,7 +186,7 @@ func actionEvent(event resource.ActionEvent, requestID string) (ActionEventDTO, 
 	}
 	return snapshot.Event, nil
 }
-func (c *controller) runActionStream(ctx context.Context, handle *actionHandle, events <-chan resource.ActionEvent, result <-chan error, completed bool, resultErr error) {
+func (c *controller) runActionStream(ctx context.Context, handle *actionHandle, events <-chan resource.ActionEvent, result <-chan error, completed bool, resultErr error, descriptor *resource.ActionDescriptor) {
 	for {
 		if completed && len(events) == 0 {
 			if resultErr != nil {
@@ -194,6 +209,9 @@ func (c *controller) runActionStream(ctx context.Context, handle *actionHandle, 
 				continue
 			}
 			safe, err := actionEvent(event, handle.request.ID())
+			if err == nil && descriptor != nil && event.Type == "output" && event.Data != nil {
+				err = resource.ValidateActionOutput(*descriptor, *event.Data)
+			}
 			if err != nil {
 				safe = ActionEventDTO{Type: "error", Error: apperror.ForResource(err, handle.request.ID())}
 			}

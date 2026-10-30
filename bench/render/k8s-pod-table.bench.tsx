@@ -1,6 +1,6 @@
 /**
  * Kubernetes plugin Pod list (the heaviest resource table), rendered from the
- * plugin source in plugins/kubernetes against the app's shared packages, with
+ * pinned plugin submodule source against the app's shared packages, with
  * List/metrics answered by fixtures.
  */
 import { describe } from 'vitest';

@@ -1,3 +1,4 @@
+import { Text, type DataTableFeatures } from '@omniviewdev/base-ui';
 import { useQuery } from '@tanstack/react-query';
 
 // third party
@@ -60,6 +61,12 @@ export type ResourceMetadata = {
   record: HostRecord;
 };
 
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+};
+
 
 /**
  * Use our metadata and resource defenitions to dynamically build out our ColumnDefs at runtime.
@@ -78,7 +85,7 @@ const parseColumnDef = ({
     };
   }
 
-  const defs: Array<ColumnDef<any>> = [
+  const defs: Array<ColumnDef<DataTableFeatures, ResourceTableRow>> = [
     {
       id: 'select',
       header: SelectBoxHeader,
@@ -90,11 +97,11 @@ const parseColumnDef = ({
   ];
 
   columnDefs.forEach((def) => {
-    let column: ColumnDef<any> = {
+    const column: ColumnDef<DataTableFeatures, ResourceTableRow> = {
       id: def.id,
       header: def.header,
-      accessorFn: (data) => {
-        data = data.data;
+      accessorFn: (row) => {
+        const data = row.data;
         const val = def.accessor.split(',').map((accessor) => {
           if (accessor.startsWith('$.')) {
             return jsonpath.value(data, accessor) ?? '';
@@ -146,7 +153,7 @@ const parseColumnDef = ({
           // in-house component
           : <TextCell
             align={getAlignment(def.align)}
-            value={getValue() as string}
+            value={getValue()}
             formatter={def.formatter}
             colorMap={def.colorMap}
             resourceLink={def.resourceLink}
@@ -169,14 +176,14 @@ const parseColumnDef = ({
     // add the actions to the end
     defs.push({
       id: 'menu',
-      cell: ({ row }) => <ActionMenu
+      cell: ({ row }) => isPlainObject(row.original.data) ? <ActionMenu
         actions={actions}
         plugin={pluginID}
         connection={connectionID}
         resource={resourceKey}
         data={row.original.data}
         record={row.original.record}
-      />,
+      /> : <Text size="xs" tone="muted">Resource actions require an object body.</Text>,
       size: 50,
       enableSorting: false,
       enableHiding: false,

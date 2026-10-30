@@ -398,6 +398,7 @@ func withoutDesiredConnection(state desiredConnectionState, id string) desiredCo
 }
 
 func (c *controller) changeConnectionProfile(ctx context.Context, pluginID, id, operation string, connection *types.Connection) (_result ConnectionProfileResult, retErr error) {
+	defer c.notifyInventory()
 	if id == "" || !utf8.ValidString(id) {
 		return ConnectionProfileResult{}, resourcev2.NewError("INVALID_REQUEST", "An explicit UTF-8 connection ID is required.")
 	}

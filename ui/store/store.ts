@@ -1,11 +1,9 @@
 import { configureStore } from '@reduxjs/toolkit';
-import tabsReducer from './tabs/slice';
 import headerReducer from './header/slice';
 import settingsReducer from './settings/slice';
 
 export const store = configureStore({
   reducer: {
-    tabs: tabsReducer,
     header: headerReducer,
     settings: settingsReducer,
   },
