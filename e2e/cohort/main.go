@@ -33,8 +33,9 @@ func main() {
 }
 
 func run() error {
-	if len(os.Args) < 3 || (os.Args[1] != "run" && os.Args[1] != "build" && os.Args[1] != "sdk-identity" && len(os.Args) != 3) {
-		return fmt.Errorf("expected prepare|verify|retire|run|build|sdk-identity and private cohort configuration")
+	resetModules := len(os.Args) == 4 && os.Args[1] == "retire" && os.Args[3] == "--reset-modules"
+	if len(os.Args) < 3 || (os.Args[1] != "run" && os.Args[1] != "build" && os.Args[1] != "build-plugin-ui" && os.Args[1] != "sdk-identity" && len(os.Args) != 3 && !resetModules) {
+		return fmt.Errorf("expected prepare|verify|retire [--reset-modules]|run|build|build-plugin-ui|sdk-identity and private cohort configuration")
 	}
 	var config configuration
 	if err := devsession.ReadPrivateJSON(os.Args[2], &config); err != nil {
@@ -63,6 +64,15 @@ func run() error {
 	}
 	var result any
 	switch os.Args[1] {
+	case "build-plugin-ui":
+		if len(os.Args) != 4 || os.Args[3] == "" {
+			return fmt.Errorf("plugin UI build requires the selected plugin ID")
+		}
+		assets, buildErr := manager.BuildPluginUI(ctx, target, os.Args[3], os.Stderr)
+		if buildErr != nil {
+			return buildErr
+		}
+		result = map[string]string{"assets": assets}
 	case "build":
 		if len(os.Args) != 5 {
 			return fmt.Errorf("application build requires private artifact directory and execution report")
@@ -138,7 +148,7 @@ func run() error {
 		if err = devworkspace.RequireStopped(ctx, workspace.ResolvedWorkspace); err != nil {
 			return err
 		}
-		if _, err = manager.Unlink(ctx, target); err != nil {
+		if err = unlinkApplicationCohort(ctx, manager, target, resetModules); err != nil {
 			return err
 		}
 		result, err = manager.RemoveWorkspace(ctx, target, devworkspace.RemoveOptions{PurgeState: true, DeleteBranches: true}, os.Stderr)
@@ -149,6 +159,36 @@ func run() error {
 		return err
 	}
 	return json.NewEncoder(os.Stdout).Encode(result)
+}
+
+// This recovery is explicit and limited to the owned application fixture.
+// The first Unlink must retain its normal ownership guards and reach unlinking;
+// ResetModules then deletes dependencies only before canonical Unlink resumes.
+func unlinkApplicationCohort(ctx context.Context, manager *devworkspace.Manager, target string, resetModules bool) error {
+	_, unlinkErr := manager.Unlink(ctx, target)
+	if unlinkErr == nil || !resetModules {
+		return unlinkErr
+	}
+	if target != "application-build" {
+		return fmt.Errorf("dependency reset is limited to the owned application cohort: %w", unlinkErr)
+	}
+	links, err := manager.InspectLinks(ctx, target)
+	if err != nil {
+		return fmt.Errorf("inspect interrupted cohort unlink: %w (initial unlink: %v)", err, unlinkErr)
+	}
+	if links.Phase != "unlinking" {
+		return unlinkErr
+	}
+	fmt.Fprintf(os.Stderr, "application cohort dependency reset after guarded unlink: %v\n", unlinkErr)
+	reset, err := manager.ResetModules(ctx, target)
+	if err != nil {
+		return fmt.Errorf("reset application cohort dependencies during unlink: %w", err)
+	}
+	if reset.Phase != "unlinking" || reset.Reinstalled {
+		return fmt.Errorf("application cohort dependency reset did not remain delete-only in unlinking phase")
+	}
+	_, err = manager.Unlink(ctx, target)
+	return err
 }
 
 func validateApplicationUIResolutions(paths devworkspace.WorkspacePaths, report devworkspace.LinkReport) error {
