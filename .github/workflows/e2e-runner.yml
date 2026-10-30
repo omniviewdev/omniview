@@ -38,7 +38,6 @@ jobs:
       GO_VERSION: "1.26"
       NODE_OPTIONS: "--max-old-space-size=4096"
       REVIEWED_SDK_REVISION: ${{ vars.OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION }}
-      UI_SOURCE_REF: ${{ vars.OMNIVIEW_E2E_UI_REF }}
       CACHE_ONLY: ${{ inputs.cache-only && 'true' || 'false' }}
       OMNIVIEW_E2E_PREINSTALLED_LINUX: "true"
       SELECTION_BASE: ${{ inputs.base }}
