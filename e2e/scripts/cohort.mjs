@@ -49,6 +49,12 @@ export function verifyApplicationCohort(cohort, execute) {
   return JSON.parse(execute(cohort.tool, ['verify', cohort.config], { capture: true, timeout: 60_000 }));
 }
 
+export function buildApplicationPluginUI(cohort, pluginID, execute) {
+  return JSON.parse(execute(cohort.tool, ['build-plugin-ui', cohort.config, pluginID], { capture: true, timeout: 240_000, extraEnv: cohort.nativeEnvironment }));
+}
+
 export function retireApplicationCohort(cohort, execute) {
-  return JSON.parse(execute(cohort.tool, ['retire', cohort.config], { capture: true, timeout: 60_000, extraEnv: cohort.nativeEnvironment }));
+  // This owned fixture may contain compiler caches in generated dependency trees.
+  // Opt into canonical delete-only module recovery; never relax output ownership.
+  return JSON.parse(execute(cohort.tool, ['retire', cohort.config, '--reset-modules'], { capture: true, timeout: 60_000, extraEnv: cohort.nativeEnvironment }));
 }

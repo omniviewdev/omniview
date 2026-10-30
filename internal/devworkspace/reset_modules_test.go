@@ -3,6 +3,7 @@ package devworkspace
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -25,17 +26,21 @@ type resetModulesFixture struct {
 func newResetModulesFixture(t *testing.T) *resetModulesFixture {
 	t.Helper()
 	ctx := context.Background()
-	m, _ := fixtureManager(t)
-	w, err := m.Create(ctx, CreateOptions{Slug: "reset-modules"})
-	require.NoError(t, err)
-	f := &resetModulesFixture{m: m, w: w, host: filepath.Join(w.Root, "omniview")}
-	require.NoError(t, os.WriteFile(filepath.Join(f.host, "package.json"), []byte(`{"name":"fixture","private":true,"packageManager":"pnpm@12.14.0","dependencies":{"react":"19.0.0","react-dom":"19.0.0"}}`), 0600))
+	m, root := fixtureManager(t)
+	// Keep fixture inputs committed so canonical retirement sees no user edits.
+	source := filepath.Join(root, "omniview")
+	require.NoError(t, os.WriteFile(filepath.Join(source, "package.json"), []byte(`{"name":"fixture","private":true,"packageManager":"pnpm@12.14.0","dependencies":{"react":"19.0.0","react-dom":"19.0.0"}}`), 0600))
 	for _, name := range []string{"runtime", "providers", "vite-plugin"} {
-		target := filepath.Join(f.host, "packages", "omniviewdev-"+name, "package.json")
+		target := filepath.Join(source, "packages", "omniviewdev-"+name, "package.json")
 		require.NoError(t, os.MkdirAll(filepath.Dir(target), 0700))
 		require.NoError(t, os.WriteFile(target, []byte(`{"name":"@omniviewdev/`+name+`","version":"1.0.0"}`), 0600))
 	}
-	require.NoError(t, os.WriteFile(filepath.Join(f.host, "pnpm-workspace.yaml"), []byte("packages:\n  - packages/*\n"), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(source, "pnpm-workspace.yaml"), []byte("packages:\n  - packages/*\n"), 0600))
+	fixtureGit(t, source, "add", "package.json", "pnpm-workspace.yaml", "packages")
+	fixtureGit(t, source, "commit", "-m", "dependency fixture inputs")
+	w, err := m.Create(ctx, CreateOptions{Slug: "reset-modules"})
+	require.NoError(t, err)
+	f := &resetModulesFixture{m: m, w: w, host: filepath.Join(w.Root, "omniview")}
 	j := compositionJournalFixture(t, w)
 	f.run = func(_ context.Context, dir, program string, args ...string) ([]byte, error) {
 		require.Equal(t, "pnpm", program)
@@ -222,4 +227,48 @@ func TestResetModulesUnblocksInterruptedUnlinkWithoutReinstall(t *testing.T) {
 	require.NoDirExists(t, filepath.Join(f.host, "dist"))
 	_, err = os.Lstat(filepath.Join(f.w.Root, ".local", "links.json"))
 	require.True(t, os.IsNotExist(err))
+}
+
+func TestResetModulesRetiresCompilerCachesAndPreservesSiblingState(t *testing.T) {
+	ctx := context.Background()
+	f := newResetModulesFixture(t)
+	sibling, err := f.m.Create(ctx, CreateOptions{Slug: "unrelated-sibling"})
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(sibling.StateRoot, 0700))
+	sentinel := filepath.Join(sibling.StateRoot, "keep")
+	require.NoError(t, os.WriteFile(sentinel, []byte("sibling state"), 0600))
+	stage, err := devoutputs.Prepare(ctx, f.w.ResolvedWorkspace, f.host, devoutputs.Distribution)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(stage.Directory, "index.js"), []byte("published distribution"), 0600))
+	require.NoError(t, devoutputs.Publish(ctx, stage))
+	runtime := filepath.Join(f.host, "packages", "omniviewdev-runtime", "node_modules")
+	cache := filepath.Join(runtime, ".tmp", "tsconfig.app.tsbuildinfo")
+	require.NoError(t, os.MkdirAll(filepath.Dir(cache), 0700))
+	require.NoError(t, os.WriteFile(cache, []byte(`{"version":"5.9.3"}`), 0600))
+	require.Error(t, devoutputs.Validate(ctx, f.w.ResolvedWorkspace))
+	_, err = f.m.Unlink(ctx, f.w.Manifest.Slug)
+	require.ErrorContains(t, err, "owned generated tree changed")
+	journal, err := loadLinkJournal(f.w)
+	require.NoError(t, err)
+	require.Equal(t, "unlinking", journal.Phase)
+	require.FileExists(t, cache, "guarded unlink must not discard changed dependency bytes")
+	report, err := f.m.ResetModules(ctx, f.w.Manifest.Slug)
+	require.NoError(t, err)
+	require.Equal(t, "unlinking", report.Phase)
+	require.False(t, report.Reinstalled)
+	require.Equal(t, 1, f.installs, "unlink recovery must not run an installer")
+	require.Contains(t, report.Removed, runtime)
+	require.NoDirExists(t, runtime)
+	require.FileExists(t, filepath.Join(f.host, "dist", "index.js"), "dependency reset must leave distributions to canonical unlink")
+	require.FileExists(t, sentinel)
+	unlinked, err := f.m.Unlink(ctx, f.w.Manifest.Slug)
+	require.NoError(t, err)
+	require.Equal(t, "unlinked", unlinked.Phase)
+	_, err = f.m.RemoveWorkspace(ctx, f.w.Manifest.Slug, RemoveOptions{PurgeState: true, DeleteBranches: true}, io.Discard)
+	require.NoError(t, err)
+	require.NoDirExists(t, f.w.Root)
+	require.DirExists(t, sibling.Root)
+	contents, err := os.ReadFile(sentinel)
+	require.NoError(t, err)
+	require.Equal(t, "sibling state", string(contents))
 }
