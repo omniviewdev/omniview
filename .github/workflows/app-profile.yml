@@ -13,7 +13,6 @@ env:
   NODE_VERSION: "26.13.0"
   GOWORK: "off"
   GOFLAGS: ""
-  REVIEWED_SDK_REVISION: ${{ vars.OMNIVIEW_E2E_REVIEWED_SDK_REVISION }}
 
 jobs:
   production-profile:
@@ -56,20 +55,19 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Require reviewed source cohort
+      - name: Require the released SDK and a matching source cohort
         id: cohort
         shell: bash
         run: |
-          if [[ ! "$REVIEWED_SDK_REVISION" =~ ^([a-f0-9]{40}|[a-f0-9]{64})$ ]]; then
-            echo "::error::Set OMNIVIEW_E2E_REVIEWED_SDK_REVISION to the independently reviewed full SDK commit."
-            exit 1
-          fi
+          # The release tag on omniviewdev/plugin-sdk that go.mod requires is the
+          # approval of an SDK change; the cohort must select exactly that commit.
+          REVIEWED_SDK_REVISION="$(scripts/sdk-release-revision.sh)"
           jq -e 'type == "object" and (keys == ["kubernetes", "plugin-sdk", "ui"]) and all(.[]; type == "string" and test("^([a-f0-9]{40}|[a-f0-9]{64})$"))' e2e/source-cohort.json > /dev/null
           sdk=$(jq -r '."plugin-sdk"' e2e/source-cohort.json)
           ui=$(jq -r '.ui' e2e/source-cohort.json)
           kubernetes=$(jq -r '.kubernetes' e2e/source-cohort.json)
           if [[ "$sdk" != "$REVIEWED_SDK_REVISION" ]]; then
-            echo "::error::The committed source cohort SDK must match the independently reviewed repository pin. A branch cannot approve its own SDK revision."
+            echo "::error::e2e/source-cohort.json plugin-sdk must be the commit of the plugin-sdk release that go.mod requires ($REVIEWED_SDK_REVISION)."
             exit 1
           fi
           if [[ "$(git ls-tree HEAD -- plugins/kubernetes)" != "160000 commit $kubernetes"$'\tplugins/kubernetes' ]]; then

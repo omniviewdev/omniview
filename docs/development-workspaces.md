@@ -441,7 +441,7 @@ worktree is a source input, not a second package-install root.
 export GOWORK=off
 export SDK_SOURCE=/absolute/plugin-sdk UI_SOURCE=/absolute/ui
 export KUBERNETES_SOURCE=/absolute/kubernetes
-export REVIEWED_SDK_REVISION=<reviewed-full-sdk-commit>
+export REVIEWED_SDK_REVISION=$(scripts/sdk-release-revision.sh)
 task e2e
 task e2e -- --changed --base origin/main
 task e2e -- --grep 'published consumers'
@@ -515,19 +515,21 @@ full commit SHA. UI checkout uses the validated cohort SHA. Kubernetes must matc
 the host's `plugins/kubernetes` gitlink; canonical E2E also verifies the recursive
 submodule checkout. PR branches and `main` can therefore select different
 compatible UI/Kubernetes sources without changing repository variables.
-The SDK SHA must still equal the independently approved repository variable
-`OMNIVIEW_E2E_REVIEWED_SDK_REVISION`; changing the cohort cannot approve an SDK
-change. Publish and review the source commits before selecting them. Source
-identity registration, mandatory probes, conservative selection, and native
-payload cache rules remain unchanged.
+The SDK SHA must equal the commit of the `plugin-sdk` release tag that `go.mod`
+requires (`scripts/sdk-release-revision.sh` resolves it with `git ls-remote`).
+A release tag on `omniviewdev/plugin-sdk` is the approval of an SDK change; a
+branch can only select a published release. Pseudo-versions and `replace`
+directives fail the gate. Publish and review the source commits before selecting
+them. Source identity registration, mandatory probes, conservative selection,
+and native payload cache rules remain unchanged.
 
 Update Kubernetes cohort metadata and the gitlink together after the selected
 Kubernetes consumer commit is published and reviewed. Fetch that exact commit
 in `plugins/kubernetes`, check it out detached, replace only the `kubernetes`
 value in `e2e/source-cohort.json`, and stage both paths in the same host commit.
-Preserve the reviewed SDK pin and independently selected UI source. Do not
-replace a source SHA with a package version, release tag, or an uncommitted
-worktree identity.
+Keep the `plugin-sdk` value at the commit of the released tag `go.mod` requires,
+and preserve the independently selected UI source. Do not replace a source SHA
+with a package version, release tag, or an uncommitted worktree identity.
 
 Run final acceptance only after committing the complete consumer cohort.
 Selected host, SDK, UI and Kubernetes sources must pass source admission;

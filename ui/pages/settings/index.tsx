@@ -11,12 +11,14 @@ import SettingsNav from './SettingsNav';
 import CoreSettingsPage from './CoreSettingsPage';
 import PluginSettingsPage from './PluginSettingsPage';
 import ExtensionSettingsPage from './ExtensionSettingsPage';
+import AiToolsSettingsPage from './AiToolsSettingsPage';
 import { Section, SettingsFocusContext, type SectionSelection } from './settingsContext';
 
 const SECTION_BY_QUERY: Record<string, Section> = {
   core: Section.Core,
   plugins: Section.Plugins,
   extensions: Section.Extensions,
+  'ai-tools': Section.AITools,
 };
 
 /**
@@ -30,7 +32,8 @@ export default function SettingsPage() {
   const sectionQuery = searchParams.get('section') ?? 'core';
   const section = Object.hasOwn(SECTION_BY_QUERY, sectionQuery) ? SECTION_BY_QUERY[sectionQuery] : undefined;
   const selectionParameter = section === Section.Plugins ? 'plugin' : 'category';
-  const id = section === Section.Extensions ? 'extensions' : (searchParams.get(selectionParameter) ?? '');
+  const specialId = section === Section.Extensions ? 'extensions' : section === Section.AITools ? 'ai-tools' : null;
+  const id = specialId ?? (searchParams.get(selectionParameter) ?? '');
   const focusTarget = searchParams.get('setting');
   const focusRequest = React.useMemo(
     () => (focusTarget === null ? null : { settingId: focusTarget, requestKey: location.key }),
@@ -40,7 +43,7 @@ export default function SettingsPage() {
   const malformed =
     !validSection ||
     id.length > 256 ||
-    (focusTarget !== null && (!focusTarget || focusTarget.length > 256 || !id || section === Section.Extensions));
+    (focusTarget !== null && (!focusTarget || focusTarget.length > 256 || !id || specialId !== null));
   const selected: SectionSelection = { section: section ?? Section.Core, id };
   const loading =
     (section === Section.Core && settings.isLoading) || (section === Section.Plugins && plugins.isLoading);
@@ -48,15 +51,18 @@ export default function SettingsPage() {
     Boolean(id) &&
     ((section === Section.Core &&
       id !== 'extensions' &&
+      id !== 'ai-tools' &&
       (!settings.data || !Object.values(settings.data).some((category) => category.id === id))) ||
       (section === Section.Plugins && !plugins.data?.some((plugin) => plugin.id === id)));
   const unavailable = malformed || (!loading && missing) || (section === Section.Plugins && !id);
-  const navSelection = section === Section.Extensions ? { section: Section.Core, id: 'extensions' } : selected;
+  const navSelection = specialId !== null ? { section: Section.Core, id: specialId } : selected;
 
   function select(next: SectionSelection) {
     const params = new URLSearchParams();
     if (next.section === Section.Extensions || (next.section === Section.Core && next.id === 'extensions')) {
       params.set('section', Section.Extensions);
+    } else if (next.section === Section.AITools || (next.section === Section.Core && next.id === 'ai-tools')) {
+      params.set('section', Section.AITools);
     } else {
       params.set('section', next.section);
       params.set(next.section === Section.Plugins ? 'plugin' : 'category', next.id);
@@ -96,6 +102,8 @@ const GetSettingsPage = (section: Section, id: string) => {
       switch (id) {
         case 'extensions':
           return <ExtensionSettingsPage />;
+        case 'ai-tools':
+          return <AiToolsSettingsPage />;
         default:
           return <CoreSettingsPage key={`core:${id}`} id={id} />;
       }
@@ -104,5 +112,7 @@ const GetSettingsPage = (section: Section, id: string) => {
       return <PluginSettingsPage key={`plugins:${id}`} id={id} />;
     case Section.Extensions:
       return <ExtensionSettingsPage />;
+    case Section.AITools:
+      return <AiToolsSettingsPage />;
   }
 };

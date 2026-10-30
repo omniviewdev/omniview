@@ -84,19 +84,30 @@ test('source selection uses branch-owned full commits and cannot self-approve SD
     git(arena, 'update-index', '--add', '--cacheinfo', `160000,${kubernetes},plugins/kubernetes`);
     git(arena, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-m', 'Pin Kubernetes');
     mkdirSync(join(arena, 'e2e'));
+    mkdirSync(join(arena, 'scripts'));
     const sdk = 'a'.repeat(40);
     const ui = 'b'.repeat(40);
-    for (const [source, name] of [[shared, 'Require independently reviewed published source inputs'], [workflow('app-profile.yml'), 'Require reviewed source cohort']]) {
+    // The released revision comes from go.mod through this script (covered by
+    // sdk-release-revision.test.mjs); here it is a fixture so the step contract
+    // runs offline.
+    writeFileSync(join(arena, 'scripts/sdk-release-revision.sh'), `#!/bin/bash\necho ${sdk}\n`, { mode: 0o755 });
+    for (const [source, name] of [[shared, 'Require the released SDK and a matching published source cohort'], [workflow('app-profile.yml'), 'Require the released SDK and a matching source cohort']]) {
       const block = step(source, name);
       const output = join(arena, 'output');
+      const environment = join(arena, 'environment');
       const invoke = cohort => {
         rmSync(output, { force: true });
+        rmSync(environment, { force: true });
         writeFileSync(join(arena, 'e2e/source-cohort.json'), JSON.stringify(cohort));
-        return shell(block, { REVIEWED_SDK_REVISION: sdk, GITHUB_OUTPUT: output }, arena);
+        return shell(block, { GITHUB_OUTPUT: output, GITHUB_ENV: environment }, arena);
       };
       const cohort = { 'plugin-sdk': sdk, ui, kubernetes };
       assert.equal(invoke(cohort).status, 0);
       assert.match(readFileSync(output, 'utf8'), new RegExp(`^ui=${ui}$`, 'm'));
+      if (source === shared) {
+        assert.match(readFileSync(output, 'utf8'), new RegExp(`^sdk=${sdk}$`, 'm'));
+        assert.equal(readFileSync(environment, 'utf8'), `REVIEWED_SDK_REVISION=${sdk}\n`);
+      }
       const upgradedUI = 'e'.repeat(40);
       assert.equal(invoke({ ...cohort, ui: upgradedUI }).status, 0);
       assert.match(readFileSync(output, 'utf8'), new RegExp(`^ui=${upgradedUI}$`, 'm'));

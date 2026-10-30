@@ -4,6 +4,7 @@ export enum Section {
   Core = 'core',
   Plugins = 'plugins',
   Extensions = 'extensions',
+  AITools = 'ai-tools',
 }
 
 export type SectionSelection = {
