@@ -2,7 +2,8 @@ import React from 'react';
 import { Avatar, Banner, Button, Grid, Stack, Text, TextArea, TextField } from '@omniviewdev/base-ui';
 import { parseAppError, useConnection, useConnectionProfiles, type AppError } from '@omniviewdev/runtime';
 import { Connection } from '@omniviewdev/runtime/models';
-import { useParams } from 'react-router';
+import { useLocation } from 'react-router';
+import { parsePagePath } from '@/features/workspace/pagePaths';
 
 function ProfileEditor({ connection, pending, onSave, onDraftChange }: {
   connection: Connection;
@@ -56,7 +57,10 @@ function ProfileEditor({ connection, pending, onSave, onDraftChange }: {
 }
 
 export default function ConnectionDetails(): React.ReactElement {
-  const { pluginID = '', connectionID = '' } = useParams<{ pluginID: string; connectionID: string }>();
+  // Decode raw segments once: router params also rewrite literal encoded slashes.
+  const target = parsePagePath(useLocation().pathname);
+  const pluginID = target.kind === 'connection' ? target.pluginId : '';
+  const connectionID = target.kind === 'connection' ? target.connectionId : '';
   const { profiles } = useConnectionProfiles({ pluginID });
   const profile = profiles.data?.find((entry) => entry.id === connectionID);
   const { connection, saveConnectionProfile, importConnectionProfile, resetConnectionProfile, removeConnection } = useConnection({

@@ -5,18 +5,22 @@ import type * as Runtime from '@omniviewdev/runtime';
 import type { ConnectionProfile } from '@omniviewdev/runtime';
 import { Connection } from '@omniviewdev/runtime/models';
 import ConnectionDetails from './ConnectionDetails';
+import { connectionProfilePath } from '@/features/workspace/pagePaths';
 
 const mocks = vi.hoisted(() => ({
   profiles: [] as ConnectionProfile[],
   effective: undefined as unknown,
   save: vi.fn(), importProfile: vi.fn(), reset: vi.fn(), remove: vi.fn(),
-  useConnection: vi.fn(),
+  useConnection: vi.fn(), useConnectionProfiles: vi.fn(),
 }));
 vi.mock('@omniviewdev/runtime', async () => {
   const actual = await vi.importActual<typeof Runtime>('@omniviewdev/runtime');
   return {
     ...actual,
-    useConnectionProfiles: () => ({ profiles: { data: mocks.profiles, isLoading: false, isError: false } }),
+    useConnectionProfiles: (options: unknown) => {
+      mocks.useConnectionProfiles(options);
+      return { profiles: { data: mocks.profiles, isLoading: false, isError: false } };
+    },
     useConnection: (options: unknown) => {
       mocks.useConnection(options);
       return {
@@ -40,8 +44,8 @@ vi.mock('@omniviewdev/base-ui', () => {
 });
 
 const effective = Connection.createFrom({ id: 'route', name: 'Native', description: 'Source', data: { endpoint: 'https://old.example' }, labels: {} });
-function open() {
-  return render(<MemoryRouter initialEntries={['/connections/provider/route/edit']}>
+function open(pluginID = 'provider', connectionID = 'route') {
+  return render(<MemoryRouter initialEntries={[connectionProfilePath(pluginID, connectionID)]}>
     <Routes><Route path="/connections/:pluginID/:connectionID/edit" element={<ConnectionDetails />} /></Routes>
   </MemoryRouter>);
 }
@@ -125,4 +129,15 @@ it('does not apply invalid desired JSON', async () => {
   await act(async () => fireEvent.click(screen.getByText('Save and apply')));
   expect(mocks.save).not.toHaveBeenCalled();
   expect(screen.getByText(/Connection change failed/)).toBeTruthy();
+});
+
+it.each(['prod/blue', 'prod%2Fblue', 'prod%252Fblue'])('edits the exact opaque host profile %s', async (connectionID) => {
+  const pluginID = 'provider%2Fopaque';
+  const connection = Connection.createFrom({ ...effective, id: connectionID });
+  mocks.profiles = [{ id: connectionID, source: 'native', active: true, connection }];
+  open(pluginID, connectionID);
+  expect(mocks.useConnectionProfiles).toHaveBeenCalledWith({ pluginID });
+  expect(mocks.useConnection).toHaveBeenCalledWith({ pluginID, connectionID, enabled: true });
+  await act(async () => fireEvent.click(screen.getByText('Save and apply')));
+  expect(mocks.save).toHaveBeenCalledWith(expect.objectContaining({ id: connectionID }));
 });

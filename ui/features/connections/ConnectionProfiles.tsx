@@ -1,13 +1,15 @@
-import { Link, useParams } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import { Button, Spinner, Stack, Text } from '@omniviewdev/base-ui';
 import { parseAppError, useConnectionProfiles } from '@omniviewdev/runtime';
-import { connectionProfilePath, resourceBrowserPath } from '@/features/workspace/pagePaths';
+import { connectionProfilePath, parsePagePath, resourceBrowserPath } from '@/features/workspace/pagePaths';
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { reloadConnections } from '@/features/command-search/commands';
 
 export default function ConnectionProfiles() {
-  const { pluginID = '' } = useParams();
+  // Decode raw segments once: router params also rewrite literal encoded slashes.
+  const target = parsePagePath(useLocation().pathname);
+  const pluginID = target.kind === 'plugin' ? target.pluginId : '';
   const { profiles } = useConnectionProfiles({ pluginID });
   const queryClient = useQueryClient();
   const [error, setError] = useState<unknown>();

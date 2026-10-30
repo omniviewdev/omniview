@@ -1,14 +1,17 @@
 import { useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { Button, Spinner, Stack, Text } from '@omniviewdev/base-ui';
 import { ConnectionBoundary, ConnectionBoundaryFallback, parseAppError, useConnection, useResourceGroups, useResourceTypes } from '@omniviewdev/runtime';
 import ResourceTable from '@/components/tables/Resources';
 import Icon from '@/components/icons/Icon';
-import { connectionProfilePath, connectionProfilesPath } from '@/features/workspace/pagePaths';
+import { connectionProfilePath, connectionProfilesPath, parsePagePath } from '@/features/workspace/pagePaths';
 
 /** Workspace-owned browser; provider type IDs remain opaque in both state and URLs. */
 export default function ResourceBrowser() {
-  const { pluginID = '', connectionID = '' } = useParams();
+  // Decode raw segments once: router params also rewrite literal encoded slashes.
+  const target = parsePagePath(useLocation().pathname);
+  const pluginID = target.kind === 'connection' ? target.pluginId : '';
+  const connectionID = target.kind === 'connection' ? target.connectionId : '';
   const navigate = useNavigate();
   return <ConnectionBoundary pluginID={pluginID} connectionID={connectionID} fallback={(state) =>
     <ConnectionBoundaryFallback state={state}
