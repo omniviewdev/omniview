@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -23,7 +25,7 @@ type ownedChild struct {
 	command     *exec.Cmd
 	identity    devcontract.ProcessIdentity
 	done        chan struct{}
-	mu          sync.Mutex
+	mu          supervisorMutex
 	err         error
 	finalizeErr error
 	disposalErr error
@@ -36,7 +38,53 @@ type ownedChild struct {
 	disposed    bool
 	stopping    bool
 	stopTree    func(bool) error
+	signalMu    sync.Mutex
+	signal      *ownedSignal
 	monitorOnce sync.Once
+}
+
+// A canceled caller leaves one retained attempt, not an unowned signal worker
+// per retry. The actual platform callback still owns proof against reaping.
+type ownedSignal struct {
+	done  chan struct{}
+	force bool
+	err   error
+}
+
+func (c *ownedChild) signalTree(ctx context.Context, force bool) error {
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		c.signalMu.Lock()
+		if err := ctx.Err(); err != nil {
+			c.signalMu.Unlock()
+			return err
+		}
+		attempt := c.signal
+		if attempt == nil {
+			attempt = &ownedSignal{done: make(chan struct{}), force: force}
+			c.signal = attempt
+			go func() {
+				attempt.err = c.stopTree(force)
+				c.signalMu.Lock()
+				c.signal = nil
+				close(attempt.done)
+				c.signalMu.Unlock()
+			}()
+		}
+		c.signalMu.Unlock()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-attempt.done:
+			if force && !attempt.force {
+				// A concurrent graceful attempt cannot satisfy a force request.
+				continue
+			}
+			return attempt.err
+		}
+	}
 }
 
 func startOwnedChild(ctx context.Context, directory string, env []string, output io.Writer, owner devsession.ProcessOwner, finalize func() error, program string, args ...string) (*ownedChild, error) {
@@ -88,7 +136,10 @@ func startOwnedChildCommand(ctx context.Context, command *exec.Cmd, owner devses
 	child := &ownedChild{command: command, done: make(chan struct{}), finalize: finalize}
 	var err error
 	if identityRequired {
-		child.identity, err = devsession.CaptureProcess(command.Process.Pid, owner)
+		pid := command.Process.Pid
+		child.identity, err = captureExecutedProcess(ctx, launchedExecutable(command), supervisorExecutable(), execCaptureTimeout, func() (devcontract.ProcessIdentity, error) {
+			return devsession.CaptureProcess(pid, owner)
+		})
 	}
 	if err == nil {
 		err = attachOwnedCommand(child)
@@ -117,6 +168,53 @@ func startOwnedChildCommand(ctx context.Context, command *exec.Cmd, owner devses
 		}
 	}()
 	return child, nil
+}
+
+// Bounds how long a started child may still report the supervisor's image.
+const execCaptureTimeout = 5 * time.Second
+
+var supervisorExecutable = sync.OnceValue(func() string {
+	path, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
+	}
+	return path
+})
+
+func launchedExecutable(command *exec.Cmd) string {
+	path := command.Path
+	if !filepath.IsAbs(path) && command.Dir != "" {
+		path = filepath.Join(command.Dir, path)
+	}
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
+	}
+	return path
+}
+
+// Start can return while the forked child still runs the supervisor's image, so
+// an immediate capture may record the supervisor's executable for the child PID.
+// That identity never matches the child's own report once exec completes.
+// Recapture until the child stops reporting the supervisor's executable.
+func captureExecutedProcess(ctx context.Context, launched, self string, timeout time.Duration, capture func() (devcontract.ProcessIdentity, error)) (devcontract.ProcessIdentity, error) {
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	for {
+		identity, err := capture()
+		if err != nil || self == "" || launched == self || identity.Executable != self {
+			return identity, err
+		}
+		select {
+		case <-ctx.Done():
+			return devcontract.ProcessIdentity{}, ctx.Err()
+		case <-deadline.C:
+			return devcontract.ProcessIdentity{}, fmt.Errorf("%w: started child did not exec %s", devsession.ErrOwnership, launched)
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
 }
 
 // complete is called by one observer at a time. A disposal error is not an
@@ -156,7 +254,9 @@ func (c *ownedChild) complete() {
 }
 
 func (c *ownedChild) retryStop(ctx context.Context) error {
-	c.mu.Lock()
+	if err := c.mu.LockContext(ctx); err != nil {
+		return err
+	}
 	if c.disposed && c.disposalErr == nil && c.finalizeErr == nil {
 		c.mu.Unlock()
 		return nil
@@ -176,7 +276,7 @@ func (c *ownedChild) retryStop(ctx context.Context) error {
 		go func() {
 			var stopErr error
 			if retryDisposal {
-				stopErr = c.stopTree(true)
+				stopErr = c.signalTree(context.Background(), true)
 			}
 			if stopErr == nil {
 				c.complete()
@@ -195,7 +295,7 @@ func (c *ownedChild) retryStop(ctx context.Context) error {
 	c.mu.Unlock()
 	select {
 	case <-done:
-		return c.terminalStopError()
+		return c.terminalStopError(ctx)
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -205,7 +305,9 @@ func (c *ownedChild) stop(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	c.mu.Lock()
+	if err := c.mu.LockContext(ctx); err != nil {
+		return err
+	}
 	c.stopping = true
 	c.mu.Unlock()
 	select {
@@ -214,30 +316,32 @@ func (c *ownedChild) stop(ctx context.Context) error {
 	default:
 	}
 	// stopTree owns synchronization against reaping, including exit cleanup.
-	if err := c.stopTree(false); err != nil {
+	if err := c.signalTree(ctx, false); err != nil {
 		return err
 	}
 	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
 	select {
 	case <-c.done:
-		return c.terminalStopError()
+		return c.terminalStopError(ctx)
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-timer.C:
 	}
-	if err := c.stopTree(true); err != nil {
+	if err := c.signalTree(ctx, true); err != nil {
 		return err
 	}
 	select {
 	case <-c.done:
-		return c.terminalStopError()
+		return c.terminalStopError(ctx)
 	case <-ctx.Done():
 		return ctx.Err()
 	}
 }
-func (c *ownedChild) terminalStopError() error {
-	c.mu.Lock()
+func (c *ownedChild) terminalStopError(ctx context.Context) error {
+	if err := c.mu.LockContext(ctx); err != nil {
+		return err
+	}
 	defer c.mu.Unlock()
 	if !c.disposed {
 		return errors.Join(errOwnedCommandUncertain, c.err)

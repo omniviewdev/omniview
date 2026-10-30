@@ -3,7 +3,6 @@ import { Events } from '@wailsio/runtime';
 import {
   ListAllConnections,
   GetAllConnectionStates,
-  StopConnection,
   StartConnectionWatch,
   Catalog,
   ResolveTarget,
@@ -11,9 +10,10 @@ import {
 import { RetryFailedPlugin } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/servicewrapper';
 import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 import { WatchState } from '../../types/watch';
-import type { ConnectionReadiness, HostConnectionState, HostWatchStateEvent } from '../../resource/v2/host';
+import type { NativeConnectionReadiness, HostConnectionState, HostWatchStateEvent } from '../../resource/v2/host';
 import { parseAppError } from '../../errors/parseAppError';
 import type { AppError } from '../../errors/types';
+import { stopConnectionWithReadiness } from '../../connection/connectionReadiness';
 import {
   type ActiveSync,
   type ResourceTracker,
@@ -30,7 +30,7 @@ export interface ConnectionStatusEntry {
   connectionID: string;
   name: string;
   avatar: string;
-  readiness: ConnectionReadiness;
+  readiness: NativeConnectionReadiness;
   readinessError?: HostConnectionState['readinessError'];
   sync?: ActiveSync;
   isSyncing: boolean;
@@ -180,7 +180,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
       const event = ev.data;
       const key = JSON.stringify([event.pluginID, event.connectionID]);
 
-      const status: ConnectionReadiness =
+      const status: NativeConnectionReadiness =
         event.status === 'DISCONNECTED' || event.status === 'PENDING' ||
         event.status === 'CONNECTED' || event.status === 'FAILED'
           ? event.status : 'UNKNOWN';
@@ -244,7 +244,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
 
   // Actions
   const disconnect = useCallback(async (pluginID: string, connectionID: string) => {
-    await StopConnection(pluginID, connectionID);
+    await stopConnectionWithReadiness(pluginID, connectionID);
   }, []);
 
   const retryWatch = useCallback(async (pluginID: string, connectionID: string) => {

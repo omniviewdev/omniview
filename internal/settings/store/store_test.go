@@ -432,39 +432,3 @@ func TestOpen_CorruptFile_BackupPreserved(t *testing.T) {
 	assert.True(t, backupFound, "corrupt backup file should exist")
 }
 
-func TestMCPRelayConfig_RoundTrip(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "settings.db")
-	s, err := Open(path)
-	require.NoError(t, err)
-
-	type document struct {
-		Enabled  bool                        `json:"enabled"`
-		Token    string                      `json:"token"`
-		Policies map[string]map[string]*bool `json:"policies"`
-	}
-	var loaded document
-	found, err := s.LoadMCPRelayConfig(&loaded)
-	require.NoError(t, err)
-	assert.False(t, found, "fresh store has no relay config")
-
-	denied := false
-	want := document{Enabled: true, Token: "secret", Policies: map[string]map[string]*bool{
-		"plugin": {"inherit": nil, "deny": &denied},
-	}}
-	require.NoError(t, s.SaveMCPRelayConfig(want))
-	require.NoError(t, s.Close())
-
-	s2, err := Open(path)
-	require.NoError(t, err)
-	defer s2.Close()
-	found, err = s2.LoadMCPRelayConfig(&loaded)
-	require.NoError(t, err)
-	assert.True(t, found)
-	assert.Equal(t, want, loaded)
-	require.Contains(t, loaded.Policies["plugin"], "inherit")
-	require.Nil(t, loaded.Policies["plugin"]["inherit"])
-	require.NotNil(t, loaded.Policies["plugin"]["deny"])
-	require.False(t, *loaded.Policies["plugin"]["deny"])
-}

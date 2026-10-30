@@ -384,7 +384,7 @@ func TestWatchStartupFailurePreservesDesiredProfilesThroughFailedUnloadAndReload
 	require.NoError(t, ctrl.OnPluginShutdown(pluginID, defaultMeta()))
 	require.EqualValues(t, 1, failedProvider.closeCalls.Load(), "later unload must not close the failed source twice")
 	stoppedConnections, err := ctrl.ListConnections(testInvocationContext(), pluginID)
-	require.Equal(t, "NOT_FOUND", requireAppError(t, err).Code)
+	require.NoError(t, err)
 	require.Empty(t, stoppedConnections, "normal failed-plugin stop must still retire its in-memory connection cache")
 	persisted, err := readDesiredConnections(storeRoot)
 	require.NoError(t, err)

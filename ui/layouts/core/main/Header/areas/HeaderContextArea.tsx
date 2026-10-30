@@ -1,5 +1,4 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
 import { IconButton, Text } from '@omniviewdev/base-ui';
 
 // Project imports
@@ -40,16 +39,5 @@ const HeaderContextArea: React.FC<Props> = ({ icon, title, iconLink, onIconClick
     )}
   </div>
 );
-
-/**
- * Conditionally renders a link around the children if a link is provided.
- */
-export const WithConditionalLink = ({ link, children }: { link?: string; children: React.ReactNode }): React.ReactNode => {
-  if (link) {
-    return <Link to={link}>{children}</Link>;
-  }
-
-  return children;
-};
 
 export default HeaderContextArea;

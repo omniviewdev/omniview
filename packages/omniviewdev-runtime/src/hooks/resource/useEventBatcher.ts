@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useLayoutEffect, useRef } from 'react';
 import { hashKey, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import type { HostRecord, HostWatchAddPayload, HostWatchDeletePayload, HostWatchUpdatePayload, ResourceView } from '../../resource/v2/host';
 import { WatchState } from '../../types/watch';
@@ -14,23 +14,31 @@ export type ResourceUpdateEvent =
 /** Advisory events may patch observed host keys, never expand native page membership. */
 export function applyBatch(oldData: ResourceView | undefined, events: readonly ResourceUpdateEvent[], membershipChanged = false): ResourceView | undefined {
   if (!oldData || (!events.length && !membershipChanged)) return oldData;
-  const records = [...oldData.records];
+  let records: HostRecord[] | undefined;
+  const positions = events.length > 1 ? new Map(oldData.records.map((row, index) => [row.key, index])) : undefined;
+  const deleted = new Set<number>();
   let membershipStale = oldData.view?.membershipStale === true || membershipChanged;
   for (const event of events) {
+    const key = event.type === 'DELETE' ? event.payload.key : event.payload.record.key;
+    const index = positions ? positions.get(key) ?? -1 : oldData.records.findIndex((row) => row.key === key);
     if (event.type === 'DELETE') {
-      const index = records.findIndex((row) => row.key === event.payload.key);
-      if (index !== -1) records.splice(index, 1);
+      if (index !== -1) deleted.add(index);
       // A deleted member can leave a page gap; unknown incarnations are never inferred.
       membershipStale = true;
+    } else if (index === -1 || deleted.has(index)) {
+      membershipStale = true;
     } else {
-      const row = event.payload.record;
-      const index = records.findIndex((existing) => existing.key === row.key);
-      if (index === -1) membershipStale = true;
-      else records[index] = row;
+      if ((records ?? oldData.records)[index] !== event.payload.record) {
+        records ??= [...oldData.records];
+        records[index] = event.payload.record;
+      }
     }
   }
+  if (!records && !deleted.size && oldData.view?.membershipStale === membershipStale &&
+    oldData.view.guarantee === 'bestEffort' && oldData.view.count.kind === 'unknown' && oldData.view.sourceRevision === undefined) return oldData;
+  const rows = records ?? oldData.records;
   return {
-    records,
+    records: deleted.size ? rows.filter((_, index) => !deleted.has(index)) : rows,
     sourcePage: oldData.sourcePage,
     view: { guarantee: 'bestEffort', count: { kind: 'unknown' }, membershipStale },
   };
@@ -41,14 +49,17 @@ export function useEventBatcher(
   queryClient: QueryClient,
   queryKey: QueryKey,
   watchState: WatchState,
-  options?: { syncWindowMs?: number },
+  options?: { syncWindowMs?: number; enabled?: boolean },
 ) {
   const buffer = useRef(new Map<string, ResourceUpdateEvent>());
   const pendingMembershipChange = useRef(false);
   const timer = useRef<number | undefined>(undefined);
   const frame = useRef<number | undefined>(undefined);
   const state = useRef(watchState);
-  state.current = watchState;
+  const enabled = options?.enabled ?? true;
+  useLayoutEffect(() => {
+    state.current = watchState;
+  }, [watchState]);
   const windowMs = options?.syncWindowMs ?? 500;
   const flush = useCallback(() => {
     window.clearTimeout(timer.current);
@@ -76,16 +87,19 @@ export function useEventBatcher(
     }
   }, [queryClient, queryKey]);
   const enqueue = useCallback((event: ResourceUpdateEvent) => {
+    if (!enabled) return;
     const key = event.type === 'DELETE' ? event.payload.key : event.payload.record.key;
     const baseline = queryClient.getQueryData<ResourceView>(queryKey);
     if (baseline?.records.some((row) => row.key === key)) buffer.current.set(key, event);
     else pendingMembershipChange.current = true;
     if (event.type === 'DELETE') pendingMembershipChange.current = true;
     if (timer.current !== undefined || frame.current !== undefined) return;
+    // A timer also bounds live mode when Chromium withholds animation frames.
     timer.current = window.setTimeout(flush, windowMs);
     if (state.current !== WatchState.WatchStateSyncing) frame.current = requestAnimationFrame(flush);
-  }, [queryClient, queryKey, flush, windowMs]);
-  useEffect(() => {
+  }, [queryClient, queryKey, flush, windowMs, enabled]);
+  useLayoutEffect(() => {
+    if (!enabled) return;
     const cancel = queryClient.getQueryCache().subscribe((event) => {
       if (event.type !== 'updated' || event.query.queryHash !== hashKey(queryKey)) return;
       if (event.action.type === 'fetch') {
@@ -103,6 +117,6 @@ export function useEventBatcher(
       timer.current = undefined;
       frame.current = undefined;
     };
-  }, [queryClient, queryKey, flush]);
+  }, [queryClient, queryKey, flush, enabled]);
   return enqueue;
 }

@@ -718,12 +718,9 @@ func (c *controller) ListConnections(ctx context.Context, pluginID string) (_res
 	}
 	defer finishResource(ctx, &retErr)
 	c.connsMu.RLock()
-	src, ok := c.connections[pluginID]
-	if !ok {
-		c.connsMu.RUnlock()
-		return nil, apperror.New(apperror.TypeConnectionNotFound, http.StatusNotFound,
-			"No connections", fmt.Sprintf("Plugin '%s' has no connections configured.", pluginID))
-	}
+	// The cache may not exist yet during plugin startup. An empty collection
+	// is valid both before discovery and when no connections are configured.
+	src := c.connections[pluginID]
 	conns := make([]types.Connection, len(src))
 	copy(conns, src)
 	c.connsMu.RUnlock()

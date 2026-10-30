@@ -82,8 +82,13 @@ export function useDevelopmentStatus(info: InstanceInfo | null, confirmed: boole
   const [snapshot, setSnapshot] = useState<DevelopmentStatus | null>(null);
   const workspaceID = confirmed ? info?.workspaceID : undefined;
   const generation = confirmed ? info?.generation : undefined;
-  useEffect(() => {
+  const [identity, setIdentity] = useState({ workspaceID, generation });
+  if (identity.workspaceID !== workspaceID || identity.generation !== generation) {
+    setIdentity({ workspaceID, generation });
     setSnapshot(null);
+  }
+
+  useEffect(() => {
     if (!workspaceID || !generation) {
       return;
     }

@@ -10,7 +10,7 @@ export function useLogger(component: string): Logger {
 
 export function useTelemetryContext(overrides?: Partial<TelemetryContext>): TelemetryContext {
   return useMemo(() => new Proxy(
-    { ...overrides } as TelemetryContext,
+    { ...overrides },
     {
       get(target, prop) {
         if (prop === 'traceId') {

@@ -47,7 +47,6 @@ dist-ssr
 
 
 
-.nx
 
 # Benchmark output
 benchmarks/
@@ -58,8 +57,10 @@ benchmarks/
 # E2E tests
 e2e/test-results/
 e2e/playwright-report/
+.vitest/
 
 # Task runner
 .task
 /omniview
 docs/superpowers/
+.tools/

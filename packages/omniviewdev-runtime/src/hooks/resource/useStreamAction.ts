@@ -8,6 +8,7 @@ import { valueToJSON } from '../../resource/v2/value';
 import type { ActionSnapshot } from '../../resource/v2/client';
 import { StreamAction, AttachStreamAction, CancelStreamAction } from '../../resource/v2/client';
 import { useResolvedPluginId } from '../useResolvedPluginId';
+import { requireConnectionReady } from '../../connection/connectionReadiness';
 
 type UseStreamActionOptions = { pluginID?: string };
 type StartStreamActionParams = { request: ActionRequest; label: string };
@@ -49,12 +50,14 @@ export const useStreamAction = ({ pluginID: explicitPluginID }: UseStreamActionO
     const action: PendingAction = { disposed: false, terminal: false, sequence: 0 };
     actions.current.add(action);
     try {
+      await requireConnectionReady(pluginID, request.route.connection);
+      if (action.disposed) throw new Error('Stream action was cancelled before the connection became ready');
       action.open = StreamAction(pluginID, request);
       const handle = await action.open;
       action.open = undefined;
       if (action.disposed) { void CancelStreamAction(handle).catch(() => undefined); return handle; }
       action.handle = handle;
-      addOperation({ id: handle, label, resourceKey: request.reference.address.type, resourceName: request.reference.address.id, connectionID: request.route.connection, status: 'running', startedAt: Date.now() });
+      addOperation({ id: handle, label, resourceKey: request.typeTarget?.type ?? request.reference?.address.type ?? '', resourceName: request.reference?.address.id ?? '', connectionID: request.route.connection, status: 'running', startedAt: Date.now() });
       const apply = (snapshot: ActionSnapshot) => {
         if (action.disposed || !Number.isSafeInteger(snapshot.sequence) || snapshot.sequence <= action.sequence) return;
         action.sequence = snapshot.sequence;

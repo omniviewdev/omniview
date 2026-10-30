@@ -237,10 +237,10 @@ describe('Group 22: Route Building', () => {
   });
 });
 
-// ─── Group 23.6: RouteProvider Consumer Migration Checks ────────────
+// ─── Group 23.6: Page Route Consumer Migration Checks ───────────────
 
-describe('Group 23.6: RouteProvider Consumer Migration', () => {
-  const routeProviderPath = path.resolve(__dirname, 'RouteProvider.tsx');
+describe('Group 23.6: Page Route Consumer Migration', () => {
+  const routeProviderPath = path.resolve(__dirname, '..', 'workspace', 'pageRoutes.tsx');
 
   it('23.6.19 — uses usePluginRoutes for routes', () => {
     const source = fs.readFileSync(routeProviderPath, 'utf-8');

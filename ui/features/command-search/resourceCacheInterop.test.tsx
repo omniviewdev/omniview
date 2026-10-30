@@ -15,6 +15,9 @@ vi.mock('../../../packages/omniviewdev-runtime/src/hooks/snackbar/useSnackbar', 
 vi.mock('../../../packages/omniviewdev-runtime/src/resource/v2/client', () => ({
   Get: native.get, Mutate: vi.fn(),
 }));
+vi.mock('../../../packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper', () => ({
+  CheckConnection: vi.fn().mockResolvedValue({ status: 'CONNECTED', connection: null, error: '', details: '' }),
+}));
 afterEach(cleanup);
 
 it('updates detail readers from host-keyed advisory events without losing the canonical envelope or refetching', async () => {

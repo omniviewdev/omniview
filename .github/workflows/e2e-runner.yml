@@ -54,7 +54,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "24.14.0"
+          node-version: "26.13.0"
 
       - name: Admit independently reviewed candidate cohort
         id: candidate
@@ -97,6 +97,7 @@ jobs:
 
       - name: Start inclusive preparation clock
         run: echo "OMNIVIEW_E2E_PREPARATION_STARTED_AT=$(date +%s%3N)" >> "$GITHUB_ENV"
+
 
       - name: Selector and cache-mode boundary contracts
         run: node --test e2e/scripts/*.test.mjs

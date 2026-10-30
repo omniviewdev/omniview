@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -44,6 +45,7 @@ import (
 	"github.com/omniviewdev/omniview/internal/mcprelay"
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
 	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
+	"github.com/omniviewdev/omniview/internal/shellenv"
 	"github.com/omniviewdev/omniview/internal/telemetry"
 	"github.com/omniviewdev/omniview/internal/version"
 	logging "github.com/omniviewdev/plugin-sdk/log"
@@ -108,6 +110,11 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: invalid runtime profile: %v\n", err)
 		os.Exit(1)
+	}
+	// Finder does not inherit a terminal's login PATH. Resolve it before any
+	// plugin or executable starts, while preserving host isolation authority.
+	if err := shellenv.Restore(context.Background()); err != nil {
+		fmt.Fprintln(os.Stderr, "warning: login environment unavailable; keeping inherited environment")
 	}
 	var pluginAssets, defaultAssets http.Handler
 	options := application.Options{
@@ -456,6 +463,7 @@ func main() {
 	if settingsStore != nil {
 		mcpRelayStore = settingsStore
 	}
+	var windowService *window.Service
 	mcpRelay := mcprelay.New(mcprelay.Options{
 		Log:         log,
 		Store:       mcpRelayStore,
@@ -465,6 +473,12 @@ func main() {
 		Authority:   mcpAuthority,
 		Boundary:    resourceBoundary,
 		Logs:        logsController,
+		ShowConfirmation: func() error {
+			if windowService == nil {
+				return errors.New("Confirmation window is unavailable.")
+			}
+			return windowService.Focus(window.MainWindowName)
+		},
 	})
 
 	// Register controllers before bootstrap: bootstrap loads plugins and their
@@ -532,14 +546,10 @@ func main() {
 		windowTitle = appName + " — DEV · " + profile.Descriptor.DisplayName
 	}
 
-	// Create the main window
-	mainWindow := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name:      "main",
-		Title:     windowTitle,
-		Width:     DefaultWebviewWidth,
-		Height:    DefaultWebviewHeight,
-		MinWidth:  MinWebviewWidth,
-		MinHeight: MinWebviewHeight,
+	// Every window shares the main window's title and appearance; the window
+	// service overrides name, URL, size and position for secondary windows.
+	windowTemplate := application.WebviewWindowOptions{
+		Title: windowTitle,
 		BackgroundColour: application.NewRGBA(
 			backgroundRed,
 			backgroundGreen,
@@ -551,7 +561,16 @@ func main() {
 			TitleBar: application.MacTitleBarHidden,
 			Backdrop: application.MacBackdropTranslucent,
 		},
-	})
+	}
+
+	// Create the main window
+	mainWindowOptions := windowTemplate
+	mainWindowOptions.Name = window.MainWindowName
+	mainWindowOptions.Width = DefaultWebviewWidth
+	mainWindowOptions.Height = DefaultWebviewHeight
+	mainWindowOptions.MinWidth = MinWebviewWidth
+	mainWindowOptions.MinHeight = MinWebviewHeight
+	mainWindow := app.Window.NewWithOptions(mainWindowOptions)
 	if runtimeReady != nil {
 		mainWindow.OnWindowEvent(events.Common.WindowRuntimeReady, func(_ *application.WindowEvent) {
 			runtimeReady()
@@ -563,8 +582,14 @@ func main() {
 	menus.SetupKeyBindings(app)
 	menus.SetupContextMenus(app)
 
-	// Set up window manager (registers hide-on-close hook, etc.)
-	_ = window.NewManager(app, mainWindow)
+	// The window service keeps main hide-on-close, restores the saved
+	// secondary windows and coordinates cross-window tab drags.
+	windowService = window.NewService(app, mainWindow, window.ServiceOptions{
+		WindowTemplate: windowTemplate,
+		SessionPath:    stateDir.RootDir().ResolvePath(window.SessionFileName),
+		Log:            log.Named("window"),
+	})
+	app.RegisterService(application.NewService(windowService))
 
 	// Run the application
 	if runErr := app.Run(); runErr != nil {

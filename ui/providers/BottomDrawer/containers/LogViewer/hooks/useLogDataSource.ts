@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import type { LogEntry, LogStreamEvent, LogDataSource } from '../types';
 
 type UseLogDataSourceOpts = {
@@ -14,7 +14,11 @@ type UseLogDataSourceOpts = {
  */
 export function useLogDataSource({ source, onLines, onEvent, paused }: UseLogDataSourceOpts): void {
   const pausedRef = useRef(paused);
-  pausedRef.current = paused;
+  const callbacksRef = useRef({ onLines, onEvent });
+  useLayoutEffect(() => {
+    pausedRef.current = paused;
+    callbacksRef.current = { onLines, onEvent };
+  }, [paused, onLines, onEvent]);
   const pauseBufferRef = useRef<LogEntry[]>([]);
 
   const flushPauseBuffer = useCallback(() => {
@@ -36,7 +40,7 @@ export function useLogDataSource({ source, onLines, onEvent, paused }: UseLogDat
     if (source.loadHistory) {
       source.loadHistory().then((entries) => {
         if (entries.length > 0) {
-          onLines(entries);
+          callbacksRef.current.onLines(entries);
         }
       }).catch(() => {/* swallow */});
     }
@@ -47,10 +51,12 @@ export function useLogDataSource({ source, onLines, onEvent, paused }: UseLogDat
         if (pausedRef.current) {
           pauseBufferRef.current.push(...entries);
         } else {
-          onLines(entries);
+          callbacksRef.current.onLines(entries);
         }
       },
-      onEvent,
+      onEvent: (event) => {
+        callbacksRef.current.onEvent(event);
+      },
     });
 
     return cleanup;

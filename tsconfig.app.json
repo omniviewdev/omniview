@@ -10,6 +10,7 @@
     ],
     "module": "ESNext",
     "skipLibCheck": true,
+    "types": ["node", "vite/client", "systemjs", "@welldone-software/why-did-you-render"],
     /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
@@ -32,9 +33,6 @@
       ],
       "@hooks/*": [
         "./ui/hooks/*"
-      ],
-      "@infraview/*": [
-        "./ui/pkg/*"
       ],
       "@layouts/*": [
         "./ui/layouts/*"

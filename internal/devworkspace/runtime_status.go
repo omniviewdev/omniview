@@ -116,7 +116,7 @@ func (r checkoutContextReader) Read(buffer []byte) (int, error) {
 
 func (s *workspaceSupervisor) observeStatus(ctx context.Context, status Status) Status {
 	status.Health = RuntimeHealth{Liveness: "alive", Build: "unknown", Dependencies: "unknown", ServedSource: "unknown", Readiness: "unknown", HMR: "unverified", SourceReload: "unverified"}
-	status.Checkouts = checkoutStatuses(ctx, s.workspace)
+	status.Checkouts = checkoutStatuses(ctx, status.Workspace)
 	if len(status.Builds) > 0 {
 		status.Health.Build = "ready"
 	}
@@ -124,14 +124,14 @@ func (s *workspaceSupervisor) observeStatus(ctx context.Context, status Status) 
 		if build.Phase == "error" || build.Phase == "invalidated" {
 			status.Health.Build = "failed"
 			status.FailedStage = node
-			status.RecoveryCommand = "omniview-dev workspace refresh " + s.workspace.Manifest.WorkspaceID
+			status.RecoveryCommand = "omniview-dev workspace refresh " + status.Manifest.WorkspaceID
 			break
 		}
 		if build.Phase == "building" {
 			status.Health.Build = "building"
 		}
 	}
-	if report, err := s.manager.InspectLinks(ctx, s.workspace.Manifest.WorkspaceID); err == nil && report.Phase == "linked" {
+	if report, err := s.manager.InspectLinks(ctx, status.Manifest.WorkspaceID); err == nil && report.Phase == "linked" {
 		status.Health.Dependencies = "current"
 		for _, resolution := range report.Resolutions {
 			if resolution.Problem != "" {

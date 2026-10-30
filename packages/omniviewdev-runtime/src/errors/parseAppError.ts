@@ -1,5 +1,6 @@
 import type { AppError, AppErrorAction } from './types';
 import { ErrorTypes } from './types';
+import { navigateActivePage } from '../context/windows/activePageNavigator';
 
 /** Canonical resource classifications mirror backend/pkg/apperror/resource.go. */
 const resourceCodes: Record<string, readonly [string, number, AppError['recovery']]> = {
@@ -103,7 +104,8 @@ export function actionToSnackbar(action: AppErrorAction): { label: string; onCli
     case 'navigate':
       return {
         label: action.label,
-        onClick: () => { window.location.hash = action.target ?? ''; },
+        // Backend targets are hash routes (`#/settings?...`); they open in the active page tab.
+        onClick: () => { navigateActivePage((action.target ?? '/').replace(/^#/, '')); },
       };
     case 'open-url':
       return {

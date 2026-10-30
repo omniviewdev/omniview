@@ -17,6 +17,9 @@ export function verifyIsolation(source, git) {
   }
 }
 export function admitCandidate(cohort, env) {
+  if (!cohort || typeof cohort !== 'object' || Array.isArray(cohort) || Object.keys(cohort).sort().join(',') !== 'kubernetes,plugin-sdk,ui') {
+    throw Error('Candidate cohort must contain exactly plugin-sdk, ui and kubernetes');
+  }
   for (const id of ['plugin-sdk', 'ui', 'kubernetes']) {
     if (!/^[a-f0-9]{40}$/.test(cohort?.[id] ?? '')) throw Error(`Missing immutable candidate ${id} commit`);
   }

@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { PluginManager, ResourceClient } from '@omniviewdev/runtime/api';
 import { GLOBAL_SEARCH_OPEN_EVENT, resourceQueryKeys } from '@omniviewdev/runtime';
 import type { ExtensionContributionRegistration, NavigationTargetV1, OpenGlobalSearchOptions, ReadTarget, SearchProviderV1, SearchProviderItemV1 } from '@omniviewdev/runtime';
@@ -7,8 +7,9 @@ import { Events } from '@wailsio/runtime';
 import useRightDrawer from '@/hooks/useRightDrawer';
 import { GLOBAL_SEARCH_EXTENSION_POINT_ID } from './extensionPoint';
 import { admitSearchContribution, getNavigationHref } from './admission';
-import { matchRoutes, useLocation, useNavigate } from 'react-router-dom';
-import type { RouteObject } from 'react-router-dom';
+import { matchRoutes } from 'react-router';
+import { useActivePageNavigation } from '../workspace/activePageNavigation';
+import type { RouteObject } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSettingsProvider } from '@/hooks/settings/useCoreSettings';
 import { useDevMode } from '@/hooks/useDevMode';
@@ -49,10 +50,10 @@ async function checkConnection(pluginId: string, connectionId: string, signal: A
 
 
 export function useGlobalCommandSearch() {
-  const navigate = useNavigate();
-  const location = useLocation();
+  // The palette lives in the shell, outside every page router: it reads and navigates the active page tab.
+  const { pathname, search, navigate } = useActivePageNavigation();
+  const location = useMemo(() => ({ pathname, search }), [pathname, search]);
   const latestLocation = useRef(location);
-  latestLocation.current = location;
   const queryClient = useQueryClient();
   const { showResourceSidebar } = useRightDrawer();
   const { plugins, registrations } = usePluginService();
@@ -78,9 +79,12 @@ export function useGlobalCommandSearch() {
     [registrations],
   );
   const latestRoutingContext = useRef({ registrations, routeTrees, navigate });
-  latestRoutingContext.current = { registrations, routeTrees, navigate };
   const latestDrawer = useRef(showResourceSidebar);
-  latestDrawer.current = showResourceSidebar;
+  useLayoutEffect(() => {
+    latestLocation.current = location;
+    latestRoutingContext.current = { registrations, routeTrees, navigate };
+    latestDrawer.current = showResourceSidebar;
+  }, [location, registrations, routeTrees, navigate, showResourceSidebar]);
   const input = useRef<HTMLInputElement>(null);
   const opener = useRef<HTMLElement | null>(null);
   const navigated = useRef(false);
@@ -129,7 +133,7 @@ export function useGlobalCommandSearch() {
         const status = await checkConnection(target.pluginId, target.route.connection, signal);
         signal.throwIfAborted();
         if (status.status !== ConnectionStatusCode.ConnectionStatusConnected) {
-          throw new Error(status.details || status.error || 'Connection is not ready.');
+          throw new Error(status.details ? status.details : status.error ? status.error : 'Connection is not ready.');
         }
 
         await latestDrawer.current({
@@ -208,7 +212,7 @@ export function useGlobalCommandSearch() {
             }] : [],
             completion: 'complete',
             status,
-            message: (connection.details || connection.error || 'Connection is not ready.').slice(0, 1024),
+            message: (connection.details ? connection.details : connection.error ? connection.error : 'Connection is not ready.').slice(0, 1024),
           };
         }
 
@@ -233,7 +237,7 @@ export function useGlobalCommandSearch() {
           }
 
           for (const connection of connections ?? []) {
-            const label = connection.name || connection.id;
+            const label = connection.name ? connection.name : connection.id;
             if (needle && !`${label} ${pluginId} ${connection.id}`.toLocaleLowerCase().includes(needle)) {
               continue;
             }
@@ -309,7 +313,7 @@ export function useGlobalCommandSearch() {
 
         const status = await ResourceClient.StartConnection(pluginId, connectionId);
         if (status.status !== ConnectionStatusCode.ConnectionStatusConnected) {
-          throw new Error(status.details || status.error || 'Connection is not ready.');
+          throw new Error(status.details ? status.details : status.error ? status.error : 'Connection is not ready.');
         }
 
         signal.throwIfAborted();
@@ -457,7 +461,7 @@ export function useGlobalCommandSearch() {
   useEffect(() => {
     const requested = (event: Event) => {
       const detail: unknown = (event as CustomEvent<unknown>).detail;
-      open(detail !== null && typeof detail === 'object' ? detail as OpenGlobalSearchOptions : {});
+      open(detail !== null && typeof detail === 'object' ? detail : {});
     };
 
     window.addEventListener(GLOBAL_SEARCH_OPEN_EVENT, requested);
@@ -523,7 +527,7 @@ export function useGlobalCommandSearch() {
       const store = EXTENSION_REGISTRY.getExtensionPoint(GLOBAL_SEARCH_EXTENSION_POINT_ID);
       const next = (store?.listAll() ?? []).flatMap((registration) => {
         const admitted = admitSearchContribution(registration);
-        if (!admitted || admitted.kind !== 'provider' || !admitted.Context) {
+        if (admitted?.kind !== 'provider' || !admitted.Context) {
           return [];
         }
 

@@ -64,6 +64,13 @@ application suite. The stable `e2e-tests` check accepts only the reusable job's
 success, including an explicitly proven prose-only skip. Browser results alone
 do not prove canonical preparation, acceptance and cleanup succeeded.
 
+The checked-out host's `e2e/source-cohort.json` selects full UI and Kubernetes
+commits for canonical CI and whole-app profiling. Kubernetes must match the
+committed `plugins/kubernetes` gitlink. The cohort SDK must still match the
+independently reviewed `OMNIVIEW_E2E_REVIEWED_SDK_REVISION` repository variable;
+editing a branch's cohort cannot approve an SDK change. No global UI/Kubernetes
+ref switch is required for compatible old-main and upgraded-PR source cohorts.
+
 Playwright uses its GitHub reporter in Actions for failure annotations on the
 check and source locations, alongside terminal output, HTML and case timings.
 Annotations require Playwright to run; checkout, source validation or preparation

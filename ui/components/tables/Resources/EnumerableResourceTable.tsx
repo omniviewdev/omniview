@@ -1,5 +1,6 @@
 import { type FC, useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
+import type { DataTableFeatures } from '@omniviewdev/base-ui';
 
 import { Banner, Button, Heading, Spinner, Stack, Text } from '@omniviewdev/base-ui';
 
@@ -66,7 +67,7 @@ const EnumerableResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKe
     record,
     data: valueToJSON(record.record.body),
   })) ?? [], [resources.data]);
-  const genericColumns: Array<ColumnDef<ResourceTableRow>> = [
+  const genericColumns: Array<ColumnDef<DataTableFeatures, ResourceTableRow>> = [
     { id: 'id', header: 'ID', accessorFn: (row) => row.record.record.reference.address.id },
     { id: 'scope', header: 'Scope', accessorFn: (row) => row.record.record.reference.address.scope.map((entry: { dimension: string; value: string }) => `${entry.dimension}=${entry.value}`).join(', ') },
     { id: 'body', header: 'Raw body', accessorFn: (row) => valueToJSONText(row.record.record.body) },

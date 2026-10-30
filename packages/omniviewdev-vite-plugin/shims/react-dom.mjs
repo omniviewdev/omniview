@@ -1,22 +1,36 @@
-// Auto-generated shim for 'react-dom'
+// Auto-generated shim for "react-dom"
 // DO NOT EDIT -- regenerate with: pnpm --filter @omniviewdev/vite-plugin generate-shims
-
-const mod = window.__OMNIVIEW_SHARED__['react-dom'];
-
-if (!mod) {
-  throw new Error(
-    '[omniview] Shared dependency "react-dom" is not available on window.__OMNIVIEW_SHARED__. ' +
-    'Ensure the Omniview host app is running and shared deps are exported before loading this plugin.'
-  );
-}
-
-export const createPortal = mod.createPortal;
-export const flushSync = mod.flushSync;
-export const hydrate = mod.hydrate;
-export const render = mod.render;
-export const unmountComponentAtNode = mod.unmountComponentAtNode;
-export const unstable_batchedUpdates = mod.unstable_batchedUpdates;
-export const unstable_renderSubtreeIntoContainer = mod.unstable_renderSubtreeIntoContainer;
-export const version = mod.version;
-
-export default mod.default !== undefined ? mod.default : mod;
+const mod = window.__OMNIVIEW_SHARED__["react-dom"];
+if (!mod) throw new Error('[omniview] Shared dependency ' + "react-dom" + ' is not available on window.__OMNIVIEW_SHARED__.');
+const binding0 = mod["__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE"];
+export { binding0 as "__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE" };
+const binding1 = mod["browser"];
+export { binding1 as "browser" };
+const binding2 = mod["createPortal"];
+export { binding2 as "createPortal" };
+const binding3 = mod["default"];
+export { binding3 as "default" };
+const binding4 = mod["flushSync"];
+export { binding4 as "flushSync" };
+const binding5 = mod["preconnect"];
+export { binding5 as "preconnect" };
+const binding6 = mod["prefetchDNS"];
+export { binding6 as "prefetchDNS" };
+const binding7 = mod["preinit"];
+export { binding7 as "preinit" };
+const binding8 = mod["preinitModule"];
+export { binding8 as "preinitModule" };
+const binding9 = mod["preload"];
+export { binding9 as "preload" };
+const binding10 = mod["preloadModule"];
+export { binding10 as "preloadModule" };
+const binding11 = mod["requestFormReset"];
+export { binding11 as "requestFormReset" };
+const binding12 = mod["unstable_batchedUpdates"];
+export { binding12 as "unstable_batchedUpdates" };
+const binding13 = mod["useFormState"];
+export { binding13 as "useFormState" };
+const binding14 = mod["useFormStatus"];
+export { binding14 as "useFormStatus" };
+const binding15 = mod["version"];
+export { binding15 as "version" };

@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { Text, type TypographyTone } from '@omniviewdev/base-ui';
-import { formatTimeDifference } from '@/utils/time';
+import { useAge } from '@/utils/ageClock';
 import { convertByteUnits } from '@/utils/units';
 import type { ResourceLink } from '@omniviewdev/runtime';
 import { type ResourceMetadata } from '@/hooks/resource/useResourceDefinition';
@@ -119,37 +119,7 @@ const formatters: Record<string, FormattingFunction> = {
 };
 
 const AgeCell: React.FC<Props> = ({ value, ...rest }) => {
-  // Memoize the initial age calculation
-  const initialAge = React.useMemo(() => {
-    const date = new Date(value);
-    if (!value || isNaN(date.getTime())) {
-      return '0s';
-    }
-
-    return formatTimeDifference(date);
-  }, [value]);
-
-  const [time, setTime] = React.useState(initialAge);
-
-  React.useEffect(() => {
-    const date = new Date(value);
-    if (isNaN(date.getTime())) {
-      // Early return if value is not a valid date
-      return;
-    }
-
-    const updateAge = () => {
-      setTime(formatTimeDifference(date));
-    };
-
-    // Set the interval to update the age every 60 seconds
-    const intervalId = setInterval(updateAge, 1000); // Adjusted to 60 seconds
-
-    // Cleanup the interval on component unmount
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [value, initialAge]);
+  const time = useAge(value);
 
   return <CellBase value={time} {...rest} />;
 };

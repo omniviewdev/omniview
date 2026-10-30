@@ -47,6 +47,7 @@ func (c *controller) StreamAction(ctx context.Context, pluginID string, input re
 	if err != nil {
 		return "", err
 	}
+	input.ExpectedDescriptor = actionDescriptor
 	if err := c.currentGeneration(sessionCtx, pluginID, generation); err != nil {
 		return "", err
 	}

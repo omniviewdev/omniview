@@ -43,3 +43,26 @@ func TestCobraFlagErrorsKeepPrivateValuesOutOfBothStreams(t *testing.T) {
 		}
 	}
 }
+
+func TestWorkspaceUpstreamHelpExplainsSafetyAndConsent(t *testing.T) {
+	for _, test := range []struct {
+		verb string
+		want []string
+	}{
+		{"edit", []string{"--upstream", "REMOTE/BRANCH", "does not change the selected ref"}},
+		{"update", []string{"--check", "never stops the app", "stopped workspaces remain stopped", "saved options"}},
+		{"follow", []string{"--interval", "30s", "minimum 5s", "--apply", "not a sandbox", "Ctrl-C", "--watch", "streams"}},
+	} {
+		t.Run(test.verb, func(t *testing.T) {
+			var out, diagnostics bytes.Buffer
+			if code := run([]string{"workspace", test.verb, "--help"}, &out, &diagnostics); code != 0 {
+				t.Fatalf("help exit=%d stdout=%s stderr=%s", code, &out, &diagnostics)
+			}
+			for _, want := range test.want {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("help lacks %q: %s", want, &out)
+				}
+			}
+		})
+	}
+}

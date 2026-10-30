@@ -1,8 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
+import { skipToken, useQuery } from '@tanstack/react-query';
 import { GetSubgraph } from '../../resource/v2/graph-client';
 import type { AccessRoute, ResourceReference } from '../../resource/v2/domain';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 import { useRefetchOnGraphChange } from './useRefetchOnGraphChange';
+import { useConnectionReadiness } from '../connection/useConnectionReadiness';
+import { useConnectionQueryGuard } from './useConnectionQueryGuard';
 
 type UseResourceGraphOptions = {
   /**
@@ -49,13 +51,15 @@ export const useResourceGraph = ({
   const pluginID = useResolvedPluginId(explicitPluginID);
 
   const queryKey = ['RESOURCE_GRAPH', pluginID, reference, route, upDepth, downDepth];
-  const queryEnabled = enabled && !!pluginID && !!route.connection && !!reference.address.id;
+  const readiness = useConnectionReadiness({ pluginID, connectionID: route.connection, enabled: enabled && !!reference.address.id });
+  const guardQuery = useConnectionQueryGuard(pluginID, route.connection);
+  const queryEnabled = enabled && !!pluginID && !!route.connection && !!reference.address.id && readiness.phase === 'connected';
 
   useRefetchOnGraphChange(pluginID, route.connection, queryKey, queryEnabled);
 
   const query = useQuery({
     queryKey,
-    queryFn: async () => GetSubgraph(pluginID, reference, route, upDepth, downDepth),
+    queryFn: queryEnabled ? ({ signal, queryKey }) => guardQuery(queryKey, signal, () => GetSubgraph(pluginID, reference, route, upDepth, downDepth)) : skipToken,
     enabled: queryEnabled,
     retry: false,
   });

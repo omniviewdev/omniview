@@ -1,16 +1,16 @@
-import { BasicTracerProvider } from '@opentelemetry/sdk-trace-base';
+import { TracerProvider } from '@opentelemetry/sdk-trace';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 import { trace, propagation } from '@opentelemetry/api';
 import { W3CTraceContextPropagator } from '@opentelemetry/core';
 
-let provider: BasicTracerProvider | null = null;
+let provider: TracerProvider | null = null;
 
-export function initTracing(appVersion: string): BasicTracerProvider {
+export function initTracing(appVersion: string): TracerProvider {
   if (provider) {
     return provider;
   }
 
-  provider = new BasicTracerProvider({
+  provider = new TracerProvider({
     resource: resourceFromAttributes({
       'service.name': 'omniview-frontend',
       'service.version': appVersion,
@@ -21,8 +21,8 @@ export function initTracing(appVersion: string): BasicTracerProvider {
   return provider;
 }
 
-export function getTracerProvider(): BasicTracerProvider | null {
-  return provider; 
+export function getTracerProvider(): TracerProvider | null {
+  return provider;
 }
 
 export async function shutdownTracing(): Promise<void> {

@@ -122,10 +122,14 @@ func (g *BuildGraph) affected(paths []string) ([]BuildNode, error) {
 			continue
 		}
 		if inside(host, path) {
-			if strings.HasSuffix(path, ".go") {
+			switch filepath.Ext(path) {
+			case ".go":
 				selected["bindings"] = true
 				selected["host-backend"] = true
-			} else {
+			case ".c", ".h", ".m", ".mm", ".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx",
+				".f", ".F", ".for", ".f90", ".s", ".S", ".sx", ".swig", ".swigcxx", ".syso":
+				selected["host-backend"] = true
+			default:
 				selected["host-frontend"] = true
 			}
 		}
@@ -199,7 +203,16 @@ func (g *BuildGraph) disableManagedDependencies(ctx context.Context, h WatchHook
 	return generations, nil
 }
 
+// rebuildChange rebuilds the closure affected by changed paths under the
+// build lock and feedback hold, replaces the host and SDK-affected plugins when
+// needed, and refreshes consumers before releasing feedback.
 func (g *BuildGraph) rebuildChange(ctx context.Context, paths []string, h WatchHooks) error {
+	return g.rebuildSourceChange(ctx, paths, h, false)
+}
+
+// rebuildSourceChange also serves a captured source transaction that already
+// owns the graph lock before its first checkout write.
+func (g *BuildGraph) rebuildSourceChange(ctx context.Context, paths []string, h WatchHooks, locked bool) error {
 	for _, path := range paths {
 		if sourceManifest(path) {
 			if err := g.auditComposition(ctx); err != nil {
@@ -216,7 +229,20 @@ func (g *BuildGraph) rebuildChange(ctx context.Context, paths []string, h WatchH
 	if len(nodes) == 0 {
 		return nil
 	}
-	change := WatchChange{Paths: append([]string(nil), paths...)}
+	change, javascript, hostChanged := g.sourceWatchChange(paths, nodes)
+	build := func() error {
+		return g.buildSourceChange(ctx, h, change, javascript, hostChanged)
+	}
+	if locked {
+		return build()
+	}
+	return g.withBuildLock(ctx, build)
+}
+
+func (g *BuildGraph) sourceWatchChange(paths []string, nodes []BuildNode) (WatchChange, []BuildNode, bool) {
+	change := WatchChange{
+		Paths: append([]string(nil), paths...), Nodes: nil, SDKChanged: false, RuntimeChanged: false,
+	}
 	hostChanged := false
 	for _, path := range paths {
 		if inside(g.plan.SDK, path) || path == g.plan.SDK {
@@ -235,87 +261,112 @@ func (g *BuildGraph) rebuildChange(ctx context.Context, paths []string, h WatchH
 		}
 		javascript = append(javascript, n)
 	}
-	return g.withBuildLock(ctx, func() error {
-		if err := g.auditComposition(ctx); err != nil {
-			return err
-		}
-		if err := h.BeginFeedback(ctx, change); err != nil {
-			return err
-		}
-		// Ordinary dirty SDK APIs are trusted local development input, bound to the
-		// reviewed isolation baseline and exact source identity on both build sides.
-		if change.SDKChanged {
-			for _, consumer := range g.plan.GoRoots {
-				if _, err := g.verifySDK(ctx, consumer); err != nil {
-					return err
-				}
-			}
-		}
-		if err := g.execute(ctx, javascript); err != nil {
-			return err
-		}
-		alreadyReady := map[string]bool{}
-		if hostChanged {
-			host := ""
-			for _, n := range g.Nodes {
-				if n.ID == "host-backend" {
-					host = n.Directory
-				}
-			}
-			before, err := g.verifySDK(ctx, host)
-			if err != nil {
+	return change, javascript, hostChanged
+}
+
+func (g *BuildGraph) buildSourceChange(
+	ctx context.Context, h WatchHooks, change WatchChange, javascript []BuildNode, hostChanged bool,
+) error {
+	if err := g.auditComposition(ctx); err != nil {
+		return err
+	}
+	if err := h.BeginFeedback(ctx, change); err != nil {
+		return err
+	}
+	// Ordinary dirty SDK APIs are trusted local development input, bound to the
+	// reviewed isolation baseline and exact source identity on both build sides.
+	if change.SDKChanged {
+		for _, consumer := range g.plan.GoRoots {
+			if _, err := g.verifySDK(ctx, consumer); err != nil {
 				return err
 			}
-			g.emit("host-restart", "building", nil)
-			ready, err := h.HostRebuildAndWait(ctx, HostBuildRequest{Workspace: g.workspace, SDKDirectory: g.plan.SDK, ExpectedSDKRevision: g.options.ExpectedSDKRevision, SDKSource: before})
-			if err != nil {
-				g.emit("host-restart", "error", err)
-				return err
-			}
-			alreadyReady = ready
-			// The native callback must also verify any explicit alternate module graph.
-			if err = g.verifyUnchangedSDK(ctx, host, before); err != nil {
-				return err
-			}
-			g.emit("host-restart", "ready", nil)
 		}
-		generations, err := g.disableManagedDependencies(ctx, h)
+	}
+	if err := g.execute(ctx, javascript, nil); err != nil {
+		return err
+	}
+	alreadyReady := map[string]bool{}
+	if hostChanged {
+		ready, err := g.rebuildSourceHost(ctx, h)
 		if err != nil {
 			return err
 		}
-		if change.SDKChanged {
-			ids := make([]string, 0, len(generations))
-			for id := range generations {
-				ids = append(ids, id)
-			}
-			sort.Strings(ids)
-			for _, id := range ids {
-				generation := generations[id]
-				if alreadyReady[id] {
-					if err = h.WaitPluginReady(ctx, id, generation); err != nil {
-						return err
-					}
-					continue
-				}
-				g.emit("plugin-rebuild:"+id, "building", nil)
-				if err = h.Managed.RebuildPluginGeneration(ctx, id, generation); err == nil {
-					err = h.WaitPluginReady(ctx, id, generation)
-				}
-				if err != nil {
-					g.emit("plugin-rebuild:"+id, "error", err)
-					return err
-				}
-				g.emit("plugin-rebuild:"+id, "ready", nil)
-			}
-		}
-		if err := g.auditComposition(ctx); err != nil {
+		alreadyReady = ready
+	}
+	generations, err := g.disableManagedDependencies(ctx, h)
+	if err != nil {
+		return err
+	}
+	if change.SDKChanged {
+		if err = g.rebuildSourcePlugins(ctx, h, generations, alreadyReady); err != nil {
 			return err
 		}
-		if err := h.RefreshConsumers(ctx, change); err != nil {
-			return err
+	}
+	if err = g.auditComposition(ctx); err != nil {
+		return err
+	}
+	if err = h.RefreshConsumers(ctx, change); err != nil {
+		return err
+	}
+	return h.CommitFeedback(ctx, change)
+}
+
+func (g *BuildGraph) rebuildSourceHost(ctx context.Context, h WatchHooks) (map[string]bool, error) {
+	host := ""
+	for _, n := range g.Nodes {
+		if n.ID == "host-backend" {
+			host = n.Directory
 		}
-		return h.CommitFeedback(ctx, change)
+	}
+	before, err := g.verifySDK(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	g.emit("host-restart", "building", nil)
+	ready, err := h.HostRebuildAndWait(ctx, HostBuildRequest{
+		Workspace: g.workspace, SDKDirectory: g.plan.SDK,
+		ExpectedSDKRevision: g.options.ExpectedSDKRevision, SDKSource: before,
 	})
+	if err != nil {
+		g.emit("host-restart", "error", err)
+		return nil, err
+	}
+	// The native callback must also verify any explicit alternate module graph.
+	if err = g.verifyUnchangedSDK(ctx, host, before); err != nil {
+		return nil, err
+	}
+	g.emit("host-restart", "ready", nil)
+	return ready, nil
+}
+
+func (g *BuildGraph) rebuildSourcePlugins(
+	ctx context.Context, h WatchHooks, generations map[string]string, alreadyReady map[string]bool,
+) error {
+	ids := make([]string, 0, len(generations))
+	for id := range generations {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		generation := generations[id]
+		if alreadyReady[id] {
+			if err := h.WaitPluginReady(ctx, id, generation); err != nil {
+				return err
+			}
+			continue
+		}
+		g.emit("plugin-rebuild:"+id, "building", nil)
+		err := h.Managed.RebuildPluginGeneration(ctx, id, generation)
+		if err == nil {
+			err = h.WaitPluginReady(ctx, id, generation)
+		}
+		if err != nil {
+			g.emit("plugin-rebuild:"+id, "error", err)
+			return err
+		}
+		g.emit("plugin-rebuild:"+id, "ready", nil)
+	}
+	return nil
 }
 
 // Watch is blocking and cancellation-owned. One workspace watcher owns output

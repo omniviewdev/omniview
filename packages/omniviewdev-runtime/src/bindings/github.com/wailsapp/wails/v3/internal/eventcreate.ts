@@ -20,6 +20,9 @@ import * as pluginlog$0 from "../../../../omniviewdev/omniview/backend/pkg/plugi
 import * as resource$0 from "../../../../omniviewdev/omniview/backend/pkg/plugin/resource/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as window$0 from "../../../../omniviewdev/omniview/backend/window/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as mcprelay$0 from "../../../../omniviewdev/omniview/internal/mcprelay/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -59,6 +62,13 @@ function configure() {
         "plugin/update_error": $$createType19,
         "plugin/update_started": $$createType18,
         "watch/STATE": $$createType20,
+        "windows/changed": $$createType21,
+        "windows/closed": $$createType22,
+        "windows/drag/begin": $$createType23,
+        "windows/drag/drop": $$createType24,
+        "windows/drag/end": $$createType25,
+        "windows/drag/hover": $$createType24,
+        "windows/drag/leave": $$createType26,
     }));
 }
 
@@ -84,5 +94,11 @@ const $$createType17 = plugin$0.StateWriteErrorPayload.createFrom;
 const $$createType18 = plugin$0.UpdatePayload.createFrom;
 const $$createType19 = plugin$0.UpdateErrorPayload.createFrom;
 const $$createType20 = resource$0.HostWatchStateEvent.createFrom;
+const $$createType21 = window$0.WindowsChangedEvent.createFrom;
+const $$createType22 = window$0.WindowClosedEvent.createFrom;
+const $$createType23 = window$0.DragBeginEvent.createFrom;
+const $$createType24 = window$0.DragPointerEvent.createFrom;
+const $$createType25 = window$0.DragEndEvent.createFrom;
+const $$createType26 = window$0.DragLeaveEvent.createFrom;
 
 configure();

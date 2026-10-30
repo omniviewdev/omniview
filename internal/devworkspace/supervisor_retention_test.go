@@ -251,3 +251,65 @@ func TestOwnedChildRetriesFailedFinalizationAfterConfirmedDisposal(t *testing.T)
 		t.Fatalf("finalization attempts = %d", attempts)
 	}
 }
+
+func TestSourceUpdateCommandRetainsAuthenticatedSupervisorProcess(t *testing.T) {
+	m, _ := fixtureManager(t)
+	w, err := m.Create(context.Background(), CreateOptions{Slug: "retained-source-supervisor"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	generation := NewGeneration()
+	owner := devsession.ProcessOwner{
+		WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "supervisor", Source: w.Root,
+	}
+	child, err := startOwnedChild(context.Background(), w.Root, os.Environ(), io.Discard, owner, nil, "/bin/sleep", "300")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if stopErr := child.stop(context.Background()); stopErr != nil {
+			t.Errorf("stop supervisor child: %v", stopErr)
+		}
+	}()
+	token := []byte("source-update-retains-authenticated-process-token")
+	commands := make(chan string, 2)
+	handler := supervisorHandler(w.Manifest.WorkspaceID, generation, token,
+		func(_ context.Context, command string) (Status, error) {
+			commands <- command
+			return Status{Workspace: w, Generation: generation, Phase: "ready"}, nil
+		})
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	record := supervisorRecord{
+		WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Endpoint: server.URL + "/v1/supervisor",
+		TokenFile: launchPath(w, "supervisor-"+generation+".secret"), Process: child.identity,
+	}
+	if err = os.WriteFile(record.TokenFile, token, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = rawSaveLaunchJSON(launchPath(w, "supervisor.json"), record); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	status, err := m.supervisorCommand(ctx, w.Manifest.WorkspaceID, "source-update")
+	if err != nil || status.Phase != "ready" {
+		t.Fatalf("source update waited for supervisor shutdown: %+v %v", status, err)
+	}
+	if err = devsession.VerifyOwnedProcess(child.identity, owner); err != nil {
+		t.Fatalf("source update retired supervisor: %v", err)
+	}
+	status, err = m.supervisorCommand(ctx, w.Manifest.WorkspaceID, "status")
+	if err != nil || status.Phase != "ready" {
+		t.Fatalf("retained supervisor cannot serve next request: %+v %v", status, err)
+	}
+	first, second := <-commands, <-commands
+	if first != "source-update" || second != "status" {
+		t.Fatalf("unexpected commands: %s, %s", first, second)
+	}
+	select {
+	case <-child.done:
+		t.Fatal("source update exited retained supervisor")
+	default:
+	}
+}

@@ -44,7 +44,7 @@ export interface SchemaProperty {
   required?: readonly string[];
 }
 /** Retained action schema subset, not a normalized resource schema. */
-export interface Schema { type: 'object'; properties?: { [key: string]: SchemaProperty }; required?: readonly string[] }
+export interface Schema { properties?: { [key: string]: SchemaProperty }; required?: readonly string[] }
 export type ActionScope = 'instance' | 'type';
 export interface ActionDescriptor {
   id: string;

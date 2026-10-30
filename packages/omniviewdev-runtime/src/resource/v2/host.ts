@@ -18,10 +18,10 @@ export interface ResourceView extends HostSourcePage {
 }
 export interface HostWatchStateEvent extends WatchStateEvent { pluginID: string }
 /** Native client readiness, not network health. UNKNOWN is not disconnected. */
-export type ConnectionReadiness = 'UNKNOWN' | 'DISCONNECTED' | 'PENDING' | 'CONNECTED' | 'FAILED';
+export type NativeConnectionReadiness = 'UNKNOWN' | 'DISCONNECTED' | 'PENDING' | 'CONNECTED' | 'FAILED';
 export interface HostConnectionState {
   connection: Connection;
-  readiness: ConnectionReadiness;
+  readiness: NativeConnectionReadiness;
   readinessError?: AppError;
   resources: { [type: string]: WatchState };
   resourceCounts: { [type: string]: Count };

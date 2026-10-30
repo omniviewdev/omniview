@@ -73,6 +73,28 @@ describe('applyBatch bounded native page membership', () => {
     expect(applyBatch(stale, [event('UPDATE', changed('one'))])!.view?.membershipStale).toBe(true);
     expect(applyBatch(page(), [])?.view).toBeUndefined();
   });
+  it('applies mixed frozen batches without mutating canonical rows or metadata', () => {
+    const first = Object.freeze(row('one'));
+    const second = Object.freeze(row('two'));
+    const baseline = Object.freeze({ ...page(), records: Object.freeze([first, second]) });
+    const replacement = Object.freeze(changed('one'));
+    const result = applyBatch(baseline, [event('UPDATE', replacement), event('DELETE', second), event('ADD', row('new'))])!;
+    expect(result.records).toEqual([replacement]);
+    expect(result.records[0]).toBe(replacement);
+    expect(result.sourcePage).toBe(baseline.sourcePage);
+    expect(baseline.records).toEqual([first, second]);
+  });
+  it('retains an unchanged advisory cache identity without losing source metadata', () => {
+    const baseline = applyBatch(page(), [event('ADD', row('unknown'))])!;
+    expect(applyBatch(baseline, [event('UPDATE', baseline.records[0]), event('DELETE', row('missing'))])).toBe(baseline);
+  });
+  it('does not resurrect a deleted page member from a later advisory ADD or UPDATE', () => {
+    const original = row('one');
+    const replacement = changed('one');
+    const result = applyBatch(page([original]), [event('DELETE', original), event('ADD', replacement), event('UPDATE', replacement)])!;
+    expect(result.records).toEqual([]);
+    expect(result.view?.membershipStale).toBe(true);
+  });
 });
 
 describe('useEventBatcher bounded adaptive scheduling', () => {
@@ -107,6 +129,16 @@ describe('useEventBatcher bounded adaptive scheduling', () => {
     act(() => vi.advanceTimersByTime(500));
     expect(cached().records).toEqual(page().records);
     expect(cached().view?.membershipStale).toBe(true); expect(writes).toHaveBeenCalledTimes(1);
+  });
+  it.each([WatchState.WatchStateIdle, WatchState.WatchStateSynced])('commits an observed ADD within the bounded window when frames are withheld (state %s)', (state) => {
+    client.setQueryData(detailKey, row('one'));
+    const hook = renderHook(() => useEventBatcher(client, queryKey, state));
+    act(() => hook.result.current(event('ADD', changed('one'))));
+    act(() => vi.advanceTimersByTime(499));
+    expect(cached().records).toEqual(page().records);
+    act(() => vi.advanceTimersByTime(1));
+    expect(cached().records).toEqual([changed('one'), row('two')]);
+    expect(client.getQueryData(detailKey)).toEqual(changed('one'));
   });
   it('respects a custom sync window', () => {
     const hook = renderHook(() => useEventBatcher(client, queryKey, WatchState.WatchStateSyncing, { syncWindowMs: 200 }));

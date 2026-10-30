@@ -41,7 +41,9 @@ export function SearchProviderContexts({ contexts, controller }: {
     return result;
   }, [contexts]);
 
-  function failed(entries: readonly SearchProviderContextRegistration[], error: Error) {
+  function failed(entries: readonly SearchProviderContextRegistration[], thrown: unknown) {
+    const error = thrown instanceof Error ? thrown : new Error(String(thrown));
+
     for (const entry of entries) {
       controller?.setProviderContextError(entry.sourceId, 'Search action context failed. Reload this plugin to recover.');
       logPluginBoundaryError({

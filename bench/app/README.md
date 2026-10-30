@@ -15,17 +15,27 @@ node bench/app/report.mjs              # Markdown summary of results/latest.json
 
 Also `task perf:app -- <args>`. First run locally: `pnpm install --frozen-lockfile`,
 `task packages` (providers → runtime → Vite plugin) and
-`pnpm exec playwright install chromium`. The plugin must use the current base-ui/
-editors shared-dependency cohort; the historical bundled submodule is not a
-compatible source for this host.
+`pnpm exec playwright install chromium`. The pinned Kubernetes submodule consumes
+the published base-ui 0.8.0, editors 6.1.0, and runtime/Vite-plugin 0.9.0 cohort.
+Older plugin archives built against MUI or legacy UI contracts are incompatible.
+
+The Logs scenario selects a container from the opened Logs submenu, not from the
+parent action list. Adding actions such as Debug must not change which workload
+is measured; line counts, scrolling, drawer toggles, and run counts stay unchanged.
 
 ## Reproducible source cohort
 
-CI requires `OMNIVIEW_APP_PROFILE_UI_REF` and
-`OMNIVIEW_APP_PROFILE_KUBERNETES_REF` repository variables containing independently
-reviewed, public full commits. It checks those sources out explicitly, rather
-than changing the bundled submodule or waiting for an unpublished host npm release.
-The host input is the exact checked-out PR commit.
+CI reads the checked-out host's `e2e/source-cohort.json`, with full commit strings
+for `plugin-sdk`, `ui`, and `kubernetes`. UI and Kubernetes checkouts use validated
+cohort outputs; Kubernetes must match the host's `plugins/kubernetes` gitlink.
+The SDK entry must equal the independently reviewed repository variable
+`OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION`. A branch cannot approve its own
+SDK change. The SDK must descend from the independently reviewed isolation
+baseline and preserve its protected isolation files.
+Review selected commits before updating the branch-owned cohort and
+gitlink; checkout reachability is required, publication is not. This avoids global UI/Kubernetes ref changes when older `main` and an
+upgraded PR need different compatible sources. The host input remains the exact
+checked-out PR commit, or selected branch commit for manual dispatch.
 
 The source builder reuses canonical workspace `Init`/`Create`/`Link`, native pnpm
 12.14.0, the actual protocol-probe report, and the existing JavaScript build graph
@@ -349,3 +359,28 @@ root remount leaves the new source active. Its fixture stderr observations are
 correlated within the authenticated provider process lifetime, followed by
 canonical down/unlink and sampler retirement. This is not a new latency run and
 does not change or relabel the preserved historical baseline above.
+
+## Kubernetes resource cost and native idle CPU
+
+The [2026-10-29 investigation](../../docs/kubernetes-performance-investigation-2026-10-29.md)
+records staged fixes, FreeLens source comparisons, SDK-v2 carry-forward requirements,
+raw receipts, and unresolved native acceptance work.
+
+```bash
+# Actual runtime reducer, synthetic fixtures; no browser/native CPU claim.
+node bench/app/resource-batch.mjs /tmp/resource-batch.json
+
+# Explicit native PIDs; preserve cluster/build/route provenance separately.
+node bench/app/native-idle.mjs \
+  --pid host="$APP_PID" --pid webcontent="$WEB_PID" --pid graphics="$GPU_PID" \
+  --seconds 60 --scenario dashboard-idle-run-1 --out /tmp/dashboard-idle.json
+```
+
+The reducer runner accepts an optional second positional argument naming an original
+source snapshot for before/after comparison. It records the exact input source hash
+before bundling. The native sampler uses cumulative process CPU time rather than
+the rolling `%CPU` field, checks start identity in each CPU snapshot, and rejects
+exited PIDs or processes younger than two seconds. This age guard avoids the
+same-second ambiguity of `ps` start timestamps.
+Neither tool selects or mutates a cluster. Do not use an uncontrolled sampler smoke
+or a reducer speedup as evidence of lower native Graphics/WebContent CPU.

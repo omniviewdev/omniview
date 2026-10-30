@@ -1,6 +1,6 @@
 import React from 'react';
 import { Button, Text } from '@omniviewdev/base-ui';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import styles from './HomepageEmptyState.module.css';
 
 const HomepageEmptyState: React.FC = () => {
@@ -16,7 +16,7 @@ const HomepageEmptyState: React.FC = () => {
           Install a plugin to see actionable content here.
         </Text>
         <Button variant='solid' color='brand' onClick={() => {
-          navigate('/plugins'); 
+          void navigate('/plugins');
         }}>
           Browse Plugins
         </Button>

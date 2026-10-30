@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import logger from '@/features/logger';
 import { isDev } from '@/utils/env';
-vi.mock('react-router-dom', () => ({ useRouteError: vi.fn() }));
+vi.mock('react-router', () => ({ useRouteError: vi.fn() }));
 vi.mock('@/features/logger', () => ({ __esModule: true, default: { error: vi.fn() } }));
 vi.mock('@/utils/env', () => ({ isDev: vi.fn(() => true) }));
 vi.mock('@/utils/errorId', () => ({ generateErrorId: vi.fn(() => 'ERR-test') }));
@@ -13,7 +13,7 @@ Object.defineProperty(window, 'location', {
   writable: true,
 });
 
-import { useRouteError } from 'react-router-dom';
+import { useRouteError } from 'react-router';
 import { RouterErrorBoundary } from './ErrorBoundary';
 
 const mockUseRouteError = vi.mocked(useRouteError);

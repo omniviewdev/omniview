@@ -1,6 +1,7 @@
 package mcprelay
 
 import (
+	"bytes"
 	"encoding/json"
 	"regexp"
 	"sort"
@@ -57,7 +58,7 @@ func BuildCatalog(all map[string]tools.PluginTools) []ToolInfo {
 	sort.Strings(pluginIDs)
 
 	var catalog []ToolInfo
-	seen := map[string]bool{}
+	seen := map[string]int{}
 	for _, pluginID := range pluginIDs {
 		entry := all[pluginID]
 		pluginName := entry.Meta.Name
@@ -82,10 +83,15 @@ func BuildCatalog(all map[string]tools.PluginTools) []ToolInfo {
 		}
 		for _, info := range infos {
 			if info.Status == StatusOK {
-				if seen[info.MCPName] {
-					info.Status = StatusConflict
+				if previous, exists := seen[info.MCPName]; exists {
+					if info.BuiltIn && !catalog[previous].BuiltIn {
+						catalog[previous].Status = StatusConflict
+						seen[info.MCPName] = len(catalog)
+					} else {
+						info.Status = StatusConflict
+					}
 				} else {
-					seen[info.MCPName] = true
+					seen[info.MCPName] = len(catalog)
 				}
 			}
 			catalog = append(catalog, info)
@@ -114,18 +120,26 @@ func toolInfo(pluginID, pluginName string, d sdktools.Descriptor) ToolInfo {
 		info.Status = StatusInvalidName
 		return info
 	}
+	if err := sdktools.ValidateDescriptor(d); err != nil {
+		info.Status = StatusInvalidSchema
+		return info
+	}
 	schema, ok := objectSchema(d.InputSchema)
 	if !ok {
 		info.Status = StatusInvalidSchema
 		return info
 	}
 	if len(d.OutputSchema) > 0 {
-		if output, valid := objectSchema(d.OutputSchema); valid {
-			info.OutputSchema = output
+		output, valid := objectSchema(d.OutputSchema)
+		if !valid {
+			info.Status = StatusInvalidSchema
+			return info
 		}
+		info.OutputSchema = output
 	}
-	if info.Scope == ScopeConnection {
-		injectConnectionID(schema, pluginID, pluginName)
+	if info.Scope == ScopeConnection && !injectConnectionID(schema, pluginID, pluginName) {
+		info.Status = StatusInvalidSchema
+		return info
 	}
 	info.InputSchema = schema
 	return info
@@ -136,19 +150,65 @@ func objectSchema(raw json.RawMessage) (map[string]any, bool) {
 		return nil, false
 	}
 	var schema map[string]any
-	if err := json.Unmarshal(raw, &schema); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&schema); err != nil {
 		return nil, false
 	}
-	if schema["type"] != "object" {
+	if schema["type"] != "object" || !mcpSchemaNumbersSupported(schema) {
 		return nil, false
 	}
 	return schema, true
 }
 
-func injectConnectionID(schema map[string]any, pluginID, pluginName string) {
-	properties, _ := schema["properties"].(map[string]any)
-	if properties == nil {
-		properties = map[string]any{}
+// MCP's registration decoder uses float64 internally. Reject numeric overflow
+// before registration, but retain json.Number for exact schema publication.
+func mcpSchemaNumbersSupported(value any) bool {
+	switch value := value.(type) {
+	case json.Number:
+		_, err := value.Float64()
+		return err == nil
+	case map[string]any:
+		for _, child := range value {
+			if !mcpSchemaNumbersSupported(child) {
+				return false
+			}
+		}
+	case []any:
+		for _, child := range value {
+			if !mcpSchemaNumbersSupported(child) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func injectConnectionID(schema map[string]any, pluginID, pluginName string) bool {
+	properties := map[string]any{}
+	if existing, present := schema["properties"]; present {
+		var ok bool
+		properties, ok = existing.(map[string]any)
+		if !ok || properties == nil {
+			return false
+		}
+	}
+	if _, present := properties[connectionIDArg]; present {
+		return false
+	}
+	required := []any{}
+	if existing, present := schema["required"]; present {
+		var ok bool
+		required, ok = existing.([]any)
+		if !ok {
+			return false
+		}
+		for _, value := range required {
+			name, ok := value.(string)
+			if !ok || name == connectionIDArg {
+				return false
+			}
+		}
 	}
 	properties[connectionIDArg] = map[string]any{
 		"type": "string",
@@ -157,20 +217,15 @@ func injectConnectionID(schema map[string]any, pluginID, pluginName string) {
 	}
 	schema["properties"] = properties
 
-	required := []any{}
-	if existing, ok := schema["required"].([]any); ok {
-		required = existing
-	}
-	for _, name := range required {
-		if name == connectionIDArg {
-			schema["required"] = required
-			return
-		}
-	}
 	schema["required"] = append(required, connectionIDArg)
+	return true
 }
 
 func listConnectionsInfo(pluginID, pluginName string) ToolInfo {
+	status := StatusOK
+	if !mcpToolNamePattern.MatchString(pluginID + "_" + listConnectionsTool) {
+		status = StatusInvalidName
+	}
 	return ToolInfo{
 		MCPName:    pluginID + "_" + listConnectionsTool,
 		PluginID:   pluginID,
@@ -187,6 +242,6 @@ func listConnectionsInfo(pluginID, pluginName string) ToolInfo {
 			"additionalProperties": false,
 		},
 		BuiltIn: true,
-		Status:  StatusOK,
+		Status:  status,
 	}
 }

@@ -2,6 +2,18 @@
 
 This guide covers everything you need to know to develop plugins for Omniview with fast iteration cycles. You will learn how to set up your environment, choose a development workflow, and troubleshoot common issues.
 
+### Host drawer context
+
+`BottomDrawerProvider` must wrap `RightDrawerProvider` in `ui/App.tsx`.
+The right drawer renders plugin views beside its children, not inside them.
+Reversing these providers leaves sidebar log and terminal actions using the
+bottom drawer context's no-op defaults: backend sessions start, but no tab opens.
+Global search still works because it renders inside the bottom drawer provider.
+
+When checking sidebar actions, verify that Logs opens a log tab, Exec opens a
+terminal tab, and Delete opens its confirmation dialog (then cancel it).
+Container shell availability is separate from action dispatch.
+
 ---
 
 ## 1. Getting Started
@@ -11,7 +23,7 @@ This guide covers everything you need to know to develop plugins for Omniview wi
 | Tool | Version | Purpose |
 |------|---------|---------|
 | Go | 1.24+ | Plugin backend |
-| Node.js | 20+ | UI development |
+| Node.js | 26.13.0 | UI development |
 | pnpm | 9+ | Package management |
 | Omniview | Latest | The IDE |
 
@@ -60,6 +72,8 @@ tags:
   - kubernetes
   - devops
 ```
+
+For `exec` sessions, the host owns terminal tab state. When a provider supplies retryable shell errors and alternate commands, “Try a different shell” replaces the session in the existing tab, preserving tab order and focus. The host closes the old backend session; a failed retry stays in that same tab.
 
 ### 1.4 Creating a New Plugin
 
@@ -391,6 +405,92 @@ and native pages at 256 records. Aggregate pages remain frame-bounded before
 generated decoding. These finite transport ceilings require final policy review;
 they do not change the separate predicate/projection policy or promise latency.
 
+### Protecting connection-dependent routes
+
+Plugin availability is not connection readiness. Wrap the resource subtree in the runtime's `ConnectionBoundary` before rendering components that use resource hooks. Keep connection lists, creation, and credential editing outside the boundary.
+
+```tsx
+import { ConnectionBoundary, ConnectionBoundaryFallback, useConnection, usePluginRouter } from '@omniviewdev/runtime';
+import { Outlet, useParams } from 'react-router';
+
+function SavedConnectionIdentity({ connectionID }: { connectionID: string }) {
+  const { connection } = useConnection({ connectionID });
+  return (
+    <header>
+      <h1>{connection.data?.name || connectionID}</h1>
+      {connection.data?.description && <p>{connection.data.description}</p>}
+      <code>{connectionID}</code>
+    </header>
+  );
+}
+
+export function ConnectionResourcesRoute() {
+  const { connectionID = '' } = useParams();
+  const { navigate } = usePluginRouter();
+  return (
+    <ConnectionBoundary
+      connectionID={connectionID}
+      fallback={(state) => (
+        <ConnectionBoundaryFallback
+          state={state}
+          connectionDetails={<SavedConnectionIdentity connectionID={connectionID} />}
+          onEditConnection={() => navigate(`/connection/${encodeURIComponent(connectionID)}/edit`)}
+          onBack={() => navigate('/')}
+        />
+      )}
+    >
+      <Outlet />
+    </ConnectionBoundary>
+  );
+}
+```
+
+Use this component as the parent of your resource routes. The parameter name and edit destination above are examples; your plugin owns its route layout. `pluginID` resolves from plugin context, or can be supplied explicitly outside it.
+
+The boundary checks readiness without connecting. Only a backend `CONNECTED` result mounts its children. **Connect and continue** explicitly starts the connection and keeps the requested URL. Authentication, permission, missing-connection, and other failures remain blocked with recovery controls. Disconnect and plugin lifecycle events invalidate pending work and remove protected content. A pending connection still permits a manual status check; there is no automatic reconnect loop.
+
+While a stop request is pending, checks, reconnect attempts, and resource admission stay blocked even if the backend still reports connected. Readiness can be checked again after shutdown completes.
+
+There is no connected splash: successful readiness replaces the entire fallback with the requested resources. `ConnectionBoundaryFallback` also renders nothing when given a connected state directly.
+
+Use its `connectionDetails` React-node slot to inject a plugin-owned identity panel above the shared status and recovery actions. The slot replaces the generic name label, not the readiness check. Load saved metadata through `useConnection` without requesting live resources; keep the exact route ID visible if metadata is missing or unavailable. Do not let metadata loading hide recovery controls.
+
+Kubernetes supplies `ClusterConnectionDetails`: saved display name, avatar, provider, description, context, auth-user name, kubeconfig path, and full opaque connection ID. It honors display overrides and renders only allowlisted identity fields, never tokens, passwords, private keys, or raw kubeconfig contents. Other plugins can provide account, project, region, or endpoint details through the same slot without Kubernetes-specific host code.
+
+`useConnectionReadiness({ pluginID, connectionID, enabled })` exposes the same shared state and `connect`/`retry` actions for custom UI. State is keyed by the full plugin and connection IDs; checks and starts are deduplicated. Re-entering a route checks again. Focus checks keep connected content mounted unless verification fails.
+
+Resource queries, graph reads, editor schemas, and scope-value discovery wait for readiness. Their `enabled: false` option suppresses both checks and resource work. Resource subscriptions clean up on disconnect; invalidated in-flight reads cannot publish a late snapshot. Resource mutations check readiness before dispatch. These guards do not undo a mutation already accepted by the backend.
+
+The host also guards resource drawers that supply `ctx.resource.pluginID` and `ctx.resource.connectionID`, including their views and actions. Custom panels outside those surfaces should use the same boundary rather than trusting cached connection metadata.
+
+#### Loaders and imperative calls
+
+React Router may run child loaders before a parent component or parent loader completes. A render boundary alone does not protect loader I/O. Guard each connection-dependent loader or direct native call explicitly:
+
+```ts
+import { withConnectionReady } from '@omniviewdev/runtime';
+import { ResourceClient } from '@omniviewdev/runtime/api';
+import type { HostGetRequest } from '@omniviewdev/runtime';
+
+export function loadResource(
+  pluginID: string,
+  connectionID: string,
+  input: HostGetRequest,
+) {
+  return withConnectionReady(pluginID, connectionID, () =>
+    ResourceClient.Get(pluginID, input),
+  );
+}
+```
+
+`withConnectionReady` checks without starting, retains lifecycle observation through the operation, and rejects a result invalidated by a disconnect or plugin change. Handle its rejected promise in the loader's error/recovery UI. `requireConnectionReady(pluginID, connectionID)` is also available for an admission-only check; it does not fence work performed afterward. Raw `ResourceClient` calls are not automatically intercepted.
+
+Connection readiness is separate from watch synchronization. Do not gate on refresh timestamps, `isStarted`, or `isFullySynced`. A connected target can still have resource-level RBAC or synchronization errors; show those locally rather than reconnecting the entire connection.
+
+For UI development, `ConnectionBoundaryFallback` is presentation-only. Supply mocked `ConnectionReadiness` states and connection identity in Storybook without making connection calls. Kubernetes provides checking, disconnected, connecting, unauthorized, forbidden, missing, error, and metadata-loading/failure examples under **Connections/ConnectionBoundary**. Its interactive recovery preview replaces the splash with a mocked Pod resource table; it does not show a separate connected screen.
+
+Recovery screens use the shared button hierarchy: `variant="solid" color="brand"` for the primary connect action, and `variant="outline" color="neutral"` for retry, edit, and back actions. Reserve `ghost` for contextual tertiary controls, not standalone recovery actions: its transparent surface and muted label can lose affordance against the page background. Reuse theme tokens and component variants instead of adding screen-specific button colors or overriding ghost buttons globally.
+
 
 ### Scoped global search
 
@@ -467,6 +567,8 @@ Sidebar and drawer maps use provider-defined, nonempty resource type IDs. The ho
 Register `ResourceIconSetV1` at `RESOURCE_ICON_EXTENSION_POINT_ID` (`omniview/resource/icons`) using the same `extensionRegistrations` mechanism. Its value contains `schemaVersion: 1` and `resolve(resourceKey)`, returning a React component accepting `ResourceIconProps`, or undefined for an unknown key.
 
 Render `ResourceIcon` with `pluginId`, `resourceKey`, optional `size`, and optional `fallback`. The host keeps keys opaque and consults only sets owned by that plugin. Reuse this component in the plugin sidebar; search uses the same set for resource rows and scope chips. Missing sets, unknown keys, resolver/render errors, and lazy loading use a local fallback without replacing the surrounding search UI. Replacement and unload update mounted consumers.
+
+Custom renderers can use `useExtensionPointSnapshot<T>(id)` for an immutable `{ store, version, contributions }` snapshot. Its contribution array changes when registrations change, including extension-point replacement. Use this render input rather than memoizing `store.listAll()` from a stable mutable store reference; React Compiler can otherwise retain stale contributions. `useExtensionPoint` remains available for imperative store matching and registration.
 
 Resource glyphs should inherit `currentColor` and match adjacent monochrome controls; connection branding is separate. Kubernetes adapts the upstream glyphs into trusted, sanitized inline SVG without blue badge backgrounds. Attribution and modification notes are bundled with the artwork. Do not inline runtime-provided SVG text. For file-based icons, resolve imported URLs against the plugin's `import.meta.url`; a root-relative plugin development URL must not resolve against the host origin.
 

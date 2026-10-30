@@ -15,7 +15,12 @@ const mocks = vi.hoisted(() => {
     mockChannelEmit: vi.fn(),
     mockChannelOn,
     mockSetBottomDrawerHeight: vi.fn(),
-    restoredSessionIds: new Set<string>(),
+    mockSaveLayout: vi.fn(),
+    drawerWindow: {
+      restoreComplete: false,
+      quietTabIds: new Set<string>(),
+      layout: { mode: 'minimized', expandedHeight: 550 },
+    },
   };
 });
 
@@ -30,7 +35,6 @@ vi.mock('@omniviewdev/runtime/runtime', () => ({
 }));
 
 vi.mock('@/providers/BottomDrawer/events', () => ({
-  restoredSessionIds: mocks.restoredSessionIds,
   setBottomDrawerHeight: (height: number) => mocks.mockSetBottomDrawerHeight(height),
   bottomDrawerChannel: {
     emit: (...args: [string, ...any[]]) => mocks.mockChannelEmit(...args),
@@ -38,17 +42,21 @@ vi.mock('@/providers/BottomDrawer/events', () => ({
   },
 }));
 
+vi.mock('@/providers/BottomDrawer/windowContext', () => ({
+  DEFAULT_DRAWER_EXPANDED_HEIGHT: 550,
+  useBottomDrawerWindow: () => ({ ...mocks.drawerWindow, saveLayout: mocks.mockSaveLayout }),
+}));
+
 // Mock child components to keep tests focused on the drawer container
 vi.mock('@/providers/BottomDrawer/tabs', () => {
-  const MockTabs = (props: any) => (
+  const MockTabs = ({ resizeControls }: any) => (
     <div data-testid="bottom-drawer-tabs" data-props={JSON.stringify({
-      hasTabs: props.hasTabs,
-      isMinimized: props.isMinimized,
-      isFullscreen: props.isFullscreen,
+      isMinimized: resizeControls.isMinimized,
+      isFullscreen: resizeControls.isFullscreen,
     })}>
-      <button data-testid="btn-minimize" onClick={props.onMinimize}>minimize</button>
-      <button data-testid="btn-expand" onClick={props.onExpand}>expand</button>
-      <button data-testid="btn-fullscreen" onClick={props.onFullscreen}>fullscreen</button>
+      <button data-testid="btn-minimize" onClick={resizeControls.onMinimize}>minimize</button>
+      <button data-testid="btn-expand" onClick={resizeControls.onExpand}>expand</button>
+      <button data-testid="btn-fullscreen" onClick={resizeControls.onFullscreen}>fullscreen</button>
     </div>
   );
   return { __esModule: true, default: MockTabs };
@@ -70,16 +78,18 @@ vi.mock('@/providers/BottomDrawer/containers/PluginLogViewer', () => {
   return { __esModule: true, default: ({ pluginId }: { pluginId: string }) => <div data-testid={`pluginlogs-${pluginId}`} /> };
 });
 
+vi.mock('@/providers/BottomDrawer/containers/EditorDebugPanel', () => {
+  return { __esModule: true, default: () => <div data-testid="editor-debug" /> };
+});
+
 import BottomDrawerContainer from '../../BottomDrawer/index';
 
-const drawerModeStorageKey = 'omniview.bottomDrawer.mode';
-const drawerExpandedHeightStorageKey = 'omniview.bottomDrawer.expandedHeight';
+const terminalTab = (id: string) => ({ id, title: 'Term', variant: 'terminal', icon: 'LuTerminal' });
 
-/** Signal that BottomDrawerTabs finished restoring terminal sessions. */
-const finishRestore = () => {
-  act(() => {
-    mocks.eventBusHandlers.onSessionsRestored?.();
-  });
+/** The provider finished reconciling restored tabs with the live sessions. */
+const finishRestore = (rerender: (ui: React.ReactElement) => void) => {
+  mocks.drawerWindow.restoreComplete = true;
+  rerender(<BottomDrawerContainer />);
 };
 
 describe('BottomDrawerContainer', () => {
@@ -92,8 +102,9 @@ describe('BottomDrawerContainer', () => {
     vi.clearAllMocks();
     Object.keys(mocks.eventBusHandlers).forEach(k => Reflect.deleteProperty(mocks.eventBusHandlers, k));
     mocks.mockUseBottomDrawer.mockReturnValue(defaultDrawerState);
-    localStorage.clear();
-    mocks.restoredSessionIds.clear();
+    mocks.drawerWindow.restoreComplete = false;
+    mocks.drawerWindow.quietTabIds = new Set();
+    mocks.drawerWindow.layout = { mode: 'minimized', expandedHeight: 550 };
     // Reset window.innerHeight
     Object.defineProperty(window, 'innerHeight', { value: 900, writable: true });
   });
@@ -111,10 +122,7 @@ describe('BottomDrawerContainer', () => {
   });
 
   it('starts minimized with tabs when no saved startup state exists', () => {
-    mocks.mockUseBottomDrawer.mockReturnValue({
-      tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
-      focused: 0,
-    });
+    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('tab1')], focused: 0 });
 
     const { container } = render(<BottomDrawerContainer />);
     const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
@@ -122,13 +130,8 @@ describe('BottomDrawerContainer', () => {
   });
 
   it('restores saved expanded height when tabs exist on startup', () => {
-    localStorage.setItem(drawerModeStorageKey, 'expanded');
-    localStorage.setItem(drawerExpandedHeightStorageKey, '520');
-
-    mocks.mockUseBottomDrawer.mockReturnValue({
-      tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
-      focused: 0,
-    });
+    mocks.drawerWindow.layout = { mode: 'expanded', expandedHeight: 520 };
+    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('tab1')], focused: 0 });
 
     const { container } = render(<BottomDrawerContainer />);
     const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
@@ -136,8 +139,7 @@ describe('BottomDrawerContainer', () => {
   });
 
   it('forces minimized startup when saved state is expanded but there are no tabs', () => {
-    localStorage.setItem(drawerModeStorageKey, 'expanded');
-    localStorage.setItem(drawerExpandedHeightStorageKey, '520');
+    mocks.drawerWindow.layout = { mode: 'expanded', expandedHeight: 520 };
 
     const { container } = render(<BottomDrawerContainer />);
     const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
@@ -147,24 +149,45 @@ describe('BottomDrawerContainer', () => {
   it('expands to defaultHeight when tabs appear', () => {
     // Start with no tabs
     const { container, rerender } = render(<BottomDrawerContainer />);
-    finishRestore();
+    finishRestore(rerender);
 
     // Now simulate tabs appearing
-    mocks.mockUseBottomDrawer.mockReturnValue({
-      tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
-      focused: 0,
-    });
+    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('tab1')], focused: 0 });
     rerender(<BottomDrawerContainer />);
 
     const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
     expect(drawer.style.height).toBe('550px');
   });
 
-  it('minimize collapses to minHeight', () => {
-    mocks.mockUseBottomDrawer.mockReturnValue({
-      tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
-      focused: 0,
+  it('does not expand for tabs adopted quietly after startup', () => {
+    const { container, rerender } = render(<BottomDrawerContainer />);
+    finishRestore(rerender);
+
+    mocks.drawerWindow.quietTabIds = new Set(['from-closed-window']);
+    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('from-closed-window')], focused: 0 });
+    rerender(<BottomDrawerContainer />);
+
+    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
+    expect(drawer.style.height).toBe('32px');
+  });
+
+  it('does not expand when a retry swaps a tab id in place', () => {
+    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('exec-old')], focused: 0 });
+    const { container, getByTestId, rerender } = render(<BottomDrawerContainer />);
+    act(() => {
+      mocks.eventBusHandlers.onResize(300);
     });
+
+    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('pending-1')], focused: 0 });
+    rerender(<BottomDrawerContainer />);
+
+    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
+    expect(drawer.style.height).toBe('300px');
+    expect(getByTestId('bottom-drawer-tabs')).toBeTruthy();
+  });
+
+  it('minimize collapses to minHeight and saves the mode', () => {
+    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('tab1')], focused: 0 });
 
     const { container, getByTestId } = render(<BottomDrawerContainer />);
 
@@ -175,13 +198,11 @@ describe('BottomDrawerContainer', () => {
 
     const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
     expect(drawer.style.height).toBe('32px');
+    expect(mocks.mockSaveLayout).toHaveBeenLastCalledWith('minimized', undefined);
   });
 
   it('publishes its height for other panels without touching <html>', () => {
-    mocks.mockUseBottomDrawer.mockReturnValue({
-      tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
-      focused: 0,
-    });
+    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('tab1')], focused: 0 });
 
     const { getByTestId } = render(<BottomDrawerContainer />);
     act(() => {
@@ -195,13 +216,10 @@ describe('BottomDrawerContainer', () => {
   it('expand restores last expanded height', () => {
     // Start with no tabs so drawer is at minHeight
     const { container, getByTestId, rerender } = render(<BottomDrawerContainer />);
-    finishRestore();
+    finishRestore(rerender);
 
     // Simulate tabs appearing — triggers expansion to 550px
-    mocks.mockUseBottomDrawer.mockReturnValue({
-      tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
-      focused: 0,
-    });
+    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('tab1')], focused: 0 });
     rerender(<BottomDrawerContainer />);
 
     const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
@@ -218,13 +236,11 @@ describe('BottomDrawerContainer', () => {
       fireEvent.click(getByTestId('btn-expand'));
     });
     expect(drawer.style.height).toBe('550px');
+    expect(mocks.mockSaveLayout).toHaveBeenLastCalledWith('expanded', 550);
   });
 
   it('fullscreen sets height to window.innerHeight', () => {
-    mocks.mockUseBottomDrawer.mockReturnValue({
-      tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
-      focused: 0,
-    });
+    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('tab1')], focused: 0 });
 
     const { container, getByTestId } = render(<BottomDrawerContainer />);
 
@@ -237,10 +253,7 @@ describe('BottomDrawerContainer', () => {
   });
 
   it('fullscreen toggle restores previous height', () => {
-    mocks.mockUseBottomDrawer.mockReturnValue({
-      tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
-      focused: 0,
-    });
+    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('tab1')], focused: 0 });
 
     const { container, getByTestId } = render(<BottomDrawerContainer />);
     const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
@@ -261,17 +274,13 @@ describe('BottomDrawerContainer', () => {
   it('passes correct isMinimized and isFullscreen props to tabs', () => {
     // Start with no tabs, then add tabs to trigger expansion
     const { getByTestId, rerender } = render(<BottomDrawerContainer />);
-    finishRestore();
+    finishRestore(rerender);
 
-    mocks.mockUseBottomDrawer.mockReturnValue({
-      tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
-      focused: 0,
-    });
+    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('tab1')], focused: 0 });
     rerender(<BottomDrawerContainer />);
 
     const tabsEl = getByTestId('bottom-drawer-tabs');
     const props = JSON.parse(tabsEl.getAttribute('data-props')!);
-    expect(props.hasTabs).toBe(true);
     expect(props.isMinimized).toBe(false);
     expect(props.isFullscreen).toBe(false);
   });
@@ -279,12 +288,9 @@ describe('BottomDrawerContainer', () => {
   it('double-click drag handle toggles min/default', () => {
     // Start with no tabs, then add tabs to get inline style set
     const { container, rerender } = render(<BottomDrawerContainer />);
-    finishRestore();
+    finishRestore(rerender);
 
-    mocks.mockUseBottomDrawer.mockReturnValue({
-      tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
-      focused: 0,
-    });
+    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('tab1')], focused: 0 });
     rerender(<BottomDrawerContainer />);
 
     const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
@@ -328,10 +334,7 @@ describe('BottomDrawerContainer', () => {
   });
 
   it('event bus onResize sets height', () => {
-    mocks.mockUseBottomDrawer.mockReturnValue({
-      tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
-      focused: 0,
-    });
+    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('tab1')], focused: 0 });
 
     const { container } = render(<BottomDrawerContainer />);
 
@@ -347,10 +350,7 @@ describe('BottomDrawerContainer', () => {
   });
 
   it('event bus onFullscreen sets height to window.innerHeight', () => {
-    mocks.mockUseBottomDrawer.mockReturnValue({
-      tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
-      focused: 0,
-    });
+    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('tab1')], focused: 0 });
 
     const { container } = render(<BottomDrawerContainer />);
 
@@ -365,10 +365,7 @@ describe('BottomDrawerContainer', () => {
   });
 
   it('event bus onMinimize sets height to minHeight', () => {
-    mocks.mockUseBottomDrawer.mockReturnValue({
-      tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
-      focused: 0,
-    });
+    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('tab1')], focused: 0 });
 
     const { container } = render(<BottomDrawerContainer />);
 
@@ -384,12 +381,9 @@ describe('BottomDrawerContainer', () => {
 
   it('minHeight stays at 32px floor when expanded', () => {
     const { container, rerender } = render(<BottomDrawerContainer />);
-    finishRestore();
+    finishRestore(rerender);
 
-    mocks.mockUseBottomDrawer.mockReturnValue({
-      tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
-      focused: 0,
-    });
+    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('tab1')], focused: 0 });
     rerender(<BottomDrawerContainer />);
 
     const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
@@ -401,10 +395,7 @@ describe('BottomDrawerContainer', () => {
   });
 
   it('minHeight stays at 32px floor when fullscreen', () => {
-    mocks.mockUseBottomDrawer.mockReturnValue({
-      tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
-      focused: 0,
-    });
+    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('tab1')], focused: 0 });
 
     const { container, getByTestId } = render(<BottomDrawerContainer />);
 
@@ -419,10 +410,7 @@ describe('BottomDrawerContainer', () => {
   });
 
   it('all height properties lock to 32px when minimized', () => {
-    mocks.mockUseBottomDrawer.mockReturnValue({
-      tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
-      focused: 0,
-    });
+    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('tab1')], focused: 0 });
 
     const { container, getByTestId } = render(<BottomDrawerContainer />);
 
@@ -437,10 +425,7 @@ describe('BottomDrawerContainer', () => {
   });
 
   it('renders terminal container for terminal tab variant', () => {
-    mocks.mockUseBottomDrawer.mockReturnValue({
-      tabs: [{ id: 'sess-1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
-      focused: 0,
-    });
+    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('sess-1')], focused: 0 });
 
     const { getByTestId } = render(<BottomDrawerContainer />);
     expect(getByTestId('terminal-sess-1')).toBeTruthy();
@@ -457,33 +442,26 @@ describe('BottomDrawerContainer', () => {
   });
 
   it('applies the saved expanded height to tabs restored after mount', () => {
-    localStorage.setItem(drawerModeStorageKey, 'expanded');
-    localStorage.setItem(drawerExpandedHeightStorageKey, '300');
+    mocks.drawerWindow.layout = { mode: 'expanded', expandedHeight: 300 };
 
     const { container, rerender } = render(<BottomDrawerContainer />);
 
     // The restored session shows up after the first render.
-    mocks.mockUseBottomDrawer.mockReturnValue({
-      tabs: [{ id: 'sess-1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
-      focused: 0,
-    });
+    mocks.drawerWindow.quietTabIds = new Set(['sess-1']);
+    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('sess-1')], focused: 0 });
     rerender(<BottomDrawerContainer />);
-    finishRestore();
+    finishRestore(rerender);
 
     const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
     expect(drawer.style.height).toBe('300px');
   });
 
   it('keeps a saved minimized drawer minimized when tabs are restored after mount', () => {
-    localStorage.setItem(drawerModeStorageKey, 'minimized');
-    localStorage.setItem(drawerExpandedHeightStorageKey, '300');
-    mocks.restoredSessionIds.add('sess-1');
+    mocks.drawerWindow.layout = { mode: 'minimized', expandedHeight: 300 };
+    mocks.drawerWindow.quietTabIds = new Set(['sess-1']);
 
     const { container, rerender } = render(<BottomDrawerContainer />);
-    mocks.mockUseBottomDrawer.mockReturnValue({
-      tabs: [{ id: 'sess-1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
-      focused: 0,
-    });
+    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('sess-1')], focused: 0 });
     rerender(<BottomDrawerContainer />);
 
     const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
@@ -491,14 +469,9 @@ describe('BottomDrawerContainer', () => {
   });
 
   it('expands a tab the user opens before the restore finishes', () => {
-    localStorage.setItem(drawerModeStorageKey, 'minimized');
-
     const { container, rerender } = render(<BottomDrawerContainer />);
     // Not a restored session: the user opened it while the restore was running.
-    mocks.mockUseBottomDrawer.mockReturnValue({
-      tabs: [{ id: 'pending-1', title: 'Connecting...', variant: 'terminal', icon: 'LuTerminal' }],
-      focused: 0,
-    });
+    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('pending-1')], focused: 0 });
     rerender(<BottomDrawerContainer />);
 
     const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;

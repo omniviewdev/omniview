@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -22,8 +23,9 @@ import (
 	"github.com/omniviewdev/omniview/internal/instance"
 )
 
-// BuildNode is one serial output owner. Consumers may inspect this list, but
-// must not execute nodes concurrently with Bootstrap or Watch.
+// BuildNode is one output owner. The graph runs independent nodes in parallel;
+// consumers may inspect this list but must not execute nodes concurrently with
+// Bootstrap or Watch.
 type BuildNode struct {
 	ID           string   `json:"id"`
 	Directory    string   `json:"directory"`
@@ -64,8 +66,16 @@ type BuildOptions struct {
 	// Optional real Task adapter. Output must remain exclusively in outputDirectory.
 	// An adapter may add explicit host GO_MODFILE/BUILD_FLAGS task variables.
 	Bindings func(ctx context.Context, hostDirectory, outputDirectory string) error
-	Output   io.Writer
-	OnEvent  func(BuildEvent)
+	// HostVariant names every host build setting outside source files (mode,
+	// tags); it is part of the bindings and Go node reuse fingerprints.
+	HostVariant string
+	// HostOutput is the generated tree HostBuild publishes. With ReuseHost it
+	// enables host reuse: ReuseHost adopts that unchanged published tree as the
+	// launch binary instead of compiling. Both empty disables host reuse.
+	HostOutput string
+	ReuseHost  func(context.Context) error
+	Output     io.Writer
+	OnEvent    func(BuildEvent)
 }
 
 type BuildGraph struct {
@@ -77,9 +87,21 @@ type BuildGraph struct {
 	name        string
 	run         func(context.Context, string, string, ...string) ([]byte, error)
 	runProducer func(context.Context, string, []string, string, ...string) ([]byte, error)
+	toolInputs  func(context.Context, BuildNode) (string, error)
 	mu          sync.Mutex
+	eventMu     sync.Mutex
+	attestMu    sync.Mutex // serializes recordArtifact
 	toolchainMu sync.Mutex
 	toolchains  map[string]pnpmToolchain
+
+	// Bootstrap reuse fingerprints live in the UUID profile runtime; empty
+	// disables reuse (build-only graphs and tests without a profile).
+	reusePath   string
+	reuseMu     sync.Mutex
+	outputs     map[string]string
+	builderOnce sync.Once
+	builder     string
+	builderErr  error
 
 	// Only the owned supervisor selects embedded assets rather than live Vite.
 	// Its watch transaction must rebuild the host after publishing frontend dist.
@@ -129,11 +151,15 @@ func (m *Manager) NewBuildGraph(ctx context.Context, name string, opts BuildOpti
 	}
 	g.manager = m
 	g.name = name
+	g.reusePath = filepath.Join(profile.RuntimeRoot, "build-reuse.json")
 	return g, nil
 }
 
 var reviewedSDKRevision = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
 
+// compileBuildGraph validates build options against the linked plan and plans
+// the selected nodes. Producer output is wrapped once so parallel nodes never
+// write it concurrently.
 func compileBuildGraph(w Workspace, p linkPlan, opts BuildOptions) (*BuildGraph, error) {
 	if opts.Generation == "" {
 		return nil, fmt.Errorf("the current owned build generation is required")
@@ -158,9 +184,13 @@ func compileBuildGraph(w Workspace, p linkPlan, opts BuildOptions) (*BuildGraph,
 	if p.SDK == "" {
 		return nil, fmt.Errorf("a selected local SDK source is required for trusted builds")
 	}
+	if opts.Output != nil {
+		opts.Output = &lockedWriter{writer: opts.Output}
+	}
 	g := &BuildGraph{workspace: w, plan: p, options: opts}
 	g.run = g.command
 	g.runProducer = g.commandWithEnvironment
+	g.toolInputs = g.toolchainInputs
 	nodes, err := planBuildNodes(w)
 	if err != nil {
 		return nil, err
@@ -244,6 +274,7 @@ func planBuildNodes(w Workspace) ([]BuildNode, error) {
 	return nodes, nil
 }
 
+// emit is serialized: parallel nodes never call OnEvent concurrently.
 func (g *BuildGraph) emit(id, phase string, err error) {
 	if g.options.OnEvent == nil {
 		return
@@ -252,6 +283,8 @@ func (g *BuildGraph) emit(id, phase string, err error) {
 	if err != nil {
 		event.Error = safeCompilerDiagnostic(err.Error(), g.workspace.Root)
 	}
+	g.eventMu.Lock()
+	defer g.eventMu.Unlock()
 	g.options.OnEvent(event)
 }
 
@@ -279,7 +312,7 @@ func (g *BuildGraph) commandWithEnvironment(ctx context.Context, dir string, env
 		switch key {
 		case "GOWORK", "GOFLAGS", "GOROOT", "GOCACHE", "NODE_PATH", "GO_MODFILE", "OMNIVIEW_PNPM_NODE_PATH",
 			"OMNIVIEW_BUILD_OUTPUT_DIRECTORY", "OMNIVIEW_SHIMS_OUTPUT_DIRECTORY", "OMNIVIEW_SHIMS_SOURCE_DIRECTORY",
-			"OMNIVIEW_YAML_WORKER_OUTPUT_FILE", "OMNIVIEW_VITE_CACHE_DIRECTORY":
+			"OMNIVIEW_YAML_WORKER_OUTPUT_FILE", "OMNIVIEW_VITE_CACHE_DIRECTORY", compositionInstallEnvironment:
 			continue
 		}
 		cmd.Env = append(cmd.Env, entry)
@@ -359,6 +392,8 @@ func (g *BuildGraph) verifyUnchangedSDK(ctx context.Context, consumer string, be
 	return nil
 }
 
+// buildNode runs one node's producer and publishes its owned outputs. Go
+// nodes bind their outputs to an SDK identity verified before and after.
 func (g *BuildGraph) buildNode(ctx context.Context, n BuildNode) error {
 	switch n.Kind {
 	case "bindings":
@@ -403,7 +438,7 @@ func (g *BuildGraph) buildNode(ctx context.Context, n BuildNode) error {
 			return fmt.Errorf("built plugin does not include the selected SDK dependency")
 		}
 		// Trusted local rebuild binds binary bytes to the exact dirty source snapshot.
-		return instance.RecordBuiltArtifactSource(g.workspace.ResolvedWorkspace, n.PluginID, binary, before.ReviewedRevision, before.SourceDigest)
+		return g.recordArtifact(n.PluginID, binary, before)
 	case "host-backend":
 		before, err := g.verifySDK(ctx, n.Directory)
 		if err != nil {
@@ -416,6 +451,15 @@ func (g *BuildGraph) buildNode(ctx context.Context, n BuildNode) error {
 	default:
 		return fmt.Errorf("unknown build node kind %q", n.Kind)
 	}
+}
+
+// recordArtifact attests a plugin binary to its verified SDK source. The
+// profile lock it takes fails fast on contention, so parallel plugin nodes in
+// this graph take turns instead of failing each other with profile_busy.
+func (g *BuildGraph) recordArtifact(pluginID, binary string, source devsource.Identity) error {
+	g.attestMu.Lock()
+	defer g.attestMu.Unlock()
+	return instance.RecordBuiltArtifactSource(g.workspace.ResolvedWorkspace, pluginID, binary, source.ReviewedRevision, source.SourceDigest)
 }
 
 func (g *BuildGraph) withBuildLock(ctx context.Context, fn func() error) error {
@@ -438,17 +482,88 @@ func (g *BuildGraph) withBuildLock(ctx context.Context, fn func() error) error {
 	return fn()
 }
 
-func (g *BuildGraph) execute(ctx context.Context, nodes []BuildNode) error {
+// maxParallelBuilds bounds concurrent producers. The widest real graph level
+// (UI libraries, providers, bindings, plugin frontends/backends) is about
+// four nodes; more would only add compiler memory pressure.
+const maxParallelBuilds = 4
+
+// buildParallelism is the producer concurrency for this machine.
+func buildParallelism() int {
+	return max(1, min(maxParallelBuilds, runtime.NumCPU()/2))
+}
+
+// execute starts nodes in plan order as soon as every dependency within the
+// batch has finished, with at most buildParallelism producers at once. After
+// the first failure or cancellation no further node starts; running siblings
+// finish normally, so their owned processes and outputs settle before the
+// first error (prefixed with its node) is returned. A non-nil reuse state
+// enables fingerprinted reuse of unchanged nodes.
+func (g *BuildGraph) execute(ctx context.Context, nodes []BuildNode, reuse *buildReuseState) error {
+	type result struct {
+		id  string
+		err error
+	}
+	pending := append([]BuildNode(nil), nodes...)
+	batch := map[string]bool{}
 	for _, n := range nodes {
-		if err := ctx.Err(); err != nil {
-			return err
+		batch[n.ID] = true
+	}
+	finished := map[string]bool{}
+	ready := func(n BuildNode) bool {
+		for _, dependency := range n.Dependencies {
+			if batch[dependency] && !finished[dependency] {
+				return false
+			}
 		}
-		g.emit(n.ID, "building", nil)
-		if err := g.buildNode(ctx, n); err != nil {
-			g.emit(n.ID, "error", err)
-			return err
+		return true
+	}
+	results := make(chan result)
+	running, limit := 0, buildParallelism()
+	var failure error
+	for {
+		if failure == nil && ctx.Err() == nil {
+			for i := 0; i < len(pending) && running < limit; {
+				n := pending[i]
+				if !ready(n) {
+					i++
+					continue
+				}
+				pending = append(pending[:i], pending[i+1:]...)
+				running++
+				g.emit(n.ID, "building", nil)
+				go func() {
+					err := g.produce(ctx, n, reuse)
+					if err != nil {
+						g.emit(n.ID, "error", err)
+						err = fmt.Errorf("%s: %w", n.ID, err)
+					} else {
+						g.emit(n.ID, "ready", nil)
+					}
+					results <- result{id: n.ID, err: err}
+				}()
+			}
 		}
-		g.emit(n.ID, "ready", nil)
+		if running == 0 {
+			break
+		}
+		r := <-results
+		running--
+		if r.err != nil {
+			if failure == nil {
+				failure = r.err
+			}
+			continue
+		}
+		finished[r.id] = true
+	}
+	if failure != nil {
+		return failure
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if len(pending) > 0 {
+		return fmt.Errorf("build node %s has an unsatisfiable dependency", pending[0].ID)
 	}
 	return nil
 }
@@ -460,7 +575,11 @@ func (g *BuildGraph) Bootstrap(ctx context.Context) error {
 		if err := g.auditComposition(ctx); err != nil {
 			return err
 		}
-		if err := g.execute(ctx, g.Nodes); err != nil {
+		var reuse *buildReuseState
+		if g.reusePath != "" {
+			reuse = g.loadBuildReuse()
+		}
+		if err := g.execute(ctx, g.Nodes, reuse); err != nil {
 			return err
 		}
 		if g.manager == nil {
@@ -527,4 +646,17 @@ func (g *BuildGraph) ViteEnvironment() ([]string, error) {
 		return nil, err
 	}
 	return []string{"OMNIVIEW_VITE_ALLOWED_ROOTS=" + string(raw)}, nil
+}
+
+// lockedWriter serializes producer output shared by parallel nodes.
+type lockedWriter struct {
+	mu     sync.Mutex
+	writer io.Writer
+}
+
+// Write forwards p to the wrapped writer under the lock.
+func (w *lockedWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.writer.Write(p)
 }

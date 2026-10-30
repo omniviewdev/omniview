@@ -1,8 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
+import { skipToken, useQuery } from '@tanstack/react-query';
 import { GetRelated } from '../../resource/v2/graph-client';
 import { sameGraphNode, type GraphEdge, type GraphNode } from '../../resource/v2/graph';
 import type { AccessRoute, ResourceReference } from '../../resource/v2/domain';
 import { useResolvedPluginId } from '../useResolvedPluginId';
+import { useConnectionReadiness } from '../connection/useConnectionReadiness';
+import { useConnectionQueryGuard } from './useConnectionQueryGuard';
 import { useRefetchOnGraphChange } from './useRefetchOnGraphChange';
 
 /** Which side of the relationship the viewed resource is on. */
@@ -118,13 +120,15 @@ export const useRelatedResources = ({
   const pluginID = useResolvedPluginId(explicitPluginID);
 
   const queryKey = ['RESOURCE_RELATED', pluginID, reference, route, direction, relationshipType ?? null];
-  const queryEnabled = enabled && !!pluginID && !!route.connection && !!reference.address.id;
+  const readiness = useConnectionReadiness({ pluginID, connectionID: route.connection, enabled: enabled && !!reference.address.id });
+  const guardQuery = useConnectionQueryGuard(pluginID, route.connection);
+  const queryEnabled = enabled && !!pluginID && !!route.connection && !!reference.address.id && readiness.phase === 'connected';
 
   useRefetchOnGraphChange(pluginID, route.connection, queryKey, queryEnabled);
 
   const query = useQuery({
     queryKey,
-    queryFn: async () => GetRelated(pluginID, reference, route, direction, relationshipType ?? null),
+    queryFn: queryEnabled ? ({ signal, queryKey }) => guardQuery(queryKey, signal, () => GetRelated(pluginID, reference, route, direction, relationshipType ?? null)) : skipToken,
     enabled: queryEnabled,
     refetchInterval,
   });

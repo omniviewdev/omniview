@@ -205,6 +205,30 @@ func workspaceRootEnvironment(key string) bool {
 	return key == "pnpm_config_workspace_dir" || key == "npm_config_workspace_dir"
 }
 
+// compositionInstallEnvironment authorizes dependency-changing pnpm commands in
+// the managed launcher. Only the recorded composition install sets it.
+const compositionInstallEnvironment = "OMNIVIEW_PNPM_COMPOSITION_INSTALL"
+
+// launcherDependencyWriteGuard refuses pnpm commands that rewrite the
+// composition's node_modules. The launcher pins PNPM_CONFIG_WORKSPACE_DIR to the
+// workspace root, so such a command from any directory replaces the trees the
+// output journal owns, and every later lifecycle command refuses them.
+const launcherDependencyWriteGuard = `const dependencyWriteCommands = new Set(['add', 'approve-builds', 'ci', 'clean-install', 'dedupe', 'deploy', 'fetch', 'i', 'import', 'install', 'install-test', 'it', 'link', 'ln', 'patch-commit', 'patch-remove', 'prune', 'rb', 'rebuild', 'remove', 'rm', 'un', 'uni', 'uninstall', 'unlink', 'up', 'update', 'upgrade']);
+const optionsWithValues = new Set(['-C', '--dir', '-F', '--filter', '--filter-prod', '--reporter', '--loglevel', '--test-pattern', '--changed-files-ignore-pattern', '--workspace-concurrency']);
+const requestedArgs = process.argv.slice(2);
+let requestedCommand;
+for (let i = 0; i < requestedArgs.length; i++) {
+  if (optionsWithValues.has(requestedArgs[i])) { i++; continue; }
+  if (requestedArgs[i].startsWith('-')) continue;
+  requestedCommand = requestedArgs[i];
+  break;
+}
+if (dependencyWriteCommands.has(requestedCommand) && env.` + compositionInstallEnvironment + ` !== '1') {
+  console.error('pnpm ' + requestedCommand + ' would rewrite node_modules that the Omniview workspace supervisor owns in ' + workspaceRoot + '. Change dependencies through the workspace lifecycle (omniview-dev workspace refresh), and run tools from node_modules/.bin.');
+  process.exit(1);
+}
+`
+
 func nativePNPMLauncherFiles(node, executable, pin, root string) ([]pnpmLauncherFile, error) {
 	if strings.ContainsAny(node, "\x00\r\n\"") || strings.ContainsAny(executable, "\x00\r\n") || !filepath.IsAbs(root) {
 		return nil, fmt.Errorf("tool paths and composition root must be canonical absolute paths")
@@ -213,7 +237,8 @@ func nativePNPMLauncherFiles(node, executable, pin, root string) ([]pnpmLauncher
 	executableJSON, _ := json.Marshal(executable)
 	versionJSON, _ := json.Marshal(pin)
 	rootJSON, _ := json.Marshal(root)
-	dispatch := "for (const key of Object.keys(env)) if (key.toLowerCase() === 'pnpm_config_pm_on_fail') delete env[key];\n" +
+	dispatch := launcherDependencyWriteGuard +
+		"for (const key of Object.keys(env)) if (key.toLowerCase() === 'pnpm_config_pm_on_fail') delete env[key];\n" +
 		"env.pnpm_config_pm_on_fail = 'error';\n" +
 		"const executable = " + string(executableJSON) + ";\n" +
 		"const version = spawnSync(executable, ['--version'], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });\n" +

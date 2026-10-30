@@ -15,6 +15,8 @@ import styles from './HomepageCard.module.css';
  * centered, visually integrated error state.
  */
 function CardErrorFallback({ error, resetErrorBoundary, label }: FallbackProps & { label: string }) {
+  const message = error instanceof Error ? error.message : String(error);
+
   return (
     <div className={styles.ErrorFallback}>
       <div className={styles.ErrorIcon}>
@@ -25,7 +27,7 @@ function CardErrorFallback({ error, resetErrorBoundary, label }: FallbackProps &
           {label} failed to load
         </Text>
         <Text size='xs' tone='muted' className={styles.ErrorMessage}>
-          {error.message.length > 120 ? `${error.message.slice(0, 120)}…` : error.message}
+          {message.length > 120 ? `${message.slice(0, 120)}…` : message}
         </Text>
       </div>
       <Button

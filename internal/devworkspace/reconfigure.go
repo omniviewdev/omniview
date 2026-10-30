@@ -18,12 +18,49 @@ type ReconfigureResult struct {
 	RequiresBootstrap bool        `json:"requiresBootstrap"`
 }
 
+// PreflightEdit validates canonical edit intent without requiring a stopped
+// supervisor or changing workspace state. Edit repeats planning under its lock.
+func (m *Manager) PreflightEdit(ctx context.Context, name string, options EditOptions) error {
+	unlock, err := lockRoot(m.Root)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	root, err := m.workspaceRoot(name)
+	if err != nil {
+		return err
+	}
+	j, err := loadJournal(root)
+	if err != nil {
+		return err
+	}
+	if j.Phase != "complete" {
+		return devcontract.Fail(4, "workspace_incomplete", "resume or roll back pending lifecycle operation first")
+	}
+	if err = checkManifest(root, j); err != nil {
+		return err
+	}
+	plan, err := m.planEdit(ctx, j, options)
+	if err != nil {
+		return err
+	}
+	w, err := m.inspectRoot(root)
+	if err != nil {
+		return err
+	}
+	_, err = m.validateEdit(ctx, root, j, w, plan)
+	return err
+}
+
 // Reconfigure preserves A03's durable intent transaction. Validation failures
 // restore the previous link graph; interrupted Git mutations remain resumable,
 // not falsely advertised as an atomic inverse of user edits.
 func (m *Manager) Reconfigure(ctx context.Context, name string, options EditOptions) (ReconfigureResult, error) {
 	before, err := m.Inspect(ctx, name)
 	if err != nil {
+		return ReconfigureResult{}, err
+	}
+	if err = m.preflightUpstreamEdit(ctx, before, options); err != nil {
 		return ReconfigureResult{}, err
 	}
 	unlock, err := withWorkspaceOperation(ctx, before)
@@ -73,7 +110,7 @@ func (m *Manager) Reconfigure(ctx context.Context, name string, options EditOpti
 		result.Links = &report
 		if err != nil {
 			var typed *devcontract.Error
-			if !errors.As(err, &typed) || typed.Code != "link_resolution_failed" || report.Phase != "linked" {
+			if !errors.As(err, &typed) || typed.Code != linkResolutionFailureCode || report.Phase != "linked" {
 				return result, err
 			}
 		}

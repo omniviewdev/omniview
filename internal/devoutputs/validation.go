@@ -21,7 +21,8 @@ func validateSnapshotPaths(spec specification, values snapshot) error {
 		if spec.Mode == "file" && relative != "." {
 			return fmt.Errorf("file producer snapshot contains another path")
 		}
-		if spec.Mode == "filter" && relative != "." && (filepath.Dir(relative) != "." || !IsViteConfigTemporaryFile(relative)) {
+		if spec.Mode == filteredOutputMode && relative != "." &&
+			(filepath.Dir(relative) != "." || !IsViteConfigTemporaryFile(relative)) {
 			return fmt.Errorf("loader journal contains a non-loader path")
 		}
 		switch value.Kind {

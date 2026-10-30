@@ -141,15 +141,16 @@ export const usePluginManager = () => {
       const diagnostic = appErr.detail === 'The operation could not be completed.' && bridgeMessage
         ? `${bridgeMessage.slice(0, 3800)}${bridgeMessage.length > 3800 ? '\n[Diagnostic truncated.]' : ''}`
         : appErr.detail;
+      const instance = appErr.instance;
       showSnackbar({
         message: 'Dev mode installation failed',
         status: 'error',
         details: [appErr.title, diagnostic, ...(appErr.suggestions ?? [])].filter(Boolean).join('\n'),
         actions: [
-          ...(appErr.instance ? [{
+          ...(instance ? [{
             label: 'Build Output',
             onClick: () => {
-              devToolsChannel.emit('onOpenBuildOutput', appErr.instance!);
+              devToolsChannel.emit('onOpenBuildOutput', instance);
             },
           }] : []),
           ...(appErr.actions?.map(actionToSnackbar) ?? []),

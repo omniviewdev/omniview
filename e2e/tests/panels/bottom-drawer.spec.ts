@@ -18,8 +18,19 @@ function drawer(page: Page) {
   };
 }
 
-async function openTerminal(page: Page) {
+/**
+ * The drawer once its restore has settled. Until then it can still show tabs
+ * saved by an earlier session whose terminals are gone, so tab counts and
+ * heights read before that are not the drawer's real state.
+ */
+async function restoredDrawer(page: Page) {
   const d = drawer(page);
+  await expect(d.root).toHaveAttribute('data-ov-drawer-restored', 'true');
+  return d;
+}
+
+async function openTerminal(page: Page) {
+  const d = await restoredDrawer(page);
   const before = await d.tabs.count();
   await d.newTerminal.click();
   await expect(d.tabs).toHaveCount(before + 1);
@@ -39,7 +50,7 @@ async function dragDrawerTo(page: Page, heightFromBottom: number) {
 
 test.describe('Bottom Drawer', () => {
   test('starts minimized to its tab strip with no tabs', async ({ appPage }) => {
-    const d = drawer(appPage);
+    const d = await restoredDrawer(appPage);
     await expect(d.handle).toBeAttached();
     await expect(d.tabs).toHaveCount(0);
     expect(await d.height()).toBeCloseTo(MINIMIZED, 0);
@@ -126,7 +137,7 @@ test.describe('Bottom Drawer', () => {
     const d = await openTerminal(appPage);
     await expect.poll(d.height).toBeCloseTo(DEFAULT_EXPANDED, 0);
 
-    await d.tabs.first().getByLabel('Close tab').click();
+    await d.tabs.first().getByRole('button', { name: /^Close / }).click();
     await expect(d.tabs).toHaveCount(0);
     await expect.poll(d.height).toBeCloseTo(MINIMIZED, 0);
   });
@@ -139,5 +150,26 @@ test.describe('Bottom Drawer', () => {
     await d.tabs.nth(0).click();
     await expect(d.tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
     await expect(d.tabs.nth(1)).toHaveAttribute('aria-selected', 'false');
+  });
+
+  test('reorders terminal tabs when dragging the first numeric index', async ({ appPage }, testInfo) => {
+    await openTerminal(appPage);
+    const d = await openTerminal(appPage);
+    await expect(d.tabs.nth(0)).toContainText(/^Session /);
+    await expect(d.tabs.nth(1)).toContainText(/^Session /);
+    const titles = await d.tabs.allTextContents();
+    const first = (await d.tabs.nth(0).boundingBox())!;
+    const second = (await d.tabs.nth(1).boundingBox())!;
+
+    await appPage.mouse.move(first.x + first.width / 2, first.y + first.height / 2);
+    await appPage.mouse.down();
+    await appPage.mouse.move(second.x + second.width / 2, second.y + second.height / 2, { steps: 12 });
+    await appPage.mouse.up();
+
+    await expect(d.tabs).toHaveText([titles[1], titles[0]]);
+    await testInfo.attach('reordered-terminal-tabs', {
+      body: await appPage.screenshot(),
+      contentType: 'image/png',
+    });
   });
 });

@@ -66,7 +66,34 @@ func configureCommandGroups(parent *cobra.Command) {
 	}
 }
 
-func runWithInput(ctx context.Context, args []string, in io.Reader, out, diagnostics io.Writer) int {
+// outputDelivery retains the first delivery failure, including invalid short
+// writes, so every CLI path reports delivery failure without undoing mutations.
+type outputDelivery struct {
+	writer io.Writer
+	err    error
+}
+
+func (w *outputDelivery) Write(p []byte) (int, error) {
+	if w.err != nil {
+		return 0, w.err
+	}
+	n, err := w.writer.Write(p)
+	if err == nil && n != len(p) {
+		err = io.ErrShortWrite
+	}
+	w.err = err
+	return n, err
+}
+
+func runWithInput(ctx context.Context, args []string, in io.Reader, out, diagnostics io.Writer) (code int) {
+	resultOutput := &outputDelivery{writer: out}
+	diagnosticOutput := &outputDelivery{writer: diagnostics}
+	out, diagnostics = resultOutput, diagnosticOutput
+	defer func() {
+		if resultOutput.err != nil || diagnosticOutput.err != nil {
+			code = 5
+		}
+	}()
 	root := newRootCommand(in, out, diagnostics)
 	root.SetArgs(args)
 	cmd, err := root.ExecuteContextC(ctx)

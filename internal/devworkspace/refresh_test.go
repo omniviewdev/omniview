@@ -125,3 +125,36 @@ func TestPreserveGeneratedEditsReportsDeletedPath(t *testing.T) {
 	require.Equal(t, "generated_conflict", failure.Code)
 	require.ErrorContains(t, err, "bin/host")
 }
+
+func TestRefreshRejectsChangedCapturedTargetsBeforeRecoveryMutation(t *testing.T) {
+	m, w, _ := recoveryFixture(t)
+	path := filepath.Join(m.Root, ".omniview-dev", "recovery", w.Manifest.WorkspaceID, "refresh.json")
+	intent := refreshIntent{
+		WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, Phase: "update",
+		Refs: map[string]string{"omniview": "captured"},
+	}
+	require.NoError(t, atomicJSON(path, intent))
+	before, err := os.ReadFile(path)
+	require.NoError(t, err)
+	_, err = m.refresh(context.Background(), w.Manifest.Slug, RefreshOptions{}, map[string]string{"omniview": "different"})
+	var typed *devcontract.Error
+	require.ErrorAs(t, err, &typed)
+	require.Equal(t, "refresh_intent_mismatch", typed.Code)
+	after, readErr := os.ReadFile(path)
+	require.NoError(t, readErr)
+	require.Equal(t, before, after)
+}
+
+func TestRefreshConfigurationAcceptsOnlyCapturedProgress(t *testing.T) {
+	m, w, remote, _ := upstreamFixture(t)
+	upstreamCommit(t, remote, "package.json", `{"name":"changed","packageManager":"pnpm@12.14.0"}`)
+	plan, err := m.PlanUpdate(context.Background(), w.Manifest.Slug, UpdateOptions{})
+	require.NoError(t, err)
+	require.NoError(t, validateRefreshConfiguration(w.Manifest, &plan))
+	progress := w.Manifest
+	progress.Repositories = append([]devcontract.Repository(nil), w.Manifest.Repositories...)
+	progress.Repositories[0].BaseCommit = plan.Repositories[0].TargetSHA
+	require.NoError(t, validateRefreshConfiguration(progress, &plan))
+	progress.Repositories[0].Upstream = &devcontract.RepositoryUpstream{Remote: "different", Branch: "refs/heads/main"}
+	require.ErrorContains(t, validateRefreshConfiguration(progress, &plan), "configuration differs")
+}

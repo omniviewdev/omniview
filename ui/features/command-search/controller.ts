@@ -516,11 +516,12 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       } else {
         attempt.source.state = response.status && response.status !== 'ready' ? response.status : response.completion;
         attempt.source.message = response.message;
+        const actionPrefix = `${attempt.registration.plugin}:`;
         attempt.items = response.items
           .filter((item) => withinScope(item.value, attempt.registration.plugin) &&
             (item.value.kind !== 'action' || !!attempt.provider.executeAction &&
-              item.value.action.id.startsWith(`${attempt.registration.plugin}:`) &&
-              item.value.action.id.length > attempt.registration.plugin.length + 1))
+              item.value.action.id.startsWith(actionPrefix) &&
+              item.value.action.id.length > actionPrefix.length))
           .map((item: SearchProviderItemV1) => ({
             registration: attempt.registration,
             label: item.label,

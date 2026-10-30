@@ -1,5 +1,8 @@
-import { bench, describe } from 'vitest';
-import { stripAnsi } from './stripAnsi';
+import { test, describe } from 'vitest';
+import * as ansiStripper from './stripAnsi';
+
+// Capture exports outside timed work to exclude module-runner getter overhead.
+const { stripAnsi } = ansiStripper;
 
 // ---------------------------------------------------------------------------
 // Test data — representative of real Kubernetes pod log lines
@@ -33,38 +36,52 @@ const BATCH_PLAIN_100 = Array.from({ length: 100 }, () => PLAIN_LONG);
 
 describe('stripAnsi', () => {
   describe('single line', () => {
-    bench('plain short (fast path)', () => {
-      stripAnsi(PLAIN_SHORT);
+    test('plain short (fast path)', async ({ bench }) => {
+      await bench('plain short (fast path)', () => {
+        stripAnsi(PLAIN_SHORT);
+      }).run(); 
     });
 
-    bench('plain long (fast path)', () => {
-      stripAnsi(PLAIN_LONG);
+    test('plain long (fast path)', async ({ bench }) => {
+      await bench('plain long (fast path)', () => {
+        stripAnsi(PLAIN_LONG);
+      }).run(); 
     });
 
-    bench('colored simple (1 SGR pair)', () => {
-      stripAnsi(COLORED_SIMPLE);
+    test('colored simple (1 SGR pair)', async ({ bench }) => {
+      await bench('colored simple (1 SGR pair)', () => {
+        stripAnsi(COLORED_SIMPLE);
+      }).run(); 
     });
 
-    bench('colored typical (4 SGR pairs)', () => {
-      stripAnsi(COLORED_TYPICAL);
+    test('colored typical (4 SGR pairs)', async ({ bench }) => {
+      await bench('colored typical (4 SGR pairs)', () => {
+        stripAnsi(COLORED_TYPICAL);
+      }).run(); 
     });
 
-    bench('colored heavy (256-color, RGB, attributes)', () => {
-      stripAnsi(COLORED_HEAVY);
+    test('colored heavy (256-color, RGB, attributes)', async ({ bench }) => {
+      await bench('colored heavy (256-color, RGB, attributes)', () => {
+        stripAnsi(COLORED_HEAVY);
+      }).run(); 
     });
   });
 
   describe('batch (simulates ingest chunk)', () => {
-    bench('100 mixed lines', () => {
-      for (const line of BATCH_MIXED_100) {
-        stripAnsi(line);
-      }
+    test('100 mixed lines', async ({ bench }) => {
+      await bench('100 mixed lines', () => {
+        for (const line of BATCH_MIXED_100) {
+          stripAnsi(line);
+        }
+      }).run(); 
     });
 
-    bench('100 plain lines (fast path)', () => {
-      for (const line of BATCH_PLAIN_100) {
-        stripAnsi(line);
-      }
+    test('100 plain lines (fast path)', async ({ bench }) => {
+      await bench('100 plain lines (fast path)', () => {
+        for (const line of BATCH_PLAIN_100) {
+          stripAnsi(line);
+        }
+      }).run(); 
     });
   });
 });

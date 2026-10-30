@@ -20,6 +20,11 @@ vi.mock('../../resource/v2/client', () => ({
   ResetConnectionProfile: native.reset,
   RemoveConnection: native.remove,
 }));
+vi.mock('../../connection/connectionReadiness', () => ({
+  startConnectionWithReadiness: native.start,
+  stopConnectionWithReadiness: native.stop,
+  invalidateConnectionReadiness: vi.fn(),
+}));
 
 const original = Connection.createFrom({ id: 'route/雪', name: 'Native' });
 const edited = Connection.createFrom({ id: 'route/雪', name: 'Override' });
@@ -27,7 +32,7 @@ const detailKey = ['neutral', 'connection', 'detail', original.id];
 const listKey = ['neutral', 'connection', 'list'];
 const profilesKey = ['neutral', 'connection', 'profiles'];
 const resourcesKey = ['neutral', 'resource-v2', 'enumerate'];
-const schemasKey = ['EDITOR_SCHEMAS', 'neutral', { connection: original.id }];
+const schemasKey = ['neutral', 'resource-v2', 'editor-schemas', { connection: original.id }];
 
 function mount() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { retry: false } } });

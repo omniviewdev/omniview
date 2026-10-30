@@ -136,13 +136,13 @@ the replacement lifetime; React Strict Mode effect replay starts a fresh batch.
 
 The shell remains interactive while plugins initialize. `ready` describes the
 initial eligible batch settling, not every development server becoming ready.
-`RouteProvider` reserves `/_plugin/:pluginId/*` before plugin routes exist:
+The page routes of every page tab (`ui/features/workspace/pageRoutes.tsx`) reserve `/_plugin/:pluginId/*` before plugin routes exist:
 known plugins show progress, dev-server failures offer a restart, import failures
 offer retry/reset (reset clears state and immediately reloads with the original
 dev options), and unknown plugin URLs show not-found feedback. Once routes
-are registered, the concrete plugin route replaces this fallback at the current
-URL, including deep links. Replaced routers are disposed to release their
-history listeners.
+are registered, each tab's memory router is rebuilt with the concrete plugin
+route at the tab's current location, including deep links. Replaced routers are
+disposed to release their listeners.
 
 The homepage also distinguishes pending registration from an empty installation.
 On a frontend reload it shows progress until discovery and plugin imports settle,
@@ -210,7 +210,7 @@ Uses `useSyncExternalStore` — re-renders only when the service snapshot change
 
 ### `usePluginRoutes()`
 
-Derives the route tree from loaded plugin registrations. Each plugin's routes are nested under `/_plugin/{pluginId}` with a `PluginRenderer` layout component. The `usePluginRoutes` hook creates a wrapper route per plugin with `path: pluginId`, and `RouteProvider` nests those under the top-level `/_plugin` parent:
+Derives the route tree from loaded plugin registrations. Each plugin's routes are nested under `/_plugin/{pluginId}` with a `PluginRenderer` layout component. The `usePluginRoutes` hook creates a wrapper route per plugin with `path: pluginId`, and `buildPageRoutes` nests those under the top-level `/_plugin` parent of every page tab's router:
 
 ```text
 /_plugin/{pluginId}/...routes

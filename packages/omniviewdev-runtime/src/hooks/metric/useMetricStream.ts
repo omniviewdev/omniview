@@ -5,6 +5,7 @@ import type { MetricResult } from '../../bindings/github.com/omniviewdev/plugin-
 import { useResolvedPluginId } from '../useResolvedPluginId';
 import type { Value, ResourceReference, AccessRoute } from '../../resource/v2/domain';
 
+
 export type UseMetricStreamOptions = {
   /** The plugin providing metrics */
   pluginID?: string;

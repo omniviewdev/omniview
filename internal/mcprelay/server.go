@@ -507,12 +507,19 @@ func (r *Relay) resync() {
 		return catalog[i].PluginID < catalog[j].PluginID
 	})
 	counts := make(map[string]int, len(catalog))
+	builtinNames := make(map[string]bool)
 	for _, tool := range catalog {
-		counts[tool.MCPName]++
+		if tool.Status == StatusOK || tool.Status == StatusConflict {
+			counts[tool.MCPName]++
+			if tool.BuiltIn && tool.Status == StatusOK {
+				builtinNames[tool.MCPName] = true
+			}
+		}
 	}
 	for i := range catalog {
-		if counts[catalog[i].MCPName] > 1 {
-			catalog[i].Status = StatusConflict
+		tool := &catalog[i]
+		if tool.Status == StatusOK && counts[tool.MCPName] > 1 && (!tool.BuiltIn || !builtinNames[tool.MCPName]) {
+			tool.Status = StatusConflict
 		}
 	}
 	desired := map[string]ToolInfo{}

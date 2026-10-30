@@ -11,6 +11,10 @@ export function installDefaultFixtures(): void {
     'plugin/settings/servicewrapper.PluginValues': () => ({}),
     'plugin/servicewrapper.GetPluginMeta': (id: string) => ({ id, name: id, version: '0.0.0-bench', description: '' }),
     'plugin/servicewrapper.ListPlugins': () => [],
+    'resource/servicewrapper.CheckConnection': (_pluginID: string, connectionID: string) => ({
+      connection: { id: connectionID, name: connectionID, labels: {} },
+      status: 'CONNECTED',
+    }),
     'resource/servicewrapper.ListConnections': () => [{ id: BENCH_CONNECTION_ID, name: 'bench', labels: {} }],
     'resource/servicewrapper.ListAllConnections': () => ({}),
   });

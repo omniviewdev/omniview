@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ConfirmationModalContext } from '@omniviewdev/runtime';
 import type * as WailsRuntime from '@wailsio/runtime';
@@ -130,6 +130,7 @@ describe('AiToolsSettingsPage', () => {
     mocks.setToolOverride.mockReset().mockResolvedValue(undefined);
     mocks.setConnectionAccess.mockReset().mockResolvedValue(undefined);
     mocks.applyPreset.mockReset().mockResolvedValue(undefined);
+    mocks.setEnabled.mockReset().mockResolvedValue(undefined);
     mocks.confirmShow.mockReset();
     mocks.writeText.mockReset().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText: mocks.writeText }, configurable: true });
@@ -246,7 +247,15 @@ describe('AiToolsSettingsPage', () => {
     mocks.getConfig.mockRejectedValue(new Error('offline'));
     renderPage();
     await screen.findByRole('button', { name: 'Retry configuration' });
-    expect(screen.getByRole('switch', { name: 'Enabled' })).toBeDisabled();
+    const enabled = screen.getByRole('switch', { name: 'Enabled' });
+    expect(enabled).toHaveAttribute('aria-disabled', 'true');
+    const checked = enabled.getAttribute('aria-checked');
+    await act(async () => {
+      fireEvent.click(enabled);
+      fireEvent.keyDown(enabled, { key: ' ' });
+      fireEvent.keyUp(enabled, { key: ' ' });
+    });
+    expect(enabled).toHaveAttribute('aria-checked', checked);
     expect(screen.getByRole('button', { name: 'Rotate token' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Apply port' })).toBeDisabled();
     expect(mocks.setEnabled).not.toHaveBeenCalled();
@@ -270,12 +279,28 @@ describe('AiToolsSettingsPage', () => {
     ['Presets', 'listPresets'],
   ] as const)('shows recoverable %s failure instead of silently assuming state', async (label, method) => {
     mocks[method].mockRejectedValueOnce(new Error('offline'));
+    if (method === 'getStatus') {
+      mocks.getStatus.mockResolvedValue({ enabled: true, running: true, endpoint: 'recovered-endpoint', error: '' });
+    } else if (method === 'listConnectionPolicies') {
+      mocks.listConnectionPolicies.mockResolvedValue([{ ...connections[0], connectionName: 'Recovered connection' }]);
+    } else {
+      mocks.listPresets.mockResolvedValue([{ name: 'recovered-preset', builtIn: false, toolCount: 2 }]);
+    }
     renderPage();
     const retry = await screen.findByRole('button', { name: `Retry ${label.toLowerCase()}` });
     expect(screen.getByText(`${label} could not be loaded.`)).toBeInTheDocument();
     if (method === 'getStatus') expect(screen.queryByText('Stopped')).not.toBeInTheDocument();
-    await act(async () => fireEvent.click(retry));
-    expect(screen.queryByText(`${label} could not be loaded.`)).not.toBeInTheDocument();
+    fireEvent.click(retry);
+    if (method === 'getStatus') {
+      expect(await screen.findByText('Running at recovered-endpoint')).toBeInTheDocument();
+    } else if (method === 'listConnectionPolicies') {
+      fireEvent.click(screen.getByRole('combobox', { name: 'Policy scope' }));
+      expect(await screen.findByRole('option', { name: 'Kubernetes · Recovered connection' })).toBeInTheDocument();
+    } else {
+      expect(await screen.findByRole('button', { name: 'Delete preset recovered-preset' })).toBeInTheDocument();
+    }
+    expect(mocks[method]).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(screen.queryByText(`${label} could not be loaded.`)).not.toBeInTheDocument());
   });
 
   it('does not disguise an unbound connection tool as a ready plugin route', async () => {

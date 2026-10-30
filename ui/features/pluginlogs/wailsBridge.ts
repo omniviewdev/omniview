@@ -1,6 +1,5 @@
 import { Events } from '@omniviewdev/runtime/runtime';
 import { pluginLogChannel } from './events';
-import type { PluginLogEntry } from './types';
 
 /**
  * Initializes the bridge between Go-side Wails events and the
@@ -12,7 +11,7 @@ export function initPluginLogBridge(): () => void {
 
   cleanups.push(
     Events.On('plugin/process/log', (ev) => {
-      pluginLogChannel.emit('onPluginLog', ev.data as PluginLogEntry);
+      pluginLogChannel.emit('onPluginLog', ev.data);
     }),
   );
 

@@ -78,7 +78,6 @@ const ExecAction: React.FC<Props> = ({
   action,
   plugin,
   connection,
-  resource,
   data,
   record,
   itemProps,
@@ -90,7 +89,7 @@ const ExecAction: React.FC<Props> = ({
    * Perform the exec action on the resource target.
    */
   const handlePerformExec = (label: string, params: Record<string, string>) => {
-    const opts = resourceExecOptions(plugin, resource, record.record.body, params,
+    const opts = resourceExecOptions(record.record.body, params,
       action.default_command?.length ? action.default_command : ['/bin/sh'],
       record.record.reference, record.route);
 

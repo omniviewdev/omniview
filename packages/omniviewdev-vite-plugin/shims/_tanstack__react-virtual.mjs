@@ -1,30 +1,38 @@
-// Auto-generated shim for '@tanstack/react-virtual'
+// Auto-generated shim for "@tanstack/react-virtual"
 // DO NOT EDIT -- regenerate with: pnpm --filter @omniviewdev/vite-plugin generate-shims
-
-const mod = window.__OMNIVIEW_SHARED__['@tanstack/react-virtual'];
-
-if (!mod) {
-  throw new Error(
-    '[omniview] Shared dependency "@tanstack/react-virtual" is not available on window.__OMNIVIEW_SHARED__. ' +
-    'Ensure the Omniview host app is running and shared deps are exported before loading this plugin.'
-  );
-}
-
-export const Virtualizer = mod.Virtualizer;
-export const approxEqual = mod.approxEqual;
-export const debounce = mod.debounce;
-export const defaultKeyExtractor = mod.defaultKeyExtractor;
-export const defaultRangeExtractor = mod.defaultRangeExtractor;
-export const elementScroll = mod.elementScroll;
-export const measureElement = mod.measureElement;
-export const memo = mod.memo;
-export const notUndefined = mod.notUndefined;
-export const observeElementOffset = mod.observeElementOffset;
-export const observeElementRect = mod.observeElementRect;
-export const observeWindowOffset = mod.observeWindowOffset;
-export const observeWindowRect = mod.observeWindowRect;
-export const useVirtualizer = mod.useVirtualizer;
-export const useWindowVirtualizer = mod.useWindowVirtualizer;
-export const windowScroll = mod.windowScroll;
-
-export default mod.default !== undefined ? mod.default : mod;
+const mod = window.__OMNIVIEW_SHARED__["@tanstack/react-virtual"];
+if (!mod) throw new Error('[omniview] Shared dependency ' + "@tanstack/react-virtual" + ' is not available on window.__OMNIVIEW_SHARED__.');
+const binding0 = mod["Virtualizer"];
+export { binding0 as "Virtualizer" };
+const binding1 = mod["_resetIOSDetectionForTests"];
+export { binding1 as "_resetIOSDetectionForTests" };
+const binding2 = mod["approxEqual"];
+export { binding2 as "approxEqual" };
+const binding3 = mod["debounce"];
+export { binding3 as "debounce" };
+const binding4 = mod["defaultKeyExtractor"];
+export { binding4 as "defaultKeyExtractor" };
+const binding5 = mod["defaultRangeExtractor"];
+export { binding5 as "defaultRangeExtractor" };
+const binding6 = mod["elementScroll"];
+export { binding6 as "elementScroll" };
+const binding7 = mod["measureElement"];
+export { binding7 as "measureElement" };
+const binding8 = mod["memo"];
+export { binding8 as "memo" };
+const binding9 = mod["notUndefined"];
+export { binding9 as "notUndefined" };
+const binding10 = mod["observeElementOffset"];
+export { binding10 as "observeElementOffset" };
+const binding11 = mod["observeElementRect"];
+export { binding11 as "observeElementRect" };
+const binding12 = mod["observeWindowOffset"];
+export { binding12 as "observeWindowOffset" };
+const binding13 = mod["observeWindowRect"];
+export { binding13 as "observeWindowRect" };
+const binding14 = mod["useVirtualizer"];
+export { binding14 as "useVirtualizer" };
+const binding15 = mod["useWindowVirtualizer"];
+export { binding15 as "useWindowVirtualizer" };
+const binding16 = mod["windowScroll"];
+export { binding16 as "windowScroll" };

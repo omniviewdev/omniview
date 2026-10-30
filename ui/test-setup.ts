@@ -51,7 +51,7 @@ window.ResizeObserver = class {
   observe = vi.fn();
   unobserve = vi.fn();
   disconnect = vi.fn();
-} as unknown as typeof ResizeObserver;
+};
 
 // scrollIntoView stub (jsdom doesn't implement it)
 Element.prototype.scrollIntoView = vi.fn();

@@ -29,3 +29,15 @@ diff --git a/dist/calls.js b/dist/calls.js
      });
      const cancel = () => {
          callResponses.delete(id);
+diff --git a/dist/drag.js b/dist/drag.js
+--- a/dist/drag.js
++++ b/dist/drag.js
+@@ -64,7 +64,7 @@
+     document.addEventListener('DOMContentLoaded', tryInitDragHandlers, { once: true });
+     // As a last resort, poll for environment for a short period
+     let dragEnvPolls = 0;
+-    const dragEnvPoll = window.setInterval(() => {
++    const dragEnvPoll = dragInitDone ? undefined : window.setInterval(() => {
+         if (dragInitDone) {
+             window.clearInterval(dragEnvPoll);
+             return;

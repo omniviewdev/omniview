@@ -12,9 +12,13 @@ import {
   RightDrawerContext,
   type RightDrawerContextType,
   type ShowResourceSidebarParams,
+  ConnectionBoundary,
+  ConnectionBoundaryFallback,
+  withConnectionReady,
+  useSnackbar,
 } from '@omniviewdev/runtime';
 import { ResourceClient } from '@omniviewdev/runtime/api';
-import { jsonToValue, valueToJSON, resourceQueryKeys, type HostRecord, type Value } from '@omniviewdev/runtime';
+import { jsonToValue, valueToJSON, resourceQueryKeys, createErrorHandler, type HostRecord, type Value } from '@omniviewdev/runtime';
 import { useQueryClient } from '@tanstack/react-query';
 import RightDrawer from '@/components/displays/RightDrawer';
 import { bottomDrawerChannel, getBottomDrawerHeight } from './BottomDrawer/events';
@@ -49,6 +53,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
   const [context, setContext] = useState<DrawerContext | undefined>(undefined);
   const resourceRequest = useRef(0);
   const cancelResourceRead = useRef<(() => void) | null>(null);
+  const { showSnackbar } = useSnackbar();
   React.useEffect(() => () => {
     resourceRequest.current += 1;
     cancelResourceRead.current?.();
@@ -261,15 +266,15 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
       if (!ctx.resource) {
         throw new Error('Resource editor has no canonical target.');
       }
-      void ResourceClient.Mutate(params.pluginID, {
-        route: ctx.resource.route,
-        reference: ctx.resource.reference,
+      void withConnectionReady(params.pluginID, ctx.resource.route.connection, () => ResourceClient.Mutate(params.pluginID, {
+        route: ctx.resource!.route,
+        reference: ctx.resource!.reference,
         operation: 'update',
         input: canonical ?? jsonToValue(value),
-      }).then(() => {
+      })).then(() => {
         void queryClient.invalidateQueries({ queryKey: resourceQueryKeys.all(params.pluginID) });
         closeDrawer();
-      });
+      }).catch(createErrorHandler(showSnackbar, 'Failed to update resource'));
     };
 
     // Resolve drawer/sidebar via extension points — synchronous lookup
@@ -289,36 +294,37 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
       );
 
     // Observed rows already carry host identity. Linked resources require a fresh read.
-    const read = params.record ? null : ResourceClient.Get(params.pluginID, {
-      targetId: params.targetId,
-      request: {
-        route: params.route,
-        reference: params.reference,
-        representation: params.representation,
-      },
-    });
-    const cancel = () => {
-      void read?.cancel();
-    };
-
-    cancelResourceRead.current = cancel;
-    params.signal?.addEventListener('abort', cancel, { once: true });
-    let result: HostRecord | null;
-    try {
+    const result: HostRecord | null = params.record ?? await withConnectionReady(params.pluginID, params.route.connection, async () => {
       params.signal?.throwIfAborted();
-      result = params.record ?? await read;
-    } catch (error) {
-      if (Boolean(params.signal?.aborted) || request !== resourceRequest.current) {
-        throw new DOMException('Resource request cancelled.', 'AbortError');
+      if (request !== resourceRequest.current) {
+        throw new DOMException('Resource request superseded.', 'AbortError');
       }
-
-      throw error;
-    } finally {
-      params.signal?.removeEventListener('abort', cancel);
-      if (cancelResourceRead.current === cancel) {
-        cancelResourceRead.current = null;
+      const read = ResourceClient.Get(params.pluginID, {
+        targetId: params.targetId,
+        request: {
+          route: params.route,
+          reference: params.reference,
+          representation: params.representation,
+        },
+      });
+      const cancel = () => { void read.cancel(); };
+      cancelResourceRead.current = cancel;
+      params.signal?.addEventListener('abort', cancel, { once: true });
+      try {
+        params.signal?.throwIfAborted();
+        return await read;
+      } catch (error) {
+        if (Boolean(params.signal?.aborted) || request !== resourceRequest.current) {
+          throw new DOMException('Resource request cancelled.', 'AbortError');
+        }
+        throw error;
+      } finally {
+        params.signal?.removeEventListener('abort', cancel);
+        if (cancelResourceRead.current === cancel) {
+          cancelResourceRead.current = null;
+        }
       }
-    }
+    });
 
     params.signal?.throwIfAborted();
     if (request !== resourceRequest.current) {
@@ -350,7 +356,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
         record: result,
       },
     });
-  }, [closeDrawer, openDrawer, drawerEP, sidebarEP, queryClient]);
+  }, [closeDrawer, openDrawer, drawerEP, sidebarEP, queryClient, showSnackbar]);
 
   const contextValue = useMemo(() => ({
     closeDrawer,
@@ -368,14 +374,26 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
         data-open={isOpen || undefined}
         style={{ width: initialWidth }}
       >
-        {content &&
-          <RightDrawer
-            {...content}
-            ctx={context}
-            open={isOpen}
-            onClose={closeDrawer}
-          />
-        }
+        {content && (
+          context?.resource?.pluginID && context.resource.route.connection ? (
+            <ConnectionBoundary
+              pluginID={context.resource.pluginID}
+              connectionID={context.resource.route.connection}
+              fallback={(state) => (
+                <ConnectionBoundaryFallback
+                  state={state}
+                  connectionName={state.connection?.name?.trim() ? state.connection.name : context.resource?.route.connection}
+                  onBack={closeDrawer}
+                  backLabel="Close"
+                />
+              )}
+            >
+              <RightDrawer {...content} ctx={context} open={isOpen} onClose={closeDrawer} />
+            </ConnectionBoundary>
+          ) : (
+            <RightDrawer {...content} ctx={context} open={isOpen} onClose={closeDrawer} />
+          )
+        )}
         <div
           ref={dragHandleRef}
           className={handleStyles.Left}

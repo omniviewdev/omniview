@@ -372,6 +372,7 @@ func (c *controller) Action(ctx context.Context, pluginID string, request resour
 	if err != nil {
 		return _result, err
 	}
+	request.ExpectedDescriptor = actionDescriptor
 	if err := c.currentGeneration(ctx, pluginID, generation); err != nil {
 		return _result, err
 	}

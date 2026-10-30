@@ -22,6 +22,7 @@ The private fixture is retained in the coordinator's owned bundle, not published
 ## Consumer-visible acceptance
 
 - The actual header shortcut opens a focused, keyboard-operable palette; close restores the opener. Dialog double-click does not invoke header window maximization.
+- Late plugin route publication, reload and removal must preserve an open palette, its typed query and its connected opener. Router ownership swaps complete route trees without publishing an intermediate loading gap that unmounts the shell.
 - Settings results navigate and focus the actual editor, including an already-mounted destination and an identical URL. Plugin navigation uses current registered routes and readiness.
 - An allowed connection-discovery command runs through the existing native `ResourceClient.LoadConnections` boundary. Actual cache invalidation/refetch is observed; discovery-only results do not overwrite a merged connection list.
 - Safe denial feedback is observed from the actual native boundary without exposing private provider error text. Discovery and frontend ownership do not grant permission.

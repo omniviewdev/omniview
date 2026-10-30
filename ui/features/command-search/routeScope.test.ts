@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ExtensionPointRegistry } from '@omniviewdev/runtime';
 import type { SearchRouteContextV1, SearchScopeV1 } from '@omniviewdev/runtime';
-import type { RouteObject } from 'react-router-dom';
+import type { RouteObject } from 'react-router';
 import { normalizePluginRoutes } from '../plugins/react/normalizePluginRoutes';
 import { createGlobalSearchController } from './controller';
 import { resolveRouteSearchScope, resolveSearchOpenOptions } from './routeScope';
@@ -172,4 +172,11 @@ describe('registered route search context and opening', () => {
     expect(h.controller.getSnapshot().scopes).toEqual([]);
     h.controller.dispose();
   });
+});
+
+it('seeds workspace resource scopes without parsing opaque type IDs or requiring plugin routes', () => {
+  const location = { pathname: '/resources/provider/prod%2Fwest', search: '?type=native%2Fopaque%3A%3Atype' };
+  expect(resolveRouteSearchScope(location, () => undefined, () => true))
+    .toEqual({ kind: 'connection', pluginId: 'provider', connectionId: 'prod/west', label: 'prod/west' });
+  expect(resolveRouteSearchScope(location, () => undefined, () => false)).toBeUndefined();
 });

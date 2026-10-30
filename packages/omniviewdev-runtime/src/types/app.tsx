@@ -1,6 +1,7 @@
 import React, { ComponentType } from "react";
 import { ExtensionPointSettings } from "./extensions";
-import { RouteObject, RouterProvider, createMemoryRouter } from "react-router-dom";
+import { RouteObject, createMemoryRouter } from "react-router";
+import { RouterProvider } from "react-router/dom";
 
 
 /** TODO: Add whatever props we need here */

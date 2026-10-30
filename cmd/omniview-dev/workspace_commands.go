@@ -7,15 +7,28 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devworkspace"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+)
+
+const (
+	workspaceFollow       = "follow"
+	defaultFollowInterval = 30 * time.Second
+	workspaceUsageExit    = 2
+	workspaceRecover      = "recover"
+	workspaceStopped      = "stopped"
+	workspaceResetModules = "reset-modules"
+	workspaceRefresh      = "refresh"
+	workspaceUpdate       = "update"
 )
 
 type repeatedWorkspaceFlag []string
@@ -27,10 +40,12 @@ func (v *repeatedWorkspaceFlag) Type() string           { return "string" }
 type workspaceCommand struct {
 	verb, root, target, explicit, name, slug, stateRoot, linkEvidence                           string
 	modulePath, marker                                                                          string
-	json, start, deleteState, deleteBranches, apply                                             bool
+	json, start, deleteState, deleteBranches, apply, check                                      bool
 	repositories, plugins, refs, addRepositories, removeRepositories, addPlugins, removePlugins repeatedWorkspaceFlag
 	sources, sourceRefs, sourceDirectories                                                      repeatedWorkspaceFlag
 	ports                                                                                       repeatedWorkspaceFlag
+	upstreams                                                                                   repeatedWorkspaceFlag
+	interval                                                                                    time.Duration
 	portPolicy                                                                                  string
 	launch                                                                                      devworkspace.LaunchOptions
 	supplied                                                                                    map[string]bool
@@ -38,7 +53,12 @@ type workspaceCommand struct {
 
 func addWorkspaceCommands(root *cobra.Command) {
 	group := &cobra.Command{Use: "workspace", Short: "Manage development workspaces"}
-	for _, verb := range []string{"init", "create", "up", "refresh", "update", "recover", "evidence", "verify-reload", "down", "restart", "edit", "link", "remove", "profile", "inspect", "paths", "list", "unlink", "resume", "rollback", "supervise"} {
+	for _, verb := range []string{
+		"init", "create", "up", "preflight", workspaceRefresh, workspaceUpdate, workspaceFollow, workspaceRecover, "evidence",
+		"verify-reload",
+		"down", "restart", "edit", "link", "remove", "profile", "inspect", "paths", "list", "unlink", workspaceResetModules,
+		"resume", "rollback", "supervise",
+	} {
 		group.AddCommand(newWorkspaceCommand(verb, func(cmd *cobra.Command, c workspaceCommand) error {
 			_, code := executeWorkspaceCommand(cmd.Context(), c, cmd.OutOrStdout(), cmd.ErrOrStderr())
 			return commandExit(code)
@@ -84,11 +104,36 @@ func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceComm
 		flags.BoolVar(&c.start, "start", false, "build and launch after creation")
 		flags.StringVar(&c.stateRoot, "state-root", "", "explicit custom state leaf under a new dedicated profile container")
 		launchFlags()
-	case "up":
+	case "up", "preflight":
 		launchFlags()
-	case "refresh", "update", "recover":
-		if c.verb == "update" {
-			flags.Var(&c.repositories, "repo", "repository ID to fast-forward (repeatable)")
+		if c.verb == "preflight" {
+			cmd.Short = "Report all launch input prerequisites without installing or starting"
+		}
+	case workspaceRefresh, workspaceUpdate, workspaceFollow, workspaceRecover:
+		if c.verb == workspaceUpdate || c.verb == workspaceFollow {
+			flags.Var(&c.repositories, "repo", "selected repository ID to observe or fast-forward (repeatable)")
+		}
+		if c.verb == workspaceUpdate {
+			cmd.Short = "Fetch and safely update configured workspace upstreams"
+			cmd.Long = "Fetch selected configured upstream branches and apply one safe cohort " +
+				"through the workspace lifecycle. --check only reports the plan and never stops the app " +
+				"or changes worktrees. " +
+				"Running workspaces return to ready; stopped workspaces remain stopped. " +
+				"Omitted launch flags preserve saved options. Pins and tags are skipped; " +
+				"no reset, stash, clean, merge or rebase runs automatically."
+			flags.BoolVar(&c.check, "check", false, "fetch and report available updates and blockers without applying")
+		}
+		if c.verb == workspaceFollow {
+			cmd.Short = "Observe workspace upstreams in the foreground"
+			cmd.Long = "Observe selected configured upstream branches in the foreground. " +
+				"--apply explicitly permits safe updates, dependency installation and execution of upstream code " +
+				"with your local permissions; this is not a sandbox. Omitted launch flags preserve saved options. " +
+				"Stopped workspaces stay stopped. Ctrl-C stops following; an idle app stays running. " +
+				"--watch still controls only the local build graph. " +
+				"--json streams one diagnostic object per observation."
+			flags.DurationVar(&c.interval, "interval", defaultFollowInterval, "upstream observation interval (minimum 5s)")
+			flags.BoolVar(&c.apply, "apply", false,
+				"explicitly trust selected upstream code and apply safe updates automatically")
 		}
 		launchFlags()
 	case "evidence":
@@ -99,7 +144,7 @@ func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceComm
 	case "down", "restart":
 		flags.DurationVar(&c.launch.Timeout, "timeout", 20*time.Minute, "bounded stop/restart wait")
 	case "edit":
-		flags.BoolVar(&c.apply, "apply", false, "apply edits by relinking, rebuilding and restarting")
+		flags.BoolVar(&c.apply, "apply", false, "apply edits and refresh; restart only a previously running workspace")
 		flags.StringVar(&c.name, "name", "", "new display name")
 		flags.StringVar(&c.slug, "slug", "", "new workspace slug")
 		flags.Var(&c.addRepositories, "add-repo", "repository ID (repeatable)")
@@ -107,6 +152,7 @@ func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceComm
 		flags.Var(&c.addPlugins, "add-plugin", "plugin ID (repeatable)")
 		flags.Var(&c.removePlugins, "remove-plugin", "plugin ID (repeatable)")
 		flags.Var(&c.refs, "ref", "ID=ref override (repeatable)")
+		flags.Var(&c.upstreams, "upstream", "ID=REMOTE/BRANCH update policy (repeatable); does not change the selected ref")
 	case "link":
 		flags.StringVar(&c.linkEvidence, "link-evidence", "", "actual successful pinned pnpm probe JSON")
 	case "remove":
@@ -114,6 +160,14 @@ func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceComm
 		flags.BoolVar(&c.deleteBranches, "delete-branches", false, "explicitly delete owned feature branches")
 	case "profile":
 		flags.StringVar(&c.stateRoot, "state-root", "", "explicit custom state leaf under a new dedicated profile container")
+	case workspaceResetModules:
+		cmd.Short = "Delete and reinstall owned dependency trees of a stopped workspace"
+		cmd.Long = "Explicit recovery for an externally changed dependency tree (for example a stray pnpm install). " +
+			"The workspace must be stopped and linked. Every journal-owned node_modules tree and dependency cache " +
+			"(TypeScript, Vite loader and Vite optimizer caches) and any node_modules at the selected package roots " +
+			"is deleted and reinstalled through the recorded composition installer. Foreign bytes are never adopted; " +
+			"distributions, bindings, shims and other outputs are left untouched. During an interrupted unlink or remove " +
+			"it only deletes those trees; rerun the interrupted command afterwards."
 	case "inspect", "paths", "list", "unlink", "resume", "rollback", "supervise":
 	}
 	cmd.RunE = func(cmd *cobra.Command, positionals []string) error {
@@ -137,6 +191,9 @@ func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceComm
 			}
 			if c.supplied["timeout"] && c.launch.Timeout <= 0 {
 				return devcontract.Fail(2, "usage", "timeout must be positive")
+			}
+			if c.verb == workspaceFollow && c.interval < 5*time.Second {
+				return devcontract.Fail(workspaceUsageExit, "usage", "follow interval must be at least 5s")
 			}
 			return nil
 		}(); err != nil {
@@ -245,7 +302,8 @@ func workspaceLaunchOptions(c workspaceCommand, w devworkspace.Workspace) (devwo
 	options := c.launch
 	if previous, err := devworkspace.LoadLaunchOptions(w); err == nil {
 		options.LinkEvidence = previous.LinkEvidence
-		if c.verb == "up" || c.verb == "refresh" || c.verb == "update" || c.verb == "recover" {
+		if c.verb == "up" || c.verb == workspaceRefresh || c.verb == workspaceUpdate ||
+			c.verb == workspaceFollow || c.verb == workspaceRecover || c.verb == "preflight" {
 			if !c.supplied["mode"] {
 				options.Mode = previous.Mode
 			}
@@ -269,6 +327,9 @@ func workspaceLaunchOptions(c workspaceCommand, w devworkspace.Workspace) (devwo
 			}
 			if !c.supplied["seed-version"] {
 				options.BaselineVersion = previous.BaselineVersion
+			}
+			if !c.supplied["timeout"] {
+				options.Timeout = previous.Timeout
 			}
 		}
 	} else if !os.IsNotExist(err) {
@@ -300,6 +361,7 @@ func workspaceLaunchOptions(c workspaceCommand, w devworkspace.Workspace) (devwo
 }
 
 func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagnostics io.Writer) (bool, int) {
+	var value any
 	fail := func(err error) (bool, int) {
 		var payload *devcontract.Error
 		if !errors.As(err, &payload) {
@@ -308,15 +370,25 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 		if payload.Exit == 0 {
 			payload.Exit = 5
 		}
+		var plan *devworkspace.UpdatePlan
+		if result, ok := value.(devworkspace.RefreshResult); ok {
+			plan = result.Plan
+		}
 		if c.json {
-			_ = json.NewEncoder(out).Encode(map[string]any{"error": payload})
+			response := map[string]any{"error": payload}
+			if plan != nil {
+				response["plan"] = plan
+			}
+			_ = json.NewEncoder(out).Encode(response)
 		} else {
+			if plan != nil {
+				printWorkspaceUpdatePlan(diagnostics, *plan)
+			}
 			fmt.Fprintf(diagnostics, "%s: %s\n", payload.Code, payload.Message)
 		}
 		return true, devcontract.ExitCode(payload)
 	}
 	var err error
-	var value any
 	if c.verb == "init" {
 		root := c.root
 		if root == "" {
@@ -400,7 +472,7 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 				value, err = manager.Start(ctx, w.Manifest.WorkspaceID, options, "", diagnostics)
 			}
 		}
-	} else if c.verb == "resume" || c.verb == "recover" || c.verb == "rollback" || c.verb == "remove" {
+	} else if c.verb == "resume" || c.verb == workspaceRecover || c.verb == "rollback" || c.verb == "remove" {
 		target := c.target
 		path := ""
 		collection := c.root
@@ -445,7 +517,7 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 		switch c.verb {
 		case "resume":
 			value, err = manager.ResumeWorkspace(ctx, target)
-		case "recover":
+		case workspaceRecover:
 			var recovered devworkspace.Workspace
 			recovered, err = manager.ResumeWorkspace(ctx, target)
 			if err != nil {
@@ -456,7 +528,7 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 			if optionErr != nil {
 				return fail(optionErr)
 			}
-			value, err = manager.Refresh(ctx, recovered.Manifest.WorkspaceID, refresh)
+			value, err = manager.Recover(ctx, recovered.Manifest.WorkspaceID, refresh)
 		case "rollback":
 			err = manager.RollbackWorkspace(ctx, target)
 			value = map[string]any{"rolledBack": err == nil}
@@ -471,7 +543,7 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 		if manager != nil {
 			c.root = manager.Root
 		}
-		if manager != nil && (c.verb == "up" || c.verb == "link") && c.linkEvidence == "" {
+		if manager != nil && (c.verb == "up" || c.verb == "link" || c.verb == "preflight") && c.linkEvidence == "" {
 			evidence, evidenceErr := manager.LinkEvidence(ctx, w.Manifest.WorkspaceID)
 			if evidenceErr == nil {
 				c.launch.LinkEvidence = evidence
@@ -480,6 +552,40 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 			}
 		}
 		switch c.verb {
+		case "preflight":
+			options, optionErr := workspaceLaunchOptions(c, w)
+			report := devworkspace.PreflightLaunch(w, options)
+			if optionErr != nil {
+				var issue *devcontract.Error
+				if !errors.As(optionErr, &issue) {
+					return fail(optionErr)
+				}
+				issues := []*devcontract.Error{issue}
+				for _, existing := range report.Issues {
+					evidenceError := issue.Code == "link_evidence_required" || issue.Code == "invalid_link_evidence"
+					if existing.Code != issue.Code && !(evidenceError && existing.Code == "link_evidence_required") {
+						issues = append(issues, existing)
+					}
+				}
+				report.Issues = issues
+				report.Ready = false
+			}
+			if c.json {
+				if encodeErr := json.NewEncoder(out).Encode(report); encodeErr != nil {
+					return fail(encodeErr)
+				}
+			} else {
+				for _, issue := range report.Issues {
+					fmt.Fprintf(out, "%s: %s\n", issue.Code, issue.Message)
+				}
+				if report.Ready {
+					fmt.Fprintln(out, "Launch inputs ready; launch still checks source trust, dependencies and runtime compatibility.")
+				}
+			}
+			if !report.Ready {
+				return true, 3
+			}
+			return true, 0
 		case "inspect":
 			if manager == nil {
 				value = w
@@ -527,9 +633,11 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 			}
 		case "supervise":
 			err = manager.ServeSupervisor(ctx, w.Manifest.WorkspaceID, diagnostics)
-			value = map[string]any{"workspaceID": w.Manifest.WorkspaceID, "stopped": err == nil}
+			value = map[string]any{"workspaceID": w.Manifest.WorkspaceID, workspaceStopped: err == nil}
 		case "unlink":
 			value, err = manager.Unlink(ctx, w.Manifest.WorkspaceID)
+		case workspaceResetModules:
+			value, err = manager.ResetModules(ctx, w.Manifest.WorkspaceID)
 		case "link":
 			options, optionErr := workspaceLaunchOptions(c, w)
 			if optionErr != nil {
@@ -541,13 +649,54 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 				return fail(devcontract.Fail(2, "usage", "profile requires --state-root"))
 			}
 			value, err = bindWorkspaceProfile(ctx, manager, w, c.stateRoot)
-		case "refresh", "update":
+		case workspaceRefresh, workspaceUpdate, workspaceFollow:
 			refresh, optionErr := workspaceRefreshOptions(c, w, diagnostics)
 			if optionErr != nil {
 				return fail(optionErr)
 			}
-			if c.verb == "update" {
-				value, err = manager.Update(ctx, w.Manifest.WorkspaceID, devworkspace.UpdateOptions{RefreshOptions: refresh, Repositories: c.repositories})
+			if c.verb == workspaceFollow {
+				if c.apply {
+					selected := make(map[string]bool, len(c.repositories))
+					for _, id := range c.repositories {
+						selected[id] = true
+					}
+					var ids []string
+					for _, repo := range w.Manifest.Repositories {
+						if len(selected) == 0 || selected[repo.ID] {
+							ids = append(ids, repo.ID)
+						}
+					}
+					sort.Strings(ids)
+					if _, writeErr := fmt.Fprintf(diagnostics, "Follow apply trusts upstream code from selected repositories: %s. "+
+						"Updates may install dependencies and execute code with your local permissions; "+
+						"this is not a sandbox.\n", strings.Join(ids, ", ")); writeErr != nil {
+						return true, 5
+					}
+				}
+				followContext, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+				defer cancel()
+				err = manager.Follow(followContext, w.Manifest.WorkspaceID, devworkspace.FollowOptions{
+					UpdateOptions: devworkspace.UpdateOptions{
+						RefreshOptions: refresh, Repositories: c.repositories, Check: false,
+					},
+					Interval: c.interval, Apply: c.apply,
+				}, func(status devworkspace.FollowStatus) error {
+					if c.json {
+						return json.NewEncoder(out).Encode(status)
+					}
+					delivery := &outputDelivery{writer: out}
+					printWorkspaceFollow(delivery, status)
+					return delivery.err
+				})
+				if err != nil && (followContext.Err() == nil || !errors.Is(err, context.Canceled)) {
+					return fail(err)
+				}
+				return true, 0
+			}
+			if c.verb == workspaceUpdate {
+				value, err = manager.Update(ctx, w.Manifest.WorkspaceID, devworkspace.UpdateOptions{
+					RefreshOptions: refresh, Repositories: c.repositories, Check: c.check,
+				})
 			} else {
 				value, err = manager.Refresh(ctx, w.Manifest.WorkspaceID, refresh)
 			}
@@ -571,7 +720,15 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 			if parseErr != nil {
 				return fail(parseErr)
 			}
-			options := devworkspace.EditOptions{AddRepositories: c.addRepositories, RemoveRepositories: c.removeRepositories, AddPlugins: c.addPlugins, RemovePlugins: c.removePlugins, Refs: refs}
+			upstreams, parseErr := workspaceAssignments(c.upstreams)
+			if parseErr != nil {
+				return fail(parseErr)
+			}
+			options := devworkspace.EditOptions{
+				DisplayName: nil, Slug: nil, PreserveSelection: false, Ports: nil,
+				AddRepositories: c.addRepositories, RemoveRepositories: c.removeRepositories,
+				AddPlugins: c.addPlugins, RemovePlugins: c.removePlugins, Refs: refs, Upstreams: upstreams,
+			}
 			if c.supplied["name"] {
 				options.DisplayName = &c.name
 			}
@@ -583,14 +740,35 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 				return fail(portErr)
 			}
 			options.Ports = ports
+			var refresh devworkspace.RefreshOptions
+			refresh.Diagnostics = diagnostics
 			if c.apply {
+				if preflightErr := manager.PreflightEdit(ctx, w.Manifest.WorkspaceID, options); preflightErr != nil {
+					return fail(preflightErr)
+				}
+				// Capture authenticated liveness before Down intentionally stops it.
+				status, statusErr := manager.Status(ctx, w.Manifest.WorkspaceID)
+				if statusErr != nil {
+					return fail(statusErr)
+				}
+				refresh.Restart = workspaceWasRunning(status)
 				if _, stopErr := manager.Down(ctx, w.Manifest.WorkspaceID); stopErr != nil {
 					return fail(stopErr)
 				}
 			}
-			value, err = manager.Reconfigure(ctx, w.Manifest.WorkspaceID, options)
+			selectionEdit := false
+			for _, flag := range []string{
+				"name", "slug", "add-repo", "remove-repo", "add-plugin", "remove-plugin", "ref", "port-policy", "port",
+			} {
+				selectionEdit = selectionEdit || c.supplied[flag]
+			}
+			if len(upstreams) > 0 && !selectionEdit {
+				value, err = manager.ConfigureUpstreams(ctx, w.Manifest.WorkspaceID, upstreams)
+			} else {
+				value, err = manager.Reconfigure(ctx, w.Manifest.WorkspaceID, options)
+			}
 			if err == nil && c.apply {
-				value, err = manager.Refresh(ctx, w.Manifest.WorkspaceID, devworkspace.RefreshOptions{Diagnostics: diagnostics})
+				value, err = manager.Refresh(ctx, w.Manifest.WorkspaceID, refresh)
 			}
 		}
 	}
@@ -611,8 +789,33 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 func printWorkspaceValue(out io.Writer, value any) {
 	switch result := value.(type) {
 	case devworkspace.RefreshResult:
-		fmt.Fprintf(out, "Refresh: %s\nRecovery evidence: %s\n", result.Phase, result.BackupDirectory)
-		printWorkspaceValue(out, result.Status)
+		if result.Plan != nil {
+			printWorkspaceUpdatePlan(out, *result.Plan)
+		}
+		if result.Phase != "" {
+			fmt.Fprintf(out, "Refresh: %s\n", result.Phase)
+		}
+		if result.BackupDirectory != "" {
+			fmt.Fprintf(out, "Recovery evidence: %s\n", result.BackupDirectory)
+		}
+		if result.Status.Manifest.WorkspaceID != "" {
+			printWorkspaceValue(out, result.Status)
+		}
+		return
+	case devworkspace.UpdatePlan:
+		printWorkspaceUpdatePlan(out, result)
+		return
+	case devworkspace.ResetModulesReport:
+		fmt.Fprintf(out, "Reset modules: %s\n", result.WorkspaceID)
+		for _, path := range result.Removed {
+			fmt.Fprintf(out, "Removed: %s\n", path)
+		}
+		if result.Reinstalled {
+			fmt.Fprintln(out, "Reinstalled: dependency trees recorded by the composition installer")
+		} else {
+			fmt.Fprintln(out, "Not reinstalled: the dependency unlink was interrupted (phase "+result.Phase+"); "+
+				"rerun the interrupted `workspace unlink` or `workspace remove`")
+		}
 		return
 	case devworkspace.Registry:
 		for _, repository := range result.Repositories {
@@ -660,6 +863,66 @@ func printWorkspaceValue(out io.Writer, value any) {
 	_ = encoder.Encode(value)
 }
 
+func printWorkspaceUpdatePlan(out io.Writer, plan devworkspace.UpdatePlan) {
+	fmt.Fprintf(out, "Update: %s\n", plan.Result)
+	if plan.OperationID != "" {
+		fmt.Fprintf(out, "Operation: %s\n", plan.OperationID)
+	}
+	fmt.Fprintf(out, "Dependencies changed: %t\n", plan.DependencyChanged)
+	for _, repo := range plan.Repositories {
+		fmt.Fprintf(out, "%s: %s selection=%s upstream=%s/%s\n",
+			repo.ID, repo.Classification, repo.SelectionKind, repo.Remote, repo.Branch)
+		fmt.Fprintf(out, "  Old: %s\n  Target: %s\n  Actual HEAD: %s\n", repo.OldSHA, repo.TargetSHA, repo.ActualHEAD)
+		if repo.TreesEqual {
+			fmt.Fprintln(out, "  Committed trees match. Tree equality does not authorize replacing history.")
+		}
+		if repo.Classification == "divergent" {
+			fmt.Fprintln(out, "  History diverged. Align explicitly or merge manually; no history was replaced automatically.")
+		}
+		if repo.BlockedReason != "" {
+			fmt.Fprintf(out, "  Blocked: %s\n", repo.BlockedReason)
+		}
+		for _, path := range repo.BlockerPaths {
+			fmt.Fprintf(out, "  Blocker path: %s\n", path)
+		}
+	}
+	if plan.NextCommand != "" {
+		fmt.Fprintf(out, "Next: %s\n", plan.NextCommand)
+	}
+}
+
+func printWorkspaceFollow(out io.Writer, status devworkspace.FollowStatus) {
+	fmt.Fprintf(out, "Follow: %s enabled=%t apply=%t workspace=%s\n",
+		status.Result, status.Enabled, status.Apply, status.WorkspaceID)
+	if status.Owner != "" {
+		fmt.Fprintf(out, "Owner: %s\n", status.Owner)
+	}
+	if !status.LastObservation.IsZero() {
+		fmt.Fprintf(out, "Last observation: %s\n", status.LastObservation.Format(time.RFC3339))
+	}
+	if status.ActiveOperation != "" {
+		fmt.Fprintf(out, "Active operation: %s\n", status.ActiveOperation)
+	}
+	if status.PendingCohort != "" {
+		fmt.Fprintf(out, "Pending cohort: %s\n", status.PendingCohort)
+	}
+	if status.Plan != nil {
+		printWorkspaceUpdatePlan(out, *status.Plan)
+	}
+	if status.BlockedReason != "" {
+		fmt.Fprintf(out, "Blocked: %s\n", status.BlockedReason)
+	}
+	if status.Error != "" {
+		fmt.Fprintf(out, "Observation error: %s\n", status.Error)
+	}
+	if !status.NextAttempt.IsZero() {
+		fmt.Fprintf(out, "Next observation: %s\n", status.NextAttempt.Format(time.RFC3339))
+	}
+	if status.NextCommand != "" {
+		fmt.Fprintf(out, "Next: %s\n", status.NextCommand)
+	}
+}
+
 func bindWorkspaceProfile(ctx context.Context, manager *devworkspace.Manager, w devworkspace.Workspace, stateRoot string) (devworkspace.Workspace, error) {
 	if err := devworkspace.RequireStopped(ctx, w.ResolvedWorkspace); err != nil {
 		return w, err
@@ -691,4 +954,8 @@ func workspaceRefreshOptions(c workspaceCommand, w devworkspace.Workspace, diagn
 		break
 	}
 	return refresh, nil
+}
+
+func workspaceWasRunning(status devworkspace.Status) bool {
+	return status.Generation != "" && status.Phase != workspaceStopped && status.Phase != "crashed"
 }

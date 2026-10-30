@@ -1,6 +1,6 @@
-import { act, render as renderView } from '@testing-library/react';
+import { act, render as renderView, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { useContext } from 'react';
 import { RightDrawerContext, jsonToValue, type HostRecord, type RightDrawerContextType } from '@omniviewdev/runtime';
 import type * as Runtime from '@omniviewdev/runtime';
@@ -10,20 +10,31 @@ import { getBottomDrawerHeight, setBottomDrawerHeight } from '../BottomDrawer/ev
 
 vi.mock('@omniviewdev/runtime', async () => {
   const actual = await vi.importActual<typeof Runtime>('@omniviewdev/runtime');
-  return { ...actual, useSnackbar: () => ({ showSnackbar: vi.fn() }) };
+  return {
+    ...actual,
+    useSnackbar: () => ({ showSnackbar: vi.fn() }),
+    ConnectionBoundary: ({ pluginID, connectionID, children }: { pluginID: string; connectionID: string; children: ReactNode }) => {
+      native.boundary(pluginID, connectionID);
+      return native.connected ? children : <div>Connection is disconnected</div>;
+    },
+    withConnectionReady: async (_pluginID: string, _connectionID: string, operation: () => Promise<unknown>) => {
+      await native.ready();
+      return operation();
+    },
+  };
 });
 
 // Resource editors are a browser-only child boundary, not part of panel sizing.
 vi.mock('@/federation/LinkedResourceDrawer', () => ({
-  createLinkedResourceDrawer: vi.fn(),
+  createLinkedResourceDrawer: (...args: unknown[]) => native.drawer(...args),
 }));
 
 vi.mock('@/components/displays/RightDrawer', () => ({
-  default: () => null,
+  default: () => <div>Resource editor</div>,
 }));
 
 
-const native = vi.hoisted(() => ({ get: vi.fn() }));
+const native = vi.hoisted(() => ({ get: vi.fn(), ready: vi.fn(), drawer: vi.fn(), boundary: vi.fn(), connected: true }));
 vi.mock('@omniviewdev/runtime/api', async () => {
   const actual = await vi.importActual<typeof RuntimeApi>('@omniviewdev/runtime/api');
   return { ...actual, ResourceClient: { ...actual.ResourceClient, Get: native.get } };
@@ -45,7 +56,7 @@ const target = {
 
 function render(element: ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return renderView(<QueryClientProvider client={client}>{element}</QueryClientProvider>);
+  return renderView(element, { wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
 }
 
 function observed(data: unknown): HostRecord {
@@ -70,7 +81,10 @@ function pendingRead() {
 }
 
 describe('resource drawer request fences', () => {
-  beforeEach(() => native.get.mockReset());
+  beforeEach(() => {
+    native.get.mockReset();
+    native.ready.mockReset().mockResolvedValue(undefined);
+  });
 
   it('opens only the latest request when reads finish out of order', async () => {
     const first = pendingRead();
@@ -79,9 +93,15 @@ describe('resource drawer request fences', () => {
     const view = render(<RightDrawerProvider><DrawerProbe /></RightDrawerProvider>);
     const older = drawer.showResourceSidebar(target);
     const rejected = expect(older).rejects.toMatchObject({ name: 'AbortError' });
+    await waitFor(() => {
+      expect(native.get).toHaveBeenCalledOnce();
+    });
     const newer = drawer.showResourceSidebar({
       ...target,
       reference: { address: { ...target.reference.address, id: 'newer' } },
+    });
+    await waitFor(() => {
+      expect(native.get).toHaveBeenCalledTimes(2);
     });
     expect(first.cancel).toHaveBeenCalledOnce();
     await act(async () => {
@@ -104,6 +124,9 @@ describe('resource drawer request fences', () => {
     const cancellation = new AbortController();
     const result = drawer.showResourceSidebar({ ...target, signal: cancellation.signal });
     const rejected = expect(result).rejects.toMatchObject({ name: 'AbortError' });
+    await waitFor(() => {
+      expect(native.get).toHaveBeenCalledOnce();
+    });
     act(() => {
       if (operation === 'close') {
         drawer.closeDrawer();
@@ -143,6 +166,9 @@ describe('resource drawer request fences', () => {
     const view = render(<RightDrawerProvider><DrawerProbe /></RightDrawerProvider>);
     const result = drawer.showResourceSidebar(target);
     const rejected = expect(result).rejects.toMatchObject({ name: 'AbortError' });
+    await waitFor(() => {
+      expect(native.get).toHaveBeenCalledOnce();
+    });
     view.unmount();
     expect(read.cancel).toHaveBeenCalledOnce();
     read.resolve(observed({ metadata: { namespace: 'ns', uid: 'uid' } }));
@@ -200,6 +226,28 @@ describe('resource drawer request fences', () => {
     view.unmount();
   });
 
+  it('guards an observed canonical drawer by its actual access route across disconnects', async () => {
+    native.connected = true;
+    native.drawer.mockReturnValueOnce({});
+    native.boundary.mockClear();
+    const view = render(<RightDrawerProvider><DrawerProbe /></RightDrawerProvider>);
+    await act(async () => {
+      await drawer.showResourceSidebar({ ...target, record: observed({ id: 'pod' }) });
+    });
+    expect(native.boundary).toHaveBeenLastCalledWith('test', 'connection');
+    expect(view.getByText('Resource editor')).toBeTruthy();
+    expect(native.get).not.toHaveBeenCalled();
+    native.connected = false;
+    view.rerender(<RightDrawerProvider><DrawerProbe /></RightDrawerProvider>);
+    expect(view.getByText('Connection is disconnected')).toBeTruthy();
+    expect(view.queryByText('Resource editor')).toBeNull();
+    expect(drawer.isOpen).toBe(true);
+    native.connected = true;
+    view.rerender(<RightDrawerProvider><DrawerProbe /></RightDrawerProvider>);
+    expect(view.getByText('Resource editor')).toBeTruthy();
+    view.unmount();
+  });
+
   it('rejects a linked record with a changed incarnation', async () => {
     const record = observed({ id: 'pod' });
     native.get.mockResolvedValueOnce({ ...record, record: { ...record.record, reference: { ...target.reference, incarnation: 'replacement' } } });
@@ -208,6 +256,31 @@ describe('resource drawer request fences', () => {
       ...target,
       reference: { ...target.reference, incarnation: 'expected' },
     })).rejects.toThrow(/identity changed/);
+    expect(drawer.isOpen).toBe(false);
+    view.unmount();
+  });
+
+  it('does not read or open a resource while its connection is unavailable', async () => {
+    native.ready.mockRejectedValueOnce(new Error('Connection is not connected.'));
+    const view = render(<RightDrawerProvider><DrawerProbe /></RightDrawerProvider>);
+    await expect(drawer.showResourceSidebar(target)).rejects.toThrow('Connection is not connected.');
+    expect(native.get).not.toHaveBeenCalled();
+    expect(drawer.isOpen).toBe(false);
+    view.unmount();
+  });
+
+  it('does not start a resource read after closing during a connection check', async () => {
+    const readiness = Promise.withResolvers<void>();
+    native.ready.mockReturnValueOnce(readiness.promise);
+    const view = render(<RightDrawerProvider><DrawerProbe /></RightDrawerProvider>);
+    const result = drawer.showResourceSidebar(target);
+    const rejected = expect(result).rejects.toMatchObject({ name: 'AbortError' });
+    act(() => {
+      drawer.closeDrawer();
+    });
+    readiness.resolve();
+    await rejected;
+    expect(native.get).not.toHaveBeenCalled();
     expect(drawer.isOpen).toBe(false);
     view.unmount();
   });

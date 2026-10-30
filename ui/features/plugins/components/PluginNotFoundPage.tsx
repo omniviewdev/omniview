@@ -1,6 +1,6 @@
 import { Button, Heading, Text } from '@omniviewdev/base-ui';
 import { LuArrowLeft, LuFileQuestion } from 'react-icons/lu';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router';
 import styles from './PluginNotFoundPage.module.css';
 
 /**
@@ -35,7 +35,7 @@ export default function PluginNotFoundPage() {
           color='brand'
           size='sm'
           onClick={() => {
-            navigate(-1); 
+            void navigate(-1);
           }}
           startDecorator={<LuArrowLeft size={14} />}
         >

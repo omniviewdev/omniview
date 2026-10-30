@@ -10,6 +10,9 @@ test('candidate admission requires independent exact SDK approval, not a tag or 
     assert.throws(() => admitCandidate(cohort, { REVIEWED_SDK_REVISION: revision }));
   }
   for (const id of Object.keys(cohort)) assert.throws(() => admitCandidate({ ...cohort, [id]: 'main' }, env));
+  for (const invalid of [null, [], { ...cohort, extra: 'd'.repeat(40) }]) {
+    assert.throws(() => admitCandidate(invalid, env));
+  }
   assert.throws(() => admitCandidate(cohort, { ...env, UI_SOURCE_REF: 'd'.repeat(40) }));
   assert.throws(() => admitCandidate(cohort, { ...env, KUBERNETES_SOURCE_REF: 'd'.repeat(40) }));
 });

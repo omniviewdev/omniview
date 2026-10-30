@@ -7,7 +7,7 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as json$0 from "../../../../../encoding/json/models.js";
+import * as invocation$0 from "../../backend/pkg/invocation/models.js";
 
 /**
  * ConfigView is the server part of the settings page.
@@ -159,8 +159,20 @@ export class PendingConfirmation {
     "pluginName": string;
     "connectionID": string;
     "connectionName": string;
-    "arguments": json$0.RawMessage;
+
+    /**
+     * ArgumentsJSON is text, not embedded JSON: JavaScript must not round
+     * integer literals or erase negative zero before showing consent.
+     */
+    "argumentsJSON": string;
     "requestedAt": string;
+    "origin": string;
+    "credentialID": string;
+    "sessionID": string;
+    "invocationID": string;
+    "target": invocation$0.Target;
+    "policyRevision": number;
+    "catalogRevision": number;
 
     /** Creates a new PendingConfirmation instance. */
     constructor($$source: Partial<PendingConfirmation> = {}) {
@@ -182,11 +194,32 @@ export class PendingConfirmation {
         if (!("connectionName" in $$source)) {
             this["connectionName"] = "";
         }
-        if (!("arguments" in $$source)) {
-            this["arguments"] = null;
+        if (!("argumentsJSON" in $$source)) {
+            this["argumentsJSON"] = "";
         }
         if (!("requestedAt" in $$source)) {
             this["requestedAt"] = "0001-01-01T00:00:00.000Z";
+        }
+        if (!("origin" in $$source)) {
+            this["origin"] = "";
+        }
+        if (!("credentialID" in $$source)) {
+            this["credentialID"] = "";
+        }
+        if (!("sessionID" in $$source)) {
+            this["sessionID"] = "";
+        }
+        if (!("invocationID" in $$source)) {
+            this["invocationID"] = "";
+        }
+        if (!("target" in $$source)) {
+            this["target"] = (new invocation$0.Target());
+        }
+        if (!("policyRevision" in $$source)) {
+            this["policyRevision"] = 0;
+        }
+        if (!("catalogRevision" in $$source)) {
+            this["catalogRevision"] = 0;
         }
 
         Object.assign(this, $$source);
@@ -196,7 +229,11 @@ export class PendingConfirmation {
      * Creates a new PendingConfirmation instance from a string or object.
      */
     static createFrom($$source: any = {}): PendingConfirmation {
+        const $$createField12_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("target" in $$parsedSource) {
+            $$parsedSource["target"] = $$createField12_0($$parsedSource["target"]);
+        }
         return new PendingConfirmation($$parsedSource as Partial<PendingConfirmation>);
     }
 }
@@ -326,6 +363,7 @@ export class ToolOverride {
 export class ToolView {
     "mcpName": string;
     "pluginID": string;
+    "connectionID": string;
     "pluginName": string;
     "name": string;
     "title": string;
@@ -334,6 +372,8 @@ export class ToolView {
     "status": string;
     "builtIn": boolean;
     "readOnly": boolean;
+    "listed": boolean;
+    "ready": boolean;
     "destructive": boolean;
     "enabled": boolean;
 
@@ -358,6 +398,9 @@ export class ToolView {
         if (!("pluginID" in $$source)) {
             this["pluginID"] = "";
         }
+        if (!("connectionID" in $$source)) {
+            this["connectionID"] = "";
+        }
         if (!("pluginName" in $$source)) {
             this["pluginName"] = "";
         }
@@ -381,6 +424,12 @@ export class ToolView {
         }
         if (!("readOnly" in $$source)) {
             this["readOnly"] = false;
+        }
+        if (!("listed" in $$source)) {
+            this["listed"] = false;
+        }
+        if (!("ready" in $$source)) {
+            this["ready"] = false;
         }
         if (!("destructive" in $$source)) {
             this["destructive"] = false;
@@ -418,3 +467,4 @@ export class ToolView {
 
 // Private type creation functions
 const $$createType0 = $Create.Array($Create.Any);
+const $$createType1 = invocation$0.Target.createFrom;
