@@ -66,10 +66,10 @@ do not prove canonical preparation, acceptance and cleanup succeeded.
 
 The checked-out host's `e2e/source-cohort.json` selects full UI and Kubernetes
 commits for canonical CI and whole-app profiling. Kubernetes must match the
-committed `plugins/kubernetes` gitlink. The cohort SDK must still match the
-independently reviewed `OMNIVIEW_E2E_REVIEWED_SDK_REVISION` repository variable;
-editing a branch's cohort cannot approve an SDK change. No global UI/Kubernetes
-ref switch is required for compatible old-main and upgraded-PR source cohorts.
+committed `plugins/kubernetes` gitlink. The cohort SDK must match the commit of
+the `plugin-sdk` release tag that `go.mod` requires; editing a branch's cohort
+cannot approve an unreleased SDK change. No global UI/Kubernetes ref switch is
+required for compatible old-main and upgraded-PR source cohorts.
 
 Playwright uses its GitHub reporter in Actions for failure annotations on the
 check and source locations, alongside terminal output, HTML and case timings.
@@ -121,7 +121,7 @@ SDK commit, then invoke the runner rather than bypassing preparation:
 SDK_SOURCE=/absolute/path/to/plugin-sdk \
 UI_SOURCE=/absolute/path/to/ui \
 KUBERNETES_SOURCE=/absolute/path/to/omniview-plugin-kubernetes \
-REVIEWED_SDK_REVISION='<independently-reviewed-full-sdk-commit>' \
+REVIEWED_SDK_REVISION="$(scripts/sdk-release-revision.sh)" \
 node e2e/scripts/run.mjs --full
 ```
 

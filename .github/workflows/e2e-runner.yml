@@ -37,7 +37,6 @@ jobs:
       GOFLAGS: ""
       GO_VERSION: "1.26"
       NODE_OPTIONS: "--max-old-space-size=4096"
-      REVIEWED_SDK_REVISION: ${{ vars.OMNIVIEW_E2E_REVIEWED_SDK_REVISION }}
       CACHE_ONLY: ${{ inputs.cache-only && 'true' || 'false' }}
       OMNIVIEW_E2E_PREINSTALLED_LINUX: "true"
       SELECTION_BASE: ${{ inputs.base }}
@@ -50,32 +49,35 @@ jobs:
           submodules: recursive
           persist-credentials: false
 
-      - name: Require independently reviewed published source inputs
+      - name: Require the released SDK and a matching published source cohort
         id: cohort
         run: |
-          if [[ ! "$REVIEWED_SDK_REVISION" =~ ^([a-f0-9]{40}|[a-f0-9]{64})$ ]]; then
-            echo "::error::Set repository variable OMNIVIEW_E2E_REVIEWED_SDK_REVISION to the independently reviewed full SDK commit, published and reachable in omniviewdev/plugin-sdk. No unpublished/default revision is accepted."
-            exit 1
-          fi
+          # The release tag on omniviewdev/plugin-sdk that go.mod requires is the
+          # approval of an SDK change; the cohort must select exactly that commit.
+          REVIEWED_SDK_REVISION="$(scripts/sdk-release-revision.sh)"
           jq -e 'type == "object" and (keys == ["kubernetes", "plugin-sdk", "ui"]) and all(.[]; type == "string" and test("^([a-f0-9]{40}|[a-f0-9]{64})$"))' e2e/source-cohort.json > /dev/null
           sdk=$(jq -r '."plugin-sdk"' e2e/source-cohort.json)
           ui=$(jq -r '.ui' e2e/source-cohort.json)
           kubernetes=$(jq -r '.kubernetes' e2e/source-cohort.json)
           if [[ "$sdk" != "$REVIEWED_SDK_REVISION" ]]; then
-            echo "::error::The committed source cohort SDK must match the independently reviewed repository pin. A branch cannot approve its own SDK revision."
+            echo "::error::e2e/source-cohort.json plugin-sdk must be the commit of the plugin-sdk release that go.mod requires ($REVIEWED_SDK_REVISION)."
             exit 1
           fi
           if [[ "$(git ls-tree HEAD -- plugins/kubernetes)" != "160000 commit $kubernetes"$'\tplugins/kubernetes' ]] || [[ "$(git -C plugins/kubernetes rev-parse HEAD)" != "$kubernetes" ]]; then
             echo "::error::The committed Kubernetes cohort must match both the host gitlink and checked-out submodule."
             exit 1
           fi
-          echo "ui=$ui" >> "$GITHUB_OUTPUT"
+          echo "REVIEWED_SDK_REVISION=$REVIEWED_SDK_REVISION" >> "$GITHUB_ENV"
+          {
+            echo "sdk=$REVIEWED_SDK_REVISION"
+            echo "ui=$ui"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Checkout reviewed SDK source
         uses: actions/checkout@v4
         with:
           repository: omniviewdev/plugin-sdk
-          ref: ${{ vars.OMNIVIEW_E2E_REVIEWED_SDK_REVISION }}
+          ref: ${{ steps.cohort.outputs.sdk }}
           path: plugin-sdk
           persist-credentials: false
 
@@ -87,7 +89,7 @@ jobs:
           path: ui
           persist-credentials: false
 
-      - name: Verify SDK checkout matches reviewed pin
+      - name: Verify SDK checkout matches the released revision
         run: test "$(git -C "$GITHUB_WORKSPACE/plugin-sdk" rev-parse HEAD)" = "$REVIEWED_SDK_REVISION"
 
       - name: Resolve container source and native payload paths

@@ -107,11 +107,11 @@ an absolute path when testing a local SDK; normal builds use the released
 dependency pinned in `go.mod`. Host, providers, runtime, and Vite plugin versions
 are aligned at `0.7.3`; normal release tags use the existing release workflow.
 
-The E2E runner checks out the independently reviewed SDK revision selected by
-`OMNIVIEW_E2E_REVIEWED_SDK_REVISION`. After reviewing the SDK change, advance that
-trusted repository variable to a commit containing validation and keep
-`e2e/source-cohort.json` aligned. Updating only `go.mod` cannot update this separate
-source selection. Do not bypass the reviewed-source gate for a feature branch.
+The E2E runner checks out the SDK at the commit of the release tag that `go.mod`
+requires. After releasing the SDK change, bump `go.mod` and set the `plugin-sdk`
+value in `e2e/source-cohort.json` to that tag's commit. Updating only `go.mod`
+cannot update this separate source selection. Do not bypass the released-source
+gate for a feature branch.
 
 ```sh
 SDK_SOURCE=/absolute/path/to/plugin-sdk

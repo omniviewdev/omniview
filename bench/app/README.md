@@ -28,9 +28,9 @@ is measured; line counts, scrolling, drawer toggles, and run counts stay unchang
 CI reads the checked-out host's `e2e/source-cohort.json`, with full commit strings
 for `plugin-sdk`, `ui`, and `kubernetes`. UI and Kubernetes checkouts use validated
 cohort outputs; Kubernetes must match the host's `plugins/kubernetes` gitlink.
-The SDK entry must equal the independently reviewed repository variable
-`OMNIVIEW_E2E_REVIEWED_SDK_REVISION`, even though this frontend-only profile does
-not build SDK code. A branch cannot approve its own SDK change.
+The SDK entry must equal the commit of the `plugin-sdk` release tag that `go.mod`
+requires, even though this frontend-only profile does not build SDK code. A
+branch cannot approve an unreleased SDK change.
 Publish and review selected commits before updating the branch-owned cohort and
 gitlink. This avoids global UI/Kubernetes ref changes when older `main` and an
 upgraded PR need different compatible sources. The host input remains the exact
