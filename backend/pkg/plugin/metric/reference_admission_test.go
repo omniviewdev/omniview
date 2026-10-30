@@ -39,7 +39,7 @@ func TestReferenceUtilitiesFailBeforeConnectionWorkWithoutAdmission(t *testing.T
 		}},
 		{"logs.CreateSession", func(admit hostresource.ReferenceAdmitter) error {
 			ctrl := hostlogs.NewController(logging.NewNop(), nil, nil)
-			ctrl.SetReferenceAdmitter(admit)
+			ctrl.SetUIReferenceAdmitter(admit)
 			_, err := ctrl.CreateSession("test", "connection", sdklogs.CreateSessionOptions{Reference: reference, Route: route})
 			return err
 		}},
