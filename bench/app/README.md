@@ -30,8 +30,14 @@ for `plugin-sdk`, `ui`, and `kubernetes`. UI and Kubernetes checkouts use valida
 cohort outputs; Kubernetes must match the host's `plugins/kubernetes` gitlink.
 The SDK entry must equal the independently reviewed repository variable
 `OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION`. A branch cannot approve its own
-SDK change. The SDK must descend from the independently reviewed isolation
-baseline and preserve its protected isolation files.
+SDK change. The original isolation ancestry minimum remains
+`5b3ef764d1cf738835a723a749a0cb6c45f85e44`. The user separately approved
+`3a795257a7256c21ea68b1c6ea047c2fdf6b7c03` as the reviewed isolation checkpoint
+after independent review of the five protected files' baseline-to-checkpoint
+diff. Admission requires the baseline to precede that pinned checkpoint, the
+checkpoint to precede the selected SDK, and all five selected protected files
+to match the checkpoint byte-for-byte. Neither cohort approval, tags nor
+environment variables can substitute another isolation checkpoint.
 Review selected commits before updating the branch-owned cohort and
 gitlink; checkout reachability is required, publication is not. This avoids global UI/Kubernetes ref changes when older `main` and an
 upgraded PR need different compatible sources. The host input remains the exact
@@ -73,7 +79,12 @@ With installed/built host packages and the reviewed sources checked out:
 
 Candidate CI uses `e2e/source-cohort.json` as its exact SDK/UI/Kubernetes
 selection. `OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION` must equal that SDK commit;
-configured E2E UI and profile UI/Kubernetes variables must match the cohort.
+UI and Kubernetes refs come only from that cohort in candidate workflows, not
+legacy repository UI/profile variables. The selected UI commit is
+`cd50e0d0663c1d416ed48c147382a5040d6c3c7c`, with base-ui 0.9.0 and editor 6.1.1,
+matching the current host dependency ranges. Do not change legacy repository
+variables to approve candidate sources. Explicit direct-CLI `UI_SOURCE_REF` or
+`KUBERNETES_SOURCE_REF` values must still match the selected cohort.
 The Kubernetes gitlink must also match. Commits must be reachable by checkout,
 but candidate testing does not require a module or npm publication.
 The candidate workflows map this dedicated repository variable to their internal
