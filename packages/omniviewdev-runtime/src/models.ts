@@ -100,6 +100,7 @@ export * as networker from './bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/
 export * as settings from './bindings/github.com/omniviewdev/plugin-sdk/settings/models';
 export * as devserver from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/devserver/models';
 export * as pluginlog from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/pluginlog/models';
+export * as mcprelay from './bindings/github.com/omniviewdev/omniview/internal/mcprelay/models';
 export * as registry from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/registry/models';
 export * as ui from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/ui/models';
 export * as utils from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/utils/models';

@@ -34,6 +34,7 @@ import (
 	mp "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 	np "github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
 	sp "github.com/omniviewdev/plugin-sdk/pkg/v1/settings"
+	tp "github.com/omniviewdev/plugin-sdk/pkg/v1/tools"
 )
 
 // pluginStartTimeout bounds how long a plugin process may take to start, so
@@ -433,6 +434,7 @@ func (pm *pluginManager) createBackend(
 				"log":       &lp.Plugin{Plugin: nil, Impl: nil},
 				"metric":    &mp.Plugin{Plugin: nil, Impl: nil},
 				"settings":  &sp.SettingsPlugin{Plugin: nil, Impl: nil},
+				"tools":     &tp.Plugin{Plugin: nil, Impl: nil},
 				"lifecycle": &lc.Plugin{Plugin: nil, Impl: nil},
 			},
 		},

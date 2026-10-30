@@ -35,6 +35,7 @@ import BottomDrawerProvider from './providers/BottomDrawer/provider';
 import { SettingsProvider } from '@omniviewdev/runtime';
 import { EXTENSION_REGISTRY } from './features/extensions/store';
 import { ConfirmationModalProvider } from './contexts/ConfirmationModalContext';
+import { McpConfirmationProvider } from './providers/McpConfirmationProvider';
 import { ConnectionStateProvider } from './features/connectionState';
 import { OperationsProvider } from '@omniviewdev/runtime';
 import { PluginServiceProvider } from '@/features/plugins';
@@ -95,7 +96,9 @@ const App: React.FC = () => {
                             <BottomDrawerProvider>
                               <RightDrawerProvider>
                                 <PluginServiceProvider>
-                                  <RouteProvider />
+                                  <McpConfirmationProvider>
+                                    <RouteProvider />
+                                  </McpConfirmationProvider>
                                 </PluginServiceProvider>
                               </RightDrawerProvider>
                             </BottomDrawerProvider>

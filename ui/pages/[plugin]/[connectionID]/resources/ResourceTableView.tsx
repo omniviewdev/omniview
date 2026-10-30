@@ -106,6 +106,7 @@ export default function ResourceTableView(): React.ReactElement {
     const item = (type: string): SidebarItem => ({
       id: type,
       label: types.get(type)?.displayName || type,
+      icon: 'LuFileQuestion',
     });
     const items: SidebarItem[] = (groups.data ?? []).map((group) => ({
       id: group.id,

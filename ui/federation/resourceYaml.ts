@@ -1,14 +1,22 @@
-import { Document, isMap, isSeq, isScalar, parseDocument } from 'yaml';
+import { Document, isMap, isSeq, isScalar, parseDocument, type ScalarTag } from 'yaml';
 import { jsonToValue, valueToJSON, type Value } from '@omniviewdev/runtime';
 
 /** Use YAML's native float tag, including for integral doubles and negative zero. */
 export function resourceYaml(value: Value): string {
   const document = new Document(valueToJSON(value), {
-    customTags: (tags) => tags.map((tag) => tag.tag === 'tag:yaml.org,2002:float' && tag.stringify
-      ? { ...tag, stringify: (item, context, onComment, onChompKeep) => Object.is(item.value, -0)
-        ? '-0.0'
-        : tag.stringify!(item, context, onComment, onChompKeep) }
-      : tag),
+    customTags: (tags) => tags.map((tag) => {
+      if (typeof tag === 'string' || tag.tag !== 'tag:yaml.org,2002:float' || !tag.stringify) {
+        return tag;
+      }
+      const stringify = tag.stringify;
+      const floatTag: ScalarTag = {
+        ...tag,
+        stringify: (item, context, onComment, onChompKeep) => Object.is(item.value, -0)
+          ? '-0.0'
+          : stringify(item, context, onComment, onChompKeep),
+      };
+      return floatTag;
+    }),
   });
   const annotate = (node: unknown, source: Value): void => {
     if (source.kind === 'double' && isScalar(node)) {

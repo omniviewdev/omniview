@@ -278,17 +278,18 @@ export function useGlobalCommandSearch() {
           return false;
         }
 
-        if (pluginService.getPluginState(action.target.pluginId)?.phase !== 'ready') {
+        const { pluginId, connectionId } = action.target;
+        if (pluginService.getPluginState(pluginId)?.phase !== 'ready') {
           return false;
         }
 
-        const connections = await ResourceClient.ListConnections(action.target.pluginId);
+        const connections = await ResourceClient.ListConnections(pluginId);
         signal.throwIfAborted();
-        if (!connections.some((connection) => connection.id === action.target.connectionId)) {
+        if (!connections.some((connection) => connection.id === connectionId)) {
           return false;
         }
 
-        const current = await checkConnection(action.target.pluginId, action.target.connectionId, signal);
+        const current = await checkConnection(pluginId, connectionId, signal);
         signal.throwIfAborted();
         return current.status !== ConnectionStatusCode.ConnectionStatusConnected &&
           current.status !== ConnectionStatusCode.ConnectionStatusPending &&
@@ -296,15 +297,17 @@ export function useGlobalCommandSearch() {
       },
       async executeAction(action, { signal }) {
         signal.throwIfAborted();
-        if (action.id !== 'core:connect') {
+        if (action.id !== 'core:connect' || action.target.kind !== 'connection') {
           throw new Error('Unknown connection action.');
         }
 
-        if (pluginService.getPluginState(action.target.pluginId)?.phase !== 'ready') {
+        const { pluginId, connectionId } = action.target;
+
+        if (pluginService.getPluginState(pluginId)?.phase !== 'ready') {
           throw new Error('Connection plugin is unavailable.');
         }
 
-        const status = await ResourceClient.StartConnection(action.target.pluginId, action.target.connectionId);
+        const status = await ResourceClient.StartConnection(pluginId, connectionId);
         if (status.status !== ConnectionStatusCode.ConnectionStatusConnected) {
           throw new Error(status.details || status.error || 'Connection is not ready.');
         }

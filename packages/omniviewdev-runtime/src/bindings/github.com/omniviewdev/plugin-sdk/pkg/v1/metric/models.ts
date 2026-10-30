@@ -321,8 +321,19 @@ export enum MetricShape {
      */
     $zero = 0,
 
+    /**
+     * ShapeCurrent requests the latest value.
+     */
     ShapeCurrent = 0,
+
+    /**
+     * ShapeTimeseries requests timestamped samples.
+     */
     ShapeTimeseries = 1,
+
+    /**
+     * ShapeAggregate requests a statistical window.
+     */
     ShapeAggregate = 2,
 };
 
@@ -335,18 +346,69 @@ export enum MetricUnit {
      */
     $zero = 0,
 
+    /**
+     * UnitNone denotes a dimensionless value.
+     */
     UnitNone = 0,
+
+    /**
+     * UnitBytes measures bytes.
+     */
     UnitBytes = 1,
+
+    /**
+     * UnitKB measures kilobytes.
+     */
     UnitKB = 2,
+
+    /**
+     * UnitMB measures megabytes.
+     */
     UnitMB = 3,
+
+    /**
+     * UnitGB measures gigabytes.
+     */
     UnitGB = 4,
+
+    /**
+     * UnitPercentage measures percentages.
+     */
     UnitPercentage = 5,
+
+    /**
+     * UnitMillis measures milliseconds.
+     */
     UnitMillis = 6,
+
+    /**
+     * UnitSeconds measures seconds.
+     */
     UnitSeconds = 7,
+
+    /**
+     * UnitCount measures discrete occurrences.
+     */
     UnitCount = 8,
+
+    /**
+     * UnitOpsPerSec measures operations per second.
+     */
     UnitOpsPerSec = 9,
+
+    /**
+     * UnitBytesPerSec measures byte throughput.
+     */
     UnitBytesPerSec = 10,
+
+    /**
+     * UnitMillicores measures thousandths of a CPU core.
+     */
     UnitMillicores = 11,
+
+    /**
+     * UnitCores measures CPU cores.
+     */
     UnitCores = 12,
 };
 

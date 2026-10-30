@@ -24,6 +24,31 @@ export const CoreNetworkerPortforwardClosed = "core/networker/portforward/closed
 export const CoreNetworkerPortforwardCreated = "core/networker/portforward/created";
 
 /**
+ * Name of the custom event "mcp/config_changed".
+ */
+export const McpConfigChanged = "mcp/config_changed";
+
+/**
+ * Name of the custom event "mcp/confirmation/requested".
+ */
+export const McpConfirmationRequested = "mcp/confirmation/requested";
+
+/**
+ * Name of the custom event "mcp/confirmation/resolved".
+ */
+export const McpConfirmationResolved = "mcp/confirmation/resolved";
+
+/**
+ * Name of the custom event "mcp/status".
+ */
+export const McpStatus = "mcp/status";
+
+/**
+ * Name of the custom event "mcp/tools_changed".
+ */
+export const McpToolsChanged = "mcp/tools_changed";
+
+/**
  * Name of the custom event "menu/context/drawer-tab/close".
  */
 export const MenuContextDrawerTabClose = "menu/context/drawer-tab/close";

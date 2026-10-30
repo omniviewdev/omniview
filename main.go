@@ -29,6 +29,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/registry"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/tools"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/ui"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/utils"
@@ -40,6 +41,7 @@ import (
 	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/omniview/internal/hostruntime"
 	"github.com/omniviewdev/omniview/internal/instance"
+	"github.com/omniviewdev/omniview/internal/mcprelay"
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
 	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
 	"github.com/omniviewdev/omniview/internal/telemetry"
@@ -301,6 +303,7 @@ func main() {
 		log, settingsProvider, resourceController, resourceUIRealm,
 	)
 	resourceController.SetConnectionChangeHook(metricController.BeginConnectionChange)
+	toolsController := tools.NewController(log)
 
 	dataController := data.NewController(log, stateDir.PluginData)
 
@@ -330,6 +333,7 @@ func main() {
 		networkerController,
 		logsController,
 		metricController,
+		toolsController,
 		managers,
 		settingsProvider,
 		pluginRegistryClient,
@@ -445,6 +449,19 @@ func main() {
 	// registration (NewService requires a concrete pointer type).
 	pluginManagerSvc := &plugin.ServiceWrapper{Mgr: pluginManager}
 
+	// A nil *Store must stay a nil interface: the relay then runs in memory.
+	var mcpRelayStore mcprelay.ConfigStore
+	if settingsStore != nil {
+		mcpRelayStore = settingsStore
+	}
+	mcpRelay := mcprelay.New(mcprelay.Options{
+		Log:         log,
+		Store:       mcpRelayStore,
+		Tools:       toolsController,
+		Connections: resourceController,
+		Version:     version.Version,
+	})
+
 	// Register controllers before bootstrap: bootstrap loads plugins and their
 	// controllers need initialized contexts. Registration remains before Run.
 	// Service registration order matters: Wails calls ServiceStartup in order.
@@ -482,6 +499,7 @@ func main() {
 			},
 		}),
 		application.NewService(pluginManagerSvc),
+		application.NewService(&mcprelay.ServiceWrapper{Relay: mcpRelay}),
 	}
 
 	if pluginLogManager != nil {

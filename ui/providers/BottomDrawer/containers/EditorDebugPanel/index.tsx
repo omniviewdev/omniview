@@ -102,7 +102,7 @@ const EditorDebugPanel: React.FC = () => {
               </Row>
               {isExpanded && entries.map((entry, i) => (
                 <Row key={i} indent={3}>
-                  <Text size='xs' mono tone='muted'>{entry.resourceKey}</Text>
+                  <Text size='xs' mono tone='muted'>{entry.type}</Text>
                   <Text size='xs' mono tone='subtle'>
                     match={entry.fileMatch} uri={entry.uri} lang={entry.language}
                     {entry.schema ? ` schema=${JSON.stringify(entry.schema).slice(0, 80)}...` : ''}

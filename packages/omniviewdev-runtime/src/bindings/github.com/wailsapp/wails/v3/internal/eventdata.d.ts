@@ -19,6 +19,9 @@ import type * as pluginlog$0 from "../../../../omniviewdev/omniview/backend/pkg/
 import type * as resource$0 from "../../../../omniviewdev/omniview/backend/pkg/plugin/resource/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as mcprelay$0 from "../../../../omniviewdev/omniview/internal/mcprelay/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as config$0 from "../../../../omniviewdev/plugin-sdk/pkg/config/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -30,6 +33,11 @@ declare module "@wailsio/runtime" {
             "connection/status": resource$0.ConnectionStatusPayload;
             "core/networker/portforward/closed": networker$0.PortForwardSession | null;
             "core/networker/portforward/created": networker$0.PortForwardSession | null;
+            "mcp/config_changed": string;
+            "mcp/confirmation/requested": mcprelay$0.PendingConfirmation;
+            "mcp/confirmation/resolved": mcprelay$0.ConfirmationResolved;
+            "mcp/status": mcprelay$0.Status;
+            "mcp/tools_changed": string;
             "menu/context/drawer-tab/close": string;
             "menu/context/drawer-tab/close-others": string;
             "menu/view/bottomdrawer/fullscreen": void;

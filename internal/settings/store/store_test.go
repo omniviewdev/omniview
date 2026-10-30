@@ -431,3 +431,31 @@ func TestOpen_CorruptFile_BackupPreserved(t *testing.T) {
 	}
 	assert.True(t, backupFound, "corrupt backup file should exist")
 }
+
+func TestMCPRelayConfig_RoundTrip(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.db")
+	s, err := Open(path)
+	require.NoError(t, err)
+
+	type document struct {
+		Enabled bool   `json:"enabled"`
+		Token   string `json:"token"`
+	}
+	var loaded document
+	found, err := s.LoadMCPRelayConfig(&loaded)
+	require.NoError(t, err)
+	assert.False(t, found, "fresh store has no relay config")
+
+	require.NoError(t, s.SaveMCPRelayConfig(document{Enabled: true, Token: "secret"}))
+	require.NoError(t, s.Close())
+
+	s2, err := Open(path)
+	require.NoError(t, err)
+	defer s2.Close()
+	found, err = s2.LoadMCPRelayConfig(&loaded)
+	require.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, document{Enabled: true, Token: "secret"}, loaded)
+}

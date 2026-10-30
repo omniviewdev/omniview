@@ -23,12 +23,44 @@ export enum Capability {
      */
     $zero = "",
 
+    /**
+     * CapabilityResource enables resource discovery and operations.
+     */
     CapabilityResource = "resource",
+
+    /**
+     * CapabilityExec enables remote command execution.
+     */
     CapabilityExec = "exec",
+
+    /**
+     * CapabilityNetworker enables network forwarding.
+     */
     CapabilityNetworker = "networker",
+
+    /**
+     * CapabilityLog enables log streaming.
+     */
     CapabilityLog = "log",
+
+    /**
+     * CapabilityMetric enables metric queries.
+     */
     CapabilityMetric = "metric",
+
+    /**
+     * CapabilitySettings enables plugin settings.
+     */
     CapabilitySettings = "settings",
+
+    /**
+     * CapabilityTools enables tool execution.
+     */
+    CapabilityTools = "tools",
+
+    /**
+     * CapabilityUI enables frontend components without requiring a backend process.
+     */
     CapabilityUI = "ui",
 };
 
@@ -171,6 +203,9 @@ export class Connection {
     }
 }
 
+/**
+ * ConnectionAutoConnect configures host-managed connection triggers and retry behavior.
+ */
 export class ConnectionAutoConnect {
     "enabled": boolean;
     "triggers": ConnectionAutoConnectTrigger[];
@@ -204,26 +239,49 @@ export class ConnectionAutoConnect {
     }
 }
 
+/**
+ * ConnectionAutoConnectRetry selects when the host may retry a failed automatic connection.
+ */
 export enum ConnectionAutoConnectRetry {
     /**
      * The Go zero value for the underlying type of the enum.
      */
     $zero = "",
 
+    /**
+     * ConnectionAutoConnectRetryNone disables automatic retries after failure.
+     */
     ConnectionAutoConnectRetryNone = "NONE",
+
+    /**
+     * ConnectionAutoConnectRetryOnChange permits retry after connection configuration changes.
+     */
     ConnectionAutoConnectRetryOnChange = "ON_CHANGE",
 };
 
+/**
+ * ConnectionAutoConnectTrigger identifies a host event that may initiate automatic connection.
+ */
 export enum ConnectionAutoConnectTrigger {
     /**
      * The Go zero value for the underlying type of the enum.
      */
     $zero = "",
 
+    /**
+     * ConnectionAutoConnectTriggerPluginStart requests automatic connection when the plugin starts.
+     */
     ConnectionAutoConnectTriggerPluginStart = "PLUGIN_START",
+
+    /**
+     * ConnectionAutoConnectTriggerConnectionDiscovered requests connection when a profile is discovered.
+     */
     ConnectionAutoConnectTriggerConnectionDiscovered = "CONNECTION_DISCOVERED",
 };
 
+/**
+ * ConnectionLifecycle holds host-managed lifecycle preferences; nil AutoConnect leaves automatic connection unspecified.
+ */
 export class ConnectionLifecycle {
     "auto_connect"?: ConnectionAutoConnect | null;
 
@@ -246,6 +304,9 @@ export class ConnectionLifecycle {
     }
 }
 
+/**
+ * ConnectionStatus pairs a connection with its lifecycle or check result and diagnostic details.
+ */
 export class ConnectionStatus {
     /**
      * Connection is the connection that the status is for.
@@ -298,24 +359,78 @@ export class ConnectionStatus {
     }
 }
 
+/**
+ * ConnectionStatusCode classifies connection lifecycle state or a connection-check failure.
+ */
 export enum ConnectionStatusCode {
     /**
      * The Go zero value for the underlying type of the enum.
      */
     $zero = "",
 
+    /**
+     * ConnectionStatusUnknown indicates that no connection state is known.
+     */
     ConnectionStatusUnknown = "UNKNOWN",
+
+    /**
+     * ConnectionStatusConnected indicates a registered active connection, not a network-health guarantee.
+     */
     ConnectionStatusConnected = "CONNECTED",
+
+    /**
+     * ConnectionStatusDisconnected indicates that the connection is not active.
+     */
     ConnectionStatusDisconnected = "DISCONNECTED",
+
+    /**
+     * ConnectionStatusPending indicates that connection startup is in progress.
+     */
     ConnectionStatusPending = "PENDING",
+
+    /**
+     * ConnectionStatusFailed indicates that connection startup failed.
+     */
     ConnectionStatusFailed = "FAILED",
+
+    /**
+     * ConnectionStatusError indicates an unclassified connection error.
+     */
     ConnectionStatusError = "ERROR",
+
+    /**
+     * ConnectionStatusUnauthorized indicates missing or invalid authentication.
+     */
     ConnectionStatusUnauthorized = "UNAUTHORIZED",
+
+    /**
+     * ConnectionStatusForbidden indicates that access was denied.
+     */
     ConnectionStatusForbidden = "FORBIDDEN",
+
+    /**
+     * ConnectionStatusBadRequest indicates invalid connection-check input.
+     */
     ConnectionStatusBadRequest = "BAD_REQUEST",
+
+    /**
+     * ConnectionStatusNotFound indicates that the requested connection or target was not found.
+     */
     ConnectionStatusNotFound = "NOT_FOUND",
+
+    /**
+     * ConnectionStatusTimeout indicates that the connection check exceeded its deadline.
+     */
     ConnectionStatusTimeout = "TIMEOUT",
+
+    /**
+     * ConnectionStatusUnavailable indicates that the connection target is unavailable.
+     */
     ConnectionStatusUnavailable = "UNAVAILABLE",
+
+    /**
+     * ConnectionStatusRequestEntityTooLarge indicates that the request exceeded the target limit.
+     */
     ConnectionStatusRequestEntityTooLarge = "REQUEST_ENTITY_TOO_LARGE",
 };
 
