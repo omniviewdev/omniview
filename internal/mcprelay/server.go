@@ -138,7 +138,7 @@ func (r *Relay) loadConfig() error {
 			return fmt.Errorf("mcp relay: generate token: %w", err)
 		}
 		cfg = DefaultConfig(string(token))
-		if err := r.save(cfg); err != nil {
+		if err = r.save(cfg); err != nil {
 			return err
 		}
 	}
@@ -196,13 +196,13 @@ func (r *Relay) startListenerLocked() {
 	r.httpServer = server
 	r.listenErr = ""
 	go func() {
-		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			r.log.Errorw(context.Background(), "mcp relay server stopped", "error", err)
+		if serveErr := server.Serve(listener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			r.log.Errorw(context.Background(), "mcp relay server stopped", "error", serveErr)
 			r.mu.Lock()
 			if r.httpServer == server {
 				r.listener = nil
 				r.httpServer = nil
-				r.listenErr = err.Error()
+				r.listenErr = serveErr.Error()
 			}
 			status := r.statusLocked()
 			r.mu.Unlock()
@@ -473,7 +473,7 @@ func (r *Relay) handler(t ToolInfo) mcp.ToolHandler {
 			out.Content = append(out.Content, &mcp.TextContent{Text: c.Text})
 		}
 		if len(result.StructuredContent) > 0 {
-			out.StructuredContent = json.RawMessage(result.StructuredContent)
+			out.StructuredContent = result.StructuredContent
 		}
 		return out, nil
 	}

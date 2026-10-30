@@ -50,9 +50,12 @@ func TestBuildCatalogNamespacesAndInjectsConnection(t *testing.T) {
 	listPods := catalog[3]
 	require.Equal(t, ScopeConnection, listPods.Scope)
 	require.Equal(t, "Kubernetes", listPods.PluginName)
-	properties := listPods.InputSchema["properties"].(map[string]any)
+	properties, ok := listPods.InputSchema["properties"].(map[string]any)
+	require.True(t, ok)
 	require.Contains(t, properties, "connection_id")
-	require.Contains(t, properties["connection_id"].(map[string]any)["description"], "kubernetes_list_connections")
+	connectionID, ok := properties["connection_id"].(map[string]any)
+	require.True(t, ok)
+	require.Contains(t, connectionID["description"], "kubernetes_list_connections")
 	require.Equal(t, []any{"namespace", "connection_id"}, listPods.InputSchema["required"])
 	require.Equal(t, "object", listPods.OutputSchema["type"])
 }

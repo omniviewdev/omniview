@@ -116,7 +116,7 @@ func toolInfo(pluginID, pluginName string, d sdktools.Descriptor) ToolInfo {
 		return info
 	}
 	if len(d.OutputSchema) > 0 {
-		if output, ok := objectSchema(d.OutputSchema); ok {
+		if output, valid := objectSchema(d.OutputSchema); valid {
 			info.OutputSchema = output
 		}
 	}

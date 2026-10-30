@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/stretchr/testify/require"
+
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/tools"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
@@ -17,7 +19,6 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	sdktools "github.com/omniviewdev/plugin-sdk/pkg/v1/tools"
-	"github.com/stretchr/testify/require"
 )
 
 // ---- fakes ----
@@ -219,7 +220,8 @@ func TestRelayRejectsMissingBearer(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	require.Equal(t, "Bearer", resp.Header.Get("WWW-Authenticate"))
 
-	req, _ := http.NewRequest(http.MethodPost, h.url, nil)
+	req, err := http.NewRequest(http.MethodPost, h.url, nil)
+	require.NoError(t, err)
 	req.Header.Set("Authorization", "Bearer "+h.token)
 	req.Header.Set("Origin", "http://evil.example")
 	resp, err = http.DefaultClient.Do(req)
@@ -241,8 +243,9 @@ func TestRelayListsToolsPerPolicy(t *testing.T) {
 		if tool.Name != "kubernetes_list_namespaces" {
 			continue
 		}
-		schema := tool.InputSchema.(map[string]any)
-		require.Contains(t, schema["properties"].(map[string]any), "connection_id")
+		schema, ok := tool.InputSchema.(map[string]any)
+		require.True(t, ok)
+		require.Contains(t, schema["properties"], "connection_id")
 		require.Equal(t, []any{"connection_id"}, schema["required"])
 		require.True(t, tool.Annotations.ReadOnlyHint)
 	}
@@ -322,12 +325,12 @@ func TestRelayConnectionPolicyAndConfirmation(t *testing.T) {
 	require.JSONEq(t, `{"name":"cm"}`, string(call.arguments), "connection_id is stripped")
 
 	// Denied.
+	denied := make(chan PendingConfirmation, 1)
 	go func() {
 		for {
 			pending := h.service.ListPendingConfirmations()
 			if len(pending) > 0 {
-				require.Equal(t, "kubernetes_delete_resource", pending[0].MCPName)
-				require.Equal(t, "Test cluster", pending[0].ConnectionName)
+				denied <- pending[0]
 				_ = h.service.ResolveConfirmation(pending[0].ID, false)
 				return
 			}
@@ -337,6 +340,9 @@ func TestRelayConnectionPolicyAndConfirmation(t *testing.T) {
 	text, isError = callText(t, session, "kubernetes_delete_resource", map[string]any{"connection_id": "test", "name": "cm"})
 	require.True(t, isError)
 	require.Equal(t, "the user denied this call", text)
+	deniedRequest := <-denied
+	require.Equal(t, "kubernetes_delete_resource", deniedRequest.MCPName)
+	require.Equal(t, "Test cluster", deniedRequest.ConnectionName)
 
 	// Confirm override off: the call goes straight through.
 	require.NoError(t, h.service.SetToolOverride(Scope{"kubernetes", "test"}, "kubernetes_delete_resource", ToolOverride{Confirm: new(false)}))

@@ -153,7 +153,7 @@ func (s *ServiceWrapper) RotateToken() error {
 	if err != nil {
 		return fmt.Errorf("generate token: %w", err)
 	}
-	if err := s.Relay.update(func(c *Config) error { c.Token = string(token); return nil }); err != nil {
+	if err = s.Relay.update(func(c *Config) error { c.Token = string(token); return nil }); err != nil {
 		return err
 	}
 	s.Relay.restartListener()
@@ -283,7 +283,7 @@ func toolView(cfg *Config, scope Scope, t ToolInfo) ToolView {
 	if scope.global() {
 		policy = cfg.Global
 	} else {
-		connectionPolicy, _ := cfg.connectionPolicy(scope.PluginID, scope.ConnectionID)
+		connectionPolicy := cfg.connectionPolicy(scope.PluginID, scope.ConnectionID)
 		policy = connectionPolicy.Policy
 	}
 	if override, ok := policy.ToolOverrides[t.MCPName]; ok {
@@ -342,7 +342,7 @@ func (s *ServiceWrapper) ListConnectionPolicies() ([]ConnectionPolicyView, error
 			name = pluginID
 		}
 		for _, connection := range connections {
-			policy, _ := r.cfg.connectionPolicy(pluginID, connection.ID)
+			policy := r.cfg.connectionPolicy(pluginID, connection.ID)
 			effectivePreset := policy.Preset
 			if effectivePreset == "" {
 				effectivePreset = r.cfg.Global.Preset

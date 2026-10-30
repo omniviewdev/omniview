@@ -209,18 +209,13 @@ func (c *Config) GlobalEnabled(t ToolInfo) bool {
 	return enabled
 }
 
-func (c *Config) connectionPolicy(pluginID, connectionID string) (ConnectionPolicy, bool) {
-	policies, ok := c.Connections[pluginID]
-	if !ok {
-		return ConnectionPolicy{}, false
-	}
-	policy, ok := policies[connectionID]
-	return policy, ok
+func (c *Config) connectionPolicy(pluginID, connectionID string) ConnectionPolicy {
+	return c.Connections[pluginID][connectionID]
 }
 
 // ConnectionAccess reports whether the relay may target the connection at all.
 func (c *Config) ConnectionAccess(pluginID, connectionID string) bool {
-	policy, _ := c.connectionPolicy(pluginID, connectionID)
+	policy := c.connectionPolicy(pluginID, connectionID)
 	switch policy.Access {
 	case AccessAllowed:
 		return true
@@ -236,7 +231,7 @@ func (c *Config) ConnectionEnabled(pluginID, connectionID string, t ToolInfo) bo
 	if !c.PluginOn(t.PluginID) || !c.ConnectionAccess(pluginID, connectionID) {
 		return false
 	}
-	policy, _ := c.connectionPolicy(pluginID, connectionID)
+	policy := c.connectionPolicy(pluginID, connectionID)
 	if o, ok := policy.ToolOverrides[t.MCPName]; ok && o.Enabled != nil {
 		return *o.Enabled
 	}
@@ -254,7 +249,7 @@ func (c *Config) ConnectionEnabled(pluginID, connectionID string, t ToolInfo) bo
 // is empty for plugin-scoped tools.
 func (c *Config) Confirm(pluginID, connectionID string, t ToolInfo) bool {
 	if connectionID != "" {
-		policy, _ := c.connectionPolicy(pluginID, connectionID)
+		policy := c.connectionPolicy(pluginID, connectionID)
 		if o, ok := policy.ToolOverrides[t.MCPName]; ok && o.Confirm != nil {
 			return *o.Confirm
 		}
