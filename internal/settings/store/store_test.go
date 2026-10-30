@@ -431,4 +431,3 @@ func TestOpen_CorruptFile_BackupPreserved(t *testing.T) {
 	}
 	assert.True(t, backupFound, "corrupt backup file should exist")
 }
-
