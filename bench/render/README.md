@@ -22,9 +22,9 @@ Production React and JSX are the default. Use `BENCH_REACT_DEV=1` only for debug
 ## How it works
 
 - **No Wails backend.** `harness/backend.ts` installs a custom `@wailsio/runtime`
-  transport. Generated bindings call `Call.ByID(id, …)`; the transport maps the id to
-  `"<package path>.<Method>"` (index built from the bindings at config time) and answers
-  from handlers registered with `handle('resource/servicewrapper.List', fn)`. Unhandled
+  transport. Generated `Call.ByID` bindings and handwritten `Call.ByName` clients
+  share one service-method fixture namespace. Current host envelopes come from
+  handlers such as `handle('resource/servicewrapper.Enumerate', fn)`. Unhandled
   calls resolve to `null`. Backend events are delivered with `emit(name, data)`, which
   goes through the real `Events.On` listeners. Screens therefore run their real data
   paths (react-query, `useResources`, log session streams).
@@ -40,6 +40,14 @@ Production React and JSX are the default. Use `BENCH_REACT_DEV=1` only for debug
   Shared defaults explicitly answer `CheckConnection` with `CONNECTED` for the requested
   synthetic connection ID. Render and whole-app profiles exercise the real readiness
   guard; they do not bypass it or wait for watch synchronization to authorize reads.
+  Kubernetes fixtures advertise `k8s:/pods`, return tagged V2 Values and host-owned
+  record identities, and honor native page sizes and cursors. The current Pod screen
+  requests 256 records per native page; 1k/5k labels describe source corpus sizes,
+  not simultaneous mounted row counts. Older full-list baselines are not comparable.
+  Historical result files remain unchanged.
+  Log creation consumes the current encoded JSON request and preserves session options
+  in the current session DTO. Drawer and whole-app fixtures retain live sessions until
+  the real close call removes them; unknown session reads fail.
 - The kubernetes Pod table is rendered from the `plugins/kubernetes` submodule source
   against the app's own `@omniviewdev/runtime` / `@omniviewdev/base-ui` (as plugins get them
   at runtime through the shared-deps import map). Run `git submodule update --init
@@ -51,14 +59,19 @@ Each bench is one user-visible action, timed until its result is on screen:
 
 | Bench | What one sample is |
 |---|---|
-| k8s pod table: mount until first row | Mount the Pod list with N pods until the first row shows |
-| k8s pod table: scroll 30 pages | 30 one-viewport scroll steps down, then back to top; each step delivers the scroll event and forces layout |
+| k8s pod table: mount until first row | Mount the native Pod page from the named corpus until the first row shows |
+| k8s pod table: scroll up to 30 viewport steps within native page | Stop at the real native-page scroll boundary, then return to top; each positive step delivers the scroll event and forces layout |
 | k8s pod table: sort by name | Click the Name header until the top row changes (cycles asc → desc → unsorted) |
 | log viewer: mount + stream 10k lines | Mount, receive 100 backend batches of 100 lines, until the newest line is visible |
 | log viewer: scroll 100k-line buffer | As the table scroll, on a full 100k-line buffer with follow off |
 | bottom drawer: open logs tab | Mount the drawer, open a log session tab, stream 1k lines, until the last is visible |
 | bottom drawer: drag-resize | 41 mousemoves, one per frame; ~683 ms at 60 Hz is the floor, anything above is overrun frames |
 | app shell: mount App | Mount the real `<App />` until the welcome page shows (warm module-level caches) |
+
+Pod scrolling rejects zero movement, unexpected end positions, and failed resets.
+The available native-page scroll range bounds the workload; clamped no-op
+assignments are not counted as viewport steps.
+
 
 Compare runs on the same machine only. CI numbers (ubuntu-latest, shared runners)
 are for spotting large regressions; look at the job summary or the

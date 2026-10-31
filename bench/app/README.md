@@ -23,6 +23,16 @@ The Logs scenario selects a container from the opened Logs submenu, not from the
 parent action list. Adding actions such as Debug must not change which workload
 is measured; line counts, scrolling, drawer toggles, and run counts stay unchanged.
 
+The Pod scenario opens the native page from a 5k-pod corpus, then scrolls up to
+30 viewport steps within that page. Current V2 Kubernetes requests 256 records per native page. Fixtures
+honor that bound and return real next cursors; they do not return the full corpus
+as one page. Older full-list baseline timings are not comparable. The shared
+browser bridge dispatches both named V2 calls and generated binding IDs.
+Scroll workloads stop at the real positive scroll boundary, reject no-op steps and
+unexpected end positions, and verify the reset. Reports expose actual forward steps
+and total steps (including the reset); wall and busy per-step timings use that
+actual total rather than the requested 30-step budget.
+
 ## Reproducible source cohort
 
 CI reads the checked-out host's `e2e/source-cohort.json`, with full commit strings
@@ -107,9 +117,9 @@ probe or builder; keep the generated modfile outside the source checkout:
 HOST_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go \
   --root "$PWD" --sdk-source "$SDK_SOURCE")"
 A11_PROTOCOL_PROBE=1 A11_PROTOCOL_REPORT=/absolute/path/link-protocol.json \
-  GOWORK=off GOFLAGS= go test -modfile="$HOST_MODFILE" -tags server ./internal/devworkspace \
+  GOWORK=off GOFLAGS= go test -mod=readonly -modfile="$HOST_MODFILE" -tags server ./internal/devworkspace \
   -run '^TestLinkPinnedProtocolProbe$' -count=1
-GOWORK=off GOFLAGS= go run -modfile="$HOST_MODFILE" -tags server ./bench/app/build-plugin \
+GOWORK=off GOFLAGS= go run -mod=readonly -modfile="$HOST_MODFILE" -tags server ./bench/app/build-plugin \
   --host \"$PWD\" --host-ref \"$(git rev-parse HEAD)\" \
   --sdk "$SDK_SOURCE" --sdk-ref "$REVIEWED_SDK_COMMIT" \
   --ui /absolute/path/ui --ui-ref \"$REVIEWED_UI_COMMIT\" \
@@ -154,8 +164,8 @@ the collection and report its path instead of deleting uncertain files.
 |---|---|
 | `cold-start` | Fresh browser context, no plugins installed, until the startup marker. |
 | `cold-start-k8s` | As above with the kubernetes plugin; also until the plugin's home card shows. |
-| `pods` | `open`: from the home page, navigate to the Pod list of a 5,000-pod cluster until a row shows. `scroll`: 30 one-viewport steps down, then back to top, each waiting for a painted frame. |
-| `logs` | `open`: Pod row menu → Logs, until the viewer shows. `stream`: 10,000 lines in batches of 100, one batch per task, until the line counter reaches 10,000. `scroll`: 30 pages of the log viewer. `drawer`: minimize/expand the bottom drawer 10 times. |
+| `pods` | `open`: from the home page, open the native Pod page from a 5,000-pod corpus until a row shows. `scroll`: up to 30 viewport steps within the native page, then back to top, each waiting for a painted frame. |
+| `logs` | `open`: Pod row menu → Logs, until the viewer shows. `stream`: 10,000 lines in batches of 100, one batch per task, until the line counter reaches 10,000. `scroll`: up to 30 viewport steps within the available log buffer, then back to top. `drawer`: minimize/expand the bottom drawer 10 times. |
 
 Every scenario runs once as a discarded warmup, then `--runs` times, each in a new browser
 context.
