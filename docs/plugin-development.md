@@ -2,6 +2,20 @@
 
 This guide covers everything you need to know to develop plugins for Omniview with fast iteration cycles. You will learn how to set up your environment, choose a development workflow, and troubleshoot common issues.
 
+### Marketplace host compatibility
+
+Host registry API requests advertise `ide_version=0.11.0`, sourced from
+`internal/version.CompatibilityVersion`. This is the source's minimum host
+compatibility release line, not the SDK version or a PR/nightly display label.
+Development builds advertise the same `0.11.0` API baseline while retaining
+their existing development display labels. Release builds stamp the display
+version from the release tag.
+
+Publisher minimum and maximum IDE versions are inclusive semantic-version bounds.
+Hosts that omit `ide_version` can only access unconstrained plugin versions.
+Artifact and CDN URLs, including signed URLs returned by download endpoints,
+are not decorated with the host version.
+
 ### Host drawer context
 
 `BottomDrawerProvider` must wrap `RightDrawerProvider` in `ui/App.tsx`.
