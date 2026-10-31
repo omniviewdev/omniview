@@ -1,5 +1,5 @@
 import { useMemo, useSyncExternalStore } from 'react';
-import { hashKey, skipToken, useQueries } from '@tanstack/react-query';
+import { skipToken, useQueries } from '@tanstack/react-query';
 import { NativeQuery } from '../../resource/v2/client';
 import type { HostNativeQueryRequest } from '../../resource/v2/host';
 import { resourceQueryKeys } from '../../resourceQueryKeys';
@@ -12,9 +12,9 @@ export const useResourceSearch = ({
   pluginID: explicitPluginID, searches, enabled = true,
 }: { pluginID?: string; searches: readonly HostNativeQueryRequest[]; enabled?: boolean }) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
-  const connectionsHash = hashKey([enabled ? [...new Set(searches.map((request) => request.request.target.route.connection))].sort() : []]);
+  const connectionsHash = JSON.stringify(enabled ? [...new Set(searches.map((request) => request.request.target.route.connection))].sort() : []);
   const readiness = useMemo(() => {
-    const connections = enabled ? [...new Set(searches.map((request) => request.request.target.route.connection))].sort() : [];
+    const connections = JSON.parse(connectionsHash) as string[];
     const stores = new Map(connections.map((connectionID) => [connectionID, connectionReadinessStore(pluginID, connectionID)]));
     return {
       stores,

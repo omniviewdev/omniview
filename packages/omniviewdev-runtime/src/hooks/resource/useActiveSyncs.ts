@@ -57,12 +57,14 @@ export const useActiveSyncs = () => {
   }, []);
 
   useEffect(() => {
+    const timers = removalTimers.current;
     const cancel = Events.On('watch/STATE', handleEvent);
     return () => {
       cancel();
-      for (const timer of removalTimers.current.values()) {
+      for (const timer of timers.values()) {
         clearTimeout(timer);
       }
+      timers.clear();
     };
   }, [handleEvent]);
 
