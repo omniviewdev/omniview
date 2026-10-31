@@ -7,7 +7,7 @@ vi.mock('@/providers/monaco/bootstrap', () => ({
 }));
 import { schemaRegistry } from './schemaRegistry';
 
-function flushMicrotasks() {
+async function flushMicrotasks() {
   const { promise, resolve } = Promise.withResolvers<void>();
   queueMicrotask(resolve);
   return promise;
@@ -71,7 +71,9 @@ describe('canonical editor schema registry', () => {
 
   it('rejects an unavailable referenced document without replacing existing registration', () => {
     schemaRegistry.register('test', 'route', [schema()], [document]);
-    expect(() => schemaRegistry.register('test', 'route', [schema()])).toThrow(/unavailable/);
+    expect(() => {
+      schemaRegistry.register('test', 'route', [schema()]); 
+    }).toThrow(/unavailable/);
     expect(schemaRegistry.getSnapshot()['test:route']).toHaveLength(2);
   });
 

@@ -138,7 +138,7 @@ const PluginDetails: FC = () => {
             installed={!!installed}
             currentVersion={installed?.metadata?.version ?? ''}
           />
-          {!!installed && <Button variant="outline" size="sm" onClick={() => navigate(connectionProfilesPath(id))}>Connection profiles</Button>}
+          {!!installed && <Button variant="outline" size="sm" onClick={(): void | Promise<void> => navigate(connectionProfilesPath(id))}>Connection profiles</Button>}
           {!!installed && (
             <Button
               variant='outline'
