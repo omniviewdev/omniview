@@ -206,6 +206,97 @@ export class ColumnDefinition {
 }
 
 /**
+ * ConnectionMetadataEntry is current, stale, or unavailable. Current and stale
+ * entries always serialize value, including null, false, zero, and empty strings.
+ * Unavailable entries omit value and observedAt and require a public-safe error.
+ */
+export type ConnectionMetadataEntry = any;
+
+/**
+ * ConnectionMetadataError contains only bounded, public-safe classification and text.
+ * Providers must sanitize these fields before returning observations.
+ */
+export class ConnectionMetadataError {
+    "code": string;
+    "message": string;
+
+    /** Creates a new ConnectionMetadataError instance. */
+    constructor($$source: Partial<ConnectionMetadataError> = {}) {
+        if (!("code" in $$source)) {
+            this["code"] = "";
+        }
+        if (!("message" in $$source)) {
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ConnectionMetadataError instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ConnectionMetadataError {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ConnectionMetadataError($$parsedSource as Partial<ConnectionMetadataError>);
+    }
+}
+
+/**
+ * ConnectionMetadataSnapshot is the authoritative state for one connection.
+ * An inactive inventory entry may have an empty generation. Revisions are positive
+ * canonical unsigned decimal strings and continue across generation changes.
+ */
+export class ConnectionMetadataSnapshot {
+    "connectionID": string;
+    "generation": string;
+    "revision": string;
+    "active": boolean;
+    "refreshing": boolean;
+    "lastRefreshError"?: ConnectionMetadataError | null;
+    "entries": { [_ in string]?: ConnectionMetadataEntry };
+
+    /** Creates a new ConnectionMetadataSnapshot instance. */
+    constructor($$source: Partial<ConnectionMetadataSnapshot> = {}) {
+        if (!("connectionID" in $$source)) {
+            this["connectionID"] = "";
+        }
+        if (!("generation" in $$source)) {
+            this["generation"] = "";
+        }
+        if (!("revision" in $$source)) {
+            this["revision"] = "";
+        }
+        if (!("active" in $$source)) {
+            this["active"] = false;
+        }
+        if (!("refreshing" in $$source)) {
+            this["refreshing"] = false;
+        }
+        if (!("entries" in $$source)) {
+            this["entries"] = {};
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ConnectionMetadataSnapshot instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ConnectionMetadataSnapshot {
+        const $$createField5_0 = $$createType5;
+        const $$createField6_0 = $$createType6;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("lastRefreshError" in $$parsedSource) {
+            $$parsedSource["lastRefreshError"] = $$createField5_0($$parsedSource["lastRefreshError"]);
+        }
+        if ("entries" in $$parsedSource) {
+            $$parsedSource["entries"] = $$createField6_0($$parsedSource["entries"]);
+        }
+        return new ConnectionMetadataSnapshot($$parsedSource as Partial<ConnectionMetadataSnapshot>);
+    }
+}
+
+/**
  * Count distinguishes unknown cardinality from an observed zero. Unknown requires
  * nil Value; exact and estimate require a canonical unsigned 64-bit decimal string.
  * A page's record count does not by itself establish total source cardinality.
@@ -332,7 +423,7 @@ export class EnumerateRequest {
      * Creates a new EnumerateRequest instance from a string or object.
      */
     static createFrom($$source: any = {}): EnumerateRequest {
-        const $$createField0_0 = $$createType4;
+        const $$createField0_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("target" in $$parsedSource) {
             $$parsedSource["target"] = $$createField0_0($$parsedSource["target"]);
@@ -468,7 +559,7 @@ export class FeatureSet {
      * Creates a new FeatureSet instance from a string or object.
      */
     static createFrom($$source: any = {}): FeatureSet {
-        const $$createField0_0 = $$createType5;
+        const $$createField0_0 = $$createType8;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("traits" in $$parsedSource) {
             $$parsedSource["traits"] = $$createField0_0($$parsedSource["traits"]);
@@ -507,7 +598,7 @@ export class GetRequest {
      */
     static createFrom($$source: any = {}): GetRequest {
         const $$createField0_0 = $$createType0;
-        const $$createField1_0 = $$createType6;
+        const $$createField1_0 = $$createType9;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("route" in $$parsedSource) {
             $$parsedSource["route"] = $$createField0_0($$parsedSource["route"]);
@@ -687,8 +778,8 @@ export class Record {
      * Creates a new Record instance from a string or object.
      */
     static createFrom($$source: any = {}): Record {
-        const $$createField0_0 = $$createType6;
-        const $$createField2_0 = $$createType7;
+        const $$createField0_0 = $$createType9;
+        const $$createField2_0 = $$createType10;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("reference" in $$parsedSource) {
             $$parsedSource["reference"] = $$createField0_0($$parsedSource["reference"]);
@@ -751,9 +842,9 @@ export class RelationshipDescriptor {
      * Creates a new RelationshipDescriptor instance from a string or object.
      */
     static createFrom($$source: any = {}): RelationshipDescriptor {
-        const $$createField6_0 = $$createType9;
-        const $$createField7_0 = $$createType11;
-        const $$createField8_0 = $$createType13;
+        const $$createField6_0 = $$createType12;
+        const $$createField7_0 = $$createType14;
+        const $$createField8_0 = $$createType16;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("extractor" in $$parsedSource) {
             $$parsedSource["extractor"] = $$createField6_0($$parsedSource["extractor"]);
@@ -824,7 +915,7 @@ export class RelationshipTarget {
      * Creates a new RelationshipTarget instance from a string or object.
      */
     static createFrom($$source: any = {}): RelationshipTarget {
-        const $$createField0_0 = $$createType6;
+        const $$createField0_0 = $$createType9;
         const $$createField1_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("reference" in $$parsedSource) {
@@ -941,8 +1032,8 @@ export class ResolvedRelationship {
      * Creates a new ResolvedRelationship instance from a string or object.
      */
     static createFrom($$source: any = {}): ResolvedRelationship {
-        const $$createField0_0 = $$createType14;
-        const $$createField1_0 = $$createType16;
+        const $$createField0_0 = $$createType17;
+        const $$createField1_0 = $$createType19;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("descriptor" in $$parsedSource) {
             $$parsedSource["descriptor"] = $$createField0_0($$parsedSource["descriptor"]);
@@ -981,7 +1072,7 @@ export class ResourceDefinition {
      * Creates a new ResourceDefinition instance from a string or object.
      */
     static createFrom($$source: any = {}): ResourceDefinition {
-        const $$createField0_0 = $$createType18;
+        const $$createField0_0 = $$createType21;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("columnDefs" in $$parsedSource) {
             $$parsedSource["columnDefs"] = $$createField0_0($$parsedSource["columnDefs"]);
@@ -1070,7 +1161,7 @@ export class ResourceGroup {
      * Creates a new ResourceGroup instance from a string or object.
      */
     static createFrom($$source: any = {}): ResourceGroup {
-        const $$createField4_0 = $$createType19;
+        const $$createField4_0 = $$createType22;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("resources" in $$parsedSource) {
             $$parsedSource["resources"] = $$createField4_0($$parsedSource["resources"]);
@@ -1104,7 +1195,7 @@ export class ResourceHealth {
      * Creates a new ResourceHealth instance from a string or object.
      */
     static createFrom($$source: any = {}): ResourceHealth {
-        const $$createField4_0 = $$createType21;
+        const $$createField4_0 = $$createType24;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("conditions" in $$parsedSource) {
             $$parsedSource["conditions"] = $$createField4_0($$parsedSource["conditions"]);
@@ -1149,7 +1240,7 @@ export class ResourceLink {
      */
     static createFrom($$source: any = {}): ResourceLink {
         const $$createField2_0 = $$createType1;
-        const $$createField4_0 = $$createType13;
+        const $$createField4_0 = $$createType16;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("typeMap" in $$parsedSource) {
             $$parsedSource["typeMap"] = $$createField2_0($$parsedSource["typeMap"]);
@@ -1195,7 +1286,7 @@ export class ResourceOperationError {
      * Creates a new ResourceOperationError instance from a string or object.
      */
     static createFrom($$source: any = {}): ResourceOperationError {
-        const $$createField3_0 = $$createType19;
+        const $$createField3_0 = $$createType22;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("suggestions" in $$parsedSource) {
             $$parsedSource["suggestions"] = $$createField3_0($$parsedSource["suggestions"]);
@@ -1274,7 +1365,7 @@ export class SchemaDocument {
      * Creates a new SchemaDocument instance from a string or object.
      */
     static createFrom($$source: any = {}): SchemaDocument {
-        const $$createField0_0 = $$createType22;
+        const $$createField0_0 = $$createType25;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("reference" in $$parsedSource) {
             $$parsedSource["reference"] = $$createField0_0($$parsedSource["reference"]);
@@ -1424,8 +1515,8 @@ export class WatchConnectionSummary {
      */
     static createFrom($$source: any = {}): WatchConnectionSummary {
         const $$createField0_0 = $$createType0;
-        const $$createField1_0 = $$createType23;
-        const $$createField2_0 = $$createType25;
+        const $$createField1_0 = $$createType26;
+        const $$createField2_0 = $$createType28;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("route" in $$parsedSource) {
             $$parsedSource["route"] = $$createField0_0($$parsedSource["route"]);
@@ -1496,25 +1587,28 @@ const $$createType0 = AccessRoute.createFrom;
 const $$createType1 = $Create.Map($Create.Any, $Create.Any);
 const $$createType2 = ResourceLink.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = ReadTarget.createFrom;
-const $$createType5 = $Create.Array($Create.Any);
-const $$createType6 = ResourceReference.createFrom;
-const $$createType7 = Representation.createFrom;
-const $$createType8 = RelationshipExtractor.createFrom;
-const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = ScopeEntry.createFrom;
-const $$createType11 = $Create.Array($$createType10);
-const $$createType12 = ScopeExtractor.createFrom;
-const $$createType13 = $Create.Array($$createType12);
-const $$createType14 = RelationshipDescriptor.createFrom;
-const $$createType15 = RelationshipTarget.createFrom;
+const $$createType4 = ConnectionMetadataError.createFrom;
+const $$createType5 = $Create.Nullable($$createType4);
+const $$createType6 = $Create.Map($Create.Any, $Create.Any);
+const $$createType7 = ReadTarget.createFrom;
+const $$createType8 = $Create.Array($Create.Any);
+const $$createType9 = ResourceReference.createFrom;
+const $$createType10 = Representation.createFrom;
+const $$createType11 = RelationshipExtractor.createFrom;
+const $$createType12 = $Create.Nullable($$createType11);
+const $$createType13 = ScopeEntry.createFrom;
+const $$createType14 = $Create.Array($$createType13);
+const $$createType15 = ScopeExtractor.createFrom;
 const $$createType16 = $Create.Array($$createType15);
-const $$createType17 = ColumnDefinition.createFrom;
-const $$createType18 = $Create.Array($$createType17);
-const $$createType19 = $Create.Array($Create.Any);
-const $$createType20 = HealthCondition.createFrom;
+const $$createType17 = RelationshipDescriptor.createFrom;
+const $$createType18 = RelationshipTarget.createFrom;
+const $$createType19 = $Create.Array($$createType18);
+const $$createType20 = ColumnDefinition.createFrom;
 const $$createType21 = $Create.Array($$createType20);
-const $$createType22 = SchemaDocumentReference.createFrom;
-const $$createType23 = $Create.Map($Create.Any, $Create.Any);
-const $$createType24 = Count.createFrom;
-const $$createType25 = $Create.Map($Create.Any, $$createType24);
+const $$createType22 = $Create.Array($Create.Any);
+const $$createType23 = HealthCondition.createFrom;
+const $$createType24 = $Create.Array($$createType23);
+const $$createType25 = SchemaDocumentReference.createFrom;
+const $$createType26 = $Create.Map($Create.Any, $Create.Any);
+const $$createType27 = Count.createFrom;
+const $$createType28 = $Create.Map($Create.Any, $$createType27);

@@ -199,6 +199,11 @@ export const PluginUpdateError = "plugin/update_error";
 export const PluginUpdateStarted = "plugin/update_started";
 
 /**
+ * Name of the custom event "resource/connection/metadata".
+ */
+export const ResourceConnectionMetadata = "resource/connection/metadata";
+
+/**
  * Name of the custom event "settings/changed".
  */
 export const SettingsChanged = "settings/changed";

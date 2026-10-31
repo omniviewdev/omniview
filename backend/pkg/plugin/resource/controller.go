@@ -83,19 +83,22 @@ type Controller interface {
 
 // pluginState holds per-plugin runtime state.
 type pluginState struct {
-	provider        ResourceProvider
-	version         int
-	watchCancel     context.CancelFunc
-	ctx             context.Context
-	generationID    string
-	features        resource.FeatureSet
-	featuresReady   bool
-	sourceEpoch     map[string]uint64
-	sourceChanging  map[string]bool
-	catalogBindings map[string]catalogBindingState
-	crashOnce       sync.Once
-	closeOnce       sync.Once
-	closeErr        error
+	provider          ResourceProvider
+	version           int
+	watchCancel       context.CancelFunc
+	ctx               context.Context
+	generationID      string
+	features          resource.FeatureSet
+	featuresReady     bool
+	sourceEpoch       map[string]uint64
+	sourceChanging    map[string]bool
+	catalogBindings   map[string]catalogBindingState
+	crashOnce         sync.Once
+	closeOnce         sync.Once
+	closeErr          error
+	metadata          map[string]HostConnectionMetadata
+	metadataAvailable bool
+	metadataEpoch     uint64
 }
 
 func (s *pluginState) closeSource(provider ResourceProvider) error {
@@ -283,22 +286,26 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	state := &pluginState{
 		version: version, watchCancel: watchCancel, ctx: watchCtx, generationID: uuid.NewString(),
 	}
-	c.pluginsMu.Lock()
+	c.pluginsMu.RLock()
 	existing := c.plugins[pluginID]
 	var previousProvider ResourceProvider
 	if existing != nil {
 		previousProvider = existing.provider
 	}
-	c.plugins[pluginID] = state
-	c.pluginsMu.Unlock()
+	c.pluginsMu.RUnlock()
 	if existing != nil {
 		existing.watchCancel()
+		c.retireMetadata(pluginID, existing)
 	}
+	c.pluginsMu.Lock()
+	c.plugins[pluginID] = state
+	c.pluginsMu.Unlock()
 	defer func() {
 		if retErr == nil {
 			return
 		}
 		watchCancel()
+		c.retireMetadata(pluginID, state)
 		// The dispensed source is owned even before publication/readiness.
 		// Close after lifecycle retirement, preserving the original startup error.
 		defer func() {
@@ -351,6 +358,11 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	if featureErr != nil {
 		return featureErr
 	}
+	if features.Has(resource.FeatureConnectionMetadata) {
+		if _, ok := provider.(resource.ConnectionMetadataProvider); !ok {
+			return resource.NewError("INVALID_REQUEST", "Provider advertised an unavailable metadata trait.")
+		}
+	}
 
 	// Advisory updates remain optional. Finite/catalog-only providers must not
 	// implement a pretend listener, but real listeners still acknowledge native
@@ -386,7 +398,11 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	// Keep concurrent resource calls from starting sources during registration.
 	state.provider = provider
 	state.features, state.featuresReady = features, true
+	state.metadata = make(map[string]HostConnectionMetadata)
+	state.metadataAvailable = !features.Has(resource.FeatureConnectionMetadata)
+	c.emitMetadata(metadataEnvelope(pluginID, state))
 	c.pluginsMu.Unlock()
+	c.startMetadata(pluginID, state, provider)
 
 	// Connections and their event source are independently optional.
 	if features.Has(resource.FeatureConnections) {
@@ -427,6 +443,7 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	c.pluginsMu.RUnlock()
 	if stopped != nil {
 		stopped.watchCancel()
+		c.retireMetadata(pluginID, stopped)
 	}
 	// Cancel first so a concurrent readiness acknowledgement cannot republish
 	// the retiring provider after invalidation.
