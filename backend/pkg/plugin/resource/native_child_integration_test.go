@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -28,9 +29,15 @@ func compileNativeChild(t *testing.T) string {
 	t.Helper()
 	_, source, _, ok := runtime.Caller(0)
 	require.True(t, ok)
-	sdkRoot := filepath.Clean(filepath.Join(filepath.Dir(source), "../../../../../plugin-sdk"))
-	if selectedSource := os.Getenv("SDK_SOURCE"); selectedSource != "" {
-		sdkRoot = selectedSource
+	sdkRoot := os.Getenv("SDK_SOURCE")
+	if sdkRoot == "" {
+		command := exec.Command("go", "list", "-m", "-f", "{{if .Replace}}{{.Replace.Dir}}{{else}}{{.Dir}}{{end}}", "github.com/omniviewdev/plugin-sdk")
+		command.Dir = filepath.Clean(filepath.Join(filepath.Dir(source), "../../../.."))
+		command.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=")
+		output, err := command.CombinedOutput()
+		require.NoError(t, err, "resolve actual SDK module: %s", output)
+		sdkRoot = strings.TrimSpace(string(output))
+		require.NotEmpty(t, sdkRoot, "resolve actual SDK module returned empty root: %s", output)
 	}
 	binary := filepath.Join(t.TempDir(), "p45-native-fixture")
 	command := exec.Command("go", "test", "-c", "-o", binary, "./internal/resourceconformance")
