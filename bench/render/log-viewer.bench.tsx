@@ -9,7 +9,7 @@ import { screenBench } from './harness/bench';
 import { AppProviders } from './harness/providers';
 import { findScrollable, mount, scrollStep, waitFor, type Mounted } from './harness/dom';
 import { handle } from './harness/backend';
-import { lineMarker, makeLogLines, streamLines } from './fixtures/logs';
+import { lineMarker, makeLogLines, makeLogSession, streamLines } from './fixtures/logs';
 
 let sessionSeq = 0;
 
@@ -26,7 +26,7 @@ function mountViewer(sessionId: string): Mounted {
 const shows = (m: Mounted, n: number) => m.container.textContent!.includes(lineMarker(n));
 
 describe('log viewer', () => {
-  handle('logs/servicewrapper.GetSession', (id: string) => ({ id, labels: {}, sources: [] }));
+  handle('logs/servicewrapper.GetSession', (id: string) => makeLogSession(id));
 
   const lines10k = makeLogLines('_', 10_000);
 

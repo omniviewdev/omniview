@@ -12,6 +12,8 @@ const COLUMNS = {
   readyMs: 'interactive',
   pluginReadyMs: 'plugin home shown',
   wallMs: 'wall',
+  steps: 'actual steps',
+  forwardSteps: 'forward viewport steps',
   perStepMs: 'wall / step',
   busyPerStepMs: 'busy / step',
   taskMs: 'main thread busy',
@@ -40,6 +42,7 @@ export function summarize({ meta, results }) {
     '',
     `Commit ${meta.commit}${meta.dirty ? ' (dirty)' : ''}, kubernetes plugin ${meta.k8sPlugin}, Chromium ${meta.chromium}, ${meta.host}.`,
     `Median of ${meta.runs} runs, ms unless noted; first column also min–max. Startup times are from navigation start.`,
+    'V2 Pod scroll takes up to 30 viewport steps within the native page (currently capped at 256 records) from a 5k-pod corpus, then resets. Actual steps include the reset; per-step timings use that count. Older full-list baselines are not comparable.',
     '',
   ];
   const notes = new Set();

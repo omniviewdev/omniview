@@ -1,6 +1,27 @@
 /** Log stream fixtures delivered over the same Wails events the backend uses. */
 import { emit } from '../harness/backend';
 import { rng } from './kubernetes';
+import type { LogSessionRequest } from '../../../packages/omniviewdev-runtime/src/logs';
+import { BENCH_CONNECTION_ID } from './defaults';
+import type { LogSession as BenchLogSession } from '../../../packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/logs/models';
+export type { BenchLogSession };
+
+/** Current session DTO, including options sent over the encoded V2 utility bridge. */
+export function makeLogSession(id: string, plugin = 'bench', connection = BENCH_CONNECTION_ID, encoded?: string): BenchLogSession {
+  const request: LogSessionRequest = encoded ? JSON.parse(encoded) : {
+    resource_key: 'bench:logs', resource_id: id,
+    options: {
+      target: '', follow: true, include_previous: false, include_timestamps: true,
+      tail_lines: 1000, since_seconds: 0, limit_bytes: 0, include_source_events: true, params: {},
+    },
+  };
+  return {
+    id, plugin_id: plugin, connection_id: connection,
+    resource_key: request.resource_key, resource_id: request.resource_id,
+    options: request.options, status: 0, active_sources: [],
+    created_at: '2026-10-14T00:00:00Z',
+  };
+}
 
 const START = Date.parse('2026-10-14T00:00:00Z');
 const MESSAGES = [

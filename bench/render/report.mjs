@@ -17,6 +17,7 @@ const data = JSON.parse(fs.readFileSync(file, 'utf8'));
 
 const ms = (v) => (v == null ? '–' : v >= 100 ? v.toFixed(0) : v.toFixed(1));
 const lines = [`### ${title}`, '', '| Scenario | Bench | mean ms | median ms | p75 ms | p99 ms | ±% | n |', '|---|---|--:|--:|--:|--:|--:|--:|'];
+lines.splice(2, 0, 'V2 Pod benchmarks measure the native page (currently capped at 256 records) from the named corpus. Scroll takes up to 30 viewport steps within that page, then resets; it stops at the real scroll boundary. Older full-list baselines are not comparable.', '');
 const failed = [];
 
 let benchmarkCount = 0;

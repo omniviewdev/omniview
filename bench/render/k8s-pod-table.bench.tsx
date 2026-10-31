@@ -1,14 +1,14 @@
 /**
  * Kubernetes plugin Pod list (the heaviest resource table), rendered from the
  * pinned plugin submodule source against the app's shared packages, with
- * List/metrics answered by fixtures.
+ * V2 native pages and metrics answered by fixtures.
  */
 import { describe } from 'vitest';
 import PodTable from '../../plugins/kubernetes/ui/src/components/kubernetes/table/corev1/Pod/Table';
 
 import { screenBench } from './harness/bench';
 import { PluginScreen } from './harness/providers';
-import { findScrollable, mount, scrollStep, waitFor, click, findByText, type Mounted } from './harness/dom';
+import { findScrollable, mount, scrollStep, waitFor, click, findByText, nextFrame, type Mounted } from './harness/dom';
 import { makePods, servePods } from './fixtures/kubernetes';
 import { BENCH_CONNECTION_ID } from './fixtures/defaults';
 
@@ -66,7 +66,7 @@ async function mountLoaded(): Promise<Mounted> {
 }
 
 for (const count of [1_000, 5_000]) {
-  describe(`k8s pod table, ${count} pods`, () => {
+  describe(`k8s pod table, native page from ${count}-pod corpus`, () => {
     const pods = makePods(count);
     let m: Mounted | null = null;
     const serve = () => servePods(pods);
@@ -78,12 +78,31 @@ for (const count of [1_000, 5_000]) {
       cachedScroller = null;
     }, { setup: serve });
 
-    // 30 steps of one viewport each (top to bottom-ish), then back to top.
-    screenBench('scroll 30 pages', () => {
+    // Stop at the native page boundary; never count clamped assignments as scroll steps.
+    screenBench('scroll up to 30 viewport steps within native page', async () => {
       const scroller = findScrollableCached(m!.container)!;
-      const page = scroller.clientHeight;
-      for (let i = 1; i <= 30; i++) scrollStep(scroller, i * page);
       scrollStep(scroller, 0);
+      await nextFrame();
+      const viewport = scroller.clientHeight;
+      const range = scroller.scrollHeight - viewport;
+      if (viewport <= 0 || range <= 0) throw new Error('no positive native-page scroll range');
+      const steps = Math.min(30, Math.ceil(range / viewport));
+      const expectedEnd = Math.min(steps * viewport, range);
+      let previous = scroller.scrollTop;
+      for (let i = 1; i <= steps; i++) {
+        const expected = Math.min(i * viewport, range);
+        scrollStep(scroller, expected);
+        const actual = scroller.scrollTop;
+        if (actual <= previous || Math.abs(actual - expected) > 1) {
+          throw new Error(`scroll step ${i} did not reach ${expected}px (was ${actual}px)`);
+        }
+        previous = actual;
+      }
+      const end = scroller.scrollTop;
+      scrollStep(scroller, 0);
+      if (end <= 0 || Math.abs(end - expectedEnd) > 1 || scroller.scrollTop > 1) {
+        throw new Error(`native-page scroll or reset failed (${end}px, reset ${scroller.scrollTop}px)`);
+      }
     }, {
       iterations: 6,
       setup: async () => {
