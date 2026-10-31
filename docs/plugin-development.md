@@ -16,6 +16,10 @@ Hosts that omit `ide_version` can only access unconstrained plugin versions.
 Artifact and CDN URLs, including signed URLs returned by download endpoints,
 are not decorated with the host version.
 
+The public marketplace API is `https://mkt.omniview.dev`. Explicit
+`developer.marketplace_url` overrides remain unchanged. Existing profiles that
+saved the retired `api.omniview.dev` default must update that setting.
+
 ### Host drawer context
 
 `BottomDrawerProvider` must wrap `RightDrawerProvider` in `ui/App.tsx`.
