@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { hashKey, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import type { HostRecord, HostWatchAddPayload, HostWatchDeletePayload, HostWatchUpdatePayload, ResourceView } from '../../resource/v2/host';
 import { WatchState } from '../../types/watch';
@@ -49,7 +49,7 @@ export function useEventBatcher(
   queryClient: QueryClient,
   queryKey: QueryKey,
   watchState: WatchState,
-  options?: { syncWindowMs?: number; enabled?: boolean },
+  options?: { syncWindowMs?: number; enabled?: boolean; isCurrent?: () => boolean },
 ) {
   const buffer = useRef(new Map<string, ResourceUpdateEvent>());
   const pendingMembershipChange = useRef(false);
@@ -57,37 +57,49 @@ export function useEventBatcher(
   const frame = useRef<number | undefined>(undefined);
   const state = useRef(watchState);
   const enabled = options?.enabled ?? true;
+  const isCurrent = options?.isCurrent;
+  const scope = useMemo(() => ({ queryClient, queryKey, enabled, isCurrent }), [queryClient, queryKey, enabled, isCurrent]);
+  const activeScope = useRef<typeof scope | undefined>(undefined);
+  const current = useCallback(() => activeScope.current === scope && enabled && (!isCurrent || isCurrent()), [scope, enabled, isCurrent]);
   useLayoutEffect(() => {
     state.current = watchState;
   }, [watchState]);
   const windowMs = options?.syncWindowMs ?? 500;
   const flush = useCallback(() => {
+    // A late callback must not drain or cancel a newer scope's work.
+    if (activeScope.current !== scope) return;
     window.clearTimeout(timer.current);
     if (frame.current !== undefined) cancelAnimationFrame(frame.current);
     timer.current = undefined;
     frame.current = undefined;
+    if (!current()) {
+      buffer.current.clear();
+      pendingMembershipChange.current = false;
+      return;
+    }
     if (!buffer.current.size && !pendingMembershipChange.current) return;
     if (!queryClient.getQueryData<ResourceView>(queryKey)) return;
     const events = [...buffer.current.values()];
     const membershipChanged = pendingMembershipChange.current;
     buffer.current.clear();
     pendingMembershipChange.current = false;
-    queryClient.setQueryData<ResourceView>(queryKey, (old) => applyBatch(old, events, membershipChanged));
+    queryClient.setQueryData<ResourceView>(queryKey, (old) => current() ? applyBatch(old, events, membershipChanged) : old);
     for (const event of events) {
+      if (!current()) return;
       if (event.type === 'DELETE') {
         void queryClient.invalidateQueries({
           queryKey: [queryKey[0], 'resource-v2', 'get'],
-          predicate: (query) => (query.state.data as HostRecord | undefined)?.key === event.payload.key,
+          predicate: (query) => current() && (query.state.data as HostRecord | undefined)?.key === event.payload.key,
         });
       } else {
         queryClient.setQueriesData<HostRecord>({ queryKey: [queryKey[0], 'resource-v2', 'get'] }, (old) =>
-          old?.key === event.payload.record.key ? event.payload.record : old,
+          current() && old?.key === event.payload.record.key ? event.payload.record : old,
         );
       }
     }
-  }, [queryClient, queryKey]);
+  }, [queryClient, queryKey, scope, current]);
   const enqueue = useCallback((event: ResourceUpdateEvent) => {
-    if (!enabled) return;
+    if (!current()) return;
     const key = event.type === 'DELETE' ? event.payload.key : event.payload.record.key;
     const baseline = queryClient.getQueryData<ResourceView>(queryKey);
     if (baseline?.records.some((row) => row.key === key)) buffer.current.set(key, event);
@@ -97,12 +109,13 @@ export function useEventBatcher(
     // A timer also bounds live mode when Chromium withholds animation frames.
     timer.current = window.setTimeout(flush, windowMs);
     if (state.current !== WatchState.WatchStateSyncing) frame.current = requestAnimationFrame(flush);
-  }, [queryClient, queryKey, flush, windowMs, enabled]);
+  }, [queryClient, queryKey, flush, windowMs, current]);
   useLayoutEffect(() => {
     if (!enabled) return;
+    activeScope.current = scope;
     const pendingEvents = buffer.current;
     const cancel = queryClient.getQueryCache().subscribe((event) => {
-      if (event.type !== 'updated' || event.query.queryHash !== hashKey(queryKey)) return;
+      if (!current() || event.type !== 'updated' || event.query.queryHash !== hashKey(queryKey)) return;
       if (event.action.type === 'fetch') {
         // A new native acquisition supersedes older queued advisory observations.
         pendingEvents.clear();
@@ -110,6 +123,7 @@ export function useEventBatcher(
       } else if (event.action.type === 'success') flush();
     });
     return () => {
+      activeScope.current = undefined;
       cancel();
       window.clearTimeout(timer.current);
       if (frame.current !== undefined) cancelAnimationFrame(frame.current);
@@ -118,6 +132,6 @@ export function useEventBatcher(
       timer.current = undefined;
       frame.current = undefined;
     };
-  }, [queryClient, queryKey, flush, enabled]);
+  }, [queryClient, queryKey, flush, enabled, scope, current]);
   return enqueue;
 }
