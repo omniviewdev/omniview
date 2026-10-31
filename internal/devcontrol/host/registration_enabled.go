@@ -14,13 +14,11 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
-	pluginsettings "github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
+	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devcontrol"
 	"github.com/omniviewdev/omniview/internal/devsession"
-	"github.com/omniviewdev/omniview/internal/hostsettings"
 	"github.com/omniviewdev/omniview/internal/instance"
-	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
 // Registered last: Wails starts services in order and shuts them down in reverse.
@@ -33,9 +31,7 @@ type developmentControlLifecycle struct {
 	publishSnapshot  func(devcontract.InstanceDescriptor)
 	manager          plugin.Manager
 	dev              *devserver.DevServerManager
-	provider         pkgsettings.Provider
-	writer           hostsettings.Writer
-	controller       pluginsettings.Controller
+	settings         *settingsservice.Service
 	server           *devcontrol.Server
 	benchmarkMetrics *resourceBenchmarkMetrics
 }
@@ -49,9 +45,7 @@ func Register(
 	publishSnapshot func(devcontract.InstanceDescriptor),
 	manager plugin.Manager,
 	dev *devserver.DevServerManager,
-	provider pkgsettings.Provider,
-	writer hostsettings.Writer,
-	controller pluginsettings.Controller,
+	settings *settingsservice.Service,
 ) (func(), error) {
 	if profile.Descriptor.Kind != "development" {
 		return nil, nil
@@ -64,9 +58,7 @@ func Register(
 		publishSnapshot:  publishSnapshot,
 		manager:          manager,
 		dev:              dev,
-		provider:         provider,
-		writer:           writer,
-		controller:       controller,
+		settings:         settings,
 		server:           nil,
 		benchmarkMetrics: nil,
 	}
@@ -109,7 +101,7 @@ func (s *developmentControlLifecycle) ServiceStartup(ctx context.Context, _ appl
 	server, err := devcontrol.Start(ctx, devcontrol.Config{
 		Descriptor: descriptor,
 		Discovery:  discovery,
-		Adapters:   New(s.manager, s.dev, s.provider, s.writer, s.controller, s.inspect),
+		Adapters:   New(s.manager, s.dev, s.settings, s.inspect),
 	})
 	if err != nil {
 		return err

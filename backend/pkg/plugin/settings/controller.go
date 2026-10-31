@@ -1,7 +1,9 @@
 package settings
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -28,30 +30,19 @@ const (
 
 var tracer = otel.Tracer("omniview.settings")
 
-// Service is the system/UI facing interface for making settings requests.
+// Service exposes scoped operations and trusted schema access for control decoding.
 type Service interface {
-	// ListPlugins returns a list of all the plugins that are registered with the settings controller
 	ListPlugins() ([]string, error)
-
-	// Values returns a list of all of the values calculated in the current setting store
-	Values() map[string]any
-
-	// PluginValues returns a list of all of the values calculated in the plugin's setting store
-	PluginValues(plugin string) map[string]any
-
-	// ListSettings returns the settings store
+	Snapshot(pluginID string) (pkgsettings.Category, error)
 	ListSettings(plugin string) map[string]pkgsettings.Setting
-
-	// GetSetting returns the setting by ID. This ID should be in the form of a dot separated string
-	// that represents the path to the setting. For example, "appearance.theme"
 	GetSetting(plugin, id string) (pkgsettings.Setting, error)
 	ValidateSetting(plugin, id string, value any) (pkgsettings.ValidationResult, error)
-
-	// SetSetting sets the value of the setting by ID
-	SetSetting(plugin, id string, value any) error
-
-	// SetSettings sets multiple settings at once
-	SetSettings(plugin string, settings map[string]any) error
+	CommitSettings(
+		ctx context.Context,
+		plugin string,
+		values map[string]any,
+		persist pkgsettings.PersistFunc,
+	) (pkgsettings.CommitResult, error)
 }
 
 // Controller handles all requests to interface with the settings capabilities on installed plugins.
@@ -72,10 +63,16 @@ const pendingChangeTimeout = 30 * time.Second
 
 // pendingChange represents a queued settings change for a plugin that is not yet hydrated.
 type pendingChange struct {
+	ctx      context.Context
 	settings map[string]any
-	errCh    chan error
+	persist  pkgsettings.PersistFunc
+	done     chan commitOutcome
 }
 
+type commitOutcome struct {
+	result pkgsettings.CommitResult
+	err    error
+}
 type controller struct {
 	logger           logging.Logger
 	settingsProvider pkgsettings.Provider
@@ -84,6 +81,7 @@ type controller struct {
 	clients          map[string]Provider
 	hydrated         map[string]bool
 	schemaCache      map[string]map[string]pkgsettings.Setting
+	baseline         map[string]map[string]any
 	pendingMu        sync.Mutex
 	pendingChanges   map[string][]pendingChange
 	hydratingMu      sync.Mutex
@@ -100,6 +98,7 @@ func NewController(logger logging.Logger, sp pkgsettings.Provider, store *settin
 		clients:          make(map[string]Provider),
 		hydrated:         make(map[string]bool),
 		schemaCache:      make(map[string]map[string]pkgsettings.Setting),
+		baseline:         make(map[string]map[string]any),
 		pendingMu:        sync.Mutex{},
 		pendingChanges:   make(map[string][]pendingChange),
 		hydratingMu:      sync.Mutex{},
@@ -126,8 +125,7 @@ func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
 	c.mu.Unlock()
 }
 
-// dispenseProvider extracts the settings provider from the backend,
-// wrapping it in the version-appropriate adapter.
+// dispenseProvider extracts the negotiated settings provider directly.
 func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Provider, error) {
 	raw, err := backend.Dispense(PluginName)
 	if err != nil {
@@ -145,7 +143,7 @@ func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Pro
 				fmt.Sprintf("Expected settings.Provider for v1, got %T", raw),
 			)
 		}
-		return NewAdapterV1(v1), nil
+		return v1, nil
 	default:
 		return nil, apperror.New(
 			apperror.TypePluginLoadFailed, http.StatusInternalServerError,
@@ -216,7 +214,8 @@ func (c *controller) hydratePlugin(
 		persisted, err = c.store.LoadPluginSettings(pluginID)
 		if err != nil {
 			logger.Warnw(ctx, "failed to load persisted settings", "plugin", pluginID, "error", err)
-			persisted = make(map[string]any)
+			c.failPendingChanges(pluginID, err)
+			return
 		}
 	} else {
 		persisted = make(map[string]any)
@@ -234,8 +233,21 @@ func (c *controller) hydratePlugin(
 		}
 	}
 
-	// 4. Push merged values to the plugin
-	if err := client.SetSettings(merged); err != nil {
+	// Persist normalized hydration values before publishing them remotely.
+	var persist pkgsettings.PersistFunc
+	if c.store != nil {
+		persist = func(values map[string]any) error {
+			for id, value := range values {
+				merged[id] = pkgsettings.CloneValue(value)
+			}
+			return c.store.SavePluginSettings(pluginID, merged)
+		}
+	}
+	result, err := client.CommitSettings(ctx, merged, persist)
+	if err != nil || !result.Applied {
+		if err == nil {
+			err = errors.New("hydration application uncertain")
+		}
 		logger.Errorw(ctx, "failed to push hydrated settings to plugin", "plugin", pluginID, "error", err)
 		c.mu.Lock()
 		c.hydrated[pluginID] = false
@@ -244,24 +256,25 @@ func (c *controller) hydratePlugin(
 		return
 	}
 
-	// 5. Persist merged state
-	if c.store != nil {
-		if err := c.store.SavePluginSettings(pluginID, merged); err != nil {
-			logger.Warnw(ctx, "failed to persist merged settings", "plugin", pluginID, "error", err)
-		}
-	}
-
 	// 6. Mark as hydrated and cache the schema for fallback use
 	c.mu.Lock()
 	c.hydrated[pluginID] = true
 	c.schemaCache[pluginID] = schema
+	if c.baseline == nil {
+		c.baseline = make(map[string]map[string]any)
+	}
+	baseline := make(map[string]any, len(merged))
+	for id, value := range merged {
+		baseline[id] = pkgsettings.CloneValue(value)
+	}
+	c.baseline[pluginID] = baseline
 	c.mu.Unlock()
 
 	// 7. Drain pending changes
 	c.drainPendingChanges(ctx, pluginID, client, logger)
 }
 
-// failPendingChanges removes and fails all pending changes for a plugin, sending err on each errCh.
+// failPendingChanges removes and rejects queued transactions for a plugin.
 func (c *controller) failPendingChanges(pluginID string, err error) {
 	c.pendingMu.Lock()
 	pending := c.pendingChanges[pluginID]
@@ -269,8 +282,11 @@ func (c *controller) failPendingChanges(pluginID string, err error) {
 	c.pendingMu.Unlock()
 
 	for _, p := range pending {
-		if p.errCh != nil {
-			p.errCh <- err
+		if p.done != nil {
+			p.done <- commitOutcome{
+				result: pkgsettings.CommitResult{Committed: false, Applied: false, Uncertain: false},
+				err:    err,
+			}
 		}
 	}
 }
@@ -287,43 +303,11 @@ func (c *controller) drainPendingChanges(
 	delete(c.pendingChanges, pluginID)
 	c.pendingMu.Unlock()
 
-	var anySuccess bool
 	for _, p := range pending {
-		err := client.SetSettings(p.settings)
-		if err == nil {
-			anySuccess = true
+		result, err := c.commit(p.ctx, client, p.settings, p.persist)
+		if p.done != nil {
+			p.done <- commitOutcome{result: result, err: err}
 		}
-		if p.errCh != nil {
-			p.errCh <- err
-		}
-	}
-
-	// Persist once after all pending changes are applied, rather than per-change.
-	if anySuccess {
-		c.persistCurrentSettings(ctx, pluginID, client, logger)
-	}
-}
-
-// persistCurrentSettings reads the current settings from the plugin and persists them.
-func (c *controller) persistCurrentSettings(
-	ctx context.Context,
-	pluginID string,
-	client Provider,
-	logger logging.Logger,
-) {
-	if c.store == nil {
-		return
-	}
-	allSettings := client.ListSettings()
-	if allSettings == nil {
-		return
-	}
-	vals := make(map[string]any, len(allSettings))
-	for k, s := range allSettings {
-		vals[k] = s.Value
-	}
-	if err := c.store.SavePluginSettings(pluginID, vals); err != nil {
-		logger.Warnw(ctx, "failed to persist plugin settings", "plugin", pluginID, "error", err)
 	}
 }
 
@@ -399,6 +383,7 @@ func (c *controller) OnPluginDestroy(pluginID string, _ config.PluginMeta) error
 	delete(c.hydrated, pluginID)
 	delete(c.clients, pluginID)
 	delete(c.schemaCache, pluginID)
+	delete(c.baseline, pluginID)
 	c.mu.Unlock()
 
 	return nil
@@ -467,91 +452,6 @@ func (c *controller) bboltFallbackSettings(pluginID string) map[string]pkgsettin
 		}
 	}
 	return result
-}
-
-// Values returns all of the values for all of the plugins.
-func (c *controller) Values() map[string]any {
-	ctx, span := tracer.Start(context.Background(), "settings.Values")
-	defer span.End()
-	logger := c.logger.With(logging.Any("method", "Values"))
-	logger.Debugw(ctx, "Listing all settings values")
-
-	c.mu.RLock()
-	snapshot := make(map[string]Provider, len(c.clients))
-	for k, v := range c.clients {
-		snapshot[k] = v
-	}
-	c.mu.RUnlock()
-
-	values := make(map[string]any)
-	for pluginID, client := range snapshot {
-		// Attempt hydration if not yet done
-		c.tryHydrate(ctx, pluginID)
-
-		clientValues := client.ListSettings()
-		if clientValues == nil {
-			// gRPC failed, fall back to bbolt
-			if fallback := c.bboltFallbackSettings(pluginID); fallback != nil {
-				clientValues = fallback
-			}
-		}
-		for settingID, setting := range clientValues {
-			key := fmt.Sprintf("%s.%s", pluginID, settingID)
-			values[key] = setting.Value
-		}
-	}
-
-	return values
-}
-
-func (c *controller) PluginValues(plugin string) map[string]any {
-	ctx, span := tracer.Start(context.Background(), "settings.PluginValues")
-	defer span.End()
-	span.SetAttributes(attribute.String("plugin", plugin))
-	logger := c.logger.With(logging.Any("plugin", plugin), logging.Any("method", "PluginValues"))
-	logger.Debugw(ctx, "Listing settings values for plugin")
-
-	if plugin == "" {
-		return nil
-	}
-
-	// Attempt hydration if not yet done
-	c.tryHydrate(ctx, plugin)
-
-	c.mu.RLock()
-	client, ok := c.clients[plugin]
-	c.mu.RUnlock()
-	if !ok {
-		// No client — try bbolt fallback
-		if fallback := c.bboltFallbackSettings(plugin); fallback != nil {
-			values := make(map[string]any, len(fallback))
-			for settingID, setting := range fallback {
-				key := fmt.Sprintf("%s.%s", plugin, settingID)
-				values[key] = setting.Value
-			}
-			return values
-		}
-		err := errors.New("plugin not found")
-		telemetryutil.RecordError(span, err)
-		logger.Errorw(ctx, "plugin not found", "error", err)
-		return nil
-	}
-
-	clientValues := client.ListSettings()
-	if clientValues == nil {
-		// gRPC failed, fall back to bbolt
-		if fallback := c.bboltFallbackSettings(plugin); fallback != nil {
-			clientValues = fallback
-		}
-	}
-
-	values := make(map[string]any)
-	for settingID, setting := range clientValues {
-		key := fmt.Sprintf("%s.%s", plugin, settingID)
-		values[key] = setting.Value
-	}
-
-	return values
 }
 
 // ListSettings returns the settings store.
@@ -637,132 +537,129 @@ func (c *controller) ValidateSetting(plugin, id string, value any) (pkgsettings.
 	return client.ValidateSetting(id, value)
 }
 
-// SetSetting sets the value of the setting by ID.
-func (c *controller) SetSetting(plugin, id string, value any) (retErr error) {
-	ctx, span := tracer.Start(context.Background(), "settings.SetSetting")
-	defer span.End()
-	defer func() {
-		if retErr != nil {
-			telemetryutil.RecordError(span, retErr)
-		}
-	}()
-	span.SetAttributes(attribute.String("plugin", plugin), attribute.String("setting_id", id))
-	logger := c.logger.With(logging.Any("plugin", plugin), logging.Any("method", "SetSetting"), logging.Any("id", id))
-
+// CommitSettings queues writes until hydration completes and persists through the
+// plugin's prepared transaction. IDs remain opaque within the plugin scope.
+func (c *controller) CommitSettings(
+	ctx context.Context,
+	plugin string,
+	values map[string]any,
+	persist pkgsettings.PersistFunc,
+) (pkgsettings.CommitResult, error) {
 	c.mu.RLock()
 	client, ok := c.clients[plugin]
-	isHydrated := c.hydrated[plugin]
 	c.mu.RUnlock()
-
-	// If no client or not hydrated, queue the change
-	if !ok || !isHydrated {
-		if !ok {
-			retErr = apperror.PluginNotFound(plugin)
-			logger.Errorw(ctx, "plugin not found for SetSetting", "error", retErr)
-			return retErr
-		}
-		// Not hydrated — queue
-		errCh := make(chan error, 1)
-		c.pendingMu.Lock()
-		c.pendingChanges[plugin] = append(c.pendingChanges[plugin], pendingChange{
-			settings: map[string]any{id: value},
-			errCh:    errCh,
-		})
+	if !ok {
+		return pkgsettings.CommitResult{}, apperror.PluginNotFound(plugin)
+	}
+	c.pendingMu.Lock()
+	c.mu.RLock()
+	hydrated := c.hydrated[plugin]
+	c.mu.RUnlock()
+	if hydrated {
 		c.pendingMu.Unlock()
-		select {
-		case err := <-errCh:
-			return err
-		case <-time.After(pendingChangeTimeout):
-			c.pendingMu.Lock()
-			pending := c.pendingChanges[plugin]
-			for i, p := range pending {
-				if p.errCh == errCh {
-					c.pendingChanges[plugin] = append(pending[:i], pending[i+1:]...)
-					break
-				}
+		return c.commit(ctx, client, values, persist)
+	}
+	cloned := make(map[string]any, len(values))
+	for id, value := range values {
+		cloned[id] = pkgsettings.CloneValue(value)
+	}
+	queuedCtx, cancel := context.WithTimeout(ctx, pendingChangeTimeout)
+	defer cancel()
+	done := make(chan commitOutcome, 1)
+	c.pendingChanges[plugin] = append(c.pendingChanges[plugin], pendingChange{
+		ctx:      queuedCtx,
+		settings: cloned,
+		persist:  persist,
+		done:     done,
+	})
+	c.pendingMu.Unlock()
+	select {
+	case outcome := <-done:
+		return outcome.result, outcome.err
+	case <-queuedCtx.Done():
+		c.pendingMu.Lock()
+		for i, change := range c.pendingChanges[plugin] {
+			if change.done == done {
+				pending := c.pendingChanges[plugin]
+				c.pendingChanges[plugin] = append(pending[:i], pending[i+1:]...)
+				c.pendingMu.Unlock()
+				return pkgsettings.CommitResult{}, queuedCtx.Err()
 			}
-			c.pendingMu.Unlock()
-			return fmt.Errorf("timeout waiting for plugin %q to hydrate", plugin)
 		}
+		c.pendingMu.Unlock()
+		// A drained transaction may already be durable. Never return a false rejection.
+		outcome := <-done
+		return outcome.result, outcome.err
 	}
-
-	if err := client.SetSetting(id, value); err != nil {
-		return err
-	}
-
-	// Persist after successful gRPC
-	c.persistCurrentSettings(ctx, plugin, client, logger)
-
-	return nil
 }
 
-// SetSettings sets multiple settings at once.
-func (c *controller) SetSettings(plugin string, settings map[string]any) (retErr error) {
-	ctx, span := tracer.Start(context.Background(), "settings.SetSettings")
-	defer span.End()
-	defer func() {
-		if retErr != nil {
-			telemetryutil.RecordError(span, retErr)
-		}
-	}()
-	span.SetAttributes(attribute.String("plugin", plugin))
-	settingKeys := make([]string, 0, len(settings))
-	for k := range settings {
-		settingKeys = append(settingKeys, k)
+func (c *controller) commit(
+	ctx context.Context,
+	client Provider,
+	values map[string]any,
+	persist pkgsettings.PersistFunc,
+) (pkgsettings.CommitResult, error) {
+	if err := ctx.Err(); err != nil {
+		return pkgsettings.CommitResult{}, err
 	}
-	logger := c.logger.With(
-		logging.Any("plugin", plugin),
-		logging.Any("method", "SetSettings"),
-		logging.Any("keys", settingKeys),
-	)
+	if persist == nil {
+		return pkgsettings.CommitResult{}, errors.New("settings persistence unavailable")
+	}
+	return client.CommitSettings(ctx, values, persist)
+}
 
+// Snapshot projects saved values through authoritative plugin schema. Unknown
+// persisted values remain secret, including when no plugin connection exists.
+func (c *controller) Snapshot(pluginID string) (pkgsettings.Category, error) {
+	c.tryHydrate(context.Background(), pluginID)
 	c.mu.RLock()
-	client, ok := c.clients[plugin]
-	isHydrated := c.hydrated[plugin]
+	schema := c.schemaCache[pluginID]
+	baseline := c.baseline[pluginID]
 	c.mu.RUnlock()
-
-	// If no client or not hydrated, queue the change
-	if !ok || !isHydrated {
-		if !ok {
-			retErr = apperror.PluginNotFound(plugin)
-			logger.Errorw(ctx, "plugin not found for SetSettings", "error", retErr)
-			return retErr
+	projected := make(map[string]pkgsettings.Setting, len(schema))
+	for id, setting := range schema {
+		projected[id] = setting
+	}
+	if c.store != nil {
+		saved, err := c.store.LoadPluginSettings(pluginID)
+		if err != nil {
+			return pkgsettings.Category{}, err
 		}
-		// Not hydrated — queue (clone the map to avoid caller mutation)
-		cloned := make(map[string]any, len(settings))
-		for k, v := range settings {
-			cloned[k] = v
-		}
-		errCh := make(chan error, 1)
-		c.pendingMu.Lock()
-		c.pendingChanges[plugin] = append(c.pendingChanges[plugin], pendingChange{
-			settings: cloned,
-			errCh:    errCh,
-		})
-		c.pendingMu.Unlock()
-		select {
-		case err := <-errCh:
-			return err
-		case <-time.After(pendingChangeTimeout):
-			c.pendingMu.Lock()
-			pending := c.pendingChanges[plugin]
-			for i, p := range pending {
-				if p.errCh == errCh {
-					c.pendingChanges[plugin] = append(pending[:i], pending[i+1:]...)
-					break
-				}
+		for id, value := range saved {
+			setting, known := projected[id]
+			if !known {
+				setting = pkgsettings.Setting{ID: id}
 			}
-			c.pendingMu.Unlock()
-			return fmt.Errorf("timeout waiting for plugin %q to hydrate", plugin)
+			setting.Value = pkgsettings.CloneValue(value)
+			projected[id] = setting
 		}
 	}
-
-	if err := client.SetSettings(settings); err != nil {
-		return err
+	if len(projected) == 0 && schema == nil {
+		return pkgsettings.Category{}, apperror.PluginNotFound(pluginID)
 	}
+	for id, setting := range projected {
+		authoritative, known := schema[id]
+		setting.RequiresRestart = known && authoritative.RequiresRestart
+		initial, hasBaseline := baseline[id]
+		setting.PendingRestart = setting.RequiresRestart && hasBaseline && !sameValue(initial, setting.Value)
+		setting.Value = pkgsettings.CloneValue(setting.Value)
+		setting.Default = pkgsettings.CloneValue(setting.Default)
+		if !known || authoritative.Sensitive || authoritative.Type == pkgsettings.Password {
+			setting.Sensitive = true
+		}
+		projected[id] = setting
+	}
+	return pkgsettings.Category{
+		ID:          "plugin",
+		Label:       "Plugin",
+		Description: "",
+		Icon:        "",
+		Settings:    RedactSettingsSchema(projected),
+	}, nil
+}
 
-	// Persist after successful gRPC
-	c.persistCurrentSettings(ctx, plugin, client, logger)
-
-	return nil
+func sameValue(left, right any) bool {
+	leftJSON, leftErr := json.Marshal(left)
+	rightJSON, rightErr := json.Marshal(right)
+	return leftErr == nil && rightErr == nil && bytes.Equal(leftJSON, rightJSON)
 }

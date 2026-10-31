@@ -6,21 +6,22 @@ import (
 	"net"
 	"testing"
 
-	logging "github.com/omniviewdev/plugin-sdk/log"
-	sdksettings "github.com/omniviewdev/plugin-sdk/pkg/v1/settings"
-	settingspb "github.com/omniviewdev/plugin-sdk/proto/v1/settings"
-	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/types/known/emptypb"
+
+	logging "github.com/omniviewdev/plugin-sdk/log"
+	sdksettings "github.com/omniviewdev/plugin-sdk/pkg/v1/settings"
+	settingspb "github.com/omniviewdev/plugin-sdk/proto/v1/settings"
+	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
-// Keep the real SDK server, protobuf serialization, SDK client, adapter and
-// hydration. Only downgrade two wire records to reproduce old/misclassified
-// plugin messages; cached Setting structs are never fabricated by this test.
+// Keep the real SDK server, protobuf serialization, SDK client and hydration.
+// Only downgrade two wire records to reproduce old/misclassified plugin
+// messages; cached Setting structs are never fabricated by this test.
 type classificationWireServer struct {
 	*sdksettings.SettingsPluginServer
 }
@@ -78,10 +79,12 @@ func TestRedactedPluginSettings_ActualV1RPCPreservesClassificationAndFailsClosed
 	plugin := &sdksettings.SettingsPlugin{}
 	rawClient, err := plugin.GRPCClient(context.Background(), nil, connection)
 	require.NoError(t, err)
-	client := NewAdapterV1(rawClient.(sdksettings.Provider))
+	client, ok := rawClient.(sdksettings.Provider)
+	require.True(t, ok, "settings transport must implement the SDK provider")
 
 	store := openTestStore(t)
-	ctrl := NewController(logging.NewNop(), nil, store).(*controller)
+	ctrl, ok := NewController(logging.NewNop(), nil, store).(*controller)
+	require.True(t, ok, "settings controller must expose its concrete implementation")
 	ctrl.clients["fixture"] = client
 	ctrl.hydratePlugin(context.Background(), "fixture", client, ctrl.logger)
 	require.True(t, ctrl.hydrated["fixture"])

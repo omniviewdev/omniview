@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
@@ -60,8 +61,8 @@ type Dev interface {
 type Settings interface {
 	Schema(SettingsParams) (map[string]pkgsettings.Setting, error)
 	Get(SettingsParams) (any, error)
-	Set(SettingsParams) error
-	Bulk(SettingsParams) error
+	Set(SettingsParams) (settingsservice.CommitResult, error)
+	Bulk(SettingsParams) (settingsservice.CommitResult, error)
 }
 type Adapters struct {
 	Inspect  func(context.Context) (devcontract.InstanceDescriptor, error)

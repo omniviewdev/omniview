@@ -151,6 +151,67 @@ func (s *Store) SaveCategories(categories map[string]map[string]any) error {
 	})
 }
 
+// PatchSettings merges scoped host setting IDs into persisted categories atomically.
+// Only the first dot separates the category from the local setting ID.
+func (s *Store) PatchSettings(values map[string]any) error {
+	if s == nil || s.db == nil {
+		return ErrUnavailable
+	}
+	categories := make(map[string]map[string]any)
+	for id, value := range values {
+		category, setting, ok := strings.Cut(id, ".")
+		if !ok || category == "" || setting == "" {
+			return fmt.Errorf("invalid host setting ID %q", id)
+		}
+		if categories[category] == nil {
+			categories[category] = make(map[string]any)
+		}
+		categories[category][setting] = value
+	}
+	return s.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(coreBucket)
+		for category, patch := range categories {
+			if err := patchValues(b, category, patch); err != nil {
+				return fmt.Errorf("patch category %q: %w", category, err)
+			}
+		}
+		return nil
+	})
+}
+
+// PatchPluginSettings merges raw setting IDs into one plugin's persisted values.
+func (s *Store) PatchPluginSettings(pluginID string, values map[string]any) error {
+	if s == nil || s.db == nil {
+		return ErrUnavailable
+	}
+	return s.db.Update(func(tx *bolt.Tx) error {
+		if err := patchValues(tx.Bucket(pluginsBucket), pluginID, values); err != nil {
+			return fmt.Errorf("patch plugin settings %q: %w", pluginID, err)
+		}
+		return nil
+	})
+}
+
+func patchValues(bucket *bolt.Bucket, id string, patch map[string]any) error {
+	values := make(map[string]any)
+	if data := bucket.Get([]byte(id)); data != nil {
+		if err := json.Unmarshal(data, &values); err != nil {
+			return fmt.Errorf("decode saved settings: %w", err)
+		}
+	}
+	if values == nil {
+		values = make(map[string]any, len(patch))
+	}
+	for key, value := range patch {
+		values[key] = value
+	}
+	data, err := json.Marshal(values)
+	if err != nil {
+		return fmt.Errorf("encode settings: %w", err)
+	}
+	return bucket.Put([]byte(id), data)
+}
+
 // LoadCategory retrieves a category's settings from the "core" bucket.
 // Returns an empty (non-nil) map if the category does not exist.
 func (s *Store) LoadCategory(categoryID string) (map[string]any, error) {
@@ -204,6 +265,9 @@ func (s *Store) LoadMCPRelayConfig(out any) (bool, error) {
 
 // SavePluginSettings persists a plugin's settings under the "plugins" bucket.
 func (s *Store) SavePluginSettings(pluginID string, values map[string]any) error {
+	if s == nil || s.db == nil {
+		return ErrUnavailable
+	}
 	data, err := json.Marshal(values)
 	if err != nil {
 		return fmt.Errorf("marshal plugin settings %q: %w", pluginID, err)
@@ -217,6 +281,9 @@ func (s *Store) SavePluginSettings(pluginID string, values map[string]any) error
 // LoadPluginSettings retrieves a plugin's settings from the "plugins" bucket.
 // Returns an empty (non-nil) map if the plugin does not exist.
 func (s *Store) LoadPluginSettings(pluginID string) (map[string]any, error) {
+	if s == nil || s.db == nil {
+		return nil, ErrUnavailable
+	}
 	result := make(map[string]any)
 	err := s.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(pluginsBucket)
@@ -235,6 +302,9 @@ func (s *Store) LoadPluginSettings(pluginID string) (map[string]any, error) {
 // DeletePluginSettings removes a plugin's settings from the "plugins" bucket.
 // It is a no-op if the plugin does not exist.
 func (s *Store) DeletePluginSettings(pluginID string) error {
+	if s == nil || s.db == nil {
+		return ErrUnavailable
+	}
 	return s.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(pluginsBucket)
 		return b.Delete([]byte(pluginID))
@@ -244,6 +314,9 @@ func (s *Store) DeletePluginSettings(pluginID string) error {
 // LoadAllPluginSettings returns all plugin settings keyed by plugin ID.
 // Returns an empty (non-nil) map if no plugins have saved settings.
 func (s *Store) LoadAllPluginSettings() (map[string]map[string]any, error) {
+	if s == nil || s.db == nil {
+		return nil, ErrUnavailable
+	}
 	result := make(map[string]map[string]any)
 	err := s.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(pluginsBucket)

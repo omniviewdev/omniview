@@ -105,10 +105,6 @@ vi.mock('../../../../../../packages/omniviewdev-runtime/src/bindings/github.com/
   ...await importOriginal<Record<string, unknown>>(),
   GetPluginMeta: async (pluginId: string) => ({ id: pluginId, name: pluginId, version: 'test' }),
 }));
-vi.mock('../../../../../../packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/settings/servicewrapper', async (importOriginal) => ({
-  ...await importOriginal<Record<string, unknown>>(),
-  PluginValues: async () => ({}),
-}));
 
 vi.mock('@omniviewdev/runtime/api', async (importOriginal) => {
   const original = await importOriginal<typeof RuntimeAPI>();
@@ -136,15 +132,16 @@ vi.mock('@omniviewdev/runtime/api', async (importOriginal) => {
       SubscribeResource: native.subscribeResource,
       UnsubscribeResource: native.unsubscribeResource,
     },
-    SettingsProvider: {
-      ...original.SettingsProvider,
-      ListSettings: vi.fn(async () => ({
-        appearance: new Category({
+    SettingsService: {
+      ...original.SettingsService,
+      GetSnapshot: vi.fn(async () => ({
+        scope: { kind: 'host' },
+        categories: { appearance: new Category({
           id: 'appearance',
           label: 'Appearance',
           description: 'Application appearance',
           settings: { theme: new Setting({ id: 'theme', label: 'Theme', type: SettingType.Select }) },
-        }),
+        }) },
       })),
     },
   };

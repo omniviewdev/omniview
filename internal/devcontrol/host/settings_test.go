@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	pluginsettings "github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
+	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	"github.com/omniviewdev/omniview/internal/devcontrol"
 	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
 	logging "github.com/omniviewdev/plugin-sdk/log"
@@ -24,7 +25,14 @@ func TestUnknownPersistedPluginSchemaNeverBecomesPublic(t *testing.T) {
 		t.Fatal(err)
 	}
 	controller := pluginsettings.NewController(logging.NewNop(), nil, store)
-	adapter := devcontrol.NewSettingsAdapter(nil, nil, settingsBridge{controller})
+	service, initErr := settingsservice.Initialize(settingsservice.Options{
+		Store: store, Categories: nil, Migrations: nil, Logger: nil,
+	})
+	if initErr != nil {
+		t.Fatal(initErr)
+	}
+	service.AttachPlugins(controller)
+	adapter := devcontrol.NewSettingsAdapter(service)
 	schema, err := adapter.Schema(devcontrol.SettingsParams{Scope: "plugin", PluginID: "fixture"})
 	if err != nil {
 		t.Fatal(err)

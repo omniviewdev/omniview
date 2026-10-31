@@ -2,61 +2,60 @@ import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Setting, SettingType } from '@omniviewdev/runtime/models';
-import type { Category } from '@omniviewdev/runtime/models';
+import type { SettingsSnapshot } from '@omniviewdev/runtime';
 import type * as WailsRuntime from '@wailsio/runtime';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const backend = vi.hoisted(() => ({
   value: 'startup',
   pending: false,
-  listeners: new Set<(event: { data: string }) => void>(),
-  getCategory: vi.fn(),
-  getList: vi.fn(),
-  getStates: vi.fn(),
+  listeners: new Set<(event: { data: { kind: string } }) => void>(),
+  getSnapshot: vi.fn(),
   getStatus: vi.fn(),
   save: vi.fn(),
-  snackbar: vi.fn(),
+  warning: '',
 }));
 vi.mock('@wailsio/runtime', async (importOriginal) => {
   const actual = await importOriginal<typeof WailsRuntime>();
   return {
     ...actual,
-    Events: { On: (_name: string, callback: (event: { data: string }) => void) => {
+    Events: { On: (_name: string, callback: (event: { data: { kind: string } }) => void) => {
       backend.listeners.add(callback);
       return () => backend.listeners.delete(callback);
     } },
   };
 });
 vi.mock('@omniviewdev/runtime/api', () => ({
-  SettingsProvider: {
-    GetCategory: backend.getCategory,
-    ListSettings: backend.getList,
-    GetSettingStates: backend.getStates,
-    SetSettings: backend.save,
-    ValidateSetting: async () => ({ valid: true, message: 'Valid' }),
+  SettingsService: {
+    GetSnapshot: backend.getSnapshot,
+    Commit: backend.save,
+    Validate: async () => ({ valid: true, message: 'Valid' }),
   },
   HostProfiling: { GetStatus: backend.getStatus },
 }));
 vi.mock('@omniviewdev/runtime', async importOriginal => ({
   ...await importOriginal<Record<string, unknown>>(),
-  useSettings: () => ({ reload: vi.fn() }),
-  useSnackbar: () => ({ showSnackbar: backend.snackbar }),
+  useSettings: () => ({ settings: {}, getSetting: vi.fn() }),
 }));
 vi.mock('@/hooks/useDevMode', () => ({ useDevMode: () => false }));
 import CoreSettingsPage from './CoreSettingsPage';
-import { useSettingsProvider } from '@/hooks/settings/useCoreSettings';
+import { useScopedSettings } from '@omniviewdev/runtime';
 
 function RootSettingsConsumer() {
-  const { settings } = useSettingsProvider();
-  return <output>{settings.data?.developer?.settings.futurePreference?.value as string}</output>;
+  const { categories } = useScopedSettings({ kind: 'host' });
+  return <output>{categories.developer?.settings.futurePreference?.value as string}</output>;
 }
 
 function category(value: string) {
   return {
     id: 'developer', label: 'Developer', description: '', icon: 'LuCode',
-    settings: { futurePreference: new Setting({ id: 'futurePreference', label: 'Future preference',
-      description: '', type: SettingType.Text, value, default: 'startup', options: [] }) },
+    settings: { futurePreference: Object.assign(new Setting({ id: 'futurePreference', label: 'Future preference',
+      description: '', type: SettingType.Text, value, default: 'startup', options: [] }), { requiresRestart: true, pendingRestart: backend.pending }) },
   };
+}
+
+function snapshot(): SettingsSnapshot {
+  return { scope: { kind: 'host' }, categories: { developer: category(backend.value) } };
 }
 
 function mount() {
@@ -68,7 +67,7 @@ function mount() {
 async function changed() {
   await act(async () => {
     backend.listeners.forEach(callback => {
-      callback({ data: 'developer' }); 
+      callback({ data: { kind: 'host' } });
     }); 
   });
 }
@@ -78,15 +77,13 @@ describe('host settings consumer transitions', () => {
     backend.value = 'startup';
     backend.pending = false;
     backend.listeners.clear();
-    backend.getList.mockReset().mockImplementation(async () => ({ developer: category(backend.value) }));
-    backend.getCategory.mockReset().mockImplementation(async () => category(backend.value));
-    backend.getStates.mockReset().mockImplementation(async () => ({
-      'developer.futurePreference': { requiresRestart: true, pendingRestart: backend.pending },
-    }));
+    backend.warning = '';
+    backend.getSnapshot.mockReset().mockImplementation(async () => snapshot());
     backend.getStatus.mockReset().mockResolvedValue({ running: true, url: 'http://127.0.0.1:43210/debug/pprof/', source: 'settings', error: '' });
-    backend.save.mockReset().mockImplementation(async (values: Record<string, string>) => {
+    backend.save.mockReset().mockImplementation(async (_scope: unknown, values: Record<string, string>) => {
       backend.value = values['developer.futurePreference'];
       backend.pending = backend.value !== 'startup';
+      return { snapshot: snapshot(), applied: !backend.warning, uncertain: false, message: backend.warning };
     });
   });
   afterEach(cleanup);
@@ -110,12 +107,36 @@ describe('host settings consumer transitions', () => {
     expect(screen.queryByText(/Changes apply after restarting Omniview/)).not.toBeInTheDocument();
   });
 
+  it('refetches authorized settings after commit instead of trusting the commit snapshot', async () => {
+    backend.save.mockImplementation(async (_scope: unknown, values: Record<string, string>) => {
+      backend.value = values['developer.futurePreference'];
+      backend.pending = true;
+      return {
+        snapshot: { scope: { kind: 'host' }, categories: { developer: category('commit-only value') } },
+        applied: true,
+        uncertain: false,
+        message: '',
+      };
+    });
+    mount();
+    await screen.findByText('Requires restart');
+    const readsBeforeSave = backend.getSnapshot.mock.calls.length;
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'authorized value' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await screen.findByText('Saved · Restart pending');
+    await waitFor(() => {
+      expect(screen.queryByText('Unsaved change')).not.toBeInTheDocument();
+      expect(backend.getSnapshot.mock.calls.length).toBeGreaterThan(readsBeforeSave);
+    });
+    expect(screen.getByRole('textbox')).toHaveValue('authorized value');
+  });
+
   it('refreshes external writes and rejects an older in-flight configured response', async () => {
-    const stale = Promise.withResolvers<Category>();
-    backend.getCategory.mockReturnValueOnce(stale.promise);
+    const stale = Promise.withResolvers<SettingsSnapshot>();
+    backend.getSnapshot.mockReturnValueOnce(stale.promise);
     mount();
     await waitFor(() => {
-      expect(backend.getCategory).toHaveBeenCalledTimes(1); 
+      expect(backend.getSnapshot).toHaveBeenCalledTimes(1);
     });
     backend.value = 'external';
     backend.pending = true;
@@ -123,44 +144,29 @@ describe('host settings consumer transitions', () => {
     await screen.findByText('Saved · Restart pending');
     expect(screen.getByRole('textbox')).toHaveValue('external');
     await act(async () => {
-      stale.resolve(category('stale')); 
+      stale.resolve({ scope: { kind: 'host' }, categories: { developer: category('stale') } });
     });
     expect(screen.getByRole('textbox')).toHaveValue('external');
   });
 
   it('refreshes root configured reads without allowing stale external responses', async () => {
-    const stale = Promise.withResolvers<Record<string, Category>>();
-    backend.getList.mockReturnValueOnce(stale.promise);
+    const stale = Promise.withResolvers<SettingsSnapshot>();
+    backend.getSnapshot.mockReturnValueOnce(stale.promise);
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><RootSettingsConsumer /></QueryClientProvider>);
     await waitFor(() => {
-      expect(backend.getList).toHaveBeenCalledTimes(1); 
+      expect(backend.getSnapshot).toHaveBeenCalledTimes(1);
     });
     backend.value = 'external root';
     await changed();
     await screen.findByText('external root');
     await act(async () => {
-      stale.resolve({ developer: category('stale root') }); 
+      stale.resolve({ scope: { kind: 'host' }, categories: { developer: category('stale root') } });
     });
     expect(screen.getByText('external root')).toBeVisible();
     expect(screen.queryByText('stale root')).not.toBeInTheDocument();
   });
 
-  it('rejects stale restart metadata after an external write', async () => {
-    const stale = Promise.withResolvers<Record<string, { requiresRestart: boolean; pendingRestart: boolean }>>();
-    backend.getStates.mockReturnValueOnce(stale.promise);
-    mount();
-    await screen.findByRole('textbox');
-    backend.pending = true;
-    await changed();
-    await screen.findByText('Saved · Restart pending');
-    await act(async () => {
-      stale.resolve({
-        'developer.futurePreference': { requiresRestart: true, pendingRestart: false },
-      }); 
-    });
-    expect(screen.getByText('Saved · Restart pending')).toBeVisible();
-  });
 
   it('retains unsaved drafts when persistence fails without inventing pending state', async () => {
     backend.save.mockRejectedValue(new Error('Storage unavailable'));
@@ -175,12 +181,7 @@ describe('host settings consumer transitions', () => {
 
   it('reports durable save with failed application instead of claiming persistence failed', async () => {
     const message = 'Settings were saved but could not be applied. Restart Omniview to load the saved configuration.';
-    backend.save.mockImplementation(async (values: Record<string, string>) => {
-      backend.value = values['developer.futurePreference'];
-      backend.pending = true;
-      throw new Error(message);
-    });
-    backend.snackbar.mockClear();
+    backend.warning = message;
     mount();
     await screen.findByText('Requires restart');
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'durable' } });
@@ -191,8 +192,6 @@ describe('host settings consumer transitions', () => {
     expect(screen.queryByText('Unsaved change')).not.toBeInTheDocument();
     expect(screen.getByRole('textbox')).toHaveValue('durable');
     expect(screen.getByText('Saved · Restart pending')).toBeVisible();
-    expect(backend.snackbar).toHaveBeenCalledWith(message, 'error');
-    expect(backend.snackbar).not.toHaveBeenCalledWith('Settings saved', 'success');
   });
 
   it('shows override and serve failure without claiming a listener URL', async () => {

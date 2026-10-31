@@ -9,6 +9,7 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/registry"
+	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
 	"github.com/omniviewdev/omniview/internal/telemetry"
 	logging "github.com/omniviewdev/plugin-sdk/log"
@@ -19,7 +20,7 @@ const settingsChangedEvent = "settings/changed"
 
 func init() {
 	// Invalidation only: setting values can contain credentials.
-	application.RegisterEvent[string](settingsChangedEvent)
+	application.RegisterEvent[settingsservice.Scope](settingsChangedEvent)
 }
 
 // Service wraps the startup/shutdown logic that was previously in the
@@ -28,17 +29,16 @@ func init() {
 type Service struct {
 	Log                  logging.Logger
 	SettingsProvider     pkgsettings.Provider
-	SettingsCategories   []pkgsettings.Category
-	ReportApplyError     func(error)
+	Settings             *settingsservice.Service
 	TelemetrySvc         *telemetry.Service
 	PluginManager        plugin.Manager
 	PluginRegistryClient *registry.Client
 }
 
 func (b *Service) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
-	// Settings are already hydrated before services are constructed. One handler
-	// per category applies live effects and invalidates UI after durable writes.
-	b.applyOnChange(ctx)
+	// Startup consumers already have hydrated values. The settings service owns
+	// committed notifications; bootstrap supplies only service-specific effects.
+	b.attachSettingsEffects(ctx)
 
 	// Apply user-configured marketplace URL to the registry client.
 	marketplaceURL, urlErr := b.SettingsProvider.GetString("developer.marketplace_url")
@@ -64,27 +64,24 @@ func (b *Service) ServiceStartup(ctx context.Context, _ application.ServiceOptio
 	return nil
 }
 
-// applyOnChange registers post-commit effects without owning persistence.
-func (b *Service) applyOnChange(ctx context.Context) {
-	for _, category := range b.SettingsCategories {
-		catID := category.ID
-		b.SettingsProvider.RegisterChangeHandler(catID, func(vals map[string]any) {
-			if catID == coresettings.Telemetry.ID {
-				cfg := b.TelemetrySvc.Config().WithSettings(vals)
-				if err := b.TelemetrySvc.ApplyConfig(ctx, cfg); err != nil {
-					b.Log.Errorw(ctx, "failed to apply telemetry config change", "error", err)
-					if b.ReportApplyError != nil {
-						b.ReportApplyError(errors.New("telemetry could not apply the saved settings"))
-					}
-				} else {
-					b.Log.Infow(ctx, "telemetry config updated from settings")
-				}
-			}
-			if app := application.Get(); app != nil {
-				app.Event.Emit(settingsChangedEvent, catID)
-			}
-		})
-	}
+func (b *Service) attachSettingsEffects(ctx context.Context) {
+	b.Settings.SetApplyHandler(func(category string, values map[string]any) error {
+		if category != coresettings.Telemetry.ID {
+			return nil
+		}
+		cfg := b.TelemetrySvc.Config().WithSettings(values)
+		if err := b.TelemetrySvc.ApplyConfig(ctx, cfg); err != nil {
+			b.Log.Errorw(ctx, "failed to apply telemetry config change", "error", err)
+			return errors.New("telemetry could not apply the saved settings")
+		}
+		b.Log.Infow(ctx, "telemetry config updated from settings")
+		return nil
+	})
+	b.Settings.SetChangeHandler(func(scope settingsservice.Scope) {
+		if app := application.Get(); app != nil {
+			app.Event.Emit(settingsChangedEvent, scope)
+		}
+	})
 }
 
 func (b *Service) ServiceShutdown() error {

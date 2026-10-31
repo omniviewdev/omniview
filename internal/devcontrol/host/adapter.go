@@ -8,12 +8,10 @@ import (
 	"fmt"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
-	pluginsettings "github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
+	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devcontrol"
-	"github.com/omniviewdev/omniview/internal/hostsettings"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
-	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
 type Manager interface {
@@ -33,32 +31,15 @@ type DevServers interface {
 func New(
 	manager Manager,
 	dev DevServers,
-	provider pkgsettings.Provider,
-	writer hostsettings.Writer,
-	controller pluginsettings.Controller,
+	service *settingsservice.Service,
 	inspect func(context.Context) (devcontract.InstanceDescriptor, error),
 ) devcontrol.Adapters {
 	return devcontrol.Adapters{
 		Inspect:  inspect,
 		Plugins:  manager,
 		Dev:      &lifecycle{manager: manager, dev: dev},
-		Settings: devcontrol.NewSettingsAdapter(provider, writer, settingsBridge{controller}),
+		Settings: devcontrol.NewSettingsAdapter(service),
 	}
-}
-
-type settingsBridge struct{ controller pluginsettings.Controller }
-
-func (s settingsBridge) SafeSettings(id string) map[string]pkgsettings.Setting {
-	return pluginsettings.RedactedPluginSettings(s.controller, id)
-}
-func (s settingsBridge) SettingForWrite(plugin, id string) (pkgsettings.Setting, error) {
-	return s.controller.GetSetting(plugin, id)
-}
-func (s settingsBridge) SetSetting(plugin, id string, value any) error {
-	return s.controller.SetSetting(plugin, id, value)
-}
-func (s settingsBridge) SetSettings(plugin string, values map[string]any) error {
-	return s.controller.SetSettings(plugin, values)
 }
 
 type lifecycle struct {

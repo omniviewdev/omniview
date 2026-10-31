@@ -34,6 +34,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/ui"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/utils"
+	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	"github.com/omniviewdev/omniview/backend/window"
 	"github.com/omniviewdev/omniview/internal/appstate"
 	"github.com/omniviewdev/omniview/internal/bootstrap"
@@ -41,7 +42,6 @@ import (
 	controlhost "github.com/omniviewdev/omniview/internal/devcontrol/host"
 	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/omniview/internal/hostruntime"
-	"github.com/omniviewdev/omniview/internal/hostsettings"
 	"github.com/omniviewdev/omniview/internal/instance"
 	"github.com/omniviewdev/omniview/internal/mcprelay"
 	"github.com/omniviewdev/omniview/internal/profiling"
@@ -246,11 +246,10 @@ func main() {
 	}
 
 	coreDefinitions := coresettings.Definitions(version.IsDevelopment())
-	coreSettings, err := hostsettings.Initialize(hostsettings.Options{
-		Store:           settingsStore,
-		Categories:      coreDefinitions,
-		RestartRequired: coresettings.RestartRequiredIDs(),
-		Migrations: map[string]hostsettings.Migration{
+	coreSettings, err := settingsservice.Initialize(settingsservice.Options{
+		Store:      settingsStore,
+		Categories: coreDefinitions,
+		Migrations: map[string]settingsservice.Migration{
 			coresettings.Appearance.ID: coresettings.MigrateAppearanceValues,
 			coresettings.Terminal.ID:   coresettings.MigrateTerminalValues,
 		},
@@ -332,6 +331,7 @@ func main() {
 	graphService := resource.NewGraphService(resourceController.Graph(), resourceUIRealm, resourceBoundary, resourceController.ValidateReference)
 
 	settingsController := settings.NewController(log, settingsProvider, settingsStore)
+	coreSettings.AttachPlugins(settingsController)
 
 	execController, networkerController, logsController, metricController := newUICapabilityControllers(
 		log, settingsProvider, resourceController, resourceUIRealm,
@@ -469,8 +469,7 @@ func main() {
 	bootstrapSvc := &bootstrap.Service{
 		Log:                  log,
 		SettingsProvider:     settingsProvider,
-		SettingsCategories:   coreDefinitions,
-		ReportApplyError:     coreSettings.ReportApplyError,
+		Settings:             coreSettings,
 		TelemetrySvc:         telemetrySvc,
 		PluginManager:        pluginManager,
 		PluginRegistryClient: pluginRegistryClient,
@@ -517,7 +516,7 @@ func main() {
 		// 1. Controllers — need ctx before plugin loading
 		application.NewService(&resource.ServiceWrapper{Ctrl: resourceController, Realm: resourceUIRealm}),
 		application.NewService(graphService),
-		application.NewService(&settings.ServiceWrapper{Ctrl: settingsController}),
+		application.NewService(&settings.Lifecycle{Ctrl: settingsController}),
 		application.NewService(&exec.ServiceWrapper{Ctrl: execController}),
 		application.NewService(&networker.ServiceWrapper{Ctrl: networkerController}),
 		application.NewService(&pluginlogs.ServiceWrapper{Ctrl: logsController}),
@@ -533,18 +532,7 @@ func main() {
 		application.NewService(diagnosticsClient),
 		application.NewService(telemetry.NewTelemetryBinding(telemetrySvc)),
 		application.NewService(&profiling.ServiceWrapper{Service: hostProfiling}),
-		application.NewService(&coresettings.ServiceWrapper{
-			Provider: settingsProvider,
-			Writer:   coreSettings,
-			State:    coreSettings,
-			CategoryMeta: func() map[string]pkgsettings.Category {
-				meta := make(map[string]pkgsettings.Category, len(coreDefinitions))
-				for _, category := range coreDefinitions {
-					meta[category.ID] = category
-				}
-				return meta
-			}(),
-		}),
+		application.NewService(&settingsservice.Binding{Service: coreSettings}),
 		application.NewService(pluginManagerSvc),
 		application.NewService(&mcprelay.ServiceWrapper{Relay: mcpRelay}),
 	}
@@ -562,7 +550,7 @@ func main() {
 	runtimeReady, err := controlhost.Register(
 		app, profile,
 		appService.GetInstanceInfo, appService.updateInstanceInfo,
-		pluginManager, devServerManager, settingsProvider, coreSettings, settingsController,
+		pluginManager, devServerManager, coreSettings,
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: cannot register development control: %v\n", err)

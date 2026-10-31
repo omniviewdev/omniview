@@ -3,20 +3,18 @@ import React from 'react';
 import { Text } from '@omniviewdev/base-ui';
 
 // Types
-import { SettingsFocusContext, type SectionSelection } from './settingsContext';
+import { Section, SettingsFocusContext, type SectionSelection } from './settingsContext';
 import SettingsEntry from './SettingsEntry';
 import type { Setting } from '@omniviewdev/runtime/models';
 import { useDevMode } from '@/hooks/useDevMode';
 import styles from './SettingsEntries.module.css';
-import type { HostSettingStates } from '@/hooks/settings/useHostSettingsState';
 
 type Props = SectionSelection & {
-  settings: Record<string, Setting | undefined>;
-  draftValues: Record<string, any>;
-  setDraftValues: (draftValues: Record<string, any>) => void;
+  settings: Record<string, (Setting & { requiresRestart?: boolean; pendingRestart?: boolean }) | undefined>;
+  draftValues: Record<string, unknown>;
+  setDraftValues: (draftValues: Record<string, unknown>) => void;
   renderSetting?: Readonly<Record<string, () => React.ReactNode>>;
   validation?: Record<string, { valid: boolean; message: string }>;
-  hostSettingStates?: HostSettingStates;
 };
 
 /**
@@ -24,12 +22,12 @@ type Props = SectionSelection & {
  */
 const SettingsEntries: React.FC<Props> = ({
   id: sectionID,
+  section,
   settings,
   draftValues,
   setDraftValues,
   renderSetting,
   validation,
-  hostSettingStates,
 }) => {
   const devMode = useDevMode();
   const focusRequest = React.useContext(SettingsFocusContext);
@@ -63,9 +61,9 @@ const SettingsEntries: React.FC<Props> = ({
     fulfilledFocus.current = token;
   }, [focusRequest, settings, sectionID]);
 
-  const handleChange = (name: string, value: any) => {
-    const id = `${sectionID}.${name}`;
-    setDraftValues({ ...draftValues, [id]: value });
+  const settingID = (name: string) => section === Section.Core ? `${sectionID}.${name}` : name;
+  const handleChange = (name: string, value: unknown) => {
+    setDraftValues({ ...draftValues, [settingID(name)]: value });
   };
 
   if (!settings) {
@@ -73,15 +71,15 @@ const SettingsEntries: React.FC<Props> = ({
   }
 
   const visibleSettings = Object.entries(settings).filter(
-    (entry): entry is [string, Setting] => entry[1] !== undefined && (!entry[1].devOnly || devMode),
+    (entry): entry is [string, Setting & { requiresRestart?: boolean; pendingRestart?: boolean }] => entry[1] !== undefined && (!entry[1].devOnly || devMode),
   );
 
   return (
     <div ref={root} className={styles.Root}>
-      {focusTarget && !visibleSettings.some(([id]) => `${sectionID}.${id}` === focusTarget)
+      {focusTarget && !visibleSettings.some(([id]) => settingID(id) === focusTarget)
         && <p role='status'>Requested setting is unavailable.</p>}
       {visibleSettings.map(([id, setting]) => {
-        const fullID = `${sectionID}.${id}`;
+        const fullID = settingID(id);
         const renderOverride = renderSetting?.[fullID];
 
         return (
@@ -90,15 +88,15 @@ const SettingsEntries: React.FC<Props> = ({
             <div className={styles.LabelColumn}>
               <Text weight='semibold' size='sm'>{setting.label}</Text>
               <Text size='xs' tone='muted' className={styles.Description}>{setting.description}</Text>
-              {hostSettingStates?.[fullID]?.requiresRestart && (
+              {setting.requiresRestart && (
                 <Text size='xs' tone='muted'>
-                  {hostSettingStates[fullID]?.pendingRestart ? 'Saved · Restart pending' : 'Requires restart'}
+                  {setting.pendingRestart ? 'Saved · Restart pending' : 'Requires restart'}
                 </Text>
               )}
               {draftValues[fullID] !== undefined && (
                 <Text size='xs' tone='warning'>Unsaved change</Text>
               )}
-              {sectionID !== 'plugin' && (
+              {section === Section.Core && (
                 <Text size='xs' tone='subtle' mono className={styles.Key}>
                   {fullID}
                 </Text>

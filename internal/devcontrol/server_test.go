@@ -17,9 +17,9 @@ import (
 	"testing"
 	"time"
 
+	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devsession"
-	"github.com/omniviewdev/omniview/internal/hostsettings"
 	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
@@ -35,7 +35,7 @@ func fixtureServer(t *testing.T) (*Server, pkgsettings.Provider, *settingsstore.
 	t.Cleanup(func() { store.Close() })
 	// A host provider has no PluginID. Plugin-mode providers resolve every key
 	// against category "plugin", unlike the host's category.setting addressing.
-	core, err := hostsettings.Initialize(hostsettings.Options{
+	core, err := settingsservice.Initialize(settingsservice.Options{
 		Store: store,
 		Categories: []pkgsettings.Category{{
 			ID: "limits",
@@ -71,7 +71,7 @@ func fixtureServer(t *testing.T) (*Server, pkgsettings.Provider, *settingsstore.
 	}
 	s := newServer(context.Background(), Config{
 		Descriptor: devcontract.InstanceDescriptor{WorkspaceID: testWorkspace, Generation: "host-generation"},
-		Adapters:   Adapters{Settings: NewSettingsAdapter(provider, core, nil)},
+		Adapters:   Adapters{Settings: NewSettingsAdapter(core)},
 	}, []byte("test-token-with-more-than-thirty-two-bytes"))
 	s.host = "127.0.0.1:45678"
 	t.Cleanup(func() { s.cancel() })
@@ -481,22 +481,24 @@ func TestCoreApplyFailureReportsDurableCommit(t *testing.T) {
 	if !ok {
 		t.Fatal("fixture settings adapter has an unexpected type")
 	}
-	core, ok := adapter.writer.(*hostsettings.Runtime)
-	if !ok {
-		t.Fatal("fixture core settings writer has an unexpected type")
-	}
-	provider.RegisterChangeHandler("limits", func(map[string]any) {
-		core.ReportApplyError(errors.New("fixture-private-effect-detail"))
+	adapter.service.SetApplyHandler(func(string, map[string]any) error {
+		return errors.New("fixture-private-effect-detail")
 	})
 	response := waitOperation(t, s, send(t, s, "settings.set", map[string]any{
 		"scope": "host", "id": "limits.count", "value": 9,
 	}, nil))
-	if response.Status != "failed" || response.Error == nil || response.Error.Code != "settings_apply_failed" {
-		t.Fatalf("post-commit failure lost its classification: %+v", response)
+	if response.Status != "succeeded" || response.Error != nil {
+		t.Fatalf("durable save reported rejection: %+v", response)
 	}
-	if response.Error.Details["committed"] != true ||
-		strings.Contains(response.Error.Message, "fixture-private-effect-detail") {
-		t.Fatalf("unsafe or misleading post-commit error: %+v", response.Error)
+	var result settingsservice.CommitResult
+	if decodeErr := json.Unmarshal(response.Result, &result); decodeErr != nil {
+		t.Fatal(decodeErr)
+	}
+	if result.Applied || result.Uncertain || result.Snapshot.Categories["limits"].Settings["count"].Value != float64(9) {
+		t.Fatalf("post-commit failure lost its saved state: %+v", result)
+	}
+	if strings.Contains(string(response.Result), "fixture-private-effect-detail") {
+		t.Fatal("private effect diagnostics leaked")
 	}
 	persisted, err := store.LoadCategory("limits")
 	if err != nil || persisted["count"] != float64(9) {

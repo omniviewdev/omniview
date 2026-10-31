@@ -25,6 +25,21 @@ func RedactSettingValues(values map[string]any, schema map[string]pkgsettings.Se
 func RedactSettingsSchema(schema map[string]pkgsettings.Setting) map[string]pkgsettings.Setting {
 	result := make(map[string]pkgsettings.Setting, len(schema))
 	for id, setting := range schema {
+		setting.Value = pkgsettings.CloneValue(setting.Value)
+		setting.Default = pkgsettings.CloneValue(setting.Default)
+		if setting.Options != nil {
+			options := make([]pkgsettings.SettingOption, len(setting.Options))
+			for index, option := range setting.Options {
+				options[index] = option
+				options[index].Value = pkgsettings.CloneValue(option.Value)
+			}
+			setting.Options = options
+		}
+		if setting.FileSelection != nil {
+			selection := *setting.FileSelection
+			selection.Extensions = append([]string(nil), selection.Extensions...)
+			setting.FileSelection = &selection
+		}
 		if setting.Sensitive || setting.Type == pkgsettings.Password {
 			setting.Sensitive = true
 			setting.Value = "[REDACTED]"

@@ -48,15 +48,13 @@ func TestProfilingDefinitionsRemainVisibleInEveryBuild(t *testing.T) {
 		assert.Equal(t, settings.Toggle, enabled.Type)
 		assert.Equal(t, false, enabled.Default)
 		assert.False(t, enabled.DevOnly)
+		assert.True(t, enabled.RequiresRestart)
 		port := developer.Settings["pprof_port"]
 		assert.Equal(t, settings.Integer, port.Type)
 		assert.Equal(t, 6060, port.Default)
 		assert.False(t, port.DevOnly)
+		assert.True(t, port.RequiresRestart)
 	}
-	ids := RestartRequiredIDs()
-	assert.ElementsMatch(t, []string{"developer.pprof_enabled", "developer.pprof_port"}, ids)
-	ids[0] = "changed"
-	assert.NotContains(t, RestartRequiredIDs(), "changed")
 }
 
 func TestProfilingPortValidation(t *testing.T) {

@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/omniviewdev/omniview/internal/hostsettings"
+	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
 	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
 )
@@ -26,11 +26,10 @@ func TestPreparedCoreSettingsPreserveMigrations(t *testing.T) {
 			t.Fatal(saveErr)
 		}
 	}
-	core, err := hostsettings.Initialize(hostsettings.Options{
-		Store:           store,
-		Categories:      coresettings.Definitions(false),
-		RestartRequired: coresettings.RestartRequiredIDs(),
-		Migrations: map[string]hostsettings.Migration{
+	core, err := settingsservice.Initialize(settingsservice.Options{
+		Store:      store,
+		Categories: coresettings.Definitions(false),
+		Migrations: map[string]settingsservice.Migration{
 			"appearance": coresettings.MigrateAppearanceValues,
 			"terminal":   coresettings.MigrateTerminalValues,
 		},
@@ -50,8 +49,13 @@ func TestPreparedCoreSettingsPreserveMigrations(t *testing.T) {
 	if got, readErr := provider.GetInt("developer.pprof_port"); readErr != nil || got != 6069 {
 		t.Fatalf("prepared profiling port = %d, %v", got, readErr)
 	}
-	if state := core.GetSettingStates()["developer.pprof_port"]; state.PendingRestart || !state.RequiresRestart {
-		t.Fatalf("hydrated value must be startup baseline: %+v", state)
+	snapshot, snapshotErr := core.GetSnapshot(settingsservice.Scope{Kind: "host", PluginID: ""})
+	if snapshotErr != nil {
+		t.Fatal(snapshotErr)
+	}
+	setting := snapshot.Categories["developer"].Settings["pprof_port"]
+	if setting.PendingRestart || !setting.RequiresRestart {
+		t.Fatalf("hydrated value must be startup baseline: %+v", setting)
 	}
 	appearance, err := store.LoadCategory("appearance")
 	if err != nil || appearance["theme"] != "solarized-dark" {

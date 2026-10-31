@@ -1,5 +1,6 @@
-import { lazy, memo, useState } from 'react';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { lazy, memo, useState, type ReactNode } from 'react';
+import { act, cleanup, fireEvent, render as renderView, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ExtensionPointRegistry, usePluginContext, type SearchProviderV1 } from '@omniviewdev/runtime';
 import { createDeferred } from '../plugins/testing/helpers';
@@ -9,13 +10,30 @@ import { SearchProviderContexts, type SearchProviderContextRegistration } from '
 
 const native = vi.hoisted(() => ({
   metadata: vi.fn(async (id: string) => ({ id, name: id })),
-  settings: vi.fn(async () => ({})),
+  settings: vi.fn(async (scope: { kind: string; pluginId?: string }) => ({ scope, categories: {} })),
 }));
 vi.mock('../../../packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/servicewrapper', () => ({ GetPluginMeta: native.metadata }));
-vi.mock('../../../packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/settings/servicewrapper', () => ({ PluginValues: native.settings }));
+vi.mock('../../../packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview/backend/pkg/settings/binding', () => ({ GetSnapshot: native.settings }));
+
+// Keep the same isolated client when React Testing Library rerenders a context tree.
+const clients = new Set<QueryClient>();
+
+function render(children: ReactNode) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
+  });
+  clients.add(client);
+  return renderView(children, {
+    wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+  });
+}
 
 afterEach(() => {
-  cleanup(); vi.clearAllMocks(); vi.restoreAllMocks(); 
+  cleanup();
+  clients.forEach(client => client.clear());
+  clients.clear();
+  vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 function SettingsContext() {
@@ -46,6 +64,10 @@ describe('search provider contexts', () => {
     expect(screen.getByRole('dialog', { name: 'Settings aws' })).toBeVisible();
     expect(screen.queryByRole('dialog', { name: 'Settings oci' })).toBeNull();
     expect(native.metadata.mock.calls.filter(([id]) => id === 'aws')).toHaveLength(1);
+    await waitFor(() => {
+      expect(native.settings.mock.calls.filter(([scope]) => scope.pluginId === 'aws')).toHaveLength(1);
+      expect(native.settings.mock.calls.filter(([scope]) => scope.pluginId === 'oci')).toHaveLength(1);
+    });
     view.rerender(<SearchProviderContexts contexts={entries.slice(2)} controller={null} />);
     expect(screen.queryByRole('dialog', { name: 'Settings aws' })).toBeNull();
     fireEvent.click(await screen.findByRole('button', { name: 'Settings for oci' }));

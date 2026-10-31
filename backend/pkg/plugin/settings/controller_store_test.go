@@ -25,6 +25,7 @@ type mockSettingsProvider struct {
 	setErr     error
 	getErr     error
 	listReturn map[string]pkgsettings.Setting // if non-nil, overrides settings for ListSettings
+	uncertain  bool
 }
 
 func newMockProvider(settings map[string]pkgsettings.Setting) *mockSettingsProvider {
@@ -67,20 +68,24 @@ func (m *mockSettingsProvider) GetSettingValue(id string) (any, error) {
 	return s.Value, nil
 }
 
-func (m *mockSettingsProvider) SetSetting(id string, value any) error {
-	if m.setErr != nil {
-		return m.setErr
+func (m *mockSettingsProvider) CommitSettings(
+	ctx context.Context,
+	vals map[string]any,
+	persist pkgsettings.PersistFunc,
+) (pkgsettings.CommitResult, error) {
+	if err := ctx.Err(); err != nil {
+		return pkgsettings.CommitResult{}, err
 	}
-	if s, ok := m.settings[id]; ok {
-		s.Value = value
-		m.settings[id] = s
-	}
-	return nil
-}
-
-func (m *mockSettingsProvider) SetSettings(vals map[string]any) error {
 	if m.setErr != nil {
-		return m.setErr
+		return pkgsettings.CommitResult{}, m.setErr
+	}
+	if persist != nil {
+		if err := persist(vals); err != nil {
+			return pkgsettings.CommitResult{}, err
+		}
+	}
+	if m.uncertain {
+		return pkgsettings.CommitResult{Committed: true, Uncertain: true}, nil
 	}
 	for k, v := range vals {
 		if s, ok := m.settings[k]; ok {
@@ -88,7 +93,7 @@ func (m *mockSettingsProvider) SetSettings(vals map[string]any) error {
 			m.settings[k] = s
 		}
 	}
-	return nil
+	return pkgsettings.CommitResult{Committed: true, Applied: true}, nil
 }
 
 func openTestStore(t *testing.T) *settingsstore.Store {
@@ -172,7 +177,7 @@ func TestOnPluginStart_NoPersisted(t *testing.T) {
 	assert.Equal(t, "en-US", vals["lang"])
 }
 
-func TestSetSetting_PersistsToBbolt(t *testing.T) {
+func TestCommitSettings_PersistsToBbolt(t *testing.T) {
 	store := openTestStore(t)
 
 	mock := newMockProvider(map[string]pkgsettings.Setting{
@@ -188,7 +193,12 @@ func TestSetSetting_PersistsToBbolt(t *testing.T) {
 		pendingChanges: make(map[string][]pendingChange),
 	}
 
-	err := ctrl.SetSetting("testplugin", "theme", "dark")
+	_, err := ctrl.CommitSettings(
+		context.Background(), "testplugin", map[string]any{"theme": "dark"},
+		func(values map[string]any) error {
+			return store.PatchPluginSettings("testplugin", values)
+		},
+	)
 	require.NoError(t, err)
 
 	// Verify value was persisted to bbolt
@@ -197,7 +207,7 @@ func TestSetSetting_PersistsToBbolt(t *testing.T) {
 	assert.Equal(t, "dark", vals["theme"])
 }
 
-func TestSetSetting_GRPCFails_NoPersistence(t *testing.T) {
+func TestCommitSettings_GRPCFails_NoPersistence(t *testing.T) {
 	store := openTestStore(t)
 
 	mock := newMockProvider(map[string]pkgsettings.Setting{
@@ -214,7 +224,12 @@ func TestSetSetting_GRPCFails_NoPersistence(t *testing.T) {
 		pendingChanges: make(map[string][]pendingChange),
 	}
 
-	err := ctrl.SetSetting("testplugin", "theme", "dark")
+	_, err := ctrl.CommitSettings(
+		context.Background(), "testplugin", map[string]any{"theme": "dark"},
+		func(values map[string]any) error {
+			return store.PatchPluginSettings("testplugin", values)
+		},
+	)
 	require.Error(t, err)
 
 	// Verify bbolt was NOT updated

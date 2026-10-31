@@ -10,8 +10,3 @@ export function usePluginContext(): PluginContextType {
   return context;
 }
 
-export function usePluginSettings(): Record<string, any> {
-  const context = usePluginContext();
-
-  return context.settings;
-}

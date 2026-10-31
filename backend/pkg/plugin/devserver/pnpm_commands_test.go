@@ -5,20 +5,22 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/stretchr/testify/require"
+
+	"github.com/omniviewdev/omniview/internal/devcontract"
+	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
-type explicitPNPMSettings struct {
-	mockSettingsProvider
-	program string
-}
-
-func (settings *explicitPNPMSettings) GetString(key string) (string, error) {
-	if key == "developer.pnpmpath" {
-		return settings.program, nil
-	}
-	return "", nil
+func explicitPNPMSettings(program string) pkgsettings.Provider {
+	return pkgsettings.NewProvider(pkgsettings.ProviderOpts{
+		Logger: nil, PluginID: "",
+		PluginSettings: []pkgsettings.Category{{
+			ID: "developer",
+			Settings: map[string]pkgsettings.Setting{
+				"pnpmpath": {ID: "pnpmpath", Type: pkgsettings.Text, Default: program, Value: program},
+			},
+		}},
+	})
 }
 
 func commandWorkspace(t *testing.T) (*DevServerManager, PNPMCommand) {
@@ -41,7 +43,7 @@ func TestConfiguredPNPMCommandsRejectReboundSourceEvenWithExplicitOverride(t *te
 	options := manager.resolveBuildOpts()
 	require.ErrorContains(t, manager.applyPNPMCommand("same", second, &options), "reconfigure")
 	require.ErrorContains(t, manager.applyPNPMCommand("missing", second, &options), "reconfigure")
-	manager.settingsProvider = &explicitPNPMSettings{program: command.Program}
+	manager.settingsProvider = explicitPNPMSettings(command.Program)
 	options = manager.resolveBuildOpts()
 	require.ErrorContains(t, manager.applyPNPMCommand("same", second, &options), "reconfigure")
 }
@@ -49,7 +51,7 @@ func TestConfiguredPNPMCommandsRejectReboundSourceEvenWithExplicitOverride(t *te
 func TestManagedPNPMRejectsExecutableOverrideThatBypassesOwnedContext(t *testing.T) {
 	manager, command := commandWorkspace(t)
 	require.NoError(t, manager.ConfigurePNPMCommands(map[string]PNPMCommand{"same": command}))
-	manager.settingsProvider = &explicitPNPMSettings{program: command.Program}
+	manager.settingsProvider = explicitPNPMSettings(command.Program)
 	options := manager.resolveBuildOpts()
 	require.ErrorContains(t, manager.applyPNPMCommand("same", command.Source, &options), "OMNIVIEW_PNPM_EXECUTABLE")
 }
