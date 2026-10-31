@@ -146,7 +146,7 @@ test('cache-init CLI exports only native cache paths and performs no tool, depen
   const scripts = join(host, 'e2e/scripts');
   mkdirSync(scripts, { recursive: true });
   try {
-    for (const name of ['run.mjs', 'execution.mjs', 'select-tests.mjs', 'application.mjs', 'cohort.mjs', 'tool-cache.mjs', 'browser-dependencies.mjs']) copyFileSync(fileURLToPath(new URL(name, import.meta.url)), join(scripts, name));
+    for (const name of ['run.mjs', 'execution.mjs', 'select-tests.mjs', 'application.mjs', 'candidate-source.mjs', 'cohort.mjs', 'tool-cache.mjs', 'browser-dependencies.mjs']) copyFileSync(fileURLToPath(new URL(name, import.meta.url)), join(scripts, name));
     mkdirSync(join(host, 'scripts'));
     copyFileSync(fileURLToPath(new URL('../../scripts/wails-tool.mjs', import.meta.url)), join(host, 'scripts/wails-tool.mjs'));
     const output = join(arena, 'github-env');
