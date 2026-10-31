@@ -185,7 +185,10 @@ function staticScore(query: string, label: string, value: SearchEntryV1): number
 
 function sameIntent(left: SearchEntryV1, right: SearchEntryV1): boolean {
   if (Boolean(left.scope) !== Boolean(right.scope)
-    || left.scope && right.scope && (!containsScope(left.scope, right.scope) || !containsScope(right.scope, left.scope))) return false;
+    || left.scope && right.scope && (!containsScope(left.scope, right.scope) || !containsScope(right.scope, left.scope))) {
+    return false;
+  }
+
   if (left.kind === 'action' && right.kind === 'action') {
     return left.action.id === right.action.id && left.action.query === right.action.query
       && left.action.recovery === right.action.recovery
@@ -447,7 +450,9 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
     } else {
       retainQueryRows = false;
       resetQuerySelection = false;
-      if (!searchPending) priorRows = nextRows;
+      if (!searchPending) {
+        priorRows = nextRows;
+      }
     }
 
     snapshot = {

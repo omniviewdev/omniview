@@ -111,7 +111,7 @@ const ResourceTableContainer: React.FC<Props> = ({
     } else if (initialColumnVisibility) {
       setColumnVisibility(initialColumnVisibility);
     }
-  }, [initialColumnVisibility]);
+  }, [initialColumnVisibility, pluginID, connectionID, resourceKey]);
 
   React.useEffect(() => {
     let visibility = JSON.stringify(columnVisibility);
@@ -119,7 +119,7 @@ const ResourceTableContainer: React.FC<Props> = ({
     if (visibility !== '{}') {
       writeProfileStorage(`${pluginID}-${connectionID}-${resourceKey}-column-visibility`, visibility);
     }
-  }, [columnVisibility]);
+  }, [columnVisibility, pluginID, connectionID, resourceKey]);
 
   const [search, setSearch] = useState<string>('');
 

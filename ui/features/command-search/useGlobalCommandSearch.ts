@@ -645,7 +645,10 @@ export function useGlobalCommandSearch() {
         const stops = ['ADD', 'UPDATE', 'DELETE'].map((type) =>
           Events.On(`${pluginId}/${connectionId}/${resourceKey}/${type}`, (event) => {
             const payload = event.data;
-            if ((type === 'DELETE' ? payload?.targetId : payload?.record?.targetId) !== targetId) return;
+            if ((type === 'DELETE' ? payload?.targetId : payload?.record?.targetId) !== targetId) {
+              return;
+            }
+
             for (const query of queryCache.findAll({ queryKey })) {
               if (query.state.fetchStatus !== 'idle') {
                 dirtyQueries.add(query.queryHash);

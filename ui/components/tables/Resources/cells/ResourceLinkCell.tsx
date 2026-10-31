@@ -35,7 +35,7 @@ const ResourceLinkCell: React.FC<Props> = ({
   const { showResourceSidebar } = useRightDrawer();
   const { showSnackbar } = useSnackbar();
 
-  const extractedType = type || get(value, typeAccessor ?? '', '');
+  const extractedType = type !== undefined && type !== null && type !== '' ? type : get(value, typeAccessor ?? '', '');
   const resourceKey = typeMap?.[extractedType] ?? extractedType;
 
   const resourceID = typeof value === 'string' ? value : get(value, idAccessor, '');

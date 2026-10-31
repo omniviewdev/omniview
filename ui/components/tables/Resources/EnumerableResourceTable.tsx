@@ -40,7 +40,7 @@ const EnumerableResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKe
   const [representation, setRepresentation] = useState('');
   const [paging, setPaging] = useState<{ context: string; cursors: Array<string | undefined> }>({ context: '', cursors: [undefined] });
   const [scope, setScope] = useState<QueryScope>([]);
-  const selectedRepresentation = representation || resourceType.defaultRepresentation || '';
+  const selectedRepresentation = representation !== '' ? representation : resourceType.defaultRepresentation ?? '';
   const target = useResolvedResourceTarget({
     pluginID,
     route: { connection: connectionID },
@@ -55,8 +55,10 @@ const EnumerableResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKe
   const pageContext = JSON.stringify([pluginID, connectionID, resourceKey, scope, selectedRepresentation, target.data?.targetId]);
   const cursors = paging.context === pageContext ? paging.cursors : [undefined];
   const cursor = cursors[cursors.length - 1];
-  const setCursors = (update: Array<string | undefined> | ((pages: Array<string | undefined>) => Array<string | undefined>)) =>
+  const setCursors = (update: Array<string | undefined> | ((pages: Array<string | undefined>) => Array<string | undefined>)) => {
     setPaging({ context: pageContext, cursors: typeof update === 'function' ? update(cursors) : update });
+  };
+
   const { resources, membershipStale, isAcquiredRequestCurrent } = useResources({
     pluginID,
     request: target.data ? { targetId: target.data.targetId, request: { target: target.data.target, pageSize: 1000, cursor } } : undefined,
@@ -74,7 +76,9 @@ const EnumerableResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKe
   ];
   const presentationFailure = parseAppError(definitionError).code !== 'UNSUPPORTED';
   const controls = <Stack direction="row" spacing={2}>
-    <Button size="sm" disabled={cursors.length === 1} onClick={() => setCursors((pages) => pages.slice(0, -1))}>Previous page</Button>
+    <Button size="sm" disabled={cursors.length === 1} onClick={() => {
+      setCursors((pages) => pages.slice(0, -1)); 
+    }}>Previous page</Button>
     <Text>Source page {cursors.length}</Text>
     <Button size="sm" disabled={resources.isFetching} onClick={() => {
       void resources.refetch(); 
@@ -85,7 +89,9 @@ const EnumerableResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKe
     return (
       <Stack direction="column" spacing={2}>
         <Text>Select a representation for {resourceKey}.</Text>
-        <select aria-label="Resource representation" value={representation} onChange={(event) => setRepresentation(event.target.value)}>
+        <select aria-label="Resource representation" value={representation} onChange={(event) => {
+          setRepresentation(event.target.value); 
+        }}>
           <option value="">Select representation</option>
           {resourceType.representations.map((item) => <option key={item.id} value={item.id}>{item.id}</option>)}
         </select>
@@ -160,7 +166,9 @@ const EnumerableResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKe
   }
 
   const listResult = resources.data;
-  if (!listResult) return null;
+  if (!listResult) {
+    return null;
+  }
 
 
   return (
@@ -193,7 +201,9 @@ const EnumerableResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKe
         {controls}
         <Button size="sm" disabled={!listResult.sourcePage.nextCursor} onClick={() => {
           const next = listResult.sourcePage.nextCursor;
-          if (next) setCursors((pages) => [...pages, next]);
+          if (next) {
+            setCursors((pages) => [...pages, next]);
+          }
         }}>Next page</Button>
       </Stack>
       {isAcquiredRequestCurrent && membershipStale && <Text tone="muted">Source membership may have changed. Visible-row updates are best effort; refresh this source page to reacquire its membership.</Text>}

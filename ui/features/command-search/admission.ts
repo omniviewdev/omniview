@@ -94,35 +94,50 @@ function admitRoute(input: unknown) {
 }
 
 function admitReference(input: unknown) {
-  if (!record(input) || !record(input.address)) return undefined;
+  if (!record(input) || !record(input.address)) {
+    return undefined;
+  }
+
   const address = input.address;
   if (!identifier(address.provider) || !opaqueIdentifier(address.authority, 4096)
     || !opaqueIdentifier(address.type, 512) || !opaqueIdentifier(address.id, 4096)
     || !Array.isArray(address.scope) || address.scope.length > 256
-    || (input.incarnation !== undefined && !opaqueIdentifier(input.incarnation, 4096))) return undefined;
-  const scope: { dimension: string; value: string }[] = [];
+    || (input.incarnation !== undefined && !opaqueIdentifier(input.incarnation, 4096))) {
+    return undefined;
+  }
+
+  const scope: Array<{ dimension: string; value: string }> = [];
   for (const entry of address.scope) {
     if (!record(entry) || !identifier(entry.dimension) || typeof entry.value !== 'string'
-      || entry.value.length > 1024 || scope.some(other => other.dimension === entry.dimension)) return undefined;
+      || entry.value.length > 1024 || scope.some(other => other.dimension === entry.dimension)) {
+      return undefined;
+    }
+
     scope.push({ dimension: entry.dimension, value: entry.value });
   }
 
   return {
     address: { provider: address.provider, authority: address.authority, type: address.type, id: address.id, scope },
-    ...(input.incarnation !== undefined ? { incarnation: input.incarnation as string } : {}),
+    ...(input.incarnation !== undefined ? { incarnation: input.incarnation } : {}),
   };
 }
 
 export function admitSearchScope(input: unknown): SearchScopeV1 | undefined {
-  if (!record(input) || !identifier(input.pluginId) || !identifier(input.label)) return undefined;
+  if (!record(input) || !identifier(input.pluginId) || !identifier(input.label)) {
+    return undefined;
+  }
+
   const common = { pluginId: input.pluginId, label: input.label };
   if (input.kind === 'connection') {
     return identifier(input.connectionId) ? { ...common, kind: 'connection', connectionId: input.connectionId } : undefined;
   }
 
   if (!opaqueIdentifier(input.targetId, 8192)
-    || (input.scopeLabel !== undefined && !identifier(input.scopeLabel))) return undefined;
-  const scoped = { ...common, targetId: input.targetId, ...(input.scopeLabel ? { scopeLabel: input.scopeLabel as string } : {}) };
+    || (input.scopeLabel !== undefined && !identifier(input.scopeLabel))) {
+    return undefined;
+  }
+
+  const scoped = { ...common, targetId: input.targetId, ...(input.scopeLabel ? { scopeLabel: input.scopeLabel } : {}) };
   if (input.kind === 'resource') {
     const reference = admitReference(input.reference);
     const route = admitRoute(input.route);
@@ -130,23 +145,34 @@ export function admitSearchScope(input: unknown): SearchScopeV1 | undefined {
       ? { ...scoped, kind: 'resource', reference, route, representation: input.representation } : undefined;
   }
 
-  if (input.kind !== 'resource-type' || !record(input.target)) return undefined;
+  if (input.kind !== 'resource-type' || !record(input.target)) {
+    return undefined;
+  }
+
   const target = input.target;
   const route = admitRoute(target.route);
   if (!route || !identifier(target.provider) || !opaqueIdentifier(target.authority, 4096)
     || !opaqueIdentifier(target.type, 512) || !identifier(target.representation)
-    || !Array.isArray(target.scope) || target.scope.length > 256) return undefined;
+    || !Array.isArray(target.scope) || target.scope.length > 256) {
+    return undefined;
+  }
+
   const scope: ScopeConstraint[] = [];
   for (const constraint of target.scope) {
     if (!record(constraint) || !identifier(constraint.dimension)
-      || scope.some(other => other.dimension === constraint.dimension)) return undefined;
+      || scope.some(other => other.dimension === constraint.dimension)) {
+      return undefined;
+    }
+
     if (constraint.match === 'any') {
       scope.push({ dimension: constraint.dimension, match: 'any' });
     } else if (constraint.match === 'oneOf' && Array.isArray(constraint.values)
       && constraint.values.length <= 256
       && constraint.values.every(value => typeof value === 'string' && value.length <= 1024)) {
       scope.push({ dimension: constraint.dimension, match: 'oneOf', values: [...constraint.values] });
-    } else return undefined;
+    } else {
+      return undefined;
+    }
   }
 
   return { ...scoped, kind: 'resource-type', target: {
