@@ -106,6 +106,12 @@ func (s *ServiceWrapper) GetAllConnectionStates(ctx context.Context) (map[string
 func (s *ServiceWrapper) GetConnection(ctx context.Context, pluginID string, connectionID string) (types.Connection, error) {
 	return s.Ctrl.GetConnection(s.realmContext(ctx), pluginID, connectionID)
 }
+func (s *ServiceWrapper) GetConnectionMetadata(ctx context.Context, pluginID, connectionID string) (HostConnectionMetadata, error) {
+	return s.Ctrl.GetConnectionMetadata(s.realmContext(ctx), pluginID, connectionID)
+}
+func (s *ServiceWrapper) RefreshConnectionMetadata(ctx context.Context, pluginID, connectionID string) (HostConnectionMetadata, error) {
+	return s.Ctrl.RefreshConnectionMetadata(s.realmContext(ctx), pluginID, connectionID)
+}
 func (s *ServiceWrapper) ScopeValues(ctx context.Context, pluginID string, route resourcev2.AccessRoute, dimension string) ([]string, error) {
 	return s.Ctrl.ScopeValues(s.realmContext(ctx), pluginID, route, dimension)
 }

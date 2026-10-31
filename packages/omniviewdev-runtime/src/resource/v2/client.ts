@@ -6,6 +6,7 @@ import type { WatchConnectionSummary } from '../../types/watch';
 import type { ConnectionProfile, ConnectionProfileResult, HostConnectionState, HostEnumerateRequest, HostGetRequest, HostNativeQueryRequest, HostRecord, HostSourcePage, HostSubscriptionRequest, ResolvedResourceReference, ResolvedResourceTarget, ResolveReferenceRequest, ResolveTargetRequest } from './host';
 import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 import { encodeRequestJSON } from './requestJSON';
+import type { ConnectionMetadataEnvelope } from '../../connection/metadata';
 
 const service = 'github.com/omniviewdev/omniview/backend/pkg/plugin/resource.ServiceWrapper';
 function invoke<T>(method: string, ...args: unknown[]): CancellablePromise<T> {
@@ -13,6 +14,8 @@ function invoke<T>(method: string, ...args: unknown[]): CancellablePromise<T> {
 }
 
 export const Features = (pluginID: string) => invoke<FeatureSet>('Features', pluginID);
+export const GetConnectionMetadata = (pluginID: string, connectionID: string) => invoke<ConnectionMetadataEnvelope>('GetConnectionMetadata', pluginID, connectionID);
+export const RefreshConnectionMetadata = (pluginID: string, connectionID: string) => invoke<ConnectionMetadataEnvelope>('RefreshConnectionMetadata', pluginID, connectionID);
 export const Catalog = (pluginID: string, request: CatalogRequest) => invoke<CatalogResult>('Catalog', pluginID, request);
 export const Get = (pluginID: string, request: HostGetRequest) => invoke<HostRecord>('Get', pluginID, request);
 export const Enumerate = (pluginID: string, request: HostEnumerateRequest) => invoke<HostSourcePage>('Enumerate', pluginID, request);
