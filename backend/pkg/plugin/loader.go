@@ -610,7 +610,7 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 	committed := false
 	defer func() {
 		if !committed {
-			for i := len(started)-1; i >= 0; i-- {
+			for i := len(started) - 1; i >= 0; i-- {
 				_ = started[i].OnPluginStop(pluginID, record.Metadata)
 			}
 		}

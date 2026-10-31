@@ -7,10 +7,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
-	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"sync"
 	"time"
+
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
 // ResourceCollection deliberately retains each source page's claims separately.

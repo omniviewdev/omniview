@@ -2,6 +2,7 @@ package mcprelay
 
 import (
 	"fmt"
+
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 

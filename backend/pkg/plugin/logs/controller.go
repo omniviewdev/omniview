@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/google/uuid"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.opentelemetry.io/otel"

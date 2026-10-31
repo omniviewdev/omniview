@@ -4,6 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"testing"
+	"time"
+
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
@@ -13,12 +20,6 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/stretchr/testify/require"
-	"math"
-	"net/http"
-	"net/http/httptest"
-	"strconv"
-	"testing"
-	"time"
 )
 
 type generatedNativeSource struct {

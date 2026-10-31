@@ -2,6 +2,7 @@ package logs
 
 import (
 	"context"
+
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/types"

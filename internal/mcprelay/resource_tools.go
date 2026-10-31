@@ -8,11 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	sdklogs "github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
-	"sort"
 )
 
 type ResourceRoute struct {
