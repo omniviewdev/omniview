@@ -97,6 +97,26 @@ Keep tracked `dist/.gitkeep` for Go's `all:dist` embed during clean pre-frontend
 
 Error reports retain their normalized error, reference ID, and timestamp as occurrence-owned state rather than compiler optimization caches. Inspecting or copying a report must not replace its identity; a new failure must. Metric stream starts capture the current resource payload, including payload-only updates.
 
+### Profiling the development host
+
+Set `OMNIVIEW_PPROF_PORT` when starting a stopped workspace to expose standard Go pprof endpoints to other local processes:
+
+```sh
+OMNIVIEW_PPROF_PORT=6067 omniview-dev workspace up \
+  --workspace /absolute/path/to/workspace --mode browser --watch=false --json
+
+GOWORK=off go tool pprof 'http://127.0.0.1:6067/debug/pprof/profile?seconds=10'
+GOWORK=off go tool pprof 'http://127.0.0.1:6067/debug/pprof/heap'
+curl --fail -o host.trace 'http://127.0.0.1:6067/debug/pprof/trace?seconds=5'
+GOWORK=off go tool trace host.trace
+```
+
+The listener binds only `127.0.0.1`. It is off when the variable is unset; port `0` selects a free port and prints the actual URL to the host's stderr (the managed supervisor log). Invalid or occupied ports fail startup. Production-tagged builds reject the variable and exclude the pprof server.
+
+Local access is unauthenticated and profiles can contain sensitive information. Do not publish or forward the port. Use the numeric `127.0.0.1` URL; requests with a different Host header or any Origin header are rejected.
+
+This profiles the host, not plugin subprocesses or the UI. Disable continuous Pyroscope profiling before capturing CPU through pprof: Go permits only one CPU profiler per process. Block/mutex sampling remains disabled by default.
+
 ## Documentation
 
 For detailed instructions, tutorials, and API documentation, visit our [official documentation](https://docs.omniview.dev/docs/introduction).

@@ -111,6 +111,14 @@ func main() {
 		fmt.Fprintf(os.Stderr, "fatal: invalid runtime profile: %v\n", err)
 		os.Exit(1)
 	}
+	pprofServer, err := startHostPprof(os.Getenv("OMNIVIEW_PPROF_PORT"))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+		os.Exit(1)
+	}
+	if pprofServer != nil {
+		defer pprofServer.Close()
+	}
 	// Finder does not inherit a terminal's login PATH. Resolve it before any
 	// plugin or executable starts, while preserving host isolation authority.
 	if err := shellenv.Restore(context.Background()); err != nil {
