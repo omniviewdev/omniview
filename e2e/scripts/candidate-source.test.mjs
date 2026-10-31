@@ -6,6 +6,8 @@ const cohort = { 'plugin-sdk': 'a'.repeat(40), ui: 'b'.repeat(40), kubernetes: '
 const env = { REVIEWED_SDK_REVISION: cohort['plugin-sdk'] };
 test('candidate admission requires independent exact SDK approval, not a tag or default', () => {
   assert.deepEqual(admitCandidate(cohort, env), { sdk: cohort['plugin-sdk'], ui: cohort.ui, kubernetes: cohort.kubernetes });
+  const updatedUI = 'e'.repeat(40);
+  assert.deepEqual(admitCandidate({ ...cohort, ui: updatedUI }, env), { sdk: cohort['plugin-sdk'], ui: updatedUI, kubernetes: cohort.kubernetes });
   for (const revision of [undefined, '', 'v0.7.1', 'main', 'd'.repeat(40)]) {
     assert.throws(() => admitCandidate(cohort, { REVIEWED_SDK_REVISION: revision }));
   }
@@ -15,6 +17,14 @@ test('candidate admission requires independent exact SDK approval, not a tag or 
   }
   assert.throws(() => admitCandidate(cohort, { ...env, UI_SOURCE_REF: 'd'.repeat(40) }));
   assert.throws(() => admitCandidate(cohort, { ...env, KUBERNETES_SOURCE_REF: 'd'.repeat(40) }));
+});
+test('candidate admission rejects numeric commit identities and missing cohort members', () => {
+  for (const id of Object.keys(cohort)) {
+    assert.throws(() => admitCandidate({ ...cohort, [id]: 123 }, env));
+    const incomplete = { ...cohort };
+    delete incomplete[id];
+    assert.throws(() => admitCandidate(incomplete, env));
+  }
 });
 test('candidate verification rejects wrong, dirty and missing source checkouts', () => {
   const refs = admitCandidate(cohort, env);
