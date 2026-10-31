@@ -2,6 +2,7 @@ import { ExtensionPointRegistry } from '@omniviewdev/runtime';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { ensureBuiltinExtensionPointsRegistered } from '../extensions/registerBuiltinExtensionPoints';
 import { createDeferred } from '../plugins/testing/helpers';
+import { registerCoreSearchCatalogue } from './catalogue';
 import { createGlobalSearchController } from './controller';
 import type { GlobalSearchController } from './controller';
 import { searchResource, searchType } from './searchFixtures';
@@ -20,6 +21,7 @@ function setup() {
   const listResourcePlugins = vi.fn(async () => ['probe']);
   const loadConnections = vi.fn(async (_plugin: string) => []);
   const navigate = vi.fn();
+  const openNew = vi.fn();
   const openResource = vi.fn(async (_target: unknown, _signal: AbortSignal, _validateData?: (data: unknown) => boolean) => undefined);
   const controller = createGlobalSearchController({
     openResource,
@@ -29,6 +31,7 @@ function setup() {
     listResourcePlugins,
     loadConnections,
     navigate,
+    openNew,
   });
   const store = () => registry.getExtensionPoint(point)!;
   const register = (id: string, value: unknown, label = id, plugin = 'probe') => {
@@ -50,6 +53,7 @@ function setup() {
     listResourcePlugins,
     loadConnections,
     navigate,
+    openNew,
     openResource,
   };
 }
@@ -69,6 +73,7 @@ type Harness = {
   listResourcePlugins: Mock<() => Promise<string[]>>;
   loadConnections: Mock<(plugin: string) => Promise<never[]>>;
   navigate: Mock;
+  openNew: Mock;
   openResource: Mock<(target: unknown, signal: AbortSignal, validateData?: (data: unknown) => boolean) => Promise<void>>;
 };
 let h: Harness;
@@ -237,6 +242,50 @@ describe('universal scoped provider contracts', () => {
     expect(key('Second')).toBe(selected);
     h.controller.removeScope(0, 'Connection removed.');
     expect(h.controller.getSnapshot().feedback?.message).toBe('Connection removed.');
+  });
+});
+
+describe('"New <plugin> tab" rows', () => {
+  beforeEach(() => {
+    h.routes.add('/');
+    registerCoreSearchCatalogue(h.registry, { settings: {}, plugins: [], newTabPlugins: [{ id: 'probe', name: 'Probe' }] });
+  });
+
+  it('lead the empty-query list, ahead of connections, and open the plugin home in a new tab, never the active one', async () => {
+    const scope = { kind: 'connection', pluginId: 'probe', connectionId: 'prod', label: 'Production' };
+    h.provider('probe/connections', async () => ({
+      items: [{ id: 'prod', label: 'Production', value: { ...navigation(), scope } }],
+      completion: 'complete',
+    }));
+    h.controller.open();
+    await flush();
+    expect(labels().slice(0, 2)).toEqual(['New Probe tab', 'Production']);
+    expect(h.controller.getSnapshot().rows[0]).toMatchObject({ opensNewTab: true });
+
+    await h.controller.activate(key('New Probe tab'));
+    expect(h.openNew).toHaveBeenCalledWith('/_plugin/probe/', 'tab');
+    expect(h.navigate).not.toHaveBeenCalled();
+    expect(h.controller.getSnapshot().isOpen).toBe(false);
+  });
+
+  it('open where the modifier keys ask; other navigation rows keep opening in the active tab', async () => {
+    h.controller.open();
+    await flush();
+    await h.controller.activate(key('New Probe tab'), 'window');
+    expect(h.openNew).toHaveBeenLastCalledWith('/_plugin/probe/', 'window');
+
+    h.controller.open();
+    await flush();
+    await h.controller.activate(key('Home'), 'window');
+    expect(h.navigate).toHaveBeenCalledWith('/');
+    expect(h.openNew).toHaveBeenCalledOnce();
+  });
+
+  it('match a search for the plugin name', async () => {
+    h.controller.open();
+    h.controller.setQuery('new pro');
+    await vi.advanceTimersByTimeAsync(200);
+    expect(labels()[0]).toBe('New Probe tab');
   });
 });
 describe('actual registry and async epochs', () => {

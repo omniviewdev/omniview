@@ -4,10 +4,6 @@ import { fakeListing } from '../fixtures/plugins';
 import { mockBindings, Service } from '../fixtures/wails';
 
 test.describe('Navigation', () => {
-  test('sidebar is visible on load', async ({ appPage }) => {
-    await expect(shell(appPage).rail).toBeVisible();
-  });
-
   test('header buttons route to settings, plugins and back home', async ({ appPage }) => {
     const header = shell(appPage).header;
 
@@ -38,7 +34,7 @@ test.describe('Navigation', () => {
     await page.goto('/#/no-such-page');
     await expect(shell(page).root).toBeVisible();
     await expect(shell(page).header).toBeVisible();
-    await expect(shell(page).rail).toBeVisible();
+    await expect(shell(page).main).toBeVisible();
   });
 
   for (const path of ['/', '/settings', '/plugins']) {
@@ -126,7 +122,7 @@ test.describe('Navigation', () => {
       await expect(page).toHaveURL(/#\/plugins\/alpha-tools$/);
       await expect(readme).toBeVisible();
       await expect(shell(page).header).toBeVisible();
-      await expect(shell(page).rail).toBeVisible();
+      await expect(shell(page).main).toBeVisible();
 
       await page.goto('/#/plugins/does-not-exist');
       await expect(main.getByText('Plugin not found', { exact: true })).toBeVisible();

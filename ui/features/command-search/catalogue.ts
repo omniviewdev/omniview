@@ -10,11 +10,25 @@ export type CoreSearchPlugin = {
   ready: boolean;
 };
 
+/** A plugin with pages, which the palette offers to open in a new tab. */
+export type NewTabSearchPlugin = {
+  id: string;
+  name: string;
+};
+
 type CatalogueInput = {
   settings: Record<string, Category | undefined>;
   plugins: readonly CoreSearchPlugin[];
+  newTabPlugins?: readonly NewTabSearchPlugin[];
   devMode?: boolean;
 };
+
+const NEW_TAB_REGISTRATION_PREFIX = 'core/global-search/new-tab/';
+
+/** "New <plugin> tab" entries open the plugin's home page in a new tab instead of the active one. */
+export function isNewTabRegistration(registration: ExtensionContributionRegistration): boolean {
+  return registration.plugin === 'core' && registration.id.startsWith(NEW_TAB_REGISTRATION_PREFIX);
+}
 
 export type CoreSearchCatalogue = {
   truncated: boolean;
@@ -36,8 +50,8 @@ export function registerCoreSearchCatalogue(
   let truncated = false;
   let unavailable = false;
 
-  function register(label: string, value: SearchEntryV1) {
-    const registration = { id: `core/global-search/catalogue/${owned.size}`, plugin: 'core', label, value };
+  function register(label: string, value: SearchEntryV1, id = `core/global-search/catalogue/${owned.size}`) {
+    const registration = { id, plugin: 'core', label, value };
     if (!admitSearchContribution(registration)) {
       unavailable = true;
       return;
@@ -45,6 +59,26 @@ export function registerCoreSearchCatalogue(
 
     store!.register(registration);
     owned.add(registration);
+  }
+
+  // Registered first, so an empty query lists them at the top.
+  for (const plugin of input.newTabPlugins ?? []) {
+    if (consumed++ >= 1000) {
+      truncated = true;
+      break;
+    }
+
+    if (plugin.id.length === 0 || plugin.id.length > 256 || plugin.name.length > 256 - 'New  tab'.length) {
+      unavailable = true;
+      continue;
+    }
+
+    register(`New ${plugin.name} tab`, {
+      schemaVersion: 1,
+      kind: 'navigation',
+      keywords: ['new tab', 'open', plugin.name],
+      target: { kind: 'plugin', pluginId: plugin.id, path: '/' },
+    }, `${NEW_TAB_REGISTRATION_PREFIX}${plugin.id}`);
   }
 
   register('Home', { schemaVersion: 1, kind: 'navigation', target: { kind: 'core', path: '/' } });

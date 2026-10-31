@@ -21,12 +21,12 @@ export type PagePresentation = {
 };
 
 /**
- * Names and icons for page tabs, from the plugin inventory the plugin rail
- * shows and the connection lists plugins load (same query keys, so the data
+ * Names and icons for page tabs, from the plugin inventory the new-tab
+ * launcher uses and the connection lists plugins load (same query keys, so the data
  * is shared with plugin pages).
  */
 export function usePagePresentation(tabs: readonly PageTab[]): PagePresentation {
-  // Observe the inventory the plugin rail loads; do not fetch it again.
+  // Observe the inventory the new-tab launcher loads; do not fetch it again.
   const inventory = useQuery({ queryKey: ['plugins'], queryFn: PluginManager.ListPlugins, enabled: false });
   const connectionPluginIds = [...new Set(tabs.flatMap((tab) => {
     const target = parsePagePath(tab.path);

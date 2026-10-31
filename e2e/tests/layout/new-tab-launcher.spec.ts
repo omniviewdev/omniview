@@ -1,0 +1,50 @@
+import type { Page } from '@playwright/test';
+import { test, expect } from '../fixtures/app.fixture';
+import { shell } from '../fixtures/helpers';
+import { fakePlugin } from '../fixtures/plugins';
+import { mockBindings, Service } from '../fixtures/wails';
+
+const pageTabs = (page: Page) => page.getByRole('tablist', { name: 'Page tabs' }).getByRole('tab');
+
+test.describe('New-tab launcher', () => {
+  test('the header "+" lists every plugin and opens the chosen one on its home page in a new tab', async ({ page }) => {
+    await mockBindings(page, Service.plugins, { ListPlugins: [fakePlugin(1), fakePlugin(2), fakePlugin(3)] });
+    await page.goto('/');
+    await expect(pageTabs(page)).toHaveCount(1);
+
+    await shell(page).header.getByRole('button', { name: 'New tab', exact: true }).click();
+    const menu = page.getByRole('menu', { name: 'New tab' });
+    await expect(menu.getByRole('menuitem')).toHaveCount(3);
+    await menu.getByRole('menuitem', { name: /E2E Plugin 2/ }).click();
+
+    await expect(menu).toBeHidden();
+    await expect(pageTabs(page)).toHaveCount(2);
+    await expect(page).toHaveURL(/#\/_plugin\/e2e-plugin-2$/);
+  });
+
+  test('Ctrl+T opens the menu, and type-ahead with Enter picks a plugin', async ({ page }) => {
+    await mockBindings(page, Service.plugins, { ListPlugins: [fakePlugin(1), fakePlugin(2, { metadata: { ...fakePlugin(2).metadata, name: 'Zeta' } })] });
+    await page.goto('/');
+    await expect(shell(page).header.getByRole('button', { name: 'New tab', exact: true })).toBeVisible();
+
+    await page.keyboard.press('Control+t');
+    await expect(page.getByRole('menu', { name: 'New tab' })).toBeVisible();
+    await page.keyboard.press('z');
+    await page.keyboard.press('Enter');
+
+    await expect(pageTabs(page)).toHaveCount(2);
+    await expect(page).toHaveURL(/#\/_plugin\/e2e-plugin-2$/);
+  });
+
+  test('with one plugin, Ctrl+T opens it directly', async ({ page }) => {
+    await mockBindings(page, Service.plugins, { ListPlugins: [fakePlugin(1)] });
+    await page.goto('/');
+    await expect(shell(page).header.getByRole('button', { name: 'New E2E Plugin 1 tab' })).toBeVisible();
+
+    await page.keyboard.press('Control+t');
+
+    await expect(page.getByRole('menu')).toHaveCount(0);
+    await expect(pageTabs(page)).toHaveCount(2);
+    await expect(page).toHaveURL(/#\/_plugin\/e2e-plugin-1$/);
+  });
+});

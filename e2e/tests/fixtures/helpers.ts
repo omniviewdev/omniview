@@ -4,7 +4,6 @@ import { expect, type Locator, type Page } from '@playwright/test';
 export const shell = (page: Page) => ({
   root: page.getByTestId('app-shell'),
   header: page.getByTestId('app-header'),
-  rail: page.getByTestId('app-sidebar'),
   main: page.getByTestId('app-main-content'),
   footer: page.getByTestId('app-footer'),
 });

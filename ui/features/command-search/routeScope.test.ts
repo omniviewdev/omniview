@@ -39,7 +39,8 @@ function harness() {
   }]);
   const resolve = () => resolveRouteSearchScope(location, (id) => id === 'provider' && registered ? routes : undefined, () => ready);
   const controller = createGlobalSearchController({ registry: new ExtensionPointRegistry(), isPluginReady: () => ready,
-    hasPluginRoute: () => registered, listResourcePlugins: async () => [], loadConnections: async () => [], navigate: () => undefined });
+    hasPluginRoute: () => registered, listResourcePlugins: async () => [], loadConnections: async () => [], navigate: () => undefined,
+    openNew: () => undefined });
   const open = (options = {}) => {
     controller.open(resolveSearchOpenOptions(options, controller.getSnapshot().isOpen, resolve)); 
   };

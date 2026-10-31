@@ -5,7 +5,7 @@ import {
 } from '../fixtures/helpers';
 import { callBinding, Service } from '../fixtures/wails';
 
-const REGIONS = ['header', 'rail', 'main', 'footer'] as const;
+const REGIONS = ['header', 'main', 'footer'] as const;
 
 async function storedValue(page: Page, id: string): Promise<unknown> {
   return callBinding(page.request, Service.settings, 'GetSettingValue', id);
