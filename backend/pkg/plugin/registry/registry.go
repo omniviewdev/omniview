@@ -3,7 +3,12 @@ package registry
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
 
+	"github.com/omniviewdev/omniview/internal/version"
 	regclient "github.com/omniviewdev/registry"
 )
 
@@ -74,12 +79,8 @@ type Client struct {
 
 // NewClient creates a new registry client.
 func NewClient(baseURL string) *Client {
-	opts := []regclient.Option{}
-	if baseURL != "" {
-		opts = append(opts, regclient.WithBaseURL(baseURL))
-	}
 	return &Client{
-		inner:   regclient.NewClient(opts...),
+		inner:   newRegistryClient(baseURL),
 		baseURL: baseURL,
 	}
 }
@@ -91,16 +92,63 @@ func (c *Client) SetBaseURL(baseURL string) {
 		return
 	}
 	c.baseURL = baseURL
-	opts := []regclient.Option{}
-	if baseURL != "" {
-		opts = append(opts, regclient.WithBaseURL(baseURL))
-	}
-	c.inner = regclient.NewClient(opts...)
+	c.inner = newRegistryClient(baseURL)
 }
 
 // BaseURL returns the current marketplace API URL.
 func (c *Client) BaseURL() string {
 	return c.baseURL
+}
+
+
+func newRegistryClient(baseURL string) *regclient.Client {
+	opts := []regclient.Option{}
+	if baseURL != "" {
+		// Registry v0.2.3 appends absolute API paths to this string. Normalize
+		// once so its request paths and the transport's API scope agree.
+		opts = append(opts, regclient.WithBaseURL(strings.TrimRight(baseURL, "/")))
+	}
+	// Resolve the library default rather than duplicating its marketplace URL.
+	base, _ := url.Parse(regclient.NewClient(opts...).BaseURL())
+	opts = append(opts, regclient.WithHTTPClient(&http.Client{
+		Timeout: 30 * time.Second, // Preserve registry v0.2.3's default.
+		Transport: &compatibilityTransport{base: base, next: http.DefaultTransport},
+	}))
+	return regclient.NewClient(opts...)
+}
+
+// compatibilityTransport only decorates direct registry API requests. Redirects
+// and artifact/CDN paths must retain their original (potentially signed) URLs.
+type compatibilityTransport struct {
+	base *url.URL
+	next http.RoundTripper
+}
+
+type artifactRequestKey struct{}
+
+// Each DownloadPlugin call resolves one artifact URL before fetching it.
+type artifactRequest struct {
+	url string
+}
+
+func (t *compatibilityTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	artifact, _ := req.Context().Value(artifactRequestKey{}).(*artifactRequest)
+	if (artifact != nil && artifact.url == req.URL.String()) ||
+		t.base == nil || req.Response != nil ||
+		req.URL.Scheme != t.base.Scheme || req.URL.Host != t.base.Host ||
+		!strings.HasPrefix(req.URL.EscapedPath(), strings.TrimSuffix(t.base.EscapedPath(), "/")+"/v1/") {
+		return t.next.RoundTrip(req)
+	}
+	clone := req.Clone(req.Context())
+	query := clone.URL.Query()
+	query.Set("ide_version", version.CompatibilityVersion)
+	clone.URL.RawQuery = query.Encode()
+	resp, err := t.next.RoundTrip(clone)
+	if err == nil && artifact != nil &&
+		(resp.StatusCode == http.StatusFound || resp.StatusCode == http.StatusTemporaryRedirect) {
+		artifact.url = resp.Header.Get("Location")
+	}
+	return resp, err
 }
 
 const (
@@ -288,5 +336,6 @@ func (c *Client) GetPluginDownloadStats(ctx context.Context, pluginID string) (*
 // DownloadPlugin downloads and verifies a plugin artifact.
 // Returns the path to the downloaded temp file.
 func (c *Client) DownloadPlugin(ctx context.Context, pluginID, version string) (string, error) {
+	ctx = context.WithValue(ctx, artifactRequestKey{}, &artifactRequest{})
 	return c.inner.DownloadPlugin(ctx, pluginID, version)
 }
