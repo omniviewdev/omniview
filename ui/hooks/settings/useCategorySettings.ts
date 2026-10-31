@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
-import { Events } from '@wailsio/runtime';
 import { useSnackbar, createErrorHandler } from '@omniviewdev/runtime';
 
 // Underlying client
 import { SettingsProvider } from '@omniviewdev/runtime/api';
+import { useSettingsChanges } from './useHostSettingsState';
+import { COMMITTED_SETTINGS_MESSAGE, isCommittedSettingsError } from './settingsSaveError';
 
 type UseCategorySettingsOptions = {
   /**
@@ -24,27 +24,33 @@ export const useCategorySettings = ({ category }: UseCategorySettingsOptions) =>
 
   const queryKey = ['settings', category];
 
-  useEffect(() => Events.On('settings/changed', (event) => {
-    if (event.data === category) {
-      void queryClient.invalidateQueries({ queryKey: ['settings', category] });
-    }
-  }), [category, queryClient]);
+  useSettingsChanges();
 
   const settings = useQuery({
     queryKey,
-    queryFn: async () => SettingsProvider.GetCategory(category),
+    queryFn: async ({ signal }) => {
+      signal.throwIfAborted();
+      return SettingsProvider.GetCategory(category);
+    },
   });
 
   const { mutateAsync: setSettings } = useMutation({
     mutationFn: async (newSettings: Record<string, any>) => SettingsProvider.SetSettings(newSettings),
-    onSuccess(_, _vars) {
+    async onSuccess(_, _vars) {
       showSnackbar('Settings saved', 'success');
 
-      // TODO - invalidate each one individually
-      void queryClient.invalidateQueries({ queryKey: ['settings'] });
-      void queryClient.refetchQueries({ queryKey: ['settings'] });
+      await queryClient.cancelQueries({ queryKey: ['settings'] });
+      await queryClient.invalidateQueries({ queryKey: ['settings'] });
     },
-    onError: createErrorHandler(showSnackbar, 'Failed to save settings'),
+    async onError(error) {
+      if (isCommittedSettingsError(error)) {
+        showSnackbar(COMMITTED_SETTINGS_MESSAGE, 'error');
+        await queryClient.cancelQueries({ queryKey: ['settings'] });
+        await queryClient.invalidateQueries({ queryKey: ['settings'] });
+      } else {
+        createErrorHandler(showSnackbar, 'Failed to save settings')(error);
+      }
+    },
   });
 
   return {

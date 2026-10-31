@@ -26,6 +26,10 @@ const plugin = { id: 'probe', metadata: { name: 'Native probe', description: 'Pr
 vi.mock('@/hooks/settings/useCoreSettings', () => ({
   useSettingsProvider: () => ({ settings: { data: categories, isLoading: false, isError: false } }),
 }));
+vi.mock('@/hooks/settings/useHostSettingsState', () => ({
+  useHostSettingStates: () => ({ data: {} }),
+  useHostProfilingStatus: () => ({ data: undefined }),
+}));
 vi.mock('@/hooks/settings/useCategorySettings', () => ({
   useCategorySettings: ({ category }: { category: keyof typeof categories }) => ({
     settings: { data: categories[category], isLoading: false, isError: false }, setSettings: mocks.setSettings,

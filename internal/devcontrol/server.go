@@ -15,14 +15,17 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devsession"
+	"github.com/omniviewdev/omniview/internal/hostsettings"
 )
 
 const maxRequestBytes = 1 << 20
 const maxResultBytes = 2 << 20
 const maxOperations = 1024
+const operationFailedExitCode = 5
 
 type operation struct {
 	response devcontract.Response
@@ -228,6 +231,12 @@ func invalidParams() *devcontract.Error {
 	return devcontract.Fail(2, "invalid_params", "parameters do not match the operation schema")
 }
 func safeError(err error) *devcontract.Error {
+	var applied *hostsettings.CommittedApplyError
+	if errors.As(err, &applied) {
+		result := devcontract.Fail(operationFailedExitCode, "settings_apply_failed", applied.Error())
+		result.Details = map[string]any{"committed": true, "restartRequired": true}
+		return result
+	}
 	var e *devcontract.Error
 	if errors.As(err, &e) {
 		switch e.Code {

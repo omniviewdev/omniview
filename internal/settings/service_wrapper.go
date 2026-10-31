@@ -1,8 +1,10 @@
 package categories
 
 import (
+	"errors"
 	"fmt"
 
+	"github.com/omniviewdev/omniview/internal/hostsettings"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
@@ -11,7 +13,14 @@ import (
 //
 //	(internal-only methods).
 type ServiceWrapper struct {
-	Provider     pkgsettings.Provider
+	Provider pkgsettings.Provider
+	Writer   interface {
+		SetSetting(string, any) error
+		SetSettings(map[string]any) error
+	}
+	State interface {
+		GetSettingStates() map[string]hostsettings.SettingState
+	}
 	CategoryMeta map[string]pkgsettings.Category // Label, Icon, Description for each category
 }
 
@@ -46,10 +55,24 @@ func (s *ServiceWrapper) ValidateSetting(id string, value any) (pkgsettings.Vali
 	return setting.Validation(value), nil
 }
 func (s *ServiceWrapper) SetSetting(id string, value any) error {
-	return s.Provider.SetSetting(id, value)
+	if s.Writer == nil {
+		return errors.New("core settings writer is unavailable")
+	}
+	return s.Writer.SetSetting(id, value)
 }
 func (s *ServiceWrapper) SetSettings(settingsMap map[string]any) error {
-	return s.Provider.SetSettings(settingsMap)
+	if s.Writer == nil {
+		return errors.New("core settings writer is unavailable")
+	}
+	return s.Writer.SetSettings(settingsMap)
+}
+
+// GetSettingStates exposes restart policy and pending state without setting values.
+func (s *ServiceWrapper) GetSettingStates() map[string]hostsettings.SettingState {
+	if s.State == nil {
+		return map[string]hostsettings.SettingState{}
+	}
+	return s.State.GetSettingStates()
 }
 func (s *ServiceWrapper) GetString(id string) (string, error) {
 	return s.Provider.GetString(id)

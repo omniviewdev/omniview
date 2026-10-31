@@ -10,15 +10,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wailsapp/wails/v3/pkg/application"
+
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
 	pluginsettings "github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devcontrol"
 	"github.com/omniviewdev/omniview/internal/devsession"
+	"github.com/omniviewdev/omniview/internal/hostsettings"
 	"github.com/omniviewdev/omniview/internal/instance"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
-	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // Registered last: Wails starts services in order and shuts them down in reverse.
@@ -32,6 +34,7 @@ type developmentControlLifecycle struct {
 	manager          plugin.Manager
 	dev              *devserver.DevServerManager
 	provider         pkgsettings.Provider
+	writer           hostsettings.Writer
 	controller       pluginsettings.Controller
 	server           *devcontrol.Server
 	benchmarkMetrics *resourceBenchmarkMetrics
@@ -39,11 +42,34 @@ type developmentControlLifecycle struct {
 
 // Register adds development control after all services that its adapters depend on.
 // The callbacks retain host-only ownership of the authoritative instance snapshot.
-func Register(app *application.App, profile instance.Profile, readSnapshot func() devcontract.InstanceDescriptor, publishSnapshot func(devcontract.InstanceDescriptor), manager plugin.Manager, dev *devserver.DevServerManager, provider pkgsettings.Provider, controller pluginsettings.Controller) (func(), error) {
+func Register(
+	app *application.App,
+	profile instance.Profile,
+	readSnapshot func() devcontract.InstanceDescriptor,
+	publishSnapshot func(devcontract.InstanceDescriptor),
+	manager plugin.Manager,
+	dev *devserver.DevServerManager,
+	provider pkgsettings.Provider,
+	writer hostsettings.Writer,
+	controller pluginsettings.Controller,
+) (func(), error) {
 	if profile.Descriptor.Kind != "development" {
 		return nil, nil
 	}
-	lifecycle := &developmentControlLifecycle{profile: profile, readSnapshot: readSnapshot, publishSnapshot: publishSnapshot, manager: manager, dev: dev, provider: provider, controller: controller}
+	lifecycle := &developmentControlLifecycle{
+		mu:               sync.Mutex{},
+		runtimeReady:     false,
+		profile:          profile,
+		readSnapshot:     readSnapshot,
+		publishSnapshot:  publishSnapshot,
+		manager:          manager,
+		dev:              dev,
+		provider:         provider,
+		writer:           writer,
+		controller:       controller,
+		server:           nil,
+		benchmarkMetrics: nil,
+	}
 	app.RegisterService(application.NewService(lifecycle))
 	return lifecycle.markRuntimeReady, nil
 }
@@ -80,7 +106,11 @@ func (s *developmentControlLifecycle) ServiceStartup(ctx context.Context, _ appl
 	if err != nil {
 		return err
 	}
-	server, err := devcontrol.Start(ctx, devcontrol.Config{Descriptor: descriptor, Discovery: discovery, Adapters: New(s.manager, s.dev, s.provider, s.controller, s.inspect)})
+	server, err := devcontrol.Start(ctx, devcontrol.Config{
+		Descriptor: descriptor,
+		Discovery:  discovery,
+		Adapters:   New(s.manager, s.dev, s.provider, s.writer, s.controller, s.inspect),
+	})
 	if err != nil {
 		return err
 	}

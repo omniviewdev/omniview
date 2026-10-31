@@ -16,6 +16,11 @@ vi.mock('@omniviewdev/runtime/api', () => ({
   SettingsProvider: { ValidateSetting: mocks.validateSetting },
 }));
 
+vi.mock('@/hooks/settings/useHostSettingsState', () => ({
+  useHostSettingStates: () => ({ data: {} }),
+  useHostProfilingStatus: () => ({ data: undefined }),
+}));
+
 vi.mock('@/theme/AppThemeController', async (importOriginal) => {
   const actual = await importOriginal<typeof AppThemeControllerModule>();
   return {

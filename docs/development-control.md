@@ -8,7 +8,7 @@ The integration owner starts the service after profile ownership, plugin manager
 
 ```go
 adapters := host.New(pluginManager, devServerManager, settingsProvider,
-    pluginSettingsController, inspectCurrentDescriptor)
+    coreSettingsWriter, pluginSettingsController, inspectCurrentDescriptor)
 control, err := devcontrol.Start(ctx, devcontrol.Config{
     Descriptor: descriptor, // development identity + captured A06 host process
     Discovery: discoveryStore,

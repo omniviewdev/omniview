@@ -7,10 +7,10 @@ import (
 	"github.com/omniviewdev/plugin-sdk/settings"
 )
 
-// buildTelemetrySettings derives setting definitions from the production
-// default configuration so the two never drift apart.
-func buildTelemetrySettings() map[string]settings.Setting {
-	defaults := telemetry.DefaultConfig(false) // production defaults for settings UI
+// buildTelemetrySettings derives the UI and runtime defaults from the same
+// mode-specific telemetry configuration.
+func buildTelemetrySettings(isDev bool) map[string]settings.Setting {
+	defaults := telemetry.DefaultConfig(isDev)
 
 	validLevels := telemetry.GetValidLogLevels()
 	logLevelOptions := make([]settings.SettingOption, 0, len(validLevels))
@@ -118,5 +118,5 @@ var Telemetry = settings.Category{
 	Label:       "Telemetry",
 	Description: "Configure observability, logging, tracing, metrics, and profiling",
 	Icon:        "LuActivity",
-	Settings:    buildTelemetrySettings(),
+	Settings:    buildTelemetrySettings(false),
 }

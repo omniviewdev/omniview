@@ -11,6 +11,7 @@ import (
 	pluginsettings "github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devcontrol"
+	"github.com/omniviewdev/omniview/internal/hostsettings"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
@@ -29,8 +30,20 @@ type DevServers interface {
 	WaitReady(context.Context, string, string) (devserver.DevServerState, error)
 }
 
-func New(manager Manager, dev DevServers, provider pkgsettings.Provider, controller pluginsettings.Controller, inspect func(context.Context) (devcontract.InstanceDescriptor, error)) devcontrol.Adapters {
-	return devcontrol.Adapters{Inspect: inspect, Plugins: manager, Dev: &lifecycle{manager: manager, dev: dev}, Settings: devcontrol.NewSettingsAdapter(provider, settingsBridge{controller})}
+func New(
+	manager Manager,
+	dev DevServers,
+	provider pkgsettings.Provider,
+	writer hostsettings.Writer,
+	controller pluginsettings.Controller,
+	inspect func(context.Context) (devcontract.InstanceDescriptor, error),
+) devcontrol.Adapters {
+	return devcontrol.Adapters{
+		Inspect:  inspect,
+		Plugins:  manager,
+		Dev:      &lifecycle{manager: manager, dev: dev},
+		Settings: devcontrol.NewSettingsAdapter(provider, writer, settingsBridge{controller}),
+	}
 }
 
 type settingsBridge struct{ controller pluginsettings.Controller }

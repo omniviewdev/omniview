@@ -21,6 +21,49 @@ An empty Go path retains the existing optional default: automatic discovery in P
 - Save revalidates; replacing a previously valid executable with a failing one cannot bypass enforcement.
 - No validation response contains secret input or arbitrary subprocess output.
 
+## Core host lifecycle and restart-required settings
+
+`internal/hostsettings.Runtime` initializes the existing SDK provider once after
+profile/singleton authority and settings-store migration, before settings-dependent
+services start. `internal/settings.Definitions(isDev)` is the shared definition
+source for runtime defaults and frontend metadata. Appearance/terminal category
+migrations run during hydration; unknown or invalid stored values are diagnosed
+without preventing valid siblings from loading.
+
+Telemetry and profiling consume this prepared provider; neither reads the database
+independently. Bootstrap attaches live effects and category invalidation after
+initialization, without hydrating or persisting a second time.
+
+Frontend and local-control core writes use the same narrow `hostsettings.Writer`.
+The writer validates and normalizes the complete request, commits affected
+categories in one bbolt transaction, then publishes requested or previously
+unpublished values. Unchanged siblings are not revalidated during publication.
+Persistence failure returns an error without publishing changes or success
+invalidation. A missing store permits startup with defaults but rejects saves.
+Plugin persistence remains separate.
+
+An error after durable commit is different: `CommittedApplyError` reports that
+preferences were saved but could not be applied. The UI clears committed drafts
+and shows this warning instead of claiming persistence failed. Local control
+returns `settings_apply_failed` with `committed: true`.
+
+Restart policy is host-owned, not an SDK schema change.
+`SettingsProvider.GetSettingStates()` returns only `requiresRestart` and
+`pendingRestart` flags keyed by full setting ID. Pending state compares normalized
+configured values with a deep-copied startup baseline; no preference values or
+secrets are included. Restoring the startup value clears pending state.
+Discard affects drafts only; refreshing settings does not reset the baseline.
+Category invalidation refreshes configured values and restart state across windows.
+
+Profiling is the first restart-only consumer:
+`developer.pprof_enabled` defaults to false and `developer.pprof_port` defaults to
+6060, accepting whole-number ports from 0 through 65535. Both settings are visible
+in production. Runtime listener facts come from `HostProfiling.GetStatus()`, not
+from the saved toggle. A saved disable does not claim the active listener has
+stopped before restart. Invalid recovered profiling preferences fail closed.
+`OMNIVIEW_PPROF_PORT` is an explicit launch-time override; it never replaces saved
+values or their restart comparison baseline.
+
 ### Terminal defaults
 
 New terminal settings use a 12px font. Saved font sizes remain unchanged, and

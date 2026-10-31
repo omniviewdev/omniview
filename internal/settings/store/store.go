@@ -12,6 +12,9 @@ import (
 )
 
 var (
+	// ErrUnavailable reports that no settings database is available.
+	ErrUnavailable = errors.New("settings persistence is unavailable")
+
 	coreBucket    = []byte("core")
 	pluginsBucket = []byte("plugins")
 	mcpBucket     = []byte("mcp")
@@ -120,19 +123,40 @@ func (s *Store) Close() error {
 // SaveCategory persists a category's settings under the "core" bucket.
 // Values are JSON-encoded and stored under the given categoryID key.
 func (s *Store) SaveCategory(categoryID string, values map[string]any) error {
-	data, err := json.Marshal(values)
-	if err != nil {
-		return fmt.Errorf("marshal category %q: %w", categoryID, err)
+	return s.SaveCategories(map[string]map[string]any{categoryID: values})
+}
+
+// SaveCategories persists all supplied core categories in one transaction.
+// Encoding and transaction failures leave every category unchanged.
+func (s *Store) SaveCategories(categories map[string]map[string]any) error {
+	if s == nil || s.db == nil {
+		return ErrUnavailable
+	}
+	encoded := make(map[string][]byte, len(categories))
+	for id, values := range categories {
+		data, err := json.Marshal(values)
+		if err != nil {
+			return fmt.Errorf("marshal category %q: %w", id, err)
+		}
+		encoded[id] = data
 	}
 	return s.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(coreBucket)
-		return b.Put([]byte(categoryID), data)
+		for id, data := range encoded {
+			if err := b.Put([]byte(id), data); err != nil {
+				return fmt.Errorf("save category %q: %w", id, err)
+			}
+		}
+		return nil
 	})
 }
 
 // LoadCategory retrieves a category's settings from the "core" bucket.
 // Returns an empty (non-nil) map if the category does not exist.
 func (s *Store) LoadCategory(categoryID string) (map[string]any, error) {
+	if s == nil || s.db == nil {
+		return nil, ErrUnavailable
+	}
 	result := make(map[string]any)
 	err := s.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(coreBucket)

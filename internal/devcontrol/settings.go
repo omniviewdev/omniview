@@ -4,11 +4,13 @@ package devcontrol
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/hostsettings"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
@@ -22,11 +24,12 @@ type PluginSettings interface {
 }
 type settingsAdapter struct {
 	host    pkgsettings.Provider
+	writer  hostsettings.Writer
 	plugins PluginSettings
 }
 
-func NewSettingsAdapter(host pkgsettings.Provider, plugins PluginSettings) Settings {
-	return &settingsAdapter{host: host, plugins: plugins}
+func NewSettingsAdapter(host pkgsettings.Provider, writer hostsettings.Writer, plugins PluginSettings) Settings {
+	return &settingsAdapter{host: host, writer: writer, plugins: plugins}
 }
 func (a *settingsAdapter) Schema(p SettingsParams) (map[string]pkgsettings.Setting, error) {
 	if p.Scope == "plugin" {
@@ -118,10 +121,13 @@ func (a *settingsAdapter) write(p SettingsParams, raw map[string]json.RawMessage
 		}
 		return a.plugins.SetSetting(p.PluginID, p.ID, values[p.ID])
 	}
-	if bulk {
-		return a.host.SetSettings(values)
+	if a.writer == nil {
+		return errors.New("core settings writer is unavailable")
 	}
-	return a.host.SetSetting(p.ID, values[p.ID])
+	if bulk {
+		return a.writer.SetSettings(values)
+	}
+	return a.writer.SetSetting(p.ID, values[p.ID])
 }
 func typedSettingValue(data json.RawMessage, s pkgsettings.Setting) (any, error) {
 	if strings.TrimSpace(string(data)) == "null" {

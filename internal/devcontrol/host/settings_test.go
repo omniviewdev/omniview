@@ -24,7 +24,7 @@ func TestUnknownPersistedPluginSchemaNeverBecomesPublic(t *testing.T) {
 		t.Fatal(err)
 	}
 	controller := pluginsettings.NewController(logging.NewNop(), nil, store)
-	adapter := devcontrol.NewSettingsAdapter(nil, settingsBridge{controller})
+	adapter := devcontrol.NewSettingsAdapter(nil, nil, settingsBridge{controller})
 	schema, err := adapter.Schema(devcontrol.SettingsParams{Scope: "plugin", PluginID: "fixture"})
 	if err != nil {
 		t.Fatal(err)

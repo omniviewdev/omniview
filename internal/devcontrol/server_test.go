@@ -19,6 +19,7 @@ import (
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devsession"
+	"github.com/omniviewdev/omniview/internal/hostsettings"
 	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
@@ -34,13 +35,32 @@ func fixtureServer(t *testing.T) (*Server, pkgsettings.Provider, *settingsstore.
 	t.Cleanup(func() { store.Close() })
 	// A host provider has no PluginID. Plugin-mode providers resolve every key
 	// against category "plugin", unlike the host's category.setting addressing.
-	provider := pkgsettings.NewProvider(pkgsettings.ProviderOpts{PluginSettings: []pkgsettings.Category{{ID: "limits", Settings: map[string]pkgsettings.Setting{"count": {ID: "count", Type: pkgsettings.Integer, Value: 3, Default: 3, Validator: func(value any) pkgsettings.ValidationResult {
-		v, ok := value.(int)
-		if !ok || v < 1 {
-			return pkgsettings.ValidationResult{Code: "positive_count", Message: "Count must be positive."}
-		}
-		return pkgsettings.ValidationResult{Valid: true, Code: "positive_count", Message: "Count is valid."}
-	}}, "secret": {ID: "secret", Type: pkgsettings.Password, Value: "fixture-secret", Default: "fixture-secret", Sensitive: true}}}}})
+	core, err := hostsettings.Initialize(hostsettings.Options{
+		Store: store,
+		Categories: []pkgsettings.Category{{
+			ID: "limits",
+			Settings: map[string]pkgsettings.Setting{
+				"count": {
+					ID: "count", Type: pkgsettings.Integer, Value: 3, Default: 3,
+					Validator: func(value any) pkgsettings.ValidationResult {
+						v, ok := value.(int)
+						if !ok || v < 1 {
+							return pkgsettings.ValidationResult{Code: "positive_count", Message: "Count must be positive."}
+						}
+						return pkgsettings.ValidationResult{Valid: true, Code: "positive_count", Message: "Count is valid."}
+					},
+				},
+				"secret": {
+					ID: "secret", Type: pkgsettings.Password,
+					Value: "fixture-secret", Default: "fixture-secret", Sensitive: true,
+				},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := core.Provider()
 	initial, err := provider.GetInt("limits.count")
 	if err != nil || initial != 3 {
 		t.Fatalf("invalid host provider fixture: value=%d err=%v", initial, err)
@@ -49,12 +69,10 @@ func fixtureServer(t *testing.T) (*Server, pkgsettings.Provider, *settingsstore.
 	if err != nil || len(persisted) != 0 {
 		t.Fatalf("invalid initial persistence fixture: values=%v err=%v", persisted, err)
 	}
-	provider.RegisterChangeHandler("limits", func(values map[string]any) {
-		if err := store.SaveCategory("limits", values); err != nil {
-			t.Error(err)
-		}
-	})
-	s := newServer(context.Background(), Config{Descriptor: devcontract.InstanceDescriptor{WorkspaceID: testWorkspace, Generation: "host-generation"}, Adapters: Adapters{Settings: NewSettingsAdapter(provider, nil)}}, []byte("test-token-with-more-than-thirty-two-bytes"))
+	s := newServer(context.Background(), Config{
+		Descriptor: devcontract.InstanceDescriptor{WorkspaceID: testWorkspace, Generation: "host-generation"},
+		Adapters:   Adapters{Settings: NewSettingsAdapter(provider, core, nil)},
+	}, []byte("test-token-with-more-than-thirty-two-bytes"))
 	s.host = "127.0.0.1:45678"
 	t.Cleanup(func() { s.cancel() })
 	return s, provider, store
@@ -264,8 +282,17 @@ func TestStartupPrivateDiscoveryAndGenerationOwnedCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 	descriptor := devcontract.InstanceDescriptor{SchemaVersion: devcontract.SchemaVersion, WorkspaceID: testWorkspace, InstanceID: "7da9b9de-d833-4075-b3a7-1e74c7051386", Generation: "published-generation", Kind: "development", StateRoot: t.TempDir(), Process: process}
-	_, provider, _ := fixtureServer(t)
-	s, err := Start(context.Background(), Config{Descriptor: descriptor, Discovery: store, Adapters: Adapters{Inspect: func(context.Context) (devcontract.InstanceDescriptor, error) { return descriptor, nil }, Plugins: fixturePlugins{}, Dev: fixtureDev{}, Settings: NewSettingsAdapter(provider, nil)}})
+	fixture, _, _ := fixtureServer(t)
+	s, err := Start(context.Background(), Config{
+		Descriptor: descriptor,
+		Discovery:  store,
+		Adapters: Adapters{
+			Inspect:  func(context.Context) (devcontract.InstanceDescriptor, error) { return descriptor, nil },
+			Plugins:  fixturePlugins{},
+			Dev:      fixtureDev{},
+			Settings: fixture.adapters.Settings,
+		},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -425,5 +452,57 @@ func TestDependencyWatchingMutationRequiresTypedTargetAndAuthorization(t *testin
 	enabled := waitOperation(t, s, send(t, s, "plugin.dev.dependencies", DependenciesParams{ID: "fixture", Generation: "plugin-generation", Enabled: true}, nil))
 	if enabled.Status != "succeeded" || !watcher.watching || watcher.changes != 2 {
 		t.Fatalf("watcher was not enabled: %+v", enabled)
+	}
+}
+
+// TestCoreSaveFailureDoesNotPublish proves local-control callers cannot receive
+// success or change configured values when the settings database cannot commit.
+func TestCoreSaveFailureDoesNotPublish(t *testing.T) {
+	s, provider, store := fixtureServer(t)
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	response := waitOperation(t, s, send(t, s, "settings.set", map[string]any{
+		"scope": "host", "id": "limits.count", "value": 9,
+	}, nil))
+	if response.Status != "failed" || response.Error == nil {
+		t.Fatalf("failed persistence reported success: %+v", response)
+	}
+	if got, err := provider.GetInt("limits.count"); err != nil || got != 3 {
+		t.Fatalf("failed persistence published count=%d, err=%v", got, err)
+	}
+}
+
+// TestCoreApplyFailureReportsDurableCommit distinguishes saved preferences from
+// a failed live effect without returning the effect's private diagnostics.
+func TestCoreApplyFailureReportsDurableCommit(t *testing.T) {
+	s, provider, store := fixtureServer(t)
+	adapter, ok := s.adapters.Settings.(*settingsAdapter)
+	if !ok {
+		t.Fatal("fixture settings adapter has an unexpected type")
+	}
+	core, ok := adapter.writer.(*hostsettings.Runtime)
+	if !ok {
+		t.Fatal("fixture core settings writer has an unexpected type")
+	}
+	provider.RegisterChangeHandler("limits", func(map[string]any) {
+		core.ReportApplyError(errors.New("fixture-private-effect-detail"))
+	})
+	response := waitOperation(t, s, send(t, s, "settings.set", map[string]any{
+		"scope": "host", "id": "limits.count", "value": 9,
+	}, nil))
+	if response.Status != "failed" || response.Error == nil || response.Error.Code != "settings_apply_failed" {
+		t.Fatalf("post-commit failure lost its classification: %+v", response)
+	}
+	if response.Error.Details["committed"] != true ||
+		strings.Contains(response.Error.Message, "fixture-private-effect-detail") {
+		t.Fatalf("unsafe or misleading post-commit error: %+v", response.Error)
+	}
+	persisted, err := store.LoadCategory("limits")
+	if err != nil || persisted["count"] != float64(9) {
+		t.Fatalf("reported commit was not durable: %v, %v", persisted, err)
+	}
+	if got, readErr := provider.GetInt("limits.count"); readErr != nil || got != 9 {
+		t.Fatalf("saved value was not published: %d, %v", got, readErr)
 	}
 }

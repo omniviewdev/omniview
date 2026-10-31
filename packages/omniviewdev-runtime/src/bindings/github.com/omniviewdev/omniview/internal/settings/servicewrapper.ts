@@ -15,6 +15,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as hostsettings$0 from "../hostsettings/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as settings$0 from "../../../plugin-sdk/settings/models.js";
 
 export function GetBool(id: string): $CancellablePromise<boolean> {
@@ -76,6 +79,15 @@ export function GetSetting(id: string): $CancellablePromise<settings$0.Setting> 
     });
 }
 
+/**
+ * GetSettingStates exposes restart policy and pending state without setting values.
+ */
+export function GetSettingStates(): $CancellablePromise<{ [_ in string]?: hostsettings$0.SettingState }> {
+    return $Call.ByID(423336398).then(($result: any) => {
+        return $$createType7($result);
+    });
+}
+
 export function GetSettingValue(id: string): $CancellablePromise<any> {
     return $Call.ByID(2753368941, id);
 }
@@ -86,13 +98,13 @@ export function GetString(id: string): $CancellablePromise<string> {
 
 export function GetStringSlice(id: string): $CancellablePromise<string[]> {
     return $Call.ByID(2121298005, id).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType8($result);
     });
 }
 
 export function ListSettings(): $CancellablePromise<settings$0.Store> {
     return $Call.ByID(3038957305).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType9($result);
     });
 }
 
@@ -119,7 +131,7 @@ export function SetSettings(settingsMap: { [_ in string]?: any }): $CancellableP
  */
 export function ValidateSetting(id: string, value: any): $CancellablePromise<settings$0.ValidationResult> {
     return $Call.ByID(1399113254, id, value).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType11($result);
     });
 }
 
@@ -142,12 +154,14 @@ const $$createType2 = $Create.Map($Create.Any, $Create.Any);
 const $$createType3 = $Create.Array($Create.Any);
 const $$createType4 = $Create.Array($Create.Any);
 const $$createType5 = settings$0.Setting.createFrom;
-const $$createType6 = $Create.Array($Create.Any);
-var $$createType7 = (function $$initCreateType7(...args: any[]): any {
-    if ($$createType7 === $$initCreateType7) {
-        $$createType7 = $$createType8;
+const $$createType6 = hostsettings$0.SettingState.createFrom;
+const $$createType7 = $Create.Map($Create.Any, $$createType6);
+const $$createType8 = $Create.Array($Create.Any);
+var $$createType9 = (function $$initCreateType9(...args: any[]): any {
+    if ($$createType9 === $$initCreateType9) {
+        $$createType9 = $$createType10;
     }
-    return $$createType7(...args);
+    return $$createType9(...args);
 });
-const $$createType8 = $Create.Map($Create.Any, $$createType0);
-const $$createType9 = settings$0.ValidationResult.createFrom;
+const $$createType10 = $Create.Map($Create.Any, $$createType0);
+const $$createType11 = settings$0.ValidationResult.createFrom;

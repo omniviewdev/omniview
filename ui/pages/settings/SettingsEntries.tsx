@@ -8,6 +8,7 @@ import SettingsEntry from './SettingsEntry';
 import type { Setting } from '@omniviewdev/runtime/models';
 import { useDevMode } from '@/hooks/useDevMode';
 import styles from './SettingsEntries.module.css';
+import type { HostSettingStates } from '@/hooks/settings/useHostSettingsState';
 
 type Props = SectionSelection & {
   settings: Record<string, Setting | undefined>;
@@ -15,6 +16,7 @@ type Props = SectionSelection & {
   setDraftValues: (draftValues: Record<string, any>) => void;
   renderSetting?: Readonly<Record<string, () => React.ReactNode>>;
   validation?: Record<string, { valid: boolean; message: string }>;
+  hostSettingStates?: HostSettingStates;
 };
 
 /**
@@ -27,6 +29,7 @@ const SettingsEntries: React.FC<Props> = ({
   setDraftValues,
   renderSetting,
   validation,
+  hostSettingStates,
 }) => {
   const devMode = useDevMode();
   const focusRequest = React.useContext(SettingsFocusContext);
@@ -87,6 +90,11 @@ const SettingsEntries: React.FC<Props> = ({
             <div className={styles.LabelColumn}>
               <Text weight='semibold' size='sm'>{setting.label}</Text>
               <Text size='xs' tone='muted' className={styles.Description}>{setting.description}</Text>
+              {hostSettingStates?.[fullID]?.requiresRestart && (
+                <Text size='xs' tone='muted'>
+                  {hostSettingStates[fullID]?.pendingRestart ? 'Saved · Restart pending' : 'Requires restart'}
+                </Text>
+              )}
               {draftValues[fullID] !== undefined && (
                 <Text size='xs' tone='warning'>Unsaved change</Text>
               )}

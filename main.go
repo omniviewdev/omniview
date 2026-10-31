@@ -41,8 +41,10 @@ import (
 	controlhost "github.com/omniviewdev/omniview/internal/devcontrol/host"
 	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/omniview/internal/hostruntime"
+	"github.com/omniviewdev/omniview/internal/hostsettings"
 	"github.com/omniviewdev/omniview/internal/instance"
 	"github.com/omniviewdev/omniview/internal/mcprelay"
+	"github.com/omniviewdev/omniview/internal/profiling"
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
 	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
 	"github.com/omniviewdev/omniview/internal/shellenv"
@@ -112,14 +114,6 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: invalid runtime profile: %v\n", err)
 		os.Exit(1)
-	}
-	pprofServer, err := startHostPprof(os.Getenv("OMNIVIEW_PPROF_PORT"))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
-		os.Exit(1)
-	}
-	if pprofServer != nil {
-		defer pprofServer.Close()
 	}
 	// Finder does not inherit a terminal's login PATH. Resolve it before any
 	// plugin or executable starts, while preserving host isolation authority.
@@ -251,15 +245,26 @@ func main() {
 		}
 	}
 
-	// Seed telemetry config from persisted bbolt settings so that telemetry
-	// starts with the user's saved preferences rather than defaults.
-	telemetryCfg := telemetry.DefaultConfig(version.IsDevelopment())
-	if settingsStore != nil {
-		if telVals, loadErr := settingsStore.LoadCategory("telemetry"); loadErr == nil &&
-			len(telVals) > 0 {
-			telemetryCfg = telemetryCfg.WithSettings(telVals)
-		}
+	coreDefinitions := coresettings.Definitions(version.IsDevelopment())
+	coreSettings, err := hostsettings.Initialize(hostsettings.Options{
+		Store:           settingsStore,
+		Categories:      coreDefinitions,
+		RestartRequired: coresettings.RestartRequiredIDs(),
+		Migrations: map[string]hostsettings.Migration{
+			coresettings.Appearance.ID: coresettings.MigrateAppearanceValues,
+			coresettings.Terminal.ID:   coresettings.MigrateTerminalValues,
+		},
+		Logger: nil,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: cannot initialize core settings: %v\n", err)
+		os.Exit(1)
 	}
+	for _, diagnostic := range coreSettings.Diagnostics() {
+		fmt.Fprintf(os.Stderr, "settings: %s (%s.%s)\n", diagnostic.Message, diagnostic.CategoryID, diagnostic.SettingID)
+	}
+	settingsProvider := coreSettings.Provider()
+	telemetryCfg := telemetry.DefaultConfig(version.IsDevelopment()).WithSettings(coreSettings.CategoryValues("telemetry"))
 
 	// Bootstrap telemetry (tracing, metrics, log shipping, profiling).
 	telemetrySvc := telemetry.New(
@@ -294,11 +299,21 @@ func main() {
 
 	diagnosticsClient := diagnostics.NewDiagnosticsClient(version.IsDevelopment(), logDir)
 
-	settingsProvider := pkgsettings.NewProvider(pkgsettings.ProviderOpts{
-		Logger:         zapLogger.Sugar(),
-		PluginID:       "",
-		PluginSettings: nil,
-	})
+	profilingConfig, profilingSource, err := profiling.ResolveConfig(
+		settingsProvider, coreSettings.RejectedSettingIDs(), os.Getenv("OMNIVIEW_PPROF_PORT"),
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: invalid profiling environment: %v\n", err)
+		os.Exit(1)
+	}
+	hostProfiling := profiling.New(profilingConfig, profilingSource)
+	if startErr := hostProfiling.Start(); startErr != nil {
+		log.Warnw(context.Background(), "host profiling unavailable", "error", startErr)
+	}
+	if status := hostProfiling.GetStatus(); status.Running {
+		log.Infow(context.Background(), "host pprof listening", "url", status.URL, "source", status.Source)
+	}
+	defer hostProfiling.Close()
 
 	// Create our plugin system managers
 	uiManager := ui.NewComponentManager(log)
@@ -454,7 +469,8 @@ func main() {
 	bootstrapSvc := &bootstrap.Service{
 		Log:                  log,
 		SettingsProvider:     settingsProvider,
-		SettingsStore:        settingsStore,
+		SettingsCategories:   coreDefinitions,
+		ReportApplyError:     coreSettings.ReportApplyError,
 		TelemetrySvc:         telemetrySvc,
 		PluginManager:        pluginManager,
 		PluginRegistryClient: pluginRegistryClient,
@@ -510,22 +526,24 @@ func main() {
 		application.NewService(ui.NewServiceWrapper(uiManager)),
 		application.NewService(utilsClient),
 		application.NewService(&devserver.ServiceWrapper{Mgr: devServerManager}),
-		// 2. Bootstrap — initializes settings, telemetry, loads plugins
+		// 2. Bootstrap — attaches live settings effects and loads plugins.
 		application.NewService(bootstrapSvc),
 		// 3. Frontend-facing services (no startup order dependency)
 		application.NewService(appService),
 		application.NewService(diagnosticsClient),
 		application.NewService(telemetry.NewTelemetryBinding(telemetrySvc)),
+		application.NewService(&profiling.ServiceWrapper{Service: hostProfiling}),
 		application.NewService(&coresettings.ServiceWrapper{
 			Provider: settingsProvider,
-			CategoryMeta: map[string]pkgsettings.Category{
-				coresettings.General.ID:    coresettings.General,
-				coresettings.Appearance.ID: coresettings.Appearance,
-				coresettings.Terminal.ID:   coresettings.Terminal,
-				coresettings.Editor.ID:     coresettings.Editor,
-				coresettings.Developer.ID:  coresettings.Developer,
-				coresettings.Telemetry.ID:  coresettings.Telemetry,
-			},
+			Writer:   coreSettings,
+			State:    coreSettings,
+			CategoryMeta: func() map[string]pkgsettings.Category {
+				meta := make(map[string]pkgsettings.Category, len(coreDefinitions))
+				for _, category := range coreDefinitions {
+					meta[category.ID] = category
+				}
+				return meta
+			}(),
 		}),
 		application.NewService(pluginManagerSvc),
 		application.NewService(&mcprelay.ServiceWrapper{Relay: mcpRelay}),
@@ -544,7 +562,7 @@ func main() {
 	runtimeReady, err := controlhost.Register(
 		app, profile,
 		appService.GetInstanceInfo, appService.updateInstanceInfo,
-		pluginManager, devServerManager, settingsProvider, settingsController,
+		pluginManager, devServerManager, settingsProvider, coreSettings, settingsController,
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: cannot register development control: %v\n", err)

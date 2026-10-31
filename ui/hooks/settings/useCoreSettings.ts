@@ -4,6 +4,8 @@ import { useSnackbar, createErrorHandler } from '@omniviewdev/runtime';
 // Underlying client
 import { SettingsProvider } from '@omniviewdev/runtime/api';
 import type { Category } from '@omniviewdev/runtime/models';
+import { useSettingsChanges } from './useHostSettingsState';
+import { COMMITTED_SETTINGS_MESSAGE, isCommittedSettingsError } from './settingsSaveError';
 
 /**
  * Interact with the global settings provider. Intended for use in the settings UI. If you need to read or write settings
@@ -12,33 +14,44 @@ import type { Category } from '@omniviewdev/runtime/models';
 export const useSettingsProvider = () => {
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
+  useSettingsChanges();
 
   const queryKey = ['settings'];
 
   const { mutateAsync: reload } = useMutation({
     mutationFn: async () => SettingsProvider.LoadSettings(),
-    onSuccess() {
+    async onSuccess() {
       showSnackbar('Settings reloaded', 'success');
-      void queryClient.invalidateQueries({ queryKey });
-      void queryClient.refetchQueries({ queryKey });
+      await queryClient.cancelQueries({ queryKey });
+      await queryClient.invalidateQueries({ queryKey });
     },
     onError: createErrorHandler(showSnackbar, 'Failed to reload settings'),
   });
 
   const { mutateAsync: setSettings } = useMutation({
     mutationFn: async (newSettings: Record<string, any>) => SettingsProvider.SetSettings(newSettings),
-    onSuccess(_, _vars) {
+    async onSuccess(_, _vars) {
       showSnackbar('Settings saved', 'success');
-      // TODO - invalidate each one individually
-      void queryClient.invalidateQueries({ queryKey });
-      void queryClient.refetchQueries({ queryKey });
+      await queryClient.cancelQueries({ queryKey });
+      await queryClient.invalidateQueries({ queryKey });
     },
-    onError: createErrorHandler(showSnackbar, 'Failed to save settings'),
+    async onError(error) {
+      if (isCommittedSettingsError(error)) {
+        showSnackbar(COMMITTED_SETTINGS_MESSAGE, 'error');
+        await queryClient.cancelQueries({ queryKey });
+        await queryClient.invalidateQueries({ queryKey });
+      } else {
+        createErrorHandler(showSnackbar, 'Failed to save settings')(error);
+      }
+    },
   });
 
   const settings = useQuery({
     queryKey,
-    queryFn: async () => SettingsProvider.ListSettings() as Promise<Record<string, Category>>,
+    queryFn: async ({ signal }) => {
+      signal.throwIfAborted();
+      return SettingsProvider.ListSettings() as Promise<Record<string, Category>>;
+    },
   });
 
   return {
