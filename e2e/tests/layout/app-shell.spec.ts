@@ -15,10 +15,6 @@ test.describe('App Shell', () => {
     await expect(shell(appPage).header).toBeVisible();
   });
 
-  test('sidebar is visible', async ({ appPage }) => {
-    await expect(shell(appPage).rail).toBeVisible();
-  });
-
   test('main content area is visible', async ({ appPage }) => {
     await expect(shell(appPage).main).toBeVisible();
   });
@@ -27,21 +23,17 @@ test.describe('App Shell', () => {
     await expect(shell(appPage).footer).toBeVisible();
   });
 
-  test('regions tile the window: header on top, rail left, footer at the bottom', async ({ appPage }) => {
-    const { header, rail, main, footer } = shell(appPage);
+  test('regions tile the window: header on top, content below it, footer at the bottom', async ({ appPage }) => {
+    const { header, main, footer } = shell(appPage);
     const viewport = appPage.viewportSize()!;
-    const [h, r, m, f] = await Promise.all([header, rail, main, footer].map(async (l) => (await l.boundingBox())!));
+    const [h, m, f] = await Promise.all([header, main, footer].map(async (l) => (await l.boundingBox())!));
 
     expect(h.y).toBe(0);
     expectWithinPixel(h.width, viewport.width);
     expectWithinPixel(f.y + f.height, viewport.height);
     expectWithinPixel(f.width, viewport.width);
 
-    expect(r.x).toBe(0);
-    expectWithinPixel(r.y, h.y + h.height);
-    expectWithinPixel(r.y + r.height, f.y);
-
-    expectWithinPixel(m.x, r.x + r.width);
+    expect(m.x).toBe(0);
     expectWithinPixel(m.y, h.y + h.height);
     expectWithinPixel(m.x + m.width, viewport.width);
     expectWithinPixel(m.y + m.height, f.y);

@@ -1,0 +1,115 @@
+.Trigger {
+  --wails-draggable: no-drag;
+  flex: none;
+}
+
+.Tooltip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ov-space-2);
+}
+
+/*
+ * The menu unrolls from under the "+" button: a clip-path reveal with a short
+ * fade. The negative insets keep the shadow outside the clip. The motion tokens
+ * drop to 0ms under prefers-reduced-motion. The doubled class outranks the
+ * base-ui popup's own starting style.
+ */
+.Popup.Popup {
+  min-inline-size: 260px;
+  clip-path: inset(-32px -32px -32px -32px round var(--ov-radius-lg));
+  transform-origin: var(--transform-origin);
+  transition:
+    opacity var(--ov-duration-interactive) var(--ov-ease-standard),
+    transform var(--ov-duration-panel) var(--ov-ease-standard),
+    clip-path var(--ov-duration-panel) var(--ov-ease-standard);
+}
+
+.Popup.Popup[data-starting-style] {
+  opacity: 0;
+  transform: translateY(-4px);
+  clip-path: inset(-32px -32px calc(100% - 10px) -32px round var(--ov-radius-lg));
+}
+
+.Popup.Popup[data-ending-style] {
+  opacity: 0;
+  transform: translateY(-2px);
+  transition-duration: var(--ov-duration-interactive);
+}
+
+.Heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ov-space-4);
+  padding: var(--ov-space-1) var(--ov-space-2) var(--ov-space-2);
+  color: var(--ov-color-fg-subtle);
+  font-size: var(--ov-font-size-caption);
+}
+
+.Item {
+  animation: item-in var(--ov-duration-panel) var(--ov-ease-standard) both;
+  animation-delay: calc(var(--NewTabLauncher-index, 0) * var(--ov-duration-panel) / 6);
+}
+
+@keyframes item-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+
+.ItemIcon {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 24px;
+  block-size: 24px;
+  border-radius: var(--ov-radius-md);
+  background: var(--ov-color-bg-surface-raised);
+  color: var(--ov-color-fg-default);
+}
+
+.Image {
+  object-fit: contain;
+}
+
+.ItemHint {
+  display: inline-flex;
+  align-items: center;
+  margin-inline-start: var(--ov-space-4);
+  color: var(--ov-color-fg-muted);
+  font-size: var(--ov-font-size-caption);
+}
+
+.Action {
+  display: none;
+}
+
+.Item[data-highlighted] .Action {
+  display: inline;
+}
+
+.Item[data-highlighted] .Letter {
+  display: none;
+}
+
+.Footer {
+  display: flex;
+  gap: var(--ov-space-3);
+  margin: var(--ov-space-1) calc(-1 * var(--ov-space-2)) 0;
+  padding: var(--ov-space-2) var(--ov-space-3) var(--ov-space-1);
+  border-top: 1px solid var(--ov-color-border-muted);
+  color: var(--ov-color-fg-subtle);
+  font-size: var(--ov-font-size-caption);
+  white-space: nowrap;
+}
+
+.Footer span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ov-space-1);
+}
+
+.Footer span[data-active] {
+  color: var(--ov-color-fg-default);
+}

@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react';
 import type { OpenInNewTabOptions } from '@omniviewdev/runtime';
 
 /**
- * Navigation for shell components (header, plugin rail, command search) that
+ * Navigation for shell components (header, new-tab launcher, command search) that
  * live outside every page router: they act on the active page tab.
  */
 export type ActivePageNavigation = {

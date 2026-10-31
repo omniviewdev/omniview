@@ -12,6 +12,8 @@ import {
   getNavigationHref,
   isSearchQueryAllowed,
 } from './admission';
+import type { OpenDisposition } from '@/features/workspace/newTab/openDisposition';
+import { isNewTabRegistration } from './catalogue';
 import { GLOBAL_SEARCH_EXTENSION_POINT_ID } from './extensionPoint';
 import { containsScope, scopeConnection } from './scope';
 import type {
@@ -33,6 +35,8 @@ type ControllerDependencies = {
   listResourcePlugins: () => Promise<readonly string[]>;
   loadConnections: (pluginId: string) => Promise<unknown>;
   navigate: (href: string) => void;
+  /** Opens a "New <plugin> tab" entry's destination outside the active tab. */
+  openNew: (href: string, disposition: OpenDisposition) => void;
   openResource?: (target: Extract<SearchScopeV1, { kind: 'resource' }>, signal: AbortSignal, validateData?: (data: unknown) => boolean) => Promise<void>;
 };
 
@@ -47,7 +51,8 @@ export type GlobalSearchController = {
   notifyDataChanged: () => void;
   retrySource: (sourceID: string) => void;
   setProviderContextError: (sourceID: string, message?: string) => boolean;
-  activate: (key: string) => Promise<void>;
+  /** `disposition` applies to "New <plugin> tab" rows only; they default to a new tab. */
+  activate: (key: string, disposition?: OpenDisposition) => Promise<void>;
   getSnapshot: () => SearchSnapshot;
   subscribe: (listener: () => void) => () => void;
   dispose: () => void;
@@ -377,7 +382,10 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       const prior = priorRows.get(itemKey);
       const key = prior && sameIntent(prior.value, entry.value) ? prior.key : String(++nextRowId);
       nextRows.set(itemKey, { key, value: entry.value });
-      rows.push({ key, label: entry.label, value: entry.value, disabledReason: disabledReason(entry.value) });
+      rows.push({
+        key, label: entry.label, value: entry.value, disabledReason: disabledReason(entry.value),
+        ...(isNewTabRegistration(entry.registration) ? { opensNewTab: true as const } : {}),
+      });
       actions.set(key, entry);
     }
 
@@ -419,7 +427,9 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
     }
 
     if (!snapshot.scopes.length) {
-      rows.sort((left, right) => (right.value.scope?.kind === 'connection' ? 1 : 0) - (left.value.scope?.kind === 'connection' ? 1 : 0));
+      // Unscoped: connections lead, except that an empty query starts with the "New <plugin> tab" rows.
+      const rank = (row: SearchRow) => row.opensNewTab && !snapshot.query.trim() ? 2 : row.value.scope?.kind === 'connection' ? 1 : 0;
+      rows.sort((left, right) => rank(right) - rank(left));
     }
 
     const messages: string[] = [];
@@ -1067,7 +1077,7 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
         invalidate(false, true, true);
       }
     },
-    async activate(key) {
+    async activate(key, disposition) {
       if (disposed || !snapshot.isOpen) {
         return;
       }
@@ -1236,7 +1246,12 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
           return;
         }
 
-        deps.navigate(href);
+        if (isNewTabRegistration(entry.registration)) {
+          deps.openNew(href, disposition ?? 'tab');
+        } else {
+          deps.navigate(href);
+        }
+
         controller.close();
         return;
       }

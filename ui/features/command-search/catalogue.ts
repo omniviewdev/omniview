@@ -10,11 +10,25 @@ export type CoreSearchPlugin = {
   ready: boolean;
 };
 
+/** A plugin with pages, which the palette offers to open in a new tab. */
+export type NewTabSearchPlugin = {
+  id: string;
+  name: string;
+};
+
 type CatalogueInput = {
   settings: Record<string, Category | undefined>;
   plugins: readonly CoreSearchPlugin[];
+  newTabPlugins?: readonly NewTabSearchPlugin[];
   devMode?: boolean;
 };
+
+const NEW_TAB_REGISTRATION_PREFIX = 'core/global-search/new-tab/';
+
+/** "New <plugin> tab" entries open the plugin's home page in a new tab instead of the active one. */
+export function isNewTabRegistration(registration: ExtensionContributionRegistration): boolean {
+  return registration.plugin === 'core' && registration.id.startsWith(NEW_TAB_REGISTRATION_PREFIX);
+}
 
 export type CoreSearchCatalogue = {
   truncated: boolean;
@@ -32,12 +46,19 @@ export function registerCoreSearchCatalogue(
   }
 
   const owned = new Set<ExtensionContributionRegistration>();
-  let consumed = 0;
+  // Bounds the descriptors inspected (skipped ones included), not what registers.
+  let scanned = 0;
   let truncated = false;
   let unavailable = false;
 
-  function register(label: string, value: SearchEntryV1) {
-    const registration = { id: `core/global-search/catalogue/${owned.size}`, plugin: 'core', label, value };
+  function register(label: string, value: SearchEntryV1, id = `core/global-search/catalogue/${owned.size}`) {
+    // The controller reads only the first 1000 registrations.
+    if (owned.size >= 1000) {
+      truncated = true;
+      return;
+    }
+
+    const registration = { id, plugin: 'core', label, value };
     if (!admitSearchContribution(registration)) {
       unavailable = true;
       return;
@@ -56,7 +77,7 @@ export function registerCoreSearchCatalogue(
       continue;
     }
 
-    if (consumed++ >= 1000) {
+    if (scanned++ >= 1000) {
       truncated = true;
       break;
     }
@@ -82,7 +103,7 @@ export function registerCoreSearchCatalogue(
         continue;
       }
 
-      if (consumed++ >= 1000) {
+      if (scanned++ >= 1000) {
         truncated = true;
         break catalogue;
       }
@@ -122,8 +143,32 @@ export function registerCoreSearchCatalogue(
     }
   }
 
+  // After settings, so they keep their share of the registration cap. The
+  // controller still lists these rows first for an empty query. IDs use an index:
+  // a prefixed plugin ID could exceed the 256-character registration ID limit.
+  let newTabIndex = 0;
+  for (const plugin of input.newTabPlugins ?? []) {
+    if (scanned++ >= 1000) {
+      truncated = true;
+      break;
+    }
+
+    if (plugin.id.length === 0 || plugin.id.length > 256 || plugin.name.length > 256 - 'New  tab'.length) {
+      unavailable = true;
+      continue;
+    }
+
+    register(`New ${plugin.name} tab`, {
+      schemaVersion: 1,
+      kind: 'navigation',
+      // Keywords longer than 128 characters would reject the whole entry.
+      keywords: plugin.name.length <= 128 ? ['new tab', 'open', plugin.name] : ['new tab', 'open'],
+      target: { kind: 'plugin', pluginId: plugin.id, path: '/' },
+    }, `${NEW_TAB_REGISTRATION_PREFIX}${newTabIndex++}`);
+  }
+
   for (const plugin of input.plugins) {
-    if (consumed++ >= 1000) {
+    if (scanned++ >= 1000) {
       truncated = true;
       break;
     }

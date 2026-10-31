@@ -5,7 +5,6 @@
 :global(:root) {
   --CoreLayoutHeader-height: 38px;
   --CoreLayoutFooter-height: 24px;
-  --CoreLayoutSidebar-width: 48px;
 }
 
 .Shell {

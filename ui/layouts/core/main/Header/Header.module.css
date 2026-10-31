@@ -52,9 +52,10 @@
 
 .SearchArea {
   composes: Area;
-  flex: 0 1 560px;
+  flex: 0 1 600px;
   min-inline-size: 0;
   justify-content: center;
+  gap: var(--ov-space-1-5);
   padding-inline: var(--ov-space-1);
 }
 
