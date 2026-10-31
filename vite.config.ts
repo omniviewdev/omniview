@@ -37,7 +37,10 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./ui/test-setup.ts'],
     css: false,
-    include: ['ui/**/*.{spec,test}.{ts,tsx}'],
+    include: [
+      'ui/**/*.{spec,test}.{ts,tsx}',
+      'packages/omniviewdev-runtime/src/hooks/connection/useConnectionMetadata.test.tsx',
+    ],
   },
   build: {
     outDir: process.env.OMNIVIEW_BUILD_OUTPUT_DIRECTORY || 'dist',

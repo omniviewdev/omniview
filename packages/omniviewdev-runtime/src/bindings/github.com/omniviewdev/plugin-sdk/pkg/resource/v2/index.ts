@@ -7,6 +7,8 @@ export {
     ActionScope,
     CatalogRequest,
     ColumnDefinition,
+    ConnectionMetadataError,
+    ConnectionMetadataSnapshot,
     Count,
     EdgeDirection,
     EditorSchema,
@@ -42,6 +44,7 @@ export {
 
 export type {
     Catalog,
+    ConnectionMetadataEntry,
     Coverage,
     QueryScope,
     ResourceAddress,
