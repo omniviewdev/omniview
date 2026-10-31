@@ -129,4 +129,16 @@ describe('core global-search catalogue ownership and public metadata', () => {
     ).toBe(false);
     registration.dispose();
   });
+
+  it('keeps "New <plugin> tab" entries for plugin IDs and names near the limits', () => {
+    const instance = registry();
+    const id = 'p'.repeat(256);
+    const name = 'N'.repeat(200);
+    const registration = registerCoreSearchCatalogue(instance, { settings: {}, plugins: [], newTabPlugins: [{ id, name }] });
+
+    const entry = instance.getExtensionPoint('omniview/global-search')!.listAll().find((candidate) => candidate.label === `New ${name} tab`);
+    expect(entry?.value).toMatchObject({ kind: 'navigation', target: { kind: 'plugin', pluginId: id, path: '/' } });
+    expect(registration.unavailable).toBe(false);
+    registration.dispose();
+  });
 });

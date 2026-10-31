@@ -28,14 +28,17 @@ export function selectNewTabPlugins(inventory: readonly PluginInfo[] | undefined
 }
 
 /**
- * Plugins for the new-tab launcher. The launcher is always mounted, so its
- * plugin manager also keeps the inventory fresh and reports failed dev
- * reloads, as the plugin rail it replaced did.
+ * Plugins for the new-tab launcher, or `undefined` until the inventory has loaded.
+ * The launcher is always mounted, so its plugin manager also keeps the inventory
+ * fresh and reports failed dev reloads, as the plugin rail it replaced did.
  */
-export function useNewTabPlugins(): NewTabPlugin[] {
+export function useNewTabPlugins(): NewTabPlugin[] | undefined {
   const { plugins } = usePluginManager();
   const { registrations } = usePluginService();
-  return useMemo(() => selectNewTabPlugins(plugins.data, registrations), [plugins.data, registrations]);
+  return useMemo(
+    () => plugins.data === undefined ? undefined : selectNewTabPlugins(plugins.data, registrations),
+    [plugins.data, registrations],
+  );
 }
 
 export function pluginHomePath(pluginId: string): string {

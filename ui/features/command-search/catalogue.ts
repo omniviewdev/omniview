@@ -61,26 +61,6 @@ export function registerCoreSearchCatalogue(
     owned.add(registration);
   }
 
-  // Registered first, so an empty query lists them at the top.
-  for (const plugin of input.newTabPlugins ?? []) {
-    if (consumed++ >= 1000) {
-      truncated = true;
-      break;
-    }
-
-    if (plugin.id.length === 0 || plugin.id.length > 256 || plugin.name.length > 256 - 'New  tab'.length) {
-      unavailable = true;
-      continue;
-    }
-
-    register(`New ${plugin.name} tab`, {
-      schemaVersion: 1,
-      kind: 'navigation',
-      keywords: ['new tab', 'open', plugin.name],
-      target: { kind: 'plugin', pluginId: plugin.id, path: '/' },
-    }, `${NEW_TAB_REGISTRATION_PREFIX}${plugin.id}`);
-  }
-
   register('Home', { schemaVersion: 1, kind: 'navigation', target: { kind: 'core', path: '/' } });
   register('Plugins', { schemaVersion: 1, kind: 'navigation', target: { kind: 'core', path: '/plugins' } });
   register('Extensions', { schemaVersion: 1, kind: 'setting', target: { section: 'extensions' } });
@@ -154,6 +134,30 @@ export function registerCoreSearchCatalogue(
         target: { section: 'core', categoryId: category.id, settingId: fullId },
       });
     }
+  }
+
+  // After settings, so they keep their share of the 1000-registration budget. The
+  // controller still lists these rows first for an empty query. IDs use an index:
+  // a prefixed plugin ID could exceed the 256-character registration ID limit.
+  let newTabIndex = 0;
+  for (const plugin of input.newTabPlugins ?? []) {
+    if (consumed++ >= 1000) {
+      truncated = true;
+      break;
+    }
+
+    if (plugin.id.length === 0 || plugin.id.length > 256 || plugin.name.length > 256 - 'New  tab'.length) {
+      unavailable = true;
+      continue;
+    }
+
+    register(`New ${plugin.name} tab`, {
+      schemaVersion: 1,
+      kind: 'navigation',
+      // Keywords longer than 128 characters would reject the whole entry.
+      keywords: plugin.name.length <= 128 ? ['new tab', 'open', plugin.name] : ['new tab', 'open'],
+      target: { kind: 'plugin', pluginId: plugin.id, path: '/' },
+    }, `${NEW_TAB_REGISTRATION_PREFIX}${newTabIndex++}`);
   }
 
   for (const plugin of input.plugins) {

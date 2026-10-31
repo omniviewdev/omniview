@@ -47,9 +47,11 @@ export function NewTabLauncher({ className }: { className?: string }) {
   const enterModifiers = useRef<HeldModifiers | null>(null);
   const items = useRef(new Map<string, HTMLElement>());
 
-  const only = plugins.length === 1 ? plugins[0] : undefined;
+  const only = plugins?.length === 1 ? plugins[0] : undefined;
   const label = only ? `New ${only.name} tab` : 'New tab';
-  const activePluginId = (/^\/_plugin\/([A-Za-z0-9-]+)/.exec(navigation.pathname))?.[1];
+  // The whole first segment; the palette opens plugin pages with an encoded ID.
+  const activeSegment = (/^\/_plugin\/([^/?#]+)/.exec(navigation.pathname))?.[1];
+  const activePluginId = plugins?.find(({ id }) => id === activeSegment || encodeURIComponent(id) === activeSegment)?.id;
 
   const openPlugin = (plugin: NewTabPlugin, disposition: OpenDisposition) => {
     setOpen(false);
@@ -57,6 +59,11 @@ export function NewTabLauncher({ className }: { className?: string }) {
   };
 
   const launch = (disposition: OpenDisposition) => {
+    // Until the inventory loads, "no plugins" would wrongly mean Home.
+    if (plugins === undefined) {
+      return;
+    }
+
     if (plugins.length === 0) {
       openPath(navigation, HOME_PATH, disposition);
     } else if (only) {
@@ -131,7 +138,7 @@ export function NewTabLauncher({ className }: { className?: string }) {
   const tooltip = <span className={styles.Tooltip}>{label}<Hotkey size='sm' keys={[MOD, 'T']} /></span>;
   const buttonClass = [styles.Trigger, className].filter(Boolean).join(' ');
 
-  if (plugins.length < 2) {
+  if (plugins === undefined || plugins.length < 2) {
     return (
       <HintTooltip content={tooltip}>
         <IconButton
@@ -139,6 +146,7 @@ export function NewTabLauncher({ className }: { className?: string }) {
           variant='soft'
           color='neutral'
           className={buttonClass}
+          disabled={plugins === undefined}
           aria-label={label}
           aria-keyshortcuts={`${MOD}+T`}
           onClick={(event) => {
@@ -146,7 +154,7 @@ export function NewTabLauncher({ className }: { className?: string }) {
           }}
           onAuxClick={(event) => {
             if (event.button === MIDDLE_BUTTON) {
-              launch('background');
+              launch(dispositionFor(event, true));
             }
           }}
         >
@@ -160,7 +168,15 @@ export function NewTabLauncher({ className }: { className?: string }) {
   return (
     <Menu.Root
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={(next, details) => {
+        // Shift-click on "+" opens the menu with Shift already held.
+        const trigger = details.event;
+        if (next && (trigger instanceof globalThis.MouseEvent || trigger instanceof globalThis.KeyboardEvent)) {
+          setHeld({ shiftKey: trigger.shiftKey, metaKey: trigger.metaKey, ctrlKey: trigger.ctrlKey });
+        }
+
+        setOpen(next);
+      }}
       onOpenChangeComplete={(isOpen) => {
         // Start on the plugin of the active tab, so Cmd+T, Enter opens another tab of the same kind.
         const current = activePluginId ? items.current.get(activePluginId) : undefined;
@@ -218,7 +234,7 @@ export function NewTabLauncher({ className }: { className?: string }) {
                 onAuxClick={(event: MouseEvent) => {
                   if (event.button === MIDDLE_BUTTON) {
                     event.preventDefault();
-                    openPlugin(plugin, 'background');
+                    openPlugin(plugin, dispositionFor(event, true));
                   }
                 }}
               >

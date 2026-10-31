@@ -5,7 +5,7 @@ import { ActivePageNavigationContext, type ActivePageNavigation } from '../activ
 import { NewTabLauncher } from './NewTabLauncher';
 
 const mocks = vi.hoisted(() => ({
-  plugins: [] as unknown[],
+  plugins: [] as unknown[] | undefined,
   registrations: new Map<string, { routes: unknown[] }>(),
 }));
 
@@ -110,14 +110,43 @@ describe('NewTabLauncher', () => {
     expect(navigation.openInNewTab).toHaveBeenCalledWith('/_plugin/proxmox', { background: false });
   });
 
-  it('opens the clicked plugin in a background tab on middle click', async () => {
+  it('opens the clicked plugin in a background tab on middle click, and in front with Shift', async () => {
     installed('Kubernetes', 'Proxmox');
     const user = userEvent.setup();
     const navigation = renderLauncher();
 
     await user.click(screen.getByRole('button', { name: 'New tab' }));
     await user.pointer({ keys: '[MouseMiddle]', target: await screen.findByRole('menuitem', { name: /Kubernetes/ }) });
+    expect(navigation.openInNewTab).toHaveBeenLastCalledWith('/_plugin/kubernetes', { background: true });
 
-    expect(navigation.openInNewTab).toHaveBeenCalledWith('/_plugin/kubernetes', { background: true });
+    await user.click(screen.getByRole('button', { name: 'New tab' }));
+    await user.keyboard('{Shift>}');
+    await user.pointer({ keys: '[MouseMiddle]', target: await screen.findByRole('menuitem', { name: /Proxmox/ }) });
+    await user.keyboard('{/Shift}');
+    expect(navigation.openInNewTab).toHaveBeenLastCalledWith('/_plugin/proxmox', { background: false });
+  });
+
+  it('names the new-window action when Shift is held as the menu opens', async () => {
+    installed('Kubernetes', 'Proxmox');
+    const user = userEvent.setup();
+    renderLauncher('/_plugin/kubernetes');
+
+    await user.keyboard('{Shift>}');
+    await user.click(screen.getByRole('button', { name: 'New tab' }));
+
+    expect(await screen.findByRole('menuitem', { name: /Kubernetes/ })).toHaveTextContent('New window');
+    await user.keyboard('{/Shift}');
+  });
+
+  it('does nothing until the plugin inventory has loaded', async () => {
+    mocks.plugins = undefined;
+    const user = userEvent.setup();
+    const navigation = renderLauncher();
+
+    await user.keyboard('{Control>}t{/Control}');
+
+    expect(screen.getByRole('button', { name: 'New tab' })).toBeDisabled();
+    expect(navigation.openInNewTab).not.toHaveBeenCalled();
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 });
