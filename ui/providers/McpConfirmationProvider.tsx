@@ -42,7 +42,10 @@ export const McpConfirmationProvider: React.FC<{ children: React.ReactNode }> = 
     const requested = new Map<string, PendingConfirmation>();
     const offRequested = Events.On('mcp/confirmation/requested', (event) => {
       const item = event.data;
-      if (resolved.current.has(item.id)) return;
+      if (resolved.current.has(item.id)) {
+        return;
+      }
+
       requested.set(item.id, item);
       setPending((current) => (current.some((p) => p.id === item.id) ? current : [...current, item]));
     });
@@ -51,16 +54,21 @@ export const McpConfirmationProvider: React.FC<{ children: React.ReactNode }> = 
       requested.delete(event.data.id);
       setPending((current) => current.filter((p) => p.id !== event.data.id));
     });
-    setLoadError(false);
     void McpRelayClient.ListPendingConfirmations().then(
       (items) => {
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
+
         const merged = new Map(items.map((item) => [item.id, item]));
         requested.forEach((item, id) => merged.set(id, item));
         setPending([...merged.values()].filter((item) => !resolved.current.has(item.id)));
+        setLoadError(false);
       },
       () => {
-        if (!cancelled) setLoadError(true); 
+        if (!cancelled) {
+          setLoadError(true);
+        }
       },
     );
     return () => {
@@ -71,6 +79,11 @@ export const McpConfirmationProvider: React.FC<{ children: React.ReactNode }> = 
   }, [reload]);
 
   const current = pending[0];
+
+  const reloadPending = () => {
+    setLoadError(false);
+    setReload((value) => value + 1);
+  };
 
   const resolve = async (approved: boolean) => {
     if (!current) {
@@ -99,7 +112,7 @@ export const McpConfirmationProvider: React.FC<{ children: React.ReactNode }> = 
       {loadError && (
         <div role='alert'>
           Pending tool requests could not be loaded.
-          <Button onClick={() => setReload((value) => value + 1)}>Retry pending requests</Button>
+          <Button onClick={reloadPending}>Retry pending requests</Button>
         </div>
       )}
       {current && (
@@ -115,7 +128,7 @@ export const McpConfirmationProvider: React.FC<{ children: React.ReactNode }> = 
             {decisionError === current.id && (
               <div role='alert'>
                 Decision could not be submitted. Retry Allow or Deny.
-                <Button disabled={busy} onClick={() => setReload((value) => value + 1)}>Reload pending requests</Button>
+                <Button disabled={busy} onClick={reloadPending}>Reload pending requests</Button>
               </div>
             )}
             {current.connectionID && (

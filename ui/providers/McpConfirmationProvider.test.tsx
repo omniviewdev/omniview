@@ -101,15 +101,72 @@ describe('McpConfirmationProvider', () => {
   });
 
   it('never resurrects resolved consent from a delayed snapshot or requested event', async () => {
-    const { promise, resolve: finish } = Promise.withResolvers<typeof request[]>();
+    const { promise, resolve: finish } = Promise.withResolvers<Array<typeof request>>();
     native.listPending.mockReturnValue(promise);
     render(<McpConfirmationProvider><div>app</div></McpConfirmationProvider>);
     await act(async () => {
       native.emit('mcp/confirmation/resolved', { id: request.id });
       finish([request]);
     });
-    await act(async () => native.emit('mcp/confirmation/requested', request));
+    await act(async () => {
+      native.emit('mcp/confirmation/requested', request);
+    });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('merges requested events with the snapshot and authorizes only each selected request', async () => {
+    const snapshot = Promise.withResolvers<Array<typeof request>>();
+    const next = { ...request, id: 'req-2', argumentsJSON: '{"name":"next"}' };
+    native.listPending.mockReturnValue(snapshot.promise);
+    render(<McpConfirmationProvider><div>app</div></McpConfirmationProvider>);
+    await act(async () => {
+      native.emit('mcp/confirmation/requested', request);
+      native.emit('mcp/confirmation/requested', next);
+      snapshot.resolve([request]);
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Allow' }));
+    });
+    expect(native.resolve).toHaveBeenCalledTimes(1);
+    expect(native.resolve).toHaveBeenNthCalledWith(1, request.id, true);
+    expect(screen.getByTestId('mcp-confirmation-arguments').textContent).toBe(next.argumentsJSON);
+    expect(screen.getByRole('button', { name: 'Deny' })).toBeEnabled();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Deny' }));
+    });
+    expect(native.resolve).toHaveBeenCalledTimes(2);
+    expect(native.resolve).toHaveBeenNthCalledWith(2, next.id, false);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it.each(['resolve', 'reject'] as const)('ignores a cancelled snapshot that later %ss after reload', async (settle) => {
+    const stale = Promise.withResolvers<Array<typeof request>>();
+    native.listPending.mockReturnValueOnce(stale.promise).mockResolvedValue([request]);
+    native.resolve.mockRejectedValueOnce(new Error('offline'));
+    render(<McpConfirmationProvider><div>panel</div></McpConfirmationProvider>);
+    await act(async () => {
+      native.emit('mcp/confirmation/requested', request);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Allow' }));
+    const reload = await screen.findByRole('button', { name: 'Reload pending requests' });
+    await act(async () => {
+      fireEvent.click(reload);
+    });
+    expect(native.listPending).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      if (settle === 'resolve') {
+        stale.resolve([]);
+      } else {
+        stale.reject(new Error('stale failure'));
+      }
+    });
+    expect(screen.getByRole('button', { name: 'Allow' })).toBeEnabled();
+    expect(screen.getByTestId('mcp-confirmation-arguments').textContent).toBe(request.argumentsJSON);
+    expect(screen.queryByRole('button', { name: 'Retry pending requests' })).not.toBeInTheDocument();
+    expect(native.resolve).toHaveBeenCalledTimes(1);
   });
 
   it('keeps failed decisions actionable and allows a successful retry', async () => {
@@ -124,20 +181,50 @@ describe('McpConfirmationProvider', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('recovers pending-list failure through explicit reload', async () => {
-    native.listPending.mockRejectedValueOnce(new Error('offline')).mockResolvedValue([request]);
+  it('resets list errors on retry, retains pending requests through failure, and recovers', async () => {
+    const retry = Promise.withResolvers<Array<typeof request>>();
+    native.listPending.mockRejectedValueOnce(new Error('offline'))
+      .mockReturnValueOnce(retry.promise)
+      .mockResolvedValue([request]);
     render(<McpConfirmationProvider><div>panel</div></McpConfirmationProvider>);
-    fireEvent.click(await screen.findByRole('button', { name: 'Retry pending requests' }));
-    expect(await screen.findByRole('button', { name: 'Allow' })).toBeEnabled();
-    expect(screen.queryByText('Pending tool requests could not be loaded.')).not.toBeInTheDocument();
+    const reload = await screen.findByRole('button', { name: 'Retry pending requests' });
+    await act(async () => {
+      native.emit('mcp/confirmation/requested', request);
+      fireEvent.click(reload);
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Allow' })).toBeEnabled();
+    expect(native.listPending).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      retry.reject(new Error('still offline'));
+    });
+    const retryAgain = await screen.findByRole('button', { name: 'Retry pending requests' });
+    expect(screen.getByRole('button', { name: 'Allow' })).toBeEnabled();
+    expect(native.resolve).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(retryAgain);
+    });
+    expect(native.listPending).toHaveBeenCalledTimes(3);
+    expect(screen.getByRole('button', { name: 'Allow' })).toBeEnabled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it.each(['snapshot', 'event'])('preserves exact argument text through serialized %s payload', async (source) => {
     const argumentsJSON = '{"revision":9007199254740993,"value":-0}';
     const payload = JSON.parse(JSON.stringify({ ...request, argumentsJSON }));
-    if (source === 'snapshot') native.listPending.mockResolvedValue([payload]);
+    if (source === 'snapshot') {
+      native.listPending.mockResolvedValue([payload]);
+    }
+
     render(<McpConfirmationProvider><div>app</div></McpConfirmationProvider>);
-    if (source === 'event') await act(async () => native.emit('mcp/confirmation/requested', payload));
+    if (source === 'event') {
+      await act(async () => {
+        native.emit('mcp/confirmation/requested', payload);
+      });
+    }
+
     await screen.findByRole('dialog');
     expect(screen.getByTestId('mcp-confirmation-arguments').textContent).toBe(argumentsJSON);
   });

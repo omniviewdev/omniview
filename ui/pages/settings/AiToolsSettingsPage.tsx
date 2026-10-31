@@ -166,7 +166,9 @@ const AiToolsSettingsPage: React.FC = () => {
         ] as const).map(([label, query]) => query.isError && (
           <div role='alert' key={label}>
             {label} could not be loaded.
-            <Button size='sm' onClick={() => void query.refetch()}>Retry {label.toLowerCase()}</Button>
+            <Button size='sm' onClick={async () => {
+              await query.refetch();
+            }}>Retry {label.toLowerCase()}</Button>
           </div>
         ))}
         <fieldset disabled={!config || relay.config.isFetching} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
@@ -482,13 +484,15 @@ const PluginToolGroup: React.FC<PluginToolGroupProps> = ({
           key={`${tool.pluginID}\u0000${tool.connectionID}\u0000${tool.mcpName}`}
           tool={tool}
           pluginID={pluginID}
-          onOverride={(mcpName, override) => onOverride(
-            tool.scope === 'connection' && tool.connectionID
-              ? { pluginID: tool.pluginID, connectionID: tool.connectionID }
-              : scope,
-            mcpName,
-            override,
-          )}
+          onOverride={(mcpName, override) => {
+            onOverride(
+              tool.scope === 'connection' && tool.connectionID
+                ? { pluginID: tool.pluginID, connectionID: tool.connectionID }
+                : scope,
+              mcpName,
+              override,
+            );
+          }}
         />
       ))}
     </div>

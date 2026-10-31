@@ -290,7 +290,10 @@ describe('AiToolsSettingsPage', () => {
     renderPage();
     const retry = await screen.findByRole('button', { name: `Retry ${label.toLowerCase()}` });
     expect(screen.getByText(`${label} could not be loaded.`)).toBeInTheDocument();
-    if (method === 'getStatus') expect(screen.queryByText('Stopped')).not.toBeInTheDocument();
+    if (method === 'getStatus') {
+      expect(screen.queryByText('Stopped')).not.toBeInTheDocument();
+    }
+
     fireEvent.click(retry);
     if (method === 'getStatus') {
       expect(await screen.findByText('Running at recovered-endpoint')).toBeInTheDocument();
