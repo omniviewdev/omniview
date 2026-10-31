@@ -29,35 +29,51 @@ func TestRegistryBaseURLChange(t *testing.T) {
 	defer first.Close()
 	defer second.Close()
 	client := NewClient(first.URL)
-	if _, err := client.ListPlugins(context.Background()); err != nil { t.Fatal(err) }
-	client.SetBaseURL(second.URL+"/registry")
-	if _, err := client.ListPlugins(context.Background()); err != nil { t.Fatal(err) }
-	client.SetBaseURL(second.URL+"/registry")
-	if _, err := client.ListPlugins(context.Background()); err != nil { t.Fatal(err) }
+	if _, err := client.ListPlugins(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	client.SetBaseURL(second.URL + "/registry")
+	if _, err := client.ListPlugins(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	client.SetBaseURL(second.URL + "/registry")
+	if _, err := client.ListPlugins(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestCompatibilityTransportPreservesRequestAndNonAPIURLs(t *testing.T) {
 	var got string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got = r.URL.RawQuery
-		if r.Header.Get("Authorization") != "Bearer unchanged" { t.Error("lost auth") }
+		if r.Header.Get("Authorization") != "Bearer unchanged" {
+			t.Error("lost auth")
+		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
-	base, _ := url.Parse(server.URL+"/registry")
+	base, _ := url.Parse(server.URL + "/registry")
 	transport := &compatibilityTransport{base: base, next: http.DefaultTransport}
 	for _, path := range []string{"/registry/v1/plugins?search=a%20b&tag=one&tag=two", "/registry/artifacts/archive?sig=a%2Fb%20c", "/registry-other/v1/plugins?sig=keep", "/v1/plugins?sig=keep"} {
 		req, _ := http.NewRequest(http.MethodGet, server.URL+path, nil)
 		req.Header.Set("Authorization", "Bearer unchanged")
 		before := req.URL.String()
 		resp, err := transport.RoundTrip(req)
-		if err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
 		resp.Body.Close()
-		if req.URL.String() != before { t.Fatalf("mutated caller URL: %s", req.URL) }
+		if req.URL.String() != before {
+			t.Fatalf("mutated caller URL: %s", req.URL)
+		}
 		if strings.HasPrefix(path, "/registry/v1/") {
 			q, _ := url.ParseQuery(got)
-			if q.Get("ide_version") != "0.11.0" || q.Get("search") != "a b" || len(q["tag"]) != 2 { t.Fatalf("lost API query: %s", got) }
-		} else if got != req.URL.RawQuery { t.Fatalf("changed signed query: %s", got) }
+			if q.Get("ide_version") != "0.11.0" || q.Get("search") != "a b" || len(q["tag"]) != 2 {
+				t.Fatalf("lost API query: %s", got)
+			}
+		} else if got != req.URL.RawQuery {
+			t.Fatalf("changed signed query: %s", got)
+		}
 	}
 	// Same API path on a different origin must not receive the version either.
 	foreign, _ := url.Parse("https://different.example")
@@ -65,9 +81,13 @@ func TestCompatibilityTransportPreservesRequestAndNonAPIURLs(t *testing.T) {
 	req, _ := http.NewRequest(http.MethodGet, server.URL+"/v1/plugins?sig=keep", nil)
 	req.Header.Set("Authorization", "Bearer unchanged")
 	resp, err := transport.RoundTrip(req)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	resp.Body.Close()
-	if got != "sig=keep" { t.Fatalf("decorated foreign origin: %s", got) }
+	if got != "sig=keep" {
+		t.Fatalf("decorated foreign origin: %s", got)
+	}
 }
 
 func TestDownloadLeavesSignedArtifactURLUnchanged(t *testing.T) {
@@ -78,13 +98,17 @@ func TestDownloadLeavesSignedArtifactURLUnchanged(t *testing.T) {
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/artifacts/plugin" {
 			artifactSeen = true
-			if r.URL.RequestURI() != artifactPath { t.Errorf("changed signed URL: %s", r.URL) }
+			if r.URL.RequestURI() != artifactPath {
+				t.Errorf("changed signed URL: %s", r.URL)
+			}
 			if _, err := w.Write([]byte("artifact bytes")); err != nil {
 				t.Errorf("writing artifact: %v", err)
 			}
 			return
 		}
-		if r.URL.Query().Get("ide_version") != "0.11.0" { t.Errorf("missing API version: %s", r.URL) }
+		if r.URL.Query().Get("ide_version") != "0.11.0" {
+			t.Errorf("missing API version: %s", r.URL)
+		}
 		if strings.Contains(r.URL.Path, "/download/") {
 			http.Redirect(w, r, server.URL+artifactPath, http.StatusFound)
 			return
@@ -95,13 +119,17 @@ func TestDownloadLeavesSignedArtifactURLUnchanged(t *testing.T) {
 	}))
 	defer server.Close()
 	_, err := NewClient(server.URL).DownloadPlugin(context.Background(), "plugin", "0.9.0")
-	if !artifactSeen || !errors.Is(err, regclient.ErrChecksumMismatch) { t.Fatalf("artifactSeen=%v err=%v", artifactSeen, err) }
+	if !artifactSeen || !errors.Is(err, regclient.ErrChecksumMismatch) {
+		t.Fatalf("artifactSeen=%v err=%v", artifactSeen, err)
+	}
 }
 
 func TestTrailingSlashRegistryBaseURL(t *testing.T) {
 	for _, changeBase := range []bool{false, true} {
 		name := "new-client"
-		if changeBase { name = "set-base-url" }
+		if changeBase {
+			name = "set-base-url"
+		}
 		t.Run(name, func(t *testing.T) {
 			var server *httptest.Server
 			const signedPath = "/registry/v1/artifacts/plugin?sig=a%2Fb%20c"
@@ -109,13 +137,17 @@ func TestTrailingSlashRegistryBaseURL(t *testing.T) {
 			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/registry/v1/artifacts/plugin" {
 					artifactSeen = true
-					if r.URL.RequestURI() != signedPath { t.Errorf("changed signed URL: %s", r.URL) }
+					if r.URL.RequestURI() != signedPath {
+						t.Errorf("changed signed URL: %s", r.URL)
+					}
 					if _, err := w.Write([]byte("artifact bytes")); err != nil {
 						t.Errorf("writing artifact: %v", err)
 					}
 					return
 				}
-				if r.URL.Query().Get("ide_version") != "0.11.0" { t.Errorf("missing trailing-slash API version: %s", r.URL) }
+				if r.URL.Query().Get("ide_version") != "0.11.0" {
+					t.Errorf("missing trailing-slash API version: %s", r.URL)
+				}
 				if strings.Contains(r.URL.Path, "/download/") {
 					http.Redirect(w, r, server.URL+signedPath, http.StatusFound)
 					return
@@ -126,21 +158,27 @@ func TestTrailingSlashRegistryBaseURL(t *testing.T) {
 					}
 					return
 				}
-				if r.URL.Query().Get("q") != "logs & metrics" { t.Errorf("lost search: %s", r.URL) }
+				if r.URL.Query().Get("q") != "logs & metrics" {
+					t.Errorf("lost search: %s", r.URL)
+				}
 				if _, err := w.Write([]byte(`{"success":true,"data":[{"id":"plugin","latest_version":"0.9.0"}]}`)); err != nil {
 					t.Errorf("writing plugin list: %v", err)
 				}
 			}))
 			defer server.Close()
-			client := NewClient(server.URL+"/registry/")
+			client := NewClient(server.URL + "/registry/")
 			if changeBase {
 				client = NewClient("https://unused.example")
-				client.SetBaseURL(server.URL+"/registry/")
+				client.SetBaseURL(server.URL + "/registry/")
 			}
 			plugins, err := client.SearchPlugins(context.Background(), "logs & metrics", "", "")
-			if err != nil || len(plugins) != 1 || plugins[0].LatestVer != "0.9.0" { t.Fatalf("search: plugins=%v err=%v", plugins, err) }
+			if err != nil || len(plugins) != 1 || plugins[0].LatestVer != "0.9.0" {
+				t.Fatalf("search: plugins=%v err=%v", plugins, err)
+			}
 			_, err = client.DownloadPlugin(context.Background(), "plugin", "0.9.0")
-			if !artifactSeen || !errors.Is(err, regclient.ErrChecksumMismatch) { t.Fatalf("artifactSeen=%v err=%v", artifactSeen, err) }
+			if !artifactSeen || !errors.Is(err, regclient.ErrChecksumMismatch) {
+				t.Fatalf("artifactSeen=%v err=%v", artifactSeen, err)
+			}
 		})
 	}
 }

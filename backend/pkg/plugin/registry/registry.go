@@ -100,7 +100,6 @@ func (c *Client) BaseURL() string {
 	return c.baseURL
 }
 
-
 func newRegistryClient(baseURL string) *regclient.Client {
 	opts := []regclient.Option{}
 	if baseURL != "" {
@@ -111,7 +110,7 @@ func newRegistryClient(baseURL string) *regclient.Client {
 	// Resolve the library default rather than duplicating its marketplace URL.
 	base, _ := url.Parse(regclient.NewClient(opts...).BaseURL())
 	opts = append(opts, regclient.WithHTTPClient(&http.Client{
-		Timeout: 30 * time.Second, // Preserve registry v0.2.3's default.
+		Timeout:   30 * time.Second, // Preserve registry v0.2.3's default.
 		Transport: &compatibilityTransport{base: base, next: http.DefaultTransport},
 	}))
 	return regclient.NewClient(opts...)
