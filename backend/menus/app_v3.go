@@ -41,6 +41,16 @@ func SetupAppMenu(app *application.App, mainWindow *application.WebviewWindow) {
 	// macOS-specific role menus
 	if runtime.GOOS == "darwin" {
 		menu.AddRole(application.AppMenu)
+		// The About role opens the standard panel, which shows the numeric
+		// CFBundleShortVersionString stamped by CI (a nightly reads "0.0.0").
+		// ShowAbout shows Options.Description, which has the full build version.
+		appMenu := menu.FindByRole(application.AppMenu).GetSubmenu()
+		appMenu.RemoveMenuItem(appMenu.FindByRole(application.About))
+		aboutMenu := app.NewMenu()
+		aboutMenu.Add("About " + app.Config().Name).OnClick(func(_ *application.Context) {
+			app.Menu.ShowAbout()
+		})
+		appMenu.Prepend(aboutMenu)
 		menu.AddRole(application.EditMenu)
 		menu.AddRole(application.WindowMenu)
 	}
