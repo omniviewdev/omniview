@@ -100,11 +100,12 @@ export function useEventBatcher(
   }, [queryClient, queryKey, flush, windowMs, enabled]);
   useLayoutEffect(() => {
     if (!enabled) return;
+    const pendingEvents = buffer.current;
     const cancel = queryClient.getQueryCache().subscribe((event) => {
       if (event.type !== 'updated' || event.query.queryHash !== hashKey(queryKey)) return;
       if (event.action.type === 'fetch') {
         // A new native acquisition supersedes older queued advisory observations.
-        buffer.current.clear();
+        pendingEvents.clear();
         pendingMembershipChange.current = false;
       } else if (event.action.type === 'success') flush();
     });
@@ -112,7 +113,7 @@ export function useEventBatcher(
       cancel();
       window.clearTimeout(timer.current);
       if (frame.current !== undefined) cancelAnimationFrame(frame.current);
-      buffer.current.clear();
+      pendingEvents.clear();
       pendingMembershipChange.current = false;
       timer.current = undefined;
       frame.current = undefined;

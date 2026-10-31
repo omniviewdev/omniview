@@ -10,7 +10,7 @@ import { useResolvedPluginId } from '../useResolvedPluginId';
 import { useEventBatcher, type AddPayload, type DeletePayload, type UpdatePayload } from './useEventBatcher';
 import { useConnectionReadiness } from '../connection/useConnectionReadiness';
 import { useConnectionQueryGuard } from './useConnectionQueryGuard';
-import { getConnectionReadinessGeneration, isConnectionReadinessCurrent } from '../../connection/connectionReadiness';
+import { connectionReadinessStore, getConnectionReadinessGeneration, isConnectionReadinessCurrent } from '../../connection/connectionReadiness';
 import { useSnackbar } from '../snackbar/useSnackbar';
 import { showAppError } from '../../errors/parseAppError';
 
@@ -27,6 +27,10 @@ export interface AcquiredResourcePage {
   page: ResourceView;
 }
 
+const inactiveGenerationStore = {
+  getSnapshot: () => undefined,
+  subscribe: () => () => {},
+};
 
 /** One attempted acquisition and one displayed successful page; never accumulated row history. */
 export const useResources = ({ pluginID: explicitPluginID, request, enabled = true, live = true }: UseResourcesOptions) => {
@@ -36,11 +40,22 @@ export const useResources = ({ pluginID: explicitPluginID, request, enabled = tr
   const showSnackbarRef = React.useRef(showSnackbar);
   React.useLayoutEffect(() => { showSnackbarRef.current = showSnackbar; }, [showSnackbar]);
   const requestHash = hashKey([request]);
-  const stableRequest = React.useMemo(() => request, [requestHash]);
+  const [requestSnapshot, setRequestSnapshot] = React.useState({ hash: requestHash, request });
+  if (requestSnapshot.hash !== requestHash) {
+    setRequestSnapshot({ hash: requestHash, request });
+  }
+  const stableRequest = requestSnapshot.hash === requestHash ? requestSnapshot.request : request;
   const connectionID = stableRequest?.request.target.route.connection ?? '';
-  const readiness = useConnectionReadiness({ pluginID, connectionID, enabled: enabled && !!stableRequest });
+  const readinessEnabled = enabled && !!stableRequest;
+  const readiness = useConnectionReadiness({ pluginID, connectionID, enabled: readinessEnabled });
+  // Observe the canonical store's scalar generation, including same-phase retirement.
+  const generationStore = React.useMemo(() => readinessEnabled ? {
+    subscribe: connectionReadinessStore(pluginID, connectionID).subscribe,
+    getSnapshot: () => getConnectionReadinessGeneration(pluginID, connectionID),
+  } : inactiveGenerationStore, [pluginID, connectionID, readinessEnabled]);
+  const generation = React.useSyncExternalStore(generationStore.subscribe, generationStore.getSnapshot, generationStore.getSnapshot);
   const guardQuery = useConnectionQueryGuard(pluginID, connectionID);
-  const queryEnabled = enabled && !!stableRequest && readiness.phase === 'connected';
+  const queryEnabled = readinessEnabled && readiness.phase === 'connected';
   const targetIdentity = stableRequest ? hashKey([pluginID, stableRequest.targetId, stableRequest.request.target]) : undefined;
   const queryKey = React.useMemo(() => resourceQueryKeys.list(pluginID, stableRequest), [pluginID, stableRequest]);
   const resources = useQuery({
@@ -52,16 +67,19 @@ export const useResources = ({ pluginID: explicitPluginID, request, enabled = tr
     placeholderData: undefined,
   });
   const [successful, setSuccessful] = React.useState<{ identity: string; requestHash: string; request: HostEnumerateRequest }>();
-  // Identity changes clear the displayed page in this render, before effects run.
-  const acquiredRequest = targetIdentity && successful?.identity === targetIdentity ? successful.request : undefined;
-  React.useEffect(() => {
-    if (targetIdentity && stableRequest && resources.isSuccess && resources.data) {
-      setSuccessful((previous) => previous?.identity === targetIdentity && previous.requestHash === requestHash
-        ? previous : { identity: targetIdentity, requestHash, request: stableRequest });
-    } else {
-      setSuccessful((previous) => previous?.identity === targetIdentity ? previous : undefined);
+  // Adjust only when the successful request or identity changes, before children commit.
+  // Failed or pending cursors retain the single previous acquisition.
+  let acquisition = successful;
+  if (targetIdentity && stableRequest && resources.isSuccess && resources.data) {
+    if (successful?.identity !== targetIdentity || successful.requestHash !== requestHash) {
+      acquisition = { identity: targetIdentity, requestHash, request: stableRequest };
+      setSuccessful(acquisition);
     }
-  }, [targetIdentity, requestHash, stableRequest, resources.isSuccess, resources.dataUpdatedAt, resources.data]);
+  } else if (successful && successful.identity !== targetIdentity) {
+    acquisition = undefined;
+    setSuccessful(undefined);
+  }
+  const acquiredRequest = targetIdentity && acquisition?.identity === targetIdentity ? acquisition.request : undefined;
   const acquiredQueryKey = React.useMemo(() => resourceQueryKeys.list(pluginID, acquiredRequest), [pluginID, acquiredRequest]);
   // A disabled observer retains just the displayed page while a different cursor is attempted.
   // Its explicit refetch is a real native acquisition, not a synthetic cached response.
@@ -75,7 +93,6 @@ export const useResources = ({ pluginID: explicitPluginID, request, enabled = tr
   });
   const acquired = React.useMemo<AcquiredResourcePage | undefined>(() => acquiredRequest && acquiredResources.data
     ? { request: acquiredRequest, page: acquiredResources.data } : undefined, [acquiredRequest, acquiredResources.data]);
-  const generation = getConnectionReadinessGeneration(pluginID, connectionID);
   const watchEnabled = queryEnabled && live && !!acquiredRequest;
   const watchScope = React.useMemo(() => ({ pluginID, acquiredRequest, generation, enabled: watchEnabled }), [pluginID, acquiredRequest, generation, watchEnabled]);
   const [watchSnapshot, setWatchSnapshot] = React.useState<{ scope: typeof watchScope; state: WatchState; error?: unknown; live: boolean }>();
@@ -158,7 +175,7 @@ export const useResources = ({ pluginID: explicitPluginID, request, enabled = tr
     resources,
     acquired,
     /** Gate acquired readiness when a consumer chooses to display the attempted page instead. */
-    isAcquiredRequestCurrent: hasAcquired && successful?.requestHash === requestHash,
+    isAcquiredRequestCurrent: hasAcquired && acquisition?.requestHash === requestHash,
     refreshAcquiredPage: acquiredResources.refetch,
     view: acquired?.page.view,
     membershipStale: acquired?.page.view?.membershipStale ?? false,

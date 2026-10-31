@@ -113,6 +113,26 @@ it('retains the actual acquired request and page after a different source cursor
   hook.unmount(); client.clear();
 });
 
+it('retains a page during a pending cursor but clears it immediately on target replacement', async () => {
+  const pending = Promise.withResolvers<HostSourcePage>();
+  const { client, wrapper } = setup(true);
+  const hook = renderHook((props: HookProps) => useResources(props), { wrapper, initialProps: { pluginID: 'provider', request, live: false } });
+  await waitFor(() => expect(hook.result.current.acquired?.page).toEqual(first));
+  native.enumerate.mockReturnValueOnce(Object.assign(pending.promise, { cancel: vi.fn().mockResolvedValue(undefined) }));
+  hook.rerender({ pluginID: 'provider', request: nextRequest, live: false });
+  await waitFor(() => expect(native.enumerate).toHaveBeenCalledTimes(2));
+  expect(hook.result.current.resources.isPending).toBe(true);
+  expect(hook.result.current.acquired).toEqual({ request, page: first });
+  const replacement = { ...nextRequest, targetId: 'replacement-target' };
+  hook.rerender({ pluginID: 'provider', request: replacement, live: false });
+  expect(hook.result.current.acquired).toBeUndefined();
+  await waitFor(() => expect(hook.result.current.resources.isError).toBe(true));
+  await act(async () => { pending.resolve(second); await pending.promise; });
+  expect(hook.result.current.acquired).toBeUndefined();
+  expect(hook.result.current.isAcquiredRequestCurrent).toBe(false);
+  hook.unmount(); client.clear();
+});
+
 it('commits a successful retry to the acquired cursor and releases the older page', async () => {
   const { client, wrapper } = setup();
   const hook = renderHook((props: HookProps) => useResources(props), { wrapper, initialProps: { pluginID: 'provider', request, live: false } });
@@ -292,6 +312,27 @@ it('waits for pending subscription cleanup before reacquiring after reconnect', 
   hook.unmount(); client.clear();
 });
 
+it('observes same-phase generation changes before serializing subscription reacquisition', async () => {
+  const pending = Promise.withResolvers<void>();
+  native.subscribe.mockReturnValueOnce(pending.promise);
+  const { client, wrapper } = setup();
+  const hook = renderHook(() => useResources({ pluginID: 'provider', request }), { wrapper });
+  await waitFor(() => expect(native.subscribe).toHaveBeenCalledTimes(1));
+  act(() => {
+    native.generation++;
+    for (const listener of native.readinessListeners) listener();
+  });
+  expect(native.phase).toBe('connected');
+  expect(native.subscribe).toHaveBeenCalledTimes(1);
+  await act(async () => pending.resolve());
+  await waitFor(() => expect(native.subscribe).toHaveBeenCalledTimes(2));
+  expect(native.unsubscribe).toHaveBeenCalledTimes(1);
+  expect(native.unsubscribe.mock.invocationCallOrder[0]).toBeLessThan(native.subscribe.mock.invocationCallOrder[1]);
+  hook.unmount();
+  expect(native.readinessListeners.size).toBe(0);
+  client.clear();
+});
+
 it('does not reuse old watch readiness or buffered rows after reconnect', async () => {
   const { client, wrapper } = setup();
   const hook = renderHook(() => useResources({ pluginID: 'provider', request }), { wrapper });
@@ -396,7 +437,6 @@ it('cancels native reads immediately on invalidation and fences late data after 
     for (const listener of [...native.readinessListeners]) listener();
   });
   expect(cancel).toHaveBeenCalledTimes(1);
-  expect(native.readinessListeners.size).toBe(0);
   const key = resourceQueryKeys.list('provider', request);
   expect(client.getQueryData(key)).toBeUndefined();
   hook.rerender();
