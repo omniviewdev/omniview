@@ -46,11 +46,18 @@ export function registerCoreSearchCatalogue(
   }
 
   const owned = new Set<ExtensionContributionRegistration>();
-  let consumed = 0;
+  // Bounds the descriptors inspected (skipped ones included), not what registers.
+  let scanned = 0;
   let truncated = false;
   let unavailable = false;
 
   function register(label: string, value: SearchEntryV1, id = `core/global-search/catalogue/${owned.size}`) {
+    // The controller reads only the first 1000 registrations.
+    if (owned.size >= 1000) {
+      truncated = true;
+      return;
+    }
+
     const registration = { id, plugin: 'core', label, value };
     if (!admitSearchContribution(registration)) {
       unavailable = true;
@@ -64,15 +71,13 @@ export function registerCoreSearchCatalogue(
   register('Home', { schemaVersion: 1, kind: 'navigation', target: { kind: 'core', path: '/' } });
   register('Plugins', { schemaVersion: 1, kind: 'navigation', target: { kind: 'core', path: '/plugins' } });
   register('Extensions', { schemaVersion: 1, kind: 'setting', target: { section: 'extensions' } });
-  // The controller reads only the first 1000 registrations; these count toward that budget too.
-  consumed = owned.size;
 
   catalogue: for (const key in input.settings) {
     if (!Object.hasOwn(input.settings, key)) {
       continue;
     }
 
-    if (consumed++ >= 1000) {
+    if (scanned++ >= 1000) {
       truncated = true;
       break;
     }
@@ -98,7 +103,7 @@ export function registerCoreSearchCatalogue(
         continue;
       }
 
-      if (consumed++ >= 1000) {
+      if (scanned++ >= 1000) {
         truncated = true;
         break catalogue;
       }
@@ -138,12 +143,12 @@ export function registerCoreSearchCatalogue(
     }
   }
 
-  // After settings, so they keep their share of the 1000-registration budget. The
+  // After settings, so they keep their share of the registration cap. The
   // controller still lists these rows first for an empty query. IDs use an index:
   // a prefixed plugin ID could exceed the 256-character registration ID limit.
   let newTabIndex = 0;
   for (const plugin of input.newTabPlugins ?? []) {
-    if (consumed++ >= 1000) {
+    if (scanned++ >= 1000) {
       truncated = true;
       break;
     }
@@ -163,7 +168,7 @@ export function registerCoreSearchCatalogue(
   }
 
   for (const plugin of input.plugins) {
-    if (consumed++ >= 1000) {
+    if (scanned++ >= 1000) {
       truncated = true;
       break;
     }

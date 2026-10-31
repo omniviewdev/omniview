@@ -106,7 +106,7 @@ describe('core global-search catalogue ownership and public metadata', () => {
     registration.dispose();
   });
 
-  it('counts the core entries toward the budget, reporting truncation instead of registering past it', () => {
+  it('caps registrations at the 1000 the controller reads, core entries included, reporting truncation', () => {
     const instance = registry();
     const settings: Record<string, Setting> = {};
     for (let index = 0; index < 996; index++) {
@@ -123,6 +123,26 @@ describe('core global-search catalogue ownership and public metadata', () => {
     expect(entries).toHaveLength(1000);
     expect(entries.some((entry) => entry.label === 'New Probe tab')).toBe(false);
     expect(registration.truncated).toBe(true);
+    registration.dispose();
+  });
+
+  it('does not spend the registration cap on skipped dev-only settings', () => {
+    const instance = registry();
+    const settings: Record<string, Setting> = {};
+    for (let index = 0; index < 995; index++) {
+      settings[`dev${index}`] = new Setting({ id: `dev${index}`, label: `Dev ${index}`, type: SettingType.Text, devOnly: true });
+    }
+
+    settings.first = new Setting({ id: 'first', label: 'First', type: SettingType.Text });
+    settings.second = new Setting({ id: 'second', label: 'Second', type: SettingType.Text });
+    const registration = registerCoreSearchCatalogue(instance, {
+      settings: { general: new Category({ id: 'general', label: 'General', settings }) },
+      plugins: [],
+    });
+
+    const labels = instance.getExtensionPoint('omniview/global-search')!.listAll().map((entry) => entry.label);
+    expect(labels).toEqual(expect.arrayContaining(['First', 'Second']));
+    expect(registration.truncated).toBe(false);
     registration.dispose();
   });
 
