@@ -1,5 +1,8 @@
 /** Deterministic Kubernetes fixtures shaped like what the plugin backend returns. */
 import { handleAll } from '../harness/backend';
+import { jsonToValue } from '@omniviewdev/runtime';
+import type { HostEnumerateRequest, ResolveTargetRequest } from '@omniviewdev/runtime';
+import { BENCH_CONNECTION_ID } from './defaults';
 
 /** Small seeded PRNG (mulberry32) so every run sees the same data. */
 export function rng(seed: number) {
@@ -108,14 +111,68 @@ function podMetrics(pods: Pod[]) {
   return { 'metrics-server': { success: true, results } };
 }
 
-/** Serve `pods` from the resource List call (and batch pod metrics). */
+/** Serve the Kubernetes corpus through the current host-owned V2 resource contract. */
 export function servePods(pods: Pod[]): void {
   const metrics = podMetrics(pods);
+  const provider = 'kubernetes';
+  const authority = `bench:${BENCH_CONNECTION_ID}`;
+  const type = 'k8s:/pods';
+  const representation = {
+    id: 'kubernetes-json', revision: 'bench-1',
+    schema: { state: 'unavailable', unavailableReason: 'NOT_SUPPORTED', validation: 'none', unvalidated: [] },
+  };
+  const coverage = { kind: 'complete', paths: [] };
+  const count = { kind: 'exact', value: String(pods.length) };
+  const authorityDisclosure = { continuity: 'connectionLocal' as const, limitations: [] };
   handleAll({
-    'resource/servicewrapper.List': (_plugin: string, _conn: string, key: string) =>
-      key === 'core::v1::Pod'
-        ? { result: pods, success: true, totalCount: pods.length }
-        : { result: [], success: true, totalCount: 0 },
+    'resource/servicewrapper.Catalog': () => ({
+      provider, revision: 'bench-1', coverage,
+      types: [{
+        type, displayName: 'Pods',
+        identityDimensions: [{ name: 'namespace', allowEmpty: true }],
+        queryDimensions: [{ name: 'namespace', allowEmpty: true }],
+        representations: [representation], defaultRepresentation: representation.id, modelRepresentation: representation.id,
+        capabilities: [{ operation: 'enumerate', scope: [{ dimension: 'namespace', match: 'any' }] }],
+      }],
+    }),
+    'resource/servicewrapper.ResolveTarget': (_plugin: string, request: ResolveTargetRequest) => {
+      if (request.type !== type) throw new Error(`Unsupported benchmark resource type: ${request.type}`);
+      return {
+        targetId: JSON.stringify([provider, authority, request.type, request.scope ?? []]),
+        target: { ...request, provider, authority, scope: request.scope ?? [{ dimension: 'namespace', match: 'any' }], representation: request.representation ?? representation.id },
+        authority: authorityDisclosure, catalogRevision: 'bench-1',
+      };
+    },
+    'resource/servicewrapper.Enumerate': (_plugin: string, input: HostEnumerateRequest) => {
+      const { target, pageSize, cursor } = input.request;
+      if (target.type !== type) throw new Error(`Unsupported benchmark resource type: ${target.type}`);
+      const selected = pods.filter((pod) => target.scope.every((entry) =>
+        entry.match === 'any' || (entry.dimension === 'namespace' && entry.values.includes(pod.metadata.namespace))));
+      const start = cursor ? Number(cursor) : 0;
+      if (!Number.isSafeInteger(start) || start < 0 || pageSize <= 0) throw new Error('Invalid benchmark source page');
+      const end = Math.min(start + pageSize, selected.length);
+      return {
+        records: selected.slice(start, end).map((pod) => {
+          const address = { provider, authority, type, scope: [{ dimension: 'namespace', value: pod.metadata.namespace }], id: pod.metadata.name };
+          const addressKey = JSON.stringify(address);
+          return {
+            key: JSON.stringify([address, pod.metadata.uid]), addressKey, targetId: input.targetId, route: target.route,
+            record: { reference: { address, incarnation: pod.metadata.uid }, body: jsonToValue(pod), representation, coverage, sourceRevision: pod.metadata.resourceVersion },
+          };
+        }),
+        sourcePage: {
+          count: { kind: 'exact', value: String(selected.length) }, coverage, consistency: 'snapshot',
+          ...(end < selected.length ? { nextCursor: String(end) } : {}),
+        },
+      };
+    },
+    'resource/servicewrapper.ScopeValues': () => [...new Set(pods.map((pod) => pod.metadata.namespace))],
+    'resource/servicewrapper.GetWatchState': () => ({
+      connectionId: BENCH_CONNECTION_ID, resources: { [type]: 2 }, resourceCounts: { [type]: count },
+    }),
+    'resource/servicewrapper.EnsureResourceWatch': () => null,
+    'resource/servicewrapper.SubscribeResource': () => null,
+    'resource/servicewrapper.UnsubscribeResource': () => null,
     'metric/servicewrapper.QueryAll': () => metrics,
   });
 }

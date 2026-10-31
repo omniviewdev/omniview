@@ -143,7 +143,7 @@ function react(p) {
   return { commits: p.commits, renderMs: p.actualMs, maxCommitMs: p.maxActualMs, slowCommits: p.slowCommits };
 }
 
-const podsRoute = (id) => `#/_plugin/kubernetes/cluster/${id}/resources/core_v1_Pod`;
+const podsRoute = (id) => `#/_plugin/kubernetes/cluster/${id}/resources/${encodeURIComponent('k8s:/pods')}`;
 
 /** Wait (polling every frame) until a pod name is on screen. */
 async function waitForPodRow(page) {
@@ -151,9 +151,9 @@ async function waitForPodRow(page) {
 }
 
 /**
- * Scroll `findTarget()` one viewport per step for `pages` steps, then back to
- * the top, waiting for a painted frame after each step (React work scheduled by
- * the scroll handler included). Runs in the page.
+ * Scroll up to `pages` viewport steps within the available native page, then
+ * return to the top. Each step waits for a painted frame, including React work
+ * scheduled by the scroll handler. Runs in the page.
  */
 function scrollPages({ pages, kind }) {
   const b = window.__ovBench;
@@ -169,18 +169,34 @@ function scrollPages({ pages, kind }) {
   return (async () => {
     target.scrollTop = 0;
     await settle();
-    const start = target.scrollTop;
+    const viewport = target.clientHeight;
+    const range = target.scrollHeight - viewport;
+    if (viewport <= 0 || range <= 0 || !Number.isSafeInteger(pages) || pages <= 0) {
+      throw new Error(`${kind}: no positive bounded scroll workload`);
+    }
+    const forwardSteps = Math.min(pages, Math.ceil(range / viewport));
+    const expectedEnd = Math.min(forwardSteps * viewport, range);
     const t0 = performance.now();
-    for (let i = 1; i <= pages; i++) {
-      target.scrollTop = i * target.clientHeight;
+    let previous = target.scrollTop;
+    for (let i = 1; i <= forwardSteps; i++) {
+      const expected = Math.min(i * viewport, range);
+      target.scrollTop = expected;
       await settle();
+      const actual = target.scrollTop;
+      if (actual <= previous || Math.abs(actual - expected) > 1) {
+        throw new Error(`${kind}: scroll step ${i} did not reach ${expected}px (was ${actual}px)`);
+      }
+      previous = actual;
     }
     const end = target.scrollTop;
     target.scrollTop = 0;
     await settle();
     const wallMs = performance.now() - t0;
-    if (end - start < target.clientHeight * (pages / 2)) throw new Error(`${kind}: scrolling moved only ${end - start}px`);
-    return { wallMs, steps: pages + 1, perStepMs: wallMs / (pages + 1), scrolledPx: end - start };
+    if (end <= 0 || Math.abs(end - expectedEnd) > 1 || target.scrollTop > 1) {
+      throw new Error(`${kind}: bounded scroll or reset failed (${end}px, reset ${target.scrollTop}px)`);
+    }
+    const steps = forwardSteps + 1;
+    return { wallMs, steps, forwardSteps, perStepMs: wallMs / steps, scrolledPx: end };
   })();
 }
 
@@ -219,7 +235,7 @@ const scenarios = {
     });
   },
 
-  /** Navigate to the Pod list with 5k pods (until the first row shows), then scroll 30 pages. */
+  /** Open the native Pod page from a 5k-pod corpus, then scroll up to 30 viewport steps within that page. */
   async pods() {
     const s = await openPage({ plugins: ['kubernetes'], pods: POD_COUNT });
     try {

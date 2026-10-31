@@ -10,10 +10,10 @@
  */
 import { getTransport, setTransport, objectNames } from '@wailsio/runtime';
 import bindingIndex from 'virtual:wails-binding-index';
-import { installFakeBackend, handle, handleAll, emit, unhandledCalls } from '../../render/harness/backend';
+import { bindingName, installFakeBackend, handle, handleAll, emit, unhandledCalls } from '../../render/harness/backend';
 import { installDefaultFixtures, BENCH_CONNECTION_ID } from '../../render/fixtures/defaults';
 import { makePods, servePods } from '../../render/fixtures/kubernetes';
-import { makeLogLines, streamLines } from '../../render/fixtures/logs';
+import { makeLogLines, makeLogSession, streamLines, type BenchLogSession } from '../../render/fixtures/logs';
 import { findByText, findScrollable, nextFrame, waitFor } from '../../render/harness/dom';
 import kubernetesPlugin from 'virtual:bench-kubernetes-plugin';
 
@@ -41,8 +41,8 @@ const callCounts: Record<string, number> = {};
 const inner = getTransport()!;
 setTransport({
   call: (objectID: number, method: number, windowName: string, args: any) => {
-    if (objectID === objectNames.Call && typeof args?.methodID === 'number') {
-      const name = (bindingIndex as Record<string, string>)[args.methodID] ?? String(args.methodID);
+    if (objectID === objectNames.Call && (typeof args?.methodID === 'number' || typeof args?.methodName === 'string')) {
+      const name = typeof args.methodName === 'string' ? bindingName(args.methodName) : (bindingIndex as Record<string, string>)[args.methodID] ?? String(args.methodID);
       callCounts[name] = (callCounts[name] ?? 0) + 1;
     }
     return inner.call(objectID, method, windowName, args);
@@ -73,20 +73,18 @@ const connection = {
 };
 
 /** Resource types the fixtures serve; all report as synced so no sync modal opens. */
-const POD_KEY = 'core::v1::Pod';
-const podMeta = { group: 'core', version: 'v1', kind: 'Pod', label: 'Pods', icon: '', description: '', category: 'Workloads' };
+const POD_KEY = 'k8s:/pods';
 const SYNCED = 2; // WatchState.WatchStateSynced
 
 handleAll({
   'resource/servicewrapper.GetConnection': () => connection,
-  'resource/servicewrapper.GetResourceTypes': () => ({ [POD_KEY]: podMeta }),
-  'resource/servicewrapper.GetResourceGroups': () => ({
-    workloads: { id: 'workloads', name: 'Workloads', description: '', icon: '', resources: { v1: [podMeta] } },
-  }),
+  'resource/servicewrapper.GetResourceGroups': () => [
+    { id: 'workloads', name: 'Workloads', description: '', icon: '', resources: [POD_KEY] },
+  ],
   'resource/servicewrapper.GetWatchState': () => ({
     connectionId: BENCH_CONNECTION_ID,
     resources: { [POD_KEY]: SYNCED },
-    resourceCounts: { [POD_KEY]: config.pods ?? 0 },
+    resourceCounts: { [POD_KEY]: { kind: 'exact', value: String(config.pods ?? 0) } },
   }),
   'resource/servicewrapper.GetEditorSchemas': () => [],
   'resource/servicewrapper.SubscribeResource': () => null,
@@ -115,13 +113,21 @@ handleAll({
 if (config.pods) servePods(makePods(config.pods));
 
 const logSessions: string[] = [];
+const sessions = new Map<string, BenchLogSession>();
 handleAll({
-  'logs/servicewrapper.CreateSession': () => {
+  'logs/servicewrapper.CreateSession': (plugin: string, connection: string, encoded: string) => {
     const id = `bench-log-${logSessions.length}`;
+    const session = makeLogSession(id, plugin, connection, encoded);
     logSessions.push(id);
-    return { id, labels: {}, sources: [] };
+    sessions.set(id, session);
+    return session;
   },
-  'logs/servicewrapper.GetSession': (id: string) => ({ id, labels: {}, sources: [] }),
+  'logs/servicewrapper.GetSession': (id: string) => {
+    const session = sessions.get(id);
+    if (!session) throw new Error(`Unknown benchmark log session: ${id}`);
+    return session;
+  },
+  'logs/servicewrapper.CloseSession': (id: string) => { sessions.delete(id); },
 });
 
 let logLineOffset = 0;

@@ -25,19 +25,26 @@ export function handleAll(map: Record<string, Handler>): void {
   for (const [name, fn] of Object.entries(map)) handle(name, fn);
 }
 
+/** Normalize Go service names to the generated-binding fixture namespace. */
+export function bindingName(name: string): string {
+  return name.replace(/\.ServiceWrapper\./, '/servicewrapper.')
+    .replace(/\.DiagnosticsClient\./, '/diagnosticsclient.');
+}
+
+function lookupName(name: string): Handler | null {
+  name = bindingName(name);
+  for (const [suffix, fn] of handlers) {
+    if (name === suffix || name.endsWith('/' + suffix)) return fn;
+  }
+  unhandled.add(name);
+  if (import.meta.env.BENCH_VERBOSE) console.debug('[fake-backend] unhandled call', name);
+  return null;
+}
+
 function lookup(methodID: number): Handler | null {
   if (resolvedByID.has(methodID)) return resolvedByID.get(methodID)!;
   const name = (bindingIndex as Record<string, string>)[methodID];
-  let found: Handler | null = null;
-  if (name) {
-    for (const [suffix, fn] of handlers) {
-      if (name === suffix || name.endsWith('/' + suffix)) { found = fn; break; }
-    }
-    if (!found && !unhandled.has(name)) {
-      unhandled.add(name);
-      if (import.meta.env.BENCH_VERBOSE) console.debug('[fake-backend] unhandled call', name);
-    }
-  }
+  const found = name ? lookupName(name) : null;
   resolvedByID.set(methodID, found);
   return found;
 }
@@ -57,6 +64,10 @@ export function installFakeBackend(): void {
     call: async (objectID: number, method: number, _windowName: string, args: any) => {
       if (objectID === objectNames.Call && args && typeof args.methodID === 'number') {
         const fn = lookup(args.methodID);
+        return fn ? await fn(...(args.args ?? [])) : null;
+      }
+      if (objectID === objectNames.Call && typeof args?.methodName === 'string') {
+        const fn = lookupName(args.methodName);
         return fn ? await fn(...(args.args ?? [])) : null;
       }
       // Window, Browser, Clipboard, Events.Emit, CancelCall …: no-ops.
