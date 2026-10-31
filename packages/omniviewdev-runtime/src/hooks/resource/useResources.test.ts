@@ -57,7 +57,7 @@ const first: HostSourcePage = { records: [firstRow], sourcePage: { nextCursor: '
 const second: HostSourcePage = { records: [{ ...firstRow, key: 'host-row-two', addressKey: 'host-address-two', record: { ...firstRow.record, reference: { address: { ...firstRow.record.reference.address, id: 'two' } } } }], sourcePage: { ...first.sourcePage, nextCursor: 'third' } };
 const nextRequest: HostEnumerateRequest = { ...request, request: { ...request.request, cursor: 'second' } };
 const resolved: ResolvedResourceTarget = { targetId: request.targetId, target: request.request.target, authority: { continuity: 'connectionLocal', limitations: [] }, catalogRevision: 'catalog-1' };
-interface HookProps { pluginID: string; request?: HostEnumerateRequest; live?: boolean; enabled?: boolean }
+interface HookProps { pluginID: string; request?: HostEnumerateRequest; live?: boolean; enabled?: boolean; collection?: boolean }
 
 function ready<T>(value: T) { return new CancellablePromise<T>((resolve) => resolve(value)); }
 function denied<T>(message: string) { return new CancellablePromise<T>((_resolve, reject) => reject(new Error(message))); }
@@ -91,6 +91,130 @@ beforeEach(() => {
   native.state.mockImplementation(() => ready({ route: { connection: 'c' }, resources: { items: 2 }, resourceCounts: {}, scope: [], guarantee: 'bestEffort' }));
 });
 afterEach(() => vi.unstubAllGlobals());
+
+it('merges every collection page and deduplicates canonical host keys', async () => {
+  const updated = { ...firstRow, record: { ...firstRow.record, sourceRevision: 'new' } };
+  native.enumerate.mockImplementation((_plugin: string, input: HostEnumerateRequest) => ready(input.request.cursor
+    ? { ...second, records: [...second.records, updated], sourcePage: { ...second.sourcePage, nextCursor: undefined } }
+    : first));
+  const { client, wrapper } = setup();
+  const hook = renderHook(() => useResources({ pluginID: 'provider', request: nextRequest, collection: true, live: false }), { wrapper });
+  await waitFor(() => expect(hook.result.current.resources.isSuccess).toBe(true));
+  expect(native.enumerate.mock.calls.map((call) => call[1].request.cursor)).toEqual([undefined, 'second']);
+  expect(hook.result.current.resources.data?.records).toEqual([updated, ...second.records]);
+  expect(hook.result.current.acquired?.page).toBe(hook.result.current.resources.data);
+  expect(hook.result.current.acquired?.page.sourcePage.nextCursor).toBeUndefined();
+  hook.unmount(); client.clear();
+});
+
+it('rejects a collection when a later source page fails without publishing partial rows', async () => {
+  const { client, wrapper } = setup();
+  const hook = renderHook(() => useResources({ pluginID: 'provider', request, collection: true }), { wrapper });
+  await waitFor(() => expect(hook.result.current.resources.isError).toBe(true));
+  expect(hook.result.current.resources.data).toBeUndefined();
+  expect(hook.result.current.acquired).toBeUndefined();
+  expect(native.subscribe).not.toHaveBeenCalled();
+  hook.unmount(); client.clear();
+});
+
+it('maintains whole-collection membership from live add, update, and delete events', async () => {
+  native.enumerate.mockImplementation(() => ready({ ...first, sourcePage: { ...first.sourcePage, nextCursor: undefined } }));
+  const { client, wrapper } = setup();
+  const hook = renderHook(() => useResources({ pluginID: 'provider', request, collection: true }), { wrapper });
+  await waitFor(() => expect(hook.result.current.isLive).toBe(true));
+  const added = second.records[0];
+  act(() => native.listeners.get('provider/c/items/ADD')?.({ data: { record: added } }));
+  flushFrames();
+  await waitFor(() => expect(hook.result.current.acquired?.page.records).toEqual([firstRow, added]));
+  const updated = { ...added, record: { ...added.record, sourceRevision: 'new' } };
+  act(() => {
+    native.listeners.get('provider/c/items/UPDATE')?.({ data: { record: updated } });
+    native.listeners.get('provider/c/items/DELETE')?.({ data: { targetId: request.targetId, key: firstRow.key } });
+  });
+  flushFrames();
+  await waitFor(() => expect(hook.result.current.acquired?.page.records).toEqual([updated]));
+  expect(hook.result.current.membershipStale).toBe(false);
+  hook.unmount(); client.clear();
+});
+
+it('cancels a pending collection continuation on unmount', async () => {
+  const cancel = vi.fn().mockResolvedValue(undefined);
+  native.enumerate.mockImplementation((_plugin: string, input: HostEnumerateRequest) => input.request.cursor
+    ? Object.assign(new CancellablePromise<HostSourcePage>(() => {}), { cancel })
+    : ready(first));
+  const { client, wrapper } = setup();
+  const hook = renderHook(() => useResources({ pluginID: 'provider', request, collection: true, live: false }), { wrapper });
+  await waitFor(() => expect(native.enumerate).toHaveBeenCalledTimes(2));
+  expect(hook.result.current.acquired).toBeUndefined();
+  hook.unmount();
+  expect(cancel).toHaveBeenCalledTimes(1);
+  client.clear();
+});
+
+it('discards collection continuation results after connection generation retirement', async () => {
+  const pending = Promise.withResolvers<HostSourcePage>();
+  const cancel = vi.fn().mockResolvedValue(undefined);
+  native.enumerate.mockImplementation((_plugin: string, input: HostEnumerateRequest) => input.request.cursor
+    ? Object.assign(pending.promise, { cancel })
+    : ready(first));
+  const { client, wrapper } = setup();
+  const hook = renderHook(() => useResources({ pluginID: 'provider', request, collection: true, live: false }), { wrapper });
+  await waitFor(() => expect(native.enumerate).toHaveBeenCalledTimes(2));
+  act(() => {
+    native.phase = 'disconnected';
+    native.generation++;
+    for (const listener of [...native.readinessListeners]) listener();
+  });
+  await act(async () => pending.resolve({ ...second, sourcePage: { ...second.sourcePage, nextCursor: undefined } }));
+  expect(cancel).toHaveBeenCalledTimes(1);
+  expect(hook.result.current.acquired).toBeUndefined();
+  expect(hook.result.current.resources.data).toBeUndefined();
+  hook.unmount(); client.clear();
+});
+
+it('applies collection events received during refresh after all pages settle', async () => {
+  native.enumerate.mockImplementation(() => ready({ ...first, sourcePage: { ...first.sourcePage, nextCursor: undefined } }));
+  const { client, wrapper } = setup();
+  const hook = renderHook(() => useResources({ pluginID: 'provider', request, collection: true }), { wrapper });
+  await waitFor(() => expect(hook.result.current.isLive).toBe(true));
+  const pending = Promise.withResolvers<HostSourcePage>();
+  native.enumerate.mockImplementationOnce(() => Object.assign(pending.promise, { cancel: vi.fn().mockResolvedValue(undefined) }));
+  let refresh: Promise<unknown> | undefined;
+  act(() => { refresh = hook.result.current.refreshAcquiredPage(); });
+  act(() => native.listeners.get('provider/c/items/ADD')?.({ data: { record: second.records[0] } }));
+  flushFrames();
+  await act(async () => {
+    pending.resolve({ ...first, sourcePage: { ...first.sourcePage, nextCursor: undefined } });
+    await refresh;
+  });
+  await waitFor(() => expect(hook.result.current.acquired?.page.records).toEqual([firstRow, ...second.records]));
+  hook.unmount(); client.clear();
+});
+
+it('retains a failed collection refresh error while applying live observations', async () => {
+  native.enumerate.mockImplementation(() => ready({ ...first, sourcePage: { ...first.sourcePage, nextCursor: undefined } }));
+  const { client, wrapper } = setup();
+  const hook = renderHook(() => useResources({ pluginID: 'provider', request, collection: true }), { wrapper });
+  await waitFor(() => expect(hook.result.current.isLive).toBe(true));
+  const pending = Promise.withResolvers<HostSourcePage>();
+  native.enumerate.mockImplementationOnce(() => Object.assign(pending.promise, { cancel: vi.fn().mockResolvedValue(undefined) }));
+  let refresh: Promise<unknown> | undefined;
+  act(() => { refresh = hook.result.current.refreshAcquiredPage(); });
+  act(() => native.listeners.get('provider/c/items/ADD')?.({ data: { record: second.records[0] } }));
+  flushFrames();
+  await act(async () => {
+    pending.reject(new Error('refresh denied'));
+    await refresh;
+  });
+  await waitFor(() => expect(hook.result.current.acquired?.page.records).toEqual([firstRow, ...second.records]));
+  expect(hook.result.current.resources.isError).toBe(true);
+  expect(hook.result.current.resources.error?.message).toBe('refresh denied');
+  act(() => native.listeners.get('provider/c/items/DELETE')?.({ data: { key: firstRow.key, targetId: request.targetId } }));
+  flushFrames();
+  await waitFor(() => expect(hook.result.current.acquired?.page.records).toEqual(second.records));
+  expect(hook.result.current.resources.error?.message).toBe('refresh denied');
+  hook.unmount(); client.clear();
+});
 
 it('retains the actual acquired request and page after a different source cursor fails', async () => {
   const { client, wrapper } = setup(true);
