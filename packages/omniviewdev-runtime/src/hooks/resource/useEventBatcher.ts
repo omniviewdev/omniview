@@ -98,7 +98,13 @@ export function useEventBatcher(
     const membershipChanged = pendingMembershipChange.current;
     buffer.current.clear();
     pendingMembershipChange.current = false;
-    queryClient.setQueryData<ResourceView>(queryKey, (old) => current() ? applyBatch(old, events, membershipChanged, collection) : old);
+    const query = queryClient.getQueryCache().find<ResourceView>({ queryKey, exact: true });
+    if (collection && query?.state.status === 'error') {
+      // Advisory updates do not turn a failed native acquisition into success.
+      query.setState({ data: current() ? applyBatch(query.state.data, events, membershipChanged, collection) : query.state.data });
+    } else {
+      queryClient.setQueryData<ResourceView>(queryKey, (old) => current() ? applyBatch(old, events, membershipChanged, collection) : old);
+    }
     for (const event of events) {
       if (!current()) return;
       if (event.type === 'DELETE') {

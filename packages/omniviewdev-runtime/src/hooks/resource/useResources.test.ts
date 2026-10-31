@@ -191,6 +191,31 @@ it('applies collection events received during refresh after all pages settle', a
   hook.unmount(); client.clear();
 });
 
+it('retains a failed collection refresh error while applying live observations', async () => {
+  native.enumerate.mockImplementation(() => ready({ ...first, sourcePage: { ...first.sourcePage, nextCursor: undefined } }));
+  const { client, wrapper } = setup();
+  const hook = renderHook(() => useResources({ pluginID: 'provider', request, collection: true }), { wrapper });
+  await waitFor(() => expect(hook.result.current.isLive).toBe(true));
+  const pending = Promise.withResolvers<HostSourcePage>();
+  native.enumerate.mockImplementationOnce(() => Object.assign(pending.promise, { cancel: vi.fn().mockResolvedValue(undefined) }));
+  let refresh: Promise<unknown> | undefined;
+  act(() => { refresh = hook.result.current.refreshAcquiredPage(); });
+  act(() => native.listeners.get('provider/c/items/ADD')?.({ data: { record: second.records[0] } }));
+  flushFrames();
+  await act(async () => {
+    pending.reject(new Error('refresh denied'));
+    await refresh;
+  });
+  await waitFor(() => expect(hook.result.current.acquired?.page.records).toEqual([firstRow, ...second.records]));
+  expect(hook.result.current.resources.isError).toBe(true);
+  expect(hook.result.current.resources.error?.message).toBe('refresh denied');
+  act(() => native.listeners.get('provider/c/items/DELETE')?.({ data: { key: firstRow.key, targetId: request.targetId } }));
+  flushFrames();
+  await waitFor(() => expect(hook.result.current.acquired?.page.records).toEqual(second.records));
+  expect(hook.result.current.resources.error?.message).toBe('refresh denied');
+  hook.unmount(); client.clear();
+});
+
 it('retains the actual acquired request and page after a different source cursor fails', async () => {
   const { client, wrapper } = setup(true);
   const hook = renderHook((props: HookProps) => useResources(props), { wrapper, initialProps: { pluginID: 'provider', request, live: false } });

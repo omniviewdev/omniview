@@ -223,6 +223,8 @@ source page and follows all `Enumerate` cursors internally, deduplicating record
 by canonical host key. `resources.data` and `acquired.page` publish the merged
 view only after every page succeeds; a continuation failure exposes an error,
 not a partial collection. Collection queries use a separate cache partition.
+Live observations can still update retained rows after a failed refresh, but
+the acquisition error remains visible until a native refresh succeeds.
 `refreshAcquiredPage()` reacquires the full collection. Live additions and
 updates upsert admitted target records, and deletes remove exact canonical keys
 without applying bounded-page membership invalidation. Counts remain unknown,
