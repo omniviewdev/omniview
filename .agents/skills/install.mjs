@@ -7,6 +7,7 @@ const names = [
   'omniview-workspaces',
   'omniview-repo-map',
   'omniview-instance-verification',
+  'omniview-ui-mocks',
 ];
 const skills = dirname(fileURLToPath(import.meta.url));
 const root = resolve(skills, '../..');
