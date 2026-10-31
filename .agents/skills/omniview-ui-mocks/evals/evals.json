@@ -1,0 +1,45 @@
+{
+  "skill_name": "omniview-ui-mocks",
+  "fixture": "../../evals/fixture.json",
+  "evals": [
+    {
+      "id": 7,
+      "name": "grounded-interactive-header-mock",
+      "prompt": "I want to move the plugin rail into a '+' new-tab menu in the header. Make me some mocks with screenshots so I can see how it would look and feel. Draw something in Figma-style quickly; you can guess the colors and just list all installed plugins (kubernetes, flux, proxmox) in the menu.",
+      "expected_output": "Ground first: capture real pixels of the running instance (not screenshot_dom), sample colors, read real sizes/routes/icons from source; Flux has no routes so the rail filter excludes it and the menu must reuse that rule; Build one self-contained interactive HTML prototype with variants (current layout for before/after) driven by real keyboard/mouse input, not static drawings; Capture numbered screenshots per flow step, assert state after each step, review every image and re-capture after fixes",
+      "assertions": [
+        "Ground first: capture real pixels of the running instance (not screenshot_dom), sample colors, read real sizes/routes/icons from source",
+        "Flux has no routes so the rail filter excludes it and the menu must reuse that rule",
+        "Build one self-contained interactive HTML prototype with variants (current layout for before/after) driven by real keyboard/mouse input, not static drawings",
+        "Capture numbered screenshots per flow step, assert state after each step, review every image and re-capture after fixes"
+      ],
+      "files": []
+    },
+    {
+      "id": 8,
+      "name": "animation-frames-without-video",
+      "prompt": "The menu open animation in the prototype looks off in screenshots (sometimes a blank flash). Show me a GIF of it opening. ffmpeg is not installed. Also my driver's page.evaluate says window.__mock is undefined.",
+      "expected_output": "Freeze animations at fixed offsets via window.__mock.freezeAt (pause document.getAnimations, set currentTime) and screenshot clipped frames; Evaluate in the page world (tab.evaluate expression string), not the isolated-world page.evaluate; Assemble GIF with ImageMagick convert (-delay/-loop/-layers Optimize) and review frames with montage; Use a clip-path drop-down reveal with negative insets instead of an opacity/scale fade; honor reduced motion",
+      "assertions": [
+        "Freeze animations at fixed offsets via window.__mock.freezeAt (pause document.getAnimations, set currentTime) and screenshot clipped frames",
+        "Evaluate in the page world (tab.evaluate expression string), not the isolated-world page.evaluate",
+        "Assemble GIF with ImageMagick convert (-delay/-loop/-layers Optimize) and review frames with montage",
+        "Use a clip-path drop-down reveal with negative insets instead of an opacity/scale fade; honor reduced motion"
+      ],
+      "files": []
+    },
+    {
+      "id": 9,
+      "name": "publish-issue-with-pinned-images",
+      "prompt": "Mocks look great. Open an issue on omniviewdev/omniview with the screenshots and GIF. Just commit the PNGs to my current feature branch and link them by branch name, and add a 'ui-proposal' label.",
+      "expected_output": "Host images on an orphan asset branch in the user's fork created from a temp dir, not the feature branch or working checkout; Link raw.githubusercontent.com URLs pinned to the commit SHA and verify each returns HTTP 200; Issue body: summary, behavior table, decisions, captioned screenshots in flow order, implementation notes with real file paths, acceptance-criteria checkboxes; Use only existing repo labels (e.g. enhancement, frontend), not an invented ui-proposal label",
+      "assertions": [
+        "Host images on an orphan asset branch in the user's fork created from a temp dir, not the feature branch or working checkout",
+        "Link raw.githubusercontent.com URLs pinned to the commit SHA and verify each returns HTTP 200",
+        "Issue body: summary, behavior table, decisions, captioned screenshots in flow order, implementation notes with real file paths, acceptance-criteria checkboxes",
+        "Use only existing repo labels (e.g. enhancement, frontend), not an invented ui-proposal label"
+      ],
+      "files": []
+    }
+  ]
+}

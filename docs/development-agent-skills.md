@@ -18,8 +18,9 @@ Codex uses the canonical repository `.agents/skills` directly. Claude Code recei
 | Set up/start/resume/edit/link/stop/remove a feature | `omniview-workspaces` |
 | Find the repository and source for a feature or bug | `omniview-repo-map` |
 | Verify browser/native behavior on the correct instance | `omniview-instance-verification` |
+| Design a UI change with grounded mocks, a clickable prototype, screenshots or an issue write-up | `omniview-ui-mocks` |
 
-Claude Code can invoke `/omniview-workspaces`, `/omniview-repo-map`, or `/omniview-instance-verification`. In Codex, ask it to use the corresponding skill (or select it in that client's skills UI). If the client cannot discover a skill, open its `SKILL.md` explicitly; do not install globally as a fallback. For clients other than these two, explicitly attach/read the canonical file; automatic discovery has not been established here.
+Claude Code can invoke `/omniview-workspaces`, `/omniview-repo-map`, `/omniview-instance-verification`, or `/omniview-ui-mocks`. In Codex, ask it to use the corresponding skill (or select it in that client's skills UI). If the client cannot discover a skill, open its `SKILL.md` explicitly; do not install globally as a fallback. For clients other than these two, explicitly attach/read the canonical file; automatic discovery has not been established here.
 
 ## Minimal handoff to an agent
 
