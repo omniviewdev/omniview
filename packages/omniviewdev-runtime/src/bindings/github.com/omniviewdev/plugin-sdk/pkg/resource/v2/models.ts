@@ -440,6 +440,11 @@ export enum Feature {
      * FeatureBestEffortUpdates enables advisory updates without replay guarantees.
      */
     FeatureBestEffortUpdates = "bestEffortUpdates",
+
+    /**
+     * FeatureConnectionMetadata enables public connection facts and refresh.
+     */
+    FeatureConnectionMetadata = "connectionMetadata",
 };
 
 /**
