@@ -115,6 +115,8 @@ The listener binds only `127.0.0.1`. It is off when the variable is unset; port 
 
 Local access is unauthenticated and profiles can contain sensitive information. Do not publish or forward the port. Use the numeric `127.0.0.1` URL; requests with a different Host header or any Origin header are rejected.
 
+CPU captures are capped at 120 seconds and execution traces at 15 seconds; larger `seconds` values are clamped. Standard default durations remain unchanged. Both capture routes reject HEAD requests without starting a capture. Request reads, including bodies, time out after 10 seconds; this does not limit capture response duration.
+
 This profiles the host, not plugin subprocesses or the UI. Disable continuous Pyroscope profiling before capturing CPU through pprof: Go permits only one CPU profiler per process. Block/mutex sampling remains disabled by default.
 
 ## Documentation

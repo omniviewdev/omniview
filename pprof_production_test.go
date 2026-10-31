@@ -4,6 +4,7 @@ package main
 
 import "testing"
 
+// TestHostPprofProductionDisabled verifies production cannot enable a listener.
 func TestHostPprofProductionDisabled(t *testing.T) {
 	server, err := startHostPprof("")
 	if server != nil || err != nil {

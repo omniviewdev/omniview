@@ -99,6 +99,8 @@ func newUICapabilityControllers(
 	return execController, networkerController, logsController, metricController
 }
 
+// main resolves instance identity, initializes services and runs the host.
+//
 //nolint:funlen // main function is expected to be long
 func main() {
 	if handled, exit := hostruntime.HandleNativeProfileRemoval(os.Args[1:]); handled {
