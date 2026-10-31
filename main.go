@@ -99,6 +99,8 @@ func newUICapabilityControllers(
 	return execController, networkerController, logsController, metricController
 }
 
+// main resolves instance identity, initializes services and runs the host.
+//
 //nolint:funlen // main function is expected to be long
 func main() {
 	if handled, exit := hostruntime.HandleNativeProfileRemoval(os.Args[1:]); handled {
@@ -110,6 +112,14 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: invalid runtime profile: %v\n", err)
 		os.Exit(1)
+	}
+	pprofServer, err := startHostPprof(os.Getenv("OMNIVIEW_PPROF_PORT"))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+		os.Exit(1)
+	}
+	if pprofServer != nil {
+		defer pprofServer.Close()
 	}
 	// Finder does not inherit a terminal's login PATH. Resolve it before any
 	// plugin or executable starts, while preserving host isolation authority.
