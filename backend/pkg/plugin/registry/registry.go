@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	coresettings "github.com/omniviewdev/omniview/internal/settings"
 	"github.com/omniviewdev/omniview/internal/version"
 	regclient "github.com/omniviewdev/registry"
 )
@@ -101,19 +102,22 @@ func (c *Client) BaseURL() string {
 }
 
 func newRegistryClient(baseURL string) *regclient.Client {
-	opts := []regclient.Option{}
-	if baseURL != "" {
-		// Registry v0.2.3 appends absolute API paths to this string. Normalize
-		// once so its request paths and the transport's API scope agree.
-		opts = append(opts, regclient.WithBaseURL(strings.TrimRight(baseURL, "/")))
+	if baseURL == "" {
+		baseURL = coresettings.DefaultMarketplaceURL
 	}
-	// Resolve the library default rather than duplicating its marketplace URL.
-	base, _ := url.Parse(regclient.NewClient(opts...).BaseURL())
-	opts = append(opts, regclient.WithHTTPClient(&http.Client{
+	// Registry v0.2.3 appends absolute API paths to this string.
+	baseURL = strings.TrimRight(baseURL, "/")
+	client := regclient.NewClient(regclient.WithBaseURL(baseURL))
+	base, err := url.Parse(baseURL)
+	if err != nil {
+		// Preserve the registry client's request-time validation of malformed URLs.
+		return client
+	}
+	regclient.WithHTTPClient(&http.Client{
 		Timeout:   30 * time.Second, // Preserve registry v0.2.3's default.
 		Transport: &compatibilityTransport{base: base, next: http.DefaultTransport},
-	}))
-	return regclient.NewClient(opts...)
+	})(client)
+	return client
 }
 
 // compatibilityTransport only decorates direct registry API requests. Redirects

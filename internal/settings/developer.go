@@ -2,6 +2,9 @@ package categories
 
 import "github.com/omniviewdev/plugin-sdk/settings"
 
+// DefaultMarketplaceURL is the public marketplace API used without an explicit override.
+const DefaultMarketplaceURL = "https://mkt.omniview.dev"
+
 //nolint:gochecknoglobals // we're providing this as a package level variable
 var Developer = settings.Category{
 	ID:          "developer",
@@ -14,7 +17,7 @@ var Developer = settings.Category{
 			Label:       "Marketplace URL",
 			Description: "Base URL for the plugin marketplace API. Change this to point to a staging or self-hosted instance.",
 			Type:        settings.Text,
-			Default:     "https://api.omniview.dev",
+			Default:     DefaultMarketplaceURL,
 		},
 		"registry_public_key": {
 			ID:    "registry_public_key",
