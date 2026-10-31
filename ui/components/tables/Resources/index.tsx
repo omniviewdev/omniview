@@ -18,9 +18,11 @@ const ResourceTable = ({ pluginID, connectionID, resourceKey }: Props) => {
   if (descriptor.capabilities.some(({ operation }) => operation === 'enumerate')) {
     return <EnumerableResourceTable key={key} {...props} />;
   }
+
   if (descriptor.capabilities.some(({ operation }) => operation === 'get')) {
     return <ResourceLookup key={key} {...props} />;
   }
+
   return <Text>{descriptor.displayName || resourceKey}: Catalog only. No enumerate or get operation is advertised.</Text>;
 };
 

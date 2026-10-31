@@ -12,6 +12,7 @@ function flushMicrotasks() {
   queueMicrotask(resolve);
   return promise;
 }
+
 const document: SchemaDocument = {
   reference: { id: 'shared', revision: 'revision-1' },
   dialect: 'https://json-schema.org/draft/2020-12/schema',

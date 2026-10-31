@@ -266,6 +266,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
       if (!ctx.resource) {
         throw new Error('Resource editor has no canonical target.');
       }
+
       void withConnectionReady(params.pluginID, ctx.resource.route.connection, () => ResourceClient.Mutate(params.pluginID, {
         route: ctx.resource!.route,
         reference: ctx.resource!.reference,
@@ -299,6 +300,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
       if (request !== resourceRequest.current) {
         throw new DOMException('Resource request superseded.', 'AbortError');
       }
+
       const read = ResourceClient.Get(params.pluginID, {
         targetId: params.targetId,
         request: {
@@ -307,7 +309,10 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
           representation: params.representation,
         },
       });
-      const cancel = () => { void read.cancel(); };
+      const cancel = () => {
+        void read.cancel(); 
+      };
+
       cancelResourceRead.current = cancel;
       params.signal?.addEventListener('abort', cancel, { once: true });
       try {
@@ -317,6 +322,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
         if (Boolean(params.signal?.aborted) || request !== resourceRequest.current) {
           throw new DOMException('Resource request cancelled.', 'AbortError');
         }
+
         throw error;
       } finally {
         params.signal?.removeEventListener('abort', cancel);
@@ -334,9 +340,11 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
     if (!result) {
       throw new Error('Resource is no longer available.');
     }
+
     if (params.reference.incarnation && result.record.reference.incarnation !== params.reference.incarnation) {
       throw new Error('Resource identity changed. Search again.');
     }
+
     const data = valueToJSON(result.record.body);
 
     if (params.validateData && !params.validateData(data)) {

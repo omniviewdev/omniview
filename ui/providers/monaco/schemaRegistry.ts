@@ -43,6 +43,7 @@ class SchemaRegistry {
       if (schema.language !== 'yaml' && schema.language !== 'json') {
         continue;
       }
+
       let document = schema.binding.document;
       let documentURI = `${schema.uri}/document`;
       if (schema.binding.documentRef) {
@@ -55,11 +56,13 @@ class SchemaRegistry {
           if (document === undefined) {
             throw new Error(`Editor schema document ${reference.id} is unavailable.`);
           }
+
           registeredDocuments.set(documentKey, documentURI);
         } else {
           document = undefined;
         }
       }
+
       if (document !== undefined) {
         entries.push({
           type: schema.type,
@@ -73,6 +76,7 @@ class SchemaRegistry {
       ]))) {
         continue;
       }
+
       const root = schema.binding.root ?? '';
       entries.push({
         type: schema.type,

@@ -76,7 +76,9 @@ const EnumerableResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKe
   const controls = <Stack direction="row" spacing={2}>
     <Button size="sm" disabled={cursors.length === 1} onClick={() => setCursors((pages) => pages.slice(0, -1))}>Previous page</Button>
     <Text>Source page {cursors.length}</Text>
-    <Button size="sm" disabled={resources.isFetching} onClick={() => { void resources.refetch(); }}>Refresh source page</Button>
+    <Button size="sm" disabled={resources.isFetching} onClick={() => {
+      void resources.refetch(); 
+    }}>Refresh source page</Button>
   </Stack>;
 
   if (!selectedRepresentation && !(isError && presentationFailure)) {

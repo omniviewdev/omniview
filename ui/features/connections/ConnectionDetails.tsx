@@ -74,7 +74,9 @@ export default function ConnectionDetails(): React.ReactElement {
     setPending(false);
     setError(null);
     setSaved(false);
-    return () => { operation.current += 1; };
+    return () => {
+      operation.current += 1; 
+    };
   }, [pluginID, connectionID]);
 
   const apply = async (change: () => Promise<unknown>) => {
@@ -114,6 +116,7 @@ export default function ConnectionDetails(): React.ReactElement {
             if (!data || typeof data !== 'object' || Array.isArray(data)) {
               throw new Error('Source configuration must be a JSON object.');
             }
+
             await saveConnectionProfile(Connection.createFrom({ ...profile.connection, name, description, data }));
           });
         }}

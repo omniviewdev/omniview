@@ -23,6 +23,7 @@ function show(code: string) {
   state.error = { code, title: code, message: code };
   return render(<QueryClientProvider client={new QueryClient()}><ResourceTable pluginID="p" connectionID="c" resourceKey="objects" /></QueryClientProvider>);
 }
+
 describe('optional presentation', () => {
   it('renders canonical references and lossless raw bodies when presentation is absent', () => {
     show('UNSUPPORTED');

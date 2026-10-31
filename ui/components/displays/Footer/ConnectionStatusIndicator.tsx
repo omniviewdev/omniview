@@ -112,14 +112,14 @@ function ConnectionRow({
           />
         )}
         {readiness === 'CONNECTED' && (
-        <PopoverAction
-          icon={<LuUnplug size={11} />}
-          label='Disconnect'
-          onClick={() => {
-            onDisconnect(pluginID, connectionID); 
-          }}
-          tone='danger'
-        />
+          <PopoverAction
+            icon={<LuUnplug size={11} />}
+            label='Disconnect'
+            onClick={() => {
+              onDisconnect(pluginID, connectionID); 
+            }}
+            tone='danger'
+          />
         )}
       </div>
     </div>

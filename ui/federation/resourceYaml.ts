@@ -8,6 +8,7 @@ export function resourceYaml(value: Value): string {
       if (typeof tag === 'string' || tag.tag !== 'tag:yaml.org,2002:float' || !tag.stringify) {
         return tag;
       }
+
       const stringify = tag.stringify;
       const floatTag: ScalarTag = {
         ...tag,
@@ -30,6 +31,7 @@ export function resourceYaml(value: Value): string {
       node.items.forEach((child, index) => annotate(child, source.value[index]));
     }
   };
+
   annotate(document.contents, value);
   return document.toString();
 }
@@ -46,8 +48,10 @@ export function parseResourceYaml(text: string, original: Value, originalText: s
         if (!Number.isFinite(node.value)) throw new Error('Resource doubles must be finite.');
         return { kind: 'double', value: node.value as number };
       }
+
       return jsonToValue(node.value);
     }
+
     if (isSeq(node)) return { kind: 'list', value: node.items.map((item, index) => convert(item, prior?.kind === 'list' ? prior.value[index] : undefined, isSeq(oldNode) ? oldNode.items[index] : undefined)) };
     if (isMap(node)) {
       const value: Record<string, Value> = Object.create(null);
@@ -56,10 +60,13 @@ export function parseResourceYaml(text: string, original: Value, originalText: s
         const key = pair.key.value;
         value[key] = convert(pair.value, prior?.kind === 'map' ? prior.value[key] : undefined, isMap(oldNode) ? oldNode.get(key, true) : undefined);
       }
+
       return { kind: 'map', value };
     }
+
     if (node === null) return { kind: 'null' };
     throw new Error('Resource YAML aliases are not supported.');
   };
+
   return convert(document.contents, original, baseline.contents);
 }

@@ -58,6 +58,7 @@ const ResourceLinkCell: React.FC<Props> = ({
         if (typeof entry !== 'string') {
           throw new Error(`Linked resource scope ${dimension} is unavailable.`);
         }
+
         return { dimension, value: entry };
       });
       const resolved = await ResourceClient.ResolveReference(metadata.pluginID, {
@@ -77,6 +78,7 @@ const ResourceLinkCell: React.FC<Props> = ({
       if (error instanceof DOMException && error.name === 'AbortError') {
         return;
       }
+
       showAppError(showSnackbar, error, `Failed to load resource: ${resourceID}`);
     });
   };

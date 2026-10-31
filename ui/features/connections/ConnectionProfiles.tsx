@@ -26,11 +26,14 @@ export default function ConnectionProfiles() {
       setReloading(false);
     }
   };
+
   if (profiles.isLoading) return <Spinner size="xl" />;
   return <Stack direction="column" spacing={3}>
     <Text weight="semibold">Connection profiles</Text>
     <Text>Saved intent and last observed source inventory do not establish connection readiness.</Text>
-    <Button disabled={reloading} onClick={() => { void reload(); }}>Reload source inventory</Button>
+    <Button disabled={reloading} onClick={() => {
+      void reload(); 
+    }}>Reload source inventory</Button>
     {(profiles.isError || error !== undefined) && <Text tone="danger">{parseAppError(error ?? profiles.error).detail}</Text>}
     {(profiles.data ?? []).map((profile) => <Stack key={profile.id} direction="row" spacing={2}>
       <Text>{profile.connection?.name || profile.id}: {profile.source}{profile.active ? ' (observed)' : ' (inactive)'}</Text>

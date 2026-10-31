@@ -106,6 +106,7 @@ function admitReference(input: unknown) {
       || entry.value.length > 1024 || scope.some(other => other.dimension === entry.dimension)) return undefined;
     scope.push({ dimension: entry.dimension, value: entry.value });
   }
+
   return {
     address: { provider: address.provider, authority: address.authority, type: address.type, id: address.id, scope },
     ...(input.incarnation !== undefined ? { incarnation: input.incarnation as string } : {}),
@@ -118,6 +119,7 @@ export function admitSearchScope(input: unknown): SearchScopeV1 | undefined {
   if (input.kind === 'connection') {
     return identifier(input.connectionId) ? { ...common, kind: 'connection', connectionId: input.connectionId } : undefined;
   }
+
   if (!opaqueIdentifier(input.targetId, 8192)
     || (input.scopeLabel !== undefined && !identifier(input.scopeLabel))) return undefined;
   const scoped = { ...common, targetId: input.targetId, ...(input.scopeLabel ? { scopeLabel: input.scopeLabel as string } : {}) };
@@ -127,6 +129,7 @@ export function admitSearchScope(input: unknown): SearchScopeV1 | undefined {
     return reference && route && identifier(input.representation)
       ? { ...scoped, kind: 'resource', reference, route, representation: input.representation } : undefined;
   }
+
   if (input.kind !== 'resource-type' || !record(input.target)) return undefined;
   const target = input.target;
   const route = admitRoute(target.route);
@@ -145,6 +148,7 @@ export function admitSearchScope(input: unknown): SearchScopeV1 | undefined {
       scope.push({ dimension: constraint.dimension, match: 'oneOf', values: [...constraint.values] });
     } else return undefined;
   }
+
   return { ...scoped, kind: 'resource-type', target: {
     route, provider: target.provider, authority: target.authority, type: target.type,
     representation: target.representation, scope,
