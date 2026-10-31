@@ -17,6 +17,7 @@ export function scopeDetails(scope: SearchScopeV1): string | undefined {
     ? scope.reference.address.scope.map(entry => `${entry.dimension}: ${entry.value}`).join(', ')
     : scope.target.scope.map(entry => `${entry.dimension}: ${entry.match === 'any' ? '*' : entry.values.join(', ')}`).join('; ');
 }
+
 /** UI filtering is not admission: the host independently validates every request. */
 export function containsScope(parent: SearchScopeV1, target: SearchScopeV1): boolean {
   if (parent.pluginId !== target.pluginId || scopeConnection(parent) !== scopeConnection(target)) return false;
@@ -28,6 +29,7 @@ export function containsScope(parent: SearchScopeV1, target: SearchScopeV1): boo
       && sameGraphNode({ pluginId: parent.pluginId, reference: parent.reference, route: parent.route },
         { pluginId: target.pluginId, reference: target.reference, route: target.route });
   }
+
   const child = target.kind === 'resource-type' ? target.target : target.reference.address;
   if (parent.target.provider !== child.provider || parent.target.authority !== child.authority
     || parent.target.type !== child.type) return false;
@@ -38,6 +40,7 @@ export function containsScope(parent: SearchScopeV1, target: SearchScopeV1): boo
       const value = target.reference.address.scope.find(entry => entry.dimension === constraint.dimension);
       return !!value && constraint.values.includes(value.value);
     }
+
     const other = target.target.scope.find(entry => entry.dimension === constraint.dimension);
     return other?.match === 'oneOf' && other.values.every(value => constraint.values.includes(value));
   });

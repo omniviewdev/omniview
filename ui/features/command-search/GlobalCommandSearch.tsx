@@ -29,6 +29,7 @@ function scopeKey(scope: SearchScopeV1) {
     id = ++nextScopeId;
     scopeIds.set(scope, id);
   }
+
   return String(id);
 }
 

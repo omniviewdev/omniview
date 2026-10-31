@@ -34,12 +34,16 @@ function Location() {
   const location = useLocation();
   return <output data-testid="location">{location.pathname}{location.search}</output>;
 }
+
 function open(type?: string, pluginID = 'provider', connectionID = 'prod/west') {
   return render(<MemoryRouter initialEntries={[resourceBrowserPath(pluginID, connectionID, type)]}>
     <Routes><Route path="resources/:pluginID/:connectionID" element={<><ResourceBrowser /><Location /></>} /></Routes>
   </MemoryRouter>);
 }
-beforeEach(() => { vi.clearAllMocks(); state.connected = true; state.error = null; });
+
+beforeEach(() => {
+  vi.clearAllMocks(); state.connected = true; state.error = null; 
+});
 
 it('keeps opaque type selection in the active workspace URL and preserves group icons', () => {
   open();

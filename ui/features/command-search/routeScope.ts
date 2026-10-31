@@ -26,6 +26,7 @@ export function resolveRouteSearchScope(
   if (hostPage?.kind === 'connection' && isPluginReady(hostPage.pluginId)) {
     return { kind: 'connection', pluginId: hostPage.pluginId, connectionId: hostPage.connectionId, label: hostPage.connectionId };
   }
+
   const rawOwner = /^\/_plugin\/([^/]+)(?=\/|$)/.exec(location.pathname);
   if (!rawOwner) {
     return undefined;

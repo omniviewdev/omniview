@@ -34,6 +34,7 @@ function ConnectedResourceBrowser({ pluginID, connectionID }: { pluginID: string
   if (connection.isError || resourceTypes.isError || groupsFailed) {
     return <Text tone="danger">{parseAppError(connection.error ?? resourceTypes.error ?? groups.error).detail}</Text>;
   }
+
   if (connection.isLoading || resourceTypes.isLoading || groups.isLoading) return <Spinner size="xl" />;
   const types = resourceTypes.data ?? [];
   const byType = new Map(types.map((type) => [type.type, type]));
@@ -43,6 +44,7 @@ function ConnectedResourceBrowser({ pluginID, connectionID }: { pluginID: string
     next.set('type', type);
     setSearch(next);
   };
+
   const item = (type: string) => <Button key={type} variant={selected === type ? 'soft' : 'ghost'} onClick={() => select(type)}>
     {byType.get(type)?.displayName || type}
   </Button>;

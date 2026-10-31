@@ -286,6 +286,7 @@ describe('AiToolsSettingsPage', () => {
     } else {
       mocks.listPresets.mockResolvedValue([{ name: 'recovered-preset', builtIn: false, toolCount: 2 }]);
     }
+
     renderPage();
     const retry = await screen.findByRole('button', { name: `Retry ${label.toLowerCase()}` });
     expect(screen.getByText(`${label} could not be loaded.`)).toBeInTheDocument();
@@ -299,6 +300,7 @@ describe('AiToolsSettingsPage', () => {
     } else {
       expect(await screen.findByRole('button', { name: 'Delete preset recovered-preset' })).toBeInTheDocument();
     }
+
     expect(mocks[method]).toHaveBeenCalledTimes(2);
     await waitFor(() => expect(screen.queryByText(`${label} could not be loaded.`)).not.toBeInTheDocument());
   });

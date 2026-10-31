@@ -170,238 +170,238 @@ const AiToolsSettingsPage: React.FC = () => {
           </div>
         ))}
         <fieldset disabled={!config || relay.config.isFetching} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-        <Card className={styles.Card}>
-          <div className={styles.CardTitle}>
-            <Text size='md' weight='semibold'>Server</Text>
-            <Switch
-              checked={config?.enabled ?? false}
-              disabled={!config}
-              onCheckedChange={(checked) => {
-                relay.setEnabled.mutate(checked); 
-              }}
-            >
-              Enabled
-            </Switch>
-          </div>
-          <div className={styles.Status} role='status'>
-            {relay.status.isError ? (
-              <Chip variant='soft' color='danger' size='sm'>Status unavailable</Chip>
-            ) : relay.status.isLoading ? (
-              <Text size='sm'>Loading server status…</Text>
-            ) : status?.error ? (
-              <Chip variant='soft' color='danger' size='sm'>Error: {status.error}</Chip>
-            ) : status?.running ? (
-              <Chip variant='soft' color='success' size='sm'>Running at {status.endpoint}</Chip>
-            ) : (
-              <Chip variant='soft' color='neutral' size='sm'>Stopped</Chip>
-            )}
-          </div>
-          <div className={styles.Row}>
-            <TextField.Root size='sm' className={styles.PortField}>
-              <TextField.Label>Port</TextField.Label>
-              <TextField.Control
-                type='number'
-                value={portDraft ?? String(config?.port ?? '')}
-                onChange={(e) => {
-                  setPortDraft(e.target.value); 
-                }}
-              />
-            </TextField.Root>
-            <Button
-              size='sm'
-              variant='outline'
-              disabled={portDraft === null || portDraft === String(config?.port ?? '')}
-              onClick={() => {
-                const port = Number(portDraft);
-                relay.setPort.mutate(port, { onSuccess: () => {
-                  setPortDraft(null); 
-                } });
-              }}
-            >
-              Apply port
-            </Button>
-          </div>
-          <div className={styles.Row}>
-            <Text size='sm'>Token:</Text>
-            <Text size='sm' className={styles.ToolName}>
-              {tokenVisible ? config?.token ?? '' : '••••••••••••'}
-            </Text>
-            <Button size='sm' variant='ghost' onClick={() => {
-              setTokenVisible((v) => !v); 
-            }}>
-              {tokenVisible ? 'Hide' : 'Reveal'}
-            </Button>
-            <Button size='sm' variant='ghost' disabled={!config} onClick={() => {
-              copy('Token', config?.token ?? ''); 
-            }}>
-              Copy token
-            </Button>
-            <Button
-              size='sm'
-              variant='outline'
-              color='danger'
-              onClick={() => {
-                confirm({
-                  title: 'Rotate token',
-                  body: 'Every client must be reconfigured with the new token.',
-                  confirmLabel: 'Rotate',
-                  onConfirm: async () => relay.rotateToken.mutateAsync(),
-                }); 
-              }
-              }
-            >
-              Rotate token
-            </Button>
-          </div>
-          {config && (
-            <div className={styles.Snippet}>
-              <Text size='sm' weight='semibold'>Client setup</Text>
-              <div className={styles.Row}>
-                <Text size='xs' className={styles.Muted}>Claude Code</Text>
-                <Button size='sm' variant='ghost' onClick={() => {
-                  copy('Claude command', claudeCommand(config.endpoint, config.token)); 
-                }}>
-                  Copy command
-                </Button>
-              </div>
-              <pre className={styles.SnippetCode}>{claudeCommand(config.endpoint, tokenVisible ? config.token : '<token>')}</pre>
-              <div className={styles.Row}>
-                <Text size='xs' className={styles.Muted}>JSON (mcpServers)</Text>
-                <Button size='sm' variant='ghost' onClick={() => {
-                  copy('JSON config', jsonSnippet(config.endpoint, config.token)); 
-                }}>
-                  Copy JSON
-                </Button>
-              </div>
-              <pre className={styles.SnippetCode}>{jsonSnippet(config.endpoint, tokenVisible ? config.token : '<token>')}</pre>
-            </div>
-          )}
-        </Card>
-
-        <Card className={styles.Card}>
-          <div className={styles.CardTitle}>
-            <Text size='md' weight='semibold'>Policy scope</Text>
-            <Switch
-              checked={config?.blockConnectionsByDefault ?? false}
-              disabled={!config}
-              onCheckedChange={(checked) => {
-                relay.setBlockConnectionsByDefault.mutate(checked); 
-              }}
-            >
-              Block connections by default
-            </Switch>
-          </div>
-          <div className={styles.Row}>
-            <PolicySelect
-              ariaLabel='Policy scope'
-              value={scopeKey(scope)}
-              options={scopeOptions}
-              onChange={(key) => {
-                setScope(scopeFromKey(key)); 
-              }}
-            />
-            {selectedConnection && (
-              <ConnectionControls
-                connection={selectedConnection}
-                presetOptions={presetOptions}
-                onAccessChange={(access) => {
-                  relay.setConnectionAccess.mutate({
-                    pluginID: selectedConnection.pluginID,
-                    connectionID: selectedConnection.connectionID,
-                    access,
-                  }); 
-                }
-                }
-                onPresetChange={(name) => {
-                  applyPreset(name === INHERIT_PRESET ? '' : name); 
-                }}
-                blockByDefault={config?.blockConnectionsByDefault ?? false}
-              />
-            )}
-          </div>
-        </Card>
-
-        {isGlobal && (
           <Card className={styles.Card}>
-            <Text size='md' weight='semibold'>Presets</Text>
+            <div className={styles.CardTitle}>
+              <Text size='md' weight='semibold'>Server</Text>
+              <Switch
+                checked={config?.enabled ?? false}
+                disabled={!config}
+                onCheckedChange={(checked) => {
+                  relay.setEnabled.mutate(checked); 
+                }}
+              >
+                Enabled
+              </Switch>
+            </div>
+            <div className={styles.Status} role='status'>
+              {relay.status.isError ? (
+                <Chip variant='soft' color='danger' size='sm'>Status unavailable</Chip>
+              ) : relay.status.isLoading ? (
+                <Text size='sm'>Loading server status…</Text>
+              ) : status?.error ? (
+                <Chip variant='soft' color='danger' size='sm'>Error: {status.error}</Chip>
+              ) : status?.running ? (
+                <Chip variant='soft' color='success' size='sm'>Running at {status.endpoint}</Chip>
+              ) : (
+                <Chip variant='soft' color='neutral' size='sm'>Stopped</Chip>
+              )}
+            </div>
             <div className={styles.Row}>
-              <PolicySelect
-                ariaLabel='Global preset'
-                value={config?.globalPreset ?? 'read-only'}
-                options={presetOptions}
-                onChange={applyPreset}
-              />
-              <TextField.Root size='sm' className={styles.Field}>
-                <TextField.Label>Save current selection as preset</TextField.Label>
+              <TextField.Root size='sm' className={styles.PortField}>
+                <TextField.Label>Port</TextField.Label>
                 <TextField.Control
-                  value={presetName}
-                  placeholder='Preset name'
+                  type='number'
+                  value={portDraft ?? String(config?.port ?? '')}
                   onChange={(e) => {
-                    setPresetName(e.target.value); 
+                    setPortDraft(e.target.value); 
                   }}
                 />
               </TextField.Root>
               <Button
                 size='sm'
                 variant='outline'
-                disabled={presetName.trim() === ''}
+                disabled={portDraft === null || portDraft === String(config?.port ?? '')}
                 onClick={() => {
-                  relay.saveUserPreset.mutate(presetName.trim(), { onSuccess: () => {
-                    setPresetName(''); 
-                  } }); 
+                  const port = Number(portDraft);
+                  relay.setPort.mutate(port, { onSuccess: () => {
+                    setPortDraft(null); 
+                  } });
+                }}
+              >
+                Apply port
+              </Button>
+            </div>
+            <div className={styles.Row}>
+              <Text size='sm'>Token:</Text>
+              <Text size='sm' className={styles.ToolName}>
+                {tokenVisible ? config?.token ?? '' : '••••••••••••'}
+              </Text>
+              <Button size='sm' variant='ghost' onClick={() => {
+                setTokenVisible((v) => !v); 
+              }}>
+                {tokenVisible ? 'Hide' : 'Reveal'}
+              </Button>
+              <Button size='sm' variant='ghost' disabled={!config} onClick={() => {
+                copy('Token', config?.token ?? ''); 
+              }}>
+                Copy token
+              </Button>
+              <Button
+                size='sm'
+                variant='outline'
+                color='danger'
+                onClick={() => {
+                  confirm({
+                    title: 'Rotate token',
+                    body: 'Every client must be reconfigured with the new token.',
+                    confirmLabel: 'Rotate',
+                    onConfirm: async () => relay.rotateToken.mutateAsync(),
+                  }); 
                 }
                 }
               >
-                Save preset
+                Rotate token
               </Button>
             </div>
-            {presets.filter((p) => !p.builtIn).length > 0 && (
-              <div className={styles.Row}>
-                {presets.filter((p) => !p.builtIn).map((p) => (
-                  <Chip key={p.name} variant='outline' color='neutral' size='sm'>
-                    {p.name}
-                    <button
-                      type='button'
-                      className={styles.ResetLink}
-                      aria-label={`Delete preset ${p.name}`}
-                      onClick={() => {
-                        relay.deleteUserPreset.mutate(p.name); 
-                      }}
-                    >
-                      delete
-                    </button>
-                  </Chip>
-                ))}
+            {config && (
+              <div className={styles.Snippet}>
+                <Text size='sm' weight='semibold'>Client setup</Text>
+                <div className={styles.Row}>
+                  <Text size='xs' className={styles.Muted}>Claude Code</Text>
+                  <Button size='sm' variant='ghost' onClick={() => {
+                    copy('Claude command', claudeCommand(config.endpoint, config.token)); 
+                  }}>
+                    Copy command
+                  </Button>
+                </div>
+                <pre className={styles.SnippetCode}>{claudeCommand(config.endpoint, tokenVisible ? config.token : '<token>')}</pre>
+                <div className={styles.Row}>
+                  <Text size='xs' className={styles.Muted}>JSON (mcpServers)</Text>
+                  <Button size='sm' variant='ghost' onClick={() => {
+                    copy('JSON config', jsonSnippet(config.endpoint, config.token)); 
+                  }}>
+                    Copy JSON
+                  </Button>
+                </div>
+                <pre className={styles.SnippetCode}>{jsonSnippet(config.endpoint, tokenVisible ? config.token : '<token>')}</pre>
               </div>
             )}
           </Card>
-        )}
 
-        <Card className={styles.Card}>
-          <Text size='md' weight='semibold'>
-            {isGlobal ? 'Tools' : `Tools on ${selectedConnection?.connectionName ?? scope.connectionID}`}
-          </Text>
-          <Text size='xs'>Tool annotations are provider hints, not permissions. Host policy and native authorization still apply.</Text>
-          {relay.tools.isLoading && <Text size='sm' role='status'>Loading tools…</Text>}
-          {!relay.tools.isLoading && !relay.tools.isError && grouped.length === 0 && (
-            <Text size='sm' className={styles.Muted}>No plugin exposes tools yet.</Text>
+          <Card className={styles.Card}>
+            <div className={styles.CardTitle}>
+              <Text size='md' weight='semibold'>Policy scope</Text>
+              <Switch
+                checked={config?.blockConnectionsByDefault ?? false}
+                disabled={!config}
+                onCheckedChange={(checked) => {
+                  relay.setBlockConnectionsByDefault.mutate(checked); 
+                }}
+              >
+                Block connections by default
+              </Switch>
+            </div>
+            <div className={styles.Row}>
+              <PolicySelect
+                ariaLabel='Policy scope'
+                value={scopeKey(scope)}
+                options={scopeOptions}
+                onChange={(key) => {
+                  setScope(scopeFromKey(key)); 
+                }}
+              />
+              {selectedConnection && (
+                <ConnectionControls
+                  connection={selectedConnection}
+                  presetOptions={presetOptions}
+                  onAccessChange={(access) => {
+                    relay.setConnectionAccess.mutate({
+                      pluginID: selectedConnection.pluginID,
+                      connectionID: selectedConnection.connectionID,
+                      access,
+                    }); 
+                  }
+                  }
+                  onPresetChange={(name) => {
+                    applyPreset(name === INHERIT_PRESET ? '' : name); 
+                  }}
+                  blockByDefault={config?.blockConnectionsByDefault ?? false}
+                />
+              )}
+            </div>
+          </Card>
+
+          {isGlobal && (
+            <Card className={styles.Card}>
+              <Text size='md' weight='semibold'>Presets</Text>
+              <div className={styles.Row}>
+                <PolicySelect
+                  ariaLabel='Global preset'
+                  value={config?.globalPreset ?? 'read-only'}
+                  options={presetOptions}
+                  onChange={applyPreset}
+                />
+                <TextField.Root size='sm' className={styles.Field}>
+                  <TextField.Label>Save current selection as preset</TextField.Label>
+                  <TextField.Control
+                    value={presetName}
+                    placeholder='Preset name'
+                    onChange={(e) => {
+                      setPresetName(e.target.value); 
+                    }}
+                  />
+                </TextField.Root>
+                <Button
+                  size='sm'
+                  variant='outline'
+                  disabled={presetName.trim() === ''}
+                  onClick={() => {
+                    relay.saveUserPreset.mutate(presetName.trim(), { onSuccess: () => {
+                      setPresetName(''); 
+                    } }); 
+                  }
+                  }
+                >
+                  Save preset
+                </Button>
+              </div>
+              {presets.filter((p) => !p.builtIn).length > 0 && (
+                <div className={styles.Row}>
+                  {presets.filter((p) => !p.builtIn).map((p) => (
+                    <Chip key={p.name} variant='outline' color='neutral' size='sm'>
+                      {p.name}
+                      <button
+                        type='button'
+                        className={styles.ResetLink}
+                        aria-label={`Delete preset ${p.name}`}
+                        onClick={() => {
+                          relay.deleteUserPreset.mutate(p.name); 
+                        }}
+                      >
+                        delete
+                      </button>
+                    </Chip>
+                  ))}
+                </div>
+              )}
+            </Card>
           )}
-          {grouped.map(([pluginID, group]) => (
-            <PluginToolGroup
-              key={pluginID}
-              pluginID={pluginID}
-              pluginName={group.pluginName}
-              tools={group.tools}
-              scope={scope}
-              onPluginEnabled={(enabled) => {
-                relay.setPluginEnabled.mutate({ pluginID, enabled }); 
-              }}
-              onOverride={(rowScope, mcpName, override) => {
-                relay.setToolOverride.mutate({ scope: rowScope, mcpName, override });
-              }}
-            />
-          ))}
-        </Card>
+
+          <Card className={styles.Card}>
+            <Text size='md' weight='semibold'>
+              {isGlobal ? 'Tools' : `Tools on ${selectedConnection?.connectionName ?? scope.connectionID}`}
+            </Text>
+            <Text size='xs'>Tool annotations are provider hints, not permissions. Host policy and native authorization still apply.</Text>
+            {relay.tools.isLoading && <Text size='sm' role='status'>Loading tools…</Text>}
+            {!relay.tools.isLoading && !relay.tools.isError && grouped.length === 0 && (
+              <Text size='sm' className={styles.Muted}>No plugin exposes tools yet.</Text>
+            )}
+            {grouped.map(([pluginID, group]) => (
+              <PluginToolGroup
+                key={pluginID}
+                pluginID={pluginID}
+                pluginName={group.pluginName}
+                tools={group.tools}
+                scope={scope}
+                onPluginEnabled={(enabled) => {
+                  relay.setPluginEnabled.mutate({ pluginID, enabled }); 
+                }}
+                onOverride={(rowScope, mcpName, override) => {
+                  relay.setToolOverride.mutate({ scope: rowScope, mcpName, override });
+                }}
+              />
+            ))}
+          </Card>
         </fieldset>
       </div>
     </div>

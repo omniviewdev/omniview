@@ -59,7 +59,9 @@ export const McpConfirmationProvider: React.FC<{ children: React.ReactNode }> = 
         requested.forEach((item, id) => merged.set(id, item));
         setPending([...merged.values()].filter((item) => !resolved.current.has(item.id)));
       },
-      () => { if (!cancelled) setLoadError(true); },
+      () => {
+        if (!cancelled) setLoadError(true); 
+      },
     );
     return () => {
       cancelled = true;
