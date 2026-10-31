@@ -10,6 +10,8 @@ import (
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type metadataTestProvider struct {
@@ -242,14 +244,82 @@ func TestConnectionMetadataClonePreservesJSONNumbersAndNull(t *testing.T) {
 	require.Nil(t, retained["null"])
 }
 
+func TestConnectionMetadataUnaryFailurePreservesLiveWatch(t *testing.T) {
+	for _, refresh := range []bool{false, true} {
+		name := "get"
+		if refresh {
+			name = "refresh"
+		}
+		t.Run(name, func(t *testing.T) {
+			ctrl, emitter := newTestControllerWithEmitter(t)
+			watching := make(chan resourcev2.ConnectionMetadataSink, 1)
+			provider := &metadataTestProvider{mockProvider: &mockProvider{}}
+			failure := status.Error(codes.Unavailable, "connection metadata unavailable")
+			fail := func(context.Context, string) (resourcev2.ConnectionMetadataSnapshot, error) {
+				return resourcev2.ConnectionMetadataSnapshot{}, failure
+			}
+			provider.get, provider.refresh = fail, fail
+			provider.watch = func(ctx context.Context, sink resourcev2.ConnectionMetadataSink) error {
+				watching <- sink
+				<-ctx.Done()
+				return ctx.Err()
+			}
+			state := metadataTestState(ctrl, "p", provider)
+			ctrl.startMetadata("p", state, provider)
+			var sink resourcev2.ConnectionMetadataSink
+			select {
+			case sink = <-watching:
+			case <-time.After(3 * time.Second):
+				t.Fatal("metadata stream did not start")
+			}
+			for _, id := range []string{"a", "b"} {
+				require.NoError(t, sink(metadataTestEvent(id, "1", "retained")))
+			}
+			ctrl.pluginsMu.RLock()
+			epoch := state.metadataEpoch
+			ctrl.pluginsMu.RUnlock()
+			emitter.Reset()
+
+			_, err := ctrl.connectionMetadata(testInvocationContext(), "p", "a", refresh)
+			require.ErrorIs(t, err, failure)
+			ctrl.pluginsMu.RLock()
+			available, currentEpoch := state.metadataAvailable, state.metadataEpoch
+			a, b := cloneMetadata(state.metadata["a"]), cloneMetadata(state.metadata["b"])
+			ctrl.pluginsMu.RUnlock()
+			require.True(t, available)
+			require.Equal(t, epoch, currentEpoch)
+			require.True(t, a.TransportAvailable)
+			require.True(t, b.TransportAvailable)
+			require.Equal(t, "retained", b.Snapshot.Entries["server.version"].Value)
+			require.Empty(t, emitter.Events())
+
+			require.NoError(t, sink(metadataTestEvent("a", "2", "updated")))
+			ctrl.pluginsMu.RLock()
+			available, currentEpoch = state.metadataAvailable, state.metadataEpoch
+			a, b = cloneMetadata(state.metadata["a"]), cloneMetadata(state.metadata["b"])
+			ctrl.pluginsMu.RUnlock()
+			require.True(t, available)
+			require.Equal(t, epoch, currentEpoch)
+			require.Equal(t, "2", a.Revision)
+			require.Equal(t, "updated", a.Snapshot.Entries["server.version"].Value)
+			require.True(t, b.TransportAvailable)
+			require.Equal(t, "1", b.Revision)
+			require.Equal(t, "retained", b.Snapshot.Entries["server.version"].Value)
+			require.Len(t, emitter.Events(), 1)
+		})
+	}
+}
+
 func TestConnectionMetadataWatchRetriesAndResynchronizesSameRevision(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	reconnected := make(chan resourcev2.ConnectionMetadataSink, 1)
+	failed := make(chan resourcev2.ConnectionMetadataSink, 1)
 	attempts := 0
 	provider := &metadataTestProvider{mockProvider: &mockProvider{}}
 	provider.watch = func(ctx context.Context, sink resourcev2.ConnectionMetadataSink) error {
 		attempts++
 		if attempts == 1 {
+			failed <- sink
 			if err := sink(metadataTestEvent("c", "1", "retained")); err != nil {
 				return err
 			}
@@ -261,6 +331,7 @@ func TestConnectionMetadataWatchRetriesAndResynchronizesSameRevision(t *testing.
 	}
 	state := metadataTestState(ctrl, "p", provider)
 	state.metadataAvailable = false
+	epoch := state.metadataEpoch
 	ctrl.startMetadata("p", state, provider)
 	var sink resourcev2.ConnectionMetadataSink
 	select {
@@ -270,7 +341,10 @@ func TestConnectionMetadataWatchRetriesAndResynchronizesSameRevision(t *testing.
 	}
 	ctrl.pluginsMu.RLock()
 	available, connectionAvailable := state.metadataAvailable, state.metadata["c"].TransportAvailable
+	currentEpoch := state.metadataEpoch
 	ctrl.pluginsMu.RUnlock()
+	require.Greater(t, currentEpoch, epoch)
+	require.ErrorIs(t, (<-failed)(metadataTestEvent("c", "2", "late")), context.Canceled)
 	require.False(t, available)
 	require.False(t, connectionAvailable)
 	require.NoError(t, sink(metadataTestEvent("c", "1", "retained")))

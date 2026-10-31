@@ -19,6 +19,7 @@ interface Cache {
   listeners: Set<() => void>;
   revision?: bigint;
   epoch: number;
+  eventVersion: number;
   pending?: Promise<void>;
 }
 interface Provider { registrationID?: string; retired: Set<string>; connections: Map<string, Cache> }
@@ -37,7 +38,7 @@ function getCache(pluginID: string, connectionID: string): Cache {
   if (!provider) { provider = { retired: new Set(), connections: new Map() }; providers.set(pluginID, provider); }
   let cache = provider.connections.get(connectionID);
   if (!cache) {
-    cache = { pluginID, connectionID, state: empty, listeners: new Set(), epoch: 0 };
+    cache = { pluginID, connectionID, state: empty, listeners: new Set(), epoch: 0, eventVersion: 0 };
     provider.connections.set(connectionID, cache);
   }
   return cache;
@@ -86,6 +87,7 @@ function accept(envelope: ConnectionMetadataEnvelope, fromEvent: boolean) {
   const id = envelope.snapshot?.connectionID ?? envelope.connectionID;
   const targets = id === undefined ? [...provider.connections.values()] : [provider.connections.get(id)].filter((cache): cache is Cache => !!cache);
   for (const cache of targets) {
+    if (fromEvent) cache.eventVersion++;
     const wasAvailable = cache.state.transportAvailable;
     const revision = revisionOf(envelope.snapshot?.revision ?? envelope.revision);
     if (revision !== undefined && (cache.revision === undefined || revision > cache.revision)) {
@@ -99,8 +101,10 @@ function accept(envelope: ConnectionMetadataEnvelope, fromEvent: boolean) {
       continue;
     }
     if (id === undefined) {
-      publish(cache, { supported: envelope.supported, transportAvailable: false });
+      // Unsupported metadata needs no connection read to establish transport availability.
+      publish(cache, { supported: envelope.supported, transportAvailable: !envelope.supported });
       if (envelope.supported && cache.listeners.size) void request(cache, false);
+      else publish(cache, { isLoading: false, error: undefined });
       continue;
     }
     // Equal revisions still acknowledge a successful resynchronization.
@@ -112,15 +116,20 @@ function request(cache: Cache, refresh: boolean): Promise<void> {
   if (!cache.listeners.size || cache.state.supported === false) return Promise.resolve();
   if (!refresh && cache.pending) return cache.pending;
   const epoch = cache.epoch;
+  const eventVersion = cache.eventVersion;
   publish(cache, { isLoading: true, error: undefined });
   const call = refresh ? RefreshConnectionMetadata : GetConnectionMetadata;
-  const pending = Promise.resolve().then(() => call(cache.pluginID, cache.connectionID)).then(envelope => {
-    if (cache.epoch !== epoch || !cache.listeners.size || envelope.pluginID !== cache.pluginID) return;
+  const pending = Promise.resolve().then(() => {
+    if (cache.epoch !== epoch || !cache.listeners.size || cache.state.supported === false) return;
+    return call(cache.pluginID, cache.connectionID);
+  }).then(envelope => {
+    if (!envelope || cache.epoch !== epoch || !cache.listeners.size || envelope.pluginID !== cache.pluginID) return;
     const id = envelope.snapshot?.connectionID ?? envelope.connectionID;
     if (id !== undefined && id !== cache.connectionID) return;
     accept({ ...envelope, connectionID: cache.connectionID }, false);
   }).catch(error => {
-    if (cache.epoch === epoch && cache.listeners.size) publish(cache, { error, transportAvailable: false, isLoading: false });
+    // Unary errors describe this operation, not the provider's metadata watch transport.
+    if (cache.epoch === epoch && cache.eventVersion === eventVersion && cache.listeners.size) publish(cache, { error, isLoading: false });
   }).finally(() => {
     if (cache.pending === pending) cache.pending = undefined;
     if (cache.epoch === epoch && cache.listeners.size) publish(cache, { isLoading: false });
@@ -148,8 +157,8 @@ function subscribe(cache: Cache, listener: () => void) {
 }
 
 /** Reading subscribes and fetches only; it never connects or acquires observations. */
-export function useConnectionMetadata(pluginID: string | undefined, connectionID: string | undefined): ConnectionMetadataState & { refresh: () => Promise<void> } {
-  pluginID = useResolvedPluginId(pluginID);
+export function useConnectionMetadata(explicitPluginID: string | undefined, connectionID: string | undefined): ConnectionMetadataState & { refresh: () => Promise<void> } {
+  const pluginID = useResolvedPluginId(explicitPluginID);
   const enabled = pluginID !== undefined && connectionID !== undefined;
   const listen = useCallback((listener: () => void) => enabled ? subscribe(getCache(pluginID!, connectionID!), listener) : () => {}, [enabled, pluginID, connectionID]);
   const read = useCallback(() => enabled ? getCache(pluginID!, connectionID!).state : empty, [enabled, pluginID, connectionID]);
@@ -161,29 +170,45 @@ export function useConnectionMetadata(pluginID: string | undefined, connectionID
   return { ...state, refresh };
 }
 
+function createConnectionsStore(pluginID: string, identity: string) {
+  const ids = JSON.parse(identity) as string[];
+  let snapshot: ReadonlyMap<string, ConnectionMetadataState> = new Map();
+  return {
+    subscribe(listener: () => void) {
+      const cancels = ids.map(id => subscribe(getCache(pluginID, id), listener));
+      return () => cancels.forEach(cancel => cancel());
+    },
+    read() {
+      const states = ids.map(id => getCache(pluginID, id).state);
+      if (snapshot.size !== ids.length || ids.some((id, index) => snapshot.get(id) !== states[index])) {
+        snapshot = new Map(ids.map((id, index) => [id, states[index]]));
+      }
+      return snapshot;
+    },
+  };
+}
+
 /** Subscribe to a dynamic connection inventory without invoking hooks in a loop. */
-export function useConnectionMetadataConnections(pluginID: string | undefined, connectionIDs: readonly string[]): ReadonlyMap<string, ConnectionMetadataState> {
-  pluginID = useResolvedPluginId(pluginID);
-  const identity = JSON.stringify([pluginID, [...new Set(connectionIDs)]]);
-  const store = useMemo(() => {
-    const ids = [...new Set(connectionIDs)];
-    let snapshot: ReadonlyMap<string, ConnectionMetadataState> = new Map();
-    return {
-      subscribe(listener: () => void) {
-        const cancels = pluginID === undefined ? [] : ids.map(id => subscribe(getCache(pluginID, id), listener));
-        return () => cancels.forEach(cancel => cancel());
-      },
-      read() {
-        if (pluginID === undefined) return snapshot;
-        const states = ids.map(id => getCache(pluginID, id).state);
-        if (snapshot.size !== ids.length || ids.some((id, index) => snapshot.get(id) !== states[index])) {
-          snapshot = new Map(ids.map((id, index) => [id, states[index]]));
-        }
-        return snapshot;
-      },
-    };
-  }, [identity]);
+export function useConnectionMetadataConnections(explicitPluginID: string | undefined, connectionIDs: readonly string[]): ReadonlyMap<string, ConnectionMetadataState> {
+  const pluginID = useResolvedPluginId(explicitPluginID);
+  const identity = JSON.stringify([...new Set(connectionIDs)]);
+  const store = useMemo(() => createConnectionsStore(pluginID, identity), [pluginID, identity]);
   return useSyncExternalStore(store.subscribe, store.read, store.read);
+}
+
+function createSelectorStore<T>(pluginID: string, connectionID: string | undefined, selector: (state: ConnectionMetadataState) => T) {
+  let previous: ConnectionMetadataState | undefined;
+  let selected: T;
+  return {
+    read() {
+      const state = connectionID === undefined ? empty : getCache(pluginID, connectionID).state;
+      if (previous !== state) {
+        selected = selector(state);
+        previous = state;
+      }
+      return selected;
+    },
+  };
 }
 
 /** Select shared state with Object.is equality; unrelated entry changes do not rerender consumers. */
@@ -194,19 +219,6 @@ export function useConnectionMetadataSelector<T>(
 ): T {
   const pluginID = useResolvedPluginId(explicitPluginID);
   const listen = useCallback((listener: () => void) => connectionID === undefined ? () => {} : subscribe(getCache(pluginID, connectionID), listener), [pluginID, connectionID]);
-  const store = useMemo(() => {
-    let previous: ConnectionMetadataState | undefined;
-    let selected: T;
-    return {
-      read() {
-        const state = connectionID === undefined ? empty : getCache(pluginID, connectionID).state;
-        if (previous !== state) {
-          selected = selector(state);
-          previous = state;
-        }
-        return selected;
-      },
-    };
-  }, [pluginID, connectionID, selector]);
+  const store = useMemo(() => createSelectorStore(pluginID, connectionID, selector), [pluginID, connectionID, selector]);
   return useSyncExternalStore(listen, store.read, store.read);
 }

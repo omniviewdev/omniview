@@ -21,9 +21,7 @@ function envelope(revision = '1', connectionID = 'cluster', registrationID = 'on
   } };
 }
 function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>(done => { resolve = done; });
-  return { promise, resolve };
+  return Promise.withResolvers<T>();
 }
 async function emit(data: ConnectionMetadataEnvelope) {
   await act(async () => { transport.listener?.({ data }); });
@@ -122,8 +120,106 @@ describe('connection metadata consumers', () => {
     transport.refresh.mockRejectedValueOnce(failure);
     await act(async () => second.result.current.refresh());
     expect(second.result.current.error).toBe(failure);
-    expect(second.result.current.transportAvailable).toBe(false);
+    expect(second.result.current.transportAvailable).toBe(true);
     expect(second.result.current.snapshot?.entries).toEqual({});
+  });
+
+  it('preserves available transport for provider-wide unsupported metadata', async () => {
+    const unsupported: ConnectionMetadataEnvelope = { pluginID: 'plugin', registrationID: 'one', supported: false, transportAvailable: true };
+    transport.get.mockResolvedValueOnce(unsupported);
+    const hook = renderHook(() => useConnectionMetadata('plugin', 'cluster'));
+    await waitFor(() => expect(hook.result.current.supported).toBe(false));
+    await emit(unsupported);
+    expect(hook.result.current.transportAvailable).toBe(true);
+    expect(hook.result.current.isLoading).toBe(false);
+    expect(hook.result.current.error).toBeUndefined();
+    await act(async () => hook.result.current.refresh());
+    expect(transport.get).toHaveBeenCalledTimes(1);
+    expect(transport.refresh).not.toHaveBeenCalled();
+  });
+
+  it('ignores a pending request rejection after a newer accepted watch event', async () => {
+    const hook = renderHook(() => useConnectionMetadata('plugin', 'cluster'));
+    await waitFor(() => expect(hook.result.current.transportAvailable).toBe(true));
+    const delayed = deferred<ConnectionMetadataEnvelope>();
+    transport.refresh.mockReturnValueOnce(delayed.promise);
+    let pending!: Promise<void>;
+    act(() => { pending = hook.result.current.refresh(); });
+    await waitFor(() => expect(transport.refresh).toHaveBeenCalledTimes(1));
+    await emit(envelope('2'));
+    await act(async () => {
+      delayed.reject(new Error('late request failure'));
+      await pending;
+    });
+    expect(hook.result.current.snapshot?.revision).toBe('2');
+    expect(hook.result.current.transportAvailable).toBe(true);
+    expect(hook.result.current.error).toBeUndefined();
+    expect(hook.result.current.isLoading).toBe(false);
+  });
+
+  it.each(['NOT_FOUND', 'FORBIDDEN', 'UNAUTHORIZED', 'UNAVAILABLE', 'CONNECTION_ERROR', 'INTERNAL'])('keeps live watch transport available after a %s unary error', async code => {
+    const hook = renderHook(() => useConnectionMetadata('plugin', 'cluster'));
+    await waitFor(() => expect(hook.result.current.transportAvailable).toBe(true));
+    const snapshot = hook.result.current.snapshot;
+    const failure = new Error(JSON.stringify({ code, title: 'Operation failed', message: 'Connection request failed.' }));
+    transport.refresh.mockRejectedValueOnce(failure);
+    await act(async () => hook.result.current.refresh());
+    expect(hook.result.current.error).toBe(failure);
+    expect(hook.result.current.snapshot).toBe(snapshot);
+    expect(hook.result.current.transportAvailable).toBe(true);
+    expect(hook.result.current.isLoading).toBe(false);
+    expect(readCurrentConnectionMetadataString(hook.result.current.snapshot, hook.result.current.transportAvailable, 'version')).toBe('1');
+    await emit(envelope('2'));
+    expect(hook.result.current.snapshot?.revision).toBe('2');
+    expect(hook.result.current.error).toBeUndefined();
+    expect(hook.result.current.transportAvailable).toBe(true);
+    expect(transport.get).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not invoke a deferred get after the last listener leaves', async () => {
+    const hook = renderHook(() => useConnectionMetadata('plugin', 'cluster'));
+    hook.unmount();
+    await act(async () => {});
+    expect(transport.get).not.toHaveBeenCalled();
+    expect(transport.refresh).not.toHaveBeenCalled();
+  });
+
+  it('does not invoke a deferred refresh after the last listener leaves', async () => {
+    const hook = renderHook(() => useConnectionMetadata('plugin', 'cluster'));
+    await waitFor(() => expect(hook.result.current.transportAvailable).toBe(true));
+    let pending!: Promise<void>;
+    act(() => {
+      pending = hook.result.current.refresh();
+      hook.unmount();
+    });
+    await act(async () => { await pending; });
+    expect(transport.get).toHaveBeenCalledTimes(1);
+    expect(transport.refresh).not.toHaveBeenCalled();
+  });
+
+  it('does not invoke a deferred get from a retired transport epoch', async () => {
+    const hook = renderHook(() => useConnectionMetadata('plugin', 'cluster'));
+    act(() => {
+      transport.listener?.({ data: { pluginID: 'plugin', registrationID: 'one', supported: true, transportAvailable: false } });
+    });
+    await act(async () => {});
+    expect(transport.get).not.toHaveBeenCalled();
+    expect(hook.result.current.transportAvailable).toBe(false);
+    expect(hook.result.current.isLoading).toBe(false);
+  });
+
+  it('does not invoke a deferred refresh from a retired transport epoch', async () => {
+    const hook = renderHook(() => useConnectionMetadata('plugin', 'cluster'));
+    await waitFor(() => expect(hook.result.current.transportAvailable).toBe(true));
+    let pending!: Promise<void>;
+    act(() => {
+      pending = hook.result.current.refresh();
+      transport.listener?.({ data: { pluginID: 'plugin', registrationID: 'one', supported: true, transportAvailable: false } });
+    });
+    await act(async () => { await pending; });
+    expect(transport.refresh).not.toHaveBeenCalled();
+    expect(hook.result.current.transportAvailable).toBe(false);
+    expect(hook.result.current.isLoading).toBe(false);
   });
 });
 
@@ -218,4 +314,23 @@ it('recovers equal-revision replay only after a connection-scoped read resynchro
   expect(hook.result.current.transportAvailable).toBe(true);
   expect(hook.result.current.snapshot).toBe(snapshot);
   expect(transport.refresh).not.toHaveBeenCalled();
+});
+
+it('updates a selector without losing shared entry identity', async () => {
+  const initial = envelope();
+  initial.snapshot!.entries.platform = { state: 'current', value: 'linux/arm64', observedAt: '2026-10-31T00:00:00Z' };
+  transport.get.mockResolvedValueOnce(initial);
+  const hook = renderHook(({ entry }) => useConnectionMetadataSelector('plugin', 'cluster', state => state.snapshot?.entries[entry]), {
+    initialProps: { entry: 'version' },
+  });
+  await waitFor(() => expect(hook.result.current?.state).toBe('current'));
+  const version = hook.result.current;
+  hook.rerender({ entry: 'platform' });
+  expect(hook.result.current).toBe(initial.snapshot!.entries.platform);
+  const platform = hook.result.current;
+  hook.rerender({ entry: 'platform' });
+  expect(hook.result.current).toBe(platform);
+  hook.rerender({ entry: 'version' });
+  expect(hook.result.current).toBe(version);
+  expect(transport.get).toHaveBeenCalledTimes(1);
 });

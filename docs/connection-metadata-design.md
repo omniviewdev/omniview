@@ -194,6 +194,8 @@ Metadata cannot grant authorization. Prefer catalog capabilities for resource op
 | Connection ID does not exist | Unknown-connection error |
 | Plugin is unreachable | Transport unavailable; cached facts are display-only |
 
+Metadata watch envelopes own transport availability. A failed Get or Refresh reports its operation error without retiring the watch epoch or downgrading unrelated cached facts. Runtime ignores request failures superseded by newer events and skips deferred calls after the last subscriber leaves. Unsupported providers can still have available transport.
+
 ## 5. One authority, several readers
 
 ```mermaid
@@ -404,6 +406,8 @@ The workspace SDK checkout lacks `pkg/resource/v2`, while the host pins `v0.9.0`
 | `proto/resource/v2/domain.proto:274-282` and `pkg/resource/v2/plugin/connections.go:86-165` | Current transport uses JSON with strict decoding, not legacy v1 conversion |
 
 Implementation now uses the workspace SDK's `origin/main` baseline, `3cea9e48c9942b06e347d61de90fbf8f612868a8`, after independent review of its protected isolation files. No module-cache edits or isolation bypass flags were used. The feature reuses optional-trait negotiation and ancillary JSON RPC conventions.
+
+Normal host and Kubernetes Go builds pin the metadata-capable SDK at `v0.9.1-0.20261031225250-85d184bd4557`. Candidate source builds still require exact cohort and isolation approval; the module pin does not bypass those gates. The host's regular UI test command includes the runtime metadata store's ordering and lifecycle regressions.
 
 ### Workspace verification
 

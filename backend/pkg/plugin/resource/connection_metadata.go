@@ -9,8 +9,6 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 const EventConnectionMetadata = "resource/connection/metadata"
@@ -227,9 +225,6 @@ func (c *controller) connectionMetadata(ctx context.Context, pluginID, connectio
 		snapshot, err = metadata.GetConnectionMetadata(ctx, connectionID)
 	}
 	if err != nil {
-		if status.Code(err) == codes.Unavailable {
-			c.retireMetadataAt(pluginID, state, &epoch)
-		}
 		return result, err
 	}
 	if snapshot.ConnectionID != connectionID {
