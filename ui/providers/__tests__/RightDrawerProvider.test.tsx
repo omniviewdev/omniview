@@ -13,7 +13,7 @@ vi.mock('@omniviewdev/runtime', async () => {
   return {
     ...actual,
     useSnackbar: () => ({ showSnackbar: vi.fn() }),
-    ConnectionBoundary: ({ pluginID, connectionID, children }: { pluginID: string; connectionID: string; children: ReactNode }) => {
+    ConnectionBoundary: ({ pluginID, connectionID, children }: { pluginID: string; connectionID: string; children: ReactNode }): ReactNode => {
       native.boundary(pluginID, connectionID);
       return native.connected ? children : <div>Connection is disconnected</div>;
     },

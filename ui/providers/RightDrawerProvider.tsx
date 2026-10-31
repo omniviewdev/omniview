@@ -146,7 +146,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
         sidebarRef.current.style.width = initialWidth + 'px';
       }
     }
-  }, []);
+  }, [maxWidth]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     setIsDragging(true);
@@ -173,7 +173,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
     }
 
     sidebarRef.current.style.width = newWidth + 'px';
-  }, [isDragging]);
+  }, [isDragging, maxWidth]);
 
   // const handleMouseUp = useCallback(() => {
   //   setIsDragging(false);
@@ -227,7 +227,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
       event.preventDefault();
       closeDrawer();
     }
-  }, [isOpen]);
+  }, [isOpen, closeDrawer]);
 
   React.useEffect(() => {
     document.addEventListener('keydown', escFunction, false);
@@ -267,7 +267,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
         throw new Error('Resource editor has no canonical target.');
       }
 
-      void withConnectionReady(params.pluginID, ctx.resource.route.connection, () => ResourceClient.Mutate(params.pluginID, {
+      void withConnectionReady(params.pluginID, ctx.resource.route.connection, async () => ResourceClient.Mutate(params.pluginID, {
         route: ctx.resource!.route,
         reference: ctx.resource!.reference,
         operation: 'update',
