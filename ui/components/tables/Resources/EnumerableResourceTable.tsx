@@ -116,7 +116,9 @@ const EnumerableResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKe
 
     return (
       <div className={styles.Error}>
-        <Button size="sm" disabled={resources.isFetching} onClick={() => { void resources.refetch(); }}>Retry</Button>
+        <Button size="sm" disabled={resources.isFetching} onClick={() => {
+          void resources.refetch();
+        }}>Retry</Button>
         <Banner variant='soft' size='lg' color='danger'>
           <Banner.Icon>
             <LuCircleAlert size={20} />

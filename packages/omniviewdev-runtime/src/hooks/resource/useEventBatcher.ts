@@ -153,6 +153,6 @@ export function useEventBatcher(
       timer.current = undefined;
       frame.current = undefined;
     };
-  }, [queryClient, queryKey, flush, enabled, scope, current]);
+  }, [queryClient, queryKey, flush, enabled, scope, current, collection]);
   return enqueue;
 }
