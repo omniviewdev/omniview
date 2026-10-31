@@ -19,14 +19,14 @@ describe('validatePluginExports boundaries', () => {
   it('rejects an empty sidebar resource type ID', () => {
     expect(() => validatePluginExports({
       plugin: new PluginWindow(),
-      sidebars: { '': () => null },
+      sidebars: Object.fromEntries([['', () => null]]),
     })).toThrow(PluginValidationError);
   });
 
   it('rejects an empty drawer resource type ID', () => {
     expect(() => validatePluginExports({
       plugin: new PluginWindow(),
-      drawers: { '': () => ({ views: [] }) },
+      drawers: Object.fromEntries([['', () => ({ views: [] })]]),
     })).toThrow(PluginValidationError);
   });
 });
