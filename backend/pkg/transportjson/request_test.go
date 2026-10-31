@@ -24,18 +24,17 @@ func TestExactRequestJSONAcrossJavaScriptGoAndProto(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	script := `const fs=require('fs'), ts=require('typescript');
- const source=fs.readFileSync('packages/omniviewdev-runtime/src/resource/v2/requestJSON.ts','utf8');
- const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;
- const out={exports:{}}; new Function('exports','module',code)(out.exports,out);
+	script := `const {encodeRequestJSON}=require('./packages/omniviewdev-runtime/src/resource/v2/requestJSON.ts');
  const body={kind:'map',value:{zero:{kind:'double',value:-0},uint:{kind:'uint64',value:'18446744073709551615'},payload:{kind:'string',value:'x'.repeat(8<<20)}}};
  const request={route:{connection:'connection'},reference:{address:{provider:'test',authority:'authority',type:'pods',scope:[],id:'pod'}},operation:'update',input:body};
- process.stdout.write(JSON.stringify(['test',out.exports.encodeRequestJSON(request,['test'])]));`
+ process.stdout.write(JSON.stringify(['test',encodeRequestJSON(request,['test'])]));`
 	command := exec.Command("node", "-e", script)
 	command.Dir = root
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
 	data, err := command.Output()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Node request encoding: %v: %s", err, stderr.String())
 	}
 	var args []string
 	if err := json.Unmarshal(data, &args); err != nil {
