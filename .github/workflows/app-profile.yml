@@ -32,18 +32,58 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Admit reviewed candidate SDK
+        id: candidate
+        shell: bash
+        run: node e2e/scripts/candidate-source.mjs resolve
+
+      - name: Checkout reviewed SDK source
+        uses: actions/checkout@v4
+        with:
+          repository: omniviewdev/plugin-sdk
+          ref: ${{ steps.candidate.outputs.sdk }}
+          fetch-depth: 0
+          path: .app-profile-sources/sdk
+          persist-credentials: false
+
+      - name: Verify exact reviewed SDK source
+        shell: bash
+        run: |
+          export SDK_SOURCE="$(cd .app-profile-sources/sdk && pwd -P)"
+          node e2e/scripts/candidate-source.mjs verify-sdk
+          echo "SDK_SOURCE=$SDK_SOURCE" >> "$GITHUB_ENV"
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
+          cache-dependency-path: |
+            go.sum
+            .app-profile-sources/sdk/go.sum
+
+      - name: Prepare private reviewed test module
+        id: host-module
+        shell: bash
+        run: |
+          module_directory="$(mktemp -d "$RUNNER_TEMP/production-profile-${{ matrix.channel }}-mod.XXXXXX")"
+          chmod 0700 "$module_directory"
+          modfile="$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go --root "$GITHUB_WORKSPACE" --sdk-source "$SDK_SOURCE" --output-directory "$module_directory")"
+          printf 'modfile=%s\n' "$modfile" >> "$GITHUB_OUTPUT"
 
       # Exercise production resolution, state initialization, and runtime setup
       # with a stale unrelated development claim, plus durable overlap guards.
       # Keep this independent of reviewed UI/plugin source availability.
       - name: Exercise production profile isolation
+        env:
+          HOST_MODFILE: ${{ steps.host-module.outputs.modfile }}
         run: >-
-          go test -tags server ./internal/instance
+          go test -modfile="$HOST_MODFILE" -mod=readonly -tags server ./internal/instance
           -run '^TestProduction(StartsWithUnrelatedMissingCustomProfileOwner|RejectsDurableCustomProfileOverlap|RejectsInvalidCustomProfileEvidence|AllowsDisjointCustomProfileClaims)$/${{ matrix.channel }}$'
           -count=1 -v
 
