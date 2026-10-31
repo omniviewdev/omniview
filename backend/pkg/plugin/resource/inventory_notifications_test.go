@@ -1,9 +1,10 @@
 package resource
 
 import (
+	"testing"
+
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestInventorySubscribersObserveCommittedProfilesOutsideLocks(t *testing.T) {
