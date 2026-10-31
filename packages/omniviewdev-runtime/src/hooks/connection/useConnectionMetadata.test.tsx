@@ -256,7 +256,8 @@ it('never interprets stale, unavailable, inactive, null, or numeric entries as c
 });
 
 it('makes disabled reads and retired route refresh actions inert', async () => {
-  const hook = renderHook(({ id }: { id: string | undefined }) => useConnectionMetadata('plugin', id), { initialProps: { id: undefined } });
+  const initialProps: { id: string | undefined } = { id: undefined };
+  const hook = renderHook(({ id }: { id: string | undefined }) => useConnectionMetadata('plugin', id), { initialProps });
   expect(hook.result.current.supported).toBeUndefined();
   await act(async () => hook.result.current.refresh());
   expect(transport.get).not.toHaveBeenCalled();
