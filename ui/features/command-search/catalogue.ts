@@ -64,6 +64,8 @@ export function registerCoreSearchCatalogue(
   register('Home', { schemaVersion: 1, kind: 'navigation', target: { kind: 'core', path: '/' } });
   register('Plugins', { schemaVersion: 1, kind: 'navigation', target: { kind: 'core', path: '/plugins' } });
   register('Extensions', { schemaVersion: 1, kind: 'setting', target: { section: 'extensions' } });
+  // The controller reads only the first 1000 registrations; these count toward that budget too.
+  consumed = owned.size;
 
   catalogue: for (const key in input.settings) {
     if (!Object.hasOwn(input.settings, key)) {

@@ -106,6 +106,26 @@ describe('core global-search catalogue ownership and public metadata', () => {
     registration.dispose();
   });
 
+  it('counts the core entries toward the budget, reporting truncation instead of registering past it', () => {
+    const instance = registry();
+    const settings: Record<string, Setting> = {};
+    for (let index = 0; index < 996; index++) {
+      settings[`s${index}`] = new Setting({ id: `s${index}`, label: `Setting ${index}`, type: SettingType.Text });
+    }
+
+    const registration = registerCoreSearchCatalogue(instance, {
+      settings: { general: new Category({ id: 'general', label: 'General', settings }) },
+      plugins: [],
+      newTabPlugins: [{ id: 'probe', name: 'Probe' }],
+    });
+
+    const entries = instance.getExtensionPoint('omniview/global-search')!.listAll();
+    expect(entries).toHaveLength(1000);
+    expect(entries.some((entry) => entry.label === 'New Probe tab')).toBe(false);
+    expect(registration.truncated).toBe(true);
+    registration.dispose();
+  });
+
   it('rejects oversized generated IDs/command labels before constructing or reading unrelated metadata', () => {
     const instance = registry();
     const setting = new Setting({ id: 'oversized', label: 'Not indexed', type: SettingType.Text });
