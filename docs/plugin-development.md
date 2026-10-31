@@ -193,6 +193,9 @@ They set `membershipStale`, as do deletes that may leave a page gap; the UI must
 offer an explicit page refresh. Pending events are coalesced by observed key,
 and unseen bodies are not retained. Native `sourcePage` metadata remains
 acquisition provenance; modified view count/revision claims are separate.
+Buffered updates belong to the connection generation that accepted them.
+Retirement discards those updates before they can write list or detail caches,
+including when readiness notifications end in the same connected phase.
 Its `bestEffort` guarantee and native cache readiness do not promise an atomic
 snapshot/update cutover, replay, gap detection, or P05 continuity.
 `live: false` is explicitly finite acquisition, not a subscription.
