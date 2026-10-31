@@ -130,10 +130,10 @@ type controller struct {
 	autoConnectMu       sync.Mutex
 	autoConnectAttempts map[string]string
 
-	subs     *subscriptionManager
-	boundary *invocation.Boundary
-	actions  *actionRegistry
-	finite   finiteState
+	subs      *subscriptionManager
+	boundary  *invocation.Boundary
+	actions   *actionRegistry
+	finite    finiteState
 	inventory inventorySubscriptions
 
 	// Resource registry and relationship graph
@@ -911,14 +911,21 @@ func (c *controller) ScopeValues(ctx context.Context, pluginID string, route res
 	}
 	if _, retained := ctx.Value(observationKey{}).(Observation); retained {
 		_, catalog, err := c.routeCatalog(ctx, pluginID, route)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		declared := false
 		for _, descriptor := range catalog.Types {
 			for _, candidate := range descriptor.QueryDimensions {
-				if candidate.Name == dimension { declared = true; break }
+				if candidate.Name == dimension {
+					declared = true
+					break
+				}
 			}
 		}
-		if !declared { return nil, resource.NewError("UNSUPPORTED", "Scope discovery dimension is not declared on this route.") }
+		if !declared {
+			return nil, resource.NewError("UNSUPPORTED", "Scope discovery dimension is not declared on this route.")
+		}
 		ctx = resource.WithCatalogRevision(ctx, catalog.Revision)
 	}
 	values, err := browser.ScopeValues(ctx, route, dimension)
