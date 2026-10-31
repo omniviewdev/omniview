@@ -31,7 +31,7 @@ test.describe('Real application plugin consumers', () => {
     await appPage.getByRole('button', { name: 'Probe increment', exact: true }).click();
     await expect(appPage.getByRole('status', { name: 'Probe local clicks' })).toHaveText('1');
     await appPage.getByRole('button', { name: 'Read shared runtime', exact: true }).click();
-    await expect(appPage.getByRole('status', { name: 'Probe runtime value' })).toHaveText('Shared runtime ready');
+    await expect(appPage.getByRole('status', { name: 'Probe runtime connection count' })).toHaveText('4');
     await expect(appPage.locator('.workspace-probe-marker')).toHaveCSS('border-left-color', 'rgb(79, 157, 133)');
   });
 
