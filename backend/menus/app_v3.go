@@ -40,7 +40,7 @@ func SetupAppMenu(app *application.App, mainWindow *application.WebviewWindow) {
 
 	// macOS-specific role menus
 	if runtime.GOOS == "darwin" {
-		menu.AddRole(application.AppMenu)
+		addAppMenu(menu, app.Config().Name)
 		menu.AddRole(application.EditMenu)
 		menu.AddRole(application.WindowMenu)
 	}
