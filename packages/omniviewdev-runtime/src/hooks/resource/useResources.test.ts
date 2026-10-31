@@ -354,6 +354,34 @@ it('does not reuse old watch readiness or buffered rows after reconnect', async 
   hook.unmount(); client.clear();
 });
 
+it('discards buffered list and detail updates after a same-phase generation change', async () => {
+  const { client, wrapper } = setup();
+  const hook = renderHook(() => useResources({ pluginID: 'provider', request }), { wrapper });
+  try {
+    await waitFor(() => expect(hook.result.current.isLive).toBe(true));
+    expect(hook.result.current.resources.isFetching).toBe(false);
+    const listKey = resourceQueryKeys.list('provider', request);
+    const detailKey = resourceQueryKeys.resource('provider', getRequest);
+    client.setQueryData(detailKey, firstRow);
+    vi.useFakeTimers();
+    act(() => native.listeners.get('provider/c/watch/STATE')?.({ data: { route: firstRow.route, type: 'items', state: WatchState.WatchStateSyncing } }));
+    const updated = { ...firstRow, record: { ...firstRow.record, body: { kind: 'string' as const, value: 'buffered' } } };
+    act(() => native.listeners.get('provider/c/items/UPDATE')?.({ data: { route: firstRow.route, record: updated, metadata: {}, guarantee: 'bestEffort' } }));
+    await act(async () => {
+      native.generation++;
+      for (const listener of native.readinessListeners) listener();
+    });
+    expect(native.phase).toBe('connected');
+    act(() => vi.advanceTimersByTime(500));
+    expect(client.getQueryData(listKey)).toEqual(first);
+    expect(client.getQueryData(detailKey)).toEqual(firstRow);
+  } finally {
+    hook.unmount();
+    client.clear();
+    vi.useRealTimers();
+  }
+});
+
 it('lets live watch state outrank a stale initial state response', async () => {
   let resolveState!: (value: { resources: { items: WatchState } }) => void;
   native.state.mockImplementation(() => new CancellablePromise((resolve) => { resolveState = resolve; }));

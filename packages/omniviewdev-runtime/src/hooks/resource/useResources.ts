@@ -99,7 +99,8 @@ export const useResources = ({ pluginID: explicitPluginID, request, enabled = tr
   const watchState = watchEnabled && watchSnapshot?.scope === watchScope ? watchSnapshot.state : WatchState.WatchStateIdle;
   const watchFailure = watchEnabled && watchSnapshot?.scope === watchScope ? watchSnapshot.error : undefined;
   const isLive = watchEnabled && watchSnapshot?.scope === watchScope && watchSnapshot.live;
-  const enqueue = useEventBatcher(queryClient, acquiredQueryKey, watchState, { enabled: watchEnabled });
+  const isWatchGenerationCurrent = React.useCallback(() => generation !== undefined && isConnectionReadinessCurrent(pluginID, connectionID, generation), [pluginID, connectionID, generation]);
+  const enqueue = useEventBatcher(queryClient, acquiredQueryKey, watchState, { enabled: watchEnabled, isCurrent: isWatchGenerationCurrent });
   const subscriptionTask = React.useRef<Promise<void>>(Promise.resolve());
 
   React.useEffect(() => {
