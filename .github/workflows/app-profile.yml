@@ -178,9 +178,13 @@ jobs:
 
 
       - name: Select effective reviewed host module
+        id: host-module
         shell: bash
         run: |
-          printf 'GOFLAGS=%s\n' "$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go --root "$PWD" --sdk-source "$SDK_SOURCE" --format goflags)" >> "$GITHUB_ENV"
+          module_directory="$(mktemp -d "$RUNNER_TEMP/app-profile-host-module.XXXXXX")"
+          chmod 0700 "$module_directory"
+          modfile="$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go --root "$PWD" --sdk-source "$SDK_SOURCE" --output-directory "$module_directory")"
+          printf 'modfile=%s\n' "$modfile" >> "$GITHUB_OUTPUT"
       - name: Build workspace packages
         run: task packages
 
@@ -191,7 +195,8 @@ jobs:
         env:
           A11_PROTOCOL_PROBE: "1"
           A11_PROTOCOL_REPORT: ${{ runner.temp }}/app-profile-link-protocol.json
-        run: go test -tags server ./internal/devworkspace -run '^TestLinkPinnedProtocolProbe$' -count=1
+          HOST_MODFILE: ${{ steps.host-module.outputs.modfile }}
+        run: GOWORK=off GOFLAGS= go test -modfile="$HOST_MODFILE" -mod=readonly -tags server ./internal/devworkspace -run '^TestLinkPinnedProtocolProbe$' -count=1
 
       # Reuse canonical source linking and JS producers, not the obsolete bundled
       # submodule or unpublished runtime versions. The helper retires its private
@@ -201,8 +206,9 @@ jobs:
         env:
           UI_SOURCE_REF: ${{ steps.candidate.outputs.ui }}
           KUBERNETES_SOURCE_REF: ${{ steps.candidate.outputs.kubernetes }}
+          HOST_MODFILE: ${{ steps.host-module.outputs.modfile }}
         run: |
-          go run -tags server ./bench/app/build-plugin \
+          GOWORK=off GOFLAGS= go run -modfile="$HOST_MODFILE" -mod=readonly -tags server ./bench/app/build-plugin \
             --host "$GITHUB_WORKSPACE" --host-ref "$(git rev-parse HEAD)" \
             --sdk "$SDK_SOURCE" --sdk-ref "${{ steps.candidate.outputs.sdk }}" \
             --ui "$GITHUB_WORKSPACE/.app-profile-sources/ui" --ui-ref "$UI_SOURCE_REF" \
