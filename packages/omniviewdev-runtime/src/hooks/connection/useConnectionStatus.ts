@@ -73,7 +73,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   const watchEventsRef = useRef<Map<string, ResourceTracker>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<AppError>();
-  const requestRef = useRef(0);
+  const requestRef = useRef({ generation: 0 });
   // Connection metadata from ListAllConnections
   const [allConnections, setAllConnections] = useState<Record<string, Connection[]>>({});
   // Sync state per connection
@@ -115,15 +115,19 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   }, []);
 
   // Each refresh accepts only lifecycle and watch events newer than its snapshot request.
-  const refresh = useCallback(async () => {
-    const request = ++requestRef.current;
+  const loadSnapshot = useCallback(async () => {
+    const request = ++requestRef.current.generation;
     statusEventsRef.current.clear();
     watchEventsRef.current.clear();
-    setIsLoading(true);
-    setError(undefined);
+    let snapshot: Promise<Record<string, HostConnectionState[]>>;
     try {
-      const result = await GetAllConnectionStates();
-      if (request !== requestRef.current) return;
+      snapshot = GetAllConnectionStates();
+    } catch (failure) {
+      // Normalize synchronous transport failures into the same completion path.
+      snapshot = Promise.reject(failure);
+    }
+    await snapshot.then((result) => {
+      if (request !== requestRef.current.generation) return;
         if (!result) return;
 
         const conns: Record<string, Connection[]> = {};
@@ -162,20 +166,31 @@ export function useConnectionStatus(): ConnectionStatusSummary {
         readinessRef.current = statesByKey;
         setReadiness(statesByKey);
         setSyncs(newSyncs);
-    } catch (error) {
-      if (request === requestRef.current) setError(parseAppError(error));
-    } finally {
-      if (request === requestRef.current) setIsLoading(false);
-    }
+    }).catch((failure: unknown) => {
+      if (request === requestRef.current.generation) setError(parseAppError(failure));
+    }).finally(() => {
+      if (request === requestRef.current.generation) setIsLoading(false);
+    });
   }, []);
 
+  const refresh = useCallback(async () => {
+    setIsLoading(true);
+    setError(undefined);
+    await loadSnapshot();
+  }, [loadSnapshot]);
+
   useEffect(() => {
-    void refresh();
-    return () => { ++requestRef.current; };
-  }, [refresh]);
+    const requests = requestRef.current;
+    loadSnapshot().catch((failure: unknown) => {
+      console.error('Connection status refresh failed:', failure);
+    });
+    return () => { ++requests.generation; };
+  }, [loadSnapshot]);
 
   // Listen for connection/status events
   useEffect(() => {
+    let active = true;
+    let metadataRequest = 0;
     const cancel = Events.On('connection/status', (ev) => {
       const event = ev.data;
       const key = JSON.stringify([event.pluginID, event.connectionID]);
@@ -202,20 +217,29 @@ export function useConnectionStatus(): ConnectionStatusSummary {
         watchEventsRef.current.delete(key);
       }
 
-      // Re-fetch connections to get latest metadata
+      // Re-fetch connections to get latest metadata. Retire older event requests.
+      const metadata = ++metadataRequest;
+      const generation = requestRef.current.generation;
       ListAllConnections()
         .then((result) => {
-          if (!result) return;
+          if (!active || metadata !== metadataRequest || generation !== requestRef.current.generation || !result) return;
           const filtered: Record<string, Connection[]> = {};
           for (const [k, v] of Object.entries(result)) {
             if (v != null) filtered[k] = v;
           }
           setAllConnections(filtered);
         })
-        .catch(() => {});
+        .catch((failure: unknown) => {
+          if (active && metadata === metadataRequest && generation === requestRef.current.generation) {
+            console.error('Connection metadata refresh failed:', failure);
+          }
+        });
     });
 
-    return cancel;
+    return () => {
+      active = false;
+      cancel();
+    };
   }, []);
 
   // Listen for watch/STATE events

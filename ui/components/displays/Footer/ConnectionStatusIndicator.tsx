@@ -50,7 +50,9 @@ function ConnectionRow({
       PENDING: 'Connecting',
       FAILED: 'Connection failed',
     }[readiness];
-    if (entry.readinessError) statusText += ` · ${entry.readinessError.title}`;
+    if (entry.readinessError) {
+      statusText += ` · ${entry.readinessError.title}`; 
+    }
   } else if (isSyncing && sync) {
     statusText = `Syncing ${sync.doneCount}/${sync.watchedTotal} resources`;
   } else if (hasErrors && sync) {
@@ -181,20 +183,20 @@ export default function ConnectionStatusIndicator() {
 
   const tooltipText = `${entries.length} connection${entries.length !== 1 ? 's' : ''}; ${connectedCount} connected`;
 
-  const onDisconnect = (p: string, c: string) => {
-    void disconnect(p, c).catch((err: unknown) => {
+  const onDisconnect = async (p: string, c: string) => {
+    await disconnect(p, c).catch((err: unknown) => {
       console.error('Disconnect failed:', err);
     });
   };
 
-  const onRetry = (p: string, c: string) => {
-    void retryWatch(p, c).catch((err: unknown) => {
+  const onRetry = async (p: string, c: string) => {
+    await retryWatch(p, c).catch((err: unknown) => {
       console.error('Retry watch failed:', err);
     });
   };
 
-  const onRetryPlugin = (p: string) => {
-    void retryPlugin(p).catch((err: unknown) => {
+  const onRetryPlugin = async (p: string) => {
+    await retryPlugin(p).catch((err: unknown) => {
       console.error('Retry plugin failed:', err);
     });
   };

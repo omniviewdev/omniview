@@ -15,8 +15,12 @@ export default function ResourceBrowser() {
   const navigate = useNavigate();
   return <ConnectionBoundary pluginID={pluginID} connectionID={connectionID} fallback={(state) =>
     <ConnectionBoundaryFallback state={state}
-      onEditConnection={() => navigate(connectionProfilePath(pluginID, connectionID))}
-      onBack={() => navigate(connectionProfilesPath(pluginID))} />
+      onEditConnection={async () => {
+        await navigate(connectionProfilePath(pluginID, connectionID)); 
+      }}
+      onBack={async () => {
+        await navigate(connectionProfilesPath(pluginID)); 
+      }} />
   }>
     <ConnectedResourceBrowser key={JSON.stringify([pluginID, connectionID])} pluginID={pluginID} connectionID={connectionID} />
   </ConnectionBoundary>;
@@ -35,7 +39,10 @@ function ConnectedResourceBrowser({ pluginID, connectionID }: { pluginID: string
     return <Text tone="danger">{parseAppError(connection.error ?? resourceTypes.error ?? groups.error).detail}</Text>;
   }
 
-  if (connection.isLoading || resourceTypes.isLoading || groups.isLoading) return <Spinner size="xl" />;
+  if (connection.isLoading || resourceTypes.isLoading || groups.isLoading) {
+    return <Spinner size="xl" />; 
+  }
+
   const types = resourceTypes.data ?? [];
   const byType = new Map(types.map((type) => [type.type, type]));
   const grouped = new Set(groups.data?.flatMap((group) => group.resources) ?? []);
@@ -45,20 +52,24 @@ function ConnectedResourceBrowser({ pluginID, connectionID }: { pluginID: string
     setSearch(next);
   };
 
-  const item = (type: string) => <Button key={type} variant={selected === type ? 'soft' : 'ghost'} onClick={() => select(type)}>
-    {byType.get(type)?.displayName || type}
+  const item = (type: string) => <Button key={type} variant={selected === type ? 'soft' : 'ghost'} onClick={() => {
+    select(type); 
+  }}>
+    {byType.get(type)?.displayName ? byType.get(type)?.displayName : type}
   </Button>;
   return <Stack direction="row" spacing={4} style={{ height: '100%', minHeight: 0 }}>
     <nav aria-label="Resource types" style={{ width: 300, overflow: 'auto', flexShrink: 0 }}>
       <Stack direction="column" spacing={2}>
-        <Text weight="semibold">{connection.data?.name || connectionID}</Text>
+        <Text weight="semibold">{(connection.data?.name ?? '') === '' ? connectionID : connection.data?.name}</Text>
         <Link to={connectionProfilePath(pluginID, connectionID)}>Edit connection profile</Link>
         <Link to={connectionProfilesPath(pluginID)}>Connection profiles</Link>
         {(groups.data ?? []).map((group) => <section key={group.id}>
-          <Button variant="ghost" aria-expanded={expanded[group.id] !== false} onClick={() => setExpanded((state) => ({ ...state, [group.id]: state[group.id] === false }))}>
+          <Button variant="ghost" aria-expanded={(expanded[group.id] ?? true)} onClick={() => {
+            setExpanded((state) => ({ ...state, [group.id]: !(state[group.id] ?? true) })); 
+          }}>
             {group.icon && <Icon name={group.icon} size={16} />}{group.name}
           </Button>
-          {expanded[group.id] !== false && <Stack direction="column">{group.resources.filter((type) => byType.has(type)).map(item)}</Stack>}
+          {(expanded[group.id] ?? true) && <Stack direction="column">{group.resources.filter((type) => byType.has(type)).map(item)}</Stack>}
         </section>)}
         {types.filter((type) => !grouped.has(type.type)).map((type) => item(type.type))}
         {types.length === 0 && <Text>No resource types are advertised.</Text>}

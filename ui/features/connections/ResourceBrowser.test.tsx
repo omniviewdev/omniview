@@ -5,11 +5,11 @@ import ResourceBrowser from './ResourceBrowser';
 import { connectionProfilePath, connectionProfilesPath, resourceBrowserPath } from '@/features/workspace/pagePaths';
 
 const state = vi.hoisted(() => ({
-  connected: true, error: null as unknown, type: 'native/resource::type/%2F',
+  connected: true, error: ((): unknown => null)(), type: 'native/resource::type/%2F',
   boundary: vi.fn(), connection: vi.fn(), types: vi.fn(), groups: vi.fn(),
 }));
 vi.mock('@omniviewdev/runtime', () => ({
-  ConnectionBoundary: ({ children, ...options }: { children: ReactNode; pluginID: string; connectionID: string }) => {
+  ConnectionBoundary: ({ children, ...options }: { children: ReactNode; pluginID: string; connectionID: string }): ReactNode => {
     state.boundary(options);
     return state.connected ? children : <div>Connection is disconnected</div>;
   },
