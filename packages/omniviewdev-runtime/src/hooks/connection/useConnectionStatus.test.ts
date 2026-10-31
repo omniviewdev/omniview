@@ -43,6 +43,26 @@ beforeEach(() => {
 });
 
 describe('connection readiness', () => {
+  it('keeps newer event metadata when older requests finish last', async () => {
+    native.states.mockResolvedValueOnce({ cloud: [snapshot('CONNECTED')] });
+    const hook = renderHook(() => useConnectionStatus());
+    await waitFor(() => expect(hook.result.current.connectedCount).toBe(1));
+    const older = Promise.withResolvers<Record<string, Connection[]>>();
+    const newer = Promise.withResolvers<Record<string, Connection[]>>();
+    native.list.mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise);
+    act(() => { emit('PENDING', 'CONNECTED'); });
+    act(() => { emit('CONNECTED', 'CONNECTED'); });
+    await act(async () => {
+      newer.resolve({ cloud: [Connection.createFrom({ id: 'CONNECTED', name: 'Latest' })] });
+    });
+    await act(async () => {
+      older.resolve({ cloud: [Connection.createFrom({ id: 'CONNECTED', name: 'Retired' })] });
+    });
+    expect(hook.result.current.entries[0].name).toBe('Latest');
+    expect(hook.result.current.connectedCount).toBe(1);
+    hook.unmount();
+  });
+
   it('preserves terminal watch events received while a refresh snapshot is pending', async () => {
     const syncing = snapshot('CONNECTED');
     syncing.resources.pods = WatchState.WatchStateSyncing;

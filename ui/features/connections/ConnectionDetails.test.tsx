@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router';
 import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, TextareaHTMLAttributes } from 'react';
 import type * as Runtime from '@omniviewdev/runtime';
 import type { ConnectionProfile } from '@omniviewdev/runtime';
@@ -9,7 +9,7 @@ import { connectionProfilePath } from '@/features/workspace/pagePaths';
 
 const mocks = vi.hoisted(() => ({
   profiles: [] as ConnectionProfile[],
-  effective: undefined as unknown,
+  effective: ((): unknown => undefined)(),
   save: vi.fn(), importProfile: vi.fn(), reset: vi.fn(), remove: vi.fn(),
   useConnection: vi.fn(), useConnectionProfiles: vi.fn(),
 }));
@@ -60,6 +60,35 @@ beforeEach(() => {
   mocks.remove.mockResolvedValue(undefined);
 });
 
+it('resets drafts and pending state across plugin routes and ignores the retired save', async () => {
+  const save = Promise.withResolvers<unknown>();
+  mocks.save.mockReturnValueOnce(save.promise);
+  function NavigateProfile() {
+    const navigate = useNavigate();
+    return <button onClick={async () => {
+      await navigate(connectionProfilePath('other-provider', 'route')); 
+    }}>Other profile</button>;
+  }
+
+  render(<MemoryRouter initialEntries={[connectionProfilePath('provider', 'route')]}>
+    <NavigateProfile />
+    <Routes><Route path="/connections/:pluginID/:connectionID/edit" element={<ConnectionDetails />} /></Routes>
+  </MemoryRouter>);
+  fireEvent.change(screen.getByLabelText('Connection name'), { target: { value: 'Unsaved draft' } });
+  fireEvent.click(screen.getByText('Save and apply'));
+  expect(screen.getByText('Applying…')).toBeDisabled();
+  await act(async () => {
+    fireEvent.click(screen.getByText('Other profile')); 
+  });
+  expect(screen.getByLabelText('Connection name')).toHaveValue('Native');
+  expect(screen.getByText('Save and apply')).not.toBeDisabled();
+  await act(async () => {
+    save.resolve({ applied: true }); 
+  });
+  expect(screen.queryByText('Source change applied and desired configuration saved.')).toBeNull();
+  expect(mocks.useConnection).toHaveBeenLastCalledWith(expect.objectContaining({ pluginID: 'other-provider', connectionID: 'route' }));
+});
+
 it('does not report success until source apply and durable save finish', async () => {
   const save = Promise.withResolvers<unknown>();
   mocks.save.mockReturnValue(save.promise);
@@ -70,7 +99,9 @@ it('does not report success until source apply and durable save finish', async (
   expect(screen.queryByText('Source change applied and desired configuration saved.')).toBeNull();
   expect(screen.getByText('Applying…')).toBeDisabled();
   expect(screen.getByText(/old.example/)).toBeTruthy();
-  await act(async () => save.resolve({ applied: true }));
+  await act(async () => {
+    save.resolve({ applied: true }); 
+  });
   expect(screen.getByText('Source change applied and desired configuration saved.')).toBeTruthy();
 });
 

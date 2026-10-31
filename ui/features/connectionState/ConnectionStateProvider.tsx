@@ -61,7 +61,7 @@ function ActiveConnectionStateDialog({
     } catch (err) {
       console.error('Failed to retry watch:', err);
     }
-  }, [target.pluginID, target.connectionID, summary.data?.scope]);
+  }, [target.pluginID, target.connectionID, summary.data]);
 
   // Auto-close after sync completes (only for auto-opened dialogs)
   useEffect(() => {

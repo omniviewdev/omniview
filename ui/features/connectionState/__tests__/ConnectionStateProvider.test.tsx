@@ -144,8 +144,12 @@ describe('ConnectionStateProvider', () => {
   it('retries the host-resolved canonical target', async () => {
     mockWatchStateReturn.summary = { data: { resources: { 'opaque/type': 3 }, resourceCounts: {}, scope: [] } };
     render(<ConnectionStateProvider><TestConsumer /></ConnectionStateProvider>);
-    act(() => showFn({ pluginID: 'provider', connectionID: 'c1', connectionName: 'Production' }));
-    await act(async () => screen.getByText('Retry').click());
+    act(() => {
+      showFn({ pluginID: 'provider', connectionID: 'c1', connectionName: 'Production' }); 
+    });
+    await act(async () => {
+      screen.getByText('Retry').click(); 
+    });
     expect(mockResolveTarget).toHaveBeenCalledWith('provider', {
       route: { connection: 'c1' }, type: 'opaque/type', scope: [],
     });

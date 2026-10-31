@@ -8,16 +8,16 @@ import { parsePagePath } from '@/features/workspace/pagePaths';
 function ProfileEditor({ connection, pending, onSave, onDraftChange }: {
   connection: Connection;
   pending: boolean;
-  onSave: (name: string, description: string, configuration: string) => void;
+  onSave: (name: string, description: string, configuration: string) => Promise<void>;
   onDraftChange: () => void;
 }) {
   const [name, setName] = React.useState(connection.name);
   const [description, setDescription] = React.useState(connection.description);
   const [configuration, setConfiguration] = React.useState(JSON.stringify(connection.data ?? {}, null, 2));
   return (
-    <form onSubmit={(event) => {
+    <form onSubmit={async (event) => {
       event.preventDefault();
-      onSave(name, description, configuration);
+      await onSave(name, description, configuration);
     }}>
       <Grid columns={12} spacing={4}>
         <Grid.Item span={12}>
@@ -61,6 +61,10 @@ export default function ConnectionDetails(): React.ReactElement {
   const target = parsePagePath(useLocation().pathname);
   const pluginID = target.kind === 'connection' ? target.pluginId : '';
   const connectionID = target.kind === 'connection' ? target.connectionId : '';
+  return <ConnectionDetailsForTarget key={JSON.stringify([pluginID, connectionID])} pluginID={pluginID} connectionID={connectionID} />;
+}
+
+function ConnectionDetailsForTarget({ pluginID, connectionID }: { pluginID: string; connectionID: string }): React.ReactElement {
   const { profiles } = useConnectionProfiles({ pluginID });
   const profile = profiles.data?.find((entry) => entry.id === connectionID);
   const { connection, saveConnectionProfile, importConnectionProfile, resetConnectionProfile, removeConnection } = useConnection({
@@ -71,13 +75,10 @@ export default function ConnectionDetails(): React.ReactElement {
   const [saved, setSaved] = React.useState(false);
   const operation = React.useRef(0);
   React.useEffect(() => {
-    setPending(false);
-    setError(null);
-    setSaved(false);
     return () => {
       operation.current += 1; 
     };
-  }, [pluginID, connectionID]);
+  }, []);
 
   const apply = async (change: () => Promise<unknown>) => {
     const current = ++operation.current;
@@ -86,16 +87,27 @@ export default function ConnectionDetails(): React.ReactElement {
     setSaved(false);
     try {
       await change();
-      if (current === operation.current) setSaved(true);
+      if (current === operation.current) {
+        setSaved(true); 
+      }
     } catch (failure) {
-      if (current === operation.current) setError(parseAppError(failure));
+      if (current === operation.current) {
+        setError(parseAppError(failure)); 
+      }
     } finally {
-      if (current === operation.current) setPending(false);
+      if (current === operation.current) {
+        setPending(false); 
+      }
     }
   };
 
-  if (profiles.isLoading) return <Text>Loading connection profile…</Text>;
-  if (profiles.isError) return <Text tone="danger">{parseAppError(profiles.error).detail}</Text>;
+  if (profiles.isLoading) {
+    return <Text>Loading connection profile…</Text>; 
+  }
+
+  if (profiles.isError) {
+    return <Text tone="danger">{parseAppError(profiles.error).detail}</Text>; 
+  }
 
   return (
     <Stack direction="column" spacing={4}>
@@ -109,9 +121,11 @@ export default function ConnectionDetails(): React.ReactElement {
         key={`${pluginID}/${connectionID}/${profile.source}`}
         connection={profile.connection}
         pending={pending}
-        onDraftChange={() => setSaved(false)}
-        onSave={(name, description, configuration) => {
-          void apply(async () => {
+        onDraftChange={() => {
+          setSaved(false); 
+        }}
+        onSave={async (name, description, configuration) => {
+          await apply(async () => {
             const data: unknown = JSON.parse(configuration);
             if (!data || typeof data !== 'object' || Array.isArray(data)) {
               throw new Error('Source configuration must be a JSON object.');
@@ -123,9 +137,15 @@ export default function ConnectionDetails(): React.ReactElement {
       />}
       {!profile && <Text>No desired or native connection configuration exists for this ID.</Text>}
       <Stack direction="row" spacing={2}>
-        {profile?.source === 'review' && <Button disabled={pending} onClick={() => void apply(importConnectionProfile)}>Import reviewed profile</Button>}
-        {profile && profile.source !== 'native' && profile.source !== 'review' && profile.source !== 'absent' && <Button disabled={pending} onClick={() => void apply(resetConnectionProfile)}>Reset / restore native configuration</Button>}
-        {profile && profile.source !== 'disabled' && profile.source !== 'review' && profile.source !== 'absent' && <Button color="danger" disabled={pending} onClick={() => void apply(removeConnection)}>{profile.source === 'manual' ? 'Delete saved profile' : 'Disable in Omniview'}</Button>}
+        {profile?.source === 'review' && <Button disabled={pending} onClick={async () => {
+          await apply(importConnectionProfile); 
+        }}>Import reviewed profile</Button>}
+        {profile && profile.source !== 'native' && profile.source !== 'review' && profile.source !== 'absent' && <Button disabled={pending} onClick={async () => {
+          await apply(resetConnectionProfile); 
+        }}>Reset / restore native configuration</Button>}
+        {profile && profile.source !== 'disabled' && profile.source !== 'review' && profile.source !== 'absent' && <Button color="danger" disabled={pending} onClick={async () => {
+          await apply(removeConnection); 
+        }}>{profile.source === 'manual' ? 'Delete saved profile' : 'Disable in Omniview'}</Button>}
       </Stack>
       <details>
         <summary>Last observed effective source configuration</summary>
