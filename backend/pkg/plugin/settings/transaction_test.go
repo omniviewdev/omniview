@@ -28,7 +28,7 @@ func (p transactionSDKProvider) ListSettings() map[string]pkgsettings.Setting {
 }
 
 func (p transactionSDKProvider) ValidateSetting(id string, value any) (pkgsettings.ValidationResult, error) {
-	setting, err := p.Provider.GetSetting(id)
+	setting, err := p.GetSetting(id)
 	if err != nil {
 		return pkgsettings.ValidationResult{}, err
 	}

@@ -241,7 +241,7 @@ func (c *controller) hydratePlugin(
 	c.mu.Unlock()
 
 	// 7. Drain pending changes
-	c.drainPendingChanges(ctx, pluginID, client, logger)
+	c.drainPendingChanges(pluginID, client)
 }
 
 // failPendingChanges removes and rejects queued transactions for a plugin.
@@ -263,10 +263,8 @@ func (c *controller) failPendingChanges(pluginID string, err error) {
 
 // drainPendingChanges applies any queued settings changes for a plugin.
 func (c *controller) drainPendingChanges(
-	ctx context.Context,
 	pluginID string,
 	client Provider,
-	logger logging.Logger,
 ) {
 	c.pendingMu.Lock()
 	pending := c.pendingChanges[pluginID]
