@@ -50,13 +50,17 @@ it('updates detail readers from host-keyed advisory events without losing the ca
     resource: useResource({ pluginID: 'kubernetes', request }).resource,
     enqueue: useEventBatcher(client, listKey, WatchState.WatchStateSyncing, { syncWindowMs: 1 }),
   }), { wrapper });
-  await waitFor(() => expect(consumer.result.current.resource.data).toEqual(version1));
+  await waitFor(() => {
+    expect(consumer.result.current.resource.data).toEqual(version1); 
+  });
   act(() => {
     consumer.result.current.enqueue({ type: 'UPDATE', payload: {
       route: version1.route, record: version2, metadata: {}, guarantee: 'bestEffort',
     } });
   });
-  await waitFor(() => expect(consumer.result.current.resource.data).toEqual(version2));
+  await waitFor(() => {
+    expect(consumer.result.current.resource.data).toEqual(version2); 
+  });
   expect(client.getQueryData(detailKey)).toEqual(version2);
   expect(native.get).toHaveBeenCalledTimes(1);
   consumer.unmount();

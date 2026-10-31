@@ -37,7 +37,7 @@ export const RowContainer: React.FC<Props> = ({
   const { showSnackbar } = useSnackbar();
   const resourceID = row.original.record.record.reference.address.id;
 
-  // Use the provided ref callback to measure items
+  // Reattach the measurement ref when an identity-keyed row moves to a new virtual index.
   const ref = React.useCallback((node: HTMLTableRowElement) => {
     virtualizer.measureElement(node);
   }, [virtualizer, virtualRow.index]);

@@ -5,7 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 import type * as Runtime from '@omniviewdev/runtime';
 import type { ResourceTableRow } from '@/hooks/resource/useResourceDefinition';
 
-const state = vi.hoisted(() => ({ error: undefined as unknown, isCurrent: true }));
+const state = vi.hoisted<{ error: unknown; isCurrent: boolean }>(() => ({ error: undefined, isCurrent: true }));
 vi.mock('@/hooks/resource/useResourceDefinition', () => ({ default: () => ({ isLoading: false, isError: !!state.error, error: state.error, columns: { defs: [], visibility: {} } }) }));
 vi.mock('@omniviewdev/runtime/api', () => ({ ResourceClient: {} }));
 vi.mock('@omniviewdev/runtime', async (original) => {

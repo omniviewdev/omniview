@@ -508,6 +508,7 @@ export function GlobalCommandSearch({ controller, snapshot, input, onClose, cata
               const Icon = kindIcons[row.value.kind];
               const breadcrumb = getSettingBreadcrumb(row);
               const resultScope = row.value.kind === 'action' ? row.value.action.target : row.value.scope;
+              const resourceDetails = !row.value.description && !breadcrumb && resultScope?.kind === 'resource' ? scopeDetails(resultScope) : undefined;
               return (
                 <CommandList.Item
                   itemKey={row.key}
@@ -528,7 +529,7 @@ export function GlobalCommandSearch({ controller, snapshot, input, onClose, cata
                     <CommandList.ItemLabel>{row.label}</CommandList.ItemLabel>
                     {breadcrumb && <CommandList.ItemMeta>{breadcrumb}</CommandList.ItemMeta>}
                     {!row.value.description && !breadcrumb && <CommandList.ItemMeta>
-                      {resultScope?.kind === 'resource' ? scopeDetails(resultScope) || undefined
+                      {resultScope?.kind === 'resource' ? (resourceDetails === '' ? undefined : resourceDetails)
                         : resultScope?.kind === 'resource-type' ? resultScope.target.type
                           : resultScope?.kind === 'connection' ? resultScope.pluginId
                             : kindLabels[row.value.kind]}

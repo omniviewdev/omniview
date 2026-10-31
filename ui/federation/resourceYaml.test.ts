@@ -18,9 +18,15 @@ describe('canonical resource YAML', () => {
     expect(parseResourceYaml(text, original, text)).toEqual(original);
     const edited = parseResourceYaml(text.replace('before', 'after'), original, text);
     expect(edited).toEqual({ ...original, value: { ...original.value, name: { kind: 'string', value: 'after' } } });
-    if (edited.kind !== 'map' || edited.value.nested.kind !== 'list') throw new Error('Expected nested list');
+    if (edited.kind !== 'map' || edited.value.nested.kind !== 'list') {
+      throw new Error('Expected nested list');
+    }
+
     const negativeZero = edited.value.nested.value[1];
-    if (negativeZero.kind !== 'double') throw new Error('Expected double');
+    if (negativeZero.kind !== 'double') {
+      throw new Error('Expected double');
+    }
+
     expect(Object.is(negativeZero.value, -0)).toBe(true);
   });
   it('validates explicit scalar changes', () => {

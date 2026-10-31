@@ -12,7 +12,10 @@ export function scopeType(scope: SearchScopeV1): string | undefined {
 }
 
 export function scopeDetails(scope: SearchScopeV1): string | undefined {
-  if (scope.kind === 'connection') return undefined;
+  if (scope.kind === 'connection') {
+    return undefined;
+  }
+
   return scope.kind === 'resource'
     ? scope.reference.address.scope.map(entry => `${entry.dimension}: ${entry.value}`).join(', ')
     : scope.target.scope.map(entry => `${entry.dimension}: ${entry.match === 'any' ? '*' : entry.values.join(', ')}`).join('; ');
@@ -20,9 +23,18 @@ export function scopeDetails(scope: SearchScopeV1): string | undefined {
 
 /** UI filtering is not admission: the host independently validates every request. */
 export function containsScope(parent: SearchScopeV1, target: SearchScopeV1): boolean {
-  if (parent.pluginId !== target.pluginId || scopeConnection(parent) !== scopeConnection(target)) return false;
-  if (parent.kind === 'connection') return true;
-  if (target.kind === 'connection') return false;
+  if (parent.pluginId !== target.pluginId || scopeConnection(parent) !== scopeConnection(target)) {
+    return false;
+  }
+
+  if (parent.kind === 'connection') {
+    return true;
+  }
+
+  if (target.kind === 'connection') {
+    return false;
+  }
+
   if (parent.kind === 'resource') {
     return target.kind === 'resource'
       && parent.representation === target.representation
@@ -32,10 +44,19 @@ export function containsScope(parent: SearchScopeV1, target: SearchScopeV1): boo
 
   const child = target.kind === 'resource-type' ? target.target : target.reference.address;
   if (parent.target.provider !== child.provider || parent.target.authority !== child.authority
-    || parent.target.type !== child.type) return false;
-  if (parent.target.representation !== (target.kind === 'resource-type' ? target.target.representation : target.representation)) return false;
+    || parent.target.type !== child.type) {
+    return false;
+  }
+
+  if (parent.target.representation !== (target.kind === 'resource-type' ? target.target.representation : target.representation)) {
+    return false;
+  }
+
   return parent.target.scope.every(constraint => {
-    if (constraint.match === 'any') return true;
+    if (constraint.match === 'any') {
+      return true;
+    }
+
     if (target.kind === 'resource') {
       const value = target.reference.address.scope.find(entry => entry.dimension === constraint.dimension);
       return !!value && constraint.values.includes(value.value);
