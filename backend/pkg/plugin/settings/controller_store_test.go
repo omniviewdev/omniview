@@ -263,11 +263,14 @@ func TestPluginCrash_SettingsPreserved(t *testing.T) {
 	assert.Equal(t, "dark", vals["theme"])
 	assert.Equal(t, "en", vals["lang"])
 
-	// bbolt fallback should work via ListSettings
-	settings := ctrl.ListSettings("testplugin")
-	require.NotNil(t, settings)
-	assert.Equal(t, "dark", settings["theme"].Value)
-	assert.Equal(t, "en", settings["lang"].Value)
+	// A disconnected plugin retains the last authoritative schema for safe reads.
+	ctrl.schemaCache["testplugin"] = map[string]pkgsettings.Setting{
+		"theme": {ID: "theme"}, "lang": {ID: "lang"},
+	}
+	snapshot, err := ctrl.Snapshot("testplugin")
+	require.NoError(t, err)
+	assert.Equal(t, "dark", snapshot.Settings["theme"].Value)
+	assert.Equal(t, "en", snapshot.Settings["lang"].Value)
 }
 
 func TestUninstall_DeletesFromBbolt(t *testing.T) {
@@ -296,7 +299,7 @@ func TestUninstall_DeletesFromBbolt(t *testing.T) {
 	assert.Empty(t, vals)
 }
 
-func TestStaleClient_ReturnsBboltFallback(t *testing.T) {
+func TestSnapshot_UsesSavedValuesWithoutRemoteRead(t *testing.T) {
 	store := openTestStore(t)
 
 	// Pre-persist values
@@ -318,14 +321,18 @@ func TestStaleClient_ReturnsBboltFallback(t *testing.T) {
 		pendingChanges: make(map[string][]pendingChange),
 	}
 
-	settings := ctrl.ListSettings("testplugin")
-	require.NotNil(t, settings)
-	assert.Equal(t, "dark", settings["theme"].Value)
-	assert.Equal(t, "en", settings["lang"].Value)
+	ctrl.schemaCache["testplugin"] = map[string]pkgsettings.Setting{
+		"theme": {ID: "theme"}, "lang": {ID: "lang"},
+	}
+	snapshot, err := ctrl.Snapshot("testplugin")
+	require.NoError(t, err)
+	assert.Equal(t, "dark", snapshot.Settings["theme"].Value)
+	assert.Equal(t, "en", snapshot.Settings["lang"].Value)
 }
 
 func TestValidateSettingRequiresLivePluginAndPreservesFeedback(t *testing.T) {
-	ctrl := NewController(logging.NewNop(), nil, openTestStore(t)).(*controller)
+	ctrl, ok := NewController(logging.NewNop(), openTestStore(t)).(*controller)
+	require.True(t, ok)
 	ctrl.clients["fixture"] = newMockProvider(map[string]pkgsettings.Setting{
 		"tool": {ID: "tool", Type: pkgsettings.Text, Value: "saved", Validator: func(value any) pkgsettings.ValidationResult {
 			return pkgsettings.ValidationResult{Valid: value == "good", Code: "tool_check", Message: "Tool check completed."}

@@ -13,7 +13,6 @@ import (
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
 	"github.com/omniviewdev/omniview/internal/telemetry"
 	logging "github.com/omniviewdev/plugin-sdk/log"
-	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
 const settingsChangedEvent = "settings/changed"
@@ -28,7 +27,6 @@ func init() {
 // ServiceShutdown so the Wails v3 runtime calls it automatically.
 type Service struct {
 	Log                  logging.Logger
-	SettingsProvider     pkgsettings.Provider
 	Settings             *settingsservice.Service
 	TelemetrySvc         *telemetry.Service
 	PluginManager        plugin.Manager
@@ -41,7 +39,7 @@ func (b *Service) ServiceStartup(ctx context.Context, _ application.ServiceOptio
 	b.attachSettingsEffects(ctx)
 
 	// Apply user-configured marketplace URL to the registry client.
-	marketplaceURL, urlErr := b.SettingsProvider.GetString("developer.marketplace_url")
+	marketplaceURL, urlErr := b.Settings.Provider().GetString("developer.marketplace_url")
 	if urlErr == nil && marketplaceURL != "" {
 		b.PluginRegistryClient.SetBaseURL(marketplaceURL)
 		safeHost := marketplaceURL

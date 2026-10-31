@@ -21,48 +21,73 @@ An empty Go path retains the existing optional default: automatic discovery in P
 - Save revalidates; replacing a previously valid executable with a failing one cannot bypass enforcement.
 - No validation response contains secret input or arbitrary subprocess output.
 
-## Core host lifecycle and restart-required settings
+## Shared settings lifecycle and commits
 
-`internal/hostsettings.Runtime` initializes the existing SDK provider once after
-profile/singleton authority and settings-store migration, before settings-dependent
-services start. `internal/settings.Definitions(isDev)` is the shared definition
-source for runtime defaults and frontend metadata. Appearance/terminal category
-migrations run during hydration; unknown or invalid stored values are diagnosed
-without preventing valid siblings from loading.
+`backend/pkg/settings.Service` initializes the existing SDK provider after
+profile/singleton authority and store migration, before startup consumers run.
+`internal/settings.Definitions(isDev)` supplies defaults and category metadata.
+Appearance/terminal migrations run during hydration; invalid stored values produce
+safe diagnostics without preventing valid siblings from loading.
 
-Telemetry and profiling consume this prepared provider; neither reads the database
-independently. Bootstrap attaches live effects and category invalidation after
-initialization, without hydrating or persisting a second time.
+Telemetry and profiling read this prepared provider. Bootstrap supplies live
+effects and scoped change notifications; it does not reload or persist settings.
+The plugin controller owns capability connections, schema provenance, and
+hydration, not another public settings write API.
 
-Frontend and local-control core writes use the same narrow `hostsettings.Writer`.
-The writer validates and normalizes the complete request, commits affected
-categories in one bbolt transaction, then publishes requested or previously
-unpublished values. Unchanged siblings are not revalidated during publication.
-Persistence failure returns an error without publishing changes or success
-invalidation. A missing store permits startup with defaults but rejects saves.
-Plugin persistence remains separate.
+```mermaid
+flowchart LR
+    C[UI and local control] --> S[Scoped settings service]
+    S --> P[SDK provider or plugin stream]
+    P -->|Normalized changes| D[Host store]
+    D -->|Durable acknowledgement| P
+    P --> A[Publish and apply effects]
+```
 
-An error after durable commit is different: `CommittedApplyError` reports that
-preferences were saved but could not be applied. The UI clears committed drafts
-and shows this warning instead of claiming persistence failed. Local control
-returns `settings_apply_failed` with `committed: true`.
+The SDK's `CommitSettings(ctx, changes, persist)` owns validation and publication.
+It normalizes and validates once before the injected persistence callback.
+Host category patches and plugin patches commit atomically in bbolt. Persistence
+failure publishes nothing. Prepared values publish without another validation
+pass, so no host mirror or pending-publication retry queue is needed.
+A missing store permits core startup with defaults but rejects public saves.
+Host live effects run in commit order; a later commit cannot be overwritten by
+an older telemetry effect.
 
-Restart policy is host-owned, not an SDK schema change.
-`SettingsProvider.GetSettingStates()` returns only `requiresRestart` and
-`pendingRestart` flags keyed by full setting ID. Pending state compares normalized
-configured values with a deep-copied startup baseline; no preference values or
-secrets are included. Restoring the startup value clears pending state.
-Discard affects drafts only; refreshing settings does not reset the baseline.
-Category invalidation refreshes configured values and restart state across windows.
+The public binding exposes only `GetSnapshot`, `Validate`, and `Commit`, with an
+explicit `{ kind: "host" }` or `{ kind: "plugin", pluginId }` scope.
+Host setting IDs use `category.setting`; plugin setting IDs remain opaque,
+including dots. Snapshots include category metadata, saved values, and each
+setting's `requiresRestart` and `pendingRestart` flags.
+Sensitive values and value-bearing metadata are redacted. Unknown plugin schema
+fails closed. Replacement clients invalidate old schema before hydration;
+snapshot projection fences schema classification against concurrent reloads.
 
-Profiling is the first restart-only consumer:
+A rejected commit means preferences were not saved. A successful response is
+durable even when `applied` is false or `uncertain` is true; `message` contains
+safe application feedback. Forms clear durable drafts and show that warning.
+They retain drafts on rejected commits. Theme changes do not roll back a
+durably saved preference. No error-message matching determines commit state.
+Local control returns the same structured result.
+
+`useScopedSettings` shares the existing React Query cache and one scoped event
+bridge per query client. Category views, plugin views, and runtime contexts use
+that same client. One form controller owns drafts, validation fencing, save, and
+discard. Commits refresh authorized snapshots instead of installing potentially
+stale response data. External writes and plugin lifecycle events invalidate the
+appropriate scoped queries.
+
+Restart policy belongs to the SDK setting definition through `RequiresRestart`.
+Pending state compares normalized saved values with the startup/hydration
+baseline. Restoring that value clears pending state. Discard affects drafts only;
+refreshing the cache does not reset the baseline.
+
+Profiling is the first host restart-only consumer:
 `developer.pprof_enabled` defaults to false and `developer.pprof_port` defaults to
-6060, accepting whole-number ports from 0 through 65535. Both settings are visible
-in production. Runtime listener facts come from `HostProfiling.GetStatus()`, not
-from the saved toggle. A saved disable does not claim the active listener has
-stopped before restart. Invalid recovered profiling preferences fail closed.
-`OMNIVIEW_PPROF_PORT` is an explicit launch-time override; it never replaces saved
-values or their restart comparison baseline.
+6060, accepting whole-number ports from 0 through 65535. Both are visible in
+production. Actual listener facts remain in `HostProfiling.GetStatus()`, separate
+from saved settings. Saving never starts, stops, or rebinds the listener.
+Invalid recovered profiling preferences fail closed.
+`OMNIVIEW_PPROF_PORT` overrides startup behavior without replacing saved values
+or their comparison baseline.
 
 ### Terminal defaults
 
@@ -126,9 +151,19 @@ the displayed grid and the shell's reported terminal size agree.
 
 ## Plugin settings transport
 
-Plugin settings use the same draft UX and save enforcement. Validators execute inside the plugin process, never on serialized host copies of settings. A dedicated settings gRPC method accepts a draft and returns only valid/code/message. The host controller delegates to the live plugin and never treats cached schema or persisted values as evidence of validation. Missing plugins and transport failures retain drafts and block save. The SDK wrapper evaluates the original registered setting, including sensitive redaction. This protocol addition requires plugins rebuilt against the updated SDK; old plugin processes report unsupported validation rather than silently approving drafts.
+Plugin draft validation executes the registered callback inside the live plugin;
+cached schema and saved values cannot execute validators.
+Missing plugins and validation transport failures retain drafts and block save.
 
-Expected tests cover real in-memory gRPC roundtrips, contextual success/failure, no mutation during preflight, secret redaction, host delegation, and plugin UI rejection plus stale response handling. Save still calls the plugin's existing validated SetSettings path, so executable changes after preflight cannot bypass validation.
+Plugin saves use one bidirectional transaction stream. The plugin normalizes and
+validates a proposal, sends prepared values for host persistence, waits for the
+durable acknowledgement, then publishes those prepared values. A failed host
+write aborts publication. Connection loss after persistence returns a durable,
+uncertain result rather than pretending the save failed or was remotely atomic.
+Canceled queued streams release their wait without accumulating blocked handlers.
+
+The old settings setter RPCs are removed. Rebuild host and plugin consumers
+against the coordinated SDK contract; there is no compatibility fallback.
 
 ## Registering validators
 
@@ -144,23 +179,22 @@ Sensitive settings always return generic feedback, regardless of callback conten
 
 ## Verification
 
-SDK `v0.7.0` contains the single structured `Validator` callback and draft
-validation RPC. Rebuild plugins against this release. Source selection requires
-an absolute path when testing a local SDK; normal builds use the released
-dependency pinned in `go.mod`. Host, providers, runtime, and Vite plugin versions
-are aligned at `0.7.3`; normal release tags use the existing release workflow.
+The host pins the coordinated transactional SDK in `go.mod`. Rebuild plugins
+against that contract. Local source selection requires an absolute SDK path;
+normal builds use the exact pinned module dependency.
 
 The E2E runner checks out the independently reviewed SDK revision selected by
-`OMNIVIEW_E2E_REVIEWED_SDK_REVISION`. After reviewing the SDK change, advance that
-trusted repository variable to a commit containing validation and keep
-`e2e/source-cohort.json` aligned. Updating only `go.mod` cannot update this separate
-source selection. Do not bypass the reviewed-source gate for a feature branch.
+`OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION`. Advance this trusted approval and
+`e2e/source-cohort.json` together during the coordinated rollout. Updating
+`go.mod` alone does not change that independent source selection. Do not weaken
+the reviewed-source gate or advance the shared variable before compatible host
+and plugin consumers are ready.
 
 ```sh
 SDK_SOURCE=/absolute/path/to/plugin-sdk
 (cd "$SDK_SOURCE" && GOWORK=off go test ./settings ./pkg/v1/settings -count=1)
 GO_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go --root "$PWD" --sdk-source "$SDK_SOURCE")"
-GOWORK=off GOFLAGS= go test -modfile="$GO_MODFILE" ./internal/settings ./backend/pkg/plugin/settings -count=1
+GOWORK=off GOFLAGS= go test -modfile="$GO_MODFILE" ./backend/pkg/settings ./internal/settings ./backend/pkg/plugin/settings -count=1
 ```
 
 Generate frontend bindings with `task bindings SDK_SOURCE="$SDK_SOURCE"`, then run `pnpm exec vitest run ui/pages/settings/CoreSettingsPage.test.tsx ui/pages/settings/PluginSettingsPage.test.tsx ui/pages/settings/SettingsPage.test.tsx` and `pnpm exec tsc --noEmit`. SDK protocol bindings are generated with `make proto` in the selected SDK checkout.

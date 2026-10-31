@@ -12,13 +12,13 @@ import (
 )
 
 func newTestController() Controller {
-	return NewController(logging.NewNop(), nil, nil)
+	return NewController(logging.NewNop(), nil)
 }
 
-func TestGetSetting_PluginNotFound(t *testing.T) {
+func TestSnapshot_PluginNotFound(t *testing.T) {
 	c := newTestController()
 
-	_, err := c.GetSetting("nonexistent", "foo")
+	_, err := c.Snapshot("nonexistent")
 	require.Error(t, err)
 
 	var appErr *apperror.AppError

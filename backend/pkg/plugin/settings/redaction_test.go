@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"testing"
 
-	logging "github.com/omniviewdev/plugin-sdk/log"
-	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	logging "github.com/omniviewdev/plugin-sdk/log"
+	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
 func TestRedactSettingValues_HidesSensitiveAndUnknownSchema(t *testing.T) {
@@ -50,27 +51,28 @@ func TestRedactSettingsSchema_HidesSensitiveDefaultsAndOptions(t *testing.T) {
 	assert.Equal(t, "option-secret", schema["token"].Options[0].Value)
 }
 
-func TestRedactedPluginSettings_DoesNotTrustSynthesizedFallbackSchema(t *testing.T) {
+func TestSnapshot_DoesNotTrustUnknownPersistedSchema(t *testing.T) {
 	store := openTestStore(t)
 	require.NoError(t, store.SavePluginSettings("fixture", map[string]any{
 		"theme": "dark", "token": "stored-secret", "unknown": "unclassified-secret",
 	}))
-	ctrl := NewController(logging.NewNop(), nil, store).(*controller)
+	ctrl, ok := NewController(logging.NewNop(), store).(*controller)
+	require.True(t, ok)
 	ctrl.schemaCache["fixture"] = map[string]pkgsettings.Setting{
 		"theme": {ID: "theme"},
 		"token": {ID: "token", Sensitive: true},
 	}
-	// ListSettings synthesizes metadata for persisted unknown keys. Inspection
-	// must not mistake that metadata for an authoritative public schema.
-	raw := ctrl.ListSettings("fixture")
-	assert.False(t, raw["unknown"].Sensitive)
-	safe := RedactedPluginSettings(ctrl, "fixture")
+	snapshot, err := ctrl.Snapshot("fixture")
+	require.NoError(t, err)
+	safe := snapshot.Settings
 	assert.Equal(t, "dark", safe["theme"].Value)
 	assert.Equal(t, "[REDACTED]", safe["token"].Value)
 	assert.Equal(t, "[REDACTED]", safe["unknown"].Value)
 	assert.True(t, safe["unknown"].Sensitive)
 	ctrl.schemaCache = nil
-	safe = RedactedPluginSettings(ctrl, "fixture")
+	snapshot, err = ctrl.Snapshot("fixture")
+	require.NoError(t, err)
+	safe = snapshot.Settings
 	assert.Equal(t, "[REDACTED]", safe["theme"].Value)
 	values, err := store.LoadPluginSettings("fixture")
 	require.NoError(t, err)
@@ -98,8 +100,11 @@ func TestRedaction_PasswordTypeOverridesFalseSensitiveFlag(t *testing.T) {
 
 	store := openTestStore(t)
 	require.NoError(t, store.SavePluginSettings("fixture", map[string]any{"password": "password-current"}))
-	ctrl := NewController(logging.NewNop(), nil, store).(*controller)
+	ctrl, ok := NewController(logging.NewNop(), store).(*controller)
+	require.True(t, ok)
 	ctrl.schemaCache["fixture"] = schema
-	safe := RedactedPluginSettings(ctrl, "fixture")
+	snapshot, err := ctrl.Snapshot("fixture")
+	require.NoError(t, err)
+	safe := snapshot.Settings
 	assert.Equal(t, "[REDACTED]", safe["password"].Value)
 }

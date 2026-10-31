@@ -330,7 +330,7 @@ func main() {
 	resourceController := resource.NewController(log, settingsProvider, stateDir.PluginStore, resourceBoundary)
 	graphService := resource.NewGraphService(resourceController.Graph(), resourceUIRealm, resourceBoundary, resourceController.ValidateReference)
 
-	settingsController := settings.NewController(log, settingsProvider, settingsStore)
+	settingsController := settings.NewController(log, settingsStore)
 	coreSettings.AttachPlugins(settingsController)
 
 	execController, networkerController, logsController, metricController := newUICapabilityControllers(
@@ -468,7 +468,6 @@ func main() {
 	// Create the bootstrap service that wraps startup/shutdown logic
 	bootstrapSvc := &bootstrap.Service{
 		Log:                  log,
-		SettingsProvider:     settingsProvider,
 		Settings:             coreSettings,
 		TelemetrySvc:         telemetrySvc,
 		PluginManager:        pluginManager,
@@ -516,7 +515,6 @@ func main() {
 		// 1. Controllers — need ctx before plugin loading
 		application.NewService(&resource.ServiceWrapper{Ctrl: resourceController, Realm: resourceUIRealm}),
 		application.NewService(graphService),
-		application.NewService(&settings.Lifecycle{Ctrl: settingsController}),
 		application.NewService(&exec.ServiceWrapper{Ctrl: execController}),
 		application.NewService(&networker.ServiceWrapper{Ctrl: networkerController}),
 		application.NewService(&pluginlogs.ServiceWrapper{Ctrl: logsController}),

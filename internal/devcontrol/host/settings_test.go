@@ -24,7 +24,7 @@ func TestUnknownPersistedPluginSchemaNeverBecomesPublic(t *testing.T) {
 	if err := store.SavePluginSettings("fixture", map[string]any{"unknown.key": "fixture-private-value"}); err != nil {
 		t.Fatal(err)
 	}
-	controller := pluginsettings.NewController(logging.NewNop(), nil, store)
+	controller := pluginsettings.NewController(logging.NewNop(), store)
 	service, initErr := settingsservice.Initialize(settingsservice.Options{
 		Store: store, Categories: nil, Migrations: nil, Logger: nil,
 	})

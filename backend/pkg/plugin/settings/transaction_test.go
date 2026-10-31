@@ -60,7 +60,8 @@ func TestSettingsTransaction_PreservesValidationHooksAndPersistence(t *testing.T
 	provider.RegisterChangeHandler("limits", func(values map[string]any) {
 		hookValues = append(hookValues, values["count"])
 	})
-	ctrl := NewController(logging.NewNop(), nil, store).(*controller)
+	ctrl, ok := NewController(logging.NewNop(), store).(*controller)
+	require.True(t, ok)
 	ctrl.clients["fixture"] = transactionSDKProvider{provider}
 	ctrl.hydrated["fixture"] = true
 	require.NoError(t, store.SavePluginSettings("fixture", map[string]any{"limits.count": 3}))

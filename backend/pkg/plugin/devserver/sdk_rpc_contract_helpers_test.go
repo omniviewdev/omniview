@@ -472,11 +472,11 @@ func (p *sdkRPCProfile) ReloadManagedPlugin(ctx context.Context, id, source, gen
 	if err := p.launchPlugin(); err != nil {
 		return err
 	}
-	setting, err := p.controller.GetSetting(sdkRPCContractID, "counter")
+	category, err := p.controller.Snapshot(sdkRPCContractID)
 	if err != nil {
 		return err
 	}
-	if setting.Label != p.live.pluginLabel {
+	if category.Settings["counter"].Label != p.live.pluginLabel {
 		return fmt.Errorf("controller schema differs from actual SDK settings RPC")
 	}
 	p.live.pluginPID = p.backend.ReattachConfig().Pid
@@ -571,7 +571,7 @@ func (p *sdkRPCProfile) launchPlugin() error {
 	if err != nil {
 		return err
 	}
-	p.controller = pluginsettings.NewController(logging.NewNop(), nil, p.store)
+	p.controller = pluginsettings.NewController(logging.NewNop(), p.store)
 	p.controller.OnPluginInit(sdkRPCContractID, metadata)
 	if err := p.controller.OnPluginStart(sdkRPCContractID, metadata, backend); err != nil {
 		return err

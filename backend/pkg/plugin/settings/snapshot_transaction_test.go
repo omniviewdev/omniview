@@ -16,7 +16,7 @@ func TestCommitPersistenceFailureDoesNotPublish(t *testing.T) {
 	provider := newMockProvider(map[string]pkgsettings.Setting{
 		"raw.dotted.id": {ID: "raw.dotted.id", Value: "old"},
 	})
-	ctrl, ok := NewController(logging.NewNop(), nil, store).(*controller)
+	ctrl, ok := NewController(logging.NewNop(), store).(*controller)
 	require.True(t, ok, "settings controller must expose its concrete implementation")
 	ctrl.clients["fixture"] = provider
 	ctrl.hydrated["fixture"] = true
@@ -35,7 +35,7 @@ func TestSnapshotUsesSavedValuesAfterUncertainApply(t *testing.T) {
 		"raw.dotted.id": {ID: "raw.dotted.id", Value: "old", RequiresRestart: true},
 		"token":         {ID: "token", Value: "private", Default: "private-default", Sensitive: true},
 	})
-	ctrl, ok := NewController(logging.NewNop(), nil, store).(*controller)
+	ctrl, ok := NewController(logging.NewNop(), store).(*controller)
 	require.True(t, ok, "settings controller must expose its concrete implementation")
 	ctrl.clients["fixture"] = provider
 	ctrl.hydratePlugin(context.Background(), "fixture", provider, ctrl.logger)
@@ -66,7 +66,7 @@ func TestHydrationCapturesBaselineBeforeQueuedCommit(t *testing.T) {
 	provider := newMockProvider(map[string]pkgsettings.Setting{
 		"raw.dotted.id": {ID: "raw.dotted.id", Value: 1, RequiresRestart: true},
 	})
-	ctrl, ok := NewController(logging.NewNop(), nil, store).(*controller)
+	ctrl, ok := NewController(logging.NewNop(), store).(*controller)
 	require.True(t, ok, "settings controller must expose its concrete implementation")
 	ctrl.clients["fixture"] = provider
 	done := make(chan commitOutcome, 1)
@@ -92,7 +92,7 @@ func TestCanceledQueuedCommitDoesNotPersist(t *testing.T) {
 	provider := newMockProvider(map[string]pkgsettings.Setting{
 		"raw.dotted.id": {ID: "raw.dotted.id", Value: "old"},
 	})
-	ctrl, ok := NewController(logging.NewNop(), nil, store).(*controller)
+	ctrl, ok := NewController(logging.NewNop(), store).(*controller)
 	require.True(t, ok, "settings controller must expose its concrete implementation")
 	ctrl.clients["fixture"] = provider
 	ctx, cancel := context.WithCancel(context.Background())

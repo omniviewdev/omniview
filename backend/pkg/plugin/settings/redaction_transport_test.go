@@ -37,7 +37,7 @@ func (s classificationWireServer) ListSettings(ctx context.Context, request *emp
 	return response, nil
 }
 
-func TestRedactedPluginSettings_ActualV1RPCPreservesClassificationAndFailsClosedForLegacy(t *testing.T) {
+func TestSnapshot_ActualV1RPCPreservesClassificationAndFailsClosedForLegacy(t *testing.T) {
 	provider := newMockProvider(map[string]pkgsettings.Setting{
 		"public": {ID: "public", Type: pkgsettings.Text, Value: "visible", Default: "public-default"},
 		"secret": {
@@ -83,12 +83,14 @@ func TestRedactedPluginSettings_ActualV1RPCPreservesClassificationAndFailsClosed
 	require.True(t, ok, "settings transport must implement the SDK provider")
 
 	store := openTestStore(t)
-	ctrl, ok := NewController(logging.NewNop(), nil, store).(*controller)
+	ctrl, ok := NewController(logging.NewNop(), store).(*controller)
 	require.True(t, ok, "settings controller must expose its concrete implementation")
 	ctrl.clients["fixture"] = client
 	ctrl.hydratePlugin(context.Background(), "fixture", client, ctrl.logger)
 	require.True(t, ctrl.hydrated["fixture"])
-	safe := RedactedPluginSettings(ctrl, "fixture")
+	snapshot, err := ctrl.Snapshot("fixture")
+	require.NoError(t, err)
+	safe := snapshot.Settings
 	assert.Equal(t, "visible", safe["public"].Value)
 	assert.Equal(t, "public-default", safe["public"].Default)
 	assert.False(t, safe["public"].Sensitive)

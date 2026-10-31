@@ -10,13 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wailsapp/wails/v3/pkg/application"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
-	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
@@ -28,31 +24,11 @@ const (
 	PluginName = "settings"
 )
 
-var tracer = otel.Tracer("omniview.settings")
-
-// Service exposes scoped operations and trusted schema access for control decoding.
-type Service interface {
-	ListPlugins() ([]string, error)
-	Snapshot(pluginID string) (pkgsettings.Category, error)
-	ListSettings(plugin string) map[string]pkgsettings.Setting
-	GetSetting(plugin, id string) (pkgsettings.Setting, error)
-	ValidateSetting(plugin, id string, value any) (pkgsettings.ValidationResult, error)
-	CommitSettings(
-		ctx context.Context,
-		plugin string,
-		values map[string]any,
-		persist pkgsettings.PersistFunc,
-	) (pkgsettings.CommitResult, error)
-}
-
-// Controller handles all requests to interface with the settings capabilities on installed plugins.
-//
-// This controller is embedded in the client IDE facing client.
+// Controller owns settings capability discovery, connections, and hydration.
+// Scoped operations implement the canonical settings service's plugin contract.
 type Controller interface {
 	internaltypes.Controller
-	ServiceStartup(ctx context.Context, options application.ServiceOptions) error
-	ServiceShutdown() error
-	Service
+	settingsservice.Plugins
 }
 
 // runtime assertion to make sure we satisfy both internal and external interfaces.
@@ -74,44 +50,34 @@ type commitOutcome struct {
 	err    error
 }
 type controller struct {
-	logger           logging.Logger
-	settingsProvider pkgsettings.Provider
-	store            *settingsstore.Store
-	mu               sync.RWMutex
-	clients          map[string]Provider
-	hydrated         map[string]bool
-	schemaCache      map[string]map[string]pkgsettings.Setting
-	baseline         map[string]map[string]any
-	pendingMu        sync.Mutex
-	pendingChanges   map[string][]pendingChange
-	hydratingMu      sync.Mutex
-	hydrating        map[string]bool
+	logger         logging.Logger
+	store          *settingsstore.Store
+	mu             sync.RWMutex
+	clients        map[string]Provider
+	hydrated       map[string]bool
+	schemaCache    map[string]map[string]pkgsettings.Setting
+	baseline       map[string]map[string]any
+	pendingMu      sync.Mutex
+	pendingChanges map[string][]pendingChange
+	hydratingMu    sync.Mutex
+	hydrating      map[string]bool
 }
 
 // NewController returns a new Controller instance.
-func NewController(logger logging.Logger, sp pkgsettings.Provider, store *settingsstore.Store) Controller {
+func NewController(logger logging.Logger, store *settingsstore.Store) Controller {
 	return &controller{
-		logger:           logger.Named("SettingsController"),
-		settingsProvider: sp,
-		store:            store,
-		mu:               sync.RWMutex{},
-		clients:          make(map[string]Provider),
-		hydrated:         make(map[string]bool),
-		schemaCache:      make(map[string]map[string]pkgsettings.Setting),
-		baseline:         make(map[string]map[string]any),
-		pendingMu:        sync.Mutex{},
-		pendingChanges:   make(map[string][]pendingChange),
-		hydratingMu:      sync.Mutex{},
-		hydrating:        make(map[string]bool),
+		logger:         logger.Named("SettingsController"),
+		store:          store,
+		mu:             sync.RWMutex{},
+		clients:        make(map[string]Provider),
+		hydrated:       make(map[string]bool),
+		schemaCache:    make(map[string]map[string]pkgsettings.Setting),
+		baseline:       make(map[string]map[string]any),
+		pendingMu:      sync.Mutex{},
+		pendingChanges: make(map[string][]pendingChange),
+		hydratingMu:    sync.Mutex{},
+		hydrating:      make(map[string]bool),
 	}
-}
-
-func (c *controller) ServiceStartup(_ context.Context, _ application.ServiceOptions) error {
-	return nil
-}
-
-func (c *controller) ServiceShutdown() error {
-	return nil
 }
 
 func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
@@ -176,6 +142,10 @@ func (c *controller) OnPluginStart(
 
 	c.mu.Lock()
 	c.clients[pluginID] = provider
+	// A replacement connection's values must never be classified by old schema.
+	delete(c.schemaCache, pluginID)
+	delete(c.baseline, pluginID)
+	c.hydrated[pluginID] = false
 	c.mu.Unlock()
 
 	// Hydrate the plugin from bbolt (hydratePlugin clears the hydrating flag via its callers).
@@ -411,121 +381,6 @@ func (c *controller) HasPlugin(pluginID string) bool {
 	return hasClient
 }
 
-// ================================== CLIENT METHODS ================================== //
-
-// bboltFallbackSettings loads settings from bbolt when gRPC is unavailable.
-// It enriches each setting with metadata from the cached schema (populated
-// during hydration). If no schema is cached, Type defaults to Text.
-func (c *controller) bboltFallbackSettings(pluginID string) map[string]pkgsettings.Setting {
-	if c.store == nil {
-		return nil
-	}
-	vals, err := c.store.LoadPluginSettings(pluginID)
-	if err != nil || len(vals) == 0 {
-		return nil
-	}
-
-	c.mu.RLock()
-	schema := c.schemaCache[pluginID]
-	c.mu.RUnlock()
-
-	result := make(map[string]pkgsettings.Setting, len(vals))
-	for k, v := range vals {
-		if cached, ok := schema[k]; ok {
-			merged := cached
-			merged.Value = v
-			result[k] = merged
-		} else {
-			result[k] = pkgsettings.Setting{
-				ID:            k,
-				Label:         k,
-				Description:   "",
-				Type:          pkgsettings.Text,
-				Value:         v,
-				Default:       nil,
-				Validator:     nil,
-				Options:       nil,
-				FileSelection: nil,
-				Sensitive:     false,
-				DevOnly:       false,
-			}
-		}
-	}
-	return result
-}
-
-// ListSettings returns the settings store.
-func (c *controller) ListSettings(plugin string) map[string]pkgsettings.Setting {
-	ctx, span := tracer.Start(context.Background(), "settings.ListSettings")
-	defer span.End()
-	span.SetAttributes(attribute.String("plugin", plugin))
-	logger := c.logger.With(logging.Any("plugin", plugin), logging.Any("method", "ListSettings"))
-
-	// Attempt hydration if not yet done
-	c.tryHydrate(ctx, plugin)
-
-	c.mu.RLock()
-	client, ok := c.clients[plugin]
-	c.mu.RUnlock()
-	if !ok {
-		telemetryutil.RecordError(span, errors.New("plugin not found"))
-		logger.Errorw(ctx, "plugin not found for ListSettings")
-		// Fall back to bbolt
-		return c.bboltFallbackSettings(plugin)
-	}
-
-	result := client.ListSettings()
-	if result == nil {
-		// gRPC failed, fall back to bbolt
-		return c.bboltFallbackSettings(plugin)
-	}
-	return result
-}
-
-// GetSetting returns the setting by ID. This ID should be in the form of a dot separated string
-// that represents the path to the setting. For example, "appearance.theme".
-func (c *controller) GetSetting(plugin, id string) (_ pkgsettings.Setting, retErr error) {
-	ctx, span := tracer.Start(context.Background(), "settings.GetSetting")
-	defer span.End()
-	defer func() {
-		if retErr != nil {
-			telemetryutil.RecordError(span, retErr)
-		}
-	}()
-	span.SetAttributes(attribute.String("plugin", plugin), attribute.String("setting_id", id))
-	logger := c.logger.With(logging.Any("plugin", plugin), logging.Any("method", "GetSetting"), logging.Any("id", id))
-
-	// Attempt hydration if not yet done
-	c.tryHydrate(ctx, plugin)
-
-	c.mu.RLock()
-	client, ok := c.clients[plugin]
-	c.mu.RUnlock()
-	if !ok {
-		// Try bbolt fallback
-		if fallback := c.bboltFallbackSettings(plugin); fallback != nil {
-			if s, found := fallback[id]; found {
-				return s, nil
-			}
-		}
-		retErr = apperror.PluginNotFound(plugin)
-		logger.Errorw(ctx, "plugin not found for GetSetting", "error", retErr)
-		return pkgsettings.Setting{}, retErr
-	}
-
-	setting, err := client.GetSetting(id)
-	if err != nil {
-		// gRPC failed, try bbolt fallback
-		if fallback := c.bboltFallbackSettings(plugin); fallback != nil {
-			if s, found := fallback[id]; found {
-				return s, nil
-			}
-		}
-		return pkgsettings.Setting{}, err
-	}
-	return setting, nil
-}
-
 // ValidateSetting requires a live plugin; persisted schema cannot execute callbacks.
 func (c *controller) ValidateSetting(plugin, id string, value any) (pkgsettings.ValidationResult, error) {
 	c.mu.RLock()
@@ -613,9 +468,9 @@ func (c *controller) commit(
 func (c *controller) Snapshot(pluginID string) (pkgsettings.Category, error) {
 	c.tryHydrate(context.Background(), pluginID)
 	c.mu.RLock()
+	defer c.mu.RUnlock()
 	schema := c.schemaCache[pluginID]
 	baseline := c.baseline[pluginID]
-	c.mu.RUnlock()
 	projected := make(map[string]pkgsettings.Setting, len(schema))
 	for id, setting := range schema {
 		projected[id] = setting
