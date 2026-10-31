@@ -61,14 +61,15 @@ function configure() {
         "plugin/update_complete": $$createType18,
         "plugin/update_error": $$createType19,
         "plugin/update_started": $$createType18,
-        "watch/STATE": $$createType20,
-        "windows/changed": $$createType21,
-        "windows/closed": $$createType22,
-        "windows/drag/begin": $$createType23,
-        "windows/drag/drop": $$createType24,
-        "windows/drag/end": $$createType25,
-        "windows/drag/hover": $$createType24,
-        "windows/drag/leave": $$createType26,
+        "resource/connection/metadata": $$createType20,
+        "watch/STATE": $$createType21,
+        "windows/changed": $$createType22,
+        "windows/closed": $$createType23,
+        "windows/drag/begin": $$createType24,
+        "windows/drag/drop": $$createType25,
+        "windows/drag/end": $$createType26,
+        "windows/drag/hover": $$createType25,
+        "windows/drag/leave": $$createType27,
     }));
 }
 
@@ -93,12 +94,13 @@ const $$createType16 = plugin$0.StateChangePayload.createFrom;
 const $$createType17 = plugin$0.StateWriteErrorPayload.createFrom;
 const $$createType18 = plugin$0.UpdatePayload.createFrom;
 const $$createType19 = plugin$0.UpdateErrorPayload.createFrom;
-const $$createType20 = resource$0.HostWatchStateEvent.createFrom;
-const $$createType21 = window$0.WindowsChangedEvent.createFrom;
-const $$createType22 = window$0.WindowClosedEvent.createFrom;
-const $$createType23 = window$0.DragBeginEvent.createFrom;
-const $$createType24 = window$0.DragPointerEvent.createFrom;
-const $$createType25 = window$0.DragEndEvent.createFrom;
-const $$createType26 = window$0.DragLeaveEvent.createFrom;
+const $$createType20 = resource$0.HostConnectionMetadata.createFrom;
+const $$createType21 = resource$0.HostWatchStateEvent.createFrom;
+const $$createType22 = window$0.WindowsChangedEvent.createFrom;
+const $$createType23 = window$0.WindowClosedEvent.createFrom;
+const $$createType24 = window$0.DragBeginEvent.createFrom;
+const $$createType25 = window$0.DragPointerEvent.createFrom;
+const $$createType26 = window$0.DragEndEvent.createFrom;
+const $$createType27 = window$0.DragLeaveEvent.createFrom;
 
 configure();

@@ -16,6 +16,7 @@ export {
     ConnectionProfileResult,
     ConnectionState,
     ConnectionStatusPayload,
+    HostConnectionMetadata,
     HostEnumerateRequest,
     HostGetRequest,
     HostRecord,
