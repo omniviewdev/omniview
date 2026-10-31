@@ -9,6 +9,8 @@ import { GLOBAL_SEARCH_EXTENSION_POINT_ID } from './extensionPoint';
 import { admitSearchContribution, getNavigationHref } from './admission';
 import { matchRoutes } from 'react-router';
 import { useActivePageNavigation } from '../workspace/activePageNavigation';
+import { selectNewTabPlugins } from '../workspace/newTab/newTabPlugins';
+import { openPath } from '../workspace/newTab/openDisposition';
 import type { RouteObject } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSettingsProvider } from '@/hooks/settings/useCoreSettings';
@@ -51,7 +53,7 @@ async function checkConnection(pluginId: string, connectionId: string, signal: A
 
 export function useGlobalCommandSearch() {
   // The palette lives in the shell, outside every page router: it reads and navigates the active page tab.
-  const { pathname, search, navigate } = useActivePageNavigation();
+  const { pathname, search, navigate, openInNewTab, openInNewWindow } = useActivePageNavigation();
   const location = useMemo(() => ({ pathname, search }), [pathname, search]);
   const latestLocation = useRef(location);
   const queryClient = useQueryClient();
@@ -64,6 +66,9 @@ export function useGlobalCommandSearch() {
       plugin.metadata?.icon ? [[plugin.id, plugin.metadata.icon] as const] : [])),
     [inventory.data],
   );
+  const newTabPlugins = useMemo(() => selectNewTabPlugins(inventory.data, registrations), [inventory.data, registrations]);
+  // Changes only when a plugin with pages appears, goes away or is renamed.
+  const newTabKey = JSON.stringify(newTabPlugins.map(({ id, name }) => [id, name]));
   const pluginService = useContext(PluginServiceContext);
   if (!pluginService) {
     throw new Error('Global command search requires PluginServiceProvider.');
@@ -78,13 +83,13 @@ export function useGlobalCommandSearch() {
       ),
     [registrations],
   );
-  const latestRoutingContext = useRef({ registrations, routeTrees, navigate });
+  const latestRoutingContext = useRef({ registrations, routeTrees, navigate, openInNewTab, openInNewWindow });
   const latestDrawer = useRef(showResourceSidebar);
   useLayoutEffect(() => {
     latestLocation.current = location;
-    latestRoutingContext.current = { registrations, routeTrees, navigate };
+    latestRoutingContext.current = { registrations, routeTrees, navigate, openInNewTab, openInNewWindow };
     latestDrawer.current = showResourceSidebar;
-  }, [location, registrations, routeTrees, navigate, showResourceSidebar]);
+  }, [location, registrations, routeTrees, navigate, openInNewTab, openInNewWindow, showResourceSidebar]);
   const input = useRef<HTMLInputElement>(null);
   const opener = useRef<HTMLElement | null>(null);
   const navigated = useRef(false);
@@ -94,6 +99,7 @@ export function useGlobalCommandSearch() {
   const catalogueRef = useRef<{
     settings: typeof settings.data;
     plugins: CoreSearchPlugin[];
+    newTabKey: string;
     devMode: boolean;
     catalogue: CoreSearchCatalogue;
   } | null>(null);
@@ -150,6 +156,10 @@ export function useGlobalCommandSearch() {
       navigate: (href) => {
         navigated.current = true;
         latestRoutingContext.current.navigate(href);
+      },
+      openNew: (href, disposition) => {
+        navigated.current = true;
+        openPath(latestRoutingContext.current, href, disposition);
       },
     });
     controllerRef.current = next;
@@ -403,6 +413,7 @@ export function useGlobalCommandSearch() {
       previous &&
       previous.settings === settings.data &&
       previous.devMode === devMode &&
+      previous.newTabKey === newTabKey &&
       previous.plugins.length === cataloguePlugins.length &&
       cataloguePlugins.every(
         (plugin, index) => plugin.id === previous.plugins[index].id && plugin.ready === previous.plugins[index].ready,
@@ -415,15 +426,16 @@ export function useGlobalCommandSearch() {
     const catalogue = registerCoreSearchCatalogue(EXTENSION_REGISTRY, {
       settings: settings.data ?? {},
       plugins: cataloguePlugins,
+      newTabPlugins,
       devMode,
     });
-    catalogueRef.current = { settings: settings.data, plugins: cataloguePlugins, devMode, catalogue };
+    catalogueRef.current = { settings: settings.data, plugins: cataloguePlugins, newTabKey, devMode, catalogue };
     setCatalogueStatus((current) =>
       current.truncated === catalogue.truncated && current.unavailable === catalogue.unavailable
         ? current
         : { truncated: catalogue.truncated, unavailable: catalogue.unavailable },
     );
-  }, [settings.data, plugins, devMode]);
+  }, [settings.data, plugins, devMode, newTabKey, newTabPlugins]);
 
   useEffect(
     () => () => {

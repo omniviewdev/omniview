@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useEffectEvent, useState, useSync
 import { registerActivePageNavigator, WindowActionsProvider, type WindowActions } from '@omniviewdev/runtime';
 import { PAGE_TAB_DRAG_TYPE, useTabDeliveries } from '@/features/windows';
 import { ActivePageNavigationContext, type ActivePageNavigation } from './activePageNavigation';
+import { isTerminalTarget } from './keyboard';
 import { usePagePresentation } from './pagePresentation';
 import { usePageRoutes } from './pageRoutes';
 import { getActiveTab, type PagesState } from './pagesState';
@@ -30,11 +31,7 @@ function logFailure(action: string) {
   };
 }
 
-function isTerminalTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && target.closest('.xterm') !== null;
-}
-
-/** Ctrl+Tab / Ctrl+Shift+Tab cycle tabs, Ctrl/Cmd+W closes, Ctrl/Cmd+T opens a tab. Terminals keep these keys. */
+/** Ctrl+Tab / Ctrl+Shift+Tab cycle tabs and Ctrl/Cmd+W closes one; Ctrl/Cmd+T belongs to the header's new-tab launcher. Terminals keep these keys. */
 function usePageTabShortcuts(controller: WorkspaceController): void {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -47,8 +44,6 @@ function usePageTabShortcuts(controller: WorkspaceController): void {
         controller.cycleActiveTab(event.shiftKey ? -1 : 1);
       } else if (key === 'w' && (event.ctrlKey || event.metaKey) && !event.shiftKey) {
         controller.closeActiveTab();
-      } else if (key === 't' && (event.ctrlKey || event.metaKey) && !event.shiftKey) {
-        controller.openHomeTab(controller.activePane().id);
       } else {
         return;
       }

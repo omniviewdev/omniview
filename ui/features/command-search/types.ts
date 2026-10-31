@@ -11,6 +11,8 @@ export type SearchRow = {
   label: string;
   value: SearchEntryV1;
   disabledReason?: string;
+  /** A "New <plugin> tab" entry: it opens in a new tab, background tab or window, never in the active tab. */
+  opensNewTab?: true;
 };
 
 export type SearchSource = {

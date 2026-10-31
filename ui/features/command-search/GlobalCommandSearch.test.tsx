@@ -3,6 +3,7 @@ import { act, cleanup, createEvent, fireEvent, render, screen, waitFor } from '@
 import { ExtensionPointRegistry } from '@omniviewdev/runtime';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ensureBuiltinExtensionPointsRegistered } from '../extensions/registerBuiltinExtensionPoints';
+import { registerCoreSearchCatalogue } from './catalogue';
 import { createGlobalSearchController, type GlobalSearchController } from './controller';
 import { GlobalCommandSearch } from './GlobalCommandSearch';
 import type { SearchScopeV1, SearchSnapshot } from './types';
@@ -38,6 +39,7 @@ async function setup() {
     value: { schemaVersion: 1, kind: 'setting', target: { section: 'extensions' } },
   });
   const navigate = vi.fn();
+  const openNew = vi.fn();
   const controller = createGlobalSearchController({
     registry,
     isPluginReady: () => true,
@@ -45,6 +47,7 @@ async function setup() {
     listResourcePlugins: async () => [],
     loadConnections: async () => [],
     navigate,
+    openNew,
   });
   controllers.push(controller);
   const close = vi.fn(() => {
@@ -68,7 +71,7 @@ async function setup() {
     fireEvent.click(opener); 
   });
   const input = screen.getByRole<HTMLInputElement>('combobox', { name: 'Search Omniview' });
-  return { controller, navigate, close, opener, input, store };
+  return { controller, navigate, openNew, close, opener, input, store, registry };
 }
 
 function type(input: HTMLInputElement, value: string) {
@@ -231,6 +234,30 @@ describe('GlobalCommandSearch scoped interaction', () => {
     expect(close).toHaveBeenCalledTimes(1);
     expect(opener).toHaveFocus();
     expect(opener.closest('[inert]')).toBeNull();
+  });
+
+  it.each([
+    [{}, 'tab'],
+    [{ ctrlKey: true }, 'background'],
+    [{ shiftKey: true }, 'window'],
+  ] as const)('opens a "New <plugin> tab" row with Enter modifiers %o in a %s', async (modifiers, disposition) => {
+    const { controller, input, navigate, openNew, registry } = await setup();
+    act(() => {
+      registerCoreSearchCatalogue(registry, { settings: {}, plugins: [], newTabPlugins: [{ id: 'probe', name: 'Probe' }] });
+    });
+    type(input, 'new probe');
+    await waitFor(() => {
+      expect(controller.getSnapshot().rows[0]?.label).toBe('New Probe tab');
+    });
+    act(() => {
+      controller.setSelectedKey(controller.getSnapshot().rows[0].key);
+    });
+    expect(screen.getByText('Background tab')).toBeInTheDocument();
+
+    fireEvent.keyDown(input, { key: 'Enter', ...modifiers });
+
+    expect(openNew).toHaveBeenCalledWith('/_plugin/probe/', disposition);
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it('holds selected object identity across refreshed controller results', async () => {

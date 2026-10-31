@@ -194,11 +194,6 @@ export class WorkspaceController {
     return id;
   }
 
-  openHomeTab(paneId: string): void {
-    const pane = this.state.panes.find((candidate) => candidate.id === paneId) ?? this.activePane();
-    this.dispatch({ type: 'open', tab: { id: createId(), path: HOME_PATH }, paneId: pane.id, afterTabId: null, activate: true });
-  }
-
   async openInNewWindow(path: string): Promise<void> {
     await openWindow({ kind: 'workspace', slots: { pages: createSingleTabState({ id: createId(), path }, createId()) } });
   }

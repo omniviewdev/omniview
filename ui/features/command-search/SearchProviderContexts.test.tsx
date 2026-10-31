@@ -80,7 +80,7 @@ describe('search provider contexts', () => {
     store.register({ id: 'oci/healthy', plugin: 'oci', label: 'Healthy', value: provider('Healthy result') });
     const navigate = vi.fn();
     const controller = createGlobalSearchController({ registry, isPluginReady: () => true, hasPluginRoute: () => true,
-      listResourcePlugins: async () => [], loadConnections: async () => [], navigate });
+      listResourcePlugins: async () => [], loadConnections: async () => [], navigate, openNew: vi.fn() });
     controller.open();
     function Broken(): never {
       throw new Error('Plugin context failed'); 

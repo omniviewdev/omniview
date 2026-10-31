@@ -1,10 +1,11 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, RefObject } from 'react';
 import { Banner, Button, Chip, CommandList, Dialog, Hotkey, IconButton, SearchInput as BaseSearchInput, useCommandListConfig } from '@omniviewdev/base-ui';
-import { LuBox, LuChevronRight, LuCircleAlert, LuCircleCheck, LuCommand, LuEllipsis, LuInfo, LuKeyRound, LuLayers, LuLoaderCircle, LuNavigation, LuPlug, LuRefreshCw, LuSettings, LuShieldAlert, LuTriangleAlert, LuUnplug, LuX } from 'react-icons/lu';
+import { LuBox, LuChevronRight, LuCircleAlert, LuCircleCheck, LuCommand, LuEllipsis, LuInfo, LuKeyRound, LuLayers, LuLoaderCircle, LuNavigation, LuPlug, LuPlus, LuRefreshCw, LuSettings, LuShieldAlert, LuTriangleAlert, LuUnplug, LuX } from 'react-icons/lu';
 import { ResourceIcon } from '@omniviewdev/runtime';
 import Icon from '@/components/icons/Icon';
 import { IsImage } from '@/utils/url';
+import { dispositionFor } from '@/features/workspace/newTab/openDisposition';
 import type { GlobalSearchController } from './controller';
 import type { SearchRow, SearchScopeV1, SearchSnapshot, SearchSource } from './types';
 import { SearchProviderContexts, type SearchProviderContextRegistration } from './SearchProviderContexts';
@@ -13,6 +14,7 @@ import styles from './GlobalCommandSearch.module.css';
 
 const kindLabels = { command: 'Commands', setting: 'Settings', navigation: 'Navigation', action: 'Actions' };
 const kindIcons = { command: LuCommand, setting: LuSettings, navigation: LuNavigation, action: LuCommand };
+const MOD_KEY = typeof navigator !== 'undefined' && /mac/i.test(navigator.userAgent) ? 'Meta' : 'Control';
 const scopeIcons = { connection: LuPlug, 'resource-type': LuLayers, resource: LuBox };
 const scopeLabels = { connection: 'Connection', 'resource-type': 'Resource type', resource: 'Resource' };
 const rowKey = (row: SearchRow) => row.key;
@@ -105,6 +107,15 @@ function ScopeIcon({ scope, pluginIcons }: { scope: SearchScopeV1; pluginIcons?:
   );
 }
 
+function NewTabIcon({ row, pluginIcons }: { row: SearchRow; pluginIcons?: ReadonlyMap<string, string> }) {
+  const icon = row.value.kind === 'navigation' && row.value.target.kind === 'plugin' ? pluginIcons?.get(row.value.target.pluginId) : undefined;
+  if (!icon) {
+    return <LuPlus aria-hidden='true' />;
+  }
+
+  return IsImage(icon) ? <img src={icon} alt='' className={styles.PluginIcon} /> : <Icon name={icon} aria-hidden='true' />;
+}
+
 function isComposing(event: KeyboardEvent) {
   return event.nativeEvent.isComposing || event.keyCode === 229;
 }
@@ -171,6 +182,14 @@ function SearchInput({ controller, snapshot, input, onClose, pluginIcons }: Pale
     }
 
     if (event.altKey || event.ctrlKey || event.metaKey) {
+      // Cmd/Ctrl+Enter opens a "New <plugin> tab" row in a background tab.
+      if (event.key === 'Enter' && !event.altKey && !snapshot.searchPending && selectedScopeIndex < 0 && eligibleRow?.opensNewTab) {
+        event.preventDefault();
+        event.stopPropagation();
+        void controller?.activate(eligibleRow.key, dispositionFor(event));
+        return;
+      }
+
       if (['ArrowUp', 'ArrowDown', 'Enter'].includes(event.key)) {
         event.stopPropagation();
       }
@@ -241,7 +260,7 @@ function SearchInput({ controller, snapshot, input, onClose, pluginIcons }: Pale
       event.preventDefault();
       event.stopPropagation();
       if (selectedScopeIndex < 0 && eligibleRow) {
-        void controller?.activate(eligibleRow.key);
+        void controller?.activate(eligibleRow.key, eligibleRow.opensNewTab ? dispositionFor(event) : undefined);
       }
 
       return;
@@ -343,6 +362,9 @@ export function GlobalCommandSearch({ controller, snapshot, input, onClose, cata
   const opener = useRef<HTMLElement | null>(null);
   const dismissed = useRef(false);
   const pointerMotion = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  // CommandList reports a click as an action without its event; keep the modifier keys of the click.
+  const clickModifiers = useRef<{ shiftKey: boolean; metaKey: boolean; ctrlKey: boolean } | null>(null);
+  const selectedOpensNewTab = snapshot.rows.some((row) => row.key === snapshot.selectedKey && row.opensNewTab);
   function dismiss() {
     dismissed.current = true;
     onClose();
@@ -483,7 +505,10 @@ export function GlobalCommandSearch({ controller, snapshot, input, onClose, cata
             aria-busy={loading || snapshot.executionPending || undefined}
             placeholder='Search anything…'
             onAction={(key) => {
-              void controller?.activate(String(key)); 
+              const modifiers = clickModifiers.current;
+              clickModifiers.current = null;
+              const opensNewTab = snapshot.rows.some((row) => row.key === String(key) && row.opensNewTab);
+              void controller?.activate(String(key), opensNewTab && modifiers ? dispositionFor(modifiers) : undefined);
             }}
             onDismiss={dismiss}
             onKeyDownCapture={(event) => {
@@ -516,6 +541,9 @@ export function GlobalCommandSearch({ controller, snapshot, input, onClose, cata
                   aria-selected={snapshot.selectedKey === row.key || undefined}
                   data-ov-active={snapshot.selectedKey === row.key}
                   title={resultScope ? scopeDescription(resultScope) : undefined}
+                  onClickCapture={(event) => {
+                    clickModifiers.current = { shiftKey: event.shiftKey, metaKey: event.metaKey, ctrlKey: event.ctrlKey };
+                  }}
                   onMouseMove={() => {
                     if (pointerMotion.current?.moved && !isDisabled(row, snapshot.executionPending, snapshot.searchPending) && snapshot.selectedKey !== row.key) {
                       controller?.setSelectedKey(row.key);
@@ -523,7 +551,8 @@ export function GlobalCommandSearch({ controller, snapshot, input, onClose, cata
                   }}
                 >
                   <CommandList.ItemIcon aria-hidden='true'>
-                    {resultScope ? <ScopeIcon scope={resultScope} pluginIcons={pluginIcons} /> : <Icon />}
+                    {row.opensNewTab ? <NewTabIcon row={row} pluginIcons={pluginIcons} />
+                      : resultScope ? <ScopeIcon scope={resultScope} pluginIcons={pluginIcons} /> : <Icon />}
                   </CommandList.ItemIcon>
                   <CommandList.ItemContent className={styles.ResultContent}>
                     <CommandList.ItemLabel>{row.label}</CommandList.ItemLabel>
@@ -532,7 +561,7 @@ export function GlobalCommandSearch({ controller, snapshot, input, onClose, cata
                       {resultScope?.kind === 'resource' ? (resourceDetails === '' ? undefined : resourceDetails)
                         : resultScope?.kind === 'resource-type' ? resultScope.target.type
                           : resultScope?.kind === 'connection' ? resultScope.pluginId
-                            : kindLabels[row.value.kind]}
+                            : row.opensNewTab ? 'New tab' : kindLabels[row.value.kind]}
                     </CommandList.ItemMeta>}
                     {row.value.description && <CommandList.ItemDescription>{row.value.description}</CommandList.ItemDescription>}
                     {row.disabledReason && <CommandList.ItemDisabledReason>{row.disabledReason}</CommandList.ItemDisabledReason>}
@@ -620,6 +649,8 @@ export function GlobalCommandSearch({ controller, snapshot, input, onClose, cata
           <div className={styles.KeyboardHints} aria-label='Keyboard shortcuts'>
             <span><Hotkey>↑</Hotkey><Hotkey>↓</Hotkey> Navigate</span>
             <span><Hotkey>Enter</Hotkey> Open</span>
+            {selectedOpensNewTab && <span><Hotkey keys={[MOD_KEY, 'Enter']} /> Background tab</span>}
+            {selectedOpensNewTab && <span><Hotkey keys={['Shift', 'Enter']} /> New window</span>}
             {canExplore && <span><Hotkey>Tab</Hotkey> Explore</span>}
             <span><Hotkey>Esc</Hotkey> Close</span>
           </div>

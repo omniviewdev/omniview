@@ -25,7 +25,7 @@ const prose = new Set([
 const specGroups = new Map([
   ['e2e/tests/layout/app-shell.spec.ts', ['layout', 'workspaces']],
   ['e2e/tests/layout/navigation.spec.ts', ['layout', 'workspaces']],
-  ['e2e/tests/layout/plugin-rail.spec.ts', ['layout', 'plugins', 'workspaces']],
+  ['e2e/tests/layout/new-tab-launcher.spec.ts', ['layout', 'plugins', 'workspaces']],
   ['e2e/tests/layout/theme.spec.ts', ['layout', 'settings', 'workspaces']],
   ['e2e/tests/settings/settings.spec.ts', ['layout', 'settings', 'workspaces']],
   ['e2e/tests/plugins/plugins.spec.ts', ['layout', 'plugins', 'workspaces']],

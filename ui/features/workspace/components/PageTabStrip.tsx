@@ -1,6 +1,5 @@
 import { useState, type MouseEvent } from 'react';
-import { LuPlus } from 'react-icons/lu';
-import { EditorTabs, IconButton, type TabDescriptor, type TabGroupDescriptor } from '@omniviewdev/base-ui';
+import { EditorTabs, type TabDescriptor, type TabGroupDescriptor } from '@omniviewdev/base-ui';
 import { PAGE_TAB_DRAG_TYPE } from '@/features/windows';
 import { usePagePresentation } from '../pagePresentation';
 import { toPageTabTransfer, type PagePane } from '../pagesState';
@@ -106,19 +105,6 @@ export function PageTabStrip({ pane }: { pane: PagePane }) {
             });
         }}
       />
-      <IconButton
-        className={styles.NewTab}
-        size='sm'
-        variant='ghost'
-        color='neutral'
-        aria-label='New tab'
-        data-ov-new-tab=''
-        onClick={() => {
-          controller.openHomeTab(pane.id); 
-        }}
-      >
-        <LuPlus size={14} />
-      </IconButton>
       {menu?.kind === 'tab' && (
         <PageTabMenu key={menu.key} tabId={menu.id} point={menu.point} onClose={() => {
           setMenu(null); 

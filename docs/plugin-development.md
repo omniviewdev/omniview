@@ -137,6 +137,8 @@ export default {
 EOF
 ```
 
+A plugin that registers routes gets an entry in the header's **New tab** menu (the `+` button left of the search bar, or Cmd/Ctrl+T) and a "New <plugin> tab" entry in the Cmd/Ctrl+K palette. A new tab opens the plugin's `/` route, its home page. A plugin without routes, such as one that only contributes to another plugin's extension points, gets no entry.
+
 ### Canonical resource runtime boundary
 
 Import handwritten resource domain types from `@omniviewdev/runtime` and the
