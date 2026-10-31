@@ -5,10 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"reflect"
 	"time"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
 type benchmarkTestSink struct {
@@ -32,7 +33,7 @@ func TestSparseCanonicalEventReleaseAndCancellation(t *testing.T) {
 	defer cancel()
 	sink := &benchmarkTestSink{ready: make(chan struct{}), updates: make(chan resource.WatchUpdatePayload, 2)}
 	done := make(chan error, 1)
-	go func() { done <- events.Watch(ctx, client, resource.ResourceMeta{}, sink) }()
+	go func() { done <- events.Watch(ctx, client, benchmarkTarget(source, client.name), nativeRepresentation(), sink) }()
 	select {
 	case <-sink.ready:
 	case <-ctx.Done():
@@ -44,14 +45,16 @@ func TestSparseCanonicalEventReleaseAndCancellation(t *testing.T) {
 	if watches != 1 {
 		t.Fatal("source watch not counted")
 	}
-	_, err = source.List(ctx, client, resource.ResourceMeta{}, resource.ListInput{Pagination: resource.PaginationParams{Cursor: "p02:release"}})
+	_, err = source.Enumerate(ctx, client, resource.EnumerateRequest{Target: benchmarkTarget(source, client.name), Cursor: stringPointer("p02:release")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case update := <-sink.updates:
 		want := source.scenarios[client.name].Updates[0]
-		if string(update.Data) != string(want.Body) || update.ID != source.records[want.Record].ID {
+		body, err := resource.JSONToValue(want.Body)
+		if err != nil { t.Fatal(err) }
+		if !reflect.DeepEqual(update.Record.Body, body) || update.Record.Reference.Address.ID != source.records[want.Record].ID {
 			t.Fatal("canonical sparse event changed")
 		}
 	case <-ctx.Done():
@@ -88,13 +91,13 @@ func TestLifecycleDiagnosticsObserveBothFinalTeardownOrders(t *testing.T) {
 			source.lifecycle = &output
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
-			client, err := source.CreateClient(resource.WithSession(ctx, &resource.Session{Connection: &types.Connection{ID: "container-bundled-events"}}))
+			client, err := source.CreateClient(ctx, types.Connection{ID: "container-bundled-events"})
 			if err != nil {
 				t.Fatal(err)
 			}
 			sink := &benchmarkTestSink{ready: make(chan struct{}), updates: make(chan resource.WatchUpdatePayload, 1)}
 			done := make(chan error, 1)
-			go func() { done <- (&benchmarkEvents{source}).Watch(ctx, client, resource.ResourceMeta{}, sink) }()
+			go func() { done <- (&benchmarkEvents{source}).Watch(ctx, client, benchmarkTarget(source, client.name), nativeRepresentation(), sink) }()
 			select {
 			case <-sink.ready:
 			case <-ctx.Done():

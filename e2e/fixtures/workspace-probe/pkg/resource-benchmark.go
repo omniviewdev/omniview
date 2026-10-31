@@ -1,6 +1,10 @@
 package main
 
 // Verification-only provider. It never contacts a cluster, cloud, engine or hypervisor.
+// The V2 catalog advertises one exact type per fixed connection. Source pages
+// retain corpus scopes and tagged scalar values under the host-admitted target.
+// Diagnostic stress repetition happens in the UI, never inside canonical pages.
+// Only the container profile supplies advisory updates, released explicitly.
 import (
 	"context"
 	_ "embed"
@@ -9,12 +13,13 @@ import (
 	"io"
 	"os"
 	"runtime"
-	"strconv"
+	"encoding/base64"
 	"strings"
 	"sync"
+	"sort"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
 // Generated from the selected SDK by bench/app/export-resource-corpus.mjs.
@@ -23,8 +28,9 @@ import (
 var benchmarkCorpus []byte
 
 type benchmarkRecord struct {
-	Name, ID string
-	Body     json.RawMessage
+	Name, ID, Incarnation, Revision string
+	Scope map[string]string
+	Body json.RawMessage
 }
 type benchmarkPage struct {
 	Cursor, Next string
@@ -82,6 +88,34 @@ func loadBenchmarkSource() (*benchmarkSource, error) {
 
 var benchmarkProfiles = []string{"cloud-bundled-pages", "container-bundled-events", "hypervisor-bundled-vms", "kubernetes-snapshot"}
 
+func (p *benchmarkSource) Catalog(ctx context.Context, request resource.CatalogRequest) (resource.Catalog, error) {
+	if err := ctx.Err(); err != nil { return resource.Catalog{}, err }
+	scenario, ok := p.scenarios[request.Route.Connection]
+	if !ok { return resource.Catalog{}, benchmarkError("NOT_FOUND", "unknown fixture connection") }
+	dimensions := make([]resource.Dimension, 0)
+	for name := range p.records[scenario.Pages[0].Records[0]].Scope {
+		dimensions = append(dimensions, resource.Dimension{Name: name})
+	}
+	sort.Slice(dimensions, func(i, j int) bool { return dimensions[i].Name < dimensions[j].Name })
+	scope := make(resource.QueryScope, 0, len(dimensions))
+	for _, dimension := range dimensions { scope = append(scope, resource.ScopeConstraint{Dimension: dimension.Name, Match: resource.ScopeAny}) }
+	capabilities := []resource.Capability{
+		{Operation: resource.OperationEnumerate, Scope: scope},
+		{Operation: resource.OperationGet, Scope: scope},
+	}
+	if len(scenario.Updates) > 0 {
+		capabilities = append(capabilities, resource.Capability{Operation: resource.OperationUpdate, Scope: scope, Guarantee: resource.BestEffortGuarantee})
+	}
+	return resource.Catalog{
+		Provider: "workspace-probe", Revision: "fixture-v2-1", Coverage: resource.Coverage{Kind: "complete"},
+		Types: []resource.ResourceType{{
+			Type: scenario.Type, DisplayName: scenario.Type, IdentityDimensions: dimensions, QueryDimensions: dimensions,
+			Representations: []resource.Representation{nativeRepresentation()}, DefaultRepresentation: "native",
+			Capabilities: capabilities,
+		}},
+	}, nil
+}
+
 func (p *benchmarkSource) LoadConnections(context.Context) ([]types.Connection, error) {
 	out := make([]types.Connection, 0, len(benchmarkProfiles))
 	for _, name := range benchmarkProfiles {
@@ -89,18 +123,14 @@ func (p *benchmarkSource) LoadConnections(context.Context) ([]types.Connection, 
 	}
 	return out, nil
 }
-func (p *benchmarkSource) CreateClient(ctx context.Context) (*benchmarkClient, error) {
-	session := resource.SessionFromContext(ctx)
-	if session == nil || session.Connection == nil {
-		return nil, benchmarkError("INVALID_INPUT", "missing connection")
-	}
-	if _, ok := p.scenarios[session.Connection.ID]; !ok {
+func (p *benchmarkSource) CreateClient(_ context.Context, connection types.Connection) (*benchmarkClient, error) {
+	if _, ok := p.scenarios[connection.ID]; !ok {
 		return nil, benchmarkError("NOT_FOUND", "unknown fixture connection")
 	}
 	p.mu.Lock()
 	p.connections++
 	p.mu.Unlock()
-	return &benchmarkClient{name: session.Connection.ID}, nil
+	return &benchmarkClient{name: connection.ID}, nil
 }
 func (p *benchmarkSource) DestroyClient(_ context.Context, _ *benchmarkClient) error {
 	p.mu.Lock()
@@ -116,22 +146,20 @@ func (p *benchmarkSource) DestroyClient(_ context.Context, _ *benchmarkClient) e
 func (p *benchmarkSource) writeLifecycleLocked() {
 	fmt.Fprintf(p.lifecycle, "{\"p02Lifecycle\":{\"activeConnections\":%d,\"activeSourceWatches\":%d}}\n", p.connections, p.watches)
 }
-func (*benchmarkSource) CheckConnection(_ context.Context, connection *types.Connection, _ *benchmarkClient) (types.ConnectionStatus, error) {
-	return types.ConnectionStatus{Connection: connection, Status: types.ConnectionStatusConnected}, nil
-}
-func (*benchmarkSource) GetNamespaces(context.Context, *benchmarkClient) ([]string, error) {
-	return nil, nil
+func (*benchmarkSource) CheckConnection(_ context.Context, connection types.Connection, _ *benchmarkClient) (types.ConnectionStatus, error) {
+	return types.ConnectionStatus{Connection: &connection, Status: types.ConnectionStatusConnected}, nil
 }
 
-func (p *benchmarkSource) List(ctx context.Context, client *benchmarkClient, _ resource.ResourceMeta, input resource.ListInput) (*resource.ListResult, error) {
+func (p *benchmarkSource) Enumerate(ctx context.Context, client *benchmarkClient, input resource.EnumerateRequest) (resource.SourcePage, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return resource.SourcePage{}, err
 	}
 	scenario, ok := p.scenarios[client.name]
 	if !ok {
-		return nil, benchmarkError("NOT_FOUND", "unknown source")
+		return resource.SourcePage{}, benchmarkError("NOT_FOUND", "unknown source")
 	}
-	cursor := input.Pagination.Cursor
+	cursor := ""
+	if input.Cursor != nil { cursor = *input.Cursor }
 	if cursor == "p02:metrics" || cursor == "p02:metrics:gc" {
 		if cursor == "p02:metrics:gc" {
 			runtime.GC()
@@ -143,9 +171,9 @@ func (p *benchmarkSource) List(ctx context.Context, client *benchmarkClient, _ r
 		p.mu.Unlock()
 		body, err := json.Marshal(diagnostics)
 		if err != nil {
-			return nil, err
+			return resource.SourcePage{}, err
 		}
-		return &resource.ListResult{Success: true, Result: []json.RawMessage{body}, TotalCount: 1}, nil
+		return p.page(input.Target, []benchmarkRecord{{Name: "metrics", ID: "metrics", Scope: p.records[scenario.Pages[0].Records[0]].Scope, Body: body}}, "", resource.Count{Kind: "exact", Value: stringPointer("1")})
 	}
 	if cursor == "p02:release" {
 		p.mu.Lock()
@@ -156,101 +184,133 @@ func (p *benchmarkSource) List(ctx context.Context, client *benchmarkClient, _ r
 		}
 		p.mu.Unlock()
 		if ch == nil {
-			return nil, benchmarkError("INVALID_INPUT", "no ready source watch")
+			return resource.SourcePage{}, benchmarkError("INVALID_REQUEST", "no ready source watch")
 		}
-		return &resource.ListResult{Success: true}, nil
+		return p.page(input.Target, nil, "", resource.Count{Kind: "exact", Value: stringPointer("0")})
 	}
-	var result []json.RawMessage
+	// A split native page retains its original cursor and filtered-record offset.
+	// The envelope is source-local and never changes a corpus address.
+	nativeCursor, offset := cursor, 0
+	if strings.HasPrefix(cursor, "p02:page:") {
+		data, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(cursor, "p02:page:"))
+		var continuation struct { Cursor string; Offset int }
+		if err != nil { return resource.SourcePage{}, benchmarkError("INVALID_REQUEST", "invalid page cursor") }
+		if err := json.Unmarshal(data, &continuation); err != nil || continuation.Offset < 1 {
+			return resource.SourcePage{}, benchmarkError("INVALID_REQUEST", "invalid page offset")
+		}
+		nativeCursor, offset = continuation.Cursor, continuation.Offset
+	}
+	var result []benchmarkRecord
 	next := ""
-	if strings.HasPrefix(cursor, "p02:copies:") {
-		parts := strings.Split(cursor, ":")
-		if len(parts) != 4 {
-			return nil, benchmarkError("INVALID_INPUT", "invalid stress cursor")
+	found := false
+	for _, page := range scenario.Pages {
+		if page.Cursor != nativeCursor { continue }
+		found = true
+		for _, name := range page.Records {
+			item := p.records[name]
+			if matchesScope(item.Scope, input.Target.Scope) { result = append(result, item) }
 		}
-		count, e1 := strconv.Atoi(parts[2])
-		start, e2 := strconv.Atoi(parts[3])
-		if e1 != nil || e2 != nil || count < 1 || count > 10000 || start < 0 || start >= count {
-			return nil, benchmarkError("INVALID_INPUT", "invalid stress bounds")
+		if offset > len(result) { return resource.SourcePage{}, benchmarkError("INVALID_REQUEST", "page offset out of bounds") }
+		end := len(result)
+		if input.PageSize != 0 && uint64(end-offset) > uint64(input.PageSize) { end = offset + int(input.PageSize) }
+		next = page.Next
+		if end < len(result) {
+			data, err := json.Marshal(struct { Cursor string; Offset int }{nativeCursor, end})
+			if err != nil { return resource.SourcePage{}, err }
+			next = "p02:page:" + base64.RawURLEncoding.EncodeToString(data)
 		}
-		var names []string
-		for _, page := range scenario.Pages {
-			names = append(names, page.Records...)
-		}
-		end := min(start+200, count)
-		for i := start; i < end; i++ {
-			result = append(result, p.records[names[i%len(names)]].Body)
-		}
-		if end < count {
-			next = fmt.Sprintf("p02:copies:%d:%d", count, end)
-		}
-	} else {
-		found := false
-		for _, page := range scenario.Pages {
-			if page.Cursor != cursor {
-				continue
-			}
-			found = true
-			next = page.Next
-			for _, name := range page.Records {
-				result = append(result, p.records[name].Body)
-			}
-			break
-		}
-		if !found {
-			return nil, benchmarkError("INVALID_INPUT", "unknown native cursor")
-		}
+		result = result[offset:end]
+		break
 	}
+	if !found { return resource.SourcePage{}, benchmarkError("INVALID_REQUEST", "unknown native cursor") }
 	p.mu.Lock()
 	p.calls++
 	p.rows += int64(len(result))
 	for _, body := range result {
-		p.bodyBytes += int64(len(body))
+		p.bodyBytes += int64(len(body.Body))
 	}
 	p.mu.Unlock()
-	return &resource.ListResult{Success: true, Result: result, NextCursor: next, TotalCount: -1}, nil
+	return p.page(input.Target, result, next, resource.Count{Kind: "unknown"})
 }
-func (p *benchmarkSource) Get(_ context.Context, client *benchmarkClient, _ resource.ResourceMeta, input resource.GetInput) (*resource.GetResult, error) {
-	scenario := p.scenarios[client.name]
-	var found json.RawMessage
-	for _, page := range scenario.Pages {
-		for _, name := range page.Records {
-			record := p.records[name]
-			if record.ID == input.ID {
-				if found != nil {
-					return nil, benchmarkError("INVALID_INPUT", "ambiguous native scope; old Get cannot encode it")
-				}
-				found = record.Body
+
+func stringPointer(value string) *string {
+	if value == "" { return nil }
+	return &value
+}
+
+func matchesScope(scope map[string]string, constraints resource.QueryScope) bool {
+	for _, constraint := range constraints {
+		if constraint.Match == resource.ScopeAny { continue }
+		matched := false
+		if constraint.Values != nil {
+			for _, value := range *constraint.Values {
+				if actual, ok := scope[constraint.Dimension]; ok && actual == value { matched = true; break }
 			}
 		}
+		if !matched { return false }
 	}
-	if found == nil {
-		return nil, benchmarkError("NOT_FOUND", "unknown fixture record")
+	return true
+}
+
+func nativeRepresentation() resource.Representation {
+	return resource.Representation{ID: "native", Revision: "1", Schema: resource.SchemaBinding{State: "absent", Validation: "none"}}
+}
+
+func (p *benchmarkSource) record(target resource.ReadTarget, item benchmarkRecord) (resource.Record, error) {
+	body, err := resource.JSONToValue(item.Body)
+	if err != nil { return resource.Record{}, err }
+	scope := make([]resource.ScopeEntry, 0, len(item.Scope))
+	for dimension, value := range item.Scope { scope = append(scope, resource.ScopeEntry{Dimension: dimension, Value: value}) }
+	sort.Slice(scope, func(i, j int) bool { return scope[i].Dimension < scope[j].Dimension })
+	return resource.Record{
+		Reference: resource.ResourceReference{Address: resource.ResourceAddress{Provider: target.Provider, Authority: target.Authority, Type: target.Type, Scope: scope, ID: item.ID}, Incarnation: stringPointer(item.Incarnation)},
+		Body: body, Representation: nativeRepresentation(), Coverage: resource.Coverage{Kind: "complete"}, SourceRevision: stringPointer(item.Revision),
+	}, nil
+}
+
+func (p *benchmarkSource) page(target resource.ReadTarget, items []benchmarkRecord, next string, count resource.Count) (resource.SourcePage, error) {
+	records := make([]resource.Record, 0, len(items))
+	for _, item := range items {
+		if !matchesScope(item.Scope, target.Scope) { continue }
+		record, err := p.record(target, item)
+		if err != nil { return resource.SourcePage{}, err }
+		records = append(records, record)
 	}
-	return &resource.GetResult{Success: true, Result: found}, nil
+	if count.Kind == "exact" { count.Value = stringPointer(fmt.Sprint(len(records))) }
+	return resource.SourcePage{Records: records, NextCursor: stringPointer(next), Count: count, Coverage: resource.Coverage{Kind: "complete"}, Consistency: "bestEffort"}, nil
 }
-func (*benchmarkSource) Find(context.Context, *benchmarkClient, resource.ResourceMeta, resource.FindInput) (*resource.FindResult, error) {
-	return nil, benchmarkError("UNSUPPORTED", "no server query in verification source")
+
+func (p *benchmarkSource) Get(ctx context.Context, client *benchmarkClient, input resource.GetRequest) (resource.Record, error) {
+	if err := ctx.Err(); err != nil { return resource.Record{}, err }
+	target := resource.ReadTarget{Route: input.Route, Provider: input.Reference.Address.Provider, Authority: input.Reference.Address.Authority, Type: input.Reference.Address.Type, Representation: input.Representation}
+	for _, page := range p.scenarios[client.name].Pages {
+		for _, name := range page.Records {
+			record, err := p.record(target, p.records[name])
+			if err != nil { return resource.Record{}, err }
+			address := record.Reference.Address
+			expected := input.Reference.Address
+			if address.Provider != expected.Provider || address.Authority != expected.Authority || address.Type != expected.Type || address.ID != expected.ID || len(address.Scope) != len(expected.Scope) { continue }
+			scope := make(map[string]string, len(address.Scope))
+			for _, entry := range address.Scope { scope[entry.Dimension] = entry.Value }
+			same := true
+			for _, entry := range expected.Scope {
+				if value, ok := scope[entry.Dimension]; !ok || value != entry.Value { same = false; break }
+			}
+			if !same { continue }
+			if input.Reference.Incarnation != nil && (record.Reference.Incarnation == nil || *input.Reference.Incarnation != *record.Reference.Incarnation) { continue }
+			return record, nil
+		}
+	}
+	return resource.Record{}, benchmarkError("NOT_FOUND", "unknown fixture record")
 }
-func (*benchmarkSource) Create(context.Context, *benchmarkClient, resource.ResourceMeta, resource.CreateInput) (*resource.CreateResult, error) {
-	return nil, benchmarkError("UNSUPPORTED", "read-only verification source")
-}
-func (*benchmarkSource) Update(context.Context, *benchmarkClient, resource.ResourceMeta, resource.UpdateInput) (*resource.UpdateResult, error) {
-	return nil, benchmarkError("UNSUPPORTED", "read-only verification source")
-}
-func (*benchmarkSource) Delete(context.Context, *benchmarkClient, resource.ResourceMeta, resource.DeleteInput) (*resource.DeleteResult, error) {
-	return nil, benchmarkError("UNSUPPORTED", "read-only verification source")
-}
-func (p *benchmarkSource) GetResourceSchema(context.Context, *benchmarkClient, resource.ResourceMeta) (json.RawMessage, error) {
-	return nil, nil
-}
+
 func benchmarkError(code, message string) error {
-	return &resource.ResourceOperationError{Code: code, Title: "P02 verification source", Message: message}
+	return resource.NewError(code, message)
 }
 
 type benchmarkEvents struct{ *benchmarkSource }
 
-func (*benchmarkEvents) SyncPolicy() resource.SyncPolicy { return resource.SyncNever }
-func (p *benchmarkEvents) Watch(ctx context.Context, client *benchmarkClient, _ resource.ResourceMeta, sink resource.WatchEventSink) error {
+func (p *benchmarkEvents) Watch(ctx context.Context, client *benchmarkClient, target resource.ReadTarget, _ resource.Representation, sink resource.WatchEventSink) error {
 	scenario := p.scenarios[client.name]
 	if len(scenario.Updates) == 0 {
 		return benchmarkError("UNSUPPORTED", "snapshot-only fixture")
@@ -269,13 +329,18 @@ func (p *benchmarkEvents) Watch(ctx context.Context, client *benchmarkClient, _ 
 		p.writeLifecycleLocked()
 		p.mu.Unlock()
 	}()
-	sink.OnStateChange(resource.WatchStateEvent{ResourceKey: scenario.Type, State: resource.WatchStateSynced})
+	sink.OnStateChange(resource.WatchStateEvent{Route: target.Route, Type: scenario.Type, State: resource.WatchStateSynced, Count: resource.Count{Kind: "unknown"}, Guarantee: resource.BestEffortGuarantee})
 	select {
 	case <-ctx.Done():
 		return nil
 	case <-release:
 		for _, change := range scenario.Updates {
-			sink.OnUpdate(resource.WatchUpdatePayload{Key: scenario.Type, ID: p.records[change.Record].ID, Data: change.Body})
+			item := p.records[change.Record]
+			if !matchesScope(item.Scope, target.Scope) { continue }
+			item.Body, item.Revision = change.Body, change.Revision
+			record, err := p.record(target, item)
+			if err != nil { return err }
+			sink.OnUpdate(resource.WatchUpdatePayload{Route: target.Route, Record: record, Guarantee: resource.BestEffortGuarantee})
 			p.mu.Lock()
 			p.events++
 			p.mu.Unlock()

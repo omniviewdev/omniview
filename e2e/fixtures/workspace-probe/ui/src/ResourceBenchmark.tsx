@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { DataTable, dataTableFeatures } from "@omniviewdev/base-ui";
 import { useResources } from "@omniviewdev/runtime";
 import { ResourceClient } from "@omniviewdev/runtime/api";
-import { ListInput } from "@omniviewdev/runtime/models";
+import type { Value, HostEnumerateRequest, ResolvedResourceTarget } from "@omniviewdev/runtime";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useTable,
@@ -28,14 +28,38 @@ const frames = () => {
   requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
   return promise;
 };
-const input = (cursor = "") =>
-  ListInput.createFrom({
-    pagination: { cursor, pageSize: 200 },
-    order: [],
-    namespaces: [],
+const targets = new Map<Profile, ResolvedResourceTarget>();
+async function resolveTarget(profile: Profile) {
+  const cached = targets.get(profile);
+  if (cached) return cached;
+  const resolved = await ResourceClient.ResolveTarget(pluginID, {
+    route: { connection: profile }, type: profiles[profile], representation: "native",
   });
-const list = (profile: Profile, cursor = "") =>
-  ResourceClient.List(pluginID, profile, profiles[profile], input(cursor));
+  targets.set(profile, resolved);
+  return resolved;
+}
+const request = (resolved: ResolvedResourceTarget, cursor = ""): HostEnumerateRequest => ({
+  targetId: resolved.targetId,
+  request: { target: resolved.target, pageSize: 200, ...(cursor ? { cursor } : {}) },
+});
+const list = async (profile: Profile, cursor = "") =>
+  ResourceClient.Enumerate(pluginID, request(await resolveTarget(profile), cursor));
+function decode(value: Value): unknown {
+  switch (value.kind) {
+    case "int64":
+    case "uint64": {
+      const integer = BigInt(value.value);
+      return integer >= -9007199254740991n && integer <= 9007199254740991n
+        ? Number(integer) : value.value;
+    }
+    case "null": return null;
+    case "map": return Object.fromEntries(Object.entries(value.value).map(([key, item]) => [key, decode(item)]));
+    case "list": return value.value.map(decode);
+    default: return value.value;
+  }
+}
+const bodiesOf = (page: { records: readonly { record: { body: Value } }[] }) =>
+  page.records.map(({ record }) => decode(record.body) as Body);
 
 interface BenchmarkControl {
   select(profile: Profile, copies: number): Promise<void>;
@@ -96,7 +120,7 @@ function TransportTable({ bodies }: { bodies: Body[] }) {
       { accessorKey: "category", header: "Native value", size: 160 },
       {
         accessorKey: "text",
-        header: "Actual decoded transport body (numeric loss is not repaired)",
+        header: "Actual decoded transport body (wide integers use decimal strings)",
         size: 1100,
       },
     ],
@@ -172,15 +196,14 @@ function Finite({
     staleTime: Infinity,
     queryFn: async () => {
       const all: Body[] = [];
-      let cursor = copies ? `p02:copies:${copies}:0` : "";
+      let cursor = "";
       const seen = new Set<string>();
       do {
         if (seen.has(cursor)) throw new Error("Fixture repeated cursor");
         seen.add(cursor);
         const started = performance.now();
         const result = await list(profile, cursor);
-        if (!result?.success) throw new Error("Actual resource List failed");
-        const bodies = result.result as Body[];
+        const bodies = bodiesOf(result);
         samples.current.push({
           phase: "finite-page",
           profile,
@@ -191,13 +214,14 @@ function Finite({
           rows: bodies.length,
           decodedJSONBytes: new TextEncoder().encode(JSON.stringify(bodies))
             .length,
-          transportedTotalCount: result.totalCount,
-          nextCursor: result.nextCursor ?? "",
+          transportedTotalCount: result.sourcePage.count,
+          nextCursor: result.sourcePage.nextCursor ?? "",
         });
         all.push(...bodies);
-        cursor = result.nextCursor ?? "";
+        cursor = result.sourcePage.nextCursor ?? "";
       } while (cursor);
-      return all;
+      if (copies && !all.length) throw new Error("Cannot repeat an empty source acquisition");
+      return copies ? Array.from({ length: copies }, (_, index) => all[index % all.length]) : all;
     },
   });
   useLayoutEffect(() => {
@@ -221,13 +245,12 @@ function Finite({
   return <TransportTable bodies={query.data ?? empty} />;
 }
 function EventsTable({ samples }: { samples: React.RefObject<Sample[]> }) {
+  const resolved = targets.get("container-bundled-events");
   const { resources, watchState, isSynced } = useResources({
     pluginID,
-    connectionID: "container-bundled-events",
-    resourceKey: "container",
-    idAccessor: "id",
+    request: resolved ? request(resolved) : undefined,
   });
-  const bodies = (resources.data?.result ?? empty) as Body[];
+  const bodies = useMemo(() => resources.data ? bodiesOf(resources.data) : empty, [resources.data]);
   useLayoutEffect(() => {
     let cancelled = false;
     if (bodies.length)
@@ -291,6 +314,7 @@ export function ResourceBenchmark() {
         if (disposed) return;
         await ResourceClient.StartConnection(pluginID, profile);
         started.add(profile);
+        await resolveTarget(profile);
       }
       if (disposed) return;
       current.current = profile;
@@ -313,14 +337,14 @@ export function ResourceBenchmark() {
           try {
             await ResourceClient.StopResourceWatch(
               pluginID,
-              profile,
+              { connection: profile },
               "container",
             );
             const deadline = performance.now() + 5000;
             let sourceWatches: unknown;
             do {
-              const diagnostic = (await list(profile, "p02:metrics"))
-                ?.result[0] as { activeSourceWatches?: number } | undefined;
+              const diagnostic = bodiesOf(await list(profile, "p02:metrics"))[0] as
+                { activeSourceWatches?: number } | undefined;
               sourceWatches = diagnostic?.activeSourceWatches;
               if (sourceWatches === 0) break;
               if (typeof sourceWatches !== "number")
@@ -342,14 +366,14 @@ export function ResourceBenchmark() {
         try {
           await ResourceClient.StopConnection(pluginID, profile);
           started.delete(profile);
+          targets.delete(profile);
           closed.push({
             profile,
             stopped: true,
             ...(profile === "container-bundled-events"
               ? {
                   activeSourceWatches: 0,
-                  observation:
-                    "actual provider diagnostic after supported StopResourceWatch; old IsResourceWatchRunning RPC unavailable",
+                  observation: "Actual provider diagnostic after supported StopResourceWatch",
                 }
               : {}),
           });
@@ -378,8 +402,7 @@ export function ResourceBenchmark() {
           if (!disposed)
             await ResourceClient.EnsureResourceWatch(
               pluginID,
-              "container-bundled-events",
-              "container",
+              (await resolveTarget("container-bundled-events")).target,
             );
         }),
       async unmount() {
@@ -389,7 +412,7 @@ export function ResourceBenchmark() {
         await frames();
       },
       async metrics() {
-        return (await list(current.current, "p02:metrics:gc"))?.result[0];
+        return bodiesOf(await list(current.current, "p02:metrics:gc"))[0];
       },
       async release() {
         const at = performance.now();
@@ -451,9 +474,10 @@ export function ResourceBenchmark() {
     <section data-p02-ready>
       <h2>P02 verification-only real provider boundary</h2>
       <p>
-        Actual decoded bodies, not lossless JSON proof. Stress copies duplicate
-        native bodies and are not new resource identities. Local table models
-        are not host query execution.
+        V2 tagged bodies retain exact integers; diagnostic JSON displays wide integers
+        as decimal strings. Stress copies repeat decoded bodies only after canonical
+        acquisition; they are not new resource identities or additional source rows.
+        Local table models are not host query execution.
       </p>
       <button
         onClick={() =>

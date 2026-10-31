@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Button } from '@omniviewdev/base-ui';
-import { formatGroup } from '@omniviewdev/runtime';
+import { ResourceClient } from '@omniviewdev/runtime/api';
 import './probe.css';
 import { ResourceBenchmark } from './ResourceBenchmark';
 
 export function ProbePage() {
   const [clicks, setClicks] = useState(0);
   const [runtimeValue, setRuntimeValue] = useState('');
+  const [connectionCount, setConnectionCount] = useState<number>();
   const [benchmark, setBenchmark] = useState(false);
 
   return (
@@ -23,10 +24,18 @@ export function ProbePage() {
       <output className="workspace-probe-clicks" aria-live="polite" aria-label="Probe local clicks">
         {clicks}
       </output>
-      <Button onClick={() => setRuntimeValue(formatGroup('shared runtime ready'))}>
+      <Button onClick={() => {
+        void ResourceClient.LoadConnections('workspace-probe')
+          .then((connections) => {
+            setConnectionCount(connections.length);
+            setRuntimeValue('');
+          })
+          .catch((error: unknown) => setRuntimeValue(`Shared runtime failed: ${String(error)}`));
+      }}>
         Read shared runtime
       </Button>
       <output role="status" aria-label="Probe runtime value">{runtimeValue}</output>
+      <output aria-label="Probe runtime connection count">{connectionCount}</output>
       <Button onClick={() => setBenchmark((value) => !value)}>Toggle P02 benchmark</Button>
       {benchmark ? <ResourceBenchmark /> : null}
     </section>

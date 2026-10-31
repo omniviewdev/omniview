@@ -1,8 +1,9 @@
 import { StrictMode } from "react";
+import type * as BaseUI from "@omniviewdev/base-ui";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ResourceBenchmark } from "../../e2e/fixtures/workspace-probe/ui/src/ResourceBenchmark";
+import { ResourceBenchmark, profiles } from "../../e2e/fixtures/workspace-probe/ui/src/ResourceBenchmark";
 
 // Lifecycle unit tests only: provider calls are the external boundary. These
 // doubles do not establish transport, subscription, table or performance proof.
@@ -12,20 +13,19 @@ const api = vi.hoisted(() => ({
   StopConnection: vi.fn(),
   EnsureResourceWatch: vi.fn(),
   StopResourceWatch: vi.fn(),
-  List: vi.fn(),
+  Enumerate: vi.fn(),
+  ResolveTarget: vi.fn(),
 }));
 vi.mock("@omniviewdev/runtime/api", () => ({ ResourceClient: api }));
-vi.mock("@omniviewdev/runtime/models", () => ({
-  ListInput: { createFrom: (value: unknown) => value },
-}));
 vi.mock("@omniviewdev/runtime", () => ({
   useResources: () => ({
-    resources: { data: { result: [] } },
+    resources: { data: { records: [], sourcePage: { count: { kind: "unknown" }, coverage: { kind: "complete", paths: [] }, consistency: "bestEffort" } } },
     watchState: "",
     isSynced: false,
   }),
 }));
-vi.mock("@omniviewdev/base-ui", () => ({
+vi.mock("@omniviewdev/base-ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof BaseUI>()),
   DataTable: Object.assign(() => null, {
     Container: () => null,
     Header: () => null,
@@ -45,7 +45,7 @@ function mount(strict = false) {
   return render(strict ? <StrictMode>{component}</StrictMode> : component);
 }
 async function select(
-  profile: "cloud-bundled-pages" | "container-bundled-events",
+  profile: keyof typeof profiles,
 ) {
   await act(async () => {
     await window.__p02!.select(profile, 0);
@@ -68,19 +68,29 @@ beforeEach(() => {
   api.StopConnection.mockImplementation(async (_plugin, profile) => {
     connections.delete(profile);
   });
-  api.EnsureResourceWatch.mockImplementation(async (_plugin, profile) => {
-    watches.add(profile);
+  api.ResolveTarget.mockImplementation(async (_plugin, request) => ({
+    targetId: `target:${request.route.connection}`,
+    target: { route: request.route, provider: "workspace-probe", authority: "test-host-authority", type: request.type, scope: [], representation: request.representation },
+    authority: { continuity: "connectionLocal", limitations: [] },
+    catalogRevision: "test-v2",
+  }));
+  api.EnsureResourceWatch.mockImplementation(async (_plugin, target) => {
+    watches.add(target.route.connection);
   });
-  api.StopResourceWatch.mockImplementation(async (_plugin, profile) => {
-    watches.delete(profile);
+  api.StopResourceWatch.mockImplementation(async (_plugin, route) => {
+    watches.delete(route.connection);
   });
-  api.List.mockImplementation(async (_plugin, profile, _resource, input) => ({
-    success: true,
-    result:
-      input.pagination.cursor === "p02:metrics"
-        ? [{ activeSourceWatches: watches.has(profile) ? 1 : 0 }]
-        : [],
-    nextCursor: "",
+  api.Enumerate.mockImplementation(async (_plugin, { targetId, request }) => ({
+    records: request.cursor === "p02:metrics" ? [{
+      key: "diagnostic", addressKey: "diagnostic-address", targetId, route: request.target.route,
+      record: {
+        reference: { address: { provider: request.target.provider, authority: request.target.authority, type: request.target.type, scope: [], id: "metrics" } },
+        body: { kind: "map", value: { activeSourceWatches: { kind: "int64", value: watches.has(request.target.route.connection) ? "1" : "0" } } },
+        representation: { id: "native", revision: "1", schema: { state: "absent", validation: "none", unvalidated: [] } },
+        coverage: { kind: "complete", paths: [] },
+      },
+    }] : [],
+    sourcePage: { count: { kind: "unknown" }, coverage: { kind: "complete", paths: [] }, consistency: "bestEffort" },
   }));
 });
 afterEach(async () => {
@@ -91,14 +101,60 @@ afterEach(async () => {
 });
 
 describe("P02 root ownership versus table-only retention", () => {
+  it("acquires every profile through its resolved V2 target", async () => {
+    mount();
+    for (const profile of Object.keys(profiles) as (keyof typeof profiles)[]) {
+      const before = api.Enumerate.mock.calls.length;
+      await select(profile);
+      await waitFor(() => expect(api.Enumerate.mock.calls.length).toBeGreaterThan(before));
+      expect(api.ResolveTarget).toHaveBeenCalledWith("workspace-probe", {
+        route: { connection: profile }, type: profiles[profile], representation: "native",
+      });
+      expect(api.Enumerate).toHaveBeenCalledWith("workspace-probe", {
+        targetId: `target:${profile}`,
+        request: {
+          target: { route: { connection: profile }, provider: "workspace-probe", authority: "test-host-authority", type: profiles[profile], scope: [], representation: "native" },
+          pageSize: 200,
+        },
+      });
+    }
+  });
+
+  it("repeats decoded stress bodies only after unique canonical acquisition", async () => {
+    api.Enumerate.mockResolvedValueOnce({
+      records: [{
+        key: "host-record", addressKey: "host-address", targetId: "target:cloud-bundled-pages",
+        route: { connection: "cloud-bundled-pages" },
+        record: {
+          reference: { address: { provider: "workspace-probe", authority: "test-host-authority", type: "compute/instance", scope: [], id: "native-id" } },
+          body: { kind: "map", value: { name: { kind: "string", value: "native fixture" }, sizeBytes: { kind: "int64", value: "9007199254740993" } } },
+          representation: { id: "native", revision: "1", schema: { state: "absent", validation: "none", unvalidated: [] } },
+          coverage: { kind: "complete", paths: [] },
+        },
+      }],
+      sourcePage: { count: { kind: "exact", value: "1" }, coverage: { kind: "complete", paths: [] }, consistency: "bestEffort" },
+    });
+    mount();
+    await act(async () => { await window.__p02!.select("cloud-bundled-pages", 501); });
+    await waitFor(() => expect(client.getQueryData<unknown[]>(["p02-finite", "cloud-bundled-pages", 501])).toHaveLength(501));
+    const bodies = client.getQueryData<unknown[]>(["p02-finite", "cloud-bundled-pages", 501])!;
+    expect(bodies[0]).toEqual({ name: "native fixture", sizeBytes: "9007199254740993" });
+    expect(bodies.every((body) => body === bodies[0])).toBe(true);
+    expect(api.Enumerate).toHaveBeenCalledTimes(1);
+    expect(api.Enumerate.mock.calls[0][1].request).not.toHaveProperty("cursor");
+  });
+
   it("closes source watches/connections and only owned caches after root unmount", async () => {
     const view = mount();
     fireEvent.click(view.getByText("Mount container event diagnostic"));
     await waitFor(() => expect(watches.size).toBe(1));
     client.setQueryData(["p02-finite", "container-bundled-events", 0], []);
     client.setQueryData(
-      ["workspace-probe", "container-bundled-events", "container"],
-      [],
+      ["workspace-probe", "resource-v2", "enumerate", {
+        targetId: "target:container-bundled-events",
+        request: { target: { route: { connection: "container-bundled-events" }, provider: "workspace-probe", authority: "test-host-authority", type: "container", scope: [], representation: "native" }, pageSize: 200 },
+      }],
+      { records: [], sourcePage: { count: { kind: "unknown" }, coverage: { kind: "complete", paths: [] }, consistency: "bestEffort" } },
     );
     client.setQueryData(["unrelated-plugin", "keep"], 42);
     view.unmount();
@@ -155,9 +211,9 @@ describe("P02 root ownership versus table-only retention", () => {
 
   it("waits for an in-flight watch start before stopping the source", async () => {
     const ensure = Promise.withResolvers<void>();
-    api.EnsureResourceWatch.mockImplementation(async (_plugin, profile) => {
+    api.EnsureResourceWatch.mockImplementation(async (_plugin, target) => {
       await ensure.promise;
-      watches.add(profile);
+      watches.add(target.route.connection);
     });
     const view = mount();
     fireEvent.click(view.getByText("Mount container event diagnostic"));
@@ -167,7 +223,7 @@ describe("P02 root ownership versus table-only retention", () => {
     await waitFor(() =>
       expect(api.StopResourceWatch).toHaveBeenCalledWith(
         "workspace-probe",
-        "container-bundled-events",
+        { connection: "container-bundled-events" },
         "container",
       ),
     );
