@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"testing"
 	"reflect"
+	"testing"
 	"time"
 
-	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
 type benchmarkTestSink struct {
@@ -33,7 +33,9 @@ func TestSparseCanonicalEventReleaseAndCancellation(t *testing.T) {
 	defer cancel()
 	sink := &benchmarkTestSink{ready: make(chan struct{}), updates: make(chan resource.WatchUpdatePayload, 2)}
 	done := make(chan error, 1)
-	go func() { done <- events.Watch(ctx, client, benchmarkTarget(source, client.name), nativeRepresentation(), sink) }()
+	go func() {
+		done <- events.Watch(ctx, client, benchmarkTarget(source, client.name), nativeRepresentation(), sink)
+	}()
 	select {
 	case <-sink.ready:
 	case <-ctx.Done():
@@ -53,7 +55,9 @@ func TestSparseCanonicalEventReleaseAndCancellation(t *testing.T) {
 	case update := <-sink.updates:
 		want := source.scenarios[client.name].Updates[0]
 		body, err := resource.JSONToValue(want.Body)
-		if err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
 		if !reflect.DeepEqual(update.Record.Body, body) || update.Record.Reference.Address.ID != source.records[want.Record].ID {
 			t.Fatal("canonical sparse event changed")
 		}
@@ -97,7 +101,9 @@ func TestLifecycleDiagnosticsObserveBothFinalTeardownOrders(t *testing.T) {
 			}
 			sink := &benchmarkTestSink{ready: make(chan struct{}), updates: make(chan resource.WatchUpdatePayload, 1)}
 			done := make(chan error, 1)
-			go func() { done <- (&benchmarkEvents{source}).Watch(ctx, client, benchmarkTarget(source, client.name), nativeRepresentation(), sink) }()
+			go func() {
+				done <- (&benchmarkEvents{source}).Watch(ctx, client, benchmarkTarget(source, client.name), nativeRepresentation(), sink)
+			}()
 			select {
 			case <-sink.ready:
 			case <-ctx.Done():

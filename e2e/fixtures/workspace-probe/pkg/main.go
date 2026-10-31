@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
 	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	resourceplugin "github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
+	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
 	"github.com/omniviewdev/plugin-sdk/settings"
 )
 
@@ -42,7 +42,9 @@ func newBenchmarkController(source *benchmarkSource) (*resource.Controller[bench
 			Connection: profile, Type: scenario.Type, Enumerate: source.Enumerate, Get: source.Get,
 			SyncPolicy: resource.SyncOnConnect,
 		}
-		if len(scenario.Updates) > 0 { registration.Watch = (&benchmarkEvents{source}).Watch }
+		if len(scenario.Updates) > 0 {
+			registration.Watch = (&benchmarkEvents{source}).Watch
+		}
 		registrations = append(registrations, registration)
 	}
 	return resource.NewController(resource.Config[benchmarkClient]{
