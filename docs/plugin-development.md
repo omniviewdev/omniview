@@ -463,6 +463,14 @@ Resource queries, graph reads, editor schemas, and scope-value discovery wait fo
 
 The host also guards resource drawers that supply `ctx.resource.pluginID` and `ctx.resource.connectionID`, including their views and actions. Custom panels outside those surfaces should use the same boundary rather than trusting cached connection metadata.
 
+#### Editor and metadata ownership
+
+| Transition | UI contract |
+| --- | --- |
+| Plugin or connection identity changes | Start a fresh editor draft and operation state. |
+| Metadata refresh overlaps another request | Accept only the current request's response; ignore retired and unmounted completions. |
+| An operation completes after its editor retires | Do not update the replacement editor's feedback. Already accepted backend work is not rolled back. |
+
 #### Loaders and imperative calls
 
 React Router may run child loaders before a parent component or parent loader completes. A render boundary alone does not protect loader I/O. Guard each connection-dependent loader or direct native call explicitly:
