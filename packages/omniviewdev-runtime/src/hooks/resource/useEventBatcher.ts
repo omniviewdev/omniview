@@ -11,9 +11,21 @@ export type ResourceUpdateEvent =
   | { type: 'UPDATE'; payload: UpdatePayload }
   | { type: 'DELETE'; payload: DeletePayload };
 
-/** Advisory events may patch observed host keys, never expand native page membership. */
-export function applyBatch(oldData: ResourceView | undefined, events: readonly ResourceUpdateEvent[], membershipChanged = false): ResourceView | undefined {
+/** Explicit pages retain bounded membership; collections accept every admitted target event. */
+export function applyBatch(oldData: ResourceView | undefined, events: readonly ResourceUpdateEvent[], membershipChanged = false, collection = false): ResourceView | undefined {
   if (!oldData || (!events.length && !membershipChanged)) return oldData;
+  if (collection) {
+    const records = new Map(oldData.records.map((row) => [row.key, row]));
+    for (const event of events) {
+      if (event.type === 'DELETE') records.delete(event.payload.key);
+      else records.set(event.payload.record.key, event.payload.record);
+    }
+    return {
+      records: [...records.values()],
+      sourcePage: oldData.sourcePage,
+      view: { guarantee: 'bestEffort', count: { kind: 'unknown' }, membershipStale: false },
+    };
+  }
   let records: HostRecord[] | undefined;
   const positions = events.length > 1 ? new Map(oldData.records.map((row, index) => [row.key, index])) : undefined;
   const deleted = new Set<number>();
@@ -44,12 +56,12 @@ export function applyBatch(oldData: ResourceView | undefined, events: readonly R
   };
 }
 
-/** At most one pending event per observed page key; unseen row bodies are never retained. */
+/** Keep only the latest event for each key within the active acquisition. */
 export function useEventBatcher(
   queryClient: QueryClient,
   queryKey: QueryKey,
   watchState: WatchState,
-  options?: { syncWindowMs?: number; enabled?: boolean; isCurrent?: () => boolean },
+  options?: { syncWindowMs?: number; enabled?: boolean; isCurrent?: () => boolean; collection?: boolean },
 ) {
   const buffer = useRef(new Map<string, ResourceUpdateEvent>());
   const pendingMembershipChange = useRef(false);
@@ -58,7 +70,8 @@ export function useEventBatcher(
   const state = useRef(watchState);
   const enabled = options?.enabled ?? true;
   const isCurrent = options?.isCurrent;
-  const scope = useMemo(() => ({ queryClient, queryKey, enabled, isCurrent }), [queryClient, queryKey, enabled, isCurrent]);
+  const collection = options?.collection ?? false;
+  const scope = useMemo(() => ({ queryClient, queryKey, enabled, isCurrent, collection }), [queryClient, queryKey, enabled, isCurrent, collection]);
   const activeScope = useRef<typeof scope | undefined>(undefined);
   const current = useCallback(() => activeScope.current === scope && enabled && (!isCurrent || isCurrent()), [scope, enabled, isCurrent]);
   useLayoutEffect(() => {
@@ -79,11 +92,13 @@ export function useEventBatcher(
     }
     if (!buffer.current.size && !pendingMembershipChange.current) return;
     if (!queryClient.getQueryData<ResourceView>(queryKey)) return;
+    // Apply observations received during collection refresh after its snapshot settles.
+    if (collection && queryClient.getQueryState(queryKey)?.fetchStatus === 'fetching') return;
     const events = [...buffer.current.values()];
     const membershipChanged = pendingMembershipChange.current;
     buffer.current.clear();
     pendingMembershipChange.current = false;
-    queryClient.setQueryData<ResourceView>(queryKey, (old) => current() ? applyBatch(old, events, membershipChanged) : old);
+    queryClient.setQueryData<ResourceView>(queryKey, (old) => current() ? applyBatch(old, events, membershipChanged, collection) : old);
     for (const event of events) {
       if (!current()) return;
       if (event.type === 'DELETE') {
@@ -97,19 +112,19 @@ export function useEventBatcher(
         );
       }
     }
-  }, [queryClient, queryKey, scope, current]);
+  }, [queryClient, queryKey, scope, current, collection]);
   const enqueue = useCallback((event: ResourceUpdateEvent) => {
     if (!current()) return;
     const key = event.type === 'DELETE' ? event.payload.key : event.payload.record.key;
     const baseline = queryClient.getQueryData<ResourceView>(queryKey);
-    if (baseline?.records.some((row) => row.key === key)) buffer.current.set(key, event);
+    if (collection || baseline?.records.some((row) => row.key === key)) buffer.current.set(key, event);
     else pendingMembershipChange.current = true;
-    if (event.type === 'DELETE') pendingMembershipChange.current = true;
+    if (!collection && event.type === 'DELETE') pendingMembershipChange.current = true;
     if (timer.current !== undefined || frame.current !== undefined) return;
     // A timer also bounds live mode when Chromium withholds animation frames.
     timer.current = window.setTimeout(flush, windowMs);
     if (state.current !== WatchState.WatchStateSyncing) frame.current = requestAnimationFrame(flush);
-  }, [queryClient, queryKey, flush, windowMs, current]);
+  }, [queryClient, queryKey, flush, windowMs, current, collection]);
   useLayoutEffect(() => {
     if (!enabled) return;
     activeScope.current = scope;
@@ -120,7 +135,7 @@ export function useEventBatcher(
         // A new native acquisition supersedes older queued advisory observations.
         pendingEvents.clear();
         pendingMembershipChange.current = false;
-      } else if (event.action.type === 'success') flush();
+      } else if (event.action.type === 'success' || (collection && event.action.type === 'error')) flush();
     });
     return () => {
       activeScope.current = undefined;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { hashKey, skipToken, useQuery, useQueryClient } from '@tanstack/react-query';
+import { CancelledError, hashKey, skipToken, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { Events } from '@wailsio/runtime';
 import { Enumerate, EnsureResourceWatch, GetWatchState, SubscribeResource, UnsubscribeResource } from '../../resource/v2/client';
 import type { CancellablePromise } from '@wailsio/runtime';
@@ -18,6 +18,8 @@ export interface UseResourcesOptions {
   pluginID?: string;
   request?: HostEnumerateRequest;
   enabled?: boolean;
+  /** Acquire all source pages internally and maintain collection membership from live events. */
+  collection?: boolean;
   /** Actual advisory native updates, never inferred from a finite page. */
   live?: boolean;
 }
@@ -32,8 +34,8 @@ const inactiveGenerationStore = {
   subscribe: () => () => {},
 };
 
-/** One attempted acquisition and one displayed successful page; never accumulated row history. */
-export const useResources = ({ pluginID: explicitPluginID, request, enabled = true, live = true }: UseResourcesOptions) => {
+/** Acquire an explicit source page, or opt into a complete collection acquisition. */
+export const useResources = ({ pluginID: explicitPluginID, request, enabled = true, live = true, collection = false }: UseResourcesOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
@@ -56,11 +58,45 @@ export const useResources = ({ pluginID: explicitPluginID, request, enabled = tr
   const generation = React.useSyncExternalStore(generationStore.subscribe, generationStore.getSnapshot, generationStore.getSnapshot);
   const guardQuery = useConnectionQueryGuard(pluginID, connectionID);
   const queryEnabled = readinessEnabled && readiness.phase === 'connected';
-  const targetIdentity = stableRequest ? hashKey([pluginID, stableRequest.targetId, stableRequest.request.target]) : undefined;
-  const queryKey = React.useMemo(() => resourceQueryKeys.list(pluginID, stableRequest), [pluginID, stableRequest]);
+  const targetIdentity = stableRequest ? hashKey([pluginID, stableRequest.targetId, stableRequest.request.target, collection]) : undefined;
+  const listKey = React.useCallback((input?: HostEnumerateRequest) => collection
+    ? [...resourceQueryKeys.list(pluginID, input), 'collection']
+    : resourceQueryKeys.list(pluginID, input), [pluginID, collection]);
+  const enumerate = React.useCallback(async (input: HostEnumerateRequest, signal: AbortSignal, key: QueryKey): Promise<ResourceView> => {
+    if (!collection) return guardQuery(key, signal, () => Enumerate(pluginID, input));
+    const acquisitionGeneration = getConnectionReadinessGeneration(pluginID, connectionID);
+    const records = new Map<string, ResourceView['records'][number]>();
+    const cursors = new Set<string>();
+    let cursor: string | undefined;
+    let first: ResourceView | undefined;
+    do {
+      if (signal.aborted || acquisitionGeneration === undefined ||
+        !isConnectionReadinessCurrent(pluginID, connectionID, acquisitionGeneration)) throw new CancelledError({ revert: true });
+      const page = await guardQuery(key, signal, () => Enumerate(pluginID, {
+        ...input, request: { ...input.request, cursor },
+      }));
+      if (signal.aborted || !isConnectionReadinessCurrent(pluginID, connectionID, acquisitionGeneration)) throw new CancelledError({ revert: true });
+      first ??= page;
+      for (const row of page.records) {
+        if (row.targetId !== input.targetId) throw new Error('Collection page returned a different resource target');
+        records.set(row.key, row);
+      }
+      cursor = page.sourcePage.nextCursor;
+      if (cursor) {
+        if (cursors.has(cursor)) throw new Error('Collection enumeration repeated a source cursor');
+        cursors.add(cursor);
+      }
+    } while (cursor);
+    return {
+      records: [...records.values()],
+      sourcePage: { ...first!.sourcePage, nextCursor: undefined, count: { kind: 'unknown' }, sourceRevision: undefined },
+      view: { guarantee: 'bestEffort', count: { kind: 'unknown' }, membershipStale: false },
+    };
+  }, [collection, guardQuery, pluginID, connectionID]);
+  const queryKey = React.useMemo(() => listKey(stableRequest), [listKey, stableRequest]);
   const resources = useQuery({
     queryKey,
-    queryFn: queryEnabled ? ({ signal, queryKey }) => guardQuery(queryKey, signal, () => Enumerate(pluginID, stableRequest!)) : skipToken,
+    queryFn: queryEnabled ? ({ signal, queryKey }) => enumerate(stableRequest!, signal, queryKey) : skipToken,
     enabled: queryEnabled,
     retry: false,
     gcTime: 0,
@@ -80,12 +116,12 @@ export const useResources = ({ pluginID: explicitPluginID, request, enabled = tr
     setSuccessful(undefined);
   }
   const acquiredRequest = targetIdentity && acquisition?.identity === targetIdentity ? acquisition.request : undefined;
-  const acquiredQueryKey = React.useMemo(() => resourceQueryKeys.list(pluginID, acquiredRequest), [pluginID, acquiredRequest]);
+  const acquiredQueryKey = React.useMemo(() => listKey(acquiredRequest), [listKey, acquiredRequest]);
   // A disabled observer retains just the displayed page while a different cursor is attempted.
   // Its explicit refetch is a real native acquisition, not a synthetic cached response.
   const acquiredResources = useQuery({
     queryKey: acquiredQueryKey,
-    queryFn: queryEnabled && acquiredRequest ? ({ signal, queryKey }) => guardQuery(queryKey, signal, () => Enumerate(pluginID, acquiredRequest)) : skipToken,
+    queryFn: queryEnabled && acquiredRequest ? ({ signal, queryKey }) => enumerate(acquiredRequest, signal, queryKey) : skipToken,
     enabled: false,
     retry: false,
     gcTime: 0,
@@ -100,7 +136,7 @@ export const useResources = ({ pluginID: explicitPluginID, request, enabled = tr
   const watchFailure = watchEnabled && watchSnapshot?.scope === watchScope ? watchSnapshot.error : undefined;
   const isLive = watchEnabled && watchSnapshot?.scope === watchScope && watchSnapshot.live;
   const isWatchGenerationCurrent = React.useCallback(() => generation !== undefined && isConnectionReadinessCurrent(pluginID, connectionID, generation), [pluginID, connectionID, generation]);
-  const enqueue = useEventBatcher(queryClient, acquiredQueryKey, watchState, { enabled: watchEnabled, isCurrent: isWatchGenerationCurrent });
+  const enqueue = useEventBatcher(queryClient, acquiredQueryKey, watchState, { enabled: watchEnabled, isCurrent: isWatchGenerationCurrent, collection });
   const subscriptionTask = React.useRef<Promise<void>>(Promise.resolve());
 
   React.useEffect(() => {

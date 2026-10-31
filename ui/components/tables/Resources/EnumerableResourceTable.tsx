@@ -33,12 +33,11 @@ type Props = {
 
 
 /**
- * Display an enumerable resource type and its source pages.
+ * Display the complete collection for an enumerable resource type.
  */
 const EnumerableResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey, resourceType }) => {
 
   const [representation, setRepresentation] = useState('');
-  const [paging, setPaging] = useState<{ context: string; cursors: Array<string | undefined> }>({ context: '', cursors: [undefined] });
   const [scope, setScope] = useState<QueryScope>([]);
   const selectedRepresentation = representation !== '' ? representation : resourceType.defaultRepresentation ?? '';
   const target = useResolvedResourceTarget({
@@ -50,18 +49,11 @@ const EnumerableResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKe
     enabled: selectedRepresentation !== '',
   });
   const { isLoading, isError, error: definitionError, columns } = useResourceDefinition({ pluginID, connectionID, resourceKey });
-  // A source cursor belongs to the complete acquisition context, including the
-  // resolved target generation. Never carry it across a context change.
-  const pageContext = JSON.stringify([pluginID, connectionID, resourceKey, scope, selectedRepresentation, target.data?.targetId]);
-  const cursors = paging.context === pageContext ? paging.cursors : [undefined];
-  const cursor = cursors[cursors.length - 1];
-  const setCursors = (update: Array<string | undefined> | ((pages: Array<string | undefined>) => Array<string | undefined>)) => {
-    setPaging({ context: pageContext, cursors: typeof update === 'function' ? update(cursors) : update });
-  };
 
-  const { resources, membershipStale, isAcquiredRequestCurrent } = useResources({
+  const { resources } = useResources({
     pluginID,
-    request: target.data ? { targetId: target.data.targetId, request: { target: target.data.target, pageSize: 1000, cursor } } : undefined,
+    collection: true,
+    request: target.data ? { targetId: target.data.targetId, request: { target: target.data.target, pageSize: 1000 } } : undefined,
     enabled: true,
     live: true,
   });
@@ -75,15 +67,6 @@ const EnumerableResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKe
     { id: 'body', header: 'Raw body', accessorFn: (row) => valueToJSONText(row.record.record.body) },
   ];
   const presentationFailure = parseAppError(definitionError).code !== 'UNSUPPORTED';
-  const controls = <Stack direction="row" spacing={2}>
-    <Button size="sm" disabled={cursors.length === 1} onClick={() => {
-      setCursors((pages) => pages.slice(0, -1)); 
-    }}>Previous page</Button>
-    <Text>Source page {cursors.length}</Text>
-    <Button size="sm" disabled={resources.isFetching} onClick={() => {
-      void resources.refetch(); 
-    }}>Refresh source page</Button>
-  </Stack>;
 
   if (!selectedRepresentation && !(isError && presentationFailure)) {
     return (
@@ -133,7 +116,7 @@ const EnumerableResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKe
 
     return (
       <div className={styles.Error}>
-        {controls}
+        <Button size="sm" disabled={resources.isFetching} onClick={() => { void resources.refetch(); }}>Retry</Button>
         <Banner variant='soft' size='lg' color='danger'>
           <Banner.Icon>
             <LuCircleAlert size={20} />
@@ -176,7 +159,6 @@ const EnumerableResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKe
       <Stack direction="row" spacing={2}>
         <select aria-label="Resource representation" value={selectedRepresentation} onChange={(event) => {
           setRepresentation(event.target.value);
-          setCursors([undefined]);
         }}>
           {resourceType.representations.map((item) => <option key={item.id} value={item.id}>{item.id}</option>)}
         </select>
@@ -193,20 +175,11 @@ const EnumerableResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKe
                   ...current.filter((entry) => entry.dimension !== dimension.name),
                   ...(value ? [{ dimension: dimension.name, match: 'oneOf' as const, values: [value] }] : []),
                 ]);
-                setCursors([undefined]);
               }}
             />
           </label>
         ))}
-        {controls}
-        <Button size="sm" disabled={!listResult.sourcePage.nextCursor} onClick={() => {
-          const next = listResult.sourcePage.nextCursor;
-          if (next) {
-            setCursors((pages) => [...pages, next]);
-          }
-        }}>Next page</Button>
       </Stack>
-      {isAcquiredRequestCurrent && membershipStale && <Text tone="muted">Source membership may have changed. Visible-row updates are best effort; refresh this source page to reacquire its membership.</Text>}
       <ResourceTableContainer
         columns={columns.defs.length ? columns.defs : genericColumns}
         data={rows}

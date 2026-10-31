@@ -218,6 +218,21 @@ Its `bestEffort` guarantee and native cache readiness do not promise an atomic
 snapshot/update cutover, replay, gap detection, or P05 continuity.
 `live: false` is explicitly finite acquisition, not a subscription.
 
+Set `collection: true` for a collection-wide UI. The hook starts at the first
+source page and follows all `Enumerate` cursors internally, deduplicating records
+by canonical host key. `resources.data` and `acquired.page` publish the merged
+view only after every page succeeds; a continuation failure exposes an error,
+not a partial collection. Collection queries use a separate cache partition.
+`refreshAcquiredPage()` reacquires the full collection. Live additions and
+updates upsert admitted target records, and deletes remove exact canonical keys
+without applying bounded-page membership invalidation. Counts remain unknown,
+and the collection retains the same best-effort continuity guarantee. Native
+work is cancelled and fenced on target changes, unmount, or connection retirement.
+Omit `collection` to keep the explicit bounded-page behavior above.
+The host's generic resource table opts into collection mode, so its table
+pagination operates over the merged collection rather than native source pages.
+Source-page cursors and membership disclaimers are not visible controls.
+
 `Mutate` and `Action` consume canonical SDK requests with explicit references and
 tagged `Value` inputs. `useResourceMutations` exposes `mutate(request)` without
 triggering a Get; action hooks similarly consume canonical requests.

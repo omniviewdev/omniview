@@ -29,19 +29,10 @@ describe('optional presentation', () => {
     show('UNSUPPORTED');
     expect(screen.getByText('canonical-id')).toBeTruthy();
     expect(screen.getByText('18446744073709551615')).toBeTruthy();
-    expect(screen.getByText(/Source membership may have changed/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Refresh source page' })).toBeTruthy();
   });
   it.each(['FORBIDDEN', 'UNAUTHORIZED', 'PROVIDER_ERROR'])('does not treat %s as absent presentation', (code) => {
     show(code);
     expect(screen.queryByText('canonical-id')).toBeNull();
     expect(screen.getByText('Failed to load resources')).toBeTruthy();
-  });
-  it('does not associate prior-page membership uncertainty with attempted rows', () => {
-    state.isCurrent = false;
-    show('UNSUPPORTED');
-    expect(screen.getByText('canonical-id')).toBeTruthy();
-    expect(screen.queryByText(/Source membership may have changed/)).toBeNull();
-    state.isCurrent = true;
   });
 });
