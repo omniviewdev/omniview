@@ -1,5 +1,14 @@
 /* Compact typography for rendered plugin READMEs and changelogs. */
 .Markdown :global(.wmde-markdown) {
+  --color-fg-default: var(--ov-color-fg-default);
+  --color-fg-muted: var(--ov-color-fg-muted);
+  --color-fg-subtle: var(--ov-color-fg-subtle);
+  --color-canvas-default: var(--ov-color-bg-surface);
+  --color-canvas-subtle: var(--ov-color-bg-surface-raised);
+  --color-border-default: var(--ov-color-border-default);
+  --color-border-muted: var(--ov-color-border-muted);
+  --color-accent-fg: var(--ov-color-border-focus);
+  color: var(--ov-color-fg-default);
   background-color: transparent !important;
   font-size: 0.8125rem;
   line-height: 1.65;

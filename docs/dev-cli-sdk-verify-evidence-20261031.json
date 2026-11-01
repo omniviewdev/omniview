@@ -1,0 +1,121 @@
+{
+  "method": "Two independent binaries, one warmup per process, 10 strict real SDK verifications per run; baseline/optimized/optimized/baseline order. Concurrent integration checks ran; not an end-to-end launch comparison.",
+  "runs": [
+    {
+      "mode": "baseline",
+      "executable": "/tmp/omniview-dev-cli-smoke.io9Mpn/baseline-verify",
+      "executableSHA256": "a4e30f641fedf70507cc4cfa5a21d034620534931d7641d41525e1c84242354f",
+      "goVersion": "go1.26.1",
+      "goarch": "arm64",
+      "goos": "darwin",
+      "maxNanoseconds": 115276417,
+      "medianNanoseconds": 73678125,
+      "minNanoseconds": 67658083,
+      "samplesNanoseconds": [
+        115276417,
+        72708625,
+        73695250,
+        69163833,
+        73678125,
+        72552834,
+        75813459,
+        84393292,
+        69957500,
+        67658083
+      ],
+      "sdkIdentity": {
+        "Directory": "/Users/joshuapare/Repos/omniviewdev/workspaces/workspaces/dev-cli-build-speed-20261031/plugin-sdk",
+        "ReviewedRevision": "5d0cc3dac81138ea87da1f94322873dde07aa9f2",
+        "SourceDigest": "824dfbc830385a8738ec70c50381a7eb55b12f7e584933399dd4e38bb5f29b5a"
+      },
+      "warmupVerifications": 1
+    },
+    {
+      "mode": "optimized",
+      "executable": "/tmp/omniview-dev-cli-smoke.io9Mpn/optimized-verify",
+      "executableSHA256": "ef4f7ce173bd0e66a42c77894607767243b2f9aadc0d0ffeeebb52576ea1ab57",
+      "goVersion": "go1.26.1",
+      "goarch": "arm64",
+      "goos": "darwin",
+      "maxNanoseconds": 77424791,
+      "medianNanoseconds": 46874000,
+      "minNanoseconds": 40838958,
+      "samplesNanoseconds": [
+        52404333,
+        77424791,
+        46874000,
+        42493458,
+        58943875,
+        44803292,
+        46895500,
+        40838958,
+        43412667,
+        45130958
+      ],
+      "sdkIdentity": {
+        "Directory": "/Users/joshuapare/Repos/omniviewdev/workspaces/workspaces/dev-cli-build-speed-20261031/plugin-sdk",
+        "ReviewedRevision": "5d0cc3dac81138ea87da1f94322873dde07aa9f2",
+        "SourceDigest": "824dfbc830385a8738ec70c50381a7eb55b12f7e584933399dd4e38bb5f29b5a"
+      },
+      "warmupVerifications": 1
+    },
+    {
+      "mode": "optimized",
+      "executable": "/tmp/omniview-dev-cli-smoke.io9Mpn/optimized-verify",
+      "executableSHA256": "ef4f7ce173bd0e66a42c77894607767243b2f9aadc0d0ffeeebb52576ea1ab57",
+      "goVersion": "go1.26.1",
+      "goarch": "arm64",
+      "goos": "darwin",
+      "maxNanoseconds": 59264875,
+      "medianNanoseconds": 46546041,
+      "minNanoseconds": 41875333,
+      "samplesNanoseconds": [
+        48099167,
+        45172084,
+        46546041,
+        45874250,
+        49068542,
+        45714584,
+        45033542,
+        41875333,
+        46559000,
+        59264875
+      ],
+      "sdkIdentity": {
+        "Directory": "/Users/joshuapare/Repos/omniviewdev/workspaces/workspaces/dev-cli-build-speed-20261031/plugin-sdk",
+        "ReviewedRevision": "5d0cc3dac81138ea87da1f94322873dde07aa9f2",
+        "SourceDigest": "824dfbc830385a8738ec70c50381a7eb55b12f7e584933399dd4e38bb5f29b5a"
+      },
+      "warmupVerifications": 1
+    },
+    {
+      "mode": "baseline",
+      "executable": "/tmp/omniview-dev-cli-smoke.io9Mpn/baseline-verify",
+      "executableSHA256": "a4e30f641fedf70507cc4cfa5a21d034620534931d7641d41525e1c84242354f",
+      "goVersion": "go1.26.1",
+      "goarch": "arm64",
+      "goos": "darwin",
+      "maxNanoseconds": 100689125,
+      "medianNanoseconds": 82700792,
+      "minNanoseconds": 70118583,
+      "samplesNanoseconds": [
+        76324250,
+        70118583,
+        73479166,
+        79503208,
+        82700792,
+        82785334,
+        74477625,
+        86576083,
+        100689125,
+        88586542
+      ],
+      "sdkIdentity": {
+        "Directory": "/Users/joshuapare/Repos/omniviewdev/workspaces/workspaces/dev-cli-build-speed-20261031/plugin-sdk",
+        "ReviewedRevision": "5d0cc3dac81138ea87da1f94322873dde07aa9f2",
+        "SourceDigest": "824dfbc830385a8738ec70c50381a7eb55b12f7e584933399dd4e38bb5f29b5a"
+      },
+      "warmupVerifications": 1
+    }
+  ]
+}

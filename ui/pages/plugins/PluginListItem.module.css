@@ -10,8 +10,8 @@
 
 .Item {
   display: flex;
-  gap: 10px;
-  padding: 6px 12px;
+  gap: var(--ov-space-2);
+  padding: var(--ov-space-2) var(--ov-space-3);
   cursor: pointer;
   text-decoration: none;
   color: inherit;
@@ -25,11 +25,17 @@
 
 .Item[data-active='true'],
 .Item[data-active='true']:hover {
-  background-color: color-mix(in srgb, var(--ov-color-brand-500) 15%, transparent);
-  border-left-color: color-mix(in srgb, var(--ov-color-brand-500) 80%, transparent);
+  background-color: var(--ov-color-state-selected);
+  border-left-color: var(--ov-color-border-focus);
 }
 
-.Item:hover .Gear {
+.Item:focus-visible {
+  outline: 2px solid var(--ov-color-border-focus);
+  outline-offset: -2px;
+}
+
+.Item:hover .Gear,
+.Item:focus-within .Gear {
   opacity: 1;
 }
 
@@ -46,7 +52,7 @@
 .IconImage {
   width: 36px;
   height: 36px;
-  border-radius: 6px;
+  border-radius: var(--ov-radius-sm);
   background-color: transparent;
   border: 0;
 }
@@ -54,7 +60,7 @@
 .IconFallback {
   width: 36px;
   height: 36px;
-  border-radius: 6px;
+  border-radius: var(--ov-radius-sm);
   background-color: var(--ov-color-state-hover);
   display: flex;
   align-items: center;
@@ -121,7 +127,7 @@
   color: var(--ov-color-brand-500);
   background: none;
   border: 1px solid var(--ov-color-border-control);
-  border-radius: 4px;
+  border-radius: var(--ov-radius-sm);
   cursor: pointer;
   padding: 1px 8px;
   line-height: 18px;
@@ -129,7 +135,12 @@
 }
 
 .InstallButton:hover {
-  background-color: color-mix(in srgb, var(--ov-color-brand-500) 10%, transparent);
+  background-color: var(--ov-color-state-hover);
+}
+
+.InstallButton:focus-visible {
+  outline: 2px solid var(--ov-color-border-focus);
+  outline-offset: 2px;
 }
 
 .Description {

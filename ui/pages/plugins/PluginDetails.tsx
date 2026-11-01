@@ -1,6 +1,6 @@
 import { useState, type FC } from 'react';
 
-import { Avatar, Button, Chip, Heading, Separator, Stack, Tabs, Text } from '@omniviewdev/base-ui';
+import { Avatar, Button, Chip, Heading, Stack, Tabs, Text, useTheme } from '@omniviewdev/base-ui';
 
 // Third party
 import MarkdownPreview from '@uiw/react-markdown-preview';
@@ -28,6 +28,7 @@ const TABS = [
 
 const PluginDetails: FC = () => {
   const { id = '' } = useParams<{ id: string }>();
+  const { activeTheme } = useTheme();
   const navigate = useNavigate();
   const { plugins, available } = usePluginManager();
   const { readme, reviews, releaseHistory, uninstall } = usePlugin({ id });
@@ -77,7 +78,7 @@ const PluginDetails: FC = () => {
 
         {/* Info */}
         <div className={styles.Info}>
-          <Stack direction='row' spacing={3} align='center'>
+          <Stack direction='row' spacing={2} align='center' wrap>
             <Heading level={3}>{displayName}</Heading>
             {displayVersion && (
               <Chip size='sm' color='brand' variant='soft' className={styles.HeaderChip}>{displayVersion}</Chip>
@@ -118,7 +119,8 @@ const PluginDetails: FC = () => {
               </Stack>
             )}
             {displayRepository && (
-              <span
+              <button
+                type='button'
                 className={styles.RepoLink}
                 onClick={() => {
                   void Browser.OpenURL(displayRepository);
@@ -126,7 +128,7 @@ const PluginDetails: FC = () => {
               >
                 <LuExternalLink size={12} />
                 <Text size='xs' tone='muted'>Repository</Text>
-              </span>
+              </button>
             )}
           </Stack>
         </div>
@@ -168,8 +170,6 @@ const PluginDetails: FC = () => {
         }}
       />
 
-      <Separator />
-
       {/* Tabs */}
       <Tabs.Root
         value={activeTab}
@@ -177,6 +177,7 @@ const PluginDetails: FC = () => {
           setActiveTab(String(value));
         }}
         size='sm'
+        variant='flat'
         className={styles.Tabs}
       >
         <Tabs.List>
@@ -190,7 +191,7 @@ const PluginDetails: FC = () => {
             {readme.isLoading ? (
               <Text as='p' size='sm' tone='muted' className={styles.PaddedText}>Loading readme...</Text>
             ) : readme.data ? (
-              <div data-color-mode='dark' className={markdownStyles.Markdown}>
+              <div data-color-mode={activeTheme.appearance} className={markdownStyles.Markdown}>
                 <MarkdownPreview
                   source={readme.data}
                   style={{ backgroundColor: 'transparent', overflow: 'auto' }}
@@ -205,7 +206,7 @@ const PluginDetails: FC = () => {
             {releaseHistory.isLoading ? (
               <Text size='sm' tone='muted'>Loading versions...</Text>
             ) : releaseHistory.data?.length ? (
-              <Stack direction='column' spacing={4}>
+              <Stack direction='column' spacing={0}>
                 {releaseHistory.data.map((v: any) => (
                   <div key={v.version} className={styles.Card}>
                     <Stack direction='row' spacing={3} align='center'>
@@ -250,7 +251,7 @@ const PluginDetails: FC = () => {
             {reviews.isLoading ? (
               <Text size='sm' tone='muted'>Loading reviews...</Text>
             ) : reviews.data?.length ? (
-              <Stack direction='column' spacing={4}>
+              <Stack direction='column' spacing={0}>
                 {reviews.data.map((review: any) => (
                   <div key={review.id} className={styles.Card}>
                     <Stack direction='row' spacing={2} align='center'>
