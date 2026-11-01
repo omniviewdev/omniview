@@ -397,6 +397,7 @@ func (g *BuildGraph) sourceInputs(ctx context.Context, n BuildNode, hash io.Writ
 	names := strings.Split(listing, "\x00")
 	sort.Strings(names)
 	previous := ""
+	var reader sourceInputReader
 	for _, name := range names {
 		if name == "" || name == previous {
 			continue
@@ -409,7 +410,7 @@ func (g *BuildGraph) sourceInputs(ctx context.Context, n BuildNode, hash io.Writ
 		if g.generatedSourceOutput(path) || slices.ContainsFunc(outputs, func(output string) bool { return inside(output, path) }) {
 			continue
 		}
-		if err = hashSourceFile(hash, repository, name); err != nil {
+		if err = reader.hashFile(hash, repository, name); err != nil {
 			return err
 		}
 	}
@@ -441,11 +442,17 @@ func selectedSource(name, directory string, trees []string) bool {
 	return parent == "." || underPath(directory, parent)
 }
 
-// hashSourceFile writes one source entry: content for regular files, target
-// for symlinks, type only for submodules and special files, and a deletion
-// marker for tracked files that no longer exist. A file that changes while
-// being read fails rather than hashing torn content.
-func hashSourceFile(hash io.Writer, repository, name string) error {
+// Scratch belongs to one node fingerprint, never to a path or a prior build.
+// Each call still reads the complete current file and checks for mutation.
+type sourceInputReader struct {
+	buffer []byte
+	source struct{ io.Reader }
+}
+
+// hashFile writes one source entry: content for regular files, target for
+// symlinks, type only for submodules and special files, and a deletion marker
+// for tracked files that no longer exist.
+func (reader *sourceInputReader) hashFile(hash io.Writer, repository, name string) error {
 	path := filepath.Join(repository, filepath.FromSlash(name))
 	info, err := os.Lstat(path)
 	if os.IsNotExist(err) {
@@ -474,7 +481,14 @@ func hashSourceFile(hash io.Writer, repository, name string) error {
 	}
 	defer file.Close()
 	fmt.Fprintf(hash, "file\x00%s\x00%o\x00%d\x00", name, info.Mode().Perm(), info.Size())
-	if _, err = io.Copy(hash, file); err != nil {
+	if reader.buffer == nil {
+		reader.buffer = make([]byte, 32*1024)
+	}
+	// Hide os.File.WriteTo so CopyBuffer uses this fingerprint's scratch.
+	reader.source.Reader = file
+	_, err = io.CopyBuffer(hash, &reader.source, reader.buffer)
+	reader.source.Reader = nil
+	if err != nil {
 		return err
 	}
 	after, err := file.Stat()
