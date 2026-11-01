@@ -83,6 +83,11 @@ test.describe('Navigation', () => {
 
       await page.goto(`/#${path}`);
       await expect(shell(page).root).toBeVisible();
+      if (path === '/') {
+        // The native main window retains its tabs across browser documents.
+        await shell(page).header.getByRole('button', { name: 'home', exact: true }).click();
+      }
+
       const ready = path === '/'
         ? shell(page).main.getByRole('button', { name: 'Edit Layout' })
         : page.getByRole('button', { name: /^Installed\b/ });

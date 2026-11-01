@@ -47,7 +47,13 @@ test.describe('Real application plugin consumers', () => {
     expect(beforeB.workspaceID).not.toBe((await workspace.verify()).workspaceID);
     const settingsA = await openProbeSettings(appPage);
     await expect(counterInput(settingsA)).toHaveValue('0');
-    await saveCounter(appPage, 23);
+    await counterInput(settingsA).fill('22');
+    await settingsA.getByRole('button', { name: 'Increment draft counter', exact: true }).click();
+    await expect(counterInput(settingsA)).toHaveValue('23');
+    expect(await workspace.control('settings.get', {
+      scope: 'plugin', pluginID: probeID, id: 'probe_counter',
+    })).toMatchObject({ status: 'succeeded', result: 0 });
+    await saveSettings(settingsA);
     const actual = await workspace.control('settings.get', { scope: 'plugin', pluginID: probeID, id: 'probe_counter' });
     expect(actual).toMatchObject({ status: 'succeeded', result: 23 });
     await settingsA.reload();

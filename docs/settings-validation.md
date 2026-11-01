@@ -145,6 +145,11 @@ multiple-file and extension constraints. Folder/relative-path constraints requir
 manual entry because the current host picker API cannot represent them; the UI
 does not silently choose incompatible absolute file paths.
 
+The canonical application suite builds the workspace probe with a real custom
+counter editor. Its persistence scenario stages a custom control change, checks
+that the plugin still reports the saved value before Save, and verifies durable
+reload plus isolation from another profile.
+
 ## Shared settings lifecycle and commits
 
 `backend/pkg/settings.Service` initializes the existing SDK provider after

@@ -91,7 +91,6 @@ export async function settingsWindowPage(
     return existing;
   }
 
-  await bindWindowContext(mainPage, 'main');
   const settings = await context.newPage();
   await bindWindowContext(settings, 'settings');
   await beforeNavigate?.(settings);
