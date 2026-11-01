@@ -1,6 +1,6 @@
 import * as React from 'react';
 
-import { Chip, Stack, Text } from '@omniviewdev/base-ui';
+import { Chip, Stack, Text, useTheme } from '@omniviewdev/base-ui';
 
 // Third party
 import MarkdownPreview from '@uiw/react-markdown-preview';
@@ -14,7 +14,10 @@ type Props = {
   changelog: string;
 };
 
-const PluginChangelogCard: React.FC<Props> = ({ version, releaseDate, changelog }) => (
+const PluginChangelogCard: React.FC<Props> = ({ version, releaseDate, changelog }) => {
+  const { activeTheme } = useTheme();
+
+  return (
   <div className={styles.Card}>
     <Stack direction='row' spacing={3} align='center' className={styles.CardHeader}>
       <Chip
@@ -31,7 +34,7 @@ const PluginChangelogCard: React.FC<Props> = ({ version, releaseDate, changelog 
       )}
     </Stack>
     {changelog ? (
-      <div data-color-mode='dark' className={markdownStyles.Markdown}>
+      <div data-color-mode={activeTheme.appearance} className={markdownStyles.Markdown}>
         <MarkdownPreview
           source={changelog}
           style={{ backgroundColor: 'transparent' }}
@@ -43,6 +46,7 @@ const PluginChangelogCard: React.FC<Props> = ({ version, releaseDate, changelog 
       </Text>
     )}
   </div>
-);
+  );
+};
 
 export default PluginChangelogCard;
