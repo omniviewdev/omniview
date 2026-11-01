@@ -98,6 +98,71 @@ tags:
 
 For `exec` sessions, the host owns terminal tab state. When a provider supplies retryable shell errors and alternate commands, “Try a different shell” replaces the session in the existing tab, preserving tab order and focus. The host closes the old backend session; a failed retry stays in that same tab.
 
+#### Fresh external resource shells (macOS)
+
+The host's **Open in Native Terminal** action starts a new local CLI process in
+Terminal or iTerm2. It preserves the selected resource reference and connection.
+It does not move a running PTY, copy shell history or remote working directories,
+or create a built-in terminal tab/session. Built-in Exec and shell retry behavior
+remain unchanged. No modifier shortcut or default destination is configured.
+
+`terminal.nativeApplication` accepts `terminal` (default) or `iterm2`. The action
+is hidden outside macOS. The selected application must be installed; the host
+never silently switches applications or falls back to built-in Exec.
+
+Plugins built with SDK v0.12.0 can provide `NativeCommandHandler` on an exec
+handler, or implement the optional `exec.NativeCommandProvider`. Advertise native
+support only when the handler can plan a fresh external process. Planning must
+revalidate authoritative resource identity/incarnation and the selected connection,
+reject unsupported authentication, and return structured `Executable`, literal
+`Args`, optional `Env`, and optional absolute local `Cwd`. Plans must not include
+tokens, passwords, or embedded credentials in any field. Use inherited local
+authentication or reusable local credential-file references instead. An old plugin
+or unsupported resource receives an explicit unsupported error, never legacy Exec.
+
+The Wails service exposes `OpenNativeSession(plugin, connectionID, encoded)` and
+`GetNativeTerminalSupport() bool`. The former accepts only the same bounded
+resource-session JSON as built-in Exec, applies the same host reference admission,
+and asks the plugin for its command immediately before launch. It is not a
+frontend arbitrary-command API. Commands are not logged or returned to the UI.
+
+Frontend plugins use `useNativeExec({ pluginID?, resourceKey })` from
+`@omniviewdev/runtime`. It returns `isSupported`, `isPending`, and
+`openNativeSession({ connectionID, opts }): Promise<boolean>`; `opts` is
+`Partial<SessionOptions>` with the observed canonical body, reference, route, and
+selected container. Plugin context supplies `pluginID` unless host code provides
+it explicitly. Support requires both the backend platform check and the
+handler's `supports_native_command` metadata. Hide native actions until support
+is confirmed, disable them while pending, and close menus only on `true`.
+Failures return `false` and use the standard error snackbar without allocating
+a built-in tab/session or running integrated shell recovery. Pending state and
+duplicate-call exclusion are shared across hooks using the same QueryClient,
+plugin, and resource key, including surfaces mounted during a launch. Calls are
+blocked synchronously before the pending render. Its exported `NativeExecInput`
+and `UseNativeExecResult` types support typed consumers.
+The handwritten `ExecClient.OpenNativeSession(plugin, connectionID, options)`
+encodes `SessionOptions` safely; do not pass unbounded objects directly to the
+generated encoded-string binding.
+
+The host resolves the CLI using its restored login-shell PATH. It writes a
+mode-0600 launch script inside a private mode-0700 temporary directory, with
+POSIX-quoted executable, arguments, environment additions, and working directory.
+The script deletes itself before execution. Failed launches remove the private
+directory. The host resolves fixed allowlisted bundle IDs through NSWorkspace
+using built-in JXA/AppKit, without Apple Events or a Swift runtime dependency.
+Escaped AppleScript addresses that installed application path to create a fresh
+window; the host never types into an existing interactive session. Discovery and
+Automation calls have deadlines. A successful launch means the terminal accepted the new window,
+not that the remote shell connected successfully; remote errors remain visible
+in that new terminal.
+
+If the CLI is missing, install it on the login PATH and restart Omniview. If the
+application is missing, install it or change Settings > Terminal. If macOS denies
+control, enable Omniview under System Settings > Privacy & Security > Automation
+for the selected terminal, then retry. For manual checks use disposable local
+fixtures, not production connections or credentials.
+
+
 ### 1.4 Creating a New Plugin
 
 ```bash

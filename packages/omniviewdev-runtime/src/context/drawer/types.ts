@@ -97,8 +97,19 @@ export type DrawerComponentAction<T = any> = {
   /**
    * Have the action provide a list of actions underneath when clicked rather than
    * initiation the action directly on click.
+   * The optional snapshot is the current `externalStore` value. Pass it through
+   * list calculations so render memoization observes external state changes.
    */
-  list?: ((ctx: DrawerContext<T>) => Array<DrawerComponentActionListItem>) | Array<DrawerComponentActionListItem>
+  list?: ((ctx: DrawerContext<T>, snapshot?: unknown) => Array<DrawerComponentActionListItem>) | Array<DrawerComponentActionListItem>
+
+  /**
+   * Optional hook-backed state used while rendering action availability and lists.
+   * Snapshots must retain identity until the subscribed state changes.
+   */
+  externalStore?: {
+    subscribe: (ctx: DrawerContext<T>, onChange: () => void) => () => void;
+    getSnapshot: (ctx: DrawerContext<T>) => unknown;
+  }
 }
 
 /**
@@ -114,6 +125,9 @@ export type DrawerComponentActionListItem<T = any> = {
    * The icon to display in list item to the left of the the name
    */
   icon?: ReactNode
+
+  /** Disables this choice without disabling the other actions in the list. */
+  disabled?: boolean
 
   /**
    * The function to run for the action list item on click.
