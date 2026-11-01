@@ -145,7 +145,7 @@ func TestWorkspaceInvalidApplyNeverRequestsHealthySupervisorStopEdges(t *testing
 			}
 			manager, liveBefore, ownerBefore := startCLIEdgeOwner(t, &f)
 			if test.state == "dirty-ref" {
-				registry, err := devworkspace.LoadRegistry(f.root)
+				registry, err := devworkspace.LoadRegistry(context.Background(), f.root)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -184,7 +184,7 @@ func TestWorkspaceInvalidApplyNeverRequestsHealthySupervisorStopEdges(t *testing
 				t.Fatal(err)
 			}
 			preserved := map[string][]byte{}
-			registry, err := devworkspace.LoadRegistry(f.root)
+			registry, err := devworkspace.LoadRegistry(context.Background(), f.root)
 			if err != nil {
 				t.Fatal(err)
 			}

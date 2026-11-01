@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -59,4 +60,16 @@ func TestDiscoverCollectionsRefusesRedirectedRegistryAndHonorsCancellation(t *te
 	cancel()
 	_, err = DiscoverCollections(ctx, filepath.Join(root, "omniview"))
 	require.True(t, errors.Is(err, context.Canceled))
+}
+
+func TestRegistryAndCollectionsRejectExpiredContext(t *testing.T) {
+	_, root := fixtureManager(t)
+	ctx, cancel := context.WithDeadline(context.Background(), time.Unix(0, 0))
+	defer cancel()
+	_, err := LoadRegistry(ctx, root)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	found, err := DiscoverCollections(ctx, filepath.Join(root, "omniview"))
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Nil(t, found)
+	require.ErrorIs(t, validateSources(ctx, nil), context.DeadlineExceeded)
 }

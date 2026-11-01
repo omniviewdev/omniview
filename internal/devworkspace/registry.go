@@ -85,6 +85,9 @@ func resolveCommit(ctx context.Context, common, ref string) (string, error) {
 
 func sourceFromSpec(ctx context.Context, root string, spec SourceSpec, refresh bool) (Source, error) {
 	var s Source
+	if err := ctx.Err(); err != nil {
+		return s, err
+	}
 	if !safeID(spec.ID) {
 		return s, devcontract.Fail(2, "invalid_repository", "source ID is invalid")
 	}
@@ -136,6 +139,9 @@ func sourceFromSpec(ctx context.Context, root string, spec SourceSpec, refresh b
 	ref := spec.DefaultRef
 	if ref == "" {
 		ref, err = git(ctx, common, "", "symbolic-ref", "--short", "HEAD")
+		if ctx.Err() != nil {
+			return s, ctx.Err()
+		}
 		if err != nil {
 			return s, devcontract.Fail(2, "missing_default_ref", "detached source requires an explicit default ref")
 		}
@@ -153,6 +159,9 @@ func sourceFromSpec(ctx context.Context, root string, spec SourceSpec, refresh b
 	}
 	if !safeID(directory) || directory == ".local" || directory == "workspace.json" {
 		return s, devcontract.Fail(2, "invalid_repository_path", "source directory must be a safe single directory name")
+	}
+	if err := ctx.Err(); err != nil {
+		return s, err
 	}
 	return Source{ID: spec.ID, CommonDir: common, Worktree: worktree, DefaultRef: ref, Directory: directory}, nil
 }
@@ -196,12 +205,18 @@ func originFingerprint(ctx context.Context, common string) string {
 }
 
 func validateSources(ctx context.Context, sources []Source) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	ids, commons, origins, dirs := map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for _, s := range sources {
 		if ids[s.ID] || commons[s.CommonDir] || dirs[s.Directory] {
 			return devcontract.Fail(4, "duplicate_source", "repository ID, common directory or workspace directory has duplicate mappings")
 		}
 		origin := originFingerprint(ctx, s.CommonDir)
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if origin != "" && origins[origin] {
 			return devcontract.Fail(4, "ambiguous_origin", "multiple registered repositories share an origin; register only the intended source")
 		}
@@ -213,7 +228,7 @@ func validateSources(ctx context.Context, sources []Source) error {
 	if !ids["omniview"] {
 		return devcontract.Fail(2, "missing_host", "source registry requires omniview")
 	}
-	return nil
+	return ctx.Err()
 }
 
 func Init(ctx context.Context, opts InitOptions) (Registry, error) {
@@ -270,8 +285,11 @@ func Init(ctx context.Context, opts InitOptions) (Registry, error) {
 	return reg, atomicJSON(path, reg)
 }
 
-func LoadRegistry(root string) (Registry, error) {
+func LoadRegistry(ctx context.Context, root string) (Registry, error) {
 	var reg Registry
+	if err := ctx.Err(); err != nil {
+		return reg, err
+	}
 	data, err := os.ReadFile(filepath.Join(root, ".omniview-dev", "repositories.json"))
 	if err != nil {
 		return reg, devcontract.Fail(3, "missing_registry", "initialize the repository root first")
@@ -283,7 +301,7 @@ func LoadRegistry(root string) (Registry, error) {
 		if !filepath.IsAbs(s.CommonDir) || (s.Worktree != "" && !filepath.IsAbs(s.Worktree)) {
 			return reg, devcontract.Fail(2, "invalid_registry", "registry paths must be absolute")
 		}
-		resolved, e := sourceFromSpec(context.Background(), root, SourceSpec{ID: s.ID, Path: s.CommonDir, Worktree: s.Worktree, DefaultRef: s.DefaultRef, Directory: s.Directory}, false)
+		resolved, e := sourceFromSpec(ctx, root, SourceSpec{ID: s.ID, Path: s.CommonDir, Worktree: s.Worktree, DefaultRef: s.DefaultRef, Directory: s.Directory}, false)
 		if e != nil {
 			return reg, e
 		}
@@ -292,5 +310,5 @@ func LoadRegistry(root string) (Registry, error) {
 		}
 		reg.Repositories[i] = resolved
 	}
-	return reg, validateSources(context.Background(), reg.Repositories)
+	return reg, validateSources(ctx, reg.Repositories)
 }

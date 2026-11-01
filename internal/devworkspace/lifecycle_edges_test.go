@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"os"
@@ -81,8 +82,12 @@ func TestLifecycleEdgeProcess(t *testing.T) {
 		}
 		os.Exit(0)
 	}
-	m, err := Open(config.Root, Options{Home: config.Home, Stopped: func(context.Context, devcontract.ResolvedWorkspace) error { return nil }})
-	require.NoError(t, err)
+	var m *Manager
+	var err error
+	if config.Action != "registry" && config.Action != "collections" {
+		m, err = Open(config.Root, Options{Home: config.Home, Stopped: func(context.Context, devcontract.ResolvedWorkspace) error { return nil }})
+		require.NoError(t, err)
+	}
 	protocol := os.NewFile(3, "lifecycle-protocol")
 	defer protocol.Close()
 	input := bufio.NewReader(os.Stdin)
@@ -98,6 +103,10 @@ func TestLifecycleEdgeProcess(t *testing.T) {
 	}()
 	var result lifecycleEdgeResult
 	switch config.Action {
+	case "registry":
+		_, err = LoadRegistry(ctx, config.Root)
+	case "collections":
+		_, err = DiscoverCollections(ctx, filepath.Join(config.Root, "omniview"))
 	case "create":
 		result.Workspace, err = m.Create(ctx, config.Create)
 	case "edit":
@@ -120,6 +129,9 @@ func TestLifecycleEdgeProcess(t *testing.T) {
 		result.Error = err.Error()
 		if failure := workspaceError(err); failure != nil {
 			result.Code = failure.Code
+		}
+		if errors.Is(err, context.Canceled) {
+			result.Code = "context_canceled"
 		}
 	}
 	require.NoError(t, json.NewEncoder(protocol).Encode(result))
@@ -286,7 +298,7 @@ func TestLifecycleEdgesLaterEditFailureRetainsWholeIntent(t *testing.T) {
 	ctx := context.Background()
 	w, err := m.Create(ctx, CreateOptions{Slug: "partial-edit"})
 	require.NoError(t, err)
-	reg, err := LoadRegistry(root)
+	reg, err := LoadRegistry(ctx, root)
 	require.NoError(t, err)
 	planned, err := m.plan(ctx, reg, CreateOptions{Slug: w.Manifest.Slug, workspaceID: w.Manifest.WorkspaceID, Repositories: []string{"plugin-sdk", "ui"}})
 	require.NoError(t, err)
@@ -401,7 +413,7 @@ func TestLifecycleEdgesRollbackRetainsLiveOutputWriterEvidence(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(hostSource, "package.json"), []byte("{\"name\":\"rollback-host\",\"private\":true}\n"), 0600))
 	fixtureGit(t, hostSource, "add", "package.json")
 	fixtureGit(t, hostSource, "commit", "-m", "add producer manifest")
-	reg, err := LoadRegistry(m.Root)
+	reg, err := LoadRegistry(ctx, m.Root)
 	require.NoError(t, err)
 	manifest, err := m.plan(ctx, reg, CreateOptions{Slug: "rollback-writer"})
 	require.NoError(t, err)
@@ -455,5 +467,27 @@ func lifecycleEdgeAccept(t *testing.T, listener *net.TCPListener, process *lifec
 		value := process.result(t)
 		t.Fatalf("lifecycle helper ended before Git/operation barrier: code=%s error=%s", value.Code, value.Error)
 		return nil
+	}
+}
+
+func TestRegistryAndCollectionsCancelDuringSourceGitValidation(t *testing.T) {
+	for _, action := range []string{"registry", "collections"} {
+		for _, command := range []string{"rev-parse", "config --get remote.origin.url"} {
+			t.Run(action+"/"+command, func(t *testing.T) {
+				m, root := fixtureManager(t)
+				fixtureGit(t, filepath.Join(root, "omniview"), "remote", "add", "origin", "https://example.invalid/host.git")
+				listener := lifecycleEdgeListener(t)
+				p := startLifecycleEdge(t, m, lifecycleEdgeConfig{
+					Action: action, Gate: listener.Addr().String(),
+					GitDirectory: filepath.Join(root, "omniview", ".git"),
+					GitCommand:   command, AfterGit: true,
+				})
+				p.signal(t)
+				gate := lifecycleEdgeAccept(t, listener, p)
+				defer gate.Close()
+				p.signal(t)
+				require.Equal(t, "context_canceled", p.result(t).Code)
+			})
+		}
 	}
 }

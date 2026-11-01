@@ -124,7 +124,8 @@ func addControlCommandsWithExecutor(root *cobra.Command, in io.Reader, execute f
 		if operation == "plugin.install-archive" || operation == "plugin.install-version" {
 			leaf.Long = leaf.Short + ".\n\nManaged development profiles require independent fixed-SDK backend artifact evidence. " +
 				"These commands do not import release provenance; a published archive or checksum alone is insufficient. " +
-				"Use workspace edit --add-plugin PLUGIN --ref REPOSITORY=RELEASE --apply to build selected source against the verified SDK. " +
+				"Use workspace edit --workspace MANIFEST --add-plugin PLUGIN --ref REPOSITORY=RELEASE --apply to build selected source against the verified SDK. " +
+				"MANIFEST is an absolute workspace manifest path or directory. " +
 				"Ordinary desktop-profile admission is a separate policy."
 		}
 		flags := leaf.Flags()

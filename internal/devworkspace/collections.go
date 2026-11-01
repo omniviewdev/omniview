@@ -41,7 +41,10 @@ func DiscoverCollections(ctx context.Context, directory string) ([]string, error
 			visited[root] = true
 			marker := filepath.Join(root, ".omniview-dev", "repositories.json")
 			if canonical, err := filepath.EvalSymlinks(marker); err == nil && canonical == marker {
-				registry, err := LoadRegistry(root)
+				registry, err := LoadRegistry(ctx, root)
+				if ctx.Err() != nil {
+					return nil, ctx.Err()
+				}
 				if err == nil {
 					for _, source := range registry.Repositories {
 						if source.ID == "omniview" && source.CommonDir == common {
@@ -57,5 +60,8 @@ func DiscoverCollections(ctx context.Context, directory string) ([]string, error
 		}
 	}
 	sort.Strings(roots)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	return roots, nil
 }

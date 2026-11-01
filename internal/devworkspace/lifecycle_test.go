@@ -84,7 +84,7 @@ func TestCreateIndependentFeaturesWithBareUIAndPluginMetadata(t *testing.T) {
 func TestRegistryRejectsDuplicatesAndDoesNotChooseHistoricalBareClone(t *testing.T) {
 	m, root := fixtureManager(t)
 	fixtureGit(t, root, "clone", "--bare", filepath.Join(root, "omniview"), filepath.Join(root, "omniview.git"))
-	reg, err := LoadRegistry(root)
+	reg, err := LoadRegistry(context.Background(), root)
 	require.NoError(t, err)
 	require.Equal(t, filepath.Join(root, "omniview", ".git"), reg.Repositories[0].CommonDir)
 	_, err = Init(context.Background(), InitOptions{Root: root, Sources: []SourceSpec{{ID: "omniview", Path: filepath.Join(root, "omniview")}, {ID: "other", Path: filepath.Join(root, "omniview.git")}}})
@@ -104,7 +104,7 @@ func TestInterruptedCreateResumesOwnedWorktreesAndRollbackPreservesForeign(t *te
 	require.Error(t, err)
 	// An interrupted create has a durable intent before any Git changes. Build
 	// that state directly rather than timing a process kill against a fast Git.
-	reg, err := LoadRegistry(m.Root)
+	reg, err := LoadRegistry(ctx, m.Root)
 	require.NoError(t, err)
 	manifest, err := m.plan(ctx, reg, CreateOptions{Slug: "interrupted", Repositories: []string{"ui"}})
 	require.NoError(t, err)
@@ -138,7 +138,7 @@ func TestInterruptedCreateResumesOwnedWorktreesAndRollbackPreservesForeign(t *te
 func TestOccupiedBranchIsNeverAttached(t *testing.T) {
 	m, root := fixtureManager(t)
 	ctx := context.Background()
-	reg, err := LoadRegistry(root)
+	reg, err := LoadRegistry(ctx, root)
 	require.NoError(t, err)
 	manifest, err := m.plan(ctx, reg, CreateOptions{Slug: "occupied"})
 	require.NoError(t, err)
@@ -334,7 +334,7 @@ func TestInterruptedRenameRepairsMovedWorktreesOnResume(t *testing.T) {
 func TestCleanPartialCreationRollbackDeletesOnlyOwnedUnmodifiedResources(t *testing.T) {
 	m, root := fixtureManager(t)
 	ctx := context.Background()
-	reg, err := LoadRegistry(root)
+	reg, err := LoadRegistry(ctx, root)
 	require.NoError(t, err)
 	manifest, err := m.plan(ctx, reg, CreateOptions{Slug: "rollback-clean", Repositories: []string{"ui"}})
 	require.NoError(t, err)

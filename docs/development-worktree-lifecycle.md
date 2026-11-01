@@ -17,7 +17,7 @@ Only existing standard sources are registered; the host is required. Historical 
 
 Duplicate IDs, common directories, destination directories, or origin identities are rejected. Different HTTPS/SSH credentials or transport spellings do not distinguish clones of the same remote. Reinitializing the identical registry is harmless; reinitializing with different mappings fails without replacing the existing registry. Existing source clones/checkouts are never relocated, reset, or cleaned.
 
-`LoadRegistry(root)` exposes the validated source map read-only. `Open(root, Options{Home: home, Stopped: guard})` creates a lifecycle manager. `Home` selects the profile boundary through the shared resolver; it is not substituted into subprocess environments.
+`LoadRegistry(ctx, root)` exposes the validated source map read-only and carries cancellation through source Git validation. `Open(root, Options{Home: home, Stopped: guard})` creates a lifecycle manager. `Home` selects the profile boundary through the shared resolver; it is not substituted into subprocess environments.
 
 ## Create and recover
 

@@ -21,7 +21,7 @@ func TestAbsentStateStaysAbsentThroughEditAndPartialCreateResume(t *testing.T) {
 	_, err = m.Edit(ctx, "no-state", EditOptions{DisplayName: &name})
 	require.NoError(t, err)
 	require.NoDirExists(t, w.StateRoot)
-	reg, err := LoadRegistry(root)
+	reg, err := LoadRegistry(ctx, root)
 	require.NoError(t, err)
 	manifest, err := m.plan(ctx, reg, CreateOptions{Slug: "stage-resume", Baseline: new("offline-source")})
 	require.NoError(t, err)

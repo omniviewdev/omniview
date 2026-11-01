@@ -28,12 +28,30 @@ func validateSDKImports(ctx context.Context, root, sdk string) error {
 		if walkErr != nil {
 			return walkErr
 		}
+		// Exclude managed trees before inspecting links: node_modules commonly
+		// points at package-manager state outside the consumer.
+		if file != root && sdkImportExcludedDirectory(entry.Name()) && (entry.IsDir() || entry.Type()&os.ModeSymlink != 0) {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			if sdkGoSource(entry.Name()) {
+				return fmt.Errorf("cannot inspect SDK imports through Go source symlink %s; replace it with an ordinary source file before launching", file)
+			}
+			target, err := os.Stat(file)
+			if err != nil {
+				return fmt.Errorf("cannot determine whether symlink %s contains Go packages; repair or remove the link before launching: %w", file, err)
+			}
+			if target.IsDir() {
+				return fmt.Errorf("cannot inspect SDK imports through directory symlink %s; replace it with an ordinary source directory before launching", file)
+			}
+			return nil
+		}
 		if entry.IsDir() {
 			if file == root {
 				return nil
-			}
-			if ignoredBuildDirectory(entry.Name()) || strings.HasPrefix(entry.Name(), ".") || strings.HasPrefix(entry.Name(), "_") || entry.Name() == "testdata" {
-				return filepath.SkipDir
 			}
 			if _, err := os.Stat(filepath.Join(file, "go.mod")); err == nil {
 				return filepath.SkipDir
@@ -44,6 +62,13 @@ func validateSDKImports(ctx context.Context, root, sdk string) error {
 		}
 		if !sdkGoSource(entry.Name()) {
 			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("cannot inspect SDK imports in non-regular Go source %s; replace it with a regular file before launching", file)
 		}
 		parsed, err := parser.ParseFile(token.NewFileSet(), file, nil, parser.ImportsOnly)
 		if err != nil {
@@ -77,21 +102,53 @@ func validateSDKImports(ctx context.Context, root, sdk string) error {
 	})
 }
 
+func sdkImportExcludedDirectory(name string) bool {
+	switch name {
+	case "vendor", "node_modules", "coverage", "storybook-static", "testdata":
+		return true
+	}
+	return strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_")
+}
+
 func sdkGoSource(name string) bool {
 	return strings.HasSuffix(name, ".go") && !strings.HasPrefix(name, ".") && !strings.HasPrefix(name, "_")
 }
 
 func sdkPackageSource(ctx context.Context, sdk, rel string) (bool, error) {
 	directory := filepath.Join(sdk, filepath.FromSlash(rel))
-	for current := directory; current != sdk; current = filepath.Dir(current) {
+	current := sdk
+	var components []string
+	if rel != "" {
+		components = strings.Split(rel, "/")
+	}
+	for index := 0; ; index++ {
 		if err := ctx.Err(); err != nil {
 			return false, err
 		}
-		if _, err := os.Stat(filepath.Join(current, "go.mod")); err == nil {
+		info, err := os.Lstat(current)
+		if os.IsNotExist(err) {
 			return false, nil
-		} else if !os.IsNotExist(err) {
+		}
+		if err != nil {
 			return false, err
 		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return false, fmt.Errorf("cannot inspect selected SDK through symlink %s; select an SDK with ordinary source directories", current)
+		}
+		if !info.IsDir() {
+			return false, fmt.Errorf("SDK package path %s is not a directory", current)
+		}
+		if index > 0 {
+			if _, err := os.Lstat(filepath.Join(current, "go.mod")); err == nil {
+				return false, nil
+			} else if !os.IsNotExist(err) {
+				return false, err
+			}
+		}
+		if index == len(components) {
+			break
+		}
+		current = filepath.Join(current, components[index])
 	}
 	entries, err := os.ReadDir(directory)
 	if os.IsNotExist(err) {
@@ -108,6 +165,13 @@ func sdkPackageSource(ctx context.Context, sdk, rel string) (bool, error) {
 			continue
 		}
 		file := filepath.Join(directory, entry.Name())
+		info, err := entry.Info()
+		if err != nil {
+			return false, err
+		}
+		if !info.Mode().IsRegular() {
+			return false, fmt.Errorf("cannot inspect non-regular SDK Go source %s; select an SDK with regular source files", file)
+		}
 		parsed, err := parser.ParseFile(token.NewFileSet(), file, nil, parser.PackageClauseOnly)
 		if err != nil {
 			return false, err

@@ -69,7 +69,7 @@ func addRepositoryCommands(root *cobra.Command) {
 			case "remove":
 				value, err = devworkspace.RemoveRepository(cmd.Context(), collection, id)
 			case "list":
-				value, err = devworkspace.LoadRegistry(collection)
+				value, err = devworkspace.LoadRegistry(cmd.Context(), collection)
 			}
 			if err != nil {
 				return fail(err)

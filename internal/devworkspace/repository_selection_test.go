@@ -29,7 +29,7 @@ func selectedRepository(t *testing.T, w Workspace, id string) devcontract.Reposi
 func TestRepositoryAddRemovePreservesMappingsAndReferencedResources(t *testing.T) {
 	m, root := fixtureManager(t)
 	ctx := context.Background()
-	before, err := LoadRegistry(root)
+	before, err := LoadRegistry(ctx, root)
 	require.NoError(t, err)
 	source := fixtureRepo(t, t.TempDir(), "provider-source", "provider-plugin")
 	spec := SourceSpec{ID: "provider", Path: source, Directory: "custom-provider"}
@@ -38,7 +38,7 @@ func TestRepositoryAddRemovePreservesMappingsAndReferencedResources(t *testing.T
 	require.Equal(t, before.Repositories, reg.Repositories[:len(before.Repositories)])
 	_, err = AddRepository(ctx, root, spec)
 	require.Error(t, err)
-	unchanged, err := LoadRegistry(root)
+	unchanged, err := LoadRegistry(ctx, root)
 	require.NoError(t, err)
 	require.Equal(t, reg, unchanged)
 
@@ -136,7 +136,7 @@ func TestRepositoryRemovalRefusesDirtyWorkspaceWithoutChangingRegistry(t *testin
 	require.NoError(t, os.MkdirAll(w.StateRoot, 0700))
 	path := filepath.Join(w.Root, "ui", "private-note")
 	require.NoError(t, os.WriteFile(path, []byte("keep"), 0600))
-	before, err := LoadRegistry(root)
+	before, err := LoadRegistry(ctx, root)
 	require.NoError(t, err)
 	_, err = RemoveRepository(ctx, root, "ui")
 	require.Error(t, err)
@@ -144,7 +144,7 @@ func TestRepositoryRemovalRefusesDirtyWorkspaceWithoutChangingRegistry(t *testin
 	require.Error(t, err)
 	require.FileExists(t, path)
 	require.DirExists(t, w.StateRoot)
-	after, err := LoadRegistry(root)
+	after, err := LoadRegistry(ctx, root)
 	require.NoError(t, err)
 	require.Equal(t, before, after)
 }
@@ -235,7 +235,7 @@ func TestSelectedFetchUsesGlobalCredentialHelperOnly(t *testing.T) {
 
 func TestPluginDiscoveryReportsMissingSourcePath(t *testing.T) {
 	m, root := fixtureManager(t)
-	reg, err := LoadRegistry(root)
+	reg, err := LoadRegistry(context.Background(), root)
 	require.NoError(t, err)
 	reg.Repositories = append(reg.Repositories, Source{ID: "missing", CommonDir: filepath.Join(t.TempDir(), "missing"), DefaultRef: "main", Directory: "missing"})
 	_, err = m.plan(context.Background(), reg, CreateOptions{Slug: "missing-source", Plugins: []string{"unknown"}})

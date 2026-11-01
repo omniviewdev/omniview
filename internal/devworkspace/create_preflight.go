@@ -14,7 +14,7 @@ func (m *Manager) PreflightCreateLaunch(ctx context.Context, create CreateOption
 	if err := options.Validate(); err != nil {
 		return err
 	}
-	registry, err := LoadRegistry(m.Root)
+	registry, err := LoadRegistry(ctx, m.Root)
 	if err != nil {
 		return err
 	}

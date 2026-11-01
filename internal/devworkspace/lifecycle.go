@@ -52,7 +52,7 @@ func (m *Manager) Create(ctx context.Context, opts CreateOptions) (Workspace, er
 		return Workspace{}, err
 	}
 	defer unlock()
-	reg, err := LoadRegistry(m.Root)
+	reg, err := LoadRegistry(ctx, m.Root)
 	if err != nil {
 		return Workspace{}, err
 	}
@@ -384,7 +384,7 @@ func (m *Manager) planEdit(ctx context.Context, j *journal, opts EditOptions) (e
 	for id, ref := range opts.Refs {
 		create.Refs[id] = ref
 	}
-	reg, err := LoadRegistry(m.Root)
+	reg, err := LoadRegistry(ctx, m.Root)
 	if err != nil {
 		return editPlan{}, err
 	}
