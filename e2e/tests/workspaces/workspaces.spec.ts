@@ -27,17 +27,17 @@ test.describe('Owned application profiles', () => {
     const beforeB = (await hostSettingsValues(other.page.request))['terminal.fontSize'];
     const beforeA = (await hostSettingsValues(appPage.request))['terminal.fontSize'];
     const next = beforeA === 17 ? 18 : 17;
-    await openSettingsCategory(appPage, 'Terminal');
-    await settingRow(appPage, 'terminal.fontSize').getByRole('spinbutton').fill(String(next));
-    await saveSettings(appPage);
+    const settings = await openSettingsCategory(appPage, 'Terminal');
+    await settingRow(settings, 'terminal.fontSize').getByRole('spinbutton').fill(String(next));
+    await saveSettings(settings);
     expect((await hostSettingsValues(appPage.request))['terminal.fontSize']).toBe(next);
     expect((await hostSettingsValues(other.page.request))['terminal.fontSize']).toEqual(beforeB);
-    await appPage.reload();
+    await settings.reload();
     await openSettingsCategory(appPage, 'Terminal');
-    await expect(settingRow(appPage, 'terminal.fontSize').getByRole('spinbutton')).toHaveValue(String(next));
+    await expect(settingRow(settings, 'terminal.fontSize').getByRole('spinbutton')).toHaveValue(String(next));
     for (const [page, descriptor, label, theme] of [[appPage, a, 'Solarized Dark', 'solarized-dark'], [other.page, b, 'Void', 'void']] as const) {
-      await openSettingsCategory(page, 'Appearance');
-      await chooseSetting(page, 'appearance.theme', label);
+      const themeSettings = await openSettingsCategory(page, 'Appearance');
+      await chooseSetting(themeSettings, 'appearance.theme', label);
       await expect.poll(async () => (await hostSettingsValues(page.request))['appearance.theme']).toBe(theme);
       await expect(page.locator('html')).toHaveAttribute('data-ov-theme', theme);
       await expect.poll(async () => page.evaluate(() => {

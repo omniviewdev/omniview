@@ -6,7 +6,7 @@ Developers must be able to verify a selected Go executable before saving it. SDK
 
 Core settings validate changed drafts asynchronously after a short debounce. Each row announces checking, success, or actionable failure. Responses for older drafts, discarded drafts, or another category must never replace current feedback. Save remains available to retry validation, but is disabled while saving. Drafts survive failures. Editing and discard cannot race an in-flight save.
 
-The save action retains its accessible name and exposes busy state until validation and persistence finish. Its action bar disappears only after a successful save; rejected drafts keep their actions and feedback.
+The save action retains its accessible name and exposes busy state until validation and persistence finish. The persistent footer shows Save/Discard for drafts and Done after a successful save; rejected drafts keep their actions and feedback.
 
 An empty Go path retains the existing optional default: automatic discovery in PATH and common installation folders when a build needs Go. Clearing an override succeeds without requiring Go to be installed. This does not claim that automatic discovery has been smoke-tested. Explicit paths reject missing files, directories, and non-executable files, then run `go version` directly without a shell. The smoke command has a five-second deadline and bounded output, and must identify itself as Go. `GOTOOLCHAIN=local` prevents Go toolchain download and `GOWORK=off` avoids ambient workspace selection. No builds or module mutation occurs. Success identifies the version; failures explain selection, execution, timeout, or unexpected output without echoing command output, environment, or submitted values. Sensitive settings always receive generic feedback.
 
@@ -17,9 +17,149 @@ An empty Go path retains the existing optional default: automatic discovery in P
 - Missing path, directory, non-executable file, nonzero smoke exit, timeout, or non-Go output fails without changing saved values.
 - Permission or other filesystem access failures return `unreadable` feedback instead of claiming that the selected executable does not exist.
 - A real Go executable succeeds. Empty path succeeds with an explicit automatic-discovery message, even without Go installed.
-- Delayed old results cannot overwrite newer drafts. Discard removes feedback. Category switches clear drafts and feedback.
+- Delayed old results cannot overwrite newer drafts. Discard removes feedback. Switching categories with drafts offers Save, Discard, or Cancel; a failed save keeps the current category and draft.
 - Save revalidates; replacing a previously valid executable with a failing one cannot bypass enforcement.
 - No validation response contains secret input or arbitrary subprocess output.
+
+## Dedicated Settings window
+
+Settings is a non-modal, application-instance singleton owned by
+`backend/window.Service`. Startup creates no Settings webview. `OpenSettings`
+creates it lazily, then restores, shows, and focuses the same native window.
+Closing, Done, and the close shortcut hide it without unmounting its frontend.
+Category, search, scroll, validation, and unsaved drafts remain in memory.
+Settings is excluded from session restore, workspace tabs, drawers, and transfers.
+Application shutdown bypasses the hide-on-close hook.
+
+The native application menu contains **Settings…**, with `CmdOrCtrl+,`.
+On macOS it belongs in the application menu; other platforms use the File menu.
+The application header's Settings item opens the same singleton. The shortcut
+is registered through the native menu, not a frontend opening key listener.
+Inside Settings, `Cmd/Ctrl+K` focuses local search and `Cmd/Ctrl+W` hides the window.
+
+Runtime callers should use `openSettings()` from `@omniviewdev/runtime`.
+An untargeted first open selects General; later untargeted opens retain location.
+For an exact field, use a local target such as:
+
+```ts
+await openSettings('/settings?category=terminal&setting=terminal.fontSize');
+```
+
+Plugin links use `section=plugins&plugin=<pluginId>&setting=<opaqueSettingId>`.
+Encode parameter values with `URLSearchParams`; plugin setting IDs are not
+category paths. Repeated explicit requests receive distinct identities and
+refocus the field. Location acknowledgements use the accepted request identity
+and serialize within the retained webview, preventing older navigation writes
+from overwriting later ones. Native entrypoints accept only local Settings routes.
+Legacy settings navigation routes through this API without changing workspace
+tabs. Normal runtime navigation leaves browser history untouched; a raw hash
+assignment already creates a browser entry, which is replaced with the active
+workspace route. Dirty navigation and targeted requests share the same guard.
+The search shortcut does not move focus outside that guard.
+
+The compact Settings shell uses theme tokens, a 212px navigation column, 29px
+navigation rows, 28px form controls, and a persistent footer. Only its caption
+regions are draggable. Settings-only chrome avoids duplicate title bars; the
+labelled close action remains available. macOS retains its native frame with a
+hidden title and hidden window controls: the pinned window library skips native
+title assignment for frameless windows, which makes the accessibility title
+empty. Other platforms use frameless chrome. Minimum size is 960×600, bounded
+by the current screen's work area.
+
+Hidden Settings pauses query focus/refetch work and CSS animations without
+destroying state. Reopening refreshes stale active snapshots. Theme previews use
+the live theme registry, including user and plugin themes, and retain the existing
+immediate theme commit controller. Ordinary fields still use the shared draft form.
+AI Tools exposes the same persistent Save/Discard footer for port and preset
+drafts. If the port saves but the preset fails, feedback identifies the partial
+save and retains only the failed draft for retry.
+Search indexes public host and installed-plugin descriptor IDs, labels, and
+descriptions only—not values, defaults, options, paths, or custom editor content.
+
+## Plugin field editors
+
+Existing Go SDK descriptors remain the semantic contract. No SDK, proto, or
+plugin backend migration is required for a custom visual representation of an
+existing field. A string can use a visual chooser while still staging a string.
+The host renders descriptor-only plugins without frontend contributions.
+
+Export typed contributions through the existing `extensionRegistrations` entry:
+
+```tsx
+import {
+  SETTINGS_EDITOR_EXTENSION_POINT_ID,
+  type ExtensionRegistration,
+  type SettingsEditorProps,
+  type SettingsEditorV1,
+} from '@omniviewdev/runtime';
+
+function LayoutEditor({
+  value, disabled, inputId, labelledBy, describedBy, onChange, registerFocusTarget,
+}: SettingsEditorProps) {
+  const focusedChoice = value === 'full' ? 'full' : 'modern';
+  return (
+    <div role="group" aria-labelledby={labelledBy} aria-describedby={describedBy}>
+      {(['modern', 'full'] as const).map(choice => (
+        <label key={choice} className="layout-card">
+          <input
+            id={`${inputId}-${choice}`}
+            name={inputId}
+            type="radio"
+            value={choice}
+            checked={value === choice}
+            disabled={disabled}
+            ref={choice === focusedChoice ? registerFocusTarget : undefined}
+            onChange={() => onChange(choice)}
+          />
+          {choice === 'modern' ? 'Modern' : 'Full'}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+export const extensionRegistrations: ExtensionRegistration<SettingsEditorV1>[] = [{
+  extensionPointId: SETTINGS_EDITOR_EXTENSION_POINT_ID,
+  registration: {
+    id: 'layout-editor',
+    label: 'Layout',
+    value: { schemaVersion: 1, settingId: 'layout', editor: LayoutEditor },
+  },
+}];
+```
+
+The loader supplies plugin ownership. A contribution cannot create a descriptor
+or target host/another plugin's fields. Setting IDs remain opaque, including
+dots. Unsupported versions, ambiguous duplicates, missing editors, suspended
+imports, and rendering failures use the generic control with the same draft.
+An unrelated registry update does not remount the selected editor. Lazy editors
+retain generic-control drafts and restore field focus after loading only when
+focus has not moved elsewhere. Replacement editors preserve the same contract.
+
+Editor props contain authorized metadata, the effective draft value, dirty and
+disabled state, validation, host accessibility IDs, and `onChange`. Metadata does
+not expose saved values or defaults. Sensitive snapshots stay redacted. Attach
+`registerFocusTarget` to the editable element for exact-field navigation.
+The host owns labels, help, validation, restart feedback, drafts, Save/Discard,
+durable commits, and cross-window invalidation. There is no editor commit API.
+This is an ownership contract for trusted plugin code, not a security sandbox.
+
+Every Settings webview loads plugin contributions independently beneath shared
+plugin/settings/theme providers, outside the workspace shell. A failed plugin UI
+does not prevent descriptor-based controls. Generic controls preserve scalar and
+array values and structured option values; unsupported types show explicit
+feedback. Native file selection passes directory/filter hints and enforces
+multiple-file and extension constraints. Folder/relative-path constraints require
+manual entry because the current host picker API cannot represent them; the UI
+does not silently choose incompatible absolute file paths.
+Structured option matching ignores object-key order but preserves array order
+and value types. Clearing an array field stages an empty array; nonempty text
+retains its line boundaries and whitespace.
+
+The canonical application suite builds the workspace probe with a real custom
+counter editor. Its persistence scenario stages a custom control change, checks
+that the plugin still reports the saved value before Save, and verifies durable
+reload plus isolation from another profile.
 
 ## Shared settings lifecycle and commits
 

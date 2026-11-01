@@ -1,5 +1,6 @@
 import { PluginValidationError } from './errors';
 import type { ValidatedExports, SidebarComponent, DrawerFactory } from './types';
+import { SETTINGS_EDITOR_EXTENSION_POINT_ID } from '@omniviewdev/runtime';
 
 /**
  * Validate a provider-defined opaque resource type ID.
@@ -94,6 +95,28 @@ export function validatePluginExports(exports: unknown): ValidatedExports {
     }
 
     extensionRegistrations = exp.extensionRegistrations;
+    const settingsFields = new Set<string>();
+    for (const entry of extensionRegistrations) {
+      const contribution = entry as { extensionPointId?: unknown; registration?: { value?: unknown } } | null;
+      if (contribution?.extensionPointId !== SETTINGS_EDITOR_EXTENSION_POINT_ID) {
+        continue;
+      }
+
+      const value = contribution.registration?.value as { schemaVersion?: unknown; settingId?: unknown; editor?: unknown } | undefined;
+      const editor = value?.editor as { $$typeof?: symbol } | undefined;
+      const component = typeof editor === 'function' || (editor != null &&
+        (editor.$$typeof === Symbol.for('react.memo') || editor.$$typeof === Symbol.for('react.forward_ref') ||
+          editor.$$typeof === Symbol.for('react.lazy')));
+      if (value?.schemaVersion !== 1 || typeof value.settingId !== 'string' || !value.settingId || !component) {
+        throw new PluginValidationError('Invalid version 1 settings editor', { errors: ['Settings editors require schemaVersion: 1, a nonempty settingId, and a React editor component'] });
+      }
+
+      if (settingsFields.has(value.settingId)) {
+        throw new PluginValidationError('Duplicate settings editor', { errors: [`Multiple settings editors target \"${value.settingId}\"`] });
+      }
+
+      settingsFields.add(value.settingId);
+    }
   }
 
   // --- sidebars ---

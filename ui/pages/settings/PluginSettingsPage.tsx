@@ -1,5 +1,5 @@
 import React from 'react';
-import { Avatar, Text } from '@omniviewdev/base-ui';
+import { Text } from '@omniviewdev/base-ui';
 import { useScopedSettings } from '@omniviewdev/runtime';
 import { useSettingsForm } from '@/hooks/settings/useSettingsForm';
 import { usePlugin } from '@/hooks/plugin/usePluginManager';
@@ -26,15 +26,14 @@ function PluginSettingsForm({ id }: { id: string }) {
   const pendingRestart = Object.values(category.settings).some(setting => setting?.pendingRestart);
   return <div className={styles.Root}>
     <div className={styles.Header}>
-      <Avatar size='sm' shape='rounded' src={plugin.data.metadata.icon} alt={plugin.data.metadata.name} className={styles.HeaderAvatar} />
       <div className={styles.HeaderText}>
-        <Text weight='semibold' size='lg'>{plugin.data.metadata.name}</Text>
+        <h1 className={styles.Heading}><span>Plugins / </span>{plugin.data.metadata.name}</h1>
         <Text size='xs' tone='muted'>{plugin.data.metadata.description}</Text>
       </div>
     </div>
     <SettingsFormShell form={form} pendingRestart={pendingRestart} restartTarget={`${plugin.data.metadata.name} plugin`}>
       <SettingsEntries section={Section.Plugins} id={id} settings={category.settings}
-        draftValues={form.draftValues} setDraftValues={form.setDraftValues} validation={form.validation} />
+        draftValues={form.draftValues} setDraftValues={form.setDraftValues} validation={form.validation} disabled={form.saving} />
     </SettingsFormShell>
   </div>;
 }

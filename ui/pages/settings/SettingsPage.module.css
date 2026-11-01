@@ -1,46 +1,20 @@
-/* Shared layout for CoreSettingsPage and PluginSettingsPage. */
-
-.Root {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  height: 100%;
-}
-
-.Header {
-  display: flex;
-  align-items: center;
-  gap: var(--ov-space-3);
-  padding-bottom: var(--ov-space-4);
-  border-bottom: 1px solid var(--ov-color-border-muted);
-}
-
-.HeaderText {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.HeaderAvatar {
-  width: 22px;
-  height: 22px;
-  border-radius: 4px;
-}
-
-.Form {
-  flex: 1;
-  overflow: auto;
-  min-height: 0;
-  border: 0;
-  padding: 0;
-  margin: 0;
-  min-width: 0;
-}
-
-.ActionBar {
-  display: flex;
-  gap: var(--ov-space-2);
-  padding-top: var(--ov-space-4);
-  margin-top: var(--ov-space-2);
-  border-top: 1px solid var(--ov-color-border-muted);
-}
+.Window { display:grid; grid-template-columns:212px minmax(0,1fr); height:100%; min-height:0; color:var(--ov-color-fg-default); background:var(--ov-color-bg-base); font-size:12px; }
+.Sidebar { min-height:0; overflow:auto; border-right:1px solid var(--ov-color-border-muted); padding:0 10px 10px; background:var(--ov-color-bg-surface); }
+.Brand { height:37px; display:flex; align-items:center; padding:0 9px; margin:0 -10px 10px; padding-left:19px; border-bottom:1px solid var(--ov-color-border-muted); font-weight:600; }
+.Search { width:100%; box-sizing:border-box; height:29px; border:1px solid var(--ov-color-border-muted); border-radius:5px; padding:4px 8px; color:inherit; background:var(--ov-color-bg-base); margin-bottom:12px; }
+.Main { position:relative; min-width:0; min-height:0; display:flex; flex-direction:column; }
+.Close { position:absolute; z-index:2; top:8px; right:12px; width:24px; height:24px; color:inherit; background:transparent; border:0; font-size:20px; cursor:pointer; }
+.Content { flex:1; min-height:0; overflow:auto; padding:15px 22px 0; }
+.Root { display:flex; flex-direction:column; width:100%; height:100%; min-height:0; }
+.Header { display:flex; align-items:center; gap:8px; padding:0 30px 12px 0; }
+.HeaderText { display:flex; flex-direction:column; gap:3px; }
+.Form { flex:1; overflow:auto; min-height:0; border:0; padding:0; margin:0; min-width:0; }
+.ActionBar { display:flex; align-items:center; gap:8px; min-height:45px; flex-shrink:0; border-top:1px solid var(--ov-color-border-muted); }
+.Results { overflow:auto; padding:15px 22px; }
+.Results h1 { font-size:15px; }
+.Results > button { display:flex; flex-direction:column; gap:4px; width:100%; text-align:left; padding:12px 0; border:0; border-bottom:1px solid var(--ov-color-border-muted); background:transparent; color:inherit; cursor:pointer; }
+.Heading { margin:0; font-size:15px; font-weight:600; line-height:24px; }
+.Heading span { color:var(--ov-color-fg-muted); font-weight:400; }
+.Actions { display:flex; align-items:center; gap:8px; margin-left:auto; }
+.Brand, .HeaderText { --wails-draggable:drag; }
+.Close:focus-visible, .Search:focus-visible, .Results > button:focus-visible { outline:2px solid var(--ov-color-border-focus); outline-offset:2px; }

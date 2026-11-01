@@ -104,7 +104,7 @@ export function actionToSnackbar(action: AppErrorAction): { label: string; onCli
     case 'navigate':
       return {
         label: action.label,
-        // Backend targets are hash routes (`#/settings?...`); they open in the active page tab.
+        // Settings targets activate their dedicated window; other routes use the active page.
         onClick: () => { navigateActivePage((action.target ?? '/').replace(/^#/, '')); },
       };
     case 'open-url':

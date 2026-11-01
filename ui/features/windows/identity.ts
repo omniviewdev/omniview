@@ -2,7 +2,7 @@ import { WindowClient } from '@omniviewdev/runtime/api';
 import { window as windowModels } from '@omniviewdev/runtime/models';
 import { Window } from '@omniviewdev/runtime/runtime';
 
-export type WindowKind = 'workspace' | 'panel';
+export type WindowKind = 'workspace' | 'panel' | 'settings';
 
 export type CurrentWindow = Readonly<{
   name: string;
@@ -34,7 +34,11 @@ export async function resolveCurrentWindow(): Promise<void> {
   }
 
   resolvedWindow.name = name;
-  resolvedWindow.kind = info.kind === windowModels.Kind.KindPanel ? 'panel' : 'workspace';
+  if (info.kind !== windowModels.Kind.KindWorkspace && info.kind !== windowModels.Kind.KindPanel && info.kind !== windowModels.Kind.KindSettings) {
+    throw new Error(`window "${name}" has an unsupported kind`);
+  }
+
+  resolvedWindow.kind = info.kind;
   resolvedWindow.isMain = name === MAIN_WINDOW_NAME;
   Object.freeze(resolvedWindow);
 }
