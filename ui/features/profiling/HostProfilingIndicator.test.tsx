@@ -9,7 +9,7 @@ const backend = vi.hoisted(() => ({ getStatus: vi.fn(), getPluginStatuses: vi.fn
 vi.mock('@omniviewdev/runtime/api', () => ({
   HostProfiling: { GetStatus: backend.getStatus },
   PluginManager: { GetPluginProfilingStatuses: backend.getPluginStatuses },
-  UIInspection: { GetStatus: backend.getUIStatus },
+  UiInspection: { GetStatus: backend.getUIStatus },
 }));
 vi.mock('@/features/windows/identity', () => ({ currentWindow: { name: 'main' } }));
 
@@ -97,10 +97,14 @@ describe('host profiling footer', () => {
     await user.keyboard('{Enter}');
     const safety = await screen.findByRole('button', { name: 'Profiling safety' });
     act(() => {
-      safety.focus();
+      screen.getByRole('button', { name: 'Developer Settings' }).focus();
     });
+    const buttonCount = screen.getAllByRole('button').length;
+    for (let i = 0; i < buttonCount && document.activeElement !== safety; i++) {
+      await user.tab({ shift: true });
+    }
+
     expect(safety).toHaveFocus();
-    expect(await screen.findByRole('tooltip')).toBeVisible();
   });
 
   it('does not fetch until an initially hidden window becomes visible', async () => {

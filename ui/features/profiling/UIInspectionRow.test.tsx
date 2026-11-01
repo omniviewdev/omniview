@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import UIInspectionRow from './UIInspectionRow';
 
 const backend = vi.hoisted(() => ({ getStatus: vi.fn(), window: { name: 'workspace-one' } }));
-vi.mock('@omniviewdev/runtime/api', () => ({ UIInspection: { GetStatus: backend.getStatus } }));
+vi.mock('@omniviewdev/runtime/api', () => ({ UiInspection: { GetStatus: backend.getStatus } }));
 vi.mock('@/features/windows/identity', () => ({ currentWindow: backend.window }));
 
 const status = {
@@ -44,7 +44,9 @@ describe('native UI inspection', () => {
     expect(backend.getStatus).toHaveBeenCalledWith('workspace-one');
     expect(screen.queryByText('Actual App')).not.toBeInTheDocument();
     expect(screen.queryByText('localhost')).not.toBeInTheDocument();
-    if (result.error) expect(screen.getByRole('alert')).toHaveTextContent(result.error);
+    if (result.error) {
+      expect(screen.getByRole('alert')).toHaveTextContent(result.error);
+    }
   });
 
   it('removes enabled targets after a failed refresh', async () => {
@@ -53,7 +55,9 @@ describe('native UI inspection', () => {
     expect(await screen.findByText('Actual App')).toBeVisible();
     expect(screen.getByText('localhost')).toBeVisible();
     backend.getStatus.mockRejectedValue(new Error('Backend unavailable'));
-    await act(async () => { await client.invalidateQueries({ queryKey: ['ui-inspection'] }); });
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ['ui-inspection'] });
+    });
     expect(await screen.findByRole('alert')).toBeVisible();
     expect(screen.queryByText('Actual App')).not.toBeInTheDocument();
     expect(screen.queryByText('localhost')).not.toBeInTheDocument();
@@ -76,7 +80,9 @@ describe('native UI inspection', () => {
     expect(screen.queryByText('Actual App')).not.toBeInTheDocument();
     expect(screen.queryByText('localhost')).not.toBeInTheDocument();
     expect(backend.getStatus).toHaveBeenLastCalledWith('workspace-two');
-    await act(async () => { resolve({ ...status, window: 'workspace-two' }); });
+    await act(async () => {
+      resolve({ ...status, window: 'workspace-two' });
+    });
     expect(await screen.findByText('Off')).toBeVisible();
   });
 

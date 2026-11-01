@@ -7,7 +7,7 @@ import {
 } from '@/components/displays/Footer/parts';
 import { useHostProfilingStatus } from './useHostProfilingStatus';
 import PluginProfilingRows from './PluginProfilingRows';
-import UIInspectionRow from './UIInspectionRow';
+import UiInspectionRow from './UIInspectionRow';
 
 export default function HostProfilingIndicator() {
   const profiling = useHostProfilingStatus();
@@ -48,7 +48,7 @@ export default function HostProfilingIndicator() {
         </div>}
       </div>
       <PluginProfilingRows />
-      <UIInspectionRow />
+      <UiInspectionRow />
       <div className={styles.Actions}>
         <PopoverAction icon={<LuSettings size={12} />} label='Developer Settings' onClick={() => {
           navigate('/settings?section=core&category=developer');

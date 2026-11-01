@@ -1,24 +1,24 @@
 import { useQuery } from '@tanstack/react-query';
-import { UIInspection } from '@omniviewdev/runtime/api';
+import { UiInspection } from '@omniviewdev/runtime/api';
 import { LuInfo } from 'react-icons/lu';
 import HintTooltip from '@/components/base/HintTooltip';
 import { Dot, FooterLabel, FooterTrigger, footerStyles as styles } from '@/components/displays/Footer/parts';
 import { currentWindow } from '@/features/windows/identity';
 import { useWindowVisible } from './useHostProfilingStatus';
 
-export default function UIInspectionRow() {
+export default function UiInspectionRow() {
   const visible = useWindowVisible();
-  return visible ? <VisibleUIInspectionRow key={currentWindow.name} /> : null;
+  return visible ? <VisibleUiInspectionRow key={currentWindow.name} /> : null;
 }
 
-function VisibleUIInspectionRow() {
+function VisibleUiInspectionRow() {
   const name = currentWindow.name;
   const inspection = useQuery({
     queryKey: ['ui-inspection', 'status', name],
     gcTime: 0,
     queryFn: async ({ signal }) => {
       signal.throwIfAborted();
-      const status = await UIInspection.GetStatus(name);
+      const status = await UiInspection.GetStatus(name);
       signal.throwIfAborted();
       return status;
     },
@@ -33,7 +33,7 @@ function VisibleUIInspectionRow() {
 
   return <section aria-label='UI inspection' className={styles.Details}>
     <div className={styles.DetailRow}>
-      <span className={styles.DetailLabel}>UI / {status?.engine || 'WebKit'}</span>
+      <span className={styles.DetailLabel}>UI{status?.engine && ` / ${status.engine}`}</span>
       <HintTooltip content='macOS 13.3+. Safari → Develop → This Mac → app → page, then record in Timelines. Inspection allows JavaScript access; captures may expose sensitive data.'>
         <FooterTrigger aria-label='UI inspection help'><LuInfo size={13} /></FooterTrigger>
       </HintTooltip>
