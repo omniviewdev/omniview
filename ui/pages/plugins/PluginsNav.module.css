@@ -27,7 +27,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 12px;
+  min-height: var(--ov-size-list-item-height-md);
+  padding: var(--ov-space-1) var(--ov-space-3);
   border-bottom: 1px solid var(--ov-color-border-muted);
   flex-shrink: 0;
 }
@@ -43,7 +44,7 @@
 .ToolbarActions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--ov-space-0-5);
 }
 
 .ToolbarButton {
@@ -52,7 +53,7 @@
   justify-content: center;
   width: 24px;
   height: 24px;
-  border-radius: 4px;
+  border-radius: var(--ov-radius-sm);
   border: none;
   background: none;
   color: var(--ov-color-fg-subtle);
@@ -64,6 +65,12 @@
 .ToolbarButton[data-popup-open] {
   background-color: var(--ov-color-state-hover);
   color: var(--ov-color-fg-default);
+}
+
+.ToolbarButton:focus-visible,
+.LinkButton:focus-visible {
+  outline: 2px solid var(--ov-color-border-focus);
+  outline-offset: -2px;
 }
 
 .RefreshIcon {
@@ -84,8 +91,7 @@
 .Search {
   display: flex;
   align-items: center;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--ov-color-border-muted);
+  padding: var(--ov-space-2) var(--ov-space-3);
   flex-shrink: 0;
 }
 
@@ -110,7 +116,7 @@
   inline-size: 100%;
   min-block-size: var(--ov-size-list-item-height-md);
   padding-block: var(--ov-space-1);
-  padding-inline: var(--ov-space-4);
+  padding-inline: var(--ov-space-3);
   line-height: 1.25;
   cursor: pointer;
   user-select: none;
@@ -142,36 +148,36 @@
 .CountBadge {
   font-size: 0.625rem;
   font-weight: 600;
-  background-color: color-mix(in srgb, var(--ov-color-brand-500) 20%, transparent);
-  color: var(--ov-color-brand-500);
-  border-radius: 10px;
+  background-color: var(--ov-color-state-hover);
+  color: var(--ov-color-fg-muted);
+  border-radius: var(--ov-radius-sm);
   padding-inline: var(--ov-space-1-5);
   margin-inline-start: var(--ov-space-1-5);
   line-height: 16px;
 }
 
 .SectionBody {
-  padding-bottom: 4px;
+  padding-bottom: var(--ov-space-1);
 }
 
 .EmptyMessage {
-  padding: 12px;
+  padding: var(--ov-space-3);
   text-align: center;
   font-size: 0.75rem;
   color: var(--ov-color-fg-subtle);
 }
 
 .EmptyMessageLarge {
-  padding-top: 16px;
-  padding-bottom: 16px;
+  padding-top: var(--ov-space-4);
+  padding-bottom: var(--ov-space-4);
 }
 
 .ErrorState {
-  padding: 16px 12px;
+  padding: var(--ov-space-4) var(--ov-space-3);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: var(--ov-space-2);
 }
 
 .ErrorText {
@@ -183,7 +189,7 @@
 .LinkButton {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--ov-space-1);
   font-size: 0.6875rem;
   color: var(--ov-color-brand-500);
   background: none;
@@ -200,5 +206,5 @@
 .SectionLoading {
   display: flex;
   justify-content: center;
-  padding: 16px 0;
+  padding: var(--ov-space-4) 0;
 }

@@ -6,18 +6,23 @@
 }
 
 .Root {
-  max-height: calc(100vh - 60px);
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  padding: 20px;
+  background-color: var(--ov-color-bg-surface);
 }
 
 .Header {
   display: flex;
-  gap: 16px;
+  gap: var(--ov-space-4);
   align-items: flex-start;
-  margin-bottom: 16px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  padding: var(--ov-space-4);
+  border-bottom: 1px solid var(--ov-color-border-muted);
 }
 
 .IconBox {
@@ -29,7 +34,7 @@
 .Avatar {
   width: 48px;
   height: 48px;
-  border-radius: 12px;
+  border-radius: var(--ov-radius-md);
 }
 
 .AvatarImage {
@@ -38,7 +43,7 @@
 }
 
 .Info {
-  flex: 1;
+  flex: 1 1 260px;
   min-width: 0;
 }
 
@@ -47,27 +52,38 @@
 }
 
 .Description {
-  margin: 4px 0 0;
+  margin: var(--ov-space-1) 0 0;
 }
 
 .MetaRow {
-  margin-top: 8px;
+  margin-top: var(--ov-space-2);
 }
 
 .RepoLink {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--ov-space-1);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ov-color-fg-muted);
+  font: inherit;
   cursor: pointer;
 }
 
 .RepoLink:hover {
-  opacity: 0.8;
+  color: var(--ov-color-fg-default);
+}
+
+.RepoLink:focus-visible {
+  outline: 2px solid var(--ov-color-border-focus);
+  outline-offset: 2px;
 }
 
 .HeaderActions {
   flex-shrink: 0;
-  padding-top: 4px;
+  flex-wrap: wrap;
+  padding-top: var(--ov-space-1);
 }
 
 .Tabs {
@@ -76,33 +92,37 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  gap: 0;
 }
 
 .TabContent {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  margin-top: 8px;
+  padding: var(--ov-space-4);
+}
+
+.TabContent > [role='tabpanel'] {
+  padding: 0;
 }
 
 .PaddedText {
   margin: 0;
-  padding: 16px;
+  padding-block: var(--ov-space-2);
 }
 
 .Card {
-  padding: 16px;
-  border-radius: var(--ov-radius-md);
-  border: 1px solid var(--ov-color-border-default);
+  padding-block: var(--ov-space-3);
+  border-bottom: 1px solid var(--ov-color-border-muted);
 }
 
 .CardRow {
-  margin-top: 8px;
+  margin-top: var(--ov-space-2);
   margin-bottom: 0;
 }
 
 .RatingSummary {
-  margin-bottom: 16px;
+  margin-bottom: var(--ov-space-3);
 }
 
 .RatingValue {
