@@ -18,34 +18,34 @@ const PluginChangelogCard: React.FC<Props> = ({ version, releaseDate, changelog 
   const { activeTheme } = useTheme();
 
   return (
-  <div className={styles.Card}>
-    <Stack direction='row' spacing={3} align='center' className={styles.CardHeader}>
-      <Chip
-        size='sm'
-        color='brand'
-        variant='soft'
-        mono
-        className={styles.VersionChip}
-      >
-        {version}
-      </Chip>
-      {releaseDate && (
-        <Text size='xs' tone='muted'>{releaseDate}</Text>
+    <div className={styles.Card}>
+      <Stack direction='row' spacing={3} align='center' className={styles.CardHeader}>
+        <Chip
+          size='sm'
+          color='brand'
+          variant='soft'
+          mono
+          className={styles.VersionChip}
+        >
+          {version}
+        </Chip>
+        {releaseDate && (
+          <Text size='xs' tone='muted'>{releaseDate}</Text>
+        )}
+      </Stack>
+      {changelog ? (
+        <div data-color-mode={activeTheme.appearance} className={markdownStyles.Markdown}>
+          <MarkdownPreview
+            source={changelog}
+            style={{ backgroundColor: 'transparent' }}
+          />
+        </div>
+      ) : (
+        <Text size='sm' tone='muted' className={styles.Empty}>
+          No changelog provided
+        </Text>
       )}
-    </Stack>
-    {changelog ? (
-      <div data-color-mode={activeTheme.appearance} className={markdownStyles.Markdown}>
-        <MarkdownPreview
-          source={changelog}
-          style={{ backgroundColor: 'transparent' }}
-        />
-      </div>
-    ) : (
-      <Text size='sm' tone='muted' className={styles.Empty}>
-        No changelog provided
-      </Text>
-    )}
-  </div>
+    </div>
   );
 };
 
