@@ -10,14 +10,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/omniviewdev/omniview/internal/version"
 	regclient "github.com/omniviewdev/registry"
+	"golang.org/x/mod/semver"
 )
 
 func TestRegistryBaseURLChange(t *testing.T) {
 	serve := func(prefix string) *httptest.Server {
 		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != prefix+"/v1/plugins" || r.URL.Query().Get("ide_version") != version.CompatibilityVersion {
+			if r.URL.Path != prefix+"/v1/plugins" {
 				t.Errorf("wrong API target: %s", r.URL)
 			}
 			if _, err := w.Write([]byte(`{"success":true,"data":[]}`)); err != nil {
@@ -39,6 +39,27 @@ func TestRegistryBaseURLChange(t *testing.T) {
 	client.SetBaseURL(second.URL + "/registry")
 	if _, err := client.ListPlugins(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestConnectionMetadataPluginRemainsDiscoverable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		plugins := []map[string]string{}
+		if semver.Compare("v"+r.URL.Query().Get("ide_version"), "v0.13.0") >= 0 {
+			plugins = append(plugins, map[string]string{"id": "kubernetes", "latest_version": "0.10.0"})
+		}
+		if err := json.NewEncoder(w).Encode(map[string]any{"success": true, "data": plugins}); err != nil {
+			t.Errorf("writing compatible plugin list: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	plugins, err := NewClient(server.URL).ListPlugins(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plugins) != 1 || plugins[0].ID != "kubernetes" || plugins[0].LatestVer != "0.10.0" {
+		t.Fatalf("connection-metadata plugin hidden by advertised host compatibility: %v", plugins)
 	}
 }
 
