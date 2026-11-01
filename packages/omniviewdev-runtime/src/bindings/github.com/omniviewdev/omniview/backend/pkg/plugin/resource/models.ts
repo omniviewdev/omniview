@@ -143,6 +143,30 @@ export class ConnectionProfile {
     }
 }
 
+/**
+ * ConnectionProfileCredentials is write-only. Omitted fields preserve existing
+ * values only for the same ID, UID, and canonical Data; an explicit empty string
+ * clears that value. Changing identity or Data does not inherit credentials.
+ */
+export class ConnectionProfileCredentials {
+    "username"?: string | null;
+    "token"?: string | null;
+
+    /** Creates a new ConnectionProfileCredentials instance. */
+    constructor($$source: Partial<ConnectionProfileCredentials> = {}) {
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ConnectionProfileCredentials instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ConnectionProfileCredentials {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ConnectionProfileCredentials($$parsedSource as Partial<ConnectionProfileCredentials>);
+    }
+}
+
 export class ConnectionProfileResult {
     "applied": boolean;
     "profile": ConnectionProfile;

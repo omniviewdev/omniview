@@ -4,10 +4,10 @@ This guide covers everything you need to know to develop plugins for Omniview wi
 
 ### Marketplace host compatibility
 
-Host registry API requests advertise `ide_version=0.14.0`, sourced from
+Host registry API requests advertise `ide_version=0.20.0`, sourced from
 `internal/version.CompatibilityVersion`. This is the source's minimum host
 compatibility release line, not the SDK version or a PR/nightly display label.
-Development builds advertise the same `0.14.0` API baseline while retaining
+Development builds advertise the same `0.20.0` API baseline while retaining
 their existing development display labels. Release builds stamp the display
 version from the release tag.
 
@@ -15,6 +15,8 @@ Advance this explicit compatibility line when a coordinated host/runtime/SDK
 cutover changes plugin requirements. Updating display-version linker flags alone
 does not change marketplace compatibility. Transactional settings require rebuilt
 SDK v0.10.0 plugins; Kubernetes v0.11.0 requires host/runtime v0.14.0.
+Plugins using write-only connection-profile credentials require host/runtime v0.20.0
+and must declare an inclusive `min_ide_version` of `0.20.0` or newer.
 
 Publisher minimum and maximum IDE versions are inclusive semantic-version bounds.
 Hosts that omit `ide_version` can only access unconstrained plugin versions.
@@ -322,10 +324,66 @@ providers never persist that overlay or modify native configuration files.
 Save and Import record only the user's explicit profile. Remove stores a
 disabled-ID tombstone, and Reset restores native discovery or removes a manual
 profile with no native fallback. Never replay a cached discovery list as desired
-configuration. Profile mutation success requires `applied: true`; an error never
-means that desired state became effective, and a failed rollback leaves actual
-state unknown. Profile `active` means effective discovery membership, not an
-established connection or live resource readiness.
+configuration. Profile mutation success requires `applied: true`. A host commit
+durability failure can return `RESET_REQUIRED` after the new source state became
+effective; the host publishes a successfully listed source snapshot in that case.
+After a durable commit, inventory publication precedes obsolete-credential
+cleanup. A cleanup failure returns `RESET_REQUIRED` without hiding the already
+effective profile; caller cancellation does not undo that committed publication.
+A failed list or rollback does not establish a known new snapshot. Reload before
+retrying any `RESET_REQUIRED` mutation. Profile `active` means effective discovery
+membership, not an established connection or live resource readiness.
+
+`ResourceClient.SaveConnectionProfile(pluginID, connection, credentials?)` and
+`useConnection(...).saveConnectionProfile(connection, credentials?)` accept a
+separate write-only `{ username?, token? }` credential DTO. Never put these values
+in public connection `data`. The Wails adapter encodes public configuration
+through the lossless request-JSON transport; private input remains a separate
+argument and never appears in public profiles, status, or inventory responses.
+
+Omitting the DTO or a field preserves stored values only for the same profile ID,
+UID, and unchanged canonical public client configuration. An explicit empty
+string clears that field; `{ username: '', token: '' }` clears both. An empty DTO
+is not a clear request. Endpoint/configuration changes do not inherit secrets
+from the previous target. Native source credentials remain source-owned.
+
+The host stores explicitly supplied values in immutable files beneath the
+profile's scoped plugin store (`0600` on Unix). The public desired-profile file
+contains only an opaque reference. Each private record binds its ID and UID to a
+SHA-256 digest of canonical client `Data`, excluding display metadata. Missing or
+mismatched bindings fail closed before credentials reach a provider; changing a
+public endpoint while retaining its private reference cannot redirect secrets.
+Secret-file sync precedes the atomic public pointer switch;
+rollback, reload, removal, and orphan collection preserve the
+profile/secret pairing, including an explicit empty-private-data clear. Unix
+directory metadata is synchronized. Windows does not support syncing read-only
+directory handles, and scoped rename has no write-through option; it does not
+provide the Unix directory-fsync power-loss guarantee. Normal cleanup still
+removes obsolete secret versions. After sudden power loss, a missing or invalid
+referenced credential file fails closed: reload and re-enter credentials rather
+than falling back to native credentials or another private version.
+These files are not encrypted. On Windows, before creating a private file, the
+host validates the scoped store directory handle's owner and DACL. Before every
+profile read and credential replay, it also validates that directory and the
+public profile file handle. Broadly shared custom stores or public files are
+rejected, preventing public-configuration tampering and an untrusted inherited
+handle surviving file restriction. Trusted inherited directory and public-file
+entries are allowed.
+The host atomically creates private files with a protected DACL through a native
+create relative to the validated directory handle, permitting only the current
+user, SYSTEM, and Administrators from creation. No mutable absolute path or
+post-creation handle-access upgrade is used. Before reading, it requires an owner
+from that same trusted set (including elevated-token Administrators ownership)
+and rejects DACL entries granting access to any other principal.
+Unix files require mode `0600`. Reported uncertain rollback/durability returns
+`RESET_REQUIRED`, not a successful save.
+
+Deploy the SDK private-overlay transport fix in both host and plugin before
+using credential saves, then publish the matching runtime before upgrading
+plugin dependency pins. Saving applies configuration; a subsequent explicit
+Start and Check uses the saved ID. Native `CONNECTED` lifecycle state does not
+prove every resource permission or replace an authenticated resource operation.
+
 Effective connection inventory starts empty and is replaced only by successful
 fresh source snapshots plus actually applied overlays. Failed discovery never
 activates an old cache for Get/List or utility capability lookups. Legacy mixed

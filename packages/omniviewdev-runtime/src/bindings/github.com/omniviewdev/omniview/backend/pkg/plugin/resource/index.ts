@@ -13,6 +13,7 @@ export {
     ActionSnapshot,
     AuthorityEvidence,
     ConnectionProfile,
+    ConnectionProfileCredentials,
     ConnectionProfileResult,
     ConnectionState,
     ConnectionStatusPayload,
