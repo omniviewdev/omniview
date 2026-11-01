@@ -2,45 +2,40 @@ import type { Page } from '@playwright/test';
 import { test, expect } from '../fixtures/app.fixture';
 import { goTo, openSettingsCategory, saveSettings, settingRow, chooseSetting } from '../fixtures/helpers';
 import { fakePlugin } from '../fixtures/plugins';
-import { callBinding, mockBindings, Service } from '../fixtures/wails';
-
-type Category = {
-  id: string;
-  label: string;
-  settings: Record<string, { label: string; devOnly?: boolean }> | null;
-};
-
-async function category(page: Page, id: string): Promise<Category> {
-  return callBinding<Category>(page.request, Service.settings, 'GetCategory', id);
-}
+import { getHostSettingsSnapshot, hostSettingsValues, mockBindings, Service } from '../fixtures/wails';
 
 async function storedValue(page: Page, id: string): Promise<unknown> {
-  return callBinding(page.request, Service.settings, 'GetSettingValue', id);
+  return (await hostSettingsValues(page.request))[id];
 }
 
 const nav = (page: Page) => page.getByRole('navigation').filter({ hasText: 'Appearance' });
 
 test.describe('Settings', () => {
   test('lists every core category plus Extensions', async ({ appPage }) => {
-    const categories = await callBinding<Category[]>(appPage.request, Service.settings, 'GetCategories');
-    expect(categories.length).toBeGreaterThan(0);
+    const { categories } = await getHostSettingsSnapshot(appPage.request);
+    expect(Object.keys(categories).length).toBeGreaterThan(0);
 
     await goTo(appPage, '/settings');
-    for (const { label } of categories) {
-      await expect(nav(appPage).getByText(label, { exact: true })).toBeVisible();
+    for (const [id, metadata] of Object.entries(categories)) {
+      if (!metadata) throw new Error(`Missing settings category metadata: ${id}`);
+      await expect(nav(appPage).getByText(metadata.label, { exact: true })).toBeVisible();
     }
 
     await expect(nav(appPage).getByText('Extensions', { exact: true })).toBeVisible();
   });
 
   test('every category shows each of its settings with a control', async ({ appPage }) => {
-    const categories = await callBinding<Category[]>(appPage.request, Service.settings, 'GetCategories');
+    const { categories } = await getHostSettingsSnapshot(appPage.request);
 
-    for (const { id, label } of categories) {
-      const { settings } = await category(appPage, id);
+    for (const [id, metadata] of Object.entries(categories)) {
+      if (!metadata) throw new Error(`Missing settings category metadata: ${id}`);
+      const { label, settings } = metadata;
       await openSettingsCategory(appPage, label);
 
-      const visible = Object.entries(settings ?? {}).filter(([, s]) => !s.devOnly);
+      const visible = Object.entries(settings ?? {}).filter(([key, setting]) => {
+        if (!setting) throw new Error(`Missing setting metadata: ${id}.${key}`);
+        return !setting.devOnly;
+      });
       for (const [key] of visible) {
         await expect(settingRow(appPage, `${id}.${key}`), `${id}.${key}`).toBeVisible();
       }

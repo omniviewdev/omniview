@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { APIRequestContext, Page, Route } from '@playwright/test';
+import type { CommitResult, Snapshot } from '../../../packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview/backend/pkg/settings/models';
 
 // Generated Wails bindings for the app's own Go packages. Each exported function
 // calls `$Call.ByID(<methodID>, ...args)`; the ID is a hash that changes whenever
@@ -16,7 +17,7 @@ const BINDINGS_ROOT = resolve(
 export const Service = {
   exec: 'backend/pkg/plugin/exec/servicewrapper.ts',
   plugins: 'backend/pkg/plugin/servicewrapper.ts',
-  settings: 'internal/settings/servicewrapper.ts',
+  settings: 'backend/pkg/settings/binding.ts',
 } as const;
 
 type ServiceFile = (typeof Service)[keyof typeof Service];
@@ -69,6 +70,34 @@ export async function callBinding<T = unknown>(
   const text = await response.text();
   const isJson = response.headers()['content-type']?.includes('application/json');
   return (isJson && text ? JSON.parse(text) : text || undefined) as T;
+}
+
+export async function getHostSettingsSnapshot(request: APIRequestContext): Promise<Snapshot> {
+  return callBinding<Snapshot>(request, Service.settings, 'GetSnapshot', { kind: 'host' });
+}
+
+export async function hostSettingsValues(request: APIRequestContext): Promise<Record<string, unknown>> {
+  const snapshot = await getHostSettingsSnapshot(request);
+  const values: Record<string, unknown> = {};
+  for (const [categoryID, category] of Object.entries(snapshot.categories)) {
+    for (const [rawID, setting] of Object.entries(category?.settings ?? {})) {
+      if (setting && !setting.sensitive) {
+        values[`${categoryID}.${rawID}`] = setting.value;
+      }
+    }
+  }
+  return values;
+}
+
+export async function commitHostSettings(
+  request: APIRequestContext,
+  values: Record<string, unknown>,
+): Promise<CommitResult> {
+  const result = await callBinding<CommitResult>(request, Service.settings, 'Commit', { kind: 'host' }, values);
+  if (!result.applied || result.uncertain) {
+    throw new Error(`Host settings commit failed${result.uncertain ? ' (uncertain)' : ''}: ${result.message}`);
+  }
+  return result;
 }
 
 /** Return this from a mocked binding to make the call fail in the page. */

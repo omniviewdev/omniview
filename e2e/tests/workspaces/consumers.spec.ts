@@ -3,7 +3,7 @@ import type { Page } from '@playwright/test';
 import { test, expect } from '../fixtures/app.fixture';
 import { openSettingsCategory, saveSettings, settingRow } from '../fixtures/helpers';
 import { assertBackendEventDelivery } from '../fixtures/events';
-import { callBinding, Service } from '../fixtures/wails';
+import { commitHostSettings, hostSettingsValues } from '../fixtures/wails';
 
 const probeID = 'workspace-probe';
 async function openProbeSettings(page: Page): Promise<void> {
@@ -62,7 +62,9 @@ test.describe('Real application plugin consumers', () => {
     const beforeSettingB = await b.workspace.control('settings.get', { scope: 'plugin', pluginID: probeID, id: 'probe_counter' });
     expect(beforeSettingB).toMatchObject({ status: 'succeeded', result: 0 });
     await saveCounter(appPage, 23);
-    await callBinding(appPage.request, Service.settings, 'SetSetting', 'terminal.fontSize', 16);
+    const committed = await commitHostSettings(appPage.request, { 'terminal.fontSize': 16 });
+    expect(committed.applied).toBe(true);
+    expect(committed.uncertain).toBe(false);
     const marker = randomUUID();
     await appPage.evaluate(marker => {
       const bootstrap = Reflect.get(window, '__OMNIVIEW_BOOTSTRAP__');
@@ -79,7 +81,7 @@ test.describe('Real application plugin consumers', () => {
     expect(await appPage.evaluate(() => Reflect.get(window, '__OMNIVIEW_BOOTSTRAP__').identity.generation)).toBe(after.generation);
     await openProbeSettings(appPage);
     await expect(settingRow(appPage, `${probeID}.probe_counter`).getByRole('spinbutton')).toHaveValue('23');
-    expect(await callBinding(appPage.request, Service.settings, 'GetSettingValue', 'terminal.fontSize')).toBe(16);
+    expect((await hostSettingsValues(appPage.request))['terminal.fontSize']).toBe(16);
     expect(await appPage.evaluate(() => {
       const bootstrap = Reflect.get(window, '__OMNIVIEW_BOOTSTRAP__');
       return localStorage.getItem(bootstrap.storageKey('e2e-marker'));

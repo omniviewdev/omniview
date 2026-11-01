@@ -3,12 +3,12 @@ import { test, expect } from '../fixtures/app.fixture';
 import {
   backgroundOf, chooseSetting, isNeutralDark, isSolarizedDark, openSettingsCategory, settingRow, shell,
 } from '../fixtures/helpers';
-import { callBinding, Service } from '../fixtures/wails';
+import { hostSettingsValues } from '../fixtures/wails';
 
 const REGIONS = ['header', 'main', 'footer'] as const;
 
 async function storedValue(page: Page, id: string): Promise<unknown> {
-  return callBinding(page.request, Service.settings, 'GetSettingValue', id);
+  return (await hostSettingsValues(page.request))[id];
 }
 
 test.describe('Theme', () => {
