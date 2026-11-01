@@ -38,7 +38,7 @@ function CoreSettingsForm({ id }: { id: string }) {
       </div>
     </div>
     {id === 'developer' && <HostProfilingCard />}
-    <SettingsFormShell form={form} pendingRestart={pendingRestart}>
+    <SettingsFormShell form={form} pendingRestart={pendingRestart} restartTarget='Omniview'>
       <SettingsEntries section={Section.Core} id={id} settings={category.settings}
         draftValues={form.draftValues} setDraftValues={form.setDraftValues} validation={form.validation}
         renderSetting={id === 'appearance' ? APPEARANCE_SETTING_RENDERERS : undefined} />

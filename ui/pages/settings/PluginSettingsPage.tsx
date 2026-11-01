@@ -32,7 +32,7 @@ function PluginSettingsForm({ id }: { id: string }) {
         <Text size='xs' tone='muted'>{plugin.data.metadata.description}</Text>
       </div>
     </div>
-    <SettingsFormShell form={form} pendingRestart={pendingRestart}>
+    <SettingsFormShell form={form} pendingRestart={pendingRestart} restartTarget={`${plugin.data.metadata.name} plugin`}>
       <SettingsEntries section={Section.Plugins} id={id} settings={category.settings}
         draftValues={form.draftValues} setDraftValues={form.setDraftValues} validation={form.validation} />
     </SettingsFormShell>

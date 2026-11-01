@@ -6,13 +6,14 @@ import styles from './SettingsPage.module.css';
 type Props = {
   form: SettingsForm;
   pendingRestart: boolean;
+  restartTarget: string;
   children: ReactNode;
 };
 
-export default function SettingsFormShell({ form, pendingRestart, children }: Props) {
+export default function SettingsFormShell({ form, pendingRestart, restartTarget, children }: Props) {
   return <>
     {form.warning && <p role='alert'>{form.warning}</p>}
-    {pendingRestart && <p role='status'>Changes apply after restarting Omniview. Restart Omniview manually to apply saved changes.</p>}
+    {pendingRestart && <p role='status'>Changes apply after restarting {restartTarget}. Restart {restartTarget} manually to apply saved changes.</p>}
     <fieldset className={styles.Form} disabled={form.saving}>{children}</fieldset>
     {form.hasDrafts && <div className={styles.ActionBar}>
       <Button color='brand' variant='soft' onClick={form.save} disabled={form.saving} aria-label='Save Changes' aria-busy={form.saving}>
