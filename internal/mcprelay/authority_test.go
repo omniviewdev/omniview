@@ -425,3 +425,19 @@ func TestAuthorityGraphCitationsStayOnBoundConnection(t *testing.T) {
 		return nil
 	}))
 }
+
+func TestAuthorityGraphFirstAdmissionMustBeBoundRoot(t *testing.T) {
+	a, bound, target := routeLaneBound(t, opGraphRelated)
+	require.NoError(t, a.Dispatch(bound, func(ctx context.Context) error {
+		boundary := invocation.NewBoundary(a)
+		other := target
+		other.Object = "two"
+		_, err := boundary.Admit(ctx, opGraphRelated, other)
+		require.Error(t, err)
+		_, err = boundary.Admit(ctx, opGraphRelated, target)
+		require.NoError(t, err)
+		_, err = boundary.Admit(ctx, opGraphRelated, other)
+		require.NoError(t, err)
+		return nil
+	}))
+}

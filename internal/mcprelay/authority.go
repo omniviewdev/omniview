@@ -28,6 +28,7 @@ type authorityCall struct {
 	target                  invocation.Target
 	bound, dispatched       bool
 	confirm, approved       bool
+	graphRootAdmitted       bool
 	config                  Config
 }
 
@@ -289,6 +290,14 @@ func (a *Authority) Authorize(p invocation.Principal, operation string, target i
 	// Graph output admission re-admits each cited node under the bound operation.
 	// Policy is plugin/connection-granular and results carry references only.
 	if c.operation == opGraphRelated && operation == opGraphRelated {
+		// The first admission is the bound root reference; only later citations relax.
+		if !c.graphRootAdmitted {
+			if !reflect.DeepEqual(target, c.target) {
+				return errAuthority
+			}
+			c.graphRootAdmitted = true
+			return nil
+		}
 		if target.Provider == c.target.Provider && target.Connection == c.target.Connection && target.Action == "" {
 			return nil
 		}
