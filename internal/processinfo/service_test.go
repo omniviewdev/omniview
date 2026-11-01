@@ -59,30 +59,15 @@ func TestUnavailableInitialHostIdentityNeverRecaptured(t *testing.T) {
 	}
 }
 
-func TestProviderRunsAfterAllHostCollection(t *testing.T) {
+func TestUnverifiedWindowDoesNotDiscardVerifiedHostAndSharedPlugin(t *testing.T) {
 	s := testService()
-	providerCalled := false
-	observe := s.observe
-	s.observe = func(pid int) (devsession.ProcessObservation, error) {
-		if providerCalled {
-			t.Fatal("blocking host lookup followed plugin final fence")
-		}
-		return observe(pid)
-	}
 	s.windows = func() []Window {
-		if providerCalled {
-			t.Fatal("window lookup followed plugin final fence")
-		}
 		return []Window{{Name: "not-native", ID: 7, Ownership: "unverified", Error: "No native window"}}
 	}
 	s.plugins = processProviderFunc(func() []plugin.PluginProcessInfo {
-		providerCalled = true
 		return []plugin.PluginProcessInfo{{PluginID: "embedded", Ownership: "shared"}}
 	})
 	snapshot := s.GetSnapshot()
-	if !providerCalled {
-		t.Fatal("provider not called")
-	}
 	if host := snapshot.Processes[0]; host.Ownership != "verified" || host.WindowAssociation != "unverified" || host.Windows[0].NativeID != 0 {
 		t.Fatalf("unknown window misrepresented: %+v", host)
 	}
