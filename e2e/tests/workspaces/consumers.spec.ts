@@ -1,20 +1,24 @@
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import { test, expect } from '../fixtures/app.fixture';
-import { openSettingsCategory, saveSettings, settingRow } from '../fixtures/helpers';
+import { openSettingsCategory, saveSettings } from '../fixtures/helpers';
 import { assertBackendEventDelivery } from '../fixtures/events';
 import { commitHostSettings, hostSettingsValues } from '../fixtures/wails';
 
 const probeID = 'workspace-probe';
+function counterInput(page: Page) {
+  return page.getByRole('group', { name: 'Probe counter', exact: true }).getByRole('spinbutton');
+}
+
 async function openProbeSettings(page: Page): Promise<void> {
   await openSettingsCategory(page, 'Terminal');
   await page.getByRole('navigation').getByText('Workspace Probe', { exact: true }).click();
-  await expect(settingRow(page, `${probeID}.probe_counter`).getByRole('spinbutton')).toBeVisible();
+  await expect(counterInput(page)).toBeVisible();
 }
 
 async function saveCounter(page: Page, value: number): Promise<void> {
   await openProbeSettings(page);
-  await settingRow(page, `${probeID}.probe_counter`).getByRole('spinbutton').fill(String(value));
+  await counterInput(page).fill(String(value));
   await saveSettings(page);
 }
 
@@ -40,15 +44,15 @@ test.describe('Real application plugin consumers', () => {
     const beforeB = await b.workspace.verify();
     expect(beforeB.workspaceID).not.toBe((await workspace.verify()).workspaceID);
     await openProbeSettings(appPage);
-    await expect(settingRow(appPage, `${probeID}.probe_counter`).getByRole('spinbutton')).toHaveValue('0');
+    await expect(counterInput(appPage)).toHaveValue('0');
     await saveCounter(appPage, 23);
     const actual = await workspace.control('settings.get', { scope: 'plugin', pluginID: probeID, id: 'probe_counter' });
     expect(actual).toMatchObject({ status: 'succeeded', result: 23 });
     await appPage.reload();
     await openProbeSettings(appPage);
-    await expect(settingRow(appPage, `${probeID}.probe_counter`).getByRole('spinbutton')).toHaveValue('23');
+    await expect(counterInput(appPage)).toHaveValue('23');
     await openProbeSettings(b.page);
-    await expect(settingRow(b.page, `${probeID}.probe_counter`).getByRole('spinbutton')).toHaveValue('0');
+    await expect(counterInput(b.page)).toHaveValue('0');
     expect(await b.workspace.control('settings.get', { scope: 'plugin', pluginID: probeID, id: 'probe_counter' })).toMatchObject({ status: 'succeeded', result: 0 });
     expect((await b.workspace.verify()).process).toEqual(beforeB.process);
   });
@@ -80,7 +84,7 @@ test.describe('Real application plugin consumers', () => {
     await expect(appPage.getByTestId('app-shell')).toBeVisible();
     expect(await appPage.evaluate(() => Reflect.get(window, '__OMNIVIEW_BOOTSTRAP__').identity.generation)).toBe(after.generation);
     await openProbeSettings(appPage);
-    await expect(settingRow(appPage, `${probeID}.probe_counter`).getByRole('spinbutton')).toHaveValue('23');
+    await expect(counterInput(appPage)).toHaveValue('23');
     expect((await hostSettingsValues(appPage.request))['terminal.fontSize']).toBe(16);
     expect(await appPage.evaluate(() => {
       const bootstrap = Reflect.get(window, '__OMNIVIEW_BOOTSTRAP__');

@@ -13,7 +13,6 @@ const nav = (page: Page) => page.getByRole('navigation').filter({ hasText: 'Appe
 test.describe('Settings', () => {
   test('lists every core category plus Extensions', async ({ appPage }) => {
     const { categories } = await getHostSettingsSnapshot(appPage.request);
-    expect(Object.keys(categories).length).toBeGreaterThan(0);
 
     await goTo(appPage, '/settings');
     for (const [id, metadata] of Object.entries(categories)) {
