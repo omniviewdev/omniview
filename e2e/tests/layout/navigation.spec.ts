@@ -1,33 +1,72 @@
 import { test, expect } from '../fixtures/app.fixture';
-import { expectPageDoesNotScroll, shell } from '../fixtures/helpers';
+import { expectPageDoesNotScroll, settingsWindowPage, settingRow, shell } from '../fixtures/helpers';
 import { fakeListing } from '../fixtures/plugins';
-import { mockBindings, Service } from '../fixtures/wails';
+import { callBinding, mockBindings, Service } from '../fixtures/wails';
 
 test.describe('Navigation', () => {
-  test('header buttons route to settings, plugins and back home', async ({ appPage }) => {
+  test('header opens one retained Settings window without changing the workspace', async ({ appPage }) => {
     const header = shell(appPage).header;
+    const workspaceURL = appPage.url();
+    const tabs = await appPage.getByRole('tab').allTextContents();
+    await header.getByRole('button', { name: 'Settings', exact: true }).click();
+    const settings = await settingsWindowPage(appPage);
+    await expect(settings.getByRole('option', { name: 'Appearance', exact: true })).toBeVisible();
+    await expect(shell(settings).root).toHaveCount(0);
+    await expect(shell(settings).header).toHaveCount(0);
+    await expect(shell(settings).footer).toHaveCount(0);
+    await expect(appPage).toHaveURL(workspaceURL);
+    expect(await appPage.getByRole('tab').allTextContents()).toEqual(tabs);
 
-    await header.getByRole('button', { name: 'settings', exact: true }).click();
-    await expect(appPage).toHaveURL(/#\/settings$/);
-    await expect(appPage.getByRole('navigation').getByText('Appearance', { exact: true })).toBeVisible();
+    const nativeWindows = (await callBinding<Array<{ name: string; kind: string }>>(
+      appPage.request, Service.windows, 'List',
+    )).filter(window => window.kind === 'settings').map(({ name, kind }) => ({ name, kind }));
+    expect(nativeWindows).toHaveLength(1);
+    await settings.getByRole('option', { name: 'Developer Settings', exact: true }).click();
+    const draft = settingRow(settings, 'developer.gopath').getByRole('textbox');
+    await draft.fill('/tmp/e2e-retained-settings-draft');
+    const root = await settings.locator('[data-visible]').elementHandle();
+    expect(root).not.toBeNull();
+    await settings.getByRole('button', { name: 'Close settings', exact: true }).click();
+    await expect.poll(async () => (await callBinding<{ visible: boolean }>(
+      appPage.request, Service.windows, 'GetSettingsState',
+    )).visible).toBe(false);
+    await expect(settings.locator('[data-visible]')).toHaveAttribute('data-visible', 'false');
+    await header.getByRole('button', { name: 'Settings', exact: true }).click();
+    expect(await settingsWindowPage(appPage)).toBe(settings);
+    await expect(settings.locator('[data-visible]')).toHaveAttribute('data-visible', 'true');
+    expect(await root.evaluate(node => node.isConnected && node === document.querySelector('[data-visible]'))).toBe(true);
+    await expect(draft).toHaveValue('/tmp/e2e-retained-settings-draft');
+    expect((await callBinding<Array<{ name: string; kind: string }>>(
+      appPage.request, Service.windows, 'List',
+    )).filter(window => window.kind === 'settings').map(({ name, kind }) => ({ name, kind }))).toEqual(nativeWindows);
+    await expect(appPage).toHaveURL(workspaceURL);
+    expect(await appPage.getByRole('tab').allTextContents()).toEqual(tabs);
+    await settings.getByRole('button', { name: 'Discard', exact: true }).click();
 
     await header.getByRole('button', { name: 'plugins' }).click();
     await expect(appPage).toHaveURL(/#\/plugins$/);
     await expect(appPage.getByRole('button', { name: /^Installed\b/ })).toBeVisible();
-
     await header.getByRole('button', { name: 'home' }).click();
     await expect(appPage).toHaveURL(/#\/$/);
   });
 
-  test('browser back and forward move between pages', async ({ appPage }) => {
+  test('Settings never enters workspace back and forward history', async ({ appPage }) => {
     const header = shell(appPage).header;
-    await header.getByRole('button', { name: 'settings', exact: true }).click();
     await header.getByRole('button', { name: 'plugins' }).click();
-
+    await expect(appPage).toHaveURL(/#\/plugins$/);
+    await header.getByRole('button', { name: 'Settings', exact: true }).click();
+    await settingsWindowPage(appPage);
+    await expect(appPage).toHaveURL(/#\/plugins$/);
+    await header.getByRole('button', { name: 'home' }).click();
+    await expect(appPage).toHaveURL(/#\/$/);
     await appPage.goBack();
-    await expect(appPage).toHaveURL(/#\/settings$/);
+    await expect(appPage).toHaveURL(/#\/plugins$/);
+    await appPage.goBack();
+    await expect(appPage).toHaveURL(/#\/$/);
     await appPage.goForward();
     await expect(appPage).toHaveURL(/#\/plugins$/);
+    await appPage.goForward();
+    await expect(appPage).toHaveURL(/#\/$/);
   });
 
   test('an unknown route shows an error page inside the shell', async ({ page }) => {
@@ -37,7 +76,7 @@ test.describe('Navigation', () => {
     await expect(shell(page).main).toBeVisible();
   });
 
-  for (const path of ['/', '/settings', '/plugins']) {
+  for (const path of ['/', '/plugins']) {
     test(`${path} loads without uncaught errors or page scrollbars`, async ({ page }) => {
       const errors: string[] = [];
       page.on('pageerror', (error) => errors.push(error.message));
@@ -46,15 +85,25 @@ test.describe('Navigation', () => {
       await expect(shell(page).root).toBeVisible();
       const ready = path === '/'
         ? shell(page).main.getByRole('button', { name: 'Edit Layout' })
-        : path === '/settings'
-          ? page.getByRole('navigation').getByText('Appearance', { exact: true })
-          : page.getByRole('button', { name: /^Installed\b/ });
+        : page.getByRole('button', { name: /^Installed\b/ });
       await expect(ready).toBeVisible();
 
       expect(errors).toEqual([]);
       await expectPageDoesNotScroll(page);
     });
   }
+
+  test('Settings loads without workspace shell, uncaught errors or document overflow', async ({ appPage }) => {
+    const errors: string[] = [];
+    await shell(appPage).header.getByRole('button', { name: 'Settings', exact: true }).click();
+    const settings = await settingsWindowPage(appPage, async auxiliary => {
+      auxiliary.on('pageerror', error => errors.push(error.message));
+    });
+    await expect(settings.getByRole('option', { name: 'Appearance', exact: true })).toBeVisible();
+    await expect(shell(settings).root).toHaveCount(0);
+    await expectPageDoesNotScroll(settings);
+    expect(errors).toEqual([]);
+  });
 
   test.describe('nested marketplace routes', () => {
     let errors: string[];

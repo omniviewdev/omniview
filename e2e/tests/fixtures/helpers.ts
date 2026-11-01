@@ -1,4 +1,7 @@
-import { expect, type Locator, type Page } from '@playwright/test';
+import { expect, type BrowserContext, type Locator, type Page } from '@playwright/test';
+import { bindWindowContext, callBinding, Service } from './wails';
+
+const settingsPages = new WeakMap<BrowserContext, Page>();
 
 /** The shell's fixed regions, by the test ids CoreLayout puts on them. */
 export const shell = (page: Page) => ({
@@ -66,11 +69,53 @@ export async function expectPageDoesNotScroll(page: Page): Promise<void> {
   expect(overflow, 'document overflow').toEqual({ x: 0, y: 0 });
 }
 
-/** Opens a core settings category from the settings nav. */
-export async function openSettingsCategory(page: Page, label: string): Promise<void> {
-  await goTo(page, '/settings');
-  await page.getByRole('navigation').getByText(label, { exact: true }).click();
-  await expect(page.getByText(label, { exact: true }).nth(1)).toBeVisible();
+/**
+ * Attach a browser document to Settings only after the real backend registered it.
+ * Native show/focus operations cannot create a Playwright tab in server mode.
+ */
+export async function settingsWindowPage(
+  mainPage: Page,
+  beforeNavigate?: (settings: Page) => Promise<void>,
+): Promise<Page> {
+  await expect.poll(async () => (await callBinding<Array<{ name: string; kind: string }>>(mainPage.request, Service.windows, 'List'))
+    .some(window => window.name === 'settings' && window.kind === 'settings'),
+  { message: 'Settings must be registered by the real window service' }).toBe(true);
+  const context = mainPage.context();
+  const existing = settingsPages.get(context);
+  if (existing && !existing.isClosed()) {
+    if (beforeNavigate) {
+      throw new Error('Settings setup must precede its first navigation');
+    }
+
+    await expect(existing.getByRole('searchbox', { name: 'Search settings' })).toBeVisible();
+    return existing;
+  }
+
+  await bindWindowContext(mainPage, 'main');
+  const settings = await context.newPage();
+  await bindWindowContext(settings, 'settings');
+  await beforeNavigate?.(settings);
+  await settings.goto('/#/');
+  await expect(settings.getByRole('searchbox', { name: 'Search settings' })).toBeVisible();
+  settingsPages.set(context, settings);
+  return settings;
+}
+
+/** Request the real singleton, then attach its retained browser document. */
+export async function openSettingsWindow(
+  mainPage: Page,
+  target = '',
+  beforeNavigate?: (settings: Page) => Promise<void>,
+): Promise<Page> {
+  await callBinding(mainPage.request, Service.windows, 'OpenSettings', target);
+  return settingsWindowPage(mainPage, beforeNavigate);
+}
+
+/** Open a core category in the dedicated Settings document. */
+export async function openSettingsCategory(page: Page, label: string): Promise<Page> {
+  const settings = await openSettingsWindow(page);
+  await settings.getByRole('option', { name: label, exact: true }).click();
+  return settings;
 }
 
 /** Finds a core setting row by stable identity, independent of its visible label or help. */
@@ -80,8 +125,11 @@ export function settingRow(page: Page, id: string): Locator {
 
 /** Picks an option from a select-type setting. */
 export async function chooseSetting(page: Page, id: string, option: string): Promise<void> {
-  await settingRow(page, id).getByRole('combobox').click();
-  await page.getByRole('option', { name: option, exact: true }).click();
+  if (id === 'appearance.theme') {
+    await settingRow(page, id).getByRole('radio', { name: option, exact: true }).click();
+  } else {
+    await settingRow(page, id).getByRole('combobox').selectOption({ label: option });
+  }
 }
 
 export async function saveSettings(page: Page): Promise<void> {

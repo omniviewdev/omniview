@@ -10,16 +10,18 @@ function counterInput(page: Page) {
   return page.getByRole('group', { name: 'Probe counter', exact: true }).getByRole('spinbutton');
 }
 
-async function openProbeSettings(page: Page): Promise<void> {
-  await openSettingsCategory(page, 'Terminal');
-  await page.getByRole('navigation').getByText('Workspace Probe', { exact: true }).click();
-  await expect(counterInput(page)).toBeVisible();
+async function openProbeSettings(page: Page): Promise<Page> {
+  const settings = await openSettingsCategory(page, 'Terminal');
+  await settings.getByRole('option', { name: 'Workspace Probe', exact: true }).click();
+  await expect(counterInput(settings)).toBeVisible();
+  return settings;
 }
 
-async function saveCounter(page: Page, value: number): Promise<void> {
-  await openProbeSettings(page);
-  await counterInput(page).fill(String(value));
-  await saveSettings(page);
+async function saveCounter(page: Page, value: number): Promise<Page> {
+  const settings = await openProbeSettings(page);
+  await counterInput(settings).fill(String(value));
+  await saveSettings(settings);
+  return settings;
 }
 
 test.describe('Real application plugin consumers', () => {
@@ -43,16 +45,16 @@ test.describe('Real application plugin consumers', () => {
     const b = await profiles.open('profile-b');
     const beforeB = await b.workspace.verify();
     expect(beforeB.workspaceID).not.toBe((await workspace.verify()).workspaceID);
-    await openProbeSettings(appPage);
-    await expect(counterInput(appPage)).toHaveValue('0');
+    const settingsA = await openProbeSettings(appPage);
+    await expect(counterInput(settingsA)).toHaveValue('0');
     await saveCounter(appPage, 23);
     const actual = await workspace.control('settings.get', { scope: 'plugin', pluginID: probeID, id: 'probe_counter' });
     expect(actual).toMatchObject({ status: 'succeeded', result: 23 });
-    await appPage.reload();
+    await settingsA.reload();
     await openProbeSettings(appPage);
-    await expect(counterInput(appPage)).toHaveValue('23');
-    await openProbeSettings(b.page);
-    await expect(counterInput(b.page)).toHaveValue('0');
+    await expect(counterInput(settingsA)).toHaveValue('23');
+    const settingsB = await openProbeSettings(b.page);
+    await expect(counterInput(settingsB)).toHaveValue('0');
     expect(await b.workspace.control('settings.get', { scope: 'plugin', pluginID: probeID, id: 'probe_counter' })).toMatchObject({ status: 'succeeded', result: 0 });
     expect((await b.workspace.verify()).process).toEqual(beforeB.process);
   });
@@ -65,7 +67,7 @@ test.describe('Real application plugin consumers', () => {
     const beforeB = await b.workspace.verify();
     const beforeSettingB = await b.workspace.control('settings.get', { scope: 'plugin', pluginID: probeID, id: 'probe_counter' });
     expect(beforeSettingB).toMatchObject({ status: 'succeeded', result: 0 });
-    await saveCounter(appPage, 23);
+    const settings = await saveCounter(appPage, 23);
     const committed = await commitHostSettings(appPage.request, { 'terminal.fontSize': 16 });
     expect(committed.applied).toBe(true);
     expect(committed.uncertain).toBe(false);
@@ -75,6 +77,7 @@ test.describe('Real application plugin consumers', () => {
       localStorage.setItem(bootstrap.storageKey('e2e-marker'), marker);
     }, marker);
     const before = await workspace.verify();
+    await settings.close();
     const after = await workspace.restart();
     expect(after.generation).not.toBe(before.generation);
     expect(after.process.startIdentity).not.toBe(before.process.startIdentity);
@@ -83,8 +86,8 @@ test.describe('Real application plugin consumers', () => {
     await appPage.reload();
     await expect(appPage.getByTestId('app-shell')).toBeVisible();
     expect(await appPage.evaluate(() => Reflect.get(window, '__OMNIVIEW_BOOTSTRAP__').identity.generation)).toBe(after.generation);
-    await openProbeSettings(appPage);
-    await expect(counterInput(appPage)).toHaveValue('23');
+    const reopenedSettings = await openProbeSettings(appPage);
+    await expect(counterInput(reopenedSettings)).toHaveValue('23');
     expect((await hostSettingsValues(appPage.request))['terminal.fontSize']).toBe(16);
     expect(await appPage.evaluate(() => {
       const bootstrap = Reflect.get(window, '__OMNIVIEW_BOOTSTRAP__');
