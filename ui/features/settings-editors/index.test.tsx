@@ -137,13 +137,13 @@ describe('plugin settings editors', () => {
       const s = setup();
       s.register('lazy', LazyEditor);
       function Host() {
-        const [draft, setDraft] = React.useState('unsaved');
+        const [draft, setDraft] = React.useState<unknown>('unsaved');
         return <ExtensionProvider registry={s.registry}>
           <button>Elsewhere</button>
           <PluginSettingEditor pluginId='native' settingId={field}
             setting={new Setting({ id: field })} value={draft} dirty onChange={setDraft}
             inputId='lazy-input' labelledBy='lazy-label' describedBy='lazy-description'>
-            <input aria-label='Generic editor' value={draft} onChange={event => {
+            <input aria-label='Generic editor' value={String(draft)} onChange={event => {
               setDraft(event.target.value); 
             }} />
           </PluginSettingEditor>
