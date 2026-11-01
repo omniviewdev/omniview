@@ -125,7 +125,8 @@ type navigator struct {
 	exhausted bool
 }
 
-// visit charges one node expansion; it fails once the budget is spent.
+// visit charges one node expansion or branch-view property declaration.
+// It fails once the budget is spent.
 func (n *navigator) visit() bool {
 	if n.visits >= n.policy.MaxNavigationVisits {
 		n.exhausted = true

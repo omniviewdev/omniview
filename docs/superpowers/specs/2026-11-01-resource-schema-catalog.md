@@ -264,7 +264,7 @@ func Navigate(ctx context.Context, schema *Schema, path []PathSegment, policy Po
   - A map lists a single `{Kind:"mapValue"}`; an array a single `{Kind:"item"}`. Entries are sorted by name within each group.
 - A merged conditional field reports `Types` = sorted union of the branch types (empty if any branch is `any`); `Format`, `Title`, `Description` and `Enum` only when identical across all declaring branches (otherwise empty); `HasChildren` if any branch node has children; `Conditions` = the union of the per-branch accumulated conditions, sorted by (Pointer, Branch). Incompatible alternatives are therefore visible as distinct conditions, never silently merged into an unconditional field.
 - A non-resolving path → `INVALID_REQUEST` "schema path does not resolve". A nil schema → `Navigation{}`, no error; the caller reports dynamic.
-- `MaxNavigationFields` truncates with `"fields"`; `MaxNavigationVisits` truncates with `"visits"`. Every node expansion counts one visit.
+- `MaxNavigationFields` truncates with `"fields"`; `MaxNavigationVisits` truncates with `"visits"`. Every node expansion counts one visit. Each property declaration materialized in a branch view also counts one visit, before allocation, so shared references cannot multiply an uncharged property table.
 - `Presence` is `required` when the property is in `Required` of every declaring branch (or of any `allOf` branch), `optional` when declared and not required, `unknown` for map values, items and `any` nodes. `Nullable` is `yes` when `Types` contains null, `no` when `Types` is non-empty without null, `unknown` for `any`.
 
 ### 6.2 Overlay
@@ -291,7 +291,7 @@ func OverlayFor(entry *Entry, schema *Schema, resolveErr error) TypeOverlay
 
 ### 6.3 Branch views
 
-- `func (d *Document) branchView(node NodeID, visit func() bool) *BranchView` builds a merged property table lazily. Charge unique node/complete-condition-path visits before allocations. Cache only complete views; a mutex protects retries and `sync.Once` publishes successful views. An exhausted budget returns explicit visit truncation, never a cached partial view. Cached reuse charges the same visits.
+- `func (d *Document) branchView(node NodeID, visit func() bool) *BranchView` builds a merged property table lazily. Charge each unique node/complete-condition-path expansion and each materialized property declaration before allocation. Cache only complete views; a mutex protects retries and `sync.Once` publishes successful views. An exhausted budget returns explicit visit truncation, never a cached partial view. Cached reuse charges the same total member-expansion and property-declaration visits.
 - Members are resolved through `Ref` and single-branch `allOf` before merging; nested unions merge recursively with concatenated conditions (§6.1).
 - A field present in every branch with the same `TypeSet` is `unconditional`; any other field is `conditional` with one `BranchCondition` per declaring branch.
 - Views live inside the immutable `Document` and are freed with it. Their count is bounded by the number of union nodes; `Stats().BranchViews` reports it. Admission and CEL never create views.

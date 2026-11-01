@@ -20,6 +20,8 @@ type BranchView struct {
 	fields map[string][]viewField
 	// names are the keys of fields, sorted.
 	names []string
+	// cost counts member expansions and materialized property declarations.
+	cost int
 }
 
 type viewMember struct {
@@ -50,15 +52,15 @@ type branchViewCache struct {
 	view  *BranchView
 }
 
-// branchView charges each distinct node/condition expansion before allocating
-// its member. Incomplete views are never retained. Cached views cost the same
-// visits as their initial build and are returned only when the budget permits.
+// branchView charges each distinct node/condition expansion and each property
+// declaration before allocating them. Incomplete views are never retained.
+// Cached views cost the same visits as their initial build.
 func (d *Document) branchView(node NodeID, visit func() bool) *BranchView {
 	slot := d.views.slot(node)
 	slot.mu.Lock()
 	defer slot.mu.Unlock()
 	if slot.built.Load() {
-		for range slot.view.members {
+		for range slot.view.cost {
 			if !visit() {
 				return nil
 			}
@@ -92,9 +94,13 @@ func buildBranchView(d *Document, union NodeID, visit func() bool) *BranchView {
 			}
 		}
 	}
-	view := &BranchView{members: b.members, fields: map[string][]viewField{}}
+	view := &BranchView{members: b.members, fields: map[string][]viewField{}, cost: len(b.members)}
 	for _, m := range b.members {
 		for _, p := range d.Nodes[m.node].Properties {
+			if !visit() {
+				return nil
+			}
+			view.cost++
 			view.fields[p.Name] = append(view.fields[p.Name], viewField{
 				node:       p.Node,
 				conditions: m.conditions,

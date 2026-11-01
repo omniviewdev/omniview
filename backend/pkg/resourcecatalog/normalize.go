@@ -404,7 +404,7 @@ func (b *nodeBuilder) keywords(m map[string]any) error {
 				err = b.additional(value)
 			}
 		case "items":
-			if _, tuple := m["prefixItems"]; tuple {
+			if _, tuple := m["prefixItems"]; tuple && rules.dialect == resourcev2.DialectJSONSchema202012 {
 				// Tuple positions and their tail cannot be enforced as
 				// homogeneous items; prefixItems records the unsupported constraint.
 				continue

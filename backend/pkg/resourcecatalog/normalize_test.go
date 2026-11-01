@@ -324,6 +324,28 @@ func TestNormalizePrefixItemsReducesItemsToAny(t *testing.T) {
 	rejectAdmit(t, schema, body(t, `{"values":["not an integer"]}`), completeCoverage, "/values/0")
 }
 
+func TestNormalizePrefixItemsPreservesItemsInOtherDialects(t *testing.T) {
+	for _, dialect := range []string{dDraft7, dOAS30} {
+		t.Run(dialect, func(t *testing.T) {
+			raw := `{"properties":{"values":{"type":"array","prefixItems":[{"type":"string"}],"items":{"type":"integer"}}}}`
+			root, pointer := "#", "/properties/values"
+			if dialect == dOAS30 {
+				raw = `{"components":{"schemas":{"T":` + raw + `}}}`
+				root = "#/components/schemas/T"
+				pointer = "/components/schemas/T/properties/values"
+			}
+			d := mustNormalize(t, dialect, raw)
+			n := node(t, d, pointer)
+			if n.Items == 0 || d.Nodes[n.Items].Types != TypeInteger || !hasConstraint(n, pointer, "prefixItems") {
+				t.Fatalf("non-tuple items = %+v", n)
+			}
+			schema := admitSchema(t, dialect, raw, root)
+			mustAdmit(t, schema, body(t, `{"values":[1,2]}`), completeCoverage)
+			rejectAdmit(t, schema, body(t, `{"values":["not an integer"]}`), completeCoverage, "/values/0")
+		})
+	}
+}
+
 func TestNormalizeRecursionThroughStructureIsAllowed(t *testing.T) {
 	mustNormalize(t, d2020, `{"$defs":{"list":{"type":"array","items":{"$ref":"#/$defs/list"}}},"$ref":"#/$defs/list"}`)
 }

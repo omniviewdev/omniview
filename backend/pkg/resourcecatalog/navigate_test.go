@@ -329,9 +329,9 @@ func TestNavigateBranchViewBudgetRetriesWithoutDuplicateMembers(t *testing.T) {
 		]
 	}`, "")
 	policy := DefaultPolicy()
-	// Root, first branch, two ref nodes, one shared target, last branch.
-	// The repeated target under the first branch must count only once.
-	for _, visits := range []int{1, 5} {
+	// Root, first branch, two ref nodes, one shared target, last branch,
+	// and two property declarations. The repeated target counts only once.
+	for _, visits := range []int{1, 7} {
 		policy.MaxNavigationVisits = visits
 		if nav := navigate(t, schema, policy); !nav.Truncated || nav.TruncationReason != TruncatedVisits {
 			t.Fatalf("budget %d = %+v", visits, nav)
@@ -340,7 +340,7 @@ func TestNavigateBranchViewBudgetRetriesWithoutDuplicateMembers(t *testing.T) {
 			t.Fatalf("budget %d cached %d incomplete views", visits, views)
 		}
 	}
-	policy.MaxNavigationVisits = 6
+	policy.MaxNavigationVisits = 8
 	for range 2 {
 		nav := navigate(t, schema, policy)
 		if nav.Truncated || !slices.Equal(fieldNames(nav), []string{"last", "shared"}) {
@@ -358,12 +358,45 @@ func TestNavigateBranchViewBudgetRetriesWithoutDuplicateMembers(t *testing.T) {
 			}
 		}
 	}
-	policy.MaxNavigationVisits = 5
+	policy.MaxNavigationVisits = 7
 	if nav := navigate(t, schema, policy); !nav.Truncated || nav.TruncationReason != TruncatedVisits {
 		t.Fatalf("cached view bypassed budget = %+v", nav)
 	}
 	if views := c.Stats().BranchViews; views != 1 {
 		t.Fatalf("cached view count changed after small budget: %d", views)
+	}
+}
+
+func TestNavigateBranchViewBudgetsSharedPropertyDeclarations(t *testing.T) {
+	var document strings.Builder
+	document.WriteString(`{"anyOf":[{"$ref":"#/$defs/shared"},{"$ref":"#/$defs/shared"}],"$defs":{"shared":{"properties":{`)
+	for property := range 64 {
+		if property > 0 {
+			document.WriteByte(',')
+		}
+		fmt.Fprintf(&document, `"field%02d":{"type":"string"}`, property)
+	}
+	document.WriteString(`}}}}`)
+	c := NewCatalog(DefaultPolicy())
+	schema := resolvedSchema(t, c, "a", d2020, document.String(), "")
+	policy := DefaultPolicy()
+	// Five node expansions and 64 declarations under each of two conditions.
+	const exactBudget = 5 + 2*64
+	policy.MaxNavigationVisits = exactBudget - 1
+	nav := navigate(t, schema, policy)
+	if !nav.Truncated || nav.TruncationReason != TruncatedVisits || c.Stats().BranchViews != 0 {
+		t.Fatalf("incomplete property table = %+v, stats = %+v", nav, c.Stats())
+	}
+	policy.MaxNavigationVisits = exactBudget
+	for range 2 {
+		nav = navigate(t, schema, policy)
+		if nav.Truncated || len(nav.Fields) != 64 || c.Stats().BranchViews != 1 {
+			t.Fatalf("exact property budget = %+v, stats = %+v", nav, c.Stats())
+		}
+	}
+	policy.MaxNavigationVisits = exactBudget - 1
+	if nav = navigate(t, schema, policy); !nav.Truncated || nav.TruncationReason != TruncatedVisits {
+		t.Fatalf("cached declarations bypassed budget = %+v", nav)
 	}
 }
 
