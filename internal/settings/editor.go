@@ -5,7 +5,7 @@ import "github.com/omniviewdev/plugin-sdk/settings"
 // Editor setting defaults.
 const (
 	defaultEditorFontSize      = 11
-	defaultEditorFontWeight    = 11
+	defaultEditorFontWeight    = "normal"
 	defaultLineNumbersMinChars = 5
 )
 

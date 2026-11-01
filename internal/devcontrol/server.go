@@ -15,7 +15,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devsession"
 )
@@ -23,6 +25,7 @@ import (
 const maxRequestBytes = 1 << 20
 const maxResultBytes = 2 << 20
 const maxOperations = 1024
+const settingsValidationExit = 2
 
 type operation struct {
 	response devcontract.Response
@@ -228,6 +231,10 @@ func invalidParams() *devcontract.Error {
 	return devcontract.Fail(2, "invalid_params", "parameters do not match the operation schema")
 }
 func safeError(err error) *devcontract.Error {
+	var commit *settingsservice.CommitError
+	if errors.As(err, &commit) && commit.Validation {
+		return devcontract.Fail(settingsValidationExit, "validation_failed", "setting value did not pass validation")
+	}
 	var e *devcontract.Error
 	if errors.As(err, &e) {
 		switch e.Code {

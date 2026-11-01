@@ -4,7 +4,7 @@ import { Avatar, NavList } from '@omniviewdev/base-ui';
 
 import Icon from '@/components/icons/Icon';
 import { type SectionSelection, Section } from './settingsContext';
-import { useSettingsProvider } from '@/hooks/settings/useCoreSettings';
+import { useScopedSettings, type SettingsCategory } from '@omniviewdev/runtime';
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
 import { IsImage } from '@/utils/url';
 import styles from './SettingsNav.module.css';
@@ -38,14 +38,14 @@ const decodeKey = (key: string): { section: Section; id: string } => {
 };
 
 const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
-  const { settings } = useSettingsProvider();
+  const settings = useScopedSettings({ kind: 'host' });
   const { plugins } = usePluginManager();
 
   if (settings.isLoading || plugins.isLoading) {
     return null;
   }
 
-  if (settings.isError || !settings.data) {
+  if (settings.error) {
     return null;
   }
 
@@ -53,7 +53,7 @@ const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
     {
       title: 'Core',
       items: [
-        ...Object.values(settings.data).map(category => ({
+        ...Object.values(settings.categories).filter((category): category is SettingsCategory => category !== undefined).map(category => ({
           id: encodeKey(Section.Core, category.id),
           label: category.label,
           icon: <Icon name={category.icon} size={16} />,

@@ -1,12 +1,14 @@
 package settings
 
 import (
+	"context"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // Flatten only the SDK provider's category representation to the existing
@@ -26,7 +28,7 @@ func (p transactionSDKProvider) ListSettings() map[string]pkgsettings.Setting {
 }
 
 func (p transactionSDKProvider) ValidateSetting(id string, value any) (pkgsettings.ValidationResult, error) {
-	setting, err := p.Provider.GetSetting(id)
+	setting, err := p.GetSetting(id)
 	if err != nil {
 		return pkgsettings.ValidationResult{}, err
 	}
@@ -58,18 +60,22 @@ func TestSettingsTransaction_PreservesValidationHooksAndPersistence(t *testing.T
 	provider.RegisterChangeHandler("limits", func(values map[string]any) {
 		hookValues = append(hookValues, values["count"])
 	})
-	ctrl := NewController(logging.NewNop(), nil, store).(*controller)
+	ctrl, ok := NewController(logging.NewNop(), store).(*controller)
+	require.True(t, ok)
 	ctrl.clients["fixture"] = transactionSDKProvider{provider}
 	ctrl.hydrated["fixture"] = true
 	require.NoError(t, store.SavePluginSettings("fixture", map[string]any{"limits.count": 3}))
 
-	require.Error(t, ctrl.SetSetting("fixture", "limits.count", 0))
+	persist := func(values map[string]any) error { return store.PatchPluginSettings("fixture", values) }
+	_, err := ctrl.CommitSettings(context.Background(), "fixture", map[string]any{"limits.count": 0}, persist)
+	require.Error(t, err)
 	values, err := store.LoadPluginSettings("fixture")
 	require.NoError(t, err)
 	assert.EqualValues(t, 3, values["limits.count"])
 	assert.Empty(t, hookValues, "invalid writes must not fire provider hooks")
 
-	require.NoError(t, ctrl.SetSettings("fixture", map[string]any{"limits.count": 5}))
+	_, err = ctrl.CommitSettings(context.Background(), "fixture", map[string]any{"limits.count": 5}, persist)
+	require.NoError(t, err)
 	values, err = store.LoadPluginSettings("fixture")
 	require.NoError(t, err)
 	assert.EqualValues(t, 5, values["limits.count"])

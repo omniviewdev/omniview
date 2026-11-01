@@ -44,9 +44,10 @@ func TestSelectedSDKAPIRealCompileRPCAndRecovery(t *testing.T) {
 	require.Equal(t, "plugin original", firstB.pluginLabel)
 	require.NotEqual(t, firstA.pluginPID, firstB.pluginPID)
 	require.NotEqual(t, a.workspace.StateRoot, b.workspace.StateRoot)
+	b.set(t, 7)
 	a.set(t, 23)
 	a.assertValue(t, 23)
-	b.assertValue(t, 0)
+	b.assertValue(t, 7)
 	installedBefore := a.artifactDigest(t)
 	identityBefore := a.identity(t)
 
@@ -59,7 +60,7 @@ func TestSelectedSDKAPIRealCompileRPCAndRecovery(t *testing.T) {
 	require.Equal(t, firstA, a.current(t), "failed build committed a new consumer generation")
 	a.assertNoReady(t)
 	a.assertValue(t, 23)
-	b.assertValue(t, 0)
+	b.assertValue(t, 7)
 
 	// Host compilation independently rejects the same invalid selected source.
 	output, err := a.compile("./host", filepath.Join(a.source, "invalid-host"))
@@ -82,6 +83,6 @@ func TestSelectedSDKAPIRealCompileRPCAndRecovery(t *testing.T) {
 	// canned baseline response; query its unchanged RPC provider again.
 	require.Equal(t, firstB, b.current(t))
 	b.assertLabels(t, "original")
-	b.assertValue(t, 0)
-	b.assertPersisted(t, 0)
+	b.assertValue(t, 7)
+	b.assertPersisted(t, 7)
 }

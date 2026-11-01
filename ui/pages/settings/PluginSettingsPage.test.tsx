@@ -3,15 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Setting, SettingType } from '@omniviewdev/runtime/models';
 
 const mocks = vi.hoisted(() => ({ validate: vi.fn(), save: vi.fn() }));
-vi.mock('@omniviewdev/runtime/api', () => ({ SettingsClient: { ValidateSetting: mocks.validate } }));
 vi.mock('@/hooks/useDevMode', () => ({ useDevMode: () => false }));
 vi.mock('@/hooks/plugin/usePluginManager', () => ({
   usePlugin: () => ({ plugin: { data: { metadata: { name: 'Fixture', description: 'Plugin settings', icon: '' } } } }),
 }));
-vi.mock('@/hooks/settings/usePluginSettings', () => ({
-  usePluginSettings: () => ({
-    settings: { data: { 'tool.path': new Setting({ id: 'tool.path', label: 'Tool', type: SettingType.Text, value: 'saved', default: '', options: [] }) } },
-    setSettings: mocks.save,
+vi.mock('@omniviewdev/runtime', () => ({
+  useScopedSettings: () => ({
+    categories: { plugin: { settings: { 'tool.path': new Setting({ id: 'tool.path', label: 'Tool', type: SettingType.Text, value: 'saved', default: '', options: [] }) } } },
+    commit: mocks.save,
+    validate: mocks.validate,
   }),
 }));
 
@@ -20,7 +20,7 @@ import PluginSettingsPage from './PluginSettingsPage';
 describe('plugin settings validation', () => {
   beforeEach(() => {
     mocks.validate.mockReset().mockResolvedValue({ valid: true, code: 'ready', message: 'Tool ready.' });
-    mocks.save.mockReset().mockResolvedValue(undefined);
+    mocks.save.mockReset().mockResolvedValue({ applied: true, uncertain: false, message: '' });
   });
   afterEach(cleanup);
 
@@ -30,7 +30,7 @@ describe('plugin settings validation', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
     });
-    expect(mocks.validate).toHaveBeenCalledWith('fixture.plugin', 'tool.path', 'good');
+    expect(mocks.validate).toHaveBeenCalledWith('tool.path', 'good');
     expect(mocks.save).toHaveBeenCalledWith({ 'tool.path': 'good' });
     expect(screen.queryByText('Unsaved change')).not.toBeInTheDocument();
   });
@@ -46,6 +46,30 @@ describe('plugin settings validation', () => {
     expect(screen.getByText('Select a working tool.')).toBeVisible();
     expect(screen.getByRole('textbox')).toHaveValue('bad');
     expect(screen.getByRole('button', { name: 'Save Changes' })).toBeEnabled();
+  });
+
+  it('clears drafts after durable uncertain application and shows the warning', async () => {
+    mocks.save.mockResolvedValue({ applied: false, uncertain: true, message: 'Settings saved. Application status is unknown.' });
+    render(<PluginSettingsPage id='fixture' />);
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'durable' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent('Settings saved. Application status is unknown.');
+    expect(screen.queryByText('Unsaved change')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save Changes' })).not.toBeInTheDocument();
+  });
+
+  it('preserves drafts when persistence rejects the commit', async () => {
+    mocks.save.mockRejectedValue(new Error('Storage unavailable'));
+    render(<PluginSettingsPage id='fixture' />);
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'unsaved' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    });
+    expect(screen.getByRole('textbox')).toHaveValue('unsaved');
+    expect(screen.getByText('Unsaved change')).toBeVisible();
+    expect(screen.getByText('Could not save. Check the value and try again.')).toBeVisible();
   });
 
   it('ignores responses after switching plugins', async () => {

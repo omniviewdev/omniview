@@ -8,11 +8,10 @@ import (
 	"fmt"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
-	pluginsettings "github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
+	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devcontrol"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
-	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
 type Manager interface {
@@ -29,23 +28,18 @@ type DevServers interface {
 	WaitReady(context.Context, string, string) (devserver.DevServerState, error)
 }
 
-func New(manager Manager, dev DevServers, provider pkgsettings.Provider, controller pluginsettings.Controller, inspect func(context.Context) (devcontract.InstanceDescriptor, error)) devcontrol.Adapters {
-	return devcontrol.Adapters{Inspect: inspect, Plugins: manager, Dev: &lifecycle{manager: manager, dev: dev}, Settings: devcontrol.NewSettingsAdapter(provider, settingsBridge{controller})}
-}
-
-type settingsBridge struct{ controller pluginsettings.Controller }
-
-func (s settingsBridge) SafeSettings(id string) map[string]pkgsettings.Setting {
-	return pluginsettings.RedactedPluginSettings(s.controller, id)
-}
-func (s settingsBridge) SettingForWrite(plugin, id string) (pkgsettings.Setting, error) {
-	return s.controller.GetSetting(plugin, id)
-}
-func (s settingsBridge) SetSetting(plugin, id string, value any) error {
-	return s.controller.SetSetting(plugin, id, value)
-}
-func (s settingsBridge) SetSettings(plugin string, values map[string]any) error {
-	return s.controller.SetSettings(plugin, values)
+func New(
+	manager Manager,
+	dev DevServers,
+	service *settingsservice.Service,
+	inspect func(context.Context) (devcontract.InstanceDescriptor, error),
+) devcontrol.Adapters {
+	return devcontrol.Adapters{
+		Inspect:  inspect,
+		Plugins:  manager,
+		Dev:      &lifecycle{manager: manager, dev: dev},
+		Settings: devcontrol.NewSettingsAdapter(service),
+	}
 }
 
 type lifecycle struct {

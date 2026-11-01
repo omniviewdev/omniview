@@ -2,26 +2,24 @@ package bootstrap
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"net/url"
-	"os"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/registry"
+	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
-	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
 	"github.com/omniviewdev/omniview/internal/telemetry"
 	logging "github.com/omniviewdev/plugin-sdk/log"
-	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
 const settingsChangedEvent = "settings/changed"
 
 func init() {
 	// Invalidation only: setting values can contain credentials.
-	application.RegisterEvent[string](settingsChangedEvent)
+	application.RegisterEvent[settingsservice.Scope](settingsChangedEvent)
 }
 
 // Service wraps the startup/shutdown logic that was previously in the
@@ -29,40 +27,19 @@ func init() {
 // ServiceShutdown so the Wails v3 runtime calls it automatically.
 type Service struct {
 	Log                  logging.Logger
-	SettingsProvider     pkgsettings.Provider
-	SettingsStore        *settingsstore.Store
+	Settings             *settingsservice.Service
 	TelemetrySvc         *telemetry.Service
 	PluginManager        plugin.Manager
 	PluginRegistryClient *registry.Client
 }
 
 func (b *Service) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
-	// Register core settings categories and hydrate from bbolt.
-	coreCategories := []pkgsettings.Category{
-		coresettings.General, coresettings.Appearance,
-		coresettings.Terminal, coresettings.Editor,
-		coresettings.Developer, coresettings.Telemetry,
-	}
-	b.registerCoreSettings(coreCategories)
-
-	// One handler per category owns persistence, side effects and UI invalidation.
-	b.persistOnChange(ctx, coreCategories)
-
-	// Apply the persisted telemetry settings immediately so telemetry
-	// activates on startup (the change handler only fires on changes).
-	if b.SettingsStore != nil {
-		if vals, err := b.SettingsStore.LoadCategory("telemetry"); err == nil && len(vals) > 0 {
-			cfg := b.TelemetrySvc.Config().WithSettings(vals)
-			if applyErr := b.TelemetrySvc.ApplyConfig(ctx, cfg); applyErr != nil {
-				b.Log.Errorw(ctx, "failed to apply initial telemetry config", "error", applyErr)
-			} else {
-				b.Log.Infow(ctx, "telemetry initialized from persisted settings", "enabled", cfg.Enabled)
-			}
-		}
-	}
+	// Startup consumers already have hydrated values. The settings service owns
+	// committed notifications; bootstrap supplies only service-specific effects.
+	b.attachSettingsEffects(ctx)
 
 	// Apply user-configured marketplace URL to the registry client.
-	marketplaceURL, urlErr := b.SettingsProvider.GetString("developer.marketplace_url")
+	marketplaceURL, urlErr := b.Settings.Provider().GetString("developer.marketplace_url")
 	if urlErr == nil && marketplaceURL != "" {
 		b.PluginRegistryClient.SetBaseURL(marketplaceURL)
 		safeHost := marketplaceURL
@@ -85,57 +62,24 @@ func (b *Service) ServiceStartup(ctx context.Context, _ application.ServiceOptio
 	return nil
 }
 
-// registerCoreSettings registers the core settings categories with the settings
-// provider and hydrates them from the persisted store.
-func (b *Service) registerCoreSettings(coreCategories []pkgsettings.Category) {
-	for _, category := range coreCategories {
-		for _, s := range category.Settings {
-			// Registration only fails on a type mismatch with an already-registered setting.
-			_ = b.SettingsProvider.RegisterSetting(category.ID, s)
+func (b *Service) attachSettingsEffects(ctx context.Context) {
+	b.Settings.SetApplyHandler(func(category string, values map[string]any) error {
+		if category != coresettings.Telemetry.ID {
+			return nil
 		}
-		if b.SettingsStore != nil {
-			if vals, loadErr := b.SettingsStore.LoadCategory(category.ID); loadErr == nil && len(vals) > 0 {
-				var changed bool
-				switch category.ID {
-				case coresettings.Appearance.ID:
-					vals, changed = coresettings.MigrateAppearanceValues(vals)
-				case coresettings.Terminal.ID:
-					vals, changed = coresettings.MigrateTerminalValues(vals)
-				}
-				if changed {
-					if saveErr := b.SettingsStore.SaveCategory(category.ID, vals); saveErr != nil {
-						fmt.Fprintf(os.Stderr, "failed to persist migrated settings category %s: %v\n", category.ID, saveErr)
-					}
-				}
-				hydrateCategory(b.SettingsProvider, category, vals)
-			}
+		cfg := b.TelemetrySvc.Config().WithSettings(values)
+		if err := b.TelemetrySvc.ApplyConfig(ctx, cfg); err != nil {
+			b.Log.Errorw(ctx, "failed to apply telemetry config change", "error", err)
+			return errors.New("telemetry could not apply the saved settings")
 		}
-	}
-}
-
-// persistOnChange registers the single category callback supported by the SDK.
-func (b *Service) persistOnChange(ctx context.Context, coreCategories []pkgsettings.Category) {
-	for _, category := range coreCategories {
-		catID := category.ID
-		b.SettingsProvider.RegisterChangeHandler(catID, func(vals map[string]any) {
-			if b.SettingsStore != nil {
-				if saveErr := b.SettingsStore.SaveCategory(catID, vals); saveErr != nil {
-					fmt.Fprintf(os.Stderr, "failed to persist settings category %s: %v\n", catID, saveErr)
-				}
-			}
-			if catID == coresettings.Telemetry.ID {
-				cfg := b.TelemetrySvc.Config().WithSettings(vals)
-				if err := b.TelemetrySvc.ApplyConfig(ctx, cfg); err != nil {
-					b.Log.Errorw(ctx, "failed to apply telemetry config change", "error", err)
-				} else {
-					b.Log.Infow(ctx, "telemetry config updated from settings")
-				}
-			}
-			if app := application.Get(); app != nil {
-				app.Event.Emit(settingsChangedEvent, catID)
-			}
-		})
-	}
+		b.Log.Infow(ctx, "telemetry config updated from settings")
+		return nil
+	})
+	b.Settings.SetChangeHandler(func(scope settingsservice.Scope) {
+		if app := application.Get(); app != nil {
+			app.Event.Emit(settingsChangedEvent, scope)
+		}
+	})
 }
 
 func (b *Service) ServiceShutdown() error {
@@ -146,32 +90,4 @@ func (b *Service) ServiceShutdown() error {
 		b.Log.Errorw(context.Background(), "failed to shut down telemetry", "error", err)
 	}
 	return nil
-}
-
-// hydrateCategory applies persisted values to the registered settings of a
-// category. SetSettings is all-or-nothing, so a single stored key the current
-// build does not declare (written by a newer build, or since removed) or a
-// value that no longer validates would otherwise discard the whole category.
-// Unknown keys are skipped, and on a validation failure each value is applied
-// on its own so the rest still load.
-func hydrateCategory(provider pkgsettings.Provider, category pkgsettings.Category, vals map[string]any) {
-	prefixed := make(map[string]any, len(vals))
-	for k, v := range vals {
-		if _, ok := category.Settings[k]; !ok {
-			fmt.Fprintf(os.Stderr, "ignoring unknown persisted setting %s.%s\n", category.ID, k)
-			continue
-		}
-		prefixed[category.ID+"."+k] = v
-	}
-	if len(prefixed) == 0 {
-		return
-	}
-	if err := provider.SetSettings(prefixed); err == nil {
-		return
-	}
-	for id, v := range prefixed {
-		if err := provider.SetSetting(id, v); err != nil {
-			fmt.Fprintf(os.Stderr, "failed to hydrate setting %s: %v\n", id, err)
-		}
-	}
 }

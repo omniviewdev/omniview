@@ -22,6 +22,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/hashicorp/go-hclog"
 	goplugin "github.com/hashicorp/go-plugin"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/mod/modfile"
+
 	pluginsettings "github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/internal/appstate"
@@ -36,8 +39,6 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/lifecycle"
 	sdksettings "github.com/omniviewdev/plugin-sdk/pkg/v1/settings"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
-	"github.com/stretchr/testify/require"
-	"golang.org/x/mod/modfile"
 )
 
 const sdkRPCContractID = "sdk-rpc-contract"
@@ -471,11 +472,11 @@ func (p *sdkRPCProfile) ReloadManagedPlugin(ctx context.Context, id, source, gen
 	if err := p.launchPlugin(); err != nil {
 		return err
 	}
-	setting, err := p.controller.GetSetting(sdkRPCContractID, "counter")
+	category, err := p.controller.Snapshot(sdkRPCContractID)
 	if err != nil {
 		return err
 	}
-	if setting.Label != p.live.pluginLabel {
+	if category.Settings["counter"].Label != p.live.pluginLabel {
 		return fmt.Errorf("controller schema differs from actual SDK settings RPC")
 	}
 	p.live.pluginPID = p.backend.ReattachConfig().Pid
@@ -570,7 +571,7 @@ func (p *sdkRPCProfile) launchPlugin() error {
 	if err != nil {
 		return err
 	}
-	p.controller = pluginsettings.NewController(logging.NewNop(), nil, p.store)
+	p.controller = pluginsettings.NewController(logging.NewNop(), p.store)
 	p.controller.OnPluginInit(sdkRPCContractID, metadata)
 	if err := p.controller.OnPluginStart(sdkRPCContractID, metadata, backend); err != nil {
 		return err
@@ -715,7 +716,12 @@ func (p *sdkRPCProfile) set(t *testing.T, value int) {
 	t.Helper()
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	require.NoError(t, p.controller.SetSetting(sdkRPCContractID, "counter", value))
+	result, err := p.controller.CommitSettings(
+		context.Background(), sdkRPCContractID, map[string]any{"counter": value},
+		func(values map[string]any) error { return p.store.PatchPluginSettings(sdkRPCContractID, values) },
+	)
+	require.NoError(t, err)
+	require.True(t, result.Applied, "the actual plugin subprocess must apply the durable settings")
 }
 
 func (p *sdkRPCProfile) assertValue(t *testing.T, expected int) {

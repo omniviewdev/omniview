@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"os/exec"
 	"regexp"
@@ -81,4 +82,25 @@ func validateGoExecutable(value any) settings.ValidationResult {
 		return fail("unexpected_output", "Selected executable did not return a recognized Go version.")
 	}
 	return settings.ValidationResult{Valid: true, Code: "go_version", Message: "Go executable verified: " + strings.TrimPrefix(matches[1], "go") + "."}
+}
+
+// validatePprofPort accepts JSON numbers without truncating fractional ports.
+func validatePprofPort(value any) settings.ValidationResult {
+	var port float64
+	switch v := value.(type) {
+	case int:
+		port = float64(v)
+	case float64:
+		port = v
+	default:
+		return settings.ValidationResult{
+			Valid: false, Code: "port_type", Message: "Enter a whole-number port from 0 to 65535.",
+		}
+	}
+	if math.IsNaN(port) || math.IsInf(port, 0) || math.Trunc(port) != port || port < 0 || port > 65535 {
+		return settings.ValidationResult{
+			Valid: false, Code: "port_range", Message: "Enter a whole-number port from 0 to 65535.",
+		}
+	}
+	return settings.ValidationResult{Valid: true, Code: "port", Message: "Port is valid."}
 }

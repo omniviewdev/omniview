@@ -105,6 +105,16 @@ export class Setting {
      */
     "devOnly": boolean;
 
+    /**
+     * RequiresRestart declares that changes apply after restart.
+     */
+    "requiresRestart": boolean;
+
+    /**
+     * PendingRestart is host snapshot projection, not provider-owned state.
+     */
+    "pendingRestart": boolean;
+
     /** Creates a new Setting instance. */
     constructor($$source: Partial<Setting> = {}) {
         if (!("id" in $$source)) {
@@ -136,6 +146,12 @@ export class Setting {
         }
         if (!("devOnly" in $$source)) {
             this["devOnly"] = false;
+        }
+        if (!("requiresRestart" in $$source)) {
+            this["requiresRestart"] = false;
+        }
+        if (!("pendingRestart" in $$source)) {
+            this["pendingRestart"] = false;
         }
 
         Object.assign(this, $$source);

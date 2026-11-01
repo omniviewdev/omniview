@@ -20,6 +20,9 @@ import * as pluginlog$0 from "../../../../omniviewdev/omniview/backend/pkg/plugi
 import * as resource$0 from "../../../../omniviewdev/omniview/backend/pkg/plugin/resource/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as settings$0 from "../../../../omniviewdev/omniview/backend/pkg/settings/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as window$0 from "../../../../omniviewdev/omniview/backend/window/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -62,14 +65,15 @@ function configure() {
         "plugin/update_error": $$createType19,
         "plugin/update_started": $$createType18,
         "resource/connection/metadata": $$createType20,
-        "watch/STATE": $$createType21,
-        "windows/changed": $$createType22,
-        "windows/closed": $$createType23,
-        "windows/drag/begin": $$createType24,
-        "windows/drag/drop": $$createType25,
-        "windows/drag/end": $$createType26,
-        "windows/drag/hover": $$createType25,
-        "windows/drag/leave": $$createType27,
+        "settings/changed": $$createType21,
+        "watch/STATE": $$createType22,
+        "windows/changed": $$createType23,
+        "windows/closed": $$createType24,
+        "windows/drag/begin": $$createType25,
+        "windows/drag/drop": $$createType26,
+        "windows/drag/end": $$createType27,
+        "windows/drag/hover": $$createType26,
+        "windows/drag/leave": $$createType28,
     }));
 }
 
@@ -95,12 +99,13 @@ const $$createType17 = plugin$0.StateWriteErrorPayload.createFrom;
 const $$createType18 = plugin$0.UpdatePayload.createFrom;
 const $$createType19 = plugin$0.UpdateErrorPayload.createFrom;
 const $$createType20 = resource$0.HostConnectionMetadata.createFrom;
-const $$createType21 = resource$0.HostWatchStateEvent.createFrom;
-const $$createType22 = window$0.WindowsChangedEvent.createFrom;
-const $$createType23 = window$0.WindowClosedEvent.createFrom;
-const $$createType24 = window$0.DragBeginEvent.createFrom;
-const $$createType25 = window$0.DragPointerEvent.createFrom;
-const $$createType26 = window$0.DragEndEvent.createFrom;
-const $$createType27 = window$0.DragLeaveEvent.createFrom;
+const $$createType21 = settings$0.Scope.createFrom;
+const $$createType22 = resource$0.HostWatchStateEvent.createFrom;
+const $$createType23 = window$0.WindowsChangedEvent.createFrom;
+const $$createType24 = window$0.WindowClosedEvent.createFrom;
+const $$createType25 = window$0.DragBeginEvent.createFrom;
+const $$createType26 = window$0.DragPointerEvent.createFrom;
+const $$createType27 = window$0.DragEndEvent.createFrom;
+const $$createType28 = window$0.DragLeaveEvent.createFrom;
 
 configure();

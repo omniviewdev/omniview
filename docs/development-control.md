@@ -7,8 +7,8 @@ The local control service exists only in a host built with the explicit `devcont
 The integration owner starts the service after profile ownership, plugin manager, settings providers, and managed devserver configuration are established. A build-tagged host integration file imports `internal/devcontrol/host`; ordinary production files must not import that package.
 
 ```go
-adapters := host.New(pluginManager, devServerManager, settingsProvider,
-    pluginSettingsController, inspectCurrentDescriptor)
+adapters := host.New(pluginManager, devServerManager, settingsService,
+    inspectCurrentDescriptor)
 control, err := devcontrol.Start(ctx, devcontrol.Config{
     Descriptor: descriptor, // development identity + captured A06 host process
     Discovery: discoveryStore,

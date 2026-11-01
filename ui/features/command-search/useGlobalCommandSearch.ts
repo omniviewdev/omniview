@@ -13,7 +13,7 @@ import { selectNewTabPlugins } from '../workspace/newTab/newTabPlugins';
 import { openPath } from '../workspace/newTab/openDisposition';
 import type { RouteObject } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSettingsProvider } from '@/hooks/settings/useCoreSettings';
+import { HOST_SETTINGS_SCOPE, useScopedSettings } from '@omniviewdev/runtime';
 import { useDevMode } from '@/hooks/useDevMode';
 import { EXTENSION_REGISTRY } from '../extensions/store';
 import { usePluginService } from '../plugins/react/usePluginService';
@@ -74,7 +74,8 @@ export function useGlobalCommandSearch() {
     throw new Error('Global command search requires PluginServiceProvider.');
   }
 
-  const { settings } = useSettingsProvider();
+  const scopedSettings = useScopedSettings(HOST_SETTINGS_SCOPE);
+  const settings = { data: scopedSettings.categories, isError: Boolean(scopedSettings.error) };
   const devMode = useDevMode();
   const routeTrees = useMemo(
     () =>
@@ -410,11 +411,10 @@ export function useGlobalCommandSearch() {
     }));
     const previous = catalogueRef.current;
     if (
-      previous &&
+      previous?.plugins.length === cataloguePlugins.length &&
       previous.settings === settings.data &&
       previous.devMode === devMode &&
       previous.newTabKey === newTabKey &&
-      previous.plugins.length === cataloguePlugins.length &&
       cataloguePlugins.every(
         (plugin, index) => plugin.id === previous.plugins[index].id && plugin.ready === previous.plugins[index].ready,
       )

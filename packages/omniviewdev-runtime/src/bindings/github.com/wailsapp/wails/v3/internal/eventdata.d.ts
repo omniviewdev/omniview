@@ -19,6 +19,9 @@ import type * as pluginlog$0 from "../../../../omniviewdev/omniview/backend/pkg/
 import type * as resource$0 from "../../../../omniviewdev/omniview/backend/pkg/plugin/resource/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as settings$0 from "../../../../omniviewdev/omniview/backend/pkg/settings/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as window$0 from "../../../../omniviewdev/omniview/backend/window/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -72,7 +75,7 @@ declare module "@wailsio/runtime" {
             "plugin/update_error": plugin$0.UpdateErrorPayload;
             "plugin/update_started": plugin$0.UpdatePayload;
             "resource/connection/metadata": resource$0.HostConnectionMetadata;
-            "settings/changed": string;
+            "settings/changed": settings$0.Scope;
             "watch/STATE": resource$0.HostWatchStateEvent;
             "windows/changed": window$0.WindowsChangedEvent;
             "windows/closed": window$0.WindowClosedEvent;

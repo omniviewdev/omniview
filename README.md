@@ -103,9 +103,13 @@ Keep tracked `dist/.gitkeep` for Go's `all:dist` embed during clean pre-frontend
 
 Error reports retain their normalized error, reference ID, and timestamp as occurrence-owned state rather than compiler optimization caches. Inspecting or copying a report must not replace its identity; a new failure must. Metric stream starts capture the current resource payload, including payload-only updates.
 
-### Profiling the development host
+### Host profiling
 
-Set `OMNIVIEW_PPROF_PORT` when starting a stopped workspace to expose standard Go pprof endpoints to other local processes:
+Open **Settings → Developer Settings**, enable **Enable local pprof**, choose **Host profiling port**, then save and restart Omniview. These settings work in development and production builds. Profiling is off by default; the default port is `6060`. Saving does not start, stop, or rebind the current listener.
+
+The Host profiling section shows the listener's actual URL, errors, and any environment override. Restart-required markers distinguish saved preferences from the configuration currently running. Port `0` selects an available port.
+
+For an explicit launch-time override, set `OMNIVIEW_PPROF_PORT`. A nonempty value enables profiling and overrides the saved port without changing saved preferences:
 
 ```sh
 OMNIVIEW_PPROF_PORT=6067 omniview-dev workspace up \
@@ -117,13 +121,15 @@ curl --fail -o host.trace 'http://127.0.0.1:6067/debug/pprof/trace?seconds=5'
 GOWORK=off go tool trace host.trace
 ```
 
-The listener binds only `127.0.0.1`. It is off when the variable is unset; port `0` selects a free port and prints the actual URL to the host's stderr (the managed supervisor log). Invalid or occupied ports fail startup. Production-tagged builds reject the variable and exclude the pprof server.
+The listener binds only `127.0.0.1`. Invalid environment port values fail startup; bind failures leave the IDE usable and appear in profiling status. The actual endpoint appears in Settings and host logs. Remove the environment override to let saved settings control the next startup.
 
 Local access is unauthenticated and profiles can contain sensitive information. Do not publish or forward the port. Use the numeric `127.0.0.1` URL; requests with a different Host header or any Origin header are rejected.
 
 CPU captures are capped at 120 seconds and execution traces at 15 seconds; larger `seconds` values are clamped. Standard default durations remain unchanged. Both capture routes reject HEAD requests without starting a capture. Request reads, including bodies, time out after 10 seconds; this does not limit capture response duration.
 
 This profiles the host, not plugin subprocesses or the UI. Disable continuous Pyroscope profiling before capturing CPU through pprof: Go permits only one CPU profiler per process. Block/mutex sampling remains disabled by default.
+
+Core startup hydration, durable writes and reusable restart-state semantics are documented in [Settings validation and lifecycle](docs/settings-validation.md).
 
 ## Documentation
 
