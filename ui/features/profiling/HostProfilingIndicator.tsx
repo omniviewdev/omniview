@@ -27,7 +27,7 @@ export default function HostProfilingIndicator() {
   >
     {close => <>
       <PopoverHeader icon={<LuActivity size={14} />} title='Profiling'>
-        <HintTooltip content='Unauthenticated, local-only access. Profiles may contain sensitive data; do not forward this port. CPU captures cannot run alongside Pyroscope.'>
+        <HintTooltip content='Unauthenticated, local-only access. Profiles may contain sensitive data; do not forward this port. Go CPU captures cannot run alongside Pyroscope.'>
           <FooterTrigger aria-label='Profiling safety'><LuInfo size={13} /></FooterTrigger>
         </HintTooltip>
         <FooterLabel tone={tone} label={`Host ${label}`} />

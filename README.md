@@ -141,6 +141,22 @@ Saving never opens or closes an existing plugin listener. Restart Omniview after
 
 The host explicitly supplies `OMNIVIEW_PLUGIN_PPROF_ENABLED=true` or `false` from its startup preference and removes inherited host profiling ports. The SDK accepts only the exact value `true` as opt-in. Listeners use the same unauthenticated local-only access, request guards, capture caps, and shutdown cleanup as host profiling. Disable **Telemetry → Profiling** before restarting plugins for CPU captures when continuous Pyroscope profiling is enabled; Omniview does not pause it automatically.
 
+### Native UI profiling (macOS)
+
+On macOS 13.3 or later, enable **Settings → Developer Settings → UI inspection (WebKit)**, save, and restart Omniview. Inspection is off by default. The footer's **pprof** popover shows the current window's actual inspection availability, app name, and page target. **On** means inspectable, not attached or recording. Saving the setting does not change a running view.
+
+1. In Safari **Settings → Advanced**, enable **Show features for web developers** if needed.
+2. Open **Develop → your Mac**, find the app name shown in Omniview's popover, and select its page target. Safari lists the app header and page as adjacent items; the page can be named `localhost` rather than the document title.
+3. In Web Inspector **Timelines**, enable **JavaScript & Events** and **Layout & Rendering**. Use the inspector's **Record** button, exercise the actual desktop UI, then stop.
+4. Select the recorded time range and inspect **Call Trees**, layout, paint, and frame activity. Export the original recording with **⌘S**; retain the unmodified file with the app version, instance, window, and workload.
+5. Disable UI inspection and restart Omniview when finished.
+
+Inspection permits JavaScript execution in the app, and captures can expose sensitive UI data. No pprof or remote-debugging HTTP port is opened for this feature. Browser/server builds, Windows, Linux, and older macOS report inspection unavailable; they are not equivalent native profiling targets.
+
+The public WebKit policy covers main, restored, and newly created windows. It applies after initial navigation and before normal presentation, so it does not capture initial startup. Production views start non-inspectable. Pinned Wails development builds already enable inspection before the first navigation completes; this pre-existing development interval is not a strict default-off guarantee. Multiple windows can share Safari's `localhost` label; the native window name is not a proven unique Safari target mapping.
+
+Native verification used Safari's Record button on the actual Omniview WKWebView, with application source frames and layout/paint records. Safari 27.0.1 on the verification machine exported some zero-timestamp JavaScript stacks; console-started recording exported only zero-timestamp stacks. Use the inspector's Record button, inspect the captured interval, and do not treat those receipts as complete temporal alignment or a performance benchmark. Chromium/browser-mode traces are not native WebKit evidence. The outstanding cluster-specific performance measurement remains tracked in [#215](https://github.com/omniviewdev/omniview/issues/215).
+
 ## Documentation
 
 For detailed instructions, tutorials, and API documentation, visit our [official documentation](https://docs.omniview.dev/docs/introduction).
