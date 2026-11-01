@@ -5,6 +5,10 @@ with the Wails backend faked inside the page. Where `bench/render` measures sing
 mounted in isolation, this measures the app as a user drives it: startup, plugin loading,
 routing, and the screens running inside the full shell.
 
+The whole-app fixture registers a `main` workspace window and implements its
+runtime name and state calls. Startup resolves window identity before rendering;
+generic no-op window answers prevent the startup-ready marker from firing.
+
 ```bash
 pnpm bench:app                         # build, then 5 runs of every scenario (~3 min)
 pnpm bench:app --runs 3 --only pods    # some scenarios

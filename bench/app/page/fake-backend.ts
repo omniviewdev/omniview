@@ -39,8 +39,13 @@ installDefaultFixtures();
 // Count binding calls by name, so a scenario can report what the app asked the backend for.
 const callCounts: Record<string, number> = {};
 const inner = getTransport()!;
+// NameMethod in the pinned @wailsio/runtime Window API.
+const WINDOW_NAME_METHOD = 18;
 setTransport({
   call: (objectID: number, method: number, windowName: string, args: any) => {
+    if (objectID === objectNames.Window && method === WINDOW_NAME_METHOD) {
+      return Promise.resolve('main');
+    }
     if (objectID === objectNames.Call && (typeof args?.methodID === 'number' || typeof args?.methodName === 'string')) {
       const name = typeof args.methodName === 'string' ? bindingName(args.methodName) : (bindingIndex as Record<string, string>)[args.methodID] ?? String(args.methodID);
       callCounts[name] = (callCounts[name] ?? 0) + 1;
@@ -77,6 +82,9 @@ const POD_KEY = 'k8s:/pods';
 const SYNCED = 2; // WatchState.WatchStateSynced
 
 handleAll({
+  'window/service.List': () => [{ name: 'main', kind: 'workspace' }],
+  'window/service.GetState': () => ({}),
+  'window/service.SaveState': () => null,
   'resource/servicewrapper.GetConnection': () => connection,
   'resource/servicewrapper.GetResourceGroups': () => [
     { id: 'workloads', name: 'Workloads', description: '', icon: '', resources: [POD_KEY] },
