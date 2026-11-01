@@ -149,6 +149,15 @@ its session. Relaunch to verify persistence and reset to verify the 12px default
 Resize the drawer, hide and reveal it, and open a fresh terminal to check that
 the displayed grid and the shell's reported terminal size agree.
 
+The terminal host fills its panel independently of the grid's intrinsic size.
+Keep xterm padding at zero and use the terminal background across the host and
+xterm root: whole-cell rounding and the scrollbar must not expose black gutters.
+ResizeObserver fits the grid before paint; font and window events share a
+cancelable animation-frame fit. Backend resize calls remain serialized.
+Check horizontal and vertical dragging, including narrow and fractional panel
+sizes. The grid must leave less than one unused row and less than one unused
+column beyond the scrollbar, without moving neighboring panels.
+
 ## Plugin settings transport
 
 Plugin draft validation executes the registered callback inside the live plugin;
