@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -35,8 +36,13 @@ var fullRevision = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 var protectedFiles = []string{"pkg/state/root.go", "pkg/state/custom.go", "pkg/profilecontract/profile.go", "pkg/utils/store.go", "pkg/sdk/plugin.go"}
 
 func command(ctx context.Context, dir string, args ...string) ([]byte, error) {
+	return commandWithInput(ctx, dir, nil, args...)
+}
+
+func commandWithInput(ctx context.Context, dir string, input io.Reader, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
+	cmd.Stdin = input
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
 		switch key {
@@ -54,6 +60,47 @@ func command(ctx context.Context, dir string, args ...string) ([]byte, error) {
 		return nil, fmt.Errorf("selected SDK source verification failed (%s): %w", args[0], err)
 	}
 	return raw, nil
+}
+
+// Read the same pinned blobs in one Git process. This is observation-local:
+// every verification still checks ancestry, protected live bytes and source.
+func reviewedSources(ctx context.Context, directory, revision string) ([][]byte, error) {
+	var requests strings.Builder
+	for _, relative := range protectedFiles {
+		fmt.Fprintf(&requests, "%s:%s\n", revision, relative)
+	}
+	raw, err := commandWithInput(ctx, directory, strings.NewReader(requests.String()), "cat-file", "--batch")
+	if err != nil {
+		return nil, err
+	}
+	return parseReviewedSources(raw)
+}
+
+// Batch bodies are length-framed, not line-framed: source may contain any
+// bytes, including newlines, NULs and text that resembles another header.
+func parseReviewedSources(raw []byte) ([][]byte, error) {
+	files := make([][]byte, 0, len(protectedFiles))
+	for _, relative := range protectedFiles {
+		end := bytes.IndexByte(raw, '\n')
+		if end < 0 {
+			return nil, fmt.Errorf("reviewed SDK baseline is incomplete: %s", relative)
+		}
+		header := strings.Fields(string(raw[:end]))
+		if len(header) != 3 || !fullRevision.MatchString(header[0]) || header[1] != "blob" {
+			return nil, fmt.Errorf("reviewed SDK baseline is not a source blob: %s", relative)
+		}
+		size, err := strconv.ParseUint(header[2], 10, 64)
+		raw = raw[end+1:]
+		if err != nil || size >= uint64(len(raw)) || raw[size] != '\n' {
+			return nil, fmt.Errorf("reviewed SDK baseline has an invalid blob body: %s", relative)
+		}
+		files = append(files, raw[:size])
+		raw = raw[size+1:]
+	}
+	if len(raw) != 0 {
+		return nil, fmt.Errorf("reviewed SDK baseline has unexpected trailing output")
+	}
+	return files, nil
 }
 
 // Verify anchors the selected local source in a reviewed fixed-capability
@@ -101,11 +148,12 @@ func VerifyWithOptions(ctx context.Context, directory, reviewedRevision string, 
 		return identity, fmt.Errorf("selected SDK does not descend from the reviewed fixed-capability baseline: %w", err)
 	}
 	if !opts.AllowIsolationCoreChanges {
-		for _, relative := range protectedFiles {
-			baseline, err := command(ctx, canonical, "show", reviewedRevision+":"+relative)
-			if err != nil {
-				return identity, err
-			}
+		baselines, err := reviewedSources(ctx, canonical, reviewedRevision)
+		if err != nil {
+			return identity, err
+		}
+		for index, relative := range protectedFiles {
+			baseline := baselines[index]
 			file := filepath.Join(canonical, filepath.FromSlash(relative))
 			info, err := os.Lstat(file)
 			if err != nil {
@@ -140,6 +188,8 @@ func sourceDigest(ctx context.Context, directory string) (string, error) {
 	hash := sha256.New()
 	_, _ = io.WriteString(hash, "omniview-sdk-source-v1\x00")
 	previous := ""
+	var buffer []byte
+	var source struct{ io.Reader }
 	for _, relative := range names {
 		if err = ctx.Err(); err != nil {
 			return "", err
@@ -179,7 +229,13 @@ func sourceDigest(ctx context.Context, directory string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		_, copyErr := io.Copy(hash, stream)
+		if buffer == nil {
+			buffer = make([]byte, 32*1024)
+		}
+		// Hide os.File.WriteTo so CopyBuffer uses this observation's scratch.
+		source.Reader = stream
+		_, copyErr := io.CopyBuffer(hash, &source, buffer)
+		source.Reader = nil
 		closeErr := stream.Close()
 		if copyErr != nil {
 			return "", copyErr

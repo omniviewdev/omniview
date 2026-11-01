@@ -1,10 +1,13 @@
 package devworkspace
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -254,5 +257,139 @@ func TestExecuteFailureStartsNoDependentAndLetsRunningSiblingFinish(t *testing.T
 	}
 	if _, started := phases["ai-ui"]; started {
 		t.Fatalf("dependent started after a failure: %v", phases)
+	}
+}
+
+func TestSourceInputReaderPreservesFramingAndReadsFreshBytes(t *testing.T) {
+	root := t.TempDir()
+	files := []struct {
+		name    string
+		content []byte
+	}{
+		{"a.ts", bytes.Repeat([]byte("large\n\x00"), 20000)},
+		{"b.ts", nil},
+		{"c.ts", []byte("last file")},
+	}
+	var reader sourceInputReader
+	var got, want bytes.Buffer
+	for _, file := range files {
+		path := filepath.Join(root, file.name)
+		if err := os.WriteFile(path, file.content, 0600); err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(&want, "file\x00%s\x00%o\x00%d\x00", file.name, info.Mode().Perm(), info.Size())
+		want.Write(file.content)
+		if err = reader.hashFile(&got, root, file.name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := reader.hashFile(&got, root, "deleted.ts"); err != nil {
+		t.Fatal(err)
+	}
+	fmt.Fprint(&want, "deleted\x00deleted.ts\x00")
+	if !bytes.Equal(got.Bytes(), want.Bytes()) {
+		t.Fatal("scratch reuse changed source entry framing")
+	}
+	path := filepath.Join(root, "c.ts")
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Metadata-only caching would miss this same-size, restored-mtime edit.
+	if err = os.WriteFile(path, []byte("edit file"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	var current bytes.Buffer
+	if err = reader.hashFile(&current, root, "c.ts"); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasSuffix(current.Bytes(), []byte("edit file")) {
+		t.Fatal("reader reused old source content")
+	}
+}
+
+func TestSourceInputReaderKeepsSymlinkTargets(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Symlink("target.ts", filepath.Join(root, "alias.ts")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	var reader sourceInputReader
+	var got bytes.Buffer
+	if err := reader.hashFile(&got, root, "alias.ts"); err != nil {
+		t.Fatal(err)
+	}
+	if got.String() != "link\x00alias.ts\x00target.ts\x00" {
+		t.Fatalf("symlink target framing changed: %q", got.String())
+	}
+}
+
+type mutatingFingerprintWriter struct {
+	io.Writer
+	writes int
+	change func() error
+}
+
+func (writer *mutatingFingerprintWriter) Write(raw []byte) (int, error) {
+	n, err := writer.Writer.Write(raw)
+	writer.writes++
+	if err == nil && writer.writes == 2 {
+		err = writer.change()
+	}
+	return n, err
+}
+
+func TestSourceInputReaderRejectsMutationDuringRead(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "source.ts")
+	if err := os.WriteFile(path, bytes.Repeat([]byte("source"), 20000), 0600); err != nil {
+		t.Fatal(err)
+	}
+	writer := &mutatingFingerprintWriter{Writer: io.Discard, change: func() error {
+		return os.WriteFile(path, []byte("changed"), 0600)
+	}}
+	var reader sourceInputReader
+	if err := reader.hashFile(writer, root, "source.ts"); err == nil || !strings.Contains(err.Error(), "source changed while fingerprinting") {
+		t.Fatalf("mutation during fingerprint was not refused: %v", err)
+	}
+}
+
+func BenchmarkSourceInputFingerprint(b *testing.B) {
+	root := b.TempDir()
+	names := make([]string, 256)
+	content := bytes.Repeat([]byte("source\n"), 512)
+	for index := range names {
+		names[index] = fmt.Sprintf("source-%03d.ts", index)
+		if err := os.WriteFile(filepath.Join(root, names[index]), content, 0600); err != nil {
+			b.Fatal(err)
+		}
+	}
+	// Both paths hash real files with identical checks. The control gives each
+	// file its own scratch, isolating the cost removed by observation reuse.
+	for _, mode := range []string{"per-file-scratch", "per-fingerprint-scratch"} {
+		b.Run(mode, func(b *testing.B) {
+			b.ReportAllocs()
+			b.SetBytes(int64(len(names) * len(content)))
+			hash := sha256.New()
+			b.ResetTimer()
+			for range b.N {
+				hash.Reset()
+				var reader sourceInputReader
+				for _, name := range names {
+					if mode == "per-file-scratch" {
+						reader = sourceInputReader{}
+					}
+					if err := reader.hashFile(hash, root, name); err != nil {
+						b.Fatal(err)
+					}
+				}
+			}
+		})
 	}
 }
