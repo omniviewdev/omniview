@@ -56,7 +56,9 @@ type Service interface {
 
 	GetResourceGroups(ctx context.Context, pluginID string, route resourcev2.AccessRoute) ([]resourcev2.ResourceGroup, error)
 	GetResourceDefinition(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) (resourcev2.ResourceDefinition, error)
-	GetEditorSchemas(ctx context.Context, pluginID string, route resourcev2.AccessRoute) ([]resourcev2.EditorSchema, error)
+	GetSchemaFields(ctx context.Context, pluginID string, request SchemaFieldsRequest) (SchemaFieldsResult, error)
+	GetEditorSchemas(ctx context.Context, pluginID string, route resourcev2.AccessRoute) ([]EditorSchemaAssociation, error)
+	GetEditorSchemaDocument(ctx context.Context, pluginID string, route resourcev2.AccessRoute, documentID string) (EditorSchemaDocument, error)
 	GetSchemaDocument(ctx context.Context, pluginID string, route resourcev2.AccessRoute, reference resourcev2.SchemaDocumentReference) (resourcev2.SchemaDocument, error)
 	GetRelationships(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) ([]resourcev2.RelationshipDescriptor, error)
 	ResolveRelationships(ctx context.Context, pluginID string, request resourcev2.GetRequest) ([]resourcev2.ResolvedRelationship, error)

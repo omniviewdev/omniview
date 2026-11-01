@@ -52,6 +52,7 @@ func (c *controller) invalidateSourceRoutesLocked(pluginID string, connections [
 	}
 	for connection := range seen {
 		generation.sourceEpoch[connection]++
+		c.schemas.DropConnection(pluginID, connection)
 	}
 	c.finite.mu.Lock()
 	resolver := c.finite.authorities[pluginID]

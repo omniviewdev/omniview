@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/omniviewdev/omniview/backend/pkg/resourcecatalog"
 	"net/http"
 	"slices"
 	"strings"
@@ -148,6 +149,9 @@ type controller struct {
 	onCrashCallback func(pluginID string)
 	pluginStoreFn   func(pluginID string) (*appstate.ScopedRoot, error)
 	watchAfterFunc  func(time.Duration, func()) actionTimer
+	// schemas is the authoritative schema catalog. Its mutex is a leaf lock:
+	// never call into the controller while holding it.
+	schemas *resourcecatalog.Catalog
 }
 
 // compile-time assertions.
@@ -190,6 +194,7 @@ func NewController(
 		onCrashCallback:     nil,
 		pluginStoreFn:       pluginStoreFn,
 		watchAfterFunc:      func(d time.Duration, fn func()) actionTimer { return time.AfterFunc(d, fn) },
+		schemas:             resourcecatalog.NewCatalog(resourcecatalog.DefaultPolicy()),
 	}
 	c.actions.emit = func(id string, snapshot ActionSnapshot) { c.emitter.Emit("action/stream/"+id, snapshot) }
 	// Read c.emitter at emit time: it is replaced when the app starts.
@@ -298,6 +303,9 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 		c.retireMetadata(pluginID, existing)
 	}
 	c.pluginsMu.Lock()
+	if existing != nil {
+		c.schemas.DropPlugin(pluginID)
+	}
 	c.plugins[pluginID] = state
 	c.pluginsMu.Unlock()
 	defer func() {
@@ -448,6 +456,7 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	// Cancel first so a concurrent readiness acknowledgement cannot republish
 	// the retiring provider after invalidation.
 	c.pluginsMu.Lock()
+	c.schemas.DropPlugin(pluginID)
 	var retired ResourceProvider
 	// Make calls unavailable now; release ownership only after retirement.
 	if stopped != nil {

@@ -3,6 +3,7 @@ package resource
 import (
 	"context"
 	"errors"
+	"github.com/omniviewdev/omniview/backend/pkg/resourcecatalog"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -86,6 +87,7 @@ func newCrashTestController() *controller {
 		plugins: make(map[string]*pluginState),
 		emitter: NoopEmitter{},
 		subs:    newSubscriptionManager(),
+		schemas: resourcecatalog.NewCatalog(resourcecatalog.DefaultPolicy()),
 	}
 	return ctrl
 }

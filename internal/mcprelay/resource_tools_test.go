@@ -66,7 +66,7 @@ func (source *generatedNativeSource) Catalog(_ context.Context, request resource
 	return resourcev2.Catalog{Provider: "fixture-native", Revision: revision, Coverage: resourcev2.Coverage{Kind: "complete", Paths: []string{}}, Types: []resourcev2.ResourceType{descriptor}}, nil
 }
 func generatedRepresentation() resourcev2.Representation {
-	return resourcev2.Representation{ID: "native", Revision: "one", Schema: resourcev2.SchemaBinding{State: "absent", Validation: "none", Unvalidated: []string{}}}
+	return resourcev2.Representation{ID: "native", Revision: "one", Schema: resourcev2.SchemaBinding{State: "absent"}}
 }
 func generatedRecord(target resourcev2.ReadTarget, id string) resourcev2.Record {
 	return resourcev2.Record{Reference: resourcev2.ResourceReference{Address: resourcev2.ResourceAddress{Provider: target.Provider, Authority: target.Authority, Type: target.Type, ID: id, Scope: []resourcev2.ScopeEntry{}}}, Body: resourcev2.Value{Kind: "map", Map: map[string]resourcev2.Value{"uint": {Kind: "uint64", Uint: "18446744073709551615"}, "int": {Kind: "int64", Int: "-9223372036854775808"}, "time": {Kind: "timestamp", Timestamp: "2026-10-30T12:00:00.123456789Z"}, "zero": {Kind: "double", Double: math.Copysign(0, -1)}}}, Representation: generatedRepresentation(), Coverage: resourcev2.Coverage{Kind: "complete", Paths: []string{}}}
