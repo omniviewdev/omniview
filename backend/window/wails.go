@@ -64,6 +64,13 @@ func (h *wailsWindowHost) createWindow(spec windowSpec, sink windowEventSink) na
 	options.MinWidth = secondaryWindowMinWidth
 	options.MinHeight = secondaryWindowMinHeight
 	options.UseApplicationMenu = true
+	if spec.Kind == KindSettings {
+		options.Title = "Settings"
+		options.Frameless = true
+		options.MinWidth = min(960, spec.Width)
+		options.MinHeight = min(600, spec.Height)
+		options.EnableFileDrop = false
+	}
 	options.InitialPosition = application.WindowCentered
 	options.X, options.Y = 0, 0
 	if spec.Position != nil {
@@ -73,10 +80,20 @@ func (h *wailsWindowHost) createWindow(spec windowSpec, sink windowEventSink) na
 	window := h.app.Window.NewWithOptions(options)
 	wireFocusAndVisibility(window, spec.Name, sink)
 	wireBoundsTracking(window, spec.Name, sink)
-	// Listeners run off the UI thread after Wails starts closing the window.
-	window.OnWindowEvent(events.Common.WindowClosing, func(_ *application.WindowEvent) {
-		sink.windowClosed(spec.Name)
-	})
+	if spec.Kind == KindSettings {
+		window.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
+			if sink.shutdownStarted() {
+				return
+			}
+			event.Cancel()
+			window.Hide()
+			go sink.windowVisibilityChanged(spec.Name, false)
+		})
+	} else {
+		window.OnWindowEvent(events.Common.WindowClosing, func(_ *application.WindowEvent) {
+			sink.windowClosed(spec.Name)
+		})
+	}
 	return wailsWindow{window: window}
 }
 
@@ -95,6 +112,9 @@ func attachMainWindow(mainWindow *application.WebviewWindow, sink windowEventSin
 	// Hooks run on the UI thread; the sink takes the service lock, so it is
 	// called from a goroutine.
 	mainWindow.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
+		if sink.shutdownStarted() {
+			return
+		}
 		event.Cancel()
 		mainWindow.Hide()
 		go sink.windowVisibilityChanged(MainWindowName, false)
@@ -144,6 +164,14 @@ func (w wailsWindow) Activate() {
 
 func (w wailsWindow) Close() {
 	w.window.Close()
+}
+
+func (w wailsWindow) Hide() {
+	w.window.Hide()
+}
+
+func (w wailsWindow) IsVisible() bool {
+	return w.window.IsVisible() && !w.window.IsMinimised()
 }
 
 func (w wailsWindow) SetPosition(x, y int) {

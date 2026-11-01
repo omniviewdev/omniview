@@ -10,6 +10,7 @@ import (
 	"math"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
@@ -41,6 +42,9 @@ type nativeWindow interface {
 	Activate()
 	// Close closes the window; the host reports it through windowClosed.
 	Close()
+	Hide()
+	// IsVisible reports actual native visibility, excluding minimised windows.
+	IsVisible() bool
 	// SetPosition places the window's top-left at the global point.
 	SetPosition(x, y int)
 	// Bounds returns the window's current native frame in global px.
@@ -69,6 +73,7 @@ type windowEventSink interface {
 	windowFocused(name string)
 	windowVisibilityChanged(name string, visible bool)
 	windowBoundsChanged(name string, bounds Bounds)
+	shutdownStarted() bool
 	windowClosed(name string)
 }
 
@@ -122,6 +127,14 @@ type Service struct {
 	log         logging.Logger
 	dropTimeout time.Duration
 	persister   *sessionPersister
+
+	// settingsOps serializes native settings operations, never lifecycle callbacks.
+	// Native calls run without mu, allowing UI-thread hooks to complete.
+	settingsOps        sync.Mutex
+	settingsState      SettingsState
+	settingsRevision   uint64
+	settingsNativeBusy bool
+	shutdownFlag       atomic.Bool
 
 	// mu guards registry, drags, shuttingDown and the restore queue. Events
 	// are emitted while holding it so their order matches the state
@@ -177,6 +190,9 @@ func (s *Service) restoreWindows(session persistedSession) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, saved := range session.Windows {
+		if saved.Kind == KindSettings || saved.Name == SettingsWindowName {
+			continue
+		}
 		spec := windowSpec{
 			Name:     saved.Name,
 			Kind:     saved.Kind,
@@ -229,6 +245,12 @@ func (s *Service) createNativeWindow(spec windowSpec) {
 // Open creates a window of the requested kind and returns its name. The
 // InitialState slots are served by GetState before the window loads.
 func (s *Service) Open(req OpenRequest) (string, error) {
+	if req.Kind == KindSettings {
+		return "", fmt.Errorf("%w: use OpenSettings", ErrInvalidKind)
+	}
+	if req.HasPosition && req.AnchorWindow == SettingsWindowName {
+		return "", fmt.Errorf("%w: settings cannot transfer tabs", ErrInvalidDrag)
+	}
 	if !req.Kind.isValid() {
 		return "", fmt.Errorf("%w %q", ErrInvalidKind, req.Kind)
 	}
@@ -285,6 +307,10 @@ func (s *Service) List() []Info {
 
 // Focus shows, restores and focuses the named window.
 func (s *Service) Focus(name string) error {
+	if name == SettingsWindowName {
+		_, err := s.OpenSettings("")
+		return err
+	}
 	native, err := s.nativeWindowFor(name)
 	if err != nil {
 		return err
@@ -296,6 +322,9 @@ func (s *Service) Focus(name string) error {
 // Close closes a non-main window. Its state is removed and windows/closed is
 // emitted once the OS window has closed.
 func (s *Service) Close(name string) error {
+	if name == SettingsWindowName {
+		return s.HideSettings()
+	}
 	if name == MainWindowName {
 		return ErrMainWindowClose
 	}
@@ -311,6 +340,9 @@ func (s *Service) Close(name string) error {
 // goes up/left of the pointer, which is given in the window's own client
 // space.
 func (s *Service) MoveToPointer(name string, clientX, clientY float64) error {
+	if name == SettingsWindowName {
+		return fmt.Errorf("%w: settings cannot transfer tabs", ErrInvalidDrag)
+	}
 	s.refreshBounds(name)
 	s.mu.Lock()
 	globalX, globalY, err := s.clientToGlobalLocked(name, clientX, clientY)
@@ -360,6 +392,10 @@ func (s *Service) SaveState(name, slot, stateJSON string) error {
 		s.mu.Unlock()
 		return fmt.Errorf("%w %q", ErrUnknownWindow, name)
 	}
+	if entry.kind == KindSettings {
+		s.mu.Unlock()
+		return fmt.Errorf("%w: settings slots are not supported", ErrInvalidState)
+	}
 	entry.states[slot] = stateJSON
 	s.mu.Unlock()
 	s.persister.schedule()
@@ -372,6 +408,9 @@ func (s *Service) ListStates() map[string]map[string]string {
 	defer s.mu.Unlock()
 	states := make(map[string]map[string]string, len(s.registry.entries))
 	for name, entry := range s.registry.entries {
+		if entry.kind == KindSettings {
+			continue
+		}
 		states[name] = entry.copyStates()
 	}
 	return states
@@ -396,6 +435,7 @@ func (s *Service) ReportViewport(name string, width, height float64) {
 // ServiceShutdown flushes the session. Windows closed by the application
 // teardown afterwards keep their persisted state.
 func (s *Service) ServiceShutdown() error {
+	s.shutdownFlag.Store(true)
 	s.mu.Lock()
 	s.shuttingDown = true
 	s.mu.Unlock()
@@ -403,6 +443,10 @@ func (s *Service) ServiceShutdown() error {
 }
 
 func (s *Service) windowFocused(name string) {
+	if name == SettingsWindowName {
+		s.reconcileSettingsVisibility(true)
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	entry, ok := s.registry.get(name)
@@ -418,6 +462,10 @@ func (s *Service) windowFocused(name string) {
 }
 
 func (s *Service) windowVisibilityChanged(name string, visible bool) {
+	if name == SettingsWindowName {
+		s.reconcileSettingsVisibility(false)
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if entry, ok := s.registry.get(name); ok {
@@ -473,6 +521,9 @@ func (s *Service) snapshotSession() persistedSession {
 	session := emptySession()
 	for _, name := range s.registry.creationOrder {
 		entry := s.registry.entries[name]
+		if entry.kind == KindSettings {
+			continue
+		}
 		session.States[name] = entry.copyStates()
 		if name == MainWindowName {
 			continue

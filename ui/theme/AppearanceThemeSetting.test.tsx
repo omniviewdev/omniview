@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { themeRegistry } from '@omniviewdev/base-ui';
 import type * as AppThemeControllerModule from './AppThemeController';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -44,9 +44,6 @@ const customThemes = [
 
 let unregisterThemes: Array<() => void> = [];
 
-function openThemePicker() {
-  fireEvent.click(screen.getByRole('combobox'));
-}
 
 describe('AppearanceThemeSetting', () => {
   beforeEach(() => {
@@ -64,48 +61,44 @@ describe('AppearanceThemeSetting', () => {
     });
   });
 
-  it('shows built-in, user, and plugin themes in registry order', () => {
-    render(<AppearanceThemeSetting />);
-    expect(screen.getByRole('combobox', { name: 'Theme' })).toBeVisible();
-
-    openThemePicker();
-
-    expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual([
-      'Void',
-      'Dark',
-      'Light',
-      'Obsidian',
-      'Carbon',
-      'Solarized Dark',
-      'Solarized Light',
-      'High Contrast Dark',
-      'High Contrast Light',
-      'Amber',
-      'Zinc',
-      'Alpha',
-      'Zulu',
-    ]);
-  });
 
   it('keeps a missing requested theme visible as an unavailable disabled option', () => {
     mocks.requestedThemeId = 'plugin:missing/theme';
 
     render(<AppearanceThemeSetting />);
 
-    expect(screen.getByRole('combobox')).toHaveTextContent('Unavailable: plugin:missing/theme');
-    openThemePicker();
-
-    expect(screen.getByRole('option', { name: 'Unavailable: plugin:missing/theme' })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('radio', { name: 'Unavailable: plugin:missing/theme' })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: 'Unavailable: plugin:missing/theme' })).toBeChecked();
   });
 
   it('selects Obsidian immediately instead of creating a settings draft', () => {
     render(<AppearanceThemeSetting />);
 
-    openThemePicker();
-    const obsidian = within(screen.getByRole('listbox')).getByRole('option', { name: 'Obsidian' });
-    fireEvent.mouseMove(obsidian);
-    fireEvent.click(obsidian);
+    fireEvent.click(screen.getByRole('radio', { name: 'Obsidian' }));
 
     expect(mocks.selectTheme).toHaveBeenCalledWith('obsidian');
+  });
+  it('selects a plugin theme by its owned ID', () => {
+    render(<AppearanceThemeSetting />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Zulu' }));
+    expect(mocks.selectTheme).toHaveBeenCalledWith('plugin:zulu/theme');
+  });
+
+  it('moves keyboard focus with the immediate theme selection', () => {
+    render(<AppearanceThemeSetting />);
+    screen.getByRole('radio', { name: 'Dark' }).focus();
+    fireEvent.keyDown(screen.getByRole('radiogroup'), { key: 'ArrowRight' });
+    expect(screen.getByRole('radio', { name: 'Light' })).toHaveFocus();
+    expect(mocks.selectTheme).toHaveBeenCalledWith('light');
+  });
+
+  it('moves from the focused fallback when the saved theme is unavailable', () => {
+    mocks.requestedThemeId = 'plugin:missing/theme';
+    render(<AppearanceThemeSetting />);
+    const fallback = screen.getByRole('radio', { name: 'Void' });
+    fallback.focus();
+    fireEvent.keyDown(fallback, { key: 'ArrowLeft' });
+    expect(screen.getByRole('radio', { name: 'Zulu' })).toHaveFocus();
+    expect(mocks.selectTheme).toHaveBeenCalledWith('plugin:zulu/theme');
   });
 });

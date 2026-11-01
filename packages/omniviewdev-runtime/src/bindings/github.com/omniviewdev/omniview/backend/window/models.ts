@@ -264,6 +264,11 @@ export enum Kind {
      * KindPanel renders only a drawer tab strip and the drawer tab content.
      */
     KindPanel = "panel",
+
+    /**
+     * KindSettings renders the compact settings shell.
+     */
+    KindSettings = "settings",
 };
 
 /**
@@ -333,6 +338,38 @@ export class OpenRequest {
             $$parsedSource["initialState"] = $$createField1_0($$parsedSource["initialState"]);
         }
         return new OpenRequest($$parsedSource as Partial<OpenRequest>);
+    }
+}
+
+/**
+ * SettingsState is the backend-owned location and visibility of settings.
+ */
+export class SettingsState {
+    "requestId": number;
+    "target": string;
+    "visible": boolean;
+
+    /** Creates a new SettingsState instance. */
+    constructor($$source: Partial<SettingsState> = {}) {
+        if (!("requestId" in $$source)) {
+            this["requestId"] = 0;
+        }
+        if (!("target" in $$source)) {
+            this["target"] = "";
+        }
+        if (!("visible" in $$source)) {
+            this["visible"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SettingsState instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SettingsState {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SettingsState($$parsedSource as Partial<SettingsState>);
     }
 }
 

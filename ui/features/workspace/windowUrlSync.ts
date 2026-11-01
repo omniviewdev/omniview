@@ -1,5 +1,6 @@
 import { getActiveTab } from './pagesState';
 import type { WorkspaceController } from './workspaceController';
+import { settingsWindowTarget } from '@omniviewdev/runtime';
 
 /** The route in a window URL hash (`#/plugins` → `/plugins`), or null when the hash names no route. */
 export function routeOfHash(hash: string): string | null {
@@ -61,6 +62,12 @@ export function syncWindowUrlWithActiveTab(controller: WorkspaceController): () 
     const route = routeOfHash(window.location.hash);
     if (route && route !== activeRouteOf(controller)?.path) {
       controller.navigateActive(route);
+      if (settingsWindowTarget(route) !== null) {
+        const active = activeRouteOf(controller);
+        if (active) {
+          window.history.replaceState(window.history.state, '', `#${active.path}`);
+        }
+      }
     }
   };
 

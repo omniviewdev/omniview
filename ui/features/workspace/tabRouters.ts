@@ -6,6 +6,7 @@ import {
   type RouterNavigateOptions,
   type To,
 } from 'react-router';
+import { openSettings, settingsWindowTarget } from '@omniviewdev/runtime';
 
 export function routerPathOf(location: Pick<Location, 'pathname' | 'search' | 'hash'>): string {
   return `${location.pathname}${location.search}${location.hash}`;
@@ -102,6 +103,19 @@ export class PageTabRouters {
   private install(tabId: string, path: string): void {
     this.unsubscribers.get(tabId)?.();
     const router = createMemoryRouter(this.routes, { initialEntries: [path] });
+    const navigate = router.navigate.bind(router);
+    router.navigate = async (to: To | number | null, options?: RouterNavigateOptions) => {
+      const path = typeof to === 'string' ? to : typeof to === 'object' && to?.pathname
+        ? `${to.pathname}${to.search ?? ''}${to.hash ?? ''}` : '';
+      const settingsTarget = settingsWindowTarget(path);
+      if (settingsTarget !== null) {
+        await openSettings(settingsTarget);
+        return;
+      }
+
+      await (typeof to === 'number' ? navigate(to) : navigate(to, options));
+    };
+
     // Links render the window's URL form (`#/path`): the window URL shows the
     // active tab's route, and a plain `#/…` href navigates that tab too.
     const createMemoryHref = router.createHref;

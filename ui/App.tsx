@@ -46,6 +46,28 @@ import log from '@/features/logger';
 import { orFallback } from '@/utils/orFallback';
 import { InstanceProvider } from '@/features/instance/InstanceContext';
 
+import { SettingsWindowShell } from './features/windows/SettingsWindowShell';
+
+function WindowApplication() {
+  return (
+    <PluginServiceProvider>
+      {currentWindow.kind === 'settings' ? <SettingsWindowShell /> : (
+        <ConnectionStateProvider>
+          <BottomDrawerProvider>
+            <RightDrawerProvider>
+              <McpConfirmationProvider>
+                <WindowTabDragProvider>
+                  {currentWindow.kind === 'panel' ? <PanelWindowShell /> : <WorkspaceShell />}
+                </WindowTabDragProvider>
+              </McpConfirmationProvider>
+            </RightDrawerProvider>
+          </BottomDrawerProvider>
+        </ConnectionStateProvider>
+      )}
+    </PluginServiceProvider>
+  );
+}
+
 // 2. Global handlers for uncaught errors + promise rejections
 window.addEventListener('error', event => {
   // event.error may be undefined (e.g. script load failures)
@@ -94,20 +116,7 @@ const App: React.FC = () => {
                     >
                       <OperationsProvider>
                         <ConfirmationModalProvider>
-                          <ConnectionStateProvider>
-                            <BottomDrawerProvider>
-                              <RightDrawerProvider>
-                                <PluginServiceProvider>
-                                  <McpConfirmationProvider>
-                                    {/* One tab drag broker per window: page strips and the drawer strip share it. */}
-                                    <WindowTabDragProvider>
-                                      {currentWindow.kind === 'panel' ? <PanelWindowShell /> : <WorkspaceShell />}
-                                    </WindowTabDragProvider>
-                                  </McpConfirmationProvider>
-                                </PluginServiceProvider>
-                              </RightDrawerProvider>
-                            </BottomDrawerProvider>
-                          </ConnectionStateProvider>
+                          <WindowApplication />
                         </ConfirmationModalProvider>
                       </OperationsProvider>
                     </ErrorBoundary>

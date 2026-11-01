@@ -13,6 +13,7 @@ import {
   type McpToolView,
 } from '@/hooks/mcp/useMcpRelay';
 import styles from './AiToolsSettingsPage.module.css';
+import { SettingsFormRegistration } from '@/hooks/settings/useSettingsForm';
 
 const GLOBAL_SCOPE_KEY = 'global';
 const INHERIT_PRESET = '__inherit__';
@@ -83,6 +84,7 @@ const jsonSnippet = (endpoint: string, token: string) =>
     2,
   );
 
+
 const AiToolsSettingsPage: React.FC = () => {
   const [scope, setScope] = React.useState<McpScope>(GLOBAL_SCOPE);
   const relay = useMcpRelay(scope);
@@ -91,6 +93,41 @@ const AiToolsSettingsPage: React.FC = () => {
   const [tokenVisible, setTokenVisible] = React.useState(false);
   const [portDraft, setPortDraft] = React.useState<string | null>(null);
   const [presetName, setPresetName] = React.useState('');
+  const registerForm = React.useContext(SettingsFormRegistration);
+  const [draftError, setDraftError] = React.useState('');
+  const [savingDraft, setSavingDraft] = React.useState(false);
+  React.useLayoutEffect(() => {
+    registerForm?.({
+      saving: savingDraft,
+      hasDrafts: portDraft !== null || presetName.trim() !== '',
+      discard: () => {
+        setPortDraft(null); setPresetName(''); setDraftError(''); 
+      },
+      save: async () => {
+        setSavingDraft(true);
+        try {
+          if (portDraft !== null) {
+            await relay.setPort.mutateAsync(Number(portDraft));
+            setPortDraft(null);
+          }
+
+          if (presetName.trim()) {
+            await relay.saveUserPreset.mutateAsync(presetName.trim());
+            setPresetName('');
+          }
+
+          setDraftError('');
+          return true;
+        } catch {
+          setDraftError('Could not save AI Tools changes. Try again before switching settings.');
+          return false;
+        } finally {
+          setSavingDraft(false); 
+        }
+      },
+    });
+  });
+  React.useLayoutEffect(() => () => registerForm?.(null), [registerForm]);
 
   const status = relay.status.data;
   const config = relay.config.isError ? undefined : relay.config.data;
@@ -157,6 +194,7 @@ const AiToolsSettingsPage: React.FC = () => {
       </div>
 
       <div className={styles.Body}>
+        {draftError && <p role='alert'>{draftError}</p>}
         {([
           ['Configuration', relay.config],
           ['Server status', relay.status],

@@ -19,14 +19,20 @@ import { loadInitialWindowState, resolveCurrentWindow } from './features/windows
 const container = document.getElementById('root')!;
 const root = createRoot(container);
 
-// The window identity and its restored tabs must be in place on the first
-// render; a failure is reported and the window starts with its default layout.
+// Identity must resolve before shell selection. State restoration can fall back
+// to empty tabs; a failed identity must never mount a second workspace shell.
 resolveCurrentWindow()
-  .then(loadInitialWindowState)
-  .catch((error: unknown) => {
-    console.error('[windows] failed to restore this window', error); 
+  .then(async () => {
+    try {
+      await loadInitialWindowState();
+    } catch (error: unknown) {
+      console.error('[windows] failed to restore window state', error);
+    }
+
+    root.render(<App />);
   })
-  .finally(() => {
-    root.render(<App />); 
+  .catch((error: unknown) => {
+    console.error('[windows] failed to identify this window', error);
+    root.render(<p role='alert'>Could not identify this application window. Reload to try again.</p>);
   });
 

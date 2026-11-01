@@ -1,7 +1,7 @@
 .Root {
-  padding-block: var(--ov-space-2);
-  padding-inline: var(--ov-space-2);
+  padding: 0;
 }
+.Root [role='option'], .Root [role='treeitem'] { min-height:29px; padding-block:4px; font-size:12px; }
 
 .PluginAvatar {
   width: 16px;

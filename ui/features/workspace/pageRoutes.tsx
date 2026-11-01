@@ -9,7 +9,6 @@ import PrimaryLoading from '@/components/util/PrimaryLoading';
 import Plugins from '@/pages/plugins';
 import PluginDetails from '@/pages/plugins/PluginDetails';
 import InstalledPlugins from '@/pages/plugins/InstalledPlugins';
-import Settings from '@/pages/settings';
 import Home from '@/pages/home';
 import ResourceBrowser from '@/features/connections/ResourceBrowser';
 import ConnectionDetails from '@/features/connections/ConnectionDetails';
@@ -35,7 +34,6 @@ export function buildPageRoutes(pluginRoutes: RouteObject[]): RouteObject[] {
             { path: ':id', Component: PluginDetails },
           ],
         },
-        { path: 'settings', Component: Settings, ErrorBoundary: RouterErrorBoundary },
         { path: 'resources/:pluginID/:connectionID', Component: ResourceBrowser, ErrorBoundary: RouterErrorBoundary },
         { path: 'connections/:pluginID', Component: ConnectionProfiles, ErrorBoundary: RouterErrorBoundary },
         { path: 'connections/:pluginID/:connectionID/edit', Component: ConnectionDetails, ErrorBoundary: RouterErrorBoundary },

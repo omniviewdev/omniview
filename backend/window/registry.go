@@ -145,6 +145,9 @@ func (r *windowRegistry) dropTargetAt(source string, globalX, globalY float64) s
 	if topmost == source {
 		return ""
 	}
+	if entry, ok := r.entries[topmost]; ok && entry.kind == KindSettings {
+		return ""
+	}
 	return topmost
 }
 

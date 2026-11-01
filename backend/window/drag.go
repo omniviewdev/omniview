@@ -19,6 +19,9 @@ func (s *Service) BeginDrag(b DragBegin) error {
 	if _, ok := s.registry.get(b.SourceWindow); !ok {
 		return fmt.Errorf("%w %q", ErrUnknownWindow, b.SourceWindow)
 	}
+	if entry, _ := s.registry.get(b.SourceWindow); entry.kind == KindSettings {
+		return fmt.Errorf("%w: settings cannot transfer tabs", ErrInvalidDrag)
+	}
 	if _, active := s.drags[b.SessionID]; active {
 		return fmt.Errorf("%w: session %q is already active", ErrInvalidDrag, b.SessionID)
 	}

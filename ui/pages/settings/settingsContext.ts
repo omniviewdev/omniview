@@ -19,3 +19,6 @@ type SettingsFocusRequest = {
 };
 
 export const SettingsFocusContext = createContext<SettingsFocusRequest | null>(null);
+
+/** Dismisses the retained window without discarding mounted form drafts. */
+export const SettingsCloseContext = createContext<(() => void) | undefined>(undefined);

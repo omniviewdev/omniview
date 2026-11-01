@@ -6,7 +6,7 @@ const defaultItems: HeaderAreaItemList = [
     id: 'home', type: HeaderAreaItemType.LINK, icon: 'LuHouse', href: '/',
   },
   {
-    id: 'settings', type: HeaderAreaItemType.LINK, icon: 'LuSettings', href: '/settings',
+    id: 'settings', type: HeaderAreaItemType.LINK, icon: 'LuSettings', href: '/settings', helpText: 'Settings',
   },
   {
     id: 'plugins', type: HeaderAreaItemType.LINK, icon: 'LuUnplug', href: '/plugins',

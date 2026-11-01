@@ -29,7 +29,7 @@ func init() {
 // It mirrors the v2 menu structure from GetMenus/CreateViewMenu but uses
 // the v3 menu builder API. The menu is shared by every window; reload items
 // act on the focused window and fall back to mainWindow.
-func SetupAppMenu(app *application.App, mainWindow *application.WebviewWindow) {
+func SetupAppMenu(app *application.App, mainWindow *application.WebviewWindow, openSettings func()) {
 	menu := app.NewMenu()
 	focusedWindow := func() application.Window {
 		if current := app.Window.Current(); current != nil {
@@ -50,9 +50,19 @@ func SetupAppMenu(app *application.App, mainWindow *application.WebviewWindow) {
 		aboutMenu.Add("About " + app.Config().Name).OnClick(func(_ *application.Context) {
 			app.Menu.ShowAbout()
 		})
+		aboutMenu.AddSeparator()
+		aboutMenu.Add("Settings…").SetAccelerator("CmdOrCtrl+,").OnClick(func(_ *application.Context) {
+			go openSettings()
+		})
 		appMenu.Prepend(aboutMenu)
 		menu.AddRole(application.EditMenu)
 		menu.AddRole(application.WindowMenu)
+	}
+	if runtime.GOOS != "darwin" {
+		fileMenu := menu.AddSubmenu("File")
+		fileMenu.Add("Settings…").SetAccelerator("CmdOrCtrl+,").OnClick(func(_ *application.Context) {
+			go openSettings()
+		})
 	}
 
 	// View submenu — custom items matching the v2 View menu

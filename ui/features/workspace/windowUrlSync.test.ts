@@ -3,6 +3,13 @@ import type * as WindowsModule from '@/features/windows';
 import { createSingleTabState, getActiveTab, pagesReducer, type PagesState } from './pagesState';
 import { WorkspaceController } from './workspaceController';
 import { routeOfHash, syncWindowUrlWithActiveTab } from './windowUrlSync';
+import { openSettings } from '@omniviewdev/runtime';
+import type * as RuntimeModule from '@omniviewdev/runtime';
+
+vi.mock('@omniviewdev/runtime', async (importOriginal) => ({
+  ...(await importOriginal<typeof RuntimeModule>()),
+  openSettings: vi.fn().mockResolvedValue('settings'),
+}));
 
 vi.mock('@/features/windows', async (importOriginal) => ({
   ...(await importOriginal<typeof WindowsModule>()),
@@ -68,13 +75,36 @@ describe('syncWindowUrlWithActiveTab', () => {
     stop = syncWindowUrlWithActiveTab(controller);
     const start = window.history.length;
 
-    window.location.hash = '#/settings?category=terminal';
+    window.location.hash = '#/plugins/alpha';
     window.dispatchEvent(new HashChangeEvent('hashchange'));
 
-    expect(activePath(controller)).toBe('/settings?category=terminal');
-    // The URL already shows the route; syncing back must not add another entry.
+    expect(activePath(controller)).toBe('/plugins/alpha');
     expect(window.history.length).toBe(start + 1);
   });
+  it('routes legacy settings hashes without replacing the workspace tab', () => {
+    const controller = new WorkspaceController(twoTabs(), []);
+    stop = syncWindowUrlWithActiveTab(controller);
+    const before = controller.getState();
+    window.location.hash = '#/settings?category=terminal';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    expect(controller.getState()).toBe(before);
+    expect(window.location.hash).toBe('#/a');
+    expect(openSettings).toHaveBeenCalledWith('/settings?category=terminal');
+  });
+
+  it.each(['navigateActive', 'openInNewTab', 'openInSplit', 'openInNewWindow'] as const)(
+    '%s opens Settings without changing panes, tabs, or workspace history',
+    async (operation) => {
+      const controller = new WorkspaceController(twoTabs(), []);
+      stop = syncWindowUrlWithActiveTab(controller);
+      const before = controller.getState();
+      const history = window.history.length;
+      await controller[operation]('/settings?category=appearance');
+      expect(controller.getState()).toBe(before);
+      expect(activePath(controller)).toBe('/a');
+      expect(window.history.length).toBe(history);
+    },
+  );
 });
 
 describe('routeOfHash', () => {
