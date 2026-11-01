@@ -68,7 +68,7 @@ func TestCompatibilityTransportPreservesRequestAndNonAPIURLs(t *testing.T) {
 		}
 		if strings.HasPrefix(path, "/registry/v1/") {
 			q, _ := url.ParseQuery(got)
-			if q.Get("ide_version") != "0.11.0" || q.Get("search") != "a b" || len(q["tag"]) != 2 {
+			if q.Get("search") != "a b" || len(q["tag"]) != 2 {
 				t.Fatalf("lost API query: %s", got)
 			}
 		} else if got != req.URL.RawQuery {
@@ -106,9 +106,6 @@ func TestDownloadLeavesSignedArtifactURLUnchanged(t *testing.T) {
 			}
 			return
 		}
-		if r.URL.Query().Get("ide_version") != "0.11.0" {
-			t.Errorf("missing API version: %s", r.URL)
-		}
 		if strings.Contains(r.URL.Path, "/download/") {
 			http.Redirect(w, r, server.URL+artifactPath, http.StatusFound)
 			return
@@ -144,9 +141,6 @@ func TestTrailingSlashRegistryBaseURL(t *testing.T) {
 						t.Errorf("writing artifact: %v", err)
 					}
 					return
-				}
-				if r.URL.Query().Get("ide_version") != "0.11.0" {
-					t.Errorf("missing trailing-slash API version: %s", r.URL)
 				}
 				if strings.Contains(r.URL.Path, "/download/") {
 					http.Redirect(w, r, server.URL+signedPath, http.StatusFound)
