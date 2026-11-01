@@ -14,6 +14,14 @@ var Developer = settings.Category{
 	Description: "Settings for developing or writing plugins within Omniview",
 	Icon:        "LuBeaker",
 	Settings: map[string]settings.Setting{
+		"ui_inspection_enabled": {
+			ID:              "ui_inspection_enabled",
+			Label:           "UI inspection (WebKit)",
+			Description:     "Inspect this app from Safari Develop after restarting. Captures can expose sensitive application data.",
+			Type:            settings.Toggle,
+			Default:         false,
+			RequiresRestart: true,
+		},
 		"pprof_enabled": {
 			ID:    "pprof_enabled",
 			Label: "Enable local pprof",

@@ -49,6 +49,7 @@ import (
 	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
 	"github.com/omniviewdev/omniview/internal/shellenv"
 	"github.com/omniviewdev/omniview/internal/telemetry"
+	"github.com/omniviewdev/omniview/internal/uiinspection"
 	"github.com/omniviewdev/omniview/internal/version"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	sdkprofiling "github.com/omniviewdev/plugin-sdk/pkg/profiling"
@@ -506,6 +507,9 @@ func main() {
 		},
 	})
 
+	uiInspectionEnabled, _ := coreSettings.CategoryValues("developer")["ui_inspection_enabled"].(bool)
+	uiInspection := uiinspection.New(app, uiInspectionEnabled)
+
 	// Register controllers before bootstrap: bootstrap loads plugins and their
 	// controllers need initialized contexts. Registration remains before Run.
 	// Service registration order matters: Wails calls ServiceStartup in order.
@@ -531,6 +535,7 @@ func main() {
 		application.NewService(diagnosticsClient),
 		application.NewService(telemetry.NewTelemetryBinding(telemetrySvc)),
 		application.NewService(&profiling.ServiceWrapper{Service: hostProfiling}),
+		application.NewService(uiInspection),
 		application.NewService(&settingsservice.Binding{Service: coreSettings}),
 		application.NewService(pluginManagerSvc),
 		application.NewService(&mcprelay.ServiceWrapper{Relay: mcpRelay}),
