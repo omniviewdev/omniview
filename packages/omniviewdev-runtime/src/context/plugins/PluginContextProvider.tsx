@@ -22,8 +22,8 @@ function PluginContextSession(props: React.PropsWithChildren<PluginContextProvid
   const { categories } = useScopedSettings({ kind: 'plugin', pluginId });
   const settings = React.useMemo(() => Object.fromEntries(
     Object.entries(categories.plugin?.settings ?? {}).filter(([, setting]) => setting !== undefined)
-      .map(([id, setting]) => [id, setting!.value]),
-  ), [categories]);
+      .map(([id, setting]) => [`${pluginId}.${id}`, setting!.value]),
+  ), [categories, pluginId]);
   const [meta, setMeta] = React.useState<PluginMeta>(new PluginMeta);
   const [metaLoaded, setMetaLoaded] = React.useState(false);
   const [metaError, setMetaError] = React.useState<string | null>(null);

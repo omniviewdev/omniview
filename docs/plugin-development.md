@@ -287,6 +287,36 @@ Failed plugin startup closes its dispensed source exactly once even when the
 provider was never published; saved desired profiles and the original typed
 startup failure survive that teardown.
 
+### Connection/server metadata
+
+Use the optional resource-v2 `connectionMetadata` trait for public connection facts such as `aws.region` or `kubernetes.server_version`. Keep configuration in desired profiles and resource inventory/capabilities in resource queries/catalogs. Do not store summaries; derive them from selected keys in the consumer.
+
+```tsx
+import {
+  useConnectionMetadata,
+  readCurrentConnectionMetadataString,
+} from '@omniviewdev/runtime';
+
+export function ServerVersion({ connectionID }: { connectionID: string }) {
+  const metadata = useConnectionMetadata('kubernetes', connectionID);
+  const version = readCurrentConnectionMetadataString(
+    metadata.snapshot,
+    metadata.transportAvailable,
+    'kubernetes.server_version',
+  );
+  return <span>{version ?? 'Version not verified'}</span>;
+}
+```
+
+Get/subscription reads never connect or acquire facts. Call the hook's `refresh()` action explicitly when a newer observation is needed. Start schedules the provider's initial observation. Unsupported providers differ from supported providers with no observations.
+
+Entries expose `current`, `stale`, or `unavailable` and per-key observation times. Current means generation-valid, not recently checked. A stop retains values as stale; reconnect replaces the generation. Transport loss also makes cached values unsuitable for decisions. Display can show stale values with a warning, but metadata never grants authorization or replaces catalog capabilities.
+
+`useConnectionMetadataSelector(pluginID, connectionID, selector)` supports narrow subscriptions whose selected value remains unchanged when unrelated facts update. `useConnectionMetadataConnections` shares the same store for dynamic connection collections such as folder-rule evaluation; it does not introduce batch acquisition.
+
+Providers configure `Config.ConnectionMetadata` in the SDK and return atomic keyed observations/removals. Use literal dotted keys, stable JSON types, bounded values, and safe errors. Strip credentials and endpoint queries/fragments before publication. Metadata remains in memory, separate from profile persistence.
+
+
 Use `valueToJSON` only for presentation: signed and unsigned integers within the
 JavaScript safe-integer range project exactly to `number`; wider integers remain
 `bigint`. This projection does not retain signedness or integral-double intent:

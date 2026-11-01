@@ -74,6 +74,7 @@ declare module "@wailsio/runtime" {
             "plugin/update_complete": plugin$0.UpdatePayload;
             "plugin/update_error": plugin$0.UpdateErrorPayload;
             "plugin/update_started": plugin$0.UpdatePayload;
+            "resource/connection/metadata": resource$0.HostConnectionMetadata;
             "settings/changed": settings$0.Scope;
             "watch/STATE": resource$0.HostWatchStateEvent;
             "windows/changed": window$0.WindowsChangedEvent;

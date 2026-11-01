@@ -49,7 +49,7 @@ function pluginSnapshot(counter: number) {
 
 function Consumer() {
   const { meta, settings } = usePluginContext();
-  return <><h1>{meta.name}</h1><output aria-label="Plugin counter">{settings.counter}</output></>;
+  return <><h1>{meta.name}</h1><output aria-label="Plugin counter">{settings['probe.counter']}</output></>;
 }
 
 function published() {
