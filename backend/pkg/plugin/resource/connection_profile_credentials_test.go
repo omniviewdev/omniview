@@ -152,6 +152,40 @@ func TestProfileCredentialExplicitEmptySurvivesReloadAndReset(t *testing.T) {
 	require.Empty(t, state.Profiles)
 }
 
+func TestProfileCredentialCleanupFailurePublishesCommittedConnections(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	provider := connectionOverlayTestProvider()
+	registerMockPlugin(ctrl, "plugin", provider)
+	connection := profileTestConnection("route", "endpoint")
+	oldToken, newToken := "old-token", "new-token"
+	_, err := ctrl.SaveConnectionProfile(testInvocationContext(), "plugin", connection, &ConnectionProfileCredentials{Token: &oldToken})
+	require.NoError(t, err)
+	root, err := ctrl.pluginStoreFn("plugin")
+	require.NoError(t, err)
+	before, err := readDesiredConnections(root)
+	require.NoError(t, err)
+	oldName := profileCredentialPrefix + before.Profiles[0].CredentialsRef
+	provider.ApplyConnectionOverlayFunc = func(ctx context.Context, overlay resourcev2.ConnectionOverlay) error {
+		if err := provider.applyConnectionOverlay(ctx, overlay); err != nil {
+			return err
+		}
+		require.NoError(t, root.Remove(oldName))
+		require.NoError(t, root.MkdirAll(oldName, 0o700))
+		require.NoError(t, root.WriteFile(oldName+"/blocker", []byte("cleanup blocker"), 0o600))
+		return nil
+	}
+	connection.Name = "committed display name"
+	_, err = ctrl.SaveConnectionProfile(testInvocationContext(), "plugin", connection, &ConnectionProfileCredentials{Token: &newToken})
+	require.Equal(t, "RESET_REQUIRED", resourcev2.ErrorCode(err))
+	stored, err := readDesiredConnections(root)
+	require.NoError(t, err)
+	require.Equal(t, connection.Name, stored.Profiles[0].Configuration.Name)
+	profiles, err := ctrl.ListConnectionProfiles(testInvocationContext(), "plugin")
+	require.NoError(t, err)
+	require.True(t, profiles[0].Active, "committed effective profile must remain active despite obsolete-credential cleanup failure")
+	require.Equal(t, connection.Name, profiles[0].Connection.Name, "public inventory must reflect the committed source despite cleanup failure")
+}
+
 func TestProfileCredentialRejectedSaveRetainsOnlyCommittedPrivateFile(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	provider := connectionOverlayTestProvider()

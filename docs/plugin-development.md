@@ -262,6 +262,9 @@ profile with no native fallback. Never replay a cached discovery list as desired
 configuration. Profile mutation success requires `applied: true`. A host commit
 durability failure can return `RESET_REQUIRED` after the new source state became
 effective; the host publishes a successfully listed source snapshot in that case.
+After a durable commit, inventory publication precedes obsolete-credential
+cleanup. A cleanup failure returns `RESET_REQUIRED` without hiding the already
+effective profile; caller cancellation does not undo that committed publication.
 A failed list or rollback does not establish a known new snapshot. Reload before
 retrying any `RESET_REQUIRED` mutation. Profile `active` means effective discovery
 membership, not an established connection or live resource readiness.

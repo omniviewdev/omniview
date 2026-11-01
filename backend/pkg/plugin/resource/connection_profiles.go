@@ -602,10 +602,10 @@ func (c *controller) changeConnectionProfile(ctx context.Context, pluginID, id, 
 		return ConnectionProfileResult{}, err
 	}
 	committed = true
-	if err := removeUnreferencedProfileCredentials(root, next, previous); err != nil {
+	if err := c.publishProfileConnections(context.WithoutCancel(ctx), pluginID, generation, native, effective); err != nil {
 		return ConnectionProfileResult{}, err
 	}
-	if err := c.publishProfileConnections(ctx, pluginID, generation, native, effective); err != nil {
+	if err := removeUnreferencedProfileCredentials(root, next, previous); err != nil {
 		return ConnectionProfileResult{}, err
 	}
 	result := ConnectionProfile{ID: id, Source: "absent", Active: false}
