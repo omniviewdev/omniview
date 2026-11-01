@@ -1,6 +1,7 @@
 import React from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { useScopedSettings } from '@omniviewdev/runtime';
+import { Button, Dialog } from '@omniviewdev/base-ui';
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
 
 import { SettingsFormRegistration, type SettingsNavigationForm } from '@/hooks/settings/useSettingsForm';
@@ -208,35 +209,42 @@ export default function SettingsPage({ request, onLocationChange, onClose }: {
               {!results.length && <p role='status'>No matching settings.</p>}
             </div>}
           </main>
-          {pending && <div className={styles.Scrim}><div role='dialog' aria-modal='true' aria-labelledby='settings-draft-title' className={styles.Dialog} onKeyDown={event => {
-            if (event.key === 'Escape' && !guardSaving) {
+          {pending && <Dialog open size='sm' onClose={() => {
+            if (!guardSaving) {
               cancelNavigation();
             }
-
+          }} onKeyDown={event => {
             if (event.key === 'Tab') {
               const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
-              const next = buttons[(buttons.indexOf(document.activeElement as HTMLButtonElement) + (event.shiftKey ? buttons.length - 1 : 1)) % buttons.length];
-              event.preventDefault(); next?.focus();
+              const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
+              const next = current < 0
+                ? (event.shiftKey ? buttons.length - 1 : 0)
+                : (current + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length;
+              event.preventDefault(); buttons[next]?.focus();
             }
           }}>
-            <h2 id='settings-draft-title'>Save your changes?</h2>
-            <p>Save or discard unsaved changes before switching settings.</p>
-            {guardError && <p role='alert'>{guardError}</p>}
-            <button autoFocus disabled={guardSaving} onClick={cancelNavigation}>Cancel</button>
-            <button disabled={guardSaving || formSaving} onClick={() => {
-              form.current?.discard(); const action = pendingAction.current; pendingAction.current = null; setPending(null); action?.(); 
-            }}>Discard</button>
-            <button disabled={guardSaving || formSaving} onClick={async () => {
-              setGuardSaving(true);
-              const saved = await form.current?.save();
-              setGuardSaving(false);
-              if (saved) {
-                const action = pendingAction.current; pendingAction.current = null; setPending(null); action?.(); 
-              } else {
-                setGuardError('Changes could not be saved. Resolve the errors or discard changes.');
-              }
-            }}>Save changes</button>
-          </div></div>}
+            <Dialog.Title>Save your changes?</Dialog.Title>
+            <Dialog.Body>
+              <p>Save or discard unsaved changes before switching settings.</p>
+              {guardError && <p role='alert'>{guardError}</p>}
+            </Dialog.Body>
+            <Dialog.Footer>
+              <Button color='neutral' variant='ghost' disabled={guardSaving} onClick={cancelNavigation}>Cancel</Button>
+              <Button color='neutral' variant='soft' disabled={guardSaving || formSaving} onClick={() => {
+                form.current?.discard(); const action = pendingAction.current; pendingAction.current = null; setPending(null); action?.();
+              }}>Discard</Button>
+              <Button color='brand' variant='soft' disabled={guardSaving || formSaving} onClick={async () => {
+                setGuardSaving(true);
+                const saved = await form.current?.save();
+                setGuardSaving(false);
+                if (saved) {
+                  const action = pendingAction.current; pendingAction.current = null; setPending(null); action?.();
+                } else {
+                  setGuardError('Changes could not be saved. Resolve the errors or discard changes.');
+                }
+              }}>Save changes</Button>
+            </Dialog.Footer>
+          </Dialog>}
         </div>
       </SettingsCloseContext.Provider>
     </SettingsFormRegistration.Provider>

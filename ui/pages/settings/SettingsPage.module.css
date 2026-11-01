@@ -13,14 +13,8 @@
 .Results { overflow:auto; padding:15px 22px; }
 .Results h1 { font-size:15px; }
 .Results > button { display:flex; flex-direction:column; gap:4px; width:100%; text-align:left; padding:12px 0; border:0; border-bottom:1px solid var(--ov-color-border-muted); background:transparent; color:inherit; cursor:pointer; }
-.Scrim { position:absolute; inset:0; z-index:10; display:grid; place-items:center; background:rgb(0 0 0 / .4); }
-.Dialog { width:min(400px,90%); padding:20px; border:1px solid var(--ov-color-border-muted); border-radius:8px; background:var(--ov-color-bg-surface); }
-.Dialog h2 { font-size:16px; }
-.Dialog button { margin-right:8px; min-height:28px; }
 .Heading { margin:0; font-size:15px; font-weight:600; line-height:24px; }
 .Heading span { color:var(--ov-color-fg-muted); font-weight:400; }
-.Brand { --wails-draggable:drag; }
 .Actions { display:flex; align-items:center; gap:8px; margin-left:auto; }
-.Scrim { position:fixed; }
 .Brand, .HeaderText { --wails-draggable:drag; }
-.Close:focus-visible, .Search:focus-visible, .Results > button:focus-visible, .Dialog button:focus-visible { outline:2px solid var(--ov-color-border-focus); outline-offset:2px; }
+.Close:focus-visible, .Search:focus-visible, .Results > button:focus-visible { outline:2px solid var(--ov-color-border-focus); outline-offset:2px; }

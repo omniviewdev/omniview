@@ -202,6 +202,24 @@ it('guards search navigation and retains drafts after Cancel and failed Save', a
   expect(screen.getAllByText('Could not save. Check the value and try again.').length).toBeGreaterThan(0);
 });
 
+it('keeps guard keyboard focus inside the dialog and retains drafts on Escape', async () => {
+  const user = userEvent.setup();
+  renderSettings();
+  await user.type(screen.getByRole('textbox', { name: 'First option' }), ' draft');
+  await user.type(screen.getByRole('searchbox', { name: 'Search settings' }), 'Endpoint');
+  await user.click(screen.getByRole('button', { name: /Native probe Endpoint/ }));
+  const dialog = screen.getByRole('dialog');
+  expect(dialog).toHaveFocus();
+  await user.tab({ shift: true });
+  expect(within(dialog).getByRole('button', { name: 'Save changes' })).toHaveFocus();
+  await user.tab();
+  expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus();
+  await user.keyboard('{Escape}');
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  await user.clear(screen.getByRole('searchbox'));
+  expect(screen.getByRole('textbox', { name: 'First option' })).toHaveValue('one draft');
+});
+
 it('guards explicit repeated requests and refocuses after accepting Discard', async () => {
   const user = userEvent.setup();
   let send: (request: { target: string; requestId: number }) => void = () => {
