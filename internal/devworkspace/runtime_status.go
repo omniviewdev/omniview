@@ -124,7 +124,7 @@ func (s *workspaceSupervisor) observeStatus(ctx context.Context, status Status) 
 		if build.Phase == "error" || build.Phase == "invalidated" {
 			status.Health.Build = "failed"
 			status.FailedStage = node
-			status.RecoveryCommand = "omniview-dev workspace refresh " + status.Manifest.WorkspaceID
+			status.RecoveryCommand = workspaceRecoveryCommand(status.Workspace, "refresh")
 			break
 		}
 		if build.Phase == "building" {

@@ -31,7 +31,18 @@ func compatibilityPreflight(ctx context.Context, w Workspace, options LaunchOpti
 		return devcontract.Fail(3, "sdk_contract_mismatch", "selected SDK must declare module "+linkedSDK+"; select a compatible SDK repository")
 	}
 	if _, err = devsource.VerifyWithOptions(ctx, plan.SDK, options.ReviewedSDKRevision, devsource.VerifyOptions{AllowIsolationCoreChanges: options.AllowIsolationSourceChanges}); err != nil {
-		return devcontract.Fail(4, "sdk_source_untrusted", err.Error())
+		var selected devcontract.Repository
+		for _, repository := range w.Manifest.Repositories {
+			if w.Manifest.Links.SDKRepositoryID != nil && repository.ID == *w.Manifest.Links.SDKRepositoryID {
+				selected = repository
+				break
+			}
+		}
+		head, headErr := git(ctx, plan.SDK, "", "rev-parse", "HEAD")
+		if headErr != nil {
+			head = selected.BaseCommit
+		}
+		return devcontract.Fail(4, "sdk_source_untrusted", fmt.Sprintf("selected SDK ref %q commit %s; independently reviewed commit %s: %v", selected.BaseRef, strings.TrimSpace(head), options.ReviewedSDKRevision, err))
 	}
 	for _, root := range plan.GoRoots {
 		bytes, err := os.ReadFile(filepath.Join(root, "go.mod"))
@@ -51,6 +62,9 @@ func compatibilityPreflight(ctx context.Context, w Workspace, options LaunchOpti
 		}
 		if !declaresSDK {
 			return devcontract.Fail(3, "sdk_contract_mismatch", fmt.Sprintf("%s/go.mod does not declare %s; select compatible host and plugin branches", filepath.Base(root), linkedSDK))
+		}
+		if err := validateSDKImports(ctx, root, plan.SDK); err != nil {
+			return err
 		}
 	}
 	return validateRuntimeUIContracts(w, plan)

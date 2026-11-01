@@ -53,9 +53,15 @@ Overlapping ranges are not proof that a selected lockfile resolves compatible
 versions. Complex ranges and policy-adjusted peers remain the native resolver's
 decision; a clean planning result does not replace strict installation.
 
+Go source preflight also checks direct SDK imports against non-test package source
+in the selected SDK worktree before installation. It scans platform/tag variants
+conservatively and accepts ordinary uncommitted SDK source additions. This is
+source-presence evidence, not proof of exported API compatibility, target-specific
+buildability, or future source generation.
+
 An owned supervisor can remain alive after a launch failure. `workspace up`
 refuses to replace it and reports its launch phase and recovery command, including
-the collection root. Use the reported command: failed builds normally need
+the absolute manifest target. Use the reported command: failed builds normally need
 `workspace refresh`, not another `workspace up`. A retained supervisor is not
 evidence that the application is ready.
 
@@ -75,6 +81,13 @@ name lookup searches ancestors of the current directory for the A03 source
 registry, then uses its workspace identity/journal lookup. Use `./name` to select
 an unambiguously relative directory instead of a registry name. Unknown or
 ambiguous names fail rather than guessing.
+
+From a host Git checkout, `workspace collections --json` lists reachable, validated
+collections associated with that repository's registered Git worktrees. It does
+not scan sibling directories, create a global index, select a profile, or fetch
+refs. Invalid, redirected, and unavailable collections are omitted; an orphaned
+collection without a registered host worktree still needs explicit `--root`.
+Choose a returned root explicitly with `workspace list --root COLLECTION`.
 
 The client reads the private per-workspace discovery record and token reference,
 verifies the process start identity, then authenticates `instance.inspect` against
@@ -145,6 +158,11 @@ the mutation repeats that planning under its lifecycle lock.
 fast-forwards selected repositories before refreshing; it does not discard dirty
 edits or reset branches. `recover` resumes refresh work using its durable journal.
 Existing `resume` and `rollback` commands handle interrupted workspace creation.
+
+Failure recovery commands include an absolute `--workspace` manifest path. They
+can be copied into a shell outside the collection without discovering or selecting
+another profile. A conflicting workspace environment still refuses the command;
+unset stale context explicitly rather than falling back to another target.
 
 Supervisor inspection does not queue behind a source or shutdown operation.
 During shutdown, `launchPhase: "stopping"` and `waitStage` identify the current

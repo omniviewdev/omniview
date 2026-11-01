@@ -135,11 +135,11 @@ func (m *Manager) Start(ctx context.Context, name string, o LaunchOptions, execu
 		return status, err
 	}
 	if status.Phase != "stopped" && status.Phase != "crashed" {
-		recovery := shellCommand([]string{"omniview-dev", "workspace", "restart", w.Manifest.WorkspaceID, "--root", m.Root})
+		recovery := workspaceRecoveryCommand(w, "restart")
 		if status.RecoveryCommand != "" {
-			recovery = status.RecoveryCommand + " --root " + shellArgument(m.Root)
+			recovery = status.RecoveryCommand
 		} else if status.Phase == "error" {
-			recovery = shellCommand([]string{"omniview-dev", "workspace", "refresh", w.Manifest.WorkspaceID, "--root", m.Root})
+			recovery = workspaceRecoveryCommand(w, "refresh")
 		}
 		return status, devcontract.Fail(4, "workspace_running", fmt.Sprintf("workspace has an owned supervisor in launch phase %q; recover with: %s", status.Phase, recovery))
 	}
@@ -384,7 +384,7 @@ func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 		} else if event.Phase == "error" || event.Phase == "invalidated" {
 			s.status.Phase = "build-error"
 			s.status.FailedStage = event.Node
-			s.status.RecoveryCommand = "omniview-dev workspace refresh " + s.workspace.Manifest.WorkspaceID
+			s.status.RecoveryCommand = workspaceRecoveryCommand(s.workspace, "refresh")
 			s.status.LastError = devcontract.Fail(5, "build_failed", safeCompilerDiagnostic(event.Error, s.workspace.Root))
 		}
 		s.mu.Unlock()

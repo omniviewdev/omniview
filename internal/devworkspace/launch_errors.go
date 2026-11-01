@@ -20,7 +20,7 @@ func workspaceError(err error) *devcontract.Error {
 			switch copy.Code {
 			case "usage", "invalid_mode", "invalid_mcp_mode", "reviewed_sdk_required":
 				copy.Exit = 2
-			case "missing_workspace", "link_evidence_required", linkResolutionFailureCode, "host_not_ready":
+			case "missing_workspace", "link_evidence_required", linkResolutionFailureCode, "host_not_ready", "sdk_contract_mismatch", "ui_contract_mismatch":
 				copy.Exit = 3
 			case "stale_target", "workspace_running", "workspace_busy", "launch_conflict", "generated_conflict", "generated_pending", "port_conflict", "port_attempts_exhausted", "sdk_source_untrusted", "native_profile_conflict", "edit_pending", "baseline_conflict":
 				copy.Exit = 4

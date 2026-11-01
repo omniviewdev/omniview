@@ -56,7 +56,7 @@ func addWorkspaceCommands(root *cobra.Command) {
 	for _, verb := range []string{
 		"init", "create", "up", "preflight", workspaceRefresh, workspaceUpdate, workspaceFollow, workspaceRecover, "evidence",
 		"verify-reload",
-		"down", "restart", "edit", "link", "remove", "profile", "inspect", "paths", "list", "unlink", workspaceResetModules,
+		"down", "restart", "edit", "link", "remove", "profile", "inspect", "paths", "list", "collections", "unlink", workspaceResetModules,
 		"resume", "rollback", "supervise",
 	} {
 		group.AddCommand(newWorkspaceCommand(verb, func(cmd *cobra.Command, c workspaceCommand) error {
@@ -168,6 +168,8 @@ func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceComm
 			"is deleted and reinstalled through the recorded composition installer. Foreign bytes are never adopted; " +
 			"distributions, bindings, shims and other outputs are left untouched. During an interrupted unlink or remove " +
 			"it only deletes those trees; rerun the interrupted command afterwards."
+	case "collections":
+		cmd.Short = "List validated collections associated with this Git repository without selecting a profile"
 	case "inspect", "paths", "list", "unlink", "resume", "rollback", "supervise":
 	}
 	cmd.RunE = func(cmd *cobra.Command, positionals []string) error {
@@ -188,6 +190,9 @@ func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceComm
 			}
 			if (c.verb == "init" || c.verb == "list") && c.target != "" {
 				return devcontract.Fail(2, "usage", "this command accepts --root, not a workspace target")
+			}
+			if c.verb == "collections" && (c.target != "" || c.root != "") {
+				return devcontract.Fail(2, "usage", "collections accepts no target or --root; run from a Git checkout, then select a listed root explicitly")
 			}
 			if c.supplied["timeout"] && c.launch.Timeout <= 0 {
 				return devcontract.Fail(2, "usage", "timeout must be positive")
@@ -239,7 +244,7 @@ func workspaceCollectionRoot(explicit string) (string, error) {
 		}
 		directory = parent
 	}
-	return "", devcontract.Fail(3, "missing_registry", "select --root COLLECTION or run inside an initialized collection")
+	return "", devcontract.Fail(3, "missing_registry", "select --root COLLECTION or run inside an initialized collection; discover known roots with workspace collections from a host checkout")
 }
 func resolveWorkspaceCLI(ctx context.Context, c workspaceCommand) (devworkspace.Workspace, *devworkspace.Manager, error) {
 	// An explicit manifest/path is authoritative; an invalid explicit context can
@@ -335,6 +340,11 @@ func workspaceLaunchOptions(c workspaceCommand, w devworkspace.Workspace) (devwo
 	} else if !os.IsNotExist(err) {
 		return options, err
 	}
+	return workspaceLaunchInputs(c, options)
+}
+
+// workspaceLaunchInputs also validates create inputs without reading workspace state.
+func workspaceLaunchInputs(c workspaceCommand, options devworkspace.LaunchOptions) (devworkspace.LaunchOptions, error) {
 	evidence := c.linkEvidence
 	if evidence == "" && options.LinkEvidence.Protocol == "" {
 		if c.root != "" {
@@ -346,7 +356,7 @@ func workspaceLaunchOptions(c workspaceCommand, w devworkspace.Workspace) (devwo
 		if err != nil {
 			return options, devcontract.Fail(3, "link_evidence_required", "provide --link-evidence with the actual successful pinned protocol probe report")
 		}
-		if err = json.Unmarshal(raw, &options.LinkEvidence); err != nil {
+		if err := json.Unmarshal(raw, &options.LinkEvidence); err != nil {
 			return options, devcontract.Fail(2, "invalid_link_evidence", "pinned protocol probe report is invalid JSON")
 		}
 	}
@@ -389,7 +399,13 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 		return true, devcontract.ExitCode(payload)
 	}
 	var err error
-	if c.verb == "init" {
+	if c.verb == "collections" {
+		directory, cwdErr := os.Getwd()
+		if cwdErr != nil {
+			return fail(cwdErr)
+		}
+		value, err = devworkspace.DiscoverCollections(ctx, directory)
+	} else if c.verb == "init" {
 		root := c.root
 		if root == "" {
 			root, err = os.Getwd()
@@ -449,8 +465,14 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 				return fail(parseErr)
 			}
 			if c.start {
-				if trustErr := c.launch.Validate(); trustErr != nil {
-					return fail(trustErr)
+				c.root = root
+				options, optionErr := workspaceLaunchInputs(c, c.launch)
+				if optionErr != nil {
+					return fail(optionErr)
+				}
+				c.launch = options
+				if preflightErr := manager.PreflightCreateLaunch(ctx, devworkspace.CreateOptions{Slug: c.target, DisplayName: c.name, Repositories: c.repositories, Plugins: c.plugins, Refs: refs}, options); preflightErr != nil {
+					return fail(preflightErr)
 				}
 			}
 			ports, portErr := workspacePortPolicy(c, devcontract.PortPolicy{Policy: "sticky"}, c.plugins)
