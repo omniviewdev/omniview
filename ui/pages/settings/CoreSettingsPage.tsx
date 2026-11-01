@@ -13,6 +13,10 @@ const APPEARANCE_SETTING_RENDERERS = {
 };
 
 const PROFILING_PRESENTATION = {
+  'developer.ui_inspection_enabled': {
+    label: 'UI inspection (WebKit)',
+    help: 'After restarting Omniview on macOS 13.3 or later, use Safari → Develop → This Mac → the app → the page, then the Timelines record button. Enable Safari developer features if needed. Captures may contain sensitive UI data.',
+  },
   'developer.pprof_enabled': {
     label: 'Local profiling (pprof)',
     help: 'Unauthenticated, local-only access. Profiles may contain sensitive data; do not forward this port. Stop Pyroscope before CPU captures.',

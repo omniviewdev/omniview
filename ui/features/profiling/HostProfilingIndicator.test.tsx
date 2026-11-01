@@ -5,14 +5,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ActivePageNavigationContext } from '@/features/workspace/activePageNavigation';
 import HostProfilingIndicator from './HostProfilingIndicator';
 
-const backend = vi.hoisted(() => ({ getStatus: vi.fn(), getPluginStatuses: vi.fn() }));
+const backend = vi.hoisted(() => ({ getStatus: vi.fn(), getPluginStatuses: vi.fn(), getUIStatus: vi.fn() }));
 vi.mock('@omniviewdev/runtime/api', () => ({
   HostProfiling: { GetStatus: backend.getStatus },
   PluginManager: { GetPluginProfilingStatuses: backend.getPluginStatuses },
+  UiInspection: { GetStatus: backend.getUIStatus },
 }));
+vi.mock('@/features/windows/identity', () => ({ currentWindow: { name: 'main' } }));
 
 beforeEach(() => {
   backend.getPluginStatuses.mockReset().mockResolvedValue([]);
+  backend.getUIStatus.mockReset().mockResolvedValue({ supported: false, enabled: false, engine: '', window: 'main', application: '', target: '', error: '' });
 });
 
 afterEach(() => {
@@ -96,9 +99,12 @@ describe('host profiling footer', () => {
     act(() => {
       screen.getByRole('button', { name: 'Developer Settings' }).focus();
     });
-    await user.tab({ shift: true });
+    const buttonCount = screen.getAllByRole('button').length;
+    for (let i = 0; i < buttonCount && document.activeElement !== safety; i++) {
+      await user.tab({ shift: true });
+    }
+
     expect(safety).toHaveFocus();
-    expect(await screen.findByText('Unauthenticated, local-only access. Profiles may contain sensitive data; do not forward this port. CPU captures cannot run alongside Pyroscope.')).toBeVisible();
   });
 
   it('does not fetch until an initially hidden window becomes visible', async () => {

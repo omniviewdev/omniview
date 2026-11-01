@@ -6,6 +6,7 @@ export * as ResourceClient from './resource/v2/client';
 export * as GraphClient from './resource/v2/graph-client';
 export * as SettingsService from './bindings/github.com/omniviewdev/omniview/backend/pkg/settings/binding';
 export * as HostProfiling from './bindings/github.com/omniviewdev/omniview/internal/profiling/servicewrapper';
+export * as UiInspection from './bindings/github.com/omniviewdev/omniview/internal/uiinspection/service';
 export * as McpRelayClient from './bindings/github.com/omniviewdev/omniview/internal/mcprelay/servicewrapper';
 export * as UtilsClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/utils/client';
 export * as UIClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/ui/servicewrapper';
