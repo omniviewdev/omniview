@@ -101,7 +101,7 @@ The dialect comes from `SchemaBinding.Dialect` (or `EditorSchema.Binding.Dialect
 - Any other dialect → `UNSUPPORTED` "unsupported schema dialect". It MUST NOT be weakened to dynamic.
 - A JSON Schema document whose `$schema` disagrees with the binding dialect → `INVALID_REQUEST` "schema document dialect does not match binding". `$schema` comparison ignores the `http`/`https` scheme and a trailing empty fragment `#` on both sides; otherwise it is exact string equality. A binding dialect is never rewritten by the host: an unknown dialect string stays `UNSUPPORTED`.
 - Raw bytes are first checked with `resourcev2.ValidateJSON` (duplicate keys, invalid UTF-8), then decoded with `json.Decoder.UseNumber()`.
-- Numbers: bounds map to `*big.Rat`. For `enum`/`const`, an integral token maps to `int64` (or `uint64` above MaxInt64) and any other token to `double`. Booleans, strings, null, arrays and objects map to the matching `resourcev2.Value` tags.
+- Numbers: bounds map to `*big.Rat`. For `enum`/`const`, an integral token maps to `int64` or `uint64`; overflow beyond those ranges returns `INVALID_REQUEST`. Other numeric tokens map to finite `double`. Booleans, strings, null, arrays and objects map to matching `resourcev2.Value` tags.
 - Refs are local only (`#...` RFC6901 fragments) and MUST resolve to a normalized node. An external or relative-URL `$ref` adds `{pointer, "$ref"}` to `Unvalidated` and makes the node `any`. A local `$ref` that does not resolve to a normalized node → `INVALID_REQUEST`. Any schema-valued location (property, items, branch, additional schema, definition entry or a nested definition such as `#/properties/x/definitions/y`) that a `$ref` targets is normalized as a node.
 - `$defs` and `definitions` are definition containers in both JSON Schema dialects, at any nesting level; their entries are normalized when they are dialect roots (§3.1 table) or when referenced. In OpenAPI documents, top-level keys other than `components.schemas` (`openapi`, `info`, `paths` and others) are ignored and not counted.
 - Boolean schemas: `true` normalizes to an `any` node. `false` normalizes to an `any` node with `Unvalidated{pointer, "false"}` (the host does not enforce "admits nothing"). Exception: `additionalProperties: false` stays `AdditionalForbidden`, and `additionalProperties: true` stays `AdditionalAny`.
@@ -123,7 +123,8 @@ The dialect comes from `SchemaBinding.Dialect` (or `EditorSchema.Binding.Dialect
 | `enum`, `const`, `format`, `minimum`, `maximum`, `exclusiveMinimum`/`exclusiveMaximum` (bool in OpenAPI, number in draft-07/2020-12), `multipleOf`, `minLength`, `maxLength`, `pattern`, `minItems`, `maxItems`, `uniqueItems`, `minProperties`, `maxProperties` | enforced. A `pattern` that fails `regexp.Compile` (RE2) is unvalidated instead |
 | `title`, `description`, `default`, `examples`, `readOnly`, `writeOnly`, `deprecated`, `$comment`, `$schema`, `$id` (root only), `discriminator` (OpenAPI), `xml`, `externalDocs`, `example` | annotation (`title`/`description` kept) |
 | `not`, `if`/`then`/`else`, `dependentSchemas`, `dependentRequired`, `dependencies`, `patternProperties`, `propertyNames`, `contains`, `minContains`, `maxContains`, `unevaluatedProperties`, `unevaluatedItems`, `$dynamicRef`, `$recursiveRef`, `$anchor`/`$dynamicAnchor` used as ref targets | unvalidated |
-| `x-kubernetes-int-or-string: true` | `AnyOf` = [integer node, string node]. The two synthesized nodes have `Pointer` = `<parent pointer>/x-kubernetes-int-or-string/0` (integer) and `/1` (string), so `Constraint.Pointer` and `BranchCondition.Pointer` stay well-formed |
+| `x-kubernetes-int-or-string: true` | Conjoin integer/string alternatives with existing combinators; never replace provider constraints. Preserve a null alternative when the original typed node permits null. Synthesized nodes use `<parent pointer>/x-kubernetes-int-or-string/0` (integer), `/1` (string), and `/2` (null, when needed) |
+| `format: "int-or-string"` on an OpenAPI 3.0 string | Kubernetes built-in `/openapi/v3` uses this representation for `IntOrString`. Conjoin integer/string alternatives with existing combinators and preserve permitted null, using synthesized pointers `<parent pointer>/format/0`, `/1`, and `/2`. Retain `Format`. Other dialects and types retain their declared types |
 | `x-kubernetes-preserve-unknown-fields: true` | `Additional = AdditionalAny`; with no `type`, the node is object-or-any |
 | `x-kubernetes-embedded-resource`, `x-kubernetes-list-map-keys`, `x-kubernetes-map-type`, `x-kubernetes-patch-*`, `x-kubernetes-group-version-kind` | annotation |
 | `x-kubernetes-list-type: set` or `map`, `x-kubernetes-validations`, `x-kubernetes-unions` | unvalidated |
@@ -204,7 +205,7 @@ func Admit(ctx context.Context, schema *Schema, value resourcev2.Value, coverage
 - Type compatibility: `int64`/`uint64` satisfy `integer` and `number`; `double` satisfies `number` only; `timestamp` satisfies `string` only when `Format == "date-time"`. No coercion.
 - Every enforced keyword (§3.2) is enforced. Numbers compare exactly with `big.Rat`; `enum`/`const` use exact tagged-value equality (an int64 `9007199254740993` never equals a double `9007199254740992`). `format` other than `date-time` is enforced only as the type check above plus no additional assertion; `Format` is retained for navigation and CEL.
 - Closed objects (`AdditionalForbidden`) reject undeclared keys.
-- `allOf` requires all branches; `anyOf` at least one valid branch; `oneOf` exactly one. For `oneOf` every branch is evaluated until a second is valid, then `INVALID_REQUEST` "value matches more than one oneOf branch". Branch evaluation shares the one request work budget; no budget resets per alternative.
+- `allOf` requires all branches; `anyOf` at least one valid branch; `oneOf` exactly one. Branches whose validity depends on missing limited fields are indeterminate, not confirmed matches or definite failures. Preserve their unavailable paths when the union outcome depends on them. Reject when all branches definitively fail or more than one `oneOf` branch definitively matches. Branch evaluation shares the request work budget.
 - **Coverage.Paths format.** `Coverage.Paths` entries are RFC6901 JSON pointers into the record body, each starting with `/` (the empty pointer `""` is excluded), naming *limitation* subtrees: subtrees the representation may omit or truncate. The SDK slice documents this on `Coverage` and enforces it in coverage validation: a non-empty entry that is not a well-formed pointer starting with `/` → `INVALID_REQUEST`. No current producer emits non-empty paths (Kubernetes, Proxmox and the SDK were checked); the Kubernetes slice sets `Paths: []string{"/metadata/managedFields"}` on the model-projection partial coverage in `native_read.go`. `Admit` uses the entries as given; there is no conversion.
 - Missing required properties (a pointer `p` naming the missing property):
   - `coverage.Kind == "complete"` → `INVALID_REQUEST` naming `p`.
@@ -212,7 +213,9 @@ func Admit(ctx context.Context, schema *Schema, value resourcev2.Value, coverage
   - `coverage.Kind` `partial` or `unknown` with non-empty `Paths` → `p` is appended to `UnavailablePaths` when some listed limitation path is a segment-wise prefix of `p` (or equal to it); otherwise `INVALID_REQUEST` naming `p`.
 - `UnavailablePaths` reports only the missing *required* subset. An optional field absent under a limitation path is indistinguishable from absence in `Admission`; P13 owns coverage policy and reads `Coverage` itself (P01 §8.2) to decide hydration or rejection.
 - Every error message carries the RFC6901 pointer of the failing value.
-- Each visited value node, schema node and branch attempt costs 1 work unit. Exceeding `MaxAdmissionWork` → `RESOURCE_LIMIT`. `ctx.Err()` is checked every 1024 units; cancellation returns `CANCELLED` and deadline expiry `TIMEOUT` via `resourcev2.NewError`.
+- Each visited value node, schema node, branch attempt and recursive value-comparison step costs 1 work unit. Exceeding `MaxAdmissionWork` returns `RESOURCE_LIMIT`. Check `ctx.Err()` every 1024 units; return `CANCELLED` or `TIMEOUT` via `resourcev2.NewError`.
+- Compare a `double` to numeric constraints as the exact rational value of its binary64 representation.
+- A `timestamp` value that satisfies a `string` node through `format: date-time` is also checked against that node's `minLength`, `maxLength` and `pattern`, using its RFC3339 text.
 - Result: `Validation` is `full` when `schema.Unvalidated` is empty, `reduced` otherwise; `Unvalidated = schema.Unvalidated`. Callers that require full validation MUST reject `reduced`.
 - `Admit` allocates nothing that outlives the call, never writes to `Document` and never builds branch views.
 
@@ -288,7 +291,7 @@ func OverlayFor(entry *Entry, schema *Schema, resolveErr error) TypeOverlay
 
 ### 6.3 Branch views
 
-- `func (d *Document) branchView(node NodeID) *BranchView` is built lazily once per union node with `sync.Once` inside `views`; it holds the merged property table name → member branches → per-branch node.
+- `func (d *Document) branchView(node NodeID, visit func() bool) *BranchView` builds a merged property table lazily. Charge unique node/complete-condition-path visits before allocations. Cache only complete views; a mutex protects retries and `sync.Once` publishes successful views. An exhausted budget returns explicit visit truncation, never a cached partial view. Cached reuse charges the same visits.
 - Members are resolved through `Ref` and single-branch `allOf` before merging; nested unions merge recursively with concatenated conditions (§6.1).
 - A field present in every branch with the same `TypeSet` is `unconditional`; any other field is `conditional` with one `BranchCondition` per declaring branch.
 - Views live inside the immutable `Document` and are freed with it. Their count is bounded by the number of union nodes; `Stats().BranchViews` reports it. Admission and CEL never create views.
@@ -376,7 +379,7 @@ func ToCEL(v resourcev2.Value) (ref.Val, error)
 | `boolean` | `bool` | static |
 | `Types` includes null alongside another type; any `anyOf`/`oneOf`; `allOf` of more than one non-trivial branch; `TypeSet` any; unvalidated-only node | `dyn` | dynamic |
 
-- `allOf` of exactly one branch maps through to that branch; `Ref` maps through to its target.
+- An `allOf` with exactly one non-trivial branch maps through to that branch; annotation-only branches are ignored. `Ref` maps through to its target. A node with its own shape and a `Ref` or non-trivial `allOf` branch maps to `dyn`.
 - An object without properties and with `AdditionalAny` is `map(string, dyn)` (partial).
 - `has()` on struct fields works through `FieldType.IsSet`.
 - `ToCEL` converts to `types.DefaultTypeAdapter` values: maps → `map[string]any`, lists → `[]any`, `int64`/`uint64`/`double`/`bool`/`string` native, timestamp → `time.Time`, null → `types.NullValue`. Runtime struct-typed paths stay plain CEL maps; no per-value schema object is created.
@@ -389,7 +392,7 @@ This section supersedes the P01 [`2026-10-24-resource-query-contracts.md`](2026-
 
 Limits are finite safety ceilings, not inventory or latency promises. Hosts MAY lower them. Raising a ceiling requires a reviewed policy revision with new boundary measurements.
 
-Until the Measure slice lands, the provisional column is authoritative and is what `DefaultPolicy()` returns. The Measure slice fills the measured-value column and the observed table and sets `DefaultPolicy()` to the measured values without a new review round, provided the measurement formula below is unchanged. Any change to the formula, or any ceiling above an SDK wire ceiling, re-enters contract review.
+The Measure slice (2026-11-01) filled the measured-value column and the observed table below; `DefaultPolicy()` returns the measured values. The provisional column is kept for history. Any change to the formula, or any ceiling above an SDK wire ceiling, re-enters contract review.
 
 Counted quantities:
 
@@ -406,16 +409,16 @@ Counted quantities:
 | --- | --- | --- | --- |
 | `MaxDocumentBytes` | 16<<20 (= `resourcev2.MaxDocumentBytes`) | 16<<20, fixed at the SDK wire ceiling (measurement recorded, not applied) | `RESOURCE_LIMIT` |
 | `MaxDocumentNodes` | 262144 | 262144, fixed at the SDK wire ceiling (measurement recorded, not applied) | `RESOURCE_LIMIT` |
-| `MaxDefinitions` | 8192 | TBD (Wave 3 measurement) | `RESOURCE_LIMIT` |
-| `MaxDepth` | 64 | TBD (Wave 3 measurement) | `RESOURCE_LIMIT` |
-| `MaxRefChain` | 32 | TBD (Wave 3 measurement) | `RESOURCE_LIMIT` |
-| `MaxUnionBranches` | 8 | TBD (Wave 3 measurement) | `RESOURCE_LIMIT` |
-| `MaxEnumValues` | 512 | TBD (Wave 3 measurement) | `RESOURCE_LIMIT` |
+| `MaxDefinitions` | 8192 | 1024 (observed 258) | `RESOURCE_LIMIT` |
+| `MaxDepth` | 64 | 64 (observed 19) | `RESOURCE_LIMIT` |
+| `MaxRefChain` | 32 | 2 (observed 1) | `RESOURCE_LIMIT` |
+| `MaxUnionBranches` | 8 | 8 (observed 4) | `RESOURCE_LIMIT` |
+| `MaxEnumValues` | 512 | 256 (observed 65) | `RESOURCE_LIMIT` |
 | `MaxNavigationVisits` | 4096 | 4096 (fixed, P01 authoring row) | truncation `"visits"` |
 | `MaxNavigationFields` | 128 | 128 (fixed) | truncation `"fields"` |
-| `MaxAdmissionWork` | 1<<20 | max(formula, 4 × `resourcev2.MaxValueNodes` = 1<<20); TBD (Wave 3 measurement) | `RESOURCE_LIMIT` |
-| `MaxRetainedDocuments` | 256 | TBD (Wave 3 measurement) | `RESOURCE_LIMIT` on acquire |
-| `MaxRetainedBytes` | 256<<20 | TBD (Wave 3 measurement) | `RESOURCE_LIMIT` on acquire |
+| `MaxAdmissionWork` | 1<<20 | 1<<20 = max(4096 from observed successful 1459, 4 × `resourcev2.MaxValueNodes`) | `RESOURCE_LIMIT` |
+| `MaxRetainedDocuments` | 256 | 256 = max(256, 4 × 51 GroupVersions = 204) | `RESOURCE_LIMIT` on acquire |
+| `MaxRetainedBytes` | 256<<20 | 256<<20 = max(256<<20, 4 × 43,623,005 = 174,492,020) | `RESOURCE_LIMIT` on acquire |
 
 Measurement formula:
 
@@ -423,13 +426,42 @@ Measurement formula:
 - Per document: raw bytes, definitions, normalized nodes, max structural depth, max ref chain, max union branches, max enum values, retained bytes; per body: admission work units.
 - Ceiling = smallest power of two ≥ 2 × largest observed value, with these exceptions:
   - `MaxDocumentBytes` = 16<<20 and `MaxDocumentNodes` = 262144, fixed at the SDK wire ceilings. Their observed maxima are recorded in the observed table but are not applied, so a GroupVersion larger than any in the sample but within the wire ceilings is not rejected.
-  - `MaxAdmissionWork` = max(sampled formula value, 4 × `resourcev2.MaxValueNodes`) (= max(formula, 1<<20)), so a wire-admitted body with full branch exploration never fails on budget alone.
+  - `MaxAdmissionWork` = max(sampled formula value, 4 × `resourcev2.MaxValueNodes`) (= max(formula, 1<<20)). A wire-admitted body can exceed this budget during branch exploration or value comparisons.
   - `MaxNavigationVisits`/`MaxNavigationFields` fixed at 4096/128.
   - `MaxRetainedBytes` = max(256<<20, 4 × sum of retained bytes over all homelab GroupVersions); `MaxRetainedDocuments` = max(256, 4 × GroupVersion count).
 - A document in the sample above an SDK wire ceiling returns `RESOURCE_LIMIT` and is listed here by name.
 - If the homelab is unreachable, values stay provisional and this section is marked "provisional: homelab unavailable".
 
-Observed table: TBD (Wave 3 measurement).
+**Observed table.** Sample: the cluster `admin@homelab` (Kubernetes v1.37.2), fetched read-only on 2026-11-01. It has 77 `/openapi/v3` paths: 51 GroupVersions, 23 group/legacy discovery documents (`api`, `apis`, `apis/<group>`), `version`, and two OIDC documents (`.well-known/openid-configuration`, `openid/v1/jwks`) with no `components.schemas`. Every document was normalized as `openapi-3.0`. The sample also has 186 Pod and 90 Deployment bodies, plus the four P44 scenarios. Per-document maxima for definitions, depth, ref chain, union branches and enum values were measured as the smallest policy value that normalizes. Nodes and retained bytes come from the normalized `Document`.
+
+| Document (all 51 GroupVersions normalize under the measured policy) | Bytes | Definitions | Nodes | Depth | Ref chain | Union branches | Enum values | Retained bytes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `api/v1` | 1,604,476 | **258** | 1,912 | 4 | 1 | 2 | **65** | 2,318,454 |
+| `apis/apps/v1` | 719,385 | 166 | 1,221 | 3 | 1 | 2 | **65** | 1,194,131 |
+| `apis/batch/v1` | 440,237 | 155 | 1,101 | 3 | 1 | 2 | **65** | 876,997 |
+| `apis/actions.github.com/v1alpha1` | **1,835,496** | 21 | **7,457** | 15 | 1 | 2 | 2 | **5,623,669** |
+| `apis/monitoring.coreos.com/v1` | 1,748,865 | 30 | 6,252 | 13 | 1 | 2 | 22 | 4,602,494 |
+| `apis/monitoring.coreos.com/v1alpha1` | 1,373,814 | 22 | 6,080 | 13 | 1 | 2 | 22 | 4,128,085 |
+| `apis/stackgres.io/v1beta1` | 1,000,911 | 17 | 3,394 | 17 | 1 | 2 | 4 | 2,829,948 |
+| `apis/stackgres.io/v1` | 1,244,668 | 38 | 3,257 | 14 | 1 | 2 | 4 | 2,801,906 |
+| `apis/cilium.io/v2` | 830,318 | 29 | 2,485 | 14 | 1 | **4** | 12 | 1,898,758 |
+| `apis/cert-manager.io/v1` | 547,942 | 21 | 1,533 | **19** | 1 | 2 | 23 | 1,369,748 |
+| `apis/acme.cert-manager.io/v1` | 260,374 | 17 | 670 | 17 | 1 | 2 | 7 | 620,398 |
+| other 40 GroupVersions (each) | ≤ 860,806 | ≤ 75 | ≤ 1,947 | ≤ 14 | 1 | ≤ 2 | ≤ 35 | ≤ 1,555,069 |
+| discovery/version/OIDC documents (each) | ≤ 5,400 | ≤ 4 | ≤ 21 | ≤ 3 | ≤ 1 | ≤ 1 | 0 | ≤ 13,023 |
+| P44 `cloud-discovered-schema` (2020-12, by reference) | 476 | 0 | 11 | 3 | 0 | 0 | 0 | 2,206 |
+| P44 `hypervisor-openapi-vms` (OpenAPI 3.0) | 1,304 | 3 | 30 | 4 | 1 | 2 | 2 | 6,730 |
+| **Maximum** | 1,835,496 | 258 | 7,457 | 19 | 1 | 4 | 65 | 5,623,669 |
+
+- The 51 GroupVersions sum to 43,623,005 retained bytes.
+- P44 `cloud-unavailable-schema` has no document (unavailable binding, `FORBIDDEN`). P44 `container-unsupported-dialect` is `UNSUPPORTED` before normalization (2019-09). Neither contributes a value.
+- **Admission work (final implementation, 2026-11-01).** Replaced the earlier walker estimate with calls to the actual `resourcecatalog.Admit`, using complete coverage and binary search for the smallest successful `Policy.MaxAdmissionWork` for each admissible body. All other policy fields stayed at `DefaultPolicy()`. Read-only `kubectl --context admin@homelab get pods,deployments -A -o json` fetched 185 Pods and 89 Deployments into `/tmp`; read-only `/openapi/v3/api/v1` and `/openapi/v3/apis/apps/v1` supplied their corresponding schemas. All 89 Deployments admitted; maximum successful work was **1,459**, using root `#/components/schemas/io.k8s.api.apps.v1.Deployment`. No Pod admitted, so there is **no measured successful Pod maximum**, not a zero-work maximum. Every Pod returned `INVALID_REQUEST`: `value at "/status/conditions/0/lastProbeTime" has kind null, schema at "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.Time" allows string`. Pod root was `#/components/schemas/io.k8s.api.core.v1.Pod`. Bodies and schemas were not modified to bypass this mismatch.
+  - **P44 policy sample.** All scenarios in the native corpus were exercised. Bundled cloud: 2/2 successful, maximum 41; bundled container: 2/2, 26; bundled hypervisor: 2/2, 20. The four schema-contract scenarios were: `cloud-discovered-schema`, 2/2 successful, maximum 41; `hypervisor-openapi-vms`, 3/3, maximum 71; `cloud-unavailable-schema`, no schema admission because the binding is unavailable (`FORBIDDEN`), with structural-only nil-schema admission measured separately at 14 for 2/2 bodies; `container-unsupported-dialect`, 2 bodies, rejected before admission with `UNSUPPORTED` / `unsupported schema dialect`. Remaining absent-schema scenarios admitted structurally, with maxima from 3 through 14. These structural-only results do not claim unavailable or unsupported schemas validated.
+  - **Synthetic comparison accounting (not policy sample).** JSON Schema 2020-12 enum case: object enum `[{"x":[1,2]},{"x":[1,3]},{"x":[1,4]}]`, body `{"x":[1,4]}`, measured 17. Const case: object const `{"x":[1,2,3]}`, identical body, measured 11. Unique-items case: object property `x` has array `uniqueItems:true`, body `{"x":[{"v":[1,2]},{"v":[1,3]},{"v":[1,4]}]}`, measured 29. These use actual admission, including comparison charges omitted by the old walker.
+  - **Reproduction and cleanup.** The temporary package-local measurement ran with `GOWORK=off GOFLAGS= go test -modfile=.local/hostmod/host.mod ./backend/pkg/resourcecatalog -run '^TestP07MeasureFinal$' -count=1 -v` and passed. The unmodified final policy remains `1<<20`: `resourcev2.MaxValueNodes` dominates the formula. Production policy files were never changed; budget changes were local policy copies only. Temporary SDK corpus exporter, measurement test, fetched schemas and bodies were removed. No permanent tests or commits were added. This receipt records the Pod schema/body blocker rather than claiming a complete successful Kubernetes admission sample.
+- **SDK wire ceilings.** No sample document exceeds an SDK wire ceiling or any measured ceiling. The largest observed values are 1,835,496 bytes against 16<<20, and 7,457 nodes against 262144.
+- **JSON nesting vs `MaxDepth`.** The SDK `resourcev2.ValidateJSON` caps JSON nesting at 64 levels (`RESOURCE_LIMIT` "JSON complexity limit") before normalization starts. Each structural schema level adds about two JSON levels (for example `properties` → name → schema). An inline-nested schema therefore reaches the JSON limit near 32 structural levels, before `MaxDepth` = 64 is reached. Documents that link through `$ref`, which includes every Kubernetes document, are unaffected because a `$ref` does not add depth. The observed maximum structural depth is 19 (inline-nested CRD schemas in `apis/cert-manager.io/v1`), so 64 = the smallest power of two ≥ 2 × 19 still holds with margin.
+- **`MaxRefChain` = 2.** Kubernetes and P44 documents never chain one `$ref` to another (the maximum is 1). A provider document that chains three `$ref` hops returns `RESOURCE_LIMIT`.
 
 ## 10. Removed APIs
 
@@ -479,4 +511,4 @@ Test names refer to the plan's Verification section (V§1–V§6). Receipts are 
 | V2 Refs/maps/arrays/null, overlapping anyOf, exclusive oneOf, unsupported constraints, partial representations | V§2 shapes and coverage; V§4 CEL union/nullable `dyn` evaluation; V§5 hypervisor scenario |
 | V3 Repeated/concurrent admissions measure entries, physical heap and branch-view cleanup | V§3 retention, concurrency and cleanup tests. Assertion: `HeapAlloc` delta < 1 MiB after `runtime.GC()`. Receipt: the retention test also logs `HeapInuse` and `HeapSys` deltas and Linux RSS from `/proc/self/statm` (skipped on other OSes); the numbers are recorded in the host PR body. Measured, RSS recorded as receipt |
 | V4 Link review/PRs and executed evidence; preserve workflows; update callers/docs; no fixture-only or forwarding-mock proof | Wave 5 reviewer receipts; draft PR bodies with commands and results; V§5 real SDK conformance child over gRPC; V§6 native smoke against the homelab (Monaco markers, field list); SDK docs `resource-v2-api.md`/`resource-v2-contracts.md`; ledger rows P07/C05 |
-| CEL catalog-backed checking (contract §4, §8.4) | V§4: `resource.spec.containerz` check failure, `containers.exists(...)` true, labels map lookup, int64 exactness, union/nullable `dyn`, absent `dyn`; `Environment.Revision` changes when only `RepresentationRevision` or snapshot revision changes while `ContentKey` stays equal |
+| CEL catalog-backed checking (contract §4, §8.4) | V§4: unknown field on a closed object (`additionalProperties: false`) is a checker error; on the real Pod schema (open objects: Kubernetes OpenAPI sets no `additionalProperties`) `resource.spec.containerz` types as `dyn` per the §8 open-object row, while wrong-typed uses of declared fields (`image + 1`, label `== 1`) fail checking; `containers.exists(...)` true, labels map lookup, int64 exactness, union/nullable `dyn`, absent `dyn`; `Environment.Revision` changes when only `RepresentationRevision` or snapshot revision changes while `ContentKey` stays equal |
