@@ -1,6 +1,8 @@
 package window
 
 import (
+	"runtime"
+
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
@@ -67,6 +69,16 @@ func (h *wailsWindowHost) createWindow(spec windowSpec, sink windowEventSink) na
 	if spec.Kind == KindSettings {
 		options.Title = "Settings"
 		options.Frameless = true
+		if runtime.GOOS == "darwin" {
+			// Wails skips native titles for frameless macOS windows. Retain the
+			// native frame for accessibility, but draw content behind its chrome.
+			options.Frameless = false
+			options.Mac.TitleBar = application.MacTitleBarHidden
+			options.MinimiseButtonState = application.ButtonHidden
+			options.MaximiseButtonState = application.ButtonHidden
+			options.CloseButtonState = application.ButtonHidden
+			options.FullscreenButtonState = application.ButtonHidden
+		}
 		options.MinWidth = min(960, spec.Width)
 		options.MinHeight = min(600, spec.Height)
 		options.EnableFileDrop = false

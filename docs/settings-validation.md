@@ -55,9 +55,12 @@ tabs or history. Dirty navigation and targeted requests share the same guard.
 
 The compact Settings shell uses theme tokens, a 212px navigation column, 29px
 navigation rows, 28px form controls, and a persistent footer. Only its caption
-regions are draggable. Settings-only frameless chrome avoids duplicate title
-bars; the labelled close action remains available. Minimum size is 960×600,
-bounded by the current screen's work area.
+regions are draggable. Settings-only chrome avoids duplicate title bars; the
+labelled close action remains available. macOS retains its native frame with a
+hidden title and hidden window controls: the pinned window library skips native
+title assignment for frameless windows, which makes the accessibility title
+empty. Other platforms use frameless chrome. Minimum size is 960×600, bounded
+by the current screen's work area.
 
 Hidden Settings pauses query focus/refetch work and CSS animations without
 destroying state. Reopening refreshes stale active snapshots. Theme previews use
