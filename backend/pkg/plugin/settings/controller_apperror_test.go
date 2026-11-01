@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,13 +12,13 @@ import (
 )
 
 func newTestController() Controller {
-	return NewController(logging.NewNop(), nil, nil)
+	return NewController(logging.NewNop(), nil)
 }
 
-func TestGetSetting_PluginNotFound(t *testing.T) {
+func TestSnapshot_PluginNotFound(t *testing.T) {
 	c := newTestController()
 
-	_, err := c.GetSetting("nonexistent", "foo")
+	_, err := c.Snapshot("nonexistent")
 	require.Error(t, err)
 
 	var appErr *apperror.AppError
@@ -27,23 +28,10 @@ func TestGetSetting_PluginNotFound(t *testing.T) {
 	assert.Contains(t, appErr.Detail, "nonexistent")
 }
 
-func TestSetSetting_PluginNotFound(t *testing.T) {
+func TestCommitSettings_PluginNotFound(t *testing.T) {
 	c := newTestController()
 
-	err := c.SetSetting("nonexistent", "foo", "bar")
-	require.Error(t, err)
-
-	var appErr *apperror.AppError
-	require.ErrorAs(t, err, &appErr)
-	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
-	assert.Equal(t, 404, appErr.Status)
-	assert.Contains(t, appErr.Detail, "nonexistent")
-}
-
-func TestSetSettings_PluginNotFound(t *testing.T) {
-	c := newTestController()
-
-	err := c.SetSettings("nonexistent", map[string]any{"foo": "bar"})
+	_, err := c.CommitSettings(context.Background(), "nonexistent", map[string]any{"foo": "bar"}, nil)
 	require.Error(t, err)
 
 	var appErr *apperror.AppError

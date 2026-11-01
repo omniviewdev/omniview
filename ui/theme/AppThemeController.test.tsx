@@ -7,7 +7,6 @@ const mocks = vi.hoisted(() => {
 
   return {
     settings,
-    reload: vi.fn(),
     setSetting: vi.fn(),
     showSnackbar: vi.fn(),
     showAppError: vi.fn(),
@@ -15,17 +14,14 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock('@omniviewdev/runtime', () => ({
-  useSettings: () => ({ settings: mocks.settings, reload: mocks.reload }),
+  useSettings: () => ({ settings: mocks.settings }),
+  HOST_SETTINGS_SCOPE: { kind: 'host' },
+  useScopedSettings: () => ({ commit: mocks.setSetting }),
   useSnackbar: () => ({ showSnackbar: mocks.showSnackbar }),
   showAppError: mocks.showAppError,
   useExtensionPoint: () => undefined,
 }));
 
-vi.mock('@omniviewdev/runtime/api', () => ({
-  SettingsProvider: {
-    SetSetting: mocks.setSetting,
-  },
-}));
 
 import AppThemeController, {
   useAppTheme,
@@ -65,20 +61,20 @@ function renderController() {
 }
 
 function createDeferred() {
-  let resolve!: () => void;
-  let reject!: (reason: unknown) => void;
-  const promise = new Promise<void>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise;
-    reject = rejectPromise;
-  });
-  return { promise, resolve, reject };
+  const { promise, resolve, reject } = Promise.withResolvers<{ applied: boolean; uncertain: boolean; message: string }>();
+  return {
+    promise,
+    resolve: () => {
+      resolve({ applied: true, uncertain: false, message: '' });
+    },
+    reject,
+  };
 }
 
 describe('AppThemeController', () => {
   beforeEach(() => {
     mocks.settings = {};
-    mocks.reload.mockReset();
-    mocks.setSetting.mockReset();
+    mocks.setSetting.mockReset().mockResolvedValue({ applied: true, uncertain: false, message: '' });
     mocks.showSnackbar.mockReset();
     mocks.showAppError.mockReset();
     localStorage.clear();
@@ -155,18 +151,16 @@ describe('AppThemeController', () => {
     await act(async () => selection);
   });
 
-  it('writes the bootstrap cache and reloads settings after persistence succeeds', async () => {
+  it('writes the bootstrap cache after scoped persistence succeeds', async () => {
     mocks.settings = { 'appearance.theme': 'dark' };
-    mocks.setSetting.mockResolvedValue(undefined);
     renderController();
 
     await act(async () => controller.selectTheme('light'));
 
-    expect(mocks.setSetting).toHaveBeenCalledWith('appearance.theme', 'light');
+    expect(mocks.setSetting).toHaveBeenCalledWith({ 'appearance.theme': 'light' });
     expect(localStorage.getItem(BOOTSTRAP_KEY)).toBe(
       JSON.stringify({ schemaVersion: 1, themeId: 'light' }),
     );
-    expect(mocks.reload).toHaveBeenCalledTimes(1);
   });
 
   it('rolls back a rejected selection, reports it, and leaves the cache unchanged', async () => {
@@ -188,12 +182,24 @@ describe('AppThemeController', () => {
     expect(localStorage.getItem(BOOTSTRAP_KEY)).toBe(
       JSON.stringify({ schemaVersion: 1, themeId: 'dark' }),
     );
-    expect(mocks.reload).not.toHaveBeenCalled();
     expect(mocks.showAppError).toHaveBeenCalledWith(
       mocks.showSnackbar,
       error,
       'Failed to save theme',
     );
+  });
+
+  it('keeps a durably saved theme when application is uncertain', async () => {
+    mocks.settings = { 'appearance.theme': 'dark' };
+    mocks.setSetting.mockResolvedValue({ applied: false, uncertain: true, message: 'Saved; application uncertain.' });
+    renderController();
+
+    await act(async () => controller.selectTheme('light'));
+
+    expect(readThemeState()).toMatchObject({ requestedThemeId: 'light' });
+    expect(JSON.parse(localStorage.getItem(BOOTSTRAP_KEY)!)).toMatchObject({ themeId: 'light' });
+    expect(mocks.showSnackbar).toHaveBeenCalledWith('Saved; application uncertain.', 'warning');
+    expect(mocks.showAppError).not.toHaveBeenCalled();
   });
 
   it('normalizes a legacy Solarized backend value', () => {
@@ -242,7 +248,7 @@ describe('AppThemeController', () => {
       await firstSelection;
     });
     expect(readThemeState()).toMatchObject({ requestedThemeId: 'carbon' });
-    expect(mocks.setSetting).toHaveBeenNthCalledWith(2, 'appearance.theme', 'carbon');
+    expect(mocks.setSetting).toHaveBeenNthCalledWith(2, { 'appearance.theme': 'carbon' });
 
     second.resolve();
     await act(async () => Promise.all([firstSelection, secondSelection]));
@@ -367,6 +373,5 @@ describe('AppThemeController', () => {
     expect(localStorage.getItem(BOOTSTRAP_KEY)).toBe(
       JSON.stringify({ schemaVersion: 1, themeId: 'dark' }),
     );
-    expect(mocks.reload).not.toHaveBeenCalled();
   });
 });

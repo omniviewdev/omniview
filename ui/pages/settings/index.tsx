@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLocation, useSearchParams } from 'react-router';
-import { useSettingsProvider } from '@/hooks/settings/useCoreSettings';
+import { useScopedSettings } from '@omniviewdev/runtime';
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
 
 // Layout
@@ -27,7 +27,7 @@ const SECTION_BY_QUERY: Record<string, Section> = {
 export default function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
-  const { settings } = useSettingsProvider();
+  const settings = useScopedSettings({ kind: 'host' });
   const { plugins } = usePluginManager();
   const sectionQuery = searchParams.get('section') ?? 'core';
   const section = Object.hasOwn(SECTION_BY_QUERY, sectionQuery) ? SECTION_BY_QUERY[sectionQuery] : undefined;
@@ -52,7 +52,7 @@ export default function SettingsPage() {
     ((section === Section.Core &&
       id !== 'extensions' &&
       id !== 'ai-tools' &&
-      (!settings.data || !Object.values(settings.data).some((category) => category.id === id))) ||
+      !Object.values(settings.categories).some((category) => category?.id === id)) ||
       (section === Section.Plugins && !plugins.data?.some((plugin) => plugin.id === id)));
   const unavailable = malformed || (!loading && missing) || (section === Section.Plugins && !id);
   const navSelection = specialId !== null ? { section: Section.Core, id: specialId } : selected;

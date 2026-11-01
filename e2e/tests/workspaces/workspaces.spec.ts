@@ -1,5 +1,5 @@
 import { test, expect } from '../fixtures/app.fixture';
-import { callBinding, Service } from '../fixtures/wails';
+import { hostSettingsValues } from '../fixtures/wails';
 import { chooseSetting, openSettingsCategory, saveSettings, settingRow } from '../fixtures/helpers';
 
 test.describe('Owned application profiles', () => {
@@ -24,21 +24,21 @@ test.describe('Owned application profiles', () => {
     expect(a.stateRoot).not.toBe(b.stateRoot);
     expect(a.endpoints.browser).not.toBe(b.endpoints.browser);
     expect(a.endpoints.control).not.toBe(b.endpoints.control);
-    const beforeB = await callBinding(other.page.request, Service.settings, 'GetSettingValue', 'terminal.fontSize');
-    const beforeA = await callBinding(appPage.request, Service.settings, 'GetSettingValue', 'terminal.fontSize');
+    const beforeB = (await hostSettingsValues(other.page.request))['terminal.fontSize'];
+    const beforeA = (await hostSettingsValues(appPage.request))['terminal.fontSize'];
     const next = beforeA === 17 ? 18 : 17;
     await openSettingsCategory(appPage, 'Terminal');
     await settingRow(appPage, 'terminal.fontSize').getByRole('spinbutton').fill(String(next));
     await saveSettings(appPage);
-    expect(await callBinding(appPage.request, Service.settings, 'GetSettingValue', 'terminal.fontSize')).toBe(next);
-    expect(await callBinding(other.page.request, Service.settings, 'GetSettingValue', 'terminal.fontSize')).toEqual(beforeB);
+    expect((await hostSettingsValues(appPage.request))['terminal.fontSize']).toBe(next);
+    expect((await hostSettingsValues(other.page.request))['terminal.fontSize']).toEqual(beforeB);
     await appPage.reload();
     await openSettingsCategory(appPage, 'Terminal');
     await expect(settingRow(appPage, 'terminal.fontSize').getByRole('spinbutton')).toHaveValue(String(next));
     for (const [page, descriptor, label, theme] of [[appPage, a, 'Solarized Dark', 'solarized-dark'], [other.page, b, 'Void', 'void']] as const) {
       await openSettingsCategory(page, 'Appearance');
       await chooseSetting(page, 'appearance.theme', label);
-      await expect.poll(async () => callBinding(page.request, Service.settings, 'GetSettingValue', 'appearance.theme')).toBe(theme);
+      await expect.poll(async () => (await hostSettingsValues(page.request))['appearance.theme']).toBe(theme);
       await expect(page.locator('html')).toHaveAttribute('data-ov-theme', theme);
       await expect.poll(async () => page.evaluate(() => {
         const key = window.__OMNIVIEW_BOOTSTRAP__?.storageKey('ov-theme-bootstrap-v1');

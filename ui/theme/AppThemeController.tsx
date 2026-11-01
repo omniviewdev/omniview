@@ -18,8 +18,9 @@ import {
   showAppError,
   useSettings,
   useSnackbar,
+  useScopedSettings,
+  HOST_SETTINGS_SCOPE,
 } from '@omniviewdev/runtime';
-import { SettingsProvider } from '@omniviewdev/runtime/api';
 
 import { ThemeContributionBridge } from '@/features/extensions/theme/ThemeContributionBridge';
 
@@ -81,7 +82,8 @@ function ThemeStateBridge({ children, selectTheme }: ThemeStateBridgeProps) {
 }
 
 export default function AppThemeController({ children }: { children: ReactNode }) {
-  const { settings, reload } = useSettings();
+  const { settings } = useSettings();
+  const { commit } = useScopedSettings(HOST_SETTINGS_SCOPE);
   const { showSnackbar } = useSnackbar();
   const [storage] = useState<Storage | null>(() => {
     try {
@@ -137,13 +139,15 @@ export default function AppThemeController({ children }: { children: ReactNode }
 
     const persist = async (): Promise<void> => {
       try {
-        await SettingsProvider.SetSetting(THEME_SETTING_ID, nextId);
+        const result = await commit({ [THEME_SETTING_ID]: nextId });
         durableThemeIdRef.current = nextId;
         if (storage !== null) {
           writeBootstrapTheme(storage, nextId);
         }
 
-        reload();
+        if (!result.applied || result.uncertain) {
+          showSnackbar(result.message || 'Theme saved, but could not be applied completely.', 'warning');
+        }
       } catch (error) {
         showAppError(showSnackbar, error, 'Failed to save theme');
       } finally {
@@ -165,7 +169,7 @@ export default function AppThemeController({ children }: { children: ReactNode }
       : queued.then(persist, persist);
     persistenceQueueRef.current = persistence;
     await persistence;
-  }, [reload, showSnackbar, storage]);
+  }, [commit, showSnackbar, storage]);
 
   return (
     <ThemeProvider

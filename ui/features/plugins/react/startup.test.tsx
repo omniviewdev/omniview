@@ -45,8 +45,8 @@ vi.mock('@omniviewdev/runtime/runtime', async (importOriginal) => {
 vi.mock('../../../../packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/servicewrapper', () => ({
   GetPluginMeta: async () => ({ id: 'kubernetes', name: 'Kubernetes' }),
 }));
-vi.mock('../../../../packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/settings/servicewrapper', () => ({
-  PluginValues: async () => ({}),
+vi.mock('../../../../packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview/backend/pkg/settings/binding', () => ({
+  GetSnapshot: async (scope: { kind: string; pluginId?: string }) => ({ scope, categories: {} }),
 }));
 vi.mock('../adapters/createProductionDeps', () => ({ createProductionDeps: () => backend.deps }));
 vi.mock('@/pages/home', () => ({ default: () => <h1>Home</h1> }));

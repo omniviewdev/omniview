@@ -7,7 +7,6 @@ const mocks = vi.hoisted(() => {
 
   return {
     settings,
-    reload: vi.fn(),
     setSetting: vi.fn(),
     showSnackbar: vi.fn(),
     showAppError: vi.fn(),
@@ -15,17 +14,14 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock('@omniviewdev/runtime', () => ({
-  useSettings: () => ({ settings: mocks.settings, reload: mocks.reload }),
+  useSettings: () => ({ settings: mocks.settings }),
+  HOST_SETTINGS_SCOPE: { kind: 'host' },
+  useScopedSettings: () => ({ commit: mocks.setSetting }),
   useSnackbar: () => ({ showSnackbar: mocks.showSnackbar }),
   showAppError: mocks.showAppError,
   useExtensionPoint: () => undefined,
 }));
 
-vi.mock('@omniviewdev/runtime/api', () => ({
-  SettingsProvider: {
-    SetSetting: mocks.setSetting,
-  },
-}));
 
 import AppThemeController, { useAppTheme } from '../AppThemeController';
 
@@ -60,9 +56,8 @@ function readThemeState() {
 describe('application theme provider integration', () => {
   beforeEach(() => {
     mocks.settings = {};
-    mocks.reload.mockReset();
     mocks.setSetting.mockReset();
-    mocks.setSetting.mockResolvedValue(undefined);
+    mocks.setSetting.mockResolvedValue({ applied: true, uncertain: false, message: '' });
     mocks.showSnackbar.mockReset();
     mocks.showAppError.mockReset();
     localStorage.clear();
@@ -133,8 +128,7 @@ describe('application theme provider integration', () => {
     });
     expect(document.documentElement.dataset.ovTheme).toBe('solarized-dark');
     await waitFor(() => {
-      expect(mocks.setSetting).toHaveBeenCalledWith('appearance.theme', 'solarized-dark');
-      expect(mocks.reload).toHaveBeenCalledTimes(1);
+      expect(mocks.setSetting).toHaveBeenCalledWith({ 'appearance.theme': 'solarized-dark' });
     });
     expect(localStorage.getItem('ov-theme-bootstrap-v1')).toBe(
       JSON.stringify({ schemaVersion: 1, themeId: 'solarized-dark' }),

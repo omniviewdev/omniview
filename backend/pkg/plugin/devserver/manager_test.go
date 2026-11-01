@@ -21,51 +21,11 @@ import (
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
-// mockSettingsProvider satisfies pkgsettings.Provider for testing.
-type mockSettingsProvider struct{}
-
-var _ pkgsettings.Provider = (*mockSettingsProvider)(nil)
-
-func (m *mockSettingsProvider) Initialize(_ context.Context, _ ...pkgsettings.Category) error {
-	return nil
-}
-func (m *mockSettingsProvider) LoadSettings() error             { return nil }
-func (m *mockSettingsProvider) SaveSettings() error             { return nil }
-func (m *mockSettingsProvider) ListSettings() pkgsettings.Store { return nil }
-func (m *mockSettingsProvider) Values() map[string]any          { return nil }
-func (m *mockSettingsProvider) GetSetting(string) (pkgsettings.Setting, error) {
-	return pkgsettings.Setting{}, nil
-}
-func (m *mockSettingsProvider) GetSettingValue(string) (any, error) { return nil, nil }
-func (m *mockSettingsProvider) SetSetting(string, any) error        { return nil }
-func (m *mockSettingsProvider) SetSettings(map[string]any) error    { return nil }
-func (m *mockSettingsProvider) ResetSetting(string) error           { return nil }
-func (m *mockSettingsProvider) RegisterSetting(string, pkgsettings.Setting) error {
-	return nil
-}
-func (m *mockSettingsProvider) RegisterSettings(string, ...pkgsettings.Setting) error {
-	return nil
-}
-func (m *mockSettingsProvider) GetCategories() []pkgsettings.Category { return nil }
-func (m *mockSettingsProvider) GetCategory(string) (pkgsettings.Category, error) {
-	return pkgsettings.Category{}, nil
-}
-func (m *mockSettingsProvider) RegisterChangeHandler(string, pkgsettings.CategoryChangeFunc) {}
-func (m *mockSettingsProvider) GetCategoryValues(string) (map[string]interface{}, error) {
-	return nil, nil
-}
-func (m *mockSettingsProvider) GetString(string) (string, error)        { return "", nil }
-func (m *mockSettingsProvider) GetStringSlice(string) ([]string, error) { return nil, nil }
-func (m *mockSettingsProvider) GetInt(string) (int, error)              { return 0, nil }
-func (m *mockSettingsProvider) GetIntSlice(string) ([]int, error)       { return nil, nil }
-func (m *mockSettingsProvider) GetFloat(string) (float64, error)        { return 0, nil }
-func (m *mockSettingsProvider) GetFloatSlice(string) ([]float64, error) { return nil, nil }
-func (m *mockSettingsProvider) GetBool(string) (bool, error)            { return false, nil }
-
 func newTestManager(t *testing.T) *DevServerManager {
 	t.Helper()
 	svc := appstate.NewTestService(t)
-	return NewDevServerManager(logging.NewNop(), svc.RootDir(), svc.Plugins(), nil, nil, &mockSettingsProvider{})
+	return NewDevServerManager(logging.NewNop(), svc.RootDir(), svc.Plugins(), nil, nil,
+		pkgsettings.NewProvider(pkgsettings.ProviderOpts{Logger: nil, PluginSettings: nil, PluginID: ""}))
 }
 
 func TestManager_StartupFailureRetainsOutputAfterCleanup(t *testing.T) {

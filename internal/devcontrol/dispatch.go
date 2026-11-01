@@ -152,12 +152,12 @@ func (s *Server) dispatch(ctx context.Context, r devcontract.Request) devcontrac
 			if p.ID == "" || len(p.Value) == 0 || p.Values != nil {
 				return bad()
 			}
-			return s.accept(r, func(context.Context) (any, error) { return nil, s.adapters.Settings.Set(p) })
+			return s.accept(r, func(context.Context) (any, error) { return s.adapters.Settings.Set(p) })
 		}
 		if p.ID != "" || len(p.Value) != 0 || len(p.Values) == 0 {
 			return bad()
 		}
-		return s.accept(r, func(context.Context) (any, error) { return nil, s.adapters.Settings.Bulk(p) })
+		return s.accept(r, func(context.Context) (any, error) { return s.adapters.Settings.Bulk(p) })
 	case "operation.get", "operation.wait":
 		var p OperationParams
 		if strictParams(r.Params, &p) != nil || p.OperationID == "" || p.TimeoutMS < 0 || p.TimeoutMS > 30000 || r.Operation == "operation.get" && p.TimeoutMS != 0 {

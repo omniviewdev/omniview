@@ -431,3 +431,73 @@ func TestOpen_CorruptFile_BackupPreserved(t *testing.T) {
 	}
 	assert.True(t, backupFound, "corrupt backup file should exist")
 }
+
+func TestSaveCategoriesCommitsTogetherAndSurvivesReopen(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "settings.db")
+	s, err := Open(path)
+	require.NoError(t, err)
+	values := map[string]map[string]any{
+		"developer": {"pprof_enabled": true, "pprof_port": float64(7070)},
+		"telemetry": {"enabled": false},
+	}
+	require.NoError(t, s.SaveCategories(values))
+	require.NoError(t, s.Close())
+	s, err = Open(path)
+	require.NoError(t, err)
+	defer s.Close()
+	for id, expected := range values {
+		got, loadErr := s.LoadCategory(id)
+		require.NoError(t, loadErr)
+		assert.Equal(t, expected, got)
+	}
+}
+
+func TestSaveCategoriesEncodingFailureLeavesEveryCategoryUnchanged(t *testing.T) {
+	t.Parallel()
+	s, err := Open(filepath.Join(t.TempDir(), "settings.db"))
+	require.NoError(t, err)
+	defer s.Close()
+	require.NoError(t, s.SaveCategories(map[string]map[string]any{
+		"first": {"value": "old"}, "second": {"value": "old"},
+	}))
+	require.Error(t, s.SaveCategories(map[string]map[string]any{
+		"first": {"value": "new"}, "second": {"value": make(chan int)},
+	}))
+	for _, id := range []string{"first", "second"} {
+		got, loadErr := s.LoadCategory(id)
+		require.NoError(t, loadErr)
+		assert.Equal(t, "old", got["value"])
+	}
+}
+
+func TestSaveCategoriesTransactionFailureRollsBackAllCategories(t *testing.T) {
+	t.Parallel()
+	s, err := Open(filepath.Join(t.TempDir(), "settings.db"))
+	require.NoError(t, err)
+	defer s.Close()
+	require.NoError(t, s.SaveCategory("first", map[string]any{"value": "old"}))
+	// bbolt rejects an empty key inside the same transaction as valid updates.
+	require.Error(t, s.SaveCategories(map[string]map[string]any{
+		"first": {"value": "new"}, "": {"value": "invalid key"}, "third": {"value": "new"},
+	}))
+	got, err := s.LoadCategory("first")
+	require.NoError(t, err)
+	assert.Equal(t, "old", got["value"])
+	got, err = s.LoadCategory("third")
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
+func TestCoreCategoryPersistenceUnavailable(t *testing.T) {
+	for _, s := range []*Store{nil, {}} {
+		require.ErrorIs(t, s.SaveCategory("test", map[string]any{}), ErrUnavailable)
+		require.ErrorIs(t, s.SaveCategories(map[string]map[string]any{}), ErrUnavailable)
+		_, err := s.LoadCategory("test")
+		require.ErrorIs(t, err, ErrUnavailable)
+	}
+	s, err := Open(filepath.Join(t.TempDir(), "settings.db"))
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+	assert.Error(t, s.SaveCategories(map[string]map[string]any{"test": {"value": true}}))
+}

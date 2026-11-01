@@ -1,64 +1,22 @@
-import React, { createContext, useCallback, useRef, useState } from 'react';
-import { Events } from '@wailsio/runtime';
-import { Values } from '../../bindings/github.com/omniviewdev/omniview/internal/settings/servicewrapper';
+import React, { createContext, useMemo } from 'react';
+import { HOST_SETTINGS_SCOPE, scopedSettingID, useScopedSettings } from '../../hooks/settings/useScopedSettings';
 
-// Define the context type
 export interface SettingsContextType {
   settings: Record<string, any>;
-  reload: () => void;
 }
 
-// Create the context with a default value
 export const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
-// Provider component
-export const SettingsProvider = ({ children }: {
-  children: React.ReactNode;
-}) => {
-  const [settings, setSettings] = useState<Record<string, any>>({});
-  const requestGeneration = useRef(0);
-
-  /**
-   * Fetch the settings from the backend stores
-   */
-  const fetchSettings = useCallback((): void => {
-    const generation = requestGeneration.current + 1;
-    requestGeneration.current = generation;
-
-    Values()
-      .then((values) => {
-        if (generation !== requestGeneration.current) {
-          return;
-        }
-
-        setSettings(values);
-      })
-      .catch((error: unknown) => {
-        if (generation !== requestGeneration.current) {
-          return;
-        }
-
-        console.error('Error fetching settings:', error);
-      });
-  }, []);
-
-  React.useEffect(() => {
-    const unsubscribe = Events.On('settings/changed', () => fetchSettings());
-    fetchSettings();
-    return () => {
-      requestGeneration.current += 1;
-      unsubscribe();
-    };
-  }, [fetchSettings]);
-
-  const reload = useCallback((): void => {
-    fetchSettings();
-  }, [fetchSettings]);
-
-  return (
-    <SettingsContext.Provider value={{ settings, reload }}>
-      {children}
-    </SettingsContext.Provider>
-  );
+export const SettingsProvider = ({ children }: { children: React.ReactNode }) => {
+  const { categories } = useScopedSettings(HOST_SETTINGS_SCOPE);
+  const settings = useMemo(() => {
+    const values: Record<string, unknown> = {};
+    for (const [categoryID, category] of Object.entries(categories)) {
+      for (const [id, setting] of Object.entries(category?.settings ?? {})) {
+        if (setting) values[scopedSettingID(HOST_SETTINGS_SCOPE, categoryID, id)] = setting.value;
+      }
+    }
+    return values;
+  }, [categories]);
+  return <SettingsContext.Provider value={{ settings }}>{children}</SettingsContext.Provider>;
 };
-

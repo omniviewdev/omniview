@@ -7,7 +7,7 @@ import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ setSettings: vi.fn(), selectTheme: vi.fn(), reload: vi.fn() }));
+const mocks = vi.hoisted(() => ({ setSettings: vi.fn(), selectTheme: vi.fn() }));
 const categories = {
   general: new Category({
     id: 'general', label: 'General', icon: 'LuSettings',
@@ -23,20 +23,6 @@ const categories = {
 };
 const plugin = { id: 'probe', metadata: { name: 'Native probe', description: 'Private native plugin', icon: 'LuSettings' } };
 
-vi.mock('@/hooks/settings/useCoreSettings', () => ({
-  useSettingsProvider: () => ({ settings: { data: categories, isLoading: false, isError: false } }),
-}));
-vi.mock('@/hooks/settings/useCategorySettings', () => ({
-  useCategorySettings: ({ category }: { category: keyof typeof categories }) => ({
-    settings: { data: categories[category], isLoading: false, isError: false }, setSettings: mocks.setSettings,
-  }),
-}));
-vi.mock('@/hooks/settings/usePluginSettings', () => ({
-  usePluginSettings: () => ({
-    settings: { data: { endpoint: new Setting({ id: 'endpoint', label: 'Endpoint', type: SettingType.Text, value: 'native' }) }, isLoading: false, isError: false },
-    setSettings: mocks.setSettings,
-  }),
-}));
 vi.mock('@/hooks/plugin/usePluginManager', () => ({
   usePluginManager: () => ({ plugins: { data: [plugin], isLoading: false } }),
   usePlugin: () => ({ plugin: { data: plugin, isLoading: false } }),
@@ -48,7 +34,13 @@ vi.mock('@/theme/AppThemeController', async (importOriginal) => {
 });
 vi.mock('@omniviewdev/runtime', async (importOriginal) => {
   const actual = await importOriginal<typeof RuntimeCore>();
-  return { ...actual, useSettings: () => ({ reload: mocks.reload }) };
+  return { ...actual, useScopedSettings: (scope: { kind: string }) => ({
+    categories: scope.kind === 'host' ? categories : { plugin: { settings: {
+      endpoint: new Setting({ id: 'endpoint', label: 'Endpoint', type: SettingType.Text, value: 'native' }),
+    } } },
+    isLoading: false, error: null, commit: mocks.setSettings,
+    validate: async () => ({ valid: true, message: '' }),
+  }) };
 });
 
 import SettingsPage from './index';
@@ -71,9 +63,8 @@ async function expectFocusedSetting(label: string, fullId: string) {
 }
 
 beforeEach(() => {
-  mocks.setSettings.mockReset().mockResolvedValue(undefined);
+  mocks.setSettings.mockReset().mockResolvedValue({ applied: true, uncertain: false, message: '' });
   mocks.selectTheme.mockReset().mockResolvedValue(undefined);
-  mocks.reload.mockReset();
 });
 afterEach(cleanup);
 
@@ -104,9 +95,9 @@ describe('actual SettingsPage query-driven navigation', () => {
   });
 
   it('selects actual plugin settings from the explicit section/plugin query and focuses only its setting', async () => {
-    renderSettings('/settings?section=plugins&plugin=probe&setting=probe.endpoint');
+    renderSettings('/settings?section=plugins&plugin=probe&setting=endpoint');
     expect(screen.getByText('Endpoint')).toBeVisible();
-    await expectFocusedSetting('Endpoint', 'probe.endpoint');
+    await expectFocusedSetting('Endpoint', 'endpoint');
     expect(mocks.setSettings).not.toHaveBeenCalled();
   });
 
