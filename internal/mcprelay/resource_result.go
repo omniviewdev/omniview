@@ -2,7 +2,9 @@ package mcprelay
 
 import (
 	hostlogs "github.com/omniviewdev/omniview/backend/pkg/plugin/logs"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	sdkmetric "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 )
 
 // ResourceOperationResult adds host route provenance without rewriting native
@@ -26,4 +28,28 @@ type ResourceScopeValuesResult struct {
 	Route     resourcev2.AccessRoute `json:"route"`
 	Dimension string                 `json:"dimension"`
 	Values    []string               `json:"values"`
+}
+
+type ResourceEventsResult struct {
+	Route     resourcev2.AccessRoute       `json:"route"`
+	Reference resourcev2.ResourceReference `json:"reference"`
+	Events    []resourcev2.ResourceEvent   `json:"events"`
+}
+
+type ResourceHealthResult struct {
+	Route     resourcev2.AccessRoute       `json:"route"`
+	Reference resourcev2.ResourceReference `json:"reference"`
+	Health    *resourcev2.ResourceHealth   `json:"health"`
+}
+
+type ResourceRelatedResult struct {
+	Route     resourcev2.AccessRoute       `json:"route"`
+	Reference resourcev2.ResourceReference `json:"reference"`
+	Edges     []graph.GraphEdge            `json:"edges"`
+}
+
+type ResourceMetricsResult struct {
+	Route     resourcev2.AccessRoute       `json:"route"`
+	Reference resourcev2.ResourceReference `json:"reference"`
+	Results   []sdkmetric.MetricResult     `json:"results"`
 }
