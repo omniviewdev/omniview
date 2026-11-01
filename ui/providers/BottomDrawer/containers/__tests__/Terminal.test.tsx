@@ -776,8 +776,9 @@ describe('TerminalContainer', () => {
     containerHeight = 400;
     act(() => {
       resizeObserverCallback!([], {} as ResizeObserver);
-      flushFits();
     });
+    expect(mocks.mockFit).toHaveBeenCalledOnce();
+    act(flushFits);
     expect(mocks.mockFit).toHaveBeenCalledOnce();
   });
 
