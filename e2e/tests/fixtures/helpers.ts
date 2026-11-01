@@ -73,14 +73,9 @@ export async function openSettingsCategory(page: Page, label: string): Promise<v
   await expect(page.getByText(label, { exact: true }).nth(1)).toBeVisible();
 }
 
-/**
- * The row of a single setting on a core settings page, found by its full id
- * (for example `appearance.theme`), which the page prints under the label.
- */
+/** Finds a core setting row by stable identity, independent of its visible label or help. */
 export function settingRow(page: Page, id: string): Locator {
-  return page
-    .getByText(id, { exact: true })
-    .locator('xpath=ancestor::*[.//input or .//*[@role="combobox"] or .//*[@role="switch"] or .//*[@role="checkbox"]][1]');
+  return page.locator(`[data-setting-id=${JSON.stringify(id)}]`);
 }
 
 /** Picks an option from a select-type setting. */

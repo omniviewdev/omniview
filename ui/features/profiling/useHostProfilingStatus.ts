@@ -10,6 +10,7 @@ export function useHostProfilingStatus() {
     };
 
     document.addEventListener('visibilitychange', update);
+    update();
     return () => {
       document.removeEventListener('visibilitychange', update);
     };

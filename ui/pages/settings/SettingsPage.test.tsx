@@ -1,4 +1,5 @@
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ExtensionPointRegistry, ExtensionProvider } from '@omniviewdev/runtime';
 import { Category, Setting, SettingType } from '@omniviewdev/runtime/models';
 import type * as RuntimeCore from '@omniviewdev/runtime';
@@ -19,6 +20,16 @@ const categories = {
   appearance: new Category({
     id: 'appearance', label: 'Appearance', icon: 'LuPaintbrush',
     settings: { theme: new Setting({ id: 'theme', label: 'Theme', type: SettingType.Select, value: 'dark' }) },
+  }),
+  developer: new Category({
+    id: 'developer', label: 'Developer', icon: 'LuCode',
+    settings: {
+      pprof_port: new Setting({
+        id: 'pprof_port', label: 'Verbose backend profiling port',
+        description: 'Verbose backend profiling description',
+        type: SettingType.Integer, value: 6060,
+      }),
+    },
   }),
 };
 const plugin = { id: 'probe', metadata: { name: 'Native probe', description: 'Private native plugin', icon: 'LuSettings' } };
@@ -91,6 +102,30 @@ describe('actual SettingsPage query-driven navigation', () => {
     });
     expect(screen.getByText('First option').closest('[data-setting-id]')).toBe(firstRow);
     await expectFocusedSetting('Second option', 'general.second');
+    expect(mocks.setSettings).not.toHaveBeenCalled();
+  });
+
+  it('focuses the profiling editor rather than its keyboard-accessible help button', async () => {
+    const user = userEvent.setup();
+    const target = '/settings?category=developer&setting=developer.pprof_port';
+    const { router } = renderSettings(target);
+    const row = screen.getByRole('group', { name: 'Profiling port' });
+    const editor = within(row).getByRole('spinbutton');
+    const help = within(row).getByRole('button', { name: 'Profiling port help' });
+
+    await waitFor(() => expect(editor).toHaveFocus());
+    expect(help).not.toHaveAttribute('tabindex', '-1');
+    expect(screen.queryByText('Verbose backend profiling description')).not.toBeInTheDocument();
+
+    await user.tab({ shift: true });
+    expect(help).toHaveFocus();
+    expect(await screen.findByText('Use 0 to choose an available port automatically.')).toBeVisible();
+
+    await act(async () => {
+      await router.navigate(target);
+    });
+    await waitFor(() => expect(editor).toHaveFocus());
+    expect(help).not.toHaveFocus();
     expect(mocks.setSettings).not.toHaveBeenCalled();
   });
 
