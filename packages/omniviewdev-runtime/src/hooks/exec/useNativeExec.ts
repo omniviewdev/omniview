@@ -38,7 +38,7 @@ export function useNativeExec({ pluginID: explicitPluginID, resourceKey }: { plu
   });
   const isSupported = platform.isSuccess && platform.data === true
     && handler.isSuccess && handler.data.exec?.supports_native_command === true;
-  const launch = useMutation({
+  const { mutateAsync } = useMutation({
     mutationKey,
     mutationFn: async ({ connectionID, opts }: NativeExecInput): Promise<boolean> => {
       try {
@@ -54,8 +54,8 @@ export function useNativeExec({ pluginID: explicitPluginID, resourceKey }: { plu
   const openNativeSession = useCallback(async (input: NativeExecInput): Promise<boolean> => {
     // Read the shared cache synchronously: another surface may mount mid-launch.
     if (!isSupported || queryClient.isMutating({ mutationKey, exact: true }) > 0) return false;
-    return launch.mutateAsync(input);
-  }, [isSupported, queryClient, mutationKey, launch.mutateAsync]);
+    return mutateAsync(input);
+  }, [isSupported, queryClient, mutationKey, mutateAsync]);
 
   return { openNativeSession, isSupported, isPending };
 }

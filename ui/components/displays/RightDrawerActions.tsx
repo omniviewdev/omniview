@@ -26,7 +26,7 @@ const RightDrawerActions: React.FC<Props> = ({ ctx, actions }) => {
   );
 };
 
-const noopUnsubscribe = () => {};
+const noopUnsubscribe = () => undefined;
 const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentAction }> = ({ ctx, action }) => {
   const [open, setOpen] = useState(false);
   const subscribe = useCallback(
@@ -112,7 +112,10 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
             aria-label={actionTitle === '' ? undefined : actionTitle}
             disabled={checkIsDisabled() || listItems[0].disabled}
             onClick={() => {
-              if (listItems[0].disabled) return;
+              if (listItems[0].disabled) {
+                return;
+              }
+
               void runAction(async () => listItems[0].action(ctx));
             }}
           >
@@ -154,7 +157,10 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
                   startDecorator={item.icon}
                   disabled={item.disabled}
                   onClick={() => {
-                    if (item.disabled) return;
+                    if (item.disabled) {
+                      return;
+                    }
+
                     void runAction(async () => item.action(ctx));
                     setOpen(false);
                   }}

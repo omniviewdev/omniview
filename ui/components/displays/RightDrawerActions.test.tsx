@@ -63,7 +63,9 @@ it('refreshes native choices from external state and disables only the pending n
       getSnapshot: () => state,
       subscribe: (_ctx, onChange) => {
         listeners.add(onChange);
-        return () => { listeners.delete(onChange); };
+        return () => {
+          listeners.delete(onChange); 
+        };
       },
     },
     list: () => [
@@ -80,7 +82,9 @@ it('refreshes native choices from external state and disables only the pending n
   expect(builtIn).toHaveBeenCalledTimes(1);
   act(() => {
     state = { supported: true, pending: false };
-    listeners.forEach((listener) => listener());
+    listeners.forEach((listener) => {
+      listener(); 
+    });
   });
   const trigger = screen.getByRole('button', { name: 'Exec' });
   expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
@@ -88,7 +92,9 @@ it('refreshes native choices from external state and disables only the pending n
   const nativeChoice = await screen.findByRole('menuitem', { name: 'app — Open in Native Terminal' });
   act(() => {
     state = { supported: true, pending: true };
-    listeners.forEach((listener) => listener());
+    listeners.forEach((listener) => {
+      listener(); 
+    });
   });
   expect(nativeChoice.getAttribute('aria-disabled')).toBe('true');
   expect(screen.getByRole('menuitem', { name: 'app' }).getAttribute('aria-disabled')).not.toBe('true');
@@ -96,7 +102,9 @@ it('refreshes native choices from external state and disables only the pending n
   expect(native).not.toHaveBeenCalled();
   act(() => {
     state = { supported: true, pending: false };
-    listeners.forEach((listener) => listener());
+    listeners.forEach((listener) => {
+      listener(); 
+    });
   });
   fireEvent.click(screen.getByRole('menuitem', { name: 'app — Open in Native Terminal' }));
   expect(native).toHaveBeenCalledTimes(1);
@@ -110,7 +118,7 @@ it('disables a direct single-item action while its choice is pending', () => {
     title: 'Exec',
     list: [{ title: 'app — Open in Native Terminal', disabled: true, action }],
   }]} /></SnackbarProvider>);
-  const button = screen.getByRole('button', { name: 'Exec' }) as HTMLButtonElement;
+  const button = screen.getByRole<HTMLButtonElement>('button', { name: 'Exec' });
   expect(button.disabled).toBe(true);
   fireEvent.click(button);
   expect(action).not.toHaveBeenCalled();

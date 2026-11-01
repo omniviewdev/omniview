@@ -78,7 +78,9 @@ describe('resource Exec destinations', () => {
     ]);
     expect(screen.getByRole('separator')).toBeTruthy();
     expect(screen.queryByText('init — Open in Native Terminal')).toBeNull();
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'sidecar — Open in Native Terminal' })); });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'sidecar — Open in Native Terminal' })); 
+    });
     expect(native.open).toHaveBeenCalledWith({
       connectionID: 'selected-connection',
       opts: expect.objectContaining({ reference, route: record.route, resource_data: record.record.body, params: { container: 'sidecar' }, command: ['/bin/sh'] }),
@@ -94,7 +96,9 @@ describe('resource Exec destinations', () => {
     render(<ExecAction {...actions} />);
     const item = screen.getByRole('button', { name: 'app — Open in Native Terminal' });
     expect(item.getAttribute('data-close-on-click')).toBe('false');
-    await act(async () => { fireEvent.click(item); });
+    await act(async () => {
+      fireEvent.click(item); 
+    });
     expect(actions.handleDismiss).not.toHaveBeenCalled();
     expect(actions.handleDeselect).not.toHaveBeenCalled();
     expect(actions.itemProps.onClick).not.toHaveBeenCalled();
@@ -105,10 +109,10 @@ describe('resource Exec destinations', () => {
     native.supported = true;
     native.pending = true;
     render(<ExecAction {...props()} />);
-    const item = screen.getByRole('button', { name: 'app — Open in Native Terminal' }) as HTMLButtonElement;
+    const item = screen.getByRole<HTMLButtonElement>('button', { name: 'app — Open in Native Terminal' });
     expect(item.disabled).toBe(true);
-    expect((screen.getByRole('button', { name: 'sidecar — Open in Native Terminal' }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole('button', { name: 'app', exact: true }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'sidecar — Open in Native Terminal' }).disabled).toBe(true);
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'app', exact: true }).disabled).toBe(false);
     fireEvent.click(item);
     expect(native.open).not.toHaveBeenCalled();
   });

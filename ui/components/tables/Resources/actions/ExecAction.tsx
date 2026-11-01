@@ -94,6 +94,7 @@ const ExecAction: React.FC<Props> = ({
     if (typeof itemProps.onClick === 'function') {
       (itemProps.onClick as () => void)();
     }
+
     handleDismiss();
   };
 
