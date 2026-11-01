@@ -7,6 +7,7 @@ import {
 } from '@/components/displays/Footer/parts';
 import { useHostProfilingStatus } from './useHostProfilingStatus';
 import PluginProfilingRows from './PluginProfilingRows';
+import UiInspectionRow from './UIInspectionRow';
 
 export default function HostProfilingIndicator() {
   const profiling = useHostProfilingStatus();
@@ -26,7 +27,7 @@ export default function HostProfilingIndicator() {
   >
     {close => <>
       <PopoverHeader icon={<LuActivity size={14} />} title='Profiling'>
-        <HintTooltip content='Unauthenticated, local-only access. Profiles may contain sensitive data; do not forward this port. CPU captures cannot run alongside Pyroscope.'>
+        <HintTooltip content='Unauthenticated, local-only access. Profiles may contain sensitive data; do not forward this port. Go CPU captures cannot run alongside Pyroscope.'>
           <FooterTrigger aria-label='Profiling safety'><LuInfo size={13} /></FooterTrigger>
         </HintTooltip>
         <FooterLabel tone={tone} label={`Host ${label}`} />
@@ -47,6 +48,7 @@ export default function HostProfilingIndicator() {
         </div>}
       </div>
       <PluginProfilingRows />
+      <UiInspectionRow />
       <div className={styles.Actions}>
         <PopoverAction icon={<LuSettings size={12} />} label='Developer Settings' onClick={() => {
           navigate('/settings?section=core&category=developer');
