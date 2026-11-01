@@ -60,7 +60,7 @@ describe('resource Exec destinations', () => {
     render(<ExecAction {...actions} />);
     expect(screen.getAllByRole('button').map(button => button.textContent)).toEqual(['app', 'sidecar']);
     expect(screen.queryByRole('separator')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'app', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'app' }));
     expect(native.emit).toHaveBeenCalledWith('onCreateSession', expect.objectContaining({
       plugin: 'kubernetes', connection: 'selected-connection', label: 'app',
       opts: expect.objectContaining({ reference, route: record.route, resource_data: record.record.body, params: { container: 'app' } }),
@@ -112,7 +112,7 @@ describe('resource Exec destinations', () => {
     const item = screen.getByRole<HTMLButtonElement>('button', { name: 'app — Open in Native Terminal' });
     expect(item.disabled).toBe(true);
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'sidecar — Open in Native Terminal' }).disabled).toBe(true);
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'app', exact: true }).disabled).toBe(false);
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'app' }).disabled).toBe(false);
     fireEvent.click(item);
     expect(native.open).not.toHaveBeenCalled();
   });
