@@ -411,7 +411,7 @@ func (pm *pluginManager) createBackend(
 	if err != nil {
 		return nil, err
 	}
-	cmd.Env = childEnv
+	cmd.Env = pm.pluginProfilingEnvironment(childEnv)
 
 	// Ownership/root injection is unconditional, including without telemetry.
 	if pm.telemetryConfigFn != nil {

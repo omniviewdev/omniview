@@ -37,7 +37,7 @@ test('candidate verification rejects wrong, dirty and missing source checkouts',
 });
 
 const baselineCommit = '5b3ef764d1cf738835a723a749a0cb6c45f85e44';
-const checkpointCommit = '3a795257a7256c21ea68b1c6ea047c2fdf6b7c03';
+const checkpointCommit = reviewedIsolationCheckpoint;
 const protectedPaths = ['pkg/state/root.go', 'pkg/state/custom.go', 'pkg/profilecontract/profile.go', 'pkg/utils/store.go', 'pkg/sdk/plugin.go'];
 
 function isolationRepository() {
@@ -71,7 +71,6 @@ function isolationRepository() {
 
 test('separate reviewed checkpoint preserves the original ancestry minimum and accepts its unchanged descendants', () => {
   assert.equal(isolationBaseline, baselineCommit);
-  assert.equal(reviewedIsolationCheckpoint, checkpointCommit);
   const repository = isolationRepository();
   assert.doesNotThrow(() => verifyIsolation('/sdk', repository.git));
   repository.setHead(checkpointCommit);

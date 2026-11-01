@@ -10,6 +10,7 @@ export {
     DeprecatedProtocolPayload,
     LoadPluginOptions,
     PluginErrorPayload,
+    PluginProfilingStatus,
     StateChangePayload,
     StateWriteErrorPayload,
     UpdateErrorPayload,

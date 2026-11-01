@@ -12,13 +12,13 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as $models from "./models.js";
+import * as profiling$0 from "../../../plugin-sdk/pkg/profiling/models.js";
 
-export function GetStatus(): $CancellablePromise<$models.Status> {
+export function GetStatus(): $CancellablePromise<profiling$0.Status> {
     return $Call.ByID(3755720097).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 // Private type creation functions
-const $$createType0 = $models.Status.createFrom;
+const $$createType0 = profiling$0.Status.createFrom;

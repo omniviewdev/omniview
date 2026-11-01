@@ -22,6 +22,10 @@ const PROFILING_PRESENTATION = {
     label: 'Profiling port',
     help: 'Use 0 to choose an available port automatically.',
   },
+  'developer.plugin_pprof_enabled': {
+    label: 'Plugin profiling (pprof)',
+    help: 'Opens local-only profiling ports for plugin processes after restarting Omniview. Profiles may contain sensitive data; do not forward these ports. Stop Pyroscope before CPU captures.',
+  },
 };
 
 const CoreSettingsPage: React.FC<{ id: string }> = ({ id }) => <CoreSettingsForm key={id} id={id} />;

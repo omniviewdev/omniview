@@ -56,6 +56,9 @@ func (s *ServiceWrapper) GetPluginMeta(id string) (config.PluginMeta, error) {
 func (s *ServiceWrapper) ListPluginMetas() []config.PluginMeta {
 	return s.Mgr.ListPluginMetas()
 }
+func (s *ServiceWrapper) GetPluginProfilingStatuses() []PluginProfilingStatus {
+	return s.Mgr.GetPluginProfilingStatuses()
+}
 func (s *ServiceWrapper) ListAvailablePlugins() ([]registry.AvailablePlugin, error) {
 	return s.Mgr.ListAvailablePlugins()
 }

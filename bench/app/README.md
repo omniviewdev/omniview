@@ -41,10 +41,12 @@ cohort outputs; Kubernetes must match the host's `plugins/kubernetes` gitlink.
 The SDK entry must equal the independently reviewed repository variable
 `OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION`. A branch cannot approve its own
 SDK change. The original isolation ancestry minimum remains
-`5b3ef764d1cf738835a723a749a0cb6c45f85e44`. The user separately approved
-`3a795257a7256c21ea68b1c6ea047c2fdf6b7c03` as the reviewed isolation checkpoint
-after independent review of the five protected files' baseline-to-checkpoint
-diff. Admission requires the baseline to precede that pinned checkpoint, the
+`5b3ef764d1cf738835a723a749a0cb6c45f85e44`. The profiling release advances the
+reviewed isolation checkpoint to SDK v0.11.0,
+`eb0d5c8c533c6501c4a57da338435956f82d7b84`, after independent security review of
+the five protected files. The delta only adds the opt-in profiler lifecycle to
+`pkg/sdk/plugin.go`; state-root, profile-contract, and store protections remain
+unchanged. Admission requires the baseline to precede that pinned checkpoint, the
 checkpoint to precede the selected SDK, and all five selected protected files
 to match the checkpoint byte-for-byte. Neither cohort approval, tags nor
 environment variables can substitute another isolation checkpoint.

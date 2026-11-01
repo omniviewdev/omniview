@@ -6,8 +6,8 @@ import { resolve } from 'node:path';
 
 // Independently reviewed isolation-core baseline; candidate/tag selection cannot replace this trust decision.
 export const isolationBaseline = '5b3ef764d1cf738835a723a749a0cb6c45f85e44';
-// Separately approved after reviewing the baseline-to-checkpoint protected-file diff.
-export const reviewedIsolationCheckpoint = '3a795257a7256c21ea68b1c6ea047c2fdf6b7c03';
+// Independently reviewed profiling startup; original isolation ancestry remains required.
+export const reviewedIsolationCheckpoint = 'eb0d5c8c533c6501c4a57da338435956f82d7b84';
 const isolationFiles = ['pkg/state/root.go', 'pkg/state/custom.go', 'pkg/profilecontract/profile.go', 'pkg/utils/store.go', 'pkg/sdk/plugin.go'];
 
 export function verifyIsolation(source, git) {

@@ -51,6 +51,7 @@ import (
 	"github.com/omniviewdev/omniview/internal/telemetry"
 	"github.com/omniviewdev/omniview/internal/version"
 	logging "github.com/omniviewdev/plugin-sdk/log"
+	sdkprofiling "github.com/omniviewdev/plugin-sdk/pkg/profiling"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
@@ -305,7 +306,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "fatal: invalid profiling environment: %v\n", err)
 		os.Exit(1)
 	}
-	hostProfiling := profiling.New(profilingConfig, profilingSource)
+	hostProfiling := sdkprofiling.New(profilingConfig, profilingSource)
 	if startErr := hostProfiling.Start(); startErr != nil {
 		log.Warnw(context.Background(), "host profiling unavailable", "error", startErr)
 	}

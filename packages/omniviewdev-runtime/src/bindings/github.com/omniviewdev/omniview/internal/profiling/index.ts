@@ -5,7 +5,3 @@ import * as ServiceWrapper from "./servicewrapper.js";
 export {
     ServiceWrapper
 };
-
-export {
-    Status
-} from "./models.js";

@@ -23,6 +23,15 @@ var Developer = settings.Category{
 			Default:         false,
 			RequiresRestart: true,
 		},
+		"plugin_pprof_enabled": {
+			ID:    "plugin_pprof_enabled",
+			Label: "Enable plugin pprof",
+			Description: "Enable unauthenticated plugin profiling on 127.0.0.1 after restarting Omniview. " +
+				"Captures can expose sensitive process data. Do not forward these endpoints.",
+			Type:            settings.Toggle,
+			Default:         false,
+			RequiresRestart: true,
+		},
 		"pprof_port": {
 			ID:              "pprof_port",
 			Label:           "Host profiling port",
