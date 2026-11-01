@@ -196,14 +196,14 @@ importers:
         specifier: 4.7.0
         version: 4.7.0(monaco-editor@0.52.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@omniviewdev/ai-ui':
-        specifier: ~6.1.2
-        version: 6.1.2(@omniviewdev/base-ui@0.9.1(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react-icons@5.7.0(react@19.3.1))(react@19.3.1)
+        specifier: ~6.1.3
+        version: 6.1.3(@omniviewdev/base-ui@0.10.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react-icons@5.7.0(react@19.3.1))(react@19.3.1)
       '@omniviewdev/base-ui':
-        specifier: ~0.9.1
-        version: 0.9.1(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        specifier: ~0.10.0
+        version: 0.10.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@omniviewdev/editors':
-        specifier: ~6.1.2
-        version: 6.1.2(@omniviewdev/base-ui@0.9.1(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        specifier: ~6.1.3
+        version: 6.1.3(@omniviewdev/base-ui@0.10.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@omniviewdev/providers':
         specifier: workspace:*
         version: link:packages/omniviewdev-providers
@@ -472,8 +472,8 @@ importers:
         version: 0.10.3
     devDependencies:
       '@omniviewdev/base-ui':
-        specifier: ~0.9.1
-        version: 0.9.1(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        specifier: ~0.10.0
+        version: 0.10.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@tanstack/react-query':
         specifier: 5.105.0
         version: 5.105.0(@types/react@19.3.0)(react@19.3.1)
@@ -1064,24 +1064,24 @@ packages:
   '@nginx/reference-lib@1.1.43':
     resolution: {integrity: sha512-OoX3lTWhiJpffmKknYG33GBSBBHrpf/+4H9Eyc7KYvnpu93o+rTT6X2QQGTJt3l8QLPKEVB8Sa4Np+p/Mrtgrw==}
 
-  '@omniviewdev/ai-ui@6.1.2':
-    resolution: {integrity: sha512-BlCfNBqI2top8sjhycBlcFZGwjUFFWS/Pl4WUkIZ3vpztTkKsp6MihDMZZym2C/Ka5x8MbNSenjplAR8d2Ou9w==}
+  '@omniviewdev/ai-ui@6.1.3':
+    resolution: {integrity: sha512-VummfPMYZXfl/H16BJEo6L8LA3Z8Z75rXIGQC6p6qwExjFFuB9V/DhooZg3d4jSWuI2seNwDJVXWPdmcjY3Z6Q==}
     peerDependencies:
-      '@omniviewdev/base-ui': 0.9.1
+      '@omniviewdev/base-ui': 0.10.0
       react: ^19.3.1
       react-dom: ^19.3.1
       react-icons: ^5.7.0
 
-  '@omniviewdev/base-ui@0.9.1':
-    resolution: {integrity: sha512-ByR5WDl5/eZNDIL564/nM5gJj75iespW1eT6sp2MUx9CbI/o41WpedVEp/nschm2umgmYfVfIZ/0LQTZ7FVZqw==}
+  '@omniviewdev/base-ui@0.10.0':
+    resolution: {integrity: sha512-26Gz6mMBSasaXuI1/5H2Ydw+3abMRu0NCCgnxOaKR84FauUQrpi4R9usmUJWjAGeeynuabQZWvr53RaEOjnmUg==}
     peerDependencies:
       react: ^19.3.1
       react-dom: ^19.3.1
 
-  '@omniviewdev/editors@6.1.2':
-    resolution: {integrity: sha512-EQSn1brLa/4gPuZMpoIZ8WOj6CD36dJUdJ3RGkt9NBZAxZaYNNnQEVadkzwxh0sKIoY3EUVdY5HZyrKBvCzz4Q==}
+  '@omniviewdev/editors@6.1.3':
+    resolution: {integrity: sha512-DRmmIJGM0B/wpvhcwLinHbbYLhYM9L2MEV7mMUwMu03hqA5dk1kj5/VJu/oh0shl4OkKf6p2ICP4nGRMGTsz1Q==}
     peerDependencies:
-      '@omniviewdev/base-ui': 0.9.1
+      '@omniviewdev/base-ui': 0.10.0
       react: ^19.3.1
       react-dom: ^19.3.1
 
@@ -4305,9 +4305,9 @@ snapshots:
 
   '@nginx/reference-lib@1.1.43': {}
 
-  '@omniviewdev/ai-ui@6.1.2(@omniviewdev/base-ui@0.9.1(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react-icons@5.7.0(react@19.3.1))(react@19.3.1)':
+  '@omniviewdev/ai-ui@6.1.3(@omniviewdev/base-ui@0.10.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react-icons@5.7.0(react@19.3.1))(react@19.3.1)':
     dependencies:
-      '@omniviewdev/base-ui': 0.9.1(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@omniviewdev/base-ui': 0.10.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@tanstack/react-virtual': 3.14.23(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
@@ -4318,7 +4318,7 @@ snapshots:
       - '@types/react'
       - supports-color
 
-  '@omniviewdev/base-ui@0.9.1(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@omniviewdev/base-ui@0.10.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
       '@base-ui/react': 1.9.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@dnd-kit/core': 6.3.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -4335,9 +4335,9 @@ snapshots:
       - '@types/react'
       - date-fns
 
-  '@omniviewdev/editors@6.1.2(@omniviewdev/base-ui@0.9.1(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@omniviewdev/editors@6.1.3(@omniviewdev/base-ui@0.10.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
-      '@omniviewdev/base-ui': 0.9.1(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@omniviewdev/base-ui': 0.10.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@xterm/addon-fit': 0.11.0
       '@xterm/addon-search': 0.16.0
       '@xterm/addon-serialize': 0.14.0
