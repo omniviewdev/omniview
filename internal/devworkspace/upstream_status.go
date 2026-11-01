@@ -29,15 +29,18 @@ func (m *Manager) addUpstreamStatus(status *Status) {
 	if devsession.ReadPrivateJSON(filepath.Join(base, "refresh.json"), &intent) == nil &&
 		intent.WorkspaceID == status.Manifest.WorkspaceID && intent.Root == status.Root {
 		status.Update = intent.Plan
-		status.RecoveryCommand = "omniview-dev workspace recover " +
-			shellArgument(status.Manifest.Slug) + " --root " + shellArgument(m.Root)
+		status.RecoveryCommand = workspaceRecoveryCommand(status.Workspace, "recover")
 	}
 	if sourceIntent, sourceErr := readSourceUpdate(m, status.Workspace); sourceErr == nil {
 		status.Update = &sourceIntent.Plan
-		status.RecoveryCommand = shellCommand([]string{
-			"omniview-dev", "workspace", "recover", status.Manifest.Slug, "--root", m.Root,
-		})
+		status.RecoveryCommand = workspaceRecoveryCommand(status.Workspace, "recover")
 	}
+}
+
+func workspaceRecoveryCommand(w Workspace, verb string) string {
+	return shellCommand([]string{
+		"omniview-dev", "workspace", verb, "--workspace", w.ManifestPath,
+	})
 }
 
 func shellArgument(value string) string {

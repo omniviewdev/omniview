@@ -131,6 +131,11 @@ func ConnectWorkspaceControl(ctx context.Context, w Workspace, home, generation 
 func (m *Manager) Status(ctx context.Context, name string) (Status, error) {
 	result, err := m.status(ctx, name)
 	if result.Manifest.WorkspaceID != "" {
+		// Render launch recovery from the selected identity, never from an
+		// opaque command retained by a supervisor or an older status record.
+		if result.RecoveryCommand != "" {
+			result.RecoveryCommand = workspaceRecoveryCommand(result.Workspace, "refresh")
+		}
 		m.addUpstreamStatus(&result)
 	}
 	return result, err

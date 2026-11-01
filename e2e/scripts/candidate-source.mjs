@@ -26,7 +26,11 @@ export function admitCandidate(cohort, env) {
   for (const id of ['plugin-sdk', 'ui', 'kubernetes']) {
     if (!/^[a-f0-9]{40}$/.test(cohort?.[id] ?? '')) throw Error(`Missing immutable candidate ${id} commit`);
   }
-  if (env.REVIEWED_SDK_REVISION !== cohort['plugin-sdk']) throw Error('OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION must equal the independently reviewed candidate SDK commit');
+  if (env.REVIEWED_SDK_REVISION !== cohort['plugin-sdk']) {
+    const approved = /^[a-f0-9]{40}$/.test(env.REVIEWED_SDK_REVISION ?? '')
+      ? env.REVIEWED_SDK_REVISION : '(unset or invalid)';
+    throw Error(`Candidate SDK ${cohort['plugin-sdk']} differs from independently approved SDK ${approved} in REVIEWED_SDK_REVISION (CI maps repository variable OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION); select the approved candidate pin before preparation. Approval authority was not changed.`);
+  }
   for (const [key, id] of [['UI_SOURCE_REF', 'ui'], ['KUBERNETES_SOURCE_REF', 'kubernetes']]) {
     if (env[key] && env[key] !== cohort[id]) throw Error(`${key} conflicts with checked-in candidate cohort`);
   }

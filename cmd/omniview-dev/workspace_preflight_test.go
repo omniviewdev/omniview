@@ -44,6 +44,24 @@ func TestWorkspacePreflightAggregatesMissingInputsAfterSourceOnlyCreation(t *tes
 			t.Fatalf("%v: exit %d: %s %s", args, code, out.String(), diagnostics.String())
 		}
 	}
+	for _, evidence := range []string{"", filepath.Join(root, "missing.json")} {
+		var out, diagnostics bytes.Buffer
+		args := []string{"workspace", "create", "bad-start", "--root", root, "--start", "--json"}
+		if evidence != "" {
+			args = append(args, "--link-evidence", evidence)
+		}
+		if code := run(args, &out, &diagnostics); code == 0 {
+			t.Fatalf("missing launch evidence accepted: %s %s", out.String(), diagnostics.String())
+		}
+		if _, err := os.Stat(filepath.Join(root, "workspaces", "bad-start")); !os.IsNotExist(err) {
+			t.Fatalf("bad launch materialized workspace: %v", err)
+		}
+		cmd := exec.Command("git", "for-each-ref", "--format=%(refname)", "refs/heads/feature/bad-start")
+		cmd.Dir = source
+		if raw, err := cmd.CombinedOutput(); err != nil || len(raw) != 0 {
+			t.Fatalf("bad launch created source branches: %s %v", raw, err)
+		}
+	}
 	for _, extra := range [][]string{nil, {"--link-evidence", filepath.Join(root, "missing.json")}} {
 		var out, diagnostics bytes.Buffer
 		args := append([]string{"workspace", "preflight", "source-only", "--root", root, "--json"}, extra...)

@@ -85,7 +85,7 @@ func Open(root string, opts Options) (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err = LoadRegistry(canonical); err != nil {
+	if _, err = LoadRegistry(context.Background(), canonical); err != nil {
 		return nil, err
 	}
 	if opts.Home == "" {

@@ -438,7 +438,7 @@ func (s *workspaceSupervisor) setPhase(phase string, err error) {
 		if s.status.WaitStage != "" {
 			s.status.FailedStage = s.status.WaitStage
 		}
-		s.status.RecoveryCommand = "omniview-dev workspace refresh " + s.workspace.Manifest.WorkspaceID
+		s.status.RecoveryCommand = workspaceRecoveryCommand(s.workspace, "refresh")
 	}
 	if phase == "ready" {
 		s.status.ServedCheckouts = served

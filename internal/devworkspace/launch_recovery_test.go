@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -34,7 +35,7 @@ func TestStartRetainsFailedSupervisorForRecovery(t *testing.T) {
 				t.Errorf("unexpected supervisor mutation: %s", command)
 				return Status{}, errors.New("only status is allowed")
 			}
-			return Status{Workspace: w, Generation: generation, Phase: "error", FailedStage: "link"}, nil
+			return Status{Workspace: w, Generation: generation, Phase: "error", FailedStage: "link", RecoveryCommand: "omniview-dev workspace refresh " + w.Manifest.WorkspaceID}, nil
 		}))
 	t.Cleanup(server.Close)
 	record := supervisorRecord{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Endpoint: server.URL + "/v1/supervisor", TokenFile: launchPath(w, "supervisor-"+generation+".secret"), Process: child.identity}
@@ -50,6 +51,23 @@ func TestStartRetainsFailedSupervisorForRecovery(t *testing.T) {
 	require.Equal(t, 4, failure.Exit)
 	require.Equal(t, "error", status.Phase)
 	require.Equal(t, generation, status.Generation)
+	command := exec.Command("/bin/sh", "-c", "set -- "+status.RecoveryCommand+"; printf '%s\\000' \"$@\"")
+	command.Dir = t.TempDir()
+	raw, err := command.CombinedOutput()
+	require.NoError(t, err, "%s", raw)
+	arguments := strings.Split(strings.TrimSuffix(string(raw), "\x00"), "\x00")
+	target := ""
+	for i, argument := range arguments {
+		if argument == "--workspace" && i+1 < len(arguments) {
+			target = arguments[i+1]
+		}
+	}
+	resolved, err := devcontract.ResolveWorkspace(devcontract.ResolveOptions{
+		CWD: command.Dir, Explicit: target, Home: m.options.Home,
+	})
+	require.NoError(t, err)
+	require.Equal(t, w.Manifest.WorkspaceID, resolved.Manifest.WorkspaceID)
+	require.Equal(t, w.StateRoot, resolved.StateRoot)
 	require.NoError(t, devsession.VerifyOwnedProcess(child.identity, owner))
 	after, err := os.ReadFile(launchPath(w, "supervisor.json"))
 	require.NoError(t, err)

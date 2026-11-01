@@ -12,7 +12,7 @@ import (
 func TestPortPolicyDefaultExplicitSelectionAndImmutableOptionMaps(t *testing.T) {
 	m, root := fixtureManager(t)
 	ctx := context.Background()
-	reg, err := LoadRegistry(root)
+	reg, err := LoadRegistry(ctx, root)
 	require.NoError(t, err)
 	policy := devcontract.PortPolicy{Policy: "strict", Overrides: map[string]int{"browser": 18711, "plugin-vite:kubernetes": 18712}}
 	planned, err := m.plan(ctx, reg, CreateOptions{Slug: "planned-policy", Ports: &policy})

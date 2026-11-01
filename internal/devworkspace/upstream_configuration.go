@@ -85,7 +85,7 @@ func (m *Manager) preflightUpstreamEdit(ctx context.Context, before Workspace, o
 	for _, repository := range before.Manifest.Repositories {
 		selected[repository.ID] = filepath.Join(before.Root, repository.Directory)
 	}
-	registry, err := LoadRegistry(m.Root)
+	registry, err := LoadRegistry(ctx, m.Root)
 	if err != nil {
 		return err
 	}

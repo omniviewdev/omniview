@@ -20,7 +20,7 @@ func AddRepository(ctx context.Context, root string, spec SourceSpec) (Registry,
 		return Registry{}, err
 	}
 	defer unlock()
-	reg, err := LoadRegistry(root)
+	reg, err := LoadRegistry(ctx, root)
 	if err != nil {
 		return Registry{}, err
 	}
@@ -59,7 +59,7 @@ func RemoveRepository(ctx context.Context, root, id string) (Registry, error) {
 		return Registry{}, err
 	}
 	defer unlock()
-	reg, err := LoadRegistry(root)
+	reg, err := LoadRegistry(ctx, root)
 	if err != nil {
 		return Registry{}, err
 	}
