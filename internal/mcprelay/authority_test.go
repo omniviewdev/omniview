@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/stretchr/testify/require"
 )
 
@@ -350,4 +351,77 @@ func TestDispatchPreservesNativeFailureDespiteOwnershipCleanup(t *testing.T) {
 	require.ErrorIs(t, err, nativeFailure)
 	require.ErrorIs(t, bound.Err(), context.Canceled, "finished ownership must be released")
 	require.NoError(t, transport.Err(), "native failure and child cleanup are not transport cancellation")
+}
+
+func routeLaneBound(t *testing.T, operation string) (*Authority, context.Context, invocation.Target) {
+	t.Helper()
+	a, _, _, ctx := authorityFixture(t)
+	descriptor := resourcev2.ResourceType{
+		Type: "items", IdentityDimensions: []resourcev2.Dimension{}, QueryDimensions: []resourcev2.Dimension{},
+	}
+	readTarget := resourcev2.ReadTarget{Provider: "native", Authority: "auth", Type: "items"}
+	routeType := RouteType{Descriptor: descriptor, Target: readTarget}
+	binding := &ResourceBinding{
+		PluginID: "plugin", Route: resourcev2.AccessRoute{Connection: "conn"}, Operation: operation,
+		Types: map[string]RouteType{"items": routeType},
+	}
+	tool := ToolInfo{
+		MCPName: "resource_lane", PluginID: "plugin", Name: "lane", Scope: ScopeConnection, Status: StatusOK,
+		ReadOnly: true, Resource: binding,
+	}
+	a.UpdateCatalog([]ToolInfo{tool})
+	reference := `{"address":{"provider":"native","authority":"auth","type":"items","scope":[],"id":"one"}}`
+	args := []byte(`{"reference":` + reference + `}`)
+	if operation == opGraphRelated {
+		args = []byte(`{"reference":` + reference + `,"direction":"both"}`)
+	}
+	bound, err := a.Bind(ctx, tool, "conn", args)
+	require.NoError(t, err)
+	target, err := binding.InvocationTarget(args)
+	require.NoError(t, err)
+	return a, bound, target
+}
+
+func TestAuthorityHealthAdmitsOnlyItsOwnGet(t *testing.T) {
+	a, bound, target := routeLaneBound(t, "resource.GetHealth")
+	require.NoError(t, a.Dispatch(bound, func(ctx context.Context) error {
+		boundary := invocation.NewBoundary(a)
+		_, err := boundary.Admit(ctx, "resource.Get", target)
+		require.NoError(t, err)
+		_, err = boundary.Admit(ctx, "resource.GetHealth", target)
+		require.NoError(t, err)
+		other := target
+		other.Object = "two"
+		_, err = boundary.Admit(ctx, "resource.Get", other)
+		require.Error(t, err)
+		_, err = boundary.Admit(ctx, "resource.GetResourceEvents", target)
+		require.Error(t, err)
+		return nil
+	}))
+}
+
+func TestAuthorityGraphCitationsStayOnBoundConnection(t *testing.T) {
+	a, bound, target := routeLaneBound(t, "graph.GetRelated")
+	require.NoError(t, a.Dispatch(bound, func(ctx context.Context) error {
+		boundary := invocation.NewBoundary(a)
+		_, err := boundary.Admit(ctx, "graph.GetRelated", target)
+		require.NoError(t, err)
+		cited := invocation.Target{
+			Provider: "plugin", Connection: "conn", ResourceType: "other", Object: "x",
+			Scope: map[string]string{"resource-scope": "[]", "authority": "auth"},
+		}
+		_, err = boundary.Admit(ctx, "graph.GetRelated", cited)
+		require.NoError(t, err)
+		foreign := cited
+		foreign.Connection = "elsewhere"
+		_, err = boundary.Admit(ctx, "graph.GetRelated", foreign)
+		require.Error(t, err)
+		foreign = cited
+		foreign.Provider = "other-plugin"
+		_, err = boundary.Admit(ctx, "graph.GetRelated", foreign)
+		require.Error(t, err)
+		_, err = boundary.Admit(ctx, "resource.Get", target)
+		require.Error(t, err)
+		return nil
+	}))
 }
