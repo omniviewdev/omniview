@@ -272,6 +272,11 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
         return;
       }
 
+      if (fitFrame !== undefined) {
+        cancelAnimationFrame(fitFrame);
+        fitFrame = undefined;
+      }
+
       fitAddon.fit();
     };
 
@@ -289,7 +294,8 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
     fitTerminalRef.current = scheduleFit;
     window.addEventListener('resize', scheduleFit);
     const unsubscribeResizeReset = bottomDrawerChannel.on('onResizeReset', scheduleFit);
-    const resizeObserver = new ResizeObserver(scheduleFit);
+    // ResizeObserver runs before paint; fit here to avoid a stale grid during drawer drags.
+    const resizeObserver = new ResizeObserver(fitVisibleTerminal);
     resizeObserver.observe(terminalElement);
     const fonts = document.fonts;
     fonts?.addEventListener('loadingdone', scheduleFit);
@@ -529,15 +535,8 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
   }
 
   return (
-    <div style={{ position: 'relative', height: '100%', width: '100%' }}>
-      <div
-        ref={terminalThemeRef}
-        style={{
-          backgroundColor: bgColor,
-          height: '100%',
-          width: '100%',
-        }}
-      />
+    <div className={styles.Terminal}>
+      <div ref={terminalThemeRef} className={styles.Host} />
       {error && <TerminalError error={error} onRetry={handleRetry} backgroundColor={bgColor} recovery={recoveryFor(tab?.properties, error)} />}
     </div>
   );
