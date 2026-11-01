@@ -44,6 +44,7 @@ import (
 	"github.com/omniviewdev/omniview/internal/hostruntime"
 	"github.com/omniviewdev/omniview/internal/instance"
 	"github.com/omniviewdev/omniview/internal/mcprelay"
+	"github.com/omniviewdev/omniview/internal/processinfo"
 	"github.com/omniviewdev/omniview/internal/profiling"
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
 	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
@@ -509,6 +510,7 @@ func main() {
 
 	uiInspectionEnabled, _ := coreSettings.CategoryValues("developer")["ui_inspection_enabled"].(bool)
 	uiInspection := uiinspection.New(app, uiInspectionEnabled)
+	processInventory := processinfo.New(app, pluginManager)
 
 	// Register controllers before bootstrap: bootstrap loads plugins and their
 	// controllers need initialized contexts. Registration remains before Run.
@@ -536,6 +538,7 @@ func main() {
 		application.NewService(telemetry.NewTelemetryBinding(telemetrySvc)),
 		application.NewService(&profiling.ServiceWrapper{Service: hostProfiling}),
 		application.NewService(uiInspection),
+		application.NewService(processInventory),
 		application.NewService(&settingsservice.Binding{Service: coreSettings}),
 		application.NewService(pluginManagerSvc),
 		application.NewService(&mcprelay.ServiceWrapper{Relay: mcpRelay}),

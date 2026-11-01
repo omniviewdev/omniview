@@ -8,6 +8,7 @@ import {
 import { useHostProfilingStatus } from './useHostProfilingStatus';
 import PluginProfilingRows from './PluginProfilingRows';
 import UiInspectionRow from './UIInspectionRow';
+import ProcessInventoryRows from './ProcessInventoryRows';
 
 export default function HostProfilingIndicator() {
   const profiling = useHostProfilingStatus();
@@ -48,6 +49,7 @@ export default function HostProfilingIndicator() {
         </div>}
       </div>
       <PluginProfilingRows />
+      <ProcessInventoryRows />
       <UiInspectionRow />
       <div className={styles.Actions}>
         <PopoverAction icon={<LuSettings size={12} />} label='Developer Settings' onClick={() => {
