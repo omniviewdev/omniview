@@ -244,6 +244,10 @@ func TestMetricToolsOnlyForHandledTypesAndHideProviderErrors(t *testing.T) {
 	require.NoError(t, query(window))
 	require.Equal(t, sdkmetric.ShapeTimeseries, metrics.request.Shape)
 	require.Equal(t, "6s", metrics.request.Step.String())
+	window["startTime"], window["endTime"] = "2026-10-30T12:00:00Z", "2026-10-30T12:00:00.000000001Z"
+	require.NoError(t, query(window))
+	require.Equal(t, "1ns", metrics.request.Step.String())
+	window["startTime"], window["endTime"] = "2026-10-30T12:00:00Z", "2026-10-30T12:10:00Z"
 	window["stepSeconds"] = 86401
 	require.Equal(t, "INVALID_REQUEST", resourcev2.ErrorCode(query(window)))
 	window["stepSeconds"], window["endTime"] = 1, "2026-10-31T12:00:00Z"

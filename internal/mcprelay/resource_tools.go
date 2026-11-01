@@ -920,6 +920,9 @@ func metricQueryShape(request *sdkmetric.QueryRequest, args resourceArguments) e
 	}
 	request.StartTime, request.EndTime = start, end
 	request.Step = end.Sub(start) / metricStepDivisions
+	if request.Step == 0 {
+		request.Step = time.Nanosecond
+	}
 	if args.StepSeconds > 0 {
 		request.Step = time.Duration(args.StepSeconds) * time.Second
 	}
