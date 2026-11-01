@@ -1,12 +1,19 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ActivePageNavigationContext } from '@/features/workspace/activePageNavigation';
 import HostProfilingIndicator from './HostProfilingIndicator';
 
-const backend = vi.hoisted(() => ({ getStatus: vi.fn() }));
-vi.mock('@omniviewdev/runtime/api', () => ({ HostProfiling: { GetStatus: backend.getStatus } }));
+const backend = vi.hoisted(() => ({ getStatus: vi.fn(), getPluginStatuses: vi.fn() }));
+vi.mock('@omniviewdev/runtime/api', () => ({
+  HostProfiling: { GetStatus: backend.getStatus },
+  PluginManager: { GetPluginProfilingStatuses: backend.getPluginStatuses },
+}));
+
+beforeEach(() => {
+  backend.getPluginStatuses.mockReset().mockResolvedValue([]);
+});
 
 afterEach(() => {
   cleanup();
@@ -133,5 +140,80 @@ describe('host profiling footer', () => {
       await vi.advanceTimersByTimeAsync(5001);
     });
     expect(backend.getStatus.mock.calls.length).toBeGreaterThan(calls);
+  });
+
+  it('does not reuse a closed popover plugin endpoint while the new process status is pending', async () => {
+    backend.getStatus.mockReset().mockResolvedValue({ running: false, url: '', source: 'settings', error: '' });
+    const endpointA = 'http://127.0.0.1:43211/debug/pprof/';
+    const endpointB = 'http://127.0.0.1:43212/debug/pprof/';
+    backend.getPluginStatuses.mockResolvedValue([
+      { pluginID: 'kubernetes', supported: true, running: true, url: endpointA, error: '', pid: 1234 },
+    ]);
+    const user = userEvent.setup();
+    mount();
+    const trigger = await screen.findByRole('button', { name: 'Host profiling: Off' });
+    expect(backend.getPluginStatuses).not.toHaveBeenCalled();
+    act(() => {
+      trigger.focus();
+    });
+    await user.keyboard('{Enter}');
+    expect(await screen.findByText(endpointA)).toBeVisible();
+    expect(screen.getByText('PID 1234')).toBeVisible();
+    act(() => {
+      screen.getByRole('button', { name: 'Developer Settings' }).focus();
+    });
+    await user.keyboard('{Escape}');
+    expect(screen.queryByText(endpointA)).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+
+    const nextProcess = [
+      { pluginID: 'kubernetes', supported: true, running: true, url: endpointB, error: '', pid: 5678 },
+    ];
+    const { promise, resolve: resolveStatus } = Promise.withResolvers<typeof nextProcess>();
+    backend.getPluginStatuses.mockReturnValue(promise);
+    expect(backend.getPluginStatuses).toHaveBeenCalledTimes(1);
+    await user.keyboard('{Enter}');
+    expect(backend.getPluginStatuses).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(endpointA)).not.toBeInTheDocument();
+    expect(screen.queryByText('PID 1234')).not.toBeInTheDocument();
+    expect(screen.queryByText(endpointB)).not.toBeInTheDocument();
+    await act(async () => {
+      resolveStatus(nextProcess);
+    });
+    expect(await screen.findByText(endpointB)).toBeVisible();
+    expect(screen.getByText('PID 5678')).toBeVisible();
+    expect(screen.queryByText(endpointA)).not.toBeInTheDocument();
+    expect(screen.queryByText('PID 1234')).not.toBeInTheDocument();
+  });
+
+  it('shows plugin processes independently from host status and removes stale endpoints on failure', async () => {
+    backend.getStatus.mockResolvedValue({ running: false, url: '', source: 'settings', error: '' });
+    const url = 'http://127.0.0.1:43211/debug/pprof/';
+    backend.getPluginStatuses.mockResolvedValue([
+      { pluginID: 'kubernetes', supported: true, running: true, url, error: '', pid: 1234 },
+      { pluginID: 'older', supported: false, running: false, url: '', error: '', pid: 0 },
+    ]);
+    const { client } = mount();
+    const trigger = await screen.findByRole('button', { name: 'Host profiling: Off' });
+    expect(backend.getPluginStatuses).not.toHaveBeenCalled();
+    fireEvent.click(trigger);
+    expect(await screen.findByText(url)).toBeVisible();
+    expect(screen.getByText('PID 1234')).toBeVisible();
+    expect(screen.getByText('SDK update required')).toBeVisible();
+    backend.getPluginStatuses.mockRejectedValue(new Error('Host disconnected'));
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ['plugin-profiling', 'status'] });
+    });
+    expect(await screen.findByRole('alert')).toHaveTextContent('Plugin status unavailable');
+    expect(screen.queryByText(url)).not.toBeInTheDocument();
+    backend.getPluginStatuses.mockResolvedValue([
+      { pluginID: 'kubernetes', supported: true, running: false, url: '', error: '', pid: 5678 },
+    ]);
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ['plugin-profiling', 'status'] });
+    });
+    expect(await screen.findByText('PID 5678')).toBeVisible();
+    expect(screen.queryByText('PID 1234')).not.toBeInTheDocument();
+    expect(screen.queryByText(url)).not.toBeInTheDocument();
   });
 });

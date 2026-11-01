@@ -89,6 +89,16 @@ Invalid recovered profiling preferences fail closed.
 `OMNIVIEW_PPROF_PORT` overrides startup behavior without replacing saved values
 or their comparison baseline.
 
+`developer.plugin_pprof_enabled` is a separate production-visible, restart-only
+toggle, defaulting to false. The plugin manager captures its startup value once
+and explicitly supplies each child process's opt-in environment. Every enabled
+plugin chooses an ephemeral loopback port. Saving does not mutate a running
+process; restart Omniview to apply the preference. The footer reads actual PID,
+endpoint, support, and failure state through
+`PluginManager.GetPluginProfilingStatuses()`, backed by lifecycle RPCs. A missing
+profiling RPC means the plugin needs rebuilding with the updated SDK, not that a
+listener is running or that the saved toggle took effect.
+
 ### Terminal defaults
 
 New terminal settings use a 12px font. Saved font sizes remain unchanged, and

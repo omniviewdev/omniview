@@ -127,9 +127,19 @@ Local access is unauthenticated and profiles can contain sensitive information. 
 
 CPU captures are capped at 120 seconds and execution traces at 15 seconds; larger `seconds` values are clamped. Standard default durations remain unchanged. Both capture routes reject HEAD requests without starting a capture. Request reads, including bodies, time out after 10 seconds; this does not limit capture response duration.
 
-This profiles the host, not plugin subprocesses or the UI. Disable continuous Pyroscope profiling before capturing CPU through pprof: Go permits only one CPU profiler per process. Block/mutex sampling remains disabled by default.
+This endpoint profiles the host, not the UI. Disable continuous Pyroscope profiling before capturing CPU through pprof: Go permits only one CPU profiler per process. Block/mutex sampling remains disabled by default.
 
 Core startup hydration, durable writes and reusable restart-state semantics are documented in [Settings validation and lifecycle](docs/settings-validation.md).
+
+### Plugin process profiling
+
+Enable **Settings → Developer Settings → Plugin profiling (pprof)**, save, and restart Omniview. The preference is off by default and works in development and production. Each running plugin built with the profiling-capable SDK receives its own automatically allocated `127.0.0.1` port; no plugin port configuration is needed.
+
+Open the footer's **pprof** popover to find each plugin's PID and actual endpoint. Use that endpoint with the same `go tool pprof` and `go tool trace` commands shown above. Host and plugin profiling are independent. Older plugin binaries show **SDK update required** and must be rebuilt with the updated SDK; restarting an old binary does not add profiling support.
+
+Saving never opens or closes an existing plugin listener. Restart Omniview after enabling or disabling the preference. Plugin reloads replace the process, PID, and endpoint; do not reuse an endpoint from a previous process. Status requests run only while the popover is open and pause while the window is hidden. The display reports listeners, not client connections or active captures.
+
+The host explicitly supplies `OMNIVIEW_PLUGIN_PPROF_ENABLED=true` or `false` from its startup preference and removes inherited host profiling ports. The SDK accepts only the exact value `true` as opt-in. Listeners use the same unauthenticated local-only access, request guards, capture caps, and shutdown cleanup as host profiling. Disable **Telemetry → Profiling** before restarting plugins for CPU captures when continuous Pyroscope profiling is enabled; Omniview does not pause it automatically.
 
 ## Documentation
 

@@ -49,6 +49,11 @@ func TestProfilingDefinitionsRemainVisibleInEveryBuild(t *testing.T) {
 		assert.Equal(t, false, enabled.Default)
 		assert.False(t, enabled.DevOnly)
 		assert.True(t, enabled.RequiresRestart)
+		pluginEnabled := developer.Settings["plugin_pprof_enabled"]
+		assert.Equal(t, settings.Toggle, pluginEnabled.Type)
+		assert.Equal(t, false, pluginEnabled.Default)
+		assert.False(t, pluginEnabled.DevOnly)
+		assert.True(t, pluginEnabled.RequiresRestart)
 		port := developer.Settings["pprof_port"]
 		assert.Equal(t, settings.Integer, port.Type)
 		assert.Equal(t, 6060, port.Default)

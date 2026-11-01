@@ -107,6 +107,51 @@ export class PluginErrorPayload {
 }
 
 /**
+ * PluginProfilingStatus reports the active backend's own profiling listener.
+ * Supported is false only when the backend cannot expose the profiling RPC.
+ */
+export class PluginProfilingStatus {
+    "pluginID": string;
+    "running": boolean;
+    "url": string;
+    "error": string;
+    "supported": boolean;
+    "pid": number;
+
+    /** Creates a new PluginProfilingStatus instance. */
+    constructor($$source: Partial<PluginProfilingStatus> = {}) {
+        if (!("pluginID" in $$source)) {
+            this["pluginID"] = "";
+        }
+        if (!("running" in $$source)) {
+            this["running"] = false;
+        }
+        if (!("url" in $$source)) {
+            this["url"] = "";
+        }
+        if (!("error" in $$source)) {
+            this["error"] = "";
+        }
+        if (!("supported" in $$source)) {
+            this["supported"] = false;
+        }
+        if (!("pid" in $$source)) {
+            this["pid"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PluginProfilingStatus instance from a string or object.
+     */
+    static createFrom($$source: any = {}): PluginProfilingStatus {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new PluginProfilingStatus($$parsedSource as Partial<PluginProfilingStatus>);
+    }
+}
+
+/**
  * StateChangePayload is sent with EventStateChange.
  */
 export class StateChangePayload {

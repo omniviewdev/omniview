@@ -1,13 +1,10 @@
 package profiling
 
 import (
-	"net"
 	"net/http"
-	"strconv"
-	"strings"
 	"testing"
-	"time"
 
+	"github.com/omniviewdev/plugin-sdk/pkg/profiling"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
@@ -70,7 +67,7 @@ func TestResolveConfig(t *testing.T) {
 		if err != nil || config.Enabled || config.Diagnostic == "" {
 			t.Fatalf("unsafe recovery: %+v %v", config, err)
 		}
-		service := New(config, "settings")
+		service := profiling.New(config, "settings")
 		if service.Start() == nil || service.GetStatus().Running || service.GetStatus().Error == "" {
 			t.Fatal("invalid saved settings did not fail closed")
 		}
@@ -85,80 +82,13 @@ func TestResolveConfig(t *testing.T) {
 	}
 }
 
-func TestLifecycle(t *testing.T) {
-	disabled := New(Config{Port: 6060}, "settings")
-	if err := disabled.Start(); err != nil || disabled.GetStatus().Running || disabled.GetStatus().URL != "" {
-		t.Fatalf("disabled status: %+v %v", disabled.GetStatus(), err)
-	}
-	service := New(Config{Enabled: true, Port: 0}, "settings")
-	if err := service.Start(); err != nil {
-		t.Fatal(err)
-	}
-	defer service.Close()
-	status := service.GetStatus()
-	if !status.Running || status.URL == "" || strings.Contains(status.URL, ":0/") || status.Source != "settings" {
-		t.Fatalf("bad active status: %+v", status)
-	}
-	if err := service.Start(); err != nil || service.GetStatus().URL != status.URL {
-		t.Fatal("Start was not idempotent")
-	}
-	if wrapper := (&ServiceWrapper{Service: service}).GetStatus(); wrapper != status {
-		t.Fatal("wrapper changed runtime facts")
-	}
-	if err := service.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if closedStatus := service.GetStatus(); closedStatus.Running || closedStatus.URL != "" {
-		t.Fatalf("closed status: %+v", closedStatus)
-	}
-	if err := service.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.Start(); err == nil {
-		t.Fatal("closed service restarted")
-	}
-}
-
-func TestOccupiedPortAndServeFailure(t *testing.T) {
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer listener.Close()
-	_, portString, _ := net.SplitHostPort(listener.Addr().String())
-	port, _ := strconv.Atoi(portString)
-	service := New(Config{Enabled: true, Port: port}, "settings")
-	if startErr := service.Start(); startErr == nil {
-		t.Fatal("occupied port accepted")
-	}
-	if status := service.GetStatus(); status.Running || status.URL != "" || status.Error == "" {
-		t.Fatalf("bind error status: %+v", status)
-	}
-	service = New(Config{Enabled: true, Port: 0}, "environment")
-	if startErr := service.Start(); startErr != nil {
-		t.Fatal(startErr)
-	}
-	defer service.Close()
-	if closeErr := service.listener.Close(); closeErr != nil {
-		t.Fatal(closeErr)
-	}
-	deadline := time.Now().Add(2 * time.Second)
-	for service.GetStatus().Running && time.Now().Before(deadline) {
-		time.Sleep(time.Millisecond)
-	}
-	status := service.GetStatus()
-	if status.Running || status.URL != "" || status.Error == "" || status.Source != "environment" {
-		t.Fatalf("serve error status: %+v", status)
-	}
-}
-
 func TestSavedChangesDoNotRebind(t *testing.T) {
 	provider := configuredProvider{values: map[string]any{"developer.pprof_enabled": true, "developer.pprof_port": 0}}
 	config, source, err := ResolveConfig(provider, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := New(config, source)
+	service := profiling.New(config, source)
 	if startErr := service.Start(); startErr != nil {
 		t.Fatal(startErr)
 	}
@@ -179,7 +109,7 @@ func TestSavedChangesDoNotRebind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	restarted := New(config, source)
+	restarted := profiling.New(config, source)
 	defer restarted.Close()
 	if startErr := restarted.Start(); startErr != nil || restarted.GetStatus().Running {
 		t.Fatalf("saved disable not applied after restart: %v", startErr)
@@ -214,5 +144,14 @@ func TestPreparedProviderAndEnvironmentDoNotChangeSavedValues(t *testing.T) {
 	}
 	if port, readErr := provider.GetInt("developer.pprof_port"); readErr != nil || port != 0 {
 		t.Fatalf("saved port mutated: %d %v", port, readErr)
+	}
+}
+
+func TestServiceWrapperStatus(t *testing.T) {
+	service := profiling.New(profiling.Config{}, "settings")
+	defer service.Close()
+	wrapper := &ServiceWrapper{Service: service}
+	if got := wrapper.GetStatus(); got != service.GetStatus() {
+		t.Fatalf("wrapper changed runtime facts: %+v", got)
 	}
 }
