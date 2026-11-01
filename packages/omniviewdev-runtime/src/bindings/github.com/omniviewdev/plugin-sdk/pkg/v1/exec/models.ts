@@ -62,6 +62,12 @@ export class Handler {
     "target_builder": ActionTargetBuilder;
     "default_command": string[];
 
+    /**
+     * SupportsNativeCommand advertises planning support in remote metadata.
+     * Local support is determined by NativeCommandHandler, not this flag.
+     */
+    "supports_native_command": boolean;
+
     /** Creates a new Handler instance. */
     constructor($$source: Partial<Handler> = {}) {
         if (!("plugin" in $$source)) {
@@ -75,6 +81,9 @@ export class Handler {
         }
         if (!("default_command" in $$source)) {
             this["default_command"] = [];
+        }
+        if (!("supports_native_command" in $$source)) {
+            this["supports_native_command"] = false;
         }
 
         Object.assign(this, $$source);

@@ -7,7 +7,13 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as json$0 from "../../../../../../../encoding/json/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as apperror$0 from "../../apperror/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as resourcecatalog$0 from "../../resourcecatalog/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as resourcev2$0 from "../../../../../plugin-sdk/pkg/resource/v2/models.js";
@@ -297,6 +303,92 @@ export class ConnectionStatusPayload {
     static createFrom($$source: any = {}): ConnectionStatusPayload {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new ConnectionStatusPayload($$parsedSource as Partial<ConnectionStatusPayload>);
+    }
+}
+
+/**
+ * EditorSchemaAssociation binds a host-derived Monaco model directory to a
+ * rendered catalog document.
+ */
+export class EditorSchemaAssociation {
+    "type": string;
+    "representation"?: string;
+    "key"?: string;
+    "language": string;
+
+    /**
+     * "file:///omniview-schema/<hex16>"
+     */
+    "modelDirectory": string;
+
+    /**
+     * "** /omniview-schema/<hex16>/*"
+     */
+    "fileMatch": string;
+    "documentId"?: string;
+    "root"?: string;
+
+    /**
+     * "available"|"absent"|"unavailable"|"unsupported"|"invalid"|"limit"
+     */
+    "status": string;
+    "code"?: string;
+
+    /** Creates a new EditorSchemaAssociation instance. */
+    constructor($$source: Partial<EditorSchemaAssociation> = {}) {
+        if (!("type" in $$source)) {
+            this["type"] = "";
+        }
+        if (!("language" in $$source)) {
+            this["language"] = "";
+        }
+        if (!("modelDirectory" in $$source)) {
+            this["modelDirectory"] = "";
+        }
+        if (!("fileMatch" in $$source)) {
+            this["fileMatch"] = "";
+        }
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new EditorSchemaAssociation instance from a string or object.
+     */
+    static createFrom($$source: any = {}): EditorSchemaAssociation {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new EditorSchemaAssociation($$parsedSource as Partial<EditorSchemaAssociation>);
+    }
+}
+
+/**
+ * EditorSchemaDocument is a host-rendered draft-07 editor document.
+ */
+export class EditorSchemaDocument {
+    "documentId": string;
+    "schema": json$0.RawMessage;
+
+    /** Creates a new EditorSchemaDocument instance. */
+    constructor($$source: Partial<EditorSchemaDocument> = {}) {
+        if (!("documentId" in $$source)) {
+            this["documentId"] = "";
+        }
+        if (!("schema" in $$source)) {
+            this["schema"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new EditorSchemaDocument instance from a string or object.
+     */
+    static createFrom($$source: any = {}): EditorSchemaDocument {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new EditorSchemaDocument($$parsedSource as Partial<EditorSchemaDocument>);
     }
 }
 
@@ -750,6 +842,110 @@ export class ResolvedTarget {
     }
 }
 
+/**
+ * SchemaFieldsRequest selects one navigation position in a representation schema.
+ */
+export class SchemaFieldsRequest {
+    "route": resourcev2$0.AccessRoute;
+    "type": string;
+    "representation"?: string;
+    "path": resourcecatalog$0.PathSegment[];
+
+    /** Creates a new SchemaFieldsRequest instance. */
+    constructor($$source: Partial<SchemaFieldsRequest> = {}) {
+        if (!("route" in $$source)) {
+            this["route"] = (new resourcev2$0.AccessRoute());
+        }
+        if (!("type" in $$source)) {
+            this["type"] = "";
+        }
+        if (!("path" in $$source)) {
+            this["path"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SchemaFieldsRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SchemaFieldsRequest {
+        const $$createField0_0 = $$createType15;
+        const $$createField3_0 = $$createType27;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("route" in $$parsedSource) {
+            $$parsedSource["route"] = $$createField0_0($$parsedSource["route"]);
+        }
+        if ("path" in $$parsedSource) {
+            $$parsedSource["path"] = $$createField3_0($$parsedSource["path"]);
+        }
+        return new SchemaFieldsRequest($$parsedSource as Partial<SchemaFieldsRequest>);
+    }
+}
+
+/**
+ * SchemaFieldsResult is catalog-derived field discovery for one representation.
+ */
+export class SchemaFieldsResult {
+    "catalogRevision": string;
+    "type": string;
+    "representation": string;
+
+    /**
+     * provider state: absent|available|unavailable
+     */
+    "schemaState": string;
+    "schemaRevision"?: string;
+    "dialect"?: string;
+    "overlay": resourcecatalog$0.TypeOverlay;
+    "fields": resourcecatalog$0.FieldInfo[];
+    "truncated": boolean;
+    "truncationReason"?: string;
+
+    /** Creates a new SchemaFieldsResult instance. */
+    constructor($$source: Partial<SchemaFieldsResult> = {}) {
+        if (!("catalogRevision" in $$source)) {
+            this["catalogRevision"] = "";
+        }
+        if (!("type" in $$source)) {
+            this["type"] = "";
+        }
+        if (!("representation" in $$source)) {
+            this["representation"] = "";
+        }
+        if (!("schemaState" in $$source)) {
+            this["schemaState"] = "";
+        }
+        if (!("overlay" in $$source)) {
+            this["overlay"] = (new resourcecatalog$0.TypeOverlay());
+        }
+        if (!("fields" in $$source)) {
+            this["fields"] = [];
+        }
+        if (!("truncated" in $$source)) {
+            this["truncated"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SchemaFieldsResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SchemaFieldsResult {
+        const $$createField6_0 = $$createType28;
+        const $$createField7_0 = $$createType30;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("overlay" in $$parsedSource) {
+            $$parsedSource["overlay"] = $$createField6_0($$parsedSource["overlay"]);
+        }
+        if ("fields" in $$parsedSource) {
+            $$parsedSource["fields"] = $$createField7_0($$parsedSource["fields"]);
+        }
+        return new SchemaFieldsResult($$parsedSource as Partial<SchemaFieldsResult>);
+    }
+}
+
 export class SourcePageMetadata {
     "nextCursor"?: string | null;
     "count": resourcev2$0.Count;
@@ -812,3 +1008,8 @@ const $$createType22 = resourcev2$0.ScopeEntry.createFrom;
 const $$createType23 = $Create.Array($$createType22);
 const $$createType24 = resourcev2$0.ResourceReference.createFrom;
 const $$createType25 = AuthorityEvidence.createFrom;
+const $$createType26 = resourcecatalog$0.PathSegment.createFrom;
+const $$createType27 = $Create.Array($$createType26);
+const $$createType28 = resourcecatalog$0.TypeOverlay.createFrom;
+const $$createType29 = resourcecatalog$0.FieldInfo.createFrom;
+const $$createType30 = $Create.Array($$createType29);
