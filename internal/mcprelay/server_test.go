@@ -977,11 +977,15 @@ type laneHTTPConnections struct {
 	observer catalogObserver
 }
 
-func (s *laneHTTPConnections) ObserveCatalog(ctx context.Context, pluginID string, route resourcev2.AccessRoute) (resourcev2.Catalog, resource.Observation, error) {
+func (s *laneHTTPConnections) ObserveCatalog(
+	ctx context.Context, pluginID string, route resourcev2.AccessRoute,
+) (resourcev2.Catalog, resource.Observation, error) {
 	return s.observer.ObserveCatalog(ctx, pluginID, route)
 }
 
-func (s *laneHTTPConnections) ResolveToolTarget(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) (resourcev2.ReadTarget, error) {
+func (s *laneHTTPConnections) ResolveToolTarget(
+	ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string,
+) (resourcev2.ReadTarget, error) {
 	return s.observer.ResolveToolTarget(ctx, pluginID, route, resourceType)
 }
 
@@ -994,7 +998,7 @@ func TestResourceReadLanesAndConsentThroughHTTP(t *testing.T) {
 	metrics := &fakeMetricReader{}
 	h.relay.connections = &laneHTTPConnections{
 		fakeConnections: &fakeConnections{
-			Service: service,
+			Service:     service,
 			connections: map[string][]sdktypes.Connection{"fixture": {{ID: "route-a", Name: "Fixture"}}},
 		},
 		observer: service,
@@ -1053,10 +1057,12 @@ func TestResourceReadLanesAndConsentThroughHTTP(t *testing.T) {
 	var metricResult ResourceMetricsResult
 	require.NoError(t, json.Unmarshal(payload, &metricResult))
 	require.Equal(t, "cpu", metricResult.Results[0].CurrentValue.MetricID)
-	require.Equal(t, 0.25, metricResult.Results[0].CurrentValue.Value)
+	require.InDelta(t, 0.25, metricResult.Results[0].CurrentValue.Value, 1e-10)
 	action := findGenerated(t, tools, "route-a", "resource.Action")
 	require.NoError(t, h.service.SetToolOverride(Scope{}, action.MCPName, ToolOverride{Enabled: new(true)}))
-	input := map[string]any{"kind": "map", "value": map[string]any{"amount": map[string]any{"kind": "int64", "value": "7"}}}
+	input := map[string]any{
+		"kind": "map", "value": map[string]any{"amount": map[string]any{"kind": "int64", "value": "7"}},
+	}
 	approveNext(t, h.service)
 	result, err = session.CallTool(ctx, &mcp.CallToolParams{
 		Name: action.MCPName,
