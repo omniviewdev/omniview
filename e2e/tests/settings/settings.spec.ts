@@ -8,8 +8,8 @@ async function storedValue(page: Page, id: string): Promise<unknown> {
 }
 
 test.describe('Settings', () => {
-  test('a category can be opened directly from the URL', async ({ page }) => {
-    await page.goto('/');
+  test('a targeted category opens without navigating the main window', async ({ appPage: page }) => {
+    await expect(page).toHaveURL(/#\/$/);
     const mainURL = page.url();
     const settings = await openSettingsWindow(page, '/settings?category=terminal');
     await expect(settingRow(settings, 'terminal.fontSize')).toBeVisible();
