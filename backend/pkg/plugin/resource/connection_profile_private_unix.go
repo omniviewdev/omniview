@@ -18,6 +18,10 @@ func validateProfileCredentialDirectory(_ *appstate.ScopedRoot) error {
 	return nil
 }
 
+func validatePublicConnectionProfileFile(_ *os.File) error {
+	return nil
+}
+
 func restrictProfileCredentialFile(file *os.File) error {
 	return file.Chmod(0o600)
 }

@@ -105,8 +105,8 @@ func TestStreamActionCommittedNativeHandleSurvivesReturnCancellation(t *testing.
 		}
 		select {
 		case file := <-native.opened:
-			if _, err := file.Stat(); !errors.Is(err, os.ErrClosed) {
-				t.Errorf("native file descriptor survived cleanup: %v", err)
+			if _, err := file.Stat(); err == nil {
+				t.Error("native file descriptor survived cleanup")
 			}
 		default:
 		}

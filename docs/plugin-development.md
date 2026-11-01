@@ -281,8 +281,12 @@ from the previous target. Native source credentials remain source-owned.
 
 The host stores explicitly supplied values in immutable files beneath the
 profile's scoped plugin store (`0600` on Unix). The public desired-profile file
-contains only an opaque reference. Secret-file sync precedes the atomic public
-pointer switch; rollback, reload, removal, and orphan collection preserve the
+contains only an opaque reference. Each private record binds its ID and UID to a
+SHA-256 digest of canonical client `Data`, excluding display metadata. Missing or
+mismatched bindings fail closed before credentials reach a provider; changing a
+public endpoint while retaining its private reference cannot redirect secrets.
+Secret-file sync precedes the atomic public pointer switch;
+rollback, reload, removal, and orphan collection preserve the
 profile/secret pairing, including an explicit empty-private-data clear. Unix
 directory metadata is synchronized. Windows does not support syncing read-only
 directory handles, and scoped rename has no write-through option; it does not
@@ -291,9 +295,12 @@ removes obsolete secret versions. After sudden power loss, a missing or invalid
 referenced credential file fails closed: reload and re-enter credentials rather
 than falling back to native credentials or another private version.
 These files are not encrypted. On Windows, before creating a private file, the
-host validates the scoped store directory handle's owner and DACL. Broadly shared
-custom stores are rejected, preventing an untrusted inherited handle from
-surviving file restriction. Trusted inherited directory entries are allowed.
+host validates the scoped store directory handle's owner and DACL. Before every
+profile read and credential replay, it also validates that directory and the
+public profile file handle. Broadly shared custom stores or public files are
+rejected, preventing public-configuration tampering and an untrusted inherited
+handle surviving file restriction. Trusted inherited directory and public-file
+entries are allowed.
 Before writing any credential bytes, the host installs a protected DACL on the
 contained file handle permitting only
 the current user, SYSTEM, and Administrators. Before reading, it requires an owner

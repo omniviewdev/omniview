@@ -40,6 +40,9 @@ func compileNativeChild(t *testing.T) string {
 		require.NotEmpty(t, sdkRoot, "resolve actual SDK module returned empty root: %s", output)
 	}
 	binary := filepath.Join(t.TempDir(), "p45-native-fixture")
+	if runtime.GOOS == "windows" {
+		binary += ".exe"
+	}
 	command := exec.Command("go", "test", "-c", "-o", binary, "./internal/resourceconformance")
 	command.Dir = sdkRoot
 	command.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=")
@@ -62,7 +65,11 @@ func startSDKChild(t *testing.T, binary, profile, testName string, childEnv []st
 	pluginDir := filepath.Join(root, "plugins", nativeChildPluginID)
 	require.NoError(t, os.MkdirAll(pluginDir, 0700))
 	require.NoError(t, os.WriteFile(filepath.Join(pluginDir, "plugin.yaml"), []byte("id: "+nativeChildPluginID+"\nversion: 0.0.0\n"), 0600))
-	sockets, err := os.MkdirTemp("/tmp", "p45-native-")
+	socketRoot := "/tmp"
+	if runtime.GOOS == "windows" {
+		socketRoot = os.TempDir()
+	}
+	sockets, err := os.MkdirTemp(socketRoot, "p45-native-")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(sockets) })
 	meta := config.PluginMeta{ID: nativeChildPluginID}

@@ -113,6 +113,9 @@ func validateDesiredConnections(state desiredConnectionState) error {
 }
 
 func readDesiredConnections(root *appstate.ScopedRoot) (desiredConnectionState, error) {
+	if err := validateProfileCredentialDirectory(root); err != nil {
+		return desiredConnectionState{}, errors.New("connection profiles: profile directory permissions are unsafe")
+	}
 	file, err := root.OpenFile(connectionProfileStoreName, os.O_RDONLY, 0)
 	if os.IsNotExist(err) {
 		return emptyDesiredConnections(), nil
@@ -121,6 +124,9 @@ func readDesiredConnections(root *appstate.ScopedRoot) (desiredConnectionState, 
 		return desiredConnectionState{}, err
 	}
 	defer file.Close()
+	if err := validatePublicConnectionProfileFile(file); err != nil {
+		return desiredConnectionState{}, errors.New("connection profiles: public profile permissions are unsafe")
+	}
 	data, err := io.ReadAll(io.LimitReader(file, maxConnectionProfileStoreBytes+1))
 	if err != nil {
 		return desiredConnectionState{}, err

@@ -33,7 +33,9 @@ func restrictProfileCredentialFile(file *os.File) error {
 	}
 	// Reopen the already-contained file object, never its mutable path. The
 	// original Go handle does not request WRITE_DAC, even for the file owner.
-	handle, _, callErr := reopenProfileFile.Call(file.Fd(), uintptr(windows.WRITE_DAC), uintptr(windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE), 0)
+	// ReOpenFile without FILE_FLAG_OVERLAPPED requests synchronous I/O, which
+	// requires SYNCHRONIZE even though this handle only changes the DACL.
+	handle, _, callErr := reopenProfileFile.Call(file.Fd(), uintptr(windows.WRITE_DAC|windows.SYNCHRONIZE), uintptr(windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE), 0)
 	runtime.KeepAlive(file)
 	if windows.Handle(handle) == windows.InvalidHandle {
 		return callErr
@@ -101,4 +103,15 @@ func validateProfileCredentialACL(file *os.File, directory bool) error {
 		}
 	}
 	return nil
+}
+
+func validatePublicConnectionProfileFile(file *os.File) error {
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return errors.New("connection profiles: public profile is not a regular file")
+	}
+	return validateProfileCredentialACL(file, true)
 }

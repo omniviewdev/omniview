@@ -189,6 +189,9 @@ func TestProfileCredentialRejectedSaveRetainsOnlyCommittedPrivateFile(t *testing
 func TestProfileCredentialStoreRejectsWrongOwnerPermissionsAndBounds(t *testing.T) {
 	for _, mutation := range []string{"uid", "id", "permissions", "oversize", "unknown-key"} {
 		t.Run(mutation, func(t *testing.T) {
+			if mutation == "permissions" && runtime.GOOS == "windows" {
+				t.Skip("Windows ACL rejection has native platform coverage")
+			}
 			root, err := appstate.NewTestService(t).PluginStore("test")
 			require.NoError(t, err)
 			connection := profileTestConnection("route", "endpoint")
@@ -202,7 +205,9 @@ func TestProfileCredentialStoreRejectsWrongOwnerPermissionsAndBounds(t *testing.
 			require.NoError(t, err)
 			require.NoError(t, writeDesiredConnections(root, data))
 			name := profileCredentialPrefix + profile.CredentialsRef
-			stored := storedProfileCredentials{ID: connection.ID, UID: connection.UID, Values: map[string]string{"token": token}}
+			digest, err := profileCredentialDataDigest(profile.Configuration)
+			require.NoError(t, err)
+			stored := storedProfileCredentials{ID: connection.ID, UID: connection.UID, DataDigest: digest, Values: map[string]string{"token": token}}
 			switch mutation {
 			case "uid":
 				stored.UID = "different-incarnation"
@@ -387,4 +392,54 @@ func TestProfileCredentialMissingReferenceFailsClosedOnReload(t *testing.T) {
 	require.Empty(t, effective)
 	require.Empty(t, ctrl.getConnections("plugin"), "missing private reference must never activate native fallback")
 	require.NotContains(t, err.Error(), token)
+}
+
+func TestProfileCredentialsTamperedDestinationOrMissingBindingNeverReplays(t *testing.T) {
+	for _, mutation := range []string{"endpoint", "missing-binding"} {
+		t.Run(mutation, func(t *testing.T) {
+			ctrl, _ := newTestControllerWithEmitter(t)
+			connection := profileTestConnection("registry", "https://trusted.example")
+			connection.UID = "same-incarnation"
+			registerMockPlugin(ctrl, "plugin", connectionOverlayTestProvider(connection))
+			token := "private-secret-not-for-attacker"
+			_, err := ctrl.SaveConnectionProfile(testInvocationContext(), "plugin", connection, &ConnectionProfileCredentials{Token: &token})
+			require.NoError(t, err)
+			root, err := ctrl.pluginStoreFn("plugin")
+			require.NoError(t, err)
+			state, err := readDesiredConnections(root)
+			require.NoError(t, err)
+			if mutation == "endpoint" {
+				// Preserve ID, UID, and immutable private reference.
+				state.Profiles[0].Configuration.Data["endpoint"] = "https://attacker.example"
+				public, err := encodeDesiredConnections(state)
+				require.NoError(t, err)
+				require.NoError(t, root.WriteFile(connectionProfileStoreName, public, 0o600))
+			} else {
+				name := profileCredentialPrefix + state.Profiles[0].CredentialsRef
+				private, err := root.ReadFile(name)
+				require.NoError(t, err)
+				var record map[string]any
+				require.NoError(t, json.Unmarshal(private, &record))
+				delete(record, "dataDigest")
+				private, err = json.Marshal(record)
+				require.NoError(t, err)
+				require.NoError(t, root.WriteFile(name, private, 0o600))
+			}
+			restarted, _ := newTestControllerWithEmitter(t)
+			restarted.pluginStoreFn = ctrl.pluginStoreFn
+			provider := connectionOverlayTestProvider(connection)
+			applies := 0
+			provider.ApplyConnectionOverlayFunc = func(ctx context.Context, overlay resourcev2.ConnectionOverlay) error {
+				applies++
+				return provider.applyConnectionOverlay(ctx, overlay)
+			}
+			registerMockPlugin(restarted, "plugin", provider)
+			effective, err := restarted.replayConnectionProfiles(testInvocationContext(), "plugin", []types.Connection{connection})
+			require.Error(t, err)
+			require.NotContains(t, err.Error(), token)
+			require.Empty(t, effective)
+			require.Zero(t, applies, "unbound credentials must never reach the provider")
+			require.Empty(t, restarted.getConnections("plugin"))
+		})
+	}
 }

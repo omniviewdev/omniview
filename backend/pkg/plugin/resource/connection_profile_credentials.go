@@ -2,6 +2,8 @@ package resource
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -25,9 +27,21 @@ const maxProfileCredentialStoreBytes = 12*maxProfileCredentialBytes + 4096
 // public profile commit is the sole pointer switch, so a failed save or crash
 // cannot pair old public configuration with newly entered credentials.
 type storedProfileCredentials struct {
-	ID     string            `json:"id"`
-	UID    string            `json:"uid"`
-	Values map[string]string `json:"values"`
+	ID         string            `json:"id"`
+	UID        string            `json:"uid"`
+	DataDigest string            `json:"dataDigest"`
+	Values     map[string]string `json:"values"`
+}
+
+func profileCredentialDataDigest(config profileConfiguration) (string, error) {
+	// Config has already crossed the lossless JSON boundary. Marshal sorts map
+	// keys without rounding json.Number values or including display metadata.
+	data, err := json.Marshal(config.Data)
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(data)
+	return hex.EncodeToString(digest[:]), nil
 }
 
 func validProfileCredentialValues(values map[string]string) bool {
@@ -67,7 +81,8 @@ func hydrateProfileCredentials(root *appstate.ScopedRoot, state *desiredConnecti
 		decoder := json.NewDecoder(bytes.NewReader(data))
 		decoder.DisallowUnknownFields()
 		var stored storedProfileCredentials
-		if decoder.Decode(&stored) != nil || stored.ID != profile.Configuration.ID || stored.UID != profile.Configuration.UID || !validProfileCredentialValues(stored.Values) {
+		digest, err := profileCredentialDataDigest(profile.Configuration)
+		if err != nil || decoder.Decode(&stored) != nil || stored.ID != profile.Configuration.ID || stored.UID != profile.Configuration.UID || stored.DataDigest != digest || !validProfileCredentialValues(stored.Values) {
 			return errors.New("connection profiles: invalid private credential ownership")
 		}
 		profile.credentials = make(map[string]any, len(stored.Values))
@@ -135,7 +150,11 @@ func prepareProfileCredentials(root *appstate.ScopedRoot, previous desiredConnec
 	}
 	profile.CredentialsRef = uuid.NewString()
 	name := profileCredentialPrefix + profile.CredentialsRef
-	data, err = json.Marshal(storedProfileCredentials{ID: connection.ID, UID: connection.UID, Values: values})
+	digest, err := profileCredentialDataDigest(config)
+	if err != nil {
+		return desiredConnectionProfile{}, errors.New("connection profiles: cannot bind private credentials")
+	}
+	data, err = json.Marshal(storedProfileCredentials{ID: connection.ID, UID: connection.UID, DataDigest: digest, Values: values})
 	if err != nil || len(data) > maxProfileCredentialStoreBytes {
 		return desiredConnectionProfile{}, errors.New("connection profiles: cannot encode private credentials")
 	}
