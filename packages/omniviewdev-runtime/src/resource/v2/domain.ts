@@ -38,8 +38,6 @@ export interface SchemaBinding {
   root?: string;
   documentRef?: SchemaDocumentReference;
   document?: unknown;
-  validation: string;
-  unvalidated: readonly string[];
 }
 export interface SchemaDocumentReference { id: string; revision: string }
 export interface SchemaDocument { reference: SchemaDocumentReference; dialect: string; document: unknown }

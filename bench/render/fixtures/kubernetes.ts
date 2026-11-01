@@ -119,7 +119,7 @@ export function servePods(pods: Pod[]): void {
   const type = 'k8s:/pods';
   const representation = {
     id: 'kubernetes-json', revision: 'bench-1',
-    schema: { state: 'unavailable', unavailableReason: 'NOT_SUPPORTED', validation: 'none', unvalidated: [] },
+    schema: { state: 'unavailable', unavailableReason: 'NOT_SUPPORTED' },
   };
   const coverage = { kind: 'complete', paths: [] };
   const count = { kind: 'exact', value: String(pods.length) };

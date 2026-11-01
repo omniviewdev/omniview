@@ -2,6 +2,7 @@ import React from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CancellablePromise } from '@wailsio/runtime/cancellable';
+import type * as WailsRuntime from '@wailsio/runtime';
 import { useResources, type AcquiredResourcePage } from './useResources';
 import { useResolvedResourceTarget } from './useResolvedResourceTarget';
 import type { HostEnumerateRequest, HostGetRequest, HostNativeQueryRequest, HostRecord, HostSourcePage, ResolvedResourceTarget } from '../../resource/v2/host';
@@ -44,14 +45,20 @@ vi.mock('../../connection/connectionReadiness', () => ({
 }));
 vi.mock('../snackbar/useSnackbar', () => ({ useSnackbar: () => ({ showSnackbar: native.snackbar }) }));
 vi.mock('../useResolvedPluginId', () => ({ useResolvedPluginId: (id?: string) => id ?? 'provider' }));
-vi.mock('@wailsio/runtime', () => ({ Events: { On: (topic: string, callback: (event: { data: unknown }) => void) => { native.listeners.set(topic, callback); return () => { if (native.listeners.get(topic) === callback) native.listeners.delete(topic); }; } } }));
+vi.mock('@wailsio/runtime', async (importOriginal) => {
+  const runtime = await importOriginal<typeof WailsRuntime>();
+  return {
+    ...runtime,
+    Events: { On: (topic: string, callback: (event: { data: unknown }) => void) => { native.listeners.set(topic, callback); return () => { if (native.listeners.get(topic) === callback) native.listeners.delete(topic); }; } },
+  };
+});
 
 const request: HostEnumerateRequest = { targetId: 'host-target', request: { target: {
   route: { connection: 'c' }, provider: 'provider', authority: 'authority', type: 'items', scope: [], representation: 'raw',
 }, pageSize: 1 } };
 const firstRow: HostRecord = { key: 'host-row', addressKey: 'host-address', targetId: 'host-target', route: { connection: 'c' }, record: {
   reference: { address: { provider: 'provider', authority: 'authority', type: 'items', id: 'one', scope: [] } },
-  coverage: { kind: 'complete', paths: [] }, body: { kind: 'uint64', value: '18446744073709551615' }, representation: { id: 'raw', revision: 'r', schema: { state: 'absent', validation: 'none', unvalidated: [] } },
+  coverage: { kind: 'complete', paths: [] }, body: { kind: 'uint64', value: '18446744073709551615' }, representation: { id: 'raw', revision: 'r', schema: { state: 'absent' } },
 } };
 const first: HostSourcePage = { records: [firstRow], sourcePage: { nextCursor: 'second', count: { kind: 'unknown' }, coverage: { kind: 'partial', paths: [] }, consistency: 'bestEffort' } };
 const second: HostSourcePage = { records: [{ ...firstRow, key: 'host-row-two', addressKey: 'host-address-two', record: { ...firstRow.record, reference: { address: { ...firstRow.record.reference.address, id: 'two' } } } }], sourcePage: { ...first.sourcePage, nextCursor: 'third' } };

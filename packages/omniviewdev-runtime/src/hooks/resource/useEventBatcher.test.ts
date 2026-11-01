@@ -10,7 +10,7 @@ function row(id: string, incarnation = 'current', targetId = 'target', label = i
   return { key: `host-membership:${targetId}:${id}:${incarnation}`, addressKey: `host-address:${id}`, targetId, route: { connection: 'route' }, record: {
     reference: { address: { provider: 'provider', authority: 'host-authority', type: 'opaque/type', scope: [{ dimension: 'region', value: '雪/a' }], id }, incarnation },
     body: { kind: 'string', value: label },
-    representation: { id: 'native', revision: '1', schema: { state: 'unavailable', validation: 'unvalidated', unvalidated: [] } }, coverage: { kind: 'complete', paths: [] },
+    representation: { id: 'native', revision: '1', schema: { state: 'unavailable' } }, coverage: { kind: 'complete', paths: [] },
   } };
 }
 function page(records: HostRecord[] = [row('one'), row('two')]): HostSourcePage {

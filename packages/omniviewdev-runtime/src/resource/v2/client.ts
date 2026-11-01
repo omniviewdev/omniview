@@ -1,6 +1,7 @@
 import { Call, type CancellablePromise } from '@wailsio/runtime';
 import type { AccessRoute, ActionRequest, Catalog as CatalogResult, CatalogRequest, GetRequest, MutationRequest, ReadTarget, Record, SchemaDocument, SchemaDocumentReference, Value } from './domain';
-import type { ActionDescriptor, EditorSchema, FeatureSet, RelationshipDescriptor, ResolvedRelationship, ResourceDefinition, ResourceEvent, ResourceGroup, ResourceHealth } from './ancillary';
+import type { ActionDescriptor, FeatureSet, RelationshipDescriptor, ResolvedRelationship, ResourceDefinition, ResourceEvent, ResourceGroup, ResourceHealth } from './ancillary';
+import type { EditorSchemaAssociation, EditorSchemaDocument, SchemaFieldsRequest, SchemaFieldsResult } from './schema';
 import type { AppError } from '../../errors/types';
 import type { WatchConnectionSummary } from '../../types/watch';
 import type { ConnectionProfile, ConnectionProfileResult, HostConnectionState, HostEnumerateRequest, HostGetRequest, HostNativeQueryRequest, HostRecord, HostSourcePage, HostSubscriptionRequest, ResolvedResourceReference, ResolvedResourceTarget, ResolveReferenceRequest, ResolveTargetRequest } from './host';
@@ -33,7 +34,9 @@ export const ResetConnectionProfile = (pluginID: string, id: string) => invoke<C
 export const RemoveConnection = (pluginID: string, id: string) => invoke<void>('RemoveConnection', pluginID, id);
 export const GetResourceGroups = (pluginID: string, route: AccessRoute) => invoke<ResourceGroup[]>('GetResourceGroups', pluginID, route);
 export const GetResourceDefinition = (pluginID: string, route: AccessRoute, type: string) => invoke<ResourceDefinition>('GetResourceDefinition', pluginID, route, type);
-export const GetEditorSchemas = (pluginID: string, route: AccessRoute) => invoke<EditorSchema[]>('GetEditorSchemas', pluginID, route);
+export const GetSchemaFields = (pluginID: string, request: SchemaFieldsRequest) => invoke<SchemaFieldsResult>('GetSchemaFields', pluginID, request);
+export const GetEditorSchemas = (pluginID: string, route: AccessRoute) => invoke<EditorSchemaAssociation[]>('GetEditorSchemas', pluginID, route);
+export const GetEditorSchemaDocument = (pluginID: string, route: AccessRoute, documentID: string) => invoke<EditorSchemaDocument>('GetEditorSchemaDocument', pluginID, route, documentID);
 export const GetRelationships = (pluginID: string, route: AccessRoute, type: string) => invoke<RelationshipDescriptor[]>('GetRelationships', pluginID, route, type);
 export const ResolveRelationships = (pluginID: string, request: GetRequest) => invoke<ResolvedRelationship[]>('ResolveRelationships', pluginID, request);
 export const GetHealth = (pluginID: string, request: GetRequest, body: Value) => invoke<ResourceHealth | null>('GetHealth', pluginID, encodeRequestJSON({ request, body }, [pluginID]));

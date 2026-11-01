@@ -1,4 +1,4 @@
-import type { EditorSchema, SchemaDocument } from '@omniviewdev/runtime';
+import type { EditorSchemaAssociation, EditorSchemaDocument } from '@omniviewdev/runtime';
 
 const mocks = vi.hoisted(() => ({ yaml: vi.fn(), json: vi.fn() }));
 vi.mock('@/providers/monaco/bootstrap', () => ({
@@ -13,18 +13,16 @@ async function flushMicrotasks() {
   return promise;
 }
 
-const document: SchemaDocument = {
-  reference: { id: 'shared', revision: 'revision-1' },
-  dialect: 'https://json-schema.org/draft/2020-12/schema',
-  document: { $defs: { Machine: { type: 'object' }, Disk: { type: 'object' } } },
+const document: EditorSchemaDocument = {
+  documentId: 'a'.repeat(64),
+  schema: { $schema: 'http://json-schema.org/draft-07/schema#', definitions: { n1: { type: 'object' }, n2: { type: 'object' } } },
 };
-function schema(type = 'native/machines', language = 'yaml'): EditorSchema {
+let directory = 0;
+function schema(type = 'native/machines', language = 'yaml', root = '#/definitions/n1'): EditorSchemaAssociation {
+  const hex16 = (directory++).toString(16).padStart(16, '0');
   return {
-    type, language, uri: `editor:///${type}`, fileMatch: `**/${type}/*.${language}`,
-    binding: {
-      state: 'available', validation: 'none', unvalidated: [],
-      documentRef: document.reference, root: '/$defs/Machine',
-    },
+    type, language, representation: 'native', status: 'available', documentId: document.documentId, root,
+    modelDirectory: `file:///omniview-schema/${hex16}`, fileMatch: `**/omniview-schema/${hex16}/*`,
   };
 }
 
@@ -37,18 +35,20 @@ beforeEach(async () => {
 });
 
 describe('canonical editor schema registry', () => {
-  it('registers a shared document once and preserves each declared root', async () => {
+  it('registers a rendered document once and maps each association to its root', async () => {
     const machine = schema();
-    const disk = schema('native/disks');
-    disk.binding = { ...disk.binding, root: '#/$defs/Disk' };
+    const disk = schema('native/disks', 'yaml', '#/definitions/n2');
     schemaRegistry.register('test', 'route', [machine, disk], [document]);
     await flushMicrotasks();
     const entries = schemaRegistry.getLastFlushedYamlSchemas();
     expect(entries).toHaveLength(3);
     const shared = entries.find((entry) => entry.fileMatch.length === 0)!;
-    expect(shared.schema).toBe(document.document);
-    expect(entries.find((entry) => entry.uri === machine.uri)?.schema).toEqual({ $ref: `${shared.uri}#/$defs/Machine` });
-    expect(entries.find((entry) => entry.uri === disk.uri)?.schema).toEqual({ $ref: `${shared.uri}#/$defs/Disk` });
+    expect(shared.uri).toBe(`omniview-schema:///${document.documentId}`);
+    expect(shared.schema).toBe(document.schema);
+    const machineEntry = entries.find((entry) => entry.fileMatch.includes(machine.fileMatch))!;
+    expect(machineEntry.uri).toBe(`omniview-schema:///assoc/${machine.modelDirectory.split('/').at(-1)}`);
+    expect(machineEntry.schema).toEqual({ $ref: `${shared.uri}#/definitions/n1` });
+    expect(entries.find((entry) => entry.fileMatch.includes(disk.fileMatch))?.schema).toEqual({ $ref: `${shared.uri}#/definitions/n2` });
   });
 
   it('keeps JSON and YAML registrations separate', async () => {
@@ -58,29 +58,26 @@ describe('canonical editor schema registry', () => {
     const options = mocks.json.mock.calls.at(-1)![0];
     expect(options.validate).toBe(true);
     expect(options.schemas).toHaveLength(2);
-    expect(options.schemas[0].schema).toBe(document.document);
+    expect(options.schemas[0].schema).toBe(document.schema);
   });
 
-  it('registers an inline canonical document without byte or base64 decoding', async () => {
-    const inline = schema();
-    inline.binding = { state: 'available', validation: 'none', unvalidated: [], document: { type: 'object' } };
-    schemaRegistry.register('test', 'route', [inline]);
-    await flushMicrotasks();
-    expect(schemaRegistry.getLastFlushedYamlSchemas()[0].schema).toBe(inline.binding.document);
-  });
-
-  it('rejects an unavailable referenced document without replacing existing registration', () => {
+  it('rejects a missing rendered document without replacing existing registration', () => {
     schemaRegistry.register('test', 'route', [schema()], [document]);
     expect(() => {
-      schemaRegistry.register('test', 'route', [schema()]); 
+      schemaRegistry.register('test', 'route', [schema()], []);
     }).toThrow(/unavailable/);
     expect(schemaRegistry.getSnapshot()['test:route']).toHaveLength(2);
   });
 
-  it('does not invent a schema for an unavailable binding', async () => {
-    const unavailable = schema();
-    unavailable.binding = { state: 'unavailable', validation: 'none', unvalidated: [] };
-    schemaRegistry.register('test', 'route', [unavailable]);
+  it('rejects an available association without a document ID', () => {
+    expect(() => {
+      schemaRegistry.register('test', 'route', [{ ...schema(), documentId: undefined }], []);
+    }).toThrow(/no document ID/);
+  });
+
+  it('does not invent a schema for non-available associations', async () => {
+    const statuses = ['absent', 'unavailable', 'unsupported', 'invalid', 'limit'] as const;
+    schemaRegistry.register('test', 'route', statuses.map((status) => ({ ...schema(), status, documentId: undefined, root: undefined })), []);
     await flushMicrotasks();
     expect(schemaRegistry.getLastFlushedYamlSchemas()).toEqual([]);
   });

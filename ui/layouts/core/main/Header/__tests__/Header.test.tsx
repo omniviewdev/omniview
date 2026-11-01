@@ -76,7 +76,7 @@ function resourceUpdate(targetId = 'header-search-membership'): { data: RuntimeC
       key: 'host-test-row', addressKey: 'host-test-address', targetId, route: scope.route,
       record: {
         reference: scope.reference, body: { kind: 'map', value: {} },
-        representation: { id: scope.representation, revision: '1', schema: { state: 'unavailable', validation: 'unvalidated', unvalidated: [] } },
+        representation: { id: scope.representation, revision: '1', schema: { state: 'unavailable' } },
         coverage: { kind: 'complete', paths: [] },
       },
     },

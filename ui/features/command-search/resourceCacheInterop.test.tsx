@@ -27,7 +27,7 @@ it('updates detail readers from host-keyed advisory events without losing the ca
     record: {
       reference: { address: { provider: 'kubernetes', authority: 'host-test-authority', type: 'k8s:/pods', id: 'api', scope: [{ dimension: 'namespace', value: 'apps' }] }, incarnation: 'pod' },
       body: { kind: 'map', value: { version: { kind: 'string', value: '1' } } },
-      representation: { id: 'json', revision: '1', schema: { state: 'unavailable', validation: 'unvalidated', unvalidated: [] } },
+      representation: { id: 'json', revision: '1', schema: { state: 'unavailable' } },
       coverage: { kind: 'complete', paths: [] }, sourceRevision: '1',
     },
   };

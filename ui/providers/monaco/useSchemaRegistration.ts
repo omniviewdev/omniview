@@ -22,23 +22,23 @@ export const useSchemaRegistration = ({
   enabled = true,
 }: UseSchemaRegistrationOptions) => {
   const route = { connection: connectionID };
-  const { schemas, documents, isLoading, error } = useEditorSchemas({
+  const { associations, documents, isLoading, error } = useEditorSchemas({
     pluginID,
     route,
     enabled,
   });
 
   useEffect(() => {
-    if (!schemas.length || !pluginID || !connectionID) {
+    if (!associations.length || !pluginID || !connectionID) {
       return;
     }
 
-    schemaRegistry.register(pluginID, connectionID, schemas, documents);
+    schemaRegistry.register(pluginID, connectionID, associations, documents);
 
     return () => {
       schemaRegistry.unregister(pluginID, connectionID);
     };
-  }, [schemas, pluginID, connectionID, documents]);
+  }, [associations, pluginID, connectionID, documents]);
 
   return { isLoading, error };
 };

@@ -1,5 +1,6 @@
 import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query';
-import { GetEditorSchemas, GetSchemaDocument } from '../../resource/v2/client';
+import { GetEditorSchemaDocument, GetEditorSchemas } from '../../resource/v2/client';
+import type { EditorSchemaDocument } from '../../resource/v2/schema';
 import type { AccessRoute } from '../../resource/v2/domain';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 import { useConnectionReadiness } from '../connection/useConnectionReadiness';
@@ -15,11 +16,11 @@ type UseEditorSchemasOptions = {
 };
 
 /**
- * useEditorSchemas fetches editor schemas for a plugin + connection pair
- * from the backend via Wails bindings.
+ * useEditorSchemas fetches host-derived editor schema associations for a
+ * plugin + connection pair, then each unique available rendered document once.
  *
- * Shared documents are fetched once per exact reference and published together
- * with the schema bindings. Callers must pass both to the host SchemaRegistry.
+ * Associations and documents are published together; callers pass both to the
+ * host SchemaRegistry.
  */
 export const useEditorSchemas = ({
   pluginID: explicitPluginID,
@@ -34,30 +35,28 @@ export const useEditorSchemas = ({
   const query = useQuery({
     queryKey: [pluginID, 'resource-v2', 'editor-schemas', route],
     queryFn: queryEnabled ? ({ signal, queryKey }) => guardQuery(queryKey, signal, async () => {
-      const schemas = await guardQuery(queryKey, signal, () => GetEditorSchemas(pluginID, route));
-      const documents = [];
+      const associations = await guardQuery(queryKey, signal, () => GetEditorSchemas(pluginID, route));
+      const documents: EditorSchemaDocument[] = [];
       const resolved = new Set<string>();
-      for (const schema of schemas) {
-        const reference = schema.binding.documentRef;
-        if (!reference) continue;
-        const key = JSON.stringify([reference.id, reference.revision]);
-        if (resolved.has(key)) continue;
+      for (const association of associations) {
+        const documentId = association.documentId;
+        if (association.status !== 'available' || !documentId || resolved.has(documentId)) continue;
         documents.push(await queryClient.fetchQuery({
-          queryKey: [pluginID, 'resource-v2', 'schema-document', route, reference],
-          queryFn: ({ signal: documentSignal, queryKey }) => guardQuery(queryKey, AbortSignal.any([signal, documentSignal]), () => GetSchemaDocument(pluginID, route, reference)),
+          queryKey: [pluginID, 'resource-v2', 'editor-schema-document', route, documentId],
+          queryFn: ({ signal: documentSignal, queryKey }) => guardQuery(queryKey, AbortSignal.any([signal, documentSignal]), () => GetEditorSchemaDocument(pluginID, route, documentId)),
           staleTime: Infinity,
         }));
-        resolved.add(key);
+        resolved.add(documentId);
       }
-      return { schemas, documents };
+      return { associations, documents };
     }) : skipToken,
     enabled: queryEnabled,
-    staleTime: 10 * 60 * 1000, // schemas are fairly stable per connection
+    staleTime: 10 * 60 * 1000, // associations are stable per connection catalog
     retry: 1,
   });
 
   return {
-    schemas: query.data?.schemas ?? [],
+    associations: query.data?.associations ?? [],
     documents: query.data?.documents ?? [],
     isLoading: query.isLoading,
     error: query.error,
