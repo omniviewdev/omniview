@@ -261,6 +261,34 @@ configuration. Profile mutation success requires `applied: true`; an error never
 means that desired state became effective, and a failed rollback leaves actual
 state unknown. Profile `active` means effective discovery membership, not an
 established connection or live resource readiness.
+
+`ResourceClient.SaveConnectionProfile(pluginID, connection, credentials?)` and
+`useConnection(...).saveConnectionProfile(connection, credentials?)` accept a
+separate write-only `{ username?, token? }` credential DTO. Never put these values
+in public connection `data`. The Wails adapter encodes public configuration
+through the lossless request-JSON transport; private input remains a separate
+argument and never appears in public profiles, status, or inventory responses.
+
+Omitting the DTO or a field preserves stored values only for the same profile ID,
+UID, and unchanged canonical public client configuration. An explicit empty
+string clears that field; `{ username: '', token: '' }` clears both. An empty DTO
+is not a clear request. Endpoint/configuration changes do not inherit secrets
+from the previous target. Native source credentials remain source-owned.
+
+The host stores explicitly supplied values in immutable `0600` files beneath the
+profile's scoped plugin store. The public desired-profile file contains only an
+opaque reference. Secret-file sync precedes the atomic public pointer switch;
+rollback, reload, removal, and orphan collection preserve the profile/secret
+pairing, including an explicit empty-private-data clear. These files are
+permission-protected, not encrypted. Uncertain rollback/durability returns
+`RESET_REQUIRED` rather than claiming a successful save.
+
+Deploy the SDK private-overlay transport fix in both host and plugin before
+using credential saves, then publish the matching runtime before upgrading
+plugin dependency pins. Saving applies configuration; a subsequent explicit
+Start and Check uses the saved ID. Native `CONNECTED` lifecycle state does not
+prove every resource permission or replace an authenticated resource operation.
+
 Effective connection inventory starts empty and is replaced only by successful
 fresh source snapshots plus actually applied overlays. Failed discovery never
 activates an old cache for Get/List or utility capability lookups. Legacy mixed

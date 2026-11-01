@@ -3,7 +3,7 @@ import type { AccessRoute, ActionRequest, Catalog as CatalogResult, CatalogReque
 import type { ActionDescriptor, EditorSchema, FeatureSet, RelationshipDescriptor, ResolvedRelationship, ResourceDefinition, ResourceEvent, ResourceGroup, ResourceHealth } from './ancillary';
 import type { AppError } from '../../errors/types';
 import type { WatchConnectionSummary } from '../../types/watch';
-import type { ConnectionProfile, ConnectionProfileResult, HostConnectionState, HostEnumerateRequest, HostGetRequest, HostNativeQueryRequest, HostRecord, HostSourcePage, HostSubscriptionRequest, ResolvedResourceReference, ResolvedResourceTarget, ResolveReferenceRequest, ResolveTargetRequest } from './host';
+import type { ConnectionProfile, ConnectionProfileCredentials, ConnectionProfileResult, HostConnectionState, HostEnumerateRequest, HostGetRequest, HostNativeQueryRequest, HostRecord, HostSourcePage, HostSubscriptionRequest, ResolvedResourceReference, ResolvedResourceTarget, ResolveReferenceRequest, ResolveTargetRequest } from './host';
 import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 import { encodeRequestJSON } from './requestJSON';
 import type { ConnectionMetadataEnvelope } from '../../connection/metadata';
@@ -27,7 +27,7 @@ export const ResolveReference = (pluginID: string, request: ResolveReferenceRequ
 export const GetSchemaDocument = (pluginID: string, route: AccessRoute, reference: SchemaDocumentReference) => invoke<SchemaDocument>('GetSchemaDocument', pluginID, route, reference);
 export const GetAllConnectionStates = () => invoke<{ [pluginID: string]: HostConnectionState[] }>('GetAllConnectionStates');
 export const ListConnectionProfiles = (pluginID: string) => invoke<ConnectionProfile[]>('ListConnectionProfiles', pluginID);
-export const SaveConnectionProfile = (pluginID: string, connection: Connection) => invoke<ConnectionProfileResult>('SaveConnectionProfile', pluginID, connection);
+export const SaveConnectionProfile = (pluginID: string, connection: Connection, credentials?: ConnectionProfileCredentials) => invoke<ConnectionProfileResult>('SaveConnectionProfile', pluginID, encodeRequestJSON(connection, [pluginID]), credentials ?? null);
 export const ImportConnectionProfile = (pluginID: string, id: string) => invoke<ConnectionProfileResult>('ImportConnectionProfile', pluginID, id);
 export const ResetConnectionProfile = (pluginID: string, id: string) => invoke<ConnectionProfileResult>('ResetConnectionProfile', pluginID, id);
 export const RemoveConnection = (pluginID: string, id: string) => invoke<void>('RemoveConnection', pluginID, id);

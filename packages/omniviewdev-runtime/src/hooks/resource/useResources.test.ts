@@ -2,6 +2,7 @@ import React from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CancellablePromise } from '@wailsio/runtime/cancellable';
+import type * as WailsRuntime from '@wailsio/runtime';
 import { useResources, type AcquiredResourcePage } from './useResources';
 import { useResolvedResourceTarget } from './useResolvedResourceTarget';
 import type { HostEnumerateRequest, HostGetRequest, HostNativeQueryRequest, HostRecord, HostSourcePage, ResolvedResourceTarget } from '../../resource/v2/host';
@@ -44,7 +45,10 @@ vi.mock('../../connection/connectionReadiness', () => ({
 }));
 vi.mock('../snackbar/useSnackbar', () => ({ useSnackbar: () => ({ showSnackbar: native.snackbar }) }));
 vi.mock('../useResolvedPluginId', () => ({ useResolvedPluginId: (id?: string) => id ?? 'provider' }));
-vi.mock('@wailsio/runtime', () => ({ Events: { On: (topic: string, callback: (event: { data: unknown }) => void) => { native.listeners.set(topic, callback); return () => { if (native.listeners.get(topic) === callback) native.listeners.delete(topic); }; } } }));
+vi.mock('@wailsio/runtime', async (importOriginal) => {
+  const actual = await importOriginal<typeof WailsRuntime>();
+  return { ...actual, Events: { ...actual.Events, On: (topic: string, callback: (event: { data: unknown }) => void) => { native.listeners.set(topic, callback); return () => { if (native.listeners.get(topic) === callback) native.listeners.delete(topic); }; } } };
+});
 
 const request: HostEnumerateRequest = { targetId: 'host-target', request: { target: {
   route: { connection: 'c' }, provider: 'provider', authority: 'authority', type: 'items', scope: [], representation: 'raw',

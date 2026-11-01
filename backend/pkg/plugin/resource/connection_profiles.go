@@ -37,6 +37,13 @@ type ConnectionProfileResult struct {
 	Profile ConnectionProfile `json:"profile"`
 }
 
+// ConnectionProfileCredentials is write-only. Omitted fields preserve the
+// profile's existing value; an explicit empty string clears that value.
+type ConnectionProfileCredentials struct {
+	Username *string `json:"username,omitempty"`
+	Token    *string `json:"token,omitempty"`
+}
+
 // The disk DTO deliberately excludes clients, auth freshness and sensitive data.
 // Only explicit user configuration is durable; native discovery is never saved.
 type profileConfiguration struct {
@@ -50,8 +57,10 @@ type profileConfiguration struct {
 	Lifecycle   types.ConnectionLifecycle `json:"lifecycle"`
 }
 type desiredConnectionProfile struct {
-	Source        string               `json:"source"`
-	Configuration profileConfiguration `json:"configuration"`
+	Source         string               `json:"source"`
+	Configuration  profileConfiguration `json:"configuration"`
+	CredentialsRef string               `json:"credentialsRef,omitempty"`
+	credentials    map[string]any
 }
 type desiredConnectionState struct {
 	Version     uint32                     `json:"version"`
@@ -76,7 +85,9 @@ func emptyDesiredConnections() desiredConnectionState {
 func (state desiredConnectionState) overlay() resourcev2.ConnectionOverlay {
 	overlay := resourcev2.ConnectionOverlay{Upserts: make([]types.Connection, 0, len(state.Profiles)), DisabledIDs: state.DisabledIDs}
 	for _, profile := range state.Profiles {
-		overlay.Upserts = append(overlay.Upserts, profile.Configuration.connection())
+		connection := profile.Configuration.connection()
+		connection.SetSensitiveData(profile.credentials)
+		overlay.Upserts = append(overlay.Upserts, connection)
 	}
 	return overlay
 }
@@ -128,6 +139,9 @@ func readDesiredConnections(root *appstate.ScopedRoot) (desiredConnectionState, 
 	if err := validateDesiredConnections(state); err != nil {
 		return desiredConnectionState{}, err
 	}
+	if err := hydrateProfileCredentials(root, &state); err != nil {
+		return desiredConnectionState{}, err
+	}
 	return state, nil
 }
 
@@ -169,7 +183,18 @@ func writeDesiredConnections(root *appstate.ScopedRoot, data []byte) error {
 	if err := file.Close(); err != nil {
 		return err
 	}
-	return root.Rename(temp, connectionProfileStoreName)
+	if err := root.Rename(temp, connectionProfileStoreName); err != nil {
+		return err
+	}
+	directory, err := root.OpenFile(".", os.O_RDONLY, 0)
+	if err == nil {
+		err = directory.Sync()
+		directory.Close()
+	}
+	if err != nil {
+		return resourcev2.NewError("RESET_REQUIRED", "Connection profile commit durability is unknown. Reload before using this connection.")
+	}
+	return nil
 }
 
 func (c *controller) connectionProfileSource(ctx context.Context, pluginID string) (connectionProfileSource, error) {
@@ -213,6 +238,9 @@ func (c *controller) replayConnectionProfilesLocked(ctx context.Context, pluginI
 	}
 	state, err := readDesiredConnections(root)
 	if err != nil {
+		return nil, err
+	}
+	if err := collectProfileCredentialOrphans(root, state); err != nil {
 		return nil, err
 	}
 	source, err := c.connectionProfileSource(ctx, pluginID)
@@ -292,6 +320,7 @@ func listConnectionProfiles(state desiredConnectionState, native, effective, can
 	}
 	for _, connection := range native {
 		copy := connection
+		copy.SetSensitiveData(nil)
 		_, exists := active[connection.ID]
 		profiles[connection.ID] = ConnectionProfile{ID: connection.ID, Source: "native", Connection: &copy, Active: exists}
 	}
@@ -301,6 +330,7 @@ func listConnectionProfiles(state desiredConnectionState, native, effective, can
 		if current, ok := active[connection.ID]; ok {
 			connection = current
 		}
+		connection.SetSensitiveData(nil)
 		profiles[connection.ID] = ConnectionProfile{ID: connection.ID, Source: desired.Source, Connection: &connection, Active: exists}
 	}
 	for _, id := range state.DisabledIDs {
@@ -374,6 +404,11 @@ func applyDesiredConnections(ctx context.Context, source connectionProfileSource
 	if err == nil {
 		return effective, nil
 	}
+	if resourcev2.ErrorCode(err) == "RESET_REQUIRED" {
+		// The pointer may already be durable. Keep both immutable credential
+		// files and do not replace the source with an uncertain disk version.
+		return nil, err
+	}
 	// An owning cancellation must not prevent compensating an already-applied
 	// source change. The source still owns its normal per-call operation limits.
 	if rollback := source.ApplyConnectionOverlay(context.WithoutCancel(ctx), previous.overlay()); rollback != nil {
@@ -397,7 +432,7 @@ func withoutDesiredConnection(state desiredConnectionState, id string) desiredCo
 	return result
 }
 
-func (c *controller) changeConnectionProfile(ctx context.Context, pluginID, id, operation string, connection *types.Connection) (_result ConnectionProfileResult, retErr error) {
+func (c *controller) changeConnectionProfile(ctx context.Context, pluginID, id, operation string, connection *types.Connection, credentials *ConnectionProfileCredentials) (_result ConnectionProfileResult, retErr error) {
 	defer c.notifyInventory()
 	if id == "" || !utf8.ValidString(id) {
 		return ConnectionProfileResult{}, resourcev2.NewError("INVALID_REQUEST", "An explicit UTF-8 connection ID is required.")
@@ -480,12 +515,26 @@ func (c *controller) changeConnectionProfile(ctx context.Context, pluginID, id, 
 			}
 		}
 	}
+	committed := false
 	switch operation {
 	case "save", "import":
 		if connection == nil {
 			return ConnectionProfileResult{}, resourcev2.NewError("INVALID_REQUEST", "Connection configuration is required.")
 		}
-		next.Profiles = append(next.Profiles, desiredConnectionProfile{Source: origin, Configuration: profileConfig(*connection)})
+		profile, err := prepareProfileCredentials(root, previous, origin, *connection, credentials)
+		if err != nil {
+			return ConnectionProfileResult{}, err
+		}
+		next.Profiles = append(next.Profiles, profile)
+		if profile.CredentialsRef != "" {
+			defer func() {
+				if !committed && resourcev2.ErrorCode(retErr) != "RESET_REQUIRED" {
+					if cleanupErr := removeUnreferencedProfileCredentials(root, previous, next); cleanupErr != nil {
+						retErr = cleanupErr
+					}
+				}
+			}()
+		}
 	case "remove":
 		if origin == "override" {
 			next.DisabledIDs = append(next.DisabledIDs, id)
@@ -524,6 +573,10 @@ func (c *controller) changeConnectionProfile(ctx context.Context, pluginID, id, 
 	if err != nil {
 		return ConnectionProfileResult{}, err
 	}
+	committed = true
+	if err := removeUnreferencedProfileCredentials(root, next, previous); err != nil {
+		return ConnectionProfileResult{}, err
+	}
 	if err := c.publishProfileConnections(ctx, pluginID, generation, native, effective); err != nil {
 		return ConnectionProfileResult{}, err
 	}
@@ -537,13 +590,13 @@ func (c *controller) changeConnectionProfile(ctx context.Context, pluginID, id, 
 	return ConnectionProfileResult{Applied: true, Profile: result}, nil
 }
 
-func (c *controller) SaveConnectionProfile(ctx context.Context, pluginID string, connection types.Connection) (_result ConnectionProfileResult, retErr error) {
+func (c *controller) SaveConnectionProfile(ctx context.Context, pluginID string, connection types.Connection, credentials *ConnectionProfileCredentials) (_result ConnectionProfileResult, retErr error) {
 	ctx, err := c.admit(ctx, "resource.SaveConnectionProfile", invocation.Target{Provider: pluginID, Connection: connection.ID})
 	if err != nil {
 		return _result, err
 	}
 	defer finishResource(ctx, &retErr)
-	return c.changeConnectionProfile(ctx, pluginID, connection.ID, "save", &connection)
+	return c.changeConnectionProfile(ctx, pluginID, connection.ID, "save", &connection, credentials)
 }
 func (c *controller) ImportConnectionProfile(ctx context.Context, pluginID, connectionID string) (_result ConnectionProfileResult, retErr error) {
 	ctx, err := c.admit(ctx, "resource.ImportConnectionProfile", invocation.Target{Provider: pluginID, Connection: connectionID})
@@ -551,7 +604,7 @@ func (c *controller) ImportConnectionProfile(ctx context.Context, pluginID, conn
 		return _result, err
 	}
 	defer finishResource(ctx, &retErr)
-	return c.changeConnectionProfile(ctx, pluginID, connectionID, "import", nil)
+	return c.changeConnectionProfile(ctx, pluginID, connectionID, "import", nil, nil)
 }
 func (c *controller) ResetConnectionProfile(ctx context.Context, pluginID, connectionID string) (_result ConnectionProfileResult, retErr error) {
 	ctx, err := c.admit(ctx, "resource.ResetConnectionProfile", invocation.Target{Provider: pluginID, Connection: connectionID})
@@ -559,7 +612,7 @@ func (c *controller) ResetConnectionProfile(ctx context.Context, pluginID, conne
 		return _result, err
 	}
 	defer finishResource(ctx, &retErr)
-	return c.changeConnectionProfile(ctx, pluginID, connectionID, "reset", nil)
+	return c.changeConnectionProfile(ctx, pluginID, connectionID, "reset", nil, nil)
 }
 func (c *controller) RemoveConnection(ctx context.Context, pluginID, connectionID string) (retErr error) {
 	ctx, err := c.admit(ctx, "resource.RemoveConnection", invocation.Target{Provider: pluginID, Connection: connectionID})
@@ -567,6 +620,6 @@ func (c *controller) RemoveConnection(ctx context.Context, pluginID, connectionI
 		return err
 	}
 	defer finishResource(ctx, &retErr)
-	_, err = c.changeConnectionProfile(ctx, pluginID, connectionID, "remove", nil)
+	_, err = c.changeConnectionProfile(ctx, pluginID, connectionID, "remove", nil, nil)
 	return err
 }

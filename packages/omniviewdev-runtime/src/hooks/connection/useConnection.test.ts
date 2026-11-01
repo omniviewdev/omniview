@@ -64,7 +64,7 @@ describe('explicit connection profile mutations', () => {
     const { client, hook } = mount();
     let pending!: Promise<ConnectionProfileResult>;
     await act(async () => { pending = hook.result.current.saveConnectionProfile(edited); await Promise.resolve(); });
-    expect(native.save).toHaveBeenCalledWith('neutral', edited);
+    expect(native.save).toHaveBeenCalledWith('neutral', edited, undefined);
     expect(native.snackbar).not.toHaveBeenCalled();
     expect(client.getQueryData(detailKey)).toBe(original);
     const result: ConnectionProfileResult = { applied: true, profile: { id: original.id, source: 'override', connection: edited, active: true } };

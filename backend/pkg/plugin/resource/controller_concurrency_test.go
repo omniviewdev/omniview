@@ -152,13 +152,13 @@ func TestConcurrent_ConnectionOps(t *testing.T) {
 			}
 
 			// Create explicit desired configuration.
-			saved, err := ctrl.SaveConnectionProfile(testInvocationContext(), "p1", conn)
+			saved, err := ctrl.SaveConnectionProfile(testInvocationContext(), "p1", conn, nil)
 			assert.NoError(t, err)
 			assert.True(t, saved.Applied)
 
 			// Edit the same desired profile.
 			conn.Name = fmt.Sprintf("Updated Connection %d", idx)
-			updated, err := ctrl.SaveConnectionProfile(testInvocationContext(), "p1", conn)
+			updated, err := ctrl.SaveConnectionProfile(testInvocationContext(), "p1", conn, nil)
 			assert.NoError(t, err)
 			assert.True(t, updated.Applied)
 
@@ -426,7 +426,7 @@ func TestConcurrent_MixedOps_StressTest(t *testing.T) {
 				_, _ = ctrl.SaveConnectionProfile(testInvocationContext(), "p1", types.Connection{
 					ID:   fmt.Sprintf("new-conn-%d", idx),
 					Name: fmt.Sprintf("New Connection %d", idx),
-				})
+				}, nil)
 			case 5:
 				_, _ = ctrl.ListConnections(testInvocationContext(), "p1")
 			case 6:

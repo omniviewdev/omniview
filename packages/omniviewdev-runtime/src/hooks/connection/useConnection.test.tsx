@@ -2,6 +2,7 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as WailsRuntime from '@wailsio/runtime';
 
 const transport = vi.hoisted(() => ({
   get: vi.fn(), check: vi.fn(), start: vi.fn(), stop: vi.fn(), save: vi.fn(), remove: vi.fn(),
@@ -12,7 +13,10 @@ vi.mock('../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resou
   StartConnection: transport.start,
   StopConnection: transport.stop,
 }));
-vi.mock('@wailsio/runtime', () => ({ Events: { On: () => () => {} } }));
+vi.mock('@wailsio/runtime', async (importOriginal) => {
+  const actual = await importOriginal<typeof WailsRuntime>();
+  return { ...actual, Events: { ...actual.Events, On: () => () => {} } };
+});
 vi.mock('../../resource/v2/client', () => ({
   GetConnection: transport.get,
   SaveConnectionProfile: transport.save,

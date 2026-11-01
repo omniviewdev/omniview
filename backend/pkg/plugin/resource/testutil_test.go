@@ -390,6 +390,10 @@ func (m *mockProvider) ApplyConnectionOverlay(ctx context.Context, overlay resou
 	if m.ApplyConnectionOverlayFunc != nil {
 		return m.ApplyConnectionOverlayFunc(ctx, overlay)
 	}
+	return m.applyConnectionOverlay(ctx, overlay)
+}
+
+func (m *mockProvider) applyConnectionOverlay(ctx context.Context, overlay resource.ConnectionOverlay) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}

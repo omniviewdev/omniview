@@ -115,8 +115,12 @@ func (s *ServiceWrapper) RefreshConnectionMetadata(ctx context.Context, pluginID
 func (s *ServiceWrapper) ScopeValues(ctx context.Context, pluginID string, route resourcev2.AccessRoute, dimension string) ([]string, error) {
 	return s.Ctrl.ScopeValues(s.realmContext(ctx), pluginID, route, dimension)
 }
-func (s *ServiceWrapper) SaveConnectionProfile(ctx context.Context, pluginID string, connection types.Connection) (ConnectionProfileResult, error) {
-	return s.Ctrl.SaveConnectionProfile(s.realmContext(ctx), pluginID, connection)
+func (s *ServiceWrapper) SaveConnectionProfile(ctx context.Context, pluginID string, encoded string, credentials *ConnectionProfileCredentials) (ConnectionProfileResult, error) {
+	var connection types.Connection
+	if err := transportjson.Decode(encoded, &connection, pluginID); err != nil {
+		return ConnectionProfileResult{}, err
+	}
+	return s.Ctrl.SaveConnectionProfile(s.realmContext(ctx), pluginID, connection, credentials)
 }
 func (s *ServiceWrapper) ListConnectionProfiles(ctx context.Context, pluginID string) ([]ConnectionProfile, error) {
 	return s.Ctrl.ListConnectionProfiles(s.realmContext(ctx), pluginID)
