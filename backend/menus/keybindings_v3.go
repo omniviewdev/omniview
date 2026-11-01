@@ -7,6 +7,8 @@ import (
 // SetupKeyBindings registers standalone keyboard shortcuts that are decoupled
 // from menu items. In v3, keybindings can exist independently of the menu bar.
 func SetupKeyBindings(app *application.App) {
+	// Settings uses only its native menu accelerator. Registering it here too
+	// would invoke the backend twice for one key press.
 	// Terminal creation shortcut — also in the View menu, but registered as a
 	// standalone keybinding so it fires even if the menu is not visible
 	// (e.g. on Windows/Linux when the window has no menu bar).

@@ -1,6 +1,7 @@
 import type { RouteObject } from 'react-router';
 import type { AttachCommit, TabTransferCommit } from '@omniviewdev/base-ui';
 import { WindowClient } from '@omniviewdev/runtime/api';
+import { openSettings, settingsWindowTarget } from '@omniviewdev/runtime';
 import {
   currentWindow,
   deliverTabToWindow,
@@ -52,7 +53,15 @@ function isInstanceOfThisWindow(instanceId: string): boolean {
 
 /** The tabs saved for this window (loaded before the first render), or a single Home tab. */
 export function readInitialPagesState(): PagesState {
-  return readInitialSlot('pages', parsePagesState) ?? createSingleTabState({ id: createId(), path: HOME_PATH }, createId());
+  const restored = readInitialSlot('pages', parsePagesState);
+  if (!restored) {
+    return createSingleTabState({ id: createId(), path: HOME_PATH }, createId());
+  }
+
+  // Old sessions may contain Settings tabs. They no longer belong to a workspace,
+  // and restoring a session must not eagerly create the Settings window.
+  const obsolete = Object.values(restored.tabs).filter((tab) => settingsWindowTarget(tab.path) !== null);
+  return obsolete.length === 0 ? restored : pagesReducer(restored, { type: 'close', tabIds: obsolete.map((tab) => tab.id) });
 }
 
 export type OpenPageOptions = { background?: boolean };
@@ -168,6 +177,12 @@ export class WorkspaceController {
   // --- Navigation ----------------------------------------------------------
 
   navigateActive(path: string): void {
+    const settingsTarget = settingsWindowTarget(path);
+    if (settingsTarget !== null) {
+      this.activateSettings(settingsTarget);
+      return;
+    }
+
     const tab = getActiveTab(this.state);
     if (!tab) {
       this.openInNewTab(path);
@@ -183,6 +198,12 @@ export class WorkspaceController {
   }
 
   openInNewTab(path: string, { background = false }: OpenPageOptions = {}): void {
+    const settingsTarget = settingsWindowTarget(path);
+    if (settingsTarget !== null) {
+      this.activateSettings(settingsTarget);
+      return;
+    }
+
     const pane = this.activePane();
     this.dispatch({ type: 'open', tab: { id: createId(), path }, paneId: pane.id, afterTabId: pane.activeTabId, activate: !background });
   }
@@ -195,10 +216,22 @@ export class WorkspaceController {
   }
 
   async openInNewWindow(path: string): Promise<void> {
+    const settingsTarget = settingsWindowTarget(path);
+    if (settingsTarget !== null) {
+      await openSettings(settingsTarget);
+      return;
+    }
+
     await openWindow({ kind: 'workspace', slots: { pages: createSingleTabState({ id: createId(), path }, createId()) } });
   }
 
   openInSplit(path: string): void {
+    const settingsTarget = settingsWindowTarget(path);
+    if (settingsTarget !== null) {
+      this.activateSettings(settingsTarget);
+      return;
+    }
+
     const tab: PageTab = { id: createId(), path };
     if (this.state.panes.length < 2) {
       this.dispatch({ type: 'adopt', tab, target: { newPaneId: createId() } });
@@ -208,6 +241,7 @@ export class WorkspaceController {
     const other = this.state.panes.find((pane) => pane.id !== this.state.activePaneId) ?? this.state.panes[1];
     this.dispatch({ type: 'open', tab, paneId: other.id, afterTabId: other.activeTabId, activate: true });
   }
+
 
   // --- Tab menu operations -------------------------------------------------
 
@@ -329,5 +363,11 @@ export class WorkspaceController {
     if (!isInstanceOfThisWindow(commit.targetInstanceId)) {
       this.closeTabs([commit.id]);
     }
+  }
+
+  private activateSettings(target: string): void {
+    void openSettings(target).catch((error: unknown) => {
+      console.error('[settings] opening the settings window failed', error);
+    });
   }
 }

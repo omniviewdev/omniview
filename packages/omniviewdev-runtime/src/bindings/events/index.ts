@@ -209,6 +209,11 @@ export const ResourceConnectionMetadata = "resource/connection/metadata";
 export const SettingsChanged = "settings/changed";
 
 /**
+ * Name of the custom event "settings/state".
+ */
+export const SettingsState = "settings/state";
+
+/**
  * Name of the custom event "watch/STATE".
  */
 export const WatchSTATE = "watch/STATE";

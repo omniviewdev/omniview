@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { themeRegistry } from '@omniviewdev/base-ui';
 import type * as AppThemeControllerModule from '@/theme/AppThemeController';
 import { Setting, SettingType } from '@omniviewdev/runtime/models';
@@ -79,10 +79,7 @@ describe('CoreSettingsPage appearance settings', () => {
   it('applies the theme outside draft state while ordinary settings still save normally', async () => {
     render(<CoreSettingsPage id='appearance' />);
 
-    fireEvent.click(screen.getByRole('combobox'));
-    const obsidian = within(screen.getByRole('listbox')).getByRole('option', { name: 'Obsidian' });
-    fireEvent.mouseMove(obsidian);
-    fireEvent.click(obsidian);
+    fireEvent.click(screen.getByRole('radio', { name: 'Obsidian' }));
 
     expect(mocks.selectTheme).toHaveBeenCalledWith('obsidian');
     expect(screen.queryByRole('button', { name: 'Save Changes' })).not.toBeInTheDocument();

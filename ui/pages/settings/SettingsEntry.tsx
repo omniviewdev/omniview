@@ -1,244 +1,120 @@
 import React from 'react';
-
-import { Checkbox, IconButton, MultiSelect, Select, TagInput, TextField } from '@omniviewdev/base-ui';
-
-// Hooks
 import { FileDialogOptions, SettingType } from '@omniviewdev/runtime/models';
 import type { Setting } from '@omniviewdev/runtime/models';
-import { parseAppError } from '@omniviewdev/runtime';
-import { LuChevronDown, LuFile } from 'react-icons/lu';
 import { OpenFileSelectionDialog } from '@omniviewdev/runtime/api';
 import styles from './SettingsEntry.module.css';
 
 type Props = {
   setting: Setting;
   id: string;
-  draftValue: any;
-  handleChange: (name: string, value: any) => void;
+  draftValue: unknown;
+  handleChange: (name: string, value: unknown) => void;
+  inputId?: string;
+  labelledBy?: string;
+  describedBy?: string;
 };
 
-const toStringArray = (value: any): string[] => {
-  if (Array.isArray(value)) {
-    return value.filter((item): item is string => typeof item === 'string');
+function sameSettingValue(left: unknown, right: unknown): boolean {
+  if (left === right) {
+    return true;
   }
 
-  if (typeof value === 'string') {
-    return value
-      .split(',')
-      .map(part => part.trim())
-      .filter(Boolean);
+  if (typeof left !== 'object' || left === null || typeof right !== 'object' || right === null) {
+    return false;
   }
 
-  return [];
-};
+  if (Array.isArray(left)) {
+    return Array.isArray(right) && left.length === right.length
+      && left.every((value, index) => sameSettingValue(value, right[index]));
+  }
 
-type SelectOption = { value: string; label: string };
+  if (Array.isArray(right)) {
+    return false;
+  }
 
-type SettingSelectProps = {
-  value: string;
-  options: SelectOption[];
-  onChange: (value: string) => void;
-};
+  const leftObject = left as Record<string, unknown>;
+  const rightObject = right as Record<string, unknown>;
+  const keys = Object.keys(leftObject);
+  return keys.length === Object.keys(rightObject).length
+    && keys.every(key => Object.prototype.hasOwnProperty.call(rightObject, key) && sameSettingValue(leftObject[key], rightObject[key]));
+}
 
-/**
- * Single-value select over an `options` array (the call shape of the legacy
- * design system's Select), built on the base-ui Select compound.
- */
-const SettingSelect: React.FC<SettingSelectProps> = ({ value, options, onChange }) => (
-  <Select.Root
-    size='sm'
-    value={value}
-    items={options}
-    onValueChange={(next) => {
-      if (next !== null) {
-        onChange(next);
+/** Generic editor preserves option values instead of coercing them into labels. */
+export default function SettingsEntry({ setting, id, draftValue, handleChange, inputId, labelledBy, describedBy }: Props) {
+  const [error, setError] = React.useState('');
+  const value = draftValue !== undefined ? draftValue : setting.value;
+  const change = (next: unknown) => {
+    handleChange(id, next); 
+  };
+
+  const attributes = { id: inputId, 'aria-labelledby': labelledBy, 'aria-describedby': describedBy, 'aria-label': labelledBy ? undefined : setting.label };
+  const sensitive = setting.sensitive || setting.type === SettingType.Password;
+  const options = setting.options ?? [];
+  const array = setting.type === SettingType.MultiSelect || Array.isArray(value);
+  let editor: React.ReactNode;
+  if (options.length) {
+    const selected = array ? (Array.isArray(value) ? value : []) : [value];
+    editor = <select {...attributes} multiple={array} value={array ? options.flatMap((option, index) => selected.some(item => sameSettingValue(item, option.value)) ? [String(index)] : []) : String(options.findIndex(option => sameSettingValue(value, option.value)))} onChange={event => {
+      if (array) {
+        change(Array.from(event.target.selectedOptions).map(option => options[Number(option.value)].value));
+      } else {
+        change(options[Number(event.target.value)].value);
       }
-    }}
-  >
-    <Select.Trigger className={styles.SelectTrigger}>
-      <Select.Value />
-      <Select.Icon>
-        <LuChevronDown aria-hidden />
-      </Select.Icon>
-    </Select.Trigger>
-    <Select.Portal>
-      <Select.Positioner sideOffset={4}>
-        <Select.Popup>
-          <Select.List>
-            {options.map(option => (
-              <Select.Item key={String(option.value)} value={option.value}>
-                <Select.ItemText>{option.label}</Select.ItemText>
-              </Select.Item>
-            ))}
-          </Select.List>
-        </Select.Popup>
-      </Select.Positioner>
-    </Select.Portal>
-  </Select.Root>
-);
-
-/**
- * Renders a single setting entry based on the type of setting.
- */
-const SettingsEntry: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => {
-  switch (setting.type) {
-    case SettingType.Text:
-      return <TextSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
-    case SettingType.Select:
-      return <SelectSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
-    case SettingType.MultiSelect:
-      return <MultiSelectSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
-    case SettingType.Toggle:
-      return <ToggleSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
-    case SettingType.Integer:
-    case SettingType.Float:
-      return <NumberSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
-    case SettingType.$zero:
-    case SettingType.Color:
-    case SettingType.DateTime:
-    case SettingType.Password:
-      break;
+    }}>
+      {!array && <option value='-1' disabled>Select a value</option>}
+      {options.map((option, index) => <option key={index} value={String(index)}>{option.label}</option>)}
+    </select>;
+  } else if (setting.type === SettingType.Toggle) {
+    editor = <input {...attributes} type='checkbox' checked={Boolean(value)} onChange={event => {
+      change(event.target.checked); 
+    }} />;
+  } else if (array) {
+    editor = <textarea {...attributes} value={Array.isArray(value) ? value.join('\n') : ''} onChange={event => {
+      change(event.target.value === '' ? [] : event.target.value.split('\n'));
+    }} spellCheck={false} />;
+  } else if ([SettingType.Text, SettingType.Password, SettingType.Integer, SettingType.Float, SettingType.Color, SettingType.DateTime].includes(setting.type)) {
+    const numeric = setting.type === SettingType.Integer || setting.type === SettingType.Float;
+    editor = <input {...attributes} type={sensitive ? 'password' : numeric ? 'number' : 'text'}
+      step={setting.type === SettingType.Integer ? 1 : 'any'} value={value == null ? '' : String(value)}
+      placeholder={setting.type === SettingType.DateTime ? 'RFC 3339 date and time' : undefined}
+      autoComplete={sensitive ? 'new-password' : 'off'} spellCheck={false}
+      onChange={event => {
+        change(numeric && event.target.value !== '' ? Number(event.target.value) : event.target.value); 
+      }} />;
+  } else {
+    editor = <p role='status'>Unsupported setting type: {setting.type || 'unknown'}. No changes can be made with this editor.</p>;
   }
 
-  return null;
-};
-
-const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => {
-  const isChanged = draftValue !== undefined;
-
-  if (Array.isArray(setting.value) || Array.isArray(setting.default)) {
-    return <MultiSelectSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
-  }
-
-  if (setting.options?.length) {
-    return <SelectSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
-  }
-
-  // Normal single input
-  return (
-    <TextField.Root size='sm' className={styles.Field}>
-      <TextField.Control
-        value={isChanged ? draftValue as string : setting.value as string}
-        onChange={e => {
-          handleChange(id, e.target.value);
-        }}
-      />
-    </TextField.Root>
-  );
-};
-
-const SelectSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => {
-  const isChanged = draftValue !== undefined;
-
-  return (
-    <SettingSelect
-      value={isChanged ? draftValue as string : setting.value as string}
-      onChange={(value) => {
-        handleChange(id, value);
-      }}
-      options={setting.options.map(option => ({
-        value: option.value as string,
-        label: option.label,
-      }))}
-    />
-  );
-};
-
-const MultiSelectSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => {
-  const isChanged = draftValue !== undefined;
-  const selectedValues = toStringArray(isChanged ? draftValue : setting.value);
-
-  return (
-    <div className={styles.MultiRow}>
-      {setting.options?.length ? (
-        <MultiSelect
-          size='sm'
-          className={styles.MultiInput}
-          value={selectedValues}
-          onValueChange={(value) => {
-            handleChange(id, value);
-          }}
-          items={setting.options.map(option => option.value as string)}
-          getItemLabel={(value) => {
-            const option = setting.options.find((o: { value: unknown }) => o.value === value);
-            return option ? option.label : String(value);
-          }}
-        />
-      ) : (
-        <TagInput
-          size='sm'
-          className={styles.MultiInput}
-          value={selectedValues}
-          onChange={(val) => {
-            handleChange(id, val);
-          }}
-          placeholder={selectedValues.length > 0 ? undefined : 'Values'}
-        />
-      )}
-      {setting.fileSelection?.enabled ? (
-        <IconButton size='sm' variant='soft' color='neutral' aria-label='Select files' onClick={async () => {
-          if (!setting.fileSelection?.enabled) {
+  const file = setting.fileSelection;
+  return <div className={styles.Field}>{editor}
+    {setting.type === SettingType.Color && !sensitive && <input type='color' aria-label={`${setting.label} color picker`}
+      value={typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value : '#000000'} onChange={event => {
+        change(event.target.value); 
+      }} />}
+    {setting.type === SettingType.DateTime && !sensitive && <p>Enter a date and time with timezone, such as 2026-11-01T09:00:00Z.</p>}
+    {file?.enabled && <>
+      <button type='button' disabled={file.allowFolders || file.relative} onClick={async () => {
+        setError('');
+        try {
+          const paths = await OpenFileSelectionDialog(FileDialogOptions.createFrom({ defaultDirectory: file.defaultPath,
+            filters: file.extensions?.length ? [{ displayName: 'Allowed files', pattern: file.extensions.map(extension => `*.${extension.replace(/^\./, '')}`).join(';') }] : [],
+          }));
+          if (!paths?.length) {
             return;
           }
 
-          const newValue = toStringArray(isChanged ? draftValue : setting.value);
+          const selected = file.multiple ? paths : paths.slice(0, 1);
+          if (file.extensions?.length && selected.some(path => !file.extensions.some(extension => path.toLowerCase().endsWith(`.${extension.replace(/^\./, '').toLowerCase()}`)))) {
+            setError('Choose a file with an allowed extension.'); return;
+          }
 
-          OpenFileSelectionDialog(FileDialogOptions.createFrom({
-            showHiddenFiles: true,
-          })).then((result) => {
-            if (result) {
-              newValue.push(...result);
-              handleChange(id, newValue);
-            }
-          }).catch((err: unknown) => {
-            console.error('Error opening file selection dialog:', parseAppError(err).detail);
-          });
-        }}>
-          <LuFile />
-        </IconButton>
-      ) : undefined}
-    </div>
-  );
-};
-
-const ToggleSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => (
-  <Checkbox
-    checked={draftValue !== undefined ? !!draftValue : !!setting.value}
-    onCheckedChange={checked => {
-      handleChange(id, checked);
-    }}
-  />
-);
-
-const NumberSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => {
-  const isChanged = draftValue !== undefined;
-
-  if (!setting.options?.length) {
-    return (
-      <TextField.Root size='sm' className={styles.Field}>
-        <TextField.Control
-          type='number'
-          value={isChanged ? String(+draftValue) : String(+setting.value)}
-          onChange={e => {
-            handleChange(id, +e.target.value);
-          }}
-        />
-      </TextField.Root>
-    );
-  }
-
-  return (
-    <SettingSelect
-      value={isChanged ? String(!!draftValue) : String(!!setting.value)}
-      onChange={(value) => {
-        handleChange(id, value);
-      }}
-      options={setting.options.map(option => ({
-        value: option.value as string,
-        label: option.label,
-      }))}
-    />
-  );
-};
-
-export default SettingsEntry;
+          change(array ? [...(Array.isArray(value) ? value : []), ...selected] : selected[0]);
+        } catch {
+          setError('Could not open file selection. Enter the path manually.'); 
+        }
+      }}>Select {file.multiple ? 'files' : 'file'}</button>
+      {(file.allowFolders || file.relative) && <p role='status'>Enter {file.relative ? 'relative paths' : 'folder paths'} manually; the native picker does not support this constraint.</p>}
+    </>}
+    {error && <p role='alert'>{error}</p>}
+  </div>;
+}

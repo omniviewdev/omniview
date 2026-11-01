@@ -60,13 +60,29 @@ export function Focus(name: string): $CancellablePromise<void> {
 }
 
 /**
+ * GetSettingsState returns the current routing request and native visibility.
+ */
+export function GetSettingsState(): $CancellablePromise<$models.SettingsState> {
+    return $Call.ByID(2119827301).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
  * GetState returns the named window's slots (slot -> JSON). A window calls it
  * once its frontend has loaded, which also releases the next queued restore.
  */
 export function GetState(name: string): $CancellablePromise<{ [_ in string]?: string }> {
     return $Call.ByID(2822783534, name).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType2($result);
     });
+}
+
+/**
+ * HideSettings keeps the native window and its frontend drafts alive.
+ */
+export function HideSettings(): $CancellablePromise<void> {
+    return $Call.ByID(1563865534);
 }
 
 /**
@@ -74,7 +90,7 @@ export function GetState(name: string): $CancellablePromise<{ [_ in string]?: st
  */
 export function List(): $CancellablePromise<$models.Info[]> {
     return $Call.ByID(914742443).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType4($result);
     });
 }
 
@@ -83,7 +99,7 @@ export function List(): $CancellablePromise<$models.Info[]> {
  */
 export function ListStates(): $CancellablePromise<{ [_ in string]?: { [_ in string]?: string } }> {
     return $Call.ByID(3392737293).then(($result: any) => {
-        return $$createType4($result);
+        return $$createType5($result);
     });
 }
 
@@ -115,6 +131,13 @@ export function Open(req: $models.OpenRequest): $CancellablePromise<string> {
 }
 
 /**
+ * OpenSettings shows the single settings window. Empty targets preserve its location.
+ */
+export function OpenSettings(target: string): $CancellablePromise<string> {
+    return $Call.ByID(520255202, target);
+}
+
+/**
  * ReportViewport records the named window's webview viewport size in CSS
  * px. Together with the native bounds it locates the window's content on
  * screen for drag hit-testing. Reports from unknown windows (for example a
@@ -140,9 +163,17 @@ export function SaveState(name: string, slot: string, stateJSON: string): $Cance
     return $Call.ByID(728919203, name, slot, stateJSON);
 }
 
+/**
+ * SetSettingsLocation records only navigation accepted for the current request.
+ */
+export function SetSettingsLocation(target: string, requestID: number): $CancellablePromise<void> {
+    return $Call.ByID(1547965995, target, requestID);
+}
+
 // Private type creation functions
 const $$createType0 = $models.DropResult.createFrom;
-const $$createType1 = $Create.Map($Create.Any, $Create.Any);
-const $$createType2 = $models.Info.createFrom;
-const $$createType3 = $Create.Array($$createType2);
-const $$createType4 = $Create.Map($Create.Any, $$createType1);
+const $$createType1 = $models.SettingsState.createFrom;
+const $$createType2 = $Create.Map($Create.Any, $Create.Any);
+const $$createType3 = $models.Info.createFrom;
+const $$createType4 = $Create.Array($$createType3);
+const $$createType5 = $Create.Map($Create.Any, $$createType2);

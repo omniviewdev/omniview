@@ -65,17 +65,32 @@ type fakeNativeWindow struct {
 	activations int
 	position    *screenPosition
 	bounds      Bounds
+	visible     bool
 }
 
 func (w *fakeNativeWindow) Activate() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.activations++
+	w.visible = true
 }
 
 // Close mirrors Wails: the OS close is reported back through the sink.
 func (w *fakeNativeWindow) Close() {
 	w.sink.windowClosed(w.name)
+}
+
+func (w *fakeNativeWindow) Hide() {
+	w.mu.Lock()
+	w.visible = false
+	w.mu.Unlock()
+	w.sink.windowVisibilityChanged(w.name, false)
+}
+
+func (w *fakeNativeWindow) IsVisible() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.visible
 }
 
 func (w *fakeNativeWindow) SetPosition(x, y int) {

@@ -16,6 +16,7 @@ export {
     Info,
     Kind,
     OpenRequest,
+    SettingsState,
     WindowClosedEvent,
     WindowsChangedEvent
 } from "./models.js";

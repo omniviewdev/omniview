@@ -1,7 +1,6 @@
 import React from 'react';
 import { Text } from '@omniviewdev/base-ui';
 import { useScopedSettings } from '@omniviewdev/runtime';
-import Icon from '@/components/icons/Icon';
 import { useSettingsForm } from '@/hooks/settings/useSettingsForm';
 import AppearanceThemeSetting from '@/theme/AppearanceThemeSetting';
 import SettingsEntries from './SettingsEntries';
@@ -10,7 +9,7 @@ import { Section } from './settingsContext';
 import styles from './SettingsPage.module.css';
 
 const APPEARANCE_SETTING_RENDERERS = {
-  'appearance.theme': () => <AppearanceThemeSetting />,
+  'appearance.theme': () => <><AppearanceThemeSetting /><p>Theme changes save immediately.</p></>,
 };
 
 const PROFILING_PRESENTATION = {
@@ -49,16 +48,15 @@ function CoreSettingsForm({ id }: { id: string }) {
   const pendingRestart = Object.values(category.settings).some(setting => setting?.pendingRestart);
   return <div className={styles.Root}>
     <div className={styles.Header}>
-      <Icon name={category.icon} size={22} />
       <div className={styles.HeaderText}>
-        <Text weight='semibold' size='lg'>{category.label}</Text>
+        <h1 className={styles.Heading}><span>Application / </span>{category.label}</h1>
         <Text size='xs' tone='muted'>{category.description}</Text>
       </div>
     </div>
     <SettingsFormShell form={form} pendingRestart={pendingRestart} restartTarget='Omniview'>
       <SettingsEntries section={Section.Core} id={id} settings={category.settings}
         presentation={PROFILING_PRESENTATION}
-        draftValues={form.draftValues} setDraftValues={form.setDraftValues} validation={form.validation}
+        draftValues={form.draftValues} setDraftValues={form.setDraftValues} validation={form.validation} disabled={form.saving}
         renderSetting={id === 'appearance' ? APPEARANCE_SETTING_RENDERERS : undefined} />
     </SettingsFormShell>
   </div>;
