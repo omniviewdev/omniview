@@ -1,6 +1,8 @@
 import React from 'react';
 
-import { Text } from '@omniviewdev/base-ui';
+import { IconButton, Text } from '@omniviewdev/base-ui';
+import { LuInfo } from 'react-icons/lu';
+import HintTooltip from '@/components/base/HintTooltip';
 
 // Types
 import { Section, SettingsFocusContext, type SectionSelection } from './settingsContext';
@@ -14,6 +16,7 @@ type Props = SectionSelection & {
   draftValues: Record<string, unknown>;
   setDraftValues: (draftValues: Record<string, unknown>) => void;
   renderSetting?: Readonly<Record<string, () => React.ReactNode>>;
+  presentation?: Readonly<Record<string, { label: string; help: string }>>;
   validation?: Record<string, { valid: boolean; message: string }>;
 };
 
@@ -27,6 +30,7 @@ const SettingsEntries: React.FC<Props> = ({
   draftValues,
   setDraftValues,
   renderSetting,
+  presentation,
   validation,
 }) => {
   const devMode = useDevMode();
@@ -52,7 +56,7 @@ const SettingsEntries: React.FC<Props> = ({
     }
 
     row.scrollIntoView({ block: 'nearest' });
-    const editor = row.querySelector<HTMLElement>('input:not(:disabled):not([type="hidden"]):not([tabindex="-1"]), button:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]');
+    const editor = row.querySelector(`.${styles.InputColumn}`)?.querySelector<HTMLElement>('input:not(:disabled):not([type="hidden"]):not([tabindex="-1"]), button:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]');
     (editor ?? row).focus();
     if (editor && document.activeElement !== editor && !editor.contains(document.activeElement)) {
       row.focus();
@@ -81,13 +85,21 @@ const SettingsEntries: React.FC<Props> = ({
       {visibleSettings.map(([id, setting]) => {
         const fullID = settingID(id);
         const renderOverride = renderSetting?.[fullID];
+        const display = presentation?.[fullID];
 
         return (
-          <div key={id} id={`setting-${encodeURIComponent(fullID)}`} data-setting-id={fullID} className={styles.Row} tabIndex={-1} role='group' aria-label={setting.label}>
+          <div key={id} id={`setting-${encodeURIComponent(fullID)}`} data-setting-id={fullID} className={styles.Row} tabIndex={-1} role='group' aria-label={display?.label ?? setting.label}>
             {/* Label + description column */}
             <div className={styles.LabelColumn}>
-              <Text weight='semibold' size='sm'>{setting.label}</Text>
-              <Text size='xs' tone='muted' className={styles.Description}>{setting.description}</Text>
+              <Text weight='semibold' size='sm'>
+                {display?.label ?? setting.label}
+                {display && <HintTooltip content={display.help}>
+                  <IconButton size='xs' variant='ghost' color='neutral' aria-label={`${display.label} help`}>
+                    <LuInfo size={13} />
+                  </IconButton>
+                </HintTooltip>}
+              </Text>
+              {!display && <Text size='xs' tone='muted' className={styles.Description}>{setting.description}</Text>}
               {setting.requiresRestart && (
                 <Text size='xs' tone='muted'>
                   {setting.pendingRestart ? 'Saved · Restart pending' : 'Requires restart'}
@@ -96,7 +108,7 @@ const SettingsEntries: React.FC<Props> = ({
               {draftValues[fullID] !== undefined && (
                 <Text size='xs' tone='warning'>Unsaved change</Text>
               )}
-              {section === Section.Core && (
+              {section === Section.Core && !display && (
                 <Text size='xs' tone='subtle' mono className={styles.Key}>
                   {fullID}
                 </Text>

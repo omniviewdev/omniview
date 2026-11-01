@@ -11,7 +11,6 @@ const backend = vi.hoisted(() => ({
   pending: false,
   listeners: new Set<(event: { data: { kind: string } }) => void>(),
   getSnapshot: vi.fn(),
-  getStatus: vi.fn(),
   save: vi.fn(),
   warning: '',
 }));
@@ -31,7 +30,6 @@ vi.mock('@omniviewdev/runtime/api', () => ({
     Commit: backend.save,
     Validate: async () => ({ valid: true, message: 'Valid' }),
   },
-  HostProfiling: { GetStatus: backend.getStatus },
 }));
 vi.mock('@omniviewdev/runtime', async importOriginal => ({
   ...await importOriginal<Record<string, unknown>>(),
@@ -79,7 +77,6 @@ describe('host settings consumer transitions', () => {
     backend.listeners.clear();
     backend.warning = '';
     backend.getSnapshot.mockReset().mockImplementation(async () => snapshot());
-    backend.getStatus.mockReset().mockResolvedValue({ running: true, url: 'http://127.0.0.1:43210/debug/pprof/', source: 'settings', error: '' });
     backend.save.mockReset().mockImplementation(async (_scope: unknown, values: Record<string, string>) => {
       backend.value = values['developer.futurePreference'];
       backend.pending = backend.value !== 'startup';
@@ -88,7 +85,7 @@ describe('host settings consumer transitions', () => {
   });
   afterEach(cleanup);
 
-  it('keeps drafts separate from saved pending state and leaves actual listener active', async () => {
+  it('keeps drafts separate from saved pending state', async () => {
     mount();
     await screen.findByText('Requires restart');
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'disabled' } });
@@ -96,7 +93,6 @@ describe('host settings consumer transitions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
     await screen.findByText('Saved · Restart pending');
     expect(screen.getByText(/Changes apply after restarting Omniview/)).toBeVisible();
-    expect(screen.getByText('http://127.0.0.1:43210/debug/pprof/')).toBeVisible();
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'another draft' } });
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
     expect(screen.getByText('Saved · Restart pending')).toBeVisible();
@@ -194,46 +190,4 @@ describe('host settings consumer transitions', () => {
     expect(screen.getByText('Saved · Restart pending')).toBeVisible();
   });
 
-  it('shows override and serve failure without claiming a listener URL', async () => {
-    backend.getStatus.mockResolvedValue({ running: false, url: '', source: 'environment', error: 'Port unavailable' });
-    mount();
-    await screen.findByText('Port unavailable');
-    expect(screen.getByText(/OMNIVIEW_PPROF_PORT overrides saved preferences/)).toBeVisible();
-    expect(screen.getByText('Listener not running')).toBeVisible();
-    expect(screen.queryByText(/Active URL:/)).not.toBeInTheDocument();
-  });
-
-  it('polls listener facts only while the developer page is visible', async () => {
-    vi.useFakeTimers();
-    try {
-      const { rerender, client } = mount();
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(1); 
-      });
-      expect(screen.getByText('Listener running')).toBeVisible();
-      backend.getStatus.mockResolvedValue({ running: false, url: '', source: 'settings', error: 'Listener stopped' });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(5001); 
-      });
-      expect(screen.getByText('Listener stopped')).toBeVisible();
-      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
-      fireEvent(document, new Event('visibilitychange'));
-      const hiddenCalls = backend.getStatus.mock.calls.length;
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(15000); 
-      });
-      expect(backend.getStatus).toHaveBeenCalledTimes(hiddenCalls);
-      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
-      fireEvent(document, new Event('visibilitychange'));
-      rerender(<QueryClientProvider client={client}><CoreSettingsPage id='other' /></QueryClientProvider>);
-      const otherPageCalls = backend.getStatus.mock.calls.length;
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(15000); 
-      });
-      expect(backend.getStatus).toHaveBeenCalledTimes(otherPageCalls);
-    } finally {
-      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
-      vi.useRealTimers();
-    }
-  });
 });

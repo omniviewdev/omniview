@@ -27,6 +27,7 @@ import HintTooltip from '@/components/base/HintTooltip';
 
 import ConnectionStatusIndicator from './ConnectionStatusIndicator';
 import InstanceIndicator from './InstanceIndicator';
+import HostProfilingIndicator from '@/features/profiling/HostProfilingIndicator';
 import {
   Dot,
   FooterChip,
@@ -593,6 +594,7 @@ export default function AppStatusFooter() {
         <OperationsIndicator />
       </StatusBar.Section>
       <StatusBar.Section align='end'>
+        <HostProfilingIndicator />
         <ConnectionStatusIndicator />
         <PluginLoadingSpinner />
         <StatusBar.Separator />

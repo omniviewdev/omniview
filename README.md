@@ -105,9 +105,9 @@ Error reports retain their normalized error, reference ID, and timestamp as occu
 
 ### Host profiling
 
-Open **Settings → Developer Settings**, enable **Enable local pprof**, choose **Host profiling port**, then save and restart Omniview. These settings work in development and production builds. Profiling is off by default; the default port is `6060`. Saving does not start, stop, or rebind the current listener.
+Open **Settings → Developer Settings**, enable **Local profiling (pprof)**, choose **Profiling port**, then save and restart Omniview. These settings work in development and production builds. Profiling is off by default; the default port is `6060`. Saving does not start, stop, or rebind the current listener.
 
-The Host profiling section shows the listener's actual URL, errors, and any environment override. Restart-required markers distinguish saved preferences from the configuration currently running. Port `0` selects an available port.
+The footer's **pprof** indicator shows actual listener status: green when running, gray when off, and red on error. Click it for the active endpoint, errors, and configuration source. Crucial safety and override details are available through help tooltips. Its **Developer Settings** action opens the controls. Restart-required markers distinguish saved preferences from the configuration currently running. Port `0` selects an available port. The indicator reports listener state, not live client connections or capture activity.
 
 For an explicit launch-time override, set `OMNIVIEW_PPROF_PORT`. A nonempty value enables profiling and overrides the saved port without changing saved preferences:
 
@@ -121,7 +121,7 @@ curl --fail -o host.trace 'http://127.0.0.1:6067/debug/pprof/trace?seconds=5'
 GOWORK=off go tool trace host.trace
 ```
 
-The listener binds only `127.0.0.1`. Invalid environment port values fail startup; bind failures leave the IDE usable and appear in profiling status. The actual endpoint appears in Settings and host logs. Remove the environment override to let saved settings control the next startup.
+The listener binds only `127.0.0.1`. Invalid environment port values fail startup; bind failures leave the IDE usable and appear in profiling status. The actual endpoint appears in the footer popover and host logs. Remove the environment override to let saved settings control the next startup.
 
 Local access is unauthenticated and profiles can contain sensitive information. Do not publish or forward the port. Use the numeric `127.0.0.1` URL; requests with a different Host header or any Origin header are rejected.
 
