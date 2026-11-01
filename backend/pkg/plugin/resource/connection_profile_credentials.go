@@ -158,14 +158,9 @@ func prepareProfileCredentials(root *appstate.ScopedRoot, previous desiredConnec
 	if err != nil || len(data) > maxProfileCredentialStoreBytes {
 		return desiredConnectionProfile{}, errors.New("connection profiles: cannot encode private credentials")
 	}
-	file, err := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	file, err := createProfileCredentialFile(root, name)
 	if err != nil {
 		return desiredConnectionProfile{}, errors.New("connection profiles: cannot create private credentials")
-	}
-	if err := restrictProfileCredentialFile(file); err != nil {
-		file.Close()
-		root.Remove(name)
-		return desiredConnectionProfile{}, errors.New("connection profiles: cannot secure private credentials")
 	}
 	_, err = file.Write(data)
 	if err == nil {

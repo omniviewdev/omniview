@@ -35,12 +35,7 @@ func TestProfileCredentialsWindowsRejectBroadenedDACL(t *testing.T) {
 	require.NoError(t, err)
 	dacl, _, err := public.DACL()
 	require.NoError(t, err)
-	handle, _, callErr := reopenProfileFile.Call(file.Fd(), uintptr(windows.WRITE_DAC|windows.SYNCHRONIZE), uintptr(windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE), 0)
-	if windows.Handle(handle) == windows.InvalidHandle {
-		t.Fatal(callErr)
-	}
-	defer windows.CloseHandle(windows.Handle(handle))
-	require.NoError(t, windows.SetSecurityInfo(windows.Handle(handle), windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, dacl, nil))
+	require.NoError(t, windows.SetNamedSecurityInfo(root.ResolvePath(profileCredentialPrefix+stored.Profiles[0].CredentialsRef), windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, dacl, nil))
 	require.Error(t, validateProfileCredentialFile(file))
 	_, err = readDesiredConnections(root)
 	require.ErrorContains(t, err, "permissions are unsafe")
@@ -80,18 +75,20 @@ func TestProfileCredentialsWindowsRejectBroadParentBeforeCreation(t *testing.T) 
 	}
 }
 
-func TestProfileCredentialsWindowsRestrictNativeHandleBeforeWrite(t *testing.T) {
+func TestProfileCredentialsWindowsCreateNativeProtectedHandle(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	root, err := ctrl.pluginStoreFn("native-acl")
 	require.NoError(t, err)
-	file, err := root.OpenFile("native-acl-probe", os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
-	require.NoError(t, err)
-	defer file.Close()
-	// Call the native helper directly: Win32 failures must remain diagnosable
-	// here, while the consumer API keeps sanitized credential errors.
-	if err := restrictProfileCredentialFile(file); err != nil {
-		t.Fatalf("restrict native credential handle: %v", err)
+	// Direct native creation reports the precise operation and OS error;
+	// consumer-facing errors remain sanitized.
+	file, err := createProfileCredentialFile(root, "native-acl-probe")
+	if err != nil {
+		t.Fatalf("create native protected credential handle: %v", err)
 	}
+	defer file.Close()
+	duplicate, err := createProfileCredentialFile(root, "native-acl-probe")
+	require.Error(t, err, "exclusive creation must not replace a private file")
+	require.Nil(t, duplicate)
 	require.NoError(t, validateProfileCredentialFile(file))
 	_, err = file.WriteString("non-secret-native-acl-probe")
 	require.NoError(t, err)

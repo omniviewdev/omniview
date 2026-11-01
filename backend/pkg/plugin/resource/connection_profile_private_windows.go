@@ -4,44 +4,68 @@ package resource
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"runtime"
+	"strings"
 	"unsafe"
 
 	"github.com/omniviewdev/omniview/internal/appstate"
 	"golang.org/x/sys/windows"
 )
 
-var reopenProfileFile = windows.NewLazySystemDLL("kernel32.dll").NewProc("ReOpenFile")
-
 func openProfileCredentialFile(root *appstate.ScopedRoot, name string) (*os.File, error) {
 	return root.OpenFile(name, os.O_RDONLY, 0)
 }
 
-func restrictProfileCredentialFile(file *os.File) error {
+func createProfileCredentialFile(root *appstate.ScopedRoot, name string) (*os.File, error) {
+	// This API accepts a single fresh basename only. Every native lookup is
+	// relative to the already-contained directory handle, never an absolute path.
+	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\\:\x00") {
+		return nil, os.ErrInvalid
+	}
+	directory, err := root.OpenFile(".", os.O_RDONLY, 0)
+	if err != nil {
+		return nil, fmt.Errorf("open credential parent: %w", err)
+	}
+	defer directory.Close()
+	if err := validateProfileCredentialACL(directory, true); err != nil {
+		return nil, fmt.Errorf("validate credential parent: %w", err)
+	}
 	user, err := windows.GetCurrentProcessToken().GetTokenUser()
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("read credential user: %w", err)
 	}
 	descriptor, err := windows.SecurityDescriptorFromString("D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;" + user.User.Sid.String() + ")")
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("build credential security descriptor: %w", err)
 	}
-	dacl, _, err := descriptor.DACL()
+	objectName, err := windows.NewNTUnicodeString(name)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("encode credential name: %w", err)
 	}
-	// Reopen the already-contained file object, never its mutable path. The
-	// original Go handle does not request WRITE_DAC, even for the file owner.
-	// ReOpenFile without FILE_FLAG_OVERLAPPED requests synchronous I/O, which
-	// requires SYNCHRONIZE even though this handle only changes the DACL.
-	handle, _, callErr := reopenProfileFile.Call(file.Fd(), uintptr(windows.WRITE_DAC|windows.SYNCHRONIZE), uintptr(windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE), 0)
-	runtime.KeepAlive(file)
-	if windows.Handle(handle) == windows.InvalidHandle {
-		return callErr
+	attributes := windows.OBJECT_ATTRIBUTES{
+		RootDirectory:      windows.Handle(directory.Fd()),
+		ObjectName:         objectName,
+		Attributes:         windows.OBJ_CASE_INSENSITIVE | windows.OBJ_DONT_REPARSE,
+		SecurityDescriptor: descriptor,
 	}
-	defer windows.CloseHandle(windows.Handle(handle))
-	return windows.SetSecurityInfo(windows.Handle(handle), windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, dacl, nil)
+	attributes.Length = uint32(unsafe.Sizeof(attributes))
+	var handle windows.Handle
+	err = windows.NtCreateFile(&handle, windows.GENERIC_READ|windows.GENERIC_WRITE|windows.SYNCHRONIZE,
+		&attributes, &windows.IO_STATUS_BLOCK{}, nil, windows.FILE_ATTRIBUTE_NORMAL,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
+		windows.FILE_CREATE, windows.FILE_NON_DIRECTORY_FILE|windows.FILE_SYNCHRONOUS_IO_NONALERT, 0, 0)
+	runtime.KeepAlive(directory)
+	runtime.KeepAlive(descriptor)
+	runtime.KeepAlive(objectName)
+	if status, ok := err.(windows.NTStatus); ok {
+		err = status.Errno()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("create protected credential handle: %w", err)
+	}
+	return os.NewFile(uintptr(handle), name), nil
 }
 
 func validateProfileCredentialDirectory(root *appstate.ScopedRoot) error {

@@ -22,8 +22,8 @@ func validatePublicConnectionProfileFile(_ *os.File) error {
 	return nil
 }
 
-func restrictProfileCredentialFile(file *os.File) error {
-	return file.Chmod(0o600)
+func createProfileCredentialFile(root *appstate.ScopedRoot, name string) (*os.File, error) {
+	return root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
 }
 
 func validateProfileCredentialFile(file *os.File) error {

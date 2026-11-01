@@ -301,9 +301,10 @@ public profile file handle. Broadly shared custom stores or public files are
 rejected, preventing public-configuration tampering and an untrusted inherited
 handle surviving file restriction. Trusted inherited directory and public-file
 entries are allowed.
-Before writing any credential bytes, the host installs a protected DACL on the
-contained file handle permitting only
-the current user, SYSTEM, and Administrators. Before reading, it requires an owner
+The host atomically creates private files with a protected DACL through a native
+create relative to the validated directory handle, permitting only the current
+user, SYSTEM, and Administrators from creation. No mutable absolute path or
+post-creation handle-access upgrade is used. Before reading, it requires an owner
 from that same trusted set (including elevated-token Administrators ownership)
 and rejects DACL entries granting access to any other principal.
 Unix files require mode `0600`. Reported uncertain rollback/durability returns
