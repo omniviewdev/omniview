@@ -686,4 +686,3 @@ func TestActionInputSchemasAreNotEntries(t *testing.T) {
 		t.Fatal("entry descriptor must not alias the observed catalog")
 	}
 }
-

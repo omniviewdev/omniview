@@ -662,4 +662,3 @@ func CELShape(d *Document, id NodeID) (NodeID, bool) {
 func celHasOwnShape(n *Node) bool {
 	return n.Types != 0 || len(n.Properties) > 0 || n.Items != 0 || n.Additional != AdditionalAny
 }
-
