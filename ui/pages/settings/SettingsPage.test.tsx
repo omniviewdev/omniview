@@ -7,11 +7,20 @@ import { ExtensionPointRegistry, ExtensionProvider } from '@omniviewdev/runtime'
 import { Category, Setting, SettingType } from '@omniviewdev/runtime/models';
 import type * as RuntimeCore from '@omniviewdev/runtime';
 import type * as AppThemeController from '@/theme/AppThemeController';
+import type * as RuntimeAPI from '@omniviewdev/runtime/api';
+import type * as RuntimeEvents from '@omniviewdev/runtime/runtime';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { SettingsWindowShell } from '@/features/windows/SettingsWindowShell';
 
-const mocks = vi.hoisted(() => ({ setSettings: vi.fn(), selectTheme: vi.fn() }));
+type NativeSettingsState = { requestId: number; target: string; visible: boolean };
+const mocks = vi.hoisted(() => ({
+  setSettings: vi.fn(), selectTheme: vi.fn(),
+  getWindowState: vi.fn(), setWindowLocation: vi.fn(), hideSettings: vi.fn(),
+  stateListener: undefined as ((event: { data: NativeSettingsState }) => void) | undefined,
+}));
 const categories = {
   general: new Category({
     id: 'general', label: 'General', icon: 'LuSettings',
@@ -56,6 +65,31 @@ vi.mock('@omniviewdev/runtime', async (importOriginal) => {
     validate: async () => ({ valid: true, message: '' }),
   }) };
 });
+vi.mock('@omniviewdev/runtime/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof RuntimeAPI>();
+  return { ...actual, WindowClient: {
+    ...actual.WindowClient,
+    GetSettingsState: mocks.getWindowState,
+    SetSettingsLocation: mocks.setWindowLocation,
+    HideSettings: mocks.hideSettings,
+  } };
+});
+vi.mock('@omniviewdev/runtime/runtime', async (importOriginal) => {
+  const actual = await importOriginal<typeof RuntimeEvents>();
+  return { ...actual, Events: { ...actual.Events,
+    On: (name: string, callback: (event: { data: NativeSettingsState }) => void) => {
+      if (name === 'settings/state') {
+        mocks.stateListener = callback;
+      }
+
+      return () => {
+        if (mocks.stateListener === callback) {
+          mocks.stateListener = undefined;
+        }
+      };
+    },
+  } };
+});
 
 import SettingsPage from './index';
 
@@ -65,6 +99,15 @@ function renderSettings(initial = '/settings?category=general') {
   const router = createMemoryRouter([{ path: '/settings', element: <SettingsPage /> }], { initialEntries: [initial] });
   const view = render(<ExtensionProvider registry={registry}><RouterProvider router={router} /></ExtensionProvider>);
   return { router, registry, ...view };
+}
+
+function renderSettingsWindow() {
+  window.history.replaceState(null, '', '/#/settings?category=general');
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const registry = new ExtensionPointRegistry();
+  return render(<QueryClientProvider client={queryClient}>
+    <ExtensionProvider registry={registry}><SettingsWindowShell /></ExtensionProvider>
+  </QueryClientProvider>);
 }
 
 async function expectFocusedSetting(label: string, fullId: string) {
@@ -79,6 +122,10 @@ async function expectFocusedSetting(label: string, fullId: string) {
 beforeEach(() => {
   mocks.setSettings.mockReset().mockResolvedValue({ applied: true, uncertain: false, message: '' });
   mocks.selectTheme.mockReset().mockResolvedValue(undefined);
+  mocks.getWindowState.mockReset().mockResolvedValue({ requestId: 7, target: '/settings?category=general', visible: true });
+  mocks.setWindowLocation.mockReset().mockResolvedValue(undefined);
+  mocks.hideSettings.mockReset().mockResolvedValue(undefined);
+  mocks.stateListener = undefined;
 });
 afterEach(cleanup);
 
@@ -210,6 +257,22 @@ it('keeps guard keyboard focus inside the dialog and retains drafts on Escape', 
   await user.click(screen.getByRole('button', { name: /Native probe Endpoint/ }));
   const dialog = screen.getByRole('dialog');
   expect(dialog).toHaveFocus();
+  const escapedFocus: EventTarget[] = [];
+  const recordFocus = (event: FocusEvent) => {
+    if (event.target instanceof HTMLElement && !dialog.contains(event.target)) {
+      escapedFocus.push(event.target);
+    }
+  };
+
+  document.addEventListener('focusin', recordFocus, true);
+  try {
+    await user.keyboard(/mac/i.test(navigator.userAgent) ? '{Meta>}k{/Meta}' : '{Control>}k{/Control}');
+    expect(escapedFocus).toEqual([]);
+    expect(dialog.contains(document.activeElement)).toBe(true);
+  } finally {
+    document.removeEventListener('focusin', recordFocus, true);
+  }
+
   await user.tab({ shift: true });
   expect(within(dialog).getByRole('button', { name: 'Save changes' })).toHaveFocus();
   await user.tab();
@@ -322,4 +385,85 @@ it('accepts the newest target when another request arrives during a guarded save
   });
   expect(await screen.findByRole('group', { name: 'Profiling port' })).toBeVisible();
   expect(locationChanged).toHaveBeenLastCalledWith('/settings?category=developer', 3);
+});
+
+it('keeps event-supplied settings mounted when the older initial read fails', async () => {
+  const initial = Promise.withResolvers<NativeSettingsState>();
+  mocks.getWindowState.mockReturnValue(initial.promise);
+  const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  try {
+    renderSettingsWindow();
+    act(() => mocks.stateListener?.({ data: { requestId: 8, target: '/settings?category=developer', visible: true } }));
+    const editor = await screen.findByRole('spinbutton', { name: 'Profiling port' });
+    await act(async () => {
+      initial.reject(new Error('initial read failed')); 
+    });
+    expect(editor).toBeVisible();
+    expect(screen.getByRole('spinbutton', { name: 'Profiling port' })).toBe(editor);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  } finally {
+    log.mockRestore();
+  }
+});
+
+it.each(['resolve', 'reject'] as const)('retains the latest navigation after an older location write %ss', async outcome => {
+  const user = userEvent.setup();
+  const first = Promise.withResolvers<void>();
+  let saved: NativeSettingsState = { requestId: 7, target: '/settings?category=general', visible: true };
+  let firstWrite = true;
+  mocks.getWindowState.mockImplementation(async () => saved);
+  mocks.setWindowLocation.mockImplementation(async (target: string, requestId: number) => {
+    const commit = () => {
+      if (requestId === saved.requestId) {
+        saved = { ...saved, target };
+      }
+    };
+
+    if (firstWrite) {
+      firstWrite = false;
+      return first.promise.then(commit);
+    }
+
+    commit();
+    return Promise.resolve();
+  });
+  const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  try {
+    const view = renderSettingsWindow();
+    await screen.findByRole('textbox', { name: 'First option' });
+    await user.click(screen.getByRole('option', { name: 'Appearance' }));
+    await user.click(screen.getByRole('option', { name: /Developer/ }));
+    await screen.findByRole('spinbutton', { name: 'Profiling port' });
+    await act(async () => {
+      if (outcome === 'resolve') {
+        first.resolve();
+      } else {
+        first.reject(new Error('first location write failed'));
+      }
+    });
+    await waitFor(() => {
+      expect(saved.target).toContain('category=developer'); 
+    });
+    view.unmount();
+    renderSettingsWindow();
+    expect(await screen.findByRole('spinbutton', { name: 'Profiling port' })).toBeVisible();
+  } finally {
+    log.mockRestore();
+  }
+});
+
+it('retains later sidebar navigation after a targeted URL contains a fragment', async () => {
+  const user = userEvent.setup();
+  let saved: NativeSettingsState = { requestId: 7, target: '/settings?category=general#section', visible: true };
+  mocks.getWindowState.mockImplementation(async () => saved);
+  mocks.setWindowLocation.mockImplementation(async (target: string) => {
+    saved = { ...saved, target };
+  });
+  const view = renderSettingsWindow();
+  await screen.findByRole('textbox', { name: 'First option' });
+  await user.click(screen.getByRole('option', { name: 'Appearance' }));
+  expect(screen.getByRole('radiogroup', { name: 'Theme' })).toBeVisible();
+  view.unmount();
+  renderSettingsWindow();
+  expect(await screen.findByRole('radiogroup', { name: 'Theme' })).toBeVisible();
 });

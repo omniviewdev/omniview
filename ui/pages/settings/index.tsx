@@ -74,7 +74,7 @@ export default function SettingsPage({ request, onLocationChange, onClose }: {
     processedRequest.current = request.requestId;
     guard(() => {
       acceptedRequest.current = request.requestId;
-      routingTarget.current = request.target || '/settings?category=general';
+      routingTarget.current = (request.target || '/settings?category=general').split('#', 1)[0];
       setRequestKey(request.requestId);
       setQuery('');
       void navigate(request.target || '/settings?category=general');
@@ -90,6 +90,10 @@ export default function SettingsPage({ request, onLocationChange, onClose }: {
       }
 
       event.preventDefault();
+      if (pendingAction.current) {
+        return;
+      }
+
       searchInput.current?.focus();
       searchInput.current?.select();
     };

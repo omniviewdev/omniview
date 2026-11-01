@@ -32,6 +32,18 @@ class EditorBoundary extends Component<BoundaryProps, { failed: boolean }> {
   }
 }
 
+function EditorSurface({ children, onMount, onUnmount }: {
+  children: ReactNode;
+  onMount?: () => void;
+  onUnmount?: () => void;
+}) {
+  useLayoutEffect(() => {
+    onMount?.();
+    return onUnmount;
+  }, [onMount, onUnmount]);
+  return <>{children}</>;
+}
+
 /** The host row and draft survive editor reloads, failures, and plugin unloads. */
 export function PluginSettingEditor({ pluginId, settingId, setting, children, registerFocusTarget, ...props }: PluginSettingEditorProps) {
   const { contributions } = useExtensionPointSnapshot<SettingsEditorV1>(SETTINGS_EDITOR_EXTENSION_POINT_ID);
@@ -40,18 +52,25 @@ export function PluginSettingEditor({ pluginId, settingId, setting, children, re
   const contribution = pluginId && pluginId !== 'core' && setting.id === settingId && matches.length === 1 ? matches[0] : undefined;
   const editor: unknown = contribution?.value.editor;
   const validEditor = typeof editor === 'function' || Boolean(editor && typeof editor === 'object' &&
-    ('$$typeof' in editor) && (editor.$$typeof === Symbol.for('react.memo') || editor.$$typeof === Symbol.for('react.forward_ref')));
+    ('$$typeof' in editor) && (editor.$$typeof === Symbol.for('react.memo') ||
+      editor.$$typeof === Symbol.for('react.forward_ref') || editor.$$typeof === Symbol.for('react.lazy')));
   const root = useRef<HTMLDivElement>(null);
   const hadFocus = useRef(false);
   const focusTarget = useRef<HTMLElement | null>(null);
   const restoreFocus = useCallback(() => {
-    if (!hadFocus.current || !document.hasFocus()) {
+    if (!hadFocus.current || !document.hasFocus() ||
+      (document.activeElement !== document.body && !root.current?.contains(document.activeElement))) {
       return;
     }
 
     const target = focusTarget.current?.isConnected ? focusTarget.current :
       root.current?.querySelector<HTMLElement>('input:not(:disabled),select:not(:disabled),textarea:not(:disabled),button:not(:disabled),[tabindex="0"]');
     target?.focus();
+  }, []);
+  // Suspense removes its fallback without rerendering this host. Capture focus
+  // before removal and restore after the resolved subtree commits.
+  const captureFallbackFocus = useCallback(() => {
+    hadFocus.current = Boolean(root.current?.contains(document.activeElement));
   }, []);
   const attachFocus = useCallback((element: HTMLElement | null) => {
     focusTarget.current = element;
@@ -72,6 +91,7 @@ export function PluginSettingEditor({ pluginId, settingId, setting, children, re
     requiresRestart: setting.requiresRestart,
   };
   const Editor = validEditor ? editor as SettingsEditorV1['editor'] : null;
+  const fallback = <EditorSurface onUnmount={captureFallbackFocus} onMount={restoreFocus}>{children}</EditorSurface>;
   return <div ref={root} style={{ display: 'contents' }} onFocusCapture={() => {
     hadFocus.current = true; 
   }}
@@ -80,10 +100,12 @@ export function PluginSettingEditor({ pluginId, settingId, setting, children, re
       hadFocus.current = false;
     }
   }}>
-    {validEditor && Editor ? <EditorBoundary contribution={contribution} fallback={children} restoreFocus={restoreFocus}>
-      <Suspense fallback={children}>
-        <Editor {...props} settingId={settingId} setting={metadata} registerFocusTarget={attachFocus} />
+    {validEditor && Editor ? <EditorBoundary contribution={contribution} fallback={fallback} restoreFocus={restoreFocus}>
+      <Suspense fallback={fallback}>
+        <EditorSurface onMount={restoreFocus}>
+          <Editor {...props} settingId={settingId} setting={metadata} registerFocusTarget={attachFocus} />
+        </EditorSurface>
       </Suspense>
-    </EditorBoundary> : children}
+    </EditorBoundary> : fallback}
   </div>;
 }

@@ -14,6 +14,7 @@ import {
 } from '@/hooks/mcp/useMcpRelay';
 import styles from './AiToolsSettingsPage.module.css';
 import { SettingsFormRegistration } from '@/hooks/settings/useSettingsForm';
+import formStyles from './SettingsPage.module.css';
 
 const GLOBAL_SCOPE_KEY = 'global';
 const INHERIT_PRESET = '__inherit__';
@@ -96,35 +97,46 @@ const AiToolsSettingsPage: React.FC = () => {
   const registerForm = React.useContext(SettingsFormRegistration);
   const [draftError, setDraftError] = React.useState('');
   const [savingDraft, setSavingDraft] = React.useState(false);
+  const hasDrafts = portDraft !== null || presetName.trim() !== '';
+  const discardDrafts = () => {
+    setPortDraft(null);
+    setPresetName('');
+    setDraftError('');
+  };
+
+  const saveDrafts = async () => {
+    setSavingDraft(true);
+    let portSaved = false;
+    try {
+      if (portDraft !== null) {
+        await relay.setPort.mutateAsync(Number(portDraft));
+        setPortDraft(null);
+        portSaved = true;
+      }
+
+      if (presetName.trim()) {
+        await relay.saveUserPreset.mutateAsync(presetName.trim());
+        setPresetName('');
+      }
+
+      setDraftError('');
+      return true;
+    } catch {
+      setDraftError(portSaved
+        ? 'Port saved. Preset could not be saved. Retry saving the preset or discard its unsaved name.'
+        : 'Could not save AI Tools changes. Unsaved changes remain. Retry or discard them.');
+      return false;
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
   React.useLayoutEffect(() => {
     registerForm?.({
       saving: savingDraft,
-      hasDrafts: portDraft !== null || presetName.trim() !== '',
-      discard: () => {
-        setPortDraft(null); setPresetName(''); setDraftError(''); 
-      },
-      save: async () => {
-        setSavingDraft(true);
-        try {
-          if (portDraft !== null) {
-            await relay.setPort.mutateAsync(Number(portDraft));
-            setPortDraft(null);
-          }
-
-          if (presetName.trim()) {
-            await relay.saveUserPreset.mutateAsync(presetName.trim());
-            setPresetName('');
-          }
-
-          setDraftError('');
-          return true;
-        } catch {
-          setDraftError('Could not save AI Tools changes. Try again before switching settings.');
-          return false;
-        } finally {
-          setSavingDraft(false); 
-        }
-      },
+      hasDrafts,
+      discard: discardDrafts,
+      save: saveDrafts,
     });
   });
   React.useLayoutEffect(() => () => registerForm?.(null), [registerForm]);
@@ -209,7 +221,7 @@ const AiToolsSettingsPage: React.FC = () => {
             }}>Retry {label.toLowerCase()}</Button>
           </div>
         ))}
-        <fieldset disabled={!config || relay.config.isFetching} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+        <fieldset disabled={!config || relay.config.isFetching || savingDraft} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
           <Card className={styles.Card}>
             <div className={styles.CardTitle}>
               <Text size='md' weight='semibold'>Server</Text>
@@ -443,6 +455,17 @@ const AiToolsSettingsPage: React.FC = () => {
             ))}
           </Card>
         </fieldset>
+      </div>
+      <div className={formStyles.ActionBar}>
+        <span role='status'>{hasDrafts ? 'Unsaved changes' : 'All changes saved'}</span>
+        <div className={formStyles.Actions}>
+          {hasDrafts && <>
+            <Button color='neutral' variant='ghost' onClick={discardDrafts} disabled={savingDraft}>Discard</Button>
+            <Button color='brand' variant='soft' onClick={saveDrafts} disabled={savingDraft || !config || relay.config.isFetching} aria-label='Save Changes' aria-busy={savingDraft}>
+              {savingDraft ? 'Checking and saving…' : 'Save Changes'}
+            </Button>
+          </>}
+        </div>
       </div>
     </div>
   );

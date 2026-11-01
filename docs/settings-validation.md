@@ -49,9 +49,13 @@ Plugin links use `section=plugins&plugin=<pluginId>&setting=<opaqueSettingId>`.
 Encode parameter values with `URLSearchParams`; plugin setting IDs are not
 category paths. Repeated explicit requests receive distinct identities and
 refocus the field. Location acknowledgements use the accepted request identity
-so a stale webview update cannot overwrite a newer target.
+and serialize within the retained webview, preventing older navigation writes
+from overwriting later ones. Native entrypoints accept only local Settings routes.
 Legacy settings navigation routes through this API without changing workspace
-tabs or history. Dirty navigation and targeted requests share the same guard.
+tabs. Normal runtime navigation leaves browser history untouched; a raw hash
+assignment already creates a browser entry, which is replaced with the active
+workspace route. Dirty navigation and targeted requests share the same guard.
+The search shortcut does not move focus outside that guard.
 
 The compact Settings shell uses theme tokens, a 212px navigation column, 29px
 navigation rows, 28px form controls, and a persistent footer. Only its caption
@@ -66,6 +70,9 @@ Hidden Settings pauses query focus/refetch work and CSS animations without
 destroying state. Reopening refreshes stale active snapshots. Theme previews use
 the live theme registry, including user and plugin themes, and retain the existing
 immediate theme commit controller. Ordinary fields still use the shared draft form.
+AI Tools exposes the same persistent Save/Discard footer for port and preset
+drafts. If the port saves but the preset fails, feedback identifies the partial
+save and retains only the failed draft for retry.
 Search indexes public host and installed-plugin descriptor IDs, labels, and
 descriptions only—not values, defaults, options, paths, or custom editor content.
 
@@ -125,8 +132,9 @@ The loader supplies plugin ownership. A contribution cannot create a descriptor
 or target host/another plugin's fields. Setting IDs remain opaque, including
 dots. Unsupported versions, ambiguous duplicates, missing editors, suspended
 imports, and rendering failures use the generic control with the same draft.
-An unrelated registry update does not remount the selected editor. Replacement
-editors preserve drafts and restore field focus when appropriate.
+An unrelated registry update does not remount the selected editor. Lazy editors
+retain generic-control drafts and restore field focus after loading only when
+focus has not moved elsewhere. Replacement editors preserve the same contract.
 
 Editor props contain authorized metadata, the effective draft value, dirty and
 disabled state, validation, host accessibility IDs, and `onChange`. Metadata does
@@ -144,6 +152,9 @@ feedback. Native file selection passes directory/filter hints and enforces
 multiple-file and extension constraints. Folder/relative-path constraints require
 manual entry because the current host picker API cannot represent them; the UI
 does not silently choose incompatible absolute file paths.
+Structured option matching ignores object-key order but preserves array order
+and value types. Clearing an array field stages an empty array; nonempty text
+retains its line boundaries and whitespace.
 
 The canonical application suite builds the workspace probe with a real custom
 counter editor. Its persistence scenario stages a custom control change, checks

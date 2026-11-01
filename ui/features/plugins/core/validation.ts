@@ -105,7 +105,8 @@ export function validatePluginExports(exports: unknown): ValidatedExports {
       const value = contribution.registration?.value as { schemaVersion?: unknown; settingId?: unknown; editor?: unknown } | undefined;
       const editor = value?.editor as { $$typeof?: symbol } | undefined;
       const component = typeof editor === 'function' || (editor != null &&
-        (editor.$$typeof === Symbol.for('react.memo') || editor.$$typeof === Symbol.for('react.forward_ref')));
+        (editor.$$typeof === Symbol.for('react.memo') || editor.$$typeof === Symbol.for('react.forward_ref') ||
+          editor.$$typeof === Symbol.for('react.lazy')));
       if (value?.schemaVersion !== 1 || typeof value.settingId !== 'string' || !value.settingId || !component) {
         throw new PluginValidationError('Invalid version 1 settings editor', { errors: ['Settings editors require schemaVersion: 1, a nonempty settingId, and a React editor component'] });
       }

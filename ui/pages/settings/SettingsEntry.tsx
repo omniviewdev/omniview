@@ -14,6 +14,31 @@ type Props = {
   describedBy?: string;
 };
 
+function sameSettingValue(left: unknown, right: unknown): boolean {
+  if (left === right) {
+    return true;
+  }
+
+  if (typeof left !== 'object' || left === null || typeof right !== 'object' || right === null) {
+    return false;
+  }
+
+  if (Array.isArray(left)) {
+    return Array.isArray(right) && left.length === right.length
+      && left.every((value, index) => sameSettingValue(value, right[index]));
+  }
+
+  if (Array.isArray(right)) {
+    return false;
+  }
+
+  const leftObject = left as Record<string, unknown>;
+  const rightObject = right as Record<string, unknown>;
+  const keys = Object.keys(leftObject);
+  return keys.length === Object.keys(rightObject).length
+    && keys.every(key => Object.prototype.hasOwnProperty.call(rightObject, key) && sameSettingValue(leftObject[key], rightObject[key]));
+}
+
 /** Generic editor preserves option values instead of coercing them into labels. */
 export default function SettingsEntry({ setting, id, draftValue, handleChange, inputId, labelledBy, describedBy }: Props) {
   const [error, setError] = React.useState('');
@@ -26,11 +51,10 @@ export default function SettingsEntry({ setting, id, draftValue, handleChange, i
   const sensitive = setting.sensitive || setting.type === SettingType.Password;
   const options = setting.options ?? [];
   const array = setting.type === SettingType.MultiSelect || Array.isArray(value);
-  const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
   let editor: React.ReactNode;
   if (options.length) {
     const selected = array ? (Array.isArray(value) ? value : []) : [value];
-    editor = <select {...attributes} multiple={array} value={array ? options.flatMap((option, index) => selected.some(item => same(item, option.value)) ? [String(index)] : []) : String(options.findIndex(option => same(value, option.value)))} onChange={event => {
+    editor = <select {...attributes} multiple={array} value={array ? options.flatMap((option, index) => selected.some(item => sameSettingValue(item, option.value)) ? [String(index)] : []) : String(options.findIndex(option => sameSettingValue(value, option.value)))} onChange={event => {
       if (array) {
         change(Array.from(event.target.selectedOptions).map(option => options[Number(option.value)].value));
       } else {
@@ -46,7 +70,7 @@ export default function SettingsEntry({ setting, id, draftValue, handleChange, i
     }} />;
   } else if (array) {
     editor = <textarea {...attributes} value={Array.isArray(value) ? value.join('\n') : ''} onChange={event => {
-      change(event.target.value.split('\n')); 
+      change(event.target.value === '' ? [] : event.target.value.split('\n'));
     }} spellCheck={false} />;
   } else if ([SettingType.Text, SettingType.Password, SettingType.Integer, SettingType.Float, SettingType.Color, SettingType.DateTime].includes(setting.type)) {
     const numeric = setting.type === SettingType.Integer || setting.type === SettingType.Float;

@@ -122,6 +122,44 @@ func TestSettingsLocationRaceRejectsOldRequest(t *testing.T) {
 	assert.Equal(t, SettingsState{RequestID: 2, Target: "/settings?category=appearance", Visible: true}, h.service.GetSettingsState())
 }
 
+func TestSettingsRejectsNonLocalTargetsWithoutChangingWindow(t *testing.T) {
+	for _, target := range []string{"/plugins", "/settings-other", "/settings/plugin", "https://example.test/settings", "//example.test/settings"} {
+		t.Run(target, func(t *testing.T) {
+			h := newTestHarness(t, "", time.Second)
+			before := h.service.GetSettingsState()
+			name, err := h.service.OpenSettings(target)
+			require.Error(t, err)
+			assert.Empty(t, name)
+			assert.Equal(t, before, h.service.GetSettingsState())
+			assert.Empty(t, h.host.specs)
+
+			name, err = h.service.OpenSettings("/settings?category=general")
+			require.NoError(t, err)
+			require.NoError(t, h.service.HideSettings())
+			before = h.service.GetSettingsState()
+			activations := h.native(name).activations
+			_, err = h.service.OpenSettings(target)
+			require.Error(t, err)
+			require.Error(t, h.service.SetSettingsLocation(target, before.RequestID))
+			assert.Equal(t, before, h.service.GetSettingsState())
+			assert.Equal(t, activations, h.native(name).activations)
+			assert.Len(t, h.host.specs, 1)
+		})
+	}
+}
+
+func TestSettingsRetainsLocalTargetsWithQueriesAndFragments(t *testing.T) {
+	h := newTestHarness(t, "", time.Second)
+	for _, target := range []string{"/settings", "/settings/", "/settings?category=general", "/settings#section", "/settings/?category=general#section"} {
+		name, err := h.service.OpenSettings(target)
+		require.NoError(t, err)
+		assert.Equal(t, SettingsWindowName, name)
+		assert.Equal(t, target, h.service.GetSettingsState().Target)
+		assert.True(t, h.service.GetSettingsState().Visible)
+	}
+	assert.Len(t, h.host.specs, 1)
+}
+
 func TestSettingsExcludedFromSessionAndTransfer(t *testing.T) {
 	h := newTestHarness(t, "", time.Second)
 	_, err := h.service.OpenSettings("")

@@ -4,6 +4,7 @@ import { ConfirmationModalContext } from '@omniviewdev/runtime';
 import type * as WailsRuntime from '@wailsio/runtime';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppSnackbarProvider } from '@/contexts/AppSnackbarProvider';
+import { SettingsFormRegistration, type SettingsNavigationForm } from '@/hooks/settings/useSettingsForm';
 
 const mocks = vi.hoisted(() => ({
   getStatus: vi.fn(),
@@ -16,6 +17,8 @@ const mocks = vi.hoisted(() => ({
   applyPreset: vi.fn(),
   setEnabled: vi.fn(),
   confirmShow: vi.fn(),
+  setPort: vi.fn(),
+  saveUserPreset: vi.fn(),
   writeText: vi.fn(),
   listeners: new Map<string, (event: { data: unknown }) => void>(),
 }));
@@ -31,11 +34,11 @@ vi.mock('@omniviewdev/runtime/api', () => ({
     SetConnectionAccess: mocks.setConnectionAccess,
     ApplyPreset: mocks.applyPreset,
     SetEnabled: mocks.setEnabled,
-    SetPort: vi.fn(),
+    SetPort: mocks.setPort,
     RotateToken: vi.fn(),
     SetBlockConnectionsByDefault: vi.fn(),
     SetPluginEnabled: vi.fn(),
-    SaveUserPreset: vi.fn(),
+    SaveUserPreset: mocks.saveUserPreset,
     DeleteUserPreset: vi.fn(),
   },
 }));
@@ -90,13 +93,15 @@ const connections = [
   },
 ];
 
-function renderPage() {
+function renderPage(registerForm: (form: SettingsNavigationForm | null) => void = () => undefined) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
       <AppSnackbarProvider>
         <ConfirmationModalContext.Provider value={{ show: mocks.confirmShow }}>
-          <AiToolsSettingsPage />
+          <SettingsFormRegistration.Provider value={registerForm}>
+            <AiToolsSettingsPage />
+          </SettingsFormRegistration.Provider>
         </ConfirmationModalContext.Provider>
       </AppSnackbarProvider>
     </QueryClientProvider>,
@@ -131,12 +136,69 @@ describe('AiToolsSettingsPage', () => {
     mocks.setConnectionAccess.mockReset().mockResolvedValue(undefined);
     mocks.applyPreset.mockReset().mockResolvedValue(undefined);
     mocks.setEnabled.mockReset().mockResolvedValue(undefined);
+    mocks.setPort.mockReset().mockResolvedValue(undefined);
+    mocks.saveUserPreset.mockReset().mockResolvedValue(undefined);
     mocks.confirmShow.mockReset();
     mocks.writeText.mockReset().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText: mocks.writeText }, configurable: true });
   });
 
   afterEach(cleanup);
+
+  it('saves drafts from the footer and discards later edits without writing them', async () => {
+    renderPage();
+    await screen.findByRole('group', { name: 'Kubernetes' });
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Port' }), { target: { value: '9690' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Save current selection as preset' }), { target: { value: 'Local' } });
+    mocks.setPort.mockImplementation(async (port: number) => {
+      mocks.getConfig.mockResolvedValue({ ...(await mocks.getConfig()), port });
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Save Changes' })).not.toBeInTheDocument());
+    expect(mocks.setPort).toHaveBeenCalledWith(9690);
+    expect(mocks.saveUserPreset).toHaveBeenCalledWith('Local');
+    expect(screen.getByRole('spinbutton', { name: 'Port' })).toHaveValue(9690);
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Port' }), { target: { value: '9790' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Save current selection as preset' }), { target: { value: 'Discard me' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(screen.getByRole('spinbutton', { name: 'Port' })).toHaveValue(9690);
+    expect(screen.getByRole('textbox', { name: 'Save current selection as preset' })).toHaveValue('');
+    expect(mocks.setPort).toHaveBeenCalledTimes(1);
+    expect(mocks.saveUserPreset).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps only the failed preset draft guarded after a durable port save', async () => {
+    let form: SettingsNavigationForm | null = null;
+    renderPage(value => {
+      form = value; 
+    });
+    await screen.findByRole('group', { name: 'Kubernetes' });
+    mocks.setPort.mockImplementation(async (port: number) => {
+      mocks.getConfig.mockResolvedValue({ ...(await mocks.getConfig()), port });
+    });
+    mocks.saveUserPreset.mockRejectedValueOnce(new Error('disk full'));
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Port' }), { target: { value: '9690' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Save current selection as preset' }), { target: { value: 'Keep me' } });
+    let saved: boolean | undefined;
+    await act(async () => {
+      saved = await form!.save(); 
+    });
+    expect(saved).toBe(false);
+    expect(form!.hasDrafts).toBe(true);
+    const partialSaveError = screen.getByText(/port saved/i);
+    expect(partialSaveError).toHaveAttribute('role', 'alert');
+    expect(partialSaveError).toHaveTextContent(/preset.*could not be saved/i);
+    expect(screen.getByRole('spinbutton', { name: 'Port' })).toHaveValue(9690);
+    expect(screen.getByRole('button', { name: 'Apply port' })).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: 'Save current selection as preset' })).toHaveValue('Keep me');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save Changes' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Save Changes' })).not.toBeInTheDocument());
+    expect(mocks.setPort).toHaveBeenCalledTimes(1);
+    expect(mocks.saveUserPreset).toHaveBeenNthCalledWith(2, 'Keep me');
+    expect(form!.hasDrafts).toBe(false);
+    expect(screen.queryByText(/port saved/i)).not.toBeInTheDocument();
+  });
 
   it('groups tools and edits the bound connection rather than granting global access', async () => {
     renderPage();

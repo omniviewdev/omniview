@@ -1,6 +1,9 @@
 package window
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 func (s *Service) shutdownStarted() bool {
 	return s.shutdownFlag.Load()
@@ -8,6 +11,9 @@ func (s *Service) shutdownStarted() bool {
 
 // OpenSettings shows the single settings window. Empty targets preserve its location.
 func (s *Service) OpenSettings(target string) (string, error) {
+	if !validSettingsTarget(target) {
+		return "", fmt.Errorf("invalid settings target")
+	}
 	s.settingsOps.Lock()
 	defer s.settingsOps.Unlock()
 	s.mu.Lock()
@@ -84,12 +90,27 @@ func (s *Service) GetSettingsState() SettingsState {
 
 // SetSettingsLocation records only navigation accepted for the current request.
 func (s *Service) SetSettingsLocation(target string, requestID uint64) error {
+	if !validSettingsTarget(target) {
+		return fmt.Errorf("invalid settings target")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if requestID == s.settingsState.RequestID && target != "" {
 		s.settingsState.Target = target
 	}
 	return nil
+}
+
+func validSettingsTarget(target string) bool {
+	if target == "" {
+		return true
+	}
+	rest, ok := strings.CutPrefix(target, "/settings")
+	if !ok {
+		return false
+	}
+	rest = strings.TrimPrefix(rest, "/")
+	return rest == "" || rest[0] == '?' || rest[0] == '#'
 }
 
 // finishSettingsNativeOperation publishes the completed native operation. Native

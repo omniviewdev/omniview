@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { HashRouter } from 'react-router';
 import { focusManager, useQueryClient } from '@tanstack/react-query';
 import { WindowClient } from '@omniviewdev/runtime/api';
@@ -13,6 +13,7 @@ export function SettingsWindowShell() {
   const [state, setState] = useState<SettingsState | null>(null);
   const [error, setError] = useState(false);
   const queryClient = useQueryClient();
+  const locationWrites = useRef<Promise<void> | null>(null);
   const visible = state?.visible;
 
   useEffect(() => {
@@ -33,7 +34,7 @@ export function SettingsWindowShell() {
       }
     }).catch((cause: unknown) => {
       console.error('[settings] could not load window state', cause);
-      if (!disposed) {
+      if (!disposed && !receivedEvent) {
         setError(true);
       }
     });
@@ -63,7 +64,9 @@ export function SettingsWindowShell() {
     });
   }, []);
   const locationChanged = useCallback((target: string, requestId: number) => {
-    void WindowClient.SetSettingsLocation(target, requestId).catch((cause: unknown) => {
+    locationWrites.current = (locationWrites.current ?? Promise.resolve()).then(async () =>
+      WindowClient.SetSettingsLocation(target, requestId),
+    ).catch((cause: unknown) => {
       console.error('[settings] could not retain location', cause);
     });
   }, []);

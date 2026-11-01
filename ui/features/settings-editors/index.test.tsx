@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ExtensionPointRegistry, ExtensionProvider, SETTINGS_EDITOR_EXTENSION_POINT_ID, type SettingsEditorProps, type SettingsEditorV1 } from '@omniviewdev/runtime';
 import { Setting } from '@omniviewdev/runtime/models';
@@ -120,6 +120,60 @@ describe('plugin settings editors', () => {
       });
       expect(screen.getByRole('textbox', { name: 'Replacement editor' })).toHaveValue('unsaved');
       expect(screen.getByRole('textbox', { name: 'Replacement editor' })).toHaveFocus();
+    } finally {
+      focusedWindow.mockRestore();
+    }
+  });
+
+  it.each([false, true])('keeps lazy editor drafts and restores focus only while still in the field (moved: %s)', async (moved) => {
+    const focusedWindow = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    try {
+      const { promise, resolve } = Promise.withResolvers<{ default: React.ComponentType<SettingsEditorProps> }>();
+      const LazyEditor = React.lazy(async () => promise);
+      const contribution = { extensionPointId: SETTINGS_EDITOR_EXTENSION_POINT_ID,
+        registration: { id: 'lazy', value: { schemaVersion: 1, settingId: field, editor: LazyEditor } } };
+      // The same export that passes startup validation must remain usable by the host.
+      validatePluginExports({ plugin: {}, extensionRegistrations: [contribution] });
+      const s = setup();
+      s.register('lazy', LazyEditor);
+      function Host() {
+        const [draft, setDraft] = React.useState('unsaved');
+        return <ExtensionProvider registry={s.registry}>
+          <button>Elsewhere</button>
+          <PluginSettingEditor pluginId='native' settingId={field}
+            setting={new Setting({ id: field })} value={draft} dirty onChange={setDraft}
+            inputId='lazy-input' labelledBy='lazy-label' describedBy='lazy-description'>
+            <input aria-label='Generic editor' value={draft} onChange={event => {
+              setDraft(event.target.value); 
+            }} />
+          </PluginSettingEditor>
+        </ExtensionProvider>;
+      }
+
+      render(<Host />);
+      const generic = screen.getByRole('textbox', { name: 'Generic editor' });
+      generic.focus();
+      fireEvent.change(generic, { target: { value: 'typed while loading' } });
+      if (moved) {
+        screen.getByRole('button', { name: 'Elsewhere' }).focus();
+      }
+
+      // Accessible custom editors need not implement the optional focus registration.
+      await act(async () => {
+        resolve({ default: ({ value, onChange }) => <input aria-label='Resolved editor'
+          value={String(value)} onChange={event => {
+            onChange(event.target.value); 
+          }} /> });
+      });
+      const resolved = screen.getByRole('textbox', { name: 'Resolved editor' });
+      expect(resolved).toHaveValue('typed while loading');
+      expect(moved ? screen.getByRole('button', { name: 'Elsewhere' }) : resolved).toHaveFocus();
+      screen.getByRole('button', { name: 'Elsewhere' }).focus();
+      await act(async () => {
+        s.register('unrelated', Editor, 'other-plugin');
+      });
+      expect(screen.getByRole('button', { name: 'Elsewhere' })).toHaveFocus();
+      expect(screen.getByRole('textbox', { name: 'Resolved editor' })).toBe(resolved);
     } finally {
       focusedWindow.mockRestore();
     }
