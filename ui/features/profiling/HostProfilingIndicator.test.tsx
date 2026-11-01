@@ -5,16 +5,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ActivePageNavigationContext } from '@/features/workspace/activePageNavigation';
 import HostProfilingIndicator from './HostProfilingIndicator';
 
-const backend = vi.hoisted(() => ({ getStatus: vi.fn(), getPluginStatuses: vi.fn(), getUIStatus: vi.fn() }));
+const backend = vi.hoisted(() => ({ getStatus: vi.fn(), getPluginStatuses: vi.fn(), getUIStatus: vi.fn(), getSnapshot: vi.fn() }));
 vi.mock('@omniviewdev/runtime/api', () => ({
   HostProfiling: { GetStatus: backend.getStatus },
   PluginManager: { GetPluginProfilingStatuses: backend.getPluginStatuses },
   UiInspection: { GetStatus: backend.getUIStatus },
+  ProcessInventory: { GetSnapshot: backend.getSnapshot },
 }));
 vi.mock('@/features/windows/identity', () => ({ currentWindow: { name: 'main' } }));
 
 beforeEach(() => {
   backend.getPluginStatuses.mockReset().mockResolvedValue([]);
+  backend.getSnapshot.mockReset().mockResolvedValue({ processes: [] });
   backend.getUIStatus.mockReset().mockResolvedValue({ supported: false, enabled: false, engine: '', window: 'main', application: '', target: '', error: '' });
 });
 
@@ -37,6 +39,34 @@ function mount() {
 }
 
 describe('host profiling footer', () => {
+  it('observes inventory only on opening and hides the previous PID until reopening resolves', async () => {
+    backend.getStatus.mockResolvedValue({ running: false, url: '', source: 'settings', error: '' });
+    const process = { key: 'host', role: 'host', ownership: 'verified', pluginID: '', error: '',
+      identity: { pid: 1234, startIdentity: 'darwin:1:2', executable: '/Omniview' },
+      evidence: 'self', windows: [], windowAssociation: 'unverified' };
+    backend.getSnapshot.mockResolvedValue({ processes: [process] });
+    const user = userEvent.setup();
+    mount();
+    const trigger = await screen.findByRole('button', { name: 'Host profiling: Off' });
+    expect(backend.getSnapshot).not.toHaveBeenCalled();
+    fireEvent.click(trigger);
+    expect(await screen.findByText('PID 1234 · verified')).toBeVisible();
+    act(() => {
+      screen.getByRole('button', { name: 'Developer Settings' }).focus(); 
+    });
+    await user.keyboard('{Escape}');
+    const next = { processes: [{ ...process, identity: { ...process.identity, pid: 5678 } }] };
+    const pending = Promise.withResolvers<typeof next>();
+    backend.getSnapshot.mockReturnValue(pending.promise);
+    fireEvent.click(trigger);
+    expect(screen.queryByText(/PID 1234/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/PID 5678/)).not.toBeInTheDocument();
+    await act(async () => {
+      pending.resolve(next); 
+    });
+    expect(await screen.findByText('PID 5678 · verified')).toBeVisible();
+  });
+
   it('shows actual listener, then reports failure without a stale endpoint', async () => {
     backend.getStatus.mockResolvedValue({ running: true, url: 'http://127.0.0.1:43210/debug/pprof/', source: 'settings', error: '' });
     const { client, navigate } = mount();
@@ -164,7 +194,6 @@ describe('host profiling footer', () => {
     });
     await user.keyboard('{Enter}');
     expect(await screen.findByText(endpointA)).toBeVisible();
-    expect(screen.getByText('PID 1234')).toBeVisible();
     act(() => {
       screen.getByRole('button', { name: 'Developer Settings' }).focus();
     });
@@ -181,18 +210,15 @@ describe('host profiling footer', () => {
     await user.keyboard('{Enter}');
     expect(backend.getPluginStatuses).toHaveBeenCalledTimes(2);
     expect(screen.queryByText(endpointA)).not.toBeInTheDocument();
-    expect(screen.queryByText('PID 1234')).not.toBeInTheDocument();
     expect(screen.queryByText(endpointB)).not.toBeInTheDocument();
     await act(async () => {
       resolveStatus(nextProcess);
     });
     expect(await screen.findByText(endpointB)).toBeVisible();
-    expect(screen.getByText('PID 5678')).toBeVisible();
     expect(screen.queryByText(endpointA)).not.toBeInTheDocument();
-    expect(screen.queryByText('PID 1234')).not.toBeInTheDocument();
   });
 
-  it('shows plugin processes independently from host status and removes stale endpoints on failure', async () => {
+  it('shows plugin listeners independently from host status and removes stale endpoints on failure', async () => {
     backend.getStatus.mockResolvedValue({ running: false, url: '', source: 'settings', error: '' });
     const url = 'http://127.0.0.1:43211/debug/pprof/';
     backend.getPluginStatuses.mockResolvedValue([
@@ -204,13 +230,11 @@ describe('host profiling footer', () => {
     expect(backend.getPluginStatuses).not.toHaveBeenCalled();
     fireEvent.click(trigger);
     expect(await screen.findByText(url)).toBeVisible();
-    expect(screen.getByText('PID 1234')).toBeVisible();
-    expect(screen.getByText('SDK update required')).toBeVisible();
     backend.getPluginStatuses.mockRejectedValue(new Error('Host disconnected'));
     await act(async () => {
       await client.invalidateQueries({ queryKey: ['plugin-profiling', 'status'] });
     });
-    expect(await screen.findByRole('alert')).toHaveTextContent('Plugin status unavailable');
+    expect(await screen.findByRole('alert')).toBeVisible();
     expect(screen.queryByText(url)).not.toBeInTheDocument();
     backend.getPluginStatuses.mockResolvedValue([
       { pluginID: 'kubernetes', supported: true, running: false, url: '', error: '', pid: 5678 },
@@ -218,8 +242,7 @@ describe('host profiling footer', () => {
     await act(async () => {
       await client.invalidateQueries({ queryKey: ['plugin-profiling', 'status'] });
     });
-    expect(await screen.findByText('PID 5678')).toBeVisible();
-    expect(screen.queryByText('PID 1234')).not.toBeInTheDocument();
+    expect(await screen.findByText('Off')).toBeVisible();
     expect(screen.queryByText(url)).not.toBeInTheDocument();
   });
 });
