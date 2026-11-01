@@ -42,9 +42,9 @@ actual total rather than the requested 30-step budget.
 CI reads the checked-out host's `e2e/source-cohort.json`, with full commit strings
 for `plugin-sdk`, `ui`, and `kubernetes`. UI and Kubernetes checkouts use validated
 cohort outputs; Kubernetes must match the host's `plugins/kubernetes` gitlink.
-The SDK entry must equal the independently reviewed repository variable
-`OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION`. A branch cannot approve its own
-SDK change. The original isolation ancestry minimum remains
+The SDK entry must equal the independently reviewed release pinned explicitly in
+the candidate workflows: SDK v0.12.0,
+`a6c892e671b789396f43fabeede7f4bf2e7a0c5d`. The original isolation ancestry minimum remains
 `5b3ef764d1cf738835a723a749a0cb6c45f85e44`. The profiling release advances the
 reviewed isolation checkpoint to SDK v0.11.0,
 `eb0d5c8c533c6501c4a57da338435956f82d7b84`, after independent security review of
@@ -94,7 +94,7 @@ its base-ui peer range is `^0.2.1`, not the host source runtime's `~0.4.3`.
 With installed/built host packages and the reviewed sources checked out:
 
 Candidate CI uses `e2e/source-cohort.json` as its exact SDK/UI/Kubernetes
-selection. `OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION` must equal that SDK commit;
+selection. The explicit workflow `REVIEWED_SDK_REVISION` must equal that SDK commit;
 UI and Kubernetes refs come only from that cohort in candidate workflows, not
 legacy repository UI/profile variables. The selected UI commit is
 `cd50e0d0663c1d416ed48c147382a5040d6c3c7c`, with base-ui 0.9.0 and editor 6.1.1,
@@ -103,13 +103,11 @@ variables to approve candidate sources. Explicit direct-CLI `UI_SOURCE_REF` or
 `KUBERNETES_SOURCE_REF` values must still match the selected cohort.
 The Kubernetes gitlink must also match. Commits must be reachable by checkout,
 but candidate testing does not require a module or npm publication.
-The candidate workflows map this dedicated repository variable to their internal
-`REVIEWED_SDK_REVISION` environment variable. They never fall back to
-`OMNIVIEW_E2E_REVIEWED_SDK_REVISION`. Keep that legacy variable unchanged while
-stable `main` still consumes the earlier SDK; candidate approval must not change
-unrelated pre-merge CI. Configure the new variable only after independent review.
-An absent repository-level legacy variable does not prove that no effective
-organization-level variable exists.
+Candidate workflows pin the independently reviewed SDK v0.12.0 release commit in
+`REVIEWED_SDK_REVISION`; they do not read repository variables for SDK approval.
+Keep repository variables unchanged: neither the resource-v2 approval variable nor
+the legacy `OMNIVIEW_E2E_REVIEWED_SDK_REVISION` selects this candidate's SDK.
+Direct execution must set `REVIEWED_SDK_REVISION` to the same reviewed full commit.
 The independent SDK isolation-core baseline remains
 `5b3ef764d1cf738835a723a749a0cb6c45f85e44`; candidate approval does not
 authorize protected isolation changes or replace review with release-tag trust.
