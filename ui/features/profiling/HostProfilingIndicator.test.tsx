@@ -142,6 +142,50 @@ describe('host profiling footer', () => {
     expect(backend.getStatus.mock.calls.length).toBeGreaterThan(calls);
   });
 
+  it('does not reuse a closed popover plugin endpoint while the new process status is pending', async () => {
+    backend.getStatus.mockReset().mockResolvedValue({ running: false, url: '', source: 'settings', error: '' });
+    const endpointA = 'http://127.0.0.1:43211/debug/pprof/';
+    const endpointB = 'http://127.0.0.1:43212/debug/pprof/';
+    backend.getPluginStatuses.mockResolvedValue([
+      { pluginID: 'kubernetes', supported: true, running: true, url: endpointA, error: '', pid: 1234 },
+    ]);
+    const user = userEvent.setup();
+    mount();
+    const trigger = await screen.findByRole('button', { name: 'Host profiling: Off' });
+    expect(backend.getPluginStatuses).not.toHaveBeenCalled();
+    act(() => {
+      trigger.focus();
+    });
+    await user.keyboard('{Enter}');
+    expect(await screen.findByText(endpointA)).toBeVisible();
+    expect(screen.getByText('PID 1234')).toBeVisible();
+    act(() => {
+      screen.getByRole('button', { name: 'Developer Settings' }).focus();
+    });
+    await user.keyboard('{Escape}');
+    expect(screen.queryByText(endpointA)).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+
+    const nextProcess = [
+      { pluginID: 'kubernetes', supported: true, running: true, url: endpointB, error: '', pid: 5678 },
+    ];
+    const { promise, resolve: resolveStatus } = Promise.withResolvers<typeof nextProcess>();
+    backend.getPluginStatuses.mockReturnValue(promise);
+    expect(backend.getPluginStatuses).toHaveBeenCalledTimes(1);
+    await user.keyboard('{Enter}');
+    expect(backend.getPluginStatuses).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(endpointA)).not.toBeInTheDocument();
+    expect(screen.queryByText('PID 1234')).not.toBeInTheDocument();
+    expect(screen.queryByText(endpointB)).not.toBeInTheDocument();
+    await act(async () => {
+      resolveStatus(nextProcess);
+    });
+    expect(await screen.findByText(endpointB)).toBeVisible();
+    expect(screen.getByText('PID 5678')).toBeVisible();
+    expect(screen.queryByText(endpointA)).not.toBeInTheDocument();
+    expect(screen.queryByText('PID 1234')).not.toBeInTheDocument();
+  });
+
   it('shows plugin processes independently from host status and removes stale endpoints on failure', async () => {
     backend.getStatus.mockResolvedValue({ running: false, url: '', source: 'settings', error: '' });
     const url = 'http://127.0.0.1:43211/debug/pprof/';

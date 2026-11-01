@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
@@ -66,9 +67,15 @@ func (pm *pluginManager) GetPluginProfilingStatuses() []PluginProfilingStatus {
 	ctx, cancel := context.WithTimeout(context.Background(), pluginProfilingTimeout)
 	defer cancel()
 	statuses := make([]PluginProfilingStatus, len(snapshots))
+	var queries sync.WaitGroup
+	queries.Add(len(snapshots))
 	for i, snapshot := range snapshots {
-		statuses[i] = queryPluginProfiling(ctx, snapshot)
+		go func(i int, snapshot profilingBackendSnapshot) {
+			defer queries.Done()
+			statuses[i] = queryPluginProfiling(ctx, snapshot)
+		}(i, snapshot)
 	}
+	queries.Wait()
 
 	// Recheck every result after all RPCs: a backend can exit or be displaced
 	// while another plugin is queried. Never publish its former endpoint.

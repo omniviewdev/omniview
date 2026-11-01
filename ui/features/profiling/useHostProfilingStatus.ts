@@ -36,6 +36,7 @@ export function usePluginProfilingStatuses() {
   const visible = useWindowVisible();
   return useQuery({
     queryKey: ['plugin-profiling', 'status'],
+    gcTime: 0,
     queryFn: async ({ signal }) => {
       signal.throwIfAborted();
       return PluginManager.GetPluginProfilingStatuses();

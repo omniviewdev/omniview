@@ -3,7 +3,6 @@ package plugin
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -220,13 +219,19 @@ func TestPluginProfilingStatusesRecheckEarlierResults(t *testing.T) {
 }
 
 func TestPluginProfilingStatusesShareOnePollDeadline(t *testing.T) {
+	firstEntered := make(chan struct{})
 	first := profilingTestBackend(func(ctx context.Context) (*lifecyclepb.ProfilingStatusResponse, error) {
+		close(firstEntered)
 		<-ctx.Done()
 		return nil, ctx.Err()
 	})
-	second := profilingTestBackend(func(context.Context) (*lifecyclepb.ProfilingStatusResponse, error) {
-		t.Error("poll deadline expired; later RPC must not start")
-		return nil, errors.New("unexpected RPC")
+	second := profilingTestBackend(func(ctx context.Context) (*lifecyclepb.ProfilingStatusResponse, error) {
+		select {
+		case <-firstEntered:
+			return &lifecyclepb.ProfilingStatusResponse{Running: true, Url: "http://127.0.0.1:43211", Pid: 5678}, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	})
 	pm := &pluginManager{records: map[string]*plugintypes.PluginRecord{
 		"a": {ID: "a", Phase: lifecycle.PhaseRunning, Backend: first},
@@ -235,12 +240,19 @@ func TestPluginProfilingStatusesShareOnePollDeadline(t *testing.T) {
 	started := time.Now()
 	result := pm.GetPluginProfilingStatuses()
 	require.Less(t, time.Since(started), 2*pluginProfilingTimeout)
-	for _, item := range result {
-		require.True(t, item.Supported)
-		require.False(t, item.Running)
-		require.Empty(t, item.URL)
-		require.True(t, strings.Contains(item.Error, "deadline exceeded"), item.Error)
-	}
+	require.Len(t, result, 2)
+	require.Equal(t, "a", result[0].PluginID)
+	require.True(t, result[0].Supported)
+	require.False(t, result[0].Running)
+	require.Empty(t, result[0].URL)
+	require.Zero(t, result[0].PID)
+	require.Contains(t, result[0].Error, "deadline exceeded")
+	require.Equal(t, "b", result[1].PluginID)
+	require.True(t, result[1].Supported)
+	require.True(t, result[1].Running)
+	require.Equal(t, "http://127.0.0.1:43211", result[1].URL)
+	require.Equal(t, 5678, result[1].PID)
+	require.Empty(t, result[1].Error)
 }
 
 func TestPluginProfilingStatusesExcludeInactiveBackends(t *testing.T) {
