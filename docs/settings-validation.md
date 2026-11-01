@@ -355,12 +355,11 @@ The host pins the coordinated transactional SDK in `go.mod`. Rebuild plugins
 against that contract. Local source selection requires an absolute SDK path;
 normal builds use the exact pinned module dependency.
 
-The E2E runner checks out the independently reviewed SDK revision selected by
-`OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION`. Advance this trusted approval and
-`e2e/source-cohort.json` together during the coordinated rollout. Updating
-`go.mod` alone does not change that independent source selection. Do not weaken
-the reviewed-source gate or advance the shared variable before compatible host
-and plugin consumers are ready.
+The E2E runner checks out the independently reviewed SDK v0.12.0 release,
+`a6c892e671b789396f43fabeede7f4bf2e7a0c5d`, pinned explicitly in workflow
+`REVIEWED_SDK_REVISION` and `e2e/source-cohort.json`. Updating `go.mod` alone does
+not change that independent source selection. Keep repository variables and the
+reviewed-source gates unchanged.
 
 ```sh
 SDK_SOURCE=/absolute/path/to/plugin-sdk

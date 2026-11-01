@@ -224,17 +224,19 @@ func TestExecuteFailureStartsNoDependentAndLetsRunningSiblingFinish(t *testing.T
 	g := graphFixture(t)
 	var mu sync.Mutex
 	events := []BuildEvent{}
+	failed := make(chan struct{})
 	g.options.OnEvent = func(event BuildEvent) {
 		mu.Lock()
 		defer mu.Unlock()
 		events = append(events, event)
+		if event.Node == "providers" && event.Phase == "error" {
+			close(failed)
+		}
 	}
-	failed := make(chan struct{})
 	produce := g.runProducer
 	g.runProducer = func(ctx context.Context, directory string, environment []string, program string, args ...string) ([]byte, error) {
 		switch filepath.Base(directory) {
 		case "omniviewdev-providers":
-			defer close(failed)
 			return nil, errors.New("providers compiler failed")
 		case "base-ui":
 			if args[len(args)-1] == "build" {

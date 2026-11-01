@@ -44,6 +44,8 @@
 		</dict>
 		<key>NSHighResolutionCapable</key>
 		<string>true</string>
+		<key>NSAppleEventsUsageDescription</key>
+		<string>Omniview opens fresh resource shells in your selected terminal application when you choose Open in Native Terminal.</string>
 		<key>NSHumanReadableCopyright</key>
 		<string>(c) 2025, Omniview</string>
 	</dict>
