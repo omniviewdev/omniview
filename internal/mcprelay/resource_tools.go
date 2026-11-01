@@ -67,6 +67,7 @@ const (
 	eventLimitMax         = 256
 	metricStepMaxSeconds  = 86400
 	metricStepDivisions   = 100
+	metricMaxPoints       = 10000
 	metricShapeCurrent    = "current"
 	metricShapeTimeseries = "timeseries"
 )
@@ -288,6 +289,10 @@ func routeLaneTools(
 	}
 	var lane ResourceBinding
 	lane.PluginID, lane.Route, lane.Observation, lane.Types = route.PluginID, route.Route, observation, types
+	pluginTitle := route.PluginName
+	if pluginTitle == "" {
+		pluginTitle = route.PluginID
+	}
 	var out []ToolInfo
 	add := func(operation, label, description string) {
 		next := lane
@@ -296,6 +301,7 @@ func routeLaneTools(
 			next.Graph = graphReader
 		}
 		info := resourceToolInfo(route, next, label)
+		info.Title = pluginTitle + " " + label
 		info.Description = description
 		out = append(out, info)
 	}
@@ -324,7 +330,7 @@ func metricToolInfo(
 	if reader == nil {
 		return none, false
 	}
-	metrics := metricHandler(reader, route.PluginID, descriptor.Type)
+	metrics := finiteMetrics(metricHandler(reader, route.PluginID, descriptor.Type))
 	if len(metrics) == 0 {
 		return none, false
 	}
@@ -348,13 +354,29 @@ func actionToolInfo(route ResourceRoute, binding ResourceBinding, label string) 
 	if d.Label != "" {
 		info.Title = binding.Descriptor.DisplayName + ": " + d.Label
 	}
-	description := strings.TrimSpace(d.Description) +
-		" (action " + d.ID + " on " + binding.Type + " through route " + route.Route.Connection + ".)"
+	description := "(action " + d.ID + " on " + binding.Type + " through route " + route.Route.Connection + ".)"
+	if text := strings.TrimSpace(d.Description); text != "" {
+		description = text + " " + description
+	}
 	if d.Dangerous {
 		description += " The provider marks this action dangerous: it can disrupt workloads or lose data."
 	}
 	info.Description = description + " Values use canonical tagged resource Value encoding."
 	return info
+}
+
+// finiteMetrics keeps metrics that offer a current or timeseries shape.
+func finiteMetrics(metrics []sdkmetric.MetricDescriptor) []sdkmetric.MetricDescriptor {
+	var out []sdkmetric.MetricDescriptor
+	for _, metric := range metrics {
+		for _, shape := range metric.SupportedShapes {
+			if metricShapeName(shape) != "" {
+				out = append(out, metric)
+				break
+			}
+		}
+	}
+	return out
 }
 
 // metricHandler returns the route plugin's metric descriptors for one type.
@@ -873,6 +895,9 @@ func dispatchMetrics(ctx context.Context, binding *ResourceBinding, args resourc
 
 // metricQueryShape maps the agent shape and, for timeseries, its RFC 3339 window.
 func metricQueryShape(request *sdkmetric.QueryRequest, args resourceArguments) error {
+	if args.StepSeconds > metricStepMaxSeconds {
+		return resourcev2.NewError("INVALID_REQUEST", "Metric stepSeconds must be between 1 and 86400.")
+	}
 	switch args.Shape {
 	case metricShapeCurrent:
 		request.Shape = sdkmetric.ShapeCurrent
@@ -897,6 +922,9 @@ func metricQueryShape(request *sdkmetric.QueryRequest, args resourceArguments) e
 	request.Step = end.Sub(start) / metricStepDivisions
 	if args.StepSeconds > 0 {
 		request.Step = time.Duration(args.StepSeconds) * time.Second
+	}
+	if end.Sub(start)/request.Step > metricMaxPoints {
+		return resourcev2.NewError("INVALID_REQUEST", "The time range has too many points for this step.")
 	}
 	return nil
 }

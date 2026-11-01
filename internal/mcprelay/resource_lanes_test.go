@@ -77,8 +77,9 @@ func (g *fakeGraphReader) GetRelated(
 }
 
 type fakeMetricReader struct {
-	response *sdkmetric.QueryResponse
-	request  *sdkmetric.QueryRequest
+	aggregateOnly bool
+	response      *sdkmetric.QueryResponse
+	request       *sdkmetric.QueryRequest
 }
 
 func (m *fakeMetricReader) ReadResourceMetrics(
@@ -94,9 +95,15 @@ func (m *fakeMetricReader) GetProvidersForResource(resourceType string) []hostme
 	shapes := []sdkmetric.MetricShape{sdkmetric.ShapeCurrent, sdkmetric.ShapeTimeseries, sdkmetric.ShapeAggregate}
 	cpu := sdkmetric.MetricDescriptor{ID: "cpu", Name: "CPU", Unit: sdkmetric.UnitCores, SupportedShapes: shapes}
 	foreign := sdkmetric.MetricDescriptor{ID: "foreign"}
+	aggregate := sdkmetric.MetricDescriptor{ID: "agg", SupportedShapes: []sdkmetric.MetricShape{sdkmetric.ShapeAggregate}}
+	if m.aggregateOnly {
+		return []hostmetric.MetricProviderSummary{
+			{PluginID: "fixture", Handlers: []sdkmetric.Handler{{Resource: resourceType, Metrics: metricList(aggregate)}}},
+		}
+	}
 	return []hostmetric.MetricProviderSummary{
 		{PluginID: "other", Handlers: []sdkmetric.Handler{{Resource: resourceType, Metrics: metricList(foreign)}}},
-		{PluginID: "fixture", Handlers: []sdkmetric.Handler{{Resource: resourceType, Metrics: metricList(cpu)}}},
+		{PluginID: "fixture", Handlers: []sdkmetric.Handler{{Resource: resourceType, Metrics: metricList(aggregate, cpu)}}},
 	}
 }
 
@@ -153,6 +160,7 @@ func TestRouteLanesAreOnePerRouteAndBindAdvertisedTypes(t *testing.T) {
 				require.True(t, tool.ReadOnly)
 				require.False(t, tool.Destructive)
 				require.Empty(t, tool.Resource.Type)
+				require.Equal(t, "fixture "+tool.Name, tool.Title)
 			}
 		}
 		require.Equal(t, 1, count, operation)
@@ -236,8 +244,20 @@ func TestMetricToolsOnlyForHandledTypesAndHideProviderErrors(t *testing.T) {
 	require.NoError(t, query(window))
 	require.Equal(t, sdkmetric.ShapeTimeseries, metrics.request.Shape)
 	require.Equal(t, "6s", metrics.request.Step.String())
+	window["stepSeconds"] = 86401
+	require.Equal(t, "INVALID_REQUEST", resourcev2.ErrorCode(query(window)))
+	window["stepSeconds"], window["endTime"] = 1, "2026-10-31T12:00:00Z"
+	err = query(window)
+	require.Equal(t, "INVALID_REQUEST", resourcev2.ErrorCode(err))
+	require.ErrorContains(t, err, "too many points")
+	window["stepSeconds"] = 60
+	require.NoError(t, query(window))
 	window["startTime"], window["endTime"] = window["endTime"], window["startTime"]
 	require.Error(t, query(window))
+
+	for _, tool := range laneTools(t, ctrl, ResourceReaders{Logs: nil, Metrics: &fakeMetricReader{aggregateOnly: true}}) {
+		require.NotEqual(t, opMetricQuery, tool.Resource.Operation, "aggregate-only metrics get no tool")
+	}
 }
 
 func TestActionMetadataReachesTitleAndDescription(t *testing.T) {
@@ -261,6 +281,11 @@ func TestActionMetadataReachesTitleAndDescription(t *testing.T) {
 	info = actionToolInfo(route, binding, "action_restart")
 	require.Equal(t, "Items action_restart", info.Title)
 	require.NotContains(t, info.Description, "dangerous")
+
+	binding.ActionDescriptor = &resourcev2.ActionDescriptor{ID: "restart", Description: "  "}
+	info = actionToolInfo(route, binding, "action_restart")
+	require.Equal(t, "(action restart on opaque/items through route route-a.) "+
+		"Values use canonical tagged resource Value encoding.", info.Description)
 }
 
 func mustJSON(t *testing.T, value any) []byte {
