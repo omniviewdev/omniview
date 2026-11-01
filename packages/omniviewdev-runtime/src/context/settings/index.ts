@@ -1,1 +1,2 @@
-export * from './SettingsContext'
+export * from './SettingsContext';
+export { openSettings, settingsWindowTarget } from './settingsWindow';

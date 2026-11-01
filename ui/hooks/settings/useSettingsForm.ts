@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { SettingsCommitResult, SettingsValidationResult } from '@omniviewdev/runtime';
 
 type Options = {
@@ -12,16 +12,20 @@ export type SettingsForm = {
   validation: Record<string, Pick<SettingsValidationResult, 'valid' | 'message'>>;
   saving: boolean;
   warning: string;
-  save: () => Promise<void>;
+  save: () => Promise<boolean>;
   discard: () => void;
   hasDrafts: boolean;
 };
+
+export type SettingsNavigationForm = Pick<SettingsForm, 'hasDrafts' | 'save' | 'discard' | 'saving'>;
+export const SettingsFormRegistration = createContext<((form: SettingsNavigationForm | null) => void) | null>(null);
 
 export function useSettingsForm({ validate, commit }: Options): SettingsForm {
   const [draftValues, setDraftState] = useState<Record<string, unknown>>({});
   const [validation, setValidation] = useState<Record<string, Pick<SettingsValidationResult, 'valid' | 'message'>>>({});
   const [saving, setSaving] = useState(false);
   const [warning, setWarning] = useState('');
+  const register = useContext(SettingsFormRegistration);
   const revision = useRef(0);
   const operations = useRef({ validate, commit });
   useLayoutEffect(() => {
@@ -69,31 +73,39 @@ export function useSettingsForm({ validate, commit }: Options): SettingsForm {
       const results = await Promise.all(Object.entries(values).map(async ([id, value]) =>
         [id, await operations.current.validate(id, value)] as const));
       if (current !== revision.current) {
-        return;
+        return false;
       }
 
       setValidation(Object.fromEntries(results));
       if (results.some(([, result]) => !result.valid)) {
-        return;
+        return false;
       }
 
       const result = await operations.current.commit(values);
       if (current !== revision.current) {
-        return;
+        return false;
       }
 
       discard();
       setWarning(!result.applied || result.uncertain ? result.message || 'Settings saved. Some changes could not be applied. Restart Omniview to apply saved changes.' : '');
+      return true;
     } catch {
       if (current === revision.current) {
         setValidation(Object.fromEntries(Object.keys(values)
           .map(id => [id, { valid: false, message: 'Could not save. Check the value and try again.' }])));
       }
+
+      return false;
     } finally {
       setSaving(false);
     }
   };
 
-  return { draftValues, setDraftValues, validation, saving, warning, save, discard,
+  const form = { draftValues, setDraftValues, validation, saving, warning, save, discard,
     hasDrafts: Object.values(draftValues).some(value => value !== undefined) };
+  useLayoutEffect(() => {
+    register?.(form);
+  });
+  useLayoutEffect(() => () => register?.(null), [register]);
+  return form;
 }

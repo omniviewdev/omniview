@@ -19,6 +19,7 @@ const backend = vi.hoisted(() => ({
   listPlugins: vi.fn(),
   listServers: vi.fn(),
   restart: vi.fn(),
+  openSettings: vi.fn(),
   deps: null as PluginServiceDeps | null,
 }));
 vi.mock('@omniviewdev/runtime/api', async (importOriginal) => {
@@ -42,6 +43,9 @@ vi.mock('@omniviewdev/runtime/runtime', async (importOriginal) => {
     },
   };
 });
+vi.mock('../../../../packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview/backend/window/service', () => ({
+  OpenSettings: backend.openSettings,
+}));
 vi.mock('../../../../packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/servicewrapper', () => ({
   GetPluginMeta: async () => ({ id: 'kubernetes', name: 'Kubernetes' }),
 }));
@@ -50,7 +54,6 @@ vi.mock('../../../../packages/omniviewdev-runtime/src/bindings/github.com/omnivi
 }));
 vi.mock('../adapters/createProductionDeps', () => ({ createProductionDeps: () => backend.deps }));
 vi.mock('@/pages/home', () => ({ default: () => <h1>Home</h1> }));
-vi.mock('@/pages/settings', () => ({ default: () => <h1>Settings</h1> }));
 vi.mock('@/pages/plugins', () => ({ default: () => <h1>Plugins</h1> }));
 vi.mock('@/pages/plugins/InstalledPlugins', () => ({ default: () => null }));
 vi.mock('@/pages/plugins/PluginDetails', () => ({ default: () => null }));
@@ -128,6 +131,7 @@ describe('plugin startup navigation', () => {
     backend.listPlugins.mockReset().mockResolvedValue([{ id: 'kubernetes', devMode: true }]);
     backend.listServers.mockReset().mockResolvedValue([server(DevProcessStatus.DevProcessStatusStarting)]);
     backend.restart.mockReset().mockResolvedValue(undefined);
+    backend.openSettings.mockReset().mockResolvedValue('settings');
     startPath = '/_plugin/kubernetes';
     tabRouters = null;
   });
@@ -388,7 +392,7 @@ describe('plugin startup navigation', () => {
     },
   );
 
-  it('keeps core navigation responsive while a plugin import is pending', async () => {
+  it('opens native Settings while a plugin import is pending without replacing that page', async () => {
     backend.listServers.mockResolvedValue([server(DevProcessStatus.DevProcessStatusReady)]);
     const imported = createDeferred<PluginModule>();
     testDeps.importer.register('kubernetes', async () => imported.promise);
@@ -398,13 +402,14 @@ describe('plugin startup navigation', () => {
     await act(async () => {
       screen.getByRole('button', { name: 'Settings' }).click();
     });
-    expect(await screen.findByRole('heading', { name: 'Settings' })).toBeVisible();
+    expect(backend.openSettings).toHaveBeenCalledWith('');
+    expect(currentTabPath()).toBe('/_plugin/kubernetes');
     await act(async () => {
       imported.resolve(pluginModule());
     });
 
-    expect(screen.getByRole('heading', { name: 'Settings' })).toBeVisible();
-    expect(currentTabPath()).toBe('/settings');
+    expect(await screen.findByRole('heading', { name: 'Kubernetes clusters' })).toBeVisible();
+    expect(currentTabPath()).toBe('/_plugin/kubernetes');
   });
 
   it('loads a committed replacement after the previous module failed at the same URL', async () => {

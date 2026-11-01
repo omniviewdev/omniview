@@ -592,11 +592,6 @@ func main() {
 		})
 	}
 
-	// Set up menus, keybindings, and context menus
-	menus.SetupAppMenu(app, mainWindow)
-	menus.SetupKeyBindings(app)
-	menus.SetupContextMenus(app)
-
 	// The window service keeps main hide-on-close, restores the saved
 	// secondary windows and coordinates cross-window tab drags.
 	windowService = window.NewService(app, mainWindow, window.ServiceOptions{
@@ -605,6 +600,15 @@ func main() {
 		Log:            log.Named("window"),
 	})
 	app.RegisterService(application.NewService(windowService))
+
+	// Install menus only after their backend window service is ready.
+	menus.SetupAppMenu(app, mainWindow, func() {
+		if _, err := windowService.OpenSettings(""); err != nil {
+			log.Errorw(context.Background(), "failed to open settings", "error", err)
+		}
+	})
+	menus.SetupKeyBindings(app)
+	menus.SetupContextMenus(app)
 
 	// Run the application
 	if runErr := app.Run(); runErr != nil {

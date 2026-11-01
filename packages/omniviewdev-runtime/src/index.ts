@@ -7,6 +7,7 @@ export * from './types';
 export * from './search';
 export * from './resourceQueryKeys';
 export * from './resourceIcons';
+export * from './settingsEditors';
 export * from './resource/v2/domain';
 export * from './resource/v2/ancillary';
 export * from './resource/v2/value';

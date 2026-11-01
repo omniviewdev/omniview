@@ -11,7 +11,7 @@ export type WindowInfo = { name: string; kind: WindowKind; focused: boolean };
 export type WindowClientPoint = { clientX: number; clientY: number };
 
 export type OpenWindowOptions = {
-  kind: WindowKind;
+  kind: Exclude<WindowKind, 'settings'>;
   /** Slot values (already JSON-serializable objects) the new window loads at boot. */
   slots: Partial<Record<WindowStateSlot, unknown>>;
   /** Release point of a tear-off in this window; the new window opens under it. */
@@ -44,7 +44,11 @@ export async function moveCurrentWindowToPointer(pointer: WindowClientPoint): Pr
 type RawWindowInfo = { name: string; kind: string; focused: boolean };
 
 function toWindowInfo(raw: RawWindowInfo): WindowInfo {
-  return { name: raw.name, kind: raw.kind === 'panel' ? 'panel' : 'workspace', focused: raw.focused };
+  if (raw.kind !== 'workspace' && raw.kind !== 'panel' && raw.kind !== 'settings') {
+    throw new Error(`Unsupported window kind: ${raw.kind}`);
+  }
+
+  return { name: raw.name, kind: raw.kind, focused: raw.focused };
 }
 
 /** Live list of open windows, for "Move to window" menus. */

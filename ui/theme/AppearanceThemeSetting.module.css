@@ -1,0 +1,15 @@
+.Grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; width:100%; }
+.Choice { padding:5px; border:1px solid var(--ov-color-border-default); border-radius:6px; background:var(--ov-color-bg-surface); color:var(--ov-color-fg-default); text-align:left; cursor:pointer; min-width:0; }
+.Choice[aria-checked='true'] { border-color:var(--ov-color-brand-500); box-shadow:0 0 0 1px var(--ov-color-brand-500); }
+.Choice:focus-visible { outline:2px solid var(--ov-color-border-focus); outline-offset:2px; }
+.Choice:disabled { color:var(--ov-color-fg-muted); cursor:default; }
+.Preview { display:flex; height:42px; border:1px solid var(--ov-color-border-muted); border-radius:3px; background:var(--ov-color-bg-base); overflow:hidden; }
+.Rail { width:28px; flex-shrink:0; padding:7px; border-right:1px solid var(--ov-color-border-muted); background:var(--ov-color-bg-surface); }
+.Rail i { display:block; height:3px; margin-bottom:5px; background:var(--ov-color-fg-muted); opacity:.45; }
+.Page { flex:1; padding:8px 10px; }
+.Page i { display:block; height:3px; margin-bottom:5px; width:75%; background:var(--ov-color-fg-default); opacity:.3; }
+.Page i:first-child { width:40%; opacity:.75; }
+.Page i:nth-child(2) { width:60%; background:var(--ov-color-brand-500); opacity:1; }
+.Label { display:flex; justify-content:space-between; align-items:center; gap:6px; padding:6px 3px 2px; font:inherit; font-size:11px; overflow-wrap:anywhere; }
+.Label svg { flex-shrink:0; }
+@media (max-width:650px) { .Grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }

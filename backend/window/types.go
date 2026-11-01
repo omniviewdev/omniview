@@ -13,6 +13,9 @@ import (
 // exists, hides instead of closing, and is never torn down by the service.
 const MainWindowName = "main"
 
+// SettingsWindowName identifies the single, non-restorable settings window.
+const SettingsWindowName = "settings"
+
 // Kind selects which shell a window renders.
 type Kind string
 
@@ -22,11 +25,13 @@ const (
 	KindWorkspace Kind = "workspace"
 	// KindPanel renders only a drawer tab strip and the drawer tab content.
 	KindPanel Kind = "panel"
+	// KindSettings renders the compact settings shell.
+	KindSettings Kind = "settings"
 )
 
 // isValid reports whether k is one of the known window kinds.
 func (k Kind) isValid() bool {
-	return k == KindWorkspace || k == KindPanel
+	return k == KindWorkspace || k == KindPanel || k == KindSettings
 }
 
 // screenRect is a rectangle in global screen px.
@@ -50,6 +55,13 @@ type Info struct {
 	Kind Kind   `json:"kind"`
 	// Focused is true for the most recently focused window.
 	Focused bool `json:"focused"`
+}
+
+// SettingsState is the backend-owned location and visibility of settings.
+type SettingsState struct {
+	RequestID uint64 `json:"requestId"`
+	Target    string `json:"target"`
+	Visible   bool   `json:"visible"`
 }
 
 // OpenRequest describes a window to open.
@@ -103,6 +115,7 @@ var (
 // window name or is meant for all windows.
 const (
 	EventWindowsChanged = "windows/changed"
+	EventSettingsState  = "settings/state"
 	EventWindowClosed   = "windows/closed"
 	EventDragBegin      = "windows/drag/begin"
 	EventDragHover      = "windows/drag/hover"
@@ -157,6 +170,7 @@ type DragEndEvent struct {
 
 func init() {
 	application.RegisterEvent[WindowsChangedEvent](EventWindowsChanged)
+	application.RegisterEvent[SettingsState](EventSettingsState)
 	application.RegisterEvent[WindowClosedEvent](EventWindowClosed)
 	application.RegisterEvent[DragBeginEvent](EventDragBegin)
 	application.RegisterEvent[DragPointerEvent](EventDragHover)

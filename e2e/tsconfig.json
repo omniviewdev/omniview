@@ -6,7 +6,7 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "rootDir": ".",
+    "rootDir": "..",
     "types": ["node"]
   },
   "include": ["tests/**/*.ts", "playwright.config.ts"]

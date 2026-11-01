@@ -18,6 +18,7 @@ export const Service = {
   exec: 'backend/pkg/plugin/exec/servicewrapper.ts',
   plugins: 'backend/pkg/plugin/servicewrapper.ts',
   settings: 'backend/pkg/settings/binding.ts',
+  windows: 'backend/window/service.ts',
 } as const;
 
 type ServiceFile = (typeof Service)[keyof typeof Service];
@@ -71,6 +72,23 @@ export async function callBinding<T = unknown>(
   const isJson = response.headers()['content-type']?.includes('application/json');
   return (isJson && text ? JSON.parse(text) : text || undefined) as T;
 }
+
+/**
+ * Select a real registered native window through the server runtime transport.
+ * Browser event sockets otherwise take precedence over the window-name header.
+ * Keep their event connection, but use an unmapped HTTP client marker.
+ */
+export async function bindWindowContext(page: Page, name: string): Promise<void> {
+  await page.route('**/wails/runtime', async route => {
+    const headers = route.request().headers();
+    await route.fallback({ headers: {
+      ...headers,
+      'x-wails-window-name': headers['x-wails-window-name'] || name,
+      'x-wails-client-id': 'e2e-native-window-context',
+    } });
+  });
+}
+
 
 export async function getHostSettingsSnapshot(request: APIRequestContext): Promise<Snapshot> {
   return callBinding<Snapshot>(request, Service.settings, 'GetSnapshot', { kind: 'host' });

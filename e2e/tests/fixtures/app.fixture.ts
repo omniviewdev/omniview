@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises';
 import { test as base } from '@playwright/test';
 import type { APIRequestContext, BrowserContext, Page, TestInfo } from '@playwright/test';
-import { callBinding, commitHostSettings, hostSettingsValues, Service } from './wails';
+import { bindWindowContext, callBinding, commitHostSettings, hostSettingsValues, Service } from './wails';
 import { ApplicationWorkspace } from './application';
 import { BrowserErrors } from './browser-errors';
 
@@ -82,9 +82,11 @@ const profileTest = base.extend<ProfileFixtures>({
           collectErrors(page, records); 
         });
         const page = await context.newPage();
+        await bindWindowContext(page, 'main');
         await closeSessions(page.request);
         await page.goto('/');
         await page.getByTestId('app-shell').waitFor();
+        await page.getByTestId('app-header').getByRole('button', { name: 'home', exact: true }).click();
         return { workspace, page };
       })();
       operations.push(operation);
@@ -129,6 +131,10 @@ const profileTest = base.extend<ProfileFixtures>({
 
 export const test = profileTest.extend<AppFixtures>({
   liveFrontend: [false, { option: true }],
+  page: async ({ page }, use) => {
+    await bindWindowContext(page, 'main');
+    await use(page);
+  },
   workspace: async ({ liveFrontend }, use) => {
     const workspace = await new ApplicationWorkspace('profile-a', liveFrontend).open();
     workspace.assertOwned();
@@ -185,6 +191,7 @@ export const test = profileTest.extend<AppFixtures>({
   appPage: async ({ page }, use) => {
     await page.goto('/');
     await page.getByTestId('app-shell').waitFor();
+    await page.getByTestId('app-header').getByRole('button', { name: 'home', exact: true }).click();
     await use(page);
   },
 });

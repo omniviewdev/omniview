@@ -67,8 +67,9 @@ type WindowMenuTarget = { name: string; label: string };
 
 /** "Main window" for main, "Window N" for the others, numbered in creation order. */
 function labelOtherWindows(windows: WindowInfo[]): WindowMenuTarget[] {
-  const secondaryNames = windows.filter((window) => window.name !== 'main').map((window) => window.name);
-  return windows
+  const destinations = windows.filter((window) => window.kind !== 'settings');
+  const secondaryNames = destinations.filter((window) => window.name !== 'main').map((window) => window.name);
+  return destinations
     .filter((window) => window.name !== currentWindow.name)
     .map((window) => ({
       name: window.name,
