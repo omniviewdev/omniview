@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { HostProfiling, PluginManager } from '@omniviewdev/runtime/api';
 
-function useWindowVisible() {
+export function useWindowVisible() {
   const [visible, setVisible] = useState(() => document.visibilityState !== 'hidden');
   useEffect(() => {
     const update = () => {

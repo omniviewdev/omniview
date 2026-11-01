@@ -239,6 +239,19 @@ endpoint, support, and failure state through
 profiling RPC means the plugin needs rebuilding with the updated SDK, not that a
 listener is running or that the saved toggle took effect.
 
+`developer.ui_inspection_enabled` is a production-visible, restart-only toggle,
+defaulting to false. Its startup value controls public WKWebView inspectability
+on macOS 13.3 or later for main, restored, and later windows. Saving does not
+attach an inspector, start a capture, or change the current native property.
+`UiInspection.GetStatus(windowName)` reads that window's actual property and
+reports unsupported builds or missing native views rather than inferring state
+from the saved preference. Footer queries run only while the popover is mounted
+and the document is visible; inspection availability is not connection state.
+The native policy hook runs after initial navigation, before normal presentation.
+Pinned development Wails can enable inspection before that hook; production
+without the framework's devtools tag starts non-inspectable. See the
+[native capture workflow and verification limits](../README.md#native-ui-profiling-macos).
+
 ### Terminal defaults
 
 New terminal settings use a 12px font. Saved font sizes remain unchanged, and
