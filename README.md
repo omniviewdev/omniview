@@ -48,6 +48,17 @@ Omniview is a groundbreaking Integrated Development Environment (IDE) tailored s
 - **Kubernetes and Cloud-Native Support**: First-class support for Kubernetes and cloud-native technologies, ensuring that you're equipped for the future of infrastructure.
 - **Real-Time Visualization**: Dive deep into your infrastructure with dynamic, real-time visualizations that bring clarity to complex environments.
 
+### MCP resource tools
+
+Settings → AI Tools controls the loopback MCP relay. Resource tools expose provider action
+labels, descriptions and danger notices. Actions and mutations require consent.
+
+The read-only preset includes per-resource metrics and route-level events, health and related
+resources. Each route-level tool accepts a resource type from its advertised enum. Unsupported
+provider operations return an error; health can return `null` when the provider has no assessment.
+Related resources contain references, not resource bodies. Route-level policy is plugin- and
+connection-scoped; disabling one type's get tool does not disable these separate read tools.
+
 ## Why Omniview?
 
 In the fast-paced world of DevOps, engineers need tools that are not only powerful but also adaptable and intuitive. Omniview bridges the gap between complexity and usability, offering a platform that grows with you. It's not just about managing infrastructure; it's about empowering DevOps engineers with a workflow that’s as innovative as they are.
