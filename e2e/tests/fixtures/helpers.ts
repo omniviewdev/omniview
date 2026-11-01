@@ -113,7 +113,7 @@ export async function openSettingsWindow(
 /** Open a core category in the dedicated Settings document. */
 export async function openSettingsCategory(page: Page, label: string): Promise<Page> {
   const settings = await openSettingsWindow(page);
-  await settings.getByRole('option', { name: label, exact: true }).click();
+  await settings.getByRole('listbox').getByRole('option', { name: label, exact: true }).click();
   return settings;
 }
 

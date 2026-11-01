@@ -30,6 +30,14 @@ func selectionHome(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
+	// Keep child Go commands from leaving telemetry writers behind after TempDir cleanup.
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("APPDATA", filepath.Join(home, "AppData"))
+	config, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceFile(t, filepath.Join(config, "go", "telemetry", "mode"), "off\n")
 	t.Setenv("OMNIVIEW_WORKSPACE_FILE", "")
 	t.Setenv("OMNIVIEW_STATE_DIR", "")
 }

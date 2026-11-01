@@ -18,6 +18,24 @@ var Terminal = settings.Category{
 	Description: "Customize the behavior of the terminal",
 	Icon:        "LuSquareTerminal",
 	Settings: map[string]settings.Setting{
+		"nativeApplication": {
+			ID:          "nativeApplication",
+			Type:        settings.Text,
+			Label:       "Native Terminal Application",
+			Default:     "terminal",
+			Description: "macOS application for a fresh external resource shell. Built-in terminals are unchanged.",
+			Options: []settings.SettingOption{
+				{Value: "terminal", Label: "Terminal"},
+				{Value: "iterm2", Label: "iTerm2"},
+			},
+			Validator: func(value interface{}) settings.ValidationResult {
+				app, ok := value.(string)
+				if !ok || (app != "terminal" && app != "iterm2") {
+					return settings.ValidationResult{Code: "native_application", Message: "Choose Terminal or iTerm2."}
+				}
+				return settings.ValidationResult{Valid: true}
+			},
+		},
 		"defaultShell": {
 			ID:          "defaultShell",
 			Type:        settings.Text,

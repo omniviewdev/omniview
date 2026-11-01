@@ -3,6 +3,7 @@ package exec
 import (
 	"context"
 
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 )
@@ -35,6 +36,15 @@ func (a *AdapterV1) ListSessions(ctx *types.PluginContext) ([]*exec.Session, err
 
 func (a *AdapterV1) CreateSession(ctx *types.PluginContext, opts exec.SessionOptions) (*exec.Session, error) {
 	return a.inner.CreateSession(ctx, opts)
+}
+
+// PlanNativeCommand preserves the optional SDK capability without a session fallback.
+func (a *AdapterV1) PlanNativeCommand(ctx *types.PluginContext, opts exec.SessionOptions) (*exec.NativeCommand, error) {
+	provider, ok := a.inner.(exec.NativeCommandProvider)
+	if !ok {
+		return nil, resourcev2.NewError("UNSUPPORTED", "Native command planning is unavailable for this plugin.")
+	}
+	return provider.PlanNativeCommand(ctx, opts)
 }
 
 func (a *AdapterV1) AttachSession(ctx *types.PluginContext, sessionID string) (*exec.Session, []byte, error) {

@@ -10,7 +10,7 @@ import { LuSquareTerminal } from 'react-icons/lu';
 
 // types
 import { type Handler } from '@omniviewdev/runtime/models';
-import type { HostRecord } from '@omniviewdev/runtime';
+import { useNativeExec, type HostRecord } from '@omniviewdev/runtime';
 
 // project imports
 import ActionMenuListItem from './ActionMenuListItem';
@@ -84,6 +84,19 @@ const ExecAction: React.FC<Props> = ({
   handleDismiss,
 }) => {
   const targets = calcTargets(action, data);
+  const { openNativeSession, isSupported, isPending } = useNativeExec({
+    pluginID: plugin,
+    resourceKey: record.record.reference.address.type,
+  });
+
+  const dismiss = () => {
+    handleDeselect();
+    if (typeof itemProps.onClick === 'function') {
+      (itemProps.onClick as () => void)();
+    }
+
+    handleDismiss();
+  };
 
   /**
    * Perform the exec action on the resource target.
@@ -110,17 +123,34 @@ const ExecAction: React.FC<Props> = ({
               key={target.label}
               onClick={() => {
                 handlePerformExec(target.label, target.params);
-                handleDeselect();
-                if (typeof itemProps.onClick == 'function') {
-                  (itemProps.onClick as () => void)();
-                }
-
-                handleDismiss();
+                dismiss();
               }}
             >
               {target.label}
             </Menu.Item>
           ))}
+          {isSupported && targets.length > 0 && (
+            <>
+              <Menu.Separator />
+              {targets.map((target) => (
+                <Menu.Item
+                  key={`native-${target.label}`}
+                  disabled={isPending}
+                  closeOnClick={false}
+                  onClick={async () => {
+                    const opts = resourceExecOptions(record.record.body, target.params,
+                      action.default_command?.length ? action.default_command : ['/bin/sh'],
+                      record.record.reference, record.route);
+                    if (await openNativeSession({ connectionID: connection, opts })) {
+                      dismiss();
+                    }
+                  }}
+                >
+                  {target.label} — Open in Native Terminal
+                </Menu.Item>
+              ))}
+            </>
+          )}
         </>
       }
     >

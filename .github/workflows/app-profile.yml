@@ -15,7 +15,7 @@ env:
   NODE_VERSION: "26.13.0"
   GOWORK: "off"
   GOFLAGS: ""
-  REVIEWED_SDK_REVISION: ${{ vars.OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION }}
+  REVIEWED_SDK_REVISION: a6c892e671b789396f43fabeede7f4bf2e7a0c5d # Reviewed SDK v0.12.0
 
 jobs:
   production-profile:

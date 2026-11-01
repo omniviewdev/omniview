@@ -4,7 +4,7 @@ import { encodeRequestJSON } from './resource/v2/requestJSON';
 
 export {
   AttachSession, CloseSession, CreateTerminal, DetachSession, GetHandler,
-  GetHandlers, GetPluginHandlers, GetSession, HasPlugin, ListPlugins,
+  GetHandlers, GetNativeTerminalSupport, GetPluginHandlers, GetSession, HasPlugin, ListPlugins,
   ListSessions, ResizeSession, WriteSession,
 } from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/exec/servicewrapper';
 
@@ -12,4 +12,10 @@ export {
 export function CreateSession(plugin: string, connectionID: string, options: SessionOptions): CancellablePromise<Session | null> {
   return Call.ByName('github.com/omniviewdev/omniview/backend/pkg/plugin/exec.ServiceWrapper.CreateSession',
     plugin, connectionID, encodeRequestJSON(options, [plugin, connectionID])).then((session: Session | null) => session === null ? null : Session.createFrom(session));
+}
+
+/** Plan and launch a new external process without creating an integrated session. */
+export function OpenNativeSession(plugin: string, connectionID: string, options: SessionOptions): CancellablePromise<void> {
+  return Call.ByName('github.com/omniviewdev/omniview/backend/pkg/plugin/exec.ServiceWrapper.OpenNativeSession',
+    plugin, connectionID, encodeRequestJSON(options, [plugin, connectionID]));
 }
