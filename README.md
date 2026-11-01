@@ -67,6 +67,12 @@ This build's UI runs on `@omniviewdev/base-ui` and no longer ships MUI, Emotion 
 
 For contributors: resource-toolbar controls should consistently request `size="sm"` and rely on the shared density scale rather than fixed pixel heights.
 
+Neutral buttons and labeled selection controls share quiet decorative borders
+and opaque interaction surfaces. Keep required input/choice boundaries and
+keyboard focus distinct; do not restore bright idle borders with local CSS.
+See the [shared control design language](https://github.com/omniviewdev/ui/blob/main/docs/THEMING.md#native-control-language)
+for contrast measurements, nested-theme behavior, and screenshots.
+
 The titlebar search owns a flexible 500px preferred-width region; adjacent header regions share the remaining width. Keep sizing on the region rather than imposing a minimum width on the input, so narrow windows can shrink without clipping decorators.
 
 Plugin imports of `@omniviewdev/base-ui/styles.css` must resolve through `ui/theme/base-ui.css`, the same layered entry used by the host. Loading the package stylesheet directly a second time bypasses the cascade layer and can override host component sizing and spacing after plugin startup.
