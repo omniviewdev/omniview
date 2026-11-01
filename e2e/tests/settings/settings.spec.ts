@@ -16,7 +16,10 @@ test.describe('Settings', () => {
 
     await goTo(appPage, '/settings');
     for (const [id, metadata] of Object.entries(categories)) {
-      if (!metadata) throw new Error(`Missing settings category metadata: ${id}`);
+      if (!metadata) {
+        throw new Error(`Missing settings category metadata: ${id}`);
+      }
+
       await expect(nav(appPage).getByText(metadata.label, { exact: true })).toBeVisible();
     }
 
@@ -27,12 +30,18 @@ test.describe('Settings', () => {
     const { categories } = await getHostSettingsSnapshot(appPage.request);
 
     for (const [id, metadata] of Object.entries(categories)) {
-      if (!metadata) throw new Error(`Missing settings category metadata: ${id}`);
+      if (!metadata) {
+        throw new Error(`Missing settings category metadata: ${id}`);
+      }
+
       const { label, settings } = metadata;
       await openSettingsCategory(appPage, label);
 
       const visible = Object.entries(settings ?? {}).filter(([key, setting]) => {
-        if (!setting) throw new Error(`Missing setting metadata: ${id}.${key}`);
+        if (!setting) {
+          throw new Error(`Missing setting metadata: ${id}.${key}`);
+        }
+
         return !setting.devOnly;
       });
       for (const [key] of visible) {

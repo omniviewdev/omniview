@@ -62,7 +62,13 @@ function renderController() {
 
 function createDeferred() {
   const { promise, resolve, reject } = Promise.withResolvers<{ applied: boolean; uncertain: boolean; message: string }>();
-  return { promise, resolve: () => resolve({ applied: true, uncertain: false, message: '' }), reject };
+  return {
+    promise,
+    resolve: () => {
+      resolve({ applied: true, uncertain: false, message: '' });
+    },
+    reject,
+  };
 }
 
 describe('AppThemeController', () => {

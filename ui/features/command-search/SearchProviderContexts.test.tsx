@@ -30,7 +30,9 @@ function render(children: ReactNode) {
 
 afterEach(() => {
   cleanup();
-  clients.forEach(client => client.clear());
+  clients.forEach(client => {
+    client.clear();
+  });
   clients.clear();
   vi.clearAllMocks();
   vi.restoreAllMocks();

@@ -86,6 +86,7 @@ export async function hostSettingsValues(request: APIRequestContext): Promise<Re
       }
     }
   }
+
   return values;
 }
 
@@ -97,6 +98,7 @@ export async function commitHostSettings(
   if (!result.applied || result.uncertain) {
     throw new Error(`Host settings commit failed${result.uncertain ? ' (uncertain)' : ''}: ${result.message}`);
   }
+
   return result;
 }
 
