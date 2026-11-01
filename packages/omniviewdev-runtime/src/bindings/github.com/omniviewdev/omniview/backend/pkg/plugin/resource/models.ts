@@ -144,8 +144,9 @@ export class ConnectionProfile {
 }
 
 /**
- * ConnectionProfileCredentials is write-only. Omitted fields preserve the
- * profile's existing value; an explicit empty string clears that value.
+ * ConnectionProfileCredentials is write-only. Omitted fields preserve existing
+ * values only for the same ID, UID, and canonical Data; an explicit empty string
+ * clears that value. Changing identity or Data does not inherit credentials.
  */
 export class ConnectionProfileCredentials {
     "username"?: string | null;
