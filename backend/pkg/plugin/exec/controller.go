@@ -35,6 +35,8 @@ type Controller interface {
 	GetHandlers() map[string]map[string]exec.Handler
 	GetHandler(plugin, resource string) *exec.Handler
 	CreateSession(plugin, connectionID string, opts exec.SessionOptions) (*exec.Session, error)
+	OpenNativeSession(plugin, connectionID string, opts exec.SessionOptions) error
+	GetNativeTerminalSupport() bool
 	CreateTerminal(opts exec.SessionOptions) (*exec.Session, error)
 	ListSessions() ([]*exec.Session, error)
 	GetSession(sessionID string) (*exec.Session, error)
@@ -99,6 +101,7 @@ type controller struct {
 	resourceClient    resource.ConnectionReader
 	referenceAdmitter resource.ReferenceAdmitter
 	terminalManager   *terminal.Manager
+	nativeLauncher    nativeTerminalLauncher
 }
 
 // SetReferenceAdmitter is configured by native composition before startup.
@@ -498,17 +501,9 @@ func (c *controller) CreateSession(
 		attribute.String("plugin_id", plugin),
 		attribute.String("connection_id", connectionID),
 	)
-	if opts.Reference != nil {
-		if c.referenceAdmitter == nil {
-			return nil, resourcev2.NewError("UNSUPPORTED", "Resource reference admission is unavailable.")
-		}
-		if opts.Route == nil || opts.Route.Connection != connectionID {
-			return nil, resourcev2.NewError("INVALID_REQUEST", "Resource route does not match the selected connection.")
-		}
-		ctx, err = c.referenceAdmitter(ctx, "exec.CreateSession", plugin, *opts.Route, *opts.Reference)
-		if err != nil {
-			return nil, err
-		}
+	ctx, err = c.admitSessionReference(ctx, plugin, connectionID, opts)
+	if err != nil {
+		return nil, err
 	}
 
 	var session *exec.Session

@@ -16,7 +16,7 @@ env:
   GO_VERSION: "1.26"
   NODE_VERSION: "26.13.0"
   GOWORK: "off"
-  REVIEWED_SDK_REVISION: ${{ vars.OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION }}
+  REVIEWED_SDK_REVISION: 0a5b64ed8c2de209fbb02ecce9feba3afd88f28c # Reviewed SDK v0.12.1
 
 jobs:
   release-packaging-checks:

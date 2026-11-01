@@ -143,11 +143,6 @@ func prepareProfileCredentials(root *appstate.ScopedRoot, previous desiredConnec
 	if err := utils.InitializePluginStore(root); err != nil {
 		return desiredConnectionProfile{}, err
 	}
-	// Check Windows inheritance before creating even an empty file, so an
-	// untrusted principal cannot retain a pre-opened handle across restriction.
-	if err := validateProfileCredentialDirectory(root); err != nil {
-		return desiredConnectionProfile{}, errors.New("connection profiles: private credential directory permissions are unsafe")
-	}
 	profile.CredentialsRef = uuid.NewString()
 	name := profileCredentialPrefix + profile.CredentialsRef
 	digest, err := profileCredentialDataDigest(config)
