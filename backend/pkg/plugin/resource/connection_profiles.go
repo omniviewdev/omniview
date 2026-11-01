@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"runtime"
 	"sort"
 	"unicode/utf8"
 
@@ -37,8 +38,9 @@ type ConnectionProfileResult struct {
 	Profile ConnectionProfile `json:"profile"`
 }
 
-// ConnectionProfileCredentials is write-only. Omitted fields preserve the
-// profile's existing value; an explicit empty string clears that value.
+// ConnectionProfileCredentials is write-only. Omitted fields preserve existing
+// values only for the same ID, UID, and canonical Data; an explicit empty string
+// clears that value. Changing identity or Data does not inherit credentials.
 type ConnectionProfileCredentials struct {
 	Username *string `json:"username,omitempty"`
 	Token    *string `json:"token,omitempty"`
@@ -186,15 +188,25 @@ func writeDesiredConnections(root *appstate.ScopedRoot, data []byte) error {
 	if err := root.Rename(temp, connectionProfileStoreName); err != nil {
 		return err
 	}
-	directory, err := root.OpenFile(".", os.O_RDONLY, 0)
-	if err == nil {
-		err = directory.Sync()
-		directory.Close()
-	}
+	err = syncConnectionProfileDirectory(root)
 	if err != nil {
 		return resourcev2.NewError("RESET_REQUIRED", "Connection profile commit durability is unknown. Reload before using this connection.")
 	}
 	return nil
+}
+
+// Windows does not support syncing a read-only directory handle. File contents
+// are synced separately; directory durability there follows filesystem semantics.
+func syncConnectionProfileDirectory(root *appstate.ScopedRoot) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	directory, err := root.OpenFile(".", os.O_RDONLY, 0)
+	if err != nil {
+		return err
+	}
+	defer directory.Close()
+	return directory.Sync()
 }
 
 func (c *controller) connectionProfileSource(ctx context.Context, pluginID string) (connectionProfileSource, error) {
@@ -398,16 +410,21 @@ func applyDesiredConnections(ctx context.Context, source connectionProfileSource
 		return nil, resourcev2.NewError("CONFLICT", "Connection profile was not applied; the source rejected the configuration.")
 	}
 	effective, err := source.ListConnections(ctx)
-	if err == nil {
+	listed := err == nil
+	if listed {
+		// A nonnil empty snapshot distinguishes known-empty from unknown state.
+		if effective == nil {
+			effective = []types.Connection{}
+		}
 		err = writeDesiredConnections(root, data)
 	}
 	if err == nil {
 		return effective, nil
 	}
-	if resourcev2.ErrorCode(err) == "RESET_REQUIRED" {
+	if listed && resourcev2.ErrorCode(err) == "RESET_REQUIRED" {
 		// The pointer may already be durable. Keep both immutable credential
-		// files and do not replace the source with an uncertain disk version.
-		return nil, err
+		// files and publish only the successfully listed source snapshot.
+		return effective, err
 	}
 	// An owning cancellation must not prevent compensating an already-applied
 	// source change. The source still owns its normal per-call operation limits.
@@ -571,6 +588,11 @@ func (c *controller) changeConnectionProfile(ctx context.Context, pluginID, id, 
 	}
 	effective, err := applyDesiredConnections(ctx, source, root, previous, next)
 	if err != nil {
+		if effective != nil && resourcev2.ErrorCode(err) == "RESET_REQUIRED" {
+			// Host durability is uncertain, but the listed source state is known.
+			// Preserve the original reset error even if publication also fails.
+			_ = c.publishProfileConnections(context.WithoutCancel(ctx), pluginID, generation, native, effective)
+		}
 		return ConnectionProfileResult{}, err
 	}
 	committed = true

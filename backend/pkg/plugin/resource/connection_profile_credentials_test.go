@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -42,7 +43,9 @@ func TestProfileCredentialsPrivatePersistenceEditReloadClearRemove(t *testing.T)
 	require.Contains(t, string(private), token)
 	info, err := root.Stat(profileCredentialPrefix + ref)
 	require.NoError(t, err)
-	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	if runtime.GOOS != "windows" {
+		require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	}
 
 	connection.Name = "Display-only change"
 	_, err = ctrl.SaveConnectionProfile(testInvocationContext(), "plugin", connection, nil)
@@ -360,4 +363,28 @@ func TestProfileCredentialNumericConfigurationPreservesOnlyExactDestination(t *t
 			require.Empty(t, persisted.overlay().Upserts[0].GetSensitiveData())
 		})
 	}
+}
+
+func TestProfileCredentialMissingReferenceFailsClosedOnReload(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	native := profileTestConnection("native", "endpoint")
+	native.SetSensitiveData(map[string]any{"token": "native-secret"})
+	registerMockPlugin(ctrl, "plugin", connectionOverlayTestProvider(native))
+	token := "explicit-private-secret"
+	_, err := ctrl.SaveConnectionProfile(testInvocationContext(), "plugin", native, &ConnectionProfileCredentials{Token: &token})
+	require.NoError(t, err)
+	root, err := ctrl.pluginStoreFn("plugin")
+	require.NoError(t, err)
+	state, err := readDesiredConnections(root)
+	require.NoError(t, err)
+	require.NoError(t, root.Remove(profileCredentialPrefix+state.Profiles[0].CredentialsRef))
+	restarted, _ := newTestControllerWithEmitter(t)
+	restarted.pluginStoreFn = ctrl.pluginStoreFn
+	ctrl = restarted
+	registerMockPlugin(ctrl, "plugin", connectionOverlayTestProvider(native))
+	effective, err := ctrl.replayConnectionProfiles(testInvocationContext(), "plugin", []types.Connection{native})
+	require.Error(t, err)
+	require.Empty(t, effective)
+	require.Empty(t, ctrl.getConnections("plugin"), "missing private reference must never activate native fallback")
+	require.NotContains(t, err.Error(), token)
 }

@@ -51,9 +51,13 @@ func hydrateProfileCredentials(root *appstate.ScopedRoot, state *desiredConnecti
 		if _, err := uuid.Parse(profile.CredentialsRef); err != nil {
 			return errors.New("connection profiles: invalid private credential reference")
 		}
-		file, _, err := root.OpenPrivateFile(profileCredentialPrefix+profile.CredentialsRef, os.O_RDONLY)
+		file, err := openProfileCredentialFile(root, profileCredentialPrefix+profile.CredentialsRef)
 		if err != nil {
 			return errors.New("connection profiles: private credentials unavailable")
+		}
+		if err := validateProfileCredentialFile(file); err != nil {
+			file.Close()
+			return errors.New("connection profiles: private credential permissions are unsafe")
 		}
 		data, readErr := io.ReadAll(io.LimitReader(file, maxProfileCredentialStoreBytes+1))
 		file.Close()
@@ -124,6 +128,11 @@ func prepareProfileCredentials(root *appstate.ScopedRoot, previous desiredConnec
 	if err := utils.InitializePluginStore(root); err != nil {
 		return desiredConnectionProfile{}, err
 	}
+	// Check Windows inheritance before creating even an empty file, so an
+	// untrusted principal cannot retain a pre-opened handle across restriction.
+	if err := validateProfileCredentialDirectory(root); err != nil {
+		return desiredConnectionProfile{}, errors.New("connection profiles: private credential directory permissions are unsafe")
+	}
 	profile.CredentialsRef = uuid.NewString()
 	name := profileCredentialPrefix + profile.CredentialsRef
 	data, err = json.Marshal(storedProfileCredentials{ID: connection.ID, UID: connection.UID, Values: values})
@@ -133,6 +142,11 @@ func prepareProfileCredentials(root *appstate.ScopedRoot, previous desiredConnec
 	file, err := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return desiredConnectionProfile{}, errors.New("connection profiles: cannot create private credentials")
+	}
+	if err := restrictProfileCredentialFile(file); err != nil {
+		file.Close()
+		root.Remove(name)
+		return desiredConnectionProfile{}, errors.New("connection profiles: cannot secure private credentials")
 	}
 	_, err = file.Write(data)
 	if err == nil {
@@ -144,12 +158,7 @@ func prepareProfileCredentials(root *appstate.ScopedRoot, previous desiredConnec
 	}
 	// Persist the new name before the public profile is allowed to reference it.
 	if err == nil {
-		var directory *os.File
-		directory, err = root.OpenFile(".", os.O_RDONLY, 0)
-		if err == nil {
-			err = directory.Sync()
-			directory.Close()
-		}
+		err = syncConnectionProfileDirectory(root)
 	}
 	if err != nil {
 		root.Remove(name)
@@ -175,11 +184,7 @@ func removeUnreferencedProfileCredentials(root *appstate.ScopedRoot, retained, d
 		}
 	}
 	if removed {
-		directory, err := root.OpenFile(".", os.O_RDONLY, 0)
-		if err == nil {
-			err = directory.Sync()
-			directory.Close()
-		}
+		err := syncConnectionProfileDirectory(root)
 		if err != nil {
 			return resourcev2.NewError("RESET_REQUIRED", "Private credential removal durability is unknown. Reload before using this connection.")
 		}
@@ -192,11 +197,7 @@ func removeUnreferencedProfileCredentials(root *appstate.ScopedRoot, retained, d
 func collectProfileCredentialOrphans(root *appstate.ScopedRoot, retained desiredConnectionState) error {
 	// Make the currently observed public pointer durable before unlinking any
 	// file that an older, pre-crash directory state might still reference.
-	directory, err := root.OpenFile(".", os.O_RDONLY, 0)
-	if err == nil {
-		err = directory.Sync()
-		directory.Close()
-	}
+	err := syncConnectionProfileDirectory(root)
 	if err != nil {
 		return resourcev2.NewError("RESET_REQUIRED", "Connection profile recovery durability is unknown. Reload before using this connection.")
 	}

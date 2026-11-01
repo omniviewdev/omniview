@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -278,6 +279,87 @@ func TestConnectionProfileSourceRejectionDoesNotPersist(t *testing.T) {
 	require.Equal(t, "CONFLICT", resourcev2.ErrorCode(err))
 	_, err = store.Stat(connectionProfileStoreName)
 	require.True(t, os.IsNotExist(err))
+}
+
+func TestConnectionProfileListResetRollsBackWithoutPublishingUnknownState(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	native := profileTestConnection("native", "original")
+	provider := connectionOverlayTestProvider(native)
+	registerMockPlugin(ctrl, "plugin", provider)
+	_, err := ctrl.replayConnectionProfiles(testInvocationContext(), "plugin", []types.Connection{native})
+	require.NoError(t, err)
+	list := provider.NativeConnections
+	apply := provider.applyConnectionOverlay
+	lists, applies := 0, 0
+	provider.ListConnectionsFunc = func(ctx context.Context) ([]types.Connection, error) {
+		lists++
+		if lists == 2 {
+			return []types.Connection{profileTestConnection("untrusted", "private")}, resourcev2.NewError("RESET_REQUIRED", "list failed")
+		}
+		return list(ctx)
+	}
+	provider.ApplyConnectionOverlayFunc = func(ctx context.Context, overlay resourcev2.ConnectionOverlay) error {
+		applies++
+		return apply(ctx, overlay)
+	}
+	result, err := ctrl.SaveConnectionProfile(testInvocationContext(), "plugin", profileTestConnection(native.ID, "new"), nil)
+	require.Equal(t, "CONFLICT", resourcev2.ErrorCode(err))
+	require.False(t, result.Applied)
+	require.Equal(t, 2, applies, "a RESET_REQUIRED list error must still roll back")
+	profiles, err := ctrl.ListConnectionProfiles(testInvocationContext(), "plugin")
+	require.NoError(t, err)
+	require.Len(t, profiles, 1)
+	require.Equal(t, "original", profiles[0].Connection.Data["endpoint"])
+	require.Equal(t, "native", profiles[0].Source)
+}
+
+func TestConnectionProfileEmptyEffectiveSnapshotIsKnown(t *testing.T) {
+	store, err := appstate.NewTestService(t).PluginStore("test")
+	require.NoError(t, err)
+	provider := connectionOverlayTestProvider()
+	provider.ListConnectionsFunc = func(context.Context) ([]types.Connection, error) { return nil, nil }
+	effective, err := applyDesiredConnections(context.Background(), provider, store, emptyDesiredConnections(), emptyDesiredConnections())
+	require.NoError(t, err)
+	require.NotNil(t, effective)
+	require.Empty(t, effective)
+}
+
+func TestConnectionProfileCommitDurabilityFailurePublishesKnownSnapshot(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("requires unprivileged Unix directory permissions")
+	}
+	ctrl, _ := newTestControllerWithEmitter(t)
+	native := profileTestConnection("native", "old")
+	provider := connectionOverlayTestProvider(native)
+	registerMockPlugin(ctrl, "plugin", provider)
+	_, err := ctrl.replayConnectionProfiles(testInvocationContext(), "plugin", []types.Connection{native})
+	require.NoError(t, err)
+	root, err := ctrl.pluginStoreFn("plugin")
+	require.NoError(t, err)
+	path := root.ResolvePath("")
+	t.Cleanup(func() { _ = os.Chmod(path, 0o700) })
+	list := provider.NativeConnections
+	lists := 0
+	provider.ListConnectionsFunc = func(ctx context.Context) ([]types.Connection, error) {
+		lists++
+		snapshot, err := list(ctx)
+		if lists == 2 {
+			// Allow temp creation and rename, but deny opening the directory
+			// for the post-rename durability sync.
+			require.NoError(t, os.Chmod(path, 0o300))
+		}
+		return snapshot, err
+	}
+	result, err := ctrl.SaveConnectionProfile(testInvocationContext(), "plugin", profileTestConnection(native.ID, "new"), nil)
+	require.Equal(t, "RESET_REQUIRED", resourcev2.ErrorCode(err))
+	require.False(t, result.Applied)
+	require.NoError(t, os.Chmod(path, 0o700))
+	listed := ctrl.getConnections("plugin")
+	require.Len(t, listed, 1)
+	require.Equal(t, "new", listed[0].Data["endpoint"])
+	stored, err := readDesiredConnections(root)
+	require.NoError(t, err)
+	require.Equal(t, "new", stored.Profiles[0].Configuration.Data["endpoint"])
 }
 
 func TestConnectionProfileStoreStrictAdmission(t *testing.T) {

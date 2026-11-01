@@ -34,6 +34,21 @@ jobs:
           bash -n build/darwin/build-universal.sh
           bash -n build/darwin/verify-release-package.sh
 
+  windows-connection-profiles:
+    name: Windows connection profiles
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Test released-SDK connection profiles and private credentials
+        run: go test ./backend/pkg/plugin/resource -count=1
+        env:
+          GOWORK: "off"
+          GOFLAGS: ""
+
   go-checks:
     name: Go checks
     runs-on: ubuntu-24.04
