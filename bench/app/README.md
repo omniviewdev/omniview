@@ -19,8 +19,9 @@ node bench/app/report.mjs              # Markdown summary of results/latest.json
 
 Also `task perf:app -- <args>`. First run locally: `pnpm install --frozen-lockfile`,
 `task packages` (providers → runtime → Vite plugin) and
-`pnpm exec playwright install chromium`. The pinned Kubernetes submodule consumes
-the published base-ui 0.8.0, editors 6.1.0, and runtime/Vite-plugin 0.9.0 cohort.
+`pnpm exec playwright install chromium`. The pinned Kubernetes submodule records
+its standalone dependencies in its UI manifest and lockfile. Canonical candidate
+runs instead use the workspace-selected SDK, UI, and runtime sources.
 Older plugin archives built against MUI or legacy UI contracts are incompatible.
 
 The Logs scenario selects a container from the opened Logs submenu, not from the
@@ -96,10 +97,11 @@ With installed/built host packages and the reviewed sources checked out:
 Candidate CI uses `e2e/source-cohort.json` as its exact SDK/UI/Kubernetes
 selection. The explicit workflow `REVIEWED_SDK_REVISION` must equal that SDK commit;
 UI and Kubernetes refs come only from that cohort in candidate workflows, not
-legacy repository UI/profile variables. The selected UI commit is
-`cd50e0d0663c1d416ed48c147382a5040d6c3c7c`, with base-ui 0.9.0 and editor 6.1.1,
-matching the current host dependency ranges. Do not change legacy repository
-variables to approve candidate sources. Explicit direct-CLI `UI_SOURCE_REF` or
+legacy repository UI/profile variables. The selected UI checkout must satisfy the
+host/runtime shared-UI dependency ranges. Update `e2e/source-cohort.json` alongside
+those ranges; changing only the registry lockfile cannot make an older pinned UI
+checkout compatible. Do not change legacy repository variables to approve
+candidate sources. Explicit direct-CLI `UI_SOURCE_REF` or
 `KUBERNETES_SOURCE_REF` values must still match the selected cohort.
 The Kubernetes gitlink must also match. Commits must be reachable by checkout,
 but candidate testing does not require a module or npm publication.

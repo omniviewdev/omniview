@@ -997,6 +997,8 @@ rebuild. Do not launch an external binary as a fallback.
 4. If you import a subpath of a shared package (for example `@omniviewdev/runtime/api`), ensure that exact subpath is in your `external` array (exact match, not prefix)
 5. The host no longer shares MUI, Emotion or the legacy `@omniviewdev/ui` design system. Build plugin UI with `@omniviewdev/base-ui` (plus `@omniviewdev/ai-ui` and `@omniviewdev/editors`); a plugin that still imports MUI or `@omniviewdev/ui` fails to load
 
+The host shares base-ui 0.10 with plugins and keeps the runtime's development and peer ranges aligned with it. `TreeList.onAction` requires this shared component release; updating only a plugin's npm dependency does not replace the host's `window.__OMNIVIEW_SHARED__` singleton. Upgrade the host before installing a plugin that relies on the new tree activation contract. Keep registry peer checks enabled so an older runtime cannot silently retain the previous base-ui range.
+
 ### 5.10 CSS Not Updating with HMR
 
 **Check**: Vite HMR for CSS works differently than for components. If CSS changes are not applying:
