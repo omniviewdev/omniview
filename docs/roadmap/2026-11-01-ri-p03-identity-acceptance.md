@@ -11,8 +11,11 @@ Status: draft acceptance. Independent review corrections have passing final loca
 - Workspace: `ri-p03`; branch: `feature/ri-p03-ac10053b`.
 - Recorded baselines: host `5b722f3db9e47d40819fa5dd6ac9effa1bc50a94`, Kubernetes `c3952b6bc798ab17268cba191413348cc82b5db1`, Proxmox `c466186e63c0742f9dd8a254e2ecf2bfcd0e6f8d`.
 - Kubernetes companion PR: https://github.com/omniviewdev/omniview-plugin-kubernetes/pull/76, targeting `main` with `resource-v2-candidate`.
-- Kubernetes candidate: `96af4cc8aa64c705d972eb161ed053af506c91bc`. Host cohort and gitlink select this exact commit.
+- Kubernetes candidate: `2645605318fb6becf7f132b8d6a5a95a0db089ad`. Host cohort and gitlink select this exact commit.
 - SDK and UI pins remain `0a5b64ed8c2de209fbb02ecce9feba3afd88f28c` and `61bf9c2ad88e7b427404256573941ba80fac4c00`.
+- Rebased host baseline: `3f73061544519d4b35fd51c71eef342065268935` (host #335).
+- Rebased Kubernetes baseline: `860627e04782ab153335a603497c8c514d3337b1` (Kubernetes #75).
+- The candidate retains upstream Kubernetes #75 code. The older PR head `2df894a0e0da660f61d9842a7a8d53450e5aefed` was not treated as equivalent ancestry.
 
 Only the user merges. The packet and merge ticket remain open until reviewed evidence and merged-source smoke pass.
 
@@ -164,7 +167,7 @@ These failures were not rerun merely to confirm them. They remain failed-suite e
 
 The first authorized `omniview-native-env task workspace:up -- ri-p03 --root /home/mononen/omniview --timeout 40m --json` stopped with `reviewed_sdk_required`.
 
-Runtime preflight also requires a managed SDK source. The coordinator authorized adding only the pinned SDK repository through `task workspace:edit`. No SDK source or host cohort changed.
+Runtime preflight also requires a managed SDK source. The coordinator authorized adding only the pinned SDK repository through `task workspace:edit`. That bootstrap step changed neither SDK source nor the host cohort.
 
 The independently reviewed runtime SDK is `0a5b64ed8c2de209fbb02ecce9feba3afd88f28c`. The retained protocol proof is `/home/mononen/omniview/.omniview-dev/link-protocol.json`. It records workspace protocol, pnpm `12.14.0`, and successful atomic output, peers, and runtime checks. This packet did not rerun the original probe.
 
@@ -230,6 +233,13 @@ The production page/preferences disk smoke was executed again after the connecti
 Result: **PASS**, `page and preference disk reload passed`. The script imports the production page reducer/parser and Kubernetes migration. It writes actual files, preserves route and preference originals, preserves canonical precedence, reloads, and rejects unknown and ambiguous choices. The executed source is retained in the PR evidence comment; temporary smoke files are removed after publication.
 
 The corrected drawer smoke ran in a real Node process with `node --input-type=module`, using the preserved script on stdin. Result: **PASS**, one converted reference, one retained unresolved reference, and one current opaque selector preserved. It verifies v1-to-v2 upgrade, current v2 non-reclassification, save/reload, and idempotence. It does not substitute for native WindowService or UI proof.
+
+The first corrected host candidate could not merge with current `main`. Its check query returned only a skipped CodeRabbit check, not passing CI. The coordinator authorized rebasing both owned feature branches.
+
+Kubernetes was rebased onto merged #75 at `860627e04782ab153335a603497c8c514d3337b1`. Host was rebased onto #335 at `3f73061544519d4b35fd51c71eef342065268935`. The only host conflicts were the inspected cohort JSON and Kubernetes gitlink. Both now select `2645605318fb6becf7f132b8d6a5a95a0db089ad`, which retains upstream #75 code. SDK and UI pins did not change.
+
+After those rebases, every integration command above was executed again. Host lint and TypeScript passed; host behavior passed 13 files and 153 tests. Kubernetes lint retained the same 19 warnings and no errors; its TypeScript and 49 tests passed. Runtime tests passed 7 files and 110 tests. Both production-module disk smokes passed again. No native retry was made.
+
 
 
 
