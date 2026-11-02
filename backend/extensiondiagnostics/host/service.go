@@ -1,17 +1,19 @@
-package extensiondiagnostics
+// Package host adapts the pure diagnostics broker to authenticated Wails callers.
+package host
 
 import (
 	"context"
 
+	"github.com/omniviewdev/omniview/backend/extensiondiagnostics"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // Service exposes only correlated responses, never evaluation or mutation.
 type Service struct {
-	broker *Broker
+	broker *extensiondiagnostics.Broker
 }
 
-func NewService(broker *Broker) *Service {
+func NewService(broker *extensiondiagnostics.Broker) *Service {
 	return &Service{broker: broker}
 }
 
@@ -20,9 +22,9 @@ func (s *Service) ServiceStartup(_ context.Context, _ application.ServiceOptions
 	if app == nil {
 		return nil
 	}
-	s.broker.start(func(request Request) error {
-		if app.Event.Emit(RequestEvent, request) {
-			return ErrUnavailable
+	s.broker.Start(func(request extensiondiagnostics.Request) error {
+		if app.Event.Emit(extensiondiagnostics.RequestEvent, request) {
+			return extensiondiagnostics.ErrUnavailable
 		}
 		return nil
 	})
@@ -30,18 +32,18 @@ func (s *Service) ServiceStartup(_ context.Context, _ application.ServiceOptions
 }
 
 func (s *Service) ServiceShutdown() error {
-	s.broker.close()
+	s.broker.Close()
 	return nil
 }
 
 // Register takes its identity exclusively from the injected native/browser caller.
-func (s *Service) Register(ctx context.Context) (Registration, error) {
+func (s *Service) Register(ctx context.Context) (extensiondiagnostics.Registration, error) {
 	window, ok := ctx.Value(application.WindowKey).(application.Window)
 	if !ok {
-		return Registration{}, ErrWindow
+		return extensiondiagnostics.Registration{}, extensiondiagnostics.ErrWindow
 	}
 	if registrationPending(window) {
-		return Registration{Pending: true}, nil
+		return extensiondiagnostics.Registration{Pending: true}, nil
 	}
 	alive := func() bool {
 		if browser, ok := window.(interface{ ClientID() string }); ok {
@@ -55,15 +57,15 @@ func (s *Service) Register(ctx context.Context) (Registration, error) {
 		current, exists := app.Window.GetByName(window.Name())
 		return exists && current.ID() == window.ID()
 	}
-	return s.broker.register(window.Name(), alive)
+	return s.broker.RegisterRuntime(window.Name(), alive)
 }
 
 func (s *Service) Unregister(ctx context.Context, token string) error {
 	window, ok := ctx.Value(application.WindowKey).(application.Window)
 	if !ok {
-		return ErrWindow
+		return extensiondiagnostics.ErrWindow
 	}
-	s.broker.unregister(window.Name(), token)
+	s.broker.UnregisterRuntime(window.Name(), token)
 	return nil
 }
 
@@ -72,7 +74,7 @@ func (s *Service) Unregister(ctx context.Context, token string) error {
 func (s *Service) Respond(ctx context.Context, requestID, windowName, payload, errorMessage string) error {
 	window, ok := ctx.Value(application.WindowKey).(application.Window)
 	if !ok || window.Name() != windowName {
-		return ErrWindow
+		return extensiondiagnostics.ErrWindow
 	}
-	return s.broker.respond(requestID, windowName, payload, errorMessage)
+	return s.broker.Respond(requestID, windowName, payload, errorMessage)
 }

@@ -314,6 +314,8 @@ mode assigns names such as `browser-3`; these are not aliases for native `main`.
 Discovery lists registered documents, not cached diagnostic data or a guarantee
 of responsiveness. Every capture still requires a new correlated response from
 the selected document's actual Wails window identity.
+Wails registration stays in the host adapter, outside the standalone CLI's
+pure-Go diagnostic broker and control transport.
 
 ```sh
 "$DEV" extensions windows --workspace /path/to/workspace --json

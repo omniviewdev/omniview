@@ -18,6 +18,7 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/diagnostics"
 	"github.com/omniviewdev/omniview/backend/extensiondiagnostics"
+	extensiondiagnosticshost "github.com/omniviewdev/omniview/backend/extensiondiagnostics/host"
 	"github.com/omniviewdev/omniview/backend/menus"
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
@@ -544,7 +545,7 @@ func main() {
 		// 3. Frontend-facing services (no startup order dependency)
 		application.NewService(appService),
 		application.NewService(diagnosticsClient),
-		application.NewService(extensiondiagnostics.NewService(extensionDiagnostics)),
+		application.NewService(extensiondiagnosticshost.NewService(extensionDiagnostics)),
 		application.NewService(telemetry.NewTelemetryBinding(telemetrySvc)),
 		application.NewService(&profiling.ServiceWrapper{Service: hostProfiling}),
 		application.NewService(uiInspection),

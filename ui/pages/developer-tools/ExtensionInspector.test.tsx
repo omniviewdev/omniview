@@ -1,15 +1,22 @@
 import { cleanup, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ExtensionDiagnosticSnapshot } from '@/features/extensions/diagnostics/types';
+import type { DiagnosticLookupRequest, ExtensionDiagnosticSnapshot } from '@/features/extensions/diagnostics/types';
 import ExtensionInspector from './ExtensionInspector';
+import { ExtensionPointRegistry } from '@omniviewdev/runtime';
+import { assertDiagnosticSnapshotCurrent, captureExtensionSnapshot, lookupExtensionContext } from '@/features/extensions/diagnostics/model';
+import type { DiagnosticService } from '@/features/extensions/diagnostics/model';
+import { DEFAULT_CONFIG } from '@/features/plugins/core/types';
+import type { PluginServiceDebugSnapshot } from '@/features/plugins/core/types';
+import { createResourceDrawerExtensionPoint } from '@/features/extensions/drawer/extensionPoint';
 
 const mocks = vi.hoisted(() => {
   const snapshot: ExtensionDiagnosticSnapshot = {
     schemaVersion: 1, capturedAt: '', windowName: 'main', points: [], pending: [], plugins: [], problems: [], coverage: [],
     limits: { quarantineCrashThreshold: 3, maxCrashRecordsPerContribution: 10 }, truncated: false,
   };
-  return { snapshot, windowName: 'main', identityError: null as string | null, capture: vi.fn(), lookup: vi.fn(), unquarantine: vi.fn() };
+  const identity: { windowName: string | null; identityError: string | null } = { windowName: 'main', identityError: null };
+  return { snapshot, ...identity, capture: vi.fn(), lookup: vi.fn(), unquarantine: vi.fn() };
 });
 vi.mock('@/features/extensions/diagnostics/useExtensionDiagnostics', () => ({ useExtensionDiagnostics: () => mocks }));
 function renderInspector() {
@@ -32,6 +39,40 @@ describe('Extension Inspector', () => {
     expect(screen.getByRole('button', { name: 'Export safe JSON' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Sensitive export…' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Re-enable…' })).toBeDisabled();
+  });
+  it('binds an initial deep link when runtime identity resolves and still rejects later registration replacement', () => {
+    const registry = new ExtensionPointRegistry();
+    registry.addExtensionPoint(createResourceDrawerExtensionPoint());
+    const point = registry.getExtensionPoint('omniview/resource/drawer')!;
+    point.register({ id: 'probe/drawer', plugin: 'probe', label: 'Probe drawer', value: null, meta: { pluginId: 'probe', resourceKey: 'core::v1::Pod' } });
+    const debug: PluginServiceDebugSnapshot = {
+      plugins: {}, config: DEFAULT_CONFIG, ready: true, routeVersion: 0,
+      eventListenersActive: true, pendingContributions: {}, quarantinedContributions: [], recentCrashes: [],
+    };
+    const service: DiagnosticService = {
+      getDebugSnapshot: () => debug, subscribe: () => () => undefined,
+      onQuarantineActivated: () => () => undefined, unquarantine: vi.fn(),
+    };
+    mocks.windowName = null;
+    mocks.snapshot = captureExtensionSnapshot(registry, service, { windowName: '' });
+    mocks.lookup.mockImplementation((request: DiagnosticLookupRequest, expected: ExtensionDiagnosticSnapshot) => {
+      assertDiagnosticSnapshotCurrent(expected);
+      return lookupExtensionContext(registry, service, request, 'main');
+    });
+    const view = renderInspector();
+    mocks.windowName = 'main';
+    mocks.snapshot = captureExtensionSnapshot(registry, service, { windowName: 'main' });
+    view.rerender(<MemoryRouter><ExtensionInspector /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('tab', { name: 'Context lookup' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Resource key' }), { target: { value: 'core::v1::Pod' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Run lookup' }));
+    expect(within(screen.getByRole('region', { name: 'Context lookup results' })).getByText('probe/drawer', { exact: true })).toBeVisible();
+    point.unregister('probe/drawer');
+    point.register({ id: 'probe/drawer', plugin: 'probe', label: 'Replacement drawer', value: null, meta: { pluginId: 'probe', resourceKey: 'apps::v1::Deployment' } });
+    mocks.snapshot = captureExtensionSnapshot(registry, service, { windowName: 'main' });
+    view.rerender(<MemoryRouter><ExtensionInspector /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Run lookup' }));
+    expect(screen.queryByRole('region', { name: 'Context lookup results' })).not.toBeInTheDocument();
   });
   it('does not execute matchers during passive inventory and filtering', () => {
     renderInspector();
@@ -57,7 +98,7 @@ describe('Extension Inspector', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Re-enable…' }));
     expect(screen.getByRole('dialog', { name: 'Re-enable contribution?' })).toBeVisible();
     expect(within(screen.getByRole('table', { name: 'Registered contributions' })).getByText('quarantined')).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Re-enable', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: /^Re-enable$/ }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(within(screen.getByRole('table', { name: 'Registered contributions' })).getByText('registered')).toBeVisible();
     await waitFor(() => expect(screen.getByRole('complementary', { name: 'Selected extension details' })).toHaveFocus());

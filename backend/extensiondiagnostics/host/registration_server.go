@@ -1,6 +1,6 @@
 //go:build server
 
-package extensiondiagnostics
+package host
 
 import "github.com/wailsapp/wails/v3/pkg/application"
 

@@ -833,6 +833,8 @@ Double-click a resize handle to restore its default size. Narrow windows clamp
 the side panes without clearing the selected registration or filter. If a registry
 change invalidates an action's capture, select the current registration again
 before running lookup or recovery.
+Initial selections bind to the first capture with a resolved runtime window
+identity. Later inventory updates do not silently replace an action's capture.
 
 Reveal sensitive exception text captures and pauses the current state. Resume
 before lookup, recovery, or another reveal. Safe JSON export still redacts text

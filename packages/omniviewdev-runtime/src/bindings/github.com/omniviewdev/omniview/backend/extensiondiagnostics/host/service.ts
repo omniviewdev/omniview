@@ -12,13 +12,13 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as $models from "./models.js";
+import * as extensiondiagnostics$0 from "../models.js";
 
 /**
  * Register takes its identity exclusively from the injected native/browser caller.
  */
-export function Register(): $CancellablePromise<$models.Registration> {
-    return $Call.ByID(3470716035).then(($result: any) => {
+export function Register(): $CancellablePromise<extensiondiagnostics$0.Registration> {
+    return $Call.ByID(2260974144).then(($result: any) => {
         return $$createType0($result);
     });
 }
@@ -28,12 +28,12 @@ export function Register(): $CancellablePromise<$models.Registration> {
  * Wails injects context without adding an argument to the generated binding.
  */
 export function Respond(requestID: string, windowName: string, payload: string, errorMessage: string): $CancellablePromise<void> {
-    return $Call.ByID(3983411435, requestID, windowName, payload, errorMessage);
+    return $Call.ByID(286400678, requestID, windowName, payload, errorMessage);
 }
 
 export function Unregister(token: string): $CancellablePromise<void> {
-    return $Call.ByID(1012147300, token);
+    return $Call.ByID(1772773955, token);
 }
 
 // Private type creation functions
-const $$createType0 = $models.Registration.createFrom;
+const $$createType0 = extensiondiagnostics$0.Registration.createFrom;

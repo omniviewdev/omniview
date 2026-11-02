@@ -1,36 +1,44 @@
 //go:build server
 
-package extensiondiagnostics
+package host
 
 import (
 	"context"
 	"testing"
 
+	"github.com/omniviewdev/omniview/backend/extensiondiagnostics"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 func TestServiceRegistrationUsesInjectedBrowserIdentity(t *testing.T) {
-	b, _ := brokerFixture(t)
+	b := extensiondiagnostics.NewBroker()
+	b.Start(func(extensiondiagnostics.Request) error { return nil })
+	t.Cleanup(b.Close)
 	service := NewService(b)
 	ctx := context.WithValue(context.Background(), application.WindowKey, application.NewBrowserWindow(42, "private-client-id"))
 	registration, err := service.Register(ctx)
 	if err != nil || registration.Pending || registration.WindowName != "browser-42" || registration.Token == "" {
 		t.Fatalf("trusted browser identity: %+v %v", registration, err)
 	}
+	// Keep the lease live without an application registry so discovery cannot
+	// prune the runtime before unregister is checked.
+	registration, err = b.RegisterRuntime(registration.WindowName, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := service.Unregister(ctx, registration.Token); err != nil {
 		t.Fatal(err)
 	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if _, exists := b.runtimes["browser-42"]; exists {
+	windows, err := b.Windows(context.Background())
+	if err != nil || len(windows) != 0 {
 		t.Fatal("browser registration remained after unregister")
 	}
 }
 
 func TestServiceRegistrationWaitsForRealBrowserCaller(t *testing.T) {
-	b := NewBroker()
-	b.start(func(Request) error { return nil })
-	t.Cleanup(b.close)
+	b := extensiondiagnostics.NewBroker()
+	b.Start(func(extensiondiagnostics.Request) error { return nil })
+	t.Cleanup(b.Close)
 	service := NewService(b)
 	ctx := context.WithValue(context.Background(), application.WindowKey, &application.WebviewWindow{})
 	registration, err := service.Register(ctx)

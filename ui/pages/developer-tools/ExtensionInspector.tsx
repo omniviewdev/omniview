@@ -123,6 +123,10 @@ export default function ExtensionInspector() {
   const [problemsOpen, setProblemsOpen] = useState(true);
   const recoveryFocus = useRef<HTMLButtonElement>(null);
   const inspectorFocus = useRef<HTMLElement>(null);
+  if (selectionSnapshot.windowName === '' && diagnostics.snapshot.windowName !== '') {
+    setSelectionSnapshot(diagnostics.snapshot);
+  }
+
   const snapshot = paused ?? diagnostics.snapshot;
   const pluginId = params.get('plugin') ?? '';
   const filtered = useMemo(() => filterExtensionSnapshot(snapshot, { query, pluginId: pluginId || undefined, issuesOnly }), [snapshot, query, pluginId, issuesOnly]);

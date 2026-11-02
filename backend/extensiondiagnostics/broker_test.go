@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -14,11 +15,11 @@ func brokerFixture(t *testing.T) (*Broker, chan Request) {
 	t.Helper()
 	b := NewBroker()
 	events := make(chan Request, MaxPending+1)
-	b.start(func(request Request) error { events <- request; return nil })
-	if _, err := b.register("main", nil); err != nil {
+	b.Start(func(request Request) error { events <- request; return nil })
+	if _, err := b.RegisterRuntime("main", nil); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(b.close)
+	t.Cleanup(b.Close)
 	return b, events
 }
 
@@ -58,19 +59,19 @@ func TestBrokerWindowCorrelationDuplicateAndFreshQuery(t *testing.T) {
 	b, events := brokerFixture(t)
 	first := queryAsync(b, context.Background(), "main")
 	request := receiveRequest(t, events)
-	if err := b.respond(request.RequestID, "other", snapshotPayload("other"), ""); !errors.Is(err, ErrWindow) {
+	if err := b.Respond(request.RequestID, "other", snapshotPayload("other"), ""); !errors.Is(err, ErrWindow) {
 		t.Fatalf("wrong window: %v", err)
 	}
-	if err := b.respond(request.RequestID, "main", snapshotPayload("other"), ""); !errors.Is(err, ErrResponse) {
+	if err := b.Respond(request.RequestID, "main", snapshotPayload("other"), ""); !errors.Is(err, ErrResponse) {
 		t.Fatalf("payload window mismatch: %v", err)
 	}
-	if err := b.respond(request.RequestID, "main", snapshotPayload("main"), ""); err != nil {
+	if err := b.Respond(request.RequestID, "main", snapshotPayload("main"), ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := receiveResult(t, first); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.respond(request.RequestID, "main", snapshotPayload("main"), ""); !errors.Is(err, ErrResponse) {
+	if err := b.Respond(request.RequestID, "main", snapshotPayload("main"), ""); !errors.Is(err, ErrResponse) {
 		t.Fatalf("duplicate accepted: %v", err)
 	}
 	second := queryAsync(b, context.Background(), "main")
@@ -78,7 +79,7 @@ func TestBrokerWindowCorrelationDuplicateAndFreshQuery(t *testing.T) {
 	if next.RequestID == request.RequestID {
 		t.Fatal("query reused stale correlation")
 	}
-	b.close()
+	b.Close()
 	if err := receiveResult(t, second); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("shutdown: %v", err)
 	}
@@ -93,7 +94,7 @@ func TestBrokerCancellationExpiryAndCapacity(t *testing.T) {
 	if err := receiveResult(t, done); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation: %v", err)
 	}
-	if err := b.respond(request.RequestID, "main", snapshotPayload("main"), ""); !errors.Is(err, ErrResponse) {
+	if err := b.Respond(request.RequestID, "main", snapshotPayload("main"), ""); !errors.Is(err, ErrResponse) {
 		t.Fatalf("expired response: %v", err)
 	}
 	var waiting []<-chan error
@@ -104,7 +105,7 @@ func TestBrokerCancellationExpiryAndCapacity(t *testing.T) {
 	if _, err := b.Query(context.Background(), "main", "snapshot", Options{}); !errors.Is(err, ErrCapacity) {
 		t.Fatalf("capacity: %v", err)
 	}
-	b.close()
+	b.Close()
 	for _, done := range waiting {
 		if err := receiveResult(t, done); !errors.Is(err, ErrUnavailable) {
 			t.Fatalf("shutdown pending query: %v", err)
@@ -117,12 +118,12 @@ func TestBrokerCancellationExpiryAndCapacity(t *testing.T) {
 	}
 }
 
-func TestBrokerUnavailableTimeoutBoundsAndNativeCaller(t *testing.T) {
+func TestBrokerUnavailableTimeoutBounds(t *testing.T) {
 	b := NewBroker()
 	if _, err := b.Query(context.Background(), "main", "snapshot", Options{}); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("missing frontend transport: %v", err)
 	}
-	b.start(func(Request) error { return ErrUnavailable })
+	b.Start(func(Request) error { return ErrUnavailable })
 	if _, err := b.Query(context.Background(), "missing", "snapshot", Options{}); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("missing window: %v", err)
 	}
@@ -131,16 +132,13 @@ func TestBrokerUnavailableTimeoutBoundsAndNativeCaller(t *testing.T) {
 	defer cancel()
 	done := queryAsync(b, ctx, "main")
 	request := receiveRequest(t, events)
-	if err := b.respond(request.RequestID, "main", strings.Repeat("x", MaxPayloadBytes+1), ""); !errors.Is(err, ErrResponse) {
+	if err := b.Respond(request.RequestID, "main", strings.Repeat("x", MaxPayloadBytes+1), ""); !errors.Is(err, ErrResponse) {
 		t.Fatalf("oversized payload: %v", err)
-	}
-	if err := NewService(b).Respond(context.Background(), request.RequestID, "main", snapshotPayload("main"), ""); !errors.Is(err, ErrWindow) {
-		t.Fatalf("missing native caller accepted: %v", err)
 	}
 	if err := receiveResult(t, done); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("absent frontend must timeout: %v", err)
 	}
-	if err := b.respond(request.RequestID, "main", snapshotPayload("main"), ""); !errors.Is(err, ErrResponse) {
+	if err := b.Respond(request.RequestID, "main", snapshotPayload("main"), ""); !errors.Is(err, ErrResponse) {
 		t.Fatalf("late response accepted: %v", err)
 	}
 }
@@ -154,10 +152,10 @@ func TestBrokerLookupCorrelationAndSafeFailure(t *testing.T) {
 	}()
 	request := receiveRequest(t, events)
 	payload, _ := json.Marshal(map[string]any{"schemaVersion": 1, "capturedAt": time.Now().UTC().Format(time.RFC3339Nano), "windowName": "main", "pointId": "wrong", "pluginId": "plugin", "resourceKey": "resource"})
-	if err := b.respond(request.RequestID, "main", string(payload), ""); !errors.Is(err, ErrResponse) {
+	if err := b.Respond(request.RequestID, "main", string(payload), ""); !errors.Is(err, ErrResponse) {
 		t.Fatalf("lookup context mismatch: %v", err)
 	}
-	if err := b.respond(request.RequestID, "main", "", "PRIVATE_PLUGIN_EXCEPTION"); err != nil {
+	if err := b.Respond(request.RequestID, "main", "", "PRIVATE_PLUGIN_EXCEPTION"); err != nil {
 		t.Fatal(err)
 	}
 	if err := receiveResult(t, done); !errors.Is(err, ErrRuntime) || strings.Contains(err.Error(), "PRIVATE") {
@@ -184,7 +182,7 @@ func TestBrokerUnsupportedContextUsesOnlyAllowlistedLookupCode(t *testing.T) {
 				done <- err
 			}()
 			request := receiveRequest(t, events)
-			if err := b.respond(request.RequestID, "main", "", "unsupported-context"); err != nil {
+			if err := b.Respond(request.RequestID, "main", "", "unsupported-context"); err != nil {
 				t.Fatal(err)
 			}
 			expected := ErrRuntime
@@ -201,11 +199,11 @@ func TestBrokerUnsupportedContextUsesOnlyAllowlistedLookupCode(t *testing.T) {
 func TestBrokerRegisteredBrowserQueryAndStaleUnregister(t *testing.T) {
 	b := NewBroker()
 	events := make(chan Request, MaxPending+1)
-	b.start(func(request Request) error { events <- request; return nil })
-	t.Cleanup(b.close)
+	b.Start(func(request Request) error { events <- request; return nil })
+	t.Cleanup(b.Close)
 	var alive atomic.Bool
 	alive.Store(true)
-	first, err := b.register("browser-3", alive.Load)
+	first, err := b.RegisterRuntime("browser-3", alive.Load)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,17 +215,17 @@ func TestBrokerRegisteredBrowserQueryAndStaleUnregister(t *testing.T) {
 	if request.WindowName != "browser-3" {
 		t.Fatalf("wrong native browser target: %+v", request)
 	}
-	if err := b.respond(request.RequestID, "browser-3", snapshotPayload("browser-3"), ""); err != nil {
+	if err := b.Respond(request.RequestID, "browser-3", snapshotPayload("browser-3"), ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := receiveResult(t, done); err != nil {
 		t.Fatal(err)
 	}
-	current, err := b.register("browser-3", alive.Load)
+	current, err := b.RegisterRuntime("browser-3", alive.Load)
 	if err != nil || current.Token == first.Token {
 		t.Fatalf("registration was not rotated: %+v %v", current, err)
 	}
-	b.unregister("browser-3", first.Token)
+	b.UnregisterRuntime("browser-3", first.Token)
 	windows, err := b.Windows(context.Background())
 	if err != nil || len(windows) != 1 || windows[0].WindowName != "browser-3" || windows[0].LastSeen.IsZero() {
 		t.Fatalf("stale unregister removed current runtime: %+v %v", windows, err)
@@ -238,14 +236,14 @@ func TestBrokerRegisteredBrowserQueryAndStaleUnregister(t *testing.T) {
 	}
 	done = queryAsync(b, context.Background(), "browser-3")
 	request = receiveRequest(t, events)
-	b.unregister("browser-3", current.Token)
+	b.UnregisterRuntime("browser-3", current.Token)
 	if err := receiveResult(t, done); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("unregister did not release pending query: %v", err)
 	}
-	if err := b.respond(request.RequestID, "browser-3", snapshotPayload("browser-3"), ""); !errors.Is(err, ErrResponse) {
+	if err := b.Respond(request.RequestID, "browser-3", snapshotPayload("browser-3"), ""); !errors.Is(err, ErrResponse) {
 		t.Fatalf("unregistered response accepted: %v", err)
 	}
-	if _, err := b.register("browser-3", alive.Load); err != nil {
+	if _, err := b.RegisterRuntime("browser-3", alive.Load); err != nil {
 		t.Fatal(err)
 	}
 	alive.Store(false)
@@ -256,8 +254,30 @@ func TestBrokerRegisteredBrowserQueryAndStaleUnregister(t *testing.T) {
 	if err != nil || len(windows) != 0 {
 		t.Fatalf("closed registration was not removed: %+v %v", windows, err)
 	}
-	b.close()
+	b.Close()
 	if _, err := b.Windows(context.Background()); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("shutdown discovery: %v", err)
+	}
+}
+
+func TestRuntimeRegistrationCapacityPrunesClosedWindows(t *testing.T) {
+	b, _ := brokerFixture(t)
+	var alive atomic.Bool
+	alive.Store(true)
+	for i := range MaxRuntimes - 1 {
+		if _, err := b.RegisterRuntime("runtime-"+strconv.Itoa(i), alive.Load); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := b.RegisterRuntime("overflow", nil); !errors.Is(err, ErrCapacity) {
+		t.Fatalf("unbounded runtime registrations: %v", err)
+	}
+	alive.Store(false)
+	if _, err := b.RegisterRuntime("replacement", nil); err != nil {
+		t.Fatalf("closed windows exhausted registration capacity: %v", err)
+	}
+	windows, err := b.Windows(context.Background())
+	if err != nil || len(windows) != 2 {
+		t.Fatalf("closed windows remained in discovery: %+v %v", windows, err)
 	}
 }

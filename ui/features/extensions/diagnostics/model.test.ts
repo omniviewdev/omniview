@@ -116,8 +116,8 @@ describe('extension diagnostics capture', () => {
     debug.quarantinedContributions.push({ contributionId: 'shared', pluginId: 'test', extensionPointId: 'test/point', crashCount: 3, quarantinedAt: 124 });
     const quarantined = captureExtensionSnapshot(registry, service, { windowName: 'main' });
     expect(quarantined.points[0].contributions[0]).toMatchObject({ status: 'quarantined', crashCount: 3 });
-    debug.recentCrashes = [];
-    debug.quarantinedContributions = [];
+    debug.recentCrashes.splice(0);
+    debug.quarantinedContributions.splice(0);
     const recovered = captureExtensionSnapshot(registry, service, { windowName: 'main' });
     expect(recovered.points[0].contributions[0]).toMatchObject({ status: 'registered', crashCount: 0 });
   });

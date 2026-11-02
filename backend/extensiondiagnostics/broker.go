@@ -90,7 +90,8 @@ func NewBroker() *Broker {
 	return &Broker{pending: make(map[string]*pending), runtimes: make(map[string]*runtimeRegistration)}
 }
 
-func (b *Broker) start(emit func(Request) error) {
+// Start attaches the trusted host transport for fresh diagnostic requests.
+func (b *Broker) Start(emit func(Request) error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if !b.closed {
@@ -116,7 +117,9 @@ func (b *Broker) pruneRuntimesLocked() {
 	}
 }
 
-func (b *Broker) register(window string, alive func() bool) (Registration, error) {
+// RegisterRuntime leases an identity authenticated by the trusted host adapter.
+// The liveness check must identify that same native window or browser client.
+func (b *Broker) RegisterRuntime(window string, alive func() bool) (Registration, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.closed || b.emit == nil {
@@ -136,7 +139,8 @@ func (b *Broker) register(window string, alive func() bool) (Registration, error
 	return Registration{WindowName: window, Token: token}, nil
 }
 
-func (b *Broker) unregister(window, token string) {
+// UnregisterRuntime releases only the matching host-issued registration lease.
+func (b *Broker) UnregisterRuntime(window, token string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if runtime := b.runtimes[window]; runtime != nil && runtime.token == token {
@@ -234,9 +238,11 @@ func (b *Broker) Query(ctx context.Context, window, operation string, options Op
 	}
 }
 
-// respond consumes a valid correlation exactly once. Rejected responses cannot
-// consume another window's request or revive a cancelled request.
-func (b *Broker) respond(id, window, payload, errorMessage string) error {
+// Respond consumes a valid correlation exactly once. The trusted host adapter
+// must authenticate the caller's window before forwarding a response.
+// Rejected responses cannot consume another window's request or revive a
+// cancelled request.
+func (b *Broker) Respond(id, window, payload, errorMessage string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	p, ok := b.pending[id]
@@ -288,7 +294,8 @@ func (b *Broker) respond(id, window, payload, errorMessage string) error {
 	return nil
 }
 
-func (b *Broker) close() {
+// Close disconnects the host transport and releases all pending queries.
+func (b *Broker) Close() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.closed = true
