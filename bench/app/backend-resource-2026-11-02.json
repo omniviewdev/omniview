@@ -1,0 +1,977 @@
+{
+  "schemaVersion": 1,
+  "scope": "Go backend only; Chromium drives real host and Kubernetes plugin. Not a UI/native rendering benchmark.",
+  "sources": {
+    "host": "35ced6506129ca3e6173a66f495e0416c618429e",
+    "sdk": "b082bc460bd8a6c183b4a27ebe64d71039128a0d",
+    "kubernetes": "519172d96103340a0a7f0dab2dc60ae28b1ea28d",
+    "ui": "cef053786d7817e70f26e8558bdb984bfac09c91",
+    "afterFileSHA256": {
+      "plugin-sdk/pkg/resource/v2/validation.go": "6c52b5146a46323e7456519010e0f3403193f94108e5c585fbacbbbe0d24de19",
+      "plugin-sdk/pkg/resource/v2/validation_test.go": "16008b93185bf191378fd0ab6f693220053a2ca61995afb76f3213338a4d3c50",
+      "omniview/backend/pkg/plugin/resource/source_apply.go": "a009345f9d2a93da8b37f9b127be6d196169a83ed3d7be2f22eb20a1d2703524",
+      "omniview/backend/pkg/plugin/resource/graph/graph.go": "d7a3d84cb909cd755e8e383e54f9674e994d3a6cbe0a4c980e3d525f6ae02f84",
+      "omniview/backend/pkg/plugin/resource/graph/graph_indexer.go": "10d241b10046fda186c2ee86a9944b9681db819069f53ac4e5464cfeb38e2c56",
+      "omniview/backend/pkg/plugin/resource/graph/bindings_test.go": "5632bbc8ba41faa77c66a41d2cd42d0dce31b7def000802fe7af7504d8f3a711"
+    }
+  },
+  "environment": {
+    "go": "go1.26.1 darwin/arm64",
+    "cpu": "Apple M5 Max",
+    "dockerCPUs": 18,
+    "dockerMemoryBytes": 8317267968,
+    "kubernetes": "v1.35.0",
+    "nodes": 4
+  },
+  "method": {
+    "order": [
+      "before",
+      "after",
+      "after",
+      "before",
+      "before",
+      "after",
+      "after",
+      "before",
+      "before",
+      "after"
+    ],
+    "freshHostAndPluginPerTrial": true,
+    "freshBrowserContextPerTrial": true,
+    "simultaneouslyRunningWorkspaces": 1,
+    "profileSeconds": 20,
+    "heapSnapshotsForcedGC": true,
+    "allocation": "sampled alloc_space post minus pre; bytes allocated, not retained heap",
+    "cpu": "pprof sampled CPU nanoseconds; separate ps cumulative CPU delta",
+    "rss": "ps resident KiB at end of fixed window, before forced GC; not peak or retained heap",
+    "ready": "StartConnection followed by all 56 sources following/finished; host state polled at 100ms; includes browser navigation",
+    "telemetry": false,
+    "executionTracing": false,
+    "churnDuringColdTrials": false,
+    "compiledWhileTiming": false,
+    "limitations": [
+      "Five samples per variant; no statistical significance claim for readiness latency.",
+      "Profiling enabled in both variants.",
+      "OS and API caches warm; processes cold.",
+      "Single local kind lab; no production EKS or native UI latency claim.",
+      "Initial single-process reconnect harness and restart failures excluded; retained privately."
+    ],
+    "inventoryIdenticalAcrossColdTrials": true
+  },
+  "summary": {
+    "before": {
+      "host": {
+        "allocationBytes": {
+          "median": 6126129912,
+          "min": 6006080359,
+          "max": 6169413172
+        },
+        "retainedHeapBytes": {
+          "median": 242560322,
+          "min": 235028888,
+          "max": 258124682
+        },
+        "cpuNs": {
+          "median": 9000000000,
+          "min": 8890000000,
+          "max": 9150000000
+        },
+        "processCpuSeconds": {
+          "median": 9.95,
+          "min": 9.809999999999999,
+          "max": 10.32
+        },
+        "rssKiB": {
+          "median": 578112,
+          "min": 574592,
+          "max": 586560
+        }
+      },
+      "plugin": {
+        "allocationBytes": {
+          "median": 1809530362,
+          "min": 1760017794,
+          "max": 1822226494
+        },
+        "retainedHeapBytes": {
+          "median": 89254420,
+          "min": 88463494,
+          "max": 97721669
+        },
+        "cpuNs": {
+          "median": 4660000000,
+          "min": 4610000000,
+          "max": 4870000000
+        },
+        "processCpuSeconds": {
+          "median": 5.1000000000000005,
+          "min": 5.03,
+          "max": 5.3500000000000005
+        },
+        "rssKiB": {
+          "median": 432176,
+          "min": 409568,
+          "max": 436496
+        }
+      },
+      "connectedMs": {
+        "median": 2896.5432920000167,
+        "min": 2821.919750000001,
+        "max": 2960.496459000002
+      },
+      "syncedMs": {
+        "median": 2901.3632919999654,
+        "min": 2827.199541000009,
+        "max": 2965.841084000007
+      }
+    },
+    "after": {
+      "host": {
+        "allocationBytes": {
+          "median": 3832449729,
+          "min": 3789131801,
+          "max": 3904286511
+        },
+        "retainedHeapBytes": {
+          "median": 240208744,
+          "min": 235242008,
+          "max": 251365182
+        },
+        "cpuNs": {
+          "median": 6920000000,
+          "min": 6910000000,
+          "max": 7030000000
+        },
+        "processCpuSeconds": {
+          "median": 7.64,
+          "min": 7.590000000000001,
+          "max": 7.75
+        },
+        "rssKiB": {
+          "median": 561584,
+          "min": 555904,
+          "max": 562800
+        }
+      },
+      "plugin": {
+        "allocationBytes": {
+          "median": 1477277811,
+          "min": 1452270714,
+          "max": 1482223845
+        },
+        "retainedHeapBytes": {
+          "median": 84841068,
+          "min": 80210034,
+          "max": 110498243
+        },
+        "cpuNs": {
+          "median": 3790000000,
+          "min": 3710000000,
+          "max": 3830000000
+        },
+        "processCpuSeconds": {
+          "median": 4.12,
+          "min": 4.11,
+          "max": 4.180000000000001
+        },
+        "rssKiB": {
+          "median": 303984,
+          "min": 290224,
+          "max": 306080
+        }
+      },
+      "connectedMs": {
+        "median": 2783.3995829999913,
+        "min": 2774.3985000000102,
+        "max": 2861.435832999996
+      },
+      "syncedMs": {
+        "median": 2787.9659160000156,
+        "min": 2778.849917000043,
+        "max": 2866.397291000001
+      }
+    }
+  },
+  "trials": [
+    {
+      "trial": 0,
+      "variant": "before",
+      "connectedMs": 2960.496459000002,
+      "syncedMs": 2965.841084000007,
+      "hostPid": 65697,
+      "pluginPid": 66099,
+      "workspaceID": "5ed11136-5afe-4ef6-9379-876e894a83a6",
+      "generation": "7cd3c03c-8878-44ae-bb37-461b7c286752",
+      "profilePrefix": "final-cold-0-before",
+      "host": {
+        "allocationBytes": 6135325810,
+        "retainedHeapBytes": 238255396,
+        "cpuNs": 9150000000,
+        "processCpuSeconds": 10.32,
+        "rssKiB": 575136
+      },
+      "plugin": {
+        "allocationBytes": 1810791117,
+        "retainedHeapBytes": 88463494,
+        "cpuNs": 4870000000,
+        "processCpuSeconds": 5.3500000000000005,
+        "rssKiB": 409568
+      },
+      "resourceCountsSHA256": "1d2b8456831f8769f129a211068eaa3b6964ac9828a2ce558dfc5c83a42bb8bd"
+    },
+    {
+      "trial": 1,
+      "variant": "after",
+      "connectedMs": 2826.438833000022,
+      "syncedMs": 2831.8636660000193,
+      "hostPid": 68472,
+      "pluginPid": 68845,
+      "workspaceID": "a38cbd7a-bbb9-4e23-80ef-eb5414653d92",
+      "generation": "ad048e81-a4bb-4bbf-8586-e1a48b603dfe",
+      "profilePrefix": "final-cold-1-after",
+      "host": {
+        "allocationBytes": 3904286511,
+        "retainedHeapBytes": 251365182,
+        "cpuNs": 7030000000,
+        "processCpuSeconds": 7.75,
+        "rssKiB": 561584
+      },
+      "plugin": {
+        "allocationBytes": 1475619194,
+        "retainedHeapBytes": 84056601,
+        "cpuNs": 3830000000,
+        "processCpuSeconds": 4.15,
+        "rssKiB": 304464
+      },
+      "resourceCountsSHA256": "1d2b8456831f8769f129a211068eaa3b6964ac9828a2ce558dfc5c83a42bb8bd"
+    },
+    {
+      "trial": 2,
+      "variant": "after",
+      "connectedMs": 2861.435832999996,
+      "syncedMs": 2866.397291000001,
+      "hostPid": 70075,
+      "pluginPid": 70383,
+      "workspaceID": "a38cbd7a-bbb9-4e23-80ef-eb5414653d92",
+      "generation": "f136f239-95a1-4253-9ad8-9c51e66f441e",
+      "profilePrefix": "final-cold-2-after",
+      "host": {
+        "allocationBytes": 3838241505,
+        "retainedHeapBytes": 248236423,
+        "cpuNs": 6970000000,
+        "processCpuSeconds": 7.749999999999999,
+        "rssKiB": 555904
+      },
+      "plugin": {
+        "allocationBytes": 1477277811,
+        "retainedHeapBytes": 84841068,
+        "cpuNs": 3790000000,
+        "processCpuSeconds": 4.180000000000001,
+        "rssKiB": 306080
+      },
+      "resourceCountsSHA256": "1d2b8456831f8769f129a211068eaa3b6964ac9828a2ce558dfc5c83a42bb8bd"
+    },
+    {
+      "trial": 3,
+      "variant": "before",
+      "connectedMs": 2896.5432920000167,
+      "syncedMs": 2901.4216250000172,
+      "hostPid": 71506,
+      "pluginPid": 71952,
+      "workspaceID": "5ed11136-5afe-4ef6-9379-876e894a83a6",
+      "generation": "f17f5967-5812-476d-acb6-0ae6753571cd",
+      "profilePrefix": "final-cold-3-before",
+      "host": {
+        "allocationBytes": 6105449617,
+        "retainedHeapBytes": 242560322,
+        "cpuNs": 9040000000,
+        "processCpuSeconds": 9.93,
+        "rssKiB": 578112
+      },
+      "plugin": {
+        "allocationBytes": 1822226494,
+        "retainedHeapBytes": 89254420,
+        "cpuNs": 4680000000,
+        "processCpuSeconds": 5.1000000000000005,
+        "rssKiB": 432176
+      },
+      "resourceCountsSHA256": "1d2b8456831f8769f129a211068eaa3b6964ac9828a2ce558dfc5c83a42bb8bd"
+    },
+    {
+      "trial": 4,
+      "variant": "before",
+      "connectedMs": 2821.919750000001,
+      "syncedMs": 2827.199541000009,
+      "hostPid": 73134,
+      "pluginPid": 73550,
+      "workspaceID": "5ed11136-5afe-4ef6-9379-876e894a83a6",
+      "generation": "6b9b36f9-a436-4d0a-bb13-e9b8af4a5421",
+      "profilePrefix": "final-cold-4-before",
+      "host": {
+        "allocationBytes": 6006080359,
+        "retainedHeapBytes": 247150022,
+        "cpuNs": 8890000000,
+        "processCpuSeconds": 9.809999999999999,
+        "rssKiB": 586560
+      },
+      "plugin": {
+        "allocationBytes": 1774196573,
+        "retainedHeapBytes": 97721669,
+        "cpuNs": 4610000000,
+        "processCpuSeconds": 5.03,
+        "rssKiB": 436496
+      },
+      "resourceCountsSHA256": "1d2b8456831f8769f129a211068eaa3b6964ac9828a2ce558dfc5c83a42bb8bd"
+    },
+    {
+      "trial": 5,
+      "variant": "after",
+      "connectedMs": 2781.567417000013,
+      "syncedMs": 2786.3314580000006,
+      "hostPid": 74766,
+      "pluginPid": 75187,
+      "workspaceID": "a38cbd7a-bbb9-4e23-80ef-eb5414653d92",
+      "generation": "92500d96-cd84-4684-a025-9f3735440157",
+      "profilePrefix": "final-cold-5-after",
+      "host": {
+        "allocationBytes": 3789131801,
+        "retainedHeapBytes": 240208744,
+        "cpuNs": 6910000000,
+        "processCpuSeconds": 7.590000000000001,
+        "rssKiB": 562800
+      },
+      "plugin": {
+        "allocationBytes": 1482223845,
+        "retainedHeapBytes": 110498243,
+        "cpuNs": 3800000000,
+        "processCpuSeconds": 4.12,
+        "rssKiB": 290224
+      },
+      "resourceCountsSHA256": "1d2b8456831f8769f129a211068eaa3b6964ac9828a2ce558dfc5c83a42bb8bd"
+    },
+    {
+      "trial": 6,
+      "variant": "after",
+      "connectedMs": 2783.3995829999913,
+      "syncedMs": 2787.9659160000156,
+      "hostPid": 76285,
+      "pluginPid": 76700,
+      "workspaceID": "a38cbd7a-bbb9-4e23-80ef-eb5414653d92",
+      "generation": "2c2b3c0c-4521-4823-8a16-cf5e08a30c41",
+      "profilePrefix": "final-cold-6-after",
+      "host": {
+        "allocationBytes": 3792060061,
+        "retainedHeapBytes": 236667067,
+        "cpuNs": 6910000000,
+        "processCpuSeconds": 7.64,
+        "rssKiB": 559088
+      },
+      "plugin": {
+        "allocationBytes": 1478772915,
+        "retainedHeapBytes": 80210034,
+        "cpuNs": 3710000000,
+        "processCpuSeconds": 4.11,
+        "rssKiB": 293360
+      },
+      "resourceCountsSHA256": "1d2b8456831f8769f129a211068eaa3b6964ac9828a2ce558dfc5c83a42bb8bd"
+    },
+    {
+      "trial": 7,
+      "variant": "before",
+      "connectedMs": 2896.675707999966,
+      "syncedMs": 2901.3632919999654,
+      "hostPid": 77861,
+      "pluginPid": 78264,
+      "workspaceID": "5ed11136-5afe-4ef6-9379-876e894a83a6",
+      "generation": "11948285-83c1-4674-9cc0-a0f85230fc39",
+      "profilePrefix": "final-cold-7-before",
+      "host": {
+        "allocationBytes": 6126129912,
+        "retainedHeapBytes": 258124682,
+        "cpuNs": 8910000000,
+        "processCpuSeconds": 9.95,
+        "rssKiB": 583584
+      },
+      "plugin": {
+        "allocationBytes": 1809530362,
+        "retainedHeapBytes": 90837574,
+        "cpuNs": 4660000000,
+        "processCpuSeconds": 5.140000000000001,
+        "rssKiB": 422704
+      },
+      "resourceCountsSHA256": "1d2b8456831f8769f129a211068eaa3b6964ac9828a2ce558dfc5c83a42bb8bd"
+    },
+    {
+      "trial": 8,
+      "variant": "before",
+      "connectedMs": 2873.415917000035,
+      "syncedMs": 2877.9733340000967,
+      "hostPid": 79423,
+      "pluginPid": 79838,
+      "workspaceID": "5ed11136-5afe-4ef6-9379-876e894a83a6",
+      "generation": "d195c8b9-ef80-490d-9afe-f671c519046c",
+      "profilePrefix": "final-cold-8-before",
+      "host": {
+        "allocationBytes": 6169413172,
+        "retainedHeapBytes": 235028888,
+        "cpuNs": 9000000000,
+        "processCpuSeconds": 10,
+        "rssKiB": 574592
+      },
+      "plugin": {
+        "allocationBytes": 1760017794,
+        "retainedHeapBytes": 88507674,
+        "cpuNs": 4650000000,
+        "processCpuSeconds": 5.090000000000001,
+        "rssKiB": 432288
+      },
+      "resourceCountsSHA256": "1d2b8456831f8769f129a211068eaa3b6964ac9828a2ce558dfc5c83a42bb8bd"
+    },
+    {
+      "trial": 9,
+      "variant": "after",
+      "connectedMs": 2774.3985000000102,
+      "syncedMs": 2778.849917000043,
+      "hostPid": 80961,
+      "pluginPid": 81416,
+      "workspaceID": "a38cbd7a-bbb9-4e23-80ef-eb5414653d92",
+      "generation": "9c38a25d-aa50-4a56-9bd0-39fb3478bc57",
+      "profilePrefix": "final-cold-9-after",
+      "host": {
+        "allocationBytes": 3832449729,
+        "retainedHeapBytes": 235242008,
+        "cpuNs": 6920000000,
+        "processCpuSeconds": 7.629999999999999,
+        "rssKiB": 561872
+      },
+      "plugin": {
+        "allocationBytes": 1452270714,
+        "retainedHeapBytes": 88640379,
+        "cpuNs": 3730000000,
+        "processCpuSeconds": 4.12,
+        "rssKiB": 303984
+      },
+      "resourceCountsSHA256": "1d2b8456831f8769f129a211068eaa3b6964ac9828a2ce558dfc5c83a42bb8bd"
+    }
+  ],
+  "expectedResourceCounts": {
+    "k8s:/configmaps": {
+      "kind": "exact",
+      "value": "323"
+    },
+    "k8s:/endpoints": {
+      "kind": "exact",
+      "value": "302"
+    },
+    "k8s:/events": {
+      "kind": "exact",
+      "value": "1326"
+    },
+    "k8s:/limitranges": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:/namespaces": {
+      "kind": "exact",
+      "value": "15"
+    },
+    "k8s:/nodes": {
+      "kind": "exact",
+      "value": "4"
+    },
+    "k8s:/persistentvolumeclaims": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:/persistentvolumes": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:/pods": {
+      "kind": "exact",
+      "value": "315"
+    },
+    "k8s:/podtemplates": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:/replicationcontrollers": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:/resourcequotas": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:/secrets": {
+      "kind": "exact",
+      "value": "300"
+    },
+    "k8s:/serviceaccounts": {
+      "kind": "exact",
+      "value": "55"
+    },
+    "k8s:/services": {
+      "kind": "exact",
+      "value": "302"
+    },
+    "k8s:admissionregistration.k8s.io/mutatingwebhookconfigurations": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:admissionregistration.k8s.io/validatingadmissionpolicies": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:admissionregistration.k8s.io/validatingadmissionpolicybindings": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:admissionregistration.k8s.io/validatingwebhookconfigurations": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:apiextensions.k8s.io/customresourcedefinitions": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:apiregistration.k8s.io/apiservices": {
+      "kind": "exact",
+      "value": "21"
+    },
+    "k8s:apps/controllerrevisions": {
+      "kind": "exact",
+      "value": "2"
+    },
+    "k8s:apps/daemonsets": {
+      "kind": "exact",
+      "value": "2"
+    },
+    "k8s:apps/deployments": {
+      "kind": "exact",
+      "value": "302"
+    },
+    "k8s:apps/replicasets": {
+      "kind": "exact",
+      "value": "602"
+    },
+    "k8s:apps/statefulsets": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:autoscaling/horizontalpodautoscalers": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:batch/cronjobs": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:batch/jobs": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:certificates.k8s.io/certificatesigningrequests": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:coordination.k8s.io/leases": {
+      "kind": "exact",
+      "value": "7"
+    },
+    "k8s:discovery.k8s.io/endpointslices": {
+      "kind": "exact",
+      "value": "302"
+    },
+    "k8s:flowcontrol.apiserver.k8s.io/flowschemas": {
+      "kind": "exact",
+      "value": "11"
+    },
+    "k8s:flowcontrol.apiserver.k8s.io/prioritylevelconfigurations": {
+      "kind": "exact",
+      "value": "8"
+    },
+    "k8s:networking.k8s.io/ingressclasses": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:networking.k8s.io/ingresses": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:networking.k8s.io/ipaddresses": {
+      "kind": "exact",
+      "value": "302"
+    },
+    "k8s:networking.k8s.io/networkpolicies": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:networking.k8s.io/servicecidrs": {
+      "kind": "exact",
+      "value": "1"
+    },
+    "k8s:node.k8s.io/runtimeclasses": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:policy/poddisruptionbudgets": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:rbac.authorization.k8s.io/clusterrolebindings": {
+      "kind": "exact",
+      "value": "58"
+    },
+    "k8s:rbac.authorization.k8s.io/clusterroles": {
+      "kind": "exact",
+      "value": "72"
+    },
+    "k8s:rbac.authorization.k8s.io/rolebindings": {
+      "kind": "exact",
+      "value": "12"
+    },
+    "k8s:rbac.authorization.k8s.io/roles": {
+      "kind": "exact",
+      "value": "12"
+    },
+    "k8s:resource.k8s.io/deviceclasses": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:resource.k8s.io/resourceclaims": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:resource.k8s.io/resourceclaimtemplates": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:resource.k8s.io/resourceslices": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:scheduling.k8s.io/priorityclasses": {
+      "kind": "exact",
+      "value": "2"
+    },
+    "k8s:storage.k8s.io/csidrivers": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:storage.k8s.io/csinodes": {
+      "kind": "exact",
+      "value": "4"
+    },
+    "k8s:storage.k8s.io/csistoragecapacities": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:storage.k8s.io/storageclasses": {
+      "kind": "exact",
+      "value": "1"
+    },
+    "k8s:storage.k8s.io/volumeattachments": {
+      "kind": "exact",
+      "value": "0"
+    },
+    "k8s:storage.k8s.io/volumeattributesclasses": {
+      "kind": "exact",
+      "value": "0"
+    }
+  },
+  "watch": {
+    "method": {
+      "order": [
+        "before",
+        "after"
+      ],
+      "profileSeconds": 35,
+      "driver": "python3 hack/kind-lab/lab.py churn --interval 1 --duration 30",
+      "warmup": "One 30-cycle cluster churn before trials; each process fully synced and warmed 15 seconds before measurement.",
+      "limitation": "One final sample per variant. No meaningful steady-watch CPU improvement established. Additional preliminary watch trials preserved privately.",
+      "rollouts": 0,
+      "allSourcesFollowingAfterEachTrial": 56,
+      "failedSources": 0
+    },
+    "expectedResourceCounts": {
+      "k8s:/configmaps": {
+        "kind": "exact",
+        "value": "323"
+      },
+      "k8s:/endpoints": {
+        "kind": "exact",
+        "value": "302"
+      },
+      "k8s:/events": {
+        "kind": "exact",
+        "value": "1326"
+      },
+      "k8s:/limitranges": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:/namespaces": {
+        "kind": "exact",
+        "value": "15"
+      },
+      "k8s:/nodes": {
+        "kind": "exact",
+        "value": "4"
+      },
+      "k8s:/persistentvolumeclaims": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:/persistentvolumes": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:/pods": {
+        "kind": "exact",
+        "value": "315"
+      },
+      "k8s:/podtemplates": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:/replicationcontrollers": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:/resourcequotas": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:/secrets": {
+        "kind": "exact",
+        "value": "300"
+      },
+      "k8s:/serviceaccounts": {
+        "kind": "exact",
+        "value": "55"
+      },
+      "k8s:/services": {
+        "kind": "exact",
+        "value": "302"
+      },
+      "k8s:admissionregistration.k8s.io/mutatingwebhookconfigurations": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:admissionregistration.k8s.io/validatingadmissionpolicies": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:admissionregistration.k8s.io/validatingadmissionpolicybindings": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:admissionregistration.k8s.io/validatingwebhookconfigurations": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:apiextensions.k8s.io/customresourcedefinitions": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:apiregistration.k8s.io/apiservices": {
+        "kind": "exact",
+        "value": "21"
+      },
+      "k8s:apps/controllerrevisions": {
+        "kind": "exact",
+        "value": "2"
+      },
+      "k8s:apps/daemonsets": {
+        "kind": "exact",
+        "value": "2"
+      },
+      "k8s:apps/deployments": {
+        "kind": "exact",
+        "value": "302"
+      },
+      "k8s:apps/replicasets": {
+        "kind": "exact",
+        "value": "602"
+      },
+      "k8s:apps/statefulsets": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:autoscaling/horizontalpodautoscalers": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:batch/cronjobs": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:batch/jobs": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:certificates.k8s.io/certificatesigningrequests": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:coordination.k8s.io/leases": {
+        "kind": "exact",
+        "value": "7"
+      },
+      "k8s:discovery.k8s.io/endpointslices": {
+        "kind": "exact",
+        "value": "302"
+      },
+      "k8s:flowcontrol.apiserver.k8s.io/flowschemas": {
+        "kind": "exact",
+        "value": "11"
+      },
+      "k8s:flowcontrol.apiserver.k8s.io/prioritylevelconfigurations": {
+        "kind": "exact",
+        "value": "8"
+      },
+      "k8s:networking.k8s.io/ingressclasses": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:networking.k8s.io/ingresses": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:networking.k8s.io/ipaddresses": {
+        "kind": "exact",
+        "value": "302"
+      },
+      "k8s:networking.k8s.io/networkpolicies": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:networking.k8s.io/servicecidrs": {
+        "kind": "exact",
+        "value": "1"
+      },
+      "k8s:node.k8s.io/runtimeclasses": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:policy/poddisruptionbudgets": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:rbac.authorization.k8s.io/clusterrolebindings": {
+        "kind": "exact",
+        "value": "58"
+      },
+      "k8s:rbac.authorization.k8s.io/clusterroles": {
+        "kind": "exact",
+        "value": "72"
+      },
+      "k8s:rbac.authorization.k8s.io/rolebindings": {
+        "kind": "exact",
+        "value": "12"
+      },
+      "k8s:rbac.authorization.k8s.io/roles": {
+        "kind": "exact",
+        "value": "12"
+      },
+      "k8s:resource.k8s.io/deviceclasses": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:resource.k8s.io/resourceclaims": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:resource.k8s.io/resourceclaimtemplates": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:resource.k8s.io/resourceslices": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:scheduling.k8s.io/priorityclasses": {
+        "kind": "exact",
+        "value": "2"
+      },
+      "k8s:storage.k8s.io/csidrivers": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:storage.k8s.io/csinodes": {
+        "kind": "exact",
+        "value": "4"
+      },
+      "k8s:storage.k8s.io/csistoragecapacities": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:storage.k8s.io/storageclasses": {
+        "kind": "exact",
+        "value": "1"
+      },
+      "k8s:storage.k8s.io/volumeattachments": {
+        "kind": "exact",
+        "value": "0"
+      },
+      "k8s:storage.k8s.io/volumeattributesclasses": {
+        "kind": "exact",
+        "value": "0"
+      }
+    },
+    "inventoryIdentical": true,
+    "trials": [
+      {
+        "trial": 0,
+        "variant": "before",
+        "workload": {
+          "cycles": 30,
+          "writes": 90,
+          "rollouts": 0
+        },
+        "generation": "357f3b22-5730-47d8-ba21-55a4e19a7490",
+        "workspaceID": "5ed11136-5afe-4ef6-9379-876e894a83a6",
+        "profilePrefix": "final-churn-0-before",
+        "failedSources": 0,
+        "followingSources": 56,
+        "host": {
+          "allocationBytes": 1281757753,
+          "cpuNs": 1920000000
+        },
+        "plugin": {
+          "allocationBytes": 298132166,
+          "cpuNs": 650000000
+        }
+      },
+      {
+        "trial": 1,
+        "variant": "after",
+        "workload": {
+          "cycles": 30,
+          "writes": 90,
+          "rollouts": 0
+        },
+        "generation": "452970bb-5285-4309-8d20-b8484e60eb59",
+        "workspaceID": "a38cbd7a-bbb9-4e23-80ef-eb5414653d92",
+        "profilePrefix": "final-churn-1-after",
+        "failedSources": 0,
+        "followingSources": 56,
+        "host": {
+          "allocationBytes": 1207394135,
+          "cpuNs": 1930000000
+        },
+        "plugin": {
+          "allocationBytes": 291147230,
+          "cpuNs": 670000000
+        }
+      }
+    ],
+    "remainingHotspot": {
+      "profile": "final-churn-1-after-host-post.pprof minus corresponding pre",
+      "relayResyncAllocationPercent": 97.29,
+      "buildResourceCatalogAllocationPercent": 95.67,
+      "checkObservedCatalogAllocationPercent": 71.11
+    }
+  }
+}

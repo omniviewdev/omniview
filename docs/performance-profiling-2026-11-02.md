@@ -228,3 +228,171 @@ Existing client-go REST handling, 50 QPS/100 burst configuration, cancellation a
 | Re-exporting a watched private kubeconfig caused a configuration-revision change | Explicit Retry resources was needed; reconnect after config settles, and retain generation checks |
 
 The reusable skill is `.agents/skills/omniview-performance-profiling/`; the repository installer advertises it. Existing click/progress defects are tracked, not claimed fixed by backend parallelism.
+
+## Backend allocation follow-up
+
+### Source and workload
+
+The installed `/opt/homebrew/bin/omniview-dev` created two managed workspaces:
+`backend-performance-20261102` (changes) and
+`backend-performance-control-20261102` (unchanged control). Both selected host
+`35ced6506129ca3e6173a66f495e0416c618429e`, SDK
+`b082bc460bd8a6c183b4a27ebe64d71039128a0d`, Kubernetes
+`519172d96103340a0a7f0dab2dc60ae28b1ea28d`, and the UI cohort above.
+Only the changed workspace contains the local host/SDK patches. No dependency
+upgrade, new serialization dependency, module-version invention, or production
+profile change was needed. This checkout already requires Go 1.26.0; the actual
+compiler was Go 1.26.1 on darwin/arm64, Apple M5 Max.
+
+Reused the documented dedicated kind lab without changing default kubeconfig.
+All four Kubernetes v1.35.0 nodes were Ready. The settled inventory contained
+315 Ready Pods with zero deleting Pods, including 300 labeled application Pods.
+There were 300 each labeled Deployments, Services, ConfigMaps, and synthetic
+Secrets. Every measured cold trial reported the same full resource counts,
+including 602 ReplicaSets, 302 EndpointSlices, and 1,326 Events. Docker reported
+18 CPUs and 8,317,267,968 bytes of VM memory. Larger preset claims would exceed
+this lab's validated topology; these measurements use real running workloads,
+not fabricated nodes or repeated frontend rows.
+
+### Profile-directed changes
+
+Initial live connection profiles identified:
+
+- Host `RelationshipGraph.selectorSnapshot`: 1.66 GiB of sampled allocations,
+  28.08% of the initial process allocation profile.
+- SDK `metadataBudget.structFields`: 18.60% cumulative host CPU and 22.98%
+  cumulative plugin CPU.
+- Host source membership constructed a full protobuf record solely to count its
+  bytes, even though SDK already exposes exact `RecordWireSize`.
+
+The changes address those costs without changing wire formats:
+
+1. Host filters cached selectors by plugin, target type, binding, and declaration
+   scope before copying them into a snapshot. Label matching and declaration
+   retirement publication fences remain unchanged. The cache is still scanned;
+   this is not a new selector index.
+2. SDK traverses exact `Value` trees with typed code instead of rediscovering
+   reflection fields and JSON tags for every node. It still checks inactive
+   payloads and preserves traversal order and all existing budgets. Generic
+   metadata remains reflective. Passing recursive values by value also avoids
+   escaping map-iteration temporaries. A refinement profile had attributed
+   260 MiB to those temporaries; the final comparison includes their removal.
+3. Host uses `RecordWireSize` for source membership accounting instead of
+   `ToProtoRecord` followed by `proto.Size`. Record validation and source limits
+   remain in force; no protobuf tree is built solely for sizing.
+
+Kubernetes code and public SDK APIs are unchanged. Both host and plugin must
+consume the optimized SDK build to receive the shared traversal improvement.
+These local worktrees are not published SDK/plugin releases.
+
+### Matched cold-process results
+
+Ran five trials per variant in alternating paired order:
+`before, after, after, before, before, after, after, before, before, after`.
+Each trial used a fresh host/plugin process and Chromium context. Only one
+workspace ran at a time. Builds completed before timing; OS/API caches remained
+warm. The browser drove real backend bindings, not a transport mock.
+
+Separate loopback pprof endpoints were discovered through the live host/plugin
+status bindings for each process generation. Both CPU captures lasted 20 seconds,
+starting immediately before connection. Heap profiles forced GC outside that
+window. Allocation figures subtract pre-connection `alloc_space` from the
+post-window profile; they are sampled allocated bytes, not retained heap.
+Telemetry, continuous profiling, execution tracing, and load churn were disabled.
+All ten trials reached all 56 sources following/finished with zero failed sources.
+
+| Backend measure | Before median (range) | After median (range) | Median change |
+| --- | ---: | ---: | ---: |
+| Host allocated bytes, GiB | 5.71 (5.59–5.75) | 3.57 (3.53–3.64) | −37.4% |
+| Plugin allocated bytes, GiB | 1.69 (1.64–1.70) | 1.38 (1.35–1.38) | −18.4% |
+| Host sampled CPU, seconds | 9.00 (8.89–9.15) | 6.92 (6.91–7.03) | −23.1% |
+| Plugin sampled CPU, seconds | 4.66 (4.61–4.87) | 3.79 (3.71–3.83) | −18.7% |
+| Plugin end-window RSS, MiB | 422.0 (400.0–426.3) | 296.9 (283.4–298.9) | −29.7% |
+| Host end-window RSS, MiB | 564.6 (561.1–572.8) | 548.4 (542.9–549.6) | −2.9% |
+| All-source readiness, milliseconds | 2901.4 (2827.2–2965.8) | 2788.0 (2778.8–2866.4) | −3.9% |
+| Host post-GC retained heap, MiB | 231.3 (224.1–246.2) | 229.1 (224.3–239.7) | −1.0% |
+| Plugin post-GC retained heap, MiB | 85.1 (84.4–93.2) | 80.9 (76.5–105.4) | −4.9% |
+
+Process CPU deltas independently corroborated the sampled CPU reduction:
+host median 9.95 to 7.64 seconds; plugin 5.10 to 4.12 seconds.
+RSS is resident process memory at the end of the fixed window, before forced GC,
+not peak memory or a retained-object measure.
+
+The material result is reduced temporary allocation, CPU work, and plugin RSS.
+No substantial retained-heap improvement is established; sampled ranges overlap.
+Readiness improved by only 113 ms, with overlapping ranges and five samples.
+Do not claim a significant startup latency or native/UI responsiveness improvement
+from this result. These changes reduce backend work and GC pressure;
+production-cluster and native interaction latency remain unmeasured.
+
+The [sanitized backend receipt](../bench/app/backend-resource-2026-11-02.json)
+records every sample, full source counts, generation/PID identities, source
+hashes, and methodology. Raw profiles, scripts, and cluster corpus remain private
+under the changed workspace's ignored `.local/`; profiles and measurement scripts
+are in `.local/profiling-evidence/`.
+
+### Sustained watch-path check
+
+After an Event-ring warmup, the final before/after pair each ran 30 churn cycles
+over 30 seconds: 90 direct ConfigMap/Secret/Event writes and zero rollouts.
+Each fresh process completed initial sync and warmed for 15 seconds first.
+Separate host/plugin CPU profiles covered 35 seconds. All 56 sources remained
+following with zero failures, and both trials retained the same inventory,
+including 1,326 Events.
+
+| Watch-window measure | Before | After |
+| --- | ---: | ---: |
+| Host sampled allocation, MiB | 1222.4 | 1151.5 |
+| Plugin sampled allocation, MiB | 284.3 | 277.7 |
+| Host sampled CPU, seconds | 1.92 | 1.93 |
+| Plugin sampled CPU, seconds | 0.65 | 0.67 |
+
+This single final pair is a watch-path smoke and hotspot discovery, not evidence
+of a steady-watch CPU improvement. Four earlier watch trials with the intermediate
+SDK implementation also showed little change; they remain private exploration.
+Periodic MCP catalog reconstruction dominates this workload, not the 90 writes.
+
+### Verification and remaining opportunities
+
+Passed SDK resource-v2 package tests and race tests, including transport coverage.
+Passed host resource, graph, indexer, leasewire, query, and registry race tests.
+New coverage preserves inactive-value admission and budget boundaries, plus
+cross-authority selector matching, unrelated-target exclusion, late arrivals,
+and retired snapshot publication fencing. Both real managed backend variants
+were built and exercised through the ten cold trials.
+
+Both managed workspaces were stopped through the CLI after measurement.
+Finite churn drivers exited. The lab remains intact with 315 Ready Pods and no
+deleting Pods. Temporary benchmark source was removed; its exact harness and
+the capture scripts were retained only as private measurement evidence.
+
+Initial exploratory microbenchmarks overlapped development builds and are not
+acceptance evidence. A single-process reconnect harness encountered retired
+authority errors and an unavailable plugin endpoint; those warmups are excluded.
+A later `workspace restart` on a stopped workspace returned
+`devsession: process no longer exists`. Explicit managed `down`/`up` succeeded
+and was used for every accepted trial. No authority checks were weakened.
+
+Further profile-backed candidates, not claimed improvements:
+- Periodic MCP catalog reconstruction is the largest remaining steady-workload
+  lead. In the final 35-second watch window, relay `resync` accounted for
+  97.29% of host sampled allocation; `BuildResourceCatalogWithReaders` accounted
+  for 95.67%. `checkObservedCatalog` repeatedly marshals the whole catalog during
+  per-type target resolution. Investigate batched resolution or immutable
+  observation-aware reuse while preserving digest, generation, and authority
+  fences. Do not disable MCP or drop those checks to improve a benchmark.
+
+- Remove native map/list construction used only before graph JSON encoding.
+  Preserve exact integers, timestamps, negative zero, escaping, and admission.
+- Reduce repeated JSON/schema admission and event serialization performed only
+  for queue-byte accounting. Cache only at an explicit immutable ownership
+  boundary; do not trust mutable caller-owned documents.
+- Partition selector lookup rather than scanning the remaining cache, if larger
+  connection/selector counts justify another index.
+- Try separate host and plugin PGO builds with representative startup and watch
+  profiles. [Go's PGO guidance](https://go.dev/doc/pgo) warns against
+  microbenchmark-only profiles and using one binary's profile for another.
+
+No codec replacement or GC-limit tuning was introduced. Removing unnecessary
+serialization and copies avoids changing the SDK's lossless scalar and strict
+admission contracts merely to obtain a faster JSON benchmark.

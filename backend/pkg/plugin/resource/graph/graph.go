@@ -391,14 +391,21 @@ func (g *RelationshipGraph) hasSelectors(nodeKey string) bool {
 	return len(g.selectorCache[nodeKey]) > 0
 }
 
-// selectorSnapshot returns the cached selectors. Entries are replaced, never
-// mutated, so they are shared with the cache.
-func (g *RelationshipGraph) selectorSnapshot() []selectorEntry {
+// selectorSnapshot returns only selectors bound to the target's plugin, domain,
+// type and scope, filtering before allocating snapshot storage. Entries are
+// replaced, never mutated, so their contents are shared with the cache.
+func (g *RelationshipGraph) selectorSnapshot(target GraphNode) []selectorEntry {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	var out []selectorEntry
 	for _, entries := range g.selectorCache {
 		for _, entry := range entries {
+			if entry.node.PluginID != target.PluginID ||
+				entry.decl.TargetType != target.Reference.Address.Type ||
+				!bindingMatches(entry.binding, target) ||
+				!scopeMatches(entry.decl.TargetScope, target.Reference.Address.Scope) {
+				continue
+			}
 			out = append(out, entry)
 		}
 	}

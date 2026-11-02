@@ -8,7 +8,6 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/indexer"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
-	"google.golang.org/protobuf/proto"
 )
 
 type sourceMember struct {
@@ -17,7 +16,7 @@ type sourceMember struct {
 }
 
 func makeSourceMember(o resourcev2.SourceObservation) (sourceMember, string, error) {
-	p, err := resourcev2.ToProtoRecord(o.Record)
+	size, err := resourcev2.RecordWireSize(o.Record)
 	if err != nil {
 		return sourceMember{}, "", err
 	}
@@ -25,7 +24,7 @@ func makeSourceMember(o resourcev2.SourceObservation) (sourceMember, string, err
 	if err != nil {
 		return sourceMember{}, "", err
 	}
-	return sourceMember{observation: o, size: proto.Size(p)}, key, nil
+	return sourceMember{observation: o, size: size}, key, nil
 }
 
 func (c *controller) observeSourceRecord(ctx context.Context, pluginID string, generation *pluginState, route resourcev2.AccessRoute, record resourcev2.Record, metadata *resourcev2.ResourceMetadata) error {
