@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newGraphPipeline(t *testing.T) (*engineWatchSink, *controller, *graph.RelationshipGraph, *indexer.Dispatcher) {
+func newGraphPipeline(t *testing.T) (*controller, *graph.RelationshipGraph, *indexer.Dispatcher) {
 	t.Helper()
 	ctrl, _ := newTestControllerWithEmitter(t)
 	catalog := canonicalTestCatalog("provider-a", "workload")
@@ -25,9 +25,24 @@ func newGraphPipeline(t *testing.T) (*engineWatchSink, *controller, *graph.Relat
 	dispatcher.Start()
 	t.Cleanup(dispatcher.Stop)
 	ctrl.dispatcher = dispatcher
-	ctx, cancel := context.WithCancel(invocation.HostContext(context.Background()))
-	t.Cleanup(cancel)
-	return &engineWatchSink{ctx: ctx, generationID: ctrl.plugins["plugin-a"].generationID, pluginID: "plugin-a", ctrl: ctrl, store: ctrl.registryStore, dispatcher: dispatcher}, ctrl, ctrl.graph, dispatcher
+	return ctrl, ctrl.graph, dispatcher
+}
+
+func applyGraphRecord(t *testing.T, ctrl *controller, route resourcev2.AccessRoute, record resourcev2.Record) {
+	t.Helper()
+	ctx := invocation.HostContext(context.Background())
+	require.NoError(t, ctrl.observeSourceRecord(ctx, "plugin-a", ctrl.plugins["plugin-a"], route, record, nil))
+}
+
+func deleteGraphRecord(ctrl *controller, route resourcev2.AccessRoute, ref resourcev2.ResourceReference) {
+	session := sourceSession{
+		coordinator:      &sourceCoordinator{ctrl: ctrl},
+		ctx:              invocation.HostContext(context.Background()),
+		pluginID:         "plugin-a",
+		pluginGeneration: ctrl.plugins["plugin-a"],
+		target:           resourcev2.ReadTarget{Route: route},
+	}
+	session.deleteRecord(ref)
 }
 
 func graphPipelineRecord(t *testing.T, ctrl *controller, resourceType, id, body string) (resourcev2.AccessRoute, resourcev2.Record) {
@@ -58,11 +73,11 @@ func setPipelineDeclarations(t *testing.T, ctrl *controller, g *graph.Relationsh
 	require.NoError(t, g.SetBoundDeclarations(plugin, route, sourceType, decls, bindings))
 }
 
-func TestIntegration_WatchEventToGraphQuery(t *testing.T) {
-	sink, ctrl, g, dispatcher := newGraphPipeline(t)
+func TestIntegration_SourceRecordToGraphQuery(t *testing.T) {
+	ctrl, g, dispatcher := newGraphPipeline(t)
 	setPipelineDeclarations(t, ctrl, g, "plugin-a", resourcev2.AccessRoute{Connection: "route/one"}, "workload", []resourcev2.RelationshipDescriptor{{Type: resourcev2.RelRunsOn, TargetType: "machine", Label: "runs on", TargetScope: []resourcev2.ScopeEntry{}, Extractor: &resourcev2.RelationshipExtractor{Method: "fieldPath", FieldPath: "machine"}}})
 	route, record := graphPipelineRecord(t, ctrl, "workload", "object/one", `{"machine":"worker/one"}`)
-	sink.OnAdd(resourcev2.WatchAddPayload{Route: route, Record: record})
+	applyGraphRecord(t, ctrl, route, record)
 	dispatcher.Flush()
 	entry, ok := ctrl.registryStore.Get("plugin-a", record.Reference, route)
 	require.True(t, ok)
@@ -72,7 +87,7 @@ func TestIntegration_WatchEventToGraphQuery(t *testing.T) {
 	require.Len(t, edges, 1)
 	require.Equal(t, "worker/one", edges[0].Target.Reference.Address.ID)
 	require.Equal(t, admittedReadTarget(t, ctrl, "plugin-a", route.Connection, "machine").Target.Authority, edges[0].Target.Reference.Address.Authority)
-	sink.OnDelete(resourcev2.WatchDeletePayload{Route: route, Reference: record.Reference})
+	deleteGraphRecord(ctrl, route, record.Reference)
 	dispatcher.Flush()
 	_, ok = ctrl.registryStore.Get("plugin-a", record.Reference, route)
 	require.False(t, ok)
@@ -82,10 +97,10 @@ func TestIntegration_WatchEventToGraphQuery(t *testing.T) {
 }
 
 func TestIntegration_OwnershipChain(t *testing.T) {
-	sink, ctrl, g, dispatcher := newGraphPipeline(t)
+	ctrl, g, dispatcher := newGraphPipeline(t)
 	setPipelineDeclarations(t, ctrl, g, "plugin-a", resourcev2.AccessRoute{Connection: "route/one"}, "workload", []resourcev2.RelationshipDescriptor{{Type: resourcev2.RelOwns, TargetType: "owner", Label: "owned by", Direction: resourcev2.EdgeIncoming, ScopeExtractors: []resourcev2.ScopeExtractor{{Dimension: "shard", FieldPath: "placement"}}, Extractor: &resourcev2.RelationshipExtractor{Method: "fieldPath", FieldPath: "owner"}}})
 	route, record := graphPipelineRecord(t, ctrl, "workload", "child", `{"placement":"west","owner":"parent"}`)
-	sink.OnAdd(resourcev2.WatchAddPayload{Route: route, Record: record})
+	applyGraphRecord(t, ctrl, route, record)
 	dispatcher.Flush()
 	parent := record.Reference
 	parent.Address.Type = "owner"
@@ -99,10 +114,10 @@ func TestIntegration_OwnershipChain(t *testing.T) {
 }
 
 func TestIntegration_ClusterScopedTarget(t *testing.T) {
-	sink, ctrl, g, dispatcher := newGraphPipeline(t)
+	ctrl, g, dispatcher := newGraphPipeline(t)
 	setPipelineDeclarations(t, ctrl, g, "plugin-a", resourcev2.AccessRoute{Connection: "route/one"}, "workload", []resourcev2.RelationshipDescriptor{{Type: resourcev2.RelUses, TargetType: "machine", TargetScope: []resourcev2.ScopeEntry{}, Extractor: &resourcev2.RelationshipExtractor{Method: "fieldPath", FieldPath: "volume"}}})
 	route, record := graphPipelineRecord(t, ctrl, "workload", "claim", `{"volume":"disk"}`)
-	sink.OnAdd(resourcev2.WatchAddPayload{Route: route, Record: record})
+	applyGraphRecord(t, ctrl, route, record)
 	dispatcher.Flush()
 	edges := g.EdgesFrom((graph.GraphNode{PluginID: "plugin-a", Reference: record.Reference, Route: route}).Key())
 	require.Len(t, edges, 1)
@@ -111,7 +126,7 @@ func TestIntegration_ClusterScopedTarget(t *testing.T) {
 }
 
 func TestIntegration_ConnectionTeardown(t *testing.T) {
-	sink, ctrl, g, dispatcher := newGraphPipeline(t)
+	ctrl, g, dispatcher := newGraphPipeline(t)
 	setPipelineDeclarations(t, ctrl, g, "plugin-a", resourcev2.AccessRoute{Connection: "route/one"}, "workload", []resourcev2.RelationshipDescriptor{{Type: resourcev2.RelRunsOn, TargetType: "machine", Extractor: &resourcev2.RelationshipExtractor{Method: "fieldPath", FieldPath: "machine"}}})
 	var first resourcev2.ResourceReference
 	for _, id := range []string{"one", "two", "three"} {
@@ -119,7 +134,7 @@ func TestIntegration_ConnectionTeardown(t *testing.T) {
 		if id == "one" {
 			first = record.Reference
 		}
-		sink.OnAdd(resourcev2.WatchAddPayload{Route: route, Record: record})
+		applyGraphRecord(t, ctrl, route, record)
 	}
 	dispatcher.Flush()
 	require.Len(t, ctrl.registryStore.ScanByResourceKey("plugin-a", "route/one", "workload"), 3)

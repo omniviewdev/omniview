@@ -6,6 +6,107 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * ConnectionExport limits exported operations to explicit resource patterns.
+ */
+export class ConnectionExport {
+    "operations": string[];
+    "resource_types": string[];
+
+    /** Creates a new ConnectionExport instance. */
+    constructor($$source: Partial<ConnectionExport> = {}) {
+        if (!("operations" in $$source)) {
+            this["operations"] = [];
+        }
+        if (!("resource_types" in $$source)) {
+            this["resource_types"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ConnectionExport instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ConnectionExport {
+        const $$createField0_0 = $$createType0;
+        const $$createField1_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("operations" in $$parsedSource) {
+            $$parsedSource["operations"] = $$createField0_0($$parsedSource["operations"]);
+        }
+        if ("resource_types" in $$parsedSource) {
+            $$parsedSource["resource_types"] = $$createField1_0($$parsedSource["resource_types"]);
+        }
+        return new ConnectionExport($$parsedSource as Partial<ConnectionExport>);
+    }
+}
+
+/**
+ * ConnectionRequirement names one owner and the complete access a consumer needs.
+ */
+export class ConnectionRequirement {
+    "plugin": string;
+    "operations": string[];
+    "resource_types": string[];
+
+    /** Creates a new ConnectionRequirement instance. */
+    constructor($$source: Partial<ConnectionRequirement> = {}) {
+        if (!("plugin" in $$source)) {
+            this["plugin"] = "";
+        }
+        if (!("operations" in $$source)) {
+            this["operations"] = [];
+        }
+        if (!("resource_types" in $$source)) {
+            this["resource_types"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ConnectionRequirement instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ConnectionRequirement {
+        const $$createField1_0 = $$createType0;
+        const $$createField2_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("operations" in $$parsedSource) {
+            $$parsedSource["operations"] = $$createField1_0($$parsedSource["operations"]);
+        }
+        if ("resource_types" in $$parsedSource) {
+            $$parsedSource["resource_types"] = $$createField2_0($$parsedSource["resource_types"]);
+        }
+        return new ConnectionRequirement($$parsedSource as Partial<ConnectionRequirement>);
+    }
+}
+
+/**
+ * ExportsSpec declares services this plugin offers to installed consumers.
+ */
+export class ExportsSpec {
+    "connections"?: ConnectionExport | null;
+
+    /** Creates a new ExportsSpec instance. */
+    constructor($$source: Partial<ExportsSpec> = {}) {
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ExportsSpec instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ExportsSpec {
+        const $$createField0_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("connections" in $$parsedSource) {
+            $$parsedSource["connections"] = $$createField0_0($$parsedSource["connections"]);
+        }
+        return new ExportsSpec($$parsedSource as Partial<ExportsSpec>);
+    }
+}
+
+/**
  * PluginAuthor identifies the original author and optional contact links.
  */
 export class PluginAuthor {
@@ -76,7 +177,7 @@ export class PluginComponents {
      * Creates a new PluginComponents instance from a string or object.
      */
     static createFrom($$source: any = {}): PluginComponents {
-        const $$createField0_0 = $$createType1;
+        const $$createField0_0 = $$createType4;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("resource" in $$parsedSource) {
             $$parsedSource["resource"] = $$createField0_0($$parsedSource["resource"]);
@@ -136,6 +237,8 @@ export class PluginMeta {
     "components": PluginComponents;
     "schema_version": number;
     "sdk_protocol_version": number;
+    "exports"?: ExportsSpec | null;
+    "requires"?: RequiresSpec | null;
 
     /**
      * StateIsolation is inspectable before launch; only a trusted builder's
@@ -207,14 +310,16 @@ export class PluginMeta {
      * Creates a new PluginMeta instance from a string or object.
      */
     static createFrom($$source: any = {}): PluginMeta {
-        const $$createField10_0 = $$createType3;
-        const $$createField11_0 = $$createType5;
-        const $$createField12_0 = $$createType6;
-        const $$createField13_0 = $$createType6;
-        const $$createField14_0 = $$createType6;
-        const $$createField15_0 = $$createType7;
-        const $$createField16_0 = $$createType8;
-        const $$createField19_0 = $$createType10;
+        const $$createField10_0 = $$createType6;
+        const $$createField11_0 = $$createType8;
+        const $$createField12_0 = $$createType0;
+        const $$createField13_0 = $$createType0;
+        const $$createField14_0 = $$createType0;
+        const $$createField15_0 = $$createType9;
+        const $$createField16_0 = $$createType10;
+        const $$createField19_0 = $$createType12;
+        const $$createField20_0 = $$createType14;
+        const $$createField21_0 = $$createType16;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("author" in $$parsedSource) {
             $$parsedSource["author"] = $$createField10_0($$parsedSource["author"]);
@@ -237,8 +342,14 @@ export class PluginMeta {
         if ("components" in $$parsedSource) {
             $$parsedSource["components"] = $$createField16_0($$parsedSource["components"]);
         }
+        if ("exports" in $$parsedSource) {
+            $$parsedSource["exports"] = $$createField19_0($$parsedSource["exports"]);
+        }
+        if ("requires" in $$parsedSource) {
+            $$parsedSource["requires"] = $$createField20_0($$parsedSource["requires"]);
+        }
         if ("state_isolation" in $$parsedSource) {
-            $$parsedSource["state_isolation"] = $$createField19_0($$parsedSource["state_isolation"]);
+            $$parsedSource["state_isolation"] = $$createField21_0($$parsedSource["state_isolation"]);
         }
         return new PluginMeta($$parsedSource as Partial<PluginMeta>);
     }
@@ -279,7 +390,7 @@ export class PluginResourceComponent {
      * Creates a new PluginResourceComponent instance from a string or object.
      */
     static createFrom($$source: any = {}): PluginResourceComponent {
-        const $$createField3_0 = $$createType6;
+        const $$createField3_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("resources" in $$parsedSource) {
             $$parsedSource["resources"] = $$createField3_0($$parsedSource["resources"]);
@@ -307,7 +418,7 @@ export class PluginTheme {
      * Creates a new PluginTheme instance from a string or object.
      */
     static createFrom($$source: any = {}): PluginTheme {
-        const $$createField0_0 = $$createType11;
+        const $$createField0_0 = $$createType17;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("colors" in $$parsedSource) {
             $$parsedSource["colors"] = $$createField0_0($$parsedSource["colors"]);
@@ -345,6 +456,34 @@ export class PluginThemeColors {
     static createFrom($$source: any = {}): PluginThemeColors {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new PluginThemeColors($$parsedSource as Partial<PluginThemeColors>);
+    }
+}
+
+/**
+ * RequiresSpec declares services this plugin needs from installed owners.
+ */
+export class RequiresSpec {
+    "connections": ConnectionRequirement[];
+
+    /** Creates a new RequiresSpec instance. */
+    constructor($$source: Partial<RequiresSpec> = {}) {
+        if (!("connections" in $$source)) {
+            this["connections"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RequiresSpec instance from a string or object.
+     */
+    static createFrom($$source: any = {}): RequiresSpec {
+        const $$createField0_0 = $$createType19;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("connections" in $$parsedSource) {
+            $$parsedSource["connections"] = $$createField0_0($$parsedSource["connections"]);
+        }
+        return new RequiresSpec($$parsedSource as Partial<RequiresSpec>);
     }
 }
 
@@ -400,15 +539,23 @@ export class StateIsolationProvenance {
 }
 
 // Private type creation functions
-const $$createType0 = PluginResourceComponent.createFrom;
-const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = PluginAuthor.createFrom;
-const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = PluginMaintainer.createFrom;
-const $$createType5 = $Create.Array($$createType4);
-const $$createType6 = $Create.Array($Create.Any);
-const $$createType7 = PluginTheme.createFrom;
-const $$createType8 = PluginComponents.createFrom;
-const $$createType9 = StateIsolationProvenance.createFrom;
-const $$createType10 = $Create.Nullable($$createType9);
-const $$createType11 = PluginThemeColors.createFrom;
+const $$createType0 = $Create.Array($Create.Any);
+const $$createType1 = ConnectionExport.createFrom;
+const $$createType2 = $Create.Nullable($$createType1);
+const $$createType3 = PluginResourceComponent.createFrom;
+const $$createType4 = $Create.Array($$createType3);
+const $$createType5 = PluginAuthor.createFrom;
+const $$createType6 = $Create.Nullable($$createType5);
+const $$createType7 = PluginMaintainer.createFrom;
+const $$createType8 = $Create.Array($$createType7);
+const $$createType9 = PluginTheme.createFrom;
+const $$createType10 = PluginComponents.createFrom;
+const $$createType11 = ExportsSpec.createFrom;
+const $$createType12 = $Create.Nullable($$createType11);
+const $$createType13 = RequiresSpec.createFrom;
+const $$createType14 = $Create.Nullable($$createType13);
+const $$createType15 = StateIsolationProvenance.createFrom;
+const $$createType16 = $Create.Nullable($$createType15);
+const $$createType17 = PluginThemeColors.createFrom;
+const $$createType18 = ConnectionRequirement.createFrom;
+const $$createType19 = $Create.Array($$createType18);

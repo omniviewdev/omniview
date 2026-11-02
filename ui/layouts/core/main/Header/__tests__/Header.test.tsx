@@ -43,8 +43,10 @@ const native = vi.hoisted(() => ({
   listAllConnections: vi.fn(async () => ({})),
   loadConnections: vi.fn(async (_pluginId: string): Promise<never[]> => []),
   checkConnection: vi.fn(async () => ({ status: '', details: '', error: '' })),
-  subscribeResource: vi.fn(async (): Promise<void> => undefined),
-  unsubscribeResource: vi.fn(async (): Promise<void> => undefined),
+  openSourceView: vi.fn(),
+  closeSourceView: vi.fn(),
+  sourceListeners: new Set<() => void>(),
+  sourceRevision: 0,
   listeners: new Map<string, Set<(event: { data: unknown }) => void>>(),
   showResourceSidebar: vi.fn(async () => true),
   isMaximised: vi.fn(async () => false),
@@ -68,19 +70,38 @@ function resourceScope(): Extract<RuntimeCore.SearchScopeV1, { kind: 'resource' 
   };
 }
 
-function resourceUpdate(targetId = 'header-search-membership'): { data: RuntimeCore.HostWatchUpdatePayload } {
-  const scope = resourceScope();
-  return { data: {
-    route: scope.route, metadata: {}, guarantee: 'bestEffort',
-    record: {
-      key: 'host-test-row', addressKey: 'host-test-address', targetId, route: scope.route,
-      record: {
-        reference: scope.reference, body: { kind: 'map', value: {} },
-        representation: { id: scope.representation, revision: '1', schema: { state: 'unavailable', validation: 'unvalidated', unvalidated: [] } },
-        coverage: { kind: 'complete', paths: [] },
-      },
+type TestSourceView = {
+  mode: 'snapshot' | 'snapshotAndUpdates';
+  subscribe(listener: () => void): () => void;
+  getSnapshot(): { records: Map<string, never>; complete: boolean; status?: { state: 'failed' | 'closed' }; event: { kind: 'changes'; revision: number } };
+  refresh(): Promise<void>;
+  close(): void;
+};
+
+function sourceView(): TestSourceView {
+  return {
+    mode: 'snapshotAndUpdates',
+    subscribe: (listener: () => void) => {
+      native.sourceListeners.add(listener);
+      return () => {
+        native.sourceListeners.delete(listener); 
+      };
     },
-  } };
+    getSnapshot: () => ({
+      records: new Map(),
+      complete: true,
+      event: { kind: 'changes' as const, revision: native.sourceRevision },
+    }),
+    refresh: async () => undefined,
+    close: native.closeSourceView,
+  };
+}
+
+function emitSourceChange() {
+  native.sourceRevision++;
+  native.sourceListeners.forEach(listener => {
+    listener(); 
+  });
 }
 
 vi.mock('@wailsio/runtime', async (importOriginal) => {
@@ -129,8 +150,6 @@ vi.mock('@omniviewdev/runtime/api', async (importOriginal) => {
       LoadConnections: native.loadConnections,
       // eslint-disable-next-line @typescript-eslint/promise-function-async -- Async wrapping discards the native cancel method.
       CheckConnection: () => Object.assign(native.checkConnection(), { cancel: vi.fn() }),
-      SubscribeResource: native.subscribeResource,
-      UnsubscribeResource: native.unsubscribeResource,
     },
     SettingsService: {
       ...original.SettingsService,
@@ -162,7 +181,7 @@ vi.mock('@omniviewdev/runtime/runtime', async (importOriginal) => {
 
 vi.mock('@omniviewdev/runtime', async (importOriginal) => {
   const original = await importOriginal<typeof RuntimeCore>();
-  return { ...original, useSnackbar: () => ({ showSnackbar: vi.fn() }) };
+  return { ...original, openSourceView: native.openSourceView, useSnackbar: () => ({ showSnackbar: vi.fn() }) };
 });
 
 vi.mock('@/hooks/useDevMode', () => ({ useDevMode: () => false }));
@@ -176,8 +195,10 @@ afterEach(() => {
   native.listAllConnections.mockReset().mockResolvedValue({});
   native.loadConnections.mockReset().mockResolvedValue([]);
   native.checkConnection.mockReset().mockResolvedValue({ status: '', details: '', error: '' });
-  native.subscribeResource.mockReset().mockResolvedValue(undefined);
-  native.unsubscribeResource.mockReset().mockResolvedValue(undefined);
+  native.openSourceView.mockReset().mockImplementation(async () => sourceView());
+  native.closeSourceView.mockReset();
+  native.sourceListeners.clear();
+  native.sourceRevision = 0;
   native.listeners.clear();
   native.isMaximised.mockClear();
   native.maximise.mockClear();
@@ -825,8 +846,8 @@ it.each([
 );
 
 it.each(['close', 'unmount', 'scope-change'] as const)('releases late native acquisition after %s without duplicate type ownership', async (operation) => {
-  const acquisition = createDeferred();
-  native.subscribeResource.mockReturnValueOnce(acquisition.promise);
+  const acquisition = createDeferred<TestSourceView>();
+  native.openSourceView.mockReturnValueOnce(acquisition.promise);
   const { service, importer } = createHeaderPluginEnvironment();
   importer.register('opaque', { plugin: new PluginWindow() });
   await service.load('opaque');
@@ -838,7 +859,7 @@ it.each(['close', 'unmount', 'scope-change'] as const)('releases late native acq
   });
   await screen.findByRole('combobox', { name: /search/i });
   await waitFor(() => {
-    expect(native.subscribeResource).toHaveBeenCalledOnce();
+    expect(native.openSourceView).toHaveBeenCalledOnce();
   });
   await act(async () => {
     // Moving from an instance to its type keeps the existing native subscription.
@@ -847,7 +868,7 @@ it.each(['close', 'unmount', 'scope-change'] as const)('releases late native acq
     } }));
     await Promise.resolve();
   });
-  expect(native.subscribeResource).toHaveBeenCalledOnce();
+  expect(native.openSourceView).toHaveBeenCalledOnce();
   if (operation === 'unmount') {
     view.unmount();
   } else if (operation === 'scope-change') {
@@ -860,15 +881,15 @@ it.each(['close', 'unmount', 'scope-change'] as const)('releases late native acq
     fireEvent.keyDown(document, { key: 'Escape' });
   }
 
-  expect(native.unsubscribeResource).not.toHaveBeenCalled();
+  expect(native.closeSourceView).not.toHaveBeenCalled();
   await act(async () => {
-    acquisition.resolve();
+    acquisition.resolve(sourceView());
     await acquisition.promise;
   });
-  expect(native.unsubscribeResource).toHaveBeenCalledOnce();
-  expect(native.listeners.get('opaque/project/instance/UPDATE')?.size).toBe(0);
+  expect(native.closeSourceView).toHaveBeenCalledOnce();
+  expect(native.sourceListeners.size).toBe(0);
   view.unmount();
-  expect(native.unsubscribeResource).toHaveBeenCalledOnce();
+  expect(native.closeSourceView).toHaveBeenCalledOnce();
   await act(async () => {
     await service.unload('opaque'); 
   });
@@ -913,15 +934,13 @@ it('coalesces native resource bursts without rediscovering plugins', async () =>
     await act(async () => {
       for (let index = 0; index < 10; index++) {
         version = index + 1;
-        native.listeners.get('opaque/project/instance/UPDATE')?.forEach((listener) => {
-          listener(resourceUpdate());
-        });
+        emitSourceChange();
       }
 
       await Promise.resolve();
     });
     expect(native.listPlugins).toHaveBeenCalledTimes(discoveries);
-    expect(native.subscribeResource).toHaveBeenCalledOnce();
+    expect(native.openSourceView).toHaveBeenCalledOnce();
     expect(await screen.findByRole('option', { name: /Snapshot 10/ })).toBeVisible();
     // An idle burst can start one read immediately and one trailing read for changes
     // arriving during it. Ten events must not become ten provider reads.
@@ -1034,7 +1053,7 @@ it('uses connection-depth adapter targets and isolates throwing adapters', async
 });
 
 it('reports native subscription failure and retries without replacing the healthy connection watcher', async () => {
-  native.subscribeResource.mockRejectedValueOnce(new Error('private backend path'));
+  native.openSourceView.mockRejectedValueOnce(new Error('private backend path'));
   const { service, importer } = createHeaderPluginEnvironment();
   importer.register('opaque', { plugin: new PluginWindow() });
   await service.load('opaque');
@@ -1046,17 +1065,52 @@ it('reports native subscription failure and retries without replacing the health
   });
   expect(await screen.findByText('Live updates are unavailable. Results may be out of date.')).toBeVisible();
   expect(screen.queryByText('private backend path')).not.toBeInTheDocument();
-  const watcher = Array.from(native.listeners.get('opaque/project/watch/STATE') ?? []);
+  const watcher = Array.from(native.listeners.get('opaque/project/source/STATE') ?? []);
   fireEvent.click(screen.getByRole('button', { name: /retry live updates/i }));
   await waitFor(() => {
-    expect(native.subscribeResource).toHaveBeenCalledTimes(2); 
+    expect(native.openSourceView).toHaveBeenCalledTimes(2);
   });
   await waitFor(() => {
     expect(screen.queryByText('Live updates are unavailable. Results may be out of date.')).not.toBeInTheDocument(); 
   });
-  expect(Array.from(native.listeners.get('opaque/project/watch/STATE') ?? [])).toEqual(watcher);
-  expect(native.unsubscribeResource).not.toHaveBeenCalled();
-  expect(native.listeners.get('opaque/project/instance/UPDATE')?.size).toBe(1);
+  expect(Array.from(native.listeners.get('opaque/project/source/STATE') ?? [])).toEqual(watcher);
+  expect(native.closeSourceView).not.toHaveBeenCalled();
+  expect(native.sourceListeners.size).toBe(1);
+  view.unmount();
+  await act(async () => {
+    await service.unload('opaque'); 
+  });
+});
+
+it.each(['snapshot', 'failed', 'closed'] as const)('reports unavailable live search for %s source views', async (failure) => {
+  const source = sourceView();
+  if (failure === 'snapshot') {
+    source.mode = 'snapshot';
+  }
+
+  native.openSourceView.mockResolvedValueOnce(source);
+  const { service, importer } = createHeaderPluginEnvironment();
+  importer.register('opaque', { plugin: new PluginWindow() });
+  await service.load('opaque');
+  const view = renderSearchHeader(true, service);
+  act(() => {
+    window.dispatchEvent(new CustomEvent(GLOBAL_SEARCH_OPEN_EVENT, { detail: { scope: resourceTypeScope() } }));
+  });
+  if (failure !== 'snapshot') {
+    await waitFor(() => {
+      expect(native.sourceListeners.size).toBe(1); 
+    });
+    expect(screen.queryByText('Live updates are unavailable. Results may be out of date.')).not.toBeInTheDocument();
+    const getSnapshot = source.getSnapshot;
+    source.getSnapshot = () => ({ ...getSnapshot(), status: { state: failure } });
+    act(() => {
+      native.sourceListeners.forEach(listener => {
+        listener(); 
+      }); 
+    });
+  }
+
+  expect(await screen.findByText('Live updates are unavailable. Results may be out of date.')).toBeVisible();
   view.unmount();
   await act(async () => {
     await service.unload('opaque'); 
@@ -1064,8 +1118,8 @@ it('reports native subscription failure and retries without replacing the health
 });
 
 it.each(['close', 'unmount'] as const)('ignores late native subscription failure after %s', async (operation) => {
-  const acquisition = createDeferred();
-  native.subscribeResource.mockReturnValueOnce(acquisition.promise);
+  const acquisition = createDeferred<TestSourceView>();
+  native.openSourceView.mockReturnValueOnce(acquisition.promise);
   const { service, importer } = createHeaderPluginEnvironment();
   importer.register('opaque', { plugin: new PluginWindow() });
   await service.load('opaque');
@@ -1077,7 +1131,7 @@ it.each(['close', 'unmount'] as const)('ignores late native subscription failure
   });
   await screen.findByRole('combobox', { name: /search/i });
   await waitFor(() => {
-    expect(native.subscribeResource).toHaveBeenCalledOnce(); 
+    expect(native.openSourceView).toHaveBeenCalledOnce();
   });
   if (operation === 'unmount') {
     view.unmount();
@@ -1095,7 +1149,7 @@ it.each(['close', 'unmount'] as const)('ignores late native subscription failure
     expect(screen.queryByText('Live updates are unavailable. Results may be out of date.')).not.toBeInTheDocument();
   }
 
-  expect(native.unsubscribeResource).not.toHaveBeenCalled();
+  expect(native.closeSourceView).not.toHaveBeenCalled();
   view.unmount();
   await act(async () => {
     await service.unload('opaque'); 
@@ -1159,21 +1213,13 @@ it.each(['publish', 'close'] as const)('preserves an event during a canonical qu
       expect(fetchSnapshot).toHaveBeenCalledOnce(); 
     });
     await waitFor(() => {
-      expect(native.subscribeResource).toHaveBeenCalledOnce(); 
+      expect(native.openSourceView).toHaveBeenCalledOnce();
     });
     expect(cacheListeners.size).toBe(idleListeners + 1);
     act(() => {
-      native.listeners.get('opaque/project/instance/UPDATE')?.forEach((listener) => {
-        listener(resourceUpdate('another-view-membership'));
-      });
-    });
-    expect(client.getQueryState(queryKey)?.isInvalidated).toBe(false);
-    act(() => {
       backend = 'new';
       for (let index = 0; index < 10; index++) {
-        native.listeners.get('opaque/project/instance/UPDATE')?.forEach((listener) => {
-          listener(resourceUpdate());
-        });
+        emitSourceChange();
       }
     });
     expect(client.getQueryState(queryKey)?.isInvalidated).toBe(true);

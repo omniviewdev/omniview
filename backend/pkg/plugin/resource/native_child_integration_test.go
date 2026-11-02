@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -27,28 +26,7 @@ const nativeChildPluginID = "p45-native-verification"
 
 func compileNativeChild(t *testing.T) string {
 	t.Helper()
-	_, source, _, ok := runtime.Caller(0)
-	require.True(t, ok)
-	sdkRoot := os.Getenv("SDK_SOURCE")
-	if sdkRoot == "" {
-		command := exec.Command("go", "list", "-m", "-f", "{{if .Replace}}{{.Replace.Dir}}{{else}}{{.Dir}}{{end}}", "github.com/omniviewdev/plugin-sdk")
-		command.Dir = filepath.Clean(filepath.Join(filepath.Dir(source), "../../../.."))
-		command.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=")
-		output, err := command.CombinedOutput()
-		require.NoError(t, err, "resolve actual SDK module: %s", output)
-		sdkRoot = strings.TrimSpace(string(output))
-		require.NotEmpty(t, sdkRoot, "resolve actual SDK module returned empty root: %s", output)
-	}
-	binary := filepath.Join(t.TempDir(), "p45-native-fixture")
-	if runtime.GOOS == "windows" {
-		binary += ".exe"
-	}
-	command := exec.Command("go", "test", "-c", "-o", binary, "./internal/resourceconformance")
-	command.Dir = sdkRoot
-	command.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=")
-	output, err := command.CombinedOutput()
-	require.NoError(t, err, "compile actual SDK fixture: %s", output)
-	return binary
+	return compileSourceChild(t)
 }
 
 func startNativeChild(t *testing.T, binary, profile string) (resource.Provider, string, func()) {

@@ -13,7 +13,7 @@ vi.mock('@omniviewdev/runtime', async (original) => {
   return { ...actual,
     useResourceType: () => ({ resourceType: { data: { displayName: 'Objects', defaultRepresentation: 'raw', representations: [{ id: 'raw' }], capabilities: [{ operation: 'enumerate' }], queryDimensions: [], identityDimensions: [] } } }),
     useResolvedResourceTarget: () => ({ data: { targetId: 'host-target', target: {} }, isLoading: false }),
-    useResources: () => ({ isAcquiredRequestCurrent: state.isCurrent, membershipStale: true, resources: { refetch: vi.fn(), data: { records: [{ key: 'host-key', record: { reference: { address: { id: 'canonical-id', scope: [] } }, body: { kind: 'uint64', value: '18446744073709551615' } } }], sourcePage: {} }, isLoading: false } }),
+    useResources: () => ({ isAcquiredRequestCurrent: state.isCurrent, resources: { refetch: vi.fn(), data: { records: [{ key: 'host-key', record: { reference: { address: { id: 'canonical-id', scope: [] } }, body: { kind: 'uint64', value: '18446744073709551615' } } }], sourcePage: {} }, isLoading: false } }),
   };
 });
 vi.mock('./ResourceTableContainer', () => ({ default: ({ columns, data }: { columns: Array<{ id: string; accessorFn: (row: ResourceTableRow) => React.ReactNode }>; data: ResourceTableRow[] }) => <div>{columns.map((column) => <span key={column.id}>{column.accessorFn(data[0])}</span>)}</div> }));

@@ -54,11 +54,11 @@ function ConnectionRow({
       statusText += ` · ${entry.readinessError.title}`; 
     }
   } else if (isSyncing && sync) {
-    statusText = `Syncing ${sync.doneCount}/${sync.watchedTotal} resources`;
+    statusText = `Syncing ${sync.doneCount}/${sync.trackedTotal} resources`;
   } else if (hasErrors && sync) {
     statusText = `${sync.errorCount} error${sync.errorCount !== 1 ? 's' : ''}`;
-  } else if (sync && sync.watchedTotal > 0) {
-    statusText = `Connected · ${sync.watchedTotal} resources`;
+  } else if (sync && sync.trackedTotal > 0) {
+    statusText = `Connected · ${sync.trackedTotal} resources`;
   }
 
   const percent = sync ? Math.round(sync.progress * 100) : 0;
@@ -143,7 +143,7 @@ export default function ConnectionStatusIndicator() {
     hasSyncing,
     aggregateProgress,
     disconnect,
-    retryWatch,
+    retrySources,
     retryPlugin,
   } = useConnectionStatus();
 
@@ -190,8 +190,8 @@ export default function ConnectionStatusIndicator() {
   };
 
   const onRetry = async (p: string, c: string) => {
-    await retryWatch(p, c).catch((err: unknown) => {
-      console.error('Retry watch failed:', err);
+    await retrySources(p, c).catch((err: unknown) => {
+      console.error('Retry sources failed:', err);
     });
   };
 

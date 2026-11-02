@@ -66,13 +66,6 @@ func TestCatalogBindingConnectPreservesConfiguredInventory(t *testing.T) {
 	provider.LoadConnectionsFunc = func(context.Context) ([]types.Connection, error) {
 		return []types.Connection{connection}, nil
 	}
-	provider.GetWatchStateFunc = func(_ context.Context, route resourcev2.AccessRoute) (*resourcev2.WatchConnectionSummary, error) {
-		return &resourcev2.WatchConnectionSummary{
-			Route: route, Resources: map[string]resourcev2.WatchState{},
-			ResourceCounts: map[string]resourcev2.Count{}, Scope: resourcev2.QueryScope{},
-			Guarantee: resourcev2.BestEffortGuarantee,
-		}, nil
-	}
 	provider.StartConnectionFunc = func(context.Context, string) (types.ConnectionStatus, error) {
 		catalog = bindingTestCatalog(t, bindingTestEpoch(t), "native", "hintB")
 		provider.status = types.ConnectionStatus{Status: types.ConnectionStatusConnected, Connection: &connection}

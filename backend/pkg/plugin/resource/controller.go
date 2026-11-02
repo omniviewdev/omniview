@@ -42,7 +42,7 @@ const PluginName = "resource"
 // Event constants for resource controller events.
 const (
 	EventConnectionStatus = "connection/status"
-	EventWatchState       = "watch/STATE"
+	EventSourceState      = "source/STATE"
 )
 
 // ConnectionStatusPayload is emitted when a connection's status changes.
@@ -55,7 +55,7 @@ type ConnectionStatusPayload struct {
 
 func init() {
 	application.RegisterEvent[ConnectionStatusPayload](EventConnectionStatus)
-	application.RegisterEvent[HostWatchStateEvent](EventWatchState)
+	application.RegisterEvent[HostSourceStateEvent](EventSourceState)
 }
 
 var tracer = otel.Tracer("omniview.resource")
@@ -63,8 +63,8 @@ var tracer = otel.Tracer("omniview.resource")
 const (
 	// relationshipBootstrapTimeout bounds fetching relationship declarations on plugin start.
 	relationshipBootstrapTimeout = 30 * time.Second
-	// watchStreamReadyTimeout is how long OnPluginStart waits for the watch event stream.
-	watchStreamReadyTimeout = 10 * time.Second
+	// featureReadyTimeout bounds feature discovery during plugin startup.
+	featureReadyTimeout = 10 * time.Second
 	// streamChannelBuffer is the buffer size of action event and connection streams.
 	streamChannelBuffer = 16
 )
@@ -85,7 +85,7 @@ type Controller interface {
 type pluginState struct {
 	provider          ResourceProvider
 	version           int
-	watchCancel       context.CancelFunc
+	cancel            context.CancelFunc
 	ctx               context.Context
 	generationID      string
 	features          resource.FeatureSet
@@ -133,7 +133,7 @@ type controller struct {
 	autoConnectMu       sync.Mutex
 	autoConnectAttempts map[string]string
 
-	subs      *subscriptionManager
+	sources   *sourceCoordinator
 	boundary  *invocation.Boundary
 	actions   *actionRegistry
 	finite    finiteState
@@ -147,7 +147,6 @@ type controller struct {
 
 	onCrashCallback func(pluginID string)
 	pluginStoreFn   func(pluginID string) (*appstate.ScopedRoot, error)
-	watchAfterFunc  func(time.Duration, func()) actionTimer
 }
 
 // compile-time assertions.
@@ -180,7 +179,6 @@ func NewController(
 		connections:         make(map[string][]types.Connection),
 		autoConnectMu:       sync.Mutex{},
 		autoConnectAttempts: make(map[string]string),
-		subs:                newSubscriptionManager(),
 		boundary:            boundary,
 		actions:             newActionRegistry(),
 		registryStore:       store,
@@ -189,8 +187,8 @@ func NewController(
 		graphNotifier:       nil,
 		onCrashCallback:     nil,
 		pluginStoreFn:       pluginStoreFn,
-		watchAfterFunc:      func(d time.Duration, fn func()) actionTimer { return time.AfterFunc(d, fn) },
 	}
+	c.sources = newSourceCoordinator(c)
 	c.actions.emit = func(id string, snapshot ActionSnapshot) { c.emitter.Emit("action/stream/"+id, snapshot) }
 	// Read c.emitter at emit time: it is replaced when the app starts.
 	c.graphNotifier = newGraphChangeNotifier(g, func(eventKey string, data ...any) {
@@ -284,7 +282,7 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	watchCtx, watchCancel := context.WithCancel(context.Background())
 
 	state := &pluginState{
-		version: version, watchCancel: watchCancel, ctx: watchCtx, generationID: uuid.NewString(),
+		version: version, cancel: watchCancel, ctx: watchCtx, generationID: uuid.NewString(),
 	}
 	c.pluginsMu.RLock()
 	existing := c.plugins[pluginID]
@@ -294,12 +292,13 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	}
 	c.pluginsMu.RUnlock()
 	if existing != nil {
-		existing.watchCancel()
+		existing.cancel()
 		c.retireMetadata(pluginID, existing)
 	}
 	c.pluginsMu.Lock()
 	c.plugins[pluginID] = state
 	c.pluginsMu.Unlock()
+	c.sources.invalidate(pluginID, "")
 	defer func() {
 		if retErr == nil {
 			return
@@ -331,7 +330,7 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 		conns := append([]types.Connection(nil), c.connections[pluginID]...)
 		c.connsMu.RUnlock()
 		c.clearAutoConnectAttempts(pluginID)
-		c.subs.RemoveAll(pluginID)
+		c.sources.invalidate(pluginID, "")
 		c.cleanupPluginGraphState(pluginID, conns)
 		c.pluginsMu.Lock()
 		delete(c.plugins, pluginID)
@@ -352,7 +351,7 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 			logger.Warnw(watchCtx, "previous resource source teardown failed", "error", err)
 		}
 	}
-	featureCtx, featureCancel := context.WithTimeout(watchCtx, watchStreamReadyTimeout)
+	featureCtx, featureCancel := context.WithTimeout(watchCtx, featureReadyTimeout)
 	features, featureErr := resource.DetectFeatures(featureCtx, provider)
 	featureCancel()
 	if featureErr != nil {
@@ -364,32 +363,6 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 		}
 	}
 
-	// Advisory updates remain optional. Finite/catalog-only providers must not
-	// implement a pretend listener, but real listeners still acknowledge native
-	// establishment before any source or resource call becomes available.
-	if features.Has(resource.FeatureBestEffortUpdates) {
-		updates, ok := provider.(resource.BestEffortUpdateProvider)
-		if !ok {
-			return resource.NewError("INVALID_REQUEST", "Provider advertised an unavailable update trait.")
-		}
-		sink := &engineWatchSink{pluginID: pluginID, ctrl: c, store: c.registryStore,
-			dispatcher: c.dispatcher, ctx: invocation.HostContext(watchCtx), generationID: state.generationID}
-		watchReady := make(chan error, 1)
-		go c.listenForWatchEvents(watchCtx, pluginID, updates, sink, watchReady)
-		expired := make(chan struct{})
-		timer := c.watchAfterFunc(watchStreamReadyTimeout, func() { close(expired) })
-		defer timer.Stop()
-		select {
-		case err := <-watchReady:
-			if err != nil {
-				return fmt.Errorf("best-effort update registration: %w", err)
-			}
-		case <-watchCtx.Done():
-			return watchCtx.Err()
-		case <-expired:
-			return fmt.Errorf("best-effort update registration: %w", context.DeadlineExceeded)
-		}
-	}
 	c.pluginsMu.Lock()
 	if c.plugins[pluginID] != state || watchCtx.Err() != nil {
 		c.pluginsMu.Unlock()
@@ -442,7 +415,7 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	stopped := c.plugins[pluginID]
 	c.pluginsMu.RUnlock()
 	if stopped != nil {
-		stopped.watchCancel()
+		stopped.cancel()
 		c.retireMetadata(pluginID, stopped)
 	}
 	// Cancel first so a concurrent readiness acknowledgement cannot republish
@@ -455,6 +428,7 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 		stopped.provider = nil
 	}
 	c.pluginsMu.Unlock()
+	c.sources.invalidate(pluginID, "")
 
 	// Capture connections before deleting them — needed for registry cleanup.
 	c.connsMu.RLock()
@@ -465,8 +439,6 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	delete(c.connections, pluginID)
 	c.connsMu.Unlock()
 	c.clearAutoConnectAttempts(pluginID)
-
-	c.subs.RemoveAll(pluginID)
 
 	c.cleanupPluginGraphState(pluginID, pluginConns)
 	c.pluginsMu.Lock()
@@ -553,6 +525,18 @@ func (c *controller) getProvider(pluginID string) (ResourceProvider, error) {
 	return ps.provider, nil
 }
 
+func (c *controller) providerFeatures(ctx context.Context, pluginID string, provider ResourceProvider) (resource.FeatureSet, error) {
+	c.pluginsMu.RLock()
+	state := c.plugins[pluginID]
+	if state != nil && state.featuresReady {
+		features := state.features
+		c.pluginsMu.RUnlock()
+		return features, nil
+	}
+	c.pluginsMu.RUnlock()
+	return resource.DetectFeatures(ctx, provider)
+}
+
 // ============================================================================
 // Connection Management
 // ============================================================================
@@ -614,6 +598,7 @@ func (c *controller) StartConnection(ctx context.Context, pluginID, connectionID
 	if conn.Status == types.ConnectionStatusConnected {
 		c.bootstrapRelationships(ctx, pluginID, resource.AccessRoute{Connection: connectionID})
 		if err := c.startConnectionUpdates(ctx, pluginID, resource.AccessRoute{Connection: connectionID}); err != nil {
+			c.sources.closeInventory(pluginID, connectionID)
 			return conn, err
 		}
 	}
@@ -647,6 +632,7 @@ func (c *controller) StopConnection(ctx context.Context, pluginID, connectionID 
 		return types.Connection{}, err
 	}
 	defer releaseObservation()
+	c.sources.closeInventory(pluginID, connectionID)
 
 	conn, err := provider.StopConnection(ctx, connectionID)
 	if err != nil {
@@ -823,7 +809,7 @@ func (c *controller) connectionState(ctx context.Context, pluginID string, conn 
 	state = ConnectionState{
 		Connection:     conn,
 		Readiness:      types.ConnectionStatusUnknown,
-		Resources:      make(map[string]resource.WatchState),
+		Resources:      make(map[string]string),
 		ResourceCounts: make(map[string]resource.Count),
 	}
 	features, err := c.providerFeatures(ctx, pluginID, provider)
@@ -859,31 +845,22 @@ func (c *controller) connectionState(ctx context.Context, pluginID string, conn 
 	if err := c.currentGeneration(ctx, pluginID, generation); err != nil {
 		return state, err
 	}
-	if state.Readiness != types.ConnectionStatusConnected || !features.Has(resource.FeatureBestEffortUpdates) {
+	if state.Readiness != types.ConnectionStatusConnected || !features.Has(resource.FeatureSourceSessions) {
 		return state, nil
 	}
-	summary, err := c.GetWatchState(ctx, pluginID, resource.AccessRoute{Connection: conn.ID})
+	summary, err := c.GetSourceStates(ctx, pluginID, resource.AccessRoute{Connection: conn.ID})
 	if err != nil {
-		var app *apperror.AppError
-		if !errors.As(err, &app) || app.Code != "NOT_FOUND" || app.Type != apperror.TypeResourceNotFound {
-			return state, err
-		}
+		return state, err
 	}
-	if summary == nil {
-		return state, nil
-	}
-	state.Resources = summary.Resources
-	state.ResourceCounts = summary.ResourceCounts
-	for _, watchState := range summary.Resources {
+	for resourceType, source := range summary.Types {
+		state.Resources[resourceType] = source.State
+		state.ResourceCounts[resourceType] = source.Count
 		state.TotalResources++
-		switch watchState {
-		case resource.WatchStateSynced:
+		switch source.State {
+		case "following", "finished":
 			state.SyncedCount++
-		case resource.WatchStateError, resource.WatchStateFailed:
+		case "failed":
 			state.ErrorCount++
-		case resource.WatchStateIdle, resource.WatchStateSyncing, resource.WatchStateStopped,
-			resource.WatchStateForbidden, resource.WatchStateSkipped:
-			// Neither synced nor failed; only counted in TotalResources.
 		}
 	}
 	return state, nil
@@ -956,51 +933,10 @@ func (c *controller) ScopeValues(ctx context.Context, pluginID string, route res
 }
 
 // ============================================================================
-// Watch
-// ============================================================================
-
-// ============================================================================
-// Subscriptions
-// ============================================================================
 
 // ============================================================================
 // Background Listeners
 // ============================================================================
-
-// listenForWatchEvents runs ListenForEvents with the engine sink.
-// Blocks until ctx is cancelled or the stream errors.
-// Reports readiness only after the provider acknowledges actual registration.
-//
-// NOTE: No span wraps this method — it runs for the entire plugin lifetime.
-// The underlying gRPC stream gets its own otelgrpc span; individual watch
-// events are too high-volume to trace individually.
-func (c *controller) listenForWatchEvents(
-	ctx context.Context,
-	pluginID string,
-	provider resource.BestEffortUpdateProvider,
-	sink resource.WatchEventSink,
-	ready chan<- error,
-) {
-	c.logger.Infow(ctx, "watch event listener starting", "pluginID", pluginID)
-	registered := false
-	err := provider.ListenForEvents(ctx, sink, func() error {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		registered = true
-		ready <- nil
-		return nil
-	})
-	if !registered {
-		if err == nil {
-			err = fmt.Errorf("watch event listener returned before registration")
-		}
-		ready <- err
-	} else if err != nil && ctx.Err() == nil {
-		c.triggerCrashRecovery(pluginID, err, "watch")
-	}
-	c.logger.Infow(ctx, "watch event listener stopped", "pluginID", pluginID)
-}
 
 // listenForConnectionEvents watches for external connection changes.
 //
