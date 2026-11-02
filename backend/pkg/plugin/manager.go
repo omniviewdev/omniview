@@ -122,7 +122,7 @@ func NewManager(
 		enabled, err := settingsProvider.GetBool("developer.plugin_pprof_enabled")
 		pluginPprofEnabled = err == nil && enabled
 	}
-	return &pluginManager{
+	pm := &pluginManager{
 		ctx:         nil, // set by Initialize or Run
 		logger:      logger,
 		stateRoot:   stateRoot,
@@ -155,6 +155,8 @@ func NewManager(
 		pluginOpsMu:        sync.Mutex{},
 		pluginOpsLocks:     make(map[string]*sync.Mutex),
 	}
+	pm.configureConnectionSharing(resourceController, toolsController)
+	return pm
 }
 
 // DevServerChecker allows the plugin manager to check if a plugin is managed
@@ -186,6 +188,7 @@ type pluginManager struct {
 	emitter             resource.EventEmitter
 	telemetryConfigFn   func() TelemetryEnvConfig // returns current telemetry config for env injection
 	pluginPprofEnabled  bool                      // immutable startup snapshot; changes require a host restart
+	sharing             *sharingState
 
 	// pluginOpsMu serializes load/reload/unload operations per plugin to
 	// prevent concurrent lifecycle transitions for the same plugin (e.g.
@@ -234,6 +237,7 @@ const crashContextLogLines = 20
 
 // HandlePluginCrash handles a plugin process crash with exponential backoff recovery.
 func (pm *pluginManager) HandlePluginCrash(pluginID string) {
+	pm.retireConnectionSharing(pluginID)
 	// Capture the last few log entries before the crash for diagnostics.
 	// These are pulled from the in-memory ring buffer that captures all
 	// plugin stderr output (including panic stack traces).

@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/plugin-sdk/pkg/config"
 )
 
 type Origin string
@@ -97,6 +98,36 @@ func (f AuthorizeFunc) Authorize(p Principal, op string, target Target) error {
 }
 
 type Boundary struct{ authorizer Authorizer }
+
+// Delegation is a host-created, invocation-bound resource grant.
+type Delegation struct {
+	Consumer   string
+	Owner      string
+	Connection string
+	ReadOnly   bool
+	Grant      config.ConnectionGrant
+}
+
+type delegationRegistrar interface {
+	RegisterDelegation(context.Context, Delegation) (func(), error)
+}
+
+// RegisterDelegation attaches a narrow owner grant to the already admitted call.
+func (b *Boundary) RegisterDelegation(ctx context.Context, grant Delegation) (func(), error) {
+	request, ok := FromContext(ctx)
+	if !ok || !request.OwnedBy(ctx) || request.Operation() != "tools.call" ||
+		request.Target().Provider != grant.Consumer || request.Target().Connection != grant.Connection {
+		return nil, apperror.Forbidden("Access denied", "A matching admitted tool call is required.")
+	}
+	if b == nil {
+		return nil, apperror.Forbidden("Access denied", "Delegated access is unavailable.")
+	}
+	registrar, ok := b.authorizer.(delegationRegistrar)
+	if !ok {
+		return nil, apperror.Forbidden("Access denied", "Delegated access is unavailable.")
+	}
+	return registrar.RegisterDelegation(ctx, grant)
+}
 
 func NewBoundary(authorizer Authorizer) *Boundary { return &Boundary{authorizer: authorizer} }
 func (b *Boundary) Admit(ctx context.Context, operation string, target Target) (context.Context, error) {

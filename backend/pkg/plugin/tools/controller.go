@@ -76,6 +76,7 @@ type controller struct {
 	listeners      []func()
 	generations    map[string]*toolGeneration
 	nextGeneration uint64
+	delegator      func(context.Context, string, sdktools.Descriptor, string) ([]byte, func(), error)
 }
 
 type toolGeneration struct {
@@ -89,6 +90,15 @@ type expectedGenerationKey struct{}
 func WithGeneration(ctx context.Context, generation uint64) context.Context {
 	return context.WithValue(ctx, expectedGenerationKey{}, generation)
 }
+
+func (c *controller) SetDelegator(fn func(context.Context, string, sdktools.Descriptor, string) ([]byte, func(), error)) {
+	c.mu.Lock()
+	c.delegator = fn
+	c.mu.Unlock()
+}
+
+// InvocationBoundary returns the shared native admission boundary.
+func (c *controller) InvocationBoundary() *invocation.Boundary { return c.boundary }
 
 // ====================================== Controller Implementation ====================================== //
 
@@ -188,6 +198,26 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 		logger.Errorw(ctx, "failed to list plugin tools", "error", err)
 		return err
 	}
+	for _, descriptor := range descriptors {
+		if descriptor.ConnectionOwner == "" {
+			continue
+		}
+		if err := sdktools.ValidateDescriptor(descriptor); err != nil {
+			return err
+		}
+		declared := false
+		if meta.Requires != nil {
+			for _, requirement := range meta.Requires.Connections {
+				if requirement.Plugin == descriptor.ConnectionOwner {
+					declared = true
+					break
+				}
+			}
+		}
+		if !declared {
+			return resourcev2.NewError("GRANT_DENIED", "Cross-plugin connection access is not permitted.")
+		}
+	}
 
 	c.mu.Lock()
 	if c.generations[pluginID] != generation || ctx.Err() != nil {
@@ -248,6 +278,14 @@ func notify(listeners []func()) {
 	}
 }
 
+// Refresh notifies observers after plugin lifecycle publication.
+func (c *controller) Refresh() {
+	c.mu.RLock()
+	listeners := append([]func(){}, c.listeners...)
+	c.mu.RUnlock()
+	notify(listeners)
+}
+
 func (c *controller) ListPlugins() ([]string, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -291,6 +329,8 @@ func (c *controller) CallTool(
 	c.mu.RLock()
 	provider, ok := c.clients[pluginID]
 	generation := c.generations[pluginID]
+	entry := c.cache[pluginID]
+	delegator := c.delegator
 	c.mu.RUnlock()
 	if !ok {
 		return nil, apperror.PluginNotFound(pluginID)
@@ -318,6 +358,25 @@ func (c *controller) CallTool(
 	defer cancel()
 	ctx = callCtx
 
+	var token []byte
+	for _, descriptor := range entry.Tools {
+		if descriptor.Name != name || descriptor.ConnectionOwner == "" {
+			continue
+		}
+		if connection == nil || connection.ID == "" || delegator == nil {
+			return nil, resourcev2.NewError("DELEGATION_NOT_ACTIVE", "The delegated tool call is not active.")
+		}
+		var release func()
+		var err error
+		token, release, err = delegator(ctx, pluginID, descriptor, connection.ID)
+		if err != nil {
+			return nil, err
+		}
+		defer release()
+		connection = &sdktypes.Connection{ID: connection.ID}
+		break
+	}
+
 	var pluginCtx *sdktypes.PluginContext
 	var route *resourcev2.AccessRoute
 	if connection != nil {
@@ -327,7 +386,7 @@ func (c *controller) CallTool(
 		pluginCtx = sdktypes.NewPluginContext(ctx, "mcp", nil, nil, nil)
 	}
 
-	result, err := provider.CallTool(pluginCtx, sdktools.CallInput{Name: name, Arguments: arguments, Route: route})
+	result, err := provider.CallTool(pluginCtx, sdktools.CallInput{Name: name, Arguments: arguments, Route: route, DelegationToken: token})
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}

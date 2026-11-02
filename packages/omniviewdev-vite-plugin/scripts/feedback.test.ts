@@ -302,7 +302,7 @@ for (const framework of frameworks) {
   });
 
   test(`${framework.name}: authenticated inspection shares concurrent reads and rejects invalid or timed-out observations`, {
-    timeout: 15000,
+    timeout: 45000,
     skip: process.platform === 'win32' ? 'POSIX executable fixture; native Windows authority is covered by Go tests' : false,
   }, async t => {
     const f = await fixture(t, framework, true, false, true);

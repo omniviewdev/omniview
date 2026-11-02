@@ -61,6 +61,18 @@ Related resources contain references, not resource bodies. The relay returns at 
 and sets `truncated` when more edges exist. Route-level policy is plugin- and
 connection-scoped; disabling one type's get tool does not disable these separate read tools.
 
+Plugins may declare access to selected resource types exported by another installed
+plugin. The host checks both manifests and routes each call through the owning plugin;
+the consumer never receives the owner's connection profile or credentials. AI Tools
+policy and consent still apply to the consumer and selected connection. Only started
+owner connections appear in the consumer's connection list. A named tool remains
+available for a stopped configured connection and reports that the connection is not
+started; it does not start the connection.
+
+Connection lists use sanitized host observations without native readiness probes.
+Starting an already-started connection preserves existing resource handles.
+Stop or configuration reset retires delegated calls; a later start requires a fresh call.
+
 ## Why Omniview?
 
 In the fast-paced world of DevOps, engineers need tools that are not only powerful but also adaptable and intuitive. Omniview bridges the gap between complexity and usability, offering a platform that grows with you. It's not just about managing infrastructure; it's about empowering DevOps engineers with a workflow that’s as innovative as they are.

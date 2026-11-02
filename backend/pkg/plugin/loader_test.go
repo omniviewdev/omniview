@@ -44,6 +44,18 @@ func installPluginFixture(t *testing.T, pm *pluginManager, id string, caps []str
 	installPluginFixtureAt(t, pluginsDir, id, caps, withBinary)
 }
 
+func TestValidateForLoadRejectsInvalidConnectionDeclarations(t *testing.T) {
+	meta := config.PluginMeta{
+		ID: "consumer",
+		Requires: &config.RequiresSpec{Connections: []config.ConnectionRequirement{{
+			Plugin: "consumer", Operations: []string{"get"}, ResourceTypes: []string{"type"},
+		}}},
+	}
+	for _, devMode := range []bool{false, true} {
+		require.Error(t, validateForLoad(meta.ID, meta, t.TempDir(), devMode))
+	}
+}
+
 func TestLoadPlugin_NotFound(t *testing.T) {
 	pm := newTestManager(t)
 
