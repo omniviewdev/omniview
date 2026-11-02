@@ -15,6 +15,7 @@ import {
   type UpdateTab,
   type UpdateTabOpts,
   BottomDrawerContext,
+  useSnackbar,
 } from '@omniviewdev/runtime';
 import { ExecClient } from '@omniviewdev/runtime/api';
 import log from '@/features/logger';
@@ -39,6 +40,11 @@ import {
   parseSerializedDrawerTab,
 } from './drawerSlot';
 import { planDrawerRestore } from './drawerRestore';
+import {
+  hasUnresolvedResourceReference,
+  migrateDrawerResourceReferences,
+  unresolvedResourceReferenceMessage,
+} from './resourceReferenceMigration';
 import { markTerminalSessionHandedOff } from './terminalHandoff';
 import {
   type AdoptDrawerTabsPlacement,
@@ -233,7 +239,11 @@ function initialDrawerTabsState(slot: DrawerSlot | null): DrawerTabsState {
 export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ children }) => {
   const defaultHeight = 32;
 
-  const [initialSlot] = React.useState(() => readInitialSlot('drawer', parseDrawerSlot));
+  const { showSnackbar } = useSnackbar();
+  const [initialSlot] = React.useState(() => {
+    const slot = readInitialSlot('drawer', parseDrawerSlot);
+    return slot === null ? null : migrateDrawerResourceReferences(slot);
+  });
   const [state, dispatch] = React.useReducer(drawerTabsReducer, initialSlot, initialDrawerTabsState);
   const [drawerHeight, setDrawerHeight] = React.useState<number>(defaultHeight);
   const [layout, setLayout] = React.useState<DrawerLayout>(() => ({
@@ -408,6 +418,18 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
   }, []);
 
   // ===================================== WINDOW WIRING ===================================== //
+  const reportedSavedReferences = React.useRef(false);
+
+  React.useEffect(() => {
+    if (reportedSavedReferences.current) return;
+    reportedSavedReferences.current = true;
+    for (const tab of initialSlot?.tabs ?? []) {
+      if (!hasUnresolvedResourceReference(tab)) continue;
+      const location = `Window ${currentWindow.name}, terminal ${tab.id}`;
+      console.warn('[drawer] saved resource reference is unconvertible; original options retained', location);
+      showSnackbar({ message: unresolvedResourceReferenceMessage, status: 'warning', details: location, showOnce: true });
+    }
+  }, [initialSlot, showSnackbar]);
 
   React.useEffect(() => {
     saveSlot('drawer', buildDrawerSlot(

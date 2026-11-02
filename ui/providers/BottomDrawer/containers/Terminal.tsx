@@ -17,6 +17,7 @@ import { SessionOptions } from '@omniviewdev/runtime/models';
 import log from '@/features/logger';
 import { bottomDrawerChannel } from '../events';
 import { consumeTerminalSessionHandoff } from '../terminalHandoff';
+import { hasUnresolvedResourceReference, unresolvedResourceReferenceMessage } from '../resourceReferenceMigration';
 import { Events } from '@omniviewdev/runtime/runtime';
 import { Base64 } from 'js-base64';
 import { useSettings, parseAppError } from '@omniviewdev/runtime';
@@ -108,6 +109,10 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
   }, []);
 
   const handleRetry = useCallback((command: string[]) => {
+    if (tab && hasUnresolvedResourceReference(tab)) {
+      setError({ title: 'Saved resource reference unavailable', suggestion: unresolvedResourceReferenceMessage, raw: '', retryable: false });
+      return;
+    }
     const props = tab?.properties as Record<string, any> | undefined;
     if (!props?.pluginID || !props?.connectionID) {
       return;
