@@ -218,7 +218,7 @@ func TestConnectionProfileMethods_PluginNotFound(t *testing.T) {
 		{
 			name: "SaveConnectionProfile",
 			fn: func() error {
-				_, err := ctrl.SaveConnectionProfile(testInvocationContext(), "nonexistent", types.Connection{ID: "conn"})
+				_, err := ctrl.SaveConnectionProfile(testInvocationContext(), "nonexistent", types.Connection{ID: "conn"}, nil)
 				return err
 			},
 		},

@@ -51,13 +51,13 @@ func TestReferenceUtilitiesFailBeforeConnectionWorkWithoutAdmission(t *testing.T
 		}},
 		{"metric.Query", func(admit hostresource.ReferenceAdmitter) error {
 			ctrl := NewController(logging.NewNop(), nil, nil)
-			ctrl.SetReferenceAdmitter(admit)
+			ctrl.SetUIReferenceAdmitter(admit)
 			_, err := ctrl.Query("test", "connection", sdkmetric.QueryRequest{Reference: reference, Route: route})
 			return err
 		}},
 		{"metric.Subscribe", func(admit hostresource.ReferenceAdmitter) error {
 			ctrl := NewController(logging.NewNop(), nil, nil)
-			ctrl.SetReferenceAdmitter(admit)
+			ctrl.SetUIReferenceAdmitter(admit)
 			_, err := ctrl.Subscribe("test", "connection", SubscribeRequest{Reference: reference, Route: route})
 			return err
 		}},
@@ -113,7 +113,9 @@ func TestReferenceQueryCarriesAcceptedCatalogPinThroughActualGRPC(t *testing.T) 
 	require.NoError(t, ctrl.OnPluginStart(nativeMetricPluginID, config.PluginMeta{}, fixture.backend))
 	t.Cleanup(func() { _ = ctrl.OnPluginStop(nativeMetricPluginID, config.PluginMeta{}) })
 	accepted := make(chan string, 1)
-	ctrl.SetReferenceAdmitter(func(ctx context.Context, operation, plugin string, route resourcev2.AccessRoute, reference resourcev2.ResourceReference) (context.Context, error) {
+	ctrl.SetUIReferenceAdmitter(func(
+		ctx context.Context, operation, plugin string, route resourcev2.AccessRoute, reference resourcev2.ResourceReference,
+	) (context.Context, error) {
 		admitted, err := fixture.resources.AdmitReference(invocation.HostContext(ctx), operation, plugin, route, reference)
 		if err == nil {
 			pin, ok := resourcev2.CatalogRevisionFromContext(admitted)
@@ -181,7 +183,9 @@ func TestReferenceSubscriptionPinsAndDropsQueuedSamplesAcrossPublicIDReuse(t *te
 	require.NoError(t, ctrl.OnPluginStart(nativeMetricPluginID, config.PluginMeta{}, fixture.backend))
 	t.Cleanup(func() { _ = ctrl.OnPluginStop(nativeMetricPluginID, config.PluginMeta{}) })
 	accepted := make(chan string, 1)
-	ctrl.SetReferenceAdmitter(func(ctx context.Context, operation, plugin string, route resourcev2.AccessRoute, reference resourcev2.ResourceReference) (context.Context, error) {
+	ctrl.SetUIReferenceAdmitter(func(
+		ctx context.Context, operation, plugin string, route resourcev2.AccessRoute, reference resourcev2.ResourceReference,
+	) (context.Context, error) {
 		admitted, err := fixture.resources.AdmitReference(invocation.HostContext(ctx), operation, plugin, route, reference)
 		if err == nil {
 			pin, ok := resourcev2.CatalogRevisionFromContext(admitted)
@@ -267,7 +271,9 @@ func TestReferenceSubscriptionPinsAndDropsQueuedSamplesAcrossPublicIDReuse(t *te
 func TestQueryAllPropagatesReferenceAdmissionDenial(t *testing.T) {
 	ctrl := NewController(logging.NewNop(), nil, nil).(*controller)
 	ctrl.resourceIndex["pods"] = []string{"denied-provider"}
-	ctrl.SetReferenceAdmitter(func(context.Context, string, string, resourcev2.AccessRoute, resourcev2.ResourceReference) (context.Context, error) {
+	ctrl.SetUIReferenceAdmitter(func(
+		context.Context, string, string, resourcev2.AccessRoute, resourcev2.ResourceReference,
+	) (context.Context, error) {
 		return nil, resourcev2.NewError("FORBIDDEN", "Reference metrics are denied.")
 	})
 	result, err := ctrl.QueryAll("connection", sdkmetric.QueryRequest{

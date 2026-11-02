@@ -48,6 +48,19 @@ Omniview is a groundbreaking Integrated Development Environment (IDE) tailored s
 - **Kubernetes and Cloud-Native Support**: First-class support for Kubernetes and cloud-native technologies, ensuring that you're equipped for the future of infrastructure.
 - **Real-Time Visualization**: Dive deep into your infrastructure with dynamic, real-time visualizations that bring clarity to complex environments.
 
+### MCP resource tools
+
+Settings → AI Tools controls the loopback MCP relay. Resource tools expose provider action
+labels, descriptions and danger notices. Actions and mutations require consent unless the
+tool's confirm override is set to false.
+
+The read-only preset includes per-resource metrics and route-level events, health and related
+resources. Each route-level tool accepts a resource type from its advertised enum. Unsupported
+provider operations return an error; health can return `null` when the provider has no assessment.
+Related resources contain references, not resource bodies. The relay returns at most 1000 edges
+and sets `truncated` when more edges exist. Route-level policy is plugin- and
+connection-scoped; disabling one type's get tool does not disable these separate read tools.
+
 ## Why Omniview?
 
 In the fast-paced world of DevOps, engineers need tools that are not only powerful but also adaptable and intuitive. Omniview bridges the gap between complexity and usability, offering a platform that grows with you. It's not just about managing infrastructure; it's about empowering DevOps engineers with a workflow that’s as innovative as they are.
@@ -135,11 +148,23 @@ Core startup hydration, durable writes and reusable restart-state semantics are 
 
 Enable **Settings → Developer Settings → Plugin profiling (pprof)**, save, and restart Omniview. The preference is off by default and works in development and production. Each running plugin built with the profiling-capable SDK receives its own automatically allocated `127.0.0.1` port; no plugin port configuration is needed.
 
-Open the footer's **pprof** popover to find each plugin's PID and actual endpoint. Use that endpoint with the same `go tool pprof` and `go tool trace` commands shown above. Host and plugin profiling are independent. Older plugin binaries show **SDK update required** and must be rebuilt with the updated SDK; restarting an old binary does not add profiling support.
+Open the footer's **pprof** popover to find each plugin's actual endpoint. Use that endpoint with the same `go tool pprof` and `go tool trace` commands shown above. Host and plugin profiling are independent. Older plugin binaries show **SDK update required** and must be rebuilt with the updated SDK; restarting an old binary does not add profiling support. Verified process identities appear separately under **Processes**.
 
 Saving never opens or closes an existing plugin listener. Restart Omniview after enabling or disabling the preference. Plugin reloads replace the process, PID, and endpoint; do not reuse an endpoint from a previous process. Status requests run only while the popover is open and pause while the window is hidden. The display reports listeners, not client connections or active captures.
 
 The host explicitly supplies `OMNIVIEW_PLUGIN_PPROF_ENABLED=true` or `false` from its startup preference and removes inherited host profiling ports. The SDK accepts only the exact value `true` as opt-in. Listeners use the same unauthenticated local-only access, request guards, capture caps, and shutdown cleanup as host profiling. Disable **Telemetry → Profiling** before restarting plugins for CPU captures when continuous Pyroscope profiling is enabled; Omniview does not pause it automatically.
+
+### Process identification
+
+Open **pprof → Processes** for the host and running plugin processes, even when their profiling listeners are off. Expand a row for its kernel start identity and executable. External plugin identities come from the launched backend and are revalidated against the current process lifetime; a plugin-reported profiling PID is not ownership evidence. Known in-process plugins are marked **shared** with the verified host identity.
+
+The inventory is a point-in-time observation, not a liveness guarantee or permission to signal a process. It refreshes every five seconds while the popover is open and the window is visible. Reopening or restoring visibility fetches a fresh snapshot before showing PIDs; lookup failures clear unverified identities. Process restarts replace the PID/start-identity pair. Recheck the lifetime before attaching an external profiler; never reuse a numeric PID alone.
+
+On macOS, public AppKit and CoreGraphics APIs verify each available native window ID against the host PID. **Wails ID** identifies an application window; **Native ID** identifies its WindowServer window. Neither identifies its renderer. A hidden or otherwise unavailable native window can remain **unverified** while other windows retain verified IDs. Other platform/server builds do not claim native window ownership.
+
+Public WKWebView APIs do not provide a supported window-to-WebContent/GPU PID join. Those rows remain **unverified**, without PIDs or inferred sharing. The inventory does not enumerate machine-wide WebKit candidates, use private WebKit APIs, request privileges, or sum worker CPU. Use Safari Timelines for native UI profiling; host/plugin pprof still profiles only the respective Go process.
+
+The read-only runtime API is `ProcessInventory.GetSnapshot()` from `@omniviewdev/runtime/api`; `InventoryProcess` describes its process rows. Snapshot time, role, evidence, window association and errors accompany the optional PID/start identity/executable. These diagnostics are separate from lifecycle ownership records and never grant process-control authority.
 
 ### Native UI profiling (macOS)
 

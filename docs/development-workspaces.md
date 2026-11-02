@@ -161,6 +161,12 @@ The probe performs real native12 recursive peer, singleton, live-export and atom
 
 The persistent supervisor outlives the short CLI. `--timeout` bounds the caller/build/readiness wait; timeout does not turn unfinished work into success or authorize a PID kill. Inspect/down remain available for that recorded supervisor. The supervisor owns the actual host and Node/Vite commands and their process trees. On Darwin, it retains unreaped child leaders until owned group cleanup; detached numeric-PID termination is never used as a fallback.
 
+The host Vite process runs the Node executable selected by the workspace's Node
+launcher, not the launcher script itself. This preserves process identity when
+version-manager shims exec Node after startup. Process identity mismatches fail
+closed and report the recorded and observed kernel identities without arguments
+or environment variables.
+
 Browser mode starts the real Wails server. Use `instance.endpoints.browser`, **not** the asset-only Vite URL. `--live-frontend=false` serves built assets instead of launching host Vite. `--watch=false` disables the supervisor build graph; otherwise its lifetime owns serial source rebuilds and real managed-generation waits. Runtime/shim changes restart actual consumers; a successful compiler exit alone is not plugin readiness.
 
 Host native build inputs, including C/cgo, C++, Objective-C, headers, Fortran,
@@ -516,8 +522,8 @@ the host's `plugins/kubernetes` gitlink; canonical E2E also verifies the recursi
 submodule checkout. PR branches and `main` can therefore select different
 compatible UI/Kubernetes sources without changing repository variables.
 The SDK SHA must equal the independently reviewed release pinned in workflow
-`REVIEWED_SDK_REVISION`: SDK v0.12.0 at
-`a6c892e671b789396f43fabeede7f4bf2e7a0c5d`. Repository variables remain unchanged.
+`REVIEWED_SDK_REVISION`: SDK v0.12.1 at
+`0a5b64ed8c2de209fbb02ecce9feba3afd88f28c`. Repository variables remain unchanged.
 Changing the cohort alone cannot approve another SDK commit. Source
 identity registration, mandatory probes, conservative selection, and native
 payload cache rules remain unchanged.

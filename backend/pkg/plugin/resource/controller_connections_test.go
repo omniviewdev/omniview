@@ -101,7 +101,7 @@ func TestSaveConnectionProfile_ConcurrentCreates(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			_, err := ctrl.SaveConnectionProfile(testInvocationContext(), "p1", types.Connection{ID: fmt.Sprintf("c%d", idx)})
+			_, err := ctrl.SaveConnectionProfile(testInvocationContext(), "p1", types.Connection{ID: fmt.Sprintf("c%d", idx)}, nil)
 			assert.NoError(t, err)
 		}(i)
 	}
@@ -213,7 +213,7 @@ func TestSaveConnectionProfile_ConcurrentUpdates(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := ctrl.SaveConnectionProfile(testInvocationContext(), "p1", types.Connection{ID: "c1", Name: "updated"})
+			_, err := ctrl.SaveConnectionProfile(testInvocationContext(), "p1", types.Connection{ID: "c1", Name: "updated"}, nil)
 			assert.NoError(t, err)
 		}()
 	}
@@ -472,7 +472,7 @@ func TestCatalogOnlyConnectionOperationsAreExplicitlyUnsupported(t *testing.T) {
 			return err
 		},
 		"save-profile": func() error {
-			_, err := ctrl.SaveConnectionProfile(testInvocationContext(), "catalog-only", types.Connection{ID: "explicit"})
+			_, err := ctrl.SaveConnectionProfile(testInvocationContext(), "catalog-only", types.Connection{ID: "explicit"}, nil)
 			return err
 		},
 		"remove-profile": func() error { return ctrl.RemoveConnection(testInvocationContext(), "catalog-only", "explicit") },
@@ -516,7 +516,7 @@ func TestConnectionLifecycle_FullRoundTrip(t *testing.T) {
 
 func requireSavedConnectionProfile(t *testing.T, ctrl *controller, pluginID string, connection types.Connection) ConnectionProfileResult {
 	t.Helper()
-	result, err := ctrl.SaveConnectionProfile(testInvocationContext(), pluginID, connection)
+	result, err := ctrl.SaveConnectionProfile(testInvocationContext(), pluginID, connection, nil)
 	require.NoError(t, err)
 	require.True(t, result.Applied)
 	require.True(t, result.Profile.Active)

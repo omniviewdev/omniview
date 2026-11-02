@@ -108,7 +108,7 @@ func TestProfileChangeBlocksNewReadsAndRetiresInFlightGetAndCatalog(t *testing.T
 	}
 	change := make(chan error, 1)
 	go func() {
-		result, err := ctrl.SaveConnectionProfile(testInvocationContext(), "plugin", profileTestConnection("route", "B"))
+		result, err := ctrl.SaveConnectionProfile(testInvocationContext(), "plugin", profileTestConnection("route", "B"), nil)
 		if err == nil && !result.Applied {
 			err = errors.New("successful save was not applied")
 		}
@@ -163,7 +163,7 @@ func TestProfileRollbackKeepsFenceAndNeverResurrectsOldAuthority(t *testing.T) {
 	}
 	change := make(chan error, 1)
 	go func() {
-		_, err := ctrl.SaveConnectionProfile(testInvocationContext(), "plugin", profileTestConnection("route", "B"))
+		_, err := ctrl.SaveConnectionProfile(testInvocationContext(), "plugin", profileTestConnection("route", "B"), nil)
 		change <- err
 	}()
 	<-rollbackEntered
@@ -190,7 +190,7 @@ func TestDisplayOnlyProfileRenamePreservesAuthorityAndSourceEpoch(t *testing.T) 
 	ctrl.pluginsMu.RUnlock()
 	connection := profileTestConnection("route", "A")
 	connection.Name = "new display name"
-	result, err := ctrl.SaveConnectionProfile(testInvocationContext(), "plugin", connection)
+	result, err := ctrl.SaveConnectionProfile(testInvocationContext(), "plugin", connection, nil)
 	require.NoError(t, err)
 	require.True(t, result.Applied)
 	ctrl.pluginsMu.RLock()
@@ -290,7 +290,7 @@ func TestStopCannotOverlapProfileMutationOrReleaseItsMetricFence(t *testing.T) {
 	ctrl.SetConnectionChangeHook(func(string, string) func() { blocked.Add(1); return func() { blocked.Add(-1) } })
 	saveDone := make(chan error, 1)
 	go func() {
-		_, err := ctrl.SaveConnectionProfile(testInvocationContext(), "plugin", profileTestConnection("route", "B"))
+		_, err := ctrl.SaveConnectionProfile(testInvocationContext(), "plugin", profileTestConnection("route", "B"), nil)
 		saveDone <- err
 	}()
 	<-applyEntered

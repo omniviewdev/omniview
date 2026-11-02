@@ -1,5 +1,6 @@
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as WailsRuntime from '@wailsio/runtime';
 
 const transport = vi.hoisted(() => ({
   check: vi.fn(),
@@ -8,16 +9,21 @@ const transport = vi.hoisted(() => ({
   listeners: new Map<string, Set<(event: { data: unknown }) => void>>(),
 }));
 
-vi.mock('@wailsio/runtime', () => ({
-  Events: {
-    On: (name: string, listener: (event: { data: unknown }) => void) => {
-      const listeners = transport.listeners.get(name) ?? new Set();
-      listeners.add(listener);
-      transport.listeners.set(name, listeners);
-      return () => listeners.delete(listener);
+vi.mock('@wailsio/runtime', async (importOriginal) => {
+  const actual = await importOriginal<typeof WailsRuntime>();
+  return {
+    ...actual,
+    Events: {
+      ...actual.Events,
+      On: (name: string, listener: (event: { data: unknown }) => void) => {
+        const listeners = transport.listeners.get(name) ?? new Set();
+        listeners.add(listener);
+        transport.listeners.set(name, listeners);
+        return () => listeners.delete(listener);
+      },
     },
-  },
-}));
+  };
+});
 vi.mock('../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper', () => ({
   CheckConnection: transport.check,
   StartConnection: transport.start,

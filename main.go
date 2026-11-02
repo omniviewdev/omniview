@@ -44,6 +44,7 @@ import (
 	"github.com/omniviewdev/omniview/internal/hostruntime"
 	"github.com/omniviewdev/omniview/internal/instance"
 	"github.com/omniviewdev/omniview/internal/mcprelay"
+	"github.com/omniviewdev/omniview/internal/processinfo"
 	"github.com/omniviewdev/omniview/internal/profiling"
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
 	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
@@ -99,7 +100,8 @@ func newUICapabilityControllers(
 	networkerController.SetReferenceAdmitter(admitReference)
 	logsController.SetReferenceAdmitter(resourceController.AdmitReference)
 	logsController.SetUIReferenceAdmitter(admitReference)
-	metricController.SetReferenceAdmitter(admitReference)
+	metricController.SetUIReferenceAdmitter(admitReference)
+	metricController.SetReferenceAdmitter(resourceController.AdmitReference)
 	return execController, networkerController, logsController, metricController
 }
 
@@ -331,6 +333,10 @@ func main() {
 	resourceUIRealm := invocation.NewScope(invocation.TrustedUI)
 	resourceController := resource.NewController(log, settingsProvider, stateDir.PluginStore, resourceBoundary)
 	graphService := resource.NewGraphService(resourceController.Graph(), resourceUIRealm, resourceBoundary, resourceController.ValidateReference)
+	// A nil realm keeps the agent principal from ctx at the boundary.
+	relayGraph := resource.NewGraphService(
+		resourceController.Graph(), nil, resourceBoundary, resourceController.ValidateReference,
+	)
 
 	settingsController := settings.NewController(log, settingsStore)
 	coreSettings.AttachPlugins(settingsController)
@@ -499,6 +505,8 @@ func main() {
 		Authority:   mcpAuthority,
 		Boundary:    resourceBoundary,
 		Logs:        logsController,
+		Metrics:     metricController,
+		Graph:       relayGraph,
 		ShowConfirmation: func() error {
 			if windowService == nil {
 				return errors.New("Confirmation window is unavailable.")
@@ -509,6 +517,7 @@ func main() {
 
 	uiInspectionEnabled, _ := coreSettings.CategoryValues("developer")["ui_inspection_enabled"].(bool)
 	uiInspection := uiinspection.New(app, uiInspectionEnabled)
+	processInventory := processinfo.New(app, pluginManager)
 
 	// Register controllers before bootstrap: bootstrap loads plugins and their
 	// controllers need initialized contexts. Registration remains before Run.
@@ -536,6 +545,7 @@ func main() {
 		application.NewService(telemetry.NewTelemetryBinding(telemetrySvc)),
 		application.NewService(&profiling.ServiceWrapper{Service: hostProfiling}),
 		application.NewService(uiInspection),
+		application.NewService(processInventory),
 		application.NewService(&settingsservice.Binding{Service: coreSettings}),
 		application.NewService(pluginManagerSvc),
 		application.NewService(&mcprelay.ServiceWrapper{Relay: mcpRelay}),

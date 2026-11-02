@@ -29,6 +29,9 @@ import (
 
 var tracer = otel.Tracer("omniview.metric")
 
+// resourceMetricsTimeout bounds one headless reference-bound metric query.
+const resourceMetricsTimeout = 30 * time.Second
+
 // MetricProviderSummary is a lightweight summary of a metric provider,
 // exposed to the frontend.
 type MetricProviderSummary struct {
@@ -46,6 +49,7 @@ type Controller interface {
 	ServiceStartup(ctx context.Context, options application.ServiceOptions) error
 	ServiceShutdown() error
 	SetReferenceAdmitter(resource.ReferenceAdmitter)
+	SetUIReferenceAdmitter(resource.ReferenceAdmitter)
 
 	// Discovery
 	GetProviders() []MetricProviderSummary
@@ -54,6 +58,7 @@ type Controller interface {
 	// Querying
 	Query(pluginID, connectionID string, req metric.QueryRequest) (*metric.QueryResponse, error)
 	QueryAll(connectionID string, req metric.QueryRequest) (map[string]*metric.QueryResponse, error)
+	ReadResourceMetrics(ctx context.Context, pluginID string, req metric.QueryRequest) (*metric.QueryResponse, error)
 
 	// Streaming
 	Subscribe(pluginID, connectionID string, req SubscribeRequest) (string, error)
@@ -82,26 +87,32 @@ type subscriptionIndex struct {
 var _ Controller = (*controller)(nil)
 
 type controller struct {
-	emitter           resource.EventEmitter
-	ctx               context.Context
-	logger            logging.Logger
-	settingsProvider  pkgsettings.Provider
-	clients           map[string]Provider
-	providerInfos     map[string]*metric.ProviderInfo // pluginID -> provider info
-	handlerMap        map[string][]metric.Handler     // pluginID -> handlers
-	resourceIndex     map[string][]string             // resource key -> []pluginID
-	subscriptions     map[string]subscriptionIndex    // subscriptionID -> index
-	streams           map[metricStreamKey]*metricStream
-	streamErrors      map[metricStreamKey]error
-	streamBlocked     map[metricStreamKey]int
-	resourceClient    resource.ConnectionReader
-	referenceAdmitter resource.ReferenceAdmitter
-	mux               sync.RWMutex
+	emitter             resource.EventEmitter
+	ctx                 context.Context
+	logger              logging.Logger
+	settingsProvider    pkgsettings.Provider
+	clients             map[string]Provider
+	providerInfos       map[string]*metric.ProviderInfo // pluginID -> provider info
+	handlerMap          map[string][]metric.Handler     // pluginID -> handlers
+	resourceIndex       map[string][]string             // resource key -> []pluginID
+	subscriptions       map[string]subscriptionIndex    // subscriptionID -> index
+	streams             map[metricStreamKey]*metricStream
+	streamErrors        map[metricStreamKey]error
+	streamBlocked       map[metricStreamKey]int
+	resourceClient      resource.ConnectionReader
+	referenceAdmitter   resource.ReferenceAdmitter
+	uiReferenceAdmitter resource.ReferenceAdmitter
+	mux                 sync.RWMutex
 }
 
-// SetReferenceAdmitter is configured by native composition before startup.
+// SetReferenceAdmitter binds native admission without changing invocation identity.
 func (c *controller) SetReferenceAdmitter(admit resource.ReferenceAdmitter) {
 	c.referenceAdmitter = admit
+}
+
+// SetUIReferenceAdmitter binds the UI-only entry points to their host-issued realm.
+func (c *controller) SetUIReferenceAdmitter(admit resource.ReferenceAdmitter) {
+	c.uiReferenceAdmitter = admit
 }
 
 func NewController(
@@ -382,13 +393,13 @@ func (c *controller) Query(
 		attribute.String("resource_key", req.ResourceKey),
 	)
 	if req.Reference != nil {
-		if c.referenceAdmitter == nil {
+		if c.uiReferenceAdmitter == nil {
 			return nil, resourcev2.NewError("UNSUPPORTED", "Resource reference admission is unavailable.")
 		}
 		if req.Route == nil || req.Route.Connection != connectionID {
 			return nil, resourcev2.NewError("INVALID_REQUEST", "Resource route does not match the selected connection.")
 		}
-		admitted, err := c.referenceAdmitter(ctx, "metric.Query", pluginID, *req.Route, *req.Reference)
+		admitted, err := c.uiReferenceAdmitter(ctx, "metric.Query", pluginID, *req.Route, *req.Reference)
 		if err != nil {
 			return nil, err
 		}
@@ -413,6 +424,32 @@ func (c *controller) Query(
 		return nil, err
 	}
 	return resp, nil
+}
+
+// ReadResourceMetrics answers one finite reference-bound query. Authorization
+// receives the original invocation principal, not a UI wrapper.
+func (c *controller) ReadResourceMetrics(
+	ctx context.Context, pluginID string, req metric.QueryRequest,
+) (*metric.QueryResponse, error) {
+	if req.Reference == nil || req.Route == nil {
+		return nil, resourcev2.NewError("INVALID_REQUEST", "Resource reference and route are required.")
+	}
+	if c.referenceAdmitter == nil {
+		return nil, resourcev2.NewError("UNSUPPORTED", "Resource reference admission is unavailable.")
+	}
+	ctx, cancel := context.WithTimeout(ctx, resourceMetricsTimeout)
+	defer cancel()
+	admitted, err := c.referenceAdmitter(ctx, "metric.Query", pluginID, *req.Route, *req.Reference)
+	if err != nil {
+		return nil, err
+	}
+	c.mux.RLock()
+	client, ok := c.clients[pluginID]
+	c.mux.RUnlock()
+	if !ok {
+		return nil, apperror.PluginNotFound(pluginID)
+	}
+	return client.Query(c.getConnectedCtx(admitted, pluginID, req.Route.Connection), req)
 }
 
 func (c *controller) QueryAll(
@@ -488,13 +525,13 @@ func (c *controller) Subscribe(pluginID, connectionID string, req SubscribeReque
 		MetricIDs: req.MetricIDs, Interval: req.Interval, Params: req.Params,
 	}
 	if req.Reference != nil {
-		if c.referenceAdmitter == nil {
+		if c.uiReferenceAdmitter == nil {
 			return "", apperror.ForResource(resourcev2.NewError("UNSUPPORTED", "Resource reference admission is unavailable."), subscriptionID)
 		}
 		if req.Route == nil || req.Route.Connection != connectionID {
 			return "", apperror.ForResource(resourcev2.NewError("INVALID_REQUEST", "Resource route does not match the selected connection."), subscriptionID)
 		}
-		admitted, err := c.referenceAdmitter(ctx, "metric.Subscribe", pluginID, *req.Route, *req.Reference)
+		admitted, err := c.uiReferenceAdmitter(ctx, "metric.Subscribe", pluginID, *req.Route, *req.Reference)
 		if err != nil {
 			return "", err
 		}

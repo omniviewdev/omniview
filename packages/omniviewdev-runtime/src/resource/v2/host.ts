@@ -40,6 +40,11 @@ export interface ConnectionProfile {
   active: boolean;
 }
 export interface ConnectionProfileResult { applied: boolean; profile: ConnectionProfile }
+/** Write-only credentials. Omission preserves only unchanged profile identity/configuration; empty string clears. */
+export interface ConnectionProfileCredentials {
+  username?: string;
+  token?: string;
+}
 export interface HostGetRequest { targetId: string; request: GetRequest }
 export interface HostEnumerateRequest { targetId: string; request: EnumerateRequest }
 export interface HostNativeQueryRequest { targetId: string; request: NativeQueryRequest }

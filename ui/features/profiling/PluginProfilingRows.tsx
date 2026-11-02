@@ -14,7 +14,6 @@ export default function PluginProfilingRows() {
       return <div key={plugin.pluginID}>
         <div className={styles.DetailRow}>
           <span><Dot status={tone} /> {plugin.pluginID}</span>
-          <span className={styles.Meta}>{plugin.pid > 0 ? `PID ${plugin.pid}` : ''}</span>
         </div>
         {plugin.supported && !failed && plugin.running && plugin.url
           ? <code className={styles.DetailValue}>{plugin.url}</code>

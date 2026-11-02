@@ -234,8 +234,8 @@ export function RestartResourceWatch(pluginID: string, target: resourcev2$0.Read
     return $Call.ByID(555702059, pluginID, target);
 }
 
-export function SaveConnectionProfile(pluginID: string, connection: types$0.Connection): $CancellablePromise<$models.ConnectionProfileResult> {
-    return $Call.ByID(2048532053, pluginID, connection).then(($result: any) => {
+export function SaveConnectionProfile(pluginID: string, encoded: string, credentials: $models.ConnectionProfileCredentials | null): $CancellablePromise<$models.ConnectionProfileResult> {
+    return $Call.ByID(2048532053, pluginID, encoded, credentials).then(($result: any) => {
         return $$createType26($result);
     });
 }
