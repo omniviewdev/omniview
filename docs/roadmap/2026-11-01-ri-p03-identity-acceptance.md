@@ -2,7 +2,7 @@
 
 ## Status and gates
 
-Status: draft acceptance. Independent review corrections have passing final local integration checks. Candidate-cohort CI, user-only P03-V approval, and independent re-review remain gates. Native proof remains blocked by `omn-5wbn` (`stale_target`). This receipt does not authorize a merge.
+Status: draft acceptance. Independent review corrections have passing final local integration checks. Kubernetes candidate CI passed against the approved host revision. The corrected final host CI and independent re-review remain gates. Native proof remains blocked by `omn-5wbn` (`stale_target`). This receipt does not authorize a merge.
 
 - Packet: P03, [omniview#82](https://github.com/omniviewdev/omniview/issues/82).
 - Consumed contracts: P00 identity and P45 structured resource references. No new wire contract or freeze gate.
@@ -193,7 +193,7 @@ The UI job failed on 15 lint errors in the new migration, provider, terminal, an
 
 After those edits, direct ESLint over changed host TypeScript files passed with no errors. It warned that the runtime test file has no matching root lint configuration. Drawer and terminal Vitest passed again, 5 files and 73 tests. Host TypeScript passed again. No unrelated warning was suppressed.
 
-CodeRabbit skipped automatic draft review. A manual review was requested at https://github.com/omniviewdev/omniview/pull/336#issuecomment-6565868303. The service then reported `Review limit reached`. No inline review finding was available. This is not independent review approval.
+CodeRabbit skipped automatic draft review. A manual review was requested at https://github.com/omniviewdev/omniview/pull/336#issuecomment-6565868303. Its current response says `Review rate limited.` Both PRs have no inline substantive findings. The user authorized proceeding without CodeRabbit when its review cycle or limits prevent review. Service availability is not a merge gate. Required CI and independent review remain mandatory; no CodeRabbit approval is claimed.
 
 ## Review-correction verification
 
@@ -242,11 +242,33 @@ After those rebases, every integration command above was executed again. Host li
 
 The user set the candidate variables for host `bb51bc845f35506a4a5ee73ad854e987f62ba7a2` and SDK `0a5b64ed8c2de209fbb02ecce9feba3afd88f28c`. The coordinator verified those exact values. Kubernetes run [41371902727](https://github.com/omniviewdev/omniview-plugin-kubernetes/actions/runs/41371902727) had first failed its approved-cohort guard under the prior variables. After the user gate, that job was rerun once, with the [reason recorded](https://github.com/omniviewdev/omniview-plugin-kubernetes/pull/76#issuecomment-6566868410).
 
-The rerun passed cohort selection but failed in `arduino/setup-task@v2`: `API rate limit exceeded for 20.221.79.67`. No semantic check ran. The old job was not retried again. The coordinator supplied the action's supported `repo-token: ${{ github.token }}` input. Kubernetes commit `d2d59feb126e87ff64947a5dfa0271a21d90c098` contains that narrow fix and its README note. Existing read-only permissions remain unchanged. No token is persisted and no check is skipped. The host now pins that candidate; renewed user approval of the host CI variable is required. Actual new-head CI must verify the setup fix.
+The rerun passed cohort selection but failed in `arduino/setup-task@v2`: `API rate limit exceeded for 20.221.79.67`. No semantic check ran. The old job was not retried again. The coordinator supplied the action's supported `repo-token: ${{ github.token }}` input. Kubernetes commit `d2d59feb126e87ff64947a5dfa0271a21d90c098` contains that narrow fix and its README note. Existing read-only permissions remain unchanged. No token is persisted and no check is skipped. The host now pins that candidate. The user approved host `71644b99ee1cb4f39260bdb26b9b24502d810e20`; the coordinator live-verified that value and the unchanged SDK variable, and closed gate `omn-oyku`. The new candidate's first run captured the previous host value before approval and failed only cohort selection. That new-head job was rerun once after approval, with the [reason recorded](https://github.com/omniviewdev/omniview-plugin-kubernetes/pull/76#issuecomment-6567113820).
 
-Host `bb51bc845f35506a4a5ee73ad854e987f62ba7a2` passed Go, UI, bindings, packaging, production profiles, build matrices, render benchmarks, and application E2E checks. [Whole-app profile failed](https://github.com/omniviewdev/omniview/actions/runs/41371912891/job/125043988497). Both `gh run view 41371912891 -R omniviewdev/omniview --log-failed` and the full job log stop at profiling-bundle Vite warnings before scenario warmup. The check annotation reports only `Process completed with exit code 1.` No profile artifact was produced. The cause is not established; this is not recorded as an infrastructure failure or a pass. No retry was requested.
+Host `bb51bc845f35506a4a5ee73ad854e987f62ba7a2` passed Go, UI, bindings, packaging, production profiles, build matrices, render benchmarks, and application E2E checks. [Whole-app profile failed](https://github.com/omniviewdev/omniview/actions/runs/41371912891/job/125043988497). Initial cached `gh run view` failed-step and full-job logs omitted the failure tail, showing only Vite warnings. This initially left the cause unknown. Direct `gh api repos/omniviewdev/omniview/actions/jobs/125043988497/logs` retrieved the missing tail: `page.evaluate: Error: waitFor timed out: drawer toggle 1` at `bench/app/run.mjs:304`, during Logs warmup after the other scenarios ran. No profile artifact was produced. No infrastructure classification or retry was requested.
 
 The executable smoke sources and results are retained in [host evidence](https://github.com/omniviewdev/omniview/pull/336#issuecomment-6566872467) and [Kubernetes evidence](https://github.com/omniviewdev/omniview-plugin-kubernetes/pull/76#issuecomment-6566872762). Those comments identify the preceding feature-identical cohort; the later change only authenticates CI setup and updates cohort evidence.
+
+Host `71644b99ee1cb4f39260bdb26b9b24502d810e20` again passed every check except [Whole-app profile](https://github.com/omniviewdev/omniview/actions/runs/41373423866/job/125048499339). Its uncached log reports the same drawer-toggle timeout.
+
+A temporary wrapper ran the unchanged production Logs scenario with real Chromium and captured DOM geometry and actual clicks. The measured element was the real `.BottomDrawer`, at 550 pixels. The global labelled-control lookup instead selected a resource-tree button with `aria-label="Expand"` and `data-ov-leaf="true"` outside that drawer. The captured click went to that external button; the connected drawer stayed at 550 pixels. This establishes a harness selector collision, not a failed drawer handler or a saved-session regression.
+
+The first local diagnostic build failed because the managed host has no checked-out Kubernetes submodule metadata. Setting the supported `OV_K8S_PLUGIN_METADATA` override to the managed Kubernetes checkout corrected that environment prerequisite. The plugin bundle was built with the direct Vite binary into `/tmp/ri-p03-profile-k8s`; no package manager, Go build, native launch, fixture rewrite, or product-source change was used for the diagnosis.
+
+The permanent harness correction scopes the labelled lookup to the measured drawer. The ten-toggle count, more-than-50-pixel height assertion, run counts, and every scenario remain unchanged. The benchmark README records the competing-control case.
+
+After that correction, the real production browser benchmark completed successfully:
+
+```sh
+OV_K8S_PLUGIN_DIST=/tmp/ri-p03-profile-k8s/assets \
+OV_K8S_PLUGIN_METADATA=/home/mononen/omniview/workspaces/ri-p03/omniview-plugin-kubernetes/plugin.json \
+node bench/app/run.mjs --no-build --runs 3 --out /tmp/ri-p03-profile-fixed-results.json
+```
+
+Result: **PASS**, `308.84s`, Chromium `156.0.8078.4`. All four scenarios ran a warmup and three measured runs. All recorded page-error arrays were empty. Each measured Logs run completed all ten drawer toggles and retained the original geometry assertion. The application bundle was built before the harness-only correction; `--no-build` reused that unchanged application bundle. This is Chromium fixture evidence, not native Wails or homelab evidence.
+
+The report lists six backend calls without fixtures in the cold-start cases: `logs/servicewrapper.ListSessions`, `settings/binding.GetSnapshot`, `window/service.ListStates`, `window/service.ReportViewport`, `mcprelay/servicewrapper.ListPendingConfirmations`, and `profiling/servicewrapper.GetStatus`, under their normal backend/internal package prefixes. They remain disclosed; no fixture was changed to hide them. The report's `k8sPlugin` field shows the host short SHA because the managed host submodule is absent and Git resolves its parent checkout. The actual plugin assets came from the separately managed Kubernetes candidate `d2d59feb126e87ff64947a5dfa0271a21d90c098`, selected through the explicit asset and metadata overrides above. That report field is not used as Kubernetes revision proof.
+
+Kubernetes [candidate CI passed](https://github.com/omniviewdev/omniview-plugin-kubernetes/actions/runs/41372955153/job/125050828824), `10m3s`. Authenticated Task setup, cohort selection, lint, native typecheck, behavior tests, New York age-clock tests, production UI build, and cleanup passed. It tested the approved host `71644b99ee1cb4f39260bdb26b9b24502d810e20` with the unchanged SDK pin. The coordinator authorized retaining that approved host for Kubernetes CI because the later host delta contains only the benchmark selector, benchmark README, and this receipt. Host runtime and API source remain unchanged. No repository variable was silently updated.
 
 
 
