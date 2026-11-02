@@ -3,7 +3,7 @@ import type { AccessRoute, ResourceReference, ScopeEntry, Value } from './domain
 import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 
 /** Ancillary transport traits; finite support comes only from the qualified catalog. */
-export type Feature = 'connections' | 'connectionBrowser' | 'connectionOverlay' | 'scopeValues' | 'presentation' | 'editorSchemas' | 'schemaDocuments' | 'relationships' | 'health' | 'actionCatalog' | 'streamingActions' | 'bestEffortUpdates';
+export type Feature = 'connections' | 'connectionBrowser' | 'connectionOverlay' | 'scopeValues' | 'presentation' | 'editorSchemas' | 'schemaDocuments' | 'relationships' | 'health' | 'actionCatalog' | 'streamingActions' | 'sourceSessions';
 export interface FeatureSet { traits: readonly Feature[] }
 
 /** Explicit host-owned desired state, never a replay of native discovery snapshots. */

@@ -148,7 +148,7 @@ the collection and report its path instead of deleting uncertain files.
   and wrap the root in `page/profiler.tsx`. The app's source is not changed.
 - **Fake backend.** `page/fake-backend.ts` installs the `bench/render` transport and fixtures
   (bindings → handlers by name, `emit` for backend events), and adds what the full shell
-  asks for at startup: the installed plugin list, a connection, watch state, log sessions.
+  asks for at startup: the installed plugin list, a connection, source state, log sessions.
   The page reads its setup from `window.__OV_BENCH__` (`{ plugins, pods }`), set by the
   runner before navigation, and exposes controls on `window.__ovBench`. Calls are answered
   in-page, so there is no IPC cost in the numbers.
@@ -232,7 +232,7 @@ Named canonical finite scenarios are `cloud-bundled-pages`,
 copies**. Copy ordinal is only diagnostic table identity, not a fabricated
 native resource ID. Cloud and hypervisor retain their canonical page cursors
 for the native finite run; hypervisor is snapshot-only. Container release is a
-one-shot fixture List cursor after a ready source watch. It is coordination,
+one-shot fixture List cursor after a ready source view. It is coordination,
 not a source continuity/ACK/replay guarantee.
 
 Use canonical workspace `up`/`inspect`/`down` in a private HOME without real
@@ -264,8 +264,8 @@ UUID/generation/state/source, uses only `instance.endpoints.browser`, verifies
 the document boot identity, and records selected source commits, dirty tracked
 diff hashes, exact fixture hashes, tools/hardware/viewport and browser version.
 Results are written exclusively (`wx`), including partial failure evidence.
-The runner closes Chromium and explicitly stops its fixture source
-watches/connections/cache; the owner must then `workspace down` and inspect
+The runner closes Chromium and explicitly closes its fixture source views,
+connections and cache; the owner must then `workspace down` and inspect
 the stopped generation, verify socket removal and retire the empty private
 sampler directory. It never terminates another owner's workspace/process.
 
@@ -300,30 +300,26 @@ sampler directory. It never terminates another owner's workspace/process.
   debounce, host CEL execution or a global-inventory query. Stress copies
   exercise payload/render cost only. Inactive React Query cache retention is
   sampled before explicit owned-cache removal.
-- The container diagnostic deliberately supplies the existing hook's
-  `idAccessor`; default Resources still omits it and remains unsubscribed.
-  Native engine-local ID collisions and legacy first-match cache behavior
-  remain limitations. No old listener fix, atomic List/watch cutover or scope
-  identity claim is made.
-- Source watches, source rows copied, frontend subscription calls, host
-  forwarding refcounts, persistent gRPC listener streams and future query
-  leases are different quantities. Only available counters/observations are
-  reported; unavailable query semantics/counts are not measured zero.
-  Current `IsResourceWatchRunning` has no SDK gRPC RPC despite its generated
-  host binding. Cleanup instead invokes the supported `StopResourceWatch`,
-  waits on the actual provider's source-watch gauge over the real List path,
-  then stops connections. It does not suppress the unavailable inspection
-  surface or infer source cleanup from frontend unmount.
-  Table-only `window.__p02.unmount()` intentionally retains sources and inactive
-  queries for retention sampling. Toggling off the entire diagnostic or leaving
-  its route instead drains pending connection/watch starts, stops every owned
-  source and clears only its diagnostic caches. This root cleanup uses its own
-  effect-local control, not the deleted global. Cleanup failures are reported
-  and do not skip remaining connections or cache removal.
+- The container diagnostic uses `useResources` collection mode for live source
+  updates and owns a separate source view to retain the stream across table-only
+  unmounts. The fixture does not establish provider continuity or replay guarantees.
+- Source streams, source rows copied, frontend views and connection-owned
+  inventory are different quantities. Only available counters and observations
+  are reported; unavailable query semantics and counts are not measured as zero.
+  Cleanup closes the diagnostic's `OpenSourceView` handle using
+  `CloseSourceView`, then reads the provider's actual source-watch gauge through
+  the real List path before stopping the connection. Connection-owned inventory
+  or another view can still hold the stream at that point, so this gauge is not
+  proof of cancellation. Table-only `window.__p02.unmount()` intentionally retains
+  the diagnostic view, sources and inactive queries for retention sampling.
+  Toggling off the entire diagnostic or leaving its route drains pending
+  connection/view opens, closes owned views, stops every owned connection and
+  clears only diagnostic caches. Root cleanup uses its effect-local control.
+  Cleanup failures are reported and do not skip other connections or cache removal.
   The fixture also emits numeric `p02Lifecycle` stderr observations under its
-  source mutex at client destruction and watch termination. Correlate new log
+  source mutex at client destruction and stream termination. Correlate new log
   records to the authenticated owned plugin process/generation and root-stop
-  boundary to observe final connections/watch counts after the last client is
+  boundary to observe final connection and source-watch counts after the last client is
   destroyed; a new List call cannot inspect a stopped client. These fixture-only
   observations contain no resource IDs/bodies and do not add a public API.
 - A clean HOME is not network isolation. The fixture has no external source

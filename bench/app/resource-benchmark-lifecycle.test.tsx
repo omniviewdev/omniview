@@ -11,8 +11,8 @@ const api = vi.hoisted(() => ({
   LoadConnections: vi.fn(),
   StartConnection: vi.fn(),
   StopConnection: vi.fn(),
-  EnsureResourceWatch: vi.fn(),
-  StopResourceWatch: vi.fn(),
+  OpenSourceView: vi.fn(),
+  CloseSourceView: vi.fn(),
   Enumerate: vi.fn(),
   ResolveTarget: vi.fn(),
 }));
@@ -20,7 +20,7 @@ vi.mock("@omniviewdev/runtime/api", () => ({ ResourceClient: api }));
 vi.mock("@omniviewdev/runtime", () => ({
   useResources: () => ({
     resources: { data: { records: [], sourcePage: { count: { kind: "unknown" }, coverage: { kind: "complete", paths: [] }, consistency: "bestEffort" } } },
-    watchState: "",
+    source: undefined,
     isSynced: false,
   }),
 }));
@@ -74,11 +74,12 @@ beforeEach(() => {
     authority: { continuity: "connectionLocal", limitations: [] },
     catalogRevision: "test-v2",
   }));
-  api.EnsureResourceWatch.mockImplementation(async (_plugin, target) => {
-    watches.add(target.route.connection);
+  api.OpenSourceView.mockImplementation(async (_plugin, request) => {
+    watches.add(request.target.route.connection);
+    return { viewId: request.target.route.connection, topic: "source-view", mode: "snapshotAndUpdates" };
   });
-  api.StopResourceWatch.mockImplementation(async (_plugin, route) => {
-    watches.delete(route.connection);
+  api.CloseSourceView.mockImplementation(async (_plugin, viewID) => {
+    watches.delete(viewID);
   });
   api.Enumerate.mockImplementation(async (_plugin, { targetId, request }) => ({
     records: request.cursor === "p02:metrics" ? [{
@@ -144,10 +145,15 @@ describe("P02 root ownership versus table-only retention", () => {
     expect(api.Enumerate.mock.calls[0][1].request).not.toHaveProperty("cursor");
   });
 
-  it("closes source watches/connections and only owned caches after root unmount", async () => {
+  it("closes source views/connections and only owned caches after root unmount", async () => {
     const view = mount();
     fireEvent.click(view.getByText("Mount container event diagnostic"));
     await waitFor(() => expect(watches.size).toBe(1));
+    expect(api.OpenSourceView).toHaveBeenCalledWith("workspace-probe", {
+      targetId: "target:container-bundled-events",
+      target: { route: { connection: "container-bundled-events" }, provider: "workspace-probe", authority: "test-host-authority", type: "container", scope: [], representation: "native" },
+      updates: "ifSupported",
+    });
     client.setQueryData(["p02-finite", "container-bundled-events", 0], []);
     client.setQueryData(
       ["workspace-probe", "resource-v2", "enumerate", {
@@ -170,6 +176,16 @@ describe("P02 root ownership versus table-only retention", () => {
       ).toEqual([["unrelated-plugin", "keep"]]);
     });
   });
+  it("retains the owned view across a table-only unmount", async () => {
+    mount();
+    await act(async () => { await window.__p02!.mountEvents(); });
+    await act(async () => { await window.__p02!.unmount(); });
+    expect(watches.has("container-bundled-events")).toBe(true);
+    expect(api.CloseSourceView).not.toHaveBeenCalled();
+    await act(async () => { await window.__p02!.stop(); });
+    expect(watches.size).toBe(0);
+  });
+
 
   it("retains source and inactive cache for the deliberate table-only unmount", async () => {
     mount();
@@ -209,34 +225,34 @@ describe("P02 root ownership versus table-only retention", () => {
     expect(connections.size).toBe(0);
   });
 
-  it("waits for an in-flight watch start before stopping the source", async () => {
-    const ensure = Promise.withResolvers<void>();
-    api.EnsureResourceWatch.mockImplementation(async (_plugin, target) => {
-      await ensure.promise;
-      watches.add(target.route.connection);
+  it("waits for an in-flight source view open before closing it", async () => {
+    const open = Promise.withResolvers<void>();
+    api.OpenSourceView.mockImplementation(async (_plugin, request) => {
+      await open.promise;
+      watches.add(request.target.route.connection);
+      return { viewId: request.target.route.connection, topic: "source-view", mode: "snapshotAndUpdates" };
     });
     const view = mount();
     fireEvent.click(view.getByText("Mount container event diagnostic"));
-    await waitFor(() => expect(api.EnsureResourceWatch).toHaveBeenCalled());
+    await waitFor(() => expect(api.OpenSourceView).toHaveBeenCalled());
     view.unmount();
-    ensure.resolve();
+    open.resolve();
     await waitFor(() =>
-      expect(api.StopResourceWatch).toHaveBeenCalledWith(
+      expect(api.CloseSourceView).toHaveBeenCalledWith(
         "workspace-probe",
-        { connection: "container-bundled-events" },
-        "container",
+        "container-bundled-events",
       ),
     );
     expect(watches.size).toBe(0);
     await waitFor(() => expect(connections.size).toBe(0));
   });
 
-  it("cleans other sources and cache even when one watch stop fails", async () => {
+  it("cleans other sources and cache even when one view close fails", async () => {
     mount();
-    await select("container-bundled-events");
+    await act(async () => { await window.__p02!.mountEvents(); });
     await select("cloud-bundled-pages");
-    api.StopResourceWatch.mockRejectedValueOnce(
-      new Error("watch stop unavailable"),
+    api.CloseSourceView.mockRejectedValueOnce(
+      new Error("view close unavailable"),
     );
     let failure: unknown;
     await act(async () => {

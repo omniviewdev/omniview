@@ -211,7 +211,7 @@ func TestOperationGeneration_RouteSessionAndCancellationOwnership(t *testing.T) 
 			case "invocation":
 				cancelCaller()
 			case "generation":
-				generation.watchCancel()
+				generation.cancel()
 			case "cleanup":
 				cleanup()
 			}

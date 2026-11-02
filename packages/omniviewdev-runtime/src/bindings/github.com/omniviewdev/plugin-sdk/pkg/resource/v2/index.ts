@@ -38,8 +38,7 @@ export {
     SchemaDocumentReference,
     ScopeEntry,
     ScopeExtractor,
-    WatchConnectionSummary,
-    WatchState
+    SourceCoverage
 } from "./models.js";
 
 export type {

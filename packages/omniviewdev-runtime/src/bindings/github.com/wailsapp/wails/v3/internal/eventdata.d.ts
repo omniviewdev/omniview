@@ -77,7 +77,7 @@ declare module "@wailsio/runtime" {
             "resource/connection/metadata": resource$0.HostConnectionMetadata;
             "settings/changed": settings$0.Scope;
             "settings/state": window$0.SettingsState;
-            "watch/STATE": resource$0.HostWatchStateEvent;
+            "source/STATE": resource$0.HostSourceStateEvent;
             "windows/changed": window$0.WindowsChangedEvent;
             "windows/closed": window$0.WindowClosedEvent;
             "windows/drag/begin": window$0.DragBeginEvent;

@@ -13,5 +13,6 @@ export * from './resource/v2/ancillary';
 export * from './resource/v2/schema';
 export * from './resource/v2/value';
 export * from './resource/v2/host';
+export * from './resource/v2/sourceView';
 export { sameGraphNode } from './resource/v2/graph';
 export { useResolvedResourceTarget } from './hooks/resource/useResolvedResourceTarget';

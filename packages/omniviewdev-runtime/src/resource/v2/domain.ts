@@ -43,8 +43,8 @@ export interface SchemaDocumentReference { id: string; revision: string }
 export interface SchemaDocument { reference: SchemaDocumentReference; dialect: string; document: unknown }
 export interface Representation { id: string; revision: string; schema: SchemaBinding }
 export interface Dimension { name: string; allowEmpty: boolean }
-// "update" means advisory watches; "mutationUpdate" means a native update write.
-export type Operation = 'enumerate' | 'get' | 'nativeQuery' | 'update' | 'create' | 'mutationUpdate' | 'delete' | 'action';
+// "sourceUpdates" describes source sessions; "mutationUpdate" is a native write.
+export type Operation = 'enumerate' | 'get' | 'nativeQuery' | 'sourceUpdates' | 'create' | 'mutationUpdate' | 'delete' | 'action';
 export interface ResourceCapability { operation: Operation; scope: QueryScope; guarantee?: string }
 /** Declared native query input; capability and source-page coverage remain independent. */
 export interface NativeQueryDescriptor { language: string; description?: string; inputSchema: Schema }
@@ -58,6 +58,7 @@ export interface ResourceType {
   modelRepresentation?: string;
   nativeQueries?: readonly NativeQueryDescriptor[];
   capabilities: readonly ResourceCapability[];
+  acquireOnConnect?: boolean;
   nativeAuthorityHint?: NativeAuthorityHint;
 }
 export interface CatalogRequest { route: AccessRoute }

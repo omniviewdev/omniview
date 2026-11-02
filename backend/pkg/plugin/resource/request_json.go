@@ -89,8 +89,8 @@ func (request *ResolveReferenceRequest) UnmarshalJSON(data []byte) error {
 	*request = ResolveReferenceRequest(value)
 	return nil
 }
-func (request *HostSubscription) UnmarshalJSON(data []byte) error {
-	type plain HostSubscription
+func (request *HostSourceViewRequest) UnmarshalJSON(data []byte) error {
+	type plain HostSourceViewRequest
 	var value plain
 	if err := decodeHostRequest(data, &value); err != nil {
 		return err
@@ -101,6 +101,6 @@ func (request *HostSubscription) UnmarshalJSON(data []byte) error {
 	if err := resourcev2.ValidateEnumerateRequest(resourcev2.EnumerateRequest{Target: value.Target}); err != nil {
 		return err
 	}
-	*request = HostSubscription(value)
+	*request = HostSourceViewRequest(value)
 	return nil
 }
