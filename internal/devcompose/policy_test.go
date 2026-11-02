@@ -100,6 +100,36 @@ func TestCompatibleCatalogsAndPatchPathsRetainTheirRepositoryMeaning(t *testing.
 		t.Fatal("patch edit accepted")
 	}
 }
+func TestIdenticalOwnedPatchesPreserveBothSourceAuthorities(t *testing.T) {
+	for _, changed := range []string{scalarPatchPath, "plugin-a/patches/exact.patch"} {
+		t.Run(changed, func(t *testing.T) {
+			w, roots := scalarPatchFixture(t, scalarPatchLF, hash([]byte(scalarPatchLF)))
+			put(t, w.Root, "plugin-a/patches/exact.patch", scalarPatchLF)
+			put(t, w.Root, "plugin-a/ui/pnpm-workspace.yaml", "packages: ['widgets/*']\npatchedDependencies:\n  exact@1.2.3: ../patches/exact.patch\n")
+			p, err := New(w, roots, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = CheckInputs(p); err != nil {
+				t.Fatal(err)
+			}
+			put(t, w.Root, changed, scalarPatchLF+"# changed owned source\n")
+			if err = CheckInputs(p); err == nil {
+				t.Fatal("a changed independently declared patch retained installation authority")
+			}
+		})
+	}
+}
+
+func TestDifferentOwnedPatchesForOneSelectorRefuse(t *testing.T) {
+	w, roots := scalarPatchFixture(t, scalarPatchLF, hash([]byte(scalarPatchLF)))
+	put(t, w.Root, "plugin-a/patches/exact.patch", scalarPatchLF+"# different policy\n")
+	put(t, w.Root, "plugin-a/ui/pnpm-workspace.yaml", "packages: ['widgets/*']\npatchedDependencies:\n  exact@1.2.3: ../patches/exact.patch\n")
+	if _, err := New(w, roots, nil); err == nil {
+		t.Fatal("different source patches silently selected one repository's policy")
+	}
+}
+
 func TestCredentialsHooksUnknownPoliciesAndDeniedBuildsFailClosed(t *testing.T) {
 	for _, tc := range []struct{ name, path, data string }{
 		{"credential", "plugin-a/ui/.npmrc", "//registry.example.test/:_authToken=never-print-this\n"},

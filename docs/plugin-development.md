@@ -4,10 +4,10 @@ This guide covers everything you need to know to develop plugins for Omniview wi
 
 ### Marketplace host compatibility
 
-Host registry API requests advertise `ide_version=0.20.0`, sourced from
+Host registry API requests advertise `ide_version=0.24.0`, sourced from
 `internal/version.CompatibilityVersion`. This is the source's minimum host
 compatibility release line, not the SDK version or a PR/nightly display label.
-Development builds advertise the same `0.20.0` API baseline while retaining
+Development builds advertise the same `0.24.0` API baseline while retaining
 their existing development display labels. Release builds stamp the display
 version from the release tag.
 
@@ -22,6 +22,20 @@ Publisher minimum and maximum IDE versions are inclusive semantic-version bounds
 Hosts that omit `ide_version` can only access unconstrained plugin versions.
 Artifact and CDN URLs, including signed URLs returned by download endpoints,
 are not decorated with the host version.
+
+Version history requests opt into `include_incompatible=true` to show newer public
+releases with an explicit compatibility reason instead of hiding them. The host
+checks inclusive minimum/maximum bounds against its compatibility baseline and
+sorts all pages by semantic version. `discovery_supported` is true only when the
+marketplace acknowledges this metadata-only mode with
+`X-Omniview-Incompatible-Versions: true`; an older API may still omit incompatible
+releases. Exact-version lookup and download requests never opt into discovery
+and continue enforcing compatibility before artifact access.
+
+Structured runtime errors preserve the outer operation title and render nested
+public causes as readable text, including JSON escaped through Wails or prefixed
+by Go operation context. Raw diagnostic prefixes, malformed structured causes,
+and sensitive provider fallback fields remain hidden.
 
 The public marketplace API is `https://mkt.omniview.dev`. Explicit
 `developer.marketplace_url` overrides remain unchanged. Existing profiles that
@@ -429,6 +443,16 @@ Failed plugin startup closes its dispensed source exactly once even when the
 provider was never published; saved desired profiles and the original typed
 startup failure survive that teardown.
 
+### Borrowed connection tools
+
+Borrowed MCP tools use the host's sanitized snapshot of configured connections.
+Native resource discovery has a separate deadline. Its timeout does not remove
+borrowed tool names. The relay still checks live grants, lifecycle cancellation,
+connection state, and consent at dispatch.
+Consent binds the exact tool contract and target. An unrelated catalog change
+does not cancel that consent. A changed or removed tool, policy change, or
+session retirement still cancels the call and blocks late results.
+
 ### Connection/server metadata
 
 Use the optional resource-v2 `connectionMetadata` trait for public connection facts such as `aws.region` or `kubernetes.server_version`. Keep configuration in desired profiles and resource inventory/capabilities in resource queries/catalogs. Do not store summaries; derive them from selected keys in the consumer.
@@ -807,6 +831,9 @@ Use the public cache keys when storing native snapshots:
 - Pagination, representation, query scope, and native query inputs remain explicit request fields; never replace an unfiltered acquisition page with search-filtered rows.
 
 Use `openSourceView(pluginId, {targetId, target, updates})` for a source view. The runtime attaches to the view topic before synchronization, stages snapshot chunks until `snapshotEnd`, and applies ordered changes by host record key. Close the view when it is no longer needed. A reset starts a new view generation; continuity and coverage describe the source's guarantees.
+
+The PR workflow runs `src/resource/v2/sourceView.test.ts` from `packages/omniviewdev-runtime`.
+The suite checks atomic snapshots, frame-batched notifications, continuity gaps, and view retirement.
 
 Use the cache query's signal for shared native work and the request signal to fence obsolete search publication. Cancelling a search must not cancel another table's shared fetch. Resource/action execution still performs its own fresh identity and authorization checks instead of trusting discovery cache freshness.
 

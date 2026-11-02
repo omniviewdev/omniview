@@ -192,6 +192,70 @@ The generic resource table uses catalog type IDs without parsing provider-specif
 
 Editor schemas carry canonical schema bindings. The host fetches each referenced schema document once per route and revision, registers that shared document, and links each resource editor to its declared root. YAML editor parsing retains integer precision before canonical mutation encoding.
 
+### Kubernetes Resource Editors
+
+The runtime exports `RESOURCE_EDITOR_EXTENSION_POINT` (`kubernetes/resource/editor/v1`) and
+`ResourceEditorContribution`. Register a descriptor as the `value` of an existing
+`ExtensionRegistration<ResourceEditorContribution>`; do not create another registry.
+The authenticated loader assigns plugin ownership and contribution IDs. The registry
+rejects malformed descriptors and duplicate IDs; the loader isolates rejected editor
+contributions without failing unrelated plugin contributions.
+
+Contract version 1 matches exact group, version, kind, discovered plural and scope.
+Optional requirements narrow applicability through explicit capability, action, feature
+and schema facts. Unknown availability never grants a requirement. Passive inspection
+does not imply create/update permission. Empty resource names are reserved for
+inspect-only protocol envelopes without owned paths, or explicit request protocols;
+they never identify a CRUD collection.
+For imported local captures only, the host may set the reserved discovery feature
+`host.local-capture: 'available'` after validating the captured exact GVK. This permits
+`inspect` matching when server discovery is absent or unknown, without changing that
+server status. It never enables create/edit/action, overrides denied/unavailable
+discovery, or satisfies other capability/schema requirements. Descriptor and manifest
+data cannot establish this host-owned capture marker.
+
+Descriptors may declare `ownershipPolicy: 'declarative' | 'conditional' | 'controller' |
+'system'`; omission remains unknown. This is domain editing policy, not an RBAC grant.
+The authenticated host may classify declarative resources as application-owned for
+explicit create/edit, but controller owner references or actual system/installer
+evidence override that classification. Conditional resources permit explicit manual
+create; existing unknown ownership stays inspection-only until real policy establishes
+ownership. Controller/system resources remain inspection-only. Manifest annotations,
+checkboxes and descriptor policy cannot bypass discovery, real verbs or server
+admission. Feature requirements must refer to evidence the host actually provides:
+discovering a gated kind can establish API availability, while unknown optional
+controller health is not itself permission denial.
+
+`selectResourceEditor` prefers a compatible remembered ID, then a sole compatible
+built-in, then a sole add-on. Competing providers require a chooser; no match preserves
+YAML fallback. Built-in identity comes from authenticated registry ownership, not
+descriptor metadata.
+
+Forms receive an immutable redacted draft and submit atomic session/revision patches
+within declared owned paths. Keep invalid local input local. Never persist drafts,
+credentials or opaque markers. Reference services return sanitized projections and
+distinguish empty results, denial, absence and unavailable transport. Action services
+accept host-whitelisted protocols, cancellation and session generations, not URLs.
+Provider `request.buildInput` callbacks always receive redacted projections. Sensitive
+Kubernetes bodies instead declare `request: { protocol, source: 'canonical' }` without
+a callback. Only review, service-account-token, CSR approval, pod eviction and scale
+protocols permit canonical extraction. The host privately checks exact protocol,
+GVK, identity and session, then extracts the minimal protocol payload. CSR approval
+includes metadata and conditions only, never certificate request bytes. Projection
+markers are never transport payloads; calling provider code from the host does not
+make that code trusted for raw source access.
+Optional `validateSubmission(draft, context, { references, actions }, signal)` performs
+read-only asynchronous domain admission using real prerequisite evidence. It receives
+only the immutable redacted projection and returns safe field issues; it must not
+perform mutations or automatic corrective effects. The host runs it on actual submit
+in both Form and YAML modes, alongside pure `validate`, even when a form is unmounted.
+The host binds cancellation to session/revision and rechecks the snapshot after awaiting
+before mutation. Registration, matching, selection and passive inspection never invoke
+submission validators or pure validators.
+This is a trusted in-process UI contract, not a security sandbox. Plugins must use the
+host's compatible runtime/base-ui/theme release cohort; MUI/Emotion and private
+Kubernetes components are not shared public dependencies.
+
 ### Error Isolation
 
 Each contribution is wrapped in its own React `ErrorBoundary`, which catches render-time and lifecycle errors. A render crash in one plugin's contribution does not affect other contributions or the host. Crashes are logged via `logPluginBoundaryError()` with structured data (plugin ID, extension point ID, contribution ID, stack trace). Note that `ErrorBoundary` does not catch errors in event handlers, async callbacks, or non-render code paths — those require explicit `try/catch` handling within the plugin.

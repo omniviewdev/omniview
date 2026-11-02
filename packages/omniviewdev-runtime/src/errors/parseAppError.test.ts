@@ -232,3 +232,38 @@ describe('showAppError', () => {
     expect(showSnackbar).not.toHaveBeenCalled();
   });
 });
+
+describe('nested public error causes', () => {
+  const cause = {
+    type: ErrorTypes.PLUGIN_NOT_FOUND,
+    title: 'Plugin not found',
+    status: 404,
+    detail: 'Install this plugin before opening its resources.',
+  };
+
+  it('keeps operation context while decoding escaped Wails causes', () => {
+    const outer = {
+      type: ErrorTypes.INTERNAL,
+      title: 'Could not install plugin',
+      status: 500,
+      detail: `controller private context: ${JSON.stringify(cause)}`,
+    };
+    const error = parseAppError(new Error(JSON.stringify(JSON.stringify(outer))));
+    expect(error.title).toBe(outer.title);
+    expect(error.detail).toBe(`${cause.title}: ${cause.detail}`);
+    expect(JSON.stringify(error)).not.toContain('private context');
+  });
+
+  it('decodes a public cause after Go operation context', () => {
+    expect(parseAppError(`private controller context: ${JSON.stringify(cause)}`)).toEqual(cause);
+  });
+
+  it('does not expose malformed nested diagnostics or sensitive SDK fallback fields', () => {
+    for (const detail of ['{private malformed JSON', JSON.stringify({ code: 'FORBIDDEN', title: 'secret', message: 'secret' })]) {
+      const error = parseAppError({ ...cause, detail });
+      expect(error.detail).not.toContain('private');
+      expect(error.detail).not.toContain('secret');
+      expect(error.detail).not.toContain('{');
+    }
+  });
+});

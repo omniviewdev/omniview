@@ -19,6 +19,7 @@ type fakeProvider struct {
 	listErr     error
 	listStarted chan struct{}
 	listRelease chan struct{}
+	callHook    func(*sdktypes.PluginContext, sdktools.CallInput)
 }
 
 func (f *fakeProvider) ListTools(*sdktypes.PluginContext) ([]sdktools.Descriptor, error) {
@@ -29,7 +30,10 @@ func (f *fakeProvider) ListTools(*sdktypes.PluginContext) ([]sdktools.Descriptor
 	return f.descriptors, f.listErr
 }
 
-func (f *fakeProvider) CallTool(*sdktypes.PluginContext, sdktools.CallInput) (*sdktools.Result, error) {
+func (f *fakeProvider) CallTool(ctx *sdktypes.PluginContext, input sdktools.CallInput) (*sdktools.Result, error) {
+	if f.callHook != nil {
+		f.callHook(ctx, input)
+	}
 	return sdktools.TextResult("ok"), nil
 }
 
@@ -93,6 +97,38 @@ func TestControllerRejectsUnknownPlugin(t *testing.T) {
 	ctrl := NewController(logging.NewNop(), nil)
 	_, err := ctrl.CallTool(context.Background(), "missing", nil, "ping", nil)
 	require.ErrorContains(t, err, "missing")
+}
+
+func TestBorrowedToolUsesTokenAndIDOnlyConnection(t *testing.T) {
+	ctrl := NewController(logging.NewNop(), nil)
+	token := []byte("01234567890123456789012345678901")
+	released := false
+	ctrl.(interface {
+		SetDelegator(func(context.Context, string, sdktools.Descriptor, string) ([]byte, func(), error))
+	}).SetDelegator(func(_ context.Context, consumer string, descriptor sdktools.Descriptor, id string) ([]byte, func(), error) {
+		require.Equal(t, "flux", consumer)
+		require.Equal(t, "kubernetes", descriptor.ConnectionOwner)
+		require.Equal(t, "cluster", id)
+		return token, func() { released = true }, nil
+	})
+	provider := &fakeProvider{descriptors: []sdktools.Descriptor{{
+		Name: "status", Scope: sdktools.ScopeConnection, ConnectionOwner: "kubernetes",
+		InputSchema: sdktools.ObjectSchema(nil),
+	}}, callHook: func(ctx *sdktypes.PluginContext, input sdktools.CallInput) {
+		require.Equal(t, token, input.DelegationToken)
+		require.Equal(t, "cluster", ctx.Connection.ID)
+		require.Empty(t, ctx.Connection.Data)
+		require.Empty(t, ctx.Connection.Name)
+	}}
+	meta := config.PluginMeta{ID: "flux", Requires: &config.RequiresSpec{Connections: []config.ConnectionRequirement{{
+		Plugin: "kubernetes", Operations: []string{"catalog"}, ResourceTypes: []string{"flux/*"},
+	}}}}
+	require.NoError(t, ctrl.OnPluginStart("flux", meta, &fakeBackend{provider: provider}))
+	_, err := ctrl.CallTool(context.Background(), "flux", &sdktypes.Connection{
+		ID: "cluster", Name: "private", Data: map[string]any{"credential": "sentinel"},
+	}, "status", nil)
+	require.NoError(t, err)
+	require.True(t, released)
 }
 
 func TestFailedReplacementRetiresOldTools(t *testing.T) {

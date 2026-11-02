@@ -61,6 +61,18 @@ Related resources contain references, not resource bodies. The relay returns at 
 and sets `truncated` when more edges exist. Route-level policy is plugin- and
 connection-scoped; disabling one type's get tool does not disable these separate read tools.
 
+Plugins may declare access to selected resource types exported by another installed
+plugin. The host checks both manifests and routes each call through the owning plugin;
+the consumer never receives the owner's connection profile or credentials. AI Tools
+policy and consent still apply to the consumer and selected connection. Only started
+owner connections appear in the consumer's connection list. A named tool remains
+available for a stopped configured connection and reports that the connection is not
+started; it does not start the connection.
+
+Connection lists use sanitized host observations without native readiness probes.
+Starting an already-started connection preserves existing resource handles.
+Stop or configuration reset retires delegated calls; a later start requires a fresh call.
+
 ## Why Omniview?
 
 In the fast-paced world of DevOps, engineers need tools that are not only powerful but also adaptable and intuitive. Omniview bridges the gap between complexity and usability, offering a platform that grows with you. It's not just about managing infrastructure; it's about empowering DevOps engineers with a workflow that’s as innovative as they are.
@@ -107,6 +119,24 @@ Drag-and-drop handlers preserve domain IDs: homepage contributions use strings; 
 The frontend source cohort uses Node.js 26.13.0 LTS, pnpm 12.14.0, React 19.3.1, and the native TypeScript 7 compiler. TypeScript's JavaScript tooling uses the separate TypeScript 6 compatibility package. Nx is not required; pnpm workspace scripts own package builds.
 
 Monaco stays pinned to 0.52.2 while the current YAML worker integration requires its legacy API. A maintained YAML fork and coordinated newer-Monaco upgrade are tracked in the UI repository's `packages/editors/docs/MONACO_YAML_COMPAT.md`.
+
+The host and standalone Kubernetes plugin declare the same Monaco 0.52.2
+word-highlighter lifecycle backport from [upstream VS Code](https://github.com/microsoft/vscode/blob/e57fbd7a49486f12be089ec5800293f3453eefbd/src/vs/editor/contrib/wordHighlighter/browser/wordHighlighter.ts#L294-L315).
+The two asynchronous highlight callers own their cancellation promises while
+unexpected failures still reach Monaco's error handler. Editors and their models
+continue to dispose immediately; highlighting and Find remain enabled.
+
+Managed workspaces can compose byte-identical patches declared independently by
+multiple repositories. Each declaration must reference its own repository-owned
+file, and each standalone lock retains its originating source authority.
+Changing either patch invalidates the composition; conflicting bytes, redirected
+paths, and borrowing another repository's declaration remain refused.
+
+CI admits SDK v0.14.2 after independent host-connection and live-source contract
+reviews. The original profile-isolation ancestry remains required; protected
+isolation files must match the reviewed host-connection checkpoint. Exact SDK
+approval stays separate from candidate selection. Live-source validation rejects
+records and removals outside the admitted catalog contract.
 
 Vite remains on 7.3.7 to preserve SystemJS plugin output. Vite 8 and newer pnpm versions require separate loader/backend work and are not part of this frontend-only upgrade. Keep strict peer validation and the 24-hour release-age policy enabled.
 

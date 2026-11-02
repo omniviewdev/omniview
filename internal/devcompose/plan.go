@@ -543,7 +543,7 @@ func New(w devcontract.ResolvedWorkspace, roots []Root, targets map[string]strin
 		return Plan{}, err
 	}
 	policy := reconciled.settings
-	lock, providers, err := seedLock(w, sources, &plan, policy)
+	lock, providers, err := seedLock(w, sources, &plan, policy, reconciled.sourcePatches)
 	if err != nil {
 		return Plan{}, err
 	}

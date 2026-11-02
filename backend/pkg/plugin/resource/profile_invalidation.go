@@ -58,8 +58,14 @@ func (c *controller) invalidateSourceRoutesWithRecoveryLocked(pluginID string, c
 	if generation.sourceEpoch == nil {
 		generation.sourceEpoch = make(map[string]uint64)
 	}
+	if removeInventory && generation.connectionLifecycleEpoch == nil {
+		generation.connectionLifecycleEpoch = make(map[string]uint64)
+	}
 	for connection := range seen {
 		generation.sourceEpoch[connection]++
+		if removeInventory {
+			generation.connectionLifecycleEpoch[connection]++
+		}
 	}
 	c.finite.mu.Lock()
 	resolver := c.finite.authorities[pluginID]

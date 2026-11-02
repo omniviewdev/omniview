@@ -58,17 +58,18 @@ var _ ConfigStore = (*settingsstore.Store)(nil)
 
 // Options are the relay dependencies.
 type Options struct {
-	Log              logging.Logger
-	Store            ConfigStore
-	Tools            tools.Controller
-	Connections      resource.Service
-	Version          string
-	Authority        *Authority
-	Boundary         *invocation.Boundary
-	ShowConfirmation func() error
-	Logs             ResourceLogsReader
-	Metrics          ResourceMetricsReader
-	Graph            ResourceGraphReader
+	Log                 logging.Logger
+	Store               ConfigStore
+	Tools               tools.Controller
+	Connections         resource.Service
+	Version             string
+	Authority           *Authority
+	Boundary            *invocation.Boundary
+	ShowConfirmation    func() error
+	Logs                ResourceLogsReader
+	Metrics             ResourceMetricsReader
+	Graph               ResourceGraphReader
+	BorrowedConnections func(context.Context, string, string, bool) ([]sdktypes.Connection, error)
 }
 
 // Relay owns the MCP server, the policy document and the HTTP listener.
@@ -84,6 +85,7 @@ type Relay struct {
 	logs                 ResourceLogsReader
 	metrics              ResourceMetricsReader
 	graph                ResourceGraphReader
+	borrowedConnections  func(context.Context, string, string, bool) ([]sdktypes.Connection, error)
 	transitionMu         sync.Mutex
 	resyncMu             sync.Mutex
 	stopped              bool
@@ -128,6 +130,7 @@ func New(o Options) *Relay {
 	r.logs = o.Logs
 	r.metrics = o.Metrics
 	r.graph = o.Graph
+	r.borrowedConnections = o.BorrowedConnections
 	r.lifecycleCtx, r.lifecycleCancel = context.WithCancel(context.Background())
 	r.authority.SetAudit(func(event AuditEvent) {
 		r.log.Infow(context.Background(), "MCP invocation audit", "event", event)
@@ -457,6 +460,24 @@ func (r *Relay) allowedConnections(parent context.Context, cfg *Config) map[stri
 	return out
 }
 
+// listedConnections retains configured borrowed routes even when stopped.
+func (r *Relay) listedConnections(ctx context.Context, cfg *Config, tool ToolInfo, local []string) []string {
+	if tool.ConnectionOwner == "" || r.borrowedConnections == nil {
+		return local
+	}
+	connections, err := r.borrowedConnections(ctx, tool.PluginID, tool.ConnectionOwner, false)
+	if err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(connections))
+	for _, connection := range connections {
+		if cfg.ConnectionAccess(tool.PluginID, connection.ID) {
+			out = append(out, connection.ID)
+		}
+	}
+	return out
+}
+
 // resync rebuilds the catalog and registers exactly the listed tools.
 func (r *Relay) resync() {
 	r.resyncMu.Lock()
@@ -471,7 +492,8 @@ func (r *Relay) resync() {
 	r.mu.Unlock()
 
 	catalog := BuildCatalog(r.tools.ListAll())
-	discoveryCtx, discoveryCancel := context.WithTimeout(invocation.HostContext(r.lifecycleCtx), 10*time.Second)
+	listingCtx := invocation.HostContext(r.lifecycleCtx)
+	discoveryCtx, discoveryCancel := context.WithTimeout(listingCtx, 10*time.Second)
 	defer discoveryCancel()
 	if r.connections != nil {
 		states, err := r.connections.GetAllConnectionStates(discoveryCtx)
@@ -531,7 +553,7 @@ func (r *Relay) resync() {
 	}
 	desired := map[string]ToolInfo{}
 	for _, t := range catalog {
-		if t.Status == StatusOK && cfg.Listed(t, allowed[t.PluginID]) {
+		if t.Status == StatusOK && cfg.Listed(t, r.listedConnections(listingCtx, &cfg, t, allowed[t.PluginID])) {
 			desired[t.MCPName] = t
 		}
 	}
@@ -632,8 +654,11 @@ func (r *Relay) handler(t ToolInfo) mcp.ToolHandler {
 		r.mu.Lock()
 		cfg := r.cfg
 		r.mu.Unlock()
-		allowed := r.allowedConnections(ctx, &cfg)
-		if !cfg.Listed(t, allowed[t.PluginID]) {
+		var allowed []string
+		if t.Scope == ScopeConnection && t.ConnectionOwner == "" {
+			allowed = r.allowedConnections(ctx, &cfg)[t.PluginID]
+		}
+		if !cfg.Listed(t, r.listedConnections(ctx, &cfg, t, allowed)) {
 			return errorResult(fmt.Sprintf("tool %s is disabled in Omniview AI Tools settings", t.MCPName)), nil
 		}
 
@@ -647,9 +672,31 @@ func (r *Relay) handler(t ToolInfo) mcp.ToolHandler {
 			if t.Resource != nil && id != t.Resource.Route.Connection {
 				return errorResult("connection does not match advertised resource route"), nil
 			}
-			resolved, err := r.connections.GetConnection(ctx, t.PluginID, id)
-			if err != nil {
-				return errorResult(fmt.Sprintf("unknown connection %s for plugin %s", id, t.PluginID)), nil
+			var resolved sdktypes.Connection
+			if t.ConnectionOwner != "" {
+				if r.borrowedConnections == nil {
+					return errorResult("OWNER_UNAVAILABLE: The connection owner is unavailable."), nil
+				}
+				configured, err := r.borrowedConnections(ctx, t.PluginID, t.ConnectionOwner, false)
+				if err != nil {
+					return errorResult("OWNER_UNAVAILABLE: The connection owner is unavailable."), nil
+				}
+				found := false
+				for _, candidate := range configured {
+					if candidate.ID == id {
+						resolved, found = candidate, true
+						break
+					}
+				}
+				if !found {
+					return errorResult("GRANT_DENIED: Cross-plugin connection access is not permitted."), nil
+				}
+			} else {
+				var err error
+				resolved, err = r.connections.GetConnection(ctx, t.PluginID, id)
+				if err != nil {
+					return errorResult(fmt.Sprintf("unknown connection %s for plugin %s", id, t.PluginID)), nil
+				}
 			}
 			if !cfg.ConnectionEnabled(t.PluginID, id, t) {
 				return errorResult(fmt.Sprintf(
@@ -682,6 +729,9 @@ func (r *Relay) handler(t ToolInfo) mcp.ToolHandler {
 				PluginName:    t.PluginName,
 				ConnectionID:  connectionID,
 				ArgumentsJSON: string(argsJSON),
+			}
+			if t.ConnectionOwner != "" {
+				payload.PluginName += " via " + t.ConnectionOwner
 			}
 			if connection != nil {
 				payload.ConnectionName = connection.Name
@@ -740,17 +790,50 @@ func (r *Relay) handler(t ToolInfo) mcp.ToolHandler {
 			if requestCtx.Err() != nil {
 				return nil, requestCtx.Err()
 			}
+			switch resourcev2.ErrorCode(err) {
+			case "CONNECTION_NOT_STARTED":
+				return errorResult("CONNECTION_NOT_STARTED: The owner connection is not started."), nil
+			case "OWNER_UNAVAILABLE":
+				return errorResult("OWNER_UNAVAILABLE: The connection owner is unavailable."), nil
+			case "GRANT_DENIED":
+				return errorResult("GRANT_DENIED: Cross-plugin connection access is not permitted."), nil
+			case "DELEGATION_NOT_ACTIVE":
+				return errorResult("DELEGATION_NOT_ACTIVE: The delegated tool call is not active."), nil
+			}
 			return errorResult("tool invocation failed"), nil
 		}
 		if t.BuiltIn {
 			return builtinResult, nil
+		}
+		if result == nil {
+			return errorResult("tool invocation failed"), nil
+		}
+		if t.ConnectionOwner != "" && result.IsError {
+			switch result.ErrorCode {
+			case "GRANT_DENIED":
+				return errorResult("GRANT_DENIED: Cross-plugin connection access is not permitted."), nil
+			case "CONNECTION_NOT_STARTED":
+				return errorResult("CONNECTION_NOT_STARTED: The owner connection is not started."), nil
+			case "OWNER_UNAVAILABLE":
+				return errorResult("OWNER_UNAVAILABLE: The connection owner is unavailable."), nil
+			case "DELEGATION_NOT_ACTIVE":
+				return errorResult("DELEGATION_NOT_ACTIVE: The delegated tool call is not active."), nil
+			case "CONFLICT":
+				return errorResult("CONFLICT: The object changed during the update."), nil
+			case "TIMEOUT":
+				return errorResult("TIMEOUT: The operation timed out."), nil
+			case "UNSUPPORTED":
+				return errorResult("UNSUPPORTED: The operation is not supported."), nil
+			default:
+				return errorResult("tool invocation failed"), nil
+			}
 		}
 
 		out := &mcp.CallToolResult{IsError: result.IsError, Content: make([]mcp.Content, 0, len(result.Content))}
 		for _, c := range result.Content {
 			out.Content = append(out.Content, &mcp.TextContent{Text: c.Text})
 		}
-		if len(result.StructuredContent) > 0 {
+		if !result.IsError && len(result.StructuredContent) > 0 {
 			out.StructuredContent = result.StructuredContent
 		}
 		return out, nil
@@ -777,6 +860,22 @@ func (r *Relay) listConnections(ctx context.Context, cfg *Config, t ToolInfo) (*
 		listed[name] = enabled
 	}
 	r.mu.Unlock()
+
+	if r.borrowedConnections != nil {
+		owners := make(map[string]bool)
+		for _, candidate := range catalog {
+			if candidate.PluginID == t.PluginID && candidate.ConnectionOwner != "" {
+				owners[candidate.ConnectionOwner] = true
+			}
+		}
+		for owner := range owners {
+			borrowed, borrowErr := r.borrowedConnections(ctx, t.PluginID, owner, true)
+			if borrowErr != nil {
+				return errorResult("OWNER_UNAVAILABLE: The connection owner is unavailable."), nil
+			}
+			connections = append(connections, borrowed...)
+		}
+	}
 
 	listings := make([]connectionListing, 0, len(connections))
 	for _, connection := range connections {

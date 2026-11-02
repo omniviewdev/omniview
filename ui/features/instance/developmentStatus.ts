@@ -103,7 +103,7 @@ export function useDevelopmentStatus(info: InstanceInfo | null, confirmed: boole
         controller?.abort(); if (!disposed) {
           setSnapshot(null);
         } 
-      }, 5000);
+      }, 35000);
       try {
         const response = await fetch('/__omniview_development_status', { cache: 'no-store', signal: controller.signal });
         const next = response.ok ? parseDevelopmentStatus(await response.json(), workspaceID, generation) : null;
