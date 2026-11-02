@@ -3,6 +3,7 @@ export * as ExecClient from './exec';
 export * as NetworkerClient from './networker';
 export * as PluginManager from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/servicewrapper';
 export * as ResourceClient from './resource/v2/client';
+export * as QueryLease from './resource/v2/query-observer';
 export * as GraphClient from './resource/v2/graph-client';
 export * as SettingsService from './bindings/github.com/omniviewdev/omniview/backend/pkg/settings/binding';
 export * as HostProfiling from './bindings/github.com/omniviewdev/omniview/internal/profiling/servicewrapper';
