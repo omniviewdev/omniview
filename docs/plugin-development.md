@@ -818,6 +818,9 @@ Use the public cache keys when storing native snapshots:
 
 Use `openSourceView(pluginId, {targetId, target, updates})` for a source view. The runtime attaches to the view topic before synchronization, stages snapshot chunks until `snapshotEnd`, and applies ordered changes by host record key. Close the view when it is no longer needed. A reset starts a new view generation; continuity and coverage describe the source's guarantees.
 
+The PR workflow runs `src/resource/v2/sourceView.test.ts` from `packages/omniviewdev-runtime`.
+The suite checks atomic snapshots, frame-batched notifications, continuity gaps, and view retirement.
+
 Use the cache query's signal for shared native work and the request signal to fence obsolete search publication. Cancelling a search must not cancel another table's shared fetch. Resource/action execution still performs its own fresh identity and authorization checks instead of trusting discovery cache freshness.
 
 Distinguish disconnected, connecting, authentication-required, forbidden, unavailable, and partial states. Return safe actionable messages, not raw credentials or backend internals. Treat a deleted/replaced object as an object failure, not a reason to reconnect. Plugin registration, replacement, unload, and authoritative connection removal update the current search and fence retired results.
