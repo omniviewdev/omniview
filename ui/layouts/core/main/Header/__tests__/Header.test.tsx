@@ -88,7 +88,7 @@ function sourceView(): TestSourceView {
       };
     },
     getSnapshot: () => ({
-      records: new Map(),
+      records: new Map<string, never>(),
       complete: true,
       event: { kind: 'changes' as const, revision: native.sourceRevision },
     }),
