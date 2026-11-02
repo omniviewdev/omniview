@@ -19,7 +19,7 @@ The tests cover frozen inputs, ordered changes and previous snapshot immutabilit
 Optional-token parity repair (`omn-meaa`), based on merged host
 `35ced6506129ca3e6173a66f495e0416c618429e`: absent continuation and
 incarnation remain valid; present values must be nonempty. The Go lease queue
-rejects non-nil empty values before encoding, and the observer rejects
+rejects non-nil empty values before enqueue, and the observer rejects
 explicit empty JSON. The frozen DTOs and generation and integer semantics are
 unchanged.
 

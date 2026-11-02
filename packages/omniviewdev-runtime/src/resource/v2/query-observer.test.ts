@@ -14,7 +14,7 @@ describe('passive query observer', () => {
     for (const field of ['continuation', 'incarnation'] as const) {
       for (const value of [undefined, '', 'token']) {
         const item = row('a');
-        const frameMetadata = { ...metadata };
+        const frameMetadata = { ...metadata, limitations: [...metadata.limitations] };
         if (value !== undefined) {
           if (field === 'incarnation') item.resource.incarnation = value;
           else Object.assign(frameMetadata, { continuation: value });
