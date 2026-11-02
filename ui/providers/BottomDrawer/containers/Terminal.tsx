@@ -113,6 +113,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
       setError({ title: 'Saved resource reference unavailable', suggestion: unresolvedResourceReferenceMessage, raw: '', retryable: false });
       return;
     }
+
     const props = tab?.properties as Record<string, any> | undefined;
     if (!props?.pluginID || !props?.connectionID) {
       return;

@@ -421,10 +421,16 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
   const reportedSavedReferences = React.useRef(false);
 
   React.useEffect(() => {
-    if (reportedSavedReferences.current) return;
+    if (reportedSavedReferences.current) {
+      return;
+    }
+
     reportedSavedReferences.current = true;
     for (const tab of initialSlot?.tabs ?? []) {
-      if (!hasUnresolvedResourceReference(tab)) continue;
+      if (!hasUnresolvedResourceReference(tab)) {
+        continue;
+      }
+
       const location = `Window ${currentWindow.name}, terminal ${tab.id}`;
       console.warn('[drawer] saved resource reference is unconvertible; original options retained', location);
       showSnackbar({ message: unresolvedResourceReferenceMessage, status: 'warning', details: location, showOnce: true });

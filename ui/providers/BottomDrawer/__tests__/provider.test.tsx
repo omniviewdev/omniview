@@ -133,7 +133,7 @@ describe('BottomDrawerProvider', () => {
     const opts = { resource_plugin: 'kubernetes', resource_key: 'core::v1::pods', params: { name: 'same' } };
     const tab = { ...serializedTab('legacy-session'), properties: { pluginID: 'kubernetes', connectionID: 'route', opts } };
     mocks.initialSlot = slotOf([tab], tab.id);
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warning = vi.spyOn(console, 'warn').mockImplementation(vi.fn());
     try {
       await renderRestoredDrawer();
       expect(tabIds()).toEqual([tab.id]);
@@ -159,7 +159,9 @@ describe('BottomDrawerProvider', () => {
     const tab = { ...serializedTab('converted-session'), properties: { pluginID: 'plugin', connectionID: 'explicit-route', opts } };
     mocks.initialSlot = slotOf([tab], tab.id);
     const view = render(<BottomDrawerProvider><Probe /></BottomDrawerProvider>);
-    await waitFor(() => expect(drawerWindow.restoreComplete).toBe(true));
+    await waitFor(() => {
+      expect(drawerWindow.restoreComplete).toBe(true);
+    });
     expect(tabIds()).toEqual([tab.id]);
     const migrated = drawer.tabs[0].properties;
     expect(migrated?.opts).toEqual({ ...opts, route: { connection: 'explicit-route' } });

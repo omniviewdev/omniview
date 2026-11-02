@@ -147,6 +147,19 @@ Supported `task workspace:down -- ri-p03 --root /home/mononen/omniview --json` c
 
 The durable blocker is `omn-5wbn`. No `launchPhase: ready`, selected MCP endpoint, table/detail/editor/navigation smoke, or real WindowService reload proof was obtained. Built artifacts and unit tests do not replace that proof. The PR remains draft.
 
+## CI and review evidence
+
+Draft PR: https://github.com/omniviewdev/omniview/pull/336.
+
+The first head, `e39051da13a7ae2627f879b0e79182d1ee7ea9d7`, passed controlled Go checks, bindings, Windows connection profiles, packaging, render benchmarks, production profiles, build matrices, and application E2E.
+
+The UI job failed on 15 lint errors in the new migration, provider, terminal, and test code. The failed log is https://github.com/omniviewdev/omniview/actions/runs/41365009073/job/125024898621. Braces, statement spacing, and test callbacks were fixed without a behavior change.
+
+After those edits, direct ESLint over changed host TypeScript files passed with no errors. It warned that the runtime test file has no matching root lint configuration. Drawer and terminal Vitest passed again, 5 files and 73 tests. Host TypeScript passed again. No unrelated warning was suppressed.
+
+CodeRabbit skipped automatic draft review. A manual review was requested at https://github.com/omniviewdev/omniview/pull/336#issuecomment-6565868303. The service then reported `Review limit reached`. No inline review finding was available. This is not independent review approval.
+
+
 ## Planned checks, not evidence
 
 - Resolve `omn-5wbn` through the workspace tooling owner, without adding unrelated devcli fixes to P03.
