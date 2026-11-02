@@ -1,16 +1,16 @@
 # C04 source-session wire contract
 
-Status: proposed for independent review and explicit user freeze; not
-approved or implemented. P05 owns this contract. Source semantics in
+Status: user-approved freeze 2026-11-02. The source corrections are not
+yet implemented. P05 owns this contract. Source semantics in
 [the accepted source-session
 contract](2026-10-17-source-session-contract.md) §§3–6 and 9 and P45
 remain binding. The earlier source §3 described `JsonDocument` as a
 proposed shape; later accepted [P01
 §8.3](2026-10-24-resource-query-contracts.md) requires canonical
-recursive tagged values preserving native scalar intent. This C04
-proposal explicitly asks the user to reconcile and supersede the older
-raw-JSON body shape with P45 tagged `Value`, preserving timestamp and
-int64/uint64/double without inference. Existing P05 host candidate
+recursive tagged values preserving native scalar intent. This
+user-approved C04 contract supersedes the older raw-JSON body shape with
+P45 tagged `Value`. It preserves timestamp and int64/uint64/double
+without inference. Existing P05 host candidate
 `ad8732643e45b9d8bbd0a1bdae10a96a23813b04`; SDK candidate
 `d4a036bda987be151042bb8d4b63c384390c3dd3`. This is not evidence of
 production conformance.
