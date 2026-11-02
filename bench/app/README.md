@@ -46,6 +46,7 @@ actual total rather than the requested 30-step budget.
 CI reads the checked-out host's `e2e/source-cohort.json`, with full commit strings
 for `plugin-sdk`, `ui`, and `kubernetes`. UI and Kubernetes checkouts use validated
 cohort outputs; Kubernetes must match the host's `plugins/kubernetes` gitlink.
+After Kubernetes merges, update both pins to its final merge commit before the coordinated consumer release.
 The SDK entry must equal the independently reviewed release pinned explicitly in
 the candidate workflows: SDK v0.14.2,
 `0597ff45586b45e3a57fe7ac86194ce96884c7ef`. The original isolation ancestry minimum remains
