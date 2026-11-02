@@ -1,6 +1,6 @@
 import { Events } from '@wailsio/runtime';
 import { CloseSourceView, OpenSourceView, RefreshSourceView, SyncSourceView } from './client';
-import type { HostRecord, HostSourceStatus, HostSourceViewEvent, HostSourceViewRequest } from './host';
+import type { HostRecord, HostSourceStatus, HostSourceViewEvent, HostSourceViewOpened, HostSourceViewRequest } from './host';
 
 export interface SourceViewSnapshot {
   viewGeneration?: string;
@@ -12,6 +12,7 @@ export interface SourceViewSnapshot {
 }
 
 export interface SourceViewClient {
+  readonly mode: HostSourceViewOpened['mode'];
   subscribe(listener: () => void): () => void;
   getSnapshot(): SourceViewSnapshot;
   refresh(): Promise<void>;
@@ -30,6 +31,7 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
   let snapshot: SourceViewSnapshot = { records: new Map(), complete: false };
   let staging: Map<string, HostRecord> | undefined;
   let generation: string | undefined;
+  let rejectedGeneration: string | undefined;
   let sequence = BigInt(0);
   let awaitingGeneration = true;
   let closed = false;
@@ -95,19 +97,22 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
       }
       return;
     }
-    if (!/^[1-9][0-9]*$/.test(event.sequence)) { resync(); return; }
-    const next = BigInt(event.sequence);
     if (awaitingGeneration) {
-      if ((event.kind !== 'snapshot' && event.kind !== 'snapshotEnd') || next !== BigInt(1) || !event.viewGeneration || event.viewGeneration === generation) {
-        resync();
-        return;
-      }
+      if ((event.kind !== 'snapshot' && event.kind !== 'snapshotEnd') || event.sequence !== '1' ||
+          !event.viewGeneration || event.viewGeneration === generation || event.viewGeneration === rejectedGeneration) return;
       generation = event.viewGeneration;
+      rejectedGeneration = undefined;
       sequence = BigInt(0);
       staging = new Map();
       awaitingGeneration = false;
     }
-    if (event.viewGeneration !== generation || next !== sequence + BigInt(1)) { resync(); return; }
+    if (!/^[1-9][0-9]*$/.test(event.sequence)) { rejectedGeneration = event.viewGeneration; resync(); return; }
+    const next = BigInt(event.sequence);
+    if (event.viewGeneration !== generation || next !== sequence + BigInt(1)) {
+      rejectedGeneration = event.viewGeneration;
+      resync();
+      return;
+    }
     sequence = next;
     switch (event.kind) {
       case 'snapshot':
@@ -138,6 +143,7 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
 
   const unsubscribe = Events.On(opened.topic, event => accept(event.data as HostSourceViewEvent));
   const client: SourceViewClient = {
+    mode: opened.mode,
     subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     getSnapshot() { return snapshot; },
     async refresh() {

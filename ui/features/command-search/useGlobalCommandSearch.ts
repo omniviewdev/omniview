@@ -661,7 +661,12 @@ export function useGlobalCommandSearch() {
           }
           let revision = 0;
           const update = () => {
-            const event = view.getSnapshot().event;
+            const snapshot = view.getSnapshot();
+            const unavailable = view.mode === 'snapshot' || snapshot.status?.state === 'failed' || snapshot.status?.state === 'closed';
+            if (unavailable) failedSubscriptions.current.add(subscriptionKey);
+            else failedSubscriptions.current.delete(subscriptionKey);
+            setLiveFailureCount(failedSubscriptions.current.size);
+            const event = snapshot.event;
             if (!event || event.revision === revision) return;
             revision = event.revision;
             for (const query of queryCache.findAll({ queryKey })) {

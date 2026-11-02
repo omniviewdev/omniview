@@ -77,10 +77,9 @@ function firstSnapshot(client: SourceViewClient, signal: AbortSignal): Promise<R
   const abort = () => finish(new CancelledError({ revert: true }));
   const check = () => {
     const snapshot = client.getSnapshot();
-    if (snapshot.complete) finish(undefined, pageFromSnapshot(snapshot));
-    else if (snapshot.status?.state === 'failed' || snapshot.status?.state === 'closed') {
+    if (snapshot.status?.state === 'failed' || snapshot.status?.state === 'closed') {
       finish(snapshot.status.error ?? new Error('Source view closed before its snapshot completed'));
-    }
+    } else if (snapshot.complete) finish(undefined, pageFromSnapshot(snapshot));
   };
   unsubscribe = client.subscribe(check);
   signal.addEventListener('abort', abort, { once: true });
@@ -127,7 +126,9 @@ export const useResources = ({ pluginID: explicitPluginID, request, enabled = tr
         if (!active || !isConnectionReadinessCurrent(pluginID, connectionID, generation)) return;
         const snapshot = client.getSnapshot();
         setSourceSnapshot({ key: viewKey, status: snapshot.status });
-        if (snapshot.complete) queryClient.setQueryData(queryKey, pageFromSnapshot(snapshot));
+        if (snapshot.complete && snapshot.status?.state !== 'failed' && snapshot.status?.state !== 'closed') {
+          queryClient.setQueryData(queryKey, pageFromSnapshot(snapshot));
+        }
       };
       unsubscribe = client.subscribe(update);
       update();

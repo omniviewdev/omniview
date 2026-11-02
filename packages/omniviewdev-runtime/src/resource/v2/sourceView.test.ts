@@ -53,18 +53,40 @@ describe('source views', () => {
     view.close();
   });
 
-  it('resyncs on gaps and unknown generations, and stops after three attempts', async () => {
+  it('issues one resync per gap and caps repeated failed generations', async () => {
     vi.useFakeTimers();
     const view = await openSourceView('plugin', request);
     event('one', '1', 'snapshotEnd', { status });
     event('one', '3', 'changes');
+    event('one', '4', 'changes');
     event('other', '2', 'changes');
     event('other', '3', 'status', { status });
+    expect(mocks.sync).toHaveBeenCalledTimes(2);
+    expect(view.getSnapshot().status?.state).toBe('following');
+    event('two', '1', 'snapshotEnd', { status });
+    event('two', '3', 'changes');
+    event('three', '1', 'snapshotEnd', { status });
+    event('three', '3', 'changes');
     expect(mocks.sync).toHaveBeenCalledTimes(4);
-    event('other', '4', 'changes');
+    event('four', '1', 'snapshotEnd', { status });
+    event('four', '3', 'changes');
     expect(mocks.sync).toHaveBeenCalledTimes(4);
     expect(view.getSnapshot().status?.state).toBe('failed');
     expect(view.getSnapshot().status?.error?.message).toContain('contiguous');
+    view.close();
+  });
+
+  it('ignores the triggering unknown generation until a fresh generation arrives', async () => {
+    const view = await openSourceView('plugin', request);
+    event('one', '1', 'snapshotEnd', { status });
+    event('stray', '1', 'snapshot', { records: [record('stray')] });
+    expect(mocks.sync).toHaveBeenCalledTimes(2);
+    event('stray', '1', 'snapshotEnd', { status });
+    event('one', '2', 'changes', { upserts: [record('old')] });
+    expect(mocks.sync).toHaveBeenCalledTimes(2);
+    expect(view.getSnapshot().viewGeneration).toBe('one');
+    event('two', '1', 'snapshotEnd', { status });
+    expect(view.getSnapshot().viewGeneration).toBe('two');
     view.close();
   });
 

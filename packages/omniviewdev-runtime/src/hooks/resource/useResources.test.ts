@@ -116,13 +116,14 @@ it('closes a view that opens after its last observer unmounts', async () => {
   await waitFor(() => expect(view.close).toHaveBeenCalledTimes(1)); client.clear();
 });
 
-it('reports source failure before the first complete snapshot', async () => {
+it.each(['failed', 'closed'] as const)('rejects a complete initial snapshot with %s status', async (state) => {
   const view = source(); native.open.mockResolvedValue(view);
   const { client, wrapper } = setup();
   const hook = renderHook(() => useResources({ pluginID: 'provider', request, collection: true }), { wrapper });
   await waitFor(() => expect(native.open).toHaveBeenCalledTimes(1));
-  act(() => view.publish({ records: new Map(), status: status('failed'), complete: false }));
-  await waitFor(() => expect(hook.result.current.sourceError).toBe(true));
+  act(() => view.publish({ viewGeneration: 'g', records: new Map(), status: status(state), complete: true }));
+  await waitFor(() => expect(hook.result.current.source?.state).toBe(state));
+  expect(hook.result.current.sourceError).toBe(state === 'failed');
   await waitFor(() => expect(hook.result.current.resources.isError).toBe(true));
   expect(hook.result.current.acquired).toBeUndefined();
   hook.unmount(); client.clear();
