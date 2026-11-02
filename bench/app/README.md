@@ -44,8 +44,8 @@ CI reads the checked-out host's `e2e/source-cohort.json`, with full commit strin
 for `plugin-sdk`, `ui`, and `kubernetes`. UI and Kubernetes checkouts use validated
 cohort outputs; Kubernetes must match the host's `plugins/kubernetes` gitlink.
 The SDK entry must equal the independently reviewed release pinned explicitly in
-the candidate workflows: SDK v0.13.1,
-`76b4cf46ce4172070f79d5f7cbd5c4a24e21a063`. The original isolation ancestry minimum remains
+the candidate workflows: SDK v0.14.1,
+`3074503b736130483dcbd2e2c7163667a320331b`. The original isolation ancestry minimum remains
 `5b3ef764d1cf738835a723a749a0cb6c45f85e44`. The connection-sharing release advances the
 reviewed isolation checkpoint to SDK v0.13.0 after independent
 security review of the five protected files.
@@ -105,7 +105,7 @@ candidate sources. Explicit direct-CLI `UI_SOURCE_REF` or
 `KUBERNETES_SOURCE_REF` values must still match the selected cohort.
 The Kubernetes gitlink must also match. Commits must be reachable by checkout,
 but candidate testing does not require a module or npm publication.
-Candidate workflows pin the independently reviewed SDK v0.13.1 release commit in
+Candidate workflows pin the independently reviewed SDK v0.14.1 release commit in
 `REVIEWED_SDK_REVISION`; they do not read repository variables for SDK approval.
 Keep repository variables unchanged: neither the resource-v2 approval variable nor
 the legacy `OMNIVIEW_E2E_REVIEWED_SDK_REVISION` selects this candidate's SDK.

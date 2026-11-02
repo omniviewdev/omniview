@@ -67,8 +67,8 @@ do not prove canonical preparation, acceptance and cleanup succeeded.
 The checked-out host's `e2e/source-cohort.json` selects full UI and Kubernetes
 commits for canonical CI and whole-app profiling. Kubernetes must match the
 committed `plugins/kubernetes` gitlink. The cohort SDK must match the independently
-reviewed release pinned in workflow `REVIEWED_SDK_REVISION`: SDK v0.13.1 at
-`76b4cf46ce4172070f79d5f7cbd5c4a24e21a063`. Repository variables remain unchanged;
+reviewed release pinned in workflow `REVIEWED_SDK_REVISION`: SDK v0.14.1 at
+`3074503b736130483dcbd2e2c7163667a320331b`. Repository variables remain unchanged;
 editing the cohort alone cannot approve another SDK commit.
 
 Playwright uses its GitHub reporter in Actions for failure annotations on the

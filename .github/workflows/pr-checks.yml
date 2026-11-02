@@ -16,7 +16,7 @@ env:
   GO_VERSION: "1.26"
   NODE_VERSION: "26.13.0"
   GOWORK: "off"
-  REVIEWED_SDK_REVISION: 76b4cf46ce4172070f79d5f7cbd5c4a24e21a063 # Reviewed SDK v0.13.1
+  REVIEWED_SDK_REVISION: 3074503b736130483dcbd2e2c7163667a320331b # Reviewed SDK v0.14.1
 
 jobs:
   release-packaging-checks:
