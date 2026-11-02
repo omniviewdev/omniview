@@ -110,6 +110,20 @@ remain unchanged. No modifier shortcut or default destination is configured.
 is hidden outside macOS. The selected application must be installed; the host
 never silently switches applications or falls back to built-in Exec.
 
+Settings discovers installed supported terminal applications through macOS's
+application registry. Display names come from each installed bundle and icons
+come from `NSWorkspace`, rendered as 64px PNGs. Application choices are not a
+static settings enum; only applications with an implemented safe launch adapter
+are offered. Registering as a shell-document handler does not qualify an editor
+or browser as a terminal. Discovery does not send Automation events or launch
+applications.
+
+The picker preserves its draft until Save Changes. Refresh applications rescans
+the device without changing the draft. A removed saved application stays visibly
+unavailable until the user chooses an installed alternative; discovery errors
+remain distinct from an empty installed list. Availability is checked again at
+launch. Existing `terminal` and `iterm2` preference IDs remain stable.
+
 Plugins built with SDK v0.12.0 can provide `NativeCommandHandler` on an exec
 handler, or implement the optional `exec.NativeCommandProvider`. Advertise native
 support only when the handler can plan a fresh external process. Planning must
