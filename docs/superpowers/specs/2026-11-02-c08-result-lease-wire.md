@@ -32,9 +32,10 @@ host reauthorizes. Failure closes the lease.
 
 ### Source and execution, in brief
 
-P45 supplies finite pages. C04 coordinates those pages and, when
-supported, source updates. Source generation and sequence describe
-one acquisition attempt; they do not order the resulting query
+C04 uses the existing SourceSessions stream for snapshots and,
+when supported, source updates. Compatible older targets use the
+P45 finite-page adapter instead. Source generation and sequence
+describe one acquisition attempt; they do not order query
 frames. P12 holds authorized source interests and consistent
 read-model views. P13 compiles and authorizes the query, opens an
 execution, and provides its current ordered window and coalesced
@@ -741,13 +742,13 @@ An access-invalidated close clears the observer and ends the lease:
    survives only until drained, close, window teardown or the 30-second
    inactive deadline. `follow` requires admitted bounded update
    capability. Snapshot-only sources use `once` with explicit freshness
-   and manual refresh, never invented watch or polling. C04 uses P45
-   finite pages for snapshots. A plugin pinned to an older SDK is eligible
-   only after that exact SDK's P45 compatibility is proved. An unproved
-   target is `UNSUPPORTED`; absence of `sourceSessions` also makes
-   follow updates `UNSUPPORTED`.
+   and manual refresh, never invented watch or polling. C04 uses the
+   SourceSessions stream for session-capable snapshots. The P45 finite
+   adapter serves older targets only after the exact pinned SDK's P45
+   compatibility is proved. An unproved target is `UNSUPPORTED`; absence
+   of `sourceSessions` also makes follow updates `UNSUPPORTED`.
    This follows the C04 candidate at
-   [bc030610](https://github.com/omniviewdev/omniview/blob/bc0306102007f4e3b516808150166ea2c36a43a0/docs/superpowers/specs/2026-11-02-c04-source-session-wire.md).
+   [fc9b4dc5](https://github.com/omniviewdev/omniview/blob/fc9b4dc5/docs/superpowers/specs/2026-11-02-c04-source-session-wire.md).
 3. Frames in one generation apply in sequence order. A `changes` frame
    is one atomic transaction: apply array entries in order to a private
    bounded window and publish once after validation. `enter` inserts at
@@ -881,9 +882,9 @@ source continuity invalidates affected results but does not make one
 result generation equal to a source generation.
 
 The P12 candidate is [revision
-a8ac01ea](https://github.com/omniviewdev/omniview/blob/a8ac01ea9c0ff2f4228f5a582784d212ee350bce/docs/superpowers/specs/2026-11-02-p12-read-model.md);
+9fa5a527](https://github.com/omniviewdev/omniview/blob/9fa5a527d3459bb988ee657174d935104336c504/docs/superpowers/specs/2026-11-02-p12-read-model.md);
 P13 candidate
-[18467ca8](https://github.com/omniviewdev/omniview/blob/18467ca814ebe5a0d433775cfafe3a42c0000b50/docs/superpowers/specs/2026-11-02-p13-compiler.md)
+[e84d5be3](https://github.com/omniviewdev/omniview/blob/e84d5be395cb932c96f9b2ef6a3add83d7e170b0/docs/superpowers/specs/2026-11-02-p13-compiler.md)
 pins it and C05 `01edb72`. Owner-aware P12 and P13 revisions require
 independent delta review; the complete set requires final frozen-set
 review.
