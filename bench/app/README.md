@@ -28,6 +28,11 @@ The Logs scenario selects a container from the opened Logs submenu, not from the
 parent action list. Adding actions such as Debug must not change which workload
 is measured; line counts, scrolling, drawer toggles, and run counts stay unchanged.
 
+Drawer toggle controls are selected within the measured bottom drawer. Resource
+trees can also expose an `Expand` button; a document-wide lookup can click that
+unrelated control without resizing the drawer. The geometry assertion still
+requires a height change of more than 50 pixels for each of the ten toggles.
+
 The Pod scenario opens the native page from a 5k-pod corpus, then scrolls up to
 30 viewport steps within that page. Current V2 Kubernetes requests 256 records per native page. Fixtures
 honor that bound and return real next cursors; they do not return the full corpus
