@@ -51,7 +51,9 @@ class SchemaRegistry {
       if (association.language !== 'yaml' && association.language !== 'json') {
         continue;
       }
-      const documentURI = `omniview-schema:///${association.documentId}`;
+      // Monaco canonicalizes authority-free custom URIs to a single slash.
+      // Use that form for both schema handles and cross-document references.
+      const documentURI = `omniview-schema:/${association.documentId}`;
       const documentKey = `${association.documentId}\u0000${association.language}`;
       let schema = parsedDocuments.get(association.documentId);
       if (schema === undefined) {
@@ -76,10 +78,9 @@ class SchemaRegistry {
       entries.push({
         type: association.type,
         fileMatch: association.fileMatch,
-        uri: `omniview-schema:///assoc/${hex16}`,
+        uri: `omniview-schema:/assoc/${hex16}`,
         language: association.language,
-        // The YAML language service resolves references in place.
-        schema: { ...structuredClone(schema), $ref: association.root },
+        schema: { $ref: documentURI + (association.root ?? '') },
       });
     }
 

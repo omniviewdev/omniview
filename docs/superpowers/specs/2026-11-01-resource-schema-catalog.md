@@ -343,9 +343,9 @@ func (c *controller) GetEditorSchemaDocument(ctx context.Context, pluginID strin
 
 ### 7.2 Monaco bridge
 
-- `schemaRegistry.register(pluginID, connectionID, associations, documents)` adds one document entry per unique `documentId` (uri `omniview-schema:///<documentId>`, `fileMatch: ''`, parsed schema, association language) and one association entry per `available` association (uri `omniview-schema:///assoc/<modelDirectory hex16>`, `fileMatch: association.fileMatch`, `schema: {$ref: "omniview-schema:///<documentId>" + root}`). Non-available associations are skipped. A missing document throws.
+- `schemaRegistry.register(pluginID, connectionID, associations, documents)` adds one document entry per unique `documentId` (uri `omniview-schema:/<documentId>`, `fileMatch: ''`, parsed schema, association language) and one association entry per `available` association (uri `omniview-schema:/assoc/<modelDirectory hex16>`, `fileMatch: association.fileMatch`, `schema: {$ref: "omniview-schema:/<documentId>" + root}`). Non-available associations are skipped. A missing document throws.
 - `editorModelPath(association, name)` = `${association.modelDirectory}/${encodeURIComponent(name)}.${association.language}`. Editors obtain paths through `useResourceEditorModelPath`; providers never supply file matches or URIs.
-- Fallback in use: association entries embed the rendered document with `$ref` set to the local association root. This preserves the original definitions and avoids cross-URI schema resolution.
+- Both registration and references use Monaco's canonical authority-free URI form with one slash after the scheme. Native verification showed that the YAML service normalizes registered handles but not every lookup: mixed one-slash and three-slash forms cause `No content` errors. Cross-document references resolve with canonical URIs, so associations do not embed document copies.
 
 ## 8. CEL mapping table (`omniview.schema-cel.v1`)
 
