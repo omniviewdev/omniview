@@ -67,6 +67,8 @@ type Options struct {
 	Boundary         *invocation.Boundary
 	ShowConfirmation func() error
 	Logs             ResourceLogsReader
+	Metrics          ResourceMetricsReader
+	Graph            ResourceGraphReader
 }
 
 // Relay owns the MCP server, the policy document and the HTTP listener.
@@ -80,6 +82,8 @@ type Relay struct {
 	authority            *Authority
 	showConfirmation     func() error
 	logs                 ResourceLogsReader
+	metrics              ResourceMetricsReader
+	graph                ResourceGraphReader
 	transitionMu         sync.Mutex
 	resyncMu             sync.Mutex
 	stopped              bool
@@ -122,6 +126,8 @@ func New(o Options) *Relay {
 	}
 	r.showConfirmation = o.ShowConfirmation
 	r.logs = o.Logs
+	r.metrics = o.Metrics
+	r.graph = o.Graph
 	r.lifecycleCtx, r.lifecycleCancel = context.WithCancel(context.Background())
 	r.authority.SetAudit(func(event AuditEvent) {
 		r.log.Infow(context.Background(), "MCP invocation audit", "event", event)
@@ -479,10 +485,11 @@ func (r *Relay) resync() {
 					}
 				}
 			}
-			generated, err := BuildResourceCatalogWithLogs(discoveryCtx, r.connections, routes, r.logs)
+			readers := ResourceReaders{Logs: r.logs, Metrics: r.metrics, Graph: r.graph}
+			generated, discoveryErr := BuildResourceCatalogWithReaders(discoveryCtx, r.connections, routes, readers)
 			catalog = append(catalog, generated...)
-			if err != nil {
-				r.log.Warnw(discoveryCtx, "resource tool discovery incomplete", "error", err)
+			if discoveryErr != nil {
+				r.log.Warnw(discoveryCtx, "resource tool discovery incomplete", "error", discoveryErr)
 			}
 		}
 		builtins := map[string]bool{}

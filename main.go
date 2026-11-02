@@ -100,7 +100,8 @@ func newUICapabilityControllers(
 	networkerController.SetReferenceAdmitter(admitReference)
 	logsController.SetReferenceAdmitter(resourceController.AdmitReference)
 	logsController.SetUIReferenceAdmitter(admitReference)
-	metricController.SetReferenceAdmitter(admitReference)
+	metricController.SetUIReferenceAdmitter(admitReference)
+	metricController.SetReferenceAdmitter(resourceController.AdmitReference)
 	return execController, networkerController, logsController, metricController
 }
 
@@ -332,6 +333,10 @@ func main() {
 	resourceUIRealm := invocation.NewScope(invocation.TrustedUI)
 	resourceController := resource.NewController(log, settingsProvider, stateDir.PluginStore, resourceBoundary)
 	graphService := resource.NewGraphService(resourceController.Graph(), resourceUIRealm, resourceBoundary, resourceController.ValidateReference)
+	// A nil realm keeps the agent principal from ctx at the boundary.
+	relayGraph := resource.NewGraphService(
+		resourceController.Graph(), nil, resourceBoundary, resourceController.ValidateReference,
+	)
 
 	settingsController := settings.NewController(log, settingsStore)
 	coreSettings.AttachPlugins(settingsController)
@@ -500,6 +505,8 @@ func main() {
 		Authority:   mcpAuthority,
 		Boundary:    resourceBoundary,
 		Logs:        logsController,
+		Metrics:     metricController,
+		Graph:       relayGraph,
 		ShowConfirmation: func() error {
 			if windowService == nil {
 				return errors.New("Confirmation window is unavailable.")
