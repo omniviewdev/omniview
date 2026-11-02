@@ -1,6 +1,7 @@
 package devworkspace
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -13,7 +14,7 @@ import (
 
 // Launch the selected installed Vite bin directly through Node. Owning a pnpm
 // wrapper PID would not identify the process actually binding the Vite socket.
-func resolveViteCommand(host string) (string, string, error) {
+func resolveViteCommand(ctx context.Context, host string) (string, string, error) {
 	directory, err := devcontract.CanonicalPath(filepath.Join(host, "node_modules", "vite"))
 	if err != nil {
 		return "", "", err
@@ -62,9 +63,15 @@ func resolveViteCommand(host string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	node, err = devcontract.CanonicalPath(node)
+	command := exec.CommandContext(ctx, node, "-p", "require('node:fs').realpathSync(process.execPath)")
+	command.Dir = host
+	output, err := command.Output()
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("resolve selected Node executable: %w", err)
+	}
+	node = strings.TrimSpace(string(output))
+	if !filepath.IsAbs(node) {
+		return "", "", fmt.Errorf("selected Node returned a nonabsolute executable path")
 	}
 	return node, script, nil
 }

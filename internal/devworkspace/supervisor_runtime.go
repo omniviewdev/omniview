@@ -211,7 +211,7 @@ func (s *workspaceSupervisor) startVite(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	node, script, err := resolveViteCommand(host)
+	node, script, err := resolveViteCommand(ctx, host)
 	if err != nil {
 		return err
 	}
