@@ -107,6 +107,16 @@ it('shares a source view until its last observer unmounts', async () => {
   b.unmount(); await waitFor(() => expect(view.close).toHaveBeenCalledTimes(1)); client.clear();
 });
 
+it('surfaces a failed source view open as a query error', async () => {
+  native.open.mockRejectedValue(new Error('Plugin does not support source sessions.'));
+  const { client, wrapper } = setup();
+  const hook = renderHook(() => useResources({ pluginID: 'provider', request, collection: true }), { wrapper });
+  await waitFor(() => expect(hook.result.current.resources.isError).toBe(true));
+  expect(hook.result.current.resources.error?.message).toBe('Plugin does not support source sessions.');
+  expect(hook.result.current.isLive).toBe(false);
+  hook.unmount(); client.clear();
+});
+
 it('closes a view that opens after its last observer unmounts', async () => {
   const pending = Promise.withResolvers<ReturnType<typeof source>>(); native.open.mockReturnValue(pending.promise);
   const { client, wrapper } = setup();
