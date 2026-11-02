@@ -52,6 +52,9 @@ func TestOverflowAndResetBarrier(t *testing.T) {
 	if _, e := q.Publish(frame("g1", 65), now); !errors.Is(e, ErrOverflow) {
 		t.Fatal("overflow did not latch", e)
 	}
+	if _, e := q.Complete(now); !errors.Is(e, ErrOverflow) {
+		t.Fatal("completion passed overflow", e)
+	}
 	b, e := q.BeginDrain()
 	if e != nil || b != nil {
 		t.Fatalf("old-generation data survived overflow: %s %v", b, e)
@@ -214,14 +217,20 @@ func TestSecurityErasure(t *testing.T) {
 	_, _ = q.Publish(frame("g1", 1), now)
 	_, _ = q.Reset("g2", "overflow", now)
 	_, _ = q.Publish(frame("g2", 1), now)
-	if _, err := q.Reset("g3", "bindingChanged", now); !errors.Is(err, ErrControlPending) {
+	if _, err := q.Reset("g3", "bindingChanged", now); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.Publish(frame("g2", 2), now); !errors.Is(err, ErrOverflow) {
-		t.Fatal("transition did not latch", err)
+	if _, err := q.Publish(frame("g2", 2), now); !errors.Is(err, ErrGeneration) {
+		t.Fatal("retired generation accepted", err)
 	}
-	if _, err := q.Complete(now); !errors.Is(err, ErrOverflow) {
-		t.Fatalf("completion passed invalidation: %v", err)
+	if _, err := q.Publish(frame("g3", 1), now); err != nil {
+		t.Fatal("replacement rejected while reset deferred", err)
+	}
+	if _, err := q.Reset("g4", "overflow", now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.Publish(frame("g4", 1), now); err != nil {
+		t.Fatal(err)
 	}
 	first := drain(t, q, now)
 	if first["payload"].(map[string]any)["nextGeneration"] != "g2" {
@@ -229,11 +238,12 @@ func TestSecurityErasure(t *testing.T) {
 	}
 	second := drain(t, q, now)
 	payload := second["payload"].(map[string]any)
-	if payload["generation"] != "g2" || payload["nextGeneration"] != "g3" || payload["reason"] != "bindingChanged" {
+	if payload["generation"] != "g2" || payload["nextGeneration"] != "g4" || payload["reason"] != "bindingChanged" {
 		t.Fatalf("deferred reset not promoted: %v", second)
 	}
-	if _, err := q.Publish(frame("g3", 1), now); err != nil {
-		t.Fatal(err)
+	replacement := drain(t, q, now)
+	if replacement["generation"] != "g4" {
+		t.Fatalf("retired data survived: %v", replacement)
 	}
 	q2, _ := NewQueue("lease", "g1")
 	_, _ = q2.Publish(frame("g1", 1), now)

@@ -16,12 +16,11 @@ const (
 )
 
 var (
-	ErrClosed         = errors.New("lease delivery closed")
-	ErrOverflow       = errors.New("lease delivery overflow; reset required")
-	ErrFrameTooLarge  = errors.New("lease frame exceeds byte budget")
-	ErrControlPending = errors.New("lease control pending")
-	ErrGeneration     = errors.New("invalid result generation or sequence")
-	ErrDrainPending   = errors.New("drain already in flight")
+	ErrClosed        = errors.New("lease delivery closed")
+	ErrOverflow      = errors.New("lease delivery overflow; reset required")
+	ErrFrameTooLarge = errors.New("lease frame exceeds byte budget")
+	ErrGeneration    = errors.New("invalid result generation or sequence")
+	ErrDrainPending  = errors.New("drain already in flight")
 )
 
 // Queue is one consumer's delivery state. The owner must close it on window
@@ -36,7 +35,7 @@ type Queue struct {
 	control                               []byte
 	complete                              []byte
 	deferred                              []byte
-	deferredNext                          string
+	announced                             string
 	deferredReason                        string
 	doorbell, draining, closed, completed bool
 	overflow                              bool
@@ -111,9 +110,8 @@ func (q *Queue) Publish(f ResultDataFrame, now time.Time) (bool, error) {
 	return q.signal(now), nil
 }
 
-// Reset drops queued data and enqueues the independent control barrier.
-// When another barrier is pending, the newest unannounced reset is retained
-// and promoted after the first drain; ErrControlPending reports deferral.
+// Reset drops queued data and enqueues an independent control barrier.
+// A second reset is coalesced behind the pending announced barrier.
 func (q *Queue) Reset(next, reason string, now time.Time) (bool, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -124,6 +122,12 @@ func (q *Queue) Reset(next, reason string, now time.Time) (bool, error) {
 		return false, ErrGeneration
 	}
 	old := q.generation
+	if q.control != nil {
+		old = q.announced
+		if next == old {
+			return false, ErrGeneration
+		}
+	}
 	f := ResultControlFrame{Lane: "control", LeaseID: q.lease, Payload: ResultControlPayload{Kind: "reset", Generation: &old, NextGeneration: &next, Reason: &reason}}
 	if err := preflight(f); err != nil {
 		return false, err
@@ -148,16 +152,19 @@ func (q *Queue) Reset(next, reason string, now time.Time) (bool, error) {
 		q.items = nil
 		q.bytes = 0
 		q.complete = nil
-		q.overflow = true
+		q.overflow = false
 		q.deferred = b
-		q.deferredNext = next
 		q.deferredReason = reason
-		return false, ErrControlPending
+		q.generation = next
+		q.next = 1
+		q.completed = false
+		return q.signal(now), nil
 	}
 	q.items = nil
 	q.bytes = 0
 	q.complete = nil
 	q.control = b
+	q.announced = next
 	q.generation = next
 	q.next = 1
 	q.completed = false
@@ -223,7 +230,6 @@ func (q *Queue) Terminate(reason string, failure *apperror.AppError, now time.Ti
 	q.bytes = 0
 	q.complete = nil
 	q.deferred = nil
-	q.deferredNext = ""
 	q.deferredReason = ""
 	q.control = b
 	q.closed = true
@@ -246,12 +252,8 @@ func (q *Queue) BeginDrain() ([]byte, error) {
 		q.control = nil
 		if q.deferred != nil {
 			q.control = q.deferred
-			q.generation = q.deferredNext
-			q.next = 1
-			q.completed = false
-			q.overflow = false
+			q.announced = q.generation
 			q.deferred = nil
-			q.deferredNext = ""
 			q.deferredReason = ""
 		}
 	} else if len(q.items) > 0 {
@@ -288,7 +290,6 @@ func (q *Queue) Expire(now time.Time) bool {
 	q.control = nil
 	q.complete = nil
 	q.deferred = nil
-	q.deferredNext = ""
 	q.deferredReason = ""
 	q.closed = true
 	q.doorbell = false
@@ -306,7 +307,6 @@ func (q *Queue) Close() {
 	q.control = nil
 	q.complete = nil
 	q.deferred = nil
-	q.deferredNext = ""
 	q.deferredReason = ""
 	q.doorbell = false
 	q.pendingSince = time.Time{}
