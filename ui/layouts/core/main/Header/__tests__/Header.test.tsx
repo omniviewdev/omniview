@@ -84,11 +84,11 @@ function sourceView(): TestSourceView {
     subscribe: (listener: () => void) => {
       native.sourceListeners.add(listener);
       return () => {
-        native.sourceListeners.delete(listener); 
+        native.sourceListeners.delete(listener);
       };
     },
     getSnapshot: () => ({
-      records: new Map(),
+      records: new Map<string, never>(),
       complete: true,
       event: { kind: 'changes' as const, revision: native.sourceRevision },
     }),
@@ -100,7 +100,7 @@ function sourceView(): TestSourceView {
 function emitSourceChange() {
   native.sourceRevision++;
   native.sourceListeners.forEach(listener => {
-    listener(); 
+    listener();
   });
 }
 
@@ -115,7 +115,7 @@ vi.mock('@wailsio/runtime', async (importOriginal) => {
         listeners.add(callback);
         native.listeners.set(name, listeners);
         return () => {
-          listeners.delete(callback); 
+          listeners.delete(callback);
         };
       },
     },

@@ -313,6 +313,6 @@ jobs:
         env:
           TZ: America/New_York
 
-      - name: Runtime resource batching regressions
+      - name: Runtime source view regressions
         working-directory: packages/omniviewdev-runtime
-        run: node ../../node_modules/vitest/vitest.mjs run src/hooks/resource/useEventBatcher.test.ts
+        run: node ../../node_modules/vitest/vitest.mjs run src/resource/v2/sourceView.test.ts src/hooks/resource/useResources.test.ts src/hooks/resource/useSourceStates.test.ts
