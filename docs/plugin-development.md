@@ -112,6 +112,20 @@ remain unchanged. No modifier shortcut or default destination is configured.
 is hidden outside macOS. The selected application must be installed; the host
 never silently switches applications or falls back to built-in Exec.
 
+Settings discovers installed supported terminal applications through macOS's
+application registry. Display names come from each installed bundle and icons
+come from `NSWorkspace`, rendered as 64px PNGs. Application choices are not a
+static settings enum; only applications with an implemented safe launch adapter
+are offered. Registering as a shell-document handler does not qualify an editor
+or browser as a terminal. Discovery does not send Automation events or launch
+applications.
+
+The picker preserves its draft until Save Changes. Refresh applications rescans
+the device without changing the draft. A removed saved application stays visibly
+unavailable until the user chooses an installed alternative; discovery errors
+remain distinct from an empty installed list. Availability is checked again at
+launch. Existing `terminal` and `iterm2` preference IDs remain stable.
+
 Plugins built with SDK v0.12.0 can provide `NativeCommandHandler` on an exec
 handler, or implement the optional `exec.NativeCommandProvider`. Advertise native
 support only when the handler can plan a fresh external process. Planning must
@@ -801,6 +815,61 @@ Distinguish disconnected, connecting, authentication-required, forbidden, unavai
 Query edits retain the previous result surface, disable obsolete activation, and publish the replacement query wave coherently after its sources settle. CommandList does not apply another label-only filter to provider-ranked results. Compact icon/status badges carry availability; full source messages remain under Details. Providers must still report truthful typed states and bounded completion.
 
 Kubernetes is the reference integration in `ui/src/search/provider.tsx`. It caches resource snapshots for 15 seconds and readiness for 2 seconds, scans at most 200 objects, reports incomplete results, and transfers exact list text without changing structured filters. See [scoped search design and acceptance cases](scoped-search-design.md).
+
+### Inspecting extension registrations
+
+Open **Developer: Inspect Extensions** from global search, or choose
+**Inspect contributions** in plugin details. Diagnostics live in a workspace
+tab, not a Settings category.
+
+The namespace tree groups extension points and their contributions. Use the
+plugin filter to inspect one contributor without losing the point hierarchy.
+The contribution table includes every registered value, including entries
+hidden by single-mode selection or quarantine. Pending registrations appear
+separately because their requested target point does not yet exist.
+
+Select a Problem to reveal the associated contribution and captured evidence.
+The inspector distinguishes module loading, registration, context resolution,
+and quarantine. None of these proves a component rendered successfully.
+Captured crash history is bounded session evidence and can clear on reload or
+re-enable. Export before recovery; inspect potentially sensitive errors locally
+before sharing them.
+
+The full-height explorer sits beside the registration editor and metadata
+inspector. Problems dock below the editor and inspector; all three pane
+boundaries can be resized. Repeated problems group by kind, plugin, point,
+contribution, and boundary. Expand a group or the inspector's event history to
+review every retained record; exports retain the ungrouped bounded evidence.
+Registration JSON contains only the safe type descriptor, never contribution
+values. Lifecycle and render eligibility remain explicitly unknown where no
+instrumentation exists. Coverage and safety details are available in a disclosure.
+Double-click a resize handle to restore its default size. Narrow windows clamp
+the side panes without clearing the selected registration or filter. If a registry
+change invalidates an action's capture, select the current registration again
+before running lookup or recovery.
+Initial selections bind to the first capture with a resolved runtime window
+identity. Later inventory updates do not silently replace an action's capture.
+
+Reveal sensitive exception text captures and pauses the current state. Resume
+before lookup, recovery, or another reveal. Safe JSON export still redacts text
+from a sensitive paused capture. Sensitive export and recovery require review
+or confirmation; recovery clears the contribution's captured crash history.
+
+Context lookup is an explicit action because plugin matchers can execute code.
+It never mounts contributed components. Unsupported context types and gaps in
+specialized-consumer diagnostics are labeled instead of treated as healthy.
+
+Agents can inspect the same live document without using the UI:
+
+```sh
+omniview-dev extensions inspect --workspace /path/to/workspace \
+  --plugin my-plugin --json
+```
+
+See [extension diagnostics for agents](development-cli.md#extension-diagnostics-for-agents)
+for point/issue filters, explicit resource-context lookup, window selection,
+and sensitive-error opt-in. A missing frontend is an unavailable capture,
+not evidence that the plugin registered nothing.
 
 ### 1.5 Contributing a Theme
 

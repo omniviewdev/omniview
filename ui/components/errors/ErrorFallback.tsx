@@ -7,6 +7,7 @@ import { isDev } from '@/utils/env';
 import { generateErrorId } from '@/utils/errorId';
 import HintTooltip from '@/components/base/HintTooltip';
 import styles from './ErrorFallback.module.css';
+import { navigateActivePage } from '@omniviewdev/runtime';
 
 // ─── Error Metadata ──────────────────────────────────────────────────────────
 
@@ -123,6 +124,9 @@ export function FullPageErrorFallback({ error: caught, resetErrorBoundary, bound
         )}
 
         <Stack direction="row" spacing={2} className={styles.FullPageActions}>
+          <Button variant="ghost" size="sm" onClick={() => {
+            navigateActivePage('/developer-tools/extensions'); 
+          }}>Inspect diagnostic</Button>
           <Button
             variant="solid"
             color="danger"
@@ -227,6 +231,9 @@ export function PanelErrorFallback({ error: caught, resetErrorBoundary, label, b
         )}
 
         <Stack direction="row" spacing={2} className={styles.PanelActions}>
+          <Button variant="ghost" size="sm" onClick={() => {
+            navigateActivePage('/developer-tools/extensions'); 
+          }}>Inspect diagnostic</Button>
           <Button
             variant="solid"
             color="danger"

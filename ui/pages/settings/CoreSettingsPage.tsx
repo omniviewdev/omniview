@@ -3,13 +3,15 @@ import { Text } from '@omniviewdev/base-ui';
 import { useScopedSettings } from '@omniviewdev/runtime';
 import { useSettingsForm } from '@/hooks/settings/useSettingsForm';
 import AppearanceThemeSetting from '@/theme/AppearanceThemeSetting';
-import SettingsEntries from './SettingsEntries';
+import SettingsEntries, { type SettingsEditorProps } from './SettingsEntries';
+import NativeTerminalApplicationSetting from './NativeTerminalApplicationSetting';
 import SettingsFormShell from './SettingsFormShell';
 import { Section } from './settingsContext';
 import styles from './SettingsPage.module.css';
 
-const APPEARANCE_SETTING_RENDERERS = {
+const CORE_SETTING_RENDERERS = {
   'appearance.theme': () => <><AppearanceThemeSetting /><p>Theme changes save immediately.</p></>,
+  'terminal.nativeApplication': (props: SettingsEditorProps) => <NativeTerminalApplicationSetting {...props} />,
 };
 
 const PROFILING_PRESENTATION = {
@@ -57,7 +59,7 @@ function CoreSettingsForm({ id }: { id: string }) {
       <SettingsEntries section={Section.Core} id={id} settings={category.settings}
         presentation={PROFILING_PRESENTATION}
         draftValues={form.draftValues} setDraftValues={form.setDraftValues} validation={form.validation} disabled={form.saving}
-        renderSetting={id === 'appearance' ? APPEARANCE_SETTING_RENDERERS : undefined} />
+        renderSetting={CORE_SETTING_RENDERERS} />
     </SettingsFormShell>
   </div>;
 }

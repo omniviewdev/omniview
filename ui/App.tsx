@@ -46,10 +46,12 @@ import { orFallback } from '@/utils/orFallback';
 import { InstanceProvider } from '@/features/instance/InstanceContext';
 
 import { SettingsWindowShell } from './features/windows/SettingsWindowShell';
+import { ExtensionDiagnosticsBridge } from './features/extensions/diagnostics/ExtensionDiagnosticsBridge';
 
 function WindowApplication() {
   return (
     <PluginServiceProvider>
+      <ExtensionDiagnosticsBridge />
       {currentWindow.kind === 'settings' ? <SettingsWindowShell /> : (
         <ConnectionStateProvider>
           <BottomDrawerProvider>

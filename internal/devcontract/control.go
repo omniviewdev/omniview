@@ -57,6 +57,7 @@ func (r Request) ValidateTarget(workspaceID, generation string) error {
 	}
 	switch r.Operation {
 	case "instance.inspect", "plugin.list", "plugin.get", "plugin.install-archive", "plugin.install-version", "plugin.uninstall", "plugin.dev.link", "plugin.dev.unlink", "plugin.dev.start", "plugin.dev.stop", "plugin.dev.restart", "plugin.dev.rebuild", "plugin.dev.dependencies", "plugin.dev.status", "plugin.dev.logs", "settings.schema", "settings.get", "settings.set", "settings.bulk", "operation.get", "operation.wait":
+	case "extensions.windows", "extensions.inspect", "extensions.lookup":
 	default:
 		return Fail(2, "unknown_operation", "operation is not allowed")
 	}

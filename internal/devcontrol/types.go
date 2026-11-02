@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	"github.com/omniviewdev/omniview/backend/extensiondiagnostics"
 	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devsession"
@@ -64,11 +65,23 @@ type Settings interface {
 	Set(SettingsParams) (settingsservice.CommitResult, error)
 	Bulk(SettingsParams) (settingsservice.CommitResult, error)
 }
+type Extensions interface {
+	Query(context.Context, string, string, extensiondiagnostics.Options) (json.RawMessage, error)
+	Windows(context.Context) ([]extensiondiagnostics.RuntimeInfo, error)
+}
+
+type ExtensionParams struct {
+	WindowName string `json:"windowName,omitempty"`
+	TimeoutMS  int    `json:"timeoutMS,omitempty"`
+	extensiondiagnostics.Options
+}
+
 type Adapters struct {
-	Inspect  func(context.Context) (devcontract.InstanceDescriptor, error)
-	Plugins  Plugins
-	Dev      Dev
-	Settings Settings
+	Inspect    func(context.Context) (devcontract.InstanceDescriptor, error)
+	Plugins    Plugins
+	Dev        Dev
+	Settings   Settings
+	Extensions Extensions
 }
 type Config struct {
 	Descriptor devcontract.InstanceDescriptor

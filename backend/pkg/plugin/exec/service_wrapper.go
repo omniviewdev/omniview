@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/omniviewdev/omniview/backend/pkg/transportjson"
+	"github.com/omniviewdev/omniview/internal/nativeapps"
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	execsdk "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
@@ -54,6 +55,11 @@ func (s *ServiceWrapper) OpenNativeSession(plugin, connectionID, encoded string)
 
 func (s *ServiceWrapper) GetNativeTerminalSupport() bool {
 	return s.Ctrl.GetNativeTerminalSupport()
+}
+
+// GetNativeTerminalApplications discovers installed applications with safe native launch adapters.
+func (s *ServiceWrapper) GetNativeTerminalApplications() ([]nativeapps.Application, error) {
+	return nativeapps.Discover(context.Background())
 }
 
 func (s *ServiceWrapper) CreateTerminal(opts execsdk.SessionOptions) (*execsdk.Session, error) {

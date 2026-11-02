@@ -1,9 +1,30 @@
 import { AppShell } from '@omniviewdev/base-ui';
+import { useEffect } from 'react';
+import { Events } from '@omniviewdev/runtime/runtime';
+import { useWorkspaceController } from '@/features/workspace';
 import Layout from '@/layouts/core/main';
 import AppStatusFooter from '@/components/displays/Footer/AppStatusFooter';
 import { WorkspaceProvider } from '@/features/workspace';
 import { currentWindow } from '@/features/windows';
 import styles from './WorkspaceShell.module.css';
+
+function InspectorNavigation() {
+  const controller = useWorkspaceController();
+  useEffect(() => Events.On('extensions/inspector/open', event => {
+    const data = event.data;
+    if (data?.targetWindow !== currentWindow.name || typeof data.path !== 'string') {
+      return;
+    }
+
+    const target = new URL(data.path, 'https://omniview.local');
+    if (target.origin !== 'https://omniview.local' || target.pathname !== '/developer-tools/extensions') {
+      return;
+    }
+
+    controller.openInNewTab(`${target.pathname}${target.search}`);
+  }), [controller]);
+  return null;
+}
 
 /**
  * The frame of a workspace window: header across the top (with the new-tab
@@ -13,6 +34,7 @@ import styles from './WorkspaceShell.module.css';
 export default function WorkspaceShell() {
   return (
     <WorkspaceProvider>
+      <InspectorNavigation />
       <AppShell
         data-testid='app-shell'
         data-ov-window-name={currentWindow.name}
