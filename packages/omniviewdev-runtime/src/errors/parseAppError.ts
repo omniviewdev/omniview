@@ -34,12 +34,14 @@ function cancellation(): AppError {
   return { type: ErrorTypes.CANCELLED, code: 'CANCELLED', title: 'Cancelled', status: 499, detail: 'The operation was cancelled.', recovery: 'none' };
 }
 function decode(error: unknown, depth: number): AppError | undefined {
-  if (depth > 4) return undefined;
+  if (depth > 12) return undefined;
   if (error === 'cancelled') return cancellation();
   if (typeof error === 'string') {
     const raw = error.trim();
-    if (!raw.startsWith('{')) return undefined;
-    try { return decode(JSON.parse(raw), depth + 1); } catch { return undefined; }
+    // Decode structured causes after Go operation context, never the raw prefix.
+    const start = raw.indexOf('{');
+    if (start < 0 && !raw.startsWith('"')) return undefined;
+    try { return decode(JSON.parse(raw.startsWith('"') ? raw : raw.slice(start)), depth + 1); } catch { return undefined; }
   }
   const parsed = record(error);
   if (!parsed) return undefined;
@@ -48,6 +50,13 @@ function decode(error: unknown, depth: number): AppError | undefined {
   // sanitized authoritatively in Go; the SDK fallback below fails safely too.
   if (text(parsed.type, 256) && text(parsed.title, 256) && typeof parsed.status === 'number' && Number.isInteger(parsed.status) && parsed.status >= 100 && parsed.status <= 599 && typeof parsed.detail === 'string' && parsed.detail.length <= 4096) {
     const result: AppError = { type: parsed.type, title: parsed.title, status: parsed.status, detail: parsed.detail };
+    // Preserve the outer operation, but render only the public structured cause.
+    const nested = decode(parsed.detail, depth + 1);
+    if (nested) {
+      result.detail = `${nested.title}: ${nested.detail}`;
+    } else if (/^\s*[{"]|:\s*\{/.test(parsed.detail)) {
+      result.detail = 'The operation could not be completed.';
+    }
     if (text(parsed.code, 64)) result.code = parsed.code;
     if (text(parsed.requestId, 256)) result.requestId = parsed.requestId;
     if (text(parsed.instance, 512)) result.instance = parsed.instance;
