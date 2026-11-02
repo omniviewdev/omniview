@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"reflect"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
@@ -433,7 +435,7 @@ func (pm *pluginManager) rollbackArchive(recovery *archiveRecovery, original *pl
 	return cause
 }
 
-func (pm *pluginManager) installArchiveCandidate(path string, metadata *config.PluginMeta) (statePublished bool, err error) {
+func (pm *pluginManager) installArchiveCandidate(path string, metadata *config.PluginMeta, version string) (statePublished bool, err error) {
 	stage, err := pm.pluginsRoot.MkdirTemp(".archive-" + metadata.ID + "-")
 	if err != nil {
 		return false, apperror.Internal(err, "Failed to create private archive staging")
@@ -473,6 +475,14 @@ func (pm *pluginManager) installArchiveCandidate(path string, metadata *config.P
 	// The loader consumes the extracted file, not an earlier tar entry.
 	// All capability, trust, publication and event decisions use that same data.
 	*metadata = actualMetadata
+	if version != "" {
+		// Registry verification already authenticated the downloaded archive.
+		// Change only the private extracted metadata, never the signed archive.
+		if err = persistArchiveVersion(filepath.Join(pm.pluginsRoot.ResolvePath(candidate), pluginMetaFile), version); err != nil {
+			return false, apperror.Internal(err, "Failed to persist marketplace plugin version")
+		}
+		metadata.Version = version
+	}
 	pm.emitter.Emit(EventInstallStarted, metadata)
 	if err = pm.preflightArchive(*metadata, candidate); err != nil {
 		return false, apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusInternalServerError, "Plugin archive preflight rejected")
@@ -552,4 +562,45 @@ func (pm *pluginManager) installArchiveCandidate(path string, metadata *config.P
 		return true, pm.archivePublicationFailure(recovery, err)
 	}
 	return true, nil
+}
+
+// Preserve unknown manifest fields while making the registry version durable
+// before the candidate can replace the canonical installation.
+func persistArchiveVersion(path, version string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var document yaml.Node
+	if err = yaml.Unmarshal(data, &document); err != nil {
+		return err
+	}
+	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
+		return errors.New("plugin metadata must be a mapping")
+	}
+	mapping := document.Content[0]
+	found := false
+	for i := 0; i < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value == "version" {
+			mapping.Content[i+1] = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: version}
+			found = true
+			break
+		}
+	}
+	if !found {
+		mapping.Content = append(mapping.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "version"},
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: version})
+	}
+	data, err = yaml.Marshal(&document)
+	if err != nil {
+		return err
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0)
+	if err != nil {
+		return err
+	}
+	_, writeErr := file.Write(data)
+	syncErr := file.Sync()
+	return errors.Join(writeErr, syncErr, file.Close())
 }

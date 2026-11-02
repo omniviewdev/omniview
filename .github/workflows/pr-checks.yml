@@ -16,7 +16,7 @@ env:
   GO_VERSION: "1.26"
   NODE_VERSION: "26.13.0"
   GOWORK: "off"
-  REVIEWED_SDK_REVISION: eea5943f7a5319fb1585a8ec2d9ce5d06fa763ca # Reviewed SDK v0.14.0
+  REVIEWED_SDK_REVISION: 0597ff45586b45e3a57fe7ac86194ce96884c7ef # Reviewed SDK v0.14.2; source binding fix in plugin-sdk#42
 
 jobs:
   release-packaging-checks:
@@ -313,6 +313,8 @@ jobs:
         env:
           TZ: America/New_York
 
-      - name: Runtime resource source regressions
+      - name: Runtime contract regressions
         working-directory: packages/omniviewdev-runtime
-        run: node ../../node_modules/vitest/vitest.mjs run src/resource/v2/sourceView.test.ts src/hooks/resource/useResources.test.ts src/resource/v2/query-observer.test.ts
+        run: node ../../node_modules/vitest/vitest.mjs run --configLoader runner
+        env:
+          C02_ERROR_CORPUS: ${{ runner.temp }}/${{ needs.go-checks.outputs.c02_corpus_name }}.json

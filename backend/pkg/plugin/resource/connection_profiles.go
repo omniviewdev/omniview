@@ -460,6 +460,7 @@ func (c *controller) changeConnectionProfile(ctx context.Context, pluginID, id, 
 	if id == "" || !utf8.ValidString(id) {
 		return ConnectionProfileResult{}, resourcev2.NewError("INVALID_REQUEST", "An explicit UTF-8 connection ID is required.")
 	}
+	c.retireConnectionCalls(pluginID, id)
 	c.profilesMu.Lock()
 	defer c.profilesMu.Unlock()
 	_, generation, ctx, cleanup, err := c.operationGeneration(ctx, pluginID, resourcev2.AccessRoute{Connection: id})

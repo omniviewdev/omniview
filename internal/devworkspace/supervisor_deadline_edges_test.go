@@ -81,7 +81,7 @@ func testSupervisorStalledStatusBody(t *testing.T, complete bool) {
 	var observed supervisorEdgeResult
 	select {
 	case observed = <-result:
-	case <-time.After(6 * time.Second):
+	case <-time.After(supervisorStatusClientTimeout + time.Second):
 		t.Error("inspection has no bounded response-body wait without a caller deadline")
 		releaseOnce.Do(func() { close(release) })
 		observed = receiveSupervisorEdge(t, result)

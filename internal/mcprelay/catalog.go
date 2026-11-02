@@ -28,23 +28,24 @@ var mcpToolNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,128}$`)
 
 // ToolInfo is one relay-visible tool after namespacing and schema injection.
 type ToolInfo struct {
-	MCPName      string
-	PluginID     string
-	PluginName   string
-	Name         string
-	Title        string
-	Description  string
-	Scope        string
-	ReadOnly     bool
-	Destructive  bool
-	Idempotent   bool
-	OpenWorld    bool
-	InputSchema  map[string]any
-	OutputSchema map[string]any
-	BuiltIn      bool
-	Status       string
-	Generation   uint64
-	Resource     *ResourceBinding `json:"-"`
+	MCPName         string
+	PluginID        string
+	PluginName      string
+	Name            string
+	Title           string
+	Description     string
+	Scope           string
+	ConnectionOwner string
+	ReadOnly        bool
+	Destructive     bool
+	Idempotent      bool
+	OpenWorld       bool
+	InputSchema     map[string]any
+	OutputSchema    map[string]any
+	BuiltIn         bool
+	Status          string
+	Generation      uint64
+	Resource        *ResourceBinding `json:"-"`
 }
 
 // BuildCatalog namespaces every plugin tool, injects connection_id into
@@ -103,18 +104,19 @@ func BuildCatalog(all map[string]tools.PluginTools) []ToolInfo {
 func toolInfo(pluginID, pluginName string, d sdktools.Descriptor) ToolInfo {
 	annotations := d.Annotations.Resolve()
 	info := ToolInfo{
-		MCPName:     pluginID + "_" + d.Name,
-		PluginID:    pluginID,
-		PluginName:  pluginName,
-		Name:        d.Name,
-		Title:       d.Title,
-		Description: d.Description,
-		Scope:       string(d.Scope),
-		ReadOnly:    annotations.ReadOnly,
-		Destructive: annotations.Destructive,
-		Idempotent:  annotations.Idempotent,
-		OpenWorld:   annotations.OpenWorld,
-		Status:      StatusOK,
+		MCPName:         pluginID + "_" + d.Name,
+		PluginID:        pluginID,
+		PluginName:      pluginName,
+		Name:            d.Name,
+		Title:           d.Title,
+		Description:     d.Description,
+		Scope:           string(d.Scope),
+		ConnectionOwner: d.ConnectionOwner,
+		ReadOnly:        annotations.ReadOnly,
+		Destructive:     annotations.Destructive,
+		Idempotent:      annotations.Idempotent,
+		OpenWorld:       annotations.OpenWorld,
+		Status:          StatusOK,
 	}
 	if !mcpToolNamePattern.MatchString(info.MCPName) {
 		info.Status = StatusInvalidName

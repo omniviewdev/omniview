@@ -22,12 +22,8 @@ import {
   LuTriangleAlert,
 } from 'react-icons/lu';
 import { useParams } from 'react-router';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSnackbar, createErrorHandler } from '@omniviewdev/runtime';
-import { PluginManager } from '@omniviewdev/runtime/api';
 
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
-import { usePluginService } from '@/features/plugins';
 import { orFallback } from '@/utils/orFallback';
 import PluginListItem from './PluginListItem';
 import PluginFilterPopover, {
@@ -42,9 +38,6 @@ import styles from './PluginsNav.module.css';
 const PluginsNav: React.FC = () => {
   const { id = '' } = useParams<{ id: string }>();
   const { plugins, available, installFromPath, installDev } = usePluginManager();
-  const { load } = usePluginService();
-  const queryClient = useQueryClient();
-  const { showSnackbar } = useSnackbar();
 
   const [search, setSearch] = React.useState('');
   const [installedOpen, setInstalledOpen] = React.useState(true);
@@ -58,62 +51,9 @@ const PluginsNav: React.FC = () => {
   });
   const activeFilterCount = getActiveFilterCount(filters);
 
-  // Track installing plugin ids
-  const [installingIds, setInstallingIds] = React.useState<Set<string>>(new Set());
 
   const installedIds = new Set(plugins.data?.map(p => p.id) ?? []);
 
-  // Install mutation for marketplace inline install.
-  // The marketplace listing may not include a latest_version, so resolve it
-  // from the versions endpoint when missing — same path PluginUpdateButton uses.
-  const installMutation = useMutation({
-    mutationFn: async ({ pluginId, version }: { pluginId: string; version: string }) => {
-      let installVersion = version;
-      if (!installVersion) {
-        const versions = await PluginManager.GetPluginVersions(pluginId);
-        if (versions?.length) {
-          installVersion = versions[0].version;
-        }
-      }
-
-      if (!installVersion) {
-        throw new Error('No versions available for this plugin');
-      }
-
-      return PluginManager.InstallPluginVersion(pluginId, installVersion);
-    },
-    onSuccess(meta) {
-      if (!meta) {
-        return;
-      }
-
-      showSnackbar({
-        message: `${meta.name} installed successfully`,
-        status: 'success',
-      });
-      void queryClient.invalidateQueries({ queryKey: ['plugins'] });
-      void queryClient.refetchQueries({ queryKey: ['plugins'] });
-      void load(meta.id);
-      setInstallingIds(prev => {
-        const next = new Set(prev);
-        next.delete(meta.id);
-        return next;
-      });
-    },
-    onError: (err, variables) => {
-      setInstallingIds(prev => {
-        const next = new Set(prev);
-        next.delete(variables.pluginId);
-        return next;
-      });
-      createErrorHandler(showSnackbar, 'Plugin installation failed')(err);
-    },
-  });
-
-  const handleInstall = (pluginId: string, version: string) => {
-    setInstallingIds(prev => new Set(prev).add(pluginId));
-    installMutation.mutate({ pluginId, version });
-  };
 
   // Search filter — applies to both sections
   const searchLower = search.toLowerCase();
@@ -348,14 +288,6 @@ const PluginsNav: React.FC = () => {
                   official={plugin.official}
                   downloadCount={plugin.download_count}
                   averageRating={plugin.average_rating}
-                  onInstall={
-                    installedIds.has(plugin.id)
-                      ? undefined
-                      : () => {
-                        handleInstall(plugin.id, plugin.latest_version); 
-                      }
-                  }
-                  installing={installingIds.has(plugin.id)}
                 />
               ))}
               {filteredMarketplace.length === 0 && !available.isLoading && !available.isError && (

@@ -302,18 +302,14 @@ const scenarios = {
       }, { id: sessionId, count: LOG_LINES }));
       const scroll = await measure(s, () => s.page.evaluate(scrollPages, { pages: SCROLL_PAGES, kind: 'logs' }));
       const drawer = await measure(s, () => s.page.evaluate(async (toggles) => {
-        // The drawer is the element its resize code sizes inline; the toggle is the
-        // right-most button in its top strip (labelled Minimize/Expand in newer builds).
-        let el = document.querySelector('input[placeholder="Search in logs"]');
-        while (el && !el.style.maxHeight) el = el.parentElement;
-        if (!el) throw new Error('bottom drawer not found');
-        const drawerEl = el;
+        // Labels such as Expand also belong to sidebar tree items. Resolve both
+        // the measured element and its control from the log viewer's drawer.
+        const drawerEl = document.querySelector('input[placeholder="Search in logs"]')?.closest('.BottomDrawer');
+        if (!drawerEl) throw new Error('bottom drawer not found');
         const toggle = () => {
-          const labelled = drawerEl.querySelector('[aria-label="Minimize"], [aria-label="Expand"]');
-          if (labelled) return labelled;
-          const top = drawerEl.getBoundingClientRect().top;
-          const strip = [...drawerEl.querySelectorAll('button')].filter((b) => b.getBoundingClientRect().top - top < 40);
-          return strip.sort((a, b) => b.getBoundingClientRect().left - a.getBoundingClientRect().left)[0];
+          const button = drawerEl.querySelector('[data-ov-drawer-strip] button[aria-label="Minimize"], [data-ov-drawer-strip] button[aria-label="Expand"]');
+          if (!button || button.disabled) throw new Error('bottom drawer toggle not available');
+          return button;
         };
         const height = () => drawerEl.getBoundingClientRect().height;
         const t0 = performance.now();

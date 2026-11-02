@@ -281,7 +281,7 @@ func mergeSeedRecords(dst map[string]any, src any, section, source string, owner
 	return nil
 }
 
-func seedLock(w devcontract.ResolvedWorkspace, sources sourceSet, plan *Plan, policy map[string]any) ([]map[string]any, map[string]string, error) {
+func seedLock(w devcontract.ResolvedWorkspace, sources sourceSet, plan *Plan, policy map[string]any, sourcePatches map[string]map[string]string) ([]map[string]any, map[string]string, error) {
 	emptyDocument := func() map[string]any {
 		return map[string]any{
 			"lockfileVersion": "9.0",
@@ -368,7 +368,7 @@ func seedLock(w devcontract.ResolvedWorkspace, sources sourceSet, plan *Plan, po
 		if err := mergeLockPolicy(main, doc, source); err != nil {
 			return nil, nil, err
 		}
-		if err := mergeLockedPatches(w, main, doc, policy, plan.SourceHashes, path); err != nil {
+		if err := mergeLockedPatches(w, main, doc, policy, plan.SourceHashes, sourcePatches, path); err != nil {
 			return nil, nil, err
 		}
 		for _, key := range []string{"packages", "snapshots"} {
@@ -481,7 +481,7 @@ func mergeLockPolicy(dst, src map[string]any, source string) error {
 	return nil
 }
 
-func mergeLockedPatches(w devcontract.ResolvedWorkspace, dst, src, policy map[string]any, sourceHashes map[string]string, lockPath string) error {
+func mergeLockedPatches(w devcontract.ResolvedWorkspace, dst, src, policy map[string]any, sourceHashes map[string]string, sourcePatches map[string]map[string]string, lockPath string) error {
 	value, exists := src["patchedDependencies"]
 	if !exists {
 		return nil
@@ -496,9 +496,11 @@ func mergeLockedPatches(w devcontract.ResolvedWorkspace, dst, src, policy map[st
 	if err != nil {
 		return err
 	}
+	declared := sourcePatches[relative(w.Root, filepath.Dir(lockPath))]
+	effective := mapping(policy["patchedDependencies"])
 	for name, value := range patches {
 		if lockedHash, ok := value.(string); ok {
-			if scalarErr := validateNativeScalarPatch(w, policy, sourceHashes, repo, source, name, lockedHash); scalarErr != nil {
+			if scalarErr := validateNativeScalarPatch(w, declared[name], sourceHashes, repo, source, lockedHash); scalarErr != nil {
 				return scalarErr
 			}
 			rewritten[name] = lockedHash
@@ -527,16 +529,20 @@ func mergeLockedPatches(w devcontract.ResolvedWorkspace, dst, src, policy map[st
 		if !within(repo, absolute) || exactPath(absolute) != nil {
 			return refusal("locked patch escapes or redirects selected repository in %s", source)
 		}
-		if mapping(policy["patchedDependencies"])[name] != relative(w.Root, absolute) {
+		if declared[name] != relative(w.Root, absolute) {
 			return refusal("locked patch in %s does not match a reconciled source patch policy", source)
 		}
-		// Reconciliation already fingerprints every effective patch file. Do not
-		// create an additional source authority for stale lock-only patch settings.
+		// Reconciliation retains each source's path authority, while identical
+		// declared bytes use one deterministic path in the aggregate lockfile.
+		canonical, exists := effective[name].(string)
+		if !exists || len(sourceHashes[canonical]) != 64 || sourceHashes[canonical] != sourceHashes[declared[name]] {
+			return refusal("locked patch in %s lacks matching aggregate source authority", source)
+		}
 		copy := map[string]any{}
 		for key, value := range record {
 			copy[key] = value
 		}
-		copy["path"] = relative(w.Root, absolute)
+		copy["path"] = canonical
 		rewritten[name] = copy
 	}
 	if dst["patchedDependencies"] == nil {
@@ -545,9 +551,8 @@ func mergeLockedPatches(w devcontract.ResolvedWorkspace, dst, src, policy map[st
 	return mergeRecords(mapping(dst["patchedDependencies"]), rewritten, "patchedDependencies", source)
 }
 
-func validateNativeScalarPatch(w devcontract.ResolvedWorkspace, policy map[string]any, sourceHashes map[string]string, repo, source, name, lockedHash string) error {
-	patch, declared := mapping(policy["patchedDependencies"])[name].(string)
-	if !declared {
+func validateNativeScalarPatch(w devcontract.ResolvedWorkspace, patch string, sourceHashes map[string]string, repo, source, lockedHash string) error {
+	if patch == "" {
 		lockPath := filepath.Join(w.Root, filepath.FromSlash(source))
 		directory := "'" + strings.ReplaceAll(filepath.Dir(lockPath), "'", "'\\''") + "'"
 		command := "(export PNPM_CONFIG_WORKSPACE_DIR=" + directory + " npm_config_workspace_dir=" + directory + " pnpm_config_pm_on_fail=error; " +

@@ -27,11 +27,9 @@ Older plugin archives built against MUI or legacy UI contracts are incompatible.
 The Logs scenario selects a container from the opened Logs submenu, not from the
 parent action list. Adding actions such as Debug must not change which workload
 is measured; line counts, scrolling, drawer toggles, and run counts stay unchanged.
-
-Drawer toggle controls are selected within the measured bottom drawer. Resource
-trees can also expose an `Expand` button; a document-wide lookup can click that
-unrelated control without resizing the drawer. The geometry assertion still
-requires a height change of more than 50 pixels for each of the ten toggles.
+Drawer toggles use the log viewer's bottom-drawer strip, never a document-wide
+Expand/Minimize label or button position. Sidebar tree controls may share those
+labels; every measured toggle must still change the drawer's actual height.
 
 The Pod scenario opens the native page from a 5k-pod corpus, then scrolls up to
 30 viewport steps within that page. Current V2 Kubernetes requests 256 records per native page. Fixtures
@@ -48,13 +46,14 @@ actual total rather than the requested 30-step budget.
 CI reads the checked-out host's `e2e/source-cohort.json`, with full commit strings
 for `plugin-sdk`, `ui`, and `kubernetes`. UI and Kubernetes checkouts use validated
 cohort outputs; Kubernetes must match the host's `plugins/kubernetes` gitlink.
+After Kubernetes merges, update both pins to its final merge commit before the coordinated consumer release.
 The SDK entry must equal the independently reviewed release pinned explicitly in
-the candidate workflows: SDK v0.12.0,
-`a6c892e671b789396f43fabeede7f4bf2e7a0c5d`. The original isolation ancestry minimum remains
-`5b3ef764d1cf738835a723a749a0cb6c45f85e44`. The profiling release advances the
-reviewed isolation checkpoint to SDK v0.11.0,
-`eb0d5c8c533c6501c4a57da338435956f82d7b84`, after independent security review of
-the five protected files. The delta only adds the opt-in profiler lifecycle to
+the candidate workflows: SDK v0.14.2,
+`0597ff45586b45e3a57fe7ac86194ce96884c7ef`. The original isolation ancestry minimum remains
+`5b3ef764d1cf738835a723a749a0cb6c45f85e44`. The connection-sharing release advances the
+reviewed isolation checkpoint to SDK v0.13.0 after independent
+security review of the five protected files.
+The changes add callback binding and retain the profiler lifecycle in
 `pkg/sdk/plugin.go`; state-root, profile-contract, and store protections remain
 unchanged. Admission requires the baseline to precede that pinned checkpoint, the
 checkpoint to precede the selected SDK, and all five selected protected files
@@ -110,7 +109,7 @@ candidate sources. Explicit direct-CLI `UI_SOURCE_REF` or
 `KUBERNETES_SOURCE_REF` values must still match the selected cohort.
 The Kubernetes gitlink must also match. Commits must be reachable by checkout,
 but candidate testing does not require a module or npm publication.
-Candidate workflows pin the independently reviewed SDK v0.12.0 release commit in
+Candidate workflows pin the independently reviewed SDK v0.14.2 release commit in
 `REVIEWED_SDK_REVISION`; they do not read repository variables for SDK approval.
 Keep repository variables unchanged: neither the resource-v2 approval variable nor
 the legacy `OMNIVIEW_E2E_REVIEWED_SDK_REVISION` selects this candidate's SDK.

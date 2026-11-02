@@ -1406,3 +1406,145 @@ func TestInstallPluginFromPath_ExtractedMetadataControlsPreflightBeforeTeardown(
 		}
 	}
 }
+
+func TestMarketplaceArchive_WrongIdentityLeavesBothInstallationsUntouched(t *testing.T) {
+	pm := newTestManager(t)
+	for _, id := range []string{"flux", "other"} {
+		installPluginFixture(t, pm, id, []string{"ui"}, false)
+		require.NoError(t, pm.pluginsRoot.MkdirAll(filepath.Join(id, "assets"), 0755))
+		require.NoError(t, pm.pluginsRoot.WriteFile(filepath.Join(id, "assets", "entry.js"), []byte("original bundle"), 0644))
+		_, err := pm.LoadPlugin(id, nil)
+		require.NoError(t, err)
+	}
+	require.NoError(t, pm.writePluginStateJSON())
+	before := archiveDeadRuntimeTree(t, pm.pluginsRoot.ResolvePath(""))
+	stateBefore, err := pm.readPluginStateJSON()
+	require.NoError(t, err)
+	flux, other := pm.records["flux"], pm.records["other"]
+	archive := writeTestTarball(t, []tarEntry{
+		{name: "plugin.yaml", mode: 0644, body: "id: other\nversion: 0.1.0\ncapabilities: [ui]\n"},
+		{name: "assets/entry.js", mode: 0644, body: "wrong plugin bytes"},
+	})
+	lock := pm.installOpsLock("flux")
+	lock.Lock()
+	_, err = pm.installPluginArchive(archive, "flux", "0.14.0")
+	lock.Unlock()
+	require.ErrorContains(t, err, "identity mismatch")
+	assert.Same(t, flux, pm.records["flux"])
+	assert.Same(t, other, pm.records["other"])
+	assert.Equal(t, before, archiveDeadRuntimeTree(t, pm.pluginsRoot.ResolvePath("")))
+	stateAfter, err := pm.readPluginStateJSON()
+	require.NoError(t, err)
+	assert.Equal(t, stateBefore, stateAfter)
+}
+
+func TestMarketplaceArchive_VersionSurvivesReloadAndLaterLocalReplacement(t *testing.T) {
+	pm := newTestManager(t)
+	archive := writeTestTarball(t, []tarEntry{
+		{name: "plugin.yaml", mode: 0644, body: "id: flux\nversion: 0.1.0\ncapabilities: [ui]\ncustom-field: preserved\n"},
+		{name: "assets/entry.js", mode: 0644, body: "marketplace bytes"},
+	})
+	archiveBefore, err := os.ReadFile(archive)
+	require.NoError(t, err)
+	lock := pm.installOpsLock("flux")
+	lock.Lock()
+	metadata, err := pm.installPluginArchive(archive, "flux", "0.14.0")
+	lock.Unlock()
+	require.NoError(t, err)
+	assert.Equal(t, "0.14.0", metadata.Version)
+	data, err := pm.pluginsRoot.ReadFile("flux/plugin.yaml")
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "custom-field: preserved")
+	archiveAfter, err := os.ReadFile(archive)
+	require.NoError(t, err)
+	assert.Equal(t, archiveBefore, archiveAfter, "signed archive must remain unchanged")
+	require.NoError(t, pm.UnloadPlugin("flux"))
+	info, err := pm.LoadPlugin("flux", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "0.14.0", info.Metadata.Version)
+	states, err := pm.readPluginStateJSON()
+	require.NoError(t, err)
+	require.Len(t, states, 1)
+	assert.Equal(t, "0.14.0", states[0].Metadata.Version)
+
+	// The next local transaction owns its own manifest version. A completed
+	// marketplace operation has no deferred record override to relabel it.
+	local := writeTestTarball(t, []tarEntry{
+		{name: "plugin.yaml", mode: 0644, body: "id: flux\nversion: 0.15.0\ncapabilities: [ui]\n"},
+		{name: "assets/entry.js", mode: 0644, body: "new local bytes"},
+	})
+	_, err = pm.InstallPluginFromPath(local)
+	require.NoError(t, err)
+	installed, err := parseMetadataFromPluginPath(pm.pluginsRoot.ResolvePath("flux"))
+	require.NoError(t, err)
+	assert.Equal(t, "0.15.0", installed.Version)
+	assert.Equal(t, "0.15.0", pm.records["flux"].Metadata.Version)
+	states, err = pm.readPluginStateJSON()
+	require.NoError(t, err)
+	require.Len(t, states, 1)
+	assert.Equal(t, "0.15.0", states[0].Metadata.Version)
+}
+
+func TestMarketplaceArchive_QueuedUninstallRunsAfterPublication(t *testing.T) {
+	pm := newTestManager(t)
+	archive := writeTestTarball(t, []tarEntry{
+		{name: "plugin.yaml", mode: 0644, body: uiOnlyYaml},
+		{name: "assets/entry.js", mode: 0644, body: "marketplace bytes"},
+	})
+	lock := pm.installOpsLock("flux")
+	lock.Lock()
+	started := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		close(started)
+		_, err := pm.UninstallPlugin("flux")
+		done <- err
+	}()
+	<-started
+	_, installErr := pm.installPluginArchive(archive, "flux", "0.14.0")
+	lock.Unlock()
+	require.NoError(t, installErr)
+	require.NoError(t, <-done)
+	assert.NotContains(t, pm.records, "flux")
+	assert.NoDirExists(t, pm.pluginsRoot.ResolvePath("flux"))
+	states, err := pm.readPluginStateJSON()
+	require.NoError(t, err)
+	assert.Empty(t, states)
+}
+
+func TestMarketplaceArchive_QueuedLocalUpdateKeepsItsOwnVersion(t *testing.T) {
+	pm := newTestManager(t)
+	marketplace := writeTestTarball(t, []tarEntry{
+		{name: "plugin.yaml", mode: 0644, body: uiOnlyYaml},
+		{name: "assets/entry.js", mode: 0644, body: "marketplace bytes"},
+	})
+	local := writeTestTarball(t, []tarEntry{
+		{name: "plugin.yaml", mode: 0644, body: "id: flux\nversion: 0.15.0\ncapabilities: [ui]\n"},
+		{name: "assets/entry.js", mode: 0644, body: "new local bytes"},
+	})
+	lock := pm.installOpsLock("flux")
+	lock.Lock()
+	started := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		close(started)
+		_, err := pm.InstallPluginFromPath(local)
+		done <- err
+	}()
+	<-started
+	_, installErr := pm.installPluginArchive(marketplace, "flux", "0.14.0")
+	lock.Unlock()
+	require.NoError(t, installErr)
+	require.NoError(t, <-done)
+	metadata, err := parseMetadataFromPluginPath(pm.pluginsRoot.ResolvePath("flux"))
+	require.NoError(t, err)
+	assert.Equal(t, "0.15.0", metadata.Version)
+	assert.Equal(t, "0.15.0", pm.records["flux"].Metadata.Version)
+	states, err := pm.readPluginStateJSON()
+	require.NoError(t, err)
+	require.Len(t, states, 1)
+	assert.Equal(t, "0.15.0", states[0].Metadata.Version)
+	bundle, err := pm.pluginsRoot.ReadFile("flux/assets/entry.js")
+	require.NoError(t, err)
+	assert.Equal(t, "new local bytes", string(bundle))
+}
