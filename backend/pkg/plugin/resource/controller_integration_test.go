@@ -17,7 +17,7 @@ import (
 )
 
 // Integration tests exercise canonical service requests, provider dispatch,
-// generation ownership, registry observations, and live subscription envelopes.
+// generation ownership, and registry observations.
 
 func integrationProvider(resourceTypes ...string) *mockProvider {
 	return &mockProvider{
@@ -41,26 +41,6 @@ func integrationProvider(resourceTypes ...string) *mockProvider {
 	}
 }
 
-func integrationWatchFixture(t *testing.T) (*controller, *recordingEmitter, HostSubscription, *engineWatchSink) {
-	t.Helper()
-	ctrl, emitter := newTestControllerWithEmitter(t)
-	registerMockPlugin(ctrl, "p1", integrationProvider("pods"))
-	subscription := admittedSubscription(t, ctrl, "p1", "conn-1", "pods")
-	return ctrl, emitter, subscription, integrationSink(ctrl, "p1")
-}
-
-func integrationSink(ctrl *controller, pluginID string) *engineWatchSink {
-	ctrl.pluginsMu.RLock()
-	generation := ctrl.plugins[pluginID].generationID
-	ctrl.pluginsMu.RUnlock()
-	return &engineWatchSink{ctx: testInvocationContext(), generationID: generation, pluginID: pluginID, ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
-}
-
-func integrationAdd(subscription HostSubscription, id string) resource.WatchAddPayload {
-	target := subscription.Target
-	return resource.WatchAddPayload{Route: target.Route, Record: canonicalTestRecord(target.Provider, target.Authority, target.Type, id), Guarantee: resource.BestEffortGuarantee}
-}
-
 // EI-001: Canonical dispensing retains the actual provider without an adapter.
 func TestIntegration_DispenseProvider(t *testing.T) {
 	mock := integrationProvider("pods")
@@ -80,23 +60,15 @@ func TestIntegration_DispenseProvider(t *testing.T) {
 	assert.Equal(t, request.Reference, result.Reference)
 }
 
-// EI-002: Actual startup loads connections and establishes both optional listeners.
+// Actual startup loads connections and establishes the optional browser.
 func TestIntegration_OnPluginStart_FullWiring(t *testing.T) {
 	ctrl, emitter := newTestControllerWithEmitter(t)
 	var loaded atomic.Bool
-	listenerReady, browserReady := make(chan struct{}), make(chan struct{})
+	browserReady := make(chan struct{})
 	mock := integrationProvider("pods")
 	mock.LoadConnectionsFunc = func(context.Context) ([]types.Connection, error) {
 		loaded.Store(true)
 		return []types.Connection{{ID: "conn-1", Name: "Test Cluster"}}, nil
-	}
-	mock.ListenForEventsFunc = func(ctx context.Context, _ resource.WatchEventSink, onReady func() error) error {
-		if err := onReady(); err != nil {
-			return err
-		}
-		close(listenerReady)
-		<-ctx.Done()
-		return ctx.Err()
 	}
 	mock.WatchConnectionsFunc = func(ctx context.Context, _ chan<- []types.Connection) error {
 		close(browserReady)
@@ -106,7 +78,7 @@ func TestIntegration_OnPluginStart_FullWiring(t *testing.T) {
 	backend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": mock})
 	require.NoError(t, ctrl.OnPluginStart("p1", defaultMeta(), backend))
 	t.Cleanup(func() { require.NoError(t, ctrl.OnPluginStop("p1", defaultMeta())) })
-	for _, ready := range []<-chan struct{}{listenerReady, browserReady} {
+	for _, ready := range []<-chan struct{}{browserReady} {
 		select {
 		case <-ready:
 		case <-time.After(time.Second):
@@ -180,64 +152,6 @@ func TestIntegration_FiniteOperations_ThroughController(t *testing.T) {
 	assert.EqualValues(t, 1, queries.Load())
 }
 
-// EI-004: A live subscription emits a host-owned membership envelope.
-func TestIntegration_WatchEventsFlow(t *testing.T) {
-	ctrl, emitter, subscription, sink := integrationWatchFixture(t)
-	require.NoError(t, ctrl.SubscribeResource(testInvocationContext(), "p1", subscription))
-	sink.OnAdd(integrationAdd(subscription, "pod-1"))
-	event := emitter.WaitForEvent(t, "ADD", time.Second)
-	payload, ok := event.Data[0].(HostWatchRecordEvent)
-	require.True(t, ok)
-	assert.Equal(t, "p1/conn-1/pods/ADD", event.Key)
-	assert.Equal(t, subscription.Target.Route, payload.Route)
-	assert.Equal(t, "pods", payload.Record.Record.Reference.Address.Type)
-	assert.Equal(t, "pod-1", payload.Record.Record.Reference.Address.ID)
-	assert.Equal(t, subscription.TargetID, payload.Record.TargetID)
-	assert.NotEmpty(t, payload.Record.Key)
-	assert.NotEmpty(t, payload.Record.AddressKey)
-}
-
-// EI-005: Unsubscribed observations enter the registry but do not emit frontend events.
-func TestIntegration_SubscriptionGates(t *testing.T) {
-	ctrl, emitter, subscription, sink := integrationWatchFixture(t)
-	first := integrationAdd(subscription, "pod-1")
-	sink.OnAdd(first)
-	assert.Empty(t, emitter.EventsWithKey("ADD"))
-	_, observed := ctrl.registryStore.Get("p1", first.Record.Reference, first.Route)
-	require.True(t, observed)
-	require.NoError(t, ctrl.SubscribeResource(testInvocationContext(), "p1", subscription))
-	sink.OnAdd(integrationAdd(subscription, "pod-2"))
-	event := emitter.WaitForEvent(t, "ADD", time.Second)
-	payload, ok := event.Data[0].(HostWatchRecordEvent)
-	require.True(t, ok)
-	assert.Equal(t, "pod-2", payload.Record.Record.Reference.Address.ID)
-}
-
-// EI-006: Owning unsubscribe stops subsequent forwarding.
-func TestIntegration_Unsubscribe_StopsEvents(t *testing.T) {
-	ctrl, emitter, subscription, sink := integrationWatchFixture(t)
-	require.NoError(t, ctrl.SubscribeResource(testInvocationContext(), "p1", subscription))
-	sink.OnAdd(integrationAdd(subscription, "pod-1"))
-	require.Len(t, emitter.EventsWithKey("ADD"), 1)
-	require.NoError(t, ctrl.UnsubscribeResource(testInvocationContext(), "p1", subscription))
-	sink.OnAdd(integrationAdd(subscription, "pod-2"))
-	assert.Len(t, emitter.EventsWithKey("ADD"), 1)
-}
-
-// EI-007: Two references to one subscription emit once until both references close.
-func TestIntegration_RefCounted_Subscriptions(t *testing.T) {
-	ctrl, emitter, subscription, sink := integrationWatchFixture(t)
-	require.NoError(t, ctrl.SubscribeResource(testInvocationContext(), "p1", subscription))
-	require.NoError(t, ctrl.SubscribeResource(testInvocationContext(), "p1", subscription))
-	require.NoError(t, ctrl.UnsubscribeResource(testInvocationContext(), "p1", subscription))
-	require.True(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
-	sink.OnAdd(integrationAdd(subscription, "pod-1"))
-	require.Len(t, emitter.EventsWithKey("ADD"), 1)
-	payload, ok := emitter.EventsWithKey("ADD")[0].Data[0].(HostWatchRecordEvent)
-	require.True(t, ok)
-	assert.Equal(t, "pod-1", payload.Record.Record.Reference.Address.ID)
-}
-
 // EI-008: StopConnection updates state and emits DISCONNECTED.
 func TestIntegration_ConnectionDisconnect(t *testing.T) {
 	ctrl, emitter := newTestControllerWithEmitter(t)
@@ -257,106 +171,25 @@ func TestIntegration_ConnectionDisconnect(t *testing.T) {
 	assert.Equal(t, "conn-1", payload.ConnectionID)
 }
 
-// EI-009: Plugin stop retires provider, connections, subscriptions, and its sink.
+// Plugin stop retires provider and connections.
 func TestIntegration_PluginStop_CleansAll(t *testing.T) {
-	ctrl, emitter, subscription, sink := integrationWatchFixture(t)
+	ctrl, _ := newTestControllerWithEmitter(t)
+	registerMockPlugin(ctrl, "p1", integrationProvider("pods"))
 	requireSavedConnectionProfile(t, ctrl, "p1", types.Connection{ID: "conn-1", Name: "Test"})
-	subscription = admittedSubscription(t, ctrl, "p1", "conn-1", "pods")
-	require.NoError(t, ctrl.SubscribeResource(testInvocationContext(), "p1", subscription))
-	require.True(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
 	require.NoError(t, ctrl.OnPluginStop("p1", defaultMeta()))
 	present, err := ctrl.HasPlugin(testInvocationContext(), "p1")
 	require.NoError(t, err)
 	assert.False(t, present)
-	assert.False(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
 	ctrl.connsMu.RLock()
 	_, hasConnections := ctrl.connections["p1"]
 	ctrl.connsMu.RUnlock()
 	assert.False(t, hasConnections)
-	sink.OnAdd(integrationAdd(subscription, "retired"))
-	assert.Empty(t, emitter.EventsWithKey("ADD"))
 }
 
-// EI-010: Two plugins never share event routes, even with identical type and route text.
-func TestIntegration_MultiPlugin_Isolation(t *testing.T) {
-	ctrl, emitter := newTestControllerWithEmitter(t)
-	for _, pluginID := range []string{"p1", "p2"} {
-		registerMockPlugin(ctrl, pluginID, integrationProvider("pods"))
-		subscription := admittedSubscription(t, ctrl, pluginID, "conn-1", "pods")
-		require.NoError(t, ctrl.SubscribeResource(testInvocationContext(), pluginID, subscription))
-		integrationSink(ctrl, pluginID).OnAdd(integrationAdd(subscription, "pod-from-"+pluginID))
-	}
-	events := emitter.EventsWithKey("ADD")
-	require.Len(t, events, 2)
-	for index, pluginID := range []string{"p1", "p2"} {
-		assert.Equal(t, pluginID+"/conn-1/pods/ADD", events[index].Key)
-		payload, ok := events[index].Data[0].(HostWatchRecordEvent)
-		require.True(t, ok)
-		assert.Equal(t, "pod-from-"+pluginID, payload.Record.Record.Reference.Address.ID)
-	}
-}
-
-// EI-011: Native state remains observable without a resource body subscription.
-func TestIntegration_StateAlwaysFlows(t *testing.T) {
-	_, emitter, subscription, sink := integrationWatchFixture(t)
-	sink.OnStateChange(resource.WatchStateEvent{Route: subscription.Target.Route, Type: subscription.Target.Type, State: resource.WatchStateSynced, Count: resource.Count{Kind: "unknown"}, Guarantee: resource.BestEffortGuarantee})
-	require.NotEmpty(t, emitter.EventsWithKey("p1/conn-1/watch/STATE"))
-	var global bool
-	for _, event := range emitter.Events() {
-		if event.Key == "watch/STATE" {
-			global = true
-		}
-	}
-	assert.True(t, global, "expected global watch/STATE event")
-}
-
-// EI-012: Unknown resource types fail closed without creating a subscription.
-func TestIntegration_SubscribeNonExistent(t *testing.T) {
-	ctrl, _, subscription, _ := integrationWatchFixture(t)
-	subscription.Target.Type = "nonexistent-resource-type"
-	err := ctrl.SubscribeResource(testInvocationContext(), "p1", subscription)
-	require.Error(t, err)
-	assert.False(t, ctrl.isSubscribed("p1", "conn-1", "nonexistent-resource-type"))
-}
-
-// EI-013: Explicit catalog targets may be subscribed before native connection start.
-func TestIntegration_SubscribeBeforeConnect(t *testing.T) {
-	ctrl, emitter, subscription, sink := integrationWatchFixture(t)
-	require.Empty(t, ctrl.connections["p1"])
-	require.NoError(t, ctrl.SubscribeResource(testInvocationContext(), "p1", subscription))
-	sink.OnAdd(integrationAdd(subscription, "pod-1"))
-	event := emitter.WaitForEvent(t, "ADD", time.Second)
-	payload, ok := event.Data[0].(HostWatchRecordEvent)
-	require.True(t, ok)
-	assert.Equal(t, "pod-1", payload.Record.Record.Reference.Address.ID)
-}
-
-// EI-014: Add, delete, and re-add preserve native delivery order.
-func TestIntegration_OutOfOrderEvents(t *testing.T) {
-	ctrl, emitter, subscription, sink := integrationWatchFixture(t)
-	require.NoError(t, ctrl.SubscribeResource(testInvocationContext(), "p1", subscription))
-	added := integrationAdd(subscription, "pod-1")
-	sink.OnAdd(added)
-	sink.OnDelete(resource.WatchDeletePayload{Route: added.Route, Reference: added.Record.Reference, Guarantee: resource.BestEffortGuarantee})
-	sink.OnAdd(added)
-	assert.Len(t, emitter.EventsWithKey("ADD"), 2)
-	assert.Len(t, emitter.EventsWithKey("DELETE"), 1)
-	var order []string
-	for _, event := range emitter.Events() {
-		switch event.Data[0].(type) {
-		case HostWatchRecordEvent:
-			order = append(order, "ADD")
-		case HostWatchDeleteEvent:
-			order = append(order, "DELETE")
-		}
-	}
-	assert.Equal(t, []string{"ADD", "DELETE", "ADD"}, order)
-}
-
-// EI-016: Equal type text does not merge provider data, memberships, or subscriptions.
+// Equal type and object IDs from distinct plugins retain separate identities.
 func TestIntegration_SameKeyTwoPlugins(t *testing.T) {
-	ctrl, emitter := newTestControllerWithEmitter(t)
-	subscriptions := make(map[string]HostSubscription)
+	ctrl, _ := newTestControllerWithEmitter(t)
+	targets := make(map[string]ResolvedTarget)
 	for _, pluginID := range []string{"p1", "p2"} {
 		pluginID := pluginID
 		mock := integrationProvider("pods")
@@ -366,31 +199,12 @@ func TestIntegration_SameKeyTwoPlugins(t *testing.T) {
 			return record, nil
 		}
 		registerMockPlugin(ctrl, pluginID, mock)
-		subscriptions[pluginID] = admittedSubscription(t, ctrl, pluginID, "conn-1", "pods")
-		require.NoError(t, ctrl.SubscribeResource(testInvocationContext(), pluginID, subscriptions[pluginID]))
+		targets[pluginID] = admittedReadTarget(t, ctrl, pluginID, "conn-1", "pods")
 		result, err := ctrl.Get(testInvocationContext(), pluginID, admittedGetRequest(t, ctrl, pluginID, "conn-1", "pods", "same-id"))
 		require.NoError(t, err)
 		assert.Equal(t, pluginID, result.Record.Body.Map["source"].String)
 	}
-	assert.NotEqual(t, subscriptions["p1"].Target.Authority, subscriptions["p2"].Target.Authority)
-	integrationSink(ctrl, "p1").OnAdd(integrationAdd(subscriptions["p1"], "pod-1"))
-	require.Len(t, emitter.EventsWithKey("ADD"), 1)
-	assert.Equal(t, "p1/conn-1/pods/ADD", emitter.EventsWithKey("ADD")[0].Key)
-	require.NoError(t, ctrl.UnsubscribeResource(testInvocationContext(), "p1", subscriptions["p1"]))
-	assert.False(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
-	assert.True(t, ctrl.isSubscribed("p2", "conn-1", "pods"))
-}
-
-// EI-017: Repeated subscribe and unsubscribe reuse one issued membership.
-func TestIntegration_RapidSubUnsub(t *testing.T) {
-	ctrl, emitter, subscription, sink := integrationWatchFixture(t)
-	for i := range 100 {
-		require.NoError(t, ctrl.SubscribeResource(testInvocationContext(), "p1", subscription))
-		sink.OnAdd(integrationAdd(subscription, fmt.Sprintf("pod-%d", i)))
-		require.NoError(t, ctrl.UnsubscribeResource(testInvocationContext(), "p1", subscription))
-	}
-	assert.False(t, ctrl.isSubscribed("p1", "conn-1", "pods"))
-	assert.Len(t, emitter.EventsWithKey("ADD"), 100)
+	assert.NotEqual(t, targets["p1"].Target.Authority, targets["p2"].Target.Authority)
 }
 
 // EI-018: Actual double startup cancels the old generation and publishes the new provider.

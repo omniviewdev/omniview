@@ -1,4 +1,4 @@
-import type { Count, WatchState } from '@omniviewdev/runtime';
+import type { Count, SourceSessionState } from '@omniviewdev/runtime';
 
 /** Identifies the target connection for the state dialog */
 export type ConnectionStateTarget = {
@@ -11,7 +11,7 @@ export type ConnectionStateTarget = {
 export type ResourceStateItem = {
   key: string;
   kind: string;
-  state: WatchState;
+  state: SourceSessionState;
   count?: Count;
 };
 

@@ -12,11 +12,20 @@ import { useDevMode } from '@/hooks/useDevMode';
 import styles from './SettingsEntries.module.css';
 import { PluginSettingEditor } from '@/features/settings-editors';
 
+export type SettingsEditorProps = {
+  value: unknown;
+  onChange: (value: unknown) => void;
+  disabled?: boolean;
+  inputId: string;
+  labelledBy: string;
+  describedBy: string;
+};
+
 type Props = SectionSelection & {
   settings: Record<string, (Setting & { requiresRestart?: boolean; pendingRestart?: boolean }) | undefined>;
   draftValues: Record<string, unknown>;
   setDraftValues: (draftValues: Record<string, unknown>) => void;
-  renderSetting?: Readonly<Record<string, () => React.ReactNode>>;
+  renderSetting?: Readonly<Record<string, (props: SettingsEditorProps) => React.ReactNode>>;
   presentation?: Readonly<Record<string, { label: string; help: string }>>;
   validation?: Record<string, { valid: boolean; message: string }>;
   disabled?: boolean;
@@ -139,7 +148,16 @@ const SettingsEntries: React.FC<Props> = ({
             {/* Input column */}
             <div className={styles.InputColumn}>
               {renderOverride
-                ? renderOverride()
+                ? renderOverride({
+                  value: draftValues[fullID] !== undefined ? draftValues[fullID] : setting.value,
+                  onChange: value => {
+                    handleChange(id, value);
+                  },
+                  disabled,
+                  inputId,
+                  labelledBy,
+                  describedBy,
+                })
                 : section === Section.Plugins ? (
                   <PluginSettingEditor pluginId={sectionID} settingId={fullID} setting={setting}
                     value={draftValues[fullID] !== undefined ? draftValues[fullID] : setting.value}

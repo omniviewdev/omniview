@@ -1,4 +1,4 @@
-import { openSettings, settingsWindowTarget } from '../settings/settingsWindow';
+import { openSettings, settingsWindowTarget, extensionInspectorTarget } from '../settings/settingsWindow';
 
 type ActivePageNavigator = (path: string) => void;
 
@@ -22,6 +22,17 @@ export function registerActivePageNavigator(navigator: ActivePageNavigator): () 
  * settings routes. Code outside React uses this instead of touching window.location.
  */
 export function navigateActivePage(path: string): void {
+  const inspectorTarget = extensionInspectorTarget(path);
+  if (inspectorTarget !== null) {
+    if (activePageNavigator) {
+      activePageNavigator(inspectorTarget);
+    } else {
+      void openSettings(path).catch((error: unknown) => {
+        console.error('[extensions] opening the inspector failed', error);
+      });
+    }
+    return;
+  }
   const settingsTarget = settingsWindowTarget(path);
   if (settingsTarget !== null) {
     void openSettings(settingsTarget).catch((error: unknown) => {

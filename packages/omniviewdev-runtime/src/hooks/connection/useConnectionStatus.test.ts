@@ -3,11 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as WailsRuntime from '@wailsio/runtime';
 import { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 import type { NativeConnectionReadiness, HostConnectionState } from '../../resource/v2/host';
-import { WatchState } from '../../types/watch';
 import { useConnectionStatus } from './useConnectionStatus';
 
 const native = vi.hoisted(() => ({
-  states: vi.fn(), list: vi.fn(), stop: vi.fn(), catalog: vi.fn(), resolve: vi.fn(), watch: vi.fn(),
+  states: vi.fn(), list: vi.fn(), stop: vi.fn(), retry: vi.fn(),
   listeners: new Map<string, (event: { data: unknown }) => void>(),
 }));
 vi.mock('@wailsio/runtime', async (importOriginal) => {
@@ -25,13 +24,13 @@ vi.mock('@wailsio/runtime', async (importOriginal) => {
 });
 vi.mock('../../resource/v2/client', () => ({
   GetAllConnectionStates: native.states, ListAllConnections: native.list, StopConnection: native.stop,
-  Catalog: native.catalog, ResolveTarget: native.resolve, StartConnectionWatch: native.watch,
+  RetryConnectionSources: native.retry,
 }));
 vi.mock('../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/servicewrapper', () => ({ RetryFailedPlugin: vi.fn() }));
 
 function snapshot(readiness: NativeConnectionReadiness): HostConnectionState {
   return { connection: Connection.createFrom({ id: readiness, name: readiness }), readiness,
-    resources: { pods: WatchState.WatchStateSynced }, resourceCounts: {}, totalResources: 0, syncedCount: 0, errorCount: 0 };
+    resources: { pods: 'following' }, resourceCounts: {}, totalResources: 0, syncedCount: 0, errorCount: 0 };
 }
 function emit(status: string, connectionID = 'UNKNOWN') {
   native.listeners.get('connection/status')?.({ data: { pluginID: 'cloud', connectionID, status } });
@@ -63,9 +62,9 @@ describe('connection readiness', () => {
     hook.unmount();
   });
 
-  it('preserves terminal watch events received while a refresh snapshot is pending', async () => {
+  it('preserves terminal source events received while a refresh snapshot is pending', async () => {
     const syncing = snapshot('CONNECTED');
-    syncing.resources.pods = WatchState.WatchStateSyncing;
+    syncing.resources.pods = 'snapshotting';
     native.states.mockResolvedValueOnce({ cloud: [syncing] });
     const hook = renderHook(() => useConnectionStatus());
     await waitFor(() => expect(hook.result.current.entries[0]?.isSyncing).toBe(true));
@@ -74,9 +73,9 @@ describe('connection readiness', () => {
     let refresh: Promise<void>;
     act(() => { refresh = hook.result.current.refresh(); });
     act(() => {
-      native.listeners.get('watch/STATE')?.({ data: {
+      native.listeners.get('source/STATE')?.({ data: {
         pluginID: 'cloud', route: { connection: 'CONNECTED' }, type: 'pods',
-        state: WatchState.WatchStateSynced, guarantee: 'bestEffort',
+        status: { state: 'following' },
       } });
     });
     expect(hook.result.current.entries[0].isSyncing).toBe(false);
@@ -90,7 +89,7 @@ describe('connection readiness', () => {
     hook.unmount();
   });
 
-  it('does not restore watch events discarded by a disconnect during refresh', async () => {
+  it('does not restore source events discarded by a disconnect during refresh', async () => {
     native.states.mockResolvedValueOnce({ cloud: [snapshot('CONNECTED')] });
     const hook = renderHook(() => useConnectionStatus());
     await waitFor(() => expect(hook.result.current.connectedCount).toBe(1));
@@ -99,9 +98,9 @@ describe('connection readiness', () => {
     let refresh: Promise<void>;
     act(() => { refresh = hook.result.current.refresh(); });
     act(() => {
-      native.listeners.get('watch/STATE')?.({ data: {
+      native.listeners.get('source/STATE')?.({ data: {
         pluginID: 'cloud', route: { connection: 'CONNECTED' }, type: 'pods',
-        state: WatchState.WatchStateSyncing, guarantee: 'bestEffort',
+        status: { state: 'snapshotting' },
       } });
       emit('DISCONNECTED', 'CONNECTED');
     });
@@ -173,7 +172,17 @@ describe('connection readiness', () => {
     hook.unmount();
   });
 
-  it('never promotes pending, failed, or watch activity to connected', async () => {
+  it('retries connection sources for connected clients', async () => {
+    native.states.mockResolvedValue({ cloud: [snapshot('CONNECTED')] });
+    native.retry.mockResolvedValue(undefined);
+    const hook = renderHook(() => useConnectionStatus());
+    await waitFor(() => expect(hook.result.current.connectedCount).toBe(1));
+    await act(async () => { await hook.result.current.retrySources('cloud', 'CONNECTED'); });
+    expect(native.retry).toHaveBeenCalledWith('cloud', { connection: 'CONNECTED' });
+    hook.unmount();
+  });
+
+  it('never promotes pending, failed, or source activity to connected', async () => {
     native.states.mockResolvedValue({ cloud: [snapshot('UNKNOWN')] });
     const hook = renderHook(() => useConnectionStatus());
     await waitFor(() => expect(hook.result.current.entries).toHaveLength(1));
@@ -181,10 +190,10 @@ describe('connection readiness', () => {
       act(() => { emit(status); });
       expect(hook.result.current.entries[0].readiness).toBe(status);
       expect(hook.result.current.connectedCount).toBe(0);
-      act(() => { native.listeners.get('watch/STATE')?.({ data: { pluginID: 'cloud', route: { connection: 'UNKNOWN' }, type: 'pods', state: WatchState.WatchStateSynced, guarantee: 'bestEffort' } }); });
+      act(() => { native.listeners.get('source/STATE')?.({ data: { pluginID: 'cloud', route: { connection: 'UNKNOWN' }, type: 'pods', status: { state: 'following' } } }); });
       expect(hook.result.current.entries[0].sync).toBeUndefined();
-      await act(async () => { await hook.result.current.retryWatch('cloud', 'UNKNOWN'); });
-      expect(native.catalog).not.toHaveBeenCalled();
+      await act(async () => { await hook.result.current.retrySources('cloud', 'UNKNOWN'); });
+      expect(native.retry).not.toHaveBeenCalled();
     }
     act(() => { emit('CONNECTED'); });
     expect(hook.result.current.connectedCount).toBe(1);

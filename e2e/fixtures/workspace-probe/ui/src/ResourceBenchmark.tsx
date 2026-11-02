@@ -246,9 +246,10 @@ function Finite({
 }
 function EventsTable({ samples }: { samples: React.RefObject<Sample[]> }) {
   const resolved = targets.get("container-bundled-events");
-  const { resources, watchState, isSynced } = useResources({
+  const { resources, source, isSynced } = useResources({
     pluginID,
     request: resolved ? request(resolved) : undefined,
+    collection: true,
   });
   const bodies = useMemo(() => resources.data ? bodiesOf(resources.data) : empty, [resources.data]);
   useLayoutEffect(() => {
@@ -260,13 +261,13 @@ function EventsTable({ samples }: { samples: React.RefObject<Sample[]> }) {
             phase: "event-table-two-frames",
             at: performance.now(),
             states: bodies.map((body) => body.state),
-            watchState,
+            source,
           });
       });
     return () => {
       cancelled = true;
     };
-  }, [bodies, watchState, samples]);
+  }, [bodies, source, samples]);
   return (
     <div
       data-p02-event-state={String(bodies[0]?.state ?? "")}
@@ -293,6 +294,7 @@ export function ResourceBenchmark() {
     // Each effect owns its sources, including starts still awaiting the bridge.
     // Root teardown drains those operations without consulting window.__p02.
     const started = new Set<Profile>();
+    let eventViewID: string | undefined;
     let disposed = false;
     let pending: Promise<unknown> = previousRootCleanup;
     function enqueue<T>(operation: () => Promise<T>): Promise<T> {
@@ -333,32 +335,18 @@ export function ResourceBenchmark() {
       const closed: unknown[] = [];
       const failures: unknown[] = [];
       for (const profile of started) {
+        let activeSourceWatches: number | undefined;
         if (profile === "container-bundled-events") {
           try {
-            await ResourceClient.StopResourceWatch(
-              pluginID,
-              { connection: profile },
-              "container",
-            );
-            const deadline = performance.now() + 5000;
-            let sourceWatches: unknown;
-            do {
-              const diagnostic = bodiesOf(await list(profile, "p02:metrics"))[0] as
-                { activeSourceWatches?: number } | undefined;
-              sourceWatches = diagnostic?.activeSourceWatches;
-              if (sourceWatches === 0) break;
-              if (typeof sourceWatches !== "number")
-                throw new Error(
-                  "Provider source-watch gauge unavailable during cleanup",
-                );
-              const { promise, resolve } = Promise.withResolvers<void>();
-              setTimeout(resolve, 10);
-              await promise;
-            } while (performance.now() < deadline);
-            if (sourceWatches !== 0)
-              throw new Error(
-                "Actual provider source watch survived explicit stop",
-              );
+            if (eventViewID) {
+              await ResourceClient.CloseSourceView(pluginID, eventViewID);
+              eventViewID = undefined;
+            }
+            const diagnostic = bodiesOf(await list(profile, "p02:metrics"))[0] as
+              { activeSourceWatches?: number } | undefined;
+            activeSourceWatches = diagnostic?.activeSourceWatches;
+            if (typeof activeSourceWatches !== "number")
+              throw new Error("Provider source-watch gauge unavailable during cleanup");
           } catch (error) {
             failures.push(error);
           }
@@ -372,8 +360,8 @@ export function ResourceBenchmark() {
             stopped: true,
             ...(profile === "container-bundled-events"
               ? {
-                  activeSourceWatches: 0,
-                  observation: "Actual provider diagnostic after supported StopResourceWatch",
+                  activeSourceWatches,
+                  observation: "Provider diagnostic after closing the owned view, before stopping the connection",
                 }
               : {}),
           });
@@ -399,11 +387,15 @@ export function ResourceBenchmark() {
           setSelection(null);
           setEvents(true);
           await frames();
-          if (!disposed)
-            await ResourceClient.EnsureResourceWatch(
-              pluginID,
-              (await resolveTarget("container-bundled-events")).target,
-            );
+          if (!disposed && !eventViewID) {
+            const resolved = await resolveTarget("container-bundled-events");
+            const opened = await ResourceClient.OpenSourceView(pluginID, {
+              targetId: resolved.targetId,
+              target: resolved.target,
+              updates: "ifSupported",
+            });
+            eventViewID = opened.viewId;
+          }
         }),
       async unmount() {
         if (disposed) return;

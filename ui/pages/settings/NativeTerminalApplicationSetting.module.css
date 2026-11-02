@@ -1,0 +1,46 @@
+.Root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ov-space-1);
+  width: 100%;
+}
+
+.Trigger {
+  width: 100%;
+  min-height: 30px;
+}
+
+.Application {
+  display: flex;
+  align-items: center;
+  gap: var(--ov-space-2);
+  min-width: 0;
+}
+
+.Icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.Name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.Popup {
+  min-width: var(--anchor-width);
+}
+
+.Status {
+  color: var(--ov-color-fg-muted);
+  font-size: var(--ov-font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+.Status p {
+  margin: 0;
+  line-height: 1.4;
+}

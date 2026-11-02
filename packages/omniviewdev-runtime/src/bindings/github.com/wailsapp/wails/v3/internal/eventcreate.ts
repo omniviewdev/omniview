@@ -67,7 +67,7 @@ function configure() {
         "resource/connection/metadata": $$createType20,
         "settings/changed": $$createType21,
         "settings/state": $$createType22,
-        "watch/STATE": $$createType23,
+        "source/STATE": $$createType23,
         "windows/changed": $$createType24,
         "windows/closed": $$createType25,
         "windows/drag/begin": $$createType26,
@@ -102,7 +102,7 @@ const $$createType19 = plugin$0.UpdateErrorPayload.createFrom;
 const $$createType20 = resource$0.HostConnectionMetadata.createFrom;
 const $$createType21 = settings$0.Scope.createFrom;
 const $$createType22 = window$0.SettingsState.createFrom;
-const $$createType23 = resource$0.HostWatchStateEvent.createFrom;
+const $$createType23 = resource$0.HostSourceStateEvent.createFrom;
 const $$createType24 = window$0.WindowsChangedEvent.createFrom;
 const $$createType25 = window$0.WindowClosedEvent.createFrom;
 const $$createType26 = window$0.DragBeginEvent.createFrom;
