@@ -32,6 +32,7 @@ type developmentControlLifecycle struct {
 	manager          plugin.Manager
 	dev              *devserver.DevServerManager
 	settings         *settingsservice.Service
+	extensions       devcontrol.Extensions
 	server           *devcontrol.Server
 	benchmarkMetrics *resourceBenchmarkMetrics
 }
@@ -46,6 +47,7 @@ func Register(
 	manager plugin.Manager,
 	dev *devserver.DevServerManager,
 	settings *settingsservice.Service,
+	extensions devcontrol.Extensions,
 ) (func(), error) {
 	if profile.Descriptor.Kind != "development" {
 		return nil, nil
@@ -59,6 +61,7 @@ func Register(
 		manager:          manager,
 		dev:              dev,
 		settings:         settings,
+		extensions:       extensions,
 		server:           nil,
 		benchmarkMetrics: nil,
 	}
@@ -98,10 +101,12 @@ func (s *developmentControlLifecycle) ServiceStartup(ctx context.Context, _ appl
 	if err != nil {
 		return err
 	}
+	adapters := New(s.manager, s.dev, s.settings, s.inspect)
+	adapters.Extensions = s.extensions
 	server, err := devcontrol.Start(ctx, devcontrol.Config{
 		Descriptor: descriptor,
 		Discovery:  discovery,
-		Adapters:   New(s.manager, s.dev, s.settings, s.inspect),
+		Adapters:   adapters,
 	})
 	if err != nil {
 		return err

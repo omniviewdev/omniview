@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/omniviewdev/omniview/backend/extensiondiagnostics"
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	"github.com/omniviewdev/omniview/internal/devcontract"
@@ -231,6 +232,20 @@ func invalidParams() *devcontract.Error {
 	return devcontract.Fail(2, "invalid_params", "parameters do not match the operation schema")
 }
 func safeError(err error) *devcontract.Error {
+	switch {
+	case errors.Is(err, extensiondiagnostics.ErrUnavailable):
+		return devcontract.Fail(3, "extensions_unavailable", "extension diagnostics runtime is unavailable; open the target workspace and use extensions windows to discover registered runtime names")
+	case errors.Is(err, extensiondiagnostics.ErrCapacity):
+		return devcontract.Fail(4, "operation_capacity", "too many active extension diagnostics requests")
+	case errors.Is(err, extensiondiagnostics.ErrParams):
+		return invalidParams()
+	case errors.Is(err, extensiondiagnostics.ErrUnsupported):
+		return devcontract.Fail(2, "extensions_unsupported", "extension context lookup supports only built-in sidebar and drawer points")
+	case errors.Is(err, extensiondiagnostics.ErrRuntime):
+		return devcontract.Fail(5, "extensions_failed", "extension diagnostics runtime could not complete the request")
+	case errors.Is(err, extensiondiagnostics.ErrResponse), errors.Is(err, extensiondiagnostics.ErrWindow):
+		return devcontract.Fail(5, "invalid_response", "extension diagnostics runtime returned an invalid response")
+	}
 	var commit *settingsservice.CommitError
 	if errors.As(err, &commit) && commit.Validation {
 		return devcontract.Fail(settingsValidationExit, "validation_failed", "setting value did not pass validation")

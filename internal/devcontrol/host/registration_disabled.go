@@ -9,6 +9,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
 	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devcontrol"
 	"github.com/omniviewdev/omniview/internal/instance"
 )
 
@@ -21,6 +22,7 @@ func Register(
 	_ plugin.Manager,
 	_ *devserver.DevServerManager,
 	_ *settingsservice.Service,
+	_ devcontrol.Extensions,
 ) (func(), error) {
 	return nil, nil
 }
