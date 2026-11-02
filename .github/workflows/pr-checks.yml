@@ -313,6 +313,8 @@ jobs:
         env:
           TZ: America/New_York
 
-      - name: Runtime source-view regressions
+      - name: Runtime contract regressions
         working-directory: packages/omniviewdev-runtime
-        run: node ../../node_modules/vitest/vitest.mjs run src/resource/v2/sourceView.test.ts src/hooks/resource/useSourceStates.test.ts src/hooks/resource/useResources.test.ts
+        run: node ../../node_modules/vitest/vitest.mjs run --configLoader runner
+        env:
+          C02_ERROR_CORPUS: ${{ runner.temp }}/${{ needs.go-checks.outputs.c02_corpus_name }}.json

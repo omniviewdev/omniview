@@ -17,3 +17,4 @@ allowBuilds:
   unrs-resolver: false
 patchedDependencies:
   '@wailsio/runtime@3.0.0-beta.34': patches/@wailsio__runtime@3.0.0-beta.34.patch
+  'monaco-editor@0.52.2': patches/monaco-editor@0.52.2.patch

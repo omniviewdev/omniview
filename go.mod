@@ -18,7 +18,7 @@ require (
 	github.com/hashicorp/go-plugin v1.7.0
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/nxadm/tail v1.4.11
-	github.com/omniviewdev/plugin-sdk v0.14.1-0.20261102063806-5de5e10c6ac6
+	github.com/omniviewdev/plugin-sdk v0.14.3-0.20261102171952-bdbbeb176fff
 	github.com/omniviewdev/registry v0.2.3
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10

@@ -60,6 +60,38 @@ func TestIntegration_DispenseProvider(t *testing.T) {
 	assert.Equal(t, request.Reference, result.Reference)
 }
 
+func TestDependencyOwnerStartupDoesNotAutoConnect(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	var starts atomic.Int32
+	mock := integrationProvider("pods")
+	mock.LoadConnectionsFunc = func(context.Context) ([]types.Connection, error) {
+		return []types.Connection{{ID: "configured", Name: "Configured", Lifecycle: types.ConnectionLifecycle{
+			AutoConnect: &types.ConnectionAutoConnect{Enabled: true, Triggers: []types.ConnectionAutoConnectTrigger{
+				types.ConnectionAutoConnectTriggerPluginStart, types.ConnectionAutoConnectTriggerConnectionDiscovered,
+			}},
+		}}}, nil
+	}
+	mock.StartConnectionFunc = func(_ context.Context, id string) (types.ConnectionStatus, error) {
+		starts.Add(1)
+		return types.ConnectionStatus{Status: types.ConnectionStatusConnected, Connection: &types.Connection{ID: id}}, nil
+	}
+	mock.WatchConnectionsFunc = func(ctx context.Context, _ chan<- []types.Connection) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	backend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": mock})
+	require.NoError(t, ctrl.OnPluginStartWithoutAutoConnect("owner", defaultMeta(), backend))
+	t.Cleanup(func() { require.NoError(t, ctrl.OnPluginStop("owner", defaultMeta())) })
+	connections, err := ctrl.ListConnections(testInvocationContext(), "owner")
+	require.NoError(t, err)
+	require.Len(t, connections, 1)
+	require.Never(t, func() bool { return starts.Load() != 0 }, 100*time.Millisecond, 10*time.Millisecond)
+	ctrl.PromoteDependencyStart("owner")
+	require.Eventually(t, func() bool { return starts.Load() == 1 }, time.Second, 10*time.Millisecond)
+	ctrl.PromoteDependencyStart("owner")
+	require.Never(t, func() bool { return starts.Load() != 1 }, 100*time.Millisecond, 10*time.Millisecond)
+}
+
 // Actual startup loads connections and establishes the optional browser.
 func TestIntegration_OnPluginStart_FullWiring(t *testing.T) {
 	ctrl, emitter := newTestControllerWithEmitter(t)

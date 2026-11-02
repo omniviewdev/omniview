@@ -1,3 +1,6 @@
+import { RESOURCE_EDITOR_EXTENSION_POINT } from './resource-editor';
+import { validateResourceEditorContribution } from '../extensions/resource-editor';
+
 /**
  * Context that can be passed to the registry to provide additional information to the matcher.
  * The context should generate a cache key that can be used to cache the results of the matcher
@@ -160,6 +163,10 @@ export class ExtensionPointStore<TValue = unknown, TContext = ExtensionRenderCon
    * Register a contribution. Throws if the contribution ID already exists.
    */
   register(contribution: ExtensionContributionRegistration<TValue>): void {
+    if (this.id === RESOURCE_EDITOR_EXTENSION_POINT) {
+      const error = validateResourceEditorContribution(contribution.value);
+      if (error) throw new Error(error);
+    }
     if (this._contributions.has(contribution.id)) {
       throw new Error(
         `Contribution with id "${contribution.id}" already exists in extension point "${this.id}"`,

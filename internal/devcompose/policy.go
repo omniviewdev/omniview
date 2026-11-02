@@ -31,8 +31,9 @@ var policyKeys = map[string]bool{
 var mergedMaps = map[string]bool{"catalog": true, "catalogs": true, "overrides": true, "packageExtensions": true, "peerDependencyRules": true, "allowBuilds": true, "patchedDependencies": true}
 
 type reconciledPolicy struct {
-	settings    map[string]any
-	inputHashes map[string]string
+	settings      map[string]any
+	inputHashes   map[string]string
+	sourcePatches map[string]map[string]string
 }
 
 // Reconciliation owns only its patch fingerprints; discovery remains unchanged.
@@ -41,6 +42,7 @@ func reconcile(w devcontract.ResolvedWorkspace, s sourceSet) (reconciledPolicy, 
 	out := map[string]any{}
 	owners := map[string]string{}
 	patches := sourceSet{hashes: map[string]string{}}
+	sourcePatches := map[string]map[string]string{}
 	apply := func(settings map[string]any, path string) error {
 		for _, key := range sortedKeys(settings) {
 			if key == "packages" {
@@ -49,6 +51,29 @@ func reconcile(w devcontract.ResolvedWorkspace, s sourceSet) (reconciledPolicy, 
 			value, err := normalizePolicySetting(w, key, settings[key], path, &patches)
 			if err != nil {
 				return err
+			}
+			if key == "patchedDependencies" {
+				origin := relative(w.Root, filepath.Dir(path))
+				declared := sourcePatches[origin]
+				if declared == nil {
+					declared = map[string]string{}
+					sourcePatches[origin] = declared
+				}
+				normalized := mapping(value)
+				effective := mapping(out[key])
+				for selector, value := range normalized {
+					patch := value.(string) // normalizePatchPaths admits only owned paths.
+					if prior, exists := declared[selector]; exists && prior != patch {
+						return refusal("patch declarations for one source conflict in %s", relative(w.Root, path))
+					}
+					declared[selector] = patch
+					// Independent sources retain their own path and fingerprint.
+					// Only identical validated bytes share an aggregate install path.
+					if prior, exists := effective[selector].(string); exists &&
+						len(patches.hashes[prior]) == 64 && patches.hashes[prior] == patches.hashes[patch] {
+						normalized[selector] = prior
+					}
+				}
 			}
 			if err := mergePolicySetting(out, owners, key, value, relative(w.Root, path)); err != nil {
 				return err
@@ -108,7 +133,7 @@ func reconcile(w devcontract.ResolvedWorkspace, s sourceSet) (reconciledPolicy, 
 	out["minimumReleaseAge"] = 1440
 	out["pmOnFail"] = "error"
 	out["sharedWorkspaceLockfile"] = true
-	return reconciledPolicy{settings: out, inputHashes: patches.hashes}, nil
+	return reconciledPolicy{settings: out, inputHashes: patches.hashes, sourcePatches: sourcePatches}, nil
 }
 
 // Normalize one source's concrete policy before comparing it with other roots.

@@ -26,6 +26,17 @@ func profileFenceFixture(t *testing.T) (*controller, *mockProvider, ResolvedRefe
 	return ctrl, provider, ref
 }
 
+func TestNoopConnectionRefreshDoesNotRetireBorrowedCalls(t *testing.T) {
+	ctrl, provider, _ := profileFenceFixture(t)
+	var retired atomic.Int32
+	ctrl.AddConnectionChangeHook(func(string, string) { retired.Add(1) })
+	_, err := ctrl.replayConnectionProfiles(testInvocationContext(), "plugin", []types.Connection{profileTestConnection("route", "A")})
+	require.NoError(t, err)
+	_, err = ctrl.refreshWatchedConnections(testInvocationContext(), "plugin", provider, ctrl.plugins["plugin"])
+	require.NoError(t, err)
+	require.Zero(t, retired.Load())
+}
+
 func fenceGet(ref ResolvedReference) HostGetRequest {
 	return HostGetRequest{TargetID: ref.TargetID, Request: resourcev2.GetRequest{Route: ref.Route, Reference: ref.Reference, Representation: ref.Representation}}
 }

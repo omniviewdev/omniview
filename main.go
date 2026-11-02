@@ -57,6 +57,7 @@ import (
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	sdkprofiling "github.com/omniviewdev/plugin-sdk/pkg/profiling"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
@@ -499,17 +500,24 @@ func main() {
 		mcpRelayStore = settingsStore
 	}
 	var windowService *window.Service
+	var borrowedConnections func(context.Context, string, string, bool) ([]sdktypes.Connection, error)
+	if borrower, ok := pluginManager.(interface {
+		BorrowedConnections(context.Context, string, string, bool) ([]sdktypes.Connection, error)
+	}); ok {
+		borrowedConnections = borrower.BorrowedConnections
+	}
 	mcpRelay := mcprelay.New(mcprelay.Options{
-		Log:         log,
-		Store:       mcpRelayStore,
-		Tools:       toolsController,
-		Connections: resourceController,
-		Version:     version.Version,
-		Authority:   mcpAuthority,
-		Boundary:    resourceBoundary,
-		Logs:        logsController,
-		Metrics:     metricController,
-		Graph:       relayGraph,
+		Log:                 log,
+		Store:               mcpRelayStore,
+		Tools:               toolsController,
+		Connections:         resourceController,
+		BorrowedConnections: borrowedConnections,
+		Version:             version.Version,
+		Authority:           mcpAuthority,
+		Boundary:            resourceBoundary,
+		Logs:                logsController,
+		Metrics:             metricController,
+		Graph:               relayGraph,
 		ShowConfirmation: func() error {
 			if windowService == nil {
 				return errors.New("Confirmation window is unavailable.")

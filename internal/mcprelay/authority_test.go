@@ -58,6 +58,46 @@ func TestAuthorityRevocationDuringConsentPreventsProviderCall(t *testing.T) {
 	require.Zero(t, calls)
 }
 
+func TestAuthorityUnrelatedCatalogChangeKeepsPendingConsent(t *testing.T) {
+	a, _, tool, ctx := authorityFixture(t)
+	bound, err := a.Bind(ctx, tool, "", []byte(`{}`))
+	require.NoError(t, err)
+	relay := &Relay{authority: a, pending: map[string]*pendingEntry{}, showConfirmation: func() error { return nil }}
+	requested := make(chan struct{})
+	a.SetAudit(func(event AuditEvent) {
+		if event.Outcome == "consent-requested" {
+			close(requested)
+		}
+	})
+	resolved := make(chan bool, 1)
+	go func() {
+		approved, _ := relay.awaitConfirmation(bound, PendingConfirmation{})
+		resolved <- approved
+	}()
+	<-requested
+	unrelated := ToolInfo{MCPName: "other_custom", PluginID: "other", Name: "custom", Scope: ScopePlugin, Status: StatusOK}
+	a.UpdateCatalog([]ToolInfo{tool, unrelated})
+	pending := relay.ListPendingConfirmations()
+	require.Len(t, pending, 1)
+	require.NoError(t, relay.ResolveConfirmation(pending[0].ID, true))
+	require.True(t, <-resolved)
+	require.NoError(t, a.Approve(bound))
+
+	boundary := invocation.NewBoundary(a)
+	effects := 0
+	require.NoError(t, a.Dispatch(bound, func(callCtx context.Context) error {
+		_, err := boundary.Admit(callCtx, "tools.call", invocation.Target{Provider: tool.PluginID, Action: tool.Name})
+		if err != nil {
+			return err
+		}
+		effects++
+		_, err = boundary.Admit(callCtx, "tools.call", invocation.Target{Provider: unrelated.PluginID, Action: unrelated.Name})
+		require.Error(t, err, "an unrelated catalog addition must not extend the admitted target")
+		return nil
+	}))
+	require.Equal(t, 1, effects)
+}
+
 func TestAuthorityRetirementInvalidatesConsentAndLateResults(t *testing.T) {
 	for _, change := range []string{"stop", "credential", "catalog", "policy"} {
 		t.Run(change, func(t *testing.T) {

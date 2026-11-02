@@ -169,6 +169,12 @@ or environment variables.
 
 Browser mode starts the real Wails server. Use `instance.endpoints.browser`, **not** the asset-only Vite URL. `--live-frontend=false` serves built assets instead of launching host Vite. `--watch=false` disables the supervisor build graph; otherwise its lifetime owns serial source rebuilds and real managed-generation waits. Runtime/shim changes restart actual consumers; a successful compiler exit alone is not plugin readiness.
 
+Managed plugins follow their declared `requires.connections` dependencies.
+The supervisor links selected owners before their consumers.
+A dependency cycle stops startup before the first plugin link.
+The host still checks installed owners and grants.
+The host retains its existing connection-start policy.
+
 Host native build inputs, including C/cgo, C++, Objective-C, headers, Fortran,
 assembly, SWIG and object files, enter the owned host rebuild path on addition,
 content edit or removal, including with live frontend enabled. JavaScript and
@@ -195,6 +201,18 @@ For a desktop window, choose `--mode native`. Native MCP additionally requires `
 ## Endpoints, ports and context
 
 Inspection separates lifecycle phase, build stages, the authenticated `instance` descriptor and externally owned `services`. Host/control readiness is verified against the exact UUID, generation, selected state root, selected host source and captured process identity. Browser HTML must contain the selected safe boot identity. Vite/HMR require the actual owned listener plus a real authenticated websocket `connected` frame; `services.vite.hmr` retains the observed HMR path, not a guessed HTTP-to-WS conversion. Host descriptor endpoint fields remain null until their own actual observation succeeds.
+
+Live status uses bounded, nested deadlines:
+
+| Stage | Deadline |
+| --- | --- |
+| Supervisor observation | 15 seconds |
+| Supervisor client | 20 seconds |
+| Vite child CLI | 30 seconds |
+| Browser fetch | 35 seconds |
+
+Each caller leaves time for its inner operation and response.
+A timeout never proves readiness.
 
 Plugin RPC readiness comes from the observed managed lifecycle. Its go-plugin handshake transport can be a private Unix socket and is deliberately not a public agent target. Agents use the canonical authenticated control endpoint, never a fabricated plugin TCP address. Frontend-only or backend-only capabilities retain truthful not-applicable stages; unsupported plugins fail rather than being silently skipped.
 

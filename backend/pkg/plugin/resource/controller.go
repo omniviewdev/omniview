@@ -84,22 +84,25 @@ type Controller interface {
 
 // pluginState holds per-plugin runtime state.
 type pluginState struct {
-	provider          ResourceProvider
-	version           int
-	cancel            context.CancelFunc
-	ctx               context.Context
-	generationID      string
-	features          resource.FeatureSet
-	featuresReady     bool
-	sourceEpoch       map[string]uint64
-	sourceChanging    map[string]bool
-	catalogBindings   map[string]catalogBindingState
-	crashOnce         sync.Once
-	closeOnce         sync.Once
-	closeErr          error
-	metadata          map[string]HostConnectionMetadata
-	metadataAvailable bool
-	metadataEpoch     uint64
+	provider                 ResourceProvider
+	version                  int
+	cancel                   context.CancelFunc
+	ctx                      context.Context
+	generationID             string
+	features                 resource.FeatureSet
+	featuresReady            bool
+	sourceEpoch              map[string]uint64
+	sourceChanging           map[string]bool
+	borrowableStarts         map[string]uint64
+	connectionLifecycleEpoch map[string]uint64
+	catalogBindings          map[string]catalogBindingState
+	crashOnce                sync.Once
+	closeOnce                sync.Once
+	closeErr                 error
+	metadata                 map[string]HostConnectionMetadata
+	metadataAvailable        bool
+	metadataEpoch            uint64
+	suppressAutoConnect      bool
 }
 
 func (s *pluginState) closeSource(provider ResourceProvider) error {
@@ -130,6 +133,7 @@ type controller struct {
 	profilesMu           sync.Mutex
 	profileNative        map[string][]types.Connection
 	connectionChangeHook func(pluginID, connectionID string) func()
+	connectionRetireHook func(pluginID, connectionID string)
 
 	autoConnectMu       sync.Mutex
 	autoConnectAttempts map[string]string
@@ -272,6 +276,15 @@ func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
 }
 
 func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend plugintypes.PluginBackend) (retErr error) {
+	return c.onPluginStart(pluginID, backend, true)
+}
+
+// OnPluginStartWithoutAutoConnect starts a required owner backend without starting connections.
+func (c *controller) OnPluginStartWithoutAutoConnect(pluginID string, _ config.PluginMeta, backend plugintypes.PluginBackend) error {
+	return c.onPluginStart(pluginID, backend, false)
+}
+
+func (c *controller) onPluginStart(pluginID string, backend plugintypes.PluginBackend, autoConnect bool) (retErr error) {
 	defer c.notifyInventory()
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginStart")
@@ -288,6 +301,7 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 
 	state := &pluginState{
 		version: version, cancel: watchCancel, ctx: watchCtx, generationID: uuid.NewString(),
+		suppressAutoConnect: !autoConnect,
 	}
 	c.pluginsMu.RLock()
 	existing := c.plugins[pluginID]
@@ -392,7 +406,9 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 			logger.Errorw(watchCtx, "failed to load connections", "error", loadErr)
 		} else if len(conns) > 0 {
 			c.emitter.Emit(pluginID+"/connection/sync", c.getConnections(pluginID))
-			c.scheduleAutoConnect(pluginID, conns, types.ConnectionAutoConnectTriggerPluginStart)
+			if autoConnect {
+				c.scheduleAutoConnect(pluginID, conns, types.ConnectionAutoConnectTriggerPluginStart)
+			}
 		}
 	}
 	if features.Has(resource.FeatureRelationships) {
@@ -572,15 +588,28 @@ func (c *controller) StartConnection(ctx context.Context, pluginID, connectionID
 	ctx, span := tracer.Start(ctx, "resource.StartConnection")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
+	startGeneration, startEpoch, err := c.captureBorrowableStart(pluginID, connectionID)
+	if err != nil {
+		if _, lifecycleErr := c.getLifecycle(ctx, pluginID); lifecycleErr != nil {
+			return types.ConnectionStatus{}, lifecycleErr
+		}
+		return types.ConnectionStatus{}, err
+	}
 	provider, err := c.getLifecycle(ctx, pluginID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
+		return types.ConnectionStatus{}, err
+	}
+	if err := c.checkBorrowableStart(ctx, pluginID, connectionID, startGeneration, startEpoch); err != nil {
 		return types.ConnectionStatus{}, err
 	}
 
 	conn, err := provider.StartConnection(ctx, connectionID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
+		return types.ConnectionStatus{}, err
+	}
+	if err := c.checkBorrowableStart(ctx, pluginID, connectionID, startGeneration, startEpoch); err != nil {
 		return types.ConnectionStatus{}, err
 	}
 
@@ -611,6 +640,11 @@ func (c *controller) StartConnection(ctx context.Context, pluginID, connectionID
 			c.sources.closeInventory(pluginID, connectionID)
 			return conn, err
 		}
+		if conn.Connection != nil && conn.Connection.ID == connectionID {
+			if err := c.commitBorrowableStart(ctx, pluginID, connectionID, startGeneration, startEpoch); err != nil {
+				return types.ConnectionStatus{}, err
+			}
+		}
 	}
 
 	return conn, nil
@@ -624,6 +658,7 @@ func (c *controller) StopConnection(ctx context.Context, pluginID, connectionID 
 		return _result, admissionErr
 	}
 	defer finishResource(ctx, &retErr)
+	c.retireConnectionCalls(pluginID, connectionID)
 	c.profilesMu.Lock()
 	defer c.profilesMu.Unlock()
 	if release := c.beginMetricConnectionChange(pluginID, connectionID); release != nil {
@@ -995,11 +1030,37 @@ func (c *controller) listenForConnectionEvents(ctx context.Context, pluginID str
 	}
 }
 
+// PromoteDependencyStart restores the user's normal auto-connect policy once
+// an explicitly requested plugin adopts an already-running dependency backend.
+func (c *controller) PromoteDependencyStart(pluginID string) {
+	c.pluginsMu.Lock()
+	state := c.plugins[pluginID]
+	promote := state != nil && state.suppressAutoConnect && state.ctx != nil && state.ctx.Err() == nil
+	if promote {
+		state.suppressAutoConnect = false
+	}
+	c.pluginsMu.Unlock()
+	if !promote {
+		return
+	}
+	c.connsMu.RLock()
+	connections := append([]types.Connection(nil), c.connections[pluginID]...)
+	c.connsMu.RUnlock()
+	c.scheduleAutoConnect(pluginID, connections, types.ConnectionAutoConnectTriggerPluginStart)
+}
+
 func (c *controller) scheduleAutoConnect(
 	pluginID string,
 	conns []types.Connection,
 	trigger types.ConnectionAutoConnectTrigger,
 ) {
+	c.pluginsMu.RLock()
+	state := c.plugins[pluginID]
+	suppressed := state != nil && state.suppressAutoConnect
+	c.pluginsMu.RUnlock()
+	if suppressed {
+		return
+	}
 	for _, conn := range conns {
 		conn := conn
 		auto := conn.Lifecycle.AutoConnect

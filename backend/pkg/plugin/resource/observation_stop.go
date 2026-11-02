@@ -9,6 +9,10 @@ func (c *controller) fenceStoppedRoute(pluginID, connection string) (func(), err
 		c.pluginsMu.Unlock()
 		return nil, err
 	}
+	if generation.connectionLifecycleEpoch == nil {
+		generation.connectionLifecycleEpoch = make(map[string]uint64)
+	}
+	generation.connectionLifecycleEpoch[connection]++
 	if generation.sourceChanging == nil {
 		generation.sourceChanging = make(map[string]bool)
 	}

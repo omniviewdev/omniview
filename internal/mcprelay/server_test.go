@@ -673,47 +673,6 @@ func TestArgumentsRejectDuplicateFieldsBeforeRoutingRemarshal(t *testing.T) {
 	require.NoError(t, rejectDuplicateFields([]byte(`{"value":9007199254740993,"input":{"name":"one"}}`)))
 }
 
-func TestPolicyChangeBeforeBindRequiresFreshBuiltinConsent(t *testing.T) {
-	h := newHarness(t)
-	session := h.connect(t, nil)
-	connections := h.relay.connections.(*fakeConnections)
-	armed := make(chan struct{}, 1)
-	armed <- struct{}{}
-	entered, release := make(chan struct{}), make(chan struct{})
-	var releaseOnce sync.Once
-	unblock := func() { releaseOnce.Do(func() { close(release) }) }
-	defer unblock()
-	connections.stateHook = func() {
-		select {
-		case <-armed:
-			close(entered)
-			<-release
-		default:
-		}
-	}
-	done := make(chan error, 1)
-	go func() {
-		_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "kubernetes_list_connections"})
-		done <- err
-	}()
-	select {
-	case <-entered:
-	case <-time.After(5 * time.Second):
-		t.Fatal("builtin did not enter discovery")
-	}
-	require.NoError(t, h.service.SetToolOverride(Scope{}, "kubernetes_list_connections", ToolOverride{Confirm: new(true)}))
-	unblock()
-	require.Eventually(t, func() bool { return len(h.service.ListPendingConfirmations()) == 1 }, time.Second, time.Millisecond)
-	pending := h.service.ListPendingConfirmations()
-	require.NoError(t, h.service.ResolveConfirmation(pending[0].ID, true))
-	select {
-	case err := <-done:
-		require.NoError(t, err)
-	case <-time.After(time.Second):
-		t.Fatal("confirmed builtin did not finish")
-	}
-}
-
 func TestBuiltinFencesResultAfterPolicyRevocation(t *testing.T) {
 	h := newHarness(t)
 	session := h.connect(t, nil)

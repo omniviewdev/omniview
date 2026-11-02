@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
 	"github.com/omniviewdev/omniview/internal/version"
 	regclient "github.com/omniviewdev/registry"
+	"golang.org/x/mod/semver"
 )
 
 // AvailablePlugin represents a plugin from the marketplace, enriched with
@@ -39,13 +42,16 @@ type AvailablePlugin struct {
 
 // VersionInfo represents a plugin version for the frontend.
 type VersionInfo struct {
-	Version       string   `json:"version"`
-	Description   string   `json:"description"`
-	Changelog     string   `json:"changelog"`
-	MinIDEVersion string   `json:"min_ide_version"`
-	MaxIDEVersion string   `json:"max_ide_version"`
-	Capabilities  []string `json:"capabilities"`
-	CreatedAt     string   `json:"created_at"`
+	Version             string   `json:"version"`
+	Description         string   `json:"description"`
+	Changelog           string   `json:"changelog"`
+	MinIDEVersion       string   `json:"min_ide_version"`
+	MaxIDEVersion       string   `json:"max_ide_version"`
+	Capabilities        []string `json:"capabilities"`
+	CreatedAt           string   `json:"created_at"`
+	Compatible          bool     `json:"compatible"`
+	CompatibilityReason string   `json:"compatibility_reason"`
+	DiscoverySupported  bool     `json:"discovery_supported"`
 }
 
 // Review represents a plugin review for the frontend.
@@ -74,6 +80,7 @@ type DailyStat struct {
 
 // Client wraps the registry client with convenience methods for the desktop app.
 type Client struct {
+	mu      sync.RWMutex
 	inner   *regclient.Client
 	baseURL string // tracks the current API URL so we can detect changes
 }
@@ -89,6 +96,8 @@ func NewClient(baseURL string) *Client {
 // SetBaseURL replaces the underlying client with one pointing at a new API URL.
 // No-op if the URL hasn't changed.
 func (c *Client) SetBaseURL(baseURL string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if baseURL == c.baseURL {
 		return
 	}
@@ -98,7 +107,15 @@ func (c *Client) SetBaseURL(baseURL string) {
 
 // BaseURL returns the current marketplace API URL.
 func (c *Client) BaseURL() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.baseURL
+}
+
+func (c *Client) snapshot() *regclient.Client {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.inner
 }
 
 func newRegistryClient(baseURL string) *regclient.Client {
@@ -129,6 +146,12 @@ type compatibilityTransport struct {
 
 type artifactRequestKey struct{}
 
+type versionDiscoveryKey struct{}
+
+type versionDiscovery struct {
+	supported bool
+}
+
 // Each DownloadPlugin call resolves one artifact URL before fetching it.
 type artifactRequest struct {
 	url string
@@ -145,8 +168,15 @@ func (t *compatibilityTransport) RoundTrip(req *http.Request) (*http.Response, e
 	clone := req.Clone(req.Context())
 	query := clone.URL.Query()
 	query.Set("ide_version", version.CompatibilityVersion)
+	discovery, _ := req.Context().Value(versionDiscoveryKey{}).(*versionDiscovery)
+	if discovery != nil && req.Method == http.MethodGet && strings.HasSuffix(req.URL.Path, "/versions") {
+		query.Set("include_incompatible", "true")
+	}
 	clone.URL.RawQuery = query.Encode()
 	resp, err := t.next.RoundTrip(clone)
+	if err == nil && discovery != nil {
+		discovery.supported = resp.Header.Get("X-Omniview-Incompatible-Versions") == "true"
+	}
 	if err == nil && artifact != nil &&
 		(resp.StatusCode == http.StatusFound || resp.StatusCode == http.StatusTemporaryRedirect) {
 		artifact.url = resp.Header.Get("Location")
@@ -208,9 +238,10 @@ func (c *Client) fetchAllPlugins(ctx context.Context, opts *regclient.ListOption
 		opts.Page = 1
 	}
 
+	inner := c.snapshot()
 	var all []AvailablePlugin
 	for {
-		result, err := c.inner.ListPlugins(ctx, opts)
+		result, err := inner.ListPlugins(ctx, opts)
 		if err != nil {
 			return nil, fmt.Errorf("listing plugins (page %d): %w", opts.Page, err)
 		}
@@ -247,7 +278,7 @@ func (c *Client) SearchPlugins(ctx context.Context, query, category, sort string
 
 // GetPluginReadme fetches the readme for a plugin.
 func (c *Client) GetPluginReadme(ctx context.Context, pluginID string) (string, error) {
-	p, err := c.inner.GetPlugin(ctx, pluginID)
+	p, err := c.snapshot().GetPlugin(ctx, pluginID)
 	if err != nil {
 		return "", fmt.Errorf("getting plugin readme: %w", err)
 	}
@@ -256,37 +287,66 @@ func (c *Client) GetPluginReadme(ctx context.Context, pluginID string) (string, 
 
 // GetPluginVersions fetches version history for a plugin.
 func (c *Client) GetPluginVersions(ctx context.Context, pluginID string) ([]VersionInfo, error) {
-	result, err := c.inner.ListVersions(ctx, pluginID, &regclient.ListOptions{
-		Page:           0,
-		PerPage:        pluginsPageSize,
-		OrderField:     "",
-		OrderDirection: "",
-		Search:         "",
-		Category:       "",
-		Featured:       false,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("listing plugin versions: %w", err)
-	}
-
-	versions := make([]VersionInfo, len(result.Items))
-	for i, v := range result.Items {
-		versions[i] = VersionInfo{
-			Version:       v.Version,
-			Description:   v.Description,
-			Changelog:     v.Changelog,
-			MinIDEVersion: v.MinIDEVersion,
-			MaxIDEVersion: v.MaxIDEVersion,
-			Capabilities:  v.Capabilities,
-			CreatedAt:     v.CreatedAt.Format("2006-01-02T15:04:05Z"),
+	discovery := &versionDiscovery{}
+	ctx = context.WithValue(ctx, versionDiscoveryKey{}, discovery)
+	inner := c.snapshot()
+	opts := &regclient.ListOptions{Page: 1, PerPage: pluginsPageSize}
+	versions := make([]VersionInfo, 0)
+	for {
+		result, err := inner.ListVersions(ctx, pluginID, opts)
+		if err != nil {
+			return nil, fmt.Errorf("listing plugin versions (page %d): %w", opts.Page, err)
 		}
+		for _, v := range result.Items {
+			reason := compatibilityReason(v.MinIDEVersion, v.MaxIDEVersion)
+			versions = append(versions, VersionInfo{
+				Version:             v.Version,
+				Description:         v.Description,
+				Changelog:           v.Changelog,
+				MinIDEVersion:       v.MinIDEVersion,
+				MaxIDEVersion:       v.MaxIDEVersion,
+				Capabilities:        v.Capabilities,
+				CreatedAt:           v.CreatedAt.Format("2006-01-02T15:04:05Z"),
+				Compatible:          reason == "",
+				CompatibilityReason: reason,
+				DiscoverySupported:  discovery.supported,
+			})
+		}
+		if result.Pagination == nil || opts.Page >= int(result.Pagination.TotalPages) {
+			break
+		}
+		opts.Page++
 	}
+	sort.SliceStable(versions, func(i, j int) bool {
+		return semver.Compare("v"+versions[i].Version, "v"+versions[j].Version) > 0
+	})
 	return versions, nil
+}
+
+func compatibilityReason(minimum, maximum string) string {
+	host := "v" + version.CompatibilityVersion
+	min, max := "v"+minimum, "v"+maximum
+	if (minimum != "" && !validCompatibilityBound(minimum)) || (maximum != "" && !validCompatibilityBound(maximum)) ||
+		(minimum != "" && maximum != "" && semver.Compare(min, max) > 0) {
+		return "Plugin declares invalid IDE compatibility bounds."
+	}
+	if minimum != "" && semver.Compare(host, min) < 0 {
+		return "Update Omniview to " + minimum + " or newer."
+	}
+	if maximum != "" && semver.Compare(host, max) > 0 {
+		return "Plugin supports Omniview " + maximum + " or older."
+	}
+	return ""
+}
+
+func validCompatibilityBound(bound string) bool {
+	core := strings.SplitN(strings.SplitN(bound, "-", 2)[0], "+", 2)[0]
+	return strings.Count(core, ".") == 2 && semver.IsValid("v"+bound)
 }
 
 // GetPluginReviews fetches reviews for a plugin.
 func (c *Client) GetPluginReviews(ctx context.Context, pluginID string, page int) ([]Review, error) {
-	result, err := c.inner.ListReviews(ctx, pluginID, &regclient.ListOptions{
+	result, err := c.snapshot().ListReviews(ctx, pluginID, &regclient.ListOptions{
 		Page:           page,
 		PerPage:        reviewsPageSize,
 		OrderField:     "",
@@ -315,7 +375,7 @@ func (c *Client) GetPluginReviews(ctx context.Context, pluginID string, page int
 
 // GetPluginDownloadStats fetches download statistics.
 func (c *Client) GetPluginDownloadStats(ctx context.Context, pluginID string) (*DownloadStats, error) {
-	daily, err := c.inner.GetDailyDownloads(ctx, pluginID, downloadStatsDays)
+	daily, err := c.snapshot().GetDailyDownloads(ctx, pluginID, downloadStatsDays)
 	if err != nil {
 		return nil, fmt.Errorf("getting download stats: %w", err)
 	}
@@ -340,5 +400,5 @@ func (c *Client) GetPluginDownloadStats(ctx context.Context, pluginID string) (*
 // Returns the path to the downloaded temp file.
 func (c *Client) DownloadPlugin(ctx context.Context, pluginID, version string) (string, error) {
 	ctx = context.WithValue(ctx, artifactRequestKey{}, &artifactRequest{})
-	return c.inner.DownloadPlugin(ctx, pluginID, version)
+	return c.snapshot().DownloadPlugin(ctx, pluginID, version)
 }
