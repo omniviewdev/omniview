@@ -15,7 +15,7 @@ env:
   NODE_VERSION: "26.13.0"
   GOWORK: "off"
   GOFLAGS: ""
-  REVIEWED_SDK_REVISION: 3074503b736130483dcbd2e2c7163667a320331b # Reviewed SDK v0.14.1
+  REVIEWED_SDK_REVISION: 0597ff45586b45e3a57fe7ac86194ce96884c7ef # Reviewed SDK v0.14.2; source binding fix in plugin-sdk#42
 
 jobs:
   production-profile:

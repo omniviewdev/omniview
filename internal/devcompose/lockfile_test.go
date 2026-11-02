@@ -58,7 +58,7 @@ func TestNativeScalarPatchLineEndingHash(t *testing.T) {
 			originalFingerprint := reconciled.inputHashes[patchPath]
 			dst := map[string]any{}
 			src := map[string]any{"patchedDependencies": map[string]any{"exact@1.2.3": lockedHash}}
-			mergeErr := mergeLockedPatches(w, dst, src, reconciled.settings, reconciled.inputHashes, filepath.Join(w.Root, "omniview/pnpm-lock.yaml"))
+			mergeErr := mergeLockedPatches(w, dst, src, reconciled.settings, reconciled.inputHashes, reconciled.sourcePatches, filepath.Join(w.Root, "omniview/pnpm-lock.yaml"))
 			if mergeErr != nil {
 				t.Fatalf("declared %s patch with native LF hash refused: %v", tc.name, mergeErr)
 			}
@@ -149,7 +149,10 @@ func TestLockSeedNative12ScalarPatchRequiresOwnedSource(t *testing.T) {
 			removeDeclaration(t, w)
 			declareForeignPatch(t, w)
 		}, wantErr: true},
-		{name: "conflicting-policy", prepare: declareForeignPatch, wantErr: true},
+		{name: "conflicting-policy", prepare: func(t *testing.T, w devcontract.ResolvedWorkspace) {
+			declareForeignPatch(t, w)
+			put(t, w.Root, "plugin-a/patches/exact.patch", scalarPatchLF+"# conflicting bytes\n")
+		}, wantErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			patch := scalarPatchLF
@@ -245,7 +248,7 @@ func TestNativeScalarPatchRequiresRawSourceAuthority(t *testing.T) {
 			}
 			tc.change(t, w, &reconciled)
 			src := map[string]any{"patchedDependencies": map[string]any{"exact@1.2.3": nativeHash}}
-			mergeErr := mergeLockedPatches(w, map[string]any{}, src, reconciled.settings, reconciled.inputHashes, filepath.Join(w.Root, "omniview/pnpm-lock.yaml"))
+			mergeErr := mergeLockedPatches(w, map[string]any{}, src, reconciled.settings, reconciled.inputHashes, reconciled.sourcePatches, filepath.Join(w.Root, "omniview/pnpm-lock.yaml"))
 			if mergeErr == nil {
 				t.Fatal("native scalar accepted missing or changed raw-byte source authority")
 			}

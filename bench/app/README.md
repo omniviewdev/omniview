@@ -27,8 +27,9 @@ Older plugin archives built against MUI or legacy UI contracts are incompatible.
 The Logs scenario selects a container from the opened Logs submenu, not from the
 parent action list. Adding actions such as Debug must not change which workload
 is measured; line counts, scrolling, drawer toggles, and run counts stay unchanged.
-The drawer workload uses controls inside the active bottom drawer.
-Sidebar tree controls can also have the `Expand` label.
+Drawer toggles use the log viewer's bottom-drawer strip, never a document-wide
+Expand/Minimize label or button position. Sidebar tree controls may share those
+labels; every measured toggle must still change the drawer's actual height.
 
 The Pod scenario opens the native page from a 5k-pod corpus, then scrolls up to
 30 viewport steps within that page. Current V2 Kubernetes requests 256 records per native page. Fixtures
@@ -46,8 +47,8 @@ CI reads the checked-out host's `e2e/source-cohort.json`, with full commit strin
 for `plugin-sdk`, `ui`, and `kubernetes`. UI and Kubernetes checkouts use validated
 cohort outputs; Kubernetes must match the host's `plugins/kubernetes` gitlink.
 The SDK entry must equal the independently reviewed release pinned explicitly in
-the candidate workflows: SDK v0.14.1,
-`3074503b736130483dcbd2e2c7163667a320331b`. The original isolation ancestry minimum remains
+the candidate workflows: SDK v0.14.2,
+`0597ff45586b45e3a57fe7ac86194ce96884c7ef`. The original isolation ancestry minimum remains
 `5b3ef764d1cf738835a723a749a0cb6c45f85e44`. The connection-sharing release advances the
 reviewed isolation checkpoint to SDK v0.13.0 after independent
 security review of the five protected files.
@@ -107,7 +108,7 @@ candidate sources. Explicit direct-CLI `UI_SOURCE_REF` or
 `KUBERNETES_SOURCE_REF` values must still match the selected cohort.
 The Kubernetes gitlink must also match. Commits must be reachable by checkout,
 but candidate testing does not require a module or npm publication.
-Candidate workflows pin the independently reviewed SDK v0.14.1 release commit in
+Candidate workflows pin the independently reviewed SDK v0.14.2 release commit in
 `REVIEWED_SDK_REVISION`; they do not read repository variables for SDK approval.
 Keep repository variables unchanged: neither the resource-v2 approval variable nor
 the legacy `OMNIVIEW_E2E_REVIEWED_SDK_REVISION` selects this candidate's SDK.
