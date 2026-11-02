@@ -6,21 +6,27 @@ type Props = {
   open: boolean;
   onClose: () => void;
   name: string;
-  uninstall: () => void;
+  uninstall: () => Promise<void>;
   devMode?: boolean;
 };
 
 const UninstallPluginModal: React.FC<Props> = ({ open, name, uninstall, onClose, devMode }) => {
   const [uninstalling, setUninstalling] = React.useState(false);
 
-  const handleUninstall = () => {
+  const handleUninstall = async () => {
     setUninstalling(true);
-    uninstall();
-    onClose();
+    try {
+      await uninstall();
+      onClose();
+    } catch {
+      // Structured runtime handler reports failure; keep dialog open for retry.
+    } finally {
+      setUninstalling(false);
+    }
   };
 
   return (
-    <Dialog open={open} onClose={onClose} size='sm'>
+    <Dialog open={open} onClose={() => { if (!uninstalling) onClose(); }} size='sm'>
       <Dialog.Title>
         Uninstall {name}?
       </Dialog.Title>
@@ -28,7 +34,7 @@ const UninstallPluginModal: React.FC<Props> = ({ open, name, uninstall, onClose,
         <Text size='sm' tone='muted'>
           {devMode
             ? 'This will stop the dev server and remove the plugin metadata.'
-            : 'This will remove the plugin and all associated data.'}
+            : 'This will stop and remove the plugin. Connections using this plugin will be unavailable.'}
         </Text>
       </Dialog.Body>
       <Dialog.Footer>
@@ -45,7 +51,7 @@ const UninstallPluginModal: React.FC<Props> = ({ open, name, uninstall, onClose,
           variant='solid'
           color='danger'
           size='sm'
-          onClick={handleUninstall}
+          onClick={() => { void handleUninstall(); }}
           disabled={uninstalling}
         >
           {uninstalling ? <Spinner size='sm' /> : 'Uninstall'}

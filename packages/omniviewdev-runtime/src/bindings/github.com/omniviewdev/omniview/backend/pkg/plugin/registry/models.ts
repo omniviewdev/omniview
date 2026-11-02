@@ -229,6 +229,9 @@ export class VersionInfo {
     "max_ide_version": string;
     "capabilities": string[];
     "created_at": string;
+    "compatible": boolean;
+    "compatibility_reason": string;
+    "discovery_supported": boolean;
 
     /** Creates a new VersionInfo instance. */
     constructor($$source: Partial<VersionInfo> = {}) {
@@ -252,6 +255,15 @@ export class VersionInfo {
         }
         if (!("created_at" in $$source)) {
             this["created_at"] = "";
+        }
+        if (!("compatible" in $$source)) {
+            this["compatible"] = false;
+        }
+        if (!("compatibility_reason" in $$source)) {
+            this["compatibility_reason"] = "";
+        }
+        if (!("discovery_supported" in $$source)) {
+            this["discovery_supported"] = false;
         }
 
         Object.assign(this, $$source);

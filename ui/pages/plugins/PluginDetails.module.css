@@ -128,3 +128,47 @@
 .RatingValue {
   font-weight: 700;
 }
+
+.InstallCard {
+  padding: var(--ov-space-4);
+  margin: var(--ov-space-4);
+  border: 1px solid var(--ov-color-border-muted);
+  border-radius: var(--ov-radius-md);
+  background: var(--ov-color-bg-surface);
+  flex-shrink: 0;
+}
+
+.InstallSummary {
+  flex: 1;
+  min-width: 160px;
+}
+
+.VersionList {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--ov-color-border-muted);
+  border-radius: var(--ov-radius-md);
+}
+
+.VersionRow {
+  display: grid;
+  grid-template-columns: auto minmax(110px, 1fr) minmax(160px, 1.5fr);
+  align-items: center;
+  gap: var(--ov-space-3);
+  padding: var(--ov-space-3);
+  border-bottom: 1px solid var(--ov-color-border-muted);
+  cursor: pointer;
+}
+
+.VersionRow:last-child {
+  border-bottom: 0;
+}
+
+.VersionRow:has(input:checked) {
+  background: var(--ov-color-bg-surface);
+}
+
+.VersionRow:focus-within {
+  outline: 2px solid var(--ov-color-border-focus);
+  outline-offset: -2px;
+}

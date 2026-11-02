@@ -18,6 +18,7 @@ import markdownStyles from './PluginMarkdown.module.css';
 import styles from './PluginDetails.module.css';
 import { orFallback } from '@/utils/orFallback';
 import { connectionProfilesPath } from '@/features/workspace/pagePaths';
+import { orderedVersions } from './versionPolicy';
 
 const TABS = [
   { key: 'overview', label: 'Overview' },
@@ -31,8 +32,10 @@ const PluginDetails: FC = () => {
   const { activeTheme } = useTheme();
   const navigate = useNavigate();
   const { plugins, available } = usePluginManager();
-  const { readme, reviews, releaseHistory, uninstall } = usePlugin({ id });
   const [activeTab, setActiveTab] = useState('overview');
+  const { readme, reviews, releaseHistory, uninstall, reload, operation } = usePlugin({
+    id, tab: activeTab, installed: false,
+  });
   const [uninstallModalOpen, setUninstallModalOpen] = useState(false);
 
   const installed = plugins.data?.find(p => p.id === id);
@@ -48,6 +51,12 @@ const PluginDetails: FC = () => {
   const displayLicense = orFallback(orFallback(marketplace?.license, (installed?.metadata as any)?.license), '');
   const displayRepository = orFallback(orFallback(marketplace?.repository, installed?.metadata?.repository), '');
 
+  if (plugins.isLoading || available.isLoading) {
+    return <div className={styles.NotFound} role='status'>Loading plugin…</div>;
+  }
+  if (!marketplace && !installed && (plugins.isError || available.isError)) {
+    return <div className={styles.NotFound} role='alert'>Could not load plugin. <Button onClick={() => { void plugins.refetch(); void available.refetch(); }}>Retry</Button></div>;
+  }
   if (!marketplace && !installed) {
     return (
       <div className={styles.NotFound}>
@@ -133,22 +142,19 @@ const PluginDetails: FC = () => {
           </Stack>
         </div>
 
-        {/* Install/Update/Uninstall buttons */}
+        <details>
+          <summary>Plugin tools</summary>
         <Stack direction='row' spacing={2} className={styles.HeaderActions}>
           <Button variant='outline' size='sm' onClick={() => {
             void navigate(`/developer-tools/extensions?plugin=${encodeURIComponent(id)}`); 
           }}>Inspect contributions</Button>
-          <PluginUpdateButton
-            pluginID={id}
-            installed={!!installed}
-            currentVersion={installed?.metadata?.version ?? ''}
-          />
           {!!installed && <Button variant="outline" size="sm" onClick={(): void | Promise<void> => navigate(connectionProfilesPath(id))}>Connection profiles</Button>}
           {!!installed && (
             <Button
               variant='outline'
               color='danger'
               size='sm'
+              disabled={!!operation}
               onClick={() => {
                 setUninstallModalOpen(true); 
               }}
@@ -157,7 +163,14 @@ const PluginDetails: FC = () => {
             </Button>
           )}
         </Stack>
+        </details>
       </div>
+          <PluginUpdateButton
+            key={id}
+            pluginID={id}
+            installed={!!installed}
+            currentVersion={installed?.metadata?.version ?? ''}
+          />
 
       <UninstallPluginModal
         open={uninstallModalOpen}
@@ -166,13 +179,17 @@ const PluginDetails: FC = () => {
         }}
         name={displayName}
         devMode={!!installed?.devMode}
-        uninstall={() => {
-          void uninstall().then(() => {
-            void navigate('/plugins');
-          });
+        uninstall={async () => {
+          await uninstall();
+          void navigate('/plugins');
         }}
       />
 
+      {installed && <Stack direction='row' spacing={2} align='center'>
+        <Text size='sm' role='status'>{operation ?? `Startup: ${installed.phase}`}</Text>
+        {installed.lastError && <Text size='sm' role='alert'>{installed.lastError}</Text>}
+        {installed.phase !== 'Running' && <Button size='sm' variant='outline' disabled={!!operation} onClick={() => { void reload().catch(() => undefined); }}>Retry startup</Button>}
+      </Stack>}
       {/* Tabs */}
       <Tabs.Root
         value={activeTab}
@@ -191,7 +208,7 @@ const PluginDetails: FC = () => {
         </Tabs.List>
         <div className={styles.TabContent}>
           <Tabs.Panel value='overview'>
-            {readme.isLoading ? (
+            {readme.isError ? <Text role='alert'>Could not load readme. <button type='button' onClick={() => void readme.refetch()}>Retry</button></Text> : readme.isLoading ? (
               <Text as='p' size='sm' tone='muted' className={styles.PaddedText}>Loading readme...</Text>
             ) : readme.data ? (
               <div data-color-mode={activeTheme.appearance} className={markdownStyles.Markdown}>
@@ -206,11 +223,11 @@ const PluginDetails: FC = () => {
           </Tabs.Panel>
 
           <Tabs.Panel value='versions'>
-            {releaseHistory.isLoading ? (
+            {releaseHistory.isError ? <Text role='alert'>Could not load versions. <button type='button' onClick={() => void releaseHistory.refetch()}>Retry</button></Text> : releaseHistory.isLoading ? (
               <Text size='sm' tone='muted'>Loading versions...</Text>
             ) : releaseHistory.data?.length ? (
               <Stack direction='column' spacing={0}>
-                {releaseHistory.data.map((v: any) => (
+                {orderedVersions(releaseHistory.data).map((v) => (
                   <div key={v.version} className={styles.Card}>
                     <Stack direction='row' spacing={3} align='center'>
                       <Text weight='semibold'>{v.version}</Text>
@@ -251,7 +268,7 @@ const PluginDetails: FC = () => {
               </Stack>
             </div>
 
-            {reviews.isLoading ? (
+            {reviews.isError ? <Text role='alert'>Could not load reviews. <button type='button' onClick={() => void reviews.refetch()}>Retry</button></Text> : reviews.isLoading ? (
               <Text size='sm' tone='muted'>Loading reviews...</Text>
             ) : reviews.data?.length ? (
               <Stack direction='column' spacing={0}>
@@ -278,7 +295,7 @@ const PluginDetails: FC = () => {
           </Tabs.Panel>
 
           <Tabs.Panel value='changelog'>
-            <PluginChangelog id={id} />
+            {activeTab === 'changelog' && <PluginChangelog id={id} />}
           </Tabs.Panel>
         </div>
       </Tabs.Root>

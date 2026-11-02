@@ -12,8 +12,11 @@ type Props = {
 };
 
 const PluginChangelog: React.FC<Props> = ({ id }) => {
-  const { releaseHistory } = usePlugin({ id });
+  const { releaseHistory } = usePlugin({ id, tab: 'changelog', installed: false });
 
+  if (releaseHistory.isError) {
+    return <Text role='alert'>Could not load changelog. <button type='button' onClick={() => void releaseHistory.refetch()}>Retry</button></Text>;
+  }
   if (releaseHistory.isLoading) {
     return (
       <Stack direction='column' spacing={4} className={styles.Root}>

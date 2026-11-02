@@ -42,3 +42,39 @@ The backend includes at most 200 retained log lines and caps the diagnostic at 1
 8. Correct source/configuration and choose Retry installation. Expect the normal picker and installation flow; prior failure remains until cleared.
 
 Automated coverage exercises error retention, detail opening, multiple actions, copy, clearing and cancellation suppression. Run the frontend outcome tests and `GOWORK=off go test ./backend/pkg/plugin/... -count=1`, then exercise the installed application's notification controls.
+
+## Marketplace installation controls
+
+The detail page owns the recommended install/update action. Sidebar entries navigate to that page rather than installing on a secondary click target. The installation card shows the installed version, recommended compatible release, last marketplace check, and an explicit refresh. Releases sort by semantic-version precedence, newest first. Stable compatible releases take priority over prereleases; prereleases remain selectable. Incompatible releases retain the registry's reason but cannot be installed. Older registries that cannot disclose incompatible releases carry an explicit discovery limitation instead of a claim that no newer release exists.
+
+Other versions opens a keyboard-accessible chooser. Selection is keyed by plugin ID and version and never installs immediately. Choosing an older version labels the action as a downgrade and requires a second confirmation explaining data compatibility risk. Plugin tools and uninstall remain separate from the primary installation card; archive and developer installation remain in the sidebar source menu.
+
+Installation, restart, and uninstall share a per-plugin operation guard and live status across detail and sidebar. Progress describes actual pending installation/startup and frontend loading stages, not invented download percentages. Structured runtime errors remain available through Notifications. Backend startup phase and last error stay visible after installation; Retry startup remains available for a failed plugin. Uninstall keeps its confirmation open on failure and unlocks retry.
+
+Readme and reviews load only for their active tabs. Versions and changelog share one versions query, with a one-minute freshness window. Installed inventory no longer polls forever when empty. Mutation invalidation refreshes active inventory once.
+
+UI smoke scenarios:
+
+1. Open a marketplace entry. Verify one recommended action, versions sorted newest first, compatibility reason, freshness, and refresh.
+2. Choose another version using the keyboard. Verify no install occurs until confirmation; cancel leaves inventory unchanged.
+3. Choose an older version. Verify the explicit downgrade confirmation; cancel performs no install.
+4. Start installation and attempt uninstall or a second install. Verify controls remain locked and sidebar shows the same pending operation.
+5. Force a startup failure. Verify retained backend phase/error, Notifications details, and Retry startup; no claim of a running plugin.
+6. Fail uninstall. Verify the dialog stays open and retry becomes available.
+7. Switch between versions and changelog, then overview and reviews. Verify one shared version fetch and no inactive review/readme/stats calls.
+
+Focused coverage: `ui/pages/plugins/versionPolicy.test.ts`, `ui/hooks/plugin/usePluginManager.test.tsx`, and `e2e/tests/plugins/plugins.spec.ts`.
+
+## Marketplace archive identity and version
+
+Marketplace installation holds the requested plugin's operation lock through download, archive validation, publication, and completion. Local archive installation and uninstall use that same per-plugin lock. A downloaded package whose manifest ID differs from the requested ID is rejected before staging, unloading, or replacing either installation.
+
+Registry download verification still authenticates the original archive. After verification, the installer writes the authoritative marketplace version into the private extracted `plugin.yaml` and syncs that file before publication. Unknown manifest fields remain intact. Loading, durable inventory, and completion events consume the same candidate version. The signed archive is not rewritten. Local archives retain their own manifest version.
+
+Archive rollback remains conditional on successful restoration of the captured installation, runtime, and durable state. Publication uncertainty and committed backup-cleanup failures retain their existing explicit recovery errors; neither means that the previous version was restored.
+
+Focused backend smoke command:
+
+```sh
+GOWORK=off go test ./backend/pkg/plugin -run 'TestMarketplaceArchive_|TestArchiveCommitBoundary_|TestInstallPluginFromPath_' -count=1
+```

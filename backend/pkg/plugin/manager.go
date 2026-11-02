@@ -744,6 +744,7 @@ func (pm *pluginManager) ListPluginMetas() []config.PluginMeta {
 
 // GetPluginVersions fetches version info for a marketplace plugin.
 func (pm *pluginManager) GetPluginVersions(pluginID string) ([]registry.VersionInfo, error) {
+	pm.syncRegistryURL()
 	return pm.registryClient.GetPluginVersions(context.Background(), pluginID)
 }
 

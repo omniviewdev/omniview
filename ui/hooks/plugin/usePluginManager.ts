@@ -98,7 +98,7 @@ export const usePluginManager = () => {
         status: 'success',
       });
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
-      void queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] });
+      // Invalidation refreshes active consumers once.
       void load(data.id);
     },
     onError: createErrorHandler(showSnackbar, 'Plugin installation failed'),
@@ -124,7 +124,6 @@ export const usePluginManager = () => {
       // ready first. The PluginServiceProvider defers dev plugin loading
       // until the dev server is available.
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
-      void queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] });
     },
     onError(error) {
       // A rejected build/rebind can still retain a different source and failed
@@ -194,11 +193,7 @@ export const usePluginManager = () => {
 
       return plugins;
     },
-    // In dev mode the frontend may load before the backend finishes
-    // initializing plugins. Poll every 2s until we get a non-empty list.
-    refetchInterval: (query) => {
-      return query.state.data?.length === 0 ? 2000 : false;
-    },
+    staleTime: 30_000,
   });
 
   const available = useQuery({
@@ -213,6 +208,7 @@ export const usePluginManager = () => {
     },
     retry: 1,
     retryDelay: 3000,
+    staleTime: 60_000,
   });
 
   return {
@@ -224,13 +220,35 @@ export const usePluginManager = () => {
   };
 };
 
-export const usePlugin = ({ id }: { id: string }) => {
+export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: string; installed?: boolean }) => {
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
   const { reload: serviceReload, unload: serviceUnload } = usePluginService();
 
+  const operationKey = ['plugin-operation', id];
+  const operation = useQuery<string | null>({
+    queryKey: operationKey,
+    queryFn: () => null,
+    initialData: null,
+    enabled: false,
+  });
+  const runOperation = async <T,>(label: string, action: () => Promise<T>): Promise<T> => {
+    if (queryClient.getQueryData(operationKey)) {
+      throw new Error('Another operation is already running for this plugin.');
+    }
+    queryClient.setQueryData(operationKey, label);
+    try {
+      return await action();
+    } finally {
+      queryClient.setQueryData(operationKey, null);
+      void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS], exact: true });
+    }
+  };
   const plugin = useQuery({
     queryKey: [Entity.PLUGINS, id],
+    enabled: !!id && installed,
+    retry: false,
+    staleTime: 30_000,
     async queryFn({ queryKey }) {
       const [, id] = queryKey;
       return PluginManager.GetPlugin(id);
@@ -240,6 +258,9 @@ export const usePlugin = ({ id }: { id: string }) => {
 
   const versions = useQuery({
     queryKey: [Entity.PLUGINS, id, 'versions'],
+    enabled: !!id && (!installed || !!tab),
+    staleTime: 60_000,
+    retry: false,
     queryFn: async () => {
       const versions = await PluginManager.GetPluginVersions(id);
       return versions;
@@ -249,39 +270,41 @@ export const usePlugin = ({ id }: { id: string }) => {
   const readme = useQuery({
     queryKey: [Entity.PLUGINS, id, 'readme'],
     queryFn: async () => PluginManager.GetPluginReadme(id),
-    enabled: !!id,
+    enabled: !!id && tab === 'overview',
+    staleTime: 300_000,
   });
 
   const reviews = useQuery({
     queryKey: [Entity.PLUGINS, id, 'reviews'],
     queryFn: async () => PluginManager.GetPluginReviews(id, 1),
-    enabled: !!id,
+    enabled: !!id && tab === 'reviews',
+    staleTime: 60_000,
   });
 
   const downloadStats = useQuery({
     queryKey: [Entity.PLUGINS, id, 'download-stats'],
     queryFn: async () => PluginManager.GetPluginDownloadStats(id),
-    enabled: !!id,
+    enabled: !!id && tab === 'stats',
+    staleTime: 60_000,
   });
 
-  const releaseHistory = useQuery({
-    queryKey: [Entity.PLUGINS, id, 'release-history'],
-    queryFn: async () => PluginManager.GetPluginReleaseHistory(id),
-    enabled: !!id,
-  });
+  const releaseHistory = versions;
 
   /**
    * Reload the plugin
    */
   const { mutateAsync: reload } = useMutation({
-    mutationFn: async () => PluginManager.ReloadPlugin(id),
+    mutationFn: async () => runOperation('Restarting plugin…', async () => {
+      const result = await PluginManager.ReloadPlugin(id);
+      await serviceReload(id);
+      return result;
+    }),
     onSuccess({ id, metadata }) {
       showSnackbar({
         message: `Plugin '${metadata.name}' successfully reloaded`,
         status: 'success',
       });
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, id] });
-      void serviceReload(metadata.id);
     },
     onError: createErrorHandler(showSnackbar, 'Failed to reload plugin'),
   });
@@ -291,16 +314,17 @@ export const usePlugin = ({ id }: { id: string }) => {
    * so whatever is calling this should handle that.
    */
   const { mutateAsync: uninstall } = useMutation({
-    mutationFn: async () => PluginManager.UninstallPlugin(id),
+    mutationFn: async () => runOperation('Uninstalling…', async () => {
+      const result = await PluginManager.UninstallPlugin(id);
+      await serviceUnload(id);
+      return result;
+    }),
     onSuccess({ id, metadata }) {
       showSnackbar({
         message: `Plugin '${metadata.name}' successfully uninstalled`,
         status: 'success',
       });
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, id] });
-      void queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] });
-      void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, 'registry'] });
-      void serviceUnload(metadata.id);
     },
     onError: createErrorHandler(showSnackbar, 'Failed to uninstall plugin'),
   });
@@ -309,27 +333,30 @@ export const usePlugin = ({ id }: { id: string }) => {
    * Update the plugin to a specified version
    */
   const { mutateAsync: update } = useMutation({
-    mutationFn: async (version: string) => {
-      const resp = await PluginManager.InstallPluginVersion(id, version);
-      return resp;
-    },
+    mutationFn: async (version: string) => runOperation('Installing and starting plugin…', async () => {
+      const meta = await PluginManager.InstallPluginVersion(id, version);
+      if (meta) {
+        queryClient.setQueryData(operationKey, 'Loading plugin interface…');
+        await serviceReload(meta.id);
+      }
+      return meta;
+    }),
     onSuccess(meta) {
       if (!meta) {
         return;
       }
 
       showSnackbar({
-        message: `Plugin '${meta.name}' updated to v${meta.version}`,
+        message: `Plugin '${meta.name}' installed at v${meta.version}; check startup status below`,
         status: 'success',
       });
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, id] });
-      void queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] });
-      void serviceReload(meta.id);
     },
     onError: createErrorHandler(showSnackbar, 'Plugin update failed'),
   });
 
   return {
+    operation: operation.data,
     plugin,
     versions,
     readme,

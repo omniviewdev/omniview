@@ -197,3 +197,112 @@ func TestTrailingSlashRegistryBaseURL(t *testing.T) {
 		})
 	}
 }
+
+func TestVersionDiscoveryPaginatesAndExplainsCompatibility(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("ide_version") != "0.24.0" || r.URL.Query().Get("include_incompatible") != "true" {
+			t.Errorf("missing truthful discovery context: %s", r.URL)
+		}
+		w.Header().Set("X-Omniview-Incompatible-Versions", "true")
+		body := `{"success":true,"data":[{"version":"0.9.0","min_ide_version":"0.20.0"}],"pagination":{"page":1,"total_pages":2}}`
+		if r.URL.Query().Get("page") == "2" {
+			body = `{"success":true,"data":[{"version":"0.15.0","min_ide_version":"0.25.0"},{"version":"0.14.0","min_ide_version":"0.24.0"}],"pagination":{"page":2,"total_pages":2}}`
+		}
+		if _, err := w.Write([]byte(body)); err != nil {
+			t.Error(err)
+		}
+	}))
+	defer server.Close()
+	versions, err := NewClient(server.URL).GetPluginVersions(context.Background(), "kubernetes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(versions) != 3 || versions[0].Version != "0.15.0" || versions[1].Version != "0.14.0" {
+		t.Fatalf("lost semantic order or pages: %#v", versions)
+	}
+	if versions[0].Compatible || versions[0].CompatibilityReason != "Update Omniview to 0.25.0 or newer." ||
+		!versions[1].Compatible || !versions[1].DiscoverySupported {
+		t.Fatalf("incorrect compatibility evidence: %#v", versions)
+	}
+}
+
+func TestVersionDiscoveryDoesNotClaimOlderAPISupport(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := w.Write([]byte(`{"success":true,"data":[{"version":"0.14.0","min_ide_version":"0.24.0"}]}`)); err != nil {
+			t.Error(err)
+		}
+	}))
+	defer server.Close()
+	versions, err := NewClient(server.URL).GetPluginVersions(context.Background(), "kubernetes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(versions) != 1 || !versions[0].Compatible || versions[0].DiscoverySupported {
+		t.Fatalf("older API claimed full discovery: %#v", versions)
+	}
+}
+
+func TestCompatibilityBoundsFailClosed(t *testing.T) {
+	for _, bounds := range [][2]string{{"bad", ""}, {"0.25.0", "0.24.0"}, {"", "0.23.0"}, {"0.25.0", ""}} {
+		if compatibilityReason(bounds[0], bounds[1]) == "" {
+			t.Fatalf("accepted incompatible bounds: %v", bounds)
+		}
+	}
+	if reason := compatibilityReason("0.24.0", "0.24.0"); reason != "" {
+		t.Fatalf("rejected inclusive boundary: %s", reason)
+	}
+}
+
+func TestRegistryReplacementKeepsPaginationOnOneOrigin(t *testing.T) {
+	var client *Client
+	second := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("in-flight listing changed registry origin")
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer second.Close()
+	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client.SetBaseURL(second.URL)
+		body := `{"success":true,"data":[{"id":"first"}],"pagination":{"page":1,"total_pages":2}}`
+		if r.URL.Query().Get("page") == "2" {
+			body = `{"success":true,"data":[{"id":"second"}],"pagination":{"page":2,"total_pages":2}}`
+		}
+		if _, err := w.Write([]byte(body)); err != nil {
+			t.Error(err)
+		}
+	}))
+	defer first.Close()
+	client = NewClient(first.URL)
+	plugins, err := client.ListPlugins(context.Background())
+	if err != nil || len(plugins) != 2 || client.BaseURL() != second.URL {
+		t.Fatalf("registry replacement lost request snapshot: %v, %#v", err, plugins)
+	}
+}
+
+func TestDiscoveryDoesNotRelaxExactInstallLookup(t *testing.T) {
+	exactRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/versions") {
+			w.Header().Set("X-Omniview-Incompatible-Versions", "true")
+			if _, err := w.Write([]byte(`{"success":true,"data":[{"version":"0.15.0","min_ide_version":"0.25.0"}]}`)); err != nil {
+				t.Error(err)
+			}
+			return
+		}
+		exactRequests++
+		if r.URL.Query().Has("include_incompatible") || r.URL.Query().Get("ide_version") != "0.24.0" {
+			t.Errorf("install lookup bypassed compatibility: %s", r.URL)
+		}
+		http.Error(w, "incompatible version", http.StatusNotFound)
+	}))
+	defer server.Close()
+	client := NewClient(server.URL)
+	if _, err := client.GetPluginVersions(context.Background(), "kubernetes"); err != nil {
+		t.Fatal(err)
+	}
+	if path, err := client.DownloadPlugin(context.Background(), "kubernetes", "0.15.0"); err == nil || path != "" {
+		t.Fatalf("incompatible install succeeded: %q, %v", path, err)
+	}
+	if exactRequests != 1 {
+		t.Fatalf("unexpected install requests: %d", exactRequests)
+	}
+}
