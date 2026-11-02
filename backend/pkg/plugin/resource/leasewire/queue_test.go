@@ -280,7 +280,7 @@ func TestOptionalTokensOnPublishedFrames(t *testing.T) {
 				f := frame("g1", 1)
 				f.Payload.Rows = []ResultRow{{
 					Key: "row", TargetID: "target",
-					Resource: resourcev2.ResourceReference{Address: resourcev2.ResourceAddress{Provider: "p", Authority: "a", Type: "t", Scope: []resourcev2.ScopeEntry{}, ID: "id"}},
+					Resource:       resourcev2.ResourceReference{Address: resourcev2.ResourceAddress{Provider: "p", Authority: "a", Type: "t", Scope: []resourcev2.ScopeEntry{}, ID: "id"}},
 					Representation: query.RepresentationSelector{ID: "r", Revision: "1"},
 					Provenance:     ResultProvenance{Source: "s", Coverage: "complete"},
 					Values:         map[string]ProjectedValue{},
