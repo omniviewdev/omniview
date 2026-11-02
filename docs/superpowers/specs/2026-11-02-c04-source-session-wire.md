@@ -15,6 +15,14 @@ without inference. Existing P05 host candidate
 `d4a036bda987be151042bb8d4b63c384390c3dd3`. This is not evidence of
 production conformance.
 
+Binding correction approved 2026-11-02: the inline `SchemaBinding` follows
+approved C05. Fields 5 and 6 remain reserved; producer validation claims
+do not grant admission authority.
+
+Transport implementation decision approved 2026-11-02: preserve the
+existing bounds and deadlines through a scoped grpc-go extension.
+No receive limit or deadline is relaxed.
+
 ## What this contract does
 
 A source session acquires observations for one admitted selection. The
@@ -681,8 +689,8 @@ message SchemaBinding {
   optional string revision = 2;
   string dialect = 3;
   bytes document = 4;
-  string validation = 5;
-  repeated string unvalidated = 6;
+  reserved 5, 6;
+  reserved "validation", "unvalidated";
   SchemaDocumentReference document_ref = 7;
   string root = 8;
   optional string unavailable_reason = 9;
@@ -725,9 +733,10 @@ schema has a revision, dialect and exactly one inline document or
 document reference. An absent schema has no document binding. An
 unavailable schema is not an absent schema and cannot carry an inline
 document. The `root` is a local RFC6901 URI-fragment pointer; empty
-selects the full schema. Validation is `full`, `reduced` or `none`; only
-`reduced` has `unvalidated` constraints. The optional unavailable reason
-is a reviewed error code, not diagnostic text.
+selects the full schema. The binding does not declare a validation level
+or unvalidated constraints. The host derives admission authority under
+C05. The optional unavailable reason is a reviewed error code, not
+diagnostic text.
 
 A tagged `Value` chooses exactly one proto field. The corresponding SDK
 JSON uses `kind` and, except for null, `value`. Kinds are `null`,
