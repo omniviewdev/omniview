@@ -39,6 +39,12 @@ describe('passive query observer', () => {
     o.apply({ lane: 'control', leaseId: 'l', payload: { kind: 'close', reason: 'accessInvalidated' } });
     expect(o.getSnapshot().rows).toEqual([]); expect(o.disconnected()).toEqual({ kind: 'reopen' });
   });
+  it('clears ready rows and metadata on a lost drain response', () => {
+    const o = observer(); o.apply(data('g1', '1', { kind: 'open', rows: [row('a')], metadata: metadata as never }));
+    expect(o.getSnapshot().status).toBe('ready');
+    expect(o.disconnected()).toEqual({ kind: 'reopen' });
+    expect(o.getSnapshot()).toEqual({ status: 'closed', rows: [], stale: false });
+  });
   it('rejects unbounded windows, duplicate keys, noncanonical numbers and oversized frames', () => {
     for (const payload of [
       { kind: 'open', rows: [row('a'), row('b'), row('c'), row('d')], metadata },

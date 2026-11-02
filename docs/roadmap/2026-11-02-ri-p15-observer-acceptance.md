@@ -11,7 +11,7 @@ The observer consumes a lease ID, its attached generation, and individual C08 fr
 Executed in the isolated `ri-p15` workspace, using an existing dependency tree:
 
 - `../../node_modules/.bin/tsc -p tsconfig.app.json --noEmit`: passed.
-- `../../node_modules/.bin/vitest run src/resource/v2/query-observer.test.ts --configLoader runner`: 9 tests passed.
+- `../../node_modules/.bin/vitest run src/resource/v2/query-observer.test.ts --configLoader runner`: 10 tests passed.
 - From the workspace repository root, `./node_modules/.bin/esbuild /tmp/ri-p15-observer-smoke.mts --bundle --platform=node --format=esm --outfile=/tmp/ri-p15-observer-smoke.mjs && node /tmp/ri-p15-observer-smoke.mjs && rm /tmp/ri-p15-observer-smoke.mts /tmp/ri-p15-observer-smoke.mjs`: output `observer smoke passed`. The temporary script exercised open, exact count, gap recovery, replacement, completion and reopen. Both temporary files were removed. Direct Node type stripping could not run the TypeScript parameter property; esbuild performed the TypeScript transform.
 
 The tests cover frozen inputs, ordered changes and previous snapshot immutability, signed and unsigned integer boundaries, gaps, atomic failure, repeated and overlapping resets, stale frames, source and binding barriers, malformed wire variants, complete and terminal error, reconnect and bounded frame/window rejection. They do not prove integration with actual P14 methods or cross-language golden fixtures.
