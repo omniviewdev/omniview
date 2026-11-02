@@ -71,6 +71,11 @@ reviewed commit in repository variable `OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISI
 Workflows pass that value as `REVIEWED_SDK_REVISION`. Only the user changes the
 approval variable; editing the cohort alone cannot approve another SDK commit.
 
+The isolation guard separately pins SDK checkpoint
+`eea5943f7a5319fb1585a8ec2d9ce5d06fa763ca`, after independent review of the
+host-connections binding added to plugin startup. The original isolation baseline,
+checkpoint ancestry, and byte comparisons for all five protected files remain required.
+
 Playwright uses its GitHub reporter in Actions for failure annotations on the
 check and source locations, alongside terminal output, HTML and case timings.
 Annotations require Playwright to run; checkout, source validation or preparation
