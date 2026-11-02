@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/query"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
 func meta() ResultMetadata {
@@ -263,5 +265,69 @@ func TestPreflightInvalidUTF8(t *testing.T) {
 	f.Payload.Metadata.Limitations = []string{strings.Repeat("\xff", MaxFrameBytes/5)}
 	if err := preflight(f); !errors.Is(err, ErrFrameTooLarge) {
 		t.Fatalf("invalid UTF-8 expansion not bounded: %v", err)
+	}
+}
+
+func TestOptionalTokensOnPublishedFrames(t *testing.T) {
+	empty, valid := "", "token"
+	for _, field := range []string{"continuation", "incarnation"} {
+		for _, tc := range []struct {
+			name  string
+			value *string
+			valid bool
+		}{{"absent", nil, true}, {"empty", &empty, false}, {"valid", &valid, true}} {
+			t.Run(field+"/"+tc.name, func(t *testing.T) {
+				f := frame("g1", 1)
+				f.Payload.Rows = []ResultRow{{
+					Key: "row", TargetID: "target",
+					Resource: resourcev2.ResourceReference{Address: resourcev2.ResourceAddress{Provider: "p", Authority: "a", Type: "t", Scope: []resourcev2.ScopeEntry{}, ID: "id"}},
+					Representation: query.RepresentationSelector{ID: "r", Revision: "1"},
+					Provenance:     ResultProvenance{Source: "s", Coverage: "complete"},
+					Values:         map[string]ProjectedValue{},
+				}}
+				if field == "continuation" {
+					f.Payload.Metadata.Continuation = tc.value
+				} else {
+					f.Payload.Rows[0].Resource.Incarnation = tc.value
+				}
+				q, err := NewQueue("lease", "g1")
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, err = q.Publish(f, time.Unix(10, 0))
+				if !tc.valid {
+					if !errors.Is(err, ErrInvalid) {
+						t.Fatalf("accepted empty %s: %v", field, err)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				b, err := q.BeginDrain()
+				if err != nil {
+					t.Fatal(err)
+				}
+				var event struct {
+					Payload struct {
+						Rows []struct {
+							Resource map[string]any `json:"resource"`
+						} `json:"rows"`
+						Metadata map[string]any `json:"metadata"`
+					} `json:"payload"`
+				}
+				if err := json.Unmarshal(b, &event); err != nil {
+					t.Fatal(err)
+				}
+				m := event.Payload.Metadata
+				if field == "incarnation" {
+					m = event.Payload.Rows[0].Resource
+				}
+				got, present := m[field]
+				if present != (tc.value != nil) || (present && got != *tc.value) {
+					t.Fatalf("%s: present=%v value=%v", field, present, got)
+				}
+			})
+		}
 	}
 }
