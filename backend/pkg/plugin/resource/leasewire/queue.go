@@ -2,10 +2,11 @@ package leasewire
 
 import (
 	"errors"
-	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 )
 
 const (
