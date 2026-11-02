@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/omniviewdev/omniview/internal/nativeapps"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	execsdk "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 )
@@ -40,14 +40,10 @@ func (m macNativeTerminal) Supported() bool {
 }
 
 func nativeApplicationID(application string) (string, error) {
-	switch application {
-	case "terminal":
-		return "com.apple.Terminal", nil
-	case "iterm2":
-		return "com.googlecode.iterm2", nil
-	default:
-		return "", resourcev2.NewError("INVALID_REQUEST", "Choose Terminal or iTerm2 in Settings > Terminal.")
+	if bundleID, ok := nativeapps.BundleID(application); ok {
+		return bundleID, nil
 	}
+	return "", resourcev2.NewError("INVALID_REQUEST", "Choose an installed supported application in Settings > Terminal.")
 }
 
 func (m macNativeTerminal) Launch(ctx context.Context, application string, command *execsdk.NativeCommand) error {
@@ -196,7 +192,7 @@ func nativeAutomationError(ctx context.Context, err error, findingApp bool) erro
 		return resourcev2.NewError("FORBIDDEN", "macOS denied Automation access. Allow Omniview to control the selected terminal in System Settings > Privacy & Security > Automation, then retry.")
 	}
 	if findingApp {
-		return resourcev2.NewError("UNAVAILABLE", "The selected terminal application is unavailable. Install it or choose Terminal in Settings > Terminal.")
+		return resourcev2.NewError("UNAVAILABLE", "The selected terminal application is unavailable. Install it or choose an installed application in Settings > Terminal.")
 	}
 	return resourcev2.NewError("UNAVAILABLE", "Cannot open a fresh native terminal window. Check the selected application and macOS Automation permissions, then retry.")
 }
@@ -204,23 +200,7 @@ func nativeAutomationError(ctx context.Context, err error, findingApp bool) erro
 // nativeApplicationPath uses the system app registry rather than Apple Events,
 // Spotlight indexing, guessed installation paths, or a Swift runtime dependency.
 func nativeApplicationPath(ctx context.Context, bundleID string) (string, error) {
-	if bundleID != "com.apple.Terminal" && bundleID != "com.googlecode.iterm2" {
-		return "", nativeScriptFailure{}
-	}
-	script := "ObjC.import('AppKit');\n" +
-		"const appURL = $.NSWorkspace.sharedWorkspace.URLForApplicationWithBundleIdentifier(" + strconv.Quote(bundleID) + ");\n" +
-		"if (appURL.isNil()) { throw new Error('Application unavailable'); }\n" +
-		"ObjC.unwrap(appURL.path);"
-	output, err := runNativeScript(ctx, "JavaScript", script)
-	if err != nil {
-		return "", err
-	}
-	path := strings.TrimSuffix(output, "\n")
-	info, err := os.Stat(path)
-	if err != nil || !filepath.IsAbs(path) || !info.IsDir() {
-		return "", nativeScriptFailure{}
-	}
-	return path, nil
+	return nativeapps.Resolve(ctx, bundleID)
 }
 
 func runNativeAppleScript(ctx context.Context, script string) (string, error) {
