@@ -220,16 +220,25 @@ func TestSecurityErasure(t *testing.T) {
 	if _, err := q.Publish(frame("g2", 2), now); !errors.Is(err, ErrOverflow) {
 		t.Fatal("transition did not latch", err)
 	}
-	_ = drain(t, q, now)
-	b, err := q.BeginDrain()
-	if err != nil || b != nil {
-		t.Fatalf("protected data still drainable: %s %v", b, err)
+	if _, err := q.Complete(now); !errors.Is(err, ErrOverflow) {
+		t.Fatalf("completion passed invalidation: %v", err)
 	}
-	q.EndDrain(now)
+	first := drain(t, q, now)
+	if first["payload"].(map[string]any)["nextGeneration"] != "g2" {
+		t.Fatal(first)
+	}
+	second := drain(t, q, now)
+	payload := second["payload"].(map[string]any)
+	if payload["generation"] != "g2" || payload["nextGeneration"] != "g3" || payload["reason"] != "bindingChanged" {
+		t.Fatalf("deferred reset not promoted: %v", second)
+	}
+	if _, err := q.Publish(frame("g3", 1), now); err != nil {
+		t.Fatal(err)
+	}
 	q2, _ := NewQueue("lease", "g1")
 	_, _ = q2.Publish(frame("g1", 1), now)
 	failure := &apperror.AppError{Detail: strings.Repeat("x", MaxFrameBytes)}
-	_, err = q2.Terminate("accessInvalidated", failure, now)
+	_, err := q2.Terminate("accessInvalidated", failure, now)
 	if !errors.Is(err, ErrFrameTooLarge) {
 		t.Fatal(err)
 	}

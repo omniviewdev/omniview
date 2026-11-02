@@ -35,6 +35,9 @@ type Queue struct {
 	bytes                                 int
 	control                               []byte
 	complete                              []byte
+	deferred                              []byte
+	deferredNext                          string
+	deferredReason                        string
 	doorbell, draining, closed, completed bool
 	overflow                              bool
 	pendingSince                          time.Time
@@ -108,8 +111,9 @@ func (q *Queue) Publish(f ResultDataFrame, now time.Time) (bool, error) {
 	return q.signal(now), nil
 }
 
-// Reset drops queued data and enqueues the independent control barrier. A
-// pending barrier must be drained before another is announced.
+// Reset drops queued data and enqueues the independent control barrier.
+// When another barrier is pending, the newest unannounced reset is retained
+// and promoted after the first drain; ErrControlPending reports deferral.
 func (q *Queue) Reset(next, reason string, now time.Time) (bool, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -118,15 +122,6 @@ func (q *Queue) Reset(next, reason string, now time.Time) (bool, error) {
 	}
 	if next == "" || len(next) > 1024 || next == q.generation {
 		return false, ErrGeneration
-	}
-	if q.control != nil {
-		// The existing barrier must be delivered first, but old protected
-		// data must not remain drainable during the pending transition.
-		q.items = nil
-		q.bytes = 0
-		q.complete = nil
-		q.overflow = true
-		return false, ErrControlPending
 	}
 	old := q.generation
 	f := ResultControlFrame{Lane: "control", LeaseID: q.lease, Payload: ResultControlPayload{Kind: "reset", Generation: &old, NextGeneration: &next, Reason: &reason}}
@@ -139,6 +134,25 @@ func (q *Queue) Reset(next, reason string, now time.Time) (bool, error) {
 	}
 	if len(b) > MaxFrameBytes {
 		return false, ErrFrameTooLarge
+	}
+	if q.control != nil {
+		// Preserve a binding-change barrier when a later reset is weaker.
+		if q.deferred != nil && q.deferredReason == "bindingChanged" && reason != "bindingChanged" {
+			reason = "bindingChanged"
+			f.Payload.Reason = &reason
+			b, e = f.encode()
+			if e != nil {
+				return false, e
+			}
+		}
+		q.items = nil
+		q.bytes = 0
+		q.complete = nil
+		q.overflow = true
+		q.deferred = b
+		q.deferredNext = next
+		q.deferredReason = reason
+		return false, ErrControlPending
 	}
 	q.items = nil
 	q.bytes = 0
@@ -159,6 +173,9 @@ func (q *Queue) Complete(now time.Time) (bool, error) {
 	if q.closed {
 		return false, ErrClosed
 	}
+	if q.overflow {
+		return false, ErrOverflow
+	}
 	if q.next == 1 || q.completed {
 		return false, ErrInvalid
 	}
@@ -176,6 +193,9 @@ func (q *Queue) Complete(now time.Time) (bool, error) {
 	q.completed = true
 	return q.signal(now), nil
 }
+
+// Terminate clears protected data even if an optional diagnostic cannot be
+// encoded. The returned doorbell remains actionable when err is non-nil.
 func (q *Queue) Terminate(reason string, failure *apperror.AppError, now time.Time) (bool, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -202,6 +222,9 @@ func (q *Queue) Terminate(reason string, failure *apperror.AppError, now time.Ti
 	q.items = nil
 	q.bytes = 0
 	q.complete = nil
+	q.deferred = nil
+	q.deferredNext = ""
+	q.deferredReason = ""
 	q.control = b
 	q.closed = true
 	return q.signal(now), serializationErr
@@ -221,6 +244,16 @@ func (q *Queue) BeginDrain() ([]byte, error) {
 	if q.control != nil {
 		b = q.control
 		q.control = nil
+		if q.deferred != nil {
+			q.control = q.deferred
+			q.generation = q.deferredNext
+			q.next = 1
+			q.completed = false
+			q.overflow = false
+			q.deferred = nil
+			q.deferredNext = ""
+			q.deferredReason = ""
+		}
 	} else if len(q.items) > 0 {
 		b = q.items[0]
 		q.items[0] = nil
@@ -254,6 +287,9 @@ func (q *Queue) Expire(now time.Time) bool {
 	q.bytes = 0
 	q.control = nil
 	q.complete = nil
+	q.deferred = nil
+	q.deferredNext = ""
+	q.deferredReason = ""
 	q.closed = true
 	q.doorbell = false
 	q.pendingSince = time.Time{}
@@ -269,6 +305,9 @@ func (q *Queue) Close() {
 	q.bytes = 0
 	q.control = nil
 	q.complete = nil
+	q.deferred = nil
+	q.deferredNext = ""
+	q.deferredReason = ""
 	q.doorbell = false
 	q.pendingSince = time.Time{}
 }
