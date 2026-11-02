@@ -127,3 +127,42 @@ Every launch below reached authenticated readiness, current dependencies and ser
 The owned supervisor log confirms the baseline repeat reused providers, runtime and Vite-plugin outputs but rebuilt changed bindings/frontend/backend inputs. It confirms that the optimized repeat skipped providers, bindings, runtime, Vite-plugin, host frontend and host backend. The launch timings therefore do **not** establish a whole-build percentage improvement attributable to this patch. They prove a working unchanged-source loop and retained source invalidation.
 
 Final native `workspace down` returned stopped for the owned velocity workspace. No other workspace, default profile, source ref or global cache was reset. Native-window, plugin, auxiliary-preview and actual browser-module execution acceptance remain outside this host-only CLI smoke.
+
+## CI timeout diagnosis, 2026-11-02
+
+PR #345 at `e252b519` failed the required Go check in run `41496310504`.
+The SDK RPC fixture exceeded its shared 90-second context.
+The `internal/devworkspace` package reached the default 10-minute deadline.
+The current Vite test showed zero seconds elapsed; its sampled stack does not prove a hang.
+The log does not establish an OOM, runner failure, or dominant fixture cost.
+
+`task check:go-test` emits Go JSON events for per-test timing when `CI=true`.
+Local use retains the normal Go output.
+The SDK fixture records profile names, stages, elapsed time, remaining deadline, reload errors, and owned host exit observations.
+SDK traces use stderr with the test name, not a retained `testing.T`.
+Build and reload error excerpts contain at most 4,096 runes.
+The graph fixture records source creation, Git setup, composition planning, link application, installation, and graph compilation.
+An exit observation reports the context state at that observation, not the cause of exit.
+These diagnostics do not change production code, assertions, deadlines, source-freshness checks, or fixture isolation.
+
+The following local checks exercised the diagnostics on merged base `a464fa54`.
+The SDK check used compiled module-cache source `v0.14.2`, not an asserted Git revision.
+Both checks emitted the expected stage and test timing events.
+
+| Actual scenario | Test duration | Result |
+| --- | ---: | --- |
+| Real SDK compiler, host/plugin RPC, failed-build recovery, and persisted profile isolation | 44.43 s | Passed |
+| Real graph publication with feedback held until replacement readiness | 1.06 s | Passed |
+
+```bash
+env -u SDK_SOURCE GOWORK=off GOFLAGS= go test -json -count=1 \
+  ./backend/pkg/plugin/devserver \
+  -run '^TestSelectedSDKAPIRealCompileRPCAndRecovery$'
+
+env GOWORK=off GOFLAGS= go test -json -count=1 \
+  ./internal/devworkspace \
+  -run '^TestViteFeedbackHoldsBeforePublicationUntilAllReplacementReadiness$'
+```
+
+These local passes do not explain the CI failures or replace the required CI gate.
+Use the next instrumented CI result to identify the slow stage before changing code or timeouts.

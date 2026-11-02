@@ -1,0 +1,250 @@
+{
+  "schemaVersion": 1,
+  "method": {
+    "repetitionsPerVariant": 5,
+    "order": [
+      "before",
+      "after",
+      "after",
+      "before",
+      "before",
+      "after",
+      "after",
+      "before",
+      "before",
+      "after"
+    ],
+    "cold": "Fresh host/plugin process and browser document per trial; warm OS/API-server/browser caches",
+    "engine": "Chromium browser-mode development build",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "samplingMs": 100,
+    "profilesEnabled": false,
+    "timeoutSeconds": 10,
+    "host": "5bf39f40561ab7e096b815407f45856c334ac070 plus readiness ordering fix from host PR359 in both variants",
+    "before": {
+      "plugin": "a3f0928b064761ec1232bf5d0ef909674bd5bfb1",
+      "sdk": "0597ff45586b45e3a57fe7ac86194ce96884c7ef"
+    },
+    "after": {
+      "plugin": "e688afd",
+      "sdk": "52d4ec73eebb813c3cc5f144a9361171d3b5a0b6"
+    },
+    "limitations": [
+      "Five samples; overlapping ranges; no statistical significance claim",
+      "Sync sampling has100ms granularity and can complete before visible data commit",
+      "900 synthetic Events fresh; system Event TTL changed between pairs; counts match within every pair",
+      "No native WebKit, FreeLens, VPN or affected EKS after-fix measurement"
+    ]
+  },
+  "summary": {
+    "before": {
+      "readyMs": {
+        "median": 954.8000001907349,
+        "min": 938.9000000953674,
+        "max": 966.0999999046326
+      },
+      "firstVisibleMs": {
+        "median": 1662.1000001430511,
+        "min": 1627.9000000953674,
+        "max": 1703
+      },
+      "fullySyncedMs": {
+        "median": 1641.1000001430511,
+        "min": 1595.5,
+        "max": 1671.9000000953674
+      }
+    },
+    "after": {
+      "readyMs": {
+        "median": 923.0999999046326,
+        "min": 888.7999999523163,
+        "max": 936.7999999523163
+      },
+      "firstVisibleMs": {
+        "median": 1638.7999999523163,
+        "min": 1603.5,
+        "max": 1655.2999999523163
+      },
+      "fullySyncedMs": {
+        "median": 1620,
+        "min": 1573.7999999523163,
+        "max": 1625.2000000476837
+      }
+    }
+  },
+  "samples": [
+    {
+      "pair": 1,
+      "variant": "before",
+      "readyMs": 961.2000000476837,
+      "firstVisibleMs": 1686.1000001430511,
+      "fullySyncedMs": 1653.3000001907349,
+      "counts": {
+        "Pod": 315,
+        "Deployment": 302,
+        "Event": 918
+      },
+      "hostPID": 99935,
+      "generation": "fddad861-a670-47c6-a3d9-578200d3cb97",
+      "observedAt": "2026-11-02T18:50:38.048Z",
+      "sourceCount": 56,
+      "failedSources": 0
+    },
+    {
+      "pair": 1,
+      "variant": "after",
+      "readyMs": 923.0999999046326,
+      "firstVisibleMs": 1650.5999999046326,
+      "fullySyncedMs": 1620,
+      "counts": {
+        "Pod": 315,
+        "Deployment": 302,
+        "Event": 918
+      },
+      "hostPID": 1713,
+      "generation": "c6e1e0b0-b299-445a-8863-bf54258a0750",
+      "observedAt": "2026-11-02T18:51:22.931Z",
+      "sourceCount": 56,
+      "failedSources": 0
+    },
+    {
+      "pair": 2,
+      "variant": "after",
+      "readyMs": 918.1000001430511,
+      "firstVisibleMs": 1638.7999999523163,
+      "fullySyncedMs": 1607.2999999523163,
+      "counts": {
+        "Pod": 315,
+        "Deployment": 302,
+        "Event": 918
+      },
+      "hostPID": 3098,
+      "generation": "46ff4d33-e397-44f0-8ab7-e1eded5d71cf",
+      "observedAt": "2026-11-02T18:52:03.607Z",
+      "sourceCount": 56,
+      "failedSources": 0
+    },
+    {
+      "pair": 2,
+      "variant": "before",
+      "readyMs": 966.0999999046326,
+      "firstVisibleMs": 1703,
+      "fullySyncedMs": 1671.9000000953674,
+      "counts": {
+        "Pod": 315,
+        "Deployment": 302,
+        "Event": 918
+      },
+      "hostPID": 4451,
+      "generation": "e718c16b-2f95-4ea9-a023-badb6e8ce3c3",
+      "observedAt": "2026-11-02T18:52:49.949Z",
+      "sourceCount": 56,
+      "failedSources": 0
+    },
+    {
+      "pair": 3,
+      "variant": "before",
+      "readyMs": 954.8000001907349,
+      "firstVisibleMs": 1662.1000001430511,
+      "fullySyncedMs": 1641.1000001430511,
+      "counts": {
+        "Pod": 315,
+        "Deployment": 302,
+        "Event": 915
+      },
+      "hostPID": 5859,
+      "generation": "6afb80ea-2b03-41da-aac8-f18ec81d1b2c",
+      "observedAt": "2026-11-02T18:53:35.455Z",
+      "sourceCount": 56,
+      "failedSources": 0
+    },
+    {
+      "pair": 3,
+      "variant": "after",
+      "readyMs": 936.7999999523163,
+      "firstVisibleMs": 1655.2999999523163,
+      "fullySyncedMs": 1625.0999999046326,
+      "counts": {
+        "Pod": 315,
+        "Deployment": 302,
+        "Event": 915
+      },
+      "hostPID": 7301,
+      "generation": "474363dc-e753-43c1-a741-7a51d59b9bce",
+      "observedAt": "2026-11-02T18:54:20.331Z",
+      "sourceCount": 56,
+      "failedSources": 0
+    },
+    {
+      "pair": 4,
+      "variant": "after",
+      "readyMs": 932.2000000476837,
+      "firstVisibleMs": 1625.0999999046326,
+      "fullySyncedMs": 1625.2000000476837,
+      "counts": {
+        "Pod": 315,
+        "Deployment": 302,
+        "Event": 915
+      },
+      "hostPID": 8650,
+      "generation": "0317cba6-4fc7-4a8c-8006-d3cd1670d982",
+      "observedAt": "2026-11-02T18:55:00.562Z",
+      "sourceCount": 56,
+      "failedSources": 0
+    },
+    {
+      "pair": 4,
+      "variant": "before",
+      "readyMs": 938.9000000953674,
+      "firstVisibleMs": 1627.9000000953674,
+      "fullySyncedMs": 1595.5,
+      "counts": {
+        "Pod": 315,
+        "Deployment": 302,
+        "Event": 915
+      },
+      "hostPID": 10016,
+      "generation": "81469590-30db-4a99-87d4-8c690de283f7",
+      "observedAt": "2026-11-02T18:55:45.008Z",
+      "sourceCount": 56,
+      "failedSources": 0
+    },
+    {
+      "pair": 5,
+      "variant": "before",
+      "readyMs": 940,
+      "firstVisibleMs": 1635,
+      "fullySyncedMs": 1601.5,
+      "counts": {
+        "Pod": 315,
+        "Deployment": 302,
+        "Event": 915
+      },
+      "hostPID": 11379,
+      "generation": "06c6ec1e-c6fc-497b-8edb-46bc7cf6112a",
+      "observedAt": "2026-11-02T18:56:24.115Z",
+      "sourceCount": 56,
+      "failedSources": 0
+    },
+    {
+      "pair": 5,
+      "variant": "after",
+      "readyMs": 888.7999999523163,
+      "firstVisibleMs": 1603.5,
+      "fullySyncedMs": 1573.7999999523163,
+      "counts": {
+        "Pod": 315,
+        "Deployment": 302,
+        "Event": 915
+      },
+      "hostPID": 12571,
+      "generation": "e4447502-4170-4a54-ae6f-00d6be64900c",
+      "observedAt": "2026-11-02T18:57:07.523Z",
+      "sourceCount": 56,
+      "failedSources": 0
+    }
+  ]
+}

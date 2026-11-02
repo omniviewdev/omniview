@@ -132,8 +132,8 @@ file, and each standalone lock retains its originating source authority.
 Changing either patch invalidates the composition; conflicting bytes, redirected
 paths, and borrowing another repository's declaration remain refused.
 
-CI admits SDK v0.14.2 after independent host-connection and live-source contract
-reviews. The original profile-isolation ancestry remains required; protected
+CI admits SDK v0.14.3 after independent host-connection, live-source, and
+connection-timeout policy reviews. The original profile-isolation ancestry remains required; protected
 isolation files must match the reviewed host-connection checkpoint. Exact SDK
 approval stays separate from candidate selection. Live-source validation rejects
 records and removals outside the admitted catalog contract.
@@ -145,6 +145,15 @@ Build the runtime before the Vite plugin: shim generation verifies the current r
 Keep tracked `dist/.gitkeep` for Go's `all:dist` embed during clean pre-frontend compile checks. Production and application acceptance still require actual built frontend assets.
 
 Error reports retain their normalized error, reference ID, and timestamp as occurrence-owned state rather than compiler optimization caches. Inspecting or copying a report must not replace its identity; a new failure must. Metric stream starts capture the current resource payload, including payload-only updates.
+
+### Connection startup readiness
+
+The host publishes a successful connection-status event only after relationship
+bootstrap, eager-source admission, and connection-start commit finish. Native
+provider registration alone must not release resource pages while startup can
+still retire persisted catalog authority. This ordering preserves source-epoch
+fences without replaying stale queries. Source inventory can continue syncing
+after the connection becomes ready; readiness is not a network-health probe.
 
 ### Host profiling
 
@@ -183,6 +192,11 @@ Open the footer's **pprof** popover to find each plugin's actual endpoint. Use t
 Saving never opens or closes an existing plugin listener. Restart Omniview after enabling or disabling the preference. Plugin reloads replace the process, PID, and endpoint; do not reuse an endpoint from a previous process. Status requests run only while the popover is open and pause while the window is hidden. The display reports listeners, not client connections or active captures.
 
 The host explicitly supplies `OMNIVIEW_PLUGIN_PPROF_ENABLED=true` or `false` from its startup preference and removes inherited host profiling ports. The SDK accepts only the exact value `true` as opt-in. Listeners use the same unauthenticated local-only access, request guards, capture caps, and shutdown cleanup as host profiling. Disable **Telemetry → Profiling** before restarting plugins for CPU captures when continuous Pyroscope profiling is enabled; Omniview does not pause it automatically.
+
+For a seeded, isolated workspace and verified host/plugin captures, use the
+[performance profiling skill](.agents/skills/omniview-performance-profiling/SKILL.md).
+The [2026-11-02 investigation](docs/performance-profiling-2026-11-02.md) records
+the controlled timeout reproduction, setup issues, and evidence boundaries.
 
 ### Process identification
 
