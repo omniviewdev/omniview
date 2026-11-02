@@ -207,7 +207,8 @@ func TestRouteLanesAreOnePerRouteAndBindAdvertisedTypes(t *testing.T) {
 		graphReader.edges = make([]graph.GraphEdge, count)
 		result, err = laneCall(t, service, related, args)
 		require.NoError(t, err)
-		relatedResult := result.(ResourceRelatedResult)
+		relatedResult, ok := result.(ResourceRelatedResult)
+		require.True(t, ok)
 		require.Len(t, relatedResult.Edges, 1000)
 		require.Equal(t, count > 1000, relatedResult.Truncated)
 	}
