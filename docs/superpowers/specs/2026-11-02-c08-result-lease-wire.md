@@ -32,10 +32,12 @@ host reauthorizes. Failure closes the lease.
 
 ### Source and execution, in brief
 
-C04 uses the `ResourceSources.Open` stream for snapshots and,
-when supported, source updates. Compatible older targets use the
-P45 finite-page adapter instead. Source generation and sequence
-describe one acquisition attempt; they do not order query
+C04 streams acquisitions through `ResourceSources.Open`: begin,
+snapshot frames, snapshotEnd and, in snapshotAndUpdates mode,
+changes. The provider pages P45 `Enumerate` or `NativeQuery`
+internally. The host pages P45 only through C04's snapshot-only
+adapter for an SDK without `sourceSessions`. Source generation and
+sequence describe one acquisition attempt; they do not order query
 frames. P12 holds authorized source interests and consistent
 read-model views. P13 compiles and authorizes the query, opens an
 execution, and provides its current ordered window and coalesced
@@ -742,9 +744,10 @@ An access-invalidated close clears the observer and ends the lease:
    survives only until drained, close, window teardown or the 30-second
    inactive deadline. `follow` requires admitted bounded update
    capability. Snapshot-only sources use `once` with explicit freshness
-   and manual refresh, never invented watch or polling. C04 uses the
-   `ResourceSources.Open` stream for session-capable snapshots. The P45
-   finite adapter serves older targets only after the pinned SDK's P45
+   and manual refresh, never invented watch or polling. C04 delivers
+   snapshots as source frames ending at snapshotEnd; P45 pages remain
+   internal to the provider or the old-SDK snapshot-only adapter. The
+   adapter serves older targets only after the pinned SDK's P45
    compatibility is proved. An unproved target is `UNSUPPORTED`; absence
    of `sourceSessions` also makes follow updates `UNSUPPORTED`.
    This follows the C04 candidate at
@@ -885,9 +888,8 @@ The P12 candidate is [revision
 9fa5a527](https://github.com/omniviewdev/omniview/blob/9fa5a527d3459bb988ee657174d935104336c504/docs/superpowers/specs/2026-11-02-p12-read-model.md);
 P13 candidate
 [e84d5be3](https://github.com/omniviewdev/omniview/blob/e84d5be395cb932c96f9b2ef6a3add83d7e170b0/docs/superpowers/specs/2026-11-02-p13-compiler.md)
-pins it and C05 `01edb72`. Owner-aware P12 and P13 revisions require
-independent delta review; the complete set requires final frozen-set
-review.
+pins it and C05 `01edb72`. These P12 and P13 revisions are independently
+approved; the complete set still requires final frozen-set review.
 P12 owns independent interests, view and coalesced invalidations; P13
 owns `Current`, coalesced `Changes`, `Done`, `Refresh` and `Close`. Its
 windows provide per-target source attempt/epoch and departure causes.
