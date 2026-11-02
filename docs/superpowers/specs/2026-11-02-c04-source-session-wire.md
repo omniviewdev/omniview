@@ -67,13 +67,14 @@ sessions. Its snapshot implementation calls the same P45 provider
 and emits frames. This is not a second provider List API. Preserve that
 implemented path rather than constructing another session transport.
 
-For an older SDK without source sessions, propose a host adapter which
-uses the existing P45 finite RPC and feeds the same frame validator and
-coordinator. Whether that fallback is actually compatible with old strict
-catalog/wire admission remains unresolved and requires real pinned-SDK
-evidence. Until resolved, do not claim old plugins support it or silently
-remove their existing finite workflow. Never stitch pages to an advisory
-watch or downgrade an updates request silently.
+For an older SDK without source sessions, the host adapter uses the
+existing P45 `Enumerate`/`NativeQuery` client in snapshot mode only. It
+feeds frames through the same validator, limits and coordinator. Updates
+return `UNSUPPORTED`; never stitch pages to an advisory watch. Pinned-SDK
+compatibility is an acceptance gate, not an assumed result. If a plugin's
+strict catalog or wire admission fails that proof, its target returns
+`UNSUPPORTED` for the adapter; P15 must not migrate that consumer and
+must retain its existing host `Enumerate` workflow until it can migrate.
 
 ## Wire and domain mapping
 
@@ -106,7 +107,9 @@ type SourceStream interface {
 }
 ```
 
-The stream context controls cancellation. The existing source coordinator
+The stream context controls cancellation. `Close()` must unblock a
+concurrent `Recv()`. Cancelling the context passed to `OpenSourceStream`
+ends `Recv()` within five seconds. The existing source coordinator
 remains the integration owner; P12 evolves or extracts its read-model
 responsibilities, rather than implementing another coordinator.
 
@@ -126,9 +129,9 @@ responsibilities, rather than implementing another coordinator.
   deadlines and terminal cleanup are required corrections. The current
   candidate's 512 MiB staging and 30-second send stall do not match the
   proposed 256 MiB hard ceiling and 5-second bound.
-- Old-SDK finite fallback is a proposal, not an established capability.
-  Strict catalog compatibility and the existing old workflow must be
-  checked before selecting the user-visible policy.
+- The old-SDK finite adapter is snapshot-only; pinned-SDK compatibility
+  is an acceptance gate. A failing target returns `UNSUPPORTED`, and its
+  existing finite consumer remains unmigrated until compatibility exists.
 
 The current source owner owns these changes after user approval. P12
 integrates with that owner and the existing host coordinator. This spec
@@ -287,7 +290,9 @@ admitted provider, authority, type and scope.
 `SourceOpenRequest.binding` holds the exact admitted P45
 `Representation`, including ID, representation revision and full
 `SchemaBinding` state, revision, inline document or document reference,
-once per generation. Each observation carries only `RepresentationRef`,
+once per generation. The target's representation ID must equal the
+binding's representation ID; reject any mismatch at open. Each
+observation carries only `RepresentationRef`,
 matching the binding's ID, representation revision and optional schema
 revision exactly, including presence. The catalog revision and access
 binding remain fixed for the generation; a mismatch is invalid and
@@ -420,12 +425,10 @@ The existing `sourceSessions` feature trait is negotiated from actual
 provider support. Check it and the qualified catalog operation, scope and
 representation independently. An old SDK without the trait cannot use
 updates; never silently downgrade or stitch advisory watches. Its finite
-P45 fallback is proposed but not yet proven against strict old catalog
-admission. Preserve existing finite workflows until that policy is
-resolved. Whether Proxmox's existing polling becomes snapshot-once with
-manual refresh depends on that decision and is not yet represented as a
-verified behavior. Native descriptor and guarantee admission remain
-catalog-bound.
+P45 adapter requires pinned-SDK compatibility evidence. Incompatible
+targets return `UNSUPPORTED` and their existing finite workflows remain
+unmigrated. No Proxmox polling change is claimed without that proof.
+Native descriptor and guarantee admission remain catalog-bound.
 
 All limits apply per generation and are checked before
 retaining/allocating corresponding untrusted data. Default and hard
@@ -507,12 +510,12 @@ Remove SDK `ResourceUpdates` RPCs and update message transport,
 `GetWatchState` and advisory watch registration/feature once callers
 migrate. Reuse `ResourceSources.Open` for finite and live acquisition;
 it calls the existing P45 provider acquisition implementation. The
-proposed legacy P45 host fallback remains conditional on compatibility.
-P05 retains P45 host `Enumerate` only for currently unmigrated finite
-callers; P15 owns removal of the public host `Enumerate` Wails entry
-point and its last migrated callers, while the internal P45 page
-transport remains. Replace status UI with honest session/interest
-status. Preserve native clients/informers as provider internals. Remove
+legacy P45 host fallback is subject to the compatibility gate above.
+P15 owns removal of the public host `Enumerate` Wails entry point only
+after its last consumer migrates; incompatible consumers retain it.
+The internal P45 page transport remains. Replace status UI with honest
+session/interest status.
+Preserve native clients/informers as provider internals. Remove
 host Wails `SubscribeResource`, `UnsubscribeResource`,
 `StartConnectionWatch`, `StopConnectionWatch`, `EnsureResourceWatch`,
 `StopResourceWatch`, `RestartResourceWatch`, `IsResourceWatchRunning`,
@@ -522,8 +525,8 @@ becomes host interest acquisition/release. Remove
 validated source frames and C08 result events. Regenerate bindings;
 runtime callers move to a real session-backed mechanism until P15
 replaces it, not a legacy shim. P10 migrates Kubernetes; Proxmox/Flux
-backends retain pinned SDK. Their finite fallback policy remains open
-until old-SDK compatibility is proven. Inventory all actual
+backends retain pinned SDK. Their finite fallback compatibility must be
+proven before their existing consumers migrate. Inventory all actual
 symbols/callers at implementation.
 
 After explicit C04 approval, use pinned candidate branches and
@@ -533,12 +536,16 @@ executable at its boundary; no empty DTO-only or stub PR:
 1. **SDK source owner:** adapt the existing transport and phase tracker
    for compact representation, absence facts, bounds and cleanup. Prove
    real snapshot and update behavior, not a parallel implementation.
-2. **Existing host source owner:** reconcile binding, finite fallback and
-   limits with the existing coordinator. Prove current finite workflows,
-   cancellation, legacy negotiation and rejected unsupported updates.
-3. **P12 read-model owner:** integrate or extract staging and membership
-   from the existing coordinator. Prove isolation, bounded staging,
-   shared interests and reset lifecycle without a second scheduler.
+2. **Existing host source owner:** deliver the SDK-facing opener, limits
+   and old-SDK adapter only, without editing binder or coordinator files.
+   Prove finite workflows, cancellation and legacy negotiation. The
+   exact reviewed and pinned slice-2 head SHA is the ownership handoff
+   point; P12 consumes that candidate before modifying shared integration.
+3. **P12 read-model owner:** after that handoff, own binder, coordinator,
+   `source_coordinator.go`, `source_session.go` and `controller.go`.
+   Integrate staging and membership from the existing coordinator.
+   Prove isolation, bounded staging, interests and reset lifecycle
+   without a second scheduler.
 4. **Kubernetes adapter** (P10 owner, pinned SDK/host): shared informer
    demand, proven cutover or bestEffort, no duplicate initial ADD,
    native selectors and explicit capability errors. Acceptance: real
