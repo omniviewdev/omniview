@@ -742,8 +742,12 @@ An access-invalidated close clears the observer and ends the lease:
    inactive deadline. `follow` requires admitted bounded update
    capability. Snapshot-only sources use `once` with explicit freshness
    and manual refresh, never invented watch or polling. C04 uses P45
-   finite pages for snapshots, including older providers with P45
-   support; live updates require `sourceSessionsV1`.
+   finite pages for snapshots. A plugin pinned to an older SDK is eligible
+   only after that exact SDK's P45 compatibility is proved. An unproved
+   target is `UNSUPPORTED`; absence of `sourceSessionsV1` also makes
+   follow updates `UNSUPPORTED`.
+   This follows the C04 candidate at
+   [bc030610](https://github.com/omniviewdev/omniview/blob/bc0306102007f4e3b516808150166ea2c36a43a0/docs/superpowers/specs/2026-11-02-c04-source-session-wire.md).
 3. Frames in one generation apply in sequence order. A `changes` frame
    is one atomic transaction: apply array entries in order to a private
    bounded window and publish once after validation. `enter` inserts at
@@ -904,7 +908,9 @@ and connection consumers, and Kubernetes, Proxmox and Flux UI consumers
 to the generated API. Remove superseded event batcher, per-type
 subscriptions and legacy listeners as their last consumers migrate; no
 compatibility shim. Preserve P03 identity and independent plugin backend
-SDK pins.
+SDK pins. If a pinned SDK cannot pass the C04 finite compatibility gate,
+P15 retains its existing host Enumerate consumer until migration is
+possible; it must not claim that consumer migrated or packet acceptance.
 
 ## Candidate implementation slices and gates
 
