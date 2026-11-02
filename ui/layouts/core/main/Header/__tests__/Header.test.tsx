@@ -70,20 +70,22 @@ function resourceScope(): Extract<RuntimeCore.SearchScopeV1, { kind: 'resource' 
   };
 }
 
-interface TestSourceView {
+type TestSourceView = {
   mode: 'snapshot' | 'snapshotAndUpdates';
   subscribe(listener: () => void): () => void;
   getSnapshot(): { records: Map<string, never>; complete: boolean; status?: { state: 'failed' | 'closed' }; event: { kind: 'changes'; revision: number } };
   refresh(): Promise<void>;
   close(): void;
-}
+};
 
 function sourceView(): TestSourceView {
   return {
     mode: 'snapshotAndUpdates',
     subscribe: (listener: () => void) => {
       native.sourceListeners.add(listener);
-      return () => { native.sourceListeners.delete(listener); };
+      return () => {
+        native.sourceListeners.delete(listener); 
+      };
     },
     getSnapshot: () => ({
       records: new Map(),
@@ -97,7 +99,9 @@ function sourceView(): TestSourceView {
 
 function emitSourceChange() {
   native.sourceRevision++;
-  native.sourceListeners.forEach(listener => listener());
+  native.sourceListeners.forEach(listener => {
+    listener(); 
+  });
 }
 
 vi.mock('@wailsio/runtime', async (importOriginal) => {
@@ -1080,7 +1084,10 @@ it('reports native subscription failure and retries without replacing the health
 
 it.each(['snapshot', 'failed', 'closed'] as const)('reports unavailable live search for %s source views', async (failure) => {
   const source = sourceView();
-  if (failure === 'snapshot') source.mode = 'snapshot';
+  if (failure === 'snapshot') {
+    source.mode = 'snapshot';
+  }
+
   native.openSourceView.mockResolvedValueOnce(source);
   const { service, importer } = createHeaderPluginEnvironment();
   importer.register('opaque', { plugin: new PluginWindow() });
@@ -1090,15 +1097,24 @@ it.each(['snapshot', 'failed', 'closed'] as const)('reports unavailable live sea
     window.dispatchEvent(new CustomEvent(GLOBAL_SEARCH_OPEN_EVENT, { detail: { scope: resourceTypeScope() } }));
   });
   if (failure !== 'snapshot') {
-    await waitFor(() => expect(native.sourceListeners.size).toBe(1));
+    await waitFor(() => {
+      expect(native.sourceListeners.size).toBe(1); 
+    });
     expect(screen.queryByText('Live updates are unavailable. Results may be out of date.')).not.toBeInTheDocument();
     const getSnapshot = source.getSnapshot;
     source.getSnapshot = () => ({ ...getSnapshot(), status: { state: failure } });
-    act(() => { native.sourceListeners.forEach(listener => listener()); });
+    act(() => {
+      native.sourceListeners.forEach(listener => {
+        listener(); 
+      }); 
+    });
   }
+
   expect(await screen.findByText('Live updates are unavailable. Results may be out of date.')).toBeVisible();
   view.unmount();
-  await act(async () => { await service.unload('opaque'); });
+  await act(async () => {
+    await service.unload('opaque'); 
+  });
 });
 
 it.each(['close', 'unmount'] as const)('ignores late native subscription failure after %s', async (operation) => {

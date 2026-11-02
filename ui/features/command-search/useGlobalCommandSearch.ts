@@ -653,28 +653,43 @@ export function useGlobalCommandSearch() {
           }
         });
         const acquired = Promise.resolve().then(async () => {
-          if (!active) return undefined;
+          if (!active) {
+            return undefined;
+          }
+
           const view = await openSourceView(pluginId, { targetId, target, updates: 'ifSupported' });
           if (!active) {
             view.close();
             return undefined;
           }
+
           let revision = 0;
           const update = () => {
             const snapshot = view.getSnapshot();
             const unavailable = view.mode === 'snapshot' || snapshot.status?.state === 'failed' || snapshot.status?.state === 'closed';
-            if (unavailable) failedSubscriptions.current.add(subscriptionKey);
-            else failedSubscriptions.current.delete(subscriptionKey);
+            if (unavailable) {
+              failedSubscriptions.current.add(subscriptionKey);
+            } else {
+              failedSubscriptions.current.delete(subscriptionKey);
+            }
+
             setLiveFailureCount(failedSubscriptions.current.size);
             const event = snapshot.event;
-            if (!event || event.revision === revision) return;
+            if (!event || event.revision === revision) {
+              return;
+            }
+
             revision = event.revision;
             for (const query of queryCache.findAll({ queryKey })) {
-              if (query.state.fetchStatus !== 'idle') dirtyQueries.add(query.queryHash);
+              if (query.state.fetchStatus !== 'idle') {
+                dirtyQueries.add(query.queryHash);
+              }
             }
+
             void queryClient.invalidateQueries({ queryKey, refetchType: 'none' });
             controller.notifyDataChanged();
           };
+
           const stop = view.subscribe(update);
           update();
           return { view, stop };

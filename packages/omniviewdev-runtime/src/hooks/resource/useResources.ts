@@ -119,9 +119,14 @@ export const useResources = ({ pluginID: explicitPluginID, request, enabled = tr
     const entry = acquireView(viewKey, pluginID, stableRequest, live);
     let active = true;
     let unsubscribe = () => {};
-    setActiveView({ key: viewKey, entry });
+    // Publish the view once its open settles; a failed open still enables the
+    // query so the rejection surfaces as a query error.
+    const publish = () => {
+      if (active) setActiveView({ key: viewKey, entry });
+    };
     void entry.client.then((client) => {
       if (!active) return;
+      publish();
       const update = () => {
         if (!active || !isConnectionReadinessCurrent(pluginID, connectionID, generation)) return;
         const snapshot = client.getSnapshot();
@@ -132,7 +137,7 @@ export const useResources = ({ pluginID: explicitPluginID, request, enabled = tr
       };
       unsubscribe = client.subscribe(update);
       update();
-    }, () => {});
+    }, publish);
     return () => { active = false; unsubscribe(); releaseView(viewKey, entry); };
   }, [collection, queryEnabled, stableRequest, generation, viewKey, pluginID, connectionID, live, queryClient, queryKey]);
 
@@ -146,10 +151,11 @@ export const useResources = ({ pluginID: explicitPluginID, request, enabled = tr
       ? collectionQuery(currentEntry!, signal, key) : enumerate(stableRequest, signal, key)
     : skipToken;
   const resourcesQuery = useQuery({ queryKey, queryFn, enabled: queryEnabled && (!collection || !!currentEntry), retry: false, gcTime: 0, placeholderData: undefined });
-  const refresh = React.useCallback(async (...args: Parameters<typeof resourcesQuery.refetch>) => {
+  const refetchResources = resourcesQuery.refetch;
+  const refresh = React.useCallback(async (...args: Parameters<typeof refetchResources>) => {
     if (collection && currentEntry) await (await currentEntry.client).refresh();
-    return resourcesQuery.refetch(...args);
-  }, [collection, currentEntry, resourcesQuery.refetch]);
+    return refetchResources(...args);
+  }, [collection, currentEntry, refetchResources]);
   const resources = collection ? { ...resourcesQuery, refetch: refresh } : resourcesQuery;
   const [successful, setSuccessful] = React.useState<{ identity: string; requestHash: string; request: HostEnumerateRequest }>();
   let acquisition = successful;
