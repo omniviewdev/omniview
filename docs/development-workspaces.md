@@ -202,6 +202,18 @@ For a desktop window, choose `--mode native`. Native MCP additionally requires `
 
 Inspection separates lifecycle phase, build stages, the authenticated `instance` descriptor and externally owned `services`. Host/control readiness is verified against the exact UUID, generation, selected state root, selected host source and captured process identity. Browser HTML must contain the selected safe boot identity. Vite/HMR require the actual owned listener plus a real authenticated websocket `connected` frame; `services.vite.hmr` retains the observed HMR path, not a guessed HTTP-to-WS conversion. Host descriptor endpoint fields remain null until their own actual observation succeeds.
 
+Live status uses bounded, nested deadlines:
+
+| Stage | Deadline |
+| --- | --- |
+| Supervisor observation | 15 seconds |
+| Supervisor client | 20 seconds |
+| Vite child CLI | 30 seconds |
+| Browser fetch | 35 seconds |
+
+Each caller leaves time for its inner operation and response.
+A timeout never proves readiness.
+
 Plugin RPC readiness comes from the observed managed lifecycle. Its go-plugin handshake transport can be a private Unix socket and is deliberately not a public agent target. Agents use the canonical authenticated control endpoint, never a fabricated plugin TCP address. Frontend-only or backend-only capabilities retain truthful not-applicable stages; unsupported plugins fail rather than being silently skipped.
 
 Sticky ports are default. Explicit overrides and strict policy never silently increment:
