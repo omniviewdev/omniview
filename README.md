@@ -132,8 +132,8 @@ file, and each standalone lock retains its originating source authority.
 Changing either patch invalidates the composition; conflicting bytes, redirected
 paths, and borrowing another repository's declaration remain refused.
 
-CI admits SDK v0.14.2 after independent host-connection and live-source contract
-reviews. The original profile-isolation ancestry remains required; protected
+CI admits SDK v0.14.3 after independent host-connection, live-source, and
+connection-timeout policy reviews. The original profile-isolation ancestry remains required; protected
 isolation files must match the reviewed host-connection checkpoint. Exact SDK
 approval stays separate from candidate selection. Live-source validation rejects
 records and removals outside the admitted catalog contract.
