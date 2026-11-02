@@ -27,6 +27,8 @@ Older plugin archives built against MUI or legacy UI contracts are incompatible.
 The Logs scenario selects a container from the opened Logs submenu, not from the
 parent action list. Adding actions such as Debug must not change which workload
 is measured; line counts, scrolling, drawer toggles, and run counts stay unchanged.
+The drawer workload uses controls inside the active bottom drawer.
+Sidebar tree controls can also have the `Expand` label.
 
 The Pod scenario opens the native page from a 5k-pod corpus, then scrolls up to
 30 viewport steps within that page. Current V2 Kubernetes requests 256 records per native page. Fixtures
