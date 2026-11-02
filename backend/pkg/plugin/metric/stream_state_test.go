@@ -106,7 +106,9 @@ func TestInvalidSubscriptionCannotPoisonSharedLane(t *testing.T) {
 	require.Len(t, page.Records, 1)
 	observed := page.Records[0]
 	ctrl := NewController(logging.NewNop(), nil, fixture.resources).(*controller)
-	ctrl.SetReferenceAdmitter(func(ctx context.Context, operation, plugin string, route resourcev2.AccessRoute, reference resourcev2.ResourceReference) (context.Context, error) {
+	ctrl.SetUIReferenceAdmitter(func(
+		ctx context.Context, operation, plugin string, route resourcev2.AccessRoute, reference resourcev2.ResourceReference,
+	) (context.Context, error) {
 		return fixture.resources.AdmitReference(invocation.HostContext(ctx), operation, plugin, route, reference)
 	})
 	state := testMetricStream()

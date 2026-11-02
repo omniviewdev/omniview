@@ -103,18 +103,23 @@ func profileConnectionChanges(current, native []types.Connection, next desiredCo
 	for _, connection := range native {
 		after[connection.ID] = connection
 	}
-	for _, profile := range next.Profiles {
-		after[profile.Configuration.ID] = profile.Configuration.connection()
+	for _, connection := range next.overlay().Upserts {
+		if connection.GetSensitiveData() == nil {
+			for _, candidate := range native {
+				if resourcev2.SameConnectionClientConfig(profileConfig(connection).connection(), profileConfig(candidate).connection()) {
+					connection.SetSensitiveData(candidate.GetSensitiveData())
+					break
+				}
+			}
+		}
+		after[connection.ID] = connection
 	}
 	for _, id := range next.DisabledIDs {
 		delete(after, id)
 	}
 	for id, previous := range before {
 		connection, exists := after[id]
-		// Host profiles never carry native private data. The SDK alone inherits
-		// unavailable private credentials when these public client inputs match.
-		publicPrevious, publicNext := profileConfig(previous).connection(), profileConfig(connection).connection()
-		if !exists || !resourcev2.SameConnectionClientConfig(publicPrevious, publicNext) {
+		if !exists || !resourcev2.SameConnectionClientConfig(previous, connection) {
 			routes = append(routes, id)
 			retire = append(retire, id)
 		} else if !reflect.DeepEqual(profileConfig(previous), profileConfig(connection)) {

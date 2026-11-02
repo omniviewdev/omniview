@@ -46,11 +46,8 @@ vi.mock('../../connection/connectionReadiness', () => ({
 vi.mock('../snackbar/useSnackbar', () => ({ useSnackbar: () => ({ showSnackbar: native.snackbar }) }));
 vi.mock('../useResolvedPluginId', () => ({ useResolvedPluginId: (id?: string) => id ?? 'provider' }));
 vi.mock('@wailsio/runtime', async (importOriginal) => {
-  const runtime = await importOriginal<typeof WailsRuntime>();
-  return {
-    ...runtime,
-    Events: { On: (topic: string, callback: (event: { data: unknown }) => void) => { native.listeners.set(topic, callback); return () => { if (native.listeners.get(topic) === callback) native.listeners.delete(topic); }; } },
-  };
+  const actual = await importOriginal<typeof WailsRuntime>();
+  return { ...actual, Events: { ...actual.Events, On: (topic: string, callback: (event: { data: unknown }) => void) => { native.listeners.set(topic, callback); return () => { if (native.listeners.get(topic) === callback) native.listeners.delete(topic); }; } } };
 });
 
 const request: HostEnumerateRequest = { targetId: 'host-target', request: { target: {

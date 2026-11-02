@@ -38,7 +38,7 @@ type Service interface {
 	GetConnectionMetadata(ctx context.Context, pluginID, connectionID string) (HostConnectionMetadata, error)
 	RefreshConnectionMetadata(ctx context.Context, pluginID, connectionID string) (HostConnectionMetadata, error)
 	ScopeValues(ctx context.Context, pluginID string, route resourcev2.AccessRoute, dimension string) ([]string, error)
-	SaveConnectionProfile(ctx context.Context, pluginID string, connection types.Connection) (ConnectionProfileResult, error)
+	SaveConnectionProfile(ctx context.Context, pluginID string, connection types.Connection, credentials *ConnectionProfileCredentials) (ConnectionProfileResult, error)
 	ListConnectionProfiles(ctx context.Context, pluginID string) ([]ConnectionProfile, error)
 	ImportConnectionProfile(ctx context.Context, pluginID string, connectionID string) (ConnectionProfileResult, error)
 	ResetConnectionProfile(ctx context.Context, pluginID string, connectionID string) (ConnectionProfileResult, error)

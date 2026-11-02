@@ -41,6 +41,21 @@ func (s *ServiceWrapper) CreateSession(
 	}
 	return s.Ctrl.CreateSession(plugin, connectionID, opts)
 }
+
+// OpenNativeSession accepts only the same bounded resource payload as CreateSession.
+// Executables and launch commands are never accepted from the frontend.
+func (s *ServiceWrapper) OpenNativeSession(plugin, connectionID, encoded string) error {
+	var opts execsdk.SessionOptions
+	if err := transportjson.Decode(encoded, &opts, plugin, connectionID); err != nil {
+		return err
+	}
+	return s.Ctrl.OpenNativeSession(plugin, connectionID, opts)
+}
+
+func (s *ServiceWrapper) GetNativeTerminalSupport() bool {
+	return s.Ctrl.GetNativeTerminalSupport()
+}
+
 func (s *ServiceWrapper) CreateTerminal(opts execsdk.SessionOptions) (*execsdk.Session, error) {
 	return s.Ctrl.CreateTerminal(opts)
 }

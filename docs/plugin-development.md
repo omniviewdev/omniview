@@ -4,10 +4,10 @@ This guide covers everything you need to know to develop plugins for Omniview wi
 
 ### Marketplace host compatibility
 
-Host registry API requests advertise `ide_version=0.14.0`, sourced from
+Host registry API requests advertise `ide_version=0.20.0`, sourced from
 `internal/version.CompatibilityVersion`. This is the source's minimum host
 compatibility release line, not the SDK version or a PR/nightly display label.
-Development builds advertise the same `0.14.0` API baseline while retaining
+Development builds advertise the same `0.20.0` API baseline while retaining
 their existing development display labels. Release builds stamp the display
 version from the release tag.
 
@@ -15,6 +15,8 @@ Advance this explicit compatibility line when a coordinated host/runtime/SDK
 cutover changes plugin requirements. Updating display-version linker flags alone
 does not change marketplace compatibility. Transactional settings require rebuilt
 SDK v0.10.0 plugins; Kubernetes v0.11.0 requires host/runtime v0.14.0.
+Plugins using write-only connection-profile credentials require host/runtime v0.20.0
+and must declare an inclusive `min_ide_version` of `0.20.0` or newer.
 
 Publisher minimum and maximum IDE versions are inclusive semantic-version bounds.
 Hosts that omit `ide_version` can only access unconstrained plugin versions.
@@ -97,6 +99,71 @@ tags:
 ```
 
 For `exec` sessions, the host owns terminal tab state. When a provider supplies retryable shell errors and alternate commands, “Try a different shell” replaces the session in the existing tab, preserving tab order and focus. The host closes the old backend session; a failed retry stays in that same tab.
+
+#### Fresh external resource shells (macOS)
+
+The host's **Open in Native Terminal** action starts a new local CLI process in
+Terminal or iTerm2. It preserves the selected resource reference and connection.
+It does not move a running PTY, copy shell history or remote working directories,
+or create a built-in terminal tab/session. Built-in Exec and shell retry behavior
+remain unchanged. No modifier shortcut or default destination is configured.
+
+`terminal.nativeApplication` accepts `terminal` (default) or `iterm2`. The action
+is hidden outside macOS. The selected application must be installed; the host
+never silently switches applications or falls back to built-in Exec.
+
+Plugins built with SDK v0.12.0 can provide `NativeCommandHandler` on an exec
+handler, or implement the optional `exec.NativeCommandProvider`. Advertise native
+support only when the handler can plan a fresh external process. Planning must
+revalidate authoritative resource identity/incarnation and the selected connection,
+reject unsupported authentication, and return structured `Executable`, literal
+`Args`, optional `Env`, and optional absolute local `Cwd`. Plans must not include
+tokens, passwords, or embedded credentials in any field. Use inherited local
+authentication or reusable local credential-file references instead. An old plugin
+or unsupported resource receives an explicit unsupported error, never legacy Exec.
+
+The Wails service exposes `OpenNativeSession(plugin, connectionID, encoded)` and
+`GetNativeTerminalSupport() bool`. The former accepts only the same bounded
+resource-session JSON as built-in Exec, applies the same host reference admission,
+and asks the plugin for its command immediately before launch. It is not a
+frontend arbitrary-command API. Commands are not logged or returned to the UI.
+
+Frontend plugins use `useNativeExec({ pluginID?, resourceKey })` from
+`@omniviewdev/runtime`. It returns `isSupported`, `isPending`, and
+`openNativeSession({ connectionID, opts }): Promise<boolean>`; `opts` is
+`Partial<SessionOptions>` with the observed canonical body, reference, route, and
+selected container. Plugin context supplies `pluginID` unless host code provides
+it explicitly. Support requires both the backend platform check and the
+handler's `supports_native_command` metadata. Hide native actions until support
+is confirmed, disable them while pending, and close menus only on `true`.
+Failures return `false` and use the standard error snackbar without allocating
+a built-in tab/session or running integrated shell recovery. Pending state and
+duplicate-call exclusion are shared across hooks using the same QueryClient,
+plugin, and resource key, including surfaces mounted during a launch. Calls are
+blocked synchronously before the pending render. Its exported `NativeExecInput`
+and `UseNativeExecResult` types support typed consumers.
+The handwritten `ExecClient.OpenNativeSession(plugin, connectionID, options)`
+encodes `SessionOptions` safely; do not pass unbounded objects directly to the
+generated encoded-string binding.
+
+The host resolves the CLI using its restored login-shell PATH. It writes a
+mode-0600 launch script inside a private mode-0700 temporary directory, with
+POSIX-quoted executable, arguments, environment additions, and working directory.
+The script deletes itself before execution. Failed launches remove the private
+directory. The host resolves fixed allowlisted bundle IDs through NSWorkspace
+using built-in JXA/AppKit, without Apple Events or a Swift runtime dependency.
+Escaped AppleScript addresses that installed application path to create a fresh
+window; the host never types into an existing interactive session. Discovery and
+Automation calls have deadlines. A successful launch means the terminal accepted the new window,
+not that the remote shell connected successfully; remote errors remain visible
+in that new terminal.
+
+If the CLI is missing, install it on the login PATH and restart Omniview. If the
+application is missing, install it or change Settings > Terminal. If macOS denies
+control, enable Omniview under System Settings > Privacy & Security > Automation
+for the selected terminal, then retry. For manual checks use disposable local
+fixtures, not production connections or credentials.
+
 
 ### 1.4 Creating a New Plugin
 
@@ -257,10 +324,66 @@ providers never persist that overlay or modify native configuration files.
 Save and Import record only the user's explicit profile. Remove stores a
 disabled-ID tombstone, and Reset restores native discovery or removes a manual
 profile with no native fallback. Never replay a cached discovery list as desired
-configuration. Profile mutation success requires `applied: true`; an error never
-means that desired state became effective, and a failed rollback leaves actual
-state unknown. Profile `active` means effective discovery membership, not an
-established connection or live resource readiness.
+configuration. Profile mutation success requires `applied: true`. A host commit
+durability failure can return `RESET_REQUIRED` after the new source state became
+effective; the host publishes a successfully listed source snapshot in that case.
+After a durable commit, inventory publication precedes obsolete-credential
+cleanup. A cleanup failure returns `RESET_REQUIRED` without hiding the already
+effective profile; caller cancellation does not undo that committed publication.
+A failed list or rollback does not establish a known new snapshot. Reload before
+retrying any `RESET_REQUIRED` mutation. Profile `active` means effective discovery
+membership, not an established connection or live resource readiness.
+
+`ResourceClient.SaveConnectionProfile(pluginID, connection, credentials?)` and
+`useConnection(...).saveConnectionProfile(connection, credentials?)` accept a
+separate write-only `{ username?, token? }` credential DTO. Never put these values
+in public connection `data`. The Wails adapter encodes public configuration
+through the lossless request-JSON transport; private input remains a separate
+argument and never appears in public profiles, status, or inventory responses.
+
+Omitting the DTO or a field preserves stored values only for the same profile ID,
+UID, and unchanged canonical public client configuration. An explicit empty
+string clears that field; `{ username: '', token: '' }` clears both. An empty DTO
+is not a clear request. Endpoint/configuration changes do not inherit secrets
+from the previous target. Native source credentials remain source-owned.
+
+The host stores explicitly supplied values in immutable files beneath the
+profile's scoped plugin store (`0600` on Unix). The public desired-profile file
+contains only an opaque reference. Each private record binds its ID and UID to a
+SHA-256 digest of canonical client `Data`, excluding display metadata. Missing or
+mismatched bindings fail closed before credentials reach a provider; changing a
+public endpoint while retaining its private reference cannot redirect secrets.
+Secret-file sync precedes the atomic public pointer switch;
+rollback, reload, removal, and orphan collection preserve the
+profile/secret pairing, including an explicit empty-private-data clear. Unix
+directory metadata is synchronized. Windows does not support syncing read-only
+directory handles, and scoped rename has no write-through option; it does not
+provide the Unix directory-fsync power-loss guarantee. Normal cleanup still
+removes obsolete secret versions. After sudden power loss, a missing or invalid
+referenced credential file fails closed: reload and re-enter credentials rather
+than falling back to native credentials or another private version.
+These files are not encrypted. On Windows, before creating a private file, the
+host validates the scoped store directory handle's owner and DACL. Before every
+profile read and credential replay, it also validates that directory and the
+public profile file handle. Broadly shared custom stores or public files are
+rejected, preventing public-configuration tampering and an untrusted inherited
+handle surviving file restriction. Trusted inherited directory and public-file
+entries are allowed.
+The host atomically creates private files with a protected DACL through a native
+create relative to the validated directory handle, permitting only the current
+user, SYSTEM, and Administrators from creation. No mutable absolute path or
+post-creation handle-access upgrade is used. Before reading, it requires an owner
+from that same trusted set (including elevated-token Administrators ownership)
+and rejects DACL entries granting access to any other principal.
+Unix files require mode `0600`. Reported uncertain rollback/durability returns
+`RESET_REQUIRED`, not a successful save.
+
+Deploy the SDK private-overlay transport fix in both host and plugin before
+using credential saves, then publish the matching runtime before upgrading
+plugin dependency pins. Saving applies configuration; a subsequent explicit
+Start and Check uses the saved ID. Native `CONNECTED` lifecycle state does not
+prove every resource permission or replace an authenticated resource operation.
+
 Effective connection inventory starts empty and is replaced only by successful
 fresh source snapshots plus actually applied overlays. Failed discovery never
 activates an old cache for Get/List or utility capability lookups. Legacy mixed

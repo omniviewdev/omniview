@@ -7,6 +7,7 @@ import (
 	"time"
 
 	goplugin "github.com/hashicorp/go-plugin"
+	"github.com/omniviewdev/omniview/internal/devsession"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -25,14 +26,34 @@ type ExternalBackend struct {
 	rpcClient      goplugin.ClientProtocol
 	processCleanup func()
 	cleanupOnce    sync.Once
+	observation    devsession.ProcessObservation
+	observationErr error
 }
 
 // NewExternalBackend creates a new ExternalBackend wrapping go-plugin types.
 func NewExternalBackend(pluginClient *goplugin.Client, rpcClient goplugin.ClientProtocol) *ExternalBackend {
-	return &ExternalBackend{
+	backend := &ExternalBackend{
 		pluginClient: pluginClient,
 		rpcClient:    rpcClient,
 	}
+	backend.observationErr = fmt.Errorf("Plugin process identity unavailable")
+	if pluginClient != nil {
+		if config := pluginClient.ReattachConfig(); config != nil && config.Pid > 0 {
+			backend.observation, backend.observationErr = devsession.ObserveProcess(config.Pid)
+		}
+	}
+	return backend
+}
+
+// ProcessObservation returns the immutable post-handshake diagnostic identity.
+// Observation failure never prevents the plugin from loading.
+func (b *ExternalBackend) ProcessObservation() (devsession.ProcessObservation, error) {
+	return b.observation, b.observationErr
+}
+
+// ProcessExited checks liveness without invoking lifecycle cleanup.
+func (b *ExternalBackend) ProcessExited() bool {
+	return b.pluginClient == nil || b.pluginClient.Exited()
 }
 
 // SetProcessCleanup transfers a verified executable snapshot to this process's

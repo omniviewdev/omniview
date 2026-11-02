@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime"
 	"testing"
@@ -146,6 +147,34 @@ func TestProductionHeadlessLogsPreserveExternalAuthority(t *testing.T) {
 	ctx := invocation.NewScope(invocation.ExternalAgent).Context(context.Background())
 	_, err := logs.ReadResourceLogs(ctx, "plugin", sdklogs.CreateSessionOptions{
 		ResourceKey: "pod", ResourceID: "pod",
+		Route: &sdkresource.AccessRoute{Connection: "route"},
+		Reference: &sdkresource.ResourceReference{Address: sdkresource.ResourceAddress{
+			Provider: "provider", Authority: "authority", Type: "pod", ID: "pod", Scope: []sdkresource.ScopeEntry{},
+		}},
+	})
+	require.Error(t, err)
+	require.Equal(t, invocation.ExternalAgent, observed, "production composition must not stamp the UI realm")
+}
+
+func TestCapabilityHeadlessMetricsPreserveExternalAuthority(t *testing.T) {
+	logger := logging.NewNop()
+	state := appstate.NewTestService(t)
+	var observed invocation.Origin
+	authorize := func(principal invocation.Principal, operation string, _ invocation.Target) error {
+		if operation == "metric.Query" {
+			observed = principal.Origin()
+			if observed == invocation.ExternalAgent {
+				return errors.New("external metrics denied")
+			}
+		}
+		return nil
+	}
+	boundary := invocation.NewBoundary(invocation.AuthorizeFunc(authorize))
+	resources := hostresource.NewController(logger, nil, state.PluginStore, boundary)
+	_, _, _, metrics := newUICapabilityControllers(logger, nil, resources, invocation.NewScope(invocation.TrustedUI))
+	ctx := invocation.NewScope(invocation.ExternalAgent).Context(context.Background())
+	_, err := metrics.ReadResourceMetrics(ctx, "plugin", sdkmetric.QueryRequest{
+		ResourceKey: "pod", ResourceID: "pod", MetricIDs: []string{"cpu"},
 		Route: &sdkresource.AccessRoute{Connection: "route"},
 		Reference: &sdkresource.ResourceReference{Address: sdkresource.ResourceAddress{
 			Provider: "provider", Authority: "authority", Type: "pod", ID: "pod", Scope: []sdkresource.ScopeEntry{},

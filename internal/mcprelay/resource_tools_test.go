@@ -32,6 +32,7 @@ type generatedNativeSource struct {
 	actions                   bool
 	actionCalls               int
 	expectedAction            *resourcev2.ActionDescriptor
+	gets                      bool
 }
 
 func (source *generatedNativeSource) Catalog(_ context.Context, request resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
@@ -59,6 +60,10 @@ func (source *generatedNativeSource) Catalog(_ context.Context, request resource
 	}
 	if source.integerInputs && len(descriptor.NativeQueries) > 0 {
 		descriptor.NativeQueries[0].InputSchema.Properties["selector"] = resourcev2.SchemaProperty{Type: resourcev2.SchemaInteger}
+	}
+	if source.gets {
+		get := resourcev2.Capability{Operation: resourcev2.OperationGet, Scope: resourcev2.QueryScope{}}
+		descriptor.Capabilities = append(descriptor.Capabilities, get)
 	}
 	if source.actions {
 		descriptor.Capabilities = append(descriptor.Capabilities, resourcev2.Capability{Operation: resourcev2.OperationAction, Scope: resourcev2.QueryScope{}})
@@ -103,6 +108,14 @@ func (source *generatedNativeSource) Enumerate(ctx context.Context, request reso
 	}
 	revision := "content-one"
 	return resourcev2.SourcePage{Records: records, NextCursor: next, Count: resourcev2.Count{Kind: "unknown"}, Coverage: resourcev2.Coverage{Kind: "partial", Paths: []string{}, Reason: "Native source page only."}, Consistency: "bestEffort", SourceRevision: &revision}, nil
+}
+func (source *generatedNativeSource) Get(_ context.Context, request resourcev2.GetRequest) (resourcev2.Record, error) {
+	return generatedRecord(addressTarget(request.Route, request.Reference.Address), request.Reference.Address.ID), nil
+}
+func addressTarget(route resourcev2.AccessRoute, address resourcev2.ResourceAddress) resourcev2.ReadTarget {
+	return resourcev2.ReadTarget{
+		Route: route, Provider: address.Provider, Authority: address.Authority, Type: address.Type,
+	}
 }
 func (source *generatedNativeSource) NativeQuery(ctx context.Context, request resourcev2.NativeQueryRequest) (resourcev2.SourcePage, error) {
 	source.queries++

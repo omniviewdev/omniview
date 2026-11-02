@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GetConnection, SaveConnectionProfile, ImportConnectionProfile, ResetConnectionProfile, RemoveConnection } from '../../resource/v2/client';
 import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
-import type { ConnectionProfileResult } from '../../resource/v2/host';
+import type { ConnectionProfileCredentials, ConnectionProfileResult } from '../../resource/v2/host';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
 import { resourceQueryKeys } from '../../resourceQueryKeys';
@@ -43,12 +43,15 @@ export const useConnection = ({
     onSuccess: invalidateEffectiveState,
     onError: createErrorHandler(showSnackbar, 'Failed to stop connection'),
   });
-  const { mutateAsync: saveConnectionProfile } = useMutation({
-    mutationFn: (connection: Connection) => SaveConnectionProfile(pluginID, connection).then(requireAppliedProfile),
+  const { mutateAsync: saveProfile } = useMutation({
+    mutationFn: ({ connection, credentials }: { connection: Connection; credentials?: ConnectionProfileCredentials }) =>
+      SaveConnectionProfile(pluginID, connection, credentials).then(requireAppliedProfile),
     onSuccess: () => { showSnackbar('Connection profile saved', 'success'); },
     onError: createErrorHandler(showSnackbar, 'Failed to save connection profile'),
     onSettled: refreshProfileState,
   });
+  const saveConnectionProfile = (connection: Connection, credentials?: ConnectionProfileCredentials) =>
+    saveProfile({ connection, credentials });
   const { mutateAsync: importConnectionProfile } = useMutation({
     mutationFn: () => ImportConnectionProfile(pluginID, connectionID).then(requireAppliedProfile),
     onSuccess: () => { showSnackbar('Connection profile imported', 'success'); },

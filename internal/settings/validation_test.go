@@ -82,3 +82,25 @@ func TestGoExecutableValidationInaccessiblePath(t *testing.T) {
 		t.Fatalf("inaccessible executable feedback: %+v", result)
 	}
 }
+
+func TestNativeTerminalApplicationSetting(t *testing.T) {
+	provider := settings.NewProvider(settings.ProviderOpts{PluginSettings: []settings.Category{Terminal}})
+	value, err := provider.GetString("terminal.nativeApplication")
+	if err != nil || value != "terminal" {
+		t.Fatalf("native application default = %q, error = %v", value, err)
+	}
+	for _, value := range []any{"terminal", "iterm2"} {
+		if err := provider.SetSetting("terminal.nativeApplication", value); err != nil {
+			t.Fatalf("valid application rejected: %v", err)
+		}
+	}
+	for _, value := range []any{"", "Terminal", "other", "terminal; arbitrary", 42, nil} {
+		if err := provider.SetSetting("terminal.nativeApplication", value); err == nil {
+			t.Fatalf("invalid application accepted: %#v", value)
+		}
+	}
+	value, err = provider.GetString("terminal.nativeApplication")
+	if err != nil || value != "iterm2" {
+		t.Fatalf("invalid update changed application: %q, error = %v", value, err)
+	}
+}

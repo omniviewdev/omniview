@@ -83,6 +83,7 @@ type Manager interface {
 	GetPluginMeta(id string) (config.PluginMeta, error)
 	ListPluginMetas() []config.PluginMeta
 	GetPluginProfilingStatuses() []PluginProfilingStatus
+	GetPluginProcesses() []PluginProcessInfo
 
 	ListAvailablePlugins() ([]registry.AvailablePlugin, error)
 	SearchPlugins(query, category, sort string) ([]registry.AvailablePlugin, error)

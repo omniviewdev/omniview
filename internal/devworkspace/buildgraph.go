@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/omniviewdev/omniview/internal/devcompose"
@@ -519,10 +520,11 @@ func (g *BuildGraph) execute(ctx context.Context, nodes []BuildNode, reuse *buil
 	}
 	results := make(chan result)
 	running, limit := 0, buildParallelism()
+	var failed atomic.Bool
 	var failure error
 	for {
-		if failure == nil && ctx.Err() == nil {
-			for i := 0; i < len(pending) && running < limit; {
+		if failure == nil && !failed.Load() && ctx.Err() == nil {
+			for i := 0; i < len(pending) && running < limit && !failed.Load(); {
 				n := pending[i]
 				if !ready(n) {
 					i++
@@ -534,6 +536,7 @@ func (g *BuildGraph) execute(ctx context.Context, nodes []BuildNode, reuse *buil
 				go func() {
 					err := g.produce(ctx, n, reuse)
 					if err != nil {
+						failed.Store(true)
 						g.emit(n.ID, "error", err)
 						err = fmt.Errorf("%s: %w", n.ID, err)
 					} else {

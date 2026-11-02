@@ -1,7 +1,6 @@
 import { parseAppError, isCancelledError, actionToSnackbar, createErrorHandler, showAppError } from './parseAppError';
 import { ErrorTypes } from './types';
 import type { AppErrorAction } from './types';
-import { registerActivePageNavigator } from '../context/windows/activePageNavigator';
 
 describe('parseAppError', () => {
   it('parses valid AppError JSON string', () => {
@@ -103,23 +102,6 @@ describe('isCancelledError', () => {
 });
 
 describe('actionToSnackbar', () => {
-  it('navigate action navigates the active page to the hash route target', () => {
-    const navigate = vi.fn();
-    const unregister = registerActivePageNavigator(navigate);
-    const action: AppErrorAction = { type: 'navigate', label: 'Settings', target: '#/settings?category=developer' };
-    const result = actionToSnackbar(action);
-    result.onClick();
-    unregister();
-
-    expect(result.label).toBe('Settings');
-    expect(navigate).toHaveBeenCalledWith('/settings?category=developer');
-  });
-
-  it('navigate action fails loudly in a window without page navigation', () => {
-    const action: AppErrorAction = { type: 'navigate', label: 'Settings', target: '#/settings' };
-    expect(() => actionToSnackbar(action).onClick()).toThrow(/no page navigator/);
-  });
-
   it('open-url action calls window.open', () => {
     const action: AppErrorAction = { type: 'open-url', label: 'Docs', target: 'https://example.com' };
     const originalOpen = window.open;

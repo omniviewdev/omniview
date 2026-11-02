@@ -23,6 +23,7 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
+	sdkmetric "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 	sdktools "github.com/omniviewdev/plugin-sdk/pkg/v1/tools"
 )
 
@@ -969,4 +970,105 @@ func TestActualHTTPCallerCancellationStillCancelsNativeWork(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("caller cancellation did not reach native work")
 	}
+}
+
+type laneHTTPConnections struct {
+	*fakeConnections
+	observer catalogObserver
+}
+
+func (s *laneHTTPConnections) ObserveCatalog(
+	ctx context.Context, pluginID string, route resourcev2.AccessRoute,
+) (resourcev2.Catalog, resource.Observation, error) {
+	return s.observer.ObserveCatalog(ctx, pluginID, route)
+}
+
+func (s *laneHTTPConnections) ResolveToolTarget(
+	ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string,
+) (resourcev2.ReadTarget, error) {
+	return s.observer.ResolveToolTarget(ctx, pluginID, route, resourceType)
+}
+
+func TestResourceReadLanesAndConsentThroughHTTP(t *testing.T) {
+	h := newHarness(t)
+	controller, source := generatedController(t)
+	source.gets = true
+	source.actions = true
+	service := newLaneService(t, controller)
+	metrics := &fakeMetricReader{}
+	h.relay.connections = &laneHTTPConnections{
+		fakeConnections: &fakeConnections{
+			Service:     service,
+			connections: map[string][]sdktypes.Connection{"fixture": {{ID: "route-a", Name: "Fixture"}}},
+		},
+		observer: service,
+	}
+	h.relay.metrics = metrics
+	h.relay.resync()
+	session := h.connect(t, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	tools := laneTools(t, service, ResourceReaders{Metrics: metrics})
+	events := findGenerated(t, tools, "route-a", opGetResourceEvents)
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: events.MCPName,
+		Arguments: map[string]any{
+			"connection_id": "route-a", "reference": laneReference(events, "opaque/items"), "limit": 257,
+		},
+	})
+	require.NoError(t, err)
+	require.True(t, result.IsError)
+	require.Zero(t, service.eventCalls)
+	result, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name: events.MCPName,
+		Arguments: map[string]any{
+			"connection_id": "route-a", "reference": laneReference(events, "opaque/items"), "limit": 20,
+		},
+	})
+	require.NoError(t, err)
+	require.False(t, result.IsError)
+	require.Equal(t, uint32(20), service.eventLimit)
+	metric := findGenerated(t, tools, "route-a", opMetricQuery)
+	result, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name: metric.MCPName,
+		Arguments: map[string]any{
+			"connection_id": "route-a", "reference": laneReference(metric, "opaque/items"),
+			"metricIDs": []string{"foreign"}, "shape": "current",
+		},
+	})
+	require.NoError(t, err)
+	require.True(t, result.IsError)
+	require.Nil(t, metrics.request)
+	metrics.response = &sdkmetric.QueryResponse{
+		Success: true,
+		Results: []sdkmetric.MetricResult{{CurrentValue: &sdkmetric.CurrentValue{MetricID: "cpu", Value: 0.25}}},
+	}
+	result, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name: metric.MCPName,
+		Arguments: map[string]any{
+			"connection_id": "route-a", "reference": laneReference(metric, "opaque/items"),
+			"metricIDs": []string{"cpu"}, "shape": "current",
+		},
+	})
+	require.NoError(t, err)
+	require.False(t, result.IsError)
+	payload, err := json.Marshal(result.StructuredContent)
+	require.NoError(t, err)
+	var metricResult ResourceMetricsResult
+	require.NoError(t, json.Unmarshal(payload, &metricResult))
+	require.Equal(t, "cpu", metricResult.Results[0].CurrentValue.MetricID)
+	require.InDelta(t, 0.25, metricResult.Results[0].CurrentValue.Value, 1e-10)
+	action := findGenerated(t, tools, "route-a", "resource.Action")
+	require.NoError(t, h.service.SetToolOverride(Scope{}, action.MCPName, ToolOverride{Enabled: new(true)}))
+	input := map[string]any{
+		"kind": "map", "value": map[string]any{"amount": map[string]any{"kind": "int64", "value": "7"}},
+	}
+	approveNext(t, h.service)
+	result, err = session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      action.MCPName,
+		Arguments: map[string]any{"connection_id": "route-a", "input": input},
+	})
+	require.NoError(t, err)
+	require.False(t, result.IsError)
+	require.Equal(t, 1, source.actionCalls)
 }

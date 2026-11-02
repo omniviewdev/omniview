@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState, useSyncExternalStore } from 'react';
 
 import { IconButton, Menu } from '@omniviewdev/base-ui';
 
@@ -26,8 +26,15 @@ const RightDrawerActions: React.FC<Props> = ({ ctx, actions }) => {
   );
 };
 
+const noopUnsubscribe = () => undefined;
 const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentAction }> = ({ ctx, action }) => {
   const [open, setOpen] = useState(false);
+  const subscribe = useCallback(
+    (onChange: () => void) => action.externalStore?.subscribe(ctx, onChange) ?? noopUnsubscribe,
+    [action.externalStore, ctx],
+  );
+  const getSnapshot = useCallback(() => action.externalStore?.getSnapshot(ctx), [action.externalStore, ctx]);
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const { showSnackbar } = useSnackbar();
   const runAction = async (callback: () => void | Promise<unknown>) => {
     try {
@@ -56,11 +63,11 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
     }
 
     if (typeof action.list === 'function') {
-      return action.list(ctx);
+      return action.list(ctx, snapshot);
     }
 
     return action.list;
-  }, [action, ctx]);
+  }, [action, ctx, snapshot]);
 
   const actionTitle = typeof action.title === 'string' ? action.title : '';
   const dividerBefore = actionTitle === 'Start' || actionTitle === 'Delete';
@@ -103,8 +110,12 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
             variant='ghost'
             color='neutral'
             aria-label={actionTitle === '' ? undefined : actionTitle}
-            disabled={checkIsDisabled()}
+            disabled={checkIsDisabled() || listItems[0].disabled}
             onClick={() => {
+              if (listItems[0].disabled) {
+                return;
+              }
+
               void runAction(async () => listItems[0].action(ctx));
             }}
           >
@@ -144,7 +155,12 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
                 <Menu.Item
                   key={i}
                   startDecorator={item.icon}
+                  disabled={item.disabled}
                   onClick={() => {
+                    if (item.disabled) {
+                      return;
+                    }
+
                     void runAction(async () => item.action(ctx));
                     setOpen(false);
                   }}

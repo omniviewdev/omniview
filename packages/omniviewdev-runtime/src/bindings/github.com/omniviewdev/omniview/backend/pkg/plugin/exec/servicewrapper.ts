@@ -59,6 +59,10 @@ export function GetHandlers(): $CancellablePromise<{ [_ in string]?: { [_ in str
     });
 }
 
+export function GetNativeTerminalSupport(): $CancellablePromise<boolean> {
+    return $Call.ByID(3434119522);
+}
+
 export function GetPluginHandlers(plugin: string): $CancellablePromise<{ [_ in string]?: exec$0.Handler }> {
     return $Call.ByID(2619212338, plugin).then(($result: any) => {
         return $$createType4($result);
@@ -85,6 +89,14 @@ export function ListSessions(): $CancellablePromise<(exec$0.Session | null)[]> {
     return $Call.ByID(265791345).then(($result: any) => {
         return $$createType7($result);
     });
+}
+
+/**
+ * OpenNativeSession accepts only the same bounded resource payload as CreateSession.
+ * Executables and launch commands are never accepted from the frontend.
+ */
+export function OpenNativeSession(plugin: string, connectionID: string, encoded: string): $CancellablePromise<void> {
+    return $Call.ByID(3866754137, plugin, connectionID, encoded);
 }
 
 export function ResizeSession(sessionID: string, rows: number, cols: number): $CancellablePromise<void> {

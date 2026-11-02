@@ -869,3 +869,105 @@ func TestGraphIndexer_UsesRouteQualifiedDeclarations(t *testing.T) {
 		}
 	}
 }
+
+func p06Declarations(g *RelationshipGraph, plugin string) {
+	decl := resource.RelationshipDescriptor{
+		Type: resource.RelUses, TargetType: plugin + "/target", Label: plugin + " relationship",
+		Extractor: &resource.RelationshipExtractor{Method: MethodFieldPath, FieldPath: plugin},
+	}
+	if plugin == "two" {
+		decl.Type = resource.RelOwns
+		decl.Direction = resource.EdgeIncoming
+	}
+	setTestDeclarations(g, plugin, resource.AccessRoute{Connection: "shared-connection"}, "shared/type", []resource.RelationshipDescriptor{decl})
+}
+
+func p06Entry(plugin string) registry.ResourceEntry {
+	n := node(plugin, "shared-connection", "shared/type", "", "source")
+	return registry.ResourceEntry{PluginID: n.PluginID, Reference: n.Reference, Route: n.Route}
+}
+
+func assertP06Edge(t *testing.T, g *RelationshipGraph, plugin string) {
+	t.Helper()
+	source := node(plugin, "shared-connection", "shared/type", "", "source")
+	target := node(plugin, "shared-connection", plugin+"/target", "", plugin+"-id")
+	wantType := resource.RelUses
+	if plugin == "two" {
+		source, target = target, source
+		wantType = resource.RelOwns
+	}
+	forward, reverse := g.EdgesFrom(source.Key()), g.EdgesTo(target.Key())
+	if len(forward) != 1 || len(reverse) != 1 {
+		t.Fatalf("%s: want one forward and reverse edge, got %v / %v", plugin, forward, reverse)
+	}
+	for _, edge := range []GraphEdge{forward[0], reverse[0]} {
+		if edge.Source.Key() != source.Key() || edge.Target.Key() != target.Key() ||
+			edge.Type != wantType || edge.Label != plugin+" relationship" {
+			t.Fatalf("%s: wrong edge or direction: %+v", plugin, edge)
+		}
+		for _, endpoint := range []GraphNode{edge.Source, edge.Target} {
+			if endpoint.PluginID != plugin || endpoint.Route.Connection != "shared-connection" ||
+				endpoint.Reference.Address.Provider != plugin || endpoint.Reference.Address.Authority != "authority:shared-connection" {
+				t.Fatalf("%s: wrong edge provenance: %+v", plugin, endpoint)
+			}
+		}
+	}
+}
+
+func TestGraphIndexer_SharedTypeDeclarationsArePluginScoped(t *testing.T) {
+	g, _, idx := setupIndexer()
+	raw := json.RawMessage(`{"one":"one-id","two":"two-id"}`)
+	for _, plugin := range []string{"one", "two"} {
+		p06Declarations(g, plugin)
+	}
+	for _, plugin := range []string{"one", "two"} {
+		idx.OnAdd(p06Entry(plugin), raw)
+	}
+	for _, plugin := range []string{"one", "two"} {
+		assertP06Edge(t, g, plugin)
+	}
+	if len(g.EdgesTo(p06Entry("one").EntryKey())) != 0 || len(g.EdgesFrom(p06Entry("two").EntryKey())) != 0 {
+		t.Fatal("a plugin indexed the other plugin's declaration")
+	}
+}
+
+func TestGraphIndexer_PluginUnloadReloadIsolation(t *testing.T) {
+	g, _, idx := setupIndexer()
+	raw := json.RawMessage(`{"one":"one-id","two":"two-id"}`)
+	route := resource.AccessRoute{Connection: "shared-connection"}
+	for _, plugin := range []string{"one", "two"} {
+		p06Declarations(g, plugin)
+		idx.OnAdd(p06Entry(plugin), raw)
+		assertP06Edge(t, g, plugin)
+	}
+
+	// Match controller.cleanupPluginGraphState's graph teardown sequence.
+	g.RemoveEdgesForConnection("one", route.Connection)
+	g.ClearDeclarationsForPlugin("one")
+	if _, _, ok := g.GetBoundDeclarations("one", route, "shared/type"); ok {
+		t.Fatal("unloaded plugin retained declarations")
+	}
+	if decls, _, ok := g.GetBoundDeclarations("two", route, "shared/type"); !ok || len(decls) != 1 || decls[0].TargetType != "two/target" {
+		t.Fatalf("unload changed the other plugin's declarations: %v", decls)
+	}
+	oneSource := p06Entry("one")
+	oneTarget := node("one", route.Connection, "one/target", "", "one-id")
+	if len(g.EdgesFrom(oneSource.EntryKey())) != 0 || len(g.EdgesTo(oneTarget.Key())) != 0 {
+		t.Fatal("unloaded plugin retained edges")
+	}
+	assertP06Edge(t, g, "two")
+
+	p06Declarations(g, "one")
+	idx.OnAdd(oneSource, raw)
+	assertP06Edge(t, g, "one")
+	assertP06Edge(t, g, "two")
+	root := node("one", route.Connection, "shared/type", "", "source")
+	subgraph := g.GetSubgraph(root, 0, 1)
+	if len(subgraph.Nodes) != 2 || len(subgraph.Edges) != 1 ||
+		subgraph.Edges[0].Source.Key() != root.Key() || subgraph.Edges[0].Target.Key() != oneTarget.Key() {
+		t.Fatalf("reloaded plugin's bounded subgraph is wrong: %+v", subgraph)
+	}
+	if bounded := g.GetSubgraph(root, 0, 0); len(bounded.Nodes) != 1 || len(bounded.Edges) != 0 {
+		t.Fatalf("zero-depth subgraph escaped its bound: %+v", bounded)
+	}
+}
