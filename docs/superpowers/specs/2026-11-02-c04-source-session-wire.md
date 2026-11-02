@@ -71,10 +71,15 @@ For an older SDK without source sessions, the host adapter uses the
 existing P45 `Enumerate`/`NativeQuery` client in snapshot mode only. It
 feeds frames through the same validator, limits and coordinator. Updates
 return `UNSUPPORTED`; never stitch pages to an advisory watch. Pinned-SDK
-compatibility is an acceptance gate, not an assumed result. If a plugin's
-strict catalog or wire admission fails that proof, its target returns
-`UNSUPPORTED` for the adapter; P15 must not migrate that consumer and
-must retain its existing host `Enumerate` workflow until it can migrate.
+compatibility is an acceptance gate, not an assumed result. For an older
+provider without `sourceSessions`, admit `bestEffortUpdates` and catalog
+operation `update` as inert legacy declarations only: never serve them,
+map them to `sourceUpdates`, or start a legacy watch. This preserves
+finite operation admission, not an old subscription API. If any remaining
+strict catalog or wire check fails, that target's adapter is `UNSUPPORTED`;
+its existing finite workflow must remain available before migration.
+Acceptance includes a real Proxmox SDK v0.10.0 child against the candidate
+host, exercising finite operations and the snapshot-only adapter.
 
 ## Wire and domain mapping
 
@@ -115,12 +120,12 @@ responsibilities, rather than implementing another coordinator.
 
 ### Existing candidate and proposed corrections
 
-- Existing service, messages, version and field numbers are retained.
-- Existing `SourceObservation.record` currently contains P45 `Record`.
-  The proposed `SourceRecord` changes that field's message type to keep
-  body, reference, coverage and revision but replace the embedded full
-  representation with a compact reference. This is a wire change, not
-  a rename. Full binding appears once on open as new field 8.
+- Existing service, version and unrelated field numbers are retained.
+- Existing `SourceObservation.record` field 1 contains P45 `Record`.
+  Reserve field 1 and place the compact `SourceRecord` on field 5.
+  This intentionally rejects mixed candidates instead of ambiguously
+  decoding two length-delimited message types under the same field.
+  Full binding appears once on open as new field 8.
 - `document_coverage` is a new independent known-absent fact. Existing
   `metadata` and `display_name` remain in their current fields.
 - Existing private protobuf sequence remains uint64. Its JSON/TS mapping
@@ -138,10 +143,10 @@ integrates with that owner and the existing host coordinator. This spec
 is neither permission to duplicate the transport nor implementation
 proof.
 
-The proposed schema below preserves existing field numbers. The changed
-record field type is a candidate-breaking wire change requiring user
-approval and coordinated SDK/host/provider migration. Fields are proto3
-field numbers, not
+The proposed schema below preserves existing unrelated field numbers.
+The compact record uses a new field number, requiring coordinated
+SDK/host/provider migration and user approval. The shared P45 wire
+version remains 2. Fields are proto3 field numbers, not
 Go struct offsets. Required means semantically required even where
 proto3 has no `required`. Existing `ResourceAddress`, `QueryScope`,
 `Representation`, `Coverage` and `Value` come from `domain.proto`; their
@@ -219,7 +224,8 @@ message SourceRecord {
   optional string source_revision = 5;
 }
 message SourceObservation {
-  SourceRecord record = 1;
+  reserved 1;
+  SourceRecord record = 5;
   ResourceMetadata metadata = 2;
   optional string display_name = 3;
   DocumentCoverage document_coverage = 4;
@@ -425,10 +431,13 @@ The existing `sourceSessions` feature trait is negotiated from actual
 provider support. Check it and the qualified catalog operation, scope and
 representation independently. An old SDK without the trait cannot use
 updates; never silently downgrade or stitch advisory watches. Its finite
-P45 adapter requires pinned-SDK compatibility evidence. Incompatible
-targets return `UNSUPPORTED` and their existing finite workflows remain
-unmigrated. No Proxmox polling change is claimed without that proof.
-Native descriptor and guarantee admission remain catalog-bound.
+P45 adapter requires pinned-SDK compatibility evidence. The specific
+old `bestEffortUpdates` trait and `update` capability are admitted only
+as inert declarations, never source support. Other incompatible targets
+return `UNSUPPORTED`; do not claim their old workflows survive until
+admission evidence proves it. No Proxmox polling change is claimed
+without that proof. Native descriptor and guarantee admission remain
+catalog-bound.
 
 All limits apply per generation and are checked before
 retaining/allocating corresponding untrusted data. Default and hard
@@ -438,13 +447,14 @@ and in-flight serialized bytes and operations. Snapshot staging defaults
 to 128 MiB and 65,536 observations; configurable hard ceilings are 256
 MiB and 65,536 observations, counting owned body, envelope and indexes.
 P12 may configure lower limits; these limits do not promise
-completeness. SourceOpen requests positive frame and batch limits no
-larger than these ceilings. Bound SourceOpen to 256 KiB and individual
+completeness. SourceOpenRequest requests positive frame and batch limits
+no larger than these ceilings. Bound SourceOpenRequest to 256 KiB and
+individual
 text fields to 64 KiB except tagged document values bounded by
 frame/open limits; limit nesting to 64 and paths/limitations to 256 per
 message. Count batches before materializing repeated elements; reserve
 bytes/items/staging before copy, decode allocation, enqueue or stage.
-Oversized observations fail `limit` rather than truncate. P12 retained
+Oversized observations fail `RESOURCE_LIMIT` rather than truncate. P12 retained
 read-model memory is separately bounded.
 
 For gRPC enforce both compressed wire-message and decompressed-message
@@ -535,11 +545,13 @@ executable at its boundary; no empty DTO-only or stub PR:
 
 1. **SDK source owner:** adapt the existing transport and phase tracker
    for compact representation, absence facts, bounds and cleanup. Prove
-   real snapshot and update behavior, not a parallel implementation.
+   real snapshot and update behavior, the 5-second blocked-send bound,
+   and inert admission without reviving legacy watches.
 2. **Existing host source owner:** deliver the SDK-facing opener, limits
    and old-SDK adapter only, without editing binder or coordinator files.
-   Prove finite workflows, cancellation and legacy negotiation. The
-   exact reviewed and pinned slice-2 head SHA is the ownership handoff
+   Prove staging stays within 256 MiB, finite workflows and cancellation;
+   prove real Proxmox v0.10.0 child legacy negotiation and snapshot.
+   The exact reviewed and pinned slice-2 head SHA is the ownership handoff
    point; P12 consumes that candidate before modifying shared integration.
 3. **P12 read-model owner:** after that handoff, own binder, coordinator,
    `source_coordinator.go`, `source_session.go` and `controller.go`.
