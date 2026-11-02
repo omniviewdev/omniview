@@ -44,14 +44,13 @@ CI reads the checked-out host's `e2e/source-cohort.json`, with full commit strin
 for `plugin-sdk`, `ui`, and `kubernetes`. UI and Kubernetes checkouts use validated
 cohort outputs; Kubernetes must match the host's `plugins/kubernetes` gitlink.
 The SDK entry must equal the independently reviewed release pinned explicitly in
-the candidate workflows: SDK v0.12.0,
-`a6c892e671b789396f43fabeede7f4bf2e7a0c5d`. The original isolation ancestry minimum remains
-`5b3ef764d1cf738835a723a749a0cb6c45f85e44`. The profiling release advances the
-reviewed isolation checkpoint to SDK v0.11.0,
-`eb0d5c8c533c6501c4a57da338435956f82d7b84`, after independent security review of
-the five protected files. The delta only adds the opt-in profiler lifecycle to
-`pkg/sdk/plugin.go`; state-root, profile-contract, and store protections remain
-unchanged. Admission requires the baseline to precede that pinned checkpoint, the
+the candidate workflows: SDK v0.14.0,
+`eea5943f7a5319fb1585a8ec2d9ce5d06fa763ca`. The original isolation ancestry
+minimum remains `5b3ef764d1cf738835a723a749a0cb6c45f85e44`. The reviewed
+isolation checkpoint is the same SDK v0.14.0 commit. The user approved its
+host-connections registration change after independent security review.
+State-root, profile-contract, and store protections remain unchanged. Admission
+requires the baseline to precede that pinned checkpoint, the
 checkpoint to precede the selected SDK, and all five selected protected files
 to match the checkpoint byte-for-byte. Neither cohort approval, tags nor
 environment variables can substitute another isolation checkpoint.
