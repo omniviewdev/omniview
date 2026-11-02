@@ -48,4 +48,55 @@ describe('passive query observer', () => {
     ]) { const o = observer(); expect(o.apply(data('g1', '1', payload as never)).kind).toBe('recover'); expect(o.getSnapshot().rows).toEqual([]); }
     const o = observer(); expect(o.apply(data('g1', '01', { kind: 'open', rows: [], metadata: metadata as never })).kind).toBe('recover');
   });
+  it('erases source invalidation and preserves safe terminal error', () => {
+    const o = observer(); o.apply(data('g1', '1', { kind: 'open', rows: [row('a')], metadata: metadata as never }));
+    o.apply({ lane: 'control', leaseId: 'l', payload: { kind: 'reset', generation: 'g1', nextGeneration: 'g2', reason: 'sourceInvalidated' } });
+    expect(o.getSnapshot().rows).toEqual([]); expect(o.getSnapshot().metadata).toBeUndefined();
+    const error = { type: 'error', title: 'Failed', status: 500, detail: 'Unavailable', code: 'UNAVAILABLE' };
+    o.apply({ lane: 'control', leaseId: 'l', payload: { kind: 'close', reason: 'failed', error } });
+    expect(o.getSnapshot()).toMatchObject({ status: 'closed', rows: [], error });
+  });
+  it('reopens instead of recovering after finite completion', () => {
+    for (const event of [data('g1', '2', { kind: 'changes', changes: [], metadata: metadata as never }), reset('g1', 'g2')]) {
+      const o = observer(); o.apply(data('g1', '1', { kind: 'open', rows: [row('a')], metadata: metadata as never }));
+      o.apply({ lane: 'control', leaseId: 'l', payload: { kind: 'control', state: 'complete', generation: 'g1' } });
+      expect(o.getSnapshot().status).toBe('complete');
+      expect(o.apply(event)).toEqual({ kind: 'reopen' }); expect(o.getSnapshot().rows).toEqual([]);
+    }
+  });
+  it('enforces window and move bounds without partial publication', () => {
+    for (const changes of [[{ kind: 'enter', index: 3, row: row('d') }], [{ kind: 'move', key: 'a', index: 3 }], [{ kind: 'move', key: 'a', index: -1 }]]) {
+      const o = observer(); o.apply(data('g1', '1', { kind: 'open', rows: [row('a'), row('b'), row('c')], metadata: metadata as never }));
+      expect(o.apply(data('g1', '2', { kind: 'changes', changes: changes as never, metadata: metadata as never })).kind).toBe('recover');
+      expect(o.getSnapshot().rows.map(r => r.key)).toEqual(['a', 'b', 'c']);
+    }
+  });
+  it('checks signed integer bounds and canonical spelling', () => {
+    for (const [value, valid] of [['-9223372036854775808', true], ['9223372036854775807', true], ['-9223372036854775809', false], ['9223372036854775808', false], ['-0', false], ['01', false], ['-01', false]] as const) {
+      const o = observer(); const item = row('a'); item.values.n = { state: 'value', value: { kind: 'int64', value } };
+      expect(o.apply(data('g1', '1', { kind: 'open', rows: [item], metadata: metadata as never })).kind).toBe(valid ? 'none' : 'recover');
+    }
+  });
+  it('rejects malformed wire variants and clears protected rows', () => {
+    const malformed: unknown[] = [
+      { lane: 'other', leaseId: 'l', payload: {} },
+      { lane: 'control', leaseId: 'l', payload: { kind: 'other', generation: 'g1', nextGeneration: 'g2' } },
+      { lane: 'control', leaseId: 'l', payload: { kind: 'reset', generation: 'g1', nextGeneration: 'g2', reason: 'other' } },
+      { lane: 'control', leaseId: 'l', payload: { kind: 'reset', generation: 'g1', reason: 'bindingChanged' } },
+      { lane: 'control', leaseId: 'l', payload: { kind: 'control', state: 'other', generation: 'g1' } },
+      { lane: 'data', leaseId: 'l', generation: 'g1', sequence: '2', payload: { kind: 'other', metadata } },
+      { lane: 'data', leaseId: 'l', generation: 'g1', sequence: '2', payload: { kind: 'changes', metadata } },
+      { lane: 'data', leaseId: 'l', generation: 'g1', sequence: '2', payload: { kind: 'open', rows: [{ ...row('x'), resource: {} }], metadata } },
+      { lane: 'data', leaseId: 'l', generation: 'g1', sequence: '2', payload: { kind: 'open', rows: [{ ...row('x'), provenance: { source: 's', coverage: 'bad', stale: false } }], metadata } },
+      { lane: 'data', leaseId: 'l', generation: 'g1', sequence: '2', payload: { kind: 'open', rows: [], metadata: { ...metadata, freshness: 'bad' } } },
+    ];
+    for (const frame of malformed) {
+      const o = observer(); o.apply(data('g1', '1', { kind: 'open', rows: [row('a')], metadata: metadata as never }));
+      expect(o.apply(deepFreeze(frame) as QueryLeaseEvent).kind).toBe('recover');
+      expect(o.getSnapshot().rows).toEqual([]); expect(o.getSnapshot().metadata).toBeUndefined();
+    }
+    const o = observer(); o.apply(data('g1', '1', { kind: 'open', rows: [row('a')], metadata: metadata as never }));
+    expect(o.apply({ lane: 'control', leaseId: 'other', payload: { kind: 'close', reason: 'accessInvalidated' } }).kind).toBe('none');
+    expect(o.getSnapshot().rows).toHaveLength(1);
+  });
 });
