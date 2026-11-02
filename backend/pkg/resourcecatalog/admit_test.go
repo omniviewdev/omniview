@@ -498,6 +498,43 @@ func TestAdmitKubernetesPod(t *testing.T) {
 	rejectAdmit(t, schema, pod, completeCoverage, `/spec/containers/0/image`)
 }
 
+func TestAdmitLocalizedCollectionLiteral(t *testing.T) {
+	tests := []struct {
+		name, schema, value string
+		paths               []string
+		want                []string
+		reject              string
+	}{
+		{"oneOf definite overlap", `{"oneOf":[{"const":{"x":1}},{"type":"object"}]}`, `{"x":1}`, []string{"/x"}, nil, "more than one"},
+		{"enum exact", `{"enum":[{"x":1}]}`, `{"x":1}`, []string{"/x"}, nil, ""},
+		{"anyOf limited missing key", `{"anyOf":[{"required":["z"]},{"const":{"x":1}}]}`, `{"x":1}`, []string{"/x", "/z"}, []string{"", "/z"}, ""},
+		{"anyOf confirmed nested scalar", `{"anyOf":[{"minProperties":2},{"const":{"x":{"y":1}}}]}`, `{"x":{"y":1}}`, []string{"/x/y"}, nil, ""},
+		{"nested scalar", `{"const":{"x":{"y":1}}}`, `{"x":{"y":1}}`, []string{"/x/y"}, nil, ""},
+		{"nested missing key", `{"const":{"x":{"y":1}}}`, `{"x":{"y":1}}`, []string{"/x/z"}, []string{""}, ""},
+		{"missing key outside literal", `{"const":{"x":1}}`, `{"x":1}`, []string{"/z"}, []string{""}, ""},
+		{"whole object", `{"const":{"x":1}}`, `{"x":1}`, []string{""}, []string{""}, ""},
+		{"list limited index", `{"properties":{"x":{"const":[1]}}}`, `{"x":[1]}`, []string{"/x/0"}, []string{"/x"}, ""},
+		{"list possible omitted index", `{"properties":{"x":{"const":[1]}}}`, `{"x":[1]}`, []string{"/x/1"}, []string{"/x"}, ""},
+		{"list nested scalar", `{"properties":{"x":{"const":[{"y":1}]}}}`, `{"x":[{"y":1}]}`, []string{"/x/0/y"}, nil, ""},
+		{"scalar mismatch", `{"const":{"x":1}}`, `{"x":2}`, []string{"/x"}, nil, "const"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			schema := admitSchema(t, d2020, tt.schema, "")
+			value := body(t, tt.value)
+			coverage := resourcev2.Coverage{Kind: "partial", Paths: tt.paths}
+			if tt.reject != "" {
+				rejectAdmit(t, schema, value, coverage, tt.reject)
+				return
+			}
+			got := mustAdmit(t, schema, value, coverage)
+			if !slices.Equal(got.UnavailablePaths, tt.want) {
+				t.Fatalf("unavailable = %q, want %q", got.UnavailablePaths, tt.want)
+			}
+		})
+	}
+}
+
 func TestAdmitOmissionSensitiveCollections(t *testing.T) {
 	tests := []struct {
 		name, schema, value string

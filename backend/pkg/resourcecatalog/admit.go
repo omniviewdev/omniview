@@ -719,6 +719,7 @@ func (a *admitter) compareConstraint(expected, observed *resourcev2.Value) (bran
 	if err := a.charge(); err != nil {
 		return branchMismatch, err
 	}
+	uncertain := a.limited(a.pointer())
 	if observed.Kind == "list" {
 		if len(observed.List) > len(expected.List) {
 			return branchMismatch, nil
@@ -771,6 +772,7 @@ func (a *admitter) compareConstraint(expected, observed *resourcev2.Value) (bran
 				if err != nil {
 					return branchMismatch, err
 				}
+				uncertain = uncertain || outcome == branchIndeterminate
 				if outcome != branchMismatch {
 					matched = true
 					break
@@ -795,6 +797,7 @@ func (a *admitter) compareConstraint(expected, observed *resourcev2.Value) (bran
 			if err != nil || outcome == branchMismatch {
 				return branchMismatch, err
 			}
+			uncertain = uncertain || outcome == branchIndeterminate
 		}
 		if len(expected.Map) != len(observed.Map) {
 			for key := range expected.Map {
@@ -805,11 +808,40 @@ func (a *admitter) compareConstraint(expected, observed *resourcev2.Value) (bran
 					if !a.limited(a.childPointer(key)) {
 						return branchMismatch, nil
 					}
+					uncertain = true
 				}
 			}
 		}
 	}
-	return branchIndeterminate, nil
+	if !uncertain {
+		prefix := a.pointer() + "/"
+		for _, path := range a.coverage.Paths {
+			if err := a.charge(); err != nil {
+				return branchMismatch, err
+			}
+			child, ok := strings.CutPrefix(path, prefix)
+			if !ok || strings.Contains(child, "/") {
+				continue
+			}
+			if observed.Kind == "list" {
+				index, err := strconv.Atoi(child)
+				if err == nil && index >= 0 && strconv.Itoa(index) == child {
+					uncertain = true
+					break
+				}
+			} else {
+				key := strings.ReplaceAll(strings.ReplaceAll(child, "~1", "/"), "~0", "~")
+				if _, found := observed.Map[key]; !found {
+					uncertain = true
+					break
+				}
+			}
+		}
+	}
+	if uncertain {
+		return branchIndeterminate, nil
+	}
+	return branchMatch, nil
 }
 
 func (a *admitter) combinators(n *Node, v *resourcev2.Value) error {
