@@ -20,6 +20,9 @@ The following schema is normative; fields are proto3 field numbers, not Go struc
 message RepresentationBinding {
   Representation representation = 1;
 }
+message RepresentationRef {
+  string id = 1; string revision = 2; optional string schema_revision = 3;
+}
 message FieldPathMember { string name = 1; }
 message FieldPathIndex { uint32 index = 1; }
 message FieldPathSegment { oneof segment { FieldPathMember member = 1; FieldPathIndex index = 2; } }
@@ -27,7 +30,7 @@ message DocumentFieldPath { repeated FieldPathSegment segments = 1; }
 message DocumentCoverage { repeated DocumentFieldPath known_absent = 1; }
 message SourceCoverage { string enumeration = 1; string consistency = 2; repeated string limitations = 3; }
 message SourceObservation {
-  ResourceAddress address = 1; RepresentationBinding representation = 2;
+  ResourceAddress address = 1; RepresentationRef representation = 2;
   Value document = 3; Coverage coverage = 4;
   optional string incarnation = 5; optional string source_revision = 6;
   optional string display_name = 7; DocumentCoverage document_coverage = 8;
@@ -67,9 +70,9 @@ message SourceFrame {
 
 `QueryScope` maps to the existing repeated `ScopeConstraint` proto and Go `QueryScope`, not a proto map. Each declared dimension occurs exactly once in normalized catalog order. `any` matches all values; `one_of` is a non-nil list of distinct values and an empty list matches nothing. Unknown/duplicate dimensions, absent selections, invalid exact address scopes and unresolved defaults fail. A Go `ScopeConstraint.Values` pointer distinguishes empty `oneOf` from `any`. Address scope is exact identity, not selection. Validate every observation/remove against admitted provider, authority, type and scope.
 
-`RepresentationBinding.representation` is the exact admitted P45 `Representation`, including ID, representation revision and full `SchemaBinding` state, revision, inline document or document reference. Equality uses the admitted catalog revision and these fields; any change terminates and replans. Every observation repeats this binding. C05 owns schema identity and admission; pending C05 freeze is not assumed approved.
+`SourceOpen.representation` holds the exact admitted P45 `Representation`, including ID, representation revision and full `SchemaBinding` state, revision, inline document or document reference, once per generation. Each observation carries only `RepresentationRef`, matching the binding's ID, representation revision and optional schema revision exactly, including presence. The catalog revision and access binding remain fixed for the generation; a mismatch is invalid and triggers bindingChanged reset. The host P45 page adapter compares each `Record.Representation` in full with the admitted binding transiently before emitting its compact reference, never retaining per-record schema copies. P12 retains only the reference per row; P13/C05 resolve schema once per binding from the catalog. Any catalog or binding change terminates and replans.
 
-Exact SDK Go shape: ``type RepresentationBinding struct { Representation Representation `json:"representation"` }``, where both types belong to `github.com/omniviewdev/plugin-sdk/pkg/resource/v2`. Its TS mirror is `{ representation: Representation }` using the existing P45 `Representation` domain mirror, not a new schema DTO.
+Exact SDK Go shapes, in `github.com/omniviewdev/plugin-sdk/pkg/resource/v2`: ``type RepresentationBinding struct { Representation Representation `json:"representation"` }`` and ``type RepresentationRef struct { ID string `json:"id"`; Revision string `json:"revision"`; SchemaRevision *string `json:"schemaRevision,omitempty"` }``. The TS mirror of `RepresentationRef` is `{ id: string; revision: string; schemaRevision?: string }`. This compact reference never embeds schema bytes.
 
 The body is existing tagged P45 `Value` with a map root, preserving native timestamp and exact integer/double kinds without protobuf Struct or an untyped JSON roundtrip. `JsonDocument` is not transported; this intentionally revises the earlier accepted raw-JSON proposal and requires explicit freeze approval. Native `format` equals P45 descriptor `language`; `request` is its tagged `Value`, admitted by `ValidateNativeQueryInput`, not arbitrary client code. Pagination remains internal to finite acquisition.
 
