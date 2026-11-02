@@ -53,7 +53,7 @@ its JSON fields are exactly the TypeScript fields below.
 
 ```ts
 type QuerySpec = {
-  version: "omniview.query.v1";
+  version: string;
   targets: Target[];
   predicate: Predicate;
   declarations: Record<string, BindingType>;
@@ -126,6 +126,8 @@ type Delivery = {
   allowPartial?: boolean;
 };
 ```
+
+Admission requires `version` to equal `omniview.query.v1`.
 
 The corresponding P13 Go request types use the same JSON fields:
 
@@ -580,7 +582,7 @@ order.
 
 These are individual JSON values, not a transcript format or an
 additional API. The caller opens an event-capable target with an
-empty identity scope, using this request:
+empty query scope, using this request:
 
 ```json
 {
@@ -630,8 +632,8 @@ the doorbell listener and attaches. Attach announces `g1`:
 }
 ```
 
-The first drain returns the empty initial window. Its exact count is
-a decimal string even when larger than JavaScript's safe integer:
+The first drain returns the empty initial window with an exact
+count of zero, encoded as a decimal string:
 
 ```json
 {
@@ -650,7 +652,7 @@ a decimal string even when larger than JavaScript's safe integer:
         "freshness": "current",
         "count": {
           "kind": "exact",
-          "value": "9007199254740993"
+          "value": "0"
         }
       }
     }
@@ -873,7 +875,7 @@ result generation equal to a source generation.
 The P12 candidate is [revision
 5478f5be](https://github.com/omniviewdev/omniview/blob/5478f5bef0e7ac5da1504cc85c4f7e1d2576036d/docs/superpowers/specs/2026-11-02-p12-read-model.md);
 P13 candidate
-[28a1c2d8](https://github.com/omniviewdev/omniview/blob/28a1c2d817efabc8f75c9a3e39b270baab1b18da/docs/superpowers/specs/2026-11-02-p13-compiler.md)
+[0f198e11](https://github.com/omniviewdev/omniview/blob/0f198e11698fdd45b30097979c548a4c546815e9/docs/superpowers/specs/2026-11-02-p13-compiler.md)
 pins it and C05 `01edb72`. P12 and P13 have conditional independent
 approval; the complete freeze set still requires final combined review.
 P12 owns independent interests, view and coalesced invalidations; P13
