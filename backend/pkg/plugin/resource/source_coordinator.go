@@ -246,19 +246,29 @@ func (sc *sourceCoordinator) acquire(ctx context.Context, pluginID string, targe
 		return nil, "", err
 	}
 	key := sourceKey(pluginID, owner, target, mode)
+retry:
 	sc.mu.Lock()
-	defer sc.mu.Unlock()
 	if err := sc.ctrl.currentGeneration(opctx, pluginID, generation); err != nil {
+		sc.mu.Unlock()
 		cancel()
 		return nil, "", err
 	}
 	if inventory && mode != resourcev2.SourceModeSnapshotAndUpdates {
+		sc.mu.Unlock()
 		cancel()
 		return nil, "", resourcev2.NewError("UNSUPPORTED", "Source updates are not supported for this scope.")
 	}
 	if existing := sc.sessions[key]; existing != nil {
+		sc.mu.Unlock()
 		existing.mu.Lock()
+		sc.mu.Lock()
+		if sc.sessions[key] != existing {
+			sc.mu.Unlock()
+			existing.mu.Unlock()
+			goto retry
+		}
 		if sc.ctrl.currentGeneration(existing.ctx, pluginID, existing.pluginGeneration) != nil {
+			sc.mu.Unlock()
 			existing.mu.Unlock()
 			cancel()
 			return nil, "", resourcev2.NewError("RESET_REQUIRED", "Source binding is being renewed.")
@@ -269,6 +279,7 @@ func (sc *sourceCoordinator) acquire(ctx context.Context, pluginID string, targe
 		} else {
 			existing.reservations++
 		}
+		sc.mu.Unlock()
 		existing.mu.Unlock()
 		return existing, owner, nil
 	}
@@ -279,6 +290,7 @@ func (sc *sourceCoordinator) acquire(ctx context.Context, pluginID string, targe
 	s.status = HostSourceStatus{State: "opening", Mode: mode}
 	s.updateCount()
 	sc.sessions[key] = s
+	sc.mu.Unlock()
 	go s.run()
 	return s, owner, nil
 }
@@ -288,37 +300,52 @@ func (sc *sourceCoordinator) openInventory(ctx context.Context, pluginID string,
 }
 func (sc *sourceCoordinator) closeInventory(pluginID, connectionID string) {
 	sc.mu.Lock()
-	var closing []*sourceSession
-	for key, s := range sc.sessions {
+	var candidates []*sourceSession
+	for _, s := range sc.sessions {
 		if s.pluginID == pluginID && s.target.Route.Connection == connectionID {
-			s.mu.Lock()
-			s.inventory = false
-			empty := len(s.views) == 0 && s.reservations == 0
-			s.mu.Unlock()
-			if empty {
-				delete(sc.sessions, key)
-				closing = append(closing, s)
-			}
+			candidates = append(candidates, s)
 		}
 	}
 	sc.mu.Unlock()
+	var closing []*sourceSession
+	for _, s := range candidates {
+		s.mu.Lock()
+		sc.mu.Lock()
+		if sc.sessions[s.key] == s && s.pluginID == pluginID && s.target.Route.Connection == connectionID {
+			s.inventory = false
+			if len(s.views) == 0 && s.reservations == 0 {
+				delete(sc.sessions, s.key)
+				closing = append(closing, s)
+			}
+		}
+		sc.mu.Unlock()
+		s.mu.Unlock()
+	}
 	sc.closeSessions(closing)
 }
 func (sc *sourceCoordinator) invalidate(pluginID, connectionID string) {
 	sc.mu.Lock()
-	var closing []*sourceSession
-	for key, s := range sc.sessions {
-		if s.pluginID == pluginID && (connectionID == "" || s.target.Route.Connection == connectionID) && sc.ctrl.currentGeneration(s.ctx, pluginID, s.pluginGeneration) != nil {
-			delete(sc.sessions, key)
-			s.mu.Lock()
-			for id := range s.views {
-				delete(sc.views, id)
-			}
-			s.mu.Unlock()
-			closing = append(closing, s)
+	var candidates []*sourceSession
+	for _, s := range sc.sessions {
+		if s.pluginID == pluginID && (connectionID == "" || s.target.Route.Connection == connectionID) {
+			candidates = append(candidates, s)
 		}
 	}
 	sc.mu.Unlock()
+	var closing []*sourceSession
+	for _, s := range candidates {
+		s.mu.Lock()
+		sc.mu.Lock()
+		if sc.sessions[s.key] == s && s.pluginID == pluginID && (connectionID == "" || s.target.Route.Connection == connectionID) && sc.ctrl.currentGeneration(s.ctx, pluginID, s.pluginGeneration) != nil {
+			delete(sc.sessions, s.key)
+			for id := range s.views {
+				delete(sc.views, id)
+			}
+			closing = append(closing, s)
+		}
+		sc.mu.Unlock()
+		s.mu.Unlock()
+	}
 	sc.closeSessions(closing)
 }
 func (sc *sourceCoordinator) closeSessions(sessions []*sourceSession) {
@@ -352,16 +379,16 @@ func (sc *sourceCoordinator) closeSessions(sessions []*sourceSession) {
 }
 
 func (sc *sourceCoordinator) release(s *sourceSession, v *sourceView) {
-	sc.mu.Lock()
 	s.mu.Lock()
+	sc.mu.Lock()
 	delete(sc.views, v.id)
 	delete(s.views, v.id)
 	empty := !s.inventory && len(s.views) == 0 && s.reservations == 0
 	if empty && sc.sessions[s.key] == s {
 		delete(sc.sessions, s.key)
 	}
-	s.mu.Unlock()
 	sc.mu.Unlock()
+	s.mu.Unlock()
 	v.close()
 	if empty {
 		s.close()
@@ -382,16 +409,16 @@ func (c *controller) OpenSourceView(ctx context.Context, pluginID string, reques
 		return HostSourceViewOpened{}, err
 	}
 	sc := c.sources
-	sc.mu.Lock()
 	s.mu.Lock()
+	sc.mu.Lock()
 	s.reservations--
 	if err := ctx.Err(); err != nil || len(sc.views) >= maxSourceViews || s.closed {
 		empty := !s.inventory && len(s.views) == 0 && s.reservations == 0
 		if empty && sc.sessions[s.key] == s {
 			delete(sc.sessions, s.key)
 		}
-		s.mu.Unlock()
 		sc.mu.Unlock()
+		s.mu.Unlock()
 		if empty {
 			s.close()
 		}
@@ -405,8 +432,8 @@ func (c *controller) OpenSourceView(ctx context.Context, pluginID string, reques
 	sc.views[id] = v
 	mode := s.mode
 	s.views[id] = v
-	s.mu.Unlock()
 	sc.mu.Unlock()
+	s.mu.Unlock()
 	go v.emitLoop()
 	return HostSourceViewOpened{ViewID: id, Topic: "resource/source-view/" + id, Mode: mode}, nil
 }

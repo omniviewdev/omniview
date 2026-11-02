@@ -286,17 +286,13 @@ func TestSourceCancelledOpenReleasesReservation(t *testing.T) {
 	defer cancel()
 	view.session.mu.Lock()
 	result := make(chan error, 1)
+	started := make(chan struct{})
 	go func() {
+		close(started)
 		_, err := ctrl.OpenSourceView(ctx, "p1", HostSourceViewRequest{TargetID: target.TargetID, Target: target.Target, Updates: "ifSupported"})
 		result <- err
 	}()
-	require.Eventually(t, func() bool {
-		if ctrl.sources.mu.TryLock() {
-			ctrl.sources.mu.Unlock()
-			return false
-		}
-		return true
-	}, time.Second, time.Millisecond)
+	<-started
 	cancel()
 	view.session.mu.Unlock()
 	require.ErrorIs(t, <-result, context.Canceled)
@@ -314,10 +310,8 @@ func TestSourceCancelledOpenReleasesReservation(t *testing.T) {
 func sourceDirectTestSession(t *testing.T, opener resourcev2.SourceStreamOpener, mode string) *sourceSession {
 	t.Helper()
 	ctrl, _, _, target := sourceTestFixture(t)
-	ctx, cancel := context.WithCancel(testInvocationContext())
-	ctrl.pluginsMu.RLock()
-	generation := ctrl.plugins["p1"]
-	ctrl.pluginsMu.RUnlock()
+	_, generation, ctx, cancel, err := ctrl.operationGeneration(testInvocationContext(), "p1", target.Target.Route)
+	require.NoError(t, err)
 	return &sourceSession{coordinator: ctrl.sources, pluginID: "p1", target: target.Target, pluginGeneration: generation, opener: opener, ctx: ctx, cancel: cancel, mode: mode, members: make(map[string]sourceMember), views: make(map[string]*sourceView)}
 }
 

@@ -16,10 +16,17 @@ func (sc *sourceCoordinator) recoverBinding(pluginID, connection string, generat
 		return
 	}
 	sc.mu.Lock()
+	var candidates []*sourceSession
+	for _, s := range sc.sessions {
+		if s.pluginID == pluginID && s.target.Route.Connection == connection {
+			candidates = append(candidates, s)
+		}
+	}
+	sc.mu.Unlock()
 	var sessions []*sourceSession
 	var oldInventory []*sourceSession
 	var inventoryCtx context.Context
-	for _, s := range sc.sessions {
+	for _, s := range candidates {
 		s.mu.Lock()
 		captured, ok := s.ctx.Value(sourceEpochKey{}).(sourceEpochSnapshot)
 		if s.pluginID == pluginID && s.target.Route.Connection == connection && s.pluginGeneration == generation && ok && captured.Epoch < epoch {
@@ -33,7 +40,6 @@ func (sc *sourceCoordinator) recoverBinding(pluginID, connection string, generat
 		}
 		s.mu.Unlock()
 	}
-	sc.mu.Unlock()
 
 	for _, s := range sessions {
 		sc.recoverBindingSession(s, generation, epoch)
@@ -75,8 +81,8 @@ func (sc *sourceCoordinator) recoverBindingSession(s *sourceSession, generation 
 		opener, nextGeneration, nextCtx, cancel, nextMode, owner, err = sc.prepare(ctx, s.pluginID, target, updates)
 	}
 
-	sc.mu.Lock()
 	s.mu.Lock()
+	sc.mu.Lock()
 	sc.ctrl.pluginsMu.RLock()
 	current := sc.ctrl.plugins[s.pluginID] == generation && generation.provider != nil && generation.ctx.Err() == nil && generation.sourceEpoch[target.Route.Connection] == epoch && !generation.sourceChanging[target.Route.Connection]
 	if !current || sc.sessions[s.key] != s || s.closed {

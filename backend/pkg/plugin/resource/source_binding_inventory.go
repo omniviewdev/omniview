@@ -30,13 +30,14 @@ func (sc *sourceCoordinator) reconcileBindingInventory(ctx context.Context, plug
 	}
 
 	var closing []*sourceSession
-	sc.mu.Lock()
 	for _, s := range old {
 		s.mu.Lock()
+		sc.mu.Lock()
 		sc.ctrl.pluginsMu.RLock()
 		current := sc.ctrl.plugins[pluginID] == generation && generation.provider != nil && generation.ctx.Err() == nil && generation.sourceEpoch[route.Connection] == epoch && !generation.sourceChanging[route.Connection]
 		sc.ctrl.pluginsMu.RUnlock()
 		if !current || sc.sessions[s.key] != s || s.closed {
+			sc.mu.Unlock()
 			s.mu.Unlock()
 			continue
 		}
@@ -54,8 +55,8 @@ func (sc *sourceCoordinator) reconcileBindingInventory(ctx context.Context, plug
 				closing = append(closing, s)
 			}
 		}
+		sc.mu.Unlock()
 		s.mu.Unlock()
 	}
-	sc.mu.Unlock()
 	sc.closeSessions(closing)
 }

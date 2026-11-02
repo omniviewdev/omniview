@@ -37,6 +37,7 @@ type sourceSession struct {
 	stream               resourcev2.SourceStream
 	done                 chan struct{}
 	attempts             []time.Time
+	autoReopening        bool
 }
 
 func (s *sourceSession) updateCount() {
@@ -132,16 +133,19 @@ func (s *sourceSession) sourceCatalog(ctx context.Context, target resourcev2.Rea
 
 func (s *sourceSession) receive(ctx context.Context, request resourcev2.SourceOpenRequest, done chan struct{}, opener resourcev2.SourceStreamOpener, expected *pluginState) {
 	defer close(done)
-	_, generation, operationCtx, cleanup, err := s.coordinator.ctrl.operationGeneration(ctx, s.pluginID, request.Target.Route)
+	epoch, ok := ctx.Value(sourceEpochKey{}).(sourceEpochSnapshot)
+	if !ok || s.coordinator.ctrl.currentGeneration(ctx, s.pluginID, expected) != nil {
+		return
+	}
+	admission := catalogAdmission{generation: expected, epoch: epoch}
+	_, _, operationCtx, cleanup, err := s.coordinator.ctrl.operationGenerationExpected(ctx, s.pluginID, request.Target.Route, &admission)
 	if err != nil {
-		s.receiveError(request.Generation, err)
+		if s.coordinator.ctrl.currentGeneration(ctx, s.pluginID, expected) == nil {
+			s.receiveError(request.Generation, err)
+		}
 		return
 	}
 	defer cleanup()
-	if generation != expected {
-		s.receiveError(request.Generation, resourcev2.NewError("RESET_REQUIRED", "Provider generation retired."))
-		return
-	}
 	catalog, _, err := s.sourceCatalog(operationCtx, request.Target, request.Mode)
 	if err != nil {
 		s.receiveAdmissionError(request.Generation, err)
@@ -217,11 +221,15 @@ func (s *sourceSession) receiveError(generation string, err error) {
 	if errors.Is(err, io.EOF) && s.status.State == "finished" {
 		return
 	}
-	if resourcev2.ErrorCode(err) == "RESET_REQUIRED" || errors.Is(err, io.EOF) {
+	if resourcev2.ErrorCode(err) == "RESET_REQUIRED" || errors.Is(err, io.EOF) || (s.autoReopening && sourceTransientError(resourcev2.ErrorCode(err))) {
 		s.resetLocked("Source continuity lost.")
 		return
 	}
 	s.statusLocked("failed", err)
+}
+
+func sourceTransientError(code string) bool {
+	return code == "UNAVAILABLE" || code == "CONNECTION_ERROR" || code == "TIMEOUT"
 }
 func (s *sourceSession) resetLocked(message string) {
 	s.staging = nil
@@ -256,6 +264,7 @@ func (s *sourceSession) resetLocked(message string) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		if !s.closed && s.generation == generation {
+			s.autoReopening = true
 			s.startLocked()
 		}
 	}()
@@ -267,6 +276,7 @@ func (s *sourceSession) refresh() {
 		return
 	}
 	s.attempts = nil
+	s.autoReopening = false
 	if s.generationCancel != nil {
 		s.generationCancel()
 	}
@@ -302,6 +312,7 @@ func (s *sourceSession) rebindLocked(target resourcev2.ReadTarget, opener resour
 	s.memberBytes = 0
 	s.hasSnapshot = false
 	s.attempts = nil
+	s.autoReopening = false
 	for _, v := range s.views {
 		v.resetLocked("sourceReset", "Source binding changed.")
 	}
@@ -432,6 +443,7 @@ func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sour
 		s.staging = nil
 		s.stagingBytes = 0
 		s.hasSnapshot = true
+		s.autoReopening = false
 		coverage := frame.SnapshotEnd.Coverage
 		s.status.Coverage = &coverage
 		s.status.Continuity = frame.SnapshotEnd.Continuity
@@ -523,7 +535,11 @@ func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sour
 		s.resetLocked(frame.Reset.Message)
 		return true, nil
 	case frame.Failed != nil:
-		s.statusLocked("failed", resourcev2.NewError(frame.Failed.Code, frame.Failed.Message))
+		if s.autoReopening && sourceTransientError(frame.Failed.Code) {
+			s.resetLocked(frame.Failed.Message)
+		} else {
+			s.statusLocked("failed", resourcev2.NewError(frame.Failed.Code, frame.Failed.Message))
+		}
 		return true, nil
 	}
 	return false, nil
