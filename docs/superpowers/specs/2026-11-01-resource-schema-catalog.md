@@ -19,8 +19,8 @@ evidence, migration, and acceptance. Related links are provenance.
 
 - A **representation** is a named, revisioned body format and schema
   binding, not resource identity or source revision.
-- A **binding** is available, absent, or unavailable. Absent is known
-  absence; unavailable means schema acquisition failed.
+- A **binding** is available, absent, or unavailable. Absent means the
+  provider declares no schema; unavailable means acquisition failed.
 - A **snapshot** scopes the catalog to plugin, generation, connection,
   access epoch, and catalog revision.
 - **Coverage** identifies body subtrees that may be omitted or truncated.
@@ -56,8 +56,8 @@ empty paths, a missing required name is unavailable instead.
 
 ### SDK boundary types
 
-These Go domain shapes carry the exact SDK JSON tags. `Value` uses a
-custom tagged JSON codec for its payload.
+These Go domain shapes carry the exact SDK JSON tags after the §10
+removals. `Value` uses a custom tagged JSON codec for its payload.
 
 ```go
 type Value struct {
@@ -181,9 +181,8 @@ func (c *Catalog) DropPlugin(pluginID string)
 func (c *Catalog) Stats() Stats
 ```
 
-`Stats` reports `Connections`, `Entries`, `Documents`, and
-`RetainedBytes` as `int64`, plus `BranchViews` and `CELProviders` as
-`int`.
+`Stats` reports `Connections`, `Entries`, `Documents`, `BranchViews`,
+and `CELProviders` as `int`, and `RetainedBytes` as `int64`.
 
 #### Snapshot lookup
 
