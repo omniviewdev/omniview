@@ -50,7 +50,10 @@ export const useSchemaRegistration = ({
 
     return () => {
       const index = owners.indexOf(registration);
-      if (index < 0) return;
+      if (index < 0) {
+        return;
+      }
+
       const wasCurrent = index === owners.length - 1;
       owners.splice(index, 1);
       if (!owners.length) {

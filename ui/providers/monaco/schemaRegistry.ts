@@ -45,12 +45,15 @@ class SchemaRegistry {
       if (association.status !== 'available') {
         continue;
       }
+
       if (!association.documentId) {
         throw new Error('Available editor schema association has no document ID.');
       }
+
       if (association.language !== 'yaml' && association.language !== 'json') {
         continue;
       }
+
       // An authority keeps the URI canonical in YAML and absolute in JSON.
       const documentURI = `omniview-schema://catalog/${association.documentId}`;
       const documentKey = `${association.documentId}\u0000${association.language}`;
@@ -60,9 +63,11 @@ class SchemaRegistry {
         if (document === undefined) {
           throw new Error(`Editor schema document ${association.documentId} is unavailable.`);
         }
+
         schema = (typeof document.schema === 'string' ? JSON.parse(document.schema) : document.schema) as Record<string, unknown>;
         parsedDocuments.set(association.documentId, schema);
       }
+
       if (!registeredDocuments.has(documentKey)) {
         entries.push({
           type: association.type,
@@ -73,6 +78,7 @@ class SchemaRegistry {
         });
         registeredDocuments.add(documentKey);
       }
+
       const hex16 = association.modelDirectory.slice(association.modelDirectory.lastIndexOf('/') + 1);
       entries.push({
         type: association.type,
