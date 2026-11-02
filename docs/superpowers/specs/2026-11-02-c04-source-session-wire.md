@@ -48,12 +48,13 @@ access epoch, catalog revision, selection, representation or
 acquisition; changes terminate it and require a newly admitted
 generation. On access invalidation, discard protected data immediately.
 
-P05 owns transport, validation and host admission `SourceBinder`; P12
-alone owns the source coordinator, registry/sink integration,
-source-interest lifetime, bounded staging, membership/provenance and
-publication. The binder resolves an admitted `resourcev2.ReadTarget`
-under the trusted invocation principal and access epoch into P12's
-binding; it is not an alternate coordinator. P12 consumes immutable
+P05 owns SDK transport and validation and defines host admission
+requirements. P12's existing host resource controller integration owns
+the binder and sole controller lock, as well as coordinator,
+registry/sink integration, interests, bounded staging and publication.
+The binder resolves an admitted `resourcev2.ReadTarget` under the trusted
+invocation principal and access epoch; it is not another coordinator.
+P12 consumes immutable
 `resourcev2.SourceOpenRequest` and validated `resourcev2.SourceFrame`; it also
 rejects stale tokens, sequences, phases and bindings itself. P12 issues
 session and generation tokens as host coordinator. P13 owns evaluation.
