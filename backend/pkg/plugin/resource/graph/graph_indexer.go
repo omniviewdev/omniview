@@ -310,19 +310,9 @@ func (gi *Indexer) CheckLabelSelectorsForEntry(entry registry.ResourceEntry) {
 
 	entryNode := nodeFromEntry(entry)
 
-	for _, cached := range gi.graph.selectorSnapshot() {
+	for _, cached := range gi.graph.selectorSnapshot(entryNode) {
 		selectorNode := cached.node
 
-		// Match only the declared provider authority, type and exact scope.
-		if selectorNode.PluginID != entry.PluginID || !bindingMatches(cached.binding, entryNode) {
-			continue
-		}
-		if cached.decl.TargetType != entry.Reference.Address.Type {
-			continue
-		}
-		if !scopeMatches(cached.decl.TargetScope, entry.Reference.Address.Scope) {
-			continue
-		}
 		if !cached.selector.matches(entry.Labels) {
 			continue
 		}
