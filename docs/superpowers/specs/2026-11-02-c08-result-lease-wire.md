@@ -744,7 +744,7 @@ An access-invalidated close clears the observer and ends the lease:
    and manual refresh, never invented watch or polling. C04 uses P45
    finite pages for snapshots. A plugin pinned to an older SDK is eligible
    only after that exact SDK's P45 compatibility is proved. An unproved
-   target is `UNSUPPORTED`; absence of `sourceSessionsV1` also makes
+   target is `UNSUPPORTED`; absence of `sourceSessions` also makes
    follow updates `UNSUPPORTED`.
    This follows the C04 candidate at
    [bc030610](https://github.com/omniviewdev/omniview/blob/bc0306102007f4e3b516808150166ea2c36a43a0/docs/superpowers/specs/2026-11-02-c04-source-session-wire.md).
