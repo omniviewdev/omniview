@@ -46,6 +46,7 @@ type ResourceRelatedResult struct {
 	Route     resourcev2.AccessRoute       `json:"route"`
 	Reference resourcev2.ResourceReference `json:"reference"`
 	Edges     []graph.GraphEdge            `json:"edges"`
+	Truncated bool                         `json:"truncated"`
 }
 
 type ResourceMetricsResult struct {

@@ -381,17 +381,24 @@ func finiteMetrics(metrics []sdkmetric.MetricDescriptor) []sdkmetric.MetricDescr
 
 // metricHandler returns the route plugin's metric descriptors for one type.
 func metricHandler(reader ResourceMetricsReader, pluginID, resourceType string) []sdkmetric.MetricDescriptor {
+	var metrics []sdkmetric.MetricDescriptor
+	seen := make(map[string]bool)
 	for _, provider := range reader.GetProvidersForResource(resourceType) {
 		if provider.PluginID != pluginID {
 			continue
 		}
 		for _, handler := range provider.Handlers {
-			if handler.Resource == resourceType && len(handler.Metrics) > 0 {
-				return handler.Metrics
+			if handler.Resource == resourceType {
+				for _, metric := range handler.Metrics {
+					if !seen[metric.ID] {
+						metrics = append(metrics, metric)
+						seen[metric.ID] = true
+					}
+				}
 			}
 		}
 	}
-	return nil
+	return metrics
 }
 
 func metricUnitName(unit sdkmetric.MetricUnit) string {
@@ -852,7 +859,14 @@ func dispatchRouteLane(
 		if err != nil {
 			return nil, err
 		}
-		return ResourceRelatedResult{Route: binding.Route, Reference: *args.Reference, Edges: edges}, nil
+		const maxRelatedEdges = 1000
+		truncated := len(edges) > maxRelatedEdges
+		if truncated {
+			edges = edges[:maxRelatedEdges]
+		}
+		return ResourceRelatedResult{
+			Route: binding.Route, Reference: *args.Reference, Edges: edges, Truncated: truncated,
+		}, nil
 	}
 	return nil, errors.New("unsupported resource tool lane")
 }

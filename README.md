@@ -51,12 +51,14 @@ Omniview is a groundbreaking Integrated Development Environment (IDE) tailored s
 ### MCP resource tools
 
 Settings → AI Tools controls the loopback MCP relay. Resource tools expose provider action
-labels, descriptions and danger notices. Actions and mutations require consent.
+labels, descriptions and danger notices. Actions and mutations require consent unless the
+tool's confirm override is set to false.
 
 The read-only preset includes per-resource metrics and route-level events, health and related
 resources. Each route-level tool accepts a resource type from its advertised enum. Unsupported
 provider operations return an error; health can return `null` when the provider has no assessment.
-Related resources contain references, not resource bodies. Route-level policy is plugin- and
+Related resources contain references, not resource bodies. The relay returns at most 1000 edges
+and sets `truncated` when more edges exist. Route-level policy is plugin- and
 connection-scoped; disabling one type's get tool does not disable these separate read tools.
 
 ## Why Omniview?

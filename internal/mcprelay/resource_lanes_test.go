@@ -67,13 +67,16 @@ func (s *laneService) GetResourceEvents(
 	return []resourcev2.ResourceEvent{}, nil
 }
 
-type fakeGraphReader struct{ calls int }
+type fakeGraphReader struct {
+	calls int
+	edges []graph.GraphEdge
+}
 
 func (g *fakeGraphReader) GetRelated(
 	context.Context, string, resourcev2.ResourceReference, resourcev2.AccessRoute, string, *string,
 ) ([]graph.GraphEdge, error) {
 	g.calls++
-	return []graph.GraphEdge{}, nil
+	return g.edges, nil
 }
 
 type fakeMetricReader struct {
@@ -200,6 +203,14 @@ func TestRouteLanesAreOnePerRouteAndBindAdvertisedTypes(t *testing.T) {
 	_, err = laneCall(t, service, related, args)
 	require.NoError(t, err)
 	require.Equal(t, 1, graphReader.calls)
+	for _, count := range []int{1000, 1001} {
+		graphReader.edges = make([]graph.GraphEdge, count)
+		result, err = laneCall(t, service, related, args)
+		require.NoError(t, err)
+		relatedResult := result.(ResourceRelatedResult)
+		require.Len(t, relatedResult.Edges, 1000)
+		require.Equal(t, count > 1000, relatedResult.Truncated)
+	}
 }
 
 func TestRouteLanesNeedGraphReaderAndGetCapability(t *testing.T) {
@@ -300,3 +311,24 @@ func mustJSON(t *testing.T, value any) []byte {
 }
 
 func metricList(metrics ...sdkmetric.MetricDescriptor) []sdkmetric.MetricDescriptor { return metrics }
+
+type splitMetricReader struct{ fakeMetricReader }
+
+func (*splitMetricReader) GetProvidersForResource(resourceType string) []hostmetric.MetricProviderSummary {
+	cpu := sdkmetric.MetricDescriptor{ID: "cpu", SupportedShapes: []sdkmetric.MetricShape{sdkmetric.ShapeCurrent}}
+	memory := sdkmetric.MetricDescriptor{ID: "memory", SupportedShapes: []sdkmetric.MetricShape{sdkmetric.ShapeCurrent}}
+	return []hostmetric.MetricProviderSummary{{
+		PluginID: "fixture",
+		Handlers: []sdkmetric.Handler{
+			{Resource: resourceType, Metrics: metricList(cpu)},
+			{Resource: resourceType, Metrics: metricList(cpu, memory)},
+		},
+	}}
+}
+
+func TestMetricHandlersMergeWithoutDuplicateIDs(t *testing.T) {
+	metrics := metricHandler(&splitMetricReader{}, "fixture", "opaque/items")
+	require.Len(t, metrics, 2)
+	require.Equal(t, "cpu", metrics[0].ID)
+	require.Equal(t, "memory", metrics[1].ID)
+}
