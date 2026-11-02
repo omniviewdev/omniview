@@ -107,7 +107,7 @@ The dialect comes from `SchemaBinding.Dialect` (or `EditorSchema.Binding.Dialect
 - Boolean schemas: `true` normalizes to an `any` node. `false` normalizes to an `any` node with `Unvalidated{pointer, "false"}` (the host does not enforce "admits nothing"). Exception: `additionalProperties: false` stays `AdditionalForbidden`, and `additionalProperties: true` stays `AdditionalAny`.
 - A `$ref` cycle with no structural node in between → `INVALID_REQUEST`. Recursion through properties/items is allowed: refs are node links, never inlined.
 - Budget overruns → `RESOURCE_LIMIT` naming the exceeded policy field: `MaxDocumentBytes`, `MaxDocumentNodes`, `MaxDefinitions`, `MaxDepth`, `MaxRefChain`, `MaxUnionBranches`, `MaxEnumValues`.
-- Kubernetes keeps sending raw OpenAPI 3.0 documents with dialect `openapi-3.0`.
+- Kubernetes sends adapter-corrected (§10.1), host-unnormalized OpenAPI 3.0 documents with dialect `openapi-3.0`.
 
 ### 3.2 Keywords
 
@@ -212,7 +212,7 @@ func Admit(ctx context.Context, schema *Schema, value resourcev2.Value, coverage
   - `coverage.Kind == "complete"` → `INVALID_REQUEST` naming `p`.
   - `coverage.Kind` `partial` or `unknown` with empty `Paths` → `p` is appended to `UnavailablePaths` (the whole body is limited).
   - `coverage.Kind` `partial` or `unknown` with non-empty `Paths` → `p` is appended to `UnavailablePaths` when some listed limitation path is a segment-wise prefix of `p` (or equal to it); otherwise `INVALID_REQUEST` naming `p`.
-- For a value at or containing a limitation subtree, an omission-sensitive check whose outcome could change if omitted members were present is indeterminate, not `INVALID_REQUEST`. This includes `minItems`, `minProperties`, collection `enum`/`const`, and `oneOf` exclusivity. Append the affected value's RFC6901 pointer to `UnavailablePaths` (the root pointer is `""`); retain paths from indeterminate branches. Definite violations by present data, including `maxItems`, `maxProperties`, `uniqueItems`, and undeclared keys on closed objects, remain errors. Deduplicate and sort `UnavailablePaths`.
+- For a value at, below, or containing a limitation path (every value when `Paths` is empty under partial or unknown coverage), an omission-sensitive check whose outcome could change if omitted members were present is indeterminate, not `INVALID_REQUEST`. This includes `minItems`, `minProperties`, collection `enum`/`const`, and `oneOf` exclusivity. Append the affected value's RFC6901 pointer to `UnavailablePaths` (the root pointer is `""`); retain paths from indeterminate branches. Definite violations by present data, including `maxItems`, `maxProperties`, `uniqueItems`, and undeclared keys on closed objects, remain errors. Deduplicate and sort `UnavailablePaths`.
 - `UnavailablePaths` reports missing required properties and omission-sensitive indeterminate checks. An optional field absent under a limitation path is otherwise indistinguishable from absence in `Admission`; P13 owns coverage policy and reads `Coverage` itself (P01 §8.2) to decide hydration or rejection.
 - Every error message carries the RFC6901 pointer of the failing value.
 - Each visited value node, schema node, branch attempt and recursive value-comparison step costs 1 work unit. Exceeding `MaxAdmissionWork` returns `RESOURCE_LIMIT`. Check `ctx.Err()` every 1024 units; return `CANCELLED` or `TIMEOUT` via `resourcev2.NewError`.
