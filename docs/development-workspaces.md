@@ -169,6 +169,12 @@ or environment variables.
 
 Browser mode starts the real Wails server. Use `instance.endpoints.browser`, **not** the asset-only Vite URL. `--live-frontend=false` serves built assets instead of launching host Vite. `--watch=false` disables the supervisor build graph; otherwise its lifetime owns serial source rebuilds and real managed-generation waits. Runtime/shim changes restart actual consumers; a successful compiler exit alone is not plugin readiness.
 
+Managed plugins follow their declared `requires.connections` dependencies.
+The supervisor links selected owners before their consumers.
+A dependency cycle stops startup before the first plugin link.
+The host still checks installed owners and grants.
+The host retains its existing connection-start policy.
+
 Host native build inputs, including C/cgo, C++, Objective-C, headers, Fortran,
 assembly, SWIG and object files, enter the owned host rebuild path on addition,
 content edit or removal, including with live frontend enabled. JavaScript and
