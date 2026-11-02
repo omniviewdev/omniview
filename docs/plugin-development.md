@@ -435,6 +435,9 @@ Borrowed MCP tools use the host's sanitized snapshot of configured connections.
 Native resource discovery has a separate deadline. Its timeout does not remove
 borrowed tool names. The relay still checks live grants, lifecycle cancellation,
 connection state, and consent at dispatch.
+Consent binds the exact tool contract and target. An unrelated catalog change
+does not cancel that consent. A changed or removed tool, policy change, or
+session retirement still cancels the call and blocks late results.
 
 ### Connection/server metadata
 

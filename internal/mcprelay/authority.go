@@ -121,12 +121,12 @@ func (a *Authority) UpdateCatalog(tools []ToolInfo) {
 		return
 	}
 	a.catalog++
+	a.tools = append(a.tools[:0], tools...)
 	for _, c := range a.calls {
-		if c.bound {
+		if c.bound && !a.allowedLocked(c) {
 			c.cancel()
 		}
 	}
-	a.tools = append([]ToolInfo(nil), tools...)
 }
 
 func (a *Authority) allowedLocked(c *authorityCall) bool {
@@ -136,7 +136,7 @@ func (a *Authority) allowedLocked(c *authorityCall) bool {
 	if !c.bound {
 		return true
 	}
-	if c.policy != a.policy || c.catalog != a.catalog || c.tool.Status != StatusOK {
+	if c.policy != a.policy || c.tool.Status != StatusOK {
 		return false
 	}
 	found := false
