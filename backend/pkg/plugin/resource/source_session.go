@@ -146,7 +146,7 @@ func (s *sourceSession) receive(ctx context.Context, request resourcev2.SourceOp
 		return
 	}
 	defer cleanup()
-	catalog, _, err := s.sourceCatalog(operationCtx, request.Target, request.Mode)
+	catalog, descriptor, err := s.sourceCatalog(operationCtx, request.Target, request.Mode)
 	if err != nil {
 		s.receiveAdmissionError(request.Generation, err)
 		return
@@ -172,21 +172,12 @@ func (s *sourceSession) receive(ctx context.Context, request resourcev2.SourceOp
 			s.receiveError(request.Generation, err)
 			return
 		}
-		var descriptor *resourcev2.ResourceType
-		if frame.SnapshotEnd != nil || frame.Changes != nil {
-			_, current, catalogErr := s.sourceCatalog(ctx, request.Target, request.Mode)
-			if catalogErr != nil {
-				s.receiveAdmissionError(request.Generation, catalogErr)
-				return
-			}
-			descriptor = &current
-		}
 		s.mu.Lock()
 		if s.closed || s.generation != request.Generation {
 			s.mu.Unlock()
 			return
 		}
-		terminal, err := s.applyLocked(frame, sourceFrameContext{ctx: ctx, target: request.Target, descriptor: descriptor})
+		terminal, err := s.applyLocked(frame, sourceFrameContext{ctx: ctx, target: request.Target, descriptor: &descriptor})
 		if err != nil {
 			s.statusLocked("failed", err)
 		}
