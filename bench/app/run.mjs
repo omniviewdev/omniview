@@ -309,7 +309,7 @@ const scenarios = {
         if (!el) throw new Error('bottom drawer not found');
         const drawerEl = el;
         const toggle = () => {
-          const labelled = document.querySelector('[aria-label="Minimize"], [aria-label="Expand"]');
+          const labelled = drawerEl.querySelector('[aria-label="Minimize"], [aria-label="Expand"]');
           if (labelled) return labelled;
           const top = drawerEl.getBoundingClientRect().top;
           const strip = [...drawerEl.querySelectorAll('button')].filter((b) => b.getBoundingClientRect().top - top < 40);
