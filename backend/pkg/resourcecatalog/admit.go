@@ -464,6 +464,22 @@ func (a *admitter) list(n *Node, items []resourcev2.Value) error {
 			}
 		}
 	}
+	if a.coverage.Kind != "complete" && (n.MaxItems != nil || n.UniqueItems || n.Items != 0) {
+		pointer := a.pointer()
+		if a.affected(pointer) {
+			omittedItemsMayFail := n.MaxItems != nil || n.UniqueItems
+			if !omittedItemsMayFail && n.Items != 0 {
+				var err error
+				omittedItemsMayFail, err = a.couldRejectOmittedValue(n.Items, 0)
+				if err != nil {
+					return err
+				}
+			}
+			if omittedItemsMayFail {
+				a.unavailable = append(a.unavailable, pointer)
+			}
+		}
+	}
 	if n.Items == 0 {
 		return nil
 	}
@@ -499,9 +515,20 @@ func (a *admitter) object(n *Node, fields map[string]resourcev2.Value) error {
 		}
 	}
 	declaredPresent := 0
+	omittedPropertyMayFail := false
 	for _, property := range n.Properties {
 		value, ok := fields[property.Name]
 		if !ok {
+			if !omittedPropertyMayFail && a.branchDepth > 0 && a.coverage.Kind != "complete" {
+				_, required := slices.BinarySearch(n.Required, property.Name)
+				if !required && a.limited(a.childPointer(property.Name)) {
+					var err error
+					omittedPropertyMayFail, err = a.couldRejectOmittedValue(property.Node, 0)
+					if err != nil {
+						return err
+					}
+				}
+			}
 			continue
 		}
 		declaredPresent++
@@ -509,10 +536,92 @@ func (a *admitter) object(n *Node, fields map[string]resourcev2.Value) error {
 			return err
 		}
 	}
+	if a.coverage.Kind != "complete" && (omittedPropertyMayFail || n.MaxProperties != nil || n.Additional != AdditionalAny) {
+		pointer := a.pointer()
+		if a.affected(pointer) {
+			omittedPropertyMayFail = omittedPropertyMayFail || n.MaxProperties != nil || n.Additional == AdditionalForbidden
+			if !omittedPropertyMayFail && n.Additional == AdditionalSchema {
+				var err error
+				omittedPropertyMayFail, err = a.couldRejectOmittedValue(n.AdditionalOf, 0)
+				if err != nil {
+					return err
+				}
+			}
+			if omittedPropertyMayFail {
+				a.unavailable = append(a.unavailable, pointer)
+			}
+		}
+	}
 	if n.Additional == AdditionalAny || declaredPresent == len(fields) {
 		return nil
 	}
 	return a.undeclared(n, fields)
+}
+
+// couldRejectOmittedValue proves common unconstrained shapes, including refs
+// and unions. Other shapes remain conservative without the omitted value.
+func (a *admitter) couldRejectOmittedValue(id NodeID, depth int) (bool, error) {
+	if err := a.charge(); err != nil {
+		return false, err
+	}
+	if depth > a.policy.MaxRefChain {
+		return true, nil
+	}
+	n := &a.nodes[id]
+	if n.Types != 0 || n.Enum != nil || n.Const != nil || len(n.Required) > 0 ||
+		n.Additional == AdditionalForbidden || n.Minimum != nil || n.Maximum != nil || n.MultipleOf != nil ||
+		(n.Pattern != nil && n.Pattern.String() != "") || n.MaxLength != nil || n.MaxItems != nil || n.MaxProperties != nil ||
+		(n.MinLength != nil && *n.MinLength > 0) || (n.MinItems != nil && *n.MinItems > 0) ||
+		(n.MinProperties != nil && *n.MinProperties > 0) || n.UniqueItems {
+		return true, nil
+	}
+	additional := NodeID(0)
+	if n.Additional == AdditionalSchema {
+		additional = n.AdditionalOf
+	}
+	for _, child := range [3]NodeID{n.Ref, n.Items, additional} {
+		if child != 0 {
+			mayReject, err := a.couldRejectOmittedValue(child, depth+1)
+			if err != nil || mayReject {
+				return mayReject, err
+			}
+		}
+	}
+	for _, property := range n.Properties {
+		mayReject, err := a.couldRejectOmittedValue(property.Node, depth+1)
+		if err != nil || mayReject {
+			return mayReject, err
+		}
+	}
+	for _, branch := range n.AllOf {
+		mayReject, err := a.couldRejectOmittedValue(branch, depth+1)
+		if err != nil || mayReject {
+			return mayReject, err
+		}
+	}
+	if len(n.AnyOf) > 0 {
+		unconstrained := false
+		for _, branch := range n.AnyOf {
+			mayReject, err := a.couldRejectOmittedValue(branch, depth+1)
+			if err != nil {
+				return false, err
+			}
+			if !mayReject {
+				unconstrained = true
+				break
+			}
+		}
+		if !unconstrained {
+			return true, nil
+		}
+	}
+	if len(n.OneOf) > 1 {
+		return true, nil
+	}
+	if len(n.OneOf) == 1 {
+		return a.couldRejectOmittedValue(n.OneOf[0], depth+1)
+	}
+	return false, nil
 }
 
 func declares(n *Node, name string) bool {

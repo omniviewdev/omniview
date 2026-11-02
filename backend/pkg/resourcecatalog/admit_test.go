@@ -568,6 +568,14 @@ func TestAdmitCollectionCombinators(t *testing.T) {
 		{"any uncertain", `{"anyOf":[{"minProperties":2},{"type":"string"}]}`, `{}`, []string{""}, ""},
 		{"any definite failure", `{"anyOf":[{"const":{"x":1}},{"type":"string"}]}`, `{"x":2}`, nil, "matches no"},
 		{"one ambiguous", `{"oneOf":[{"minProperties":2},{"type":"object"}]}`, `{}`, []string{""}, ""},
+		{"one maximum ambiguity", `{"oneOf":[{"maxProperties":1},{"maxProperties":2}]}`, `{}`, []string{""}, ""},
+		{"one unique ambiguity", `{"properties":{"x":{"oneOf":[{"uniqueItems":true},{"type":"array"}]}}}`, `{"x":[]}`, []string{"/x"}, ""},
+		{"one closed ambiguity", `{"oneOf":[{"properties":{"a":{"type":"string"}},"additionalProperties":false},{"properties":{"b":{"type":"string"}},"additionalProperties":false}]}`, `{}`, []string{""}, ""},
+		{"one optional ambiguity", `{"oneOf":[{"properties":{"a":{"type":"string"}}},{"properties":{"a":{"type":"number"}}}]}`, `{}`, []string{""}, ""},
+		{"one item ambiguity", `{"properties":{"x":{"oneOf":[{"items":{"type":"string"}},{"items":{"type":"integer"}}]}}}`, `{"x":[]}`, []string{"/x"}, ""},
+		{"one unconstrained optional overlap", `{"oneOf":[{"properties":{"a":{}}},{"properties":{"a":{}}}]}`, `{}`, nil, "more than one"},
+		{"one unconstrained referenced overlap", `{"$defs":{"free":{}},"oneOf":[{"properties":{"a":{"$ref":"#/$defs/free"}}},{"properties":{"a":{"allOf":[{},{"anyOf":[{"type":"string"},{}]}]}}}]}`, `{}`, nil, "more than one"},
+		{"one present scalar contradiction", `{"oneOf":[{"properties":{"a":{"type":"string"}}},{"properties":{"a":{"type":"number"}}}]}`, `{"a":true}`, nil, "matches no"},
 		{"one definite overlap", `{"oneOf":[{"type":"object"},{"type":"object"},{"minProperties":2}]}`, `{}`, nil, "more than one"},
 		{"one uncertain only", `{"oneOf":[{"minProperties":2},{"type":"string"}]}`, `{}`, []string{""}, ""},
 		{"one definite failure", `{"oneOf":[{"const":{"x":1}},{"type":"string"}]}`, `{"x":2}`, nil, "matches no"},
@@ -618,5 +626,27 @@ func TestPartialConstraintComparisonChargesWorkAndCancellation(t *testing.T) {
 	requireCode(t, err, codeResourceLimit, "MaxAdmissionWork")
 	a = admitter{ctx: &expiringContext{Context: context.Background(), err: context.Canceled}, policy: DefaultPolicy(), coverage: localCoverage}
 	_, err = a.compareConstraint(&value, &almostComplete)
+	requireCode(t, err, codeCancelled, "")
+}
+
+func TestPartialUnionProofSharesAdmissionBudget(t *testing.T) {
+	var document bytes.Buffer
+	document.WriteString(`{"oneOf":[{"properties":{"payload":{"properties":{`)
+	for index := range admissionContextCheckInterval + 128 {
+		if index > 0 {
+			document.WriteByte(',')
+		}
+		document.WriteString(strconv.Quote("field" + strconv.Itoa(index)))
+		document.WriteString(`:{}`)
+	}
+	document.WriteString(`}}}},{"type":"object"}]}`)
+	schema := admitSchema(t, d2020, document.String(), "")
+	value := body(t, `{}`)
+	policy := DefaultPolicy()
+	policy.MaxAdmissionWork = 128
+	_, err := Admit(context.Background(), schema, value, partialCoverage, policy)
+	requireCode(t, err, codeResourceLimit, "")
+	ctx := &expiringContext{Context: context.Background(), after: 1, err: context.Canceled}
+	_, err = Admit(ctx, schema, value, partialCoverage, DefaultPolicy())
 	requireCode(t, err, codeCancelled, "")
 }
