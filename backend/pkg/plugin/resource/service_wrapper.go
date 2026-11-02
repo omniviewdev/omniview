@@ -158,8 +158,14 @@ func (s *ServiceWrapper) GetResourceGroups(ctx context.Context, pluginID string,
 func (s *ServiceWrapper) GetResourceDefinition(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) (resourcev2.ResourceDefinition, error) {
 	return s.Ctrl.GetResourceDefinition(s.realmContext(ctx), pluginID, route, resourceType)
 }
-func (s *ServiceWrapper) GetEditorSchemas(ctx context.Context, pluginID string, route resourcev2.AccessRoute) ([]resourcev2.EditorSchema, error) {
+func (s *ServiceWrapper) GetSchemaFields(ctx context.Context, pluginID string, request SchemaFieldsRequest) (SchemaFieldsResult, error) {
+	return s.Ctrl.GetSchemaFields(s.realmContext(ctx), pluginID, request)
+}
+func (s *ServiceWrapper) GetEditorSchemas(ctx context.Context, pluginID string, route resourcev2.AccessRoute) ([]EditorSchemaAssociation, error) {
 	return s.Ctrl.GetEditorSchemas(s.realmContext(ctx), pluginID, route)
+}
+func (s *ServiceWrapper) GetEditorSchemaDocument(ctx context.Context, pluginID string, route resourcev2.AccessRoute, documentID string) (EditorSchemaDocument, error) {
+	return s.Ctrl.GetEditorSchemaDocument(s.realmContext(ctx), pluginID, route, documentID)
 }
 func (s *ServiceWrapper) GetSchemaDocument(ctx context.Context, pluginID string, route resourcev2.AccessRoute, reference resourcev2.SchemaDocumentReference) (resourcev2.SchemaDocument, error) {
 	return s.Ctrl.GetSchemaDocument(s.realmContext(ctx), pluginID, route, reference)

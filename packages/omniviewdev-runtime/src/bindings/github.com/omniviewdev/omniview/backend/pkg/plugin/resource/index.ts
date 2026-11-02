@@ -17,6 +17,8 @@ export {
     ConnectionProfileResult,
     ConnectionState,
     ConnectionStatusPayload,
+    EditorSchemaAssociation,
+    EditorSchemaDocument,
     HostConnectionMetadata,
     HostEnumerateRequest,
     HostGetRequest,
@@ -31,5 +33,7 @@ export {
     ResolveTargetRequest,
     ResolvedReference,
     ResolvedTarget,
+    SchemaFieldsRequest,
+    SchemaFieldsResult,
     SourcePageMetadata
 } from "./models.js";

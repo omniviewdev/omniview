@@ -539,9 +539,9 @@ full commit SHA. UI checkout uses the validated cohort SHA. Kubernetes must matc
 the host's `plugins/kubernetes` gitlink; canonical E2E also verifies the recursive
 submodule checkout. PR branches and `main` can therefore select different
 compatible UI/Kubernetes sources without changing repository variables.
-The SDK SHA must equal the independently reviewed release pinned in workflow
-`REVIEWED_SDK_REVISION`: SDK v0.14.1 at
-`3074503b736130483dcbd2e2c7163667a320331b`. Repository variables remain unchanged.
+The SDK SHA must equal the independently reviewed commit in repository variable
+`OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION`, passed to workflows as
+`REVIEWED_SDK_REVISION`. Only the user changes that approval.
 Changing the cohort alone cannot approve another SDK commit. Source
 identity registration, mandatory probes, conservative selection, and native
 payload cache rules remain unchanged.

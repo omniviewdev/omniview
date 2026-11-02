@@ -1,5 +1,5 @@
 import { monaco, monacoYaml } from '@/providers/monaco/bootstrap';
-import type { EditorSchema, SchemaDocument } from '@omniviewdev/runtime';
+import type { EditorSchemaAssociation, EditorSchemaDocument } from '@omniviewdev/runtime';
 
 /**
  * EditorSchemaEntry represents a schema registered with the registry.
@@ -17,8 +17,9 @@ export type EditorSchemaEntry = {
  * SchemaRegistry collects editor schemas from all plugins/connections
  * and pushes updates to Monaco (YAML via monaco-yaml, JSON via jsonDefaults).
  *
- * Schemas are registered per plugin and access route. Shared schema documents
- * are registered once per route; each resource entry points at its declared root.
+ * Schemas are registered per plugin and access route. Host-rendered documents
+ * are registered once per document ID; each available association maps its
+ * model directory to the document root.
  */
 class SchemaRegistry {
   private readonly schemas = new Map<string, EditorSchemaEntry[]>();
@@ -32,58 +33,59 @@ class SchemaRegistry {
   register(
     pluginID: string,
     connectionID: string,
-    schemas: readonly EditorSchema[],
-    documents: readonly SchemaDocument[] = [],
+    associations: readonly EditorSchemaAssociation[],
+    documents: readonly EditorSchemaDocument[],
   ): void {
     const key = `${pluginID}:${connectionID}`;
 
     const entries: EditorSchemaEntry[] = [];
-    const registeredDocuments = new Map<string, string>();
-    for (const schema of schemas) {
-      if (schema.language !== 'yaml' && schema.language !== 'json') {
+    const registeredDocuments = new Set<string>();
+    const parsedDocuments = new Map<string, Record<string, unknown>>();
+    for (const association of associations) {
+      if (association.status !== 'available') {
         continue;
       }
 
-      let document = schema.binding.document;
-      let documentURI = `${schema.uri}/document`;
-      if (schema.binding.documentRef) {
-        const reference = schema.binding.documentRef;
-        const documentKey = JSON.stringify([reference.id, reference.revision, schema.language]);
-        const existingURI = registeredDocuments.get(documentKey);
-        documentURI = existingURI ?? `omniview-schema:///${encodeURIComponent(pluginID)}/${encodeURIComponent(connectionID)}/${encodeURIComponent(reference.id)}/${encodeURIComponent(reference.revision)}`;
-        if (!existingURI) {
-          document = documents.find((entry) => entry.reference.id === reference.id && entry.reference.revision === reference.revision)?.document;
-          if (document === undefined) {
-            throw new Error(`Editor schema document ${reference.id} is unavailable.`);
-          }
-
-          registeredDocuments.set(documentKey, documentURI);
-        } else {
-          document = undefined;
-        }
+      if (!association.documentId) {
+        throw new Error('Available editor schema association has no document ID.');
       }
 
-      if (document !== undefined) {
+      if (association.language !== 'yaml' && association.language !== 'json') {
+        continue;
+      }
+
+      // An authority keeps the URI canonical in YAML and absolute in JSON.
+      const documentURI = `omniview-schema://catalog/${association.documentId}`;
+      const documentKey = `${association.documentId}\u0000${association.language}`;
+      let schema = parsedDocuments.get(association.documentId);
+      if (schema === undefined) {
+        const document = documents.find((entry) => entry.documentId === association.documentId);
+        if (document === undefined) {
+          throw new Error(`Editor schema document ${association.documentId} is unavailable.`);
+        }
+
+        schema = (typeof document.schema === 'string' ? JSON.parse(document.schema) : document.schema) as Record<string, unknown>;
+        parsedDocuments.set(association.documentId, schema);
+      }
+
+      if (!registeredDocuments.has(documentKey)) {
         entries.push({
-          type: schema.type,
+          type: association.type,
           fileMatch: '',
           uri: documentURI,
-          language: schema.language,
-          schema: document as Record<string, unknown>,
+          language: association.language,
+          schema,
         });
-      } else if (!schema.binding.documentRef || !registeredDocuments.has(JSON.stringify([
-        schema.binding.documentRef.id, schema.binding.documentRef.revision, schema.language,
-      ]))) {
-        continue;
+        registeredDocuments.add(documentKey);
       }
 
-      const root = schema.binding.root ?? '';
+      const hex16 = association.modelDirectory.slice(association.modelDirectory.lastIndexOf('/') + 1);
       entries.push({
-        type: schema.type,
-        fileMatch: schema.fileMatch,
-        uri: schema.uri,
-        language: schema.language,
-        schema: { $ref: `${documentURI}${root.startsWith('#') ? root : `#${root}`}` },
+        type: association.type,
+        fileMatch: association.fileMatch,
+        uri: `omniview-schema://catalog/assoc/${hex16}`,
+        language: association.language,
+        schema: { $ref: documentURI + (association.root ?? '') },
       });
     }
 

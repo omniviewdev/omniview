@@ -37,8 +37,7 @@ const request: HostEnumerateRequest = { targetId: 'target', request: { target: {
 }, pageSize: 1 } };
 const row: HostRecord = { key: 'one', addressKey: 'one', targetId: 'target', route: { connection: 'c' }, record: {
   reference: { address: { provider: 'provider', authority: 'authority', type: 'items', id: 'one', scope: [] } },
-  coverage: { kind: 'complete', paths: [] }, body: { kind: 'string', value: 'one' },
-  representation: { id: 'raw', revision: 'r', schema: { state: 'absent', validation: 'none', unvalidated: [] } },
+  coverage: { kind: 'complete', paths: [] }, body: { kind: 'uint64', value: '18446744073709551615' }, representation: { id: 'raw', revision: 'r', schema: { state: 'absent' } },
 } };
 const page: ResourceView = { records: [row], sourcePage: { nextCursor: 'next', count: { kind: 'unknown' }, coverage: { kind: 'partial', paths: [] }, consistency: 'bestEffort' } };
 const next = { ...request, request: { ...request.request, cursor: 'next' } };
