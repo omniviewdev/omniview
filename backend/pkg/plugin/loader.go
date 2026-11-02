@@ -43,11 +43,12 @@ const pluginStartTimeout = 15 * time.Second
 
 // LoadPluginOptions configures how a plugin is loaded.
 type LoadPluginOptions struct {
-	DevMode        bool
-	DevModePath    string
-	ExistingState  *plugintypes.PluginStateRecord
-	archive        *archiveRecovery
-	archiveRestore bool
+	DevMode         bool
+	DevModePath     string
+	ExistingState   *plugintypes.PluginStateRecord
+	archive         *archiveRecovery
+	archiveRestore  bool
+	dependencyOwner bool
 }
 
 // LoadPlugin loads a plugin from its installation directory.
@@ -127,6 +128,11 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (s
 			log.Debugw(pm.ctx, "plugin already loaded and running, skipping", "pluginID", id)
 			info := existing.ToInfo()
 			pm.recordsMu.RUnlock()
+			if opts == nil || !opts.dependencyOwner {
+				if ctrl, ok := pm.connfullControllers[sdktypes.CapabilityResource].(interface{ PromoteDependencyStart(string) }); ok {
+					ctrl.PromoteDependencyStart(id)
+				}
+			}
 			return info, nil
 		}
 		if existing.Phase == lifecycle.PhaseStarting {
@@ -172,6 +178,9 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (s
 			return sdktypes.PluginInfo{}, err
 		}
 	}
+	if err := pm.startRequiredOwners(metadata); err != nil {
+		return sdktypes.PluginInfo{}, err
+	}
 
 	// Remove stale entry under write lock.
 	pm.recordsMu.Lock()
@@ -190,7 +199,7 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (s
 	var backend plugintypes.PluginBackend
 
 	if metadata.HasBackendCapabilities() {
-		backend, err = pm.startBackend(id, record, metadata, location)
+		backend, err = pm.startBackend(id, record, metadata, location, opts != nil && opts.dependencyOwner)
 		if err != nil {
 			return sdktypes.PluginInfo{}, err
 		}
@@ -201,6 +210,9 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (s
 	pm.recordsMu.Lock()
 	pm.records[id] = record
 	pm.recordsMu.Unlock()
+	if ctrl, ok := pm.connlessControllers[sdktypes.CapabilityTools].(interface{ Refresh() }); ok {
+		ctrl.Refresh()
+	}
 
 	// Sync the state machine to Running.
 	if record.StateMachine != nil {
@@ -239,6 +251,7 @@ func (pm *pluginManager) startBackend(
 	record *plugintypes.PluginRecord,
 	metadata config.PluginMeta,
 	location string,
+	dependencyOwner bool,
 ) (plugintypes.PluginBackend, error) {
 	generation := pm.managedRuntimeGeneration(id, record.DevPath)
 	if err := pm.checkBackendRecovery(id); err != nil {
@@ -260,6 +273,15 @@ func (pm *pluginManager) startBackend(
 			backend.Kill()
 			pm.pidTracker.Remove(id)
 			_ = pm.pidTracker.Save()
+		}
+	}()
+	if err := pm.bindConnectionSharing(metadata, backend); err != nil {
+		pm.storeFailedRecord(id, record, err)
+		return nil, err
+	}
+	defer func() {
+		if !succeeded {
+			pm.retireConnectionSharing(id)
 		}
 	}()
 	if err := pm.trackBackendPID(id, record.DevPath, backend); err != nil {
@@ -284,7 +306,7 @@ func (pm *pluginManager) startBackend(
 		).WithInstance(id)
 	}
 
-	if err := pm.startPlugin(record, backend); err != nil {
+	if err := pm.startPlugin(record, backend, dependencyOwner); err != nil {
 		pm.storeFailedRecord(id, record, err)
 		pm.observeManagedLifecycle(id, record.DevPath, generation, false, false, err)
 		return nil, apperror.Wrap(
@@ -300,6 +322,10 @@ func (pm *pluginManager) startBackend(
 // In dev mode only backend plugins need a binary (UI-only plugins are served by
 // the Vite dev server); otherwise the full start validation runs.
 func validateForLoad(id string, metadata config.PluginMeta, location string, isDevMode bool) error {
+	if err := metadata.Validate(); err != nil {
+		return apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusBadRequest,
+			fmt.Sprintf("Plugin '%s' has invalid connection declarations", id)).WithInstance(id)
+	}
 	if isDevMode {
 		if !metadata.HasBackendCapabilities() {
 			return nil
@@ -592,7 +618,7 @@ func (pm *pluginManager) initPlugin(record *plugintypes.PluginRecord) error {
 }
 
 // startPlugin starts all plugin controllers using lifecycle-based capability detection.
-func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend plugintypes.PluginBackend) error {
+func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend plugintypes.PluginBackend, dependencyOwner ...bool) error {
 	if record == nil {
 		return errors.New("record is nil")
 	}
@@ -666,6 +692,17 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 			continue
 		}
 		started = append(started, ctrl)
+		if cap == sdktypes.CapabilityResource && len(dependencyOwner) != 0 && dependencyOwner[0] {
+			if noAuto, ok := ctrl.(interface {
+				OnPluginStartWithoutAutoConnect(string, config.PluginMeta, plugintypes.PluginBackend) error
+			}); ok {
+				if err := noAuto.OnPluginStartWithoutAutoConnect(pluginID, record.Metadata, backend); err != nil {
+					return fmt.Errorf("start %s controller: %w", cap.String(), err)
+				}
+				continue
+			}
+			return fmt.Errorf("resource controller cannot suppress dependency auto-connect")
+		}
 		if err := ctrl.OnPluginStart(pluginID, record.Metadata, backend); err != nil {
 			return fmt.Errorf("start %s controller: %w", cap.String(), err)
 		}
@@ -702,6 +739,7 @@ func (pm *pluginManager) stopPlugin(record *plugintypes.PluginRecord) error {
 
 	ctx := context.Background()
 	pluginID := record.ID
+	pm.retireConnectionSharing(pluginID)
 
 	for name, manager := range pm.managers {
 		if err := manager.OnPluginStop(ctx, pluginID, record.Metadata); err != nil {
@@ -737,6 +775,7 @@ func (pm *pluginManager) shutdownPlugin(pluginID string, record *plugintypes.Plu
 	if record == nil {
 		return errors.New("record is nil")
 	}
+	pm.retireConnectionSharing(pluginID)
 
 	ctx := context.Background()
 
