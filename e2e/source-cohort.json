@@ -1,5 +1,5 @@
 {
-  "plugin-sdk": "09c0f9538869eb677fb596000113ca7560774069",
+  "plugin-sdk": "eea5943f7a5319fb1585a8ec2d9ce5d06fa763ca",
   "ui": "de1ceae9c2073781de1f208554f72bd01c67eea4",
-  "kubernetes": "18b7ef1c2f848eadde151842a02bc332a2881529"
+  "kubernetes": "d28302bf9ce4bcbde9981e35847f0d70eee492b9"
 }
