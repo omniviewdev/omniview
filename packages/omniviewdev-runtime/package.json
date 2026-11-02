@@ -68,7 +68,7 @@
     "@typescript/native": "npm:typescript@7.0.2"
   },
   "peerDependencies": {
-    "@omniviewdev/base-ui": "~0.10.0 || ~0.11.0",
+    "@omniviewdev/base-ui": "~0.11.0",
     "@tanstack/react-query": "^5.105.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
