@@ -61,15 +61,15 @@ removals. `Value` uses a custom tagged JSON codec for its payload.
 
 ```go
 type Value struct {
-    Kind      string           `json:"kind"`
-    Bool      bool             `json:"-"`
-    String    string           `json:"-"`
-    Int       string           `json:"-"`
-    Uint      string           `json:"-"`
-    Double    float64          `json:"-"`
-    Timestamp string           `json:"-"`
-    List      []Value          `json:"-"`
-    Map       map[string]Value `json:"-"`
+    Kind string `json:"kind"`
+    Bool bool `json:"-"`
+    String string `json:"-"`
+    Int string `json:"-"`
+    Uint string `json:"-"`
+    Double float64 `json:"-"`
+    Timestamp string `json:"-"`
+    List []Value `json:"-"`
+    Map map[string]Value `json:"-"`
 }
 
 type Coverage struct {
@@ -85,17 +85,17 @@ type SchemaDocumentReference struct {
 
 type SchemaDocument struct {
     Reference SchemaDocumentReference `json:"reference"`
-    Dialect   string                  `json:"dialect"`
-    Document  json.RawMessage         `json:"document"`
+    Dialect string `json:"dialect"`
+    Document json.RawMessage `json:"document"`
 }
 
 type SchemaBinding struct {
-    State             string `json:"state"`
-    Revision          *string `json:"revision,omitempty"`
-    Dialect           string `json:"dialect,omitempty"`
-    Root              string `json:"root,omitempty"`
-    DocumentRef       *SchemaDocumentReference `json:"documentRef,omitempty"`
-    Document          json.RawMessage `json:"document,omitempty"`
+    State string `json:"state"`
+    Revision *string `json:"revision,omitempty"`
+    Dialect string `json:"dialect,omitempty"`
+    Root string `json:"root,omitempty"`
+    DocumentRef *SchemaDocumentReference `json:"documentRef,omitempty"`
+    Document json.RawMessage `json:"document,omitempty"`
     UnavailableReason *string `json:"unavailableReason,omitempty"`
 }
 
@@ -157,11 +157,12 @@ indeterminate collection checks and other admission outcomes.
 #### Catalog lifecycle
 
 The catalog observes connection revisions and retires their snapshots.
-Its statistics expose retained state for lifecycle and budget accounting.
+It owns a mutex, store, connection map, and policy. Its statistics
+expose retained state for lifecycle and budget accounting.
 
 ```go
 type Catalog struct {
-    // Internal mutex, store, connections, and policy.
+    // Private state.
 }
 
 type ConnectionKey struct {
@@ -171,13 +172,20 @@ type ConnectionKey struct {
     Epoch      uint64
 }
 
-func NewCatalog(policy Policy) *Catalog
+func NewCatalog(
+    policy Policy,
+) *Catalog
 func (c *Catalog) Observe(
     key ConnectionKey,
     catalog resourcev2.Catalog,
 ) *Snapshot
-func (c *Catalog) DropConnection(pluginID, connection string)
-func (c *Catalog) DropPlugin(pluginID string)
+func (c *Catalog) DropConnection(
+    pluginID string,
+    connection string,
+)
+func (c *Catalog) DropPlugin(
+    pluginID string,
+)
 func (c *Catalog) Stats() Stats
 ```
 
@@ -186,13 +194,15 @@ and `CELProviders` as `int`, and `RetainedBytes` as `int64`.
 
 #### Snapshot lookup
 
-A snapshot is the connection-scoped view. Entries are returned sorted by
-type and representation; document lookup is restricted to documents
-referenced by resolved entries or auxiliary results in that snapshot.
+A snapshot is the connection-scoped view. Its private state includes
+its key, revision, provider, entries, auxiliary schemas, and retired
+flag. Entries are sorted by type and representation. Document lookup
+is restricted to documents referenced by resolved entries or auxiliary
+results in that snapshot.
 
 ```go
 type Snapshot struct {
-    // Internal key, revision, provider, entries, aux, and retired flag.
+    // Private state.
 }
 
 func (s *Snapshot) Revision() string
@@ -213,7 +223,8 @@ An unknown type/representation pair returns `NOT_FOUND`:
 #### Entry resolution
 
 An entry binds one representation to its schema observation. Its
-exported fields are read-only; host callers MUST NOT mutate them.
+exported fields are read-only; host callers MUST NOT mutate them. Its
+private state includes a mutex, done channel, and cached outcome.
 
 ```go
 type DocumentSource func(
@@ -222,12 +233,12 @@ type DocumentSource func(
 ) (resourcev2.SchemaDocument, error)
 
 type Entry struct {
-    Type                   string
-    Representation         string
+    Type string
+    Representation string
     RepresentationRevision string
-    Binding                resourcev2.SchemaBinding
-    Descriptor             resourcev2.ResourceType
-    // Internal mutex, done channel, and cached outcome.
+    Binding resourcev2.SchemaBinding
+    Descriptor resourcev2.ResourceType
+    // Private state.
 }
 
 type Schema struct {
@@ -235,7 +246,7 @@ type Schema struct {
     Root           NodeID
     Dialect        string
     SchemaRevision string
-    Validation     string // "full" or "reduced"
+    Validation     string
     Unvalidated    []Constraint
 }
 
@@ -244,6 +255,8 @@ func (e *Entry) Resolve(
     fetch DocumentSource,
 ) (*Schema, error)
 ```
+
+`Schema.Validation` is `"full"` or `"reduced"`.
 
 #### Auxiliary schemas
 
@@ -352,8 +365,8 @@ The dialect comes from `SchemaBinding.Dialect` (or `EditorSchema.Binding.Dialect
 ## 4. Normalized model
 
 ```go
-type NodeID uint32 // 0 = none
-type TypeSet uint8 // 0 = any; see type bits below
+type NodeID uint32
+type TypeSet uint8
 type AdditionalKind uint8
 
 type Constraint struct {
@@ -408,11 +421,14 @@ type Document struct {
     views         branchViews
 }
 
-func (d *Document) Lookup(pointer string) (NodeID, bool)
+func (d *Document) Lookup(
+    pointer string,
+) (NodeID, bool)
 ```
 
-`TypeSet` bits are `TypeNull`, `TypeBoolean`, `TypeString`,
-`TypeInteger`, `TypeNumber`, `TypeObject`, and `TypeArray`.
+`NodeID` 0 means none. `TypeSet` 0 means any; its bits are `TypeNull`,
+`TypeBoolean`, `TypeString`, `TypeInteger`, `TypeNumber`, `TypeObject`,
+and `TypeArray`.
 `AdditionalKind` is `AdditionalAny`, `AdditionalForbidden`, or
 `AdditionalSchema`. Constraint pointers are RFC6901 source pointers.
 Properties and required names are sorted and unique. `AdditionalOf` is
@@ -458,7 +474,7 @@ Values are in §9.
 
 ```go
 type Admission struct {
-    Validation       string // "full", "reduced", or "none"
+    Validation       string
     Unvalidated      []Constraint
     UnavailablePaths []string
 }
@@ -471,6 +487,8 @@ func Admit(
     policy Policy,
 ) (Admission, error)
 ```
+
+`Admission.Validation` is `"full"`, `"reduced"`, or `"none"`.
 
 - A nil `schema` (absent) performs a `resourcev2.ValidateValue`-equivalent structural check and returns `Validation:"none"`.
 - The resource root MUST be a map; otherwise `INVALID_REQUEST`.
@@ -510,14 +528,14 @@ func Admit(
 
 ```go
 type PathSegment struct {
-    Kind string // "field", "mapValue", or "item"
+    Kind string
     Name string `json:",omitempty"`
 }
 
 type BranchCondition struct {
     Pointer    string
     Branch     int
-    Combinator string // "anyOf" or "oneOf"
+    Combinator string
 }
 
 type FieldInfo struct {
@@ -549,6 +567,9 @@ func Navigate(
     policy Policy,
 ) (Navigation, error)
 ```
+
+`PathSegment.Kind` is `"field"`, `"mapValue"`, or `"item"`.
+`BranchCondition.Combinator` is `"anyOf"` or `"oneOf"`.
 
 `Types` contains `"null"`, `"boolean"`, `"string"`, `"integer"`,
 `"number"`, `"object"`, or `"array"`; empty means any. `Enum` contains
@@ -627,22 +648,22 @@ Operation names: `resource.GetSchemaFields`, `resource.GetEditorSchemas`, `resou
 
 ```go
 type SchemaFieldsRequest struct {
-    Route          resourcev2.AccessRoute `json:"route"`
-    Type           string `json:"type"`
+    Route resourcev2.AccessRoute `json:"route"`
+    Type string `json:"type"`
     Representation string `json:"representation,omitempty"`
-    Path           []resourcecatalog.PathSegment `json:"path"`
+    Path []resourcecatalog.PathSegment `json:"path"`
 }
 
 type SchemaFieldsResult struct {
-    CatalogRevision  string `json:"catalogRevision"`
-    Type             string
-    Representation   string
-    SchemaState      string `json:"schemaState"`
-    SchemaRevision   string `json:"schemaRevision,omitempty"`
-    Dialect          string `json:"dialect,omitempty"`
-    Overlay          resourcecatalog.TypeOverlay `json:"overlay"`
-    Fields           []resourcecatalog.FieldInfo `json:"fields"`
-    Truncated        bool `json:"truncated"`
+    CatalogRevision string `json:"catalogRevision"`
+    Type string
+    Representation string
+    SchemaState string `json:"schemaState"`
+    SchemaRevision string `json:"schemaRevision,omitempty"`
+    Dialect string `json:"dialect,omitempty"`
+    Overlay resourcecatalog.TypeOverlay `json:"overlay"`
+    Fields []resourcecatalog.FieldInfo `json:"fields"`
+    Truncated bool `json:"truncated"`
     TruncationReason string `json:"truncationReason,omitempty"`
 }
 
@@ -653,16 +674,16 @@ func (c *controller) GetSchemaFields(
 ) (SchemaFieldsResult, error)
 
 type EditorSchemaAssociation struct {
-    Type           string `json:"type"`
+    Type string `json:"type"`
     Representation string `json:"representation,omitempty"`
-    Key            string `json:"key,omitempty"`
-    Language       string `json:"language"`
+    Key string `json:"key,omitempty"`
+    Language string `json:"language"`
     ModelDirectory string `json:"modelDirectory"`
-    FileMatch      string `json:"fileMatch"`
-    DocumentID     string `json:"documentId,omitempty"`
-    Root           string `json:"root,omitempty"`
-    Status         string `json:"status"`
-    Code           string `json:"code,omitempty"`
+    FileMatch string `json:"fileMatch"`
+    DocumentID string `json:"documentId,omitempty"`
+    Root string `json:"root,omitempty"`
+    Status string `json:"status"`
+    Code string `json:"code,omitempty"`
 }
 
 func (c *controller) GetEditorSchemas(
@@ -708,15 +729,17 @@ is `"**/omniview-schema/<hex16>/*"`. `Status` is `"available"`,
 const MappingVersion = "omniview.schema-cel.v1"
 type Environment struct {
     Options    []cel.EnvOption
-    ContentKey string // host-internal cel.Env reuse only
-    Revision   string // checking/authoring identity
+    ContentKey string
+    Revision   string
 }
 func NewEnvironment(
     snapshotRevision string,
     entry *resourcecatalog.Entry,
     schema *resourcecatalog.Schema,
 ) (*Environment, error)
-func ToCEL(v resourcev2.Value) (ref.Val, error)
+func ToCEL(
+    v resourcev2.Value,
+) (ref.Val, error)
 ```
 
 - Nil schema → `[]cel.EnvOption{cel.Variable("resource", cel.DynType)}`.
