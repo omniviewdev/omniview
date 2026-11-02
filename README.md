@@ -114,6 +114,12 @@ The two asynchronous highlight callers own their cancellation promises while
 unexpected failures still reach Monaco's error handler. Editors and their models
 continue to dispose immediately; highlighting and Find remain enabled.
 
+Managed workspaces can compose byte-identical patches declared independently by
+multiple repositories. Each declaration must reference its own repository-owned
+file, and each standalone lock retains its originating source authority.
+Changing either patch invalidates the composition; conflicting bytes, redirected
+paths, and borrowing another repository's declaration remain refused.
+
 Vite remains on 7.3.7 to preserve SystemJS plugin output. Vite 8 and newer pnpm versions require separate loader/backend work and are not part of this frontend-only upgrade. Keep strict peer validation and the 24-hour release-age policy enabled.
 
 Build the runtime before the Vite plugin: shim generation verifies the current runtime's exports. Host lint excludes generated bindings and linked plugin repositories; run each plugin's own lint and behavior suite. Owned Playwright runs use the existing isolated source-cohort runner, not ambient marketplace plugins or cluster credentials.
