@@ -10,9 +10,9 @@ proposed shape; later accepted [P01
 recursive tagged values preserving native scalar intent. This C04
 proposal explicitly asks the user to reconcile and supersede the older
 raw-JSON body shape with P45 tagged `Value`, preserving timestamp and
-int64/uint64/double without inference. Host baseline
-`ff593e5c580b95130ddbacccdde2720f2307079b`; SDK candidate
-`0a5b64ed8c2de209fbb02ecce9feba3afd88f28c`. This is not evidence of
+int64/uint64/double without inference. Existing P05 host candidate
+`ad8732643e45b9d8bbd0a1bdae10a96a23813b04`; SDK candidate
+`d4a036bda987be151042bb8d4b63c384390c3dd3`. This is not evidence of
 production conformance.
 
 ## What this contract does
@@ -54,63 +54,90 @@ source-interest lifetime, bounded staging, membership/provenance and
 publication. The binder resolves an admitted `resourcev2.ReadTarget`
 under the trusted invocation principal and access epoch into P12's
 binding; it is not an alternate coordinator. P12 consumes immutable
-`resourcev2.SourceOpen` and validated `resourcev2.SourceFrame`; it also
+`resourcev2.SourceOpenRequest` and validated `resourcev2.SourceFrame`; it also
 rejects stale tokens, sequences, phases and bindings itself. P12 issues
 session and generation tokens as host coordinator. P13 owns evaluation.
 P14 owns result generation and P15 its passive consumer. Source
 generation/sequence are never result generation/sequence.
 
-Finite acquisition uses only existing P45 `Enumerate`/`NativeQuery` RPC
-pages. The host source adapter converts them into C04 frames, preserving
-cursors, coverage, descriptors, error semantics and access admission,
-and feeds the same validator, limits and P12 ingress. No second finite
-List transport exists. `SourceSessions.Open` is used only for
-snapshot-and-updates; the provider must establish and prove its native
-cutover. Never stitch P45 pages to separately subscribed advisory
-events. P45 Get/mutations/actions remain separate operations.
+The existing `ResourceSources.Open` handles both snapshot and live
+sessions. Its snapshot implementation calls the same P45 provider
+`Enumerate` or `NativeQuery` acquisition callback, pages internally,
+and emits frames. This is not a second provider List API. Preserve that
+implemented path rather than constructing another session transport.
+
+For an older SDK without source sessions, propose a host adapter which
+uses the existing P45 finite RPC and feeds the same frame validator and
+coordinator. Whether that fallback is actually compatible with old strict
+catalog/wire admission remains unresolved and requires real pinned-SDK
+evidence. Until resolved, do not claim old plugins support it or silently
+remove their existing finite workflow. Never stitch pages to an advisory
+watch or downgrade an updates request silently.
 
 ## Wire and domain mapping
 
-Add `proto/resource/v2/source_session.proto`, package
-`omniview.resource.v2`, Go package
-`github.com/omniviewdev/plugin-sdk/proto/resource/v2;resourcepb`. Add
-`service SourceSessions { rpc Open(SourceOpen) returns (stream
-SourceFrame); }`; this RPC accepts only `snapshotAndUpdates`. One stream
-is one generation. Go domain DTOs are in
-`github.com/omniviewdev/plugin-sdk/pkg/resource/v2` as `SourceOpen`,
-`SourceFrame`, `SourceObservation`, `SourceChange`,
-`RepresentationBinding`, `DocumentCoverage`, `SourceCoverage` and nested
-types; proto names correspond under `resourcepb`. `JsonDocument` is
-deliberately removed from the wire: P45 tagged `Value` replaces it,
-preserving timestamp, signed/unsigned integer and double kinds. The SDK
-client/server converts and validates domain DTOs; host uses the same Go
-domain types. P12's transport port is `SourceOpener.Open(ctx,
-SourceOpen) (SourceStream, error)`, with `SourceStream.Recv(ctx)
-(SourceFrame, error)` and `Close() error`; finite opens use host P45
-paging, updates opens use the RPC. This stream is internal SDK↔host, not
-a Wails surface. TS diagnostic mirrors use tagged SDK values and decimal
-strings, never JS numbers for int64/uint64. C08 exclusively owns Wails
-result DTOs.
+The existing SDK uses `proto/resource/v2/source.proto`, package
+`omniview.resource.v2`, and the `resourcepb` Go package. Reuse its
+`ResourceSources.Open(SourceOpenRequest)` server stream and its client,
+codec, phase tracker and host coordinator. Both modes use this RPC when
+the source feature is supported. One stream represents one generation.
 
-The P12 transport port is shown below. The host binder admits the
-selection under the invocation principal and access epoch before opening it.
-The binder is not a second source coordinator.
+The SDK domain package is
+`github.com/omniviewdev/plugin-sdk/pkg/resource/v2`. It already exports
+`SourceOpenRequest`, `SourceFrame`, `SourceObservation`, `SourceChange`,
+`SourceStreamOpener` and `SourceStream`. Do not rename equivalent types
+or build a competing transport. The typed `Value` body and optional
+metadata labels, creation time and display name must survive migration.
+
+The existing host port is:
 
 ```go
-type SourceOpener interface {
-    Open(
+type SourceStreamOpener interface {
+    OpenSourceStream(
         context.Context,
-        resourcev2.SourceOpen,
+        SourceOpenRequest,
     ) (SourceStream, error)
 }
 
 type SourceStream interface {
-    Recv(context.Context) (resourcev2.SourceFrame, error)
-    Close() error
+    Recv() (SourceFrame, error)
+    Close()
 }
 ```
 
-The following schema is normative; fields are proto3 field numbers, not
+The stream context controls cancellation. The existing source coordinator
+remains the integration owner; P12 evolves or extracts its read-model
+responsibilities, rather than implementing another coordinator.
+
+### Existing candidate and proposed corrections
+
+- Existing service, messages, version and field numbers are retained.
+- Existing `SourceObservation.record` currently contains P45 `Record`.
+  The proposed `SourceRecord` changes that field's message type to keep
+  body, reference, coverage and revision but replace the embedded full
+  representation with a compact reference. This is a wire change, not
+  a rename. Full binding appears once on open as new field 8.
+- `document_coverage` is a new independent known-absent fact. Existing
+  `metadata` and `display_name` remain in their current fields.
+- Existing private protobuf sequence remains uint64. Its JSON/TS mapping
+  is a canonical decimal string; no JS number conversion is allowed.
+- Exact representation revision/schema validation, staging limits,
+  deadlines and terminal cleanup are required corrections. The current
+  candidate's 512 MiB staging and 30-second send stall do not match the
+  proposed 256 MiB hard ceiling and 5-second bound.
+- Old-SDK finite fallback is a proposal, not an established capability.
+  Strict catalog compatibility and the existing old workflow must be
+  checked before selecting the user-visible policy.
+
+The current source owner owns these changes after user approval. P12
+integrates with that owner and the existing host coordinator. This spec
+is neither permission to duplicate the transport nor implementation
+proof.
+
+The proposed schema below preserves existing field numbers. The changed
+record field type is a candidate-breaking wire change requiring user
+approval and coordinated SDK/host/provider migration. Fields are proto3
+field numbers, not
 Go struct offsets. Required means semantically required even where
 proto3 has no `required`. Existing `ResourceAddress`, `QueryScope`,
 `Representation`, `Coverage` and `Value` come from `domain.proto`; their
@@ -118,6 +145,24 @@ existing raw-wire and semantic validation applies. JSON names follow
 lowerCamelCase.
 
 ```proto
+service ResourceSources {
+  rpc Open(SourceOpenRequest) returns (stream SourceFrame);
+}
+message SourceLimits {
+  uint32 max_frame_bytes = 1;
+  uint32 max_batch_items = 2;
+}
+message SourceEnumerate {}
+message SourceNativeQuery {
+  string language = 1;
+  Value query = 2;
+}
+message SourceAcquisition {
+  oneof kind {
+    SourceEnumerate enumerate = 1;
+    SourceNativeQuery native_query = 2;
+  }
+}
 message RepresentationBinding {
   Representation representation = 1;
 }
@@ -125,6 +170,16 @@ message RepresentationRef {
   string id = 1;
   string revision = 2;
   optional string schema_revision = 3;
+}
+message SourceOpenRequest {
+  uint32 version = 1;
+  string session_id = 2;
+  string generation = 3;
+  ReadTarget target = 4;
+  string mode = 5;
+  SourceAcquisition acquisition = 6;
+  SourceLimits limits = 7;
+  RepresentationBinding binding = 8;
 }
 message FieldPathMember {
   string name = 1;
@@ -144,58 +199,31 @@ message DocumentFieldPath {
 message DocumentCoverage {
   repeated DocumentFieldPath known_absent = 1;
 }
+message LabelEntry {
+  string key = 1;
+  string value = 2;
+}
+message ResourceMetadata {
+  repeated LabelEntry labels = 1;
+  TimestampValue created_at = 2;
+}
+message SourceRecord {
+  ResourceReference reference = 1;
+  Value body = 2;
+  RepresentationRef representation = 3;
+  Coverage coverage = 4;
+  optional string source_revision = 5;
+}
+message SourceObservation {
+  SourceRecord record = 1;
+  ResourceMetadata metadata = 2;
+  optional string display_name = 3;
+  DocumentCoverage document_coverage = 4;
+}
 message SourceCoverage {
   string enumeration = 1;
   string consistency = 2;
   repeated string limitations = 3;
-}
-message SourceObservation {
-  ResourceAddress address = 1;
-  RepresentationRef representation = 2;
-  Value document = 3;
-  Coverage coverage = 4;
-  optional string incarnation = 5;
-  optional string source_revision = 6;
-  optional string display_name = 7;
-  DocumentCoverage document_coverage = 8;
-}
-message SourceChange {
-  oneof change {
-    SourceObservation upsert = 1;
-    SourceRemove remove = 2;
-  }
-}
-message SourceRemove {
-  ResourceAddress address = 1;
-  optional string incarnation = 2;
-  optional string source_revision = 3;
-}
-message EnumerateAcquisition {
-}
-message NativeQueryAcquisition {
-  string format = 1;
-  Value request = 2;
-}
-message SourceLimits {
-  uint32 max_frame_bytes = 1;
-  uint32 max_batch_items = 2;
-}
-message SourceOpen {
-  string request_id = 1;
-  string session_id = 2;
-  string generation = 3;
-  string connection_id = 4;
-  string provider = 5;
-  string authority = 6;
-  string type = 7;
-  QueryScope scope = 8;
-  RepresentationBinding representation = 9;
-  string mode = 10;
-  oneof acquisition {
-    EnumerateAcquisition enumerate = 11;
-    NativeQueryAcquisition native_query = 12;
-  }
-  SourceLimits limits = 13;
 }
 message SourceBegin {
   string mode = 1;
@@ -207,6 +235,16 @@ message SourceSnapshotEnd {
   SourceCoverage coverage = 1;
   string continuity = 2;
 }
+message SourceRemove {
+  ResourceReference reference = 1;
+  optional string source_revision = 2;
+}
+message SourceChange {
+  oneof change {
+    SourceObservation upsert = 1;
+    SourceRemove remove = 2;
+  }
+}
 message SourceChanges {
   repeated SourceChange changes = 1;
   SourceCoverage coverage = 2;
@@ -215,22 +253,22 @@ message SourceReset {
   string reason = 1;
   string message = 2;
 }
-message SourceError {
+message SourceFailure {
   string code = 1;
   string message = 2;
-  string request_id = 3;
 }
 message SourceFrame {
-  string session_id = 1;
-  string generation = 2;
-  string sequence = 3;
+  uint32 version = 1;
+  string session_id = 2;
+  string generation = 3;
+  uint64 sequence = 4;
   oneof payload {
-    SourceBegin begin = 4;
-    SourceSnapshot snapshot = 5;
-    SourceSnapshotEnd snapshot_end = 6;
-    SourceChanges changes = 7;
-    SourceReset reset = 8;
-    SourceError failed = 9;
+    SourceBegin begin = 5;
+    SourceSnapshot snapshot = 6;
+    SourceSnapshotEnd snapshot_end = 7;
+    SourceChanges changes = 8;
+    SourceReset reset = 9;
+    SourceFailure failed = 10;
   }
 }
 ```
@@ -245,7 +283,7 @@ pointer distinguishes empty `oneOf` from `any`. Address scope is exact
 identity, not selection. Validate every observation/remove against
 admitted provider, authority, type and scope.
 
-`SourceOpen.representation` holds the exact admitted P45
+`SourceOpenRequest.binding` holds the exact admitted P45
 `Representation`, including ID, representation revision and full
 `SchemaBinding` state, revision, inline document or document reference,
 once per generation. Each observation carries only `RepresentationRef`,
@@ -289,12 +327,12 @@ The body is existing tagged P45 `Value` with a map root, preserving
 native timestamp and exact integer/double kinds without protobuf Struct
 or an untyped JSON roundtrip. `JsonDocument` is not transported; this
 intentionally revises the earlier accepted raw-JSON proposal and
-requires explicit freeze approval. Native `format` equals P45 descriptor
-`language`; `request` is its tagged `Value`, admitted by
+requires explicit freeze approval. Native `language` is the P45 native
+descriptor language; `query` is its tagged `Value`, admitted by
 `ValidateNativeQueryInput`, not arbitrary client code. Pagination
 remains internal to finite acquisition.
 
-`coverage` carries the original P45 per-record `Coverage` kind,
+`record.coverage` carries the original P45 per-record `Coverage` kind,
 limitation paths and reason unchanged to C05 `Admit`; this preserves
 useful scoped partial coverage. `documentCoverage.knownAbsent`
 separately carries typed absence facts, never converted into limitation
@@ -320,13 +358,13 @@ without implying provider recency. Coverage-only changes may have zero
 operations but must supply coverage; empty no-information batches are
 invalid.
 
-Host creates opaque nonempty requestId, sessionId and generation; a
+Host creates opaque nonempty sessionId and generation; a
 fresh attempt always gets a fresh generation, even if sessionId remains.
 Provider echoes sessionId and generation exactly. `sourceRevision` and
 incarnation are optional provider-issued opaque strings; never compare
 revisions as numbers, timestamps or lexicographic order, and never use
 them as host generations, portable resume tokens or proof of freshness.
-Sequence is canonical unsigned decimal text in
+Sequence is protobuf uint64; JSON/TS uses canonical unsigned decimal text in
 `[1,18446744073709551615]`, no sign, whitespace or leading zeros; it
 begins at `1`, advances exactly one for every frame and never wraps.
 Validate before arithmetic. Tagged Value's int64/uint64 remain decimal
@@ -364,32 +402,29 @@ the same invalidation without relying on delivery of a reset frame. A
 changed guarantee or lost coverage that invalidates admission resets; no
 silent promotion or downgrade.
 
-SourceError codes: `invalid`, `unsupported`, `denied`, `unavailable`,
-`limit`, `internal`; requestId must match open. Map existing
-`INVALID_REQUEST`→`invalid`, `UNSUPPORTED`→`unsupported`,
-`FORBIDDEN`/authorization denial→`denied`,
-transport/unavailable→`unavailable`, resource exhaustion→`limit`, all
-other sanitized failures→`internal`. Cancellation/deadline is a separate
-local terminal outcome, not `internal`. Pre-begin rejection uses
-equivalent existing gRPC status and SDK `ResourceOperationError`; after
-begin use `failed` if deliverable, otherwise close with status. Never
-expose credentials or raw provider errors. Invalid framing/phase
-triggers local invalidation rather than trusting a peer error. Release
+`SourceFailure.code` uses existing SDK resource error codes, not a new
+lowercase wire vocabulary. For example, `INVALID_REQUEST`, `UNSUPPORTED`,
+`FORBIDDEN`, `RESOURCE_LIMIT` and `PROVIDER_ERROR` retain their existing
+meaning. The request ID remains in trusted invocation context; it is not
+a new failure field. Cancellation/deadline is a separate local terminal
+outcome. Before begin use equivalent gRPC status and the SDK
+`ResourceOperationError`; after begin send `failed` if deliverable,
+otherwise close with status. Never expose credentials or raw provider
+errors. Invalid framing or phase triggers local invalidation. Release
 all reservations and reject late callbacks on every terminal path.
 
 ## Negotiation, resource bounds and cancellation
 
-Add feature trait `sourceSessionsV1` to the existing `FeatureSet`
-negotiation, detected only from an actual installed session provider and
-advertised by the transport. Check the trait and qualified catalog
-operation/selection and representation independently. Old SDK providers
-without the trait support snapshot when their P45 finite capability
-permits; updates mode returns `unsupported`, never silently downgrades
-or stitches advisory watches. Proxmox's existing 10-second polling is
-removed: its supported snapshot becomes once plus explicit manual
-refresh. Updates mode requires a declared supported update capability
-and real provider session implementation. Exact capability, adapter
-guarantee and native descriptor validation remain catalog-bound.
+The existing `sourceSessions` feature trait is negotiated from actual
+provider support. Check it and the qualified catalog operation, scope and
+representation independently. An old SDK without the trait cannot use
+updates; never silently downgrade or stitch advisory watches. Its finite
+P45 fallback is proposed but not yet proven against strict old catalog
+admission. Preserve existing finite workflows until that policy is
+resolved. Whether Proxmox's existing polling becomes snapshot-once with
+manual refresh depends on that decision and is not yet represented as a
+verified behavior. Native descriptor and guarantee admission remain
+catalog-bound.
 
 All limits apply per generation and are checked before
 retaining/allocating corresponding untrusted data. Default and hard
@@ -469,8 +504,9 @@ Remove SDK `ResourceUpdates` RPCs and update message transport,
 `StopConnectionWatch`, `EnsureResourceWatch`, `StopResourceWatch`,
 `RestartResourceWatch`, `HasWatch`, `IsResourceWatchRunning`,
 `GetWatchState` and advisory watch registration/feature once callers
-migrate. Replace live acquisition with `SourceSessions.Open` and finite
-acquisition with existing P45 pages through the P12 source coordinator.
+migrate. Reuse `ResourceSources.Open` for finite and live acquisition;
+it calls the existing P45 provider acquisition implementation. The
+proposed legacy P45 host fallback remains conditional on compatibility.
 P05 retains P45 host `Enumerate` only for currently unmigrated finite
 callers; P15 owns removal of the public host `Enumerate` Wails entry
 point and its last migrated callers, while the internal P45 page
@@ -485,31 +521,23 @@ becomes host interest acquisition/release. Remove
 validated source frames and C08 result events. Regenerate bindings;
 runtime callers move to a real session-backed mechanism until P15
 replaces it, not a legacy shim. P10 migrates Kubernetes; Proxmox/Flux
-backends retain pinned SDK, supporting finite acquisition where P45
-capabilities exist but refusing updates. Inventory all actual
+backends retain pinned SDK. Their finite fallback policy remains open
+until old-SDK compatibility is proven. Inventory all actual
 symbols/callers at implementation.
 
 After explicit C04 approval, use pinned candidate branches and
 independent review before expensive CI. Each slice is real behavior and
 executable at its boundary; no empty DTO-only or stub PR:
 
-1. **SDK live session transport and codec** (SDK owner): real negotiated
-   gRPC snapshot-and-updates with bounded codec and cancellation.
-   Acceptance: real child-process event sessions, invalid/oversized
-   rejection and terminal cleanup; existing finite P45 operations
-   continue.
-2. **Host admission and finite adapter** (P05 host owner):
-   `SourceBinder`, P45-page-to-frame adapter and shared validator via
-   the P12 `SourceOpener` port. Acceptance: real child-process
-   empty/paginated finite acquisitions, snapshotEnd, bounds and
-   cancellation; old SDK finite capability works without a session
-   trait.
-3. **P12 coordinator and runtime cutover** (P12 coordinator owner,
-   pinned P05 candidates): validated ingress, staging and registry/sink
-   integration, source interests and removal of superseded host paths
-   and runtime callers. Acceptance: real gRPC finite/event, isolation
-   and shared interest, reset/reopen, teardown and no old listener
-   events. P05 owns transport, never a parallel scheduler.
+1. **SDK source owner:** adapt the existing transport and phase tracker
+   for compact representation, absence facts, bounds and cleanup. Prove
+   real snapshot and update behavior, not a parallel implementation.
+2. **Existing host source owner:** reconcile binding, finite fallback and
+   limits with the existing coordinator. Prove current finite workflows,
+   cancellation, legacy negotiation and rejected unsupported updates.
+3. **P12 read-model owner:** integrate or extract staging and membership
+   from the existing coordinator. Prove isolation, bounded staging,
+   shared interests and reset lifecycle without a second scheduler.
 4. **Kubernetes adapter** (P10 owner, pinned SDK/host): shared informer
    demand, proven cutover or bestEffort, no duplicate initial ADD,
    native selectors and explicit capability errors. Acceptance: real
@@ -547,6 +575,15 @@ message ResourceAddress {
 
 message AccessRoute {
   string connection = 1;
+}
+
+message ReadTarget {
+  AccessRoute route = 1;
+  string provider = 2;
+  string authority = 3;
+  string type = 4;
+  QueryScope scope = 5;
+  string representation = 6;
 }
 
 message ResourceReference {
@@ -702,39 +739,44 @@ This snapshot includes an exact integer and a native timestamp:
 
 ```json
 {
+  "version": 2,
   "sessionId": "s1",
   "generation": "g1",
   "sequence": "2",
   "snapshot": {
     "observations": [
       {
-        "address": {
-          "provider": "example",
-          "authority": "account-a",
-          "type": "item",
-          "scope": [],
-          "id": "one"
-        },
-        "representation": {
-          "id": "native",
-          "revision": "r1"
-        },
-        "document": {
-          "kind": "map",
-          "value": {
-            "count": {
-              "kind": "int64",
-              "value": "9007199254740993"
-            },
-            "created": {
-              "kind": "timestamp",
-              "value": "2026-11-02T00:00:00Z"
+        "record": {
+          "reference": {
+            "address": {
+              "provider": "example",
+              "authority": "account-a",
+              "type": "item",
+              "scope": [],
+              "id": "one"
             }
+          },
+          "body": {
+            "kind": "map",
+            "value": {
+              "count": {
+                "kind": "int64",
+                "value": "9007199254740993"
+              },
+              "created": {
+                "kind": "timestamp",
+                "value": "2026-11-02T00:00:00Z"
+              }
+            }
+          },
+          "representation": {
+            "id": "native",
+            "revision": "r1"
+          },
+          "coverage": {
+            "kind": "complete",
+            "paths": []
           }
-        },
-        "coverage": {
-          "kind": "complete",
-          "paths": []
         },
         "documentCoverage": {
           "knownAbsent": []
@@ -756,6 +798,7 @@ acquisition:
 
 ```json
 {
+  "version": 2,
   "sessionId": "s1",
   "generation": "g1",
   "sequence": "4",
@@ -763,12 +806,14 @@ acquisition:
     "changes": [
       {
         "remove": {
-          "address": {
-            "provider": "example",
-            "authority": "account-a",
-            "type": "item",
-            "scope": [],
-            "id": "one"
+          "reference": {
+            "address": {
+              "provider": "example",
+              "authority": "account-a",
+              "type": "item",
+              "scope": [],
+              "id": "one"
+            }
           }
         }
       }
@@ -786,6 +831,7 @@ A reset terminates this source generation:
 
 ```json
 {
+  "version": 2,
   "sessionId": "s1",
   "generation": "g1",
   "sequence": "5",
