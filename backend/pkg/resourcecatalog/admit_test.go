@@ -512,7 +512,7 @@ func TestAdmitLocalizedCollectionLiteral(t *testing.T) {
 		{"nested scalar", `{"const":{"x":{"y":1}}}`, `{"x":{"y":1}}`, []string{"/x/y"}, nil, ""},
 		{"nested missing key", `{"const":{"x":{"y":1}}}`, `{"x":{"y":1}}`, []string{"/x/z"}, []string{""}, ""},
 		{"missing key outside literal", `{"const":{"x":1}}`, `{"x":1}`, []string{"/z"}, []string{""}, ""},
-		{"whole object", `{"const":{"x":1}}`, `{"x":1}`, []string{""}, []string{""}, ""},
+		{"whole object", `{"const":{"x":1}}`, `{"x":1}`, []string{}, []string{""}, ""},
 		{"list limited index", `{"properties":{"x":{"const":[1]}}}`, `{"x":[1]}`, []string{"/x/0"}, []string{"/x"}, ""},
 		{"list possible omitted index", `{"properties":{"x":{"const":[1]}}}`, `{"x":[1]}`, []string{"/x/1"}, []string{"/x"}, ""},
 		{"list nested scalar", `{"properties":{"x":{"const":[{"y":1}]}}}`, `{"x":[{"y":1}]}`, []string{"/x/0/y"}, nil, ""},
