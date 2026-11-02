@@ -105,3 +105,78 @@ func TestSupervisorObservationEdgesStalledHostCannotHoldShutdownAuthority(t *tes
 	require.NotEqual(t, "ready", observed.status.Phase, "a delayed host response cannot undo an admitted shutdown")
 	require.Nil(t, observed.status.Instance)
 }
+
+func TestSupervisorStatusDelayedHostObservation(t *testing.T) {
+	for _, cancelObservation := range []bool{false, true} {
+		t.Run(map[bool]string{false: "released", true: "canceled"}[cancelObservation], func(t *testing.T) {
+			s := supervisorEdgeFixture(t)
+			host, err := s.workspace.RepositoryPath("omniview")
+			require.NoError(t, err)
+			profile, err := profileFor(s.workspace, s.manager.options.Home, s.generation)
+			require.NoError(t, err)
+			descriptor := profile.Descriptor
+			owner := devsession.ProcessOwner{WorkspaceID: s.workspace.Manifest.WorkspaceID, Generation: s.generation, Role: "host", Source: host}
+			descriptor.Process, err = devsession.CaptureProcess(os.Getpid(), owner)
+			require.NoError(t, err)
+			descriptor.Readiness = "host-ready"
+			store, err := devsession.OpenDiscoveryStore(profile.RuntimeRoot)
+			require.NoError(t, err)
+			entered, release := make(chan struct{}), make(chan struct{})
+			var releaseOnce sync.Once
+			server, err := devcontrol.Start(context.Background(), devcontrol.Config{
+				Descriptor: descriptor, Discovery: store,
+				Adapters: devcontrol.Adapters{
+					Inspect: func(ctx context.Context) (devcontract.InstanceDescriptor, error) {
+						close(entered)
+						select {
+						case <-release:
+							return descriptor, nil
+						case <-ctx.Done():
+							return devcontract.InstanceDescriptor{}, ctx.Err()
+						}
+					},
+					Dev:     &readinessProducer{states: map[string]devcontrol.DevState{}},
+					Plugins: struct{ devcontrol.Plugins }{}, Settings: struct{ devcontrol.Settings }{},
+				},
+			})
+			require.NoError(t, err)
+			defer func() {
+				releaseOnce.Do(func() { close(release) })
+				cleanup, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer cancel()
+				require.NoError(t, server.Close(cleanup))
+			}()
+			s.setPhase("ready", nil)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			result := make(chan supervisorEdgeResult, 1)
+			go func() {
+				status, err := s.execute(ctx, supervisorStatusCommand)
+				result <- supervisorEdgeResult{status, err}
+			}()
+			select {
+			case <-entered:
+			case <-time.After(3 * time.Second):
+				t.Fatal("status did not reach host observation")
+			}
+			select {
+			case <-result:
+				t.Fatal("status completed before host observation")
+			default:
+			}
+			if cancelObservation {
+				cancel()
+			} else {
+				releaseOnce.Do(func() { close(release) })
+			}
+			observed := receiveSupervisorEdge(t, result)
+			if cancelObservation {
+				require.ErrorIs(t, observed.err, context.Canceled)
+			} else {
+				require.NoError(t, observed.err)
+				require.Equal(t, "ready", observed.status.Phase)
+				require.NotNil(t, observed.status.Instance)
+			}
+		})
+	}
+}

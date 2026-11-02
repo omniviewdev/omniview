@@ -17,6 +17,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/omniviewdev/omniview/backend/diagnostics"
+	"github.com/omniviewdev/omniview/backend/extensiondiagnostics"
+	extensiondiagnosticshost "github.com/omniviewdev/omniview/backend/extensiondiagnostics/host"
 	"github.com/omniviewdev/omniview/backend/menus"
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
@@ -55,6 +57,7 @@ import (
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	sdkprofiling "github.com/omniviewdev/plugin-sdk/pkg/profiling"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
@@ -489,6 +492,7 @@ func main() {
 	// Wrap the plugin manager interface in a concrete struct for v3 service
 	// registration (NewService requires a concrete pointer type).
 	pluginManagerSvc := &plugin.ServiceWrapper{Mgr: pluginManager}
+	extensionDiagnostics := extensiondiagnostics.NewBroker()
 
 	// A nil *Store must stay a nil interface: the relay then runs in memory.
 	var mcpRelayStore mcprelay.ConfigStore
@@ -496,17 +500,24 @@ func main() {
 		mcpRelayStore = settingsStore
 	}
 	var windowService *window.Service
+	var borrowedConnections func(context.Context, string, string, bool) ([]sdktypes.Connection, error)
+	if borrower, ok := pluginManager.(interface {
+		BorrowedConnections(context.Context, string, string, bool) ([]sdktypes.Connection, error)
+	}); ok {
+		borrowedConnections = borrower.BorrowedConnections
+	}
 	mcpRelay := mcprelay.New(mcprelay.Options{
-		Log:         log,
-		Store:       mcpRelayStore,
-		Tools:       toolsController,
-		Connections: resourceController,
-		Version:     version.Version,
-		Authority:   mcpAuthority,
-		Boundary:    resourceBoundary,
-		Logs:        logsController,
-		Metrics:     metricController,
-		Graph:       relayGraph,
+		Log:                 log,
+		Store:               mcpRelayStore,
+		Tools:               toolsController,
+		Connections:         resourceController,
+		BorrowedConnections: borrowedConnections,
+		Version:             version.Version,
+		Authority:           mcpAuthority,
+		Boundary:            resourceBoundary,
+		Logs:                logsController,
+		Metrics:             metricController,
+		Graph:               relayGraph,
 		ShowConfirmation: func() error {
 			if windowService == nil {
 				return errors.New("Confirmation window is unavailable.")
@@ -542,6 +553,7 @@ func main() {
 		// 3. Frontend-facing services (no startup order dependency)
 		application.NewService(appService),
 		application.NewService(diagnosticsClient),
+		application.NewService(extensiondiagnosticshost.NewService(extensionDiagnostics)),
 		application.NewService(telemetry.NewTelemetryBinding(telemetrySvc)),
 		application.NewService(&profiling.ServiceWrapper{Service: hostProfiling}),
 		application.NewService(uiInspection),
@@ -564,7 +576,7 @@ func main() {
 	runtimeReady, err := controlhost.Register(
 		app, profile,
 		appService.GetInstanceInfo, appService.updateInstanceInfo,
-		pluginManager, devServerManager, coreSettings,
+		pluginManager, devServerManager, coreSettings, extensionDiagnostics,
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: cannot register development control: %v\n", err)

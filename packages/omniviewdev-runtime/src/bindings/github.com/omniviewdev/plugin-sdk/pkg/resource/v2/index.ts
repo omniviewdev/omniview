@@ -11,7 +11,6 @@ export {
     ConnectionMetadataSnapshot,
     Count,
     EdgeDirection,
-    EditorSchema,
     EnumerateRequest,
     EventSeverity,
     Feature,
@@ -19,6 +18,7 @@ export {
     GetRequest,
     HealthCondition,
     HealthStatus,
+    Operation,
     ReadTarget,
     Record,
     RelationshipDescriptor,
@@ -38,8 +38,7 @@ export {
     SchemaDocumentReference,
     ScopeEntry,
     ScopeExtractor,
-    WatchConnectionSummary,
-    WatchState
+    SourceCoverage
 } from "./models.js";
 
 export type {

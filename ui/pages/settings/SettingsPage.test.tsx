@@ -17,7 +17,7 @@ import { SettingsWindowShell } from '@/features/windows/SettingsWindowShell';
 
 type NativeSettingsState = { requestId: number; target: string; visible: boolean };
 const mocks = vi.hoisted(() => ({
-  setSettings: vi.fn(), selectTheme: vi.fn(),
+  setSettings: vi.fn(), selectTheme: vi.fn(), openSettings: vi.fn().mockResolvedValue('main'),
   getWindowState: vi.fn(), setWindowLocation: vi.fn(), hideSettings: vi.fn(),
   stateListener: undefined as ((event: { data: NativeSettingsState }) => void) | undefined,
 }));
@@ -57,7 +57,7 @@ vi.mock('@/theme/AppThemeController', async (importOriginal) => {
 });
 vi.mock('@omniviewdev/runtime', async (importOriginal) => {
   const actual = await importOriginal<typeof RuntimeCore>();
-  return { ...actual, useScopedSettings: (scope: { kind: string }) => ({
+  return { ...actual, openSettings: mocks.openSettings, useScopedSettings: (scope: { kind: string }) => ({
     categories: scope.kind === 'host' ? categories : { plugin: { settings: {
       endpoint: new Setting({ id: 'endpoint', label: 'Endpoint', type: SettingType.Text, value: 'native' }),
     } } },
@@ -186,10 +186,12 @@ describe('actual SettingsPage query-driven navigation', () => {
     expect(mocks.setSettings).not.toHaveBeenCalled();
   });
 
-  it('opens the extension manager from section-only navigation and exposes a real registered point', () => {
-    const { registry } = renderSettings('/settings?section=extensions');
-    expect(screen.getByRole('button', { name: 'probe/settings-proof' })).toBeVisible();
-    expect(registry.getExtensionPoint('probe/settings-proof')).toBeDefined();
+  it.each(['/settings?section=extensions', '/settings?category=extensions'])('moves legacy extension bookmarks out of Settings: %s', async target => {
+    renderSettings(target);
+    await waitFor(() => {
+      expect(mocks.openSettings).toHaveBeenCalledWith(target); 
+    });
+    expect(screen.queryByRole('button', { name: 'probe/settings-proof' })).not.toBeInTheDocument();
   });
 
   it('shows safe unavailable feedback for a removed exact focus target without changing any setting', async () => {

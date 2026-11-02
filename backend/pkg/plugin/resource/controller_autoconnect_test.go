@@ -40,6 +40,28 @@ func TestScheduleAutoConnect_StartsEligibleConnection(t *testing.T) {
 	require.Eventually(t, func() bool { return starts.Load() == 1 }, time.Second, 10*time.Millisecond)
 }
 
+func TestDependencyOwnerSuppressesAutomaticConnections(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	var starts atomic.Int32
+	registerMockPlugin(ctrl, "owner", &mockProvider{
+		StartConnectionFunc: func(context.Context, string) (types.ConnectionStatus, error) {
+			starts.Add(1)
+			return types.ConnectionStatus{Status: types.ConnectionStatusConnected}, nil
+		},
+	})
+	ctrl.pluginsMu.Lock()
+	ctrl.plugins["owner"].suppressAutoConnect = true
+	ctrl.pluginsMu.Unlock()
+	conn := types.Connection{ID: "configured", Lifecycle: types.ConnectionLifecycle{
+		AutoConnect: &types.ConnectionAutoConnect{Enabled: true, Triggers: []types.ConnectionAutoConnectTrigger{
+			types.ConnectionAutoConnectTriggerPluginStart, types.ConnectionAutoConnectTriggerConnectionDiscovered,
+		}},
+	}}
+	ctrl.scheduleAutoConnect("owner", []types.Connection{conn}, types.ConnectionAutoConnectTriggerPluginStart)
+	ctrl.scheduleAutoConnect("owner", []types.Connection{conn}, types.ConnectionAutoConnectTriggerConnectionDiscovered)
+	require.Zero(t, starts.Load())
+}
+
 func TestScheduleAutoConnect_SkipsOnTriggerMismatch(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 

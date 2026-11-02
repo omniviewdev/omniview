@@ -6,7 +6,7 @@ import { Button, Stack, Text } from '@omniviewdev/base-ui';
 import { InlineErrorFallback } from '@/components/errors/ErrorFallback';
 
 // types
-import { jsonToValue, valueToJSON, type Value, type DrawerComponent, type DrawerContext } from '@omniviewdev/runtime';
+import { jsonToValue, useResourceEditorModelPath, valueToJSON, type Value, type DrawerComponent, type DrawerContext } from '@omniviewdev/runtime';
 import { resourceYaml, parseResourceYaml } from './resourceYaml';
 
 // icons
@@ -69,9 +69,15 @@ const LinkedResourceEditor: React.FC<{
 }> = ({ ctx, onSubmit, onClose }) => {
   const original = React.useMemo(() => ctx.resource?.record?.record.body ?? jsonToValue(ctx.data ?? null), [ctx]);
   const originalData = React.useMemo(() => resourceYaml(original), [original]);
-  const editorPath = ctx.resource
-    ? `file:///resource/${encodeURIComponent(ctx.resource.pluginID)}/${encodeURIComponent(ctx.resource.route.connection)}/${encodeURIComponent(ctx.resource.reference.address.type)}/draft.yaml`
-    : 'file:///resource/draft.yaml';
+  const schemaModelPath = useResourceEditorModelPath({
+    pluginID: ctx.resource?.pluginID,
+    route: ctx.resource?.route ?? { connection: '' },
+    type: ctx.resource?.reference.address.type ?? '',
+    representation: ctx.resource?.representation,
+    name: 'draft',
+    enabled: !!ctx.resource,
+  });
+  const editorPath = schemaModelPath ?? 'file:///resource/draft.yaml';
 
   const [value, setValue] = React.useState<string>(originalData);
   const [changed, setChanged] = React.useState(false);

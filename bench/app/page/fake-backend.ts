@@ -77,9 +77,8 @@ const connection = {
   last_refresh: new Date().toISOString(),
 };
 
-/** Resource types the fixtures serve; all report as synced so no sync modal opens. */
+/** Resource type served by the Kubernetes fixture. */
 const POD_KEY = 'k8s:/pods';
-const SYNCED = 2; // WatchState.WatchStateSynced
 
 handleAll({
   'window/service.List': () => [{ name: 'main', kind: 'workspace' }],
@@ -89,13 +88,20 @@ handleAll({
   'resource/servicewrapper.GetResourceGroups': () => [
     { id: 'workloads', name: 'Workloads', description: '', icon: '', resources: [POD_KEY] },
   ],
-  'resource/servicewrapper.GetWatchState': () => ({
-    connectionId: BENCH_CONNECTION_ID,
-    resources: { [POD_KEY]: SYNCED },
-    resourceCounts: { [POD_KEY]: { kind: 'exact', value: String(config.pods ?? 0) } },
+  'resource/servicewrapper.GetSourceStates': (_plugin: string, route: unknown) => ({
+    route,
+    types: { [POD_KEY]: { state: 'following', mode: 'snapshotAndUpdates', continuity: 'bestEffort',
+      count: { kind: 'exact', value: String(config.pods ?? 0) } } },
   }),
   'resource/servicewrapper.GetEditorSchemas': () => [],
-  'resource/servicewrapper.SubscribeResource': () => null,
+  'resource/servicewrapper.GetSchemaFields': (_plugin: string, request: { type: string; representation?: string }) => ({
+    catalogRevision: 'bench', type: request.type, representation: request.representation ?? '', schemaState: 'absent',
+    fields: [], truncated: false,
+    overlay: { Operations: [], NativeQueryLanguages: [], HostEvaluation: 'dynamic', HostEvaluationCode: '', Validation: 'none', Unvalidated: null },
+  }),
+  'resource/servicewrapper.GetEditorSchemaDocument': () => {
+    throw Object.assign(new Error('Editor schema document is not referenced by this connection.'), { code: 'NOT_FOUND' });
+  },
   'resource/servicewrapper.GetAllConnectionStates': () => ({}),
   // Startup calls with nothing to report (empty state dir).
   'diagnostics/diagnosticsclient.Log': () => null,

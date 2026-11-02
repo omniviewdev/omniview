@@ -327,6 +327,9 @@ export class Count {
  * Coverage states known acquisition limitations, not operation success alone.
  * Complete forbids Paths and Reason. Partial and unknown require a public-safe
  * Reason; preserve any reported path limitations rather than claiming completeness.
+ * Each Paths entry is an RFC6901 JSON pointer into the record body that starts
+ * with "/" and names a LIMITED subtree; empty Paths on partial or unknown
+ * coverage means the limitation is not localized.
  */
 export type Coverage = any;
 
@@ -350,48 +353,6 @@ export enum EdgeDirection {
      */
     EdgeIncoming = "incoming",
 };
-
-/**
- * EditorSchema associates editor selection metadata with an explicit schema
- * binding. URI is editor metadata, not permission to fetch an external document;
- * Binding distinguishes unavailable acquisition from known schema absence.
- */
-export class EditorSchema {
-    "type": string;
-    "fileMatch": string;
-    "uri": string;
-    "language": string;
-    "binding": SchemaBinding;
-
-    /** Creates a new EditorSchema instance. */
-    constructor($$source: Partial<EditorSchema> = {}) {
-        if (!("type" in $$source)) {
-            this["type"] = "";
-        }
-        if (!("fileMatch" in $$source)) {
-            this["fileMatch"] = "";
-        }
-        if (!("uri" in $$source)) {
-            this["uri"] = "";
-        }
-        if (!("language" in $$source)) {
-            this["language"] = "";
-        }
-        if (!("binding" in $$source)) {
-            this["binding"] = null;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new EditorSchema instance from a string or object.
-     */
-    static createFrom($$source: any = {}): EditorSchema {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new EditorSchema($$parsedSource as Partial<EditorSchema>);
-    }
-}
 
 /**
  * EnumerateRequest asks for one finite source page, not a subscription or a
@@ -528,14 +489,14 @@ export enum Feature {
     FeatureStreamingActions = "streamingActions",
 
     /**
-     * FeatureBestEffortUpdates enables advisory updates without replay guarantees.
-     */
-    FeatureBestEffortUpdates = "bestEffortUpdates",
-
-    /**
      * FeatureConnectionMetadata enables public connection facts and refresh.
      */
     FeatureConnectionMetadata = "connectionMetadata",
+
+    /**
+     * FeatureSourceSessions enables phased source snapshot/update sessions.
+     */
+    FeatureSourceSessions = "sourceSessions",
 };
 
 /**
@@ -678,6 +639,57 @@ export enum HealthStatus {
      * HealthUnknown explicitly reports insufficient evidence to assess health.
      */
     HealthUnknown = "unknown",
+};
+
+/**
+ * Operation names independently admitted capabilities, not required methods.
+ * Advertising one operation never implies support for another.
+ */
+export enum Operation {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * OperationEnumerate advertises scoped native enumeration, not final host query membership.
+     */
+    OperationEnumerate = "enumerate",
+
+    /**
+     * OperationGet advertises acquisition of one exact canonical reference.
+     */
+    OperationGet = "get",
+
+    /**
+     * OperationNativeQuery advertises provider-native query execution.
+     */
+    OperationNativeQuery = "nativeQuery",
+
+    /**
+     * OperationCreate admits only the create mutation verb.
+     */
+    OperationCreate = "create",
+
+    /**
+     * OperationMutationUpdate admits only the update mutation verb.
+     */
+    OperationMutationUpdate = "mutationUpdate",
+
+    /**
+     * OperationDelete admits only the delete mutation verb.
+     */
+    OperationDelete = "delete",
+
+    /**
+     * OperationAction advertises action dispatch; action descriptors define available actions.
+     */
+    OperationAction = "action",
+
+    /**
+     * OperationSourceUpdates advertises a source session that follows changes after its snapshot.
+     */
+    OperationSourceUpdates = "sourceUpdates",
 };
 
 /**
@@ -1460,6 +1472,39 @@ export class ScopeExtractor {
     }
 }
 
+export class SourceCoverage {
+    "enumeration": string;
+    "consistency": string;
+    "limitations": string[];
+
+    /** Creates a new SourceCoverage instance. */
+    constructor($$source: Partial<SourceCoverage> = {}) {
+        if (!("enumeration" in $$source)) {
+            this["enumeration"] = "";
+        }
+        if (!("consistency" in $$source)) {
+            this["consistency"] = "";
+        }
+        if (!("limitations" in $$source)) {
+            this["limitations"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SourceCoverage instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SourceCoverage {
+        const $$createField2_0 = $$createType22;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("limitations" in $$parsedSource) {
+            $$parsedSource["limitations"] = $$createField2_0($$parsedSource["limitations"]);
+        }
+        return new SourceCoverage($$parsedSource as Partial<SourceCoverage>);
+    }
+}
+
 /**
  * Value preserves scalar intent rather than reducing every number to float64.
  * Kind is null, bool, string, int64, uint64, double, timestamp, list, or map; the
@@ -1471,116 +1516,6 @@ export class ScopeExtractor {
  * or sharing values with code that may mutate them.
  */
 export type Value = any;
-
-/**
- * WatchConnectionSummary is a source-state observation, not a total inventory.
- * Resources and ResourceCounts are keyed by opaque resource type; unknown counts
- * must not be treated as zero or inferred from the number of map entries.
- */
-export class WatchConnectionSummary {
-    "route": AccessRoute;
-    "resources": { [_ in string]?: WatchState };
-    "resourceCounts": { [_ in string]?: Count };
-
-    /**
-     * Scope is optional summary metadata, not permission to widen individual
-     * admitted targets. Nil does not establish unrestricted acquisition.
-     */
-    "scope": QueryScope;
-    "guarantee": string;
-
-    /** Creates a new WatchConnectionSummary instance. */
-    constructor($$source: Partial<WatchConnectionSummary> = {}) {
-        if (!("route" in $$source)) {
-            this["route"] = (new AccessRoute());
-        }
-        if (!("resources" in $$source)) {
-            this["resources"] = {};
-        }
-        if (!("resourceCounts" in $$source)) {
-            this["resourceCounts"] = {};
-        }
-        if (!("scope" in $$source)) {
-            this["scope"] = null;
-        }
-        if (!("guarantee" in $$source)) {
-            this["guarantee"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new WatchConnectionSummary instance from a string or object.
-     */
-    static createFrom($$source: any = {}): WatchConnectionSummary {
-        const $$createField0_0 = $$createType0;
-        const $$createField1_0 = $$createType26;
-        const $$createField2_0 = $$createType28;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("route" in $$parsedSource) {
-            $$parsedSource["route"] = $$createField0_0($$parsedSource["route"]);
-        }
-        if ("resources" in $$parsedSource) {
-            $$parsedSource["resources"] = $$createField1_0($$parsedSource["resources"]);
-        }
-        if ("resourceCounts" in $$parsedSource) {
-            $$parsedSource["resourceCounts"] = $$createField2_0($$parsedSource["resourceCounts"]);
-        }
-        return new WatchConnectionSummary($$parsedSource as Partial<WatchConnectionSummary>);
-    }
-}
-
-/**
- * WatchState describes one advisory source's lifecycle, not connection health or
- * source completeness. In particular, synced cannot prove gap-free delivery.
- */
-export enum WatchState {
-    /**
-     * The Go zero value for the underlying type of the enum.
-     */
-    $zero = 0,
-
-    /**
-     * WatchStateIdle means the source is registered but has not begun syncing.
-     */
-    WatchStateIdle = 0,
-
-    /**
-     * WatchStateSyncing means native cache acquisition is in progress.
-     */
-    WatchStateSyncing = 1,
-
-    /**
-     * WatchStateSynced means the native cache reports readiness, not continuity.
-     */
-    WatchStateSynced = 2,
-
-    /**
-     * WatchStateError means an attempt failed and may be retried.
-     */
-    WatchStateError = 3,
-
-    /**
-     * WatchStateStopped means the source ended without a terminal failure.
-     */
-    WatchStateStopped = 4,
-
-    /**
-     * WatchStateFailed means the source exhausted retries or failed admission.
-     */
-    WatchStateFailed = 5,
-
-    /**
-     * WatchStateForbidden means source access was denied.
-     */
-    WatchStateForbidden = 6,
-
-    /**
-     * WatchStateSkipped means startup was intentionally omitted.
-     */
-    WatchStateSkipped = 7,
-};
 
 // Private type creation functions
 const $$createType0 = AccessRoute.createFrom;
@@ -1609,6 +1544,3 @@ const $$createType22 = $Create.Array($Create.Any);
 const $$createType23 = HealthCondition.createFrom;
 const $$createType24 = $Create.Array($$createType23);
 const $$createType25 = SchemaDocumentReference.createFrom;
-const $$createType26 = $Create.Map($Create.Any, $Create.Any);
-const $$createType27 = Count.createFrom;
-const $$createType28 = $Create.Map($Create.Any, $$createType27);

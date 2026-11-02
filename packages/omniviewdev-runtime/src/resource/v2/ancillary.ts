@@ -1,9 +1,9 @@
 // Handwritten projection of plugin-sdk/pkg/resource/v2/ancillary_types.go.
-import type { AccessRoute, ResourceReference, SchemaBinding, ScopeEntry, Value } from './domain';
+import type { AccessRoute, ResourceReference, ScopeEntry, Value } from './domain';
 import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 
 /** Ancillary transport traits; finite support comes only from the qualified catalog. */
-export type Feature = 'connections' | 'connectionBrowser' | 'connectionOverlay' | 'scopeValues' | 'presentation' | 'editorSchemas' | 'schemaDocuments' | 'relationships' | 'health' | 'actionCatalog' | 'streamingActions' | 'bestEffortUpdates';
+export type Feature = 'connections' | 'connectionBrowser' | 'connectionOverlay' | 'scopeValues' | 'presentation' | 'editorSchemas' | 'schemaDocuments' | 'relationships' | 'health' | 'actionCatalog' | 'streamingActions' | 'sourceSessions';
 export interface FeatureSet { traits: readonly Feature[] }
 
 /** Explicit host-owned desired state, never a replay of native discovery snapshots. */
@@ -12,7 +12,6 @@ export interface ConnectionOverlay {
   disabledIDs: readonly string[];
 }
 
-export interface EditorSchema { type: string; fileMatch: string; uri: string; language: string; binding: SchemaBinding }
 export interface ResourceGroup { id: string; name: string; description: string; icon: string; resources: readonly string[] }
 export interface ResourceDefinition { columnDefs: readonly ColumnDefinition[] }
 export interface ColumnDefinition {

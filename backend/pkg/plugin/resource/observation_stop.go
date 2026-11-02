@@ -5,10 +5,14 @@ package resource
 func (c *controller) fenceStoppedRoute(pluginID, connection string) (func(), error) {
 	c.pluginsMu.Lock()
 	generation := c.plugins[pluginID]
-	if err := c.invalidateSourceRoutesLocked(pluginID, []string{connection}, false); err != nil {
+	if err := c.invalidateStoppedSourceRoutesLocked(pluginID, connection); err != nil {
 		c.pluginsMu.Unlock()
 		return nil, err
 	}
+	if generation.connectionLifecycleEpoch == nil {
+		generation.connectionLifecycleEpoch = make(map[string]uint64)
+	}
+	generation.connectionLifecycleEpoch[connection]++
 	if generation.sourceChanging == nil {
 		generation.sourceChanging = make(map[string]bool)
 	}

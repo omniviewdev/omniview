@@ -27,6 +27,9 @@ Older plugin archives built against MUI or legacy UI contracts are incompatible.
 The Logs scenario selects a container from the opened Logs submenu, not from the
 parent action list. Adding actions such as Debug must not change which workload
 is measured; line counts, scrolling, drawer toggles, and run counts stay unchanged.
+Drawer toggles use the log viewer's bottom-drawer strip, never a document-wide
+Expand/Minimize label or button position. Sidebar tree controls may share those
+labels; every measured toggle must still change the drawer's actual height.
 
 The Pod scenario opens the native page from a 5k-pod corpus, then scrolls up to
 30 viewport steps within that page. Current V2 Kubernetes requests 256 records per native page. Fixtures
@@ -43,13 +46,14 @@ actual total rather than the requested 30-step budget.
 CI reads the checked-out host's `e2e/source-cohort.json`, with full commit strings
 for `plugin-sdk`, `ui`, and `kubernetes`. UI and Kubernetes checkouts use validated
 cohort outputs; Kubernetes must match the host's `plugins/kubernetes` gitlink.
+After Kubernetes merges, update both pins to its final merge commit before the coordinated consumer release.
 The SDK entry must equal the independently reviewed release pinned explicitly in
-the candidate workflows: SDK v0.12.0,
-`a6c892e671b789396f43fabeede7f4bf2e7a0c5d`. The original isolation ancestry minimum remains
-`5b3ef764d1cf738835a723a749a0cb6c45f85e44`. The profiling release advances the
-reviewed isolation checkpoint to SDK v0.11.0,
-`eb0d5c8c533c6501c4a57da338435956f82d7b84`, after independent security review of
-the five protected files. The delta only adds the opt-in profiler lifecycle to
+the candidate workflows: SDK v0.14.2,
+`0597ff45586b45e3a57fe7ac86194ce96884c7ef`. The original isolation ancestry minimum remains
+`5b3ef764d1cf738835a723a749a0cb6c45f85e44`. The connection-sharing release advances the
+reviewed isolation checkpoint to SDK v0.13.0 after independent
+security review of the five protected files.
+The changes add callback binding and retain the profiler lifecycle in
 `pkg/sdk/plugin.go`; state-root, profile-contract, and store protections remain
 unchanged. Admission requires the baseline to precede that pinned checkpoint, the
 checkpoint to precede the selected SDK, and all five selected protected files
@@ -105,7 +109,7 @@ candidate sources. Explicit direct-CLI `UI_SOURCE_REF` or
 `KUBERNETES_SOURCE_REF` values must still match the selected cohort.
 The Kubernetes gitlink must also match. Commits must be reachable by checkout,
 but candidate testing does not require a module or npm publication.
-Candidate workflows pin the independently reviewed SDK v0.12.0 release commit in
+Candidate workflows pin the independently reviewed SDK v0.14.2 release commit in
 `REVIEWED_SDK_REVISION`; they do not read repository variables for SDK approval.
 Keep repository variables unchanged: neither the resource-v2 approval variable nor
 the legacy `OMNIVIEW_E2E_REVIEWED_SDK_REVISION` selects this candidate's SDK.
@@ -148,7 +152,7 @@ the collection and report its path instead of deleting uncertain files.
   and wrap the root in `page/profiler.tsx`. The app's source is not changed.
 - **Fake backend.** `page/fake-backend.ts` installs the `bench/render` transport and fixtures
   (bindings → handlers by name, `emit` for backend events), and adds what the full shell
-  asks for at startup: the installed plugin list, a connection, watch state, log sessions.
+  asks for at startup: the installed plugin list, a connection, source state, log sessions.
   The page reads its setup from `window.__OV_BENCH__` (`{ plugins, pods }`), set by the
   runner before navigation, and exposes controls on `window.__ovBench`. Calls are answered
   in-page, so there is no IPC cost in the numbers.
@@ -232,7 +236,7 @@ Named canonical finite scenarios are `cloud-bundled-pages`,
 copies**. Copy ordinal is only diagnostic table identity, not a fabricated
 native resource ID. Cloud and hypervisor retain their canonical page cursors
 for the native finite run; hypervisor is snapshot-only. Container release is a
-one-shot fixture List cursor after a ready source watch. It is coordination,
+one-shot fixture List cursor after a ready source view. It is coordination,
 not a source continuity/ACK/replay guarantee.
 
 Use canonical workspace `up`/`inspect`/`down` in a private HOME without real
@@ -264,8 +268,8 @@ UUID/generation/state/source, uses only `instance.endpoints.browser`, verifies
 the document boot identity, and records selected source commits, dirty tracked
 diff hashes, exact fixture hashes, tools/hardware/viewport and browser version.
 Results are written exclusively (`wx`), including partial failure evidence.
-The runner closes Chromium and explicitly stops its fixture source
-watches/connections/cache; the owner must then `workspace down` and inspect
+The runner closes Chromium and explicitly closes its fixture source views,
+connections and cache; the owner must then `workspace down` and inspect
 the stopped generation, verify socket removal and retire the empty private
 sampler directory. It never terminates another owner's workspace/process.
 
@@ -300,30 +304,26 @@ sampler directory. It never terminates another owner's workspace/process.
   debounce, host CEL execution or a global-inventory query. Stress copies
   exercise payload/render cost only. Inactive React Query cache retention is
   sampled before explicit owned-cache removal.
-- The container diagnostic deliberately supplies the existing hook's
-  `idAccessor`; default Resources still omits it and remains unsubscribed.
-  Native engine-local ID collisions and legacy first-match cache behavior
-  remain limitations. No old listener fix, atomic List/watch cutover or scope
-  identity claim is made.
-- Source watches, source rows copied, frontend subscription calls, host
-  forwarding refcounts, persistent gRPC listener streams and future query
-  leases are different quantities. Only available counters/observations are
-  reported; unavailable query semantics/counts are not measured zero.
-  Current `IsResourceWatchRunning` has no SDK gRPC RPC despite its generated
-  host binding. Cleanup instead invokes the supported `StopResourceWatch`,
-  waits on the actual provider's source-watch gauge over the real List path,
-  then stops connections. It does not suppress the unavailable inspection
-  surface or infer source cleanup from frontend unmount.
-  Table-only `window.__p02.unmount()` intentionally retains sources and inactive
-  queries for retention sampling. Toggling off the entire diagnostic or leaving
-  its route instead drains pending connection/watch starts, stops every owned
-  source and clears only its diagnostic caches. This root cleanup uses its own
-  effect-local control, not the deleted global. Cleanup failures are reported
-  and do not skip remaining connections or cache removal.
+- The container diagnostic uses `useResources` collection mode for live source
+  updates and owns a separate source view to retain the stream across table-only
+  unmounts. The fixture does not establish provider continuity or replay guarantees.
+- Source streams, source rows copied, frontend views and connection-owned
+  inventory are different quantities. Only available counters and observations
+  are reported; unavailable query semantics and counts are not measured as zero.
+  Cleanup closes the diagnostic's `OpenSourceView` handle using
+  `CloseSourceView`, then reads the provider's actual source-watch gauge through
+  the real List path before stopping the connection. Connection-owned inventory
+  or another view can still hold the stream at that point, so this gauge is not
+  proof of cancellation. Table-only `window.__p02.unmount()` intentionally retains
+  the diagnostic view, sources and inactive queries for retention sampling.
+  Toggling off the entire diagnostic or leaving its route drains pending
+  connection/view opens, closes owned views, stops every owned connection and
+  clears only diagnostic caches. Root cleanup uses its effect-local control.
+  Cleanup failures are reported and do not skip other connections or cache removal.
   The fixture also emits numeric `p02Lifecycle` stderr observations under its
-  source mutex at client destruction and watch termination. Correlate new log
+  source mutex at client destruction and stream termination. Correlate new log
   records to the authenticated owned plugin process/generation and root-stop
-  boundary to observe final connections/watch counts after the last client is
+  boundary to observe final connection and source-watch counts after the last client is
   destroyed; a new List call cannot inspect a stopped client. These fixture-only
   observations contain no resource IDs/bodies and do not add a public API.
 - A clean HOME is not network isolation. The fixture has no external source

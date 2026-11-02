@@ -1,7 +1,7 @@
 /** Deterministic Kubernetes fixtures shaped like what the plugin backend returns. */
-import { handleAll } from '../harness/backend';
+import { emit, handleAll } from '../harness/backend';
 import { jsonToValue } from '@omniviewdev/runtime';
-import type { HostEnumerateRequest, ResolveTargetRequest } from '@omniviewdev/runtime';
+import type { HostEnumerateRequest, HostSourceViewRequest, ResolveTargetRequest } from '@omniviewdev/runtime';
 import { BENCH_CONNECTION_ID } from './defaults';
 
 /** Small seeded PRNG (mulberry32) so every run sees the same data. */
@@ -119,11 +119,43 @@ export function servePods(pods: Pod[]): void {
   const type = 'k8s:/pods';
   const representation = {
     id: 'kubernetes-json', revision: 'bench-1',
-    schema: { state: 'unavailable', unavailableReason: 'NOT_SUPPORTED', validation: 'none', unvalidated: [] },
+    schema: { state: 'unavailable', unavailableReason: 'NOT_SUPPORTED' },
   };
   const coverage = { kind: 'complete', paths: [] };
   const count = { kind: 'exact', value: String(pods.length) };
   const authorityDisclosure = { continuity: 'connectionLocal' as const, limitations: [] };
+  const views = new Map<string, { request: HostSourceViewRequest; generation: number; sequence: number; mode: 'snapshot' | 'snapshotAndUpdates' }>();
+  let nextView = 0;
+  const select = (target: HostSourceViewRequest['target']) => pods.filter((pod) => target.scope.every((entry) =>
+    entry.match === 'any' || (entry.dimension === 'namespace' && entry.values.includes(pod.metadata.namespace))));
+  const records = (request: HostSourceViewRequest, selected: Pod[]) => selected.map((pod) => {
+    const address = { provider, authority, type, scope: [{ dimension: 'namespace', value: pod.metadata.namespace }], id: pod.metadata.name };
+    return {
+      key: JSON.stringify([address, pod.metadata.uid]), addressKey: JSON.stringify(address), targetId: request.targetId, route: request.target.route,
+      record: { reference: { address, incarnation: pod.metadata.uid }, body: jsonToValue(pod), representation, coverage, sourceRevision: pod.metadata.resourceVersion },
+    };
+  });
+  const sync = (viewId: string) => {
+    const view = views.get(viewId);
+    if (!view) throw new Error(`Unknown benchmark source view: ${viewId}`);
+    const topic = `resource/source-view/${viewId}`;
+    if (view.generation) {
+      emit(topic, { viewId, viewGeneration: String(view.generation), sequence: String(++view.sequence), kind: 'reset', reset: { reason: 'resync', message: '' } });
+    }
+    const generation = String(++view.generation);
+    const selected = records(view.request, select(view.request.target));
+    view.sequence = 0;
+    for (let i = 0; i < selected.length; i += 256) {
+      emit(topic, { viewId, viewGeneration: generation, sequence: String(++view.sequence), kind: 'snapshot', records: selected.slice(i, i + 256) });
+    }
+    emit(topic, {
+      viewId, viewGeneration: generation, sequence: String(++view.sequence), kind: 'snapshotEnd',
+      status: { state: view.mode === 'snapshot' ? 'finished' : 'following', mode: view.mode,
+        continuity: view.mode === 'snapshot' ? 'notApplicable' : 'bestEffort',
+        coverage: { enumeration: 'exhausted', consistency: 'bestEffort', limitations: [] },
+        count: { kind: 'exact', value: String(selected.length) } },
+    });
+  };
   handleAll({
     'resource/servicewrapper.Catalog': () => ({
       provider, revision: 'bench-1', coverage,
@@ -132,7 +164,10 @@ export function servePods(pods: Pod[]): void {
         identityDimensions: [{ name: 'namespace', allowEmpty: true }],
         queryDimensions: [{ name: 'namespace', allowEmpty: true }],
         representations: [representation], defaultRepresentation: representation.id, modelRepresentation: representation.id,
-        capabilities: [{ operation: 'enumerate', scope: [{ dimension: 'namespace', match: 'any' }] }],
+        capabilities: [
+          { operation: 'enumerate', scope: [{ dimension: 'namespace', match: 'any' }] },
+          { operation: 'sourceUpdates', scope: [{ dimension: 'namespace', match: 'any' }] },
+        ],
       }],
     }),
     'resource/servicewrapper.ResolveTarget': (_plugin: string, request: ResolveTargetRequest) => {
@@ -146,20 +181,12 @@ export function servePods(pods: Pod[]): void {
     'resource/servicewrapper.Enumerate': (_plugin: string, input: HostEnumerateRequest) => {
       const { target, pageSize, cursor } = input.request;
       if (target.type !== type) throw new Error(`Unsupported benchmark resource type: ${target.type}`);
-      const selected = pods.filter((pod) => target.scope.every((entry) =>
-        entry.match === 'any' || (entry.dimension === 'namespace' && entry.values.includes(pod.metadata.namespace))));
+      const selected = select(target);
       const start = cursor ? Number(cursor) : 0;
       if (!Number.isSafeInteger(start) || start < 0 || pageSize <= 0) throw new Error('Invalid benchmark source page');
       const end = Math.min(start + pageSize, selected.length);
       return {
-        records: selected.slice(start, end).map((pod) => {
-          const address = { provider, authority, type, scope: [{ dimension: 'namespace', value: pod.metadata.namespace }], id: pod.metadata.name };
-          const addressKey = JSON.stringify(address);
-          return {
-            key: JSON.stringify([address, pod.metadata.uid]), addressKey, targetId: input.targetId, route: target.route,
-            record: { reference: { address, incarnation: pod.metadata.uid }, body: jsonToValue(pod), representation, coverage, sourceRevision: pod.metadata.resourceVersion },
-          };
-        }),
+        records: records({ targetId: input.targetId, target, updates: 'none' }, selected.slice(start, end)),
         sourcePage: {
           count: { kind: 'exact', value: String(selected.length) }, coverage, consistency: 'snapshot',
           ...(end < selected.length ? { nextCursor: String(end) } : {}),
@@ -167,12 +194,27 @@ export function servePods(pods: Pod[]): void {
       };
     },
     'resource/servicewrapper.ScopeValues': () => [...new Set(pods.map((pod) => pod.metadata.namespace))],
-    'resource/servicewrapper.GetWatchState': () => ({
-      connectionId: BENCH_CONNECTION_ID, resources: { [type]: 2 }, resourceCounts: { [type]: count },
+    'resource/servicewrapper.GetSourceStates': (_plugin: string, route: unknown) => ({
+      route, types: { [type]: { state: 'following', mode: 'snapshotAndUpdates', continuity: 'bestEffort', count } },
     }),
-    'resource/servicewrapper.EnsureResourceWatch': () => null,
-    'resource/servicewrapper.SubscribeResource': () => null,
-    'resource/servicewrapper.UnsubscribeResource': () => null,
+    'resource/servicewrapper.OpenSourceView': (_plugin: string, request: HostSourceViewRequest) => {
+      if (request.target.type !== type) throw new Error(`Unsupported benchmark resource type: ${request.target.type}`);
+      const viewId = `bench-${++nextView}`;
+      const mode = request.updates === 'none' ? 'snapshot' : 'snapshotAndUpdates';
+      views.set(viewId, { request, generation: 0, sequence: 0, mode });
+      return { viewId, topic: `resource/source-view/${viewId}`, mode };
+    },
+    'resource/servicewrapper.SyncSourceView': (_plugin: string, viewId: string) => sync(viewId),
+    'resource/servicewrapper.RefreshSourceView': (_plugin: string, viewId: string) => sync(viewId),
+    'resource/servicewrapper.CloseSourceView': (_plugin: string, viewId: string) => {
+      const view = views.get(viewId);
+      if (view) {
+        emit(`resource/source-view/${viewId}`, { viewId, viewGeneration: String(view.generation || 1),
+          sequence: String(++view.sequence), kind: 'reset', reset: { reason: 'closed', message: '' } });
+        views.delete(viewId);
+      }
+    },
+    'resource/servicewrapper.RetryConnectionSources': () => null,
     'metric/servicewrapper.QueryAll': () => metrics,
   });
 }

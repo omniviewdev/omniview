@@ -63,6 +63,18 @@ func TestBuildCatalogNamespacesAndInjectsConnection(t *testing.T) {
 	require.Equal(t, "object", listPods.OutputSchema["type"])
 }
 
+func TestBorrowedConnectionOwnerSurvivesCatalog(t *testing.T) {
+	catalog := BuildCatalog(map[string]tools.PluginTools{
+		"flux": {Meta: config.PluginMeta{ID: "flux"}, Tools: []sdktools.Descriptor{{
+			Name: "status", Scope: sdktools.ScopeConnection, ConnectionOwner: "kubernetes",
+			InputSchema: sdktools.ObjectSchema(nil),
+		}}},
+	})
+	require.Len(t, catalog, 2)
+	require.Equal(t, "kubernetes", catalog[1].ConnectionOwner)
+	require.Equal(t, StatusOK, catalog[1].Status)
+}
+
 func TestBuildCatalogMarksConflicts(t *testing.T) {
 	catalog := BuildCatalog(map[string]tools.PluginTools{
 		"a":   {Meta: config.PluginMeta{ID: "a"}, Tools: []sdktools.Descriptor{{Name: "b_c", Scope: sdktools.ScopePlugin, InputSchema: sdktools.ObjectSchema(nil)}}},

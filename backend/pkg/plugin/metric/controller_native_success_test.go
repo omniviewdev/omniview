@@ -353,7 +353,7 @@ func (nativeRuntimeConnections) CheckConnection(_ context.Context, connection sd
 type nativeRuntimeResourcer struct{}
 
 func nativeRuntimeRepresentation() sdkresource.Representation {
-	return sdkresource.Representation{ID: "native", Revision: "native:1", Schema: sdkresource.SchemaBinding{State: "absent", Validation: "none"}}
+	return sdkresource.Representation{ID: "native", Revision: "native:1", Schema: sdkresource.SchemaBinding{State: "absent"}}
 }
 
 func (nativeRuntimeResourcer) Get(ctx context.Context, process *os.Process, input sdkresource.GetRequest) (sdkresource.Record, error) {

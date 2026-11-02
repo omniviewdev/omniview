@@ -18,6 +18,9 @@ import (
 // or authorize another generation to replace its discovery.
 func TestUnlinkedLiveExecutableRetainsGenerationOwnership(t *testing.T) {
 	if os.Getenv("OMNIVIEW_SESSION_UNLINK_FIXTURE") == "1" {
+		if _, err := os.Stdout.WriteString("ready\n"); err != nil {
+			t.Fatal(err)
+		}
 		_, _ = io.Copy(io.Discard, os.Stdin)
 		return
 	}
@@ -44,6 +47,11 @@ func TestUnlinkedLiveExecutableRetainsGenerationOwnership(t *testing.T) {
 	}
 	cmd := exec.Command(ownedExecutable, "-test.run=^TestUnlinkedLiveExecutableRetainsGenerationOwnership$")
 	cmd.Env = append(os.Environ(), "GOWORK=off", "OMNIVIEW_SESSION_UNLINK_FIXTURE=1")
+	fixtureOutput, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = fixtureOutput.Close() })
 	input, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -53,6 +61,14 @@ func TestUnlinkedLiveExecutableRetainsGenerationOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = input.Close(); _ = cmd.Wait() })
+	// Observe /proc only after the copied executable reaches the fixture.
+	var fixtureReadyMessage [6]byte
+	if _, err := io.ReadFull(fixtureOutput, fixtureReadyMessage[:]); err != nil {
+		t.Fatalf("read fixture readiness: %v", err)
+	}
+	if string(fixtureReadyMessage[:]) != "ready\n" {
+		t.Fatalf("unexpected fixture readiness %q", fixtureReadyMessage[:])
+	}
 	owner := ProcessOwner{WorkspaceID: fixtureWorkspace, Generation: "unlink-old", Role: "supervisor", Source: "/fixture/source"}
 	record, err := CaptureProcess(cmd.Process.Pid, owner)
 	if err != nil {

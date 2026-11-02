@@ -250,7 +250,7 @@ export function attachManagedViteFeedback(server: ManagedFeedbackServer, raw = p
 
     observing ??= execFileAsync(context.authority.executable, [
       'workspace', 'inspect', '--workspace', context.workspaceRoot, '--json',
-    ], { encoding: 'utf8', shell: false, windowsHide: true, timeout: 5000, maxBuffer: 2 * 1024 * 1024 })
+    ], { encoding: 'utf8', shell: false, windowsHide: true, timeout: 30000, maxBuffer: 2 * 1024 * 1024 })
       .then(({ stdout }) => {
         const value: ObservedStatus | null = JSON.parse(stdout);
         if (value?.generation !== context.generation || value?.manifest?.workspaceID !== context.workspaceID) {

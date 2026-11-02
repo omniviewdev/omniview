@@ -1,8 +1,9 @@
 import React from 'react';
 
-import { Avatar, Spinner } from '@omniviewdev/base-ui';
+import { Avatar } from '@omniviewdev/base-ui';
+import { useQuery } from '@tanstack/react-query';
 
-import { LuAtom, LuBadgeCheck, LuCheck, LuDownload, LuStar, LuSettings } from 'react-icons/lu';
+import { LuAtom, LuBadgeCheck, LuDownload, LuStar, LuSettings } from 'react-icons/lu';
 import { Link } from 'react-router';
 import { IsImage } from '@/utils/url';
 import Icon from '@/components/icons/Icon';
@@ -54,9 +55,6 @@ export type PluginListItemProps = {
   downloadCount?: number;
   averageRating?: number;
 
-  // Actions
-  onInstall?: () => void;
-  installing?: boolean;
 };
 
 const PluginListItem: React.FC<PluginListItemProps> = ({
@@ -75,9 +73,10 @@ const PluginListItem: React.FC<PluginListItemProps> = ({
   official,
   downloadCount,
   averageRating,
-  onInstall,
-  installing,
 }) => {
+  const { data: operation } = useQuery<string | null>({
+    queryKey: ['plugin-operation', id], queryFn: () => null, initialData: null, enabled: false,
+  });
   const displayAuthor = orFallback(author, publisherName) ?? '';
   const showPhase = installed && phase;
   let imageSrc: string | undefined;
@@ -139,25 +138,8 @@ const PluginListItem: React.FC<PluginListItemProps> = ({
                     <LuSettings size={12} color='var(--ov-color-fg-subtle)' />
                   </span>
                 </>
-              ) : installing ? (
-                <Spinner size='xs' color='brand' />
-              ) : onInstall ? (
-                installed ? (
-                  <LuCheck size={14} color='var(--ov-color-success)' />
-                ) : (
-                  <button
-                    type='button'
-                    className={styles.InstallButton}
-                    onClick={(e: React.MouseEvent) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      onInstall();
-                    }}
-                  >
-                    Install
-                  </button>
-                )
-              ) : null}
+              ) : <span className={styles.Version}>View releases</span>}
+              {operation && <span role='status' className={styles.Version}>{operation}</span>}
             </div>
           </div>
 

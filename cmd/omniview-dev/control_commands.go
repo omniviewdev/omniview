@@ -22,6 +22,11 @@ import (
 
 func executeControlCommand(cmd *cobra.Command, command controlCommand) error {
 	ctx, out, diagnostics := cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr()
+	if strings.HasPrefix(command.operation, "extensions.") {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, command.timeout)
+		defer cancel()
+	}
 	fail := func(err error) error {
 		var typed *devcontract.Error
 		if !errors.As(err, &typed) {
@@ -79,6 +84,11 @@ func executeControlCommand(cmd *cobra.Command, command controlCommand) error {
 			return fail(devcontract.Fail(5, "output_failed", "cannot write unsafe-output warning"))
 		}
 	}
+	if command.includeSensitive {
+		if _, writeErr := fmt.Fprintln(diagnostics, "WARNING: --include-sensitive includes raw plugin errors and stacks in JSON stdout; plugin diagnostics may contain secrets. Store and share this output deliberately."); writeErr != nil {
+			return fail(devcontract.Fail(5, "output_failed", "cannot write sensitive-output warning"))
+		}
+	}
 	if encodeErr := json.NewEncoder(out).Encode(response); encodeErr != nil {
 		return commandExit(5)
 	}
@@ -92,12 +102,13 @@ func executeControlCommand(cmd *cobra.Command, command controlCommand) error {
 }
 
 type controlCommand struct {
-	operation       string
-	params          any
-	workspace, root string
-	wait            bool
-	unsafeOutput    bool
-	timeout         time.Duration
+	operation        string
+	params           any
+	workspace, root  string
+	wait             bool
+	unsafeOutput     bool
+	includeSensitive bool
+	timeout          time.Duration
 }
 
 func addControlCommands(root *cobra.Command, in io.Reader) {
@@ -106,7 +117,7 @@ func addControlCommands(root *cobra.Command, in io.Reader) {
 
 func addControlCommandsWithExecutor(root *cobra.Command, in io.Reader, execute func(*cobra.Command, controlCommand) error) {
 	groups := map[string]*cobra.Command{}
-	for _, name := range []string{"instance", "plugin", "settings", "operation"} {
+	for _, name := range []string{"instance", "plugin", "settings", "operation", "extensions"} {
 		group := &cobra.Command{Use: name, Short: "Manage " + name}
 		root.AddCommand(group)
 		groups[name] = group
@@ -117,10 +128,21 @@ func addControlCommandsWithExecutor(root *cobra.Command, in io.Reader, execute f
 		"instance.inspect", "plugin.list", "plugin.get", "plugin.uninstall", "plugin.install-archive", "plugin.install-version",
 		"plugin.dev.link", "plugin.dev.unlink", "plugin.dev.start", "plugin.dev.stop", "plugin.dev.restart", "plugin.dev.status", "plugin.dev.rebuild", "plugin.dev.logs",
 		"settings.schema", "settings.get", "settings.set", "settings.set-many", "operation.get", "operation.wait",
+		"extensions.windows", "extensions.inspect", "extensions.lookup",
 	} {
 		command := &controlCommand{operation: operation}
 		parts := strings.Split(operation, ".")
 		leaf := &cobra.Command{Use: parts[len(parts)-1] + " [ID | PATH]", Short: "Run " + strings.ReplaceAll(operation, ".", " ")}
+		if parts[0] == "extensions" {
+			leaf.Use = parts[len(parts)-1]
+			leaf.Short = "Read live extension registry diagnostics"
+			if operation == "extensions.lookup" {
+				leaf.Short = "Run the live supported extension context matcher"
+			}
+			if operation == "extensions.windows" {
+				leaf.Short = "List registered live extension diagnostics windows"
+			}
+		}
 		if operation == "plugin.install-archive" || operation == "plugin.install-version" {
 			leaf.Long = leaf.Short + ".\n\nManaged development profiles require independent fixed-SDK backend artifact evidence. " +
 				"These commands do not import release provenance; a published archive or checksum alone is insufficient. " +
@@ -132,14 +154,21 @@ func addControlCommandsWithExecutor(root *cobra.Command, in io.Reader, execute f
 		flags.StringVar(&command.workspace, "workspace", "", "explicit workspace name, UUID, manifest or directory")
 		flags.StringVar(&command.root, "root", "", "registered repository collection root for workspace names")
 		flags.Bool("json", false, "suppress human diagnostics; stdout is always JSON")
-		flags.BoolVar(&command.wait, "wait", false, "wait for accepted mutation completion")
+		if parts[0] != "extensions" {
+			flags.BoolVar(&command.wait, "wait", false, "wait for accepted mutation completion")
+		}
 		flags.DurationVar(&command.timeout, "timeout", 30*time.Second, "maximum wait; timeout does not cancel mutation")
+		if parts[0] == "extensions" {
+			flags.Lookup("timeout").Usage = "maximum request duration (up to 30s); cancellation stops waiting for this read"
+		}
 		var prepare func([]string) error
 		switch parts[0] {
 		case "plugin":
 			prepare = bindPluginControlCommand(command, flags)
 		case "settings":
 			prepare = bindSettingsControlCommand(command, flags, in)
+		case "extensions":
+			prepare = bindExtensionControlCommand(command, flags)
 		case "operation":
 			prepare = bindOperationControlCommand(command, flags)
 		default:
@@ -154,6 +183,9 @@ func addControlCommandsWithExecutor(root *cobra.Command, in io.Reader, execute f
 		leaf.RunE = func(cmd *cobra.Command, args []string) error {
 			if command.timeout <= 0 {
 				return controlUsage("timeout must be positive")
+			}
+			if parts[0] == "extensions" && command.timeout > 30*time.Second {
+				return controlUsage("extension diagnostics timeout must not exceed 30s")
 			}
 			if len(args) > 1 {
 				return controlUsage("at most one positional target is accepted")

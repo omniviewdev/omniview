@@ -109,29 +109,6 @@ func (c *controller) GetResourceDefinition(ctx context.Context, pluginID string,
 	return ancillaryResult(c, sessionCtx, pluginID, generation, out, err)
 }
 
-func (c *controller) GetEditorSchemas(ctx context.Context, pluginID string, route resourcev2.AccessRoute) (out []resourcev2.EditorSchema, retErr error) {
-	ctx, err := c.admit(ctx, "resource.GetEditorSchemas", ancillaryTarget(pluginID, route, "", resourcev2.ResourceReference{}, ""))
-	if err != nil {
-		return out, err
-	}
-	defer finishResource(ctx, &retErr)
-	provider, generation, sessionCtx, cleanup, err := c.operationGeneration(ctx, pluginID, route)
-	if err != nil {
-		return out, err
-	}
-	defer cleanup()
-	ancillary, ok := provider.(resourcev2.EditorSchemaProvider)
-	if !ok {
-		return out, ancillaryUnsupported()
-	}
-	sessionCtx, _, err = c.admitAncillaryCatalog(sessionCtx, pluginID, provider, generation, route, "", nil)
-	if err != nil {
-		return out, err
-	}
-	out, err = ancillary.GetEditorSchemas(sessionCtx, route)
-	return ancillaryResult(c, sessionCtx, pluginID, generation, out, err)
-}
-
 func (c *controller) GetRelationships(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) (out []resourcev2.RelationshipDescriptor, retErr error) {
 	ctx, err := c.admit(ctx, "resource.GetRelationships", ancillaryTarget(pluginID, route, resourceType, resourcev2.ResourceReference{}, ""))
 	if err != nil {
@@ -306,9 +283,12 @@ func (c *controller) GetSchemaDocument(ctx context.Context, pluginID string, rou
 	if !ok {
 		return out, ancillaryUnsupported()
 	}
-	sessionCtx, _, err = c.admitAncillaryCatalog(sessionCtx, pluginID, provider, generation, route, "", nil)
+	sessionCtx, catalog, err := c.admitAncillaryCatalog(sessionCtx, pluginID, provider, generation, route, "", nil)
 	if err != nil {
 		return out, err
+	}
+	if !catalogReferencesSchemaDocument(catalog, reference) {
+		return out, resourcev2.NewError("NOT_FOUND", "Schema document is not referenced by the current catalog.")
 	}
 	out, err = ancillary.GetSchemaDocument(sessionCtx, route, reference)
 	return ancillaryResult(c, sessionCtx, pluginID, generation, out, err)
@@ -339,4 +319,17 @@ func (c *controller) relationshipRequest(ctx context.Context, pluginID string, c
 	}
 	request.Targets, err = c.relationshipTargets(ctx, pluginID, source.Route, catalog, captureCatalogAdmission(ctx, generation), descriptors, "resource.ResolveRelationships")
 	return request, err
+}
+
+// catalogReferencesSchemaDocument reports whether any representation binding
+// of catalog uses reference.
+func catalogReferencesSchemaDocument(catalog resourcev2.Catalog, reference resourcev2.SchemaDocumentReference) bool {
+	for _, descriptor := range catalog.Types {
+		for _, representation := range descriptor.Representations {
+			if ref := representation.Schema.DocumentRef; ref != nil && *ref == reference {
+				return true
+			}
+		}
+	}
+	return false
 }
