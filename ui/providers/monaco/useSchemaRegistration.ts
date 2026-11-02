@@ -1,4 +1,5 @@
 import { useEditorSchemas } from '@omniviewdev/runtime';
+import type { EditorSchemaAssociation, EditorSchemaDocument } from '@omniviewdev/runtime';
 import { useEffect } from 'react';
 import { schemaRegistry } from './schemaRegistry';
 
@@ -7,6 +8,13 @@ type UseSchemaRegistrationOptions = {
   connectionID: string;
   enabled?: boolean;
 };
+
+type Registration = {
+  associations: readonly EditorSchemaAssociation[];
+  documents: readonly EditorSchemaDocument[];
+};
+
+const registrations = new Map<string, Registration[]>();
 
 /**
  * useSchemaRegistration fetches editor schemas for a plugin + connection
@@ -33,10 +41,25 @@ export const useSchemaRegistration = ({
       return;
     }
 
+    const key = JSON.stringify([pluginID, connectionID]);
+    const owners = registrations.get(key) ?? [];
+    const registration = { associations, documents };
     schemaRegistry.register(pluginID, connectionID, associations, documents);
+    owners.push(registration);
+    registrations.set(key, owners);
 
     return () => {
-      schemaRegistry.unregister(pluginID, connectionID);
+      const index = owners.indexOf(registration);
+      if (index < 0) return;
+      const wasCurrent = index === owners.length - 1;
+      owners.splice(index, 1);
+      if (!owners.length) {
+        registrations.delete(key);
+        schemaRegistry.unregister(pluginID, connectionID);
+      } else if (wasCurrent) {
+        const current = owners[owners.length - 1];
+        schemaRegistry.register(pluginID, connectionID, current.associations, current.documents);
+      }
     };
   }, [associations, pluginID, connectionID, documents]);
 

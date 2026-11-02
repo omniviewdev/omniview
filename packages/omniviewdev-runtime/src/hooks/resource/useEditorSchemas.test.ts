@@ -46,7 +46,7 @@ it('fetches each unique available document once and skips non-available associat
   await waitFor(() => expect(hook.result.current.associations).toEqual(associations));
   expect(hook.result.current.documents.map((document) => document.documentId)).toEqual(['core', 'apps']);
   expect(native.document).toHaveBeenCalledTimes(2);
-  expect(queryClient.getQueryData(['provider', 'resource-v2', 'editor-schema-document', route, 'core'])).toEqual({ documentId: 'core', schema: { definitions: {} } });
+  expect(queryClient.getQueryData(['provider', 'resource-v2', 'editor-schema-document', route, 'core', 1])).toEqual({ documentId: 'core', schema: { definitions: {} } });
   hook.unmount();
   queryClient.clear();
   native.document.mockReset();
@@ -92,9 +92,43 @@ it('cancels an owned editor-document request when its consumer unmounts', async 
   hook.unmount();
   expect(cancel).toHaveBeenCalledTimes(1);
   await act(async () => { pending.resolve({ documentId: 'shared', schema: {} }); });
-  expect(queryClient.getQueryData(['provider', 'resource-v2', 'editor-schema-document', route, 'shared'])).toBeUndefined();
+  expect(queryClient.getQueryData(['provider', 'resource-v2', 'editor-schema-document', route, 'shared', 1])).toBeUndefined();
   queryClient.clear();
   native.document.mockReset();
+});
+
+it('clears schemas while disconnected and reacquires them after reconnecting', async () => {
+  native.schemas.mockReset();
+  native.document.mockReset();
+  native.schemas.mockResolvedValueOnce([association({ documentId: 'first' })])
+    .mockResolvedValueOnce([association({ documentId: 'second' })]);
+  native.document.mockImplementation((_plugin: string, _route: unknown, documentId: string) => Promise.resolve({ documentId, schema: {} }));
+  const { queryClient, wrapper } = client();
+  const hook = renderHook(() => useEditorSchemas({ pluginID: 'provider', route: { connection: 'cluster' } }), { wrapper });
+  try {
+    await waitFor(() => expect(hook.result.current.documents[0]?.documentId).toBe('first'));
+    act(() => {
+      native.phase = 'disconnected';
+      native.generation = 2;
+      native.listeners.forEach((listener) => listener());
+    });
+    expect(hook.result.current.associations).toEqual([]);
+    expect(hook.result.current.documents).toEqual([]);
+    act(() => {
+      native.phase = 'connected';
+      native.generation = 3;
+      native.listeners.forEach((listener) => listener());
+    });
+    await waitFor(() => expect(hook.result.current.documents[0]?.documentId).toBe('second'));
+    expect(native.schemas).toHaveBeenCalledTimes(2);
+  } finally {
+    hook.unmount();
+    queryClient.clear();
+    native.phase = 'connected';
+    native.generation = 1;
+    native.schemas.mockReset();
+    native.document.mockReset();
+  }
 });
 
 it('derives model paths from the matching catalog or auxiliary association', async () => {
