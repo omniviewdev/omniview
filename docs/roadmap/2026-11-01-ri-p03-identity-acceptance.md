@@ -2,7 +2,7 @@
 
 ## Status and gates
 
-Status: draft acceptance. Independent review corrections have passing final local integration checks. Kubernetes candidate CI passed against the approved host revision. The corrected final host CI and independent re-review remain gates. Native proof remains blocked by `omn-5wbn` (`stale_target`). This receipt does not authorize a merge.
+Status: draft acceptance. The earlier host `f03102e338770f5a095408ccf98656210097f4be` and Kubernetes `d2d59feb126e87ff64947a5dfa0271a21d90c098` cohort passed CI. Focused independent re-review cleared the new Events/sidebar-order correction with no Critical or Important findings. The reviewed candidate still requires new cohort CI and native/real WindowService proof. This receipt does not authorize a merge.
 
 - Packet: P03, [omniview#82](https://github.com/omniviewdev/omniview/issues/82).
 - Consumed contracts: P00 identity and P45 structured resource references. No new wire contract or freeze gate.
@@ -11,7 +11,7 @@ Status: draft acceptance. Independent review corrections have passing final loca
 - Workspace: `ri-p03`; branch: `feature/ri-p03-ac10053b`.
 - Recorded baselines: host `5b722f3db9e47d40819fa5dd6ac9effa1bc50a94`, Kubernetes `c3952b6bc798ab17268cba191413348cc82b5db1`, Proxmox `c466186e63c0742f9dd8a254e2ecf2bfcd0e6f8d`.
 - Kubernetes companion PR: https://github.com/omniviewdev/omniview-plugin-kubernetes/pull/76, targeting `main` with `resource-v2-candidate`.
-- Kubernetes candidate: `d2d59feb126e87ff64947a5dfa0271a21d90c098`. Host cohort and gitlink select this exact commit.
+- Kubernetes candidate: `6ef14799c6b2664bed41f7413f94ea723664f623`. Host cohort and gitlink select this exact reviewed commit.
 - SDK and UI pins remain `0a5b64ed8c2de209fbb02ecce9feba3afd88f28c` and `61bf9c2ad88e7b427404256573941ba80fac4c00`.
 - Rebased host baseline: `3f73061544519d4b35fd51c71eef342065268935` (host #335).
 - Rebased Kubernetes baseline: `860627e04782ab153335a603497c8c514d3337b1` (Kubernetes #75).
@@ -63,11 +63,11 @@ The existing default-table caller remains on the canonical host-backed path. Thi
 | Core settings and preferences | Current categories, theme, homepage, and table preferences do not define stored object references. Generic settings storage remains schema-owned. |
 | Kubernetes plugin Data Store | Favorites, groups, recency, hub sections, debug templates, and connection overrides store UI or connection choices. |
 | Kubernetes metric settings | Prometheus service name, namespace, and port select a utility endpoint. Global defaults apply across connections. They are not observed resource addresses. Preserve endpoint fallback semantics. |
-| Kubernetes localStorage | Historical column preferences use legacy keys such as `core::v1::Pod`. Current tables read `k8s:/pods`. These persisted collection choices require migration even though they are not object addresses. Keep original storage entries and report unknown keys. |
+| Kubernetes localStorage | Historical column preferences use legacy keys such as `core::v1::Pod`. `kubernetes-sidebar-order` persists legacy `group_version_Kind` IDs in `items` and nested `children`. Both require provider-owned migration before their consumers initialize. Retain original values and report unknown IDs. |
 | Proxmox plugin settings | Cluster configuration file paths are not resource references. No plugin-owned resource-reference store was found. |
 | Generic plugin data/settings | The host stores arbitrary plugin-owned JSON. This receipt does not claim that every external plugin schema lacks references. |
 
-Independent review traced the historical persistence boundary. Host #199 (`c4f02318`) saved page paths while its Kubernetes pin was `8dfdb079`. Kubernetes later changed type keys in `f665753`. Saved routes and column choices can therefore predate the canonical cutover. The initial inventory incorrectly treated current collection-only routes as proof that no legacy route or preference migration was needed. That conclusion is withdrawn.
+Independent review traced the historical persistence boundary. Host #199 (`c4f02318`) saved page paths while its Kubernetes pin was `8dfdb079`. Kubernetes later changed type keys in `f665753`. Saved routes, column choices, and sidebar order can therefore predate the canonical cutover. The initial inventory incorrectly treated current collection-only routes as proof that no legacy route or preference migration was needed. That conclusion is withdrawn.
 
 Evidence anchors include `backend/window/{persistence,service}.go`, `ui/features/windows/windowState.ts`, `ui/features/workspace/{workspaceController,pagesState,pagePaths}.ts`, and `ui/providers/BottomDrawer/{tabs,drawerSlot,drawerRestore}.tsx` or `.ts`.
 
@@ -126,6 +126,12 @@ If multiple configured connection prefixes match, migration reports the original
 Copies use the current canonical type spelling. Original keys stay in place. A first backup is retained under `kubernetes-legacy-preference-backup:` in the same storage namespace. Existing canonical values and existing backups always win. Plugin-local and active host-profile storage remain separate.
 
 The `prod/example-core` and `prod-example/core` collision has explicit regressions. Current opaque keys containing `::` are not reclassified. Resource tables wait for configured connection discovery and migration before initializing saved choices.
+
+The registered Events aliases `events_v1_Event`, `events::v1::Event`, and `events.k8s.io::v1::Event` map to `k8s:events.k8s.io/events`. The authoritative built-in table and historical short-group map supply that binding; no resource plural is guessed.
+
+Sidebar-order migration covers `kubernetes-sidebar-order.items`, nested child lists, and resource parent keys. It retains group IDs and current canonical IDs. If an old alias collides with a current canonical choice or child order, the canonical entry wins. The first complete original JSON is saved under `kubernetes-legacy-preference-backup:kubernetes-sidebar-order` in the same storage namespace before any rewrite. Existing backups are never replaced.
+
+Unknown or malformed resource IDs stay in the migrated order and are reported through the same toast and log as other preference failures. Unreadable orders remain unchanged and are backed up. Later drag saves may contain only current layout IDs, but cannot destroy the original backup. The existing route migration gate runs this conversion before `useSidebarOrder` reads its state initializer. Canonical orders are not rewritten on reload.
 
 
 ## Domain to Go, protobuf, and TypeScript
@@ -273,9 +279,31 @@ Kubernetes [candidate CI passed](https://github.com/omniviewdev/omniview-plugin-
 
 
 
+## Focused Events and sidebar preference checkpoint
+
+Independent `P03FinalReview` found two Important coverage gaps in the earlier green cohort: the plugin's historical Events aliases and saved sidebar item/child IDs. The earlier corpus and drawer corrections had no new findings. This checkpoint addresses those provider-owned gaps without changing the host runtime or resource APIs.
+
+Reviewed Kubernetes candidate: `6ef14799c6b2664bed41f7413f94ea723664f623`, based on `d2d59feb126e87ff64947a5dfa0271a21d90c098`. `P03FinalReview` cleared that exact local diff and the host receipt-only diff with no Critical or Important findings before push. The candidate is now pushed. The host publication changes only this receipt and the exact Kubernetes cohort/gitlink pin; host runtime/API source and SDK/UI pins remain unchanged.
+
+Final local commands, executed in Kubernetes `ui/`:
+
+```sh
+./node_modules/.bin/eslint src/utils/builtinResourceTypes.ts src/utils/legacyMigration.ts src/utils/legacyMigration.test.ts src/hooks/useLegacyColumnMigration.ts src/hooks/useLegacyColumnMigration.test.tsx src/hooks/useSidebarOrder.test.tsx src/entry.routes.test.ts
+./node_modules/.bin/vitest run --configLoader runner src/utils/legacyMigration.test.ts src/hooks/useLegacyColumnMigration.test.tsx src/hooks/useSidebarOrder.test.tsx src/entry.routes.test.ts
+./node_modules/.bin/tsc --noEmit
+/home/mononen/omniview/workspaces/ri-p03/omniview/node_modules/.bin/esbuild /tmp/ri-p03-sidebar-migration-smoke.ts --bundle --platform=node --format=esm --outfile=/tmp/ri-p03-sidebar-migration-smoke.mjs
+node /tmp/ri-p03-sidebar-migration-smoke.mjs
+```
+
+Results: lint **PASS**, zero errors and 12 unsuppressed import-order warnings; Vitest **PASS**, four files and 68 tests; TypeScript **PASS**. The real sidebar state initializer receives migrated IDs through the existing gate. Tests execute `applyOrder`, `extractOrder`, the real stored-state hook, a subsequent saved reorder, and a fresh hook mount. The original backup survives even when the next layout save no longer includes an unknown resource ID.
+
+Production disk smoke: **PASS**. It imports the real migration and sidebar-order functions and uses actual file reads and writes. It proves Events route and column conversion, nested sidebar IDs, canonical precedence, unknown-original backup, real order application/extraction, disk reload, and idempotence. The smoke source and output are retained for review; temporary scripts are removed after the durable evidence copy.
+
+No full benchmark, Go build, native launch, or cluster write was performed for this checkpoint. Focused review cleared the source before push and candidate CI. Earlier CI and browser results remain evidence for their exact earlier heads, not a pass for this new candidate.
+
 ## Planned checks, not evidence
 
-- Resolve `omn-5wbn` through the workspace tooling owner, without adding unrelated devcli fixes to P03.
+- Native: use the merged repair CLI from `ff593e5c580b95130ddbacccdde2720f2307079b` after focused review and runtime-slot release. The separate merged-launcher proof does not establish P03 native acceptance.
 - Native: Kubernetes table, detail, editor-open/cancel, and navigation on `admin@homelab`, without cluster writes.
 - Native: exercise saved-slot conversion and unresolved reporting through the real WindowService and a reload.
-- CI, CodeRabbit triage, independent review, user merge, and merged-source smoke.
+- Reviewed candidate CI, native proof, user merge, and merged-source smoke. CodeRabbit availability is waived when its limits prevent review.
