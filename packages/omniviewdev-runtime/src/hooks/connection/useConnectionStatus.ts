@@ -3,14 +3,11 @@ import { Events } from '@wailsio/runtime';
 import {
   ListAllConnections,
   GetAllConnectionStates,
-  StartConnectionWatch,
-  Catalog,
-  ResolveTarget,
+  RetryConnectionSources,
 } from '../../resource/v2/client';
 import { RetryFailedPlugin } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/servicewrapper';
 import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
-import { WatchState } from '../../types/watch';
-import type { NativeConnectionReadiness, HostConnectionState, HostWatchStateEvent } from '../../resource/v2/host';
+import type { NativeConnectionReadiness, HostConnectionState, HostSourceStateEvent } from '../../resource/v2/host';
 import { parseAppError } from '../../errors/parseAppError';
 import type { AppError } from '../../errors/types';
 import { stopConnectionWithReadiness } from '../../connection/connectionReadiness';
@@ -56,15 +53,15 @@ export interface ConnectionStatusSummary {
   aggregateProgress: number;
   /** Disconnect a connection by plugin/connection ID */
   disconnect: (pluginID: string, connectionID: string) => Promise<void>;
-  /** Retry watch sync for a connection */
-  retryWatch: (pluginID: string, connectionID: string) => Promise<void>;
+  /** Retry sources for a connection */
+  retrySources: (pluginID: string, connectionID: string) => Promise<void>;
   /** Retry a failed plugin (reload it after crash recovery exhaustion) */
   retryPlugin: (pluginID: string) => Promise<void>;
 }
 
 /**
  * Unified hook that tracks connection status across all plugins.
- * Combines ListAllConnections query + connection/status events + watch/STATE events.
+ * Combines ListAllConnections query + connection/status events + source/STATE events.
  */
 export function useConnectionStatus(): ConnectionStatusSummary {
   const [readiness, setReadiness] = useState<Map<string, Pick<HostConnectionState, 'readiness' | 'readinessError'>>>(new Map());
@@ -114,7 +111,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
     };
   }, []);
 
-  // Each refresh accepts only lifecycle and watch events newer than its snapshot request.
+  // Each refresh accepts only lifecycle and source events newer than its snapshot request.
   const loadSnapshot = useCallback(async () => {
     const request = ++requestRef.current.generation;
     statusEventsRef.current.clear();
@@ -151,8 +148,8 @@ export function useConnectionStatus(): ConnectionStatusSummary {
               states: {},
             };
             if (s.resources) {
-              for (const [resourceKey, numericState] of Object.entries(s.resources)) {
-                tracker.states[resourceKey] = numericState as WatchState;
+              for (const [resourceKey, state] of Object.entries(s.resources)) {
+                tracker.states[resourceKey] = state;
               }
             }
             Object.assign(tracker.states, watchEventsRef.current.get(key)?.states);
@@ -242,11 +239,11 @@ export function useConnectionStatus(): ConnectionStatusSummary {
     };
   }, []);
 
-  // Listen for watch/STATE events
-  const handleWatchEvent = useCallback((ev: Events.WailsEvent) => {
-    const event = ev.data as HostWatchStateEvent;
+  // Listen for source/STATE events
+  const handleSourceEvent = useCallback((ev: Events.WailsEvent) => {
+    const event = ev.data as HostSourceStateEvent;
     const key = trackerKey(event.pluginID, event);
-    // Watch activity never proves that a native client is registered.
+    // Source activity never proves that a native client is registered.
     if (readinessRef.current.get(key)?.readiness !== 'CONNECTED') return;
 
 
@@ -262,23 +259,18 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   }, []);
 
   useEffect(() => {
-    const cancel = Events.On('watch/STATE', handleWatchEvent);
+    const cancel = Events.On('source/STATE', handleSourceEvent);
     return cancel;
-  }, [handleWatchEvent]);
+  }, [handleSourceEvent]);
 
   // Actions
   const disconnect = useCallback(async (pluginID: string, connectionID: string) => {
     await stopConnectionWithReadiness(pluginID, connectionID);
   }, []);
 
-  const retryWatch = useCallback(async (pluginID: string, connectionID: string) => {
+  const retrySources = useCallback(async (pluginID: string, connectionID: string) => {
     if (readinessRef.current.get(JSON.stringify([pluginID, connectionID]))?.readiness !== 'CONNECTED') return;
-    const route = { connection: connectionID };
-    const catalog = await Catalog(pluginID, { route });
-    const resolved = await Promise.all(catalog.types
-      .filter((type) => type.capabilities.some((capability) => capability.operation === 'update'))
-      .map((type) => ResolveTarget(pluginID, { route, type: type.type })));
-    await StartConnectionWatch(pluginID, resolved.map((target) => target.target));
+    await RetryConnectionSources(pluginID, { connection: connectionID });
   }, []);
 
   const retryPlugin = useCallback(async (pluginID: string) => {
@@ -361,7 +353,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
     hasSyncing: hasActiveSyncing(syncArray),
     aggregateProgress: computeAggregateProgress(syncArray),
     disconnect,
-    retryWatch,
+    retrySources,
     retryPlugin,
   };
 }

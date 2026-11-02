@@ -1,26 +1,21 @@
 import React from 'react';
 import { CancelledError, hashKey, skipToken, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
-import { Events } from '@wailsio/runtime';
-import { Enumerate, EnsureResourceWatch, GetWatchState, SubscribeResource, UnsubscribeResource } from '../../resource/v2/client';
-import type { CancellablePromise } from '@wailsio/runtime';
-import type { HostEnumerateRequest, HostSubscriptionRequest, ResourceView } from '../../resource/v2/host';
+import { Enumerate } from '../../resource/v2/client';
+import { openSourceView, type SourceViewClient, type SourceViewSnapshot } from '../../resource/v2/sourceView';
+import type { HostEnumerateRequest, HostSourceStatus, ResourceView } from '../../resource/v2/host';
 import { resourceQueryKeys } from '../../resourceQueryKeys';
-import { WatchState, type WatchStateEvent } from '../../types/watch';
 import { useResolvedPluginId } from '../useResolvedPluginId';
-import { useEventBatcher, type AddPayload, type DeletePayload, type UpdatePayload } from './useEventBatcher';
 import { useConnectionReadiness } from '../connection/useConnectionReadiness';
 import { useConnectionQueryGuard } from './useConnectionQueryGuard';
 import { connectionReadinessStore, getConnectionReadinessGeneration, isConnectionReadinessCurrent } from '../../connection/connectionReadiness';
-import { useSnackbar } from '../snackbar/useSnackbar';
-import { showAppError } from '../../errors/parseAppError';
 
 export interface UseResourcesOptions {
   pluginID?: string;
   request?: HostEnumerateRequest;
   enabled?: boolean;
-  /** Acquire all source pages internally and maintain collection membership from live events. */
+  /** Acquire a complete collection through a source view. */
   collection?: boolean;
-  /** Actual advisory native updates, never inferred from a finite page. */
+  /** Request updates for a collection when supported. Ignored for explicit pages. */
   live?: boolean;
 }
 export interface AcquiredResourcePage {
@@ -29,28 +24,81 @@ export interface AcquiredResourcePage {
   page: ResourceView;
 }
 
-const inactiveGenerationStore = {
-  getSnapshot: () => undefined,
-  subscribe: () => () => {},
-};
+const inactiveGenerationStore = { getSnapshot: () => undefined, subscribe: () => () => {} };
+
+type ViewEntry = { refs: number; client: Promise<SourceViewClient> };
+const views = new Map<string, ViewEntry>();
+
+function acquireView(key: string, pluginID: string, request: HostEnumerateRequest, live: boolean): ViewEntry {
+  let entry = views.get(key);
+  if (!entry) {
+    entry = { refs: 0, client: openSourceView(pluginID, {
+      targetId: request.targetId, target: request.request.target, updates: live ? 'ifSupported' : 'none',
+    }) };
+    views.set(key, entry);
+  }
+  entry.refs++;
+  return entry;
+}
+
+function releaseView(key: string, entry: ViewEntry) {
+  if (--entry.refs !== 0) return;
+  if (views.get(key) === entry) views.delete(key);
+  void entry.client.then((client) => client.close(), () => {});
+}
+
+function pageFromSnapshot(snapshot: SourceViewSnapshot): ResourceView {
+  const status = snapshot.status;
+  return {
+    records: [...snapshot.records.values()],
+    sourcePage: { count: status?.count ?? { kind: 'unknown' }, coverage: { kind: 'unknown', paths: [] }, consistency: 'unknown' },
+    view: snapshot.viewGeneration ? {
+      viewGeneration: snapshot.viewGeneration,
+      continuity: status?.continuity ?? 'notApplicable',
+      coverage: status?.coverage,
+      count: status?.count ?? { kind: 'unknown' },
+    } : undefined,
+  };
+}
+
+function firstSnapshot(client: SourceViewClient, signal: AbortSignal): Promise<ResourceView> {
+  let resolve!: (value: ResourceView) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<ResourceView>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  let unsubscribe = () => {};
+  const finish = (error?: unknown, page?: ResourceView) => {
+    unsubscribe();
+    signal.removeEventListener('abort', abort);
+    if (error) reject(error); else resolve(page!);
+  };
+  const abort = () => finish(new CancelledError({ revert: true }));
+  const check = () => {
+    const snapshot = client.getSnapshot();
+    if (snapshot.complete) finish(undefined, pageFromSnapshot(snapshot));
+    else if (snapshot.status?.state === 'failed' || snapshot.status?.state === 'closed') {
+      finish(snapshot.status.error ?? new Error('Source view closed before its snapshot completed'));
+    }
+  };
+  unsubscribe = client.subscribe(check);
+  signal.addEventListener('abort', abort, { once: true });
+  if (signal.aborted) abort(); else check();
+  return promise;
+}
 
 /** Acquire an explicit source page, or opt into a complete collection acquisition. */
 export const useResources = ({ pluginID: explicitPluginID, request, enabled = true, live = true, collection = false }: UseResourcesOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
   const queryClient = useQueryClient();
-  const { showSnackbar } = useSnackbar();
-  const showSnackbarRef = React.useRef(showSnackbar);
-  React.useLayoutEffect(() => { showSnackbarRef.current = showSnackbar; }, [showSnackbar]);
   const requestHash = hashKey([request]);
   const [requestSnapshot, setRequestSnapshot] = React.useState({ hash: requestHash, request });
-  if (requestSnapshot.hash !== requestHash) {
-    setRequestSnapshot({ hash: requestHash, request });
-  }
+  if (requestSnapshot.hash !== requestHash) setRequestSnapshot({ hash: requestHash, request });
   const stableRequest = requestSnapshot.hash === requestHash ? requestSnapshot.request : request;
   const connectionID = stableRequest?.request.target.route.connection ?? '';
   const readinessEnabled = enabled && !!stableRequest;
   const readiness = useConnectionReadiness({ pluginID, connectionID, enabled: readinessEnabled });
-  // Observe the canonical store's scalar generation, including same-phase retirement.
   const generationStore = React.useMemo(() => readinessEnabled ? {
     subscribe: connectionReadinessStore(pluginID, connectionID).subscribe,
     getSnapshot: () => getConnectionReadinessGeneration(pluginID, connectionID),
@@ -60,51 +108,49 @@ export const useResources = ({ pluginID: explicitPluginID, request, enabled = tr
   const queryEnabled = readinessEnabled && readiness.phase === 'connected';
   const targetIdentity = stableRequest ? hashKey([pluginID, stableRequest.targetId, stableRequest.request.target, collection]) : undefined;
   const listKey = React.useCallback((input?: HostEnumerateRequest) => collection
-    ? [...resourceQueryKeys.list(pluginID, input), 'collection']
-    : resourceQueryKeys.list(pluginID, input), [pluginID, collection]);
-  const enumerate = React.useCallback(async (input: HostEnumerateRequest, signal: AbortSignal, key: QueryKey): Promise<ResourceView> => {
-    if (!collection) return guardQuery(key, signal, () => Enumerate(pluginID, input));
-    const acquisitionGeneration = getConnectionReadinessGeneration(pluginID, connectionID);
-    const records = new Map<string, ResourceView['records'][number]>();
-    const cursors = new Set<string>();
-    let cursor: string | undefined;
-    let first: ResourceView | undefined;
-    do {
-      if (signal.aborted || acquisitionGeneration === undefined ||
-        !isConnectionReadinessCurrent(pluginID, connectionID, acquisitionGeneration)) throw new CancelledError({ revert: true });
-      const page = await guardQuery(key, signal, () => Enumerate(pluginID, {
-        ...input, request: { ...input.request, cursor },
-      }));
-      if (signal.aborted || !isConnectionReadinessCurrent(pluginID, connectionID, acquisitionGeneration)) throw new CancelledError({ revert: true });
-      first ??= page;
-      for (const row of page.records) {
-        if (row.targetId !== input.targetId) throw new Error('Collection page returned a different resource target');
-        records.set(row.key, row);
-      }
-      cursor = page.sourcePage.nextCursor;
-      if (cursor) {
-        if (cursors.has(cursor)) throw new Error('Collection enumeration repeated a source cursor');
-        cursors.add(cursor);
-      }
-    } while (cursor);
-    return {
-      records: [...records.values()],
-      sourcePage: { ...first!.sourcePage, nextCursor: undefined, count: { kind: 'unknown' }, sourceRevision: undefined },
-      view: { guarantee: 'bestEffort', count: { kind: 'unknown' }, membershipStale: false },
-    };
-  }, [collection, guardQuery, pluginID, connectionID]);
+    ? [...resourceQueryKeys.list(pluginID, input), 'collection', live ? 'ifSupported' : 'none']
+    : resourceQueryKeys.list(pluginID, input), [pluginID, collection, live]);
   const queryKey = React.useMemo(() => listKey(stableRequest), [listKey, stableRequest]);
-  const resources = useQuery({
-    queryKey,
-    queryFn: queryEnabled ? ({ signal, queryKey }) => enumerate(stableRequest!, signal, queryKey) : skipToken,
-    enabled: queryEnabled,
-    retry: false,
-    gcTime: 0,
-    placeholderData: undefined,
-  });
+  const viewKey = hashKey([queryKey, generation]);
+  const [activeView, setActiveView] = React.useState<{ key: string; entry: ViewEntry }>();
+  const [sourceSnapshot, setSourceSnapshot] = React.useState<{ key: string; status?: HostSourceStatus }>();
+
+  React.useEffect(() => {
+    if (!collection || !queryEnabled || !stableRequest || generation === undefined) return;
+    const entry = acquireView(viewKey, pluginID, stableRequest, live);
+    let active = true;
+    let unsubscribe = () => {};
+    setActiveView({ key: viewKey, entry });
+    void entry.client.then((client) => {
+      if (!active) return;
+      const update = () => {
+        if (!active || !isConnectionReadinessCurrent(pluginID, connectionID, generation)) return;
+        const snapshot = client.getSnapshot();
+        setSourceSnapshot({ key: viewKey, status: snapshot.status });
+        if (snapshot.complete) queryClient.setQueryData(queryKey, pageFromSnapshot(snapshot));
+      };
+      unsubscribe = client.subscribe(update);
+      update();
+    }, () => {});
+    return () => { active = false; unsubscribe(); releaseView(viewKey, entry); };
+  }, [collection, queryEnabled, stableRequest, generation, viewKey, pluginID, connectionID, live, queryClient, queryKey]);
+
+  const currentEntry = activeView?.key === viewKey && queryEnabled && collection ? activeView.entry : undefined;
+  const enumerate = React.useCallback((input: HostEnumerateRequest, signal: AbortSignal, key: QueryKey) =>
+    guardQuery(key, signal, () => Enumerate(pluginID, input)), [guardQuery, pluginID]);
+  const collectionQuery = React.useCallback((entry: ViewEntry, signal: AbortSignal, key: QueryKey) =>
+    guardQuery(key, signal, async () => firstSnapshot(await entry.client, signal)), [guardQuery]);
+  const queryFn = queryEnabled && stableRequest && (!collection || currentEntry)
+    ? ({ signal, queryKey: key }: { signal: AbortSignal; queryKey: QueryKey }) => collection
+      ? collectionQuery(currentEntry!, signal, key) : enumerate(stableRequest, signal, key)
+    : skipToken;
+  const resourcesQuery = useQuery({ queryKey, queryFn, enabled: queryEnabled && (!collection || !!currentEntry), retry: false, gcTime: 0, placeholderData: undefined });
+  const refresh = React.useCallback(async (...args: Parameters<typeof resourcesQuery.refetch>) => {
+    if (collection && currentEntry) await (await currentEntry.client).refresh();
+    return resourcesQuery.refetch(...args);
+  }, [collection, currentEntry, resourcesQuery.refetch]);
+  const resources = collection ? { ...resourcesQuery, refetch: refresh } : resourcesQuery;
   const [successful, setSuccessful] = React.useState<{ identity: string; requestHash: string; request: HostEnumerateRequest }>();
-  // Adjust only when the successful request or identity changes, before children commit.
-  // Failed or pending cursors retain the single previous acquisition.
   let acquisition = successful;
   if (targetIdentity && stableRequest && resources.isSuccess && resources.data) {
     if (successful?.identity !== targetIdentity || successful.requestHash !== requestHash) {
@@ -117,111 +163,23 @@ export const useResources = ({ pluginID: explicitPluginID, request, enabled = tr
   }
   const acquiredRequest = targetIdentity && acquisition?.identity === targetIdentity ? acquisition.request : undefined;
   const acquiredQueryKey = React.useMemo(() => listKey(acquiredRequest), [listKey, acquiredRequest]);
-  // A disabled observer retains just the displayed page while a different cursor is attempted.
-  // Its explicit refetch is a real native acquisition, not a synthetic cached response.
   const acquiredResources = useQuery({
     queryKey: acquiredQueryKey,
-    queryFn: queryEnabled && acquiredRequest ? ({ signal, queryKey }) => enumerate(acquiredRequest, signal, queryKey) : skipToken,
-    enabled: false,
-    retry: false,
-    gcTime: 0,
-    placeholderData: undefined,
+    queryFn: queryEnabled && acquiredRequest && !collection ? ({ signal, queryKey: key }) => enumerate(acquiredRequest, signal, key) : skipToken,
+    enabled: false, retry: false, gcTime: 0, placeholderData: undefined,
   });
   const acquired = React.useMemo<AcquiredResourcePage | undefined>(() => acquiredRequest && acquiredResources.data
     ? { request: acquiredRequest, page: acquiredResources.data } : undefined, [acquiredRequest, acquiredResources.data]);
-  const watchEnabled = queryEnabled && live && !!acquiredRequest;
-  const watchScope = React.useMemo(() => ({ pluginID, acquiredRequest, generation, enabled: watchEnabled }), [pluginID, acquiredRequest, generation, watchEnabled]);
-  const [watchSnapshot, setWatchSnapshot] = React.useState<{ scope: typeof watchScope; state: WatchState; error?: unknown; live: boolean }>();
-  const watchState = watchEnabled && watchSnapshot?.scope === watchScope ? watchSnapshot.state : WatchState.WatchStateIdle;
-  const watchFailure = watchEnabled && watchSnapshot?.scope === watchScope ? watchSnapshot.error : undefined;
-  const isLive = watchEnabled && watchSnapshot?.scope === watchScope && watchSnapshot.live;
-  const isWatchGenerationCurrent = React.useCallback(() => generation !== undefined && isConnectionReadinessCurrent(pluginID, connectionID, generation), [pluginID, connectionID, generation]);
-  const enqueue = useEventBatcher(queryClient, acquiredQueryKey, watchState, { enabled: watchEnabled, isCurrent: isWatchGenerationCurrent, collection });
-  const subscriptionTask = React.useRef<Promise<void>>(Promise.resolve());
-
-  React.useEffect(() => {
-    if (!watchEnabled || !acquiredRequest) return;
-    const target = acquiredRequest.request.target;
-    const subscription: HostSubscriptionRequest = { targetId: acquiredRequest.targetId, target };
-    let active = true;
-    let subscribed = false;
-    let stateEventSeen = false;
-    let ensure: CancellablePromise<void> | undefined;
-    const current = () => active && generation !== undefined && isConnectionReadinessCurrent(pluginID, connectionID, generation);
-    const publish = (patch: Partial<Omit<NonNullable<typeof watchSnapshot>, 'scope'>>) => {
-      if (!current()) return;
-      setWatchSnapshot((previous) => ({ state: WatchState.WatchStateIdle, live: false, ...(previous?.scope === watchScope ? previous : {}), ...patch, scope: watchScope }));
-    };
-    const prefix = `${pluginID}/${target.route.connection}/${target.type}`;
-    const close = [
-      Events.On(`${prefix}/ADD`, (event) => {
-        const payload = event.data as AddPayload;
-        if (current() && payload.record.targetId === subscription.targetId) enqueue({ type: 'ADD', payload });
-      }),
-      Events.On(`${prefix}/UPDATE`, (event) => {
-        const payload = event.data as UpdatePayload;
-        if (current() && payload.record.targetId === subscription.targetId) enqueue({ type: 'UPDATE', payload });
-      }),
-      Events.On(`${prefix}/DELETE`, (event) => {
-        const payload = event.data as DeletePayload;
-        if (current() && payload.targetId === subscription.targetId) enqueue({ type: 'DELETE', payload });
-      }),
-      Events.On(`${pluginID}/${target.route.connection}/watch/STATE`, (event) => {
-        const payload = event.data as WatchStateEvent;
-        if (!current() || payload.type !== target.type || payload.route.connection !== target.route.connection) return;
-        stateEventSeen = true;
-        publish({ state: payload.state, error: payload.error });
-      }),
-    ];
-    const closeListeners = () => { for (const cancelListener of close) cancelListener(); };
-    const state = GetWatchState(pluginID, target.route);
-    void state.then((summary) => {
-      if (!stateEventSeen && summary?.resources[target.type] !== undefined) publish({ state: summary.resources[target.type] });
-    }).catch((error: unknown) => publish({ error }));
-    // Reacquisition waits for prior acknowledgement and cleanup, even across disconnect.
-    const subscribe = subscriptionTask.current.then(async () => {
-      if (!current()) return;
-      await SubscribeResource(pluginID, subscription);
-      subscribed = true;
-      if (!current()) return;
-      ensure = EnsureResourceWatch(pluginID, target);
-      await ensure;
-      publish({ live: true });
-    }).catch((error: unknown) => {
-      closeListeners();
-      publish({ error, state: WatchState.WatchStateError, live: false });
-      if (current()) showAppError(showSnackbarRef.current, error, 'Failed to subscribe to resource updates');
-    });
-    subscriptionTask.current = subscribe;
-    return () => {
-      active = false;
-      closeListeners();
-      void state.cancel();
-      void ensure?.cancel();
-      subscriptionTask.current = subscribe.then(async () => {
-        if (subscribed) await UnsubscribeResource(pluginID, subscription);
-      }).catch((error: unknown) => {
-        showAppError(showSnackbarRef.current, error, 'Failed to unsubscribe from resource updates');
-      });
-    };
-  }, [pluginID, connectionID, acquiredRequest, watchEnabled, generation, watchScope, enqueue]);
-
-  const hasAcquired = acquired !== undefined;
+  const source = currentEntry && sourceSnapshot?.key === viewKey ? sourceSnapshot.status : undefined;
   return {
-    /** Attempted request state; an error does not rename or replace the acquired page. */
-    resources,
-    acquired,
-    /** Gate acquired readiness when a consumer chooses to display the attempted page instead. */
-    isAcquiredRequestCurrent: hasAcquired && acquisition?.requestHash === requestHash,
-    refreshAcquiredPage: acquiredResources.refetch,
+    resources, acquired,
+    isAcquiredRequestCurrent: !!acquired && acquisition?.requestHash === requestHash,
+    refreshAcquiredPage: collection ? refresh : acquiredResources.refetch,
     view: acquired?.page.view,
-    membershipStale: acquired?.page.view?.membershipStale ?? false,
-    watchState: hasAcquired ? watchState : WatchState.WatchStateIdle,
-    isLive: hasAcquired && isLive,
-    isSyncing: hasAcquired && watchState === WatchState.WatchStateSyncing,
-    /** Native cache readiness only, not snapshot/update continuity. */
-    isSynced: hasAcquired && watchState === WatchState.WatchStateSynced,
-    watchError: hasAcquired ? watchFailure ?? (watchState === WatchState.WatchStateError || watchState === WatchState.WatchStateFailed || watchState === WatchState.WatchStateForbidden ? true : undefined) : undefined,
-    guarantee: hasAcquired && isLive ? 'bestEffort' as const : undefined,
+    source,
+    isLive: source?.state === 'following',
+    isSyncing: source?.state === 'opening' || source?.state === 'snapshotting' || source?.state === 'resetRequired',
+    isSynced: source?.state === 'following' || source?.state === 'finished',
+    sourceError: source?.state === 'failed',
   };
 };
