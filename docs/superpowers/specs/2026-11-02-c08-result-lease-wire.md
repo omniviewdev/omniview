@@ -858,8 +858,11 @@ membership, ordering, projection and reset boundaries.
 The host computes the opaque sharing identity after authorization from
 effective compiled query/profile/environment, target and scope, access
 route, representation/schema, typed binding values, order, projection,
-delivery/coverage guarantees, host-derived principal owner and trusted
-access epoch. It never logs sensitive bindings or accepts a client hash.
+delivery/coverage guarantees, trusted access epoch and host-issued
+`invocation.Principal.Owner()`. The principal owner is not the lease's
+owning `WindowKey`. The current process-wide TrustedUI realm shares one
+principal owner across its windows, allowing authorized two-tab sharing.
+The host never logs sensitive bindings or accepts a client hash.
 Different principal owners, access epochs, credentials or incompatible
 scope/bindings cannot share execution or data; equivalent authorized
 requests may share P13 work. Each lease owns
@@ -874,11 +877,12 @@ source continuity invalidates affected results but does not make one
 result generation equal to a source generation.
 
 The P12 candidate is [revision
-5478f5be](https://github.com/omniviewdev/omniview/blob/5478f5bef0e7ac5da1504cc85c4f7e1d2576036d/docs/superpowers/specs/2026-11-02-p12-read-model.md);
+a8ac01ea](https://github.com/omniviewdev/omniview/blob/a8ac01ea9c0ff2f4228f5a582784d212ee350bce/docs/superpowers/specs/2026-11-02-p12-read-model.md);
 P13 candidate
-[0f198e11](https://github.com/omniviewdev/omniview/blob/0f198e11698fdd45b30097979c548a4c546815e9/docs/superpowers/specs/2026-11-02-p13-compiler.md)
-pins it and C05 `01edb72`. P12 and P13 have conditional independent
-approval; the complete freeze set still requires final combined review.
+[18467ca8](https://github.com/omniviewdev/omniview/blob/18467ca814ebe5a0d433775cfafe3a42c0000b50/docs/superpowers/specs/2026-11-02-p13-compiler.md)
+pins it and C05 `01edb72`. Owner-aware P12 and P13 revisions require
+independent delta review; the complete set requires final frozen-set
+review.
 P12 owns independent interests, view and coalesced invalidations; P13
 owns `Current`, coalesced `Changes`, `Done`, `Refresh` and `Close`. Its
 windows provide per-target source attempt/epoch and departure causes.
