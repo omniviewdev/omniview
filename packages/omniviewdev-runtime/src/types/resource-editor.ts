@@ -36,8 +36,8 @@ export interface ResourceEditorContext extends ResourceEditorTarget {
 export interface ResourceEditorDraft {
   readonly sessionID: string;
   readonly revision: number;
-  get(path: ResourceEditorPath): unknown;
-  has(path: ResourceEditorPath): boolean;
+  get(this: void, path: ResourceEditorPath): unknown;
+  has(this: void, path: ResourceEditorPath): boolean;
 }
 export type ResourceEditorPatch =
   | { op: 'set'; path: ResourceEditorPath; value: unknown }
@@ -85,7 +85,7 @@ export type ResourceEditorReferenceResult =
   | { status: 'ready'; items: readonly ResourceEditorReference[] }
   | { status: 'denied' | 'unavailable' | 'absent'; message: string };
 export interface ResourceEditorReferenceService {
-  list(request: ResourceEditorReferenceRequest): Promise<ResourceEditorReferenceResult>;
+  list(this: void, request: ResourceEditorReferenceRequest): Promise<ResourceEditorReferenceResult>;
 }
 export interface ResourceEditorActionRequest extends ResourceEditorServiceRequest {
   protocol: string;
@@ -95,7 +95,7 @@ export type ResourceEditorActionResult =
   | { status: 'ready'; output: unknown; sensitive?: boolean }
   | { status: 'denied' | 'unavailable' | 'absent' | 'invalid' | 'cancelled'; message: string };
 export interface ResourceEditorActionService {
-  execute(request: ResourceEditorActionRequest): Promise<ResourceEditorActionResult>;
+  execute(this: void, request: ResourceEditorActionRequest): Promise<ResourceEditorActionResult>;
 }
 export interface ResourceEditorFormProps {
   context: ResourceEditorContext;
@@ -103,8 +103,8 @@ export interface ResourceEditorFormProps {
   baseline?: ResourceEditorDraft;
   section: string;
   disabled: boolean;
-  patch(request: ResourceEditorPatchRequest): ResourceEditorPatchResult;
-  onValidityChange(error: string | null): void;
+  patch(this: void, request: ResourceEditorPatchRequest): ResourceEditorPatchResult;
+  onValidityChange(this: void, error: string | null): void;
   references: ResourceEditorReferenceService;
   actions: ResourceEditorActionService;
   requestResult?: ResourceEditorActionResult;
