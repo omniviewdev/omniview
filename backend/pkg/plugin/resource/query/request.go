@@ -80,7 +80,7 @@ type Delivery struct {
 const maxRequestBytes = 65536
 
 var parameterName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-var reservedNames = map[string]bool{"resource": true, "true": true, "false": true, "null": true, "in": true, "as": true, "break": true, "const": true, "continue": true, "else": true, "for": true, "function": true, "if": true, "import": true, "let": true, "loop": true, "package": true, "namespace": true, "return": true, "var": true, "void": true, "while": true}
+var reservedNames = map[string]bool{"resource": true, "true": true, "false": true, "null": true, "in": true, "as": true, "break": true, "const": true, "continue": true, "else": true, "for": true, "function": true, "if": true, "import": true, "let": true, "loop": true, "package": true, "namespace": true, "return": true, "var": true, "void": true, "while": true, "int": true, "uint": true, "double": true, "bool": true, "string": true, "bytes": true, "list": true, "map": true, "null_type": true, "type": true, "dyn": true, "google": true}
 
 func invalid(message string) error { return resourcev2.NewError("INVALID_REQUEST", message) }
 func limit(message string) error   { return resourcev2.NewError("RESOURCE_LIMIT", message) }
