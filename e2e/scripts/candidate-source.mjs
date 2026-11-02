@@ -6,8 +6,8 @@ import { resolve } from 'node:path';
 
 // Independently reviewed isolation-core baseline; candidate/tag selection cannot replace this trust decision.
 export const isolationBaseline = '5b3ef764d1cf738835a723a749a0cb6c45f85e44';
-// Independently reviewed host callback binding; original isolation ancestry remains required.
-export const reviewedIsolationCheckpoint = 'a5db74e135550ff842365bb58df80d2cfb40900e';
+// Independently reviewed host-connections startup; original isolation ancestry remains required.
+export const reviewedIsolationCheckpoint = 'eea5943f7a5319fb1585a8ec2d9ce5d06fa763ca';
 const isolationFiles = ['pkg/state/root.go', 'pkg/state/custom.go', 'pkg/profilecontract/profile.go', 'pkg/utils/store.go', 'pkg/sdk/plugin.go'];
 
 export function verifyIsolation(source, git) {
@@ -29,7 +29,7 @@ export function admitCandidate(cohort, env) {
   if (env.REVIEWED_SDK_REVISION !== cohort['plugin-sdk']) {
     const approved = /^[a-f0-9]{40}$/.test(env.REVIEWED_SDK_REVISION ?? '')
       ? env.REVIEWED_SDK_REVISION : '(unset or invalid)';
-    throw Error(`Candidate SDK ${cohort['plugin-sdk']} differs from independently approved SDK ${approved} in REVIEWED_SDK_REVISION (CI pins the reviewed release explicitly); select the approved candidate pin before preparation. Approval authority was not changed.`);
+    throw Error(`Candidate SDK ${cohort['plugin-sdk']} differs from independently approved SDK ${approved} in REVIEWED_SDK_REVISION (supplied by repository approval variable); select the approved candidate pin before preparation. Approval authority was not changed.`);
   }
   for (const [key, id] of [['UI_SOURCE_REF', 'ui'], ['KUBERNETES_SOURCE_REF', 'kubernetes']]) {
     if (env[key] && env[key] !== cohort[id]) throw Error(`${key} conflicts with checked-in candidate cohort`);

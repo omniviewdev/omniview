@@ -15,6 +15,7 @@ import (
 	"time"
 
 	goplugin "github.com/hashicorp/go-plugin"
+	"github.com/omniviewdev/omniview/backend/pkg/resourcecatalog"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	resourceplugin "github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
@@ -305,4 +306,155 @@ func refreshNativeGeneration(t *testing.T, control string, sequence int, endpoin
 		return err == nil
 	}, 10*time.Second, 10*time.Millisecond)
 	require.Equal(t, endpoint, string(applied))
+}
+
+// TestActualSDKChildSchemaCatalog drives the host schema catalog against the
+// real SDK conformance child over gRPC.
+func TestActualSDKChildSchemaCatalog(t *testing.T) {
+	binary := compileNativeChild(t)
+	provider, _, stop := startNativeChild(t, binary, "read-only")
+	defer stop()
+	ctrl, _ := newTestControllerWithEmitter(t)
+	registerMockPlugin(ctrl, nativeChildPluginID, provider)
+	ctx := testInvocationContext()
+	start := func(connection string) resource.AccessRoute {
+		_, err := ctrl.StartConnection(ctx, nativeChildPluginID, connection)
+		require.NoError(t, err)
+		return resource.AccessRoute{Connection: connection}
+	}
+	catalogType := func(route resource.AccessRoute) resource.ResourceType {
+		catalog, err := ctrl.Catalog(ctx, nativeChildPluginID, resource.CatalogRequest{Route: route})
+		require.NoError(t, err)
+		require.Len(t, catalog.Types, 1)
+		return catalog.Types[0]
+	}
+	fields := func(route resource.AccessRoute, path ...resourcecatalog.PathSegment) SchemaFieldsResult {
+		result, err := ctrl.GetSchemaFields(ctx, nativeChildPluginID, SchemaFieldsRequest{Route: route, Type: catalogType(route).Type, Path: path})
+		require.NoError(t, err)
+		// P44 declares no native filtering or native query capability.
+		assert.Empty(t, result.Overlay.NativeQueryLanguages)
+		for _, field := range result.Fields {
+			assert.Equal(t, "unsupported", field.NativeFilter)
+		}
+		return result
+	}
+	associations := func(route resource.AccessRoute) []EditorSchemaAssociation {
+		out, err := ctrl.GetEditorSchemas(ctx, nativeChildPluginID, route)
+		require.NoError(t, err)
+		typ := catalogType(route)
+		for _, association := range out {
+			// Associations derive only from representation schemas, never
+			// from action or native-query input schemas.
+			if association.Type != "" {
+				assert.Equal(t, typ.Type, association.Type)
+				if association.Key == "" {
+					assert.Equal(t, typ.DefaultRepresentation, association.Representation)
+				}
+			}
+		}
+		return out
+	}
+	catalogAssociation := func(route resource.AccessRoute) EditorSchemaAssociation {
+		for _, association := range associations(route) {
+			if association.Type != "" && association.Key == "" {
+				return association
+			}
+		}
+		require.FailNow(t, "no catalog association", route.Connection)
+		return EditorSchemaAssociation{}
+	}
+	fieldNames := func(result SchemaFieldsResult) []string {
+		names := make([]string, 0, len(result.Fields))
+		for _, field := range result.Fields {
+			names = append(names, field.Segment.Name)
+		}
+		return names
+	}
+
+	bundled := start("cloud-bundled-pages")
+	bundledFields := fields(bundled)
+	assert.Equal(t, resourcecatalog.HostEvaluationSchemaChecked, bundledFields.Overlay.HostEvaluation)
+	assert.Contains(t, fieldNames(bundledFields), "tags")
+	bundledAssociation := catalogAssociation(bundled)
+	require.Equal(t, "available", bundledAssociation.Status)
+
+	discovered := start("cloud-discovered-schema")
+	discoveredType := catalogType(discovered)
+	require.NotNil(t, discoveredType.Representations[0].Schema.DocumentRef, "discovered scenario delivers by reference")
+	discoveredFields := fields(discovered)
+	assert.Equal(t, resourcecatalog.HostEvaluationSchemaChecked, discoveredFields.Overlay.HostEvaluation)
+	assert.Equal(t, fieldNames(bundledFields), fieldNames(discoveredFields))
+	raw, err := ctrl.GetSchemaDocument(ctx, nativeChildPluginID, discovered, *discoveredType.Representations[0].Schema.DocumentRef)
+	require.NoError(t, err)
+	assert.NotEmpty(t, raw.Document)
+	_, err = ctrl.GetSchemaDocument(ctx, nativeChildPluginID, discovered, resource.SchemaDocumentReference{ID: "conformance/unreferenced", Revision: "schema:opaque/1"})
+	assert.Equal(t, "NOT_FOUND", requireAppError(t, err).Code)
+
+	absent := start("cloud-absent-schema")
+	absentFields := fields(absent)
+	assert.Equal(t, resourcecatalog.HostEvaluationDynamic, absentFields.Overlay.HostEvaluation)
+	assert.Empty(t, absentFields.Fields)
+	assert.Equal(t, "absent", catalogAssociation(absent).Status)
+
+	unavailable := start("cloud-unavailable-schema")
+	unavailableFields := fields(unavailable)
+	assert.Equal(t, resourcecatalog.HostEvaluationUnavailable, unavailableFields.Overlay.HostEvaluation)
+	assert.Equal(t, "FORBIDDEN", unavailableFields.Overlay.HostEvaluationCode)
+	assert.Equal(t, "unavailable", catalogAssociation(unavailable).Status)
+
+	unsupported := start("container-unsupported-dialect")
+	unsupportedFields := fields(unsupported)
+	assert.Equal(t, resourcecatalog.HostEvaluationUnsupported, unsupportedFields.Overlay.HostEvaluation)
+	assert.Equal(t, "UNSUPPORTED", unsupportedFields.Overlay.HostEvaluationCode)
+	assert.Equal(t, "unsupported", catalogAssociation(unsupported).Status)
+
+	// A rendered document is served only to connections that reference it.
+	_, err = ctrl.GetEditorSchemaDocument(ctx, nativeChildPluginID, absent, bundledAssociation.DocumentID)
+	assert.Equal(t, "NOT_FOUND", requireAppError(t, err).Code)
+	rendered, err := ctrl.GetEditorSchemaDocument(ctx, nativeChildPluginID, bundled, bundledAssociation.DocumentID)
+	require.NoError(t, err)
+	assert.True(t, json.Valid(rendered.Schema))
+
+	hypervisor := start("hypervisor-openapi-vms")
+	hypervisorType := catalogType(hypervisor)
+	placement := fields(hypervisor, resourcecatalog.PathSegment{Kind: "field", Name: "placement"})
+	byName := map[string]resourcecatalog.FieldInfo{}
+	for _, field := range placement.Fields {
+		byName[field.Segment.Name] = field
+	}
+	assert.Equal(t, "unconditional", byName["pool"].Applicability)
+	for _, name := range []string{"sizeGiB", "cores"} {
+		assert.Equal(t, "conditional", byName[name].Applicability, name)
+		require.Len(t, byName[name].Conditions, 1, name)
+		assert.Equal(t, "anyOf", byName[name].Conditions[0].Combinator)
+	}
+	assert.NotEqual(t, byName["sizeGiB"].Conditions[0].Branch, byName["cores"].Conditions[0].Branch)
+
+	schemas := resourcecatalog.NewCatalog(resourcecatalog.DefaultPolicy())
+	snapshot := schemas.Observe(resourcecatalog.ConnectionKey{PluginID: nativeChildPluginID, Connection: hypervisor.Connection}, resource.Catalog{Provider: "hypervisor", Revision: "r", Types: []resource.ResourceType{hypervisorType}})
+	entry, err := snapshot.Entry(hypervisorType.Type, hypervisorType.DefaultRepresentation)
+	require.NoError(t, err)
+	schema, err := entry.Resolve(ctx, nil)
+	require.NoError(t, err)
+	nodes := []string{"node/a::1", "node/b::1"}
+	target, err := ctrl.ResolveTarget(ctx, nativeChildPluginID, ResolveTargetRequest{Route: hypervisor, Type: hypervisorType.Type, Representation: hypervisorType.DefaultRepresentation,
+		Scope: resource.QueryScope{{Dimension: "node", Match: resource.ScopeOneOf, Values: &nodes}}})
+	require.NoError(t, err)
+	request := HostEnumerateRequest{TargetID: target.TargetID, Request: resource.EnumerateRequest{Target: target.Target}}
+	admitted := 0
+	for {
+		page, err := ctrl.Enumerate(ctx, nativeChildPluginID, request)
+		require.NoError(t, err)
+		for _, record := range page.Records {
+			admission, err := resourcecatalog.Admit(ctx, schema, record.Record.Body, record.Record.Coverage, resourcecatalog.DefaultPolicy())
+			require.NoError(t, err, record.Record.Reference.Address.ID)
+			assert.Equal(t, "reduced", admission.Validation, "x-kubernetes-validations is not enforced")
+			admitted++
+		}
+		if page.SourcePage.NextCursor == nil {
+			break
+		}
+		request.Request.Cursor = page.SourcePage.NextCursor
+	}
+	assert.Equal(t, 3, admitted)
 }

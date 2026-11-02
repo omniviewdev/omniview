@@ -26,7 +26,7 @@ const record: HostRecord = {
   record: {
     reference,
     body: { kind: 'map', value: { generation: { kind: 'int64', value: '9223372036854775807' } } },
-    representation: { id: 'json', revision: '1', schema: { state: 'absent', validation: 'none', unvalidated: [] } },
+    representation: { id: 'json', revision: '1', schema: { state: 'absent' } },
     coverage: { kind: 'complete', paths: [] },
   },
   route: { connection: 'selected-connection' },

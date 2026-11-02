@@ -8,6 +8,7 @@ export * from './useResources';
 export * from './useResourceMutations'
 export * from './useResourceActions'
 export * from './useEditorSchemas'
+export * from './useSchemaFields'
 export * from './useSourceStates'
 export * from './useActiveSyncs'
 export * from './useStreamAction'

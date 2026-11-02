@@ -1,5 +1,6 @@
 // Imported first so its timestamp marks the start of frontend evaluation.
 import './features/perf/startup';
+import './providers/monaco/bootstrap';
 
 import './theme/base-ui.css';
 

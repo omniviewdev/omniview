@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/omniviewdev/omniview/backend/pkg/resourcecatalog"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
@@ -85,6 +86,7 @@ func newCrashTestController() *controller {
 		logger:  logging.NewNop(),
 		plugins: make(map[string]*pluginState),
 		emitter: NoopEmitter{},
+		schemas: resourcecatalog.NewCatalog(resourcecatalog.DefaultPolicy()),
 	}
 	return ctrl
 }

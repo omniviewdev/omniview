@@ -304,7 +304,11 @@ tasks:
       - |
         set -e
         HOST_MODFILE="$({{.HOST_BOOTSTRAP}})"
-        GOWORK=off GOFLAGS= go test -modfile="$HOST_MODFILE" ./...
+        set --
+        if [ "${CI:-}" = "true" ]; then
+          set -- -json
+        fi
+        GOWORK=off GOFLAGS= go test "$@" -modfile="$HOST_MODFILE" ./...
 
   check:c02-corpus:
     summary: Generate fresh C02 SDK-to-gRPC-to-host errors at C02_ERROR_CORPUS

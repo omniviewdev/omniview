@@ -29,6 +29,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	"github.com/omniviewdev/omniview/backend/pkg/resourcecatalog"
 	"github.com/omniviewdev/omniview/internal/appstate"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
@@ -151,6 +152,9 @@ type controller struct {
 
 	onCrashCallback func(pluginID string)
 	pluginStoreFn   func(pluginID string) (*appstate.ScopedRoot, error)
+	// schemas is the authoritative schema catalog. Its mutex is a leaf lock:
+	// never call into the controller while holding it.
+	schemas *resourcecatalog.Catalog
 }
 
 // compile-time assertions.
@@ -191,6 +195,7 @@ func NewController(
 		graphNotifier:       nil,
 		onCrashCallback:     nil,
 		pluginStoreFn:       pluginStoreFn,
+		schemas:             resourcecatalog.NewCatalog(resourcecatalog.DefaultPolicy()),
 	}
 	c.sources = newSourceCoordinator(c)
 	c.actions.emit = func(id string, snapshot ActionSnapshot) { c.emitter.Emit("action/stream/"+id, snapshot) }
@@ -310,6 +315,9 @@ func (c *controller) onPluginStart(pluginID string, backend plugintypes.PluginBa
 		c.retireMetadata(pluginID, existing)
 	}
 	c.pluginsMu.Lock()
+	if existing != nil {
+		c.schemas.DropPlugin(pluginID)
+	}
 	c.plugins[pluginID] = state
 	c.pluginsMu.Unlock()
 	c.sources.invalidate(pluginID, "")
@@ -333,6 +341,7 @@ func (c *controller) onPluginStart(pluginID string, backend plugintypes.PluginBa
 		if owned {
 			// Retain generation ownership until all of its state is retired.
 			state.provider = nil
+			c.schemas.DropPlugin(pluginID)
 		}
 		c.pluginsMu.Unlock()
 		if !owned {
@@ -437,6 +446,7 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	// Cancel first so a concurrent readiness acknowledgement cannot republish
 	// the retiring provider after invalidation.
 	c.pluginsMu.Lock()
+	c.schemas.DropPlugin(pluginID)
 	var retired ResourceProvider
 	// Make calls unavailable now; release ownership only after retirement.
 	if stopped != nil {

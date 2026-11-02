@@ -327,6 +327,9 @@ export class Count {
  * Coverage states known acquisition limitations, not operation success alone.
  * Complete forbids Paths and Reason. Partial and unknown require a public-safe
  * Reason; preserve any reported path limitations rather than claiming completeness.
+ * Each Paths entry is an RFC6901 JSON pointer into the record body that starts
+ * with "/" and names a LIMITED subtree; empty Paths on partial or unknown
+ * coverage means the limitation is not localized.
  */
 export type Coverage = any;
 
@@ -350,48 +353,6 @@ export enum EdgeDirection {
      */
     EdgeIncoming = "incoming",
 };
-
-/**
- * EditorSchema associates editor selection metadata with an explicit schema
- * binding. URI is editor metadata, not permission to fetch an external document;
- * Binding distinguishes unavailable acquisition from known schema absence.
- */
-export class EditorSchema {
-    "type": string;
-    "fileMatch": string;
-    "uri": string;
-    "language": string;
-    "binding": SchemaBinding;
-
-    /** Creates a new EditorSchema instance. */
-    constructor($$source: Partial<EditorSchema> = {}) {
-        if (!("type" in $$source)) {
-            this["type"] = "";
-        }
-        if (!("fileMatch" in $$source)) {
-            this["fileMatch"] = "";
-        }
-        if (!("uri" in $$source)) {
-            this["uri"] = "";
-        }
-        if (!("language" in $$source)) {
-            this["language"] = "";
-        }
-        if (!("binding" in $$source)) {
-            this["binding"] = null;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new EditorSchema instance from a string or object.
-     */
-    static createFrom($$source: any = {}): EditorSchema {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new EditorSchema($$parsedSource as Partial<EditorSchema>);
-    }
-}
 
 /**
  * EnumerateRequest asks for one finite source page, not a subscription or a
@@ -678,6 +639,57 @@ export enum HealthStatus {
      * HealthUnknown explicitly reports insufficient evidence to assess health.
      */
     HealthUnknown = "unknown",
+};
+
+/**
+ * Operation names independently admitted capabilities, not required methods.
+ * Advertising one operation never implies support for another.
+ */
+export enum Operation {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * OperationEnumerate advertises scoped native enumeration, not final host query membership.
+     */
+    OperationEnumerate = "enumerate",
+
+    /**
+     * OperationGet advertises acquisition of one exact canonical reference.
+     */
+    OperationGet = "get",
+
+    /**
+     * OperationNativeQuery advertises provider-native query execution.
+     */
+    OperationNativeQuery = "nativeQuery",
+
+    /**
+     * OperationCreate admits only the create mutation verb.
+     */
+    OperationCreate = "create",
+
+    /**
+     * OperationMutationUpdate admits only the update mutation verb.
+     */
+    OperationMutationUpdate = "mutationUpdate",
+
+    /**
+     * OperationDelete admits only the delete mutation verb.
+     */
+    OperationDelete = "delete",
+
+    /**
+     * OperationAction advertises action dispatch; action descriptors define available actions.
+     */
+    OperationAction = "action",
+
+    /**
+     * OperationSourceUpdates advertises a source session that follows changes after its snapshot.
+     */
+    OperationSourceUpdates = "sourceUpdates",
 };
 
 /**

@@ -63,6 +63,7 @@ func (c *controller) invalidateSourceRoutesWithRecoveryLocked(pluginID string, c
 	}
 	for connection := range seen {
 		generation.sourceEpoch[connection]++
+		c.schemas.DropConnection(pluginID, connection)
 		if removeInventory {
 			generation.connectionLifecycleEpoch[connection]++
 		}

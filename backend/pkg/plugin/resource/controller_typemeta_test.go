@@ -86,10 +86,27 @@ func TestPresentation_SchemaDocument(t *testing.T) {
 		assert.Equal(t, reference, ref)
 		return document, nil
 	}
+	provider.CatalogFunc = withReferencedSchema(provider.CatalogFunc, reference)
 	registerMockPlugin(ctrl, "p1", provider)
 	result, err := ctrl.GetSchemaDocument(testInvocationContext(), "p1", route, reference)
 	require.NoError(t, err)
 	assert.Equal(t, document, result)
+}
+
+func TestPresentation_SchemaDocumentRejectsUnreferencedReference(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	route := resource.AccessRoute{Connection: "conn-1"}
+	provider := finiteTestProvider("native")
+	fetched := false
+	provider.GetSchemaDocumentFunc = func(context.Context, resource.AccessRoute, resource.SchemaDocumentReference) (resource.SchemaDocument, error) {
+		fetched = true
+		return resource.SchemaDocument{}, nil
+	}
+	provider.CatalogFunc = withReferencedSchema(provider.CatalogFunc, resource.SchemaDocumentReference{ID: "native/schema", Revision: "schema:r1"})
+	registerMockPlugin(ctrl, "p1", provider)
+	_, err := ctrl.GetSchemaDocument(testInvocationContext(), "p1", route, resource.SchemaDocumentReference{ID: "native/schema", Revision: "schema:r2"})
+	assert.Equal(t, "NOT_FOUND", requireAppError(t, err).Code)
+	assert.False(t, fetched, "an unreferenced document must never reach the provider")
 }
 
 func TestPresentation_ProviderErrors(t *testing.T) {
@@ -104,6 +121,7 @@ func TestPresentation_ProviderErrors(t *testing.T) {
 	provider.GetSchemaDocumentFunc = func(context.Context, resource.AccessRoute, resource.SchemaDocumentReference) (resource.SchemaDocument, error) {
 		return resource.SchemaDocument{}, failure
 	}
+	provider.CatalogFunc = withReferencedSchema(provider.CatalogFunc, resource.SchemaDocumentReference{ID: "schema", Revision: "r1"})
 	registerMockPlugin(ctrl, "p1", provider)
 	_, err := ctrl.GetResourceGroups(testInvocationContext(), "p1", route)
 	assert.Equal(t, "FORBIDDEN", requireAppError(t, err).Code)
