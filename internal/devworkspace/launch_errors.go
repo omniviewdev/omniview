@@ -34,6 +34,10 @@ func workspaceError(err error) *devcontract.Error {
 		}
 		return &copy
 	}
+	var mismatch *devsession.ProcessIdentityMismatch
+	if errors.As(err, &mismatch) {
+		return devcontract.Fail(4, "stale_target", mismatch.Error())
+	}
 	switch {
 	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
 		return devcontract.Fail(7, "timeout", "workspace operation was interrupted or exceeded its deadline")

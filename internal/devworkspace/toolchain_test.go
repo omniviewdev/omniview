@@ -173,10 +173,11 @@ func TestPrivateNodeAliasesExecuteActualRenamedRuntime(t *testing.T) {
 	if err != nil {
 		t.Skip("actual Node is required for renamed-runtime behavior")
 	}
-	node, err = filepath.EvalSymlinks(node)
+	actualNode, err := exec.Command(node, "-p", "require('node:fs').realpathSync(process.execPath)").Output()
 	if err != nil {
 		t.Fatal(err)
 	}
+	node = strings.TrimSpace(string(actualNode))
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -290,10 +291,11 @@ func TestNativePNPMRefusesActualWrongVersionAndNoncanonicalOverride(t *testing.T
 	if err != nil {
 		t.Skip("actual native Node is required for mismatch refusal")
 	}
-	node, err = filepath.EvalSymlinks(node)
+	actualNode, err := exec.Command(node, "-p", "require('node:fs').realpathSync(process.execPath)").Output()
 	if err != nil {
 		t.Fatal(err)
 	}
+	node = strings.TrimSpace(string(actualNode))
 	g := graphFixture(t)
 	t.Setenv("OMNIVIEW_PNPM_EXECUTABLE", node)
 	version, err := exec.Command(node, "--version").Output()

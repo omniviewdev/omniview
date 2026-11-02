@@ -18,6 +18,20 @@ var (
 	ErrUnsupportedIdentity = errors.New("devsession: platform cannot safely verify or terminate this process")
 )
 
+// ProcessIdentityMismatch identifies the rejected kernel observation without
+// exposing command arguments or environment variables.
+type ProcessIdentityMismatch struct {
+	Record             devcontract.ProcessIdentity
+	ObservedStart      string
+	ObservedExecutable string
+}
+
+func (e *ProcessIdentityMismatch) Error() string {
+	return fmt.Sprintf("%v: PID %d workspace %q generation %q role %q source %q: recorded start %q executable %q; observed start %q executable %q", ErrOwnership, e.Record.PID, e.Record.WorkspaceID, e.Record.Generation, e.Record.Role, e.Record.Source, e.Record.StartIdentity, e.Record.Executable, e.ObservedStart, e.ObservedExecutable)
+}
+
+func (e *ProcessIdentityMismatch) Unwrap() error { return ErrOwnership }
+
 // ProcessOwner is provenance recorded by the supervisor when it starts a child.
 // Workspace and generation are not inferred from an executable name or a PID.
 // Source is the resolved source/build identity, not a display name.
@@ -92,7 +106,7 @@ func VerifyOwnedProcess(record devcontract.ProcessIdentity, expected ProcessOwne
 		return err
 	}
 	if start != record.StartIdentity || executable != record.Executable {
-		return fmt.Errorf("%w: PID was reused or executable changed", ErrOwnership)
+		return &ProcessIdentityMismatch{Record: record, ObservedStart: start, ObservedExecutable: executable}
 	}
 	return nil
 }
