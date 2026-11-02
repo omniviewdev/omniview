@@ -13,17 +13,14 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
-func TestUnissuedResourceInvocationCannotObserveOrSubscribe(t *testing.T) {
+func TestUnissuedResourceInvocationCannotObserveOrOpenSource(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	_, err := ctrl.Get(context.Background(), "supplied-actor", HostGetRequest{Request: resource.GetRequest{Route: resource.AccessRoute{Connection: "root"}, Reference: resource.ResourceReference{Address: resource.ResourceAddress{Provider: "supplied-actor", Authority: "unissued", Type: "opaque", ID: "x", Scope: []resource.ScopeEntry{}}}, Representation: "native"}})
 	if err == nil {
 		t.Fatal("unissued request admitted")
 	}
-	if err := ctrl.SubscribeResource(context.Background(), "supplied-actor", HostSubscription{TargetID: "unissued", Target: resource.ReadTarget{Route: resource.AccessRoute{Connection: "root"}, Provider: "supplied-actor", Authority: "unissued", Type: "opaque", Scope: resource.QueryScope{}, Representation: "native"}}); err == nil {
-		t.Fatal("unissued subscription admitted")
-	}
-	if ctrl.isSubscribed("supplied-actor", "root", "opaque") {
-		t.Fatal("denial populated subscription state")
+	if opened, err := ctrl.OpenSourceView(context.Background(), "supplied-actor", HostSourceViewRequest{TargetID: "unissued", Target: resource.ReadTarget{Route: resource.AccessRoute{Connection: "root"}, Provider: "supplied-actor", Authority: "unissued", Type: "opaque", Scope: resource.QueryScope{}, Representation: "native"}, Updates: "ifSupported"}); err == nil || opened.ViewID != "" {
+		t.Fatalf("unissued source view admitted: view=%q err=%v", opened.ViewID, err)
 	}
 }
 
@@ -241,12 +238,16 @@ func TestAcceptedProducerSurvivesCompletedOpenRequestCancellation(t *testing.T) 
 // The shared mock intentionally does not implement this optional trait.
 type readinessTestProvider struct {
 	*mockProvider
-	status types.ConnectionStatus
+	status     types.ConnectionStatus
+	statusFunc func(context.Context, string) (types.ConnectionStatus, error)
 }
 
 var _ resource.ConnectionReadinessProvider = (*readinessTestProvider)(nil)
 
-func (p *readinessTestProvider) GetConnectionStatus(context.Context, string) (types.ConnectionStatus, error) {
+func (p *readinessTestProvider) GetConnectionStatus(ctx context.Context, connection string) (types.ConnectionStatus, error) {
+	if p.statusFunc != nil {
+		return p.statusFunc(ctx, connection)
+	}
 	return p.status, nil
 }
 
@@ -257,9 +258,9 @@ func TestConnectionStateAggregatePreservesUnstartedNativeConnection(t *testing.T
 			catalog := canonicalTestCatalog("cloud", "cloud::v1::Machine")
 			catalog.Types[0].DefaultRepresentation = "native"
 			catalog.Types[0].Capabilities = []resource.Capability{{
-				Operation: resource.OperationUpdate,
+				Operation: resource.OperationSourceUpdates,
 				Scope:     resource.QueryScope{},
-				Guarantee: resource.BestEffortGuarantee,
+				Guarantee: resource.ContinuityBestEffort,
 			}}
 			return catalog, nil
 		},
@@ -272,7 +273,7 @@ func TestConnectionStateAggregatePreservesUnstartedNativeConnection(t *testing.T
 			},
 			DestroyClient: func(context.Context, *string) error { return nil },
 		},
-		Registrations: []resource.Registration[string]{{Type: "cloud::v1::Machine", Watch: func(context.Context, *string, resource.ReadTarget, resource.Representation, resource.WatchEventSink) error {
+		Registrations: []resource.Registration[string]{{Type: "cloud::v1::Machine", Source: func(context.Context, *string, resource.SourceRequest, resource.SourceEmitter) error {
 			t.Error("unstarted native connection opened an update source")
 			return errors.New("unstarted native update source")
 		}}},
@@ -297,7 +298,7 @@ func TestConnectionStateAggregatePreservesUnstartedNativeConnection(t *testing.T
 	}
 	for _, state := range states["cloud"] {
 		if state.Readiness != types.ConnectionStatusDisconnected || state.ReadinessError != nil || len(state.Resources) != 0 || len(state.ResourceCounts) != 0 {
-			t.Fatalf("stopped native connection gained readiness or watch state: %+v", state)
+			t.Fatalf("stopped native connection gained readiness or source state: %+v", state)
 		}
 	}
 }
@@ -317,23 +318,10 @@ func TestConnectionStateAggregateKeepsUnsupportedReadinessUnknown(t *testing.T) 
 			t.Error("unknown readiness triggered auto-start")
 			return types.ConnectionStatus{}, errors.New("unexpected start")
 		},
-		GetWatchStateFunc: func(context.Context, resource.AccessRoute) (*resource.WatchConnectionSummary, error) {
-			t.Error("unknown readiness triggered watch read")
-			return nil, errors.New("unexpected watch read")
-		},
 	}
 	registerMockPlugin(ctrl, "unsupported", setupGRPCProvider(t, unsupported))
 	connected := &mockProvider{
 		CatalogFunc: lifecycleTestCatalog("cloud::v1::Machine"),
-		GetWatchStateFunc: func(_ context.Context, route resource.AccessRoute) (*resource.WatchConnectionSummary, error) {
-			return &resource.WatchConnectionSummary{
-				Route:          route,
-				Resources:      map[string]resource.WatchState{"cloud::v1::Machine": resource.WatchStateSynced},
-				ResourceCounts: map[string]resource.Count{"cloud::v1::Machine": {Kind: "unknown"}},
-				Scope:          resource.QueryScope{},
-				Guarantee:      resource.BestEffortGuarantee,
-			}, nil
-		},
 	}
 	registerMockPlugin(ctrl, "connected", setupGRPCProvider(t, &readinessTestProvider{
 		mockProvider: connected,
@@ -353,11 +341,11 @@ func TestConnectionStateAggregateKeepsUnsupportedReadinessUnknown(t *testing.T) 
 		t.Fatalf("unsupported readiness became known: %+v", unknown)
 	}
 	if unknown.ReadinessError.RequestID == "" || len(unknown.Resources) != 0 || len(unknown.ResourceCounts) != 0 {
-		t.Fatalf("unsupported readiness lost safe correlation or gained watch state: %+v", unknown)
+		t.Fatalf("unsupported readiness lost safe correlation or gained source state: %+v", unknown)
 	}
 	live := states["connected"][0]
-	if live.Readiness != types.ConnectionStatusConnected || live.ReadinessError != nil || live.Resources["cloud::v1::Machine"] != resource.WatchStateSynced {
-		t.Fatalf("unsupported peer prevented connected watch summary: %+v", live)
+	if live.Readiness != types.ConnectionStatusConnected || live.ReadinessError != nil || len(live.Resources) != 0 {
+		t.Fatalf("unsupported peer prevented connected readiness: %+v", live)
 	}
 }
 
@@ -366,12 +354,11 @@ func TestConnectionStateAggregateFailsClosedThroughTransport(t *testing.T) {
 		t.Run(code, func(t *testing.T) {
 			ctrl, _ := newTestControllerWithEmitter(t)
 			provider := &mockProvider{CatalogFunc: lifecycleTestCatalog("cloud::v1::Machine")}
-			provider.GetWatchStateFunc = func(context.Context, resource.AccessRoute) (*resource.WatchConnectionSummary, error) {
-				return &resource.WatchConnectionSummary{Resources: map[string]resource.WatchState{"secret": resource.WatchStateSynced}}, &resource.ResourceOperationError{Code: code, Title: "private", Message: "private"}
-			}
 			registerMockPlugin(ctrl, "cloud", setupGRPCProvider(t, &readinessTestProvider{
 				mockProvider: provider,
-				status:       types.ConnectionStatus{Status: types.ConnectionStatusConnected, Connection: &types.Connection{ID: "conn"}},
+				statusFunc: func(context.Context, string) (types.ConnectionStatus, error) {
+					return types.ConnectionStatus{}, &resource.ResourceOperationError{Code: code, Title: "private", Message: "private"}
+				},
 			}))
 			ctrl.connections["cloud"] = []types.Connection{{ID: "conn"}}
 			states, err := ctrl.GetAllConnectionStates(testInvocationContext())
@@ -386,15 +373,14 @@ func TestConnectionStateAggregateCancellationStopsNativeRead(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	provider := &mockProvider{CatalogFunc: lifecycleTestCatalog("cloud::v1::Machine")}
 	started, stopped := make(chan struct{}), make(chan struct{})
-	provider.GetWatchStateFunc = func(ctx context.Context, _ resource.AccessRoute) (*resource.WatchConnectionSummary, error) {
-		close(started)
-		<-ctx.Done()
-		close(stopped)
-		return nil, ctx.Err()
-	}
 	registerMockPlugin(ctrl, "cloud", setupGRPCProvider(t, &readinessTestProvider{
 		mockProvider: provider,
-		status:       types.ConnectionStatus{Status: types.ConnectionStatusConnected, Connection: &types.Connection{ID: "conn"}},
+		statusFunc: func(ctx context.Context, _ string) (types.ConnectionStatus, error) {
+			close(started)
+			<-ctx.Done()
+			close(stopped)
+			return types.ConnectionStatus{}, ctx.Err()
+		},
 	}))
 	ctrl.connections["cloud"] = []types.Connection{{ID: "conn"}}
 	ctx, cancel := context.WithCancel(testInvocationContext())
@@ -410,7 +396,7 @@ func TestConnectionStateAggregateCancellationStopsNativeRead(t *testing.T) {
 	select {
 	case <-started:
 	case <-time.After(time.Second):
-		t.Fatal("native watch read did not start")
+		t.Fatal("native readiness read did not start")
 	}
 	cancel()
 	select {
@@ -424,7 +410,7 @@ func TestConnectionStateAggregateCancellationStopsNativeRead(t *testing.T) {
 	select {
 	case <-stopped:
 	case <-time.After(time.Second):
-		t.Fatal("native watch read did not cancel")
+		t.Fatal("native readiness read did not cancel")
 	}
 }
 
@@ -440,19 +426,18 @@ func TestConnectionStateAggregateDoesNotHideMissingProvider(t *testing.T) {
 func TestConnectionStateAggregateRejectsDeniedMemberBeforeNativeRead(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	ctrl.boundary = invocation.NewBoundary(invocation.AuthorizeFunc(func(_ invocation.Principal, operation string, _ invocation.Target) error {
-		if operation == "resource.GetWatchState" {
+		if operation == "resource.GetConnectionStatus" {
 			return errors.New("denied")
 		}
 		return nil
 	}))
 	provider := &mockProvider{}
-	provider.GetWatchStateFunc = func(context.Context, resource.AccessRoute) (*resource.WatchConnectionSummary, error) {
-		t.Error("denied member reached native watch read")
-		return nil, errors.New("unexpected native read")
-	}
 	registerMockPlugin(ctrl, "cloud", setupGRPCProvider(t, &readinessTestProvider{
 		mockProvider: provider,
-		status:       types.ConnectionStatus{Status: types.ConnectionStatusConnected, Connection: &types.Connection{ID: "conn"}},
+		statusFunc: func(context.Context, string) (types.ConnectionStatus, error) {
+			t.Error("denied member reached native readiness read")
+			return types.ConnectionStatus{}, errors.New("unexpected native read")
+		},
 	}))
 	ctrl.connections["cloud"] = []types.Connection{{ID: "conn"}}
 	states, err := ctrl.GetAllConnectionStates(testInvocationContext())
@@ -476,10 +461,6 @@ func TestConnectionStateAggregateRejectsDeniedReadinessBeforeNativeRead(t *testi
 		CatalogFunc: func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
 			t.Error("denied readiness reached Catalogue")
 			return resource.Catalog{}, errors.New("unexpected Catalogue")
-		},
-		GetWatchStateFunc: func(context.Context, resource.AccessRoute) (*resource.WatchConnectionSummary, error) {
-			t.Error("denied readiness reached native watch read")
-			return nil, errors.New("unexpected native read")
 		},
 	}
 	registerMockPlugin(ctrl, "cloud", setupGRPCProvider(t, &readinessTestProvider{

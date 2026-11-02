@@ -85,7 +85,6 @@ func newCrashTestController() *controller {
 		logger:  logging.NewNop(),
 		plugins: make(map[string]*pluginState),
 		emitter: NoopEmitter{},
-		subs:    newSubscriptionManager(),
 	}
 	return ctrl
 }
@@ -94,7 +93,7 @@ func newCrashTestController() *controller {
 func addPluginState(ctrl *controller, pluginID string) {
 	_, cancel := context.WithCancel(context.Background())
 	ctrl.plugins[pluginID] = &pluginState{
-		watchCancel: cancel,
+		cancel: cancel,
 	}
 }
 

@@ -70,7 +70,7 @@ func (c *controller) invalidateSourceRoutesLocked(pluginID string, connections [
 		}
 		c.graph.RemoveEdgesForConnection(pluginID, connection)
 		c.graph.ClearDeclarationsForConnection(pluginID, resourcev2.AccessRoute{Connection: connection})
-		c.subs.RemoveRoute(pluginID, connection)
+		go c.sources.invalidate(pluginID, connection)
 		if !removeInventory {
 			continue
 		}

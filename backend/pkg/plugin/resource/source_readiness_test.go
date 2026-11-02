@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
@@ -17,16 +16,33 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestWatchStartupFailureRollsBackBeforeSourcesStart(t *testing.T) {
+type failingFeatureProvider struct {
+	*mockProvider
+	fail func() error
+}
+
+func (p *failingFeatureProvider) Features(context.Context) (resource.FeatureSet, error) {
+	return resource.FeatureSet{}, p.fail()
+}
+
+type failingCloseFeatureProvider struct {
+	*readinessCloseProvider
+}
+
+func (p *failingCloseFeatureProvider) Features(context.Context) (resource.FeatureSet, error) {
+	return resource.FeatureSet{}, &resource.ResourceOperationError{Code: "FORBIDDEN", Message: "feature negotiation denied"}
+}
+
+func TestFeatureStartupFailureRollsBackBeforeSourcesStart(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	var loaded atomic.Int32
-	provider := &mockProvider{LoadConnectionsFunc: func(context.Context) ([]types.Connection, error) {
+	provider := &failingFeatureProvider{mockProvider: &mockProvider{LoadConnectionsFunc: func(context.Context) ([]types.Connection, error) {
 		loaded.Add(1)
 		return nil, nil
-	}, ListenForEventsFunc: func(context.Context, resource.WatchEventSink, func() error) error {
-		return &resource.ResourceOperationError{Code: "FORBIDDEN", Message: "native event access denied"}
+	}}, fail: func() error {
+		return &resource.ResourceOperationError{Code: "FORBIDDEN", Message: "feature negotiation denied"}
 	}}
-	backend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": setupGRPCProvider(t, provider)})
+	backend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": provider})
 	err := ctrl.OnPluginStart("proof", defaultMeta(), backend)
 	var denied *resource.ResourceOperationError
 	require.ErrorAs(t, err, &denied)
@@ -34,94 +50,7 @@ func TestWatchStartupFailureRollsBackBeforeSourcesStart(t *testing.T) {
 	present, inspectErr := ctrl.HasPlugin(testInvocationContext(), "proof")
 	require.NoError(t, inspectErr)
 	require.False(t, present)
-	require.Zero(t, loaded.Load(), "failed stream registration must not admit connection sources")
-}
-
-func TestWatchStartupStopCancelsPendingActualRPC(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	entered := make(chan struct{})
-	stopped := make(chan struct{})
-	provider := &mockProvider{ListenForEventsFunc: func(ctx context.Context, _ resource.WatchEventSink, _ func() error) error {
-		defer close(stopped)
-		close(entered)
-		<-ctx.Done()
-		return ctx.Err()
-	}}
-	backend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": setupGRPCProvider(t, provider)})
-	done := make(chan error, 1)
-	go func() { done <- ctrl.OnPluginStart("proof", defaultMeta(), backend) }()
-	select {
-	case <-entered:
-	case <-time.After(time.Second):
-		t.Fatal("actual event RPC did not reach pending registration")
-	}
-	require.NoError(t, ctrl.OnPluginStop("proof", defaultMeta()))
-	select {
-	case err := <-done:
-		require.Error(t, err)
-	case <-time.After(time.Second):
-		t.Fatal("stopped plugin startup did not return its registration failure")
-	}
-	select {
-	case <-stopped:
-	case <-time.After(time.Second):
-		t.Fatal("stopped plugin retained its actual server registration")
-	}
-	present, inspectErr := ctrl.HasPlugin(testInvocationContext(), "proof")
-	require.NoError(t, inspectErr)
-	require.False(t, present)
-}
-
-func TestWatchStartupTimeoutReturnsFailureAndRetiresActualRPC(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	scheduled := make(chan *controlledActionTimer, 1)
-	ctrl.watchAfterFunc = func(d time.Duration, fn func()) actionTimer {
-		require.Equal(t, 10*time.Second, d, "production readiness deadline must remain unchanged")
-		timer := &controlledActionTimer{fn: fn}
-		scheduled <- timer
-		return timer
-	}
-	entered := make(chan struct{})
-	stopped := make(chan struct{})
-	provider := &mockProvider{ListenForEventsFunc: func(ctx context.Context, _ resource.WatchEventSink, _ func() error) error {
-		defer close(stopped)
-		close(entered)
-		<-ctx.Done()
-		return ctx.Err()
-	}}
-	backend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": setupGRPCProvider(t, provider)})
-	t.Cleanup(func() { require.NoError(t, ctrl.OnPluginShutdown("proof", defaultMeta())) })
-	done := make(chan error, 1)
-	go func() { done <- ctrl.OnPluginStart("proof", defaultMeta(), backend) }()
-	var timer *controlledActionTimer
-	select {
-	case timer = <-scheduled:
-	case <-time.After(time.Second):
-		t.Fatal("startup did not schedule its readiness deadline")
-	}
-	select {
-	case <-entered:
-	case <-time.After(time.Second):
-		t.Fatal("actual event RPC did not reach pending registration")
-	}
-	// Fire the production expiry callback only after the actual gRPC handler
-	// is blocked. No real deadline wait or fake transport is needed.
-	timer.fn()
-	select {
-	case err := <-done:
-		require.ErrorIs(t, err, context.DeadlineExceeded)
-	case <-time.After(time.Second):
-		t.Fatal("expired startup did not return failure")
-	}
-	require.True(t, timer.stopped)
-	select {
-	case <-stopped:
-	case <-time.After(time.Second):
-		t.Fatal("timed-out startup retained its actual server registration")
-	}
-	present, inspectErr := ctrl.HasPlugin(testInvocationContext(), "proof")
-	require.NoError(t, inspectErr)
-	require.False(t, present)
+	require.Zero(t, loaded.Load(), "failed feature negotiation must not admit connection sources")
 }
 
 type pausedFailedStartStore struct {
@@ -150,8 +79,8 @@ func (b *replacementAttemptBackend) Dispense(name string) (interface{}, error) {
 	return provider, err
 }
 
-func TestWatchStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
-	ctrl, emitter := newTestControllerWithEmitter(t)
+func TestFeatureStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
 	store := &pausedFailedStartStore{Store: ctrl.registryStore, entered: make(chan struct{}), release: make(chan struct{})}
 	ctrl.registryStore = store
 	defer func() {
@@ -164,7 +93,7 @@ func TestWatchStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, ctrl.OnPluginShutdown("proof", defaultMeta())) })
 	ctrl.connections["proof"] = []types.Connection{{ID: "previous"}}
 	failed := errors.New("registration rejected")
-	oldProvider := &mockProvider{ListenForEventsFunc: func(context.Context, resource.WatchEventSink, func() error) error {
+	oldProvider := &failingFeatureProvider{mockProvider: &mockProvider{}, fail: func() error {
 		store.armed.Store(true)
 		return failed
 	}}
@@ -207,14 +136,8 @@ func TestWatchStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
 		PluginBackend: plugintypes.NewInProcessBackend(map[string]interface{}{"resource": replacement}),
 		requested:     make(chan struct{}),
 	}
-	var replacementSubscription HostSubscription
 	go func() {
-		err := ctrl.OnPluginStart("proof", defaultMeta(), replacementBackend)
-		if err == nil {
-			replacementSubscription = admittedSubscription(t, ctrl, "proof", "replacement", resourceType)
-			err = ctrl.SubscribeResource(testInvocationContext(), "proof", replacementSubscription)
-		}
-		replaced <- err
+		replaced <- ctrl.OnPluginStart("proof", defaultMeta(), replacementBackend)
 	}()
 	select {
 	case <-replacementBackend.requested:
@@ -240,11 +163,7 @@ func TestWatchStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
 	connection, err := ctrl.GetConnection(ctx, "proof", "replacement")
 	require.NoError(t, err)
 	require.Equal(t, "replacement", connection.ID)
-	require.NoError(t, ctrl.SubscribeResource(ctx, "proof", replacementSubscription))
-	target := replacementSubscription.Target
-	sink := &engineWatchSink{ctx: ctx, generationID: ctrl.plugins["proof"].generationID, pluginID: "proof", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
-	sink.OnAdd(resource.WatchAddPayload{Route: target.Route, Record: canonicalTestRecord(target.Provider, target.Authority, target.Type, "replacement-visible"), Guarantee: resource.BestEffortGuarantee})
-	require.Len(t, emitter.EventsWithKey("proof/replacement/"+resourceType+"/ADD"), 1)
+	target := admittedReadTarget(t, ctrl, "proof", "replacement", resourceType).Target
 	handle, err := ctrl.StreamAction(ctx, "proof", admittedActionRequest(t, ctrl, "proof", "replacement", resourceType, "verify-admission"))
 	require.NoError(t, err)
 	require.NotEmpty(t, handle)
@@ -273,8 +192,8 @@ func (p *readinessCloseProvider) Close() error {
 	return p.closeErr
 }
 
-func TestWatchStartupFailurePreservesDesiredProfilesThroughFailedUnloadAndReload(t *testing.T) {
-	const pluginID = "failed-watch"
+func TestFeatureStartupFailurePreservesDesiredProfilesThroughFailedUnloadAndReload(t *testing.T) {
+	const pluginID = "failed-feature"
 	const otherID = "unrelated"
 	const resourceKey = "proof::v1::Task"
 	ctrl, _ := newTestControllerWithEmitter(t)
@@ -329,14 +248,11 @@ func TestWatchStartupFailurePreservesDesiredProfilesThroughFailedUnloadAndReload
 		target.Reference.Address.Type = declaration.TargetType
 		target.Reference.Address.Authority = "fixture:target:" + connection
 		ctrl.registryStore.Put(registry.ResourceEntry{PluginID: owner, Reference: reference, Route: node.Route})
-		scope := invocation.NewScope(invocation.Host)
-		subscription := HostSubscription{TargetID: "seed:" + owner + ":" + connection, Target: resource.ReadTarget{Route: node.Route, Provider: reference.Address.Provider, Authority: reference.Address.Authority, Type: resourceKey, Scope: resource.QueryScope{}, Representation: "native"}}
-		require.NoError(t, ctrl.subs.Subscribe(scope.Context(context.Background()), scope.Principal(), owner, subscription))
 		ctrl.pluginsMu.RLock()
 		epoch := ctrl.plugins[owner].sourceEpoch[connection]
 		ctrl.pluginsMu.RUnlock()
 		require.NoError(t, ctrl.graph.SetBoundDeclarations(owner, node.Route, resourceKey, []resource.RelationshipDescriptor{declaration}, graph.DeclarationBindings{
-			Source:      graph.TargetBinding{Target: subscription.Target, IdentityDimensions: []resource.Dimension{}},
+			Source:      graph.TargetBinding{Target: resource.ReadTarget{Route: node.Route, Provider: reference.Address.Provider, Authority: reference.Address.Authority, Type: resourceKey, Scope: resource.QueryScope{}, Representation: "native"}, IdentityDimensions: []resource.Dimension{}},
 			Targets:     []graph.TargetBinding{{Target: resource.ReadTarget{Route: target.Route, Provider: target.Reference.Address.Provider, Authority: target.Reference.Address.Authority, Type: declaration.TargetType, Scope: resource.QueryScope{}, Representation: "native"}, IdentityDimensions: []resource.Dimension{}}},
 			SourceEpoch: epoch,
 		}))
@@ -348,13 +264,11 @@ func TestWatchStartupFailurePreservesDesiredProfilesThroughFailedUnloadAndReload
 
 	var discoveries atomic.Int32
 	closeFailure := &resource.ResourceOperationError{Code: "PROVIDER_ERROR", Message: "native close failed"}
-	failedProvider := &readinessCloseProvider{closeErr: closeFailure, mockProvider: &mockProvider{LoadConnectionsFunc: func(context.Context) ([]types.Connection, error) {
+	failedProvider := &failingCloseFeatureProvider{readinessCloseProvider: &readinessCloseProvider{closeErr: closeFailure, mockProvider: &mockProvider{LoadConnectionsFunc: func(context.Context) ([]types.Connection, error) {
 		discoveries.Add(1)
 		return nil, nil
-	}, ListenForEventsFunc: func(context.Context, resource.WatchEventSink, func() error) error {
-		return &resource.ResourceOperationError{Code: "FORBIDDEN", Message: "native registration denied"}
-	}}}
-	failedBackend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": setupGRPCProvider(t, failedProvider)})
+	}}}}
+	failedBackend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": failedProvider})
 	var denied *resource.ResourceOperationError
 	require.ErrorAs(t, ctrl.OnPluginStart(pluginID, defaultMeta(), failedBackend), &denied)
 	require.Equal(t, "FORBIDDEN", denied.Code)
@@ -366,7 +280,6 @@ func TestWatchStartupFailurePreservesDesiredProfilesThroughFailedUnloadAndReload
 	handle, err := ctrl.StreamAction(testInvocationContext(), pluginID, resource.ActionRequest{Route: resource.AccessRoute{Connection: expected[0].ID}, Reference: retiredNode.Reference, Action: "unavailable", Input: resource.Value{Kind: "null"}})
 	require.Error(t, err)
 	require.Empty(t, handle)
-	require.False(t, ctrl.subs.IsSubscribed(pluginID, expected[0].ID, resourceKey))
 	require.Empty(t, ctrl.registryStore.ScanByResourceKey(pluginID, expected[0].ID, resourceKey))
 	retiredEdges, err := ctrl.graph.GetRelated(retiredNode, graph.Both, nil)
 	require.NoError(t, err)
@@ -398,7 +311,6 @@ func TestWatchStartupFailurePreservesDesiredProfilesThroughFailedUnloadAndReload
 	otherPresent, err := ctrl.HasPlugin(testInvocationContext(), otherID)
 	require.NoError(t, err)
 	require.True(t, otherPresent)
-	require.True(t, ctrl.subs.IsSubscribed(otherID, unrelated[0].ID, resourceKey))
 	require.Len(t, ctrl.registryStore.ScanByResourceKey(otherID, unrelated[0].ID, resourceKey), 1)
 	unrelatedEdges, err := ctrl.graph.GetRelated(unrelatedNode, graph.Both, nil)
 	require.NoError(t, err)

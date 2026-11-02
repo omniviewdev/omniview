@@ -12,15 +12,34 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
-type benchmarkTestSink struct {
-	ready   chan struct{}
-	updates chan resource.WatchUpdatePayload
+type benchmarkTestEmitter struct {
+	ready      chan struct{}
+	updates    chan resource.SourceChange
+	snapshot   []resource.SourceObservation
+	coverage   resource.SourceCoverage
+	continuity string
 }
 
-func (*benchmarkTestSink) OnAdd(resource.WatchAddPayload)                {}
-func (*benchmarkTestSink) OnDelete(resource.WatchDeletePayload)          {}
-func (s *benchmarkTestSink) OnUpdate(update resource.WatchUpdatePayload) { s.updates <- update }
-func (s *benchmarkTestSink) OnStateChange(resource.WatchStateEvent)      { close(s.ready) }
+func (s *benchmarkTestEmitter) Snapshot(_ context.Context, observations []resource.SourceObservation) error {
+	s.snapshot = append(s.snapshot, observations...)
+	return nil
+}
+
+func (s *benchmarkTestEmitter) EndSnapshot(_ context.Context, coverage resource.SourceCoverage, continuity string) error {
+	s.coverage = coverage
+	s.continuity = continuity
+	close(s.ready)
+	return nil
+}
+
+func (s *benchmarkTestEmitter) Changes(_ context.Context, changes []resource.SourceChange, _ *resource.SourceCoverage) error {
+	for _, change := range changes {
+		s.updates <- change
+	}
+	return nil
+}
+
+func (*benchmarkTestEmitter) Reset(context.Context, string, string) error { return nil }
 
 func TestSparseCanonicalEventReleaseAndCancellation(t *testing.T) {
 	source, err := loadBenchmarkSource()
@@ -31,15 +50,18 @@ func TestSparseCanonicalEventReleaseAndCancellation(t *testing.T) {
 	client := &benchmarkClient{name: "container-bundled-events"}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	sink := &benchmarkTestSink{ready: make(chan struct{}), updates: make(chan resource.WatchUpdatePayload, 2)}
+	sink := &benchmarkTestEmitter{ready: make(chan struct{}), updates: make(chan resource.SourceChange, 2)}
 	done := make(chan error, 1)
 	go func() {
-		done <- events.Watch(ctx, client, benchmarkTarget(source, client.name), nativeRepresentation(), sink)
+		done <- events.Source(ctx, client, resource.SourceRequest{Target: benchmarkTarget(source, client.name), Representation: nativeRepresentation()}, sink)
 	}()
 	select {
 	case <-sink.ready:
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
+	}
+	if len(sink.snapshot) == 0 || sink.coverage.Enumeration != resource.EnumerationExhausted || sink.coverage.Consistency != resource.ConsistencyBestEffort || sink.continuity != resource.ContinuityBestEffort {
+		t.Fatal("source snapshot or coverage missing")
 	}
 	source.mu.Lock()
 	watches := source.watches
@@ -58,7 +80,7 @@ func TestSparseCanonicalEventReleaseAndCancellation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !reflect.DeepEqual(update.Record.Body, body) || update.Record.Reference.Address.ID != source.records[want.Record].ID {
+		if update.Kind != resource.SourceChangeUpsert || update.Observation == nil || !reflect.DeepEqual(update.Observation.Record.Body, body) || update.Observation.Record.Reference.Address.ID != source.records[want.Record].ID {
 			t.Fatal("canonical sparse event changed")
 		}
 	case <-ctx.Done():
@@ -99,10 +121,10 @@ func TestLifecycleDiagnosticsObserveBothFinalTeardownOrders(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			sink := &benchmarkTestSink{ready: make(chan struct{}), updates: make(chan resource.WatchUpdatePayload, 1)}
+			sink := &benchmarkTestEmitter{ready: make(chan struct{}), updates: make(chan resource.SourceChange, 1)}
 			done := make(chan error, 1)
 			go func() {
-				done <- (&benchmarkEvents{source}).Watch(ctx, client, benchmarkTarget(source, client.name), nativeRepresentation(), sink)
+				done <- (&benchmarkEvents{source}).Source(ctx, client, resource.SourceRequest{Target: benchmarkTarget(source, client.name), Representation: nativeRepresentation()}, sink)
 			}()
 			select {
 			case <-sink.ready:

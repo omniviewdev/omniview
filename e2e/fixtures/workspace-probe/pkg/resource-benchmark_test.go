@@ -241,7 +241,12 @@ func TestAllProfilesAdvertiseOnlyRealOperations(t *testing.T) {
 		}
 		updates := false
 		for _, capability := range catalog.Types[0].Capabilities {
-			updates = updates || capability.Operation == resource.OperationUpdate
+			if capability.Operation == resource.OperationSourceUpdates {
+				updates = true
+				if capability.Guarantee != resource.ContinuityBestEffort {
+					t.Fatalf("%s: unexpected source continuity %q", profile, capability.Guarantee)
+				}
+			}
 		}
 		if updates != (profile == "container-bundled-events") {
 			t.Fatalf("fabricated or missing update support: %s", profile)
