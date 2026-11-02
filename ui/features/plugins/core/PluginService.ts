@@ -1404,6 +1404,7 @@ export class PluginService {
               this.deps.log.warn('Rejected resource editor contribution', { pluginId: pid, contributionId: c.contributionId });
               continue;
             }
+
             throw err;
           }
         }
