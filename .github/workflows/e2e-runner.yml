@@ -37,7 +37,7 @@ jobs:
       GOFLAGS: ""
       GO_VERSION: "1.26"
       NODE_OPTIONS: "--max-old-space-size=4096"
-      REVIEWED_SDK_REVISION: a5db74e135550ff842365bb58df80d2cfb40900e # Reviewed SDK v0.13.0
+      REVIEWED_SDK_REVISION: 76b4cf46ce4172070f79d5f7cbd5c4a24e21a063 # Reviewed SDK v0.13.1
       CACHE_ONLY: ${{ inputs.cache-only && 'true' || 'false' }}
       OMNIVIEW_E2E_PREINSTALLED_LINUX: "true"
       SELECTION_BASE: ${{ inputs.base }}
