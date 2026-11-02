@@ -313,6 +313,8 @@ jobs:
         env:
           TZ: America/New_York
 
-      - name: Runtime resource batching regressions
+      - name: Runtime contract regressions
         working-directory: packages/omniviewdev-runtime
-        run: node ../../node_modules/vitest/vitest.mjs run src/hooks/resource/useEventBatcher.test.ts
+        run: node ../../node_modules/vitest/vitest.mjs run --configLoader runner
+        env:
+          C02_ERROR_CORPUS: ${{ runner.temp }}/${{ needs.go-checks.outputs.c02_corpus_name }}.json
