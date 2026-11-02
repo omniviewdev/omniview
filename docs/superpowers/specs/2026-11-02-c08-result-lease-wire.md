@@ -858,10 +858,11 @@ membership, ordering, projection and reset boundaries.
 The host computes the opaque sharing identity after authorization from
 effective compiled query/profile/environment, target and scope, access
 route, representation/schema, typed binding values, order, projection,
-delivery/coverage guarantees and trusted access epoch. It never logs
-sensitive bindings or accepts a client hash. Different access epochs,
-credentials or incompatible scope/bindings cannot share execution or
-data; equivalent authorized requests may share P13 work. Each lease owns
+delivery/coverage guarantees, host-derived principal owner and trusted
+access epoch. It never logs sensitive bindings or accepts a client hash.
+Different principal owners, access epochs, credentials or incompatible
+scope/bindings cannot share execution or data; equivalent authorized
+requests may share P13 work. Each lease owns
 independent result generation, queue and attachment. P12 owns the shared
 source-interest registry for query, graph, search and utility interests.
 Each execution holds its own admitted interest, released only at final
