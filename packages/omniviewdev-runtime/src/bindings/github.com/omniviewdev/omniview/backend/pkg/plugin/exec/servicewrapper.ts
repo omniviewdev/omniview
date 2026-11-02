@@ -15,6 +15,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as nativeapps$0 from "../../../../internal/nativeapps/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as exec$0 from "../../../../../plugin-sdk/pkg/v1/exec/models.js";
 
 export function AttachSession(sessionID: string): $CancellablePromise<[exec$0.Session | null, string]> {
@@ -59,6 +62,15 @@ export function GetHandlers(): $CancellablePromise<{ [_ in string]?: { [_ in str
     });
 }
 
+/**
+ * GetNativeTerminalApplications discovers installed applications with safe native launch adapters.
+ */
+export function GetNativeTerminalApplications(): $CancellablePromise<nativeapps$0.Application[]> {
+    return $Call.ByID(2940999236).then(($result: any) => {
+        return $$createType7($result);
+    });
+}
+
 export function GetNativeTerminalSupport(): $CancellablePromise<boolean> {
     return $Call.ByID(3434119522);
 }
@@ -81,13 +93,13 @@ export function HasPlugin(pluginID: string): $CancellablePromise<boolean> {
 
 export function ListPlugins(): $CancellablePromise<string[]> {
     return $Call.ByID(3006426324).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType8($result);
     });
 }
 
 export function ListSessions(): $CancellablePromise<(exec$0.Session | null)[]> {
     return $Call.ByID(265791345).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType9($result);
     });
 }
 
@@ -114,5 +126,7 @@ const $$createType2 = exec$0.Handler.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = $Create.Map($Create.Any, $$createType2);
 const $$createType5 = $Create.Map($Create.Any, $$createType4);
-const $$createType6 = $Create.Array($Create.Any);
-const $$createType7 = $Create.Array($$createType1);
+const $$createType6 = nativeapps$0.Application.createFrom;
+const $$createType7 = $Create.Array($$createType6);
+const $$createType8 = $Create.Array($Create.Any);
+const $$createType9 = $Create.Array($$createType1);
