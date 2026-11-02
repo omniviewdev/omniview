@@ -1,9 +1,8 @@
 import { Call, type CancellablePromise } from '@wailsio/runtime';
-import type { AccessRoute, ActionRequest, Catalog as CatalogResult, CatalogRequest, GetRequest, MutationRequest, ReadTarget, Record, SchemaDocument, SchemaDocumentReference, Value } from './domain';
+import type { AccessRoute, ActionRequest, Catalog as CatalogResult, CatalogRequest, GetRequest, MutationRequest, Record, SchemaDocument, SchemaDocumentReference, Value } from './domain';
 import type { ActionDescriptor, EditorSchema, FeatureSet, RelationshipDescriptor, ResolvedRelationship, ResourceDefinition, ResourceEvent, ResourceGroup, ResourceHealth } from './ancillary';
 import type { AppError } from '../../errors/types';
-import type { WatchConnectionSummary } from '../../types/watch';
-import type { ConnectionProfile, ConnectionProfileCredentials, ConnectionProfileResult, HostConnectionState, HostEnumerateRequest, HostGetRequest, HostNativeQueryRequest, HostRecord, HostSourcePage, HostSubscriptionRequest, ResolvedResourceReference, ResolvedResourceTarget, ResolveReferenceRequest, ResolveTargetRequest } from './host';
+import type { ConnectionProfile, ConnectionProfileCredentials, ConnectionProfileResult, HostConnectionState, HostEnumerateRequest, HostGetRequest, HostNativeQueryRequest, HostRecord, HostSourcePage, HostSourceStates, HostSourceViewOpened, HostSourceViewRequest, ResolvedResourceReference, ResolvedResourceTarget, ResolveReferenceRequest, ResolveTargetRequest } from './host';
 import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 import { encodeRequestJSON } from './requestJSON';
 import type { ConnectionMetadataEnvelope } from '../../connection/metadata';
@@ -45,15 +44,12 @@ export interface ActionSnapshot { sequence: number; event: ActionEventDTO; termi
 export const AttachStreamAction = (handleID: string) => invoke<ActionSnapshot>('AttachStreamAction', handleID);
 export const CancelStreamAction = (handleID: string) => invoke<void>('CancelStreamAction', handleID);
 
-export const StartConnectionWatch = (pluginID: string, targets: readonly ReadTarget[]) => invoke<void>('StartConnectionWatch', pluginID, targets);
-export const StopConnectionWatch = (pluginID: string, route: AccessRoute) => invoke<void>('StopConnectionWatch', pluginID, route);
-export const GetWatchState = (pluginID: string, route: AccessRoute) => invoke<WatchConnectionSummary | null>('GetWatchState', pluginID, route);
-export const EnsureResourceWatch = (pluginID: string, target: ReadTarget) => invoke<void>('EnsureResourceWatch', pluginID, target);
-export const StopResourceWatch = (pluginID: string, route: AccessRoute, type: string) => invoke<void>('StopResourceWatch', pluginID, route, type);
-export const RestartResourceWatch = (pluginID: string, target: ReadTarget) => invoke<void>('RestartResourceWatch', pluginID, target);
-export const IsResourceWatchRunning = (pluginID: string, route: AccessRoute, type: string) => invoke<boolean>('IsResourceWatchRunning', pluginID, route, type);
-export const SubscribeResource = (pluginID: string, request: HostSubscriptionRequest) => invoke<void>('SubscribeResource', pluginID, request);
-export const UnsubscribeResource = (pluginID: string, request: HostSubscriptionRequest) => invoke<void>('UnsubscribeResource', pluginID, request);
+export const OpenSourceView = (pluginID: string, request: HostSourceViewRequest) => invoke<HostSourceViewOpened>('OpenSourceView', pluginID, request);
+export const SyncSourceView = (pluginID: string, viewID: string) => invoke<void>('SyncSourceView', pluginID, viewID);
+export const RefreshSourceView = (pluginID: string, viewID: string) => invoke<void>('RefreshSourceView', pluginID, viewID);
+export const CloseSourceView = (pluginID: string, viewID: string) => invoke<void>('CloseSourceView', pluginID, viewID);
+export const GetSourceStates = (pluginID: string, route: AccessRoute) => invoke<HostSourceStates>('GetSourceStates', pluginID, route);
+export const RetryConnectionSources = (pluginID: string, route: AccessRoute) => invoke<void>('RetryConnectionSources', pluginID, route);
 export const ScopeValues = (pluginID: string, route: AccessRoute, dimension: string) => invoke<string[]>('ScopeValues', pluginID, route, dimension);
 
 // Connection lifecycle remains independent of the resource domain.

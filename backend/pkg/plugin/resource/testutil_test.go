@@ -154,15 +154,6 @@ type mockProvider struct {
 	UpdateConnectionFunc       func(ctx context.Context, connection types.Connection) (types.Connection, error)
 	DeleteConnectionFunc       func(ctx context.Context, id string) error
 	WatchConnectionsFunc       func(ctx context.Context, stream chan<- []types.Connection) error
-	StartConnectionWatchFunc   func(ctx context.Context, targets []resource.ReadTarget) error
-	StopConnectionWatchFunc    func(ctx context.Context, route resource.AccessRoute) error
-	HasWatchFunc               func(ctx context.Context, route resource.AccessRoute) bool
-	GetWatchStateFunc          func(ctx context.Context, route resource.AccessRoute) (*resource.WatchConnectionSummary, error)
-	ListenForEventsFunc        func(ctx context.Context, sink resource.WatchEventSink, onReady func() error) error
-	EnsureResourceWatchFunc    func(ctx context.Context, target resource.ReadTarget) error
-	StopResourceWatchFunc      func(ctx context.Context, route resource.AccessRoute, resourceType string) error
-	RestartResourceWatchFunc   func(ctx context.Context, target resource.ReadTarget) error
-	IsResourceWatchRunningFunc func(ctx context.Context, route resource.AccessRoute, resourceType string) (bool, error)
 	GetResourceGroupsFunc      func(ctx context.Context, route resource.AccessRoute) ([]resource.ResourceGroup, error)
 	GetResourceDefinitionFunc  func(ctx context.Context, route resource.AccessRoute, resourceType string) (resource.ResourceDefinition, error)
 	ScopeValuesFunc            func(ctx context.Context, route resource.AccessRoute, dimension string) ([]string, error)
@@ -255,12 +246,6 @@ func admittedActionRequest(t *testing.T, ctrl *controller, pluginID, connectionI
 	t.Helper()
 	request := admittedGetRequest(t, ctrl, pluginID, connectionID, resourceType, "private-object").Request
 	return resource.ActionRequest{Route: request.Route, Reference: request.Reference, Action: action, Input: resource.Value{Kind: "null"}}
-}
-
-func admittedSubscription(t *testing.T, ctrl *controller, pluginID, connectionID, resourceType string) HostSubscription {
-	t.Helper()
-	resolved := admittedReadTarget(t, ctrl, pluginID, connectionID, resourceType)
-	return HostSubscription{TargetID: resolved.TargetID, Target: resolved.Target}
 }
 
 func (m *mockProvider) Catalog(ctx context.Context, request resource.CatalogRequest) (resource.Catalog, error) {
@@ -480,77 +465,6 @@ func (m *mockProvider) WatchConnections(ctx context.Context, stream chan<- []typ
 	return nil
 }
 
-func (m *mockProvider) StartConnectionWatch(ctx context.Context, targets []resource.ReadTarget) error {
-	if m.StartConnectionWatchFunc != nil {
-		return m.StartConnectionWatchFunc(ctx, targets)
-	}
-	return nil
-}
-
-func (m *mockProvider) StopConnectionWatch(ctx context.Context, route resource.AccessRoute) error {
-	if m.StopConnectionWatchFunc != nil {
-		return m.StopConnectionWatchFunc(ctx, route)
-	}
-	return nil
-}
-
-func (m *mockProvider) HasWatch(ctx context.Context, route resource.AccessRoute) bool {
-	if m.HasWatchFunc != nil {
-		return m.HasWatchFunc(ctx, route)
-	}
-	return false
-}
-
-func (m *mockProvider) GetWatchState(ctx context.Context, route resource.AccessRoute) (*resource.WatchConnectionSummary, error) {
-	if m.GetWatchStateFunc != nil {
-		return m.GetWatchStateFunc(ctx, route)
-	}
-	var zero *resource.WatchConnectionSummary
-	return zero, nil
-}
-
-func (m *mockProvider) ListenForEvents(ctx context.Context, sink resource.WatchEventSink, onReady func() error) error {
-	if m.ListenForEventsFunc != nil {
-		return m.ListenForEventsFunc(ctx, sink, onReady)
-	}
-	if onReady != nil {
-		if err := onReady(); err != nil {
-			return err
-		}
-	}
-	<-ctx.Done()
-	return nil
-}
-
-func (m *mockProvider) EnsureResourceWatch(ctx context.Context, target resource.ReadTarget) error {
-	if m.EnsureResourceWatchFunc != nil {
-		return m.EnsureResourceWatchFunc(ctx, target)
-	}
-	return nil
-}
-
-func (m *mockProvider) StopResourceWatch(ctx context.Context, route resource.AccessRoute, resourceType string) error {
-	if m.StopResourceWatchFunc != nil {
-		return m.StopResourceWatchFunc(ctx, route, resourceType)
-	}
-	return nil
-}
-
-func (m *mockProvider) RestartResourceWatch(ctx context.Context, target resource.ReadTarget) error {
-	if m.RestartResourceWatchFunc != nil {
-		return m.RestartResourceWatchFunc(ctx, target)
-	}
-	return nil
-}
-
-func (m *mockProvider) IsResourceWatchRunning(ctx context.Context, route resource.AccessRoute, resourceType string) (bool, error) {
-	if m.IsResourceWatchRunningFunc != nil {
-		return m.IsResourceWatchRunningFunc(ctx, route, resourceType)
-	}
-	var zero bool
-	return zero, nil
-}
-
 func (m *mockProvider) GetResourceGroups(ctx context.Context, route resource.AccessRoute) ([]resource.ResourceGroup, error) {
 	if m.GetResourceGroupsFunc != nil {
 		return m.GetResourceGroupsFunc(ctx, route)
@@ -754,41 +668,39 @@ func newTestControllerWithEmitter(t *testing.T) (*controller, *recordingEmitter)
 		plugins:             make(map[string]*pluginState),
 		connections:         make(map[string][]types.Connection),
 		autoConnectAttempts: make(map[string]string),
-		subs:                newSubscriptionManager(),
 		actions:             newActionRegistry(),
 		emitter:             emitter,
 		registryStore:       store,
 		dispatcher:          disp,
 		graph:               g,
 		pluginStoreFn:       svc.PluginStore,
-		watchAfterFunc:      func(d time.Duration, fn func()) actionTimer { return time.AfterFunc(d, fn) },
 	}
+	ctrl.sources = newSourceCoordinator(ctrl)
 	ctrl.actions.emit = func(id string, snapshot ActionSnapshot) { emitter.Emit("action/stream/"+id, snapshot) }
 	t.Cleanup(ctrl.actions.stopAll)
 	t.Cleanup(func() {
 		ctrl.pluginsMu.Lock()
 		defer ctrl.pluginsMu.Unlock()
 		for _, state := range ctrl.plugins {
-			if state.watchCancel != nil {
-				state.watchCancel()
+			if state.cancel != nil {
+				state.cancel()
 			}
 		}
 	})
 	return ctrl, emitter
 }
 
-// registerMockPlugin registers a mockProvider under a pluginID with a default
-// watch cancel context.
+// registerMockPlugin registers a mockProvider under a pluginID with a cancellable context.
 func registerMockPlugin(ctrl *controller, pluginID string, provider resource.Provider) {
 	ctx, cancel := context.WithCancel(context.Background())
 	ctrl.pluginsMu.Lock()
 	if existing, ok := ctrl.plugins[pluginID]; ok {
-		existing.watchCancel()
+		existing.cancel()
 	}
 	ctrl.plugins[pluginID] = &pluginState{
 		provider:     provider,
 		version:      1,
-		watchCancel:  cancel,
+		cancel:       cancel,
 		ctx:          ctx,
 		generationID: uuid.NewString(),
 	}

@@ -216,14 +216,6 @@ func TestExactReadTargetProjectsOnlyDeclaredQueryDimensions(t *testing.T) {
 	if len(target.Scope) != 2 || target.Scope[0].Dimension != "repository" || target.Scope[0].Match != resource.ScopeAny || target.Scope[1].Dimension != "domain" || target.Scope[1].Values == nil || !reflect.DeepEqual(*target.Scope[1].Values, []string{"helm-client"}) {
 		t.Fatalf("identity-only dimensions leaked or query-only scope was guessed: %+v", target)
 	}
-	if !targetContainsReference(target, request.Route, request.Reference) {
-		t.Fatal("query-only any rejected exact identity")
-	}
-	repository := []string{"repository-X"}
-	target.Scope[0] = resource.ScopeConstraint{Dimension: "repository", Match: resource.ScopeOneOf, Values: &repository}
-	if targetContainsReference(target, request.Route, request.Reference) {
-		t.Fatal("address matching claimed unproven query-only membership")
-	}
 }
 
 func TestHostGetReauthorizationKeepsCapturedRouteEpoch(t *testing.T) {

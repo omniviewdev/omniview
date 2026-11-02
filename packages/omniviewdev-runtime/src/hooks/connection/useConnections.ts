@@ -1,6 +1,5 @@
-import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { ListConnections, StartConnectionWatch, StopConnectionWatch } from '../../resource/v2/client';
-import type { AccessRoute, ReadTarget } from '../../resource/v2/domain';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { ListConnections } from '../../resource/v2/client';
 import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
@@ -28,16 +27,6 @@ export const useConnections = ({ plugin: explicitPlugin }: UseConnectionsOptions
 
   const queryKey = connectionListQueryKey(plugin);
 
-  // === Mutations === //
-  const { mutateAsync: startWatch } = useMutation({
-    mutationFn: (targets: readonly ReadTarget[]) => StartConnectionWatch(plugin, targets),
-    onError: createErrorHandler(showSnackbar, 'Failed to start connection watch'),
-  });
-
-  const { mutateAsync: stopWatch } = useMutation({
-    mutationFn: (route: AccessRoute) => StopConnectionWatch(plugin, route),
-    onError: createErrorHandler(showSnackbar, 'Failed to stop connection watch'),
-  });
 
   /**
    * Handle sync of connections from the backend
@@ -78,7 +67,5 @@ export const useConnections = ({ plugin: explicitPlugin }: UseConnectionsOptions
 
   return {
     connections,
-    startWatch,
-    stopWatch,
   };
 };

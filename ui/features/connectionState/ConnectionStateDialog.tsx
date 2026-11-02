@@ -2,8 +2,8 @@ import React from 'react';
 
 import { Button, Dialog, IconButton, Progress, Spinner, Text } from '@omniviewdev/base-ui';
 
-import { LuCircleCheck, LuCircleAlert, LuCircleSlash, LuShieldAlert, LuX } from 'react-icons/lu';
-import { WatchState, type Count } from '@omniviewdev/runtime';
+import { LuCircleCheck, LuCircleAlert, LuCircleSlash, LuX } from 'react-icons/lu';
+import type { Count, SourceSessionState } from '@omniviewdev/runtime';
 
 import type { ResourceStateItem } from './types';
 import styles from './ConnectionStateDialog.module.css';
@@ -16,8 +16,8 @@ export type ConnectionStateDialogProps = {
   open: boolean;
   onClose: () => void;
   connectionName: string;
-  /** Per-resource watch states from useWatchState */
-  resources: Record<string, WatchState>;
+  /** Per-resource source states */
+  resources: Record<string, SourceSessionState>;
   /** Per-resource cached object counts */
   resourceCounts: Record<string, Count>;
   /** Called when user clicks Retry on an errored resource */
@@ -29,62 +29,49 @@ export type ConnectionStateDialogProps = {
 // ---------------------------------------------------------------------------
 
 /** Whether a state is terminal (done — won't change further) */
-const isTerminal = (s: WatchState) =>
-  s === WatchState.WatchStateSynced ||
-  s === WatchState.WatchStateError ||
-  s === WatchState.WatchStateStopped ||
-  s === WatchState.WatchStateFailed ||
-  s === WatchState.WatchStateForbidden ||
-  s === WatchState.WatchStateSkipped;
+const isTerminal = (s: SourceSessionState) =>
+  s === 'following' || s === 'finished' || s === 'failed' || s === 'closed';
 
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function StateIcon({ state }: { state: WatchState }) {
+function StateIcon({ state }: { state: SourceSessionState }) {
   switch (state) {
-    case WatchState.WatchStateIdle:
-      return <LuCircleSlash size={14} className={styles.IconMuted} />;
-    case WatchState.WatchStateSyncing:
+    case 'opening':
+    case 'snapshotting':
+    case 'resetRequired':
       return <Spinner size="xs" color="brand" />;
-    case WatchState.WatchStateSynced:
+    case 'following':
+    case 'finished':
       return <LuCircleCheck size={14} className={styles.IconSuccess} />;
-    case WatchState.WatchStateError:
+    case 'failed':
       return <LuCircleAlert size={14} className={styles.IconDanger} />;
-    case WatchState.WatchStateFailed:
-      return <LuCircleAlert size={14} className={styles.IconDanger} />;
-    case WatchState.WatchStateForbidden:
-      return <LuShieldAlert size={14} className={styles.IconWarning} />;
-    case WatchState.WatchStateStopped:
-      return <LuCircleSlash size={14} className={styles.IconMuted} />;
-    case WatchState.WatchStateSkipped:
+    case 'closed':
       return <LuCircleSlash size={14} className={styles.IconMuted} />;
   }
 
   return <LuCircleSlash size={14} className={styles.IconMuted} />;
 }
 
-/** Per-group progress summary — excludes SKIPPED from totals */
+/** Per-group progress summary */
 function GroupProgress({ items }: { items: ResourceStateItem[] }) {
-  const watched = items.filter(i => i.state !== WatchState.WatchStateSkipped);
-  const skipped = items.length - watched.length;
-  const total = watched.length;
-  const done = watched.filter(i => isTerminal(i.state)).length;
+  const total = items.length;
+  const done = items.filter(i => isTerminal(i.state)).length;
   const allDone = total > 0 && done === total;
-  const allSkipped = total === 0 && skipped > 0;
-  const hasError = watched.some(i => i.state === WatchState.WatchStateError);
-  const percent = total > 0 ? Math.round((done / total) * 100) : allSkipped ? 100 : 0;
+  const hasError = items.some(i => i.state === 'failed');
+  const percent = total > 0 ? Math.round((done / total) * 100) : 0;
 
   return (
     <div className={styles.GroupProgress}>
       <Progress
         value={percent}
         size="sm"
-        color={hasError ? 'danger' : (allDone || allSkipped) ? 'success' : 'brand'}
+        color={hasError ? 'danger' : allDone ? 'success' : 'brand'}
         className={styles.GroupProgressBar}
       />
       <Text size="xs" tone="subtle" mono className={styles.GroupProgressLabel}>
-        {allSkipped ? `${skipped} skipped` : `${done}/${total}`}
+        {`${done}/${total}`}
       </Text>
     </div>
   );
@@ -102,24 +89,9 @@ export default function ConnectionStateDialog({
   resourceCounts,
   onRetryResource,
 }: ConnectionStateDialogProps) {
-  // Count resources by category: watched (attempted) vs skipped/inaccessible
-  const { watchedTotal, watchedDone, skippedCount } = React.useMemo(() => {
-    let watched = 0;
-    let done = 0;
-    let skipped = 0;
-    for (const state of Object.values(resources)) {
-      if (state === WatchState.WatchStateSkipped) {
-        skipped++;
-        continue;
-      }
-
-      watched++;
-      if (isTerminal(state)) {
-        done++;
-      }
-    }
-
-    return { watchedTotal: watched, watchedDone: done, skippedCount: skipped };
+  const { trackedTotal, trackedDone } = React.useMemo(() => {
+    const states = Object.values(resources);
+    return { trackedTotal: states.length, trackedDone: states.filter(isTerminal).length };
   }, [resources]);
 
   const grouped = React.useMemo<Array<[string, ResourceStateItem[]]>>(() => [
@@ -131,18 +103,17 @@ export default function ConnectionStateDialog({
     }))],
   ], [resources, resourceCounts]);
 
-  // Progress based on watched resources only (SKIPPED excluded from denominator)
-  const watchedAllDone = watchedTotal > 0 && watchedDone === watchedTotal;
-  const percent = watchedTotal > 0 ? Math.round((watchedDone / watchedTotal) * 100) : 0;
+  const trackedAllDone = trackedTotal > 0 && trackedDone === trackedTotal;
+  const percent = trackedTotal > 0 ? Math.round((trackedDone / trackedTotal) * 100) : 0;
 
   return (
     <Dialog open={open} onClose={onClose} size="md" className={styles.Surface}>
       {/* Header */}
       <div className={styles.Header}>
         <Dialog.Title className={styles.HeaderTitle}>
-          {!watchedAllDone && <Spinner size="sm" color="brand" />}
-          {watchedAllDone && <LuCircleCheck size={16} className={styles.IconSuccess} />}
-          {watchedAllDone ? `Synced "${connectionName}"` : `Syncing "${connectionName}"`}
+          {!trackedAllDone && <Spinner size="sm" color="brand" />}
+          {trackedAllDone && <LuCircleCheck size={16} className={styles.IconSuccess} />}
+          {trackedAllDone ? `Synced "${connectionName}"` : `Syncing "${connectionName}"`}
         </Dialog.Title>
         <IconButton size="sm" variant="ghost" color="neutral" aria-label="Close" onClick={onClose}>
           <LuX size={16} />
@@ -155,18 +126,13 @@ export default function ConnectionStateDialog({
           <Progress
             value={percent}
             size="lg"
-            color={watchedAllDone ? 'success' : 'brand'}
+            color={trackedAllDone ? 'success' : 'brand'}
             className={styles.ProgressBar}
           />
           <Text size="xs" tone="muted" className={styles.ProgressLabel}>
-            {percent}%&ensp;{watchedDone}/{watchedTotal}
+            {percent}%&ensp;{trackedDone}/{trackedTotal}
           </Text>
         </div>
-        {skippedCount > 0 && (
-          <Text size="xs" tone="subtle" className={styles.SkippedNote}>
-            {skippedCount} resource{skippedCount !== 1 ? 's' : ''} skipped (unavailable on this cluster)
-          </Text>
-        )}
       </div>
 
       {/* Resource list */}
@@ -184,31 +150,21 @@ export default function ConnectionStateDialog({
               <div
                 key={key}
                 className={styles.Row}
-                data-dimmed={(state === WatchState.WatchStateStopped || state === WatchState.WatchStateSkipped || state === WatchState.WatchStateIdle) ? 'true' : undefined}
+                data-dimmed={state === 'closed' ? 'true' : undefined}
               >
                 <StateIcon state={state} />
                 <Text size="xs" className={styles.Kind}>{kind}</Text>
-                {state === WatchState.WatchStateForbidden && (
-                  <Text size="xs" tone="warning" className={styles.Note}>
-                    No access
-                  </Text>
-                )}
-                {state === WatchState.WatchStateSkipped && (
+                {state === 'closed' && (
                   <Text size="xs" tone="subtle" className={styles.Note}>
-                    Skipped
+                    Closed
                   </Text>
                 )}
-                {state === WatchState.WatchStateStopped && (
-                  <Text size="xs" tone="subtle" className={styles.Note}>
-                    Stopped
-                  </Text>
-                )}
-                {state === WatchState.WatchStateSynced && count && (
+                {(state === 'following' || state === 'finished') && count && (
                   <Text size="xs" tone="subtle" mono>
                     {count.value === undefined ? count.kind : `${count.value} (${count.kind})`}
                   </Text>
                 )}
-                {(state === WatchState.WatchStateError || state === WatchState.WatchStateFailed) && (
+                {state === 'failed' && (
                   <Button
                     variant="soft"
                     size="xs"

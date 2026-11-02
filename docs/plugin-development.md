@@ -796,7 +796,7 @@ The reference set is `kubernetes/ui/src/icons/resourceIcons.tsx`. Other plugins 
 
 #### Live data, cache ownership, and failures
 
-The host acquires native resource subscriptions while resource scopes are open, deduplicates them, and releases them on scope changes, close, and unmount. Late successful acquisitions are also released. Failed acquisition leaves existing results visible with a **Retry live updates** banner; retry does not replace healthy watchers.
+The host shares source sessions across resource views and releases them when their interests close. A view receives a snapshot and status, followed by updates when supported. Failed sources retain existing results and expose a retry.
 
 Use the public cache keys when storing native snapshots:
 
@@ -806,7 +806,7 @@ Use the public cache keys when storing native snapshots:
 - `resourceQueryKeys.resource(pluginId,{targetId,request:GetRequest})` stores `HostRecord`, never a display projection or legacy GetResult.
 - Pagination, representation, query scope, and native query inputs remain explicit request fields; never replace an unfiltered acquisition page with search-filtered rows.
 
-Subscribe and unsubscribe using `(pluginId,{targetId,target:ReadTarget})`. Advisory ADD/UPDATE payloads carry `record:HostRecord`; DELETE carries host keys and canonical reference. Search filters matching request-context events, invalidates the plugin's resourcev2 cache, and coalesces refreshes without rediscovering connections or resetting selection. Events received during an in-flight fetch re-invalidate its settled snapshot before the trailing refresh. BEST_EFFORT updates do not establish snapshot/update continuity.
+Use `openSourceView(pluginId, {targetId, target, updates})` for a source view. The runtime attaches to the view topic before synchronization, stages snapshot chunks until `snapshotEnd`, and applies ordered changes by host record key. Close the view when it is no longer needed. A reset starts a new view generation; continuity and coverage describe the source's guarantees.
 
 Use the cache query's signal for shared native work and the request signal to fence obsolete search publication. Cancelling a search must not cancel another table's shared fetch. Resource/action execution still performs its own fresh identity and authorization checks instead of trusting discovery cache freshness.
 

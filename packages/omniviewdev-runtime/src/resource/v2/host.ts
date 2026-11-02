@@ -1,5 +1,5 @@
 import type { AccessRoute, Count, EnumerateRequest, GetRequest, NativeQueryRequest, QueryScope, ReadTarget, Record as ResourceRecord, ResourceReference, ScopeEntry, SourcePage } from './domain';
-import type { ResourceMetadata, WatchState, WatchStateEvent } from '../../types/watch';
+import type { SourceContinuity, SourceCoverage, SourceMode, SourceSessionState } from '../../types/source';
 import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 import type { AppError } from '../../errors/types';
 
@@ -14,16 +14,40 @@ export interface HostRecord {
 export interface HostSourcePage { records: readonly HostRecord[]; sourcePage: Omit<SourcePage, 'records'> }
 /** Client cache overlay; sourcePage remains immutable native acquisition metadata. */
 export interface ResourceView extends HostSourcePage {
-  view?: { guarantee: 'bestEffort'; count: Count; sourceRevision?: string; membershipStale: boolean };
+  view?: { continuity: SourceContinuity; coverage?: SourceCoverage; count: Count; viewGeneration: string };
 }
-export interface HostWatchStateEvent extends WatchStateEvent { pluginID: string }
+export interface HostSourceViewRequest { targetId: string; target: ReadTarget; updates: 'none' | 'ifSupported' }
+export interface HostSourceViewOpened { viewId: string; topic: string; mode: SourceMode }
+export interface HostSourceStatus {
+  state: SourceSessionState;
+  mode: SourceMode;
+  continuity?: SourceContinuity;
+  coverage?: SourceCoverage;
+  count: Count;
+  error?: { code: string; title: string; message: string; suggestions?: string[] };
+}
+export interface HostRecordRemoval { key: string; addressKey: string }
+export interface HostSourceViewReset { reason: 'overflow' | 'sourceReset' | 'resync' | 'closed'; message: string }
+export interface HostSourceViewEvent {
+  viewId: string;
+  viewGeneration: string;
+  sequence: string;
+  kind: 'snapshot' | 'snapshotEnd' | 'changes' | 'status' | 'reset';
+  records?: HostRecord[];
+  upserts?: HostRecord[];
+  removes?: HostRecordRemoval[];
+  status?: HostSourceStatus;
+  reset?: HostSourceViewReset;
+}
+export interface HostSourceStates { route: AccessRoute; types: Record<string, HostSourceStatus> }
+export interface HostSourceStateEvent { pluginID: string; route: AccessRoute; type: string; status: HostSourceStatus }
 /** Native client readiness, not network health. UNKNOWN is not disconnected. */
 export type NativeConnectionReadiness = 'UNKNOWN' | 'DISCONNECTED' | 'PENDING' | 'CONNECTED' | 'FAILED';
 export interface HostConnectionState {
   connection: Connection;
   readiness: NativeConnectionReadiness;
   readinessError?: AppError;
-  resources: { [type: string]: WatchState };
+  resources: { [type: string]: SourceSessionState };
   resourceCounts: { [type: string]: Count };
   totalResources: number;
   syncedCount: number;
@@ -48,10 +72,6 @@ export interface ConnectionProfileCredentials {
 export interface HostGetRequest { targetId: string; request: GetRequest }
 export interface HostEnumerateRequest { targetId: string; request: EnumerateRequest }
 export interface HostNativeQueryRequest { targetId: string; request: NativeQueryRequest }
-export interface HostSubscriptionRequest { targetId: string; target: ReadTarget }
-export interface HostWatchAddPayload { route: AccessRoute; record: HostRecord; metadata: ResourceMetadata; guarantee: 'bestEffort' }
-export interface HostWatchUpdatePayload { route: AccessRoute; record: HostRecord; metadata: ResourceMetadata; guarantee: 'bestEffort' }
-export interface HostWatchDeletePayload { route: AccessRoute; reference: ResourceReference; key: string; addressKey: string; targetId: string; lastKnown?: HostRecord; guarantee: 'bestEffort' }
 export interface AuthorityDisclosure { continuity: string; limitations: readonly string[] }
 export interface ResolveTargetRequest {
   route: AccessRoute;

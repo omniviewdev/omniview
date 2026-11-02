@@ -133,18 +133,6 @@ func TestAdditionalMethods_PluginNotFound(t *testing.T) {
 		fn   func() error
 	}{
 		{
-			name: "StartConnectionWatch",
-			fn: func() error {
-				return ctrl.StartConnectionWatch(testInvocationContext(), "nonexistent", []resource.ReadTarget{{Route: resource.AccessRoute{Connection: "conn"}, Provider: "p1", Authority: "authority", Type: "native::Pod", Representation: "native"}})
-			},
-		},
-		{
-			name: "StopConnectionWatch",
-			fn: func() error {
-				return ctrl.StopConnectionWatch(testInvocationContext(), "nonexistent", resource.AccessRoute{Connection: "conn"})
-			},
-		},
-		{
 			name: "GetEditorSchemas",
 			fn: func() error {
 				_, err := ctrl.GetEditorSchemas(testInvocationContext(), "nonexistent", resource.AccessRoute{Connection: "conn"})
@@ -163,19 +151,6 @@ func TestAdditionalMethods_PluginNotFound(t *testing.T) {
 			fn: func() error {
 				_, err := ctrl.Action(testInvocationContext(), "nonexistent", resource.ActionRequest{Route: grpcGetRequest().Route, Reference: grpcGetRequest().Reference, Action: "inspect", Input: resource.Value{Kind: "null"}})
 				return err
-			},
-		},
-		{
-			name: "GetWatchState",
-			fn: func() error {
-				_, err := ctrl.GetWatchState(testInvocationContext(), "nonexistent", resource.AccessRoute{Connection: "conn"})
-				return err
-			},
-		},
-		{
-			name: "EnsureResourceWatch",
-			fn: func() error {
-				return ctrl.EnsureResourceWatch(testInvocationContext(), "nonexistent", resource.ReadTarget{Route: resource.AccessRoute{Connection: "conn"}, Provider: "p1", Authority: "authority", Type: "native::Pod", Representation: "native"})
 			},
 		},
 		{

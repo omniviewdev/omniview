@@ -17,7 +17,7 @@ export * from './resource/v2/host';
 export * from './resource/v2/graph';
 export * as ResourceQuery from './resource/v2/query';
 export * as QueryLease from './resource/v2/query-lease';
-export { WatchState, SyncPolicy } from './types/watch';
+export type { SourceSessionState, SourceMode, SourceContinuity, SourceCoverage } from './types/source';
 export type { LogSessionRequest } from './logs';
 export type { MetricQueryRequest, SubscribeRequest } from './metric';
 export type { PortForwardSessionRequest, ResourcePortForwardTarget } from './networker';

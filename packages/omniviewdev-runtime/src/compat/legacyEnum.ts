@@ -1,8 +1,8 @@
 /**
  * The Wails v2 bindings named enum members after the string labels declared in
  * the Go `All<Enum>s` tables (`SYNCED`, `BAD_REQUEST`), while the v3 bindings
- * use the Go constant identifiers (`WatchStateSynced`,
- * `ConnectionStatusBadRequest`). The underlying values are unchanged.
+ * use Go constant identifiers (`ConnectionStatusBadRequest`).
+ * The underlying values are unchanged.
  *
  * Plugins are compiled against the published runtime and still reference the
  * old names, so the host hands them enums carrying both spellings.

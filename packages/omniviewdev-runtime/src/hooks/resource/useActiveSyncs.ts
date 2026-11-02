@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Events } from '@wailsio/runtime';
-import type { HostWatchStateEvent } from '../../resource/v2/host';
+import type { HostSourceStateEvent } from '../../resource/v2/host';
 import {
   type ActiveSync,
   type ResourceTracker,
@@ -15,8 +15,8 @@ import {
 export type { ActiveSync };
 
 /**
- * useActiveSyncs aggregates watch sync state across all connections.
- * Subscribes to the global `watch/STATE` event topic.
+ * useActiveSyncs aggregates source sync state across all connections.
+ * Subscribes to the global `source/STATE` event topic.
  */
 export const useActiveSyncs = () => {
   const [syncs, setSyncs] = useState<Map<string, ActiveSync>>(new Map());
@@ -24,7 +24,7 @@ export const useActiveSyncs = () => {
   const removalTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const handleEvent = useCallback((ev: Events.WailsEvent) => {
-    const event = ev.data as HostWatchStateEvent;
+    const event = ev.data as HostSourceStateEvent;
     const key = trackerKey(event.pluginID, event);
     const tracker = updateTracker(trackersRef.current, event.pluginID, event);
     const activeSync = computeActiveSync(tracker);
@@ -58,7 +58,7 @@ export const useActiveSyncs = () => {
 
   useEffect(() => {
     const timers = removalTimers.current;
-    const cancel = Events.On('watch/STATE', handleEvent);
+    const cancel = Events.On('source/STATE', handleEvent);
     return () => {
       cancel();
       for (const timer of timers.values()) {

@@ -396,7 +396,7 @@ func TestRetiredConnectionListenerCannotBorrowReplacementGeneration(t *testing.T
 			generationA := ctrl.plugins["plugin"]
 			signal, entered, resume := make(chan struct{}), make(chan struct{}), make(chan struct{})
 			var resumeOnce sync.Once
-			t.Cleanup(func() { resumeOnce.Do(func() { close(resume) }); generationA.watchCancel() })
+			t.Cleanup(func() { resumeOnce.Do(func() { close(resume) }); generationA.cancel() })
 			var reads atomic.Int32
 			old.ListConnectionsFunc = func(context.Context) ([]types.Connection, error) {
 				reads.Add(1)
@@ -419,7 +419,7 @@ func TestRetiredConnectionListenerCannotBorrowReplacementGeneration(t *testing.T
 			}
 			ctxB, cancelB := context.WithCancel(context.Background())
 			defer cancelB()
-			generationB := &pluginState{provider: connectionOverlayTestProvider(profileTestConnection("route", "B")), ctx: ctxB, watchCancel: cancelB, generationID: "replacement-B"}
+			generationB := &pluginState{provider: connectionOverlayTestProvider(profileTestConnection("route", "B")), ctx: ctxB, cancel: cancelB, generationID: "replacement-B"}
 			// Match actual replacement ordering: publish B before canceling A.
 			ctrl.pluginsMu.Lock()
 			ctrl.plugins["plugin"] = generationB
