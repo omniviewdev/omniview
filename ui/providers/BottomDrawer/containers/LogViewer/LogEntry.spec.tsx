@@ -81,6 +81,13 @@ describe('LogEntryComponent', () => {
     expect(screen.getByText('pod-a')).toBeInTheDocument();
   });
 
+  it('prevents selecting the source badge', () => {
+    render(
+      <LogEntryComponent entry={makeEntry()} {...defaultProps} showSources />,
+    );
+    expect(screen.getByTitle('pod-a').style.userSelect).toBe('none');
+  });
+
   // ---- Search highlighting ----
   it('renders highlighted spans for search matches', () => {
     const matches: SearchMatch[] = [
