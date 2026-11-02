@@ -26,7 +26,11 @@ const UninstallPluginModal: React.FC<Props> = ({ open, name, uninstall, onClose,
   };
 
   return (
-    <Dialog open={open} onClose={() => { if (!uninstalling) onClose(); }} size='sm'>
+    <Dialog open={open} onClose={() => {
+      if (!uninstalling) {
+        onClose();
+      } 
+    }} size='sm'>
       <Dialog.Title>
         Uninstall {name}?
       </Dialog.Title>
@@ -51,7 +55,9 @@ const UninstallPluginModal: React.FC<Props> = ({ open, name, uninstall, onClose,
           variant='solid'
           color='danger'
           size='sm'
-          onClick={() => { void handleUninstall(); }}
+          onClick={() => {
+            void handleUninstall(); 
+          }}
           disabled={uninstalling}
         >
           {uninstalling ? <Spinner size='sm' /> : 'Uninstall'}

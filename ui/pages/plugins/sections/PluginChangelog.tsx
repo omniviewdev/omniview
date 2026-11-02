@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { Stack, Text } from '@omniviewdev/base-ui';
+import { Button, Stack, Text } from '@omniviewdev/base-ui';
 
 import { usePlugin } from '@/hooks/plugin/usePluginManager';
 import PluginChangelogCard from './PluginChangelogCard';
@@ -15,8 +15,11 @@ const PluginChangelog: React.FC<Props> = ({ id }) => {
   const { releaseHistory } = usePlugin({ id, tab: 'changelog', installed: false });
 
   if (releaseHistory.isError) {
-    return <Text role='alert'>Could not load changelog. <button type='button' onClick={() => void releaseHistory.refetch()}>Retry</button></Text>;
+    return <Text role='alert'>Could not load changelog. <Button size='sm' variant='ghost' onClick={async () => {
+      await releaseHistory.refetch();
+    }}>Retry</Button></Text>;
   }
+
   if (releaseHistory.isLoading) {
     return (
       <Stack direction='column' spacing={4} className={styles.Root}>

@@ -234,6 +234,7 @@ export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: str
     } else {
       await service.load(pluginID);
     }
+
     if (service.getSnapshot().plugins.get(pluginID)?.phase === 'error') {
       throw new Error('The plugin interface could not start. Review plugin startup details.');
     }
@@ -246,10 +247,11 @@ export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: str
     initialData: null,
     enabled: false,
   });
-  const runOperation = async <T,>(label: string, action: () => Promise<T>): Promise<T> => {
+  const runOperation = async <T>(label: string, action: () => Promise<T>): Promise<T> => {
     if (queryClient.getQueryData(operationKey)) {
       throw new Error('Another operation is already running for this plugin.');
     }
+
     queryClient.setQueryData(operationKey, label);
     try {
       return await action();
@@ -258,6 +260,7 @@ export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: str
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS], exact: true });
     }
   };
+
   const plugin = useQuery({
     queryKey: [Entity.PLUGINS, id],
     enabled: !!id && installed,
@@ -353,6 +356,7 @@ export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: str
         queryClient.setQueryData(operationKey, 'Loading plugin interface…');
         await recoverInterface(meta.id);
       }
+
       return meta;
     }),
     onSuccess(meta) {

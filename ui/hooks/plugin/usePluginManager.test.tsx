@@ -111,7 +111,7 @@ describe('shared plugin operation guard', () => {
   it('blocks conflicting calls across consumers and releases the guard after failure', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     const { promise: installation, reject: rejectInstall } = Promise.withResolvers<unknown>();
-    backend.installVersion.mockImplementation(() => installation);
+    backend.installVersion.mockImplementation(async () => installation);
     backend.uninstall.mockResolvedValue({ id: 'fixture', metadata: { id: 'fixture', name: 'Fixture' } });
     const wrapper = ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
     const { result, unmount } = renderHook(() => ({
@@ -120,8 +120,12 @@ describe('shared plugin operation guard', () => {
     }), { wrapper });
     let pending!: Promise<unknown>;
     try {
-      act(() => { pending = result.current.first.update('1.0.0').catch(error => error); });
-      await waitFor(() => expect(result.current.second.operation).toBe('Installing and starting plugin…'));
+      act(() => {
+        pending = result.current.first.update('1.0.0').catch(error => error); 
+      });
+      await waitFor(() => {
+        expect(result.current.second.operation).toBe('Installing and starting plugin…'); 
+      });
       await act(async () => {
         await expect(result.current.second.uninstall()).rejects.toThrow('Another operation');
       });
@@ -130,8 +134,12 @@ describe('shared plugin operation guard', () => {
         rejectInstall(new Error('Download failed'));
         await pending;
       });
-      await waitFor(() => expect(result.current.second.operation).toBeNull());
-      await act(async () => { await result.current.second.uninstall(); });
+      await waitFor(() => {
+        expect(result.current.second.operation).toBeNull(); 
+      });
+      await act(async () => {
+        await result.current.second.uninstall(); 
+      });
       expect(backend.uninstall).toHaveBeenCalledWith('fixture');
     } finally {
       unmount();
@@ -154,7 +162,9 @@ describe('marketplace detail fetching', () => {
       action: usePlugin({ id: 'marketplace-only', installed: false }),
     }), { wrapper, initialProps: { tab: 'overview' } });
     try {
-      await waitFor(() => expect(result.current.detail.readme.isSuccess).toBe(true));
+      await waitFor(() => {
+        expect(result.current.detail.readme.isSuccess).toBe(true); 
+      });
       expect(backend.versions).toHaveBeenCalledTimes(1);
       expect(backend.readme).toHaveBeenCalledTimes(1);
       expect(backend.reviews).not.toHaveBeenCalled();
@@ -162,7 +172,9 @@ describe('marketplace detail fetching', () => {
       expect(backend.get).not.toHaveBeenCalled();
       expect(result.current.detail.releaseHistory.data).toBe(result.current.action.versions.data);
       rerender({ tab: 'reviews' });
-      await waitFor(() => expect(result.current.detail.reviews.isSuccess).toBe(true));
+      await waitFor(() => {
+        expect(result.current.detail.reviews.isSuccess).toBe(true); 
+      });
       expect(backend.reviews).toHaveBeenCalledTimes(1);
       expect(backend.versions).toHaveBeenCalledTimes(1);
     } finally {

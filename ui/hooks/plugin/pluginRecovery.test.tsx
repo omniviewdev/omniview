@@ -34,7 +34,9 @@ describe('plugin startup recovery', () => {
     );
     const { result, unmount } = renderHook(() => usePlugin({ id: 'recovery-fixture', installed: false }), { wrapper });
     try {
-      await act(async () => { await result.current.reload(); });
+      await act(async () => {
+        await result.current.reload(); 
+      });
       expect(service.getSnapshot().plugins.get('recovery-fixture')?.phase).toBe('ready');
       expect(service.getAllRoutes().some(route => route.path === '/recovered')).toBe(true);
     } finally {

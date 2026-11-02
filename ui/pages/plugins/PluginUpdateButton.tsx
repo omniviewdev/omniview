@@ -28,6 +28,7 @@ export default function PluginUpdateButton({ pluginID, currentVersion = '', inst
       setConfirm(false);
     }
   };
+
   const label = installed ? 'Update' : 'Install';
   return <Stack direction='column' spacing={3} className={styles.InstallCard}>
     <Stack direction='row' spacing={3} align='center' wrap>
@@ -38,46 +39,80 @@ export default function PluginUpdateButton({ pluginID, currentVersion = '', inst
       </Stack>
       <Button size='sm' color='brand' variant='solid'
         disabled={busy || !recommended || (!!currentVersion && compareVersions(recommended.version, currentVersion) <= 0)}
-        onClick={() => { if (recommended) void run(recommended.version); }}>
+        onClick={() => {
+          if (recommended) {
+            void run(recommended.version);
+          } 
+        }}>
         {operation ?? (versions.isLoading ? 'Loading versions…' : currentVersion && recommended && compareVersions(recommended.version, currentVersion) <= 0 ? 'Installed' : `${label}${recommended ? ` ${recommended.version}` : ''}`)}
       </Button>
-      <Button size='sm' variant='outline' disabled={busy} onClick={() => setChooser(true)}>Other versions…</Button>
+      <Button size='sm' variant='outline' disabled={busy} onClick={() => {
+        setChooser(true); 
+      }}>Other versions…</Button>
     </Stack>
     <Stack direction='row' spacing={2} align='center'>
       <Text size='xs' tone='muted'>{versions.isFetching ? 'Checking marketplace…' : versions.dataUpdatedAt ? `Checked ${new Date(versions.dataUpdatedAt).toLocaleTimeString()}` : 'Marketplace not checked'}</Text>
-      <Button size='sm' variant='outline' disabled={versions.isFetching || busy} onClick={() => void versions.refetch()}>Refresh</Button>
+      <Button size='sm' variant='outline' disabled={versions.isFetching || busy} onClick={async () => {
+        await versions.refetch();
+      }}>Refresh</Button>
     </Stack>
     {operation && <Text size='sm' role='status'>{operation}</Text>}
-    {versions.isError && <Text size='sm' role='alert'>Could not load versions. <button type='button' onClick={() => void versions.refetch()}>Retry</button></Text>}
+    {versions.isError && <Text size='sm' role='alert'>Could not load versions. <Button size='sm' variant='ghost' onClick={async () => {
+      await versions.refetch();
+    }}>Retry</Button></Text>}
     {!versions.isLoading && !versions.isError && !list.length && <Text size='sm' tone='muted'>No compatible releases available.</Text>}
-    {list[0]?.compatible === false && <Text size='sm' role='status'>Newer release {list[0].version}: {list[0].compatibility_reason || 'Not compatible with this IDE.'}</Text>}
-    <Dialog open={chooser} onClose={() => { if (!busy) setChooser(false); }} size='md'>
+    {list[0]?.compatible === false && <Text size='sm' role='status'>{list[0].version} · {list[0].compatibility_reason ?? 'Not compatible with this IDE.'}</Text>}
+    <Dialog open={chooser} onClose={() => {
+      if (!busy) {
+        setChooser(false);
+      } 
+    }} size='md'>
       <Dialog.Title>Choose plugin version</Dialog.Title>
       <Dialog.Body>
         <Stack direction='column' spacing={3}>
           <RadioGroup className={styles.VersionList} aria-label='Plugin version'
-            value={selected?.version ?? ''} onValueChange={version => setSelection({ id: pluginID, version })}>
+            value={selected?.version ?? ''} onValueChange={version => {
+              setSelection({ id: pluginID, version }); 
+            }}>
             {list.map(release => <RadioGroup.Item key={release.version} className={styles.VersionRow}
               value={release.version} disabled={busy} aria-label={release.version}
-              description={release.compatibility_reason || undefined}>
-                <Text weight='semibold'>{release.version}</Text>
-                <Text as='span' size='xs' tone='muted'>
-                  {release.version === currentVersion ? ' · Installed' : release === recommended ? ' · Recommended' : ''}
-                  {release.version.includes('-') ? ' · Prerelease' : ''}
-                </Text>
+              description={release.compatibility_reason ?? undefined}>
+              <Text weight='semibold'>{release.version}</Text>
+              <Text as='span' size='xs' tone='muted'>
+                {release.version === currentVersion ? ' · Installed' : release === recommended ? ' · Recommended' : ''}
+                {release.version.includes('-') ? ' · Prerelease' : ''}
+              </Text>
             </RadioGroup.Item>)}
           </RadioGroup>
         </Stack>
       </Dialog.Body>
       <Dialog.Footer>
-        <Button variant='outline' disabled={busy} onClick={() => setChooser(false)}>Cancel</Button>
-        <Button color={downgrade ? 'danger' : 'brand'} disabled={busy || !selected || selected.compatible === false || selected.version === currentVersion} onClick={() => { if (downgrade) setConfirm(true); else if (selected) void run(selected.version); }}>{downgrade ? 'Downgrade…' : `${label} ${selected?.version ?? ''}`}</Button>
+        <Button variant='outline' disabled={busy} onClick={() => {
+          setChooser(false); 
+        }}>Cancel</Button>
+        <Button color={downgrade ? 'danger' : 'brand'} disabled={busy || !selected || selected.compatible === false || selected.version === currentVersion} onClick={() => {
+          if (downgrade) {
+            setConfirm(true);
+          } else if (selected) {
+            void run(selected.version);
+          } 
+        }}>{downgrade ? 'Downgrade…' : `${label} ${selected?.version ?? ''}`}</Button>
       </Dialog.Footer>
     </Dialog>
-    <Dialog open={confirm} onClose={() => { if (!busy) setConfirm(false); }} size='sm'>
+    <Dialog open={confirm} onClose={() => {
+      if (!busy) {
+        setConfirm(false);
+      } 
+    }} size='sm'>
       <Dialog.Title>Confirm downgrade</Dialog.Title>
       <Dialog.Body><Text>Downgrade from {currentVersion} to {selected?.version}? Existing plugin data may not work with this release.</Text></Dialog.Body>
-      <Dialog.Footer><Button variant='outline' disabled={busy} onClick={() => setConfirm(false)}>Cancel</Button><Button color='danger' disabled={busy} onClick={() => { if (selected) void run(selected.version); }}>{operation ?? 'Confirm downgrade'}</Button></Dialog.Footer>
+      <Dialog.Footer><Button variant='outline' disabled={busy} onClick={() => {
+        setConfirm(false); 
+      }}>Cancel</Button><Button color='danger' disabled={busy} onClick={() => {
+        if (selected) {
+          void run(selected.version);
+        } 
+      }}>{operation ?? 'Confirm downgrade'}</Button></Dialog.Footer>
     </Dialog>
   </Stack>;
 }
