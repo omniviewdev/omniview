@@ -522,8 +522,8 @@ the host's `plugins/kubernetes` gitlink; canonical E2E also verifies the recursi
 submodule checkout. PR branches and `main` can therefore select different
 compatible UI/Kubernetes sources without changing repository variables.
 The SDK SHA must equal the independently reviewed release pinned in workflow
-`REVIEWED_SDK_REVISION`: SDK v0.12.1 at
-`0a5b64ed8c2de209fbb02ecce9feba3afd88f28c`. Repository variables remain unchanged.
+`REVIEWED_SDK_REVISION`: SDK v0.13.0 at
+`a5db74e135550ff842365bb58df80d2cfb40900e`. Repository variables remain unchanged.
 Changing the cohort alone cannot approve another SDK commit. Source
 identity registration, mandatory probes, conservative selection, and native
 payload cache rules remain unchanged.
