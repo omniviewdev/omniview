@@ -290,7 +290,7 @@ func matchesScope(scope map[string]string, constraints resource.QueryScope) bool
 }
 
 func nativeRepresentation() resource.Representation {
-	return resource.Representation{ID: "native", Revision: "1", Schema: resource.SchemaBinding{State: "absent", Validation: "none"}}
+	return resource.Representation{ID: "native", Revision: "1", Schema: resource.SchemaBinding{State: "absent"}}
 }
 
 func (p *benchmarkSource) record(target resource.ReadTarget, item benchmarkRecord) (resource.Record, error) {

@@ -15,6 +15,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/indexer"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
+	"github.com/omniviewdev/omniview/backend/pkg/resourcecatalog"
 	"github.com/omniviewdev/omniview/internal/appstate"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
@@ -193,7 +194,25 @@ func (p *catalogOnlyProvider) Catalog(ctx context.Context, request resource.Cata
 }
 
 func canonicalTestRepresentation() resource.Representation {
-	return resource.Representation{ID: "native", Revision: "r1", Schema: resource.SchemaBinding{State: "absent", Validation: "none", Unvalidated: []string{}}}
+	return resource.Representation{ID: "native", Revision: "r1", Schema: resource.SchemaBinding{State: "absent"}}
+}
+
+// withReferencedSchema makes the first representation of every catalog type
+// bind an available JSON Schema 2020-12 document by reference.
+func withReferencedSchema(catalogFunc func(context.Context, resource.CatalogRequest) (resource.Catalog, error), reference resource.SchemaDocumentReference) func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+	return func(ctx context.Context, request resource.CatalogRequest) (resource.Catalog, error) {
+		catalog, err := catalogFunc(ctx, request)
+		if err != nil {
+			return catalog, err
+		}
+		revision := reference.Revision
+		ref := reference
+		for i := range catalog.Types {
+			catalog.Types[i].Representations = append([]resource.Representation(nil), catalog.Types[i].Representations...)
+			catalog.Types[i].Representations[0].Schema = resource.SchemaBinding{State: "available", Revision: &revision, Dialect: resource.DialectJSONSchema202012, DocumentRef: &ref}
+		}
+		return catalog, nil
+	}
 }
 
 func canonicalTestCatalog(provider, resourceType string) resource.Catalog {
@@ -674,6 +693,7 @@ func newTestControllerWithEmitter(t *testing.T) (*controller, *recordingEmitter)
 		dispatcher:          disp,
 		graph:               g,
 		pluginStoreFn:       svc.PluginStore,
+		schemas:             resourcecatalog.NewCatalog(resourcecatalog.DefaultPolicy()),
 	}
 	ctrl.sources = newSourceCoordinator(ctrl)
 	ctrl.actions.emit = func(id string, snapshot ActionSnapshot) { emitter.Emit("action/stream/"+id, snapshot) }

@@ -17,7 +17,6 @@ import { Provider } from 'react-redux';
 import { store } from './store/store';
 
 import './utils/globalutils';
-import './providers/monaco/bootstrap';
 
 import AppThemeController from './theme/AppThemeController';
 
