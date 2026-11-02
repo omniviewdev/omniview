@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"sync"
 
 	"cel.dev/cel-go/cel"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
@@ -20,6 +21,20 @@ type BuilderDocument struct {
 	Root    json.RawMessage `json:"root"`
 }
 
+var parserOnce sync.Once
+var parserEnv *cel.Env
+var parserInitErr error
+
+func predicateParser() (*cel.Env, error) {
+	parserOnce.Do(func() {
+		parserEnv, parserInitErr = cel.NewEnv(cel.CrossTypeNumericComparisons(true), cel.ParserRecursionLimit(64), cel.ParserExpressionSizeLimit(16384))
+	})
+	if parserInitErr != nil {
+		return nil, resourcev2.NewError("INTERNAL", "predicate parser initialization failed")
+	}
+	return parserEnv, nil
+}
+
 // Parse parses a previously admitted predicate without evaluating or type-checking it.
 func Parse(ctx context.Context, q QuerySpec) (ParsedPredicate, error) {
 	if err := ctx.Err(); err != nil {
@@ -34,7 +49,7 @@ func Parse(ctx context.Context, q QuerySpec) (ParsedPredicate, error) {
 		if len(p.Source) > 16384 {
 			return ParsedPredicate{}, limit("predicate source too large")
 		}
-		env, err := cel.NewEnv(cel.CrossTypeNumericComparisons(true), cel.ParserRecursionLimit(64), cel.ParserExpressionSizeLimit(16384))
+		env, err := predicateParser()
 		if err != nil {
 			return ParsedPredicate{}, err
 		}
@@ -50,12 +65,18 @@ func Parse(ctx context.Context, q QuerySpec) (ParsedPredicate, error) {
 		if p.Version != "omniview.builder.v1" || p.Profile != "" || p.Source != "" || len(p.Document) == 0 {
 			return ParsedPredicate{}, invalid("invalid builder predicate")
 		}
+		if _, err := objectFields(p.Document, []string{"version", "root"}, nil); err != nil {
+			return ParsedPredicate{}, err
+		}
 		var doc BuilderDocument
 		if err := strictDecode(p.Document, &doc); err != nil || doc.Version != "omniview.builder.v1" || len(doc.Root) == 0 {
 			return ParsedPredicate{}, invalid("invalid builder document")
 		}
 		if err := validateBuilderNode(doc.Root, q.Declarations, map[string]bool{}, 0); err != nil {
 			return ParsedPredicate{}, err
+		}
+		if err := ctx.Err(); err != nil {
+			return ParsedPredicate{}, contextError(err)
 		}
 		return ParsedPredicate{Builder: &doc}, nil
 	default:
@@ -151,6 +172,26 @@ func validateBuilderNode(raw json.RawMessage, decl map[string]BindingType, scope
 	fields, err := objectFields(raw, required, optional)
 	if err != nil {
 		return err
+	}
+	if path, ok := fields["path"]; ok {
+		if err := validateBuilderPathShape(path); err != nil {
+			return err
+		}
+	}
+	if conditions, ok := fields["when"]; ok {
+		var list []json.RawMessage
+		if json.Unmarshal(conditions, &list) != nil || list == nil {
+			return invalid("invalid builder conditions")
+		}
+		for _, condition := range list {
+			c, err := objectFields(condition, []string{"kind", "path", "value"}, nil)
+			if err != nil {
+				return err
+			}
+			if err = validateBuilderPathShape(c["path"]); err != nil {
+				return err
+			}
+		}
 	}
 	if n.Kind == "value" {
 		var operand map[string]json.RawMessage

@@ -31,6 +31,39 @@ func validateRequestShape(raw []byte) error {
 	if err != nil {
 		return err
 	}
+	var targets []json.RawMessage
+	if json.Unmarshal(root["targets"], &targets) != nil || targets == nil {
+		return invalid("invalid targets")
+	}
+	for _, target := range targets {
+		fields, err := objectFields(target, []string{"targetId", "provider", "authority", "type", "accessRoute", "representation", "scope"}, nil)
+		if err != nil {
+			return err
+		}
+		if _, err = objectFields(fields["representation"], []string{"id", "revision"}, nil); err != nil {
+			return err
+		}
+	}
+	for _, collection := range []string{"projection", "order"} {
+		var entries []json.RawMessage
+		if json.Unmarshal(root[collection], &entries) != nil || entries == nil {
+			return invalid("invalid query collection")
+		}
+		for _, entry := range entries {
+			var fields map[string]json.RawMessage
+			if collection == "projection" {
+				fields, err = objectFields(entry, []string{"id", "path"}, nil)
+			} else {
+				fields, err = objectFields(entry, []string{"path", "direction", "missing", "null"}, nil)
+			}
+			if err != nil {
+				return err
+			}
+			if err = validatePathShape(fields["path"]); err != nil {
+				return err
+			}
+		}
+	}
 	var predicate struct {
 		Language string `json:"language"`
 	}
@@ -61,11 +94,65 @@ func validateRequestShape(raw []byte) error {
 		return err
 	}
 	if text, ok := root["text"]; ok {
-		if _, err = objectFields(text, []string{"term", "fields", "match", "case", "combine"}, nil); err != nil {
+		fields, err := objectFields(text, []string{"term", "fields", "match", "case", "combine"}, nil)
+		if err != nil {
+			return err
+		}
+		var paths []json.RawMessage
+		if json.Unmarshal(fields["fields"], &paths) != nil || paths == nil {
+			return invalid("invalid text fields")
+		}
+		for _, path := range paths {
+			if err := validatePathShape(path); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+func validatePathShape(raw json.RawMessage) error {
+	var segments []json.RawMessage
+	if json.Unmarshal(raw, &segments) != nil || segments == nil {
+		return invalid("invalid field path")
+	}
+	for _, raw := range segments {
+		var discr map[string]json.RawMessage
+		if json.Unmarshal(raw, &discr) != nil || discr == nil {
+			return invalid("invalid path segment")
+		}
+		var kind string
+		if json.Unmarshal(discr["kind"], &kind) != nil {
+			return invalid("invalid path kind")
+		}
+		var err error
+		switch kind {
+		case "member":
+			_, err = objectFields(raw, []string{"kind", "name"}, nil)
+		case "index":
+			_, err = objectFields(raw, []string{"kind", "index"}, nil)
+		default:
+			return invalid("invalid path kind")
+		}
+		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+func validateBuilderPathShape(raw json.RawMessage) error {
+	fields, err := objectFields(raw, []string{"root", "segments"}, nil)
+	if err != nil {
+		return err
+	}
+	if err = validatePathShape(fields["segments"]); err != nil {
+		return err
+	}
+	var root string
+	if json.Unmarshal(fields["root"], &root) == nil {
+		return nil
+	}
+	_, err = objectFields(fields["root"], []string{"element"}, nil)
+	return err
 }
 func validateTypeShape(raw json.RawMessage, depth int) error {
 	if depth > 32 {
