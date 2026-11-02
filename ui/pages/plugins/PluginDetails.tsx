@@ -135,6 +135,9 @@ const PluginDetails: FC = () => {
 
         {/* Install/Update/Uninstall buttons */}
         <Stack direction='row' spacing={2} className={styles.HeaderActions}>
+          <Button variant='outline' size='sm' onClick={() => {
+            void navigate(`/developer-tools/extensions?plugin=${encodeURIComponent(id)}`); 
+          }}>Inspect contributions</Button>
           <PluginUpdateButton
             pluginID={id}
             installed={!!installed}

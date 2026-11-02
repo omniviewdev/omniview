@@ -148,7 +148,7 @@ func controlCommandOutput(cmd *cobra.Command) bool {
 		cmd = cmd.Parent()
 	}
 	switch cmd.Name() {
-	case "instance", "plugin", "settings", "operation":
+	case "instance", "plugin", "settings", "operation", "extensions":
 		return true
 	default:
 		return false

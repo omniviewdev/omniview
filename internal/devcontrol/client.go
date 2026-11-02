@@ -147,9 +147,9 @@ func errorExit(code string) int {
 		return 6
 	case "timeout":
 		return 7
-	case "invalid_request", "invalid_params", "validation_failed", "unknown_operation", "invalid_configuration", "invalid_endpoint":
+	case "invalid_request", "invalid_params", "validation_failed", "unknown_operation", "invalid_configuration", "invalid_endpoint", "extensions_unsupported":
 		return 2
-	case "not_found", "setting_not_found", "operation_not_found", "control_unreachable":
+	case "not_found", "setting_not_found", "operation_not_found", "control_unreachable", "extensions_unavailable":
 		return 3
 	case "stale_target", "conflict", "operation_capacity", "shutting_down":
 		return 4

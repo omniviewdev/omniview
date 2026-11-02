@@ -214,9 +214,9 @@ export const SettingsChanged = "settings/changed";
 export const SettingsState = "settings/state";
 
 /**
- * Name of the custom event "watch/STATE".
+ * Name of the custom event "source/STATE".
  */
-export const WatchSTATE = "watch/STATE";
+export const SourceSTATE = "source/STATE";
 
 /**
  * Name of the custom event "windows/changed".

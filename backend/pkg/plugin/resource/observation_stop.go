@@ -5,7 +5,7 @@ package resource
 func (c *controller) fenceStoppedRoute(pluginID, connection string) (func(), error) {
 	c.pluginsMu.Lock()
 	generation := c.plugins[pluginID]
-	if err := c.invalidateSourceRoutesLocked(pluginID, []string{connection}, false); err != nil {
+	if err := c.invalidateStoppedSourceRoutesLocked(pluginID, connection); err != nil {
 		c.pluginsMu.Unlock()
 		return nil, err
 	}

@@ -258,6 +258,9 @@ without `--json`.
 | Command | Arguments | Meaning |
 | --- | --- | --- |
 | `instance inspect` | none | Authenticated actual instance descriptor |
+| `extensions windows` | none | Discover registered diagnostic runtime names before selecting a document |
+| `extensions inspect` | `[--window main] [--plugin ID] [--point ID] [--query TEXT] [--issues-only] [--include-sensitive]` | Live frontend registry, queued contributions, plugin state and captured problems |
+| `extensions lookup` | `--point ID --plugin ID --resource-key KEY [--window main]` | Explicit supported resource-context resolution, without mounting components |
 | `plugin list` | none | Installed plugin inventory in this instance |
 | `plugin get` | `ID` | Installed plugin metadata |
 | `plugin install-archive` | `--path ARCHIVE` | Install caller-owned archive without consuming the input |
@@ -298,6 +301,59 @@ Setting IDs are provider-defined; inspect the schema instead of assuming the
 example keys exist. Provider validation and persistence remain authoritative.
 Sensitive and unknown values/defaults are always redacted at the host boundary.
 This client has no secret-reveal flag or bypass of that policy.
+
+## Extension diagnostics for agents
+
+The Extension Inspector and CLI use the same frontend diagnostic model. The CLI
+asks the selected running document for a fresh capture through the authenticated
+workspace control endpoint; it does not infer UI registrations from installed
+plugin metadata or return a cached registry when the document is unavailable.
+The default native document is `main`. Run `extensions windows` to discover
+registered runtime names, then use `--window NAME` to select one. Wails browser
+mode assigns names such as `browser-3`; these are not aliases for native `main`.
+Discovery lists registered documents, not cached diagnostic data or a guarantee
+of responsiveness. Every capture still requires a new correlated response from
+the selected document's actual Wails window identity.
+Wails registration stays in the host adapter, outside the standalone CLI's
+pure-Go diagnostic broker and control transport.
+
+```sh
+"$DEV" extensions windows --workspace /path/to/workspace --json
+"$DEV" extensions inspect --workspace /path/to/workspace --json
+"$DEV" extensions inspect --workspace /path/to/workspace \
+  --plugin kubernetes --issues-only --json
+"$DEV" extensions inspect --workspace /path/to/workspace \
+  --point omniview/resource/sidebar/infopanel --json
+"$DEV" extensions lookup --workspace /path/to/workspace \
+  --point omniview/resource/sidebar/infopanel \
+  --plugin kubernetes --resource-key 'core::v1::Pod' --json
+```
+
+Snapshots distinguish registered contributions, pending target points, module
+failures, captured crashes, and quarantine. Inventory includes every registration
+in a single-mode point, not only its selected match. Point ownership and
+contributing-plugin ownership are separate. The response identifies its window,
+capture time, truncation, configured crash limits, and diagnostic coverage.
+Crash counts prefer lifecycle and quarantine counters. Registry-only registrations
+fall back to bounded captured crash evidence; that fallback is not a lifetime total.
+
+Inventory and filtering never execute contribution values or matchers. Lookup
+is explicit because a plugin's matcher or selector can execute code. Supported
+resource sidebar/drawer contexts use the real context contract; other point
+types report unsupported rather than guessing. A selected, non-quarantined
+registration is eligible for generic rendering, not proof of a successful render.
+
+Freeform errors and stacks are withheld by default. For deliberate local
+debugging, `extensions inspect --include-sensitive` requests bounded error text
+and prints a warning to stderr. **Plugin error text and stacks may contain
+secrets.** Review the output before sharing it or attaching it to an issue.
+This flag does not reveal arbitrary contributed values, settings, or credentials
+through a separate endpoint.
+
+The frontend must be running and responsive. A closed or unavailable document
+returns an error, not an empty inventory. Agent access is JSON through the
+existing CLI; it does not require a separate MCP server. The CLI exposes no
+extension recovery, reload, or quarantine mutation.
 
 ## Operations, output and errors
 

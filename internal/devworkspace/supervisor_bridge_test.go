@@ -29,9 +29,13 @@ func TestManagedBridgeOwnsActualProcessesThroughHostCrash(t *testing.T) {
 	if err != nil {
 		t.Skip("actual Node executable unavailable")
 	}
-	node, err = devcontract.CanonicalPath(node)
+	output, err := exec.Command(node, "-p", "require('node:fs').realpathSync(process.execPath)").Output()
 	if err != nil {
 		t.Fatal(err)
+	}
+	node = strings.TrimSpace(string(output))
+	if !filepath.IsAbs(node) {
+		t.Fatal("Node returned a nonabsolute executable path")
 	}
 	w := generatedFixture(t)
 	// Concurrent test binaries have separate registries but share loopback ports.

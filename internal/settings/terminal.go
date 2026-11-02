@@ -3,6 +3,7 @@ package categories
 import (
 	"os"
 
+	"github.com/omniviewdev/omniview/internal/nativeapps"
 	"github.com/omniviewdev/omniview/internal/shellenv"
 
 	"github.com/omniviewdev/plugin-sdk/settings"
@@ -24,14 +25,13 @@ var Terminal = settings.Category{
 			Label:       "Native Terminal Application",
 			Default:     "terminal",
 			Description: "macOS application for a fresh external resource shell. Built-in terminals are unchanged.",
-			Options: []settings.SettingOption{
-				{Value: "terminal", Label: "Terminal"},
-				{Value: "iterm2", Label: "iTerm2"},
-			},
 			Validator: func(value interface{}) settings.ValidationResult {
 				app, ok := value.(string)
-				if !ok || (app != "terminal" && app != "iterm2") {
-					return settings.ValidationResult{Code: "native_application", Message: "Choose Terminal or iTerm2."}
+				if !ok {
+					return settings.ValidationResult{Code: "native_application", Message: "Choose an installed supported application."}
+				}
+				if _, supported := nativeapps.BundleID(app); !supported {
+					return settings.ValidationResult{Code: "native_application", Message: "Choose an installed supported application."}
 				}
 				return settings.ValidationResult{Valid: true}
 			},

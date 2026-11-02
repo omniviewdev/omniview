@@ -11168,7 +11168,7 @@
             "profile": "container-bundled-events",
             "stopped": true,
             "activeSourceWatches": 0,
-            "observation": "actual provider diagnostic after supported StopResourceWatch; old IsResourceWatchRunning RPC unavailable"
+            "observation": "actual provider diagnostic after the legacy host watch-stop operation; the prior watch-status RPC was unavailable"
           },
           {
             "profile": "hypervisor-bundled-vms",
@@ -11222,7 +11222,7 @@
             "profile": "container-bundled-events",
             "stopped": true,
             "activeSourceWatches": 0,
-            "observation": "actual provider diagnostic after supported StopResourceWatch; old IsResourceWatchRunning RPC unavailable"
+            "observation": "actual provider diagnostic after the legacy host watch-stop operation; the prior watch-status RPC was unavailable"
           },
           {
             "profile": "hypervisor-bundled-vms",
@@ -11276,7 +11276,7 @@
             "profile": "container-bundled-events",
             "stopped": true,
             "activeSourceWatches": 0,
-            "observation": "actual provider diagnostic after supported StopResourceWatch; old IsResourceWatchRunning RPC unavailable"
+            "observation": "actual provider diagnostic after the legacy host watch-stop operation; the prior watch-status RPC was unavailable"
           },
           {
             "profile": "hypervisor-bundled-vms",
