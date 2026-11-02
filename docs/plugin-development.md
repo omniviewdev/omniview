@@ -816,6 +816,61 @@ Query edits retain the previous result surface, disable obsolete activation, and
 
 Kubernetes is the reference integration in `ui/src/search/provider.tsx`. It caches resource snapshots for 15 seconds and readiness for 2 seconds, scans at most 200 objects, reports incomplete results, and transfers exact list text without changing structured filters. See [scoped search design and acceptance cases](scoped-search-design.md).
 
+### Inspecting extension registrations
+
+Open **Developer: Inspect Extensions** from global search, or choose
+**Inspect contributions** in plugin details. Diagnostics live in a workspace
+tab, not a Settings category.
+
+The namespace tree groups extension points and their contributions. Use the
+plugin filter to inspect one contributor without losing the point hierarchy.
+The contribution table includes every registered value, including entries
+hidden by single-mode selection or quarantine. Pending registrations appear
+separately because their requested target point does not yet exist.
+
+Select a Problem to reveal the associated contribution and captured evidence.
+The inspector distinguishes module loading, registration, context resolution,
+and quarantine. None of these proves a component rendered successfully.
+Captured crash history is bounded session evidence and can clear on reload or
+re-enable. Export before recovery; inspect potentially sensitive errors locally
+before sharing them.
+
+The full-height explorer sits beside the registration editor and metadata
+inspector. Problems dock below the editor and inspector; all three pane
+boundaries can be resized. Repeated problems group by kind, plugin, point,
+contribution, and boundary. Expand a group or the inspector's event history to
+review every retained record; exports retain the ungrouped bounded evidence.
+Registration JSON contains only the safe type descriptor, never contribution
+values. Lifecycle and render eligibility remain explicitly unknown where no
+instrumentation exists. Coverage and safety details are available in a disclosure.
+Double-click a resize handle to restore its default size. Narrow windows clamp
+the side panes without clearing the selected registration or filter. If a registry
+change invalidates an action's capture, select the current registration again
+before running lookup or recovery.
+Initial selections bind to the first capture with a resolved runtime window
+identity. Later inventory updates do not silently replace an action's capture.
+
+Reveal sensitive exception text captures and pauses the current state. Resume
+before lookup, recovery, or another reveal. Safe JSON export still redacts text
+from a sensitive paused capture. Sensitive export and recovery require review
+or confirmation; recovery clears the contribution's captured crash history.
+
+Context lookup is an explicit action because plugin matchers can execute code.
+It never mounts contributed components. Unsupported context types and gaps in
+specialized-consumer diagnostics are labeled instead of treated as healthy.
+
+Agents can inspect the same live document without using the UI:
+
+```sh
+omniview-dev extensions inspect --workspace /path/to/workspace \
+  --plugin my-plugin --json
+```
+
+See [extension diagnostics for agents](development-cli.md#extension-diagnostics-for-agents)
+for point/issue filters, explicit resource-context lookup, window selection,
+and sensitive-error opt-in. A missing frontend is an unavailable capture,
+not evidence that the plugin registered nothing.
+
 ### 1.5 Contributing a Theme
 
 UI plugins can contribute themes through the `omniview/theme` extension point. A contribution contains the theme definition without an `id`; the host derives the globally unique ID from the plugin and registration IDs.

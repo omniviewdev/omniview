@@ -1,0 +1,60 @@
+.Root { display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; overflow: hidden; font-size: 12px; color: var(--ov-color-fg-default); background: var(--ov-color-bg-base); }
+.Toolbar { flex-shrink: 0; gap: 8px; padding: 4px 9px; border-bottom: 1px solid var(--ov-color-border-default); background: var(--ov-color-bg-surface); flex-wrap: wrap; }
+.Toolbar > :global([role='group']) { flex-shrink: 0; }
+.Toolbar :global([role='checkbox']) { white-space: nowrap; }
+.Search { width: 250px; min-width: 140px; }
+.PluginFilter { max-width: 150px; }
+.ToolbarActions { margin-left: auto; }
+.Live { white-space: nowrap; font-size: 10px; }
+.Workspace, .RightRegion { flex: 1; height: 100%; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.Workspace > div, .RightRegion > div { flex: 1; min-height: 0; min-width: 0; }
+.Tree, .Center, .Inspector, .Problems { height: 100%; min-height: 0; min-width: 0; overflow: auto; }
+.Tree, .Inspector { background: var(--ov-color-bg-surface); }
+.Tree { display: flex; flex-direction: column; border-right: 1px solid var(--ov-color-border-default); }
+.Tree > :not(.Heading) { min-height: 0; flex: 1; overflow: auto; }
+.Tree :global([role='treeitem']) { min-height: 24px; font-size: 12px; }
+.Heading { display: flex; align-items: center; gap: 10px; min-height: 29px; flex-shrink: 0; padding: 0 10px; background: var(--ov-color-bg-surface); border-bottom: 1px solid var(--ov-color-border-default); font-size: 10px; letter-spacing: .5px; color: var(--ov-color-fg-muted); }
+.Center { display: flex; flex-direction: column; border-right: 1px solid var(--ov-color-border-default); }
+.Breadcrumbs { padding: 7px 11px; min-height: 31px; border-bottom: 1px solid var(--ov-color-border-default); flex-shrink: 0; }
+.Pointbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 7px 11px; border-bottom: 1px solid var(--ov-color-border-default); font-size: 10px; color: var(--ov-color-fg-muted); }
+.Pointbar strong { font-size: 12px; color: var(--ov-color-fg-default); }
+.SectionHead { display: flex; align-items: center; gap: 7px; padding: 5px 11px; min-height: 29px; background: var(--ov-color-bg-surface); border-bottom: 1px solid var(--ov-color-border-muted); flex-shrink: 0; font-size: 11px; }
+.SectionHead > span:last-child { color: var(--ov-color-fg-muted); font-size: 10px; }
+.TableScroll { max-height: min(210px, 35vh); flex-shrink: 0; }
+.Root table { font-size: 11px; }
+.Root th { font-size: 10px; font-weight: 400; }
+.Root td, .Root th { padding: 4px 9px; }
+.RegistrationButton { justify-content: flex-start; text-align: left; max-width: 100%; padding: 0; height: auto; color: var(--ov-color-fg-default); font-size: 11px; }
+.RegistrationButton > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ContributionId { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ov-color-fg-muted); font: 10px/1.6 ui-monospace, monospace; }
+.InventoryNote { margin: 0; padding: 7px 11px; font-size: 10px; color: var(--ov-color-fg-muted); border-bottom: 1px solid var(--ov-color-border-muted); }
+.EditorTabs { display: flex; flex-direction: column; flex: 1; min-height: 160px; }
+.EditorTabs > :global([role='tablist']) { flex-shrink: 0; background: var(--ov-color-bg-surface); }
+.CodeViewport { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
+.CodeViewport figure { margin: 0; border: 0; background: transparent; font-size: 11px; }
+.Lookup { overflow: auto; padding: 12px; }
+.Lookup label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.LookupResult { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--ov-color-border-muted); }
+.InspectBody { padding: 11px; }
+.Root h2 { font-size: 13px; margin: 0 0 5px; overflow-wrap: anywhere; }
+.Root h3 { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; margin: 12px 0 8px; padding-top: 10px; border-top: 1px solid var(--ov-color-border-muted); }
+.Root p { line-height: 1.6; }
+.LongId { font: 10px/1.6 ui-monospace, monospace; color: var(--ov-color-fg-muted); overflow-wrap: anywhere; }
+.Metadata { margin: 10px 0; padding: 6px 0; gap: 0; border-block: 1px solid var(--ov-color-border-muted); }
+.Metadata > div { grid-template-columns: 91px minmax(0, 1fr); font-size: 11px; padding: 4px 0; }
+.Metadata dd { overflow-wrap: anywhere; }
+.Actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.Actions button { font-size: 10px; }
+.Safety, .Muted { color: var(--ov-color-fg-muted); font-size: 10px; }
+.History, .Coverage { margin: 10px 0; font-size: 11px; }
+.History summary, .Coverage summary, .GroupHistory summary { cursor: pointer; color: var(--ov-color-fg-muted); }
+.History article, .GroupHistory article { padding: 8px 0; border-bottom: 1px solid var(--ov-color-border-muted); overflow-wrap: anywhere; }
+.Inspector pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 10px/1.7 ui-monospace, monospace; }
+.Problems { border-top: 1px solid var(--ov-color-border-default); }
+.ProblemButton { max-width: 100%; text-align: left; justify-content: flex-start; height: auto; padding: 0; }
+.ProblemButton > span { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.ProblemButton svg { flex-shrink: 0; width: 13px; height: 13px; }
+.GroupHistory { margin-top: 3px; font-size: 10px; }
+.Empty { padding: 8px 12px; color: var(--ov-color-fg-muted); }
+.Preview { max-height: 50vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 1150px) { .Search { width: 180px; } .Toolbar { gap: 5px; } .ToolbarActions { gap: 3px; } .ToolbarActions button { font-size: 10px; } .PluginFilter { max-width: 115px; } .Pointbar { gap: 7px; } }

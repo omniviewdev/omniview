@@ -1,2 +1,2 @@
 export * from './SettingsContext';
-export { openSettings, settingsWindowTarget } from './settingsWindow';
+export { openSettings, settingsWindowTarget, extensionInspectorTarget } from './settingsWindow';

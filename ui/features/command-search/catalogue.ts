@@ -70,7 +70,7 @@ export function registerCoreSearchCatalogue(
 
   register('Home', { schemaVersion: 1, kind: 'navigation', target: { kind: 'core', path: '/' } });
   register('Plugins', { schemaVersion: 1, kind: 'navigation', target: { kind: 'core', path: '/plugins' } });
-  register('Extensions', { schemaVersion: 1, kind: 'setting', target: { section: 'extensions' } });
+  register('Developer Tools: Extension Inspector', { schemaVersion: 1, kind: 'navigation', target: { kind: 'core', path: '/developer-tools/extensions' } });
 
   catalogue: for (const key in input.settings) {
     if (!Object.hasOwn(input.settings, key)) {
