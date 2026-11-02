@@ -2,8 +2,6 @@ module github.com/omniviewdev/omniview
 
 go 1.26.0
 
-replace cel.dev/cel-go => github.com/omniviewdev/cel-go v0.33.2-0.20261028172556-d7bb038d8c7b
-
 require (
 	cel.dev/cel-go v0.33.1
 	github.com/coder/websocket v1.8.14
@@ -127,3 +125,5 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.6.0 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
+
+replace cel.dev/cel-go => github.com/omniviewdev/cel-go v0.33.2-0.20261028172556-d7bb038d8c7b
