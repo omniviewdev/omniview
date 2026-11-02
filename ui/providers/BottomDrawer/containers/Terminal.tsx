@@ -17,7 +17,7 @@ import { SessionOptions } from '@omniviewdev/runtime/models';
 import log from '@/features/logger';
 import { bottomDrawerChannel } from '../events';
 import { consumeTerminalSessionHandoff } from '../terminalHandoff';
-import { hasUnresolvedResourceReference, unresolvedResourceReferenceMessage } from '../resourceReferenceMigration';
+import { hasUnresolvedResourceReference, savedResourceReferenceStatus, unresolvedResourceReferenceMessage } from '../resourceReferenceMigration';
 import { Events } from '@omniviewdev/runtime/runtime';
 import { Base64 } from 'js-base64';
 import { useSettings, parseAppError } from '@omniviewdev/runtime';
@@ -183,6 +183,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
     if (
       tabStatus === 'connecting'
       || tabStatus === 'error'
+      || tabStatus === 'expired'
       || terminalRef.current === null
       || themeElement === null
       || xtermRef.current !== undefined
@@ -516,6 +517,39 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
       <div ref={statusThemeRef} className={styles.Status} style={{ backgroundColor: bgColor }}>
         <Spinner size='md' />
         <div className={styles.StatusText}>Connecting...</div>
+      </div>
+    );
+  }
+
+  if (tabStatus === 'expired') {
+    const props = tab?.properties;
+    const canStart = tab && savedResourceReferenceStatus(tab) === 'converted'
+      && typeof props?.pluginID === 'string' && typeof props.connectionID === 'string'
+      && typeof props.opts === 'object' && props.opts !== null;
+    return (
+      <div ref={statusThemeRef} className={styles.Status} style={{ backgroundColor: bgColor }}>
+        <TerminalError
+          error={{
+            title: 'Terminal session expired',
+            suggestion: canStart ? 'Start a new session with the saved resource options.' : unresolvedResourceReferenceMessage,
+            raw: '',
+            retryable: false,
+          }}
+          onRetry={handleRetry}
+          backgroundColor={bgColor}
+          recovery={canStart ? {
+            label: 'Start new session',
+            run: async () => {
+              bottomDrawerChannel.emit('onCreateSession', {
+                plugin: props.pluginID as string,
+                connection: props.connectionID as string,
+                opts: SessionOptions.createFrom(props.opts as Record<string, unknown>),
+                label: tab.title,
+                replaceSessionId: sessionId,
+              });
+            },
+          } : undefined}
+        />
       </div>
     );
   }

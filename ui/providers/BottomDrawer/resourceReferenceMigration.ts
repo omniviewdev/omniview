@@ -65,10 +65,14 @@ export function hasUnresolvedResourceReference(tab: Pick<SerializedDrawerTab, 'p
  * Complete canonical options remain unchanged. No selector supplies identity.
  */
 export function migrateDrawerResourceReferences(slot: DrawerSlot): DrawerSlot {
+  if (slot.version === 2) {
+    return slot;
+  }
+
   let changed = false;
   const tabs = slot.tabs.map(tab => {
     const opts = tab.properties?.opts;
-    if (tab.variant !== 'terminal' || hasUnresolvedResourceReference(tab)
+    if (tab.variant !== 'terminal' || savedResourceReferenceStatus(tab) !== undefined
       || typeof opts !== 'object' || opts === null || Array.isArray(opts)) {
       return tab;
     }
@@ -95,5 +99,5 @@ export function migrateDrawerResourceReferences(slot: DrawerSlot): DrawerSlot {
       } },
     } };
   });
-  return changed ? { ...slot, tabs } : slot;
+  return { ...slot, version: 2, tabs: changed ? tabs : slot.tabs };
 }

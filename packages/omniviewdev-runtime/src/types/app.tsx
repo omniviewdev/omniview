@@ -8,12 +8,22 @@ import { RouterProvider } from "react-router/dom";
 export class PluginWindowRootProps { }
 
 
+export type PagePathMigrationResult =
+  | { kind: 'unchanged' }
+  | { kind: 'migrated'; path: string }
+  | { kind: 'unconvertible'; reason: string };
+
+export type PagePathMigrator = (path: string) => PagePathMigrationResult;
+
 /**
  * Plugin container is the main type that is rendered for a visual component within the
  * user interface.
  */
 export class PluginWindow {
   _extensions?: Array<ExtensionPointSettings>
+  /** Migrates a saved host page path owned by this plugin. */
+  migratePagePath?: PagePathMigrator;
+
 
   /**
    * The root component to render for the application window.

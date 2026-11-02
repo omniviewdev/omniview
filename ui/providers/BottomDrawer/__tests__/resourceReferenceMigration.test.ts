@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { buildDrawerSlot, hydrateDrawerTab, parseDrawerSlot, type DrawerSlot, type SerializedDrawerTab } from '../drawerSlot';
 import { hasUnresolvedResourceReference, migrateDrawerResourceReferences } from '../resourceReferenceMigration';
 
@@ -22,10 +25,10 @@ const canonical = {
 
 it('keeps complete canonical references, incarnation and utility options through save and reload', () => {
   const original = slot(canonical);
-  expect(migrateDrawerResourceReferences(original)).toBe(original);
+  expect(migrateDrawerResourceReferences(original)).toEqual({ ...original, version: 2 });
   const saved = buildDrawerSlot(original.tabs.map(hydrateDrawerTab), original.focusedId!, 'expanded', 400);
   const reloaded = migrateDrawerResourceReferences(parseDrawerSlot(JSON.parse(JSON.stringify(saved))));
-  expect(reloaded).toEqual(original);
+  expect(reloaded).toEqual({ ...original, version: 2 });
   expect(reloaded.tabs[0].properties?.opts).toEqual(canonical);
 });
 
@@ -79,7 +82,36 @@ it('retains an unknown previous migration payload without overwriting its origin
 it('leaves local terminals and provider-neutral utility parameters alone', () => {
   for (const opts of [{ command: ['/bin/sh'] }, { params: { endpoint: 'https://example.test/a/b' } }]) {
     const original = slot(opts);
-    expect(migrateDrawerResourceReferences(original)).toBe(original);
+    expect(migrateDrawerResourceReferences(original)).toEqual({ ...original, version: 2 });
+  }
+});
+
+it('preserves opaque selectors in v2 across serialization and reload', () => {
+  const opts = { resource_key: 'opaque/type', command: ['/bin/sh'], params: { target: 'x' } };
+  const original = { ...slot(opts, { metadata: 'retained' }), version: 2 as const };
+  expect(migrateDrawerResourceReferences(original)).toBe(original);
+  const saved = buildDrawerSlot(original.tabs.map(hydrateDrawerTab), original.focusedId!, 'expanded', 400);
+  const reloaded = migrateDrawerResourceReferences(parseDrawerSlot(JSON.parse(JSON.stringify(saved))));
+  expect(reloaded).toEqual(original);
+  expect(reloaded.tabs[0].properties?.opts).toEqual(opts);
+  expect(hasUnresolvedResourceReference(reloaded.tabs[0])).toBe(false);
+});
+
+it('migrates and reloads a slot through a temporary disk file', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'drawer-migration-'));
+  try {
+    const file = join(directory, 'drawer.json');
+    const { route: _route, ...opts } = canonical;
+    writeFileSync(file, JSON.stringify(slot(opts)));
+    const migrated = migrateDrawerResourceReferences(parseDrawerSlot(JSON.parse(readFileSync(file, 'utf8'))));
+    const saved = buildDrawerSlot(migrated.tabs.map(hydrateDrawerTab), migrated.focusedId!, 'expanded', 400);
+    writeFileSync(file, JSON.stringify(saved));
+    const restored = migrateDrawerResourceReferences(parseDrawerSlot(JSON.parse(readFileSync(file, 'utf8'))));
+    expect(restored).toEqual(saved);
+    expect(restored.tabs[0].properties?.opts).toEqual(canonical);
+    expect(restored.tabs[0].properties?.resourceReferenceMigration).toMatchObject({ legacy: { opts } });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
   }
 });
 

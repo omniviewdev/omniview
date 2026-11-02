@@ -5,6 +5,7 @@ import type {
   ExtensionRenderContext,
   ExtensionContributionRegistration,
 } from '@omniviewdev/runtime';
+import type { PagePathMigrator } from '../../../../packages/omniviewdev-runtime/src/types/app';
 
 // ─── Re-export runtime types needed by host code ─────────────────────
 
@@ -99,6 +100,7 @@ export type ValidatedExports = {
 
 export type PluginRegistrations = {
   readonly routes: RouteObject[];
+  readonly migratePagePath?: PagePathMigrator;
 };
 
 // ─── Normalized Contribution ─────────────────────────────────────────

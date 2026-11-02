@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useEffectEvent, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { registerActivePageNavigator, WindowActionsProvider, type WindowActions } from '@omniviewdev/runtime';
+import { registerActivePageNavigator, useSnackbar, WindowActionsProvider, type WindowActions } from '@omniviewdev/runtime';
 import { PAGE_TAB_DRAG_TYPE, useTabDeliveries } from '@/features/windows';
+import { usePluginService } from '@/features/plugins';
 import { ActivePageNavigationContext, type ActivePageNavigation } from './activePageNavigation';
 import { isTerminalTarget } from './keyboard';
 import { usePagePresentation } from './pagePresentation';
@@ -91,6 +92,8 @@ function PageTitleCache({ controller }: { controller: WorkspaceController }) {
  */
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const routes = usePageRoutes();
+  const { registrations } = usePluginService();
+  const { showSnackbar } = useSnackbar();
   const [controller] = useState(() => new WorkspaceController(readInitialPagesState(), routes));
   const [windowActions] = useState<WindowActions>(() => ({
     openInNewTab: (path, options) => {
@@ -109,6 +112,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     controller.routers.setRoutes(routes);
   }, [controller, routes]);
+
+  useEffect(() => {
+    controller.migrateRestoredPaths(registrations, (path, reason) => {
+      console.warn('[workspace] Could not migrate saved page', { path, reason });
+      showSnackbar({ message: 'A saved page could not be migrated.', status: 'warning', details: `${path}\n${reason}`, showOnce: true });
+    });
+  }, [controller, registrations, showSnackbar]);
 
   // A restored secondary window without tabs has nothing to show.
   useEffect(() => {

@@ -418,24 +418,20 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
   }, []);
 
   // ===================================== WINDOW WIRING ===================================== //
-  const reportedSavedReferences = React.useRef(false);
+  const reportedSavedReferences = React.useRef(new Set<string>());
 
   React.useEffect(() => {
-    if (reportedSavedReferences.current) {
-      return;
-    }
-
-    reportedSavedReferences.current = true;
-    for (const tab of initialSlot?.tabs ?? []) {
-      if (!hasUnresolvedResourceReference(tab)) {
+    for (const tab of state.tabs) {
+      if (!hasUnresolvedResourceReference(tab) || reportedSavedReferences.current.has(tab.id)) {
         continue;
       }
 
+      reportedSavedReferences.current.add(tab.id);
       const location = `Window ${currentWindow.name}, terminal ${tab.id}`;
       console.warn('[drawer] saved resource reference is unconvertible; original options retained', location);
       showSnackbar({ message: unresolvedResourceReferenceMessage, status: 'warning', details: location, showOnce: true });
     }
-  }, [initialSlot, showSnackbar]);
+  }, [state.tabs, showSnackbar]);
 
   React.useEffect(() => {
     saveSlot('drawer', buildDrawerSlot(
@@ -449,13 +445,17 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
   React.useEffect(() => {
     let disposed = false;
     planDrawerRestore(initialSlot?.tabs ?? [])
-      .then(({ deadTabIds, orphanedSessionTabs }) => {
+      .then(({ deadTabIds, expiredMigratedIds, orphanedSessionTabs }) => {
         if (disposed) {
           return;
         }
 
         if (deadTabIds.size > 0) {
           dispatch({ type: 'remove', ids: deadTabIds });
+        }
+
+        for (const id of expiredMigratedIds) {
+          dispatch({ type: 'update', find: { id }, updates: { properties: { status: 'expired' } } });
         }
 
         adoptTabs(orphanedSessionTabs, {});
@@ -486,7 +486,7 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
 
       let slot: DrawerSlot;
       try {
-        slot = parseDrawerSlot(JSON.parse(states.drawer));
+        slot = migrateDrawerResourceReferences(parseDrawerSlot(JSON.parse(states.drawer)));
       } catch (err) {
         console.error(`[drawer] ignoring invalid drawer state of closed window "${name}"`, err);
         return;

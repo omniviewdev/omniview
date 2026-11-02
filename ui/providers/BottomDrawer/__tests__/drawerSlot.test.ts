@@ -35,7 +35,7 @@ describe('parseDrawerSlot', () => {
 
   it.each([
     ['a non-object', 'nope'],
-    ['an unknown version', { version: 2, tabs: [], focusedId: null }],
+    ['an unknown version', { version: 3, tabs: [], focusedId: null }],
     ['tabs that are not an array', { version: 1, tabs: {}, focusedId: null }],
     ['duplicate tab ids', { version: 1, tabs: [serializedTab('a'), serializedTab('a')], focusedId: null }],
     ['a focusedId that is not one of its tabs', { version: 1, tabs: [serializedTab('a')], focusedId: 'b' }],
@@ -74,7 +74,7 @@ describe('buildDrawerSlot', () => {
     const tabs = [hydrateDrawerTab(serializedTab('sess-1')), hydrateDrawerTab(serializedTab('pending-1'))];
 
     expect(buildDrawerSlot(tabs, 'pending-1', 'minimized', 300)).toEqual({
-      version: 1,
+      version: 2,
       tabs: [serializedTab('sess-1')],
       focusedId: null,
       mode: 'minimized',

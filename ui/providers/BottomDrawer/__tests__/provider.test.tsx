@@ -175,6 +175,26 @@ describe('BottomDrawerProvider', () => {
     expect(mocks.showSnackbar).not.toHaveBeenCalled();
   });
 
+  it('preserves a live v2 opaque selector and prunes an ordinary expired session', async () => {
+    const opts = { resource_key: 'opaque/type', command: ['/bin/sh'] };
+    const live = { ...serializedTab('live'), properties: { pluginID: 'plugin', connectionID: 'route', opts, metadata: 'keep' } };
+    mocks.initialSlot = { version: 2, tabs: [live, serializedTab('expired')], focusedId: live.id };
+    mocks.listExecSessions.mockResolvedValue([{ id: live.id }]);
+    const view = render(<BottomDrawerProvider><Probe /></BottomDrawerProvider>);
+    await waitFor(() => {
+      expect(drawerWindow.restoreComplete).toBe(true);
+    });
+    expect(tabIds()).toEqual(['live']);
+    expect(drawer.tabs[0].properties).toEqual(live.properties);
+    expect(mocks.showSnackbar).not.toHaveBeenCalled();
+    const saved = vi.mocked(saveSlot).mock.calls.at(-1)![1];
+    view.unmount();
+    mocks.initialSlot = parseDrawerSlot(JSON.parse(JSON.stringify(saved)));
+    await renderRestoredDrawer();
+    expect(drawer.tabs[0].properties).toEqual(live.properties);
+    expect(mocks.showSnackbar).not.toHaveBeenCalled();
+  });
+
   it('createTabs([]) is a no-op and does not emit onTabCreated', () => {
     render(
       <BottomDrawerProvider>
