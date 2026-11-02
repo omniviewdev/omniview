@@ -1065,7 +1065,7 @@ func TestResourceReadLanesAndConsentThroughHTTP(t *testing.T) {
 	}
 	approveNext(t, h.service)
 	result, err = session.CallTool(ctx, &mcp.CallToolParams{
-		Name: action.MCPName,
+		Name:      action.MCPName,
 		Arguments: map[string]any{"connection_id": "route-a", "input": input},
 	})
 	require.NoError(t, err)
