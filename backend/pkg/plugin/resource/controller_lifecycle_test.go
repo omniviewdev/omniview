@@ -271,7 +271,7 @@ func TestOnPluginStart_CatalogOnlyDoesNotRequireUpdateListener(t *testing.T) {
 		catalog.Types[0].Capabilities = nil
 		return catalog, nil
 	}}
-	backend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": provider})
+	backend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": provider}})
 	require.NoError(t, ctrl.OnPluginStart("catalog-only", defaultMeta(), backend))
 	t.Cleanup(func() { require.NoError(t, ctrl.OnPluginStop("catalog-only", defaultMeta())) })
 	catalog, err := ctrl.Catalog(testInvocationContext(), "catalog-only", resource.CatalogRequest{Route: resource.AccessRoute{Connection: "explicit"}})

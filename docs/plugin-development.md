@@ -53,6 +53,82 @@ When checking sidebar actions, verify that Logs opens a log tab, Exec opens a
 terminal tab, and Delete opens its confirmation dialog (then cancel it).
 Container shell availability is separate from action dispatch.
 
+### Host-owned in-process backend lifetime
+
+`backend/pkg/plugin/types.InProcessBackend` accepts `InProcessBackendConfig`
+with capability providers, an optional `HealthCheck`, and an optional aggregate
+`Shutdown`. Configuration is fixed at construction; the backend snapshots the
+provider map without copying provider instances.
+
+`Stop` immediately fences dispensing and health, invokes aggregate shutdown once,
+and waits for it to finish. Concurrent `Stop` and `Kill` calls share that shutdown;
+later `Stop` calls return its original error. `Exited` becomes true only after
+shutdown completes. In-process `Kill` cannot terminate native code forcibly.
+
+Callbacks run outside the backend state lock. Health checks may overlap shutdown
+and must synchronize their own native state. Shutdown may inspect backend state,
+but must not recursively call `Stop` or `Kill` on the same backend.
+
+Aggregate shutdown must not duplicate cleanup already owned by capability
+controllers. The resource controller and exec controller already close their
+providers; the backend does not infer ownership from a provider's `Close` method.
+
+### Trusted built-in plugins
+
+Product composition supplies `plugin.NewCatalog([]plugin.CatalogEntry)` to
+`plugin.NewManager`. Each entry contains ordinary SDK metadata, a
+`FrontendModule` key for UI capabilities, and a `NewBackend(context.Context)`
+factory for backend capabilities. The factory must construct a fresh provider
+graph for each activation. Installed manifests cannot opt into this catalog.
+
+`types.ComposeNativeBackend(types.NativeProviders{...})` binds native SDK
+utilities to the resource provider's real connection registry. Resource utility
+providers must implement the SDK connection-context consumer contract. Direct
+adapters dispatch canonical resource operations through the SDK's native resource
+interfaces, just as the external transport does; they do not fall back to legacy
+resource-data callbacks. Existing host reference admission and catalog pins still
+apply.
+
+Built-ins appear in `ListPlugins` before activation, with `origin: "builtin"` and
+their trusted `frontendModule`. `LoadPlugin` activates them without an installed
+manifest, binary, or asset directory. Discovery and enabling do not activate them.
+`SetPluginEnabled` persists the preference independently from activation; disabling
+retires controllers before releasing aggregate native resources.
+
+| Resource owner | Cleanup responsibility |
+| --- | --- |
+| Resource controller | Retire admission, generation-bound work, and the resource provider |
+| Exec controller | Close sessions and cancel/drain its forwarding worker |
+| Logs controller | Close supported native providers, cancel/drain forwarding, retire buffered output |
+| Metrics controller | Cancel/drain connection streams and retire subscription interests |
+| Network controller | Stop provider sessions and port forwards |
+| Settings/tools controllers | Retire their host registrations and pending host work |
+| Aggregate `Shutdown` | Release shared native clients not already owned by controllers |
+
+Product-owned IDs cannot be replaced through marketplace, local archive,
+development-link, or uninstall operations. An existing external installation with
+the same ID causes an explicit collision; the host does not delete or migrate
+that installation implicitly. Built-in versions follow the application release.
+
+Frontend composition registers a static import function and declarative route
+metadata in `ui/features/plugins/adapters/builtinModules.ts`. The module key must
+match the trusted catalog entry. Navigation or an explicit plugin-service load
+activates the native backend, imports the module, and uses the normal export
+validation and contribution pipeline. Unknown module keys fail closed without
+SystemJS or development-server fallback. Disable, unload, and replacement fence
+late imports so they cannot restore retired routes or contributions.
+
+The production catalog and module registry are intentionally empty until the
+separate containers migration. No sample or test feature ships with the app.
+See [the integration plan](builtin-plugins.md) for
+the containers, packaging, performance, and SSH/SFTP gates.
+
+In a linked workspace, let the installed `omniview-dev` CLI run dependency
+installation and producer builds; it invokes `task bindings` internally.
+Standalone installs or producer builds can invalidate output ownership. Use
+`workspace reset-modules` for changed dependency trees and `workspace recover`
+for retained build recovery, rather than editing journals or weakening checks.
+
 ---
 
 ## 1. Getting Started

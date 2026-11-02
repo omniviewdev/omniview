@@ -217,7 +217,7 @@ func TestInstallDevPluginFromPath_FailedBuildIsErrorAndRecoverable(t *testing.T)
 	// A later watcher build can reload the retained record without relinking.
 	require.NoError(t, os.WriteFile(filepath.Join(pm.pluginsRoot.ResolvePath("kubernetes"), "bin", "plugin"), []byte("built"), 0755))
 	pm.backendFactory = func(config.PluginMeta, string) (plugintypes.PluginBackend, error) {
-		return plugintypes.NewInProcessBackend(nil), nil
+		return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{}), nil
 	}
 	info, err = pm.ReloadPlugin("kubernetes")
 	require.NoError(t, err)
@@ -366,7 +366,7 @@ func TestInstallPluginFromPath_FailedReplacementRestoresUsableInstallation(t *te
 					if failure == "load" && metadata.Version == "0.4.0" {
 						return nil, errors.New("candidate RPC startup rejected")
 					}
-					return plugintypes.NewInProcessBackend(map[string]interface{}{"resource": metadata.Version}), nil
+					return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": metadata.Version}}), nil
 				}
 				var opts *LoadPluginOptions
 				servers := &transactionDevServers{}
@@ -516,7 +516,7 @@ func TestInstallPluginFromPath_PreflightRejectionLeavesOriginalRuntimeUntouched(
 	require.NoError(t, pm.pluginsRoot.MkdirAll("flux/assets", 0755))
 	require.NoError(t, pm.pluginsRoot.WriteFile("flux/assets/entry.js", []byte("original bundle"), 0644))
 	pm.backendFactory = func(metadata config.PluginMeta, _ string) (plugintypes.PluginBackend, error) {
-		return plugintypes.NewInProcessBackend(map[string]interface{}{"resource": metadata.Version}), nil
+		return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": metadata.Version}}), nil
 	}
 	_, err := pm.LoadPlugin("flux", nil)
 	require.NoError(t, err)
@@ -563,7 +563,7 @@ func TestInstallPluginFromPath_FailedFreshInstallLeavesNoInstallation(t *testing
 				if failure == "load" {
 					return nil, errors.New("candidate RPC startup rejected")
 				}
-				return plugintypes.NewInProcessBackend(nil), nil
+				return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{}), nil
 			}
 			archive := writeTestTarball(t, []tarEntry{
 				{name: "plugin.yaml", mode: 0644, body: "id: flux\nversion: 0.4.0\ncapabilities: [resource, ui]\n"},
@@ -609,7 +609,7 @@ func TestInstallPluginFromPath_UnrelatedPersistenceKeepsArchivePreimageUntilComm
 			assert.Equal(t, "9.0.0", versions["other"])
 			return nil, errors.New("candidate RPC startup rejected")
 		}
-		return plugintypes.NewInProcessBackend(map[string]interface{}{"resource": metadata.Version}), nil
+		return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": metadata.Version}}), nil
 	}
 	_, err := pm.LoadPlugin("flux", nil)
 	require.NoError(t, err)
@@ -806,7 +806,7 @@ func TestInstallDevPluginFromPath_FailedRebindCannotReusePriorBinary(t *testing.
 	b := devSourceFixture(t, backendYaml)
 	installPluginFixture(t, pm, "kubernetes", []string{"resource", "ui"}, true)
 	pm.backendFactory = func(config.PluginMeta, string) (plugintypes.PluginBackend, error) {
-		return plugintypes.NewInProcessBackend(nil), nil
+		return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{}), nil
 	}
 	_, err := pm.LoadPlugin("kubernetes", &LoadPluginOptions{DevMode: true, DevModePath: a})
 	require.NoError(t, err)
@@ -1288,7 +1288,7 @@ func TestInstallPluginFromPath_DoesNotStopLiveRuntimeWithoutRestorableDirectory(
 	installPluginFixture(t, pm, "flux", []string{"resource", "ui"}, true)
 	require.NoError(t, pm.pluginsRoot.MkdirAll("flux/assets", 0755))
 	pm.backendFactory = func(metadata config.PluginMeta, _ string) (plugintypes.PluginBackend, error) {
-		return plugintypes.NewInProcessBackend(map[string]interface{}{"resource": metadata.Version}), nil
+		return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": metadata.Version}}), nil
 	}
 	_, err := pm.LoadPlugin("flux", nil)
 	require.NoError(t, err)
@@ -1336,7 +1336,7 @@ func TestInstallPluginFromPath_ExtractedMetadataControlsPreflightBeforeTeardown(
 					if metadata.Version == "0.4.0" {
 						return nil, errors.New("candidate RPC boundary rejected")
 					}
-					return plugintypes.NewInProcessBackend(map[string]interface{}{"resource": metadata.Version}), nil
+					return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": metadata.Version}}), nil
 				}
 				var opts *LoadPluginOptions
 				if dev {

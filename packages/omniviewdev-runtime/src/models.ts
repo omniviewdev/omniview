@@ -8,8 +8,8 @@ export {
   ConnectionLifecycle,
   ConnectionStatus,
   ConnectionStatusCode,
-  PluginInfo,
 } from './bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
+export { PluginInfo } from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/types/models';
 export * from './bindings/github.com/omniviewdev/plugin-sdk/pkg/config/models';
 export * from './resource/v2/domain';
 export * from './resource/v2/ancillary';

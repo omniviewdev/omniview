@@ -225,6 +225,7 @@ export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: str
   const { showSnackbar } = useSnackbar();
   const service = usePluginService();
   const serviceUnload = service.unload;
+  const serviceSetEnabled = service.setEnabled;
   const recoverInterface = async (pluginID: string) => {
     const phase = service.getSnapshot().plugins.get(pluginID)?.phase;
     if (phase === 'error') {
@@ -271,11 +272,16 @@ export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: str
       return PluginManager.GetPlugin(id);
     },
   });
+  const inventory = useQuery({
+    queryKey: [Entity.PLUGINS],
+    queryFn: async () => (await PluginManager.ListPlugins()) ?? [],
+  });
+  const external = !!id && inventory.isSuccess && inventory.data.find(item => item.id === id)?.origin !== 'builtin';
 
 
   const versions = useQuery({
     queryKey: [Entity.PLUGINS, id, 'versions'],
-    enabled: !!id && (!installed || !!tab),
+    enabled: external && (!installed || !!tab),
     staleTime: 60_000,
     retry: false,
     queryFn: async () => {
@@ -287,21 +293,21 @@ export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: str
   const readme = useQuery({
     queryKey: [Entity.PLUGINS, id, 'readme'],
     queryFn: async () => PluginManager.GetPluginReadme(id),
-    enabled: !!id && tab === 'overview',
+    enabled: external && tab === 'overview',
     staleTime: 300_000,
   });
 
   const reviews = useQuery({
     queryKey: [Entity.PLUGINS, id, 'reviews'],
     queryFn: async () => PluginManager.GetPluginReviews(id, 1),
-    enabled: !!id && tab === 'reviews',
+    enabled: external && tab === 'reviews',
     staleTime: 60_000,
   });
 
   const downloadStats = useQuery({
     queryKey: [Entity.PLUGINS, id, 'download-stats'],
     queryFn: async () => PluginManager.GetPluginDownloadStats(id),
-    enabled: !!id && tab === 'stats',
+    enabled: external && tab === 'stats',
     staleTime: 60_000,
   });
 
@@ -345,6 +351,17 @@ export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: str
     },
     onError: createErrorHandler(showSnackbar, 'Failed to uninstall plugin'),
   });
+  const setEnabled = useMutation({
+    mutationFn: async (enabled: boolean) => runOperation(
+      enabled ? 'Enabling plugin…' : 'Disabling plugin…',
+      () => serviceSetEnabled(id, enabled),
+    ),
+    onSuccess() {
+      void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
+    },
+    onError: createErrorHandler(showSnackbar, 'Failed to change plugin enablement'),
+  });
+
 
   /**
    * Update the plugin to a specified version
@@ -384,5 +401,6 @@ export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: str
     reload,
     uninstall,
     update,
+    setEnabled,
   };
 };

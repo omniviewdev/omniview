@@ -35,6 +35,13 @@ func (a *AdapterV1) ListSessions(ctx *types.PluginContext) ([]*exec.Session, err
 }
 
 func (a *AdapterV1) CreateSession(ctx *types.PluginContext, opts exec.SessionOptions) (*exec.Session, error) {
+	if opts.HasResourceIntent() {
+		provider, ok := a.inner.(exec.ResourceSessionProvider)
+		if !ok {
+			return nil, resourcev2.NewError("UNSUPPORTED", "Resource exec provider unavailable.")
+		}
+		return provider.CreateResourceSession(ctx, opts)
+	}
 	return a.inner.CreateSession(ctx, opts)
 }
 

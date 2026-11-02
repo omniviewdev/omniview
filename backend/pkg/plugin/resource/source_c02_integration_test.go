@@ -108,7 +108,7 @@ func TestC02SourceViewLifecycle(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, provider.Close()) })
 	transport := setupGRPCProvider(t, provider)
 	ctrl, emitter := newTestControllerWithEmitter(t)
-	backend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": transport})
+	backend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": transport}})
 	require.NoError(t, ctrl.OnPluginStart("proof", defaultMeta(), backend))
 	t.Cleanup(func() { require.NoError(t, ctrl.OnPluginShutdown("proof", defaultMeta())) })
 	_, err = ctrl.StartConnection(ctx, "proof", "local")

@@ -8,11 +8,11 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/extensiondiagnostics"
 
+	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/internal/devcontract"
-	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
-func publicPlugin(p sdktypes.PluginInfo) sdktypes.PluginInfo {
+func publicPlugin(p plugintypes.PluginInfo) plugintypes.PluginInfo {
 	if p.LastError != "" {
 		p.LastError = "plugin reported an error; inspect local diagnostics"
 	}

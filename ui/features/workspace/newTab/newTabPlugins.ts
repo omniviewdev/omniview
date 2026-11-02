@@ -22,7 +22,9 @@ type Registrations = ReadonlyMap<string, { readonly routes: readonly unknown[] }
  */
 export function selectNewTabPlugins(inventory: readonly PluginInfo[] | undefined, registrations: Registrations): NewTabPlugin[] {
   return (inventory ?? [])
-    .filter(({ id }) => registrations.get(id)?.routes.length !== 0)
+    .filter(({ id, origin, enabled }) => enabled && (origin === 'builtin'
+      ? (registrations.get(id)?.routes.length ?? 0) > 0
+      : registrations.get(id)?.routes.length !== 0))
     .map(({ id, metadata }) => ({ id, name: orFallback(metadata?.name, id), icon: metadata?.icon ?? '' }))
     .sort((left, right) => left.name.localeCompare(right.name));
 }

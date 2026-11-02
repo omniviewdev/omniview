@@ -8,15 +8,15 @@ import (
 	"fmt"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
+	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devcontrol"
-	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
 type Manager interface {
 	devcontrol.Plugins
-	ReloadPlugin(string) (sdktypes.PluginInfo, error)
+	ReloadPlugin(string) (plugintypes.PluginInfo, error)
 	StopDevPlugin(string) error
 }
 type DevServers interface {

@@ -11,6 +11,71 @@ import * as lifecycle$0 from "../lifecycle/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as config$0 from "../../../../../plugin-sdk/pkg/config/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as types$0 from "../../../../../plugin-sdk/pkg/types/models.js";
+
+/**
+ * PluginInfo is the host-owned, frontend-safe plugin inventory descriptor.
+ */
+export class PluginInfo {
+    "id": string;
+    "metadata": config$0.PluginMeta;
+    "phase": string;
+    "enabled": boolean;
+    "devMode": boolean;
+    "devPath"?: string;
+    "capabilities": types$0.Capability[];
+    "lastError"?: string;
+    "origin": string;
+    "frontendModule": string;
+
+    /** Creates a new PluginInfo instance. */
+    constructor($$source: Partial<PluginInfo> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("metadata" in $$source)) {
+            this["metadata"] = (new config$0.PluginMeta());
+        }
+        if (!("phase" in $$source)) {
+            this["phase"] = "";
+        }
+        if (!("enabled" in $$source)) {
+            this["enabled"] = false;
+        }
+        if (!("devMode" in $$source)) {
+            this["devMode"] = false;
+        }
+        if (!("capabilities" in $$source)) {
+            this["capabilities"] = [];
+        }
+        if (!("origin" in $$source)) {
+            this["origin"] = "";
+        }
+        if (!("frontendModule" in $$source)) {
+            this["frontendModule"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PluginInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): PluginInfo {
+        const $$createField1_0 = $$createType0;
+        const $$createField6_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("metadata" in $$parsedSource) {
+            $$parsedSource["metadata"] = $$createField1_0($$parsedSource["metadata"]);
+        }
+        if ("capabilities" in $$parsedSource) {
+            $$parsedSource["capabilities"] = $$createField6_0($$parsedSource["capabilities"]);
+        }
+        return new PluginInfo($$parsedSource as Partial<PluginInfo>);
+    }
+}
 
 /**
  * PluginStateRecord is the subset of PluginRecord that gets persisted to disk.
@@ -68,3 +133,4 @@ export class PluginStateRecord {
 
 // Private type creation functions
 const $$createType0 = config$0.PluginMeta.createFrom;
+const $$createType1 = $Create.Array($Create.Any);

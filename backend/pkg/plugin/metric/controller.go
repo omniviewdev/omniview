@@ -144,6 +144,15 @@ func (c *controller) ServiceStartup(ctx context.Context, _ application.ServiceOp
 }
 
 func (c *controller) ServiceShutdown() error {
+	c.mux.RLock()
+	plugins := make([]string, 0, len(c.clients))
+	for id := range c.clients {
+		plugins = append(plugins, id)
+	}
+	c.mux.RUnlock()
+	for _, id := range plugins {
+		c.removePlugin(id)
+	}
 	return nil
 }
 
@@ -283,6 +292,11 @@ func (c *controller) removePlugin(pluginID string) {
 	c.mux.Unlock()
 	for _, state := range retired {
 		c.endStream(state, closedStreamError())
+	}
+	for _, state := range retired {
+		if state.drained != nil {
+			<-state.drained
+		}
 	}
 }
 

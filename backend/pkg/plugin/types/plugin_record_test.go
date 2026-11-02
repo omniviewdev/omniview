@@ -86,7 +86,7 @@ func TestPluginRecord_ToStateRecord_RoundTrip(t *testing.T) {
 		LastError:   "oops",
 		ErrorCount:  3,
 		InstalledAt: now,
-		Backend:     NewInProcessBackend(nil), // runtime field
+		Backend:     NewInProcessBackend(InProcessBackendConfig{}), // runtime field
 	}
 
 	sr := record.ToStateRecord()

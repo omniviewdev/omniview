@@ -44,7 +44,7 @@ func integrationProvider(resourceTypes ...string) *mockProvider {
 // EI-001: Canonical dispensing retains the actual provider without an adapter.
 func TestIntegration_DispenseProvider(t *testing.T) {
 	mock := integrationProvider("pods")
-	backend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": mock})
+	backend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": mock}})
 	provider, version, err := dispenseProvider("p1", backend)
 	require.NoError(t, err)
 	require.Same(t, mock, provider)
@@ -79,7 +79,7 @@ func TestDependencyOwnerStartupDoesNotAutoConnect(t *testing.T) {
 		<-ctx.Done()
 		return ctx.Err()
 	}
-	backend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": mock})
+	backend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": mock}})
 	require.NoError(t, ctrl.OnPluginStartWithoutAutoConnect("owner", defaultMeta(), backend))
 	t.Cleanup(func() { require.NoError(t, ctrl.OnPluginStop("owner", defaultMeta())) })
 	connections, err := ctrl.ListConnections(testInvocationContext(), "owner")
@@ -107,7 +107,7 @@ func TestIntegration_OnPluginStart_FullWiring(t *testing.T) {
 		<-ctx.Done()
 		return ctx.Err()
 	}
-	backend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": mock})
+	backend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": mock}})
 	require.NoError(t, ctrl.OnPluginStart("p1", defaultMeta(), backend))
 	t.Cleanup(func() { require.NoError(t, ctrl.OnPluginStop("p1", defaultMeta())) })
 	for _, ready := range []<-chan struct{}{browserReady} {
@@ -256,7 +256,7 @@ func TestIntegration_DoubleStart(t *testing.T) {
 			previous = state.ctx
 		}
 		ctrl.pluginsMu.RUnlock()
-		backend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": mock})
+		backend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": mock}})
 		require.NoError(t, ctrl.OnPluginStart("p1", defaultMeta(), backend))
 		if previous != nil {
 			require.ErrorIs(t, previous.Err(), context.Canceled)

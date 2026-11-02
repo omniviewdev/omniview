@@ -24,6 +24,7 @@ import {
 import { useParams } from 'react-router';
 
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
+import { usePluginService } from '@/features/plugins';
 import { orFallback } from '@/utils/orFallback';
 import PluginListItem from './PluginListItem';
 import PluginFilterPopover, {
@@ -38,6 +39,7 @@ import styles from './PluginsNav.module.css';
 const PluginsNav: React.FC = () => {
   const { id = '' } = useParams<{ id: string }>();
   const { plugins, available, installFromPath, installDev } = usePluginManager();
+  const { plugins: frontendPlugins } = usePluginService();
 
   const [search, setSearch] = React.useState('');
   const [installedOpen, setInstalledOpen] = React.useState(true);
@@ -237,8 +239,10 @@ const PluginsNav: React.FC = () => {
                   active={id === p.id}
                   installed
                   version={p.metadata?.version}
-                  phase={p.phase}
+                  phase={p.origin === 'builtin' && frontendPlugins.get(p.id)?.phase === 'error' ? 'Failed' : p.phase}
                   devMode={p.devMode}
+                  origin={p.origin === 'builtin' ? 'builtin' : 'external'}
+                  enabled={p.enabled}
                   author={p.metadata?.author?.name}
                 />
               ))}

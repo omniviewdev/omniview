@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devcontrol"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
@@ -33,11 +34,11 @@ type replacementPluginProducer struct {
 	source, endpoint, failureFile string
 }
 
-func (p *replacementPluginProducer) InstallDevPluginFromPath(source string) (sdktypes.PluginInfo, error) {
+func (p *replacementPluginProducer) InstallDevPluginFromPath(source string) (plugintypes.PluginInfo, error) {
 	if source != p.source {
-		return sdktypes.PluginInfo{}, errors.New("plugin source differs from selected fixture")
+		return plugintypes.PluginInfo{}, errors.New("plugin source differs from selected fixture")
 	}
-	return sdktypes.PluginInfo{ID: "fixture-plugin"}, nil
+	return plugintypes.PluginInfo{PluginInfo: sdktypes.PluginInfo{ID: "fixture-plugin"}}, nil
 }
 
 func (p *replacementPluginProducer) WaitReady(_ context.Context, id, generation string) (devcontrol.DevState, error) {

@@ -40,6 +40,11 @@ import (
 // resource controller -> real gRPC -> host GetConnection admission -> exec gRPC
 // -> real SDK manager/PTY -> native file IO. No provider forwards a canned result.
 func TestRegisteredExecConsumesNativeConnectionAndCleansUpSession(t *testing.T) {
+	t.Run("grpc", func(t *testing.T) { testRegisteredNativeExec(t, false) })
+	t.Run("direct", func(t *testing.T) { testRegisteredNativeExec(t, true) })
+}
+
+func testRegisteredNativeExec(t *testing.T, direct bool) {
 	const pluginID = "native-exec-proof"
 	const providerID = "native-machine-provider"
 	const resourceKey = "cloud::v1::Machine"
@@ -143,29 +148,37 @@ while IFS= read -r ignored; do :; done`)
 			return terminal, factoryErr
 		},
 	})
-	manager.BindConnectionContextProvider(resourceProvider)
-	t.Cleanup(manager.Close)
+	var backend *plugintypes.InProcessBackend
+	if direct {
+		backend, err = plugintypes.ComposeNativeBackend(plugintypes.NativeProviders{Resource: resourceProvider, Exec: manager})
+		require.NoError(t, err)
+	} else {
+		manager.BindConnectionContextProvider(resourceProvider)
+		t.Cleanup(manager.Close)
 
-	listener := bufconn.Listen(1024 * 1024)
-	server := grpc.NewServer(grpc.UnaryInterceptor(interceptors.UnaryPluginContext()), grpc.StreamInterceptor(interceptors.StreamPluginContext()))
-	resourceplugin.RegisterServer(server, resourceProvider)
-	execPlugin := &sdkexec.Plugin{Impl: manager}
-	require.NoError(t, execPlugin.GRPCServer(nil, server))
-	go func() { _ = server.Serve(listener) }()
-	//nolint:staticcheck // Match the existing host bufconn integration convention.
-	connection, err := grpc.DialContext(ctx, "bufnet",
-		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return listener.DialContext(ctx) }),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(sdk.ClientPluginContextInterceptor(logger)),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = connection.Close(); server.Stop(); _ = listener.Close() })
-	execClient, err := execPlugin.GRPCClient(ctx, nil, connection)
-	require.NoError(t, err)
-	backend := plugintypes.NewInProcessBackend(map[string]interface{}{
-		"resource": resourceplugin.NewClient(connection),
-		"exec":     execClient,
-	})
+		listener := bufconn.Listen(1024 * 1024)
+		server := grpc.NewServer(grpc.UnaryInterceptor(interceptors.UnaryPluginContext()), grpc.StreamInterceptor(interceptors.StreamPluginContext()))
+		resourceplugin.RegisterServer(server, resourceProvider)
+		execPlugin := &sdkexec.Plugin{Impl: manager}
+		require.NoError(t, execPlugin.GRPCServer(nil, server))
+		go func() { _ = server.Serve(listener) }()
+		//nolint:staticcheck // Match the existing host bufconn integration convention.
+		connection, err := grpc.DialContext(ctx, "bufnet",
+			grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return listener.DialContext(ctx) }),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithUnaryInterceptor(sdk.ClientPluginContextInterceptor(logger)),
+		)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = connection.Close(); server.Stop(); _ = listener.Close() })
+		execClient, err := execPlugin.GRPCClient(ctx, nil, connection)
+		require.NoError(t, err)
+		backend = plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{
+			Providers: map[string]interface{}{
+				"resource": resourceplugin.NewClient(connection),
+				"exec":     execClient,
+			},
+		})
+	}
 	resources := hostresource.NewController(logger, nil, state.PluginStore, invocation.NewBoundary(nil))
 	resources.Run(ctx)
 	resourceShutdown := resources.(interface{ ServiceShutdown() error })
@@ -183,7 +196,7 @@ while IFS= read -r ignored; do :; done`)
 
 	ctrl := NewController(logger, nil, resources).(*controller)
 	ctrl.ctx = ctx // No local terminal manager/UI runtime is needed for plugin exec.
-	ctrl.outputMux = make(chan sdkexec.StreamOutput, 16)
+	ctrl.outputMux = make(chan execProviderOutput, 16)
 	ctrl.OnPluginInit(pluginID, config.PluginMeta{})
 	require.NoError(t, ctrl.OnPluginStart(pluginID, config.PluginMeta{}, backend))
 	t.Cleanup(func() { cancel(); _ = ctrl.OnPluginStop(pluginID, config.PluginMeta{}) })

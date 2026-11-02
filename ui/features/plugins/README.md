@@ -42,6 +42,7 @@ ui/features/plugins/
 ├── adapters/                # Dependency injection — wires real infra to PluginService
 │   ├── createProductionDeps.ts  # Production deps (SystemJS, Wails events, etc.)
 │   ├── importPlugin.ts      # SystemJS (prod) / ESM (dev) module import
+│   ├── builtinModules.ts    # Static lazy imports, declarative routes, trusted resolution
 │   ├── clearPlugin.ts       # Module cache cleanup
 │   └── devSharedDeps.ts     # Dev-mode shared dependency setup
 │
@@ -90,7 +91,7 @@ idle ──→ loading ──→ ready
 
 ### Loading a Plugin
 
-1. **Import** — `deps.importModule(pluginId)` fetches the JS module (SystemJS in prod, ESM in dev)
+1. **Resolve and import** — Native inventory selects the source. Built-ins activate their backend before a static lazy import; external plugins retain SystemJS/Vite loading.
 2. **Validate** — `deps.validateExports(module)` checks the module exports a `PluginWindow` and valid contribution shapes
 3. **Build registrations** — Extract routes (set via `PluginWindow.withRoutes()`)
 4. **Normalize contributions** — Transform sidebars, drawers, and extension registrations into a unified `NormalizedContribution[]`
@@ -100,8 +101,8 @@ idle ──→ loading ──→ ready
 
 ### Startup and Development Server Readiness
 
-The host starts plugin UI loading during startup, not on the first sidebar click.
-`useInstalledPlugins()` combines installed descriptors with the live dev-server
+The host starts external plugin UI loading during startup, not on the first sidebar click.
+`useInstalledPlugins()` combines host inventory descriptors with the live dev-server
 state from `useDevServers()`. That subscription is installed before fetching its
 initial snapshot; status events received during the request take precedence over
 the older snapshot.
@@ -149,6 +150,41 @@ On a frontend reload it shows progress until discovery and plugin imports settle
 including dev plugins waiting for their server. Welcome is only used once that
 state is settled and no cards are registered. Existing cards remain usable while
 other plugins load, and saved card order is not pruned against a partial registry.
+
+### Built-in Discovery and Demand
+
+The host-owned `PluginInfo.origin` and `frontendModule` fields select product code.
+Installed metadata cannot opt into built-in loading. `adapters/builtinModules.ts`
+contains an explicit module-key registry. Each entry declares inexpensive route
+metadata and a `load: () => import('./feature/entry')` function. Route metadata must
+not import the feature entry. The production registry is empty until a feature
+migration supplies its real frontend and backend.
+
+Discovery registers those route descriptors without evaluating modules or calling
+`PluginManager.LoadPlugin`. Built-ins never join `loadAll`, including when callers
+pass them directly. Opening `/_plugin/<id>/...` activates the feature through
+`PluginRouteStatus`. Commands and capability consumers explicitly call the shared
+`usePluginService().load(id)` action before using feature registrations.
+
+The production resolver reads authoritative native inventory, rejects disabled
+plugins and unknown module keys, calls native `LoadPlugin`, and only then imports
+the module. Unknown built-in keys never fall back to SystemJS or a dev server.
+All sources use the same export validation, normalization, extension ordering and
+registration pipeline. Static imports use the host's existing React/runtime
+singletons; no second shared-dependency map is introduced.
+
+Concurrent requests join one activation. Disable, unload, inventory replacement,
+and provider reset retire pending work. Retirement before native startup finishes
+also prevents module evaluation. Retirement during import prevents late routes or
+contributions from publishing. Disable removes active registrations immediately
+and hides declarative routes. Re-enable restores discovery without eager
+activation; an already-open plugin page counts as navigation demand.
+
+The management page labels built-ins as product managed, shows disabled or failed
+state, and calls `SetPluginEnabled(id, enabled)` for enable/disable. Update and
+uninstall actions are absent. Versions ship with Omniview, not marketplace updates.
+Tests inject a `BuiltinModuleRegistry` into `createPluginModuleResolver` and
+`builtinRoutes`; production feature modules need no runtime registration hook.
 
 ### Concurrency Safety
 

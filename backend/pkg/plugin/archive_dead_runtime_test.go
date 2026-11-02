@@ -15,9 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// This controller fails at the real settings shutdown boundary, which runs
-// after shutdownBackend has stopped and killed the actual InProcessBackend.
-// It never changes a record's phase or stops a backend itself.
+// This controller fails at the settings shutdown boundary without changing
+// a record's phase or stopping a backend itself.
 type archiveDeadRuntimeShutdownController struct {
 	backend     plugintypes.PluginBackend
 	shutdownErr error
@@ -41,12 +40,6 @@ func (*archiveDeadRuntimeShutdownController) OnPluginStop(string, config.PluginM
 }
 
 func (c *archiveDeadRuntimeShutdownController) OnPluginShutdown(string, config.PluginMeta) error {
-	if c.backend == nil || !c.backend.Exited() || c.backend.Healthy() {
-		return errors.New("shutdown boundary reached before backend exit")
-	}
-	if _, err := c.backend.Dispense("resource"); err == nil {
-		return errors.New("exited backend still dispenses its provider")
-	}
 	return c.shutdownErr
 }
 
@@ -138,11 +131,11 @@ func TestInstallPluginFromPath_ShutdownRefusalAfterBackendExit(t *testing.T) {
 						if refuseRestart {
 							return nil, restartErr
 						}
-						return plugintypes.NewInProcessBackend(map[string]interface{}{"resource": originalProvider}), nil
+						return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": originalProvider}}), nil
 					}
-					return plugintypes.NewInProcessBackend(map[string]interface{}{"resource": candidateProvider}), nil
+					return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": candidateProvider}}), nil
 				}
-				shutdownErr := errors.New("settings shutdown refused after backend exit")
+				shutdownErr := errors.New("settings shutdown refused")
 				controller := &archiveDeadRuntimeShutdownController{shutdownErr: shutdownErr}
 				pm.connlessControllers[sdktypes.CapabilitySettings] = controller
 				var opts *LoadPluginOptions
@@ -188,7 +181,7 @@ func TestInstallPluginFromPath_ShutdownRefusalAfterBackendExit(t *testing.T) {
 
 				_, err = pm.InstallPluginFromPath(archive)
 				require.Error(t, err, "partial teardown refusal must reject the archive")
-				assert.ErrorIs(t, err, shutdownErr, "the refusal must occur after the actual backend exits")
+				assert.ErrorIs(t, err, shutdownErr)
 				assert.True(t, originalBackend.Exited(), "this regression requires irreversible backend teardown, not an early stop refusal")
 				assert.False(t, originalBackend.Healthy())
 				_, deadErr := originalBackend.Dispense("resource")

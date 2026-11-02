@@ -9,19 +9,20 @@ import (
 	"testing"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
+	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/internal/devcontrol"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
 type managerFixture struct {
 	devcontrol.Plugins
-	info           sdktypes.PluginInfo
+	info           plugintypes.PluginInfo
 	reloads, stops int
 	stopErr        error
 }
 
-func (m *managerFixture) GetPlugin(string) (sdktypes.PluginInfo, error) { return m.info, nil }
-func (m *managerFixture) ReloadPlugin(string) (sdktypes.PluginInfo, error) {
+func (m *managerFixture) GetPlugin(string) (plugintypes.PluginInfo, error) { return m.info, nil }
+func (m *managerFixture) ReloadPlugin(string) (plugintypes.PluginInfo, error) {
 	m.reloads++
 	m.info.Phase = "Running"
 	return m.info, nil
@@ -70,7 +71,7 @@ func (d *devFixture) SetDependencyWatching(id, generation string, enabled bool) 
 }
 
 func TestUIOnlyStoppedRecordIsActivatedDespiteViteReadiness(t *testing.T) {
-	manager := &managerFixture{info: sdktypes.PluginInfo{ID: "ui-only", DevMode: true, Phase: "Stopped"}}
+	manager := &managerFixture{info: plugintypes.PluginInfo{PluginInfo: sdktypes.PluginInfo{ID: "ui-only", DevMode: true, Phase: "Stopped"}}}
 	dev := &devFixture{state: devserver.DevServerState{PluginID: "ui-only", Generation: "managed-generation", Ready: true, BuildStatus: devserver.StageNotApplicable, RPCStatus: devserver.StageNotApplicable, ControllerStatus: devserver.StageNotApplicable, ViteStatus: devserver.DevProcessStatusReady}}
 	adapter := &lifecycle{manager: manager, dev: dev}
 	result, err := adapter.Start(context.Background(), "ui-only")
@@ -79,7 +80,7 @@ func TestUIOnlyStoppedRecordIsActivatedDespiteViteReadiness(t *testing.T) {
 	}
 }
 func TestCanonicalStopRetainsBindingAndPropagatesFailure(t *testing.T) {
-	manager := &managerFixture{info: sdktypes.PluginInfo{ID: "fixture", DevMode: true, DevPath: "/owned/source", Phase: "Running"}, stopErr: errors.New("stop failure")}
+	manager := &managerFixture{info: plugintypes.PluginInfo{PluginInfo: sdktypes.PluginInfo{ID: "fixture", DevMode: true, DevPath: "/owned/source", Phase: "Running"}}, stopErr: errors.New("stop failure")}
 	adapter := &lifecycle{manager: manager, dev: &devFixture{}}
 	if err := adapter.Stop(context.Background(), "fixture"); err == nil {
 		t.Fatal("stop failure hidden")
@@ -96,7 +97,7 @@ func TestCanonicalStopRetainsBindingAndPropagatesFailure(t *testing.T) {
 	}
 }
 func TestLogsRequireExplicitUnsafeOutputAndRemainBounded(t *testing.T) {
-	manager := &managerFixture{info: sdktypes.PluginInfo{ID: "fixture", DevMode: true}}
+	manager := &managerFixture{info: plugintypes.PluginInfo{PluginInfo: sdktypes.PluginInfo{ID: "fixture", DevMode: true}}}
 	entries := []devserver.LogEntry{{Timestamp: "actual-time", Source: "go-build", Level: "error", Message: "compiler failure: private-value"}, {Timestamp: "second-time", Source: "vite", Level: "info", Message: strings.Repeat("x", 3000)}}
 	adapter := &lifecycle{manager: manager, dev: &devFixture{entries: entries}}
 	safe, err := adapter.Logs("fixture", 0, 1, false)
@@ -113,7 +114,7 @@ func TestLogsRequireExplicitUnsafeOutputAndRemainBounded(t *testing.T) {
 }
 
 func TestDependencyControlInvokesGenerationTargetedProducerHook(t *testing.T) {
-	manager := &managerFixture{info: sdktypes.PluginInfo{ID: "fixture", DevMode: true}}
+	manager := &managerFixture{info: plugintypes.PluginInfo{PluginInfo: sdktypes.PluginInfo{ID: "fixture", DevMode: true}}}
 	dev := &devFixture{state: devserver.DevServerState{PluginID: "fixture", Generation: "current-plugin"}, dependencyWatching: true}
 	adapter := &lifecycle{manager: manager, dev: dev}
 	if err := adapter.SetDependencyWatching(context.Background(), "fixture", "stale-plugin", false); err == nil {
