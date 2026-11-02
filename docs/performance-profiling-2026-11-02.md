@@ -157,18 +157,23 @@ for arbitrary concurrent native `CheckConnection` callers.
 
 ### Pull requests and release boundary
 
-- [SDK #43](https://github.com/omniviewdev/plugin-sdk/pull/43): provider-neutral
-  timeout helper, commit `52d4ec73eebb813c3cc5f144a9361171d3b5a0b6`.
-- [Kubernetes #87](https://github.com/omniviewdev/omniview-plugin-kubernetes/pull/87):
-  bounded loading, EKS mutex scope and settings, commit `e688afd`. Its manifest
-  pins the real resolvable SDK commit pseudo-version
-  `v0.14.3-0.20261102182751-52d4ec73eebb`, with no published machine-local replace.
-  Standalone race tests and backend build passed against that remote commit.
-- [Host #359](https://github.com/omniviewdev/omniview/pull/359): readiness race,
-  kept separate from profiling skill/documentation.
+- [SDK #43](https://github.com/omniviewdev/plugin-sdk/pull/43) is merged at
+  `b082bc460bd8a6c183b4a27ebe64d71039128a0d` and published as `v0.14.3`.
+  The measured feature revision was `52d4ec73eebb813c3cc5f144a9361171d3b5a0b6`.
+- [Kubernetes #87](https://github.com/omniviewdev/omniview-plugin-kubernetes/pull/87)
+  is merged at `519172d96103340a0a7f0dab2dc60ae28b1ea28d`, with the published
+  SDK `v0.14.3` dependency and no machine-local replacement. The measured feature
+  revision was `e688afd`. Integration also preserves newer main features and
+  ensures cached/joined refresh callers do not reread acquisition settings.
+- [Host #359](https://github.com/omniviewdev/omniview/pull/359) is merged at
+  `ad1601012`, preserving the readiness fix alongside newer main changes.
 
-PRs are open, not merged or released. SDK/plugin release coordination still
-applies; a resolvable commit pin is not a claim that a stable SDK release shipped.
+The host integration pins SDK `v0.14.3` and the merged Kubernetes source in its
+reviewed candidate cohort and gitlink. The user approved the matching CI SDK
+revision promotion. SDK source approval remains separate from cohort selection.
+These integration changes do not replace the measured before/after revisions.
+Merging source does not update existing desktop installations or publish a new
+Kubernetes marketplace release.
 
 ## Verification and handoff
 
