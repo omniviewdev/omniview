@@ -734,8 +734,7 @@ This snapshot includes an exact integer and a native timestamp:
         },
         "coverage": {
           "kind": "complete",
-          "paths": [],
-          "reason": ""
+          "paths": []
         },
         "documentCoverage": {
           "knownAbsent": []
