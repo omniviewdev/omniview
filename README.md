@@ -146,6 +146,15 @@ Keep tracked `dist/.gitkeep` for Go's `all:dist` embed during clean pre-frontend
 
 Error reports retain their normalized error, reference ID, and timestamp as occurrence-owned state rather than compiler optimization caches. Inspecting or copying a report must not replace its identity; a new failure must. Metric stream starts capture the current resource payload, including payload-only updates.
 
+### Connection startup readiness
+
+The host publishes a successful connection-status event only after relationship
+bootstrap, eager-source admission, and connection-start commit finish. Native
+provider registration alone must not release resource pages while startup can
+still retire persisted catalog authority. This ordering preserves source-epoch
+fences without replaying stale queries. Source inventory can continue syncing
+after the connection becomes ready; readiness is not a network-health probe.
+
 ### Host profiling
 
 Open **Settings → Developer Settings**, enable **Local profiling (pprof)**, choose **Profiling port**, then save and restart Omniview. These settings work in development and production builds. Profiling is off by default; the default port is `6060`. Saving does not start, stop, or rebind the current listener.

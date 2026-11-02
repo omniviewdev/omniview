@@ -614,16 +614,6 @@ func (c *controller) StartConnection(ctx context.Context, pluginID, connectionID
 		c.connsMu.Unlock()
 	}
 
-	connName := connectionID
-	if conn.Connection != nil && conn.Connection.Name != "" {
-		connName = conn.Connection.Name
-	}
-	c.emitter.Emit(EventConnectionStatus, ConnectionStatusPayload{
-		PluginID:     pluginID,
-		ConnectionID: connectionID,
-		Status:       string(conn.Status),
-		Name:         connName,
-	})
 	if conn.Status == types.ConnectionStatusConnected {
 		c.bootstrapRelationships(ctx, pluginID, resource.AccessRoute{Connection: connectionID})
 		if err := c.startConnectionUpdates(ctx, pluginID, resource.AccessRoute{Connection: connectionID}); err != nil {
@@ -636,6 +626,18 @@ func (c *controller) StartConnection(ctx context.Context, pluginID, connectionID
 			}
 		}
 	}
+	// Bootstrap can retire a persisted authority and advance its source epoch.
+	// Only publish readiness once event-driven readers can use the stable epoch.
+	connName := connectionID
+	if conn.Connection != nil && conn.Connection.Name != "" {
+		connName = conn.Connection.Name
+	}
+	c.emitter.Emit(EventConnectionStatus, ConnectionStatusPayload{
+		PluginID:     pluginID,
+		ConnectionID: connectionID,
+		Status:       string(conn.Status),
+		Name:         connName,
+	})
 
 	return conn, nil
 

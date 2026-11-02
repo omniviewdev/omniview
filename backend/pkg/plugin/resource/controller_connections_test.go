@@ -8,6 +8,7 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -248,26 +249,69 @@ func TestStartConnection_Success(t *testing.T) {
 	assert.Equal(t, types.ConnectionStatusConnected, cs.Status)
 }
 
-func TestStartConnection_EmitsStatusEvent(t *testing.T) {
+func TestStartConnectionDoesNotAdmitResourcesBeforeBootstrap(t *testing.T) {
 	ctrl, emitter := newTestControllerWithEmitter(t)
-	mock := &mockProvider{
+	entered, release := make(chan struct{}), make(chan struct{})
+	var once, releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	ctx, cancel := context.WithCancel(testInvocationContext())
+	defer cancel()
+	done := make(chan error, 1)
+	defer unblock()
+	registerMockPlugin(ctrl, "p1", &mockProvider{
 		StartConnectionFunc: func(_ context.Context, id string) (types.ConnectionStatus, error) {
-			return types.ConnectionStatus{
-				Status:     types.ConnectionStatusConnected,
-				Connection: &types.Connection{ID: id, Name: "MyCluster"},
-			}, nil
+			return types.ConnectionStatus{Status: types.ConnectionStatusConnected, Connection: &types.Connection{ID: id}}, nil
 		},
+		CatalogFunc: func(ctx context.Context, _ resource.CatalogRequest) (resource.Catalog, error) {
+			once.Do(func() {
+				close(entered)
+				select {
+				case <-release:
+				case <-ctx.Done():
+				}
+			})
+			return resource.Catalog{Provider: "connections", Revision: "inventory", Types: []resource.ResourceType{}, Coverage: resource.Coverage{Kind: "complete", Paths: []string{}}}, nil
+		},
+	})
+	go func() {
+		_, err := ctrl.StartConnection(ctx, "p1", "conn-1")
+		done <- err
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("startup did not reach bootstrap")
 	}
-	registerMockPlugin(ctrl, "p1", mock)
+	require.Empty(t, emitter.EventsWithKey(EventConnectionStatus), "native registration must not admit resource reads while host bootstrap can retire their epoch")
+	unblock()
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("startup did not finish")
+	}
+	events := emitter.EventsWithKey(EventConnectionStatus)
+	require.Len(t, events, 1)
+	payload := events[0].Data[0].(ConnectionStatusPayload)
+	require.Equal(t, string(types.ConnectionStatusConnected), payload.Status)
+}
 
-	_, _ = ctrl.StartConnection(testInvocationContext(), "p1", "conn-1")
-
-	events := emitter.EventsWithKey("connection/status")
-	require.NotEmpty(t, events)
-	payload, ok := events[0].Data[0].(ConnectionStatusPayload)
-	require.True(t, ok)
-	assert.Equal(t, "p1", payload.PluginID)
-	assert.Equal(t, "conn-1", payload.ConnectionID)
+func TestStartConnectionCanceledBootstrapDoesNotPublishConnected(t *testing.T) {
+	ctrl, emitter := newTestControllerWithEmitter(t)
+	ctx, cancel := context.WithCancel(testInvocationContext())
+	defer cancel()
+	registerMockPlugin(ctrl, "p1", &mockProvider{
+		StartConnectionFunc: func(_ context.Context, id string) (types.ConnectionStatus, error) {
+			return types.ConnectionStatus{Status: types.ConnectionStatusConnected, Connection: &types.Connection{ID: id}}, nil
+		},
+		CatalogFunc: func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+			cancel()
+			return resource.Catalog{Provider: "connections", Revision: "inventory", Types: []resource.ResourceType{}, Coverage: resource.Coverage{Kind: "complete", Paths: []string{}}}, nil
+		},
+	})
+	_, err := ctrl.StartConnection(ctx, "p1", "conn-1")
+	require.Error(t, err)
+	require.Empty(t, emitter.EventsWithKey(EventConnectionStatus), "failed host startup must not publish native-only success")
 }
 
 func TestStartConnection_FailedConnection(t *testing.T) {
