@@ -32,7 +32,7 @@ host reauthorizes. Failure closes the lease.
 
 ### Source and execution, in brief
 
-C04 uses the existing SourceSessions stream for snapshots and,
+C04 uses the `ResourceSources.Open` stream for snapshots and,
 when supported, source updates. Compatible older targets use the
 P45 finite-page adapter instead. Source generation and sequence
 describe one acquisition attempt; they do not order query
@@ -743,12 +743,12 @@ An access-invalidated close clears the observer and ends the lease:
    inactive deadline. `follow` requires admitted bounded update
    capability. Snapshot-only sources use `once` with explicit freshness
    and manual refresh, never invented watch or polling. C04 uses the
-   SourceSessions stream for session-capable snapshots. The P45 finite
-   adapter serves older targets only after the exact pinned SDK's P45
+   `ResourceSources.Open` stream for session-capable snapshots. The P45
+   finite adapter serves older targets only after the pinned SDK's P45
    compatibility is proved. An unproved target is `UNSUPPORTED`; absence
    of `sourceSessions` also makes follow updates `UNSUPPORTED`.
    This follows the C04 candidate at
-   [fc9b4dc5](https://github.com/omniviewdev/omniview/blob/fc9b4dc5/docs/superpowers/specs/2026-11-02-c04-source-session-wire.md).
+   [fc9b4dc5](https://github.com/omniviewdev/omniview/blob/fc9b4dc5cad1110cca23df597b19bc128511f0d5/docs/superpowers/specs/2026-11-02-c04-source-session-wire.md).
 3. Frames in one generation apply in sequence order. A `changes` frame
    is one atomic transaction: apply array entries in order to a private
    bounded window and publish once after validation. `enter` inserts at
