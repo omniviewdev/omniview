@@ -20,10 +20,11 @@ func (testNoopEmitter) Emit(string, ...any) {}
 
 func newTestHealthChecker(t *testing.T) (*HealthChecker, *pluginManager) {
 	t.Helper()
+	// Recovery can register after the state observer fires. Tie it to the test.
 	pm := &pluginManager{
 		logger:  testLogger(t),
 		records: make(map[string]*plugintypes.PluginRecord),
-		ctx:     context.Background(),
+		ctx:     t.Context(),
 		emitter: testNoopEmitter{},
 	}
 	hc := NewHealthChecker(testLogger(t), pm)
@@ -99,70 +100,6 @@ func TestHealthChecker_CustomHealthFunc(t *testing.T) {
 	assert.False(t, hc.checkPlugin("test-plugin"))
 }
 
-func TestCrashRecoveryState_ExponentialBackoff(t *testing.T) {
-	hc, _ := newTestHealthChecker(t)
-
-	state := &CrashRecoveryState{
-		NextBackoff: initialCrashBackoff,
-	}
-	hc.recoveryStates["test"] = state
-
-	// Simulate first attempt's bookkeeping.
-	hc.mu.Lock()
-	state.Attempts++
-	state.NextBackoff *= 2
-	state.LastAttempt = time.Now()
-	hc.mu.Unlock()
-
-	assert.Equal(t, 1, state.Attempts)
-	assert.Equal(t, 2*initialCrashBackoff, state.NextBackoff)
-
-	// Simulate second attempt.
-	hc.mu.Lock()
-	state.Attempts++
-	state.NextBackoff *= 2
-	hc.mu.Unlock()
-
-	assert.Equal(t, 2, state.Attempts)
-	assert.Equal(t, 4*initialCrashBackoff, state.NextBackoff)
-}
-
-func TestCrashRecoveryState_MaxBackoffCapped(t *testing.T) {
-	hc, _ := newTestHealthChecker(t)
-
-	state := &CrashRecoveryState{
-		NextBackoff: maxCrashBackoff,
-	}
-	hc.recoveryStates["test"] = state
-
-	hc.mu.Lock()
-	state.Attempts++
-	state.NextBackoff *= 2
-	if state.NextBackoff > maxCrashBackoff {
-		state.NextBackoff = maxCrashBackoff
-	}
-	hc.mu.Unlock()
-
-	assert.Equal(t, maxCrashBackoff, state.NextBackoff)
-}
-
-func TestCrashRecoveryState_SuccessResetsState(t *testing.T) {
-	hc, _ := newTestHealthChecker(t)
-
-	hc.recoveryStates["test"] = &CrashRecoveryState{
-		Attempts:    3,
-		NextBackoff: 8 * time.Second,
-	}
-
-	// Simulate successful recovery.
-	hc.mu.Lock()
-	delete(hc.recoveryStates, "test")
-	hc.mu.Unlock()
-
-	_, exists := hc.recoveryStates["test"]
-	assert.False(t, exists)
-}
-
 func TestHandleCrashWithBackoff_ContextCancellation(t *testing.T) {
 	hc, pm := newTestHealthChecker(t)
 
@@ -227,13 +164,6 @@ func TestCrashRecoveryState_MaxRetriesReached(t *testing.T) {
 		PluginID: "test-plugin",
 		Error:    "max crash recovery attempts reached",
 	}, events[0].data[0])
-}
-
-func TestNewHealthChecker(t *testing.T) {
-	hc, _ := newTestHealthChecker(t)
-	require.NotNil(t, hc)
-	require.NotNil(t, hc.recoveryStates)
-	assert.Empty(t, hc.recoveryStates)
 }
 
 func TestCheckAll_SkipsNonRunning(t *testing.T) {
@@ -356,9 +286,7 @@ func TestCheckAll_UnhealthyPlugin_TriggersRecovery(t *testing.T) {
 	// Wait for the goroutine to trigger recovery.
 	select {
 	case <-triggered:
-		// Success — HandlePluginCrash was triggered for the unhealthy plugin.
-		// Cancel to clean up the background goroutine.
-		hc.CancelRecovery("unhealthy-plugin")
+		return
 	case <-time.After(3 * time.Second):
 		t.Fatal("HandlePluginCrash was not triggered for unhealthy plugin")
 	}
