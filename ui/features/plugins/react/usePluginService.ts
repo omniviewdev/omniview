@@ -9,6 +9,7 @@ export type UsePluginServiceResult = {
   readonly reload: PluginService['reload'];
   readonly retry: PluginService['retry'];
   readonly forceReset: PluginService['forceReset'];
+  readonly getSnapshot: PluginService['getSnapshot'];
   readonly getDebugSnapshot: PluginService['getDebugSnapshot'];
   readonly isQuarantined: PluginService['isQuarantined'];
   readonly unquarantine: PluginService['unquarantine'];
@@ -39,6 +40,7 @@ export function usePluginService(): UsePluginServiceResult {
       reload: service.reload.bind(service),
       retry: service.retry.bind(service),
       forceReset: service.forceReset.bind(service),
+      getSnapshot,
       getDebugSnapshot: service.getDebugSnapshot.bind(service),
       isQuarantined: service.isQuarantined.bind(service),
       unquarantine: service.unquarantine.bind(service),
@@ -46,7 +48,7 @@ export function usePluginService(): UsePluginServiceResult {
       getDependencyGraph: service.getDependencyGraph.bind(service),
       getDependencyWarnings: service.getDependencyWarnings.bind(service),
     }),
-    [service],
+    [service, getSnapshot],
   );
 
   return useMemo(

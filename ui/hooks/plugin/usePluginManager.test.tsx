@@ -47,6 +47,8 @@ vi.mock('@/features/plugins', () => ({
     load: async () => undefined,
     reload: async () => undefined,
     unload: async () => undefined,
+    getSnapshot: () => ({ plugins: new Map() }),
+    retry: async () => undefined,
   }),
 }));
 

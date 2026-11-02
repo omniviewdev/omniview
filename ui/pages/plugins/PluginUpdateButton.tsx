@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Dialog, Stack, Text } from '@omniviewdev/base-ui';
+import { Button, Dialog, RadioGroup, Stack, Text } from '@omniviewdev/base-ui';
 import { usePlugin } from '@/hooks/plugin/usePluginManager';
 import { compareVersions, orderedVersions } from './versionPolicy';
 import styles from './PluginDetails.module.css';
@@ -51,29 +51,22 @@ export default function PluginUpdateButton({ pluginID, currentVersion = '', inst
     {versions.isError && <Text size='sm' role='alert'>Could not load versions. <button type='button' onClick={() => void versions.refetch()}>Retry</button></Text>}
     {!versions.isLoading && !versions.isError && !list.length && <Text size='sm' tone='muted'>No compatible releases available.</Text>}
     {list[0]?.compatible === false && <Text size='sm' role='status'>Newer release {list[0].version}: {list[0].compatibility_reason || 'Not compatible with this IDE.'}</Text>}
-    {list.length > 0 && !list.some(v => v.discovery_supported) && <Text size='xs' tone='muted'>This marketplace may omit newer incompatible releases.</Text>}
     <Dialog open={chooser} onClose={() => { if (!busy) setChooser(false); }} size='md'>
       <Dialog.Title>Choose plugin version</Dialog.Title>
       <Dialog.Body>
         <Stack direction='column' spacing={3}>
-          <Text size='sm' tone='muted'>Stable releases are recommended. Selecting a version does not install it.</Text>
-          <div className={styles.VersionList} role='radiogroup' aria-label='Plugin version'>
-            {list.map(release => <label key={release.version} className={styles.VersionRow}>
-              <input type='radio' name={`plugin-version-${pluginID}`} value={release.version}
-                checked={selected?.version === release.version} disabled={busy}
-                onChange={() => setSelection({ id: pluginID, version: release.version })} />
-              <span>
+          <RadioGroup className={styles.VersionList} aria-label='Plugin version'
+            value={selected?.version ?? ''} onValueChange={version => setSelection({ id: pluginID, version })}>
+            {list.map(release => <RadioGroup.Item key={release.version} className={styles.VersionRow}
+              value={release.version} disabled={busy} aria-label={release.version}
+              description={release.compatibility_reason || undefined}>
                 <Text weight='semibold'>{release.version}</Text>
                 <Text as='span' size='xs' tone='muted'>
                   {release.version === currentVersion ? ' · Installed' : release === recommended ? ' · Recommended' : ''}
                   {release.version.includes('-') ? ' · Prerelease' : ''}
                 </Text>
-              </span>
-              <Text size='xs' tone='muted'>{release.compatibility_reason || (release.compatible === false ? 'Not compatible with this IDE' : 'Compatible with this IDE')}</Text>
-            </label>)}
-          </div>
-          {selected?.compatibility_reason && <Text size='sm' role={selected.compatible === false ? 'alert' : undefined}>{selected.compatibility_reason}</Text>}
-          {downgrade && <Text size='sm' tone='muted'>Downgrading may make existing plugin data incompatible.</Text>}
+            </RadioGroup.Item>)}
+          </RadioGroup>
         </Stack>
       </Dialog.Body>
       <Dialog.Footer>

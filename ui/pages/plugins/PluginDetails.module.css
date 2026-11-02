@@ -152,7 +152,8 @@
 
 .VersionRow {
   display: grid;
-  grid-template-columns: auto minmax(110px, 1fr) minmax(160px, 1.5fr);
+  width: 100%;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: var(--ov-space-3);
   padding: var(--ov-space-3);
@@ -164,11 +165,11 @@
   border-bottom: 0;
 }
 
-.VersionRow:has(input:checked) {
+.VersionRow[data-checked] {
   background: var(--ov-color-bg-surface);
 }
 
-.VersionRow:focus-within {
+.VersionRow:focus-visible {
   outline: 2px solid var(--ov-color-border-focus);
   outline-offset: -2px;
 }

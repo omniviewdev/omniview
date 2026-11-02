@@ -223,7 +223,21 @@ export const usePluginManager = () => {
 export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: string; installed?: boolean }) => {
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
-  const { reload: serviceReload, unload: serviceUnload } = usePluginService();
+  const service = usePluginService();
+  const serviceUnload = service.unload;
+  const recoverInterface = async (pluginID: string) => {
+    const phase = service.getSnapshot().plugins.get(pluginID)?.phase;
+    if (phase === 'error') {
+      await service.retry(pluginID);
+    } else if (phase === 'ready') {
+      await service.reload(pluginID);
+    } else {
+      await service.load(pluginID);
+    }
+    if (service.getSnapshot().plugins.get(pluginID)?.phase === 'error') {
+      throw new Error('The plugin interface could not start. Review plugin startup details.');
+    }
+  };
 
   const operationKey = ['plugin-operation', id];
   const operation = useQuery<string | null>({
@@ -296,7 +310,7 @@ export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: str
   const { mutateAsync: reload } = useMutation({
     mutationFn: async () => runOperation('Restarting plugin…', async () => {
       const result = await PluginManager.ReloadPlugin(id);
-      await serviceReload(id);
+      await recoverInterface(id);
       return result;
     }),
     onSuccess({ id, metadata }) {
@@ -337,7 +351,7 @@ export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: str
       const meta = await PluginManager.InstallPluginVersion(id, version);
       if (meta) {
         queryClient.setQueryData(operationKey, 'Loading plugin interface…');
-        await serviceReload(meta.id);
+        await recoverInterface(meta.id);
       }
       return meta;
     }),
@@ -347,7 +361,7 @@ export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: str
       }
 
       showSnackbar({
-        message: `Plugin '${meta.name}' installed at v${meta.version}; check startup status below`,
+        message: `${meta.name} ${meta.version} installed`,
         status: 'success',
       });
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, id] });

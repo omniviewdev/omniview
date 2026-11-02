@@ -127,7 +127,7 @@ test.describe('Plugins page', () => {
     await expect(page.getByRole('button', { name: 'Install 1.10.0', exact: true })).toBeVisible();
     await expect(page.getByText(/Requires IDE 99.0.0/)).toBeVisible();
     await page.getByRole('button', { name: 'Other versions…' }).click();
-    await page.getByRole('radio', { name: /^1\.2\.3 / }).check();
+    await page.getByRole('radio', { name: '1.2.3', exact: true }).check();
     expect(calls.InstallPluginVersion).toEqual([]);
     await page.getByRole('dialog').getByRole('button', { name: 'Install 1.2.3', exact: true }).click();
     await expect.poll(() => calls.InstallPluginVersion).toEqual([['alpha-tools', '1.2.3']]);
@@ -146,7 +146,7 @@ test.describe('Plugins page', () => {
     const calls = await fakeMarketplace(page, { installed: [plugin] });
     await page.goto('/#/plugins/e2e-plugin-1');
     await page.getByRole('button', { name: 'Other versions…' }).click();
-    await page.getByRole('radio', { name: /^1\.0\.0 / }).check();
+    await page.getByRole('radio', { name: '1.0.0', exact: true }).check();
     // The fixture's installed version is 1.2.3; selecting never changes it.
     expect(calls.InstallPluginVersion).toEqual([]);
     await page.getByRole('button', { name: 'Downgrade…', exact: true }).click();
