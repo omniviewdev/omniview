@@ -36,12 +36,16 @@ type Queue struct {
 	control                               []byte
 	complete                              []byte
 	doorbell, draining, closed, completed bool
+	overflow                              bool
 	pendingSince                          time.Time
 }
 
 func NewQueue(lease, generation string) (*Queue, error) {
 	if lease == "" || generation == "" {
 		return nil, ErrInvalid
+	}
+	if err := preflight(ResultDataFrame{LeaseID: lease, Generation: generation}); err != nil {
+		return nil, err
 	}
 	return &Queue{lease: lease, generation: generation, next: 1}, nil
 }
@@ -64,17 +68,16 @@ func (q *Queue) signal(now time.Time) bool {
 // Publish enqueues one complete atomic frame. Overflow never discards silently:
 // the caller must invoke Reset with a new host-issued generation before retrying.
 func (q *Queue) Publish(f ResultDataFrame, now time.Time) (bool, error) {
-	b, e := f.encode()
-	if e != nil {
+	if e := preflight(f); e != nil {
 		return false, e
-	}
-	if len(b) > MaxFrameBytes {
-		return false, ErrFrameTooLarge
 	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if q.closed {
 		return false, ErrClosed
+	}
+	if q.overflow {
+		return false, ErrOverflow
 	}
 	if f.LeaseID != q.lease || f.Generation != q.generation || q.next == 0 || f.Sequence != strconv.FormatUint(q.next, 10) {
 		return false, ErrGeneration
@@ -85,7 +88,18 @@ func (q *Queue) Publish(f ResultDataFrame, now time.Time) (bool, error) {
 	if q.completed {
 		return false, ErrClosed
 	}
+	b, e := f.encode()
+	if e != nil {
+		return false, e
+	}
+	if len(b) > MaxFrameBytes {
+		return false, ErrFrameTooLarge
+	}
 	if len(q.items) >= MaxPendingFrames || q.bytes+len(b) > MaxPendingBytes {
+		q.overflow = true
+		q.items = nil
+		q.bytes = 0
+		q.complete = nil
 		return false, ErrOverflow
 	}
 	q.items = append(q.items, b)
@@ -110,6 +124,9 @@ func (q *Queue) Reset(next, reason string, now time.Time) (bool, error) {
 	}
 	old := q.generation
 	f := ResultControlFrame{Lane: "control", LeaseID: q.lease, Payload: ResultControlPayload{Kind: "reset", Generation: &old, NextGeneration: &next, Reason: &reason}}
+	if err := preflight(f); err != nil {
+		return false, err
+	}
 	b, e := f.encode()
 	if e != nil {
 		return false, e
@@ -124,6 +141,7 @@ func (q *Queue) Reset(next, reason string, now time.Time) (bool, error) {
 	q.generation = next
 	q.next = 1
 	q.completed = false
+	q.overflow = false
 	return q.signal(now), nil
 }
 
@@ -140,7 +158,11 @@ func (q *Queue) Complete(now time.Time) (bool, error) {
 	}
 	g := q.generation
 	state := "complete"
-	b, e := (ResultControlFrame{Lane: "control", LeaseID: q.lease, Payload: ResultControlPayload{Kind: "control", Generation: &g, State: &state}}).encode()
+	f := ResultControlFrame{Lane: "control", LeaseID: q.lease, Payload: ResultControlPayload{Kind: "control", Generation: &g, State: &state}}
+	if err := preflight(f); err != nil {
+		return false, err
+	}
+	b, e := f.encode()
 	if e != nil {
 		return false, e
 	}
@@ -154,7 +176,11 @@ func (q *Queue) Terminate(reason string, failure *apperror.AppError, now time.Ti
 	if q.closed {
 		return false, ErrClosed
 	}
-	b, e := (ResultControlFrame{Lane: "control", LeaseID: q.lease, Payload: ResultControlPayload{Kind: "close", Reason: &reason, Error: failure}}).encode()
+	f := ResultControlFrame{Lane: "control", LeaseID: q.lease, Payload: ResultControlPayload{Kind: "close", Reason: &reason, Error: failure}}
+	if e := preflight(f); e != nil {
+		return false, e
+	}
+	b, e := f.encode()
 	if e != nil {
 		return false, e
 	}

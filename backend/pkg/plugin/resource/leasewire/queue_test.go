@@ -47,6 +47,14 @@ func TestOverflowAndResetBarrier(t *testing.T) {
 	if _, e := q.Publish(frame("g1", 65), now); !errors.Is(e, ErrOverflow) {
 		t.Fatal(e)
 	}
+	if _, e := q.Publish(frame("g1", 65), now); !errors.Is(e, ErrOverflow) {
+		t.Fatal("overflow did not latch", e)
+	}
+	b, e := q.BeginDrain()
+	if e != nil || b != nil {
+		t.Fatalf("old-generation data survived overflow: %s %v", b, e)
+	}
+	q.EndDrain(now)
 	if _, e := q.Reset("g2", "overflow", now); e != nil {
 		t.Fatal(e)
 	}
@@ -161,5 +169,39 @@ func TestByteSaturationAndDrainResponse(t *testing.T) {
 	b, err := json.Marshal(ControlQueryLeaseResponse{Kind: "drain"})
 	if err != nil || string(b) != `{"kind":"drain","event":null}` {
 		t.Fatalf("empty drain: %s %v", b, err)
+	}
+}
+
+func TestStrictControlRequests(t *testing.T) {
+	valid := []byte(`{"leaseId":"l","control":{"kind":"recover","generation":"g"}}`)
+	if _, err := DecodeControlQueryLeaseRequest(valid); err != nil {
+		t.Fatal(err)
+	}
+	for _, input := range []string{
+		`{"leaseId":"l","leaseId":"x","control":{"kind":"attach"}}`,
+		`{"leaseId":"l","control":{"kind":"attach","generation":null}}`,
+		`{"leaseId":"l","control":{"kind":"recover","generation":null}}`,
+		`{"leaseId":"l","control":{"kind":"drain","extra":1}}`,
+		`{"leaseId":null,"control":{"kind":"attach"}}`,
+	} {
+		if _, err := DecodeControlQueryLeaseRequest([]byte(input)); err == nil {
+			t.Fatalf("accepted %s", input)
+		}
+	}
+}
+
+func TestPreflightEscapesAndCycles(t *testing.T) {
+	f := frame("g1", 1)
+	f.Payload.Metadata.Limitations = []string{strings.Repeat("<", MaxFrameBytes/5)}
+	if err := preflight(f); !errors.Is(err, ErrFrameTooLarge) {
+		t.Fatalf("escaped JSON exceeded limit: %v", err)
+	}
+	type node struct {
+		Next *node `json:"next"`
+	}
+	n := &node{}
+	n.Next = n
+	if err := preflight(n); !errors.Is(err, ErrFrameTooLarge) {
+		t.Fatalf("cycle accepted: %v", err)
 	}
 }

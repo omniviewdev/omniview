@@ -29,6 +29,7 @@ type ControlQueryLeaseRequest struct {
 	LeaseID string            `json:"leaseId"`
 	Control QueryLeaseControl `json:"control"`
 }
+
 // ControlQueryLeaseResponse encodes the contract's response union.
 // Event is a single already-validated frame returned by BeginDrain.
 type ControlQueryLeaseResponse struct {
@@ -39,6 +40,9 @@ type ControlQueryLeaseResponse struct {
 }
 
 func (r ControlQueryLeaseResponse) MarshalJSON() ([]byte, error) {
+	if err := preflight(r); err != nil {
+		return nil, err
+	}
 	switch r.Kind {
 	case "attach":
 		if r.Generation == nil || *r.Generation == "" || r.Accepted != nil || r.Event != nil {
@@ -203,6 +207,9 @@ func (c ResultChange) valid() bool {
 
 // MarshalJSON preserves empty arrays and rejects impossible union variants.
 func (p ResultDataPayload) MarshalJSON() ([]byte, error) {
+	if err := preflight(p); err != nil {
+		return nil, err
+	}
 	if !p.Metadata.valid() {
 		return nil, ErrInvalid
 	}
