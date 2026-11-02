@@ -184,6 +184,11 @@ Saving never opens or closes an existing plugin listener. Restart Omniview after
 
 The host explicitly supplies `OMNIVIEW_PLUGIN_PPROF_ENABLED=true` or `false` from its startup preference and removes inherited host profiling ports. The SDK accepts only the exact value `true` as opt-in. Listeners use the same unauthenticated local-only access, request guards, capture caps, and shutdown cleanup as host profiling. Disable **Telemetry → Profiling** before restarting plugins for CPU captures when continuous Pyroscope profiling is enabled; Omniview does not pause it automatically.
 
+For a seeded, isolated workspace and verified host/plugin captures, use the
+[performance profiling skill](.agents/skills/omniview-performance-profiling/SKILL.md).
+The [2026-11-02 investigation](docs/performance-profiling-2026-11-02.md) records
+the controlled timeout reproduction, setup issues, and evidence boundaries.
+
 ### Process identification
 
 Open **pprof → Processes** for the host and running plugin processes, even when their profiling listeners are off. Expand a row for its kernel start identity and executable. External plugin identities come from the launched backend and are revalidated against the current process lifetime; a plugin-reported profiling PID is not ownership evidence. Known in-process plugins are marked **shared** with the verified host identity.
