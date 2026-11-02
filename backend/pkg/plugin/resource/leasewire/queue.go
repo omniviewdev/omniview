@@ -41,7 +41,7 @@ type Queue struct {
 }
 
 func NewQueue(lease, generation string) (*Queue, error) {
-	if lease == "" || generation == "" {
+	if lease == "" || generation == "" || len(lease) > 1024 || len(generation) > 1024 {
 		return nil, ErrInvalid
 	}
 	if err := preflight(ResultDataFrame{LeaseID: lease, Generation: generation}); err != nil {
@@ -116,11 +116,17 @@ func (q *Queue) Reset(next, reason string, now time.Time) (bool, error) {
 	if q.closed {
 		return false, ErrClosed
 	}
-	if q.control != nil {
-		return false, ErrControlPending
-	}
-	if next == "" || next == q.generation {
+	if next == "" || len(next) > 1024 || next == q.generation {
 		return false, ErrGeneration
+	}
+	if q.control != nil {
+		// The existing barrier must be delivered first, but old protected
+		// data must not remain drainable during the pending transition.
+		q.items = nil
+		q.bytes = 0
+		q.complete = nil
+		q.overflow = true
+		return false, ErrControlPending
 	}
 	old := q.generation
 	f := ResultControlFrame{Lane: "control", LeaseID: q.lease, Payload: ResultControlPayload{Kind: "reset", Generation: &old, NextGeneration: &next, Reason: &reason}}
@@ -176,23 +182,29 @@ func (q *Queue) Terminate(reason string, failure *apperror.AppError, now time.Ti
 	if q.closed {
 		return false, ErrClosed
 	}
+	if !oneOf(reason, "closed", "cancelled", "failed", "accessInvalidated") {
+		return false, ErrInvalid
+	}
 	f := ResultControlFrame{Lane: "control", LeaseID: q.lease, Payload: ResultControlPayload{Kind: "close", Reason: &reason, Error: failure}}
-	if e := preflight(f); e != nil {
-		return false, e
+	serializationErr := preflight(f)
+	var b []byte
+	if serializationErr == nil {
+		b, serializationErr = f.encode()
 	}
-	b, e := f.encode()
-	if e != nil {
-		return false, e
-	}
-	if len(b) > MaxFrameBytes {
-		return false, ErrFrameTooLarge
+	if serializationErr != nil || len(b) > MaxFrameBytes {
+		// A malformed optional diagnostic cannot retain protected data.
+		if serializationErr == nil {
+			serializationErr = ErrFrameTooLarge
+		}
+		f.Payload.Error = nil
+		b, _ = f.encode()
 	}
 	q.items = nil
 	q.bytes = 0
 	q.complete = nil
 	q.control = b
 	q.closed = true
-	return q.signal(now), nil
+	return q.signal(now), serializationErr
 }
 
 // BeginDrain and EndDrain bracket exactly one transport response. The caller

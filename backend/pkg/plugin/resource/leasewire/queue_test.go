@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 )
 
 func meta() ResultMetadata {
@@ -56,9 +58,6 @@ func TestOverflowAndResetBarrier(t *testing.T) {
 	}
 	q.EndDrain(now)
 	if _, e := q.Reset("g2", "overflow", now); e != nil {
-		t.Fatal(e)
-	}
-	if _, e := q.Reset("g3", "gap", now); !errors.Is(e, ErrControlPending) {
 		t.Fatal(e)
 	}
 	v := drain(t, q, now)
@@ -183,6 +182,9 @@ func TestStrictControlRequests(t *testing.T) {
 		`{"leaseId":"l","control":{"kind":"recover","generation":null}}`,
 		`{"leaseId":"l","control":{"kind":"drain","extra":1}}`,
 		`{"leaseId":null,"control":{"kind":"attach"}}`,
+		`{"LeaseId":"l","control":{"kind":"attach"}}`,
+		`{"leaseId":"l","control":{"Kind":"attach"}}`,
+		`{"leaseId":"l","LEASEID":"x","control":{"kind":"attach"}}`,
 	} {
 		if _, err := DecodeControlQueryLeaseRequest([]byte(input)); err == nil {
 			t.Fatalf("accepted %s", input)
@@ -203,5 +205,44 @@ func TestPreflightEscapesAndCycles(t *testing.T) {
 	n.Next = n
 	if err := preflight(n); !errors.Is(err, ErrFrameTooLarge) {
 		t.Fatalf("cycle accepted: %v", err)
+	}
+}
+
+func TestSecurityErasure(t *testing.T) {
+	now := time.Unix(10, 0)
+	q, _ := NewQueue("lease", "g1")
+	_, _ = q.Publish(frame("g1", 1), now)
+	_, _ = q.Reset("g2", "overflow", now)
+	_, _ = q.Publish(frame("g2", 1), now)
+	if _, err := q.Reset("g3", "bindingChanged", now); !errors.Is(err, ErrControlPending) {
+		t.Fatal(err)
+	}
+	if _, err := q.Publish(frame("g2", 2), now); !errors.Is(err, ErrOverflow) {
+		t.Fatal("transition did not latch", err)
+	}
+	_ = drain(t, q, now)
+	b, err := q.BeginDrain()
+	if err != nil || b != nil {
+		t.Fatalf("protected data still drainable: %s %v", b, err)
+	}
+	q.EndDrain(now)
+	q2, _ := NewQueue("lease", "g1")
+	_, _ = q2.Publish(frame("g1", 1), now)
+	failure := &apperror.AppError{Detail: strings.Repeat("x", MaxFrameBytes)}
+	_, err = q2.Terminate("accessInvalidated", failure, now)
+	if !errors.Is(err, ErrFrameTooLarge) {
+		t.Fatal(err)
+	}
+	v := drain(t, q2, now)
+	if v["payload"].(map[string]any)["reason"] != "accessInvalidated" {
+		t.Fatal(v)
+	}
+}
+
+func TestPreflightInvalidUTF8(t *testing.T) {
+	f := frame("g1", 1)
+	f.Payload.Metadata.Limitations = []string{strings.Repeat("\xff", MaxFrameBytes/5)}
+	if err := preflight(f); !errors.Is(err, ErrFrameTooLarge) {
+		t.Fatalf("invalid UTF-8 expansion not bounded: %v", err)
 	}
 }

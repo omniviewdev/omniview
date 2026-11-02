@@ -34,7 +34,7 @@ func (b *sizeBudget) string(s string) error {
 		r, n := utf8.DecodeRuneInString(s)
 		if r == utf8.RuneError && n == 1 {
 			n = 1
-			if err := b.add(3); err != nil {
+			if err := b.add(6); err != nil {
 				return err
 			}
 		} else {

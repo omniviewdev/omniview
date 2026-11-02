@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"reflect"
+	"strings"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/query"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
@@ -17,6 +19,30 @@ func decodeStrict(data []byte, dst any) error {
 	}
 	if err := resourcev2.ValidateJSON(data); err != nil {
 		return ErrInvalid
+	}
+	// encoding/json matches struct fields case-insensitively. Enforce the
+	// contract's exact spelling before decoding the envelope.
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(data, &members); err != nil || members == nil {
+		return ErrInvalid
+	}
+	typ := reflect.TypeOf(dst)
+	if typ.Kind() != reflect.Pointer || typ.Elem().Kind() != reflect.Struct {
+		return ErrInvalid
+	}
+	typ = typ.Elem()
+	for key := range members {
+		found := false
+		for i := range typ.NumField() {
+			name, _, _ := strings.Cut(typ.Field(i).Tag.Get("json"), ",")
+			if name == key {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return ErrInvalid
+		}
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
