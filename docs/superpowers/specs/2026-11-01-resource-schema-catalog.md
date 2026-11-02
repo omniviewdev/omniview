@@ -5,6 +5,140 @@ Status: pending explicit user freeze approval for [omniview#85](https://github.c
 Related: [P01 resource query contracts](2026-10-24-resource-query-contracts.md) §§8.2, 9; [CEL binding and schema-admission contract](2026-10-17-cel-binding-schema-contract.md) §§4, 8, 9; [work packages](../../roadmap/2026-10-17-resource-intelligence-work-packages.md) P07.
 
 Repositories and bases: `omniviewdev/plugin-sdk` (v0.12.1, `0a5b64ed`), `omniviewdev/omniview` (`486a9a47`), `omniviewdev/omniview-plugin-kubernetes` (`6ce354aa`).
+## Reader guide
+
+The host answers three distinct questions: what a resource body can
+contain, which values admit against its schema, and which operations its
+provider supports. Schema existence never grants an operation.
+
+Read the examples first. Section 1 explains ownership; §§2–8 define the
+API and behavior. §§9–11 are the technical appendix: budgets and
+evidence, migration, and acceptance. Related links are provenance.
+
+### Terms and typical flows
+
+- A **representation** is a named, revisioned body format and schema
+  binding, not resource identity or source revision.
+- A **binding** is available, absent, or unavailable. Absent is known
+  absence; unavailable means schema acquisition failed.
+- A **snapshot** scopes the catalog to plugin, generation, connection,
+  access epoch, and catalog revision.
+- **Coverage** identifies body subtrees that may be omitted or truncated.
+  **Known absence** is a separate explicit fact about a document path.
+- **Admission** checks the body and coverage against a resolved schema.
+  `full`, `reduced`, and `none` describe schema enforcement, not whether
+  every field in a partial body is available.
+
+Observe a connection catalog, find the type and representation, then
+resolve its entry. An available binding yields a normalized schema;
+absent yields no schema. Admit the body with its original coverage.
+Navigate for field discovery; use the overlay for actual capabilities.
+
+Examples of outcomes:
+
+- A missing required field with complete coverage is `INVALID_REQUEST`.
+  Under partial or unknown coverage it is unavailable when inside a
+  limitation path; empty paths limit the whole body. Outside listed
+  limitations, normal required-field checks apply.
+- Null and missing are different. A resolved schema accepts null only
+  where it permits null. Kubernetes time schemas need the adapter
+  correction in §10.1; generic optional fields gain no null exception.
+- An unsupported constraint yields `reduced` validation and is listed;
+  an absent schema permits structural admission with `Validation:"none"`.
+  An unavailable schema is an error, not an absent schema.
+
+For example, if `/metadata/managedFields` is the sole limitation and
+the schema requires `metadata.name`, a missing name is invalid. If the
+schema instead requires the limited `managedFields`, its absence is
+reported in `UnavailablePaths`. With partial or unknown coverage and
+empty paths, a missing required name is unavailable instead.
+
+
+### SDK boundary types
+
+These Go domain shapes carry the exact SDK JSON tags. `Value` uses a
+custom tagged JSON codec for its payload.
+
+```go
+type Value struct {
+    Kind      string           `json:"kind"`
+    Bool      bool             `json:"-"`
+    String    string           `json:"-"`
+    Int       string           `json:"-"`
+    Uint      string           `json:"-"`
+    Double    float64          `json:"-"`
+    Timestamp string           `json:"-"`
+    List      []Value          `json:"-"`
+    Map       map[string]Value `json:"-"`
+}
+
+type Coverage struct {
+    Kind   string   `json:"kind"`
+    Paths  []string `json:"paths"`
+    Reason string   `json:"reason,omitempty"`
+}
+
+type SchemaDocumentReference struct {
+    ID       string `json:"id"`
+    Revision string `json:"revision"`
+}
+
+type SchemaDocument struct {
+    Reference SchemaDocumentReference `json:"reference"`
+    Dialect   string                  `json:"dialect"`
+    Document  json.RawMessage         `json:"document"`
+}
+
+type SchemaBinding struct {
+    State             string `json:"state"`
+    Revision          *string `json:"revision,omitempty"`
+    Dialect           string `json:"dialect,omitempty"`
+    Root              string `json:"root,omitempty"`
+    DocumentRef       *SchemaDocumentReference `json:"documentRef,omitempty"`
+    Document          json.RawMessage `json:"document,omitempty"`
+    UnavailableReason *string `json:"unavailableReason,omitempty"`
+}
+
+type Representation struct {
+    ID       string        `json:"id"`
+    Revision string        `json:"revision"`
+    Schema   SchemaBinding `json:"schema"`
+}
+```
+
+`Value.Kind` is `null`, `bool`, `string`, `int64`, `uint64`, `double`,
+`timestamp`, `list`, or `map`; its zero value is invalid. Only the
+selected payload may be populated. Integers use canonical decimal
+strings within their respective 64-bit ranges. Double is finite and
+preserves negative zero. Timestamp is UTC RFC3339 with nanosecond
+precision. A selected nil list or map is an empty container, not null.
+Nested containers are mutable; copy borrowed values before retaining or
+sharing them with code that may mutate them.
+
+Available bindings require revision, dialect, and exactly one inline
+document or document reference. Absent bindings have no document binding.
+Unavailable bindings cannot carry inline documents and are not absent.
+Revisions are opaque equality observations. `Root` is a local RFC6901
+URI fragment, never an external fetch. Empty root selects the whole
+document except for OpenAPI, as specified in §4.
+
+Coverage kinds are `complete`, `partial`, and `unknown`. Complete
+forbids paths and reason. Partial and unknown require a public-safe
+reason. Each path starts with `/` and names a limited subtree using an
+RFC6901 JSON pointer. Empty paths on partial or unknown mean the
+limitation is not localized. Source `knownAbsent` facts travel
+separately; they are never converted to limitation paths.
+Known-absence paths use typed member-name and zero-based `uint32` index
+segments. They cannot be empty, duplicated, or simultaneously present
+in the body. For partial or unknown coverage, absence not asserted by
+`knownAbsent` is unknown at or below a limitation path; empty paths
+make it unknown everywhere. Elsewhere absence is known.
+
+For example, `int64` value `9007199254740993` is not equal to the double
+`9007199254740992`; admission does not coerce them. Double bounds use
+the exact rational value of the binary64 number. Section 5 defines
+indeterminate collection checks and other admission outcomes.
+
 
 ## 1. Ownership
 
@@ -20,33 +154,116 @@ Repositories and bases: `omniviewdev/plugin-sdk` (v0.12.1, `0a5b64ed`), `omnivie
 
 ### 2.1 Public API
 
+#### Catalog lifecycle
+
+The catalog observes connection revisions and retires their snapshots.
+Its statistics expose retained state for lifecycle and budget accounting.
+
 ```go
-type Catalog struct{ /* mu sync.Mutex; store; connections map[connKey]*Snapshot; policy */ }
+type Catalog struct {
+    // Internal mutex, store, connections, and policy.
+}
+
+type ConnectionKey struct {
+    PluginID   string
+    Generation string
+    Connection string
+    Epoch      uint64
+}
+
 func NewCatalog(policy Policy) *Catalog
-type ConnectionKey struct { PluginID, Generation, Connection string; Epoch uint64 }
-func (c *Catalog) Observe(key ConnectionKey, catalog resourcev2.Catalog) *Snapshot
+func (c *Catalog) Observe(
+    key ConnectionKey,
+    catalog resourcev2.Catalog,
+) *Snapshot
 func (c *Catalog) DropConnection(pluginID, connection string)
 func (c *Catalog) DropPlugin(pluginID string)
-func (c *Catalog) Stats() Stats // {Connections, Entries, Documents, RetainedBytes int64, BranchViews, CELProviders int}
-type Snapshot struct{ /* key; revision; provider; entries map[[2]string]*Entry; aux []*AuxEntry; retired bool */ }
-func (s *Snapshot) Revision() string
-func (s *Snapshot) Provider() string
-func (s *Snapshot) Entry(resourceType, representation string) (*Entry, error)
-func (s *Snapshot) Entries() []*Entry // sorted by type, representation
-type DocumentSource func(ctx context.Context, ref resourcev2.SchemaDocumentReference) (resourcev2.SchemaDocument, error)
-type Entry struct {
-    Type, Representation, RepresentationRevision string // read-only
-    Binding    resourcev2.SchemaBinding                  // read-only
-    Descriptor resourcev2.ResourceType                   // read-only
-    /* unexported: per-entry mutex, done channel, cached outcome */
-}
-func (e *Entry) Resolve(ctx context.Context, fetch DocumentSource) (*Schema, error)
-type Schema struct { Document *Document; Root NodeID; Dialect, SchemaRevision string; Validation string /* "full"|"reduced" */; Unvalidated []Constraint }
-func (s *Snapshot) ResolveAux(ctx context.Context, schemas []resourcev2.EditorSchema, fetch DocumentSource) ([]AuxResult, error)
-func (s *Snapshot) Document(digestHex string) (*Document, bool)
+func (c *Catalog) Stats() Stats
 ```
 
-`AuxResult` is `{Schema resourcev2.EditorSchema; Resolved *Schema; Err error}`. `Snapshot.Entry` returns `NOT_FOUND` "Resource type or representation is not in the route catalog." for an unknown pair. `Snapshot.Document` returns only documents referenced by this snapshot's resolved entries or aux results. `Entry` fields are exported for read access by the host controller; callers MUST NOT mutate them.
+`Stats` reports `Connections`, `Entries`, `Documents`, and
+`RetainedBytes` as `int64`, plus `BranchViews` and `CELProviders` as
+`int`.
+
+#### Snapshot lookup
+
+A snapshot is the connection-scoped view. Entries are returned sorted by
+type and representation; document lookup is restricted to documents
+referenced by resolved entries or auxiliary results in that snapshot.
+
+```go
+type Snapshot struct {
+    // Internal key, revision, provider, entries, aux, and retired flag.
+}
+
+func (s *Snapshot) Revision() string
+func (s *Snapshot) Provider() string
+func (s *Snapshot) Entry(
+    resourceType string,
+    representation string,
+) (*Entry, error)
+func (s *Snapshot) Entries() []*Entry
+func (s *Snapshot) Document(
+    digestHex string,
+) (*Document, bool)
+```
+
+An unknown type/representation pair returns `NOT_FOUND`:
+"Resource type or representation is not in the route catalog."
+
+#### Entry resolution
+
+An entry binds one representation to its schema observation. Its
+exported fields are read-only; host callers MUST NOT mutate them.
+
+```go
+type DocumentSource func(
+    ctx context.Context,
+    ref resourcev2.SchemaDocumentReference,
+) (resourcev2.SchemaDocument, error)
+
+type Entry struct {
+    Type                   string
+    Representation         string
+    RepresentationRevision string
+    Binding                resourcev2.SchemaBinding
+    Descriptor             resourcev2.ResourceType
+    // Internal mutex, done channel, and cached outcome.
+}
+
+type Schema struct {
+    Document       *Document
+    Root           NodeID
+    Dialect        string
+    SchemaRevision string
+    Validation     string // "full" or "reduced"
+    Unvalidated    []Constraint
+}
+
+func (e *Entry) Resolve(
+    ctx context.Context,
+    fetch DocumentSource,
+) (*Schema, error)
+```
+
+#### Auxiliary schemas
+
+Auxiliary schemas, such as Helm values, use the same normalizer but are
+not resource representations. Each result carries its own error.
+
+```go
+type AuxResult struct {
+    Schema   resourcev2.EditorSchema
+    Resolved *Schema
+    Err      error
+}
+
+func (s *Snapshot) ResolveAux(
+    ctx context.Context,
+    schemas []resourcev2.EditorSchema,
+    fetch DocumentSource,
+) ([]AuxResult, error)
+```
 
 ### 2.2 Keys
 
@@ -137,40 +354,77 @@ The dialect comes from `SchemaBinding.Dialect` (or `EditorSchema.Binding.Dialect
 
 ```go
 type NodeID uint32 // 0 = none
-type TypeSet uint8 // bits: TypeNull, TypeBoolean, TypeString, TypeInteger, TypeNumber, TypeObject, TypeArray; 0 = any
-type AdditionalKind uint8 // AdditionalAny, AdditionalForbidden, AdditionalSchema
-type Constraint struct { Pointer string; Keyword string } // RFC6901 pointer into the source document
-type Property struct { Name string; Node NodeID }
+type TypeSet uint8 // 0 = any; see type bits below
+type AdditionalKind uint8
+
+type Constraint struct {
+    Pointer string
+    Keyword string
+}
+
+type Property struct {
+    Name string
+    Node NodeID
+}
+
 type Node struct {
-    Pointer      string
-    Types        TypeSet
-    Properties   []Property // sorted by Name, unique
-    Required     []string   // sorted, unique
-    Additional   AdditionalKind
-    AdditionalOf NodeID     // valid when Additional == AdditionalSchema
-    Items        NodeID     // 0 = items unconstrained
-    AllOf, AnyOf, OneOf []NodeID
-    Ref          NodeID     // resolved local $ref target
-    Enum         []resourcev2.Value
-    Const        *resourcev2.Value
-    Format       string
-    Minimum, Maximum *big.Rat; ExclusiveMinimum, ExclusiveMaximum bool; MultipleOf *big.Rat
-    MinLength, MaxLength, MinItems, MaxItems, MinProperties, MaxProperties *uint32
-    Pattern      *regexp.Regexp
-    UniqueItems  bool
-    Title, Description string
-    Unvalidated  []Constraint // constraints present on this node that admission does not enforce
+    Pointer          string
+    Types            TypeSet
+    Properties       []Property
+    Required         []string
+    Additional       AdditionalKind
+    AdditionalOf     NodeID
+    Items            NodeID
+    AllOf            []NodeID
+    AnyOf            []NodeID
+    OneOf            []NodeID
+    Ref              NodeID
+    Enum             []resourcev2.Value
+    Const            *resourcev2.Value
+    Format           string
+    Minimum          *big.Rat
+    Maximum          *big.Rat
+    ExclusiveMinimum bool
+    ExclusiveMaximum bool
+    MultipleOf       *big.Rat
+    MinLength        *uint32
+    MaxLength        *uint32
+    MinItems         *uint32
+    MaxItems         *uint32
+    MinProperties    *uint32
+    MaxProperties    *uint32
+    Pattern          *regexp.Regexp
+    UniqueItems      bool
+    Title            string
+    Description      string
+    Unvalidated      []Constraint
 }
+
 type Document struct {
-    Digest   [32]byte // sha256("omniview.schema-doc.v1\x00" + dialect + "\x00" + raw bytes)
-    Dialect  string
-    Nodes    []Node   // index = NodeID; Nodes[0] unused
-    pointers map[string]NodeID
+    Digest        [32]byte
+    Dialect       string
+    Nodes         []Node
+    pointers      map[string]NodeID
     retainedBytes int64
-    views    branchViews // lazily built (§6.3)
+    views         branchViews
 }
-func (d *Document) Lookup(pointer string) (NodeID, bool) // decoded RFC6901 pointer without the leading "#"; "" = document root
+
+func (d *Document) Lookup(pointer string) (NodeID, bool)
 ```
+
+`TypeSet` bits are `TypeNull`, `TypeBoolean`, `TypeString`,
+`TypeInteger`, `TypeNumber`, `TypeObject`, and `TypeArray`.
+`AdditionalKind` is `AdditionalAny`, `AdditionalForbidden`, or
+`AdditionalSchema`. Constraint pointers are RFC6901 source pointers.
+Properties and required names are sorted and unique. `AdditionalOf` is
+valid for `AdditionalSchema`; zero `Items` means unconstrained items.
+`Ref` is a resolved local reference. `Unvalidated` lists constraints
+that admission does not enforce.
+
+`Digest` is SHA-256 of `"omniview.schema-doc.v1\x00" + dialect +
+"\x00" + raw bytes`. `Nodes` is indexed by `NodeID`, with index 0
+unused. Branch views are built lazily (§6.3). `Lookup` accepts a decoded
+RFC6901 pointer without `#`; `""` selects the document root.
 
 - A `Document` is immutable after normalization, except for its `sync.Once` caches.
 - `SchemaBinding.Root` is a `#/…` URI fragment with percent-encoding (SDK `validateSchemaRoot`). The catalog strips `#`, percent-decodes and passes the RFC6901 pointer to `Lookup`. OpenAPI 3.0 bindings MUST carry a non-empty `Root` because the OpenAPI document root is never a normalized node; an empty `Root` there → `INVALID_REQUEST` "schema root does not resolve".
@@ -183,9 +437,17 @@ func (d *Document) Lookup(pointer string) (NodeID, bool) // decoded RFC6901 poin
 ```go
 const PolicyVersion = "omniview.schema-policy.v1"
 type Policy struct {
-    MaxDocumentBytes, MaxDocumentNodes, MaxDefinitions, MaxDepth, MaxRefChain,
-    MaxUnionBranches, MaxEnumValues, MaxNavigationVisits, MaxNavigationFields,
-    MaxAdmissionWork, MaxRetainedDocuments int
+    MaxDocumentBytes     int
+    MaxDocumentNodes     int
+    MaxDefinitions       int
+    MaxDepth             int
+    MaxRefChain          int
+    MaxUnionBranches     int
+    MaxEnumValues        int
+    MaxNavigationVisits  int
+    MaxNavigationFields  int
+    MaxAdmissionWork     int
+    MaxRetainedDocuments int
     MaxRetainedBytes int64
 }
 func DefaultPolicy() Policy
@@ -196,8 +458,19 @@ Values are in §9.
 ## 5. Admission outcomes
 
 ```go
-type Admission struct { Validation string /* "full"|"reduced"|"none" */; Unvalidated []Constraint; UnavailablePaths []string }
-func Admit(ctx context.Context, schema *Schema, value resourcev2.Value, coverage resourcev2.Coverage, policy Policy) (Admission, error)
+type Admission struct {
+    Validation       string // "full", "reduced", or "none"
+    Unvalidated      []Constraint
+    UnavailablePaths []string
+}
+
+func Admit(
+    ctx context.Context,
+    schema *Schema,
+    value resourcev2.Value,
+    coverage resourcev2.Coverage,
+    policy Policy,
+) (Admission, error)
 ```
 
 - A nil `schema` (absent) performs a `resourcev2.ValidateValue`-equivalent structural check and returns `Validation:"none"`.
@@ -237,24 +510,55 @@ func Admit(ctx context.Context, schema *Schema, value resourcev2.Value, coverage
 ### 6.1 Navigation
 
 ```go
-type PathSegment struct { Kind string /* "field"|"mapValue"|"item" */; Name string `json:",omitempty"` }
-type BranchCondition struct { Pointer string; Branch int; Combinator string /* "anyOf"|"oneOf" */ }
-type FieldInfo struct {
-    Segment PathSegment
-    Types []string // "null","boolean","string","integer","number","object","array"; empty = any
-    Format, Title, Description string
-    Enum []resourcev2.Value // first MaxEnumValues
-    Presence string    // "required"|"optional"|"unknown"
-    Nullable string    // "yes"|"no"|"unknown"
-    Applicability string // "unconditional"|"conditional"
-    Conditions []BranchCondition
-    CELChecking string // "static"|"partial"|"dynamic" (§8)
-    HasChildren bool
-    NativeFilter string // always "unsupported" in P07
+type PathSegment struct {
+    Kind string // "field", "mapValue", or "item"
+    Name string `json:",omitempty"`
 }
-type Navigation struct { Fields []FieldInfo; Truncated bool; TruncationReason string /* "fields"|"visits" */ }
-func Navigate(ctx context.Context, schema *Schema, path []PathSegment, policy Policy) (Navigation, error)
+
+type BranchCondition struct {
+    Pointer    string
+    Branch     int
+    Combinator string // "anyOf" or "oneOf"
+}
+
+type FieldInfo struct {
+    Segment       PathSegment
+    Types         []string
+    Format        string
+    Title         string
+    Description   string
+    Enum          []resourcev2.Value
+    Presence      string
+    Nullable      string
+    Applicability string
+    Conditions    []BranchCondition
+    CELChecking   string
+    HasChildren   bool
+    NativeFilter  string
+}
+
+type Navigation struct {
+    Fields           []FieldInfo
+    Truncated        bool
+    TruncationReason string
+}
+
+func Navigate(
+    ctx context.Context,
+    schema *Schema,
+    path []PathSegment,
+    policy Policy,
+) (Navigation, error)
 ```
+
+`Types` contains `"null"`, `"boolean"`, `"string"`, `"integer"`,
+`"number"`, `"object"`, or `"array"`; empty means any. `Enum` contains
+the first `MaxEnumValues`. `Presence` is `"required"`, `"optional"`,
+or `"unknown"`; `Nullable` is `"yes"`, `"no"`, or `"unknown"`.
+`Applicability` is `"unconditional"` or `"conditional"`.
+`CELChecking` is `"static"`, `"partial"`, or `"dynamic"` (§8).
+`NativeFilter` is always `"unsupported"` in P07. `TruncationReason`
+is `"fields"` or `"visits"`.
 
 - `Navigate` walks `path` from `Root`. At each step the current position is a *set* of (node, accumulated conditions) pairs, starting with `{(Root, [])}`. `field` on an object goes through `Properties` or the additional schema; `mapValue` goes to the additional schema of a map; `item` goes to `Items`.
 - Before each step and before listing, every member of the set is expanded: `Ref` and single-branch `allOf` resolve to their target; a multi-branch `allOf` contributes all of its branches unconditionally (no condition is added); an `anyOf`/`oneOf` contributes each branch with an appended `BranchCondition{Pointer: union node pointer, Branch: index, Combinator}`. Nested unions expand recursively and concatenate conditions. Expansion of one union counts at most `MaxUnionBranches` branches.
@@ -273,15 +577,27 @@ func Navigate(ctx context.Context, schema *Schema, path []PathSegment, policy Po
 
 ```go
 type TypeOverlay struct {
-    Operations []resourcev2.Operation // copied from Descriptor.Capabilities, sorted, unique
-    NativeQueryLanguages []string // Descriptor.NativeQueries languages, only if OperationNativeQuery is declared; else empty
-    HostEvaluation string // "schemaChecked" | "dynamic" | "unavailable" | "unsupported"
-    HostEvaluationCode string // error code when unavailable or unsupported
-    Validation string // "full"|"reduced"|"none"
-    Unvalidated []Constraint
+    Operations           []resourcev2.Operation
+    NativeQueryLanguages []string
+    HostEvaluation       string
+    HostEvaluationCode   string
+    Validation           string
+    Unvalidated          []Constraint
 }
-func OverlayFor(entry *Entry, schema *Schema, resolveErr error) TypeOverlay
+
+func OverlayFor(
+    entry *Entry,
+    schema *Schema,
+    resolveErr error,
+) TypeOverlay
 ```
+
+`Operations` is copied from descriptor capabilities, sorted and
+unique. `NativeQueryLanguages` is copied from descriptor native queries
+only when `OperationNativeQuery` is declared; otherwise it is empty.
+`HostEvaluation` is `"schemaChecked"`, `"dynamic"`, `"unavailable"`,
+or `"unsupported"`; `HostEvaluationCode` carries the error code for
+the latter two. `Validation` is `"full"`, `"reduced"`, or `"none"`.
 
 - `HostEvaluation`:
   - resolved schema → `schemaChecked`;
@@ -311,30 +627,68 @@ func OverlayFor(entry *Entry, schema *Schema, resolveErr error) TypeOverlay
 Operation names: `resource.GetSchemaFields`, `resource.GetEditorSchemas`, `resource.GetEditorSchemaDocument`. Each follows the `GetEditorSchemas` admission pattern (`c.admit` → `finishResource` → `c.operationGeneration` → `c.admitAncillaryCatalog`), observes the snapshot with `ConnectionKey{PluginID, Generation: generation.generationID, Connection: route.Connection, Epoch: sourceEpochSnapshot.Epoch}`, uses a `DocumentSource` over `resourcev2.SchemaDocumentProvider` (nil when unimplemented) and finishes with `ancillaryResult`.
 
 ```go
-type SchemaFieldsRequest struct { Route resourcev2.AccessRoute `json:"route"`; Type string `json:"type"`; Representation string `json:"representation,omitempty"`; Path []resourcecatalog.PathSegment `json:"path"` }
-type SchemaFieldsResult struct {
-    CatalogRevision string `json:"catalogRevision"`; Type, Representation string
-    SchemaState string `json:"schemaState"`
-    SchemaRevision string `json:"schemaRevision,omitempty"`; Dialect string `json:"dialect,omitempty"`
-    Overlay resourcecatalog.TypeOverlay `json:"overlay"`
-    Fields []resourcecatalog.FieldInfo `json:"fields"`; Truncated bool `json:"truncated"`; TruncationReason string `json:"truncationReason,omitempty"`
+type SchemaFieldsRequest struct {
+    Route          resourcev2.AccessRoute `json:"route"`
+    Type           string `json:"type"`
+    Representation string `json:"representation,omitempty"`
+    Path           []resourcecatalog.PathSegment `json:"path"`
 }
-func (c *controller) GetSchemaFields(ctx context.Context, pluginID string, request SchemaFieldsRequest) (SchemaFieldsResult, error)
+
+type SchemaFieldsResult struct {
+    CatalogRevision  string `json:"catalogRevision"`
+    Type             string
+    Representation   string
+    SchemaState      string `json:"schemaState"`
+    SchemaRevision   string `json:"schemaRevision,omitempty"`
+    Dialect          string `json:"dialect,omitempty"`
+    Overlay          resourcecatalog.TypeOverlay `json:"overlay"`
+    Fields           []resourcecatalog.FieldInfo `json:"fields"`
+    Truncated        bool `json:"truncated"`
+    TruncationReason string `json:"truncationReason,omitempty"`
+}
+
+func (c *controller) GetSchemaFields(
+    ctx context.Context,
+    pluginID string,
+    request SchemaFieldsRequest,
+) (SchemaFieldsResult, error)
 
 type EditorSchemaAssociation struct {
-    Type string `json:"type"`; Representation string `json:"representation,omitempty"`; Key string `json:"key,omitempty"`
-    Language string `json:"language"`
-    ModelDirectory string `json:"modelDirectory"` // "file:///omniview-schema/<hex16>"
-    FileMatch string `json:"fileMatch"`           // "**/omniview-schema/<hex16>/*"
-    DocumentID string `json:"documentId,omitempty"`
-    Root string `json:"root,omitempty"`
-    Status string `json:"status"` // "available"|"absent"|"unavailable"|"unsupported"|"invalid"|"limit"
-    Code string `json:"code,omitempty"`
+    Type           string `json:"type"`
+    Representation string `json:"representation,omitempty"`
+    Key            string `json:"key,omitempty"`
+    Language       string `json:"language"`
+    ModelDirectory string `json:"modelDirectory"`
+    FileMatch      string `json:"fileMatch"`
+    DocumentID     string `json:"documentId,omitempty"`
+    Root           string `json:"root,omitempty"`
+    Status         string `json:"status"`
+    Code           string `json:"code,omitempty"`
 }
-func (c *controller) GetEditorSchemas(ctx context.Context, pluginID string, route resourcev2.AccessRoute) ([]EditorSchemaAssociation, error)
-type EditorSchemaDocument struct { DocumentID string `json:"documentId"`; Schema json.RawMessage `json:"schema"` }
-func (c *controller) GetEditorSchemaDocument(ctx context.Context, pluginID string, route resourcev2.AccessRoute, documentID string) (EditorSchemaDocument, error)
+
+func (c *controller) GetEditorSchemas(
+    ctx context.Context,
+    pluginID string,
+    route resourcev2.AccessRoute,
+) ([]EditorSchemaAssociation, error)
+
+type EditorSchemaDocument struct {
+    DocumentID string          `json:"documentId"`
+    Schema     json.RawMessage `json:"schema"`
+}
+
+func (c *controller) GetEditorSchemaDocument(
+    ctx context.Context,
+    pluginID string,
+    route resourcev2.AccessRoute,
+    documentID string,
+) (EditorSchemaDocument, error)
 ```
+
+`ModelDirectory` is `"file:///omniview-schema/<hex16>"`; `FileMatch`
+is `"**/omniview-schema/<hex16>/*"`. `Status` is `"available"`,
+`"absent"`, `"unavailable"`, `"unsupported"`, `"invalid"`, or
+`"limit"`.
 
 - `GetSchemaFields`: empty `Representation` uses `Descriptor.DefaultRepresentation`; if that is empty → `INVALID_REQUEST` "representation is required for types without a default". The result always carries `Overlay` from `OverlayFor`. A deterministic (cached, §2.3) resolve outcome returns a result with empty fields: a code in the normalization set (`INVALID_REQUEST`, `UNSUPPORTED`, `RESOURCE_LIMIT`, from normalization or `fetch`) gives `HostEvaluation:"unsupported"`, the `unavailable` binding state gives `HostEvaluation:"unavailable"`. Fetch errors with any other code and lifecycle errors (`CANCELLED`, `TIMEOUT`, `RESET_REQUIRED`) are returned as errors.
 - `GetEditorSchemas`: one association per catalog type for its `DefaultRepresentation` (types without a default are skipped), plus one per auxiliary schema from `EditorSchemaProvider` → `ResolveAux` (none when unimplemented). Any entry resolve or auxiliary call failing with `CANCELLED`, `TIMEOUT` or `RESET_REQUIRED` aborts the method and is returned as the error. Any other auxiliary call failure adds one `{Status:"unavailable", Code:<code>, Language:"yaml"}` with empty `Type`/`Key`, and catalog associations are still returned.
@@ -358,7 +712,11 @@ type Environment struct {
     ContentKey string // host-internal cel.Env reuse only
     Revision   string // checking/authoring identity
 }
-func NewEnvironment(snapshotRevision string, entry *resourcecatalog.Entry, schema *resourcecatalog.Schema) (*Environment, error)
+func NewEnvironment(
+    snapshotRevision string,
+    entry *resourcecatalog.Entry,
+    schema *resourcecatalog.Schema,
+) (*Environment, error)
 func ToCEL(v resourcev2.Value) (ref.Val, error)
 ```
 
