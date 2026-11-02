@@ -29,8 +29,9 @@ func (s *scriptedSourceStream) Recv() (resourcev2.SourceFrame, error) {
 func (s *scriptedSourceStream) Close() { s.once.Do(func() { close(s.closed) }) }
 
 type scriptedSourceOpen struct {
-	request resourcev2.SourceOpenRequest
-	stream  *scriptedSourceStream
+	request  resourcev2.SourceOpenRequest
+	stream   *scriptedSourceStream
+	revision string
 }
 
 type scriptedSourceProvider struct {
@@ -41,9 +42,10 @@ type scriptedSourceProvider struct {
 func (p *scriptedSourceProvider) Features(context.Context) (resourcev2.FeatureSet, error) {
 	return resourcev2.FeatureSet{Traits: []resourcev2.Feature{resourcev2.FeatureConnections, resourcev2.FeatureSourceSessions}}, nil
 }
-func (p *scriptedSourceProvider) OpenSourceStream(_ context.Context, request resourcev2.SourceOpenRequest) (resourcev2.SourceStream, error) {
+func (p *scriptedSourceProvider) OpenSourceStream(ctx context.Context, request resourcev2.SourceOpenRequest) (resourcev2.SourceStream, error) {
 	stream := &scriptedSourceStream{frames: make(chan resourcev2.SourceFrame, 16), closed: make(chan struct{})}
-	p.opens <- scriptedSourceOpen{request: request, stream: stream}
+	revision, _ := resourcev2.CatalogRevisionFromContext(ctx)
+	p.opens <- scriptedSourceOpen{request: request, stream: stream, revision: revision}
 	return stream, nil
 }
 
@@ -322,12 +324,7 @@ func (p *blockedSourceOpener) OpenSourceStream(ctx context.Context, _ resourcev2
 
 func TestSourceCoordinatorPendingOpenCancellation(t *testing.T) {
 	opener := &blockedSourceOpener{entered: make(chan struct{}), cancelled: make(chan struct{})}
-	ctx, cancel := context.WithCancel(context.Background())
-	s := &sourceSession{
-		coordinator: newSourceCoordinator(&controller{}), opener: opener, ctx: ctx, cancel: cancel,
-		target: resourcev2.ReadTarget{}, mode: resourcev2.SourceModeSnapshot,
-		members: make(map[string]sourceMember), views: make(map[string]*sourceView),
-	}
+	s := sourceDirectTestSession(t, opener, resourcev2.SourceModeSnapshot)
 	s.run()
 	select {
 	case <-opener.entered:
@@ -389,9 +386,7 @@ func (p blockedRecvOpener) OpenSourceStream(context.Context, resourcev2.SourceOp
 func TestSourceCoordinatorCloseBoundedWhenRecvStalls(t *testing.T) {
 	stream := &blockedRecvStream{entered: make(chan struct{}), release: make(chan struct{})}
 	defer close(stream.release)
-	ctx, cancel := context.WithCancel(context.Background())
-	s := &sourceSession{coordinator: newSourceCoordinator(&controller{}), opener: blockedRecvOpener{stream}, ctx: ctx, cancel: cancel,
-		mode: resourcev2.SourceModeSnapshot, members: make(map[string]sourceMember), views: make(map[string]*sourceView)}
+	s := sourceDirectTestSession(t, blockedRecvOpener{stream}, resourcev2.SourceModeSnapshot)
 	s.run()
 	select {
 	case <-stream.entered:
@@ -432,9 +427,7 @@ func TestSourceCoordinatorDropsOldGeneration(t *testing.T) {
 	opener := &lateSourceOpener{streams: make(chan resourcev2.SourceStream, 2), opened: make(chan struct{}, 2)}
 	opener.streams <- old
 	opener.streams <- current
-	ctx, cancel := context.WithCancel(context.Background())
-	s := &sourceSession{coordinator: newSourceCoordinator(&controller{}), opener: opener, ctx: ctx, cancel: cancel,
-		mode: resourcev2.SourceModeSnapshotAndUpdates, members: make(map[string]sourceMember), views: make(map[string]*sourceView)}
+	s := sourceDirectTestSession(t, opener, resourcev2.SourceModeSnapshotAndUpdates)
 	s.run()
 	<-opener.opened
 	require.Eventually(t, func() bool {

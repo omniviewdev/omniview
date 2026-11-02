@@ -80,7 +80,7 @@ func (v *sourceView) resetLocked(reason, message string) {
 func (v *sourceView) syncLocked(reason string) {
 	// No source membership is authoritative before the first snapshot boundary.
 	// Keep an established snapshot available while a refresh is in progress.
-	if !v.session.hasSnapshot {
+	if !v.session.hasSnapshot && v.session.status.State != "failed" && v.session.status.State != "finished" {
 		return
 	}
 	v.mu.Lock()
@@ -113,20 +113,17 @@ func (v *sourceView) syncLocked(reason string) {
 	v.sequence = uint64((len(v.snapshot)+sourceViewChunkRecords-1)/sourceViewChunkRecords + 1)
 	v.signal()
 }
-func (v *sourceView) overflow() {
-	s := v.session
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
-		return
-	}
-	v.resetLocked("overflow", "Source view queue overflowed.")
-	v.syncLocked("")
-}
 func (v *sourceView) statusLocked() {
 	v.mu.Lock()
-	if v.closed || !v.synced {
+	if v.closed {
 		v.mu.Unlock()
+		return
+	}
+	if !v.synced {
+		v.mu.Unlock()
+		if v.session.status.State == "failed" {
+			v.syncLocked("")
+		}
 		return
 	}
 	event := v.nextLocked("status")
@@ -134,7 +131,8 @@ func (v *sourceView) statusLocked() {
 	event.Status = &status
 	if !v.appendLocked(event) {
 		v.mu.Unlock()
-		go v.overflow()
+		v.resetLocked("overflow", "Source view queue overflowed.")
+		v.syncLocked("")
 		return
 	}
 	v.mu.Unlock()
@@ -160,7 +158,8 @@ func (v *sourceView) changesLocked(records []resourcev2.Record, refs []resourcev
 	}
 	if !v.appendLocked(event) {
 		v.mu.Unlock()
-		go v.overflow()
+		v.resetLocked("overflow", "Source view queue overflowed.")
+		v.syncLocked("")
 		return
 	}
 	v.mu.Unlock()

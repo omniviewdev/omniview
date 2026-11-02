@@ -32,6 +32,10 @@ func (c *controller) observeSourceRecord(ctx context.Context, pluginID string, g
 	if err := c.validateReference(ctx, pluginID, route, record.Reference); err != nil {
 		return err
 	}
+	return c.observeValidatedSourceRecord(ctx, pluginID, generation, route, record, metadata)
+}
+
+func (c *controller) observeValidatedSourceRecord(ctx context.Context, pluginID string, generation *pluginState, route resourcev2.AccessRoute, record resourcev2.Record, metadata *resourcev2.ResourceMetadata) error {
 	if err := resourcev2.ValidateRecord(record); err != nil {
 		return err
 	}
@@ -83,10 +87,17 @@ func (c *controller) observeRecord(ctx context.Context, pluginID string, route r
 }
 
 func (s *sourceSession) deleteRecord(ref resourcev2.ResourceReference) {
+	s.deleteRecordContext(s.ctx, ref)
+}
+
+func (s *sourceSession) deleteRecordContext(ctx context.Context, ref resourcev2.ResourceReference) {
+	if ctx == nil {
+		ctx = s.ctx
+	}
 	c := s.coordinator.ctrl
 	c.pluginsMu.RLock()
 	defer c.pluginsMu.RUnlock()
-	if c.currentGenerationLocked(s.ctx, s.pluginID, s.pluginGeneration) != nil || !c.referenceCurrentLocked(s.pluginID, s.target.Route, ref) {
+	if c.currentGenerationLocked(ctx, s.pluginID, s.pluginGeneration) != nil || !c.referenceCurrentLocked(s.pluginID, s.target.Route, ref) {
 		return
 	}
 	old, ok := c.registryStore.Delete(s.pluginID, ref, s.target.Route)

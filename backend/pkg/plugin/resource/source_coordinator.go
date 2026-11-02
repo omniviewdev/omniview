@@ -3,6 +3,7 @@ package resource
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"sort"
 	"sync"
 	"time"
@@ -74,6 +75,36 @@ type HostSourceStateEvent struct {
 	Type     string                 `json:"type"`
 	Status   HostSourceStatus       `json:"status"`
 }
+type sourceStateKey struct {
+	pluginID string
+	route    resourcev2.AccessRoute
+	kind     string
+}
+
+type sourceAggregate struct {
+	sessions map[*sourceSession]HostSourceStatus
+	selected *sourceSession
+	status   HostSourceStatus
+}
+
+func sourceStateRank(state string) int {
+	switch state {
+	case "following":
+		return 6
+	case "finished":
+		return 5
+	case "snapshotting":
+		return 4
+	case "opening":
+		return 3
+	case "resetRequired":
+		return 2
+	case "failed":
+		return 1
+	default:
+		return 0
+	}
+}
 
 type sourceCoordinator struct {
 	ctrl     *controller
@@ -82,10 +113,55 @@ type sourceCoordinator struct {
 	views    map[string]*sourceView
 	now      func() time.Time
 	after    func(time.Duration) <-chan time.Time
+	stateMu  sync.Mutex
+	states   map[sourceStateKey]*sourceAggregate
 }
 
 func newSourceCoordinator(c *controller) *sourceCoordinator {
 	return &sourceCoordinator{ctrl: c, sessions: make(map[string]*sourceSession), views: make(map[string]*sourceView), now: time.Now, after: time.After}
+}
+func (sc *sourceCoordinator) emitSourceState(s *sourceSession) {
+	key := sourceStateKey{pluginID: s.pluginID, route: s.target.Route, kind: s.target.Type}
+	sc.stateMu.Lock()
+	defer sc.stateMu.Unlock()
+	if sc.states == nil {
+		sc.states = make(map[sourceStateKey]*sourceAggregate)
+	}
+	aggregate := sc.states[key]
+	if aggregate == nil {
+		aggregate = &sourceAggregate{sessions: make(map[*sourceSession]HostSourceStatus)}
+		sc.states[key] = aggregate
+	}
+	previous, hadPrevious := aggregate.status, aggregate.selected != nil
+	if s.status.State == "closed" {
+		delete(aggregate.sessions, s)
+	} else {
+		aggregate.sessions[s] = s.status
+	}
+	selected := aggregate.selected
+	status, ok := aggregate.sessions[selected]
+	if !ok {
+		selected = nil
+	}
+	for candidate, candidateStatus := range aggregate.sessions {
+		if selected == nil || sourceStateRank(candidateStatus.State) > sourceStateRank(status.State) {
+			selected, status = candidate, candidateStatus
+		}
+	}
+	aggregate.selected = selected
+	if selected == nil {
+		status = s.status
+		delete(sc.states, key)
+	}
+	aggregate.status = status
+	if hadPrevious && reflect.DeepEqual(previous, status) {
+		return
+	}
+	event := HostSourceStateEvent{PluginID: key.pluginID, Route: key.route, Type: key.kind, Status: status}
+	if emitter := sc.ctrl.emitter; emitter != nil {
+		emitter.Emit(key.pluginID+"/"+key.route.Connection+"/source/STATE", event)
+		emitter.Emit(EventSourceState, event)
+	}
 }
 
 func sourceKey(pluginID, owner string, target resourcev2.ReadTarget, mode string) string {
@@ -155,7 +231,7 @@ func (sc *sourceCoordinator) prepare(ctx context.Context, pluginID string, targe
 	if err = c.currentGeneration(opctx, pluginID, generation); err != nil {
 		return fail(err)
 	}
-	opctx = resourcev2.WithCatalogRevision(opctx, catalog.Revision)
+	opctx = context.WithValue(opctx, observationKey{}, nil)
 	req, _ := invocation.FromContext(ctx)
 	return opener, generation, opctx, cleanup, mode, req.Principal().Owner(), nil
 }
@@ -172,29 +248,29 @@ func (sc *sourceCoordinator) acquire(ctx context.Context, pluginID string, targe
 	key := sourceKey(pluginID, owner, target, mode)
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
+	if err := sc.ctrl.currentGeneration(opctx, pluginID, generation); err != nil {
+		cancel()
+		return nil, "", err
+	}
 	if inventory && mode != resourcev2.SourceModeSnapshotAndUpdates {
 		cancel()
 		return nil, "", resourcev2.NewError("UNSUPPORTED", "Source updates are not supported for this scope.")
 	}
 	if existing := sc.sessions[key]; existing != nil {
-		if sc.ctrl.currentGeneration(existing.ctx, pluginID, existing.pluginGeneration) == nil {
-			cancel()
-			existing.mu.Lock()
-			if inventory {
-				existing.inventory = true
-			} else {
-				existing.reservations++
-			}
-			existing.mu.Unlock()
-			return existing, owner, nil
-		}
-		delete(sc.sessions, key)
 		existing.mu.Lock()
-		for id := range existing.views {
-			delete(sc.views, id)
+		if sc.ctrl.currentGeneration(existing.ctx, pluginID, existing.pluginGeneration) != nil {
+			existing.mu.Unlock()
+			cancel()
+			return nil, "", resourcev2.NewError("RESET_REQUIRED", "Source binding is being renewed.")
+		}
+		cancel()
+		if inventory {
+			existing.inventory = true
+		} else {
+			existing.reservations++
 		}
 		existing.mu.Unlock()
-		go existing.close()
+		return existing, owner, nil
 	}
 	s := &sourceSession{coordinator: sc, key: key, pluginID: pluginID, owner: owner, target: target, mode: mode, opener: opener, pluginGeneration: generation, ctx: opctx, cancel: cancel, inventory: inventory, members: make(map[string]sourceMember), views: make(map[string]*sourceView)}
 	if !inventory {
@@ -226,9 +302,7 @@ func (sc *sourceCoordinator) closeInventory(pluginID, connectionID string) {
 		}
 	}
 	sc.mu.Unlock()
-	for _, s := range closing {
-		s.close()
-	}
+	sc.closeSessions(closing)
 }
 func (sc *sourceCoordinator) invalidate(pluginID, connectionID string) {
 	sc.mu.Lock()
@@ -245,10 +319,38 @@ func (sc *sourceCoordinator) invalidate(pluginID, connectionID string) {
 		}
 	}
 	sc.mu.Unlock()
-	for _, s := range closing {
-		s.close()
+	sc.closeSessions(closing)
+}
+func (sc *sourceCoordinator) closeSessions(sessions []*sourceSession) {
+	if len(sessions) == 0 {
+		return
+	}
+	stopWaiting := make(chan struct{})
+	defer close(stopWaiting)
+	var wg sync.WaitGroup
+	wg.Add(len(sessions))
+	for _, s := range sessions {
+		go func() {
+			defer wg.Done()
+			if done := s.closeWithoutJoin(); done != nil {
+				select {
+				case <-done:
+				case <-stopWaiting:
+				}
+			}
+		}()
+	}
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-sc.after(sourceCloseJoinTimeout):
 	}
 }
+
 func (sc *sourceCoordinator) release(s *sourceSession, v *sourceView) {
 	sc.mu.Lock()
 	s.mu.Lock()
@@ -301,11 +403,12 @@ func (c *controller) OpenSourceView(ctx context.Context, pluginID string, reques
 	id := uuid.NewString()
 	v := newSourceView(s, id, owner, request.TargetID)
 	sc.views[id] = v
+	mode := s.mode
 	s.views[id] = v
 	s.mu.Unlock()
 	sc.mu.Unlock()
 	go v.emitLoop()
-	return HostSourceViewOpened{ViewID: id, Topic: "resource/source-view/" + id, Mode: s.mode}, nil
+	return HostSourceViewOpened{ViewID: id, Topic: "resource/source-view/" + id, Mode: mode}, nil
 }
 func (c *controller) sourceView(ctx context.Context, pluginID, id, operation string) (*sourceView, error) {
 	c.sources.mu.Lock()
@@ -314,7 +417,10 @@ func (c *controller) sourceView(ctx context.Context, pluginID, id, operation str
 	if v == nil || v.session.pluginID != pluginID {
 		return nil, nil
 	}
-	ctx, err := c.admit(ctx, operation, readTarget(pluginID, v.session.target))
+	v.session.mu.Lock()
+	target := v.session.target
+	v.session.mu.Unlock()
+	ctx, err := c.admit(ctx, operation, readTarget(pluginID, target))
 	if err != nil {
 		return nil, err
 	}
@@ -345,6 +451,9 @@ func (c *controller) RefreshSourceView(ctx context.Context, pluginID, id string)
 	if v == nil {
 		return resourcev2.NewError("NOT_FOUND", "Source view not found.")
 	}
+	if c.sources.retryBinding(v.session) {
+		return ctx.Err()
+	}
 	v.session.refresh()
 	return ctx.Err()
 }
@@ -364,18 +473,30 @@ func (c *controller) GetSourceStates(ctx context.Context, pluginID string, route
 	if err != nil {
 		return out, err
 	}
-	rank := map[string]int{"following": 6, "finished": 5, "snapshotting": 4, "opening": 3, "resetRequired": 2, "failed": 1}
-	c.sources.mu.Lock()
-	defer c.sources.mu.Unlock()
-	for _, s := range c.sources.sessions {
-		if s.pluginID != pluginID || s.target.Route != route {
-			continue
+	// State events use the same ordering when selecting a session per type.
+	preferred := make(map[string]*sourceSession)
+	c.sources.stateMu.Lock()
+	for key, aggregate := range c.sources.states {
+		if key.pluginID == pluginID && key.route == route {
+			preferred[key.kind] = aggregate.selected
 		}
+	}
+	c.sources.stateMu.Unlock()
+	c.sources.mu.Lock()
+	var sessions []*sourceSession
+	for _, s := range c.sources.sessions {
+		if s.pluginID == pluginID && s.target.Route == route {
+			sessions = append(sessions, s)
+		}
+	}
+	c.sources.mu.Unlock()
+	for _, s := range sessions {
 		s.mu.Lock()
 		status := s.status
+		resourceType := s.target.Type
 		s.mu.Unlock()
-		if old, ok := out.Types[s.target.Type]; !ok || rank[status.State] > rank[old.State] {
-			out.Types[s.target.Type] = status
+		if old, ok := out.Types[resourceType]; !ok || sourceStateRank(status.State) > sourceStateRank(old.State) || (sourceStateRank(status.State) == sourceStateRank(old.State) && preferred[resourceType] == s) {
+			out.Types[resourceType] = status
 		}
 	}
 	return out, ctx.Err()
@@ -394,7 +515,9 @@ func (c *controller) RetryConnectionSources(ctx context.Context, pluginID string
 	}
 	c.sources.mu.Unlock()
 	for _, s := range sessions {
-		s.refresh()
+		if !c.sources.retryBinding(s) {
+			s.refresh()
+		}
 	}
 	return ctx.Err()
 }
