@@ -1,6 +1,6 @@
 # P07 authoritative resource schema/capability catalog contract
 
-Status: pending explicit user freeze approval for [omniview#85](https://github.com/omniviewdev/omniview/issues/85). Contract review does not constitute user approval. Changes after user freeze require a new review round. This document is normative: MUST, MUST NOT, SHOULD and MAY follow RFC 2119.
+Status: user-approved freeze 2026-11-02 for [omniview#85](https://github.com/omniviewdev/omniview/issues/85). Changes after this freeze require a new review round. This document is normative: MUST, MUST NOT, SHOULD and MAY follow RFC 2119.
 
 Related: [P01 resource query contracts](2026-10-24-resource-query-contracts.md) §§8.2, 9; [CEL binding and schema-admission contract](2026-10-17-cel-binding-schema-contract.md) §§4, 8, 9; [work packages](../../roadmap/2026-10-17-resource-intelligence-work-packages.md) P07.
 
