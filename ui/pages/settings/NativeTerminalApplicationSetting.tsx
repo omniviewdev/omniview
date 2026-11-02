@@ -15,20 +15,20 @@ type Discovery =
   | { status: 'ready'; applications: Application[] }
   | { status: 'error'; message: string };
 
-export default function NativeTerminalApplicationSetting({ value, onChange, disabled, inputId, labelledBy, describedBy }: SettingsEditorProps) {
+export default function NativeTerminalApplicationSetting({ value, onChange, disabled = false, inputId, labelledBy, describedBy }: SettingsEditorProps) {
   const [discovery, setDiscovery] = React.useState<Discovery>({ status: 'loading' });
   const [attempt, setAttempt] = React.useState(0);
   const statusId = `${inputId}-discovery`;
 
   React.useEffect(() => {
     let active = true;
-    setDiscovery({ status: 'loading' });
     async function discover() {
       try {
         if (!await GetNativeTerminalSupport()) {
           if (active) {
             setDiscovery({ status: 'unavailable' });
           }
+
           return;
         }
 
@@ -42,6 +42,7 @@ export default function NativeTerminalApplicationSetting({ value, onChange, disa
         }
       }
     }
+
     void discover();
     return () => {
       active = false;
@@ -54,7 +55,10 @@ export default function NativeTerminalApplicationSetting({ value, onChange, disa
   const missing = discovery.status === 'ready' && hasValue && !selected;
   const selectedName = selected?.name ?? (hasValue ? `${missing ? 'Unavailable application' : 'Selected application'} (${value})` : 'Choose an application');
   const retry = <Button type='button' size='xs' variant='ghost' color='neutral' disabled={disabled}
-    onClick={() => setAttempt(previous => previous + 1)}>{discovery.status === 'error' ? 'Retry discovery' : 'Refresh applications'}</Button>;
+    onClick={() => {
+      setDiscovery({ status: 'loading' });
+      setAttempt(previous => previous + 1);
+    }}>{discovery.status === 'error' ? 'Retry discovery' : 'Refresh applications'}</Button>;
 
   return <div className={styles.Root}>
     <Select.Root size='sm' value={selected?.id ?? null}

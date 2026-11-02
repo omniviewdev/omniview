@@ -150,7 +150,9 @@ const SettingsEntries: React.FC<Props> = ({
               {renderOverride
                 ? renderOverride({
                   value: draftValues[fullID] !== undefined ? draftValues[fullID] : setting.value,
-                  onChange: value => handleChange(id, value),
+                  onChange: value => {
+                    handleChange(id, value);
+                  },
                   disabled,
                   inputId,
                   labelledBy,
