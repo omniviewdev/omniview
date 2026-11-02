@@ -1,8 +1,8 @@
 # C08: result lease wire and passive observer
 
-Status: proposed for independent review and explicit user freeze; not
-approved and not implementation authorization. Owners: P14 host result
-leases and P15 runtime. Consumes [P01 query
+Status: user-approved freeze 2026-11-02. Implementation and acceptance
+remain incomplete. Owners: P14 host result leases and P15 runtime.
+Consumes [P01 query
 contracts](2026-10-24-resource-query-contracts.md) and [source-session
 contract §§5–6, 9](2026-10-17-source-session-contract.md). P01's later
 coordinator acceptance and numeric dependency decision govern where its
