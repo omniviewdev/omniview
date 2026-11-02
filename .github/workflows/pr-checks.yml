@@ -315,4 +315,4 @@ jobs:
 
       - name: Runtime resource source regressions
         working-directory: packages/omniviewdev-runtime
-        run: node ../../node_modules/vitest/vitest.mjs run src/resource/v2/sourceView.test.ts src/hooks/resource/useResources.test.ts
+        run: node ../../node_modules/vitest/vitest.mjs run src/resource/v2/sourceView.test.ts src/hooks/resource/useResources.test.ts src/resource/v2/query-observer.test.ts
