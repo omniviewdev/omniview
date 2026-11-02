@@ -15,7 +15,14 @@ async function flushMicrotasks() {
 
 const document: EditorSchemaDocument = {
   documentId: 'a'.repeat(64),
-  schema: { $schema: 'http://json-schema.org/draft-07/schema#', definitions: { n1: { type: 'object' }, n2: { type: 'object' } } },
+  schema: {
+    $schema: 'http://json-schema.org/draft-07/schema#',
+    definitions: {
+      n1: { type: 'object', properties: { replicas: { $ref: '#/definitions/n3' } } },
+      n2: { type: 'object', properties: { name: { type: 'string' } } },
+      n3: { type: 'integer' },
+    },
+  },
 };
 let directory = 0;
 function schema(type = 'native/machines', language = 'yaml', root = '#/definitions/n1'): EditorSchemaAssociation {
@@ -47,8 +54,36 @@ describe('canonical editor schema registry', () => {
     expect(shared.schema).toBe(document.schema);
     const machineEntry = entries.find((entry) => entry.fileMatch.includes(machine.fileMatch))!;
     expect(machineEntry.uri).toBe(`omniview-schema:///assoc/${machine.modelDirectory.split('/').at(-1)}`);
-    expect(machineEntry.schema).toEqual({ $ref: `${shared.uri}#/definitions/n1` });
-    expect(entries.find((entry) => entry.fileMatch.includes(disk.fileMatch))?.schema).toEqual({ $ref: `${shared.uri}#/definitions/n2` });
+    expect(machineEntry.schema).toEqual({ ...document.schema as object, $ref: '#/definitions/n1' });
+    expect(entries.find((entry) => entry.fileMatch.includes(disk.fileMatch))?.schema)
+      .toEqual({ ...document.schema as object, $ref: '#/definitions/n2' });
+    expect(machineEntry.schema?.definitions).not.toBe((document.schema as Record<string, unknown>).definitions);
+    const machineDefinitions = machineEntry.schema!.definitions as Record<string, Record<string, unknown>>;
+    machineDefinitions.n3.type = 'boolean';
+    const diskSchema = entries.find((entry) => entry.fileMatch.includes(disk.fileMatch))!.schema!;
+    expect((diskSchema.definitions as Record<string, Record<string, unknown>>).n3.type).toBe('integer');
+    expect(((document.schema as Record<string, unknown>).definitions as Record<string, Record<string, unknown>>).n3.type).toBe('integer');
+  });
+
+  it('keeps association roots and definitions isolated between documents', async () => {
+    const first = schema();
+    const second = { ...schema('native/disks', 'yaml', '#/definitions/n1'), documentId: 'b'.repeat(64) };
+    const otherDocument: EditorSchemaDocument = {
+      documentId: second.documentId!,
+      schema: JSON.stringify({
+        $schema: 'http://json-schema.org/draft-07/schema#',
+        definitions: { n1: { type: 'string' }, n3: { type: 'boolean' } },
+      }),
+    };
+    schemaRegistry.register('test', 'route', [first, second], [document, otherDocument]);
+    await flushMicrotasks();
+    const entries = schemaRegistry.getLastFlushedYamlSchemas();
+    const firstSchema = entries.find((entry) => entry.fileMatch.includes(first.fileMatch))!.schema!;
+    const secondSchema = entries.find((entry) => entry.fileMatch.includes(second.fileMatch))!.schema!;
+    expect(firstSchema.$ref).toBe('#/definitions/n1');
+    expect(secondSchema.$ref).toBe('#/definitions/n1');
+    expect(firstSchema.definitions).toEqual((document.schema as Record<string, unknown>).definitions);
+    expect(secondSchema.definitions).toEqual({ n1: { type: 'string' }, n3: { type: 'boolean' } });
   });
 
   it('keeps JSON and YAML registrations separate', async () => {

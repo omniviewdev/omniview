@@ -40,6 +40,7 @@ class SchemaRegistry {
 
     const entries: EditorSchemaEntry[] = [];
     const registeredDocuments = new Set<string>();
+    const parsedDocuments = new Map<string, Record<string, unknown>>();
     for (const association of associations) {
       if (association.status !== 'available') {
         continue;
@@ -52,17 +53,22 @@ class SchemaRegistry {
       }
       const documentURI = `omniview-schema:///${association.documentId}`;
       const documentKey = `${association.documentId}\u0000${association.language}`;
-      if (!registeredDocuments.has(documentKey)) {
+      let schema = parsedDocuments.get(association.documentId);
+      if (schema === undefined) {
         const document = documents.find((entry) => entry.documentId === association.documentId);
         if (document === undefined) {
           throw new Error(`Editor schema document ${association.documentId} is unavailable.`);
         }
+        schema = (typeof document.schema === 'string' ? JSON.parse(document.schema) : document.schema) as Record<string, unknown>;
+        parsedDocuments.set(association.documentId, schema);
+      }
+      if (!registeredDocuments.has(documentKey)) {
         entries.push({
           type: association.type,
           fileMatch: '',
           uri: documentURI,
           language: association.language,
-          schema: (typeof document.schema === 'string' ? JSON.parse(document.schema) : document.schema) as Record<string, unknown>,
+          schema,
         });
         registeredDocuments.add(documentKey);
       }
@@ -72,7 +78,8 @@ class SchemaRegistry {
         fileMatch: association.fileMatch,
         uri: `omniview-schema:///assoc/${hex16}`,
         language: association.language,
-        schema: { $ref: `${documentURI}${association.root ?? ''}` },
+        // The YAML language service resolves references in place.
+        schema: { ...structuredClone(schema), $ref: association.root },
       });
     }
 

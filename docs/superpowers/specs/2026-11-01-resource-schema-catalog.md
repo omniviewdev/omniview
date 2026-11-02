@@ -345,7 +345,7 @@ func (c *controller) GetEditorSchemaDocument(ctx context.Context, pluginID strin
 
 - `schemaRegistry.register(pluginID, connectionID, associations, documents)` adds one document entry per unique `documentId` (uri `omniview-schema:///<documentId>`, `fileMatch: ''`, parsed schema, association language) and one association entry per `available` association (uri `omniview-schema:///assoc/<modelDirectory hex16>`, `fileMatch: association.fileMatch`, `schema: {$ref: "omniview-schema:///<documentId>" + root}`). Non-available associations are skipped. A missing document throws.
 - `editorModelPath(association, name)` = `${association.modelDirectory}/${encodeURIComponent(name)}.${association.language}`. Editors obtain paths through `useResourceEditorModelPath`; providers never supply file matches or URIs.
-- Fallback: if yaml-language-server does not resolve the cross-URI `$ref`, association entries embed the full rendered document inline; the implementation records that use here.
+- Fallback in use: association entries embed the rendered document with `$ref` set to the local association root. This preserves the original definitions and avoids cross-URI schema resolution.
 
 ## 8. CEL mapping table (`omniview.schema-cel.v1`)
 
