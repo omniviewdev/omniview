@@ -11,7 +11,7 @@ Status: draft acceptance. Independent review corrections have passing final loca
 - Workspace: `ri-p03`; branch: `feature/ri-p03-ac10053b`.
 - Recorded baselines: host `5b722f3db9e47d40819fa5dd6ac9effa1bc50a94`, Kubernetes `c3952b6bc798ab17268cba191413348cc82b5db1`, Proxmox `c466186e63c0742f9dd8a254e2ecf2bfcd0e6f8d`.
 - Kubernetes companion PR: https://github.com/omniviewdev/omniview-plugin-kubernetes/pull/76, targeting `main` with `resource-v2-candidate`.
-- Kubernetes candidate: `2645605318fb6becf7f132b8d6a5a95a0db089ad`. Host cohort and gitlink select this exact commit.
+- Kubernetes candidate: `d2d59feb126e87ff64947a5dfa0271a21d90c098`. Host cohort and gitlink select this exact commit.
 - SDK and UI pins remain `0a5b64ed8c2de209fbb02ecce9feba3afd88f28c` and `61bf9c2ad88e7b427404256573941ba80fac4c00`.
 - Rebased host baseline: `3f73061544519d4b35fd51c71eef342065268935` (host #335).
 - Rebased Kubernetes baseline: `860627e04782ab153335a603497c8c514d3337b1` (Kubernetes #75).
@@ -239,6 +239,14 @@ The first corrected host candidate could not merge with current `main`. Its chec
 Kubernetes was rebased onto merged #75 at `860627e04782ab153335a603497c8c514d3337b1`. Host was rebased onto #335 at `3f73061544519d4b35fd51c71eef342065268935`. The only host conflicts were the inspected cohort JSON and Kubernetes gitlink. Both now select `2645605318fb6becf7f132b8d6a5a95a0db089ad`, which retains upstream #75 code. SDK and UI pins did not change.
 
 After those rebases, every integration command above was executed again. Host lint and TypeScript passed; host behavior passed 13 files and 153 tests. Kubernetes lint retained the same 19 warnings and no errors; its TypeScript and 49 tests passed. Runtime tests passed 7 files and 110 tests. Both production-module disk smokes passed again. No native retry was made.
+
+The user set the candidate variables for host `bb51bc845f35506a4a5ee73ad854e987f62ba7a2` and SDK `0a5b64ed8c2de209fbb02ecce9feba3afd88f28c`. The coordinator verified those exact values. Kubernetes run [41371902727](https://github.com/omniviewdev/omniview-plugin-kubernetes/actions/runs/41371902727) had first failed its approved-cohort guard under the prior variables. After the user gate, that job was rerun once, with the [reason recorded](https://github.com/omniviewdev/omniview-plugin-kubernetes/pull/76#issuecomment-6566868410).
+
+The rerun passed cohort selection but failed in `arduino/setup-task@v2`: `API rate limit exceeded for 20.221.79.67`. No semantic check ran. The old job was not retried again. The coordinator supplied the action's supported `repo-token: ${{ github.token }}` input. Kubernetes commit `d2d59feb126e87ff64947a5dfa0271a21d90c098` contains that narrow fix and its README note. Existing read-only permissions remain unchanged. No token is persisted and no check is skipped. The host now pins that candidate; renewed user approval of the host CI variable is required. Actual new-head CI must verify the setup fix.
+
+Host `bb51bc845f35506a4a5ee73ad854e987f62ba7a2` passed Go, UI, bindings, packaging, production profiles, build matrices, render benchmarks, and application E2E checks. [Whole-app profile failed](https://github.com/omniviewdev/omniview/actions/runs/41371912891/job/125043988497). Both `gh run view 41371912891 -R omniviewdev/omniview --log-failed` and the full job log stop at profiling-bundle Vite warnings before scenario warmup. The check annotation reports only `Process completed with exit code 1.` No profile artifact was produced. The cause is not established; this is not recorded as an infrastructure failure or a pass. No retry was requested.
+
+The executable smoke sources and results are retained in [host evidence](https://github.com/omniviewdev/omniview/pull/336#issuecomment-6566872467) and [Kubernetes evidence](https://github.com/omniviewdev/omniview-plugin-kubernetes/pull/76#issuecomment-6566872762). Those comments identify the preceding feature-identical cohort; the later change only authenticates CI setup and updates cohort evidence.
 
 
 
