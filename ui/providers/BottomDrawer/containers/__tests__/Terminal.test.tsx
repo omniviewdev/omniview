@@ -746,6 +746,53 @@ describe('TerminalContainer', () => {
     expect(recover).toHaveBeenCalledTimes(1);
   });
 
+  it('starts an expired converted session only on explicit request', async () => {
+    const opts = { command: ['/bin/sh'], reference: { address: { provider: 'p', authority: 'a', type: 't', scope: [], id: 'id' } }, route: { connection: 'route' } };
+    render(<TerminalContainer sessionId="expired" tab={{
+      title: 'Saved', properties: { status: 'expired', pluginID: 'p', connectionID: 'route', opts,
+        resourceReferenceMigration: { version: 1, status: 'converted', legacy: { opts } } },
+    } as unknown as BottomDrawerTab} />);
+    expect(mocks.mockAttachSession).not.toHaveBeenCalled();
+    expect(mocks.mockEmit).not.toHaveBeenCalledWith('onCreateSession', expect.anything());
+    fireEvent.click(screen.getByRole('button', { name: 'Start new session' }));
+    await waitFor(() => {
+      expect(mocks.mockEmit).toHaveBeenCalledWith('onCreateSession', expect.objectContaining({
+        plugin: 'p', connection: 'route', replaceSessionId: 'expired', opts: expect.objectContaining(opts),
+      }));
+    });
+  });
+
+  it('does not offer a restart for an expired unresolved reference', () => {
+    render(<TerminalContainer sessionId="unresolved" tab={{
+      title: 'Saved', properties: { status: 'expired', pluginID: 'p', connectionID: 'route',
+        resourceReferenceMigration: { version: 1, status: 'unconvertible', legacy: { opts: { resource_key: 'old' } } } },
+    } as unknown as BottomDrawerTab} />);
+    expect(screen.queryByRole('button', { name: 'Start new session' })).not.toBeInTheDocument();
+    expect(mocks.mockAttachSession).not.toHaveBeenCalled();
+    expect(mocks.mockEmit).not.toHaveBeenCalledWith('onCreateSession', expect.anything());
+  });
+
+  it('reports an unresolved saved resource instead of replaying its legacy session options', async () => {
+    await act(async () => {
+      render(<TerminalContainer sessionId="legacy-retry" tab={{
+        title: 'Legacy terminal', properties: {
+          pluginID: 'kubernetes', connectionID: 'route',
+          resourceReferenceMigration: { version: 1, status: 'unconvertible', legacy: {
+            opts: { resource_key: 'core::v1::pods', params: { name: 'same' } },
+          } },
+        },
+      } as unknown as BottomDrawerTab} />);
+    });
+    const handler = mocks.mockEventsOn.mock.calls.find(([name]) => name === 'core/exec/signal/ERROR/legacy-retry')?.[1];
+    act(() => {
+      handler!({ data: { title: 'Shell unavailable', retryable: true, retry_commands: ['/bin/sh'] } });
+    });
+    fireEvent.click(screen.getByRole('button', { name: '/bin/sh' }));
+    expect(screen.getByText('Saved resource reference unavailable')).toBeVisible();
+    expect(screen.getByText(/original options are retained/)).toBeVisible();
+    expect(mocks.mockEmit).not.toHaveBeenCalledWith('onCreateSession', expect.anything());
+  });
+
   it('applies the latest size only after the previous backend resize completes', async () => {
     const firstResize = Promise.withResolvers<void>();
     mocks.mockResizeSession.mockReturnValueOnce(firstResize.promise).mockResolvedValue(undefined);

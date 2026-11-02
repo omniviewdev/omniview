@@ -2,6 +2,7 @@ import type { RouteObject } from 'react-router';
 import type { AttachCommit, TabTransferCommit } from '@omniviewdev/base-ui';
 import { WindowClient } from '@omniviewdev/runtime/api';
 import { openSettings, settingsWindowTarget } from '@omniviewdev/runtime';
+import type { PagePathMigrator } from '../../../packages/omniviewdev-runtime/src/types/app';
 import {
   currentWindow,
   deliverTabToWindow,
@@ -12,7 +13,7 @@ import {
   saveSlot,
   type WindowClientPoint,
 } from '@/features/windows';
-import { HOME_PATH } from './pagePaths';
+import { HOME_PATH, parsePagePath } from './pagePaths';
 import {
   countTabs,
   createSingleTabState,
@@ -77,9 +78,11 @@ export class WorkspaceController {
   private readonly listeners = new Set<() => void>();
   private readonly tabHosts = new Map<string, HTMLDivElement>();
   private windowClosing = false;
+  private readonly restoredPaths: Map<string, string>;
 
   constructor(initialState: PagesState, routes: RouteObject[]) {
     this.state = currentWindow.isMain ? withTabIfEmpty(initialState, { id: createId(), path: HOME_PATH }) : initialState;
+    this.restoredPaths = new Map(Object.values(this.state.tabs).map((tab) => [tab.id, tab.path]));
     this.routers = new PageTabRouters(routes, (tabId, path) => {
       this.dispatch({ type: 'setPath', tabId, path });
     });
@@ -93,6 +96,52 @@ export class WorkspaceController {
       this.listeners.delete(listener);
     };
   };
+
+  /** Apply provider migrations only to paths restored with this window. */
+  migrateRestoredPaths(migrators: ReadonlyMap<string, { migratePagePath?: PagePathMigrator }>, report: (path: string, reason: string) => void): void {
+    for (const [tabId, originalPath] of this.restoredPaths) {
+      const tab = this.state.tabs[tabId];
+      if (tab?.path !== originalPath) {
+        this.restoredPaths.delete(tabId);
+        continue;
+      }
+
+      const target = parsePagePath(originalPath);
+      if (target.kind !== 'plugin' && target.kind !== 'connection') {
+        continue;
+      }
+
+      const registration = migrators.get(target.pluginId);
+      if (!registration) {
+        continue;
+      }
+
+      this.restoredPaths.delete(tabId);
+      if (!registration.migratePagePath) {
+        continue;
+      }
+
+      try {
+        const result = registration.migratePagePath(originalPath);
+        if (result.kind === 'unconvertible') {
+          report(originalPath, result.reason);
+        } else if (result.kind === 'migrated') {
+          if (!result.path.startsWith('/')) {
+            report(originalPath, 'The provider returned an invalid page path.');
+            continue;
+          }
+
+          this.dispatch({ type: 'migratePath', tabId, path: result.path, originalPath });
+          const router = this.routers.get(tabId);
+          if (router) {
+            void router.navigate(result.path, { replace: true });
+          }
+        }
+      } catch (error) {
+        report(originalPath, `The provider could not migrate this page: ${String(error)}`);
+      }
+    }
+  }
 
   dispatch(action: PagesAction): void {
     let next = pagesReducer(this.state, action);

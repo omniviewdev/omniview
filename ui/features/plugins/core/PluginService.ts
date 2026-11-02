@@ -1439,7 +1439,10 @@ export class PluginService {
       routes = [];
     }
 
-    return { routes: Array.isArray(routes) ? routes : [] };
+    return {
+      routes: Array.isArray(routes) ? routes : [],
+      ...(typeof pw?.migratePagePath === 'function' ? { migratePagePath: pw.migratePagePath } : {}),
+    };
   }
 
   private extractExtensionPoints(validated: ValidatedExports): ExtensionPointSettings[] {

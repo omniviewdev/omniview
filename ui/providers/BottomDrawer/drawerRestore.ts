@@ -5,10 +5,13 @@ import {
   collectDrawerTabIdsClaimedByOtherWindows,
   isTerminalSessionTab,
 } from './drawerSlot';
+import { savedResourceReferenceStatus } from './resourceReferenceMigration';
 
 export type DrawerRestorePlan = {
-  /** Restored tabs whose backend session no longer exists (e.g. after an app restart). */
+  /** Expired tabs without a retained migrated reference (e.g. after an app restart). */
   deadTabIds: Set<string>;
+  /** Expired terminal tabs whose migrated references must remain available. */
+  expiredMigratedIds: Set<string>;
   /** Live terminal sessions no window shows yet (main window only). */
   orphanedSessionTabs: SerializedDrawerTab[];
 };
@@ -29,12 +32,17 @@ export async function planDrawerRestore(restoredTabs: SerializedDrawerTab[]): Pr
   const liveLogIds = new Set(logSessions.filter((session) => session !== null).map((session) => session.id));
 
   const deadTabIds = new Set(restoredTabs
-    .filter((tab) => (isTerminalSessionTab(tab) && !liveExecIds.has(tab.id))
+    .filter((tab) => (isTerminalSessionTab(tab) && !liveExecIds.has(tab.id)
+      && savedResourceReferenceStatus(tab) === undefined)
       || (tab.variant === 'logs' && !liveLogIds.has(tab.id)))
+    .map((tab) => tab.id));
+  const expiredMigratedIds = new Set(restoredTabs
+    .filter((tab) => isTerminalSessionTab(tab) && !liveExecIds.has(tab.id)
+      && savedResourceReferenceStatus(tab) !== undefined)
     .map((tab) => tab.id));
 
   if (!currentWindow.isMain) {
-    return { deadTabIds, orphanedSessionTabs: [] };
+    return { deadTabIds, expiredMigratedIds, orphanedSessionTabs: [] };
   }
 
   const claimedIds = collectDrawerTabIdsClaimedByOtherWindows(statesByWindow, currentWindow.name);
@@ -50,5 +58,5 @@ export async function planDrawerRestore(restoredTabs: SerializedDrawerTab[]): Pr
       createdAt: now,
       updatedAt: now,
     }));
-  return { deadTabIds, orphanedSessionTabs };
+  return { deadTabIds, expiredMigratedIds, orphanedSessionTabs };
 }

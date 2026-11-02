@@ -15,6 +15,7 @@ import {
   type UpdateTab,
   type UpdateTabOpts,
   BottomDrawerContext,
+  useSnackbar,
 } from '@omniviewdev/runtime';
 import { ExecClient } from '@omniviewdev/runtime/api';
 import log from '@/features/logger';
@@ -39,6 +40,11 @@ import {
   parseSerializedDrawerTab,
 } from './drawerSlot';
 import { planDrawerRestore } from './drawerRestore';
+import {
+  hasUnresolvedResourceReference,
+  migrateDrawerResourceReferences,
+  unresolvedResourceReferenceMessage,
+} from './resourceReferenceMigration';
 import { markTerminalSessionHandedOff } from './terminalHandoff';
 import {
   type AdoptDrawerTabsPlacement,
@@ -233,7 +239,11 @@ function initialDrawerTabsState(slot: DrawerSlot | null): DrawerTabsState {
 export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ children }) => {
   const defaultHeight = 32;
 
-  const [initialSlot] = React.useState(() => readInitialSlot('drawer', parseDrawerSlot));
+  const { showSnackbar } = useSnackbar();
+  const [initialSlot] = React.useState(() => {
+    const slot = readInitialSlot('drawer', parseDrawerSlot);
+    return slot === null ? null : migrateDrawerResourceReferences(slot);
+  });
   const [state, dispatch] = React.useReducer(drawerTabsReducer, initialSlot, initialDrawerTabsState);
   const [drawerHeight, setDrawerHeight] = React.useState<number>(defaultHeight);
   const [layout, setLayout] = React.useState<DrawerLayout>(() => ({
@@ -408,6 +418,20 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
   }, []);
 
   // ===================================== WINDOW WIRING ===================================== //
+  const reportedSavedReferences = React.useRef(new Set<string>());
+
+  React.useEffect(() => {
+    for (const tab of state.tabs) {
+      if (!hasUnresolvedResourceReference(tab) || reportedSavedReferences.current.has(tab.id)) {
+        continue;
+      }
+
+      reportedSavedReferences.current.add(tab.id);
+      const location = `Window ${currentWindow.name}, terminal ${tab.id}`;
+      console.warn('[drawer] saved resource reference is unconvertible; original options retained', location);
+      showSnackbar({ message: unresolvedResourceReferenceMessage, status: 'warning', details: location, showOnce: true });
+    }
+  }, [state.tabs, showSnackbar]);
 
   React.useEffect(() => {
     saveSlot('drawer', buildDrawerSlot(
@@ -421,13 +445,17 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
   React.useEffect(() => {
     let disposed = false;
     planDrawerRestore(initialSlot?.tabs ?? [])
-      .then(({ deadTabIds, orphanedSessionTabs }) => {
+      .then(({ deadTabIds, expiredMigratedIds, orphanedSessionTabs }) => {
         if (disposed) {
           return;
         }
 
         if (deadTabIds.size > 0) {
           dispatch({ type: 'remove', ids: deadTabIds });
+        }
+
+        for (const id of expiredMigratedIds) {
+          dispatch({ type: 'update', find: { id }, updates: { properties: { status: 'expired' } } });
         }
 
         adoptTabs(orphanedSessionTabs, {});
@@ -458,7 +486,7 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
 
       let slot: DrawerSlot;
       try {
-        slot = parseDrawerSlot(JSON.parse(states.drawer));
+        slot = migrateDrawerResourceReferences(parseDrawerSlot(JSON.parse(states.drawer)));
       } catch (err) {
         console.error(`[drawer] ignoring invalid drawer state of closed window "${name}"`, err);
         return;
