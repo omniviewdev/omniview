@@ -14,8 +14,8 @@ The current implementation covers infrastructure phases 1–4. The production ca
 - Workspace: `builtin-plugin-research`, created by `omniview-dev workspace create` and verified with `workspace inspect`.
 - Collection: `/Users/joshuapare/Repos/omniviewdev/workspaces`.
 - Starting host revision: `ab0235ecc0c9c6c99458b306b10abe7bcfaefbd1`.
-- The initial host pinned published SDK `v0.11.0`; the refreshed main branch pins `v0.14.3`. Match the host dependency rather than substituting an adjacent checkout.
-- Use reviewed SDK commit `b082bc460bd8a6c183b4a27ebe64d71039128a0d` through the installed CLI. Its state, profile-contract, and SDK initialization boundaries are unchanged from the prior reviewed source-coordinator pin. Add containers through the CLI only when its migration is planned.
+- The initial host pinned published SDK `v0.11.0`; refreshed main pins published `v0.14.3`. Candidate source tests use the separately approved immutable SDK revision in `e2e/source-cohort.json`; this does not change release dependency policy.
+- Use independently approved candidate SDK commit `458597dc74be0a203d7b1e602c1c35f02e5d3f54` through the installed CLI. Its state, profile-contract, and SDK initialization boundaries are unchanged from the prior reviewed source-coordinator pin. Add containers through the CLI only when its migration is planned.
 - All Go commands use `GOWORK=off`. Generate bindings only with `task bindings` when exported Wails surfaces change. Build runtime before Vite-plugin shims when frontend package contracts change.
 
 ## Architecture decisions
@@ -155,7 +155,7 @@ Reserved-ID archive recovery blocks both the built-in ID and its validated stagi
 - A built-in collision or reserved-ID uninstall recovery remains a per-ID failure. Unrelated plugins still complete startup and initialization notification. Trusted catalog metadata, user preference, external files, and recovery evidence remain intact.
 - Resolve reserved recovery explicitly with the app stopped: inspect the reported marker and owned staged files, then relocate them together through an approved migration. Activation stays blocked until the conflicting external directory and recovery marker are resolved; startup never deletes them automatically.
 - The later `main` source-coordinator cutover was merged without restoring its removed watch/subscription tests. New source-readiness and C02 constructor callers use the immutable backend configuration. All seven affected manager, type, resource, and utility packages passed `-race` against the new SDK pin.
-- The latest rebase includes SDK `v0.14.3`, connection-owner broker admission, and post-bootstrap readiness. Its reviewed SDK commit is already the repository-approved revision; no approval-variable change is required.
+- The latest rebase includes published SDK `v0.14.3`, connection-owner broker admission, and post-bootstrap readiness. Candidate tests select the independently approved SDK revision; no approval-variable or isolation-gate change is required.
 
 ## Phase 5 — Containers vertical integration
 
