@@ -50,10 +50,10 @@ describe('canonical editor schema registry', () => {
     const entries = schemaRegistry.getLastFlushedYamlSchemas();
     expect(entries).toHaveLength(3);
     const shared = entries.find((entry) => entry.fileMatch.length === 0)!;
-    expect(shared.uri).toBe(`omniview-schema:/${document.documentId}`);
+    expect(shared.uri).toBe(`omniview-schema://catalog/${document.documentId}`);
     expect(shared.schema).toBe(document.schema);
     const machineEntry = entries.find((entry) => entry.fileMatch.includes(machine.fileMatch))!;
-    expect(machineEntry.uri).toBe(`omniview-schema:/assoc/${machine.modelDirectory.split('/').at(-1)}`);
+    expect(machineEntry.uri).toBe(`omniview-schema://catalog/assoc/${machine.modelDirectory.split('/').at(-1)}`);
     expect(machineEntry.schema).toEqual({ $ref: shared.uri + '#/definitions/n1' });
     expect(entries.find((entry) => entry.fileMatch.includes(disk.fileMatch))?.schema)
       .toEqual({ $ref: shared.uri + '#/definitions/n2' });

@@ -51,9 +51,8 @@ class SchemaRegistry {
       if (association.language !== 'yaml' && association.language !== 'json') {
         continue;
       }
-      // Monaco canonicalizes authority-free custom URIs to a single slash.
-      // Use that form for both schema handles and cross-document references.
-      const documentURI = `omniview-schema:/${association.documentId}`;
+      // An authority keeps the URI canonical in YAML and absolute in JSON.
+      const documentURI = `omniview-schema://catalog/${association.documentId}`;
       const documentKey = `${association.documentId}\u0000${association.language}`;
       let schema = parsedDocuments.get(association.documentId);
       if (schema === undefined) {
@@ -78,7 +77,7 @@ class SchemaRegistry {
       entries.push({
         type: association.type,
         fileMatch: association.fileMatch,
-        uri: `omniview-schema:/assoc/${hex16}`,
+        uri: `omniview-schema://catalog/assoc/${hex16}`,
         language: association.language,
         schema: { $ref: documentURI + (association.root ?? '') },
       });
