@@ -492,7 +492,8 @@ func (r *Relay) resync() {
 	r.mu.Unlock()
 
 	catalog := BuildCatalog(r.tools.ListAll())
-	discoveryCtx, discoveryCancel := context.WithTimeout(invocation.HostContext(r.lifecycleCtx), 10*time.Second)
+	listingCtx := invocation.HostContext(r.lifecycleCtx)
+	discoveryCtx, discoveryCancel := context.WithTimeout(listingCtx, 10*time.Second)
 	defer discoveryCancel()
 	if r.connections != nil {
 		states, err := r.connections.GetAllConnectionStates(discoveryCtx)
@@ -552,7 +553,7 @@ func (r *Relay) resync() {
 	}
 	desired := map[string]ToolInfo{}
 	for _, t := range catalog {
-		if t.Status == StatusOK && cfg.Listed(t, r.listedConnections(discoveryCtx, &cfg, t, allowed[t.PluginID])) {
+		if t.Status == StatusOK && cfg.Listed(t, r.listedConnections(listingCtx, &cfg, t, allowed[t.PluginID])) {
 			desired[t.MCPName] = t
 		}
 	}

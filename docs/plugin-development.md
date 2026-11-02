@@ -429,6 +429,13 @@ Failed plugin startup closes its dispensed source exactly once even when the
 provider was never published; saved desired profiles and the original typed
 startup failure survive that teardown.
 
+### Borrowed connection tools
+
+Borrowed MCP tools use the host's sanitized snapshot of configured connections.
+Native resource discovery has a separate deadline. Its timeout does not remove
+borrowed tool names. The relay still checks live grants, lifecycle cancellation,
+connection state, and consent at dispatch.
+
 ### Connection/server metadata
 
 Use the optional resource-v2 `connectionMetadata` trait for public connection facts such as `aws.region` or `kubernetes.server_version`. Keep configuration in desired profiles and resource inventory/capabilities in resource queries/catalogs. Do not store summaries; derive them from selected keys in the consumer.

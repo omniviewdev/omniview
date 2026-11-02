@@ -5,7 +5,12 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/tools"
+	"github.com/omniviewdev/plugin-sdk/pkg/config"
+
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
+	sdktools "github.com/omniviewdev/plugin-sdk/pkg/v1/tools"
 	"github.com/stretchr/testify/require"
 )
 
@@ -57,15 +62,41 @@ func TestUnavailableBorrowedOwnerDoesNotBreakOtherSettings(t *testing.T) {
 	require.Equal(t, "other", policies[0].PluginID)
 }
 
-func TestStoppedBorrowedRouteStillListsNamedTool(t *testing.T) {
-	cfg := DefaultConfig("test-token")
-	cfg.Global.Preset = PresetAll
-	tool := ToolInfo{MCPName: "flux_reconcile", PluginID: "flux", Name: "reconcile", Scope: ScopeConnection, ConnectionOwner: "kubernetes", Status: StatusOK}
-	relay := &Relay{borrowedConnections: func(_ context.Context, _, _ string, startedOnly bool) ([]sdktypes.Connection, error) {
-		require.False(t, startedOnly)
+type stalledNativeDiscovery struct {
+	*fakeConnections
+}
+
+func (s *stalledNativeDiscovery) GetAllConnectionStates(ctx context.Context) (map[string][]resource.ConnectionState, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestBorrowedToolRemainsListedAfterNativeDiscoveryTimeout(t *testing.T) {
+	h := newHarness(t)
+	h.tools.mu.Lock()
+	h.tools.plugins["flux"] = tools.PluginTools{
+		Meta: config.PluginMeta{ID: "flux", Name: "Flux"},
+		Tools: []sdktools.Descriptor{{
+			Name: "reconcile", Scope: sdktools.ScopeConnection,
+			ConnectionOwner: "kubernetes", InputSchema: sdktools.ObjectSchema(nil),
+		}},
+	}
+	h.tools.mu.Unlock()
+	h.relay.connections = &stalledNativeDiscovery{fakeConnections: &fakeConnections{}}
+	h.relay.borrowedConnections = func(ctx context.Context, _, _ string, startedOnly bool) ([]sdktypes.Connection, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if startedOnly {
+			return nil, nil
+		}
 		return []sdktypes.Connection{{ID: "stopped", Name: "Stopped"}}, nil
-	}}
-	eligible := relay.listedConnections(context.Background(), &cfg, tool, nil)
-	require.Equal(t, []string{"stopped"}, eligible)
-	require.True(t, cfg.Listed(tool, eligible))
+	}
+	h.relay.mu.Lock()
+	h.relay.cfg.Global.Preset = PresetAll
+	h.relay.mu.Unlock()
+	h.relay.resync()
+
+	session := h.connect(t, nil)
+	require.Contains(t, toolNames(t, session), "flux_reconcile")
 }
