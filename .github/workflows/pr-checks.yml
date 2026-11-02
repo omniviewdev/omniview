@@ -154,18 +154,40 @@ jobs:
       - name: Format check
         run: task check:fmt-check GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
 
-      - name: Select effective candidate module for lint
+      # go/packages probes Go with modules disabled, so GOFLAGS cannot select a modfile.
+      # Keep the approved graph in a private checkout instead of changing source modules.
+      - name: Prepare isolated candidate checkout for lint
+        id: lint-source
         run: |
-          printf 'GOFLAGS=%s\n' "$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go --root "$PWD" --sdk-source "$SDK_SOURCE" --format goflags)" >> "$GITHUB_ENV"
+          effective_modfile="$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go --root "$PWD" --sdk-source "$SDK_SOURCE" --format modfile)"
+          lint_directory="$RUNNER_TEMP/omniview-lint"
+          mkdir -m 700 "$lint_directory"
+          git worktree add --detach "$lint_directory" HEAD
+          cp "$effective_modfile" "$lint_directory/go.mod"
+          cp "${effective_modfile%.mod}.sum" "$lint_directory/go.sum"
+          cp -a dist "$lint_directory/"
+          git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.sha }}"
+          lint_patch="$lint_directory/changes.patch"
+          git diff --no-ext-diff --no-color "${{ github.event.pull_request.base.sha }}" HEAD > "$lint_patch"
+          printf 'directory=%s\n' "$lint_directory" >> "$GITHUB_OUTPUT"
+          printf 'patch=%s\n' "$lint_patch" >> "$GITHUB_OUTPUT"
 
       # Reports only issues the PR introduces; the existing backlog is not fixed yet.
+      # Supply the root-relative patch directly: the action would filter it out
+      # because the private working directory is outside GITHUB_WORKSPACE.
       - name: Lint
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.14
-          only-new-issues: true
+          only-new-issues: false
+          working-directory: ${{ steps.lint-source.outputs.directory }}
+          args: >-
+            --new-from-patch="${{ steps.lint-source.outputs.patch }}"
+            --new=false --new-from-rev= --new-from-merge-base=
+            --path-prefix=
         env:
           GOWORK: "off"
+          GOFLAGS: ""
         continue-on-error: true
 
   bindings-check:
