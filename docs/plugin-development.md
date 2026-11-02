@@ -4,10 +4,10 @@ This guide covers everything you need to know to develop plugins for Omniview wi
 
 ### Marketplace host compatibility
 
-Host registry API requests advertise `ide_version=0.20.0`, sourced from
+Host registry API requests advertise `ide_version=0.24.0`, sourced from
 `internal/version.CompatibilityVersion`. This is the source's minimum host
 compatibility release line, not the SDK version or a PR/nightly display label.
-Development builds advertise the same `0.20.0` API baseline while retaining
+Development builds advertise the same `0.24.0` API baseline while retaining
 their existing development display labels. Release builds stamp the display
 version from the release tag.
 
@@ -22,6 +22,20 @@ Publisher minimum and maximum IDE versions are inclusive semantic-version bounds
 Hosts that omit `ide_version` can only access unconstrained plugin versions.
 Artifact and CDN URLs, including signed URLs returned by download endpoints,
 are not decorated with the host version.
+
+Version history requests opt into `include_incompatible=true` to show newer public
+releases with an explicit compatibility reason instead of hiding them. The host
+checks inclusive minimum/maximum bounds against its compatibility baseline and
+sorts all pages by semantic version. `discovery_supported` is true only when the
+marketplace acknowledges this metadata-only mode with
+`X-Omniview-Incompatible-Versions: true`; an older API may still omit incompatible
+releases. Exact-version lookup and download requests never opt into discovery
+and continue enforcing compatibility before artifact access.
+
+Structured runtime errors preserve the outer operation title and render nested
+public causes as readable text, including JSON escaped through Wails or prefixed
+by Go operation context. Raw diagnostic prefixes, malformed structured causes,
+and sensitive provider fallback fields remain hidden.
 
 The public marketplace API is `https://mkt.omniview.dev`. Explicit
 `developer.marketplace_url` overrides remain unchanged. Existing profiles that
@@ -111,6 +125,20 @@ remain unchanged. No modifier shortcut or default destination is configured.
 `terminal.nativeApplication` accepts `terminal` (default) or `iterm2`. The action
 is hidden outside macOS. The selected application must be installed; the host
 never silently switches applications or falls back to built-in Exec.
+
+Settings discovers installed supported terminal applications through macOS's
+application registry. Display names come from each installed bundle and icons
+come from `NSWorkspace`, rendered as 64px PNGs. Application choices are not a
+static settings enum; only applications with an implemented safe launch adapter
+are offered. Registering as a shell-document handler does not qualify an editor
+or browser as a terminal. Discovery does not send Automation events or launch
+applications.
+
+The picker preserves its draft until Save Changes. Refresh applications rescans
+the device without changing the draft. A removed saved application stays visibly
+unavailable until the user chooses an installed alternative; discovery errors
+remain distinct from an empty installed list. Availability is checked again at
+launch. Existing `terminal` and `iterm2` preference IDs remain stable.
 
 Plugins built with SDK v0.12.0 can provide `NativeCommandHandler` on an exec
 handler, or implement the optional `exec.NativeCommandProvider`. Advertise native
@@ -414,6 +442,16 @@ Runtime and UI connected counts and sync controls use only explicit `CONNECTED`.
 Failed plugin startup closes its dispensed source exactly once even when the
 provider was never published; saved desired profiles and the original typed
 startup failure survive that teardown.
+
+### Borrowed connection tools
+
+Borrowed MCP tools use the host's sanitized snapshot of configured connections.
+Native resource discovery has a separate deadline. Its timeout does not remove
+borrowed tool names. The relay still checks live grants, lifecycle cancellation,
+connection state, and consent at dispatch.
+Consent binds the exact tool contract and target. An unrelated catalog change
+does not cancel that consent. A changed or removed tool, policy change, or
+session retirement still cancels the call and blocks late results.
 
 ### Connection/server metadata
 
@@ -782,7 +820,7 @@ The reference set is `kubernetes/ui/src/icons/resourceIcons.tsx`. Other plugins 
 
 #### Live data, cache ownership, and failures
 
-The host acquires native resource subscriptions while resource scopes are open, deduplicates them, and releases them on scope changes, close, and unmount. Late successful acquisitions are also released. Failed acquisition leaves existing results visible with a **Retry live updates** banner; retry does not replace healthy watchers.
+The host shares source sessions across resource views and releases them when their interests close. A view receives a snapshot and status, followed by updates when supported. Failed sources retain existing results and expose a retry.
 
 Use the public cache keys when storing native snapshots:
 
@@ -792,7 +830,10 @@ Use the public cache keys when storing native snapshots:
 - `resourceQueryKeys.resource(pluginId,{targetId,request:GetRequest})` stores `HostRecord`, never a display projection or legacy GetResult.
 - Pagination, representation, query scope, and native query inputs remain explicit request fields; never replace an unfiltered acquisition page with search-filtered rows.
 
-Subscribe and unsubscribe using `(pluginId,{targetId,target:ReadTarget})`. Advisory ADD/UPDATE payloads carry `record:HostRecord`; DELETE carries host keys and canonical reference. Search filters matching request-context events, invalidates the plugin's resourcev2 cache, and coalesces refreshes without rediscovering connections or resetting selection. Events received during an in-flight fetch re-invalidate its settled snapshot before the trailing refresh. BEST_EFFORT updates do not establish snapshot/update continuity.
+Use `openSourceView(pluginId, {targetId, target, updates})` for a source view. The runtime attaches to the view topic before synchronization, stages snapshot chunks until `snapshotEnd`, and applies ordered changes by host record key. Close the view when it is no longer needed. A reset starts a new view generation; continuity and coverage describe the source's guarantees.
+
+The PR workflow runs `src/resource/v2/sourceView.test.ts` from `packages/omniviewdev-runtime`.
+The suite checks atomic snapshots, frame-batched notifications, continuity gaps, and view retirement.
 
 Use the cache query's signal for shared native work and the request signal to fence obsolete search publication. Cancelling a search must not cancel another table's shared fetch. Resource/action execution still performs its own fresh identity and authorization checks instead of trusting discovery cache freshness.
 
@@ -801,6 +842,61 @@ Distinguish disconnected, connecting, authentication-required, forbidden, unavai
 Query edits retain the previous result surface, disable obsolete activation, and publish the replacement query wave coherently after its sources settle. CommandList does not apply another label-only filter to provider-ranked results. Compact icon/status badges carry availability; full source messages remain under Details. Providers must still report truthful typed states and bounded completion.
 
 Kubernetes is the reference integration in `ui/src/search/provider.tsx`. It caches resource snapshots for 15 seconds and readiness for 2 seconds, scans at most 200 objects, reports incomplete results, and transfers exact list text without changing structured filters. See [scoped search design and acceptance cases](scoped-search-design.md).
+
+### Inspecting extension registrations
+
+Open **Developer: Inspect Extensions** from global search, or choose
+**Inspect contributions** in plugin details. Diagnostics live in a workspace
+tab, not a Settings category.
+
+The namespace tree groups extension points and their contributions. Use the
+plugin filter to inspect one contributor without losing the point hierarchy.
+The contribution table includes every registered value, including entries
+hidden by single-mode selection or quarantine. Pending registrations appear
+separately because their requested target point does not yet exist.
+
+Select a Problem to reveal the associated contribution and captured evidence.
+The inspector distinguishes module loading, registration, context resolution,
+and quarantine. None of these proves a component rendered successfully.
+Captured crash history is bounded session evidence and can clear on reload or
+re-enable. Export before recovery; inspect potentially sensitive errors locally
+before sharing them.
+
+The full-height explorer sits beside the registration editor and metadata
+inspector. Problems dock below the editor and inspector; all three pane
+boundaries can be resized. Repeated problems group by kind, plugin, point,
+contribution, and boundary. Expand a group or the inspector's event history to
+review every retained record; exports retain the ungrouped bounded evidence.
+Registration JSON contains only the safe type descriptor, never contribution
+values. Lifecycle and render eligibility remain explicitly unknown where no
+instrumentation exists. Coverage and safety details are available in a disclosure.
+Double-click a resize handle to restore its default size. Narrow windows clamp
+the side panes without clearing the selected registration or filter. If a registry
+change invalidates an action's capture, select the current registration again
+before running lookup or recovery.
+Initial selections bind to the first capture with a resolved runtime window
+identity. Later inventory updates do not silently replace an action's capture.
+
+Reveal sensitive exception text captures and pauses the current state. Resume
+before lookup, recovery, or another reveal. Safe JSON export still redacts text
+from a sensitive paused capture. Sensitive export and recovery require review
+or confirmation; recovery clears the contribution's captured crash history.
+
+Context lookup is an explicit action because plugin matchers can execute code.
+It never mounts contributed components. Unsupported context types and gaps in
+specialized-consumer diagnostics are labeled instead of treated as healthy.
+
+Agents can inspect the same live document without using the UI:
+
+```sh
+omniview-dev extensions inspect --workspace /path/to/workspace \
+  --plugin my-plugin --json
+```
+
+See [extension diagnostics for agents](development-cli.md#extension-diagnostics-for-agents)
+for point/issue filters, explicit resource-context lookup, window selection,
+and sensitive-error opt-in. A missing frontend is an unavailable capture,
+not evidence that the plugin registered nothing.
 
 ### 1.5 Contributing a Theme
 

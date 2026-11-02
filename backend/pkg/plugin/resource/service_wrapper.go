@@ -134,32 +134,23 @@ func (s *ServiceWrapper) ResetConnectionProfile(ctx context.Context, pluginID st
 func (s *ServiceWrapper) RemoveConnection(ctx context.Context, pluginID string, connectionID string) error {
 	return s.Ctrl.RemoveConnection(s.realmContext(ctx), pluginID, connectionID)
 }
-func (s *ServiceWrapper) StartConnectionWatch(ctx context.Context, pluginID string, targets []resourcev2.ReadTarget) error {
-	return s.Ctrl.StartConnectionWatch(s.realmContext(ctx), pluginID, targets)
+func (s *ServiceWrapper) OpenSourceView(ctx context.Context, pluginID string, request HostSourceViewRequest) (HostSourceViewOpened, error) {
+	return s.Ctrl.OpenSourceView(s.realmContext(ctx), pluginID, request)
 }
-func (s *ServiceWrapper) StopConnectionWatch(ctx context.Context, pluginID string, route resourcev2.AccessRoute) error {
-	return s.Ctrl.StopConnectionWatch(s.realmContext(ctx), pluginID, route)
+func (s *ServiceWrapper) SyncSourceView(ctx context.Context, pluginID, viewID string) error {
+	return s.Ctrl.SyncSourceView(s.realmContext(ctx), pluginID, viewID)
 }
-func (s *ServiceWrapper) GetWatchState(ctx context.Context, pluginID string, route resourcev2.AccessRoute) (*resourcev2.WatchConnectionSummary, error) {
-	return s.Ctrl.GetWatchState(s.realmContext(ctx), pluginID, route)
+func (s *ServiceWrapper) RefreshSourceView(ctx context.Context, pluginID, viewID string) error {
+	return s.Ctrl.RefreshSourceView(s.realmContext(ctx), pluginID, viewID)
 }
-func (s *ServiceWrapper) EnsureResourceWatch(ctx context.Context, pluginID string, target resourcev2.ReadTarget) error {
-	return s.Ctrl.EnsureResourceWatch(s.realmContext(ctx), pluginID, target)
+func (s *ServiceWrapper) CloseSourceView(ctx context.Context, pluginID, viewID string) error {
+	return s.Ctrl.CloseSourceView(s.realmContext(ctx), pluginID, viewID)
 }
-func (s *ServiceWrapper) StopResourceWatch(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) error {
-	return s.Ctrl.StopResourceWatch(s.realmContext(ctx), pluginID, route, resourceType)
+func (s *ServiceWrapper) GetSourceStates(ctx context.Context, pluginID string, route resourcev2.AccessRoute) (HostSourceStates, error) {
+	return s.Ctrl.GetSourceStates(s.realmContext(ctx), pluginID, route)
 }
-func (s *ServiceWrapper) RestartResourceWatch(ctx context.Context, pluginID string, target resourcev2.ReadTarget) error {
-	return s.Ctrl.RestartResourceWatch(s.realmContext(ctx), pluginID, target)
-}
-func (s *ServiceWrapper) IsResourceWatchRunning(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) (bool, error) {
-	return s.Ctrl.IsResourceWatchRunning(s.realmContext(ctx), pluginID, route, resourceType)
-}
-func (s *ServiceWrapper) SubscribeResource(ctx context.Context, pluginID string, subscription HostSubscription) error {
-	return s.Ctrl.SubscribeResource(s.realmContext(ctx), pluginID, subscription)
-}
-func (s *ServiceWrapper) UnsubscribeResource(ctx context.Context, pluginID string, subscription HostSubscription) error {
-	return s.Ctrl.UnsubscribeResource(s.realmContext(ctx), pluginID, subscription)
+func (s *ServiceWrapper) RetryConnectionSources(ctx context.Context, pluginID string, route resourcev2.AccessRoute) error {
+	return s.Ctrl.RetryConnectionSources(s.realmContext(ctx), pluginID, route)
 }
 func (s *ServiceWrapper) GetResourceGroups(ctx context.Context, pluginID string, route resourcev2.AccessRoute) ([]resourcev2.ResourceGroup, error) {
 	return s.Ctrl.GetResourceGroups(s.realmContext(ctx), pluginID, route)
@@ -167,8 +158,14 @@ func (s *ServiceWrapper) GetResourceGroups(ctx context.Context, pluginID string,
 func (s *ServiceWrapper) GetResourceDefinition(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) (resourcev2.ResourceDefinition, error) {
 	return s.Ctrl.GetResourceDefinition(s.realmContext(ctx), pluginID, route, resourceType)
 }
-func (s *ServiceWrapper) GetEditorSchemas(ctx context.Context, pluginID string, route resourcev2.AccessRoute) ([]resourcev2.EditorSchema, error) {
+func (s *ServiceWrapper) GetSchemaFields(ctx context.Context, pluginID string, request SchemaFieldsRequest) (SchemaFieldsResult, error) {
+	return s.Ctrl.GetSchemaFields(s.realmContext(ctx), pluginID, request)
+}
+func (s *ServiceWrapper) GetEditorSchemas(ctx context.Context, pluginID string, route resourcev2.AccessRoute) ([]EditorSchemaAssociation, error) {
 	return s.Ctrl.GetEditorSchemas(s.realmContext(ctx), pluginID, route)
+}
+func (s *ServiceWrapper) GetEditorSchemaDocument(ctx context.Context, pluginID string, route resourcev2.AccessRoute, documentID string) (EditorSchemaDocument, error) {
+	return s.Ctrl.GetEditorSchemaDocument(s.realmContext(ctx), pluginID, route, documentID)
 }
 func (s *ServiceWrapper) GetSchemaDocument(ctx context.Context, pluginID string, route resourcev2.AccessRoute, reference resourcev2.SchemaDocumentReference) (resourcev2.SchemaDocument, error) {
 	return s.Ctrl.GetSchemaDocument(s.realmContext(ctx), pluginID, route, reference)

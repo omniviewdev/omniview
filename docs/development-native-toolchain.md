@@ -67,9 +67,14 @@ do not prove canonical preparation, acceptance and cleanup succeeded.
 The checked-out host's `e2e/source-cohort.json` selects full UI and Kubernetes
 commits for canonical CI and whole-app profiling. Kubernetes must match the
 committed `plugins/kubernetes` gitlink. The cohort SDK must match the independently
-reviewed release pinned in workflow `REVIEWED_SDK_REVISION`: SDK v0.12.1 at
-`0a5b64ed8c2de209fbb02ecce9feba3afd88f28c`. Repository variables remain unchanged;
-editing the cohort alone cannot approve another SDK commit.
+reviewed commit in repository variable `OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION`.
+Workflows pass that value as `REVIEWED_SDK_REVISION`. Only the user changes the
+approval variable; editing the cohort alone cannot approve another SDK commit.
+
+The isolation guard separately pins SDK checkpoint
+`eea5943f7a5319fb1585a8ec2d9ce5d06fa763ca`, after independent review of the
+host-connections binding added to plugin startup. The original isolation baseline,
+checkpoint ancestry, and byte comparisons for all five protected files remain required.
 
 Playwright uses its GitHub reporter in Actions for failure annotations on the
 check and source locations, alongside terminal output, HTML and case timings.

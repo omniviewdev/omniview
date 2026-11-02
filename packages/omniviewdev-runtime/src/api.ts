@@ -3,6 +3,8 @@ export * as ExecClient from './exec';
 export * as NetworkerClient from './networker';
 export * as PluginManager from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/servicewrapper';
 export * as ResourceClient from './resource/v2/client';
+export { QueryLeaseObserver } from './resource/v2/query-observer';
+export type { ObserverAction, ObserverSnapshot } from './resource/v2/query-observer';
 export * as GraphClient from './resource/v2/graph-client';
 export * as SettingsService from './bindings/github.com/omniviewdev/omniview/backend/pkg/settings/binding';
 export * as HostProfiling from './bindings/github.com/omniviewdev/omniview/internal/profiling/servicewrapper';
@@ -17,6 +19,7 @@ export * as LogsClient from './logs';
 export * as MetricClient from './metric';
 export * as DataClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/data/servicewrapper';
 export * as WindowClient from './bindings/github.com/omniviewdev/omniview/backend/window/service';
+export * as ExtensionDiagnosticsClient from './bindings/github.com/omniviewdev/omniview/backend/extensiondiagnostics/host/service';
 
 export * as DevServerManager from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/devserver/servicewrapper';
 export * as PluginLogManager from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/pluginlog/servicewrapper';

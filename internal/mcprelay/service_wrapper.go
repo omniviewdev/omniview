@@ -267,17 +267,40 @@ func (s *ServiceWrapper) ListTools(scope Scope) ([]ToolView, error) {
 		listed[name] = registered && !r.stopped && r.cfg.Enabled && r.listener != nil
 	}
 	r.mu.Unlock()
+	unavailableOwners := map[string]bool{}
+	if r.borrowedConnections != nil {
+		for _, tool := range catalog {
+			if tool.ConnectionOwner == "" || unavailableOwners[tool.ConnectionOwner] {
+				continue
+			}
+			if _, err := r.borrowedConnections(context.Background(), tool.PluginID, tool.ConnectionOwner, false); err != nil {
+				unavailableOwners[tool.ConnectionOwner] = true
+			}
+		}
+	}
+	needsLocalInventory := scope.global()
+	if !needsLocalInventory {
+		for _, tool := range catalog {
+			if tool.PluginID == scope.PluginID && tool.Scope == ScopeConnection && tool.ConnectionOwner == "" {
+				needsLocalInventory = true
+				break
+			}
+		}
+	}
 	ready := map[string]map[string]bool{}
-	if r.connections != nil {
+	if needsLocalInventory && r.connections != nil {
 		ctx, cancel := context.WithTimeout(invocation.HostContext(context.Background()), 10*time.Second)
 		defer cancel()
 		states, err := r.connections.GetAllConnectionStates(ctx)
-		if err != nil {
+		if err != nil && len(unavailableOwners) == 0 {
 			return nil, err
 		}
 		for pluginID, connections := range states {
 			ready[pluginID] = map[string]bool{}
 			for _, state := range connections {
+				if unavailableOwners[pluginID] {
+					continue
+				}
 				if state.ReadinessError != nil {
 					return nil, fmt.Errorf("connection readiness unavailable for plugin %s connection %s", pluginID, state.Connection.ID)
 				}
@@ -285,25 +308,58 @@ func (s *ServiceWrapper) ListTools(scope Scope) ([]ToolView, error) {
 			}
 		}
 	}
+	borrowedReady := map[string]map[string]bool{}
+	if r.borrowedConnections != nil {
+		for _, tool := range catalog {
+			if tool.ConnectionOwner == "" {
+				continue
+			}
+			key := tool.PluginID + "\x00" + tool.ConnectionOwner
+			if _, seen := borrowedReady[key]; seen {
+				continue
+			}
+			configured, err := r.borrowedConnections(context.Background(), tool.PluginID, tool.ConnectionOwner, false)
+			if err != nil {
+				borrowedReady[key] = map[string]bool{}
+				continue
+			}
+			started, err := r.borrowedConnections(context.Background(), tool.PluginID, tool.ConnectionOwner, true)
+			if err != nil {
+				borrowedReady[key] = map[string]bool{}
+				continue
+			}
+			borrowedReady[key] = map[string]bool{}
+			for _, connection := range configured {
+				borrowedReady[key][connection.ID] = false
+			}
+			for _, connection := range started {
+				borrowedReady[key][connection.ID] = true
+			}
+		}
+	}
 	out := make([]ToolView, 0, len(catalog))
 	for _, t := range catalog {
+		toolReady := ready[t.PluginID]
+		if t.ConnectionOwner != "" {
+			toolReady = borrowedReady[t.PluginID+"\x00"+t.ConnectionOwner]
+		}
 		if !scope.global() && (t.PluginID != scope.PluginID || t.Scope != ScopeConnection) {
 			continue
 		}
 		if !scope.global() && t.Resource != nil && t.Resource.Route.Connection != scope.ConnectionID {
 			continue
 		}
-		if scope.global() && t.Scope == ScopeConnection && t.Resource == nil && len(ready[t.PluginID]) > 0 {
-			ids := make([]string, 0, len(ready[t.PluginID]))
-			for id := range ready[t.PluginID] {
+		if scope.global() && t.Scope == ScopeConnection && t.Resource == nil && len(toolReady) > 0 {
+			ids := make([]string, 0, len(toolReady))
+			for id := range toolReady {
 				ids = append(ids, id)
 			}
 			sort.Strings(ids)
 			for _, id := range ids {
 				view := toolView(&cfg, Scope{PluginID: t.PluginID, ConnectionID: id}, t)
 				view.ConnectionID = id
-				view.Ready = ready[t.PluginID][id] && t.Status == StatusOK
-				view.Listed = listed[t.MCPName] && view.Ready && cfg.ConnectionEnabled(t.PluginID, id, t)
+				view.Ready = toolReady[id] && t.Status == StatusOK
+				view.Listed = listed[t.MCPName] && (view.Ready || t.ConnectionOwner != "") && cfg.ConnectionEnabled(t.PluginID, id, t)
 				out = append(out, view)
 			}
 			continue
@@ -322,17 +378,21 @@ func (s *ServiceWrapper) ListTools(scope Scope) ([]ToolView, error) {
 			}
 			view.Ready = false
 			if view.ConnectionID != "" {
-				view.Ready = ready[t.PluginID][view.ConnectionID]
+				view.Ready = toolReady[view.ConnectionID]
 			} else {
-				for _, connected := range ready[t.PluginID] {
+				for _, connected := range toolReady {
 					view.Ready = view.Ready || connected
 				}
 			}
 			view.Ready = view.Ready && t.Status == StatusOK
-			if !view.Ready {
+			if !view.Ready && t.ConnectionOwner == "" {
 				view.Listed = false
 			}
 			if view.ConnectionID != "" {
+				if t.ConnectionOwner != "" {
+					_, configured := toolReady[view.ConnectionID]
+					view.Listed = view.Listed && configured
+				}
 				view.Listed = view.Listed && cfg.ConnectionEnabled(t.PluginID, view.ConnectionID, t)
 			}
 		}
@@ -407,22 +467,48 @@ func (s *ServiceWrapper) ListConnectionPolicies() ([]ConnectionPolicyView, error
 		return nil, err
 	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	cfg := r.cfg.clone()
+	catalog := append([]ToolInfo(nil), r.catalog...)
+	r.mu.Unlock()
+	if r.borrowedConnections != nil {
+		seen := map[string]bool{}
+		for _, tool := range catalog {
+			if tool.ConnectionOwner == "" {
+				continue
+			}
+			key := tool.PluginID + "\x00" + tool.ConnectionOwner
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			connections, err := r.borrowedConnections(context.Background(), tool.PluginID, tool.ConnectionOwner, false)
+			if err != nil {
+				continue
+			}
+			all[tool.PluginID] = append(all[tool.PluginID], connections...)
+		}
+	}
 	pluginNames := map[string]string{}
-	for _, t := range r.catalog {
+	for _, t := range catalog {
 		pluginNames[t.PluginID] = t.PluginName
 	}
 	out := []ConnectionPolicyView{}
+	seenConnections := map[string]bool{}
 	for pluginID, connections := range all {
 		name := pluginNames[pluginID]
 		if name == "" {
 			name = pluginID
 		}
 		for _, connection := range connections {
-			policy := r.cfg.connectionPolicy(pluginID, connection.ID)
+			key := pluginID + "\x00" + connection.ID
+			if seenConnections[key] {
+				continue
+			}
+			seenConnections[key] = true
+			policy := cfg.connectionPolicy(pluginID, connection.ID)
 			effectivePreset := policy.Preset
 			if effectivePreset == "" {
-				effectivePreset = r.cfg.Global.Preset
+				effectivePreset = cfg.Global.Preset
 			}
 			out = append(out, ConnectionPolicyView{
 				PluginID:        pluginID,
@@ -430,7 +516,7 @@ func (s *ServiceWrapper) ListConnectionPolicies() ([]ConnectionPolicyView, error
 				ConnectionID:    connection.ID,
 				ConnectionName:  connection.Name,
 				Access:          policy.Access,
-				EffectiveAccess: r.cfg.ConnectionAccess(pluginID, connection.ID),
+				EffectiveAccess: cfg.ConnectionAccess(pluginID, connection.ID),
 				Preset:          policy.Preset,
 				EffectivePreset: effectivePreset,
 			})

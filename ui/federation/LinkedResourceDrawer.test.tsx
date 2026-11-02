@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => {
   return {
     activeTheme: { id: 'void', base: 'void' },
     settings,
+    useResourceEditorModelPath: vi.fn<() => string | undefined>(() => undefined),
     buildMonacoTheme: vi.fn((base: string) => ({ base, inherit: true, rules: [], colors: {} })),
     monaco: {
       editor: { defineTheme, setTheme },
@@ -49,11 +50,11 @@ vi.mock('@omniviewdev/editors', () => ({
 
 vi.mock('@omniviewdev/runtime', async (importOriginal) => {
   const runtime = await importOriginal<typeof Runtime>();
-  return { ...runtime, useSettings: () => ({ settings: mocks.settings }) };
+  return { ...runtime, useSettings: () => ({ settings: mocks.settings }), useResourceEditorModelPath: mocks.useResourceEditorModelPath };
 });
 
 vi.mock('@monaco-editor/react', () => ({
-  default: (props: { theme?: string }) => <div data-testid="linked-editor" data-theme={props.theme} />,
+  default: (props: { theme?: string; path?: string }) => <div data-testid="linked-editor" data-theme={props.theme} data-path={props.path} />,
   DiffEditor: (props: { theme?: string }) => <div data-testid="linked-diff-editor" data-theme={props.theme} />,
   useMonaco: () => mocks.monaco,
   loader: {
@@ -87,6 +88,7 @@ describe('LinkedResourceDrawer editor themes', () => {
     mocks.activeTheme = { id: 'void', base: 'void' };
     mocks.settings = { 'editor.theme': 'application' };
     vi.clearAllMocks();
+    mocks.useResourceEditorModelPath.mockReturnValue(undefined);
   });
 
   afterEach(cleanup);
@@ -118,5 +120,21 @@ describe('LinkedResourceDrawer editor themes', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'View in Diff Editor' }));
     expect(screen.getByTestId('linked-diff-editor')).toHaveAttribute('data-theme', 'brilliance-black');
+  });
+
+  it('uses the resource schema model path for the editor', () => {
+    mocks.useResourceEditorModelPath.mockReturnValue('file:///omniview-schema/0123456789abcdef/draft.yaml');
+    const drawer = createDrawer();
+    render(drawer.views[1].component(ctx));
+
+    expect(mocks.useResourceEditorModelPath).toHaveBeenCalledWith({
+      pluginID: 'test',
+      route: { connection: 'test-connection' },
+      type: 'pods',
+      representation: 'json',
+      name: 'draft',
+      enabled: true,
+    });
+    expect(screen.getByTestId('linked-editor')).toHaveAttribute('data-path', 'file:///omniview-schema/0123456789abcdef/draft.yaml');
   });
 });

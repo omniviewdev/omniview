@@ -40,10 +40,9 @@ func newBenchmarkController(source *benchmarkSource) (*resource.Controller[bench
 		scenario := source.scenarios[profile]
 		registration := resource.Registration[benchmarkClient]{
 			Connection: profile, Type: scenario.Type, Enumerate: source.Enumerate, Get: source.Get,
-			SyncPolicy: resource.SyncOnConnect,
 		}
 		if len(scenario.Updates) > 0 {
-			registration.Watch = (&benchmarkEvents{source}).Watch
+			registration.Source = (&benchmarkEvents{source}).Source
 		}
 		registrations = append(registrations, registration)
 	}

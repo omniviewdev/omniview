@@ -4,6 +4,9 @@ package devcontrol
 
 import (
 	"context"
+	"time"
+
+	"github.com/omniviewdev/omniview/backend/extensiondiagnostics"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
@@ -18,6 +21,43 @@ func publicPlugin(p sdktypes.PluginInfo) sdktypes.PluginInfo {
 func (s *Server) dispatch(ctx context.Context, r devcontract.Request) devcontract.Response {
 	bad := func() devcontract.Response { return s.result(r, nil, invalidParams()) }
 	switch r.Operation {
+	case "extensions.windows":
+		var p EmptyParams
+		if strictParams(r.Params, &p) != nil {
+			return bad()
+		}
+		if s.adapters.Extensions == nil {
+			return s.result(r, nil, extensiondiagnostics.ErrUnavailable)
+		}
+		windows, err := s.adapters.Extensions.Windows(ctx)
+		return s.result(r, windows, err)
+	case "extensions.inspect", "extensions.lookup":
+		var p ExtensionParams
+		if strictParams(r.Params, &p) != nil || p.TimeoutMS < 0 || p.TimeoutMS > 30000 {
+			return bad()
+		}
+		if p.WindowName == "" {
+			p.WindowName = "main"
+		}
+		operation := "snapshot"
+		if r.Operation == "extensions.lookup" {
+			operation = "lookup"
+		}
+		if !extensiondiagnostics.ValidRequest(p.WindowName, operation, p.Options) {
+			return bad()
+		}
+		if s.adapters.Extensions == nil {
+			return s.result(r, nil, extensiondiagnostics.ErrUnavailable)
+		}
+		if p.TimeoutMS == 0 {
+			p.TimeoutMS = 30000
+		}
+		queryCtx, cancel := context.WithTimeout(ctx, time.Duration(p.TimeoutMS)*time.Millisecond)
+		defer cancel()
+		stop := context.AfterFunc(s.ctx, cancel)
+		defer stop()
+		value, err := s.adapters.Extensions.Query(queryCtx, p.WindowName, operation, p.Options)
+		return s.result(r, value, err)
 	case "instance.inspect", "plugin.list":
 		var p EmptyParams
 		if strictParams(r.Params, &p) != nil {

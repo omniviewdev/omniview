@@ -12,7 +12,7 @@ import { useDevMode } from '@/hooks/useDevMode';
 import SettingsNav from './SettingsNav';
 import CoreSettingsPage from './CoreSettingsPage';
 import PluginSettingsPage from './PluginSettingsPage';
-import ExtensionSettingsPage from './ExtensionSettingsPage';
+import { openSettings } from '@omniviewdev/runtime';
 import AiToolsSettingsPage from './AiToolsSettingsPage';
 import { Section, SettingsCloseContext, SettingsFocusContext, type SectionSelection } from './settingsContext';
 
@@ -144,6 +144,25 @@ export default function SettingsPage({ request, onLocationChange, onClose }: {
       (section === Section.Plugins && !plugins.data?.some((plugin) => plugin.id === id)));
   const unavailable = malformed || (!loading && missing) || (section === Section.Plugins && !id);
   const navSelection = specialId !== null ? { section: Section.Core, id: specialId } : selected;
+  const legacyExtensions = sectionQuery === 'extensions' || (sectionQuery === 'core' && id === 'extensions');
+  const migratedLocation = React.useRef<string | null>(null);
+  const [migrationError, setMigrationError] = React.useState('');
+  React.useEffect(() => {
+    if (!legacyExtensions || migratedLocation.current === location.key) {
+      return;
+    }
+
+    migratedLocation.current = location.key;
+    guard(() => {
+      void openSettings(`${location.pathname}${location.search}`)
+        .then(() => {
+          void navigate('/settings?category=general', { replace: true }); onClose?.(); 
+        })
+        .catch(() => {
+          migratedLocation.current = null; setMigrationError('Could not open Extension Inspector. Reopen this bookmark to retry.'); 
+        });
+    });
+  }, [legacyExtensions, location.key, location.pathname, location.search, guard, navigate, onClose]);
   React.useEffect(() => {
     const target = `${location.pathname}${location.search}`;
     if (routingTarget.current && routingTarget.current !== target) {
@@ -171,7 +190,9 @@ export default function SettingsPage({ request, onLocationChange, onClose }: {
   }
 
   let content: React.ReactNode;
-  if (unavailable) {
+  if (legacyExtensions) {
+    content = <p role={migrationError ? 'alert' : 'status'}>{migrationError || 'Opening Extension Inspector in a workspace…'}</p>;
+  } else if (unavailable) {
     content = <p role='status'>Requested settings are unavailable.</p>;
   } else if (loading) {
     content = <p role='status'>Loading settings…</p>;
@@ -281,7 +302,7 @@ const GetSettingsPage = (section: Section, id: string) => {
     case Section.Core:
       switch (id) {
         case 'extensions':
-          return <ExtensionSettingsPage />;
+          return null;
         case 'ai-tools':
           return <AiToolsSettingsPage />;
         default:
@@ -291,7 +312,7 @@ const GetSettingsPage = (section: Section, id: string) => {
     case Section.Plugins:
       return <PluginSettingsPage key={`plugins:${id}`} id={id} />;
     case Section.Extensions:
-      return <ExtensionSettingsPage />;
+      return null;
     case Section.AITools:
       return <AiToolsSettingsPage />;
   }

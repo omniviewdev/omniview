@@ -59,11 +59,6 @@ const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
           icon: <Icon name={category.icon} size={16} />,
         })),
         {
-          id: encodeKey(Section.Core, 'extensions'),
-          label: 'Extensions',
-          icon: <Icon name='LuBrainCircuit' size={16} />,
-        },
-        {
           id: encodeKey(Section.Core, 'ai-tools'),
           label: 'AI Tools',
           icon: <Icon name='LuBot' size={16} />,

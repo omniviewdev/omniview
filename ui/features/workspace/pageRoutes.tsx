@@ -1,6 +1,8 @@
 /* eslint @typescript-eslint/naming-convention: 0 */ // firing on the route objects
 import { useMemo } from 'react';
 import type { RouteObject } from 'react-router';
+import { Navigate, useLocation } from 'react-router';
+import { extensionInspectorTarget } from '@omniviewdev/runtime';
 
 import { usePluginRoutes } from '@/features/plugins';
 import PluginRouteStatus from '@/features/plugins/components/PluginRouteStatus';
@@ -13,6 +15,13 @@ import Home from '@/pages/home';
 import ResourceBrowser from '@/features/connections/ResourceBrowser';
 import ConnectionDetails from '@/features/connections/ConnectionDetails';
 import ConnectionProfiles from '@/features/connections/ConnectionProfiles';
+import ExtensionInspector from '@/pages/developer-tools/ExtensionInspector';
+
+function LegacyExtensionBookmark() {
+  const location = useLocation();
+  const target = extensionInspectorTarget(`${location.pathname}${location.search}`);
+  return target ? <Navigate to={target} replace /> : null;
+}
 
 /**
  * Routes of one page tab: every page of the app without the shell around it.
@@ -25,6 +34,8 @@ export function buildPageRoutes(pluginRoutes: RouteObject[]): RouteObject[] {
       hydrateFallbackElement: <PrimaryLoading message='Loading page...' />,
       children: [
         { index: true, Component: Home, ErrorBoundary: RouterErrorBoundary },
+        { path: 'developer-tools/extensions', Component: ExtensionInspector, ErrorBoundary: RouterErrorBoundary },
+        { path: 'settings', Component: LegacyExtensionBookmark },
         {
           path: 'plugins',
           Component: Plugins,

@@ -325,6 +325,15 @@ func (pm *pluginManager) InstallPluginVersion(
 	pluginID string,
 	version string,
 ) (*config.PluginMeta, error) {
+	installMu := pm.installOpsLock(pluginID)
+	installMu.Lock()
+	defer installMu.Unlock()
+	if err := pm.guardUninstallRecovery(pluginID); err != nil {
+		return nil, err
+	}
+	if err := pm.guardArchiveRecovery(pluginID); err != nil {
+		return nil, err
+	}
 	pm.emitter.Emit(EventUpdateStarted, UpdatePayload{PluginID: pluginID, Version: version})
 
 	pm.syncRegistryURL()
@@ -337,24 +346,10 @@ func (pm *pluginManager) InstallPluginVersion(
 	defer os.Remove(tmpPath) // DownloadPlugin transfers ownership of this temporary archive.
 
 	pm.logger.Debugw(pm.ctx, "installing plugin from downloaded tmp path", "path", tmpPath)
-	meta, err := pm.InstallPluginFromPath(tmpPath)
+	meta, err := pm.installPluginArchive(tmpPath, pluginID, version)
 	if err != nil {
 		pm.emitter.Emit(EventUpdateError, UpdateErrorPayload{PluginID: pluginID, Error: err.Error()})
-		return nil, err
-	}
-
-	// The marketplace version is authoritative — override whatever the
-	// plugin.yaml inside the tarball says.
-	meta.Version = version
-	pm.recordsMu.Lock()
-	if record, ok := pm.records[pluginID]; ok {
-		record.Metadata.Version = version
-	}
-	pm.recordsMu.Unlock()
-
-	if writeErr := pm.persistPluginOperation(pluginID); writeErr != nil {
-		pm.emitter.Emit(EventUpdateError, UpdateErrorPayload{PluginID: pluginID, Error: writeErr.Error()})
-		return meta, writeErr
+		return meta, err
 	}
 
 	pm.emitter.Emit(EventUpdateComplete, UpdatePayload{PluginID: pluginID, Version: version})
@@ -364,6 +359,12 @@ func (pm *pluginManager) InstallPluginVersion(
 // InstallPluginFromPath installs a caller-owned tarball without deleting it.
 // Download callers, not this transaction, own temporary archive cleanup.
 func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta, error) {
+	return pm.installPluginArchive(path, "", "")
+}
+
+// installPluginArchive requires the requested marketplace identity lock, held
+// since before download. Local archives acquire their manifest identity lock.
+func (pm *pluginManager) installPluginArchive(path, requestedID, version string) (*config.PluginMeta, error) {
 	if !isGzippedTarball(path) {
 		return nil, apperror.New(apperror.TypeValidation, http.StatusUnprocessableEntity, "Invalid plugin package",
 			fmt.Sprintf("The file at '%s' is not a valid tar.gz archive.", path)).
@@ -381,9 +382,17 @@ func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta,
 			err, apperror.TypePluginInstallFailed, http.StatusInternalServerError, "Failed to parse plugin metadata",
 		)
 	}
-	installMu := pm.installOpsLock(metadata.ID)
-	installMu.Lock()
-	defer installMu.Unlock()
+	if requestedID != "" && metadata.ID != requestedID {
+		return nil, apperror.New(apperror.TypeValidation, http.StatusUnprocessableEntity,
+			"Plugin package identity mismatch",
+			fmt.Sprintf("Requested plugin %q, but the package contains %q.", requestedID, metadata.ID)).
+			WithInstance(requestedID)
+	}
+	if requestedID == "" {
+		installMu := pm.installOpsLock(metadata.ID)
+		installMu.Lock()
+		defer installMu.Unlock()
+	}
 	if err := pm.guardUninstallRecovery(metadata.ID); err != nil {
 		return nil, err
 	}
@@ -391,7 +400,7 @@ func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta,
 		return nil, err
 	}
 
-	statePublished, err := pm.installArchiveCandidate(path, metadata)
+	statePublished, err := pm.installArchiveCandidate(path, metadata, version)
 	if err != nil {
 		var problem *apperror.AppError
 		if !errors.As(err, &problem) || problem.Type != apperror.TypePluginCommittedCleanupPending {

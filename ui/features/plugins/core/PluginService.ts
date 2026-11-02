@@ -1,3 +1,4 @@
+import { RESOURCE_EDITOR_EXTENSION_POINT } from '@omniviewdev/runtime';
 import type { RouteObject } from 'react-router';
 import { assertValidTransition } from './transitions';
 import { normalizeContributions, extractDeclaredDependencies } from './normalization';
@@ -1297,6 +1298,8 @@ export class PluginService {
             `Contribution "${c.contributionId}" held pending — extension point "${c.extensionPointId}" not yet registered`,
             { pluginId, contributionId: c.contributionId, extensionPointId: c.extensionPointId },
           );
+        } else if (c.extensionPointId === RESOURCE_EDITOR_EXTENSION_POINT) {
+          this.deps.log.warn('Rejected resource editor contribution', { pluginId, contributionId: c.contributionId });
         } else {
           throw err;
         }
@@ -1349,6 +1352,8 @@ export class PluginService {
               `Discarded stale duplicate pending contribution "${c.contributionId}" for "${c.extensionPointId}"`,
               { pluginId: c.pluginId, contributionId: c.contributionId, extensionPointId: c.extensionPointId },
             );
+          } else if (c.extensionPointId === RESOURCE_EDITOR_EXTENSION_POINT) {
+            this.deps.log.warn('Rejected resource editor contribution', { pluginId: c.pluginId, contributionId: c.contributionId });
           } else {
             throw err;
           }
@@ -1392,6 +1397,11 @@ export class PluginService {
             }
 
             if (err instanceof DuplicateContributionError) {
+              continue;
+            }
+
+            if (c.extensionPointId === RESOURCE_EDITOR_EXTENSION_POINT) {
+              this.deps.log.warn('Rejected resource editor contribution', { pluginId: pid, contributionId: c.contributionId });
               continue;
             }
 

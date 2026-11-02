@@ -1,0 +1,20 @@
+import type { ResourceReference, Value } from './domain';
+import type { QuerySpec, RepresentationSelector } from './query';
+
+export type UInt64Text = string;
+export type Token = string;
+export type OpenQueryLeaseRequest = { requestId: Token; query: QuerySpec; refresh?: true };
+export type OpenQueryLeaseResponse = { leaseId: Token };
+export type ControlQueryLeaseRequest = { leaseId: Token; control: { kind: 'attach' } | { kind: 'recover'; generation: Token } | { kind: 'drain' } };
+export type ControlQueryLeaseResponse = { kind: 'attach'; generation: Token } | { kind: 'recover'; accepted: true } | { kind: 'drain'; event: QueryLeaseEvent | null };
+export type CloseQueryLeaseRequest = { leaseId: Token };
+export type CloseQueryLeaseResponse = { closed: true };
+export type AppError = { type: string; title: string; status: number; detail: string; instance?: string; suggestions?: string[]; actions?: { type: string; label: string; target?: string }[]; code?: string; requestId?: string; recovery?: string; location?: { start: number; end: number; unit: string } };
+export type ProjectedValue = { state: 'absent' } | { state: 'null' } | { state: 'value'; value: Value };
+export type ResultRow = { key: Token; targetId: string; resource: ResourceReference; representation: RepresentationSelector; provenance: { source: Token; coverage: 'complete' | 'partial' | 'unknown'; stale: boolean }; values: Record<string, ProjectedValue> };
+export type ResultMetadata = { coverage: 'complete' | 'partial' | 'unknown'; limitations: string[]; freshness: 'current' | 'snapshot' | 'stale'; count: { kind: 'unknown' } | { kind: 'exact' | 'estimate'; value: UInt64Text }; continuation?: Token };
+export type ResultChange = { kind: 'enter'; index: number; row: ResultRow } | { kind: 'update'; key: Token; row: ResultRow } | { kind: 'leave' | 'delete'; key: Token } | { kind: 'move'; key: Token; index: number };
+export type ResultDataFrame = { lane: 'data'; leaseId: Token; generation: Token; sequence: UInt64Text; payload: { kind: 'open'; rows: ResultRow[]; metadata: ResultMetadata } | { kind: 'changes'; changes: ResultChange[]; metadata: ResultMetadata } };
+export type ResultControlFrame = { lane: 'control'; leaseId: Token; payload: { kind: 'reset'; generation: Token; nextGeneration: Token; reason: 'gap' | 'overflow' | 'sourceInvalidated' | 'bindingChanged' } | { kind: 'control'; state: 'complete'; generation: Token } | { kind: 'close'; reason: 'closed' | 'cancelled' | 'failed' | 'accessInvalidated'; error?: AppError } };
+export type QueryLeaseEvent = ResultDataFrame | ResultControlFrame;
+export type QueryLeaseDoorbell = { leaseId: Token };

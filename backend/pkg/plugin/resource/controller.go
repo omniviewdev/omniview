@@ -29,6 +29,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	"github.com/omniviewdev/omniview/backend/pkg/resourcecatalog"
 	"github.com/omniviewdev/omniview/internal/appstate"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
@@ -42,7 +43,7 @@ const PluginName = "resource"
 // Event constants for resource controller events.
 const (
 	EventConnectionStatus = "connection/status"
-	EventWatchState       = "watch/STATE"
+	EventSourceState      = "source/STATE"
 )
 
 // ConnectionStatusPayload is emitted when a connection's status changes.
@@ -55,7 +56,7 @@ type ConnectionStatusPayload struct {
 
 func init() {
 	application.RegisterEvent[ConnectionStatusPayload](EventConnectionStatus)
-	application.RegisterEvent[HostWatchStateEvent](EventWatchState)
+	application.RegisterEvent[HostSourceStateEvent](EventSourceState)
 }
 
 var tracer = otel.Tracer("omniview.resource")
@@ -63,8 +64,8 @@ var tracer = otel.Tracer("omniview.resource")
 const (
 	// relationshipBootstrapTimeout bounds fetching relationship declarations on plugin start.
 	relationshipBootstrapTimeout = 30 * time.Second
-	// watchStreamReadyTimeout is how long OnPluginStart waits for the watch event stream.
-	watchStreamReadyTimeout = 10 * time.Second
+	// featureReadyTimeout bounds feature discovery during plugin startup.
+	featureReadyTimeout = 10 * time.Second
 	// streamChannelBuffer is the buffer size of action event and connection streams.
 	streamChannelBuffer = 16
 )
@@ -83,22 +84,25 @@ type Controller interface {
 
 // pluginState holds per-plugin runtime state.
 type pluginState struct {
-	provider          ResourceProvider
-	version           int
-	watchCancel       context.CancelFunc
-	ctx               context.Context
-	generationID      string
-	features          resource.FeatureSet
-	featuresReady     bool
-	sourceEpoch       map[string]uint64
-	sourceChanging    map[string]bool
-	catalogBindings   map[string]catalogBindingState
-	crashOnce         sync.Once
-	closeOnce         sync.Once
-	closeErr          error
-	metadata          map[string]HostConnectionMetadata
-	metadataAvailable bool
-	metadataEpoch     uint64
+	provider                 ResourceProvider
+	version                  int
+	cancel                   context.CancelFunc
+	ctx                      context.Context
+	generationID             string
+	features                 resource.FeatureSet
+	featuresReady            bool
+	sourceEpoch              map[string]uint64
+	sourceChanging           map[string]bool
+	borrowableStarts         map[string]uint64
+	connectionLifecycleEpoch map[string]uint64
+	catalogBindings          map[string]catalogBindingState
+	crashOnce                sync.Once
+	closeOnce                sync.Once
+	closeErr                 error
+	metadata                 map[string]HostConnectionMetadata
+	metadataAvailable        bool
+	metadataEpoch            uint64
+	suppressAutoConnect      bool
 }
 
 func (s *pluginState) closeSource(provider ResourceProvider) error {
@@ -129,11 +133,12 @@ type controller struct {
 	profilesMu           sync.Mutex
 	profileNative        map[string][]types.Connection
 	connectionChangeHook func(pluginID, connectionID string) func()
+	connectionRetireHook func(pluginID, connectionID string)
 
 	autoConnectMu       sync.Mutex
 	autoConnectAttempts map[string]string
 
-	subs      *subscriptionManager
+	sources   *sourceCoordinator
 	boundary  *invocation.Boundary
 	actions   *actionRegistry
 	finite    finiteState
@@ -147,7 +152,9 @@ type controller struct {
 
 	onCrashCallback func(pluginID string)
 	pluginStoreFn   func(pluginID string) (*appstate.ScopedRoot, error)
-	watchAfterFunc  func(time.Duration, func()) actionTimer
+	// schemas is the authoritative schema catalog. Its mutex is a leaf lock:
+	// never call into the controller while holding it.
+	schemas *resourcecatalog.Catalog
 }
 
 // compile-time assertions.
@@ -180,7 +187,6 @@ func NewController(
 		connections:         make(map[string][]types.Connection),
 		autoConnectMu:       sync.Mutex{},
 		autoConnectAttempts: make(map[string]string),
-		subs:                newSubscriptionManager(),
 		boundary:            boundary,
 		actions:             newActionRegistry(),
 		registryStore:       store,
@@ -189,8 +195,9 @@ func NewController(
 		graphNotifier:       nil,
 		onCrashCallback:     nil,
 		pluginStoreFn:       pluginStoreFn,
-		watchAfterFunc:      func(d time.Duration, fn func()) actionTimer { return time.AfterFunc(d, fn) },
+		schemas:             resourcecatalog.NewCatalog(resourcecatalog.DefaultPolicy()),
 	}
+	c.sources = newSourceCoordinator(c)
 	c.actions.emit = func(id string, snapshot ActionSnapshot) { c.emitter.Emit("action/stream/"+id, snapshot) }
 	// Read c.emitter at emit time: it is replaced when the app starts.
 	c.graphNotifier = newGraphChangeNotifier(g, func(eventKey string, data ...any) {
@@ -269,6 +276,15 @@ func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
 }
 
 func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend plugintypes.PluginBackend) (retErr error) {
+	return c.onPluginStart(pluginID, backend, true)
+}
+
+// OnPluginStartWithoutAutoConnect starts a required owner backend without starting connections.
+func (c *controller) OnPluginStartWithoutAutoConnect(pluginID string, _ config.PluginMeta, backend plugintypes.PluginBackend) error {
+	return c.onPluginStart(pluginID, backend, false)
+}
+
+func (c *controller) onPluginStart(pluginID string, backend plugintypes.PluginBackend, autoConnect bool) (retErr error) {
 	defer c.notifyInventory()
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginStart")
@@ -284,7 +300,8 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	watchCtx, watchCancel := context.WithCancel(context.Background())
 
 	state := &pluginState{
-		version: version, watchCancel: watchCancel, ctx: watchCtx, generationID: uuid.NewString(),
+		version: version, cancel: watchCancel, ctx: watchCtx, generationID: uuid.NewString(),
+		suppressAutoConnect: !autoConnect,
 	}
 	c.pluginsMu.RLock()
 	existing := c.plugins[pluginID]
@@ -294,12 +311,16 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	}
 	c.pluginsMu.RUnlock()
 	if existing != nil {
-		existing.watchCancel()
+		existing.cancel()
 		c.retireMetadata(pluginID, existing)
 	}
 	c.pluginsMu.Lock()
+	if existing != nil {
+		c.schemas.DropPlugin(pluginID)
+	}
 	c.plugins[pluginID] = state
 	c.pluginsMu.Unlock()
+	c.sources.invalidate(pluginID, "")
 	defer func() {
 		if retErr == nil {
 			return
@@ -320,6 +341,7 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 		if owned {
 			// Retain generation ownership until all of its state is retired.
 			state.provider = nil
+			c.schemas.DropPlugin(pluginID)
 		}
 		c.pluginsMu.Unlock()
 		if !owned {
@@ -331,7 +353,7 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 		conns := append([]types.Connection(nil), c.connections[pluginID]...)
 		c.connsMu.RUnlock()
 		c.clearAutoConnectAttempts(pluginID)
-		c.subs.RemoveAll(pluginID)
+		c.sources.invalidate(pluginID, "")
 		c.cleanupPluginGraphState(pluginID, conns)
 		c.pluginsMu.Lock()
 		delete(c.plugins, pluginID)
@@ -352,7 +374,7 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 			logger.Warnw(watchCtx, "previous resource source teardown failed", "error", err)
 		}
 	}
-	featureCtx, featureCancel := context.WithTimeout(watchCtx, watchStreamReadyTimeout)
+	featureCtx, featureCancel := context.WithTimeout(watchCtx, featureReadyTimeout)
 	features, featureErr := resource.DetectFeatures(featureCtx, provider)
 	featureCancel()
 	if featureErr != nil {
@@ -364,32 +386,6 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 		}
 	}
 
-	// Advisory updates remain optional. Finite/catalog-only providers must not
-	// implement a pretend listener, but real listeners still acknowledge native
-	// establishment before any source or resource call becomes available.
-	if features.Has(resource.FeatureBestEffortUpdates) {
-		updates, ok := provider.(resource.BestEffortUpdateProvider)
-		if !ok {
-			return resource.NewError("INVALID_REQUEST", "Provider advertised an unavailable update trait.")
-		}
-		sink := &engineWatchSink{pluginID: pluginID, ctrl: c, store: c.registryStore,
-			dispatcher: c.dispatcher, ctx: invocation.HostContext(watchCtx), generationID: state.generationID}
-		watchReady := make(chan error, 1)
-		go c.listenForWatchEvents(watchCtx, pluginID, updates, sink, watchReady)
-		expired := make(chan struct{})
-		timer := c.watchAfterFunc(watchStreamReadyTimeout, func() { close(expired) })
-		defer timer.Stop()
-		select {
-		case err := <-watchReady:
-			if err != nil {
-				return fmt.Errorf("best-effort update registration: %w", err)
-			}
-		case <-watchCtx.Done():
-			return watchCtx.Err()
-		case <-expired:
-			return fmt.Errorf("best-effort update registration: %w", context.DeadlineExceeded)
-		}
-	}
 	c.pluginsMu.Lock()
 	if c.plugins[pluginID] != state || watchCtx.Err() != nil {
 		c.pluginsMu.Unlock()
@@ -410,7 +406,9 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 			logger.Errorw(watchCtx, "failed to load connections", "error", loadErr)
 		} else if len(conns) > 0 {
 			c.emitter.Emit(pluginID+"/connection/sync", c.getConnections(pluginID))
-			c.scheduleAutoConnect(pluginID, conns, types.ConnectionAutoConnectTriggerPluginStart)
+			if autoConnect {
+				c.scheduleAutoConnect(pluginID, conns, types.ConnectionAutoConnectTriggerPluginStart)
+			}
 		}
 	}
 	if features.Has(resource.FeatureRelationships) {
@@ -442,12 +440,13 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	stopped := c.plugins[pluginID]
 	c.pluginsMu.RUnlock()
 	if stopped != nil {
-		stopped.watchCancel()
+		stopped.cancel()
 		c.retireMetadata(pluginID, stopped)
 	}
 	// Cancel first so a concurrent readiness acknowledgement cannot republish
 	// the retiring provider after invalidation.
 	c.pluginsMu.Lock()
+	c.schemas.DropPlugin(pluginID)
 	var retired ResourceProvider
 	// Make calls unavailable now; release ownership only after retirement.
 	if stopped != nil {
@@ -455,6 +454,7 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 		stopped.provider = nil
 	}
 	c.pluginsMu.Unlock()
+	c.sources.invalidate(pluginID, "")
 
 	// Capture connections before deleting them — needed for registry cleanup.
 	c.connsMu.RLock()
@@ -465,8 +465,6 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	delete(c.connections, pluginID)
 	c.connsMu.Unlock()
 	c.clearAutoConnectAttempts(pluginID)
-
-	c.subs.RemoveAll(pluginID)
 
 	c.cleanupPluginGraphState(pluginID, pluginConns)
 	c.pluginsMu.Lock()
@@ -553,6 +551,18 @@ func (c *controller) getProvider(pluginID string) (ResourceProvider, error) {
 	return ps.provider, nil
 }
 
+func (c *controller) providerFeatures(ctx context.Context, pluginID string, provider ResourceProvider) (resource.FeatureSet, error) {
+	c.pluginsMu.RLock()
+	state := c.plugins[pluginID]
+	if state != nil && state.featuresReady {
+		features := state.features
+		c.pluginsMu.RUnlock()
+		return features, nil
+	}
+	c.pluginsMu.RUnlock()
+	return resource.DetectFeatures(ctx, provider)
+}
+
 // ============================================================================
 // Connection Management
 // ============================================================================
@@ -578,15 +588,28 @@ func (c *controller) StartConnection(ctx context.Context, pluginID, connectionID
 	ctx, span := tracer.Start(ctx, "resource.StartConnection")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
+	startGeneration, startEpoch, err := c.captureBorrowableStart(pluginID, connectionID)
+	if err != nil {
+		if _, lifecycleErr := c.getLifecycle(ctx, pluginID); lifecycleErr != nil {
+			return types.ConnectionStatus{}, lifecycleErr
+		}
+		return types.ConnectionStatus{}, err
+	}
 	provider, err := c.getLifecycle(ctx, pluginID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
+		return types.ConnectionStatus{}, err
+	}
+	if err := c.checkBorrowableStart(ctx, pluginID, connectionID, startGeneration, startEpoch); err != nil {
 		return types.ConnectionStatus{}, err
 	}
 
 	conn, err := provider.StartConnection(ctx, connectionID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
+		return types.ConnectionStatus{}, err
+	}
+	if err := c.checkBorrowableStart(ctx, pluginID, connectionID, startGeneration, startEpoch); err != nil {
 		return types.ConnectionStatus{}, err
 	}
 
@@ -601,6 +624,20 @@ func (c *controller) StartConnection(ctx context.Context, pluginID, connectionID
 		c.connsMu.Unlock()
 	}
 
+	if conn.Status == types.ConnectionStatusConnected {
+		c.bootstrapRelationships(ctx, pluginID, resource.AccessRoute{Connection: connectionID})
+		if err := c.startConnectionUpdates(ctx, pluginID, resource.AccessRoute{Connection: connectionID}); err != nil {
+			c.sources.closeInventory(pluginID, connectionID)
+			return conn, err
+		}
+		if conn.Connection != nil && conn.Connection.ID == connectionID {
+			if err := c.commitBorrowableStart(ctx, pluginID, connectionID, startGeneration, startEpoch); err != nil {
+				return types.ConnectionStatus{}, err
+			}
+		}
+	}
+	// Bootstrap can retire a persisted authority and advance its source epoch.
+	// Only publish readiness once event-driven readers can use the stable epoch.
 	connName := connectionID
 	if conn.Connection != nil && conn.Connection.Name != "" {
 		connName = conn.Connection.Name
@@ -611,12 +648,6 @@ func (c *controller) StartConnection(ctx context.Context, pluginID, connectionID
 		Status:       string(conn.Status),
 		Name:         connName,
 	})
-	if conn.Status == types.ConnectionStatusConnected {
-		c.bootstrapRelationships(ctx, pluginID, resource.AccessRoute{Connection: connectionID})
-		if err := c.startConnectionUpdates(ctx, pluginID, resource.AccessRoute{Connection: connectionID}); err != nil {
-			return conn, err
-		}
-	}
 
 	return conn, nil
 
@@ -629,6 +660,7 @@ func (c *controller) StopConnection(ctx context.Context, pluginID, connectionID 
 		return _result, admissionErr
 	}
 	defer finishResource(ctx, &retErr)
+	c.retireConnectionCalls(pluginID, connectionID)
 	c.profilesMu.Lock()
 	defer c.profilesMu.Unlock()
 	if release := c.beginMetricConnectionChange(pluginID, connectionID); release != nil {
@@ -647,6 +679,7 @@ func (c *controller) StopConnection(ctx context.Context, pluginID, connectionID 
 		return types.Connection{}, err
 	}
 	defer releaseObservation()
+	c.sources.closeInventory(pluginID, connectionID)
 
 	conn, err := provider.StopConnection(ctx, connectionID)
 	if err != nil {
@@ -823,7 +856,7 @@ func (c *controller) connectionState(ctx context.Context, pluginID string, conn 
 	state = ConnectionState{
 		Connection:     conn,
 		Readiness:      types.ConnectionStatusUnknown,
-		Resources:      make(map[string]resource.WatchState),
+		Resources:      make(map[string]string),
 		ResourceCounts: make(map[string]resource.Count),
 	}
 	features, err := c.providerFeatures(ctx, pluginID, provider)
@@ -859,31 +892,22 @@ func (c *controller) connectionState(ctx context.Context, pluginID string, conn 
 	if err := c.currentGeneration(ctx, pluginID, generation); err != nil {
 		return state, err
 	}
-	if state.Readiness != types.ConnectionStatusConnected || !features.Has(resource.FeatureBestEffortUpdates) {
+	if state.Readiness != types.ConnectionStatusConnected || !features.Has(resource.FeatureSourceSessions) {
 		return state, nil
 	}
-	summary, err := c.GetWatchState(ctx, pluginID, resource.AccessRoute{Connection: conn.ID})
+	summary, err := c.GetSourceStates(ctx, pluginID, resource.AccessRoute{Connection: conn.ID})
 	if err != nil {
-		var app *apperror.AppError
-		if !errors.As(err, &app) || app.Code != "NOT_FOUND" || app.Type != apperror.TypeResourceNotFound {
-			return state, err
-		}
+		return state, err
 	}
-	if summary == nil {
-		return state, nil
-	}
-	state.Resources = summary.Resources
-	state.ResourceCounts = summary.ResourceCounts
-	for _, watchState := range summary.Resources {
+	for resourceType, source := range summary.Types {
+		state.Resources[resourceType] = source.State
+		state.ResourceCounts[resourceType] = source.Count
 		state.TotalResources++
-		switch watchState {
-		case resource.WatchStateSynced:
+		switch source.State {
+		case "following", "finished":
 			state.SyncedCount++
-		case resource.WatchStateError, resource.WatchStateFailed:
+		case "failed":
 			state.ErrorCount++
-		case resource.WatchStateIdle, resource.WatchStateSyncing, resource.WatchStateStopped,
-			resource.WatchStateForbidden, resource.WatchStateSkipped:
-			// Neither synced nor failed; only counted in TotalResources.
 		}
 	}
 	return state, nil
@@ -956,51 +980,10 @@ func (c *controller) ScopeValues(ctx context.Context, pluginID string, route res
 }
 
 // ============================================================================
-// Watch
-// ============================================================================
-
-// ============================================================================
-// Subscriptions
-// ============================================================================
 
 // ============================================================================
 // Background Listeners
 // ============================================================================
-
-// listenForWatchEvents runs ListenForEvents with the engine sink.
-// Blocks until ctx is cancelled or the stream errors.
-// Reports readiness only after the provider acknowledges actual registration.
-//
-// NOTE: No span wraps this method — it runs for the entire plugin lifetime.
-// The underlying gRPC stream gets its own otelgrpc span; individual watch
-// events are too high-volume to trace individually.
-func (c *controller) listenForWatchEvents(
-	ctx context.Context,
-	pluginID string,
-	provider resource.BestEffortUpdateProvider,
-	sink resource.WatchEventSink,
-	ready chan<- error,
-) {
-	c.logger.Infow(ctx, "watch event listener starting", "pluginID", pluginID)
-	registered := false
-	err := provider.ListenForEvents(ctx, sink, func() error {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		registered = true
-		ready <- nil
-		return nil
-	})
-	if !registered {
-		if err == nil {
-			err = fmt.Errorf("watch event listener returned before registration")
-		}
-		ready <- err
-	} else if err != nil && ctx.Err() == nil {
-		c.triggerCrashRecovery(pluginID, err, "watch")
-	}
-	c.logger.Infow(ctx, "watch event listener stopped", "pluginID", pluginID)
-}
 
 // listenForConnectionEvents watches for external connection changes.
 //
@@ -1049,11 +1032,37 @@ func (c *controller) listenForConnectionEvents(ctx context.Context, pluginID str
 	}
 }
 
+// PromoteDependencyStart restores the user's normal auto-connect policy once
+// an explicitly requested plugin adopts an already-running dependency backend.
+func (c *controller) PromoteDependencyStart(pluginID string) {
+	c.pluginsMu.Lock()
+	state := c.plugins[pluginID]
+	promote := state != nil && state.suppressAutoConnect && state.ctx != nil && state.ctx.Err() == nil
+	if promote {
+		state.suppressAutoConnect = false
+	}
+	c.pluginsMu.Unlock()
+	if !promote {
+		return
+	}
+	c.connsMu.RLock()
+	connections := append([]types.Connection(nil), c.connections[pluginID]...)
+	c.connsMu.RUnlock()
+	c.scheduleAutoConnect(pluginID, connections, types.ConnectionAutoConnectTriggerPluginStart)
+}
+
 func (c *controller) scheduleAutoConnect(
 	pluginID string,
 	conns []types.Connection,
 	trigger types.ConnectionAutoConnectTrigger,
 ) {
+	c.pluginsMu.RLock()
+	state := c.plugins[pluginID]
+	suppressed := state != nil && state.suppressAutoConnect
+	c.pluginsMu.RUnlock()
+	if suppressed {
+		return
+	}
 	for _, conn := range conns {
 		conn := conn
 		auto := conn.Lifecycle.AutoConnect

@@ -239,6 +239,9 @@ type sdkRPCReady struct {
 
 type sdkRPCProfile struct {
 	fixture                                 *sdkRPCContract
+	testName                                string
+	name                                    string
+	startedAt                               time.Time
 	source, sdkSource, revision, generation string
 	workspace                               devcontract.ResolvedWorkspace
 	env                                     []string
@@ -259,13 +262,21 @@ type sdkRPCProfile struct {
 	hostDirectory                           string
 }
 
+func (p *sdkRPCProfile) trace(stage string) {
+	deadline, _ := p.fixture.ctx.Deadline()
+	fmt.Fprintf(os.Stderr, "SDK RPC test=%s profile=%s stage=%s elapsed=%s remaining=%s\n",
+		p.testName, p.name, stage, time.Since(p.startedAt), time.Until(deadline))
+}
+
 func (f *sdkRPCContract) profile(t *testing.T, name string) *sdkRPCProfile {
 	t.Helper()
 	root := filepath.Join(f.root, name)
-	p := &sdkRPCProfile{fixture: f, source: filepath.Join(root, "consumer"), sdkSource: filepath.Join(root, "sdk"), generation: uuid.NewString(), readyEvents: make(chan sdkRPCReady, 16), failures: make(chan string, 32)}
+	p := &sdkRPCProfile{fixture: f, testName: t.Name(), name: name, startedAt: time.Now(), source: filepath.Join(root, "consumer"), sdkSource: filepath.Join(root, "sdk"), generation: uuid.NewString(), readyEvents: make(chan sdkRPCReady, 16), failures: make(chan string, 32)}
+	p.trace("copy and commit SDK source")
 	require.NoError(t, sdkRPCCopyTree(f.origin, p.sdkSource))
 	p.revision = f.snapshot(t, p.sdkSource)
 	t.Logf("%s owned SDK snapshot: source=%s actual fixture-local Git SHA=%s (not upstream review identity)", name, p.sdkSource, p.revision)
+	p.trace("prepare consumer source and profile")
 	require.NoError(t, sdkRPCCopyTree(filepath.Join(f.repository, "backend", "pkg", "plugin", "devserver", "testdata", "sdk-rpc-contract"), p.source))
 	// Reuse the host's resolved dependency cohort, not its imports/build graph.
 	// Only ./host and ./pkg are compiled. The actual SDK replacement is queried
@@ -338,16 +349,19 @@ func (f *sdkRPCContract) profile(t *testing.T, name string) *sdkRPCProfile {
 		{"list", "-mod=mod", "-deps", "./host", "./pkg"},
 		{"list", "-mod=mod", "-m", "-json", "all"},
 	} {
+		p.trace("prepare go " + strings.Join(args, " "))
 		command := exec.CommandContext(f.ctx, f.goPath, args...)
 		command.Dir, command.Env = p.source, p.env
 		output, err := command.CombinedOutput()
 		require.NoError(t, err, string(output))
 	}
 	p.identity(t)
+	p.trace("profile preparation complete")
 	return p
 }
 
 func (p *sdkRPCProfile) compile(target, output string) ([]byte, error) {
+	p.trace("compile " + target)
 	command := exec.CommandContext(p.fixture.ctx, p.fixture.goPath, "build", "-o", output, target)
 	command.Dir, command.Env = p.source, p.env
 	return command.CombinedOutput()
@@ -376,6 +390,7 @@ func (p *sdkRPCProfile) identity(t *testing.T) devsource.Identity {
 
 func (p *sdkRPCProfile) start(t *testing.T) {
 	t.Helper()
+	p.trace("start watcher and initial plugin build")
 	metadataBefore := make(map[string][sha256.Size]byte)
 	for _, name := range []string{"go.mod", "go.sum"} {
 		data, err := os.ReadFile(filepath.Join(p.source, name))
@@ -397,6 +412,7 @@ func (p *sdkRPCProfile) start(t *testing.T) {
 		},
 		func(_ time.Duration, buildError string) {
 			if buildError != "" {
+				p.trace(fmt.Sprintf("plugin build failure: %.4096s", buildError))
 				select {
 				case p.failures <- buildError:
 				case <-p.fixture.ctx.Done():
@@ -404,6 +420,7 @@ func (p *sdkRPCProfile) start(t *testing.T) {
 			}
 		}, func(string, []BuildError) {})
 	require.NoError(t, p.watcher.Start())
+	p.trace("watcher initial operation complete")
 	for name, before := range metadataBefore {
 		data, err := os.ReadFile(filepath.Join(p.source, name))
 		require.NoError(t, err)
@@ -421,7 +438,13 @@ func (p *sdkRPCProfile) ReloadPlugin(string) error {
 	return fmt.Errorf("the contract requires generation-bound reload")
 }
 
-func (p *sdkRPCProfile) ReloadManagedPlugin(ctx context.Context, id, source, generation string) error {
+func (p *sdkRPCProfile) ReloadManagedPlugin(ctx context.Context, id, source, generation string) (reloadError error) {
+	defer func() {
+		if reloadError != nil {
+			p.trace(fmt.Sprintf("reload failure: %.4096v", reloadError))
+		}
+	}()
+	p.trace("verify source before host compile")
 	if id != sdkRPCContractID || source != p.source || generation != p.generation {
 		return fmt.Errorf("unowned reload target")
 	}
@@ -442,11 +465,13 @@ func (p *sdkRPCProfile) ReloadManagedPlugin(ctx context.Context, id, source, gen
 		}
 	}()
 	hostBinary := filepath.Join(hostDirectory, "host")
+	p.trace("compile host consumer")
 	command := exec.CommandContext(ctx, p.fixture.goPath, "build", "-o", hostBinary, "./host")
 	command.Dir, command.Env = p.source, p.env
 	if output, err := command.CombinedOutput(); err != nil {
 		return fmt.Errorf("compile host consumer: %w: %s", err, output)
 	}
+	p.trace("verify host executable and source")
 	if err := p.verifyCompiledSDK(hostBinary); err != nil {
 		return err
 	}
@@ -462,6 +487,7 @@ func (p *sdkRPCProfile) ReloadManagedPlugin(ctx context.Context, id, source, gen
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	p.trace("retire previous consumers")
 	if err := p.stopConsumers(); err != nil {
 		return err
 	}
@@ -481,6 +507,7 @@ func (p *sdkRPCProfile) ReloadManagedPlugin(ctx context.Context, id, source, gen
 	}
 	p.live.pluginPID = p.backend.ReattachConfig().Pid
 	p.live.sdkDigest, p.live.buildOrigin = before.SourceDigest, p.buildOrigin
+	p.trace("publish actual host/settings RPC readiness")
 	select {
 	case p.readyEvents <- p.live:
 		return nil
@@ -490,6 +517,7 @@ func (p *sdkRPCProfile) ReloadManagedPlugin(ctx context.Context, id, source, gen
 }
 
 func (p *sdkRPCProfile) launchHost(binary string) error {
+	p.trace("start host consumer")
 	command := exec.CommandContext(p.fixture.ctx, binary)
 	command.Env = p.fixture.env
 	stdout, err := command.StdoutPipe()
@@ -506,11 +534,16 @@ func (p *sdkRPCProfile) launchHost(binary string) error {
 		return err
 	}
 	p.host, p.hostInput, p.hostDone = command, input, make(chan error, 1)
-	go func() { p.hostDone <- command.Wait() }()
+	go func() {
+		err := command.Wait()
+		p.trace(fmt.Sprintf("host exit pid=%d error=%v context-at-observation=%v", command.Process.Pid, err, p.fixture.ctx.Err()))
+		p.hostDone <- err
+	}()
 	var response struct {
 		PID    int                             `json:"pid"`
 		Schema map[string]pkgsettings.Category `json:"schema"`
 	}
+	p.trace("read host provider JSON")
 	if err := json.NewDecoder(stdout).Decode(&response); err != nil {
 		return fmt.Errorf("read actual host provider schema: %w", err)
 	}
@@ -523,6 +556,7 @@ func (p *sdkRPCProfile) launchHost(binary string) error {
 }
 
 func (p *sdkRPCProfile) launchPlugin() error {
+	p.trace("prepare plugin executable and environment")
 	installed := p.state.Plugins().ResolvePath(filepath.Join(sdkRPCContractID, "bin", "plugin"))
 	if err := p.verifyCompiledSDK(installed); err != nil {
 		return err
@@ -553,6 +587,7 @@ func (p *sdkRPCProfile) launchPlugin() error {
 		GRPCDialOptions: sdk.GRPCDialOptions(), Cmd: command, SkipHostEnv: true,
 		StartTimeout: 10 * time.Second, AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC}, Logger: hclog.NewNullLogger(),
 	})
+	p.trace("SDK Serve handshake")
 	rpc, err := client.Client()
 	if err != nil {
 		client.Kill()
@@ -562,6 +597,7 @@ func (p *sdkRPCProfile) launchPlugin() error {
 	backend := plugintypes.NewExternalBackend(client, rpc)
 	backend.SetProcessCleanup(cleanup)
 	p.backend = backend
+	p.trace("lifecycle RPC health")
 	if !backend.Healthy() {
 		return fmt.Errorf("actual SDK lifecycle RPC is not healthy")
 	}
@@ -572,12 +608,14 @@ func (p *sdkRPCProfile) launchPlugin() error {
 		return err
 	}
 	p.controller = pluginsettings.NewController(logging.NewNop(), p.store)
+	p.trace("settings schema and persisted hydration")
 	p.controller.OnPluginInit(sdkRPCContractID, metadata)
 	if err := p.controller.OnPluginStart(sdkRPCContractID, metadata, backend); err != nil {
 		return err
 	}
 	// Query the SDK client itself as well: the controller schema-cache fallback
 	// is not admissible evidence for a functioning plugin transport.
+	p.trace("direct settings RPC")
 	raw, err := backend.Dispense("settings")
 	if err != nil {
 		return err
@@ -659,9 +697,9 @@ func (p *sdkRPCProfile) ready(t *testing.T) sdkRPCReady {
 	case event := <-p.readyEvents:
 		return event
 	case failure := <-p.failures:
-		t.Fatalf("real compile/reload failed before ready: %s", failure)
+		t.Fatalf("profile=%s real compile/reload failed before ready: %s", p.name, failure)
 	case <-p.fixture.ctx.Done():
-		t.Fatalf("waiting for actual host/settings RPC ready: %v", p.fixture.ctx.Err())
+		t.Fatalf("profile=%s waiting for actual host/settings RPC ready after %s: %v", p.name, time.Since(p.startedAt), p.fixture.ctx.Err())
 	}
 	return sdkRPCReady{}
 }

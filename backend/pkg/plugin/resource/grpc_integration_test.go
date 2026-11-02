@@ -79,90 +79,51 @@ func TestL3_02_GetRoundTrip(t *testing.T) {
 	assert.Equal(t, record, result)
 }
 
-type grpcRecordingSink struct{ events chan any }
+type grpcSourceProvider struct {
+	*mockProvider
+	record resource.Record
+}
 
-func (s *grpcRecordingSink) OnAdd(p resource.WatchAddPayload)         { s.events <- p }
-func (s *grpcRecordingSink) OnUpdate(p resource.WatchUpdatePayload)   { s.events <- p }
-func (s *grpcRecordingSink) OnDelete(p resource.WatchDeletePayload)   { s.events <- p }
-func (s *grpcRecordingSink) OnStateChange(p resource.WatchStateEvent) { s.events <- p }
+func (p *grpcSourceProvider) OpenSource(ctx context.Context, _ resource.SourceOpenRequest, emitter resource.SourceEmitter) error {
+	if err := emitter.Snapshot(ctx, []resource.SourceObservation{{Record: p.record}}); err != nil {
+		return err
+	}
+	return emitter.EndSnapshot(ctx, resource.SourceCoverage{
+		Enumeration: resource.EnumerationExhausted,
+		Consistency: resource.ConsistencyBestEffort,
+	}, resource.ContinuityNotApplicable)
+}
 
-func TestL3_03_WatchEventsFlowThroughGRPC(t *testing.T) {
-	provider := grpcFiniteFixture()
-	native := make(chan resource.WatchEventSink, 1)
-	provider.ListenForEventsFunc = func(ctx context.Context, sink resource.WatchEventSink, ready func() error) error {
-		if err := ready(); err != nil {
-			return err
-		}
-		native <- sink
-		<-ctx.Done()
-		return nil
-	}
-	client := setupGRPCProvider(t, provider)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	sink := &grpcRecordingSink{events: make(chan any, 4)}
-	ready := make(chan struct{})
-	done := make(chan error, 1)
-	go func() { done <- client.ListenForEvents(ctx, sink, func() error { close(ready); return nil }) }()
-	select {
-	case <-ready:
-	case <-time.After(5 * time.Second):
-		t.Fatal("watch readiness timed out")
-	}
-	var source resource.WatchEventSink
-	select {
-	case source = <-native:
-	case <-time.After(5 * time.Second):
-		t.Fatal("native sink timed out")
-	}
-	route := resource.AccessRoute{Connection: "conn-1"}
+func TestL3_03_SourceSessionFlowsThroughGRPC(t *testing.T) {
 	record := canonicalTestRecord("p1", "authority", "native::Pod", "pod-1")
-	payloads := []any{resource.WatchAddPayload{Route: route, Record: record, Guarantee: resource.BestEffortGuarantee}, resource.WatchUpdatePayload{Route: route, Record: record, Guarantee: resource.BestEffortGuarantee}, resource.WatchDeletePayload{Route: route, Reference: record.Reference, LastKnown: &record, Guarantee: resource.BestEffortGuarantee}, resource.WatchStateEvent{Route: route, Type: "native::Pod", State: resource.WatchStateSynced, Count: resource.Count{Kind: "unknown"}, Guarantee: resource.BestEffortGuarantee}}
-	source.OnAdd(payloads[0].(resource.WatchAddPayload))
-	source.OnUpdate(payloads[1].(resource.WatchUpdatePayload))
-	source.OnDelete(payloads[2].(resource.WatchDeletePayload))
-	source.OnStateChange(payloads[3].(resource.WatchStateEvent))
-	for _, want := range payloads {
-		select {
-		case got := <-sink.events:
-			switch expected := want.(type) {
-			case resource.WatchAddPayload:
-				actual, ok := got.(resource.WatchAddPayload)
-				require.True(t, ok)
-				assert.Equal(t, expected.Route, actual.Route)
-				assert.Equal(t, expected.Guarantee, actual.Guarantee)
-				assert.Equal(t, expected.Record, actual.Record)
-				assert.Empty(t, actual.Metadata.Labels)
-				assert.Equal(t, expected.Metadata.CreatedAt, actual.Metadata.CreatedAt)
-			case resource.WatchUpdatePayload:
-				actual, ok := got.(resource.WatchUpdatePayload)
-				require.True(t, ok)
-				assert.Equal(t, expected.Route, actual.Route)
-				assert.Equal(t, expected.Guarantee, actual.Guarantee)
-				assert.Equal(t, expected.Record, actual.Record)
-				assert.Empty(t, actual.Metadata.Labels)
-				assert.Equal(t, expected.Metadata.CreatedAt, actual.Metadata.CreatedAt)
-			case resource.WatchDeletePayload:
-				actual, ok := got.(resource.WatchDeletePayload)
-				require.True(t, ok)
-				assert.Equal(t, expected.Route, actual.Route)
-				assert.Equal(t, expected.Guarantee, actual.Guarantee)
-				assert.Equal(t, expected.Reference, actual.Reference)
-				require.NotNil(t, actual.LastKnown)
-				assert.Equal(t, expected.LastKnown, actual.LastKnown)
-			default:
-				assert.Equal(t, want, got)
-			}
-		case <-time.After(5 * time.Second):
-			t.Fatal("watch payload timed out")
-		}
-	}
-	cancel()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("watch teardown timed out")
-	}
+	client := setupGRPCProvider(t, &grpcSourceProvider{mockProvider: grpcFiniteFixture(), record: record})
+	route := grpcGetRequest().Route
+	catalog, err := client.Catalog(context.Background(), resource.CatalogRequest{Route: route})
+	require.NoError(t, err)
+	ctx := resource.WithCatalogRevision(context.Background(), catalog.Revision)
+	stream, err := client.OpenSourceStream(ctx, resource.SourceOpenRequest{
+		SessionID: "session", Generation: "generation",
+		Target:      resource.ReadTarget{Route: route, Provider: "p1", Authority: "authority", Type: "native::Pod", Representation: "native"},
+		Mode:        resource.SourceModeSnapshot,
+		Acquisition: resource.SourceAcquisition{Kind: resource.SourceAcquisitionEnumerate},
+		Limits:      resource.SourceLimits{MaxFrameBytes: resource.MinSourceFrameBytes, MaxBatchItems: 2},
+	})
+	require.NoError(t, err)
+	defer stream.Close()
+	begin, err := stream.Recv()
+	require.NoError(t, err)
+	require.NotNil(t, begin.Begin)
+	assert.Equal(t, uint64(1), begin.Sequence)
+	snapshot, err := stream.Recv()
+	require.NoError(t, err)
+	require.NotNil(t, snapshot.Snapshot)
+	require.Len(t, snapshot.Snapshot.Observations, 1)
+	assert.Equal(t, record, snapshot.Snapshot.Observations[0].Record)
+	end, err := stream.Recv()
+	require.NoError(t, err)
+	require.NotNil(t, end.SnapshotEnd)
+	assert.Equal(t, resource.EnumerationExhausted, end.SnapshotEnd.Coverage.Enumeration)
+	assert.Equal(t, resource.ContinuityNotApplicable, end.SnapshotEnd.Continuity)
 }
 
 func TestL3_04_ConnectionLifecycleViaGRPC(t *testing.T) {

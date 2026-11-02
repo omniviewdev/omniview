@@ -31,6 +31,24 @@ func TestRequestRejectsStaleAndUnlistedOperations(t *testing.T) {
 	}
 }
 
+func TestExtensionDiagnosticOperationsKeepTargetFences(t *testing.T) {
+	for _, operation := range []string{"extensions.windows", "extensions.inspect", "extensions.lookup"} {
+		request := Request{ProtocolVersion: 1, RequestID: "request", WorkspaceID: "workspace", Generation: "generation", Operation: operation, Params: json.RawMessage(`{}`)}
+		if err := request.ValidateTarget("workspace", "generation"); err != nil {
+			t.Fatalf("%s rejected: %v", operation, err)
+		}
+		if err := request.ValidateTarget("workspace", "stale"); ExitCode(err) != 4 {
+			t.Fatalf("%s bypassed generation fence: %v", operation, err)
+		}
+	}
+	for _, operation := range []string{"extensions.eval", "extensions.reload", "extensions.unquarantine"} {
+		request := Request{ProtocolVersion: 1, RequestID: "request", WorkspaceID: "workspace", Generation: "generation", Operation: operation}
+		if err := request.ValidateTarget("workspace", "generation"); ExitCode(err) != 2 {
+			t.Fatalf("mutation/eval operation accepted: %s %v", operation, err)
+		}
+	}
+}
+
 // Bootstrap data is rendered before React; it must not expose filesystem/control secrets or executable markup.
 func TestBootIdentityOmitsPrivateDiscovery(t *testing.T) {
 	d := Discovery{InstanceDescriptor: InstanceDescriptor{SchemaVersion: 1, InstanceID: "profile", DisplayName: "</script><script>alert(1)</script>", Kind: "development", StateRoot: "/private/state"}, TokenFile: "/private/control-token"}
