@@ -78,3 +78,25 @@ The integration coordinator owns the final cohort pin, review, and CI. The user 
 Historical live evidence remains separate: 189/189 corrected-schema admissions and 189/189 raw-schema rejections belong to their original source cohort. The earlier failed 185-Pod sample remains failed. The new 451-byte controlled fixture is not a fresh live-Pod, native UI, or P13 result.
 
 C04 still requires the user's merge of [grpc-go #1](https://github.com/omniviewdev/grpc-go/pull/1), followed by the actual merged-fork pin and fresh SDK proof. No development fork pin is released by this PR.
+
+## Live cohort verification (2026-11-03)
+
+This proof used a disposable candidate workspace, not merged sources. Its host was
+`2f17b9ac364e8d4c0d4b06e360c804a3ecc142f5`, SDK was
+`d576a1516b29049466b56bf67aa65eb4766a358d`, Kubernetes was
+`fcd3d88cd5491007888a1210df48db222dee8d61`, UI was
+`5af0ec923a605aba5e6e3571d639f6238095804c`, Flux was `b9e4fd14`,
+and Proxmox was `07a37c5`. The host candidate changed after this proof.
+
+The Pod YAML editor displayed schema documentation for `apiVersion`. Completion
+at `spec.serviceAcc` included the registered Pod schema property
+`automountServiceAccountToken`; the UI did not identify the suggestion provider.
+An unsaved `status.startTime: 42` produced the Monaco diagnostic
+`Incorrect type. Expected one of null, string.` Changing the value to `null`
+cleared that marker. The registered Pod schema permits unknown properties, so an
+unknown field did not produce a diagnostic.
+
+The Event table showed new scratch Deployment events without a reload. The scratch
+namespace was deleted, and a subsequent Kubernetes get returned `NotFound`.
+These observations do not replace the historical measurements above or establish
+the final merged-source smoke proof.
