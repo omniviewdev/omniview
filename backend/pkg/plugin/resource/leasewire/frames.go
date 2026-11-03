@@ -172,7 +172,7 @@ func (v ProjectedValue) valid() bool {
 	return (v.State == "value" && v.Value != nil) || (oneOf(v.State, "absent", "null") && v.Value == nil)
 }
 func (r ResultRow) valid() bool {
-	if r.Key == "" || r.TargetID == "" || r.Provenance.Source == "" || !oneOf(r.Provenance.Coverage, "complete", "partial", "unknown") || r.Values == nil || r.Representation.ID == "" || r.Representation.Revision == "" {
+	if r.Key == "" || r.TargetID == "" || r.Provenance.Source == "" || !oneOf(r.Provenance.Coverage, "complete", "partial", "unknown") || r.Values == nil || r.Representation.ID == "" || r.Representation.Revision == "" || (r.Resource.Incarnation != nil && *r.Resource.Incarnation == "") {
 		return false
 	}
 	for _, v := range r.Values {
@@ -183,7 +183,7 @@ func (r ResultRow) valid() bool {
 	return true
 }
 func (m ResultMetadata) valid() bool {
-	if !oneOf(m.Coverage, "complete", "partial", "unknown") || !oneOf(m.Freshness, "current", "snapshot", "stale") || m.Limitations == nil {
+	if !oneOf(m.Coverage, "complete", "partial", "unknown") || !oneOf(m.Freshness, "current", "snapshot", "stale") || m.Limitations == nil || (m.Continuation != nil && *m.Continuation == "") {
 		return false
 	}
 	if m.Count.Kind == "unknown" {

@@ -16,4 +16,17 @@ Executed in the isolated `ri-p15` workspace, using an existing dependency tree:
 
 The tests cover frozen inputs, ordered changes and previous snapshot immutability, signed and unsigned integer boundaries, gaps, atomic failure, repeated and overlapping resets, stale frames, source and binding barriers, malformed wire variants, complete and terminal error, reconnect and bounded frame/window rejection. They do not prove integration with actual P14 methods or cross-language golden fixtures.
 
+Optional-token parity repair (`omn-meaa`), based on merged host
+`35ced6506129ca3e6173a66f495e0416c618429e`: absent continuation and
+incarnation remain valid; present values must be nonempty. The Go lease queue
+rejects non-nil empty values before enqueue, and the observer rejects
+explicit empty JSON. The frozen DTOs and generation and integer semantics are
+unchanged.
+
+- `GOWORK=off go test ./backend/pkg/plugin/resource/leasewire`: passed.
+- `../../node_modules/.bin/vitest run src/resource/v2/query-observer.test.ts --configLoader runner`: 11 tests passed, using temporary links to existing dependencies. An initial attempt without those links failed to resolve `vite`.
+- A temporary Go executable published and drained absent-token and valid-token frames through the actual lease queue. A Bun executable passed the resulting JSON into the actual TypeScript observer, confirmed exact count `9007199254740993`, and confirmed recovery for explicit empty values. Both scripts and dependency links were removed.
+
+This proves the codec/observer boundary only, not the Wails service or P14/P15 acceptance.
+
 Remaining gates: independent review, required CI on the reviewed final head, real P14 transport and cross-language fixtures, consumer migration, native UI and live source integration, access isolation, performance/scaling and cleanup evidence. Only the user merges. No P15 completion is claimed.
