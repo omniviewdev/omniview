@@ -19,6 +19,7 @@ end
 `;
 
 
+
 for (const channel of ['omniview', 'omniview-nightly']) {
   test(`${channel}: refuse ambiguous or unsupported eligibility`, () => {
     for (const stanza of [
