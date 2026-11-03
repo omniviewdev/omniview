@@ -108,4 +108,16 @@ Separate pre-existing finding: editing a spaced display name can crash `getIniti
 
 The latest mock and captures show idle ghost styling, shared hover feedback, and the open Debug options menu. At both 100% and 125%, comfortable action heights remain 24px; icons measure 14px and 17.5px respectively. Both button backgrounds and outer borders are transparent at rest. The shared ghost group hover uses `--ov-color-state-hover` (observed `rgba(160, 165, 175, 0.08)` in this theme). Menu behavior is unchanged. Appearance preferences were restored after verification.
 
-The avatar crash is fixed separately in [Kubernetes PR #134](https://github.com/omniviewdev/omniview-plugin-kubernetes/pull/134), based on `main`, with only the utility, regression tests, and README changed. The isolated fix passed 15 regression cases (9 failed before), direct Node smoke, and a focused TypeScript check. Its full standalone UI typecheck encountered seven errors in unchanged files against published runtime typings, documented in the PR. The bug fix has not been copied into this visual workspace.
+The avatar crash was fixed and merged separately in [Kubernetes PR #134](https://github.com/omniviewdev/omniview-plugin-kubernetes/pull/134). Its parser passed 15 regression cases (9 failed before), direct Node smoke, and a focused TypeScript check. The standalone CI repair pinned the compatible published runtime/Vite cohort. The Kubernetes sizing branch now includes that merged fix through its normal main-branch rebase.
+
+## Release-cohort verification
+
+Base UI 0.12.0, ai-ui 6.1.6, and editors 6.1.6 are published. The host pins that cohort and the corresponding reviewed UI source commit. Runtime shims are regenerated from the stock runtime build, followed by the Vite plugin build.
+
+A clean CLI-created browser workspace reproduced an additional accessibility sizing mismatch with Chromium's actual default font set to 20px, compact density, and 125% UI text: numeric fields grew to 34.375px while selects remained 30px. Shared medium height/font/inline-padding tokens now keep both at 30px. Textareas retain their multiline padding. File-picker buttons use the same medium tier.
+
+Settings descriptions, developer keys, and inherited window text now use scalable typography tokens instead of fixed pixel sizes. At that larger browser preference, descriptions measure 17.1875px and status text 18.75px. The root remains 17.5px, preserving browser preferences without multiplying the UI text scale twice. Normal browser-font captures also cover comfortable 100% and compact 125%. The gallery links the existing control mock and matched before/after screenshots.
+
+Final-cohort browser smoke loaded the existing kind-kind Pods and opened/dismissed the single-target Debug menu without starting Debug. Exec, Logs, Debug, and the arrow all measured 24px with transparent idle backgrounds and outer borders. Cmd-minus stepped 100% → 90% → 80%, stayed at the lower bound, and Cmd-0 restored 100%. Preferences ended at comfortable 100%; no cluster writes were made.
+
+Stock checks passed: 1,436 host tests, 392 runtime tests with the freshly generated real Go transport corpus, host lint with zero errors and 11 existing warnings, generated bindings verification, and production frontend build. Backend verification covered the full Go suite, then registry/settings tests after the compatibility baseline update. Production macOS metadata and compiler targets now agree on the Go-supported macOS 12 minimum; a built binary reports `minos 12.0`.
