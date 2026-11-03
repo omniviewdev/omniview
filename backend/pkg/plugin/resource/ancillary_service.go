@@ -260,9 +260,19 @@ func (c *controller) GetActions(ctx context.Context, pluginID string, route reso
 	if !ok {
 		return out, ancillaryUnsupported()
 	}
-	sessionCtx, _, err = c.admitAncillaryCatalog(sessionCtx, pluginID, provider, generation, route, resourceType, nil)
-	if err != nil {
-		return out, err
+	if observed, reused, discoveryErr := c.discoveryCatalog(sessionCtx, pluginID, route); reused {
+		if discoveryErr != nil {
+			return out, discoveryErr
+		}
+		if _, exists := observed.discovery.authorities[resourceType]; !exists {
+			return out, resourcev2.NewError("NOT_FOUND", "Resource type is not in the observed catalog.")
+		}
+		sessionCtx = resourcev2.WithCatalogRevision(sessionCtx, observed.discovery.catalog.Revision)
+	} else {
+		sessionCtx, _, err = c.admitAncillaryCatalog(sessionCtx, pluginID, provider, generation, route, resourceType, nil)
+		if err != nil {
+			return out, err
+		}
 	}
 	out, err = ancillary.GetActions(sessionCtx, route, resourceType)
 	return ancillaryResult(c, sessionCtx, pluginID, generation, out, err)

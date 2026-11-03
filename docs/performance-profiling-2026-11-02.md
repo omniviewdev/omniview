@@ -396,3 +396,114 @@ Further profile-backed candidates, not claimed improvements:
 No codec replacement or GC-limit tuning was introduced. Removing unnecessary
 serialization and copies avoids changing the SDK's lossless scalar and strict
 admission contracts merely to obtain a faster JSON benchmark.
+
+## Backend wave 1 — 2026-11-03 UTC
+
+This follow-up addresses catalog amplification and policy-update latency before
+plugin-specific or UI work. It batches discovery against an owned catalog
+observation, retains the final generation/epoch/digest fence, projects policy over
+cached inventory, and coalesces discovery triggers. Disabled MCP still refreshes
+the inventory used by settings.
+
+### Cohort and workload
+
+All workspaces were created with the installed `omniview-dev` CLI. The control
+used host `3bd4dfc8dcfbe2fa9dfbdedf96c291bcd961baf0` and SDK
+`9f007a79cf63a64eac9df7cb88bbbaf3120b9f08`. The candidate applied the host changes
+to that same host base and used SDK
+`1712cd3b66e14b1807cf17fbb59f48512875c822`. Both used Kubernetes plugin
+`519172d96103340a0a7f0dab2dc60ae28b1ea28d`, Go 1.26.1, macOS arm64, stock pinned
+Wails, and stock grpc-go. No GC tuning or Go upgrade was included.
+
+Five alternating fresh-process pairs used the same four-node kind cluster:
+315 Ready Pods, including 300 application Deployments, with 300 Services,
+ConfigMaps, and Secrets each. Every process delivered a complete 315-row Pod
+snapshot and warmed for 15 seconds. A 65-second idle capture preceded a
+40-second active capture with eight policy toggles and eight complete two-page
+Pod acquisitions. All 55 automatically followed backend sources remained healthy.
+The earlier full application consumer also opened an additional source; the
+minimal backend consumer intentionally excludes that UI activity.
+
+The primary harness used the real Wails HTTP runtime endpoint and generated
+method IDs for policy and finite calls. A minimal browser page consumed real
+source-view events without mounting React. No builds, tests, or microprobes
+overlapped these captures. Both roles were profiled concurrently within a phase.
+
+### Matched results
+
+Values are medians across five processes per cohort, except RPC p50/p95, which
+use 40 calls per cohort. CPU is sampled process CPU time. Allocation is the exact
+`runtime.MemStats.TotalAlloc` delta, including observer overhead. Heap is exact
+post-GC `HeapAlloc`; RSS is the paired process sum at the end of the CPU capture,
+before the post-capture forced GC.
+
+| Measure | Before | After |
+| --- | ---: | ---: |
+| Host idle CPU, seconds / 65 seconds | 3.89 | 0.49 |
+| Host idle allocation, MiB | 2298.9 | 133.4 |
+| Plugin idle CPU, seconds / 65 seconds | 1.35 | 0.58 |
+| Plugin idle allocation, MiB | 570.7 | 281.6 |
+| Host active CPU, seconds / 40 seconds | 18.48 | 2.66 |
+| Host active allocation, MiB | 11355.1 | 1215.9 |
+| Plugin active CPU, seconds / 40 seconds | 6.64 | 2.48 |
+| Plugin active allocation, MiB | 2675.6 | 1000.0 |
+| Connect plus complete Pod snapshot, ms | 2923 | 948 |
+| Policy RPC p50, ms | 1895 | 9.1 |
+| Policy RPC p95, ms | 1981 | 10.9 |
+| Finite acquisition p50, ms | 557 | 532 |
+| Finite acquisition p95, ms | 569 | 637 |
+| Combined idle post-GC heap, MiB | 269.8 | 270.1 |
+| Combined idle RSS, MiB | 769.6 | 757.2 |
+| Combined active RSS, MiB | 870.2 | 915.4 |
+
+The primary wins are CPU, allocation rate, connection/snapshot latency, and policy
+latency. This is not a general memory-footprint win: retained heap stayed
+approximately flat, plugin RSS increased while host idle RSS decreased, and
+combined active RSS increased. Finite-read p95 also worsened in this sample;
+three early calls in the first candidate process account for its upper tail.
+Do not claim all resource operations or the native UI became faster.
+
+Every process returned the same 483 normalized tool rows, including readiness
+and policy fields. Their SHA-256 digests matched across all ten processes.
+All finite acquisitions returned 315 rows; source consumers reported no errors
+or resets.
+
+### SDK decisions and rejected optimization
+
+SDK changes retain validation-only JSON walking, root-only DTO admission,
+destination-map duplicate detection, and immutable field plans for fixed SDK
+types. Arbitrary caller-defined types remain uncached.
+
+Direct native JSON construction was rejected after broader profiling. It
+increased allocation for a 4096-element array from about 1.28 MB/op to 2.71 MB/op
+and for a 1024-key object from 736 kB/op to 892 kB/op. The existing sized
+`ValueFromNative` conversion path was restored. Five paired probes cover the
+representative Pod, wide containers, depth boundary, and near-16-MiB document.
+`BenchmarkJSONToValueWideContainers` keeps the wide cases reproducible.
+
+### Runtime verification and limits
+
+A separate final candidate smoke performed 60 churn cycles with 192 direct write
+attempts and 12 actual Deployment rollouts. The Pod consumer received 108 upserts
+and 12 removals, without errors or resets. All 55 sources remained following.
+The final cluster check found 315 Ready Pods and no deleting Pods. Write attempts
+are not treated as changed objects; repeated ConfigMap/Secret values can be no-ops.
+
+Earlier browser-driven finite comparisons intermittently hit the browser driver's
+30-second evaluation timeout. Captured Go goroutine dumps showed no active
+enumeration, resolution, policy call, or lock wait. Those exploratory generations
+are excluded, not silently retried into the accepted result set. The final
+backend HTTP workload completed every request. The client/driver timeout remains
+unattributed and belongs in subsequent client-path investigation.
+
+The server-mode native IPC retention fix was submitted separately as
+[wailsapp/wails#6545](https://github.com/wailsapp/wails/pull/6545). It was reproduced
+on current upstream before the fix, then verified through server/native package
+tests and a real `app.Run`/WebSocket smoke. No Wails fork, host build-guard change,
+or server-retention gain is included in the host measurements above.
+
+The sanitized wave-1 receipt is
+[`bench/app/backend-wave1-2026-11-03.json`](../bench/app/backend-wave1-2026-11-03.json).
+Raw profiles, probe sources, and the private corpus remain under the ignored
+workspace `.local/wave1-evidence/`. Sampled stack percentages overlap and must
+not be added. Results describe this cohort and machine, not every cluster.

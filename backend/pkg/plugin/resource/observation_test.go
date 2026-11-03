@@ -268,3 +268,103 @@ func TestHostNativeQueryMetadataRejectsBeforeNativeWork(t *testing.T) {
 	}
 	require.Zero(t, calls)
 }
+
+func TestDiscoveryBatchBoundsProviderAcquisitionsAndKeepsPerTypeAdmission(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	catalog := bindingTestCatalog(t, bindingTestEpoch(t), "same", "backing")
+	denied := catalog.Types[0]
+	denied.Type = "denied"
+	catalog.Types = append(catalog.Types, denied)
+	acquisitions, actions, denials := 0, 0, 0
+	provider := &bindingTestProvider{mockProvider: &mockProvider{}, catalog: func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
+		acquisitions++
+		return catalog, nil
+	}}
+	provider.GetActionsFunc = func(ctx context.Context, _ resourcev2.AccessRoute, typ string) ([]resourcev2.ActionDescriptor, error) {
+		actions++
+		require.Equal(t, "objects", typ)
+		revision, ok := resourcev2.CatalogRevisionFromContext(ctx)
+		require.True(t, ok)
+		require.Equal(t, catalog.Revision, revision)
+		return []resourcev2.ActionDescriptor{{ID: "refresh", Label: "Refresh", Scope: resourcev2.ActionScopeType}}, nil
+	}
+	registerMockPlugin(ctrl, "p1", provider)
+	ctrl.boundary = invocation.NewBoundary(invocation.AuthorizeFunc(func(_ invocation.Principal, _ string, target invocation.Target) error {
+		if target.ResourceType == "denied" {
+			denials++
+			return resourcev2.NewError("FORBIDDEN", "Denied type.")
+		}
+		return nil
+	}))
+	route := resourcev2.AccessRoute{Connection: "route"}
+	_, observation, err := ctrl.ObserveCatalog(testInvocationContext(), "p1", route)
+	require.NoError(t, err)
+	direct := WithObservation(testInvocationContext(), observation)
+	batch := observation.DiscoveryContext(testInvocationContext())
+	var expected resourcev2.ReadTarget
+	for _, ctx := range []context.Context{direct, batch} {
+		start := acquisitions
+		for range 12 {
+			target, err := ctrl.ResolveToolTarget(ctx, "p1", route, "objects")
+			require.NoError(t, err)
+			if expected.Type == "" {
+				expected = target
+			}
+			require.Equal(t, expected, target)
+			metadata, err := ctrl.GetActions(ctx, "p1", route, "objects")
+			require.NoError(t, err)
+			require.Equal(t, "refresh", metadata[0].ID)
+			_, err = ctrl.ResolveToolTarget(ctx, "p1", route, "denied")
+			require.Error(t, err)
+			_, err = ctrl.GetActions(ctx, "p1", route, "denied")
+			require.Error(t, err)
+		}
+		if ctx == direct {
+			require.Equal(t, 24, acquisitions-start)
+		} else {
+			require.NoError(t, observation.ValidateDiscovery(ctx))
+			require.Equal(t, 1, acquisitions-start)
+		}
+	}
+	require.Equal(t, 24, actions)
+	require.Equal(t, 48, denials)
+}
+
+func TestDiscoveryBatchRejectsResetAndSameRevisionMetadataChanges(t *testing.T) {
+	for _, change := range []string{"source", "generation", "metadata", "binding"} {
+		t.Run(change, func(t *testing.T) {
+			ctrl, _ := newTestControllerWithEmitter(t)
+			catalog := bindingTestCatalog(t, bindingTestEpoch(t), "same", "backing")
+			provider := &bindingTestProvider{mockProvider: &mockProvider{}, catalog: func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
+				return catalog, nil
+			}}
+			registerMockPlugin(ctrl, "p1", provider)
+			route := resourcev2.AccessRoute{Connection: "route"}
+			advertised, observation, err := ctrl.ObserveCatalog(testInvocationContext(), "p1", route)
+			require.NoError(t, err)
+			ctx := observation.DiscoveryContext(testInvocationContext())
+			_, err = ctrl.ResolveToolTarget(ctx, "p1", route, "objects")
+			require.NoError(t, err)
+			// Mutating the returned catalog must not mutate the retained snapshot.
+			advertised.Types[0].Type = "caller-owned"
+			_, err = ctrl.ResolveToolTarget(ctx, "p1", route, "objects")
+			require.NoError(t, err)
+			switch change {
+			case "source":
+				require.NoError(t, ctrl.invalidateProfileRoutes("p1", []string{"route"}))
+			case "generation":
+				registerMockPlugin(ctrl, "p1", provider)
+			case "metadata":
+				catalog.Types[0].DisplayName = "Changed without a revision change"
+			case "binding":
+				catalog.Revision, err = resourcev2.BindCatalogRevision(bindingTestEpoch(t), "same")
+				require.NoError(t, err)
+			}
+			require.Error(t, observation.ValidateDiscovery(ctx))
+			if change == "source" || change == "generation" {
+				_, err = ctrl.ResolveToolTarget(ctx, "p1", route, "objects")
+				require.Error(t, err)
+			}
+		})
+	}
+}

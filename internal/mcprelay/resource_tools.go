@@ -130,12 +130,13 @@ func BuildResourceCatalogWithReaders(
 	var out []ToolInfo
 	var failures []error
 	for _, route := range routes {
+		start := len(out)
 		catalog, observation, err := observer.ObserveCatalog(ctx, route.PluginID, route.Route)
 		if err != nil {
 			failures = append(failures, err)
 			continue
 		}
-		retained := resource.WithObservation(ctx, observation)
+		retained := observation.DiscoveryContext(ctx)
 		features, err := service.Features(ctx, route.PluginID)
 		if err != nil {
 			failures = append(failures, err)
@@ -256,6 +257,11 @@ func BuildResourceCatalogWithReaders(
 			out = append(out, info)
 		}
 		out = append(out, routeLaneTools(route, observation, features, routeTypes, readers.Graph)...)
+		if err := observation.ValidateDiscovery(ctx); err != nil {
+			// Never publish a partial route assembled across catalog changes.
+			out = out[:start]
+			failures = append(failures, err)
+		}
 	}
 	return out, errors.Join(failures...)
 }

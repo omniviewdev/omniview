@@ -95,17 +95,22 @@ type Relay struct {
 	lifecycleCancel      context.CancelFunc
 	unsubscribeTools     func()
 
-	mu             sync.Mutex // guards cfg, catalog, registered, listener state
-	cfg            Config
-	loaded         bool
-	catalog        []ToolInfo
-	configRevision uint64
-	registered     map[string]bool
-	published      map[string]ToolInfo
-	listener       net.Listener
-	httpServer     *http.Server
-	listenErr      string
-	listenAddr     string // tests set "127.0.0.1:0"; empty means the configured port
+	mu                    sync.Mutex // guards cfg, catalog, registered, listener state
+	cfg                   Config
+	loaded                bool
+	catalog               []ToolInfo
+	configRevision        uint64
+	inventoryReady        bool
+	discoveryDirty        bool
+	discoveryRunning      bool
+	discoveredConnections map[string][]string
+	discoveredBorrowed    map[string][]string
+	registered            map[string]bool
+	published             map[string]ToolInfo
+	listener              net.Listener
+	httpServer            *http.Server
+	listenErr             string
+	listenAddr            string // tests set "127.0.0.1:0"; empty means the configured port
 
 	confirmMu sync.Mutex
 	pending   map[string]*pendingEntry
@@ -143,9 +148,9 @@ func New(o Options) *Relay {
 		r.unsubscribeInventory = source.OnInventoryChange(r.inventoryChanged)
 	}
 	if source, ok := o.Tools.(interface{ Subscribe(func()) func() }); ok {
-		r.unsubscribeTools = source.Subscribe(r.resync)
+		r.unsubscribeTools = source.Subscribe(r.toolsChanged)
 	} else {
-		o.Tools.OnChange(r.resync)
+		o.Tools.OnChange(r.toolsChanged)
 	}
 	return r
 }
@@ -167,7 +172,7 @@ func (r *Relay) ServiceStartup(_ context.Context, _ application.ServiceOptions) 
 			case <-r.lifecycleCtx.Done():
 				return
 			case <-ticker.C:
-				r.resync()
+				r.requestDiscovery()
 			}
 		}
 	}()
@@ -478,23 +483,64 @@ func (r *Relay) listedConnections(ctx context.Context, cfg *Config, tool ToolInf
 	return out
 }
 
-// resync rebuilds the catalog and registers exactly the listed tools.
-func (r *Relay) resync() {
-	r.resyncMu.Lock()
-	defer r.resyncMu.Unlock()
+// requestDiscovery coalesces notifications without blocking their producer.
+func (r *Relay) requestDiscovery() {
 	r.mu.Lock()
 	if !r.loaded || r.stopped {
 		r.mu.Unlock()
 		return
 	}
-	cfg := r.cfg
-	revision := r.configRevision
+	r.discoveryDirty = true
+	if r.discoveryRunning {
+		r.mu.Unlock()
+		return
+	}
+	r.discoveryRunning = true
+	r.resyncMu.Lock()
 	r.mu.Unlock()
+	go r.discoverLoop()
+}
 
+// resync provides synchronous initial discovery and explicit refreshes.
+func (r *Relay) resync() {
+	r.mu.Lock()
+	if !r.loaded || r.stopped {
+		r.mu.Unlock()
+		return
+	}
+	r.discoveryDirty = true
+	if r.discoveryRunning {
+		r.mu.Unlock()
+		return
+	}
+	r.discoveryRunning = true
+	r.resyncMu.Lock()
+	r.mu.Unlock()
+	r.discoverLoop()
+}
+
+func (r *Relay) discoverLoop() {
+	for {
+		r.mu.Lock()
+		if r.stopped || !r.discoveryDirty {
+			r.discoveryRunning = false
+			r.resyncMu.Unlock()
+			r.mu.Unlock()
+			return
+		}
+		r.discoveryDirty = false
+		revision := r.configRevision
+		r.mu.Unlock()
+		r.discover(revision)
+	}
+}
+
+func (r *Relay) discover(revision uint64) {
 	catalog := BuildCatalog(r.tools.ListAll())
 	listingCtx := invocation.HostContext(r.lifecycleCtx)
 	discoveryCtx, discoveryCancel := context.WithTimeout(listingCtx, 10*time.Second)
 	defer discoveryCancel()
+	connected := map[string][]string{}
 	if r.connections != nil {
 		states, err := r.connections.GetAllConnectionStates(discoveryCtx)
 		if err == nil {
@@ -502,6 +548,7 @@ func (r *Relay) resync() {
 			for pluginID, entries := range states {
 				for _, state := range entries {
 					if state.ReadinessError == nil && state.Readiness == sdktypes.ConnectionStatusConnected {
+						connected[pluginID] = append(connected[pluginID], state.Connection.ID)
 						routes = append(routes, ResourceRoute{PluginID: pluginID, PluginName: pluginID,
 							Route: resourcev2.AccessRoute{Connection: state.Connection.ID}})
 					}
@@ -527,8 +574,85 @@ func (r *Relay) resync() {
 			}
 		}
 	}
-	allowed := r.allowedConnections(discoveryCtx, &cfg)
 
+	finalizeCatalog(catalog)
+	borrowed := map[string][]string{}
+	for _, tool := range catalog {
+		if tool.ConnectionOwner == "" || r.borrowedConnections == nil {
+			continue
+		}
+		key := tool.PluginID + "\x00" + tool.ConnectionOwner
+		if _, exists := borrowed[key]; exists {
+			continue
+		}
+		borrowed[key] = nil
+		connections, err := r.borrowedConnections(listingCtx, tool.PluginID, tool.ConnectionOwner, false)
+		if err == nil {
+			for _, connection := range connections {
+				borrowed[key] = append(borrowed[key], connection.ID)
+			}
+		}
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.stopped || r.discoveryDirty {
+		return
+	}
+	if r.configRevision != revision {
+		// Discovery is policy-independent, but publication must use a fresh fence.
+		// Keep the inventory and project only the current revision.
+		revision = r.configRevision
+	}
+	catalogChanged := !reflect.DeepEqual(r.catalog, catalog)
+	r.catalog = catalog
+	r.inventoryReady = true
+	r.discoveredConnections = connected
+	r.discoveredBorrowed = borrowed
+	if catalogChanged {
+		r.authority.UpdateCatalog(catalog)
+	}
+	r.projectPolicyLocked(revision, catalogChanged)
+}
+
+// toolsChanged publishes the cheap native-tool snapshot before returning.
+// Resource discovery remains coalesced, but removed or replaced native tools
+// must not retain callable handlers while an unrelated resource scan runs.
+func (r *Relay) toolsChanged() {
+	catalog := BuildCatalog(r.tools.ListAll())
+	r.mu.Lock()
+	if !r.loaded || r.stopped {
+		r.mu.Unlock()
+		return
+	}
+	r.discoveryDirty = true
+	builtins := map[string]bool{}
+	for _, tool := range catalog {
+		if tool.BuiltIn {
+			builtins[tool.PluginID] = true
+		}
+	}
+	for _, tool := range r.catalog {
+		if tool.Resource == nil {
+			continue
+		}
+		catalog = append(catalog, tool)
+		if !builtins[tool.PluginID] {
+			builtins[tool.PluginID] = true
+			catalog = append(catalog, listConnectionsInfo(tool.PluginID, tool.PluginName))
+		}
+	}
+	finalizeCatalog(catalog)
+	changed := !reflect.DeepEqual(r.catalog, catalog)
+	r.catalog = catalog
+	if changed {
+		r.authority.UpdateCatalog(catalog)
+	}
+	r.projectPolicyLocked(r.configRevision, changed)
+	r.mu.Unlock()
+	r.requestDiscovery()
+}
+
+func finalizeCatalog(catalog []ToolInfo) {
 	sort.SliceStable(catalog, func(i, j int) bool {
 		if catalog[i].MCPName != catalog[j].MCPName {
 			return catalog[i].MCPName < catalog[j].MCPName
@@ -551,23 +675,40 @@ func (r *Relay) resync() {
 			tool.Status = StatusConflict
 		}
 	}
+}
+
+// projectPolicyLocked performs no discovery or external inventory reads.
+// Holding mu through registration prevents stale publications after retirement.
+func (r *Relay) projectPolicyLocked(revision uint64, catalogChanged bool) {
+	if r.stopped || revision != r.configRevision {
+		return
+	}
 	desired := map[string]ToolInfo{}
-	for _, t := range catalog {
-		if t.Status == StatusOK && cfg.Listed(t, r.listedConnections(listingCtx, &cfg, t, allowed[t.PluginID])) {
-			desired[t.MCPName] = t
+	allowedByRoute := map[string][]string{}
+	for _, tool := range r.catalog {
+		key := tool.PluginID
+		ids := r.discoveredConnections[tool.PluginID]
+		if tool.ConnectionOwner != "" {
+			key += "\x00" + tool.ConnectionOwner
+			ids = r.discoveredBorrowed[key]
+		}
+		allowed, exists := allowedByRoute[key]
+		if !exists {
+			allowed = make([]string, 0, len(ids))
+			for _, id := range ids {
+				if r.cfg.ConnectionAccess(tool.PluginID, id) {
+					allowed = append(allowed, id)
+				}
+			}
+			allowedByRoute[key] = allowed
+		}
+		if tool.Status == StatusOK && r.cfg.Listed(tool, allowed) {
+			desired[tool.MCPName] = tool
 		}
 	}
-
-	r.mu.Lock()
 	if r.published == nil {
 		r.published = make(map[string]ToolInfo)
 	}
-	if r.stopped || r.configRevision != revision {
-		r.mu.Unlock()
-		return
-	}
-	catalogChanged := !reflect.DeepEqual(r.catalog, catalog)
-	r.catalog = catalog
 	var removed []string
 	for name := range r.registered {
 		if _, ok := desired[name]; !ok {
@@ -577,22 +718,19 @@ func (r *Relay) resync() {
 		}
 	}
 	var added []ToolInfo
-	for name, t := range desired {
+	for name, tool := range desired {
 		r.registered[name] = true
-		if prior, exists := r.published[name]; !exists || !reflect.DeepEqual(prior, t) {
-			r.published[name] = t
-			added = append(added, t)
+		if prior, exists := r.published[name]; !exists || (catalogChanged && !reflect.DeepEqual(prior, tool)) {
+			r.published[name] = tool
+			added = append(added, tool)
 		}
 	}
-	r.mu.Unlock()
-
-	r.authority.UpdateCatalog(catalog)
 	sort.Slice(added, func(i, j int) bool { return added[i].MCPName < added[j].MCPName })
 	if len(removed) > 0 {
 		r.server.RemoveTools(removed...)
 	}
-	for _, t := range added {
-		r.server.AddTool(mcpTool(t), r.handler(t))
+	for _, tool := range added {
+		r.server.AddTool(mcpTool(tool), r.handler(tool))
 	}
 	if catalogChanged || len(removed) > 0 || len(added) > 0 {
 		r.emit(EventToolsChanged, "")
@@ -968,7 +1106,7 @@ func rejectDuplicateFields(raw []byte) error {
 }
 
 func (r *Relay) inventoryChanged() {
-	r.resync()
+	r.requestDiscovery()
 	r.mu.Lock()
 	active := r.loaded && !r.stopped
 	r.mu.Unlock()
