@@ -111,3 +111,38 @@ func TestSourceViewSizeIncludesTaggedNestedValues(t *testing.T) {
 	_, ok = sourceViewSize(value, sourceViewQueueBytes)
 	require.False(t, ok)
 }
+
+func TestSourceViewDepth64SnapshotAndChanges(t *testing.T) {
+	v := boundedSourceViewFixture(t, 0, 1)
+	member := v.session.members["0"]
+	member.observation.Record.Body = nestedAccountingValue(resourcev2.MaxValueDepth)
+	v.session.members["0"] = member
+	require.NoError(t, resourcev2.ValidateValue(member.observation.Record.Body))
+
+	v.syncLocked("")
+	require.True(t, v.synced)
+	require.Len(t, v.snapshot, 1)
+	require.Len(t, v.snapshotEnds, 1)
+	generation := v.generation
+
+	record := v.session.fullSourceRecord(member.observation.Record)
+	v.changesLocked([]resourcev2.Record{record}, nil)
+	require.True(t, v.synced)
+	require.Equal(t, generation, v.generation)
+	require.Nil(t, v.control)
+	require.Len(t, v.queue, 1)
+	event := v.queue[0].event
+	require.Len(t, event.Upserts, 1)
+	size, ok := sourceViewSize(event, sourceViewQueueBytes)
+	require.True(t, ok)
+	encoded, err := json.Marshal(event)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, size, len(encoded))
+}
+
+func TestSourceViewSizeRejectsRecursiveValues(t *testing.T) {
+	value := map[string]any{}
+	value["self"] = value
+	_, ok := sourceViewSize(value, sourceViewQueueBytes)
+	require.False(t, ok)
+}

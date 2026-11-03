@@ -69,7 +69,9 @@ func sourceViewSize(value any, limit int) (int, bool) {
 		if !v.IsValid() {
 			return add(4)
 		}
-		if depth > 128 {
+		// Each SDK value level adds a struct and a map or slice. Reserve
+		// additional levels for the enclosing view event and its pointers.
+		if depth > 2*resourcev2.MaxValueDepth+32 {
 			return false
 		}
 		switch v.Kind() {

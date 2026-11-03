@@ -194,6 +194,13 @@ func boundSourceKey(pluginID, owner string, target resourcev2.ReadTarget, mode s
 	return string(b)
 }
 
+// Recovery resolves provider and authority again for the same route and type.
+func recoveringSourceKey(pluginID, owner string, target resourcev2.ReadTarget, mode string) string {
+	target.Provider = ""
+	target.Authority = ""
+	return sourceKey(pluginID, owner, target, mode)
+}
+
 func (sc *sourceCoordinator) prepare(ctx context.Context, pluginID string, target resourcev2.ReadTarget, updates string) (resourcev2.SourceStreamOpener, *pluginState, context.Context, context.CancelFunc, string, string, error) {
 	c := sc.ctrl
 	if updates != "none" && updates != "ifSupported" {
@@ -317,6 +324,19 @@ retry:
 		sc.mu.Unlock()
 		existing.mu.Unlock()
 		return existing, owner, nil
+	}
+	// A retired session still owns its logical source until recovery rekeys it.
+	// Its provider and authority can change during that recovery.
+	binding := opctx.Value(sourceBindingKey{}).(sourceBinding)
+	logicalKey := recoveringSourceKey(pluginID, owner, target, mode)
+	for _, existing := range sc.sessions {
+		oldBinding, ok := existing.ctx.Value(sourceBindingKey{}).(sourceBinding)
+		if ok && existing.pluginGeneration == generation && oldBinding.Epoch.Epoch < binding.Epoch.Epoch &&
+			recoveringSourceKey(existing.pluginID, existing.owner, existing.target, existing.mode) == logicalKey {
+			sc.mu.Unlock()
+			cancel()
+			return nil, "", resourcev2.NewError("RESET_REQUIRED", "Source binding is being renewed.")
+		}
 	}
 	s := &sourceSession{coordinator: sc, key: key, pluginID: pluginID, owner: owner, target: target, mode: mode, opener: opener, pluginGeneration: generation, ctx: opctx, cancel: cancel, inventory: inventory, members: make(map[string]sourceMember), views: make(map[string]*sourceView)}
 	if !inventory {

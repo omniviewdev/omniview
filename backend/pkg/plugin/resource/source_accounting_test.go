@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -11,6 +12,42 @@ import (
 func accountingObservation() resourcev2.SourceObservation {
 	record := sourceTestRecord(resourcev2.ReadTarget{Provider: "p", Authority: "a", Type: "t"}, "id", "")
 	return resourcev2.SourceObservation{Record: resourcev2.CompactSourceRecord(record)}
+}
+
+func nestedAccountingValue(depth int) resourcev2.Value {
+	value := resourcev2.Value{Kind: "string", String: "leaf"}
+	for i := range depth {
+		if i%2 == 0 {
+			value = resourcev2.Value{Kind: "list", List: []resourcev2.Value{value}}
+		} else {
+			value = resourcev2.Value{Kind: "map", Map: map[string]resourcev2.Value{"child": value}}
+		}
+	}
+	return value
+}
+
+func TestSourceAccountingValueDepth(t *testing.T) {
+	for _, depth := range []int{resourcev2.MaxValueDepth, resourcev2.MaxValueDepth + 1} {
+		t.Run(fmt.Sprint(depth), func(t *testing.T) {
+			observation := accountingObservation()
+			observation.Record.Body = nestedAccountingValue(depth)
+			validationErr := resourcev2.ValidateValue(observation.Record.Body)
+			_, err := sourceMemberSize(observation, defaultSourceStagingBytes)
+			snapshot := resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{observation}}}
+			changes := resourcev2.SourceFrame{Changes: &resourcev2.SourceChanges{Changes: []resourcev2.SourceChange{{Observation: &observation}}}}
+			if depth == resourcev2.MaxValueDepth {
+				require.NoError(t, validationErr)
+				require.NoError(t, err)
+				require.NoError(t, sourceFramePreflight(snapshot))
+				require.NoError(t, sourceFramePreflight(changes))
+			} else {
+				require.Error(t, validationErr)
+				require.Equal(t, "RESOURCE_LIMIT", resourcev2.ErrorCode(err))
+				require.Equal(t, "RESOURCE_LIMIT", resourcev2.ErrorCode(sourceFramePreflight(snapshot)))
+				require.Equal(t, "RESOURCE_LIMIT", resourcev2.ErrorCode(sourceFramePreflight(changes)))
+			}
+		})
+	}
 }
 
 func TestSourceAccountingIncludesOwnedCapacityAndMetadata(t *testing.T) {

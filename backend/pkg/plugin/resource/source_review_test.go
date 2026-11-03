@@ -267,6 +267,79 @@ func TestSourceAdmissionBindingMismatchRebinds(t *testing.T) {
 	require.NoError(t, ctrl.CloseSourceView(testInvocationContext(), "p1", view.ViewID))
 }
 
+func TestSourceOpenDuringBindingRecovery(t *testing.T) {
+	ctrl, _, provider, target := sourceTestFixture(t)
+	view := sourceTestOpen(t, ctrl, target)
+	first := sourceNextOpen(t, provider)
+	sourceSend(first.stream, sourceBoundary(resourcev2.EnumerationExhausted))
+	session := retryTestSession(ctrl, view.ViewID)
+
+	// Hold recovery before it can rekey the old session.
+	session.mu.Lock()
+	locked := true
+	t.Cleanup(func() {
+		if locked {
+			session.mu.Unlock()
+		}
+	})
+	ctrl.pluginsMu.Lock()
+	err := ctrl.invalidateSourceRoutesLocked("p1", []string{target.Target.Route.Connection}, false)
+	ctrl.pluginsMu.Unlock()
+	require.NoError(t, err)
+	current := admittedReadTarget(t, ctrl, "p1", "conn-1", "native::Pod")
+
+	const opens = 8
+	results := make(chan error, opens)
+	for range opens {
+		go func() {
+			_, err := ctrl.OpenSourceView(testInvocationContext(), "p1", HostSourceViewRequest{TargetID: current.TargetID, Target: current.Target, Updates: "ifSupported"})
+			results <- err
+		}()
+	}
+	for range opens {
+		require.Equal(t, "RESET_REQUIRED", resourcev2.ErrorCode(<-results))
+	}
+	ctrl.sources.mu.Lock()
+	require.Len(t, ctrl.sources.sessions, 1)
+	ctrl.sources.mu.Unlock()
+	select {
+	case <-provider.opens:
+		t.Fatal("open during recovery started a duplicate source")
+	default:
+	}
+	session.mu.Unlock()
+	locked = false
+	second := sourceNextOpen(t, provider)
+	sourceSend(second.stream, sourceBoundary(resourcev2.EnumerationExhausted))
+	require.Eventually(t, func() bool {
+		session.mu.Lock()
+		defer session.mu.Unlock()
+		return session.status.State == "following"
+	}, 5*time.Second, time.Millisecond)
+	another := sourceTestOpen(t, ctrl, current)
+	require.Same(t, session, retryTestSession(ctrl, another.ViewID))
+	require.NoError(t, ctrl.CloseSourceView(testInvocationContext(), "p1", another.ViewID))
+	require.NoError(t, ctrl.CloseSourceView(testInvocationContext(), "p1", view.ViewID))
+}
+
+func TestRecoveringSourceKeyPreservesSourceIdentity(t *testing.T) {
+	target := resourcev2.ReadTarget{Route: resourcev2.AccessRoute{Connection: "route"}, Provider: "old", Authority: "old", Type: "type", Representation: "native"}
+	key := recoveringSourceKey("plugin", "owner", target, resourcev2.SourceModeSnapshot)
+	changed := target
+	changed.Provider, changed.Authority = "new", "new"
+	require.Equal(t, key, recoveringSourceKey("plugin", "owner", changed, resourcev2.SourceModeSnapshot))
+	require.NotEqual(t, key, recoveringSourceKey("plugin", "other", changed, resourcev2.SourceModeSnapshot))
+	require.NotEqual(t, key, recoveringSourceKey("plugin", "owner", changed, resourcev2.SourceModeSnapshotAndUpdates))
+	changed.Route.Connection = "other"
+	require.NotEqual(t, key, recoveringSourceKey("plugin", "owner", changed, resourcev2.SourceModeSnapshot))
+	changed = target
+	changed.Type = "other"
+	require.NotEqual(t, key, recoveringSourceKey("plugin", "owner", changed, resourcev2.SourceModeSnapshot))
+	changed = target
+	changed.Representation = "other"
+	require.NotEqual(t, key, recoveringSourceKey("plugin", "owner", changed, resourcev2.SourceModeSnapshot))
+}
+
 func TestSourceStartedRouteInvalidationRestartsView(t *testing.T) {
 	ctrl, events, provider, target := sourceTestFixture(t)
 	provider.CatalogFunc = func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) {

@@ -53,7 +53,7 @@ func sourceMemberSize(o resourcev2.SourceObservation, limit int) (int, error) {
 		add(cap(a.Scope), 256) && optional(r.Reference.Incarnation) &&
 		text(r.Representation.ID) && text(r.Representation.Revision) && optional(r.Representation.SchemaRevision) &&
 		text(r.Coverage.Kind) && text(r.Coverage.Reason) && add(cap(r.Coverage.Paths), 256) &&
-		optional(r.SourceRevision) && optional(o.DisplayName) && value(r.Body, 1) &&
+		optional(r.SourceRevision) && optional(o.DisplayName) && value(r.Body, 0) &&
 		add(cap(o.DocumentCoverage.KnownAbsent), 256)
 	for _, scope := range a.Scope {
 		ok = ok && text(scope.Dimension) && text(scope.Value)
