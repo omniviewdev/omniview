@@ -299,6 +299,10 @@ func TestSourceOpenDuringBindingRecovery(t *testing.T) {
 	for range opens {
 		require.Equal(t, "RESET_REQUIRED", resourcev2.ErrorCode(<-results))
 	}
+	// A fresh snapshot-only request must not claim the source while an
+	// updates session for the same logical target is being rebound.
+	_, err = ctrl.OpenSourceView(testInvocationContext(), "p1", HostSourceViewRequest{TargetID: current.TargetID, Target: current.Target, Updates: "none"})
+	require.Equal(t, "RESET_REQUIRED", resourcev2.ErrorCode(err))
 	ctrl.sources.mu.Lock()
 	require.Len(t, ctrl.sources.sessions, 1)
 	ctrl.sources.mu.Unlock()
@@ -324,20 +328,19 @@ func TestSourceOpenDuringBindingRecovery(t *testing.T) {
 
 func TestRecoveringSourceKeyPreservesSourceIdentity(t *testing.T) {
 	target := resourcev2.ReadTarget{Route: resourcev2.AccessRoute{Connection: "route"}, Provider: "old", Authority: "old", Type: "type", Representation: "native"}
-	key := recoveringSourceKey("plugin", "owner", target, resourcev2.SourceModeSnapshot)
+	key := recoveringSourceKey("plugin", "owner", target)
 	changed := target
 	changed.Provider, changed.Authority = "new", "new"
-	require.Equal(t, key, recoveringSourceKey("plugin", "owner", changed, resourcev2.SourceModeSnapshot))
-	require.NotEqual(t, key, recoveringSourceKey("plugin", "other", changed, resourcev2.SourceModeSnapshot))
-	require.NotEqual(t, key, recoveringSourceKey("plugin", "owner", changed, resourcev2.SourceModeSnapshotAndUpdates))
+	require.Equal(t, key, recoveringSourceKey("plugin", "owner", changed))
+	require.NotEqual(t, key, recoveringSourceKey("plugin", "other", changed))
 	changed.Route.Connection = "other"
-	require.NotEqual(t, key, recoveringSourceKey("plugin", "owner", changed, resourcev2.SourceModeSnapshot))
+	require.NotEqual(t, key, recoveringSourceKey("plugin", "owner", changed))
 	changed = target
 	changed.Type = "other"
-	require.NotEqual(t, key, recoveringSourceKey("plugin", "owner", changed, resourcev2.SourceModeSnapshot))
+	require.NotEqual(t, key, recoveringSourceKey("plugin", "owner", changed))
 	changed = target
 	changed.Representation = "other"
-	require.NotEqual(t, key, recoveringSourceKey("plugin", "owner", changed, resourcev2.SourceModeSnapshot))
+	require.NotEqual(t, key, recoveringSourceKey("plugin", "owner", changed))
 }
 
 func TestSourceStartedRouteInvalidationRestartsView(t *testing.T) {

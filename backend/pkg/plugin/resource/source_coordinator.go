@@ -194,11 +194,11 @@ func boundSourceKey(pluginID, owner string, target resourcev2.ReadTarget, mode s
 	return string(b)
 }
 
-// Recovery resolves provider and authority again for the same route and type.
-func recoveringSourceKey(pluginID, owner string, target resourcev2.ReadTarget, mode string) string {
+// Recovery resolves provider, authority, and update mode again for the same route and type.
+func recoveringSourceKey(pluginID, owner string, target resourcev2.ReadTarget) string {
 	target.Provider = ""
 	target.Authority = ""
-	return sourceKey(pluginID, owner, target, mode)
+	return sourceKey(pluginID, owner, target, "")
 }
 
 func (sc *sourceCoordinator) prepare(ctx context.Context, pluginID string, target resourcev2.ReadTarget, updates string) (resourcev2.SourceStreamOpener, *pluginState, context.Context, context.CancelFunc, string, string, error) {
@@ -328,11 +328,11 @@ retry:
 	// A retired session still owns its logical source until recovery rekeys it.
 	// Its provider and authority can change during that recovery.
 	binding := opctx.Value(sourceBindingKey{}).(sourceBinding)
-	logicalKey := recoveringSourceKey(pluginID, owner, target, mode)
+	logicalKey := recoveringSourceKey(pluginID, owner, target)
 	for _, existing := range sc.sessions {
 		oldBinding, ok := existing.ctx.Value(sourceBindingKey{}).(sourceBinding)
 		if ok && existing.pluginGeneration == generation && oldBinding.Epoch.Epoch < binding.Epoch.Epoch &&
-			recoveringSourceKey(existing.pluginID, existing.owner, existing.target, existing.mode) == logicalKey {
+			recoveringSourceKey(existing.pluginID, existing.owner, existing.target) == logicalKey {
 			sc.mu.Unlock()
 			cancel()
 			return nil, "", resourcev2.NewError("RESET_REQUIRED", "Source binding is being renewed.")
