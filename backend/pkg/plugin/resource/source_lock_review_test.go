@@ -46,7 +46,7 @@ func TestSourceSnapshotEndDoesNotBlockOtherSessionOpen(t *testing.T) {
 	for batch := range 16 {
 		observations := make([]resourcev2.SourceObservation, 256)
 		for i := range observations {
-			observations[i].Record = sourceTestRecord(target.Target, fmt.Sprintf("pod-%d", batch*256+i), "")
+			observations[i].Record = resourcev2.CompactSourceRecord(sourceTestRecord(target.Target, fmt.Sprintf("pod-%d", batch*256+i), ""))
 		}
 		sourceSend(open.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: observations}})
 	}

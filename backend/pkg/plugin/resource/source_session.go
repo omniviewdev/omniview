@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"io"
+	"reflect"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	resourceplugin "github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
 )
 
 type sourceSession struct {
@@ -96,7 +98,8 @@ func (s *sourceSession) startLocked() {
 	s.status.Continuity = ""
 	s.status.Coverage = nil
 	s.statusLocked("opening", nil)
-	req := resourcev2.SourceOpenRequest{SessionID: uuid.NewString(), Generation: generation, Target: s.target, Mode: s.mode, Acquisition: resourcev2.SourceAcquisition{Kind: resourcev2.SourceAcquisitionEnumerate}, Limits: resourcev2.SourceLimits{MaxFrameBytes: defaultSourceMaxFrameBytes, MaxBatchItems: defaultSourceMaxBatchItems}}
+	binding := s.ctx.Value(sourceBindingKey{}).(sourceBinding)
+	req := resourcev2.SourceOpenRequest{SessionID: uuid.NewString(), Generation: generation, Target: s.target, Mode: s.mode, Acquisition: resourcev2.SourceAcquisition{Kind: resourcev2.SourceAcquisitionEnumerate}, Limits: resourcev2.SourceLimits{MaxFrameBytes: defaultSourceMaxFrameBytes, MaxBatchItems: defaultSourceMaxBatchItems}, Binding: resourcev2.RepresentationBinding{Representation: binding.Representation}}
 	go s.receive(ctx, req, done, s.opener, s.pluginGeneration)
 }
 
@@ -146,14 +149,23 @@ func (s *sourceSession) receive(ctx context.Context, request resourcev2.SourceOp
 		return
 	}
 	defer cleanup()
+	binding := ctx.Value(sourceBindingKey{}).(sourceBinding)
 	catalog, descriptor, err := s.sourceCatalog(operationCtx, request.Target, request.Mode)
 	if err != nil {
 		s.receiveAdmissionError(request.Generation, err)
 		return
 	}
-	ctx = resourcev2.WithCatalogRevision(operationCtx, catalog.Revision)
+	if catalog.Revision != binding.CatalogRevision || !reflect.DeepEqual(descriptor, binding.Descriptor) {
+		s.invalidateBinding(request.Generation, expected, binding.Epoch)
+		return
+	}
+	ctx = resourcev2.WithCatalogRevision(operationCtx, binding.CatalogRevision)
 	stream, err := opener.OpenSourceStream(ctx, request)
 	if err != nil {
+		if resourceplugin.IsFatalSourceTransportError(err) {
+			go s.coordinator.ctrl.retireFatalSourceTransport(s.pluginID, expected, err)
+			return
+		}
 		s.receiveError(request.Generation, err)
 		return
 	}
@@ -166,15 +178,37 @@ func (s *sourceSession) receive(ctx context.Context, request resourcev2.SourceOp
 	s.stream = stream
 	s.mu.Unlock()
 	defer stream.Close()
+	tracker := resourcev2.NewCatalogBoundSourcePhaseTracker(request, descriptor)
+	defer tracker.Close()
 	for {
 		frame, err := stream.Recv()
 		if err != nil {
+			if resourceplugin.IsFatalSourceTransportError(err) {
+				go s.coordinator.ctrl.retireFatalSourceTransport(s.pluginID, expected, err)
+				return
+			}
 			s.receiveError(request.Generation, err)
 			return
 		}
 		s.mu.Lock()
 		if s.closed || s.generation != request.Generation {
 			s.mu.Unlock()
+			return
+		}
+		if err := tracker.Admit(frame); err != nil {
+			var operationErr *resourcev2.ResourceOperationError
+			if errors.As(err, &operationErr) && operationErr.Code == "RESET_REQUIRED" && operationErr.Message == "source binding changed" {
+				s.mu.Unlock()
+				s.invalidateBinding(request.Generation, expected, binding.Epoch)
+				return
+			}
+			s.statusLocked("failed", err)
+			s.mu.Unlock()
+			return
+		}
+		if frame.Reset != nil && frame.Reset.Reason == resourcev2.SourceResetBindingChanged {
+			s.mu.Unlock()
+			s.invalidateBinding(request.Generation, expected, binding.Epoch)
 			return
 		}
 		terminal, err := s.applyLocked(frame, sourceFrameContext{ctx: ctx, target: request.Target, descriptor: &descriptor})
@@ -185,6 +219,27 @@ func (s *sourceSession) receive(ctx context.Context, request resourcev2.SourceOp
 		if err != nil || terminal {
 			return
 		}
+	}
+}
+
+
+// invalidateBinding retires only the route epoch that observed the mismatch.
+func (s *sourceSession) invalidateBinding(generation string, expected *pluginState, epoch sourceEpochSnapshot) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || s.generation != generation || s.pluginGeneration != expected {
+		return
+	}
+	c := s.coordinator.ctrl
+	c.pluginsMu.Lock()
+	if c.plugins[s.pluginID] != expected || expected.provider == nil || expected.sourceEpoch[epoch.Connection] != epoch.Epoch {
+		c.pluginsMu.Unlock()
+		return
+	}
+	err := c.invalidateSourceRoutesLocked(s.pluginID, []string{epoch.Connection}, false)
+	c.pluginsMu.Unlock()
+	if err != nil {
+		s.statusLocked("failed", err)
 	}
 }
 func (s *sourceSession) receiveAdmissionError(generation string, err error) {
@@ -381,9 +436,15 @@ type sourceFrameContext struct {
 	descriptor *resourcev2.ResourceType
 }
 
+func (s *sourceSession) fullSourceRecord(record resourcev2.SourceRecord) resourcev2.Record {
+	binding := s.ctx.Value(sourceBindingKey{}).(sourceBinding).Representation
+	return resourcev2.Record{Reference: record.Reference, Body: record.Body, Representation: binding, Coverage: record.Coverage, SourceRevision: record.SourceRevision}
+}
+
 func (s *sourceSession) observeFrameRecord(frame sourceFrameContext, observation resourcev2.SourceObservation) error {
+	record := s.fullSourceRecord(observation.Record)
 	if frame.descriptor == nil {
-		return s.coordinator.ctrl.observeSourceRecord(s.ctx, s.pluginID, s.pluginGeneration, s.target.Route, observation.Record, observation.Metadata)
+		return s.coordinator.ctrl.observeSourceRecord(s.ctx, s.pluginID, s.pluginGeneration, s.target.Route, record, observation.Metadata)
 	}
 	if err := resourcev2.ValidateSourceObservation(frame.target, frame.target.Representation, observation); err != nil {
 		return err
@@ -391,7 +452,7 @@ func (s *sourceSession) observeFrameRecord(frame sourceFrameContext, observation
 	if err := resourcev2.ValidateAddress(observation.Record.Reference.Address, frame.descriptor.IdentityDimensions); err != nil {
 		return err
 	}
-	return s.coordinator.ctrl.observeValidatedSourceRecord(frame.ctx, s.pluginID, s.pluginGeneration, frame.target.Route, observation.Record, observation.Metadata)
+	return s.coordinator.ctrl.observeValidatedSourceRecord(frame.ctx, s.pluginID, s.pluginGeneration, frame.target.Route, record, observation.Metadata)
 }
 
 func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sourceFrameContext) (bool, error) {
@@ -410,7 +471,7 @@ func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sour
 			}
 			old := s.staging[key]
 			size := s.stagingBytes - old.size + member.size
-			if len(s.staging)+boolInt(old.size == 0) > maxSourceSessionMembers || size > maxSourceSessionBytes {
+			if len(s.staging)+boolInt(old.size == 0) > maxSourceSessionMembers || size > defaultSourceStagingBytes {
 				return true, resourcev2.NewError("RESOURCE_LIMIT", "Source snapshot exceeds host limits.")
 			}
 			s.staging[key] = member
@@ -510,7 +571,7 @@ func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sour
 					return true, err
 				}
 				s.members[key] = *next
-				upserts = append(upserts, next.observation.Record)
+				upserts = append(upserts, s.fullSourceRecord(next.observation.Record))
 			}
 		}
 		s.memberBytes = nextBytes

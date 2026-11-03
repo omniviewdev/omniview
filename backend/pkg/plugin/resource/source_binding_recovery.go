@@ -96,7 +96,7 @@ func (sc *sourceCoordinator) recoverBindingSession(s *sourceSession, generation 
 	}
 	sc.ctrl.pluginsMu.RUnlock()
 	if err == nil {
-		key := sourceKey(s.pluginID, owner, target, nextMode)
+		key := boundSourceKey(s.pluginID, owner, target, nextMode, nextCtx.Value(sourceBindingKey{}).(sourceBinding))
 		if existing := sc.sessions[key]; existing != nil && existing != s {
 			err = resourcev2.NewError("RESET_REQUIRED", "A source session already exists for the new binding.")
 		} else {

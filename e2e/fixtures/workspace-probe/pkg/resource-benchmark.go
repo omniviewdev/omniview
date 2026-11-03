@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"runtime"
 	"sort"
 	"strings"
@@ -403,7 +404,10 @@ func (p *benchmarkEvents) Source(ctx context.Context, client *benchmarkClient, r
 			if err != nil {
 				return err
 			}
-			observations = append(observations, resource.SourceObservation{Record: record})
+			if !reflect.DeepEqual(record.Representation, request.Representation) {
+				return emitter.Reset(ctx, resource.SourceResetBindingChanged, "Source binding changed.")
+			}
+			observations = append(observations, resource.SourceObservation{Record: resource.CompactSourceRecord(record)})
 		}
 		if err := emitter.Snapshot(ctx, observations); err != nil {
 			return err
@@ -426,7 +430,10 @@ func (p *benchmarkEvents) Source(ctx context.Context, client *benchmarkClient, r
 			if err != nil {
 				return err
 			}
-			if err := emitter.Changes(ctx, []resource.SourceChange{{Kind: resource.SourceChangeUpsert, Observation: &resource.SourceObservation{Record: record}}}, nil); err != nil {
+			if !reflect.DeepEqual(record.Representation, request.Representation) {
+				return emitter.Reset(ctx, resource.SourceResetBindingChanged, "Source binding changed.")
+			}
+			if err := emitter.Changes(ctx, []resource.SourceChange{{Kind: resource.SourceChangeUpsert, Observation: &resource.SourceObservation{Record: resource.CompactSourceRecord(record)}}}, nil); err != nil {
 				return err
 			}
 			p.mu.Lock()

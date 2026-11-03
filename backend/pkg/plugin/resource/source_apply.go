@@ -15,10 +15,32 @@ type sourceMember struct {
 	size        int
 }
 
+// sourceValueNodes counts retained value containers without allocating.
+func sourceValueNodes(value resourcev2.Value) int {
+	nodes := 1
+	for _, child := range value.List {
+		nodes += sourceValueNodes(child)
+	}
+	for _, child := range value.Map {
+		nodes += sourceValueNodes(child)
+	}
+	return nodes
+}
+
 func makeSourceMember(o resourcev2.SourceObservation) (sourceMember, string, error) {
-	size, err := resourcev2.RecordWireSize(o.Record)
+	size, err := resourcev2.SourceObservationWireSize(o)
 	if err != nil {
 		return sourceMember{}, "", err
+	}
+	// Account conservatively for Go value/map envelopes and the address index,
+	// not just the protobuf payload. Compute this before allocating the key.
+	size = size*4 + sourceValueNodes(o.Record.Body)*256 + 1024
+	size += 256 * (len(o.Record.Reference.Address.Scope) + len(o.Record.Coverage.Paths))
+	if o.Metadata != nil {
+		size += 256 * len(o.Metadata.Labels)
+	}
+	for _, path := range o.DocumentCoverage.KnownAbsent {
+		size += 256 * (1 + len(path.Segments))
 	}
 	key, err := registry.CanonicalAddressKey(o.Record.Reference.Address)
 	if err != nil {
