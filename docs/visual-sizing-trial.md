@@ -6,7 +6,7 @@ The supplied reference screenshots favor quiet dark surfaces, rounded floating p
 
 Source inspection establishes that the host explicitly selects compact density. Base UI already provides compact and comfortable density tokens, a 14px body token, 12px caption token, and normal/reduced motion state. Comfortable medium controls are 36px; compact medium controls are 30px. Reuse these contracts rather than introduce a second density system.
 
-Browser inspection also found compounded rem sizing: a nominal 14px body token resolved to 12.25px, and a nominal 13px table token resolved to 11.375px. The trial keeps the 14px root-rem layout baseline but defines scaled UI font primitives in CSS pixels, so 100% body text now resolves to 14px without zooming the layout.
+Browser inspection also found compounded rem sizing: a nominal 14px body token resolved to 12.25px, and a nominal 13px table token resolved to 11.375px. The trial keeps the 14px root-rem layout baseline at the browser's default 16px font, but calibrates UI font primitives against that baseline and applies text scaling independently. At 100%, body text resolves to 14px without zooming layout geometry; larger browser font defaults remain respected.
 
 ## Trial plan
 
