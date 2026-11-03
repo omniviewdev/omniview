@@ -4,17 +4,19 @@ This guide covers everything you need to know to develop plugins for Omniview wi
 
 ### Marketplace host compatibility
 
-Host registry API requests advertise `ide_version=0.27.2`, sourced from
-`internal/version.CompatibilityVersion`. This is the source's minimum host
-compatibility release line, not the SDK version or a PR/nightly display label.
-Development builds advertise the same `0.27.2` API baseline while retaining
-their existing development display labels. Release builds stamp the display
-version from the release tag.
+Host registry API requests and local plugin compatibility checks use
+`internal/version.CompatibilityVersion()`. Stable release builds automatically
+advertise their linker-stamped release version, normalized without a leading `v`
+or build metadata. Releasing a new stable patch does not require a second version
+constant to be updated.
 
-Advance this explicit compatibility line when a coordinated host/runtime/SDK
-cutover changes plugin requirements. Updating display-version linker flags alone
-does not change marketplace compatibility. Transactional settings require rebuilt
-SDK v0.10.0 plugins; Kubernetes v0.11.0 requires host/runtime v0.14.0.
+Development, nightly, prerelease, and non-version build labels use the explicit
+source capability baseline (`0.27.2`). Advance that baseline when development
+source gains a coordinated host/runtime/SDK capability; do not derive capabilities
+from labels such as `0.0.0-nightly...` or `pr-build-macos`.
+
+Transactional settings require rebuilt SDK v0.10.0 plugins; Kubernetes v0.11.0
+requires host/runtime v0.14.0.
 Plugins using write-only connection-profile credentials require host/runtime v0.20.0
 and must declare an inclusive `min_ide_version` of `0.20.0` or newer.
 Kubernetes v0.15.0 declares a minimum host version of v0.27.1.
