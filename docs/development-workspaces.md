@@ -353,6 +353,20 @@ managed worktrees or hand-edit generated aggregate metadata. Managed SDK
 refresh preserves non-overlapping authored edits through three-way recovery.
 Overlapping edits remain explicit conflicts with preserved evidence.
 
+Managed host and plugin Go overlays also carry the selected SDK's versioned
+remote `google.golang.org/grpc` replacement, when declared. Go does not inherit
+dependency replacements. Conflicting consumer replacements, including dormant
+version-specific entries, and local or unversioned SDK transport targets fail
+closed. The SDK's `go.mod` and, when transport is declared, `go.sum` are
+fingerprinted inputs, never owned outputs. The selected transport must have
+valid content and `go.mod` checksums in the SDK sum file. Only those two entries
+seed each owned consumer sum file before readonly compilation; missing,
+malformed, contradictory, or conflicting checksums fail before output mutation.
+Unrelated consumer sums remain unchanged. SDKs without a transport replacement
+do not require a sum file. After changing either SDK input, run `workspace
+refresh` to regenerate overlays; retained overlays reject stale inputs. Unlink
+restores journaled consumer bytes without reverting SDK edits.
+
 For an interrupted update, inspect first, then run the reported recovery
 command against the same workspace:
 

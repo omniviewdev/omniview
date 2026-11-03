@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -18,6 +19,7 @@ import (
 
 const sdkModule = "github.com/omniviewdev/plugin-sdk"
 const wailsModule = "github.com/wailsapp/wails/v3"
+const grpcModule = "google.golang.org/grpc"
 
 type moduleVersion struct{ Path, Version string }
 type moduleReplacement struct{ Old, New moduleVersion }
@@ -195,6 +197,139 @@ func selectSDK(root, input string, parsed moduleJSON) (string, error) {
 	return selected, nil
 }
 
+// Only the selected SDK's explicit transport replacements cross the module
+// boundary. Dependency replace directives otherwise remain private to the SDK.
+func sdkTransport(sdk string, host moduleJSON) ([]moduleReplacement, error) {
+	if sdk == "" {
+		return nil, nil
+	}
+	parsed, err := parseModule(sdk, filepath.Join(sdk, "go.mod"))
+	if err != nil {
+		return nil, err
+	}
+	var transport []moduleReplacement
+	for _, replacement := range parsed.Replace {
+		if replacement.Old.Path != grpcModule {
+			continue
+		}
+		if replacement.New.Version == "" || filepath.IsAbs(replacement.New.Path) || strings.HasPrefix(replacement.New.Path, ".") {
+			return nil, errors.New("selected SDK gRPC replacement must use a versioned remote module")
+		}
+		transport = append(transport, replacement)
+	}
+	if len(transport) == 0 {
+		return nil, nil
+	}
+	for _, replacement := range host.Replace {
+		if replacement.Old.Path != grpcModule {
+			continue
+		}
+		var selected *moduleReplacement
+		for i := range transport {
+			candidate := &transport[i]
+			if replacement.Old.Version == "" {
+				if candidate.New != replacement.New {
+					return nil, errors.New("host gRPC replacement conflicts with selected SDK transport")
+				}
+				if candidate.Old.Version == "" {
+					selected = candidate
+				}
+				continue
+			}
+			if candidate.Old.Version == replacement.Old.Version {
+				selected = candidate
+				break
+			}
+			if candidate.Old.Version == "" {
+				selected = candidate
+			}
+		}
+		if selected == nil || selected.New != replacement.New {
+			return nil, errors.New("host gRPC replacement conflicts with selected SDK transport")
+		}
+	}
+	return transport, nil
+}
+
+// Only the declared remote transport targets use the SDK's checksum authority.
+// Validate both inputs before staging so refusal preserves any prior output.
+func seedTransportSums(sum []byte, sdk string, transport []moduleReplacement) ([]byte, error) {
+	if len(transport) == 0 {
+		return sum, nil
+	}
+	raw, err := os.ReadFile(filepath.Join(sdk, "go.sum"))
+	if err != nil {
+		return nil, err
+	}
+	expected := make(map[moduleVersion]string, len(transport)*2)
+	var targets []moduleVersion
+	for _, replacement := range transport {
+		for _, version := range []string{replacement.New.Version, replacement.New.Version + "/go.mod"} {
+			target := moduleVersion{Path: replacement.New.Path, Version: version}
+			if _, exists := expected[target]; !exists {
+				targets = append(targets, target)
+				expected[target] = ""
+			}
+		}
+	}
+	found := make(map[moduleVersion]bool, len(expected))
+	for _, input := range []struct {
+		name string
+		data []byte
+	}{{"selected SDK", raw}, {"effective input", sum}} {
+		for _, line := range strings.Split(string(input.data), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) == 0 {
+				continue
+			}
+			if len(fields) == 1 {
+				for _, target := range targets {
+					if fields[0] == target.Path {
+						return nil, fmt.Errorf("%s transport checksum is malformed", input.name)
+					}
+				}
+				continue
+			}
+			target := moduleVersion{Path: fields[0], Version: fields[1]}
+			checksum, needed := expected[target]
+			if !needed {
+				continue
+			}
+			if len(fields) != 3 || !strings.HasPrefix(fields[2], "h1:") {
+				return nil, fmt.Errorf("%s transport checksum is malformed", input.name)
+			}
+			digest, err := base64.StdEncoding.Strict().DecodeString(strings.TrimPrefix(fields[2], "h1:"))
+			if err != nil || len(digest) != 32 {
+				return nil, fmt.Errorf("%s transport checksum is malformed", input.name)
+			}
+			if checksum != "" && checksum != fields[2] {
+				return nil, fmt.Errorf("%s transport checksums disagree with selected SDK authority", input.name)
+			}
+			if input.name == "selected SDK" {
+				expected[target] = fields[2]
+			} else {
+				found[target] = true
+			}
+		}
+		if input.name == "selected SDK" {
+			for _, target := range targets {
+				if expected[target] == "" {
+					return nil, fmt.Errorf("selected SDK go.sum has no complete transport checksums for %s@%s", target.Path, target.Version)
+				}
+			}
+		}
+	}
+	for _, target := range targets {
+		if !found[target] {
+			if len(sum) != 0 && sum[len(sum)-1] != '\n' {
+				sum = append(sum, '\n')
+			}
+			sum = append(sum, []byte(target.Path+" "+target.Version+" "+expected[target]+"\n")...)
+		}
+	}
+	return sum, nil
+}
+
 type wailsAuthority struct{ Version, Sum, GoModSum string }
 
 func approvedWails(root string) (wailsAuthority, error) {
@@ -360,6 +495,10 @@ func prepare(root, input, sdk, output string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	transport, err := sdkTransport(sdk, parsed)
+	if err != nil {
+		return "", err
+	}
 	approved, err := approvedWails(root)
 	if err != nil {
 		return "", err
@@ -382,6 +521,10 @@ func prepare(root, input, sdk, output string) (string, error) {
 		return "", err
 	}
 	sum, err = seedWailsSums(sum, approved)
+	if err != nil {
+		return "", err
+	}
+	sum, err = seedTransportSums(sum, sdk, transport)
 	if err != nil {
 		return "", err
 	}
@@ -415,6 +558,13 @@ func prepare(root, input, sdk, output string) (string, error) {
 	}
 	if sdk != "" {
 		args = append(args, "-replace="+sdkModule+"="+sdk)
+	}
+	for _, replacement := range transport {
+		old := replacement.Old.Path
+		if replacement.Old.Version != "" {
+			old += "@" + replacement.Old.Version
+		}
+		args = append(args, "-replace="+old+"="+replacement.New.Path+"@"+replacement.New.Version)
 	}
 	if _, err := runGo(root, args...); err != nil {
 		return "", err

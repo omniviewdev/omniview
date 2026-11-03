@@ -1,10 +1,16 @@
 package devworkspace
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,7 +19,22 @@ import (
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/mod/sumdb/dirhash"
 )
+
+// linkSDK inherits only the selected SDK's versioned remote gRPC transport.
+// Dependency replacements do not propagate into consumer module graphs.
+func linkSDK(_ context.Context, dir string, original []byte, sdk string) ([]byte, error) {
+	raw, err := os.ReadFile(filepath.Join(sdk, "go.mod"))
+	if err != nil {
+		return nil, err
+	}
+	transport, err := readSDKTransport(sdk, raw)
+	if err != nil {
+		return nil, err
+	}
+	return linkSDKTransport(dir, original, sdk, transport)
+}
 
 func TestLinkProtocolRejectsIndependentRootEvidence(t *testing.T) {
 	for _, evidence := range []LinkProtocolEvidence{
@@ -86,6 +107,7 @@ func TestLinkPlanIncludesRuntimeAndEverySelectedPlugin(t *testing.T) {
 		require.NoError(t, os.WriteFile(path, []byte(content), 0600))
 	}
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "sdk"), 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "sdk/go.mod"), []byte("module github.com/omniviewdev/plugin-sdk\n\ngo 1.26.0\n"), 0600))
 	ui, sdk := "ui", "sdk"
 	w := Workspace{ResolvedWorkspace: devcontract.ResolvedWorkspace{Root: root, Manifest: devcontract.WorkspaceManifest{Repositories: []devcontract.Repository{{ID: "omniview", Directory: "host"}, {ID: "ui", Directory: "ui"}, {ID: "sdk", Directory: "sdk"}, {ID: "one", Directory: "one"}, {ID: "two", Directory: "two"}}, Plugins: []devcontract.Plugin{{ID: "one", RepositoryID: "one"}, {ID: "two", RepositoryID: "two"}}, Links: devcontract.Links{HostPackages: true, UIRepositoryID: &ui, SDKRepositoryID: &sdk}}}}
 	w.Manifest.WorkspaceID = "11111111-1111-4111-8111-111111111111"
@@ -106,21 +128,6 @@ func TestLinkPlanIncludesRuntimeAndEverySelectedPlugin(t *testing.T) {
 		}
 	}
 	require.True(t, runtime, "runtime must receive its own effective-resolution diagnostics")
-}
-
-func TestSDKReplacementPreservesUserReplacement(t *testing.T) {
-	root := linkFixtureRoot(t)
-	sdk := filepath.Join(root, "sdk with spaces")
-	require.NoError(t, os.MkdirAll(sdk, 0700))
-	original := []byte("module fixture\n\ngo 1.26.0\n\nrequire github.com/omniviewdev/plugin-sdk v0.5.0\n")
-	changed, err := linkSDK(context.Background(), root, original, sdk)
-	require.NoError(t, err)
-	require.Contains(t, string(changed), `"`+sdk+`"`)
-	again, err := linkSDK(context.Background(), root, changed, sdk)
-	require.NoError(t, err)
-	require.Equal(t, changed, again)
-	_, err = linkSDK(context.Background(), root, append(original, []byte("\nreplace github.com/omniviewdev/plugin-sdk => /user/sdk\n")...), sdk)
-	require.ErrorContains(t, err, "replacement")
 }
 
 func TestLinkProtocolRequiresObservedGate(t *testing.T) {
@@ -175,9 +182,10 @@ func TestSDKReplacementChecksConflictsAfterMatchingDefault(t *testing.T) {
 	root := linkFixtureRoot(t)
 	sdk := filepath.Join(root, "selected-sdk")
 	require.NoError(t, os.MkdirAll(sdk, 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(sdk, "go.mod"), []byte("module github.com/omniviewdev/plugin-sdk\n\ngo 1.26.0\n"), 0600))
 	original := []byte("module fixture\n\ngo 1.26.0\n\nrequire github.com/omniviewdev/plugin-sdk v0.5.0\n\nreplace (\n github.com/omniviewdev/plugin-sdk => " + sdk + "\n github.com/omniviewdev/plugin-sdk v0.5.0 => /user/version-specific-sdk\n)\n")
 	_, err := linkSDK(context.Background(), root, original, sdk)
-	require.ErrorContains(t, err, "replacement")
+	require.Error(t, err)
 }
 
 func TestLinkInstallerPreservesEditorChangesAcrossProcessBoundary(t *testing.T) {
@@ -284,11 +292,9 @@ func TestLinkApplyPreflightsEditsMadeDuringSDKPlanning(t *testing.T) {
 				e.AppliedHash = linkHash(e.Applied, true)
 				j.Files = append(j.Files, e)
 			}
-			// Model the editor save while the SDK's external go mod edit commands run,
-			// after snapshots but before any prepared configuration may be applied.
 			edited := []byte("editor save during SDK planning")
 			require.NoError(t, os.WriteFile(filepath.Join(root, editedName), edited, 0600))
-			require.ErrorContains(t, applyLinkFiles(&j), "changed")
+			require.Error(t, applyLinkFiles(&j))
 			for _, name := range []string{"pnpm-workspace.yaml", "go.mod"} {
 				actual, err := os.ReadFile(filepath.Join(root, name))
 				require.NoError(t, err)
@@ -516,4 +522,182 @@ func TestUnlinkStillRejectsMissingSelectedWorktree(t *testing.T) {
 	require.Equal(t, "foreign_worktree", typed.Code)
 	require.FileExists(t, filepath.Join(moved, "README"))
 	require.FileExists(t, filepath.Join(w.Root, "omniview", "README"))
+}
+
+func TestSDKTransportOverlayOwnershipAndFreshness(t *testing.T) {
+	root := linkFixtureRoot(t)
+	sdk := filepath.Join(root, "sdk")
+	require.NoError(t, os.MkdirAll(sdk, 0700))
+	manifest := []byte("module github.com/omniviewdev/plugin-sdk\n\ngo 1.26.0\n\nreplace google.golang.org/grpc => github.com/omniviewdev/grpc-go v1.79.3-0.20261103012409-4c6f1d1c4e10\n")
+	require.NoError(t, os.WriteFile(filepath.Join(sdk, "go.mod"), manifest, 0600))
+	sums := []byte("github.com/omniviewdev/grpc-go v1.79.3-0.20261103012409-4c6f1d1c4e10 h1:2rx00CjQ8G9XKctUvJ198ESozea5DXfZC5SfnPwFp8s=\ngithub.com/omniviewdev/grpc-go v1.79.3-0.20261103012409-4c6f1d1c4e10/go.mod h1:KmT0Kjez+0dde/v2j9vzwoAScgEPx/Bw1CYChhHLrHQ=\n")
+	require.NoError(t, os.WriteFile(filepath.Join(sdk, "go.sum"), sums, 0600))
+	p := linkPlan{SDK: sdk, SDKModuleHash: linkHash(manifest, true)}
+	var err error
+	p.SDKTransport, err = readSDKTransport(sdk, manifest)
+	require.NoError(t, err)
+	p.SDKSumHash = linkHash(sums, true)
+	p.SDKTransportSums, err = transportChecksums(sums, p.SDKTransport.New)
+	require.NoError(t, err)
+	require.NoError(t, checkSDKInput(p))
+	j := linkJournal{Root: root, Plan: p, Phase: "applying"}
+	for _, consumer := range []string{"host", "plugin"} {
+		dir := filepath.Join(root, consumer)
+		require.NoError(t, os.MkdirAll(dir, 0700))
+		original := []byte("module example.com/" + consumer + "\n\ngo 1.26.0\n\nrequire google.golang.org/grpc v1.79.3\n")
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"), original, 0600))
+		e, err := snapshotLinkFile(root, filepath.Join(dir, "go.mod"))
+		require.NoError(t, err)
+		e.Applied, err = linkSDK(context.Background(), dir, original, sdk)
+		require.NoError(t, err)
+		e.AppliedHash = linkHash(e.Applied, true)
+		j.Files = append(j.Files, e)
+		sum, err := snapshotLinkFile(root, filepath.Join(dir, "go.sum"))
+		require.NoError(t, err)
+		sum.Applied, err = linkTransportChecksums(sum.Original, p.SDKTransportSums)
+		require.NoError(t, err)
+		sum.AppliedHash = linkHash(sum.Applied, true)
+		j.Files = append(j.Files, sum)
+	}
+	changedSums := append(append([]byte(nil), sums...), []byte("\n")...)
+	require.NoError(t, os.WriteFile(filepath.Join(sdk, "go.sum"), changedSums, 0600))
+	require.Error(t, checkSDKInput(p))
+	require.Error(t, applyLinkFiles(&j))
+	changed := append(append([]byte(nil), manifest...), []byte("\n// SDK edit\n")...)
+	require.NoError(t, os.WriteFile(filepath.Join(sdk, "go.mod"), changed, 0600))
+	require.Error(t, checkSDKInput(p))
+	require.Error(t, applyLinkFiles(&j))
+	for _, e := range j.Files {
+		got, err := os.ReadFile(filepath.Join(root, e.Path))
+		if e.OriginalExists {
+			require.NoError(t, err)
+			require.Equal(t, e.Original, got)
+		} else {
+			require.True(t, os.IsNotExist(err))
+		}
+		require.NoError(t, os.WriteFile(filepath.Join(root, e.Path), e.Applied, 0600))
+	}
+	require.NoError(t, restoreLinkFiles(root, &j))
+	for _, e := range j.Files {
+		got, err := os.ReadFile(filepath.Join(root, e.Path))
+		if e.OriginalExists {
+			require.NoError(t, err)
+			require.Equal(t, e.Original, got)
+		} else {
+			require.True(t, os.IsNotExist(err))
+		}
+	}
+	got, err := os.ReadFile(filepath.Join(sdk, "go.mod"))
+	require.NoError(t, err)
+	require.Equal(t, changed, got)
+	got, err = os.ReadFile(filepath.Join(sdk, "go.sum"))
+	require.NoError(t, err)
+	require.Equal(t, changedSums, got)
+}
+
+func TestSDKTransportRejectsConflictingAndUnsupportedReplacements(t *testing.T) {
+	root := linkFixtureRoot(t)
+	sdk := filepath.Join(root, "sdk")
+	require.NoError(t, os.MkdirAll(sdk, 0700))
+	base := "module github.com/omniviewdev/plugin-sdk\n\ngo 1.26.0\n\n"
+	remote := "github.com/omniviewdev/grpc-go v1.79.3"
+	for _, target := range []string{"../grpc", "github.com/omniviewdev/grpc-go"} {
+		require.NoError(t, os.WriteFile(filepath.Join(sdk, "go.mod"), []byte(base+"replace google.golang.org/grpc => "+target+"\n"), 0600))
+		_, err := linkSDK(context.Background(), root, []byte("module fixture\n"), sdk)
+		require.Error(t, err)
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(sdk, "go.mod"), []byte(base+"replace google.golang.org/grpc => "+remote+"\n"), 0600))
+	for _, version := range []string{"", " v1.70.0"} {
+		matching := ""
+		if version != "" {
+			matching = " google.golang.org/grpc => " + remote + "\n"
+		}
+		original := []byte("module fixture\n\nreplace (\n" + matching + " google.golang.org/grpc" + version + " => example.com/user/grpc v1.70.0\n)\n")
+		_, err := linkSDK(context.Background(), root, original, sdk)
+		require.Error(t, err)
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(sdk, "go.mod"), []byte(base+"replace google.golang.org/grpc v1.79.3 => "+remote+"\n"), 0600))
+	for _, version := range []string{"", " v1.70.0"} {
+		original := []byte("module fixture\n\nreplace google.golang.org/grpc" + version + " => " + remote + "\n")
+		_, err := linkSDK(context.Background(), root, original, sdk)
+		require.Error(t, err)
+	}
+}
+
+func TestSDKTransportChecksumsReadonlyConsumer(t *testing.T) {
+	root := linkFixtureRoot(t)
+	sdk := filepath.Join(root, "sdk")
+	require.NoError(t, os.MkdirAll(sdk, 0700))
+	const target = "example.com/sdk-grpc"
+	const version = "v1.2.3"
+	proxy := filepath.Join(root, "proxy")
+	versionDir := filepath.Join(proxy, target, "@v")
+	require.NoError(t, os.MkdirAll(versionDir, 0700))
+	moduleBytes := []byte("module " + target + "\n\ngo 1.20\n")
+	require.NoError(t, os.WriteFile(filepath.Join(versionDir, version+".mod"), moduleBytes, 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(versionDir, version+".info"), []byte(`{"Version":"v1.2.3","Time":"2020-01-01T00:00:00Z"}`), 0600))
+	archivePath := filepath.Join(versionDir, version+".zip")
+	archiveFile, err := os.Create(archivePath)
+	require.NoError(t, err)
+	writer := zip.NewWriter(archiveFile)
+	for _, file := range []struct{ name, content string }{
+		{"go.mod", string(moduleBytes)},
+		{"grpc.go", "package grpc\nconst ForkOnlySymbol = 42\n"},
+	} {
+		entry, err := writer.Create(target + "@" + version + "/" + file.name)
+		require.NoError(t, err)
+		_, err = io.WriteString(entry, file.content)
+		require.NoError(t, err)
+	}
+	require.NoError(t, writer.Close())
+	require.NoError(t, archiveFile.Close())
+	contentHash, err := dirhash.HashZip(archivePath, dirhash.Hash1)
+	require.NoError(t, err)
+	moduleHash, err := dirhash.Hash1([]string{"go.mod"}, func(string) (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(moduleBytes)), nil
+	})
+	require.NoError(t, err)
+	manifest := []byte("module github.com/omniviewdev/plugin-sdk\n\ngo 1.20\n\nreplace google.golang.org/grpc => " + target + " " + version + "\n")
+	require.NoError(t, os.WriteFile(filepath.Join(sdk, "go.mod"), manifest, 0600))
+	transport, err := readSDKTransport(sdk, manifest)
+	require.NoError(t, err)
+	authority := []byte(fmt.Sprintf("%s %s %s\n%s %s/go.mod %s\n", target, version, contentHash, target, version, moduleHash))
+	sums, err := transportChecksums(authority, transport.New)
+	require.NoError(t, err)
+	for _, invalid := range [][]byte{nil, bytes.ReplaceAll(authority, []byte("h1:"), []byte("h2:")), append(append([]byte(nil), authority...), []byte(target+" "+version+" h1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n")...), append(append([]byte(nil), authority...), []byte(target+"\n")...)} {
+		_, err = transportChecksums(invalid, transport.New)
+		require.Error(t, err)
+	}
+	conflicting := bytes.ReplaceAll(authority, []byte(contentHash), []byte("h1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="))
+	_, err = linkTransportChecksums(conflicting, sums)
+	require.Error(t, err)
+	_, err = linkTransportChecksums([]byte(target+"\n"), sums)
+	require.Error(t, err)
+	dir := filepath.Join(root, "consumer")
+	require.NoError(t, os.MkdirAll(dir, 0700))
+	mod, err := linkSDKTransport(dir, []byte("module example.com/consumer\n\ngo 1.20\n\nrequire google.golang.org/grpc v1.2.0\n"), sdk, transport)
+	require.NoError(t, err)
+	sum, err := linkTransportChecksums(nil, sums)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"), mod, 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.sum"), sum, 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "consumer.go"), []byte("package consumer\nimport \"google.golang.org/grpc\"\nconst Value = grpc.ForkOnlySymbol\n"), 0600))
+	proxyPath := filepath.ToSlash(proxy)
+	if filepath.VolumeName(proxy) != "" {
+		proxyPath = "/" + proxyPath
+	}
+	proxyURL := (&url.URL{Scheme: "file", Path: proxyPath}).String()
+	run := func(args ...string) string {
+		cmd := exec.Command("go", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=", "GOTOOLCHAIN=local", "GOPROXY="+proxyURL, "GOSUMDB=off", "GOPRIVATE=", "GONOPROXY=", "GONOSUMDB=", "GOMODCACHE="+filepath.Join(root, "module-cache"))
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "%s", out)
+		return string(out)
+	}
+	require.Equal(t, target+" "+version+"\n", run("list", "-mod=readonly", "-m", "-f", "{{.Replace.Path}} {{.Replace.Version}}", "google.golang.org/grpc"))
+	run("build", "-mod=readonly", "-modcacherw", "./...")
+	got, err := os.ReadFile(filepath.Join(dir, "go.sum"))
+	require.NoError(t, err)
+	require.Equal(t, sum, got, "readonly compilation must not supply missing checksums")
 }

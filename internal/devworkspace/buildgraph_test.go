@@ -48,6 +48,7 @@ func graphFixture(t *testing.T) *BuildGraph {
 			t.Fatal(err)
 		}
 	}
+	writeGraphFixture(t, filepath.Join(root, "sdk/go.mod"), "module github.com/omniviewdev/plugin-sdk\n\ngo 1.26.0\n")
 	for _, rel := range []string{"host", "ui"} {
 		writeGraphFixture(t, filepath.Join(root, rel, "pnpm-workspace.yaml"), "packages:\n  - packages/*\n")
 	}

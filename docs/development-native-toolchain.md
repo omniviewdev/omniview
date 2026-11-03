@@ -7,11 +7,15 @@ Use Task entry points, or prepare an effective host module when selecting a loca
 ```sh
 GO_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go \
   --root "$PWD" --sdk-source "$SDK_SOURCE")"
-GOWORK=off GOFLAGS= go build -modfile="$GO_MODFILE" .
-GOWORK=off GOFLAGS= go test -modfile="$GO_MODFILE" ./... -count=1
+GOWORK=off GOFLAGS= go build -mod=readonly -modfile="$GO_MODFILE" .
+GOWORK=off GOFLAGS= go test -mod=readonly -modfile="$GO_MODFILE" ./... -count=1
 ```
 
 `SDK_SOURCE` must name the explicitly selected companion SDK checkout. Existing local SDK replacements are preserved; conflicting selections refuse. Pass `--host-modfile "$GO_MODFILE"` when an existing effective graph is the input. Never export host `GOFLAGS` to plugin builds: each plugin uses its own module and `GOWORK=off`.
+
+When the selected source SDK declares a versioned remote `google.golang.org/grpc` replacement, hostmod copies that declaration into the private effective module. Go does not inherit dependency replacement directives. Local or unversioned transport targets and conflicting host gRPC replacements (including dormant version-specific overrides) refuse without publishing output. Other SDK replacement directives are not inherited. Stock builds and older SDKs without a transport replacement keep their existing dependency selection; source module files and the root-selected Wails identity and checksums remain unchanged.
+
+For each declared remote transport target, the selected SDK's `go.sum` must provide both the module-content and `/go.mod` `h1` checksums. Preparation validates these entries and merges only those checksums into the private host sum before checking the effective graph; readonly builds do not need to repair sums. Missing, malformed, contradictory SDK entries or conflicting host entries refuse before publication, preserving source inputs and prior private output. Unrelated SDK sums are not inherited. Managed freshness includes both SDK `go.mod` and `go.sum`; neither SDK file is an owned or restorable output.
 
 Standalone effective mod/sum files live under ignored `.local/hostmod`; managed workspaces use their ledger-owned `toolsrc/hostmod` capability. Preparation does not copy framework sources. It refuses Wails replacements, unsafe output paths, and foreign output ownership. CLI caches separately hash immutable module templates and executables before reuse. `task host:prepare SDK_SOURCE="$SDK_SOURCE"` prints the effective modfile.
 

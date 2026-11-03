@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -19,6 +20,8 @@ import (
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
 	"github.com/omniviewdev/omniview/internal/devsession"
+	"golang.org/x/mod/modfile"
+	"golang.org/x/mod/module"
 )
 
 const linkedSDK = "github.com/omniviewdev/plugin-sdk"
@@ -93,11 +96,15 @@ type linkConsumer struct {
 }
 
 type linkPlan struct {
-	Roots       []linkRoot       `json:"roots"`
-	Consumers   []linkConsumer   `json:"consumers"`
-	GoRoots     []string         `json:"goRoots"`
-	SDK         string           `json:"sdk,omitempty"`
-	Composition *devcompose.Plan `json:"composition,omitempty"`
+	Roots            []linkRoot       `json:"roots"`
+	Consumers        []linkConsumer   `json:"consumers"`
+	GoRoots          []string         `json:"goRoots"`
+	SDK              string           `json:"sdk,omitempty"`
+	SDKModuleHash    string           `json:"sdkModuleHash,omitempty"`
+	SDKSumHash       string           `json:"sdkSumHash,omitempty"`
+	SDKTransportSums []byte           `json:"sdkTransportSums,omitempty"`
+	SDKTransport     *sdkTransport    `json:"sdkTransport,omitempty"`
+	Composition      *devcompose.Plan `json:"composition,omitempty"`
 }
 
 type linkFile struct {
@@ -273,6 +280,32 @@ func makeLinkPlan(w Workspace) (linkPlan, error) {
 	}
 	if w.Manifest.Links.SDKRepositoryID != nil {
 		p.SDK = repos[*w.Manifest.Links.SDKRepositoryID]
+		if p.SDK == "" {
+			return p, devcontract.Fail(2, "missing_sdk", "selected SDK repository is absent")
+		}
+		input, err := snapshotLinkFile(w.Root, filepath.Join(p.SDK, "go.mod"))
+		if err != nil {
+			return p, err
+		}
+		if !input.OriginalExists {
+			return p, devcontract.Fail(4, "link_conflict", "selected SDK has no go.mod")
+		}
+		p.SDKModuleHash = input.OriginalHash
+		p.SDKTransport, err = readSDKTransport(p.SDK, input.Original)
+		if err != nil {
+			return p, err
+		}
+		if p.SDKTransport != nil {
+			sums, err := snapshotLinkFile(w.Root, filepath.Join(p.SDK, "go.sum"))
+			if err != nil {
+				return p, err
+			}
+			p.SDKSumHash = sums.OriginalHash
+			p.SDKTransportSums, err = transportChecksums(sums.Original, p.SDKTransport.New)
+			if err != nil {
+				return p, err
+			}
+		}
 	}
 	composition, err := devcompose.New(w.ResolvedWorkspace, p.Roots, targets)
 	if err != nil {
@@ -408,54 +441,177 @@ func linkCommand(ctx context.Context, dir, program string, args ...string) ([]by
 	return out.Bytes(), nil
 }
 
-func linkSDK(ctx context.Context, dir string, original []byte, sdk string) ([]byte, error) {
-	f, err := os.CreateTemp(dir, ".omniview-go-*.mod")
+type sdkTransport struct {
+	Old module.Version `json:"old"`
+	New module.Version `json:"new"`
+}
+
+func readSDKTransport(sdk string, raw []byte) (*sdkTransport, error) {
+	selected, err := modfile.Parse(filepath.Join(sdk, "go.mod"), raw, nil)
 	if err != nil {
 		return nil, err
 	}
-	name := f.Name()
-	defer os.Remove(name)
-	if _, err = f.Write(original); err != nil {
-		_ = f.Close()
-		return nil, err
-	}
-	if err = f.Close(); err != nil {
-		return nil, err
-	}
-	raw, err := linkCommand(ctx, dir, "go", "mod", "edit", "-json", name)
-	if err != nil {
-		return nil, err
-	}
-	var info struct {
-		Replace []struct {
-			Old, New struct{ Path, Version string }
-		}
-	}
-	if err = json.Unmarshal(raw, &info); err != nil {
-		return nil, err
-	}
-	matching := false
-	for _, r := range info.Replace {
-		if r.Old.Path != linkedSDK {
+	var transport *sdkTransport
+	for _, r := range selected.Replace {
+		if r.Old.Path != "google.golang.org/grpc" {
 			continue
 		}
-		target := r.New.Path
-		if !filepath.IsAbs(target) {
-			target = filepath.Join(dir, target)
+		if transport != nil || r.New.Version == "" || module.Check(r.New.Path, r.New.Version) != nil {
+			return nil, devcontract.Fail(4, "link_conflict", "selected SDK transport replacement must be a single versioned remote module")
 		}
-		canonical, e := devcontract.CanonicalPath(target)
-		if e != nil || r.New.Version != "" || canonical != sdk || r.Old.Version != "" {
-			return nil, devcontract.Fail(4, "link_conflict", "existing SDK replacement conflicts with selected feature SDK")
-		}
-		matching = true
+		transport = &sdkTransport{Old: r.Old, New: r.New}
 	}
-	if matching {
-		return original, nil
-	}
-	if _, err = linkCommand(ctx, dir, "go", "mod", "edit", "-replace="+linkedSDK+"="+sdk, name); err != nil {
+	return transport, nil
+}
+
+func linkSDKTransport(dir string, original []byte, sdk string, transport *sdkTransport) ([]byte, error) {
+	f, err := modfile.Parse(filepath.Join(dir, "go.mod"), original, nil)
+	if err != nil {
 		return nil, err
 	}
-	return os.ReadFile(name)
+	matching, matchingTransport := false, false
+	for _, r := range f.Replace {
+		switch r.Old.Path {
+		case linkedSDK:
+			target := r.New.Path
+			if !filepath.IsAbs(target) {
+				target = filepath.Join(dir, target)
+			}
+			canonical, e := devcontract.CanonicalPath(target)
+			if e != nil || r.New.Version != "" || canonical != sdk || r.Old.Version != "" {
+				return nil, devcontract.Fail(4, "link_conflict", "existing SDK replacement conflicts with selected feature SDK")
+			}
+			matching = true
+		case "google.golang.org/grpc":
+			if transport == nil {
+				continue
+			}
+			if r.New != transport.New || (transport.Old.Version != "" && r.Old.Version != transport.Old.Version) {
+				return nil, devcontract.Fail(4, "link_conflict", "existing gRPC replacement conflicts with selected SDK transport")
+			}
+			if r.Old == transport.Old {
+				matchingTransport = true
+			}
+		}
+	}
+	if matching && (transport == nil || matchingTransport) {
+		return original, nil
+	}
+	if !matching {
+		if err = f.AddReplace(linkedSDK, "", sdk, ""); err != nil {
+			return nil, err
+		}
+	}
+	if transport != nil && !matchingTransport {
+		if err = f.AddReplace(transport.Old.Path, transport.Old.Version, transport.New.Path, transport.New.Version); err != nil {
+			return nil, err
+		}
+	}
+	return f.Format()
+}
+
+// transportChecksums takes authority only for the selected remote replacement.
+func transportChecksums(raw []byte, target module.Version) ([]byte, error) {
+	versions := []string{target.Version, target.Version + "/go.mod"}
+	found := make(map[string]string, 2)
+	for _, line := range strings.Split(string(raw), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 || fields[0] != target.Path {
+			continue
+		}
+		if len(fields) == 1 {
+			return nil, devcontract.Fail(4, "link_conflict", "selected SDK transport checksum is malformed")
+		}
+		if fields[1] != versions[0] && fields[1] != versions[1] {
+			continue
+		}
+		if len(fields) != 3 || !strings.HasPrefix(fields[2], "h1:") {
+			return nil, devcontract.Fail(4, "link_conflict", "selected SDK transport checksum is malformed")
+		}
+		digest, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(fields[2], "h1:"))
+		if err != nil || len(digest) != sha256.Size || base64.StdEncoding.EncodeToString(digest) != strings.TrimPrefix(fields[2], "h1:") {
+			return nil, devcontract.Fail(4, "link_conflict", "selected SDK transport checksum is malformed")
+		}
+		if previous, ok := found[fields[1]]; ok && previous != fields[2] {
+			return nil, devcontract.Fail(4, "link_conflict", "selected SDK transport checksums contradict each other")
+		}
+		found[fields[1]] = fields[2]
+	}
+	var result strings.Builder
+	for _, version := range versions {
+		if found[version] == "" {
+			return nil, devcontract.Fail(4, "link_conflict", "selected SDK transport requires content and go.mod checksums")
+		}
+		fmt.Fprintf(&result, "%s %s %s\n", target.Path, version, found[version])
+	}
+	return []byte(result.String()), nil
+}
+
+func linkTransportChecksums(original, authority []byte) ([]byte, error) {
+	if len(authority) == 0 {
+		return original, nil
+	}
+	var result []byte
+	for _, wanted := range strings.Split(strings.TrimSpace(string(authority)), "\n") {
+		key := strings.Fields(wanted)
+		present := false
+		for _, line := range strings.Split(string(original), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) == 0 || fields[0] != key[0] {
+				continue
+			}
+			if len(fields) == 1 {
+				return nil, devcontract.Fail(4, "link_conflict", "consumer checksum conflicts with selected SDK transport")
+			}
+			if fields[1] != key[1] {
+				continue
+			}
+			if len(fields) != 3 || fields[2] != key[2] {
+				return nil, devcontract.Fail(4, "link_conflict", "consumer checksum conflicts with selected SDK transport")
+			}
+			present = true
+		}
+		if !present {
+			if result == nil {
+				result = make([]byte, len(original), len(original)+len(authority)+1)
+				copy(result, original)
+			}
+			if len(result) > 0 && result[len(result)-1] != '\n' {
+				result = append(result, '\n')
+			}
+			result = append(result, wanted...)
+			result = append(result, '\n')
+		}
+	}
+	if result == nil {
+		return original, nil
+	}
+	return result, nil
+}
+
+// SDK manifests are inputs, not journal-owned outputs. Restore must remain
+// possible after they change so canonical refresh can regenerate the overlays.
+func checkSDKInput(p linkPlan) error {
+	if p.SDK == "" {
+		return nil
+	}
+	raw, err := os.ReadFile(filepath.Join(p.SDK, "go.mod"))
+	if err != nil {
+		return err
+	}
+	if p.SDKModuleHash == "" || linkHash(raw, true) != p.SDKModuleHash {
+		return devcontract.Fail(4, "link_conflict", "selected SDK go.mod changed; run workspace refresh to regenerate dependency overlays")
+	}
+	if p.SDKTransport != nil {
+		raw, err = os.ReadFile(filepath.Join(p.SDK, "go.sum"))
+		if err != nil {
+			return err
+		}
+		if p.SDKSumHash == "" || linkHash(raw, true) != p.SDKSumHash {
+			return devcontract.Fail(4, "link_conflict", "selected SDK go.sum changed; run workspace refresh to regenerate dependency overlays")
+		}
+	}
+	return nil
 }
 
 func linkHash(data []byte, exists bool) string {
@@ -674,6 +830,9 @@ func checkLinkFiles(root string, j *linkJournal) error {
 }
 
 func applyLinkFiles(j *linkJournal) error {
+	if err := checkSDKInput(j.Plan); err != nil {
+		return err
+	}
 	unchanged := func(e linkFile) error {
 		current, err := snapshotLinkFile(j.Root, filepath.Join(j.Root, e.Path))
 		if err != nil {
@@ -687,7 +846,7 @@ func applyLinkFiles(j *linkJournal) error {
 	// SDK planning invokes external Go commands. Recheck every original before
 	// saving intent or writing any prepared bytes, including files not modified.
 	if j.Plan.Composition != nil {
-		if err := devcompose.CheckInputs(*j.Plan.Composition); err != nil {
+		if err := errors.Join(checkSDKInput(j.Plan), devcompose.CheckInputs(*j.Plan.Composition)); err != nil {
 			return err
 		}
 	}
@@ -705,6 +864,9 @@ func applyLinkFiles(j *linkJournal) error {
 		}
 		// Also catch saves between the all-file preflight and this file's write.
 		if err := unchanged(e); err != nil {
+			return err
+		}
+		if err := checkSDKInput(j.Plan); err != nil {
 			return err
 		}
 		if err := writeLinkFile(j.Root, e, e.Applied, e.AppliedHash != "absent"); err != nil {
@@ -775,7 +937,7 @@ func installComposition(ctx context.Context, w devcontract.ResolvedWorkspace, j 
 	if err := devcompose.Validate(w, p); err != nil {
 		return err
 	}
-	if err := devcompose.CheckInputs(p); err != nil {
+	if err := errors.Join(checkSDKInput(j.Plan), devcompose.CheckInputs(p)); err != nil {
 		return err
 	}
 	if err := checkLinkFiles(j.Root, j); err != nil {
@@ -807,7 +969,7 @@ func installComposition(ctx context.Context, w devcontract.ResolvedWorkspace, j 
 	}
 	runErr = errors.Join(runErr, writer.Finish(context.WithoutCancel(ctx)))
 	// Snapshot all non-output inputs after the *last* actual child exits.
-	runErr = errors.Join(runErr, devcompose.CheckInputs(p))
+	runErr = errors.Join(runErr, checkSDKInput(j.Plan), devcompose.CheckInputs(p))
 	for i, e := range j.Files {
 		if i == lock {
 			continue
@@ -859,13 +1021,13 @@ func (m *Manager) Link(ctx context.Context, name string, opts LinkOptions) (Link
 			return LinkReport{}, err
 		}
 		if j.Phase == "linked" {
-			if err = devcompose.CheckInputs(*j.Plan.Composition); err != nil {
+			if err = errors.Join(checkSDKInput(j.Plan), devcompose.CheckInputs(*j.Plan.Composition)); err != nil {
 				return LinkReport{}, err
 			}
 			if _, err = linkCommand(ctx, w.Root, "pnpm", "-r", "peers", "check", "--json", "--lockfile-only"); err != nil {
 				return LinkReport{}, err
 			}
-			if err = errors.Join(devcompose.CheckInputs(*j.Plan.Composition), checkLinkFiles(w.Root, j)); err != nil {
+			if err = errors.Join(checkSDKInput(j.Plan), devcompose.CheckInputs(*j.Plan.Composition), checkLinkFiles(w.Root, j)); err != nil {
 				return LinkReport{}, err
 			}
 			return LinkReport{WorkspaceID: j.WorkspaceID, Protocol: j.Evidence.Protocol, Phase: j.Phase, SeedConvergence: j.Plan.Composition.Convergence}, nil
@@ -911,10 +1073,14 @@ func (m *Manager) Link(ctx context.Context, name string, opts LinkOptions) (Link
 	}
 	if plan.SDK != "" {
 		for _, root := range plan.GoRoots {
-			if err = add(filepath.Join(root, "go.mod"), func(raw []byte) ([]byte, error) { return linkSDK(ctx, root, raw, plan.SDK) }); err != nil {
+			if err = add(filepath.Join(root, "go.mod"), func(raw []byte) ([]byte, error) {
+				return linkSDKTransport(root, raw, plan.SDK, plan.SDKTransport)
+			}); err != nil {
 				return LinkReport{}, err
 			}
-			if err = add(filepath.Join(root, "go.sum"), nil); err != nil {
+			if err = add(filepath.Join(root, "go.sum"), func(raw []byte) ([]byte, error) {
+				return linkTransportChecksums(raw, plan.SDKTransportSums)
+			}); err != nil {
 				return LinkReport{}, err
 			}
 		}
@@ -1045,7 +1211,7 @@ func (m *Manager) resetModules(ctx context.Context, name string, run func(contex
 	if err = checkLinkFiles(w.Root, j); err != nil {
 		return ResetModulesReport{}, err
 	}
-	if err = devcompose.CheckInputs(*j.Plan.Composition); err != nil {
+	if err = errors.Join(checkSDKInput(j.Plan), devcompose.CheckInputs(*j.Plan.Composition)); err != nil {
 		return ResetModulesReport{}, err
 	}
 	if report.Removed, err = devoutputs.ResetDependencyTrees(ctx, w.ResolvedWorkspace, roots, false); err != nil {
@@ -1092,7 +1258,7 @@ func (m *Manager) InspectLinks(ctx context.Context, name string) (LinkReport, er
 	if j.Phase != "linked" {
 		return report, nil
 	}
-	if err = devcompose.CheckInputs(*j.Plan.Composition); err != nil {
+	if err = errors.Join(checkSDKInput(j.Plan), devcompose.CheckInputs(*j.Plan.Composition)); err != nil {
 		return report, err
 	}
 	return inspectLinkPlan(ctx, j), nil
@@ -1124,6 +1290,9 @@ func (m *Manager) LinkEvidence(ctx context.Context, name string) (LinkProtocolEv
 		return LinkProtocolEvidence{}, devcontract.Fail(4, "link_interrupted", "dependency link transaction is incomplete")
 	}
 	if err = j.Evidence.validateRoots(j.Plan.Roots); err != nil {
+		return LinkProtocolEvidence{}, err
+	}
+	if err = checkSDKInput(j.Plan); err != nil {
 		return LinkProtocolEvidence{}, err
 	}
 	return j.Evidence, nil
