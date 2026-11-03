@@ -445,6 +445,13 @@ func (m *Manager) List(ctx context.Context) ([]Workspace, error) {
 		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
+		_, err := os.Lstat(filepath.Join(base, e.Name(), "workspace.json"))
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
 		w, err := m.inspectRoot(filepath.Join(base, e.Name()))
 		if err != nil {
 			return nil, err

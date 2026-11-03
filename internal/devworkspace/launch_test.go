@@ -96,6 +96,22 @@ func TestSupervisorStatusWritesAtomicPrivateJSON(t *testing.T) {
 	}
 }
 
+func TestSupervisorPersistReportsUnderlyingError(t *testing.T) {
+	root := t.TempDir()
+	s := &workspaceSupervisor{
+		workspace: Workspace{ResolvedWorkspace: devcontract.ResolvedWorkspace{Root: root}},
+		output:    io.Discard,
+	}
+	s.persist()
+	status := s.snapshot()
+	if status.Phase != "error" || status.LastError == nil || status.LastError.Code != "generated_conflict" {
+		t.Fatalf("unexpected status: %+v", status)
+	}
+	if !strings.Contains(status.LastError.Message, "workspace manifest is missing") {
+		t.Fatalf("underlying error missing: %s", status.LastError.Message)
+	}
+}
+
 func TestReadinessRejectsForeignIdentityAndStartingDescriptor(t *testing.T) {
 	target := devcontract.InstanceDescriptor{WorkspaceID: "workspace", InstanceID: "workspace", Generation: "generation", StateRoot: "/profile/state", Readiness: "host-ready"}
 	for _, change := range []func(*devcontract.InstanceDescriptor){func(d *devcontract.InstanceDescriptor) { d.Generation = "other" }, func(d *devcontract.InstanceDescriptor) { d.WorkspaceID = "other" }, func(d *devcontract.InstanceDescriptor) { d.StateRoot = "/other" }, func(d *devcontract.InstanceDescriptor) { d.Readiness = "starting" }} {
