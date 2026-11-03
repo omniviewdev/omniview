@@ -146,6 +146,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
     if (event.type === StreamEventType.SESSION_READY) {
       setSessionReady(true);
     }
+
     setEvents((prev) => [...prev.slice(-99), event]);
   }, []);
 
