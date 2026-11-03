@@ -92,34 +92,34 @@ func podAccountingObservation(i int) resourcev2.SourceObservation {
 	o := accountingObservation()
 	o.Record.Reference.Address.ID = fmt.Sprintf("pod-%d", i)
 	o.Record.Body = resourcev2.Value{Kind: "map", Map: map[string]resourcev2.Value{
-			"apiVersion": {Kind: "string", String: "v1"},
-			"kind":       {Kind: "string", String: "Pod"},
-			"metadata": {Kind: "map", Map: map[string]resourcev2.Value{
-				"name":      {Kind: "string", String: fmt.Sprintf("pod-%d", i)},
-				"namespace": {Kind: "string", String: "default"},
-				"labels": {Kind: "map", Map: map[string]resourcev2.Value{
-					"app": {Kind: "string", String: "example"},
-				}},
-				"managedFields": {Kind: "list", List: []resourcev2.Value{{Kind: "map", Map: map[string]resourcev2.Value{
-					"manager": {Kind: "string", String: "controller"},
-					"fieldsV1": {Kind: "map", Map: map[string]resourcev2.Value{
-						"f:metadata": {Kind: "map", Map: map[string]resourcev2.Value{
-							"f:labels": {Kind: "map", Map: map[string]resourcev2.Value{"f:app": {Kind: "map"}}},
-						}},
-					}},
-				}}}},
+		"apiVersion": {Kind: "string", String: "v1"},
+		"kind":       {Kind: "string", String: "Pod"},
+		"metadata": {Kind: "map", Map: map[string]resourcev2.Value{
+			"name":      {Kind: "string", String: fmt.Sprintf("pod-%d", i)},
+			"namespace": {Kind: "string", String: "default"},
+			"labels": {Kind: "map", Map: map[string]resourcev2.Value{
+				"app": {Kind: "string", String: "example"},
 			}},
-			"spec": {Kind: "map", Map: map[string]resourcev2.Value{
-				"containers": {Kind: "list", List: []resourcev2.Value{
-					{Kind: "map", Map: map[string]resourcev2.Value{
-						"name":  {Kind: "string", String: "app"},
-						"image": {Kind: "string", String: "example/app:latest"},
+			"managedFields": {Kind: "list", List: []resourcev2.Value{{Kind: "map", Map: map[string]resourcev2.Value{
+				"manager": {Kind: "string", String: "controller"},
+				"fieldsV1": {Kind: "map", Map: map[string]resourcev2.Value{
+					"f:metadata": {Kind: "map", Map: map[string]resourcev2.Value{
+						"f:labels": {Kind: "map", Map: map[string]resourcev2.Value{"f:app": {Kind: "map"}}},
 					}},
 				}},
+			}}}},
+		}},
+		"spec": {Kind: "map", Map: map[string]resourcev2.Value{
+			"containers": {Kind: "list", List: []resourcev2.Value{
+				{Kind: "map", Map: map[string]resourcev2.Value{
+					"name":  {Kind: "string", String: "app"},
+					"image": {Kind: "string", String: "example/app:latest"},
+				}},
 			}},
-			"status": {Kind: "map", Map: map[string]resourcev2.Value{
-				"phase": {Kind: "string", String: "Running"},
-			}},
+		}},
+		"status": {Kind: "map", Map: map[string]resourcev2.Value{
+			"phase": {Kind: "string", String: "Running"},
+		}},
 	}}
 	return o
 }
