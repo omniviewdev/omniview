@@ -221,7 +221,9 @@ func sourceMemberTransientEstimate(o resourcev2.SourceObservation, limit int) (i
 		size += n * multiplier
 		return true
 	}
-	text := func(s string) bool { return add(len(s), 32) }
+	// Covers sixfold JSON escaping plus simultaneous wire, key and validation
+	// copies; ordinary Go string headers share their immutable backing bytes.
+	text := func(s string) bool { return add(len(s), 12) }
 	optional := func(s *string) bool { return s == nil || text(*s) }
 	var value func(resourcev2.Value, int) bool
 	value = func(v resourcev2.Value, depth int) bool {
@@ -235,9 +237,10 @@ func sourceMemberTransientEstimate(o resourcev2.SourceObservation, limit int) (i
 			!text(v.Kind) || !text(v.String) || !text(v.Int) || !text(v.Uint) || !text(v.Timestamp) {
 			return false
 		}
-		// Sparse maps can each hold an eight-slot bucket in several live
-		// representations; charge a full multi-tree bucket even for one key.
-		if len(v.Map) != 0 && !add(1, 5120) {
+		// Charge two simultaneous eight-slot Value-map buckets plus map
+		// headers; entry/protobuf and native JSON storage is charged per node
+		// and per map entry below.
+		if len(v.Map) != 0 && !add(1, 3072) {
 			return false
 		}
 		for _, child := range v.List {

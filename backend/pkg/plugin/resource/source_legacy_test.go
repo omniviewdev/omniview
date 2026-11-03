@@ -469,3 +469,41 @@ func TestLegacySourceFrameReservationHandoff(t *testing.T) {
 	}
 	ledger.release(maxSourceTransientBytes)
 }
+
+func TestLegacyProducerAndReceiverHaveIndependentBoundedBudgets(t *testing.T) {
+	session := &sourceSession{staging: make(map[string]sourceMember)}
+	page := legacyTestPage()
+	provider := legacyTestProvider{enumerate: func(context.Context, resourcev2.EnumerateRequest) (resourcev2.SourcePage, error) {
+		return page, nil
+	}}
+	ctx := context.WithValue(context.Background(), legacySourceTransientKey{}, &session.legacyTransientLedger)
+	stream, err := newLegacySourceOpener(provider, canonicalTestCatalog("p", "t").Types[0]).OpenSourceStream(ctx, legacyTestRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := stream.(*legacySourceStream)
+	defer s.Close()
+	legacyTestRecv(t, s)
+	s.ackFrame()
+	frame := legacyTestRecv(t, s)
+	if frame.Snapshot == nil {
+		t.Fatal("expected snapshot")
+	}
+	session.legacyTransientLedger.mu.Lock()
+	held := session.legacyTransientLedger.used
+	session.legacyTransientLedger.mu.Unlock()
+	if held <= 0 || !session.legacyTransientLedger.reserve(maxSourceTransientBytes-held) {
+		t.Fatal("could not fill producer budget")
+	}
+	frameBytes, err := sourceFrameTransientEstimate(frame, maxSourceTransientBytes)
+	if err != nil || !session.transientLedger.reserve(frameBytes) {
+		t.Fatalf("producer pressure exhausted receiver budget: %v", err)
+	}
+	s.ackFrame()
+	_, err = session.applyLocked(frame, sourceFrameContext{frameReserved: frameBytes})
+	session.transientLedger.release(frameBytes)
+	session.legacyTransientLedger.release(maxSourceTransientBytes-held)
+	if err != nil || len(session.staging) != 1 {
+		t.Fatalf("receiver could not stage concurrently: %v", err)
+	}
+}

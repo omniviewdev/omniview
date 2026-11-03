@@ -33,6 +33,10 @@ type sourceSession struct {
 	memberBytes          int
 	memberLedger         sourceMemberLedger
 	transientLedger      sourceTransientLedger
+	// Legacy production and source receipt have distinct bounded scratch
+	// pools: each is capped at 256 MiB (512 MiB combined), independently of
+	// the retained/staging and view budgets and SDK in-flight wire limits.
+	legacyTransientLedger sourceTransientLedger
 	viewTransientLedger  sourceTransientLedger
 	staging              map[string]sourceMember
 	stagingBytes         int
@@ -163,7 +167,7 @@ func (s *sourceSession) receive(ctx context.Context, request resourcev2.SourceOp
 		return
 	}
 	ctx = resourcev2.WithCatalogRevision(operationCtx, binding.CatalogRevision)
-	ctx = context.WithValue(ctx, legacySourceTransientKey{}, &s.transientLedger)
+	ctx = context.WithValue(ctx, legacySourceTransientKey{}, &s.legacyTransientLedger)
 	stream, err := opener.OpenSourceStream(ctx, request)
 	if err != nil {
 		if resourceplugin.IsFatalSourceTransportError(err) {

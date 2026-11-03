@@ -182,12 +182,15 @@ func TestSourcePackedPodFrameAdmission(t *testing.T) {
 	observations := make([]resourcev2.SourceObservation, 190)
 	for i := range observations {
 		observations[i] = podAccountingObservation(i)
-		// Managed-field ownership trees in real Pods can contain hundreds of
-		// small entries. These make node count, rather than payload bytes,
-		// dominate the frame's transient reservation.
-		fields := make(map[string]resourcev2.Value, 320)
-		for field := range 320 {
-			fields[fmt.Sprintf("f:field-%03d", field)] = resourcev2.Value{Kind: "map"}
+		// Dense nonempty ownership maps exercise map-bucket and entry costs,
+		// not just the cheaper empty-map leaves.
+		fields := make(map[string]resourcev2.Value, 90)
+		for field := range 90 {
+			fields[fmt.Sprintf("f:field-%03d", field)] = resourcev2.Value{Kind: "map", Map: map[string]resourcev2.Value{
+				"f:name": {Kind: "string", String: "anonymous"},
+				"f:enabled": {Kind: "bool", Bool: true},
+				"f:version": {Kind: "string", String: "revision"},
+			}}
 		}
 		metadata := observations[i].Record.Body.Map["metadata"]
 		metadata.Map["managedFields"].List[0].Map["fieldsV1"].Map["f:spec"] = resourcev2.Value{Kind: "map", Map: fields}
