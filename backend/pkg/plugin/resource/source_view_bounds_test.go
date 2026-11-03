@@ -14,7 +14,12 @@ import (
 func boundedSourceViewFixture(t *testing.T, schemaBytes, count int) *sourceView {
 	t.Helper()
 	ctrl, _, _, target := sourceTestFixture(t)
-	representation := resourcev2.Representation{Schema: resourcev2.SchemaBinding{Document: json.RawMessage(`"` + strings.Repeat("x", schemaBytes) + `"`)}}
+	representation := canonicalTestRepresentation()
+	revision := "schema-revision"
+	representation.Schema = resourcev2.SchemaBinding{
+		State: "available", Revision: &revision, Dialect: resourcev2.DialectJSONSchema202012,
+		Document: json.RawMessage(`"` + strings.Repeat("x", schemaBytes) + `"`),
+	}
 	s := &sourceSession{
 		coordinator: ctrl.sources,
 		pluginGeneration: &pluginState{generationID: "generation"},
