@@ -507,3 +507,16 @@ The sanitized wave-1 receipt is
 Raw profiles, probe sources, and the private corpus remain under the ignored
 workspace `.local/wave1-evidence/`. Sampled stack percentages overlap and must
 not be added. Results describe this cohort and machine, not every cluster.
+
+After the matched measurements, current host main
+`ad04757912e2d2e7d406c6045d321ee0ef41bd1e` was merged without reverting its
+concurrent changes. The six optimized implementation files did not overlap
+those changes. The integrated tree passed its canonical backend build, affected
+package tests and race tests, then a fresh real-runtime smoke: complete Pod
+snapshot, all 55 sources healthy, eight policy toggles, eight finite acquisitions,
+and the same 483-row inventory digest. That smoke is not another matched pair.
+
+The dependency deliberately pins the profiled SDK commit above. SDK main
+concurrently adopted the unrelated C04 source-session wire and grpc-go fork;
+silently selecting that newer wire would require a separate host/plugin cutover
+and would invalidate this performance cohort.

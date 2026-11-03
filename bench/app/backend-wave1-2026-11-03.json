@@ -3068,5 +3068,21 @@
     "sdkAdmission": "https://github.com/omniviewdev/plugin-sdk/pull/46",
     "sdkSizedNative": "https://github.com/omniviewdev/plugin-sdk/pull/48",
     "wailsUpstream": "https://github.com/wailsapp/wails/pull/6545"
+  },
+  "integrationSmoke": {
+    "hostMainIntegrated": "ad04757912e2d2e7d406c6045d321ee0ef41bd1e",
+    "integrationCommit": "6d2ff793",
+    "sdk": "1712cd3b66e14b1807cf17fbb59f48512875c822",
+    "snapshotRows": 315,
+    "followingSources": 55,
+    "sourceErrors": 0,
+    "policyToggles": 8,
+    "finiteAcquisitions": 8,
+    "recordsPerAcquisition": 315,
+    "inventoryCount": 483,
+    "inventoryHash": "ad03b08da05b1b65ff88ac3debb6aaf0b58c402fb0df569364fbee89e4eca9df",
+    "viewErrors": 0,
+    "viewResets": 0,
+    "matchedPerformancePair": false
   }
 }
