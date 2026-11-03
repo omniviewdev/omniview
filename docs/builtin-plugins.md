@@ -156,6 +156,7 @@ Reserved-ID archive recovery blocks both the built-in ID and its validated stagi
 - Resolve reserved recovery explicitly with the app stopped: inspect the reported marker and owned staged files, then relocate them together through an approved migration. Activation stays blocked until the conflicting external directory and recovery marker are resolved; startup never deletes them automatically.
 - The later `main` source-coordinator cutover was merged without restoring its removed watch/subscription tests. New source-readiness and C02 constructor callers use the immutable backend configuration. All seven affected manager, type, resource, and utility packages passed `-race` against the new SDK pin.
 - The latest rebase includes published SDK `v0.14.3`, connection-owner broker admission, and post-bootstrap readiness. Candidate tests select the independently approved SDK revision; no approval-variable or isolation-gate change is required.
+- On the refreshed tree, the complete frontend suite passed 1,418 tests with three existing skips; application typechecking passed, and lint finished with zero errors and 11 warnings. The installed CLI launched the approved candidate SDK's optimized host to `ready`, native inventory returned `[]`, and Chromium rendered plugin management and marketplace version selection without installing a plugin.
 
 ## Phase 5 — Containers vertical integration
 

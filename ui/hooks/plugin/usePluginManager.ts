@@ -354,7 +354,7 @@ export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: str
   const setEnabled = useMutation({
     mutationFn: async (enabled: boolean) => runOperation(
       enabled ? 'Enabling plugin…' : 'Disabling plugin…',
-      () => serviceSetEnabled(id, enabled),
+      async () => serviceSetEnabled(id, enabled),
     ),
     onSuccess() {
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
