@@ -97,6 +97,11 @@ retain their separate macOS 14 minimum. Verify the resulting Mach-O build
 versions when checking a release package; do not infer OS support from the
 release tag alone.
 
+The cask updater applies that macOS 12 minimum to stable and nightly publication
+alongside the new version and checksum. It raises missing or weaker requirements,
+preserves stricter tap policy, and refuses unsupported eligibility layouts.
+The currently published cask is not changed until the new release is published.
+
 Run lightweight checks locally:
 
 ```sh

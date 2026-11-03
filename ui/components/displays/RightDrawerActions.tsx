@@ -85,6 +85,7 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
 
   if (action.splitMenu) {
     const primaryDisabled = checkIsDisabled()
+      || (!action.list && !action.action)
       || (!!action.list && (listItems.length === 0 || listItems.every(item => item.disabled)));
     const primary = (
       <SplitButton.Action

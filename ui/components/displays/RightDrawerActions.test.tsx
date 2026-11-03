@@ -153,6 +153,21 @@ it.each([1, 2])('keeps split primary and options distinct with %i targets', asyn
   expect(options).toHaveBeenCalledTimes(1);
 });
 
+it('disables a split primary without an action while keeping its options usable', async () => {
+  const user = userEvent.setup();
+  const ctx: DrawerContext = { data: {} };
+  const options = vi.fn();
+  render(<SnackbarProvider><RightDrawerActions ctx={ctx} actions={[{
+    title: 'Debug',
+    splitMenu: { title: 'Debug options', list: [{ title: 'Configure debug', action: options }] },
+  }]} /></SnackbarProvider>);
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Debug' }).disabled).toBe(true);
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Debug options' }).disabled).toBe(false);
+  await user.click(screen.getByRole('button', { name: 'Debug options' }));
+  await user.click(await screen.findByRole('menuitem', { name: 'Configure debug' }));
+  expect(options).toHaveBeenCalledExactlyOnceWith(ctx);
+});
+
 it('disables split choices independently and reports option errors', async () => {
   const user = userEvent.setup();
   const start = vi.fn();
