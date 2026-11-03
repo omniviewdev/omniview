@@ -378,10 +378,12 @@ against that contract. Local source selection requires an absolute SDK path;
 normal builds use the exact pinned module dependency.
 
 The E2E runner checks out the independently reviewed SDK commit in
-`e2e/source-cohort.json`. That SHA must equal repository variable
-`OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION`, passed as `REVIEWED_SDK_REVISION`.
-Updating `go.mod` alone does not approve another SDK. Only the user changes
-the approval variable. The reviewed isolation guards remain independent.
+`e2e/source-cohort.json`. That SHA must exactly match repository variable
+`OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION` or
+`OMNIVIEW_RESOURCE_V2_REVIEWED_MAINTENANCE_SDK_REVISION`. After admission, workflows
+pass the selected commit downstream as `REVIEWED_SDK_REVISION`. Updating `go.mod`
+alone does not approve another SDK. These external approvals remain under
+user-authorized release administration; the isolation guards remain independent.
 
 ```sh
 SDK_SOURCE=/absolute/path/to/plugin-sdk

@@ -46,9 +46,9 @@ Production React and JSX are the default. Use `BENCH_REACT_DEV=1` only for debug
   The 1k/5k labels describe source corpus sizes, not simultaneous mounted row counts.
   Older full-list baselines are not comparable.
   Historical result files remain unchanged.
-  Log creation consumes the current encoded JSON request and preserves session options
-  in the current session DTO. Drawer and whole-app fixtures retain live sessions until
-  the real close call removes them; unknown session reads fail.
+  Log creation consumes the current encoded JSON request and preserves its correlation
+  ID and session options in the current session DTO. Drawer and whole-app fixtures
+  retain live sessions until the real close call removes them; unknown session reads fail.
 - The kubernetes Pod table is rendered from the `plugins/kubernetes` submodule source
   against the app's own `@omniviewdev/runtime` / `@omniviewdev/base-ui` (as plugins get them
   at runtime through the shared-deps import map). Run `git submodule update --init

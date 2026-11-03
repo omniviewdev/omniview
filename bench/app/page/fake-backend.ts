@@ -132,8 +132,8 @@ handleAll({
   'logs/servicewrapper.CreateSession': (plugin: string, connection: string, encoded: string) => {
     const id = `bench-log-${logSessions.length}`;
     const session = makeLogSession(id, plugin, connection, encoded);
-    logSessions.push(id);
-    sessions.set(id, session);
+    logSessions.push(session.id);
+    sessions.set(session.id, session);
     return session;
   },
   'logs/servicewrapper.GetSession': (id: string) => {

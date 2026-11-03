@@ -208,11 +208,11 @@ async function main() {
     for (const [id, source] of Object.entries(sources)) {
       if (git(source, 'status', '--porcelain', '--untracked-files=all')) throw Error(`Selected ${id} has uncommitted source edits; commit intended source before running owned E2E`);
     }
-    if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(process.env.REVIEWED_SDK_REVISION ?? '') || process.env.REVIEWED_SDK_REVISION !== refs['plugin-sdk']) throw Error('Set REVIEWED_SDK_REVISION to the independently reviewed full selected SDK commit');
     if (!cohortMatches({ current: cohort, baseline: cohort, actual: refs })) throw Error('Selected application sources differ from the checked-in candidate cohort');
     const candidate = admitCandidate(cohort, process.env);
     verifyGitlink(candidate, git(root, 'ls-tree', 'HEAD', 'plugins/kubernetes'));
     verifyIsolation(sources['plugin-sdk'], (source, args) => git(source, ...args));
+    env.REVIEWED_SDK_REVISION = candidate.sdk;
     env.SDK_SOURCE = sources['plugin-sdk'];
   }
   if (process.platform === 'linux') {

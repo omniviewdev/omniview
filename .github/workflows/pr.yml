@@ -16,6 +16,7 @@ env:
   GO_VERSION: "1.26"
   NODE_VERSION: "26.13.0"
   REVIEWED_SDK_REVISION: ${{ vars.OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION }}
+  REVIEWED_MAINTENANCE_SDK_REVISION: ${{ vars.OMNIVIEW_RESOURCE_V2_REVIEWED_MAINTENANCE_SDK_REVISION }}
 
 jobs:
   # One canonical application execution; the exact required check name stays
