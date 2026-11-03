@@ -96,7 +96,8 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
             size='sm'
             variant={allSelected ? 'ghost' : 'soft'}
             color={allSelected ? 'neutral' : 'brand'}
-            endDecorator={<LuChevronDown size={12} />}
+            aria-pressed={!allSelected}
+            endDecorator={<LuChevronDown />}
             className={styles.Trigger}
           >
             {triggerLabel}
@@ -113,7 +114,7 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
                   placeholder={`Search ${label.toLowerCase()}...`}
                   value={search}
                   onValueChange={setSearch}
-                  startDecorator={<LuSearch size={12} />}
+                  startDecorator={<LuSearch />}
                 />
               </div>
             )}

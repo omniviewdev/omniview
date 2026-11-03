@@ -12,6 +12,9 @@ const (
 	EventBottomDrawerMinimize   = "menu/view/bottomdrawer/minimize"
 	EventBottomDrawerFullscreen = "menu/view/bottomdrawer/fullscreen"
 	EventSidebarMinimize        = "menu/view/sidebar/minimize"
+	EventZoomIn                 = "menu/view/zoom/in"
+	EventZoomOut                = "menu/view/zoom/out"
+	EventZoomReset              = "menu/view/zoom/reset"
 	EventContextTabClose        = "menu/context/drawer-tab/close"
 	EventContextTabCloseOthers  = "menu/context/drawer-tab/close-others"
 )
@@ -21,6 +24,9 @@ func init() {
 	application.RegisterEvent[application.Void](EventBottomDrawerMinimize)
 	application.RegisterEvent[application.Void](EventBottomDrawerFullscreen)
 	application.RegisterEvent[application.Void](EventSidebarMinimize)
+	application.RegisterEvent[application.Void](EventZoomIn)
+	application.RegisterEvent[application.Void](EventZoomOut)
+	application.RegisterEvent[application.Void](EventZoomReset)
 	application.RegisterEvent[string](EventContextTabClose)
 	application.RegisterEvent[string](EventContextTabCloseOthers)
 }
@@ -78,6 +84,23 @@ func SetupAppMenu(app *application.App, mainWindow *application.WebviewWindow, o
 		SetAccelerator("CmdOrCtrl+Shift+F").
 		OnClick(func(_ *application.Context) {
 			focusedWindow().ForceReload()
+		})
+
+	viewMenu.AddSeparator()
+	viewMenu.Add("Zoom In").
+		SetAccelerator("CmdOrCtrl+Plus").
+		OnClick(func(_ *application.Context) {
+			focusedWindow().EmitEvent(EventZoomIn)
+		})
+	viewMenu.Add("Zoom Out").
+		SetAccelerator("CmdOrCtrl+-").
+		OnClick(func(_ *application.Context) {
+			focusedWindow().EmitEvent(EventZoomOut)
+		})
+	viewMenu.Add("Reset Zoom").
+		SetAccelerator("CmdOrCtrl+0").
+		OnClick(func(_ *application.Context) {
+			focusedWindow().EmitEvent(EventZoomReset)
 		})
 
 	viewMenu.AddSeparator()

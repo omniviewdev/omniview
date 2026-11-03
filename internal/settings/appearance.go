@@ -30,7 +30,61 @@ var Appearance = settings.Category{
 			Description: "The color theme for the application UI",
 			Validator:   validateThemeID,
 		},
+		"density": {
+			ID:          "density",
+			Type:        settings.Text,
+			Label:       "UI Density",
+			Default:     "comfortable",
+			Description: "Choose comfortable spacing or a compact layout.",
+			Options: []settings.SettingOption{
+				{Value: "comfortable", Label: "Comfortable"},
+				{Value: "compact", Label: "Compact"},
+			},
+			Validator: validateAppearanceChoice("comfortable", "compact"),
+		},
+		"textSize": {
+			ID:          "textSize",
+			Type:        settings.Text,
+			Label:       "UI Text Size",
+			Default:     "100",
+			Description: "Scale interface text independently of density. Terminal and code editor fonts stay unchanged.",
+			Options: []settings.SettingOption{
+				{Value: "80", Label: "80%"},
+				{Value: "90", Label: "90%"},
+				{Value: "100", Label: "100%"},
+				{Value: "110", Label: "110%"},
+				{Value: "125", Label: "125%"},
+			},
+			Validator: validateAppearanceChoice("80", "90", "100", "110", "125"),
+		},
+		"motion": {
+			ID:          "motion",
+			Type:        settings.Text,
+			Label:       "Motion",
+			Default:     "system",
+			Description: "Follow the system accessibility preference or choose animation behavior.",
+			Options: []settings.SettingOption{
+				{Value: "system", Label: "Follow System"},
+				{Value: "normal", Label: "Normal"},
+				{Value: "reduced", Label: "Reduced"},
+			},
+			Validator: validateAppearanceChoice("system", "normal", "reduced"),
+		},
 	},
+}
+
+func validateAppearanceChoice(choices ...string) func(any) settings.ValidationResult {
+	return func(value any) settings.ValidationResult {
+		text, ok := value.(string)
+		if ok {
+			for _, choice := range choices {
+				if text == choice {
+					return settings.ValidationResult{Valid: true}
+				}
+			}
+		}
+		return settings.ValidationResult{Code: "appearance_choice", Message: "Choose one of the available appearance options."}
+	}
 }
 
 func validateThemeID(value any) settings.ValidationResult {

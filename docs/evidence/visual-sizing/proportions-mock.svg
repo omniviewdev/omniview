@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 370">
+<title>Proportional inspector, Settings, and log toolbar proposal</title>
+<rect width="1000" height="370" fill="#111214"/>
+<g font-family="sans-serif">
+<text x="20" y="28" font-size="14" fill="#b5b8bf">MOCK — shared text scale, compact heading actions, quiet toolbar buttons</text>
+<rect x="20" y="48" width="212" height="226" rx="6" fill="#17191c" stroke="#34363e"/>
+<text x="39" y="77" font-size="16" font-weight="600" fill="#e4e6eb">Settings</text>
+<rect x="30" y="93" width="192" height="36" rx="5" fill="#111214" stroke="#34363e"/>
+<text x="40" y="116" font-size="14" fill="#9a9da5">Search settings</text>
+<rect x="30" y="143" width="192" height="34" rx="5" fill="#303c55"/>
+<g font-size="13" fill="#e4e6eb"><text x="43" y="165">Appearance</text><text x="43" y="201">Developer Settings</text><text x="43" y="237">Editor</text></g>
+<rect x="254" y="48" width="726" height="226" rx="6" fill="#17191c" stroke="#34363e"/>
+<text x="270" y="77" font-size="13" font-weight="600" fill="#e4e6eb">distroless-header</text>
+<g font-size="14" fill="#b5b8bf"><text x="847" y="77">⌫</text><text x="880" y="77">›_</text><text x="913" y="77">≡</text><text x="950" y="77">×</text></g>
+<path d="M254 94H980M254 132H980" stroke="#34363e"/>
+<g font-size="13"><text x="270" y="118" fill="#e4e6eb">Overview</text><text x="362" y="118" fill="#9a9da5">Related</text><text x="445" y="118" fill="#9a9da5">Graph</text><text x="518" y="118" fill="#9a9da5">Metrics</text><text x="600" y="118" fill="#9a9da5">Events</text><text x="675" y="118" fill="#9a9da5">Editor</text></g>
+<path d="M267 132H338" stroke="#89a7ee" stroke-width="2"/>
+<g font-size="12"><text x="270" y="161" fill="#e4e6eb">Metadata</text><text x="270" y="195" fill="#9a9da5">Name</text><text x="465" y="195" fill="#e4e6eb">distroless-header</text><text x="270" y="225" fill="#9a9da5">Namespace</text><text x="465" y="225" fill="#e4e6eb">omniview-debug-bbcc9266</text></g>
+<rect x="20" y="293" width="960" height="52" rx="6" fill="#17191c" stroke="#34363e"/>
+<rect x="32" y="304" width="235" height="30" rx="5" fill="#111214" stroke="#45474f"/>
+<text x="43" y="324" font-size="14" fill="#9a9da5">Search in logs</text>
+<g font-size="14" fill="#b5b8bf"><text x="282" y="324">Aa</text><text x="320" y="324">.*</text><text x="362" y="324">↑</text><text x="396" y="324">↓</text><text x="452" y="324">All containers ⌄</text><text x="618" y="324">◷</text><text x="654" y="324">#</text><text x="690" y="324">↩</text><text x="775" y="324">Ⅱ</text><text x="815" y="324">⇩</text><text x="855" y="324">⌫</text></g>
+<path d="M429 307V331M747 307V331" stroke="#45474f"/>
+</g></svg>

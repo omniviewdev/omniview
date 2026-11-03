@@ -21,6 +21,23 @@ An empty Go path retains the existing optional default: automatic discovery in P
 - Save revalidates; replacing a previously valid executable with a failing one cannot bypass enforcement.
 - No validation response contains secret input or arbitrary subprocess output.
 
+## Appearance preferences
+
+Appearance exposes validated, persistent UI Density (`comfortable` by default, or
+`compact`), UI Text Size (`80`, `90`, `100`, `110`, or `125` percent), and Motion (`system` by
+default, `normal`, or `reduced`). These use ordinary settings drafts and Save/
+Discard, unlike the immediately saved theme picker. Invalid values fail before
+persistence through the same backend validator used for draft feedback.
+
+The host initializes Base UI from a profile-scoped appearance paint cache, then
+applies authoritative backend hydration and live updates through the provider
+setters. Comfortable density is the uncached default; startup never intentionally
+forces compact density. The cache is only a paint hint, not another settings store.
+System motion follows live `prefers-reduced-motion` changes. Both Base UI CSS and
+host Framer Motion receive the resolved preference. UI text scaling changes only
+interface font tokens; terminal and code-editor font settings remain independent.
+
+
 ## Dedicated Settings window
 
 Settings is a non-modal, application-instance singleton owned by
@@ -57,9 +74,14 @@ assignment already creates a browser entry, which is replaced with the active
 workspace route. Dirty navigation and targeted requests share the same guard.
 The search shortcut does not move focus outside that guard.
 
-The compact Settings shell uses theme tokens, a 212px navigation column, 29px
-navigation rows, 28px form controls, and a persistent footer. Only its caption
-regions are draggable. Settings-only chrome avoids duplicate title bars; the
+The Settings shell uses theme tokens, a 212px navigation column, density-aware
+navigation rows (34px comfortable / 28px compact minimums), and a persistent footer.
+Its sidebar title, search, and navigation use scaled 16px / 14px / 13px typography
+tokens respectively at 100%. The sidebar caption has a 56px minimum height and
+16px vertical padding. Generic option editors use Base UI Select; numeric/text
+fields share its medium height tier (36px comfortable / 30px compact). Selection
+maps back to the original option values, including structured multi-select values.
+Only caption regions are draggable. Settings-only chrome avoids duplicate title bars; the
 labelled close action remains available. macOS retains its native frame with a
 hidden title and hidden window controls: the pinned window library skips native
 title assignment for frameless windows, which makes the accessibility title

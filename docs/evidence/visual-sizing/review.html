@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Omniview sizing trial</title>
+<style>
+body{margin:32px auto;max-width:1568px;padding:0 24px;background:#111214;color:#e4e6eb;font:15px/1.5 system-ui}h1{font-size:24px}h2{margin-top:40px;font-size:19px}p{color:#b5b8bf}img{display:block;width:100%;height:auto;border:1px solid #34363e;border-radius:10px}a{color:#a4bdf3}.pair{display:grid;grid-template-columns:1fr 1fr;gap:24px}figure{margin:0}figcaption{padding:12px 0;color:#b5b8bf}@media(max-width:900px){.pair{grid-template-columns:1fr}}
+</style>
+<h1>Omniview sizing trial</h1>
+<p>Main-window captures: 1568 × 864, device scale 1. Settings captures: 1040 × 640. Narrow log capture: 600 × 864. Same kind-kind cluster and existing resources. No cluster writes. Click images for full size.</p>
+<p>Appearance offers independent density, 80% / 90% / 100% / 110% / 125% UI text, and system / normal / reduced motion. Editor and terminal fonts remain separate.</p>
+<h2>Latest: quiet joined Debug control</h2>
+<a href="debug-quiet-mock.svg"><img src="debug-quiet-mock-preview.png" alt="Mock of quiet idle and shared-hover split toolbar actions"></a>
+<div class="pair"><figure><a href="debug-quiet-100.png"><img src="debug-quiet-100.png" alt="Debug split control matching unboxed toolbar actions"></a><figcaption>Idle: no persistent fill or outer outline; joined corners and divider remain.</figcaption></figure><figure><a href="debug-quiet-hover-100.png"><img src="debug-quiet-hover-100.png" alt="Shared quiet hover surface for both Debug halves"></a><figcaption>Hover: one subtle surface connects the two independently actionable halves.</figcaption></figure></div>
+<p><a href="debug-quiet-125.png">125% text</a> · <a href="debug-quiet-menu-100.png">Open options menu</a>. The unrelated avatar crash is isolated in <a href="https://github.com/omniviewdev/omniview-plugin-kubernetes/pull/134">PR #134</a>, not included in the visual workspace.</p>
+<h2>Earlier: joined Debug actions and Settings controls</h2>
+<p>Mock proposals, not screenshots: <a href="joined-controls-mock.svg">joined actions and cluster navigation</a> · <a href="settings-header-mock.svg">caption spacing</a> · <a href="settings-select-mock.svg">form sizing</a>.</p>
+<a href="joined-controls-mock.svg"><img src="joined-controls-mock-preview.png" alt="Wireframe mock of joined Debug actions and shared cluster navigation, not application output"></a>
+<div class="pair"><a href="settings-header-mock.svg"><img src="settings-header-mock-preview.png" alt="Wireframe mock of roomier Settings caption"></a><a href="settings-select-mock.svg"><img src="settings-select-mock-preview.png" alt="Wireframe mock of matching numeric and select field heights"></a></div>
+<div class="pair"><figure><a href="debug-split-100.png"><img src="debug-split-100.png" alt="Joined Debug split control at 100 percent"></a><figcaption>100%: one neutral surface, joined corners, subtle divider, independent primary and dropdown actions.</figcaption></figure><figure><a href="debug-split-menu-100.png"><img src="debug-split-menu-100.png" alt="Debug options dropdown with one target"></a><figcaption>The arrow opens a menu even for a single target. No debug container was launched.</figcaption></figure></div>
+<p><a href="debug-split-125.png">125% Debug control</a> · <a href="debug-split-compact-100.png">Compact 100%</a> · <a href="debug-split-compact-125.png">Compact 125%</a>.</p>
+<div class="pair"><a href="cluster-nav-100.png"><img src="cluster-nav-100.png" alt="Cluster Settings shared navigation at 100 percent"></a><a href="cluster-nav-125.png"><img src="cluster-nav-125.png" alt="Cluster Settings shared navigation at 125 percent"></a></div>
+<p>Cluster navigation matches host Settings: 34px comfortable / 28px compact minimum rows and scalable 13px labels. <a href="cluster-nav-compact-100.png">Compact 100%</a> · <a href="cluster-nav-compact-125.png">Compact 125%</a>.</p>
+<div class="pair"><a href="settings-fields-100.png"><img src="settings-fields-100.png" alt="Roomier Settings caption and aligned inputs and selects at 100 percent"></a><a href="settings-fields-125.png"><img src="settings-fields-125.png" alt="Roomier caption and shared form-control sizing at 125 percent"></a></div>
+<p>Caption: 56px minimum, 16px vertical padding. Generic selects now use Base UI, not native browser chrome. Numeric/text fields and selects share the existing medium tier: 36px comfortable / 30px compact. <a href="settings-select-open-100.png">Open select</a> · <a href="settings-fields-compact-100.png">Compact 100%</a> · <a href="settings-fields-compact-125.png">Compact 125%</a>.</p>
+<h2>Earlier: proportional inspector, Settings, and log controls</h2>
+<a href="proportions-mock.svg"><img src="proportions-mock.svg" alt="Proportional sizing proposal, explicitly a mock"></a>
+<div class="pair"><figure><a href="proportions-before-100.webp"><img src="proportions-before-100.webp" alt="Observed oversized tooltip-wrapped inspector actions"></a><figcaption>Before: Exec and Logs inherited medium/soft styling through a tooltip.</figcaption></figure><figure><a href="inspector-proportions-100.png"><img src="inspector-proportions-100.png" alt="Uniform quiet inspector actions"></a><figcaption>After: tooltip composition preserves each control's compact, quiet styling.</figcaption></figure></div>
+<h2>Settings navigation — 100% and 125%</h2>
+<div class="pair"><a href="settings-proportions-100.png"><img src="settings-proportions-100.png" alt="Settings with readable sidebar heading and search at 100 percent"></a><a href="settings-proportions-125.png"><img src="settings-proportions-125.png" alt="Settings sidebar typography at 125 percent"></a></div>
+<h2>Log toolbar — 100% and 125%</h2>
+<div class="pair"><a href="logs-proportions-100.png"><img src="logs-proportions-100.png" alt="Grouped quiet log toolbar at 100 percent"></a><a href="logs-proportions-125.png"><img src="logs-proportions-125.png" alt="Grouped log toolbar at 125 percent"></a></div>
+<p><a href="logs-proportions-125-narrow.png">Narrow 600px layout</a> · <a href="logs-proportions-compact-100.png">Compact 100%</a> · <a href="logs-proportions-compact-125.png">Compact 125%</a>. Controls verified on the existing connection-waiting surface; log data delivery is not claimed.</p>
+<h2>Graph scene — 100% and 125%</h2>
+<div class="pair"><a href="graph-proportions-100.png"><img src="graph-proportions-100.png" alt="Graph scene at 100 percent"></a><a href="graph-proportions-125.png"><img src="graph-proportions-125.png" alt="Graph labels and geometry scaling together at 125 percent"></a></div>
+<h2>Earlier palette and density trial</h2>
+<h2>Mock — proposal, not application output</h2>
+<a href="palette-mock.svg"><img src="palette-mock.svg" alt="Palette design proposal"></a>
+<h2>100% — compact and comfortable</h2>
+<div class="pair"><figure><a href="resources-compact-100.png"><img src="resources-compact-100.png" alt="Compact resource list"></a><figcaption>Compact: 30px resource rows.</figcaption></figure><figure><a href="resources-comfortable-100.png"><img src="resources-comfortable-100.png" alt="Comfortable resource list"></a><figcaption>Comfortable: 36px resource rows.</figcaption></figure></div>
+<div class="pair"><figure><a href="palette-compact-100.png"><img src="palette-compact-100.png" alt="Compact palette"></a></figure><figure><a href="palette-comfortable-100.png"><img src="palette-comfortable-100.png" alt="Comfortable palette"></a></figure></div>
+<h2>110% — compact and comfortable</h2>
+<div class="pair"><a href="resources-compact-110.png"><img src="resources-compact-110.png" alt="Compact larger text"></a><a href="resources-comfortable-110.png"><img src="resources-comfortable-110.png" alt="Comfortable larger text"></a></div>
+<h2>125% — compact and comfortable</h2>
+<div class="pair"><a href="palette-compact-125.png"><img src="palette-compact-125.png" alt="Compact largest palette text"></a><a href="palette-comfortable-125.png"><img src="palette-comfortable-125.png" alt="Comfortable largest palette text"></a></div>
+<h2>Inspector — 100% and 125%</h2>
+<div class="pair"><a href="inspector-comfortable-100.png"><img src="inspector-comfortable-100.png" alt="Inspector default text"></a><a href="inspector-comfortable-125.png"><img src="inspector-comfortable-125.png" alt="Inspector largest text"></a></div>
+<h2>Persistent appearance preferences</h2>
+<a href="appearance-preferences.png"><img src="appearance-preferences.png" alt="Appearance settings density, motion and text size"></a>
+<h2>Native View menu — smaller and larger</h2>
+<a href="sizing-controls-mock.svg"><img src="sizing-controls-mock.svg" alt="Native View menu mock proposal, not a screenshot"></a>
+<div class="pair"><a href="sizing-controls-80.png"><img src="sizing-controls-80.png" alt="80 percent UI text with no footer sizing controls"></a><a href="sizing-controls-100.png"><img src="sizing-controls-100.png" alt="100 percent UI text with no footer sizing controls"></a></div>
+<p>View → Zoom In / Zoom Out / Reset Zoom. Cmd/Ctrl + increases, Cmd/Ctrl − decreases, Cmd/Ctrl 0 resets. No bottom status-bar sizing controls. Available sizes: 80%, 90%, 100%, 110%, 125%.</p>
+<h2>Earlier native screenshots — 1568 × 864</h2>
+<div class="pair"><a href="native-review.png"><img src="native-review.png" alt="Native resource list"></a><a href="native-palette.png"><img src="native-palette.png" alt="Native command palette"></a></div>
+</html>

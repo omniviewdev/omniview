@@ -53,7 +53,7 @@ const RightDrawer: React.FC<Props> = ({
         <div id={'pages-actions-menus'} className={styles.HeaderActions}>
           {!!actions.length && <RightDrawerActions ctx={ctx ?? {}} actions={actions} />}
           <IconButton
-            variant='outline'
+            variant='ghost'
             color='neutral'
             size='sm'
             aria-label='Close'

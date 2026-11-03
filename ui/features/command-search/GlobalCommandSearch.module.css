@@ -10,6 +10,8 @@
   align-items: center;
   gap: var(--ov-space-2);
   min-inline-size: 0;
+  padding-block-end: var(--ov-space-3);
+  border-block-end: 1px solid var(--ov-color-border-muted);
 }
 
 .Scopes {
@@ -52,6 +54,7 @@
   flex: 1 1 12rem;
   min-inline-size: min(12rem, 100%);
   max-inline-size: 100%;
+  font-size: var(--ov-font-size-body);
 }
 
 div.ResultContent {
@@ -61,6 +64,7 @@ div.ResultContent {
   align-items: flex-start;
   min-inline-size: 0;
   gap: var(--ov-space-1);
+  padding-block: var(--ov-space-1);
 }
 
 .ResultContent > * {
@@ -68,6 +72,11 @@ div.ResultContent {
   max-inline-size: 100%;
   margin: 0;
   text-align: start;
+}
+
+.ResultLabel {
+  font-weight: var(--ov-font-weight-title);
+  line-height: 1.4;
 }
 
 .ScopeControl {
@@ -93,6 +102,7 @@ div.ResultContent {
 
 .Results {
   padding-block-start: var(--ov-space-1);
+  padding-block-end: var(--ov-space-2);
   max-block-size: min(50vh, 28rem);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -109,16 +119,18 @@ div.ResultContent {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--ov-space-2);
-  min-block-size: 2rem;
+  min-block-size: var(--ov-control-height-md);
+  padding-block: var(--ov-space-2);
+  border-block-start: 1px solid var(--ov-color-border-muted);
 }
 
 .StatusIndicators {
   display: flex;
   align-items: center;
   gap: var(--ov-space-2);
-  flex: 1 1 0;
+  flex: 1 1 12rem;
   min-inline-size: 0;
-  overflow: hidden;
+  flex-wrap: wrap;
 }
 
 .StatusItem,
@@ -205,4 +217,5 @@ div.ResultContent {
   gap: var(--ov-space-4);
   color: var(--ov-color-fg-muted);
   font-size: var(--ov-font-size-caption);
+  line-height: 1.5;
 }

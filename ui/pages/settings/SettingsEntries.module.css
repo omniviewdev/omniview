@@ -6,5 +6,4 @@
 .Description { line-height:1.35; font-size:11px; }
 .Key { font-size:10px; }
 .InputColumn { min-width:0; }
-.InputColumn input:not([type=checkbox]), .InputColumn select { min-height:28px; }
 @media (max-width:650px) { .Row { grid-template-columns:1fr; gap:8px; } }
