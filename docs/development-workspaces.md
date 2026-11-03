@@ -169,6 +169,8 @@ or environment variables.
 
 Browser mode starts the real Wails server. Use `instance.endpoints.browser`, **not** the asset-only Vite URL. `--live-frontend=false` serves built assets instead of launching host Vite. `--watch=false` disables the supervisor build graph; otherwise its lifetime owns serial source rebuilds and real managed-generation waits. Runtime/shim changes restart actual consumers; a successful compiler exit alone is not plugin readiness.
 
+The development footer polls Vite's status middleware only when the confirmed host descriptor reports a Vite endpoint. Static frontends show **Static**, report the host's explicit backend readiness, and mark live status observations/HMR as unsupported and source freshness as unobserved. This does not certify that built assets match current source. Live Vite retains its independent build, HMR, and source-provenance observations. Switching capabilities retires the previous polling request and snapshot; a failed live observation never becomes a static-mode readiness fallback.
+
 Managed plugins follow their declared `requires.connections` dependencies.
 The supervisor links selected owners before their consumers.
 A dependency cycle stops startup before the first plugin link.
