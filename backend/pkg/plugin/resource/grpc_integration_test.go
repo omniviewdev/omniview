@@ -85,7 +85,7 @@ type grpcSourceProvider struct {
 }
 
 func (p *grpcSourceProvider) OpenSource(ctx context.Context, _ resource.SourceOpenRequest, emitter resource.SourceEmitter) error {
-	if err := emitter.Snapshot(ctx, []resource.SourceObservation{{Record: p.record}}); err != nil {
+	if err := emitter.Snapshot(ctx, []resource.SourceObservation{{Record: resource.CompactSourceRecord(p.record)}}); err != nil {
 		return err
 	}
 	return emitter.EndSnapshot(ctx, resource.SourceCoverage{
@@ -107,6 +107,7 @@ func TestL3_03_SourceSessionFlowsThroughGRPC(t *testing.T) {
 		Mode:        resource.SourceModeSnapshot,
 		Acquisition: resource.SourceAcquisition{Kind: resource.SourceAcquisitionEnumerate},
 		Limits:      resource.SourceLimits{MaxFrameBytes: resource.MinSourceFrameBytes, MaxBatchItems: 2},
+		Binding:     resource.RepresentationBinding{Representation: record.Representation},
 	})
 	require.NoError(t, err)
 	defer stream.Close()
@@ -118,7 +119,7 @@ func TestL3_03_SourceSessionFlowsThroughGRPC(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, snapshot.Snapshot)
 	require.Len(t, snapshot.Snapshot.Observations, 1)
-	assert.Equal(t, record, snapshot.Snapshot.Observations[0].Record)
+	assert.Equal(t, resource.CompactSourceRecord(record), snapshot.Snapshot.Observations[0].Record)
 	end, err := stream.Recv()
 	require.NoError(t, err)
 	require.NotNil(t, end.SnapshotEnd)

@@ -24,7 +24,7 @@ func sourceFileObservation(client *sourceFileClient, target resourcev2.ReadTarge
 	}
 	record := canonicalTestRecord(target.Provider, target.Authority, target.Type, "watched/opaque:%2F")
 	record.Body.Map["value"] = resourcev2.Value{Kind: "string", String: string(body)}
-	return resourcev2.SourceObservation{Record: record, Metadata: &resourcev2.ResourceMetadata{Labels: map[string]string{"value": string(body)}}}, nil
+	return resourcev2.SourceObservation{Record: resourcev2.CompactSourceRecord(record), Metadata: &resourcev2.ResourceMetadata{Labels: map[string]string{"value": string(body)}}}, nil
 }
 
 func TestC02SourceViewLifecycle(t *testing.T) {

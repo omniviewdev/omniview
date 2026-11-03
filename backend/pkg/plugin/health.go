@@ -73,7 +73,12 @@ func (hc *HealthChecker) Start(ctx context.Context) {
 func (hc *HealthChecker) checkAll() {
 	// Collect the running backend plugins under the records lock, then probe
 	// them without holding it: Healthy() can be an RPC to the plugin.
-	var ids []string
+	type probe struct {
+		id      string
+		record  *plugintypes.PluginRecord
+		backend plugintypes.PluginBackend
+	}
+	var probes []probe
 	hc.pm.recordsMu.RLock()
 	for id, record := range hc.pm.records {
 		if record.Phase != lifecycle.PhaseRunning {
@@ -83,11 +88,12 @@ func (hc *HealthChecker) checkAll() {
 		if record.Backend == nil && !record.Metadata.HasBackendCapabilities() {
 			continue
 		}
-		ids = append(ids, id)
+		probes = append(probes, probe{id: id, record: record, backend: record.Backend})
 	}
 	hc.pm.recordsMu.RUnlock()
 
-	for _, id := range ids {
+	for _, candidate := range probes {
+		id := candidate.id
 		// Skip if recovery is already in progress for this plugin.
 		hc.mu.Lock()
 		_, recovering := hc.recoveryStates[id]
@@ -99,7 +105,7 @@ func (hc *HealthChecker) checkAll() {
 		if !hc.checkPlugin(id) {
 			hc.logger.Warnw(hc.pm.ctx, "plugin health check failed, triggering recovery",
 				"pluginID", id)
-			go hc.pm.HandlePluginCrash(id)
+			go hc.pm.handleProbedCrash(id, candidate.record, candidate.backend)
 		}
 	}
 }
@@ -261,6 +267,17 @@ func (hc *HealthChecker) markFailedLocked(pluginID, lastError, reason string) {
 // HandleCrashWithBackoff handles a plugin crash with exponential backoff.
 // Uses an iterative loop instead of recursion to avoid stack growth.
 func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
+	hc.handleCrashWithBackoff(pluginID, nil)
+}
+
+func (hc *HealthChecker) handleCrashWithBackoff(pluginID string, expected *probedCrash) {
+	var unlock func()
+	if expected != nil {
+		unlock = hc.pm.lockProbedCrash(pluginID, expected, lifecycle.PhaseRecovering)
+		if unlock == nil {
+			return
+		}
+	}
 	hc.mu.Lock()
 
 	// Enforce a global crash budget to prevent infinite recovery cycles.
@@ -269,6 +286,9 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 	// across all cycles within a time window.
 	if hc.consumeCrashBudgetLocked(pluginID) {
 		hc.mu.Unlock()
+		if unlock != nil {
+			unlock()
+		}
 		hc.pm.emitter.Emit(EventCrashRecoveryFailed, PluginErrorPayload{
 			PluginID: pluginID,
 			Error:    "crash budget exhausted — too many crashes in a short time",
@@ -290,6 +310,9 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 	if hc.pm.ctx == nil {
 		hc.logger.Errorw(context.Background(), "cannot start crash recovery: manager context is nil", "pluginID", pluginID)
 		hc.mu.Unlock()
+		if unlock != nil {
+			unlock()
+		}
 		return
 	}
 
@@ -302,6 +325,9 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 	}
 	hc.recoveryCancels[pluginID] = cancel
 	hc.mu.Unlock()
+	if unlock != nil {
+		unlock()
+	}
 
 	defer func() {
 		hc.mu.Lock()
@@ -323,7 +349,16 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 		default:
 		}
 
+		if expected != nil {
+			unlock = hc.pm.lockProbedCrash(pluginID, expected, lifecycle.PhaseRecovering)
+			if unlock == nil {
+				return
+			}
+		}
 		backoff, attempt, proceed := hc.beginRecoveryAttempt(pluginID, state)
+		if expected != nil {
+			unlock()
+		}
 		if !proceed {
 			return
 		}
@@ -345,7 +380,17 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 			return
 		}
 
-		if _, err := hc.pm.ReloadPlugin(pluginID); err != nil {
+		var err error
+		if expected == nil {
+			_, err = hc.pm.ReloadPlugin(pluginID)
+		} else {
+			var current bool
+			current, err = hc.pm.reloadProbedCrash(pluginID, expected)
+			if !current {
+				return
+			}
+		}
+		if err != nil {
 			hc.logger.Errorw(hc.pm.ctx, "crash recovery attempt failed",
 				"pluginID", pluginID, "attempt", attempt, "error", err)
 			continue

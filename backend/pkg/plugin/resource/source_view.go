@@ -101,7 +101,7 @@ func (v *sourceView) syncLocked(reason string) {
 	v.bytes = 0
 	v.snapshot = make([]HostRecord, 0, len(v.session.members))
 	for _, member := range v.session.members {
-		record, err := envelopeRecord(v.session.pluginGeneration.generationID, v.owner, v.targetID, v.session.target, member.observation.Record)
+		record, err := envelopeRecord(v.session.pluginGeneration.generationID, v.owner, v.targetID, v.session.target, v.session.fullSourceRecord(member.observation.Record))
 		if err == nil {
 			v.snapshot = append(v.snapshot, record)
 		}

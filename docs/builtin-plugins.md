@@ -14,8 +14,8 @@ The current implementation covers infrastructure phases 1–4. The production ca
 - Workspace: `builtin-plugin-research`, created by `omniview-dev workspace create` and verified with `workspace inspect`.
 - Collection: `/Users/joshuapare/Repos/omniviewdev/workspaces`.
 - Starting host revision: `ab0235ecc0c9c6c99458b306b10abe7bcfaefbd1`.
-- The initial host pinned published SDK `v0.11.0`; refreshed main pins published `v0.14.3`. Candidate source tests use the separately approved immutable SDK revision in `e2e/source-cohort.json`; this does not change release dependency policy.
-- Use independently approved candidate SDK commit `458597dc74be0a203d7b1e602c1c35f02e5d3f54` through the installed CLI. Its state, profile-contract, and SDK initialization boundaries are unchanged from the prior reviewed source-coordinator pin. Add containers through the CLI only when its migration is planned.
+- The initial host pinned published SDK `v0.11.0`; refreshed main pins published `v0.14.3`. Candidate source tests use the immutable SDK revision in `e2e/source-cohort.json`, subject to cohort approval; this does not change release dependency policy.
+- Use the candidate SDK commit recorded in `e2e/source-cohort.json` through the installed CLI. Its state, profile-contract, and SDK initialization boundaries are unchanged from the prior reviewed source-coordinator pin. Add containers through the CLI only when its migration is planned.
 - All Go commands use `GOWORK=off`. Generate bindings only with `task bindings` when exported Wails surfaces change. Build runtime before Vite-plugin shims when frontend package contracts change.
 
 ## Architecture decisions

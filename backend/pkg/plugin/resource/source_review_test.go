@@ -18,7 +18,7 @@ func TestSourceFailureBeforeSnapshotReachesViewAndReleasesStaging(t *testing.T) 
 	view := sourceTestOpen(t, ctrl, target)
 	open := sourceNextOpen(t, provider)
 	record := sourceTestRecord(target.Target, "staged", "")
-	sourceSend(open.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: record}}}})
+	sourceSend(open.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: resourcev2.CompactSourceRecord(record)}}}})
 	s, err := ctrl.sourceView(testInvocationContext(), "p1", view.ViewID, "resource.SyncSourceView")
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
@@ -40,7 +40,7 @@ func TestSourceFailureBeforeSnapshotReachesViewAndReleasesStaging(t *testing.T) 
 
 func TestSourceChangesLimitsAreAtomic(t *testing.T) {
 	record := sourceTestRecord(resourcev2.ReadTarget{Provider: "p", Authority: "a", Type: "t"}, "new", "")
-	frame := resourcev2.SourceFrame{Changes: &resourcev2.SourceChanges{Changes: []resourcev2.SourceChange{{Kind: resourcev2.SourceChangeUpsert, Observation: &resourcev2.SourceObservation{Record: record}}}}}
+	frame := resourcev2.SourceFrame{Changes: &resourcev2.SourceChanges{Changes: []resourcev2.SourceChange{{Kind: resourcev2.SourceChangeUpsert, Observation: &resourcev2.SourceObservation{Record: resourcev2.CompactSourceRecord(record)}}}}}
 	t.Run("members", func(t *testing.T) {
 		members := make(map[string]sourceMember, maxSourceSessionMembers)
 		for i := range maxSourceSessionMembers {
@@ -66,7 +66,7 @@ func TestSourceUnqualifiedRemoveDeletesIncarnatedMember(t *testing.T) {
 	view := sourceTestOpen(t, ctrl, target)
 	open := sourceNextOpen(t, provider)
 	record := sourceTestRecord(target.Target, "pod", "incarnation")
-	sourceSend(open.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: record}}}})
+	sourceSend(open.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: resourcev2.CompactSourceRecord(record)}}}})
 	sourceSend(open.stream, sourceBoundary(resourcev2.EnumerationExhausted))
 	waitSourceView(t, events, view.Topic, func(e HostSourceViewEvent) bool { return e.Kind == "snapshotEnd" })
 	ref := record.Reference
@@ -150,8 +150,6 @@ func TestSourceCatalogRevisionOnReopenAndRefresh(t *testing.T) {
 		catalog.Types[0].Capabilities = append(catalog.Types[0].Capabilities, resourcev2.Capability{Operation: resourcev2.OperationSourceUpdates, Scope: resourcev2.QueryScope{}, Guarantee: resourcev2.ContinuityBestEffort})
 		return catalog, nil
 	}
-	ticks := make(chan chan time.Time, 1)
-	ctrl.sources.after = func(time.Duration) <-chan time.Time { ch := make(chan time.Time, 1); ticks <- ch; return ch }
 	view := sourceTestOpen(t, ctrl, target)
 	first := sourceNextOpen(t, provider)
 	_, catalog, err := ctrl.routeCatalog(testInvocationContext(), "p1", target.Target.Route)
@@ -159,19 +157,106 @@ func TestSourceCatalogRevisionOnReopenAndRefresh(t *testing.T) {
 	require.Equal(t, catalog.Revision, first.revision)
 	revision.Store("r2")
 	sourceSend(first.stream, resourcev2.SourceFrame{Reset: &resourcev2.SourceReset{Reason: resourcev2.SourceResetBindingChanged}})
-	(<-ticks) <- time.Now()
 	second := sourceNextOpen(t, provider)
 	_, catalog, err = ctrl.routeCatalog(testInvocationContext(), "p1", target.Target.Route)
 	require.NoError(t, err)
 	require.Equal(t, catalog.Revision, second.revision)
 	require.NotEqual(t, first.revision, second.revision)
-	revision.Store("r3")
+	// A refresh retains the newly admitted binding.
 	require.NoError(t, ctrl.RefreshSourceView(testInvocationContext(), "p1", view.ViewID))
 	third := sourceNextOpen(t, provider)
 	_, catalog, err = ctrl.routeCatalog(testInvocationContext(), "p1", target.Target.Route)
 	require.NoError(t, err)
 	require.Equal(t, catalog.Revision, third.revision)
-	require.NotEqual(t, second.revision, third.revision)
+	require.NoError(t, ctrl.CloseSourceView(testInvocationContext(), "p1", view.ViewID))
+}
+
+func TestSourceBindingMismatchRetiresOnlyCurrentEpoch(t *testing.T) {
+	for _, kind := range []string{"observation", "reset"} {
+		t.Run(kind, func(t *testing.T) {
+			ctrl, _, provider, target := sourceTestFixture(t)
+			view := sourceTestOpen(t, ctrl, target)
+			first := sourceNextOpen(t, provider)
+			sourceView, err := ctrl.sourceView(testInvocationContext(), "p1", view.ViewID, "resource.SyncSourceView")
+			require.NoError(t, err)
+			session := sourceView.session
+			session.mu.Lock()
+			oldGeneration := session.generation
+			pluginGeneration := session.pluginGeneration
+			oldEpoch := session.ctx.Value(sourceBindingKey{}).(sourceBinding).Epoch
+			session.mu.Unlock()
+
+			if kind == "reset" {
+				sourceSend(first.stream, resourcev2.SourceFrame{Reset: &resourcev2.SourceReset{Reason: resourcev2.SourceResetBindingChanged}})
+			} else {
+				record := resourcev2.CompactSourceRecord(sourceTestRecord(target.Target, "pod", ""))
+				record.Representation.Revision = "different"
+				sourceSend(first.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: record}}}})
+			}
+			second := sourceNextOpen(t, provider)
+			require.NotEqual(t, first.request.Generation, second.request.Generation)
+			session.mu.Lock()
+			currentGeneration := session.generation
+			currentEpoch := session.ctx.Value(sourceBindingKey{}).(sourceBinding).Epoch
+			session.mu.Unlock()
+			require.Greater(t, currentEpoch.Epoch, oldEpoch.Epoch)
+			require.Equal(t, oldEpoch.Connection, currentEpoch.Connection)
+
+			session.invalidateBinding(oldGeneration, pluginGeneration, currentEpoch)
+			session.invalidateBinding(currentGeneration, pluginGeneration, oldEpoch)
+			ctrl.pluginsMu.RLock()
+			epochAfterStale := pluginGeneration.sourceEpoch[currentEpoch.Connection]
+			ctrl.pluginsMu.RUnlock()
+			require.Equal(t, currentEpoch.Epoch, epochAfterStale)
+			select {
+			case <-second.stream.closed:
+				t.Fatal("stale mismatch retired the replacement stream")
+			default:
+			}
+			sourceSend(second.stream, sourceBoundary(resourcev2.EnumerationExhausted))
+			require.Eventually(t, func() bool {
+				session.mu.Lock()
+				defer session.mu.Unlock()
+				return session.status.State == "following"
+			}, 5*time.Second, time.Millisecond)
+			require.NoError(t, ctrl.CloseSourceView(testInvocationContext(), "p1", view.ViewID))
+		})
+	}
+}
+
+func TestSourceAdmissionBindingMismatchRebinds(t *testing.T) {
+	ctrl, _, provider, target := sourceTestFixture(t)
+	var revision atomic.Value
+	revision.Store("r1")
+	provider.CatalogFunc = func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
+		catalog := canonicalTestCatalog("p1", "native::Pod")
+		catalog.Revision = revision.Load().(string)
+		catalog.Types[0].Capabilities = append(catalog.Types[0].Capabilities, resourcev2.Capability{Operation: resourcev2.OperationSourceUpdates, Scope: resourcev2.QueryScope{}, Guarantee: resourcev2.ContinuityBestEffort})
+		return catalog, nil
+	}
+	view := sourceTestOpen(t, ctrl, target)
+	first := sourceNextOpen(t, provider)
+	sourceView, err := ctrl.sourceView(testInvocationContext(), "p1", view.ViewID, "resource.SyncSourceView")
+	require.NoError(t, err)
+	session := sourceView.session
+	session.mu.Lock()
+	oldEpoch := session.ctx.Value(sourceBindingKey{}).(sourceBinding).Epoch
+	session.mu.Unlock()
+	revision.Store("r2")
+	require.NoError(t, ctrl.RefreshSourceView(testInvocationContext(), "p1", view.ViewID))
+	second := sourceNextOpen(t, provider)
+	require.Equal(t, "r2", second.revision)
+	require.NotEqual(t, first.request.Generation, second.request.Generation)
+	session.mu.Lock()
+	currentEpoch := session.ctx.Value(sourceBindingKey{}).(sourceBinding).Epoch
+	session.mu.Unlock()
+	require.Greater(t, currentEpoch.Epoch, oldEpoch.Epoch)
+	sourceSend(second.stream, sourceBoundary(resourcev2.EnumerationExhausted))
+	require.Eventually(t, func() bool {
+		session.mu.Lock()
+		defer session.mu.Unlock()
+		return session.status.State == "following"
+	}, 5*time.Second, time.Millisecond)
 	require.NoError(t, ctrl.CloseSourceView(testInvocationContext(), "p1", view.ViewID))
 }
 
@@ -310,7 +395,7 @@ func TestSourceCancelledOpenReleasesReservation(t *testing.T) {
 func sourceDirectTestSession(t *testing.T, opener resourcev2.SourceStreamOpener, mode string) *sourceSession {
 	t.Helper()
 	ctrl, _, _, target := sourceTestFixture(t)
-	_, generation, ctx, cancel, err := ctrl.operationGeneration(testInvocationContext(), "p1", target.Target.Route)
+	_, generation, ctx, cancel, _, _, err := ctrl.sources.prepare(testInvocationContext(), "p1", target.Target, "ifSupported")
 	require.NoError(t, err)
 	return &sourceSession{coordinator: ctrl.sources, pluginID: "p1", target: target.Target, pluginGeneration: generation, opener: opener, ctx: ctx, cancel: cancel, mode: mode, members: make(map[string]sourceMember), views: make(map[string]*sourceView)}
 }
