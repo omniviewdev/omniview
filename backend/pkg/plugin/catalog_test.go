@@ -550,13 +550,14 @@ func TestBuiltinConsumerValidatesOwnersBeforeFactory(t *testing.T) {
 	pm := catalogManager(t, []CatalogEntry{entry})
 	require.NoError(t, pm.Initialize(context.Background()))
 	pm.sharing = &sharingState{}
-	_, err := pm.LoadPlugin(entry.Metadata.ID, nil)
-	require.Error(t, err)
+	_, activationErr := pm.LoadPlugin(entry.Metadata.ID, nil)
+	require.Error(t, activationErr)
 	require.Zero(t, starts)
 	info, err := pm.GetPlugin(entry.Metadata.ID)
 	require.NoError(t, err)
 	require.Equal(t, "builtin", info.Origin)
-	require.Equal(t, string(lifecycle.PhaseInstalled), info.Phase)
+	require.Equal(t, string(lifecycle.PhaseFailed), info.Phase)
+	require.Equal(t, activationErr.Error(), info.LastError)
 }
 
 func TestBuiltinFailedPreferenceRestoreReconcilesPersistedDisable(t *testing.T) {

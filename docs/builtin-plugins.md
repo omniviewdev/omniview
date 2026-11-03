@@ -113,6 +113,8 @@ Built-in metadata uses the SDK's validated connection-sharing declarations. Cata
 
 Reserved-ID archive recovery blocks both the built-in ID and its validated staging directory without blocking unrelated startup. Failed preference writes reconcile runtime enablement against the persisted result if restoring the previous preference fails. Enablement changes retain unresolved collision diagnostics.
 
+Required-owner admission failures publish failed inventory with the original cause before returning. Disabled built-in rows hide phase indicators even while provider teardown still exposes the previous phase. Marketplace queries remain fail-closed until native inventory establishes product ownership; marketplace listings cannot establish native origin.
+
 **Acceptance:** empty-profile and offline starts discover product-owned descriptors without plugin installation. Disabling releases resources. External collisions and replacement attempts fail deterministically. App updates preserve settings and enablement.
 
 ## Phase 4 — Frontend resolution and activation

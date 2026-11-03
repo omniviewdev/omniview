@@ -195,6 +195,7 @@ func (pm *pluginManager) loadBuiltinLocked(id string, entry CatalogEntry, opts *
 	record.Origin = "builtin"
 	record.FrontendModule = entry.FrontendModule
 	if err := pm.startRequiredOwners(record.Metadata); err != nil {
+		pm.storeFailedRecord(id, record, err)
 		return record.ToInfo(), err
 	}
 	if record.Metadata.HasBackendCapabilities() {

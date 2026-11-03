@@ -82,7 +82,7 @@ const PluginListItem: React.FC<PluginListItemProps> = ({
     queryKey: ['plugin-operation', id], queryFn: () => null, initialData: null, enabled: false,
   });
   const displayAuthor = orFallback(author, publisherName) ?? '';
-  const showPhase = installed && phase;
+  const showPhase = installed && phase && !(origin === 'builtin' && enabled === false);
   let imageSrc: string | undefined;
 
   if (iconUrl) {
