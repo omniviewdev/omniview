@@ -1,0 +1,34 @@
+diff --git a/dist/node/chunks/config.js b/dist/node/chunks/config.js
+--- a/dist/node/chunks/config.js
++++ b/dist/node/chunks/config.js
+@@ -34330,10 +34330,10 @@ function createDepsOptimizer(environment) {
+ 			optimizationResult?.cancel()
+ 		]);
+ 	}
+-	let inited = false;
++	let initState = "idle";
+ 	async function init$2() {
+-		if (inited) return;
+-		inited = true;
++		if (initState !== "idle") return;
++		initState = "initializing";
+ 		const cachedMetadata = await loadCachedDepOptimizationMetadata(environment);
+ 		firstRunCalled = !!cachedMetadata;
+ 		metadata = depsOptimizer.metadata = cachedMetadata || initDepsOptimizerMetadata(environment, sessionTimestamp);
+@@ -34384,6 +34384,7 @@ function createDepsOptimizer(environment) {
+ 				})();
+ 			});
+ 		}
++		initState = "initialized";
+ 	}
+ 	function startNextDiscoveredBatch() {
+ 		newDepsDiscovered = false;
+@@ -34523,7 +34524,7 @@ function createDepsOptimizer(environment) {
+ 		let missing = metadata.discovered[id];
+ 		if (missing) return missing;
+ 		missing = addMissingDep(id, resolved);
+-		if (!waitingForCrawlEnd) debouncedProcessing();
++		if (initState === "initialized" && !waitingForCrawlEnd) debouncedProcessing();
+ 		return missing;
+ 	}
+ 	function addMissingDep(id, resolved) {

@@ -18,3 +18,5 @@ allowBuilds:
 patchedDependencies:
   '@wailsio/runtime@3.0.0-beta.34': patches/@wailsio__runtime@3.0.0-beta.34.patch
   'monaco-editor@0.52.2': patches/monaco-editor@0.52.2.patch
+  # Backport vitejs/vite#22852: avoid optimization before initialization.
+  'vite@7.3.7': patches/vite@7.3.7.patch
