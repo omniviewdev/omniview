@@ -15,7 +15,7 @@ import (
 
 const (
 	defaultSourceMaxFrameBytes = resourcev2.MaxSourceFrameBytes
-	defaultSourceMaxBatchItems = 256
+	defaultSourceMaxBatchItems = 128
 	maxSourceSessionMembers    = 65536
 	defaultSourceStagingBytes  = 128 << 20
 	maxSourceSessionBytes      = 256 << 20

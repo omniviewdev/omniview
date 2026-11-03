@@ -119,6 +119,7 @@ func TestSourceCoordinatorSharesAndReleases(t *testing.T) {
 	ctrl, _, provider, target := sourceTestFixture(t)
 	first := sourceTestOpen(t, ctrl, target)
 	open := sourceNextOpen(t, provider)
+	require.EqualValues(t, 128, open.request.Limits.MaxBatchItems)
 	second := sourceTestOpen(t, ctrl, target)
 	ctrl.sources.mu.Lock()
 	require.Len(t, ctrl.sources.sessions, 1)
@@ -136,6 +137,37 @@ func TestSourceCoordinatorSharesAndReleases(t *testing.T) {
 		t.Fatal("last release did not close stream")
 	}
 }
+func TestSourceNegotiatedChangeBatchLimit(t *testing.T) {
+	ctrl, _, provider, target := sourceTestFixture(t)
+	view := sourceTestOpen(t, ctrl, target)
+	open := sourceNextOpen(t, provider)
+	defer ctrl.CloseSourceView(testInvocationContext(), "p1", view.ViewID)
+	request := open.request
+	require.EqualValues(t, 128, request.Limits.MaxBatchItems)
+	descriptor := canonicalTestCatalog("p1", "native::Pod").Types[0]
+	descriptor.Capabilities = append(descriptor.Capabilities, resourcev2.Capability{Operation: resourcev2.OperationSourceUpdates, Scope: resourcev2.QueryScope{}, Guarantee: resourcev2.ContinuityBestEffort})
+	tracker := resourcev2.NewCatalogBoundSourcePhaseTracker(request, descriptor)
+	defer tracker.Close()
+	frame := resourcev2.SourceFrame{SessionID: request.SessionID, Generation: request.Generation, Sequence: 1, Begin: &resourcev2.SourceBegin{Mode: request.Mode}}
+	require.NoError(t, tracker.Admit(frame))
+	frame.Sequence++
+	frame.Begin = nil
+	frame.SnapshotEnd = sourceBoundary(resourcev2.EnumerationExhausted).SnapshotEnd
+	require.NoError(t, tracker.Admit(frame))
+	frame.Sequence++
+	frame.SnapshotEnd = nil
+	ref := sourceTestRecord(target.Target, "pod", "").Reference
+	changes := make([]resourcev2.SourceChange, defaultSourceMaxBatchItems+1)
+	for i := range changes {
+		changes[i] = resourcev2.SourceChange{Kind: resourcev2.SourceChangeRemove, Reference: &ref}
+	}
+	frame.Changes = &resourcev2.SourceChanges{Changes: changes[:defaultSourceMaxBatchItems]}
+	require.NoError(t, tracker.Admit(frame))
+	frame.Sequence++
+	frame.Changes.Changes = changes
+	require.Error(t, tracker.Admit(frame))
+}
+
 
 func TestSourceCoordinatorSyncWaitsForSnapshotBoundary(t *testing.T) {
 	ctrl, events, provider, target := sourceTestFixture(t)

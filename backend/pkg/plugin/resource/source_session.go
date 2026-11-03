@@ -33,20 +33,20 @@ type sourceSession struct {
 	memberBytes          int
 	memberLedger         sourceMemberLedger
 	transientLedger      sourceTransientLedger
-	// Legacy production and source receipt have distinct bounded scratch
-	// pools: each is capped at 256 MiB (512 MiB combined), independently of
-	// the retained/staging and view budgets and SDK in-flight wire limits.
+	// Source receipt, legacy production and all session views each have a
+	// 256 MiB scratch pool (768 MiB combined per session), independent of
+	// retained/staging budgets and SDK in-flight wire limits.
 	legacyTransientLedger sourceTransientLedger
-	viewTransientLedger  sourceTransientLedger
-	staging              map[string]sourceMember
-	stagingBytes         int
-	status               HostSourceStatus
-	generation           string
-	generationCancel     context.CancelFunc
-	stream               resourcev2.SourceStream
-	done                 chan struct{}
-	attempts             []time.Time
-	autoReopening        bool
+	viewTransientLedger   sourceTransientLedger
+	staging               map[string]sourceMember
+	stagingBytes          int
+	status                HostSourceStatus
+	generation            string
+	generationCancel      context.CancelFunc
+	stream                resourcev2.SourceStream
+	done                  chan struct{}
+	attempts              []time.Time
+	autoReopening         bool
 }
 
 func (s *sourceSession) updateCount() {

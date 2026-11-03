@@ -179,7 +179,7 @@ func TestSourceTransientLedgerAvailability(t *testing.T) {
 }
 
 func TestSourcePackedPodFrameAdmission(t *testing.T) {
-	observations := make([]resourcev2.SourceObservation, 190)
+	observations := make([]resourcev2.SourceObservation, defaultSourceMaxBatchItems)
 	for i := range observations {
 		observations[i] = podAccountingObservation(i)
 		// Dense nonempty ownership maps exercise map-bucket and entry costs,
@@ -187,7 +187,7 @@ func TestSourcePackedPodFrameAdmission(t *testing.T) {
 		fields := make(map[string]resourcev2.Value, 90)
 		for field := range 90 {
 			fields[fmt.Sprintf("f:field-%03d", field)] = resourcev2.Value{Kind: "map", Map: map[string]resourcev2.Value{
-				"f:name": {Kind: "string", String: "anonymous"},
+				"f:name":    {Kind: "string", String: "anonymous"},
 				"f:enabled": {Kind: "bool", Bool: true},
 				"f:version": {Kind: "string", String: "revision"},
 			}}
@@ -207,6 +207,17 @@ func TestSourcePackedPodFrameAdmission(t *testing.T) {
 	decoded, err := resourcev2.FromProtoSourceFrame(wire)
 	require.NoError(t, err)
 	require.NoError(t, sourceFramePreflight(decoded))
+	frameCost, err := sourceFrameTransientEstimate(decoded, maxSourceTransientBytes)
+	require.NoError(t, err)
+	maxMember := 0
+	for _, observation := range decoded.Snapshot.Observations {
+		cost, err := sourceMemberTransientEstimate(observation, maxSourceTransientBytes)
+		require.NoError(t, err)
+		if cost > maxMember {
+			maxMember = cost
+		}
+	}
+	require.Less(t, frameCost+maxMember, maxSourceTransientBytes*9/10)
 	s := &sourceSession{staging: make(map[string]sourceMember)}
 	_, err = s.applyLocked(decoded)
 	require.NoError(t, err)
