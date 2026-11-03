@@ -36,6 +36,8 @@ const (
 
 	// outputMuxBuffer is the buffer size of the plugin output multiplexer channel.
 	outputMuxBuffer = 256
+
+	uiSessionCreateTimeout = 90 * time.Second
 )
 
 // Controller manages log sessions across all plugins.
@@ -521,7 +523,18 @@ func (c *controller) CreateSession(
 	connectionID string,
 	opts logs.CreateSessionOptions,
 ) (*logs.LogSession, error) {
-	ctx, span := tracer.Start(context.Background(), "logs.CreateSession")
+	ctx, cancel := context.WithTimeout(context.Background(), uiSessionCreateTimeout)
+	defer cancel()
+	return c.createSessionWithContext(ctx, pluginID, connectionID, opts)
+}
+
+func (c *controller) createSessionWithContext(
+	ctx context.Context,
+	pluginID string,
+	connectionID string,
+	opts logs.CreateSessionOptions,
+) (*logs.LogSession, error) {
+	ctx, span := tracer.Start(ctx, "logs.CreateSession")
 	defer span.End()
 	span.SetAttributes(
 		attribute.String("plugin_id", pluginID),
@@ -568,6 +581,9 @@ func (c *controller) CreateSession(
 		c.getConnectedCtx(ctx, pluginID, connectionID),
 		opts,
 	)
+	if err == nil {
+		err = ctx.Err()
+	}
 	if err == nil && (session == nil || session.ID != opts.SessionID) {
 		err = resourcev2.NewError("PROVIDER_ERROR", "Log provider returned an invalid session.")
 	}

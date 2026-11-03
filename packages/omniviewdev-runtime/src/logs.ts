@@ -26,10 +26,15 @@ export function CreateSession(plugin: string, connectionID: string, options: Log
   const sessionId = options.session_id ?? crypto.randomUUID();
   const request = encodeRequestJSON({ ...options, session_id: sessionId }, [plugin, connectionID]);
   const { release, settled } = PrepareSessionEvents(sessionId);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const cleanup = () => { clearTimeout(timer); release(); };
   try {
-    return Call.ByName('github.com/omniviewdev/omniview/backend/pkg/plugin/logs.ServiceWrapper.CreateSession',
-      plugin, connectionID, request)
-      .then((session: LogSession | null) => {
+    const call = Call.ByName('github.com/omniviewdev/omniview/backend/pkg/plugin/logs.ServiceWrapper.CreateSession',
+      plugin, connectionID, request);
+    const deadline = new Error('Log session creation timed out after 120 seconds.');
+    timer = setTimeout(() => { void call.cancel(deadline); }, 120000);
+    return call.then((session: LogSession | null) => {
+        clearTimeout(timer);
         if (!session || session.id !== sessionId) {
           release();
           throw new Error('Log provider returned an invalid session.');
@@ -37,11 +42,12 @@ export function CreateSession(plugin: string, connectionID: string, options: Log
         settled();
         return session;
       }, error => {
-        release();
+        cleanup();
+        if (error?.cause === deadline) throw deadline;
         throw error;
-      }, release);
+      }, cleanup);
   } catch (error) {
-    release();
+    cleanup();
     throw error;
   }
 }

@@ -3,6 +3,7 @@ import { CreateSession, SubscribeSessionEvents } from './logs';
 import type { LogSessionRequest } from './logs';
 import { CancellablePromise } from '@wailsio/runtime/cancellable';
 import { Events } from '@wailsio/runtime';
+import { PrepareSessionEvents } from './logSessionEvents';
 
 const transport = vi.hoisted(() => ({
   listeners: new Map<string, Set<(event: { data: unknown }) => void>>(),
@@ -101,11 +102,11 @@ it.each(['lines', 'event'] as const)('disconnects live listeners when replaying 
 it('keeps pending creation output beyond sixty seconds and starts expiry only after success', async () => {
   vi.useFakeTimers();
   const id = 'slow';
-  const response = Promise.withResolvers<{ id: string }>();
+  const response = CancellablePromise.withResolvers<{ id: string }>();
   transport.call.mockReturnValue(response.promise);
   const creation = CreateSession('plugin', 'connection', { ...options, session_id: id });
   emit(id, 'event', { type: 6, source_id: '' });
-  vi.advanceTimersByTime(120000);
+  vi.advanceTimersByTime(90000);
   expect(listenerCount()).toBe(2);
   emit(id, 'lines', [{ content: 'slow success' }]);
   response.resolve({ id });
@@ -138,15 +139,17 @@ it('releases listeners when the bridge throws synchronously', () => {
 
 it('releases listeners synchronously when creation is cancelled', async () => {
   vi.useFakeTimers();
-  const response = CancellablePromise.withResolvers<{ id: string }>();
-  transport.call.mockReturnValue(response.promise);
+  const cancel = vi.fn();
+  transport.call.mockReturnValue(new CancellablePromise<{ id: string }>(() => {}, cancel));
   const creation = CreateSession('plugin', 'connection', { ...options, session_id: 'cancelled' });
   const rejected = expect(creation).rejects.toMatchObject({ name: 'CancelError' });
-  const cancelled = creation.cancel();
+  const cause = new Error('User cancelled creation.');
+  const cancelled = creation.cancel(cause);
   expect(listenerCount()).toBe(0);
   await cancelled;
   await rejected;
   expect(vi.getTimerCount()).toBe(0);
+  expect(cancel).toHaveBeenCalledExactlyOnceWith(cause);
 });
 
 it.each([null, { id: 'wrong-id' }])('releases listeners for invalid session responses: %s', async response => {
@@ -168,4 +171,114 @@ it('releases the first listener when the second subscription throws synchronousl
   } finally {
     spy.mockRestore();
   }
+});
+
+it('cancels a stalled real bridge promise at its deadline and discards captured and late output', async () => {
+  vi.useFakeTimers();
+  const id = 'stalled';
+  const cancel = vi.fn();
+  let resolve!: (value: { id: string }) => void;
+  const response = new CancellablePromise<{ id: string }>(res => { resolve = res; }, cancel);
+  transport.call.mockReturnValue(response);
+  const creation = CreateSession('plugin', 'connection', { ...options, session_id: id });
+  const rejected = expect(creation).rejects.toThrow('Log session creation timed out after 120 seconds.');
+  emit(id, 'lines', [{ content: 'before deadline' }]);
+  emit(id, 'event', { type: 6, source_id: '' });
+  await vi.advanceTimersByTimeAsync(119999);
+  expect(listenerCount()).toBe(2);
+  expect(cancel).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1);
+  await rejected;
+  expect(cancel).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+    message: 'Log session creation timed out after 120 seconds.',
+  }));
+  expect(listenerCount()).toBe(0);
+  expect(vi.getTimerCount()).toBe(0);
+  resolve({ id });
+  emit(id, 'lines', [{ content: 'after deadline' }]);
+  const onLines = vi.fn();
+  const onEvent = vi.fn();
+  const disconnect = SubscribeSessionEvents(id, { onLines, onEvent });
+  expect(onLines).not.toHaveBeenCalled();
+  expect(onEvent).not.toHaveBeenCalled();
+  disconnect();
+});
+
+it('clears the create deadline after real bridge success without cancelling the completed call', async () => {
+  vi.useFakeTimers();
+  const id = 'completed';
+  const cancel = vi.fn();
+  let resolve!: (value: { id: string }) => void;
+  transport.call.mockReturnValue(new CancellablePromise<{ id: string }>(res => { resolve = res; }, cancel));
+  const creation = CreateSession('plugin', 'connection', { ...options, session_id: id });
+  resolve({ id });
+  await creation;
+  const disconnect = SubscribeSessionEvents(id, { onLines: vi.fn(), onEvent: vi.fn() });
+  expect(vi.getTimerCount()).toBe(0);
+  await vi.advanceTimersByTimeAsync(120000);
+  expect(cancel).not.toHaveBeenCalled();
+  disconnect();
+});
+
+const byteBudget = 8 * 1024 * 1024;
+function recordWithBytes(bytes: number) {
+  const record = { content: '', fields: { label: '😀' }, source_id: 'source' };
+  const overhead = new TextEncoder().encode(JSON.stringify(record)).byteLength;
+  return { ...record, content: 'x'.repeat(bytes - overhead) };
+}
+
+it('retains an exact wire-byte boundary including UTF-8 metadata, then evicts the oldest record', () => {
+  const id = 'byte-boundary';
+  PrepareSessionEvents(id);
+  const first = recordWithBytes(byteBudget / 2);
+  const second = { ...first, source_id: 'newest' };
+  emit(id, 'lines', [first, second]);
+  const onLines = vi.fn();
+  let disconnect = SubscribeSessionEvents(id, { onLines, onEvent: vi.fn() });
+  expect(onLines).toHaveBeenCalledExactlyOnceWith([first, second]);
+  disconnect();
+  PrepareSessionEvents(id);
+  emit(id, 'lines', [first, second]);
+  const newest = { content: 'newest' };
+  emit(id, 'lines', [newest]);
+  onLines.mockClear();
+  disconnect = SubscribeSessionEvents(id, { onLines, onEvent: vi.fn() });
+  expect(onLines).toHaveBeenCalledExactlyOnceWith([second, newest]);
+  disconnect();
+});
+
+it('drops oversized records, retains newer entries, and preserves lifecycle and source events independently', () => {
+  const id = 'oversized';
+  PrepareSessionEvents(id);
+  emit(id, 'lines', [{ content: 'old' }, recordWithBytes(byteBudget + 1), { content: 'new' }]);
+  for (let type = 0; type <= 6; type++) {
+    emit(id, 'event', { type, source_id: '', detail: 'old' });
+    emit(id, 'event', { type, source_id: '', detail: 'latest' });
+  }
+  for (let i = 0; i < 110; i++) emit(id, 'event', { type: 1, source_id: `source-${i}` });
+  const onLines = vi.fn();
+  const onEvent = vi.fn();
+  const disconnect = SubscribeSessionEvents(id, { onLines, onEvent });
+  expect(onLines).toHaveBeenCalledExactlyOnceWith([{ content: 'new' }]);
+  expect(onEvent).toHaveBeenCalledTimes(107);
+  expect(onEvent.mock.calls.slice(0, 7).map(call => call[0])).toEqual(
+    Array.from({ length: 7 }, (_, type) => ({ type, source_id: '', detail: 'latest' })),
+  );
+  expect(onEvent.mock.calls[7][0]).toEqual({ type: 1, source_id: 'source-10' });
+  disconnect();
+});
+
+it.each(['release', 'connect'] as const)('resets retained byte accounting after %s', action => {
+  const id = `reset-${action}`;
+  const handoff = PrepareSessionEvents(id);
+  emit(id, 'lines', [recordWithBytes(byteBudget)]);
+  if (action === 'release') handoff.release();
+  else SubscribeSessionEvents(id, { onLines: vi.fn(), onEvent: vi.fn() })();
+  PrepareSessionEvents(id);
+  const record = recordWithBytes(byteBudget);
+  emit(id, 'lines', [record]);
+  const onLines = vi.fn();
+  const disconnect = SubscribeSessionEvents(id, { onLines, onEvent: vi.fn() });
+  expect(onLines).toHaveBeenCalledExactlyOnceWith([record]);
+  disconnect();
 });

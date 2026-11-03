@@ -3,6 +3,8 @@ import { Events } from '@wailsio/runtime';
 type LogEventHandlers = { onLines: (data: unknown) => void; onEvent: (data: unknown) => void };
 const pending = new Map<string, { connect: (handlers: LogEventHandlers) => () => void }>();
 const MAX_PENDING_LINES = 10000;
+const MAX_PENDING_BYTES = 8 * 1024 * 1024;
+const encoder = new TextEncoder();
 const MAX_PENDING_EVENTS = 100;
 
 /** Normalize scalar and emit-argument-array Wails payloads. */
@@ -25,7 +27,8 @@ function subscribe(sessionId: string, handlers: LogEventHandlers) {
 /** Capture output during creation; expire unclaimed output only after successful settlement. */
 export function PrepareSessionEvents(sessionId: string) {
   if (pending.has(sessionId)) throw new Error('Log session ID is already in use.');
-  const lines: unknown[] = [];
+  const lines: { data: unknown; bytes: number }[] = [];
+  let retainedBytes = 0;
   const events: { data: unknown; order: number }[] = [];
   // Retain latest state for each SDK event type (0–6), independently of source bursts.
   const lifecycle = new Map<number, { data: unknown; order: number }>();
@@ -35,8 +38,17 @@ export function PrepareSessionEvents(sessionId: string) {
       try {
         const batch = decode(data);
         if (!Array.isArray(batch)) return;
-        lines.push(...batch.slice(-MAX_PENDING_LINES));
-        if (lines.length > MAX_PENDING_LINES) lines.splice(0, lines.length - MAX_PENDING_LINES);
+        for (const line of batch) {
+          const bytes = encoder.encode(JSON.stringify(line)).byteLength;
+          // An oversized record cannot fit, but must still evict older output.
+          while (lines.length && (lines.length >= MAX_PENDING_LINES || retainedBytes + bytes > MAX_PENDING_BYTES)) {
+            retainedBytes -= lines.shift()!.bytes;
+          }
+          if (bytes <= MAX_PENDING_BYTES) {
+            lines.push({ data: line, bytes });
+            retainedBytes += bytes;
+          }
+        }
       } catch (error) { console.error('Failed to parse log lines:', error); }
     },
     onEvent(data) {
@@ -60,6 +72,7 @@ export function PrepareSessionEvents(sessionId: string) {
     disconnect();
     if (pending.get(sessionId) === handoff) pending.delete(sessionId);
     lines.length = 0;
+    retainedBytes = 0;
     events.length = 0;
     lifecycle.clear();
   };
@@ -68,7 +81,7 @@ export function PrepareSessionEvents(sessionId: string) {
   };
   const handoff = {
     connect(handlers: LogEventHandlers) {
-      const backlogLines = lines.splice(0);
+      const backlogLines = lines.map(line => line.data);
       const backlogEvents = [...events, ...lifecycle.values()].sort((a, b) => a.order - b.order);
       release();
       const cleanup = subscribe(sessionId, handlers);

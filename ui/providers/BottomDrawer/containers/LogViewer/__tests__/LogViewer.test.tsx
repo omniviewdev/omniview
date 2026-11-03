@@ -259,6 +259,90 @@ describe('LogViewerContainer', () => {
     expect(view.queryByText('Reader denied')).toBeNull();
   });
 
+  it('keeps source errors diagnostic after whole-session completion with no entries', () => {
+    let handlers!: Parameters<LogDataSource['connect']>[0];
+    const source: LogDataSource = {
+      connect(nextHandlers) {
+        handlers = nextHandlers;
+        return vi.fn();
+      },
+    };
+    const view = render(<LogViewerContainer source={source} />);
+    act(() => {
+      handlers.onEvent({ type: StreamEventType.STREAM_ERROR, source_id: 'failed-source', message: 'Reader denied', timestamp: '' });
+      handlers.onEvent({ type: StreamEventType.STREAM_ENDED, source_id: '', message: 'Complete', timestamp: '' });
+    });
+    expect(view.getByText('Log stream ended')).toBeTruthy();
+    expect(view.getByText('Reader denied', { exact: false })).toBeTruthy();
+    expect(view.getByText('failed-source:')).toBeTruthy();
+    expect(view.getByText('No log entries were returned.')).toBeTruthy();
+    expect(view.queryByText('Failed to stream logs')).toBeNull();
+
+    mockEntries = [{ ...makeEntry(0, 'Healthy sibling output'), sourceId: 'healthy-source' }];
+    mockLineCount = 1;
+    mockVersion++;
+    fireEvent.click(view.getByTestId('toggle-timestamps'));
+    expect(view.getByText('Healthy sibling output')).toBeTruthy();
+    expect(view.getByText('Reader denied')).toBeTruthy();
+    expect(view.getByText('Log stream ended')).toBeTruthy();
+    expect(view.queryByText('Failed to stream logs')).toBeNull();
+  });
+
+  it('keeps source-less errors fatal after whole-session completion', () => {
+    const source: LogDataSource = {
+      connect(handlers) {
+        handlers.onEvent({ type: StreamEventType.STREAM_ERROR, source_id: '', message: 'Session failed', timestamp: '' });
+        handlers.onEvent({ type: StreamEventType.STREAM_ENDED, source_id: '', message: 'Complete', timestamp: '' });
+        return vi.fn();
+      },
+    };
+    const view = render(<LogViewerContainer source={source} />);
+    expect(view.getByText('Failed to stream logs')).toBeTruthy();
+    expect(view.getByText('Session failed')).toBeTruthy();
+    expect(view.queryByText('No log entries were returned.')).toBeNull();
+  });
+
+  it('keeps removed-source completion truthful across empty output and sibling filtering', () => {
+    let handlers!: Parameters<LogDataSource['connect']>[0];
+    const source: LogDataSource = {
+      connect(nextHandlers) {
+        handlers = nextHandlers;
+        return vi.fn();
+      },
+    };
+    const view = render(<LogViewerContainer source={source} />);
+    act(() => {
+      handlers.onEvent({ type: StreamEventType.SOURCE_REMOVED, source_id: 'removed-source', message: 'Removed', timestamp: '' });
+      handlers.onEvent({ type: StreamEventType.STREAM_ENDED, source_id: 'healthy-source', message: 'Complete', timestamp: '' });
+      handlers.onEvent({ type: StreamEventType.STREAM_ENDED, source_id: '', message: 'Complete', timestamp: '' });
+    });
+    const completion = 'Log stream ended — 1 source no longer available';
+    expect(view.getByText(completion)).toBeTruthy();
+    expect(view.getByText('No log entries were returned.')).toBeTruthy();
+    expect(view.queryByText('Resource no longer available')).toBeNull();
+    expect(view.queryByText('The resource was deleted or is no longer accessible.')).toBeNull();
+
+    mockEntries = [{ ...makeEntry(0, 'Healthy sibling output'), sourceId: 'healthy-source' }];
+    mockLineCount = 1;
+    mockVersion++;
+    mockSources = [{ id: 'removed-source', labels: {} }, { id: 'healthy-source', labels: {} }];
+    mockAllSelected = false;
+    mockSelectedSourceIds = new Set(['removed-source']);
+    fireEvent.click(view.getByTestId('toggle-timestamps'));
+    expect(view.getByText(completion)).toBeTruthy();
+    expect(view.getByText('No logs match the selected sources.')).toBeTruthy();
+    expect(view.queryByText('No log entries were returned.')).toBeNull();
+    expect(view.queryByText('Healthy sibling output')).toBeNull();
+    expect(view.queryByText('Resource no longer available')).toBeNull();
+
+    mockAllSelected = true;
+    fireEvent.click(view.getByTestId('toggle-timestamps'));
+    expect(view.getByText('Healthy sibling output')).toBeTruthy();
+    expect(view.getByText(completion)).toBeTruthy();
+    expect(view.queryByText('No logs match the selected sources.')).toBeNull();
+    expect(view.queryByText('Failed to stream logs')).toBeNull();
+  });
+
   it('distinguishes filtered completed logs from a stream that returned no entries', () => {
     mockEntries = [makeEntry(0)];
     mockLineCount = 1;

@@ -466,7 +466,10 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
   const hasSourcesRemoved = sourcesRemoved.length > 0;
   // One source can disappear while other sources keep streaming.
   const streamDead = streamEnded;
-  const hasFatalErrors = streamErrors.some((event) => !event.source_id) || (streamDead && hasErrors);
+  const hasFatalErrors = streamErrors.some((event) => !event.source_id);
+  const streamEndMessage = hasSourcesRemoved
+    ? `Log stream ended — ${sourcesRemoved.length} source${sourcesRemoved.length !== 1 ? 's' : ''} no longer available`
+    : 'Log stream ended';
 
   const handleCloseTab = useCallback(() => {
     if (sessionId) {
@@ -618,7 +621,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
       />
 
       {/* Source errors remain visible even while sibling sources have no logs. */}
-      {hasErrors && !streamDead && !(hasFatalErrors && filteredLineCount === 0) && (
+      {hasErrors && !((hasFatalErrors || streamDead) && filteredLineCount === 0) && (
         <div className={styles.Banner} data-color='warning'>
           <LuTriangleAlert size={14} />
           <Text size='xs' className={styles.BannerText}>
@@ -628,14 +631,12 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
         </div>
       )}
 
-      {/* Dead stream banner — resource deleted or connection lost */}
+      {/* Whole-session completion can include individual source removals. */}
       {streamDead && filteredLineCount > 0 && (
         <div className={styles.Banner} data-color={hasSourcesRemoved ? 'danger' : 'warning'} data-tall>
           <LuUnplug size={14} />
           <Text size='xs' className={styles.BannerText}>
-            {hasSourcesRemoved
-              ? `Resource removed — ${sourcesRemoved.length} source${sourcesRemoved.length !== 1 ? 's' : ''} no longer available`
-              : 'Log stream ended'}
+            {streamEndMessage}
           </Text>
           {sessionId && (
             <Button
@@ -659,15 +660,19 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
             <>
               <LuUnplug size={32} className={styles.WarningIcon} />
               <Text weight='semibold' tone='warning'>
-                {hasSourcesRemoved ? 'Resource no longer available' : 'Log stream ended'}
+                {streamEndMessage}
               </Text>
               <Text size='sm' tone='muted' className={styles.PlaceholderText}>
                 {entries.length > 0
                   ? 'No logs match the selected sources.'
-                  : hasSourcesRemoved
-                    ? 'The resource was deleted or is no longer accessible.'
-                    : 'No log entries were returned.'}
+                  : 'No log entries were returned.'}
               </Text>
+              {streamErrors.map((err, i) => (
+                <Text key={i} size='sm' tone='muted' mono className={styles.PlaceholderError}>
+                  {err.source_id && <><strong>{err.source_id}:</strong>{' '}</>}
+                  {err.message}
+                </Text>
+              ))}
               {sessionId && (
                 <Button
                   size='sm'
