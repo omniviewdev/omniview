@@ -221,6 +221,14 @@ Implementation ownership: `main.go` composes startup and retains profile-lock or
 
 macOS PR and release artifacts share `build/darwin/build-universal.sh`: it builds CGO-enabled arm64 and amd64 executables, combines them, and verifies both slices before publishing the output. Bundle metadata is stamped in the staged app before signing: the numeric SemVer core becomes `CFBundleShortVersionString`, and the workflow run number becomes Apple-valid `CFBundleVersion`. Source plists are not rewritten by CI.
 
+Homebrew publication uses named macOS release symbols, such as
+`depends_on macos: :monterey`, rather than deprecated comparison strings.
+The updater migrates legacy lower bounds, keeps supported stricter major-release
+policies, and refuses constraints it cannot represent without weakening eligibility.
+Patch-level minima at or above macOS 12 require explicit tap-policy review.
+Actual install, upgrade, CLI-link, and uninstall checks run on disposable macOS
+CI machines before desktop publication; do not run them against a user's Homebrew.
+
 ## Stock native storage
 
 This unreleased feature has no legacy transition or compatibility path. Every development instance uses the current stock storage model. Display-name edits preserve the workspace UUID and native application identity.

@@ -9,9 +9,31 @@ on:
       cask:
         required: true
         type: string
+  workflow_dispatch:
+    inputs:
+      source-run-id:
+        description: Existing signed package workflow run in this repository
+        required: true
+        type: string
+      expected-source-head:
+        description: Exact full commit SHA that produced the signed package
+        required: true
+        type: string
+      artifact:
+        description: Exact signed package artifact name
+        required: true
+        type: string
+      cask:
+        description: Published tap cask to exercise
+        required: true
+        type: choice
+        options:
+          - omniview
+          - omniview-nightly
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   install-upgrade:
@@ -38,10 +60,33 @@ jobs:
           persist-credentials: false
           repository: omniviewdev/homebrew-tap
           path: homebrew-tap
+      - name: Validate signed package source run
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/github-script@v7
+        env:
+          SOURCE_RUN_ID: ${{ inputs.source-run-id }}
+          EXPECTED_SOURCE_HEAD: ${{ inputs.expected-source-head }}
+        with:
+          script: |
+            const runID = process.env.SOURCE_RUN_ID;
+            const head = process.env.EXPECTED_SOURCE_HEAD;
+            if (!/^[1-9]\d*$/.test(runID) || !/^[0-9a-f]{40}$/.test(head)) {
+              throw new Error('Source run ID and full lowercase source SHA are required');
+            }
+            const { data: run } = await github.rest.actions.getWorkflowRun({
+              ...context.repo, run_id: runID,
+            });
+            if (run.repository.full_name !== `${context.repo.owner}/${context.repo.repo}` ||
+                run.head_repository?.full_name !== run.repository.full_name ||
+                run.head_sha !== head || run.status !== 'completed') {
+              throw new Error('Source run must be completed, belong to this repository, and match the expected source head');
+            }
       - uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.artifact }}
           path: release-package
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event_name == 'workflow_dispatch' && inputs.source-run-id || github.run_id }}
       - name: Check native runner architecture
         env:
           EXPECTED_ARCHITECTURE: ${{ matrix.architecture }}
