@@ -55,10 +55,12 @@ function Observation({ value }: { value: string }) {
 export default function InstanceIndicator() {
   const { identity, info, status, refreshInfo } = useInstance();
   const [open, setOpen] = useState(false);
-  const development = useDevelopmentStatus(info, status === 'confirmed' && identity?.kind === 'development');
+  const confirmedDevelopment = status === 'confirmed' && identity?.kind === 'development';
+  const staticFrontend = confirmedDevelopment && info !== null && !info.endpoints.vite;
+  const development = useDevelopmentStatus(info, confirmedDevelopment);
   const hostReady = status === 'confirmed' && (info?.readiness === 'host-ready'
     || info?.readiness === 'backend-ready' && Boolean(info.endpoints.browser));
-  const host = hostStatus(development, hostReady);
+  const host = staticFrontend ? { label: 'Static', tone: 'neutral' } as const : hostStatus(development, hostReady);
   if (identity?.kind === 'production') {
     return null;
   }
@@ -82,19 +84,20 @@ export default function InstanceIndicator() {
           <div className={footerStyles.Details}>
             <DetailSection title='Host'>
               <DescriptionList layout='horizontal' size='xs' className={styles.InstanceDetails}>
-                <DescriptionList.Item label='Backend'><Observation value={development?.builds['host-backend']?.phase ?? development?.health.build ?? 'Unknown'} /></DescriptionList.Item>
-                <DescriptionList.Item label='Frontend'><Observation value={development?.builds['host-frontend']?.phase ?? development?.health.build ?? 'Unknown'} /></DescriptionList.Item>
-                <DescriptionList.Item label='HMR'><Observation value={development?.health.hmr ?? 'Unverified'} /></DescriptionList.Item>
+                <DescriptionList.Item label='Status observations'>{staticFrontend ? 'Not supported (static frontend)' : info?.endpoints.vite ? 'Live Vite' : 'Unverified'}</DescriptionList.Item>
+                <DescriptionList.Item label='Backend'><Observation value={staticFrontend ? info.readiness : development?.builds['host-backend']?.phase ?? development?.health.build ?? 'Unknown'} /></DescriptionList.Item>
+                <DescriptionList.Item label='Frontend'><Observation value={staticFrontend ? 'Static bundle' : development?.builds['host-frontend']?.phase ?? development?.health.build ?? 'Unknown'} /></DescriptionList.Item>
+                <DescriptionList.Item label='HMR'><Observation value={staticFrontend ? 'Not supported' : development?.health.hmr ?? 'Unverified'} /></DescriptionList.Item>
               </DescriptionList>
             </DetailSection>
             <DetailSection title='Source & plugins'>
               <DescriptionList layout='horizontal' size='xs' className={styles.InstanceDetails}>
-                <DescriptionList.Item label='Source freshness'><Observation value={development?.health.servedSource ?? 'Unknown'} /></DescriptionList.Item>
-                <DescriptionList.Item label='Source reload proof'><Observation value={development?.health.sourceReload ?? 'Unverified'} /></DescriptionList.Item>
+                <DescriptionList.Item label='Source freshness'><Observation value={development?.health.servedSource ?? (staticFrontend ? 'Not observed' : 'Unknown')} /></DescriptionList.Item>
+                <DescriptionList.Item label='Source reload proof'><Observation value={staticFrontend ? 'Not supported' : development?.health.sourceReload ?? 'Unverified'} /></DescriptionList.Item>
                 <DescriptionList.Item label='Selected plugins'><span title='Selection does not imply plugin readiness'>{development?.selectedPluginCount ?? 'Unknown'}</span></DescriptionList.Item>
               </DescriptionList>
             </DetailSection>
-            {host.label !== 'Ready' && (
+            {!staticFrontend && host.label !== 'Ready' && (
               <DetailSection title='Recovery'>
                 <DescriptionList layout='horizontal' size='xs' className={styles.InstanceDetails}>
                   <DescriptionList.Item label='Failure stage'>{development?.failedStage ?? 'None reported'}</DescriptionList.Item>

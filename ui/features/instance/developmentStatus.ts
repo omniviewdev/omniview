@@ -80,11 +80,13 @@ export function hostStatus(status: DevelopmentStatus | null, hostReady: boolean)
 
 export function useDevelopmentStatus(info: InstanceInfo | null, confirmed: boolean) {
   const [snapshot, setSnapshot] = useState<DevelopmentStatus | null>(null);
-  const workspaceID = confirmed ? info?.workspaceID : undefined;
-  const generation = confirmed ? info?.generation : undefined;
-  const [identity, setIdentity] = useState({ workspaceID, generation });
-  if (identity.workspaceID !== workspaceID || identity.generation !== generation) {
-    setIdentity({ workspaceID, generation });
+  // The status middleware exists only in a confirmed live Vite frontend.
+  const viteEndpoint = confirmed ? info?.endpoints.vite : undefined;
+  const workspaceID = viteEndpoint ? info?.workspaceID : undefined;
+  const generation = viteEndpoint ? info?.generation : undefined;
+  const [identity, setIdentity] = useState({ workspaceID, generation, viteEndpoint });
+  if (identity.workspaceID !== workspaceID || identity.generation !== generation || identity.viteEndpoint !== viteEndpoint) {
+    setIdentity({ workspaceID, generation, viteEndpoint });
     setSnapshot(null);
   }
 
@@ -128,6 +130,6 @@ export function useDevelopmentStatus(info: InstanceInfo | null, confirmed: boole
     return () => {
       disposed = true; clearTimeout(timer); clearTimeout(deadline); controller?.abort(); 
     };
-  }, [workspaceID, generation]);
+  }, [workspaceID, generation, viteEndpoint]);
   return snapshot && snapshot.workspaceID === workspaceID && snapshot.generation === generation ? snapshot : null;
 }
