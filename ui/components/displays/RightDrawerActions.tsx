@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useState, useSyncExternalStore } from 'rea
 
 import { IconButton, Menu, SplitButton } from '@omniviewdev/base-ui';
 
-import { parseAppError, useSnackbar, type DrawerComponentAction, type DrawerContext, type DrawerComponentActionListItem } from '@omniviewdev/runtime';
+import { parseAppError, useNotifications, type DrawerComponentAction, type DrawerContext, type DrawerComponentActionListItem } from '@omniviewdev/runtime';
 import HintTooltip from '@/components/base/HintTooltip';
 import styles from './RightDrawerActions.module.css';
 
@@ -35,13 +35,13 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
   );
   const getSnapshot = useCallback(() => action.externalStore?.getSnapshot(ctx), [action.externalStore, ctx]);
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  const { showSnackbar } = useSnackbar();
+  const { notify } = useNotifications();
   const runAction = async (callback: () => void | Promise<unknown>) => {
     try {
       await callback();
     } catch (cause) {
       const error = parseAppError(cause);
-      showSnackbar({ message: error.title || 'Action failed', status: 'error', details: error.detail });
+      void notify({ title: error.title || 'Action failed', severity: 'error', details: error.detail });
     }
   };
 

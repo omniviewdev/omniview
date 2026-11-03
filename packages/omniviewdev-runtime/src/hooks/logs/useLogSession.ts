@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query';
-import { useSnackbar } from '../snackbar/useSnackbar';
+import { useNotifications } from '../../activity/context';
 import { createErrorHandler } from '../../errors/parseAppError';
 import { CreateSession, CloseSession, type LogSessionRequest } from '../../logs';
 import { useBottomDrawer } from '../drawer';
@@ -27,7 +27,7 @@ type CreateLogSessionArgs = {
 
 export const useLogs = ({ pluginID: explicitPluginID }: UseLogSessionOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
-  const { showSnackbar } = useSnackbar();
+  const { notify } = useNotifications();
   const { createTab } = useBottomDrawer();
 
   const createSessionMutation = useMutation({
@@ -74,14 +74,14 @@ export const useLogs = ({ pluginID: explicitPluginID }: UseLogSessionOptions) =>
       });
       return session;
     },
-    onError: createErrorHandler(showSnackbar, 'Failed to start log session'),
+    onError: createErrorHandler(notify, 'Failed to start log session'),
   });
 
   const closeSessionMutation = useMutation({
     mutationFn: async (sessionID: string) => {
       await CloseSession(sessionID);
     },
-    onError: createErrorHandler(showSnackbar, 'Failed to close log session'),
+    onError: createErrorHandler(notify, 'Failed to close log session'),
   });
 
   return {

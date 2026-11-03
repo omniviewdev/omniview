@@ -12,11 +12,12 @@ import (
 
 type sourceMember struct {
 	observation resourcev2.SourceObservation
+	record      resourcev2.Record
 	size        int
 }
 
-func makeSourceMember(o resourcev2.SourceObservation) (sourceMember, string, error) {
-	size, err := resourcev2.RecordWireSize(o.Record)
+func makeSourceMember(o resourcev2.SourceObservation, binding resourcev2.Representation) (sourceMember, string, error) {
+	size, err := resourcev2.SourceObservationWireSize(o)
 	if err != nil {
 		return sourceMember{}, "", err
 	}
@@ -24,7 +25,8 @@ func makeSourceMember(o resourcev2.SourceObservation) (sourceMember, string, err
 	if err != nil {
 		return sourceMember{}, "", err
 	}
-	return sourceMember{observation: o, size: size}, key, nil
+	record := resourcev2.Record{Reference: o.Record.Reference, Body: o.Record.Body, Representation: binding, Coverage: o.Record.Coverage, SourceRevision: o.Record.SourceRevision}
+	return sourceMember{observation: o, record: record, size: size}, key, nil
 }
 
 func (c *controller) observeSourceRecord(ctx context.Context, pluginID string, generation *pluginState, route resourcev2.AccessRoute, record resourcev2.Record, metadata *resourcev2.ResourceMetadata) error {

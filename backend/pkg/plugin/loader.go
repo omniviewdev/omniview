@@ -290,6 +290,10 @@ func (pm *pluginManager) startBackend(
 		pm.storeFailedRecord(id, record, err)
 		return nil, err
 	}
+	if err := pm.bindActivities(id, backend); err != nil {
+		pm.storeFailedRecord(id, record, err)
+		return nil, err
+	}
 	defer func() {
 		if !succeeded {
 			pm.retireConnectionSharing(id)
@@ -492,11 +496,16 @@ func (pm *pluginManager) createBackend(
 				"lifecycle": &lc.Plugin{Plugin: nil, Impl: nil},
 			},
 		},
-		GRPCDialOptions:  sdk.GRPCDialOptions(),
-		Cmd:              cmd,
-		SkipHostEnv:      true,
-		StartTimeout:     pluginStartTimeout,
-		AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
+		// Reuse the process listener for callback services. Separate broker
+		// listeners use the host's TMPDIR, whose profile-scoped path can exceed
+		// Unix socket limits even when the plugin has a verified short socket root.
+		// Activity and host-connection bindings complete sequentially before admission.
+		GRPCBrokerMultiplex: true,
+		GRPCDialOptions:     sdk.GRPCDialOptions(),
+		Cmd:                 cmd,
+		SkipHostEnv:         true,
+		StartTimeout:        pluginStartTimeout,
+		AllowedProtocols:    []goplugin.Protocol{goplugin.ProtocolGRPC},
 		Logger: hclog.New(&hclog.LoggerOptions{
 			Name:   id,
 			Output: logOutput,
@@ -778,6 +787,7 @@ func (pm *pluginManager) stopPlugin(record *plugintypes.PluginRecord) error {
 	ctx := context.Background()
 	pluginID := record.ID
 	pm.retireConnectionSharing(pluginID)
+	pm.retireActivities(pluginID)
 
 	var errs []error
 	for name, manager := range pm.managers {
@@ -810,6 +820,7 @@ func (pm *pluginManager) shutdownPlugin(pluginID string, record *plugintypes.Plu
 		return errors.New("record is nil")
 	}
 	pm.retireConnectionSharing(pluginID)
+	pm.retireActivities(pluginID)
 
 	ctx := context.Background()
 

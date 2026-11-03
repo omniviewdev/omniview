@@ -7,8 +7,8 @@ import { useResource } from '../../../packages/omniviewdev-runtime/src/hooks/res
 import type { HostGetRequest, HostRecord } from '../../../packages/omniviewdev-runtime/src/resource/v2/host';
 
 const native = vi.hoisted(() => ({ get: vi.fn() }));
-vi.mock('../../../packages/omniviewdev-runtime/src/hooks/snackbar/useSnackbar', () => ({
-  useSnackbar: () => ({ showSnackbar: vi.fn() }),
+vi.mock('../../../packages/omniviewdev-runtime/src/activity/context', () => ({
+  useNotifications: () => ({ notify: vi.fn() }),
 }));
 vi.mock('../../../packages/omniviewdev-runtime/src/resource/v2/client', () => ({
   Get: native.get, Mutate: vi.fn(),

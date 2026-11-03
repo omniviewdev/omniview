@@ -31,12 +31,7 @@ func compileSourceChild(t *testing.T) string {
 		_, source, _, ok := runtime.Caller(0)
 		require.True(t, ok)
 		root := filepath.Clean(filepath.Join(filepath.Dir(source), "../../../.."))
-		args := []string{"list"}
-		modfile := filepath.Join(root, ".local", "hostmod", "host.mod")
-		if _, err := os.Stat(modfile); err == nil {
-			args = append(args, "-modfile="+modfile)
-		}
-		args = append(args, "-m", "-f", "{{if .Replace}}{{.Replace.Dir}}{{else}}{{.Dir}}{{end}}", "github.com/omniviewdev/plugin-sdk")
+		args := []string{"list", "-m", "-f", "{{if .Replace}}{{.Replace.Dir}}{{else}}{{.Dir}}{{end}}", "github.com/omniviewdev/plugin-sdk"}
 		command := exec.Command("go", args...)
 		command.Dir = root
 		command.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=")

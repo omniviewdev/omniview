@@ -1,5 +1,5 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
+import { useNotifications } from '../../activity/context';
 import { createErrorHandler } from '../../errors/parseAppError';
 import { Get, Mutate } from '../../resource/v2/client';
 import type { MutationRequest } from '../../resource/v2/domain';
@@ -14,13 +14,21 @@ export const useResource = ({
   pluginID: explicitPluginID,
   request,
   enabled = true,
-}: { pluginID?: string; request?: HostGetRequest; enabled?: boolean }) => {
+}: {
+  pluginID?: string;
+  request?: HostGetRequest;
+  enabled?: boolean;
+}) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
   const connectionID = request?.request.route.connection ?? '';
-  const readiness = useConnectionReadiness({ pluginID, connectionID, enabled: enabled && !!request });
+  const readiness = useConnectionReadiness({
+    pluginID,
+    connectionID,
+    enabled: enabled && !!request,
+  });
   const guardQuery = useConnectionQueryGuard(pluginID, connectionID);
   const queryClient = useQueryClient();
-  const { showSnackbar } = useSnackbar();
+  const { notify } = useNotifications();
   const queryKey = resourceQueryKeys.resource(pluginID, request);
   const queryEnabled = enabled && !!request && readiness.phase === 'connected';
   const { mutateAsync: mutate } = useMutation({
@@ -36,11 +44,13 @@ export const useResource = ({
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: resourceQueryKeys.all(pluginID) });
     },
-    onError: createErrorHandler(showSnackbar, 'Failed to mutate resource'),
+    onError: createErrorHandler(notify, 'Failed to mutate resource'),
   });
   const resource = useQuery({
     queryKey,
-    queryFn: queryEnabled ? ({ signal, queryKey }) => guardQuery(queryKey, signal, () => Get(pluginID, request!)) : skipToken,
+    queryFn: queryEnabled
+      ? ({ signal, queryKey }) => guardQuery(queryKey, signal, () => Get(pluginID, request!))
+      : skipToken,
     retry: false,
     enabled: queryEnabled,
   });

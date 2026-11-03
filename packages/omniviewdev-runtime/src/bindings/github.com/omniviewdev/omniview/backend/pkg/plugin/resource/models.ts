@@ -25,6 +25,7 @@ export class ActionEventDTO {
     "type": string;
     "data"?: resourcev2$0.Value | null;
     "error"?: apperror$0.AppError | null;
+    "activity"?: resourcev2$0.ActivityPresentation | null;
 
     /** Creates a new ActionEventDTO instance. */
     constructor($$source: Partial<ActionEventDTO> = {}) {
@@ -40,9 +41,13 @@ export class ActionEventDTO {
      */
     static createFrom($$source: any = {}): ActionEventDTO {
         const $$createField2_0 = $$createType1;
+        const $$createField3_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("error" in $$parsedSource) {
             $$parsedSource["error"] = $$createField2_0($$parsedSource["error"]);
+        }
+        if ("activity" in $$parsedSource) {
+            $$parsedSource["activity"] = $$createField3_0($$parsedSource["activity"]);
         }
         return new ActionEventDTO($$parsedSource as Partial<ActionEventDTO>);
     }
@@ -72,7 +77,7 @@ export class ActionSnapshot {
      * Creates a new ActionSnapshot instance from a string or object.
      */
     static createFrom($$source: any = {}): ActionSnapshot {
-        const $$createField1_0 = $$createType2;
+        const $$createField1_0 = $$createType4;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("event" in $$parsedSource) {
             $$parsedSource["event"] = $$createField1_0($$parsedSource["event"]);
@@ -101,7 +106,7 @@ export class AuthorityEvidence {
      * Creates a new AuthorityEvidence instance from a string or object.
      */
     static createFrom($$source: any = {}): AuthorityEvidence {
-        const $$createField1_0 = $$createType3;
+        const $$createField1_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("limitations" in $$parsedSource) {
             $$parsedSource["limitations"] = $$createField1_0($$parsedSource["limitations"]);
@@ -140,7 +145,7 @@ export class ConnectionProfile {
      * Creates a new ConnectionProfile instance from a string or object.
      */
     static createFrom($$source: any = {}): ConnectionProfile {
-        const $$createField2_0 = $$createType5;
+        const $$createField2_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("connection" in $$parsedSource) {
             $$parsedSource["connection"] = $$createField2_0($$parsedSource["connection"]);
@@ -193,7 +198,7 @@ export class ConnectionProfileResult {
      * Creates a new ConnectionProfileResult instance from a string or object.
      */
     static createFrom($$source: any = {}): ConnectionProfileResult {
-        const $$createField1_0 = $$createType6;
+        const $$createField1_0 = $$createType8;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("profile" in $$parsedSource) {
             $$parsedSource["profile"] = $$createField1_0($$parsedSource["profile"]);
@@ -273,10 +278,10 @@ export class ConnectionState {
      * Creates a new ConnectionState instance from a string or object.
      */
     static createFrom($$source: any = {}): ConnectionState {
-        const $$createField0_0 = $$createType4;
+        const $$createField0_0 = $$createType6;
         const $$createField2_0 = $$createType1;
-        const $$createField3_0 = $$createType7;
-        const $$createField4_0 = $$createType9;
+        const $$createField3_0 = $$createType9;
+        const $$createField4_0 = $$createType11;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("connection" in $$parsedSource) {
             $$parsedSource["connection"] = $$createField0_0($$parsedSource["connection"]);
@@ -452,7 +457,7 @@ export class HostConnectionMetadata {
      * Creates a new HostConnectionMetadata instance from a string or object.
      */
     static createFrom($$source: any = {}): HostConnectionMetadata {
-        const $$createField6_0 = $$createType11;
+        const $$createField6_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("snapshot" in $$parsedSource) {
             $$parsedSource["snapshot"] = $$createField6_0($$parsedSource["snapshot"]);
@@ -481,7 +486,7 @@ export class HostEnumerateRequest {
      * Creates a new HostEnumerateRequest instance from a string or object.
      */
     static createFrom($$source: any = {}): HostEnumerateRequest {
-        const $$createField1_0 = $$createType12;
+        const $$createField1_0 = $$createType14;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("request" in $$parsedSource) {
             $$parsedSource["request"] = $$createField1_0($$parsedSource["request"]);
@@ -510,7 +515,7 @@ export class HostGetRequest {
      * Creates a new HostGetRequest instance from a string or object.
      */
     static createFrom($$source: any = {}): HostGetRequest {
-        const $$createField1_0 = $$createType13;
+        const $$createField1_0 = $$createType15;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("request" in $$parsedSource) {
             $$parsedSource["request"] = $$createField1_0($$parsedSource["request"]);
@@ -555,8 +560,8 @@ export class HostRecord {
      * Creates a new HostRecord instance from a string or object.
      */
     static createFrom($$source: any = {}): HostRecord {
-        const $$createField3_0 = $$createType14;
-        const $$createField4_0 = $$createType15;
+        const $$createField3_0 = $$createType16;
+        const $$createField4_0 = $$createType17;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("record" in $$parsedSource) {
             $$parsedSource["record"] = $$createField3_0($$parsedSource["record"]);
@@ -588,8 +593,8 @@ export class HostSourcePage {
      * Creates a new HostSourcePage instance from a string or object.
      */
     static createFrom($$source: any = {}): HostSourcePage {
-        const $$createField0_0 = $$createType17;
-        const $$createField1_0 = $$createType18;
+        const $$createField0_0 = $$createType19;
+        const $$createField1_0 = $$createType20;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("records" in $$parsedSource) {
             $$parsedSource["records"] = $$createField0_0($$parsedSource["records"]);
@@ -629,8 +634,8 @@ export class HostSourceStateEvent {
      * Creates a new HostSourceStateEvent instance from a string or object.
      */
     static createFrom($$source: any = {}): HostSourceStateEvent {
-        const $$createField1_0 = $$createType15;
-        const $$createField3_0 = $$createType19;
+        const $$createField1_0 = $$createType17;
+        const $$createField3_0 = $$createType21;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("route" in $$parsedSource) {
             $$parsedSource["route"] = $$createField1_0($$parsedSource["route"]);
@@ -662,8 +667,8 @@ export class HostSourceStates {
      * Creates a new HostSourceStates instance from a string or object.
      */
     static createFrom($$source: any = {}): HostSourceStates {
-        const $$createField0_0 = $$createType15;
-        const $$createField1_0 = $$createType20;
+        const $$createField0_0 = $$createType17;
+        const $$createField1_0 = $$createType22;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("route" in $$parsedSource) {
             $$parsedSource["route"] = $$createField0_0($$parsedSource["route"]);
@@ -702,9 +707,9 @@ export class HostSourceStatus {
      * Creates a new HostSourceStatus instance from a string or object.
      */
     static createFrom($$source: any = {}): HostSourceStatus {
-        const $$createField3_0 = $$createType22;
-        const $$createField4_0 = $$createType8;
-        const $$createField5_0 = $$createType24;
+        const $$createField3_0 = $$createType24;
+        const $$createField4_0 = $$createType10;
+        const $$createField5_0 = $$createType26;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("coverage" in $$parsedSource) {
             $$parsedSource["coverage"] = $$createField3_0($$parsedSource["coverage"]);
@@ -772,7 +777,7 @@ export class HostSourceViewRequest {
      * Creates a new HostSourceViewRequest instance from a string or object.
      */
     static createFrom($$source: any = {}): HostSourceViewRequest {
-        const $$createField1_0 = $$createType25;
+        const $$createField1_0 = $$createType27;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("target" in $$parsedSource) {
             $$parsedSource["target"] = $$createField1_0($$parsedSource["target"]);
@@ -811,8 +816,8 @@ export class ResolveReferenceRequest {
      * Creates a new ResolveReferenceRequest instance from a string or object.
      */
     static createFrom($$source: any = {}): ResolveReferenceRequest {
-        const $$createField0_0 = $$createType15;
-        const $$createField2_0 = $$createType27;
+        const $$createField0_0 = $$createType17;
+        const $$createField2_0 = $$createType29;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("route" in $$parsedSource) {
             $$parsedSource["route"] = $$createField0_0($$parsedSource["route"]);
@@ -849,7 +854,7 @@ export class ResolveTargetRequest {
      * Creates a new ResolveTargetRequest instance from a string or object.
      */
     static createFrom($$source: any = {}): ResolveTargetRequest {
-        const $$createField0_0 = $$createType15;
+        const $$createField0_0 = $$createType17;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("route" in $$parsedSource) {
             $$parsedSource["route"] = $$createField0_0($$parsedSource["route"]);
@@ -898,9 +903,9 @@ export class ResolvedReference {
      * Creates a new ResolvedReference instance from a string or object.
      */
     static createFrom($$source: any = {}): ResolvedReference {
-        const $$createField0_0 = $$createType28;
-        const $$createField1_0 = $$createType15;
-        const $$createField6_0 = $$createType29;
+        const $$createField0_0 = $$createType30;
+        const $$createField1_0 = $$createType17;
+        const $$createField6_0 = $$createType31;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("reference" in $$parsedSource) {
             $$parsedSource["reference"] = $$createField0_0($$parsedSource["reference"]);
@@ -943,8 +948,8 @@ export class ResolvedTarget {
      * Creates a new ResolvedTarget instance from a string or object.
      */
     static createFrom($$source: any = {}): ResolvedTarget {
-        const $$createField1_0 = $$createType25;
-        const $$createField2_0 = $$createType29;
+        const $$createField1_0 = $$createType27;
+        const $$createField2_0 = $$createType31;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("target" in $$parsedSource) {
             $$parsedSource["target"] = $$createField1_0($$parsedSource["target"]);
@@ -984,8 +989,8 @@ export class SchemaFieldsRequest {
      * Creates a new SchemaFieldsRequest instance from a string or object.
      */
     static createFrom($$source: any = {}): SchemaFieldsRequest {
-        const $$createField0_0 = $$createType15;
-        const $$createField3_0 = $$createType31;
+        const $$createField0_0 = $$createType17;
+        const $$createField3_0 = $$createType33;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("route" in $$parsedSource) {
             $$parsedSource["route"] = $$createField0_0($$parsedSource["route"]);
@@ -1047,8 +1052,8 @@ export class SchemaFieldsResult {
      * Creates a new SchemaFieldsResult instance from a string or object.
      */
     static createFrom($$source: any = {}): SchemaFieldsResult {
-        const $$createField6_0 = $$createType32;
-        const $$createField7_0 = $$createType34;
+        const $$createField6_0 = $$createType34;
+        const $$createField7_0 = $$createType36;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("overlay" in $$parsedSource) {
             $$parsedSource["overlay"] = $$createField6_0($$parsedSource["overlay"]);
@@ -1086,7 +1091,7 @@ export class SourcePageMetadata {
      * Creates a new SourcePageMetadata instance from a string or object.
      */
     static createFrom($$source: any = {}): SourcePageMetadata {
-        const $$createField1_0 = $$createType8;
+        const $$createField1_0 = $$createType10;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("count" in $$parsedSource) {
             $$parsedSource["count"] = $$createField1_0($$parsedSource["count"]);
@@ -1098,36 +1103,38 @@ export class SourcePageMetadata {
 // Private type creation functions
 const $$createType0 = apperror$0.AppError.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = ActionEventDTO.createFrom;
-const $$createType3 = $Create.Array($Create.Any);
-const $$createType4 = types$0.Connection.createFrom;
-const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = ConnectionProfile.createFrom;
-const $$createType7 = $Create.Map($Create.Any, $Create.Any);
-const $$createType8 = resourcev2$0.Count.createFrom;
-const $$createType9 = $Create.Map($Create.Any, $$createType8);
-const $$createType10 = resourcev2$0.ConnectionMetadataSnapshot.createFrom;
-const $$createType11 = $Create.Nullable($$createType10);
-const $$createType12 = resourcev2$0.EnumerateRequest.createFrom;
-const $$createType13 = resourcev2$0.GetRequest.createFrom;
-const $$createType14 = resourcev2$0.Record.createFrom;
-const $$createType15 = resourcev2$0.AccessRoute.createFrom;
-const $$createType16 = HostRecord.createFrom;
-const $$createType17 = $Create.Array($$createType16);
-const $$createType18 = SourcePageMetadata.createFrom;
-const $$createType19 = HostSourceStatus.createFrom;
-const $$createType20 = $Create.Map($Create.Any, $$createType19);
-const $$createType21 = resourcev2$0.SourceCoverage.createFrom;
-const $$createType22 = $Create.Nullable($$createType21);
-const $$createType23 = resourcev2$0.ResourceOperationError.createFrom;
+const $$createType2 = resourcev2$0.ActivityPresentation.createFrom;
+const $$createType3 = $Create.Nullable($$createType2);
+const $$createType4 = ActionEventDTO.createFrom;
+const $$createType5 = $Create.Array($Create.Any);
+const $$createType6 = types$0.Connection.createFrom;
+const $$createType7 = $Create.Nullable($$createType6);
+const $$createType8 = ConnectionProfile.createFrom;
+const $$createType9 = $Create.Map($Create.Any, $Create.Any);
+const $$createType10 = resourcev2$0.Count.createFrom;
+const $$createType11 = $Create.Map($Create.Any, $$createType10);
+const $$createType12 = resourcev2$0.ConnectionMetadataSnapshot.createFrom;
+const $$createType13 = $Create.Nullable($$createType12);
+const $$createType14 = resourcev2$0.EnumerateRequest.createFrom;
+const $$createType15 = resourcev2$0.GetRequest.createFrom;
+const $$createType16 = resourcev2$0.Record.createFrom;
+const $$createType17 = resourcev2$0.AccessRoute.createFrom;
+const $$createType18 = HostRecord.createFrom;
+const $$createType19 = $Create.Array($$createType18);
+const $$createType20 = SourcePageMetadata.createFrom;
+const $$createType21 = HostSourceStatus.createFrom;
+const $$createType22 = $Create.Map($Create.Any, $$createType21);
+const $$createType23 = resourcev2$0.SourceCoverage.createFrom;
 const $$createType24 = $Create.Nullable($$createType23);
-const $$createType25 = resourcev2$0.ReadTarget.createFrom;
-const $$createType26 = resourcev2$0.ScopeEntry.createFrom;
-const $$createType27 = $Create.Array($$createType26);
-const $$createType28 = resourcev2$0.ResourceReference.createFrom;
-const $$createType29 = AuthorityEvidence.createFrom;
-const $$createType30 = resourcecatalog$0.PathSegment.createFrom;
-const $$createType31 = $Create.Array($$createType30);
-const $$createType32 = resourcecatalog$0.TypeOverlay.createFrom;
-const $$createType33 = resourcecatalog$0.FieldInfo.createFrom;
-const $$createType34 = $Create.Array($$createType33);
+const $$createType25 = resourcev2$0.ResourceOperationError.createFrom;
+const $$createType26 = $Create.Nullable($$createType25);
+const $$createType27 = resourcev2$0.ReadTarget.createFrom;
+const $$createType28 = resourcev2$0.ScopeEntry.createFrom;
+const $$createType29 = $Create.Array($$createType28);
+const $$createType30 = resourcev2$0.ResourceReference.createFrom;
+const $$createType31 = AuthorityEvidence.createFrom;
+const $$createType32 = resourcecatalog$0.PathSegment.createFrom;
+const $$createType33 = $Create.Array($$createType32);
+const $$createType34 = resourcecatalog$0.TypeOverlay.createFrom;
+const $$createType35 = resourcecatalog$0.FieldInfo.createFrom;
+const $$createType36 = $Create.Array($$createType35);
