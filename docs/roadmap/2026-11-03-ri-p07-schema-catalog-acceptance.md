@@ -81,12 +81,17 @@ C04 still requires the user's merge of [grpc-go #1](https://github.com/omniviewd
 
 ## Live cohort verification (2026-11-03)
 
-This proof used a disposable candidate workspace, not merged sources. Its host was
-`2f17b9ac364e8d4c0d4b06e360c804a3ecc142f5`, SDK was
+This proof used the disposable workspace `c04-final-proof` with native MCP on
+port 9112. Its host was `2f17b9ac364e8d4c0d4b06e360c804a3ecc142f5`, SDK was
 `d576a1516b29049466b56bf67aa65eb4766a358d`, Kubernetes was
 `fcd3d88cd5491007888a1210df48db222dee8d61`, UI was
 `5af0ec923a605aba5e6e3571d639f6238095804c`, Flux was `b9e4fd14`,
-and Proxmox was `07a37c5`. The host candidate changed after this proof.
+and Proxmox was `07a37c5`. The SDK, UI and Flux revisions were merged; the host,
+Kubernetes and Proxmox revisions were candidates. The host changed after this proof.
+
+The earlier gate statements describe the original PR's state. The canonical pin
+merged as `23fb11eb`, and grpc-go #1 merged as `4c6f1d1c`. They no longer await
+merge.
 
 The Pod YAML editor displayed schema documentation for `apiVersion`. Completion
 at `spec.serviceAcc` included the registered Pod schema property
@@ -96,7 +101,22 @@ An unsaved `status.startTime: 42` produced the Monaco diagnostic
 cleared that marker. The registered Pod schema permits unknown properties, so an
 unknown field did not produce a diagnostic.
 
+The editor observations used the native MCP DOM and JavaScript tools; the edits
+were not saved.
+
 The Event table showed new scratch Deployment events without a reload. The scratch
 namespace was deleted, and a subsequent Kubernetes get returned `NotFound`.
 These observations do not replace the historical measurements above or establish
 the final merged-source smoke proof.
+
+### Acceptance status
+
+| Evidence or gate | Status |
+| --- | --- |
+| Canonical Kubernetes pin | Merged; source-selection guards passed on the merge. |
+| Candidate Pod editor and Event checks | Observed above; completion provider not identified. |
+| Unknown-field diagnostic | Not observed; the registered schema allows unknown properties. |
+| Historical Pod admissions and resource measurements | Historical only; see the earlier receipt and original acceptance records. |
+| Historical native worker and authority-URI checks | Historical only; not repeated for this cohort. |
+| Fresh live Pod admission and merged-source smoke | Open. |
+| Changed catalog and schema-wrapper coverage gaps | Not assessed by this proof. |
