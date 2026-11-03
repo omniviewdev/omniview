@@ -170,3 +170,48 @@ func TestSourceReopenRetiredEpochDoesNotOpen(t *testing.T) {
 	}
 	require.NoError(t, ctrl.CloseSourceView(testInvocationContext(), "p1", view.ViewID))
 }
+
+func TestSourceBindingInvalidationBudgetSurvivesRebind(t *testing.T) {
+	ctrl, _, provider, target := sourceTestFixture(t)
+	ctrl.sources.now = func() time.Time { return time.Unix(100, 0) }
+	view := sourceTestOpen(t, ctrl, target)
+	sourceNextOpen(t, provider)
+	s := retryTestSession(ctrl, view.ViewID)
+	var firstGeneration string
+	var firstEpoch sourceEpochSnapshot
+	for i := range sourceReopenBackoff {
+		s.mu.Lock()
+		generation := s.generation
+		pluginGeneration := s.pluginGeneration
+		epoch := s.ctx.Value(sourceBindingKey{}).(sourceBinding).Epoch
+		s.mu.Unlock()
+		if i == 0 {
+			firstGeneration, firstEpoch = generation, epoch
+		}
+		s.invalidateBinding(generation, pluginGeneration, epoch)
+		sourceNextOpen(t, provider)
+	}
+	s.mu.Lock()
+	generation := s.generation
+	pluginGeneration := s.pluginGeneration
+	epoch := s.ctx.Value(sourceBindingKey{}).(sourceBinding).Epoch
+	s.mu.Unlock()
+	s.invalidateBinding(firstGeneration, pluginGeneration, epoch)
+	s.invalidateBinding(generation, pluginGeneration, firstEpoch)
+	s.invalidateBinding(generation, pluginGeneration, epoch)
+	s.mu.Lock()
+	require.Equal(t, "failed", s.status.State)
+	require.Equal(t, "Source reconnect limit reached.", s.status.Error.Message)
+	require.Len(t, s.attempts, len(sourceReopenBackoff))
+	s.mu.Unlock()
+	ctrl.pluginsMu.RLock()
+	currentEpoch := pluginGeneration.sourceEpoch[epoch.Connection]
+	ctrl.pluginsMu.RUnlock()
+	require.Equal(t, epoch.Epoch, currentEpoch)
+	select {
+	case <-provider.opens:
+		t.Fatal("exhausted binding recovery reopened the source")
+	default:
+	}
+	require.NoError(t, ctrl.CloseSourceView(testInvocationContext(), "p1", view.ViewID))
+}

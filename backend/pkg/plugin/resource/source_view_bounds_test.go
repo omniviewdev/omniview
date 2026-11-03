@@ -21,12 +21,12 @@ func boundedSourceViewFixture(t *testing.T, schemaBytes, count int) *sourceView 
 		Document: json.RawMessage(`"` + strings.Repeat("x", schemaBytes) + `"`),
 	}
 	s := &sourceSession{
-		coordinator: ctrl.sources,
+		coordinator:      ctrl.sources,
 		pluginGeneration: &pluginState{generationID: "generation"},
-		target: target.Target,
-		ctx: context.WithValue(context.Background(), sourceBindingKey{}, sourceBinding{Representation: representation}),
-		hasSnapshot: true,
-		members: make(map[string]sourceMember),
+		target:           target.Target,
+		ctx:              context.WithValue(context.Background(), sourceBindingKey{}, sourceBinding{Representation: representation}),
+		hasSnapshot:      true,
+		members:          make(map[string]sourceMember),
 	}
 	for i := range count {
 		r := sourceTestRecord(target.Target, fmt.Sprint(i), "")

@@ -183,10 +183,10 @@ func sourceKey(pluginID, owner string, target resourcev2.ReadTarget, mode string
 type sourceBindingKey struct{}
 
 type sourceBinding struct {
-	Representation resourcev2.Representation
-	Descriptor resourcev2.ResourceType
+	Representation  resourcev2.Representation
+	Descriptor      resourcev2.ResourceType
 	CatalogRevision string
-	Epoch sourceEpochSnapshot
+	Epoch           sourceEpochSnapshot
 }
 
 func boundSourceKey(pluginID, owner string, target resourcev2.ReadTarget, mode string, binding sourceBinding) string {

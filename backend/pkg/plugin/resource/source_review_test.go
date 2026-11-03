@@ -171,54 +171,56 @@ func TestSourceCatalogRevisionOnReopenAndRefresh(t *testing.T) {
 	require.NoError(t, ctrl.CloseSourceView(testInvocationContext(), "p1", view.ViewID))
 }
 
-func TestSourceBindingMismatchRetiresOnlyCurrentEpoch(t *testing.T) {
+func TestSourceBindingMismatchPreservesOtherSessions(t *testing.T) {
 	for _, kind := range []string{"observation", "reset"} {
 		t.Run(kind, func(t *testing.T) {
 			ctrl, _, provider, target := sourceTestFixture(t)
 			view := sourceTestOpen(t, ctrl, target)
 			first := sourceNextOpen(t, provider)
-			sourceView, err := ctrl.sourceView(testInvocationContext(), "p1", view.ViewID, "resource.SyncSourceView")
+			other, err := ctrl.OpenSourceView(testInvocationContext(), "p1", HostSourceViewRequest{TargetID: target.TargetID, Target: target.Target, Updates: "none"})
 			require.NoError(t, err)
-			session := sourceView.session
+			second := sourceNextOpen(t, provider)
+			record := sourceTestRecord(target.Target, "other", "")
+			sourceSend(second.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: resourcev2.CompactSourceRecord(record)}}}})
+			sourceSend(second.stream, sourceBoundary(resourcev2.EnumerationExhausted))
+			otherSession := retryTestSession(ctrl, other.ViewID)
+			require.Eventually(t, func() bool {
+				otherSession.mu.Lock()
+				defer otherSession.mu.Unlock()
+				return otherSession.status.State == "finished"
+			}, 5*time.Second, time.Millisecond)
+			session := retryTestSession(ctrl, view.ViewID)
 			session.mu.Lock()
-			oldGeneration := session.generation
-			pluginGeneration := session.pluginGeneration
-			oldEpoch := session.ctx.Value(sourceBindingKey{}).(sourceBinding).Epoch
+			epoch := session.ctx.Value(sourceBindingKey{}).(sourceBinding).Epoch
+			generation := session.pluginGeneration
 			session.mu.Unlock()
-
 			if kind == "reset" {
 				sourceSend(first.stream, resourcev2.SourceFrame{Reset: &resourcev2.SourceReset{Reason: resourcev2.SourceResetBindingChanged}})
 			} else {
-				record := resourcev2.CompactSourceRecord(sourceTestRecord(target.Target, "pod", ""))
-				record.Representation.Revision = "different"
-				sourceSend(first.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: record}}}})
+				bad := resourcev2.CompactSourceRecord(sourceTestRecord(target.Target, "pod", ""))
+				bad.Representation.Revision = "different"
+				sourceSend(first.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: bad}}}})
 			}
-			second := sourceNextOpen(t, provider)
-			require.NotEqual(t, first.request.Generation, second.request.Generation)
-			session.mu.Lock()
-			currentGeneration := session.generation
-			currentEpoch := session.ctx.Value(sourceBindingKey{}).(sourceBinding).Epoch
-			session.mu.Unlock()
-			require.Greater(t, currentEpoch.Epoch, oldEpoch.Epoch)
-			require.Equal(t, oldEpoch.Connection, currentEpoch.Connection)
-
-			session.invalidateBinding(oldGeneration, pluginGeneration, currentEpoch)
-			session.invalidateBinding(currentGeneration, pluginGeneration, oldEpoch)
-			ctrl.pluginsMu.RLock()
-			epochAfterStale := pluginGeneration.sourceEpoch[currentEpoch.Connection]
-			ctrl.pluginsMu.RUnlock()
-			require.Equal(t, currentEpoch.Epoch, epochAfterStale)
-			select {
-			case <-second.stream.closed:
-				t.Fatal("stale mismatch retired the replacement stream")
-			default:
-			}
-			sourceSend(second.stream, sourceBoundary(resourcev2.EnumerationExhausted))
 			require.Eventually(t, func() bool {
 				session.mu.Lock()
 				defer session.mu.Unlock()
-				return session.status.State == "following"
+				return session.status.State == "failed" && session.status.Error != nil && session.status.Error.Code == "RESET_REQUIRED"
 			}, 5*time.Second, time.Millisecond)
+			ctrl.pluginsMu.RLock()
+			currentEpoch := generation.sourceEpoch[epoch.Connection]
+			ctrl.pluginsMu.RUnlock()
+			require.Equal(t, epoch.Epoch, currentEpoch)
+			_, found := ctrl.registryStore.Get("p1", record.Reference, target.Target.Route)
+			require.True(t, found)
+			otherSession.mu.Lock()
+			require.Equal(t, "finished", otherSession.status.State)
+			otherSession.mu.Unlock()
+			select {
+			case <-provider.opens:
+				t.Fatal("unchanged catalog caused another source open")
+			default:
+			}
+			require.NoError(t, ctrl.CloseSourceView(testInvocationContext(), "p1", other.ViewID))
 			require.NoError(t, ctrl.CloseSourceView(testInvocationContext(), "p1", view.ViewID))
 		})
 	}

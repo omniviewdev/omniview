@@ -50,6 +50,7 @@ func (v *sourceView) nextLocked(kind string) HostSourceViewEvent {
 	v.sequence++
 	return HostSourceViewEvent{ViewID: v.id, ViewGeneration: v.generation, Sequence: strconv.FormatUint(v.sequence, 10), Kind: kind}
 }
+
 // sourceViewSize conservatively bounds JSON before serialization.
 func sourceViewSize(value any, limit int) (int, bool) {
 	size := 0
@@ -195,7 +196,7 @@ func (v *sourceView) failSnapshotLocked(message string) {
 	v.sequence = 1
 	v.snapshotStatus = &HostSourceStatus{
 		State: "failed",
-		Mode: v.session.mode,
+		Mode:  v.session.mode,
 		Error: &resourcev2.ResourceOperationError{Code: "RESOURCE_LIMIT", Message: message},
 	}
 	v.synced = false

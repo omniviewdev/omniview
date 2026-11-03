@@ -16,10 +16,15 @@ import (
 
 type legacyTestProvider struct {
 	enumerate func(context.Context, resourcev2.EnumerateRequest) (resourcev2.SourcePage, error)
-	query func(context.Context, resourcev2.NativeQueryRequest) (resourcev2.SourcePage, error)
+	query     func(context.Context, resourcev2.NativeQueryRequest) (resourcev2.SourcePage, error)
 }
-func (p legacyTestProvider) Enumerate(ctx context.Context, q resourcev2.EnumerateRequest) (resourcev2.SourcePage, error) { return p.enumerate(ctx, q) }
-func (p legacyTestProvider) NativeQuery(ctx context.Context, q resourcev2.NativeQueryRequest) (resourcev2.SourcePage, error) { return p.query(ctx, q) }
+
+func (p legacyTestProvider) Enumerate(ctx context.Context, q resourcev2.EnumerateRequest) (resourcev2.SourcePage, error) {
+	return p.enumerate(ctx, q)
+}
+func (p legacyTestProvider) NativeQuery(ctx context.Context, q resourcev2.NativeQueryRequest) (resourcev2.SourcePage, error) {
+	return p.query(ctx, q)
+}
 
 func legacyTestRequest() resourcev2.SourceOpenRequest {
 	rep := canonicalTestRepresentation()
@@ -31,14 +36,18 @@ func legacyTestPage() resourcev2.SourcePage {
 func legacyTestOpen(t *testing.T, provider any, request resourcev2.SourceOpenRequest) resourcev2.SourceStream {
 	t.Helper()
 	s, err := newLegacySourceOpener(provider, canonicalTestCatalog("p", "t").Types[0]).OpenSourceStream(context.Background(), request)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(s.Close)
 	return s
 }
 func legacyTestRecv(t *testing.T, s resourcev2.SourceStream) resourcev2.SourceFrame {
 	t.Helper()
 	f, err := s.Recv()
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	return f
 }
 
@@ -48,43 +57,82 @@ func TestLegacySourcePagesCoverageAndBounds(t *testing.T) {
 	calls := 0
 	p := legacyTestProvider{enumerate: func(_ context.Context, q resourcev2.EnumerateRequest) (resourcev2.SourcePage, error) {
 		calls++
-		if q.PageSize != 1 || (calls == 1 && q.Cursor != nil) || (calls == 2 && (q.Cursor == nil || *q.Cursor != next)) { t.Errorf("bad pagination: %+v", q) }
+		if q.PageSize != 1 || (calls == 1 && q.Cursor != nil) || (calls == 2 && (q.Cursor == nil || *q.Cursor != next)) {
+			t.Errorf("bad pagination: %+v", q)
+		}
 		page := legacyTestPage()
 		page.SourceRevision = &revision
-		if calls == 1 { page.NextCursor = &next } else { page.Coverage = resourcev2.Coverage{Kind: "partial", Paths: []string{"/spec"}, Reason: "limited"}; page.Records[0].Coverage = page.Coverage }
+		if calls == 1 {
+			page.NextCursor = &next
+		} else {
+			page.Coverage = resourcev2.Coverage{Kind: "partial", Paths: []string{"/spec"}, Reason: "limited"}
+			page.Records[0].Coverage = page.Coverage
+		}
 		return page, nil
 	}}
 	s := legacyTestOpen(t, p, r)
 	for i := uint64(1); i <= 4; i++ {
 		f := legacyTestRecv(t, s)
-		if f.Sequence != i || f.SessionID != r.SessionID || f.Generation != r.Generation { t.Fatalf("bad frame: %+v", f) }
-		wire, err := resourcev2.ToProtoSourceFrame(f)
-		if err != nil || proto.Size(wire) > int(r.Limits.MaxFrameBytes) { t.Fatalf("invalid frame: %v", err) }
-		encoded, err := proto.Marshal(wire)
-		if err != nil { t.Fatal(err) }
-		if err := resourceplugin.ValidateWire(encoded, wire.ProtoReflect().Descriptor()); err != nil { t.Fatalf("invalid source wire: %v", err) }
-		if i == 1 && f.Begin == nil { t.Fatal("missing begin") }
-		if i == 2 || i == 3 {
-			if f.Snapshot == nil || len(f.Snapshot.Observations) != 1 { t.Fatalf("bad snapshot: %+v", f) }
-			if i == 3 && !reflect.DeepEqual(f.Snapshot.Observations[0].Record.Coverage, resourcev2.Coverage{Kind: "partial", Paths: []string{"/spec"}, Reason: "limited"}) { t.Fatal("record coverage lost") }
+		if f.Sequence != i || f.SessionID != r.SessionID || f.Generation != r.Generation {
+			t.Fatalf("bad frame: %+v", f)
 		}
-		if i == 4 && (f.SnapshotEnd == nil || f.SnapshotEnd.Coverage.Enumeration != resourcev2.EnumerationPartial || f.SnapshotEnd.Coverage.Consistency != resourcev2.ConsistencyPointInTime || f.SnapshotEnd.Continuity != resourcev2.ContinuityNotApplicable || !reflect.DeepEqual(f.SnapshotEnd.Coverage.Limitations, []string{"limited", "path:/spec"})) { t.Fatalf("bad coverage: %+v", f) }
+		wire, err := resourcev2.ToProtoSourceFrame(f)
+		if err != nil || proto.Size(wire) > int(r.Limits.MaxFrameBytes) {
+			t.Fatalf("invalid frame: %v", err)
+		}
+		encoded, err := proto.Marshal(wire)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := resourceplugin.ValidateWire(encoded, wire.ProtoReflect().Descriptor()); err != nil {
+			t.Fatalf("invalid source wire: %v", err)
+		}
+		if i == 1 && f.Begin == nil {
+			t.Fatal("missing begin")
+		}
+		if i == 2 || i == 3 {
+			if f.Snapshot == nil || len(f.Snapshot.Observations) != 1 {
+				t.Fatalf("bad snapshot: %+v", f)
+			}
+			if i == 3 && !reflect.DeepEqual(f.Snapshot.Observations[0].Record.Coverage, resourcev2.Coverage{Kind: "partial", Paths: []string{"/spec"}, Reason: "limited"}) {
+				t.Fatal("record coverage lost")
+			}
+		}
+		if i == 4 && (f.SnapshotEnd == nil || f.SnapshotEnd.Coverage.Enumeration != resourcev2.EnumerationPartial || f.SnapshotEnd.Coverage.Consistency != resourcev2.ConsistencyPointInTime || f.SnapshotEnd.Continuity != resourcev2.ContinuityNotApplicable || !reflect.DeepEqual(f.SnapshotEnd.Coverage.Limitations, []string{"limited", "path:/spec"})) {
+			t.Fatalf("bad coverage: %+v", f)
+		}
 	}
-	if _, err := s.Recv(); !errors.Is(err, io.EOF) { t.Fatalf("expected EOF: %v", err) }
+	if _, err := s.Recv(); !errors.Is(err, io.EOF) {
+		t.Fatalf("expected EOF: %v", err)
+	}
 }
 
 func TestLegacySourceBindingAndValidation(t *testing.T) {
-	for _, tc := range []struct{name string; change func(*resourcev2.SourcePage); reset bool}{
+	for _, tc := range []struct {
+		name   string
+		change func(*resourcev2.SourcePage)
+		reset  bool
+	}{
 		{"binding", func(p *resourcev2.SourcePage) { p.Records[0].Representation.Revision = "different" }, true},
 		{"body", func(p *resourcev2.SourcePage) { p.Records[0].Body.Kind = "invalid" }, false},
 		{"scope", func(p *resourcev2.SourcePage) { p.Records[0].Reference.Address.Authority = "other" }, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			p := legacyTestProvider{enumerate: func(context.Context, resourcev2.EnumerateRequest) (resourcev2.SourcePage, error) { page := legacyTestPage(); tc.change(&page); return page, nil }}
+			p := legacyTestProvider{enumerate: func(context.Context, resourcev2.EnumerateRequest) (resourcev2.SourcePage, error) {
+				page := legacyTestPage()
+				tc.change(&page)
+				return page, nil
+			}}
 			s := legacyTestOpen(t, p, legacyTestRequest())
 			legacyTestRecv(t, s)
 			f, err := s.Recv()
-			if tc.reset { if err != nil || f.Reset == nil || f.Reset.Reason != resourcev2.SourceResetBindingChanged { t.Fatalf("expected binding reset: %+v %v", f, err) } } else if err == nil { t.Fatalf("invalid record accepted: %+v", f) }
+			if tc.reset {
+				if err != nil || f.Reset == nil || f.Reset.Reason != resourcev2.SourceResetBindingChanged {
+					t.Fatalf("expected binding reset: %+v %v", f, err)
+				}
+			} else if err == nil {
+				t.Fatalf("invalid record accepted: %+v", f)
+			}
 		})
 	}
 }
@@ -94,39 +142,72 @@ func TestLegacySourceQueryAndUnsupportedUpdates(t *testing.T) {
 	query := resourcev2.Value{Kind: "string", String: "select"}
 	r.Acquisition = resourcev2.SourceAcquisition{Kind: resourcev2.SourceAcquisitionNativeQuery, Language: "sql", Query: &query}
 	p := legacyTestProvider{query: func(_ context.Context, q resourcev2.NativeQueryRequest) (resourcev2.SourcePage, error) {
-		if q.Language != "sql" || !reflect.DeepEqual(q.Query, query) { t.Errorf("query lost: %+v", q) }
+		if q.Language != "sql" || !reflect.DeepEqual(q.Query, query) {
+			t.Errorf("query lost: %+v", q)
+		}
 		return legacyTestPage(), nil
 	}}
 	s := legacyTestOpen(t, p, r)
-	legacyTestRecv(t, s); legacyTestRecv(t, s); legacyTestRecv(t, s)
+	legacyTestRecv(t, s)
+	legacyTestRecv(t, s)
+	legacyTestRecv(t, s)
 	r.Mode = resourcev2.SourceModeSnapshotAndUpdates
 	r.Acquisition = resourcev2.SourceAcquisition{Kind: resourcev2.SourceAcquisitionEnumerate}
-	if _, err := newLegacySourceOpener(p, canonicalTestCatalog("p", "t").Types[0]).OpenSourceStream(context.Background(), r); resourcev2.ErrorCode(err) != "UNSUPPORTED" { t.Fatalf("updates: %v", err) }
+	if _, err := newLegacySourceOpener(p, canonicalTestCatalog("p", "t").Types[0]).OpenSourceStream(context.Background(), r); resourcev2.ErrorCode(err) != "UNSUPPORTED" {
+		t.Fatalf("updates: %v", err)
+	}
 }
 
 func TestLegacySourceCancellationAndLimits(t *testing.T) {
 	t.Run("close unblocks recv", func(t *testing.T) {
 		entered := make(chan struct{})
-		p := legacyTestProvider{enumerate: func(ctx context.Context, _ resourcev2.EnumerateRequest) (resourcev2.SourcePage, error) { close(entered); <-ctx.Done(); return resourcev2.SourcePage{}, ctx.Err() }}
+		p := legacyTestProvider{enumerate: func(ctx context.Context, _ resourcev2.EnumerateRequest) (resourcev2.SourcePage, error) {
+			close(entered)
+			<-ctx.Done()
+			return resourcev2.SourcePage{}, ctx.Err()
+		}}
 		s := legacyTestOpen(t, p, legacyTestRequest())
 		legacyTestRecv(t, s)
 		<-entered
 		done := make(chan error, 1)
 		go func() { _, err := s.Recv(); done <- err }()
 		s.Close()
-		select { case err := <-done: if err == nil { t.Fatal("expected cancellation") }; case <-time.After(time.Second): t.Fatal("Recv did not unblock") }
+		select {
+		case err := <-done:
+			if err == nil {
+				t.Fatal("expected cancellation")
+			}
+		case <-time.After(time.Second):
+			t.Fatal("Recv did not unblock")
+		}
 	})
 	t.Run("oversized observation", func(t *testing.T) {
-		r := legacyTestRequest(); r.Limits.MaxFrameBytes = 256
-		p := legacyTestProvider{enumerate: func(context.Context, resourcev2.EnumerateRequest) (resourcev2.SourcePage, error) { page := legacyTestPage(); page.Records[0].Body.Map["large"] = resourcev2.Value{Kind: "string", String: strings.Repeat("x", 1024)}; return page, nil }}
-		s := legacyTestOpen(t, p, r); legacyTestRecv(t, s)
-		if _, err := s.Recv(); resourcev2.ErrorCode(err) != "RESOURCE_LIMIT" { t.Fatalf("expected limit: %v", err) }
+		r := legacyTestRequest()
+		r.Limits.MaxFrameBytes = 256
+		p := legacyTestProvider{enumerate: func(context.Context, resourcev2.EnumerateRequest) (resourcev2.SourcePage, error) {
+			page := legacyTestPage()
+			page.Records[0].Body.Map["large"] = resourcev2.Value{Kind: "string", String: strings.Repeat("x", 1024)}
+			return page, nil
+		}}
+		s := legacyTestOpen(t, p, r)
+		legacyTestRecv(t, s)
+		if _, err := s.Recv(); resourcev2.ErrorCode(err) != "RESOURCE_LIMIT" {
+			t.Fatalf("expected limit: %v", err)
+		}
 	})
 	t.Run("repeated cursor", func(t *testing.T) {
 		cursor := "same"
-		p := legacyTestProvider{enumerate: func(context.Context, resourcev2.EnumerateRequest) (resourcev2.SourcePage, error) { page := legacyTestPage(); page.Records = nil; page.NextCursor = &cursor; return page, nil }}
-		s := legacyTestOpen(t, p, legacyTestRequest()); legacyTestRecv(t, s)
-		if _, err := s.Recv(); resourcev2.ErrorCode(err) != "PROVIDER_ERROR" { t.Fatalf("expected cursor error: %v", err) }
+		p := legacyTestProvider{enumerate: func(context.Context, resourcev2.EnumerateRequest) (resourcev2.SourcePage, error) {
+			page := legacyTestPage()
+			page.Records = nil
+			page.NextCursor = &cursor
+			return page, nil
+		}}
+		s := legacyTestOpen(t, p, legacyTestRequest())
+		legacyTestRecv(t, s)
+		if _, err := s.Recv(); resourcev2.ErrorCode(err) != "PROVIDER_ERROR" {
+			t.Fatalf("expected cursor error: %v", err)
+		}
 	})
 }
 
@@ -152,20 +233,30 @@ func TestLegacySourceCursorByteLimit(t *testing.T) {
 				case 1:
 					page.NextCursor = &first
 				case 2:
-					if q.Cursor == nil || *q.Cursor != first { return resourcev2.SourcePage{}, errors.New("first cursor not forwarded") }
+					if q.Cursor == nil || *q.Cursor != first {
+						return resourcev2.SourcePage{}, errors.New("first cursor not forwarded")
+					}
 					page.NextCursor = &second
 				default:
-					if q.Cursor == nil || *q.Cursor != second { return resourcev2.SourcePage{}, errors.New("second cursor not forwarded") }
+					if q.Cursor == nil || *q.Cursor != second {
+						return resourcev2.SourcePage{}, errors.New("second cursor not forwarded")
+					}
 					next := "new"
-					if tc.last == "duplicate" { next = first }
+					if tc.last == "duplicate" {
+						next = first
+					}
 					page.NextCursor = &next
 				}
 				return page, nil
 			}}
 			s := legacyTestOpen(t, p, r)
 			legacyTestRecv(t, s)
-			if _, err := s.Recv(); resourcev2.ErrorCode(err) != tc.code { t.Fatalf("expected %s: %v", tc.code, err) }
-			if calls != 3 { t.Fatalf("expected three pages, got %d", calls) }
+			if _, err := s.Recv(); resourcev2.ErrorCode(err) != tc.code {
+				t.Fatalf("expected %s: %v", tc.code, err)
+			}
+			if calls != 3 {
+				t.Fatalf("expected three pages, got %d", calls)
+			}
 		})
 	}
 }
@@ -175,20 +266,35 @@ func TestLegacySourceFrameHeaderCountsTowardLimit(t *testing.T) {
 	page := legacyTestPage()
 	observation := resourcev2.SourceObservation{Record: resourcev2.CompactSourceRecord(page.Records[0])}
 	size, err := resourcev2.SourceObservationWireSize(observation)
-	if err != nil { t.Fatal(err) }
-	if size < resourcev2.MinSourceFrameBytes || size > resourcev2.MaxSourceFrameBytes { t.Fatalf("invalid test limit: %d", size) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if size < resourcev2.MinSourceFrameBytes || size > resourcev2.MaxSourceFrameBytes {
+		t.Fatalf("invalid test limit: %d", size)
+	}
 	r.Limits.MaxFrameBytes = uint32(size)
-	if err := resourcev2.ValidateSourceOpenRequest(r); err != nil { t.Fatalf("invalid negotiated limits: %v", err) }
+	if err := resourcev2.ValidateSourceOpenRequest(r); err != nil {
+		t.Fatalf("invalid negotiated limits: %v", err)
+	}
 	begin, err := resourcev2.ToProtoSourceFrame(resourcev2.SourceFrame{SessionID: r.SessionID, Generation: r.Generation, Sequence: 1, Begin: &resourcev2.SourceBegin{Mode: r.Mode}})
-	if err != nil || proto.Size(begin) > size { t.Fatalf("begin exceeds test limit: %v", err) }
+	if err != nil || proto.Size(begin) > size {
+		t.Fatalf("begin exceeds test limit: %v", err)
+	}
 	p := legacyTestProvider{enumerate: func(context.Context, resourcev2.EnumerateRequest) (resourcev2.SourcePage, error) { return page, nil }}
 	s := legacyTestOpen(t, p, r)
 	legacyTestRecv(t, s)
-	if _, err := s.Recv(); resourcev2.ErrorCode(err) != "RESOURCE_LIMIT" { t.Fatalf("frame headers did not count: %v", err) }
+	if _, err := s.Recv(); resourcev2.ErrorCode(err) != "RESOURCE_LIMIT" {
+		t.Fatalf("frame headers did not count: %v", err)
+	}
 }
 
 func TestLegacySourcePaginationConsistency(t *testing.T) {
-	for _, tc := range []struct{name string; first, second *string; consistency string; want string}{
+	for _, tc := range []struct {
+		name          string
+		first, second *string
+		consistency   string
+		want          string
+	}{
 		{name: "missing revisions", consistency: resourcev2.ConsistencyPointInTime, want: resourcev2.ConsistencyBestEffort},
 		{name: "different revisions", first: new("a"), second: new("b"), consistency: resourcev2.ConsistencyPointInTime, want: resourcev2.ConsistencyBestEffort},
 		{name: "best effort page", first: new("a"), second: new("a"), consistency: resourcev2.ConsistencyBestEffort, want: resourcev2.ConsistencyBestEffort},
@@ -199,13 +305,20 @@ func TestLegacySourcePaginationConsistency(t *testing.T) {
 				page := legacyTestPage()
 				page.Records = nil
 				page.Consistency = tc.consistency
-				if q.Cursor == nil { page.NextCursor = &next; page.SourceRevision = tc.first } else { page.SourceRevision = tc.second }
+				if q.Cursor == nil {
+					page.NextCursor = &next
+					page.SourceRevision = tc.first
+				} else {
+					page.SourceRevision = tc.second
+				}
 				return page, nil
 			}}
 			s := legacyTestOpen(t, p, legacyTestRequest())
 			legacyTestRecv(t, s)
 			end := legacyTestRecv(t, s)
-			if end.SnapshotEnd == nil || end.SnapshotEnd.Coverage.Consistency != tc.want { t.Fatalf("bad consistency: %+v", end) }
+			if end.SnapshotEnd == nil || end.SnapshotEnd.Coverage.Consistency != tc.want {
+				t.Fatalf("bad consistency: %+v", end)
+			}
 		})
 	}
 }

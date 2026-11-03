@@ -2,7 +2,7 @@ package plugin
 
 import (
 	"context"
-	"fmt"
+	"reflect"
 	"sync"
 	"time"
 
@@ -145,6 +145,7 @@ type CrashRecoveryState struct {
 	Attempts    int
 	NextBackoff time.Duration
 	LastAttempt time.Time
+	owner       context.Context
 }
 
 // CancelRecovery cancels any in-progress crash recovery goroutine for the given plugin.
@@ -272,11 +273,18 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 
 func (hc *HealthChecker) handleCrashWithBackoff(pluginID string, expected *probedCrash) {
 	var unlock func()
+	var recoveryOptions *LoadPluginOptions
 	if expected != nil {
 		unlock = hc.pm.lockProbedCrash(pluginID, expected, lifecycle.PhaseRecovering)
 		if unlock == nil {
 			return
 		}
+		hc.pm.recordsMu.RLock()
+		record := expected.record
+		recoveryOptions = &LoadPluginOptions{ExistingState: &plugintypes.PluginStateRecord{
+			ID: record.ID, Enabled: record.Enabled, DevMode: record.DevMode, DevPath: record.DevPath,
+		}}
+		hc.pm.recordsMu.RUnlock()
 	}
 	hc.mu.Lock()
 
@@ -309,6 +317,7 @@ func (hc *HealthChecker) handleCrashWithBackoff(pluginID string, expected *probe
 	// Guard against nil manager context.
 	if hc.pm.ctx == nil {
 		hc.logger.Errorw(context.Background(), "cannot start crash recovery: manager context is nil", "pluginID", pluginID)
+		delete(hc.recoveryStates, pluginID)
 		hc.mu.Unlock()
 		if unlock != nil {
 			unlock()
@@ -323,6 +332,7 @@ func (hc *HealthChecker) handleCrashWithBackoff(pluginID string, expected *probe
 	if prevCancel, exists := hc.recoveryCancels[pluginID]; exists {
 		prevCancel()
 	}
+	state.owner = ctx
 	hc.recoveryCancels[pluginID] = cancel
 	hc.mu.Unlock()
 	if unlock != nil {
@@ -331,14 +341,20 @@ func (hc *HealthChecker) handleCrashWithBackoff(pluginID string, expected *probe
 
 	defer func() {
 		hc.mu.Lock()
-		// Only clean up if we're still the active cancel (not replaced by a newer goroutine).
-		currentCancel, active := hc.recoveryCancels[pluginID]
-		if active && fmt.Sprintf("%p", currentCancel) == fmt.Sprintf("%p", cancel) {
+		// A newer recovery may have reused the state.
+		if hc.recoveryStates[pluginID] == state && state.owner == ctx {
+			delete(hc.recoveryStates, pluginID)
 			delete(hc.recoveryCancels, pluginID)
 		}
 		hc.mu.Unlock()
 		cancel()
 	}()
+	// After each failed reload, ownership moves to the record published by
+	// that reload. Capture it while holding the lifecycle lock.
+	var owned *recoveryRecord
+	if expected != nil {
+		owned = &recoveryRecord{record: expected.record, backend: expected.backend, phase: lifecycle.PhaseRecovering}
+	}
 
 	for {
 		// Check if cancelled (plugin uninstalled).
@@ -350,8 +366,12 @@ func (hc *HealthChecker) handleCrashWithBackoff(pluginID string, expected *probe
 		}
 
 		if expected != nil {
-			unlock = hc.pm.lockProbedCrash(pluginID, expected, lifecycle.PhaseRecovering)
+			unlock = hc.lockRecoveryRecord(pluginID, owned)
 			if unlock == nil {
+				return
+			}
+			if ctx.Err() != nil {
+				unlock()
 				return
 			}
 		}
@@ -384,11 +404,32 @@ func (hc *HealthChecker) handleCrashWithBackoff(pluginID string, expected *probe
 		if expected == nil {
 			_, err = hc.pm.ReloadPlugin(pluginID)
 		} else {
-			var current bool
-			current, err = hc.pm.reloadProbedCrash(pluginID, expected)
-			if !current {
+			unlock = hc.lockRecoveryRecord(pluginID, owned)
+			if unlock == nil {
 				return
 			}
+			if ctx.Err() != nil {
+				unlock()
+				return
+			}
+			if owned.record == nil {
+				if err = hc.pm.guardArchiveRecovery(pluginID); err == nil {
+					_, err = hc.pm.loadPluginLocked(pluginID, recoveryOptions)
+				}
+			} else {
+				_, err = hc.pm.reloadPluginLocked(pluginID)
+			}
+			if err != nil {
+				hc.pm.recordsMu.RLock()
+				record := hc.pm.records[pluginID]
+				owned = &recoveryRecord{record: record}
+				if record != nil {
+					owned.backend = record.Backend
+					owned.phase = record.Phase
+				}
+				hc.pm.recordsMu.RUnlock()
+			}
+			unlock()
 		}
 		if err != nil {
 			hc.logger.Errorw(hc.pm.ctx, "crash recovery attempt failed",
@@ -396,15 +437,39 @@ func (hc *HealthChecker) handleCrashWithBackoff(pluginID string, expected *probe
 			continue
 		}
 
-		// Success — reset the state.
+		// Success — the deferred cleanup resets the state.
 		hc.logger.Infow(hc.pm.ctx, "plugin recovered after crash",
 			"pluginID", pluginID, "attempts", attempt)
-
-		hc.mu.Lock()
-		delete(hc.recoveryStates, pluginID)
-		hc.mu.Unlock()
 
 		hc.pm.emitter.Emit(EventRecovered, PluginErrorPayload{PluginID: pluginID})
 		return
 	}
+}
+
+// recoveryRecord identifies the exact lifecycle state left by a failed reload.
+// A nil record is also tracked, so a later replacement is never adopted.
+type recoveryRecord struct {
+	record  *plugintypes.PluginRecord
+	backend plugintypes.PluginBackend
+	phase   lifecycle.PluginPhase
+}
+
+func (hc *HealthChecker) lockRecoveryRecord(id string, expected *recoveryRecord) func() {
+	if expected.backend != nil && !reflect.TypeOf(expected.backend).Comparable() {
+		return nil
+	}
+	lock := hc.pm.pluginOpsLock(id)
+	lock.Lock()
+	hc.pm.recordsMu.RLock()
+	record := hc.pm.records[id]
+	current := record == expected.record
+	if current && record != nil {
+		current = record.Backend == expected.backend && record.Phase == expected.phase
+	}
+	hc.pm.recordsMu.RUnlock()
+	if !current {
+		lock.Unlock()
+		return nil
+	}
+	return lock.Unlock
 }

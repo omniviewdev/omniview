@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	"github.com/omniviewdev/plugin-sdk/pkg/config"
 )
 
 // testNoopEmitter is a no-op EventEmitter for tests.
@@ -455,4 +457,121 @@ func TestHealthChecker_ConcurrentWithRecordWrites(t *testing.T) {
 		hc.mu.Unlock()
 	}
 	<-done
+}
+
+func TestProbedCrashRetriesFailedReload(t *testing.T) {
+	for _, succeeds := range []bool{true, false} {
+		t.Run(fmt.Sprintf("eventual_success_%t", succeeds), func(t *testing.T) {
+			starts := 0
+			entry := CatalogEntry{
+				Metadata: config.PluginMeta{ID: "native", Version: "1.0.0", Capabilities: []string{"resource"}},
+				NewBackend: func(context.Context) (plugintypes.PluginBackend, error) {
+					starts++
+					if starts > 1 && (!succeeds || starts == 2) {
+						return nil, errors.New("transient start failure")
+					}
+					return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{}), nil
+				},
+			}
+			pm := catalogManager(t, []CatalogEntry{entry})
+			require.NoError(t, pm.Initialize(t.Context()))
+			_, err := pm.LoadPlugin("native", nil)
+			require.NoError(t, err)
+			hc := NewHealthChecker(testLogger(t), pm)
+			pm.healthChecker = hc
+			events := &testRecordingEmitter{}
+			pm.emitter = events
+			record := pm.records["native"]
+			record.Phase = lifecycle.PhaseRecovering
+			hc.recoveryStates["native"] = &CrashRecoveryState{NextBackoff: time.Millisecond}
+
+			hc.handleCrashWithBackoff("native", &probedCrash{record: record, backend: record.Backend})
+
+			require.Empty(t, hc.recoveryStates)
+			require.Empty(t, hc.recoveryCancels)
+			recorded := events.getEvents()
+			require.NotEmpty(t, recorded)
+			if succeeds {
+				require.Equal(t, 3, starts)
+				require.Equal(t, lifecycle.PhaseRunning, pm.records["native"].Phase)
+				require.Equal(t, EventRecovered, recorded[len(recorded)-1].event)
+			} else {
+				require.Equal(t, 1+maxCrashRetries, starts)
+				require.Equal(t, lifecycle.PhaseFailed, pm.records["native"].Phase)
+				require.Equal(t, "max crash recovery attempts reached", pm.records["native"].LastError)
+				require.Equal(t, EventCrashRecoveryFailed, recorded[len(recorded)-1].event)
+			}
+		})
+	}
+}
+
+func TestProbedCrashDoesNotRetryReplacementAfterFailedReload(t *testing.T) {
+	starts := 0
+	failed := make(chan struct{})
+	entry := CatalogEntry{
+		Metadata: config.PluginMeta{ID: "native", Version: "1.0.0", Capabilities: []string{"resource"}},
+		NewBackend: func(context.Context) (plugintypes.PluginBackend, error) {
+			starts++
+			if starts > 1 {
+				close(failed)
+				return nil, errors.New("start failed")
+			}
+			return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{}), nil
+		},
+	}
+	pm := catalogManager(t, []CatalogEntry{entry})
+	require.NoError(t, pm.Initialize(t.Context()))
+	_, err := pm.LoadPlugin("native", nil)
+	require.NoError(t, err)
+	hc := NewHealthChecker(testLogger(t), pm)
+	pm.healthChecker = hc
+	record := pm.records["native"]
+	record.Phase = lifecycle.PhaseRecovering
+	hc.recoveryStates["native"] = &CrashRecoveryState{NextBackoff: 100 * time.Millisecond}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		hc.handleCrashWithBackoff("native", &probedCrash{record: record, backend: record.Backend})
+	}()
+	<-failed
+	lock := pm.pluginOpsLock("native")
+	lock.Lock()
+	replacement := &plugintypes.PluginRecord{ID: "native", Phase: lifecycle.PhaseRunning}
+	pm.recordsMu.Lock()
+	pm.records["native"] = replacement
+	pm.recordsMu.Unlock()
+	lock.Unlock()
+	<-done
+	require.Equal(t, 2, starts)
+	require.Same(t, replacement, pm.records["native"])
+	require.Equal(t, lifecycle.PhaseRunning, replacement.Phase)
+	require.Empty(t, hc.recoveryStates)
+}
+
+func TestProbedCrashFatalDuringBackoffStopsRecovery(t *testing.T) {
+	hc, pm := newTestHealthChecker(t)
+	pm.healthChecker = hc
+	events := &testRecordingEmitter{}
+	pm.emitter = events
+	backend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{})
+	record := &plugintypes.PluginRecord{ID: "native", Backend: backend, Phase: lifecycle.PhaseRecovering}
+	pm.records["native"] = record
+	hc.recoveryStates["native"] = &CrashRecoveryState{NextBackoff: time.Second}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		hc.handleCrashWithBackoff("native", &probedCrash{record: record, backend: backend})
+	}()
+	require.Eventually(t, func() bool {
+		hc.mu.Lock()
+		defer hc.mu.Unlock()
+		return len(hc.recoveryCancels) != 0
+	}, time.Second, time.Millisecond)
+	pm.markFatalSourceTransport("native", backend, func(commit func()) bool { commit(); return true })
+	<-done
+	require.Equal(t, lifecycle.PhaseFailed, record.Phase)
+	require.Equal(t, fatalSourceTransportMessage, record.LastError)
+	require.Empty(t, hc.recoveryStates)
+	require.Empty(t, hc.recoveryCancels)
+	require.Empty(t, events.getEvents())
 }

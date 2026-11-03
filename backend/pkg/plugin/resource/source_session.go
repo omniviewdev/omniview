@@ -205,7 +205,7 @@ func (s *sourceSession) receive(ctx context.Context, request resourcev2.SourceOp
 			var operationErr *resourcev2.ResourceOperationError
 			if errors.As(err, &operationErr) && operationErr.Code == "RESET_REQUIRED" && operationErr.Message == "source binding changed" {
 				s.mu.Unlock()
-				s.invalidateBinding(request.Generation, expected, binding.Epoch)
+				s.checkBindingMismatch(operationCtx, request, expected, binding)
 				return
 			}
 			s.statusLocked("failed", err)
@@ -214,7 +214,7 @@ func (s *sourceSession) receive(ctx context.Context, request resourcev2.SourceOp
 		}
 		if frame.Reset != nil && frame.Reset.Reason == resourcev2.SourceResetBindingChanged {
 			s.mu.Unlock()
-			s.invalidateBinding(request.Generation, expected, binding.Epoch)
+			s.checkBindingMismatch(operationCtx, request, expected, binding)
 			return
 		}
 		terminal, err := s.applyLocked(frame, sourceFrameContext{ctx: ctx, target: request.Target, descriptor: &descriptor})
@@ -228,6 +228,24 @@ func (s *sourceSession) receive(ctx context.Context, request resourcev2.SourceOp
 	}
 }
 
+// checkBindingMismatch confirms a provider-reported mismatch against the catalog
+// before retiring connection-wide authority and source state.
+func (s *sourceSession) checkBindingMismatch(ctx context.Context, request resourcev2.SourceOpenRequest, expected *pluginState, binding sourceBinding) {
+	catalog, descriptor, err := s.sourceCatalog(ctx, request.Target, request.Mode)
+	if err != nil {
+		s.receiveAdmissionError(request.Generation, err)
+		return
+	}
+	if catalog.Revision != binding.CatalogRevision || !reflect.DeepEqual(descriptor, binding.Descriptor) {
+		s.invalidateBinding(request.Generation, expected, binding.Epoch)
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.closed && s.generation == request.Generation && s.ctx.Err() == nil {
+		s.statusLocked("failed", resourcev2.NewError("RESET_REQUIRED", "Source binding does not match the current catalog."))
+	}
+}
 
 // invalidateBinding retires only the route epoch that observed the mismatch.
 func (s *sourceSession) invalidateBinding(generation string, expected *pluginState, epoch sourceEpochSnapshot) {
@@ -242,6 +260,20 @@ func (s *sourceSession) invalidateBinding(generation string, expected *pluginSta
 		c.pluginsMu.Unlock()
 		return
 	}
+	now := s.coordinator.now()
+	recent := s.attempts[:0]
+	for _, attempt := range s.attempts {
+		if now.Sub(attempt) < sourceReopenWindow {
+			recent = append(recent, attempt)
+		}
+	}
+	s.attempts = recent
+	if len(s.attempts) >= len(sourceReopenBackoff) {
+		c.pluginsMu.Unlock()
+		s.statusLocked("failed", resourcev2.NewError("RESET_REQUIRED", "Source reconnect limit reached."))
+		return
+	}
+	s.attempts = append(s.attempts, now)
 	err := c.invalidateSourceRoutesLocked(s.pluginID, []string{epoch.Connection}, false)
 	c.pluginsMu.Unlock()
 	if err != nil {
@@ -363,8 +395,6 @@ func (s *sourceSession) rebindLocked(target resourcev2.ReadTarget, opener resour
 	s.members = make(map[string]sourceMember)
 	s.memberBytes = 0
 	s.hasSnapshot = false
-	s.attempts = nil
-	s.autoReopening = false
 	for _, v := range s.views {
 		v.resetLocked("sourceReset", "Source binding changed.")
 	}
