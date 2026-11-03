@@ -248,7 +248,7 @@ func TestCompatibilityBoundsFailClosed(t *testing.T) {
 			t.Fatalf("accepted incompatible bounds: %v", bounds)
 		}
 	}
-	if reason := compatibilityReason(version.CompatibilityVersion, version.CompatibilityVersion); reason != "" {
+	if reason := compatibilityReason(version.CompatibilityVersion(), version.CompatibilityVersion()); reason != "" {
 		t.Fatalf("rejected inclusive boundary: %s", reason)
 	}
 }
