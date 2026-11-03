@@ -182,7 +182,9 @@ func TestSourceBindingMismatchPreservesOtherSessions(t *testing.T) {
 			second := sourceNextOpen(t, provider)
 			record := sourceTestRecord(target.Target, "other", "")
 			sourceSend(second.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: resourcev2.CompactSourceRecord(record)}}}})
-			sourceSend(second.stream, sourceBoundary(resourcev2.EnumerationExhausted))
+			boundary := sourceBoundary(resourcev2.EnumerationExhausted)
+			boundary.SnapshotEnd.Continuity = resourcev2.ContinuityNotApplicable
+			sourceSend(second.stream, boundary)
 			otherSession := retryTestSession(ctrl, other.ViewID)
 			require.Eventually(t, func() bool {
 				otherSession.mu.Lock()
