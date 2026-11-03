@@ -16,7 +16,7 @@ export function makeLogSession(id: string, plugin = 'bench', connection = BENCH_
     },
   };
   return {
-    id, plugin_id: plugin, connection_id: connection,
+    id: request.session_id ?? id, plugin_id: plugin, connection_id: connection,
     resource_key: request.resource_key, resource_id: request.resource_id,
     options: request.options, status: 0, active_sources: [],
     created_at: '2026-10-14T00:00:00Z',

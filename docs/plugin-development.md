@@ -1338,8 +1338,10 @@ Use the runtime `LogsClient.CreateSession` adapter when opening log sessions.
 It reserves a UUID and subscribes before the create RPC, so immediate lines,
 errors, and completion events survive until the log viewer attaches. The host
 rejects duplicate correlation IDs; these IDs do not grant resource authority.
-The handoff retains the newest 10,000 lines and 100 events, expires after 60
-seconds if no viewer attaches, and releases listeners on failed creation.
+The handoff retains the newest 10,000 lines and 100 source events, plus the
+latest session-scoped lifecycle event of each type. Its 60-second abandonment
+timeout starts only after successful creation, so a slow create does not lose
+early output. Failed or canceled creation releases listeners immediately.
 
 `SESSION_READY` means source setup completed, not that a line has arrived.
 A ready stream can remain empty while following. Finite empty streams complete

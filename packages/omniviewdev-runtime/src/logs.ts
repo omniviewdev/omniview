@@ -25,17 +25,23 @@ export interface LogSessionRequest {
 export function CreateSession(plugin: string, connectionID: string, options: LogSessionRequest): CancellablePromise<LogSession | null> {
   const sessionId = options.session_id ?? crypto.randomUUID();
   const request = encodeRequestJSON({ ...options, session_id: sessionId }, [plugin, connectionID]);
-  const release = PrepareSessionEvents(sessionId);
-  return Call.ByName('github.com/omniviewdev/omniview/backend/pkg/plugin/logs.ServiceWrapper.CreateSession',
-    plugin, connectionID, request)
-    .then((session: LogSession | null) => {
-      if (!session || session.id !== sessionId) {
+  const { release, settled } = PrepareSessionEvents(sessionId);
+  try {
+    return Call.ByName('github.com/omniviewdev/omniview/backend/pkg/plugin/logs.ServiceWrapper.CreateSession',
+      plugin, connectionID, request)
+      .then((session: LogSession | null) => {
+        if (!session || session.id !== sessionId) {
+          release();
+          throw new Error('Log provider returned an invalid session.');
+        }
+        settled();
+        return session;
+      }, error => {
         release();
-        throw new Error('Log provider returned an invalid session.');
-      }
-      return session;
-    }, error => {
-      release();
-      throw error;
-    });
+        throw error;
+      }, release);
+  } catch (error) {
+    release();
+    throw error;
+  }
 }

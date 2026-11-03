@@ -45,6 +45,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
   const [follow, setFollow] = useState(true);
   const [paused, setPaused] = useState(false);
   const [events, setEvents] = useState<LogStreamEvent[]>([]);
+  const [sessionReady, setSessionReady] = useState(false);
   const [openFilterKey, setOpenFilterKey] = useState<string | null>(null);
 
   // Track programmatic scrolls so scroll handler doesn't disengage follow
@@ -108,6 +109,16 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
   );
   const effectiveSource = source ?? sessionSource;
 
+  const previousSource = useRef({ source: effectiveSource, sessionId });
+  React.useEffect(() => {
+    setEvents([]);
+    setSessionReady(false);
+    if (previousSource.current.source !== effectiveSource || previousSource.current.sessionId !== sessionId) {
+      clearBuffer();
+      previousSource.current = { source: effectiveSource, sessionId };
+    }
+  }, [effectiveSource, sessionId, clearBuffer]);
+
   // Source selection (multi-select filtering)
   const sourceState = useLogSources({ sessionId, events, entries, version, declaredDimensions: effectiveSource?.declaredDimensions });
 
@@ -132,6 +143,9 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
   );
 
   const handleEvent = useCallback((event: LogStreamEvent) => {
+    if (event.type === StreamEventType.SESSION_READY) {
+      setSessionReady(true);
+    }
     setEvents((prev) => [...prev.slice(-99), event]);
   }, []);
 
@@ -452,7 +466,6 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
   // One source can disappear while other sources keep streaming.
   const streamDead = streamEnded;
   const hasFatalErrors = streamErrors.some((event) => !event.source_id) || (streamDead && hasErrors);
-  const sessionReady = events.some((event) => event.type === StreamEventType.SESSION_READY);
 
   const handleCloseTab = useCallback(() => {
     if (sessionId) {
@@ -603,8 +616,8 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
         toolbarActions={toolbarActions}
       />
 
-      {/* Error banner when logs are flowing but errors occurred */}
-      {hasErrors && filteredLineCount > 0 && !streamDead && (
+      {/* Source errors remain visible even while sibling sources have no logs. */}
+      {hasErrors && !streamDead && !(hasFatalErrors && filteredLineCount === 0) && (
         <div className={styles.Banner} data-color='warning'>
           <LuTriangleAlert size={14} />
           <Text size='xs' className={styles.BannerText}>
@@ -648,9 +661,11 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
                 {hasSourcesRemoved ? 'Resource no longer available' : 'Log stream ended'}
               </Text>
               <Text size='sm' tone='muted' className={styles.PlaceholderText}>
-                {hasSourcesRemoved
-                  ? 'The resource was deleted or is no longer accessible.'
-                  : 'No log entries were returned.'}
+                {entries.length > 0
+                  ? 'No logs match the selected sources.'
+                  : hasSourcesRemoved
+                    ? 'The resource was deleted or is no longer accessible.'
+                    : 'No log entries were returned.'}
               </Text>
               {sessionId && (
                 <Button

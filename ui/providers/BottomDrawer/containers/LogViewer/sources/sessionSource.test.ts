@@ -38,7 +38,7 @@ afterEach(() => {
 
 describe('SDK session event handoff', () => {
   it.each([terminal, { ...terminal, type: 2, message: 'Forbidden' }])('keeps early lines and event $type while creation remains unresolved', async event => {
-    const release = prepareSessionSource('early');
+    const { release } = prepareSessionSource('early');
     const creation = Promise.withResolvers<void>();
     const received = handlers();
     const mounted = creation.promise.then(() => createSessionSource('early').connect(received));
@@ -80,7 +80,7 @@ describe('SDK session event handoff', () => {
   });
 
   it('bounds pending lines and retains terminal events', () => {
-    const release = prepareSessionSource('bounded');
+    const { release } = prepareSessionSource('bounded');
     emit('core/logs/lines/bounded', JSON.stringify(Array.from({ length: 10005 }, (_, i) => raw(String(i)))));
     emit('core/logs/event/bounded', JSON.stringify(terminal));
     const received = handlers();
@@ -94,8 +94,8 @@ describe('SDK session event handoff', () => {
   });
 
   it('releases abandoned and failed create listeners', () => {
-    prepareSessionSource('abandoned');
-    const releaseFailed = prepareSessionSource('failed');
+    prepareSessionSource('abandoned').settled();
+    const { release: releaseFailed } = prepareSessionSource('failed');
     releaseFailed();
     expect(listenerCount()).toBe(2);
     vi.advanceTimersByTime(60000);

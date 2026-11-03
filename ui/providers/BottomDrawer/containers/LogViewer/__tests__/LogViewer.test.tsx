@@ -51,11 +51,13 @@ vi.mock('../hooks/useLogSearch', () => ({
 }));
 
 let mockSources: Array<{ id: string; labels: Record<string, string> }> = [];
+let mockAllSelected = true;
+let mockSelectedSourceIds = new Set<string>();
 vi.mock('../hooks/useLogSources', () => ({
   useLogSources: () => ({
     sources: mockSources,
-    allSelected: true,
-    selectedSourceIds: new Set<string>(),
+    allSelected: mockAllSelected,
+    selectedSourceIds: mockSelectedSourceIds,
     toggleSource: vi.fn(),
     toggleAll: vi.fn(),
     dimensions: [],
@@ -154,6 +156,8 @@ describe('LogViewerContainer', () => {
     mockSearchMatches = [];
     mockCurrentMatchIndex = 0;
     mockSources = [];
+    mockAllSelected = true;
+    mockSelectedSourceIds = new Set<string>();
   });
 
   afterEach(() => {
@@ -189,6 +193,94 @@ describe('LogViewerContainer', () => {
     const { getByText, queryByText } = render(<LogViewerContainer source={source} />);
     expect(getByText('No log entries yet.')).toBeTruthy();
     expect(queryByText(/Connecting to log sources/)).toBeNull();
+  });
+
+  it('keeps readiness after the event window rolls over and resets for a new source', () => {
+    let handlers!: Parameters<LogDataSource['connect']>[0];
+    const disconnect = vi.fn();
+    const source: LogDataSource = {
+      connect(nextHandlers) {
+        handlers = nextHandlers;
+        return disconnect;
+      },
+    };
+    const view = render(<LogViewerContainer source={source} />);
+    act(() => {
+      handlers.onEvent({ type: StreamEventType.SESSION_READY, source_id: '', message: 'Ready', timestamp: '' });
+    });
+    act(() => {
+      for (let i = 0; i < 110; i++) {
+        handlers.onEvent({ type: StreamEventType.SOURCE_ADDED, source_id: `source-${i}`, message: '', timestamp: '' });
+      }
+    });
+    expect(view.getByText('No log entries yet.')).toBeTruthy();
+    expect(view.queryByText('Connecting to log sources...')).toBeNull();
+
+    view.rerender(<LogViewerContainer source={{ connect: () => vi.fn() }} />);
+    expect(disconnect).toHaveBeenCalledOnce();
+    expect(mockClearBuffer).toHaveBeenCalledOnce();
+    expect(view.getByText('Connecting to log sources...')).toBeTruthy();
+    expect(view.queryByText('No log entries yet.')).toBeNull();
+  });
+
+  it('shows a source error while an empty sibling stays live and later supplies logs', () => {
+    let handlers!: Parameters<LogDataSource['connect']>[0];
+    const disconnect = vi.fn();
+    const source: LogDataSource = {
+      connect(nextHandlers) {
+        handlers = nextHandlers;
+        return disconnect;
+      },
+    };
+    const view = render(<LogViewerContainer source={source} />);
+    act(() => {
+      handlers.onEvent({ type: StreamEventType.SESSION_READY, source_id: '', message: 'Ready', timestamp: '' });
+      handlers.onEvent({ type: StreamEventType.STREAM_ERROR, source_id: 'failed-source', message: 'Reader denied', timestamp: '' });
+    });
+    expect(view.getByText('Reader denied')).toBeTruthy();
+    expect(view.getByText('No log entries yet.')).toBeTruthy();
+    expect(view.queryByText('Failed to stream logs')).toBeNull();
+    expect(disconnect).not.toHaveBeenCalled();
+
+    const entry = { ...makeEntry(0, 'Sibling still streaming'), sourceId: 'live-sibling' };
+    act(() => {
+      handlers.onLines([entry]);
+    });
+    expect(mockAppend).toHaveBeenCalledWith([entry]);
+    mockEntries = [entry];
+    mockLineCount = 1;
+    mockVersion++;
+    fireEvent.click(view.getByTestId('toggle-timestamps'));
+    expect(view.getByText('Sibling still streaming')).toBeTruthy();
+    expect(view.getByText('Reader denied')).toBeTruthy();
+    expect(disconnect).not.toHaveBeenCalled();
+
+    view.rerender(<LogViewerContainer source={{ connect: () => vi.fn() }} />);
+    expect(view.queryByText('Reader denied')).toBeNull();
+  });
+
+  it('distinguishes filtered completed logs from a stream that returned no entries', () => {
+    mockEntries = [makeEntry(0)];
+    mockLineCount = 1;
+    mockSources = [{ id: 'src-1', labels: {} }, { id: 'src-2', labels: {} }];
+    mockAllSelected = false;
+    mockSelectedSourceIds = new Set(['src-2']);
+    const source: LogDataSource = {
+      connect(handlers) {
+        handlers.onEvent({ type: StreamEventType.STREAM_ENDED, source_id: '', message: 'Complete', timestamp: '' });
+        return vi.fn();
+      },
+    };
+    const view = render(<LogViewerContainer source={source} />);
+    expect(view.getByText('Log stream ended')).toBeTruthy();
+    expect(view.getByText('No logs match the selected sources.')).toBeTruthy();
+    expect(view.queryByText('No log entries were returned.')).toBeNull();
+
+    mockAllSelected = true;
+    fireEvent.click(view.getByTestId('toggle-timestamps'));
+    expect(view.getByText('log line 0')).toBeTruthy();
+    expect(view.getByText('Log stream ended')).toBeTruthy();
+    expect(view.queryByText('No logs match the selected sources.')).toBeNull();
   });
 
   it('shows clean finite empty completion, not a lost connection', () => {
