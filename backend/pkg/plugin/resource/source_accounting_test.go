@@ -88,12 +88,10 @@ func TestSourceAccountingIncludesMetadataAndIgnoresSpareCapacity(t *testing.T) {
 	require.Equal(t, withMetadata, decoded)
 }
 
-func TestSourceStagingPodShapedCapacity(t *testing.T) {
-	s := &sourceSession{staging: make(map[string]sourceMember)}
-	for i := range 700 {
-		o := accountingObservation()
-		o.Record.Reference.Address.ID = fmt.Sprintf("pod-%d", i)
-		o.Record.Body = resourcev2.Value{Kind: "map", Map: map[string]resourcev2.Value{
+func podAccountingObservation(i int) resourcev2.SourceObservation {
+	o := accountingObservation()
+	o.Record.Reference.Address.ID = fmt.Sprintf("pod-%d", i)
+	o.Record.Body = resourcev2.Value{Kind: "map", Map: map[string]resourcev2.Value{
 			"apiVersion": {Kind: "string", String: "v1"},
 			"kind":       {Kind: "string", String: "Pod"},
 			"metadata": {Kind: "map", Map: map[string]resourcev2.Value{
@@ -122,7 +120,14 @@ func TestSourceStagingPodShapedCapacity(t *testing.T) {
 			"status": {Kind: "map", Map: map[string]resourcev2.Value{
 				"phase": {Kind: "string", String: "Running"},
 			}},
-		}}
+	}}
+	return o
+}
+
+func TestSourceStagingPodShapedCapacity(t *testing.T) {
+	s := &sourceSession{staging: make(map[string]sourceMember)}
+	for i := range 700 {
+		o := podAccountingObservation(i)
 		_, err := s.applyLocked(resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{o}}})
 		require.NoError(t, err)
 	}
@@ -130,9 +135,84 @@ func TestSourceStagingPodShapedCapacity(t *testing.T) {
 	require.LessOrEqual(t, s.stagingBytes, defaultSourceStagingBytes)
 }
 
+func TestSourceLedgerReleaseNotifications(t *testing.T) {
+	var ledger sourceMemberLedger
+	require.True(t, ledger.reserve(10))
+	first := ledger.changes()
+	require.Equal(t, first, ledger.changes())
+	ledger.release(0)
+	select {
+	case <-first:
+		t.Fatal("zero release notified waiters")
+	default:
+	}
+	ledger.release(5)
+	select {
+	case <-first:
+	default:
+		t.Fatal("positive release did not notify waiters")
+	}
+	second := ledger.changes()
+	require.NotEqual(t, first, second)
+	ledger.release(5)
+	select {
+	case <-second:
+	default:
+		t.Fatal("next release did not notify new waiters")
+	}
+}
+
+func TestSourceTransientLedgerAvailability(t *testing.T) {
+	var ledger sourceTransientLedger
+	require.Nil(t, ledger.whenAvailable(maxSourceTransientBytes))
+	require.True(t, ledger.reserve(maxSourceTransientBytes))
+	wait := ledger.whenAvailable(1)
+	require.NotNil(t, wait)
+	ledger.release(1)
+	select {
+	case <-wait:
+	default:
+		t.Fatal("release did not notify availability waiter")
+	}
+	require.Nil(t, ledger.whenAvailable(1))
+	ledger.release(maxSourceTransientBytes - 1)
+}
+
+func TestSourcePackedPodFrameAdmission(t *testing.T) {
+	observations := make([]resourcev2.SourceObservation, 190)
+	for i := range observations {
+		observations[i] = podAccountingObservation(i)
+		// Managed-field ownership trees in real Pods can contain hundreds of
+		// small entries. These make node count, rather than payload bytes,
+		// dominate the frame's transient reservation.
+		fields := make(map[string]resourcev2.Value, 320)
+		for field := range 320 {
+			fields[fmt.Sprintf("f:field-%03d", field)] = resourcev2.Value{Kind: "map"}
+		}
+		metadata := observations[i].Record.Body.Map["metadata"]
+		metadata.Map["managedFields"].List[0].Map["fieldsV1"].Map["f:spec"] = resourcev2.Value{Kind: "map", Map: fields}
+		_, err := resourcev2.SourceObservationWireSize(observations[i])
+		require.NoError(t, err)
+	}
+	frame := resourcev2.SourceFrame{SessionID: "session", Generation: "generation", Sequence: 1, Snapshot: &resourcev2.SourceSnapshot{Observations: observations}}
+	wire, err := resourcev2.ToProtoSourceFrame(frame)
+	require.NoError(t, err)
+	encoded, err := proto.Marshal(wire)
+	require.NoError(t, err)
+	require.LessOrEqual(t, len(encoded), resourcev2.MaxSourceFrameBytes)
+	require.NoError(t, resourceplugin.ValidateWire(encoded, wire.ProtoReflect().Descriptor()))
+	decoded, err := resourcev2.FromProtoSourceFrame(wire)
+	require.NoError(t, err)
+	require.NoError(t, sourceFramePreflight(decoded))
+	s := &sourceSession{staging: make(map[string]sourceMember)}
+	_, err = s.applyLocked(decoded)
+	require.NoError(t, err)
+	require.Len(t, s.staging, len(observations))
+}
+
 func TestSourceDenseWireValidFrameHitsTransientSafetyLimit(t *testing.T) {
 	o := accountingObservation()
-	values := make([]resourcev2.Value, 65536)
+	values := make([]resourcev2.Value, 220000)
 	for i := range values {
 		values[i] = resourcev2.Value{Kind: "bool"}
 	}

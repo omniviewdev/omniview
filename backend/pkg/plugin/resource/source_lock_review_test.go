@@ -1,7 +1,6 @@
 package resource
 
 import (
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -31,6 +30,8 @@ func (e *pausedSnapshotEmitter) Emit(key string, data ...any) {
 
 func TestSourceSnapshotEndDoesNotBlockOtherSessionOpen(t *testing.T) {
 	ctrl, events, provider, target := sourceTestFixture(t)
+	emitter := &pausedSnapshotEmitter{EventEmitter: events, entered: make(chan struct{}), release: make(chan struct{})}
+	ctrl.emitter = emitter
 	request := HostSourceViewRequest{TargetID: target.TargetID, Target: target.Target, Updates: "none"}
 	other, err := ctrl.OpenSourceView(testInvocationContext(), "p1", request)
 	require.NoError(t, err)
@@ -38,18 +39,13 @@ func TestSourceSnapshotEndDoesNotBlockOtherSessionOpen(t *testing.T) {
 	view := sourceTestOpen(t, ctrl, target)
 	open := sourceNextOpen(t, provider)
 
-	emitter := &pausedSnapshotEmitter{EventEmitter: events, entered: make(chan struct{}), release: make(chan struct{})}
-	ctrl.emitter = emitter
+	// The emitter pauses publication deterministically; a large snapshot is
+	// unnecessary to exercise release and open contention at that boundary.
 	var unblock sync.Once
 	defer unblock.Do(func() { close(emitter.release) })
 	sourceSend(open.stream, resourcev2.SourceFrame{Begin: &resourcev2.SourceBegin{Mode: open.request.Mode}})
-	for batch := range 16 {
-		observations := make([]resourcev2.SourceObservation, 256)
-		for i := range observations {
-			observations[i].Record = resourcev2.CompactSourceRecord(sourceTestRecord(target.Target, fmt.Sprintf("pod-%d", batch*256+i), ""))
-		}
-		sourceSend(open.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: observations}})
-	}
+	observation := resourcev2.SourceObservation{Record: resourcev2.CompactSourceRecord(sourceTestRecord(target.Target, "pod", ""))}
+	sourceSend(open.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{observation}}})
 	sourceSend(open.stream, sourceBoundary(resourcev2.EnumerationExhausted))
 	select {
 	case <-emitter.entered:

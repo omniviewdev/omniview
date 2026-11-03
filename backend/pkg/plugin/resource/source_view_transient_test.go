@@ -71,9 +71,21 @@ func TestSourceViewTransientContentionAndRelease(t *testing.T) {
 	require.True(t, v.transientLedger.reserve(available))
 	other.syncLocked("")
 	require.False(t, other.synced)
-	require.NotNil(t, other.snapshotStatus)
-	require.Equal(t, "RESOURCE_LIMIT", other.snapshotStatus.Error.Code)
+	require.NotNil(t, other.retryCancel)
+	require.Nil(t, other.snapshotStatus)
+	require.True(t, v.session.transientLedger.reserve(maxSourceTransientBytes))
+	v.session.transientLedger.release(maxSourceTransientBytes)
+	v.session.staging = make(map[string]sourceMember)
+	observation := accountingObservation()
+	_, err := v.session.applyLocked(resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{observation}}})
+	require.NoError(t, err, "a stalled view must not exhaust source admission")
 	v.transientLedger.release(available)
+	require.Eventually(t, func() bool {
+		other.mu.Lock()
+		defer other.mu.Unlock()
+		return other.synced
+	}, time.Second, time.Millisecond)
+	other.close()
 
 	release.Do(func() { close(emitter.release) })
 	waitSourceViewTransient(t, emitter.ended)
@@ -95,14 +107,14 @@ func TestSourceViewChangeTransientContentionAndRelease(t *testing.T) {
 	available := maxSourceTransientBytes - v.snapshotArrayBytes - v.queue[0].transient
 	require.True(t, v.transientLedger.reserve(available))
 	v.changesLocked([]resourcev2.Record{record}, nil)
-	require.False(t, v.synced)
 	require.NotNil(t, v.control)
-	require.Equal(t, "resync", v.control.Reset.Reason)
-	require.NotNil(t, v.snapshotStatus)
-	require.Equal(t, "RESOURCE_LIMIT", v.snapshotStatus.Error.Code)
+	require.Equal(t, "overflow", v.control.Reset.Reason)
 	v.transientLedger.release(available)
-	require.True(t, v.transientLedger.reserve(maxSourceTransientBytes))
-	v.transientLedger.release(maxSourceTransientBytes)
+	require.Eventually(t, func() bool {
+		v.mu.Lock()
+		defer v.mu.Unlock()
+		return v.synced
+	}, time.Second, time.Millisecond)
 	v.close()
 }
 
@@ -128,8 +140,13 @@ func TestSourceViewSnapshotArrayContention(t *testing.T) {
 	last := newSourceView(first.session, "last", "owner", "target")
 	last.syncLocked("")
 	require.False(t, last.synced)
-	require.Equal(t, "RESOURCE_LIMIT", last.snapshotStatus.Error.Code)
+	require.NotNil(t, last.retryCancel)
 	first.transientLedger.release(available)
+	require.Eventually(t, func() bool {
+		last.mu.Lock()
+		defer last.mu.Unlock()
+		return last.synced
+	}, time.Second, time.Millisecond)
 	for _, v := range views {
 		v.close()
 	}
@@ -203,10 +220,11 @@ func TestSourceViewQueuedChangeReservationLifetime(t *testing.T) {
 	require.Positive(t, available)
 	require.True(t, first.transientLedger.reserve(available))
 	other.changesLocked([]resourcev2.Record{record}, nil)
-	require.False(t, other.synced)
-	require.Equal(t, "RESOURCE_LIMIT", other.snapshotStatus.Error.Code)
+	require.NotNil(t, other.control)
+	require.Equal(t, "overflow", other.control.Reset.Reason)
 	require.Len(t, first.queue, 1)
 	first.transientLedger.release(available)
+	other.close()
 
 	first.resetLocked("resync", "reset")
 	require.Empty(t, first.queue)

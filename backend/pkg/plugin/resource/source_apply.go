@@ -51,8 +51,9 @@ type sourceMember struct {
 // sourceMemberLedger charges immutable member blobs until both the source and
 // every in-flight view snapshot release their references.
 type sourceMemberLedger struct {
-	mu   sync.Mutex
-	used int
+	mu      sync.Mutex
+	used    int
+	changed chan struct{}
 }
 
 func (l *sourceMemberLedger) reserve(size int) bool {
@@ -69,9 +70,23 @@ func (l *sourceMemberLedger) reserveLimit(size, limit int) bool {
 	return true
 }
 
+// changes returns a notification closed by the next positive release.
+func (l *sourceMemberLedger) changes() <-chan struct{} {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.changed == nil {
+		l.changed = make(chan struct{})
+	}
+	return l.changed
+}
+
 func (l *sourceMemberLedger) release(size int) {
 	l.mu.Lock()
 	l.used -= size
+	if size > 0 && l.changed != nil {
+		close(l.changed)
+		l.changed = nil
+	}
 	l.mu.Unlock()
 }
 
@@ -79,6 +94,19 @@ type sourceTransientLedger struct{ sourceMemberLedger }
 
 func (l *sourceTransientLedger) reserve(size int) bool {
 	return l.reserveLimit(size, maxSourceTransientBytes)
+}
+
+// whenAvailable returns nil when size fits, or a release notification to retry.
+func (l *sourceTransientLedger) whenAvailable(size int) <-chan struct{} {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if size >= 0 && size <= maxSourceTransientBytes-l.used {
+		return nil
+	}
+	if l.changed == nil {
+		l.changed = make(chan struct{})
+	}
+	return l.changed
 }
 
 type sourceMemberRef struct {
@@ -197,8 +225,19 @@ func sourceMemberTransientEstimate(o resourcev2.SourceObservation, limit int) (i
 	optional := func(s *string) bool { return s == nil || text(*s) }
 	var value func(resourcev2.Value, int) bool
 	value = func(v resourcev2.Value, depth int) bool {
-		if depth > resourcev2.MaxValueDepth || !add(1, 4096) || !add(cap(v.List)-len(v.List), 256) ||
+		// A Value is 128 bytes on 64-bit Go. Charge four copies for the
+		// received and decoded domain trees, including list storage, plus
+		// 768 bytes for protobuf nodes and oneofs, native/JSON validation
+		// trees, slice growth, allocator rounding, and concurrent scratch.
+		// Map buckets are charged separately below: a bucket has eight keys
+		// and eight inline Values, and sparse/growing maps can coexist.
+		if depth > resourcev2.MaxValueDepth || !add(1, 1280) || !add(cap(v.List)-len(v.List), 256) ||
 			!text(v.Kind) || !text(v.String) || !text(v.Int) || !text(v.Uint) || !text(v.Timestamp) {
+			return false
+		}
+		// Sparse maps can each hold an eight-slot bucket in several live
+		// representations; charge a full multi-tree bucket even for one key.
+		if len(v.Map) != 0 && !add(1, 5120) {
 			return false
 		}
 		for _, child := range v.List {

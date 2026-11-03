@@ -33,6 +33,7 @@ type sourceSession struct {
 	memberBytes          int
 	memberLedger         sourceMemberLedger
 	transientLedger      sourceTransientLedger
+	viewTransientLedger  sourceTransientLedger
 	staging              map[string]sourceMember
 	stagingBytes         int
 	status               HostSourceStatus

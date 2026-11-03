@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"unsafe"
 
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/stretchr/testify/require"
@@ -69,6 +70,70 @@ func TestSourceViewSnapshotByteChunksAndSequence(t *testing.T) {
 	require.Len(t, v.queue, 1)
 	require.Equal(t, fmt.Sprint(endSequence+1), v.queue[0].event.Sequence)
 	require.Equal(t, v.generation, v.queue[0].event.ViewGeneration)
+}
+
+func TestSourceViewSnapshotTransientChunkBoundary(t *testing.T) {
+	for _, extra := range []int{0, 1} {
+		t.Run(fmt.Sprintf("over-by-%d", extra), func(t *testing.T) {
+			v := boundedSourceViewFixture(t, 0, 2)
+			binding := v.session.ctx.Value(sourceBindingKey{}).(sourceBinding).Representation
+			bindingCost, err := sourceBindingTransientEstimate(binding)
+			require.NoError(t, err)
+			arrayCost := 256 + 2*(int(unsafe.Sizeof(sourceMember{}))+32)
+			budget := maxSourceTransientBytes - arrayCost
+			for i, cost := range []int{budget / 2, budget - budget/2 + extra} {
+				key := fmt.Sprint(i)
+				member := v.session.members[key]
+				member.transient = cost - bindingCost
+				require.Positive(t, member.transient)
+				v.session.members[key] = member
+			}
+
+			v.syncLocked("")
+			defer v.close()
+			require.True(t, v.synced)
+			require.Equal(t, arrayCost, v.snapshotArrayBytes)
+			if extra == 0 {
+				require.Equal(t, []int{2}, v.snapshotEnds)
+			} else {
+				require.Equal(t, []int{1, 2}, v.snapshotEnds)
+			}
+			start := 0
+			for _, end := range v.snapshotEnds {
+				cost := 0
+				for _, member := range v.snapshot[start:end] {
+					memberCost, ok := v.snapshotMemberTransient(member)
+					require.True(t, ok)
+					cost += memberCost
+				}
+				require.LessOrEqual(t, cost, budget)
+				require.True(t, v.transientLedger.reserve(cost))
+				v.transientLedger.release(cost)
+				start = end
+			}
+		})
+	}
+}
+
+func TestSourceViewSnapshotSingleRecordExceedsTransientBudget(t *testing.T) {
+	v := boundedSourceViewFixture(t, 0, 1)
+	binding := v.session.ctx.Value(sourceBindingKey{}).(sourceBinding).Representation
+	bindingCost, err := sourceBindingTransientEstimate(binding)
+	require.NoError(t, err)
+	arrayCost := 256 + int(unsafe.Sizeof(sourceMember{})) + 32
+	member := v.session.members["0"]
+	member.transient = maxSourceTransientBytes - arrayCost - bindingCost + 1
+	v.session.members["0"] = member
+
+	v.syncLocked("")
+	defer v.close()
+	require.False(t, v.synced)
+	require.NotNil(t, v.snapshotStatus)
+	require.Equal(t, "failed", v.snapshotStatus.State)
+	require.Equal(t, "RESOURCE_LIMIT", v.snapshotStatus.Error.Code)
+	require.Equal(t, "Source view record transient exceeds host limits.", v.snapshotStatus.Error.Message)
+	require.Empty(t, v.snapshot)
+	require.Zero(t, v.snapshotArrayBytes)
 }
 
 func TestSourceViewOversizedSnapshotDoesNotResync(t *testing.T) {
