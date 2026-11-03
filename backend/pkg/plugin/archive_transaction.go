@@ -391,6 +391,27 @@ func (pm *pluginManager) archivePublicationFailure(recovery *archiveRecovery, ca
 		http.StatusInternalServerError, title).WithInstance(recovery.ID)
 }
 
+// moveArchiveState transfers directory capabilities, not copies of their bytes.
+// Cached appstate roots and controller-held handles must keep naming the same
+// inodes after either publication or rollback.
+func (pm *pluginManager) moveArchiveState(recovery *archiveRecovery, from, to string) error {
+	if err := pm.validateArchiveRecovery(recovery); err != nil {
+		return err
+	}
+	for _, name := range []string{"data", "store"} {
+		source := filepath.Join(from, name)
+		if _, err := pm.pluginsRoot.DirectoryIdentity(source); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return err
+		}
+		if err := pm.pluginsRoot.RenameDirectoryNoReplace(source, filepath.Join(to, name)); err != nil {
+			return err
+		}
+	}
+	return errors.Join(syncUninstallDirectory(pm.pluginsRoot, from), syncUninstallDirectory(pm.pluginsRoot, to))
+}
+
 func (pm *pluginManager) rollbackArchive(recovery *archiveRecovery, original *plugintypes.PluginRecord, wasManaged, oldUnloaded, candidatePublished bool, cause error) error {
 	if candidatePublished {
 		if err := pm.unloadArchivePlugin(recovery); err != nil {
@@ -402,6 +423,11 @@ func (pm *pluginManager) rollbackArchive(recovery *archiveRecovery, original *pl
 	}
 	canonical, err := pm.pluginsRoot.DirectoryIdentity(recovery.ID)
 	if err == nil && canonical == recovery.CandidateIdentity {
+		if recovery.PreviousIdentity != (appstate.FilesystemIdentity{}) {
+			if err = pm.moveArchiveState(recovery, recovery.ID, filepath.Join(recovery.Stage, "previous")); err != nil {
+				return pm.archiveRecoveryFailure(recovery, errors.Join(cause, err))
+			}
+		}
 		if err = pm.pluginsRoot.RenameDirectoryNoReplace(recovery.ID, filepath.Join(recovery.Stage, "candidate")); err != nil {
 			return pm.archiveRecoveryFailure(recovery, errors.Join(cause, err))
 		}
@@ -465,6 +491,17 @@ func (pm *pluginManager) installArchiveCandidate(path string, metadata *config.P
 	}
 	if err = unpackPluginArchive(path, pm.pluginsRoot.ResolvePath(candidate)); err != nil {
 		return false, apperror.Wrap(err, apperror.TypePluginInstallFailed, http.StatusInternalServerError, "Failed to unpack plugin package")
+	}
+	// Runtime state belongs to the installed plugin, never to package contents.
+	// Reject collisions before stopping the current runtime.
+	entries, readErr := pm.pluginsRoot.ReadDir(candidate)
+	if readErr != nil {
+		return false, readErr
+	}
+	for _, entry := range entries {
+		if entry.Name() == "data" || entry.Name() == "store" {
+			return false, fmt.Errorf("plugin package contains reserved runtime directory %q", entry.Name())
+		}
 	}
 	actualMetadata, metadataErr := sdktypes.LoadPluginMetadata(pm.pluginsRoot.ResolvePath(candidate))
 	if metadataErr != nil {
@@ -543,6 +580,11 @@ func (pm *pluginManager) installArchiveCandidate(path string, metadata *config.P
 	}
 	if err = pm.pluginsRoot.RenameDirectoryNoReplace(candidate, metadata.ID); err != nil {
 		return false, pm.rollbackArchive(recovery, original, wasManaged, true, false, err)
+	}
+	if recovery.PreviousIdentity != (appstate.FilesystemIdentity{}) {
+		if err = pm.moveArchiveState(recovery, filepath.Join(stage, "previous"), metadata.ID); err != nil {
+			return false, pm.rollbackArchive(recovery, original, wasManaged, true, false, err)
+		}
 	}
 	if _, err = pm.LoadPlugin(metadata.ID, &LoadPluginOptions{archive: recovery}); err != nil {
 		cause := apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusInternalServerError, "Failed to load plugin after install")
