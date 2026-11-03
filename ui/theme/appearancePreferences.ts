@@ -22,20 +22,27 @@ export function resolveAppearance(values: Record<string, unknown>, fallback = DE
 }
 
 export function readAppearanceBootstrap(storage: Storage | null): AppearancePreferences {
-  if (storage === null) return DEFAULT_APPEARANCE;
+  if (storage === null) {
+    return DEFAULT_APPEARANCE;
+  }
+
   try {
     const record: unknown = JSON.parse(readProfileStorage(BOOTSTRAP_KEY, storage) ?? 'null');
     if (typeof record !== 'object' || record === null || !('schemaVersion' in record) || record.schemaVersion !== 1) {
       return DEFAULT_APPEARANCE;
     }
-    return resolveAppearance(record as Record<string, unknown>);
+
+    return resolveAppearance(record);
   } catch {
     return DEFAULT_APPEARANCE;
   }
 }
 
 export function writeAppearanceBootstrap(storage: Storage | null, preferences: AppearancePreferences): void {
-  if (storage === null) return;
+  if (storage === null) {
+    return;
+  }
+
   try {
     writeProfileStorage(BOOTSTRAP_KEY, JSON.stringify({ schemaVersion: 1, ...preferences }), storage);
   } catch {

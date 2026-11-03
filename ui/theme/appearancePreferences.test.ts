@@ -7,7 +7,9 @@ import {
 } from './appearancePreferences';
 
 describe('appearance preferences', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+  });
 
   it('defaults to comfortable density, independent default text, and system motion', () => {
     expect(readAppearanceBootstrap(null)).toEqual({ density: 'comfortable', textSize: '100', motion: 'system' });

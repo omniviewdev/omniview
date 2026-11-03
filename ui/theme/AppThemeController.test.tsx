@@ -139,7 +139,9 @@ describe('AppThemeController', () => {
     const listeners = new Set<() => void>();
     const original = window.matchMedia;
     window.matchMedia = vi.fn().mockImplementation(() => ({
-      get matches() { return reduced; },
+      get matches() {
+        return reduced;
+      },
       addEventListener: (_event: string, listener: () => void) => listeners.add(listener),
       removeEventListener: (_event: string, listener: () => void) => listeners.delete(listener),
     }));
@@ -148,7 +150,9 @@ describe('AppThemeController', () => {
       expect(readThemeState()).toMatchObject({ motion: 'normal' });
       act(() => {
         reduced = true;
-        listeners.forEach(listener => listener());
+        listeners.forEach(listener => {
+          listener();
+        });
       });
       expect(readThemeState()).toMatchObject({ motion: 'reduced' });
       mocks.settings = { 'appearance.motion': 'normal' };
@@ -159,7 +163,9 @@ describe('AppThemeController', () => {
       expect(readThemeState()).toMatchObject({ motion: 'reduced' });
       act(() => {
         reduced = false;
-        listeners.forEach(listener => listener());
+        listeners.forEach(listener => {
+          listener();
+        });
       });
       expect(readThemeState()).toMatchObject({ motion: 'normal' });
       view.unmount();

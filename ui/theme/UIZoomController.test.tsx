@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import { ThemeProvider } from '@omniviewdev/base-ui';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import UIZoomController from './UIZoomController';
+import UiZoomController from './UIZoomController';
 
 const mocks = vi.hoisted(() => ({ commit: vi.fn(), showSnackbar: vi.fn(), showAppError: vi.fn() }));
 vi.mock('@omniviewdev/runtime', () => ({
@@ -10,11 +10,14 @@ vi.mock('@omniviewdev/runtime', () => ({
   useSnackbar: () => ({ showSnackbar: mocks.showSnackbar }),
   showAppError: mocks.showAppError,
 }));
-afterEach(() => { cleanup(); vi.resetAllMocks(); });
+afterEach(() => {
+  cleanup();
+  vi.resetAllMocks();
+});
 
 describe('UI text sizing interactions', () => {
   it('does not steal editor, unmodified, or composing keyboard input', () => {
-    render(<ThemeProvider themeId='void'><UIZoomController><div className='monaco-editor'><input aria-label='Editor' /></div></UIZoomController></ThemeProvider>);
+    render(<ThemeProvider themeId='void'><UiZoomController><div className='monaco-editor'><input aria-label='Editor' /></div></UiZoomController></ThemeProvider>);
     for (const [target, detail] of [
       [document.body, { key: '-' }],
       [document.body, { key: '-', ctrlKey: true, isComposing: true }],
@@ -25,6 +28,7 @@ describe('UI text sizing interactions', () => {
       target.dispatchEvent(event);
       expect(event.defaultPrevented).toBe(false);
     }
+
     expect(mocks.commit).not.toHaveBeenCalled();
   });
 });

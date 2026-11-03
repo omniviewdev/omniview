@@ -22,6 +22,7 @@ describe('generic setting editors', () => {
         setDraft(next);
       }} />;
     }
+
     render(<DraftChoice />);
     expect(screen.getByRole('combobox')).toHaveTextContent('Number');
     await user.click(screen.getByRole('combobox'));
@@ -64,6 +65,7 @@ describe('generic setting editors', () => {
         setDraft(next);
       }} />;
     }
+
     render(<DraftChoices />);
     await user.click(screen.getByRole('combobox', { name: 'Choices' }));
     await user.click(await screen.findByRole('option', { name: 'Object' }));

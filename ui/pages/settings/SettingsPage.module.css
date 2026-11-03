@@ -1,4 +1,4 @@
-.Window { display:grid; grid-template-columns:212px minmax(0,1fr); height:100%; min-height:0; color:var(--ov-color-fg-default); background:var(--ov-color-bg-base); font-size:12px; }
+.Window { display:grid; grid-template-columns:212px minmax(0,1fr); height:100%; min-height:0; color:var(--ov-color-fg-default); background:var(--ov-color-bg-base); font-size:var(--ov-font-size-sm); }
 .Sidebar { min-height:0; overflow:auto; border-right:1px solid var(--ov-color-border-muted); padding:0 10px 10px; background:var(--ov-color-bg-surface); font-size:var(--ov-font-size-body); }
 .Brand { min-height:56px; display:flex; align-items:center; padding:16px 19px; margin:0 -10px 12px; border-bottom:1px solid var(--ov-color-border-muted); font-size:var(--ov-primitive-font-size-16); line-height:1.25; font-weight:600; }
 .Search { width:100%; box-sizing:border-box; min-height:max(var(--ov-control-height-md), 2.2em); border:1px solid var(--ov-color-border-muted); border-radius:5px; padding:4px 8px; color:inherit; background:var(--ov-color-bg-base); font-family:inherit; font-size:var(--ov-font-size-body); line-height:1.4; margin-bottom:12px; }

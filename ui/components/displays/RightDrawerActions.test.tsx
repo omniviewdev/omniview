@@ -148,6 +148,7 @@ it.each([1, 2])('keeps split primary and options distinct with %i targets', asyn
     expect(start).not.toHaveBeenCalled();
     await user.click(await screen.findByRole('menuitem', { name: 'app-0' }));
   }
+
   expect(start).toHaveBeenCalledTimes(1);
   expect(options).toHaveBeenCalledTimes(1);
 });

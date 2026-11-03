@@ -94,7 +94,9 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
         onClick={listItems.length > 1 ? undefined : () => {
           void runAction(async () => {
             if (action.list) {
-              if (!listItems[0]?.disabled) await listItems[0]?.action(ctx);
+              if (!listItems[0]?.disabled) {
+                await listItems[0]?.action(ctx);
+              }
             } else {
               await action.action?.(ctx);
             }
@@ -115,7 +117,9 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
                   {listItems.map((item, i) => (
                     <Menu.Item key={i} disabled={item.disabled} startDecorator={item.icon}
                       onClick={() => {
-                        if (!item.disabled) void runAction(() => item.action(ctx));
+                        if (!item.disabled) {
+                          void runAction((): void | Promise<unknown> => item.action(ctx));
+                        }
                       }}>
                       {item.title}
                     </Menu.Item>
@@ -132,7 +136,9 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
           {splitItems.map((item, i) => (
             <Menu.Item key={i} disabled={item.disabled} startDecorator={item.icon}
               onClick={() => {
-                if (!item.disabled) void runAction(() => item.action(ctx));
+                if (!item.disabled) {
+                  void runAction((): void | Promise<unknown> => item.action(ctx));
+                }
               }}>
               {item.title}
             </Menu.Item>

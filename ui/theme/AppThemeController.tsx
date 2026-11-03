@@ -32,7 +32,7 @@ import {
   type AppearancePreferences,
 } from './appearancePreferences';
 import { ThemeContributionBridge } from '@/features/extensions/theme/ThemeContributionBridge';
-import UIZoomController from './UIZoomController';
+import UiZoomController from './UIZoomController';
 
 import {
   clearLegacyThemeKeys,
@@ -95,11 +95,16 @@ const reducedMotionQuery = '(prefers-reduced-motion: reduce)';
 function subscribeSystemMotion(notify: () => void): () => void {
   const media = window.matchMedia?.(reducedMotionQuery);
   media?.addEventListener('change', notify);
-  return () => media?.removeEventListener('change', notify);
+
+  return () => {
+    media?.removeEventListener('change', notify);
+  };
 }
+
 function readSystemMotion(): boolean {
   return window.matchMedia?.(reducedMotionQuery).matches ?? false;
 }
+
 function readServerMotion(): boolean {
   return false;
 }
@@ -116,7 +121,7 @@ function AppearanceBridge({ preferences, children }: { preferences: AppearancePr
     setMotion(motion);
   }, [preferences.density, preferences.textSize, motion, setDensity, setTextSize, setMotion]);
 
-  return <MotionConfig reducedMotion={motion === 'reduced' ? 'always' : 'never'}><UIZoomController>{children}</UIZoomController></MotionConfig>;
+  return <MotionConfig reducedMotion={motion === 'reduced' ? 'always' : 'never'}><UiZoomController>{children}</UiZoomController></MotionConfig>;
 }
 
 export default function AppThemeController({ children }: { children: ReactNode }) {
@@ -140,7 +145,11 @@ export default function AppThemeController({ children }: { children: ReactNode }
     ? (readSystemMotion() ? 'reduced' : 'normal')
     : appearance.motion;
   useEffect(() => {
-    writeAppearanceBootstrap(storage, appearance);
+    writeAppearanceBootstrap(storage, {
+      density: appearance.density,
+      textSize: appearance.textSize,
+      motion: appearance.motion,
+    });
   }, [storage, appearance.density, appearance.textSize, appearance.motion]);
   const [requestedThemeId, setRequestedThemeId] = useState<string>(() => (
     storage === null ? 'void' : readBootstrapTheme(storage)
