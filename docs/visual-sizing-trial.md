@@ -41,7 +41,7 @@ Checks passed: host appearance settings Go tests; four host theme/settings Vites
 
 The managed CLI refused rebuilds after checks with `owned generated tree changed: $WORKSPACE/node_modules`. This usability issue was recorded. Recovery used `workspace down`, `workspace reset-modules`, and `workspace recover`; no ownership ledger was edited. Recovery restored the browser host and selected plugin.
 
-Native launch succeeded through `workspace up --mode native`. The actual macOS window was resized to 1568 × 864, connected to local kind-kind, and rendered the 13-pod list. Cmd+K opened the palette in the native webview. [Native resource screenshot](evidence/visual-sizing/native-review.png) and [native palette screenshot](evidence/visual-sizing/native-palette.png) capture those surfaces. The native workspace remains open for review at comfortable density, 100% text, and system motion.
+At this earlier stage, native launch succeeded through `workspace up --mode native`. The actual macOS window was resized to 1568 × 864, connected to local kind-kind, and rendered the 13-pod list. Cmd+K opened the palette in the native webview. [Native resource screenshot](evidence/visual-sizing/native-review.png) and [native palette screenshot](evidence/visual-sizing/native-palette.png) capture those surfaces. That original workspace has since been stopped; the release-cohort workspace below replaces it.
 
 Open [the visual review gallery](evidence/visual-sizing/review.html) for the mock and density/text-size comparisons. Browser and native rendering were both inspected; no full native preference matrix or production-cluster operation is claimed.
 
@@ -59,7 +59,7 @@ Checks passed after the menu cutover: native menu package compilation, four host
 
 Native menu clicking and menu-bar screenshot automation remain limited by the previously observed macOS assistive-access and window-capture failures. Backend event smoke proves the frontend menu action path and persistence, not an OS menu click. Earlier native screenshots above cover the preceding sizing trial.
 
-The menu cutover was relaunched through `workspace up --mode native --watch=false`; the owned native generation reports `launchPhase: ready` and remains available for review.
+At that stage, the menu cutover was relaunched through `workspace up --mode native --watch=false`; its owned native generation reported `launchPhase: ready`. Current native review uses the release-cohort workspace below.
 
 ## Proportional inspector, Settings, and log controls
 
@@ -121,3 +121,9 @@ Settings descriptions, developer keys, and inherited window text now use scalabl
 Final-cohort browser smoke loaded the existing kind-kind Pods and opened/dismissed the single-target Debug menu without starting Debug. Exec, Logs, Debug, and the arrow all measured 24px with transparent idle backgrounds and outer borders. Cmd-minus stepped 100% → 90% → 80%, stayed at the lower bound, and Cmd-0 restored 100%. Preferences ended at comfortable 100%; no cluster writes were made.
 
 Stock checks passed: 1,436 host tests, 392 runtime tests with the freshly generated real Go transport corpus, host lint with zero errors and 11 existing warnings, generated bindings verification, and production frontend build. Backend verification covered the full Go suite, then registry/settings tests after the compatibility baseline update. Production macOS metadata and compiler targets now agree on the Go-supported macOS 12 minimum; a built binary reports `minos 12.0`.
+
+The repository's independently approved SDK advanced during release preparation. Both host and plugin now pin public SDK `v0.14.4-0.20261103022722-1712cd3b66e1`, matching approval SHA `1712cd3b66e14b1807cf17fbb59f48512875c822`; no approval variable or admission guard changed. The full host Go suite passed with the actual child fixture selecting that same public module, avoiding an unrelated stale generated hostmod. Binding freshness, the new real transport corpus, 392 runtime tests, production Go build, and the plugin's public-module tests/build passed.
+
+Current native review: `sizing-native-20261103`, launched and refreshed through the CLI with host `dc9913482`, UI `5af0ec923a605aba5e6e3571d639f6238095804c`, Kubernetes `a29f1bd`, and the approved SDK. Authenticated Wails MCP exercised the actual WKWebView Settings surface: at comfortable density, input/select heights both remain 36px; their fonts change from 13px to 16.25px at 125%, search text from 14px to 17.5px, and the root remains 14px. Reset restored 100%.
+
+Those native keyboard events exercised embedded DOM handlers, not OS accelerators. No new native pixel screenshot or OS menu click is claimed. MCP window metadata reported visible/focused false despite the live webview; on-screen visibility remains unconfirmed. Browser pixel captures remain the matched visual evidence.
