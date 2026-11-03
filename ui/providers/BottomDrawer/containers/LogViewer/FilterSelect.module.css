@@ -1,9 +1,8 @@
 .Trigger {
-  min-height: 24px;
   padding-block: 0;
   padding-inline: var(--ov-space-2);
   gap: var(--ov-space-1);
-  font-size: 11px;
+  font-size: var(--ov-primitive-font-size-12);
   font-weight: 500;
 }
 
@@ -17,7 +16,7 @@
 .SearchBox {
   padding: var(--ov-space-1);
   border-bottom: 1px solid var(--ov-color-border-muted);
-  font-size: 11px;
+  font-size: var(--ov-primitive-font-size-12);
 }
 
 .Row {
@@ -43,14 +42,14 @@
 
 .ItemLabel {
   font-family: var(--ov-font-mono, monospace);
-  font-size: 11px;
+  font-size: var(--ov-primitive-font-size-12);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .AllLabel {
-  font-size: 11px;
+  font-size: var(--ov-primitive-font-size-12);
   font-weight: 600;
 }
 

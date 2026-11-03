@@ -103,6 +103,15 @@ export type DrawerComponentAction<T = any> = {
   list?: ((ctx: DrawerContext<T>, snapshot?: unknown) => Array<DrawerComponentActionListItem>) | Array<DrawerComponentActionListItem>
 
   /**
+   * Optional joined dropdown beside the primary action/list. Unlike the primary
+   * list, this menu always opens for selection, including when it has one item.
+   */
+  splitMenu?: {
+    title: string;
+    list: NonNullable<DrawerComponentAction<T>['list']>;
+  }
+
+  /**
    * Optional hook-backed state used while rendering action availability and lists.
    * Snapshots must retain identity until the subscribed state changes.
    */

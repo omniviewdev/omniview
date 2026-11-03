@@ -4,10 +4,10 @@ This guide covers everything you need to know to develop plugins for Omniview wi
 
 ### Marketplace host compatibility
 
-Host registry API requests advertise `ide_version=0.24.0`, sourced from
+Host registry API requests advertise `ide_version=0.27.0`, sourced from
 `internal/version.CompatibilityVersion`. This is the source's minimum host
 compatibility release line, not the SDK version or a PR/nightly display label.
-Development builds advertise the same `0.24.0` API baseline while retaining
+Development builds advertise the same `0.27.0` API baseline while retaining
 their existing development display labels. Release builds stamp the display
 version from the release tag.
 
@@ -17,6 +17,9 @@ does not change marketplace compatibility. Transactional settings require rebuil
 SDK v0.10.0 plugins; Kubernetes v0.11.0 requires host/runtime v0.14.0.
 Plugins using write-only connection-profile credentials require host/runtime v0.20.0
 and must declare an inclusive `min_ide_version` of `0.20.0` or newer.
+Kubernetes v0.15.0 requires host/runtime v0.27.0 and Base UI v0.12.0 for
+shared text-size preferences and joined inspector actions. Its marketplace
+submission declares an inclusive `min_ide_version` of `0.27.0`.
 
 Publisher minimum and maximum IDE versions are inclusive semantic-version bounds.
 Hosts that omit `ide_version` can only access unconstrained plugin versions.

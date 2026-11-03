@@ -90,6 +90,18 @@ tap-qualified names are reserved for selecting the candidate during installation
 and upgrade. A failed lifecycle check blocks GitHub Release and tap publication,
 even if the temporary CI installation itself succeeded.
 
+Production macOS builds target macOS 12.0 or newer, matching the Go 1.26
+toolchain support floor. The stable bundle metadata and local, PR, stable,
+and nightly compilation targets use that same minimum. Development bundles
+retain their separate macOS 14 minimum. Verify the resulting Mach-O build
+versions when checking a release package; do not infer OS support from the
+release tag alone.
+
+The cask updater applies that macOS 12 minimum to stable and nightly publication
+alongside the new version and checksum. It raises missing or weaker requirements,
+preserves stricter tap policy, and refuses unsupported eligibility layouts.
+The currently published cask is not changed until the new release is published.
+
 Run lightweight checks locally:
 
 ```sh

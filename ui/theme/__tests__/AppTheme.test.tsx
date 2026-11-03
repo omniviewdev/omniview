@@ -74,7 +74,7 @@ describe('application theme provider integration', () => {
     root.removeAttribute('style');
   });
 
-  it('mounts Base UI in Void compact mode before settings load', () => {
+  it('mounts Base UI in Void comfortable mode before settings load', () => {
     render(
       <AppThemeController>
         <Probe />
@@ -86,10 +86,10 @@ describe('application theme provider integration', () => {
       providerRequestedId: 'void',
       activeId: 'void',
       isFallback: false,
-      density: 'compact',
+      density: 'comfortable',
     });
     expect(document.documentElement.dataset.ovTheme).toBe('void');
-    expect(document.documentElement.dataset.ovDensity).toBe('compact');
+    expect(document.documentElement.dataset.ovDensity).toBe('comfortable');
   });
 
   it('preserves an unavailable custom request while Base UI safely applies Void', () => {

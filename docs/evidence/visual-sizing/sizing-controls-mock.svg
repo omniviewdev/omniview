@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 330">
+<title>Native View menu sizing proposal</title>
+<rect width="760" height="330" fill="#111214"/>
+<g font-family="sans-serif">
+<text x="22" y="29" font-size="13" fill="#b5b8bf">MOCK — macOS menu bar, not Omniview's bottom status bar</text>
+<path d="M0 85H760" stroke="#34363e"/>
+<g font-size="14" fill="#e4e6eb"><text x="22" y="66" font-weight="600">Omniview</text><text x="121" y="66">Edit</text><text x="179" y="66">Window</text></g>
+<rect x="260" y="42" width="62" height="34" rx="6" fill="#30343e"/>
+<text x="274" y="65" font-family="sans-serif" font-size="14" fill="#e4e6eb">View</text>
+<rect x="260" y="88" width="275" height="215" rx="10" fill="#25262b" stroke="#45474f"/>
+<g font-size="14" fill="#e4e6eb"><text x="278" y="119">Reload</text><text x="278" y="148">Force Reload</text></g>
+<path d="M273 163H522" stroke="#45474f"/>
+<rect x="267" y="171" width="261" height="29" rx="5" fill="#3a455c"/>
+<g font-size="14" fill="#e4e6eb"><text x="278" y="191">Zoom In</text><text x="491" y="191">⌘+</text><text x="278" y="220">Zoom Out</text><text x="491" y="220">⌘−</text><text x="278" y="249">Reset Zoom</text><text x="491" y="249">⌘0</text></g>
+<path d="M273 263H522" stroke="#45474f"/>
+<text x="278" y="286" font-size="14" fill="#e4e6eb">New Terminal Session</text>
+<text x="22" y="318" font-size="12" fill="#9a9da5">Shared UI text preference: 80%, 90%, 100%, 110%, 125%. Density stays independent.</text>
+</g></svg>

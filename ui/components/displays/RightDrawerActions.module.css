@@ -1,7 +1,7 @@
 .ActionsMenu {
   display: flex;
   flex-direction: row;
-  gap: 0;
+  gap: var(--ov-space-1);
 }
 
 .ActionWrap {
@@ -28,4 +28,23 @@
 
 .TriggerWrap {
   display: inline-flex;
+}
+
+/* Joined icon actions inherit the header's density-aware heading action tier. */
+.SplitAction > button,
+.SplitAction > div > button {
+  box-sizing: border-box;
+  width: var(--ov-size-button-height-sm);
+  height: var(--ov-size-button-height-sm);
+  min-height: var(--ov-size-button-height-sm);
+  padding: 0;
+}
+
+.SplitAction > div > button {
+  border-left-color: var(--ov-color-border-muted);
+}
+
+.SplitAction svg {
+  width: var(--ov-size-icon-button-icon-sm);
+  height: var(--ov-size-icon-button-icon-sm);
 }

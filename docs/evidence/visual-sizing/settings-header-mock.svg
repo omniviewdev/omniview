@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 360">
+<title>Mock: Settings sidebar caption with breathing room</title>
+<g font-family="system-ui, sans-serif" fill="currentColor">
+<text x="20" y="27" font-size="14">MOCK — same typography, roomier caption</text>
+<rect x="20" y="48" width="580" height="292" rx="12" fill="none" stroke="currentColor" opacity=".35"/>
+<path d="M232 48V340M20 104H232" stroke="currentColor" opacity=".2"/>
+<text x="39" y="83" font-size="16" font-weight="600">Settings</text>
+<rect x="30" y="116" width="192" height="36" rx="5" fill="none" stroke="currentColor" opacity=".25"/>
+<text x="39" y="139" font-size="14" opacity=".65">Search settings</text>
+<text x="42" y="188" font-size="12" opacity=".65">Core</text>
+<g font-size="13"><text x="62" y="225">Appearance</text><text x="62" y="259">Developer Settings</text><text x="62" y="293">Editor</text></g>
+<text x="254" y="82" font-size="15" font-weight="600">Application / General</text>
+<text x="254" y="108" font-size="14" opacity=".65">General settings for the application</text>
+<text x="254" y="168" font-size="14">56px caption at 100%.</text>
+<text x="254" y="194" font-size="14">16px top and bottom padding.</text>
+<text x="254" y="220" font-size="14">Title size stays unchanged.</text>
+<text x="254" y="271" font-size="14">Search and list move down together.</text>
+</g></svg>

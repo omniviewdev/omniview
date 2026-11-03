@@ -1,4 +1,6 @@
 import React from 'react';
+import { Select } from '@omniviewdev/base-ui';
+import { LuChevronDown } from 'react-icons/lu';
 import { FileDialogOptions, SettingType } from '@omniviewdev/runtime/models';
 import type { Setting } from '@omniviewdev/runtime/models';
 import { OpenFileSelectionDialog } from '@omniviewdev/runtime/api';
@@ -54,16 +56,34 @@ export default function SettingsEntry({ setting, id, draftValue, handleChange, i
   let editor: React.ReactNode;
   if (options.length) {
     const selected = array ? (Array.isArray(value) ? value : []) : [value];
-    editor = <select {...attributes} multiple={array} value={array ? options.flatMap((option, index) => selected.some(item => sameSettingValue(item, option.value)) ? [String(index)] : []) : String(options.findIndex(option => sameSettingValue(value, option.value)))} onChange={event => {
-      if (array) {
-        change(Array.from(event.target.selectedOptions).map(option => options[Number(option.value)].value));
-      } else {
-        change(options[Number(event.target.value)].value);
-      }
-    }}>
-      {!array && <option value='-1' disabled>Select a value</option>}
-      {options.map((option, index) => <option key={index} value={String(index)}>{option.label}</option>)}
-    </select>;
+    const items = options.map((option, index) => ({ label: option.label, value: String(index) }));
+    const selectedIndices = options.flatMap((option, index) =>
+      selected.some(item => sameSettingValue(item, option.value)) ? [String(index)] : []);
+    editor = <Select.Root<string, boolean> multiple={array} size='md' variant='outline'
+      items={items} value={array ? selectedIndices : selectedIndices[0] ?? null}
+      onValueChange={next => {
+        if (array) {
+          change((Array.isArray(next) ? next : []).map(index => options[Number(index)].value));
+        } else if (typeof next === 'string') {
+          change(options[Number(next)].value);
+        }
+      }}>
+      <Select.Trigger {...attributes}>
+        <Select.Value placeholder='Select a value' />
+        <Select.Icon><LuChevronDown aria-hidden /></Select.Icon>
+      </Select.Trigger>
+      <Select.Portal>
+        <Select.Positioner sideOffset={4} alignItemWithTrigger={false}>
+          <Select.Popup>
+            <Select.List>
+              {items.map(item => <Select.Item key={item.value} value={item.value}>
+                <Select.ItemText>{item.label}</Select.ItemText>
+              </Select.Item>)}
+            </Select.List>
+          </Select.Popup>
+        </Select.Positioner>
+      </Select.Portal>
+    </Select.Root>;
   } else if (setting.type === SettingType.Toggle) {
     editor = <input {...attributes} type='checkbox' checked={Boolean(value)} onChange={event => {
       change(event.target.checked); 
@@ -93,7 +113,7 @@ export default function SettingsEntry({ setting, id, draftValue, handleChange, i
       }} />}
     {setting.type === SettingType.DateTime && !sensitive && <p>Enter a date and time with timezone, such as 2026-11-01T09:00:00Z.</p>}
     {file?.enabled && <>
-      <button type='button' disabled={file.allowFolders || file.relative} onClick={async () => {
+      <button className={styles.FileButton} type='button' disabled={file.allowFolders || file.relative} onClick={async () => {
         setError('');
         try {
           const paths = await OpenFileSelectionDialog(FileDialogOptions.createFrom({ defaultDirectory: file.defaultPath,

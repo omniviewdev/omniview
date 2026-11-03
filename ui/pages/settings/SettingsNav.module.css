@@ -1,7 +1,7 @@
 .Root {
   padding: 0;
 }
-.Root [role='option'], .Root [role='treeitem'] { min-height:29px; padding-block:4px; font-size:12px; }
+.Root [role='option'], .Root [role='treeitem'] { min-height:var(--ov-list-row-height); padding-block:4px; font-size:var(--ov-primitive-font-size-13); }
 
 .PluginAvatar {
   width: 16px;

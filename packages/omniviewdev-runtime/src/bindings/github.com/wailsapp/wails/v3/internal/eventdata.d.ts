@@ -50,6 +50,9 @@ declare module "@wailsio/runtime" {
             "menu/view/bottomdrawer/minimize": void;
             "menu/view/sidebar/minimize": void;
             "menu/view/terminal/create": void;
+            "menu/view/zoom/in": void;
+            "menu/view/zoom/out": void;
+            "menu/view/zoom/reset": void;
             "plugin/crash": plugin$0.PluginErrorPayload;
             "plugin/crash_recovery_failed": plugin$0.PluginErrorPayload;
             "plugin/deprecated_protocol": plugin$0.DeprecatedProtocolPayload;

@@ -36,8 +36,14 @@ const JumpToTime: React.FC<Props> = ({ onJumpToTime }) => {
       <HintTooltip content='Jump to time'>
         <Popover.Trigger
           render={
-            <IconButton size='sm' variant='ghost' color='neutral' aria-label='Jump to time'>
-              <LuCalendarClock size={14} />
+            <IconButton
+              size='sm'
+              variant={open ? 'soft' : 'ghost'}
+              color={open ? 'brand' : 'neutral'}
+              aria-label='Jump to time'
+              aria-pressed={open}
+            >
+              <LuCalendarClock />
             </IconButton>
           }
         />

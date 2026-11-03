@@ -43,6 +43,8 @@ function Probe() {
         isFallback: controller.isFallback,
         providerRequestedThemeId: providerTheme.requestedThemeId,
         density: providerTheme.density,
+        textSize: providerTheme.textSize,
+        motion: providerTheme.motion,
       })}
     </output>
   );
@@ -104,8 +106,73 @@ describe('AppThemeController', () => {
       activeThemeId: 'obsidian',
       isFallback: false,
       providerRequestedThemeId: 'obsidian',
-      density: 'compact',
+      density: 'comfortable',
     });
+  });
+
+  it('restores cached preferences before settings hydration and applies live backend changes', () => {
+    localStorage.setItem('ov-appearance-bootstrap-v1', JSON.stringify({
+      schemaVersion: 1, density: 'compact', textSize: '125', motion: 'reduced',
+    }));
+    const view = renderController();
+    expect(readThemeState()).toMatchObject({ density: 'compact', textSize: '125', motion: 'reduced' });
+
+    mocks.settings = {
+      'appearance.density': 'comfortable',
+      'appearance.textSize': '110',
+      'appearance.motion': 'normal',
+    };
+    view.rerender(<AppThemeController><Probe /></AppThemeController>);
+    expect(readThemeState()).toMatchObject({ density: 'comfortable', textSize: '110', motion: 'normal' });
+    expect(JSON.parse(localStorage.getItem('ov-appearance-bootstrap-v1') ?? '{}')).toEqual({
+      schemaVersion: 1, density: 'comfortable', textSize: '110', motion: 'normal',
+    });
+
+    view.unmount();
+    mocks.settings = {};
+    renderController();
+    expect(readThemeState()).toMatchObject({ density: 'comfortable', textSize: '110', motion: 'normal' });
+  });
+
+  it('tracks system reduced motion and respects explicit overrides', () => {
+    let reduced = false;
+    const listeners = new Set<() => void>();
+    const original = window.matchMedia;
+    window.matchMedia = vi.fn().mockImplementation(() => ({
+      get matches() {
+        return reduced;
+      },
+      addEventListener: (_event: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_event: string, listener: () => void) => listeners.delete(listener),
+    }));
+    try {
+      const view = renderController();
+      expect(readThemeState()).toMatchObject({ motion: 'normal' });
+      act(() => {
+        reduced = true;
+        listeners.forEach(listener => {
+          listener();
+        });
+      });
+      expect(readThemeState()).toMatchObject({ motion: 'reduced' });
+      mocks.settings = { 'appearance.motion': 'normal' };
+      view.rerender(<AppThemeController><Probe /></AppThemeController>);
+      expect(readThemeState()).toMatchObject({ motion: 'normal' });
+      mocks.settings = { 'appearance.motion': 'system' };
+      view.rerender(<AppThemeController><Probe /></AppThemeController>);
+      expect(readThemeState()).toMatchObject({ motion: 'reduced' });
+      act(() => {
+        reduced = false;
+        listeners.forEach(listener => {
+          listener();
+        });
+      });
+      expect(readThemeState()).toMatchObject({ motion: 'normal' });
+      view.unmount();
+      expect(listeners.size).toBe(0);
+    } finally {
+      window.matchMedia = original;
+    }
   });
 
   it('lets the loaded canonical backend value win over the bootstrap cache', () => {

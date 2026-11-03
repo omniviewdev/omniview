@@ -14,6 +14,24 @@ func TestAppearanceThemeDefaultsToVoid(t *testing.T) {
 	require.Error(t, setting.Validate("bad theme id"))
 }
 
+func TestAppearancePreferences(t *testing.T) {
+	for id, values := range map[string][]string{
+		"density":  {"comfortable", "compact"},
+		"textSize": {"80", "90", "100", "110", "125"},
+		"motion":   {"system", "normal", "reduced"},
+	} {
+		t.Run(id, func(t *testing.T) {
+			setting := Appearance.Settings[id]
+			for _, value := range values {
+				require.NoError(t, setting.Validate(value))
+			}
+			for _, invalid := range []any{"", "unknown", 100, nil, true} {
+				require.False(t, setting.Validator(invalid).Valid)
+			}
+		})
+	}
+}
+
 func TestMigrateAppearanceValues(t *testing.T) {
 	tests := map[string]string{
 		"default":           "void",

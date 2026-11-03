@@ -24,7 +24,7 @@
 }
 
 .ResourceName {
-  font-size: 0.8rem;
+  font-size: var(--ov-primitive-font-size-13);
   font-weight: 600;
   color: var(--ov-color-fg-default);
   min-width: 0;
@@ -35,7 +35,7 @@
   padding: 2px 6px;
   border-radius: var(--ov-radius-sm);
   font-weight: 600;
-  font-size: 0.75rem;
+  font-size: var(--ov-font-size-caption);
   flex-shrink: 0;
 }
 
@@ -47,9 +47,12 @@
 }
 
 .HeaderActions {
+  /* Heading actions use the existing compact card-action tier, not field heights. */
+  --ov-size-button-height-sm: var(--ov-size-card-action-height-sm);
+  --ov-size-icon-button-icon-sm: var(--ov-primitive-font-size-14);
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
 }
 
 .Content {
@@ -65,6 +68,7 @@
   display: flex;
   border-bottom: 1px solid var(--ov-color-border-muted);
   flex-shrink: 0;
+  overflow-x: auto;
 }
 
 .Tab {
@@ -72,7 +76,7 @@
   align-items: center;
   gap: 4px;
   padding: 6px 12px;
-  font-size: 0.75rem;
+  font-size: var(--ov-primitive-font-size-13);
   font-weight: 400;
   font-family: inherit;
   cursor: pointer;
@@ -80,7 +84,15 @@
   border-bottom: 2px solid transparent;
   color: var(--ov-color-fg-muted);
   background: transparent;
-  transition: color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+  white-space: nowrap;
+  transition: color var(--ov-duration-interactive), border-color var(--ov-duration-interactive);
+}
+
+.Tab > svg {
+  inline-size: 1em;
+  block-size: 1em;
+  flex-shrink: 0;
 }
 
 .Tab[aria-selected='true'] {

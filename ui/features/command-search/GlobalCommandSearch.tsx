@@ -317,6 +317,7 @@ function SearchInput({ controller, snapshot, input, onClose, pluginIcons }: Pale
         <BaseSearchInput
           ref={input}
           className={styles.QueryInput}
+          size='lg'
           autoFocus={false}
           value={snapshot.query}
           onValueChange={(query) => controller?.setQuery(query)}
@@ -555,7 +556,7 @@ export function GlobalCommandSearch({ controller, snapshot, input, onClose, cata
                       : resultScope ? <ScopeIcon scope={resultScope} pluginIcons={pluginIcons} /> : <Icon />}
                   </CommandList.ItemIcon>
                   <CommandList.ItemContent className={styles.ResultContent}>
-                    <CommandList.ItemLabel>{row.label}</CommandList.ItemLabel>
+                    <CommandList.ItemLabel className={styles.ResultLabel}>{row.label}</CommandList.ItemLabel>
                     {breadcrumb && <CommandList.ItemMeta>{breadcrumb}</CommandList.ItemMeta>}
                     {!row.value.description && !breadcrumb && <CommandList.ItemMeta>
                       {resultScope?.kind === 'resource' ? (resourceDetails === '' ? undefined : resourceDetails)

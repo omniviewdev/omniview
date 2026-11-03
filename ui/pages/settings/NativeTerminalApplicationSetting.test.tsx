@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Setting, SettingType } from '@omniviewdev/runtime/models';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -141,6 +141,7 @@ describe('native terminal application setting', () => {
     picker().focus();
     await user.keyboard('[Space]');
     await screen.findByRole('listbox');
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Device Terminal' })).toHaveFocus());
     await user.keyboard('[End][Enter]');
 
     expect(picker()).toHaveTextContent('Device iTerm');
