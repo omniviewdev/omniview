@@ -1,0 +1,3088 @@
+{
+  "schemaVersion": 1,
+  "measuredAtUTC": "2026-11-03",
+  "toolchain": {
+    "go": "1.26.1",
+    "os": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M5 Max",
+    "gomaxprocs": 18
+  },
+  "workspaceTool": "installed omniview-dev CLI",
+  "cohorts": {
+    "baseline": {
+      "host": "3bd4dfc8dcfbe2fa9dfbdedf96c291bcd961baf0",
+      "sdk": "9f007a79cf63a64eac9df7cb88bbbaf3120b9f08"
+    },
+    "candidate": {
+      "hostBase": "3bd4dfc8dcfbe2fa9dfbdedf96c291bcd961baf0",
+      "hostSourceHashes": [
+        {
+          "path": "backend/pkg/plugin/resource/observation.go",
+          "sha256": "48ca7e13507efdf8f6b1019d984015e20bb571d3401791ec744c58af0bb0fa47"
+        },
+        {
+          "path": "backend/pkg/plugin/resource/catalog_binding.go",
+          "sha256": "ac9575f4f9d99e20a56fa2b415e72f5917dbe1d8e17f8679d8a1e6ea0c1a5551"
+        },
+        {
+          "path": "backend/pkg/plugin/resource/ancillary_service.go",
+          "sha256": "2258a3c692d047d9d55b860a74619358ca9e66a5d9b929481d2f292f4b5c845e"
+        },
+        {
+          "path": "internal/mcprelay/resource_tools.go",
+          "sha256": "7ded318e53bf785d5d2f4c6199986117d599069f4bab6f7eafa1f0254f83dda8"
+        },
+        {
+          "path": "internal/mcprelay/server.go",
+          "sha256": "57e0f52b4a8c9cef491ed63205877a7fa0b6ab559b2b72041d2f597d73edc036"
+        },
+        {
+          "path": "internal/mcprelay/service_wrapper.go",
+          "sha256": "6eaaf2f823ff720963d602ad83567b58a5e557855498d6ef5a2592a13dcfb0b5"
+        }
+      ],
+      "sdk": "1712cd3b66e14b1807cf17fbb59f48512875c822"
+    },
+    "kubernetes": "519172d96103340a0a7f0dab2dc60ae28b1ea28d",
+    "ui": "cef053786d7817e70f26e8558bdb984bfac09c91"
+  },
+  "cluster": {
+    "nodes": 4,
+    "readyPods": 315,
+    "applicationDeployments": 300,
+    "applicationServices": 300,
+    "applicationConfigMaps": 300,
+    "applicationSecrets": 300,
+    "followingSources": 55
+  },
+  "method": {
+    "pairs": 5,
+    "harnessGeneration": 5,
+    "processes": "fresh for each cohort/pair",
+    "warmupSeconds": 15,
+    "idleSeconds": 65,
+    "activeSeconds": 40,
+    "policyTogglesPerProcess": 8,
+    "finiteAcquisitionsPerProcess": 8,
+    "pagesPerAcquisition": 2,
+    "recordsPerAcquisition": 315,
+    "mcpEnabled": false,
+    "requestTransport": "actual Wails HTTP runtime with generated method IDs and source browser client ID",
+    "consumer": "minimal main-world browser source-view consumer; no React app",
+    "overlappingLocalBuildsTestsOrProbes": false,
+    "allocation": "exact TotalAlloc delta plus separately labeled sampled pprof",
+    "heap": "forced-GC exact HeapAlloc; sampled inuse_space only for attribution",
+    "rss": "ps end-of-CPU-capture; before post-capture forced GC",
+    "quantiles": "nearest-rank p50/p95 over 40 requests per cohort",
+    "uncertainty": "single workstation/cluster; sampled CPU and observer overhead apply"
+  },
+  "aggregate": {
+    "baseline": {
+      "idle": {
+        "host": {
+          "sampledCpuSeconds": 3.89,
+          "allocationMiB": 2301.530297279358,
+          "exactAllocatedMiB": 2298.9391708374023,
+          "retainedHeapMiB": 184.54766368865967,
+          "exactHeapMiB": 194.23782348632812,
+          "rssMiB": 480.578125,
+          "cpuRange": [
+            3.93,
+            3.91,
+            3.89,
+            3.89,
+            3.84
+          ],
+          "allocRangeMiB": [
+            2301.530297279358,
+            2252.2603874206543,
+            2315.5030946731567,
+            2294.570381164551,
+            2309.9013719558716
+          ]
+        },
+        "plugin": {
+          "sampledCpuSeconds": 1.35,
+          "allocationMiB": 560.3343477249146,
+          "exactAllocatedMiB": 570.6969757080078,
+          "retainedHeapMiB": 84.10764694213867,
+          "exactHeapMiB": 75.48612213134766,
+          "rssMiB": 289.0625,
+          "cpuRange": [
+            1.35,
+            1.32,
+            1.35,
+            1.33,
+            1.41
+          ],
+          "allocRangeMiB": [
+            560.3343477249146,
+            573.4722633361816,
+            558.1546182632446,
+            580.956449508667,
+            533.1024379730225
+          ]
+        },
+        "combined": {
+          "exactHeapMiB": 269.79034423828125,
+          "rssMiB": 769.5625
+        }
+      },
+      "active": {
+        "host": {
+          "sampledCpuSeconds": 18.48,
+          "allocationMiB": 11329.592456817627,
+          "exactAllocatedMiB": 11355.055397033691,
+          "retainedHeapMiB": 196.95911979675293,
+          "exactHeapMiB": 209.49234008789062,
+          "rssMiB": 573.671875,
+          "cpuRange": [
+            18.34,
+            19.08,
+            18.48,
+            18.55,
+            18.47
+          ],
+          "allocRangeMiB": [
+            11304.144191741943,
+            11426.643860816956,
+            11335.465971946716,
+            11329.592456817627,
+            11227.510478973389
+          ]
+        },
+        "plugin": {
+          "sampledCpuSeconds": 6.64,
+          "allocationMiB": 2681.7543449401855,
+          "exactAllocatedMiB": 2675.610397338867,
+          "retainedHeapMiB": 84.14267921447754,
+          "exactHeapMiB": 76.21620178222656,
+          "rssMiB": 296.5625,
+          "cpuRange": [
+            6.64,
+            6.76,
+            6.6,
+            6.85,
+            6.64
+          ],
+          "allocRangeMiB": [
+            2649.146933555603,
+            2681.7543449401855,
+            2627.718318939209,
+            2684.4530992507935,
+            2718.5855293273926
+          ]
+        },
+        "combined": {
+          "exactHeapMiB": 281.4129638671875,
+          "rssMiB": 870.234375
+        }
+      },
+      "latency": {
+        "startupMedianMs": 2922.969957999885,
+        "policyP50Ms": 1895.048124998808,
+        "policyP95Ms": 1981.4283749982715,
+        "finiteP50Ms": 557.1792920008302,
+        "finiteP95Ms": 569.4210000000894,
+        "policyCount": 40,
+        "finiteCount": 40
+      },
+      "inventory": {
+        "count": 483,
+        "hash": "ad03b08da05b1b65ff88ac3debb6aaf0b58c402fb0df569364fbee89e4eca9df",
+        "allEqual": true
+      }
+    },
+    "candidate": {
+      "idle": {
+        "host": {
+          "sampledCpuSeconds": 0.49,
+          "allocationMiB": 127.53568649291992,
+          "exactAllocatedMiB": 133.4366912841797,
+          "retainedHeapMiB": 199.02706336975098,
+          "exactHeapMiB": 197.39923095703125,
+          "rssMiB": 411.703125,
+          "cpuRange": [
+            0.55,
+            0.43,
+            0.45,
+            0.49,
+            0.52
+          ],
+          "allocRangeMiB": [
+            129.1411647796631,
+            133.23548316955566,
+            122.18654918670654,
+            127.53568649291992,
+            125.58489513397217
+          ]
+        },
+        "plugin": {
+          "sampledCpuSeconds": 0.58,
+          "allocationMiB": 283.04504680633545,
+          "exactAllocatedMiB": 281.6018753051758,
+          "retainedHeapMiB": 79.1434383392334,
+          "exactHeapMiB": 72.59656524658203,
+          "rssMiB": 357.5,
+          "cpuRange": [
+            0.59,
+            0.58,
+            0.56,
+            0.53,
+            0.61
+          ],
+          "allocRangeMiB": [
+            283.04504680633545,
+            266.2886505126953,
+            284.65807914733887,
+            277.6085605621338,
+            292.4198246002197
+          ]
+        },
+        "combined": {
+          "exactHeapMiB": 270.11914825439453,
+          "rssMiB": 757.1875
+        }
+      },
+      "active": {
+        "host": {
+          "sampledCpuSeconds": 2.66,
+          "allocationMiB": 1207.5436697006226,
+          "exactAllocatedMiB": 1215.9294815063477,
+          "retainedHeapMiB": 210.96228790283203,
+          "exactHeapMiB": 209.73137664794922,
+          "rssMiB": 555.5625,
+          "cpuRange": [
+            2.88,
+            2.61,
+            2.69,
+            2.66,
+            2.55
+          ],
+          "allocRangeMiB": [
+            1188.4944067001343,
+            1194.3357381820679,
+            1207.5436697006226,
+            1246.8063821792603,
+            1254.0991048812866
+          ]
+        },
+        "plugin": {
+          "sampledCpuSeconds": 2.48,
+          "allocationMiB": 997.6172866821289,
+          "exactAllocatedMiB": 1000.0094833374023,
+          "retainedHeapMiB": 79.77881145477295,
+          "exactHeapMiB": 72.79347229003906,
+          "rssMiB": 359.8125,
+          "cpuRange": [
+            2.63,
+            2.57,
+            2.47,
+            2.48,
+            2.43
+          ],
+          "allocRangeMiB": [
+            997.6172866821289,
+            1005.6468696594238,
+            1014.0607891082764,
+            980.9738645553589,
+            974.5784864425659
+          ]
+        },
+        "combined": {
+          "exactHeapMiB": 282.95935821533203,
+          "rssMiB": 915.375
+        }
+      },
+      "latency": {
+        "startupMedianMs": 948.2414590008557,
+        "policyP50Ms": 9.109499998390675,
+        "policyP95Ms": 10.86387500166893,
+        "finiteP50Ms": 531.6775000020862,
+        "finiteP95Ms": 636.7209580019116,
+        "policyCount": 40,
+        "finiteCount": 40
+      },
+      "inventory": {
+        "count": 483,
+        "hash": "ad03b08da05b1b65ff88ac3debb6aaf0b58c402fb0df569364fbee89e4eca9df",
+        "allEqual": true
+      }
+    }
+  },
+  "samples": [
+    {
+      "name": "baseline-g5-1-idle",
+      "cohort": "baseline",
+      "pair": 1,
+      "seconds": 65,
+      "identity": {
+        "workspaceID": "8509c321-4c40-4b8a-9f2a-f540faeb8386",
+        "generation": "6b277b9d-87be-499f-a1da-ee5a32d51388",
+        "hostPID": 44499,
+        "pluginPID": 44944,
+        "sdkReviewedRevision": "9f007a79cf63a64eac9df7cb88bbbaf3120b9f08"
+      },
+      "startupMs": 2826.630875002593,
+      "processBefore": "44499   0:07.21 491728\n44944   0:03.46 308432\n",
+      "processAfter": "44499   0:11.75 492112\n44944   0:05.07 308880\n",
+      "sourceState": {
+        "following": 55,
+        "total": 55,
+        "errors": 0,
+        "pods": 315
+      },
+      "viewChecks": [
+        {
+          "type": "k8s:/pods",
+          "complete": true,
+          "snapshots": 1,
+          "initialRows": 315,
+          "upserts": 0,
+          "removes": 0,
+          "errors": 0,
+          "resets": 0
+        }
+      ],
+      "metrics": {
+        "name": "baseline-g5-1-idle",
+        "seconds": 65,
+        "identity": {
+          "cohort": "baseline",
+          "pair": 1,
+          "hostPID": 44499,
+          "pluginPID": 44944,
+          "generation": "6b277b9d-87be-499f-a1da-ee5a32d51388",
+          "workspaceID": "8509c321-4c40-4b8a-9f2a-f540faeb8386",
+          "sdkReviewedRevision": "9f007a79cf63a64eac9df7cb88bbbaf3120b9f08",
+          "harnessGeneration": 5
+        },
+        "startupMs": 2826.630875002593,
+        "host": {
+          "cpu": 3930000000,
+          "allocation": 2413329433,
+          "retained": 192711140,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 3443686120,
+              "HeapAlloc": 208483696,
+              "HeapObjects": 905671,
+              "HeapSys": 445841408,
+              "HeapInuse": 273440768,
+              "HeapReleased": 20160512,
+              "NextGC": 410937250,
+              "NumGC": 42,
+              "NumForcedGC": 1
+            },
+            "post": {
+              "TotalAlloc": 5860002192,
+              "HeapAlloc": 203673120,
+              "HeapObjects": 907428,
+              "HeapSys": 445808640,
+              "HeapInuse": 269893632,
+              "HeapReleased": 46317568,
+              "NextGC": 400863650,
+              "NumGC": 55,
+              "NumForcedGC": 2
+            }
+          }
+        },
+        "plugin": {
+          "cpu": 1350000000,
+          "allocation": 587553149,
+          "retained": 88918391,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1227046912,
+              "HeapAlloc": 78962448,
+              "HeapObjects": 838621,
+              "HeapSys": 262668288,
+              "HeapInuse": 100163584,
+              "HeapReleased": 127295488,
+              "NextGC": 155137114,
+              "NumGC": 44,
+              "NumForcedGC": 1
+            },
+            "post": {
+              "TotalAlloc": 1819598848,
+              "HeapAlloc": 79152936,
+              "HeapObjects": 839248,
+              "HeapSys": 262569984,
+              "HeapInuse": 100532224,
+              "HeapReleased": 110108672,
+              "NextGC": 155157130,
+              "NumGC": 53,
+              "NumForcedGC": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "baseline-g5-1-active",
+      "cohort": "baseline",
+      "pair": 1,
+      "seconds": 40,
+      "identity": {
+        "workspaceID": "8509c321-4c40-4b8a-9f2a-f540faeb8386",
+        "generation": "6b277b9d-87be-499f-a1da-ee5a32d51388",
+        "hostPID": 44499,
+        "pluginPID": 44944,
+        "sdkReviewedRevision": "9f007a79cf63a64eac9df7cb88bbbaf3120b9f08"
+      },
+      "processBefore": "44499   0:12.21 492160\n44944   0:05.21 308928\n",
+      "processAfter": "44499   0:33.13 560320\n44944   0:12.84 310672\n",
+      "sourceState": {
+        "following": 55,
+        "total": 55,
+        "errors": 0,
+        "pods": 315
+      },
+      "viewChecks": [
+        {
+          "type": "k8s:/pods",
+          "complete": true,
+          "snapshots": 1,
+          "initialRows": 315,
+          "upserts": 0,
+          "removes": 0,
+          "errors": 0,
+          "resets": 0
+        }
+      ],
+      "policy": {
+        "samplesMs": [
+          1877.8486250005662,
+          1871.8268749974668,
+          1863.3644579984248,
+          1876.0673750005662,
+          1847.633666999638,
+          1974.1109159998596,
+          1860.845042001456,
+          1873.8992500007153
+        ],
+        "restored": true,
+        "mcpEnabled": false,
+        "mcpRunning": false
+      },
+      "finite": [
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 551.0960419997573
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 556.762000001967
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 540.6891250014305
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 544.1634160019457
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 545.3354169987142
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 558.6763750016689
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 567.2590420022607
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 560.6136250011623
+        }
+      ],
+      "inventory": {
+        "count": 483,
+        "sha256": "ad03b08da05b1b65ff88ac3debb6aaf0b58c402fb0df569364fbee89e4eca9df"
+      },
+      "metrics": {
+        "name": "baseline-g5-1-active",
+        "seconds": 40,
+        "identity": {
+          "cohort": "baseline",
+          "pair": 1,
+          "hostPID": 44499,
+          "pluginPID": 44944,
+          "generation": "6b277b9d-87be-499f-a1da-ee5a32d51388",
+          "workspaceID": "8509c321-4c40-4b8a-9f2a-f540faeb8386",
+          "sdkReviewedRevision": "9f007a79cf63a64eac9df7cb88bbbaf3120b9f08",
+          "harnessGeneration": 5
+        },
+        "host": {
+          "cpu": 18340000000,
+          "allocation": 11853254300,
+          "retained": 198358784,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 5871981376,
+              "HeapAlloc": 198458616,
+              "HeapObjects": 907415,
+              "HeapSys": 445808640,
+              "HeapInuse": 264282112,
+              "HeapReleased": 86228992,
+              "NextGC": 389970930,
+              "NumGC": 56,
+              "NumForcedGC": 3
+            },
+            "post": {
+              "TotalAlloc": 17743314728,
+              "HeapAlloc": 210749008,
+              "HeapObjects": 928466,
+              "HeapSys": 512917504,
+              "HeapInuse": 282066944,
+              "HeapReleased": 113934336,
+              "NextGC": 412855170,
+              "NumGC": 119,
+              "NumForcedGC": 4
+            }
+          }
+        },
+        "plugin": {
+          "cpu": 6640000000,
+          "allocation": 2777831895,
+          "retained": 88229994,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1824197880,
+              "HeapAlloc": 74923088,
+              "HeapObjects": 839151,
+              "HeapSys": 262602752,
+              "HeapInuse": 96141312,
+              "HeapReleased": 145539072,
+              "NextGC": 146689114,
+              "NumGC": 54,
+              "NumForcedGC": 3
+            },
+            "post": {
+              "TotalAlloc": 4621266904,
+              "HeapAlloc": 83152464,
+              "HeapObjects": 888254,
+              "HeapSys": 262471680,
+              "HeapInuse": 103415808,
+              "HeapReleased": 107552768,
+              "NextGC": 155370746,
+              "NumGC": 90,
+              "NumForcedGC": 4
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "candidate-g5-1-idle",
+      "cohort": "candidate",
+      "pair": 1,
+      "seconds": 65,
+      "identity": {
+        "workspaceID": "be895f12-6aae-401e-8b3a-42ecc7859888",
+        "generation": "d305c4c1-d7b6-4bef-9710-c6e99c134543",
+        "hostPID": 49713,
+        "pluginPID": 50002,
+        "sdkReviewedRevision": "1712cd3b66e14b1807cf17fbb59f48512875c822"
+      },
+      "startupMs": 925.6549589969218,
+      "processBefore": "49713   0:02.95 388336\n50002   0:02.28 365840\n",
+      "processAfter": "49713   0:03.67 409280\n50002   0:02.94 366080\n",
+      "sourceState": {
+        "following": 55,
+        "total": 55,
+        "errors": 0,
+        "pods": 315
+      },
+      "viewChecks": [
+        {
+          "type": "k8s:/pods",
+          "complete": true,
+          "snapshots": 1,
+          "initialRows": 315,
+          "upserts": 0,
+          "removes": 0,
+          "errors": 0,
+          "resets": 0
+        }
+      ],
+      "metrics": {
+        "name": "candidate-g5-1-idle",
+        "seconds": 65,
+        "identity": {
+          "cohort": "candidate",
+          "pair": 1,
+          "hostPID": 49713,
+          "pluginPID": 50002,
+          "generation": "d305c4c1-d7b6-4bef-9710-c6e99c134543",
+          "workspaceID": "be895f12-6aae-401e-8b3a-42ecc7859888",
+          "sdkReviewedRevision": "1712cd3b66e14b1807cf17fbb59f48512875c822",
+          "harnessGeneration": 5
+        },
+        "startupMs": 925.6549589969218,
+        "host": {
+          "cpu": 550000000,
+          "allocation": 135414326,
+          "retained": 211795027,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1147627936,
+              "HeapAlloc": 205222488,
+              "HeapObjects": 910419,
+              "HeapSys": 349372416,
+              "HeapInuse": 257810432,
+              "HeapReleased": 38207488,
+              "NextGC": 405495954,
+              "NumGC": 31,
+              "NumForcedGC": 1
+            },
+            "post": {
+              "TotalAlloc": 1287546448,
+              "HeapAlloc": 199159296,
+              "HeapObjects": 911078,
+              "HeapSys": 366149632,
+              "HeapInuse": 255451136,
+              "HeapReleased": 26918912,
+              "NextGC": 393183506,
+              "NumGC": 33,
+              "NumForcedGC": 2
+            }
+          }
+        },
+        "plugin": {
+          "cpu": 590000000,
+          "allocation": 296794243,
+          "retained": 85348908,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 928626520,
+              "HeapAlloc": 75787976,
+              "HeapObjects": 838072,
+              "HeapSys": 321191936,
+              "HeapInuse": 98107392,
+              "HeapReleased": 186269696,
+              "NextGC": 148924074,
+              "NumGC": 38,
+              "NumForcedGC": 1
+            },
+            "post": {
+              "TotalAlloc": 1223907488,
+              "HeapAlloc": 75868144,
+              "HeapObjects": 838619,
+              "HeapSys": 321191936,
+              "HeapInuse": 98328576,
+              "HeapReleased": 167124992,
+              "NextGC": 148904570,
+              "NumGC": 43,
+              "NumForcedGC": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "candidate-g5-1-active",
+      "cohort": "candidate",
+      "pair": 1,
+      "seconds": 40,
+      "identity": {
+        "workspaceID": "be895f12-6aae-401e-8b3a-42ecc7859888",
+        "generation": "d305c4c1-d7b6-4bef-9710-c6e99c134543",
+        "hostPID": 49713,
+        "pluginPID": 50002,
+        "sdkReviewedRevision": "1712cd3b66e14b1807cf17fbb59f48512875c822"
+      },
+      "processBefore": "49713   0:03.94 409312\n50002   0:03.07 366128\n",
+      "processAfter": "49713   0:07.23 568896\n50002   0:06.05 368448\n",
+      "sourceState": {
+        "following": 55,
+        "total": 55,
+        "errors": 0,
+        "pods": 315
+      },
+      "viewChecks": [
+        {
+          "type": "k8s:/pods",
+          "complete": true,
+          "snapshots": 1,
+          "initialRows": 315,
+          "upserts": 0,
+          "removes": 0,
+          "errors": 0,
+          "resets": 0
+        }
+      ],
+      "policy": {
+        "samplesMs": [
+          9.456457998603582,
+          10.62737500295043,
+          6.300041999667883,
+          9.89479099959135,
+          7.061416000127792,
+          10.86387500166893,
+          6.226290997117758,
+          10.012874998152256
+        ],
+        "restored": true,
+        "mcpEnabled": false,
+        "mcpRunning": false
+      },
+      "finite": [
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 646.0258750021458
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 671.9101249985397
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 636.7209580019116
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 535.5984999984503
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 531.5509999990463
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 532.3471660017967
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 530.6250419989228
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 530.4318330027163
+        }
+      ],
+      "inventory": {
+        "count": 483,
+        "sha256": "ad03b08da05b1b65ff88ac3debb6aaf0b58c402fb0df569364fbee89e4eca9df"
+      },
+      "metrics": {
+        "name": "candidate-g5-1-active",
+        "seconds": 40,
+        "identity": {
+          "cohort": "candidate",
+          "pair": 1,
+          "hostPID": 49713,
+          "pluginPID": 50002,
+          "generation": "d305c4c1-d7b6-4bef-9710-c6e99c134543",
+          "workspaceID": "be895f12-6aae-401e-8b3a-42ecc7859888",
+          "sdkReviewedRevision": "1712cd3b66e14b1807cf17fbb59f48512875c822",
+          "harnessGeneration": 5
+        },
+        "host": {
+          "cpu": 2880000000,
+          "allocation": 1246226711,
+          "retained": 232648792,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1293535016,
+              "HeapAlloc": 197942800,
+              "HeapObjects": 911141,
+              "HeapSys": 366116864,
+              "HeapInuse": 254156800,
+              "HeapReleased": 86228992,
+              "NextGC": 390747218,
+              "NumGC": 34,
+              "NumForcedGC": 3
+            },
+            "post": {
+              "TotalAlloc": 2551583728,
+              "HeapAlloc": 219607176,
+              "HeapObjects": 931759,
+              "HeapSys": 525533184,
+              "HeapInuse": 275619840,
+              "HeapReleased": 61087744,
+              "NextGC": 433555522,
+              "NumGC": 41,
+              "NumForcedGC": 4
+            }
+          }
+        },
+        "plugin": {
+          "cpu": 2630000000,
+          "allocation": 1046077544,
+          "retained": 85873340,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1227637904,
+              "HeapAlloc": 74754936,
+              "HeapObjects": 838621,
+              "HeapSys": 321191936,
+              "HeapInuse": 97017856,
+              "HeapReleased": 208199680,
+              "NextGC": 146660586,
+              "NumGC": 44,
+              "NumForcedGC": 3
+            },
+            "post": {
+              "TotalAlloc": 2276223848,
+              "HeapAlloc": 76161288,
+              "HeapObjects": 840161,
+              "HeapSys": 321191936,
+              "HeapInuse": 98566144,
+              "HeapReleased": 193724416,
+              "NextGC": 148962026,
+              "NumGC": 57,
+              "NumForcedGC": 4
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "baseline-g5-2-idle",
+      "cohort": "baseline",
+      "pair": 2,
+      "seconds": 65,
+      "identity": {
+        "workspaceID": "8509c321-4c40-4b8a-9f2a-f540faeb8386",
+        "generation": "f33e0276-e2cd-4330-9c93-6fc327ee62e4",
+        "hostPID": 60087,
+        "pluginPID": 60432,
+        "sdkReviewedRevision": "9f007a79cf63a64eac9df7cb88bbbaf3120b9f08"
+      },
+      "startupMs": 2871.8896250016987,
+      "processBefore": "60087   0:07.36 491712\n60432   0:03.48 295504\n",
+      "processAfter": "60087   0:11.79 492032\n60432   0:05.02 296000\n",
+      "sourceState": {
+        "following": 55,
+        "total": 55,
+        "errors": 0,
+        "pods": 315
+      },
+      "viewChecks": [
+        {
+          "type": "k8s:/pods",
+          "complete": true,
+          "snapshots": 1,
+          "initialRows": 315,
+          "upserts": 0,
+          "removes": 0,
+          "errors": 0,
+          "resets": 0
+        }
+      ],
+      "metrics": {
+        "name": "baseline-g5-2-idle",
+        "seconds": 65,
+        "identity": {
+          "cohort": "baseline",
+          "pair": 2,
+          "hostPID": 60087,
+          "pluginPID": 60432,
+          "generation": "f33e0276-e2cd-4330-9c93-6fc327ee62e4",
+          "workspaceID": "8509c321-4c40-4b8a-9f2a-f540faeb8386",
+          "sdkReviewedRevision": "9f007a79cf63a64eac9df7cb88bbbaf3120b9f08",
+          "harnessGeneration": 5
+        },
+        "startupMs": 2871.8896250016987,
+        "host": {
+          "cpu": 3910000000,
+          "allocation": 2361666188,
+          "retained": 202046089,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 3442003784,
+              "HeapAlloc": 203179680,
+              "HeapObjects": 906888,
+              "HeapSys": 441614336,
+              "HeapInuse": 275529728,
+              "HeapReleased": 43884544,
+              "NextGC": 400056962,
+              "NumGC": 43,
+              "NumForcedGC": 1
+            },
+            "post": {
+              "TotalAlloc": 5852616224,
+              "HeapAlloc": 203781912,
+              "HeapObjects": 907504,
+              "HeapSys": 441647104,
+              "HeapInuse": 277225472,
+              "HeapReleased": 16252928,
+              "NextGC": 401040738,
+              "NumGC": 56,
+              "NumForcedGC": 2
+            }
+          }
+        },
+        "plugin": {
+          "cpu": 1320000000,
+          "allocation": 601329252,
+          "retained": 81651962,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1213983536,
+              "HeapAlloc": 78979208,
+              "HeapObjects": 838629,
+              "HeapSys": 250118144,
+              "HeapInuse": 99737600,
+              "HeapReleased": 114401280,
+              "NextGC": 155176266,
+              "NumGC": 42,
+              "NumForcedGC": 1
+            },
+            "post": {
+              "TotalAlloc": 1807486048,
+              "HeapAlloc": 79113768,
+              "HeapObjects": 839335,
+              "HeapSys": 250085376,
+              "HeapInuse": 100065280,
+              "HeapReleased": 112992256,
+              "NextGC": 155195402,
+              "NumGC": 51,
+              "NumForcedGC": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "baseline-g5-2-active",
+      "cohort": "baseline",
+      "pair": 2,
+      "seconds": 40,
+      "identity": {
+        "workspaceID": "8509c321-4c40-4b8a-9f2a-f540faeb8386",
+        "generation": "f33e0276-e2cd-4330-9c93-6fc327ee62e4",
+        "hostPID": 60087,
+        "pluginPID": 60432,
+        "sdkReviewedRevision": "9f007a79cf63a64eac9df7cb88bbbaf3120b9f08"
+      },
+      "processBefore": "60087   0:12.23 492096\n60432   0:05.16 296080\n",
+      "processAfter": "60087   0:33.48 587440\n60432   0:12.90 303680\n",
+      "sourceState": {
+        "following": 55,
+        "total": 55,
+        "errors": 0,
+        "pods": 315
+      },
+      "viewChecks": [
+        {
+          "type": "k8s:/pods",
+          "complete": true,
+          "snapshots": 1,
+          "initialRows": 315,
+          "upserts": 0,
+          "removes": 0,
+          "errors": 0,
+          "resets": 0
+        }
+      ],
+      "policy": {
+        "samplesMs": [
+          1923.0723340027034,
+          1914.3379160016775,
+          1895.6703750006855,
+          1907.9723330028355,
+          1899.7239169999957,
+          1994.3618749976158,
+          1908.1012080013752,
+          1902.19495799765
+        ],
+        "restored": true,
+        "mcpEnabled": false,
+        "mcpRunning": false
+      },
+      "finite": [
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 560.2743749991059
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 565.6565419994295
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 558.0488750003278
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 561.4003330022097
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 569.4210000000894
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 581.3317909985781
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 559.8372089974582
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 555.1664589978755
+        }
+      ],
+      "inventory": {
+        "count": 483,
+        "sha256": "ad03b08da05b1b65ff88ac3debb6aaf0b58c402fb0df569364fbee89e4eca9df"
+      },
+      "metrics": {
+        "name": "baseline-g5-2-active",
+        "seconds": 40,
+        "identity": {
+          "cohort": "baseline",
+          "pair": 2,
+          "hostPID": 60087,
+          "pluginPID": 60432,
+          "generation": "f33e0276-e2cd-4330-9c93-6fc327ee62e4",
+          "workspaceID": "8509c321-4c40-4b8a-9f2a-f540faeb8386",
+          "sdkReviewedRevision": "9f007a79cf63a64eac9df7cb88bbbaf3120b9f08",
+          "harnessGeneration": 5
+        },
+        "host": {
+          "cpu": 19080000000,
+          "allocation": 11981704513,
+          "retained": 216267953,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 5864324088,
+              "HeapAlloc": 198627104,
+              "HeapObjects": 907435,
+              "HeapSys": 441647104,
+              "HeapInuse": 271630336,
+              "HeapReleased": 67239936,
+              "NextGC": 390682386,
+              "NumGC": 57,
+              "NumForcedGC": 3
+            },
+            "post": {
+              "TotalAlloc": 17785766720,
+              "HeapAlloc": 219668640,
+              "HeapObjects": 928677,
+              "HeapSys": 538116096,
+              "HeapInuse": 298147840,
+              "HeapReleased": 96509952,
+              "NextGC": 430646866,
+              "NumGC": 119,
+              "NumForcedGC": 4
+            }
+          }
+        },
+        "plugin": {
+          "cpu": 6760000000,
+          "allocation": 2812023244,
+          "retained": 78538169,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1811524376,
+              "HeapAlloc": 74858952,
+              "HeapObjects": 839277,
+              "HeapSys": 250052608,
+              "HeapInuse": 95617024,
+              "HeapReleased": 136404992,
+              "NextGC": 146669274,
+              "NumGC": 52,
+              "NumForcedGC": 3
+            },
+            "post": {
+              "TotalAlloc": 4608756136,
+              "HeapAlloc": 75414240,
+              "HeapObjects": 841298,
+              "HeapSys": 254279680,
+              "HeapInuse": 96468992,
+              "HeapReleased": 74743808,
+              "NextGC": 146717594,
+              "NumGC": 89,
+              "NumForcedGC": 4
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "candidate-g5-2-idle",
+      "cohort": "candidate",
+      "pair": 2,
+      "seconds": 65,
+      "identity": {
+        "workspaceID": "be895f12-6aae-401e-8b3a-42ecc7859888",
+        "generation": "80f81af0-a2f6-44b6-8870-0548a854610c",
+        "hostPID": 62371,
+        "pluginPID": 62878,
+        "sdkReviewedRevision": "1712cd3b66e14b1807cf17fbb59f48512875c822"
+      },
+      "startupMs": 949.3000000007451,
+      "processBefore": "62371   0:03.01 403760\n62878   0:02.35 334432\n",
+      "processAfter": "62371   0:03.56 421584\n62878   0:02.99 334848\n",
+      "sourceState": {
+        "following": 55,
+        "total": 55,
+        "errors": 0,
+        "pods": 315
+      },
+      "viewChecks": [
+        {
+          "type": "k8s:/pods",
+          "complete": true,
+          "snapshots": 1,
+          "initialRows": 315,
+          "upserts": 0,
+          "removes": 0,
+          "errors": 0,
+          "resets": 0
+        }
+      ],
+      "metrics": {
+        "name": "candidate-g5-2-idle",
+        "seconds": 65,
+        "identity": {
+          "cohort": "candidate",
+          "pair": 2,
+          "hostPID": 62371,
+          "pluginPID": 62878,
+          "generation": "80f81af0-a2f6-44b6-8870-0548a854610c",
+          "workspaceID": "be895f12-6aae-401e-8b3a-42ecc7859888",
+          "sdkReviewedRevision": "1712cd3b66e14b1807cf17fbb59f48512875c822",
+          "harnessGeneration": 5
+        },
+        "startupMs": 949.3000000007451,
+        "host": {
+          "cpu": 430000000,
+          "allocation": 139707530,
+          "retained": 228216450,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1146050328,
+              "HeapAlloc": 215405384,
+              "HeapObjects": 910339,
+              "HeapSys": 361988096,
+              "HeapInuse": 269246464,
+              "HeapReleased": 7102464,
+              "NextGC": 425863554,
+              "NumGC": 30,
+              "NumForcedGC": 1
+            },
+            "post": {
+              "TotalAlloc": 1285809784,
+              "HeapAlloc": 211844992,
+              "HeapObjects": 912628,
+              "HeapSys": 378699776,
+              "HeapInuse": 270000128,
+              "HeapReleased": 6053888,
+              "NextGC": 418377906,
+              "NumGC": 31,
+              "NumForcedGC": 2
+            }
+          }
+        },
+        "plugin": {
+          "cpu": 580000000,
+          "allocation": 279223888,
+          "retained": 82987910,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 928254488,
+              "HeapAlloc": 75797120,
+              "HeapObjects": 838476,
+              "HeapSys": 287571968,
+              "HeapInuse": 96477184,
+              "HeapReleased": 165330944,
+              "NextGC": 148833850,
+              "NumGC": 38,
+              "NumForcedGC": 1
+            },
+            "post": {
+              "TotalAlloc": 1226020168,
+              "HeapAlloc": 76349200,
+              "HeapObjects": 839195,
+              "HeapSys": 287539200,
+              "HeapInuse": 97591296,
+              "HeapReleased": 137592832,
+              "NextGC": 149738058,
+              "NumGC": 43,
+              "NumForcedGC": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "candidate-g5-2-active",
+      "cohort": "candidate",
+      "pair": 2,
+      "seconds": 40,
+      "identity": {
+        "workspaceID": "be895f12-6aae-401e-8b3a-42ecc7859888",
+        "generation": "80f81af0-a2f6-44b6-8870-0548a854610c",
+        "hostPID": 62371,
+        "pluginPID": 62878,
+        "sdkReviewedRevision": "1712cd3b66e14b1807cf17fbb59f48512875c822"
+      },
+      "processBefore": "62371   0:03.83 421792\n62878   0:03.13 334944\n",
+      "processAfter": "62371   0:06.80 531952\n62878   0:05.99 335328\n",
+      "sourceState": {
+        "following": 55,
+        "total": 55,
+        "errors": 0,
+        "pods": 315
+      },
+      "viewChecks": [
+        {
+          "type": "k8s:/pods",
+          "complete": true,
+          "snapshots": 1,
+          "initialRows": 315,
+          "upserts": 0,
+          "removes": 0,
+          "errors": 0,
+          "resets": 0
+        }
+      ],
+      "policy": {
+        "samplesMs": [
+          9.791832998394966,
+          7.686250001192093,
+          5.968040999025106,
+          9.710333999246359,
+          4.043958000838757,
+          8.81887499988079,
+          5.1342920027673244,
+          8.086083002388477
+        ],
+        "restored": true,
+        "mcpEnabled": false,
+        "mcpRunning": false
+      },
+      "finite": [
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 550.6986250020564
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 534.6008750014007
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 540.0279579982162
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 544.1088749989867
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 532.1682079993188
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 530.5334159992635
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 536.2152079977095
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 540.3167500011623
+        }
+      ],
+      "inventory": {
+        "count": 483,
+        "sha256": "ad03b08da05b1b65ff88ac3debb6aaf0b58c402fb0df569364fbee89e4eca9df"
+      },
+      "metrics": {
+        "name": "candidate-g5-2-active",
+        "seconds": 40,
+        "identity": {
+          "cohort": "candidate",
+          "pair": 2,
+          "hostPID": 62371,
+          "pluginPID": 62878,
+          "generation": "80f81af0-a2f6-44b6-8870-0548a854610c",
+          "workspaceID": "be895f12-6aae-401e-8b3a-42ecc7859888",
+          "sdkReviewedRevision": "1712cd3b66e14b1807cf17fbb59f48512875c822",
+          "harnessGeneration": 5
+        },
+        "host": {
+          "cpu": 2610000000,
+          "allocation": 1252351791,
+          "retained": 234445347,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1291654840,
+              "HeapAlloc": 202223536,
+              "HeapObjects": 911210,
+              "HeapSys": 378732544,
+              "HeapInuse": 260145152,
+              "HeapReleased": 6635520,
+              "NextGC": 399299506,
+              "NumGC": 32,
+              "NumForcedGC": 3
+            },
+            "post": {
+              "TotalAlloc": 2569047248,
+              "HeapAlloc": 219919288,
+              "HeapObjects": 931934,
+              "HeapSys": 487751680,
+              "HeapInuse": 280961024,
+              "HeapReleased": 6676480,
+              "NextGC": 434152114,
+              "NumGC": 39,
+              "NumForcedGC": 4
+            }
+          }
+        },
+        "plugin": {
+          "cpu": 2570000000,
+          "allocation": 1054497172,
+          "retained": 83654147,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1229919944,
+              "HeapAlloc": 74898288,
+              "HeapObjects": 839144,
+              "HeapSys": 287539200,
+              "HeapInuse": 95920128,
+              "HeapReleased": 173834240,
+              "NextGC": 146670474,
+              "NumGC": 44,
+              "NumForcedGC": 3
+            },
+            "post": {
+              "TotalAlloc": 2281971784,
+              "HeapAlloc": 76785104,
+              "HeapObjects": 840680,
+              "HeapSys": 287539200,
+              "HeapInuse": 97837056,
+              "HeapReleased": 155729920,
+              "NextGC": 149778282,
+              "NumGC": 57,
+              "NumForcedGC": 4
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "baseline-g5-3-idle",
+      "cohort": "baseline",
+      "pair": 3,
+      "seconds": 65,
+      "identity": {
+        "workspaceID": "8509c321-4c40-4b8a-9f2a-f540faeb8386",
+        "generation": "ca43a9ea-1707-4ef2-8674-899bf41b6a66",
+        "hostPID": 65643,
+        "pluginPID": 66206,
+        "sdkReviewedRevision": "9f007a79cf63a64eac9df7cb88bbbaf3120b9f08"
+      },
+      "startupMs": 2922.969957999885,
+      "processBefore": "65643   0:07.29 492224\n66206   0:03.50 288256\n",
+      "processAfter": "65643   0:11.72 492672\n66206   0:05.05 288768\n",
+      "sourceState": {
+        "following": 55,
+        "total": 55,
+        "errors": 0,
+        "pods": 315
+      },
+      "viewChecks": [
+        {
+          "type": "k8s:/pods",
+          "complete": true,
+          "snapshots": 1,
+          "initialRows": 315,
+          "upserts": 0,
+          "removes": 0,
+          "errors": 0,
+          "resets": 0
+        }
+      ],
+      "metrics": {
+        "name": "baseline-g5-3-idle",
+        "seconds": 65,
+        "identity": {
+          "cohort": "baseline",
+          "pair": 3,
+          "hostPID": 65643,
+          "pluginPID": 66206,
+          "generation": "ca43a9ea-1707-4ef2-8674-899bf41b6a66",
+          "workspaceID": "8509c321-4c40-4b8a-9f2a-f540faeb8386",
+          "sdkReviewedRevision": "9f007a79cf63a64eac9df7cb88bbbaf3120b9f08",
+          "harnessGeneration": 5
+        },
+        "startupMs": 2922.969957999885,
+        "host": {
+          "cpu": 3890000000,
+          "allocation": 2427980973,
+          "retained": 182893736,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 3441398088,
+              "HeapAlloc": 208243264,
+              "HeapObjects": 905609,
+              "HeapSys": 445874176,
+              "HeapInuse": 273473536,
+              "HeapReleased": 35577856,
+              "NextGC": 410494866,
+              "NumGC": 43,
+              "NumForcedGC": 1
+            },
+            "post": {
+              "TotalAlloc": 5851807312,
+              "HeapAlloc": 203352472,
+              "HeapObjects": 907385,
+              "HeapSys": 445874176,
+              "HeapInuse": 269500416,
+              "HeapReleased": 17063936,
+              "NextGC": 400261042,
+              "NumGC": 56,
+              "NumForcedGC": 2
+            }
+          }
+        },
+        "plugin": {
+          "cpu": 1350000000,
+          "allocation": 585267537,
+          "retained": 100971054,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1222659616,
+              "HeapAlloc": 77947336,
+              "HeapObjects": 838695,
+              "HeapSys": 241729536,
+              "HeapInuse": 99278848,
+              "HeapReleased": 100958208,
+              "NextGC": 153135770,
+              "NumGC": 43,
+              "NumForcedGC": 1
+            },
+            "post": {
+              "TotalAlloc": 1821833816,
+              "HeapAlloc": 80257504,
+              "HeapObjects": 839530,
+              "HeapSys": 241598464,
+              "HeapInuse": 101883904,
+              "HeapReleased": 89505792,
+              "NextGC": 157301338,
+              "NumGC": 52,
+              "NumForcedGC": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "baseline-g5-3-active",
+      "cohort": "baseline",
+      "pair": 3,
+      "seconds": 40,
+      "identity": {
+        "workspaceID": "8509c321-4c40-4b8a-9f2a-f540faeb8386",
+        "generation": "ca43a9ea-1707-4ef2-8674-899bf41b6a66",
+        "hostPID": 65643,
+        "pluginPID": 66206,
+        "sdkReviewedRevision": "9f007a79cf63a64eac9df7cb88bbbaf3120b9f08"
+      },
+      "processBefore": "65643   0:12.16 492720\n66206   0:05.18 288800\n",
+      "processAfter": "65643   0:33.32 612560\n66206   0:12.88 295808\n",
+      "sourceState": {
+        "following": 55,
+        "total": 55,
+        "errors": 0,
+        "pods": 315
+      },
+      "viewChecks": [
+        {
+          "type": "k8s:/pods",
+          "complete": true,
+          "snapshots": 1,
+          "initialRows": 315,
+          "upserts": 0,
+          "removes": 0,
+          "errors": 0,
+          "resets": 0
+        }
+      ],
+      "policy": {
+        "samplesMs": [
+          1897.746208999306,
+          1901.7287499979138,
+          1927.6000000014901,
+          1897.7644999995828,
+          1981.4283749982715,
+          1881.7629160024226,
+          1891.0067920014262,
+          1881.2842500023544
+        ],
+        "restored": true,
+        "mcpEnabled": false,
+        "mcpRunning": false
+      },
+      "finite": [
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 570.3130000010133
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 562.8682090006769
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 558.3909999988973
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 555.2387089990079
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 568.3682500012219
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 557.8619170002639
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 554.5046250000596
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 552.0684579983354
+        }
+      ],
+      "inventory": {
+        "count": 483,
+        "sha256": "ad03b08da05b1b65ff88ac3debb6aaf0b58c402fb0df569364fbee89e4eca9df"
+      },
+      "metrics": {
+        "name": "baseline-g5-3-active",
+        "seconds": 40,
+        "identity": {
+          "cohort": "baseline",
+          "pair": 3,
+          "hostPID": 65643,
+          "pluginPID": 66206,
+          "generation": "ca43a9ea-1707-4ef2-8674-899bf41b6a66",
+          "workspaceID": "8509c321-4c40-4b8a-9f2a-f540faeb8386",
+          "sdkReviewedRevision": "9f007a79cf63a64eac9df7cb88bbbaf3120b9f08",
+          "harnessGeneration": 5
+        },
+        "host": {
+          "cpu": 18480000000,
+          "allocation": 11886097567,
+          "retained": 202280205,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 5863520048,
+              "HeapAlloc": 198158448,
+              "HeapObjects": 907468,
+              "HeapSys": 445874176,
+              "HeapInuse": 263938048,
+              "HeapReleased": 99803136,
+              "NextGC": 389751234,
+              "NumGC": 57,
+              "NumForcedGC": 3
+            },
+            "post": {
+              "TotalAlloc": 17807790312,
+              "HeapAlloc": 226903056,
+              "HeapObjects": 928763,
+              "HeapSys": 567377920,
+              "HeapInuse": 297123840,
+              "HeapReleased": 81707008,
+              "NextGC": 445200386,
+              "NumGC": 119,
+              "NumForcedGC": 4
+            }
+          }
+        },
+        "plugin": {
+          "cpu": 6600000000,
+          "allocation": 2755362364,
+          "retained": 100281219,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1825910096,
+              "HeapAlloc": 74869424,
+              "HeapObjects": 839424,
+              "HeapSys": 241598464,
+              "HeapInuse": 96296960,
+              "HeapReleased": 122011648,
+              "NextGC": 146662186,
+              "NumGC": 53,
+              "NumForcedGC": 3
+            },
+            "post": {
+              "TotalAlloc": 4634831216,
+              "HeapAlloc": 80054640,
+              "HeapObjects": 841835,
+              "HeapSys": 250019840,
+              "HeapInuse": 101957632,
+              "HeapReleased": 50044928,
+              "NextGC": 155931050,
+              "NumGC": 90,
+              "NumForcedGC": 4
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "candidate-g5-3-idle",
+      "cohort": "candidate",
+      "pair": 3,
+      "seconds": 65,
+      "identity": {
+        "workspaceID": "be895f12-6aae-401e-8b3a-42ecc7859888",
+        "generation": "76c5ce06-e443-4739-81fe-763200261ae0",
+        "hostPID": 69065,
+        "pluginPID": 69544,
+        "sdkReviewedRevision": "1712cd3b66e14b1807cf17fbb59f48512875c822"
+      },
+      "startupMs": 948.2414590008557,
+      "processBefore": "69065   0:02.98 419136\n69544   0:02.33 391040\n",
+      "processAfter": "69065   0:03.61 424368\n69544   0:02.97 391328\n",
+      "sourceState": {
+        "following": 55,
+        "total": 55,
+        "errors": 0,
+        "pods": 315
+      },
+      "viewChecks": [
+        {
+          "type": "k8s:/pods",
+          "complete": true,
+          "snapshots": 1,
+          "initialRows": 315,
+          "upserts": 0,
+          "removes": 0,
+          "errors": 0,
+          "resets": 0
+        }
+      ],
+      "metrics": {
+        "name": "candidate-g5-3-idle",
+        "seconds": 65,
+        "identity": {
+          "cohort": "candidate",
+          "pair": 3,
+          "hostPID": 69065,
+          "pluginPID": 69544,
+          "generation": "76c5ce06-e443-4739-81fe-763200261ae0",
+          "workspaceID": "be895f12-6aae-401e-8b3a-42ecc7859888",
+          "sdkReviewedRevision": "1712cd3b66e14b1807cf17fbb59f48512875c822",
+          "harnessGeneration": 5
+        },
+        "startupMs": 948.2414590008557,
+        "host": {
+          "cpu": 450000000,
+          "allocation": 128121883,
+          "retained": 204674945,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1149966272,
+              "HeapAlloc": 214911192,
+              "HeapObjects": 910627,
+              "HeapSys": 378699776,
+              "HeapInuse": 274718720,
+              "HeapReleased": 8077312,
+              "NextGC": 424849394,
+              "NumGC": 30,
+              "NumForcedGC": 1
+            },
+            "post": {
+              "TotalAlloc": 1290482888,
+              "HeapAlloc": 211317080,
+              "HeapObjects": 911561,
+              "HeapSys": 382828544,
+              "HeapInuse": 273014784,
+              "HeapReleased": 7962624,
+              "NextGC": 417446274,
+              "NumGC": 31,
+              "NumForcedGC": 2
+            }
+          }
+        },
+        "plugin": {
+          "cpu": 560000000,
+          "allocation": 298485630,
+          "retained": 80737514,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 937708768,
+              "HeapAlloc": 75775192,
+              "HeapObjects": 838300,
+              "HeapSys": 346423296,
+              "HeapInuse": 96911360,
+              "HeapReleased": 226091008,
+              "NextGC": 148833402,
+              "NumGC": 38,
+              "NumForcedGC": 1
+            },
+            "post": {
+              "TotalAlloc": 1233260056,
+              "HeapAlloc": 75875128,
+              "HeapObjects": 838910,
+              "HeapSys": 346423296,
+              "HeapInuse": 97550336,
+              "HeapReleased": 203374592,
+              "NextGC": 148844330,
+              "NumGC": 43,
+              "NumForcedGC": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "candidate-g5-3-active",
+      "cohort": "candidate",
+      "pair": 3,
+      "seconds": 40,
+      "identity": {
+        "workspaceID": "be895f12-6aae-401e-8b3a-42ecc7859888",
+        "generation": "76c5ce06-e443-4739-81fe-763200261ae0",
+        "hostPID": 69065,
+        "pluginPID": 69544,
+        "sdkReviewedRevision": "1712cd3b66e14b1807cf17fbb59f48512875c822"
+      },
+      "processBefore": "69065   0:03.89 424608\n69544   0:03.11 391376\n",
+      "processAfter": "69065   0:06.95 596848\n69544   0:05.99 392592\n",
+      "sourceState": {
+        "following": 55,
+        "total": 55,
+        "errors": 0,
+        "pods": 315
+      },
+      "viewChecks": [
+        {
+          "type": "k8s:/pods",
+          "complete": true,
+          "snapshots": 1,
+          "initialRows": 315,
+          "upserts": 0,
+          "removes": 0,
+          "errors": 0,
+          "resets": 0
+        }
+      ],
+      "policy": {
+        "samplesMs": [
+          7.878166999667883,
+          10.788166999816895,
+          7.273791998624802,
+          9.7146660014987,
+          6.368583001196384,
+          9.457499999552965,
+          6.471916999667883,
+          9.375582996755838
+        ],
+        "restored": true,
+        "mcpEnabled": false,
+        "mcpRunning": false
+      },
+      "finite": [
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 552.6750830002129
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 549.5433750003576
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 539.2716669999063
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 527.7779580019414
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 525.6220410019159
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 524.9121659994125
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 528.5257079973817
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 533.1089580021799
+        }
+      ],
+      "inventory": {
+        "count": 483,
+        "sha256": "ad03b08da05b1b65ff88ac3debb6aaf0b58c402fb0df569364fbee89e4eca9df"
+      },
+      "metrics": {
+        "name": "candidate-g5-3-active",
+        "seconds": 40,
+        "identity": {
+          "cohort": "candidate",
+          "pair": 3,
+          "hostPID": 69065,
+          "pluginPID": 69544,
+          "generation": "76c5ce06-e443-4739-81fe-763200261ae0",
+          "workspaceID": "be895f12-6aae-401e-8b3a-42ecc7859888",
+          "sdkReviewedRevision": "1712cd3b66e14b1807cf17fbb59f48512875c822",
+          "harnessGeneration": 5
+        },
+        "host": {
+          "cpu": 2690000000,
+          "allocation": 1266201311,
+          "retained": 221062360,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1296410272,
+              "HeapAlloc": 197679264,
+              "HeapObjects": 911284,
+              "HeapSys": 382828544,
+              "HeapInuse": 259162112,
+              "HeapReleased": 27770880,
+              "NextGC": 390197570,
+              "NumGC": 32,
+              "NumForcedGC": 3
+            },
+            "post": {
+              "TotalAlloc": 2571404744,
+              "HeapAlloc": 224887256,
+              "HeapObjects": 931954,
+              "HeapSys": 550600704,
+              "HeapInuse": 289251328,
+              "HeapReleased": 4988928,
+              "NextGC": 443909906,
+              "NumGC": 39,
+              "NumForcedGC": 4
+            }
+          }
+        },
+        "plugin": {
+          "cpu": 2470000000,
+          "allocation": 1063319806,
+          "retained": 80737514,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1237092768,
+              "HeapAlloc": 74767344,
+              "HeapObjects": 838849,
+              "HeapSys": 346423296,
+              "HeapInuse": 96215040,
+              "HeapReleased": 234455040,
+              "NextGC": 146626778,
+              "NumGC": 44,
+              "NumForcedGC": 3
+            },
+            "post": {
+              "TotalAlloc": 2287652896,
+              "HeapAlloc": 76448704,
+              "HeapObjects": 840571,
+              "HeapSys": 346423296,
+              "HeapInuse": 98148352,
+              "HeapReleased": 219209728,
+              "NextGC": 149452522,
+              "NumGC": 57,
+              "NumForcedGC": 4
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "baseline-g5-4-idle",
+      "cohort": "baseline",
+      "pair": 4,
+      "seconds": 65,
+      "identity": {
+        "workspaceID": "8509c321-4c40-4b8a-9f2a-f540faeb8386",
+        "generation": "0555774d-ab90-4bdc-b7fd-70aae5314544",
+        "hostPID": 72471,
+        "pluginPID": 72959,
+        "sdkReviewedRevision": "9f007a79cf63a64eac9df7cb88bbbaf3120b9f08"
+      },
+      "startupMs": 2947.423083998263,
+      "processBefore": "72471   0:07.06 491296\n72959   0:03.40 288784\n",
+      "processAfter": "72471   0:11.54 491712\n72959   0:04.95 289200\n",
+      "sourceState": {
+        "following": 55,
+        "total": 55,
+        "errors": 0,
+        "pods": 315
+      },
+      "viewChecks": [
+        {
+          "type": "k8s:/pods",
+          "complete": true,
+          "snapshots": 1,
+          "initialRows": 315,
+          "upserts": 2,
+          "removes": 0,
+          "errors": 0,
+          "resets": 0
+        }
+      ],
+      "metrics": {
+        "name": "baseline-g5-4-idle",
+        "seconds": 65,
+        "identity": {
+          "cohort": "baseline",
+          "pair": 4,
+          "hostPID": 72471,
+          "pluginPID": 72959,
+          "generation": "0555774d-ab90-4bdc-b7fd-70aae5314544",
+          "workspaceID": "8509c321-4c40-4b8a-9f2a-f540faeb8386",
+          "sdkReviewedRevision": "9f007a79cf63a64eac9df7cb88bbbaf3120b9f08",
+          "harnessGeneration": 5
+        },
+        "startupMs": 2947.423083998263,
+        "host": {
+          "cpu": 3890000000,
+          "allocation": 2406031432,
+          "retained": 198966322,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 3426411752,
+              "HeapAlloc": 206980080,
+              "HeapObjects": 905497,
+              "HeapSys": 445775872,
+              "HeapInuse": 274833408,
+              "HeapReleased": 56582144,
+              "NextGC": 407985058,
+              "NumGC": 43,
+              "NumForcedGC": 1
+            },
+            "post": {
+              "TotalAlloc": 5840241456,
+              "HeapAlloc": 203597152,
+              "HeapObjects": 907281,
+              "HeapSys": 445743104,
+              "HeapInuse": 272662528,
+              "HeapReleased": 62971904,
+              "NextGC": 400732882,
+              "NumGC": 56,
+              "NumForcedGC": 2
+            }
+          }
+        },
+        "plugin": {
+          "cpu": 1330000000,
+          "allocation": 609176990,
+          "retained": 74778137,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1216726544,
+              "HeapAlloc": 78910720,
+              "HeapObjects": 837973,
+              "HeapSys": 241696768,
+              "HeapInuse": 99934208,
+              "HeapReleased": 93487104,
+              "NextGC": 155179498,
+              "NumGC": 44,
+              "NumForcedGC": 1
+            },
+            "post": {
+              "TotalAlloc": 1815145696,
+              "HeapAlloc": 80117808,
+              "HeapObjects": 838827,
+              "HeapSys": 241664000,
+              "HeapInuse": 101277696,
+              "HeapReleased": 96894976,
+              "NextGC": 157342554,
+              "NumGC": 53,
+              "NumForcedGC": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "baseline-g5-4-active",
+      "cohort": "baseline",
+      "pair": 4,
+      "seconds": 40,
+      "identity": {
+        "workspaceID": "8509c321-4c40-4b8a-9f2a-f540faeb8386",
+        "generation": "0555774d-ab90-4bdc-b7fd-70aae5314544",
+        "hostPID": 72471,
+        "pluginPID": 72959,
+        "sdkReviewedRevision": "9f007a79cf63a64eac9df7cb88bbbaf3120b9f08"
+      },
+      "processBefore": "72471   0:11.96 491744\n72959   0:05.09 289280\n",
+      "processAfter": "72471   0:33.09 590496\n72959   0:12.94 300848\n",
+      "sourceState": {
+        "following": 55,
+        "total": 55,
+        "errors": 0,
+        "pods": 315
+      },
+      "viewChecks": [
+        {
+          "type": "k8s:/pods",
+          "complete": true,
+          "snapshots": 1,
+          "initialRows": 315,
+          "upserts": 2,
+          "removes": 0,
+          "errors": 0,
+          "resets": 0
+        }
+      ],
+      "policy": {
+        "samplesMs": [
+          1883.5521249994636,
+          1874.9488339982927,
+          1891.0852909982204,
+          1893.7672079987824,
+          1968.3939159996808,
+          1880.1471250019968,
+          1920.9743330031633,
+          1886.7059170007706
+        ],
+        "restored": true,
+        "mcpEnabled": false,
+        "mcpRunning": false
+      },
+      "finite": [
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 556.1007080003619
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 547.6789159998298
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 546.028917003423
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 546.8192089982331
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 557.1792920008302
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 558.0898750014603
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 555.3055000007153
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 548.8378750011325
+        }
+      ],
+      "inventory": {
+        "count": 483,
+        "sha256": "ad03b08da05b1b65ff88ac3debb6aaf0b58c402fb0df569364fbee89e4eca9df"
+      },
+      "metrics": {
+        "name": "baseline-g5-4-active",
+        "seconds": 40,
+        "identity": {
+          "cohort": "baseline",
+          "pair": 4,
+          "hostPID": 72471,
+          "pluginPID": 72959,
+          "generation": "0555774d-ab90-4bdc-b7fd-70aae5314544",
+          "workspaceID": "8509c321-4c40-4b8a-9f2a-f540faeb8386",
+          "sdkReviewedRevision": "9f007a79cf63a64eac9df7cb88bbbaf3120b9f08",
+          "harnessGeneration": 5
+        },
+        "host": {
+          "cpu": 18550000000,
+          "allocation": 11879938740,
+          "retained": 206526606,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 5851946800,
+              "HeapAlloc": 198467768,
+              "HeapObjects": 907236,
+              "HeapSys": 445775872,
+              "HeapInuse": 267370496,
+              "HeapReleased": 109109248,
+              "NextGC": 390461634,
+              "NumGC": 57,
+              "NumForcedGC": 3
+            },
+            "post": {
+              "TotalAlloc": 17758585368,
+              "HeapAlloc": 214103224,
+              "HeapObjects": 928525,
+              "HeapSys": 546373632,
+              "HeapInuse": 288169984,
+              "HeapReleased": 92332032,
+              "NextGC": 419495970,
+              "NumGC": 119,
+              "NumForcedGC": 4
+            }
+          }
+        },
+        "plugin": {
+          "cpu": 6850000000,
+          "allocation": 2814853093,
+          "retained": 70592387,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1819561784,
+              "HeapAlloc": 74793720,
+              "HeapObjects": 838717,
+              "HeapSys": 241664000,
+              "HeapInuse": 95805440,
+              "HeapReleased": 128860160,
+              "NextGC": 146682602,
+              "NumGC": 54,
+              "NumForcedGC": 3
+            },
+            "post": {
+              "TotalAlloc": 4702209080,
+              "HeapAlloc": 75729920,
+              "HeapObjects": 840917,
+              "HeapSys": 250052608,
+              "HeapInuse": 97189888,
+              "HeapReleased": 110395392,
+              "NextGC": 147894074,
+              "NumGC": 92,
+              "NumForcedGC": 4
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "candidate-g5-4-idle",
+      "cohort": "candidate",
+      "pair": 4,
+      "seconds": 65,
+      "identity": {
+        "workspaceID": "be895f12-6aae-401e-8b3a-42ecc7859888",
+        "generation": "c9b1a3ce-cccd-4451-9aa6-570ec3b9238b",
+        "hostPID": 75816,
+        "pluginPID": 76420,
+        "sdkReviewedRevision": "1712cd3b66e14b1807cf17fbb59f48512875c822"
+      },
+      "startupMs": 952.7947920002043,
+      "processBefore": "75816   0:03.00 400384\n76420   0:02.32 354112\n",
+      "processAfter": "75816   0:03.63 418848\n76420   0:02.96 354528\n",
+      "sourceState": {
+        "following": 55,
+        "total": 55,
+        "errors": 0,
+        "pods": 315
+      },
+      "viewChecks": [
+        {
+          "type": "k8s:/pods",
+          "complete": true,
+          "snapshots": 1,
+          "initialRows": 315,
+          "upserts": 0,
+          "removes": 0,
+          "errors": 0,
+          "resets": 0
+        }
+      ],
+      "metrics": {
+        "name": "candidate-g5-4-idle",
+        "seconds": 65,
+        "identity": {
+          "cohort": "candidate",
+          "pair": 4,
+          "hostPID": 75816,
+          "pluginPID": 76420,
+          "generation": "c9b1a3ce-cccd-4451-9aa6-570ec3b9238b",
+          "workspaceID": "be895f12-6aae-401e-8b3a-42ecc7859888",
+          "sdkReviewedRevision": "1712cd3b66e14b1807cf17fbb59f48512875c822",
+          "harnessGeneration": 5
+        },
+        "startupMs": 952.7947920002043,
+        "host": {
+          "cpu": 490000000,
+          "allocation": 133730860,
+          "retained": 208695002,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1150103736,
+              "HeapAlloc": 211381128,
+              "HeapObjects": 910499,
+              "HeapSys": 357728256,
+              "HeapInuse": 269074432,
+              "HeapReleased": 24526848,
+              "NextGC": 417784274,
+              "NumGC": 30,
+              "NumForcedGC": 1
+            },
+            "post": {
+              "TotalAlloc": 1289964712,
+              "HeapAlloc": 206988096,
+              "HeapObjects": 911358,
+              "HeapSys": 374439936,
+              "HeapInuse": 267239424,
+              "HeapReleased": 4431872,
+              "NextGC": 408818706,
+              "NumGC": 31,
+              "NumForcedGC": 2
+            }
+          }
+        },
+        "plugin": {
+          "cpu": 530000000,
+          "allocation": 291093674,
+          "retained": 73269867,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 931406816,
+              "HeapAlloc": 75789504,
+              "HeapObjects": 838213,
+              "HeapSys": 304447488,
+              "HeapInuse": 97574912,
+              "HeapReleased": 169525248,
+              "NextGC": 148885690,
+              "NumGC": 38,
+              "NumForcedGC": 1
+            },
+            "post": {
+              "TotalAlloc": 1226627800,
+              "HeapAlloc": 76123016,
+              "HeapObjects": 838805,
+              "HeapSys": 304447488,
+              "HeapInuse": 97910784,
+              "HeapReleased": 154206208,
+              "NextGC": 149357962,
+              "NumGC": 43,
+              "NumForcedGC": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "candidate-g5-4-active",
+      "cohort": "candidate",
+      "pair": 4,
+      "seconds": 40,
+      "identity": {
+        "workspaceID": "be895f12-6aae-401e-8b3a-42ecc7859888",
+        "generation": "c9b1a3ce-cccd-4451-9aa6-570ec3b9238b",
+        "hostPID": 75816,
+        "pluginPID": 76420,
+        "sdkReviewedRevision": "1712cd3b66e14b1807cf17fbb59f48512875c822"
+      },
+      "processBefore": "75816   0:03.90 419680\n76420   0:03.10 354560\n",
+      "processAfter": "75816   0:06.93 557696\n76420   0:05.96 354896\n",
+      "sourceState": {
+        "following": 55,
+        "total": 55,
+        "errors": 0,
+        "pods": 315
+      },
+      "viewChecks": [
+        {
+          "type": "k8s:/pods",
+          "complete": true,
+          "snapshots": 1,
+          "initialRows": 315,
+          "upserts": 0,
+          "removes": 0,
+          "errors": 0,
+          "resets": 0
+        }
+      ],
+      "policy": {
+        "samplesMs": [
+          9.212999999523163,
+          10.482457999140024,
+          6.519333001226187,
+          10.45949999988079,
+          6.549665998667479,
+          10.37050000205636,
+          6.617750000208616,
+          9.436083000153303
+        ],
+        "restored": true,
+        "mcpEnabled": false,
+        "mcpRunning": false
+      },
+      "finite": [
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 538.9073330014944
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 530.183749999851
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 525.6770000010729
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 539.7999169975519
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 520.1664160005748
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 531.6775000020862
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 524.4321250021458
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 525.9963340014219
+        }
+      ],
+      "inventory": {
+        "count": 483,
+        "sha256": "ad03b08da05b1b65ff88ac3debb6aaf0b58c402fb0df569364fbee89e4eca9df"
+      },
+      "metrics": {
+        "name": "candidate-g5-4-active",
+        "seconds": 40,
+        "identity": {
+          "cohort": "candidate",
+          "pair": 4,
+          "hostPID": 75816,
+          "pluginPID": 76420,
+          "generation": "c9b1a3ce-cccd-4451-9aa6-570ec3b9238b",
+          "workspaceID": "be895f12-6aae-401e-8b3a-42ecc7859888",
+          "sdkReviewedRevision": "1712cd3b66e14b1807cf17fbb59f48512875c822",
+          "harnessGeneration": 5
+        },
+        "host": {
+          "cpu": 2660000000,
+          "allocation": 1307371249,
+          "retained": 217733357,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1295949160,
+              "HeapAlloc": 197809504,
+              "HeapObjects": 911343,
+              "HeapSys": 374472704,
+              "HeapInuse": 257826816,
+              "HeapReleased": 5005312,
+              "NextGC": 390366002,
+              "NumGC": 32,
+              "NumForcedGC": 3
+            },
+            "post": {
+              "TotalAlloc": 2586603688,
+              "HeapAlloc": 218828192,
+              "HeapObjects": 932013,
+              "HeapSys": 512819200,
+              "HeapInuse": 280387584,
+              "HeapReleased": 6307840,
+              "NextGC": 431768866,
+              "NumGC": 39,
+              "NumForcedGC": 4
+            }
+          }
+        },
+        "plugin": {
+          "cpu": 2480000000,
+          "allocation": 1028625651,
+          "retained": 72038246,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1230447688,
+              "HeapAlloc": 75022176,
+              "HeapObjects": 838763,
+              "HeapSys": 304447488,
+              "HeapInuse": 96641024,
+              "HeapReleased": 191045632,
+              "NextGC": 147148426,
+              "NumGC": 44,
+              "NumForcedGC": 3
+            },
+            "post": {
+              "TotalAlloc": 2268879600,
+              "HeapAlloc": 76328096,
+              "HeapObjects": 840320,
+              "HeapSys": 304381952,
+              "HeapInuse": 98197504,
+              "HeapReleased": 136871936,
+              "NextGC": 149414698,
+              "NumGC": 57,
+              "NumForcedGC": 4
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "baseline-g5-5-idle",
+      "cohort": "baseline",
+      "pair": 5,
+      "seconds": 65,
+      "identity": {
+        "workspaceID": "8509c321-4c40-4b8a-9f2a-f540faeb8386",
+        "generation": "a7643537-f02e-4772-8076-de523c4f9385",
+        "hostPID": 79145,
+        "pluginPID": 79744,
+        "sdkReviewedRevision": "9f007a79cf63a64eac9df7cb88bbbaf3120b9f08"
+      },
+      "startupMs": 2924.0547080002725,
+      "processBefore": "79145   0:07.23 496352\n79744   0:03.47 305440\n",
+      "processAfter": "79145   0:11.71 496784\n79744   0:05.08 305776\n",
+      "sourceState": {
+        "following": 55,
+        "total": 55,
+        "errors": 0,
+        "pods": 315
+      },
+      "viewChecks": [
+        {
+          "type": "k8s:/pods",
+          "complete": true,
+          "snapshots": 1,
+          "initialRows": 315,
+          "upserts": 0,
+          "removes": 0,
+          "errors": 0,
+          "resets": 0
+        }
+      ],
+      "metrics": {
+        "name": "baseline-g5-5-idle",
+        "seconds": 65,
+        "identity": {
+          "cohort": "baseline",
+          "pair": 5,
+          "hostPID": 79145,
+          "pluginPID": 79744,
+          "generation": "a7643537-f02e-4772-8076-de523c4f9385",
+          "workspaceID": "8509c321-4c40-4b8a-9f2a-f540faeb8386",
+          "sdkReviewedRevision": "9f007a79cf63a64eac9df7cb88bbbaf3120b9f08",
+          "harnessGeneration": 5
+        },
+        "startupMs": 2924.0547080002725,
+        "host": {
+          "cpu": 3840000000,
+          "allocation": 2422107141,
+          "retained": 193512251,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 3439604400,
+              "HeapAlloc": 208125272,
+              "HeapObjects": 905598,
+              "HeapSys": 445743104,
+              "HeapInuse": 273276928,
+              "HeapReleased": 27631616,
+              "NextGC": 410168994,
+              "NumGC": 42,
+              "NumForcedGC": 1
+            },
+            "post": {
+              "TotalAlloc": 5841965544,
+              "HeapAlloc": 203674112,
+              "HeapObjects": 907369,
+              "HeapSys": 445743104,
+              "HeapInuse": 269000704,
+              "HeapReleased": 20529152,
+              "NextGC": 400887570,
+              "NumGC": 55,
+              "NumForcedGC": 2
+            }
+          }
+        },
+        "plugin": {
+          "cpu": 1410000000,
+          "allocation": 558998422,
+          "retained": 88193260,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1208602760,
+              "HeapAlloc": 75776688,
+              "HeapObjects": 838304,
+              "HeapSys": 254246912,
+              "HeapInuse": 96624640,
+              "HeapReleased": 129835008,
+              "NextGC": 148819914,
+              "NumGC": 42,
+              "NumForcedGC": 1
+            },
+            "post": {
+              "TotalAlloc": 1812615200,
+              "HeapAlloc": 76992168,
+              "HeapObjects": 838967,
+              "HeapSys": 254214144,
+              "HeapInuse": 97984512,
+              "HeapReleased": 132022272,
+              "NextGC": 150912298,
+              "NumGC": 52,
+              "NumForcedGC": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "baseline-g5-5-active",
+      "cohort": "baseline",
+      "pair": 5,
+      "seconds": 40,
+      "identity": {
+        "workspaceID": "8509c321-4c40-4b8a-9f2a-f540faeb8386",
+        "generation": "a7643537-f02e-4772-8076-de523c4f9385",
+        "hostPID": 79145,
+        "pluginPID": 79744,
+        "sdkReviewedRevision": "9f007a79cf63a64eac9df7cb88bbbaf3120b9f08"
+      },
+      "processBefore": "79145   0:12.13 496800\n79744   0:05.22 305792\n",
+      "processAfter": "79145   0:33.32 565984\n79744   0:12.94 306592\n",
+      "sourceState": {
+        "following": 55,
+        "total": 55,
+        "errors": 0,
+        "pods": 315
+      },
+      "viewChecks": [
+        {
+          "type": "k8s:/pods",
+          "complete": true,
+          "snapshots": 1,
+          "initialRows": 315,
+          "upserts": 0,
+          "removes": 0,
+          "errors": 0,
+          "resets": 0
+        }
+      ],
+      "policy": {
+        "samplesMs": [
+          1914.3401249982417,
+          1893.7030830010772,
+          1886.521917000413,
+          1894.3680840022862,
+          2005.8574999980628,
+          1900.1026659980416,
+          1903.4444159977138,
+          1895.048124998808
+        ],
+        "restored": true,
+        "mcpEnabled": false,
+        "mcpRunning": false
+      },
+      "finite": [
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 561.9358749985695
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 554.5248330011964
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 549.7140830010176
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 556.7647919990122
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 551.7134170010686
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 562.4460000023246
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 561.1539999991655
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 559.6220830008388
+        }
+      ],
+      "inventory": {
+        "count": 483,
+        "sha256": "ad03b08da05b1b65ff88ac3debb6aaf0b58c402fb0df569364fbee89e4eca9df"
+      },
+      "metrics": {
+        "name": "baseline-g5-5-active",
+        "seconds": 40,
+        "identity": {
+          "cohort": "baseline",
+          "pair": 5,
+          "hostPID": 79145,
+          "pluginPID": 79744,
+          "generation": "a7643537-f02e-4772-8076-de523c4f9385",
+          "workspaceID": "8509c321-4c40-4b8a-9f2a-f540faeb8386",
+          "sdkReviewedRevision": "9f007a79cf63a64eac9df7cb88bbbaf3120b9f08",
+          "harnessGeneration": 5
+        },
+        "host": {
+          "cpu": 18470000000,
+          "allocation": 11772898028,
+          "retained": 212806542,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 5853653656,
+              "HeapAlloc": 198189912,
+              "HeapObjects": 907312,
+              "HeapSys": 445743104,
+              "HeapInuse": 263159808,
+              "HeapReleased": 109723648,
+              "NextGC": 389918802,
+              "NumGC": 56,
+              "NumForcedGC": 3
+            },
+            "post": {
+              "TotalAlloc": 17731742568,
+              "HeapAlloc": 220406016,
+              "HeapObjects": 928493,
+              "HeapSys": 517013504,
+              "HeapInuse": 290357248,
+              "HeapReleased": 50814976,
+              "NextGC": 432418690,
+              "NumGC": 119,
+              "NumForcedGC": 4
+            }
+          }
+        },
+        "plugin": {
+          "cpu": 6640000000,
+          "allocation": 2850643540,
+          "retained": 90977418,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1816578720,
+              "HeapAlloc": 74865040,
+              "HeapObjects": 838901,
+              "HeapSys": 254214144,
+              "HeapInuse": 95772672,
+              "HeapReleased": 139288576,
+              "NextGC": 146636266,
+              "NumGC": 53,
+              "NumForcedGC": 3
+            },
+            "post": {
+              "TotalAlloc": 4622159568,
+              "HeapAlloc": 79918480,
+              "HeapObjects": 841156,
+              "HeapSys": 254214144,
+              "HeapInuse": 101425152,
+              "HeapReleased": 39419904,
+              "NextGC": 155920250,
+              "NumGC": 90,
+              "NumForcedGC": 4
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "candidate-g5-5-idle",
+      "cohort": "candidate",
+      "pair": 5,
+      "seconds": 65,
+      "identity": {
+        "workspaceID": "be895f12-6aae-401e-8b3a-42ecc7859888",
+        "generation": "5b06a1d3-07f1-4a07-ad18-f9fdf191bd32",
+        "hostPID": 82584,
+        "pluginPID": 83053,
+        "sdkReviewedRevision": "1712cd3b66e14b1807cf17fbb59f48512875c822"
+      },
+      "startupMs": 938.4078749977052,
+      "processBefore": "82584   0:02.95 421776\n83053   0:02.36 381152\n",
+      "processAfter": "82584   0:03.60 425120\n83053   0:03.05 381552\n",
+      "sourceState": {
+        "following": 55,
+        "total": 55,
+        "errors": 0,
+        "pods": 315
+      },
+      "viewChecks": [
+        {
+          "type": "k8s:/pods",
+          "complete": true,
+          "snapshots": 1,
+          "initialRows": 315,
+          "upserts": 0,
+          "removes": 0,
+          "errors": 0,
+          "resets": 0
+        }
+      ],
+      "metrics": {
+        "name": "candidate-g5-5-idle",
+        "seconds": 65,
+        "identity": {
+          "cohort": "candidate",
+          "pair": 5,
+          "hostPID": 82584,
+          "pluginPID": 83053,
+          "generation": "5b06a1d3-07f1-4a07-ad18-f9fdf191bd32",
+          "workspaceID": "be895f12-6aae-401e-8b3a-42ecc7859888",
+          "sdkReviewedRevision": "1712cd3b66e14b1807cf17fbb59f48512875c822",
+          "harnessGeneration": 5
+        },
+        "startupMs": 938.4078749977052,
+        "host": {
+          "cpu": 520000000,
+          "allocation": 131685307,
+          "retained": 204367513,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1145643328,
+              "HeapAlloc": 212195664,
+              "HeapObjects": 910136,
+              "HeapSys": 378634240,
+              "HeapInuse": 270524416,
+              "HeapReleased": 33341440,
+              "NextGC": 419461858,
+              "NumGC": 30,
+              "NumForcedGC": 1
+            },
+            "post": {
+              "TotalAlloc": 1286111408,
+              "HeapAlloc": 206976112,
+              "HeapObjects": 911333,
+              "HeapSys": 378601472,
+              "HeapInuse": 261980160,
+              "HeapReleased": 5464064,
+              "NextGC": 408786274,
+              "NumGC": 31,
+              "NumForcedGC": 2
+            }
+          }
+        },
+        "plugin": {
+          "cpu": 610000000,
+          "allocation": 306624410,
+          "retained": 85409697,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 939482008,
+              "HeapAlloc": 75822216,
+              "HeapObjects": 838124,
+              "HeapSys": 333807616,
+              "HeapInuse": 97648640,
+              "HeapReleased": 216752128,
+              "NextGC": 148958266,
+              "NumGC": 38,
+              "NumForcedGC": 1
+            },
+            "post": {
+              "TotalAlloc": 1233778272,
+              "HeapAlloc": 76264344,
+              "HeapObjects": 838733,
+              "HeapSys": 333807616,
+              "HeapInuse": 98418688,
+              "HeapReleased": 191758336,
+              "NextGC": 149698506,
+              "NumGC": 43,
+              "NumForcedGC": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "candidate-g5-5-active",
+      "cohort": "candidate",
+      "pair": 5,
+      "seconds": 40,
+      "identity": {
+        "workspaceID": "be895f12-6aae-401e-8b3a-42ecc7859888",
+        "generation": "5b06a1d3-07f1-4a07-ad18-f9fdf191bd32",
+        "hostPID": 82584,
+        "pluginPID": 83053,
+        "sdkReviewedRevision": "1712cd3b66e14b1807cf17fbb59f48512875c822"
+      },
+      "processBefore": "82584   0:03.89 425200\n83053   0:03.18 381552\n",
+      "processAfter": "82584   0:06.89 571616\n83053   0:06.00 382768\n",
+      "sourceState": {
+        "following": 55,
+        "total": 55,
+        "errors": 0,
+        "pods": 315
+      },
+      "viewChecks": [
+        {
+          "type": "k8s:/pods",
+          "complete": true,
+          "snapshots": 1,
+          "initialRows": 315,
+          "upserts": 0,
+          "removes": 0,
+          "errors": 0,
+          "resets": 0
+        }
+      ],
+      "policy": {
+        "samplesMs": [
+          9.16704199835658,
+          10.928041998296976,
+          6.148082997649908,
+          11.066707998514175,
+          6.874541997909546,
+          9.109499998390675,
+          6.854166999459267,
+          9.279416002333164
+        ],
+        "restored": true,
+        "mcpEnabled": false,
+        "mcpRunning": false
+      },
+      "finite": [
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 544.1735000014305
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 526.90433299914
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 531.2250839993358
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 522.6138329990208
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 527.3568330034614
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 527.2345420010388
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 539.1378329992294
+        },
+        {
+          "pages": 2,
+          "records": 315,
+          "ms": 529.9372499994934
+        }
+      ],
+      "inventory": {
+        "count": 483,
+        "sha256": "ad03b08da05b1b65ff88ac3debb6aaf0b58c402fb0df569364fbee89e4eca9df"
+      },
+      "metrics": {
+        "name": "candidate-g5-5-active",
+        "seconds": 40,
+        "identity": {
+          "cohort": "candidate",
+          "pair": 5,
+          "hostPID": 82584,
+          "pluginPID": 83053,
+          "generation": "5b06a1d3-07f1-4a07-ad18-f9fdf191bd32",
+          "workspaceID": "be895f12-6aae-401e-8b3a-42ecc7859888",
+          "sdkReviewedRevision": "1712cd3b66e14b1807cf17fbb59f48512875c822",
+          "harnessGeneration": 5
+        },
+        "host": {
+          "cpu": 2550000000,
+          "allocation": 1315018223,
+          "retained": 221209992,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1292204616,
+              "HeapAlloc": 199004912,
+              "HeapObjects": 911319,
+              "HeapSys": 378601472,
+              "HeapInuse": 253755392,
+              "HeapReleased": 5332992,
+              "NextGC": 392751618,
+              "NumGC": 32,
+              "NumForcedGC": 3
+            },
+            "post": {
+              "TotalAlloc": 2564251880,
+              "HeapAlloc": 222903352,
+              "HeapObjects": 931776,
+              "HeapSys": 529596416,
+              "HeapInuse": 278003712,
+              "HeapReleased": 59088896,
+              "NextGC": 439938786,
+              "NumGC": 39,
+              "NumForcedGC": 4
+            }
+          }
+        },
+        "plugin": {
+          "cpu": 2430000000,
+          "allocation": 1021919611,
+          "retained": 85336011,
+          "memstats": {
+            "pre": {
+              "TotalAlloc": 1237509992,
+              "HeapAlloc": 74761648,
+              "HeapObjects": 838664,
+              "HeapSys": 333807616,
+              "HeapInuse": 96698368,
+              "HeapReleased": 219709440,
+              "NextGC": 146650378,
+              "NumGC": 44,
+              "NumForcedGC": 3
+            },
+            "post": {
+              "TotalAlloc": 2275360832,
+              "HeapAlloc": 76329488,
+              "HeapObjects": 840391,
+              "HeapSys": 333774848,
+              "HeapInuse": 98476032,
+              "HeapReleased": 175751168,
+              "NextGC": 149261082,
+              "NumGC": 57,
+              "NumForcedGC": 4
+            }
+          }
+        }
+      }
+    }
+  ],
+  "rolloutSmoke": {
+    "cycles": 60,
+    "directWriteAttempts": 192,
+    "actualDeploymentRollouts": 12,
+    "podUpserts": 108,
+    "podRemoves": 12,
+    "sourceErrors": 0,
+    "viewErrors": 0,
+    "viewResets": 0,
+    "finalReadyPods": 315,
+    "finalDeletingPods": 0
+  },
+  "limits": [
+    "No native/UI performance claim.",
+    "No total retained-heap reduction; plugin RSS and combined active RSS increased.",
+    "Finite p95 worsened in this 40-acquisition sample.",
+    "Browser-driven finite evaluation timeouts remain unattributed and excluded from primary backend HTTP evidence.",
+    "Wails server retention fix is upstream-only and absent from measured host.",
+    "Direct native JSON construction was rejected after wide-input allocation regression.",
+    "SDK main concurrently adopted unrelated C04 transport changes; host pins the measured compatible SDK commit rather than silently adopting that wire change."
+  ],
+  "pullRequests": {
+    "sdkAdmission": "https://github.com/omniviewdev/plugin-sdk/pull/46",
+    "sdkSizedNative": "https://github.com/omniviewdev/plugin-sdk/pull/48",
+    "wailsUpstream": "https://github.com/wailsapp/wails/pull/6545"
+  },
+  "integrationSmoke": {
+    "hostMainIntegrated": "ad04757912e2d2e7d406c6045d321ee0ef41bd1e",
+    "integrationCommit": "6d2ff793",
+    "sdk": "1712cd3b66e14b1807cf17fbb59f48512875c822",
+    "snapshotRows": 315,
+    "followingSources": 55,
+    "sourceErrors": 0,
+    "policyToggles": 8,
+    "finiteAcquisitions": 8,
+    "recordsPerAcquisition": 315,
+    "inventoryCount": 483,
+    "inventoryHash": "ad03b08da05b1b65ff88ac3debb6aaf0b58c402fb0df569364fbee89e4eca9df",
+    "viewErrors": 0,
+    "viewResets": 0,
+    "matchedPerformancePair": false
+  }
+}

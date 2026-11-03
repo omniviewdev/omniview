@@ -16,8 +16,63 @@ type Observation struct {
 	plugin    string
 	route     resourcev2.AccessRoute
 	digest    [32]byte
+	discovery *catalogDiscovery
 }
 type observationKey struct{}
+type discoveryKey struct{}
+
+// DiscoveryContext enables request-scoped reuse for read-only tool discovery.
+// Call ValidateDiscovery before publishing any result built with this context.
+func (o Observation) DiscoveryContext(ctx context.Context) context.Context {
+	return context.WithValue(WithObservation(ctx, o), discoveryKey{}, true)
+}
+
+type catalogDiscovery struct {
+	controller  *controller
+	catalog     resourcev2.Catalog
+	authorities map[string]AuthorityResolution
+}
+
+// ValidateDiscovery fences publication after all read-only discovery calls.
+// Operations still acquire and admit their own current catalog independently.
+func (o Observation) ValidateDiscovery(ctx context.Context) error {
+	if o.discovery == nil {
+		return nil
+	}
+	_, _, err := o.discovery.controller.routeCatalog(WithObservation(ctx, o), o.plugin, o.route)
+	return err
+}
+
+// discoveryCatalog reuses only the owned discovery snapshot, never operational
+// admission. Every caller must still authorize its own operation and target.
+func (c *controller) discoveryCatalog(ctx context.Context, pluginID string, route resourcev2.AccessRoute) (Observation, bool, error) {
+	if enabled, _ := ctx.Value(discoveryKey{}).(bool); !enabled {
+		return Observation{}, false, nil
+	}
+	o, ok := ctx.Value(observationKey{}).(Observation)
+	if !ok || o.discovery == nil {
+		return Observation{}, false, nil
+	}
+	if o.discovery.controller != c || o.plugin != pluginID || o.route != route {
+		return o, true, resourcev2.NewError("RESET_REQUIRED", "Conflicting retained source observations.")
+	}
+	if o.admission.generation == nil || o.admission.generation.ctx.Err() != nil {
+		return o, true, resourcev2.NewError("RESET_REQUIRED", "Provider generation retired.")
+	}
+	if epoch, present := ctx.Value(sourceEpochKey{}).(sourceEpochSnapshot); present && epoch != o.admission.epoch {
+		return o, true, resourcev2.NewError("RESET_REQUIRED", "Conflicting retained source observations.")
+	}
+	ctx = context.WithValue(ctx, sourceEpochKey{}, o.admission.epoch)
+	if err := c.currentGeneration(ctx, pluginID, o.admission.generation); err != nil {
+		return o, true, err
+	}
+	if _, present := resourcev2.CatalogRevisionForRouteFromContext(ctx, o.discovery.catalog.Provider, route); present {
+		if err := resourcev2.CheckCatalogRevisionForRoute(ctx, o.discovery.catalog, route); err != nil {
+			return o, true, err
+		}
+	}
+	return o, true, nil
+}
 
 // WithObservation retains discovery provenance until the actual native admission.
 func WithObservation(ctx context.Context, observation Observation) context.Context {
@@ -30,9 +85,6 @@ func (c *controller) ObserveCatalog(ctx context.Context, pluginID string, route 
 	if err != nil {
 		return resourcev2.Catalog{}, Observation{}, err
 	}
-	if err := c.observeCatalogBinding(context.WithValue(ctx, sourceEpochKey{}, admission.epoch), pluginID, route, catalog, admission); err != nil {
-		return resourcev2.Catalog{}, Observation{}, err
-	}
 	encoded, err := json.Marshal(catalog)
 	if err != nil {
 		return resourcev2.Catalog{}, Observation{}, err
@@ -41,7 +93,16 @@ func (c *controller) ObserveCatalog(ctx context.Context, pluginID string, route 
 	if err := json.Unmarshal(encoded, &retained); err != nil {
 		return resourcev2.Catalog{}, Observation{}, err
 	}
-	return retained, Observation{admission: admission, plugin: pluginID, route: route, digest: sha256.Sum256(encoded)}, nil
+	var owned resourcev2.Catalog
+	if err := json.Unmarshal(encoded, &owned); err != nil {
+		return resourcev2.Catalog{}, Observation{}, err
+	}
+	resolutions, err := c.resolveCatalogAuthorities(context.WithValue(ctx, sourceEpochKey{}, admission.epoch), pluginID, route, owned, admission)
+	if err != nil {
+		return resourcev2.Catalog{}, Observation{}, err
+	}
+	discovery := &catalogDiscovery{controller: c, catalog: owned, authorities: resolutions}
+	return retained, Observation{admission: admission, plugin: pluginID, route: route, digest: sha256.Sum256(encoded), discovery: discovery}, nil
 }
 
 func checkObservedCatalog(ctx context.Context, pluginID string, route resourcev2.AccessRoute, catalog resourcev2.Catalog) error {
@@ -87,17 +148,31 @@ func (c *controller) ResolveToolTarget(ctx context.Context, pluginID string, rou
 		return _target, err
 	}
 	defer finishResource(ctx, &retErr)
-	admission, catalog, err := c.routeCatalog(ctx, pluginID, route)
+	observed, reused, err := c.discoveryCatalog(ctx, pluginID, route)
 	if err != nil {
 		return _target, err
+	}
+	admission, catalog := observed.admission, resourcev2.Catalog{}
+	if reused {
+		catalog = observed.discovery.catalog
+	} else {
+		admission, catalog, err = c.routeCatalog(ctx, pluginID, route)
+		if err != nil {
+			return _target, err
+		}
 	}
 	for _, descriptor := range catalog.Types {
 		if descriptor.Type != resourceType {
 			continue
 		}
-		authority, err := c.resolveAuthority(ctx, pluginID, route, catalog, admission, resourceType)
-		if err != nil {
-			return _target, err
+		var authority AuthorityResolution
+		if reused {
+			authority = observed.discovery.authorities[resourceType]
+		} else {
+			authority, err = c.resolveAuthority(ctx, pluginID, route, catalog, admission, resourceType)
+			if err != nil {
+				return _target, err
+			}
 		}
 		scope := make(resourcev2.QueryScope, 0, len(descriptor.QueryDimensions))
 		for _, dimension := range descriptor.QueryDimensions {

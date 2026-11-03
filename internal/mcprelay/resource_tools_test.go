@@ -33,9 +33,14 @@ type generatedNativeSource struct {
 	actionCalls               int
 	expectedAction            *resourcev2.ActionDescriptor
 	gets                      bool
+	catalogCalls              int
+	typeCount                 int
+	displayName               string
+	onActions                 func()
 }
 
 func (source *generatedNativeSource) Catalog(_ context.Context, request resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
+	source.catalogCalls++
 	revision, err := resourcev2.BindCatalogRevision(source.epoch, source.revision)
 	if err != nil {
 		return resourcev2.Catalog{}, err
@@ -45,6 +50,9 @@ func (source *generatedNativeSource) Catalog(_ context.Context, request resource
 		capabilities = append(capabilities, resourcev2.Capability{Operation: resourcev2.OperationEnumerate, Scope: resourcev2.QueryScope{}}, resourcev2.Capability{Operation: resourcev2.OperationNativeQuery, Scope: resourcev2.QueryScope{}})
 	}
 	descriptor := resourcev2.ResourceType{Type: "opaque/items", DisplayName: "Items", IdentityDimensions: []resourcev2.Dimension{}, QueryDimensions: []resourcev2.Dimension{}, Representations: []resourcev2.Representation{generatedRepresentation()}, DefaultRepresentation: "native", ModelRepresentation: "native", Capabilities: capabilities}
+	if source.displayName != "" {
+		descriptor.DisplayName = source.displayName
+	}
 	if request.Route.Connection == "route-a" {
 		descriptor.NativeQueries = []resourcev2.NativeQueryDescriptor{{Language: "fixture.filter.v1", InputSchema: resourcev2.Schema{Properties: map[string]resourcev2.SchemaProperty{"selector": {Type: resourcev2.SchemaString}}, Required: []string{"selector"}}}}
 	}
@@ -68,7 +76,13 @@ func (source *generatedNativeSource) Catalog(_ context.Context, request resource
 	if source.actions {
 		descriptor.Capabilities = append(descriptor.Capabilities, resourcev2.Capability{Operation: resourcev2.OperationAction, Scope: resourcev2.QueryScope{}})
 	}
-	return resourcev2.Catalog{Provider: "fixture-native", Revision: revision, Coverage: resourcev2.Coverage{Kind: "complete", Paths: []string{}}, Types: []resourcev2.ResourceType{descriptor}}, nil
+	types := []resourcev2.ResourceType{descriptor}
+	for index := 1; index < source.typeCount; index++ {
+		next := descriptor
+		next.Type = fmt.Sprintf("opaque/items-%d", index)
+		types = append(types, next)
+	}
+	return resourcev2.Catalog{Provider: "fixture-native", Revision: revision, Coverage: resourcev2.Coverage{Kind: "complete", Paths: []string{}}, Types: types}, nil
 }
 func generatedRepresentation() resourcev2.Representation {
 	return resourcev2.Representation{ID: "native", Revision: "one", Schema: resourcev2.SchemaBinding{State: "absent"}}
@@ -302,6 +316,9 @@ func (source *generatedNativeSource) ScopeValues(ctx context.Context, route reso
 	return []string{"default"}, nil
 }
 func (source *generatedNativeSource) GetActions(context.Context, resourcev2.AccessRoute, string) ([]resourcev2.ActionDescriptor, error) {
+	if source.onActions != nil {
+		source.onActions()
+	}
 	return []resourcev2.ActionDescriptor{{ID: "calculate", Label: "Calculate", Scope: resourcev2.ActionScopeType, ParamsSchema: &resourcev2.Schema{Properties: map[string]resourcev2.SchemaProperty{"amount": {Type: resourcev2.SchemaInteger}}, Required: []string{"amount"}}}}, nil
 }
 func (source *generatedNativeSource) Action(_ context.Context, request resourcev2.ActionRequest) (resourcev2.Value, error) {
@@ -357,4 +374,46 @@ func TestIntegralTaggedDoubleRemainsValidForQueryAndActionIntegerSchema(t *testi
 	require.NotNil(t, source.expectedAction)
 	branches := taggedProperty(resourcev2.SchemaProperty{Type: resourcev2.SchemaInteger})["oneOf"].([]any)
 	require.Equal(t, "integer", branches[2].(map[string]any)["properties"].(map[string]any)["value"].(map[string]any)["type"])
+}
+
+func TestGeneratedDiscoveryCatalogAcquisitionsStayBounded(t *testing.T) {
+	ctrl, source := generatedController(t)
+	source.actions = true
+	source.typeCount = 20
+	start := source.catalogCalls
+	tools, err := BuildResourceCatalog(invocation.HostContext(context.Background()), ctrl, []ResourceRoute{{PluginID: "fixture", Route: resourcev2.AccessRoute{Connection: "route-a"}}})
+	require.NoError(t, err)
+	require.Equal(t, 2, source.catalogCalls-start)
+	counts := map[string]int{}
+	for _, tool := range tools {
+		counts[tool.Resource.Operation]++
+	}
+	require.Equal(t, 20, counts["resource.Action"])
+	require.Equal(t, 20, counts["resource.Mutate"])
+	require.Equal(t, 20, counts["resource.Enumerate"])
+	require.Equal(t, 20, counts["resource.NativeQuery"])
+}
+
+func TestGeneratedDiscoveryDropsWholeRouteOnCatalogChangeDuringActions(t *testing.T) {
+	for _, change := range []string{"metadata", "binding"} {
+		t.Run(change, func(t *testing.T) {
+			ctrl, source := generatedController(t)
+			source.actions = true
+			source.typeCount = 3
+			source.onActions = func() {
+				source.onActions = nil
+				switch change {
+				case "metadata":
+					source.displayName = "Changed with the same revision"
+				case "binding":
+					var err error
+					source.epoch, err = resourcev2.NewCatalogBindingEpoch()
+					require.NoError(t, err)
+				}
+			}
+			tools, err := BuildResourceCatalog(invocation.HostContext(context.Background()), ctrl, []ResourceRoute{{PluginID: "fixture", Route: resourcev2.AccessRoute{Connection: "route-a"}}})
+			require.Error(t, err)
+			require.Empty(t, tools)
+		})
+	}
 }

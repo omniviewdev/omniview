@@ -109,8 +109,7 @@ func (s *ServiceWrapper) GetConfig() ConfigView {
 	}
 }
 
-// update mutates the document under the lock, validates, saves, then
-// resyncs tools and emits config_changed.
+// update saves policy and immediately projects it over the discovered inventory.
 func (r *Relay) update(mutate func(*Config) error) error {
 	r.mu.Lock()
 	if !r.loaded {
@@ -133,9 +132,13 @@ func (r *Relay) update(mutate func(*Config) error) error {
 	r.cfg = next
 	r.configRevision++
 	r.authority.UpdatePolicy(next)
+	ready := r.inventoryReady
+	r.projectPolicyLocked(r.configRevision, false)
 	r.mu.Unlock()
 
-	r.resync()
+	if !ready {
+		r.resync()
+	}
 	r.emit(EventConfigChanged, "")
 	return nil
 }
@@ -268,12 +271,19 @@ func (s *ServiceWrapper) ListTools(scope Scope) ([]ToolView, error) {
 	}
 	r.mu.Unlock()
 	unavailableOwners := map[string]bool{}
+	configuredBorrowed := map[string][]sdktypes.Connection{}
 	if r.borrowedConnections != nil {
 		for _, tool := range catalog {
-			if tool.ConnectionOwner == "" || unavailableOwners[tool.ConnectionOwner] {
+			if tool.ConnectionOwner == "" {
 				continue
 			}
-			if _, err := r.borrowedConnections(context.Background(), tool.PluginID, tool.ConnectionOwner, false); err != nil {
+			key := tool.PluginID + "\x00" + tool.ConnectionOwner
+			if _, seen := configuredBorrowed[key]; seen {
+				continue
+			}
+			connections, err := r.borrowedConnections(context.Background(), tool.PluginID, tool.ConnectionOwner, false)
+			configuredBorrowed[key] = connections
+			if err != nil {
 				unavailableOwners[tool.ConnectionOwner] = true
 			}
 		}
@@ -318,8 +328,8 @@ func (s *ServiceWrapper) ListTools(scope Scope) ([]ToolView, error) {
 			if _, seen := borrowedReady[key]; seen {
 				continue
 			}
-			configured, err := r.borrowedConnections(context.Background(), tool.PluginID, tool.ConnectionOwner, false)
-			if err != nil {
+			configured := configuredBorrowed[key]
+			if unavailableOwners[tool.ConnectionOwner] {
 				borrowedReady[key] = map[string]bool{}
 				continue
 			}
