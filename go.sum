@@ -137,8 +137,8 @@ github.com/omniviewdev/cel-go v0.33.2-0.20261028172556-d7bb038d8c7b h1:HxSRMZlGZ
 github.com/omniviewdev/cel-go v0.33.2-0.20261028172556-d7bb038d8c7b/go.mod h1:DnVip7tpJSsgZymwfT+m1tnEVy3ivAjSMXPx12YrMkU=
 github.com/omniviewdev/grpc-go v1.79.3-0.20261103012409-4c6f1d1c4e10 h1:2rx00CjQ8G9XKctUvJ198ESozea5DXfZC5SfnPwFp8s=
 github.com/omniviewdev/grpc-go v1.79.3-0.20261103012409-4c6f1d1c4e10/go.mod h1:KmT0Kjez+0dde/v2j9vzwoAScgEPx/Bw1CYChhHLrHQ=
-github.com/omniviewdev/plugin-sdk v0.14.4-0.20261103164653-a68bbe147db3 h1:laMNiJXpxWT2/Nv4BbXCfUcMsfWyGeyA3hV0BdOFN/w=
-github.com/omniviewdev/plugin-sdk v0.14.4-0.20261103164653-a68bbe147db3/go.mod h1:FFxi7m1H27zsC3VwMZ6Z9zVrwIytVTAkRjLT5cpv0G4=
+github.com/omniviewdev/plugin-sdk v0.14.4-0.20261103173559-45e45a1e15e2 h1:WhHk0+y8bx42KZE6I76+5aeon4/CStZeTnb1f3ra8Fg=
+github.com/omniviewdev/plugin-sdk v0.14.4-0.20261103173559-45e45a1e15e2/go.mod h1:FFxi7m1H27zsC3VwMZ6Z9zVrwIytVTAkRjLT5cpv0G4=
 github.com/omniviewdev/registry v0.2.3 h1:s9GYTZMqwMaUgvuHVTIOgHcRHK9C28O68EW3o+lHvIc=
 github.com/omniviewdev/registry v0.2.3/go.mod h1:wlpWX8JO05ctq2r+dC22E7C04wvsZSUAuWCUAnn6pP8=
 github.com/onsi/ginkgo/v2 v2.22.0 h1:Yed107/8DjTr0lKCNt7Dn8yQ6ybuDRQoMGrNFKzMfHg=
