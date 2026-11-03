@@ -168,7 +168,6 @@ func TestSourceNegotiatedChangeBatchLimit(t *testing.T) {
 	require.Error(t, tracker.Admit(frame))
 }
 
-
 func TestSourceCoordinatorSyncWaitsForSnapshotBoundary(t *testing.T) {
 	ctrl, events, provider, target := sourceTestFixture(t)
 	view := sourceTestOpen(t, ctrl, target)
