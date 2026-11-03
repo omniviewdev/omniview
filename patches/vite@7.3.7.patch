@@ -1,7 +1,7 @@
 diff --git a/dist/node/chunks/config.js b/dist/node/chunks/config.js
 --- a/dist/node/chunks/config.js
 +++ b/dist/node/chunks/config.js
-@@ -34330,10 +34330,10 @@ function createDepsOptimizer(environment) {
+@@ -34330,20 +34330,24 @@ function createDepsOptimizer(environment) {
  			optimizationResult?.cancel()
  		]);
  	}
@@ -10,12 +10,27 @@ diff --git a/dist/node/chunks/config.js b/dist/node/chunks/config.js
  	async function init$2() {
 -		if (inited) return;
 -		inited = true;
+-		const cachedMetadata = await loadCachedDepOptimizationMetadata(environment);
 +		if (initState !== "idle") return;
 +		initState = "initializing";
- 		const cachedMetadata = await loadCachedDepOptimizationMetadata(environment);
++		let cachedMetadata = await loadCachedDepOptimizationMetadata(environment);
++		const preInitDiscovered = Object.values(metadata.discovered);
++		if (preInitDiscovered.length) cachedMetadata = void 0;
  		firstRunCalled = !!cachedMetadata;
  		metadata = depsOptimizer.metadata = cachedMetadata || initDepsOptimizerMetadata(environment, sessionTimestamp);
-@@ -34384,6 +34384,7 @@ function createDepsOptimizer(environment) {
++		for (const depInfo of preInitDiscovered) addOptimizedDepInfo(metadata, "discovered", depInfo);
+ 		if (!cachedMetadata) {
+ 			waitingForCrawlEnd = true;
+ 			currentlyProcessing = true;
+ 			const manuallyIncludedDeps = {};
+ 			await addManuallyIncludedOptimizeDeps(environment, manuallyIncludedDeps);
+ 			const manuallyIncludedDepsInfo = toDiscoveredDependencies(environment, manuallyIncludedDeps, sessionTimestamp);
+ 			for (const depInfo of Object.values(manuallyIncludedDepsInfo)) {
++				if (metadata.discovered[depInfo.id]) continue;
+ 				addOptimizedDepInfo(metadata, "discovered", {
+ 					...depInfo,
+ 					processing: depOptimizationProcessing.promise
+@@ -34384,6 +34388,7 @@ function createDepsOptimizer(environment) {
  				})();
  			});
  		}
@@ -23,7 +38,7 @@ diff --git a/dist/node/chunks/config.js b/dist/node/chunks/config.js
  	}
  	function startNextDiscoveredBatch() {
  		newDepsDiscovered = false;
-@@ -34523,7 +34524,7 @@ function createDepsOptimizer(environment) {
+@@ -34523,7 +34528,7 @@ function createDepsOptimizer(environment) {
  		let missing = metadata.discovered[id];
  		if (missing) return missing;
  		missing = addMissingDep(id, resolved);

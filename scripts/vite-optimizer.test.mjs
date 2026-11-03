@@ -17,14 +17,16 @@ test('does not optimize discovered dependencies before server initialization', {
   let server;
   try {
     await writeFile(path.join(root, 'entry.js'), "import * as React from 'react'; export default React;\n");
+    await writeFile(path.join(root, 'scan.js'), 'export default 0;\n');
     server = await createServer({
       configFile: false,
       root,
+      cacheDir: path.join(root, '.vite-cache'),
       customLogger: logger,
       server: { port: 0 },
       optimizeDeps: {
         force: true,
-        entries: ['entry.js'],
+        entries: ['scan.js'],
         esbuildOptions: {
           plugins: [{
             name: 'observe-dependency-optimization',
@@ -36,10 +38,14 @@ test('does not optimize discovered dependencies before server initialization', {
         },
       },
     });
-    await server.transformRequest('/entry.js');
+    const transformed = await server.transformRequest('/entry.js');
+    const optimizedUrl = transformed?.code.match(/["']([^"']*\/react\.js\?v=[^"']+)["']/)?.[1];
+    assert.ok(optimizedUrl, 'pre-listen transform must reference the optimized dependency');
     assert.equal(await Promise.race([buildStarted.promise.then(() => true), delay(350, false)]), false);
     await server.listen();
     assert.equal(await Promise.race([buildFinished.promise.then(() => true), delay(10_000, false)]), true);
+    const response = await fetch(new URL(optimizedUrl, server.resolvedUrls.local[0]));
+    assert.equal(response.status, 200, await response.text());
     await server.environments.client.waitForRequestsIdle();
     assert.deepEqual(errors, []);
   } finally {
