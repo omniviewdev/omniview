@@ -15,38 +15,151 @@ type sourceMember struct {
 	size        int
 }
 
-// sourceValueNodes counts retained value containers without allocating.
-func sourceValueNodes(value resourcev2.Value) int {
-	nodes := 1
-	for _, child := range value.List {
-		nodes += sourceValueNodes(child)
+// sourceMemberSize estimates value, envelope, and address-index storage before
+// validation or canonical-key construction allocates. Go does not expose map
+// bucket capacity or the backing storage of aliased strings.
+func sourceMemberSize(o resourcev2.SourceObservation, limit int) (int, error) {
+	size := 1024
+	add := func(n, multiplier int) bool {
+		if n < 0 || n > (limit-size)/multiplier {
+			return false
+		}
+		size += n * multiplier
+		return true
 	}
-	for _, child := range value.Map {
-		nodes += sourceValueNodes(child)
+	text := func(s string) bool { return add(len(s), 8) }
+	optional := func(s *string) bool { return s == nil || text(*s) }
+	var value func(resourcev2.Value, int) bool
+	value = func(v resourcev2.Value, depth int) bool {
+		if depth > resourcev2.MaxValueDepth || !add(1, 256) || !add(cap(v.List)-len(v.List), 256) ||
+			!text(v.Kind) || !text(v.String) || !text(v.Int) || !text(v.Uint) || !text(v.Timestamp) {
+			return false
+		}
+		for _, child := range v.List {
+			if !value(child, depth+1) {
+				return false
+			}
+		}
+		for key, child := range v.Map {
+			if !text(key) || !value(child, depth+1) {
+				return false
+			}
+		}
+		return true
 	}
-	return nodes
+	r := o.Record
+	a := r.Reference.Address
+	ok := size <= limit && text(a.Provider) && text(a.Authority) && text(a.Type) && text(a.ID) &&
+		add(cap(a.Scope), 256) && optional(r.Reference.Incarnation) &&
+		text(r.Representation.ID) && text(r.Representation.Revision) && optional(r.Representation.SchemaRevision) &&
+		text(r.Coverage.Kind) && text(r.Coverage.Reason) && add(cap(r.Coverage.Paths), 256) &&
+		optional(r.SourceRevision) && optional(o.DisplayName) && value(r.Body, 1) &&
+		add(cap(o.DocumentCoverage.KnownAbsent), 256)
+	for _, scope := range a.Scope {
+		ok = ok && text(scope.Dimension) && text(scope.Value)
+	}
+	for _, path := range r.Coverage.Paths {
+		ok = ok && text(path)
+	}
+	if o.Metadata != nil {
+		ok = ok && add(len(o.Metadata.Labels), 256)
+		for key, val := range o.Metadata.Labels {
+			ok = ok && text(key) && text(val)
+		}
+	}
+	for _, path := range o.DocumentCoverage.KnownAbsent {
+		ok = ok && add(cap(path.Segments), 256)
+		for _, segment := range path.Segments {
+			ok = ok && optional(segment.Member)
+		}
+	}
+	if !ok {
+		return 0, resourcev2.NewError("RESOURCE_LIMIT", "Source observation exceeds host limits.")
+	}
+	return size, nil
 }
 
-func makeSourceMember(o resourcev2.SourceObservation) (sourceMember, string, error) {
-	size, err := resourcev2.SourceObservationWireSize(o)
+func makeSourceMember(o resourcev2.SourceObservation, limit int) (sourceMember, string, error) {
+	size, err := sourceMemberSize(o, limit)
 	if err != nil {
 		return sourceMember{}, "", err
 	}
-	// Account conservatively for Go value/map envelopes and the address index,
-	// not just the protobuf payload. Compute this before allocating the key.
-	size = size*4 + sourceValueNodes(o.Record.Body)*256 + 1024
-	size += 256 * (len(o.Record.Reference.Address.Scope) + len(o.Record.Coverage.Paths))
-	if o.Metadata != nil {
-		size += 256 * len(o.Metadata.Labels)
-	}
-	for _, path := range o.DocumentCoverage.KnownAbsent {
-		size += 256 * (1 + len(path.Segments))
+	if _, err := resourcev2.SourceObservationWireSize(o); err != nil {
+		return sourceMember{}, "", err
 	}
 	key, err := registry.CanonicalAddressKey(o.Record.Reference.Address)
 	if err != nil {
 		return sourceMember{}, "", err
 	}
 	return sourceMember{observation: o, size: size}, key, nil
+}
+
+// sourceFramePreflight accounts for the whole frame before tracker admission.
+func sourceFramePreflight(frame resourcev2.SourceFrame) error {
+	const limit = maxSourceSessionBytes
+	size := 1024
+	add := func(n, multiplier int) bool {
+		if n < 0 || n > (limit-size)/multiplier {
+			return false
+		}
+		size += n * multiplier
+		return true
+	}
+	text := func(s string) bool { return add(len(s), 8) }
+	optional := func(s *string) bool { return s == nil || text(*s) }
+	coverage := func(c resourcev2.SourceCoverage) bool {
+		if !text(c.Enumeration) || !text(c.Consistency) || !add(cap(c.Limitations), 256) {
+			return false
+		}
+		for _, item := range c.Limitations {
+			if !text(item) {
+				return false
+			}
+		}
+		return true
+	}
+	member := func(o resourcev2.SourceObservation, memberLimit int) bool {
+		n, err := sourceMemberSize(o, memberLimit)
+		return err == nil && add(n, 1)
+	}
+	ok := text(frame.SessionID) && text(frame.Generation)
+	if frame.Begin != nil {
+		ok = ok && text(frame.Begin.Mode)
+	}
+	if frame.Snapshot != nil {
+		ok = ok && add(cap(frame.Snapshot.Observations), 256)
+		for _, observation := range frame.Snapshot.Observations {
+			ok = ok && member(observation, defaultSourceStagingBytes)
+		}
+	}
+	if frame.SnapshotEnd != nil {
+		ok = ok && coverage(frame.SnapshotEnd.Coverage) && text(frame.SnapshotEnd.Continuity)
+	}
+	if frame.Changes != nil {
+		ok = ok && add(cap(frame.Changes.Changes), 256)
+		for _, change := range frame.Changes.Changes {
+			ok = ok && text(change.Kind) && optional(change.SourceRevision)
+			if change.Observation != nil {
+				ok = ok && member(*change.Observation, limit)
+			}
+			if change.Reference != nil {
+				ok = ok && member(resourcev2.SourceObservation{Record: resourcev2.SourceRecord{Reference: *change.Reference}}, limit)
+			}
+		}
+		if frame.Changes.Coverage != nil {
+			ok = ok && coverage(*frame.Changes.Coverage)
+		}
+	}
+	if frame.Reset != nil {
+		ok = ok && text(frame.Reset.Reason) && text(frame.Reset.Message)
+	}
+	if frame.Failed != nil {
+		ok = ok && text(frame.Failed.Code) && text(frame.Failed.Message)
+	}
+	if !ok {
+		return resourcev2.NewError("RESOURCE_LIMIT", "Source frame exceeds host limits.")
+	}
+	return nil
 }
 
 func (c *controller) observeSourceRecord(ctx context.Context, pluginID string, generation *pluginState, route resourcev2.AccessRoute, record resourcev2.Record, metadata *resourcev2.ResourceMetadata) error {

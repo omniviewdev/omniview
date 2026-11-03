@@ -195,6 +195,12 @@ func (s *sourceSession) receive(ctx context.Context, request resourcev2.SourceOp
 			s.mu.Unlock()
 			return
 		}
+		// Bound the frame before the phase tracker constructs its wire representation.
+		if err := sourceFramePreflight(frame); err != nil {
+			s.statusLocked("failed", err)
+			s.mu.Unlock()
+			return
+		}
 		if err := tracker.Admit(frame); err != nil {
 			var operationErr *resourcev2.ResourceOperationError
 			if errors.As(err, &operationErr) && operationErr.Code == "RESET_REQUIRED" && operationErr.Message == "source binding changed" {
@@ -465,19 +471,22 @@ func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sour
 		s.statusLocked("snapshotting", nil)
 	case frame.Snapshot != nil:
 		for _, o := range frame.Snapshot.Observations {
-			member, key, err := makeSourceMember(o)
+			member, key, err := makeSourceMember(o, defaultSourceStagingBytes)
 			if err != nil {
 				return true, err
 			}
-			old := s.staging[key]
+			old, exists := s.staging[key]
 			size := s.stagingBytes - old.size + member.size
-			if len(s.staging)+boolInt(old.size == 0) > maxSourceSessionMembers || size > defaultSourceStagingBytes {
+			if len(s.staging)+boolInt(!exists) > maxSourceSessionMembers || size > defaultSourceStagingBytes {
 				return true, resourcev2.NewError("RESOURCE_LIMIT", "Source snapshot exceeds host limits.")
 			}
 			s.staging[key] = member
 			s.stagingBytes = size
 		}
 	case frame.SnapshotEnd != nil:
+		if len(s.staging) > maxSourceSessionMembers || s.stagingBytes > maxSourceSessionBytes {
+			return true, resourcev2.NewError("RESOURCE_LIMIT", "Source membership exceeds host limits.")
+		}
 		for _, member := range s.staging {
 			if err := s.observeFrameRecord(frameContext, member.observation); err != nil {
 				return true, err
@@ -511,12 +520,12 @@ func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sour
 	case frame.Changes != nil:
 		nextCount := len(s.members)
 		nextBytes := s.memberBytes
-		touched := make(map[string]*sourceMember, len(frame.Changes.Changes))
+		touched := make(map[string]*sourceMember)
 		for _, change := range frame.Changes.Changes {
 			var key string
 			var next *sourceMember
 			if change.Observation != nil {
-				member, k, err := makeSourceMember(*change.Observation)
+				member, k, err := makeSourceMember(*change.Observation, maxSourceSessionBytes)
 				if err != nil {
 					return true, err
 				}
