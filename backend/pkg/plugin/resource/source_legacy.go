@@ -97,6 +97,7 @@ func (o *legacySourceOpener) OpenSourceStream(ctx context.Context, request resou
 	}()
 	return stream, nil
 }
+
 type legacySourceTransientKey struct{}
 
 // legacyPagePreflight bounds the whole page before SDK validation allocates.
