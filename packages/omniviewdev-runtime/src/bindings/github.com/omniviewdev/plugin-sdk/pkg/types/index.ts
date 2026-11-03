@@ -9,6 +9,5 @@ export {
     ConnectionAutoConnectTrigger,
     ConnectionLifecycle,
     ConnectionStatus,
-    ConnectionStatusCode,
-    PluginInfo
+    ConnectionStatusCode
 } from "./models.js";

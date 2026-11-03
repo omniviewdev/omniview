@@ -27,7 +27,7 @@ func TestQueryOnlyProviderRetainsActualNativeQuery(t *testing.T) {
 	require.NoError(t, err)
 	provider, ok := raw.(sdkmetric.Provider)
 	require.True(t, ok)
-	backend := plugintypes.NewInProcessBackend(map[string]interface{}{"metric": queryOnlyMetricProvider{provider}})
+	backend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"metric": queryOnlyMetricProvider{provider}}})
 	ctrl := NewController(logging.NewNop(), nil, fixture.resources)
 	require.NoError(t, ctrl.ServiceStartup(context.Background(), application.ServiceOptions{}))
 	require.NoError(t, ctrl.OnPluginStart(nativeMetricPluginID, config.PluginMeta{}, backend))

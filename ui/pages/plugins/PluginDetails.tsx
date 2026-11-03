@@ -19,6 +19,7 @@ import styles from './PluginDetails.module.css';
 import { orFallback } from '@/utils/orFallback';
 import { connectionProfilesPath } from '@/features/workspace/pagePaths';
 import { orderedVersions } from './versionPolicy';
+import { usePluginService } from '@/features/plugins';
 
 const TABS = [
   { key: 'overview', label: 'Overview' },
@@ -26,21 +27,28 @@ const TABS = [
   { key: 'reviews', label: 'Reviews' },
   { key: 'changelog', label: 'Changelog' },
 ] as const;
+const BUILTIN_TABS = [TABS[0]] as const;
 
 const PluginDetails: FC = () => {
   const { id = '' } = useParams<{ id: string }>();
   const { activeTheme } = useTheme();
   const navigate = useNavigate();
   const { plugins, available } = usePluginManager();
+  const { plugins: frontendPlugins } = usePluginService();
   const [activeTab, setActiveTab] = useState('overview');
-  const { readme, reviews, releaseHistory, uninstall, reload, operation } = usePlugin({
+  const { readme, reviews, releaseHistory, uninstall, reload, operation, setEnabled } = usePlugin({
     id, tab: activeTab, installed: false,
   });
   const [uninstallModalOpen, setUninstallModalOpen] = useState(false);
 
   const installed = plugins.data?.find(p => p.id === id);
-  // marketplace data typed as any until Wails bindings regenerate with new AvailablePlugin fields
-  const marketplace: any = available.data?.find((p: any) => p.id === id);
+  const builtin = installed?.origin === 'builtin';
+  const frontendState = frontendPlugins.get(id);
+  const builtinFailed = builtin && (installed.phase === 'Failed' || frontendState?.phase === 'error');
+  const builtinError = orFallback(frontendState?.error, installed?.lastError);
+  const marketplace = builtin ? undefined : available.data?.find(p => p.id === id);
+  const visibleTabs = builtin ? BUILTIN_TABS : TABS;
+  const selectedTab = visibleTabs.some(tab => tab.key === activeTab) ? activeTab : 'overview';
 
   // Derive display values from marketplace data or installed metadata
   const displayName = orFallback(orFallback(marketplace?.name, installed?.metadata?.name), id);
@@ -96,6 +104,10 @@ const PluginDetails: FC = () => {
             {displayVersion && (
               <Chip size='sm' color='brand' variant='soft' className={styles.HeaderChip}>{displayVersion}</Chip>
             )}
+            {builtin && <Chip size='sm' color='brand' variant='soft'>Built-in · Product managed</Chip>}
+            {builtin && <Chip size='sm' color={!installed.enabled ? 'neutral' : builtinFailed ? 'danger' : 'success'} variant='soft'>
+              {!installed.enabled ? 'Disabled' : builtinFailed ? 'Failed' : installed.phase}
+            </Chip>}
             {marketplace?.official && (
               <Chip size='sm' color='success' variant='soft' className={styles.HeaderChip}>Official</Chip>
             )}
@@ -104,6 +116,8 @@ const PluginDetails: FC = () => {
           <Text as='p' size='sm' tone='muted' className={styles.Description}>
             {displayDescription}
           </Text>
+          {builtin && builtinError && <Text as='p' size='sm' tone='danger' role='alert'>{builtinError}</Text>}
+          {builtin && <Text as='p' size='sm' tone='muted'>Included with Omniview. Updates ship with the application.</Text>}
 
           {/* Metadata row */}
           <Stack direction='row' spacing={4} align='center' wrap className={styles.MetaRow}>
@@ -123,7 +137,7 @@ const PluginDetails: FC = () => {
                 ({marketplace?.review_count ?? 0})
               </Text>
             </Stack>
-            {marketplace?.download_count > 0 && (
+            {marketplace && marketplace.download_count > 0 && (
               <Stack direction='row' spacing={1} align='center'>
                 <LuDownload size={12} />
                 <Text size='xs' tone='muted'>
@@ -153,7 +167,7 @@ const PluginDetails: FC = () => {
               void navigate(`/developer-tools/extensions?plugin=${encodeURIComponent(id)}`); 
             }}>Inspect contributions</Button>
             {!!installed && <Button variant="outline" size="sm" onClick={(): void | Promise<void> => navigate(connectionProfilesPath(id))}>Connection profiles</Button>}
-            {!!installed && (
+            {!!installed && !builtin && (
               <Button
                 variant='outline'
                 color='danger'
@@ -169,14 +183,22 @@ const PluginDetails: FC = () => {
           </Stack>
         </details>
       </div>
-      <PluginUpdateButton
-        key={id}
-        pluginID={id}
-        installed={!!installed}
-        currentVersion={installed?.metadata?.version ?? ''}
-      />
+      {builtin ? (
+        <Button variant='outline' size='sm' disabled={!!operation || setEnabled.isPending} onClick={() => {
+          setEnabled.mutate(!installed.enabled);
+        }}>
+          {setEnabled.isPending ? 'Saving…' : !installed.enabled ? 'Enable' : 'Disable'}
+        </Button>
+      ) : (
+        <PluginUpdateButton
+          key={id}
+          pluginID={id}
+          installed={!!installed}
+          currentVersion={installed?.metadata?.version ?? ''}
+        />
+      )}
 
-      <UninstallPluginModal
+      {!builtin && <UninstallPluginModal
         open={uninstallModalOpen}
         onClose={() => {
           setUninstallModalOpen(false); 
@@ -187,18 +209,18 @@ const PluginDetails: FC = () => {
           await uninstall();
           void navigate('/plugins');
         }}
-      />
+      />}
 
       {installed && <Stack direction='row' spacing={2} align='center'>
         <Text size='sm' role='status'>{operation ?? `Startup: ${installed.phase}`}</Text>
         {installed.lastError && <Text size='sm' role='alert'>{installed.lastError}</Text>}
-        {installed.phase !== 'Running' && <Button size='sm' variant='outline' disabled={!!operation} onClick={() => {
+        {(builtin ? installed.enabled && builtinFailed : installed.phase !== 'Running') && <Button size='sm' variant='outline' disabled={!!operation} onClick={() => {
           void reload().catch(() => undefined); 
         }}>Retry startup</Button>}
       </Stack>}
       {/* Tabs */}
       <Tabs.Root
-        value={activeTab}
+        value={selectedTab}
         onValueChange={(value) => {
           setActiveTab(String(value));
         }}
@@ -207,7 +229,7 @@ const PluginDetails: FC = () => {
         className={styles.Tabs}
       >
         <Tabs.List>
-          {TABS.map(tab => (
+          {visibleTabs.map(tab => (
             <Tabs.Tab key={tab.key} value={tab.key}>{tab.label}</Tabs.Tab>
           ))}
           <Tabs.Indicator />

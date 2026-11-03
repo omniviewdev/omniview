@@ -10,6 +10,25 @@ function reset(generation: string, nextGeneration: string, reason: 'overflow' | 
 function observer() { const o = new QueryLeaseObserver('l', 3); o.attach('g1'); return o; }
 
 describe('passive query observer', () => {
+  it('accepts absent or nonempty optional tokens and recovers on explicit empty tokens', () => {
+    for (const field of ['continuation', 'incarnation'] as const) {
+      for (const value of [undefined, '', 'token']) {
+        const item = row('a');
+        const frameMetadata = { ...metadata, limitations: [...metadata.limitations] };
+        if (value !== undefined) {
+          if (field === 'incarnation') item.resource.incarnation = value;
+          else Object.assign(frameMetadata, { continuation: value });
+        }
+        const o = observer();
+        expect(o.apply(data('g1', '1', { kind: 'open', rows: [item], metadata: frameMetadata })).kind)
+          .toBe(value === '' ? 'recover' : 'none');
+        if (value !== '') {
+          expect(o.getSnapshot().rows).toHaveLength(1);
+          expect(o.getSnapshot().metadata?.count).toEqual(metadata.count);
+        }
+      }
+    }
+  });
   it('applies ordered changes atomically without mutating inputs or previous snapshots', () => {
     const o = observer(); const a = row('a'); const b = row('b');
     o.apply(data('g1', '1', { kind: 'open', rows: [a, b], metadata: metadata as never }));

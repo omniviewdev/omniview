@@ -1,6 +1,6 @@
 import { test, expect } from '../fixtures/app.fixture';
 import { expectPageDoesNotScroll, settingsWindowPage, settingRow, shell } from '../fixtures/helpers';
-import { fakeListing } from '../fixtures/plugins';
+import { fakeListing, fakePlugin } from '../fixtures/plugins';
 import { callBinding, mockBindings, Service } from '../fixtures/wails';
 
 test.describe('Navigation', () => {
@@ -163,6 +163,33 @@ test.describe('Navigation', () => {
       await expect(page).toHaveURL(/#\/plugins\/beta-tools$/);
       await expect(betaReadme).toBeVisible();
       await expect(alphaReadme).toHaveCount(0);
+    });
+
+    test('returns to Overview when a marketplace tab is unavailable for a built-in', async ({ page }) => {
+      const native = fakePlugin(7, {
+        capabilities: ['metric'],
+        id: 'builtin-diagnostics',
+        origin: 'builtin',
+        frontendModule: '',
+        phase: 'Installed',
+        lastError: '',
+        metadata: {
+          id: 'builtin-diagnostics',
+          name: 'Built-in Diagnostics',
+          version: '1.0.0',
+          capabilities: ['metric'],
+        },
+      });
+      await mockBindings(page, Service.plugins, { ListPlugins: [native] });
+      await page.goto('/#/plugins/alpha-tools');
+      const main = shell(page).main;
+      await main.getByRole('tab', { name: 'Reviews', exact: true }).click();
+      await expect(main.getByRole('tabpanel', { name: 'Reviews', exact: true })).toBeVisible();
+      await main.getByRole('link', { name: /Built-in Diagnostics/ }).click();
+      await expect(page).toHaveURL(/#\/plugins\/builtin-diagnostics$/);
+      await expect(main.getByRole('tab', { name: 'Overview', exact: true })).toHaveAttribute('aria-selected', 'true');
+      await expect(main.getByRole('tabpanel', { name: 'Overview', exact: true })).toBeVisible();
+      await expect(main.getByRole('tab', { name: 'Reviews', exact: true })).toHaveCount(0);
     });
 
     test('a detail deep link survives reload and recovers from an unknown plugin', async ({ page }) => {

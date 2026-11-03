@@ -42,7 +42,7 @@ func TestFeatureStartupFailureRollsBackBeforeSourcesStart(t *testing.T) {
 	}}, fail: func() error {
 		return &resource.ResourceOperationError{Code: "FORBIDDEN", Message: "feature negotiation denied"}
 	}}
-	backend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": provider})
+	backend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": provider}})
 	err := ctrl.OnPluginStart("proof", defaultMeta(), backend)
 	var denied *resource.ResourceOperationError
 	require.ErrorAs(t, err, &denied)
@@ -98,7 +98,7 @@ func TestFeatureStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
 		return failed
 	}}
 	oldDone := make(chan error, 1)
-	oldBackend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": oldProvider})
+	oldBackend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": oldProvider}})
 	go func() { oldDone <- ctrl.OnPluginStart("proof", defaultMeta(), oldBackend) }()
 	<-store.entered
 	// Ownership stays visible through retirement, while actual provider calls
@@ -133,7 +133,7 @@ func TestFeatureStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
 	}
 	replaced := make(chan error, 1)
 	replacementBackend := &replacementAttemptBackend{
-		PluginBackend: plugintypes.NewInProcessBackend(map[string]interface{}{"resource": replacement}),
+		PluginBackend: plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": replacement}}),
 		requested:     make(chan struct{}),
 	}
 	go func() {
@@ -236,7 +236,7 @@ func TestFeatureStartupFailurePreservesDesiredProfilesThroughFailedUnloadAndRelo
 
 	otherProvider := &readinessCloseProvider{mockProvider: connectionOverlayTestProvider()}
 	otherProvider.CatalogFunc = lifecycleTestCatalog(resourceKey, "proof::v1::Unrelated")
-	otherBackend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": setupGRPCProvider(t, otherProvider)})
+	otherBackend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": setupGRPCProvider(t, otherProvider)}})
 	require.NoError(t, ctrl.OnPluginStart(otherID, defaultMeta(), otherBackend))
 	t.Cleanup(func() { require.NoError(t, ctrl.OnPluginShutdown(otherID, defaultMeta())) })
 	otherDeclaration := resource.RelationshipDescriptor{Type: resource.RelUses, TargetType: "proof::v1::Unrelated", TargetScope: []resource.ScopeEntry{}}
@@ -268,7 +268,7 @@ func TestFeatureStartupFailurePreservesDesiredProfilesThroughFailedUnloadAndRelo
 		discoveries.Add(1)
 		return nil, nil
 	}}}}
-	failedBackend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": failedProvider})
+	failedBackend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": failedProvider}})
 	var denied *resource.ResourceOperationError
 	require.ErrorAs(t, ctrl.OnPluginStart(pluginID, defaultMeta(), failedBackend), &denied)
 	require.Equal(t, "FORBIDDEN", denied.Code)
@@ -323,7 +323,7 @@ func TestFeatureStartupFailurePreservesDesiredProfilesThroughFailedUnloadAndRelo
 	require.NoError(t, err)
 	require.Empty(t, beforeReplay, "desired profiles are inactive until the fresh provider applies their overlay")
 	replacement := &readinessCloseProvider{mockProvider: connectionOverlayTestProvider()}
-	replacementBackend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": setupGRPCProvider(t, replacement)})
+	replacementBackend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": setupGRPCProvider(t, replacement)}})
 	require.NoError(t, fresh.OnPluginStart(pluginID, defaultMeta(), replacementBackend))
 	t.Cleanup(func() { require.NoError(t, fresh.OnPluginShutdown(pluginID, defaultMeta())) })
 	restored, err := fresh.ListConnections(testInvocationContext(), pluginID)

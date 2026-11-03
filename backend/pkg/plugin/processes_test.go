@@ -123,7 +123,7 @@ func TestPluginProcessesUnavailableAndExited(t *testing.T) {
 
 func TestPluginProcessesSharedInProcess(t *testing.T) {
 	pm := &pluginManager{records: map[string]*plugintypes.PluginRecord{
-		"builtin": {ID: "builtin", Phase: lifecycle.PhaseRunning, Backend: plugintypes.NewInProcessBackend(nil)},
+		"builtin": {ID: "builtin", Phase: lifecycle.PhaseRunning, Backend: plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{})},
 	}}
 	results := pm.getPluginProcesses(func(int) (devsession.ProcessObservation, error) {
 		t.Fatal("in-process plugin identity belongs to the host collector")

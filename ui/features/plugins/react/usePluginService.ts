@@ -10,6 +10,7 @@ export type UsePluginServiceResult = {
   readonly retry: PluginService['retry'];
   readonly forceReset: PluginService['forceReset'];
   readonly getSnapshot: PluginService['getSnapshot'];
+  readonly setEnabled: PluginService['setEnabled'];
   readonly getDebugSnapshot: PluginService['getDebugSnapshot'];
   readonly isQuarantined: PluginService['isQuarantined'];
   readonly unquarantine: PluginService['unquarantine'];
@@ -41,6 +42,7 @@ export function usePluginService(): UsePluginServiceResult {
       retry: service.retry.bind(service),
       forceReset: service.forceReset.bind(service),
       getSnapshot,
+      setEnabled: service.setEnabled.bind(service),
       getDebugSnapshot: service.getDebugSnapshot.bind(service),
       isQuarantined: service.isQuarantined.bind(service),
       unquarantine: service.unquarantine.bind(service),

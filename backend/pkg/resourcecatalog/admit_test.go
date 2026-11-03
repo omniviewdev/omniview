@@ -229,7 +229,11 @@ func TestAdmitPartialUnionBranches(t *testing.T) {
 		document := `{"` + keyword + `":[{"required":["a"]},{"required":["b"]}]}`
 		schema := admitSchema(t, d2020, document, "")
 		got := mustAdmit(t, schema, body(t, `{}`), partialCoverage)
-		if !slices.Equal(got.UnavailablePaths, []string{"/a", "/b"}) {
+		want := []string{"/a", "/b"}
+		if keyword == "oneOf" {
+			want = []string{"", "/a", "/b"}
+		}
+		if !slices.Equal(got.UnavailablePaths, want) {
 			t.Fatalf("%s unavailable = %v", keyword, got.UnavailablePaths)
 		}
 		rejectAdmit(t, schema, body(t, `{}`), completeCoverage, "matches no")
@@ -241,7 +245,7 @@ func TestAdmitPartialUnionBranches(t *testing.T) {
 	}
 	one := admitSchema(t, d2020, `{"oneOf":[{"required":["a"]},{"type":"object"}]}`, "")
 	got = mustAdmit(t, one, body(t, `{}`), partialCoverage)
-	if !slices.Equal(got.UnavailablePaths, []string{"/a"}) {
+	if !slices.Equal(got.UnavailablePaths, []string{"", "/a"}) {
 		t.Fatalf("uncertain oneOf unavailable = %v", got.UnavailablePaths)
 	}
 	overlap := admitSchema(t, d2020, `{"oneOf":[{"required":["a"]},{"type":"object"},{"type":"object"}]}`, "")
@@ -492,4 +496,324 @@ func TestAdmitKubernetesPod(t *testing.T) {
 	container := pod.Map["spec"].Map["containers"].List[0]
 	container.Map["image"] = int64Value(5)
 	rejectAdmit(t, schema, pod, completeCoverage, `/spec/containers/0/image`)
+}
+
+func TestAdmitLocalizedCollectionLiteral(t *testing.T) {
+	tests := []struct {
+		name, schema, value string
+		paths               []string
+		want                []string
+		reject              string
+	}{
+		{
+			"oneOf definite overlap", `{"oneOf":[{"const":{"x":1}},{"type":"object"}]}`,
+			`{"x":1}`, []string{"/x"}, nil, "more than one",
+		},
+		{"enum exact", `{"enum":[{"x":1}]}`, `{"x":1}`, []string{"/x"}, nil, ""},
+		{
+			"anyOf limited missing key", `{"anyOf":[{"required":["z"]},{"const":{"x":1}}]}`,
+			`{"x":1}`, []string{"/x", "/z"}, []string{"", "/z"}, "",
+		},
+		{
+			"anyOf confirmed nested scalar", `{"anyOf":[{"minProperties":2},{"const":{"x":{"y":1}}}]}`,
+			`{"x":{"y":1}}`, []string{"/x/y"}, nil, "",
+		},
+		{"nested scalar", `{"const":{"x":{"y":1}}}`, `{"x":{"y":1}}`, []string{"/x/y"}, nil, ""},
+		{"nested missing key", `{"const":{"x":{"y":1}}}`, `{"x":{"y":1}}`, []string{"/x/z"}, []string{""}, ""},
+		{"missing key outside literal", `{"const":{"x":1}}`, `{"x":1}`, []string{"/z"}, []string{""}, ""},
+		{"whole object", `{"const":{"x":1}}`, `{"x":1}`, []string{}, []string{""}, ""},
+		{"list limited index", `{"properties":{"x":{"const":[1]}}}`, `{"x":[1]}`, []string{"/x/0"}, []string{"/x"}, ""},
+		{
+			"list possible omitted index", `{"properties":{"x":{"const":[1]}}}`,
+			`{"x":[1]}`, []string{"/x/1"}, []string{"/x"}, "",
+		},
+		{"list nested scalar", `{"properties":{"x":{"const":[{"y":1}]}}}`, `{"x":[{"y":1}]}`, []string{"/x/0/y"}, nil, ""},
+		{"scalar mismatch", `{"const":{"x":1}}`, `{"x":2}`, []string{"/x"}, nil, "const"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			schema := admitSchema(t, d2020, tt.schema, "")
+			value := body(t, tt.value)
+			coverage := resourcev2.Coverage{Kind: "partial", Paths: tt.paths}
+			if tt.reject != "" {
+				rejectAdmit(t, schema, value, coverage, tt.reject)
+				return
+			}
+			got := mustAdmit(t, schema, value, coverage)
+			if !slices.Equal(got.UnavailablePaths, tt.want) {
+				t.Fatalf("unavailable = %q, want %q", got.UnavailablePaths, tt.want)
+			}
+		})
+	}
+}
+
+func TestAdmitOmissionSensitiveCollections(t *testing.T) {
+	tests := []struct {
+		name, schema, value string
+		coverage            resourcev2.Coverage
+		want                []string
+		reject              string
+	}{
+		{"complete minimum", `{"minProperties":2}`, `{"x":1}`, completeCoverage, nil, "minProperties"},
+		{"partial root minimum", `{"minProperties":2}`, `{"x":1}`, partialCoverage, []string{""}, ""},
+		{"unknown root minimum", `{"minProperties":2}`, `{"x":1}`, resourcev2.Coverage{Kind: "unknown"}, []string{""}, ""},
+		{
+			"containing path", `{"minProperties":2}`, `{"x":1}`,
+			resourcev2.Coverage{Kind: "partial", Paths: []string{"/x/y"}}, []string{""}, "",
+		},
+		{
+			"below path", `{"properties":{"x":{"properties":{"y":{"minItems":2}}}}}`, `{"x":{"y":[1]}}`,
+			resourcev2.Coverage{Kind: "partial", Paths: []string{"/x"}}, []string{"/x/y"}, "",
+		},
+		{
+			"ancestor path", `{"properties":{"x":{"minItems":2}}}`, `{"x":[1]}`,
+			resourcev2.Coverage{Kind: "unknown", Paths: []string{"/x/0"}}, []string{"/x"}, "",
+		},
+		{
+			"segment boundary", `{"properties":{"xy":{"minItems":2}}}`, `{"xy":[1]}`,
+			resourcev2.Coverage{Kind: "partial", Paths: []string{"/x"}}, nil, "minItems",
+		},
+		{
+			"escaped boundary", `{"properties":{"a/b":{"minItems":2}}}`, `{"a/b":[1]}`,
+			resourcev2.Coverage{Kind: "partial", Paths: []string{"/a~1b"}}, []string{"/a~1b"}, "",
+		},
+		{
+			"nested const missing", `{"properties":{"x":{"const":{"y":[1,2]}}}}`, `{"x":{"y":[1]}}`,
+			resourcev2.Coverage{Kind: "partial", Paths: []string{"/x/y"}}, []string{"/x"}, "",
+		},
+		{
+			"nested enum missing", `{"enum":[{"x":{"a":1,"b":2}},{"x":{"a":3}}]}`, `{"x":{"a":1}}`,
+			resourcev2.Coverage{Kind: "unknown", Paths: []string{"/x/b"}}, []string{""}, "",
+		},
+		{
+			"list leading omission", `{"properties":{"x":{"const":[1,2]}}}`, `{"x":[2]}`,
+			resourcev2.Coverage{Kind: "partial", Paths: []string{"/x"}}, []string{"/x"}, "",
+		},
+		{
+			"list interior omission", `{"properties":{"x":{"enum":[[1,2,3]]}}}`, `{"x":[1,3]}`,
+			resourcev2.Coverage{Kind: "unknown", Paths: []string{"/x"}}, []string{"/x"}, "",
+		},
+		{
+			"list omitted limited first member", `{"properties":{"x":{"const":[1,2]}}}`, `{"x":[2]}`,
+			resourcev2.Coverage{Kind: "partial", Paths: []string{"/x/0"}}, []string{"/x"}, "",
+		},
+		{
+			"list omitted limited last member", `{"properties":{"x":{"enum":[[1,2]]}}}`, `{"x":[1]}`,
+			resourcev2.Coverage{Kind: "unknown", Paths: []string{"/x/1"}}, []string{"/x"}, "",
+		},
+		{
+			"list alternative first match", `{"properties":{"x":{"const":[1,1]}}}`, `{"x":[1]}`,
+			resourcev2.Coverage{Kind: "partial", Paths: []string{"/x/0"}}, []string{"/x"}, "",
+		},
+		{
+			"list alternative last match", `{"properties":{"x":{"const":[1,1]}}}`, `{"x":[1]}`,
+			resourcev2.Coverage{Kind: "partial", Paths: []string{"/x/1"}}, []string{"/x"}, "",
+		},
+		{
+			"list unlisted omitted member", `{"properties":{"x":{"const":[1,2]}}}`, `{"x":[1]}`,
+			resourcev2.Coverage{Kind: "partial", Paths: []string{"/x/0"}}, nil, "const",
+		},
+		{
+			"list nested uncertain", `{"properties":{"x":{"const":[{"a":0},{"a":1,"b":2}]}}}`, `{"x":[{"a":1}]}`,
+			resourcev2.Coverage{Kind: "partial", Paths: []string{"/x"}}, []string{"/x"}, "",
+		},
+		{
+			"list limited member", `{"properties":{"x":{"const":[{"a":0,"b":2},{"a":1}]}}}`, `{"x":[{"a":0},{"a":1}]}`,
+			resourcev2.Coverage{Kind: "partial", Paths: []string{"/x/0/b"}}, []string{"/x"}, "",
+		},
+		{
+			"list unlimited membership", `{"properties":{"x":{"const":[{"a":0},{"a":1,"b":2}]}}}`, `{"x":[{"a":1}]}`,
+			resourcev2.Coverage{Kind: "partial", Paths: []string{"/x/0/b"}}, nil, "const",
+		},
+		{
+			"list disjoint", `{"properties":{"x":{"const":[1,2]}}}`, `{"x":[9]}`,
+			resourcev2.Coverage{Kind: "partial", Paths: []string{"/x"}}, nil, "const",
+		},
+		{"list equal length disjoint", `{"properties":{"x":{"const":[1,2]}}}`, `{"x":[2,1]}`, partialCoverage, nil, "const"},
+		{"list too long", `{"properties":{"x":{"enum":[[1,2]]}}}`, `{"x":[1,2,3]}`, partialCoverage, nil, "enum"},
+		{
+			"list complete leading omission", `{"properties":{"x":{"const":[1,2]}}}`, `{"x":[2]}`,
+			completeCoverage, nil, "const",
+		},
+		{"const present conflict", `{"const":{"x":{"a":1,"b":2}}}`, `{"x":{"a":3}}`, partialCoverage, nil, "const"},
+		{"enum disjoint", `{"enum":[{"x":1},{"x":2}]}`, `{"x":3}`, partialCoverage, nil, "enum"},
+		{"scalar conflict", `{"properties":{"x":{"const":1}}}`, `{"x":2}`, partialCoverage, nil, "const"},
+		{"extra enum key", `{"const":{"x":1}}`, `{"x":1,"y":2}`, partialCoverage, nil, "const"},
+		{
+			"unlimited missing key", `{"const":{"x":1,"y":2}}`, `{"x":1}`,
+			resourcev2.Coverage{Kind: "partial", Paths: []string{"/x"}}, nil, "const",
+		},
+		{
+			"maximum items", `{"properties":{"x":{"minItems":3,"maxItems":1}}}`, `{"x":[1,2]}`,
+			partialCoverage, nil, "maxItems",
+		},
+		{
+			"maximum properties", `{"minProperties":4,"maxProperties":1}`, `{"x":1,"y":2}`,
+			partialCoverage, nil, "maxProperties",
+		},
+		{
+			"duplicate items", `{"properties":{"x":{"minItems":3,"uniqueItems":true}}}`, `{"x":[1,1]}`,
+			partialCoverage, nil, "repeats item",
+		},
+		{
+			"closed extra", `{"minProperties":3,"properties":{"x":{}},"additionalProperties":false}`, `{"x":1,"y":2}`,
+			partialCoverage, nil, "not allowed",
+		},
+		{"deduplicate root", `{"minProperties":3,"const":{"x":1,"y":2}}`, `{"x":1}`, partialCoverage, []string{""}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			schema := admitSchema(t, d2020, tt.schema, "")
+			value := body(t, tt.value)
+			if tt.reject != "" {
+				rejectAdmit(t, schema, value, tt.coverage, tt.reject)
+				return
+			}
+			got := mustAdmit(t, schema, value, tt.coverage)
+			if !slices.Equal(got.UnavailablePaths, tt.want) {
+				t.Fatalf("unavailable = %q, want %q", got.UnavailablePaths, tt.want)
+			}
+		})
+	}
+}
+
+func TestAdmitCollectionCombinators(t *testing.T) {
+	tests := []struct {
+		name, schema, value string
+		want                []string
+		reject              string
+	}{
+		{
+			"all uncertain", `{"allOf":[{"minProperties":2},{"properties":{"x":{"minItems":2}}}]}`,
+			`{"x":[1]}`, []string{"", "/x"}, "",
+		},
+		{
+			"all definite failure", `{"allOf":[{"minProperties":2},{"properties":{"x":{"type":"string"}}}]}`,
+			`{"x":1}`, nil, "kind",
+		},
+		{"any confirmed", `{"anyOf":[{"minProperties":2},{"type":"object"}]}`, `{}`, nil, ""},
+		{"any uncertain", `{"anyOf":[{"minProperties":2},{"type":"string"}]}`, `{}`, []string{""}, ""},
+		{"any definite failure", `{"anyOf":[{"const":{"x":1}},{"type":"string"}]}`, `{"x":2}`, nil, "matches no"},
+		{"one ambiguous", `{"oneOf":[{"minProperties":2},{"type":"object"}]}`, `{}`, []string{""}, ""},
+		{"one maximum ambiguity", `{"oneOf":[{"maxProperties":1},{"maxProperties":2}]}`, `{}`, []string{""}, ""},
+		{
+			"one unique ambiguity", `{"properties":{"x":{"oneOf":[{"uniqueItems":true},{"type":"array"}]}}}`,
+			`{"x":[]}`, []string{"/x"}, "",
+		},
+		{
+			"one closed ambiguity",
+			`{"oneOf":[
+				{"properties":{"a":{"type":"string"}},"additionalProperties":false},
+				{"properties":{"b":{"type":"string"}},"additionalProperties":false}
+			]}`,
+			`{}`, []string{""}, "",
+		},
+		{
+			"one optional ambiguity",
+			`{"oneOf":[{"properties":{"a":{"type":"string"}}},{"properties":{"a":{"type":"number"}}}]}`,
+			`{}`, []string{""}, "",
+		},
+		{
+			"one item ambiguity", `{"properties":{"x":{"oneOf":[{"items":{"type":"string"}},{"items":{"type":"integer"}}]}}}`,
+			`{"x":[]}`, []string{"/x"}, "",
+		},
+		{
+			"one unconstrained optional overlap", `{"oneOf":[{"properties":{"a":{}}},{"properties":{"a":{}}}]}`,
+			`{}`, nil, "more than one",
+		},
+		{
+			"one unconstrained referenced overlap",
+			`{"$defs":{"free":{}},"oneOf":[
+				{"properties":{"a":{"$ref":"#/$defs/free"}}},
+				{"properties":{"a":{"allOf":[{},{"anyOf":[{"type":"string"},{}]}]}}}
+			]}`,
+			`{}`, nil, "more than one",
+		},
+		{
+			"one present scalar contradiction",
+			`{"oneOf":[{"properties":{"a":{"type":"string"}}},{"properties":{"a":{"type":"number"}}}]}`,
+			`{"a":true}`, nil, "matches no",
+		},
+		{
+			"one definite overlap", `{"oneOf":[{"type":"object"},{"type":"object"},{"minProperties":2}]}`,
+			`{}`, nil, "more than one",
+		},
+		{"one uncertain only", `{"oneOf":[{"minProperties":2},{"type":"string"}]}`, `{}`, []string{""}, ""},
+		{"one definite failure", `{"oneOf":[{"const":{"x":1}},{"type":"string"}]}`, `{"x":2}`, nil, "matches no"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			schema := admitSchema(t, d2020, tt.schema, "")
+			value := body(t, tt.value)
+			if tt.reject != "" {
+				rejectAdmit(t, schema, value, partialCoverage, tt.reject)
+				return
+			}
+			got := mustAdmit(t, schema, value, partialCoverage)
+			if !slices.Equal(got.UnavailablePaths, tt.want) {
+				t.Fatalf("unavailable = %q, want %q", got.UnavailablePaths, tt.want)
+			}
+		})
+	}
+}
+
+func TestPartialConstraintComparisonChargesWorkAndCancellation(t *testing.T) {
+	values := make([]resourcev2.Value, admissionContextCheckInterval)
+	for i := range values {
+		values[i] = int64Value(int64(i))
+	}
+	value := resourcev2.Value{Kind: "list", List: values}
+	policy := DefaultPolicy()
+	policy.MaxAdmissionWork = admissionContextCheckInterval
+	a := admitter{ctx: context.Background(), policy: policy, coverage: partialCoverage}
+	_, err := a.compareConstraint(&value, &value)
+	requireCode(t, err, codeResourceLimit, "MaxAdmissionWork")
+	ctx := &expiringContext{Context: context.Background(), err: context.Canceled}
+	a = admitter{ctx: ctx, policy: DefaultPolicy(), coverage: partialCoverage}
+	_, err = a.compareConstraint(&value, &value)
+	requireCode(t, err, codeCancelled, "")
+	short := resourcev2.Value{Kind: "list", List: []resourcev2.Value{values[len(values)-1]}}
+	policy.MaxAdmissionWork = admissionContextCheckInterval
+	a = admitter{ctx: context.Background(), policy: policy, coverage: partialCoverage}
+	_, err = a.compareConstraint(&value, &short)
+	requireCode(t, err, codeResourceLimit, "MaxAdmissionWork")
+	a = admitter{
+		ctx:    &expiringContext{Context: context.Background(), err: context.Canceled},
+		policy: DefaultPolicy(), coverage: partialCoverage,
+	}
+	_, err = a.compareConstraint(&value, &short)
+	requireCode(t, err, codeCancelled, "")
+	localCoverage := resourcev2.Coverage{Kind: "partial", Paths: []string{"/0"}, Reason: "first member may be omitted"}
+	almostComplete := resourcev2.Value{Kind: "list", List: values[1:]}
+	a = admitter{ctx: context.Background(), policy: policy, coverage: localCoverage}
+	_, err = a.compareConstraint(&value, &almostComplete)
+	requireCode(t, err, codeResourceLimit, "MaxAdmissionWork")
+	a = admitter{
+		ctx:    &expiringContext{Context: context.Background(), err: context.Canceled},
+		policy: DefaultPolicy(), coverage: localCoverage,
+	}
+	_, err = a.compareConstraint(&value, &almostComplete)
+	requireCode(t, err, codeCancelled, "")
+}
+
+func TestPartialUnionProofSharesAdmissionBudget(t *testing.T) {
+	var document bytes.Buffer
+	document.WriteString(`{"oneOf":[{"properties":{"payload":{"properties":{`)
+	for index := range admissionContextCheckInterval + 128 {
+		if index > 0 {
+			document.WriteByte(',')
+		}
+		document.WriteString(strconv.Quote("field" + strconv.Itoa(index)))
+		document.WriteString(`:{}`)
+	}
+	document.WriteString(`}}}},{"type":"object"}]}`)
+	schema := admitSchema(t, d2020, document.String(), "")
+	value := body(t, `{}`)
+	policy := DefaultPolicy()
+	policy.MaxAdmissionWork = 128
+	_, err := Admit(context.Background(), schema, value, partialCoverage, policy)
+	requireCode(t, err, codeResourceLimit, "")
+	ctx := &expiringContext{Context: context.Background(), after: 1, err: context.Canceled}
+	_, err = Admit(ctx, schema, value, partialCoverage, DefaultPolicy())
+	requireCode(t, err, codeCancelled, "")
 }

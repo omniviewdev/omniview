@@ -20,6 +20,7 @@ type metricStream struct {
 	input             chan metric.StreamInput
 	ready             chan struct{}
 	done              chan struct{}
+	drained           chan struct{}
 	cancel            context.CancelFunc
 	once              sync.Once
 	wireSubscriptions map[string]string
@@ -75,10 +76,16 @@ func (c *controller) ensureStream(pluginID, connectionID string) (*metricStream,
 		return nil, apperror.PluginNotFound(pluginID)
 	}
 	ctx, cancel := context.WithCancel(c.ctx)
-	state := &metricStream{key: key, input: make(chan metric.StreamInput), ready: make(chan struct{}), done: make(chan struct{}), cancel: cancel, wireSubscriptions: make(map[string]string)}
+	state := &metricStream{key: key, input: make(chan metric.StreamInput), ready: make(chan struct{}), done: make(chan struct{}), drained: make(chan struct{}), cancel: cancel, wireSubscriptions: make(map[string]string)}
 	c.streams[key] = state
 	c.mux.Unlock()
 	defer close(state.ready)
+	workerStarted := false
+	defer func() {
+		if !workerStarted {
+			close(state.drained)
+		}
+	}()
 	fail := func(err error) (*metricStream, error) {
 		c.mux.Lock()
 		if c.streams[key] == state {
@@ -116,7 +123,9 @@ func (c *controller) ensureStream(pluginID, connectionID string) (*metricStream,
 		return fail(closedStreamError())
 	default:
 	}
+	workerStarted = true
 	go func() {
+		defer close(state.drained)
 		defer c.endStream(state, closedStreamError())
 		for {
 			select {

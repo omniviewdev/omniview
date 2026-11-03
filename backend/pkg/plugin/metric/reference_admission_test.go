@@ -95,8 +95,13 @@ func nativeObservedMetricRecord(t *testing.T, fixture *nativeMetricFixture) host
 }
 
 func TestReferenceQueryCarriesAcceptedCatalogPinThroughActualGRPC(t *testing.T) {
+	t.Run("grpc", func(t *testing.T) { testReferenceQueryCatalogPin(t, false) })
+	t.Run("direct", func(t *testing.T) { testReferenceQueryCatalogPin(t, true) })
+}
+
+func testReferenceQueryCatalogPin(t *testing.T, direct bool) {
 	received := make(chan string, 1)
-	fixture := newNativeMetricFixture(t, func(ctx *sdkmetric.QueryContext, req sdkmetric.QueryRequest) (*sdkmetric.QueryResponse, error) {
+	fixture := nativeMetricFixtureForTransport(t, direct, func(ctx *sdkmetric.QueryContext, req sdkmetric.QueryRequest) (*sdkmetric.QueryResponse, error) {
 		pin, ok := resourcev2.CatalogRevisionFromContext(ctx.Context)
 		if !ok || pin == "" || req.Reference == nil {
 			return nil, resourcev2.NewError("INVALID_REQUEST", "Native query did not receive its admitted catalog pin.")

@@ -38,6 +38,13 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
       service.reset();
     };
   }, [service]);
+  // Inventory publishes only declarative route metadata for product-owned features.
+  useEffect(() => {
+    if (!isLoading && error === null) {
+      service.discoverBuiltins(installedPlugins);
+    }
+  }, [isLoading, error, installedPlugins, service]);
+
 
   // Orchestrate initial load
   useEffect(() => {
@@ -50,7 +57,7 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
     // Ready dev servers join the initial batch; others are loaded as soon as
     // their reconciled status becomes ready, independently of navigation.
     const descriptors: PluginDescriptor[] = installedPlugins
-      .filter((p) => !p.dev || (p.dev && p.devPort && p.devPort > 0))
+      .filter((p) => p.origin !== 'builtin' && p.enabled !== false && (!p.dev || (p.dev && p.devPort && p.devPort > 0)))
       .map((p) => ({
         id: p.id,
         dev: p.dev,
@@ -92,7 +99,7 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
     }
 
     for (const plugin of installedPlugins) {
-      if (!plugin.dev || !plugin.devPort || initialBatch.current?.has(plugin.id)) {
+      if (plugin.origin === 'builtin' || plugin.enabled === false || !plugin.dev || !plugin.devPort || initialBatch.current?.has(plugin.id)) {
         continue;
       }
 

@@ -28,6 +28,9 @@ func (a *AdapterV1) GetSupportedResources(ctx *types.PluginContext) []logs.Handl
 }
 
 func (a *AdapterV1) CreateSession(ctx *types.PluginContext, opts logs.CreateSessionOptions) (*logs.LogSession, error) {
+	if opts.HasResourceIntent() {
+		return a.CreateResourceSession(ctx, opts)
+	}
 	return a.inner.CreateSession(ctx, opts)
 }
 
@@ -62,4 +65,11 @@ func (a *AdapterV1) UpdateSessionOptions(
 
 func (a *AdapterV1) Stream(ctx context.Context, in chan logs.StreamInput) (chan logs.StreamOutput, error) {
 	return a.inner.Stream(ctx, in)
+}
+
+// Close releases native SDK sessions; remote clients have no local disposal.
+func (a *AdapterV1) Close() {
+	if closer, ok := a.inner.(interface{ Close() }); ok {
+		closer.Close()
+	}
 }

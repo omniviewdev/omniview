@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -136,12 +137,12 @@ func (pm *pluginManager) StopDevPlugin(id string) error {
 	if pm.healthChecker != nil {
 		pm.healthChecker.CancelRecovery(id)
 	}
+	var stopErr error
 	if record.Phase == lifecycle.PhaseRunning {
-		if err := pm.stopPlugin(record); err != nil {
-			return err
-		}
+		stopErr = pm.stopPlugin(record)
 	}
-	if err := pm.shutdownPlugin(id, record); err != nil {
+	if err := errors.Join(stopErr, pm.shutdownPlugin(id, record)); err != nil {
+		pm.storeFailedRecord(id, record, err)
 		return err
 	}
 	stopped := *record
@@ -160,6 +161,9 @@ func (pm *pluginManager) StopDevPlugin(id string) error {
 }
 
 func (pm *pluginManager) checkBackendRecovery(id string) error {
+	if _, builtin := pm.builtin(id); builtin {
+		return nil
+	}
 	if pm.pidTracker == nil {
 		return fmt.Errorf("backend process ownership tracker unavailable")
 	}

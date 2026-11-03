@@ -1,3 +1,4 @@
+import { useCallback, useEffect } from 'react';
 import { Button, Heading, Spinner, Text } from '@omniviewdev/base-ui';
 import { DevProcessStatus } from '@omniviewdev/runtime/models';
 import { DevServerManager } from '@omniviewdev/runtime/api';
@@ -17,10 +18,38 @@ export default function PluginRouteStatus({ pluginId }: Props) {
   const params = useParams<{ pluginId: string }>();
   const id = pluginId ?? params.pluginId ?? '';
   const restart = useMutation({ mutationFn: async (target: string) => DevServerManager.RestartDevServer(target) });
-  const { plugins } = usePluginService();
+  const { plugins, load } = usePluginService();
   const { plugins: installed, isLoading, error } = useInstalledPlugins();
   const plugin = installed.find((candidate) => candidate.id === id);
   const state = plugins.get(id);
+  const activate = useCallback(() => {
+    void load(id).catch((err: unknown) => {
+      console.error(`[PluginService] activation failed for ${id}`, err);
+    });
+  }, [id, load]);
+  useEffect(() => {
+    if (plugin?.origin !== 'builtin' || plugin.enabled === false
+      || state?.backendPhase === 'Stopping' || state?.backendPhase === 'Stopped'
+      || (state?.phase !== undefined && state.phase !== 'idle')) {
+      return;
+    }
+
+    activate();
+  }, [activate, plugin?.origin, plugin?.enabled, state?.phase, state?.backendPhase]);
+
+  if (plugin?.origin === 'builtin' && plugin.enabled === false) {
+    return (
+      <div className={styles.Root} role="status">
+        <Heading level={4}>{id} is disabled</Heading>
+        <Text tone="muted">Enable this built-in plugin from plugin settings.</Text>
+      </div>
+    );
+  }
+
+  if (plugin?.origin === 'builtin' && state?.backendPhase === 'Stopping') {
+    return <div className={styles.Root} role="status"><Text>Stopping {id}…</Text></div>;
+  }
+
 
   if (state?.phase === 'error') {
     return <PluginLoadErrorPage pluginId={id} error={state.error ?? 'Plugin initialization failed'} />;
@@ -35,14 +64,15 @@ export default function PluginRouteStatus({ pluginId }: Props) {
     || plugin.devStatus === DevProcessStatus.DevProcessStatusStopped
     || Boolean(plugin.devError)
   );
+  const stoppedBuiltin = plugin?.origin === 'builtin' && state?.backendPhase === 'Stopped';
   const inventoryFailed = !plugin?.devPort && (
-    plugin?.phase === 'Stopped'
+    stoppedBuiltin || plugin?.phase === 'Stopped'
     || plugin?.phase === 'Failed'
     || plugin?.phase === 'BuildFailed'
   );
   const inventoryError = inventoryFailed && plugin?.devStatus === undefined ? plugin?.lastError : undefined;
   const inventoryFallback = plugin?.phase === 'BuildFailed' ? 'The plugin build failed.'
-    : plugin?.phase === 'Stopped' ? 'The plugin is stopped.' : 'The plugin failed.';
+    : stoppedBuiltin || plugin?.phase === 'Stopped' ? 'The plugin is stopped.' : 'The plugin failed.';
   if (error !== null || devFailed || inventoryFailed) {
     return (
       <div className={styles.Root} role="alert">
@@ -55,6 +85,9 @@ export default function PluginRouteStatus({ pluginId }: Props) {
         </Text>
         {restart.variables === id && restart.error && (
           <Text tone="danger" role="alert">{restart.error instanceof Error ? restart.error.message : String(restart.error)}</Text>
+        )}
+        {stoppedBuiltin && (
+          <Button size="sm" onClick={activate}>Activate</Button>
         )}
         {plugin?.dev && (
           <Button size="sm" disabled={restart.isPending && restart.variables === id} onClick={() => {

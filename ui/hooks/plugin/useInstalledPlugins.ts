@@ -16,6 +16,9 @@ import { Events } from '@omniviewdev/runtime/runtime';
 export type InstalledPluginDescriptor = {
   readonly id: string;
   readonly dev: boolean;
+  readonly origin?: 'builtin' | 'external';
+  readonly frontendModule?: string;
+  readonly enabled?: boolean;
   readonly phase?: PluginInfo['phase'];
   readonly lastError?: string;
   readonly devPort?: number;
@@ -39,12 +42,14 @@ export function useInstalledPlugins(): {
     const stopInstall = Events.On('plugin/install_finished', invalidateInventory);
     const stopDevInstall = Events.On('plugin/dev_install_complete', invalidateInventory);
     const stopUpdate = Events.On('plugin/update_complete', invalidateInventory);
+    const stopEnablement = Events.On('plugin/enablement_changed', invalidateInventory);
     return () => {
       stopInit();
       stopInventory();
       stopInstall();
       stopDevInstall();
       stopUpdate();
+      stopEnablement();
     };
   }, [queryClient]);
 
@@ -67,11 +72,14 @@ export function useInstalledPlugins(): {
   });
 
   const plugins = useMemo(() => (query.data ?? []).map((plugin): InstalledPluginDescriptor => {
-    const dev = plugin.devMode ?? false;
+    const dev = plugin.origin !== 'builtin' && (plugin.devMode ?? false);
     const server = dev ? servers.get(plugin.id) : undefined;
     return {
       id: plugin.id,
       dev,
+      origin: plugin.origin === 'builtin' ? 'builtin' : 'external',
+      frontendModule: plugin.frontendModule,
+      enabled: plugin.enabled,
       phase: plugin.phase,
       lastError: plugin.lastError === '' ? undefined : plugin.lastError,
       // The backend allocates the port before starting Vite.

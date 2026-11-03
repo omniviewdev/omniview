@@ -22,7 +22,6 @@ import (
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdkstate "github.com/omniviewdev/plugin-sdk/pkg/state"
-	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
 // InstallInDevMode installs a plugin from a directory selected via dialog.
@@ -47,7 +46,7 @@ func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
 // InstallDevPluginFromPath links a local source without opening a native dialog.
 // A failed build/load returns the retained, recoverable record and a non-nil
 // structured error; it does not represent a ready installation.
-func (pm *pluginManager) InstallDevPluginFromPath(path string) (info sdktypes.PluginInfo, err error) {
+func (pm *pluginManager) InstallDevPluginFromPath(path string) (info plugintypes.PluginInfo, err error) {
 	l := pm.logger.Named("InstallDevPluginFromPath")
 	var pluginID string
 	buildAttempted := false
@@ -93,6 +92,9 @@ func (pm *pluginManager) InstallDevPluginFromPath(path string) (info sdktypes.Pl
 		return info, apperror.Wrap(err, apperror.TypePluginInstallFailed, http.StatusUnprocessableEntity, "Failed to parse plugin metadata")
 	}
 	pluginID = metadata.ID
+	if err := pm.guardProductOwned(pluginID); err != nil {
+		return info, err
+	}
 	if pm.devServerMgr == nil {
 		return info, apperror.New(
 			apperror.TypeSettingsMissingConfig, http.StatusUnprocessableEntity,
@@ -289,7 +291,7 @@ func (pm *pluginManager) failedDevInstall(
 	path string,
 	phase lifecycle.PluginPhase,
 	cause error,
-) (sdktypes.PluginInfo, error) {
+) (plugintypes.PluginInfo, error) {
 	record := plugintypes.NewPluginRecord(metadata.ID, *metadata, phase)
 	record.DevMode = true
 	record.DevPath = path
@@ -325,6 +327,9 @@ func (pm *pluginManager) InstallPluginVersion(
 	pluginID string,
 	version string,
 ) (*config.PluginMeta, error) {
+	if err := pm.guardProductOwned(pluginID); err != nil {
+		return nil, err
+	}
 	installMu := pm.installOpsLock(pluginID)
 	installMu.Lock()
 	defer installMu.Unlock()
@@ -388,6 +393,9 @@ func (pm *pluginManager) installPluginArchive(path, requestedID, version string)
 			fmt.Sprintf("Requested plugin %q, but the package contains %q.", requestedID, metadata.ID)).
 			WithInstance(requestedID)
 	}
+	if err := pm.guardProductOwned(metadata.ID); err != nil {
+		return nil, err
+	}
 	if requestedID == "" {
 		installMu := pm.installOpsLock(metadata.ID)
 		installMu.Lock()
@@ -416,7 +424,7 @@ func (pm *pluginManager) installPluginArchive(path, requestedID, version string)
 }
 
 // UninstallPlugin uninstalls a plugin from the manager and removes it from the filesystem.
-func (pm *pluginManager) UninstallPlugin(id string) (sdktypes.PluginInfo, error) {
+func (pm *pluginManager) UninstallPlugin(id string) (plugintypes.PluginInfo, error) {
 	installMu := pm.installOpsLock(id)
 	installMu.Lock()
 	defer installMu.Unlock()
@@ -426,7 +434,10 @@ func (pm *pluginManager) UninstallPlugin(id string) (sdktypes.PluginInfo, error)
 // UnlinkDevPlugin stops and removes the installed dev binding and copied build
 // artifacts using the normal uninstall transaction. The source tree is never
 // removed. Installed (non-dev) plugins must use UninstallPlugin explicitly.
-func (pm *pluginManager) UnlinkDevPlugin(id string) (sdktypes.PluginInfo, error) {
+func (pm *pluginManager) UnlinkDevPlugin(id string) (plugintypes.PluginInfo, error) {
+	if err := pm.guardProductOwned(id); err != nil {
+		return plugintypes.PluginInfo{}, err
+	}
 	installMu := pm.installOpsLock(id)
 	installMu.Lock()
 	defer installMu.Unlock()
@@ -435,7 +446,7 @@ func (pm *pluginManager) UnlinkDevPlugin(id string) (sdktypes.PluginInfo, error)
 	isDev := record != nil && record.DevMode
 	pm.recordsMu.RUnlock()
 	if record == nil {
-		return sdktypes.PluginInfo{}, apperror.PluginNotFound(id)
+		return plugintypes.PluginInfo{}, apperror.PluginNotFound(id)
 	}
 	if !isDev {
 		return record.ToInfo(), apperror.New(apperror.TypeValidation, http.StatusConflict,
@@ -444,12 +455,15 @@ func (pm *pluginManager) UnlinkDevPlugin(id string) (sdktypes.PluginInfo, error)
 	return pm.uninstallPlugin(id)
 }
 
-func (pm *pluginManager) uninstallPlugin(id string) (sdktypes.PluginInfo, error) {
+func (pm *pluginManager) uninstallPlugin(id string) (plugintypes.PluginInfo, error) {
+	if err := pm.guardProductOwned(id); err != nil {
+		return plugintypes.PluginInfo{}, err
+	}
 	pm.recordsMu.RLock()
 	record, ok := pm.records[id]
 	pm.recordsMu.RUnlock()
 	if !ok {
-		return sdktypes.PluginInfo{}, apperror.PluginNotFound(id)
+		return plugintypes.PluginInfo{}, apperror.PluginNotFound(id)
 	}
 	if err := sdkstate.ValidateComponent(id); err != nil {
 		return record.ToInfo(), apperror.Internal(err, "Invalid installed plugin identity")
@@ -471,7 +485,7 @@ func (pm *pluginManager) uninstallPlugin(id string) (sdktypes.PluginInfo, error)
 		// The pre-unload ownership marker remains available for a safe retry.
 		return info, err
 	}
-	restore := func(cause error, incomplete bool) (sdktypes.PluginInfo, error) {
+	restore := func(cause error, incomplete bool) (plugintypes.PluginInfo, error) {
 		if recovery != nil && staged && recovery.cleanupStarted {
 			incomplete = true
 			cause = errors.Join(cause, errors.New("disposal began; partial artifacts remain in owned staging"))

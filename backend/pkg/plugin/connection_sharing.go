@@ -78,7 +78,13 @@ func (pm *pluginManager) validateDependencies(root config.PluginMeta) error {
 		visiting[meta.ID] = true
 		if meta.Requires != nil {
 			for _, requirement := range meta.Requires.Connections {
-				owner, err := types.LoadPluginMetadata(pm.pluginsRoot.ResolvePath(requirement.Plugin))
+				var owner config.PluginMeta
+				var err error
+				if entry, builtin := pm.builtin(requirement.Plugin); builtin {
+					owner = entry.Metadata
+				} else {
+					owner, err = types.LoadPluginMetadata(pm.pluginsRoot.ResolvePath(requirement.Plugin))
+				}
 				if err != nil || owner.ID != requirement.Plugin || !slices.Contains(owner.Capabilities, "resource") {
 					return ownerUnavailable()
 				}

@@ -417,6 +417,24 @@ func (pm *pluginManager) guardArchiveRecovery(id string) error {
 	return nil
 }
 
+type builtinArchiveRecoveryError struct{ error }
+
+func (pm *pluginManager) failBuiltinArchiveRecovery(id string, cause error) {
+	var machine *lifecycle.PluginStateMachine
+	pm.recordsMu.Lock()
+	if existing := pm.records[id]; existing != nil {
+		record := *existing
+		record.Phase = lifecycle.PhaseFailed
+		record.LastError = cause.Error()
+		machine = record.StateMachine
+		pm.records[id] = &record
+	}
+	pm.recordsMu.Unlock()
+	if machine != nil {
+		machine.ForcePhase(lifecycle.PhaseFailed, cause.Error())
+	}
+}
+
 func (pm *pluginManager) reconcileArchiveRecoveries() (map[string]bool, error) {
 	entries, err := pm.stateRoot.ReadDir(".")
 	if err != nil {
@@ -426,6 +444,7 @@ func (pm *pluginManager) reconcileArchiveRecoveries() (map[string]bool, error) {
 	// Validate every proof before publishing any recovery inventory. One foreign
 	// profile or malformed marker must stop startup rather than authorize load.
 	recoveries := make([]*archiveRecovery, 0)
+	var builtinErr error
 	for _, entry := range entries {
 		if !strings.HasPrefix(entry.Name(), archiveRecoveryPrefix) {
 			continue
@@ -434,13 +453,28 @@ func (pm *pluginManager) reconcileArchiveRecoveries() (map[string]bool, error) {
 			return nil, fmt.Errorf("invalid archive recovery marker name %q", entry.Name())
 		}
 		id := strings.TrimSuffix(strings.TrimPrefix(entry.Name(), archiveRecoveryPrefix), ".json")
+		_, builtin := pm.builtin(id)
 		recovery, readErr := pm.readArchiveRecovery(id)
 		if readErr != nil || recovery == nil {
+			if builtin {
+				blocked[id] = true
+				detail := errors.Join(readErr, fmt.Errorf("built-in %q has invalid pending archive evidence at %s; remove or relocate explicitly", id, pm.stateRoot.ResolvePath(archiveRecoveryName(id))))
+				builtinErr = errors.Join(builtinErr, detail)
+				pm.failBuiltinArchiveRecovery(id, detail)
+				continue
+			}
 			return nil, errors.Join(readErr, fmt.Errorf("cannot validate pending archive replacement for %s", id))
 		}
 		recoveries = append(recoveries, recovery)
 	}
 	for _, recovery := range recoveries {
+		if _, builtin := pm.builtin(recovery.ID); builtin {
+			blocked[recovery.ID], blocked[recovery.Stage] = true, true
+			detail := fmt.Errorf("built-in %q has pending archive replacement at %s; remove or relocate external recovery explicitly", recovery.ID, pm.pluginsRoot.ResolvePath(recovery.Stage))
+			builtinErr = errors.Join(builtinErr, detail)
+			pm.failBuiltinArchiveRecovery(recovery.ID, detail)
+			continue
+		}
 		record := plugintypes.NewPluginRecord(recovery.ID, recovery.Candidate, lifecycle.PhaseFailed)
 		// The immutable candidate metadata has no captured installation time.
 		record.InstalledAt = time.Time{}
@@ -461,6 +495,9 @@ func (pm *pluginManager) reconcileArchiveRecoveries() (map[string]bool, error) {
 		pm.records[recovery.ID] = record
 		pm.recordsMu.Unlock()
 		blocked[recovery.ID], blocked[recovery.Stage] = true, true
+	}
+	if builtinErr != nil {
+		return blocked, builtinArchiveRecoveryError{builtinErr}
 	}
 	return blocked, nil
 }
