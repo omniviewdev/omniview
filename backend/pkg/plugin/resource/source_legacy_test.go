@@ -502,7 +502,7 @@ func TestLegacyProducerAndReceiverHaveIndependentBoundedBudgets(t *testing.T) {
 	s.ackFrame()
 	_, err = session.applyLocked(frame, sourceFrameContext{frameReserved: frameBytes})
 	session.transientLedger.release(frameBytes)
-	session.legacyTransientLedger.release(maxSourceTransientBytes-held)
+	session.legacyTransientLedger.release(maxSourceTransientBytes - held)
 	if err != nil || len(session.staging) != 1 {
 		t.Fatalf("receiver could not stage concurrently: %v", err)
 	}
