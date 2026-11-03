@@ -243,7 +243,7 @@ func (vp *viteProcess) Start() error {
 	if vp.buildOpts.ViteStarted != nil {
 		var identity devcontract.ProcessIdentity
 		if vp.buildOpts.ViteOwner.WorkspaceID != "" {
-			identity, err = devsession.CaptureProcess(cmd.Process.Pid, vp.buildOpts.ViteOwner)
+			identity, err = captureViteProcess(vp.ctx, cmd, vp.buildOpts.ViteOwner)
 		}
 		if err == nil {
 			err = vp.buildOpts.ViteStarted(identity)
@@ -283,6 +283,45 @@ func (vp *viteProcess) Start() error {
 	go vp.awaitReady(readyCh)
 
 	return nil
+}
+
+// captureViteProcess avoids recording the parent's image during the child's exec transition.
+func captureViteProcess(ctx context.Context, cmd *exec.Cmd, owner devsession.ProcessOwner) (devcontract.ProcessIdentity, error) {
+	self, err := os.Executable()
+	if err != nil {
+		return devcontract.ProcessIdentity{}, err
+	}
+	if resolved, resolveErr := filepath.EvalSymlinks(self); resolveErr == nil {
+		self = resolved
+	}
+	launched := cmd.Path
+	if !filepath.IsAbs(launched) && cmd.Dir != "" {
+		launched = filepath.Join(cmd.Dir, launched)
+	}
+	if resolved, resolveErr := filepath.EvalSymlinks(launched); resolveErr == nil {
+		launched = resolved
+	}
+	return waitForViteExec(ctx, launched, self, 5*time.Second, func() (devcontract.ProcessIdentity, error) {
+		return devsession.CaptureProcess(cmd.Process.Pid, owner)
+	})
+}
+
+func waitForViteExec(ctx context.Context, launched, self string, timeout time.Duration, capture func() (devcontract.ProcessIdentity, error)) (devcontract.ProcessIdentity, error) {
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	for {
+		identity, err := capture()
+		if err != nil || launched == self || identity.Executable != self {
+			return identity, err
+		}
+		select {
+		case <-ctx.Done():
+			return devcontract.ProcessIdentity{}, ctx.Err()
+		case <-deadline.C:
+			return devcontract.ProcessIdentity{}, fmt.Errorf("%w: started child did not exec %s", devsession.ErrOwnership, launched)
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
 }
 
 // installDepsIfMissing runs `pnpm install` in uiDir when node_modules is missing.

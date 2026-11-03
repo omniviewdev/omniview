@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsession"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/stretchr/testify/require"
 )
@@ -155,4 +157,37 @@ server.listen(port, '127.0.0.1', () => console.log('Local: http://127.0.0.1:' + 
 	defer process.Stop()
 	require.NoError(t, process.WaitReady())
 	require.NoError(t, process.Stop())
+}
+
+func TestWaitForViteExec(t *testing.T) {
+	const self, launched = "/host/omniview", "/node/bin/node"
+	t.Run("waits for child image", func(t *testing.T) {
+		calls := 0
+		identity, err := waitForViteExec(context.Background(), launched, self, time.Second, func() (devcontract.ProcessIdentity, error) {
+			calls++
+			if calls < 3 {
+				return devcontract.ProcessIdentity{Executable: self}, nil
+			}
+			return devcontract.ProcessIdentity{Executable: launched}, nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, launched, identity.Executable)
+		require.Equal(t, 3, calls)
+	})
+	t.Run("refuses unexecuted child", func(t *testing.T) {
+		identity, err := waitForViteExec(context.Background(), launched, self, 20*time.Millisecond, func() (devcontract.ProcessIdentity, error) {
+			return devcontract.ProcessIdentity{Executable: self}, nil
+		})
+		require.ErrorIs(t, err, devsession.ErrOwnership)
+		require.Empty(t, identity.Executable)
+	})
+	t.Run("honors cancellation", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		identity, err := waitForViteExec(ctx, launched, self, time.Second, func() (devcontract.ProcessIdentity, error) {
+			return devcontract.ProcessIdentity{Executable: self}, nil
+		})
+		require.ErrorIs(t, err, context.Canceled)
+		require.Empty(t, identity.Executable)
+	})
 }
