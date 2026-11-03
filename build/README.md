@@ -97,10 +97,41 @@ retain their separate macOS 14 minimum. Verify the resulting Mach-O build
 versions when checking a release package; do not infer OS support from the
 release tag alone.
 
+The package verifier checks each architecture separately for compatibility with
+Apple `lipo` versions that reject multiple architectures in one verification call.
+
 The cask updater applies that macOS 12 minimum to stable and nightly publication
 alongside the new version and checksum. It raises missing or weaker requirements,
 preserves stricter tap policy, and refuses unsupported eligibility layouts.
 The currently published cask is not changed until the new release is published.
+
+The supported baseline is `depends_on macos: :monterey`, not the deprecated
+string comparison `">= :monterey"`. Named minima and equivalent whole-release
+numeric minima migrate to symbols. Stricter numeric minor/patch minima cannot
+be represented exactly by Homebrew's current supported named minimum DSL.
+The updater refuses those policies before writing the cask; review tap policy
+explicitly rather than rounding `12.3.1` down to Monterey or emitting deprecated DSL.
+Unknown names, conditional requirements, and mixed layouts also fail closed.
+See Homebrew's [requirement parser](https://github.com/Homebrew/brew/blob/main/Library/Homebrew/requirements/macos_requirement.rb)
+and [macOS version symbols](https://github.com/Homebrew/brew/blob/main/Library/Homebrew/macos_version.rb).
+
+To verify a fixed workflow against an existing signed package before tagging,
+dispatch `homebrew-check.yml` at the fix branch:
+
+```sh
+gh workflow run homebrew-check.yml --ref FIX_BRANCH \
+  -f source-run-id=41666214516 \
+  -f expected-source-head=548842be58a84928d10b329da7cb5eb43d474b2c \
+  -f artifact=macos-dmg -f cask=omniview
+```
+
+The workflow requires a completed source run from this repository with that exact
+full SHA, then downloads only the named artifact using the run ID and Actions token.
+A failed publication run is allowed because its signed-package job may have passed.
+Both native runners still verify signatures and exercise every lifecycle path with
+`HOMEBREW_DEVELOPER=1`; no warning suppression, substitute executable, or installation
+skip is used. Normal reusable release calls still consume their current-run artifact.
+Manual verification publishes nothing and does not move any release tag.
 
 Run lightweight checks locally:
 

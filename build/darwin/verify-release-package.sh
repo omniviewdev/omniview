@@ -30,7 +30,8 @@ for executable in Omniview omniview-dev; do
   test -f "$binary"
   test -x "$binary"
   test ! -L "$binary"
-  xcrun lipo "$binary" -verify_arch arm64 x86_64
+  xcrun lipo "$binary" -verify_arch arm64
+  xcrun lipo "$binary" -verify_arch x86_64
   codesign --verify --strict "$binary"
 done
 codesign --verify --deep --strict "$app"
