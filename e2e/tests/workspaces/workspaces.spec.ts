@@ -17,6 +17,8 @@ test.describe('Owned application profiles', () => {
   });
 
   test('saves host settings through UI, persists reload and isolates profile themes including first paint', async ({ appPage, workspace, profiles }, testInfo) => {
+    // This test starts two profiles and reloads three pages in one timeout.
+    test.setTimeout(60_000);
     const other = await profiles.open('profile-b');
     const a = await workspace.verify();
     const b = await other.workspace.verify();
