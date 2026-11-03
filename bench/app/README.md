@@ -109,11 +109,14 @@ candidate sources. Explicit direct-CLI `UI_SOURCE_REF` or
 `KUBERNETES_SOURCE_REF` values must still match the selected cohort.
 The Kubernetes gitlink must also match. Commits must be reachable by checkout,
 but candidate testing does not require a module or npm publication.
-Candidate workflows pin the independently reviewed SDK v0.14.2 release commit in
-`REVIEWED_SDK_REVISION`; they do not read repository variables for SDK approval.
-Keep repository variables unchanged: neither the resource-v2 approval variable nor
-the legacy `OMNIVIEW_E2E_REVIEWED_SDK_REVISION` selects this candidate's SDK.
-Direct execution must set `REVIEWED_SDK_REVISION` to the same reviewed full commit.
+Candidate admission requires an exact independently reviewed SDK commit from
+repository variable `OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION` or the separate
+`OMNIVIEW_RESOURCE_V2_REVIEWED_MAINTENANCE_SDK_REVISION`. These approvals remain
+under user-authorized release administration. Maintenance servicing must not
+replace mainline approval. Workflows propagate the admitted selection as
+`REVIEWED_SDK_REVISION`; direct execution supplies either that variable or
+`REVIEWED_MAINTENANCE_SDK_REVISION`. Neither a cohort edit nor a release tag grants
+approval.
 The independent SDK isolation-core baseline remains
 `5b3ef764d1cf738835a723a749a0cb6c45f85e44`; candidate approval does not
 authorize protected isolation changes or replace review with release-tag trust.

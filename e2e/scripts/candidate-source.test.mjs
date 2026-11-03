@@ -26,6 +26,24 @@ test('candidate admission rejects numeric commit identities and missing cohort m
     assert.throws(() => admitCandidate(incomplete, env));
   }
 });
+test('separate maintenance approval preserves exact mainline and maintenance admission', () => {
+  const mainline = 'd'.repeat(40);
+  const approvals = Object.freeze({
+    REVIEWED_SDK_REVISION: mainline,
+    REVIEWED_MAINTENANCE_SDK_REVISION: cohort['plugin-sdk'],
+  });
+  assert.deepEqual(admitCandidate(cohort, approvals), { sdk: cohort['plugin-sdk'], ui: cohort.ui, kubernetes: cohort.kubernetes });
+  assert.deepEqual(admitCandidate({ ...cohort, 'plugin-sdk': mainline }, approvals), { sdk: mainline, ui: cohort.ui, kubernetes: cohort.kubernetes });
+  assert.throws(() => admitCandidate({ ...cohort, 'plugin-sdk': 'f'.repeat(40) }, approvals));
+});
+test('maintenance admission rejects tags, malformed revisions and absent external approval', () => {
+  for (const revision of [undefined, 'v0.14.5', `${cohort['plugin-sdk']}\n`, false]) {
+    assert.throws(() => admitCandidate(cohort, {
+      REVIEWED_SDK_REVISION: 'd'.repeat(40),
+      REVIEWED_MAINTENANCE_SDK_REVISION: revision,
+    }));
+  }
+});
 test('candidate verification rejects wrong, dirty and missing source checkouts', () => {
   const refs = admitCandidate(cohort, env);
   const sources = { sdk: '/sdk', ui: '/ui', kubernetes: '/kubernetes' };

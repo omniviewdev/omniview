@@ -36,6 +36,8 @@ const (
 
 	// outputMuxBuffer is the buffer size of the plugin output multiplexer channel.
 	outputMuxBuffer = 256
+
+	uiSessionCreateTimeout = 90 * time.Second
 )
 
 // Controller manages log sessions across all plugins.
@@ -521,7 +523,18 @@ func (c *controller) CreateSession(
 	connectionID string,
 	opts logs.CreateSessionOptions,
 ) (*logs.LogSession, error) {
-	ctx, span := tracer.Start(context.Background(), "logs.CreateSession")
+	ctx, cancel := context.WithTimeout(context.Background(), uiSessionCreateTimeout)
+	defer cancel()
+	return c.createSessionWithContext(ctx, pluginID, connectionID, opts)
+}
+
+func (c *controller) createSessionWithContext(
+	ctx context.Context,
+	pluginID string,
+	connectionID string,
+	opts logs.CreateSessionOptions,
+) (*logs.LogSession, error) {
+	ctx, span := tracer.Start(ctx, "logs.CreateSession")
 	defer span.End()
 	span.SetAttributes(
 		attribute.String("plugin_id", pluginID),
@@ -550,16 +563,27 @@ func (c *controller) CreateSession(
 		return nil, err
 	}
 
-	// Pre-register the correlation before the RPC so immediate UI output cannot
-	// race session indexing. This ID is not authority and does not permit retries.
-	opts.SessionID = uuid.NewString()
+	// The UI may reserve a correlation ID before the RPC to subscribe before
+	// the provider emits output. The ID is correlation, not authority.
+	if opts.SessionID == "" {
+		opts.SessionID = uuid.NewString()
+	} else if _, err := uuid.Parse(opts.SessionID); err != nil {
+		return nil, resourcev2.NewError("INVALID_REQUEST", "Log session ID must be a UUID.")
+	}
 	c.mu.Lock()
+	if _, exists := c.sessionIndex[opts.SessionID]; exists {
+		c.mu.Unlock()
+		return nil, resourcev2.NewError("INVALID_REQUEST", "Log session ID is already in use.")
+	}
 	c.sessionIndex[opts.SessionID] = sessionIndex{pluginID: pluginID, connectionID: connectionID}
 	c.mu.Unlock()
 	session, err := client.CreateSession(
 		c.getConnectedCtx(ctx, pluginID, connectionID),
 		opts,
 	)
+	if err == nil {
+		err = ctx.Err()
+	}
 	if err == nil && (session == nil || session.ID != opts.SessionID) {
 		err = resourcev2.NewError("PROVIDER_ERROR", "Log provider returned an invalid session.")
 	}

@@ -70,10 +70,15 @@ do not prove canonical preparation, acceptance and cleanup succeeded.
 
 The checked-out host's `e2e/source-cohort.json` selects full UI and Kubernetes
 commits for canonical CI and whole-app profiling. Kubernetes must match the
-committed `plugins/kubernetes` gitlink. The cohort SDK must match the independently
-reviewed commit in repository variable `OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION`.
-Workflows pass that value as `REVIEWED_SDK_REVISION`. Only the user changes the
-approval variable; editing the cohort alone cannot approve another SDK commit.
+committed `plugins/kubernetes` gitlink. The cohort SDK must exactly match an
+independently reviewed commit in repository variable
+`OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION` or
+`OMNIVIEW_RESOURCE_V2_REVIEWED_MAINTENANCE_SDK_REVISION`. The separate maintenance
+approval services the deployed wire contract without replacing mainline approval.
+Workflows admit those values as `REVIEWED_SDK_REVISION` and
+`REVIEWED_MAINTENANCE_SDK_REVISION`, then pass the admitted selection downstream as
+`REVIEWED_SDK_REVISION`. Only user-authorized release administration changes these
+external approvals; editing the cohort alone cannot approve another SDK commit.
 
 The isolation guard separately pins SDK checkpoint
 `eea5943f7a5319fb1585a8ec2d9ce5d06fa763ca`, after independent review of the

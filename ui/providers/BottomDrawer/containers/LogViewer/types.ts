@@ -59,6 +59,7 @@ export const StreamEventType = {
   RECONNECTING: 3,
   RECONNECTED: 4,
   STREAM_ENDED: 5,
+  SESSION_READY: 6,
 } as const;
 
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'trace';
