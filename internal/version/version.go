@@ -2,7 +2,7 @@ package version
 
 // CompatibilityVersion is the minimum host compatibility release line supported
 // by this source. Build labels (including nightly and PR versions) are separate.
-const CompatibilityVersion = "0.24.0"
+const CompatibilityVersion = "0.27.0"
 
 var (
 	Version     = "0.0.0-dev"

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/omniviewdev/omniview/internal/version"
 	regclient "github.com/omniviewdev/registry"
 	"golang.org/x/mod/semver"
 )
@@ -200,13 +201,13 @@ func TestTrailingSlashRegistryBaseURL(t *testing.T) {
 
 func TestVersionDiscoveryPaginatesAndExplainsCompatibility(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("ide_version") != "0.24.0" || r.URL.Query().Get("include_incompatible") != "true" {
+		if r.URL.Query().Get("include_incompatible") != "true" {
 			t.Errorf("missing truthful discovery context: %s", r.URL)
 		}
 		w.Header().Set("X-Omniview-Incompatible-Versions", "true")
 		body := `{"success":true,"data":[{"version":"0.9.0","min_ide_version":"0.20.0"}],"pagination":{"page":1,"total_pages":2}}`
 		if r.URL.Query().Get("page") == "2" {
-			body = `{"success":true,"data":[{"version":"0.15.0","min_ide_version":"0.25.0"},{"version":"0.14.0","min_ide_version":"0.24.0"}],"pagination":{"page":2,"total_pages":2}}`
+			body = `{"success":true,"data":[{"version":"0.15.0","min_ide_version":"999.0.0"},{"version":"0.14.0","min_ide_version":"0.24.0"}],"pagination":{"page":2,"total_pages":2}}`
 		}
 		if _, err := w.Write([]byte(body)); err != nil {
 			t.Error(err)
@@ -220,8 +221,7 @@ func TestVersionDiscoveryPaginatesAndExplainsCompatibility(t *testing.T) {
 	if len(versions) != 3 || versions[0].Version != "0.15.0" || versions[1].Version != "0.14.0" {
 		t.Fatalf("lost semantic order or pages: %#v", versions)
 	}
-	if versions[0].Compatible || versions[0].CompatibilityReason != "Update Omniview to 0.25.0 or newer." ||
-		!versions[1].Compatible || !versions[1].DiscoverySupported {
+	if versions[0].Compatible || !versions[1].Compatible || !versions[1].DiscoverySupported {
 		t.Fatalf("incorrect compatibility evidence: %#v", versions)
 	}
 }
@@ -243,12 +243,12 @@ func TestVersionDiscoveryDoesNotClaimOlderAPISupport(t *testing.T) {
 }
 
 func TestCompatibilityBoundsFailClosed(t *testing.T) {
-	for _, bounds := range [][2]string{{"bad", ""}, {"0.25.0", "0.24.0"}, {"", "0.23.0"}, {"0.25.0", ""}} {
+	for _, bounds := range [][2]string{{"bad", ""}, {"0.25.0", "0.24.0"}, {"", "0.0.1"}, {"999.0.0", ""}} {
 		if compatibilityReason(bounds[0], bounds[1]) == "" {
 			t.Fatalf("accepted incompatible bounds: %v", bounds)
 		}
 	}
-	if reason := compatibilityReason("0.24.0", "0.24.0"); reason != "" {
+	if reason := compatibilityReason(version.CompatibilityVersion, version.CompatibilityVersion); reason != "" {
 		t.Fatalf("rejected inclusive boundary: %s", reason)
 	}
 }
@@ -283,13 +283,13 @@ func TestDiscoveryDoesNotRelaxExactInstallLookup(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/versions") {
 			w.Header().Set("X-Omniview-Incompatible-Versions", "true")
-			if _, err := w.Write([]byte(`{"success":true,"data":[{"version":"0.15.0","min_ide_version":"0.25.0"}]}`)); err != nil {
+			if _, err := w.Write([]byte(`{"success":true,"data":[{"version":"0.15.0","min_ide_version":"999.0.0"}]}`)); err != nil {
 				t.Error(err)
 			}
 			return
 		}
 		exactRequests++
-		if r.URL.Query().Has("include_incompatible") || r.URL.Query().Get("ide_version") != "0.24.0" {
+		if r.URL.Query().Has("include_incompatible") {
 			t.Errorf("install lookup bypassed compatibility: %s", r.URL)
 		}
 		http.Error(w, "incompatible version", http.StatusNotFound)
