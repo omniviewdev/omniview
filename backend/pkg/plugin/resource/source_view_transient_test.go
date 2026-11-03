@@ -12,7 +12,7 @@ import (
 type blockingSourceViewEmitter struct {
 	entered chan struct{}
 	release chan struct{}
-	ended chan struct{}
+	ended   chan struct{}
 }
 
 func (e *blockingSourceViewEmitter) Emit(_ string, data ...any) {
@@ -92,7 +92,7 @@ func TestSourceViewChangeTransientContentionAndRelease(t *testing.T) {
 	record := v.session.fullSourceRecord(observation.Record)
 	v.changesLocked([]resourcev2.Record{record}, nil)
 	require.Len(t, v.queue, 1)
-	available := maxSourceTransientBytes - v.snapshotArrayBytes
+	available := maxSourceTransientBytes - v.snapshotArrayBytes - v.queue[0].transient
 	require.True(t, v.transientLedger.reserve(available))
 	v.changesLocked([]resourcev2.Record{record}, nil)
 	require.False(t, v.synced)
@@ -167,8 +167,8 @@ func TestSourceViewChangeEmissionReservationReleased(t *testing.T) {
 	require.NoError(t, err)
 	v.changesLocked([]resourcev2.Record{v.session.fullSourceRecord(observation.Record)}, nil)
 	require.Len(t, v.queue, 1)
-	cost, ok := sourceChangeTransientEstimate(v.queue[0].event)
-	require.True(t, ok)
+	cost := v.queue[0].transient
+	require.Positive(t, cost)
 	var release sync.Once
 	t.Cleanup(func() {
 		release.Do(func() { close(emitter.release) })
@@ -184,4 +184,39 @@ func TestSourceViewChangeEmissionReservationReleased(t *testing.T) {
 	waitSourceViewTransient(t, emitter.status)
 	require.True(t, v.transientLedger.reserve(maxSourceTransientBytes))
 	v.transientLedger.release(maxSourceTransientBytes)
+}
+
+func TestSourceViewQueuedChangeReservationLifetime(t *testing.T) {
+	first := boundedSourceViewFixture(t, 0, 1)
+	first.syncLocked("")
+	observation, err := decodeSourceMember(first.session.members["0"])
+	require.NoError(t, err)
+	record := first.session.fullSourceRecord(observation.Record)
+	first.changesLocked([]resourcev2.Record{record}, nil)
+	require.Len(t, first.queue, 1)
+	cost := first.queue[0].transient
+	require.Positive(t, cost)
+
+	other := newSourceView(first.session, "other", "owner", "target")
+	other.synced = true
+	available := maxSourceTransientBytes - first.snapshotArrayBytes - cost - (cost - 1)
+	require.Positive(t, available)
+	require.True(t, first.transientLedger.reserve(available))
+	other.changesLocked([]resourcev2.Record{record}, nil)
+	require.False(t, other.synced)
+	require.Equal(t, "RESOURCE_LIMIT", other.snapshotStatus.Error.Code)
+	require.Len(t, first.queue, 1)
+	first.transientLedger.release(available)
+
+	first.resetLocked("resync", "reset")
+	require.Empty(t, first.queue)
+	require.True(t, first.transientLedger.reserve(maxSourceTransientBytes))
+	first.transientLedger.release(maxSourceTransientBytes)
+	first.synced = true
+	first.changesLocked([]resourcev2.Record{record}, nil)
+	require.Len(t, first.queue, 1)
+	first.close()
+	other.close()
+	require.True(t, first.transientLedger.reserve(maxSourceTransientBytes))
+	first.transientLedger.release(maxSourceTransientBytes)
 }

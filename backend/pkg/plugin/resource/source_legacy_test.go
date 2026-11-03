@@ -322,3 +322,150 @@ func TestLegacySourcePaginationConsistency(t *testing.T) {
 		})
 	}
 }
+
+func TestLegacySourcePagePreflightBeforeValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		edit func(*resourcev2.SourcePage)
+	}{
+		{"schema", func(p *resourcev2.SourcePage) {
+			p.Records[0].Representation.Schema.Document = []byte(strings.Repeat("x", maxSourceTransientBytes/512+1))
+		}},
+		{"cursor", func(p *resourcev2.SourcePage) {
+			cursor := strings.Repeat("x", maxSourceTransientBytes/32+1)
+			p.NextCursor = &cursor
+		}},
+		{"aggregate records", func(p *resourcev2.SourcePage) {
+			record := p.Records[0]
+			record.Body.Map["large"] = resourcev2.Value{Kind: "string", String: strings.Repeat("x", 1024)}
+			p.Records = make([]resourcev2.Record, 9000)
+			for i := range p.Records {
+				p.Records[i] = record
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			page := legacyTestPage()
+			tc.edit(&page)
+			// Invalid count and binding make validation or comparison win if
+			// page preflight does not run first.
+			page.Count.Kind = "invalid"
+			p := legacyTestProvider{enumerate: func(context.Context, resourcev2.EnumerateRequest) (resourcev2.SourcePage, error) {
+				return page, nil
+			}}
+			s := legacyTestOpen(t, p, legacyTestRequest())
+			legacyTestRecv(t, s)
+			if _, err := s.Recv(); resourcev2.ErrorCode(err) != "RESOURCE_LIMIT" {
+				t.Fatalf("expected page limit before validation: %v", err)
+			}
+		})
+	}
+}
+
+func TestLegacySourceOwnsPageBeforeNextCall(t *testing.T) {
+	page := legacyTestPage()
+	page.Records[0].Body.Map["reuse"] = resourcev2.Value{Kind: "string", String: "first"}
+	cursor, revision := "next", "first-revision"
+	page.NextCursor = &cursor
+	page.SourceRevision = &revision
+	mutated := make(chan struct{})
+	p := legacyTestProvider{enumerate: func(_ context.Context, q resourcev2.EnumerateRequest) (resourcev2.SourcePage, error) {
+		if q.Cursor == nil {
+			return page, nil
+		}
+		page.Records[0].Body.Map["reuse"] = resourcev2.Value{Kind: "string", String: "second"}
+		revision = "second-revision"
+		close(mutated)
+		page.Records = nil
+		page.NextCursor = nil
+		return page, nil
+	}}
+	s := legacyTestOpen(t, p, legacyTestRequest())
+	legacyTestRecv(t, s)
+	first := legacyTestRecv(t, s)
+	select {
+	case <-mutated:
+	case <-time.After(time.Second):
+		t.Fatal("provider did not fetch next page")
+	}
+	if got := first.Snapshot.Observations[0].Record.Body.Map["reuse"].String; got != "first" {
+		t.Fatalf("first frame changed after provider reused page: %q", got)
+	}
+	end := legacyTestRecv(t, s)
+	if end.SnapshotEnd == nil || end.SnapshotEnd.Coverage.Consistency != resourcev2.ConsistencyBestEffort {
+		t.Fatalf("reused revision changed first page: %+v", end)
+	}
+}
+
+func TestLegacySourcePageTransientLedger(t *testing.T) {
+	var ledger sourceTransientLedger
+	page := legacyTestPage()
+	p := legacyTestProvider{enumerate: func(context.Context, resourcev2.EnumerateRequest) (resourcev2.SourcePage, error) {
+		return page, nil
+	}}
+	ctx := context.WithValue(context.Background(), legacySourceTransientKey{}, &ledger)
+	s, err := newLegacySourceOpener(p, canonicalTestCatalog("p", "t").Types[0]).OpenSourceStream(ctx, legacyTestRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	legacyTestRecv(t, s)
+	ledger.mu.Lock()
+	beginCost := ledger.used
+	ledger.mu.Unlock()
+	held := maxSourceTransientBytes - beginCost
+	if beginCost == 0 || !ledger.reserve(held) {
+		t.Fatal("could not reserve remaining test budget")
+	}
+	s.(*legacySourceStream).ackFrame()
+	if _, err := s.Recv(); resourcev2.ErrorCode(err) != "RESOURCE_LIMIT" {
+		t.Fatalf("expected transient budget limit: %v", err)
+	}
+	ledger.release(held)
+}
+
+func TestLegacySourceFrameReservationHandoff(t *testing.T) {
+	var ledger sourceTransientLedger
+	page := legacyTestPage()
+	pageCost, err := legacyPagePreflight(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := legacyTestProvider{enumerate: func(context.Context, resourcev2.EnumerateRequest) (resourcev2.SourcePage, error) {
+		return page, nil
+	}}
+	ctx := context.WithValue(context.Background(), legacySourceTransientKey{}, &ledger)
+	stream, err := newLegacySourceOpener(p, canonicalTestCatalog("p", "t").Types[0]).OpenSourceStream(ctx, legacyTestRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := stream.(*legacySourceStream)
+	defer s.Close()
+	legacyTestRecv(t, s)
+	s.ackFrame()
+	frame := legacyTestRecv(t, s)
+	if frame.Snapshot == nil {
+		t.Fatal("expected snapshot")
+	}
+	ledger.mu.Lock()
+	held := ledger.used
+	ledger.mu.Unlock()
+	if held != pageCost {
+		t.Fatalf("page reservation not held during handoff: got %d, want %d", held, pageCost)
+	}
+	s.ackFrame()
+	end := legacyTestRecv(t, s)
+	if end.SnapshotEnd == nil {
+		t.Fatal("expected snapshot end")
+	}
+	s.Close()
+	select {
+	case <-s.results:
+	case <-time.After(time.Second):
+		t.Fatal("close did not unblock unacknowledged frame")
+	}
+	if !ledger.reserve(maxSourceTransientBytes) {
+		t.Fatal("reservation leaked after close")
+	}
+	ledger.release(maxSourceTransientBytes)
+}

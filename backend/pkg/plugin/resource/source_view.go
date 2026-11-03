@@ -13,34 +13,35 @@ import (
 )
 
 type queuedSourceViewEvent struct {
-	event HostSourceViewEvent
-	bytes int
+	event     HostSourceViewEvent
+	bytes     int
+	transient int
 }
 type sourceView struct {
-	session             *sourceSession
-	ctrl                *controller
-	transientLedger     *sourceTransientLedger
-	id, owner, targetID string
-	mu                  sync.Mutex
-	wake                chan struct{}
-	queue               []queuedSourceViewEvent
-	bytes               int
-	control             *HostSourceViewEvent
-	generation          string
-	sequence            uint64
-	closed              bool
-	synced              bool
-	snapshot            []sourceMember
-	snapshotArrayBytes  int
-	snapshotOffset      int
-	snapshotSequence    uint64
-	snapshotEnds        []int
-	snapshotStatus      *HostSourceStatus
-	snapshotTarget      resourcev2.ReadTarget
-	snapshotBinding     resourcev2.Representation
+	session                  *sourceSession
+	ctrl                     *controller
+	transientLedger          *sourceTransientLedger
+	id, owner, targetID      string
+	mu                       sync.Mutex
+	wake                     chan struct{}
+	queue                    []queuedSourceViewEvent
+	bytes                    int
+	control                  *HostSourceViewEvent
+	generation               string
+	sequence                 uint64
+	closed                   bool
+	synced                   bool
+	snapshot                 []sourceMember
+	snapshotArrayBytes       int
+	snapshotOffset           int
+	snapshotSequence         uint64
+	snapshotEnds             []int
+	snapshotStatus           *HostSourceStatus
+	snapshotTarget           resourcev2.ReadTarget
+	snapshotBinding          resourcev2.Representation
 	snapshotBindingTransient int
-	snapshotGeneration  string
-	snapshotMode        string
+	snapshotGeneration       string
+	snapshotMode             string
 }
 
 func newSourceView(s *sourceSession, id, owner, targetID string) *sourceView {
@@ -161,6 +162,10 @@ func sourceViewSize(value any, limit int) (int, bool) {
 }
 
 func (v *sourceView) appendLocked(event HostSourceViewEvent) bool {
+	return v.appendReservedLocked(event, 0)
+}
+
+func (v *sourceView) appendReservedLocked(event HostSourceViewEvent, transient int) bool {
 	if len(v.queue) >= sourceViewQueueItems {
 		return false
 	}
@@ -171,10 +176,19 @@ func (v *sourceView) appendLocked(event HostSourceViewEvent) bool {
 	if err != nil || len(b) > sourceViewQueueBytes-v.bytes {
 		return false
 	}
-	v.queue = append(v.queue, queuedSourceViewEvent{event: event, bytes: len(b)})
+	v.queue = append(v.queue, queuedSourceViewEvent{event: event, bytes: len(b), transient: transient})
 	v.bytes += len(b)
 	v.signal()
 	return true
+}
+
+func (v *sourceView) releaseQueueLocked() {
+	for i := range v.queue {
+		v.transientLedger.release(v.queue[i].transient)
+		v.queue[i] = queuedSourceViewEvent{}
+	}
+	v.queue = nil
+	v.bytes = 0
 }
 
 // releaseSnapshotLocked drops the view's references to un-emitted members.
@@ -201,8 +215,7 @@ func (v *sourceView) resetLocked(reason, message string) {
 	}
 	event := v.nextLocked("reset")
 	event.Reset = &HostSourceViewReset{Reason: reason, Message: message}
-	v.queue = nil
-	v.bytes = 0
+	v.releaseQueueLocked()
 	v.releaseSnapshotLocked()
 	v.snapshotEnds = nil
 	v.snapshotBinding = resourcev2.Representation{}
@@ -262,7 +275,6 @@ func (v *sourceView) snapshotRecordSize(member sourceMember, limit int) (int, st
 	return size, ""
 }
 
-
 func (v *sourceView) syncLocked(reason string) {
 	// No source membership is authoritative before the first snapshot boundary.
 	// Keep an established snapshot available while a refresh is in progress.
@@ -283,8 +295,7 @@ func (v *sourceView) syncLocked(reason string) {
 	v.generation = uuid.NewString()
 	v.sequence = 0
 	v.synced = true
-	v.queue = nil
-	v.bytes = 0
+	v.releaseQueueLocked()
 	v.releaseSnapshotLocked()
 	v.snapshotMode = v.session.mode
 	count := len(v.session.members)
@@ -383,80 +394,119 @@ func (v *sourceView) failChangesLocked(event HostSourceViewEvent, message string
 	event.Upserts = nil
 	event.Removes = nil
 	event.Reset = &HostSourceViewReset{Reason: "resync", Message: message}
-	v.queue = nil
-	v.bytes = 0
+	v.releaseQueueLocked()
 	v.control = &event
 	v.generation = uuid.NewString()
 	v.failSnapshotLocked(message)
 }
 
-func sourceChangeTransientEstimate(event HostSourceViewEvent) (int, bool) {
-	size, ok := sourceViewSize(event, sourceViewQueueBytes)
-	if !ok || size > maxSourceTransientBytes/3 {
+func (v *sourceView) changeTransientEstimate(records []resourcev2.Record, refs []resourcev2.ResourceReference) (int, bool) {
+	input, ok := sourceViewSize(struct {
+		Records []resourcev2.Record
+		Refs    []resourcev2.ResourceReference
+	}{records, refs}, sourceViewQueueBytes)
+	if !ok {
 		return 0, false
 	}
-	size *= 3
-	for _, record := range event.Upserts {
-		scratch, err := sourceBindingTransientEstimate(record.Record.Representation)
-		if err != nil || scratch < 0 || scratch > maxSourceTransientBytes-size {
+	identity, ok := sourceViewSize(struct {
+		Generation, Owner, TargetID string
+		Target                      resourcev2.ReadTarget
+	}{v.session.pluginGeneration.generationID, v.owner, v.targetID, v.session.target}, sourceViewQueueBytes)
+	if !ok {
+		return 0, false
+	}
+	size := 0
+	add := func(n, multiplier int) bool {
+		if n < 0 || multiplier <= 0 || n > (maxSourceTransientBytes-size)/multiplier {
+			return false
+		}
+		size += n * multiplier
+		return true
+	}
+	// Account for decoded input, canonical addresses, envelope keys, JSON scratch,
+	// and slice growth before any envelope or removal is constructed.
+	if !add(input, 8) || !add(len(records)+len(refs), 512) {
+		return 0, false
+	}
+	for range records {
+		if !add(identity, 8) {
 			return 0, false
 		}
-		size += scratch
+	}
+	for range refs {
+		if !add(identity, 8) {
+			return 0, false
+		}
+	}
+	for _, record := range records {
+		scratch, err := sourceBindingTransientEstimate(record.Representation)
+		if err != nil || !add(scratch, 1) {
+			return 0, false
+		}
+		member, err := sourceMemberTransientEstimate(resourcev2.SourceObservation{Record: resourcev2.CompactSourceRecord(record)}, maxSourceTransientBytes)
+		if err != nil || !add(member, 1) {
+			return 0, false
+		}
+	}
+	for _, ref := range refs {
+		member, err := sourceMemberTransientEstimate(resourcev2.SourceObservation{Record: resourcev2.SourceRecord{Reference: ref}}, maxSourceTransientBytes)
+		if err != nil || !add(member, 1) {
+			return 0, false
+		}
 	}
 	return size, true
 }
 
 func (v *sourceView) changesLocked(records []resourcev2.Record, refs []resourcev2.ResourceReference) {
-	v.mu.Lock()
-	if v.closed || !v.synced {
-		v.mu.Unlock()
-		return
-	}
-	event := v.nextLocked("changes")
-	if _, ok := sourceViewSize(struct {
-		Records []resourcev2.Record
-		Refs    []resourcev2.ResourceReference
-	}{records, refs}, sourceViewQueueBytes); !ok {
-		v.mu.Unlock()
-		v.resetLocked("overflow", "Source view queue overflowed.")
-		v.syncLocked("")
-		return
-	}
-	for _, record := range records {
-		r, err := envelopeRecord(v.session.pluginGeneration.generationID, v.owner, v.targetID, v.session.target, record)
-		if err != nil {
-			v.failChangesLocked(event, "Source view record could not be enveloped.")
-			v.mu.Unlock()
-			return
+	overflow := func() bool {
+		v.mu.Lock()
+		defer v.mu.Unlock()
+		if v.closed || !v.synced {
+			return false
 		}
-		event.Upserts = append(event.Upserts, r)
-	}
-	for _, ref := range refs {
-		key, address, err := rowIdentity(v.session.pluginGeneration.generationID, v.owner, v.targetID, v.session.target, ref)
-		if err != nil {
-			v.failChangesLocked(event, "Source view removal could not be enveloped.")
-			v.mu.Unlock()
-			return
+		event := v.nextLocked("changes")
+		if _, ok := sourceViewSize(struct {
+			Records []resourcev2.Record
+			Refs    []resourcev2.ResourceReference
+		}{records, refs}, sourceViewQueueBytes); !ok {
+			return true
 		}
-		event.Removes = append(event.Removes, HostRecordRemoval{Key: key, AddressKey: address})
-	}
-	transient, ok := sourceChangeTransientEstimate(event)
-	if !ok || !v.transientLedger.reserve(transient) {
-		v.failChangesLocked(event, "Source view transient exceeds host limits.")
-		v.mu.Unlock()
-		return
-	}
-	appended := func() bool {
-		defer v.transientLedger.release(transient)
-		return v.appendLocked(event)
+		transient, ok := v.changeTransientEstimate(records, refs)
+		if !ok || !v.transientLedger.reserve(transient) {
+			v.failChangesLocked(event, "Source view transient exceeds host limits.")
+			return false
+		}
+		defer func() {
+			if transient > 0 {
+				v.transientLedger.release(transient)
+			}
+		}()
+		for _, record := range records {
+			r, err := envelopeRecord(v.session.pluginGeneration.generationID, v.owner, v.targetID, v.session.target, record)
+			if err != nil {
+				v.failChangesLocked(event, "Source view record could not be enveloped.")
+				return false
+			}
+			event.Upserts = append(event.Upserts, r)
+		}
+		for _, ref := range refs {
+			key, address, err := rowIdentity(v.session.pluginGeneration.generationID, v.owner, v.targetID, v.session.target, ref)
+			if err != nil {
+				v.failChangesLocked(event, "Source view removal could not be enveloped.")
+				return false
+			}
+			event.Removes = append(event.Removes, HostRecordRemoval{Key: key, AddressKey: address})
+		}
+		if !v.appendReservedLocked(event, transient) {
+			return true
+		}
+		transient = 0
+		return false
 	}()
-	if !appended {
-		v.mu.Unlock()
+	if overflow {
 		v.resetLocked("overflow", "Source view queue overflowed.")
 		v.syncLocked("")
-		return
 	}
-	v.mu.Unlock()
 }
 func (v *sourceView) close() {
 	v.mu.Lock()
@@ -469,8 +519,7 @@ func (v *sourceView) close() {
 	}
 	event := v.nextLocked("reset")
 	event.Reset = &HostSourceViewReset{Reason: "closed", Message: "Source view closed."}
-	v.queue = nil
-	v.bytes = 0
+	v.releaseQueueLocked()
 	v.releaseSnapshotLocked()
 	v.snapshotEnds = nil
 	v.snapshotBinding = resourcev2.Representation{}
@@ -482,6 +531,17 @@ func (v *sourceView) close() {
 	v.mu.Unlock()
 }
 func (v *sourceView) emitLoop() {
+	defer func() {
+		v.mu.Lock()
+		defer v.mu.Unlock()
+		v.releaseQueueLocked()
+		v.closed = true
+		v.control = nil
+		v.snapshotStatus = nil
+		v.snapshotBinding = resourcev2.Representation{}
+		v.snapshotTarget = resourcev2.ReadTarget{}
+		v.releaseSnapshotLocked()
+	}()
 	for {
 		<-v.wake
 		for {
@@ -498,95 +558,85 @@ func (v *sourceView) emitLoop() {
 					}
 				}()
 				var event HostSourceViewEvent
-			if v.control != nil {
-				event = *v.control
-				v.control = nil
-			} else if v.snapshotStatus != nil {
-				v.snapshotSequence++
-				event = HostSourceViewEvent{ViewID: v.id, ViewGeneration: v.generation, Sequence: strconv.FormatUint(v.snapshotSequence, 10)}
-				if v.snapshotOffset < len(v.snapshot) {
-					end := v.snapshotEnds[0]
-					v.snapshotEnds = v.snapshotEnds[1:]
-					event.Kind = "snapshot"
-					transient := 0
-					failed := false
-					failureMessage := "Source view transient exceeds host limits."
-					for i := v.snapshotOffset; i < end; i++ {
-						cost, valid := v.snapshotMemberTransient(v.snapshot[i])
-						if !valid || cost > maxSourceTransientBytes-transient {
-							failed = true
-							break
+				if v.control != nil {
+					event = *v.control
+					v.control = nil
+				} else if v.snapshotStatus != nil {
+					v.snapshotSequence++
+					event = HostSourceViewEvent{ViewID: v.id, ViewGeneration: v.generation, Sequence: strconv.FormatUint(v.snapshotSequence, 10)}
+					if v.snapshotOffset < len(v.snapshot) {
+						end := v.snapshotEnds[0]
+						v.snapshotEnds = v.snapshotEnds[1:]
+						event.Kind = "snapshot"
+						transient := 0
+						failed := false
+						failureMessage := "Source view transient exceeds host limits."
+						for i := v.snapshotOffset; i < end; i++ {
+							cost, valid := v.snapshotMemberTransient(v.snapshot[i])
+							if !valid || cost > maxSourceTransientBytes-transient {
+								failed = true
+								break
+							}
+							transient += cost
 						}
-						transient += cost
-					}
-					if !failed && v.transientLedger.reserve(transient) {
-						reserved = transient
-						event.Records = make([]HostRecord, 0, end-v.snapshotOffset)
+						if !failed && v.transientLedger.reserve(transient) {
+							reserved = transient
+							event.Records = make([]HostRecord, 0, end-v.snapshotOffset)
+						} else {
+							failed = true
+						}
+						for i := v.snapshotOffset; !failed && i < end; i++ {
+							member := v.snapshot[i]
+							observation, err := decodeSourceMember(member)
+							if err != nil {
+								failureMessage = "Source view snapshot could not be decoded."
+								failed = true
+								break
+							}
+							record, err := envelopeRecord(v.snapshotGeneration, v.owner, v.targetID, v.snapshotTarget, resourcev2.Record{Reference: observation.Record.Reference, Body: observation.Record.Body, Representation: v.snapshotBinding, Coverage: observation.Record.Coverage, SourceRevision: observation.Record.SourceRevision})
+							if err != nil {
+								failureMessage = "Source view snapshot could not be enveloped."
+								failed = true
+								break
+							}
+							event.Records = append(event.Records, record)
+							v.snapshot[i].release()
+							v.snapshot[i] = sourceMember{}
+						}
+						if failed {
+							event.Kind = "reset"
+							event.Records = nil
+							event.Reset = &HostSourceViewReset{Reason: "resync", Message: failureMessage}
+							v.releaseQueueLocked()
+							v.generation = uuid.NewString()
+							v.failSnapshotLocked(failureMessage)
+						} else {
+							v.snapshotOffset = end
+						}
 					} else {
-						failed = true
+						event.Kind = "snapshotEnd"
+						event.Status = v.snapshotStatus
+						v.releaseSnapshotLocked()
+						v.snapshotBinding = resourcev2.Representation{}
+						v.snapshotTarget = resourcev2.ReadTarget{}
+						v.snapshotStatus = nil
 					}
-					for i := v.snapshotOffset; !failed && i < end; i++ {
-						member := v.snapshot[i]
-						observation, err := decodeSourceMember(member)
-						if err != nil {
-							failureMessage = "Source view snapshot could not be decoded."
-							failed = true
-							break
-						}
-						record, err := envelopeRecord(v.snapshotGeneration, v.owner, v.targetID, v.snapshotTarget, resourcev2.Record{Reference: observation.Record.Reference, Body: observation.Record.Body, Representation: v.snapshotBinding, Coverage: observation.Record.Coverage, SourceRevision: observation.Record.SourceRevision})
-						if err != nil {
-							failureMessage = "Source view snapshot could not be enveloped."
-							failed = true
-							break
-						}
-						event.Records = append(event.Records, record)
-						v.snapshot[i].release()
-						v.snapshot[i] = sourceMember{}
-					}
-					if failed {
-						event.Kind = "reset"
-						event.Records = nil
-						event.Reset = &HostSourceViewReset{Reason: "resync", Message: failureMessage}
-						v.queue = nil
-						v.bytes = 0
-						v.generation = uuid.NewString()
-						v.failSnapshotLocked(failureMessage)
-					} else {
-						v.snapshotOffset = end
-					}
+				} else if len(v.queue) > 0 {
+					item := v.queue[0]
+					v.queue[0] = queuedSourceViewEvent{}
+					v.queue = v.queue[1:]
+					v.bytes -= item.bytes
+					event = item.event
+					reserved = item.transient
 				} else {
-					event.Kind = "snapshotEnd"
-					event.Status = v.snapshotStatus
-					v.releaseSnapshotLocked()
-					v.snapshotBinding = resourcev2.Representation{}
-					v.snapshotTarget = resourcev2.ReadTarget{}
-					v.snapshotStatus = nil
+					return v.closed, true
 				}
-			} else if len(v.queue) > 0 {
-				item := v.queue[0]
-				v.queue[0] = queuedSourceViewEvent{}
-				v.queue = v.queue[1:]
-				v.bytes -= item.bytes
-				event = item.event
-				if event.Kind == "changes" {
-					cost, ok := sourceChangeTransientEstimate(event)
-					if !ok || !v.transientLedger.reserve(cost) {
-						v.failChangesLocked(event, "Source view transient exceeds host limits.")
-						event = *v.control
-						v.control = nil
-					} else {
-						reserved = cost
-					}
+				v.mu.Unlock()
+				locked = false
+				if emitter := v.ctrl.emitter; emitter != nil {
+					emitter.Emit("resource/source-view/"+v.id, event)
 				}
-			} else {
-				return v.closed, true
-			}
-			v.mu.Unlock()
-			locked = false
-			if emitter := v.ctrl.emitter; emitter != nil {
-				emitter.Emit("resource/source-view/"+v.id, event)
-			}
-			return false, false
+				return false, false
 			}()
 			if closed {
 				return

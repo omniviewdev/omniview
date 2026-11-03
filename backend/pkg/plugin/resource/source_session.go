@@ -162,6 +162,7 @@ func (s *sourceSession) receive(ctx context.Context, request resourcev2.SourceOp
 		return
 	}
 	ctx = resourcev2.WithCatalogRevision(operationCtx, binding.CatalogRevision)
+	ctx = context.WithValue(ctx, legacySourceTransientKey{}, &s.transientLedger)
 	stream, err := opener.OpenSourceStream(ctx, request)
 	if err != nil {
 		if resourceplugin.IsFatalSourceTransportError(err) {
@@ -203,6 +204,11 @@ func (s *sourceSession) receive(ctx context.Context, request resourcev2.SourceOp
 			s.statusLocked("failed", resourcev2.NewError("RESOURCE_LIMIT", "Source frame transient exceeds host limits."))
 			s.mu.Unlock()
 			return
+		}
+		// The legacy producer retains its page charge until this frame's
+		// reservation takes over. Close cancels the handoff on every early exit.
+		if legacy, ok := stream.(*legacySourceStream); ok {
+			legacy.ackFrame()
 		}
 		terminal, rebind := func() (bool, bool) {
 			defer s.transientLedger.release(frameBytes)
@@ -482,9 +488,9 @@ func sameIncarnation(a, b *string) bool {
 }
 
 type sourceFrameContext struct {
-	ctx        context.Context
-	target     resourcev2.ReadTarget
-	descriptor *resourcev2.ResourceType
+	ctx           context.Context
+	target        resourcev2.ReadTarget
+	descriptor    *resourcev2.ResourceType
 	frameReserved int
 }
 
@@ -539,7 +545,6 @@ func (s *sourceSession) prevalidateFrameRecord(frame sourceFrameContext, observa
 	}
 	return s.prevalidateFrameReference(frame, observation.Record.Reference)
 }
-
 
 func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sourceFrameContext) (bool, error) {
 	var frameContext sourceFrameContext
@@ -842,11 +847,11 @@ func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sour
 			break
 		}
 		type preparedChange struct {
-			key            string
-			next           *sourceMember
-			old            sourceMember
-			existed        bool
-			oldObservation resourcev2.SourceObservation
+			key             string
+			next            *sourceMember
+			old             sourceMember
+			existed         bool
+			oldObservation  resourcev2.SourceObservation
 			nextObservation resourcev2.SourceObservation
 		}
 		prepared := make([]preparedChange, 0, len(touched))

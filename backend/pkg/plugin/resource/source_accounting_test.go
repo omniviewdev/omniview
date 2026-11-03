@@ -97,7 +97,7 @@ func TestSourceStagingPodShapedCapacity(t *testing.T) {
 			"apiVersion": {Kind: "string", String: "v1"},
 			"kind":       {Kind: "string", String: "Pod"},
 			"metadata": {Kind: "map", Map: map[string]resourcev2.Value{
-				"name": {Kind: "string", String: fmt.Sprintf("pod-%d", i)},
+				"name":      {Kind: "string", String: fmt.Sprintf("pod-%d", i)},
 				"namespace": {Kind: "string", String: "default"},
 				"labels": {Kind: "map", Map: map[string]resourcev2.Value{
 					"app": {Kind: "string", String: "example"},
@@ -114,7 +114,7 @@ func TestSourceStagingPodShapedCapacity(t *testing.T) {
 			"spec": {Kind: "map", Map: map[string]resourcev2.Value{
 				"containers": {Kind: "list", List: []resourcev2.Value{
 					{Kind: "map", Map: map[string]resourcev2.Value{
-						"name": {Kind: "string", String: "app"},
+						"name":  {Kind: "string", String: "app"},
 						"image": {Kind: "string", String: "example/app:latest"},
 					}},
 				}},
@@ -163,7 +163,7 @@ func TestSourceMemberLedgerRetainsSnapshotUntilRelease(t *testing.T) {
 	var ledger sourceMemberLedger
 	require.True(t, ledger.reserve(member.size))
 	member.attachReserved(&ledger)
-	member.retain() // A lazy view snapshot holds the old blob.
+	member.retain()  // A lazy view snapshot holds the old blob.
 	member.release() // Membership is replaced.
 	require.False(t, ledger.reserve(maxSourceSessionBytes-member.size+1))
 	member.release() // The snapshot is emitted or retired.

@@ -31,9 +31,20 @@ type legacySourceStream struct {
 	cancel  context.CancelFunc
 	ctx     context.Context
 	results <-chan legacySourceResult
+	ack     chan struct{}
 }
 
 func (s *legacySourceStream) Close() { s.cancel() }
+func (s *legacySourceStream) ackFrame() {
+	if s.ack == nil {
+		return
+	}
+	select {
+	case s.ack <- struct{}{}:
+	case <-s.ctx.Done():
+	}
+}
+
 func (s *legacySourceStream) Recv() (resourcev2.SourceFrame, error) {
 	select {
 	case <-s.ctx.Done():
@@ -72,9 +83,12 @@ func (o *legacySourceOpener) OpenSourceStream(ctx context.Context, request resou
 	streamCtx, cancel := context.WithCancel(ctx)
 	results := make(chan legacySourceResult)
 	stream := &legacySourceStream{cancel: cancel, ctx: streamCtx, results: results}
+	if ledger, _ := ctx.Value(legacySourceTransientKey{}).(*sourceTransientLedger); ledger != nil {
+		stream.ack = make(chan struct{})
+	}
 	go func() {
 		defer close(results)
-		if err := o.produce(streamCtx, request, results); err != nil {
+		if err := o.produce(streamCtx, request, results, stream.ack); err != nil {
 			select {
 			case results <- legacySourceResult{err: err}:
 			case <-streamCtx.Done():
@@ -83,15 +97,85 @@ func (o *legacySourceOpener) OpenSourceStream(ctx context.Context, request resou
 	}()
 	return stream, nil
 }
+type legacySourceTransientKey struct{}
 
-func (o *legacySourceOpener) produce(ctx context.Context, request resourcev2.SourceOpenRequest, out chan<- legacySourceResult) error {
+// legacyPagePreflight bounds the whole page before SDK validation allocates.
+func legacyPagePreflight(page resourcev2.SourcePage) (int, error) {
+	size := 1024
+	add := func(n, multiplier int) bool {
+		if n < 0 || n > (maxSourceTransientBytes-size)/multiplier {
+			return false
+		}
+		size += n * multiplier
+		return true
+	}
+	text := func(s string) bool { return add(len(s), 32) }
+	optional := func(s *string) bool { return s == nil || text(*s) }
+	ok := add(cap(page.Records), 256) && optional(page.NextCursor) &&
+		text(page.Count.Kind) && optional(page.Count.Value) &&
+		text(page.Coverage.Kind) && text(page.Coverage.Reason) &&
+		add(cap(page.Coverage.Paths), 256) && text(page.Consistency) && optional(page.SourceRevision)
+	for _, path := range page.Coverage.Paths {
+		ok = ok && text(path)
+	}
+	maxBindingSize := 0
+	for _, record := range page.Records {
+		if !ok {
+			break
+		}
+		observation := resourcev2.SourceObservation{Record: resourcev2.CompactSourceRecord(record)}
+		memberSize, err := sourceMemberTransientEstimate(observation, maxSourceTransientBytes-size)
+		if err != nil || !add(memberSize, 1) {
+			ok = false
+			break
+		}
+		schema := record.Representation.Schema
+		if !add(cap(schema.Document), 1) || !text(schema.State) || !text(schema.Dialect) ||
+			!text(schema.Root) || !optional(schema.Revision) || !optional(schema.UnavailableReason) ||
+			(schema.DocumentRef != nil && (!text(schema.DocumentRef.ID) || !text(schema.DocumentRef.Revision))) {
+			ok = false
+			break
+		}
+		bindingSize, err := sourceBindingTransientEstimate(record.Representation)
+		if err != nil {
+			ok = false
+			break
+		}
+		if bindingSize > maxBindingSize {
+			maxBindingSize = bindingSize
+		}
+	}
+	if !ok || !add(maxBindingSize, 1) {
+		return 0, resourcev2.NewError("RESOURCE_LIMIT", "Source page exceeds host limits.")
+	}
+	return size, nil
+}
+
+func (o *legacySourceOpener) produce(ctx context.Context, request resourcev2.SourceOpenRequest, out chan<- legacySourceResult, ack <-chan struct{}) error {
 	tracker := resourcev2.NewCatalogBoundSourcePhaseTracker(request, o.descriptor)
+	ledger, _ := ctx.Value(legacySourceTransientKey{}).(*sourceTransientLedger)
+	var reserved int
+	defer func() {
+		if ledger != nil && reserved != 0 {
+			ledger.release(reserved)
+		}
+	}()
 	var sequence uint64
 	emit := func(frame resourcev2.SourceFrame) error {
 		if sequence == ^uint64(0) {
 			return resourcev2.NewError("RESOURCE_LIMIT", "Source sequence exhausted.")
 		}
 		frame.SessionID, frame.Generation, frame.Sequence = request.SessionID, request.Generation, sequence+1
+		frameCost, err := sourceFrameTransientEstimate(frame, maxSourceTransientBytes)
+		if err != nil {
+			return err
+		}
+		if ledger != nil && reserved == 0 {
+			if !ledger.reserve(frameCost) {
+				return resourcev2.NewError("RESOURCE_LIMIT", "Source frame exceeds available transient budget.")
+			}
+			defer ledger.release(frameCost)
+		}
 		wire, err := resourcev2.ToProtoSourceFrame(frame)
 		if err != nil {
 			return err
@@ -107,12 +191,25 @@ func (o *legacySourceOpener) produce(ctx context.Context, request resourcev2.Sou
 		if err := resourceplugin.ValidateWire(encoded, wire.ProtoReflect().Descriptor()); err != nil {
 			return err
 		}
+		// The provider may reuse page storage as soon as the next call starts.
+		// Decode the already-validated wire before publishing to own the frame.
+		owned, err := resourcev2.FromProtoSourceFrame(wire)
+		if err != nil {
+			return err
+		}
 		if err := tracker.AdmitSized(frame, size); err != nil {
 			return err
 		}
 		select {
-		case out <- legacySourceResult{frame: frame}:
+		case out <- legacySourceResult{frame: owned}:
 			sequence++
+			if ack != nil {
+				select {
+				case <-ack:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
 			return nil
 		case <-ctx.Done():
 			return ctx.Err()
@@ -149,9 +246,24 @@ func (o *legacySourceOpener) produce(ctx context.Context, request resourcev2.Sou
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		pageSize, err := legacyPagePreflight(page)
+		if err != nil {
+			return err
+		}
+		if ledger != nil {
+			if !ledger.reserve(pageSize) {
+				return resourcev2.NewError("RESOURCE_LIMIT", "Source page exceeds available transient budget.")
+			}
+			reserved = pageSize
+		}
 		for _, record := range page.Records {
 			if !reflect.DeepEqual(record.Representation, request.Binding.Representation) {
 				return emit(resourcev2.SourceFrame{Reset: &resourcev2.SourceReset{Reason: resourcev2.SourceResetBindingChanged, Message: "Source binding changed."}})
+			}
+			// Preflight before page validation, which may itself serialize records.
+			observation := resourcev2.SourceObservation{Record: resourcev2.CompactSourceRecord(record)}
+			if _, err := sourceMemberEstimate(observation, int(request.Limits.MaxFrameBytes)); err != nil {
+				return err
 			}
 		}
 		if err := resourcev2.ValidateOperationResult(operation, page, o.descriptor); err != nil {
@@ -197,7 +309,10 @@ func (o *legacySourceOpener) produce(ctx context.Context, request resourcev2.Sou
 			coverage.Consistency = resourcev2.ConsistencyBestEffort
 		}
 		if pages == 1 {
-			revision = page.SourceRevision
+			if page.SourceRevision != nil {
+				value := strings.Clone(*page.SourceRevision)
+				revision = &value
+			}
 		}
 		for _, record := range page.Records {
 			observation := resourcev2.SourceObservation{Record: resourcev2.CompactSourceRecord(record)}
@@ -214,6 +329,10 @@ func (o *legacySourceOpener) produce(ctx context.Context, request resourcev2.Sou
 			if err := emit(resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{observation}}}); err != nil {
 				return err
 			}
+		}
+		if reserved != 0 {
+			ledger.release(reserved)
+			reserved = 0
 		}
 		if page.NextCursor == nil {
 			break
