@@ -550,10 +550,18 @@ func (c *controller) CreateSession(
 		return nil, err
 	}
 
-	// Pre-register the correlation before the RPC so immediate UI output cannot
-	// race session indexing. This ID is not authority and does not permit retries.
-	opts.SessionID = uuid.NewString()
+	// The UI may reserve a correlation ID before the RPC to subscribe before
+	// the provider emits output. The ID is correlation, not authority.
+	if opts.SessionID == "" {
+		opts.SessionID = uuid.NewString()
+	} else if _, err := uuid.Parse(opts.SessionID); err != nil {
+		return nil, resourcev2.NewError("INVALID_REQUEST", "Log session ID must be a UUID.")
+	}
 	c.mu.Lock()
+	if _, exists := c.sessionIndex[opts.SessionID]; exists {
+		c.mu.Unlock()
+		return nil, resourcev2.NewError("INVALID_REQUEST", "Log session ID is already in use.")
+	}
 	c.sessionIndex[opts.SessionID] = sessionIndex{pluginID: pluginID, connectionID: connectionID}
 	c.mu.Unlock()
 	session, err := client.CreateSession(

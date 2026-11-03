@@ -1331,3 +1331,18 @@ plugin.Serve()
 Use the CLI for reproducible noninteractive work in isolated development profiles;
 use plugin cards for interactive work. Neither path trusts PID-only discovery.
 
+
+## 8. Log Session Lifecycle
+
+Use the runtime `LogsClient.CreateSession` adapter when opening log sessions.
+It reserves a UUID and subscribes before the create RPC, so immediate lines,
+errors, and completion events survive until the log viewer attaches. The host
+rejects duplicate correlation IDs; these IDs do not grant resource authority.
+The handoff retains the newest 10,000 lines and 100 events, expires after 60
+seconds if no viewer attaches, and releases listeners on failed creation.
+
+`SESSION_READY` means source setup completed, not that a line has arrived.
+A ready stream can remain empty while following. Finite empty streams complete
+normally; they are not lost connections. Source-scoped errors, removal, and EOF
+must not terminate other sources. Only session-scoped `STREAM_ENDED` ends the
+whole viewer. Each viewer removes only its own event listeners on disconnect.

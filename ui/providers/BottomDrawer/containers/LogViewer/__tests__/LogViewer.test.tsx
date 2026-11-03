@@ -1,6 +1,6 @@
 import { render, cleanup, act, fireEvent } from '@testing-library/react';
 import { vi } from 'vitest';
-import type { LogEntry, SearchMatch } from '../types';
+import { StreamEventType, type LogDataSource, type LogEntry, type SearchMatch } from '../types';
 
 // ─── Hook mocks ────────────────────────────────────────────────────────────────
 
@@ -50,9 +50,10 @@ vi.mock('../hooks/useLogSearch', () => ({
   }),
 }));
 
+let mockSources: Array<{ id: string; labels: Record<string, string> }> = [];
 vi.mock('../hooks/useLogSources', () => ({
   useLogSources: () => ({
-    sources: [],
+    sources: mockSources,
     allSelected: true,
     selectedSourceIds: new Set<string>(),
     toggleSource: vi.fn(),
@@ -152,6 +153,7 @@ describe('LogViewerContainer', () => {
     mockLineCount = 0;
     mockSearchMatches = [];
     mockCurrentMatchIndex = 0;
+    mockSources = [];
   });
 
   afterEach(() => {
@@ -166,6 +168,56 @@ describe('LogViewerContainer', () => {
 
     expect(getByText(/Connecting to log sources/i)).toBeTruthy();
   });
+
+  it('keeps discovered sources connecting until readers report session readiness', () => {
+    mockSources = [{ id: 'discovered-container', labels: {} }];
+    const source: LogDataSource = { connect: () => () => {} };
+    const { getByText, queryByText } = render(<LogViewerContainer source={source} />);
+    expect(getByText('Connecting to log sources...')).toBeTruthy();
+    expect(getByText('1 source found, connecting')).toBeTruthy();
+    expect(queryByText('No log entries yet.')).toBeNull();
+    expect(queryByText(/connected, waiting for data/)).toBeNull();
+  });
+
+  it('shows a ready but empty stream without connecting forever', () => {
+    const source: LogDataSource = {
+      connect(handlers) {
+        handlers.onEvent({ type: StreamEventType.SESSION_READY, source_id: '', message: 'Ready', timestamp: '' });
+        return () => {};
+      },
+    };
+    const { getByText, queryByText } = render(<LogViewerContainer source={source} />);
+    expect(getByText('No log entries yet.')).toBeTruthy();
+    expect(queryByText(/Connecting to log sources/)).toBeNull();
+  });
+
+  it('shows clean finite empty completion, not a lost connection', () => {
+    const source: LogDataSource = {
+      connect(handlers) {
+        handlers.onEvent({ type: StreamEventType.STREAM_ENDED, source_id: '', message: 'Complete', timestamp: '' });
+        return () => {};
+      },
+    };
+    const { getByText, queryByText } = render(<LogViewerContainer source={source} />);
+    expect(getByText('No log entries were returned.')).toBeTruthy();
+    expect(queryByText(/connection.*lost/i)).toBeNull();
+  });
+
+  it.each([StreamEventType.STREAM_ENDED, StreamEventType.STREAM_ERROR, StreamEventType.SOURCE_REMOVED])(
+    'does not terminate the session for source-scoped event %i', type => {
+      const source: LogDataSource = {
+        connect(handlers) {
+          handlers.onEvent({ type: StreamEventType.SESSION_READY, source_id: '', message: 'Ready', timestamp: '' });
+          handlers.onEvent({ type, source_id: 'one-of-many', message: 'Source stopped', timestamp: '' });
+          return () => {};
+        },
+      };
+      const { getByText, queryByText } = render(<LogViewerContainer source={source} />);
+      expect(getByText('No log entries yet.')).toBeTruthy();
+      expect(queryByText('Failed to stream logs')).toBeNull();
+      expect(queryByText('Log stream ended')).toBeNull();
+    },
+  );
 
   it('renders error state when errors and no entries', () => {
     // We need to mock useLogStream to trigger events with errors
