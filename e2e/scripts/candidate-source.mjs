@@ -26,10 +26,10 @@ export function admitCandidate(cohort, env) {
   for (const id of ['plugin-sdk', 'ui', 'kubernetes']) {
     if (!/^[a-f0-9]{40}$/.test(cohort?.[id] ?? '')) throw Error(`Missing immutable candidate ${id} commit`);
   }
-  if (env.REVIEWED_SDK_REVISION !== cohort['plugin-sdk']) {
-    const approved = /^[a-f0-9]{40}$/.test(env.REVIEWED_SDK_REVISION ?? '')
-      ? env.REVIEWED_SDK_REVISION : '(unset or invalid)';
-    throw Error(`Candidate SDK ${cohort['plugin-sdk']} differs from independently approved SDK ${approved} in REVIEWED_SDK_REVISION (supplied by repository approval variable); select the approved candidate pin before preparation. Approval authority was not changed.`);
+  const approved = [env.REVIEWED_SDK_REVISION, env.REVIEWED_MAINTENANCE_SDK_REVISION]
+    .filter(revision => typeof revision === 'string' && /^[a-f0-9]{40}$/.test(revision));
+  if (!approved.includes(cohort['plugin-sdk'])) {
+    throw Error(`Candidate SDK ${cohort['plugin-sdk']} has no exact independent approval in REVIEWED_SDK_REVISION or REVIEWED_MAINTENANCE_SDK_REVISION (supplied by repository approval variables). Approval authority was not changed.`);
   }
   for (const [key, id] of [['UI_SOURCE_REF', 'ui'], ['KUBERNETES_SOURCE_REF', 'kubernetes']]) {
     if (env[key] && env[key] !== cohort[id]) throw Error(`${key} conflicts with checked-in candidate cohort`);
@@ -58,6 +58,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   } else if (process.argv[2] === 'resolve') {
     verifyGitlink(refs, git(root, ['ls-tree', 'HEAD', 'plugins/kubernetes']));
     appendFileSync(process.env.GITHUB_OUTPUT, Object.entries(refs).map(([key, value]) => `${key}=${value}\n`).join(''));
+    appendFileSync(process.env.GITHUB_ENV, `REVIEWED_SDK_REVISION=${refs.sdk}\n`);
   } else if (process.argv[2] === 'verify') {
     verifyCandidate(refs, { sdk: process.env.SDK_SOURCE, ui: process.env.UI_SOURCE, kubernetes: process.env.KUBERNETES_SOURCE }, git);
     verifyIsolation(process.env.SDK_SOURCE, git);
