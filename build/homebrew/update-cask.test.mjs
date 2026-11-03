@@ -18,6 +18,7 @@ const source = (channel) => `cask "${channel}" do
 end
 `;
 
+
 for (const channel of ['omniview', 'omniview-nightly']) {
   test(`${channel}: refuse ambiguous or unsupported eligibility`, () => {
     for (const stanza of [
