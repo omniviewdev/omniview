@@ -2,6 +2,7 @@ package resource
 
 import (
 	"encoding/json"
+	"reflect"
 	"strconv"
 	"sync"
 
@@ -29,6 +30,7 @@ type sourceView struct {
 	snapshot            []HostRecord
 	snapshotOffset      int
 	snapshotSequence    uint64
+	snapshotEnds        []int
 	snapshotStatus      *HostSourceStatus
 }
 
@@ -48,9 +50,113 @@ func (v *sourceView) nextLocked(kind string) HostSourceViewEvent {
 	v.sequence++
 	return HostSourceViewEvent{ViewID: v.id, ViewGeneration: v.generation, Sequence: strconv.FormatUint(v.sequence, 10), Kind: kind}
 }
+// sourceViewSize conservatively bounds JSON before serialization.
+func sourceViewSize(value any, limit int) (int, bool) {
+	size := 0
+	add := func(n int) bool {
+		if n < 0 || n > limit-size {
+			return false
+		}
+		size += n
+		return true
+	}
+	text := func(n int) bool {
+		return n <= (limit-size)/6 && add(n*6+2)
+	}
+	var walk func(reflect.Value, int) bool
+	walk = func(v reflect.Value, depth int) bool {
+		if !v.IsValid() {
+			return add(4)
+		}
+		if depth > 128 {
+			return false
+		}
+		switch v.Kind() {
+		case reflect.Interface, reflect.Pointer:
+			if v.IsNil() {
+				return add(4)
+			}
+			return walk(v.Elem(), depth+1)
+		case reflect.String:
+			return text(v.Len())
+		case reflect.Struct:
+			// Value.MarshalJSON emits fields tagged json:"-". Count every
+			// variant and its tagged wrapper without materializing JSON.
+			if v.Type() == reflect.TypeFor[resourcev2.Value]() {
+				if !add(128) {
+					return false
+				}
+				for i := range v.NumField() {
+					if !walk(v.Field(i), depth+1) {
+						return false
+					}
+				}
+				return true
+			}
+			if !add(2) {
+				return false
+			}
+			for i := range v.NumField() {
+				field := v.Type().Field(i)
+				if field.PkgPath != "" || field.Tag.Get("json") == "-" {
+					continue
+				}
+				name := field.Tag.Get("json")
+				if name == "" {
+					name = field.Name
+				}
+				if !text(len(name)) || !add(2) || !walk(v.Field(i), depth+1) {
+					return false
+				}
+			}
+			return true
+		case reflect.Map:
+			if v.IsNil() {
+				return add(4)
+			}
+			if !add(2) {
+				return false
+			}
+			iter := v.MapRange()
+			for iter.Next() {
+				if !walk(iter.Key(), depth+1) || !add(2) || !walk(iter.Value(), depth+1) {
+					return false
+				}
+			}
+			return true
+		case reflect.Slice, reflect.Array:
+			if v.Kind() == reflect.Slice && v.IsNil() {
+				return add(4)
+			}
+			if v.Type().Elem().Kind() == reflect.Uint8 {
+				return text(v.Len())
+			}
+			if !add(2) {
+				return false
+			}
+			for i := range v.Len() {
+				if !add(1) || !walk(v.Index(i), depth+1) {
+					return false
+				}
+			}
+			return true
+		default:
+			return add(32)
+		}
+	}
+	ok := walk(reflect.ValueOf(value), 0)
+	return size, ok
+}
+
 func (v *sourceView) appendLocked(event HostSourceViewEvent) bool {
-	b, _ := json.Marshal(event)
-	if len(v.queue) >= sourceViewQueueItems || v.bytes+len(b) > sourceViewQueueBytes {
+	if len(v.queue) >= sourceViewQueueItems {
+		return false
+	}
+	if _, ok := sourceViewSize(event, sourceViewQueueBytes-v.bytes); !ok {
+		return false
+	}
+	b, err := json.Marshal(event)
+	if err != nil || len(b) > sourceViewQueueBytes-v.bytes {
 		return false
 	}
 	v.queue = append(v.queue, queuedSourceViewEvent{event: event, bytes: len(b)})
@@ -72,11 +178,30 @@ func (v *sourceView) resetLocked(reason, message string) {
 	v.queue = nil
 	v.bytes = 0
 	v.snapshot = nil
+	v.snapshotEnds = nil
 	v.snapshotStatus = nil
 	v.control = &event
 	v.synced = false
 	v.signal()
 }
+
+// failSnapshotLocked emits a terminal, empty snapshot rather than repeatedly
+// resynchronizing an envelope that can never fit.
+func (v *sourceView) failSnapshotLocked(message string) {
+	v.snapshot = nil
+	v.snapshotEnds = nil
+	v.snapshotOffset = 0
+	v.snapshotSequence = 0
+	v.sequence = 1
+	v.snapshotStatus = &HostSourceStatus{
+		State: "failed",
+		Mode: v.session.mode,
+		Error: &resourcev2.ResourceOperationError{Code: "RESOURCE_LIMIT", Message: message},
+	}
+	v.synced = false
+	v.signal()
+}
+
 func (v *sourceView) syncLocked(reason string) {
 	// No source membership is authoritative before the first snapshot boundary.
 	// Keep an established snapshot available while a refresh is in progress.
@@ -100,17 +225,42 @@ func (v *sourceView) syncLocked(reason string) {
 	v.queue = nil
 	v.bytes = 0
 	v.snapshot = make([]HostRecord, 0, len(v.session.members))
+	v.snapshotEnds = nil
+	base := HostSourceViewEvent{ViewID: v.id, ViewGeneration: v.generation, Sequence: "18446744073709551615", Kind: "snapshot"}
+	baseBytes, ok := sourceViewSize(base, sourceViewQueueBytes)
+	chunkBytes := baseBytes
+	chunkStart := 0
 	for _, member := range v.session.members {
 		record, err := envelopeRecord(v.session.pluginGeneration.generationID, v.owner, v.targetID, v.session.target, v.session.fullSourceRecord(member.observation.Record))
-		if err == nil {
-			v.snapshot = append(v.snapshot, record)
+		if err != nil {
+			continue
 		}
+		size, fits := sourceViewSize(record, sourceViewQueueBytes-baseBytes-1)
+		if !ok || !fits {
+			v.failSnapshotLocked("Source view record exceeds host limits.")
+			return
+		}
+		if len(v.snapshot)-chunkStart == sourceViewChunkRecords || size+1 > sourceViewQueueBytes-chunkBytes {
+			v.snapshotEnds = append(v.snapshotEnds, len(v.snapshot))
+			chunkStart = len(v.snapshot)
+			chunkBytes = baseBytes
+		}
+		v.snapshot = append(v.snapshot, record)
+		chunkBytes += size + 1
+	}
+	if len(v.snapshot) > chunkStart {
+		v.snapshotEnds = append(v.snapshotEnds, len(v.snapshot))
 	}
 	status := v.session.status
+	end := HostSourceViewEvent{ViewID: v.id, ViewGeneration: v.generation, Sequence: "18446744073709551615", Kind: "snapshotEnd", Status: &status}
+	if _, ok := sourceViewSize(end, sourceViewQueueBytes); !ok {
+		v.failSnapshotLocked("Source view status exceeds host limits.")
+		return
+	}
 	v.snapshotStatus = &status
 	v.snapshotOffset = 0
 	v.snapshotSequence = 0
-	v.sequence = uint64((len(v.snapshot)+sourceViewChunkRecords-1)/sourceViewChunkRecords + 1)
+	v.sequence = uint64(len(v.snapshotEnds) + 1)
 	v.signal()
 }
 func (v *sourceView) statusLocked() {
@@ -144,6 +294,15 @@ func (v *sourceView) changesLocked(records []resourcev2.Record, refs []resourcev
 		return
 	}
 	event := v.nextLocked("changes")
+	if _, ok := sourceViewSize(struct {
+		Records []resourcev2.Record
+		Refs    []resourcev2.ResourceReference
+	}{records, refs}, sourceViewQueueBytes); !ok {
+		v.mu.Unlock()
+		v.resetLocked("overflow", "Source view queue overflowed.")
+		v.syncLocked("")
+		return
+	}
 	for _, record := range records {
 		r, err := envelopeRecord(v.session.pluginGeneration.generationID, v.owner, v.targetID, v.session.target, record)
 		if err == nil {
@@ -178,6 +337,7 @@ func (v *sourceView) close() {
 	v.queue = nil
 	v.bytes = 0
 	v.snapshot = nil
+	v.snapshotEnds = nil
 	v.snapshotStatus = nil
 	v.control = &event
 	v.closed = true
@@ -197,10 +357,8 @@ func (v *sourceView) emitLoop() {
 				v.snapshotSequence++
 				event = HostSourceViewEvent{ViewID: v.id, ViewGeneration: v.generation, Sequence: strconv.FormatUint(v.snapshotSequence, 10)}
 				if v.snapshotOffset < len(v.snapshot) {
-					end := v.snapshotOffset + sourceViewChunkRecords
-					if end > len(v.snapshot) {
-						end = len(v.snapshot)
-					}
+					end := v.snapshotEnds[0]
+					v.snapshotEnds = v.snapshotEnds[1:]
 					event.Kind = "snapshot"
 					event.Records = v.snapshot[v.snapshotOffset:end]
 					v.snapshotOffset = end

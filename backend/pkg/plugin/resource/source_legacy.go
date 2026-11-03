@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"reflect"
+	"strings"
 
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	resourceplugin "github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
@@ -88,6 +89,7 @@ func (o *legacySourceOpener) produce(ctx context.Context, request resourcev2.Sou
 	if err := emit(resourcev2.SourceFrame{Begin: &resourcev2.SourceBegin{Mode: request.Mode}}); err != nil { return err }
 	coverage := resourcev2.SourceCoverage{Enumeration: resourcev2.EnumerationExhausted, Consistency: resourcev2.ConsistencyPointInTime, Limitations: []string{}}
 	seen := make(map[string]struct{})
+	cursorBytes := 0
 	limitationBytes := 0
 	var cursor, revision *string
 	pages := 0
@@ -142,8 +144,11 @@ func (o *legacySourceOpener) produce(ctx context.Context, request resourcev2.Sou
 		if page.NextCursor == nil { break }
 		if _, ok := seen[*page.NextCursor]; ok { return resourcev2.NewError("PROVIDER_ERROR", "Source repeated a cursor.") }
 		if len(seen) >= 65536 { return resourcev2.NewError("RESOURCE_LIMIT", "Source pagination limit.") }
-		seen[*page.NextCursor] = struct{}{}
-		cursor = page.NextCursor
+		if len(*page.NextCursor) > int(request.Limits.MaxFrameBytes)-cursorBytes { return resourcev2.NewError("RESOURCE_LIMIT", "Source cursor byte limit.") }
+		next := strings.Clone(*page.NextCursor)
+		cursorBytes += len(next)
+		seen[next] = struct{}{}
+		cursor = &next
 	}
 	return emit(resourcev2.SourceFrame{SnapshotEnd: &resourcev2.SourceSnapshotEnd{Coverage: coverage, Continuity: resourcev2.ContinuityNotApplicable}})
 }

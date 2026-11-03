@@ -130,6 +130,46 @@ func TestLegacySourceCancellationAndLimits(t *testing.T) {
 	})
 }
 
+func TestLegacySourceCursorByteLimit(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		last string
+		code string
+	}{
+		{name: "distinct cursors exhaust budget", last: "new", code: "RESOURCE_LIMIT"},
+		{name: "duplicate at budget remains provider error", last: "duplicate", code: "PROVIDER_ERROR"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := legacyTestRequest()
+			first := strings.Repeat("a", int(r.Limits.MaxFrameBytes)/2)
+			second := strings.Repeat("b", int(r.Limits.MaxFrameBytes)-len(first))
+			calls := 0
+			p := legacyTestProvider{enumerate: func(_ context.Context, q resourcev2.EnumerateRequest) (resourcev2.SourcePage, error) {
+				calls++
+				page := legacyTestPage()
+				page.Records = nil
+				switch calls {
+				case 1:
+					page.NextCursor = &first
+				case 2:
+					if q.Cursor == nil || *q.Cursor != first { return resourcev2.SourcePage{}, errors.New("first cursor not forwarded") }
+					page.NextCursor = &second
+				default:
+					if q.Cursor == nil || *q.Cursor != second { return resourcev2.SourcePage{}, errors.New("second cursor not forwarded") }
+					next := "new"
+					if tc.last == "duplicate" { next = first }
+					page.NextCursor = &next
+				}
+				return page, nil
+			}}
+			s := legacyTestOpen(t, p, r)
+			legacyTestRecv(t, s)
+			if _, err := s.Recv(); resourcev2.ErrorCode(err) != tc.code { t.Fatalf("expected %s: %v", tc.code, err) }
+			if calls != 3 { t.Fatalf("expected three pages, got %d", calls) }
+		})
+	}
+}
+
 func TestLegacySourceFrameHeaderCountsTowardLimit(t *testing.T) {
 	r := legacyTestRequest()
 	page := legacyTestPage()
