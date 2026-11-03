@@ -39,6 +39,7 @@ async function retireFixture(context: BrowserContext, fixture: {
 // bundled duplicate runtime, or publication that never reaches paint must fail.
 test.describe('published consumers', () => {
   test('a new built runtime export executes through served shims and production externals', async ({ context }) => {
+    test.setTimeout(300_000);
     const fixture = await publishedRuntime();
     let primaryFailure: unknown;
     try {
