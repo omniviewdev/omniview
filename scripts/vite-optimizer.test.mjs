@@ -31,6 +31,7 @@ test('does not optimize discovered dependencies before server initialization', {
           plugins: [{
             name: 'observe-dependency-optimization',
             setup(build) {
+              if (!build.initialOptions.outdir) return;
               build.onStart(() => { buildStarted.resolve(); });
               build.onEnd(() => { buildFinished.resolve(); });
             },
@@ -46,6 +47,7 @@ test('does not optimize discovered dependencies before server initialization', {
     assert.equal(await Promise.race([buildFinished.promise.then(() => true), delay(10_000, false)]), true);
     const response = await fetch(new URL(optimizedUrl, server.resolvedUrls.local[0]));
     assert.equal(response.status, 200, await response.text());
+    assert.ok(server.environments.client.depsOptimizer.metadata.optimized.react, 'react optimization must be committed');
     await server.environments.client.waitForRequestsIdle();
     assert.deepEqual(errors, []);
   } finally {
