@@ -20,6 +20,8 @@ const ValidationNone = "none"
 // admissionContextCheckInterval is the work-unit stride between ctx checks.
 const admissionContextCheckInterval = 1024
 
+const completeCoverageKind = "complete"
+
 // Admission is the outcome of admitting one record body against a schema.
 type Admission struct {
 	// Validation is "full", "reduced" (Unvalidated lists what was not
@@ -29,8 +31,9 @@ type Admission struct {
 	// Unvalidated lists the schema constraints reachable from the root that
 	// admission did not enforce.
 	Unvalidated []Constraint
-	// UnavailablePaths lists RFC6901 pointers of missing required properties
-	// that the record's coverage declares limited. Sorted and unique.
+	// UnavailablePaths lists missing required properties and values whose
+	// omission-sensitive checks are indeterminate. The root pointer is "".
+	// Paths are sorted and unique.
 	UnavailablePaths []string
 }
 
@@ -40,8 +43,10 @@ var errBranchMismatch = errors.New("branch mismatch")
 
 // Admit validates value against schema under coverage, sharing one work budget
 // across the whole request. A nil schema (absent binding) performs only the
-// structural tagged-value check and returns Validation "none". Admit never
-// writes to the schema document and retains nothing after it returns.
+// structural tagged-value check and returns Validation "none". Partial and
+// unknown coverage can make omission-sensitive checks indeterminate; definite
+// contradictions still fail. Admit ignores separate known-absence facts, never
+// writes to the schema document, and retains nothing after it returns.
 func Admit(ctx context.Context, schema *Schema, value resourcev2.Value, coverage resourcev2.Coverage, policy Policy) (Admission, error) {
 	if err := ctx.Err(); err != nil {
 		return Admission{}, admissionContextError(ctx)
@@ -197,28 +202,35 @@ func (a *admitter) evaluate(id NodeID, v *resourcev2.Value) error {
 		return a.mismatch("value at %q has kind %s, schema at %q allows %s", a.here(), v.Kind, n.Pointer, allowedTypes(n.Types))
 	}
 	if n.Const != nil {
-		equal, err := a.valuesEqual(n.Const, v)
+		outcome, err := a.compareConstraint(n.Const, v)
 		if err != nil {
 			return err
 		}
-		if !equal {
+		if outcome == branchMismatch {
 			return a.mismatch("value at %q does not equal the const of schema at %q", a.here(), n.Pointer)
+		}
+		if outcome == branchIndeterminate {
+			a.unavailable = append(a.unavailable, a.pointer())
 		}
 	}
 	if len(n.Enum) > 0 {
-		matched := false
+		matched, uncertain := false, false
 		for i := range n.Enum {
-			equal, err := a.valuesEqual(&n.Enum[i], v)
+			outcome, err := a.compareConstraint(&n.Enum[i], v)
 			if err != nil {
 				return err
 			}
-			if equal {
+			if outcome == branchMatch {
 				matched = true
 				break
 			}
+			uncertain = uncertain || outcome == branchIndeterminate
+		}
+		if !matched && !uncertain {
+			return a.mismatch("value at %q is not one of the enum values of schema at %q", a.here(), n.Pointer)
 		}
 		if !matched {
-			return a.mismatch("value at %q is not one of the enum values of schema at %q", a.here(), n.Pointer)
+			a.unavailable = append(a.unavailable, a.pointer())
 		}
 	}
 	var err error
@@ -431,7 +443,10 @@ func (a *admitter) text(n *Node, s string) error {
 
 func (a *admitter) list(n *Node, items []resourcev2.Value) error {
 	if n.MinItems != nil && len(items) < int(*n.MinItems) {
-		return a.mismatch("value at %q has fewer than minItems %d of schema at %q", a.here(), *n.MinItems, n.Pointer)
+		if !a.affected(a.pointer()) {
+			return a.mismatch("value at %q has fewer than minItems %d of schema at %q", a.here(), *n.MinItems, n.Pointer)
+		}
+		a.unavailable = append(a.unavailable, a.pointer())
 	}
 	if n.MaxItems != nil && len(items) > int(*n.MaxItems) {
 		return a.mismatch("value at %q has more than maxItems %d of schema at %q", a.here(), *n.MaxItems, n.Pointer)
@@ -451,6 +466,9 @@ func (a *admitter) list(n *Node, items []resourcev2.Value) error {
 			}
 		}
 	}
+	if err := a.markUnavailableList(n); err != nil {
+		return err
+	}
 	if n.Items == 0 {
 		return nil
 	}
@@ -468,9 +486,35 @@ func (a *admitter) list(n *Node, items []resourcev2.Value) error {
 	return nil
 }
 
+func (a *admitter) markUnavailableList(n *Node) error {
+	if a.coverage.Kind == completeCoverageKind || (n.MaxItems == nil && !n.UniqueItems && n.Items == 0) {
+		return nil
+	}
+	pointer := a.pointer()
+	if !a.affected(pointer) {
+		return nil
+	}
+	omittedItemsMayFail := n.MaxItems != nil || n.UniqueItems
+	if !omittedItemsMayFail && n.Items != 0 {
+		var err error
+		omittedItemsMayFail, err = a.couldRejectOmittedValue(n.Items, 0)
+		if err != nil {
+			return err
+		}
+	}
+	if omittedItemsMayFail {
+		a.unavailable = append(a.unavailable, pointer)
+	}
+	return nil
+}
+
 func (a *admitter) object(n *Node, fields map[string]resourcev2.Value) error {
 	if n.MinProperties != nil && len(fields) < int(*n.MinProperties) {
-		return a.mismatch("value at %q has fewer than minProperties %d of schema at %q", a.here(), *n.MinProperties, n.Pointer)
+		if !a.affected(a.pointer()) {
+			return a.mismatch(
+				"value at %q has fewer than minProperties %d of schema at %q", a.here(), *n.MinProperties, n.Pointer)
+		}
+		a.unavailable = append(a.unavailable, a.pointer())
 	}
 	if n.MaxProperties != nil && len(fields) > int(*n.MaxProperties) {
 		return a.mismatch("value at %q has more than maxProperties %d of schema at %q", a.here(), *n.MaxProperties, n.Pointer)
@@ -483,9 +527,20 @@ func (a *admitter) object(n *Node, fields map[string]resourcev2.Value) error {
 		}
 	}
 	declaredPresent := 0
+	omittedPropertyMayFail := false
 	for _, property := range n.Properties {
 		value, ok := fields[property.Name]
 		if !ok {
+			if !omittedPropertyMayFail && a.branchDepth > 0 && a.coverage.Kind != completeCoverageKind {
+				_, required := slices.BinarySearch(n.Required, property.Name)
+				if !required && a.limited(a.childPointer(property.Name)) {
+					var err error
+					omittedPropertyMayFail, err = a.couldRejectOmittedValue(property.Node, 0)
+					if err != nil {
+						return err
+					}
+				}
+			}
 			continue
 		}
 		declaredPresent++
@@ -493,10 +548,110 @@ func (a *admitter) object(n *Node, fields map[string]resourcev2.Value) error {
 			return err
 		}
 	}
+	if err := a.markUnavailableObject(n, omittedPropertyMayFail); err != nil {
+		return err
+	}
 	if n.Additional == AdditionalAny || declaredPresent == len(fields) {
 		return nil
 	}
 	return a.undeclared(n, fields)
+}
+
+func (a *admitter) markUnavailableObject(n *Node, omittedPropertyMayFail bool) error {
+	if a.coverage.Kind == completeCoverageKind ||
+		(!omittedPropertyMayFail && n.MaxProperties == nil && n.Additional == AdditionalAny) {
+		return nil
+	}
+	pointer := a.pointer()
+	if !a.affected(pointer) {
+		return nil
+	}
+	omittedPropertyMayFail = omittedPropertyMayFail || n.MaxProperties != nil || n.Additional == AdditionalForbidden
+	if !omittedPropertyMayFail && n.Additional == AdditionalSchema {
+		var err error
+		omittedPropertyMayFail, err = a.couldRejectOmittedValue(n.AdditionalOf, 0)
+		if err != nil {
+			return err
+		}
+	}
+	if omittedPropertyMayFail {
+		a.unavailable = append(a.unavailable, pointer)
+	}
+	return nil
+}
+
+// couldRejectOmittedValue proves common unconstrained shapes, including refs
+// and unions. Other shapes remain conservative without the omitted value.
+func (a *admitter) couldRejectOmittedValue(id NodeID, depth int) (bool, error) {
+	if err := a.charge(); err != nil {
+		return false, err
+	}
+	if depth > a.policy.MaxRefChain {
+		return true, nil
+	}
+	n := &a.nodes[id]
+	if n.hasOmissionSensitiveAssertions() {
+		return true, nil
+	}
+	additional := NodeID(0)
+	if n.Additional == AdditionalSchema {
+		additional = n.AdditionalOf
+	}
+	for _, child := range [3]NodeID{n.Ref, n.Items, additional} {
+		if child != 0 {
+			mayReject, err := a.couldRejectOmittedValue(child, depth+1)
+			if err != nil || mayReject {
+				return mayReject, err
+			}
+		}
+	}
+	for _, property := range n.Properties {
+		mayReject, err := a.couldRejectOmittedValue(property.Node, depth+1)
+		if err != nil || mayReject {
+			return mayReject, err
+		}
+	}
+	for _, branch := range n.AllOf {
+		mayReject, err := a.couldRejectOmittedValue(branch, depth+1)
+		if err != nil || mayReject {
+			return mayReject, err
+		}
+	}
+	return a.couldRejectOmittedUnion(n, depth)
+}
+
+func (n *Node) hasOmissionSensitiveAssertions() bool {
+	return n.Types != 0 || n.Enum != nil || n.Const != nil || len(n.Required) > 0 ||
+		n.Additional == AdditionalForbidden || n.Minimum != nil || n.Maximum != nil || n.MultipleOf != nil ||
+		(n.Pattern != nil && n.Pattern.String() != "") || n.MaxLength != nil || n.MaxItems != nil || n.MaxProperties != nil ||
+		(n.MinLength != nil && *n.MinLength > 0) || (n.MinItems != nil && *n.MinItems > 0) ||
+		(n.MinProperties != nil && *n.MinProperties > 0) || n.UniqueItems
+}
+
+func (a *admitter) couldRejectOmittedUnion(n *Node, depth int) (bool, error) {
+	if len(n.AnyOf) > 0 {
+		unconstrained := false
+		for _, branch := range n.AnyOf {
+			mayReject, err := a.couldRejectOmittedValue(branch, depth+1)
+			if err != nil {
+				return false, err
+			}
+			if !mayReject {
+				unconstrained = true
+				break
+			}
+		}
+		if !unconstrained {
+			return true, nil
+		}
+	}
+	if len(n.OneOf) > 1 {
+		return true, nil
+	}
+	if len(n.OneOf) == 1 {
+		return a.couldRejectOmittedValue(n.OneOf[0], depth+1)
+	}
+	return false, nil
 }
 
 func declares(n *Node, name string) bool {
@@ -540,7 +695,7 @@ func (a *admitter) field(name string, id NodeID, value *resourcev2.Value) error 
 // property.
 func (a *admitter) missingRequired(name string) error {
 	missing := a.childPointer(name)
-	if a.coverage.Kind != "complete" && a.limited(missing) {
+	if a.coverage.Kind != completeCoverageKind && a.limited(missing) {
 		a.unavailable = append(a.unavailable, missing)
 		return nil
 	}
@@ -560,6 +715,188 @@ func (a *admitter) limited(pointer string) bool {
 		}
 	}
 	return false
+}
+
+// affected includes values containing a limitation, as well as values below it.
+func (a *admitter) affected(pointer string) bool {
+	if a.coverage.Kind == completeCoverageKind {
+		return false
+	}
+	if a.limited(pointer) {
+		return true
+	}
+	for _, path := range a.coverage.Paths {
+		if pointer == "" || (strings.HasPrefix(path, pointer) && len(path) > len(pointer) && path[len(pointer)] == '/') {
+			return true
+		}
+	}
+	return false
+}
+
+// compareConstraint compares a schema literal with the observed value. Missing
+// members can make equality uncertain, but present contradictions remain final.
+func (a *admitter) compareConstraint(expected, observed *resourcev2.Value) (branchOutcome, error) {
+	if expected.Kind != observed.Kind || (observed.Kind != "map" && observed.Kind != "list") || !a.affected(a.pointer()) {
+		equal, err := a.valuesEqual(expected, observed)
+		if err != nil {
+			return branchMismatch, err
+		}
+		if equal {
+			return branchMatch, nil
+		}
+		return branchMismatch, nil
+	}
+	if err := a.charge(); err != nil {
+		return branchMismatch, err
+	}
+	uncertain := a.limited(a.pointer())
+	var outcome branchOutcome
+	var err error
+	if observed.Kind == "list" {
+		outcome, err = a.compareListConstraint(expected.List, observed.List, uncertain)
+	} else {
+		outcome, err = a.compareMapConstraint(expected.Map, observed.Map, uncertain)
+	}
+	if err != nil || outcome != branchMatch {
+		return outcome, err
+	}
+	return a.collectionOmissionOutcome(observed)
+}
+
+func (a *admitter) compareListConstraint(expected, observed []resourcev2.Value, uncertain bool) (branchOutcome, error) {
+	if len(observed) > len(expected) {
+		return branchMismatch, nil
+	}
+	if len(observed) < len(expected) && !uncertain {
+		return a.compareLocallyLimitedList(expected, observed)
+	}
+	next := 0
+	for i := range observed {
+		matched := false
+		// Leave enough expected elements for the remaining observations.
+		for next <= len(expected)-(len(observed)-i) {
+			a.path = append(a.path, pathSegment{name: "", index: i, isIndex: true})
+			outcome, err := a.compareConstraint(&expected[next], &observed[i])
+			a.path = a.path[:len(a.path)-1]
+			next++
+			if err != nil {
+				return branchMismatch, err
+			}
+			uncertain = uncertain || outcome == branchIndeterminate
+			if outcome != branchMismatch {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return branchMismatch, nil
+		}
+	}
+	if uncertain {
+		return branchIndeterminate, nil
+	}
+	return branchMatch, nil
+}
+
+// Local member limits make some expected elements optional. Keep alternative
+// matches: a greedy match can leave an unlimited tail.
+func (a *admitter) compareLocallyLimitedList(expected, observed []resourcev2.Value) (branchOutcome, error) {
+	reachable := make([]bool, len(observed)+1)
+	reachable[0] = true
+	for index := range expected {
+		a.path = append(a.path, pathSegment{name: "", index: index, isIndex: true})
+		omittable := a.limited(a.pointer())
+		a.path = a.path[:len(a.path)-1]
+		possible := false
+		for count := min(index+1, len(observed)); count >= 0; count-- {
+			if err := a.charge(); err != nil {
+				return branchMismatch, err
+			}
+			canMatch := count > 0 && reachable[count-1]
+			reachable[count] = omittable && reachable[count]
+			if canMatch {
+				a.path = append(a.path, pathSegment{name: "", index: count - 1, isIndex: true})
+				outcome, err := a.compareConstraint(&expected[index], &observed[count-1])
+				a.path = a.path[:len(a.path)-1]
+				if err != nil {
+					return branchMismatch, err
+				}
+				reachable[count] = reachable[count] || outcome != branchMismatch
+			}
+			possible = possible || reachable[count]
+		}
+		if !possible {
+			return branchMismatch, nil
+		}
+	}
+	if !reachable[len(observed)] {
+		return branchMismatch, nil
+	}
+	return branchIndeterminate, nil
+}
+
+func (a *admitter) compareMapConstraint(
+	expected, observed map[string]resourcev2.Value, uncertain bool,
+) (branchOutcome, error) {
+	for key, value := range observed {
+		want, ok := expected[key]
+		if !ok {
+			if err := a.charge(); err != nil {
+				return branchMismatch, err
+			}
+			return branchMismatch, nil
+		}
+		a.path = append(a.path, pathSegment{name: key, index: 0, isIndex: false})
+		outcome, err := a.compareConstraint(&want, &value)
+		a.path = a.path[:len(a.path)-1]
+		if err != nil || outcome == branchMismatch {
+			return branchMismatch, err
+		}
+		uncertain = uncertain || outcome == branchIndeterminate
+	}
+	if len(expected) == len(observed) {
+		if uncertain {
+			return branchIndeterminate, nil
+		}
+		return branchMatch, nil
+	}
+	for key := range expected {
+		if _, ok := observed[key]; ok {
+			continue
+		}
+		if err := a.charge(); err != nil {
+			return branchMismatch, err
+		}
+		if !a.limited(a.childPointer(key)) {
+			return branchMismatch, nil
+		}
+	}
+	return branchIndeterminate, nil
+}
+
+func (a *admitter) collectionOmissionOutcome(observed *resourcev2.Value) (branchOutcome, error) {
+	prefix := a.pointer() + "/"
+	for _, path := range a.coverage.Paths {
+		if err := a.charge(); err != nil {
+			return branchMismatch, err
+		}
+		child, ok := strings.CutPrefix(path, prefix)
+		if !ok || strings.Contains(child, "/") {
+			continue
+		}
+		if observed.Kind == "list" {
+			index, err := strconv.Atoi(child)
+			if err == nil && index >= 0 && strconv.Itoa(index) == child {
+				return branchIndeterminate, nil
+			}
+			continue
+		}
+		key := strings.ReplaceAll(strings.ReplaceAll(child, "~1", "/"), "~0", "~")
+		if _, found := observed.Map[key]; !found {
+			return branchIndeterminate, nil
+		}
+	}
+	return branchMatch, nil
 }
 
 func (a *admitter) combinators(n *Node, v *resourcev2.Value) error {
@@ -591,14 +928,14 @@ func (a *admitter) combinators(n *Node, v *resourcev2.Value) error {
 		}
 	}
 	if len(n.OneOf) > 0 {
-		matched, uncertain := false, false
+		matched, uncertain := false, 0
 		for _, branch := range n.OneOf {
 			outcome, err := a.tryBranch(branch, v)
 			if err != nil {
 				return err
 			}
 			if outcome == branchIndeterminate {
-				uncertain = true
+				uncertain++
 			} else if outcome == branchMatch {
 				if matched {
 					return a.mismatch("value matches more than one oneOf branch at %q of schema at %q", a.here(), n.Pointer)
@@ -606,8 +943,11 @@ func (a *admitter) combinators(n *Node, v *resourcev2.Value) error {
 				matched = true
 			}
 		}
-		if !matched && !uncertain {
+		if !matched && uncertain == 0 {
 			return a.mismatch("value at %q matches no oneOf branch of schema at %q", a.here(), n.Pointer)
+		}
+		if uncertain > 1 || (matched && uncertain > 0) {
+			a.unavailable = append(a.unavailable, a.pointer())
 		}
 	}
 	return nil
