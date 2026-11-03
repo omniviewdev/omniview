@@ -520,3 +520,8 @@ The dependency deliberately pins the profiled SDK commit above. SDK main
 concurrently adopted the unrelated C04 source-session wire and grpc-go fork;
 silently selecting that newer wire would require a separate host/plugin cutover
 and would invalidate this performance cohort.
+
+The integration source cohort and Kubernetes submodule also pin the optimized
+SDK consumer. This keeps source-based application checks on the same SDK as
+the canonical host and plugin modules, rather than the earlier schema-budget
+cohort. These dependency updates are not additional matched performance runs.
