@@ -62,6 +62,8 @@ test.describe('Owned application profiles', () => {
 // Exercise the genuinely different asset route once, not a second backend,
 // settings, Kubernetes or compiler-conformance matrix.
 test.describe('Alternate live frontend delivery', () => {
+  // A cold live frontend must start before the test body runs.
+  test.describe.configure({ timeout: 90_000 });
   test.use({ liveFrontend: true });
   test('loads the actual live asset route and reconnects the same owned origin', async ({ page, workspace }) => {
     const descriptor = await workspace.verify();
