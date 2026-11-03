@@ -31,16 +31,14 @@ function eligibleMacOS(cask, versions) {
     end
     consumer = CaskConsumer.new
     consumer.instance_eval(STDIN.read)
-    puts JSON.generate(consumer.minimum)
+    puts JSON.generate({ kind: consumer.minimum.class.name, value: consumer.minimum.to_s })
   `], { input: cask, encoding: 'utf8' });
   assert.equal(consumer.status, 0, consumer.stderr);
   const requirement = JSON.parse(consumer.stdout);
-  if (requirement === null) return versions.map(() => true);
-  const match = requirement.match(/^>= (?::([a-z_]+)|(\d+(?:\.\d+){0,2}))$/);
-  assert.ok(match, `Unsupported consumer requirement: ${requirement}`);
+  assert.equal(requirement.kind, 'Symbol', 'Homebrew requires a named macOS release symbol');
   const named = { big_sur: [11], monterey: [12], ventura: [13], sequoia: [15], tahoe: [26] };
-  const minimum = match[1] ? named[match[1]] : match[2].split('.').map(Number);
-  assert.ok(minimum, `Unknown consumer version: ${requirement}`);
+  const minimum = named[requirement.value];
+  assert.ok(minimum, `Unknown consumer version: ${requirement.value}`);
   return versions.map((version) => {
     const components = version.split('.').map(Number);
     for (let index = 0; index < Math.max(components.length, minimum.length); index++) {
@@ -59,26 +57,29 @@ for (const channel of ['omniview', 'omniview-nightly']) {
       const result = updateCask(input, '0.26.0', sha);
       assert.deepEqual(eligibleMacOS(result, ['10.15', '11', '11.7', '12', '12.7', '13', '26']),
         [false, false, false, true, true, true, true]);
-      if (requirement === '>= :monterey' || requirement === '>= 12') {
-        assert.ok(result.includes(`  depends_on macos: "${requirement}"`));
-      }
       assert.equal(updateCask(result, '0.26.0', sha), result);
     });
   }
-  for (const requirement of ['>= :ventura', '>= 12.3', '>= 15', '>= :tahoe']) {
+  for (const [requirement, eligibility] of [
+    ['>= :ventura', [false, false, false, false, true, true, true]],
+    ['>= 13.0', [false, false, false, false, true, true, true]],
+    ['>= 15', [false, false, false, false, false, true, true]],
+    ['>= :tahoe', [false, false, false, false, false, false, true]],
+  ]) {
     test(`${channel}: preserve stricter eligibility ${requirement}`, () => {
       const input = source(channel).replace('  app ', `  depends_on macos: "${requirement}"\n  app `);
       const result = updateCask(input, '0.26.0', sha);
       const versions = ['11', '12', '12.2', '12.3', '13', '15', '26'];
-      assert.deepEqual(eligibleMacOS(result, versions), eligibleMacOS(input, versions));
-      assert.ok(result.includes(`  depends_on macos: "${requirement}"`));
-      assert.equal(eligibleMacOS(result, ['11'])[0], false);
+      assert.deepEqual(eligibleMacOS(result, versions), eligibility);
+      assert.equal(updateCask(result, '0.26.0', sha), result);
     });
   }
   test(`${channel}: refuse ambiguous or unsupported eligibility`, () => {
     for (const stanza of [
       '  depends_on macos: ">= :future_release"',
-      '  depends_on macos: :monterey',
+      '  depends_on macos: :future_release',
+      '  depends_on macos: ">= 12.3"',
+      '  depends_on macos: ">= 13.0.1"',
       '  depends_on macos: ">= 12", arch: :arm64',
       '  depends_on macos: ["12", "13"]',
       '  depends_on :macos => ">= 12"',
