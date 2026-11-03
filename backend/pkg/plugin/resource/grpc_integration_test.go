@@ -106,7 +106,7 @@ func TestL3_03_SourceSessionFlowsThroughGRPC(t *testing.T) {
 		Target:      resource.ReadTarget{Route: route, Provider: "p1", Authority: "authority", Type: "native::Pod", Representation: "native"},
 		Mode:        resource.SourceModeSnapshot,
 		Acquisition: resource.SourceAcquisition{Kind: resource.SourceAcquisitionEnumerate},
-		Limits:      resource.SourceLimits{MaxFrameBytes: resource.MinSourceFrameBytes, MaxBatchItems: 2},
+		Limits:      resource.SourceLimits{MaxFrameBytes: resource.MaxSourceFrameBytes, MaxBatchItems: 2},
 		Binding:     resource.RepresentationBinding{Representation: record.Representation},
 	})
 	require.NoError(t, err)

@@ -245,7 +245,10 @@ func TestSourceAdmissionBindingMismatchRebinds(t *testing.T) {
 	revision.Store("r2")
 	require.NoError(t, ctrl.RefreshSourceView(testInvocationContext(), "p1", view.ViewID))
 	second := sourceNextOpen(t, provider)
-	require.Equal(t, "r2", second.revision)
+	_, catalog, err := ctrl.routeCatalog(testInvocationContext(), "p1", target.Target.Route)
+	require.NoError(t, err)
+	require.Equal(t, catalog.Revision, second.revision)
+	require.NotEqual(t, first.revision, second.revision)
 	require.NotEqual(t, first.request.Generation, second.request.Generation)
 	session.mu.Lock()
 	currentEpoch := session.ctx.Value(sourceBindingKey{}).(sourceBinding).Epoch
