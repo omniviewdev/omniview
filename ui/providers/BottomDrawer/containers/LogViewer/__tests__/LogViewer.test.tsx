@@ -171,7 +171,7 @@ describe('LogViewerContainer', () => {
 
   it('keeps discovered sources connecting until readers report session readiness', () => {
     mockSources = [{ id: 'discovered-container', labels: {} }];
-    const source: LogDataSource = { connect: () => () => {} };
+    const source: LogDataSource = { connect: () => vi.fn() };
     const { getByText, queryByText } = render(<LogViewerContainer source={source} />);
     expect(getByText('Connecting to log sources...')).toBeTruthy();
     expect(getByText('1 source found, connecting')).toBeTruthy();
@@ -183,7 +183,7 @@ describe('LogViewerContainer', () => {
     const source: LogDataSource = {
       connect(handlers) {
         handlers.onEvent({ type: StreamEventType.SESSION_READY, source_id: '', message: 'Ready', timestamp: '' });
-        return () => {};
+        return vi.fn();
       },
     };
     const { getByText, queryByText } = render(<LogViewerContainer source={source} />);
@@ -195,7 +195,7 @@ describe('LogViewerContainer', () => {
     const source: LogDataSource = {
       connect(handlers) {
         handlers.onEvent({ type: StreamEventType.STREAM_ENDED, source_id: '', message: 'Complete', timestamp: '' });
-        return () => {};
+        return vi.fn();
       },
     };
     const { getByText, queryByText } = render(<LogViewerContainer source={source} />);
@@ -209,7 +209,7 @@ describe('LogViewerContainer', () => {
         connect(handlers) {
           handlers.onEvent({ type: StreamEventType.SESSION_READY, source_id: '', message: 'Ready', timestamp: '' });
           handlers.onEvent({ type, source_id: 'one-of-many', message: 'Source stopped', timestamp: '' });
-          return () => {};
+          return vi.fn();
         },
       };
       const { getByText, queryByText } = render(<LogViewerContainer source={source} />);

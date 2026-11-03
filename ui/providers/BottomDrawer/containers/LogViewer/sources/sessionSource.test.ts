@@ -10,15 +10,20 @@ vi.mock('@wailsio/runtime', () => ({ Events: {
     bus.listeners.set(key, listeners);
     return () => listeners.delete(listener);
   },
-  Off(key: string) { bus.listeners.delete(key); },
+  Off(key: string) {
+    bus.listeners.delete(key);
+  },
 } }));
 vi.mock('@omniviewdev/runtime/api', () => ({
   LogsClient: { SubscribeSessionEvents: (...args: Parameters<typeof SubscribeSessionEvents>) => SubscribeSessionEvents(...args) },
 }));
 
 function emit(key: string, data: unknown) {
-  for (const listener of bus.listeners.get(key) ?? []) listener({ data });
+  for (const listener of bus.listeners.get(key) ?? []) {
+    listener({ data });
+  }
 }
+
 const raw = (content: string) => ({ session_id: 'session', source_id: 'container', labels: {}, timestamp: '', content, origin: 0 });
 const terminal = { type: 5, source_id: '', message: 'Complete', timestamp: '' };
 const handlers = () => ({ onLines: vi.fn(), onEvent: vi.fn() });
