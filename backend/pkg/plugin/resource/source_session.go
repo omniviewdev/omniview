@@ -31,6 +31,8 @@ type sourceSession struct {
 	members              map[string]sourceMember
 	hasSnapshot          bool
 	memberBytes          int
+	memberLedger         sourceMemberLedger
+	transientLedger      sourceTransientLedger
 	staging              map[string]sourceMember
 	stagingBytes         int
 	status               HostSourceStatus
@@ -195,34 +197,38 @@ func (s *sourceSession) receive(ctx context.Context, request resourcev2.SourceOp
 			s.mu.Unlock()
 			return
 		}
-		// Bound the frame before the phase tracker constructs its wire representation.
-		if err := sourceFramePreflight(frame); err != nil {
-			s.statusLocked("failed", err)
+		// Reserve frame and tracker scratch before constructing the wire tree.
+		frameBytes, err := sourceFrameTransientEstimate(frame, maxSourceTransientBytes)
+		if err != nil || !s.transientLedger.reserve(frameBytes) {
+			s.statusLocked("failed", resourcev2.NewError("RESOURCE_LIMIT", "Source frame transient exceeds host limits."))
 			s.mu.Unlock()
 			return
 		}
-		if err := tracker.Admit(frame); err != nil {
-			var operationErr *resourcev2.ResourceOperationError
-			if errors.As(err, &operationErr) && operationErr.Code == "RESET_REQUIRED" && operationErr.Message == "source binding changed" {
-				s.mu.Unlock()
-				s.checkBindingMismatch(operationCtx, request, expected, binding)
-				return
+		terminal, rebind := func() (bool, bool) {
+			defer s.transientLedger.release(frameBytes)
+			if err := tracker.Admit(frame); err != nil {
+				var operationErr *resourcev2.ResourceOperationError
+				if errors.As(err, &operationErr) && operationErr.Code == "RESET_REQUIRED" && operationErr.Message == "source binding changed" {
+					return true, true
+				}
+				s.statusLocked("failed", err)
+				return true, false
 			}
-			s.statusLocked("failed", err)
-			s.mu.Unlock()
-			return
-		}
-		if frame.Reset != nil && frame.Reset.Reason == resourcev2.SourceResetBindingChanged {
-			s.mu.Unlock()
+			if frame.Reset != nil && frame.Reset.Reason == resourcev2.SourceResetBindingChanged {
+				return true, true
+			}
+			terminal, err := s.applyLocked(frame, sourceFrameContext{ctx: ctx, target: request.Target, descriptor: &descriptor, frameReserved: frameBytes})
+			if err != nil {
+				s.statusLocked("failed", err)
+			}
+			return terminal || err != nil, false
+		}()
+		s.mu.Unlock()
+		if rebind {
 			s.checkBindingMismatch(operationCtx, request, expected, binding)
 			return
 		}
-		terminal, err := s.applyLocked(frame, sourceFrameContext{ctx: ctx, target: request.Target, descriptor: &descriptor})
-		if err != nil {
-			s.statusLocked("failed", err)
-		}
-		s.mu.Unlock()
-		if err != nil || terminal {
+		if terminal {
 			return
 		}
 	}
@@ -392,6 +398,9 @@ func (s *sourceSession) rebindLocked(target resourcev2.ReadTarget, opener resour
 	s.cancel = cancel
 	s.mode = mode
 	s.status.Mode = mode
+	for _, member := range s.members {
+		member.release()
+	}
 	s.members = make(map[string]sourceMember)
 	s.memberBytes = 0
 	s.hasSnapshot = false
@@ -411,6 +420,9 @@ func (s *sourceSession) rebindFailedLocked(err error) {
 		s.stream = nil
 	}
 	s.generation = uuid.NewString()
+	for _, member := range s.members {
+		member.release()
+	}
 	s.members = make(map[string]sourceMember)
 	s.memberBytes = 0
 	s.hasSnapshot = false
@@ -443,6 +455,9 @@ func (s *sourceSession) closeWithoutJoin() <-chan struct{} {
 	}
 	stream := s.stream
 	done := s.done
+	for _, member := range s.members {
+		member.release()
+	}
 	s.members = nil
 	s.staging = nil
 	s.memberBytes = 0
@@ -470,6 +485,7 @@ type sourceFrameContext struct {
 	ctx        context.Context
 	target     resourcev2.ReadTarget
 	descriptor *resourcev2.ResourceType
+	frameReserved int
 }
 
 func (s *sourceSession) fullSourceRecord(record resourcev2.SourceRecord) resourcev2.Record {
@@ -491,6 +507,40 @@ func (s *sourceSession) observeFrameRecord(frame sourceFrameContext, observation
 	return s.coordinator.ctrl.observeValidatedSourceRecord(frame.ctx, s.pluginID, s.pluginGeneration, frame.target.Route, record, observation.Metadata)
 }
 
+// prevalidateFrameReference checks the same generation and authority fence used
+// by registry publication before any member in a frame is published.
+func (s *sourceSession) prevalidateFrameReference(frame sourceFrameContext, ref resourcev2.ResourceReference) error {
+	c := s.coordinator.ctrl
+	if frame.descriptor == nil {
+		return c.validateReference(s.ctx, s.pluginID, s.target.Route, ref)
+	}
+	c.pluginsMu.RLock()
+	defer c.pluginsMu.RUnlock()
+	if err := c.currentGenerationLocked(frame.ctx, s.pluginID, s.pluginGeneration); err != nil {
+		return err
+	}
+	if !c.referenceCurrentLocked(s.pluginID, frame.target.Route, ref) {
+		return resourcev2.NewError("CANCELLED", "observation route authority retired")
+	}
+	return nil
+}
+
+func (s *sourceSession) prevalidateFrameRecord(frame sourceFrameContext, observation resourcev2.SourceObservation) error {
+	if frame.descriptor != nil {
+		if err := resourcev2.ValidateSourceObservation(frame.target, frame.target.Representation, observation); err != nil {
+			return err
+		}
+		if err := resourcev2.ValidateAddress(observation.Record.Reference.Address, frame.descriptor.IdentityDimensions); err != nil {
+			return err
+		}
+	}
+	if err := resourcev2.ValidateRecord(s.fullSourceRecord(observation.Record)); err != nil {
+		return err
+	}
+	return s.prevalidateFrameReference(frame, observation.Record.Reference)
+}
+
+
 func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sourceFrameContext) (bool, error) {
 	var frameContext sourceFrameContext
 	if len(frames) != 0 {
@@ -500,6 +550,33 @@ func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sour
 	case frame.Begin != nil:
 		s.statusLocked("snapshotting", nil)
 	case frame.Snapshot != nil:
+		// Reserve every new member before constructing any key or wire tree.
+		// Existing members remain charged until their replacements are installed.
+		reserved := s.stagingBytes
+		frameBytes, err := sourceFrameTransientEstimate(frame, maxSourceTransientBytes)
+		if err != nil {
+			return true, err
+		}
+		maxEncoding := 0
+		for _, o := range frame.Snapshot.Observations {
+			size, err := sourceMemberEstimate(o, defaultSourceStagingBytes)
+			if err != nil || size > defaultSourceStagingBytes-reserved {
+				return true, resourcev2.NewError("RESOURCE_LIMIT", "Source snapshot exceeds host limits.")
+			}
+			transient, err := sourceMemberTransientEstimate(o, maxSourceTransientBytes)
+			if err != nil || transient > maxSourceTransientBytes-frameBytes {
+				return true, resourcev2.NewError("RESOURCE_LIMIT", "Source snapshot transient exceeds host limits.")
+			}
+			if transient > maxEncoding {
+				maxEncoding = transient
+			}
+			reserved += size
+		}
+		extra := frameBytes + maxEncoding - frameContext.frameReserved
+		if extra < 0 || !s.transientLedger.reserve(extra) {
+			return true, resourcev2.NewError("RESOURCE_LIMIT", "Source snapshot transient exceeds host limits.")
+		}
+		defer s.transientLedger.release(extra)
 		for _, o := range frame.Snapshot.Observations {
 			member, key, err := makeSourceMember(o, defaultSourceStagingBytes)
 			if err != nil {
@@ -517,18 +594,100 @@ func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sour
 		if len(s.staging) > maxSourceSessionMembers || s.stagingBytes > maxSourceSessionBytes {
 			return true, resourcev2.NewError("RESOURCE_LIMIT", "Source membership exceeds host limits.")
 		}
+		stageReservation := s.stagingBytes
+		if !s.memberLedger.reserve(stageReservation) {
+			return true, resourcev2.NewError("RESOURCE_LIMIT", "Source membership exceeds host limits.")
+		}
+		committed := false
+		defer func() {
+			if !committed {
+				s.memberLedger.release(stageReservation)
+			}
+		}()
+		// One decoded observation and its publication scratch are live at a
+		// time. Reserve the largest before validating or publishing any row.
+		maxDecode := 0
 		for _, member := range s.staging {
-			if err := s.observeFrameRecord(frameContext, member.observation); err != nil {
+			if member.transient > maxDecode {
+				maxDecode = member.transient
+			}
+		}
+		if frame.SnapshotEnd.Coverage.Enumeration == resourcev2.EnumerationExhausted {
+			for key, member := range s.members {
+				if _, ok := s.staging[key]; !ok && member.transient > maxDecode {
+					maxDecode = member.transient
+				}
+			}
+		}
+		if len(s.staging) != 0 {
+			binding := s.ctx.Value(sourceBindingKey{}).(sourceBinding).Representation
+			schemaCost, err := sourceBindingTransientEstimate(binding)
+			if err != nil || schemaCost > maxSourceTransientBytes-maxDecode {
+				return true, resourcev2.NewError("RESOURCE_LIMIT", "Source snapshot schema exceeds host limits.")
+			}
+			maxDecode += schemaCost
+		}
+		if !s.transientLedger.reserve(maxDecode) {
+			return true, resourcev2.NewError("RESOURCE_LIMIT", "Source snapshot decode exceeds host limits.")
+		}
+		decodeReserved := true
+		defer func() {
+			if decodeReserved {
+				s.transientLedger.release(maxDecode)
+			}
+		}()
+		for _, member := range s.staging {
+			observation, err := decodeSourceMember(member)
+			if err != nil {
+				return true, err
+			}
+			if err := s.prevalidateFrameRecord(frameContext, observation); err != nil {
 				return true, err
 			}
 		}
 		if frame.SnapshotEnd.Coverage.Enumeration == resourcev2.EnumerationExhausted {
 			for key, member := range s.members {
 				if _, ok := s.staging[key]; !ok {
-					s.deleteRecordContext(frameContext.ctx, member.observation.Record.Reference)
+					observation, err := decodeSourceMember(member)
+					if err != nil {
+						return true, err
+					}
+					if err := s.prevalidateFrameReference(frameContext, observation.Record.Reference); err != nil {
+						return true, err
+					}
 				}
 			}
 		}
+		for _, member := range s.staging {
+			observation, err := decodeSourceMember(member)
+			if err != nil {
+				return true, err
+			}
+			if err := s.observeFrameRecord(frameContext, observation); err != nil {
+				return true, err
+			}
+		}
+		if frame.SnapshotEnd.Coverage.Enumeration == resourcev2.EnumerationExhausted {
+			for key, member := range s.members {
+				if _, ok := s.staging[key]; !ok {
+					observation, err := decodeSourceMember(member)
+					if err != nil {
+						return true, err
+					}
+					s.deleteRecordContext(frameContext.ctx, observation.Record.Reference)
+				}
+			}
+		}
+		s.transientLedger.release(maxDecode)
+		decodeReserved = false
+		for key, member := range s.staging {
+			member.attachReserved(&s.memberLedger)
+			s.staging[key] = member
+		}
+		for _, member := range s.members {
+			member.release()
+		}
+		committed = true
 		s.members = s.staging
 		s.memberBytes = s.stagingBytes
 		s.staging = nil
@@ -548,6 +707,38 @@ func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sour
 		}
 		return s.mode == resourcev2.SourceModeSnapshot, nil
 	case frame.Changes != nil:
+		// Reserve the full batch before any address key or packed member is
+		// built. Old members remain live through prevalidation and publication.
+		reserved := s.memberBytes
+		transient, err := sourceFrameTransientEstimate(frame, maxSourceTransientBytes)
+		if err != nil {
+			return true, err
+		}
+		for _, change := range frame.Changes.Changes {
+			if change.Observation == nil {
+				continue
+			}
+			size, err := sourceMemberEstimate(*change.Observation, maxSourceSessionBytes)
+			if err != nil || size > maxSourceSessionBytes-reserved {
+				return true, resourcev2.NewError("RESOURCE_LIMIT", "Source membership exceeds host limits.")
+			}
+			cost, err := sourceMemberTransientEstimate(*change.Observation, maxSourceTransientBytes)
+			if err != nil || cost > maxSourceTransientBytes-transient {
+				return true, resourcev2.NewError("RESOURCE_LIMIT", "Source changes transient exceeds host limits.")
+			}
+			reserved += size
+			transient += cost
+		}
+		extra := transient - frameContext.frameReserved
+		if extra < 0 || !s.transientLedger.reserve(extra) {
+			return true, resourcev2.NewError("RESOURCE_LIMIT", "Source changes transient exceeds host limits.")
+		}
+		defer s.transientLedger.release(extra)
+		unassigned := reserved - s.memberBytes
+		if !s.memberLedger.reserve(unassigned) {
+			return true, resourcev2.NewError("RESOURCE_LIMIT", "Source membership exceeds host limits.")
+		}
+		defer func() { s.memberLedger.release(unassigned) }()
 		nextCount := len(s.members)
 		nextBytes := s.memberBytes
 		touched := make(map[string]*sourceMember)
@@ -577,8 +768,27 @@ func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sour
 					previous = &copy
 				}
 			}
-			if change.Reference != nil && previous != nil && change.Reference.Incarnation != nil && previous.observation.Record.Reference.Incarnation != nil && !sameIncarnation(change.Reference.Incarnation, previous.observation.Record.Reference.Incarnation) {
-				continue
+			if change.Reference != nil && previous != nil && change.Reference.Incarnation != nil {
+				if previous.transient > maxSourceTransientBytes-transient {
+					return true, resourcev2.NewError("RESOURCE_LIMIT", "Source changes transient exceeds host limits.")
+				}
+				matches, err := func() (bool, error) {
+					if !s.transientLedger.reserve(previous.transient) {
+						return false, resourcev2.NewError("RESOURCE_LIMIT", "Source changes transient exceeds host limits.")
+					}
+					defer s.transientLedger.release(previous.transient)
+					prior, err := decodeSourceMember(*previous)
+					if err != nil {
+						return false, err
+					}
+					return prior.Record.Reference.Incarnation == nil || sameIncarnation(change.Reference.Incarnation, prior.Record.Reference.Incarnation), nil
+				}()
+				if err != nil {
+					return true, err
+				}
+				if !matches {
+					continue
+				}
 			}
 			if previous != nil {
 				nextCount--
@@ -593,24 +803,112 @@ func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sour
 		if nextCount > maxSourceSessionMembers || nextBytes > maxSourceSessionBytes {
 			return true, resourcev2.NewError("RESOURCE_LIMIT", "Source membership exceeds host limits.")
 		}
-		var upserts []resourcev2.Record
-		var removes []resourcev2.ResourceReference
+		// Old references and decoded upserts can coexist in view events.
+		oldTransient := 0
+		for key := range touched {
+			if old, ok := s.members[key]; ok {
+				if old.transient > maxSourceTransientBytes-transient-oldTransient {
+					return true, resourcev2.NewError("RESOURCE_LIMIT", "Source changes transient exceeds host limits.")
+				}
+				oldTransient += old.transient
+			}
+		}
+		if !s.transientLedger.reserve(oldTransient) {
+			return true, resourcev2.NewError("RESOURCE_LIMIT", "Source changes transient exceeds host limits.")
+		}
+		defer s.transientLedger.release(oldTransient)
+		transient += oldTransient
+		// Decode every touched member before publishing any part of the batch.
+		// A malformed packed member must not cause partial membership changes.
+		if len(touched) > (maxSourceTransientBytes-transient)/512 {
+			return true, resourcev2.NewError("RESOURCE_LIMIT", "Source changes transient exceeds host limits.")
+		}
+		preparedBytes := len(touched) * 512
+		if !s.transientLedger.reserve(preparedBytes) {
+			return true, resourcev2.NewError("RESOURCE_LIMIT", "Source changes transient exceeds host limits.")
+		}
+		defer s.transientLedger.release(preparedBytes)
+		transient += preparedBytes
+		for _, next := range touched {
+			if next == nil {
+				continue
+			}
+			binding := s.ctx.Value(sourceBindingKey{}).(sourceBinding).Representation
+			schemaCost, err := sourceBindingTransientEstimate(binding)
+			if err != nil || schemaCost > maxSourceTransientBytes-transient || !s.transientLedger.reserve(schemaCost) {
+				return true, resourcev2.NewError("RESOURCE_LIMIT", "Source changes schema exceeds host limits.")
+			}
+			defer s.transientLedger.release(schemaCost)
+			break
+		}
+		type preparedChange struct {
+			key            string
+			next           *sourceMember
+			old            sourceMember
+			existed        bool
+			oldObservation resourcev2.SourceObservation
+			nextObservation resourcev2.SourceObservation
+		}
+		prepared := make([]preparedChange, 0, len(touched))
 		for key, next := range touched {
 			old, existed := s.members[key]
-			if existed && (next == nil || !sameIncarnation(old.observation.Record.Reference.Incarnation, next.observation.Record.Reference.Incarnation)) {
-				removes = append(removes, old.observation.Record.Reference)
+			change := preparedChange{key: key, next: next, old: old, existed: existed}
+			if existed {
+				var err error
+				change.oldObservation, err = decodeSourceMember(old)
+				if err != nil {
+					return true, err
+				}
+			}
+			if next != nil {
+				var err error
+				change.nextObservation, err = decodeSourceMember(*next)
+				if err != nil {
+					return true, err
+				}
+			}
+			prepared = append(prepared, change)
+		}
+		for _, change := range prepared {
+			if change.existed {
+				if err := s.prevalidateFrameReference(frameContext, change.oldObservation.Record.Reference); err != nil {
+					return true, err
+				}
+			}
+			if change.next != nil {
+				if err := s.prevalidateFrameRecord(frameContext, change.nextObservation); err != nil {
+					return true, err
+				}
+			}
+		}
+		var upserts []resourcev2.Record
+		var removes []resourcev2.ResourceReference
+		for _, change := range prepared {
+			key, next, old, existed := change.key, change.next, change.old, change.existed
+			oldObservation, nextObservation := change.oldObservation, change.nextObservation
+			if existed && (next == nil || !sameIncarnation(oldObservation.Record.Reference.Incarnation, nextObservation.Record.Reference.Incarnation)) {
+				removes = append(removes, oldObservation.Record.Reference)
 			}
 			if next == nil {
 				if existed {
-					s.deleteRecordContext(frameContext.ctx, old.observation.Record.Reference)
+					s.deleteRecordContext(frameContext.ctx, oldObservation.Record.Reference)
+					old.release()
+					s.memberBytes -= old.size
 					delete(s.members, key)
 				}
 			} else {
-				if err := s.observeFrameRecord(frameContext, next.observation); err != nil {
+				if err := s.observeFrameRecord(frameContext, nextObservation); err != nil {
 					return true, err
 				}
+				next.attachReserved(&s.memberLedger)
+				unassigned -= next.size
+				if existed {
+					old.release()
+					s.memberBytes -= old.size
+				}
 				s.members[key] = *next
-				upserts = append(upserts, s.fullSourceRecord(next.observation.Record))
+				s.memberBytes += next.size
+				upserts = append(upserts, s.fullSourceRecord(nextObservation.Record))
 			}
 		}
 		s.memberBytes = nextBytes

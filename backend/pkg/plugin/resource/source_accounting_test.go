@@ -5,8 +5,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	resourceplugin "github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 func accountingObservation() resourcev2.SourceObservation {
@@ -32,7 +35,7 @@ func TestSourceAccountingValueDepth(t *testing.T) {
 			observation := accountingObservation()
 			observation.Record.Body = nestedAccountingValue(depth)
 			validationErr := resourcev2.ValidateValue(observation.Record.Body)
-			_, err := sourceMemberSize(observation, defaultSourceStagingBytes)
+			_, err := sourceMemberEstimate(observation, defaultSourceStagingBytes)
 			snapshot := resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{observation}}}
 			changes := resourcev2.SourceFrame{Changes: &resourcev2.SourceChanges{Changes: []resourcev2.SourceChange{{Observation: &observation}}}}
 			if depth == resourcev2.MaxValueDepth {
@@ -50,24 +53,161 @@ func TestSourceAccountingValueDepth(t *testing.T) {
 	}
 }
 
-func TestSourceAccountingIncludesOwnedCapacityAndMetadata(t *testing.T) {
+func TestSourceAccountingIncludesMetadataAndIgnoresSpareCapacity(t *testing.T) {
 	base := accountingObservation()
-	baseSize, err := sourceMemberSize(base, defaultSourceStagingBytes)
+	base.Record.Body = resourcev2.Value{Kind: "map", Map: map[string]resourcev2.Value{"list": {Kind: "list", List: []resourcev2.Value{{Kind: "string", String: "value"}}}}}
+	baseSize, err := sourceMemberEstimate(base, defaultSourceStagingBytes)
 	require.NoError(t, err)
 
 	withCapacity := base
-	withCapacity.Record.Body.List = make([]resourcev2.Value, 0, 10)
-	size, err := sourceMemberSize(withCapacity, defaultSourceStagingBytes)
+	list := make([]resourcev2.Value, 1, 100)
+	list[0] = base.Record.Body.Map["list"].List[0]
+	withCapacity.Record.Body.Map = map[string]resourcev2.Value{"list": {Kind: "list", List: list}}
+	size, err := sourceMemberEstimate(withCapacity, defaultSourceStagingBytes)
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, size-baseSize, 10*256)
+	require.Equal(t, baseSize, size)
+	baseTransient, err := sourceMemberTransientEstimate(base, maxSourceTransientBytes)
+	require.NoError(t, err)
+	capacityTransient, err := sourceMemberTransientEstimate(withCapacity, maxSourceTransientBytes)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, capacityTransient-baseTransient, 99*256)
+	_, err = sourceMemberTransientEstimate(withCapacity, capacityTransient-1)
+	require.Equal(t, "RESOURCE_LIMIT", resourcev2.ErrorCode(err))
 
 	withMetadata := base
 	withMetadata.Metadata = &resourcev2.ResourceMetadata{Labels: map[string]string{"key": strings.Repeat("x", 100)}}
-	size, err = sourceMemberSize(withMetadata, defaultSourceStagingBytes)
+	size, err = sourceMemberEstimate(withMetadata, defaultSourceStagingBytes)
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, size-baseSize, 256+8*103)
-	_, err = sourceMemberSize(withMetadata, size-1)
+	require.Greater(t, size, baseSize)
+	_, err = sourceMemberEstimate(withMetadata, size-1)
 	require.Equal(t, "RESOURCE_LIMIT", resourcev2.ErrorCode(err))
+	member, _, err := makeSourceMember(withMetadata, defaultSourceStagingBytes)
+	require.NoError(t, err)
+	decoded, err := decodeSourceMember(member)
+	require.NoError(t, err)
+	require.Equal(t, withMetadata, decoded)
+}
+
+func TestSourceStagingPodShapedCapacity(t *testing.T) {
+	s := &sourceSession{staging: make(map[string]sourceMember)}
+	for i := range 700 {
+		o := accountingObservation()
+		o.Record.Reference.Address.ID = fmt.Sprintf("pod-%d", i)
+		o.Record.Body = resourcev2.Value{Kind: "map", Map: map[string]resourcev2.Value{
+			"apiVersion": {Kind: "string", String: "v1"},
+			"kind":       {Kind: "string", String: "Pod"},
+			"metadata": {Kind: "map", Map: map[string]resourcev2.Value{
+				"name": {Kind: "string", String: fmt.Sprintf("pod-%d", i)},
+				"namespace": {Kind: "string", String: "default"},
+				"labels": {Kind: "map", Map: map[string]resourcev2.Value{
+					"app": {Kind: "string", String: "example"},
+				}},
+				"managedFields": {Kind: "list", List: []resourcev2.Value{{Kind: "map", Map: map[string]resourcev2.Value{
+					"manager": {Kind: "string", String: "controller"},
+					"fieldsV1": {Kind: "map", Map: map[string]resourcev2.Value{
+						"f:metadata": {Kind: "map", Map: map[string]resourcev2.Value{
+							"f:labels": {Kind: "map", Map: map[string]resourcev2.Value{"f:app": {Kind: "map"}}},
+						}},
+					}},
+				}}}},
+			}},
+			"spec": {Kind: "map", Map: map[string]resourcev2.Value{
+				"containers": {Kind: "list", List: []resourcev2.Value{
+					{Kind: "map", Map: map[string]resourcev2.Value{
+						"name": {Kind: "string", String: "app"},
+						"image": {Kind: "string", String: "example/app:latest"},
+					}},
+				}},
+			}},
+			"status": {Kind: "map", Map: map[string]resourcev2.Value{
+				"phase": {Kind: "string", String: "Running"},
+			}},
+		}}
+		_, err := s.applyLocked(resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{o}}})
+		require.NoError(t, err)
+	}
+	require.Len(t, s.staging, 700)
+	require.LessOrEqual(t, s.stagingBytes, defaultSourceStagingBytes)
+}
+
+func TestSourceDenseWireValidFrameHitsTransientSafetyLimit(t *testing.T) {
+	o := accountingObservation()
+	values := make([]resourcev2.Value, 65536)
+	for i := range values {
+		values[i] = resourcev2.Value{Kind: "bool"}
+	}
+	o.Record.Body = resourcev2.Value{Kind: "map", Map: map[string]resourcev2.Value{
+		"items": {Kind: "list", List: values},
+	}}
+	require.NoError(t, resourcev2.ValidateSourceObservation(
+		resourcev2.ReadTarget{Provider: "p", Authority: "a", Type: "t", Representation: "native"},
+		"native", o,
+	))
+	frame := resourcev2.SourceFrame{SessionID: "session", Generation: "generation", Sequence: 1, Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{o}}}
+	wire, err := resourcev2.ToProtoSourceFrame(frame)
+	require.NoError(t, err)
+	encoded, err := proto.Marshal(wire)
+	require.NoError(t, err)
+	require.LessOrEqual(t, len(encoded), resourcev2.MaxSourceFrameBytes)
+	require.NoError(t, resourceplugin.ValidateWire(encoded, wire.ProtoReflect().Descriptor()))
+	require.Equal(t, "RESOURCE_LIMIT", resourcev2.ErrorCode(sourceFramePreflight(frame)))
+	s := &sourceSession{staging: make(map[string]sourceMember)}
+	_, err = s.applyLocked(frame)
+	require.Equal(t, "RESOURCE_LIMIT", resourcev2.ErrorCode(err))
+	require.Empty(t, s.staging)
+}
+
+func TestSourceMemberLedgerRetainsSnapshotUntilRelease(t *testing.T) {
+	member, _, err := makeSourceMember(accountingObservation(), maxSourceSessionBytes)
+	require.NoError(t, err)
+	var ledger sourceMemberLedger
+	require.True(t, ledger.reserve(member.size))
+	member.attachReserved(&ledger)
+	member.retain() // A lazy view snapshot holds the old blob.
+	member.release() // Membership is replaced.
+	require.False(t, ledger.reserve(maxSourceSessionBytes-member.size+1))
+	member.release() // The snapshot is emitted or retired.
+	require.True(t, ledger.reserve(maxSourceSessionBytes))
+	ledger.release(maxSourceSessionBytes)
+}
+
+func TestSourceViewSnapshotKeepsRemovedMemberCharged(t *testing.T) {
+	for _, retire := range []string{"reset", "close"} {
+		t.Run(retire, func(t *testing.T) {
+			v := boundedSourceViewFixture(t, 0, 1)
+			s := v.session
+			s.pluginID = "p1"
+			s.pluginGeneration = s.coordinator.ctrl.plugins["p1"]
+			observation, err := decodeSourceMember(s.members["0"])
+			require.NoError(t, err)
+			member, key, err := makeSourceMember(observation, maxSourceSessionBytes)
+			require.NoError(t, err)
+			require.True(t, s.memberLedger.reserve(member.size))
+			member.attachReserved(&s.memberLedger)
+			s.members = map[string]sourceMember{key: member}
+			s.memberBytes = member.size
+
+			v.syncLocked("")
+			require.True(t, v.synced)
+			require.Len(t, v.snapshot, 1)
+			ref := observation.Record.Reference
+			change := resourcev2.SourceChange{Kind: resourcev2.SourceChangeRemove, Reference: &ref}
+			descriptor := canonicalTestCatalog("p1", s.target.Type).Types[0]
+			_, err = s.applyLocked(resourcev2.SourceFrame{Changes: &resourcev2.SourceChanges{Changes: []resourcev2.SourceChange{change}}}, sourceFrameContext{ctx: s.ctx, target: s.target, descriptor: &descriptor})
+			require.NoError(t, err)
+			require.Empty(t, s.members)
+			require.Zero(t, s.memberBytes)
+			require.False(t, s.memberLedger.reserve(maxSourceSessionBytes-member.size+1))
+
+			if retire == "reset" {
+				v.resetLocked("test", "retire snapshot")
+			} else {
+				v.close()
+			}
+			require.True(t, s.memberLedger.reserve(maxSourceSessionBytes))
+			s.memberLedger.release(maxSourceSessionBytes)
+		})
+	}
 }
 
 func TestSourceFramePreflightAccountsForRemovalAndEnvelope(t *testing.T) {
@@ -79,15 +219,107 @@ func TestSourceFramePreflightAccountsForRemovalAndEnvelope(t *testing.T) {
 	require.Equal(t, "RESOURCE_LIMIT", resourcev2.ErrorCode(sourceFramePreflight(frame)))
 }
 
-func TestSourceStagingDuplicateReplacementAtLimit(t *testing.T) {
+func TestSourceStagingDuplicateReplacementRequiresCoexistenceHeadroom(t *testing.T) {
 	o := accountingObservation()
 	member, key, err := makeSourceMember(o, defaultSourceStagingBytes)
 	require.NoError(t, err)
-	s := &sourceSession{staging: map[string]sourceMember{key: member}, stagingBytes: defaultSourceStagingBytes}
-	_, err = s.applyLocked(resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{o}}})
+	estimate, err := sourceMemberEstimate(o, defaultSourceStagingBytes)
 	require.NoError(t, err)
-	require.Equal(t, defaultSourceStagingBytes, s.stagingBytes)
-	require.Len(t, s.staging, 1)
+	for _, tc := range []struct {
+		name         string
+		stagingBytes int
+		wantError    bool
+	}{
+		{name: "exact headroom", stagingBytes: defaultSourceStagingBytes - estimate},
+		{name: "one byte short", stagingBytes: defaultSourceStagingBytes - estimate + 1, wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &sourceSession{staging: map[string]sourceMember{key: member}, stagingBytes: tc.stagingBytes, memberBytes: maxSourceSessionBytes}
+			_, err := s.applyLocked(resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{o}}})
+			if tc.wantError {
+				require.Equal(t, "RESOURCE_LIMIT", resourcev2.ErrorCode(err))
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tc.stagingBytes, s.stagingBytes)
+			require.Len(t, s.staging, 1)
+			decoded, err := decodeSourceMember(s.staging[key])
+			require.NoError(t, err)
+			require.Equal(t, o, decoded)
+		})
+	}
+}
+
+func TestSourceChangesDuplicateBatchCountsCoexistingMembers(t *testing.T) {
+	o := accountingObservation()
+	member, key, err := makeSourceMember(o, maxSourceSessionBytes)
+	require.NoError(t, err)
+	initialBytes := maxSourceSessionBytes - 2*member.size + 1
+	s := &sourceSession{members: map[string]sourceMember{key: member}, memberBytes: initialBytes}
+	change := resourcev2.SourceChange{Kind: resourcev2.SourceChangeUpsert, Observation: &o}
+	_, err = s.applyLocked(resourcev2.SourceFrame{Changes: &resourcev2.SourceChanges{Changes: []resourcev2.SourceChange{change, change}}})
+	require.Equal(t, "RESOURCE_LIMIT", resourcev2.ErrorCode(err))
+	require.Equal(t, initialBytes, s.memberBytes)
+	require.Len(t, s.members, 1)
+	decoded, err := decodeSourceMember(s.members[key])
+	require.NoError(t, err)
+	require.Equal(t, o, decoded)
+}
+
+func TestSourceChangesDecodeFailureLeavesMembersUntouched(t *testing.T) {
+	first := accountingObservation()
+	second := accountingObservation()
+	second.Record.Reference.Address.ID = "second"
+	a, akey, err := makeSourceMember(first, maxSourceSessionBytes)
+	require.NoError(t, err)
+	b, bkey, err := makeSourceMember(second, maxSourceSessionBytes)
+	require.NoError(t, err)
+	b.wire = []byte{0xff}
+	s := &sourceSession{members: map[string]sourceMember{akey: a, bkey: b}, memberBytes: a.size + b.size}
+	frame := resourcev2.SourceFrame{Changes: &resourcev2.SourceChanges{Changes: []resourcev2.SourceChange{
+		{Kind: resourcev2.SourceChangeRemove, Reference: &first.Record.Reference},
+		{Kind: resourcev2.SourceChangeRemove, Reference: &second.Record.Reference},
+	}}}
+	_, err = s.applyLocked(frame)
+	require.Error(t, err)
+	require.Len(t, s.members, 2)
+	require.Equal(t, a.size+b.size, s.memberBytes)
+}
+
+func TestSourceChangesInvalidSecondLeavesRegistryAndAccountingUntouched(t *testing.T) {
+	v := boundedSourceViewFixture(t, 0, 1)
+	s := v.session
+	s.pluginID = "p1"
+	s.pluginGeneration = s.coordinator.ctrl.plugins["p1"]
+	original, err := decodeSourceMember(s.members["0"])
+	require.NoError(t, err)
+	member, key, err := makeSourceMember(original, maxSourceSessionBytes)
+	require.NoError(t, err)
+	require.True(t, s.memberLedger.reserve(member.size))
+	member.attachReserved(&s.memberLedger)
+	s.members = map[string]sourceMember{key: member}
+	s.memberBytes = member.size
+	s.coordinator.ctrl.registryStore.Put(registry.ResourceEntry{PluginID: "p1", Route: s.target.Route, Reference: original.Record.Reference})
+
+	first := original
+	first.Record.Reference.Address.ID = "first"
+	second := original
+	second.Record.Reference.Address.ID = "second"
+	second.Record.Reference.Address.Provider = "other"
+	frame := resourcev2.SourceFrame{Changes: &resourcev2.SourceChanges{Changes: []resourcev2.SourceChange{
+		{Kind: resourcev2.SourceChangeUpsert, Observation: &first},
+		{Kind: resourcev2.SourceChangeUpsert, Observation: &second},
+	}}}
+	descriptor := canonicalTestCatalog("p1", s.target.Type).Types[0]
+	_, err = s.applyLocked(frame, sourceFrameContext{ctx: s.ctx, target: s.target, descriptor: &descriptor})
+	require.Error(t, err)
+	require.Len(t, s.members, 1)
+	require.Equal(t, member.size, s.memberBytes)
+	_, found := s.coordinator.ctrl.registryStore.Get("p1", original.Record.Reference, s.target.Route)
+	require.True(t, found)
+	_, found = s.coordinator.ctrl.registryStore.Get("p1", first.Record.Reference, s.target.Route)
+	require.False(t, found)
+	require.False(t, s.memberLedger.reserve(maxSourceSessionBytes-member.size+1))
 }
 
 func TestSourceSnapshotRetainedLimitCheckedBeforeApply(t *testing.T) {

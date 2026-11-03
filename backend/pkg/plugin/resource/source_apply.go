@@ -4,34 +4,133 @@ import (
 	"context"
 	"encoding/json"
 	"maps"
+	"sync"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/indexer"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	resourcepb "github.com/omniviewdev/plugin-sdk/proto/resource/v2"
+	"google.golang.org/protobuf/proto"
 )
 
-type sourceMember struct {
-	observation resourcev2.SourceObservation
-	size        int
-}
+// This independent host safety limit bounds decoded frames and simultaneous
+// encoder/decoder scratch. It may reject a wire-valid dense frame; callers
+// receive RESOURCE_LIMIT and no observations are truncated.
+const maxSourceTransientBytes = 256 << 20
 
-// sourceMemberSize estimates value, envelope, and address-index storage before
-// validation or canonical-key construction allocates. Go does not expose map
-// bucket capacity or the backing storage of aliased strings.
-func sourceMemberSize(o resourcev2.SourceObservation, limit int) (int, error) {
-	size := 1024
+// SchemaBinding's JSON validation can materialize a decoded document. Charge
+// that scratch separately from the shared, already-admitted binding.
+func sourceBindingTransientEstimate(binding resourcev2.Representation) (int, error) {
+	size := 64 << 10
 	add := func(n, multiplier int) bool {
-		if n < 0 || n > (limit-size)/multiplier {
+		if n < 0 || n > (maxSourceTransientBytes-size)/multiplier {
 			return false
 		}
 		size += n * multiplier
 		return true
 	}
-	text := func(s string) bool { return add(len(s), 8) }
+	schema := binding.Schema
+	if !add(len(schema.Document), 512) || !add(len(binding.ID)+len(binding.Revision)+len(schema.State)+len(schema.Dialect)+len(schema.Root), 32) {
+		return 0, resourcev2.NewError("RESOURCE_LIMIT", "Source schema transient exceeds host limits.")
+	}
+	if schema.Revision != nil && !add(len(*schema.Revision), 32) ||
+		schema.UnavailableReason != nil && !add(len(*schema.UnavailableReason), 32) ||
+		schema.DocumentRef != nil && !add(len(schema.DocumentRef.ID)+len(schema.DocumentRef.Revision), 32) {
+		return 0, resourcev2.NewError("RESOURCE_LIMIT", "Source schema transient exceeds host limits.")
+	}
+	return size, nil
+}
+
+type sourceMember struct {
+	wire      []byte
+	size      int
+	transient int
+	ref       *sourceMemberRef
+}
+
+// sourceMemberLedger charges immutable member blobs until both the source and
+// every in-flight view snapshot release their references.
+type sourceMemberLedger struct {
+	mu   sync.Mutex
+	used int
+}
+
+func (l *sourceMemberLedger) reserve(size int) bool {
+	return l.reserveLimit(size, maxSourceSessionBytes)
+}
+
+func (l *sourceMemberLedger) reserveLimit(size, limit int) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if size < 0 || size > limit-l.used {
+		return false
+	}
+	l.used += size
+	return true
+}
+
+func (l *sourceMemberLedger) release(size int) {
+	l.mu.Lock()
+	l.used -= size
+	l.mu.Unlock()
+}
+
+type sourceTransientLedger struct{ sourceMemberLedger }
+
+func (l *sourceTransientLedger) reserve(size int) bool {
+	return l.reserveLimit(size, maxSourceTransientBytes)
+}
+
+type sourceMemberRef struct {
+	mu     sync.Mutex
+	refs   int
+	size   int
+	ledger *sourceMemberLedger
+}
+
+// attachReserved consumes an already reserved ledger charge.
+func (m *sourceMember) attachReserved(ledger *sourceMemberLedger) {
+	m.ref = &sourceMemberRef{refs: 1, size: m.size, ledger: ledger}
+}
+
+func (m sourceMember) retain() {
+	if m.ref == nil {
+		return
+	}
+	m.ref.mu.Lock()
+	m.ref.refs++
+	m.ref.mu.Unlock()
+}
+
+func (m sourceMember) release() {
+	if m.ref == nil {
+		return
+	}
+	m.ref.mu.Lock()
+	m.ref.refs--
+	last := m.ref.refs == 0
+	m.ref.mu.Unlock()
+	if last {
+		m.ref.ledger.release(m.ref.size)
+	}
+}
+
+// sourceMemberEstimate bounds owned wire bytes, the canonical JSON key, and
+// map/index overhead without constructing the key or a protobuf tree.
+func sourceMemberEstimate(o resourcev2.SourceObservation, limit int) (int, error) {
+	size := 512
+	add := func(n, multiplier int) bool {
+		if size > limit || n < 0 || n > (limit-size)/multiplier {
+			return false
+		}
+		size += n * multiplier
+		return true
+	}
+	text := func(s string) bool { return add(len(s), 1) }
 	optional := func(s *string) bool { return s == nil || text(*s) }
 	var value func(resourcev2.Value, int) bool
 	value = func(v resourcev2.Value, depth int) bool {
-		if depth > resourcev2.MaxValueDepth || !add(1, 256) || !add(cap(v.List)-len(v.List), 256) ||
+		if depth > resourcev2.MaxValueDepth || !add(1, 64) ||
 			!text(v.Kind) || !text(v.String) || !text(v.Int) || !text(v.Uint) || !text(v.Timestamp) {
 			return false
 		}
@@ -41,7 +140,74 @@ func sourceMemberSize(o resourcev2.SourceObservation, limit int) (int, error) {
 			}
 		}
 		for key, child := range v.Map {
-			if !text(key) || !value(child, depth+1) {
+			if !add(1, 32) || !text(key) || !value(child, depth+1) {
+				return false
+			}
+		}
+		return true
+	}
+	r := o.Record
+	a := r.Reference.Address
+	// JSON escaping can expand each address byte to six bytes. The seventh
+	// copy covers the address in the protobuf wire representation.
+	addressText := func(s string) bool { return add(len(s), 7) }
+	ok := size <= limit && addressText(a.Provider) && addressText(a.Authority) &&
+		addressText(a.Type) && addressText(a.ID) && add(len(a.Scope), 96) &&
+		optional(r.Reference.Incarnation) && text(r.Representation.ID) &&
+		text(r.Representation.Revision) && optional(r.Representation.SchemaRevision) &&
+		text(r.Coverage.Kind) && text(r.Coverage.Reason) && add(len(r.Coverage.Paths), 16) &&
+		optional(r.SourceRevision) && optional(o.DisplayName) && value(r.Body, 0) &&
+		add(len(o.DocumentCoverage.KnownAbsent), 16)
+	for _, scope := range a.Scope {
+		ok = ok && addressText(scope.Dimension) && addressText(scope.Value)
+	}
+	for _, path := range r.Coverage.Paths {
+		ok = ok && text(path)
+	}
+	if o.Metadata != nil {
+		ok = ok && add(len(o.Metadata.Labels), 32)
+		for key, val := range o.Metadata.Labels {
+			ok = ok && text(key) && text(val)
+		}
+	}
+	for _, path := range o.DocumentCoverage.KnownAbsent {
+		ok = ok && add(len(path.Segments), 32)
+		for _, segment := range path.Segments {
+			ok = ok && optional(segment.Member)
+		}
+	}
+	if !ok {
+		return 0, resourcev2.NewError("RESOURCE_LIMIT", "Source observation exceeds host limits.")
+	}
+	return size, nil
+}
+
+// sourceMemberTransientEstimate bounds coexisting protobuf trees, decoded
+// values, key construction, and validation scratch before those allocate.
+func sourceMemberTransientEstimate(o resourcev2.SourceObservation, limit int) (int, error) {
+	size := 1024
+	add := func(n, multiplier int) bool {
+		if n < 0 || n > (limit-size)/multiplier {
+			return false
+		}
+		size += n * multiplier
+		return true
+	}
+	text := func(s string) bool { return add(len(s), 32) }
+	optional := func(s *string) bool { return s == nil || text(*s) }
+	var value func(resourcev2.Value, int) bool
+	value = func(v resourcev2.Value, depth int) bool {
+		if depth > resourcev2.MaxValueDepth || !add(1, 4096) || !add(cap(v.List)-len(v.List), 256) ||
+			!text(v.Kind) || !text(v.String) || !text(v.Int) || !text(v.Uint) || !text(v.Timestamp) {
+			return false
+		}
+		for _, child := range v.List {
+			if !value(child, depth+1) {
+				return false
+			}
+		}
+		for key, child := range v.Map {
+			if !add(1, 1024) || !text(key) || !value(child, depth+1) {
 				return false
 			}
 		}
@@ -80,23 +246,52 @@ func sourceMemberSize(o resourcev2.SourceObservation, limit int) (int, error) {
 }
 
 func makeSourceMember(o resourcev2.SourceObservation, limit int) (sourceMember, string, error) {
-	size, err := sourceMemberSize(o, limit)
+	size, err := sourceMemberEstimate(o, limit)
 	if err != nil {
 		return sourceMember{}, "", err
 	}
-	if _, err := resourcev2.SourceObservationWireSize(o); err != nil {
+	transient, err := sourceMemberTransientEstimate(o, maxSourceTransientBytes)
+	if err != nil {
+		return sourceMember{}, "", err
+	}
+	p, err := resourcev2.ToProtoSourceObservation(o)
+	if err != nil {
+		return sourceMember{}, "", err
+	}
+	if proto.Size(p) > size {
+		return sourceMember{}, "", resourcev2.NewError("RESOURCE_LIMIT", "Source observation exceeds its reservation.")
+	}
+	wire, err := proto.Marshal(p)
+	if err != nil {
 		return sourceMember{}, "", err
 	}
 	key, err := registry.CanonicalAddressKey(o.Record.Reference.Address)
 	if err != nil {
 		return sourceMember{}, "", err
 	}
-	return sourceMember{observation: o, size: size}, key, nil
+	if len(wire) > size-len(key) {
+		return sourceMember{}, "", resourcev2.NewError("RESOURCE_LIMIT", "Source observation exceeds its reservation.")
+	}
+	return sourceMember{wire: wire, size: size, transient: transient}, key, nil
+}
+
+// Decoding follows SDK wire semantics: repeated empty fields may normalize,
+// and address scopes are returned in canonical order.
+func decodeSourceMember(member sourceMember) (resourcev2.SourceObservation, error) {
+	var p resourcepb.SourceObservation
+	if err := proto.Unmarshal(member.wire, &p); err != nil {
+		return resourcev2.SourceObservation{}, err
+	}
+	return resourcev2.FromProtoSourceObservation(&p)
 }
 
 // sourceFramePreflight accounts for the whole frame before tracker admission.
 func sourceFramePreflight(frame resourcev2.SourceFrame) error {
-	const limit = maxSourceSessionBytes
+	_, err := sourceFrameTransientEstimate(frame, maxSourceSessionBytes)
+	return err
+}
+
+func sourceFrameTransientEstimate(frame resourcev2.SourceFrame, limit int) (int, error) {
 	size := 1024
 	add := func(n, multiplier int) bool {
 		if n < 0 || n > (limit-size)/multiplier {
@@ -119,7 +314,7 @@ func sourceFramePreflight(frame resourcev2.SourceFrame) error {
 		return true
 	}
 	member := func(o resourcev2.SourceObservation, memberLimit int) bool {
-		n, err := sourceMemberSize(o, memberLimit)
+		n, err := sourceMemberTransientEstimate(o, memberLimit)
 		return err == nil && add(n, 1)
 	}
 	ok := text(frame.SessionID) && text(frame.Generation)
@@ -157,9 +352,9 @@ func sourceFramePreflight(frame resourcev2.SourceFrame) error {
 		ok = ok && text(frame.Failed.Code) && text(frame.Failed.Message)
 	}
 	if !ok {
-		return resourcev2.NewError("RESOURCE_LIMIT", "Source frame exceeds host limits.")
+		return 0, resourcev2.NewError("RESOURCE_LIMIT", "Source frame exceeds host limits.")
 	}
-	return nil
+	return size, nil
 }
 
 func (c *controller) observeSourceRecord(ctx context.Context, pluginID string, generation *pluginState, route resourcev2.AccessRoute, record resourcev2.Record, metadata *resourcev2.ResourceMetadata) error {
