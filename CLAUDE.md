@@ -24,6 +24,13 @@ Use `GOWORK=off` for all Go commands — the module is not in the parent `go.wor
 
 The frontend is built on `@omniviewdev/base-ui` (with `ai-ui` and `editors`), published from the `omniviewdev/ui` repo. MUI, Emotion and the legacy `@omniviewdev/ui` package are gone, and the host no longer shares them with plugins: a plugin built against them (for example older marketplace releases of upstream plugins such as `omniview-plugin-aws`) fails to load. The plugin shared-deps list lives in `ui/features/plugins/api/shared_dependencies.ts` and `packages/omniviewdev-vite-plugin/src/sharedPackages.ts`; keep them in sync.
 
+## Component composition
+
+Prefer composition over resource-specific branches in shared components. Supply
+specialized UI through typed component slots, props, or children from the owning
+view. Never select behavior by resource key, kind, plugin ID, or name inside a
+generic component; keep those decisions in the view that owns them.
+
 ## Releases
 
 Pushing a `vX.Y.Z` tag triggers `.github/workflows/release.yaml`. The release publishes the desktop artifacts and stamps `@omniviewdev/providers`, `@omniviewdev/vite-plugin`, and `@omniviewdev/runtime` with the tag version before publishing them to npm.
