@@ -18,10 +18,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as registry$0 from "./registry/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as config$0 from "../../../../plugin-sdk/pkg/config/models.js";
+import * as types$0 from "./types/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as types$0 from "../../../../plugin-sdk/pkg/types/models.js";
+import * as config$0 from "../../../../plugin-sdk/pkg/config/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -142,6 +142,12 @@ export function RetryFailedPlugin(id: string): $CancellablePromise<types$0.Plugi
 export function SearchPlugins(query: string, category: string, sort: string): $CancellablePromise<registry$0.AvailablePlugin[]> {
     return $Call.ByID(2783597264, query, category, sort).then(($result: any) => {
         return $$createType12($result);
+    });
+}
+
+export function SetPluginEnabled(id: string, enabled: boolean): $CancellablePromise<types$0.PluginInfo> {
+    return $Call.ByID(2179374748, id, enabled).then(($result: any) => {
+        return $$createType0($result);
     });
 }
 

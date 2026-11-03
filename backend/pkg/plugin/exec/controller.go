@@ -61,7 +61,6 @@ func NewController(
 	resourceClient resource.ConnectionReader,
 ) Controller {
 	return &controller{
-		app:              nil,
 		ctx:              nil,
 		logger:           logger.Named("ExecController"),
 		settingsProvider: sp,
@@ -70,7 +69,7 @@ func NewController(
 		sessionIndex:     make(map[string]sessionIndex),
 		inChans:          make(map[string]chan exec.StreamInput),
 		inputMux:         make(chan exec.StreamInput),
-		outputMux:        make(chan exec.StreamOutput),
+		outputMux:        make(chan execProviderOutput),
 		resizeMux:        make(chan exec.StreamResize),
 		resourceClient:   resourceClient,
 		handlerMap:       make(map[string]map[string]exec.Handler),
@@ -81,8 +80,9 @@ func NewController(
 var _ Controller = (*controller)(nil)
 
 type controller struct {
-	// wails v3 application reference
-	app              *application.App
+	events interface {
+		Emit(string, ...any) bool
+	}
 	ctx              context.Context
 	logger           logging.Logger
 	settingsProvider pkgsettings.Provider
@@ -92,10 +92,14 @@ type controller struct {
 	sessionIndex map[string]sessionIndex
 	inChans      map[string]chan exec.StreamInput
 	handlerMap   map[string]map[string]exec.Handler
+	streams      map[string]execProviderStream
+
+	// Publication and retirement share this outer lock. Never acquire it with mu held.
+	outputMu sync.Mutex
 
 	// multiplexer channels
 	inputMux  chan exec.StreamInput
-	outputMux chan exec.StreamOutput
+	outputMux chan execProviderOutput
 	resizeMux chan exec.StreamResize
 
 	resourceClient    resource.ConnectionReader
@@ -104,13 +108,27 @@ type controller struct {
 	nativeLauncher    nativeTerminalLauncher
 }
 
+type execProviderStream struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+	done   chan struct{}
+}
+
+type execProviderOutput struct {
+	exec.StreamOutput
+	pluginID string
+	done     <-chan struct{}
+}
+
 // SetReferenceAdmitter is configured by native composition before startup.
 func (c *controller) SetReferenceAdmitter(admit resource.ReferenceAdmitter) {
 	c.referenceAdmitter = admit
 }
 
 func (c *controller) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
-	c.app = application.Get()
+	if app := application.Get(); app != nil {
+		c.events = app.Event
+	}
 	c.ctx = ctx
 
 	// Initialize the terminal manager synchronously so c.terminalManager is
@@ -165,8 +183,9 @@ func (c *controller) runLocalMux(
 
 // dispatchOutput emits a session output or signal to the UI.
 func (c *controller) dispatchOutput(output exec.StreamOutput) {
-	if c.app == nil {
-		c.logger.Errorw(context.Background(), "app is nil, cannot dispatch output")
+	if c.events == nil {
+		c.logger.Errorw(context.Background(), "event emitter is nil, cannot dispatch output")
+		return
 	}
 
 	var eventkey string
@@ -177,9 +196,9 @@ func (c *controller) dispatchOutput(output exec.StreamOutput) {
 	case exec.StreamSignalError:
 		eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
 		if output.Error != nil {
-			c.app.Event.Emit(eventkey, output.Error)
+			c.events.Emit(eventkey, output.Error)
 		} else {
-			c.app.Event.Emit(eventkey, map[string]interface{}{
+			c.events.Emit(eventkey, map[string]interface{}{
 				"title":      "Session error",
 				"message":    string(output.Data),
 				"suggestion": "The session encountered an error.",
@@ -203,7 +222,7 @@ func (c *controller) dispatchOutput(output exec.StreamOutput) {
 		eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
 	}
 
-	c.app.Event.Emit(eventkey, output.Data)
+	c.events.Emit(eventkey, output.Data)
 }
 
 func (c *controller) runMux() {
@@ -225,9 +244,22 @@ func (c *controller) runMux() {
 				_ = c.safeSend(ch, input)
 			}
 		case output := <-c.outputMux:
-			c.dispatchOutput(output)
+			c.dispatchProviderOutput(output)
 		}
 	}
+}
+
+func (c *controller) dispatchProviderOutput(output execProviderOutput) {
+	c.outputMu.Lock()
+	defer c.outputMu.Unlock()
+
+	c.mu.RLock()
+	stream, active := c.streams[output.pluginID]
+	c.mu.RUnlock()
+	if !active || stream.done != output.done || stream.ctx.Err() != nil {
+		return
+	}
+	c.dispatchOutput(output.StreamOutput)
 }
 
 func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
@@ -287,13 +319,22 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 
 	// Get the handlers before acquiring the lock (this makes an RPC call).
 	handlers := provider.GetSupportedResources(c.getUnconnectedCtx(ctx, ""))
+	_ = c.OnPluginStop(pluginID, config.PluginMeta{})
+	base := c.ctx
+	if base == nil {
+		base = context.Background()
+	}
+	streamCtx, cancel := context.WithCancel(base)
+	done := make(chan struct{})
 
 	inchan := make(chan exec.StreamInput)
 
 	// Start the stream before registering state so a Stream failure doesn't
 	// leave stale entries in clients/inChans/handlerMap.
-	stream, err := provider.Stream(c.ctx, inchan)
+	stream, err := provider.Stream(streamCtx, inchan)
 	if err != nil {
+		cancel()
+		provider.Close()
 		telemetryutil.RecordError(span, err)
 		close(inchan)
 		logger.Errorw(ctx, "error starting stream", "error", err)
@@ -301,6 +342,10 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	}
 
 	c.mu.Lock()
+	if c.streams == nil {
+		c.streams = make(map[string]execProviderStream)
+	}
+	c.streams[pluginID] = execProviderStream{ctx: streamCtx, cancel: cancel, done: done}
 	c.clients[pluginID] = provider
 	// Installation ownership is separate from the handler's canonical selector.
 	c.handlerMap[pluginID] = make(map[string]exec.Handler, len(handlers))
@@ -311,15 +356,20 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	c.mu.Unlock()
 
 	go func() {
+		defer close(done)
 		for {
 			select {
-			case <-c.ctx.Done():
+			case <-streamCtx.Done():
 				return
 			case output, ok := <-stream:
 				if !ok {
 					return // stream closed, plugin exited
 				}
-				c.outputMux <- output
+				select {
+				case c.outputMux <- (execProviderOutput{StreamOutput: output, pluginID: pluginID, done: done}):
+				case <-streamCtx.Done():
+					return
+				}
 			}
 		}
 	}()
@@ -327,12 +377,19 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	return nil
 }
 
-// cleanupPluginLocked removes all state for a plugin and returns the provider if it existed.
-// Must NOT be called with c.mu held — it acquires the lock internally.
-func (c *controller) cleanupPluginLocked(pluginID string) (Provider, bool) {
+// cleanupPluginLocked removes all state and returns its provider and worker.
+// Must NOT be called with outputMu or mu held — it acquires both internally.
+func (c *controller) cleanupPluginLocked(pluginID string) (Provider, bool, execProviderStream) {
+	c.outputMu.Lock()
+	defer c.outputMu.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	stream := c.streams[pluginID]
+	delete(c.streams, pluginID)
+	if stream.cancel != nil {
+		stream.cancel()
+	}
 	if ch, ok := c.inChans[pluginID]; ok {
 		close(ch)
 		delete(c.inChans, pluginID)
@@ -345,7 +402,7 @@ func (c *controller) cleanupPluginLocked(pluginID string) (Provider, bool) {
 		}
 	}
 	delete(c.handlerMap, pluginID)
-	return provider, ok
+	return provider, ok, stream
 }
 
 func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
@@ -356,18 +413,18 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(ctx, "OnPluginStop")
 
-	if provider, ok := c.cleanupPluginLocked(pluginID); ok {
+	provider, ok, stream := c.cleanupPluginLocked(pluginID)
+	if ok {
 		provider.Close()
+	}
+	if stream.done != nil {
+		<-stream.done
 	}
 	return nil
 }
 
-func (c *controller) OnPluginShutdown(pluginID string, _ config.PluginMeta) error {
-	logger := c.logger.With(logging.Any("pluginID", pluginID))
-	logger.Debugw(context.Background(), "OnPluginShutdown")
-
-	c.cleanupPluginLocked(pluginID)
-	return nil
+func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) error {
+	return c.OnPluginStop(pluginID, meta)
 }
 
 func (c *controller) OnPluginDestroy(pluginID string, _ config.PluginMeta) error {

@@ -26,6 +26,13 @@ func (a *AdapterV1) GetSupportedResources(ctx *types.PluginContext) (*metric.Pro
 }
 
 func (a *AdapterV1) Query(ctx *types.PluginContext, req metric.QueryRequest) (*metric.QueryResponse, error) {
+	if req.HasResourceIntent() {
+		provider, ok := a.inner.(metric.ResourceQueryProvider)
+		if !ok {
+			return nil, resourcev2.NewError("UNSUPPORTED", "Resource metric provider unavailable.")
+		}
+		return provider.QueryResource(ctx, req)
+	}
 	return a.inner.Query(ctx, req)
 }
 

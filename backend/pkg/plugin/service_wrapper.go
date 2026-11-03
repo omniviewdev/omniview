@@ -2,8 +2,8 @@ package plugin
 
 import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/registry"
+	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
-	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
 // ServiceWrapper exposes only the frontend-safe methods of plugin.Manager.
@@ -14,13 +14,16 @@ type ServiceWrapper struct {
 	Mgr Manager
 }
 
+func (s *ServiceWrapper) SetPluginEnabled(id string, enabled bool) (plugintypes.PluginInfo, error) {
+	return s.Mgr.SetPluginEnabled(id, enabled)
+}
 func (s *ServiceWrapper) InstallInDevMode() (*config.PluginMeta, error) {
 	return s.Mgr.InstallInDevMode()
 }
-func (s *ServiceWrapper) InstallDevPluginFromPath(path string) (sdktypes.PluginInfo, error) {
+func (s *ServiceWrapper) InstallDevPluginFromPath(path string) (plugintypes.PluginInfo, error) {
 	return s.Mgr.InstallDevPluginFromPath(path)
 }
-func (s *ServiceWrapper) UnlinkDevPlugin(id string) (sdktypes.PluginInfo, error) {
+func (s *ServiceWrapper) UnlinkDevPlugin(id string) (plugintypes.PluginInfo, error) {
 	return s.Mgr.UnlinkDevPlugin(id)
 }
 func (s *ServiceWrapper) InstallFromPathPrompt() (*config.PluginMeta, error) {
@@ -32,22 +35,22 @@ func (s *ServiceWrapper) InstallPluginFromPath(path string) (*config.PluginMeta,
 func (s *ServiceWrapper) InstallPluginVersion(pluginID, version string) (*config.PluginMeta, error) {
 	return s.Mgr.InstallPluginVersion(pluginID, version)
 }
-func (s *ServiceWrapper) LoadPlugin(id string, opts *LoadPluginOptions) (sdktypes.PluginInfo, error) {
+func (s *ServiceWrapper) LoadPlugin(id string, opts *LoadPluginOptions) (plugintypes.PluginInfo, error) {
 	return s.Mgr.LoadPlugin(id, opts)
 }
-func (s *ServiceWrapper) ReloadPlugin(id string) (sdktypes.PluginInfo, error) {
+func (s *ServiceWrapper) ReloadPlugin(id string) (plugintypes.PluginInfo, error) {
 	return s.Mgr.ReloadPlugin(id)
 }
-func (s *ServiceWrapper) RetryFailedPlugin(id string) (sdktypes.PluginInfo, error) {
+func (s *ServiceWrapper) RetryFailedPlugin(id string) (plugintypes.PluginInfo, error) {
 	return s.Mgr.RetryFailedPlugin(id)
 }
-func (s *ServiceWrapper) UninstallPlugin(id string) (sdktypes.PluginInfo, error) {
+func (s *ServiceWrapper) UninstallPlugin(id string) (plugintypes.PluginInfo, error) {
 	return s.Mgr.UninstallPlugin(id)
 }
-func (s *ServiceWrapper) GetPlugin(id string) (sdktypes.PluginInfo, error) {
+func (s *ServiceWrapper) GetPlugin(id string) (plugintypes.PluginInfo, error) {
 	return s.Mgr.GetPlugin(id)
 }
-func (s *ServiceWrapper) ListPlugins() []sdktypes.PluginInfo {
+func (s *ServiceWrapper) ListPlugins() []plugintypes.PluginInfo {
 	return s.Mgr.ListPlugins()
 }
 func (s *ServiceWrapper) GetPluginMeta(id string) (config.PluginMeta, error) {

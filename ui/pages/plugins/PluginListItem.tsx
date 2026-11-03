@@ -47,6 +47,8 @@ export type PluginListItemProps = {
   version?: string;
   phase?: PhaseStatus;
   devMode?: boolean;
+  origin?: 'builtin' | 'external';
+  enabled?: boolean;
   author?: string;
 
   // Marketplace fields
@@ -68,6 +70,8 @@ const PluginListItem: React.FC<PluginListItemProps> = ({
   version,
   phase,
   devMode,
+  origin,
+  enabled,
   author,
   publisherName,
   official,
@@ -78,7 +82,7 @@ const PluginListItem: React.FC<PluginListItemProps> = ({
     queryKey: ['plugin-operation', id], queryFn: () => null, initialData: null, enabled: false,
   });
   const displayAuthor = orFallback(author, publisherName) ?? '';
-  const showPhase = installed && phase;
+  const showPhase = installed && phase && !(origin === 'builtin' && enabled === false);
   let imageSrc: string | undefined;
 
   if (iconUrl) {
@@ -151,6 +155,7 @@ const PluginListItem: React.FC<PluginListItemProps> = ({
           {/* Row 3: Author + Stats */}
           <div className={styles.Meta}>
             {showPhase && <PhaseDot phase={phase} />}
+            {origin === 'builtin' && <span>Built-in · {enabled === false ? 'Disabled' : phase ?? 'Inactive'}</span>}
             {displayAuthor && (
               <span className={styles.Author}>
                 {displayAuthor}

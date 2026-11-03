@@ -18,7 +18,7 @@ vi.mock('@/features/plugins', () => ({
 }));
 
 function installed(...names: string[]) {
-  mocks.plugins = names.map((name) => ({ id: name.toLowerCase(), metadata: { name, icon: 'LuBox' } }));
+  mocks.plugins = names.map((name) => ({ id: name.toLowerCase(), enabled: true, metadata: { name, icon: 'LuBox' } }));
   mocks.registrations = new Map(names.map((name) => [name.toLowerCase(), { routes: [{ path: '' }] }]));
 }
 

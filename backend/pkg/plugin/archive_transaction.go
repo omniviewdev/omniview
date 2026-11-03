@@ -436,6 +436,9 @@ func (pm *pluginManager) rollbackArchive(recovery *archiveRecovery, original *pl
 }
 
 func (pm *pluginManager) installArchiveCandidate(path string, metadata *config.PluginMeta, version string) (statePublished bool, err error) {
+	if err := pm.guardProductOwned(metadata.ID); err != nil {
+		return false, err
+	}
 	stage, err := pm.pluginsRoot.MkdirTemp(".archive-" + metadata.ID + "-")
 	if err != nil {
 		return false, apperror.Internal(err, "Failed to create private archive staging")

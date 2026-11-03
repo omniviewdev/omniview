@@ -8,6 +8,13 @@ import (
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
+// PluginInfo is the host-owned, frontend-safe plugin inventory descriptor.
+type PluginInfo struct {
+	sdktypes.PluginInfo
+	Origin         string `json:"origin"`
+	FrontendModule string `json:"frontendModule"`
+}
+
 // PluginRecord is the host-side runtime state for a managed plugin.
 // It holds both persisted configuration and runtime-only fields.
 type PluginRecord struct {
@@ -23,6 +30,8 @@ type PluginRecord struct {
 	InstalledAt time.Time             `json:"installedAt"`
 
 	// Runtime-only fields (not persisted).
+	Origin          string                        `json:"-"`
+	FrontendModule  string                        `json:"-"`
 	StateMachine    *lifecycle.PluginStateMachine `json:"-"`
 	Backend         PluginBackend                 `json:"-"`
 	Capabilities    []sdktypes.Capability         `json:"-"`
@@ -30,12 +39,16 @@ type PluginRecord struct {
 }
 
 // ToInfo converts the host-side record to a frontend-safe PluginInfo.
-func (r *PluginRecord) ToInfo() sdktypes.PluginInfo {
+func (r *PluginRecord) ToInfo() PluginInfo {
 	phase := string(r.Phase)
 	if r.StateMachine != nil {
 		phase = string(r.StateMachine.Phase())
 	}
-	return sdktypes.PluginInfo{
+	origin := r.Origin
+	if origin == "" {
+		origin = "external"
+	}
+	return PluginInfo{Origin: origin, FrontendModule: r.FrontendModule, PluginInfo: sdktypes.PluginInfo{
 		ID:           r.ID,
 		Metadata:     r.Metadata,
 		Phase:        phase,
@@ -44,7 +57,7 @@ func (r *PluginRecord) ToInfo() sdktypes.PluginInfo {
 		DevPath:      r.DevPath,
 		Capabilities: r.Capabilities,
 		LastError:    r.LastError,
-	}
+	}}
 }
 
 // NewPluginRecord creates a new PluginRecord with a state machine.

@@ -78,10 +78,16 @@ type controller struct {
 	inChans      map[string]chan logs.StreamInput
 	handlerMap   map[string]map[string]logs.Handler
 	headless     map[string]*headlessRead
+	streams      map[string]logProviderStream
 
 	// batch flush state
 	batches  map[string]*logBatch
 	batchMux sync.Mutex
+}
+
+type logProviderStream struct {
+	cancel context.CancelFunc
+	done   chan struct{}
 }
 
 // SetReferenceAdmitter binds native admission without changing invocation identity.
@@ -168,6 +174,15 @@ func (c *controller) handleOutput(output logs.StreamOutput) {
 	if output.Line != nil {
 		c.bufferLine(output.SessionID, *output.Line)
 	} else if output.Event != nil {
+		// Serialize publication with session retirement.
+		c.batchMux.Lock()
+		defer c.batchMux.Unlock()
+		c.mu.RLock()
+		_, active := c.sessionIndex[output.SessionID]
+		c.mu.RUnlock()
+		if !active {
+			return
+		}
 		// Events are sent immediately, not batched
 		eventKey := "core/logs/event/" + output.SessionID
 		data, err := json.Marshal(output.Event)
@@ -182,6 +197,12 @@ func (c *controller) handleOutput(output logs.StreamOutput) {
 func (c *controller) bufferLine(sessionID string, line logs.LogLine) {
 	c.batchMux.Lock()
 	defer c.batchMux.Unlock()
+	c.mu.RLock()
+	_, active := c.sessionIndex[sessionID]
+	c.mu.RUnlock()
+	if !active {
+		return
+	}
 
 	batch, ok := c.batches[sessionID]
 	if !ok {
@@ -212,6 +233,16 @@ func (c *controller) bufferLine(sessionID string, line logs.LogLine) {
 }
 
 func (c *controller) flushBatchLocked(sessionID string, batch *logBatch) {
+	c.mu.RLock()
+	_, active := c.sessionIndex[sessionID]
+	c.mu.RUnlock()
+	if !active {
+		if batch.timer != nil {
+			batch.timer.Stop()
+		}
+		delete(c.batches, sessionID)
+		return
+	}
 	if batch.timer != nil {
 		batch.timer.Stop()
 		batch.timer = nil
@@ -287,7 +318,15 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 
 	// Get the handlers before acquiring the lock (this makes an RPC call).
 	handlers := provider.GetSupportedResources(c.getUnconnectedCtx(ctx))
+	// Retire the previous generation before publishing its replacement.
+	_ = c.OnPluginStop(pluginID, config.PluginMeta{})
 
+	base := c.ctx
+	if base == nil {
+		base = context.Background()
+	}
+	streamCtx, cancel := context.WithCancel(trace.ContextWithSpan(base, span))
+	done := make(chan struct{})
 	inchan := make(chan logs.StreamInput)
 
 	c.mu.Lock()
@@ -301,6 +340,10 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 			read.mu.Unlock()
 		}
 	}
+	if c.streams == nil {
+		c.streams = make(map[string]logProviderStream)
+	}
+	c.streams[pluginID] = logProviderStream{cancel: cancel, done: done}
 	c.clients[pluginID] = provider
 	for _, handler := range handlers {
 		if _, ok := c.handlerMap[handler.Plugin]; !ok {
@@ -315,8 +358,8 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	// We derive a new context from c.ctx that carries the current span so
 	// that logs emitted inside the goroutine are correlated with the
 	// OnPluginStart trace, while still respecting the controller's lifecycle.
-	streamCtx := trace.ContextWithSpan(c.ctx, span)
 	go func() {
+		defer close(done)
 		stream, streamErr := provider.Stream(streamCtx, inchan)
 		if streamErr != nil {
 			logger.Errorw(streamCtx, "error starting log stream", "error", streamErr)
@@ -345,12 +388,32 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 
 func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginStop")
+	// Batch publication and retirement share this outer lock. Never acquire
+	// batchMux while holding mu.
+	c.batchMux.Lock()
 	c.mu.Lock()
+	provider := c.clients[pluginID]
+	stream := c.streams[pluginID]
+	delete(c.streams, pluginID)
+	if stream.cancel != nil {
+		stream.cancel()
+	}
 	if ch, ok := c.inChans[pluginID]; ok {
 		close(ch)
 		delete(c.inChans, pluginID)
 	}
 	delete(c.clients, pluginID)
+	for sessionID, index := range c.sessionIndex {
+		if index.pluginID == pluginID {
+			if batch := c.batches[sessionID]; batch != nil {
+				if batch.timer != nil {
+					batch.timer.Stop()
+				}
+				delete(c.batches, sessionID)
+			}
+			delete(c.sessionIndex, sessionID)
+		}
+	}
 	for _, read := range c.headless {
 		if read.pluginID == pluginID {
 			read.mu.Lock()
@@ -370,36 +433,18 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 		}
 	}
 	c.mu.Unlock()
+	c.batchMux.Unlock()
+	if closer, ok := provider.(interface{ Close() }); ok {
+		closer.Close()
+	}
+	if stream.done != nil {
+		<-stream.done
+	}
 	return nil
 }
 
-func (c *controller) OnPluginShutdown(pluginID string, _ config.PluginMeta) error {
-	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginShutdown")
-	c.mu.Lock()
-	if ch, ok := c.inChans[pluginID]; ok {
-		close(ch)
-		delete(c.inChans, pluginID)
-	}
-	delete(c.clients, pluginID)
-	for _, read := range c.headless {
-		if read.pluginID == pluginID {
-			read.mu.Lock()
-			read.finish(resourcev2.NewError("CONNECTION_ERROR", "Log provider stopped."))
-			read.mu.Unlock()
-		}
-	}
-	for plugin, resources := range c.handlerMap {
-		for resKey, handler := range resources {
-			if handler.Plugin == pluginID {
-				delete(resources, resKey)
-			}
-		}
-		if len(resources) == 0 {
-			delete(c.handlerMap, plugin)
-		}
-	}
-	c.mu.Unlock()
-	return nil
+func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) error {
+	return c.OnPluginStop(pluginID, meta)
 }
 
 func (c *controller) OnPluginDestroy(pluginID string, _ config.PluginMeta) error {
@@ -637,11 +682,11 @@ func (c *controller) CloseSession(sessionID string) error {
 		}
 		delete(c.batches, sessionID)
 	}
-	c.batchMux.Unlock()
-
 	c.mu.Lock()
 	delete(c.sessionIndex, sessionID)
 	c.mu.Unlock()
+	c.batchMux.Unlock()
+
 	return nil
 }
 

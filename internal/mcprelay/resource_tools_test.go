@@ -133,7 +133,7 @@ func generatedController(t *testing.T) (resource.Controller, *generatedNativeSou
 	source := &generatedNativeSource{epoch: epoch, revision: "one"}
 	ctrl := resource.NewController(logging.NewNop(), nil, state.PluginStore, invocation.NewBoundary(invocation.AuthorizeFunc(func(invocation.Principal, string, invocation.Target) error { return nil })))
 	ctrl.Run(context.Background())
-	require.NoError(t, ctrl.OnPluginStart("fixture", config.PluginMeta{}, plugintypes.NewInProcessBackend(map[string]interface{}{"resource": source})))
+	require.NoError(t, ctrl.OnPluginStart("fixture", config.PluginMeta{}, plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": source}})))
 	t.Cleanup(func() {
 		require.NoError(t, ctrl.OnPluginStop("fixture", config.PluginMeta{}))
 		require.NoError(t, ctrl.(interface{ ServiceShutdown() error }).ServiceShutdown())

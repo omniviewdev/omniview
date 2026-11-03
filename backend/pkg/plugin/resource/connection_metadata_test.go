@@ -405,7 +405,7 @@ func TestConnectionMetadataReplacementRevokesOldTransportBeforeReadiness(t *test
 	}
 	done := make(chan error, 1)
 	go func() {
-		done <- ctrl.OnPluginStart("p", defaultMeta(), plugintypes.NewInProcessBackend(map[string]interface{}{"resource": next}))
+		done <- ctrl.OnPluginStart("p", defaultMeta(), plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": next}}))
 	}()
 	select {
 	case <-next.entered:

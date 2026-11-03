@@ -4,10 +4,8 @@ package types
 // Bump this when adding a new protocol version.
 const CurrentProtocolVersion = 1
 
-// PluginBackend abstracts the communication channel to a plugin process.
-// The primary implementation wraps go-plugin (ExternalBackend), but this
-// interface also enables in-process backends for tests and future bundled
-// plugins.
+// PluginBackend abstracts access to a plugin's capability providers.
+// ExternalBackend uses a subprocess; InProcessBackend dispatches directly.
 type PluginBackend interface {
 	// Dispense returns a capability client by name (e.g. "resource", "exec").
 	Dispense(name string) (interface{}, error)
@@ -15,13 +13,13 @@ type PluginBackend interface {
 	// Healthy returns true if the plugin is alive and serving.
 	Healthy() bool
 
-	// Stop performs a graceful shutdown of the plugin.
+	// Stop closes external RPC access or waits for direct resource shutdown.
 	Stop() error
 
-	// Kill forcefully terminates the plugin.
+	// Kill forcefully terminates external backends. Direct backends wait for Stop.
 	Kill()
 
-	// Exited returns true if the plugin process has exited.
+	// Exited reports process exit or completion of direct backend shutdown.
 	Exited() bool
 
 	// NegotiatedVersion returns the SDK protocol version negotiated with this plugin.

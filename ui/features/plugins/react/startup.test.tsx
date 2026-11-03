@@ -14,6 +14,7 @@ import type { PluginServiceDeps } from '../core/types';
 import type { TestDeps } from '../testing/helpers';
 import type * as RuntimeAPI from '@omniviewdev/runtime/api';
 import type * as RuntimeCore from '@omniviewdev/runtime/runtime';
+import { builtinRoutes, createPluginModuleResolver, type BuiltinModuleRegistry } from '../adapters/builtinModules';
 
 const backend = vi.hoisted(() => ({
   listPlugins: vi.fn(),
@@ -138,6 +139,83 @@ describe('plugin startup navigation', () => {
 
   afterEach(() => {
     cleanup();
+  });
+
+  it('keeps built-in code inert until navigation, then activates and renders normal plugin routes', async () => {
+    const descriptor = { id: 'kubernetes', dev: false, origin: 'builtin' as const, frontendModule: 'native/ui', enabled: true };
+    backend.listPlugins.mockResolvedValue([{ ...descriptor, devMode: false, phase: 'Installed' }]);
+    backend.listServers.mockResolvedValue([]);
+    let activations = 0;
+    let evaluations = 0;
+    const registry: BuiltinModuleRegistry = {
+      'native/ui': {
+        routes: [{ index: true }, { path: 'cluster/:id' }],
+        load: async () => {
+          evaluations++;
+
+          return pluginModule('Built-in clusters');
+        },
+      },
+    };
+    testDeps.deps.getPluginDescriptor = async () => descriptor;
+    testDeps.deps.getBuiltinRoutes = key => builtinRoutes(key, registry);
+    testDeps.deps.importPlugin = createPluginModuleResolver({
+      getDescriptor: testDeps.deps.getPluginDescriptor,
+      activateBackend: async () => {
+        activations++;
+      },
+      importExternal: testDeps.importer.importPlugin,
+      registry,
+    });
+    startPath = '/';
+    renderWorkspace();
+    await screen.findByRole('heading', { name: 'Home' });
+    await waitFor(() => {
+      expect(backend.listPlugins).toHaveBeenCalled();
+    });
+    expect({ activations, evaluations }).toEqual({ activations: 0, evaluations: 0 });
+    await act(async () => {
+      await tabRouters!.get(TAB_ID)!.navigate('/_plugin/kubernetes/cluster/native');
+    });
+    expect(await screen.findByRole('heading', { name: 'Cluster details' })).toBeVisible();
+    expect({ activations, evaluations }).toEqual({ activations: 1, evaluations: 1 });
+    expect(currentTabPath()).toBe('/_plugin/kubernetes/cluster/native');
+  });
+
+  it('removes disabled built-in pages and reactivates an open page after re-enable', async () => {
+    let enabled = true;
+    const descriptor = () => ({ id: 'kubernetes', dev: false, origin: 'builtin' as const, frontendModule: 'native/ui', enabled });
+    backend.listPlugins.mockImplementation(async () => [{ ...descriptor(), devMode: false, phase: enabled ? 'Installed' : 'Stopped' }]);
+    backend.listServers.mockResolvedValue([]);
+    let activations = 0;
+    const registry: BuiltinModuleRegistry = {
+      'native/ui': { routes: [{ index: true }], load: async () => pluginModule('Built-in clusters') },
+    };
+    testDeps.deps.getPluginDescriptor = async () => descriptor();
+    testDeps.deps.getBuiltinRoutes = key => builtinRoutes(key, registry);
+    testDeps.deps.importPlugin = createPluginModuleResolver({
+      getDescriptor: testDeps.deps.getPluginDescriptor,
+      activateBackend: async () => {
+        activations++;
+      },
+      importExternal: testDeps.importer.importPlugin,
+      registry,
+    });
+    renderWorkspace();
+    await screen.findByRole('heading', { name: 'Built-in clusters' });
+    await act(async () => {
+      enabled = false;
+      testDeps.eventBus.emit('plugin/enablement_changed', { pluginID: 'kubernetes', enabled });
+    });
+    expect(await screen.findByRole('heading', { name: 'kubernetes is disabled' })).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'Built-in clusters' })).not.toBeInTheDocument();
+    expect(activations).toBe(1);
+    await act(async () => {
+      enabled = true;
+      testDeps.eventBus.emit('plugin/enablement_changed', { pluginID: 'kubernetes', enabled });
+    });
+    expect(await screen.findByRole('heading', { name: 'Built-in clusters' })).toBeVisible();
+    expect(activations).toBe(2);
   });
 
   it('shows progress and opens automatically when a delayed dev server becomes ready', async () => {

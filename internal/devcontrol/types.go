@@ -8,11 +8,11 @@ import (
 	"errors"
 
 	"github.com/omniviewdev/omniview/backend/extensiondiagnostics"
+	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
-	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
@@ -20,13 +20,13 @@ var ErrDisabled = errors.New("development control is not compiled into this bina
 
 // Plugins is the canonical noninteractive manager subset. No dialog APIs.
 type Plugins interface {
-	ListPlugins() []sdktypes.PluginInfo
-	GetPlugin(string) (sdktypes.PluginInfo, error)
+	ListPlugins() []plugintypes.PluginInfo
+	GetPlugin(string) (plugintypes.PluginInfo, error)
 	InstallPluginFromPath(string) (*config.PluginMeta, error)
 	InstallPluginVersion(string, string) (*config.PluginMeta, error)
-	UninstallPlugin(string) (sdktypes.PluginInfo, error)
-	InstallDevPluginFromPath(string) (sdktypes.PluginInfo, error)
-	UnlinkDevPlugin(string) (sdktypes.PluginInfo, error)
+	UninstallPlugin(string) (plugintypes.PluginInfo, error)
+	InstallDevPluginFromPath(string) (plugintypes.PluginInfo, error)
+	UnlinkDevPlugin(string) (plugintypes.PluginInfo, error)
 }
 
 type DevState struct {

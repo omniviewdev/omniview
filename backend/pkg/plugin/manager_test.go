@@ -12,7 +12,6 @@ import (
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/internal/appstate"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
-	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
 func TestGetPlugin_Found(t *testing.T) {
@@ -77,7 +76,7 @@ func TestListPlugins_Multiple(t *testing.T) {
 	plugins := pm.ListPlugins()
 	assert.Len(t, plugins, 2)
 
-	byID := make(map[string]sdktypes.PluginInfo)
+	byID := make(map[string]plugintypes.PluginInfo)
 	for _, p := range plugins {
 		byID[p.ID] = p
 	}
@@ -247,36 +246,29 @@ func TestShutdown_EmptyRecords(t *testing.T) {
 }
 
 func TestShutdown_StopsAllBackends(t *testing.T) {
-	svc := appstate.NewTestService(t)
-	backendA := plugintypes.NewInProcessBackend(nil)
-	backendB := plugintypes.NewInProcessBackend(nil)
+	backendA := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{})
+	backendB := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{})
 
-	pm := &pluginManager{
-		logger: testLogger(t),
-		records: map[string]*plugintypes.PluginRecord{
-			"a": {
-				ID:    "a",
-				Phase: lifecycle.PhaseRunning,
-				Metadata: config.PluginMeta{
-					ID:           "a",
-					Capabilities: []string{"resource"},
-				},
-				Backend: backendA,
+	pm := newTestManager(t)
+	pm.records = map[string]*plugintypes.PluginRecord{
+		"a": {
+			ID:    "a",
+			Phase: lifecycle.PhaseRunning,
+			Metadata: config.PluginMeta{
+				ID:           "a",
+				Capabilities: []string{"resource"},
 			},
-			"b": {
-				ID:    "b",
-				Phase: lifecycle.PhaseRunning,
-				Metadata: config.PluginMeta{
-					ID:           "b",
-					Capabilities: []string{"exec"},
-				},
-				Backend: backendB,
-			},
+			Backend: backendA,
 		},
-		connlessControllers: make(map[sdktypes.Capability]plugintypes.Controller),
-		connfullControllers: make(map[sdktypes.Capability]plugintypes.LifecycleController),
-		managers:            make(map[string]plugintypes.PluginManager),
-		pidTracker:          NewPIDTracker(svc.RootDir()),
+		"b": {
+			ID:    "b",
+			Phase: lifecycle.PhaseRunning,
+			Metadata: config.PluginMeta{
+				ID:           "b",
+				Capabilities: []string{"exec"},
+			},
+			Backend: backendB,
+		},
 	}
 
 	pm.Shutdown()

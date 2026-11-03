@@ -321,6 +321,11 @@ func (pm *pluginManager) guardUninstallRecovery(id string) error {
 		return apperror.Internal(err, "Invalid pending plugin uninstall").WithInstance(id)
 	}
 	if recovery != nil {
+		if _, builtin := pm.builtin(id); builtin {
+			return apperror.Internal(fmt.Errorf("built-in ownership blocks uninstall; remove or relocate external recovery explicitly; marker at %s; owned recovery files at %s",
+				pm.stateRoot.ResolvePath(uninstallRecoveryName(id)), pm.pluginsRoot.ResolvePath(recovery.Stage)),
+				"Plugin uninstall requires recovery").WithInstance(id)
+		}
 		return apperror.Internal(fmt.Errorf("complete the pending uninstall; owned recovery files remain at %s", pm.pluginsRoot.ResolvePath(recovery.Stage)),
 			"Plugin uninstall requires recovery").WithInstance(id)
 	}
@@ -338,23 +343,68 @@ func (pm *pluginManager) restoreUninstallRecoveries() (map[string]bool, error) {
 			continue
 		}
 		id := strings.TrimSuffix(strings.TrimPrefix(entry.Name(), uninstallRecoveryPrefix), ".json")
-		recovery, err := pm.readUninstallRecovery(id)
-		if err != nil || recovery == nil {
-			return nil, errors.Join(err, fmt.Errorf("cannot validate pending uninstall for %s", id))
+		stage, err := pm.restoreUninstallRecovery(id)
+		if err != nil {
+			return nil, err
 		}
-		state := recovery.Plugin
-		record := plugintypes.NewPluginRecord(id, state.Metadata, lifecycle.PhaseFailed)
-		record.Enabled, record.DevMode, record.DevPath = state.Enabled, state.DevMode, state.DevPath
-		record.ErrorCount, record.InstalledAt = state.ErrorCount, state.InstalledAt
-		_, _, ownershipErr := pm.locateUninstallRecovery(recovery)
-		record.LastError = fmt.Sprintf("pending uninstall; owned recovery files at %s", pm.pluginsRoot.ResolvePath(recovery.Stage))
-		if ownershipErr != nil {
-			record.LastError += ": " + ownershipErr.Error()
+		blocked[id] = true
+		if stage != "" {
+			blocked[stage] = true
 		}
-		pm.recordsMu.Lock()
-		pm.records[id] = record
-		pm.recordsMu.Unlock()
-		blocked[id], blocked[recovery.Stage] = true, true
 	}
 	return blocked, nil
+}
+
+func (pm *pluginManager) restoreUninstallRecovery(id string) (string, error) {
+	lock := pm.pluginOpsLock(id)
+	lock.Lock()
+	defer lock.Unlock()
+
+	_, builtin := pm.builtin(id)
+	recovery, err := pm.readUninstallRecovery(id)
+	if err != nil || recovery == nil {
+		err = errors.Join(err, fmt.Errorf("cannot validate pending uninstall for %s", id))
+		if !builtin {
+			return "", err
+		}
+	}
+
+	stage := ""
+	detail := fmt.Sprintf("pending uninstall; recovery marker at %s", pm.stateRoot.ResolvePath(uninstallRecoveryName(id)))
+	if recovery != nil {
+		stage = recovery.Stage
+		detail = fmt.Sprintf("pending uninstall; owned recovery files at %s", pm.pluginsRoot.ResolvePath(stage))
+		_, _, err = pm.locateUninstallRecovery(recovery)
+	}
+	if err != nil {
+		detail += ": " + err.Error()
+	}
+	if builtin {
+		// Discovery owns this record. External recovery metadata must never
+		// replace the trusted catalog descriptor or its user preference.
+		detail += fmt.Sprintf("; built-in ownership blocks uninstall; remove or relocate external recovery explicitly; marker at %s",
+			pm.stateRoot.ResolvePath(uninstallRecoveryName(id)))
+		pm.recordsMu.RLock()
+		record := *pm.records[id]
+		pm.recordsMu.RUnlock()
+		if record.LastError != "" {
+			detail = record.LastError + "; " + detail
+		}
+		record.Phase, record.LastError = lifecycle.PhaseFailed, detail
+		record.StateMachine.ForcePhase(record.Phase, detail)
+		pm.recordsMu.Lock()
+		pm.records[id] = &record
+		pm.recordsMu.Unlock()
+		return stage, nil
+	}
+
+	state := recovery.Plugin
+	record := plugintypes.NewPluginRecord(id, state.Metadata, lifecycle.PhaseFailed)
+	record.Enabled, record.DevMode, record.DevPath = state.Enabled, state.DevMode, state.DevPath
+	record.ErrorCount, record.InstalledAt = state.ErrorCount, state.InstalledAt
+	record.LastError = detail
+	pm.recordsMu.Lock()
+	pm.records[id] = record
+	pm.recordsMu.Unlock()
+	return stage, nil
 }

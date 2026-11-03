@@ -368,6 +368,13 @@ func main() {
 	}
 
 	pluginRegistryClient := registry.NewClient("")
+	// Product-owned providers are selected at compile time, never by installed metadata.
+	// The product cohort remains empty until the containers migration.
+	builtinCatalog, err := plugin.NewCatalog(nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: invalid built-in plugin catalog: %v\n", err)
+		os.Exit(1)
+	}
 	pluginManager := plugin.NewManager(
 		log,
 		stateDir.RootDir(),
@@ -391,6 +398,7 @@ func main() {
 				PyroscopeEndpoint: cfg.PyroscopeEndpoint,
 			}
 		},
+		builtinCatalog,
 	)
 
 	// Wire crash recovery: when a plugin crash is detected by the resource
