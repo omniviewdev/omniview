@@ -34,7 +34,7 @@ The same-ID existing-instance path only accepts the same canonical source direct
 
 Queued rebuild callbacks use `ReloadManagedPlugin(ctx, id, source, generation)`. Cancellation and source/generation are checked after acquiring the plugin lifecycle lock, so an old watcher cannot reload a newly rebound ID.
 
-Each replacement record registers its lifecycle observer before entering `Running`. The manager publishes the replacement record first, then emits the real `plugin/state_change` transition so existing connection boundaries can leave the retired plugin's unavailable state. A successful backend load without that event is not consumer recovery; no cache clearing, forced remount, or additional readiness probe substitutes for it.
+Each external or built-in replacement record registers its lifecycle observer before entering `Running`. The manager publishes the replacement record first, then emits the real `plugin/state_change` transition so existing connection boundaries can leave the retired plugin's unavailable state. A successful backend load without that event is not consumer recovery; no cache clearing, forced remount, or additional readiness probe substitutes for it.
 
 ## Tools and child environment
 

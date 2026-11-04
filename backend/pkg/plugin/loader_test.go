@@ -254,33 +254,48 @@ func TestReloadPlugin_ReloadsSuccessfully(t *testing.T) {
 }
 
 func TestReloadPlugin_PublishesRunningAfterReplacement(t *testing.T) {
-	pm := newTestManager(t)
-	installPluginFixture(t, pm, "reload-events", []string{"ui"}, false)
-	require.NoError(t, os.MkdirAll(filepath.Join(pm.pluginsRoot.ResolvePath("reload-events"), "assets"), 0755))
-	emitter := &testRecordingEmitter{}
-	pm.emitter = emitter
+	for _, origin := range []string{"external", "builtin"} {
+		t.Run(origin, func(t *testing.T) {
+			pm := newTestManager(t)
+			if origin == "builtin" {
+				pm = catalogManager(t, []CatalogEntry{{
+					Metadata:       config.PluginMeta{ID: "reload-events", Version: "1.0.0", Capabilities: []string{"ui"}},
+					FrontendModule: "reload-events",
+				}})
+				require.NoError(t, pm.Initialize(context.Background()))
+			} else {
+				installPluginFixture(t, pm, "reload-events", []string{"ui"}, false)
+				require.NoError(t, os.MkdirAll(filepath.Join(pm.pluginsRoot.ResolvePath("reload-events"), "assets"), 0755))
+			}
+			emitter := &testRecordingEmitter{}
+			pm.emitter = emitter
 
-	_, err := pm.LoadPlugin("reload-events", nil)
-	require.NoError(t, err)
-	previous := pm.records["reload-events"].StateMachine
-	_, err = pm.ReloadPlugin("reload-events")
-	require.NoError(t, err)
-	require.NotSame(t, previous, pm.records["reload-events"].StateMachine)
+			_, err := pm.LoadPlugin("reload-events", nil)
+			require.NoError(t, err)
+			previous := pm.records["reload-events"].StateMachine
+			_, err = pm.ReloadPlugin("reload-events")
+			require.NoError(t, err)
+			require.NotSame(t, previous, pm.records["reload-events"].StateMachine)
 
-	var phases []lifecycle.PluginPhase
-	for _, event := range emitter.getEvents() {
-		if event.event != EventStateChange {
-			continue
-		}
-		require.Len(t, event.data, 1)
-		payload, ok := event.data[0].(StateChangePayload)
-		require.True(t, ok)
-		require.Equal(t, "reload-events", payload.PluginID)
-		phases = append(phases, payload.To)
+			var phases []lifecycle.PluginPhase
+			for _, event := range emitter.getEvents() {
+				if event.event != EventStateChange {
+					continue
+				}
+				require.Len(t, event.data, 1)
+				payload, ok := event.data[0].(StateChangePayload)
+				require.True(t, ok)
+				require.Equal(t, "reload-events", payload.PluginID)
+				phases = append(phases, payload.To)
+			}
+			require.GreaterOrEqual(t, len(phases), 3)
+			require.Equal(t, lifecycle.PhaseRunning, phases[0], "initial activation must publish readiness")
+			require.Equal(t, lifecycle.PhaseRunning, phases[len(phases)-1], "replacement must restore consumer readiness")
+			for _, phase := range phases[1 : len(phases)-1] {
+				require.Equal(t, lifecycle.PhaseStopped, phase)
+			}
+		})
 	}
-	require.Equal(t, []lifecycle.PluginPhase{
-		lifecycle.PhaseRunning, lifecycle.PhaseStopped, lifecycle.PhaseRunning,
-	}, phases, "consumers must recover from retirement when the replacement is running")
 }
 
 func TestCreateBackend_UsesFactory(t *testing.T) {
