@@ -138,7 +138,8 @@ func (vp *viteProcess) Start() error {
 	if err != nil {
 		return err
 	}
-	if _, err = resolveTool(vp.buildOpts.NodePath, "node"); err != nil {
+	nodePath, err := resolveTool(vp.buildOpts.NodePath, "node")
+	if err != nil {
 		return err
 	}
 
@@ -202,6 +203,13 @@ func (vp *viteProcess) Start() error {
 	}
 	env = prependToPath(env, extraDirs)
 	cmd.Env = env
+	var expectedExecutable string
+	if vp.buildOpts.ViteStarted != nil && vp.buildOpts.ViteOwner.WorkspaceID != "" {
+		expectedExecutable, err = viteExpectedExecutable(vp.ctx, cmd, nodePath)
+		if err != nil {
+			return fmt.Errorf("resolve managed Vite executable: %w", err)
+		}
+	}
 
 	// Use a process group so we can kill all child processes.
 	cmd.SysProcAttr = newProcessGroupAttr()
@@ -243,7 +251,7 @@ func (vp *viteProcess) Start() error {
 	if vp.buildOpts.ViteStarted != nil {
 		var identity devcontract.ProcessIdentity
 		if vp.buildOpts.ViteOwner.WorkspaceID != "" {
-			identity, err = captureViteProcess(vp.ctx, cmd, vp.buildOpts.ViteOwner)
+			identity, err = captureViteProcess(vp.ctx, cmd, vp.buildOpts.ViteOwner, expectedExecutable)
 		}
 		if err == nil {
 			err = vp.buildOpts.ViteStarted(identity)
@@ -285,33 +293,61 @@ func (vp *viteProcess) Start() error {
 	return nil
 }
 
-// captureViteProcess avoids recording the parent's image during the child's exec transition.
-func captureViteProcess(ctx context.Context, cmd *exec.Cmd, owner devsession.ProcessOwner) (devcontract.ProcessIdentity, error) {
-	self, err := os.Executable()
-	if err != nil {
-		return devcontract.ProcessIdentity{}, err
-	}
-	if resolved, resolveErr := filepath.EvalSymlinks(self); resolveErr == nil {
-		self = resolved
-	}
+// viteExpectedExecutable resolves script launchers through the selected Node
+// runtime. An unknown script that does not exec Node is rejected by capture.
+func viteExpectedExecutable(ctx context.Context, cmd *exec.Cmd, node string) (string, error) {
 	launched := cmd.Path
 	if !filepath.IsAbs(launched) && cmd.Dir != "" {
 		launched = filepath.Join(cmd.Dir, launched)
 	}
-	if resolved, resolveErr := filepath.EvalSymlinks(launched); resolveErr == nil {
-		launched = resolved
+	launched, err := filepath.EvalSymlinks(launched)
+	if err != nil {
+		return "", err
 	}
-	return waitForViteExec(ctx, launched, self, 5*time.Second, func() (devcontract.ProcessIdentity, error) {
+	file, err := os.Open(launched)
+	if err != nil {
+		return "", err
+	}
+	var signature [2]byte
+	_, readErr := io.ReadFull(file, signature[:])
+	closeErr := file.Close()
+	if readErr != nil {
+		return "", readErr
+	}
+	if closeErr != nil {
+		return "", closeErr
+	}
+	if signature != [2]byte{'#', '!'} {
+		return launched, nil
+	}
+	command := exec.CommandContext(ctx, node, "-p", "require('node:fs').realpathSync(process.execPath)")
+	command.Dir = cmd.Dir
+	command.Env = cmd.Env
+	output, err := command.Output()
+	if err != nil {
+		return "", fmt.Errorf("resolve selected Node executable: %w", err)
+	}
+	expected := strings.TrimSpace(string(output))
+	if !filepath.IsAbs(expected) {
+		return "", fmt.Errorf("selected Node returned a nonabsolute executable path")
+	}
+	return filepath.EvalSymlinks(expected)
+}
+
+// captureViteProcess records only the intended executable image, not a parent
+// or transient shebang interpreter observed during the child's exec transition.
+func captureViteProcess(ctx context.Context, cmd *exec.Cmd, owner devsession.ProcessOwner, expected string) (devcontract.ProcessIdentity, error) {
+	return waitForViteExec(ctx, expected, 5*time.Second, func() (devcontract.ProcessIdentity, error) {
 		return devsession.CaptureProcess(cmd.Process.Pid, owner)
 	})
 }
 
-func waitForViteExec(ctx context.Context, launched, self string, timeout time.Duration, capture func() (devcontract.ProcessIdentity, error)) (devcontract.ProcessIdentity, error) {
+func waitForViteExec(ctx context.Context, launched string, timeout time.Duration, capture func() (devcontract.ProcessIdentity, error)) (devcontract.ProcessIdentity, error) {
 	deadline := time.NewTimer(timeout)
 	defer deadline.Stop()
 	for {
 		identity, err := capture()
-		if err != nil || launched == self || identity.Executable != self {
+		if err != nil || identity.Executable == launched {
 			return identity, err
 		}
 		select {

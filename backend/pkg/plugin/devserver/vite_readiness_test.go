@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -159,11 +160,31 @@ server.listen(port, '127.0.0.1', () => console.log('Local: http://127.0.0.1:' + 
 	require.NoError(t, process.Stop())
 }
 
+func TestViteExpectedExecutableResolvesNodeShebangShim(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node unavailable")
+	}
+	output, err := exec.Command(node, "-p", "require('node:fs').realpathSync(process.execPath)").Output()
+	require.NoError(t, err)
+	actual, err := filepath.EvalSymlinks(strings.TrimSpace(string(output)))
+	require.NoError(t, err)
+	dir := t.TempDir()
+	shim := filepath.Join(dir, "node-shim")
+	require.NoError(t, os.WriteFile(shim, []byte("#!/bin/sh\nexec \"$NODE_REAL\" \"$@\"\n"), 0700))
+	command := exec.Command(shim)
+	command.Dir = dir
+	command.Env = append(os.Environ(), "NODE_REAL="+actual)
+	expected, err := viteExpectedExecutable(context.Background(), command, shim)
+	require.NoError(t, err)
+	require.Equal(t, actual, expected)
+}
+
 func TestWaitForViteExec(t *testing.T) {
 	const self, launched = "/host/omniview", "/node/bin/node"
 	t.Run("waits for child image", func(t *testing.T) {
 		calls := 0
-		identity, err := waitForViteExec(context.Background(), launched, self, time.Second, func() (devcontract.ProcessIdentity, error) {
+		identity, err := waitForViteExec(context.Background(), launched, time.Second, func() (devcontract.ProcessIdentity, error) {
 			calls++
 			if calls < 3 {
 				return devcontract.ProcessIdentity{Executable: self}, nil
@@ -174,8 +195,32 @@ func TestWaitForViteExec(t *testing.T) {
 		require.Equal(t, launched, identity.Executable)
 		require.Equal(t, 3, calls)
 	})
+	t.Run("ignores transient shebang interpreter", func(t *testing.T) {
+		calls := 0
+		identity, err := waitForViteExec(context.Background(), launched, time.Second, func() (devcontract.ProcessIdentity, error) {
+			calls++
+			switch calls {
+			case 1:
+				return devcontract.ProcessIdentity{Executable: self}, nil
+			case 2:
+				return devcontract.ProcessIdentity{Executable: "/usr/bin/bash"}, nil
+			default:
+				return devcontract.ProcessIdentity{Executable: launched}, nil
+			}
+		})
+		require.NoError(t, err)
+		require.Equal(t, launched, identity.Executable)
+		require.Equal(t, 3, calls)
+	})
+	t.Run("refuses persistent interpreter", func(t *testing.T) {
+		identity, err := waitForViteExec(context.Background(), launched, 20*time.Millisecond, func() (devcontract.ProcessIdentity, error) {
+			return devcontract.ProcessIdentity{Executable: "/usr/bin/bash"}, nil
+		})
+		require.ErrorIs(t, err, devsession.ErrOwnership)
+		require.Empty(t, identity.Executable)
+	})
 	t.Run("refuses unexecuted child", func(t *testing.T) {
-		identity, err := waitForViteExec(context.Background(), launched, self, 20*time.Millisecond, func() (devcontract.ProcessIdentity, error) {
+		identity, err := waitForViteExec(context.Background(), launched, 20*time.Millisecond, func() (devcontract.ProcessIdentity, error) {
 			return devcontract.ProcessIdentity{Executable: self}, nil
 		})
 		require.ErrorIs(t, err, devsession.ErrOwnership)
@@ -184,7 +229,7 @@ func TestWaitForViteExec(t *testing.T) {
 	t.Run("honors cancellation", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		identity, err := waitForViteExec(ctx, launched, self, time.Second, func() (devcontract.ProcessIdentity, error) {
+		identity, err := waitForViteExec(ctx, launched, time.Second, func() (devcontract.ProcessIdentity, error) {
 			return devcontract.ProcessIdentity{Executable: self}, nil
 		})
 		require.ErrorIs(t, err, context.Canceled)
