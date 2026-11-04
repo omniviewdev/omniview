@@ -7,6 +7,8 @@ Add durable, profile-local activities for asynchronous tasks, resource actions, 
 
 Progress updates preserve collapsed and hidden presentation state. Determinate bars reflect measured producer units with reduced-motion support. Cancellation remains distinct from observer detachment and remote rollback; unavailable actions are omitted rather than explained inline.
 
+Retire process-scoped producers on every failed activity negotiation, including older plugins that return `Unimplemented`, without consuming the producer quota. Real child-process broker regressions cover plugin identity, delegated host-connection token separation, generation retirement, and callbacks accepted before negotiation failure.
+
 Release the integrated desktop/runtime/Vite-plugin cohort as 0.30.0 with Base UI 0.14.0 and plugin SDK v0.15.0. This preserves the newer cluster explorer and atomic shared plugin-preference changes already on main. Activity-enabled Kubernetes and Containers releases require IDE 0.30.0 or newer. The earlier npm-only 0.28.0 cohort was not a compatible desktop release; npm 0.29.0 predates the host activity integration.
 
 Kubernetes rollout and other supported streaming actions report real task progress. Helm lifecycle progress and generic create/update tracking are not included in this release.

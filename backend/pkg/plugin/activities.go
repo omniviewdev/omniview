@@ -127,12 +127,12 @@ func (pm *pluginManager) bindActivities(id string, backend plugintypes.PluginBac
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	stop, err := client.ServeActivities(ctx, pm.activities.service.Reporter(id, generation))
-	if status.Code(err) == codes.Unimplemented {
-		return nil
-	}
 	if err != nil {
-		_ = pm.activities.service.RetireProducer(id, generation)
-		return err
+		retirementErr := pm.activities.service.RetireProducer(id, generation)
+		if status.Code(err) == codes.Unimplemented {
+			return retirementErr
+		}
+		return errors.Join(err, retirementErr)
 	}
 
 	pm.activities.mu.Lock()
