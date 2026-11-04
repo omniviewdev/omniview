@@ -11,7 +11,7 @@ or build metadata. Releasing a new stable patch does not require a second versio
 constant to be updated.
 
 Development, nightly, prerelease, and non-version build labels use the explicit
-source capability baseline (`0.28.0`). Advance that baseline when development
+source capability baseline (`0.30.0`). Advance that baseline when development
 source gains a coordinated host/runtime/SDK capability; do not derive capabilities
 from labels such as `0.0.0-nightly...` or `pr-build-macos`.
 
@@ -23,8 +23,10 @@ Kubernetes v0.15.0 declares a minimum host version of v0.27.1.
 Kubernetes v0.15.1 requires host/runtime v0.27.2 and SDK v0.14.6 for native
 streaming log clients and completed-source handling, alongside Base UI v0.12.0.
 Its marketplace submission declares an inclusive `min_ide_version` of `0.27.2`.
-Activity-enabled plugin releases require host/runtime v0.28.0 or newer. Older
-hosts reject the new resource-action stream field and do not expose activity hooks.
+Activity-enabled plugin releases require host/runtime v0.30.0 or newer and use
+Base UI v0.14.0 with SDK v0.15.0. Older stable hosts do not expose activity hooks
+and reject the new resource-action stream field. Declare `min_ide_version: "0.30.0"`
+in marketplace publication metadata, not in `plugin.yaml`.
 
 Publisher minimum and maximum IDE versions are inclusive semantic-version bounds.
 Hosts that omit `ide_version` can only access unconstrained plugin versions.
@@ -281,6 +283,18 @@ my-plugin/
     src/
       entry.ts         # Plugin UI entry point
 ```
+
+Installed plugin directories reserve `data/` and `store/` for runtime state.
+Do not include either directory in a release archive; the host rejects those
+packages before stopping the existing plugin. This includes case aliases on
+case-insensitive volumes; case-distinct names remain valid on case-sensitive
+volumes. Archive replacement moves the
+existing state directories into the new installation without copying them, so
+cached scoped roots and nested authority handles still address live state.
+Failed publication moves that same state back before restarting the original
+plugin. Runtime unload does not close appstate-owned roots; appstate closes them
+when the application shuts down. Interrupted transactions retain their existing
+recovery barrier and private staging evidence instead of adopting another path.
 
 ### 1.3 The `plugin.yaml` File
 
@@ -1142,6 +1156,16 @@ Registration cleanup follows the plugin lifecycle:
 - Reloading or replacing a registration disposes its previous theme before registering the current contribution. Plugin code does not need to unregister themes manually.
 
 Before React starts, the loading surface uses the last cached built-in theme, including validated legacy Light and Solarized preferences during upgrades. Custom/plugin themes use Void for this first paint until their contribution loads; the persisted requested theme ID is not changed. The Appearance theme picker applies selections immediately and exposes the accessible name “Theme.”
+
+### 1.6 Persistent Plugin Data
+
+Use `usePluginData` for profile-backed plugin preferences. Pass a literal value to replace a key, or a pure functional updater to merge with its latest persisted value.
+
+Functional updates use a fresh backend snapshot and compare-and-swap, including across independent windows and QueryClients. A conflicting write re-evaluates the updater, up to eight attempts. Prepare IDs, timestamps, uploads, and other side effects outside the updater. Exhausted conflicts and storage failures reject the update promise; callers must surface the error rather than reporting success.
+
+Literal replacements intentionally remain last-write-wins and do not require reading the old value. They can therefore reset a key whose persisted JSON cannot be read. Failed optimistic writes restore the previous cached value, or the supplied default when no cached value exists.
+
+The host data service exposes `GetSnapshot` and `CompareAndSwap` for this protocol. Revisions are opaque content tokens, not monotonic counters. An absent key has an empty revision; stored JSON `null` has a nonempty revision. Keep both methods and the consuming runtime in the same published host/runtime cohort; older hosts do not provide these bindings.
 
 ---
 

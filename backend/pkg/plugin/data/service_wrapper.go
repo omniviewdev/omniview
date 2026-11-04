@@ -28,6 +28,12 @@ func (s *ServiceWrapper) ServiceShutdown() error {
 func (s *ServiceWrapper) Get(pluginID, key string) (any, error) {
 	return s.Ctrl.Get(pluginID, key)
 }
+func (s *ServiceWrapper) GetSnapshot(pluginID, key string) (Snapshot, error) {
+	return s.Ctrl.GetSnapshot(pluginID, key)
+}
+func (s *ServiceWrapper) CompareAndSwap(pluginID, key, expectedRevision string, value any) (bool, error) {
+	return s.Ctrl.CompareAndSwap(pluginID, key, expectedRevision, value)
+}
 func (s *ServiceWrapper) Set(pluginID, key string, value any) error {
 	return s.Ctrl.Set(pluginID, key, value)
 }
