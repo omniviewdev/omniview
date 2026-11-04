@@ -43,7 +43,13 @@ afterEach(() => {
 
 function Notices() {
   const { openNotifications, notificationCount } = useNotifications();
-  return <button onClick={() => openNotifications()}>Notices ({notificationCount})</button>;
+  return (
+    <button onClick={() => {
+      openNotifications();
+    }}>
+      Notices ({notificationCount})
+    </button>
+  );
 }
 
 it('keeps an asynchronously rejected drawer action discoverable with its actual diagnostic', async () => {
