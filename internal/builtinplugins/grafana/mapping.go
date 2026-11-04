@@ -231,7 +231,39 @@ func (p *Provider) GetMetricDefinitions(*metric.QueryContext) ([]metric.MetricDe
 	memory.Name = "Memory working set"
 	memory.Unit = metric.UnitBytes
 	memory.Query = `sum by (cluster,namespace,pod) (container_memory_working_set_bytes{cluster=~"{{cluster}}",namespace=~"{{namespace}}",pod=~"{{pod}}",container!="",container!="POD"})`
-	return []metric.MetricDefinition{cpu, memory}, nil
+	const scope = `cluster=~"{{cluster}}",namespace=~"{{namespace}}",pod=~"{{pod}}"`
+	const containers = scope + `,container!="",container!="POD"`
+	const group = ` by (cluster,namespace,pod) `
+	presets := []struct {
+		id, name, semantics, query string
+		unit                       metric.MetricUnit
+	}{
+		{"memory_rss", "Memory RSS", "gauge", `sum` + group + `(container_memory_rss{` + containers + `})`, metric.UnitBytes},
+		{"memory_cache", "Memory cache", "gauge", `sum` + group + `(container_memory_cache{` + containers + `})`, metric.UnitBytes},
+		{"network_receive", "Network receive", "rate", `sum` + group + `(max by (cluster,namespace,pod,interface) (rate(container_network_receive_bytes_total{` + scope + `,interface!="lo"}[5m])))`, metric.UnitBytesPerSec},
+		{"network_transmit", "Network transmit", "rate", `sum` + group + `(max by (cluster,namespace,pod,interface) (rate(container_network_transmit_bytes_total{` + scope + `,interface!="lo"}[5m])))`, metric.UnitBytesPerSec},
+		{"disk_read", "Disk read", "rate", `sum` + group + `(rate(container_fs_reads_bytes_total{` + containers + `}[5m]))`, metric.UnitBytesPerSec},
+		{"disk_write", "Disk write", "rate", `sum` + group + `(rate(container_fs_writes_bytes_total{` + containers + `}[5m]))`, metric.UnitBytesPerSec},
+		{"cpu_throttling", "CPU throttled periods", "gauge", `100 * sum` + group + `(rate(container_cpu_cfs_throttled_periods_total{` + containers + `}[5m])) / (sum` + group + `(rate(container_cpu_cfs_periods_total{` + containers + `}[5m])) > 0)`, metric.UnitPercentage},
+		{"restarts", "Container restarts", "gauge", `sum` + group + `(max by (cluster,namespace,pod,container) (kube_pod_container_status_restarts_total{` + scope + `}))`, metric.UnitCount},
+		{"cpu_requests", "CPU requests", "gauge", `1000 * sum` + group + `(max by (cluster,namespace,pod,container) (kube_pod_container_resource_requests{` + scope + `,resource="cpu",unit="core"}))`, metric.UnitMillicores},
+		{"cpu_limits", "CPU limits", "gauge", `1000 * sum` + group + `(max by (cluster,namespace,pod,container) (kube_pod_container_resource_limits{` + scope + `,resource="cpu",unit="core"}))`, metric.UnitMillicores},
+		{"memory_requests", "Memory requests", "gauge", `sum` + group + `(max by (cluster,namespace,pod,container) (kube_pod_container_resource_requests{` + scope + `,resource="memory",unit="byte"}))`, metric.UnitBytes},
+		{"memory_limits", "Memory limits", "gauge", `sum` + group + `(max by (cluster,namespace,pod,container) (kube_pod_container_resource_limits{` + scope + `,resource="memory",unit="byte"}))`, metric.UnitBytes},
+	}
+	definitions := make([]metric.MetricDefinition, 2, len(presets)+2)
+	definitions[0], definitions[1] = cpu, memory
+	for _, preset := range presets {
+		definition := base
+		definition.FieldBindings = slices.Clone(base.FieldBindings)
+		definition.ResourceKeys = slices.Clone(base.ResourceKeys)
+		definition.IdentityLabels = slices.Clone(base.IdentityLabels)
+		definition.SupportedShapes = slices.Clone(base.SupportedShapes)
+		definition.ID, definition.Name = preset.id, preset.name
+		definition.Semantics, definition.Query, definition.Unit = preset.semantics, preset.query, preset.unit
+		definitions = append(definitions, definition)
+	}
+	return definitions, nil
 }
 
 func validateResourceMapping(d metric.MetricDefinition, resources []metric.MetricResource, scope map[string]string, shape metric.MetricShape) error {
