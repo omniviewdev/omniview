@@ -161,7 +161,7 @@ class SchemaRegistry {
   }
 
   /** Resolves after the currently scheduled schema update reaches Monaco. */
-  whenFlushed(): Promise<void> {
+  async whenFlushed(): Promise<void> {
     return this.flushPromise;
   }
 
@@ -173,12 +173,12 @@ class SchemaRegistry {
     this.flushScheduled = true;
     // Batch updates to avoid thrashing Monaco on rapid schema registration
     const previous = this.flushPromise;
-    this.flushPromise = previous.catch(() => {}).then(() => {
+    this.flushPromise = previous.catch(() => undefined).then(async () => {
       this.flushScheduled = false;
       return this.flush();
     });
     // Consumers observe failure through whenFlushed; unobserved cleanup must not reject globally.
-    void this.flushPromise.catch(() => {});
+    void this.flushPromise.catch(() => undefined);
   }
 
   private async flush(): Promise<void> {

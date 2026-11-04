@@ -120,7 +120,7 @@ describe('canonical editor schema registry', () => {
   it('waits for the asynchronous YAML update before resolving whenFlushed', async () => {
     const update = Promise.withResolvers<void>();
     const started = Promise.withResolvers<void>();
-    mocks.yaml.mockImplementationOnce(() => {
+    mocks.yaml.mockImplementationOnce(async () => {
       started.resolve();
       return update.promise;
     });
@@ -141,7 +141,7 @@ describe('canonical editor schema registry', () => {
     const update = Promise.withResolvers<void>();
     const started = Promise.withResolvers<void>();
     const failure = new Error('YAML worker rejected update');
-    mocks.yaml.mockImplementationOnce(() => {
+    mocks.yaml.mockImplementationOnce(async () => {
       started.resolve();
       return update.promise;
     });

@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { EditorSchemaBoundary, useSchemaRegistration } from './useSchemaRegistration';
+import { EditorSchemaBoundary, editorSchemaBridge, useSchemaRegistration } from './useSchemaRegistration';
 
 const mocks = vi.hoisted(() => ({
   schemas: vi.fn(),
@@ -41,7 +41,7 @@ it('shares concurrent owners and unregisters only after the final editor closes'
   mocks.schemas.mockReturnValue(result);
   const first = renderHook(() => useSchemaRegistration({ pluginID: 'provider', connectionID: 'cluster' }));
   const second = renderHook(() => useSchemaRegistration({ pluginID: 'provider', connectionID: 'cluster' }));
-  await act(async () => {});
+  await act(async () => undefined);
   expect(mocks.register).toHaveBeenCalledExactlyOnceWith('provider', 'cluster', result.associations, result.documents);
   expect(first.result.current.isLoading).toBe(false);
   expect(second.result.current.isLoading).toBe(false);
@@ -61,12 +61,36 @@ it('does not register or wait for Monaco while demand is disabled', () => {
   expect(mocks.unregister).not.toHaveBeenCalled();
 });
 
+it('waits for a fresh flush after demand is re-enabled with unchanged query results', async () => {
+  const hook = renderHook(({ enabled }) => useSchemaRegistration({ pluginID: 'provider', connectionID: 'cluster', enabled }), {
+    initialProps: { enabled: true },
+  });
+  await act(async () => undefined);
+  expect(hook.result.current.isLoading).toBe(false);
+  hook.rerender({ enabled: false });
+  expect(hook.result.current.isLoading).toBe(false);
+  expect(mocks.unregister).toHaveBeenCalledOnce();
+  const pending = Promise.withResolvers<void>();
+  mocks.whenFlushed.mockReturnValueOnce(pending.promise);
+  hook.rerender({ enabled: true });
+  expect(hook.result.current.isLoading).toBe(true);
+  await act(async () => {
+    pending.resolve();
+    await pending.promise;
+  });
+  expect(hook.result.current.isLoading).toBe(false);
+  expect(mocks.register).toHaveBeenCalledTimes(2);
+});
+
 it('keeps loading until the Monaco update resolves', async () => {
   const pending = Promise.withResolvers<void>();
   mocks.whenFlushed.mockReturnValue(pending.promise);
   const hook = renderHook(() => useSchemaRegistration({ pluginID: 'provider', connectionID: 'cluster' }));
   expect(hook.result.current.isLoading).toBe(true);
-  await act(async () => { pending.resolve(); await pending.promise; });
+  await act(async () => {
+    pending.resolve();
+    await pending.promise;
+  });
   expect(hook.result.current.isLoading).toBe(false);
   expect(hook.result.current.error).toBeNull();
 });
@@ -76,10 +100,15 @@ it('exposes asynchronous update failure and retries both registration and fetchi
   const failure = new Error('YAML update failed');
   mocks.whenFlushed.mockReturnValueOnce(pending.promise);
   const hook = renderHook(() => useSchemaRegistration({ pluginID: 'provider', connectionID: 'cluster' }));
-  await act(async () => { pending.reject(failure); await pending.promise.catch(() => {}); });
+  await act(async () => {
+    pending.reject(failure);
+    await pending.promise.catch(() => undefined);
+  });
   expect(hook.result.current.isLoading).toBe(false);
   expect(hook.result.current.error).toBe(failure);
-  await act(async () => { await hook.result.current.retry(); });
+  await act(async () => {
+    await hook.result.current.retry();
+  });
   expect(mocks.refetch).toHaveBeenCalledOnce();
   expect(mocks.register).toHaveBeenCalledTimes(2);
   expect(hook.result.current.error).toBeNull();
@@ -95,9 +124,15 @@ it('ignores a superseded connection flush until the current connection finishes'
   });
   hook.rerender({ connectionID: 'current' });
   expect(mocks.unregister).toHaveBeenCalledWith('provider', 'old');
-  await act(async () => { oldFlush.resolve(); await oldFlush.promise; });
+  await act(async () => {
+    oldFlush.resolve();
+    await oldFlush.promise;
+  });
   expect(hook.result.current.isLoading).toBe(true);
-  await act(async () => { currentFlush.resolve(); await currentFlush.promise; });
+  await act(async () => {
+    currentFlush.resolve();
+    await currentFlush.promise;
+  });
   expect(hook.result.current.isLoading).toBe(false);
   expect(mocks.register.mock.calls.map((call) => call[1])).toEqual(['old', 'current']);
 });
@@ -109,7 +144,7 @@ it('does not restore an older revision when its last owner closes', async () => 
   const newRevision = query({ documents: [{ documentId: 'updated' }] });
   mocks.schemas.mockReturnValue(newRevision);
   const newOwner = renderHook(() => useSchemaRegistration({ pluginID: 'provider', connectionID: 'cluster' }));
-  await act(async () => {});
+  await act(async () => undefined);
   oldOwner.unmount();
   expect(mocks.unregister).not.toHaveBeenCalled();
   expect(mocks.register).toHaveBeenCalledTimes(2);
@@ -121,23 +156,28 @@ it('does not restore an older revision when its last owner closes', async () => 
 it('publishes the bridge and gates the actual editor until Monaco is ready', async () => {
   const pending = Promise.withResolvers<void>();
   mocks.whenFlushed.mockReturnValue(pending.promise);
-  expect(window.__omniviewEditorSchemaBoundary).toBe(EditorSchemaBoundary);
-  const Boundary = window.__omniviewEditorSchemaBoundary!;
+  expect(editorSchemaBridge.__omniviewEditorSchemaBoundary).toBe(EditorSchemaBoundary);
+  const Boundary = editorSchemaBridge.__omniviewEditorSchemaBoundary!;
   render(<Boundary pluginID="provider" connectionID="cluster"><textarea aria-label="Manifest" /></Boundary>);
   expect(screen.getByRole('status').textContent).toContain('Loading editor schemas');
   expect(screen.queryByRole('textbox')).toBeNull();
-  await act(async () => { pending.resolve(); await pending.promise; });
+  await act(async () => {
+    pending.resolve();
+    await pending.promise;
+  });
   expect(screen.getByRole('textbox')).toBeTruthy();
 });
 
 it('keeps the editor useful after update failure and offers retry', async () => {
   mocks.whenFlushed.mockRejectedValueOnce(new Error('worker offline'));
   render(<EditorSchemaBoundary pluginID="provider" connectionID="cluster"><textarea aria-label="Manifest" /></EditorSchemaBoundary>);
-  await act(async () => {});
+  await act(async () => undefined);
   expect(screen.getByRole('alert').textContent).toContain('worker offline');
   fireEvent.change(screen.getByRole('textbox'), { target: { value: 'kind: Pod' } });
-  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('kind: Pod');
-  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Retry editor schemas' })); });
+  expect(screen.getByRole<HTMLTextAreaElement>('textbox').value).toBe('kind: Pod');
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Retry editor schemas' }));
+  });
   expect(mocks.refetch).toHaveBeenCalledOnce();
   expect(screen.queryByRole('alert')).toBeNull();
   expect(screen.getByRole('textbox')).toBeTruthy();
@@ -146,7 +186,7 @@ it('keeps the editor useful after update failure and offers retry', async () => 
 it('shows explicit schema absence without hiding the editor', async () => {
   mocks.schemas.mockReturnValue(query({ associations: [{ type: 'pods', status: 'absent' }], documents: [] }));
   render(<EditorSchemaBoundary pluginID="provider" connectionID="cluster"><textarea aria-label="Manifest" /></EditorSchemaBoundary>);
-  await act(async () => {});
+  await act(async () => undefined);
   expect(screen.getByRole('status').textContent).toContain('No editor schema is available');
   expect(screen.getByRole('textbox')).toBeTruthy();
   expect(screen.queryByRole('button')).toBeNull();
@@ -165,7 +205,7 @@ it('reports absence for the editor resource even when another resource has a sch
   render(<EditorSchemaBoundary pluginID="provider" connectionID="cluster" resourceType="deployments">
     <textarea aria-label="Manifest" />
   </EditorSchemaBoundary>);
-  await act(async () => {});
+  await act(async () => undefined);
   expect(screen.getByRole('status').textContent).toContain('No editor schema is available');
   expect(screen.getByRole('textbox')).toBeTruthy();
 });
@@ -178,7 +218,7 @@ it('does not borrow an available schema from another model directory', async () 
     resourceType="pods" modelPath="file:///schema/release-b/manifest.yaml">
     <textarea aria-label="Manifest" />
   </EditorSchemaBoundary>);
-  await act(async () => {});
+  await act(async () => undefined);
   expect(screen.getByRole('status').textContent).toContain('No editor schema is available for this model');
   expect(screen.getByRole('textbox')).toBeTruthy();
   editor.rerender(<EditorSchemaBoundary pluginID="provider" connectionID="cluster"
@@ -192,8 +232,10 @@ it('does not borrow an available schema from another model directory', async () 
 it('keeps a concurrent owner registered after the retrying editor closes', async () => {
   const first = renderHook(() => useSchemaRegistration({ pluginID: 'provider', connectionID: 'cluster' }));
   const second = renderHook(() => useSchemaRegistration({ pluginID: 'provider', connectionID: 'cluster' }));
-  await act(async () => {});
-  await act(async () => { await first.result.current.retry(); });
+  await act(async () => undefined);
+  await act(async () => {
+    await first.result.current.retry();
+  });
   expect(mocks.register).toHaveBeenCalledTimes(2);
   expect(mocks.unregister).not.toHaveBeenCalled();
   first.unmount();
@@ -209,7 +251,7 @@ it('keeps the newest revision registered when its editor closes before an older 
   const newRevision = query({ documents: [{ documentId: 'updated' }] });
   mocks.schemas.mockReturnValue(newRevision);
   const newOwner = renderHook(() => useSchemaRegistration({ pluginID: 'provider', connectionID: 'cluster' }));
-  await act(async () => {});
+  await act(async () => undefined);
   newOwner.unmount();
   expect(mocks.unregister).not.toHaveBeenCalled();
   expect(mocks.register).toHaveBeenCalledTimes(2);
