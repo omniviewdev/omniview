@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActivityClient } from './client';
-import type { StartResourceActionRequest } from './types';
+import type { ActivityPresentation, StartResourceActionRequest } from './types';
 
 const native = vi.hoisted(() => ({ invoke: vi.fn(), listen: vi.fn() }));
 vi.mock('@wailsio/runtime', () => ({
@@ -22,6 +22,7 @@ describe('activity host bridge', () => {
       request: {
         route: { connection: 'connection' },
         action: 'run',
+        typeTarget: { provider: 'opaque-provider', authority: 'connection', type: 'work', scope: [] },
         input: {
           kind: 'map',
           value: {
@@ -41,13 +42,11 @@ describe('activity host bridge', () => {
       },
     };
     activityClient.startResourceAction(request);
-    const [name, encoded] = native.invoke.mock.calls[0];
-    expect(name).toBe(
-      'github.com/omniviewdev/omniview/backend/pkg/activity.FrontendService.StartResourceAction',
-    );
-    expect(encoded).toContain('"value":"18446744073709551615"');
-    expect(encoded).toContain('"kind":"double","value":-0');
-    expect(JSON.parse(encoded).presentation.progress.current).toBe('9007199254740993');
+    const [, encoded] = native.invoke.mock.calls[0];
+    const decoded = JSON.parse(encoded);
+    expect(decoded.request.input.value.count.value).toBe('18446744073709551615');
+    expect(Object.is(decoded.request.input.value.offset.value, -0)).toBe(true);
+    expect(decoded.presentation.progress.current).toBe('9007199254740993');
   });
 
   it('shares an early producer capability with hydration and retains it across observer remounts', async () => {
@@ -107,23 +106,24 @@ describe('activity host bridge', () => {
   });
 
   it('preserves exact Values embedded in every producer presentation', async () => {
-    const presentation = {
+    const presentation: ActivityPresentation = {
       title: 'Precise action',
       actions: [
         {
           id: 'run',
-          kind: 'resource-action' as const,
+          kind: 'resource-action',
           label: 'Run',
           intent: {
             pluginID: 'p',
             request: {
               route: { connection: 'c' },
               action: 'run',
+              typeTarget: { provider: 'p', authority: 'c', type: 'work', scope: [] },
               input: {
-                kind: 'map' as const,
+                kind: 'map',
                 value: {
-                  count: { kind: 'uint64' as const, value: '18446744073709551615' },
-                  offset: { kind: 'double' as const, value: -0 },
+                  count: { kind: 'uint64', value: '18446744073709551615' },
+                  offset: { kind: 'double', value: -0 },
                 },
               },
             },

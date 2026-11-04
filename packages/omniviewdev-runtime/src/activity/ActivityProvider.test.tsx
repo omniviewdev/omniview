@@ -101,6 +101,7 @@ function WorkView() {
           request: {
             action: 'run',
             route: { connection: 'c' },
+            typeTarget: { provider: 'p', authority: 'c', type: 'work', scope: [] },
             input: { kind: 'uint64', value: '18446744073709551615' },
           },
           presentation: { title: 'Run' },
@@ -294,6 +295,7 @@ describe('shared activity presentation', () => {
           request: {
             route: { connection: 'c' },
             action: 'repair',
+            typeTarget: { provider: 'p', authority: 'c', type: 'work', scope: [] },
             input: { kind: 'null' },
           },
         },
