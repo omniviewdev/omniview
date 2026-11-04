@@ -628,6 +628,9 @@ snapshot; no raw-resource history is retained. Graph locking protects cache
 access and exported declaration cloning. Derived-edge removal still preserves
 independently owned edges. Source observation admission and delivery remain
 unchanged; the graph fast path does not suppress the dispatched update.
+Connection teardown retains both directions of surviving external references,
+so upstream traversal stays correct when a target returns without a changed
+observation from its declarer.
 
 Focused race checks passed for registry, graph, dispatcher, production pipeline,
 binding retirement, queued retired observations, and the new dependency
