@@ -109,6 +109,14 @@ namespace was deleted, and a subsequent Kubernetes get returned `NotFound`.
 These observations do not replace the historical measurements above or establish
 the final merged-source smoke proof.
 
+On 2026-11-04, candidate host `bf47c022f957eb9ace7770e75e39ebfd9b2fab1a`
+used the same SDK, Kubernetes, UI, Flux and Proxmox revisions. Pod, Event and
+ReplicaSet sources were following with 192, 873 and 141 records respectively;
+the corresponding `kubectl` counts matched. The catalog initially remained
+pending and idle. An explicit query refetch and route navigation recovered it.
+The Pod YAML preview opened, but hover did not appear. This was not a fresh
+schema-admission measurement or a merged-source proof.
+
 ### Acceptance status
 
 | Evidence or gate | Status |
