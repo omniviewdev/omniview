@@ -119,7 +119,7 @@ func TestSourceCoordinatorSharesAndReleases(t *testing.T) {
 	ctrl, _, provider, target := sourceTestFixture(t)
 	first := sourceTestOpen(t, ctrl, target)
 	open := sourceNextOpen(t, provider)
-	require.EqualValues(t, 128, open.request.Limits.MaxBatchItems)
+	require.EqualValues(t, 16, open.request.Limits.MaxBatchItems)
 	second := sourceTestOpen(t, ctrl, target)
 	ctrl.sources.mu.Lock()
 	require.Len(t, ctrl.sources.sessions, 1)
@@ -143,7 +143,7 @@ func TestSourceNegotiatedChangeBatchLimit(t *testing.T) {
 	open := sourceNextOpen(t, provider)
 	defer ctrl.CloseSourceView(testInvocationContext(), "p1", view.ViewID)
 	request := open.request
-	require.EqualValues(t, 128, request.Limits.MaxBatchItems)
+	require.EqualValues(t, 16, request.Limits.MaxBatchItems)
 	descriptor := canonicalTestCatalog("p1", "native::Pod").Types[0]
 	descriptor.Capabilities = append(descriptor.Capabilities, resourcev2.Capability{Operation: resourcev2.OperationSourceUpdates, Scope: resourcev2.QueryScope{}, Guarantee: resourcev2.ContinuityBestEffort})
 	tracker := resourcev2.NewCatalogBoundSourcePhaseTracker(request, descriptor)

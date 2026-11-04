@@ -182,10 +182,14 @@ func TestSourcePackedPodFrameAdmission(t *testing.T) {
 	observations := make([]resourcev2.SourceObservation, defaultSourceMaxBatchItems)
 	for i := range observations {
 		observations[i] = podAccountingObservation(i)
-		// Dense nonempty ownership maps exercise map-bucket and entry costs,
-		// not just the cheaper empty-map leaves.
-		fields := make(map[string]resourcev2.Value, 90)
-		for field := range 90 {
+		// Mix large and medium anonymous managedFields trees so the full
+		// negotiated batch exercises dense, nonempty ownership maps.
+		fieldCount := 500
+		if i < len(observations)/2 {
+			fieldCount = 1000
+		}
+		fields := make(map[string]resourcev2.Value, fieldCount)
+		for field := range fieldCount {
 			fields[fmt.Sprintf("f:field-%03d", field)] = resourcev2.Value{Kind: "map", Map: map[string]resourcev2.Value{
 				"f:name":    {Kind: "string", String: "anonymous"},
 				"f:enabled": {Kind: "bool", Bool: true},

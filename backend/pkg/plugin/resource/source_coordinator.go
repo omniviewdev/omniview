@@ -15,7 +15,10 @@ import (
 
 const (
 	defaultSourceMaxFrameBytes = resourcev2.MaxSourceFrameBytes
-	defaultSourceMaxBatchItems = 128
+	// Full managedFields measurements: the 16 largest observed Pods plus
+	// encoder scratch used ~195 MB of the 256 MiB transient pool; 32 used
+	// ~260 MB. This is headroom, not a guarantee for arbitrary observations.
+	defaultSourceMaxBatchItems = 16
 	maxSourceSessionMembers    = 65536
 	defaultSourceStagingBytes  = 128 << 20
 	maxSourceSessionBytes      = 256 << 20
