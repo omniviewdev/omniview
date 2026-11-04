@@ -196,7 +196,7 @@ func TestSourceCoordinatorSyncWaitsForSnapshotBoundary(t *testing.T) {
 	end := waitSourceView(t, events, view.Topic, func(event HostSourceViewEvent) bool {
 		return event.Kind == "snapshotEnd" && event.Status != nil && event.Status.State == "following"
 	})
-	require.Equal(t, record, resourcev2.CompactSourceRecord(snapshot.Records[0].Record))
+	require.Equal(t, record, snapshot.Records[0].Record)
 	require.Equal(t, open.request.Binding.Representation, snapshot.Records[0].Record.Representation)
 	require.Equal(t, snapshot.ViewGeneration, end.ViewGeneration)
 	require.NoError(t, ctrl.CloseSourceView(testInvocationContext(), "p1", view.ViewID))
