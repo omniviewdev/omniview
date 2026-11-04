@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Events } from '@wailsio/runtime';
-import { useSnackbar, createErrorHandler } from '@omniviewdev/runtime';
+import { useNotifications, createErrorHandler } from '@omniviewdev/runtime';
 import { McpRelayClient } from '@omniviewdev/runtime/api';
 import type { mcprelay } from '@omniviewdev/runtime/models';
 
@@ -23,7 +23,7 @@ const ROOT_KEY = ['mcp'];
  */
 export const useMcpRelay = (scope: McpScope = GLOBAL_SCOPE) => {
   const queryClient = useQueryClient();
-  const { showSnackbar } = useSnackbar();
+  const { notify } = useNotifications();
 
   useEffect(() => {
     const invalidate = () => {
@@ -81,7 +81,7 @@ export const useMcpRelay = (scope: McpScope = GLOBAL_SCOPE) => {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ROOT_KEY });
     },
-    onError: createErrorHandler(showSnackbar, failure),
+    onError: createErrorHandler(notify, failure),
   });
 
   const setEnabled = useMutation({

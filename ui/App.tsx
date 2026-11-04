@@ -21,7 +21,7 @@ import './utils/globalutils';
 import AppThemeController from './theme/AppThemeController';
 
 // Providers
-import { AppSnackbarProvider } from '@/contexts/AppSnackbarProvider';
+import { ToastProvider } from '@omniviewdev/base-ui';
 import RightDrawerProvider from '@/providers/RightDrawerProvider';
 import { ErrorBoundary } from 'react-error-boundary';
 import { RootErrorFallback, FullPageErrorFallback, onBoundaryError } from '@/components/errors/ErrorFallback';
@@ -36,7 +36,7 @@ import { EXTENSION_REGISTRY } from './features/extensions/store';
 import { ConfirmationModalProvider } from './contexts/ConfirmationModalContext';
 import { McpConfirmationProvider } from './providers/McpConfirmationProvider';
 import { ConnectionStateProvider } from './features/connectionState';
-import { OperationsProvider } from '@omniviewdev/runtime';
+import { ActivityProvider } from '@omniviewdev/runtime';
 import { PluginServiceProvider } from '@/features/plugins';
 import { currentWindow, WindowTabDragProvider } from './features/windows';
 import WorkspaceShell from './layouts/core/main/WorkspaceShell';
@@ -47,15 +47,17 @@ import { InstanceProvider } from '@/features/instance/InstanceContext';
 
 import { SettingsWindowShell } from './features/windows/SettingsWindowShell';
 import { ExtensionDiagnosticsBridge } from './features/extensions/diagnostics/ExtensionDiagnosticsBridge';
+import { ActivityActionSurfaces, WorkspaceActivitySurfaces } from './features/activities/ActivityActionSurfaces';
 
 function WindowApplication() {
   return (
     <PluginServiceProvider>
       <ExtensionDiagnosticsBridge />
-      {currentWindow.kind === 'settings' ? <SettingsWindowShell /> : (
+      {currentWindow.kind === 'settings' ? <><ActivityActionSurfaces /><SettingsWindowShell /></> : (
         <ConnectionStateProvider>
           <BottomDrawerProvider>
             <RightDrawerProvider>
+              <WorkspaceActivitySurfaces />
               <McpConfirmationProvider>
                 <WindowTabDragProvider>
                   {currentWindow.kind === 'panel' ? <PanelWindowShell /> : <WorkspaceShell />}
@@ -108,22 +110,22 @@ const App: React.FC = () => {
         <QueryClientProvider client={queryClient}>
           <SettingsProvider>
             <ExtensionProvider registry={EXTENSION_REGISTRY}>
-              <AppSnackbarProvider>
+              <ActivityProvider>
                 <Provider store={store}>
                   <AppThemeController>
-                    <ErrorBoundary
-                      FallbackComponent={(props) => <FullPageErrorFallback {...props} boundary="Application" />}
-                      onError={onBoundaryError}
-                    >
-                      <OperationsProvider>
+                    <ToastProvider maxVisible={5} position="bottom-right" style={{ bottom: 24, padding: 12 }}>
+                      <ErrorBoundary
+                        FallbackComponent={(props) => <FullPageErrorFallback {...props} boundary="Application" />}
+                        onError={onBoundaryError}
+                      >
                         <ConfirmationModalProvider>
                           <WindowApplication />
                         </ConfirmationModalProvider>
-                      </OperationsProvider>
-                    </ErrorBoundary>
+                      </ErrorBoundary>
+                    </ToastProvider>
                   </AppThemeController>
                 </Provider>
-              </AppSnackbarProvider>
+              </ActivityProvider>
             </ExtensionProvider>
           </SettingsProvider>
         </QueryClientProvider>

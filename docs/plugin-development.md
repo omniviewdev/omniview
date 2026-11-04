@@ -11,7 +11,7 @@ or build metadata. Releasing a new stable patch does not require a second versio
 constant to be updated.
 
 Development, nightly, prerelease, and non-version build labels use the explicit
-source capability baseline (`0.27.2`). Advance that baseline when development
+source capability baseline (`0.30.0`). Advance that baseline when development
 source gains a coordinated host/runtime/SDK capability; do not derive capabilities
 from labels such as `0.0.0-nightly...` or `pr-build-macos`.
 
@@ -23,6 +23,10 @@ Kubernetes v0.15.0 declares a minimum host version of v0.27.1.
 Kubernetes v0.15.1 requires host/runtime v0.27.2 and SDK v0.14.6 for native
 streaming log clients and completed-source handling, alongside Base UI v0.12.0.
 Its marketplace submission declares an inclusive `min_ide_version` of `0.27.2`.
+Activity-enabled plugin releases require host/runtime v0.30.0 or newer and use
+Base UI v0.14.0 with SDK v0.15.0. Older stable hosts do not expose activity hooks
+and reject the new resource-action stream field. Declare `min_ide_version: "0.30.0"`
+in marketplace publication metadata, not in `plugin.yaml`.
 
 Publisher minimum and maximum IDE versions are inclusive semantic-version bounds.
 Hosts that omit `ide_version` can only access unconstrained plugin versions.
@@ -46,6 +50,122 @@ and sensitive provider fallback fields remain hidden.
 The public marketplace API is `https://mkt.omniview.dev`. Explicit
 `developer.marketplace_url` overrides remain unchanged. Existing profiles that
 saved the retired `api.omniview.dev` default must update that setting.
+
+### Rich activity notifications
+
+Use `useNotifications().notify({ title, severity, details, actions })` for UI
+diagnostics. Trusted callback actions remain in memory for the current session;
+they are never serialized into host activity records. Error helpers
+`showAppError` and `createErrorHandler` accept this object-based `notify` function.
+`actionToNotification` omits unsupported retries and unsafe documentation URLs.
+
+Use `useActivityActions().startResourceAction({ pluginID, request, presentation })`
+for adopted resource work. Keep canonical resource `Value` inputs intact,
+including decimal-string integer values. The host owns stream attachment and
+execution after adoption. Navigation, hiding a toast, collapsing a card, and
+unmounting a resource view do not cancel work. Cancellation requires an explicit
+request and remains pending until the producer reports an outcome.
+
+Mount one `ActivityProvider` above runtime hook consumers. Mount one
+`ActivitySurfaces` below the host theme and action contexts, inside the existing
+`ToastProvider`; it projects one rich toast and the shared Notification Center.
+Pass `onAction(action, record)` to `ActivitySurfaces` for typed navigation and
+reviewed resource-action intents. Use `canHandleAction(action, record)` to omit
+unavailable actions, such as resource navigation in a settings-only window.
+The generic runtime never selects behavior by resource type or plugin identity.
+
+The footer uses `useActivities().activeTasks` and
+`useNotifications().notificationCount`. Both open the same center through
+`openNotifications('active' | 'attention' | 'all')`. Collapsed and toast-hidden
+state persist through the host; updates and completion do not reset them.
+Overflow remains visible in the center. An open active row stays visible after
+completion until the center closes. History clearing preserves active work and
+firing alerts.
+
+Cards show a status indicator and a measured progress bar with one compact count.
+The bar uses canonical current/total values, animates value changes, and respects
+reduced-motion preferences. Unknown totals remain indeterminate; completed units
+do not independently mark the operation successful. Routine phase text, connection
+identity, and extra metrics live in Details or status tooltips instead of repeating
+below the bar. Failures and observation-loss states remain visible. Collapsing a
+card preserves measured progress and its outcome indicator.
+
+Plugin UI test configurations keep result and transform caches in a per-checkout
+OS temporary directory, outside supervisor-owned dependency trees.
+`OMNIVIEW_TEST_CACHE_DIRECTORY` overrides that location. Use `--no-cache
+--configLoader runner` for direct Vitest runs. Leave binding generation and
+output-writing builds to the managed workspace supervisor, which invokes the
+canonical `task bindings` task and builds runtime before Vite plugin shims.
+
+Runtime observation uses `Subscribe`, a scoped event listener, then `Attach`.
+Revisioned snapshots and removal tombstones prevent stale hydration from
+restoring old state. One native-window-bound producer capability belongs to each
+document; observing view remounts do not replace that document's producer identity.
+A heartbeat covers only that producer's report-only tasks, never another window.
+After lease expiry, observation and capability reconnect without replaying any
+mutation or reviving unknown tasks. Adopted native tasks do not depend on the
+browser's lifetime. Both unit and step progress use decimal-string current and
+total counts; the UI calculates ratios without losing canonical integer precision.
+
+If recording an adopted action's progress or terminal result fails, the host emits
+an `activity/observation-error` diagnostic. The runtime shows safe, copyable text
+without persisting another notification, changing the action result, or replaying
+the mutation. Verify the actual remote outcome before retrying.
+
+#### Host reporting and persistence
+
+The host owns one profile-local activity history. Task execution, alert condition,
+and presentation are independent: collapsing, reading, dismissing, snoozing, or
+acknowledging a record does not finish work or resolve an alert.
+
+Go plugins report tasks, messages, and keyed alert observations through
+`plugin.Activities()`. The lifecycle protocol binds a separate process-scoped
+reporter; it does not use delegated connections or synthetic resource events.
+The host stamps plugin identity, fences retired process generations, and rejects
+cross-plugin updates and intents. Use stable alert keys containing connection,
+resource, rule, and dimension identity. Duplicate or older observations do not
+change alerts. Only a newer recovery observation resolves a condition.
+
+`ActionEvent.Activity` carries typed presentation independently of canonical
+action output. Host-adopted resource actions persist their task before mutation
+and reuse normal action admission and fresh descriptor checks. The admitted
+descriptor selects finite RPC execution or native-ready streaming. Both execute
+under the host's provider-generation lifetime, not the browser request.
+Navigation and component teardown do not cancel them. Adopted resource actions
+do not advertise remote cancellation: stopping an observation stream does not
+cancel a rollout or other remote mutation. Provider pause or stop controls remain
+reviewed typed resource actions. Generic tasks with a real cancellation contract
+remain requested until an observed outcome; a request never proves rollback.
+
+The frontend binding is `backend/pkg/activity.FrontendService`. Call `Subscribe`,
+install the `activity/change/<id>` listener, then call `Attach`. Buffer changes
+while attaching and apply only increasing revisions. Subscriptions own views,
+not producers. The subscription ID also grants a document-scoped producer
+capability bound to its native caller window. Generic producer methods take this
+ID before their request. The root provider renews `Heartbeat(id)` every ten
+seconds; report-only UI work becomes unknown after thirty seconds without
+producer observation. Another document cannot renew that capability. Expired
+capabilities require a fresh session, without replaying mutations. Native adopted
+actions do not depend on this lease. Generic UI reports cannot claim plugin
+source identity.
+
+Bindings carrying presentation or action requests take strict encoded JSON
+strings to preserve canonical resource values, including double negative zero:
+`BeginTask`, `ReportTask`, `FinishTask`, `PublishMessage`, `UpsertAlert`, and
+`StartResourceAction`. The runtime client performs this encoding.
+
+History lives in an atomically replaced private `activities.json` under the
+active profile state root. Restart marks unfinished tasks and firing alerts
+unknown without replaying mutations. History retains at most 500 terminal,
+message, or resolved records, while active work and unresolved conditions remain.
+`ClearHistory` removes only eligible history.
+
+The store validates schema version, record provenance, revisions, timestamps,
+and canonical state before recovery. Activity files cannot exceed 16 MiB.
+Admission bounds active tasks and unresolved alerts globally and per producer;
+subscription and live producer identities also have finite limits. Retired
+identities are removed rather than accumulated in an unbounded blacklist.
+
 
 ### Host drawer context
 
@@ -1036,6 +1156,16 @@ Registration cleanup follows the plugin lifecycle:
 - Reloading or replacing a registration disposes its previous theme before registering the current contribution. Plugin code does not need to unregister themes manually.
 
 Before React starts, the loading surface uses the last cached built-in theme, including validated legacy Light and Solarized preferences during upgrades. Custom/plugin themes use Void for this first paint until their contribution loads; the persisted requested theme ID is not changed. The Appearance theme picker applies selections immediately and exposes the accessible name “Theme.”
+
+### 1.6 Persistent Plugin Data
+
+Use `usePluginData` for profile-backed plugin preferences. Pass a literal value to replace a key, or a pure functional updater to merge with its latest persisted value.
+
+Functional updates use a fresh backend snapshot and compare-and-swap, including across independent windows and QueryClients. A conflicting write re-evaluates the updater, up to eight attempts. Prepare IDs, timestamps, uploads, and other side effects outside the updater. Exhausted conflicts and storage failures reject the update promise; callers must surface the error rather than reporting success.
+
+Literal replacements intentionally remain last-write-wins and do not require reading the old value. They can therefore reset a key whose persisted JSON cannot be read. Failed optimistic writes restore the previous cached value, or the supplied default when no cached value exists.
+
+The host data service exposes `GetSnapshot` and `CompareAndSwap` for this protocol. Revisions are opaque content tokens, not monotonic counters. An absent key has an empty revision; stored JSON `null` has a nonempty revision. Keep both methods and the consuming runtime in the same published host/runtime cohort; older hosts do not provide these bindings.
 
 ---
 

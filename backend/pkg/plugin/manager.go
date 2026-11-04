@@ -199,6 +199,7 @@ type pluginManager struct {
 	telemetryConfigFn   func() TelemetryEnvConfig // returns current telemetry config for env injection
 	pluginPprofEnabled  bool                      // immutable startup snapshot; changes require a host restart
 	sharing             *sharingState
+	activities          *activityBinding
 
 	// pluginOpsMu serializes load/reload/unload operations per plugin to
 	// prevent concurrent lifecycle transitions for the same plugin (e.g.
@@ -255,6 +256,7 @@ func (pm *pluginManager) HandlePluginCrash(pluginID string) {
 
 func (pm *pluginManager) handlePluginCrash(pluginID string, expected *probedCrash, unlock func()) {
 	pm.retireConnectionSharing(pluginID)
+	pm.retireActivities(pluginID)
 	// Capture the last few log entries before the crash for diagnostics.
 	// These are pulled from the in-memory ring buffer that captures all
 	// plugin stderr output (including panic stack traces).

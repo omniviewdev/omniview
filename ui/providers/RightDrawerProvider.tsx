@@ -15,7 +15,7 @@ import {
   ConnectionBoundary,
   ConnectionBoundaryFallback,
   withConnectionReady,
-  useSnackbar,
+  useNotifications,
 } from '@omniviewdev/runtime';
 import { ResourceClient } from '@omniviewdev/runtime/api';
 import { jsonToValue, valueToJSON, resourceQueryKeys, createErrorHandler, type HostRecord, type Value } from '@omniviewdev/runtime';
@@ -53,7 +53,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
   const [context, setContext] = useState<DrawerContext | undefined>(undefined);
   const resourceRequest = useRef(0);
   const cancelResourceRead = useRef<(() => void) | null>(null);
-  const { showSnackbar } = useSnackbar();
+  const { notify } = useNotifications();
   React.useEffect(() => () => {
     resourceRequest.current += 1;
     cancelResourceRead.current?.();
@@ -275,7 +275,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
       })).then(() => {
         void queryClient.invalidateQueries({ queryKey: resourceQueryKeys.all(params.pluginID) });
         closeDrawer();
-      }).catch(createErrorHandler(showSnackbar, 'Failed to update resource'));
+      }).catch(createErrorHandler(notify, 'Failed to update resource'));
     };
 
     // Resolve drawer/sidebar via extension points — synchronous lookup
@@ -364,7 +364,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
         record: result,
       },
     });
-  }, [closeDrawer, openDrawer, drawerEP, sidebarEP, queryClient, showSnackbar]);
+  }, [closeDrawer, openDrawer, drawerEP, sidebarEP, queryClient, notify]);
 
   const contextValue = useMemo(() => ({
     closeDrawer,

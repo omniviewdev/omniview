@@ -21,8 +21,7 @@ import type { DevServerAggregateStatus, DevServerState } from '@/features/devtoo
 import { getAggregateStatus } from '@/features/devtools/types';
 import { useDevServer } from '@/hooks/plugin/useDevServer';
 import { usePluginService } from '@/features/plugins';
-import { usePortForwardSessions, useOperations, useSnackbar } from '@omniviewdev/runtime';
-import type { BackgroundOperation } from '@omniviewdev/runtime';
+import { useActivities, usePortForwardSessions } from '@omniviewdev/runtime';
 import HintTooltip from '@/components/base/HintTooltip';
 
 import ConnectionStatusIndicator from './ConnectionStatusIndicator';
@@ -328,14 +327,21 @@ function PluginLoadingSpinner() {
 }
 
 // ---------------------------------------------------------------------------
-// NotificationButton — retained error diagnostics
+// NotificationButton — shared notification center
 // ---------------------------------------------------------------------------
 
 function NotificationButton() {
-  const { openNotifications, notificationCount } = useSnackbar();
+  const { openNotifications, notificationCount } = useActivities();
   return (
     <HintTooltip content='Notifications' side='top'>
-      <button type='button' className={styles.IconButton} aria-label={`Notifications (${notificationCount})`} onClick={openNotifications}>
+      <button
+        type='button'
+        className={styles.IconButton}
+        aria-label={`Notifications (${notificationCount})`}
+        onClick={() => {
+          openNotifications('all'); 
+        }}
+      >
         <LuBell size={10} />
         {notificationCount > 0 && <span>{notificationCount}</span>}
       </button>
@@ -486,96 +492,34 @@ function PortForwardIndicator() {
 }
 
 // ---------------------------------------------------------------------------
-// OperationsIndicator — chip + popover listing active/recent operations
+// OperationsIndicator — active/recent tasks in the shared notification center
 // ---------------------------------------------------------------------------
 
-function OperationsList({ operations, onRemove }: { operations: BackgroundOperation[]; onRemove: (id: string) => void }) {
-  const running = operations.filter((o) => o.status === 'running');
-  const [now, setNow] = React.useState<number | null>(null);
-  const hasRunning = running.length > 0;
-  React.useEffect(() => {
-    if (!hasRunning) {
-      return;
-    }
-
-    const updateClock = () => {
-      setNow(Date.now());
-    };
-
-    const initialTimer = window.setTimeout(updateClock, 0);
-    const timer = window.setInterval(updateClock, 1000);
-    return () => {
-      window.clearTimeout(initialTimer);
-      window.clearInterval(timer);
-    };
-  }, [hasRunning]);
-
-  return (
-    <>
-      <PopoverHeader
-        icon={<LuRefreshCw size={12} className={styles.InfoIcon} />}
-        title={`Operations (${running.length} active)`}
-      />
-      <div className={styles.List}>
-        {operations.length === 0 && <div className={styles.Empty}>No recent operations</div>}
-        {operations.map((op) => {
-          const elapsed = Math.max(0, Math.round(((op.completedAt ?? now ?? op.startedAt) - op.startedAt) / 1000));
-          const status = op.status === 'completed' ? 'success' : op.status === 'error' ? 'danger' : 'warning';
-          return (
-            <div key={op.id} className={styles.ListItem}>
-              <div className={styles.Row}>
-                <div className={styles.Group}>
-                  <Dot status={status} pulse={op.status === 'running'} />
-                  <span className={cx(styles.Title, styles.Truncate)}>{op.label}</span>
-                </div>
-                <div className={styles.Group}>
-                  <span className={cx(styles.Meta, styles.Mono)}>{elapsed}s</span>
-                  {op.status !== 'running' && (
-                    <PopoverAction icon={<LuX size={10} />} label='' onClick={() => {
-                      onRemove(op.id); 
-                    }} />
-                  )}
-                </div>
-              </div>
-              {op.namespace && (
-                <div className={cx(styles.Meta, styles.Indent, styles.Truncate)}>{op.namespace}</div>
-              )}
-              {op.progress && (
-                <div className={cx(styles.Detail, styles.Indent)}>
-                  {op.progress.ready}/{op.progress.desired} replicas ready
-                </div>
-              )}
-              {op.message && !op.progress && (
-                <div className={cx(styles.Detail, styles.Indent)}>{op.message}</div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </>
-  );
-}
 
 function OperationsIndicator() {
-  const { operations, removeOperation } = useOperations();
+  const { records, activeTasks, openNotifications } = useActivities();
+  const taskCount = records.filter(record => record.kind === 'task').length;
 
-  const running = operations.filter((o) => o.status === 'running');
-
-  if (operations.length === 0) {
+  if (taskCount === 0) {
     return null;
   }
 
-  const label = running.length > 0
-    ? `${running.length} operation${running.length !== 1 ? 's' : ''}`
-    : `${operations.length} recent`;
+  const running = activeTasks.length;
+  const label = running > 0
+    ? `${running} operation${running === 1 ? '' : 's'}`
+    : `${taskCount} recent`;
 
   return (
-    <FooterPopover
-      tooltip={label}
-      trigger={<FooterChip tone={running.length > 0 ? 'info' : 'neutral'} icon={<LuRefreshCw size={9} />} label={label} />}
-    >
-      {() => <OperationsList operations={operations} onRemove={removeOperation} />}
-    </FooterPopover>
+    <HintTooltip content={running > 0 ? 'Active operations' : 'Recent operations'} side='top'>
+      <FooterChip
+        tone={running > 0 ? 'info' : 'neutral'}
+        icon={<LuRefreshCw size={9} />}
+        label={label}
+        onClick={() => {
+          openNotifications(running > 0 ? 'active' : 'all'); 
+        }}
+      />
+    </HintTooltip>
   );
 }
 

@@ -47,18 +47,23 @@ CI reads the checked-out host's `e2e/source-cohort.json`, with full commit strin
 for `plugin-sdk`, `ui`, and `kubernetes`. UI and Kubernetes checkouts use validated
 cohort outputs; Kubernetes must match the host's `plugins/kubernetes` gitlink.
 After Kubernetes merges, update both pins to its final merge commit before the coordinated consumer release.
-The SDK entry must equal the independently reviewed release pinned explicitly in
-the candidate workflows: SDK v0.14.2,
-`0597ff45586b45e3a57fe7ac86194ce96884c7ef`. The original isolation ancestry minimum remains
-`5b3ef764d1cf738835a723a749a0cb6c45f85e44`. The connection-sharing release advances the
-reviewed isolation checkpoint to SDK v0.13.0 after independent
-security review of the five protected files.
-The changes add callback binding and retain the profiler lifecycle in
-`pkg/sdk/plugin.go`; state-root, profile-contract, and store protections remain
-unchanged. Admission requires the baseline to precede that pinned checkpoint, the
-checkpoint to precede the selected SDK, and all five selected protected files
-to match the checkpoint byte-for-byte. Neither cohort approval, tags nor
-environment variables can substitute another isolation checkpoint.
+The SDK entry selects released SDK v0.15.0,
+`427ef1da1f1db4f5787d384af3ae183ff31b0cd3`. The original isolation ancestry
+minimum remains `5b3ef764d1cf738835a723a749a0cb6c45f85e44`. Independent review
+of the activity callback binding advances the reviewed isolation checkpoint to
+that merged release commit. The binding changes `pkg/sdk/plugin.go`; state-root,
+profile-contract, and store protections remain unchanged. Admission requires
+the baseline to precede that checkpoint, the checkpoint to precede the selected
+SDK, and all five selected protected files to match the checkpoint byte-for-byte.
+Neither cohort approval, tags nor environment variables can substitute another
+isolation checkpoint.
+
+The activity runtime requires Base UI `~0.13.0`; the matching AI UI and editors
+cohort is `6.1.7`. Keep the host manifest, runtime peer floor, registry lockfile,
+and selected UI source commit aligned. Publish runtime/Vite plugin `0.28.0`
+through the existing npm-only `release.yaml` dispatch after registry-backed
+build verification; dependency publication does not require a desktop tag.
+
 Review selected commits before updating the branch-owned cohort and
 gitlink; checkout reachability is required, publication is not. This avoids global UI/Kubernetes ref changes when older `main` and an
 upgraded PR need different compatible sources. The host input remains the exact
@@ -99,7 +104,9 @@ its base-ui peer range is `^0.2.1`, not the host source runtime's `~0.4.3`.
 With installed/built host packages and the reviewed sources checked out:
 
 Candidate CI uses `e2e/source-cohort.json` as its exact SDK/UI/Kubernetes
-selection. The explicit workflow `REVIEWED_SDK_REVISION` must equal that SDK commit;
+selection. The SDK must have exact independent approval and match the revision
+declared by a host `go.mod` pseudo-version. An approved maintenance SDK must not
+silently override a different feature SDK dependency.
 UI and Kubernetes refs come only from that cohort in candidate workflows, not
 legacy repository UI/profile variables. The selected UI checkout must satisfy the
 host/runtime shared-UI dependency ranges. Update `e2e/source-cohort.json` alongside
@@ -113,8 +120,9 @@ Candidate admission requires an exact independently reviewed SDK commit from
 repository variable `OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION` or the separate
 `OMNIVIEW_RESOURCE_V2_REVIEWED_MAINTENANCE_SDK_REVISION`. These approvals remain
 under user-authorized release administration. Maintenance servicing must not
-replace mainline approval. Workflows propagate the admitted selection as
-`REVIEWED_SDK_REVISION`; direct execution supplies either that variable or
+replace mainline approval. Workflows expose the admitted selection through
+candidate step outputs without rewriting either approval variable. Direct
+execution supplies `REVIEWED_SDK_REVISION` or
 `REVIEWED_MAINTENANCE_SDK_REVISION`. Neither a cohort edit nor a release tag grants
 approval.
 The independent SDK isolation-core baseline remains
@@ -213,6 +221,11 @@ must receive the same fixture files byte-for-byte in its own feature worktree;
 do not overwrite its registered source repository or change registry mappings.
 The runner checks canonical/managed source equality. Preserve the existing
 settings/click smoke behavior.
+
+The probe's standalone Go module pins SDK v0.15.0 and its required gRPC fork.
+Go replacements are not transitive: retain the probe's transport replacement
+when selecting a local SDK. Snapshot and update observations use the SDK's
+compact source-record conversion; finite pages retain their full representation.
 
 ### Corpus and launch
 

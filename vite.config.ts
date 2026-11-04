@@ -41,6 +41,7 @@ export default defineConfig({
       'ui/**/*.{spec,test}.{ts,tsx}',
       'packages/omniviewdev-runtime/src/context/plugins/PluginContextProvider.test.tsx',
       'packages/omniviewdev-runtime/src/hooks/connection/useConnectionMetadata.test.tsx',
+      'packages/omniviewdev-runtime/src/hooks/data/usePluginData.test.tsx',
     ],
   },
   build: {

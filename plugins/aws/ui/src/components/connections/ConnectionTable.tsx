@@ -1,9 +1,5 @@
 import React from 'react';
-import {
-  usePluginContext,
-  useConnection,
-  useSnackbar,
-} from '@omniviewdev/runtime';
+import { usePluginContext, useConnection, useNotifications } from '@omniviewdev/runtime';
 import { usePluginRouter } from '@omniviewdev/runtime';
 import { types } from '@omniviewdev/runtime/models';
 import type { EnrichedConnection } from '../../types/accounts';
@@ -23,7 +19,7 @@ const GridCardWrapper: React.FC<{
 }> = ({ enriched, onToggleFavorite, onRecordAccess }) => {
   const { meta } = usePluginContext();
   const { navigate } = usePluginRouter();
-  const { showSnackbar } = useSnackbar();
+  const { notify } = useNotifications();
   const { startConnection, stopConnection } = useConnection({
     pluginID: meta.id,
     connectionID: enriched.connection.id,
@@ -63,29 +59,28 @@ const GridCardWrapper: React.FC<{
       return;
     }
     startConnection()
-      .then(status => {
+      .then((status) => {
         console.log('startConnection result:', status);
         if (status.status === types.ConnectionStatusCode.CONNECTED) {
           navigate(`/account/${encodeURIComponent(enriched.connection.id)}/resources`);
         } else if (!handleSSOResponse(status)) {
-          showSnackbar({
-            status: 'error',
-            message: status.details || status.error || `Connection failed (${status.status})`,
-            icon: 'LuCircleAlert',
+          void notify({
+            severity: 'error',
+            title: status.details || status.error || `Connection failed (${status.status})`,
           });
         }
       })
-      .catch(err => {
+      .catch((err) => {
         console.error('startConnection error:', err);
         const message = err instanceof Error ? err.message : String(err);
-        showSnackbar({ status: 'error', message, icon: 'LuCircleAlert' });
+        void notify({ severity: 'error', title: message });
       });
   };
 
   const handleSSORetry = () => {
     setIsRetrying(true);
     startConnection()
-      .then(status => {
+      .then((status) => {
         if (status.status === types.ConnectionStatusCode.CONNECTED) {
           setSSODialogOpen(false);
           setSSOData(null);
@@ -93,22 +88,20 @@ const GridCardWrapper: React.FC<{
         } else if (status.status === types.ConnectionStatusCode.PENDING) {
           // Still waiting — keep dialog open, update data in case it changed
           handleSSOResponse(status);
-          showSnackbar({
-            status: 'warning',
-            message: 'Authorization still pending. Complete the login in your browser.',
-            icon: 'LuCircleAlert',
+          void notify({
+            severity: 'warning',
+            title: 'Authorization still pending. Complete the login in your browser.',
           });
         } else if (!handleSSOResponse(status)) {
-          showSnackbar({
-            status: 'error',
-            message: status.details || status.error || 'SSO login failed',
-            icon: 'LuCircleAlert',
+          void notify({
+            severity: 'error',
+            title: status.details || status.error || 'SSO login failed',
           });
         }
       })
-      .catch(err => {
+      .catch((err) => {
         const message = err instanceof Error ? err.message : String(err);
-        showSnackbar({ status: 'error', message, icon: 'LuCircleAlert' });
+        void notify({ severity: 'error', title: message });
       })
       .finally(() => setIsRetrying(false));
   };
@@ -121,31 +114,30 @@ const GridCardWrapper: React.FC<{
   const handleConnect = () => {
     onRecordAccess();
     startConnection()
-      .then(status => {
+      .then((status) => {
         if (!handleSSOResponse(status) && status.status !== types.ConnectionStatusCode.CONNECTED) {
-          showSnackbar({
-            status: 'error',
-            message: status.details || status.error || 'Connection failed',
-            icon: 'LuCircleAlert',
+          void notify({
+            severity: 'error',
+            title: status.details || status.error || 'Connection failed',
           });
         }
       })
-      .catch(err => {
+      .catch((err) => {
         const message = err instanceof Error ? err.message : String(err);
-        showSnackbar({ status: 'error', message, icon: 'LuCircleAlert' });
+        void notify({ severity: 'error', title: message });
       });
   };
 
   const handleDisconnect = () => {
-    stopConnection().catch(err => {
+    stopConnection().catch((err) => {
       const message = err instanceof Error ? err.message : String(err);
-      showSnackbar({ status: 'error', message, icon: 'LuCircleAlert' });
+      void notify({ severity: 'error', title: message });
     });
   };
 
   const handleCopyId = () => {
     navigator.clipboard.writeText(enriched.connection.id);
-    showSnackbar({ status: 'success', message: 'Connection ID copied' });
+    void notify({ severity: 'success', title: 'Connection ID copied' });
   };
 
   return (
@@ -179,14 +171,10 @@ const gridStyle: React.CSSProperties = {
   gap: 12,
 };
 
-const ConnectionTable: React.FC<Props> = ({
-  connections,
-  onToggleFavorite,
-  onRecordAccess,
-}) => {
+const ConnectionTable: React.FC<Props> = ({ connections, onToggleFavorite, onRecordAccess }) => {
   return (
     <div style={gridStyle}>
-      {connections.map(enriched => (
+      {connections.map((enriched) => (
         <GridCardWrapper
           key={enriched.connection.id}
           enriched={enriched}

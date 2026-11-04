@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSnackbar, createErrorHandler, parseAppError, actionToSnackbar } from '@omniviewdev/runtime';
+import { useNotifications, createErrorHandler, parseAppError, actionToNotification } from '@omniviewdev/runtime';
 import { PluginManager } from '@omniviewdev/runtime/api';
 import React from 'react';
 import { Events } from '@omniviewdev/runtime/runtime';
@@ -29,7 +29,7 @@ function localInstallDiagnosticMessage(error: unknown): string {
  */
 export const usePluginManager = () => {
   const queryClient = useQueryClient();
-  const { showSnackbar } = useSnackbar();
+  const { notify } = useNotifications();
   const { load } = usePluginService();
 
   // === Watchers === //
@@ -64,12 +64,8 @@ export const usePluginManager = () => {
       );
 
       const appErr = parseAppError(error);
-      showSnackbar({
-        message: `Failed to reload plugin '${meta.name}'`,
-        status: 'error',
-        details: appErr.detail,
-        actions: appErr.actions?.map(actionToSnackbar),
-      });
+      void notify({ title: `Failed to reload plugin '${meta.name}'`, severity: 'error', details: appErr.detail,
+        actions: appErr.actions?.flatMap(action => actionToNotification(action) ?? []) });
     });
 
     // dev_reload_complete is handled by PluginService internally — no manual wiring needed
@@ -78,8 +74,7 @@ export const usePluginManager = () => {
       closer1();
       closer2();
     };
-    // Empty deps: stable refs from hooks; single-run effect.
-  }, []);
+  }, [notify, queryClient]);
 
   // === Mutations === //
 
@@ -93,15 +88,12 @@ export const usePluginManager = () => {
         return;
       }
 
-      showSnackbar({
-        message: `${data.name} plugin successfully installed`,
-        status: 'success',
-      });
+      void notify({ title: `${data.name} plugin successfully installed`, severity: 'success' });
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
       // Invalidation refreshes active consumers once.
       void load(data.id);
     },
-    onError: createErrorHandler(showSnackbar, 'Plugin installation failed'),
+    onError: createErrorHandler(notify, 'Plugin installation failed'),
   });
 
   /**
@@ -114,11 +106,7 @@ export const usePluginManager = () => {
         return;
       }
 
-      showSnackbar({
-        message: `${data.name} plugin successfully installed in development mode`,
-        status: 'success',
-        details: 'This plugin will be reloaded automatically when the source files change.',
-      });
+      void notify({ title: `${data.name} plugin successfully installed in development mode`, severity: 'success', details: 'This plugin will be reloaded automatically when the source files change.' });
 
       // Don't call load() here — dev plugins need the Vite dev server to be
       // ready first. The PluginServiceProvider defers dev plugin loading
@@ -141,10 +129,7 @@ export const usePluginManager = () => {
         ? `${bridgeMessage.slice(0, 3800)}${bridgeMessage.length > 3800 ? '\n[Diagnostic truncated.]' : ''}`
         : appErr.detail;
       const instance = appErr.instance;
-      showSnackbar({
-        message: 'Dev mode installation failed',
-        status: 'error',
-        details: [appErr.title, diagnostic, ...(appErr.suggestions ?? [])].filter(Boolean).join('\n'),
+      void notify({ title: 'Dev mode installation failed', severity: 'error', details: [appErr.title, diagnostic, ...(appErr.suggestions ?? [])].filter(Boolean).join('\n'),
         actions: [
           ...(instance ? [{
             label: 'Build Output',
@@ -152,15 +137,14 @@ export const usePluginManager = () => {
               devToolsChannel.emit('onOpenBuildOutput', instance);
             },
           }] : []),
-          ...(appErr.actions?.map(actionToSnackbar) ?? []),
+          ...(appErr.actions?.flatMap(action => actionToNotification(action) ?? []) ?? []),
           {
             label: 'Retry installation',
             onClick: () => {
               installDev.mutate();
             },
           },
-        ],
-      });
+        ] });
     },
   });
 
@@ -170,13 +154,10 @@ export const usePluginManager = () => {
   const { mutateAsync: reloadPlugin } = useMutation({
     mutationFn: PluginManager.ReloadPlugin,
     onSuccess({ metadata }) {
-      showSnackbar({
-        message: `${metadata.name} plugin reloaded`,
-        status: 'success',
-      });
+      void notify({ title: `${metadata.name} plugin reloaded`, severity: 'success' });
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
     },
-    onError: createErrorHandler(showSnackbar, 'Failed to reload plugin'),
+    onError: createErrorHandler(notify, 'Failed to reload plugin'),
   });
 
   // === Queries === //
@@ -222,7 +203,7 @@ export const usePluginManager = () => {
 
 export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: string; installed?: boolean }) => {
   const queryClient = useQueryClient();
-  const { showSnackbar } = useSnackbar();
+  const { notify } = useNotifications();
   const service = usePluginService();
   const serviceUnload = service.unload;
   const serviceSetEnabled = service.setEnabled;
@@ -323,13 +304,10 @@ export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: str
       return result;
     }),
     onSuccess({ id, metadata }) {
-      showSnackbar({
-        message: `Plugin '${metadata.name}' successfully reloaded`,
-        status: 'success',
-      });
+      void notify({ title: `Plugin '${metadata.name}' successfully reloaded`, severity: 'success' });
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, id] });
     },
-    onError: createErrorHandler(showSnackbar, 'Failed to reload plugin'),
+    onError: createErrorHandler(notify, 'Failed to reload plugin'),
   });
 
   /**
@@ -343,13 +321,10 @@ export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: str
       return result;
     }),
     onSuccess({ id, metadata }) {
-      showSnackbar({
-        message: `Plugin '${metadata.name}' successfully uninstalled`,
-        status: 'success',
-      });
+      void notify({ title: `Plugin '${metadata.name}' successfully uninstalled`, severity: 'success' });
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, id] });
     },
-    onError: createErrorHandler(showSnackbar, 'Failed to uninstall plugin'),
+    onError: createErrorHandler(notify, 'Failed to uninstall plugin'),
   });
   const setEnabled = useMutation({
     mutationFn: async (enabled: boolean) => runOperation(
@@ -359,7 +334,7 @@ export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: str
     onSuccess() {
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
     },
-    onError: createErrorHandler(showSnackbar, 'Failed to change plugin enablement'),
+    onError: createErrorHandler(notify, 'Failed to change plugin enablement'),
   });
 
 
@@ -381,13 +356,10 @@ export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: str
         return;
       }
 
-      showSnackbar({
-        message: `${meta.name} ${meta.version} installed`,
-        status: 'success',
-      });
+      void notify({ title: `${meta.name} ${meta.version} installed`, severity: 'success' });
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, id] });
     },
-    onError: createErrorHandler(showSnackbar, 'Plugin update failed'),
+    onError: createErrorHandler(notify, 'Plugin update failed'),
   });
 
   return {

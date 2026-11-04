@@ -75,6 +75,7 @@ func TestC02SourceViewLifecycle(t *testing.T) {
 				if err != nil {
 					return resourcev2.SourcePage{}, err
 				}
+
 				return resourcev2.SourcePage{Records: []resourcev2.Record{record}, Count: resourcev2.Count{Kind: "unknown"}, Coverage: resourcev2.Coverage{Kind: "complete"}, Consistency: resourcev2.ConsistencyBestEffort}, nil
 			},
 			Source: func(ctx context.Context, client *sourceFileClient, request resourcev2.SourceRequest, emitter resourcev2.SourceEmitter) error {

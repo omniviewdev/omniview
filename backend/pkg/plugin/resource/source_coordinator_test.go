@@ -107,12 +107,12 @@ func sourceSend(stream *scriptedSourceStream, frame resourcev2.SourceFrame) {
 func sourceBoundary(enumeration string) resourcev2.SourceFrame {
 	return resourcev2.SourceFrame{SnapshotEnd: &resourcev2.SourceSnapshotEnd{Coverage: resourcev2.SourceCoverage{Enumeration: enumeration, Consistency: resourcev2.ConsistencyBestEffort}, Continuity: resourcev2.ContinuityBestEffort}}
 }
-func sourceTestRecord(target resourcev2.ReadTarget, id, incarnation string) resourcev2.Record {
+func sourceTestRecord(target resourcev2.ReadTarget, id, incarnation string) resourcev2.SourceRecord {
 	record := canonicalTestRecord(target.Provider, target.Authority, target.Type, id)
 	if incarnation != "" {
 		record.Reference.Incarnation = &incarnation
 	}
-	return record
+	return resourcev2.CompactSourceRecord(record)
 }
 
 func TestSourceCoordinatorSharesAndReleases(t *testing.T) {
@@ -196,7 +196,8 @@ func TestSourceCoordinatorSyncWaitsForSnapshotBoundary(t *testing.T) {
 	end := waitSourceView(t, events, view.Topic, func(event HostSourceViewEvent) bool {
 		return event.Kind == "snapshotEnd" && event.Status != nil && event.Status.State == "following"
 	})
-	require.Equal(t, record, snapshot.Records[0].Record)
+	require.Equal(t, record, resourcev2.CompactSourceRecord(snapshot.Records[0].Record))
+	require.Equal(t, open.request.Binding.Representation, snapshot.Records[0].Record.Representation)
 	require.Equal(t, snapshot.ViewGeneration, end.ViewGeneration)
 	require.NoError(t, ctrl.CloseSourceView(testInvocationContext(), "p1", view.ViewID))
 }

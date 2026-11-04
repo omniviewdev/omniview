@@ -3,11 +3,11 @@ import { ThemeProvider } from '@omniviewdev/base-ui';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import UiZoomController from './UIZoomController';
 
-const mocks = vi.hoisted(() => ({ commit: vi.fn(), showSnackbar: vi.fn(), showAppError: vi.fn() }));
+const mocks = vi.hoisted(() => ({ commit: vi.fn(), notify: vi.fn(), showAppError: vi.fn() }));
 vi.mock('@omniviewdev/runtime', () => ({
   HOST_SETTINGS_SCOPE: { kind: 'host' },
   useScopedSettings: () => ({ commit: mocks.commit }),
-  useSnackbar: () => ({ showSnackbar: mocks.showSnackbar }),
+  useNotifications: () => ({ notify: mocks.notify }),
   showAppError: mocks.showAppError,
 }));
 afterEach(() => {

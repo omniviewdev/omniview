@@ -20,6 +20,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/extensiondiagnostics"
 	extensiondiagnosticshost "github.com/omniviewdev/omniview/backend/extensiondiagnostics/host"
 	"github.com/omniviewdev/omniview/backend/menus"
+	"github.com/omniviewdev/omniview/backend/pkg/activity"
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/data"
@@ -55,6 +56,7 @@ import (
 	"github.com/omniviewdev/omniview/internal/uiinspection"
 	"github.com/omniviewdev/omniview/internal/version"
 	logging "github.com/omniviewdev/plugin-sdk/log"
+	sdkactivity "github.com/omniviewdev/plugin-sdk/pkg/activity"
 	sdkprofiling "github.com/omniviewdev/plugin-sdk/pkg/profiling"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
@@ -335,6 +337,13 @@ func main() {
 	resourceBoundary := invocation.NewBoundary(mcpAuthority)
 	resourceUIRealm := invocation.NewScope(invocation.TrustedUI)
 	resourceController := resource.NewController(log, settingsProvider, stateDir.PluginStore, resourceBoundary)
+	activityService, err := activity.NewService(stateDir.RootDir(), func(topic string, change sdkactivity.Change) {
+		app.Event.Emit(topic, change)
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: cannot open activity history: %v\n", err)
+		os.Exit(1)
+	}
 	graphService := resource.NewGraphService(resourceController.Graph(), resourceUIRealm, resourceBoundary, resourceController.ValidateReference)
 	// A nil realm keeps the agent principal from ctx at the boundary.
 	relayGraph := resource.NewGraphService(
@@ -400,6 +409,7 @@ func main() {
 		},
 		builtinCatalog,
 	)
+	plugin.ConfigureActivities(pluginManager, resourceController, activityService)
 
 	// Wire crash recovery: when a plugin crash is detected by the resource
 	// controller's event listeners, the manager will attempt to reload it.
@@ -546,6 +556,7 @@ func main() {
 	// OnPluginStart on all controllers — they need ctx for gRPC streams.
 	services := []application.Service{
 		// 1. Controllers — need ctx before plugin loading
+		application.NewService(&activity.FrontendService{Service: activityService, Realm: resourceUIRealm}),
 		application.NewService(&resource.ServiceWrapper{Ctrl: resourceController, Realm: resourceUIRealm}),
 		application.NewService(graphService),
 		application.NewService(&exec.ServiceWrapper{Ctrl: execController}),

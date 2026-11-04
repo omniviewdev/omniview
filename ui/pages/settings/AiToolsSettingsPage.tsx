@@ -2,7 +2,7 @@ import React from 'react';
 import { LuChevronDown } from 'react-icons/lu';
 
 import { Button, Card, Chip, Select, Switch, Text, TextField } from '@omniviewdev/base-ui';
-import { useConfirmationModal, useSnackbar } from '@omniviewdev/runtime';
+import { useConfirmationModal, useNotifications } from '@omniviewdev/runtime';
 
 import Icon from '@/components/icons/Icon';
 import {
@@ -90,7 +90,7 @@ const AiToolsSettingsPage: React.FC = () => {
   const [scope, setScope] = React.useState<McpScope>(GLOBAL_SCOPE);
   const relay = useMcpRelay(scope);
   const { show: confirm } = useConfirmationModal();
-  const { showSnackbar } = useSnackbar();
+  const { notify } = useNotifications();
   const [tokenVisible, setTokenVisible] = React.useState(false);
   const [portDraft, setPortDraft] = React.useState<string | null>(null);
   const [presetName, setPresetName] = React.useState('');
@@ -154,10 +154,10 @@ const AiToolsSettingsPage: React.FC = () => {
   const copy = (label: string, text: string) => {
     void navigator.clipboard.writeText(text).then(
       () => {
-        showSnackbar(`${label} copied`, 'success'); 
+        void notify({ title: `${label} copied`, severity: 'success' });
       },
       () => {
-        showSnackbar(`Failed to copy ${label.toLowerCase()}`, 'error'); 
+        void notify({ title: `Failed to copy ${label.toLowerCase()}`, severity: 'error' });
       },
     );
   };

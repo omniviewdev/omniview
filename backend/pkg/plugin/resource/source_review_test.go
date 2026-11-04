@@ -646,3 +646,50 @@ func TestSourceStateEventsAggregateAcrossScopes(t *testing.T) {
 	ctrl.sources.closeInventory("p1", route.Connection)
 	assertState(start, "closed")
 }
+
+func TestSourceMemberMaterializesAdmittedRepresentation(t *testing.T) {
+	record := canonicalTestRecord("provider", "authority", "native::Pod", "pod")
+	observation := resourcev2.SourceObservation{
+		Record:   resourcev2.CompactSourceRecord(record),
+		Metadata: &resourcev2.ResourceMetadata{Labels: map[string]string{"app": "source"}},
+	}
+	member, _, err := makeSourceMember(observation, maxSourceSessionBytes)
+	require.NoError(t, err)
+	decoded, err := decodeSourceMember(member)
+	require.NoError(t, err)
+	session := &sourceSession{ctx: context.WithValue(context.Background(), sourceBindingKey{}, sourceBinding{Representation: record.Representation})}
+	require.Equal(t, record, session.fullSourceRecord(decoded.Record))
+	require.Equal(t, observation.Metadata, decoded.Metadata)
+}
+
+func TestSourceObservationRejectsChangedBinding(t *testing.T) {
+	ctrl, _, provider, target := sourceTestFixture(t)
+	view := sourceTestOpen(t, ctrl, target)
+	open := sourceNextOpen(t, provider)
+	defer ctrl.CloseSourceView(testInvocationContext(), "p1", view.ViewID)
+	request := open.request
+	descriptor := canonicalTestCatalog("p1", "native::Pod").Types[0]
+	descriptor.Capabilities = append(descriptor.Capabilities, resourcev2.Capability{Operation: resourcev2.OperationSourceUpdates, Scope: resourcev2.QueryScope{}, Guarantee: resourcev2.ContinuityBestEffort})
+	record := canonicalTestRecord(request.Target.Provider, request.Target.Authority, request.Target.Type, "pod")
+	record.Representation = request.Binding.Representation
+	for _, mutation := range []string{"revision", "schema"} {
+		t.Run(mutation, func(t *testing.T) {
+			observation := resourcev2.SourceObservation{Record: resourcev2.CompactSourceRecord(record)}
+			if mutation == "revision" {
+				observation.Record.Representation.Revision += "-changed"
+			} else {
+				revision := "changed"
+				observation.Record.Representation.SchemaRevision = &revision
+			}
+			tracker := resourcev2.NewCatalogBoundSourcePhaseTracker(request, descriptor)
+			defer tracker.Close()
+			frame := resourcev2.SourceFrame{SessionID: request.SessionID, Generation: request.Generation, Sequence: 1, Begin: &resourcev2.SourceBegin{Mode: request.Mode}}
+			require.NoError(t, tracker.Admit(frame))
+			frame.Sequence++
+			frame.Begin = nil
+			frame.Snapshot = &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{observation}}
+			err := tracker.Admit(frame)
+			require.Equal(t, "RESET_REQUIRED", resourcev2.ErrorCode(err))
+		})
+	}
+}

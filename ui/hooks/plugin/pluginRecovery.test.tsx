@@ -11,7 +11,7 @@ import { usePlugin } from './usePluginManager';
 
 vi.mock('@omniviewdev/runtime', async importOriginal => ({
   ...await importOriginal<typeof Runtime>(),
-  useSnackbar: () => ({ showSnackbar: () => undefined }),
+  useNotifications: () => ({ notify: () => undefined }),
 }));
 vi.mock('@omniviewdev/runtime/api', () => ({ PluginManager: {
   ReloadPlugin: async (id: string) => ({ id, metadata: { id, name: 'Recovery fixture' } }),
