@@ -37,7 +37,7 @@ export function usePluginRoutes(): UsePluginRoutesResult {
         loader: () => ({ pluginID: pluginId }),
         Component: PluginRenderer,
         ErrorBoundary: RouterErrorBoundary,
-        children: [...normalizePluginRoutes(reg.routes), notFoundRoute],
+        children: [...normalizePluginRoutes(reg.routes, pluginId), notFoundRoute],
       });
     }
 
