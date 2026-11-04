@@ -512,7 +512,7 @@ func (s *sourceSession) observeFrameRecord(frame sourceFrameContext, observation
 	if err := resourcev2.ValidateSourceObservation(frame.target, frame.target.Representation, observation); err != nil {
 		return err
 	}
-	ref, binding := observation.Record.Representation, frame.binding
+	ref, binding := observation.Record.Representation, record.Representation
 	if ref.ID != binding.ID || ref.Revision != binding.Revision || (ref.SchemaRevision == nil) != (binding.Schema.Revision == nil) || ref.SchemaRevision != nil && *ref.SchemaRevision != *binding.Schema.Revision {
 		return resourcev2.NewError("RESET_REQUIRED", "Source binding changed.")
 	}
