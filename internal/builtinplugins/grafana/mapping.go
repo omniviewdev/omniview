@@ -250,6 +250,16 @@ func (p *Provider) GetMetricDefinitions(*metric.QueryContext) ([]metric.MetricDe
 		{"cpu_limits", "CPU limits", "gauge", `1000 * sum` + group + `(max by (cluster,namespace,pod,container) (kube_pod_container_resource_limits{` + scope + `,resource="cpu",unit="core"}))`, metric.UnitMillicores},
 		{"memory_requests", "Memory requests", "gauge", `sum` + group + `(max by (cluster,namespace,pod,container) (kube_pod_container_resource_requests{` + scope + `,resource="memory",unit="byte"}))`, metric.UnitBytes},
 		{"memory_limits", "Memory limits", "gauge", `sum` + group + `(max by (cluster,namespace,pod,container) (kube_pod_container_resource_limits{` + scope + `,resource="memory",unit="byte"}))`, metric.UnitBytes},
+		{"network_receive_packets", "Network receive packets", "rate", `sum` + group + `(max by (cluster,namespace,pod,interface) (rate(container_network_receive_packets_total{` + scope + `,interface!="lo"}[5m])))`, metric.UnitOpsPerSec},
+		{"network_transmit_packets", "Network transmit packets", "rate", `sum` + group + `(max by (cluster,namespace,pod,interface) (rate(container_network_transmit_packets_total{` + scope + `,interface!="lo"}[5m])))`, metric.UnitOpsPerSec},
+		{"network_receive_drops", "Network receive drops", "rate", `sum` + group + `(max by (cluster,namespace,pod,interface) (rate(container_network_receive_packets_dropped_total{` + scope + `,interface!="lo"}[5m])))`, metric.UnitOpsPerSec},
+		{"network_transmit_drops", "Network transmit drops", "rate", `sum` + group + `(max by (cluster,namespace,pod,interface) (rate(container_network_transmit_packets_dropped_total{` + scope + `,interface!="lo"}[5m])))`, metric.UnitOpsPerSec},
+		{"network_receive_errors", "Network receive errors", "rate", `sum` + group + `(max by (cluster,namespace,pod,interface) (rate(container_network_receive_errors_total{` + scope + `,interface!="lo"}[5m])))`, metric.UnitOpsPerSec},
+		{"network_transmit_errors", "Network transmit errors", "rate", `sum` + group + `(max by (cluster,namespace,pod,interface) (rate(container_network_transmit_errors_total{` + scope + `,interface!="lo"}[5m])))`, metric.UnitOpsPerSec},
+		{"memory_total_usage", "Memory total usage", "gauge", `sum` + group + `(max by (cluster,namespace,pod,container) (container_memory_usage_bytes{` + containers + `}))`, metric.UnitBytes},
+		{"filesystem_usage", "Filesystem used", "gauge", `sum` + group + `(max by (cluster,namespace,pod,container,device) (container_fs_usage_bytes{` + containers + `}))`, metric.UnitBytes},
+		{"processes", "Container processes", "gauge", `sum` + group + `(max by (cluster,namespace,pod,container) (container_processes{` + containers + `}))`, metric.UnitCount},
+		{"threads", "Container threads", "gauge", `sum` + group + `(max by (cluster,namespace,pod,container) (container_threads{` + containers + `}))`, metric.UnitCount},
 	}
 	definitions := make([]metric.MetricDefinition, 2, len(presets)+2)
 	definitions[0], definitions[1] = cpu, memory

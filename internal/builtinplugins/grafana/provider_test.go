@@ -102,6 +102,43 @@ func TestEscapingAndMissingScope(t *testing.T) {
 		t.Fatal("missing cluster admitted")
 	}
 }
+func TestPodPresetsPreserveScopedIdentity(t *testing.T) {
+	p := testProvider(t)
+	defer p.Close()
+	definitions, err := p.GetMetricDefinitions(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(definitions) > 32 {
+		t.Fatalf("catalog exceeds single-query metric cap: %d", len(definitions))
+	}
+	resources := []metric.MetricResource{
+		{Token: "first", ResourceID: `pod.+`, ResourceNamespace: "first", ResourceKey: "k8s:/pods"},
+		{Token: "second", ResourceID: `pod.+`, ResourceNamespace: "second", ResourceKey: "k8s:/pods"},
+	}
+	seen := make(map[string]bool, len(definitions))
+	for _, definition := range definitions {
+		if seen[definition.ID] {
+			t.Fatalf("duplicate preset ID %s", definition.ID)
+		}
+		seen[definition.ID] = true
+		_, identities, err := compile(definition, resources, map[string]string{"cluster": "test"})
+		if err != nil {
+			t.Fatalf("%s: %v", definition.ID, err)
+		}
+		tokens := map[string]bool{}
+		for _, token := range identities {
+			tokens[token] = true
+		}
+		if len(identities) != 2 || !tokens["first"] || !tokens["second"] {
+			t.Fatalf("%s merged same-name Pods across namespaces: %v", definition.ID, identities)
+		}
+		if _, _, err := compile(definition, resources, nil); err == nil {
+			t.Fatalf("%s admitted missing cluster scope", definition.ID)
+		}
+	}
+}
+
 func TestCredentialsIsolationPersistenceAndPublicDTO(t *testing.T) {
 	p := testProvider(t)
 	var tokens []string

@@ -16,9 +16,28 @@ Health is only endpoint reachability. It does not prove query permission. An act
 
 Presets `cpu_usage` and `memory_usage`, revision `kubernetes-cadvisor-v1`, apply to canonical `k8s:/pods`. They require cAdvisor `container_cpu_usage_seconds_total` and `container_memory_working_set_bytes`, with `cluster`, `namespace`, and `pod` labels. Alloy alone does not guarantee these series. CPU reports millicores from a five-minute rate multiplied by 1000; memory reports working-set bytes. These IDs and units match native Kubernetes table semantics. Both explicitly sum nonempty, non-`POD` container series while preserving all three identity labels. Cluster scope is required.
 
-The Pod picker also includes memory RSS/cache, network receive/transmit, disk read/write throughput, CPU throttled-period percentage, container restarts, and CPU/memory requests and limits. CPU and working-set memory remain the default charts; additional metrics are opt-in and retain resource-set batching. Network queries exclude loopback and deduplicate identical per-interface container observations before summing. Kube-state-metrics queries deduplicate exporter replicas per container. CPU requests/limits use millicores; memory uses bytes; throughput uses bytes/second.
+The Pod picker exposes 24 presets, including memory RSS/cache, network receive/transmit, disk read/write throughput, CPU throttled-period percentage, container restarts, and CPU/memory requests and limits. CPU and working-set memory remain the default charts; additional metrics are opt-in and retain resource-set batching. Network queries exclude loopback and deduplicate per-interface container observations using their maximum before summing. Kube-state-metrics queries deduplicate exporter replicas per container. CPU requests/limits use millicores; memory uses bytes; throughput uses bytes/second.
 
 RSS, cache, network, disk, and throttling require the corresponding kubelet/cAdvisor series. Restarts and requests/limits require kube-state-metrics v2 series. All presets require the configured cluster label. Exporter availability, disabled metric families, absent limits, and custom labels can produce missing data; presets never substitute zero. Cluster-specific mappings can adapt labels and queries. Throttling reports throttled periods divided by total periods, not CPU time; zero total periods produce no value.
+
+Additional cAdvisor presets:
+
+| ID | Source family | Value |
+| --- | --- | --- |
+| `network_receive_packets` | `container_network_receive_packets_total` | Received packets/second |
+| `network_transmit_packets` | `container_network_transmit_packets_total` | Transmitted packets/second |
+| `network_receive_drops` | `container_network_receive_packets_dropped_total` | Receive drops/second |
+| `network_transmit_drops` | `container_network_transmit_packets_dropped_total` | Transmit drops/second |
+| `network_receive_errors` | `container_network_receive_errors_total` | Receive errors/second |
+| `network_transmit_errors` | `container_network_transmit_errors_total` | Transmit errors/second |
+| `memory_total_usage` | `container_memory_usage_bytes` | Current memory bytes, including inactive memory |
+| `filesystem_usage` | `container_fs_usage_bytes` | Consumed filesystem bytes |
+| `processes` | `container_processes` | Current container process count |
+| `threads` | `container_threads` | Current container thread count |
+
+Packet, drop, and error cards use five-minute counter rates and the SDK's events/operations-per-second unit; they are not percentages. They use the same per-interface network deduplication as byte throughput, including Pod sandbox observations where exposed. Total memory differs from working set: it includes memory regardless of recent access. New non-network gauges exclude empty and `POD` containers and deduplicate exporter observations per container; filesystem usage additionally preserves device before summing. Filesystem usage reports exported container filesystem consumption, not PVC usage, node capacity, or an ephemeral-storage quota. Process/thread totals sum container counts, not a deduplicated inventory of Pod PIDs.
+
+These families are documented in the [cAdvisor Prometheus reference](https://github.com/google/cadvisor/blob/master/docs/storage/prometheus.md). They require collection and exposition of `network`, `memory`, `disk`, or `process` metrics respectively, plus all three configured identity labels. Kubelet/runtime versions and exporter configuration determine availability; enabling a card does not enable exporter collection. Every new preset preserves `cluster`, `namespace`, and `pod`, needs explicit resource selection and cluster scope, and leaves absent families missing. No utilization-to-limit ratios or zero-filled series are added; the 24-preset catalog remains below the 32-metric query cap.
 
 Additional definitions use `query_language: promql`, `semantics: gauge|rate`, supported canonical unit, `reducer: none`, and `batch_strategy: identity`. Aggregate dimensions explicitly in PromQL; the provider rejects duplicate identities rather than choosing an arbitrary result. A required typed field binding maps `source: scope` to an approved public scope key, or `source: resource` to `id`/`pod`, `namespace`, or `resource_key`. Bindings declare the output label. Templates must use `label=~"{{field}}"`. Values receive RE2 literal escaping, then PromQL string escaping; the provider supplies anchored alternatives. There are no arbitrary transforms or executable template expressions. Identity labels must have typed bindings. The host must supply a canonical resource name for the preset pod field, not an opaque locator.
 
