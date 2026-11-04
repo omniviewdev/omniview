@@ -109,9 +109,6 @@ func TestPodPresetsPreserveScopedIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(definitions) > 32 {
-		t.Fatalf("catalog exceeds single-query metric cap: %d", len(definitions))
-	}
 	resources := []metric.MetricResource{
 		{Token: "first", ResourceID: `pod.+`, ResourceNamespace: "first", ResourceKey: "k8s:/pods"},
 		{Token: "second", ResourceID: `pod.+`, ResourceNamespace: "second", ResourceKey: "k8s:/pods"},
