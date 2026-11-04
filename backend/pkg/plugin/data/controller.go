@@ -162,8 +162,14 @@ func (c *controller) write(pluginID, key string, value any) error {
 		return err
 	}
 
-	if err = root.WriteFile(key+".json", data, dataFilePerm); err != nil {
-		logger.Errorw(context.Background(), "failed to write data file", "error", err)
+	temporary := key + ".json.tmp"
+	defer root.Remove(temporary)
+	if err = root.WriteFile(temporary, data, dataFilePerm); err != nil {
+		logger.Errorw(context.Background(), "failed to write temporary data file", "error", err)
+		return err
+	}
+	if err = root.Rename(temporary, key+".json"); err != nil {
+		logger.Errorw(context.Background(), "failed to replace data file", "error", err)
 		return err
 	}
 

@@ -3,6 +3,7 @@ package data
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"sync"
 	"testing"
@@ -85,6 +86,52 @@ func TestStaleRevisionNeverOverwrites(t *testing.T) {
 	after, err := root.ReadFile("counts.json")
 	if err != nil || !bytes.Equal(before, after) {
 		t.Fatalf("stale CAS changed bytes: %s, %v", after, err)
+	}
+}
+
+func TestCommittedReaderSurvivesReplacement(t *testing.T) {
+	c, state := testController(t)
+	if err := c.Set("test", "counts", 1); err != nil {
+		t.Fatal(err)
+	}
+	previous, err := c.GetSnapshot("test", "counts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := state.PluginData("test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := root.OpenFile("counts.json", os.O_RDONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	ok, writeErr := c.CompareAndSwap("test", "counts", previous.Revision, 200)
+	if writeErr == nil && !ok {
+		t.Fatal("unchanged revision was rejected")
+	}
+	committed, err := io.ReadAll(reader)
+	if err != nil || string(committed) != "1" {
+		t.Fatalf("replacement changed previously opened committed data: %q, %v", committed, err)
+	}
+	if writeErr != nil {
+		// Some platforms forbid replacement while the destination is open.
+		unchanged, err := c.GetSnapshot("test", "counts")
+		if err != nil || unchanged.Revision != previous.Revision || unchanged.Value != float64(1) {
+			t.Fatalf("failed replacement changed committed value: %#v, %v", unchanged, err)
+		}
+		if err := reader.Close(); err != nil {
+			t.Fatal(err)
+		}
+		ok, err := c.CompareAndSwap("test", "counts", previous.Revision, 200)
+		if err != nil || !ok {
+			t.Fatalf("replace after releasing reader: %v, %v", ok, err)
+		}
+	}
+	current, err := c.GetSnapshot("test", "counts")
+	if err != nil || current.Value != float64(200) || current.Revision == previous.Revision {
+		t.Fatalf("replacement was not committed: %#v, %v", current, err)
 	}
 }
 

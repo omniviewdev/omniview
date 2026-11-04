@@ -6,11 +6,13 @@ Tracking: [#389](https://github.com/omniviewdev/omniview/issues/389), [#390](htt
 
 Functional `usePluginData` updates use a fresh backend snapshot and compare-and-swap, not a window-local cache as the authority. The backend serializes snapshot comparison and writes. Updaters must be pure and may run again after a conflict, with an eight-attempt bound. Exhaustion rejects explicitly; it does not silently discard a write.
 
+Data writes create a temporary file before renaming it over committed JSON. A write or replacement error leaves the previous committed value in place; temporary files do not appear as data keys.
+
 Literal replacements retain last-write-wins behavior and do not require reading old JSON. Failed optimistic writes restore the prior cached value or the supplied default. An absent key and stored JSON `null` have distinct revisions.
 
 ## Exercised verification
 
-- Go data-controller race tests passed.
+- Go data-controller race tests passed. A failed-before/passed-after regression verifies that replacement does not mutate a previously opened committed snapshot.
 - Eight runtime regressions passed, including a failed-before/passed-after unreadable-data literal reset.
 - Real generated bindings in two independent browser contexts rejected stale revisions, preserved twenty increments and unrelated nested fields, and distinguished null from absence.
 - A disposable counter survived an actual host-generation restart and was then deleted.
