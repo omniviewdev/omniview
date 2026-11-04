@@ -166,7 +166,9 @@ my-plugin/
 
 Installed plugin directories reserve `data/` and `store/` for runtime state.
 Do not include either directory in a release archive; the host rejects those
-packages before stopping the existing plugin. Archive replacement moves the
+packages before stopping the existing plugin. This includes case aliases on
+case-insensitive volumes; case-distinct names remain valid on case-sensitive
+volumes. Archive replacement moves the
 existing state directories into the new installation without copying them, so
 cached scoped roots and nested authority handles still address live state.
 Failed publication moves that same state back before restarting the original

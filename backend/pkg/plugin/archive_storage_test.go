@@ -3,6 +3,7 @@ package plugin
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	hostresource "github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
@@ -14,7 +15,7 @@ import (
 // Exercise the public archive transaction with the same cached capabilities
 // retained by data and resource controllers, including a nested authority root.
 func TestInstallPluginFromPath_RetainsLiveStorageCapabilities(t *testing.T) {
-	for _, outcome := range []string{"commit", "rollback", "reserved-data", "reserved-store"} {
+	for _, outcome := range []string{"commit", "rollback", "reserved-data", "reserved-store", "reserved-Data", "reserved-STORE"} {
 		t.Run(outcome, func(t *testing.T) {
 			pm := newTestManager(t)
 			installPluginFixture(t, pm, "flux", []string{"ui"}, false)
@@ -57,15 +58,22 @@ func TestInstallPluginFromPath_RetainsLiveStorageCapabilities(t *testing.T) {
 			if outcome == "rollback" {
 				require.NoError(t, pm.stateRoot.MkdirAll(stateFileName+".tmp", 0700))
 			}
-			if outcome == "reserved-data" || outcome == "reserved-store" {
-				name := outcome[len("reserved-"):]
+			rejected := outcome == "rollback"
+			if strings.HasPrefix(outcome, "reserved-") {
+				name := strings.TrimPrefix(outcome, "reserved-")
 				entries = append(entries, tarEntry{name: name + "/", mode: 0700, dir: true})
+				_, aliasErr := pm.pluginsRoot.Stat(filepath.Join("flux", name))
+				require.True(t, aliasErr == nil || os.IsNotExist(aliasErr))
+				rejected = aliasErr == nil
 			}
 			_, err = pm.InstallPluginFromPath(writeTestTarball(t, entries))
-			if outcome == "commit" {
-				require.NoError(t, err)
-			} else {
+			if rejected {
 				require.Error(t, err)
+				if strings.HasPrefix(outcome, "reserved-") {
+					require.Contains(t, err.Error(), "reserved runtime directory")
+				}
+			} else {
+				require.NoError(t, err)
 			}
 			for name, root := range map[string]*appstate.ScopedRoot{"data": data, "store": store} {
 				cached, lookupErr := map[string]func(string) (*appstate.ScopedRoot, error){"data": state.PluginData, "store": state.PluginStore}[name]("flux")
@@ -92,6 +100,11 @@ func TestInstallPluginFromPath_RetainsLiveStorageCapabilities(t *testing.T) {
 			require.NoError(t, pm.UnloadPlugin("flux"))
 			require.NoError(t, data.WriteFile("unloaded", []byte("live"), 0600))
 			require.NoError(t, store.WriteFile("unloaded", []byte("live"), 0600))
+			for _, name := range []string{"data", "store"} {
+				live, readErr := pm.pluginsRoot.ReadFile(filepath.Join("flux", name, "unloaded"))
+				require.NoError(t, readErr)
+				require.Equal(t, "live", string(live))
+			}
 		})
 	}
 }

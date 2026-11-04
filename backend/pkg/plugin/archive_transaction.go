@@ -493,14 +493,13 @@ func (pm *pluginManager) installArchiveCandidate(path string, metadata *config.P
 		return false, apperror.Wrap(err, apperror.TypePluginInstallFailed, http.StatusInternalServerError, "Failed to unpack plugin package")
 	}
 	// Runtime state belongs to the installed plugin, never to package contents.
-	// Reject collisions before stopping the current runtime.
-	entries, readErr := pm.pluginsRoot.ReadDir(candidate)
-	if readErr != nil {
-		return false, readErr
-	}
-	for _, entry := range entries {
-		if entry.Name() == "data" || entry.Name() == "store" {
-			return false, fmt.Errorf("plugin package contains reserved runtime directory %q", entry.Name())
+	// Resolve reserved paths through the destination filesystem so case aliases
+	// are rejected on case-insensitive volumes without banning distinct names.
+	for _, name := range []string{"data", "store"} {
+		if _, statErr := pm.pluginsRoot.Stat(filepath.Join(candidate, name)); statErr == nil {
+			return false, fmt.Errorf("plugin package contains reserved runtime directory %q", name)
+		} else if !os.IsNotExist(statErr) {
+			return false, statErr
 		}
 	}
 	actualMetadata, metadataErr := sdktypes.LoadPluginMetadata(pm.pluginsRoot.ResolvePath(candidate))
