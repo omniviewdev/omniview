@@ -1,11 +1,13 @@
 package plugin
 
 import (
+	"context"
 	"sync"
 	"testing"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	sdkactivity "github.com/omniviewdev/plugin-sdk/pkg/activity"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,6 +39,32 @@ func TestFatalSourceTransportRejectsStaleOwnership(t *testing.T) {
 	pm.markFatalSourceTransport("p", current, func(func()) bool { return false })
 	require.Equal(t, lifecycle.PhaseRunning, record.Phase)
 	require.Empty(t, record.LastError)
+}
+
+func TestFatalSourceTransportRetiresOnlyOwnedActivityProducer(t *testing.T) {
+	_, pm := newTestHealthChecker(t)
+	service := activityObserverService(t)
+	pm.activities = &activityBinding{service: service, processes: make(map[string]activityProcess)}
+	backend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{})
+	old := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{})
+	pm.records["p"] = &plugintypes.PluginRecord{ID: "p", Backend: backend, Phase: lifecycle.PhaseRunning}
+	reporter := service.Reporter("p", "generation")
+	stopped := false
+	pm.activities.processes["p"] = activityProcess{generation: "generation", stop: func() { stopped = true }}
+	spec := sdkactivity.Spec{Presentation: sdkactivity.Presentation{Title: "Work"}}
+	_, err := reporter.BeginTask(context.Background(), spec)
+	require.NoError(t, err)
+
+	pm.markFatalSourceTransport("p", old, func(commit func()) bool { commit(); return true })
+	pm.markFatalSourceTransport("p", backend, func(func()) bool { return false })
+	require.False(t, stopped)
+	_, err = reporter.BeginTask(context.Background(), spec)
+	require.NoError(t, err)
+
+	pm.markFatalSourceTransport("p", backend, func(commit func()) bool { commit(); return true })
+	require.True(t, stopped)
+	_, err = reporter.BeginTask(context.Background(), spec)
+	require.Error(t, err)
 }
 
 func TestFatalSourceTransportWaitsForLifecyclePublication(t *testing.T) {

@@ -107,12 +107,12 @@ func sourceSend(stream *scriptedSourceStream, frame resourcev2.SourceFrame) {
 func sourceBoundary(enumeration string) resourcev2.SourceFrame {
 	return resourcev2.SourceFrame{SnapshotEnd: &resourcev2.SourceSnapshotEnd{Coverage: resourcev2.SourceCoverage{Enumeration: enumeration, Consistency: resourcev2.ConsistencyBestEffort}, Continuity: resourcev2.ContinuityBestEffort}}
 }
-func sourceTestRecord(target resourcev2.ReadTarget, id, incarnation string) resourcev2.SourceRecord {
+func sourceTestRecord(target resourcev2.ReadTarget, id, incarnation string) resourcev2.Record {
 	record := canonicalTestRecord(target.Provider, target.Authority, target.Type, id)
 	if incarnation != "" {
 		record.Reference.Incarnation = &incarnation
 	}
-	return resourcev2.CompactSourceRecord(record)
+	return record
 }
 
 func TestSourceCoordinatorSharesAndReleases(t *testing.T) {

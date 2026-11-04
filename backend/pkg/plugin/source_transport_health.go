@@ -44,6 +44,7 @@ func (pm *pluginManager) markFatalSourceTransport(id string, backend plugintypes
 		machine.ForcePhase(lifecycle.PhaseFailed, fatalSourceTransportMessage)
 	}
 	pm.retireConnectionSharing(id)
+	pm.retireActivities(id)
 }
 
 type probedCrash struct {
