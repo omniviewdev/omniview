@@ -10,6 +10,14 @@
 // @ts-ignore: Unused imports
 import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as $models from "./models.js";
+
+export function CompareAndSwap(pluginID: string, key: string, expectedRevision: string, value: any): $CancellablePromise<boolean> {
+    return $Call.ByID(3633305442, pluginID, key, expectedRevision, value);
+}
+
 export function Delete(pluginID: string, key: string): $CancellablePromise<void> {
     return $Call.ByID(3653639550, pluginID, key);
 }
@@ -18,9 +26,15 @@ export function Get(pluginID: string, key: string): $CancellablePromise<any> {
     return $Call.ByID(851823419, pluginID, key);
 }
 
+export function GetSnapshot(pluginID: string, key: string): $CancellablePromise<$models.Snapshot> {
+    return $Call.ByID(667185867, pluginID, key).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
 export function Keys(pluginID: string): $CancellablePromise<string[]> {
     return $Call.ByID(2991415449, pluginID).then(($result: any) => {
-        return $$createType0($result);
+        return $$createType1($result);
     });
 }
 
@@ -29,4 +43,5 @@ export function Set(pluginID: string, key: string, value: any): $CancellableProm
 }
 
 // Private type creation functions
-const $$createType0 = $Create.Array($Create.Any);
+const $$createType0 = $models.Snapshot.createFrom;
+const $$createType1 = $Create.Array($Create.Any);
