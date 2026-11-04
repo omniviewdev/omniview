@@ -131,6 +131,18 @@ standalone scratch Pod YAML showed the `apiVersion` schema description on
 hover. No edit was saved. The scratch namespace was deleted, and a subsequent
 get returned `NotFound`. This is candidate evidence, not merged-source proof.
 
+The later candidate used host `496156d4cf1c15d11d3d08324eaf3fcbc9df0c81`,
+SDK `427ef1da1f1db4f5787d384af3ae183ff31b0cd3`, Kubernetes
+`a92b947d9568ccf5bf2f5fb810a7ade74ea45492`, Proxmox
+`6feac2c9dab94e91517674d9dac8ecfc39f47864`, Flux
+`b2c4588e90d1c233d5340e43cdba406aa461bd41`, and the same UI revision.
+Pod, core Event and ReplicaSet sources were following with 190, 187 and 141
+records; contemporaneous `kubectl` counts matched. The catalog initially waited
+for more than 90 seconds; Home-to-Open navigation recovered it without an
+explicit refetch. Editable scratch Pod YAML showed the `apiVersion` schema
+description on hover. No edit was saved. The scratch namespace was deleted,
+and a subsequent get returned `NotFound`. This is not merged-source proof.
+
 ### Acceptance status
 
 | Evidence or gate | Status |
@@ -139,6 +151,7 @@ get returned `NotFound`. This is candidate evidence, not merged-source proof.
 | Earlier candidate Pod editor and Event checks | Observed on `2f17b9ac`; completion provider not identified. |
 | `bf47c022` Pod preview hover | Not observed; editable-editor hover and worker inspection remain open. |
 | `300fa9a9` editable Pod hover | Observed with the repinned candidate cohort; no edit saved. |
+| `496156d4` editable Pod hover | Observed with its candidate cohort; no edit saved. |
 | `bf47c022` catalog startup | Pending/idle until explicit refetch and navigation; investigation remains open. |
 | Unknown-field diagnostic | Not observed; the registered schema allows unknown properties. |
 | Historical Pod admissions and resource measurements | Historical only; see the earlier receipt and original acceptance records. |
