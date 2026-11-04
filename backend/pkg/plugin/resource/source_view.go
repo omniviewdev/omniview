@@ -498,15 +498,24 @@ func (v *sourceView) changeTransientEstimate(records []resourcev2.Record, refs [
 			return 0, false
 		}
 	}
+	maxBindingScratch := 0
 	for _, record := range records {
 		scratch, err := sourceBindingTransientEstimate(record.Representation)
-		if err != nil || !add(scratch, 1) {
+		if err != nil {
 			return 0, false
+		}
+		if scratch > maxBindingScratch {
+			maxBindingScratch = scratch
 		}
 		member, err := sourceMemberTransientEstimate(resourcev2.SourceObservation{Record: resourcev2.CompactSourceRecord(record)}, maxSourceTransientBytes)
 		if err != nil || !add(member, 1) {
 			return 0, false
 		}
+	}
+	// Records share an admitted binding. Schema validation is sequential;
+	// the event's per-record serialized output is already charged in input.
+	if !add(maxBindingScratch, 1) {
+		return 0, false
 	}
 	for _, ref := range refs {
 		member, err := sourceMemberTransientEstimate(resourcev2.SourceObservation{Record: resourcev2.SourceRecord{Reference: ref}}, maxSourceTransientBytes)

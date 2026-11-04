@@ -171,6 +171,29 @@ func TestSourceViewChangesOverflowResnapshots(t *testing.T) {
 	require.Len(t, v.snapshot, 1)
 }
 
+func TestSourceViewChangesShareLargeSchemaScratch(t *testing.T) {
+	v := boundedSourceViewFixture(t, 32<<10, 1)
+	defer v.close()
+	v.syncLocked("")
+	require.True(t, v.synced)
+	observation, err := decodeSourceMember(v.session.members["0"])
+	require.NoError(t, err)
+	record := v.session.fullSourceRecord(observation.Record)
+	records := make([]resourcev2.Record, 16)
+	for i := range records {
+		records[i] = record
+		records[i].Reference.Address.ID = fmt.Sprintf("pod-%d", i)
+	}
+	v.changesLocked(records, nil)
+	require.True(t, v.synced)
+	require.Nil(t, v.control)
+	require.Len(t, v.queue, 1)
+	require.Len(t, v.queue[0].event.Upserts, len(records))
+	for _, upsert := range v.queue[0].event.Upserts {
+		require.Equal(t, record.Representation.Schema.Document, upsert.Record.Representation.Schema.Document)
+	}
+}
+
 func TestSourceViewSizeIncludesTaggedNestedValues(t *testing.T) {
 	value := resourcev2.Value{Kind: "map", Map: map[string]resourcev2.Value{
 		"escaped\nkey": {Kind: "list", List: []resourcev2.Value{
