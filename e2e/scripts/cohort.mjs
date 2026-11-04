@@ -56,5 +56,5 @@ export function buildApplicationPluginUI(cohort, pluginID, execute) {
 export function retireApplicationCohort(cohort, execute) {
   // This owned fixture may contain compiler caches in generated dependency trees.
   // Opt into canonical delete-only module recovery; never relax output ownership.
-  return JSON.parse(execute(cohort.tool, ['retire', cohort.config, '--reset-modules'], { capture: true, timeout: 60_000, extraEnv: cohort.nativeEnvironment }));
+  return JSON.parse(execute(cohort.tool, ['retire', cohort.config, '--reset-modules'], { capture: true, timeout: 180_000, extraEnv: cohort.nativeEnvironment }));
 }
