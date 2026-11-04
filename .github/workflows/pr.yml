@@ -46,11 +46,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - os: macos-15-intel
             platform: darwin/universal
             artifact-name: pr-build-macos
             build-tags: "production"
             extra-ldflags: ""
+            developer-dir: /Applications/Xcode_26.3.app/Contents/Developer
           - os: ubuntu-24.04
             container: ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1
             platform: linux/amd64
@@ -72,6 +73,7 @@ jobs:
     timeout-minutes: 30
     env:
       GOWORK: "off"
+      DEVELOPER_DIR: ${{ matrix.developer-dir || '' }}
     steps:
       # Container Git must own the mount after checkout's temporary HOME expires.
       - name: Match checkout directory ownership to container user

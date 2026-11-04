@@ -25,3 +25,27 @@ The screenshot is a labeled temporary verification consumer, not production UI. 
 ## Release compatibility
 
 Base UI 0.14.0, ai-ui 6.1.8 and editors 6.1.8 form the UI cohort. The consuming runtime must declare the matching Base UI peer and ship with a host that implements the snapshot/CAS bindings. Build runtime before Vite-plugin shims. Workspace source links do not establish published-package compatibility.
+
+Runtime, providers, and Vite-plugin 0.29.0 were published from immutable producer `72b906d1474e6b2bd2701ce13afe1f6169f5b68f` (`npm-v0.29.0`) by [release run 41839949260](https://github.com/omniviewdev/omniview/actions/runs/41839949260). All three public npm version records identify that producer in `gitHead` and include integrity and provenance-attestation metadata.
+
+Kubernetes 0.16.0 requires host 0.29.0. Development and nightly builds use source compatibility baseline 0.29.0 so the same minimum-version gate admits this source capability cohort. Standalone artifacts retain released SDK 0.14.6; reviewed-source verification retains approved SDK `6ce85c8b42cab1547396217510196b29e63ffe55`.
+
+## Integrated explorer cohort
+
+The Kubernetes gitlink and source-cohort record both select merged explorer `695c8d328031755f3b29d8be0f33ea3ad09af1fe` ([plugin PR 207](https://github.com/omniviewdev/omniview-plugin-kubernetes/pull/207)). Its reviewed source `ed76f0165c955a043ad1d8e09c2d64032c384c15` passed [registry-cohort CI 41848898158](https://github.com/omniviewdev/omniview-plugin-kubernetes/actions/runs/41848898158): frozen installation, lint, native TypeScript, 1,720 tests with three skips, 18 New York age-clock regressions, and production build. Standalone Go build and eleven tested packages passed against released SDK 0.14.6.
+
+The canonical real-plugin consumer scenario exercises initial search focus and keyboard field completion, then verifies the probe's shared runtime state. It no longer depends on the explorer's removed `All Clusters` subtab.
+
+Authenticated source generation `a4f3a0cb-4b68-4404-ac40-fda140048fb1` reported ready builds, current dependencies and served source, and connected HMR. Search autofocus and keyboard card selection were observed. Earlier live review-fix scenarios verified Settings navigation, lens-name focus, direct Cards/Table opening, empty-scope recovery, repeated folder moves, deleted-folder lens fallback, and fixture cleanup.
+
+![Reviewed keyboard-selected Cards view](../images/cluster-data-consistency/cluster-explorer-reviewed-cards.png)
+
+![Reviewed Debug view honoring selected sort](../images/cluster-data-consistency/cluster-explorer-reviewed-debug.png)
+
+These are actual development IDE captures, not mocks or packaged-desktop captures. All 26 aliases target one owned real Kubernetes API with four namespaces, zero Nodes, and no scheduler. Metadata hints do not establish cloud ownership or workload health. Native MCP confirmed initial search focus, but hidden-window action automation stalled; native-window actions and OS dialogs remain unproved. The plugin's [release evidence](https://github.com/omniviewdev/omniview-plugin-kubernetes/blob/695c8d328031755f3b29d8be0f33ea3ad09af1fe/docs/releases/0.16.0.md) records the full theme, sizing, density, responsive, organization, and restart scenarios.
+
+## Universal macOS runner
+
+PR, stable-release, and nightly universal-build jobs use the existing Homebrew verification baseline, `macos-15-intel`, after macOS 26 ARM and Intel requests failed before any step started ([#400](https://github.com/omniviewdev/omniview/issues/400)). They explicitly select `/Applications/Xcode_26.3.app/Contents/Developer`, which GitHub documents with the [macOS 26.2 SDK on its macOS 15 Intel image](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-Readme.md#xcode).
+
+The build recipe remains unchanged: compile arm64 and amd64, combine them with `lipo`, and verify both slices. Release signing, notarization, and stapling remain required. Only desktop runner/toolchain selection changes; the reusable Ubuntu npm producer, its source, dependencies, and commands remain unchanged.
