@@ -4,7 +4,7 @@ import { Avatar, NavList, useTheme } from '@omniviewdev/base-ui';
 
 import Icon from '@/components/icons/Icon';
 import { type SectionSelection, Section } from './settingsContext';
-import { useScopedSettings, type SettingsCategory } from '@omniviewdev/runtime';
+import { useScopedSettings, useExtensionPointSnapshot, PLUGIN_SETTINGS_EXTENSION_POINT_ID, type PluginSettingsContribution, type SettingsCategory } from '@omniviewdev/runtime';
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
 import { IsImage } from '@/utils/url';
 import styles from './SettingsNav.module.css';
@@ -41,6 +41,7 @@ const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
   const { density } = useTheme();
   const settings = useScopedSettings({ kind: 'host' });
   const { plugins } = usePluginManager();
+  const { contributions } = useExtensionPointSnapshot<PluginSettingsContribution>(PLUGIN_SETTINGS_EXTENSION_POINT_ID);
 
   if (settings.isLoading || plugins.isLoading) {
     return null;
@@ -68,10 +69,10 @@ const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
     },
   ];
 
-  if (plugins.data?.length) {
+  if (plugins.data?.length || contributions.length) {
     sections.push({
       title: 'Plugins',
-      items: plugins.data.map(plugin => ({
+      items: (plugins.data ?? []).map(plugin => ({
         id: encodeKey(Section.Plugins, plugin.id),
         label: plugin.metadata.name,
         icon: IsImage(plugin.metadata?.icon) ? (
@@ -83,7 +84,12 @@ const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
             className={styles.PluginAvatar}
           />
         ) : <Icon name={plugin.metadata.icon} size={16} />,
-      })),
+      })).concat(contributions.filter(contribution => contribution.value?.contractVersion === 1 &&
+        !plugins.data?.some(plugin => plugin.id === contribution.plugin)).map(contribution => ({
+        id: encodeKey(Section.Plugins, contribution.plugin),
+        label: contribution.value.label,
+        icon: <Icon name="LuSettings" size={16} />,
+      }))),
     });
   }
 

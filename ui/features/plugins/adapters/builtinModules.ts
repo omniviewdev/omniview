@@ -10,14 +10,21 @@ export type BuiltinRoute = {
 
 export type BuiltinModule = {
   readonly routes: readonly BuiltinRoute[];
+  /** Global contributions need registration in every window; routes stay on-demand by default. */
+  readonly activation?: 'startup' | 'on-demand';
   readonly load: () => Promise<unknown>;
 };
 
 export type BuiltinModuleRegistry = Readonly<Record<string, BuiltinModule>>;
 
-// Product composition adds explicit () => import('./feature/entry') functions here.
-// Containers remains external until its separate migration.
-export const builtinModules: BuiltinModuleRegistry = Object.freeze({});
+// Product composition lists trusted feature entrypoints without evaluating them.
+export const builtinModules: BuiltinModuleRegistry = Object.freeze({
+  grafana: {
+    routes: [{ path: '/' }],
+    activation: 'startup',
+    load: () => import('../../builtinplugins/grafana/entry'),
+  },
+});
 
 export function getBuiltinModule(key: string, registry: BuiltinModuleRegistry = builtinModules): BuiltinModule {
   if (!Object.hasOwn(registry, key)) {

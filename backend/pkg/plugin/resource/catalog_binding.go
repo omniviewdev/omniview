@@ -30,7 +30,7 @@ func (c *controller) routeCatalog(ctx context.Context, pluginID string, route re
 		return catalogAdmission{}, resourcev2.Catalog{}, err
 	}
 	defer cleanup()
-	catalog, err := provider.Catalog(ctx, resourcev2.CatalogRequest{Route: route})
+	catalog, err := c.catalogSnapshot(ctx, pluginID, provider, generation, route)
 	if err != nil {
 		return catalogAdmission{}, resourcev2.Catalog{}, err
 	}

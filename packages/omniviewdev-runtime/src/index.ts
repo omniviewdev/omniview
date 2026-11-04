@@ -16,3 +16,47 @@ export * from './resource/v2/host';
 export * from './resource/v2/sourceView';
 export { sameGraphNode } from './resource/v2/graph';
 export { useResolvedResourceTarget } from './hooks/resource/useResolvedResourceTarget';
+export {
+  QueryResources,
+  PreviewMetricDefinition,
+  DiscoverMetricLabels,
+  GetMetricBindings,
+  SaveMetricBinding,
+  DeleteMetricBinding,
+  GetMetricDefinitions,
+  SaveMetricDefinition,
+  DeleteMetricDefinition,
+  GetProviderConnections,
+  SaveProviderConnection,
+  DeleteProviderConnection,
+  GetDataSources,
+  TestProviderConnection,
+  ValidateMetricDefinition,
+} from './metric';
+export type {
+  ResourceSetQueryRequest,
+  MetricResource,
+  ProviderConnectionInput,
+  MetricDiscoveryRequest,
+} from './metric';
+export {
+  MetricShape,
+  MetricUnit,
+  MetricResultStatus,
+  MetricFieldTransform,
+} from './bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
+export type {
+  MetricSourceReference,
+  MetricDefinition,
+  MetricDefinitionOverride,
+  MetricFieldBinding,
+  MetricBinding,
+  ResourceMetricResult,
+  ResourceSetQueryResponse,
+  MetricProvenance,
+  ProviderConnection,
+  MetricDataSource,
+  MetricValidationIssue,
+  MetricValidationResult,
+  MetricDiscoveryResult,
+} from './bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';

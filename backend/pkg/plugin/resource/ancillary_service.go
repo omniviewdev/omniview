@@ -20,7 +20,7 @@ func ancillaryUnsupported() error {
 
 // admitAncillaryCatalog binds metadata admission without requiring Get support.
 func (c *controller) admitAncillaryCatalog(ctx context.Context, pluginID string, provider ResourceProvider, generation *pluginState, route resourcev2.AccessRoute, typ string, reference *resourcev2.ResourceReference) (context.Context, resourcev2.Catalog, error) {
-	catalog, err := provider.Catalog(ctx, resourcev2.CatalogRequest{Route: route})
+	catalog, err := c.catalogSnapshot(ctx, pluginID, provider, generation, route)
 	if err == nil {
 		err = resourcev2.ValidateCatalog(catalog)
 	}

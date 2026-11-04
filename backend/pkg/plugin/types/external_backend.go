@@ -14,6 +14,7 @@ import (
 
 	lc "github.com/omniviewdev/plugin-sdk/pkg/v1/lifecycle"
 	lifecyclepb "github.com/omniviewdev/plugin-sdk/proto/v1/lifecycle"
+	settingspb "github.com/omniviewdev/plugin-sdk/proto/v1/settings"
 )
 
 // rpcTimeout bounds each lifecycle and probe RPC made to an external plugin.
@@ -162,6 +163,7 @@ func (b *ExternalBackend) detectViaProbing() ([]string, error) {
 		capability string
 		method     string
 	}{
+		{"settings", settingspb.SettingsPlugin_ListSettings_FullMethodName},
 		{"resource", "/com.omniview.pluginsdk.ResourcePlugin/GetResourceGroups"},
 		{"exec", "/com.omniview.pluginsdk.ExecPlugin/GetSupportedResources"},
 		{"networker", "/com.omniview.pluginsdk.NetworkerPlugin/GetSupportedPortForwardTargets"},

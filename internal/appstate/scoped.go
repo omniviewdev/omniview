@@ -73,6 +73,15 @@ func (s *ScopedRoot) OpenFile(name string, flag int, perm fs.FileMode) (*os.File
 	return s.root.OpenFile(name, flag, perm)
 }
 
+// OpenRoot returns an independently owned directory capability within this scope.
+// The caller must close the returned root without closing the parent scope.
+func (s *ScopedRoot) OpenRoot(name string) (*os.Root, error) {
+	if err := validate(name); err != nil {
+		return nil, err
+	}
+	return s.root.OpenRoot(name)
+}
+
 func (s *ScopedRoot) MkdirAll(path string, perm fs.FileMode) error {
 	if err := validate(path); err != nil {
 		return err

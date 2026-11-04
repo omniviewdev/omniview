@@ -219,6 +219,7 @@ func (c *controller) BeginConnectionChange(pluginID, connectionID string) func()
 	delete(c.streams, key)
 	delete(c.streamErrors, key)
 	c.mux.Unlock()
+	c.invalidateResourceQueries()
 	if state != nil {
 		c.endStream(state, profileChangingError())
 	}

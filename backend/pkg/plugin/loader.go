@@ -700,13 +700,6 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 		}
 	}
 
-	if ctrl := pm.connlessControllers[sdktypes.CapabilitySettings]; ctrl != nil {
-		started = append(started, ctrl)
-		if err := ctrl.OnPluginStart(pluginID, record.Metadata, backend); err != nil {
-			return fmt.Errorf("error starting settings plugin: %w", err)
-		}
-	}
-
 	// Detect capabilities via the backend.
 	var detectedCaps []sdktypes.Capability
 	if detector, ok := backend.(plugintypes.CapabilityDetector); ok {
@@ -719,6 +712,21 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 	}
 
 	record.Capabilities = detectedCaps
+
+	// Hydrate only negotiated settings, before any consumer capability starts.
+	// A native backend may intentionally expose metrics or UI without settings.
+	for _, capability := range detectedCaps {
+		if capability != sdktypes.CapabilitySettings {
+			continue
+		}
+		if ctrl := pm.connlessControllers[sdktypes.CapabilitySettings]; ctrl != nil {
+			started = append(started, ctrl)
+			if err := ctrl.OnPluginStart(pluginID, record.Metadata, backend); err != nil {
+				return fmt.Errorf("error starting settings plugin: %w", err)
+			}
+		}
+		break
+	}
 
 	// Start controllers for detected capabilities.
 	for _, cap := range detectedCaps {
@@ -760,8 +768,7 @@ func capStringsToCapabilities(caps []string) []sdktypes.Capability {
 	var result []sdktypes.Capability
 	for _, capStr := range caps {
 		c, ok := sdktypes.ParseCapability(capStr)
-		if !ok || c == sdktypes.CapabilitySettings {
-			// settings is always registered separately, skip
+		if !ok {
 			continue
 		}
 		result = append(result, c)

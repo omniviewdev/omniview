@@ -267,3 +267,39 @@ func TestScopedRoot_PrivateRecoveryFileIdentityRejectsRedirectedProof(t *testing
 	_, _, err = r.OpenPrivateFile("redirected", os.O_RDONLY)
 	assert.Error(t, err)
 }
+
+func TestScopedRoot_OpenRootPreservesContainmentAndIndependentLifetime(t *testing.T) {
+	t.Parallel()
+	scope := newTestScopedRoot(t)
+	require.NoError(t, scope.MkdirAll("provider", 0700))
+	require.NoError(t, scope.WriteFile("outside-provider", []byte("host-only"), 0600))
+	provider, err := scope.OpenRoot("provider")
+	require.NoError(t, err)
+	require.NoError(t, provider.WriteFile("config", []byte("provider-only"), 0600))
+	_, err = provider.ReadFile("../outside-provider")
+	require.Error(t, err)
+	require.NoError(t, provider.Close())
+	value, err := scope.ReadFile("provider/config")
+	require.NoError(t, err)
+	require.Equal(t, "provider-only", string(value))
+	for _, path := range []string{"", "..", "../escape", t.TempDir()} {
+		child, err := scope.OpenRoot(path)
+		if child != nil {
+			require.NoError(t, child.Close())
+		}
+		require.Error(t, err, "opening %q must not escape the scope", path)
+	}
+}
+
+func TestScopedRoot_OpenRootRejectsEscapingSymlink(t *testing.T) {
+	t.Parallel()
+	scope := newTestScopedRoot(t)
+	if err := os.Symlink(t.TempDir(), scope.ResolvePath("escape")); err != nil {
+		t.Skipf("symlink creation unavailable: %v", err)
+	}
+	child, err := scope.OpenRoot("escape")
+	if child != nil {
+		require.NoError(t, child.Close())
+	}
+	require.Error(t, err)
+}

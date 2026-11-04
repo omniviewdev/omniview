@@ -46,6 +46,7 @@ type MetricProviderSummary struct {
 // Controller manages metric providers across all plugins.
 type Controller interface {
 	internaltypes.Controller
+	ResourceSetController
 	ServiceStartup(ctx context.Context, options application.ServiceOptions) error
 	ServiceShutdown() error
 	SetReferenceAdmitter(resource.ReferenceAdmitter)
@@ -87,22 +88,25 @@ type subscriptionIndex struct {
 var _ Controller = (*controller)(nil)
 
 type controller struct {
-	emitter             resource.EventEmitter
-	ctx                 context.Context
-	logger              logging.Logger
-	settingsProvider    pkgsettings.Provider
-	clients             map[string]Provider
-	providerInfos       map[string]*metric.ProviderInfo // pluginID -> provider info
-	handlerMap          map[string][]metric.Handler     // pluginID -> handlers
-	resourceIndex       map[string][]string             // resource key -> []pluginID
-	subscriptions       map[string]subscriptionIndex    // subscriptionID -> index
-	streams             map[metricStreamKey]*metricStream
-	streamErrors        map[metricStreamKey]error
-	streamBlocked       map[metricStreamKey]int
-	resourceClient      resource.ConnectionReader
-	referenceAdmitter   resource.ReferenceAdmitter
-	uiReferenceAdmitter resource.ReferenceAdmitter
-	mux                 sync.RWMutex
+	emitter              resource.EventEmitter
+	ctx                  context.Context
+	logger               logging.Logger
+	settingsProvider     pkgsettings.Provider
+	clients              map[string]Provider
+	providerInfos        map[string]*metric.ProviderInfo // pluginID -> provider info
+	handlerMap           map[string][]metric.Handler     // pluginID -> handlers
+	resourceIndex        map[string][]string             // resource key -> []pluginID
+	subscriptions        map[string]subscriptionIndex    // subscriptionID -> index
+	streams              map[metricStreamKey]*metricStream
+	streamErrors         map[metricStreamKey]error
+	streamBlocked        map[metricStreamKey]int
+	resourceClient       resource.ConnectionReader
+	referenceAdmitter    resource.ReferenceAdmitter
+	uiReferenceAdmitter  resource.ReferenceAdmitter
+	mux                  sync.RWMutex
+	metricState          *metricState
+	coordinator          *queryCoordinator
+	metricResourceReader MetricResourceReader
 }
 
 // SetReferenceAdmitter binds native admission without changing invocation identity.
@@ -290,6 +294,7 @@ func (c *controller) removePlugin(pluginID string) {
 	}
 
 	c.mux.Unlock()
+	c.invalidateResourceQueries()
 	for _, state := range retired {
 		c.endStream(state, closedStreamError())
 	}

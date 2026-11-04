@@ -2,13 +2,24 @@
 
 ## Goal and scope
 
-Ship reviewed first-party features with Omniview without maintaining a second feature framework. Containers is the first integration target. SSH/SFTP follows the same contracts; its protocol implementation is not part of the initial infrastructure change.
+Ship reviewed first-party features with Omniview without maintaining a second feature framework. Grafana now exercises these contracts; containers and SSH/SFTP migrations remain separate work.
 
 This work separates product distribution from backend execution, activation, and API privilege. A bundled plugin may run in a subprocess. A compiled-in plugin uses the same capability providers and host admission as an external plugin.
 
-The current implementation covers infrastructure phases 1–4. The production catalog remains empty until the separately planned containers migration. Containers functionality, cross-plugin image inspection, signed release artifacts, and comparative performance measurements are not part of this infrastructure cutover.
+Infrastructure phases 1–4 are implemented. The production catalog now includes Grafana, a metric-only native backend with a host-owned frontend module. Containers functionality, cross-plugin image inspection, signed release artifacts, and comparative performance measurements remain outside this infrastructure cutover.
 
-## Workspace and dependency authority
+### Grafana integration
+
+- `main.go` registers metadata and a lazy backend factory; discovery does not contact Grafana.
+- Native Grafana state lives under `builtin/grafana`, outside `plugins/`. Provider state must never resemble an external installation or weaken reserved-ID collision checks.
+- Capability negotiation precedes controller startup. Settings hydrate only when the backend exposes the settings capability.
+- The trusted frontend descriptor opts into startup activation in main and settings windows through the normal plugin service. Other built-ins remain on-demand.
+- Reusable provider connections stay global; resource-source bindings and sparse mapping overrides live in each resource connection's settings.
+- Metrics retain resource-owner admission and generation fences, regardless of provider transport.
+
+See [provider configuration and query contracts](../internal/builtinplugins/grafana/README.md) and [settings contribution contracts](../ui/features/builtinplugins/grafana/README.md).
+
+## Infrastructure research workspace and dependency authority
 
 - Use installed `omniview-dev`, not a source-built replacement or ad hoc worktree.
 - Workspace: `builtin-plugin-research`, created by `omniview-dev workspace create` and verified with `workspace inspect`.
@@ -123,12 +134,12 @@ Required-owner admission failures publish failed inventory with the original cau
 
 - [x] Add explicit built-in module descriptors and static lazy import mappings. Preserve Vite development loading for selected external sources.
 - [x] Feed all resolved modules through existing export validation, contribution normalization, extension-point ordering, and cleanup.
-- [x] Separate discoverable metadata from executable module activation. Navigation and explicit plugin-service loads activate built-ins; no general activation-event framework was added.
+- [x] Separate discoverable metadata from executable module activation. Navigation and explicit plugin-service loads activate built-ins; trusted static descriptors may opt into startup contributions. No general activation-event framework was added.
 - [x] Deduplicate concurrent activation and fence late completions after disable/replacement.
 - [x] Keep React and runtime singletons shared. No new shared dependencies were added.
 - [x] Show built-in ownership and correct disabled/failed states in the actual plugin UI. Remove unsupported update/uninstall actions rather than letting them fail late.
 
-**Acceptance:** actual packaged UI opens built-in pages and actions through the normal registry. Disabled plugins leave no routes or active contributions. Feature modules stay out of the initial evaluated path until needed. Verify the real UI in Chromium or native WebView.
+**Acceptance:** actual packaged UI opens built-in pages and actions through the normal registry. Disabled plugins leave no routes or active contributions. On-demand modules stay unevaluated until needed; enabled startup contributors use the same load and readiness fences. Verify the real UI in Chromium or native WebView.
 
 ### Infrastructure verification
 
