@@ -1037,6 +1037,16 @@ Registration cleanup follows the plugin lifecycle:
 
 Before React starts, the loading surface uses the last cached built-in theme, including validated legacy Light and Solarized preferences during upgrades. Custom/plugin themes use Void for this first paint until their contribution loads; the persisted requested theme ID is not changed. The Appearance theme picker applies selections immediately and exposes the accessible name “Theme.”
 
+### 1.6 Persistent Plugin Data
+
+Use `usePluginData` for profile-backed plugin preferences. Pass a literal value to replace a key, or a pure functional updater to merge with its latest persisted value.
+
+Functional updates use a fresh backend snapshot and compare-and-swap, including across independent windows and QueryClients. A conflicting write re-evaluates the updater, up to eight attempts. Prepare IDs, timestamps, uploads, and other side effects outside the updater. Exhausted conflicts and storage failures reject the update promise; callers must surface the error rather than reporting success.
+
+Literal replacements intentionally remain last-write-wins and do not require reading the old value. They can therefore reset a key whose persisted JSON cannot be read. Failed optimistic writes restore the previous cached value, or the supplied default when no cached value exists.
+
+The host data service exposes `GetSnapshot` and `CompareAndSwap` for this protocol. Revisions are opaque content tokens, not monotonic counters. An absent key has an empty revision; stored JSON `null` has a nonempty revision. Keep both methods and the consuming runtime in the same published host/runtime cohort; older hosts do not provide these bindings.
+
 ---
 
 ## 2. IDE-Managed Mode (Recommended)
