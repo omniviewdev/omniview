@@ -402,3 +402,38 @@ func TestSourceStateEventsAggregateAcrossScopes(t *testing.T) {
 	ctrl.sources.closeInventory("p1", route.Connection)
 	assertState(start, "closed")
 }
+
+func TestSourceMemberMaterializesAdmittedRepresentation(t *testing.T) {
+	record := canonicalTestRecord("provider", "authority", "native::Pod", "pod")
+	observation := resourcev2.SourceObservation{
+		Record:   resourcev2.CompactSourceRecord(record),
+		Metadata: &resourcev2.ResourceMetadata{Labels: map[string]string{"app": "source"}},
+	}
+	member, _, err := makeSourceMember(observation, record.Representation)
+	require.NoError(t, err)
+	require.Equal(t, record, member.record)
+	size, err := resourcev2.SourceObservationWireSize(observation)
+	require.NoError(t, err)
+	require.Equal(t, size, member.size)
+}
+
+func TestSourceObservationRejectsChangedBinding(t *testing.T) {
+	target := resourcev2.ReadTarget{Provider: "provider", Authority: "authority", Type: "native::Pod", Representation: "native"}
+	record := canonicalTestRecord(target.Provider, target.Authority, target.Type, "pod")
+	for _, mutation := range []string{"revision", "schema"} {
+		t.Run(mutation, func(t *testing.T) {
+			observation := resourcev2.SourceObservation{Record: resourcev2.CompactSourceRecord(record)}
+			if mutation == "revision" {
+				observation.Record.Representation.Revision += "-changed"
+			} else {
+				revision := "changed"
+				observation.Record.Representation.SchemaRevision = &revision
+			}
+			member, _, err := makeSourceMember(observation, record.Representation)
+			require.NoError(t, err)
+			session := &sourceSession{}
+			err = session.observeFrameRecord(sourceFrameContext{target: target, descriptor: &resourcev2.ResourceType{}, binding: record.Representation}, member)
+			require.Equal(t, "RESET_REQUIRED", resourcev2.ErrorCode(err))
+		})
+	}
+}

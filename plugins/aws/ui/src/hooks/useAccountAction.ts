@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { usePluginContext, useConnection, useSnackbar } from '@omniviewdev/runtime';
+import { usePluginContext, useConnection, useNotifications } from '@omniviewdev/runtime';
 import { usePluginRouter } from '@omniviewdev/runtime';
 import { types } from '@omniviewdev/runtime/models';
 
@@ -10,7 +10,7 @@ export function useAccountAction(
 ) {
   const { meta } = usePluginContext();
   const { navigate } = usePluginRouter();
-  const { showSnackbar } = useSnackbar();
+  const { notify } = useNotifications();
   const { startConnection } = useConnection({
     pluginID: meta.id,
     connectionID: connectionId,
@@ -23,24 +23,23 @@ export function useAccountAction(
       return;
     }
     startConnection()
-      .then(status => {
+      .then((status) => {
         if (status.status === types.ConnectionStatusCode.CONNECTED) {
           navigate(`/account/${encodeURIComponent(connectionId)}/resources`);
         } else {
-          showSnackbar({
-            status: 'warning',
-            message: 'Failed to connect to AWS account',
+          void notify({
+            severity: 'warning',
+            title: 'Failed to connect to AWS account',
             details: status.details,
-            icon: 'LuCircleAlert',
           });
         }
       })
-      .catch(err => {
+      .catch((err) => {
         if (err instanceof Error) {
-          showSnackbar({ status: 'error', message: err.message, icon: 'LuCircleAlert' });
+          void notify({ severity: 'error', title: err.message });
         }
       });
-  }, [connectionId, isConnected, onRecordAccess, navigate, startConnection, showSnackbar]);
+  }, [connectionId, isConnected, onRecordAccess, navigate, startConnection, notify]);
 
   return { handleClick };
 }

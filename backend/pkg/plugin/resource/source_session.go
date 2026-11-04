@@ -151,6 +151,16 @@ func (s *sourceSession) receive(ctx context.Context, request resourcev2.SourceOp
 		s.receiveAdmissionError(request.Generation, err)
 		return
 	}
+	for _, representation := range descriptor.Representations {
+		if representation.ID == request.Target.Representation {
+			request.Binding = resourcev2.RepresentationBinding{Representation: representation}
+			break
+		}
+	}
+	if err := resourcev2.ValidateSourceOpenRequest(request); err != nil {
+		s.receiveAdmissionError(request.Generation, err)
+		return
+	}
 	ctx = resourcev2.WithCatalogRevision(operationCtx, catalog.Revision)
 	stream, err := opener.OpenSourceStream(ctx, request)
 	if err != nil {
@@ -177,7 +187,7 @@ func (s *sourceSession) receive(ctx context.Context, request resourcev2.SourceOp
 			s.mu.Unlock()
 			return
 		}
-		terminal, err := s.applyLocked(frame, sourceFrameContext{ctx: ctx, target: request.Target, descriptor: &descriptor})
+		terminal, err := s.applyLocked(frame, sourceFrameContext{ctx: ctx, target: request.Target, descriptor: &descriptor, binding: request.Binding.Representation})
 		if err != nil {
 			s.statusLocked("failed", err)
 		}
@@ -379,19 +389,25 @@ type sourceFrameContext struct {
 	ctx        context.Context
 	target     resourcev2.ReadTarget
 	descriptor *resourcev2.ResourceType
+	binding    resourcev2.Representation
 }
 
-func (s *sourceSession) observeFrameRecord(frame sourceFrameContext, observation resourcev2.SourceObservation) error {
+func (s *sourceSession) observeFrameRecord(frame sourceFrameContext, member sourceMember) error {
+	observation := member.observation
 	if frame.descriptor == nil {
-		return s.coordinator.ctrl.observeSourceRecord(s.ctx, s.pluginID, s.pluginGeneration, s.target.Route, observation.Record, observation.Metadata)
+		return s.coordinator.ctrl.observeSourceRecord(s.ctx, s.pluginID, s.pluginGeneration, s.target.Route, member.record, observation.Metadata)
 	}
 	if err := resourcev2.ValidateSourceObservation(frame.target, frame.target.Representation, observation); err != nil {
 		return err
 	}
+	ref, binding := observation.Record.Representation, frame.binding
+	if ref.ID != binding.ID || ref.Revision != binding.Revision || (ref.SchemaRevision == nil) != (binding.Schema.Revision == nil) || ref.SchemaRevision != nil && *ref.SchemaRevision != *binding.Schema.Revision {
+		return resourcev2.NewError("RESET_REQUIRED", "Source binding changed.")
+	}
 	if err := resourcev2.ValidateAddress(observation.Record.Reference.Address, frame.descriptor.IdentityDimensions); err != nil {
 		return err
 	}
-	return s.coordinator.ctrl.observeValidatedSourceRecord(frame.ctx, s.pluginID, s.pluginGeneration, frame.target.Route, observation.Record, observation.Metadata)
+	return s.coordinator.ctrl.observeValidatedSourceRecord(frame.ctx, s.pluginID, s.pluginGeneration, frame.target.Route, member.record, observation.Metadata)
 }
 
 func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sourceFrameContext) (bool, error) {
@@ -404,7 +420,7 @@ func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sour
 		s.statusLocked("snapshotting", nil)
 	case frame.Snapshot != nil:
 		for _, o := range frame.Snapshot.Observations {
-			member, key, err := makeSourceMember(o)
+			member, key, err := makeSourceMember(o, frameContext.binding)
 			if err != nil {
 				return true, err
 			}
@@ -418,7 +434,7 @@ func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sour
 		}
 	case frame.SnapshotEnd != nil:
 		for _, member := range s.staging {
-			if err := s.observeFrameRecord(frameContext, member.observation); err != nil {
+			if err := s.observeFrameRecord(frameContext, member); err != nil {
 				return true, err
 			}
 		}
@@ -455,7 +471,7 @@ func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sour
 			var key string
 			var next *sourceMember
 			if change.Observation != nil {
-				member, k, err := makeSourceMember(*change.Observation)
+				member, k, err := makeSourceMember(*change.Observation, frameContext.binding)
 				if err != nil {
 					return true, err
 				}
@@ -506,11 +522,11 @@ func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sour
 					delete(s.members, key)
 				}
 			} else {
-				if err := s.observeFrameRecord(frameContext, next.observation); err != nil {
+				if err := s.observeFrameRecord(frameContext, *next); err != nil {
 					return true, err
 				}
 				s.members[key] = *next
-				upserts = append(upserts, next.observation.Record)
+				upserts = append(upserts, next.record)
 			}
 		}
 		s.memberBytes = nextBytes

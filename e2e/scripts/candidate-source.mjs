@@ -6,8 +6,8 @@ import { resolve } from 'node:path';
 
 // Independently reviewed isolation-core baseline; candidate/tag selection cannot replace this trust decision.
 export const isolationBaseline = '5b3ef764d1cf738835a723a749a0cb6c45f85e44';
-// Independently reviewed host-connections startup; original isolation ancestry remains required.
-export const reviewedIsolationCheckpoint = 'eea5943f7a5319fb1585a8ec2d9ce5d06fa763ca';
+// Independently reviewed activity callback binding; original isolation ancestry remains required.
+export const reviewedIsolationCheckpoint = '427ef1da1f1db4f5787d384af3ae183ff31b0cd3';
 const isolationFiles = ['pkg/state/root.go', 'pkg/state/custom.go', 'pkg/profilecontract/profile.go', 'pkg/utils/store.go', 'pkg/sdk/plugin.go'];
 
 export function verifyIsolation(source, git) {
@@ -37,6 +37,15 @@ export function admitCandidate(cohort, env) {
   return { sdk: cohort['plugin-sdk'], ui: cohort.ui, kubernetes: cohort.kubernetes };
 }
 
+export function verifyDeclaredSdk(refs, goMod) {
+  const version = goMod.match(/^\s*github\.com\/omniviewdev\/plugin-sdk\s+(\S+)/m)?.[1];
+  if (!version) throw Error('Host go.mod must declare plugin-sdk');
+  const revision = version.match(/[.-]\d{14}-([a-f0-9]{12,40})$/)?.[1];
+  if (revision && !refs.sdk.startsWith(revision)) {
+    throw Error(`Candidate SDK ${refs.sdk} conflicts with host go.mod ${version}; select a compatible cohort with exact independent approval. Approval authority was not changed.`);
+  }
+}
+
 export function verifyGitlink(refs, entry) {
   if (entry.trim() !== `160000 commit ${refs.kubernetes}\tplugins/kubernetes`) throw Error('Kubernetes gitlink differs from reviewed candidate cohort');
 }
@@ -51,6 +60,7 @@ export function verifyCandidate(refs, sources, git) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const root = fileURLToPath(new URL('../../', import.meta.url));
   const refs = admitCandidate(JSON.parse(readFileSync(resolve(root, 'e2e/source-cohort.json'), 'utf8')), process.env);
+  verifyDeclaredSdk(refs, readFileSync(resolve(root, 'go.mod'), 'utf8'));
   const git = (path, args) => execFileSync('git', ['-C', path, ...args], { encoding: 'utf8' });
   if (process.argv[2] === 'verify-sdk') {
     verifyCandidate(refs, { sdk: process.env.SDK_SOURCE }, git);
@@ -58,7 +68,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   } else if (process.argv[2] === 'resolve') {
     verifyGitlink(refs, git(root, ['ls-tree', 'HEAD', 'plugins/kubernetes']));
     appendFileSync(process.env.GITHUB_OUTPUT, Object.entries(refs).map(([key, value]) => `${key}=${value}\n`).join(''));
-    appendFileSync(process.env.GITHUB_ENV, `REVIEWED_SDK_REVISION=${refs.sdk}\n`);
   } else if (process.argv[2] === 'verify') {
     verifyCandidate(refs, { sdk: process.env.SDK_SOURCE, ui: process.env.UI_SOURCE, kubernetes: process.env.KUBERNETES_SOURCE }, git);
     verifyIsolation(process.env.SDK_SOURCE, git);

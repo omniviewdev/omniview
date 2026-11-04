@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => {
   return {
     settings,
     setSetting: vi.fn(),
-    showSnackbar: vi.fn(),
+    notify: vi.fn(),
     showAppError: vi.fn(),
   };
 });
@@ -17,7 +17,7 @@ vi.mock('@omniviewdev/runtime', () => ({
   useSettings: () => ({ settings: mocks.settings }),
   HOST_SETTINGS_SCOPE: { kind: 'host' },
   useScopedSettings: () => ({ commit: mocks.setSetting }),
-  useSnackbar: () => ({ showSnackbar: mocks.showSnackbar }),
+  useNotifications: () => ({ notify: mocks.notify }),
   showAppError: mocks.showAppError,
   useExtensionPoint: () => undefined,
 }));
@@ -58,7 +58,7 @@ describe('application theme provider integration', () => {
     mocks.settings = {};
     mocks.setSetting.mockReset();
     mocks.setSetting.mockResolvedValue({ applied: true, uncertain: false, message: '' });
-    mocks.showSnackbar.mockReset();
+    mocks.notify.mockReset();
     mocks.showAppError.mockReset();
     localStorage.clear();
   });

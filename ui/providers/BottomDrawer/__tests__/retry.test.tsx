@@ -22,7 +22,7 @@ vi.mock('@omniviewdev/runtime', async () => {
     BottomDrawerContext,
     useBottomDrawer: () => useContext(BottomDrawerContext),
     useSettings: () => ({ settings: {} }),
-    useSnackbar: () => ({ showSnackbar: vi.fn() }),
+    useNotifications: () => ({ notify: vi.fn() }),
     showAppError: vi.fn(),
     parseAppError: (error: Error) => ({ detail: error.message }),
   };

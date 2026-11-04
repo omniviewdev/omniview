@@ -1,10 +1,19 @@
-/** Backend answers every screen needs: settings, plugin metadata, connections. */
+/** Backend answers every screen needs: settings, plugin metadata, connections, and idle activity subscriptions. */
 import { handleAll } from '../harness/backend';
 
 export const BENCH_CONNECTION_ID = 'bench';
 
 export function installDefaultFixtures(): void {
+  let activitySubscriptionID = 0;
   handleAll({
+    'activity.FrontendService.Subscribe': () => ({
+      id: `bench-activity-${++activitySubscriptionID}`,
+      snapshot: { revision: 0, records: [] },
+    }),
+    'activity.FrontendService.Attach': () => ({ revision: 0, records: [] }),
+    'activity.FrontendService.Snapshot': () => ({ revision: 0, records: [] }),
+    'activity.FrontendService.Heartbeat': () => undefined,
+    'activity.FrontendService.Unsubscribe': () => undefined,
     'internal/settings/servicewrapper.Values': () => ({}),
     'internal/settings/servicewrapper.ListSettings': () => ({}),
     'internal/settings/servicewrapper.GetCategories': () => [],

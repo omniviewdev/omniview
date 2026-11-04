@@ -8,35 +8,52 @@ import {
   StartResourcePortForwardingSession,
   type PortForwardSessionRequest,
 } from '../../networker';
-import { useSnackbar } from '../snackbar';
+import { useNotifications } from '../../activity/context';
 import { createErrorHandler, parseAppError } from '../../errors/parseAppError';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
 /**
-* Programatically forward a port from a resource object to the host.
-*/
-export function useResourcePortForwarder({ pluginID: explicitPluginID, connectionID, resourceID }: { pluginID?: string; connectionID: string; resourceID: string }) {
+ * Programatically forward a port from a resource object to the host.
+ */
+export function useResourcePortForwarder({
+  pluginID: explicitPluginID,
+  connectionID,
+  resourceID,
+}: {
+  pluginID?: string;
+  connectionID: string;
+  resourceID: string;
+}) {
   const pluginID = useResolvedPluginId(explicitPluginID);
   const queryKey = ['networker', 'portforward', 'sessions', pluginID, connectionID, resourceID];
 
-  const { showSnackbar } = useSnackbar();
+  const { notify } = useNotifications();
   const queryClient = useQueryClient();
 
   const sessions = useQuery({
     queryKey,
-    queryFn: async () => FindPortForwardSessions(pluginID, connectionID, FindPortForwardSessionRequest.createFrom({
-      resource_id: resourceID,
-      connection_id: connectionID,
-    })).catch((e: unknown) => {
-      const appErr = parseAppError(e);
-      // "not found" means the plugin doesn't have the networker capability — not an error.
-      if (appErr.detail.includes('not found')) {
+    queryFn: async () =>
+      FindPortForwardSessions(
+        pluginID,
+        connectionID,
+        FindPortForwardSessionRequest.createFrom({
+          resource_id: resourceID,
+          connection_id: connectionID,
+        }),
+      ).catch((e: unknown) => {
+        const appErr = parseAppError(e);
+        // "not found" means the plugin doesn't have the networker capability — not an error.
+        if (appErr.detail.includes('not found')) {
+          return [];
+        }
+        void notify({
+          title: 'Failed to fetch port forward sessions',
+          severity: 'error',
+          details: appErr.detail,
+        });
         return [];
-      }
-      showSnackbar({ message: 'Failed to fetch port forward sessions', status: 'error', details: appErr.detail });
-      return [];
-    }),
+      }),
     retry: false,
   });
 
@@ -65,26 +82,27 @@ export function useResourcePortForwarder({ pluginID: explicitPluginID, connectio
       if (opts.openInBrowser) {
         Browser.OpenURL(`http://localhost:${result.local_port}`);
       }
-      return result
+      return result;
     },
-    onError: createErrorHandler(showSnackbar, 'Failed to start port forwarding session'),
+    onError: createErrorHandler(notify, 'Failed to start port forwarding session'),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey }),
         queryClient.invalidateQueries({ queryKey: [...ALL_SESSIONS_KEY] }),
       ]);
-    }
+    },
   });
 
   const closeMutation = useMutation({
-    mutationFn: async ({ opts }: { opts: { sessionID: string } }) => ClosePortForwardSession(opts.sessionID),
-    onError: createErrorHandler(showSnackbar, 'Failed to close port forwarding session'),
+    mutationFn: async ({ opts }: { opts: { sessionID: string } }) =>
+      ClosePortForwardSession(opts.sessionID),
+    onError: createErrorHandler(notify, 'Failed to close port forwarding session'),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey }),
         queryClient.invalidateQueries({ queryKey: [...ALL_SESSIONS_KEY] }),
       ]);
-    }
+    },
   });
 
   return {
@@ -94,4 +112,4 @@ export function useResourcePortForwarder({ pluginID: explicitPluginID, connectio
   };
 }
 
-export default useResourcePortForwarder
+export default useResourcePortForwarder;

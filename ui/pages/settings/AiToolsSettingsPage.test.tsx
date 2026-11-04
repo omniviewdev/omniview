@@ -3,9 +3,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ConfirmationModalContext } from '@omniviewdev/runtime';
 import type * as WailsRuntime from '@wailsio/runtime';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AppSnackbarProvider } from '@/contexts/AppSnackbarProvider';
+import type * as Runtime from '@omniviewdev/runtime';
 import { SettingsFormRegistration, type SettingsNavigationForm } from '@/hooks/settings/useSettingsForm';
 
+vi.mock('@omniviewdev/runtime', async importOriginal => ({
+  ...await importOriginal<typeof Runtime>(),
+  useNotifications: () => ({ notify: vi.fn() }),
+}));
 const mocks = vi.hoisted(() => ({
   getStatus: vi.fn(),
   getConfig: vi.fn(),
@@ -97,13 +101,11 @@ function renderPage(registerForm: (form: SettingsNavigationForm | null) => void 
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <AppSnackbarProvider>
-        <ConfirmationModalContext.Provider value={{ show: mocks.confirmShow }}>
-          <SettingsFormRegistration.Provider value={registerForm}>
-            <AiToolsSettingsPage />
-          </SettingsFormRegistration.Provider>
-        </ConfirmationModalContext.Provider>
-      </AppSnackbarProvider>
+      <ConfirmationModalContext.Provider value={{ show: mocks.confirmShow }}>
+        <SettingsFormRegistration.Provider value={registerForm}>
+          <AiToolsSettingsPage />
+        </SettingsFormRegistration.Provider>
+      </ConfirmationModalContext.Provider>
     </QueryClientProvider>,
   );
 }

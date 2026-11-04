@@ -9,7 +9,7 @@ import get from 'lodash.get';
 import type { ResourceLink } from '@omniviewdev/runtime';
 import { ResourceClient } from '@omniviewdev/runtime/api';
 import useRightDrawer from '@/hooks/useRightDrawer';
-import { showAppError, useSnackbar, valueToJSON } from '@omniviewdev/runtime';
+import { showAppError, useNotifications, valueToJSON } from '@omniviewdev/runtime';
 import { type ResourceMetadata } from '@/hooks/resource/useResourceDefinition';
 import HintTooltip from '@/components/base/HintTooltip';
 import styles from './cells.module.css';
@@ -33,7 +33,7 @@ const ResourceLinkCell: React.FC<Props> = ({
   displayId,
 }) => {
   const { showResourceSidebar } = useRightDrawer();
-  const { showSnackbar } = useSnackbar();
+  const { notify } = useNotifications();
 
   const extractedType = type !== undefined && type !== null && type !== '' ? type : get(value, typeAccessor ?? '', '');
   const resourceKey = typeMap?.[extractedType] ?? extractedType;
@@ -79,7 +79,7 @@ const ResourceLinkCell: React.FC<Props> = ({
         return;
       }
 
-      showAppError(showSnackbar, error, `Failed to load resource: ${resourceID}`);
+      showAppError(notify, error, `Failed to load resource: ${resourceID}`);
     });
   };
 

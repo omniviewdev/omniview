@@ -16,6 +16,20 @@ import (
 // The producer owns its lifetime before it starts; request cancellation is bridged
 // through the commit, never reparented after a request-bound producer has started.
 func (c *controller) StreamAction(ctx context.Context, pluginID string, input resource.ActionRequest) (id string, retErr error) {
+	return c.streamAction(ctx, pluginID, input, nil)
+}
+
+// AdoptStreamAction installs a host observer before native-ready ownership commits.
+// Its cancellation function requests provider cancellation without discarding observation.
+func (c *controller) AdoptStreamAction(ctx context.Context, pluginID string, input resource.ActionRequest, observer func(ActionSnapshot)) (func() error, error) {
+	id, err := c.streamAction(ctx, pluginID, input, observer)
+	if err != nil {
+		return nil, err
+	}
+	return func() error { return c.actions.requestCancellation(id) }, nil
+}
+
+func (c *controller) streamAction(ctx context.Context, pluginID string, input resource.ActionRequest, observer func(ActionSnapshot)) (id string, retErr error) {
 	ctx, err := c.admit(ctx, "resource.StreamAction", actionTarget(pluginID, input))
 	if err != nil {
 		return "", err
@@ -63,6 +77,7 @@ func (c *controller) StreamAction(ctx context.Context, pluginID string, input re
 		cancel()
 		return "", err
 	}
+	reservation.observer = observer
 	var establishment sync.Mutex
 	committed := false
 	startupDeadline := time.Now().Add(actionStartupTimeout)
@@ -159,21 +174,26 @@ func actionProtocolError(detail string) error {
 	return &resource.ResourceOperationError{Code: "PROVIDER_ERROR", Title: "Provider operation failed", Message: detail}
 }
 func actionEvent(event resource.ActionEvent, requestID string) (ActionEventDTO, error) {
+	if event.Activity != nil {
+		if err := resource.ValidateActivityPresentation(*event.Activity); err != nil {
+			return ActionEventDTO{}, actionProtocolError("The provider sent invalid activity presentation.")
+		}
+	}
 	if event.Type == "error" {
 		err := error(event.Error)
 		if event.Error == nil {
 			err = actionProtocolError("The provider reported an action failure.")
 		}
-		return ActionEventDTO{Type: "error", Error: apperror.ForResource(err, requestID)}, nil
+		return ActionEventDTO{Type: "error", Error: apperror.ForResource(err, requestID), Activity: event.Activity}, nil
 	}
 	if event.Type != "progress" && event.Type != "output" && event.Type != "complete" {
 		return ActionEventDTO{}, actionProtocolError("The provider sent an invalid action event.")
 	}
 	data := event.Data
-	if data == nil && event.Type != "complete" {
+	if data == nil && event.Activity == nil && event.Type != "complete" {
 		return ActionEventDTO{}, actionProtocolError("The provider omitted action data.")
 	}
-	encoded, err := json.Marshal(ActionSnapshot{Sequence: 9007199254740991, Event: ActionEventDTO{Type: event.Type, Data: data}, Terminal: true})
+	encoded, err := json.Marshal(ActionSnapshot{Sequence: 9007199254740991, Event: ActionEventDTO{Type: event.Type, Data: data, Activity: event.Activity}, Terminal: true})
 	if err != nil {
 		return ActionEventDTO{}, actionProtocolError("The provider sent invalid action data.")
 	}
@@ -187,8 +207,18 @@ func actionEvent(event resource.ActionEvent, requestID string) (ActionEventDTO, 
 	return snapshot.Event, nil
 }
 func (c *controller) runActionStream(ctx context.Context, handle *actionHandle, events <-chan resource.ActionEvent, result <-chan error, completed bool, resultErr error, descriptor *resource.ActionDescriptor) {
+	done := ctx.Done()
+	if handle.observer != nil {
+		done = nil
+	}
 	for {
 		if completed && len(events) == 0 {
+			if handle.observer != nil {
+				// EOF or an RPC error without a validated terminal event does
+				// not establish the remote mutation's outcome.
+				c.actions.update(handle, actionObservationLostEvent(handle.request.ID()), true)
+				return
+			}
 			if resultErr != nil {
 				c.actions.update(handle, ActionEventDTO{Type: "error", Error: apperror.ForResource(resultErr, handle.request.ID())}, true)
 			} else {
@@ -197,7 +227,9 @@ func (c *controller) runActionStream(ctx context.Context, handle *actionHandle, 
 			return
 		}
 		select {
-		case <-ctx.Done():
+		case <-handle.observationDone:
+			return
+		case <-done:
 			c.actions.update(handle, ActionEventDTO{Type: "error", Error: apperror.ForResource(context.Cause(ctx), handle.request.ID())}, true)
 			return
 		case resultErr = <-result:
@@ -214,6 +246,9 @@ func (c *controller) runActionStream(ctx context.Context, handle *actionHandle, 
 			}
 			if err != nil {
 				safe = ActionEventDTO{Type: "error", Error: apperror.ForResource(err, handle.request.ID())}
+				if handle.observer != nil {
+					safe = actionObservationLostEvent(handle.request.ID())
+				}
 			}
 			terminal := safe.Type == "error" || safe.Type == "complete"
 			c.actions.update(handle, safe, terminal)

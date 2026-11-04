@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { admitCandidate, verifyCandidate, verifyIsolation, isolationBaseline, reviewedIsolationCheckpoint, verifyGitlink } from './candidate-source.mjs';
+import { admitCandidate, verifyDeclaredSdk, verifyCandidate, verifyIsolation, isolationBaseline, reviewedIsolationCheckpoint, verifyGitlink } from './candidate-source.mjs';
 
 const cohort = { 'plugin-sdk': 'a'.repeat(40), ui: 'b'.repeat(40), kubernetes: 'c'.repeat(40) };
 const env = { REVIEWED_SDK_REVISION: cohort['plugin-sdk'] };
@@ -44,6 +44,20 @@ test('maintenance admission rejects tags, malformed revisions and absent externa
     }));
   }
 });
+test('candidate SDK cannot override the host pseudo-version with another approved SDK', () => {
+  const sdk = 'ddc51a65ce87' + 'a'.repeat(28);
+  for (const version of [
+    'v0.14.4-0.20261103224420-ddc51a65ce87',
+    'v0.0.0-20261103224420-ddc51a65ce87',
+    'v0.14.4-rc.0.20261103224420-ddc51a65ce87',
+  ]) {
+    const declared = `require (\n\tgithub.com/omniviewdev/plugin-sdk ${version}\n)\n`;
+    assert.doesNotThrow(() => verifyDeclaredSdk({ sdk }, declared));
+    assert.throws(() => verifyDeclaredSdk({ sdk: cohort['plugin-sdk'] }, declared), /conflicts with host go.mod/);
+  }
+  assert.throws(() => verifyDeclaredSdk({ sdk }, 'module host\n'), /must declare plugin-sdk/);
+});
+
 test('candidate verification rejects wrong, dirty and missing source checkouts', () => {
   const refs = admitCandidate(cohort, env);
   const sources = { sdk: '/sdk', ui: '/ui', kubernetes: '/kubernetes' };

@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
+import { useNotifications } from '../../activity/context';
 import { createErrorHandler } from '../../errors/parseAppError';
 import { Mutate } from '../../resource/v2/client';
 import type { MutationRequest } from '../../resource/v2/domain';
@@ -10,7 +10,7 @@ import { requireConnectionReady } from '../../connection/connectionReadiness';
 export const useResourceMutations = ({ pluginID: explicitPluginID }: { pluginID?: string }) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
   const queryClient = useQueryClient();
-  const { showSnackbar } = useSnackbar();
+  const { notify } = useNotifications();
   const mutation = useMutation({
     mutationFn: async (request: MutationRequest) => {
       await requireConnectionReady(pluginID, request.route.connection);
@@ -19,7 +19,7 @@ export const useResourceMutations = ({ pluginID: explicitPluginID }: { pluginID?
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: resourceQueryKeys.all(pluginID) });
     },
-    onError: createErrorHandler(showSnackbar, 'Failed to mutate resource'),
+    onError: createErrorHandler(notify, 'Failed to mutate resource'),
   });
   return { mutate: mutation.mutateAsync, mutation };
 };

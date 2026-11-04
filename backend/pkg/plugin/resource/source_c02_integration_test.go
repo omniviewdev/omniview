@@ -24,7 +24,7 @@ func sourceFileObservation(client *sourceFileClient, target resourcev2.ReadTarge
 	}
 	record := canonicalTestRecord(target.Provider, target.Authority, target.Type, "watched/opaque:%2F")
 	record.Body.Map["value"] = resourcev2.Value{Kind: "string", String: string(body)}
-	return resourcev2.SourceObservation{Record: record, Metadata: &resourcev2.ResourceMetadata{Labels: map[string]string{"value": string(body)}}}, nil
+	return resourcev2.SourceObservation{Record: resourcev2.CompactSourceRecord(record), Metadata: &resourcev2.ResourceMetadata{Labels: map[string]string{"value": string(body)}}}, nil
 }
 
 func TestC02SourceViewLifecycle(t *testing.T) {
@@ -66,7 +66,9 @@ func TestC02SourceViewLifecycle(t *testing.T) {
 				if err != nil {
 					return resourcev2.SourcePage{}, err
 				}
-				return resourcev2.SourcePage{Records: []resourcev2.Record{observation.Record}, Count: resourcev2.Count{Kind: "unknown"}, Coverage: resourcev2.Coverage{Kind: "complete"}, Consistency: resourcev2.ConsistencyBestEffort}, nil
+				record := canonicalTestRecord(request.Target.Provider, request.Target.Authority, request.Target.Type, observation.Record.Reference.Address.ID)
+				record.Body = observation.Record.Body
+				return resourcev2.SourcePage{Records: []resourcev2.Record{record}, Count: resourcev2.Count{Kind: "unknown"}, Coverage: resourcev2.Coverage{Kind: "complete"}, Consistency: resourcev2.ConsistencyBestEffort}, nil
 			},
 			Source: func(ctx context.Context, client *sourceFileClient, request resourcev2.SourceRequest, emitter resourcev2.SourceEmitter) error {
 				defer close(stopped)
