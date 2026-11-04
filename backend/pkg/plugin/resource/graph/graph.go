@@ -322,17 +322,9 @@ func (g *RelationshipGraph) RemoveEdgesForConnection(pluginID, connectionID stri
 		}
 	}
 
-	// Clean up remaining reverse-index entries for target nodes in this
-	// connection. Phase 1 already handled edges originating from this
-	// connection. What remains are edges from external sources pointing at
-	// nodes in this connection. We keep the forward entries and their
-	// interned strings (the external source still exists), but remove the
-	// reverse-index bookkeeping since the target node is gone.
-	for key, edges := range g.reverse {
-		if len(edges) > 0 && inConn(edges[0].Target) {
-			delete(g.reverse, key)
-		}
-	}
+	// External declarers retain their forward and reverse entries together.
+	// Targets can return without a changed observation from the declarer, so
+	// upstream traversal must not lose these surviving relationships.
 }
 
 type declMapKey struct {
