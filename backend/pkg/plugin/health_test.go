@@ -20,6 +20,28 @@ type testNoopEmitter struct{}
 
 func (testNoopEmitter) Emit(string, ...any) {}
 
+type healthManagedServers struct {
+	transactionDevServers
+	observations int
+}
+
+func (*healthManagedServers) LifecycleGeneration(string, string) string { return "generation" }
+func (*healthManagedServers) RuntimeGeneration(string, string) string   { return "generation" }
+func (s *healthManagedServers) NotifyPluginLifecycle(string, string, string, bool, bool, error) bool {
+	s.observations++
+	return true
+}
+
+type healthDispenseBackend struct {
+	plugintypes.PluginBackend
+	dispense func()
+}
+
+func (b *healthDispenseBackend) Dispense(string) (interface{}, error) {
+	b.dispense()
+	return nil, errors.New("unavailable")
+}
+
 func newTestHealthChecker(t *testing.T) (*HealthChecker, *pluginManager) {
 	t.Helper()
 	// Recovery can register after the state observer fires. Tie it to the test.
@@ -46,7 +68,7 @@ func TestHealthChecker_HealthyBackend_NoRecovery(t *testing.T) {
 		Backend: backend,
 	}
 
-	assert.True(t, hc.checkPlugin("test-plugin"))
+	assert.True(t, hc.checkPlugin("test-plugin", "", pm.records["test-plugin"], backend))
 }
 
 func TestHealthChecker_UnhealthyBackend(t *testing.T) {
@@ -61,14 +83,14 @@ func TestHealthChecker_UnhealthyBackend(t *testing.T) {
 		Backend: backend,
 	}
 
-	assert.False(t, hc.checkPlugin("test-plugin"))
+	assert.False(t, hc.checkPlugin("test-plugin", "", pm.records["test-plugin"], backend))
 }
 
 func TestHealthChecker_NoRecord(t *testing.T) {
 	hc, _ := newTestHealthChecker(t)
 
 	// No record for this plugin → unhealthy.
-	assert.False(t, hc.checkPlugin("nonexistent"))
+	assert.False(t, hc.checkPlugin("nonexistent", "", nil, nil))
 }
 
 func TestHealthChecker_NoBackend(t *testing.T) {
@@ -80,7 +102,7 @@ func TestHealthChecker_NoBackend(t *testing.T) {
 		// Backend is nil.
 	}
 
-	assert.False(t, hc.checkPlugin("test-plugin"))
+	assert.False(t, hc.checkPlugin("test-plugin", "", pm.records["test-plugin"], nil))
 }
 
 func TestHealthChecker_CustomHealthFunc(t *testing.T) {
@@ -97,10 +119,44 @@ func TestHealthChecker_CustomHealthFunc(t *testing.T) {
 		Backend: backend,
 	}
 
-	assert.True(t, hc.checkPlugin("test-plugin"))
+	assert.True(t, hc.checkPlugin("test-plugin", "", pm.records["test-plugin"], backend))
 
 	healthy = false
-	assert.False(t, hc.checkPlugin("test-plugin"))
+	assert.False(t, hc.checkPlugin("test-plugin", "", pm.records["test-plugin"], backend))
+}
+
+func TestHealthChecker_ManagedFailureFencedByProbePair(t *testing.T) {
+	for _, replace := range []bool{false, true} {
+		t.Run(fmt.Sprintf("replace=%t", replace), func(t *testing.T) {
+			hc, pm := newTestHealthChecker(t)
+			servers := &healthManagedServers{}
+			pm.devServerMgr = servers
+			backend := &healthDispenseBackend{
+				PluginBackend: plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{}),
+				dispense: func() {
+					if replace {
+						pm.recordsMu.Lock()
+						pm.records["plugin"] = &plugintypes.PluginRecord{
+							ID: "plugin", Phase: lifecycle.PhaseRunning,
+							Backend: plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{}),
+						}
+						pm.recordsMu.Unlock()
+					}
+				},
+			}
+			record := &plugintypes.PluginRecord{
+				ID: "plugin", Phase: lifecycle.PhaseRunning, DevPath: "source", Backend: backend,
+			}
+			pm.records["plugin"] = record
+
+			require.False(t, hc.checkPlugin("plugin", "source", record, backend))
+			if replace {
+				require.Zero(t, servers.observations)
+			} else {
+				require.Equal(t, 1, servers.observations)
+			}
+		})
+	}
 }
 
 func TestHandleCrashWithBackoff_ContextCancellation(t *testing.T) {
@@ -201,6 +257,147 @@ func TestCheckAll_HealthyPlugin_NoCrash(t *testing.T) {
 	hc.checkAll()
 	// No recovery state should be created for healthy plugins.
 	assert.Empty(t, hc.recoveryStates)
+}
+
+func TestCheckAll_ProbesCollectedBackendAcrossReplacement(t *testing.T) {
+	for _, staleHealthy := range []bool{true, false} {
+		for _, replaceRecord := range []bool{true, false} {
+			t.Run(fmt.Sprintf("staleHealthy=%t/replaceRecord=%t", staleHealthy, replaceRecord), func(t *testing.T) {
+				hc, pm := newTestHealthChecker(t)
+				pm.healthChecker = hc
+				triggered := make(chan struct{}, 1)
+				var target string
+				var unlock func()
+				oldProbes, replacementProbes := 0, 0
+
+				for _, id := range []string{"one", "two"} {
+					id := id
+					backend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{
+						HealthCheck: func() bool {
+							oldProbes++
+							if target != "" {
+								return id != target || staleHealthy
+							}
+							target = "one"
+							if id == target {
+								target = "two"
+							}
+							lock := pm.pluginOpsLock(target)
+							lock.Lock()
+							unlock = lock.Unlock
+							sm := lifecycle.NewPluginStateMachine(target, lifecycle.PhaseRunning)
+							sm.AddObserver(func(_ string, tr lifecycle.Transition) {
+								if tr.To == lifecycle.PhaseRecovering {
+									select {
+									case triggered <- struct{}{}:
+									default:
+									}
+								}
+							})
+							replacement := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{
+								HealthCheck: func() bool {
+									replacementProbes++
+									return false
+								},
+							})
+							pm.recordsMu.Lock()
+							if replaceRecord {
+								pm.records[target] = &plugintypes.PluginRecord{
+									ID: target, Phase: lifecycle.PhaseRunning,
+									Backend: replacement, StateMachine: sm,
+								}
+							} else {
+								pm.records[target].Backend = replacement
+								pm.records[target].StateMachine = sm
+							}
+							pm.recordsMu.Unlock()
+							return true
+						},
+					})
+					pm.records[id] = &plugintypes.PluginRecord{
+						ID: id, Phase: lifecycle.PhaseRunning, Backend: backend,
+					}
+				}
+				defer func() {
+					if unlock != nil {
+						unlock()
+					}
+				}()
+
+				hc.checkAll()
+				require.NotEmpty(t, target)
+				require.Equal(t, 1, oldProbes)
+				require.Equal(t, 1, replacementProbes)
+				unlock()
+				unlock = nil
+
+				select {
+				case <-triggered:
+				case <-time.After(3 * time.Second):
+					t.Fatal("unhealthy replacement did not enter recovery")
+				}
+			})
+		}
+	}
+}
+
+func TestCheckAll_StaleProbeDoesNotAffectReplacement(t *testing.T) {
+	for _, staleHealthy := range []bool{true, false} {
+		for _, replaceRecord := range []bool{true, false} {
+			t.Run(fmt.Sprintf("staleHealthy=%t/replaceRecord=%t", staleHealthy, replaceRecord), func(t *testing.T) {
+				hc, pm := newTestHealthChecker(t)
+				pm.healthChecker = hc
+				triggered := make(chan struct{}, 1)
+				sm := lifecycle.NewPluginStateMachine("plugin", lifecycle.PhaseRunning)
+				sm.AddObserver(func(_ string, tr lifecycle.Transition) {
+					if tr.To == lifecycle.PhaseRecovering {
+						select {
+						case triggered <- struct{}{}:
+						default:
+						}
+					}
+				})
+				replacement := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{
+					HealthCheck: func() bool { return false },
+				})
+				var old *plugintypes.PluginRecord
+				backend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{
+					HealthCheck: func() bool {
+						pm.recordsMu.Lock()
+						if replaceRecord {
+							pm.records["plugin"] = &plugintypes.PluginRecord{
+								ID: "plugin", Phase: lifecycle.PhaseRunning,
+								Backend: replacement, StateMachine: sm,
+							}
+						} else {
+							old.Backend = replacement
+							old.StateMachine = sm
+						}
+						pm.recordsMu.Unlock()
+						return staleHealthy
+					},
+				})
+				old = &plugintypes.PluginRecord{ID: "plugin", Phase: lifecycle.PhaseRunning, Backend: backend}
+				pm.records["plugin"] = old
+
+				hc.checkAll()
+				// Complete the stale-result path synchronously as well, so the
+				// assertion does not depend on scheduling the spawned goroutine.
+				pm.handleProbedCrash("plugin", old, backend)
+				select {
+				case <-triggered:
+					t.Fatal("stale probe affected replacement")
+				default:
+				}
+				hc.checkAll()
+				select {
+				case <-triggered:
+				case <-time.After(3 * time.Second):
+					t.Fatal("unhealthy replacement did not enter recovery")
+				}
+			})
+		}
+	}
 }
 
 func TestCheckAll_SkipsRecoveringPlugins(t *testing.T) {

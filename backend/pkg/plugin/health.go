@@ -71,14 +71,9 @@ func (hc *HealthChecker) Start(ctx context.Context) {
 
 // checkAll iterates over all loaded plugins and checks their health.
 func (hc *HealthChecker) checkAll() {
-	// Collect the running backend plugins under the records lock, then probe
-	// them without holding it: Healthy() can be an RPC to the plugin.
-	type probe struct {
-		id      string
-		record  *plugintypes.PluginRecord
-		backend plugintypes.PluginBackend
-	}
-	var probes []probe
+	// Collect candidate IDs under the records lock, then probe without holding
+	// it: Healthy() can be an RPC to the plugin.
+	var probes []string
 	hc.pm.recordsMu.RLock()
 	for id, record := range hc.pm.records {
 		if record.Phase != lifecycle.PhaseRunning {
@@ -88,12 +83,11 @@ func (hc *HealthChecker) checkAll() {
 		if record.Backend == nil && !record.Metadata.HasBackendCapabilities() {
 			continue
 		}
-		probes = append(probes, probe{id: id, record: record, backend: record.Backend})
+		probes = append(probes, id)
 	}
 	hc.pm.recordsMu.RUnlock()
 
-	for _, candidate := range probes {
-		id := candidate.id
+	for _, id := range probes {
 		// Skip if recovery is already in progress for this plugin.
 		hc.mu.Lock()
 		_, recovering := hc.recoveryStates[id]
@@ -101,32 +95,39 @@ func (hc *HealthChecker) checkAll() {
 		if recovering {
 			continue
 		}
+		// Reacquire the pair together so replacements made after collection are
+		// probed now, while later replacements remain fenced from the result.
+		hc.pm.recordsMu.RLock()
+		record := hc.pm.records[id]
+		if record == nil || record.Phase != lifecycle.PhaseRunning ||
+			(record.Backend == nil && !record.Metadata.HasBackendCapabilities()) {
+			hc.pm.recordsMu.RUnlock()
+			continue
+		}
+		backend, source := record.Backend, record.DevPath
+		hc.pm.recordsMu.RUnlock()
 
-		if !hc.checkPlugin(id) {
+		if !hc.checkPlugin(id, source, record, backend) {
 			hc.logger.Warnw(hc.pm.ctx, "plugin health check failed, triggering recovery",
 				"pluginID", id)
-			go hc.pm.handleProbedCrash(id, candidate.record, candidate.backend)
+			go hc.pm.handleProbedCrash(id, record, backend)
 		}
 	}
 }
 
 // checkPlugin checks the health of a single running plugin using its Backend.
 // Returns true if healthy, false if recovery should be triggered.
-func (hc *HealthChecker) checkPlugin(id string) bool {
-	hc.pm.recordsMu.RLock()
-	var backend plugintypes.PluginBackend
-	record, ok := hc.pm.records[id]
-	if ok {
-		backend = record.Backend
-	}
-	hc.pm.recordsMu.RUnlock()
+func (hc *HealthChecker) checkPlugin(id, source string, record *plugintypes.PluginRecord, backend plugintypes.PluginBackend) bool {
 	if record != nil {
-		source := record.DevPath
 		generation := hc.pm.managedRuntimeGeneration(id, source)
 		if generation != "" && backend != nil {
 			err := verifyLifecycleRPC(backend, id)
 			if err != nil {
-				hc.pm.observeManagedLifecycle(id, source, generation, false, false, err)
+				unlock := hc.pm.lockProbedCrash(id, &probedCrash{record: record, backend: backend}, lifecycle.PhaseRunning)
+				if unlock != nil {
+					hc.pm.observeManagedLifecycle(id, source, generation, false, false, err)
+					unlock()
+				}
 			}
 			return err == nil
 		}
