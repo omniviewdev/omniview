@@ -326,6 +326,82 @@ func TestSourceOpenDuringBindingRecovery(t *testing.T) {
 	require.NoError(t, ctrl.CloseSourceView(testInvocationContext(), "p1", view.ViewID))
 }
 
+func TestSourceOpenReportsFailedBindingRecovery(t *testing.T) {
+	ctrl, _, provider, target := sourceTestFixture(t)
+	view := sourceTestOpen(t, ctrl, target)
+	first := sourceNextOpen(t, provider)
+	sourceSend(first.stream, sourceBoundary(resourcev2.EnumerationExhausted))
+	session := retryTestSession(ctrl, view.ViewID)
+
+	entered := make(chan struct{})
+	resume := make(chan struct{})
+	var fail atomic.Bool
+	catalog := provider.CatalogFunc
+	provider.CatalogFunc = func(ctx context.Context, request resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
+		if fail.CompareAndSwap(true, false) {
+			close(entered)
+			<-resume
+			return resourcev2.Catalog{}, resourcev2.NewError("FORBIDDEN", "Recovery denied.")
+		}
+		return catalog(ctx, request)
+	}
+	fail.Store(true)
+	ctrl.pluginsMu.Lock()
+	err := ctrl.invalidateSourceRoutesLocked("p1", []string{target.Target.Route.Connection}, false)
+	ctrl.pluginsMu.Unlock()
+	require.NoError(t, err)
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("binding recovery did not start")
+	}
+	current := admittedReadTarget(t, ctrl, "p1", "conn-1", "native::Pod")
+	request := HostSourceViewRequest{TargetID: current.TargetID, Target: current.Target, Updates: "ifSupported"}
+	_, err = ctrl.OpenSourceView(testInvocationContext(), "p1", request)
+	require.Equal(t, "RESET_REQUIRED", resourcev2.ErrorCode(err))
+	require.Contains(t, err.Error(), "Source binding is being renewed.")
+	close(resume)
+	require.Eventually(t, func() bool {
+		session.mu.Lock()
+		defer session.mu.Unlock()
+		return session.status.State == "failed" && session.status.Error != nil && session.status.Error.Message == "Recovery denied."
+	}, 5*time.Second, time.Millisecond)
+	for _, updates := range []string{"ifSupported", "none"} {
+		request.Updates = updates
+		opened, err := ctrl.OpenSourceView(testInvocationContext(), "p1", request)
+		require.Empty(t, opened.ViewID)
+		require.Equal(t, "RESET_REQUIRED", resourcev2.ErrorCode(err))
+		require.Contains(t, err.Error(), "Recovery denied.")
+	}
+	select {
+	case <-provider.opens:
+		t.Fatal("failed binding recovery reopened the source")
+	default:
+	}
+	// A later route epoch must not inherit the earlier recovery failure.
+	session.mu.Lock()
+	locked := true
+	t.Cleanup(func() {
+		if locked {
+			session.mu.Unlock()
+		}
+	})
+	ctrl.pluginsMu.Lock()
+	err = ctrl.invalidateSourceRoutesLocked("p1", []string{target.Target.Route.Connection}, false)
+	ctrl.pluginsMu.Unlock()
+	require.NoError(t, err)
+	current = admittedReadTarget(t, ctrl, "p1", "conn-1", "native::Pod")
+	request = HostSourceViewRequest{TargetID: current.TargetID, Target: current.Target, Updates: "ifSupported"}
+	_, err = ctrl.OpenSourceView(testInvocationContext(), "p1", request)
+	require.Equal(t, "RESET_REQUIRED", resourcev2.ErrorCode(err))
+	require.Contains(t, err.Error(), "Source binding is being renewed.")
+	session.mu.Unlock()
+	locked = false
+	second := sourceNextOpen(t, provider)
+	sourceSend(second.stream, sourceBoundary(resourcev2.EnumerationExhausted))
+	require.NoError(t, ctrl.CloseSourceView(testInvocationContext(), "p1", view.ViewID))
+}
+
 func TestRecoveringSourceKeyPreservesSourceIdentity(t *testing.T) {
 	target := resourcev2.ReadTarget{Route: resourcev2.AccessRoute{Connection: "route"}, Provider: "old", Authority: "old", Type: "type", Representation: "native"}
 	key := recoveringSourceKey("plugin", "owner", target)

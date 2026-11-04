@@ -56,6 +56,16 @@ func (sc *sourceCoordinator) recoverBinding(pluginID, connection string, generat
 
 func (sc *sourceCoordinator) recoverBindingSession(s *sourceSession, generation *pluginState, epoch uint64) {
 	s.mu.Lock()
+	sc.mu.Lock()
+	sc.ctrl.pluginsMu.RLock()
+	current := sc.ctrl.plugins[s.pluginID] == generation && generation.provider != nil && generation.ctx.Err() == nil && generation.sourceEpoch[s.target.Route.Connection] == epoch && !generation.sourceChanging[s.target.Route.Connection]
+	if current && sc.sessions[s.key] == s {
+		if failure, ok := s.ctx.Value(sourceRecoveryFailureKey{}).(sourceRecoveryFailure); ok && failure.epoch == epoch {
+			s.ctx = context.WithValue(s.ctx, sourceRecoveryFailureKey{}, nil)
+		}
+	}
+	sc.ctrl.pluginsMu.RUnlock()
+	sc.mu.Unlock()
 	target, oldCtx, mode := s.target, s.ctx, s.mode
 	s.mu.Unlock()
 	ctx := context.WithValue(context.WithoutCancel(oldCtx), sourceEpochKey{}, sourceEpochSnapshot{Connection: target.Route.Connection, Epoch: epoch})
@@ -84,7 +94,7 @@ func (sc *sourceCoordinator) recoverBindingSession(s *sourceSession, generation 
 	s.mu.Lock()
 	sc.mu.Lock()
 	sc.ctrl.pluginsMu.RLock()
-	current := sc.ctrl.plugins[s.pluginID] == generation && generation.provider != nil && generation.ctx.Err() == nil && generation.sourceEpoch[target.Route.Connection] == epoch && !generation.sourceChanging[target.Route.Connection]
+	current = sc.ctrl.plugins[s.pluginID] == generation && generation.provider != nil && generation.ctx.Err() == nil && generation.sourceEpoch[target.Route.Connection] == epoch && !generation.sourceChanging[target.Route.Connection]
 	if !current || sc.sessions[s.key] != s || s.closed {
 		sc.ctrl.pluginsMu.RUnlock()
 		s.mu.Unlock()
@@ -109,6 +119,7 @@ func (sc *sourceCoordinator) recoverBindingSession(s *sourceSession, generation 
 	}
 	if err != nil {
 		s.rebindFailedLocked(err)
+		s.ctx = context.WithValue(s.ctx, sourceRecoveryFailureKey{}, sourceRecoveryFailure{epoch: epoch, message: s.status.Error.Message})
 	}
 	empty := !s.inventory && len(s.views) == 0 && s.reservations == 0
 	if empty && sc.sessions[s.key] == s {

@@ -185,6 +185,20 @@ func sourceKey(pluginID, owner string, target resourcev2.ReadTarget, mode string
 
 type sourceBindingKey struct{}
 
+type sourceRecoveryFailureKey struct{}
+
+type sourceRecoveryFailure struct {
+	epoch   uint64
+	message string
+}
+
+func sourceRecoveryError(ctx context.Context, epoch uint64) error {
+	if failure, ok := ctx.Value(sourceRecoveryFailureKey{}).(sourceRecoveryFailure); ok && failure.epoch == epoch {
+		return resourcev2.NewError("RESET_REQUIRED", failure.message)
+	}
+	return resourcev2.NewError("RESET_REQUIRED", "Source binding is being renewed.")
+}
+
 type sourceBinding struct {
 	Representation  resourcev2.Representation
 	Descriptor      resourcev2.ResourceType
@@ -313,10 +327,11 @@ retry:
 			goto retry
 		}
 		if sc.ctrl.currentGeneration(existing.ctx, pluginID, existing.pluginGeneration) != nil {
+			err := sourceRecoveryError(existing.ctx, opctx.Value(sourceBindingKey{}).(sourceBinding).Epoch.Epoch)
 			sc.mu.Unlock()
 			existing.mu.Unlock()
 			cancel()
-			return nil, "", resourcev2.NewError("RESET_REQUIRED", "Source binding is being renewed.")
+			return nil, "", err
 		}
 		cancel()
 		if inventory {
@@ -336,9 +351,10 @@ retry:
 		oldBinding, ok := existing.ctx.Value(sourceBindingKey{}).(sourceBinding)
 		if ok && existing.pluginGeneration == generation && oldBinding.Epoch.Epoch < binding.Epoch.Epoch &&
 			recoveringSourceKey(existing.pluginID, existing.owner, existing.target) == logicalKey {
+			err := sourceRecoveryError(existing.ctx, binding.Epoch.Epoch)
 			sc.mu.Unlock()
 			cancel()
-			return nil, "", resourcev2.NewError("RESET_REQUIRED", "Source binding is being renewed.")
+			return nil, "", err
 		}
 	}
 	s := &sourceSession{coordinator: sc, key: key, pluginID: pluginID, owner: owner, target: target, mode: mode, opener: opener, pluginGeneration: generation, ctx: opctx, cancel: cancel, inventory: inventory, members: make(map[string]sourceMember), views: make(map[string]*sourceView)}
