@@ -641,6 +641,11 @@ export enum Feature {
      * FeatureSourceSessions enables phased source snapshot/update sessions.
      */
     FeatureSourceSessions = "sourceSessions",
+
+    /**
+     * featureLegacyBestEffortUpdates is accepted for old providers but grants no transport.
+     */
+    featureLegacyBestEffortUpdates = "bestEffortUpdates",
 };
 
 /**
