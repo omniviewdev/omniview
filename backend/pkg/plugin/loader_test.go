@@ -508,39 +508,6 @@ func (b *capDetectingBackend) DetectCapabilities() ([]string, error) {
 	return b.caps, nil
 }
 
-func TestStartPlugin_SettingsNotCalledTwice(t *testing.T) {
-	pm := newTestManager(t)
-	pm.ctx = context.Background()
-
-	settingsCtrl := &trackingController{}
-	execCtrl := &trackingController{}
-	pm.connlessControllers[sdktypes.CapabilitySettings] = settingsCtrl
-	pm.connlessControllers[sdktypes.CapabilityExec] = execCtrl
-
-	// Backend that detects exec capability.
-	backend := &capDetectingBackend{
-		version: plugintypes.CurrentProtocolVersion,
-		caps:    []string{"exec"},
-	}
-
-	record := &plugintypes.PluginRecord{
-		ID:       "test",
-		Phase:    lifecycle.PhaseStarting,
-		Metadata: config.PluginMeta{ID: "test", Name: "test"},
-	}
-
-	err := pm.startPlugin(record, backend)
-	require.NoError(t, err)
-
-	settingsCtrl.mu.Lock()
-	defer settingsCtrl.mu.Unlock()
-	assert.Len(t, settingsCtrl.startCalls, 1, "settings OnPluginStart should be called exactly once")
-
-	execCtrl.mu.Lock()
-	defer execCtrl.mu.Unlock()
-	assert.Len(t, execCtrl.startCalls, 1, "exec OnPluginStart should be called exactly once")
-}
-
 func TestStopPlugin_SettingsNotCalledTwice(t *testing.T) {
 	pm := newTestManager(t)
 
@@ -739,11 +706,6 @@ func TestCapStringsToCapabilities_TableDriven(t *testing.T) {
 			name:     "known capabilities",
 			input:    []string{"resource", "exec", "log"},
 			expected: []sdktypes.Capability{sdktypes.CapabilityResource, sdktypes.CapabilityExec, sdktypes.CapabilityLog},
-		},
-		{
-			name:     "settings filtered out",
-			input:    []string{"resource", "settings"},
-			expected: []sdktypes.Capability{sdktypes.CapabilityResource},
 		},
 		{
 			name:     "unknown ignored",

@@ -303,3 +303,46 @@ func TestSelectedDatasourceDoesNotRequireCatalogListPrivilege(t *testing.T) {
 	_, err = c.SaveMetricBinding(bindings[0])
 	require.ErrorContains(t, err, "selected datasource denied")
 }
+
+func TestResourceSetMixedCacheDispatchesOnlyMissingResources(t *testing.T) {
+	c, provider := setFixtureController(t)
+	warm := make([]sdk.MetricResource, 64)
+	combined := make([]sdk.MetricResource, 0, 128)
+	expectedMissing := make(map[string]bool, 64)
+	for i := range 128 {
+		name := fmt.Sprintf("pod-%03d", i)
+		resource := setResource(fmt.Sprintf("combined-%d", i), "one", name)
+		if i < 64 {
+			warm[i] = setResource(fmt.Sprintf("warm-%d", i), "one", name)
+		} else {
+			expectedMissing[name] = true
+		}
+		combined = append(combined, resource)
+	}
+	warmed, err := c.QueryResources(context.Background(), setRequest(warm...))
+	require.NoError(t, err)
+	require.Len(t, warmed.Results, 64)
+	require.Equal(t, int32(1), provider.calls.Load())
+	result, err := c.QueryResources(context.Background(), setRequest(combined...))
+	require.NoError(t, err)
+	require.Len(t, result.Results, 128)
+	require.Equal(t, int32(2), provider.calls.Load(), "64 warm plus 64 new resources must dispatch only one new chunk")
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	require.Len(t, provider.requests, 2)
+	require.Len(t, provider.requests[1].Resources, 64)
+	for _, resource := range provider.requests[1].Resources {
+		require.True(t, expectedMissing[resource.ResourceID], "fresh cached resource was dispatched again: %s", resource.ResourceID)
+		delete(expectedMissing, resource.ResourceID)
+	}
+	require.Empty(t, expectedMissing)
+	tokens := make(map[string]bool, 128)
+	for _, metric := range result.Results {
+		require.False(t, tokens[metric.ResourceToken], "merged result duplicated a resource")
+		tokens[metric.ResourceToken] = true
+		require.Equal(t, "monitoring-a", metric.Provenance.Source.ConnectionID)
+	}
+	for _, resource := range combined {
+		require.True(t, tokens[resource.Token], "merged result lost a cached or new resource")
+	}
+}

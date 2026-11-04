@@ -14,7 +14,7 @@ import (
 // CatalogEntry is metadata-only until activation. The opener grants only this
 // plugin's private store and returns an independently owned handle on each call.
 func CatalogEntry(openState func() (*os.Root, error)) plugin.CatalogEntry {
-	return plugin.CatalogEntry{Metadata: config.PluginMeta{ID: "grafana", Name: "Grafana", Version: "1.0.0", Description: "External Prometheus-compatible resource metrics", Capabilities: []string{"metric", "ui"}}, FrontendModule: "grafana", NewBackend: func(context.Context) (plugintypes.PluginBackend, error) {
+	return plugin.CatalogEntry{Metadata: config.PluginMeta{ID: "grafana", Name: "Grafana", Icon: "SiGrafana", Version: "1.0.0", Description: "External Prometheus-compatible resource metrics", Capabilities: []string{"metric", "ui"}}, FrontendModule: "grafana", NewBackend: func(context.Context) (plugintypes.PluginBackend, error) {
 		p := NewProvider(openState)
 		backend, err := plugintypes.ComposeNativeBackend(plugintypes.NativeProviders{Metric: p, Shutdown: p.Close})
 		if err != nil {

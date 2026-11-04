@@ -1,6 +1,7 @@
 .grafana-settings { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 16px; font-size: 12px; }
 .grafana-settings header { display: flex; flex-direction: column; gap: 6px; }
 .grafana-settings label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
+.grafana-settings .grafana-http-checkbox { display: inline-flex; flex-direction: row; align-items: center; align-self: flex-start; gap: 6px; }
 .grafana-settings select, .grafana-settings input[type=password] { min-height: 28px; padding: 4px 8px; color: var(--ov-color-fg-default); background: var(--ov-color-bg-inset); border: 1px solid var(--ov-color-border-default); border-radius: 4px; font: inherit; }
 .grafana-tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--ov-color-border-default); padding-bottom: 8px; }
 .grafana-tabs [aria-selected=true] { border-bottom: 2px solid var(--ov-color-primary); }
@@ -11,7 +12,9 @@
 .grafana-stepper [aria-current=step] { color: var(--ov-color-primary); border-color: currentColor; }
 .grafana-mapping { border: 1px solid var(--ov-color-border-default); border-radius: 4px; padding: 8px 10px; min-width: 0; }
 .grafana-mapping summary { cursor: pointer; font-size: 12px; }
-.grafana-mapping summary span { margin-left: 16px; color: var(--ov-color-fg-muted); }
+.grafana-mapping summary > span { margin-left: 16px; color: var(--ov-color-fg-muted); }
+.grafana-mapping summary > .grafana-query { margin: 6px 0 0; padding: 6px 8px; }
+.grafana-mapping[open] > summary > .grafana-query { display: none; }
 .grafana-query { font-family: var(--ov-font-mono); font-size: 11px; line-height: 1.5; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--ov-color-bg-inset); padding: 8px; border-radius: 4px; }
 .grafana-query-input { width: 100%; box-sizing: border-box; min-height: 88px; resize: vertical; font-family: var(--ov-font-mono); font-size: 12px; color: var(--ov-color-fg-default); background: var(--ov-color-bg-inset); border: 1px solid var(--ov-color-border-default); padding: 8px; }
 .grafana-interpolation { color: #d8a5ef; }

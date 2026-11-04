@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react'
 import { Button, Input, Stack, Text } from '@omniviewdev/base-ui';
 import { MetricClient } from '@omniviewdev/runtime/api';
 import type { MetricDefinition, MetricValidationResult, ResourceSetQueryRequest, ResourceSetQueryResponse } from '@omniviewdev/runtime';
@@ -8,8 +8,10 @@ import { LuPlus } from 'react-icons/lu';
 const unitLabel = (unit: number) => ['dimensionless', 'bytes', 'KB', 'MB', 'GB', '%', 'ms', 'seconds', 'count', 'ops/s', 'bytes/s', 'millicores', 'cores'][unit] ?? `unit ${unit}`;
 
 export function QueryPreview({ query }: { query: string }) {
-  return <pre className="grafana-query" aria-label="Query preview"><code>{query.split(/(\{\{[^}]+\}\}|\b(?:sum|rate|by|avg|max|min|count|irate)\b|"[^"]*")/g).map((part, index) =>
-    <span key={index} className={part.startsWith('{{') ? 'grafana-interpolation' : /^"/.test(part) ? 'grafana-string' : /^(sum|rate|by|avg|max|min|count|irate)$/.test(part) ? 'grafana-function' : undefined}>{part}</span>)}</code></pre>;
+  return <pre className="grafana-query" aria-label="Query preview"><code>{query.split(/("(?:\\.|[^"\\])*"|\{\{[^}]+\}\}|\b(?:sum|rate|by|avg|max|min|count|irate)\b)/g).map((part, index) =>
+    part.startsWith('"') ? <span key={index} className="grafana-string">{part.split(/(\{\{[^}]+\}\})/g).map((value, nested) =>
+      <span key={nested} className={value.startsWith('{{') ? 'grafana-interpolation' : undefined}>{value}</span>)}</span> :
+      <span key={index} className={part.startsWith('{{') ? 'grafana-interpolation' : /^(sum|rate|by|avg|max|min|count|irate)$/.test(part) ? 'grafana-function' : undefined}>{part}</span>)}</code></pre>;
 }
 export function MappingEditor({ definition, connectionID, datasourceUID, onSave, onReset, inherited, onDraft, sampleRequest, schemaContext, editSemantics = false }: {
   definition: MetricDefinition; connectionID: string; datasourceUID: string; onSave: (definition: MetricDefinition) => Promise<void>;
@@ -91,7 +93,7 @@ export function MappingEditor({ definition, connectionID, datasourceUID, onSave,
     {labels.length > 0 && <label>Discovered identity label<select value="" onChange={event => setDraft({ ...draft, identity_labels: [...new Set([...draft.identity_labels, event.target.value])] })}><option value="">Add label</option>{labels.map(label => <option key={label}>{label}</option>)}</select></label>}
     <label>Result identity labels (comma-separated)<Input.Control value={draft.identity_labels.join(', ')} onChange={event => setDraft({ ...draft, identity_labels: event.target.value.split(',').map(value => value.trim()).filter(Boolean) })} /></label>
     {error && <p role="alert">{error}</p>}
-    {validation && <div role="status">{validation.valid ? 'Definition syntax and schema valid; no sample query executed.' : 'Mapping invalid'}{validation.issues?.map((issue, i) => <p key={i}>{issue.field}: {issue.message}</p>)}</div>}
+    {validation && <div role="status">{validation.valid ? 'Template and binding fields valid; PromQL grammar not checked; no sample query executed.' : 'Mapping invalid'}{validation.issues?.map((issue, i) => <p key={i}>{issue.field}: {issue.message}</p>)}</div>}
     <Stack direction="row" spacing={2}>
       <Button size="sm" disabled={!connectionID || !datasourceUID || busy} onClick={() => void validate()}>Validate definition</Button>
       <Button size="sm" disabled={!sampleRequest || !connectionID || !datasourceUID || busy} onClick={() => void testQuery()}>Test query</Button>
@@ -127,8 +129,8 @@ export function Mappings({ definitions, connectionID, datasourceUID, save, onDra
       <Button size="sm" onClick={() => { onDraft?.(newDefinition.id, undefined); setNewDefinition(undefined); }}>Cancel new metric</Button>
     </section>}
     {definitions.map(definition => <details hidden={![definition.name, ...definition.resource_keys, definition.query].join(' ').toLowerCase().includes(search.toLowerCase())} className="grafana-mapping" key={`${definition.id}:${definition.revision}`}>
-      <summary><strong>{definition.name}</strong><span>{definition.resource_keys.join(', ')} · {unitLabel(definition.unit)}</span></summary>
-      <QueryPreview query={definition.query} /><MappingEditor definition={definition} connectionID={connectionID} datasourceUID={datasourceUID} onSave={save} onDraft={onDraft} editSemantics schemaContext={schemaContext && definition.resource_keys.includes(schemaContext.resourceType) ? schemaContext : undefined} sampleRequest={sampleRequest?.resources.some(resource => definition.resource_keys.includes(resource.resource_key)) ? sampleRequest : undefined} />
+      <summary><strong>{definition.name}</strong><span>{definition.resource_keys.join(', ')} · {unitLabel(definition.unit)}</span><QueryPreview query={definition.query} /></summary>
+      <MappingEditor definition={definition} connectionID={connectionID} datasourceUID={datasourceUID} onSave={save} onDraft={onDraft} editSemantics schemaContext={schemaContext && definition.resource_keys.includes(schemaContext.resourceType) ? schemaContext : undefined} sampleRequest={sampleRequest?.resources.some(resource => definition.resource_keys.includes(resource.resource_key)) ? sampleRequest : undefined} />
     </details>)}
     {!definitions.length && <Text size="sm">No metric definitions available from active providers.</Text>}
   </Stack>;

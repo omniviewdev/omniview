@@ -115,6 +115,9 @@ func TestReadObservedResourceRejectsStaleAndDeniedSnapshots(t *testing.T) {
 			session.mu.Unlock()
 			body, guard, err := ctrl.ReadObservedResource(ctx, "p1", route, ref)
 			require.Error(t, err)
+			if failure == "missing" || failure == "incarnation" || failure == "owner" || failure == "generation" || failure == "representation" || failure == "opening" || failure == "snapshotting" || failure == "resetRequired" || failure == "failed" || failure == "closed" {
+				require.Equal(t, "UNAVAILABLE", resourcev2.ErrorCode(err), "missing source observations must retain a reviewed public classification")
+			}
 			require.Nil(t, body)
 			require.Nil(t, guard)
 			// Restore close eligibility for fixture cleanup.
@@ -175,7 +178,68 @@ func TestObservedResourceGuardRejectsEqualReplacementAndReset(t *testing.T) {
 				cancelDelivery()
 			}
 			session.mu.Unlock()
-			require.Error(t, guard(delivery))
+			err = guard(delivery)
+			require.Error(t, err)
+			if change == "replacement" || change == "reset" {
+				require.Equal(t, "UNAVAILABLE", resourcev2.ErrorCode(err))
+			}
 		})
 	}
+}
+
+func TestReadObservedResourceUsesDeclaredModelAndPrefersDefault(t *testing.T) {
+	ctrl, events, provider, target := sourceTestFixture(t)
+	catalog := provider.CatalogFunc
+	modelRepresentation := canonicalTestRepresentation()
+	modelRepresentation.ID = "declared-model"
+	provider.CatalogFunc = func(ctx context.Context, request resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
+		result, err := catalog(ctx, request)
+		result.Revision = "model-catalog"
+		result.Types[0].DefaultRepresentation = target.Target.Representation
+		result.Types[0].ModelRepresentation = modelRepresentation.ID
+		result.Types[0].Representations = append(result.Types[0].Representations, modelRepresentation)
+		return result, err
+	}
+	provider.GetFunc = func(context.Context, resourcev2.GetRequest) (resourcev2.Record, error) {
+		t.Fatal("declared model projection must reuse its owner view")
+		return resourcev2.Record{}, nil
+	}
+	modelTarget := target
+	modelTarget.Target.Representation = modelRepresentation.ID
+	modelView := sourceTestOpen(t, ctrl, modelTarget)
+	defer ctrl.CloseSourceView(testInvocationContext(), "p1", modelView.ViewID)
+	modelOpen := sourceNextOpen(t, provider)
+	record := sourceTestRecord(target.Target, "pod", "uid")
+	modelRecord := record
+	modelRecord.Representation = modelRepresentation
+	modelRecord.Body = resourcev2.Value{Kind: "map", Map: map[string]resourcev2.Value{"name": {Kind: "string", String: "model-observation"}}}
+	modelRecord.Coverage = resourcev2.Coverage{Kind: "partial", Paths: []string{"/omitted"}, Reason: "model omits private fields"}
+	sourceSend(modelOpen.stream, resourcev2.SourceFrame{Begin: &resourcev2.SourceBegin{Mode: modelOpen.request.Mode}})
+	sourceSend(modelOpen.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: modelRecord}}}})
+	sourceSend(modelOpen.stream, sourceBoundary(resourcev2.EnumerationExhausted))
+	waitSourceView(t, events, modelView.Topic, func(event HostSourceViewEvent) bool { return event.Kind == "snapshotEnd" })
+	body, modelGuard, err := ctrl.ReadObservedResource(testInvocationContext(), "p1", target.Target.Route, record.Reference)
+	require.NoError(t, err)
+	require.Equal(t, "model-observation", body.Map["name"].String)
+	require.NotContains(t, body.Map, "omitted", "model omission must not be filled by another source or upstream read")
+	require.NoError(t, modelGuard(testInvocationContext()))
+
+	defaultView := sourceTestOpen(t, ctrl, target)
+	defaultOpen := sourceNextOpen(t, provider)
+	sourceSend(defaultOpen.stream, resourcev2.SourceFrame{Begin: &resourcev2.SourceBegin{Mode: defaultOpen.request.Mode}})
+	sourceSend(defaultOpen.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: record}}}})
+	sourceSend(defaultOpen.stream, sourceBoundary(resourcev2.EnumerationExhausted))
+	waitSourceView(t, events, defaultView.Topic, func(event HostSourceViewEvent) bool { return event.Kind == "snapshotEnd" })
+	for range 8 {
+		body, guard, err := ctrl.ReadObservedResource(testInvocationContext(), "p1", target.Target.Route, record.Reference)
+		require.NoError(t, err)
+		require.Equal(t, record.Body, *body, "default representation preference must not depend on map iteration")
+		require.NoError(t, guard(testInvocationContext()))
+	}
+	require.Equal(t, "UNAVAILABLE", resourcev2.ErrorCode(modelGuard(testInvocationContext())), "cached model projection must reset when preferred source changes")
+	require.NoError(t, ctrl.CloseSourceView(testInvocationContext(), "p1", defaultView.ViewID))
+	body, _, err = ctrl.ReadObservedResource(testInvocationContext(), "p1", target.Target.Route, record.Reference)
+	require.NoError(t, err)
+	require.Equal(t, modelRecord.Body, *body)
+	require.Empty(t, provider.opens)
 }

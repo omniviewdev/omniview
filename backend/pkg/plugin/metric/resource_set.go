@@ -37,6 +37,7 @@ func (c *controller) queryResourceSet(ctx context.Context, input sdk.ResourceSet
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	ctx = resource.WithCatalogSnapshotCache(ctx)
 	co := c.queryWork()
 	epoch := co.currentEpoch()
 	if admit == nil {
@@ -150,43 +151,15 @@ func (c *controller) queryResourceSet(ctx context.Context, input sdk.ResourceSet
 		}
 		dispatch := req
 		dispatch.Resources = append([]sdk.MetricResource(nil), resources...)
-		if e := c.projectMetricResources(work, &dispatch); e != nil {
-			return nil, e
-		}
-		out, e := c.dispatchResourceSet(work, dispatch)
-		// Supplement preserves both provenances. A denied or failed external request
-		// is never replaced by native success.
-		if e == nil && binding != nil && binding.Policy == "supplement" {
-			native := dispatch
-			native.Resources = resources
-			native.Source = sdk.MetricSourceReference{PluginID: req.ResourcePluginID, ConnectionID: req.ResourceConnectionID, DatasourceUID: "native", DatasourceKind: "native"}
-			native.BindingID = ""
-			native.Definitions = nil
-			native.PublicScope = nil
-			native.MappingRevision = "native"
-			extra, nativeErr := c.dispatchResourceSet(work, native)
-			if nativeErr != nil {
-				out.Warnings = append(out.Warnings, "Supplementary native metrics unavailable.")
-			} else {
-				out.Results = append(out.Results, extra.Results...)
-				out.Warnings = append(out.Warnings, extra.Warnings...)
+		var out *sdk.ResourceSetQueryResponse
+		var e error
+		if binding != nil && binding.Policy == "supplement" {
+			out, e = c.dispatchSupplementalResources(work, dispatch)
+		} else {
+			if e = c.projectMetricResources(work, &dispatch); e != nil {
+				return nil, e
 			}
-			samples := 0
-			for _, result := range out.Results {
-				if result.Value != nil {
-					samples += metricSampleCount(result.Value)
-				}
-			}
-			if samples > maxSetSamples {
-				return nil, resourcev2.NewError("RESOURCE_LIMIT", "Combined metric sample count exceeds limit.")
-			}
-			raw, marshalErr := json.Marshal(out)
-			if marshalErr != nil {
-				return nil, marshalErr
-			}
-			if len(raw) > maxSetResponseBytes {
-				return nil, resourcev2.NewError("RESOURCE_LIMIT", "Combined metric response exceeds byte limit.")
-			}
+			out, e = c.dispatchResourceSet(work, dispatch)
 		}
 		if !valid() {
 			return nil, profileChangingError()
@@ -311,20 +284,23 @@ func (c *controller) resolveMetricRequest(req *sdk.ResourceSetQueryRequest, bind
 	}
 	for _, id := range req.MetricIDs {
 		d, ok := byID[id]
-		if !ok {
+		if !ok || (selected.Policy == "supplement" && d.Native) {
+			if selected.Policy == "supplement" {
+				continue
+			}
 			return nil, fmt.Errorf("metric definition %q is unavailable", id)
 		}
+		applicable := 0
 		for _, r := range req.Resources {
-			applicable := false
-			for _, key := range d.ResourceKeys {
-				if key == r.ResourceKey {
-					applicable = true
-					break
-				}
+			if metricAppliesToResource(d, r.ResourceKey) {
+				applicable++
 			}
-			if !applicable {
-				return nil, fmt.Errorf("metric %q does not apply to resource type", id)
-			}
+		}
+		if applicable != len(req.Resources) && selected.Policy != "supplement" {
+			return nil, fmt.Errorf("metric %q does not apply to resource type", id)
+		}
+		if applicable == 0 {
+			continue
 		}
 		shapeOK := false
 		for _, shape := range d.SupportedShapes {
@@ -334,6 +310,9 @@ func (c *controller) resolveMetricRequest(req *sdk.ResourceSetQueryRequest, bind
 			}
 		}
 		if !shapeOK {
+			if selected.Policy == "supplement" {
+				continue
+			}
 			return nil, fmt.Errorf("metric %q does not support requested shape", id)
 		}
 		for _, o := range selected.Overrides {

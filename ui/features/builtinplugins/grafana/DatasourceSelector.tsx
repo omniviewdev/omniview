@@ -1,4 +1,3 @@
-import React from 'react';
 import { Input, Text } from '@omniviewdev/base-ui';
 import type { MetricDataSource } from '@omniviewdev/runtime';
 

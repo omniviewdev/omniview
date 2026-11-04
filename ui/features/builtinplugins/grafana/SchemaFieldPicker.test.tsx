@@ -13,16 +13,21 @@ describe('schema-backed resource projection selection', () => {
   it('encodes exact object label keys as RFC6901 without interpreting dots or slash as navigation', () => {
     const select = vi.fn();
     render(<SchemaFieldPicker context={{ pluginID: 'owner', connectionID: 'cluster', resourceType: 'pods' }} value="" onSelect={select} />);
+    expect(screen.queryByRole('button', { name: /metadata · object/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Browse schema fields' }));
     fireEvent.click(screen.getByRole('button', { name: /metadata · object/ }));
     fireEvent.click(screen.getByRole('button', { name: /labels · object/ }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Exact map key' }), { target: { value: 'example.io/team~name' } });
     fireEvent.click(screen.getByRole('button', { name: /Map entry · string/ }));
     expect(select).toHaveBeenCalledWith('/metadata/labels/example.io~1team~0name');
     expect(schemaPointer(['metadata', 'labels', 'example.io/team~name'])).toBe('/metadata/labels/example.io~1team~0name');
+    expect(screen.getByRole('button', { name: 'Browse schema fields' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('textbox', { name: 'Exact map key' })).toBeNull();
   });
   it('does not select an entire object as provider public data', () => {
     const select = vi.fn();
     render(<SchemaFieldPicker context={{ pluginID: 'owner', connectionID: 'cluster', resourceType: 'pods' }} value="" onSelect={select} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Browse schema fields' }));
     fireEvent.click(screen.getByRole('button', { name: /metadata · object/ }));
     expect(select).not.toHaveBeenCalled();
     expect(screen.getByText('Schema path: /metadata')).toBeVisible();

@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Card, Input, Stack, Text } from '@omniviewdev/base-ui';
 import { MetricClient } from '@omniviewdev/runtime/api';
 import type { ConnectionSettingsContext, MetricBinding, MetricDataSource, MetricDefinition, ProviderConnection, MetricResource, ResourceSetQueryRequest } from '@omniviewdev/runtime';
-import { MappingEditor } from './Mappings';
+import { MappingEditor, QueryPreview } from './Mappings';
 import { changeProvider, resetOverride, resolveDefinition, stageDefinition } from './model';
 import SampleResource from './SampleResource';
 import DatasourceSelector from './DatasourceSelector';
@@ -28,8 +28,12 @@ export default function GrafanaConnectionSettings({ resourcePluginID, connection
   const sampleRequest = useMemo<ResourceSetQueryRequest | undefined>(() => {
     if (!sample || !draft?.source.datasource_uid) return undefined;
     const now = Date.now();
+    const publicScope: Record<string, string> = {};
+    for (const [key, value] of Object.entries(draft.public_scope)) {
+      if (typeof value === 'string') publicScope[key] = value;
+    }
     return { resource_plugin_id: resourcePluginID, resource_connection_id: connectionID, binding_id: draft.id,
-      source: draft.source, resources: [sample], metric_ids: [], definitions: [], public_scope: draft.public_scope,
+      source: draft.source, resources: [sample], metric_ids: [], definitions: [], public_scope: publicScope,
       shape: 0, start_time: new Date(now - 300000).toISOString(), end_time: new Date(now).toISOString(),
       step: 15000000000, mapping_revision: draft.revision };
   }, [sample, draft?.source, draft?.public_scope, draft?.revision, draft?.id, resourcePluginID, connectionID]);
@@ -87,7 +91,7 @@ export default function GrafanaConnectionSettings({ resourcePluginID, connection
     {definitions.filter(definition => !definition.native).map(global => {
       const override = draft.overrides.find(value => value.metric_id === global.id);
       const effective = resolveDefinition(global, override);
-      return <details className="grafana-mapping" key={global.id}><summary>{global.name} · {override ? 'Overridden locally' : 'Inherited global'}</summary>
+      return <details className="grafana-mapping" key={global.id}><summary><strong>{global.name}</strong><span>{override ? 'Overridden locally' : 'Inherited global'}</span><QueryPreview query={effective.query} /></summary>
         <MappingEditor key={JSON.stringify([effective, draft.source, editorEpoch])} definition={effective} connectionID={draft.source.connection_id} datasourceUID={draft.source.datasource_uid} schemaContext={{ pluginID: resourcePluginID, connectionID, resourceType: global.resource_keys.includes(sampleType) ? sampleType : global.resource_keys[0] }} sampleRequest={sample && global.resource_keys.includes(sample.resource_key) ? sampleRequest : undefined} inherited={!override} onDraft={onMappingDraft} onReset={override ? () => { setDraft(resetOverride(draft, global.id)); onMappingDraft(global.id, undefined); setEditorEpoch(value => value + 1); } : undefined} onSave={async value => {
           setDraft(stageDefinition(draft, global, value));
           onMappingDraft(global.id, undefined);

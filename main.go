@@ -374,11 +374,11 @@ func main() {
 	// Product-owned providers are selected at compile time, never by installed metadata.
 	builtinCatalog, err := plugin.NewCatalog([]plugin.CatalogEntry{
 		grafana.CatalogEntry(func() (*os.Root, error) {
-			store, err := stateDir.PluginStore("grafana")
-			if err != nil {
+			const statePath = "builtin/grafana"
+			if err := stateDir.RootDir().MkdirAll(statePath, 0700); err != nil {
 				return nil, err
 			}
-			return store.OpenRoot(".")
+			return stateDir.RootDir().OpenRoot(statePath)
 		}),
 	})
 	if err != nil {

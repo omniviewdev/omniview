@@ -4,9 +4,17 @@ The host admits every canonical resource reference under its resource owner befo
 
 ## Routing and configuration
 
+Plugin startup negotiates backend capabilities before dispensing controllers. Metric-only native compositions do not need a settings provider. When settings is negotiated, its real provider hydrates before metric discovery or any other consumer starts; settings startup failure still fails activation and rolls back the backend. Legacy external probing discovers the actual settings RPC instead of assuming settings exists.
+
+Native providers that negotiate settings use the actual SDK plugin-scoped schema contract: a nonempty `ProviderOpts.PluginID`, category `plugin`, and opaque setting IDs (including dotted IDs) matching persisted keys. A core-style category such as `features` is not exposed by `sdksettings.NewProviderWrapper` and cannot serve as a plugin hydration fixture.
+
 `ServiceWrapper.QueryResources(ctx, encoded)` strictly decodes the SDK resource-set request through the existing encoded-JSON Wails boundary. Wails supplies the context; JavaScript passes only the encoded request. Normal queries ignore caller `source`, `definitions`, `public_scope`, `mapping_revision`, and `public_data`. The host resolves these from persisted owner/connection bindings and global definitions.
 
 An empty `binding_id` resolves the current saved metrics binding. An unbound connection uses its native provider. The reserved `binding_id: "native"` explicitly selects the resource owner's native provider even when an external binding exists. A saved external binding never silently falls back on denial or failure. Supplement policy retains both explicit provenances instead of choosing an iteration-order winner.
+
+Supplement resolves native work independently of external mapping applicability. Native-only IDs and resources or shapes outside an external definition are dispatched only to the native owner; for example, pod-only Grafana presets do not block native Node usage/capacity. Applicable external work is grouped by resource kind and retains its own strict validation, errors, and denied results alongside native provenance. This is policy partitioning, not fallback after an external failure.
+
+A classified native finite-query `UNSUPPORTED` error becomes an explicit native unsupported result for every requested resource/metric pair; applicable external groups still execute. Explicit native unsupported or unavailable results retain their native provenance. Native authorization failures and arbitrary errors remain fatal and are never reclassified as capability gaps. Combined sample and encoded-byte limits are checked after the native lane and each merged external group, before another resource kind executes.
 
 Bindings are metrics-signal-specific and owner/connection scoped. One metrics binding is allowed per resource connection. Sparse overrides inherit current global values; deleting an override resets inheritance. Deleting a persisted global definition resets to the active provider catalog definition. Conflicting provider catalog definitions are rejected.
 
@@ -22,6 +30,8 @@ The app injects its managed `appstate.ScopedRoot` through `SetMetricStateRoot`; 
 
 Canonical resource ID, namespace scope, resource type, and explicitly saved public scope support default mappings without source object reads. Explicit `MetricFieldBinding.ResourcePath` values use RFC6901 pointers. The host reads only authoritative owner observations through `SetMetricResourceReader`, inside shared metric work. The reader must reuse current source-view observations; there is no upstream GET-per-row fallback. Missing observations fail explicitly.
 
+For owner observations, the reader prefers the catalog's default/native representation, then the catalog-declared model representation used by normal UI collections. It rejects unrelated projections and chooses deterministically among eligible sessions. A change in the preferred session invalidates its observation guard. Fields omitted by a model representation remain explicitly unavailable; the reader never fills them from caller bodies or hidden upstream GETs.
+
 The host ignores caller bodies and extracts only selected scalar leaves into `PublicData.Map[Field]`. Whole objects, lists, nulls, malformed pointers, sensitive field names, and data payload paths are rejected. Projection permits at most sixteen fields, sixteen pointer segments, and 2 KiB per scalar. The whole observed object is neither cached by the metric coordinator nor forwarded to the provider. `MetricResourceReader` returns the body plus a `func(context.Context) error` observation guard. The guard captures source session generation and member revision, reauthorizes using each current delivery context, and stays private to shared work/cache entries.
 
 ## Shared work and limits
@@ -32,7 +42,11 @@ A 12 ms window coalesces compatible finite resource sets. Limits are 256 resourc
 
 Table/sidebar callers share compatible in-flight and cached work. One cancelled caller releases its reference; only the last caller cancels shared execution. Profile/configuration changes invalidate work. Each caller re-admits resources after completion, and late connection/configuration generations cannot publish. Observation guards run after execution and before every cache/result delivery; a changed source revision evicts the affected resource cache and returns reset, even when scalar values or references remain unchanged.
 
+Mixed requests retain fresh cached resource results and schedule only missing or expired resources. Cached and new results merge under the same compatibility partition; cached observation guards and freshness are checked again before delivery. A cache entry that expires while missing resources execute is not silently delivered as fresh.
+
 The host validates SDK response identities, declared dimensions, value shapes, finite numeric samples, and timestamps. Missing resource/metric pairs become explicit `missing` results with no value, never zero. Provider statuses, warnings, provenance, and mapping revisions remain visible. Structural result collisions fail rather than selecting or summing arbitrary series.
+
+Frontend subscription lifetime follows the structural request key, not `useMemo` identity. The hook commits the latest request in a layout effect and subscribes by key, enabled state, and refresh interval. Compiler optimization or a consumer recreating equivalent request objects must not cancel work or leave cells loading indefinitely.
 
 ## Verification handoff
 

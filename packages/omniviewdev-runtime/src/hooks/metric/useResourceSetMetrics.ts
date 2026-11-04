@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { QueryResources, type ResourceSetQueryRequest } from '../../metric';
 import { metricRequestKey, ResourceSetScheduler, type ResourceSetSnapshot, type ResourceSetSubscription } from './resourceSetScheduler';
 
@@ -19,17 +19,19 @@ export function useResourceSetMetrics(
   { enabled = true, refreshInterval = 0 }: UseResourceSetMetricsOptions = {},
 ): UseResourceSetMetricsResult {
   const key = request ? metricRequestKey(request) : '';
-  // Structural identity prevents inline request literals from restarting subscriptions.
-  const stableRequest = useMemo(() => request, [key]);
-  const active = enabled && !!stableRequest?.resources?.length;
+  // Subscription lifetime follows structural identity, not an optimization-only memo.
+  const requestRef = useRef(request);
+  useLayoutEffect(() => { requestRef.current = request; }, [request]);
+  const active = enabled && !!request?.resources?.length;
   const [state, setState] = useState<{ key: string; snapshot: ResourceSetSnapshot }>({ key: '', snapshot: idle });
   const refetchRef = useRef<(() => void) | undefined>(undefined);
   useEffect(() => {
-    if (!active || !stableRequest) { refetchRef.current = undefined; return; }
+    const committedRequest = requestRef.current;
+    if (!active || !committedRequest) { refetchRef.current = undefined; return; }
     let live = true;
     let subscription: ResourceSetSubscription;
     try {
-      subscription = scheduler.subscribe(stableRequest, refreshInterval, () => {
+      subscription = scheduler.subscribe(committedRequest, refreshInterval, () => {
         if (live) setState({ key, snapshot: subscription.snapshot() });
       });
     } catch (error) {
@@ -44,7 +46,7 @@ export function useResourceSetMetrics(
       refetchRef.current = undefined;
       subscription.unsubscribe();
     };
-  }, [stableRequest, key, active, refreshInterval]);
+  }, [key, active, refreshInterval]);
   const refetch = useCallback(() => refetchRef.current?.(), []);
   const snapshot = !active ? idle : state.key === key ? state.snapshot : { ...idle, isLoading: true };
   return { ...snapshot, refetch };

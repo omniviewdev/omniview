@@ -4,10 +4,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MetricDefinition } from '@omniviewdev/runtime';
 const api = vi.hoisted(() => ({ validate: vi.fn(), preview: vi.fn(), discover: vi.fn() }));
 vi.mock('@omniviewdev/runtime/api', () => ({ MetricClient: { ValidateMetricDefinition: api.validate, PreviewMetricDefinition: api.preview, DiscoverMetricLabels: api.discover } }));
-import { MappingEditor, Mappings } from './Mappings';
+import { MappingEditor, Mappings, QueryPreview } from './Mappings';
 const definition = { id: 'cpu', name: 'CPU', query: 'sum(rate(cpu[5m]))', revision: '1', field_bindings: [], identity_labels: ['pod'], resource_keys: ['k8s:/pods'], unit: 12 } as MetricDefinition;
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
 describe('mapping validation surface', () => {
+  it('highlights interpolation inside quoted matchers without breaking escaped quotes', () => {
+    const query = String.raw`sum(metric{pod=~"{{pod}}",note="say \"hello\" {{cluster}}"})`;
+    render(<QueryPreview query={query} />);
+    expect(screen.getByLabelText('Query preview')).toHaveTextContent(query);
+    expect(screen.getByText('{{pod}}')).toHaveClass('grafana-interpolation');
+    expect(screen.getByText('{{cluster}}')).toHaveClass('grafana-interpolation');
+    expect(screen.getByText('{{cluster}}').parentElement).toHaveClass('grafana-string');
+  });
   it('keeps sample execution disabled without real admitted resource and separates syntax success', async () => {
     api.validate.mockResolvedValue({ valid: true, issues: [] });
     render(<MappingEditor definition={definition} connectionID="one" datasourceUID="direct" onSave={vi.fn()} />);

@@ -3,6 +3,7 @@ import { PluginServiceContext } from './context';
 import { PluginService } from '../core/PluginService';
 import { createProductionDeps } from '../adapters/createProductionDeps';
 import type { PluginDescriptor } from '../core/types';
+import { builtinModules } from '../adapters/builtinModules';
 
 // Startup discovery is independent from the service consumer hook.
 import { useInstalledPlugins } from '@/hooks/plugin/useInstalledPlugins';
@@ -57,16 +58,25 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
     // Ready dev servers join the initial batch; others are loaded as soon as
     // their reconciled status becomes ready, independently of navigation.
     const descriptors: PluginDescriptor[] = installedPlugins
-      .filter((p) => p.origin !== 'builtin' && p.enabled !== false && (!p.dev || (p.dev && p.devPort && p.devPort > 0)))
+      .filter((p) => p.enabled !== false && (p.origin === 'builtin'
+        ? Boolean(p.frontendModule && Object.hasOwn(builtinModules, p.frontendModule) && builtinModules[p.frontendModule]?.activation === 'startup')
+        : !p.dev || Boolean(p.devPort && p.devPort > 0)))
       .map((p) => ({
         id: p.id,
         dev: p.dev,
         devPort: p.devPort,
+        origin: p.origin,
       }));
     const batchIds = new Set(descriptors.map((plugin) => plugin.id));
     initialBatch.current = batchIds;
 
-    void service.loadAll(descriptors)
+    // loadAll deliberately excludes discovered built-ins; explicit composition
+    // opt-ins use the same single-plugin lifecycle as on-demand activation.
+    void Promise.all([
+      service.loadAll(descriptors.filter(plugin => plugin.origin !== 'builtin')),
+      ...descriptors.filter(plugin => plugin.origin === 'builtin').map(plugin =>
+        service.load(plugin.id, { dev: false })),
+    ])
       .catch((err) => {
         console.error('[PluginServiceProvider] loadAll failed:', err);
       })
@@ -99,19 +109,22 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
     }
 
     for (const plugin of installedPlugins) {
-      if (plugin.origin === 'builtin' || plugin.enabled === false || !plugin.dev || !plugin.devPort || initialBatch.current?.has(plugin.id)) {
+      const startupBuiltin = plugin.origin === 'builtin' && Boolean(plugin.frontendModule &&
+        Object.hasOwn(builtinModules, plugin.frontendModule) && builtinModules[plugin.frontendModule]?.activation === 'startup');
+      if (plugin.enabled === false || initialBatch.current?.has(plugin.id) ||
+        (plugin.origin === 'builtin' ? !startupBuiltin : !plugin.dev || !plugin.devPort)) {
         continue;
       }
 
       const state = service.getPluginState(plugin.id);
-      const opts = { dev: true, devPort: plugin.devPort };
+      const opts = { dev: plugin.dev, devPort: plugin.devPort };
       // Inventory refreshes must not dismiss a failed import. Recovery belongs
       // to Retry/Reset or a new development-server lifecycle event.
       const loading = !state || state.phase === 'idle'
         ? service.load(plugin.id, opts)
         : undefined;
       void loading?.catch((err: unknown) => {
-        console.error(`[PluginServiceProvider] dev load failed for ${plugin.id}:`, err);
+        console.error(`[PluginServiceProvider] startup load failed for ${plugin.id}:`, err);
       });
     }
   }, [isLoading, error, installedPlugins, service]);

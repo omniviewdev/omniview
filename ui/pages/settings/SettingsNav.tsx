@@ -89,7 +89,7 @@ const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
         id: encodeKey(Section.Plugins, contribution.plugin),
         label: contribution.value.label,
         icon: <Icon name="LuSettings" size={16} />,
-      })),
+      }))),
     });
   }
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react'
 import { Input, Text } from '@omniviewdev/base-ui';
 import { useConnections, type MetricResource } from '@omniviewdev/runtime';
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';

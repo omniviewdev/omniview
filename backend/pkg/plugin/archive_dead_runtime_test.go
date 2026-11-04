@@ -11,6 +11,8 @@ import (
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
+	sdksettings "github.com/omniviewdev/plugin-sdk/pkg/v1/settings"
+	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,6 +29,18 @@ func (*archiveDeadRuntimeShutdownController) OnPluginInit(string, config.PluginM
 func (c *archiveDeadRuntimeShutdownController) OnPluginStart(_ string, _ config.PluginMeta, backend plugintypes.PluginBackend) error {
 	if !backend.Healthy() || backend.Exited() {
 		return errors.New("settings cannot bind a dead backend")
+	}
+	raw, err := backend.Dispense("settings")
+	if err != nil {
+		return err
+	}
+	settings, ok := raw.(sdksettings.Provider)
+	if !ok {
+		return errors.New("settings controller requires a negotiated SDK settings provider")
+	}
+	value, err := settings.GetSettingValue("archive.restore")
+	if err != nil || value != true {
+		return errors.New("settings provider did not expose archive restoration policy")
 	}
 	if _, err := backend.Dispense("resource"); err != nil {
 		return err
@@ -114,7 +128,7 @@ func TestInstallPluginFromPath_ShutdownRefusalAfterBackendExit(t *testing.T) {
 			}
 			t.Run(name, func(t *testing.T) {
 				pm := newTestManager(t)
-				installPluginFixture(t, pm, "flux", []string{"resource", "ui"}, true)
+				installPluginFixture(t, pm, "flux", []string{"resource", "ui", "settings"}, true)
 				require.NoError(t, pm.pluginsRoot.MkdirAll("flux/assets", 0755))
 				require.NoError(t, pm.pluginsRoot.WriteFile("flux/assets/entry.js", []byte("original bundle"), 0644))
 				require.NoError(t, pm.pluginsRoot.MkdirAll("flux/store", 0700))
@@ -127,13 +141,19 @@ func TestInstallPluginFromPath_ShutdownRefusalAfterBackendExit(t *testing.T) {
 				restartErr := errors.New("original backend restart is unavailable")
 				refuseRestart := false
 				pm.backendFactory = func(metadata config.PluginMeta, _ string) (plugintypes.PluginBackend, error) {
+					resourceProvider := candidateProvider
 					if metadata.Version == "1.0.0" {
 						if refuseRestart {
 							return nil, restartErr
 						}
-						return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": originalProvider}}), nil
+						resourceProvider = originalProvider
 					}
-					return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": candidateProvider}}), nil
+					settings := sdksettings.NewProviderWrapper(pkgsettings.NewProvider(pkgsettings.ProviderOpts{
+						PluginID: "flux", PluginSettings: []pkgsettings.Category{{ID: "plugin", Settings: map[string]pkgsettings.Setting{
+							"archive.restore": {ID: "archive.restore", Type: pkgsettings.Toggle, Default: true},
+						}}},
+					}))
+					return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": resourceProvider, "settings": settings}}), nil
 				}
 				shutdownErr := errors.New("settings shutdown refused")
 				controller := &archiveDeadRuntimeShutdownController{shutdownErr: shutdownErr}
@@ -143,7 +163,7 @@ func TestInstallPluginFromPath_ShutdownRefusalAfterBackendExit(t *testing.T) {
 				var source string
 				var sourceBefore map[string]archiveDeadRuntimeFile
 				if dev {
-					source = devSourceFixture(t, "id: flux\nversion: 1.0.0\ncapabilities: [resource, ui]\n")
+					source = devSourceFixture(t, "id: flux\nversion: 1.0.0\ncapabilities: [resource, ui, settings]\n")
 					require.NoError(t, os.WriteFile(filepath.Join(source, "source.go"), []byte("package original\n"), 0644))
 					sourceBefore = archiveDeadRuntimeTree(t, source)
 					pm.devServerMgr = servers
@@ -165,7 +185,7 @@ func TestInstallPluginFromPath_ShutdownRefusalAfterBackendExit(t *testing.T) {
 				beforeDurable, err := pm.stateRoot.ReadFile(stateFileName)
 				require.NoError(t, err)
 				archive := writeTestTarball(t, []tarEntry{
-					{name: "plugin.yaml", mode: 0644, body: "id: flux\nversion: 0.4.0\ncapabilities: [resource, ui]\n"},
+					{name: "plugin.yaml", mode: 0644, body: "id: flux\nversion: 0.4.0\ncapabilities: [resource, ui, settings]\n"},
 					{name: "assets/", mode: 0755, dir: true},
 					{name: "assets/entry.js", mode: 0644, body: "candidate bundle"},
 					{name: "bin/", mode: 0755, dir: true},

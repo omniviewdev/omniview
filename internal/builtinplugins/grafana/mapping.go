@@ -218,7 +218,7 @@ func (p *Provider) GetMetricDefinitions(*metric.QueryContext) ([]metric.MetricDe
 	base := metric.MetricDefinition{ResourceKeys: []string{"k8s:/pods"}, Semantics: "gauge", QueryLanguage: "promql", FieldBindings: bindings, IdentityLabels: []string{"cluster", "namespace", "pod"}, Reducer: "none", BatchStrategy: "identity", Revision: "kubernetes-cadvisor-v1", SupportedShapes: []metric.MetricShape{metric.ShapeCurrent, metric.ShapeTimeseries}}
 	cpu := base
 	cpu.ID = "cpu_usage"
-	cpu.Name = "CPU millicores (cAdvisor rate, cluster/namespace/pod labels required)"
+	cpu.Name = "CPU usage"
 	cpu.Unit = metric.UnitMillicores
 	cpu.Semantics = "rate"
 	cpu.Query = `1000 * sum by (cluster,namespace,pod) (rate(container_cpu_usage_seconds_total{cluster=~"{{cluster}}",namespace=~"{{namespace}}",pod=~"{{pod}}",container!="",container!="POD"}[5m]))`
@@ -228,7 +228,7 @@ func (p *Provider) GetMetricDefinitions(*metric.QueryContext) ([]metric.MetricDe
 	memory.IdentityLabels = slices.Clone(base.IdentityLabels)
 	memory.SupportedShapes = slices.Clone(base.SupportedShapes)
 	memory.ID = "memory_usage"
-	memory.Name = "Memory working set bytes (cAdvisor, cluster/namespace/pod labels required)"
+	memory.Name = "Memory working set"
 	memory.Unit = metric.UnitBytes
 	memory.Query = `sum by (cluster,namespace,pod) (container_memory_working_set_bytes{cluster=~"{{cluster}}",namespace=~"{{namespace}}",pod=~"{{pod}}",container!="",container!="POD"})`
 	return []metric.MetricDefinition{cpu, memory}, nil

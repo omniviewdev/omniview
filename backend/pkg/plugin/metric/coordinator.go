@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	sdk "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 )
 
@@ -104,22 +105,24 @@ func (q *queryCoordinator) query(ctx context.Context, key string, resources []sd
 	}
 	p.touched = now
 	cached := &sdk.ResourceSetQueryResponse{}
-	allCached := true
+	missing := make([]sdk.MetricResource, 0, len(resources))
 	seenWarnings := map[string]bool{}
 	cachedGuards := observationGuards{}
+	cachedExpiry := make(map[string]time.Time)
 	for _, r := range resources {
 		entry, ok := p.cache[r.Token]
 		if !ok || !entry.expires.After(now) {
-			allCached = false
 			if ok {
 				p.cacheBytes -= entry.bytes
 				q.cacheBytes -= entry.bytes
 			}
 			delete(p.cache, r.Token)
-			break
+			missing = append(missing, r)
+			continue
 		}
 		cached.Results = append(cached.Results, entry.results...)
 		cachedGuards[r.Token] = entry.guards
+		cachedExpiry[r.Token] = entry.expires
 		for _, warning := range entry.warnings {
 			if !seenWarnings[warning] {
 				seenWarnings[warning] = true
@@ -127,16 +130,25 @@ func (q *queryCoordinator) query(ctx context.Context, key string, resources []sd
 			}
 		}
 	}
-	if allCached {
+	validateCached := func() error {
+		for token, guards := range cachedGuards {
+			if !cachedExpiry[token].After(time.Now()) {
+				return errors.New("cached metric freshness expired during shared execution; refresh metrics")
+			}
+			if err := validateObservationGuards(ctx, guards); err != nil {
+				q.evictResource(key, token)
+				return err
+			}
+		}
+		return nil
+	}
+	if len(missing) == 0 {
 		q.Unlock()
 		if !valid() {
 			return nil, profileChangingError()
 		}
-		for token, guards := range cachedGuards {
-			if err := validateObservationGuards(ctx, guards); err != nil {
-				q.evictResource(key, token)
-				return nil, err
-			}
+		if err := validateCached(); err != nil {
+			return nil, err
 		}
 		return copyJSON(cached), nil
 	}
@@ -147,7 +159,7 @@ func (q *queryCoordinator) query(ctx context.Context, key string, resources []sd
 		}
 		covered := true
 		extra := 0
-		for _, r := range resources {
+		for _, r := range missing {
 			if _, ok := f.resources[r.Token]; !ok {
 				covered = false
 				extra++
@@ -174,7 +186,7 @@ func (q *queryCoordinator) query(ctx context.Context, key string, resources []sd
 		fresh = true
 	}
 	if !flight.started {
-		for _, r := range resources {
+		for _, r := range missing {
 			flight.resources[r.Token] = r
 		}
 	}
@@ -200,23 +212,50 @@ func (q *queryCoordinator) query(ctx context.Context, key string, resources []sd
 		if !valid() {
 			return nil, profileChangingError()
 		}
-		wanted := map[string]bool{}
-		for _, r := range resources {
-			wanted[r.Token] = true
+		if err := validateCached(); err != nil {
+			return nil, err
 		}
-		for _, r := range resources {
+		wanted := map[string]bool{}
+		for _, r := range missing {
+			wanted[r.Token] = true
 			if err := validateObservationGuards(ctx, flight.guards[r.Token]); err != nil {
 				q.evictResource(key, r.Token)
 				return nil, err
 			}
 		}
-		out := &sdk.ResourceSetQueryResponse{Warnings: append([]string(nil), flight.response.Warnings...)}
+		out := cached
+		for _, warning := range flight.response.Warnings {
+			if !seenWarnings[warning] {
+				seenWarnings[warning] = true
+				out.Warnings = append(out.Warnings, warning)
+			}
+		}
 		for _, r := range flight.response.Results {
 			if wanted[r.ResourceToken] {
 				out.Results = append(out.Results, r)
 			}
 		}
-		return copyJSON(out), nil
+		samples := 0
+		for _, result := range out.Results {
+			if result.Value != nil {
+				samples += metricSampleCount(result.Value)
+			}
+		}
+		if samples > maxSetSamples {
+			return nil, resourcev2.NewError("RESOURCE_LIMIT", "Merged metric sample count exceeds limit.")
+		}
+		raw, err := json.Marshal(out)
+		if err != nil {
+			return nil, err
+		}
+		if len(raw) > maxSetResponseBytes {
+			return nil, resourcev2.NewError("RESOURCE_LIMIT", "Merged metric response exceeds byte limit.")
+		}
+		var response sdk.ResourceSetQueryResponse
+		if err := json.Unmarshal(raw, &response); err != nil {
+			return nil, err
+		}
+		return &response, nil
 	}
 }
 func (q *queryCoordinator) release(f *sharedQuery) {

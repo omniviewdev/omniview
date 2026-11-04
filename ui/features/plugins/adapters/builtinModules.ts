@@ -10,6 +10,8 @@ export type BuiltinRoute = {
 
 export type BuiltinModule = {
   readonly routes: readonly BuiltinRoute[];
+  /** Global contributions need registration in every window; routes stay on-demand by default. */
+  readonly activation?: 'startup' | 'on-demand';
   readonly load: () => Promise<unknown>;
 };
 
@@ -19,6 +21,7 @@ export type BuiltinModuleRegistry = Readonly<Record<string, BuiltinModule>>;
 export const builtinModules: BuiltinModuleRegistry = Object.freeze({
   grafana: {
     routes: [{ path: '/' }],
+    activation: 'startup',
     load: () => import('../../builtinplugins/grafana/entry'),
   },
 });

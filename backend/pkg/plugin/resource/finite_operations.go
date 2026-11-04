@@ -94,7 +94,7 @@ func (c *controller) currentGenerationLocked(ctx context.Context, pluginID strin
 }
 
 func (c *controller) admitOperationCatalog(ctx context.Context, pluginID string, provider ResourceProvider, generation *pluginState, route resourcev2.AccessRoute, authority, canonicalProvider string, request any) (context.Context, resourcev2.ResourceType, error) {
-	catalog, err := provider.Catalog(ctx, resourcev2.CatalogRequest{Route: route})
+	catalog, err := c.catalogSnapshot(ctx, pluginID, provider, generation, route)
 	if err != nil {
 		return ctx, resourcev2.ResourceType{}, err
 	}
