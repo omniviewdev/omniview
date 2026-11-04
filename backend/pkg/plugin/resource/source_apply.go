@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"maps"
+	"sync/atomic"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/indexer"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
@@ -11,9 +12,12 @@ import (
 )
 
 type sourceMember struct {
+	revision    uint64
 	observation resourcev2.SourceObservation
 	size        int
 }
+
+var sourceObservationRevision atomic.Uint64
 
 func makeSourceMember(o resourcev2.SourceObservation) (sourceMember, string, error) {
 	size, err := resourcev2.RecordWireSize(o.Record)
@@ -24,7 +28,7 @@ func makeSourceMember(o resourcev2.SourceObservation) (sourceMember, string, err
 	if err != nil {
 		return sourceMember{}, "", err
 	}
-	return sourceMember{observation: o, size: size}, key, nil
+	return sourceMember{observation: o, size: size, revision: sourceObservationRevision.Add(1)}, key, nil
 }
 
 func (c *controller) observeSourceRecord(ctx context.Context, pluginID string, generation *pluginState, route resourcev2.AccessRoute, record resourcev2.Record, metadata *resourcev2.ResourceMetadata) error {

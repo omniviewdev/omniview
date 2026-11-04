@@ -1,3 +1,5 @@
 export * from './provider'
 export * from './registry'
 export * from './resource-editor'
+export * from './connection-settings'
+export * from './plugin-settings'

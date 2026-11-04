@@ -1,0 +1,99 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Button, Card, Input, Stack, Text } from '@omniviewdev/base-ui';
+import { MetricClient } from '@omniviewdev/runtime/api';
+import type { ConnectionSettingsContext, MetricBinding, MetricDataSource, MetricDefinition, ProviderConnection, MetricResource, ResourceSetQueryRequest } from '@omniviewdev/runtime';
+import { MappingEditor } from './Mappings';
+import { changeProvider, resetOverride, resolveDefinition, stageDefinition } from './model';
+import SampleResource from './SampleResource';
+import DatasourceSelector from './DatasourceSelector';
+
+export default function GrafanaConnectionSettings({ resourcePluginID, connectionID, resourceTypes }: ConnectionSettingsContext) {
+  const [connections, setConnections] = useState<ProviderConnection[]>([]);
+  const [definitions, setDefinitions] = useState<MetricDefinition[]>([]);
+  const [sources, setSources] = useState<MetricDataSource[]>([]);
+  const [saved, setSaved] = useState<MetricBinding>();
+  const [draft, setDraft] = useState<MetricBinding>();
+  const [error, setError] = useState('');
+  const [catalogError, setCatalogError] = useState('');
+  const [status, setStatus] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [editorEpoch, setEditorEpoch] = useState(0);
+  const [mappingDrafts, setMappingDrafts] = useState<Record<string, MetricDefinition>>({});
+  const onMappingDraft = useCallback((id: string, value: MetricDefinition | undefined) => setMappingDrafts(previous => {
+    if (JSON.stringify(previous[id]) === JSON.stringify(value)) return previous;
+    const next = { ...previous }; if (value) next[id] = value; else delete next[id]; return next;
+  }), []);
+  const [sample, setSample] = useState<MetricResource>();
+  const [sampleType, setSampleType] = useState(resourceTypes[0] ?? '');
+  const sampleRequest = useMemo<ResourceSetQueryRequest | undefined>(() => {
+    if (!sample || !draft?.source.datasource_uid) return undefined;
+    const now = Date.now();
+    return { resource_plugin_id: resourcePluginID, resource_connection_id: connectionID, binding_id: draft.id,
+      source: draft.source, resources: [sample], metric_ids: [], definitions: [], public_scope: draft.public_scope,
+      shape: 0, start_time: new Date(now - 300000).toISOString(), end_time: new Date(now).toISOString(),
+      step: 15000000000, mapping_revision: draft.revision };
+  }, [sample, draft?.source, draft?.public_scope, draft?.revision, draft?.id, resourcePluginID, connectionID]);
+  const generation = useRef(0);
+  useEffect(() => {
+    const current = ++generation.current;
+    Promise.all([MetricClient.GetProviderConnections('grafana'), MetricClient.GetMetricDefinitions(), MetricClient.GetMetricBindings(resourcePluginID, connectionID)]).then(([catalog, globals, bindings]) => {
+      if (current !== generation.current) return;
+      setConnections(catalog ?? []); setDefinitions(globals ?? []);
+      const binding = bindings?.find(value => value.signal === 'metrics' && value.source.plugin_id === 'grafana');
+      setSaved(binding);
+      setDraft(binding ?? { id: crypto.randomUUID(), signal: 'metrics', resource_plugin_id: resourcePluginID, resource_connection_id: connectionID, source: { plugin_id: 'grafana', connection_id: '', datasource_uid: '', datasource_kind: '' }, policy: 'supplement', public_scope: {}, overrides: [], revision: '' });
+    }).catch(err => { if (current === generation.current) setError(String(err)); });
+    return () => { generation.current++; };
+  }, [resourcePluginID, connectionID]);
+  useEffect(() => {
+    let active = true; setSources([]); setCatalogError('');
+    if (draft?.source.connection_id) MetricClient.GetDataSources('grafana', draft.source.connection_id).then(values => { if (active) setSources((values ?? []).filter(value => value.kind === 'prometheus')); }).catch(err => { if (active) setCatalogError(String(err)); });
+    return () => { active = false; };
+  }, [draft?.source.connection_id]);
+  if (!draft) return <Card><Text size="sm">Loading external metric settings…</Text>{error && <p role="alert">{error}</p>}</Card>;
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved) || Object.keys(mappingDrafts).length > 0;
+  async function saveBinding() {
+    if (!draft) return;
+    setBusy(true); setError('');
+    try {
+      let resolved = draft;
+      for (const value of Object.values(mappingDrafts)) {
+        const validation = await MetricClient.ValidateMetricDefinition('grafana', draft.source.connection_id, draft.source.datasource_uid, value);
+        if (!validation.valid) throw new Error(validation.issues.map(issue => issue.message).join('; '));
+        const global = definitions.find(definition => definition.id === value.id);
+        if (global) resolved = stageDefinition(resolved, global, value);
+      }
+      const value = await MetricClient.SaveMetricBinding(resolved);
+      if (!value) throw new Error('No saved binding returned.');
+      setSaved(value); setDraft(value); setMappingDrafts({}); setEditorEpoch(value => value + 1);
+      setStatus('Metric binding saved for this connection.');
+    } catch (err) { setError(String(err)); }
+    finally { setBusy(false); }
+  }
+  return <Card className="grafana-settings"><Text weight="semibold">External metrics</Text><Text size="sm">This connection only. Native metrics configuration remains independent.</Text>
+    {error && <p role="alert">{error}</p>}{status && <p role="status">{status}</p>}
+    <label>Provider connection<select value={draft.source.connection_id} disabled={busy} onChange={event => { setDraft(changeProvider(draft, event.target.value)); setError(''); }}><option value="">Choose reusable provider connection</option>{connections.map(connection => <option key={connection.id} value={connection.id}>{connection.name} — {connection.url}</option>)}</select></label>
+    <DatasourceSelector sources={sources} value={draft.source.datasource_uid} disabled={!draft.source.connection_id || busy} catalogError={catalogError} onChange={uid => setDraft({ ...draft, source: { ...draft.source, datasource_uid: uid, datasource_kind: uid ? 'prometheus' : '' } })} />
+    <label>Source policy<select value={draft.policy} onChange={event => setDraft({ ...draft, policy: event.target.value })}><option value="supplement">Supplement native metrics</option><option value="replace">Replace native metrics explicitly</option></select></label>
+    <label>Public cluster scope<Input.Control value={draft.public_scope.cluster ?? ''} placeholder="Cluster label in this datasource" onChange={event => setDraft({ ...draft, public_scope: { ...draft.public_scope, cluster: event.target.value } })} /></label>
+    <Text size="xs">Scope is public query context, not kubeconfig or credentials. Errors never switch silently to another source.</Text>
+    <Stack direction="row" spacing={2}><Button size="sm" disabled={busy || !dirty || !draft.source.datasource_uid || !draft.public_scope.cluster} onClick={() => void saveBinding()}>Save connection metrics</Button>
+      <Button size="sm" disabled={busy || !dirty} onClick={() => { setDraft(saved ?? { ...draft, source: { ...draft.source, connection_id: '', datasource_uid: '', datasource_kind: '' }, public_scope: {}, overrides: [] }); setMappingDrafts({}); setEditorEpoch(value => value + 1); setError(''); setStatus('Unsaved changes discarded for this connection.'); }}>Discard changes</Button>
+      {saved && <Button size="sm" disabled={busy} onClick={async () => { setBusy(true); try { await MetricClient.DeleteMetricBinding(resourcePluginID, connectionID, saved.id); setSaved(undefined); setDraft({ ...draft, source: { ...draft.source, connection_id: '', datasource_uid: '', datasource_kind: '' }, overrides: [], public_scope: {} }); setStatus('External binding removed. Native configuration preserved.'); } catch (err) { setError(String(err)); } finally { setBusy(false); } }}>Remove binding</Button>}
+    </Stack>
+    <label>Sample resource type<select value={sampleType} onChange={event => { setSample(undefined); setSampleType(event.target.value); }}>{resourceTypes.map(type => <option key={type}>{type}</option>)}</select></label>
+    {sampleType && <SampleResource key={sampleType} pluginID={resourcePluginID} connectionID={connectionID} resourceKey={sampleType} onSelect={setSample} />}
+    <Text size="sm">Mapping overrides · Save above commits only this connection’s draft.</Text>
+    {definitions.filter(definition => !definition.native).map(global => {
+      const override = draft.overrides.find(value => value.metric_id === global.id);
+      const effective = resolveDefinition(global, override);
+      return <details className="grafana-mapping" key={global.id}><summary>{global.name} · {override ? 'Overridden locally' : 'Inherited global'}</summary>
+        <MappingEditor key={JSON.stringify([effective, draft.source, editorEpoch])} definition={effective} connectionID={draft.source.connection_id} datasourceUID={draft.source.datasource_uid} schemaContext={{ pluginID: resourcePluginID, connectionID, resourceType: global.resource_keys.includes(sampleType) ? sampleType : global.resource_keys[0] }} sampleRequest={sample && global.resource_keys.includes(sample.resource_key) ? sampleRequest : undefined} inherited={!override} onDraft={onMappingDraft} onReset={override ? () => { setDraft(resetOverride(draft, global.id)); onMappingDraft(global.id, undefined); setEditorEpoch(value => value + 1); } : undefined} onSave={async value => {
+          setDraft(stageDefinition(draft, global, value));
+          onMappingDraft(global.id, undefined);
+          setStatus('Mapping staged locally. Save connection metrics to commit.');
+        }} />
+      </details>;
+    })}
+  </Card>;
+}

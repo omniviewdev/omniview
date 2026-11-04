@@ -40,6 +40,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/window"
 	"github.com/omniviewdev/omniview/internal/appstate"
 	"github.com/omniviewdev/omniview/internal/bootstrap"
+	"github.com/omniviewdev/omniview/internal/builtinplugins/grafana"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	controlhost "github.com/omniviewdev/omniview/internal/devcontrol/host"
 	"github.com/omniviewdev/omniview/internal/devsession"
@@ -347,6 +348,8 @@ func main() {
 	execController, networkerController, logsController, metricController := newUICapabilityControllers(
 		log, settingsProvider, resourceController, resourceUIRealm,
 	)
+	metricController.SetMetricStateRoot(stateDir.RootDir())
+	metricController.SetMetricResourceReader(resourceController.ReadObservedResource)
 	resourceController.SetConnectionChangeHook(metricController.BeginConnectionChange)
 	toolsController := tools.NewController(log, resourceBoundary)
 
@@ -369,8 +372,15 @@ func main() {
 
 	pluginRegistryClient := registry.NewClient("")
 	// Product-owned providers are selected at compile time, never by installed metadata.
-	// The product cohort remains empty until the containers migration.
-	builtinCatalog, err := plugin.NewCatalog(nil)
+	builtinCatalog, err := plugin.NewCatalog([]plugin.CatalogEntry{
+		grafana.CatalogEntry(func() (*os.Root, error) {
+			store, err := stateDir.PluginStore("grafana")
+			if err != nil {
+				return nil, err
+			}
+			return store.OpenRoot(".")
+		}),
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: invalid built-in plugin catalog: %v\n", err)
 		os.Exit(1)
