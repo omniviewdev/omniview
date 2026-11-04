@@ -20,6 +20,10 @@ The read-token step links to the official [Grafana service-account token instruc
 
 Global definitions resolve by stable ID. A connection override contains only fields that differ. Reset removes that override; it does not copy a current global query into permanent local state. Each rendered connection contribution has an identity-scoped React lifetime. Save and discard affect only that connection. Global draft navigation uses the host's settings form registration.
 
+The cluster Metrics page uses a two-column provider/source card and searchable, single-line mapping previews. Inherited and cluster-override chips reflect actual saved binding state. Mapping expansion edits in place using the same highlighted PromQL editor as Global mappings. Variables, schema browsing, and label discovery live under **Variables & identity**; the real sample picker lives under **Query test resource**. Manual datasource entry remains available under **Enter datasource UID**, and opens automatically for undiscovered saved UIDs or discovery failures. Native provider status, service overrides, connection tests, and auto-detection reference remain under **Native metrics configuration**. The quiet sticky action bar saves or discards only the current connection draft.
+
+Cluster mapping lists and override counts include only definitions applicable to the resource types supplied by the owner. **Manage Grafana connections** opens the existing Grafana settings window; destructive removal remains under **Binding actions**.
+
 Mapping validation has separate meanings:
 
 1. **Validate definition** checks template interpolation and typed binding fields for the chosen datasource. It does not parse the full PromQL grammar or claim that a query returned data.
@@ -27,9 +31,13 @@ Mapping validation has separate meanings:
 3. **Discover labels** queries the selected provider connection and datasource with a bounded result limit. Manual typed input remains available when discovery is denied or unsupported.
 4. **Test connection** checks reachability only. A successful health response does not prove datasource query permissions or that a token is read-only.
 
+Successful field/template validation shows **Definition valid**; its tooltip explains that only **Test query** executes PromQL. Query previews show a compact table using the admitted sample's namespace/name, metric, real value/unit, and status. Zero remains zero; unavailable values stay a dash. Time-series summaries explicitly label the latest returned point and aggregate summaries label the average. Raw response, timestamps, revisions, and provenance remain available under **Response details & provenance**.
+
 Datasource catalog access is optional. Both connection binding and global validation accept a manually entered Prometheus datasource UID while retaining any discovery error. Manual selection sets the datasource kind to Prometheus; backend admission validates the exact provider/connection/UID. Changing provider connection always clears the UID. A denied catalog never selects a direct-endpoint fallback.
 
 Use **Add metric** to create additional reusable definitions with their own stable ID, name, applicability, canonical unit, gauge/rate semantics, declared result dimensions, typed bindings, and PromQL. A new definition follows the same validation and real sample-query workflow as presets. It persists through `SaveMetricDefinition`, rather than a browser-local selector option.
+
+Comma-separated identity labels, applicable resource types, and result dimensions retain the exact text being typed, including trailing separators. Validation and persistence receive trimmed arrays separately, so typing another value never loses the comma or merges adjacent tokens.
 
 The global mapping editor offers a temporary resource-owner/connection/type context for schema browsing and sample execution. This context is not persisted and never creates a cluster binding. The scalar field picker reads the actual connection's authoritative schema tier by tier. Object/map nodes navigate; only typed scalar leaves can be selected. Exact object-map keys preserve dots and encode `/` and `~` using RFC6901. The resulting `resource_path` stays separate from the template field symbol and label. The host reads the admitted canonical resource and forwards only selected scalar values, never the caller's full object.
 

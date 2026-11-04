@@ -1,7 +1,8 @@
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { MetricDefinition } from '@omniviewdev/runtime';
+import type { MetricDefinition, ResourceSetQueryRequest } from '@omniviewdev/runtime';
+import userEvent from '@testing-library/user-event';
 const api = vi.hoisted(() => ({ validate: vi.fn(), preview: vi.fn(), discover: vi.fn() }));
 vi.mock('@omniviewdev/runtime/api', () => ({ MetricClient: { ValidateMetricDefinition: api.validate, PreviewMetricDefinition: api.preview, DiscoverMetricLabels: api.discover } }));
 import { MappingEditor, Mappings, QueryPreview } from './Mappings';
@@ -16,14 +17,25 @@ describe('mapping validation surface', () => {
     expect(screen.getByText('{{cluster}}')).toHaveClass('grafana-interpolation');
     expect(screen.getByText('{{cluster}}').parentElement).toHaveClass('grafana-string');
   });
-  it('keeps sample execution disabled without real admitted resource and separates syntax success', async () => {
+  it('keeps validation separate from admitted sample execution', async () => {
     api.validate.mockResolvedValue({ valid: true, issues: [] });
     render(<MappingEditor definition={definition} connectionID="one" datasourceUID="direct" onSave={vi.fn()} />);
     expect(screen.getByRole('button', { name: 'Test query' })).toBeDisabled();
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Validate definition' })); });
-    expect(screen.getByRole('status')).toHaveTextContent('no sample query executed');
     expect(api.preview).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Save mapping' })).toBeEnabled();
+  });
+  it('shows canonical sample identity and real zero results without exposing raw payload by default', async () => {
+    const sampleRequest = { resources: [{ token: 'opaque-token', resource_namespace: 'team-a', resource_id: 'api-pod' }] } as ResourceSetQueryRequest;
+    api.preview.mockResolvedValue({ results: [{ resource_token: 'opaque-token', metric_id: 'cpu', status: 'ok', value: { current_value: { value: 0 } }, dimensions: {}, warnings: [], provenance: { provider_id: 'grafana' } }], warnings: [] });
+    render(<MappingEditor definition={definition} connectionID="one" datasourceUID="direct" onSave={vi.fn()} sampleRequest={sampleRequest} />);
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Test query' })); });
+    const results = within(screen.getByRole('region', { name: 'Sample query results' }));
+    expect(results.getByRole('cell', { name: 'team-a/api-pod' })).toBeVisible();
+    expect(results.getByRole('cell', { name: '0 cores' })).toBeVisible();
+    expect(results.getByRole('cell', { name: 'ok' })).toBeVisible();
+    expect(results.getByText('Response details & provenance').closest('details')).not.toHaveAttribute('open');
+    expect(api.preview).toHaveBeenCalledWith(expect.objectContaining({ resources: sampleRequest.resources, definitions: [definition], metric_ids: ['cpu'] }));
   });
   it('invalidates validation when query changes and preserves invalid draft', async () => {
     api.validate.mockResolvedValue({ valid: false, issues: [{ field: 'query', message: 'Unknown interpolation' }] });
@@ -43,6 +55,45 @@ describe('mapping validation surface', () => {
     await act(async () => { complete({ valid: true, issues: [] }); });
     expect(screen.queryByRole('status')).toBeNull();
     expect(screen.getByRole('button', { name: 'Save mapping' })).toBeDisabled();
+  });
+  it('keeps field tools progressive while identity and highlighted query stay visible', () => {
+    render(<MappingEditor definition={definition} connectionID="one" datasourceUID="direct" onSave={vi.fn()} />);
+    expect(screen.getByRole('textbox', { name: 'Response identity labels' })).toHaveValue('pod');
+    expect(screen.getByLabelText('Query preview')).toHaveTextContent(definition.query);
+    const tools = screen.getByText('Variables & identity').closest('details');
+    expect(tools).not.toHaveAttribute('open');
+    fireEvent.click(screen.getByText('Variables & identity'));
+    expect(tools).toHaveAttribute('open');
+  });
+  it('preserves comma-separated typing and saves parsed identity labels, resource types, and dimensions', async () => {
+    const user = userEvent.setup();
+    const save = vi.fn().mockResolvedValue(undefined);
+    api.validate.mockResolvedValue({ valid: true, issues: [] });
+    render(<MappingEditor definition={definition} connectionID="one" datasourceUID="direct" onSave={save} editSemantics />);
+    const identity = screen.getByRole('textbox', { name: 'Response identity labels' });
+    await user.clear(identity);
+    await user.type(identity, 'cluster_name, ');
+    expect(identity).toHaveValue('cluster_name, ');
+    await user.type(identity, 'kube_namespace, workload');
+    expect(identity).toHaveValue('cluster_name, kube_namespace, workload');
+    const resourceTypes = screen.getByRole('textbox', { name: 'Applicable resource types' });
+    await user.clear(resourceTypes);
+    await user.type(resourceTypes, 'k8s:/pods, k8s:/nodes');
+    expect(resourceTypes).toHaveValue('k8s:/pods, k8s:/nodes');
+    const dimensions = screen.getByRole('textbox', { name: 'Declared result dimensions' });
+    await user.type(dimensions, 'container, device');
+    expect(dimensions).toHaveValue('container, device');
+    await user.click(screen.getByRole('button', { name: 'Validate definition' }));
+    expect(api.validate).toHaveBeenCalledWith('grafana', 'one', 'direct', expect.objectContaining({
+      identity_labels: ['cluster_name', 'kube_namespace', 'workload'],
+      resource_keys: ['k8s:/pods', 'k8s:/nodes'], dimensions: ['container', 'device'],
+    }));
+    await user.click(screen.getByRole('button', { name: 'Save mapping' }));
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      identity_labels: ['cluster_name', 'kube_namespace', 'workload'],
+      resource_keys: ['k8s:/pods', 'k8s:/nodes'], dimensions: ['container', 'device'],
+      query: definition.query,
+    }));
   });
   it('creates a distinct user-defined metric with canonical semantics and dimensions', async () => {
     const save = vi.fn().mockResolvedValue(undefined);

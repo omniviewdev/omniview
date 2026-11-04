@@ -1,14 +1,27 @@
-import { Input, Text } from '@omniviewdev/base-ui';
+import { Input, Select } from '@omniviewdev/base-ui';
 import type { MetricDataSource } from '@omniviewdev/runtime';
 
+export function MetricsSelect({ value, onChange, options, disabled, label }: {
+  value: string; onChange: (value: string) => void; options: { value: string; label: string }[]; disabled?: boolean; label: string;
+}) {
+  return <Select.Root value={value} onValueChange={next => onChange(next ?? '')} disabled={disabled} size="sm">
+    <Select.Trigger aria-label={label} className="grafana-select"><Select.Value>{options.find(option => option.value === value)?.label ?? value}</Select.Value><Select.Icon /></Select.Trigger>
+    <Select.Portal><Select.Positioner><Select.Popup><Select.List>{options.map(option =>
+      <Select.Item key={option.value} value={option.value}>{option.label}</Select.Item>)}</Select.List></Select.Popup></Select.Positioner></Select.Portal>
+  </Select.Root>;
+}
 /** Discovery is optional. Backend admission validates every selected UID and datasource kind. */
 export default function DatasourceSelector({ sources, value, onChange, disabled, catalogError }: {
   sources: MetricDataSource[]; value: string; onChange: (uid: string) => void; disabled?: boolean; catalogError?: string;
 }) {
-  return <>
-    {catalogError && <p role="alert">Datasource discovery unavailable: {catalogError}. Enter a known Prometheus datasource UID manually.</p>}
-    <label>Discovered datasources<select disabled={disabled} value={sources.some(source => source.uid === value) ? value : ''} onChange={event => onChange(event.target.value)}><option value="">Choose discovered datasource</option>{sources.filter(source => source.kind === 'prometheus').map(source => <option key={source.uid} value={source.uid}>{source.name} · {source.uid}</option>)}</select></label>
-    <label>Prometheus datasource UID<Input.Control disabled={disabled} value={value} onChange={event => onChange(event.target.value)} placeholder="Enter datasource UID, or direct for a direct endpoint" /></label>
-    <Text size="xs">Manual UIDs do not require catalog-list permission. Save or Test query verifies the selected datasource; discovery alone does not.</Text>
-  </>;
+  const selected = sources.find(source => source.uid === value);
+  return <div className="grafana-datasource">
+    <label>Data source<MetricsSelect label="Discovered datasources" disabled={disabled} value={selected ? value : ''} onChange={onChange}
+      options={[{ value: '', label: 'Choose data source' }, ...sources.filter(source => source.kind === 'prometheus').map(source => ({ value: source.uid, label: source.name }))]} /></label>
+    {selected && <small>Prometheus <span>UID: {selected.uid}</span></small>}
+    <details className="grafana-manual-source" open={Boolean(catalogError) || Boolean(value && !selected)}><summary>Enter datasource UID</summary>
+      {catalogError && <p role="alert">Datasource discovery unavailable: {catalogError}</p>}
+      <label>Prometheus datasource UID<Input.Root className="grafana-input" size="md"><Input.Control disabled={disabled} value={value} onChange={event => onChange(event.target.value)} placeholder="Datasource UID, or direct" /></Input.Root></label>
+    </details>
+  </div>;
 }

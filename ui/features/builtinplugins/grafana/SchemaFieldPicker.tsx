@@ -34,7 +34,7 @@ export default function SchemaFieldPicker({ context, value, onSelect }: {
       const scalar = Boolean(field.Types?.length && field.Types.every(type => ['string', 'boolean', 'integer', 'number'].includes(type)));
       if (field.Segment.Kind === 'item') return null;
       return <div key={index} style={{ marginBlock: 2 }}>
-        {field.Segment.Kind === 'mapValue' && <label>Exact map key<Input.Control value={mapKey} onChange={event => setMapKey(event.target.value)} placeholder="e.g. topology.kubernetes.io/zone" /></label>}
+        {field.Segment.Kind === 'mapValue' && <label>Exact map key<Input.Root className="grafana-input" size="md"><Input.Control value={mapKey} onChange={event => setMapKey(event.target.value)} placeholder="e.g. topology.kubernetes.io/zone" /></Input.Root></label>}
         <Button size="sm" variant="ghost" title={field.Description || undefined} disabled={!concrete || (!scalar && !field.HasChildren)} onClick={() => {
           if (scalar) { onSelect(schemaPointer([...names, concrete])); setOpen(false); }
           else { setNames([...names, concrete]); setPath([...path, field.Segment]); setMapKey(''); }
