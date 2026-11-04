@@ -2,9 +2,10 @@ package graph
 
 import (
 	"encoding/json"
+	"testing"
+
 	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestIndexInputsPreserveDeclaredDependenciesAndEviction(t *testing.T) {
