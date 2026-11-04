@@ -256,7 +256,7 @@ func TestReloadPlugin_ReloadsSuccessfully(t *testing.T) {
 func TestReloadPlugin_PublishesRunningAfterReplacement(t *testing.T) {
 	for _, origin := range []string{"external", "builtin"} {
 		t.Run(origin, func(t *testing.T) {
-			pm := newTestManager(t)
+			var pm *pluginManager
 			if origin == "builtin" {
 				pm = catalogManager(t, []CatalogEntry{{
 					Metadata:       config.PluginMeta{ID: "reload-events", Version: "1.0.0", Capabilities: []string{"ui"}},
@@ -264,6 +264,7 @@ func TestReloadPlugin_PublishesRunningAfterReplacement(t *testing.T) {
 				}})
 				require.NoError(t, pm.Initialize(context.Background()))
 			} else {
+				pm = newTestManager(t)
 				installPluginFixture(t, pm, "reload-events", []string{"ui"}, false)
 				require.NoError(t, os.MkdirAll(filepath.Join(pm.pluginsRoot.ResolvePath("reload-events"), "assets"), 0755))
 			}
