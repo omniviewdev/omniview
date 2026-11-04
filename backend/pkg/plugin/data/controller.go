@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -162,7 +163,7 @@ func (c *controller) write(pluginID, key string, value any) error {
 		return err
 	}
 
-	temporary := key + ".json.tmp"
+	temporary := filepath.Join(filepath.Dir(key), ".data-write.tmp")
 	defer root.Remove(temporary)
 	if err = root.WriteFile(temporary, data, dataFilePerm); err != nil {
 		logger.Errorw(context.Background(), "failed to write temporary data file", "error", err)

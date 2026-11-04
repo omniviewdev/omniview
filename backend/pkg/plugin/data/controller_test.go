@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 
@@ -16,6 +17,18 @@ func testController(t *testing.T) (Controller, *appstate.Service) {
 	t.Helper()
 	state := appstate.NewTestService(t)
 	return NewController(logging.NewNop(), state.PluginData), state
+}
+
+func TestMaximumLengthDataKeyRemainsUsable(t *testing.T) {
+	c, _ := testController(t)
+	key := strings.Repeat("k", 250)
+	if err := c.Set("test", key, true); err != nil {
+		t.Fatal(err)
+	}
+	value, err := c.Get("test", key)
+	if err != nil || value != true {
+		t.Fatalf("valid data key could not be read: %v, %v", value, err)
+	}
 }
 
 func TestSnapshotAbsentNullAndPersistedRevision(t *testing.T) {
