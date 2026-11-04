@@ -57,6 +57,13 @@ the baseline to precede that checkpoint, the checkpoint to precede the selected
 SDK, and all five selected protected files to match the checkpoint byte-for-byte.
 Neither cohort approval, tags nor environment variables can substitute another
 isolation checkpoint.
+
+The activity runtime requires Base UI `~0.13.0`; the matching AI UI and editors
+cohort is `6.1.7`. Keep the host manifest, runtime peer floor, registry lockfile,
+and selected UI source commit aligned. Publish runtime/Vite plugin `0.28.0`
+through the existing npm-only `release.yaml` dispatch after registry-backed
+build verification; dependency publication does not require a desktop tag.
+
 Review selected commits before updating the branch-owned cohort and
 gitlink; checkout reachability is required, publication is not. This avoids global UI/Kubernetes ref changes when older `main` and an
 upgraded PR need different compatible sources. The host input remains the exact
