@@ -8,9 +8,7 @@ vi.mock('@/providers/monaco/bootstrap', () => ({
 import { schemaRegistry } from './schemaRegistry';
 
 async function flushMicrotasks() {
-  const { promise, resolve } = Promise.withResolvers<void>();
-  queueMicrotask(resolve);
-  return promise;
+  await schemaRegistry.whenFlushed();
 }
 
 const document: EditorSchemaDocument = {
@@ -117,5 +115,45 @@ describe('canonical editor schema registry', () => {
     await flushMicrotasks();
     expect(mocks.yaml).toHaveBeenCalledTimes(1);
     expect(mocks.json).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits for the asynchronous YAML update before resolving whenFlushed', async () => {
+    const update = Promise.withResolvers<void>();
+    const started = Promise.withResolvers<void>();
+    mocks.yaml.mockImplementationOnce(() => {
+      started.resolve();
+      return update.promise;
+    });
+    schemaRegistry.register('test', 'route', [schema()], [document]);
+    const flushed = schemaRegistry.whenFlushed();
+    const settled = vi.fn();
+    void flushed.then(settled);
+    await started.promise;
+    expect(settled).not.toHaveBeenCalled();
+    expect(mocks.json).not.toHaveBeenCalled();
+    update.resolve();
+    await flushed;
+    expect(settled).toHaveBeenCalledOnce();
+    expect(mocks.json).toHaveBeenCalledOnce();
+  });
+
+  it('rejects whenFlushed on an asynchronous YAML failure and permits a later retry', async () => {
+    const update = Promise.withResolvers<void>();
+    const started = Promise.withResolvers<void>();
+    const failure = new Error('YAML worker rejected update');
+    mocks.yaml.mockImplementationOnce(() => {
+      started.resolve();
+      return update.promise;
+    });
+    schemaRegistry.register('test', 'route', [schema()], [document]);
+    const rejection = expect(schemaRegistry.whenFlushed()).rejects.toBe(failure);
+    await started.promise;
+    update.reject(failure);
+    await rejection;
+    expect(mocks.json).not.toHaveBeenCalled();
+    schemaRegistry.register('test', 'route', [schema()], [document]);
+    await schemaRegistry.whenFlushed();
+    expect(mocks.yaml).toHaveBeenCalledTimes(2);
+    expect(mocks.json).toHaveBeenCalledOnce();
   });
 });
