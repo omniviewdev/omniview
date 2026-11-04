@@ -46,6 +46,6 @@ These are actual development IDE captures, not mocks or packaged-desktop capture
 
 ## Universal macOS runner
 
-PR, stable-release, and nightly universal-build jobs use `macos-26-intel` after two ARM runner requests were cancelled before any step started ([#400](https://github.com/omniviewdev/omniview/issues/400)). GitHub documents this [macOS 26 Intel label](https://github.com/actions/runner-images#available-images) with [Xcode 26 and the macOS 26 SDK](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md).
+PR, stable-release, and nightly universal-build jobs use the existing Homebrew verification baseline, `macos-15-intel`, after macOS 26 ARM and Intel requests failed before any step started ([#400](https://github.com/omniviewdev/omniview/issues/400)). They explicitly select `/Applications/Xcode_26.3.app/Contents/Developer`, which GitHub documents with the [macOS 26.2 SDK on its macOS 15 Intel image](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-Readme.md#xcode).
 
-The build recipe remains unchanged: compile arm64 and amd64, combine them with `lipo`, and verify both slices. Release signing, notarization, and stapling remain required. Only desktop job runner selection changes; the reusable Ubuntu npm producer, its source, dependencies, and commands remain unchanged.
+The build recipe remains unchanged: compile arm64 and amd64, combine them with `lipo`, and verify both slices. Release signing, notarization, and stapling remain required. Only desktop runner/toolchain selection changes; the reusable Ubuntu npm producer, its source, dependencies, and commands remain unchanged.

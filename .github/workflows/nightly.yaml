@@ -71,7 +71,9 @@ jobs:
   # macOS (darwin/universal) — sign, notarize, DMG
   # ─────────────────────────────────────────────────────────────────────────────
   build-macos:
-    runs-on: macos-26-intel
+    runs-on: macos-15-intel
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     needs: check-changes
     if: needs.check-changes.outputs.should_build == 'true'
     steps:
