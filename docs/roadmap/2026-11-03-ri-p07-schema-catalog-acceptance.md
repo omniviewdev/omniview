@@ -115,7 +115,8 @@ used the same SDK, Kubernetes, UI, Flux and Proxmox revisions. Pod,
 141 records respectively;
 the corresponding `kubectl` counts matched. The catalog initially remained
 pending and idle. An explicit query refetch and route navigation recovered it.
-The Pod YAML preview opened, but hover did not appear. This was not a fresh
+The Pod YAML preview opened, but hover did not appear. Editable-editor hover and
+worker inspection were not checked on this host. This was not a fresh
 schema-admission measurement or a merged-source proof.
 
 ### Acceptance status
@@ -123,7 +124,9 @@ schema-admission measurement or a merged-source proof.
 | Evidence or gate | Status |
 | --- | --- |
 | Canonical Kubernetes pin | Merged; source-selection guards passed on the merge. |
-| Candidate Pod editor and Event checks | Observed above; completion provider not identified. |
+| Earlier candidate Pod editor and Event checks | Observed on `2f17b9ac`; completion provider not identified. |
+| `bf47c022` Pod preview hover | Not observed; editable-editor hover and worker inspection remain open. |
+| Kubernetes catalog startup | Pending/idle until explicit refetch and navigation; investigation remains open. |
 | Unknown-field diagnostic | Not observed; the registered schema allows unknown properties. |
 | Historical Pod admissions and resource measurements | Historical only; see the earlier receipt and original acceptance records. |
 | Historical native worker and authority-URI checks | Historical only; not repeated for this cohort. |
