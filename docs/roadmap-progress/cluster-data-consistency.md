@@ -34,6 +34,8 @@ Kubernetes 0.16.0 requires host 0.29.0. Development and nightly builds use sourc
 
 The Kubernetes gitlink and source-cohort record both select merged explorer `695c8d328031755f3b29d8be0f33ea3ad09af1fe` ([plugin PR 207](https://github.com/omniviewdev/omniview-plugin-kubernetes/pull/207)). Its reviewed source `ed76f0165c955a043ad1d8e09c2d64032c384c15` passed [registry-cohort CI 41848898158](https://github.com/omniviewdev/omniview-plugin-kubernetes/actions/runs/41848898158): frozen installation, lint, native TypeScript, 1,720 tests with three skips, 18 New York age-clock regressions, and production build. Standalone Go build and eleven tested packages passed against released SDK 0.14.6.
 
+The canonical real-plugin consumer scenario exercises initial search focus and keyboard field completion, then verifies the probe's shared runtime state. It no longer depends on the explorer's removed `All Clusters` subtab.
+
 Authenticated source generation `a4f3a0cb-4b68-4404-ac40-fda140048fb1` reported ready builds, current dependencies and served source, and connected HMR. Search autofocus and keyboard card selection were observed. Earlier live review-fix scenarios verified Settings navigation, lens-name focus, direct Cards/Table opening, empty-scope recovery, repeated folder moves, deleted-folder lens fallback, and fixture cleanup.
 
 ![Reviewed keyboard-selected Cards view](../images/cluster-data-consistency/cluster-explorer-reviewed-cards.png)
