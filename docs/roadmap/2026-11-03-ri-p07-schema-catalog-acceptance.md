@@ -119,6 +119,18 @@ The Pod YAML preview opened, but hover did not appear. Editable-editor hover and
 worker inspection were not checked on this host. This was not a fresh
 schema-admission measurement or a merged-source proof.
 
+The repinned candidate used host `300fa9a99af58edb257e2d65947d52e62492a808`,
+SDK `57f8b8bf4f761b44ebb33dea478a9e68c1d02049`, Kubernetes
+`67f0513e5094ea788bb96cf1d01b48a067b1951b`, Proxmox
+`eed8a71cae990dfe6b6be1e35337eca21e3ab74f`, Flux
+`c0409e1072260584519474133e5331414a6cbc4b`, and UI
+`5af0ec923a605aba5e6e3571d639f6238095804c`. The catalog opened without a
+refetch. Pod, core Event and ReplicaSet sources were following with 190, 170
+and 141 records; contemporaneous `kubectl` counts matched. An editable
+standalone scratch Pod YAML showed the `apiVersion` schema description on
+hover. No edit was saved. The scratch namespace was deleted, and a subsequent
+get returned `NotFound`. This is candidate evidence, not merged-source proof.
+
 ### Acceptance status
 
 | Evidence or gate | Status |
@@ -126,7 +138,8 @@ schema-admission measurement or a merged-source proof.
 | Canonical Kubernetes pin | Merged; source-selection guards passed on the merge. |
 | Earlier candidate Pod editor and Event checks | Observed on `2f17b9ac`; completion provider not identified. |
 | `bf47c022` Pod preview hover | Not observed; editable-editor hover and worker inspection remain open. |
-| Kubernetes catalog startup | Pending/idle until explicit refetch and navigation; investigation remains open. |
+| `300fa9a9` editable Pod hover | Observed with the repinned candidate cohort; no edit saved. |
+| `bf47c022` catalog startup | Pending/idle until explicit refetch and navigation; investigation remains open. |
 | Unknown-field diagnostic | Not observed; the registered schema allows unknown properties. |
 | Historical Pod admissions and resource measurements | Historical only; see the earlier receipt and original acceptance records. |
 | Historical native worker and authority-URI checks | Historical only; not repeated for this cohort. |
