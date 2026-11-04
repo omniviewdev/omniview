@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newGraphPipeline(t *testing.T) (*controller, *graph.RelationshipGraph, *indexer.Dispatcher) {
+func newGraphPipeline(t testing.TB) (*controller, *graph.RelationshipGraph, *indexer.Dispatcher) {
 	t.Helper()
 	ctrl, _ := newTestControllerWithEmitter(t)
 	catalog := canonicalTestCatalog("provider-a", "workload")
@@ -45,7 +45,7 @@ func deleteGraphRecord(ctrl *controller, route resourcev2.AccessRoute, ref resou
 	session.deleteRecord(ref)
 }
 
-func graphPipelineRecord(t *testing.T, ctrl *controller, resourceType, id, body string) (resourcev2.AccessRoute, resourcev2.Record) {
+func graphPipelineRecord(t testing.TB, ctrl *controller, resourceType, id, body string) (resourcev2.AccessRoute, resourcev2.Record) {
 	t.Helper()
 	target := admittedReadTarget(t, ctrl, "plugin-a", "route/one", resourceType).Target
 	record := canonicalTestRecord(target.Provider, target.Authority, resourceType, id)
@@ -58,7 +58,7 @@ func graphPipelineRecord(t *testing.T, ctrl *controller, resourceType, id, body 
 	return target.Route, record
 }
 
-func setPipelineDeclarations(t *testing.T, ctrl *controller, g *graph.RelationshipGraph, plugin string, route resourcev2.AccessRoute, sourceType string, decls []resourcev2.RelationshipDescriptor) {
+func setPipelineDeclarations(t testing.TB, ctrl *controller, g *graph.RelationshipGraph, plugin string, route resourcev2.AccessRoute, sourceType string, decls []resourcev2.RelationshipDescriptor) {
 	t.Helper()
 	source := admittedReadTarget(t, ctrl, plugin, route.Connection, sourceType).Target
 	bindings := graph.DeclarationBindings{Source: graph.TargetBinding{Target: source, IdentityDimensions: []resourcev2.Dimension{{Name: "shard"}}}}

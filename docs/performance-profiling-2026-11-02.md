@@ -525,3 +525,155 @@ The integration source cohort and Kubernetes submodule also pin the optimized
 SDK consumer. This keeps source-based application checks on the same SDK as
 the canonical host and plugin modules, rather than the earlier schema-budget
 cohort. These dependency updates are not additional matched performance runs.
+
+## Unchanged registry and relationship inputs — host #214
+
+The baseline for this slice is
+`520945478de1a572b1ab3a8f3e3f35a5dd73fdad`. The implementation remains on
+`feature/ri-index-inputs-20261103-74b62441`; no merge or release is implied.
+The initial three-iteration production-path measurement preceded guard selection.
+The final matched experiment used 20 population updates and three repetitions,
+with the same benchmark fixture and ordinary Go test build on Darwin/arm64,
+Apple M5 Max. Initial registry population is the warmup. There is no browser,
+viewport, native rendering workload, or live provider in this backend experiment.
+
+At this revision the old `sink.go` no longer exists. The exercised ingress is
+`observeValidatedSourceRecord`, including record validation, native-value JSON
+encoding, current-generation and authority fencing, registry replacement,
+the actual buffered dispatcher, and the actual graph indexer. Controlled
+canonical source records replace transport delivery, not those production steps.
+Each operation updates 300 or 3,000 records, drains the dispatcher, and checks
+every resulting edge against an independently constructed expected owner ID.
+Owner updates change `metadata.ownerReferences.0.name`; label updates change
+projection metadata; recreation uses the real source-session delete helper.
+
+The baseline replay used Go's source overlay for the four modified existing
+production files, loaded verbatim from the baseline revision, and excluded the
+new dependency helper. Both sides used the identical final benchmark fixture.
+The temporary overlay and extracted sources were removed after measurement.
+Raw receipts are retained outside tracked source in
+`.local/ri-index-before.csv`, `.local/ri-index-after-final.txt`, and
+`.local/ri-index-final-sources.sha256`. These receipts identify the uncommitted
+implementation by source fingerprints rather than inventing an after commit.
+
+### Matched results
+
+Values below are medians of three runs. An operation is a whole population,
+not one object. Latency remains scheduler-sensitive; allocation results are
+more stable. These results do not attribute native CPU or promise a CPU percentage.
+
+| Objects | Workload | ns/op before → after | B/op before → after | allocs/op before → after |
+| --- | --- | --- | --- | --- |
+| 300 | status | 7,282,379 → 1,364,362 | 2,660,605 → 1,561,128 | 39,071 → 19,871 |
+| 300 | label | 4,829,646 → 2,057,927 | 2,725,848 → 2,850,882 | 39,085 → 40,288 |
+| 300 | owner reference | 4,576,056 → 1,857,500 | 3,053,267 → 3,183,022 | 39,081 → 40,584 |
+| 300 | delete/recreate | 5,333,538 → 2,208,527 | 3,160,257 → 3,284,718 | 48,072 → 49,272 |
+| 3,000 | status | 94,638,821 → 13,680,784 | 26,534,306 → 15,539,921 | 390,082 → 198,088 |
+| 3,000 | label | 98,732,360 → 65,250,125 | 27,059,052 → 28,306,980 | 390,114 → 402,117 |
+| 3,000 | owner reference | 55,085,917 → 41,547,312 | 30,450,416 → 31,746,767 | 390,099 → 405,105 |
+| 3,000 | delete/recreate | 87,392,740 → 67,890,617 | 31,527,968 → 32,775,742 | 480,084 → 492,089 |
+
+For 3,000 status updates, retained exact dependencies reduce measured bytes
+about 41% and allocations about 49%. They impose real changed-input costs:
+label bytes increase about 4.6%, owner-reference bytes about 4.3%, and
+delete/recreate bytes about 4.0%. Their allocation increases are about 3.1%,
+3.8%, and 2.5%, respectively. Duplicate canonical-key encoding and unnecessary
+copies of already-owned gjson results were removed before the final experiment.
+The remaining witness owns labels and exact selected values, not whole records.
+
+The benchmark also samples the production queue after each observation and
+separately records enqueue time and final drain time. Maximum sampled queue
+depths across repetitions were:
+
+| Objects | Workload | Peak before → after |
+| --- | --- | --- |
+| 300 | status | 299 → 30 |
+| 300 | label | 299 → 150 |
+| 300 | owner reference | 299 → 172 |
+| 300 | delete/recreate | 599 → 277 |
+| 3,000 | status | 2,831 → 129 |
+| 3,000 | label | 2,831 → 2,428 |
+| 3,000 | owner reference | 2,971 → 2,431 |
+| 3,000 | delete/recreate | 5,421 → 4,633 |
+
+No cohort approaches the 10,000-event capacity. Each batch contains at most
+6,000 events plus its flush barrier, so this fixture cannot establish behavior
+under sustained queue-capacity backpressure. The status workload produces
+zero changed graph batches after the guard, versus one per operation before;
+the other workloads produce one on both sides. These are observed graph
+notification counts, not hidden rebuild counters.
+
+### Guard and lifecycle boundaries
+
+The registry keeps replacing the stored entry and cloning caller-owned metadata.
+It reuses label memberships only for the same canonical projection key with
+equal label maps. Changed labels, address scope, plugin, or route cannot reuse
+another projection's membership.
+
+The graph witness belongs to the exact admitted declaration/binding snapshot.
+It includes canonical source identity, plugin, route, optional incarnation,
+labels, every extractor result, and every scope-extractor result. Result type,
+existence, strings, numbers, and raw selected JSON participate in comparison.
+This is neither a whole-resource diff nor a labels-only status shortcut.
+Formatting differences conservatively rebuild. Missing declarations do not
+authorize a skip. Binding or source-epoch replacement gets a new witness owner.
+
+Deletion and explicit node/connection eviction invalidate witnesses. An eviction
+epoch prevents an in-flight extraction from recording a witness after concurrent
+removal. Explicit target eviction also invalidates every removed edge's declarer,
+so an unchanged later declarer observation can restore its reference. Declaration
+retirement drops the snapshot-owned cache. Cache size is
+bounded to one entry per retained canonical resource in a live declaration
+snapshot; no raw-resource history is retained. Graph locking protects cache
+access and exported declaration cloning. Derived-edge removal still preserves
+independently owned edges. Source observation admission and delivery remain
+unchanged; the graph fast path does not suppress the dispatched update.
+
+Focused race checks passed for registry, graph, dispatcher, production pipeline,
+binding retirement, queued retired observations, and the new dependency
+regressions. The new regressions cover graph notification stability on status,
+changed owner references and configured fields, scope-extractor changes,
+independent edges, explicit declarer and target eviction, recreation/incarnation,
+and rebinding.
+Existing label-selector, route-isolation, immutable snapshot, and generation
+tests remain the boundary checks rather than duplicating internal call counters.
+The initial new ownership fixture omitted its required `kind` discriminator;
+that fixture was corrected before the passing focused and race runs.
+
+### Acceptance limits and SDK-v2 carry-forward
+
+This is a backend in-process surface smoke, not a native desktop or provider
+transport acceptance run. A separate compiler-instrumented run measured rebuilds
+without permanent instrumentation. Each workload ran one update of both
+populations: 3,300 initial observations and 3,300 workload observations.
+Atomic coverage counters at `extractEdges` and `removeLabels` give:
+
+| Workload | Graph extractions before → after, including initialization | Label withdrawals before → after |
+| --- | --- | --- |
+| status | 6,600 → 3,300 | 3,300 → 0 |
+| label | 6,600 → 6,600 | 3,300 → 3,300 |
+| owner reference | 6,600 → 6,600 | 3,300 → 0 |
+| delete/recreate | 6,600 → 6,600 | 3,300 → 3,300 |
+
+Subtracting initialization leaves zero status extractions and 3,300 extractions
+for each changed-input workload. Counters are pooled across the 300 and 3,000
+fixtures, not separately attributed to each size. Raw atomic profiles remain at
+`.local/ri-index-{before,after}-{status,label,owner,recreate}.cover`.
+An initial coverage-overlay attempt unexpectedly compiled current sources;
+its output was rejected and removed. The accepted baseline counter run instead
+built an extracted baseline source tree with only the same benchmark fixtures
+copied in. That temporary source tree was removed afterward. Instrumented
+latencies are excluded from the matched uninstrumented timing table.
+
+The finite batches demonstrate queue behavior below capacity, not sustained
+capacity backpressure or native desktop CPU. Full issue acceptance still requires
+review of the measured changed-input allocation tradeoff and these surface
+limits; the implementation does not silently widen its claim to live transport,
+rendering, or source-coordinator changes.
+
+For SDK-v2 consumers, carry forward canonical identity and optional incarnation
+separately from route ownership. Bind dependency witnesses to admitted catalog,
+binding, and source-generation lifetimes. Retain all declared selector, field,
+and scope inputs; invalidate on deletion and retirement. Do not infer ownership
+from labels, retain complete resource bodies, introduce an SDK contract here,
+or move dependency construction into a new shared-dispatcher stage.

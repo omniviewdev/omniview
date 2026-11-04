@@ -28,6 +28,8 @@ type boundSet struct {
 	noRules      bool
 	declarations []resource.RelationshipDescriptor
 	bindings     DeclarationBindings
+	inputs       map[string]relationshipInputs // guarded by RelationshipGraph.mu
+	inputEpoch   uint64
 }
 
 type unresolvedEntry struct {
@@ -51,7 +53,7 @@ func (g *RelationshipGraph) SetBoundDeclarations(plugin string, route resource.A
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	key := declMapKey{pluginID: plugin, connectionID: route.Connection, resourceKey: sourceType}
-	if reflect.DeepEqual(g.boundDeclarations[key], &candidate) {
+	if current := g.boundDeclarations[key]; current != nil && current.noRules == candidate.noRules && reflect.DeepEqual(current.declarations, candidate.declarations) && reflect.DeepEqual(current.bindings, candidate.bindings) {
 		delete(g.declarationProblems, key)
 		return nil
 	}
@@ -99,6 +101,7 @@ func cloneTargetBinding(binding TargetBinding) TargetBinding {
 }
 
 func cloneBoundSet(set boundSet) boundSet {
+	set.inputs = nil
 	set.declarations = slices.Clone(set.declarations)
 	for i := range set.declarations {
 		decl := &set.declarations[i]
@@ -123,6 +126,8 @@ func (g *RelationshipGraph) GetBoundDeclarations(plugin string, route resource.A
 	if !ok {
 		return nil, DeclarationBindings{}, false
 	}
+	g.mu.RLock()
+	defer g.mu.RUnlock()
 	copy := cloneBoundSet(*set)
 	return copy.declarations, copy.bindings, ok
 }
