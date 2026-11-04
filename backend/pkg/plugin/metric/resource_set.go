@@ -491,7 +491,7 @@ func normalizeResourceResults(req sdk.ResourceSetQueryRequest, response *sdk.Res
 			if end.IsZero() {
 				end = now
 			}
-			if !r.ObservedAt.IsZero() && r.ObservedAt.Before(end.Add(-5*time.Minute)) {
+			if (r.Status == sdk.MetricStatusOK || r.Status == sdk.MetricStatusPartial) && !r.ObservedAt.IsZero() && r.ObservedAt.Before(end.Add(-5*time.Minute)) {
 				r.Status = sdk.MetricStatusStale
 				r.Warnings = append(r.Warnings, "Metric samples are older than five minutes.")
 			}
@@ -499,8 +499,13 @@ func normalizeResourceResults(req sdk.ResourceSetQueryRequest, response *sdk.Res
 		if r.ObservedAt.IsZero() {
 			r.ObservedAt = now
 		}
-		if r.ExpiresAt.IsZero() || r.ExpiresAt.After(now.Add(5*time.Second)) {
-			r.ExpiresAt = now.Add(5 * time.Second)
+		// Freshness belongs to the provider, not the coordinator's reuse TTL.
+		// Without a deadline, bound freshness by sample age rather than receipt time.
+		if r.ExpiresAt.IsZero() {
+			r.ExpiresAt = r.ObservedAt.Add(5 * time.Minute)
+		}
+		if (r.Status == sdk.MetricStatusOK || r.Status == sdk.MetricStatusPartial) && !r.ExpiresAt.After(now) {
+			r.Status = sdk.MetricStatusStale
 		}
 		seen[pair{r.ResourceToken, r.MetricID}] = true
 		out.Results = append(out.Results, r)

@@ -363,6 +363,59 @@ func TestNormalizeResourceResultsRejectsFutureAndOutOfRangeSamples(t *testing.T)
 	require.ErrorContains(t, err, "out-of-range")
 }
 
+func TestNormalizeResourceResultsSeparatesFreshnessFromCacheTTL(t *testing.T) {
+	now := time.Now()
+	sample := now.Add(-time.Minute)
+	for _, tc := range []struct {
+		name     string
+		status   sdk.MetricResultStatus
+		deadline time.Time
+		want     sdk.MetricResultStatus
+	}{
+		{"provider deadline", sdk.MetricStatusOK, sample.Add(5 * time.Minute), sdk.MetricStatusOK},
+		{"missing deadline", sdk.MetricStatusOK, time.Time{}, sdk.MetricStatusOK},
+		{"earlier deadline", sdk.MetricStatusOK, now.Add(10 * time.Second), sdk.MetricStatusOK},
+		{"expired deadline", sdk.MetricStatusOK, now.Add(-time.Second), sdk.MetricStatusStale},
+		{"provider stale", sdk.MetricStatusStale, sample.Add(5 * time.Minute), sdk.MetricStatusStale},
+		{"provider failure", sdk.MetricStatusFailed, now.Add(-time.Second), sdk.MetricStatusFailed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := sdk.ResourceMetricResult{
+				ResourceToken: "a", MetricID: "cpu", Status: tc.status, ExpiresAt: tc.deadline,
+				Value: &sdk.MetricResult{CurrentValue: &sdk.CurrentValue{MetricID: "cpu", Value: 1, Timestamp: sample}},
+			}
+			if tc.status == sdk.MetricStatusFailed {
+				result.Value = nil
+			}
+			out, err := normalizeResourceResults(setRequest(sdk.MetricResource{Token: "a"}), &sdk.ResourceSetQueryResponse{Results: []sdk.ResourceMetricResult{result}})
+			require.NoError(t, err)
+			got := out.Results[0]
+			require.Equal(t, tc.want, got.Status)
+			wantDeadline := tc.deadline
+			if wantDeadline.IsZero() {
+				wantDeadline = sample.Add(5 * time.Minute)
+			}
+			require.True(t, got.ExpiresAt.Equal(wantDeadline))
+			if tc.name == "provider deadline" || tc.name == "missing deadline" {
+				require.True(t, got.ExpiresAt.After(now.Add(30*time.Second)), "healthy samples must remain fresh across the polling cycle")
+			}
+		})
+	}
+}
+
+func TestNormalizeResourceResultsMissingDeadlineDoesNotReviveOldSamples(t *testing.T) {
+	sample := time.Now().Add(-6 * time.Minute)
+	result := sdk.ResourceMetricResult{
+		ResourceToken: "a", MetricID: "cpu", Status: sdk.MetricStatusOK,
+		Value: &sdk.MetricResult{CurrentValue: &sdk.CurrentValue{MetricID: "cpu", Value: 1, Timestamp: sample}},
+	}
+	out, err := normalizeResourceResults(setRequest(sdk.MetricResource{Token: "a"}), &sdk.ResourceSetQueryResponse{Results: []sdk.ResourceMetricResult{result}})
+	require.NoError(t, err)
+	require.Equal(t, sdk.MetricStatusStale, out.Results[0].Status)
+	require.True(t, out.Results[0].ExpiresAt.Equal(sample.Add(5*time.Minute)))
+	require.True(t, out.Results[0].ExpiresAt.Before(time.Now()))
+}
+
 func TestSelectedDatasourceDoesNotRequireCatalogListPrivilege(t *testing.T) {
 	c, p := setFixtureController(t)
 	p.denyCatalog = true

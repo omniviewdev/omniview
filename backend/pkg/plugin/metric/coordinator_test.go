@@ -78,6 +78,39 @@ func TestCoordinatorDifferentAuthorizationPartitionsNeverShare(t *testing.T) {
 	}
 	require.Equal(t, int32(4), calls.Load())
 }
+
+func TestCoordinatorCacheReuseTTLDoesNotShortenSampleFreshness(t *testing.T) {
+	q := &queryCoordinator{partitions: map[string]*queryPartition{}, slots: make(chan struct{}, maxQueryConcurrency)}
+	deadline := time.Now().Add(5 * time.Minute)
+	var calls atomic.Int32
+	execute := func(context.Context, []sdk.MetricResource) (*sdk.ResourceSetQueryResponse, error) {
+		calls.Add(1)
+		return &sdk.ResourceSetQueryResponse{Results: []sdk.ResourceMetricResult{{ResourceToken: "identity", MetricID: "cpu", Status: sdk.MetricStatusOK, ExpiresAt: deadline}}}, nil
+	}
+	resources := []sdk.MetricResource{{Token: "identity"}}
+	before := time.Now()
+	first, err := q.query(context.Background(), "freshness", resources, execute, func() bool { return true })
+	require.NoError(t, err)
+	require.True(t, first.Results[0].ExpiresAt.Equal(deadline))
+	q.Lock()
+	entry := q.partitions["freshness"].cache["identity"]
+	q.Unlock()
+	require.True(t, entry.expires.After(before.Add(5*time.Second)))
+	require.False(t, entry.expires.After(time.Now().Add(5*time.Second)))
+	require.True(t, entry.results[0].ExpiresAt.After(before.Add(30*time.Second)))
+	_, err = q.query(context.Background(), "freshness", resources, execute, func() bool { return true })
+	require.NoError(t, err)
+	require.Equal(t, int32(1), calls.Load())
+	// Age only the cache's reuse deadline, as a later poll would observe it.
+	q.Lock()
+	entry.expires = time.Now().Add(-time.Second)
+	q.partitions["freshness"].cache["identity"] = entry
+	q.Unlock()
+	second, err := q.query(context.Background(), "freshness", resources, execute, func() bool { return true })
+	require.NoError(t, err)
+	require.Equal(t, int32(2), calls.Load())
+	require.True(t, second.Results[0].ExpiresAt.Equal(deadline))
+}
 func TestCoordinatorLastConsumerCancellationStopsBackend(t *testing.T) {
 	q := &queryCoordinator{partitions: map[string]*queryPartition{}, slots: make(chan struct{}, maxQueryConcurrency)}
 	started := make(chan struct{})
