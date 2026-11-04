@@ -99,7 +99,9 @@ its base-ui peer range is `^0.2.1`, not the host source runtime's `~0.4.3`.
 With installed/built host packages and the reviewed sources checked out:
 
 Candidate CI uses `e2e/source-cohort.json` as its exact SDK/UI/Kubernetes
-selection. The explicit workflow `REVIEWED_SDK_REVISION` must equal that SDK commit;
+selection. The SDK must have exact independent approval and match the revision
+declared by a host `go.mod` pseudo-version. An approved maintenance SDK must not
+silently override a different feature SDK dependency.
 UI and Kubernetes refs come only from that cohort in candidate workflows, not
 legacy repository UI/profile variables. The selected UI checkout must satisfy the
 host/runtime shared-UI dependency ranges. Update `e2e/source-cohort.json` alongside
@@ -113,8 +115,9 @@ Candidate admission requires an exact independently reviewed SDK commit from
 repository variable `OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION` or the separate
 `OMNIVIEW_RESOURCE_V2_REVIEWED_MAINTENANCE_SDK_REVISION`. These approvals remain
 under user-authorized release administration. Maintenance servicing must not
-replace mainline approval. Workflows propagate the admitted selection as
-`REVIEWED_SDK_REVISION`; direct execution supplies either that variable or
+replace mainline approval. Workflows expose the admitted selection through
+candidate step outputs without rewriting either approval variable. Direct
+execution supplies `REVIEWED_SDK_REVISION` or
 `REVIEWED_MAINTENANCE_SDK_REVISION`. Neither a cohort edit nor a release tag grants
 approval.
 The independent SDK isolation-core baseline remains
