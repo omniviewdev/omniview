@@ -71,7 +71,7 @@ jobs:
   # macOS (darwin/universal) — sign, notarize, DMG
   # ─────────────────────────────────────────────────────────────────────────────
   build-macos:
-    runs-on: macos-latest
+    runs-on: macos-26-intel
     needs: check-changes
     if: needs.check-changes.outputs.should_build == 'true'
     steps:

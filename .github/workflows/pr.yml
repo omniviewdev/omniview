@@ -46,7 +46,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - os: macos-26-intel
             platform: darwin/universal
             artifact-name: pr-build-macos
             build-tags: "production"

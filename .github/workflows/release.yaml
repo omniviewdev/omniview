@@ -41,7 +41,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   build-macos:
     if: github.event_name == 'push'
-    runs-on: macos-latest
+    runs-on: macos-26-intel
     steps:
       - name: Normalize version
         id: version

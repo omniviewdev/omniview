@@ -43,3 +43,9 @@ Authenticated source generation `a4f3a0cb-4b68-4404-ac40-fda140048fb1` reported 
 ![Reviewed Debug view honoring selected sort](../images/cluster-data-consistency/cluster-explorer-reviewed-debug.png)
 
 These are actual development IDE captures, not mocks or packaged-desktop captures. All 26 aliases target one owned real Kubernetes API with four namespaces, zero Nodes, and no scheduler. Metadata hints do not establish cloud ownership or workload health. Native MCP confirmed initial search focus, but hidden-window action automation stalled; native-window actions and OS dialogs remain unproved. The plugin's [release evidence](https://github.com/omniviewdev/omniview-plugin-kubernetes/blob/695c8d328031755f3b29d8be0f33ea3ad09af1fe/docs/releases/0.16.0.md) records the full theme, sizing, density, responsive, organization, and restart scenarios.
+
+## Universal macOS runner
+
+PR, stable-release, and nightly universal-build jobs use `macos-26-intel` after two ARM runner requests were cancelled before any step started ([#400](https://github.com/omniviewdev/omniview/issues/400)). GitHub documents this [macOS 26 Intel label](https://github.com/actions/runner-images#available-images) with [Xcode 26 and the macOS 26 SDK](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md).
+
+The build recipe remains unchanged: compile arm64 and amd64, combine them with `lipo`, and verify both slices. Release signing, notarization, and stapling remain required. Only desktop job runner selection changes; the reusable Ubuntu npm producer, its source, dependencies, and commands remain unchanged.
