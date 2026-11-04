@@ -666,4 +666,3 @@ func TestSourceMemberMaterializesAdmittedRepresentation(t *testing.T) {
 	require.Equal(t, record, session.fullSourceRecord(decoded.Record))
 	require.Equal(t, observation.Metadata, decoded.Metadata)
 }
-
