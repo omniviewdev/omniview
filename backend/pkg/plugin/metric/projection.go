@@ -11,6 +11,16 @@ import (
 	sdk "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 )
 
+// ResourceIdentityGuard authorizes metric access and pins current observed identity
+// without reading a resource body or requiring resource.Get permission.
+type ResourceIdentityGuard func(context.Context, string, string, resourcev2.AccessRoute, resourcev2.ResourceReference) (func(context.Context) error, error)
+
+func (c *controller) SetResourceIdentityGuard(guard ResourceIdentityGuard) {
+	c.mux.Lock()
+	c.resourceIdentityGuard = guard
+	c.mux.Unlock()
+}
+
 // MetricResourceReader returns an authoritative source-owner observation. The
 // integration must reuse observed bodies or a shared owner cache, not introduce
 // one upstream GET per visible row. Caller-supplied bodies are never observations.

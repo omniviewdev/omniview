@@ -30,6 +30,10 @@ The app injects its managed `appstate.ScopedRoot` through `SetMetricStateRoot`; 
 
 Canonical resource ID, namespace scope, resource type, and explicitly saved public scope support default mappings without source object reads. Explicit `MetricFieldBinding.ResourcePath` values use RFC6901 pointers. The host reads only authoritative owner observations through `SetMetricResourceReader`, inside shared metric work. The reader must reuse current source-view observations; there is no upstream GET-per-row fallback. Missing observations fail explicitly.
 
+Every resource also requires `SetResourceIdentityGuard`, wired to the resource controller's trusted `GuardObservedReference`. After canonical admission, this host-only guard authorizes `metric.Query` and checks the current identity against retained same-owner authoritative default/model observations. Default mappings do not require `resource.Get` or body reads. Missing observations, missing guards, altered incarnations, and omitted known incarnations fail closed before provider work. Identity guards survive same-incarnation body/revision updates; explicit field projections retain their stricter observation guards.
+
+Shared work retains identity guards for every resource, including default canonical mappings. The host checks these guards before shared publication, cache delivery, and each caller's final delivery using the current delivery context, never the cancelled acquisition context.
+
 For owner observations, the reader prefers the catalog's default/native representation, then the catalog-declared model representation used by normal UI collections. It rejects unrelated projections and chooses deterministically among eligible sessions. A change in the preferred session invalidates its observation guard. Fields omitted by a model representation remain explicitly unavailable; the reader never fills them from caller bodies or hidden upstream GETs.
 
 The host ignores caller bodies and extracts only selected scalar leaves into `PublicData.Map[Field]`. Whole objects, lists, nulls, malformed pointers, sensitive field names, and data payload paths are rejected. Projection permits at most sixteen fields, sixteen pointer segments, and 2 KiB per scalar. The whole observed object is neither cached by the metric coordinator nor forwarded to the provider. `MetricResourceReader` returns the body plus a `func(context.Context) error` observation guard. The guard captures source session generation and member revision, reauthorizes using each current delivery context, and stays private to shared work/cache entries.
@@ -47,6 +51,8 @@ Mixed requests retain fresh cached resource results and schedule only missing or
 The host validates SDK response identities, declared dimensions, value shapes, finite numeric samples, and timestamps. Missing resource/metric pairs become explicit `missing` results with no value, never zero. Provider statuses, warnings, provenance, and mapping revisions remain visible. Structural result collisions fail rather than selecting or summing arbitrary series.
 
 Frontend subscription lifetime follows the structural request key, not `useMemo` identity. The hook commits the latest request in a layout effect and subscribes by key, enabled state, and refresh interval. Compiler optimization or a consumer recreating equivalent request objects must not cancel work or leave cells loading indefinitely.
+
+Compatible active frontend observers share one polling schedule. Opening a sidebar does not expire an observation still retained by its table; the five-second detached-cache retention applies only after the resource loses its observers. Provider expiry remains visible as stale until the shared poll refreshes the observation.
 
 ## Verification handoff
 

@@ -88,25 +88,26 @@ type subscriptionIndex struct {
 var _ Controller = (*controller)(nil)
 
 type controller struct {
-	emitter              resource.EventEmitter
-	ctx                  context.Context
-	logger               logging.Logger
-	settingsProvider     pkgsettings.Provider
-	clients              map[string]Provider
-	providerInfos        map[string]*metric.ProviderInfo // pluginID -> provider info
-	handlerMap           map[string][]metric.Handler     // pluginID -> handlers
-	resourceIndex        map[string][]string             // resource key -> []pluginID
-	subscriptions        map[string]subscriptionIndex    // subscriptionID -> index
-	streams              map[metricStreamKey]*metricStream
-	streamErrors         map[metricStreamKey]error
-	streamBlocked        map[metricStreamKey]int
-	resourceClient       resource.ConnectionReader
-	referenceAdmitter    resource.ReferenceAdmitter
-	uiReferenceAdmitter  resource.ReferenceAdmitter
-	mux                  sync.RWMutex
-	metricState          *metricState
-	coordinator          *queryCoordinator
-	metricResourceReader MetricResourceReader
+	emitter               resource.EventEmitter
+	ctx                   context.Context
+	logger                logging.Logger
+	settingsProvider      pkgsettings.Provider
+	clients               map[string]Provider
+	providerInfos         map[string]*metric.ProviderInfo // pluginID -> provider info
+	handlerMap            map[string][]metric.Handler     // pluginID -> handlers
+	resourceIndex         map[string][]string             // resource key -> []pluginID
+	subscriptions         map[string]subscriptionIndex    // subscriptionID -> index
+	streams               map[metricStreamKey]*metricStream
+	streamErrors          map[metricStreamKey]error
+	streamBlocked         map[metricStreamKey]int
+	resourceClient        resource.ConnectionReader
+	referenceAdmitter     resource.ReferenceAdmitter
+	uiReferenceAdmitter   resource.ReferenceAdmitter
+	mux                   sync.RWMutex
+	metricState           *metricState
+	coordinator           *queryCoordinator
+	metricResourceReader  MetricResourceReader
+	resourceIdentityGuard ResourceIdentityGuard
 }
 
 // SetReferenceAdmitter binds native admission without changing invocation identity.

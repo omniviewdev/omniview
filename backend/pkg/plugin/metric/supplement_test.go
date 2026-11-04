@@ -119,6 +119,13 @@ func TestServiceWrapperSupplementPreservesNativeNodeMetricsOutsideGrafanaApplica
 	controller.SetUIReferenceAdmitter(func(ctx context.Context, op, owner string, route resourcev2.AccessRoute, reference resourcev2.ResourceReference) (context.Context, error) {
 		return boundary.Admit(scope.Context(ctx), op, invocation.Target{Provider: owner, Connection: route.Connection, ResourceType: reference.Address.Type})
 	})
+	controller.SetResourceIdentityGuard(func(ctx context.Context, op, owner string, route resourcev2.AccessRoute, reference resourcev2.ResourceReference) (func(context.Context) error, error) {
+		authorize := func(current context.Context) error {
+			_, err := boundary.Admit(scope.Context(current), op, invocation.Target{Provider: owner, Connection: route.Connection, ResourceType: reference.Address.Type})
+			return err
+		}
+		return authorize, authorize(ctx)
+	})
 	service := &hostmetric.ServiceWrapper{Ctrl: controller}
 	connection := sdk.ProviderConnectionInput{Connection: sdk.ProviderConnection{ID: "monitoring", Name: "Supplemental Grafana", Kind: "prometheus", URL: endpoint.URL, PublicConfig: map[string]string{"credentialKind": "prometheus-token", "allowInsecureHTTP": "true"}}}
 	encoded, err := json.Marshal(connection)

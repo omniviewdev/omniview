@@ -37,6 +37,22 @@ describe('finite resource metric scheduling', () => {
     table.unsubscribe(); reopened.unsubscribe();
   });
 
+  it('keeps a late sidebar on the active table polling schedule beyond detached-cache retention', async () => {
+    const execute = vi.fn(async (query: ResourceSetQueryRequest) => response(query.resources.map(item => item.token)));
+    const scheduler = new ResourceSetScheduler(execute);
+    const table = scheduler.subscribe(request(['a', 'b']), 30_000, () => {});
+    await vi.advanceTimersByTimeAsync(8);
+    await vi.advanceTimersByTimeAsync(8_000);
+    const sidebar = scheduler.subscribe(request(['a']), 30_000, () => {});
+    await vi.advanceTimersByTimeAsync(8);
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(sidebar.snapshot().data?.results).toEqual([{ resource_token: 'a', metric_id: 'cpu', status: 'missing' }]);
+    await vi.advanceTimersByTimeAsync(22_000);
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(execute.mock.calls[1][0].resources.map(item => item.token)).toEqual(['a', 'b']);
+    table.unsubscribe(); sidebar.unsubscribe();
+  });
+
   it('bounds batches and isolates owner, datasource and projection identities', async () => {
     const execute = vi.fn(async (query: ResourceSetQueryRequest) => response(query.resources.map(item => item.token)));
     const scheduler = new ResourceSetScheduler(execute);

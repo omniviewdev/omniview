@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -77,11 +78,26 @@ func TestMetricOnlyNativeCatalogLoadsWithRealSettingsController(t *testing.T) {
 	metrics.SetUIReferenceAdmitter(func(ctx context.Context, operation, owner string, route resourcev2.AccessRoute, ref resourcev2.ResourceReference) (context.Context, error) {
 		return boundary.Admit(scope.Context(ctx), operation, invocation.Target{Provider: owner, Connection: route.Connection, ResourceType: ref.Address.Type})
 	})
+	observedReference := resourcev2.ResourceReference{Address: resourcev2.ResourceAddress{
+		Provider: "owner", Authority: "fixture-authority", Type: "k8s:/pods", ID: "pod", Scope: []resourcev2.ScopeEntry{{Dimension: "namespace", Value: "ns"}},
+	}}
+	observedRoute := resourcev2.AccessRoute{Connection: "cluster"}
+	metrics.SetResourceIdentityGuard(func(ctx context.Context, operation, owner string, route resourcev2.AccessRoute, ref resourcev2.ResourceReference) (func(context.Context) error, error) {
+		authorize := func(current context.Context) error {
+			if err := current.Err(); err != nil {
+				return err
+			}
+			if operation != "metric.Query" || owner != "owner" || !reflect.DeepEqual(route, observedRoute) || !reflect.DeepEqual(ref, observedReference) {
+				return resourcev2.NewError("FORBIDDEN", "Resource does not match the retained catalog fixture identity.")
+			}
+			_, err := boundary.Admit(scope.Context(current), operation, invocation.Target{Provider: owner, Connection: route.Connection, ResourceType: ref.Address.Type})
+			return err
+		}
+		return authorize, authorize(ctx)
+	})
 	response, err := metrics.QueryResources(context.Background(), sdkmetric.ResourceSetQueryRequest{
 		ResourcePluginID: "owner", ResourceConnectionID: "cluster", MetricIDs: []string{"cpu_usage"}, Shape: sdkmetric.ShapeCurrent,
-		Resources: []sdkmetric.MetricResource{{Token: "pod", ResourceKey: "k8s:/pods", Reference: &resourcev2.ResourceReference{Address: resourcev2.ResourceAddress{
-			Provider: "owner", Authority: "fixture-authority", Type: "k8s:/pods", ID: "pod", Scope: []resourcev2.ScopeEntry{{Dimension: "namespace", Value: "ns"}},
-		}}, Route: &resourcev2.AccessRoute{Connection: "cluster"}}},
+		Resources: []sdkmetric.MetricResource{{Token: "pod", ResourceKey: "k8s:/pods", Reference: &observedReference, Route: &observedRoute}},
 	})
 	require.NoError(t, err)
 	require.Len(t, response.Results, 1)

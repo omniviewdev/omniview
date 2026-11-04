@@ -79,6 +79,7 @@ type Controller interface {
 	Graph() *graph.RelationshipGraph
 	ValidateReference(context.Context, string, resource.AccessRoute, resource.ResourceReference) error
 	ReadObservedResource(context.Context, string, resource.AccessRoute, resource.ResourceReference) (*resource.Value, func(context.Context) error, error)
+	GuardObservedReference(context.Context, string, string, resource.AccessRoute, resource.ResourceReference) (func(context.Context) error, error)
 	SetConnectionChangeHook(func(pluginID, connectionID string) func())
 	AdmitReference(context.Context, string, string, resource.AccessRoute, resource.ResourceReference) (context.Context, error)
 }

@@ -223,6 +223,9 @@ func TestReadObservedResourceUsesDeclaredModelAndPrefersDefault(t *testing.T) {
 	require.Equal(t, "model-observation", body.Map["name"].String)
 	require.NotContains(t, body.Map, "omitted", "model omission must not be filled by another source or upstream read")
 	require.NoError(t, modelGuard(testInvocationContext()))
+	identityGuard, err := ctrl.GuardObservedReference(testInvocationContext(), "metric.Query", "p1", target.Target.Route, record.Reference)
+	require.NoError(t, err)
+	require.NoError(t, identityGuard(testInvocationContext()), "declared model observations also carry authoritative identity")
 
 	defaultView := sourceTestOpen(t, ctrl, target)
 	defaultOpen := sourceNextOpen(t, provider)
@@ -242,4 +245,164 @@ func TestReadObservedResourceUsesDeclaredModelAndPrefersDefault(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, modelRecord.Body, *body)
 	require.Empty(t, provider.opens)
+}
+
+func TestGuardObservedReferenceUsesCurrentSourceIdentityWithoutGet(t *testing.T) {
+	for _, change := range []string{"body", "incarnation", "reset", "denied", "owner", "generation", "epoch", "route"} {
+		t.Run(change, func(t *testing.T) {
+			ctrl, events, provider, target := sourceTestFixture(t)
+			provider.GetFunc = func(context.Context, resourcev2.GetRequest) (resourcev2.Record, error) {
+				t.Fatal("identity admission must never call upstream Get")
+				return resourcev2.Record{}, nil
+			}
+			view := sourceTestOpen(t, ctrl, target)
+			defer ctrl.CloseSourceView(testInvocationContext(), "p1", view.ViewID)
+			open := sourceNextOpen(t, provider)
+			first := sourceTestRecord(target.Target, "pod-01", "uid-01")
+			second := sourceTestRecord(target.Target, "pod-02", "uid-02")
+			sourceSend(open.stream, resourcev2.SourceFrame{Begin: &resourcev2.SourceBegin{Mode: open.request.Mode}})
+			sourceSend(open.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: first}, {Record: second}}}})
+			sourceSend(open.stream, sourceBoundary(resourcev2.EnumerationExhausted))
+			waitSourceView(t, events, view.Topic, func(event HostSourceViewEvent) bool { return event.Kind == "snapshotEnd" })
+			boundary := ctrl.boundary
+			defer func() { ctrl.boundary = boundary }()
+			denied := false
+			ctrl.boundary = invocation.NewBoundary(invocation.AuthorizeFunc(func(_ invocation.Principal, operation string, _ invocation.Target) error {
+				require.Equal(t, "metric.Query", operation, "identity admission must not require resource.Get")
+				if denied {
+					return errors.New("metric grant revoked")
+				}
+				return nil
+			}))
+			forged := "validly-encoded-forged-uid"
+			for _, incarnation := range []*string{nil, second.Reference.Incarnation, &forged} {
+				altered := first.Reference
+				altered.Incarnation = incarnation
+				guard, err := ctrl.GuardObservedReference(testInvocationContext(), "metric.Query", "p1", target.Target.Route, altered)
+				require.Error(t, err)
+				require.Nil(t, guard)
+			}
+			missing := first.Reference
+			missing.Address.ID = "unobserved-pod"
+			unavailable, err := ctrl.GuardObservedReference(testInvocationContext(), "metric.Query", "p1", target.Target.Route, missing)
+			require.Error(t, err)
+			require.Nil(t, unavailable)
+			acquisition, cancel := context.WithCancel(testInvocationContext())
+			guard, err := ctrl.GuardObservedReference(acquisition, "metric.Query", "p1", target.Target.Route, first.Reference)
+			require.NoError(t, err)
+			cancel()
+			require.NoError(t, guard(testInvocationContext()))
+			sourceView, err := ctrl.sourceView(testInvocationContext(), "p1", view.ViewID, "metric.Query")
+			require.NoError(t, err)
+			session := sourceView.session
+			switch change {
+			case "body", "incarnation":
+				updated := first
+				updated.Body = resourcev2.Value{Kind: "map", Map: map[string]resourcev2.Value{"name": {Kind: "string", String: "changed"}}}
+				if change == "incarnation" {
+					value := "uid-replacement"
+					updated.Reference.Incarnation = &value
+				}
+				sourceSend(open.stream, resourcev2.SourceFrame{Changes: &resourcev2.SourceChanges{Changes: []resourcev2.SourceChange{{Kind: resourcev2.SourceChangeUpsert, Observation: &resourcev2.SourceObservation{Record: updated}}}}})
+				waitSourceView(t, events, view.Topic, func(event HostSourceViewEvent) bool { return event.Kind == "changes" && len(event.Upserts) == 1 })
+			case "denied":
+				denied = true
+				next, err := ctrl.GuardObservedReference(testInvocationContext(), "metric.Query", "p1", target.Target.Route, first.Reference)
+				require.Error(t, err)
+				require.Nil(t, next)
+			case "reset":
+				// Close the real stream, then publish an identical replacement
+				// snapshot. The prior delivery guard must retain its source fence.
+				ctrl.boundary = boundary
+				require.NoError(t, ctrl.CloseSourceView(testInvocationContext(), "p1", view.ViewID))
+				reopened := sourceTestOpen(t, ctrl, target)
+				defer ctrl.CloseSourceView(testInvocationContext(), "p1", reopened.ViewID)
+				replacement := sourceNextOpen(t, provider)
+				sourceSend(replacement.stream, resourcev2.SourceFrame{Begin: &resourcev2.SourceBegin{Mode: replacement.request.Mode}})
+				sourceSend(replacement.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: first}, {Record: second}}}})
+				sourceSend(replacement.stream, sourceBoundary(resourcev2.EnumerationExhausted))
+				waitSourceView(t, events, reopened.Topic, func(event HostSourceViewEvent) bool { return event.Kind == "snapshotEnd" })
+			default:
+				session.mu.Lock()
+				switch change {
+				case "owner":
+					session.owner = "another-owner"
+				case "generation":
+					session.pluginGeneration = &pluginState{}
+				case "epoch":
+					session.ctx = context.WithValue(session.ctx, sourceEpochKey{}, sourceEpochSnapshot{Connection: target.Target.Route.Connection, Epoch: ^uint64(0)})
+				case "route":
+					session.target.Route.Connection = "another-connection"
+				}
+				session.mu.Unlock()
+			}
+			if change == "body" {
+				require.NoError(t, guard(testInvocationContext()), "same incarnation body changes must not invalidate identity")
+			} else {
+				require.Error(t, guard(testInvocationContext()))
+			}
+			ctrl.boundary = boundary
+		})
+	}
+}
+
+func TestGuardObservedReferenceRejectsConflictingDefaultAndModelIncarnations(t *testing.T) {
+	ctrl, events, provider, target := sourceTestFixture(t)
+	catalog := provider.CatalogFunc
+	model := canonicalTestRepresentation()
+	model.ID = "identity-model"
+	provider.CatalogFunc = func(ctx context.Context, request resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
+		result, err := catalog(ctx, request)
+		result.Revision = "identity-model-catalog"
+		result.Types[0].ModelRepresentation = model.ID
+		result.Types[0].Representations = append(result.Types[0].Representations, model)
+		return result, err
+	}
+	provider.GetFunc = func(context.Context, resourcev2.GetRequest) (resourcev2.Record, error) {
+		t.Fatal("conflicting identities must never fall back to Get")
+		return resourcev2.Record{}, nil
+	}
+	oldView, err := ctrl.OpenSourceView(testInvocationContext(), "p1", HostSourceViewRequest{TargetID: target.TargetID, Target: target.Target, Updates: "none"})
+	require.NoError(t, err)
+	defer ctrl.CloseSourceView(testInvocationContext(), "p1", oldView.ViewID)
+	require.NoError(t, ctrl.SyncSourceView(testInvocationContext(), "p1", oldView.ViewID))
+	oldOpen := sourceNextOpen(t, provider)
+	oldRecord := sourceTestRecord(target.Target, "pod-01", "old-uid")
+	sourceSend(oldOpen.stream, resourcev2.SourceFrame{Begin: &resourcev2.SourceBegin{Mode: oldOpen.request.Mode}})
+	sourceSend(oldOpen.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: oldRecord}}}})
+	sourceSend(oldOpen.stream, sourceBoundary(resourcev2.EnumerationExhausted))
+	waitSourceView(t, events, oldView.Topic, func(event HostSourceViewEvent) bool {
+		return event.Kind == "snapshotEnd" && event.Status != nil && event.Status.State == "finished"
+	})
+	retainedGuard, err := ctrl.GuardObservedReference(testInvocationContext(), "metric.Query", "p1", target.Target.Route, oldRecord.Reference)
+	require.NoError(t, err)
+	modelTarget := target
+	modelTarget.Target.Representation = model.ID
+	newView := sourceTestOpen(t, ctrl, modelTarget)
+	defer ctrl.CloseSourceView(testInvocationContext(), "p1", newView.ViewID)
+	newOpen := sourceNextOpen(t, provider)
+	newRecord := sourceTestRecord(target.Target, "pod-01", "new-uid")
+	newRecord.Representation = model
+	sourceSend(newOpen.stream, resourcev2.SourceFrame{Begin: &resourcev2.SourceBegin{Mode: newOpen.request.Mode}})
+	sourceSend(newOpen.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: newRecord}}}})
+	sourceSend(newOpen.stream, sourceBoundary(resourcev2.EnumerationExhausted))
+	waitSourceView(t, events, newView.Topic, func(event HostSourceViewEvent) bool {
+		return event.Kind == "snapshotEnd" && event.Status != nil && event.Status.State == "following"
+	})
+	for _, reference := range []resourcev2.ResourceReference{oldRecord.Reference, newRecord.Reference} {
+		guard, err := ctrl.GuardObservedReference(testInvocationContext(), "metric.Query", "p1", target.Target.Route, reference)
+		require.Equal(t, "RESET_REQUIRED", resourcev2.ErrorCode(err))
+		require.Nil(t, guard, "neither representation may win conflicting identity admission")
+	}
+	require.Error(t, retainedGuard(testInvocationContext()), "delivery must notice newly conflicting observations")
+	body, _, err := ctrl.ReadObservedResource(testInvocationContext(), "p1", target.Target.Route, oldRecord.Reference)
+	require.NoError(t, err, "projection selection semantics remain unchanged")
+	require.Equal(t, oldRecord.Body, *body)
+	require.NoError(t, ctrl.CloseSourceView(testInvocationContext(), "p1", oldView.ViewID))
+	guard, err := ctrl.GuardObservedReference(testInvocationContext(), "metric.Query", "p1", target.Target.Route, newRecord.Reference)
+	require.NoError(t, err)
+	require.NoError(t, guard(testInvocationContext()))
+	guard, err = ctrl.GuardObservedReference(testInvocationContext(), "metric.Query", "p1", target.Target.Route, oldRecord.Reference)
+	require.Error(t, err)
+	require.Nil(t, guard)
 }

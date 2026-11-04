@@ -350,6 +350,7 @@ func main() {
 	)
 	metricController.SetMetricStateRoot(stateDir.RootDir())
 	metricController.SetMetricResourceReader(resourceController.ReadObservedResource)
+	metricController.SetResourceIdentityGuard(resourceController.GuardObservedReference)
 	resourceController.SetConnectionChangeHook(metricController.BeginConnectionChange)
 	toolsController := tools.NewController(log, resourceBoundary)
 

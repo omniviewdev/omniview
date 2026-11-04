@@ -21,6 +21,7 @@ import (
 type ResourceSetController interface {
 	SetMetricStateRoot(*appstate.ScopedRoot)
 	SetMetricResourceReader(MetricResourceReader)
+	SetResourceIdentityGuard(ResourceIdentityGuard)
 	QueryResources(context.Context, sdk.ResourceSetQueryRequest) (*sdk.ResourceSetQueryResponse, error)
 	ReadResourceSet(context.Context, sdk.ResourceSetQueryRequest) (*sdk.ResourceSetQueryResponse, error)
 	GetMetricBindings(string, string) ([]sdk.MetricBinding, error)

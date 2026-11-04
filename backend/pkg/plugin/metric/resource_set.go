@@ -61,6 +61,13 @@ func (c *controller) queryResourceSet(ctx context.Context, input sdk.ResourceSet
 	req.MappingRevision = ""
 	tokens := map[string]bool{}
 	identities := map[string]string{}
+	c.mux.RLock()
+	identityGuard := c.resourceIdentityGuard
+	c.mux.RUnlock()
+	if identityGuard == nil {
+		return nil, resourcev2.NewError("UNAVAILABLE", "Observed resource identity admission is unavailable.")
+	}
+	deliveryGuards := make([]observationGuard, 0, len(req.Resources))
 	// Admit every identity before resolving or invoking any provider. Only canonical
 	// address fields survive; caller data and provider selection never cross here.
 	for i := range req.Resources {
@@ -78,6 +85,14 @@ func (c *controller) queryResourceSet(ctx context.Context, input sdk.ResourceSet
 			return nil, err
 		}
 		ctx = admitted
+		guard, err := identityGuard(ctx, "metric.Query", req.ResourcePluginID, *r.Route, *r.Reference)
+		if err != nil {
+			return nil, err
+		}
+		if guard == nil {
+			return nil, resourcev2.NewError("UNAVAILABLE", "Observed resource identity guard is unavailable.")
+		}
+		deliveryGuards = append(deliveryGuards, guard)
 		r.ResourceID = a.ID
 		r.ResourceNamespace = ""
 		r.PublicData = nil
@@ -151,6 +166,21 @@ func (c *controller) queryResourceSet(ctx context.Context, input sdk.ResourceSet
 		}
 		dispatch := req
 		dispatch.Resources = append([]sdk.MetricResource(nil), resources...)
+		for _, r := range resources {
+			guard, err := identityGuard(work, "metric.Query", req.ResourcePluginID, *r.Route, *r.Reference)
+			if err != nil {
+				return nil, err
+			}
+			if guard == nil {
+				return nil, resourcev2.NewError("UNAVAILABLE", "Observed resource identity guard is unavailable.")
+			}
+			if err := registerObservationGuard(work, r.Token, guard); err != nil {
+				return nil, err
+			}
+			if err := guard(work); err != nil {
+				return nil, err
+			}
+		}
 		var out *sdk.ResourceSetQueryResponse
 		var e error
 		if binding != nil && binding.Policy == "supplement" {
@@ -179,6 +209,9 @@ func (c *controller) queryResourceSet(ctx context.Context, input sdk.ResourceSet
 	}
 	if !valid() {
 		return nil, profileChangingError()
+	}
+	if err := validateObservationGuards(ctx, deliveryGuards); err != nil {
+		return nil, err
 	}
 	for i := range out.Results {
 		out.Results[i].ResourceToken = identities[out.Results[i].ResourceToken]

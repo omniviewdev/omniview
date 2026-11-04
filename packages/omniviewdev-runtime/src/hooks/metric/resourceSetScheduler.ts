@@ -54,11 +54,12 @@ export class ResourceSetScheduler {
       }
       if (retained.size > 512) throw new RangeError('Metric scope exceeds 512 retained resources');
     }
+    const observed = new Set([...current.consumers].flatMap(consumer => consumer.keys));
     const keys = resources.map(resource => {
       const resourceKey = metricRequestKey(resource);
       if (!current.entries.has(resourceKey)) current.entries.set(resourceKey, { resource, error: null, at: 0 });
       const entry = current.entries.get(resourceKey)!;
-      if (!entry.task && this.now() - entry.at >= 5000) entry.at = 0;
+      if (!observed.has(resourceKey) && !entry.task && this.now() - entry.at >= 5000) entry.at = 0;
       return resourceKey;
     });
     const consumer: Consumer = { keys, interval: Number.isFinite(interval) && interval > 0 ? Math.max(100, interval) : 0, notify };

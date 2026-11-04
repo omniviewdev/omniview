@@ -82,6 +82,13 @@ func TestResourceSetServedPrometheusRequestCounterSmoke(t *testing.T) {
 		return boundary.Admit(scope.Context(ctx), op, invocation.Target{Provider: plugin, Connection: route.Connection, ResourceType: ref.Address.Type})
 	}
 	ctrl.SetUIReferenceAdmitter(admit)
+	ctrl.SetResourceIdentityGuard(func(ctx context.Context, op, plugin string, route resourcev2.AccessRoute, ref resourcev2.ResourceReference) (func(context.Context) error, error) {
+		authorize := func(current context.Context) error {
+			_, err := admit(current, op, plugin, route, ref)
+			return err
+		}
+		return authorize, authorize(ctx)
+	})
 	service := &hostmetric.ServiceWrapper{Ctrl: ctrl}
 	secret := "backend-only-fixture-secret"
 	input := sdk.ProviderConnectionInput{Connection: sdk.ProviderConnection{ID: "monitoring", Name: "Served fixture", PluginID: "grafana", Kind: "prometheus", URL: endpoint.URL, PublicConfig: map[string]string{"credentialKind": "prometheus-token", "allowInsecureHTTP": "true"}}, Credential: &secret}

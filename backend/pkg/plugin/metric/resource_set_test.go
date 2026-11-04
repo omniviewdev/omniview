@@ -92,6 +92,13 @@ func setFixtureController(t *testing.T) (*controller, *setFixtureProvider) {
 	c.SetUIReferenceAdmitter(func(ctx context.Context, op, plugin string, route resourcev2.AccessRoute, ref resourcev2.ResourceReference) (context.Context, error) {
 		return boundary.Admit(scope.Context(ctx), op, invocation.Target{Provider: plugin, Connection: route.Connection, ResourceType: ref.Address.Type})
 	})
+	c.SetResourceIdentityGuard(func(ctx context.Context, op, plugin string, route resourcev2.AccessRoute, ref resourcev2.ResourceReference) (func(context.Context) error, error) {
+		authorize := func(current context.Context) error {
+			_, err := boundary.Admit(scope.Context(current), op, invocation.Target{Provider: plugin, Connection: route.Connection, ResourceType: ref.Address.Type})
+			return err
+		}
+		return authorize, authorize(ctx)
+	})
 	_, err := c.SaveMetricDefinition(sdk.MetricDefinition{ID: "cpu", Name: "CPU", ResourceKeys: []string{"pods"}, SupportedShapes: []sdk.MetricShape{sdk.ShapeCurrent}, Query: "global-expression", Revision: "ignored"})
 	require.NoError(t, err)
 	_, err = c.SaveMetricBinding(sdk.MetricBinding{ID: "binding-a", Signal: "metrics", ResourcePluginID: "owner", ResourceConnectionID: "cluster-a", Source: sdk.MetricSourceReference{PluginID: "metrics", ConnectionID: "monitoring-a", DatasourceUID: "same-uid", DatasourceKind: "prometheus"}, Policy: "replace", PublicScope: map[string]string{"cluster": "public-cluster"}})
@@ -103,6 +110,76 @@ func setResource(token, namespace, name string) sdk.MetricResource {
 }
 func setRequest(resources ...sdk.MetricResource) sdk.ResourceSetQueryRequest {
 	return sdk.ResourceSetQueryRequest{ResourcePluginID: "owner", ResourceConnectionID: "cluster-a", MetricIDs: []string{"cpu"}, Shape: sdk.ShapeCurrent, Resources: resources}
+}
+
+func TestResourceSetIdentityGuardDenialPreventsProviderWork(t *testing.T) {
+	c, p := setFixtureController(t)
+	c.SetResourceIdentityGuard(func(context.Context, string, string, resourcev2.AccessRoute, resourcev2.ResourceReference) (func(context.Context) error, error) {
+		return nil, resourcev2.NewError("FORBIDDEN", "Observed identity denied.")
+	})
+	_, err := c.QueryResources(context.Background(), setRequest(setResource("a", "one", "pod")))
+	require.Equal(t, "FORBIDDEN", resourcev2.ErrorCode(err))
+	require.Zero(t, p.calls.Load())
+	c.SetResourceIdentityGuard(nil)
+	_, err = c.QueryResources(context.Background(), setRequest(setResource("a", "one", "pod")))
+	require.Equal(t, "UNAVAILABLE", resourcev2.ErrorCode(err))
+	require.Zero(t, p.calls.Load())
+}
+
+func TestResourceSetIdentityGuardInvalidatesCachedDelivery(t *testing.T) {
+	c, p := setFixtureController(t)
+	var stale atomic.Bool
+	c.SetResourceIdentityGuard(func(context.Context, string, string, resourcev2.AccessRoute, resourcev2.ResourceReference) (func(context.Context) error, error) {
+		return func(ctx context.Context) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if stale.Load() {
+				return errors.New("observed identity changed")
+			}
+			return nil
+		}, nil
+	})
+	req := setRequest(setResource("a", "one", "pod"))
+	_, err := c.QueryResources(context.Background(), req)
+	require.NoError(t, err)
+	stale.Store(true)
+	_, err = c.QueryResources(context.Background(), req)
+	require.Equal(t, "RESET_REQUIRED", resourcev2.ErrorCode(err))
+	require.Equal(t, int32(1), p.calls.Load())
+}
+
+func TestResourceSetIdentityGuardInvalidatesSharedPublication(t *testing.T) {
+	c, p := setFixtureController(t)
+	p.started = make(chan struct{}, 1)
+	p.finish = make(chan struct{})
+	var stale atomic.Bool
+	c.SetResourceIdentityGuard(func(context.Context, string, string, resourcev2.AccessRoute, resourcev2.ResourceReference) (func(context.Context) error, error) {
+		return func(ctx context.Context) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if stale.Load() {
+				return errors.New("observed identity changed")
+			}
+			return nil
+		}, nil
+	})
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.QueryResources(context.Background(), setRequest(setResource("a", "one", "pod")))
+		done <- err
+	}()
+	select {
+	case <-p.started:
+	case <-time.After(time.Second):
+		close(p.finish)
+		t.Fatal("provider did not start")
+	}
+	stale.Store(true)
+	close(p.finish)
+	require.Equal(t, "RESET_REQUIRED", resourcev2.ErrorCode(<-done))
+	require.Equal(t, int32(1), p.calls.Load())
 }
 
 func TestResourceSetAdmitsOwnerResolvesStoredSourceAndStripsPrivateData(t *testing.T) {
