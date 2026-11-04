@@ -164,6 +164,18 @@ my-plugin/
       entry.ts         # Plugin UI entry point
 ```
 
+Installed plugin directories reserve `data/` and `store/` for runtime state.
+Do not include either directory in a release archive; the host rejects those
+packages before stopping the existing plugin. This includes case aliases on
+case-insensitive volumes; case-distinct names remain valid on case-sensitive
+volumes. Archive replacement moves the
+existing state directories into the new installation without copying them, so
+cached scoped roots and nested authority handles still address live state.
+Failed publication moves that same state back before restarting the original
+plugin. Runtime unload does not close appstate-owned roots; appstate closes them
+when the application shuts down. Interrupted transactions retain their existing
+recovery barrier and private staging evidence instead of adopting another path.
+
 ### 1.3 The `plugin.yaml` File
 
 ```yaml
