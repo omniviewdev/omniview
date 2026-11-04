@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Card, Input, Text } from '@omniviewdev/base-ui';
 import { MetricClient } from '@omniviewdev/runtime/api';
 import type { ConnectionSettingsContext, MetricBinding, MetricDataSource, MetricDefinition, ProviderConnection, MetricResource, ResourceSetQueryRequest } from '@omniviewdev/runtime';
-import { openSettings } from '@omniviewdev/runtime';
+import { navigateActivePage } from '@omniviewdev/runtime';
 import { MappingEditor, QueryPreview } from './Mappings';
 import { changeProvider, resetOverride, resolveDefinition, stageDefinition } from './model';
 import SampleResource from './SampleResource';
@@ -93,9 +93,9 @@ export default function GrafanaConnectionSettings({ resourcePluginID, connection
           options={[{ value: 'supplement', label: 'Supplement native metrics' }, { value: 'replace', label: 'Replace mapped metrics' }]} /></label>
         <div><label>Cluster label value<Input.Root className="grafana-input" size="md"><Input.Control value={draft.public_scope.cluster ?? ''} placeholder="Cluster label in this datasource" onChange={event => setDraft({ ...draft, public_scope: { ...draft.public_scope, cluster: event.target.value } })} /></Input.Root></label><small><code>{'{{cluster}}'}</code></small></div>
       </div>
-      <footer className="grafana-provider-foot">Read-only <span className="grafana-spacer" /><Button size="sm" variant="ghost" onClick={() => { void openSettings('/settings?section=plugins&plugin=grafana').catch(err => setError(String(err))); }}>Manage Grafana connections</Button></footer>
+      <footer className="grafana-provider-foot">Read-only <span className="grafana-spacer" /><Button size="sm" variant="ghost" onClick={() => { try { navigateActivePage('/_plugin/grafana'); } catch (err) { setError(String(err)); } }}>Manage Grafana connections</Button></footer>
     </section>
-    <div className="grafana-mapping-heading"><strong>Metric mappings {applicableDefinitions.length}</strong><span className="grafana-badge grafana-badge-override">{applicableOverrideCount} cluster overrides</span></div>
+    <div className="grafana-mapping-heading"><strong>Metric mappings {applicableDefinitions.length}</strong><span className="grafana-badge grafana-badge-override">{applicableOverrideCount} cluster {applicableOverrideCount === 1 ? 'override' : 'overrides'}</span></div>
     <div className="grafana-mapping-toolbar"><Input.Root className="grafana-input" size="md"><Input.Control aria-label="Search connection mappings" placeholder="Search mappings…" value={search} onChange={event => setSearch(event.target.value)} /></Input.Root><span className="grafana-spacer" /><small>Global defaults + cluster overrides</small></div>
     {applicableDefinitions.map(global => {
       const override = draft.overrides.find(value => value.metric_id === global.id);

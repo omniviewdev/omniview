@@ -22,7 +22,7 @@ Global definitions resolve by stable ID. A connection override contains only fie
 
 The cluster Metrics page uses a two-column provider/source card and searchable, single-line mapping previews. Inherited and cluster-override chips reflect actual saved binding state. Mapping expansion edits in place using the same highlighted PromQL editor as Global mappings. Variables, schema browsing, and label discovery live under **Variables & identity**; the real sample picker lives under **Query test resource**. Manual datasource entry remains available under **Enter datasource UID**, and opens automatically for undiscovered saved UIDs or discovery failures. Native provider status, service overrides, connection tests, and auto-detection reference remain under **Native metrics configuration**. The quiet sticky action bar saves or discards only the current connection draft.
 
-Cluster mapping lists and override counts include only definitions applicable to the resource types supplied by the owner. **Manage Grafana connections** opens the existing Grafana settings window; destructive removal remains under **Binding actions**.
+Cluster mapping lists and override counts include only definitions applicable to the resource types supplied by the owner. **Manage Grafana connections** opens the existing Grafana workspace page, so the same flow works in desktop and browser audits without creating a separate native window. Destructive removal remains under **Binding actions**.
 
 Mapping validation has separate meanings:
 
