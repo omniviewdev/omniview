@@ -153,6 +153,7 @@ and a subsequent get returned `NotFound`. This is not merged-source proof.
 | `300fa9a9` editable Pod hover | Observed with the repinned candidate cohort; no edit saved. |
 | `496156d4` editable Pod hover | Observed with its candidate cohort; no edit saved. |
 | `bf47c022` catalog startup | Pending/idle until explicit refetch and navigation; investigation remains open. |
+| `496156d4` catalog startup | Waited over 90 seconds; navigation recovered it without refetch. Investigation remains open. |
 | Unknown-field diagnostic | Not observed; the registered schema allows unknown properties. |
 | Historical Pod admissions and resource measurements | Historical only; see the earlier receipt and original acceptance records. |
 | Historical native worker and authority-URI checks | Historical only; not repeated for this cohort. |
