@@ -16,7 +16,7 @@ export function normalizePluginRoutes(routes: RouteObject[], pluginId: string): 
       ErrorBoundary: (): ReactNode => renderLazyBoundary ? renderLazyBoundary() : createElement(ErrorBoundary),
       lazy: async () => {
         const { ErrorBoundary: LazyBoundary, errorElement, ...loaded } = await lazy();
-        if (LazyBoundary !== undefined) {
+        if (LazyBoundary != null) {
           renderLazyBoundary = () => createElement(LazyBoundary);
         } else if (errorElement !== undefined) {
           renderLazyBoundary = (): ReactNode => errorElement;
