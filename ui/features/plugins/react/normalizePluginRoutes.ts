@@ -1,4 +1,4 @@
-import type { RouteObject } from 'react-router';
+import { useRouteError, type RouteObject } from 'react-router';
 import { createElement, type ReactNode } from 'react';
 import { PluginRouteErrorBoundary } from '../components/PluginSurfaceBoundary';
 
@@ -9,55 +9,40 @@ export function normalizePluginRoutes(routes: RouteObject[], pluginId: string): 
     const lazy = route.lazy;
     const hasBoundary = route.ErrorBoundary !== undefined || route.errorElement !== undefined
       || (typeof lazy === 'object' && (lazy.ErrorBoundary !== undefined || lazy.errorElement !== undefined));
-    // Resolve rejected imports into a throwing render instead of leaving the
-    // router's lazy marker pending, which suppresses the matched child outlet.
-    let importFailed = false;
-    let importError: unknown;
+    const LazyFallback = (): ReactNode => {
+      if (useRouteError() != null) {
+        if (route.ErrorBoundary) return createElement(route.ErrorBoundary);
+        if (route.errorElement != null) return route.errorElement;
+        return createElement(ErrorBoundary);
+      }
+      if (route.HydrateFallback) return createElement(route.HydrateFallback);
+      return route.hydrateFallbackElement ?? null;
+    };
     let renderLazyBoundary: (() => ReactNode) | undefined;
-    const StaticComponent = route.Component;
-    const staticElement = route.element;
-    const hasStaticRender = StaticComponent != null || staticElement !== undefined;
     const boundary = typeof lazy === 'function' ? {
       ...(hasBoundary ? {} : {
         ErrorBoundary: (): ReactNode => renderLazyBoundary ? renderLazyBoundary() : createElement(ErrorBoundary),
       }),
-      ...(hasStaticRender ? {
-        element: undefined,
-        Component: (): ReactNode => {
-          if (importFailed) {
-            throw importError;
-          }
-
-          return StaticComponent != null ? createElement(StaticComponent) : staticElement;
-        },
-      } : {}),
       lazy: async () => {
-        try {
-          const { ErrorBoundary: LazyBoundary, errorElement, ...loaded } = await lazy();
-          if (!hasBoundary && LazyBoundary != null) {
-            renderLazyBoundary = () => createElement(LazyBoundary);
-          } else if (!hasBoundary && errorElement !== undefined) {
-            renderLazyBoundary = (): ReactNode => errorElement;
-          }
-
-          return loaded;
-        } catch (error) {
-          importFailed = true;
-          importError = error;
-          return hasStaticRender ? {} : { Component: () => {
-            throw error;
-          } };
+        const { ErrorBoundary: LazyBoundary, errorElement, ...loaded } = await lazy();
+        if (!hasBoundary && LazyBoundary != null) {
+          renderLazyBoundary = () => createElement(LazyBoundary);
+        } else if (!hasBoundary && errorElement != null) {
+          renderLazyBoundary = (): ReactNode => errorElement;
         }
+        return loaded;
       },
     } : hasBoundary ? {} : { ErrorBoundary };
+    const fallback = lazy ? { HydrateFallback: LazyFallback, hydrateFallbackElement: undefined } : {};
 
     if (route.index) {
-      return { ...route, ...boundary, path: undefined };
+      return { ...route, ...boundary, ...fallback, path: undefined };
     }
 
     return {
       ...route,
       ...boundary,
+      ...fallback,
       path: route.path?.replace(/^\/+/, ''),
       ...(route.children ? { children: normalizePluginRoutes(route.children, pluginId) } : {}),
     };
