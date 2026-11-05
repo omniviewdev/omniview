@@ -32,6 +32,75 @@ func authorityFixture(t *testing.T) (*Authority, Config, ToolInfo, context.Conte
 	return a, cfg, tool, context.WithValue(a.Authenticate(ctx), authoritySessionKey{}, session)
 }
 
+func TestGenericKubernetesStartupAdmissionIsScopedAndRevocable(t *testing.T) {
+	a, cfg, _, ctx := authorityFixture(t)
+	tool := genericKubernetesTools()[0]
+	a.UpdateCatalog([]ToolInfo{tool})
+	bound, err := a.Bind(ctx, tool, "cluster-a", []byte(`{}`))
+	require.NoError(t, err)
+	start := invocation.Target{Provider: tool.PluginID, Connection: "cluster-a"}
+	boundary := invocation.NewBoundary(a)
+	_, err = boundary.Admit(bound, "resource.StartConnection", start)
+	require.Error(t, err, "startup is forbidden before dispatch and consent")
+	require.NoError(t, a.Approve(bound))
+	require.Error(t, a.Dispatch(bound, func(callCtx context.Context) error {
+		_, err := boundary.Admit(callCtx, "resource.StartConnection", start)
+		require.NoError(t, err)
+		_, err = boundary.Admit(callCtx, "resource.StartConnection", invocation.Target{Provider: tool.PluginID, Connection: "cluster-b"})
+		require.Error(t, err)
+		_, err = boundary.Admit(callCtx, "resource.StartConnection", invocation.Target{Provider: "other", Connection: "cluster-a"})
+		require.Error(t, err)
+		_, err = boundary.Admit(callCtx, "resource.Mutate", start)
+		require.Error(t, err)
+		cfg.Global.Preset = PresetNone
+		a.UpdatePolicy(cfg)
+		_, err = boundary.Admit(callCtx, "resource.StartConnection", start)
+		require.Error(t, err)
+		return nil
+	}))
+}
+
+func TestGenericKubernetesStartupCancellationFencesResult(t *testing.T) {
+	a, _, _, ctx := authorityFixture(t)
+	tool := genericKubernetesTools()[0]
+	a.UpdateCatalog([]ToolInfo{tool})
+	ctx, cancel := context.WithCancel(ctx)
+	bound, err := a.Bind(ctx, tool, "cluster-a", []byte(`{}`))
+	require.NoError(t, err)
+	require.NoError(t, a.Approve(bound))
+	err = a.Dispatch(bound, func(callCtx context.Context) error {
+		cancel()
+		require.Error(t, callCtx.Err())
+		_, err := invocation.NewBoundary(a).Admit(callCtx, "resource.StartConnection",
+			invocation.Target{Provider: tool.PluginID, Connection: "cluster-a"})
+		require.Error(t, err)
+		return nil
+	})
+	require.Error(t, err)
+}
+
+func TestGenericKubernetesResolvedToolPolicyAndTarget(t *testing.T) {
+	a, cfg, _, ctx := authorityFixture(t)
+	generic := genericKubernetesTools()[0]
+	a.UpdateCatalog([]ToolInfo{generic})
+	real := ToolInfo{
+		MCPName: "kubernetes_scope_values", PluginID: "kubernetes", Scope: ScopeConnection,
+		ReadOnly: true, Status: StatusOK,
+		Resource: &ResourceBinding{PluginID: "kubernetes", Route: resourcev2.AccessRoute{Connection: "cluster-a"},
+			Operation: "resource.ScopeValues", Dimensions: []string{"namespace"}},
+	}
+	require.NoError(t, cfg.SetToolOverride(Scope{}, real.MCPName, ToolOverride{Enabled: new(false)}))
+	a.UpdatePolicy(cfg)
+	bound, err := a.Bind(ctx, generic, "cluster-a", []byte(`{}`))
+	require.NoError(t, err)
+	require.NoError(t, a.Approve(bound))
+	require.NoError(t, a.Dispatch(bound, func(callCtx context.Context) error {
+		_, err := a.resolveKubernetes(callCtx, real, []byte(`{"dimension":"namespace"}`))
+		require.Error(t, err, "generic access must not bypass the real tool policy")
+		return nil
+	}))
+}
+
 func TestAuthorityRevocationDuringConsentPreventsProviderCall(t *testing.T) {
 	a, cfg, tool, ctx := authorityFixture(t)
 	bound, err := a.Bind(ctx, tool, "", []byte(`{"input":"immutable"}`))

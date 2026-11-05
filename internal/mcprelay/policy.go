@@ -194,7 +194,7 @@ func (c *Config) presetRule(name string, t ToolInfo) (bool, error) {
 		return false, nil
 	case PresetReadOnly:
 		// Custom tool annotations are provider hints, not host authority.
-		return (t.BuiltIn || t.Resource != nil) && t.ReadOnly, nil
+		return (t.BuiltIn || t.Resource != nil || isGenericKubernetesTool(t)) && t.ReadOnly, nil
 	}
 	preset, ok := c.UserPresets[name]
 	if !ok {
