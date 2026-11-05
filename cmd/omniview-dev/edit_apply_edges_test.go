@@ -80,7 +80,10 @@ func startCLIEdgeOwner(t *testing.T, f *cliEdgeFixture) (*devworkspace.Manager, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	status, launchErr := manager.Start(ctx, f.workspace.Manifest.WorkspaceID, devworkspace.LaunchOptions{Mode: "browser", Timeout: 20 * time.Second}, os.Args[0], io.Discard)
+	status, launchErr := manager.Start(
+		ctx, f.workspace.Manifest.WorkspaceID,
+		devworkspace.LaunchOptions{Mode: "browser", Timeout: 20 * time.Second}, os.Args[0], io.Discard,
+	)
 	if status.Generation == "" {
 		_ = listener.Close()
 	}

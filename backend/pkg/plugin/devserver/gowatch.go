@@ -501,7 +501,9 @@ func (gw *goWatcherProcess) buildPlugin(initial bool, changedFile string, starte
 		if gw.buildOpts.Workspace == nil {
 			return fmt.Errorf("resolved workspace required for build source attestation")
 		}
-		if err := instance.RecordBuiltArtifactSource(*gw.buildOpts.Workspace, gw.pluginID, path, gw.selectedSDK.Revision, gw.selectedSDK.SourceDigest); err != nil {
+		if err := instance.RecordBuiltArtifactSource(
+			*gw.buildOpts.Workspace, gw.pluginID, path, gw.selectedSDK.Revision, gw.selectedSDK.SourceDigest,
+		); err != nil {
 			return err
 		}
 	}
@@ -604,7 +606,8 @@ func (gw *goWatcherProcess) runGoBuild() error {
 		return apperror.New(apperror.TypePluginBuildFailed, http.StatusInternalServerError, "Plugin build failed", errOutput)
 	}
 	if gw.selectedSDK.Directory != "" {
-		after, err := VerifySelectedSDK(gw.ctx, goPath, gw.devPath, gw.buildOpts.Environment)
+		var after devsource.Identity
+		after, err = VerifySelectedSDK(gw.ctx, goPath, gw.devPath, gw.buildOpts.Environment)
 		if err != nil {
 			return err
 		}
@@ -676,7 +679,9 @@ func (gw *goWatcherProcess) syncPluginYaml() error {
 	metadata.StateIsolation = nil
 	if gw.selectedSDK.Directory != "" {
 		binary := gw.pluginsRoot.ResolvePath(gw.buildRelativePath)
-		metadata.StateIsolation, err = sdkconfig.BuildStateIsolationProvenance(binary, gw.selectedSDK.Revision, gw.selectedSDK.SourceDigest)
+		metadata.StateIsolation, err = sdkconfig.BuildStateIsolationProvenance(
+			binary, gw.selectedSDK.Revision, gw.selectedSDK.SourceDigest,
+		)
 		if err != nil {
 			return err
 		}

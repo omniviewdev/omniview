@@ -429,7 +429,8 @@ func main() {
 			fmt.Fprintf(os.Stderr, "fatal: cannot locate workspace session registry: %v\n", err)
 			os.Exit(1)
 		}
-		if err := devServerManager.ConfigureWorkspace(profile, filepath.Join(home, ".omniview-dev", "sessions")); err != nil {
+		err = devServerManager.ConfigureWorkspace(profile, filepath.Join(home, ".omniview-dev", "sessions"))
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "fatal: cannot configure managed workspace: %v\n", err)
 			os.Exit(1)
 		}

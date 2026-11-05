@@ -99,9 +99,14 @@ func graphFixture(t *testing.T) *BuildGraph {
 		t.Fatal(err)
 	}
 	traceStage("compile build graph")
-	g, err := compileBuildGraph(w, p, BuildOptions{Generation: "22222222-2222-4222-8222-222222222222", GoBuildCacheDirectory: cache, VerifySDKSource: func(_ context.Context, directory string) (devsource.Identity, error) {
-		return devsource.Identity{Directory: directory, Revision: strings.Repeat("a", 40), SourceDigest: strings.Repeat("c", 64)}, nil
-	}, HostBuild: func(context.Context, HostBuildRequest) error { return nil }})
+	g, err := compileBuildGraph(w, p, BuildOptions{
+		Generation: "22222222-2222-4222-8222-222222222222", GoBuildCacheDirectory: cache,
+		VerifySDKSource: func(_ context.Context, directory string) (devsource.Identity, error) {
+			return devsource.Identity{
+				Directory: directory, Revision: strings.Repeat("a", 40), SourceDigest: strings.Repeat("c", 64),
+			}, nil
+		}, HostBuild: func(context.Context, HostBuildRequest) error { return nil },
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +226,9 @@ func TestVerifyBuildSDKRejectsSourceMutationDuringBuild(t *testing.T) {
 		t.Fatal(err)
 	}
 	g.options.VerifySDKSource = func(_ context.Context, directory string) (devsource.Identity, error) {
-		return devsource.Identity{Directory: directory, Revision: strings.Repeat("a", 40), SourceDigest: strings.Repeat("d", 64)}, nil
+		return devsource.Identity{
+			Directory: directory, Revision: strings.Repeat("a", 40), SourceDigest: strings.Repeat("d", 64),
+		}, nil
 	}
 	if err = g.verifyUnchangedSDK(context.Background(), filepath.Join(g.workspace.Root, "host"), before); err == nil {
 		t.Fatal("source mutated during build but old identity remained trusted")

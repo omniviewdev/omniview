@@ -12,7 +12,12 @@ import (
 
 func TestCreateLaunchPreflightRequiresSDKSelection(t *testing.T) {
 	m, root := fixtureManager(t)
-	options := LaunchOptions{Mode: "browser", LinkEvidence: LinkProtocolEvidence{Protocol: "workspace", Versions: []string{devcompose.Version}, AtomicDist: true, Peers: true, Runtime: true}}
+	options := LaunchOptions{
+		Mode: "browser",
+		LinkEvidence: LinkProtocolEvidence{
+			Protocol: "workspace", Versions: []string{devcompose.Version}, AtomicDist: true, Peers: true, Runtime: true,
+		},
+	}
 	err := m.PreflightCreateLaunch(context.Background(), CreateOptions{Slug: "missing-sdk"}, options)
 	var issue *devcontract.Error
 	require.ErrorAs(t, err, &issue)

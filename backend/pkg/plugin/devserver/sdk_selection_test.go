@@ -90,12 +90,15 @@ func TestVerifySelectedSDKManagedRejectsUnselectedCheckout(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, selected.Revision, foreignIdentity.Revision)
 	require.Equal(t, selected.SourceDigest, foreignIdentity.SourceDigest)
-	require.NotEqual(t, selected.Directory, foreignIdentity.Directory, "equal revision and bytes do not make two checkouts the same selected source")
+	require.NotEqual(t, selected.Directory, foreignIdentity.Directory,
+		"equal revision and bytes do not make two checkouts the same selected source")
 
 	goMod := filepath.Join(fixture.source, "go.mod")
 	original, err := os.ReadFile(goMod)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(goMod, []byte(fmt.Sprintf("module fixture\n\ngo 1.24.0\nrequire github.com/omniviewdev/plugin-sdk v0.0.0\nreplace github.com/omniviewdev/plugin-sdk => %q\n", foreign)), 0600))
+	require.NoError(t, os.WriteFile(goMod, []byte(fmt.Sprintf(
+		"module fixture\n\ngo 1.24.0\nrequire github.com/omniviewdev/plugin-sdk v0.0.0\n"+
+			"replace github.com/omniviewdev/plugin-sdk => %q\n", foreign)), 0600))
 	_, err = VerifySelectedSDK(context.Background(), fixture.goPath, fixture.source, fixture.environment)
 	require.Error(t, err, "Go resolution of unselected SDK B must not inherit workspace A's selection")
 

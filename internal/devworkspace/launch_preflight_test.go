@@ -11,8 +11,10 @@ func TestLaunchPreflightRequiresActualProtocolProof(t *testing.T) {
 	sdk := "plugin-sdk"
 	w.Manifest.Links.SDKRepositoryID = &sdk
 	o := LaunchOptions{
-		Mode:         "browser",
-		LinkEvidence: LinkProtocolEvidence{Protocol: "workspace", Versions: []string{devcompose.Version}, AtomicDist: true, Peers: true, Runtime: true},
+		Mode: "browser",
+		LinkEvidence: LinkProtocolEvidence{
+			Protocol: "workspace", Versions: []string{devcompose.Version}, AtomicDist: true, Peers: true, Runtime: true,
+		},
 	}
 	if report := PreflightLaunch(w, o); !report.Ready || len(report.Issues) != 0 {
 		t.Fatalf("valid inputs refused: %+v", report)

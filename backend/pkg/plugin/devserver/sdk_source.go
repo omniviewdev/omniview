@@ -59,33 +59,41 @@ func VerifySelectedSDK(ctx context.Context, goPath, source string, environment [
 		key, value, _ := strings.Cut(entry, "=")
 		values[key] = value
 	}
-	manifest, root := values[devcontract.WorkspaceEnvironment], values["OMNIVIEW_STATE_DIR"]
-	workspaceID := values["OMNIVIEW_WORKSPACE_ID"]
-	if manifest != "" || workspaceID != "" {
-		if manifest == "" || root == "" || workspaceID == "" {
-			return result, fmt.Errorf("managed SDK verification requires an explicit validated workspace profile")
-		}
-		workspace, err := devcontract.ResolveWorkspace(devcontract.ResolveOptions{EnvironmentManifest: manifest, StateRoot: root})
-		if err != nil {
-			return result, err
-		}
-		if workspace.Manifest.WorkspaceID != workspaceID {
-			return result, fmt.Errorf("SDK verification workspace identity mismatch")
-		}
-		if workspace.Manifest.Links.SDKRepositoryID == nil {
-			return result, fmt.Errorf("managed workspace must explicitly select an SDK source repository")
-		}
-		selected, err := workspace.RepositoryPath(*workspace.Manifest.Links.SDKRepositoryID)
-		if err != nil {
-			return result, err
-		}
-		selected, err = devcontract.CanonicalPath(selected)
-		if err != nil {
-			return result, err
-		}
-		if directory != selected {
-			return result, fmt.Errorf("effective SDK source differs from selected workspace source")
-		}
+	if err := verifyManagedSDKSelection(directory, values); err != nil {
+		return result, err
 	}
 	return devsource.Verify(ctx, directory)
+}
+
+func verifyManagedSDKSelection(directory string, values map[string]string) error {
+	manifest, root := values[devcontract.WorkspaceEnvironment], values["OMNIVIEW_STATE_DIR"]
+	workspaceID := values["OMNIVIEW_WORKSPACE_ID"]
+	if manifest == "" && workspaceID == "" {
+		return nil
+	}
+	if manifest == "" || root == "" || workspaceID == "" {
+		return fmt.Errorf("managed SDK verification requires an explicit validated workspace profile")
+	}
+	workspace, err := devcontract.ResolveWorkspace(devcontract.ResolveOptions{EnvironmentManifest: manifest, StateRoot: root})
+	if err != nil {
+		return err
+	}
+	if workspace.Manifest.WorkspaceID != workspaceID {
+		return fmt.Errorf("SDK verification workspace identity mismatch")
+	}
+	if workspace.Manifest.Links.SDKRepositoryID == nil {
+		return fmt.Errorf("managed workspace must explicitly select an SDK source repository")
+	}
+	selected, err := workspace.RepositoryPath(*workspace.Manifest.Links.SDKRepositoryID)
+	if err != nil {
+		return err
+	}
+	selected, err = devcontract.CanonicalPath(selected)
+	if err != nil {
+		return err
+	}
+	if directory != selected {
+		return fmt.Errorf("effective SDK source differs from selected workspace source")
+	}
+	return nil
 }

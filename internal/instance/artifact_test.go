@@ -40,7 +40,7 @@ func TestLegacyArtifactBlockedAndTrustedDigestChecked(t *testing.T) {
 		t.Fatal(err)
 	}
 	var legacy map[string]any
-	if err := json.Unmarshal(recordBytes, &legacy); err != nil {
+	if err = json.Unmarshal(recordBytes, &legacy); err != nil {
 		t.Fatal(err)
 	}
 	legacy["schemaVersion"] = 2
@@ -50,13 +50,14 @@ func TestLegacyArtifactBlockedAndTrustedDigestChecked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(recordPath, legacyBytes, 0600); err != nil {
+	if err = os.WriteFile(recordPath, legacyBytes, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := VerifyPluginArtifact(workspace, "kubernetes", binary); err == nil || !strings.Contains(err.Error(), "instance: invalid trusted artifact source evidence for kubernetes") {
+	if err = VerifyPluginArtifact(workspace, "kubernetes", binary); err == nil ||
+		!strings.Contains(err.Error(), "instance: invalid trusted artifact source evidence for kubernetes") {
 		t.Fatalf("schema-2 artifact record was not rejected: %v", err)
 	}
-	if err := os.WriteFile(recordPath, recordBytes, 0600); err != nil {
+	if err = os.WriteFile(recordPath, recordBytes, 0600); err != nil {
 		t.Fatal(err)
 	}
 	prepared, cleanup, err := PreparePluginArtifact(workspace, "kubernetes", binary)

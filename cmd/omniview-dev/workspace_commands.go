@@ -955,7 +955,9 @@ func bindWorkspaceProfile(ctx context.Context, manager *devworkspace.Manager, w 
 
 func workspaceRefreshOptions(c workspaceCommand, w devworkspace.Workspace, diagnostics io.Writer) (devworkspace.RefreshOptions, error) {
 	refresh := devworkspace.RefreshOptions{Diagnostics: diagnostics}
-	for _, name := range []string{"mode", "mcp", "watch", "live-frontend", "link-evidence", "seed-from", "seed-version", "timeout"} {
+	for _, name := range []string{
+		"mode", "mcp", "watch", "live-frontend", "link-evidence", "seed-from", "seed-version", "timeout",
+	} {
 		if !c.supplied[name] {
 			continue
 		}

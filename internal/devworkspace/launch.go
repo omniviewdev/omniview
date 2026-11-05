@@ -53,6 +53,8 @@ func LoadLaunchOptions(w Workspace) (LaunchOptions, error) {
 	return o, err
 }
 
+const goFlagsEnv = "GOFLAGS"
+
 func workspaceEnvironment(base []string, w Workspace, generation string, o LaunchOptions) []string {
 	env := make([]string, 0, len(base)+12)
 	for _, entry := range base {
@@ -67,12 +69,14 @@ func workspaceEnvironment(base []string, w Workspace, generation string, o Launc
 			continue
 		}
 		switch key {
-		case "GOWORK", "GOFLAGS", "GO_MODFILE", "GOROOT", "NODE_PATH", "SDK_SOURCE", "OMNIVIEW_PLUGIN_PNPM_COMMANDS", "OMNIVIEW_VITE_ALLOWED_ROOTS", "WAILS_VITE_PORT", "FORCE_COLOR", "NO_COLOR", "OMNIVIEW_WORKSPACE_FILE", "OMNIVIEW_STATE_DIR", "OMNIVIEW_INSTANCE_ID", "OMNIVIEW_GENERATION", "OMNIVIEW_WORKSPACE_GRAPH_WATCH", "FRONTEND_DEVSERVER_URL", "WAILS_SERVER_HOST", "WAILS_SERVER_PORT", "WAILS_MCP_HOST", "WAILS_MCP_PORT", "WAILS_MCP_TOKEN", "WAILS_MCP", "OMNIVIEW_CHANNEL":
+		case "GOWORK", goFlagsEnv, "GO_MODFILE", "GOROOT", "NODE_PATH", "SDK_SOURCE", "OMNIVIEW_PLUGIN_PNPM_COMMANDS", "OMNIVIEW_VITE_ALLOWED_ROOTS", "WAILS_VITE_PORT", "FORCE_COLOR", "NO_COLOR", "OMNIVIEW_WORKSPACE_FILE", "OMNIVIEW_STATE_DIR", "OMNIVIEW_INSTANCE_ID", "OMNIVIEW_GENERATION", "OMNIVIEW_WORKSPACE_GRAPH_WATCH", "FRONTEND_DEVSERVER_URL", "WAILS_SERVER_HOST", "WAILS_SERVER_PORT", "WAILS_MCP_HOST", "WAILS_MCP_PORT", "WAILS_MCP_TOKEN", "WAILS_MCP", "OMNIVIEW_CHANNEL":
 			continue
 		}
 		env = append(env, entry)
 	}
-	env = append(env, "GOWORK=off", "GOFLAGS=", "FORCE_COLOR=0", "NO_COLOR=1", "OMNIVIEW_CHANNEL=local", "OMNIVIEW_WORKSPACE_FILE="+w.ManifestPath, "OMNIVIEW_STATE_DIR="+w.StateRoot, "OMNIVIEW_INSTANCE_ID="+w.Manifest.WorkspaceID, "OMNIVIEW_GENERATION="+generation)
+	env = append(env, "GOWORK=off", goFlagsEnv+"=", "FORCE_COLOR=0", "NO_COLOR=1", "OMNIVIEW_CHANNEL=local",
+		"OMNIVIEW_WORKSPACE_FILE="+w.ManifestPath, "OMNIVIEW_STATE_DIR="+w.StateRoot,
+		"OMNIVIEW_INSTANCE_ID="+w.Manifest.WorkspaceID, "OMNIVIEW_GENERATION="+generation)
 	if w.Manifest.Links.SDKRepositoryID != nil {
 		for _, repository := range w.Manifest.Repositories {
 			if repository.ID == *w.Manifest.Links.SDKRepositoryID {
@@ -334,42 +338,46 @@ func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 	if _, err = devcompose.Installed(s.workspace.ResolvedWorkspace, host); err != nil {
 		return nil, fmt.Errorf("supervisor build requires the completed aggregate install and recursive peer transaction: %w", err)
 	}
-	return s.manager.NewBuildGraph(ctx, s.workspace.Manifest.WorkspaceID, BuildOptions{Generation: s.generation, GoBuildCacheDirectory: s.goBuildCache, VerifySDKSource: devsource.Verify, HostBuild: s.buildHost, HostVariant: s.hostVariant(), HostOutput: s.hostOutput(), ReuseHost: s.reuseHost, Bindings: func(ctx context.Context, host, outputDirectory string) (resultErr error) {
-		hostModOutput, err := prepareStableHostModTree(s.workspace, s.generation)
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if errors.Is(resultErr, errOwnedCommandUncertain) {
-				_ = hostModOutput.stageFile.Close()
-				return
+	return s.manager.NewBuildGraph(ctx, s.workspace.Manifest.WorkspaceID, BuildOptions{
+		Generation: s.generation, GoBuildCacheDirectory: s.goBuildCache, VerifySDKSource: devsource.Verify,
+		HostBuild: s.buildHost, HostVariant: s.hostVariant(), HostOutput: s.hostOutput(), ReuseHost: s.reuseHost,
+		Bindings: func(ctx context.Context, host, outputDirectory string) (resultErr error) {
+			hostModOutput, err := prepareStableHostModTree(s.workspace, s.generation)
+			if err != nil {
+				return err
 			}
-			resultErr = errors.Join(resultErr, recordStableHostModTree(hostModOutput))
-		}()
-		args := []string{"bindings", "DEV=true", "EXTRA_TAGS=devcontrol", "BINDINGS_OUTPUT_DIRECTORY=" + outputDirectory, "HOST_MOD_OUTPUT_DIRECTORY=" + hostModOutput.Directory, "GO_BUILD_CACHE_DIRECTORY=" + s.goBuildCache}
-		if o.Mode == "browser" {
-			args = append(args, "SERVER=true")
-		}
-		if o.MCP {
-			args = append(args, "WAILS_MCP=1")
-		}
-		_, resultErr = s.runLaunchCommand(ctx, host, s.environment(), s.output, "task", args...)
-		return resultErr
-	}, Output: s.output, OnEvent: func(event BuildEvent) {
-		s.mu.Lock()
-		s.status.Builds[event.Node] = event
-		if event.Phase == "building" {
-			s.status.Phase = "building"
-			s.status.LastError = nil
-		} else if event.Phase == "error" || event.Phase == "invalidated" {
-			s.status.Phase = "build-error"
-			s.status.FailedStage = event.Node
-			s.status.RecoveryCommand = workspaceRecoveryCommand(s.workspace, "refresh")
-			s.status.LastError = devcontract.Fail(5, "build_failed", safeCompilerDiagnostic(event.Error, s.workspace.Root))
-		}
-		s.mu.Unlock()
-		s.persist()
-	}})
+			defer func() {
+				if errors.Is(resultErr, errOwnedCommandUncertain) {
+					_ = hostModOutput.stageFile.Close()
+					return
+				}
+				resultErr = errors.Join(resultErr, recordStableHostModTree(hostModOutput))
+			}()
+			args := []string{"bindings", "DEV=true", "EXTRA_TAGS=devcontrol", "BINDINGS_OUTPUT_DIRECTORY=" + outputDirectory, "HOST_MOD_OUTPUT_DIRECTORY=" + hostModOutput.Directory, "GO_BUILD_CACHE_DIRECTORY=" + s.goBuildCache}
+			if o.Mode == "browser" {
+				args = append(args, "SERVER=true")
+			}
+			if o.MCP {
+				args = append(args, "WAILS_MCP=1")
+			}
+			_, resultErr = s.runLaunchCommand(ctx, host, s.environment(), s.output, "task", args...)
+			return resultErr
+		}, Output: s.output, OnEvent: func(event BuildEvent) {
+			s.mu.Lock()
+			s.status.Builds[event.Node] = event
+			if event.Phase == "building" {
+				s.status.Phase = "building"
+				s.status.LastError = nil
+			} else if event.Phase == "error" || event.Phase == "invalidated" {
+				s.status.Phase = "build-error"
+				s.status.FailedStage = event.Node
+				s.status.RecoveryCommand = workspaceRecoveryCommand(s.workspace, "refresh")
+				s.status.LastError = devcontract.Fail(5, "build_failed", safeCompilerDiagnostic(event.Error, s.workspace.Root))
+			}
+			s.mu.Unlock()
+			s.persist()
+		},
+	})
 }
 
 // buildHost compiles the selected host against the owned host modfile into a

@@ -81,7 +81,10 @@ func run(ctx context.Context) (resultErr error) {
 		return err
 	}
 	creationStarted = true
-	workspace, err := manager.Create(ctx, devworkspace.CreateOptions{Slug: "app-profile", Repositories: []string{"plugin-sdk"}, Plugins: []string{"kubernetes"}})
+	workspace, err := manager.Create(ctx, devworkspace.CreateOptions{
+		Slug: "app-profile", DisplayName: "", Repositories: []string{"plugin-sdk"},
+		Plugins: []string{"kubernetes"}, Refs: nil, Baseline: nil, Ports: nil,
+	})
 	if err != nil {
 		return fmt.Errorf("preserving private source collection %s after incomplete create: %w", collection, err)
 	}

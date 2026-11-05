@@ -22,7 +22,9 @@ func workspaceError(err error) *devcontract.Error {
 				copy.Exit = 2
 			case "missing_workspace", "link_evidence_required", linkResolutionFailureCode, "host_not_ready", "sdk_contract_mismatch", "ui_contract_mismatch":
 				copy.Exit = 3
-			case "stale_target", "workspace_running", "workspace_busy", "launch_conflict", "generated_conflict", "generated_pending", "port_conflict", "port_attempts_exhausted", "native_profile_conflict", "edit_pending", "baseline_conflict":
+			case "stale_target", "workspace_running", "workspace_busy", "launch_conflict", "generated_conflict",
+				"generated_pending", "port_conflict", "port_attempts_exhausted", "native_profile_conflict",
+				"edit_pending", "baseline_conflict":
 				copy.Exit = 4
 			case "unauthorized":
 				copy.Exit = 6

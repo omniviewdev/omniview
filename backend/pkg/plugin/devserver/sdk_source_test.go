@@ -65,7 +65,8 @@ func TestVerifySelectedSDKUsesActualGoModuleAndDirtySourceDigest(t *testing.T) {
 	isolationDirty, err := VerifySelectedSDK(context.Background(), goPath, source, os.Environ())
 	require.NoError(t, err)
 	require.Equal(t, revision, isolationDirty.Revision)
-	require.NotEqual(t, dirty.SourceDigest, isolationDirty.SourceDigest, "dirty isolation edits must receive fresh source evidence")
+	require.NotEqual(t, dirty.SourceDigest, isolationDirty.SourceDigest,
+		"dirty isolation edits must receive fresh source evidence")
 }
 
 func TestVerifySelectedSDKIgnoresYAMLAndFollowsReplacement(t *testing.T) {

@@ -131,11 +131,15 @@ func TestBuildMetadataReplacesUntrustedYAMLAttestation(t *testing.T) {
 	require.NoError(t, root.MkdirAll(filepath.Dir(gw.buildRelativePath), 0700))
 	binary := root.ResolvePath(gw.buildRelativePath)
 	require.NoError(t, root.WriteFile(gw.buildRelativePath, []byte("built artifact fixture"), 0700))
-	gw.selectedSDK = devsource.Identity{Directory: source, Revision: strings.Repeat("a", 40), SourceDigest: strings.Repeat("b", 64)}
+	gw.selectedSDK = devsource.Identity{
+		Directory: source, Revision: strings.Repeat("a", 40), SourceDigest: strings.Repeat("b", 64),
+	}
 	require.NoError(t, gw.syncPluginYaml())
 	installed, err = sdktypes.LoadPluginMetadata(root.ResolvePath("metadata"))
 	require.NoError(t, err)
-	require.NoError(t, installed.StateIsolation.VerifyArtifact(binary, gw.selectedSDK.Revision, gw.selectedSDK.SourceDigest))
+	require.NoError(t, installed.StateIsolation.VerifyArtifact(
+		binary, gw.selectedSDK.Revision, gw.selectedSDK.SourceDigest,
+	))
 	original, err := os.ReadFile(path)
 	require.NoError(t, err)
 	require.Equal(t, data, original, "never rewrite source metadata")

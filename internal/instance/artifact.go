@@ -62,7 +62,9 @@ func artifactDirectory(workspace devcontract.ResolvedWorkspace) (string, error) 
 // unchanged across a successful build.
 // Dirty edits are supported: the digest identifies that working-tree snapshot,
 // not a claim that hashing alone proves source inclusion in the executable.
-func RecordBuiltArtifactSource(workspace devcontract.ResolvedWorkspace, pluginID, binaryPath, sdkRevision, sourceDigest string) error {
+func RecordBuiltArtifactSource(
+	workspace devcontract.ResolvedWorkspace, pluginID, binaryPath, sdkRevision, sourceDigest string,
+) error {
 	if err := state.ValidateComponent(pluginID); err != nil {
 		return err
 	}
@@ -92,7 +94,10 @@ func RecordBuiltArtifactSource(workspace devcontract.ResolvedWorkspace, pluginID
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
-	record := artifactRecord{SchemaVersion: 3, PluginID: pluginID, SDKRevision: sdkRevision, ExpectedSDKSourceSHA256: sourceDigest, Provenance: provenance}
+	record := artifactRecord{
+		SchemaVersion: 3, PluginID: pluginID, SDKRevision: sdkRevision,
+		ExpectedSDKSourceSHA256: sourceDigest, Provenance: provenance,
+	}
 	encoded, err := json.Marshal(record)
 	if err != nil {
 		return err
@@ -157,14 +162,17 @@ func readPluginArtifactRecord(workspace devcontract.ResolvedWorkspace, pluginID 
 	if closeErr != nil {
 		return "", record, closeErr
 	}
-	if record.SchemaVersion != 3 || record.PluginID != pluginID || record.Provenance == nil || record.SDKRevision == "" || record.ExpectedSDKSourceSHA256 == "" {
+	if record.SchemaVersion != 3 || record.PluginID != pluginID || record.Provenance == nil ||
+		record.SDKRevision == "" || record.ExpectedSDKSourceSHA256 == "" {
 		return "", record, fmt.Errorf("instance: invalid trusted artifact source evidence for %s", pluginID)
 	}
 	return dir, record, nil
 }
 
 func (record *artifactRecord) verifyArtifact(pluginID, binaryPath string) error {
-	if err := record.Provenance.VerifyArtifact(binaryPath, record.SDKRevision, record.ExpectedSDKSourceSHA256); err != nil {
+	if err := record.Provenance.VerifyArtifact(
+		binaryPath, record.SDKRevision, record.ExpectedSDKSourceSHA256,
+	); err != nil {
 		return fmt.Errorf("instance: plugin %s artifact isolation verification failed: %w", pluginID, err)
 	}
 	return nil

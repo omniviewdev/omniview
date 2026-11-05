@@ -304,7 +304,7 @@ func (g *BuildGraph) commandWithEnvironment(ctx context.Context, dir string, env
 			continue
 		}
 		switch key {
-		case "GOWORK", "GOFLAGS", "GOROOT", "GOCACHE", "NODE_PATH", "GO_MODFILE", "OMNIVIEW_PNPM_NODE_PATH",
+		case "GOWORK", goFlagsEnv, "GOROOT", "GOCACHE", "NODE_PATH", "GO_MODFILE", "OMNIVIEW_PNPM_NODE_PATH",
 			"OMNIVIEW_BUILD_OUTPUT_DIRECTORY", "OMNIVIEW_SHIMS_OUTPUT_DIRECTORY", "OMNIVIEW_SHIMS_SOURCE_DIRECTORY",
 			"OMNIVIEW_YAML_WORKER_OUTPUT_FILE", "OMNIVIEW_VITE_CACHE_DIRECTORY", compositionInstallEnvironment:
 			continue
@@ -366,7 +366,8 @@ func (g *BuildGraph) verifySDK(ctx context.Context, consumer string) (devsource.
 	if err != nil {
 		return identity, err
 	}
-	if identity.Directory != selected || !sdkRevisionPattern.MatchString(identity.Revision) || !sourceDigestPattern.MatchString(identity.SourceDigest) {
+	if identity.Directory != selected || !sdkRevisionPattern.MatchString(identity.Revision) ||
+		!sourceDigestPattern.MatchString(identity.SourceDigest) {
 		return devsource.Identity{}, fmt.Errorf("SDK verifier returned a different or incomplete selected source identity")
 	}
 	return identity, nil
@@ -437,7 +438,9 @@ func (g *BuildGraph) buildNode(ctx context.Context, n BuildNode) error {
 		if err != nil {
 			return err
 		}
-		if err := g.options.HostBuild(ctx, HostBuildRequest{Workspace: g.workspace, SDKDirectory: g.plan.SDK, SDKSource: before}); err != nil {
+		if err = g.options.HostBuild(ctx, HostBuildRequest{
+			Workspace: g.workspace, SDKDirectory: g.plan.SDK, SDKSource: before,
+		}); err != nil {
 			return err
 		}
 		return g.verifyUnchangedSDK(ctx, n.Directory, before)
@@ -452,7 +455,9 @@ func (g *BuildGraph) buildNode(ctx context.Context, n BuildNode) error {
 func (g *BuildGraph) recordArtifact(pluginID, binary string, source devsource.Identity) error {
 	g.attestMu.Lock()
 	defer g.attestMu.Unlock()
-	return instance.RecordBuiltArtifactSource(g.workspace.ResolvedWorkspace, pluginID, binary, source.Revision, source.SourceDigest)
+	return instance.RecordBuiltArtifactSource(
+		g.workspace.ResolvedWorkspace, pluginID, binary, source.Revision, source.SourceDigest,
+	)
 }
 
 func (g *BuildGraph) withBuildLock(ctx context.Context, fn func() error) error {

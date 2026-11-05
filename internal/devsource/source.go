@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -77,7 +78,7 @@ func Verify(ctx context.Context, directory string) (Identity, error) {
 	}
 	revision := strings.TrimSpace(string(raw))
 	if !fullRevision.MatchString(revision) {
-		return identity, fmt.Errorf("selected SDK HEAD must be a full lowercase commit hash")
+		return identity, errors.New("selected SDK HEAD must be a full lowercase commit hash")
 	}
 	digest, err := sourceDigest(ctx, canonical)
 	if err != nil {

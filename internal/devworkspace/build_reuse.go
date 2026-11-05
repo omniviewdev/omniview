@@ -269,7 +269,8 @@ func (g *BuildGraph) toolchainInputs(ctx context.Context, n BuildNode) (string, 
 		if err != nil {
 			return "", err
 		}
-		fmt.Fprintf(&b, "sdk\x00%s\x00%s\x00go\x00%s\x00variant\x00%s", identity.Revision, identity.SourceDigest, version, g.options.HostVariant)
+		fmt.Fprintf(&b, "sdk\x00%s\x00%s\x00go\x00%s\x00variant\x00%s",
+			identity.Revision, identity.SourceDigest, version, g.options.HostVariant)
 		return b.String(), nil
 	}
 	if g.plan.Composition == nil {

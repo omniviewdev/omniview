@@ -466,7 +466,11 @@ func idleState(pluginID string) DevServerState {
 }
 
 func (m *DevServerManager) resolveBuildOpts() BuildOpts {
-	opts := BuildOpts{StateRoot: m.stateRoot.ResolvePath(""), Environment: m.buildEnvironment, Workspace: m.workspace, ProcessSupervisor: m.processSupervisor}
+	var opts BuildOpts
+	opts.StateRoot = m.stateRoot.ResolvePath("")
+	opts.Environment = m.buildEnvironment
+	opts.Workspace = m.workspace
+	opts.ProcessSupervisor = m.processSupervisor
 	if m.settingsProvider != nil {
 		opts.GoPath, _ = m.settingsProvider.GetString("developer.gopath")
 		opts.PnpmPath, _ = m.settingsProvider.GetString("developer.pnpmpath")
