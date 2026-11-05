@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -369,6 +370,7 @@ func TestSourceChangesRejectMembershipBeyondSnapshotLimit(t *testing.T) {
 	s := v.session
 	s.pluginID = "p1"
 	s.pluginGeneration = s.coordinator.ctrl.plugins["p1"]
+	s.ctx = context.WithValue(s.ctx, sourceBindingKey{}, sourceBinding{Representation: canonicalTestRepresentation()})
 	original, err := decodeSourceMember(s.members["0"])
 	require.NoError(t, err)
 	member, key, err := makeSourceMember(original, maxSourceSessionBytes)
@@ -383,6 +385,7 @@ func TestSourceChangesRejectMembershipBeyondSnapshotLimit(t *testing.T) {
 		{Kind: resourcev2.SourceChangeUpsert, Observation: &added},
 	}}}
 	descriptor := canonicalTestCatalog("p1", s.target.Type).Types[0]
+	require.NoError(t, s.prevalidateFrameRecord(sourceFrameContext{ctx: s.ctx, target: s.target, descriptor: &descriptor}, added))
 	_, err = s.applyLocked(frame, sourceFrameContext{ctx: s.ctx, target: s.target, descriptor: &descriptor})
 	require.Equal(t, "RESOURCE_LIMIT", resourcev2.ErrorCode(err))
 	require.Equal(t, defaultSourceStagingBytes, s.memberBytes)
