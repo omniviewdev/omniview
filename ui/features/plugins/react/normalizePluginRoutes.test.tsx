@@ -228,8 +228,12 @@ describe('normalizePluginRoutes', () => {
     }], 'test-plugin'), { initialEntries: ['/plugin/retry'] });
     render(<RouterProvider router={router} />);
     expect(await screen.findByRole('alert')).toHaveTextContent('temporary import failure');
-    await act(async () => { await router.navigate('/plugin/healthy'); });
-    await act(async () => { await router.navigate('/plugin/retry'); });
+    await act(async () => {
+      await router.navigate('/plugin/healthy');
+    });
+    await act(async () => {
+      await router.navigate('/plugin/retry');
+    });
     expect(await screen.findByText('Recovered page')).toBeInTheDocument();
     expect(lazy).toHaveBeenCalledTimes(2);
     expect(loader).toHaveBeenCalled();
@@ -245,7 +249,9 @@ describe('normalizePluginRoutes', () => {
     const router = createMemoryRouter(normalizePluginRoutes([{
       path: '/page',
       ErrorBoundary: () => <div>Custom import error</div>,
-      lazy: async () => { throw new Error('import rejected'); },
+      lazy: async () => {
+        throw new Error('import rejected');
+      },
     }], 'test-plugin'), { initialEntries: ['/page'] });
     render(<RouterProvider router={router} />);
     expect(await screen.findByText('Custom import error')).toBeInTheDocument();
@@ -259,7 +265,9 @@ describe('normalizePluginRoutes', () => {
       Component: PluginLayout,
       children: [{
         path: 'broken',
-        lazy: { Component: async () => { throw new Error('object import rejected'); } },
+        lazy: { Component: async () => {
+          throw new Error('object import rejected');
+        } },
       }],
     }], 'test-plugin'), { initialEntries: ['/plugin/broken'] });
     render(<RouterProvider router={router} />);

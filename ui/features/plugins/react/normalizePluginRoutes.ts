@@ -11,13 +11,24 @@ export function normalizePluginRoutes(routes: RouteObject[], pluginId: string): 
       || (typeof lazy === 'object' && (lazy.ErrorBoundary !== undefined || lazy.errorElement !== undefined));
     const LazyFallback = (): ReactNode => {
       if (useRouteError() != null) {
-        if (route.ErrorBoundary) return createElement(route.ErrorBoundary);
-        if (route.errorElement != null) return route.errorElement;
+        if (route.ErrorBoundary) {
+          return createElement(route.ErrorBoundary);
+        }
+
+        if (route.errorElement != null) {
+          return route.errorElement;
+        }
+
         return createElement(ErrorBoundary);
       }
-      if (route.HydrateFallback) return createElement(route.HydrateFallback);
+
+      if (route.HydrateFallback) {
+        return createElement(route.HydrateFallback);
+      }
+
       return route.hydrateFallbackElement ?? null;
     };
+
     let renderLazyBoundary: (() => ReactNode) | undefined;
     const boundary = typeof lazy === 'function' ? {
       ...(hasBoundary ? {} : {
@@ -30,6 +41,7 @@ export function normalizePluginRoutes(routes: RouteObject[], pluginId: string): 
         } else if (!hasBoundary && errorElement != null) {
           renderLazyBoundary = (): ReactNode => errorElement;
         }
+
         return loaded;
       },
     } : hasBoundary ? {} : { ErrorBoundary };
