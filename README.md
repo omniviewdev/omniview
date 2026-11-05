@@ -54,11 +54,25 @@ Settings → AI Tools controls the loopback MCP relay. Resource tools expose pro
 labels, descriptions and danger notices. Actions and mutations require consent unless the
 tool's confirm override is set to false.
 
-The read-only preset includes per-resource metrics and route-level events, health and related
-resources. Each route-level tool accepts a resource type from its advertised enum. Unsupported
-provider operations return an error; health can return `null` when the provider has no assessment.
-Related resources contain references, not resource bodies. The relay returns at most 1000 edges
-and sets `truncated` when more edges exist. Route-level policy is plugin- and
+For configured Kubernetes connections, five generic resource tools remain available while
+the cluster is disconnected: `kubernetes_resource_discover`, `kubernetes_resource_read`,
+`kubernetes_resource_write`, `kubernetes_resource_action`, and `kubernetes_resource_telemetry`.
+The first call starts the selected connection. Use the `catalog` operation of
+`kubernetes_resource_discover` to find live operations and their argument schemas.
+Each tool uses an `operation` argument to select an operation. Unsupported operations
+return an error.
+
+AI Tools applies policy to each generic group and connection, not to individual Kubernetes
+resource types. Existing resource-specific overrides and saved presets do not grant or deny
+the new tools. The current preset and its defaults apply to the new tool names.
+Review the new policies: the read-only preset can enable reads that an old override denied.
+Write and action calls require consent by default.
+
+For other providers, the read-only preset includes per-resource metrics and route-level
+events, health and related resources. Each route-level tool accepts a resource type from
+its advertised enum. Health can return `null` when the provider has no assessment.
+Related resources contain references, not resource bodies. The relay returns at most 1000
+edges and sets `truncated` when more edges exist. Route-level policy is plugin- and
 connection-scoped; disabling one type's get tool does not disable these separate read tools.
 
 Plugins may declare access to selected resource types exported by another installed
