@@ -206,6 +206,10 @@ func TestSelectedUIStartupUsesCanonicalLifecycleAndActualHTTPBeforeReady(t *test
 	if err != nil {
 		t.Skip("Node unavailable")
 	}
+	output, err := exec.Command(node, "-p", "require('node:fs').realpathSync(process.execPath)").Output()
+	require.NoError(t, err)
+	node = strings.TrimSpace(string(output))
+	require.True(t, filepath.IsAbs(node), "Node returned a nonabsolute executable path")
 	manager, servers, selected, _ := workspaceSelectionFixture(t, "selected")
 	emitter := &testRecordingEmitter{}
 	manager.emitter = emitter

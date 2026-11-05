@@ -855,6 +855,12 @@ and native pages at 256 records. Aggregate pages remain frame-bounded before
 generated decoding. These finite transport ceilings require final policy review;
 they do not change the separate predicate/projection policy or promise latency.
 
+Source sessions cap retained membership at 128 MiB, the same limit as snapshot
+staging. Incremental changes that exceed this limit fail with `RESOURCE_LIMIT`.
+Retained members, committing snapshots, and members referenced by in-progress view
+snapshots share a 256 MiB ledger. View references can cause a snapshot or change
+to fail with `RESOURCE_LIMIT`; the session remains failed until refreshed.
+
 ### Protecting connection-dependent routes
 
 Plugin availability is not connection readiness. Wrap the resource subtree in the runtime's `ConnectionBoundary` before rendering components that use resource hooks. Keep connection lists, creation, and credential editing outside the boundary.

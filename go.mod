@@ -128,4 +128,5 @@ require (
 
 replace cel.dev/cel-go => github.com/omniviewdev/cel-go v0.33.2-0.20261028172556-d7bb038d8c7b
 
+// Source-session receive controls require the scoped grpc-go fork.
 replace google.golang.org/grpc => github.com/omniviewdev/grpc-go v1.79.3-0.20261103012409-4c6f1d1c4e10

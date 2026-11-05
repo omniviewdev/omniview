@@ -13,9 +13,11 @@ import (
 )
 
 type scriptedSourceStream struct {
-	frames chan resourcev2.SourceFrame
-	closed chan struct{}
-	once   sync.Once
+	frames   chan resourcev2.SourceFrame
+	closed   chan struct{}
+	once     sync.Once
+	request  resourcev2.SourceOpenRequest
+	sequence uint64
 }
 
 func (s *scriptedSourceStream) Recv() (resourcev2.SourceFrame, error) {
@@ -43,7 +45,7 @@ func (p *scriptedSourceProvider) Features(context.Context) (resourcev2.FeatureSe
 	return resourcev2.FeatureSet{Traits: []resourcev2.Feature{resourcev2.FeatureConnections, resourcev2.FeatureSourceSessions}}, nil
 }
 func (p *scriptedSourceProvider) OpenSourceStream(ctx context.Context, request resourcev2.SourceOpenRequest) (resourcev2.SourceStream, error) {
-	stream := &scriptedSourceStream{frames: make(chan resourcev2.SourceFrame, 16), closed: make(chan struct{})}
+	stream := &scriptedSourceStream{frames: make(chan resourcev2.SourceFrame, 16), closed: make(chan struct{}), request: request}
 	revision, _ := resourcev2.CatalogRevisionFromContext(ctx)
 	p.opens <- scriptedSourceOpen{request: request, stream: stream, revision: revision}
 	return stream, nil
@@ -86,22 +88,38 @@ func sourceNextOpen(t *testing.T, provider *scriptedSourceProvider) scriptedSour
 		return scriptedSourceOpen{}
 	}
 }
-func sourceSend(stream *scriptedSourceStream, frame resourcev2.SourceFrame) { stream.frames <- frame }
+func sourceSend(stream *scriptedSourceStream, frame resourcev2.SourceFrame) {
+	if stream.sequence == 0 && frame.Begin == nil {
+		sourceSend(stream, resourcev2.SourceFrame{Begin: &resourcev2.SourceBegin{Mode: stream.request.Mode}})
+	}
+	stream.sequence++
+	if frame.SessionID == "" {
+		frame.SessionID = stream.request.SessionID
+	}
+	if frame.Generation == "" {
+		frame.Generation = stream.request.Generation
+	}
+	if frame.Sequence == 0 {
+		frame.Sequence = stream.sequence
+	}
+	stream.frames <- frame
+}
 func sourceBoundary(enumeration string) resourcev2.SourceFrame {
 	return resourcev2.SourceFrame{SnapshotEnd: &resourcev2.SourceSnapshotEnd{Coverage: resourcev2.SourceCoverage{Enumeration: enumeration, Consistency: resourcev2.ConsistencyBestEffort}, Continuity: resourcev2.ContinuityBestEffort}}
 }
-func sourceTestRecord(target resourcev2.ReadTarget, id, incarnation string) resourcev2.SourceRecord {
+func sourceTestRecord(target resourcev2.ReadTarget, id, incarnation string) resourcev2.Record {
 	record := canonicalTestRecord(target.Provider, target.Authority, target.Type, id)
 	if incarnation != "" {
 		record.Reference.Incarnation = &incarnation
 	}
-	return resourcev2.CompactSourceRecord(record)
+	return record
 }
 
 func TestSourceCoordinatorSharesAndReleases(t *testing.T) {
 	ctrl, _, provider, target := sourceTestFixture(t)
 	first := sourceTestOpen(t, ctrl, target)
 	open := sourceNextOpen(t, provider)
+	require.EqualValues(t, 16, open.request.Limits.MaxBatchItems)
 	second := sourceTestOpen(t, ctrl, target)
 	ctrl.sources.mu.Lock()
 	require.Len(t, ctrl.sources.sessions, 1)
@@ -119,6 +137,36 @@ func TestSourceCoordinatorSharesAndReleases(t *testing.T) {
 		t.Fatal("last release did not close stream")
 	}
 }
+func TestSourceNegotiatedChangeBatchLimit(t *testing.T) {
+	ctrl, _, provider, target := sourceTestFixture(t)
+	view := sourceTestOpen(t, ctrl, target)
+	open := sourceNextOpen(t, provider)
+	defer ctrl.CloseSourceView(testInvocationContext(), "p1", view.ViewID)
+	request := open.request
+	require.EqualValues(t, 16, request.Limits.MaxBatchItems)
+	descriptor := canonicalTestCatalog("p1", "native::Pod").Types[0]
+	descriptor.Capabilities = append(descriptor.Capabilities, resourcev2.Capability{Operation: resourcev2.OperationSourceUpdates, Scope: resourcev2.QueryScope{}, Guarantee: resourcev2.ContinuityBestEffort})
+	tracker := resourcev2.NewCatalogBoundSourcePhaseTracker(request, descriptor)
+	defer tracker.Close()
+	frame := resourcev2.SourceFrame{SessionID: request.SessionID, Generation: request.Generation, Sequence: 1, Begin: &resourcev2.SourceBegin{Mode: request.Mode}}
+	require.NoError(t, tracker.Admit(frame))
+	frame.Sequence++
+	frame.Begin = nil
+	frame.SnapshotEnd = sourceBoundary(resourcev2.EnumerationExhausted).SnapshotEnd
+	require.NoError(t, tracker.Admit(frame))
+	frame.Sequence++
+	frame.SnapshotEnd = nil
+	ref := sourceTestRecord(target.Target, "pod", "").Reference
+	changes := make([]resourcev2.SourceChange, defaultSourceMaxBatchItems+1)
+	for i := range changes {
+		changes[i] = resourcev2.SourceChange{Kind: resourcev2.SourceChangeRemove, Reference: &ref}
+	}
+	frame.Changes = &resourcev2.SourceChanges{Changes: changes[:defaultSourceMaxBatchItems]}
+	require.NoError(t, tracker.Admit(frame))
+	frame.Sequence++
+	frame.Changes.Changes = changes
+	require.Error(t, tracker.Admit(frame))
+}
 
 func TestSourceCoordinatorSyncWaitsForSnapshotBoundary(t *testing.T) {
 	ctrl, events, provider, target := sourceTestFixture(t)
@@ -126,7 +174,7 @@ func TestSourceCoordinatorSyncWaitsForSnapshotBoundary(t *testing.T) {
 	open := sourceNextOpen(t, provider)
 	record := sourceTestRecord(target.Target, "pod", "")
 	sourceSend(open.stream, resourcev2.SourceFrame{Begin: &resourcev2.SourceBegin{Mode: open.request.Mode}})
-	sourceSend(open.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: record}}}})
+	sourceSend(open.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: resourcev2.CompactSourceRecord(record)}}}})
 	require.Eventually(t, func() bool {
 		states, err := ctrl.GetSourceStates(testInvocationContext(), "p1", target.Target.Route)
 		return err == nil && states.Types[target.Target.Type].State == "snapshotting"
@@ -148,7 +196,7 @@ func TestSourceCoordinatorSyncWaitsForSnapshotBoundary(t *testing.T) {
 	end := waitSourceView(t, events, view.Topic, func(event HostSourceViewEvent) bool {
 		return event.Kind == "snapshotEnd" && event.Status != nil && event.Status.State == "following"
 	})
-	require.Equal(t, record, resourcev2.CompactSourceRecord(snapshot.Records[0].Record))
+	require.Equal(t, record, snapshot.Records[0].Record)
 	require.Equal(t, open.request.Binding.Representation, snapshot.Records[0].Record.Representation)
 	require.Equal(t, snapshot.ViewGeneration, end.ViewGeneration)
 	require.NoError(t, ctrl.CloseSourceView(testInvocationContext(), "p1", view.ViewID))
@@ -160,7 +208,7 @@ func TestSourceCoordinatorSnapshotAndRemove(t *testing.T) {
 	open := sourceNextOpen(t, provider)
 	record := sourceTestRecord(target.Target, "pod", "new")
 	sourceSend(open.stream, resourcev2.SourceFrame{Begin: &resourcev2.SourceBegin{Mode: open.request.Mode}})
-	sourceSend(open.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: record}}}})
+	sourceSend(open.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: resourcev2.CompactSourceRecord(record)}}}})
 	sourceView, err := ctrl.sourceView(testInvocationContext(), "p1", view.ViewID, "resource.SyncSourceView")
 	require.NoError(t, err)
 	session := sourceView.session
@@ -183,7 +231,7 @@ func TestSourceCoordinatorSnapshotAndRemove(t *testing.T) {
 	sourceSend(open.stream, resourcev2.SourceFrame{Changes: &resourcev2.SourceChanges{Changes: []resourcev2.SourceChange{{Kind: resourcev2.SourceChangeRemove, Reference: &old}}}})
 	updated := record
 	updated.Body.Map = map[string]resourcev2.Value{"name": {Kind: "string", String: "changed"}}
-	sourceSend(open.stream, resourcev2.SourceFrame{Changes: &resourcev2.SourceChanges{Changes: []resourcev2.SourceChange{{Kind: resourcev2.SourceChangeUpsert, Observation: &resourcev2.SourceObservation{Record: updated}}}}})
+	sourceSend(open.stream, resourcev2.SourceFrame{Changes: &resourcev2.SourceChanges{Changes: []resourcev2.SourceChange{{Kind: resourcev2.SourceChangeUpsert, Observation: &resourcev2.SourceObservation{Record: resourcev2.CompactSourceRecord(updated)}}}}})
 	waitSourceView(t, events, view.Topic, func(e HostSourceViewEvent) bool { return e.Kind == "changes" && len(e.Upserts) == 1 })
 	_, found = ctrl.registryStore.Get("p1", record.Reference, target.Target.Route)
 	require.True(t, found, "old incarnation remove must not delete current record")
@@ -197,7 +245,7 @@ func TestSourceCoordinatorRefreshRetirement(t *testing.T) {
 			view := sourceTestOpen(t, ctrl, target)
 			first := sourceNextOpen(t, provider)
 			record := sourceTestRecord(target.Target, "pod", "")
-			sourceSend(first.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: record}}}})
+			sourceSend(first.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: resourcev2.CompactSourceRecord(record)}}}})
 			sourceSend(first.stream, sourceBoundary(resourcev2.EnumerationExhausted))
 			waitSourceView(t, events, view.Topic, func(e HostSourceViewEvent) bool {
 				return e.Kind == "snapshotEnd" && e.Status != nil && e.Status.State == "following"
@@ -267,7 +315,7 @@ func TestSourceCoordinatorRouteInvalidationClosesView(t *testing.T) {
 	view := sourceTestOpen(t, ctrl, target)
 	open := sourceNextOpen(t, provider)
 	record := sourceTestRecord(target.Target, "pod", "")
-	sourceSend(open.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: record}}}})
+	sourceSend(open.stream, resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: resourcev2.CompactSourceRecord(record)}}}})
 	sourceSend(open.stream, sourceBoundary(resourcev2.EnumerationExhausted))
 	waitSourceView(t, events, view.Topic, func(e HostSourceViewEvent) bool {
 		return e.Kind == "snapshotEnd" && e.Status != nil && e.Status.State == "following"
@@ -294,7 +342,7 @@ func TestSourceCoordinatorRouteInvalidationClosesView(t *testing.T) {
 
 func TestSourceCoordinatorSnapshotLimits(t *testing.T) {
 	record := sourceTestRecord(resourcev2.ReadTarget{Provider: "p", Authority: "a", Type: "t"}, "new", "")
-	frame := resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: record}}}}
+	frame := resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{{Record: resourcev2.CompactSourceRecord(record)}}}}
 	t.Run("members", func(t *testing.T) {
 		staging := make(map[string]sourceMember, maxSourceSessionMembers)
 		for i := range maxSourceSessionMembers {

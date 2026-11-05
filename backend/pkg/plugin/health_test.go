@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -11,12 +12,35 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	"github.com/omniviewdev/plugin-sdk/pkg/config"
 )
 
 // testNoopEmitter is a no-op EventEmitter for tests.
 type testNoopEmitter struct{}
 
 func (testNoopEmitter) Emit(string, ...any) {}
+
+type healthManagedServers struct {
+	transactionDevServers
+	observations int
+}
+
+func (*healthManagedServers) LifecycleGeneration(string, string) string { return "generation" }
+func (*healthManagedServers) RuntimeGeneration(string, string) string   { return "generation" }
+func (s *healthManagedServers) NotifyPluginLifecycle(string, string, string, bool, bool, error) bool {
+	s.observations++
+	return true
+}
+
+type healthDispenseBackend struct {
+	plugintypes.PluginBackend
+	dispense func()
+}
+
+func (b *healthDispenseBackend) Dispense(string) (interface{}, error) {
+	b.dispense()
+	return nil, errors.New("unavailable")
+}
 
 func newTestHealthChecker(t *testing.T) (*HealthChecker, *pluginManager) {
 	t.Helper()
@@ -44,7 +68,7 @@ func TestHealthChecker_HealthyBackend_NoRecovery(t *testing.T) {
 		Backend: backend,
 	}
 
-	assert.True(t, hc.checkPlugin("test-plugin"))
+	assert.True(t, hc.checkPlugin("test-plugin", "", pm.records["test-plugin"], backend))
 }
 
 func TestHealthChecker_UnhealthyBackend(t *testing.T) {
@@ -59,14 +83,14 @@ func TestHealthChecker_UnhealthyBackend(t *testing.T) {
 		Backend: backend,
 	}
 
-	assert.False(t, hc.checkPlugin("test-plugin"))
+	assert.False(t, hc.checkPlugin("test-plugin", "", pm.records["test-plugin"], backend))
 }
 
 func TestHealthChecker_NoRecord(t *testing.T) {
 	hc, _ := newTestHealthChecker(t)
 
 	// No record for this plugin → unhealthy.
-	assert.False(t, hc.checkPlugin("nonexistent"))
+	assert.False(t, hc.checkPlugin("nonexistent", "", nil, nil))
 }
 
 func TestHealthChecker_NoBackend(t *testing.T) {
@@ -78,7 +102,7 @@ func TestHealthChecker_NoBackend(t *testing.T) {
 		// Backend is nil.
 	}
 
-	assert.False(t, hc.checkPlugin("test-plugin"))
+	assert.False(t, hc.checkPlugin("test-plugin", "", pm.records["test-plugin"], nil))
 }
 
 func TestHealthChecker_CustomHealthFunc(t *testing.T) {
@@ -95,10 +119,44 @@ func TestHealthChecker_CustomHealthFunc(t *testing.T) {
 		Backend: backend,
 	}
 
-	assert.True(t, hc.checkPlugin("test-plugin"))
+	assert.True(t, hc.checkPlugin("test-plugin", "", pm.records["test-plugin"], backend))
 
 	healthy = false
-	assert.False(t, hc.checkPlugin("test-plugin"))
+	assert.False(t, hc.checkPlugin("test-plugin", "", pm.records["test-plugin"], backend))
+}
+
+func TestHealthChecker_ManagedFailureFencedByProbePair(t *testing.T) {
+	for _, replace := range []bool{false, true} {
+		t.Run(fmt.Sprintf("replace=%t", replace), func(t *testing.T) {
+			hc, pm := newTestHealthChecker(t)
+			servers := &healthManagedServers{}
+			pm.devServerMgr = servers
+			backend := &healthDispenseBackend{
+				PluginBackend: plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{}),
+				dispense: func() {
+					if replace {
+						pm.recordsMu.Lock()
+						pm.records["plugin"] = &plugintypes.PluginRecord{
+							ID: "plugin", Phase: lifecycle.PhaseRunning,
+							Backend: plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{}),
+						}
+						pm.recordsMu.Unlock()
+					}
+				},
+			}
+			record := &plugintypes.PluginRecord{
+				ID: "plugin", Phase: lifecycle.PhaseRunning, DevPath: "source", Backend: backend,
+			}
+			pm.records["plugin"] = record
+
+			require.False(t, hc.checkPlugin("plugin", "source", record, backend))
+			if replace {
+				require.Zero(t, servers.observations)
+			} else {
+				require.Equal(t, 1, servers.observations)
+			}
+		})
+	}
 }
 
 func TestHandleCrashWithBackoff_ContextCancellation(t *testing.T) {
@@ -199,6 +257,147 @@ func TestCheckAll_HealthyPlugin_NoCrash(t *testing.T) {
 	hc.checkAll()
 	// No recovery state should be created for healthy plugins.
 	assert.Empty(t, hc.recoveryStates)
+}
+
+func TestCheckAll_ProbesCollectedBackendAcrossReplacement(t *testing.T) {
+	for _, staleHealthy := range []bool{true, false} {
+		for _, replaceRecord := range []bool{true, false} {
+			t.Run(fmt.Sprintf("staleHealthy=%t/replaceRecord=%t", staleHealthy, replaceRecord), func(t *testing.T) {
+				hc, pm := newTestHealthChecker(t)
+				pm.healthChecker = hc
+				triggered := make(chan struct{}, 1)
+				var target string
+				var unlock func()
+				oldProbes, replacementProbes := 0, 0
+
+				for _, id := range []string{"one", "two"} {
+					id := id
+					backend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{
+						HealthCheck: func() bool {
+							oldProbes++
+							if target != "" {
+								return id != target || staleHealthy
+							}
+							target = "one"
+							if id == target {
+								target = "two"
+							}
+							lock := pm.pluginOpsLock(target)
+							lock.Lock()
+							unlock = lock.Unlock
+							sm := lifecycle.NewPluginStateMachine(target, lifecycle.PhaseRunning)
+							sm.AddObserver(func(_ string, tr lifecycle.Transition) {
+								if tr.To == lifecycle.PhaseRecovering {
+									select {
+									case triggered <- struct{}{}:
+									default:
+									}
+								}
+							})
+							replacement := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{
+								HealthCheck: func() bool {
+									replacementProbes++
+									return false
+								},
+							})
+							pm.recordsMu.Lock()
+							if replaceRecord {
+								pm.records[target] = &plugintypes.PluginRecord{
+									ID: target, Phase: lifecycle.PhaseRunning,
+									Backend: replacement, StateMachine: sm,
+								}
+							} else {
+								pm.records[target].Backend = replacement
+								pm.records[target].StateMachine = sm
+							}
+							pm.recordsMu.Unlock()
+							return true
+						},
+					})
+					pm.records[id] = &plugintypes.PluginRecord{
+						ID: id, Phase: lifecycle.PhaseRunning, Backend: backend,
+					}
+				}
+				defer func() {
+					if unlock != nil {
+						unlock()
+					}
+				}()
+
+				hc.checkAll()
+				require.NotEmpty(t, target)
+				require.Equal(t, 1, oldProbes)
+				require.Equal(t, 1, replacementProbes)
+				unlock()
+				unlock = nil
+
+				select {
+				case <-triggered:
+				case <-time.After(3 * time.Second):
+					t.Fatal("unhealthy replacement did not enter recovery")
+				}
+			})
+		}
+	}
+}
+
+func TestCheckAll_StaleProbeDoesNotAffectReplacement(t *testing.T) {
+	for _, staleHealthy := range []bool{true, false} {
+		for _, replaceRecord := range []bool{true, false} {
+			t.Run(fmt.Sprintf("staleHealthy=%t/replaceRecord=%t", staleHealthy, replaceRecord), func(t *testing.T) {
+				hc, pm := newTestHealthChecker(t)
+				pm.healthChecker = hc
+				triggered := make(chan struct{}, 1)
+				sm := lifecycle.NewPluginStateMachine("plugin", lifecycle.PhaseRunning)
+				sm.AddObserver(func(_ string, tr lifecycle.Transition) {
+					if tr.To == lifecycle.PhaseRecovering {
+						select {
+						case triggered <- struct{}{}:
+						default:
+						}
+					}
+				})
+				replacement := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{
+					HealthCheck: func() bool { return false },
+				})
+				var old *plugintypes.PluginRecord
+				backend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{
+					HealthCheck: func() bool {
+						pm.recordsMu.Lock()
+						if replaceRecord {
+							pm.records["plugin"] = &plugintypes.PluginRecord{
+								ID: "plugin", Phase: lifecycle.PhaseRunning,
+								Backend: replacement, StateMachine: sm,
+							}
+						} else {
+							old.Backend = replacement
+							old.StateMachine = sm
+						}
+						pm.recordsMu.Unlock()
+						return staleHealthy
+					},
+				})
+				old = &plugintypes.PluginRecord{ID: "plugin", Phase: lifecycle.PhaseRunning, Backend: backend}
+				pm.records["plugin"] = old
+
+				hc.checkAll()
+				// Complete the stale-result path synchronously as well, so the
+				// assertion does not depend on scheduling the spawned goroutine.
+				pm.handleProbedCrash("plugin", old, backend)
+				select {
+				case <-triggered:
+					t.Fatal("stale probe affected replacement")
+				default:
+				}
+				hc.checkAll()
+				select {
+				case <-triggered:
+				case <-time.After(3 * time.Second):
+					t.Fatal("unhealthy replacement did not enter recovery")
+				}
+			})
+		}
+	}
 }
 
 func TestCheckAll_SkipsRecoveringPlugins(t *testing.T) {
@@ -455,4 +654,121 @@ func TestHealthChecker_ConcurrentWithRecordWrites(t *testing.T) {
 		hc.mu.Unlock()
 	}
 	<-done
+}
+
+func TestProbedCrashRetriesFailedReload(t *testing.T) {
+	for _, succeeds := range []bool{true, false} {
+		t.Run(fmt.Sprintf("eventual_success_%t", succeeds), func(t *testing.T) {
+			starts := 0
+			entry := CatalogEntry{
+				Metadata: config.PluginMeta{ID: "native", Version: "1.0.0", Capabilities: []string{"resource"}},
+				NewBackend: func(context.Context) (plugintypes.PluginBackend, error) {
+					starts++
+					if starts > 1 && (!succeeds || starts == 2) {
+						return nil, errors.New("transient start failure")
+					}
+					return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{}), nil
+				},
+			}
+			pm := catalogManager(t, []CatalogEntry{entry})
+			require.NoError(t, pm.Initialize(t.Context()))
+			_, err := pm.LoadPlugin("native", nil)
+			require.NoError(t, err)
+			hc := NewHealthChecker(testLogger(t), pm)
+			pm.healthChecker = hc
+			events := &testRecordingEmitter{}
+			pm.emitter = events
+			record := pm.records["native"]
+			record.Phase = lifecycle.PhaseRecovering
+			hc.recoveryStates["native"] = &CrashRecoveryState{NextBackoff: time.Millisecond}
+
+			hc.handleCrashWithBackoff("native", &probedCrash{record: record, backend: record.Backend})
+
+			require.Empty(t, hc.recoveryStates)
+			require.Empty(t, hc.recoveryCancels)
+			recorded := events.getEvents()
+			require.NotEmpty(t, recorded)
+			if succeeds {
+				require.Equal(t, 3, starts)
+				require.Equal(t, lifecycle.PhaseRunning, pm.records["native"].Phase)
+				require.Equal(t, EventRecovered, recorded[len(recorded)-1].event)
+			} else {
+				require.Equal(t, 1+maxCrashRetries, starts)
+				require.Equal(t, lifecycle.PhaseFailed, pm.records["native"].Phase)
+				require.Equal(t, "max crash recovery attempts reached", pm.records["native"].LastError)
+				require.Equal(t, EventCrashRecoveryFailed, recorded[len(recorded)-1].event)
+			}
+		})
+	}
+}
+
+func TestProbedCrashDoesNotRetryReplacementAfterFailedReload(t *testing.T) {
+	starts := 0
+	failed := make(chan struct{})
+	entry := CatalogEntry{
+		Metadata: config.PluginMeta{ID: "native", Version: "1.0.0", Capabilities: []string{"resource"}},
+		NewBackend: func(context.Context) (plugintypes.PluginBackend, error) {
+			starts++
+			if starts > 1 {
+				close(failed)
+				return nil, errors.New("start failed")
+			}
+			return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{}), nil
+		},
+	}
+	pm := catalogManager(t, []CatalogEntry{entry})
+	require.NoError(t, pm.Initialize(t.Context()))
+	_, err := pm.LoadPlugin("native", nil)
+	require.NoError(t, err)
+	hc := NewHealthChecker(testLogger(t), pm)
+	pm.healthChecker = hc
+	record := pm.records["native"]
+	record.Phase = lifecycle.PhaseRecovering
+	hc.recoveryStates["native"] = &CrashRecoveryState{NextBackoff: 100 * time.Millisecond}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		hc.handleCrashWithBackoff("native", &probedCrash{record: record, backend: record.Backend})
+	}()
+	<-failed
+	lock := pm.pluginOpsLock("native")
+	lock.Lock()
+	replacement := &plugintypes.PluginRecord{ID: "native", Phase: lifecycle.PhaseRunning}
+	pm.recordsMu.Lock()
+	pm.records["native"] = replacement
+	pm.recordsMu.Unlock()
+	lock.Unlock()
+	<-done
+	require.Equal(t, 2, starts)
+	require.Same(t, replacement, pm.records["native"])
+	require.Equal(t, lifecycle.PhaseRunning, replacement.Phase)
+	require.Empty(t, hc.recoveryStates)
+}
+
+func TestProbedCrashFatalDuringBackoffStopsRecovery(t *testing.T) {
+	hc, pm := newTestHealthChecker(t)
+	pm.healthChecker = hc
+	events := &testRecordingEmitter{}
+	pm.emitter = events
+	backend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{})
+	record := &plugintypes.PluginRecord{ID: "native", Backend: backend, Phase: lifecycle.PhaseRecovering}
+	pm.records["native"] = record
+	hc.recoveryStates["native"] = &CrashRecoveryState{NextBackoff: time.Second}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		hc.handleCrashWithBackoff("native", &probedCrash{record: record, backend: backend})
+	}()
+	require.Eventually(t, func() bool {
+		hc.mu.Lock()
+		defer hc.mu.Unlock()
+		return len(hc.recoveryCancels) != 0
+	}, time.Second, time.Millisecond)
+	pm.markFatalSourceTransport("native", backend, func(commit func()) bool { commit(); return true })
+	<-done
+	require.Equal(t, lifecycle.PhaseFailed, record.Phase)
+	require.Equal(t, fatalSourceTransportMessage, record.LastError)
+	require.Empty(t, hc.recoveryStates)
+	require.Empty(t, hc.recoveryCancels)
+	require.Empty(t, events.getEvents())
 }

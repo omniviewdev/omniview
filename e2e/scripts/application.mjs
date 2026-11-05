@@ -70,7 +70,7 @@ export function prepareApplication({ root, privateRoot, sources, refs, env, exec
   phase('application-build-once', () => {
     let failure;
     try {
-      execute(cohort.tool, ['build', cohort.config, directory, buildReport], { cwd: root, extraEnv: buildEnvironment, timeout: 480_000 });
+      execute(cohort.tool, ['build', cohort.config, directory, buildReport], { cwd: root, extraEnv: buildEnvironment, timeout: 900_000 });
     } catch (error) { failure = error; }
     try {
       buildExecution = privateJSON(buildReport);

@@ -15,9 +15,13 @@ import (
 
 const (
 	defaultSourceMaxFrameBytes = resourcev2.MaxSourceFrameBytes
-	defaultSourceMaxBatchItems = 256
+	// Full managedFields measurements: the 16 largest observed Pods plus
+	// encoder scratch used ~195 MB of the 256 MiB transient pool; 32 used
+	// ~260 MB. This is headroom, not a guarantee for arbitrary observations.
+	defaultSourceMaxBatchItems = 16
 	maxSourceSessionMembers    = 65536
-	maxSourceSessionBytes      = 512 << 20
+	defaultSourceStagingBytes  = 128 << 20
+	maxSourceSessionBytes      = 256 << 20
 	maxSourceViews             = 4096
 	sourceViewQueueItems       = 256
 	sourceViewQueueBytes       = 32 << 20
@@ -179,6 +183,41 @@ func sourceKey(pluginID, owner string, target resourcev2.ReadTarget, mode string
 	return string(b)
 }
 
+type sourceBindingKey struct{}
+
+type sourceRecoveryFailureKey struct{}
+
+type sourceRecoveryFailure struct {
+	epoch   uint64
+	message string
+}
+
+func sourceRecoveryError(ctx context.Context, epoch uint64) error {
+	if failure, ok := ctx.Value(sourceRecoveryFailureKey{}).(sourceRecoveryFailure); ok && failure.epoch == epoch {
+		return resourcev2.NewError("RESET_REQUIRED", failure.message)
+	}
+	return resourcev2.NewError("RESET_REQUIRED", "Source binding is being renewed.")
+}
+
+type sourceBinding struct {
+	Representation  resourcev2.Representation
+	Descriptor      resourcev2.ResourceType
+	CatalogRevision string
+	Epoch           sourceEpochSnapshot
+}
+
+func boundSourceKey(pluginID, owner string, target resourcev2.ReadTarget, mode string, binding sourceBinding) string {
+	b, _ := json.Marshal([]any{sourceKey(pluginID, owner, target, mode), binding})
+	return string(b)
+}
+
+// Recovery resolves provider, authority, and update mode again for the same route and type.
+func recoveringSourceKey(pluginID, owner string, target resourcev2.ReadTarget) string {
+	target.Provider = ""
+	target.Authority = ""
+	return sourceKey(pluginID, owner, target, "")
+}
+
 func (sc *sourceCoordinator) prepare(ctx context.Context, pluginID string, target resourcev2.ReadTarget, updates string) (resourcev2.SourceStreamOpener, *pluginState, context.Context, context.CancelFunc, string, string, error) {
 	c := sc.ctrl
 	if updates != "none" && updates != "ifSupported" {
@@ -200,12 +239,16 @@ func (sc *sourceCoordinator) prepare(ctx context.Context, pluginID string, targe
 		return fail(err)
 	}
 	opener, ok := provider.(resourcev2.SourceStreamOpener)
-	if !ok || !features.Has(resourcev2.FeatureSourceSessions) {
-		return fail(resourcev2.NewError("UNSUPPORTED", "Plugin does not support source sessions."))
+	nativeSource := features.Has(resourcev2.FeatureSourceSessions)
+	if nativeSource && !ok {
+		return fail(resourcev2.NewError("PROVIDER_ERROR", "Plugin advertised source sessions without a source transport."))
 	}
 	admission, catalog, err := c.routeCatalog(ctx, pluginID, target.Route)
 	if err != nil {
 		return fail(err)
+	}
+	if captured := captureCatalogAdmission(opctx, generation); captured != admission {
+		return fail(resourcev2.NewError("RESET_REQUIRED", "Source admission changed during catalog acquisition."))
 	}
 	authority, err := c.resolveAuthority(ctx, pluginID, target.Route, catalog, admission, target.Type)
 	if err != nil {
@@ -218,20 +261,36 @@ func (sc *sourceCoordinator) prepare(ctx context.Context, pluginID string, targe
 		return fail(resourcev2.NewError("RESET_REQUIRED", "Target authority is not current for this route."))
 	}
 	mode := resourcev2.SourceModeSnapshot
-	if updates == "ifSupported" {
-		if _, err = resourcev2.AdmitCatalogOperation(catalog, target); err == nil {
+	var descriptor resourcev2.ResourceType
+	if updates == "ifSupported" && nativeSource {
+		if descriptor, err = resourcev2.AdmitCatalogOperation(catalog, target); err == nil {
 			mode = resourcev2.SourceModeSnapshotAndUpdates
 		}
 	}
 	if mode == resourcev2.SourceModeSnapshot {
-		if _, err = resourcev2.AdmitCatalogOperation(catalog, resourcev2.EnumerateRequest{Target: target}); err != nil {
+		if descriptor, err = resourcev2.AdmitCatalogOperation(catalog, resourcev2.EnumerateRequest{Target: target}); err != nil {
 			return fail(err)
 		}
 	}
+	var representation resourcev2.Representation
+	for _, candidate := range descriptor.Representations {
+		if candidate.ID == target.Representation {
+			representation = candidate
+			break
+		}
+	}
+	if representation.ID == "" {
+		return fail(resourcev2.NewError("RESET_REQUIRED", "Source representation is no longer available."))
+	}
+	if !nativeSource {
+		opener = newLegacySourceOpener(provider, descriptor)
+	}
+	binding := sourceBinding{Representation: representation, Descriptor: descriptor, CatalogRevision: catalog.Revision, Epoch: admission.epoch}
 	if err = c.currentGeneration(opctx, pluginID, generation); err != nil {
 		return fail(err)
 	}
 	opctx = context.WithValue(opctx, observationKey{}, nil)
+	opctx = context.WithValue(opctx, sourceBindingKey{}, binding)
 	req, _ := invocation.FromContext(ctx)
 	return opener, generation, opctx, cleanup, mode, req.Principal().Owner(), nil
 }
@@ -245,7 +304,7 @@ func (sc *sourceCoordinator) acquire(ctx context.Context, pluginID string, targe
 		cancel()
 		return nil, "", err
 	}
-	key := sourceKey(pluginID, owner, target, mode)
+	key := boundSourceKey(pluginID, owner, target, mode, opctx.Value(sourceBindingKey{}).(sourceBinding))
 retry:
 	sc.mu.Lock()
 	if err := sc.ctrl.currentGeneration(opctx, pluginID, generation); err != nil {
@@ -268,10 +327,11 @@ retry:
 			goto retry
 		}
 		if sc.ctrl.currentGeneration(existing.ctx, pluginID, existing.pluginGeneration) != nil {
+			err := sourceRecoveryError(existing.ctx, opctx.Value(sourceBindingKey{}).(sourceBinding).Epoch.Epoch)
 			sc.mu.Unlock()
 			existing.mu.Unlock()
 			cancel()
-			return nil, "", resourcev2.NewError("RESET_REQUIRED", "Source binding is being renewed.")
+			return nil, "", err
 		}
 		cancel()
 		if inventory {
@@ -282,6 +342,20 @@ retry:
 		sc.mu.Unlock()
 		existing.mu.Unlock()
 		return existing, owner, nil
+	}
+	// A retired session still owns its logical source until recovery rekeys it.
+	// Its provider and authority can change during that recovery.
+	binding := opctx.Value(sourceBindingKey{}).(sourceBinding)
+	logicalKey := recoveringSourceKey(pluginID, owner, target)
+	for _, existing := range sc.sessions {
+		oldBinding, ok := existing.ctx.Value(sourceBindingKey{}).(sourceBinding)
+		if ok && existing.pluginGeneration == generation && oldBinding.Epoch.Epoch < binding.Epoch.Epoch &&
+			recoveringSourceKey(existing.pluginID, existing.owner, existing.target) == logicalKey {
+			err := sourceRecoveryError(existing.ctx, binding.Epoch.Epoch)
+			sc.mu.Unlock()
+			cancel()
+			return nil, "", err
+		}
 	}
 	s := &sourceSession{coordinator: sc, key: key, pluginID: pluginID, owner: owner, target: target, mode: mode, opener: opener, pluginGeneration: generation, ctx: opctx, cancel: cancel, inventory: inventory, members: make(map[string]sourceMember), views: make(map[string]*sourceView)}
 	if !inventory {

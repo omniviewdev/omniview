@@ -261,6 +261,9 @@ func (g *BuildGraph) buildApplicationFixture(ctx context.Context, nodes []BuildN
 				}
 				buildErr = observeApplicationProducer(node.ID+"-build-once", observe, func() error {
 					timeout := 180 * time.Second
+					if node.ID == "host-frontend" {
+						timeout = 360 * time.Second
+					}
 					if node.Kind == "host-backend" {
 						timeout = 480 * time.Second
 					}
