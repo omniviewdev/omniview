@@ -1,5 +1,5 @@
 import type { RouteObject } from 'react-router';
-import { createElement } from 'react';
+import { createElement, type ReactNode } from 'react';
 import { PluginRouteErrorBoundary } from '../components/PluginSurfaceBoundary';
 
 /** Normalize registered routes for nesting below the host's plugin-owned path. */
@@ -9,13 +9,19 @@ export function normalizePluginRoutes(routes: RouteObject[], pluginId: string): 
     const lazy = route.lazy;
     const hasBoundary = route.ErrorBoundary !== undefined || route.errorElement !== undefined
       || (typeof lazy === 'object' && (lazy.ErrorBoundary !== undefined || lazy.errorElement !== undefined));
-    // Lazy route modules may supply their own boundary. Keep that choice intact.
+    // Register a boundary before loading so rejected imports stay local, while
+    // allowing a successfully loaded module to provide its own fallback.
+    let renderLazyBoundary: (() => ReactNode) | undefined;
     const boundary = hasBoundary ? {} : typeof lazy === 'function' ? {
+      ErrorBoundary: () => renderLazyBoundary ? renderLazyBoundary() : createElement(ErrorBoundary),
       lazy: async () => {
-        const loaded = await lazy();
-        return loaded.ErrorBoundary !== undefined || loaded.errorElement !== undefined
-          ? loaded
-          : { ...loaded, ErrorBoundary };
+        const { ErrorBoundary: LazyBoundary, errorElement, ...loaded } = await lazy();
+        if (LazyBoundary !== undefined) {
+          renderLazyBoundary = () => createElement(LazyBoundary);
+        } else if (errorElement !== undefined) {
+          renderLazyBoundary = () => errorElement;
+        }
+        return loaded;
       },
     } : { ErrorBoundary };
 

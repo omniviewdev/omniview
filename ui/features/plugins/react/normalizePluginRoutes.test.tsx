@@ -89,6 +89,27 @@ describe('normalizePluginRoutes', () => {
     expect(routes[2].ErrorBoundary).toBeDefined();
   });
 
+  it('contains a rejected lazy import and recovers on navigation', async () => {
+    vi.spyOn(console, 'error').mockImplementation(vi.fn());
+    const router = createMemoryRouter(normalizePluginRoutes([{
+      path: '/plugin',
+      Component: PluginLayout,
+      children: [
+        { path: 'broken', lazy: async () => { throw new Error('import rejected'); } },
+        { path: 'healthy', element: <div>Healthy page</div> },
+      ],
+    }], 'test-plugin'), { initialEntries: ['/plugin/broken'] });
+    render(<RouterProvider router={router} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('import rejected');
+    expect(screen.getByText('Plugin navigation')).toBeInTheDocument();
+    await act(async () => {
+      await router.navigate('/plugin/healthy');
+    });
+    expect(screen.getByText('Healthy page')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    router.dispose();
+  });
+
   it('contains lazy page failures without replacing lazy plugin boundaries', async () => {
     vi.spyOn(console, 'error').mockImplementation(vi.fn());
     const CustomBoundary = () => <div>Lazy custom error</div>;
