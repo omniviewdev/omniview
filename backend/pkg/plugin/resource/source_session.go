@@ -814,7 +814,7 @@ func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sour
 			}
 			touched[key] = next
 		}
-		if nextCount > maxSourceSessionMembers || nextBytes > maxSourceSessionBytes {
+		if nextCount > maxSourceSessionMembers || nextBytes > defaultSourceStagingBytes {
 			return true, resourcev2.NewError("RESOURCE_LIMIT", "Source membership exceeds host limits.")
 		}
 		// Old references and decoded upserts can coexist in view events.

@@ -364,6 +364,31 @@ func TestSourceChangesDuplicateBatchCountsCoexistingMembers(t *testing.T) {
 	require.Equal(t, o, decoded)
 }
 
+func TestSourceChangesRejectMembershipBeyondSnapshotLimit(t *testing.T) {
+	v := boundedSourceViewFixture(t, 0, 1)
+	s := v.session
+	s.pluginID = "p1"
+	s.pluginGeneration = s.coordinator.ctrl.plugins["p1"]
+	original, err := decodeSourceMember(s.members["0"])
+	require.NoError(t, err)
+	member, key, err := makeSourceMember(original, maxSourceSessionBytes)
+	require.NoError(t, err)
+	s.members = map[string]sourceMember{key: member}
+	s.memberBytes = defaultSourceStagingBytes
+	require.True(t, s.memberLedger.reserve(s.memberBytes))
+
+	added := original
+	added.Record.Reference.Address.ID = "added"
+	frame := resourcev2.SourceFrame{Changes: &resourcev2.SourceChanges{Changes: []resourcev2.SourceChange{
+		{Kind: resourcev2.SourceChangeUpsert, Observation: &added},
+	}}}
+	descriptor := canonicalTestCatalog("p1", s.target.Type).Types[0]
+	_, err = s.applyLocked(frame, sourceFrameContext{ctx: s.ctx, target: s.target, descriptor: &descriptor})
+	require.Equal(t, "RESOURCE_LIMIT", resourcev2.ErrorCode(err))
+	require.Equal(t, defaultSourceStagingBytes, s.memberBytes)
+	require.Len(t, s.members, 1)
+}
+
 func TestSourceChangesDecodeFailureLeavesMembersUntouched(t *testing.T) {
 	first := accountingObservation()
 	second := accountingObservation()
