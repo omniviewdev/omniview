@@ -64,22 +64,11 @@ application suite. The stable `e2e-tests` check accepts only the reusable job's
 success, including an explicitly proven prose-only skip. Browser results alone
 do not prove canonical preparation, acceptance and cleanup succeeded.
 
-The checked-out host's `e2e/source-cohort.json` selects full UI and Kubernetes
-commits for canonical CI and whole-app profiling. Kubernetes must match the
-committed `plugins/kubernetes` gitlink. The cohort SDK must exactly match an
-independently reviewed commit in repository variable
-`OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION` or
-`OMNIVIEW_RESOURCE_V2_REVIEWED_MAINTENANCE_SDK_REVISION`. The separate maintenance
-approval services the deployed wire contract without replacing mainline approval.
-Workflows admit those values as `REVIEWED_SDK_REVISION` and
-`REVIEWED_MAINTENANCE_SDK_REVISION`, then pass the admitted selection downstream as
-`REVIEWED_SDK_REVISION`. Only user-authorized release administration changes these
-external approvals; editing the cohort alone cannot approve another SDK commit.
-
-The isolation guard separately pins SDK checkpoint
-`eea5943f7a5319fb1585a8ec2d9ce5d06fa763ca`, after independent review of the
-host-connections binding added to plugin startup. The original isolation baseline,
-checkpoint ancestry, and byte comparisons for all five protected files remain required.
+Canonical CI and whole-app profiling resolve the SDK checkout commit from the
+host's `go.mod` using Go module download metadata. UI packages come from the host
+lockfile, and Kubernetes comes from the committed `plugins/kubernetes` gitlink.
+Managed workspaces identify their linked SDK checkout by HEAD and source digest,
+including dirty source changes; this identity is not a sandbox.
 
 Playwright uses its GitHub reporter in Actions for failure annotations on the
 check and source locations, alongside terminal output, HTML and case timings.
@@ -124,14 +113,11 @@ evidence artifact separately when individual files are needed. Do not open only
 link to serve an interactive website.
 
 For a locally generated report, use `pnpm --dir e2e report`. To run the canonical
-suite locally, explicitly select the companion sources and independently reviewed
-SDK commit, then invoke the runner rather than bypassing preparation:
+suite locally, select a clean SDK checkout at the commit resolved from the host
+`go.mod` and initialize the Kubernetes submodule, then invoke the runner:
 
 ```sh
 SDK_SOURCE=/absolute/path/to/plugin-sdk \
-UI_SOURCE=/absolute/path/to/ui \
-KUBERNETES_SOURCE=/absolute/path/to/omniview-plugin-kubernetes \
-REVIEWED_SDK_REVISION='<independently-reviewed-full-sdk-commit>' \
 node e2e/scripts/run.mjs --full
 ```
 

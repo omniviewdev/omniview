@@ -37,10 +37,9 @@ type BuildNode struct {
 }
 
 type HostBuildRequest struct {
-	Workspace           Workspace
-	SDKDirectory        string
-	ExpectedSDKRevision string
-	SDKSource           devsource.Identity
+	Workspace    Workspace
+	SDKDirectory string
+	SDKSource    devsource.Identity
 	// Generated bindings, JS exports and frontend assets are already built.
 	// The callback builds the actual selected host binary, without another
 	// bindings/frontend writer. A native/server target is an orchestrator choice.
@@ -57,11 +56,8 @@ type BuildOptions struct {
 	Generation string
 	// An already-owned UUID profile runtime cache, never a source-tree cache.
 	GoBuildCacheDirectory string
-	// Must be independently supplied by the reviewed SDK barrier, not BaseCommit.
-	ExpectedSDKRevision string
-	// Required trusted local-source verifier; normally devsource.Verify, or an
-	// explicit per-workspace VerifyWithOptions adapter for isolation-core work.
-	VerifySDKSource func(context.Context, string, string) (devsource.Identity, error)
+	// Required local-source verifier; normally devsource.Verify.
+	VerifySDKSource func(context.Context, string) (devsource.Identity, error)
 	// HostBuild must compile the selected host (including native/module flags).
 	HostBuild func(context.Context, HostBuildRequest) error
 	// Optional real Task adapter. Output must remain exclusively in outputDirectory.
@@ -156,7 +152,7 @@ func (m *Manager) NewBuildGraph(ctx context.Context, name string, opts BuildOpti
 	return g, nil
 }
 
-var reviewedSDKRevision = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
+var sdkRevisionPattern = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 
 // compileBuildGraph validates build options against the linked plan and plans
 // the selected nodes. Producer output is wrapped once so parallel nodes never
@@ -178,9 +174,6 @@ func compileBuildGraph(w Workspace, p linkPlan, opts BuildOptions) (*BuildGraph,
 	}
 	if opts.VerifySDKSource == nil {
 		return nil, fmt.Errorf("a real selected SDK source verifier is required")
-	}
-	if !reviewedSDKRevision.MatchString(opts.ExpectedSDKRevision) {
-		return nil, fmt.Errorf("an independently reviewed full SDK commit is required")
 	}
 	if p.SDK == "" {
 		return nil, fmt.Errorf("a selected local SDK source is required for trusted builds")
@@ -337,8 +330,7 @@ func (g *BuildGraph) commandWithEnvironment(ctx context.Context, dir string, env
 	return []byte(output.String()), nil
 }
 
-// verifySDK resolves the actual consumer module graph, then binds its exact
-// live source to the independently reviewed fixed-capability baseline.
+// verifySDK resolves the actual consumer module graph and identifies its live source.
 func (g *BuildGraph) verifySDK(ctx context.Context, consumer string) (devsource.Identity, error) {
 	var identity devsource.Identity
 	raw, err := g.run(ctx, consumer, "go", "list", "-m", "-json", linkedSDK)
@@ -370,11 +362,11 @@ func (g *BuildGraph) verifySDK(ctx context.Context, consumer string) (devsource.
 	if module.Path != linkedSDK || dir == "" || actual != selected {
 		return identity, fmt.Errorf("effective SDK source differs from selected feature source")
 	}
-	identity, err = g.options.VerifySDKSource(ctx, selected, g.options.ExpectedSDKRevision)
+	identity, err = g.options.VerifySDKSource(ctx, selected)
 	if err != nil {
 		return identity, err
 	}
-	if identity.Directory != selected || identity.ReviewedRevision != g.options.ExpectedSDKRevision || !sourceDigestPattern.MatchString(identity.SourceDigest) {
+	if identity.Directory != selected || !sdkRevisionPattern.MatchString(identity.Revision) || !sourceDigestPattern.MatchString(identity.SourceDigest) {
 		return devsource.Identity{}, fmt.Errorf("SDK verifier returned a different or incomplete selected source identity")
 	}
 	return identity, nil
@@ -445,7 +437,7 @@ func (g *BuildGraph) buildNode(ctx context.Context, n BuildNode) error {
 		if err != nil {
 			return err
 		}
-		if err := g.options.HostBuild(ctx, HostBuildRequest{Workspace: g.workspace, SDKDirectory: g.plan.SDK, ExpectedSDKRevision: g.options.ExpectedSDKRevision, SDKSource: before}); err != nil {
+		if err := g.options.HostBuild(ctx, HostBuildRequest{Workspace: g.workspace, SDKDirectory: g.plan.SDK, SDKSource: before}); err != nil {
 			return err
 		}
 		return g.verifyUnchangedSDK(ctx, n.Directory, before)
@@ -460,7 +452,7 @@ func (g *BuildGraph) buildNode(ctx context.Context, n BuildNode) error {
 func (g *BuildGraph) recordArtifact(pluginID, binary string, source devsource.Identity) error {
 	g.attestMu.Lock()
 	defer g.attestMu.Unlock()
-	return instance.RecordBuiltArtifactSource(g.workspace.ResolvedWorkspace, pluginID, binary, source.ReviewedRevision, source.SourceDigest)
+	return instance.RecordBuiltArtifactSource(g.workspace.ResolvedWorkspace, pluginID, binary, source.Revision, source.SourceDigest)
 }
 
 func (g *BuildGraph) withBuildLock(ctx context.Context, fn func() error) error {

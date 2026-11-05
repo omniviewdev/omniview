@@ -111,15 +111,14 @@ try {
   await writeFile(files.runtime, runtimeMutation);
   await observe('syntax-recovered');
   const records = await artifactRecords();
-  // Ordinary dirty SDK API edits retain the reviewed isolation baseline and
-  // acquire fresh source identity only through actual successful local rebuilds.
+  // Dirty SDK API edits acquire fresh source identity through successful local rebuilds.
   await writeFile(files.sdk, `${originals.sdk}\nfunc A15LiveSDKMethod() string { return "${marker}" }\n`);
   const sdkLive = await observe('sdk-live');
   assert.equal(sdkLive.host?.rebuilt, true, 'intended host did not actually rebuild/restart');
   for (const [file, bytes] of records) {
     const before = JSON.parse(bytes);
     const after = JSON.parse(await readFile(file, 'utf8'));
-    assert.equal(after.expectedSDKRevision, before.expectedSDKRevision, 'dirty API edit must retain reviewed baseline');
+    assert.equal(after.sdkRevision, before.sdkRevision, 'dirty API edit must retain current checkout revision');
     assert.match(after.expectedSDKSourceSHA256, /^[0-9a-f]{64}$/);
     assert.notEqual(after.expectedSDKSourceSHA256, before.expectedSDKSourceSHA256, 'dirty SDK source was not re-attested after rebuild');
     const plugin = sdkLive.plugins?.find(({ id }) => id === after.pluginID);

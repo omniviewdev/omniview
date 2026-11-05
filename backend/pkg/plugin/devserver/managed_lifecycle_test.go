@@ -93,14 +93,6 @@ func TestNodeAndGoChildEnvironmentDoesNotInheritProcessBridgeAuthority(t *testin
 	require.Equal(t, []string{"PATH=/tools", "OMNIVIEW_STATE_DIR=/workspace/state", "OMNIVIEW_WORKSPACE_ID=selected", "GOWORK=off"}, environment)
 }
 
-func TestSDKRevisionRequiresTrustedExactCommit(t *testing.T) {
-	for _, revision := range []string{"", "7bc9616", "main", "dirty", "0000000000000000000000000000000000000000"} {
-		if validSDKRevision(revision) {
-			t.Fatalf("accepted untrusted/non-exact revision %q", revision)
-		}
-	}
-}
-
 func TestManagedLeasesSeparateWorkspacesAndRemainSticky(t *testing.T) {
 	registry, err := devsession.OpenRegistry(t.TempDir(), devsession.RegistryOptions{})
 	require.NoError(t, err)
@@ -139,11 +131,11 @@ func TestBuildMetadataReplacesUntrustedYAMLAttestation(t *testing.T) {
 	require.NoError(t, root.MkdirAll(filepath.Dir(gw.buildRelativePath), 0700))
 	binary := root.ResolvePath(gw.buildRelativePath)
 	require.NoError(t, root.WriteFile(gw.buildRelativePath, []byte("built artifact fixture"), 0700))
-	gw.selectedSDK = devsource.Identity{Directory: source, ReviewedRevision: strings.Repeat("a", 40), SourceDigest: strings.Repeat("b", 64)}
+	gw.selectedSDK = devsource.Identity{Directory: source, Revision: strings.Repeat("a", 40), SourceDigest: strings.Repeat("b", 64)}
 	require.NoError(t, gw.syncPluginYaml())
 	installed, err = sdktypes.LoadPluginMetadata(root.ResolvePath("metadata"))
 	require.NoError(t, err)
-	require.NoError(t, installed.StateIsolation.VerifyArtifact(binary, gw.selectedSDK.ReviewedRevision, gw.selectedSDK.SourceDigest))
+	require.NoError(t, installed.StateIsolation.VerifyArtifact(binary, gw.selectedSDK.Revision, gw.selectedSDK.SourceDigest))
 	original, err := os.ReadFile(path)
 	require.NoError(t, err)
 	require.Equal(t, data, original, "never rewrite source metadata")

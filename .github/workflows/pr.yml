@@ -15,8 +15,6 @@ env:
   NODE_OPTIONS: "--max-old-space-size=4096"
   GO_VERSION: "1.26"
   NODE_VERSION: "26.13.0"
-  REVIEWED_SDK_REVISION: ${{ vars.OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION }}
-  REVIEWED_MAINTENANCE_SDK_REVISION: ${{ vars.OMNIVIEW_RESOURCE_V2_REVIEWED_MAINTENANCE_SDK_REVISION }}
 
 jobs:
   # One canonical application execution; the exact required check name stays
@@ -91,27 +89,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Admit reviewed candidate cohort
-        id: candidate
-        shell: bash
-        run: node e2e/scripts/candidate-source.mjs resolve
-
-      - name: Checkout reviewed SDK
-        uses: actions/checkout@v4
-        with:
-          repository: omniviewdev/plugin-sdk
-          ref: ${{ steps.candidate.outputs.sdk }}
-          path: .candidate-sources/sdk
-          persist-credentials: false
-          fetch-depth: 0
-
-      - name: Select reviewed SDK source
-        shell: bash
-        run: |
-          export SDK_SOURCE="$(cd .candidate-sources/sdk && pwd -P)"
-          node e2e/scripts/candidate-source.mjs verify-sdk
-          echo "SDK_SOURCE=$SDK_SOURCE" >> "$GITHUB_ENV"
-
       - name: Setup pnpm
         uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
         with:
@@ -127,9 +104,7 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-          cache-dependency-path: |
-            go.sum
-            .candidate-sources/sdk/go.sum
+          cache-dependency-path: go.sum
 
       - name: Install Task
         uses: arduino/setup-task@v2

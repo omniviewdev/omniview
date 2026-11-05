@@ -35,15 +35,13 @@ func main() {
 func run(ctx context.Context) (resultErr error) {
 	host := flag.String("host", "", "installed host checkout to profile")
 	hostRef := flag.String("host-ref", "", "exact host commit")
-	sdk := flag.String("sdk", "", "reviewed SDK source checkout")
-	sdkRef := flag.String("sdk-ref", "", "exact reviewed SDK commit")
-	ui := flag.String("ui", "", "reviewed UI source checkout")
-	uiRef := flag.String("ui-ref", "", "exact reviewed UI commit")
-	kube := flag.String("kubernetes", "", "reviewed Kubernetes source checkout")
-	kubeRef := flag.String("kubernetes-ref", "", "exact reviewed Kubernetes commit")
+	sdk := flag.String("sdk", "", "resolved SDK source checkout")
+	sdkRef := flag.String("sdk-ref", "", "exact resolved SDK commit")
+	kube := flag.String("kubernetes", "", "Kubernetes gitlink source checkout")
+	kubeRef := flag.String("kubernetes-ref", "", "exact Kubernetes gitlink commit")
 	evidenceFile := flag.String("link-evidence", "", "actual native pnpm protocol probe report")
 	flag.Parse()
-	for _, source := range []struct{ path, ref string }{{*host, *hostRef}, {*sdk, *sdkRef}, {*ui, *uiRef}, {*kube, *kubeRef}} {
+	for _, source := range []struct{ path, ref string }{{*host, *hostRef}, {*sdk, *sdkRef}, {*kube, *kubeRef}} {
 		if !filepath.IsAbs(source.path) || !fullCommit.MatchString(source.ref) {
 			return fmt.Errorf("each source requires an absolute checkout path and an explicit full commit")
 		}
@@ -74,7 +72,6 @@ func run(ctx context.Context) (resultErr error) {
 	if _, err = devworkspace.Init(ctx, devworkspace.InitOptions{Root: collection, Sources: []devworkspace.SourceSpec{
 		{ID: "omniview", Path: *host, DefaultRef: *hostRef},
 		{ID: "plugin-sdk", Path: *sdk, DefaultRef: *sdkRef},
-		{ID: "ui", Path: *ui, DefaultRef: *uiRef},
 		{ID: "kubernetes", Path: *kube, DefaultRef: *kubeRef},
 	}}); err != nil {
 		return err
@@ -84,7 +81,7 @@ func run(ctx context.Context) (resultErr error) {
 		return err
 	}
 	creationStarted = true
-	workspace, err := manager.Create(ctx, devworkspace.CreateOptions{Slug: "app-profile", Repositories: []string{"plugin-sdk", "ui"}, Plugins: []string{"kubernetes"}})
+	workspace, err := manager.Create(ctx, devworkspace.CreateOptions{Slug: "app-profile", Repositories: []string{"plugin-sdk"}, Plugins: []string{"kubernetes"}})
 	if err != nil {
 		return fmt.Errorf("preserving private source collection %s after incomplete create: %w", collection, err)
 	}

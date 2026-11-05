@@ -119,7 +119,7 @@ func runApplicationBuildCommand(ctx context.Context, owner devsession.ProcessOwn
 // Verify the actual effective module with the production SDK verifier. Its
 // self-CLI runs under RunRepositoryCommand so Go list and any descendants stay
 // owned during cancellation, too.
-func applicationSDKIdentity(ctx context.Context, manager *devworkspace.Manager, target string, config configuration, source, modfile string) (devsource.Identity, error) {
+func applicationSDKIdentity(ctx context.Context, manager *devworkspace.Manager, target string, source, modfile string) (devsource.Identity, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	paths, err := manager.Paths(ctx, target)
@@ -131,7 +131,7 @@ func applicationSDKIdentity(ctx context.Context, manager *devworkspace.Manager, 
 		flags = strconv.Quote("-modfile=" + modfile)
 	}
 	environment := append(os.Environ(), "GOWORK=off", "GOFLAGS="+flags)
-	identity, err := devserver.VerifySelectedSDK(ctx, "", source, config.Refs["plugin-sdk"], environment)
+	identity, err := devserver.VerifySelectedSDK(ctx, "", source, environment)
 	if err == nil && identity.Directory != paths.Repositories["plugin-sdk"] {
 		err = fmt.Errorf("effective SDK differs from invocation-selected source")
 	}
@@ -194,7 +194,7 @@ func buildApplicationCohort(ctx context.Context, manager *devworkspace.Manager, 
 		if err = json.Unmarshal(raw, &identity); err != nil {
 			return identity, err
 		}
-		if identity.Directory != prepared.Paths.Repositories["plugin-sdk"] || identity.ReviewedRevision != config.Refs["plugin-sdk"] || identity.SourceDigest == "" {
+		if identity.Directory != prepared.Paths.Repositories["plugin-sdk"] || identity.Revision != config.Refs["plugin-sdk"] || identity.SourceDigest == "" {
 			return identity, fmt.Errorf("actual SDK verification returned different source evidence")
 		}
 		return identity, nil
@@ -202,7 +202,7 @@ func buildApplicationCohort(ctx context.Context, manager *devworkspace.Manager, 
 	if err = report.stage("application-sdk-admission", "setup", func() error { _, err := verify(ctx, prepared.Paths.Repositories["omniview"], ""); return err }); err != nil {
 		return err
 	}
-	if err := manager.BuildApplicationFixture(ctx, target, artifacts, config.Refs["plugin-sdk"], func(name string, build func() error) error {
+	if err := manager.BuildApplicationFixture(ctx, target, artifacts, func(name string, build func() error) error {
 		return report.stage(name, "ordered", build)
 	}); err != nil {
 		return err

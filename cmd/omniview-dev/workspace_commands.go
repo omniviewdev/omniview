@@ -80,8 +80,6 @@ func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceComm
 		flags.BoolVar(&c.launch.MCP, "mcp", false, "enable authenticated native MCP")
 		flags.BoolVar(&c.launch.Watch, "watch", true, "own source build/watch for the session lifetime")
 		flags.BoolVar(&c.launch.LiveFrontend, "live-frontend", true, "run actual strict host Vite and HMR")
-		flags.StringVar(&c.launch.ReviewedSDKRevision, "reviewed-sdk-revision", "", "independently reviewed full SDK commit")
-		flags.BoolVar(&c.launch.AllowIsolationSourceChanges, "allow-isolation-source-changes", false, "explicitly allow SDK isolation-boundary edits in this workspace")
 		flags.StringVar(&c.linkEvidence, "link-evidence", "", "actual successful pinned pnpm probe JSON")
 		flags.StringVar(&c.launch.BaselineSource, "seed-from", "", "stopped baseline source state root")
 		flags.StringVar(&c.launch.BaselineVersion, "seed-version", "", "nonsecret baseline source build version")
@@ -320,12 +318,6 @@ func workspaceLaunchOptions(c workspaceCommand, w devworkspace.Workspace) (devwo
 			}
 			if !c.supplied["live-frontend"] {
 				options.LiveFrontend = previous.LiveFrontend
-			}
-			if !c.supplied["reviewed-sdk-revision"] {
-				options.ReviewedSDKRevision = previous.ReviewedSDKRevision
-			}
-			if !c.supplied["allow-isolation-source-changes"] {
-				options.AllowIsolationSourceChanges = previous.AllowIsolationSourceChanges
 			}
 			if !c.supplied["seed-from"] {
 				options.BaselineSource = previous.BaselineSource
@@ -963,7 +955,7 @@ func bindWorkspaceProfile(ctx context.Context, manager *devworkspace.Manager, w 
 
 func workspaceRefreshOptions(c workspaceCommand, w devworkspace.Workspace, diagnostics io.Writer) (devworkspace.RefreshOptions, error) {
 	refresh := devworkspace.RefreshOptions{Diagnostics: diagnostics}
-	for _, name := range []string{"mode", "mcp", "watch", "live-frontend", "reviewed-sdk-revision", "allow-isolation-source-changes", "link-evidence", "seed-from", "seed-version", "timeout"} {
+	for _, name := range []string{"mode", "mcp", "watch", "live-frontend", "link-evidence", "seed-from", "seed-version", "timeout"} {
 		if !c.supplied[name] {
 			continue
 		}

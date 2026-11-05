@@ -37,11 +37,6 @@ const specGroups = new Map([
 function full(reason) {
   return { kind: 'full', groups: Object.keys(groups), specs: Object.values(groups).flat(), reasons: [reason] };
 }
-export function cohortMatches({ current, baseline, actual } = {}) {
-  return Boolean(current && baseline && actual && ['plugin-sdk', 'ui', 'kubernetes'].every(id =>
-    /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(current[id]) &&
-    baseline[id] === current[id] && actual[id] === current[id]));
-}
 export function parseNameStatus(data) {
   if (typeof data !== 'string' || !data.endsWith('\0')) throw Error('Incomplete Git change data');
   const fields = data.slice(0, -1).split('\0');
@@ -57,9 +52,9 @@ export function parseNameStatus(data) {
   }
   return changes;
 }
-export function selectChanges({ full: forceFull = false, changes, complete = false, cohortUnchanged = false } = {}) {
+export function selectChanges({ full: forceFull = false, changes, complete = false } = {}) {
   if (forceFull) return full('explicit full override');
-  if (!complete || !cohortUnchanged || !Array.isArray(changes) || changes.length === 0) return full('missing change data or unproven source cohort');
+  if (!complete || !Array.isArray(changes) || changes.length === 0) return full('missing change data');
   const selected = new Set();
   for (const entry of changes) {
     if (!entry || !/^(?:[AMDTU]|[RC]\d{1,3})$/.test(entry.status) || !Array.isArray(entry.paths) || entry.paths.length !== (/^[RC]/.test(entry.status) ? 2 : 1)) return full('malformed change data');
@@ -70,14 +65,14 @@ export function selectChanges({ full: forceFull = false, changes, complete = fal
       if (!affected && path.startsWith('e2e/fixtures/published-consumers/')) affected = ['tooling'];
       if (!affected && (path.startsWith('packages/omniviewdev-vite-plugin/') || path.startsWith('ui/features/plugins/api/'))) affected = ['layout', 'plugins', 'workspaces', 'tooling'];
       if (!affected && path.startsWith('ui/features/plugins/')) affected = ['layout', 'plugins', 'workspaces'];
-      if (!affected) return full('core, cohort, or unclassified change');
+      if (!affected) return full('core or unclassified change');
       for (const group of affected) selected.add(group);
     }
   }
   const names = Object.keys(groups).filter(group => selected.has(group));
   return { kind: names.length ? 'selected' : 'none', groups: names, specs: names.flatMap(group => groups[group]), reasons: [names.length ? 'union of affected groups including dependencies' : 'explicit prose-only allowlist'] };
 }
-export function selectFromGit({ root, base, cohortUnchanged = false, full: forceFull = false, env = toolEnvironment(process.env) }) {
+export function selectFromGit({ root, base, full: forceFull = false, env = toolEnvironment(process.env) }) {
   if (forceFull || !base) return full(forceFull ? 'explicit full override' : 'no base supplied');
   try {
     const git = args => execFileSync('git', ['-C', root, ...args], { env, encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -88,6 +83,6 @@ export function selectFromGit({ root, base, cohortUnchanged = false, full: force
     // selecting against only the committed PR when this command is used locally.
     const local = git(['status', '--porcelain', '-z', '--untracked-files=all']);
     if (local) return full('uncommitted source changes');
-    return selectChanges({ changes: parseNameStatus(data), complete: true, cohortUnchanged });
+    return selectChanges({ changes: parseNameStatus(data), complete: true });
   } catch { return full('change collection failed or exceeded bounded data size'); }
 }

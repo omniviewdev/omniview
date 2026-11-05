@@ -2,7 +2,6 @@ package devserver
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -15,26 +14,10 @@ import (
 
 const sdkModulePath = "github.com/omniviewdev/plugin-sdk"
 
-func validSDKRevision(revision string) bool {
-	if len(revision) != 40 || revision == strings.Repeat("0", 40) || strings.ToLower(revision) != revision {
-		return false
-	}
-	_, err := hex.DecodeString(revision)
-	return err == nil
-}
-
-// VerifySelectedSDK validates the actual module selected by Go with GOWORK=off,
-// including replacements. expectedRevision is a trusted reviewed fixed-source
-// commit supplied by the host build graph, not metadata from the plugin repo.
-// Managed workspace verification also binds that module to the canonical SDK
-// checkout selected by the explicitly validated workspace/profile.
-// The shared source verifier protects the reviewed containment core and records
-// ordinary dirty SDK feature changes in the exact build source digest.
-func VerifySelectedSDK(ctx context.Context, goPath, source, expectedRevision string, environment []string) (devsource.Identity, error) {
+// VerifySelectedSDK identifies the SDK module selected by Go, including
+// replacements, and binds managed workspaces to their selected checkout.
+func VerifySelectedSDK(ctx context.Context, goPath, source string, environment []string) (devsource.Identity, error) {
 	var result devsource.Identity
-	if !validSDKRevision(expectedRevision) {
-		return result, fmt.Errorf("trusted exact fixed SDK revision is required")
-	}
 	tool, err := resolveTool(goPath, "go")
 	if err != nil {
 		return result, err
@@ -76,10 +59,9 @@ func VerifySelectedSDK(ctx context.Context, goPath, source, expectedRevision str
 		key, value, _ := strings.Cut(entry, "=")
 		values[key] = value
 	}
-	allowCoreChanges := values["OMNIVIEW_ALLOW_ISOLATION_SOURCE_CHANGES"] == "1"
 	manifest, root := values[devcontract.WorkspaceEnvironment], values["OMNIVIEW_STATE_DIR"]
 	workspaceID := values["OMNIVIEW_WORKSPACE_ID"]
-	if manifest != "" || workspaceID != "" || allowCoreChanges {
+	if manifest != "" || workspaceID != "" {
 		if manifest == "" || root == "" || workspaceID == "" {
 			return result, fmt.Errorf("managed SDK verification requires an explicit validated workspace profile")
 		}
@@ -105,5 +87,5 @@ func VerifySelectedSDK(ctx context.Context, goPath, source, expectedRevision str
 			return result, fmt.Errorf("effective SDK source differs from selected workspace source")
 		}
 	}
-	return devsource.VerifyWithOptions(ctx, directory, expectedRevision, devsource.VerifyOptions{AllowIsolationCoreChanges: allowCoreChanges})
+	return devsource.Verify(ctx, directory)
 }

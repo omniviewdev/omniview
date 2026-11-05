@@ -583,11 +583,5 @@ func TestGenerationEdgesDownWaitsForCapturedSourceUpdateWithoutResurrection(t *t
 }
 
 func generationEdgeLaunchOptions(w Workspace) LaunchOptions {
-	revision := w.Manifest.Repositories[0].BaseCommit
-	for _, repository := range w.Manifest.Repositories {
-		if repository.ID == "plugin-sdk" {
-			revision = repository.BaseCommit
-		}
-	}
-	return LaunchOptions{Mode: "browser", ReviewedSDKRevision: revision, Timeout: 10 * time.Second}
+	return LaunchOptions{Mode: "browser", Timeout: 10 * time.Second}
 }

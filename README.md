@@ -132,15 +132,13 @@ file, and each standalone lock retains its originating source authority.
 Changing either patch invalidates the composition; conflicting bytes, redirected
 paths, and borrowing another repository's declaration remain refused.
 
-CI admits SDK v0.14.3 after independent host-connection, live-source, and
-connection-timeout policy reviews. The original profile-isolation ancestry remains required; protected
-isolation files must match the reviewed host-connection checkpoint. Exact SDK
-approval stays separate from candidate selection. Live-source validation rejects
-records and removals outside the admitted catalog contract.
+CI uses the SDK declared by the host `go.mod`. Managed workspaces identify the
+selected SDK checkout by its current commit and source digest. Live-source
+validation rejects records and removals outside the admitted catalog contract.
 
 Vite remains on 7.3.7 to preserve SystemJS plugin output. Vite 8 and newer pnpm versions require separate loader/backend work and are not part of this frontend-only upgrade. Keep strict peer validation and the 24-hour release-age policy enabled.
 
-Build the runtime before the Vite plugin: shim generation verifies the current runtime's exports. Host lint excludes generated bindings and linked plugin repositories; run each plugin's own lint and behavior suite. Owned Playwright runs use the existing isolated source-cohort runner, not ambient marketplace plugins or cluster credentials.
+Build the runtime before the Vite plugin: shim generation verifies the current runtime's exports. Host lint excludes generated bindings and linked plugin repositories; run each plugin's own lint and behavior suite. Owned Playwright runs use an isolated workspace with the SDK commit resolved from the host `go.mod`, UI packages from the host lockfile, and Kubernetes from the host gitlink, not ambient marketplace plugins or cluster credentials.
 
 Keep tracked `dist/.gitkeep` for Go's `all:dist` embed during clean pre-frontend compile checks. Production and application acceptance still require actual built frontend assets.
 

@@ -44,7 +44,7 @@ func TestStartRetainsFailedSupervisorForRecovery(t *testing.T) {
 	before, err := os.ReadFile(launchPath(w, "supervisor.json"))
 	require.NoError(t, err)
 
-	status, err := m.Start(ctx, w.Manifest.WorkspaceID, LaunchOptions{Mode: "browser", ReviewedSDKRevision: strings.Repeat("a", 40)}, "/must-not-launch", io.Discard)
+	status, err := m.Start(ctx, w.Manifest.WorkspaceID, LaunchOptions{Mode: "browser"}, "/must-not-launch", io.Discard)
 	var failure *devcontract.Error
 	require.True(t, errors.As(err, &failure))
 	require.Equal(t, "workspace_running", failure.Code)

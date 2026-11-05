@@ -24,24 +24,19 @@ import (
 // LaunchOptions is persisted privately so up/restart use the same explicit
 // source trust, tooling and mode. No credentials are copied into this record.
 type LaunchOptions struct {
-	Mode                        string               `json:"mode"`
-	MCP                         bool                 `json:"mcp"`
-	Watch                       bool                 `json:"watch"`
-	LiveFrontend                bool                 `json:"liveFrontend"`
-	ReviewedSDKRevision         string               `json:"reviewedSDKRevision"`
-	AllowIsolationSourceChanges bool                 `json:"allowIsolationSourceChanges"`
-	LinkEvidence                LinkProtocolEvidence `json:"linkEvidence"`
-	BaselineSource              string               `json:"baselineSource,omitempty"`
-	BaselineVersion             string               `json:"baselineVersion,omitempty"`
-	Timeout                     time.Duration        `json:"timeout"`
+	Mode            string               `json:"mode"`
+	MCP             bool                 `json:"mcp"`
+	Watch           bool                 `json:"watch"`
+	LiveFrontend    bool                 `json:"liveFrontend"`
+	LinkEvidence    LinkProtocolEvidence `json:"linkEvidence"`
+	BaselineSource  string               `json:"baselineSource,omitempty"`
+	BaselineVersion string               `json:"baselineVersion,omitempty"`
+	Timeout         time.Duration        `json:"timeout"`
 }
 
 func (o LaunchOptions) validate() error {
 	if o.Mode != "browser" && o.Mode != "native" {
 		return devcontract.Fail(2, "invalid_mode", "mode must be browser or native")
-	}
-	if !reviewedSDKRevision.MatchString(o.ReviewedSDKRevision) {
-		return devcontract.Fail(2, "reviewed_sdk_required", "supply an independently reviewed full SDK commit with --reviewed-sdk-revision")
 	}
 	if o.MCP && o.Mode != "native" {
 		return devcontract.Fail(2, "invalid_mcp_mode", "native MCP requires --mode native")
@@ -72,12 +67,12 @@ func workspaceEnvironment(base []string, w Workspace, generation string, o Launc
 			continue
 		}
 		switch key {
-		case "GOWORK", "GOFLAGS", "GO_MODFILE", "GOROOT", "NODE_PATH", "SDK_SOURCE", "OMNIVIEW_PLUGIN_PNPM_COMMANDS", "OMNIVIEW_VITE_ALLOWED_ROOTS", "WAILS_VITE_PORT", "FORCE_COLOR", "NO_COLOR", "OMNIVIEW_WORKSPACE_FILE", "OMNIVIEW_STATE_DIR", "OMNIVIEW_INSTANCE_ID", "OMNIVIEW_GENERATION", "OMNIVIEW_EXPECTED_SDK_REVISION", "OMNIVIEW_FIXED_SDK_REVISION", "OMNIVIEW_ALLOW_ISOLATION_SOURCE_CHANGES", "OMNIVIEW_WORKSPACE_GRAPH_WATCH", "FRONTEND_DEVSERVER_URL", "WAILS_SERVER_HOST", "WAILS_SERVER_PORT", "WAILS_MCP_HOST", "WAILS_MCP_PORT", "WAILS_MCP_TOKEN", "WAILS_MCP", "OMNIVIEW_CHANNEL":
+		case "GOWORK", "GOFLAGS", "GO_MODFILE", "GOROOT", "NODE_PATH", "SDK_SOURCE", "OMNIVIEW_PLUGIN_PNPM_COMMANDS", "OMNIVIEW_VITE_ALLOWED_ROOTS", "WAILS_VITE_PORT", "FORCE_COLOR", "NO_COLOR", "OMNIVIEW_WORKSPACE_FILE", "OMNIVIEW_STATE_DIR", "OMNIVIEW_INSTANCE_ID", "OMNIVIEW_GENERATION", "OMNIVIEW_WORKSPACE_GRAPH_WATCH", "FRONTEND_DEVSERVER_URL", "WAILS_SERVER_HOST", "WAILS_SERVER_PORT", "WAILS_MCP_HOST", "WAILS_MCP_PORT", "WAILS_MCP_TOKEN", "WAILS_MCP", "OMNIVIEW_CHANNEL":
 			continue
 		}
 		env = append(env, entry)
 	}
-	env = append(env, "GOWORK=off", "GOFLAGS=", "FORCE_COLOR=0", "NO_COLOR=1", "OMNIVIEW_CHANNEL=local", "OMNIVIEW_WORKSPACE_FILE="+w.ManifestPath, "OMNIVIEW_STATE_DIR="+w.StateRoot, "OMNIVIEW_INSTANCE_ID="+w.Manifest.WorkspaceID, "OMNIVIEW_GENERATION="+generation, "OMNIVIEW_EXPECTED_SDK_REVISION="+o.ReviewedSDKRevision)
+	env = append(env, "GOWORK=off", "GOFLAGS=", "FORCE_COLOR=0", "NO_COLOR=1", "OMNIVIEW_CHANNEL=local", "OMNIVIEW_WORKSPACE_FILE="+w.ManifestPath, "OMNIVIEW_STATE_DIR="+w.StateRoot, "OMNIVIEW_INSTANCE_ID="+w.Manifest.WorkspaceID, "OMNIVIEW_GENERATION="+generation)
 	if w.Manifest.Links.SDKRepositoryID != nil {
 		for _, repository := range w.Manifest.Repositories {
 			if repository.ID == *w.Manifest.Links.SDKRepositoryID {
@@ -88,9 +83,6 @@ func workspaceEnvironment(base []string, w Workspace, generation string, o Launc
 	}
 	if o.Watch {
 		env = append(env, "OMNIVIEW_WORKSPACE_GRAPH_WATCH=1")
-	}
-	if o.AllowIsolationSourceChanges {
-		env = append(env, "OMNIVIEW_ALLOW_ISOLATION_SOURCE_CHANGES=1")
 	}
 	return env
 }
@@ -110,11 +102,6 @@ func (m *Manager) Start(ctx context.Context, name string, o LaunchOptions, execu
 	}
 	ctx, cancelStart := context.WithTimeout(ctx, o.Timeout)
 	defer cancelStart()
-	if o.AllowIsolationSourceChanges {
-		if _, err = fmt.Fprintln(diagnostics, "WARNING: this workspace explicitly permits unreviewed SDK isolation-boundary edits. Its source-built plugins may bypass profile isolation. This is not a sandbox."); err != nil {
-			return Status{}, err
-		}
-	}
 	operationUnlock, err := withWorkspaceOperation(ctx, w)
 	if err != nil {
 		return Status{}, err
@@ -330,7 +317,7 @@ func (s *workspaceSupervisor) runLaunchCommand(ctx context.Context, directory st
 // launch-status events.
 func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 	o := s.options
-	if err := compatibilityPreflight(ctx, s.workspace, o); err != nil {
+	if err := compatibilityPreflight(ctx, s.workspace); err != nil {
 		return nil, err
 	}
 	report, err := s.manager.Link(ctx, s.workspace.Manifest.WorkspaceID, LinkOptions{Evidence: o.LinkEvidence})
@@ -347,14 +334,7 @@ func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 	if _, err = devcompose.Installed(s.workspace.ResolvedWorkspace, host); err != nil {
 		return nil, fmt.Errorf("supervisor build requires the completed aggregate install and recursive peer transaction: %w", err)
 	}
-	verify := func(ctx context.Context, directory, revision string) (devsource.Identity, error) {
-		identity, err := devsource.VerifyWithOptions(ctx, directory, revision, devsource.VerifyOptions{AllowIsolationCoreChanges: o.AllowIsolationSourceChanges})
-		if err != nil {
-			return identity, devcontract.Fail(4, "sdk_source_untrusted", err.Error())
-		}
-		return identity, nil
-	}
-	return s.manager.NewBuildGraph(ctx, s.workspace.Manifest.WorkspaceID, BuildOptions{Generation: s.generation, GoBuildCacheDirectory: s.goBuildCache, ExpectedSDKRevision: o.ReviewedSDKRevision, VerifySDKSource: verify, HostBuild: s.buildHost, HostVariant: s.hostVariant(), HostOutput: s.hostOutput(), ReuseHost: s.reuseHost, Bindings: func(ctx context.Context, host, outputDirectory string) (resultErr error) {
+	return s.manager.NewBuildGraph(ctx, s.workspace.Manifest.WorkspaceID, BuildOptions{Generation: s.generation, GoBuildCacheDirectory: s.goBuildCache, VerifySDKSource: devsource.Verify, HostBuild: s.buildHost, HostVariant: s.hostVariant(), HostOutput: s.hostOutput(), ReuseHost: s.reuseHost, Bindings: func(ctx context.Context, host, outputDirectory string) (resultErr error) {
 		hostModOutput, err := prepareStableHostModTree(s.workspace, s.generation)
 		if err != nil {
 			return err
@@ -446,7 +426,7 @@ func (s *workspaceSupervisor) buildHost(ctx context.Context, request HostBuildRe
 	if actual != request.SDKDirectory {
 		return fmt.Errorf("effective native host graph changed selected SDK source")
 	}
-	before, err := devsource.VerifyWithOptions(ctx, actual, request.ExpectedSDKRevision, devsource.VerifyOptions{AllowIsolationCoreChanges: s.options.AllowIsolationSourceChanges})
+	before, err := devsource.Verify(ctx, actual)
 	if err != nil {
 		return err
 	}
@@ -482,7 +462,7 @@ func (s *workspaceSupervisor) buildHost(ctx context.Context, request HostBuildRe
 	if _, err = s.runLaunchCommand(ctx, host, env, s.output, "go", "build", "-modfile="+hostModule.Modfile, "-tags="+tags, "-buildvcs=false", "-ldflags=-X github.com/omniviewdev/omniview/internal/instance.buildChannel=local", "-o", binary, "."); err != nil {
 		return err
 	}
-	after, err := devsource.VerifyWithOptions(ctx, actual, request.ExpectedSDKRevision, devsource.VerifyOptions{AllowIsolationCoreChanges: s.options.AllowIsolationSourceChanges})
+	after, err := devsource.Verify(ctx, actual)
 	if err != nil {
 		return err
 	}

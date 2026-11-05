@@ -17,9 +17,6 @@ func PreflightLaunch(w Workspace, o LaunchOptions) LaunchPreflight {
 	} else if err := o.LinkEvidence.validate(); err != nil {
 		report.Issues = append(report.Issues, err.(*devcontract.Error))
 	}
-	if !reviewedSDKRevision.MatchString(o.ReviewedSDKRevision) {
-		report.Issues = append(report.Issues, devcontract.Fail(2, "reviewed_sdk_required", "supply an independently reviewed full SDK commit with --reviewed-sdk-revision"))
-	}
 	if w.Manifest.Links.SDKRepositoryID == nil {
 		report.Issues = append(report.Issues, devcontract.Fail(2, "sdk_source_required", "launch requires --repo plugin-sdk even without SDK development; add it with workspace edit --add-repo plugin-sdk"))
 	}
