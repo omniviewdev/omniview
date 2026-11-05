@@ -112,6 +112,28 @@ describe('normalizePluginRoutes', () => {
     router.dispose();
   });
 
+  it.each(['component', 'element'] as const)('contains rejected lazy imports with a static %s', async (kind) => {
+    vi.spyOn(console, 'error').mockImplementation(vi.fn());
+    const staticRender = kind === 'component'
+      ? { Component: () => <div>Static page</div> }
+      : { element: <div>Static page</div> };
+    const router = createMemoryRouter(normalizePluginRoutes([{
+      path: '/plugin',
+      Component: PluginLayout,
+      children: [{
+        path: 'broken',
+        ...staticRender,
+        lazy: async () => {
+          throw new Error('import rejected');
+        },
+      }],
+    }], 'test-plugin'), { initialEntries: ['/plugin/broken'] });
+    render(<RouterProvider router={router} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('import rejected');
+    expect(screen.getByText('Plugin navigation')).toBeInTheDocument();
+    router.dispose();
+  });
+
   it('contains lazy page failures without replacing lazy plugin boundaries', async () => {
     vi.spyOn(console, 'error').mockImplementation(vi.fn());
     const CustomBoundary = () => <div>Lazy custom error</div>;

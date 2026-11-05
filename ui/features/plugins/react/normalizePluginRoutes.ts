@@ -9,22 +9,47 @@ export function normalizePluginRoutes(routes: RouteObject[], pluginId: string): 
     const lazy = route.lazy;
     const hasBoundary = route.ErrorBoundary !== undefined || route.errorElement !== undefined
       || (typeof lazy === 'object' && (lazy.ErrorBoundary !== undefined || lazy.errorElement !== undefined));
-    // Register a boundary before loading so rejected imports stay local, while
-    // allowing a successfully loaded module to provide its own fallback.
+    // Resolve rejected imports into a throwing render instead of leaving the
+    // router's lazy marker pending, which suppresses the matched child outlet.
+    let importFailed = false;
+    let importError: unknown;
     let renderLazyBoundary: (() => ReactNode) | undefined;
-    const boundary = hasBoundary ? {} : typeof lazy === 'function' ? {
-      ErrorBoundary: (): ReactNode => renderLazyBoundary ? renderLazyBoundary() : createElement(ErrorBoundary),
-      lazy: async () => {
-        const { ErrorBoundary: LazyBoundary, errorElement, ...loaded } = await lazy();
-        if (LazyBoundary != null) {
-          renderLazyBoundary = () => createElement(LazyBoundary);
-        } else if (errorElement !== undefined) {
-          renderLazyBoundary = (): ReactNode => errorElement;
-        }
+    const StaticComponent = route.Component;
+    const staticElement = route.element;
+    const hasStaticRender = StaticComponent != null || staticElement !== undefined;
+    const boundary = typeof lazy === 'function' ? {
+      ...(hasBoundary ? {} : {
+        ErrorBoundary: (): ReactNode => renderLazyBoundary ? renderLazyBoundary() : createElement(ErrorBoundary),
+      }),
+      ...(hasStaticRender ? {
+        element: undefined,
+        Component: (): ReactNode => {
+          if (importFailed) {
+            throw importError;
+          }
 
-        return loaded;
+          return StaticComponent != null ? createElement(StaticComponent) : staticElement;
+        },
+      } : {}),
+      lazy: async () => {
+        try {
+          const { ErrorBoundary: LazyBoundary, errorElement, ...loaded } = await lazy();
+          if (!hasBoundary && LazyBoundary != null) {
+            renderLazyBoundary = () => createElement(LazyBoundary);
+          } else if (!hasBoundary && errorElement !== undefined) {
+            renderLazyBoundary = (): ReactNode => errorElement;
+          }
+
+          return loaded;
+        } catch (error) {
+          importFailed = true;
+          importError = error;
+          return hasStaticRender ? {} : { Component: () => {
+            throw error;
+          } };
+        }
       },
-    } : { ErrorBoundary };
+    } : hasBoundary ? {} : { ErrorBoundary };
 
     if (route.index) {
       return { ...route, ...boundary, path: undefined };
