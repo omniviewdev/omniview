@@ -181,7 +181,7 @@ const PluginDetails: FC = () => {
         </Menu.Root>
 
         {installed && (
-        <Stack direction='row' spacing={2} align='center' wrap className={styles.HeaderActions}>
+          <Stack direction='row' spacing={2} align='center' wrap className={styles.HeaderActions}>
             {builtin && (
               <Button variant='outline' size='sm' disabled={!!operation || setEnabled.isPending} onClick={() => {
                 setEnabled.mutate(!installed.enabled);
@@ -203,7 +203,7 @@ const PluginDetails: FC = () => {
                 Uninstall
               </Button>
             )}
-        </Stack>
+          </Stack>
         )}
       </div>
       {!builtin && (

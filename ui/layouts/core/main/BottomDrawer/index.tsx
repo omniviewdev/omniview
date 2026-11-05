@@ -15,14 +15,13 @@ import styles from './BottomDrawer.module.css';
 // Share these dimensions with the header CSS so every resize path uses its full height.
 const DRAWER_TAB_STRIP_HEIGHT = 36;
 const DRAWER_HEADER_DIVIDER_HEIGHT = 1;
-const DRAWER_MIN_HEIGHT = DRAWER_TAB_STRIP_HEIGHT + 2 * DRAWER_HEADER_DIVIDER_HEIGHT;
+const minHeight = DRAWER_TAB_STRIP_HEIGHT + 2 * DRAWER_HEADER_DIVIDER_HEIGHT;
 
 /**
  * Sticky resizable drawer at the bottom of the screen used to display
  * interactive context items, such as terminals and reports.
  */
 const BottomDrawerContainer: React.FC = () => {
-  const minHeight = DRAWER_MIN_HEIGHT;
   const defaultHeight = DEFAULT_DRAWER_EXPANDED_HEIGHT;
 
   const { tabs } = useBottomDrawer();
@@ -262,7 +261,7 @@ const BottomDrawerContainer: React.FC = () => {
     drawerRef.current.style.minHeight = `${minHeight}px`;
     drawerRef.current.style.maxHeight = `${newHeight}px`;
     bottomDrawerChannel.emit('onResizeHandler', newHeight);
-  }, [hasTabs, isDragging, minHeight]);
+  }, [hasTabs, isDragging]);
 
   const handleMouseUp = React.useCallback(() => {
     setIsDragging(false);
