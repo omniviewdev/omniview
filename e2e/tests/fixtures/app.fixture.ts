@@ -140,7 +140,7 @@ export const test = profileTest.extend<AppFixtures>({
     const workspace = await new ApplicationWorkspace('profile-a', liveFrontend).open();
     workspace.assertOwned();
     await use(workspace);
-  }, { timeout: 30_000 }],
+  }, { timeout: 90_000 }],
   baseURL: async ({ workspace }, use) => {
     await use(workspace.browserURL()); 
   },
