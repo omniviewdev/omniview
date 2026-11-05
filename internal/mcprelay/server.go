@@ -560,8 +560,10 @@ func (r *Relay) discover(revision uint64) {
 				for _, state := range entries {
 					if state.ReadinessError == nil && state.Readiness == sdktypes.ConnectionStatusConnected {
 						connected[pluginID] = append(connected[pluginID], state.Connection.ID)
-						routes = append(routes, ResourceRoute{PluginID: pluginID, PluginName: pluginID,
-							Route: resourcev2.AccessRoute{Connection: state.Connection.ID}})
+						if pluginID != "kubernetes" {
+							routes = append(routes, ResourceRoute{PluginID: pluginID, PluginName: pluginID,
+								Route: resourcev2.AccessRoute{Connection: state.Connection.ID}})
+						}
 					}
 				}
 			}
@@ -651,7 +653,7 @@ func (r *Relay) toolsChanged() {
 		}
 	}
 	for _, tool := range r.catalog {
-		if tool.Resource == nil {
+		if tool.Resource == nil || tool.PluginID == "kubernetes" {
 			continue
 		}
 		catalog = append(catalog, tool)
@@ -1011,16 +1013,17 @@ func (r *Relay) handler(t ToolInfo) mcp.ToolHandler {
 	}
 }
 
-// dispatchResolvedKubernetes rechecks the discovered operation's own policy and
-// consent before using its catalog observation at the native boundary.
+// dispatchResolvedKubernetes binds consent to the discovered operation's exact
+// target before using its catalog observation at the native boundary.
 func (r *Relay) dispatchResolvedKubernetes(ctx context.Context, tool ToolInfo, argsJSON []byte) (*mcp.CallToolResult, error) {
 	confirm, err := r.authority.resolveKubernetes(ctx, tool, argsJSON)
 	if err != nil {
 		return nil, err
 	}
 	if confirm {
+		call := ctx.Value(authorityContextKey{}).(*authorityCall)
 		payload := PendingConfirmation{
-			MCPName: tool.MCPName, PluginID: tool.PluginID, PluginName: tool.PluginName,
+			MCPName: call.tool.MCPName, PluginID: tool.PluginID, PluginName: tool.PluginName,
 			ConnectionID: tool.Resource.Route.Connection, ArgumentsJSON: string(argsJSON),
 		}
 		approved, _ := r.awaitConfirmation(ctx, payload)

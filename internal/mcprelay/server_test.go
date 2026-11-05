@@ -413,7 +413,7 @@ func (p *lazyCatalogProvider) GetConnectionStatus(context.Context, string) (sdkt
 	return sdktypes.ConnectionStatus{Status: status, Connection: &sdktypes.Connection{ID: "route-a", Name: "Disconnected cluster"}}, nil
 }
 
-func TestRelayGenericOperationsStartNativeConnectionAfterConsent(t *testing.T) {
+func TestRelayGenericOperationsStartNativeConnectionAndConfirm(t *testing.T) {
 	state := appstate.NewTestService(t)
 	epoch, err := resourcev2.NewCatalogBindingEpoch()
 	require.NoError(t, err)
@@ -432,11 +432,13 @@ func TestRelayGenericOperationsStartNativeConnectionAfterConsent(t *testing.T) {
 	service := &ServiceWrapper{Relay: relay}
 	require.NoError(t, relay.loadConfig())
 	require.NoError(t, service.SetEnabled(true))
+	require.NoError(t, service.SetToolOverride(Scope{}, "kubernetes_resource_read", ToolOverride{Confirm: new(true)}))
+	require.NoError(t, service.SetToolOverride(Scope{}, "kubernetes_resource_discover", ToolOverride{Confirm: new(true)}))
 	t.Cleanup(relay.stopListener)
 	h := &harness{relay: relay, service: service, url: service.GetStatus().Endpoint, token: service.GetConfig().Token}
 	session := h.connect(t, nil)
-	require.Contains(t, toolNames(t, session), "kubernetes_resource_catalog")
-	require.Contains(t, toolNames(t, session), "kubernetes_resource_enumerate")
+	require.Contains(t, toolNames(t, session), "kubernetes_resource_discover")
+	require.Contains(t, toolNames(t, session), "kubernetes_resource_read")
 	require.False(t, provider.started.Load())
 	type outcome struct {
 		result *mcp.CallToolResult
@@ -444,7 +446,7 @@ func TestRelayGenericOperationsStartNativeConnectionAfterConsent(t *testing.T) {
 	}
 	done := make(chan outcome, 1)
 	go func() {
-		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "kubernetes_resource_enumerate", Arguments: map[string]any{"connection_id": "route-a", "resource_type": "opaque/items", "arguments": map[string]any{"limit": 1}}})
+		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "kubernetes_resource_read", Arguments: map[string]any{"connection_id": "route-a", "operation": "enumerate", "resource_type": "opaque/items", "arguments": map[string]any{"limit": 1}}})
 		done <- outcome{result, err}
 	}()
 	var pending []PendingConfirmation
@@ -453,6 +455,14 @@ func TestRelayGenericOperationsStartNativeConnectionAfterConsent(t *testing.T) {
 		return len(pending) == 1
 	}, 5*time.Second, 10*time.Millisecond)
 	require.Zero(t, provider.starts.Load(), "connection must remain stopped until consent")
+	require.Equal(t, "route-a", pending[0].ConnectionID)
+	firstID := pending[0].ID
+	require.NoError(t, service.ResolveConfirmation(firstID, true))
+	require.Eventually(t, func() bool {
+		pending = service.ListPendingConfirmations()
+		return len(pending) == 1 && pending[0].ID != firstID
+	}, 5*time.Second, 10*time.Millisecond)
+	require.EqualValues(t, 1, provider.starts.Load(), "exact-target consent follows live discovery")
 	require.Equal(t, "route-a", pending[0].ConnectionID)
 	require.NoError(t, service.ResolveConfirmation(pending[0].ID, true))
 	select {
@@ -469,7 +479,7 @@ func TestRelayGenericOperationsStartNativeConnectionAfterConsent(t *testing.T) {
 	require.True(t, provider.started.Load())
 	require.EqualValues(t, 1, provider.starts.Load())
 	go func() {
-		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "kubernetes_resource_catalog", Arguments: map[string]any{"connection_id": "route-a", "arguments": map[string]any{}}})
+		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "kubernetes_resource_discover", Arguments: map[string]any{"connection_id": "route-a", "operation": "catalog", "arguments": map[string]any{}}})
 		done <- outcome{result, err}
 	}()
 	require.Eventually(t, func() bool {
@@ -484,7 +494,7 @@ func TestRelayGenericOperationsStartNativeConnectionAfterConsent(t *testing.T) {
 		payload, err := json.Marshal(call.result.StructuredContent)
 		require.NoError(t, err)
 		require.Contains(t, string(payload), "opaque/items")
-		require.Contains(t, string(payload), "resource.Enumerate")
+		require.Contains(t, string(payload), `"operation":"enumerate"`)
 	case <-time.After(10 * time.Second):
 		t.Fatal("generic catalog call did not finish")
 	}
@@ -591,7 +601,7 @@ func TestRelayListConnectionsHonoursAccess(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(text), &listing))
 	require.Len(t, listing.Connections, 2)
 	require.Contains(t, listing.Connections[0].EnabledTools, "kubernetes_list_namespaces")
-	require.Contains(t, listing.Connections[0].EnabledTools, "kubernetes_resource_catalog")
+	require.Contains(t, listing.Connections[0].EnabledTools, "kubernetes_resource_discover")
 	require.NotContains(t, listing.Connections[0].EnabledTools, "kubernetes_delete_resource")
 
 	require.NoError(t, h.service.SetConnectionAccess("kubernetes", "prod", AccessBlocked))

@@ -56,17 +56,25 @@ tool's confirm override is set to false.
 Search the tool list by name, description, plugin, or connection. Resource tools show a
 readable title and their MCP name; the MCP name remains the policy and client identifier.
 
-For configured Kubernetes connections, generic `kubernetes_resource_*` tools remain
-available while the cluster is disconnected. The first approved call starts the selected
-connection. `kubernetes_resource_catalog` returns the live operations and argument schemas.
-The relay checks AI Tools policy and consent for both the generic call and the selected
-resource operation. Unsupported operations return an error.
+For configured Kubernetes connections, five generic resource tools remain available while
+the cluster is disconnected: `kubernetes_resource_discover`, `kubernetes_resource_read`,
+`kubernetes_resource_write`, `kubernetes_resource_action`, and `kubernetes_resource_telemetry`.
+The first call starts the selected connection. Use the `catalog` operation of
+`kubernetes_resource_discover` to find live operations and their argument schemas.
+Each tool uses an `operation` argument to select an operation. Unsupported operations
+return an error.
 
-The read-only preset includes per-resource metrics and route-level events, health and related
-resources. Each route-level tool accepts a resource type from its advertised enum. Unsupported
-provider operations return an error; health can return `null` when the provider has no assessment.
-Related resources contain references, not resource bodies. The relay returns at most 1000 edges
-and sets `truncated` when more edges exist. Route-level policy is plugin- and
+AI Tools applies policy to each generic group and connection, not to individual Kubernetes
+resource types. Existing resource-specific overrides and saved presets do not grant or deny
+the new tools. The current preset and its defaults apply to the new tool names.
+Review the new policies: the read-only preset can enable reads that an old override denied.
+Write and action calls require consent by default.
+
+For other providers, the read-only preset includes per-resource metrics and route-level
+events, health and related resources. Each route-level tool accepts a resource type from
+its advertised enum. Health can return `null` when the provider has no assessment.
+Related resources contain references, not resource bodies. The relay returns at most 1000
+edges and sets `truncated` when more edges exist. Route-level policy is plugin- and
 connection-scoped; disabling one type's get tool does not disable these separate read tools.
 
 Plugins may declare access to selected resource types exported by another installed

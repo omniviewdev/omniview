@@ -150,9 +150,6 @@ func (a *Authority) allowedLocked(c *authorityCall) bool {
 	if !found {
 		return false
 	}
-	if c.resolved != nil && !a.cfg.ConnectionEnabled(c.resolved.PluginID, c.connection, *c.resolved) {
-		return false
-	}
 	if c.connection != "" {
 		return a.cfg.ConnectionEnabled(c.tool.PluginID, c.connection, c.tool)
 	}
@@ -238,8 +235,7 @@ func (a *Authority) resolveKubernetes(ctx context.Context, tool ToolInfo, args [
 	defer a.mu.Unlock()
 	if !c.dispatched || !isGenericKubernetesTool(c.tool) || c.resolved != nil ||
 		!a.allowedLocked(c) || tool.Status != StatusOK || tool.PluginID != c.tool.PluginID ||
-		target.Provider != c.tool.PluginID || target.Connection != c.connection ||
-		!a.cfg.ConnectionEnabled(tool.PluginID, c.connection, tool) {
+		target.Provider != c.tool.PluginID || target.Connection != c.connection {
 		return false, errAuthority
 	}
 	c.resolved = &tool
@@ -247,7 +243,7 @@ func (a *Authority) resolveKubernetes(ctx context.Context, tool ToolInfo, args [
 	c.target = target
 	c.target.Scope = maps.Clone(target.Scope)
 	c.arguments = append([]byte(nil), args...)
-	c.confirm = a.cfg.Confirm(tool.PluginID, c.connection, tool)
+	c.confirm = a.cfg.confirmWithDefault(c.tool.PluginID, c.connection, c.tool, tool.Destructive)
 	c.approved = false
 	return c.confirm, nil
 }

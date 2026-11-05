@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sort"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -17,56 +18,70 @@ import (
 // genericKubernetesOperation identifies a catalog operation without trusting a
 // caller to supply provider bindings, target authority, or capability metadata.
 type genericKubernetesOperation struct {
-	name, operation, verb string
-	readOnly              bool
-	selector              string
-	routeLane             bool
+	name, group, operation, verb string
+	readOnly                     bool
+	selector                     string
+	routeLane                    bool
 }
 
 var genericKubernetesOperations = []genericKubernetesOperation{
-	{name: "catalog", operation: "resource.Catalog", readOnly: true, routeLane: true},
-	{name: "get", operation: "resource.Get", readOnly: true},
-	{name: "enumerate", operation: "resource.Enumerate", readOnly: true},
-	{name: "native_query", operation: "resource.NativeQuery", readOnly: true, selector: "language"},
-	{name: "create", operation: "resource.Mutate", verb: "create"},
-	{name: "update", operation: "resource.Mutate", verb: "update"},
-	{name: "delete", operation: "resource.Mutate", verb: "delete"},
-	{name: "action", operation: "resource.Action", selector: "action"},
-	{name: "scope_values", operation: "resource.ScopeValues", readOnly: true, routeLane: true},
-	{name: "events", operation: opGetResourceEvents, readOnly: true, routeLane: true},
-	{name: "health", operation: opGetHealth, readOnly: true, routeLane: true},
-	{name: "related", operation: opGraphRelated, readOnly: true, routeLane: true},
-	{name: "metrics", operation: opMetricQuery, readOnly: true},
-	{name: "logs", operation: "logs.CreateSession", readOnly: true},
+	{name: "catalog", group: "discover", operation: "resource.Catalog", readOnly: true, routeLane: true},
+	{name: "get", group: "read", operation: "resource.Get", readOnly: true},
+	{name: "enumerate", group: "read", operation: "resource.Enumerate", readOnly: true},
+	{name: "native_query", group: "read", operation: "resource.NativeQuery", readOnly: true, selector: "language"},
+	{name: "create", group: "write", operation: "resource.Mutate", verb: "create"},
+	{name: "update", group: "write", operation: "resource.Mutate", verb: "update"},
+	{name: "delete", group: "write", operation: "resource.Mutate", verb: "delete"},
+	{name: "action", group: "action", operation: "resource.Action", selector: "action"},
+	{name: "scope_values", group: "discover", operation: "resource.ScopeValues", readOnly: true, routeLane: true},
+	{name: "events", group: "telemetry", operation: opGetResourceEvents, readOnly: true, routeLane: true},
+	{name: "health", group: "telemetry", operation: opGetHealth, readOnly: true, routeLane: true},
+	{name: "related", group: "read", operation: opGraphRelated, readOnly: true, routeLane: true},
+	{name: "metrics", group: "telemetry", operation: opMetricQuery, readOnly: true},
+	{name: "logs", group: "telemetry", operation: "logs.CreateSession", readOnly: true},
 }
+
+var genericKubernetesGroups = []string{"discover", "read", "write", "action", "telemetry"}
 
 // Keep these private so published descriptors cannot mutate the identity check.
 var genericKubernetesExpected = genericKubernetesTools()
 
 func genericKubernetesTools() []ToolInfo {
-	out := make([]ToolInfo, 0, len(genericKubernetesOperations))
-	for _, op := range genericKubernetesOperations {
+	out := make([]ToolInfo, 0, len(genericKubernetesGroups))
+	for _, group := range genericKubernetesGroups {
 		properties := map[string]any{
 			"connection_id": map[string]any{"type": "string", "minLength": 1},
+			"operation":     map[string]any{"type": "string"},
 			"resource_type": map[string]any{"type": "string", "minLength": 1, "description": "Exact resource type from the Kubernetes resource catalog."},
 			"arguments":     map[string]any{"type": "object", "description": "Arguments for the selected live resource tool, excluding connection_id."},
 		}
-		required := []string{"connection_id", "arguments"}
-		if op.operation != "resource.ScopeValues" && op.operation != "resource.Catalog" {
-			required = append(required, "resource_type")
+		var alternatives []any
+		for _, op := range genericKubernetesOperations {
+			if op.group != group {
+				continue
+			}
+			required := []string{"operation"}
+			if op.operation != "resource.ScopeValues" && op.operation != "resource.Catalog" {
+				required = append(required, "resource_type")
+			}
+			if op.selector != "" {
+				properties[op.selector] = map[string]any{"type": "string", "minLength": 1}
+				required = append(required, op.selector)
+			}
+			alternatives = append(alternatives, map[string]any{
+				"properties": map[string]any{"operation": map[string]any{"const": op.name}},
+				"required":   required,
+			})
 		}
-		if op.selector != "" {
-			properties[op.selector] = map[string]any{"type": "string", "minLength": 1}
-			required = append(required, op.selector)
-		}
-		name := "kubernetes_resource_" + op.name
+		readOnly := group != "write" && group != "action"
+		name := "kubernetes_resource_" + group
 		out = append(out, ToolInfo{
-			MCPName: name, PluginID: "kubernetes", PluginName: "Kubernetes", Name: "resource_" + op.name,
-			Title:       "Kubernetes resource " + op.name,
-			Description: "Call kubernetes_resource_catalog to discover live types, operations and argument schemas. Start the selected connection if needed, then invoke the matching advertised operation. Resource references retain their catalog authority.",
-			Scope:       ScopeConnection, ReadOnly: op.readOnly, Destructive: !op.readOnly,
-			Idempotent: op.readOnly, OpenWorld: true, Status: StatusOK,
-			InputSchema: map[string]any{"type": "object", "properties": properties, "required": required, "additionalProperties": false},
+			MCPName: name, PluginID: "kubernetes", PluginName: "Kubernetes", Name: "resource_" + group,
+			Title:       "Kubernetes resource " + group,
+			Description: "Call kubernetes_resource_discover with operation catalog to discover live types, operations and argument schemas. Start the selected connection if needed, then invoke the matching advertised operation. Resource references retain their catalog authority.",
+			Scope:       ScopeConnection, ReadOnly: readOnly, Destructive: !readOnly,
+			Idempotent: readOnly, OpenWorld: true, Status: StatusOK,
+			InputSchema: map[string]any{"type": "object", "properties": properties, "required": []string{"connection_id", "operation", "arguments"}, "oneOf": alternatives, "additionalProperties": false},
 		})
 	}
 	return out
@@ -78,7 +93,7 @@ func genericKubernetesOperationFor(t ToolInfo) (genericKubernetesOperation, bool
 	}
 	for i, expected := range genericKubernetesExpected {
 		if reflect.DeepEqual(t, expected) {
-			return genericKubernetesOperations[i], true
+			return genericKubernetesOperation{group: genericKubernetesGroups[i]}, true
 		}
 	}
 	return genericKubernetesOperation{}, false
@@ -89,7 +104,23 @@ func isGenericKubernetesTool(t ToolInfo) bool {
 	return ok
 }
 
+func genericKubernetesSelectedOperation(group string, raw []byte) (genericKubernetesOperation, error) {
+	var selection struct {
+		Operation string `json:"operation"`
+	}
+	if err := json.Unmarshal(raw, &selection); err != nil {
+		return genericKubernetesOperation{}, err
+	}
+	for _, candidate := range genericKubernetesOperations {
+		if candidate.group == group && candidate.name == selection.Operation {
+			return candidate, nil
+		}
+	}
+	return genericKubernetesOperation{}, errors.New("invalid operation")
+}
+
 type genericKubernetesArguments struct {
+	Operation    string          `json:"operation"`
 	ResourceType string          `json:"resource_type"`
 	Arguments    json.RawMessage `json:"arguments"`
 	Language     string          `json:"language"`
@@ -105,6 +136,9 @@ func parseGenericKubernetesArguments(op genericKubernetesOperation, raw []byte) 
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&request); err != nil {
 		return request, err
+	}
+	if request.Operation != op.name {
+		return request, errors.New("invalid operation")
 	}
 	if len(request.Arguments) == 0 || string(request.Arguments) == "null" {
 		return request, errors.New("arguments must be an object")
@@ -197,10 +231,62 @@ func resolveGenericKubernetesTool(op genericKubernetesOperation, connectionID st
 	return *selected, encoded, nil
 }
 
+type genericKubernetesDescriptor struct {
+	Name         string         `json:"name"`
+	Title        string         `json:"title"`
+	Description  string         `json:"description"`
+	ReadOnly     bool           `json:"read_only"`
+	Destructive  bool           `json:"destructive"`
+	ResourceType string         `json:"resource_type,omitempty"`
+	Operation    string         `json:"operation"`
+	Language     string         `json:"language,omitempty"`
+	Action       string         `json:"action,omitempty"`
+	InputSchema  map[string]any `json:"input_schema"`
+}
+
+func genericKubernetesCatalogDescriptors(catalog []ToolInfo) []genericKubernetesDescriptor {
+	descriptors := make([]genericKubernetesDescriptor, 0, len(catalog))
+	for _, item := range catalog {
+		b := item.Resource
+		if item.Status != StatusOK || item.PluginID != "kubernetes" || b == nil || b.PluginID != "kubernetes" {
+			continue
+		}
+		for _, op := range genericKubernetesOperations {
+			if b.Operation != op.operation || b.Verb != op.verb {
+				continue
+			}
+			descriptor := genericKubernetesDescriptor{
+				Name: "kubernetes_resource_" + op.group, Title: item.Title, Description: item.Description,
+				ReadOnly: item.ReadOnly, Destructive: item.Destructive, ResourceType: b.Type,
+				Operation: op.name, Language: b.Language, Action: b.Action, InputSchema: item.InputSchema,
+			}
+			if b.Types == nil {
+				descriptors = append(descriptors, descriptor)
+				break
+			}
+			types := make([]string, 0, len(b.Types))
+			for resourceType := range b.Types {
+				types = append(types, resourceType)
+			}
+			sort.Strings(types)
+			for _, resourceType := range types {
+				descriptor.ResourceType = resourceType
+				descriptors = append(descriptors, descriptor)
+			}
+			break
+		}
+	}
+	return descriptors
+}
+
 func (r *Relay) dispatchGenericKubernetes(ctx context.Context, t ToolInfo, connection *sdktypes.Connection, argsJSON []byte) (*mcp.CallToolResult, error) {
-	op, ok := genericKubernetesOperationFor(t)
+	group, ok := genericKubernetesOperationFor(t)
 	if !ok || connection == nil || connection.ID == "" || r.connections == nil {
 		return nil, errors.New("invalid generic Kubernetes invocation")
+	}
+	op, err := genericKubernetesSelectedOperation(group.group, argsJSON)
+	if err != nil {
+		return errorResult(err.Error()), nil
 	}
 	if _, err := parseGenericKubernetesArguments(op, argsJSON); err != nil {
 		return errorResult(err.Error()), nil
@@ -215,32 +301,7 @@ func (r *Relay) dispatchGenericKubernetes(ctx context.Context, t ToolInfo, conne
 	}
 	finalizeCatalog(catalog)
 	if op.operation == "resource.Catalog" {
-		policy, err := r.authority.Policy(ctx)
-		if err != nil {
-			return nil, err
-		}
-		type descriptor struct {
-			Name         string         `json:"name"`
-			Title        string         `json:"title"`
-			Description  string         `json:"description"`
-			ReadOnly     bool           `json:"read_only"`
-			Destructive  bool           `json:"destructive"`
-			ResourceType string         `json:"resource_type,omitempty"`
-			Operation    string         `json:"operation"`
-			Verb         string         `json:"verb,omitempty"`
-			Language     string         `json:"language,omitempty"`
-			Action       string         `json:"action,omitempty"`
-			InputSchema  map[string]any `json:"input_schema"`
-		}
-		descriptors := make([]descriptor, 0, len(catalog))
-		for _, item := range catalog {
-			if item.Status != StatusOK || item.Resource == nil || !policy.ConnectionEnabled("kubernetes", connection.ID, item) {
-				continue
-			}
-			b := item.Resource
-			descriptors = append(descriptors, descriptor{Name: item.MCPName, Title: item.Title, Description: item.Description, ReadOnly: item.ReadOnly, Destructive: item.Destructive, ResourceType: b.Type, Operation: b.Operation, Verb: b.Verb, Language: b.Language, Action: b.Action, InputSchema: item.InputSchema})
-		}
-		encoded, err := json.Marshal(map[string]any{"tools": descriptors})
+		encoded, err := json.Marshal(map[string]any{"tools": genericKubernetesCatalogDescriptors(catalog)})
 		if err != nil {
 			return nil, err
 		}
