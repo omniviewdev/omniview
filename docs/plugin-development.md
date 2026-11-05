@@ -179,6 +179,12 @@ When checking sidebar actions, verify that Logs opens a log tab, Exec opens a
 terminal tab, and Delete opens its confirmation dialog (then cancel it).
 Container shell availability is separate from action dispatch.
 
+The bottom drawer's collapsed height includes its 36px tab strip and both 1px
+header dividers. Host sizing constants supply the strip and divider CSS variables;
+change those constants together rather than setting independent minimum heights.
+After a header sizing change, check minimize, drag-to-collapse, double-click,
+and restored minimized windows: the full tab strip and controls must remain visible.
+
 ### Host-owned in-process backend lifetime
 
 `backend/pkg/plugin/types.InProcessBackend` accepts `InProcessBackendConfig`
