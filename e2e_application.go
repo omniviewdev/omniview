@@ -41,11 +41,11 @@ func init() {
 			result = map[string]any{"descriptor": profile.Descriptor, "runtimeRoot": profile.RuntimeRoot, "manifest": profile.Workspace.ManifestPath}
 		}
 	case "--e2e-record-plugin":
-		if len(os.Args) != 8 {
+		if len(os.Args) != 7 {
 			fmt.Fprintln(os.Stderr, "invalid plugin artifact arguments")
 			os.Exit(2)
 		}
-		err = recordApplicationPlugin(os.Args[2], os.Args[3], os.Args[4], os.Args[5], os.Args[6], os.Args[7])
+		err = recordApplicationPlugin(os.Args[2], os.Args[3], os.Args[4], os.Args[5], os.Args[6])
 		result = map[string]bool{"recorded": err == nil}
 	case "--e2e-own-command":
 		if len(os.Args) != 3 {
@@ -105,13 +105,13 @@ func createApplicationProfile(root, name, commit string) (instance.Profile, erro
 	return instance.Resolve(instance.Options{Workspace: root, Home: home, Channel: "local"})
 }
 
-func recordApplicationPlugin(root, id, binary, sdk, revision, digest string) error {
+func recordApplicationPlugin(root, id, binary, sdk, digest string) error {
 	if digest == "" {
 		return fmt.Errorf("verified SDK source evidence is required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	identity, err := devsource.Verify(ctx, sdk, revision)
+	identity, err := devsource.Verify(ctx, sdk)
 	if err != nil {
 		return err
 	}
@@ -122,5 +122,5 @@ func recordApplicationPlugin(root, id, binary, sdk, revision, digest string) err
 	if err != nil {
 		return err
 	}
-	return instance.RecordBuiltArtifactSource(*profile.Workspace, id, binary, revision, digest)
+	return instance.RecordBuiltArtifactSource(*profile.Workspace, id, binary, identity.Revision, identity.SourceDigest)
 }

@@ -172,7 +172,6 @@ func TestSourceEdgesDependencyRecoveryRejectsLaunchOverrides(t *testing.T) {
 			m, w, plan := refreshPhaseFixture(t)
 			launch := LaunchOptions{
 				Mode: "browser", Watch: true, Timeout: time.Minute,
-				ReviewedSDKRevision: fixtureGit(t, filepath.Join(m.Root, "plugin-sdk"), "rev-parse", "HEAD"),
 			}
 			evidence := LinkProtocolEvidence{
 				Protocol: "workspace", Versions: []string{"12.14.0"}, AtomicDist: true, Peers: true, Runtime: true,

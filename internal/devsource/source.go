@@ -3,10 +3,10 @@
 package devsource
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -14,35 +14,20 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 )
 
 type Identity struct {
-	Directory        string
-	ReviewedRevision string
-	SourceDigest     string
-}
-
-type VerifyOptions struct {
-	// Explicit per-workspace developer opt-in; never infer this from dirty files.
-	AllowIsolationCoreChanges bool
+	Directory    string
+	Revision     string
+	SourceDigest string
 }
 
 var fullRevision = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 
-// Isolation-boundary changes need deliberate per-workspace developer consent,
-// not a source-text heuristic or imported plugin metadata assertion.
-var protectedFiles = []string{"pkg/state/root.go", "pkg/state/custom.go", "pkg/profilecontract/profile.go", "pkg/utils/store.go", "pkg/sdk/plugin.go"}
-
 func command(ctx context.Context, dir string, args ...string) ([]byte, error) {
-	return commandWithInput(ctx, dir, nil, args...)
-}
-
-func commandWithInput(ctx context.Context, dir string, input io.Reader, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
-	cmd.Stdin = input
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
 		switch key {
@@ -62,60 +47,10 @@ func commandWithInput(ctx context.Context, dir string, input io.Reader, args ...
 	return raw, nil
 }
 
-// Read the same pinned blobs in one Git process. This is observation-local:
-// every verification still checks ancestry, protected live bytes and source.
-func reviewedSources(ctx context.Context, directory, revision string) ([][]byte, error) {
-	var requests strings.Builder
-	for _, relative := range protectedFiles {
-		fmt.Fprintf(&requests, "%s:%s\n", revision, relative)
-	}
-	raw, err := commandWithInput(ctx, directory, strings.NewReader(requests.String()), "cat-file", "--batch")
-	if err != nil {
-		return nil, err
-	}
-	return parseReviewedSources(raw)
-}
-
-// Batch bodies are length-framed, not line-framed: source may contain any
-// bytes, including newlines, NULs and text that resembles another header.
-func parseReviewedSources(raw []byte) ([][]byte, error) {
-	files := make([][]byte, 0, len(protectedFiles))
-	for _, relative := range protectedFiles {
-		end := bytes.IndexByte(raw, '\n')
-		if end < 0 {
-			return nil, fmt.Errorf("reviewed SDK baseline is incomplete: %s", relative)
-		}
-		header := strings.Fields(string(raw[:end]))
-		if len(header) != 3 || !fullRevision.MatchString(header[0]) || header[1] != "blob" {
-			return nil, fmt.Errorf("reviewed SDK baseline is not a source blob: %s", relative)
-		}
-		size, err := strconv.ParseUint(header[2], 10, 64)
-		raw = raw[end+1:]
-		if err != nil || size >= uint64(len(raw)) || raw[size] != '\n' {
-			return nil, fmt.Errorf("reviewed SDK baseline has an invalid blob body: %s", relative)
-		}
-		files = append(files, raw[:size])
-		raw = raw[size+1:]
-	}
-	if len(raw) != 0 {
-		return nil, fmt.Errorf("reviewed SDK baseline has unexpected trailing output")
-	}
-	return files, nil
-}
-
-// Verify anchors the selected local source in a reviewed fixed-capability
-// commit, verifies isolation-boundary bytes, and binds the actual current dirty
-// tracked/untracked nonignored source tree. This trusted local-builder identity
-// is not a sandbox and is not proof that an arbitrary binary used this source.
-func Verify(ctx context.Context, directory, reviewedRevision string) (Identity, error) {
-	return VerifyWithOptions(ctx, directory, reviewedRevision, VerifyOptions{})
-}
-
-func VerifyWithOptions(ctx context.Context, directory, reviewedRevision string, opts VerifyOptions) (Identity, error) {
+// Verify identifies the selected checkout by its HEAD and dirty source digest.
+// This local-builder identity is not a sandbox or proof of a binary's source.
+func Verify(ctx context.Context, directory string) (Identity, error) {
 	var identity Identity
-	if !fullRevision.MatchString(reviewedRevision) {
-		return identity, fmt.Errorf("an independently reviewed full SDK commit is required")
-	}
 	if !filepath.IsAbs(directory) {
 		return identity, fmt.Errorf("selected SDK directory must be absolute")
 	}
@@ -137,45 +72,19 @@ func VerifyWithOptions(ctx context.Context, directory, reviewedRevision string, 
 	if top != canonical {
 		return identity, fmt.Errorf("selected SDK must be the explicitly owned source repository root")
 	}
-	raw, err = command(ctx, canonical, "cat-file", "-t", reviewedRevision)
+	raw, err = command(ctx, canonical, "rev-parse", "HEAD")
 	if err != nil {
 		return identity, err
 	}
-	if strings.TrimSpace(string(raw)) != "commit" {
-		return identity, fmt.Errorf("reviewed SDK identity must name a commit")
-	}
-	if _, err = command(ctx, canonical, "merge-base", "--is-ancestor", reviewedRevision, "HEAD"); err != nil {
-		return identity, fmt.Errorf("selected SDK does not descend from the reviewed fixed-capability baseline: %w", err)
-	}
-	if !opts.AllowIsolationCoreChanges {
-		baselines, err := reviewedSources(ctx, canonical, reviewedRevision)
-		if err != nil {
-			return identity, err
-		}
-		for index, relative := range protectedFiles {
-			baseline := baselines[index]
-			file := filepath.Join(canonical, filepath.FromSlash(relative))
-			info, err := os.Lstat(file)
-			if err != nil {
-				return identity, err
-			}
-			if !info.Mode().IsRegular() {
-				return identity, fmt.Errorf("reviewed SDK isolation implementation is not a regular file: %s", relative)
-			}
-			current, err := os.ReadFile(file)
-			if err != nil {
-				return identity, err
-			}
-			if !bytes.Equal(current, baseline) {
-				return identity, fmt.Errorf("SDK isolation-boundary source differs from reviewed baseline: %s; explicitly select --allow-isolation-source-changes for this workspace to develop isolation code", relative)
-			}
-		}
+	revision := strings.TrimSpace(string(raw))
+	if !fullRevision.MatchString(revision) {
+		return identity, errors.New("selected SDK HEAD must be a full lowercase commit hash")
 	}
 	digest, err := sourceDigest(ctx, canonical)
 	if err != nil {
 		return identity, err
 	}
-	return Identity{Directory: canonical, ReviewedRevision: reviewedRevision, SourceDigest: digest}, nil
+	return Identity{Directory: canonical, Revision: revision, SourceDigest: digest}, nil
 }
 
 func sourceDigest(ctx context.Context, directory string) (string, error) {

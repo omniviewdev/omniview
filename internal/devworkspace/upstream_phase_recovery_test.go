@@ -129,7 +129,7 @@ func runRefreshPhaseRecovery(t *testing.T, phase string) {
 		}
 		return nil
 	}
-	launch := LaunchOptions{Mode: "browser", ReviewedSDKRevision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+	launch := LaunchOptions{Mode: "browser"}
 	evidence := LinkProtocolEvidence{
 		Protocol: "workspace", Versions: []string{"12.14.0"}, AtomicDist: true, Peers: true, Runtime: true,
 	}

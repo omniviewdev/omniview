@@ -10,7 +10,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -93,7 +92,6 @@ func assertOldSupervisorSourceUpdateRefusal(t *testing.T, recovering bool) {
 	child, commands := sourceCompatibilitySupervisor(t, w, false)
 	launch := LaunchOptions{
 		Mode: "native", MCP: true, Watch: false, LiveFrontend: false,
-		ReviewedSDKRevision: strings.Repeat("a", 40), AllowIsolationSourceChanges: true,
 		BaselineSource:  filepath.Join(w.Root, "saved baseline ' $(exit 91)"),
 		BaselineVersion: "saved-version", Timeout: 7 * time.Minute,
 		LinkEvidence: LinkProtocolEvidence{

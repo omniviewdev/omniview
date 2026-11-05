@@ -205,16 +205,13 @@ func TestWorkspaceLifecycleCLIUsesRealGitAndPreservesBranches(t *testing.T) {
 	}
 }
 
-func TestWorkspaceCreateStartDoesNotPretendMissingTrustIsReady(t *testing.T) {
+func TestWorkspaceCreateStart(t *testing.T) {
 	command, err := parseWorkspaceCommand([]string{"workspace", "create", "feature", "--start", "--repo", "plugin-sdk", "--json"}, &bytes.Buffer{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !command.start || command.launch.ReviewedSDKRevision != "" {
-		t.Fatalf("trust was fabricated: %+v", command)
-	}
-	if err = command.launch.Validate(); err == nil {
-		t.Fatal("unreviewed SDK source accepted")
+	if !command.start {
+		t.Fatalf("start flag lost: %+v", command)
 	}
 }
 
@@ -277,7 +274,6 @@ func TestWorkspaceSavedLaunchFlagsIncludeFollowAndExplicitFalse(t *testing.T) {
 	}
 	saved := devworkspace.LaunchOptions{
 		Mode: "native", MCP: true, Watch: true, LiveFrontend: true,
-		ReviewedSDKRevision: strings.Repeat("a", 40), AllowIsolationSourceChanges: true,
 		Timeout: 7 * time.Minute,
 	}
 	if err = devsession.WritePrivateJSON(filepath.Join(directory, "launch.json"), saved); err != nil {
@@ -292,7 +288,6 @@ func TestWorkspaceSavedLaunchFlagsIncludeFollowAndExplicitFalse(t *testing.T) {
 	saved.MCP = false
 	saved.Watch = false
 	saved.LiveFrontend = false
-	saved.AllowIsolationSourceChanges = false
 	if err = devsession.WritePrivateJSON(filepath.Join(directory, "launch.json"), saved); err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +314,6 @@ func checkWorkspaceSavedLaunchFlags(
 	}
 	command, err = parseWorkspaceCommand([]string{
 		"workspace", verb, "feature", "--mcp=false", "--watch=false", "--live-frontend=false",
-		"--allow-isolation-source-changes=false",
 	}, io.Discard)
 	if err != nil {
 		t.Fatal(err)
@@ -333,7 +327,6 @@ func checkWorkspaceSavedLaunchFlags(
 	want.MCP = false
 	want.Watch = false
 	want.LiveFrontend = false
-	want.AllowIsolationSourceChanges = false
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("explicit false or saved settings lost: %+v", got)
 	}

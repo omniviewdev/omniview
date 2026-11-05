@@ -80,17 +80,10 @@ func startCLIEdgeOwner(t *testing.T, f *cliEdgeFixture) (*devworkspace.Manager, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	selected, err := manager.Inspect(ctx, f.workspace.Manifest.WorkspaceID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sdkRevision := ""
-	for _, repository := range selected.Manifest.Repositories {
-		if repository.ID == "plugin-sdk" {
-			sdkRevision = repository.BaseCommit
-		}
-	}
-	status, launchErr := manager.Start(ctx, f.workspace.Manifest.WorkspaceID, devworkspace.LaunchOptions{Mode: "browser", ReviewedSDKRevision: sdkRevision, Timeout: 20 * time.Second}, os.Args[0], io.Discard)
+	status, launchErr := manager.Start(
+		ctx, f.workspace.Manifest.WorkspaceID,
+		devworkspace.LaunchOptions{Mode: "browser", Timeout: 20 * time.Second}, os.Args[0], io.Discard,
+	)
 	if status.Generation == "" {
 		_ = listener.Close()
 	}
