@@ -95,7 +95,9 @@ describe('normalizePluginRoutes', () => {
       path: '/plugin',
       Component: PluginLayout,
       children: [
-        { path: 'broken', lazy: async () => { throw new Error('import rejected'); } },
+        { path: 'broken', lazy: async () => {
+          throw new Error('import rejected');
+        } },
         { path: 'healthy', element: <div>Healthy page</div> },
       ],
     }], 'test-plugin'), { initialEntries: ['/plugin/broken'] });

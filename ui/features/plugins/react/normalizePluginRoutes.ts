@@ -13,14 +13,15 @@ export function normalizePluginRoutes(routes: RouteObject[], pluginId: string): 
     // allowing a successfully loaded module to provide its own fallback.
     let renderLazyBoundary: (() => ReactNode) | undefined;
     const boundary = hasBoundary ? {} : typeof lazy === 'function' ? {
-      ErrorBoundary: () => renderLazyBoundary ? renderLazyBoundary() : createElement(ErrorBoundary),
+      ErrorBoundary: (): ReactNode => renderLazyBoundary ? renderLazyBoundary() : createElement(ErrorBoundary),
       lazy: async () => {
         const { ErrorBoundary: LazyBoundary, errorElement, ...loaded } = await lazy();
         if (LazyBoundary !== undefined) {
           renderLazyBoundary = () => createElement(LazyBoundary);
         } else if (errorElement !== undefined) {
-          renderLazyBoundary = () => errorElement;
+          renderLazyBoundary = (): ReactNode => errorElement;
         }
+
         return loaded;
       },
     } : { ErrorBoundary };
