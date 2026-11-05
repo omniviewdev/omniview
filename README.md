@@ -54,6 +54,12 @@ Settings → AI Tools controls the loopback MCP relay. Resource tools expose pro
 labels, descriptions and danger notices. Actions and mutations require consent unless the
 tool's confirm override is set to false.
 
+For configured Kubernetes connections, generic `kubernetes_resource_*` tools remain
+available while the cluster is disconnected. The first approved call starts the selected
+connection. `kubernetes_resource_catalog` returns the live operations and argument schemas.
+The relay checks AI Tools policy and consent for both the generic call and the selected
+resource operation. Unsupported operations return an error.
+
 The read-only preset includes per-resource metrics and route-level events, health and related
 resources. Each route-level tool accepts a resource type from its advertised enum. Unsupported
 provider operations return an error; health can return `null` when the provider has no assessment.

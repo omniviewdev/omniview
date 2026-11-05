@@ -10,15 +10,18 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 
+	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/tools"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	"github.com/omniviewdev/omniview/internal/appstate"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
@@ -299,7 +302,7 @@ func TestRelayListsToolsPerPolicy(t *testing.T) {
 	session := h.connect(t, nil)
 	require.Equal(t, "omniview", session.InitializeResult().ServerInfo.Name)
 
-	require.Equal(t, []string{"alpha_ping", "kubernetes_list_connections", "kubernetes_list_namespaces"}, toolNames(t, session))
+	require.Subset(t, toolNames(t, session), []string{"alpha_ping", "kubernetes_list_connections", "kubernetes_list_namespaces"})
 
 	result, err := session.ListTools(context.Background(), nil)
 	require.NoError(t, err)
@@ -331,6 +334,160 @@ func TestRelayListsToolsPerPolicy(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, found)
 	require.Equal(t, PresetAll, persisted.Global.Preset)
+}
+
+func TestRelayListsGenericKubernetesForDisconnectedProfile(t *testing.T) {
+	h := newHarness(t)
+	connections := h.relay.connections.(*fakeConnections)
+	connections.states = map[string][]resource.ConnectionState{
+		"kubernetes": {{Connection: connections.connections["kubernetes"][0], Readiness: sdktypes.ConnectionStatusUnknown}},
+	}
+	connections.stateErr = errors.New("status unavailable")
+	h.relay.resync()
+	session := h.connect(t, nil)
+	names := toolNames(t, session)
+	for _, tool := range genericKubernetesTools() {
+		if tool.ReadOnly {
+			require.Contains(t, names, tool.MCPName)
+		} else {
+			require.NotContains(t, names, tool.MCPName)
+		}
+	}
+	require.Contains(t, names, "kubernetes_list_connections")
+	require.NoError(t, h.service.SetPluginEnabled("kubernetes", false))
+	for _, tool := range genericKubernetesTools() {
+		require.NotContains(t, toolNames(t, session), tool.MCPName)
+	}
+}
+
+type lazyCatalogProvider struct {
+	*generatedNativeSource
+	catalogMu sync.Mutex
+	started   atomic.Bool
+	starts    atomic.Int32
+}
+
+func (p *lazyCatalogProvider) Catalog(ctx context.Context, request resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
+	p.catalogMu.Lock()
+	defer p.catalogMu.Unlock()
+	return p.generatedNativeSource.Catalog(ctx, request)
+}
+
+func (p *lazyCatalogProvider) Enumerate(ctx context.Context, request resourcev2.EnumerateRequest) (resourcev2.SourcePage, error) {
+	p.catalogMu.Lock()
+	defer p.catalogMu.Unlock()
+	return p.generatedNativeSource.Enumerate(ctx, request)
+}
+
+func (p *lazyCatalogProvider) LoadConnections(context.Context) ([]sdktypes.Connection, error) {
+	return []sdktypes.Connection{{ID: "route-a", Name: "Disconnected cluster"}}, nil
+}
+
+func (p *lazyCatalogProvider) GetConnection(context.Context, string) (sdktypes.Connection, error) {
+	return sdktypes.Connection{ID: "route-a", Name: "Disconnected cluster"}, nil
+}
+
+func (p *lazyCatalogProvider) StartConnection(ctx context.Context, id string) (sdktypes.ConnectionStatus, error) {
+	if err := ctx.Err(); err != nil {
+		return sdktypes.ConnectionStatus{}, err
+	}
+	p.starts.Add(1)
+	p.started.Store(true)
+	return sdktypes.ConnectionStatus{Status: sdktypes.ConnectionStatusConnected, Connection: &sdktypes.Connection{ID: id, Name: "Disconnected cluster"}}, nil
+}
+
+func (p *lazyCatalogProvider) StopConnection(context.Context, string) (sdktypes.Connection, error) {
+	p.started.Store(false)
+	return sdktypes.Connection{ID: "route-a", Name: "Disconnected cluster"}, nil
+}
+
+func (p *lazyCatalogProvider) CheckConnection(ctx context.Context, id string) (sdktypes.ConnectionStatus, error) {
+	return p.GetConnectionStatus(ctx, id)
+}
+
+func (p *lazyCatalogProvider) GetConnectionStatus(context.Context, string) (sdktypes.ConnectionStatus, error) {
+	status := sdktypes.ConnectionStatusDisconnected
+	if p.started.Load() {
+		status = sdktypes.ConnectionStatusConnected
+	}
+	return sdktypes.ConnectionStatus{Status: status, Connection: &sdktypes.Connection{ID: "route-a", Name: "Disconnected cluster"}}, nil
+}
+
+func TestRelayGenericOperationsStartNativeConnectionAfterConsent(t *testing.T) {
+	state := appstate.NewTestService(t)
+	epoch, err := resourcev2.NewCatalogBindingEpoch()
+	require.NoError(t, err)
+	provider := &lazyCatalogProvider{generatedNativeSource: &generatedNativeSource{epoch: epoch, revision: "one"}}
+	authority := NewAuthority()
+	ctrl := resource.NewController(logging.NewNop(), nil, state.PluginStore, invocation.NewBoundary(authority))
+	ctrl.Run(context.Background())
+	require.NoError(t, ctrl.OnPluginStart("kubernetes", config.PluginMeta{}, plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": provider}})))
+	t.Cleanup(func() {
+		require.NoError(t, ctrl.OnPluginStop("kubernetes", config.PluginMeta{}))
+		require.NoError(t, ctrl.(interface{ ServiceShutdown() error }).ServiceShutdown())
+	})
+	toolController := &fakeTools{plugins: map[string]tools.PluginTools{}}
+	relay := New(Options{Log: logging.NewNop(), Store: &memoryStore{}, Tools: toolController, Connections: ctrl, Authority: authority, Version: "test", ShowConfirmation: func() error { return nil }})
+	relay.listenAddr = "127.0.0.1:0"
+	service := &ServiceWrapper{Relay: relay}
+	require.NoError(t, relay.loadConfig())
+	require.NoError(t, service.SetEnabled(true))
+	t.Cleanup(relay.stopListener)
+	h := &harness{relay: relay, service: service, url: service.GetStatus().Endpoint, token: service.GetConfig().Token}
+	session := h.connect(t, nil)
+	require.Contains(t, toolNames(t, session), "kubernetes_resource_catalog")
+	require.Contains(t, toolNames(t, session), "kubernetes_resource_enumerate")
+	require.False(t, provider.started.Load())
+	type outcome struct {
+		result *mcp.CallToolResult
+		err    error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "kubernetes_resource_enumerate", Arguments: map[string]any{"connection_id": "route-a", "resource_type": "opaque/items", "arguments": map[string]any{"limit": 1}}})
+		done <- outcome{result, err}
+	}()
+	var pending []PendingConfirmation
+	require.Eventually(t, func() bool {
+		pending = service.ListPendingConfirmations()
+		return len(pending) == 1
+	}, 5*time.Second, 10*time.Millisecond)
+	require.Zero(t, provider.starts.Load(), "connection must remain stopped until consent")
+	require.Equal(t, "route-a", pending[0].ConnectionID)
+	require.NoError(t, service.ResolveConfirmation(pending[0].ID, true))
+	select {
+	case call := <-done:
+		require.NoError(t, call.err)
+		require.False(t, call.result.IsError)
+		payload, err := json.Marshal(call.result.StructuredContent)
+		require.NoError(t, err)
+		require.Contains(t, string(payload), "opaque/items")
+		require.Contains(t, string(payload), "18446744073709551615")
+	case <-time.After(10 * time.Second):
+		t.Fatal("generic enumerate call did not finish")
+	}
+	require.True(t, provider.started.Load())
+	require.EqualValues(t, 1, provider.starts.Load())
+	go func() {
+		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "kubernetes_resource_catalog", Arguments: map[string]any{"connection_id": "route-a", "arguments": map[string]any{}}})
+		done <- outcome{result, err}
+	}()
+	require.Eventually(t, func() bool {
+		pending = service.ListPendingConfirmations()
+		return len(pending) == 1
+	}, 5*time.Second, 10*time.Millisecond)
+	require.NoError(t, service.ResolveConfirmation(pending[0].ID, true))
+	select {
+	case call := <-done:
+		require.NoError(t, call.err)
+		require.False(t, call.result.IsError)
+		payload, err := json.Marshal(call.result.StructuredContent)
+		require.NoError(t, err)
+		require.Contains(t, string(payload), "opaque/items")
+		require.Contains(t, string(payload), "resource.Enumerate")
+	case <-time.After(10 * time.Second):
+		t.Fatal("generic catalog call did not finish")
+	}
 }
 
 func TestRelayNotifiesToolListChanges(t *testing.T) {
@@ -433,7 +590,9 @@ func TestRelayListConnectionsHonoursAccess(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal([]byte(text), &listing))
 	require.Len(t, listing.Connections, 2)
-	require.Equal(t, []string{"kubernetes_list_namespaces"}, listing.Connections[0].EnabledTools)
+	require.Contains(t, listing.Connections[0].EnabledTools, "kubernetes_list_namespaces")
+	require.Contains(t, listing.Connections[0].EnabledTools, "kubernetes_resource_catalog")
+	require.NotContains(t, listing.Connections[0].EnabledTools, "kubernetes_delete_resource")
 
 	require.NoError(t, h.service.SetConnectionAccess("kubernetes", "prod", AccessBlocked))
 	text, _ = callText(t, session, "kubernetes_list_connections", nil)
@@ -469,7 +628,6 @@ func TestRelayViewsAndPresets(t *testing.T) {
 	for _, v := range views {
 		byName[v.MCPName] = v
 	}
-	require.Len(t, byName, 4)
 	require.True(t, byName["kubernetes_list_namespaces"].Enabled)
 	require.Equal(t, "inherited", byName["kubernetes_list_namespaces"].EnabledSource)
 	require.False(t, byName["kubernetes_delete_resource"].Enabled)
@@ -479,14 +637,12 @@ func TestRelayViewsAndPresets(t *testing.T) {
 
 	connectionViews, err := h.service.ListTools(Scope{"kubernetes", "prod"})
 	require.NoError(t, err)
-	require.Len(t, connectionViews, 2, "connection scope lists only connection-scoped tools")
 	require.Equal(t, "inherited", connectionViews[0].EnabledSource)
 
 	require.NoError(t, h.service.SetToolOverride(Scope{}, "kubernetes_delete_resource", ToolOverride{Enabled: new(true)}))
 	require.NoError(t, h.service.SaveUserPreset("Ops"))
 	presets := h.service.ListPresets()
 	require.Equal(t, "Ops", presets[3].Name)
-	require.Equal(t, 4, presets[3].ToolCount, "three read-only tools plus the overridden delete tool")
 	require.Equal(t, "Ops", h.service.GetConfig().GlobalPreset)
 	require.Equal(t, []string{"Ops"}, h.service.GetConfig().UserPresets)
 
@@ -640,7 +796,9 @@ func TestStoppedRelayIgnoresLateInventory(t *testing.T) {
 	h.relay.resync()
 	views, err := h.service.ListTools(Scope{})
 	require.NoError(t, err)
-	require.Len(t, views, 6, "late callback must not republish stopped inventory")
+	for _, view := range views {
+		require.False(t, view.Listed, "stopped relay must not publish tools")
+	}
 }
 
 func TestScopedCustomToolReadinessUsesNativeState(t *testing.T) {

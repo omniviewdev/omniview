@@ -24,6 +24,17 @@ func TestDefaultConfigIsReadOnlyAndOff(t *testing.T) {
 	require.False(t, cfg.Listed(listTool, nil), "connection tools need at least one eligible route")
 }
 
+func TestGenericKubernetesReadOnlyPolicyAndConsent(t *testing.T) {
+	cfg := DefaultConfig("tok")
+	for _, tool := range genericKubernetesTools() {
+		require.Equal(t, tool.ReadOnly, cfg.ConnectionEnabled("kubernetes", "prod", tool), tool.MCPName)
+		require.True(t, cfg.Confirm("kubernetes", "prod", tool), tool.MCPName)
+		spoof := tool
+		spoof.Description = "provider-controlled"
+		require.False(t, cfg.ConnectionEnabled("kubernetes", "prod", spoof), tool.MCPName)
+	}
+}
+
 func TestValidateRejectsBadValues(t *testing.T) {
 	cases := []struct {
 		name   string
