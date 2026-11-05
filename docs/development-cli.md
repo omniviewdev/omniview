@@ -88,6 +88,8 @@ not scan sibling directories, create a global index, select a profile, or fetch
 refs. Invalid, redirected, and unavailable collections are omitted; an orphaned
 collection without a registered host worktree still needs explicit `--root`.
 Choose a returned root explicitly with `workspace list --root COLLECTION`.
+Listing skips directories without a `workspace.json`; existing malformed or
+unreadable manifests still cause an error.
 
 The client reads the private per-workspace discovery record and token reference,
 verifies the process start identity, then authenticates `instance.inspect` against

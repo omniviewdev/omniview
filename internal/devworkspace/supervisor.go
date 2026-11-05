@@ -408,7 +408,7 @@ func (s *workspaceSupervisor) persist() {
 	if err := saveLaunchJSON(launchPath(s.workspace, "launch-status.json"), s.snapshot()); err != nil {
 		s.mu.Lock()
 		s.status.Phase = "error"
-		s.status.LastError = devcontract.Fail(4, "generated_conflict", "cannot persist owned launch status; source metadata changed or write failed")
+		s.status.LastError = devcontract.Fail(4, "generated_conflict", "cannot persist owned launch status: "+err.Error())
 		s.mu.Unlock()
 		if s.sessionCancel != nil {
 			s.sessionCancel()
