@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -158,6 +159,7 @@ func (s *developmentControlLifecycle) observeEndpoints(ctx context.Context) {
 	}
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
+	lastDiagnostic := ""
 	for {
 		descriptor := s.readSnapshot()
 		changed := false
@@ -172,7 +174,19 @@ func (s *developmentControlLifecycle) observeEndpoints(ctx context.Context) {
 		// Only a non-production asset handler can use the configured proxy. Its
 		// document and Vite's actual module endpoint must both be observed.
 		if vite != "" && (descriptor.Readiness == "host-ready" || descriptor.Endpoints.Browser != nil) && descriptor.Endpoints.Vite == nil {
-			if hmr, err := devsession.ProbeViteHMR(ctx, vite); err == nil {
+			hmr, err := devsession.ProbeViteHMR(ctx, vite)
+			if os.Getenv("OMNIVIEW_E2E_HMR_DIAGNOSTICS") == "1" {
+				result := "connected"
+				if err != nil {
+					result = err.Error()
+				}
+				diagnostic := fmt.Sprintf("browser_admitted=%t probe=%s", descriptor.Endpoints.Browser != nil, result)
+				if diagnostic != lastDiagnostic {
+					fmt.Fprintln(os.Stderr, "temporary E2E HMR diagnostic:", diagnostic)
+					lastDiagnostic = diagnostic
+				}
+			}
+			if err == nil {
 				descriptor.Endpoints.Vite = &vite
 				descriptor.Endpoints.HMR = &hmr
 				changed = true
