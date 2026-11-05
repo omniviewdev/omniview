@@ -57,6 +57,7 @@ describe('normalizePluginRoutes', () => {
           if (failing) {
             throw new Error('temporary loader failure');
           }
+
           return null;
         },
         element: <div>Recovered page</div>,
