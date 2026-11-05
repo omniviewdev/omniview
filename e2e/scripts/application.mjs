@@ -225,7 +225,7 @@ export async function startApplicationBroker({ application, ownershipDir, env, p
   };
   const start = async profile => {
     profile.generation = randomUUID();
-    const childEnv = { ...profile.env, OMNIVIEW_WORKSPACE_FILE: profile.manifest, OMNIVIEW_GENERATION: profile.generation, WAILS_SERVER_HOST: '127.0.0.1', WAILS_SERVER_PORT: String(profile.port), OMNIVIEW_EXPECTED_SDK_REVISION: env.REVIEWED_SDK_REVISION ?? '', ...(profile.liveFrontend ? { FRONTEND_DEVSERVER_URL: profile.viteURL, OMNIVIEW_E2E_HMR_DIAGNOSTICS: '1' } : {}) };
+    const childEnv = { ...profile.env, OMNIVIEW_WORKSPACE_FILE: profile.manifest, OMNIVIEW_GENERATION: profile.generation, WAILS_SERVER_HOST: '127.0.0.1', WAILS_SERVER_PORT: String(profile.port), OMNIVIEW_EXPECTED_SDK_REVISION: env.REVIEWED_SDK_REVISION ?? '', ...(profile.liveFrontend ? { FRONTEND_DEVSERVER_URL: profile.viteURL } : {}) };
     profile.host = launch(artifact.binary, [], { wrapper: artifact.binary, profileWorkspace: profile.manifest, owner: { WorkspaceID: profile.descriptor.workspaceID, Generation: profile.generation, Role: 'host', Source: join(ownershipDir, profile.name, 'artifact') }, cwd: artifact.root, env: childEnv, log: join(ownershipDir, `${profile.name}-${profile.generation}.log`) });
     records.add(profile.host);
     publishOwnership(profile, 'starting');
