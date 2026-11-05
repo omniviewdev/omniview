@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Button, Dialog, Input, Menu } from '@omniviewdev/base-ui';
+import { LuAppWindow, LuArrowRightToLine, LuChevronDown, LuChevronRight, LuCopy, LuFolderMinus, LuFolderPlus, LuLayers, LuPalette, LuPanelsTopLeft, LuPencil, LuPin, LuPinOff, LuPlus, LuSquareArrowOutUpRight, LuX } from 'react-icons/lu';
 import { currentWindow, useWindowsList } from '@/features/windows';
 import { HOME_PATH } from '../pagePaths';
 import { countTabs, findPaneOfTab, PAGE_GROUP_COLORS, type PageGroupColor, type PageTab } from '../pagesState';
@@ -46,7 +47,7 @@ function PointerMenu({ point, onClose, label, children }: { point: MenuPoint; on
     >
       <Menu.Portal>
         <Menu.Positioner anchor={anchor} side='bottom' align='start' sideOffset={2}>
-          <Menu.Popup aria-label={label} style={{ minWidth: 200 }}>
+          <Menu.Popup aria-label={label}>
             {children}
           </Menu.Popup>
         </Menu.Positioner>
@@ -55,10 +56,10 @@ function PointerMenu({ point, onClose, label, children }: { point: MenuPoint; on
   );
 }
 
-function Submenu({ label, children, disabled }: { label: string; children: ReactNode; disabled?: boolean }) {
+function Submenu({ label, children, disabled, icon }: { label: string; children: ReactNode; disabled?: boolean; icon: ReactNode }) {
   return (
     <Menu.SubmenuRoot>
-      <Menu.SubmenuTrigger showCaret disabled={disabled}>{label}</Menu.SubmenuTrigger>
+      <Menu.SubmenuTrigger startDecorator={icon} showCaret disabled={disabled}>{label}</Menu.SubmenuTrigger>
       <Menu.Portal>
         <Menu.Positioner sideOffset={4}>
           <Menu.Popup>{children}</Menu.Popup>
@@ -87,18 +88,18 @@ export function PageTabMenu({ tabId, point, onClose }: { tabId: string; point: M
 
   return (
     <PointerMenu point={point} onClose={onClose} label='Tab actions'>
-      <Menu.Item onClick={() => controller.openTabAfter(tabId, HOME_PATH)}>New tab to the right</Menu.Item>
-      <Menu.Item onClick={() => {
+      <Menu.Item startDecorator={<LuPlus />} onClick={() => controller.openTabAfter(tabId, HOME_PATH)}>New tab to the right</Menu.Item>
+      <Menu.Item startDecorator={<LuCopy />} onClick={() => {
         controller.duplicateTab(tabId); 
       }}>Duplicate</Menu.Item>
-      <Menu.Item onClick={() => {
+      <Menu.Item startDecorator={tab.pinned ? <LuPinOff /> : <LuPin />} onClick={() => {
         controller.dispatch({ type: 'setPinned', tabId, pinned: !tab.pinned }); 
       }}>
         {tab.pinned ? 'Unpin' : 'Pin'}
       </Menu.Item>
       <Menu.Separator />
-      <Submenu label='Add to group'>
-        <Menu.Item onClick={() => {
+      <Submenu label='Add to group' icon={<LuFolderPlus />}>
+        <Menu.Item startDecorator={<LuFolderPlus />} onClick={() => {
           controller.addTabToNewGroup(tabId); 
         }}>New group</Menu.Item>
         {state.groups.filter((group) => group.id !== tab.groupId).map((group) => (
@@ -114,20 +115,21 @@ export function PageTabMenu({ tabId, point, onClose }: { tabId: string; point: M
         ))}
       </Submenu>
       {tab.groupId && (
-        <Menu.Item onClick={() => {
+        <Menu.Item startDecorator={<LuFolderMinus />} onClick={() => {
           controller.dispatch({ type: 'removeFromGroup', tabId }); 
         }}>Remove from group</Menu.Item>
       )}
       <Menu.Separator />
-      <Menu.Item disabled={!isSplit && pane.tabIds.length === 1} onClick={() => {
+      <Menu.Item startDecorator={<LuPanelsTopLeft />} disabled={!isSplit && pane.tabIds.length === 1} onClick={() => {
         controller.splitTab(tabId); 
       }}>
         {isSplit ? 'Move to other pane' : 'Split right'}
       </Menu.Item>
-      {isSplit && <Menu.Item onClick={() => {
+      {isSplit && <Menu.Item startDecorator={<LuPanelsTopLeft />} onClick={() => {
         controller.dispatch({ type: 'unsplit' }); 
       }}>Close split view</Menu.Item>}
       <Menu.Item
+        startDecorator={<LuSquareArrowOutUpRight />}
         disabled={!canMoveToNewWindow}
         onClick={() => {
           controller.moveTabToNewWindow(tabId).catch(logFailure('moving the tab to a new window'));
@@ -135,10 +137,11 @@ export function PageTabMenu({ tabId, point, onClose }: { tabId: string; point: M
       >
         Move to new window
       </Menu.Item>
-      <Submenu label='Move to window' disabled={!canLeave || otherWorkspaceWindows.length === 0}>
+      <Submenu label='Move to window' icon={<LuAppWindow />} disabled={!canLeave || otherWorkspaceWindows.length === 0}>
         {otherWorkspaceWindows.map((window) => (
           <Menu.Item
             key={window.name}
+            startDecorator={<LuAppWindow />}
             onClick={() => {
               controller.moveTabToWindow(tabId, window.name).catch(logFailure(`moving the tab to ${window.name}`));
             }}
@@ -148,13 +151,13 @@ export function PageTabMenu({ tabId, point, onClose }: { tabId: string; point: M
         ))}
       </Submenu>
       <Menu.Separator />
-      <Menu.Item onClick={() => {
+      <Menu.Item startDecorator={<LuX />} onClick={() => {
         controller.closeTabs([tabId]); 
       }}>Close</Menu.Item>
-      <Menu.Item disabled={pane.tabIds.length === 1} onClick={() => {
+      <Menu.Item startDecorator={<LuPanelsTopLeft />} disabled={pane.tabIds.length === 1} onClick={() => {
         controller.closeOtherTabs(tabId); 
       }}>Close others</Menu.Item>
-      <Menu.Item disabled={index === pane.tabIds.length - 1} onClick={() => {
+      <Menu.Item startDecorator={<LuArrowRightToLine />} disabled={index === pane.tabIds.length - 1} onClick={() => {
         controller.closeTabsToTheRight(tabId); 
       }}>
         Close to the right
@@ -178,10 +181,10 @@ export function PageGroupMenu({ groupId, point, onClose, onRename }: {
 
   return (
     <PointerMenu point={point} onClose={onClose} label='Group actions'>
-      <Menu.Item onClick={() => {
+      <Menu.Item startDecorator={<LuPencil />} onClick={() => {
         onRename(groupId); 
       }}>Rename…</Menu.Item>
-      <Submenu label='Color'>
+      <Submenu label='Color' icon={<LuPalette />}>
         {PAGE_GROUP_COLORS.map((color) => (
           <Menu.Item
             key={color}
@@ -194,16 +197,16 @@ export function PageGroupMenu({ groupId, point, onClose, onRename }: {
           </Menu.Item>
         ))}
       </Submenu>
-      <Menu.Item onClick={() => {
+      <Menu.Item startDecorator={group.collapsed ? <LuChevronRight /> : <LuChevronDown />} onClick={() => {
         controller.dispatch({ type: 'updateGroup', groupId, changes: { collapsed: !group.collapsed } }); 
       }}>
         {group.collapsed ? 'Expand' : 'Collapse'}
       </Menu.Item>
-      <Menu.Item onClick={() => {
+      <Menu.Item startDecorator={<LuLayers />} onClick={() => {
         controller.dispatch({ type: 'ungroup', groupId }); 
       }}>Ungroup</Menu.Item>
       <Menu.Separator />
-      <Menu.Item onClick={() => {
+      <Menu.Item startDecorator={<LuX />} onClick={() => {
         controller.closeGroup(groupId); 
       }}>Close group</Menu.Item>
     </PointerMenu>

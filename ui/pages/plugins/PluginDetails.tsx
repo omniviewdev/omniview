@@ -1,11 +1,11 @@
 import { useState, type FC } from 'react';
 
-import { Avatar, Button, Chip, Heading, Stack, Tabs, Text, useTheme } from '@omniviewdev/base-ui';
+import { Avatar, Button, Chip, Heading, IconButton, Menu, Stack, Tabs, Text, useTheme } from '@omniviewdev/base-ui';
 
 // Third party
 import MarkdownPreview from '@uiw/react-markdown-preview';
 import { useParams, useNavigate } from 'react-router';
-import { LuDownload, LuExternalLink } from 'react-icons/lu';
+import { LuDownload, LuEllipsis, LuExternalLink } from 'react-icons/lu';
 import { usePluginManager, usePlugin } from '@/hooks/plugin/usePluginManager';
 import { Browser } from '@omniviewdev/runtime/runtime';
 import PluginUpdateButton from './PluginUpdateButton';
@@ -46,6 +46,11 @@ const PluginDetails: FC = () => {
   const frontendState = frontendPlugins.get(id);
   const builtinFailed = builtin && (installed.phase === 'Failed' || frontendState?.phase === 'error');
   const builtinError = orFallback(frontendState?.error, installed?.lastError);
+  const startupError = builtin ? builtinError : installed?.lastError;
+  const canRetryStartup = !!installed && (builtin ? installed.enabled && builtinFailed : installed.phase !== 'Running');
+  const showStartupStatus = !!installed && (
+    (builtin && !!operation) || !!startupError || canRetryStartup
+  );
   const marketplace = builtin ? undefined : available.data?.find(p => p.id === id);
   const visibleTabs = builtin ? BUILTIN_TABS : TABS;
   const selectedTab = visibleTabs.some(tab => tab.key === activeTab) ? activeTab : 'overview';
@@ -116,7 +121,6 @@ const PluginDetails: FC = () => {
           <Text as='p' size='sm' tone='muted' className={styles.Description}>
             {displayDescription}
           </Text>
-          {builtin && builtinError && <Text as='p' size='sm' tone='danger' role='alert'>{builtinError}</Text>}
           {builtin && <Text as='p' size='sm' tone='muted'>Included with Omniview. Updates ship with the application.</Text>}
 
           {/* Metadata row */}
@@ -159,13 +163,32 @@ const PluginDetails: FC = () => {
             )}
           </Stack>
         </div>
+        <Menu.Root>
+          <Menu.Trigger render={
+            <IconButton size='sm' variant='ghost' aria-label='Plugin actions'>
+              <LuEllipsis />
+            </IconButton>
+          } />
+          <Menu.Portal>
+            <Menu.Positioner side='bottom' align='end' sideOffset={4}>
+              <Menu.Popup>
+                <Menu.Item onClick={() => {
+                  void navigate(`/developer-tools/extensions?plugin=${encodeURIComponent(id)}`);
+                }}>Inspect contributions</Menu.Item>
+              </Menu.Popup>
+            </Menu.Positioner>
+          </Menu.Portal>
+        </Menu.Root>
 
-        <details>
-          <summary>Plugin tools</summary>
-          <Stack direction='row' spacing={2} className={styles.HeaderActions}>
-            <Button variant='outline' size='sm' onClick={() => {
-              void navigate(`/developer-tools/extensions?plugin=${encodeURIComponent(id)}`); 
-            }}>Inspect contributions</Button>
+        {installed && (
+        <Stack direction='row' spacing={2} align='center' wrap className={styles.HeaderActions}>
+            {builtin && (
+              <Button variant='outline' size='sm' disabled={!!operation || setEnabled.isPending} onClick={() => {
+                setEnabled.mutate(!installed.enabled);
+              }}>
+                {setEnabled.isPending ? 'Saving…' : !installed.enabled ? 'Enable' : 'Disable'}
+              </Button>
+            )}
             {!!installed && <Button variant="outline" size="sm" onClick={(): void | Promise<void> => navigate(connectionProfilesPath(id))}>Connection profiles</Button>}
             {!!installed && !builtin && (
               <Button
@@ -180,16 +203,10 @@ const PluginDetails: FC = () => {
                 Uninstall
               </Button>
             )}
-          </Stack>
-        </details>
+        </Stack>
+        )}
       </div>
-      {builtin ? (
-        <Button variant='outline' size='sm' disabled={!!operation || setEnabled.isPending} onClick={() => {
-          setEnabled.mutate(!installed.enabled);
-        }}>
-          {setEnabled.isPending ? 'Saving…' : !installed.enabled ? 'Enable' : 'Disable'}
-        </Button>
-      ) : (
+      {!builtin && (
         <PluginUpdateButton
           key={id}
           pluginID={id}
@@ -211,10 +228,10 @@ const PluginDetails: FC = () => {
         }}
       />}
 
-      {installed && <Stack direction='row' spacing={2} align='center'>
-        <Text size='sm' role='status'>{operation ?? `Startup: ${installed.phase}`}</Text>
-        {installed.lastError && <Text size='sm' role='alert'>{installed.lastError}</Text>}
-        {(builtin ? installed.enabled && builtinFailed : installed.phase !== 'Running') && <Button size='sm' variant='outline' disabled={!!operation} onClick={() => {
+      {showStartupStatus && <Stack direction='row' spacing={2} align='center' wrap className={styles.StartupStatus}>
+        {builtin && operation ? <Text size='sm' role='status'>{operation}</Text> : !builtin && installed?.phase !== 'Running' && <Text size='sm' role='status'>{installed?.phase}</Text>}
+        {startupError && <Text size='sm' tone='danger' role='alert'>{startupError}</Text>}
+        {canRetryStartup && <Button size='sm' variant='outline' disabled={!!operation} onClick={() => {
           void reload().catch(() => undefined); 
         }}>Retry startup</Button>}
       </Stack>}

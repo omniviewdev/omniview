@@ -30,13 +30,8 @@ export default function PluginUpdateButton({ pluginID, currentVersion = '', inst
   };
 
   const label = installed ? 'Update' : 'Install';
-  return <Stack direction='column' spacing={3} className={styles.InstallCard}>
-    <Stack direction='row' spacing={3} align='center' wrap>
-      <Stack direction='column' spacing={1} className={styles.InstallSummary}>
-        <Text weight='semibold'>{installed ? 'Manage installation' : 'Install plugin'}</Text>
-        <Text size='sm' tone='muted'>{currentVersion ? `Installed ${currentVersion} · ` : ''}{recommended ? `Recommended ${recommended.version}` : 'No compatible release'}</Text>
-        {recommended?.compatibility_reason && <Text size='xs' tone='muted'>{recommended.compatibility_reason}</Text>}
-      </Stack>
+  return <Stack direction='column' spacing={2} className={styles.InstallCard}>
+    <Stack direction='row' spacing={2} align='center' wrap className={styles.InstallActions}>
       <Button size='sm' color='brand' variant='solid'
         disabled={busy || !recommended || (!!currentVersion && compareVersions(recommended.version, currentVersion) <= 0)}
         onClick={() => {
@@ -44,18 +39,17 @@ export default function PluginUpdateButton({ pluginID, currentVersion = '', inst
             void run(recommended.version);
           } 
         }}>
-        {operation ?? (versions.isLoading ? 'Loading versions…' : currentVersion && recommended && compareVersions(recommended.version, currentVersion) <= 0 ? 'Installed' : `${label}${recommended ? ` ${recommended.version}` : ''}`)}
+        {versions.isLoading ? 'Loading versions…' : currentVersion && recommended && compareVersions(recommended.version, currentVersion) <= 0 ? 'Installed' : `${label}${recommended ? ` ${recommended.version}` : ''}`}
       </Button>
       <Button size='sm' variant='outline' disabled={busy} onClick={() => {
         setChooser(true); 
       }}>Other versions…</Button>
-    </Stack>
-    <Stack direction='row' spacing={2} align='center'>
-      <Text size='xs' tone='muted'>{versions.isFetching ? 'Checking marketplace…' : versions.dataUpdatedAt ? `Checked ${new Date(versions.dataUpdatedAt).toLocaleTimeString()}` : 'Marketplace not checked'}</Text>
-      <Button size='sm' variant='outline' disabled={versions.isFetching || busy} onClick={async () => {
+      <Button size='sm' variant='ghost' disabled={versions.isFetching || busy} onClick={async () => {
         await versions.refetch();
       }}>Refresh</Button>
+      {versions.isFetching && !versions.isLoading && <Text size='xs' tone='muted' role='status'>Checking versions…</Text>}
     </Stack>
+    {recommended?.compatibility_reason && <Text size='xs' tone='muted'>{recommended.compatibility_reason}</Text>}
     {operation && <Text size='sm' role='status'>{operation}</Text>}
     {versions.isError && <Text size='sm' role='alert'>Could not load versions. <Button size='sm' variant='ghost' onClick={async () => {
       await versions.refetch();
