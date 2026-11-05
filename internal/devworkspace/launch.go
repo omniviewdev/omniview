@@ -56,6 +56,7 @@ func LoadLaunchOptions(w Workspace) (LaunchOptions, error) {
 const (
 	goFlagsEnv           = "GOFLAGS"
 	goWorkEnv            = "GOWORK"
+	nodePathEnv          = "NODE_PATH"
 	bindingsNode         = "bindings"
 	buildingPhase        = "building"
 	buildFailureExitCode = 5
@@ -75,7 +76,7 @@ func workspaceEnvironment(base []string, w Workspace, generation string, o Launc
 			continue
 		}
 		switch key {
-		case goWorkEnv, goFlagsEnv, "GO_MODFILE", "GOROOT", "NODE_PATH", "SDK_SOURCE", "OMNIVIEW_PLUGIN_PNPM_COMMANDS", "OMNIVIEW_VITE_ALLOWED_ROOTS", "WAILS_VITE_PORT", "FORCE_COLOR", "NO_COLOR", "OMNIVIEW_WORKSPACE_FILE", "OMNIVIEW_STATE_DIR", "OMNIVIEW_INSTANCE_ID", "OMNIVIEW_GENERATION", "OMNIVIEW_WORKSPACE_GRAPH_WATCH", "FRONTEND_DEVSERVER_URL", "WAILS_SERVER_HOST", "WAILS_SERVER_PORT", "WAILS_MCP_HOST", "WAILS_MCP_PORT", "WAILS_MCP_TOKEN", "WAILS_MCP", "OMNIVIEW_CHANNEL":
+		case goWorkEnv, goFlagsEnv, "GO_MODFILE", "GOROOT", nodePathEnv, "SDK_SOURCE", "OMNIVIEW_PLUGIN_PNPM_COMMANDS", "OMNIVIEW_VITE_ALLOWED_ROOTS", "WAILS_VITE_PORT", "FORCE_COLOR", "NO_COLOR", "OMNIVIEW_WORKSPACE_FILE", "OMNIVIEW_STATE_DIR", "OMNIVIEW_INSTANCE_ID", "OMNIVIEW_GENERATION", "OMNIVIEW_WORKSPACE_GRAPH_WATCH", "FRONTEND_DEVSERVER_URL", "WAILS_SERVER_HOST", "WAILS_SERVER_PORT", "WAILS_MCP_HOST", "WAILS_MCP_PORT", "WAILS_MCP_TOKEN", "WAILS_MCP", "OMNIVIEW_CHANNEL":
 			continue
 		}
 		env = append(env, entry)
@@ -359,7 +360,9 @@ func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 				}
 				resultErr = errors.Join(resultErr, recordStableHostModTree(hostModOutput))
 			}()
-			args := []string{bindingsNode, "DEV=true", "EXTRA_TAGS=devcontrol", "BINDINGS_OUTPUT_DIRECTORY=" + outputDirectory, "HOST_MOD_OUTPUT_DIRECTORY=" + hostModOutput.Directory, "GO_BUILD_CACHE_DIRECTORY=" + s.goBuildCache}
+			args := []string{bindingsNode, "DEV=true", "EXTRA_TAGS=devcontrol",
+				"BINDINGS_OUTPUT_DIRECTORY=" + outputDirectory, "HOST_MOD_OUTPUT_DIRECTORY=" + hostModOutput.Directory,
+				"GO_BUILD_CACHE_DIRECTORY=" + s.goBuildCache}
 			if o.Mode == "browser" {
 				args = append(args, "SERVER=true")
 			}
@@ -371,14 +374,16 @@ func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 		}, Output: s.output, OnEvent: func(event BuildEvent) {
 			s.mu.Lock()
 			s.status.Builds[event.Node] = event
-			if event.Phase == buildingPhase {
+			switch event.Phase {
+			case buildingPhase:
 				s.status.Phase = buildingPhase
 				s.status.LastError = nil
-			} else if event.Phase == "error" || event.Phase == "invalidated" {
+			case "error", "invalidated":
 				s.status.Phase = "build-error"
 				s.status.FailedStage = event.Node
 				s.status.RecoveryCommand = workspaceRecoveryCommand(s.workspace, "refresh")
-				s.status.LastError = devcontract.Fail(buildFailureExitCode, "build_failed", safeCompilerDiagnostic(event.Error, s.workspace.Root))
+				s.status.LastError = devcontract.Fail(buildFailureExitCode, "build_failed",
+					safeCompilerDiagnostic(event.Error, s.workspace.Root))
 			}
 			s.mu.Unlock()
 			s.persist()
