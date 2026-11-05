@@ -20,10 +20,12 @@ afterEach(() => {
 
 describe('normalizePluginRoutes', () => {
   it.each(['render', 'loader'] as const)('contains child %s failures and recovers on navigation', async (failure) => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(vi.fn());
     const broken: RouteObject = failure === 'render'
       ? { path: '/broken', Component: CrashingPage }
-      : { path: '/broken', loader: () => { throw new Error('route loader failed'); } };
+      : { path: '/broken', loader: () => {
+        throw new Error('route loader failed');
+      } };
     const router = createMemoryRouter(normalizePluginRoutes([{
       path: '/plugin',
       Component: PluginLayout,
@@ -34,7 +36,9 @@ describe('normalizePluginRoutes', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(`route ${failure} failed`);
     expect(screen.getByText('Plugin navigation')).toBeInTheDocument();
     expect(screen.getByText('Plugin: test-plugin')).toBeInTheDocument();
-    await act(async () => { await router.navigate('/plugin/healthy'); });
+    await act(async () => {
+      await router.navigate('/plugin/healthy');
+    });
     expect(screen.getByText('Healthy page')).toBeInTheDocument();
     expect(screen.getByText('Plugin navigation')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -42,7 +46,7 @@ describe('normalizePluginRoutes', () => {
   });
 
   it('recovers after retrying a failed loader through same-route navigation', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(vi.fn());
     let failing = true;
     const router = createMemoryRouter(normalizePluginRoutes([{
       path: '/plugin',
@@ -50,7 +54,9 @@ describe('normalizePluginRoutes', () => {
       children: [{
         path: 'retry',
         loader: () => {
-          if (failing) throw new Error('temporary loader failure');
+          if (failing) {
+            throw new Error('temporary loader failure');
+          }
           return null;
         },
         element: <div>Recovered page</div>,
@@ -59,7 +65,9 @@ describe('normalizePluginRoutes', () => {
     render(<RouterProvider router={router} />);
     expect(await screen.findByRole('alert')).toHaveTextContent('temporary loader failure');
     failing = false;
-    await act(async () => { await router.navigate('/plugin/retry'); });
+    await act(async () => {
+      await router.navigate('/plugin/retry');
+    });
     expect(await screen.findByText('Recovered page')).toBeInTheDocument();
     expect(screen.getByText('Plugin navigation')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -81,7 +89,7 @@ describe('normalizePluginRoutes', () => {
   });
 
   it('contains lazy page failures without replacing lazy plugin boundaries', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(vi.fn());
     const CustomBoundary = () => <div>Lazy custom error</div>;
     const router = createMemoryRouter(normalizePluginRoutes([{
       path: '/plugin',
@@ -99,13 +107,19 @@ describe('normalizePluginRoutes', () => {
     render(<RouterProvider router={router} />);
     expect(await screen.findByRole('alert')).toHaveTextContent('route render failed');
     expect(screen.getByText('Plugin navigation')).toBeInTheDocument();
-    await act(async () => { await router.navigate('/plugin/custom'); });
+    await act(async () => {
+      await router.navigate('/plugin/custom');
+    });
     expect(await screen.findByText('Lazy custom error')).toBeInTheDocument();
     expect(screen.getByText('Plugin navigation')).toBeInTheDocument();
-    await act(async () => { await router.navigate('/plugin/object'); });
+    await act(async () => {
+      await router.navigate('/plugin/object');
+    });
     expect(await screen.findByRole('alert')).toHaveTextContent('route render failed');
     expect(screen.getByText('Plugin navigation')).toBeInTheDocument();
-    await act(async () => { await router.navigate('/plugin/object-custom'); });
+    await act(async () => {
+      await router.navigate('/plugin/object-custom');
+    });
     expect(await screen.findByText('Lazy custom error')).toBeInTheDocument();
     expect(screen.getByText('Plugin navigation')).toBeInTheDocument();
     router.dispose();
