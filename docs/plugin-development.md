@@ -857,8 +857,9 @@ they do not change the separate predicate/projection policy or promise latency.
 
 Source sessions cap retained membership at 128 MiB, the same limit as snapshot
 staging. Incremental changes that exceed this limit fail with `RESOURCE_LIMIT`.
-The separate 256 MiB ledger also accounts for members retained by view snapshots;
-those references can temporarily prevent a replacement snapshot from committing.
+Retained members, committing snapshots, and members referenced by in-progress view
+snapshots share a 256 MiB ledger. View references can cause a snapshot or change
+to fail with `RESOURCE_LIMIT`; the session remains failed until refreshed.
 
 ### Protecting connection-dependent routes
 
