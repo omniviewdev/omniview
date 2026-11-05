@@ -16,8 +16,6 @@ env:
   GO_VERSION: "1.26"
   NODE_VERSION: "26.13.0"
   GOWORK: "off"
-  REVIEWED_SDK_REVISION: ${{ vars.OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION }}
-  REVIEWED_MAINTENANCE_SDK_REVISION: ${{ vars.OMNIVIEW_RESOURCE_V2_REVIEWED_MAINTENANCE_SDK_REVISION }}
 
 jobs:
   release-packaging-checks:
@@ -82,32 +80,11 @@ jobs:
           version: 12.14.0
           install: false
 
-      - name: Admit reviewed candidate cohort
-        id: candidate
-        run: node e2e/scripts/candidate-source.mjs resolve
-
-      - name: Checkout reviewed SDK
-        uses: actions/checkout@v4
-        with:
-          repository: omniviewdev/plugin-sdk
-          ref: ${{ steps.candidate.outputs.sdk }}
-          path: .candidate-sources/sdk
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Select reviewed SDK source
-        run: |
-          export SDK_SOURCE="$(realpath .candidate-sources/sdk)"
-          node e2e/scripts/candidate-source.mjs verify-sdk
-          echo "SDK_SOURCE=$SDK_SOURCE" >> "$GITHUB_ENV"
-
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-          cache-dependency-path: |
-            go.sum
-            .candidate-sources/sdk/go.sum
+          cache-dependency-path: go.sum
 
       - name: Select restored Go cache for Task
         id: go-cache
@@ -155,17 +132,13 @@ jobs:
       - name: Format check
         run: task check:fmt-check GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
 
-      # go/packages probes Go with modules disabled, so GOFLAGS cannot select a modfile.
-      # Keep the approved graph in a private checkout instead of changing source modules.
-      - name: Prepare isolated candidate checkout for lint
+      # Lint runs in a detached worktree on the committed go.mod/go.sum graph.
+      - name: Prepare isolated checkout for lint
         id: lint-source
         run: |
-          effective_modfile="$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go --root "$PWD" --sdk-source "$SDK_SOURCE" --format modfile)"
           lint_directory="$RUNNER_TEMP/omniview-lint"
           mkdir -m 700 "$lint_directory"
           git worktree add --detach "$lint_directory" HEAD
-          cp "$effective_modfile" "$lint_directory/go.mod"
-          cp "${effective_modfile%.mod}.sum" "$lint_directory/go.sum"
           cp -a dist "$lint_directory/"
           git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.sha }}"
           lint_patch="$lint_directory/changes.patch"
@@ -214,32 +187,11 @@ jobs:
         with:
           node-version: "26.13.0"
 
-      - name: Admit reviewed candidate cohort
-        id: candidate
-        run: node e2e/scripts/candidate-source.mjs resolve
-
-      - name: Checkout reviewed SDK
-        uses: actions/checkout@v4
-        with:
-          repository: omniviewdev/plugin-sdk
-          ref: ${{ steps.candidate.outputs.sdk }}
-          path: .candidate-sources/sdk
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Select reviewed SDK source
-        run: |
-          export SDK_SOURCE="$(realpath .candidate-sources/sdk)"
-          node e2e/scripts/candidate-source.mjs verify-sdk
-          echo "SDK_SOURCE=$SDK_SOURCE" >> "$GITHUB_ENV"
-
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-          cache-dependency-path: |
-            go.sum
-            .candidate-sources/sdk/go.sum
+          cache-dependency-path: go.sum
 
       - name: Select restored Go cache for Task
         id: go-cache

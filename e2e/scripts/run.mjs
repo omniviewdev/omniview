@@ -5,13 +5,13 @@ import { delimiter, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { applicationBudget, assertStandaloneBootstrap, commandTimeout, preparationStarted, repositoryCommit, runnerOptions, toolEnvironment } from './execution.mjs';
-import { cohortMatches, selectFromGit } from './select-tests.mjs';
+import { selectFromGit } from './select-tests.mjs';
 import { discoveredSpecs, forceRegExp, prepareApplication, requiresApplication, startApplicationBroker } from './application.mjs';
 import { retireApplicationCohort } from './cohort.mjs';
 import { initializeToolCache, readToolCache, retirePreparationHome } from './tool-cache.mjs';
 import { preparePinnedWailsTool } from '../../scripts/wails-tool.mjs';
 import { prepareLinuxDependencies } from './browser-dependencies.mjs';
-import { admitCandidate, verifyGitlink, verifyIsolation } from './candidate-source.mjs';
+import { resolveSDKSource } from './sdk-source.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const processStarted = Date.now();
@@ -81,8 +81,7 @@ function sourceLocations() {
   return {
     omniview: root,
     'plugin-sdk': resolve(process.env.SDK_SOURCE ?? join(root, '..', 'plugin-sdk')),
-    ui: resolve(process.env.UI_SOURCE ?? join(root, '..', 'ui')),
-    kubernetes: resolve(process.env.KUBERNETES_SOURCE ?? join(root, 'plugins/kubernetes')),
+    kubernetes: join(root, 'plugins/kubernetes'),
   };
 }
 function cacheProtectedRoots(sources, preparationRoot) {
@@ -91,21 +90,6 @@ function cacheProtectedRoots(sources, preparationRoot) {
   const home = process.env.HOME ?? process.env.USERPROFILE;
   if (home) for (const name of ['.omniview', '.omniview-nightly', '.omniview-dev']) protectedRoots.push(join(home, name));
   return protectedRoots;
-}
-function cohortUnchanged(base, cohort) {
-  if (!base || !cohort) return false;
-  try {
-    const ancestor = git(root, 'merge-base', base, 'HEAD');
-    const previous = JSON.parse(git(root, 'show', `${ancestor}:e2e/source-cohort.json`));
-    // This file is only a selection sentinel, not a source authority. A new
-    // explicit compatible cohort runs FULL and still undergoes genuine probes.
-    const actual = Object.fromEntries(['plugin-sdk', 'ui', 'kubernetes'].map(id => {
-      const source = id === 'plugin-sdk' ? (process.env.SDK_SOURCE ?? join(root, '..', id)) : id === 'ui' ? (process.env.UI_SOURCE ?? join(root, '..', id)) : (process.env.KUBERNETES_SOURCE ?? join(root, 'plugins/kubernetes'));
-      if (git(source, 'status', '--porcelain', '--untracked-files=all')) throw Error('Source cohort has uncommitted changes');
-      return [id, repositoryCommit(source, env)];
-    }));
-    return cohortMatches({ current: cohort, baseline: previous, actual });
-  } catch { return false; }
 }
 const playwrightCLI = () => {
   try { return createRequire(join(root, 'e2e/package.json')).resolve('@playwright/test/cli'); } catch {
@@ -131,9 +115,7 @@ async function main() {
     execute(process.execPath, [playwrightCLI(), 'show-report'], { cwd: join(root, 'e2e'), timeout: 0 });
     return;
   }
-  let cohort;
-  try { cohort = JSON.parse(readFileSync(join(root, 'e2e/source-cohort.json'), 'utf8')); } catch { /* Missing sentinel forces full, never another cohort. */ }
-  selection = opts.cacheOnly ? { kind: 'cache-only', groups: [], specs: [], reasons: ['explicit native payload preparation; no application assertions'] } : opts.observe ? { kind: 'observe', groups: ['observation'], specs: ['tests/observation'], reasons: ['explicit read-only opt-in'] } : selectFromGit({ root, base: opts.base, full: opts.full, cohortUnchanged: !opts.full && cohortUnchanged(opts.base, cohort), env });
+  selection = opts.cacheOnly ? { kind: 'cache-only', groups: [], specs: [], reasons: ['explicit native payload preparation; no application assertions'] } : opts.observe ? { kind: 'observe', groups: ['observation'], specs: ['tests/observation'], reasons: ['explicit read-only opt-in'] } : selectFromGit({ root, base: opts.base, full: opts.full, env });
   if (opts.grep && selection.kind !== 'none') {
     selection = { ...selection, kind: 'focused', testFilter: opts.grep, reasons: [...selection.reasons, 'explicit test-name filter; not full acceptance'] };
   }
@@ -208,11 +190,9 @@ async function main() {
     for (const [id, source] of Object.entries(sources)) {
       if (git(source, 'status', '--porcelain', '--untracked-files=all')) throw Error(`Selected ${id} has uncommitted source edits; commit intended source before running owned E2E`);
     }
-    if (!cohortMatches({ current: cohort, baseline: cohort, actual: refs })) throw Error('Selected application sources differ from the checked-in candidate cohort');
-    const candidate = admitCandidate(cohort, process.env);
-    verifyGitlink(candidate, git(root, 'ls-tree', 'HEAD', 'plugins/kubernetes'));
-    verifyIsolation(sources['plugin-sdk'], (source, args) => git(source, ...args));
-    env.REVIEWED_SDK_REVISION = candidate.sdk;
+    const declaredSDK = resolveSDKSource(root, env);
+    if (refs['plugin-sdk'] !== declaredSDK) throw Error(`SDK_SOURCE is at ${refs['plugin-sdk']} but host go.mod resolves github.com/omniviewdev/plugin-sdk to ${declaredSDK}; check out ${declaredSDK} in SDK_SOURCE`);
+    if (git(root, 'ls-tree', 'HEAD', 'plugins/kubernetes') !== `160000 commit ${refs.kubernetes}\tplugins/kubernetes`) throw Error('plugins/kubernetes checkout differs from the host gitlink; run git submodule update --init plugins/kubernetes');
     env.SDK_SOURCE = sources['plugin-sdk'];
   }
   if (process.platform === 'linux') {

@@ -15,9 +15,7 @@ import (
 )
 
 // ConfigureWorkspace is startup-only, before services/managed plugins start.
-// expectedSDKRevision must come from the trusted reviewed-source build graph,
-// never plugin.yaml or a plugin-controlled environment value.
-func (m *DevServerManager) ConfigureWorkspace(profile instance.Profile, registryRoot, expectedSDKRevision string) error {
+func (m *DevServerManager) ConfigureWorkspace(profile instance.Profile, registryRoot string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if len(m.instances) != 0 {
@@ -50,7 +48,6 @@ func (m *DevServerManager) ConfigureWorkspace(profile instance.Profile, registry
 	m.ports.portPolicy = policy
 	m.buildEnvironment = buildEnvironment
 	m.workspace = profile.Workspace
-	m.expectedSDKRevision = expectedSDKRevision
 	return nil
 }
 

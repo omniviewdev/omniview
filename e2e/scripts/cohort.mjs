@@ -35,7 +35,7 @@ export function prepareApplicationCohort({ privateRoot, sources, refs, env, exec
   const config = join(directory, 'cohort.json');
   writeFileSync(config, JSON.stringify({ root: join(directory, 'collection'), sources: copies, refs, evidence }), { mode: 0o600, flag: 'wx' });
   const prepared = phase('canonical-native-cohort-link', () => JSON.parse(execute(tool, ['prepare', config], { capture: true, timeout: 240_000, extraEnv: nativeEnvironment })));
-  if (!prepared.paths?.repositories?.ui || !prepared.paths.repositories['plugin-sdk'] || !prepared.program || prepared.args?.length !== 1) throw Error('Canonical cohort did not provide selected sources and native package command');
+  if (!prepared.paths?.repositories?.['plugin-sdk'] || !prepared.program || prepared.args?.length !== 1) throw Error('Canonical cohort did not provide selected sources and native package command');
   const cohort = { tool, config, originals, refs, nativeEnvironment, sources: prepared.paths.repositories, ...prepared };
   writeFileSync(join(directory, 'prepared.json'), JSON.stringify(cohort), { mode: 0o600, flag: 'wx' });
   return cohort;

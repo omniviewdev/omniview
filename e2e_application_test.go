@@ -39,7 +39,7 @@ func TestApplicationProfilesResolveDistinctActualPrivateState(t *testing.T) {
 }
 
 func TestApplicationPluginRecordRejectsMissingSourceEvidence(t *testing.T) {
-	if err := recordApplicationPlugin("/unused", "workspace-probe", "/unused/plugin", "/unused/sdk", strings.Repeat("a", 40), ""); err == nil {
+	if err := recordApplicationPlugin("/unused", "workspace-probe", "/unused/plugin", "/unused/sdk", ""); err == nil {
 		t.Fatal("unverified source identity was accepted")
 	}
 }

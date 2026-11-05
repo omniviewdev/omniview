@@ -405,9 +405,9 @@ The workspace SDK checkout lacks `pkg/resource/v2`, while the host pins `v0.9.0`
 | `pkg/resource/v2/controller_lifecycle.go:129-157,321-350` | Client leases already cancel and drain during retirement |
 | `proto/resource/v2/domain.proto:274-282` and `pkg/resource/v2/plugin/connections.go:86-165` | Current transport uses JSON with strict decoding, not legacy v1 conversion |
 
-Implementation now uses the workspace SDK's `origin/main` baseline, `3cea9e48c9942b06e347d61de90fbf8f612868a8`, after independent review of its protected isolation files. No module-cache edits or isolation bypass flags were used. The feature reuses optional-trait negotiation and ancillary JSON RPC conventions.
+The implementation used workspace SDK commit `3cea9e48c9942b06e347d61de90fbf8f612868a8`. No module-cache edits or isolation bypass flags were used. The feature reuses optional-trait negotiation and ancillary JSON RPC conventions.
 
-Normal host and Kubernetes Go builds pin the metadata-capable SDK at `v0.9.1-0.20261031225250-85d184bd4557`. Candidate source builds still require exact cohort and isolation approval; the module pin does not bypass those gates. The host's regular UI test command includes the runtime metadata store's ordering and lifecycle regressions.
+At that time, host and Kubernetes Go builds pinned the metadata-capable SDK at `v0.9.1-0.20261031225250-85d184bd4557`. The host's regular UI test command includes the runtime metadata store's ordering and lifecycle regressions. Current workspace E2E resolves the SDK commit from host `go.mod`, uses UI packages from the host lockfile, and uses Kubernetes from the host gitlink. Local workspaces observe their linked SDK checkout revision and source digest.
 
 ### Workspace verification
 
@@ -425,4 +425,4 @@ Exercised verification:
 - Stop advances revision to 7 and makes all three observations stale; Cluster Info displays those stale values.
 - Reconnect creates a different generation, advances revision to 10, and updates Cluster Info to current values.
 
-Link-protocol evidence is retained in the workspace's `.local/link-protocol.json`. The launch uses reviewed SDK revision `3cea9e48c9942b06e347d61de90fbf8f612868a8`. The earlier source/version mismatch and launch prerequisites are resolved.
+Link-protocol evidence was retained in the workspace's `.local/link-protocol.json`. That launch used SDK revision `3cea9e48c9942b06e347d61de90fbf8f612868a8`. The earlier source/version mismatch and launch prerequisites were resolved.

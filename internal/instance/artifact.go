@@ -13,13 +13,15 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/state"
 )
 
+const artifactSchemaVersion = 3
+
 // artifactRecord is host-owned transient build evidence, never imported from
-// plugin.yaml or a baseline. Expected revision and source digest come from the
-// trusted builder's independently verified stable selected source snapshot.
+// plugin.yaml or a baseline. The revision and digest identify the stable
+// selected source snapshot verified by the builder.
 type artifactRecord struct {
 	SchemaVersion           int                              `json:"schemaVersion"`
 	PluginID                string                           `json:"pluginID"`
-	ExpectedSDKRevision     string                           `json:"expectedSDKRevision"`
+	SDKRevision             string                           `json:"sdkRevision"`
 	ExpectedSDKSourceSHA256 string                           `json:"expectedSDKSourceSHA256"`
 	Provenance              *config.StateIsolationProvenance `json:"provenance"`
 }
@@ -58,18 +60,20 @@ func artifactDirectory(workspace devcontract.ResolvedWorkspace) (string, error) 
 }
 
 // RecordBuiltArtifactSource MUST only be called after the trusted builder
-// verifies the selected SDK path and reviewed isolation-capable ancestor, then
-// confirms the exact source digest is unchanged across a successful build.
+// verifies the selected SDK path and confirms the exact source digest is
+// unchanged across a successful build.
 // Dirty edits are supported: the digest identifies that working-tree snapshot,
 // not a claim that hashing alone proves source inclusion in the executable.
-func RecordBuiltArtifactSource(workspace devcontract.ResolvedWorkspace, pluginID, binaryPath, expectedSDKRevision, sourceDigest string) error {
+func RecordBuiltArtifactSource(
+	workspace devcontract.ResolvedWorkspace, pluginID, binaryPath, sdkRevision, sourceDigest string,
+) error {
 	if err := state.ValidateComponent(pluginID); err != nil {
 		return err
 	}
 	if sourceDigest == "" {
 		return fmt.Errorf("instance: verified SDK source snapshot digest is required")
 	}
-	provenance, err := config.BuildStateIsolationProvenance(binaryPath, expectedSDKRevision, sourceDigest)
+	provenance, err := config.BuildStateIsolationProvenance(binaryPath, sdkRevision, sourceDigest)
 	if err != nil {
 		return err
 	}
@@ -92,7 +96,10 @@ func RecordBuiltArtifactSource(workspace devcontract.ResolvedWorkspace, pluginID
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
-	record := artifactRecord{SchemaVersion: 2, PluginID: pluginID, ExpectedSDKRevision: expectedSDKRevision, ExpectedSDKSourceSHA256: sourceDigest, Provenance: provenance}
+	record := artifactRecord{
+		SchemaVersion: artifactSchemaVersion, PluginID: pluginID, SDKRevision: sdkRevision,
+		ExpectedSDKSourceSHA256: sourceDigest, Provenance: provenance,
+	}
 	encoded, err := json.Marshal(record)
 	if err != nil {
 		return err
@@ -157,14 +164,17 @@ func readPluginArtifactRecord(workspace devcontract.ResolvedWorkspace, pluginID 
 	if closeErr != nil {
 		return "", record, closeErr
 	}
-	if record.SchemaVersion != 2 || record.PluginID != pluginID || record.Provenance == nil || record.ExpectedSDKRevision == "" || record.ExpectedSDKSourceSHA256 == "" {
+	if record.SchemaVersion != artifactSchemaVersion || record.PluginID != pluginID || record.Provenance == nil ||
+		record.SDKRevision == "" || record.ExpectedSDKSourceSHA256 == "" {
 		return "", record, fmt.Errorf("instance: invalid trusted artifact source evidence for %s", pluginID)
 	}
 	return dir, record, nil
 }
 
 func (record *artifactRecord) verifyArtifact(pluginID, binaryPath string) error {
-	if err := record.Provenance.VerifyArtifact(binaryPath, record.ExpectedSDKRevision, record.ExpectedSDKSourceSHA256); err != nil {
+	if err := record.Provenance.VerifyArtifact(
+		binaryPath, record.SDKRevision, record.ExpectedSDKSourceSHA256,
+	); err != nil {
 		return fmt.Errorf("instance: plugin %s artifact isolation verification failed: %w", pluginID, err)
 	}
 	return nil

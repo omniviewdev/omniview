@@ -135,8 +135,8 @@ func (m *Manager) ApplicationFixturePackageCommands(ctx context.Context, target 
 	}
 	graph := scoped.Value(linkToolchainKey{}).(*BuildGraph)
 	w := graph.workspace
-	if w.Manifest.Links.UIRepositoryID == nil || !w.Manifest.Links.HostPackages {
-		return result, fmt.Errorf("application cohort must select actual UI and host package outputs")
+	if !w.Manifest.Links.HostPackages {
+		return result, fmt.Errorf("application cohort must select host package outputs")
 	}
 	host, err := w.RepositoryPath("omniview")
 	if err != nil {
@@ -201,7 +201,7 @@ func observeApplicationProducer(name string, observe func(string, func() error) 
 
 // BuildApplicationFixture executes the complete fixed ordered producer set in
 // one finite writer lifetime. It never reuses outputs or starts parallel lanes.
-func (m *Manager) BuildApplicationFixture(ctx context.Context, target, artifacts, revision string, observe func(string, func() error) error) error {
+func (m *Manager) BuildApplicationFixture(ctx context.Context, target, artifacts string, observe func(string, func() error) error) error {
 	if observe == nil {
 		return fmt.Errorf("application build requires an execution observer")
 	}
@@ -225,7 +225,6 @@ func (m *Manager) BuildApplicationFixture(ctx context.Context, target, artifacts
 		return fmt.Errorf("application artifact directory must be private")
 	}
 	g.options.GoBuildCacheDirectory = scoped.Value(linkBuildCacheKey{}).(string)
-	g.options.ExpectedSDKRevision = revision
 	g.options.VerifySDKSource = devsource.Verify
 	g.options.Output = os.Stderr
 	g.run = g.command

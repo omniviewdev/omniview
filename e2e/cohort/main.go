@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"sort"
 	"syscall"
 
@@ -92,7 +91,7 @@ func run() error {
 		if len(os.Args) != 5 {
 			return fmt.Errorf("SDK identity requires actual consumer directory and effective modfile")
 		}
-		result, err = applicationSDKIdentity(ctx, manager, target, config, os.Args[3], os.Args[4])
+		result, err = applicationSDKIdentity(ctx, manager, target, os.Args[3], os.Args[4])
 	case "run":
 		if len(os.Args) < 5 {
 			return fmt.Errorf("owned cohort command requires directory and program")
@@ -108,7 +107,7 @@ func run() error {
 		command.Dir, command.Env, command.Stdout, command.Stderr = os.Args[3], os.Environ(), os.Stdout, os.Stderr
 		return devworkspace.RunRepositoryCommand(ctx, command, devsession.ProcessOwner{WorkspaceID: workspace.Manifest.WorkspaceID, Generation: uuid.NewString(), Role: "application-build-command", Source: command.Dir})
 	case "prepare":
-		if _, err = manager.Create(ctx, devworkspace.CreateOptions{Slug: target, Repositories: []string{"plugin-sdk", "ui"}, Plugins: []string{"kubernetes", "workspace-probe"}}); err != nil {
+		if _, err = manager.Create(ctx, devworkspace.CreateOptions{Slug: target, Repositories: []string{"plugin-sdk"}, Plugins: []string{"kubernetes", "workspace-probe"}}); err != nil {
 			return err
 		}
 		var evidence devworkspace.LinkProtocolEvidence
@@ -131,13 +130,6 @@ func run() error {
 			if resolution.Problem != "" {
 				return fmt.Errorf("actual selected package resolution failed for %s", resolution.Package)
 			}
-		}
-		paths, pathsErr := manager.Paths(ctx, target)
-		if pathsErr != nil {
-			return pathsErr
-		}
-		if err = validateApplicationUIResolutions(paths, report); err != nil {
-			return err
 		}
 		result = report
 	case "retire":
@@ -189,24 +181,4 @@ func unlinkApplicationCohort(ctx context.Context, manager *devworkspace.Manager,
 	}
 	_, err = manager.Unlink(ctx, target)
 	return err
-}
-
-func validateApplicationUIResolutions(paths devworkspace.WorkspacePaths, report devworkspace.LinkReport) error {
-	for _, name := range []string{"base-ui", "ai-ui", "editors"} {
-		expected := filepath.Join(paths.Repositories["ui"], "packages", name)
-		found := false
-		for _, resolution := range report.Resolutions {
-			if resolution.Consumer != paths.Repositories["omniview"] || resolution.Package != "@omniviewdev/"+name {
-				continue
-			}
-			if resolution.Problem != "" || resolution.Expected != expected || resolution.Resolved != expected {
-				return fmt.Errorf("host did not consume actual selected UI package %s", name)
-			}
-			found = true
-		}
-		if !found {
-			return fmt.Errorf("missing actual selected UI resolution for %s", name)
-		}
-	}
-	return nil
 }
