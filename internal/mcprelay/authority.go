@@ -2,7 +2,6 @@ package mcprelay
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"maps"
 	"reflect"
@@ -202,16 +201,6 @@ func (a *Authority) Bind(ctx context.Context, tool ToolInfo, connection string, 
 		policy: a.policy, catalog: a.catalog, tool: tool, connection: connection,
 		arguments: append([]byte(nil), args...), operation: operation, target: target, bound: true}
 	c.confirm = a.cfg.Confirm(tool.PluginID, connection, tool)
-	// Generic calls with a resolved resource ask for consent after discovery,
-	// when the exact target and operation are known.
-	if isGenericKubernetesTool(tool) {
-		var request struct {
-			Operation string `json:"operation"`
-		}
-		if json.Unmarshal(args, &request) != nil || request.Operation != "catalog" {
-			c.confirm = false
-		}
-	}
 	// Authority replaces its document on update; the captured maps remain
 	// immutable and share the exact revision used to bind consent.
 	c.config = a.cfg

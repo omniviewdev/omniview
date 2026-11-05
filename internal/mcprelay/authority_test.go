@@ -98,6 +98,12 @@ func TestGenericKubernetesResolvedToolPolicyAndTarget(t *testing.T) {
 		confirm, err := a.resolveKubernetes(callCtx, real, []byte(`{"dimension":"namespace"}`))
 		require.NoError(t, err, "group policy must not consult the resolved tool override")
 		require.False(t, confirm)
+		target := invocation.Target{Provider: "kubernetes", Connection: "cluster-a", Scope: map[string]string{"dimension": "namespace"}}
+		_, err = invocation.NewBoundary(a).Admit(callCtx, "resource.ScopeValues", target)
+		require.NoError(t, err, "resolved tool override must not revoke the selected group")
+		target.Scope["dimension"] = "other"
+		_, err = invocation.NewBoundary(a).Admit(callCtx, "resource.ScopeValues", target)
+		require.Error(t, err, "resolved scope must remain exact")
 		_, err = invocation.NewBoundary(a).Admit(callCtx, "resource.ScopeValues",
 			invocation.Target{Provider: "kubernetes", Connection: "cluster-b"})
 		require.Error(t, err, "resolved target must remain exact")

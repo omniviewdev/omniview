@@ -454,7 +454,15 @@ func TestRelayGenericOperationsStartNativeConnectionAndConfirm(t *testing.T) {
 		pending = service.ListPendingConfirmations()
 		return len(pending) == 1
 	}, 5*time.Second, 10*time.Millisecond)
-	require.EqualValues(t, 1, provider.starts.Load(), "resource consent follows live discovery")
+	require.Zero(t, provider.starts.Load(), "connection must remain stopped until consent")
+	require.Equal(t, "route-a", pending[0].ConnectionID)
+	firstID := pending[0].ID
+	require.NoError(t, service.ResolveConfirmation(firstID, true))
+	require.Eventually(t, func() bool {
+		pending = service.ListPendingConfirmations()
+		return len(pending) == 1 && pending[0].ID != firstID
+	}, 5*time.Second, 10*time.Millisecond)
+	require.EqualValues(t, 1, provider.starts.Load(), "exact-target consent follows live discovery")
 	require.Equal(t, "route-a", pending[0].ConnectionID)
 	require.NoError(t, service.ResolveConfirmation(pending[0].ID, true))
 	select {
