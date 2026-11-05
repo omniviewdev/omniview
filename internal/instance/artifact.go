@@ -13,6 +13,8 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/state"
 )
 
+const artifactSchemaVersion = 3
+
 // artifactRecord is host-owned transient build evidence, never imported from
 // plugin.yaml or a baseline. The revision and digest identify the stable
 // selected source snapshot verified by the builder.
@@ -95,7 +97,7 @@ func RecordBuiltArtifactSource(
 		return err
 	}
 	record := artifactRecord{
-		SchemaVersion: 3, PluginID: pluginID, SDKRevision: sdkRevision,
+		SchemaVersion: artifactSchemaVersion, PluginID: pluginID, SDKRevision: sdkRevision,
 		ExpectedSDKSourceSHA256: sourceDigest, Provenance: provenance,
 	}
 	encoded, err := json.Marshal(record)
@@ -162,7 +164,7 @@ func readPluginArtifactRecord(workspace devcontract.ResolvedWorkspace, pluginID 
 	if closeErr != nil {
 		return "", record, closeErr
 	}
-	if record.SchemaVersion != 3 || record.PluginID != pluginID || record.Provenance == nil ||
+	if record.SchemaVersion != artifactSchemaVersion || record.PluginID != pluginID || record.Provenance == nil ||
 		record.SDKRevision == "" || record.ExpectedSDKSourceSHA256 == "" {
 		return "", record, fmt.Errorf("instance: invalid trusted artifact source evidence for %s", pluginID)
 	}

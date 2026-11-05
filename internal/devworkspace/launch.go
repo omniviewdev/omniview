@@ -53,7 +53,13 @@ func LoadLaunchOptions(w Workspace) (LaunchOptions, error) {
 	return o, err
 }
 
-const goFlagsEnv = "GOFLAGS"
+const (
+	goFlagsEnv           = "GOFLAGS"
+	goWorkEnv            = "GOWORK"
+	bindingsNode         = "bindings"
+	buildingPhase        = "building"
+	buildFailureExitCode = 5
+)
 
 func workspaceEnvironment(base []string, w Workspace, generation string, o LaunchOptions) []string {
 	env := make([]string, 0, len(base)+12)
@@ -69,12 +75,12 @@ func workspaceEnvironment(base []string, w Workspace, generation string, o Launc
 			continue
 		}
 		switch key {
-		case "GOWORK", goFlagsEnv, "GO_MODFILE", "GOROOT", "NODE_PATH", "SDK_SOURCE", "OMNIVIEW_PLUGIN_PNPM_COMMANDS", "OMNIVIEW_VITE_ALLOWED_ROOTS", "WAILS_VITE_PORT", "FORCE_COLOR", "NO_COLOR", "OMNIVIEW_WORKSPACE_FILE", "OMNIVIEW_STATE_DIR", "OMNIVIEW_INSTANCE_ID", "OMNIVIEW_GENERATION", "OMNIVIEW_WORKSPACE_GRAPH_WATCH", "FRONTEND_DEVSERVER_URL", "WAILS_SERVER_HOST", "WAILS_SERVER_PORT", "WAILS_MCP_HOST", "WAILS_MCP_PORT", "WAILS_MCP_TOKEN", "WAILS_MCP", "OMNIVIEW_CHANNEL":
+		case goWorkEnv, goFlagsEnv, "GO_MODFILE", "GOROOT", "NODE_PATH", "SDK_SOURCE", "OMNIVIEW_PLUGIN_PNPM_COMMANDS", "OMNIVIEW_VITE_ALLOWED_ROOTS", "WAILS_VITE_PORT", "FORCE_COLOR", "NO_COLOR", "OMNIVIEW_WORKSPACE_FILE", "OMNIVIEW_STATE_DIR", "OMNIVIEW_INSTANCE_ID", "OMNIVIEW_GENERATION", "OMNIVIEW_WORKSPACE_GRAPH_WATCH", "FRONTEND_DEVSERVER_URL", "WAILS_SERVER_HOST", "WAILS_SERVER_PORT", "WAILS_MCP_HOST", "WAILS_MCP_PORT", "WAILS_MCP_TOKEN", "WAILS_MCP", "OMNIVIEW_CHANNEL":
 			continue
 		}
 		env = append(env, entry)
 	}
-	env = append(env, "GOWORK=off", goFlagsEnv+"=", "FORCE_COLOR=0", "NO_COLOR=1", "OMNIVIEW_CHANNEL=local",
+	env = append(env, goWorkEnv+"=off", goFlagsEnv+"=", "FORCE_COLOR=0", "NO_COLOR=1", "OMNIVIEW_CHANNEL=local",
 		"OMNIVIEW_WORKSPACE_FILE="+w.ManifestPath, "OMNIVIEW_STATE_DIR="+w.StateRoot,
 		"OMNIVIEW_INSTANCE_ID="+w.Manifest.WorkspaceID, "OMNIVIEW_GENERATION="+generation)
 	if w.Manifest.Links.SDKRepositoryID != nil {
@@ -342,9 +348,9 @@ func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 		Generation: s.generation, GoBuildCacheDirectory: s.goBuildCache, VerifySDKSource: devsource.Verify,
 		HostBuild: s.buildHost, HostVariant: s.hostVariant(), HostOutput: s.hostOutput(), ReuseHost: s.reuseHost,
 		Bindings: func(ctx context.Context, host, outputDirectory string) (resultErr error) {
-			hostModOutput, err := prepareStableHostModTree(s.workspace, s.generation)
-			if err != nil {
-				return err
+			hostModOutput, prepareErr := prepareStableHostModTree(s.workspace, s.generation)
+			if prepareErr != nil {
+				return prepareErr
 			}
 			defer func() {
 				if errors.Is(resultErr, errOwnedCommandUncertain) {
@@ -353,7 +359,7 @@ func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 				}
 				resultErr = errors.Join(resultErr, recordStableHostModTree(hostModOutput))
 			}()
-			args := []string{"bindings", "DEV=true", "EXTRA_TAGS=devcontrol", "BINDINGS_OUTPUT_DIRECTORY=" + outputDirectory, "HOST_MOD_OUTPUT_DIRECTORY=" + hostModOutput.Directory, "GO_BUILD_CACHE_DIRECTORY=" + s.goBuildCache}
+			args := []string{bindingsNode, "DEV=true", "EXTRA_TAGS=devcontrol", "BINDINGS_OUTPUT_DIRECTORY=" + outputDirectory, "HOST_MOD_OUTPUT_DIRECTORY=" + hostModOutput.Directory, "GO_BUILD_CACHE_DIRECTORY=" + s.goBuildCache}
 			if o.Mode == "browser" {
 				args = append(args, "SERVER=true")
 			}
@@ -365,14 +371,14 @@ func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 		}, Output: s.output, OnEvent: func(event BuildEvent) {
 			s.mu.Lock()
 			s.status.Builds[event.Node] = event
-			if event.Phase == "building" {
-				s.status.Phase = "building"
+			if event.Phase == buildingPhase {
+				s.status.Phase = buildingPhase
 				s.status.LastError = nil
 			} else if event.Phase == "error" || event.Phase == "invalidated" {
 				s.status.Phase = "build-error"
 				s.status.FailedStage = event.Node
 				s.status.RecoveryCommand = workspaceRecoveryCommand(s.workspace, "refresh")
-				s.status.LastError = devcontract.Fail(5, "build_failed", safeCompilerDiagnostic(event.Error, s.workspace.Root))
+				s.status.LastError = devcontract.Fail(buildFailureExitCode, "build_failed", safeCompilerDiagnostic(event.Error, s.workspace.Root))
 			}
 			s.mu.Unlock()
 			s.persist()

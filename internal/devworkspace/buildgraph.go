@@ -214,7 +214,7 @@ func planBuildNodes(w Workspace) ([]BuildNode, error) {
 	add := func(id, dir, pin, kind string, deps ...string) {
 		nodes = append(nodes, BuildNode{ID: id, Directory: dir, PNPMVersion: pin, Kind: kind, Dependencies: append([]string(nil), deps...)})
 	}
-	add("bindings", host, "", "bindings")
+	add(bindingsNode, host, "", bindingsNode)
 	uiDeps := []string{}
 	if w.Manifest.Links.UIRepositoryID != nil {
 		ui := repos[*w.Manifest.Links.UIRepositoryID]
@@ -230,7 +230,7 @@ func planBuildNodes(w Workspace) ([]BuildNode, error) {
 	packageDeps := append([]string(nil), uiDeps...)
 	if w.Manifest.Links.HostPackages {
 		add("providers", filepath.Join(host, "packages/omniviewdev-providers"), version, "javascript")
-		runtimeDeps := append([]string{"bindings", "providers"}, uiDeps...)
+		runtimeDeps := append([]string{bindingsNode, "providers"}, uiDeps...)
 		add("runtime", filepath.Join(host, "packages/omniviewdev-runtime"), version, "javascript", runtimeDeps...)
 		add("vite-plugin", filepath.Join(host, "packages/omniviewdev-vite-plugin"), version, "javascript", "runtime")
 		packageDeps = append(packageDeps, "providers", "runtime", "vite-plugin")
@@ -304,7 +304,7 @@ func (g *BuildGraph) commandWithEnvironment(ctx context.Context, dir string, env
 			continue
 		}
 		switch key {
-		case "GOWORK", goFlagsEnv, "GOROOT", "GOCACHE", "NODE_PATH", "GO_MODFILE", "OMNIVIEW_PNPM_NODE_PATH",
+		case goWorkEnv, goFlagsEnv, "GOROOT", "GOCACHE", "NODE_PATH", "GO_MODFILE", "OMNIVIEW_PNPM_NODE_PATH",
 			"OMNIVIEW_BUILD_OUTPUT_DIRECTORY", "OMNIVIEW_SHIMS_OUTPUT_DIRECTORY", "OMNIVIEW_SHIMS_SOURCE_DIRECTORY",
 			"OMNIVIEW_YAML_WORKER_OUTPUT_FILE", "OMNIVIEW_VITE_CACHE_DIRECTORY", compositionInstallEnvironment:
 			continue
@@ -390,7 +390,7 @@ func (g *BuildGraph) verifyUnchangedSDK(ctx context.Context, consumer string, be
 // nodes bind their outputs to an SDK identity verified before and after.
 func (g *BuildGraph) buildNode(ctx context.Context, n BuildNode) error {
 	switch n.Kind {
-	case "bindings":
+	case bindingsNode:
 		return g.buildBindings(ctx, n)
 	case "javascript":
 		return g.buildJavaScript(ctx, n)
@@ -529,7 +529,7 @@ func (g *BuildGraph) execute(ctx context.Context, nodes []BuildNode, reuse *buil
 				}
 				pending = append(pending[:i], pending[i+1:]...)
 				running++
-				g.emit(n.ID, "building", nil)
+				g.emit(n.ID, buildingPhase, nil)
 				go func() {
 					err := g.produce(ctx, n, reuse)
 					if err != nil {

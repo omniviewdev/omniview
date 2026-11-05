@@ -3,6 +3,7 @@ package devserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -59,7 +60,7 @@ func VerifySelectedSDK(ctx context.Context, goPath, source string, environment [
 		key, value, _ := strings.Cut(entry, "=")
 		values[key] = value
 	}
-	if err := verifyManagedSDKSelection(directory, values); err != nil {
+	if err = verifyManagedSDKSelection(directory, values); err != nil {
 		return result, err
 	}
 	return devsource.Verify(ctx, directory)
@@ -72,17 +73,19 @@ func verifyManagedSDKSelection(directory string, values map[string]string) error
 		return nil
 	}
 	if manifest == "" || root == "" || workspaceID == "" {
-		return fmt.Errorf("managed SDK verification requires an explicit validated workspace profile")
+		return errors.New("managed SDK verification requires an explicit validated workspace profile")
 	}
-	workspace, err := devcontract.ResolveWorkspace(devcontract.ResolveOptions{EnvironmentManifest: manifest, StateRoot: root})
+	workspace, err := devcontract.ResolveWorkspace(devcontract.ResolveOptions{
+		CWD: "", Explicit: "", EnvironmentManifest: manifest, StateRoot: root, Home: "",
+	})
 	if err != nil {
 		return err
 	}
 	if workspace.Manifest.WorkspaceID != workspaceID {
-		return fmt.Errorf("SDK verification workspace identity mismatch")
+		return errors.New("SDK verification workspace identity mismatch")
 	}
 	if workspace.Manifest.Links.SDKRepositoryID == nil {
-		return fmt.Errorf("managed workspace must explicitly select an SDK source repository")
+		return errors.New("managed workspace must explicitly select an SDK source repository")
 	}
 	selected, err := workspace.RepositoryPath(*workspace.Manifest.Links.SDKRepositoryID)
 	if err != nil {
@@ -93,7 +96,7 @@ func verifyManagedSDKSelection(directory string, values map[string]string) error
 		return err
 	}
 	if directory != selected {
-		return fmt.Errorf("effective SDK source differs from selected workspace source")
+		return errors.New("effective SDK source differs from selected workspace source")
 	}
 	return nil
 }
