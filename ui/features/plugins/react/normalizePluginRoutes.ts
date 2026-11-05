@@ -7,8 +7,8 @@ export function normalizePluginRoutes(routes: RouteObject[], pluginId: string): 
   const ErrorBoundary = () => createElement(PluginRouteErrorBoundary, { pluginId });
   return routes.map((route): RouteObject => {
     const lazy = route.lazy;
-    const hasBoundary = route.ErrorBoundary !== undefined || route.errorElement !== undefined
-      || (typeof lazy === 'object' && (lazy.ErrorBoundary !== undefined || lazy.errorElement !== undefined));
+    const hasBoundary = route.ErrorBoundary != null || route.errorElement != null
+      || (typeof lazy === 'object' && (lazy.ErrorBoundary != null || lazy.errorElement != null));
     const LazyFallback = (): ReactNode => {
       if (useRouteError() != null) {
         if (route.ErrorBoundary) {

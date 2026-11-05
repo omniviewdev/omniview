@@ -211,6 +211,18 @@ describe('normalizePluginRoutes', () => {
     router.dispose();
   });
 
+  it('preserves a lazy boundary when the static error element is null', async () => {
+    vi.spyOn(console, 'error').mockImplementation(vi.fn());
+    const router = createMemoryRouter(normalizePluginRoutes([{
+      path: '/page',
+      errorElement: null,
+      lazy: async () => ({ Component: CrashingPage, ErrorBoundary: () => <div>Lazy custom error</div> }),
+    }], 'test-plugin'), { initialEntries: ['/page'] });
+    render(<RouterProvider router={router} />);
+    expect(await screen.findByText('Lazy custom error')).toBeInTheDocument();
+    router.dispose();
+  });
+
   it('retries a transient lazy import failure on navigation', async () => {
     vi.spyOn(console, 'error').mockImplementation(vi.fn());
     const loader = vi.fn(() => null);
