@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
-import type { ReactNode } from 'react';
+import { useSyncExternalStore, type ReactNode } from 'react';
 import ResourceBrowser from './ResourceBrowser';
 import { connectionProfilePath, connectionProfilesPath, resourceBrowserPath } from '@/features/workspace/pagePaths';
 
@@ -8,7 +8,19 @@ const state = vi.hoisted(() => ({
   connected: true, error: ((): unknown => null)(), type: 'native/resource::type/%2F',
   boundary: vi.fn(), connection: vi.fn(), types: vi.fn(), groups: vi.fn(),
   phase: 'ready', gateReady: true, gateEnabled: false,
+  gateListeners: new Set<() => void>(),
 }));
+function MockPreferenceMigrationGate({ children }: { children: ReactNode }) {
+  const ready = useSyncExternalStore((listener) => {
+    state.gateListeners.add(listener);
+    return () => {
+      state.gateListeners.delete(listener);
+    };
+  }, () => state.gateReady);
+
+  return <>{ready ? children : <div>Migration pending</div>}</>;
+}
+
 vi.mock('@omniviewdev/runtime', () => ({
   ConnectionBoundary: ({ children, ...options }: { children: ReactNode; pluginID: string; connectionID: string }): ReactNode => {
     state.boundary(options);
@@ -32,7 +44,7 @@ vi.mock('@omniviewdev/runtime', () => ({
 vi.mock('@/features/plugins', () => ({
   usePluginService: () => ({
     plugins: new Map([['provider', { phase: state.phase }], ['provider%2Fopaque', { phase: state.phase }]]),
-    registrations: new Map(state.gateEnabled ? [['provider', { PreferenceMigrationGate: ({ children }: { children: ReactNode }) => <>{state.gateReady ? children : <div>Migration pending</div>}</> }]] : []),
+    registrations: new Map(state.gateEnabled ? [['provider', { PreferenceMigrationGate: ({ children }: { children: ReactNode }) => <MockPreferenceMigrationGate>{children}</MockPreferenceMigrationGate> }]] : []),
   }),
 }));
 vi.mock('@/features/plugins/components/PluginRouteStatus', () => ({ default: () => <div>Plugin loading</div> }));
@@ -87,7 +99,12 @@ it('waits for plugin registration and provider preference migration before mount
   </MemoryRouter>);
   expect(screen.getByText('Migration pending')).toBeTruthy();
   expect(screen.queryByTestId('resource-table')).toBeNull();
-  state.gateReady = true;
+  act(() => {
+    state.gateReady = true;
+    state.gateListeners.forEach((listener) => {
+      listener();
+    });
+  });
   view.rerender(<MemoryRouter initialEntries={[resourceBrowserPath('provider', 'prod/west', state.type)]}>
     <Routes><Route path="resources/:pluginID/:connectionID" element={<ResourceBrowser />} /></Routes>
   </MemoryRouter>);
@@ -107,9 +124,12 @@ it('preserves browser state and scroll across plugin reload and registration rep
   tableContainer.scrollTop = 80;
   fireEvent.click(screen.getByRole('button', { name: /Native/ }));
 
-  const rerender = () => view.rerender(<MemoryRouter initialEntries={[resourceBrowserPath('provider', 'prod/west')]}>
-    <Routes><Route path="resources/:pluginID/:connectionID" element={<><ResourceBrowser /><Location /></>} /></Routes>
-  </MemoryRouter>);
+  const rerender = () => {
+    view.rerender(<MemoryRouter initialEntries={[resourceBrowserPath('provider', 'prod/west')]}>
+      <Routes><Route path="resources/:pluginID/:connectionID" element={<><ResourceBrowser /><Location /></>} /></Routes>
+    </MemoryRouter>);
+  };
+
   state.phase = 'loading';
   rerender();
   expect(screen.getByTestId('resource-table')).toBe(table);
@@ -131,9 +151,11 @@ it('preserves browser state and scroll across plugin reload and registration rep
 it.each(['error', 'idle'])('waits for a new registration after plugin enters %s', (phase) => {
   const view = open(state.type);
   expect(screen.getByTestId('resource-table')).toBeTruthy();
-  const rerender = () => view.rerender(<MemoryRouter initialEntries={[resourceBrowserPath('provider', 'prod/west', state.type)]}>
-    <Routes><Route path="resources/:pluginID/:connectionID" element={<><ResourceBrowser /><Location /></>} /></Routes>
-  </MemoryRouter>);
+  const rerender = () => {
+    view.rerender(<MemoryRouter initialEntries={[resourceBrowserPath('provider', 'prod/west', state.type)]}>
+      <Routes><Route path="resources/:pluginID/:connectionID" element={<><ResourceBrowser /><Location /></>} /></Routes>
+    </MemoryRouter>);
+  };
 
   state.phase = phase;
   rerender();
@@ -148,7 +170,12 @@ it.each(['error', 'idle'])('waits for a new registration after plugin enters %s'
   rerender();
   expect(screen.getByText('Migration pending')).toBeTruthy();
   expect(screen.queryByTestId('resource-table')).toBeNull();
-  state.gateReady = true;
+  act(() => {
+    state.gateReady = true;
+    state.gateListeners.forEach((listener) => {
+      listener();
+    });
+  });
   rerender();
   expect(screen.getByTestId('resource-table')).toBeTruthy();
 });

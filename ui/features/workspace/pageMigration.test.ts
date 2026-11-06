@@ -86,7 +86,7 @@ describe('saved provider page migration', () => {
       const router = controller.routers.get('a')!;
       const navigate = vi.spyOn(router, 'navigate');
       const report = vi.fn();
-      const migratePagePath = vi.fn(() => ({ kind: 'migrated' as const, path: path as string }));
+      const migratePagePath = vi.fn(() => ({ kind: 'migrated' as const, path: path! }));
       controller.migrateRestoredPaths(new Map([['kubernetes', { migratePagePath }]]), report);
       expect(controller.getState().tabs.a.path).toBe(original);
       expect(navigate).not.toHaveBeenCalled();

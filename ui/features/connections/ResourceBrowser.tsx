@@ -1,4 +1,4 @@
-import { useRef, useState, type ComponentType, type ReactNode } from 'react';
+import { useState, type ComponentType, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { Button, Spinner, Stack, Text } from '@omniviewdev/base-ui';
 import { ConnectionBoundary, ConnectionBoundaryFallback, parseAppError, useConnection, useResourceGroups, useResourceTypes } from '@omniviewdev/runtime';
@@ -21,15 +21,16 @@ export default function ResourceBrowser() {
 function ResourceBrowserForConnection({ pluginID, connectionID }: { pluginID: string; connectionID: string }) {
   const { plugins, registrations } = usePluginService();
   const plugin = plugins.get(pluginID);
-  const initialRegistration = useRef<{ gate: ComponentType<{ children: ReactNode }> | undefined } | null>(null);
-  if (plugin?.phase === 'ready' && initialRegistration.current === null) {
-    initialRegistration.current = { gate: registrations.get(pluginID)?.PreferenceMigrationGate };
-  } else if (plugin?.phase !== 'ready' && plugin?.phase !== 'loading') {
-    initialRegistration.current = null;
+  const [initialRegistration, setInitialRegistration] = useState<{ gate: ComponentType<{ children: ReactNode }> | undefined } | null>(null);
+  if (plugin?.phase === 'ready' && initialRegistration === null) {
+    setInitialRegistration({ gate: registrations.get(pluginID)?.PreferenceMigrationGate });
+  } else if (plugin?.phase !== 'ready' && plugin?.phase !== 'loading' && initialRegistration !== null) {
+    setInitialRegistration(null);
   }
-  const PreferenceMigrationGate = initialRegistration.current?.gate;
+
+  const PreferenceMigrationGate = initialRegistration?.gate;
   const navigate = useNavigate();
-  if (plugin?.phase !== 'ready' && !(plugin?.phase === 'loading' && initialRegistration.current)) {
+  if (plugin?.phase !== 'ready' && !(plugin?.phase === 'loading' && initialRegistration)) {
     return <PluginRouteStatus pluginId={pluginID} />;
   }
 
@@ -56,11 +57,11 @@ function ConnectedResourceBrowser({ pluginID, connectionID }: { pluginID: string
   const selected = search.get('type');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const groupsFailed = groups.isError && parseAppError(groups.error).code !== 'UNSUPPORTED';
-  if (connection.isError || resourceTypes.isError || groupsFailed) {
+  if (connection.isError === true || resourceTypes.isError === true || groupsFailed === true) {
     return <Text tone="danger">{parseAppError(connection.error ?? resourceTypes.error ?? groups.error).detail}</Text>;
   }
 
-  if (connection.isLoading || resourceTypes.isLoading || groups.isLoading) {
+  if (connection.isLoading === true || resourceTypes.isLoading === true || groups.isLoading === true) {
     return <Spinner size="xl" />; 
   }
 
