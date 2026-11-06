@@ -12,8 +12,8 @@ export type PageTab = {
   groupId?: string;
   /** Last title shown, used until the plugin and connection names load. */
   title?: string;
-  /** Original saved path before a provider migrated it. */
-  legacy?: { path: string };
+  /** Original saved path metadata, retained even when malformed. */
+  legacy?: unknown;
 };
 
 export type PageGroup = { id: string; title: string; color: PageGroupColor; collapsed?: boolean };
@@ -33,7 +33,7 @@ export type PagesState = {
 };
 
 /** A page tab serialized for another window (drag payload or "Move to window"). */
-export type PageTabTransfer = { path: string; title?: string; pinned?: boolean; legacy?: { path: string } };
+export type PageTabTransfer = { path: string; title?: string; pinned?: boolean; legacy?: unknown };
 
 export const MAX_PANES = 2;
 export const DEFAULT_SPLIT_RATIO = 0.5;
@@ -65,10 +65,11 @@ export type PagesAction =
   | { type: 'setTitles'; titles: Record<string, string> }
   | { type: 'setSplitRatio'; ratio: number };
 
+/** Create a window state without losing a transferred tab's legacy metadata. */
 export function createSingleTabState(tab: PageTab, paneId: string): PagesState {
   return {
     version: 1,
-    tabs: { [tab.id]: { id: tab.id, path: tab.path, ...(tab.pinned ? { pinned: true } : {}), ...(tab.title ? { title: tab.title } : {}), ...(tab.legacy ? { legacy: tab.legacy } : {}) } },
+    tabs: { [tab.id]: { id: tab.id, path: tab.path, ...(tab.pinned ? { pinned: true } : {}), ...(tab.title ? { title: tab.title } : {}), ...(tab.legacy !== undefined ? { legacy: tab.legacy } : {}) } },
     groups: [],
     panes: [{ id: paneId, tabIds: [tab.id], activeTabId: tab.id }],
     activePaneId: paneId,
@@ -89,8 +90,9 @@ export function getActiveTab(state: PagesState): PageTab | undefined {
   return pane.activeTabId ? state.tabs[pane.activeTabId] : undefined;
 }
 
+/** Preserve the original path metadata when moving a tab between windows. */
 export function toPageTabTransfer(tab: PageTab): PageTabTransfer {
-  return { path: tab.path, ...(tab.title ? { title: tab.title } : {}), ...(tab.pinned ? { pinned: true } : {}), ...(tab.legacy ? { legacy: tab.legacy } : {}) };
+  return { path: tab.path, ...(tab.title ? { title: tab.title } : {}), ...(tab.pinned ? { pinned: true } : {}), ...(tab.legacy !== undefined ? { legacy: tab.legacy } : {}) };
 }
 
 /** Main window rule: it never ends up without a tab. */
@@ -383,7 +385,11 @@ function applyAction(state: PagesState, action: PagesAction): PagesState {
         : updateTab(state, action.tabId, (tab) => ({ ...tab, path: action.path }));
     case 'migratePath':
       return updateTab(state, action.tabId, (tab) => tab.path !== action.originalPath ? tab : ({
-        ...tab, path: action.path, legacy: tab.legacy ?? { path: action.originalPath },
+        ...tab,
+        path: action.path,
+        legacy: isRecord(tab.legacy) && isRoutePath(tab.legacy.path)
+          ? tab.legacy
+          : { path: action.originalPath, ...(tab.legacy !== undefined ? { invalidMetadata: tab.legacy } : {}) },
       }));
 
     case 'setTitles': {
@@ -487,6 +493,7 @@ function isRoutePath(value: unknown): value is string {
   return typeof value === 'string' && value.startsWith('/');
 }
 
+/** Recover a valid tab without discarding its original legacy metadata. */
 function parseTab(key: string, value: unknown): PageTab {
   if (!isRecord(value)) {
     fail(`tab "${key}" is not an object`);
@@ -503,9 +510,6 @@ function parseTab(key: string, value: unknown): PageTab {
   expectOptional(value.pinned, 'boolean', `tab "${key}" pinned`);
   expectOptional(value.groupId, 'string', `tab "${key}" groupId`);
   expectOptional(value.title, 'string', `tab "${key}" title`);
-  if (value.legacy !== undefined && (!isRecord(value.legacy) || !isRoutePath(value.legacy.path))) {
-    fail(`tab "${key}" legacy path must start with "/"`);
-  }
 
   return {
     id: key,
@@ -513,7 +517,7 @@ function parseTab(key: string, value: unknown): PageTab {
     ...(value.pinned === true ? { pinned: true } : {}),
     ...(typeof value.groupId === 'string' ? { groupId: value.groupId } : {}),
     ...(typeof value.title === 'string' ? { title: value.title } : {}),
-    ...(isRecord(value.legacy) && typeof value.legacy.path === 'string' ? { legacy: { path: value.legacy.path } } : {}),
+    ...(value.legacy !== undefined ? { legacy: value.legacy } : {}),
   };
 }
 
@@ -634,7 +638,7 @@ export function parsePagesState(value: unknown): PagesState {
   return normalizePagesState({ version: 1, tabs, groups, panes, activePaneId: value.activePaneId, splitRatio: value.splitRatio });
 }
 
-/** Validates a tab handed over by another window. Throws when it is not a page tab. */
+/** Validates a transferred tab while preserving legacy metadata verbatim. */
 export function parsePageTabTransfer(value: unknown): PageTabTransfer {
   if (!isRecord(value)) {
     throw new Error('invalid page tab transfer: not an object');
@@ -652,15 +656,10 @@ export function parsePageTabTransfer(value: unknown): PageTabTransfer {
     throw new Error('invalid page tab transfer: pinned must be a boolean');
   }
 
-  if (value.legacy !== undefined && (!isRecord(value.legacy) || !isRoutePath(value.legacy.path))) {
-    throw new Error('invalid page tab transfer: legacy path must start with "/"');
-  }
-
-
   return {
     path: value.path,
     ...(typeof value.title === 'string' ? { title: value.title } : {}),
     ...(value.pinned === true ? { pinned: true } : {}),
-    ...(isRecord(value.legacy) && typeof value.legacy.path === 'string' ? { legacy: { path: value.legacy.path } } : {}),
+    ...(value.legacy !== undefined ? { legacy: value.legacy } : {}),
   };
 }

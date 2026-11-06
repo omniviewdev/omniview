@@ -43,6 +43,7 @@ import { planDrawerRestore } from './drawerRestore';
 import {
   hasUnresolvedResourceReference,
   migrateDrawerResourceReferences,
+  savedResourceReferenceStatus,
   unresolvedResourceReferenceMessage,
 } from './resourceReferenceMigration';
 import { markTerminalSessionHandedOff } from './terminalHandoff';
@@ -456,6 +457,14 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
 
         for (const id of expiredMigratedIds) {
           dispatch({ type: 'update', find: { id }, updates: { properties: { status: 'expired' } } });
+        }
+
+        // A previously expired tab can have a live session after state is restored.
+        for (const tab of initialSlot?.tabs ?? []) {
+          if (isTerminalSessionTab(tab) && tab.properties?.status === 'expired'
+            && savedResourceReferenceStatus(tab) !== undefined && !expiredMigratedIds.has(tab.id)) {
+            dispatch({ type: 'update', find: { id: tab.id }, updates: { properties: { status: 'connected' } } });
+          }
         }
 
         adoptTabs(orphanedSessionTabs, {});

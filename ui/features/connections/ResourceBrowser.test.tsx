@@ -37,7 +37,7 @@ vi.mock('@/features/plugins', () => ({
 }));
 vi.mock('@/features/plugins/components/PluginRouteStatus', () => ({ default: () => <div>Plugin loading</div> }));
 vi.mock('@/components/icons/Icon', () => ({ default: ({ name }: { name: string }) => <span data-testid="group-icon">{name}</span> }));
-vi.mock('@/components/tables/Resources', () => ({ default: ({ pluginID, connectionID, resourceKey }: { pluginID: string; connectionID: string; resourceKey: string }) => <div data-testid="resource-table">{JSON.stringify([pluginID, connectionID, resourceKey])}</div> }));
+vi.mock('@/components/tables/Resources', () => ({ default: ({ pluginID, connectionID, resourceKey }: { pluginID: string; connectionID: string; resourceKey: string }) => <div data-testid="resource-table">{JSON.stringify([pluginID, connectionID, resourceKey])}<input aria-label="Filter resources" /></div> }));
 function Location() {
   const location = useLocation();
   return <output data-testid="location">{location.pathname}{location.search}</output>;
@@ -91,6 +91,65 @@ it('waits for plugin registration and provider preference migration before mount
   view.rerender(<MemoryRouter initialEntries={[resourceBrowserPath('provider', 'prod/west', state.type)]}>
     <Routes><Route path="resources/:pluginID/:connectionID" element={<ResourceBrowser />} /></Routes>
   </MemoryRouter>);
+  expect(screen.getByTestId('resource-table')).toBeTruthy();
+});
+
+it('preserves browser state and scroll across plugin reload and registration replacement', () => {
+  state.gateEnabled = true;
+  const view = open();
+  fireEvent.click(screen.getByRole('button', { name: 'Machines' }));
+  const table = screen.getByTestId('resource-table');
+  const filter = screen.getByRole('textbox', { name: 'Filter resources' });
+  fireEvent.change(filter, { target: { value: 'worker' } });
+  const nav = screen.getByRole('navigation', { name: 'Resource types' });
+  nav.scrollTop = 45;
+  const tableContainer = table.parentElement!;
+  tableContainer.scrollTop = 80;
+  fireEvent.click(screen.getByRole('button', { name: /Native/ }));
+
+  const rerender = () => view.rerender(<MemoryRouter initialEntries={[resourceBrowserPath('provider', 'prod/west')]}>
+    <Routes><Route path="resources/:pluginID/:connectionID" element={<><ResourceBrowser /><Location /></>} /></Routes>
+  </MemoryRouter>);
+  state.phase = 'loading';
+  rerender();
+  expect(screen.getByTestId('resource-table')).toBe(table);
+  expect(filter).toHaveValue('worker');
+  expect(nav.scrollTop).toBe(45);
+  expect(tableContainer.scrollTop).toBe(80);
+  expect(screen.getByRole('button', { name: /Native/ })).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.getByTestId('location').textContent).toBe(resourceBrowserPath('provider', 'prod/west', state.type));
+
+  state.phase = 'ready';
+  rerender();
+  expect(screen.getByTestId('resource-table')).toBe(table);
+  expect(filter).toHaveValue('worker');
+  expect(nav.scrollTop).toBe(45);
+  expect(tableContainer.scrollTop).toBe(80);
+  expect(screen.getByRole('button', { name: /Native/ })).toHaveAttribute('aria-expanded', 'false');
+});
+
+it.each(['error', 'idle'])('waits for a new registration after plugin enters %s', (phase) => {
+  const view = open(state.type);
+  expect(screen.getByTestId('resource-table')).toBeTruthy();
+  const rerender = () => view.rerender(<MemoryRouter initialEntries={[resourceBrowserPath('provider', 'prod/west', state.type)]}>
+    <Routes><Route path="resources/:pluginID/:connectionID" element={<><ResourceBrowser /><Location /></>} /></Routes>
+  </MemoryRouter>);
+
+  state.phase = phase;
+  rerender();
+  expect(screen.queryByTestId('resource-table')).toBeNull();
+  state.gateEnabled = true;
+  state.gateReady = false;
+  state.phase = 'loading';
+  rerender();
+  expect(screen.getByText('Plugin loading')).toBeTruthy();
+  expect(screen.queryByTestId('resource-table')).toBeNull();
+  state.phase = 'ready';
+  rerender();
+  expect(screen.getByText('Migration pending')).toBeTruthy();
+  expect(screen.queryByTestId('resource-table')).toBeNull();
+  state.gateReady = true;
+  rerender();
   expect(screen.getByTestId('resource-table')).toBeTruthy();
 });
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { Button, Spinner, Stack, Text } from '@omniviewdev/base-ui';
 import { ConnectionBoundary, ConnectionBoundaryFallback, parseAppError, useConnection, useResourceGroups, useResourceTypes } from '@omniviewdev/runtime';
@@ -14,11 +14,22 @@ export default function ResourceBrowser() {
   const target = parsePagePath(useLocation().pathname);
   const pluginID = target.kind === 'connection' ? target.pluginId : '';
   const connectionID = target.kind === 'connection' ? target.connectionId : '';
+  return <ResourceBrowserForConnection key={JSON.stringify([pluginID, connectionID])} pluginID={pluginID} connectionID={connectionID} />;
+}
+
+/** Keep the initial migration gate and browser mounted during plugin reloads. */
+function ResourceBrowserForConnection({ pluginID, connectionID }: { pluginID: string; connectionID: string }) {
   const { plugins, registrations } = usePluginService();
   const plugin = plugins.get(pluginID);
-  const PreferenceMigrationGate = registrations.get(pluginID)?.PreferenceMigrationGate;
+  const initialRegistration = useRef<{ gate: ComponentType<{ children: ReactNode }> | undefined } | null>(null);
+  if (plugin?.phase === 'ready' && initialRegistration.current === null) {
+    initialRegistration.current = { gate: registrations.get(pluginID)?.PreferenceMigrationGate };
+  } else if (plugin?.phase !== 'ready' && plugin?.phase !== 'loading') {
+    initialRegistration.current = null;
+  }
+  const PreferenceMigrationGate = initialRegistration.current?.gate;
   const navigate = useNavigate();
-  if (plugin?.phase !== 'ready') {
+  if (plugin?.phase !== 'ready' && !(plugin?.phase === 'loading' && initialRegistration.current)) {
     return <PluginRouteStatus pluginId={pluginID} />;
   }
 

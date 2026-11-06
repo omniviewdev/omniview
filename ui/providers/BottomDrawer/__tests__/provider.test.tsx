@@ -165,6 +165,7 @@ describe('BottomDrawerProvider', () => {
     expect(tabIds()).toEqual([tab.id]);
     const migrated = drawer.tabs[0].properties;
     expect(migrated?.opts).toEqual({ ...opts, route: { connection: 'explicit-route' } });
+    expect(migrated?.status).toBe('expired');
     expect(migrated?.resourceReferenceMigration).toMatchObject({ status: 'converted', legacy: { opts } });
     const saved = vi.mocked(saveSlot).mock.calls.at(-1)![1];
     view.unmount();
@@ -173,6 +174,34 @@ describe('BottomDrawerProvider', () => {
     expect(tabIds()).toEqual([tab.id]);
     expect(drawer.tabs[0].properties).toEqual(migrated);
     expect(mocks.showSnackbar).not.toHaveBeenCalled();
+  });
+
+  it('reconciles a previously expired migrated tab with its live session', async () => {
+    const opts = { reference: { address: {
+      provider: 'provider', authority: 'host', type: 'type', scope: [], id: 'resource',
+    } }, route: { connection: 'route' } };
+    const tab = { ...serializedTab('live-migrated'), properties: {
+      pluginID: 'plugin', connectionID: 'route', opts, status: 'expired',
+      resourceReferenceMigration: { version: 1, status: 'converted', legacy: { opts } },
+    } };
+    mocks.initialSlot = { version: 2, tabs: [tab], focusedId: tab.id };
+    mocks.listExecSessions.mockResolvedValue([{ id: tab.id }]);
+    await renderRestoredDrawer();
+    expect(tabIds()).toEqual([tab.id]);
+    expect(drawer.tabs[0].properties).toEqual({ ...tab.properties, status: 'connected' });
+  });
+
+  it('retains an expired v1 tab with a complete canonical reference', async () => {
+    const opts = { reference: { address: {
+      provider: 'provider', authority: 'host', type: 'type', scope: [], id: 'resource',
+    } }, route: { connection: 'route' } };
+    const tab = { ...serializedTab('canonical'), properties: { pluginID: 'plugin', connectionID: 'route', opts } };
+    mocks.initialSlot = slotOf([tab], tab.id);
+    await renderRestoredDrawer();
+    expect(tabIds()).toEqual([tab.id]);
+    expect(drawer.tabs[0].properties).toMatchObject({
+      opts, status: 'expired', resourceReferenceMigration: { status: 'converted', legacy: { opts } },
+    });
   });
 
   it('preserves a live v2 opaque selector and prunes an ordinary expired session', async () => {

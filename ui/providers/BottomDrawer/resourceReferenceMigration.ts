@@ -2,6 +2,7 @@ import type { DrawerSlot, SerializedDrawerTab } from './drawerSlot';
 
 export const unresolvedResourceReferenceMessage = 'A saved terminal resource reference cannot be restored safely. Open the resource again to start a new terminal. The original options are retained.';
 
+/** Checks whether saved options contain a complete, routable resource reference. */
 function hasCanonicalReference(opts: Record<string, unknown>): boolean {
   const reference = opts.reference;
   const route = opts.route;
@@ -44,6 +45,7 @@ function hasCanonicalReference(opts: Record<string, unknown>): boolean {
   return true;
 }
 
+/** Recognize only versioned migration metadata that the drawer can safely restore. */
 export function savedResourceReferenceStatus(tab: Pick<SerializedDrawerTab, 'properties'>): 'converted' | 'unconvertible' | undefined {
   const migration = tab.properties?.resourceReferenceMigration;
   if (typeof migration !== 'object' || migration === null
@@ -54,6 +56,7 @@ export function savedResourceReferenceStatus(tab: Pick<SerializedDrawerTab, 'pro
   return migration.status === 'converted' || migration.status === 'unconvertible' ? migration.status : undefined;
 }
 
+/** Prevent retry when the saved options could not be converted into a resource reference. */
 export function hasUnresolvedResourceReference(tab: Pick<SerializedDrawerTab, 'properties'>): boolean {
   return savedResourceReferenceStatus(tab) === 'unconvertible';
 }
@@ -62,7 +65,7 @@ export function hasUnresolvedResourceReference(tab: Pick<SerializedDrawerTab, 'p
  * Legacy terminal selectors do not establish a host authority or a complete scope.
  * Preserve the original options once, but never replay them as a canonical reference.
  * A complete saved address can reuse the tab's explicit connection as its route.
- * Complete canonical options remain unchanged. No selector supplies identity.
+ * Complete canonical options remain unchanged and receive retention metadata. No selector supplies identity.
  */
 export function migrateDrawerResourceReferences(slot: DrawerSlot): DrawerSlot {
   if (slot.version === 2) {
@@ -79,14 +82,15 @@ export function migrateDrawerResourceReferences(slot: DrawerSlot): DrawerSlot {
 
     const options = opts as Record<string, unknown>;
     const resourceIntent = options.reference != null || (typeof options.resource_key === 'string' && options.resource_key !== '');
-    if (!resourceIntent || hasCanonicalReference(options)) {
+    if (!resourceIntent) {
       return tab;
     }
 
     const connection = tab.properties?.connectionID;
-    const withRoute = options.route == null && typeof connection === 'string' && connection !== ''
-      ? { ...options, route: { connection } }
-      : undefined;
+    const withRoute = hasCanonicalReference(options) ? options
+      : options.route == null && typeof connection === 'string' && connection !== ''
+        ? { ...options, route: { connection } }
+        : undefined;
     const converted = withRoute !== undefined && hasCanonicalReference(withRoute);
     changed = true;
     const { opts: originalOptions, resourceReferenceMigration: originalMigration, ...properties } = tab.properties!;

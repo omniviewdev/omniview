@@ -79,6 +79,7 @@ export class WorkspaceController {
   private readonly tabHosts = new Map<string, HTMLDivElement>();
   private windowClosing = false;
   private readonly restoredPaths: Map<string, string>;
+  private readonly reportedInvalidLegacy = new Set<string>();
 
   constructor(initialState: PagesState, routes: RouteObject[]) {
     this.state = currentWindow.isMain ? withTabIfEmpty(initialState, { id: createId(), path: HOME_PATH }) : initialState;
@@ -97,13 +98,23 @@ export class WorkspaceController {
     };
   };
 
-  /** Apply provider migrations only to paths restored with this window. */
+  /** Report malformed saved metadata and apply provider migrations only to restored paths. */
   migrateRestoredPaths(migrators: ReadonlyMap<string, { migratePagePath?: PagePathMigrator }>, report: (path: string, reason: string) => void): void {
     for (const [tabId, originalPath] of this.restoredPaths) {
       const tab = this.state.tabs[tabId];
       if (tab?.path !== originalPath) {
         this.restoredPaths.delete(tabId);
         continue;
+      }
+
+      if (tab.legacy !== undefined && !this.reportedInvalidLegacy.has(tabId)) {
+        const legacy = tab.legacy;
+        if (typeof legacy !== 'object' || legacy === null || Array.isArray(legacy)
+          || !('path' in legacy) || typeof legacy.path !== 'string' || !legacy.path.startsWith('/')
+          || 'invalidMetadata' in legacy) {
+          this.reportedInvalidLegacy.add(tabId);
+          report(originalPath, 'The saved legacy page metadata is invalid.');
+        }
       }
 
       const target = parsePagePath(originalPath);
@@ -126,7 +137,9 @@ export class WorkspaceController {
         if (result.kind === 'unconvertible') {
           report(originalPath, result.reason);
         } else if (result.kind === 'migrated') {
-          if (!result.path.startsWith('/')) {
+          if (typeof result.path !== 'string' || !result.path.startsWith('/')
+            || result.path.startsWith('//') || /[\\\u0000-\u001f\u007f]/.test(result.path)
+            || settingsWindowTarget(result.path) !== null || parsePagePath(result.path).kind === 'settings') {
             report(originalPath, 'The provider returned an invalid page path.');
             continue;
           }

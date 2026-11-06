@@ -64,6 +64,13 @@ it('keeps opaque addresses and optional incarnations distinct in detail and boun
       expect(hashKey(key(roundtrip))).toBe(hashes[index]);
     });
   }
+  const request = native(references[0]);
+  const otherRoute: HostNativeQueryRequest = {
+    ...request,
+    request: { ...request.request, target: { ...request.request.target, route: { connection: 'another-route' } } },
+  };
+  expect(hashKey(resourceQueryKeys.nativeQuery('plugin', request)))
+    .not.toBe(hashKey(resourceQueryKeys.nativeQuery('plugin', otherRoute)));
 });
 
 it('partitions list keys by structured collection identity, not object ID or incarnation', () => {

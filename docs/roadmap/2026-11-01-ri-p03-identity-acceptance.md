@@ -96,7 +96,7 @@ These searches were followed by reads of store shapes, writers, loaders, and con
 
 The corrected drawer reader accepts slot versions 1 and 2. Normal and panel saves write version 2. Only version 1 runs the historical reference migration, including closed-window adoption. Version 2 returns unchanged.
 
-- Keep complete canonical options unchanged.
+- Keep complete canonical options unchanged and record retention metadata for historical version 1 terminal tabs.
 - Keep newly saved, SDK-valid opaque selector-only sessions unchanged in version 2. They retain their options and retry behavior.
 - Convert a complete saved canonical reference without a route by reusing the tab's explicit `connectionID` as `AccessRoute.connection`.
 - Preserve the original options in `properties.resourceReferenceMigration.legacy.opts` for each changed entry.
@@ -120,6 +120,7 @@ No new cancellation or queue behavior exists. Migration is synchronous over save
 `PluginWindow.migratePagePath(path)` is an optional TypeScript callback. Its exact result kinds are `unchanged`, `migrated` with `path`, and `unconvertible` with `reason`. The host calls it after the owning plugin registers. Core code does not split Kubernetes GVK tokens.
 
 The host migrates only saved paths that the user has not changed since restore. It saves the replacement and the first original as `PageTab.legacy.path`. Page persistence and cross-window transfer preserve this backup. Reloading a canonical path does not rewrite it. Unknown paths remain unchanged and produce a warning toast and console log.
+Malformed legacy metadata is retained and reported without rejecting the other tabs. Provider migrations cannot navigate to the separate Settings window.
 
 Kubernetes converts built-in historical `group_version_Kind` and `group::version::Kind` segments with its explicit built-in table. The table also serves native manifest navigation. Query strings and fragments remain exact. Known canonical opaque types remain unchanged. Malformed encodings, unregistered versions, CRDs, and unknown kinds are reported rather than assigned guessed plurals. No permanent route alias or redirect remains.
 

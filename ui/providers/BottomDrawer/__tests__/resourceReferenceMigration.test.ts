@@ -25,10 +25,13 @@ const canonical = {
 
 it('keeps complete canonical references, incarnation and utility options through save and reload', () => {
   const original = slot(canonical);
-  expect(migrateDrawerResourceReferences(original)).toEqual({ ...original, version: 2 });
-  const saved = buildDrawerSlot(original.tabs.map(hydrateDrawerTab), original.focusedId!, 'expanded', 400);
+  const migrated = migrateDrawerResourceReferences(original);
+  expect(migrated.tabs[0].properties).toMatchObject({
+    opts: canonical, resourceReferenceMigration: { version: 1, status: 'converted', legacy: { opts: canonical } },
+  });
+  const saved = buildDrawerSlot(migrated.tabs.map(hydrateDrawerTab), migrated.focusedId!, 'expanded', 400);
   const reloaded = migrateDrawerResourceReferences(parseDrawerSlot(JSON.parse(JSON.stringify(saved))));
-  expect(reloaded).toEqual({ ...original, version: 2 });
+  expect(reloaded).toEqual(migrated);
   expect(reloaded.tabs[0].properties?.opts).toEqual(canonical);
 });
 

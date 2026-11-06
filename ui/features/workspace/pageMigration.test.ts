@@ -46,4 +46,51 @@ describe('saved provider page migration', () => {
     expect(report).toHaveBeenCalledOnce();
     expect(report).toHaveBeenCalledWith(path, 'Unknown type');
   });
+  it.each([null, 'bad', { path: 42 }, { path: 'relative' }])('retains and reports malformed legacy metadata: %s', (legacy) => {
+    const path = '/_plugin/kubernetes/cluster/c/resources/old';
+    const state = createSingleTabState({ id: 'a', path, legacy }, 'p');
+    const restored = parsePagesState(JSON.parse(JSON.stringify(state)));
+    const controller = new WorkspaceController(restored, []);
+    const report = vi.fn();
+    controller.migrateRestoredPaths(new Map(), report);
+    controller.migrateRestoredPaths(new Map(), report);
+    expect(controller.getState().tabs.a.legacy).toEqual(legacy);
+    expect(report).toHaveBeenCalledOnce();
+    expect(report).toHaveBeenCalledWith(path, 'The saved legacy page metadata is invalid.');
+  });
+
+  it('preserves malformed metadata when a provider migrates the tab', () => {
+    const original = '/_plugin/kubernetes/cluster/c/resources/old';
+    const controller = new WorkspaceController(createSingleTabState({ id: 'a', path: original, legacy: null }, 'p'), []);
+    const report = vi.fn();
+    const migratePagePath = () => ({ kind: 'migrated' as const, path: '/new' });
+    controller.migrateRestoredPaths(new Map([['kubernetes', { migratePagePath }]]), report);
+    const saved = JSON.parse(JSON.stringify(controller.getState()));
+    expect(parsePagesState(saved).tabs.a).toMatchObject({
+      path: '/new',
+      legacy: { path: original, invalidMetadata: null },
+    });
+    expect(report).toHaveBeenCalledWith(original, 'The saved legacy page metadata is invalid.');
+    const reloaded = new WorkspaceController(parsePagesState(saved), []);
+    const reloadReport = vi.fn();
+    reloaded.migrateRestoredPaths(new Map(), reloadReport);
+    expect(reloadReport).toHaveBeenCalledWith('/new', 'The saved legacy page metadata is invalid.');
+  });
+
+  it.each(['/settings', '/settings/plugins?x=1', 'relative', '//example.com/path', '/\\example.com', null])(
+    'rejects invalid provider result %s before changing state or navigating',
+    (path) => {
+      const original = '/_plugin/kubernetes/cluster/c/resources/old';
+      const controller = new WorkspaceController(createSingleTabState({ id: 'a', path: original }, 'p'), [{ path: '*' }]);
+      controller.routers.ensure('a', original);
+      const router = controller.routers.get('a')!;
+      const navigate = vi.spyOn(router, 'navigate');
+      const report = vi.fn();
+      const migratePagePath = vi.fn(() => ({ kind: 'migrated' as const, path: path as string }));
+      controller.migrateRestoredPaths(new Map([['kubernetes', { migratePagePath }]]), report);
+      expect(controller.getState().tabs.a.path).toBe(original);
+      expect(navigate).not.toHaveBeenCalled();
+      expect(report).toHaveBeenCalledWith(original, 'The provider returned an invalid page path.');
+    },
+  );
 });
