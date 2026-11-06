@@ -316,7 +316,7 @@ Derives the route tree from loaded plugin registrations. Each plugin's routes ar
 /_plugin/{pluginId}/...routes
 ```
 
-Each registered route receives a local error boundary unless the plugin provides one, including boundaries exported by lazy route modules. A child route render or loader failure shows a plugin error inside its parent outlet, preserving the parent layout and navigation. The outer `PluginRenderer` boundary remains the last resort for failures in the plugin layout itself.
+Each registered route receives a local error boundary unless the plugin provides one, including boundaries exported by lazy route modules. Child route render and loader failures, function-form lazy import failures, and object-form `lazy.Component` import failures show an error inside the parent outlet, preserving the parent layout and navigation. The outer `PluginRenderer` boundary remains the last resort for failures in the plugin layout itself.
 
 ### `<ExtensionPointRenderer>`
 

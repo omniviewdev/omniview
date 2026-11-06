@@ -22,6 +22,7 @@ type authorityCall struct {
 	credential, session, id string
 	epoch, policy, catalog  uint64
 	tool                    ToolInfo
+	resolved                *ToolInfo
 	connection              string
 	arguments               []byte
 	operation               string
@@ -219,6 +220,48 @@ func (a *Authority) Bind(ctx context.Context, tool ToolInfo, connection string, 
 	return boundCtx, nil
 }
 
+// resolveKubernetes binds a discovered operation to the already admitted call.
+// The catalog observation on the resource binding fences provider generations.
+func (a *Authority) resolveKubernetes(ctx context.Context, tool ToolInfo, args []byte) (bool, error) {
+	c, ok := ctx.Value(authorityContextKey{}).(*authorityCall)
+	if !ok || tool.Resource == nil {
+		return false, errAuthority
+	}
+	target, err := tool.Resource.InvocationTarget(args)
+	if err != nil {
+		return false, err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !c.dispatched || !isGenericKubernetesTool(c.tool) || c.resolved != nil ||
+		!a.allowedLocked(c) || tool.Status != StatusOK || tool.PluginID != c.tool.PluginID ||
+		target.Provider != c.tool.PluginID || target.Connection != c.connection {
+		return false, errAuthority
+	}
+	c.resolved = &tool
+	c.operation = tool.Resource.Operation
+	c.target = target
+	c.target.Scope = maps.Clone(target.Scope)
+	c.arguments = append([]byte(nil), args...)
+	c.confirm = a.cfg.confirmWithDefault(c.tool.PluginID, c.connection, c.tool, tool.Destructive)
+	c.approved = false
+	return c.confirm, nil
+}
+
+func (a *Authority) approveResolvedKubernetes(ctx context.Context) error {
+	c, ok := ctx.Value(authorityContextKey{}).(*authorityCall)
+	if !ok {
+		return errAuthority
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !c.dispatched || c.resolved == nil || !a.allowedLocked(c) {
+		return errAuthority
+	}
+	c.approved = true
+	return nil
+}
+
 // Dispatch admits once, then fences cancellation and retirement before returning
 // any result. The callback must use its supplied context, never a UI/host scope.
 // Completion cancels the bound context to release ownership. Callers must use
@@ -339,6 +382,27 @@ func (a *Authority) Authorize(p invocation.Principal, operation string, target i
 				return nil
 			}
 		}
+		return errAuthority
+	}
+	if c.dispatched && isGenericKubernetesTool(c.tool) && c.resolved == nil {
+		switch operation {
+		case "resource.StartConnection", "resource.Catalog":
+			if reflect.DeepEqual(target, invocation.Target{Provider: c.tool.PluginID, Connection: c.connection}) {
+				return nil
+			}
+		case "resource.Features":
+			if reflect.DeepEqual(target, invocation.Target{Provider: c.tool.PluginID}) {
+				return nil
+			}
+		case "resource.ResolveTarget", "resource.GetActions":
+			expected := invocation.Target{Provider: c.tool.PluginID, Connection: c.connection, ResourceType: target.ResourceType}
+			if target.ResourceType != "" && reflect.DeepEqual(target, expected) {
+				return nil
+			}
+		}
+		return errAuthority
+	}
+	if c.resolved != nil && c.confirm && !c.approved {
 		return errAuthority
 	}
 	if c.dispatched && delegatedAllowed(c.delegation, operation, target) {
