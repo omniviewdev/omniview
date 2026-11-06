@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Checkbox, Input, Stack, Text } from '@omniviewdev/base-ui';
 import { MetricClient } from '@omniviewdev/runtime/api';
 import { Browser } from '@omniviewdev/runtime/runtime';
@@ -17,6 +18,7 @@ const credentialLabels: Record<string, string> = {
 };
 
 export default function GrafanaSettings({ registerNavigation }: Partial<PluginSettingsBodyProps>) {
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState('Connections');
   const [connections, setConnections] = useState<ProviderConnection[]>([]);
   const [definitions, setDefinitions] = useState<MetricDefinition[]>([]);
@@ -134,6 +136,7 @@ export default function GrafanaSettings({ registerNavigation }: Partial<PluginSe
         }
 
         setBusy(true);
+        let changed = false;
         try {
           for (const draft of Object.values(mappingDrafts)) {
             const validation = await MetricClient.ValidateMetricDefinition('grafana', selected, datasourceUID, draft);
@@ -145,6 +148,7 @@ export default function GrafanaSettings({ registerNavigation }: Partial<PluginSe
 
           for (const draft of Object.values(mappingDrafts)) {
             await MetricClient.SaveMetricDefinition(ownerPluginID, ownerConnectionID, draft);
+            changed = true;
           }
 
           setMappingDrafts({}); await load(); setDraftEpoch(value => value + 1); return true;
@@ -152,13 +156,14 @@ export default function GrafanaSettings({ registerNavigation }: Partial<PluginSe
           setError(String(err)); return false; 
         } finally {
           setBusy(false); 
+          if (changed) await queryClient.invalidateQueries({ queryKey: ['metric'] });
         }
       },
     });
     return () => {
       registerNavigation(null); 
     };
-  }, [registerNavigation, editing, mappingDrafts, busy, selected, datasourceUID, ownerPluginID, ownerConnectionID, load]);
+  }, [registerNavigation, editing, mappingDrafts, busy, selected, datasourceUID, ownerPluginID, ownerConnectionID, load, queryClient]);
   const credential = useRef<HTMLInputElement>(null);
 
   useEffect(() => () => {
@@ -248,6 +253,7 @@ export default function GrafanaSettings({ registerNavigation }: Partial<PluginSe
 
     try {
       const saved = await MetricClient.SaveProviderConnection('grafana', { connection: editing, ...(token ? { credential: token } : {}) });
+      await queryClient.invalidateQueries({ queryKey: ['metric'] });
       if (generation !== editorGeneration.current) {
         return;
       }
@@ -310,7 +316,9 @@ export default function GrafanaSettings({ registerNavigation }: Partial<PluginSe
         }
 
         try {
-          await MetricClient.DeleteProviderConnection('grafana', connection.id); await load(); 
+          await MetricClient.DeleteProviderConnection('grafana', connection.id);
+          await queryClient.invalidateQueries({ queryKey: ['metric'] });
+          await load();
         } catch (err) {
           setError(String(err)); 
         } 
@@ -364,6 +372,7 @@ export default function GrafanaSettings({ registerNavigation }: Partial<PluginSe
           setBusy(true); setError('');
           try {
             const result = await MetricClient.SaveMetricSourceDefaults({ revision: defaultRevision, source: { plugin_id: 'grafana', connection_id: selected, datasource_uid: datasourceUID, datasource_kind: 'prometheus', native: false } }); setDefaultRevision(result.revision); setDefaultSource(`${selected} / ${datasourceUID}`); setStatus('Global source default saved');
+            await queryClient.invalidateQueries({ queryKey: ['metric'] });
           } catch (err) {
             setError(String(err)); 
           } finally {
@@ -373,6 +382,7 @@ export default function GrafanaSettings({ registerNavigation }: Partial<PluginSe
           setBusy(true); setError('');
           try {
             const result = await MetricClient.SaveMetricSourceDefaults({ revision: defaultRevision }); setDefaultRevision(result.revision); setDefaultSource('Native source'); setStatus('Global source reset to native'); 
+            await queryClient.invalidateQueries({ queryKey: ['metric'] });
           } catch (err) {
             setError(String(err)); 
           } finally {
@@ -384,13 +394,17 @@ export default function GrafanaSettings({ registerNavigation }: Partial<PluginSe
       <ValidationContext lockOwner={Object.keys(mappingDrafts).length > 0} resourceTypes={[...new Set(visibleDefinitions.filter(definition => definition.query_language === 'promql' && Boolean(definition.query)).flatMap(definition => definition.resource_keys))]} onChange={setValidationSample} />
       <fieldset disabled={!ownerPluginID || !ownerConnectionID} style={{ border: 0, padding: 0, margin: 0 }}>
         <Mappings key={JSON.stringify([draftEpoch, ownerKey])} definitions={visibleDefinitions} savedDefinitionIDs={definitions.map(definition => definition.id)} connectionID={selected} datasourceUID={datasourceUID} onDraft={onDraft} sampleRequest={sampleRequest} schemaContext={validationSample?.context.resourceType ? validationSample.context : undefined} remove={async id => {
-          await MetricClient.DeleteMetricDefinition(id); onDraft(id, undefined); await load();
+          await MetricClient.DeleteMetricDefinition(id);
+          await queryClient.invalidateQueries({ queryKey: ['metric'] });
+          onDraft(id, undefined); await load();
         }} save={async definition => {
           if (!ownerPluginID || !ownerConnectionID) {
             throw new Error('Choose a resource owner and connection before saving mappings.');
           }
 
-          await MetricClient.SaveMetricDefinition(ownerPluginID, ownerConnectionID, definition); onDraft(definition.id, undefined); await load();
+          await MetricClient.SaveMetricDefinition(ownerPluginID, ownerConnectionID, definition);
+          await queryClient.invalidateQueries({ queryKey: ['metric'] });
+          onDraft(definition.id, undefined); await load();
         }} />
       </fieldset>
     </div>

@@ -73,6 +73,19 @@ Use the snapshot's own catalog and the targets whose tokens belong to that snaps
 
 Prepared result IDs use source, canonical resource identity, metric ID, and dimensions, not caller tokens or result order. The hook retains compatible displayed data during refresh, filters out replaced resource incarnations, and clears invalidated data.
 
+Each result also exposes readonly `resourceReference` and `resourceRoute` from its admitted target. Use those fields for identity chips. Do not parse `resourceIdentity` or treat returned series dimensions as resource identity.
+
+### Source labels and icons
+
+| Runtime hook | Use |
+| --- | --- |
+| `useMetricSourceInventory()` | Shared provider icons, connection names, and datasource choices |
+| `useMetricSourcePresentation(result.source)` | Friendly attribution for the result's actual source |
+| `useMetricBindings(pluginID, connectionID)` | Owner-approved binding scope |
+| `useMetricOwnerConnection(pluginID, connectionID)` | Owner connection metadata from the shared connection cache |
+
+These hooks do not collect measurements. Inventory caches exclude credentials, configuration, and connection URLs. Connection and metrics-setting mutations invalidate the shared metadata caches.
+
 ## Host and window transport
 
 The host `metric.Controller` exports these finite read and lifecycle methods (`sdk` denotes `github.com/omniviewdev/plugin-sdk/pkg/v1/metric`):

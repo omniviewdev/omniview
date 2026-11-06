@@ -5,6 +5,7 @@ import type { MetricUnit, NumericPoint } from '@omniviewdev/base-ui/metrics';
 import type { MetricSourceRef, ResourceMetricTarget, ResourceMetricsCatalog } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
 import type { MetricsObservationSnapshot, MetricsObservationSpec } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/models';
 import { observeMetrics, type MetricObservationLease } from './observationClient';
+import type { ResourceReference, AccessRoute, ScopeEntry } from '../../resource/v2/domain';
 export type { ResourceMetricTarget } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
 export type { ResourceMetricsCatalog } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
 
@@ -40,10 +41,16 @@ export function useMetricCatalog(options: Pick<UseMetricObservationOptions, 'own
     enabled: options.enabled !== false && !!options.ownerConnectionID,
   });
 }
+type DeepReadonly<T> = T extends readonly (infer Item)[] ? readonly DeepReadonly<Item>[]
+  : T extends object ? { readonly [Key in keyof T]: DeepReadonly<T[Key]> } : T;
+
 export interface PreparedMetricResult {
   readonly id: string;
   readonly resourceIdentity: string;
   readonly resourceToken: string;
+  /** Copied admitted identity; series dimensions never supply resource identity. */
+  readonly resourceReference: DeepReadonly<ResourceReference>;
+  readonly resourceRoute: Readonly<AccessRoute>;
   readonly metricID: string;
   readonly status: string;
   readonly value: number | null;
@@ -93,6 +100,24 @@ function sourceIdentity(catalog: ResourceMetricsCatalog | null | undefined): str
 export function prepareMetricResults(snapshot: MetricsObservationSnapshot | null, catalog: ResourceMetricsCatalog | null, targets: readonly ResourceMetricTarget[]): readonly PreparedMetricResult[] {
   if (!snapshot?.data || snapshot.invalidated) return EMPTY;
   const identities = new Map(targets.map(target => [target.token, targetIdentity(target)]));
+  const admitted = new Map(targets.map(target => {
+    const reference: ResourceReference = {
+      incarnation: target.reference.incarnation ?? undefined,
+      address: {
+        provider: target.reference.address.provider,
+        authority: target.reference.address.authority,
+        type: target.reference.address.type,
+        id: target.reference.address.id,
+        scope: Object.freeze((target.reference.address.scope ?? []).map((scope: ScopeEntry) =>
+          Object.freeze({ dimension: scope.dimension, value: scope.value }))),
+      },
+    };
+    const route: AccessRoute = { connection: target.route.connection };
+    return [target.token, {
+      reference: Object.freeze({ incarnation: reference.incarnation, address: Object.freeze(reference.address) }),
+      route: Object.freeze(route),
+    }] as const;
+  }));
   const descriptors = new Map(catalog?.metrics?.map(metric => [metric.id, metric]));
   const results: PreparedMetricResult[] = [];
   for (const result of snapshot.data.results ?? []) {
@@ -116,12 +141,14 @@ export function prepareMetricResults(snapshot: MetricsObservationSnapshot | null
     results.push(Object.freeze({
       id: JSON.stringify([source, resourceIdentity, result.metric_id, dimensionEntries]),
       resourceIdentity, resourceToken: result.resource_token, metricID: result.metric_id, status: result.status,
+      resourceReference: admitted.get(result.resource_token)!.reference,
+      resourceRoute: admitted.get(result.resource_token)!.route,
       value: result.status === 'ok' ? finite(result.value) : null,
       points, observedAt, windowMs: result.window / 1_000_000,
       freshUntilMs, freshness: 'unknown',
       dimensions, message: result.message, unit: units[descriptor?.unit ?? ''] ?? null,
       identityScope: result.identity_scope,
-      source: resultSource,
+      source: resultSource ? Object.freeze({ ...resultSource }) : null,
     }));
   }
   return Object.freeze(results);

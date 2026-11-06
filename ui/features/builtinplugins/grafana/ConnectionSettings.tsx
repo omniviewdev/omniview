@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Input, Text } from '@omniviewdev/base-ui';
 import { MetricClient } from '@omniviewdev/runtime/api';
 import type { ConnectionSettingsContext, MetricBinding, MetricDataSource, MetricDefinition, MetricScopeField, ProviderConnection, ResourceMetricTarget, MetricsObservationSpec } from '@omniviewdev/runtime';
@@ -14,6 +15,7 @@ export default function GrafanaConnectionSettings(props: ConnectionSettingsConte
 }
 
 function OwnerConnectionSettings({ resourcePluginID, connectionID, resourceTypes }: ConnectionSettingsContext) {
+  const queryClient = useQueryClient();
   const [connections, setConnections] = useState<ProviderConnection[]>([]);
   const [definitions, setDefinitions] = useState<MetricDefinition[]>([]);
   const [scopeFields, setScopeFields] = useState<MetricScopeField[]>([]);
@@ -138,6 +140,7 @@ function OwnerConnectionSettings({ resourcePluginID, connectionID, resourceTypes
       }
 
       const value = await MetricClient.SaveMetricBinding({ ...resolved, public_scope: approvedScope(resolved.public_scope, scopeFields) });
+      await queryClient.invalidateQueries({ queryKey: ['metric'] });
       if (!value) {
         throw new Error('No saved binding returned.');
       }
@@ -210,6 +213,7 @@ function OwnerConnectionSettings({ resourcePluginID, connectionID, resourceTypes
     {saved && <details className="grafana-sample-context"><summary>Binding actions</summary><Button size="sm" variant="ghost" color="danger" disabled={busy} onClick={async () => {
       setBusy(true); try {
         await MetricClient.DeleteMetricBinding(resourcePluginID, connectionID, saved.id); setSaved(undefined); setMappingDrafts({}); setEditorEpoch(value => value + 1); setDraft({ ...draft, source: { ...draft.source, connection_id: '', datasource_uid: '', datasource_kind: '' }, overrides: [], public_scope: {} }); setStatus('External binding removed. Native configuration preserved.'); 
+        await queryClient.invalidateQueries({ queryKey: ['metric'] });
       } catch (err) {
         setError(String(err)); 
       } finally {

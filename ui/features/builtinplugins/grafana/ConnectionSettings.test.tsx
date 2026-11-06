@@ -1,7 +1,18 @@
-import { act, cleanup, fireEvent, render, screen, type RenderResult } from '@testing-library/react';
+import { act, cleanup, fireEvent, render as renderUI, screen, type RenderResult } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { ConnectionSettingsContext, MetricDataSource, MetricDefinition } from '@omniviewdev/runtime';
 import GrafanaConnectionSettings from './ConnectionSettings';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
+
+let queryClient: QueryClient;
+function render(ui: ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  queryClient = client;
+  client.setQueryData(['metric', 'bindings', 'inventory', 'tenant'], [{ public_scope: { region: 'old' } }]);
+  client.setQueryData(['metric', 'source-inventory'], { options: [{ label: 'Old connection name' }] });
+  return renderUI(ui, { wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
+}
 
 const connectionContext: ConnectionSettingsContext = {
   resourcePluginID: 'inventory',
@@ -99,6 +110,8 @@ it('uses only owner-declared non-K scope fields and preserves their values', asy
     fireEvent.click(screen.getByText('Save connection metrics'));
   });
   expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ public_scope: { region: 'west', account: 'shared' } }));
+  expect(queryClient.getQueryState(['metric', 'bindings', 'inventory', 'tenant'])?.isInvalidated).toBe(true);
+  expect(queryClient.getQueryState(['metric', 'source-inventory'])?.isInvalidated).toBe(true);
 });
 
 it('saves an owner with no scope requirements without inventing metadata', async () => {

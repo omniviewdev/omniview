@@ -37,6 +37,27 @@ it('preserves unknown values, actual source time, window and name-scoped attribu
   expect(prepareMetricResults({ ...snapshot, invalidated: true }, catalog, [target])).toEqual([]);
 });
 
+it('copies admitted identity and keeps series dimensions isolated from resource scope', () => {
+  const admitted = structuredClone(target);
+  const snapshot = new MetricsObservationSnapshot({ data: { complete: true, warnings: [], results: [{
+    resource_token: admitted.token, metric_id: 'cpu', status: 'ok', value: 0, observed_at: null,
+    dimensions: { namespace: 'wrong', cluster: 'series-only' }, points: [], window: Duration.$zero,
+    identity_scope: 'name', message: '',
+  }] } });
+  const [result] = prepareMetricResults(snapshot, null, [admitted]);
+  expect(result.resourceReference.address.scope).toEqual([{ dimension: 'namespace', value: 'apps' }]);
+  expect(result.resourceRoute.connection).toBe('cluster');
+  expect(result.dimensions).toEqual({ cluster: 'series-only', namespace: 'wrong' });
+  admitted.reference.address.scope[0].value = 'changed';
+  admitted.route.connection = 'changed';
+  expect(result.resourceReference.address.scope[0].value).toBe('apps');
+  expect(result.resourceRoute.connection).toBe('cluster');
+  const [withoutIncarnation] = prepareMetricResults(snapshot, null, [{
+    ...admitted, reference: { ...admitted.reference, incarnation: null },
+  }]);
+  expect(withoutIncarnation.resourceReference.incarnation).toBeUndefined();
+});
+
 it('keys series by canonical incarnation rather than caller tokens or scope ordering', () => {
   const catalog = { source: { plugin_id: 'inventory', connection_id: 'tenant', datasource_uid: '', datasource_kind: '', native: true },
     metrics: [{ id: 'cpu', unit: 'cores' }] } as ResourceMetricsCatalog;
