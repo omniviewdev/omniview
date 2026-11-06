@@ -14,9 +14,15 @@ import (
 // CatalogEntry is metadata-only until activation. The opener grants only this
 // plugin's private store and returns an independently owned handle on each call.
 func CatalogEntry(openState func() (*os.Root, error)) plugin.CatalogEntry {
-	return plugin.CatalogEntry{Metadata: config.PluginMeta{ID: "grafana", Name: "Grafana", Icon: "SiGrafana", Version: "1.0.0", Description: "External Prometheus-compatible resource metrics", Capabilities: []string{"metric", "ui"}}, FrontendModule: "grafana", NewBackend: func(context.Context) (plugintypes.PluginBackend, error) {
+	meta := config.PluginMeta{ID: "grafana", Name: "Grafana", Icon: "SiGrafana", Version: "1.0.0", Description: "External Prometheus-compatible resource metrics", Capabilities: []string{"metric", "ui"}}
+	return plugin.CatalogEntry{Metadata: meta, FrontendModule: "grafana", NewBackend: func(context.Context) (plugintypes.PluginBackend, error) {
 		p := NewProvider(openState)
-		backend, err := plugintypes.ComposeNativeBackend(plugintypes.NativeProviders{Metric: p, Shutdown: p.Close})
+		var backend *plugintypes.InProcessBackend
+		lifecycle := plugintypes.NewNativeLifecycle(meta.ID, meta.Version, meta.Capabilities, func() bool {
+			return backend != nil && backend.Healthy()
+		})
+		var err error
+		backend, err = plugintypes.ComposeNativeBackend(plugintypes.NativeProviders{Metric: p, Lifecycle: lifecycle, Shutdown: p.Close})
 		if err != nil {
 			_ = p.Close()
 			return nil, err

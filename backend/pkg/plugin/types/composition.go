@@ -31,6 +31,7 @@ type NativeProviders struct {
 	Networker   networker.Provider
 	Settings    settings.Provider
 	Tools       tools.Provider
+	Lifecycle   *NativeLifecycle
 	HealthCheck func() bool
 	Shutdown    func() error
 }
@@ -80,6 +81,9 @@ func ComposeNativeBackend(native NativeProviders) (*InProcessBackend, error) {
 	}
 	if native.Tools != nil {
 		providers["tools"] = native.Tools
+	}
+	if native.Lifecycle != nil {
+		providers["lifecycle"] = native.Lifecycle
 	}
 	return newOwnedInProcessBackend(InProcessBackendConfig{
 		Providers:   providers,
