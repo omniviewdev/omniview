@@ -8,11 +8,20 @@ import (
 	hostactivity "github.com/omniviewdev/omniview/backend/pkg/activity"
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
+	hostexec "github.com/omniviewdev/omniview/backend/pkg/plugin/exec"
 	hostlifecycle "github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
+	hostlogs "github.com/omniviewdev/omniview/backend/pkg/plugin/logs"
 	hostmetric "github.com/omniviewdev/omniview/backend/pkg/plugin/metric"
+	hostnetworker "github.com/omniviewdev/omniview/backend/pkg/plugin/networker"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
+	hostsettings "github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
+	hosttools "github.com/omniviewdev/omniview/backend/pkg/plugin/tools"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	hostui "github.com/omniviewdev/omniview/backend/pkg/plugin/ui"
+	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	"github.com/omniviewdev/omniview/internal/appstate"
+	coresettings "github.com/omniviewdev/omniview/internal/settings"
+	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	sdkmetric "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 	lifecyclepb "github.com/omniviewdev/plugin-sdk/proto/v1/lifecycle"
@@ -54,18 +63,32 @@ func TestGrafanaNativeLifecycleIdentityAndRetirement(t *testing.T) {
 	require.Equal(t, lifecyclepb.ServingStatus_SERVING_STATUS_NOT_SERVING, health.Status)
 }
 
-// The production frontend uses ServiceWrapper.LoadPlugin with the host activity
-// service configured. A catalog-factory-only test misses that lifecycle boundary.
+// The frontend activates the builtin with every production controller present.
+// Declared capabilities, not missing-controller shortcuts, govern provider startup.
 func TestGrafanaPluginServiceActivationWithHostActivities(t *testing.T) {
 	roots := appstate.NewTestService(t)
 	log := logging.NewNop()
-	resources := resource.NewController(log, nil, roots.PluginStore, invocation.NewBoundary(nil))
-	metrics := hostmetric.NewController(log, nil, resources)
+	store, err := settingsstore.Open(roots.RootDir().ResolvePath("settings.db"))
+	require.NoError(t, err)
+	defer store.Close()
+	core, err := settingsservice.Initialize(settingsservice.Options{Store: store, Categories: coresettings.Definitions(false)})
+	require.NoError(t, err)
+	settingsProvider := core.Provider()
+	settings := hostsettings.NewController(log, store)
+	core.AttachPlugins(settings)
+	boundary := invocation.NewBoundary(nil)
+	resources := resource.NewController(log, settingsProvider, roots.PluginStore, boundary)
+	metrics := hostmetric.NewController(log, settingsProvider, resources)
 	metrics.SetMetricStateRoot(roots.RootDir())
 	dir := t.TempDir()
 	catalog, err := plugin.NewCatalog([]plugin.CatalogEntry{CatalogEntry(func() (*os.Root, error) { return os.OpenRoot(dir) })})
 	require.NoError(t, err)
-	manager := plugin.NewManager(log, roots.RootDir(), roots.Plugins(), resources, nil, nil, nil, nil, metrics, nil, nil, nil, nil, nil, catalog)
+	exec := hostexec.NewController(log, settingsProvider, resources)
+	networker := hostnetworker.NewController(log, settingsProvider, resources)
+	logs := hostlogs.NewController(log, settingsProvider, resources)
+	tools := hosttools.NewController(log, boundary)
+	managers := map[string]plugintypes.PluginManager{"ui": hostui.NewComponentManager(log)}
+	manager := plugin.NewManager(log, roots.RootDir(), roots.Plugins(), resources, settings, exec, networker, logs, metrics, tools, managers, settingsProvider, nil, nil, catalog)
 	defer manager.Shutdown()
 	activities, err := hostactivity.NewService(roots.RootDir(), nil)
 	require.NoError(t, err)
@@ -76,9 +99,22 @@ func TestGrafanaPluginServiceActivationWithHostActivities(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, string(hostlifecycle.PhaseRunning), info.Phase)
 	require.Equal(t, "builtin", info.Origin)
+	require.False(t, settings.HasPlugin("grafana"), "undeclared settings provider must never be dispensed")
 	connections, err := metrics.GetProviderConnections("grafana")
 	require.NoError(t, err)
 	require.Empty(t, connections)
+	secret := "private-token"
+	_, err = metrics.SaveProviderConnection("grafana", sdkmetric.ProviderConnectionInput{
+		Connection: sdkmetric.ProviderConnection{ID: "configured", Name: "Configured", Kind: "prometheus", URL: "https://metrics.example.invalid", PublicConfig: map[string]string{"credentialKind": "prometheus-token"}},
+		Credential: &secret,
+	})
+	require.NoError(t, err, "finite source configuration does not require a settings capability")
 	_, err = service.ReloadPlugin("grafana")
 	require.NoError(t, err, "reload must create a fresh native lifecycle and retire the previous provider")
+	require.False(t, settings.HasPlugin("grafana"))
+	connections, err = metrics.GetProviderConnections("grafana")
+	require.NoError(t, err)
+	require.Len(t, connections, 1)
+	require.Equal(t, "configured", connections[0].ID)
+	require.True(t, connections[0].HasCredentials)
 }

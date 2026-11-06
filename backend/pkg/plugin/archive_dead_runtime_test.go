@@ -11,6 +11,8 @@ import (
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
+	sdksettings "github.com/omniviewdev/plugin-sdk/pkg/v1/settings"
+	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -30,6 +32,13 @@ func (c *archiveDeadRuntimeShutdownController) OnPluginStart(_ string, _ config.
 	}
 	if _, err := backend.Dispense("resource"); err != nil {
 		return err
+	}
+	settings, err := backend.Dispense("settings")
+	if err != nil {
+		return err
+	}
+	if _, ok := settings.(sdksettings.Provider); !ok {
+		return errors.New("settings provider must be declared and usable")
 	}
 	c.backend = backend
 	return nil
@@ -131,9 +140,11 @@ func TestInstallPluginFromPath_ShutdownRefusalAfterBackendExit(t *testing.T) {
 						if refuseRestart {
 							return nil, restartErr
 						}
-						return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": originalProvider}}), nil
+						settings := sdksettings.NewProviderWrapper(pkgsettings.NewProvider(pkgsettings.ProviderOpts{PluginID: "flux"}))
+						return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": originalProvider, "settings": settings}}), nil
 					}
-					return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": candidateProvider}}), nil
+					settings := sdksettings.NewProviderWrapper(pkgsettings.NewProvider(pkgsettings.ProviderOpts{PluginID: "flux"}))
+					return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": candidateProvider, "settings": settings}}), nil
 				}
 				shutdownErr := errors.New("settings shutdown refused")
 				controller := &archiveDeadRuntimeShutdownController{shutdownErr: shutdownErr}
