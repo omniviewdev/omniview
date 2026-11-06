@@ -57,11 +57,11 @@ function ConnectedResourceBrowser({ pluginID, connectionID }: { pluginID: string
   const selected = search.get('type');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const groupsFailed = groups.isError && parseAppError(groups.error).code !== 'UNSUPPORTED';
-  if (connection.isError === true || resourceTypes.isError === true || groupsFailed === true) {
+  if (connection.isError || resourceTypes.isError || groupsFailed) {
     return <Text tone="danger">{parseAppError(connection.error ?? resourceTypes.error ?? groups.error).detail}</Text>;
   }
 
-  if (connection.isLoading === true || resourceTypes.isLoading === true || groups.isLoading === true) {
+  if (connection.isLoading || resourceTypes.isLoading || groups.isLoading) {
     return <Spinner size="xl" />; 
   }
 
