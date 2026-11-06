@@ -168,10 +168,12 @@ func (g *RelationshipGraph) EdgesTo(nodeKey string) []GraphEdge {
 }
 
 func (g *RelationshipGraph) RemoveEdgesForNode(nodeKey string) {
+	// Manual eviction must also invalidate dependency witnesses.
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
 	for _, edge := range g.forward[nodeKey] {
+		g.forgetInputsLocked(edge.declarer)
 		g.markEdgeChanged(edge.GraphEdge)
 		g.releaseEdgeStrings(edge.GraphEdge)
 		tgtKey := edge.Target.Key()
@@ -183,6 +185,7 @@ func (g *RelationshipGraph) RemoveEdgesForNode(nodeKey string) {
 	delete(g.forward, nodeKey)
 
 	for _, edge := range g.reverse[nodeKey] {
+		g.forgetInputsLocked(edge.declarer)
 		g.markEdgeChanged(edge.GraphEdge)
 		g.releaseEdgeStrings(edge.GraphEdge)
 		srcKey := edge.Source.Key()
@@ -194,6 +197,7 @@ func (g *RelationshipGraph) RemoveEdgesForNode(nodeKey string) {
 	delete(g.reverse, nodeKey)
 
 	delete(g.selectorCache, nodeKey)
+	g.forgetInputsLocked(nodeKey)
 }
 
 // RemoveDerivedEdges withdraws the edges derived from the given node's data:
@@ -212,6 +216,7 @@ func (g *RelationshipGraph) RemoveDerivedEdges(nodeKey string) {
 	g.removeMatching(g.reverse, g.forward, nodeKey, derived, false)
 
 	delete(g.selectorCache, nodeKey)
+	g.forgetInputsLocked(nodeKey)
 	delete(g.unresolved, nodeKey)
 }
 
@@ -268,6 +273,12 @@ func dropEdgeByKey(idx map[string][]storedEdge, nodeKey string, ek [4]string) {
 func (g *RelationshipGraph) RemoveEdgesForConnection(pluginID, connectionID string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	for key, snapshot := range g.boundDeclarations {
+		if key.pluginID == pluginID && key.connectionID == connectionID {
+			snapshot.inputs = nil
+			snapshot.inputEpoch++
+		}
+	}
 
 	// Index entries are never left empty, so the first edge identifies the
 	// node. Compare fields rather than key prefixes: connection IDs may
@@ -291,6 +302,7 @@ func (g *RelationshipGraph) RemoveEdgesForConnection(pluginID, connectionID stri
 	}
 	for _, nodeKey := range sourceKeys {
 		for _, edge := range g.forward[nodeKey] {
+			g.forgetInputsLocked(edge.declarer)
 			g.releaseEdgeStrings(edge.GraphEdge)
 			tgtKey := edge.Target.Key()
 			g.reverse[tgtKey] = removeEdgeFrom(g.reverse[tgtKey], nodeKey, true)
@@ -310,17 +322,9 @@ func (g *RelationshipGraph) RemoveEdgesForConnection(pluginID, connectionID stri
 		}
 	}
 
-	// Clean up remaining reverse-index entries for target nodes in this
-	// connection. Phase 1 already handled edges originating from this
-	// connection. What remains are edges from external sources pointing at
-	// nodes in this connection. We keep the forward entries and their
-	// interned strings (the external source still exists), but remove the
-	// reverse-index bookkeeping since the target node is gone.
-	for key, edges := range g.reverse {
-		if len(edges) > 0 && inConn(edges[0].Target) {
-			delete(g.reverse, key)
-		}
-	}
+	// External declarers retain their forward and reverse entries together.
+	// Targets can return without a changed observation from the declarer, so
+	// upstream traversal must not lose these surviving relationships.
 }
 
 type declMapKey struct {
