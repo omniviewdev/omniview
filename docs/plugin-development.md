@@ -11,7 +11,7 @@ or build metadata. Releasing a new stable patch does not require a second versio
 constant to be updated.
 
 Development, nightly, prerelease, and non-version build labels use the explicit
-source capability baseline (`0.30.0`). Advance that baseline when development
+source capability baseline (`0.30.2`). Advance that baseline when development
 source gains a coordinated host/runtime/SDK capability; do not derive capabilities
 from labels such as `0.0.0-nightly...` or `pr-build-macos`.
 
@@ -27,6 +27,14 @@ Activity-enabled plugin releases require host/runtime v0.30.0 or newer and use
 Base UI v0.14.0 with SDK v0.15.0. Older stable hosts do not expose activity hooks
 and reject the new resource-action stream field. Declare `min_ide_version: "0.30.0"`
 in marketplace publication metadata, not in `plugin.yaml`.
+
+The Base UI `0.15.0` cohort requires host/runtime and Vite plugin `0.30.2` or newer.
+It pairs with editors `6.2.0` and AI UI `6.1.9`. Runtime's base-ui peer range is
+`~0.14.0 || ~0.15.0`, preserving existing consumers during staged upgrades.
+Older runtime releases require the previous UI minor. Plugins using
+this cohort must declare `min_ide_version: "0.30.2"` in marketplace metadata.
+The host and Vite plugin share `@omniviewdev/base-ui/metrics` as a separate entry,
+so plugins can use its presentation components without bundling another UI copy.
 
 Publisher minimum and maximum IDE versions are inclusive semantic-version bounds.
 Hosts that omit `ide_version` can only access unconstrained plugin versions.
@@ -178,6 +186,12 @@ Global search still works because it renders inside the bottom drawer provider.
 When checking sidebar actions, verify that Logs opens a log tab, Exec opens a
 terminal tab, and Delete opens its confirmation dialog (then cancel it).
 Container shell availability is separate from action dispatch.
+
+The bottom drawer's collapsed height includes its 36px tab strip and both 1px
+header dividers. Host sizing constants supply the strip and divider CSS variables;
+change those constants together rather than setting independent minimum heights.
+After a header sizing change, check minimize, drag-to-collapse, double-click,
+and restored minimized windows: the full tab strip and controls must remain visible.
 
 ### Host-owned in-process backend lifetime
 

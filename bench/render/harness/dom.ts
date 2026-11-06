@@ -102,8 +102,10 @@ export function findScrollable(root: ParentNode, axis: 'y' | 'x' = 'y'): HTMLEle
  * style + layout so the measured time covers JS, React commit and layout.
  */
 export function scrollStep(el: HTMLElement, top: number): void {
-  el.scrollTop = top;
-  el.dispatchEvent(new Event('scroll'));
+  flushSync(() => {
+    el.scrollTop = top;
+    el.dispatchEvent(new Event('scroll'));
+  });
   void el.getBoundingClientRect();
   void document.body.offsetHeight;
 }
