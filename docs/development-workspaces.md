@@ -92,10 +92,11 @@ The host declares its own interaction-test dependencies rather than relying on
 the UI repository's managed install. The existing UI checks job runs component
 tests after build, lint, and typechecks, reusing its runner and frozen install.
 
-Workspace Probe is a managed-source fixture. Its bootstrap registry pins remain
-at the last compatible runtime/shim release until the new cohort publishes;
-managed composition resolves its actual UI/runtime imports from selected source.
-Update those pins and their lock together after runtime/shim publication.
+Workspace Probe's independent bootstrap pins select published base-ui `0.15.0`
+and runtime/Vite plugin `0.30.2`. Regenerate its manifest and lock together only
+after the target runtime/shim cohort publishes, then verify a standalone frozen
+install and production build. Managed composition still resolves actual UI/runtime
+imports from selected source; linked builds do not prove registry compatibility.
 
 ```sh
 # Run from the host checkout containing the workspace implementation.
