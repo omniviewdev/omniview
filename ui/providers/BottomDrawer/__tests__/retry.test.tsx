@@ -2,8 +2,10 @@ import React from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useBottomDrawer } from '@omniviewdev/runtime';
 import { SessionOptions } from '@omniviewdev/runtime/models';
+import type * as BaseUI from '@omniviewdev/base-ui';
 import BottomDrawerProvider from '../provider';
 import BottomDrawerTabs from '../tabs';
+import TerminalContainer from '../containers/Terminal';
 import { bottomDrawerChannel } from '../events';
 import type * as DrawerContextModule from '../../../../packages/omniviewdev-runtime/src/context/drawer/BottomDrawerContext';
 
@@ -55,14 +57,25 @@ vi.mock('@omniviewdev/runtime/models', () => ({
 }));
 vi.mock('@omniviewdev/runtime/runtime', () => ({ Events: { On: vi.fn(() => vi.fn()) } }));
 vi.mock('@/features/logger', () => ({ default: { error: vi.fn() } }));
+vi.mock('@omniviewdev/base-ui', async (importOriginal) => ({
+  ...(await importOriginal<typeof BaseUI>()),
+  useTheme: () => ({ activeTheme: {} }),
+}));
+vi.mock('@omniviewdev/editors', () => ({ buildXtermTheme: () => ({ background: '#000' }) }));
 vi.mock('@/components/icons/Icon', () => ({ default: () => null }));
 
-function Harness({ index }: { index: number }) {
+const resourceOptions = {
+  reference: { address: { provider: 'provider', authority: 'host', type: 'pod', scope: [], id: 'resource' }, incarnation: 'first' },
+  route: { connection: 'kind-kind' }, command: ['sh'], tty: true,
+};
+const migration = { version: 1, status: 'converted', legacy: { opts: resourceOptions } };
+
+function Harness({ index, migrated = false }: { index: number; migrated?: boolean }) {
   const drawer = useBottomDrawer();
   return <>
     <button onClick={() => {
       drawer.createTabs([
-        { id: 'exec-old', title: 'Exec', variant: 'terminal', properties: { status: 'connected' } },
+        { id: 'exec-old', title: 'Exec', variant: 'terminal', properties: { status: migrated ? 'expired' : 'connected', ...(migrated ? { pluginID: 'kubernetes', connectionID: 'kind-kind', opts: resourceOptions, resourceReferenceMigration: migration } : {}) } },
         { id: 'logs', title: 'Logs', variant: 'logs' },
         { id: 'other', title: 'Other', variant: 'logs' },
       ]);
@@ -73,7 +86,7 @@ function Harness({ index }: { index: number }) {
     <button onClick={() => {
       bottomDrawerChannel.emit('onCreateSession', {
         plugin: 'kubernetes', connection: 'kind-kind',
-        opts: SessionOptions.createFrom({ command: ['sh'] }),
+        opts: SessionOptions.createFrom(migrated ? resourceOptions : { command: ['sh'] }),
         label: 'Exec', replaceSessionId: 'exec-old',
       });
     }}>Retry</button>
@@ -82,7 +95,11 @@ function Harness({ index }: { index: number }) {
       focused: drawer.tabs[drawer.focused]?.title,
       status: drawer.tabs[0]?.properties?.status,
       error: drawer.tabs[0]?.properties?.error,
+      ...(migrated ? { properties: drawer.tabs[0]?.properties } : {}),
     })}</output>
+    {migrated && drawer.tabs[0]?.properties?.status === 'expired' && (
+      <TerminalContainer sessionId={drawer.tabs[0].id} tab={drawer.tabs[0]} />
+    )}
     <BottomDrawerTabs />
   </>;
 }
@@ -109,6 +126,22 @@ it.each([0, 1, 2])('keeps tab order and focused tab %i while retry connects', as
   expect(state()).toEqual({ ids: ['exec-new', 'logs', 'other'],
     focused: ['Exec', 'Logs', 'Other'][index], status: 'connected' });
   expect(backend.close).toHaveBeenCalledWith('exec-old');
+});
+
+it('preserves migrated terminal reference when replacing an expired session', async () => {
+  backend.create.mockResolvedValue({ id: 'exec-new' });
+  render(<BottomDrawerProvider><Harness index={1} migrated /></BottomDrawerProvider>);
+  fireEvent.click(screen.getByText('Seed'));
+  fireEvent.click(screen.getByText('Focus'));
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Start new session' }));
+  });
+  expect(backend.create).toHaveBeenCalledWith('kubernetes', 'kind-kind', resourceOptions);
+  expect(state()).toEqual({
+    ids: ['exec-new', 'logs', 'other'], focused: 'Logs', status: 'connected',
+    properties: { status: 'connected', pluginID: 'kubernetes', connectionID: 'kind-kind',
+      opts: resourceOptions, resourceReferenceMigration: migration },
+  });
 });
 
 it('keeps failed retry in its original slot without selecting logs', async () => {

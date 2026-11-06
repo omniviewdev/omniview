@@ -167,6 +167,12 @@ describe('parsePagesState', () => {
     expect(parsePagesState(JSON.parse(JSON.stringify(valid)))).toEqual(valid);
   });
 
+  it('preserves malformed legacy metadata without accepting invalid tab fields', () => {
+    const tab = { ...valid.tabs.a, legacy: { path: 42, extra: 'kept' } };
+    expect(parsePagesState({ ...valid, tabs: { ...valid.tabs, a: tab } }).tabs.a.legacy).toEqual(tab.legacy);
+    expect(() => parsePagesState({ ...valid, tabs: { ...valid.tabs, a: { ...tab, pinned: 'yes' } } })).toThrow(/pinned/);
+  });
+
   it.each<[string, (state: PagesState) => unknown]>([
     ['another version', (state) => ({ ...state, version: 2 })],
     ['a tab key that differs from its id', (state) => ({ ...state, tabs: { ...state.tabs, z: state.tabs.a } })],
@@ -187,6 +193,11 @@ describe('parsePagesState', () => {
 describe('parsePageTabTransfer', () => {
   it('keeps path, title and pinned', () => {
     expect(parsePageTabTransfer({ path: '/x', title: 'X', pinned: true, groupId: 'g' })).toEqual({ path: '/x', title: 'X', pinned: true });
+  });
+
+  it('preserves malformed legacy metadata but still validates other fields', () => {
+    expect(parsePageTabTransfer({ path: '/x', legacy: null })).toEqual({ path: '/x', legacy: null });
+    expect(() => parsePageTabTransfer({ path: '/x', legacy: null, pinned: 'yes' })).toThrow(/pinned/);
   });
 
   it('rejects anything that is not a page tab', () => {
