@@ -106,8 +106,8 @@ func TestCanonicalAddressKeyScopeOrderAndIncarnation(t *testing.T) {
 		require.NoError(t, json.Unmarshal(data, &roundtrip))
 		// SDK JSON canonicalizes the scope order without changing address identity.
 		require.Equal(t, resourcev2.ResourceReference{Address: reordered, Incarnation: incarnation}, roundtrip)
-		addressKey, err := CanonicalAddressKey(roundtrip.Address)
-		require.NoError(t, err)
+		addressKey, keyErr := CanonicalAddressKey(roundtrip.Address)
+		require.NoError(t, keyErr)
 		// Incarnation guards a reference; it is not part of logical address equality.
 		require.Equal(t, key, addressKey)
 	}

@@ -5,6 +5,8 @@ import { ConnectionBoundary, ConnectionBoundaryFallback, parseAppError, useConne
 import ResourceTable from '@/components/tables/Resources';
 import Icon from '@/components/icons/Icon';
 import { connectionProfilePath, connectionProfilesPath, parsePagePath } from '@/features/workspace/pagePaths';
+import { usePluginService } from '@/features/plugins';
+import PluginRouteStatus from '@/features/plugins/components/PluginRouteStatus';
 
 /** Workspace-owned browser; provider type IDs remain opaque in both state and URLs. */
 export default function ResourceBrowser() {
@@ -12,7 +14,14 @@ export default function ResourceBrowser() {
   const target = parsePagePath(useLocation().pathname);
   const pluginID = target.kind === 'connection' ? target.pluginId : '';
   const connectionID = target.kind === 'connection' ? target.connectionId : '';
+  const { plugins, registrations } = usePluginService();
+  const plugin = plugins.get(pluginID);
+  const PreferenceMigrationGate = registrations.get(pluginID)?.PreferenceMigrationGate;
   const navigate = useNavigate();
+  if (plugin?.phase !== 'ready') {
+    return <PluginRouteStatus pluginId={pluginID} />;
+  }
+  const browser = <ConnectedResourceBrowser key={JSON.stringify([pluginID, connectionID])} pluginID={pluginID} connectionID={connectionID} />;
   return <ConnectionBoundary pluginID={pluginID} connectionID={connectionID} fallback={(state) =>
     <ConnectionBoundaryFallback state={state}
       onEditConnection={async () => {
@@ -22,7 +31,7 @@ export default function ResourceBrowser() {
         await navigate(connectionProfilesPath(pluginID)); 
       }} />
   }>
-    <ConnectedResourceBrowser key={JSON.stringify([pluginID, connectionID])} pluginID={pluginID} connectionID={connectionID} />
+    {PreferenceMigrationGate ? <PreferenceMigrationGate>{browser}</PreferenceMigrationGate> : browser}
   </ConnectionBoundary>;
 }
 

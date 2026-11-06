@@ -1592,6 +1592,7 @@ export class PluginService {
     return {
       routes: Array.isArray(routes) ? routes : [],
       ...(typeof pw?.migratePagePath === 'function' ? { migratePagePath: pw.migratePagePath } : {}),
+      ...(typeof pw?.PreferenceMigrationGate === 'function' ? { PreferenceMigrationGate: pw.PreferenceMigrationGate } : {}),
     };
   }
 

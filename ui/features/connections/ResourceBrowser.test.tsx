@@ -7,6 +7,7 @@ import { connectionProfilePath, connectionProfilesPath, resourceBrowserPath } fr
 const state = vi.hoisted(() => ({
   connected: true, error: ((): unknown => null)(), type: 'native/resource::type/%2F',
   boundary: vi.fn(), connection: vi.fn(), types: vi.fn(), groups: vi.fn(),
+  phase: 'ready', gateReady: true, gateEnabled: false,
 }));
 vi.mock('@omniviewdev/runtime', () => ({
   ConnectionBoundary: ({ children, ...options }: { children: ReactNode; pluginID: string; connectionID: string }): ReactNode => {
@@ -28,6 +29,13 @@ vi.mock('@omniviewdev/runtime', () => ({
   },
   parseAppError: (error: unknown) => ({ detail: String(error) }),
 }));
+vi.mock('@/features/plugins', () => ({
+  usePluginService: () => ({
+    plugins: new Map([['provider', { phase: state.phase }], ['provider%2Fopaque', { phase: state.phase }]]),
+    registrations: new Map(state.gateEnabled ? [['provider', { PreferenceMigrationGate: ({ children }: { children: ReactNode }) => state.gateReady ? children : <div>Migration pending</div> }]] : []),
+  }),
+}));
+vi.mock('@/features/plugins/components/PluginRouteStatus', () => ({ default: () => <div>Plugin loading</div> }));
 vi.mock('@/components/icons/Icon', () => ({ default: ({ name }: { name: string }) => <span data-testid="group-icon">{name}</span> }));
 vi.mock('@/components/tables/Resources', () => ({ default: ({ pluginID, connectionID, resourceKey }: { pluginID: string; connectionID: string; resourceKey: string }) => <div data-testid="resource-table">{JSON.stringify([pluginID, connectionID, resourceKey])}</div> }));
 function Location() {
@@ -42,7 +50,7 @@ function open(type?: string, pluginID = 'provider', connectionID = 'prod/west') 
 }
 
 beforeEach(() => {
-  vi.clearAllMocks(); state.connected = true; state.error = null; 
+  vi.clearAllMocks(); state.connected = true; state.error = null; state.phase = 'ready'; state.gateReady = true; state.gateEnabled = false;
 });
 
 it('keeps opaque type selection in the active workspace URL and preserves group icons', () => {
@@ -64,6 +72,26 @@ it('shows discovery errors instead of an empty catalogue', () => {
   open();
   expect(screen.getByText('Error: Catalogue unavailable')).toBeTruthy();
   expect(screen.queryByText('No resource types are advertised.')).toBeNull();
+});
+
+it('waits for plugin registration and provider preference migration before mounting tables', () => {
+  state.phase = 'loading';
+  state.gateEnabled = true;
+  state.gateReady = false;
+  const view = open(state.type);
+  expect(screen.getByText('Plugin loading')).toBeTruthy();
+  expect(screen.queryByTestId('resource-table')).toBeNull();
+  state.phase = 'ready';
+  view.rerender(<MemoryRouter initialEntries={[resourceBrowserPath('provider', 'prod/west', state.type)]}>
+    <Routes><Route path="resources/:pluginID/:connectionID" element={<ResourceBrowser />} /></Routes>
+  </MemoryRouter>);
+  expect(screen.getByText('Migration pending')).toBeTruthy();
+  expect(screen.queryByTestId('resource-table')).toBeNull();
+  state.gateReady = true;
+  view.rerender(<MemoryRouter initialEntries={[resourceBrowserPath('provider', 'prod/west', state.type)]}>
+    <Routes><Route path="resources/:pluginID/:connectionID" element={<ResourceBrowser />} /></Routes>
+  </MemoryRouter>);
+  expect(screen.getByTestId('resource-table')).toBeTruthy();
 });
 
 it('does not mount resource readers before readiness allows access', () => {

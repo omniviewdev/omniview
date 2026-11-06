@@ -6,6 +6,8 @@ Status: draft acceptance. The earlier host `f03102e338770f5a095408ccf98656210097
 
 The reconciliation onto host main `256b330f5ffc9c8b2ca5ae4af631432fe93433a4` is not the previously tested cohort. Kubernetes PR #76 remains unmerged; the host temporarily retains main's Kubernetes gitlink and must pin the merged Kubernetes commit before acceptance. Previous CI and native observations below apply only to their recorded revisions. Kubernetes table/detail/editor native acceptance and merged-source smoke remain open.
 
+The host resource browser waits for the provider registration and its optional `PreferenceMigrationGate` before mounting resource tables. The Kubernetes provider owns connection discovery and preference conversion; the host does not interpret provider identities.
+
 - Packet: P03, [omniview#82](https://github.com/omniviewdev/omniview/issues/82).
 - Consumed contracts: P00 identity and P45 structured resource references. No new wire contract or freeze gate.
 - Predecessors: [P00 #79](https://github.com/omniviewdev/omniview/issues/79), [P44 SDK #11](https://github.com/omniviewdev/plugin-sdk/issues/11), and [P45 SDK #12](https://github.com/omniviewdev/plugin-sdk/issues/12) are closed.

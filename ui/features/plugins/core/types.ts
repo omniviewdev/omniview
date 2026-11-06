@@ -101,6 +101,7 @@ export type ValidatedExports = {
 export type PluginRegistrations = {
   readonly routes: RouteObject[];
   readonly migratePagePath?: PagePathMigrator;
+  readonly PreferenceMigrationGate?: React.ComponentType<{ children: React.ReactNode }>;
 };
 
 // ─── Normalized Contribution ─────────────────────────────────────────
