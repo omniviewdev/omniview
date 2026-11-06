@@ -32,7 +32,7 @@ vi.mock('@omniviewdev/runtime', () => ({
 vi.mock('@/features/plugins', () => ({
   usePluginService: () => ({
     plugins: new Map([['provider', { phase: state.phase }], ['provider%2Fopaque', { phase: state.phase }]]),
-    registrations: new Map(state.gateEnabled ? [['provider', { PreferenceMigrationGate: ({ children }: { children: ReactNode }) => state.gateReady ? children : <div>Migration pending</div> }]] : []),
+    registrations: new Map(state.gateEnabled ? [['provider', { PreferenceMigrationGate: ({ children }: { children: ReactNode }) => <>{state.gateReady ? children : <div>Migration pending</div>}</> }]] : []),
   }),
 }));
 vi.mock('@/features/plugins/components/PluginRouteStatus', () => ({ default: () => <div>Plugin loading</div> }));

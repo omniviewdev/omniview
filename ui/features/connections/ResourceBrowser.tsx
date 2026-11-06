@@ -21,6 +21,7 @@ export default function ResourceBrowser() {
   if (plugin?.phase !== 'ready') {
     return <PluginRouteStatus pluginId={pluginID} />;
   }
+
   const browser = <ConnectedResourceBrowser key={JSON.stringify([pluginID, connectionID])} pluginID={pluginID} connectionID={connectionID} />;
   return <ConnectionBoundary pluginID={pluginID} connectionID={connectionID} fallback={(state) =>
     <ConnectionBoundaryFallback state={state}
