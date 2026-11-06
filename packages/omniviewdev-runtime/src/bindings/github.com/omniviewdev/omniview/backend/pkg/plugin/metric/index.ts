@@ -11,5 +11,6 @@ export {
     MetricViewPreferences,
     MetricsObservationSnapshot,
     MetricsObservationSpec,
-    OpenMetricsObservationRequest
+    OpenMetricsObservationRequest,
+    ResourceMetricsCatalogRequest
 } from "./models.js";

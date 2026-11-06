@@ -58,3 +58,55 @@ it('keys series by canonical incarnation rather than caller tokens or scope orde
     .toBe(prepareMetricResults(make('pod-row'), catalog, [reordered])[0].id);
   expect(prepareMetricResults(make('unknown-token'), catalog, [target])).toEqual([]);
 });
+
+it.each([
+  ['seconds', { kind: 'duration', base: 'seconds' }],
+  ['count', { kind: 'count' }],
+  ['ratio', { kind: 'ratio' }],
+  ['percent', { kind: 'percent' }],
+  ['bytes_per_second', { kind: 'rate', numerator: 'bytes' }],
+  ['count_per_second', { kind: 'rate', numerator: 'count' }],
+])('preserves declared external physical unit %s without scaling samples', (unit, displayUnit) => {
+  const catalog = { source: { plugin_id: 'grafana', connection_id: 'observability', datasource_uid: 'prom', datasource_kind: 'prometheus' },
+    metrics: [{ id: 'external', unit }] } as ResourceMetricsCatalog;
+  const snapshot = new MetricsObservationSnapshot({ data: { complete: true, warnings: [], results: [{
+    resource_token: target.token, metric_id: 'external', status: 'ok', value: 0.125, observed_at: null,
+    dimensions: {}, points: [], window: Duration.$zero, identity_scope: 'name', message: '',
+  }] } });
+  const [result] = prepareMetricResults(snapshot, catalog, [target]);
+  expect(result.unit).toEqual(displayUnit);
+  expect(result.value).toBe(0.125);
+});
+
+it('retains exact per-result source provenance when a catalog contains supplemented lanes', () => {
+  const native = { plugin_id: 'kubernetes', connection_id: 'cluster', datasource_uid: '', datasource_kind: 'metrics-server' };
+  const external = { plugin_id: 'grafana', connection_id: 'observability', datasource_uid: 'prom', datasource_kind: 'prometheus' };
+  const catalog = { source: external, metrics: [{ id: 'cpu', unit: 'cores' }] } as ResourceMetricsCatalog;
+  const snapshot = (source: typeof native) => new MetricsObservationSnapshot({ data: { complete: true, warnings: [], results: [{
+    resource_token: target.token, metric_id: 'cpu', status: 'ok', value: 0.125, observed_at: null,
+    source, dimensions: {}, points: [], window: Duration.$zero, identity_scope: 'name', message: '',
+  }] } });
+  const [nativeResult] = prepareMetricResults(snapshot(native), catalog, [target]);
+  const [externalResult] = prepareMetricResults(snapshot(external), catalog, [target]);
+  expect(nativeResult.source).toEqual(native);
+  expect(externalResult.source).toEqual(external);
+  expect(nativeResult.id).not.toBe(externalResult.id);
+});
+
+it('uses descriptor provenance for omitted result sources in a mixed native/external catalog', () => {
+  const native = { plugin_id: 'kubernetes', connection_id: 'cluster', datasource_uid: '', datasource_kind: 'metrics-server' };
+  const external = { plugin_id: 'grafana', connection_id: 'observability', datasource_uid: 'prom', datasource_kind: 'prometheus' };
+  const catalog = { source: external, metrics: [
+    { id: 'native-cpu', unit: 'cores', source: native },
+    { id: 'external-cpu', unit: 'cores', source: external },
+  ] } as ResourceMetricsCatalog;
+  const snapshot = new MetricsObservationSnapshot({ data: { complete: true, warnings: [], results: ['native-cpu', 'external-cpu'].map(metric_id => ({
+    resource_token: target.token, metric_id, status: 'ok', value: 0.125, observed_at: null,
+    dimensions: {}, points: [], window: Duration.$zero, identity_scope: 'name', message: '',
+  })) } });
+  const [nativeResult, externalResult] = prepareMetricResults(snapshot, catalog, [target]);
+  expect(nativeResult.source).toEqual(native);
+  expect(externalResult.source).toEqual(external);
+  expect(JSON.parse(nativeResult.id)[0]).toBe(JSON.stringify(['kubernetes', 'cluster', '', 'metrics-server']));
+  expect(JSON.parse(externalResult.id)[0]).toBe(JSON.stringify(['grafana', 'observability', 'prom', 'prometheus']));
+});

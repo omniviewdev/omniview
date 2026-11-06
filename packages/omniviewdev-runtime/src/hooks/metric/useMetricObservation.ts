@@ -1,24 +1,44 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { GetResourceMetricsCatalog } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/servicewrapper';
 import type { MetricUnit, NumericPoint } from '@omniviewdev/base-ui/metrics';
-import type { ResourceMetricTarget, ResourceMetricsCatalog } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
+import type { MetricSourceRef, ResourceMetricTarget, ResourceMetricsCatalog } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
 import type { MetricsObservationSnapshot, MetricsObservationSpec } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/models';
 import { observeMetrics, type MetricObservationLease } from './observationClient';
 export type { ResourceMetricTarget } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
+export type { ResourceMetricsCatalog } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
 
 /** Targets come from admitted resource-v2 observations, never synthesized bodies. */
 export interface UseMetricObservationOptions {
   ownerPluginID: string;
   ownerConnectionID: string;
   resourceKey: string;
+  /** Explicit routing is separate from presentation preferences. */
+  bindingID?: MetricsObservationSpec['binding_id'];
+  source?: MetricsObservationSpec['source'];
   targets: readonly ResourceMetricTarget[];
   metricIDs: readonly string[];
   shape?: 'current' | 'range';
   startTime?: string;
   endTime?: string;
+  /** Host resolves a moving relative range; mutually exclusive with fixed bounds. */
+  durationMs?: number;
   stepMs?: number;
   /** Host refresh cadence. Zero means initial/manual collection only. */
   intervalMs?: number;
   enabled?: boolean;
+}
+/** Discover admitted source metadata without opening a second metric query path. */
+export function useMetricCatalog(options: Pick<UseMetricObservationOptions, 'ownerPluginID' | 'ownerConnectionID' | 'resourceKey' | 'bindingID' | 'source' | 'enabled'>) {
+  const request = {
+    owner_plugin_id: options.ownerPluginID, owner_connection_id: options.ownerConnectionID,
+    resource_key: options.resourceKey, binding_id: options.bindingID ?? '', source: options.source ?? null,
+  };
+  return useQuery({
+    queryKey: ['metric', 'catalog', request],
+    queryFn: () => GetResourceMetricsCatalog(request),
+    enabled: options.enabled !== false && !!options.ownerConnectionID,
+  });
 }
 export interface PreparedMetricResult {
   readonly id: string;
@@ -35,6 +55,7 @@ export interface PreparedMetricResult {
   readonly dimensions: Readonly<Record<string, string>>;
   readonly message: string;
   readonly unit: MetricUnit | null;
+  readonly source: Readonly<MetricSourceRef> | null;
   /** Name-scoped samples cannot prove the sampled resource's UID. */
   readonly identityScope: string;
 }
@@ -45,7 +66,12 @@ const epoch = (value: unknown): number | null => {
   return Number.isFinite(result) ? result : null;
 };
 const finite = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null;
-const unitFor = (unit?: string): MetricUnit | null => unit === 'cores' ? { kind: 'cpu', base: 'cores' } : unit === 'bytes' ? { kind: 'bytes', display: 'binary' } : null;
+const units: Readonly<Record<string, MetricUnit>> = {
+  cores: { kind: 'cpu', base: 'cores' }, bytes: { kind: 'bytes', display: 'binary' },
+  seconds: { kind: 'duration', base: 'seconds' }, count: { kind: 'count' },
+  ratio: { kind: 'ratio' }, percent: { kind: 'percent' },
+  bytes_per_second: { kind: 'rate', numerator: 'bytes' }, count_per_second: { kind: 'rate', numerator: 'count' },
+};
 
 function targetIdentity(target: ResourceMetricTarget): string {
   const address = target.reference.address;
@@ -68,11 +94,13 @@ export function prepareMetricResults(snapshot: MetricsObservationSnapshot | null
   if (!snapshot?.data || snapshot.invalidated) return EMPTY;
   const identities = new Map(targets.map(target => [target.token, targetIdentity(target)]));
   const descriptors = new Map(catalog?.metrics?.map(metric => [metric.id, metric]));
-  const source = sourceIdentity(catalog);
   const results: PreparedMetricResult[] = [];
   for (const result of snapshot.data.results ?? []) {
     const resourceIdentity = identities.get(result.resource_token);
     if (!resourceIdentity) continue;
+    const descriptor = descriptors.get(result.metric_id);
+    const resultSource = result.source ?? descriptor?.source ?? catalog?.source ?? null;
+    const source = JSON.stringify(resultSource ? [resultSource.plugin_id, resultSource.connection_id, resultSource.datasource_uid, resultSource.datasource_kind] : null);
     const dimensionEntries = Object.entries(result.dimensions ?? {})
       .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
       .sort(([a], [b]) => a.localeCompare(b));
@@ -91,8 +119,9 @@ export function prepareMetricResults(snapshot: MetricsObservationSnapshot | null
       value: result.status === 'ok' ? finite(result.value) : null,
       points, observedAt, windowMs: result.window / 1_000_000,
       freshUntilMs, freshness: 'unknown',
-      dimensions, message: result.message, unit: unitFor(descriptors.get(result.metric_id)?.unit),
+      dimensions, message: result.message, unit: units[descriptor?.unit ?? ''] ?? null,
       identityScope: result.identity_scope,
+      source: resultSource,
     }));
   }
   return Object.freeze(results);
@@ -132,13 +161,13 @@ export function useMetricObservation(options: UseMetricObservationOptions) {
     metricIDs: [...new Set(options.metricIDs)].sort(),
   });
   const request = useMemo(() => JSON.parse(identity) as UseMetricObservationOptions, [identity]);
-  const authority = JSON.stringify([request.ownerPluginID, request.ownerConnectionID, request.resourceKey]);
+  const authority = JSON.stringify([request.ownerPluginID, request.ownerConnectionID, request.resourceKey, request.bindingID, request.source]);
   const lease = useRef<MetricObservationLease | null>(null);
   const [state, setState] = useState<ObservationState>({ authority: '', displayed: null, catalog: null, requestIdentity: '', settled: false, fetching: false, error: null });
   const [clockMs, setClockMs] = useState(Date.now);
   useEffect(() => {
     const input = JSON.parse(identity) as UseMetricObservationOptions;
-    const scope = JSON.stringify([input.ownerPluginID, input.ownerConnectionID, input.resourceKey]);
+    const scope = JSON.stringify([input.ownerPluginID, input.ownerConnectionID, input.resourceKey, input.bindingID, input.source]);
     if (input.enabled === false || !input.ownerConnectionID || !input.targets.length || !input.metricIDs.length) return;
     let retired = false;
     const fail = (error: Error) => {
@@ -147,8 +176,10 @@ export function useMetricObservation(options: UseMetricObservationOptions) {
     const spec: MetricsObservationSpec = {
       owner_plugin_id: input.ownerPluginID, owner_connection_id: input.ownerConnectionID,
       resource_key: input.resourceKey, targets: [...input.targets], metric_ids: [...input.metricIDs],
+      binding_id: input.bindingID ?? '', source: input.source ?? null,
       shape: input.shape ?? 'current', start_time: input.startTime ?? '0001-01-01T00:00:00Z',
-      end_time: input.endTime ?? '0001-01-01T00:00:00Z', step_ms: input.stepMs ?? 0, interval_ms: input.intervalMs ?? 0,
+      end_time: input.endTime ?? '0001-01-01T00:00:00Z', duration_ms: input.durationMs ?? 0,
+      step_ms: input.stepMs ?? 0, interval_ms: input.intervalMs ?? 0,
     };
     let currentLease: MetricObservationLease | null = null;
     try {

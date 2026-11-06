@@ -21,7 +21,7 @@ func TestMetricPreferencesDurableCASPreservesConcurrentEdits(t *testing.T) {
 	second, err := c.GetMetricViewPreferences("kubernetes", "core::v1::Pod")
 	require.NoError(t, err)
 	first.MetricIDs = []string{"memory", "cpu"}
-	first.Displays["disk"] = "chart"
+	first.Displays["disk"] = "sample-bars"
 	first.Details["disk"] = true
 	first.Layout = "grid"
 	require.NoError(t, c.SaveMetricViewPreferences("kubernetes", "core::v1::Pod", first))
@@ -50,7 +50,7 @@ func TestMetricPreferencesDurableCASPreservesConcurrentEdits(t *testing.T) {
 	require.Equal(t, uint64(2), durable.Revision)
 	require.Equal(t, "grid", durable.Layout)
 	require.Equal(t, []string{"memory", "cpu"}, durable.MetricIDs)
-	require.Equal(t, "chart", durable.Displays["disk"])
+	require.Equal(t, "sample-bars", durable.Displays["disk"])
 	require.True(t, durable.Details["disk"])
 	require.Equal(t, "absolute", durable.TimeMode)
 	require.Equal(t, second.StartMs, durable.StartMs)
@@ -106,7 +106,7 @@ func TestMetricPreferencesRetainUnselectedConfigurationAndSelectionOrder(t *test
 	selected, err := c.GetMetricViewPreferences("kubernetes", "core::v1::Pod")
 	require.NoError(t, err)
 	selected.MetricIDs = []string{"memory", "cpu"}
-	selected.Displays = map[string]string{"memory": "chart", "cpu": "capacity"}
+	selected.Displays = map[string]string{"memory": "area", "cpu": "capacity"}
 	selected.Details = map[string]bool{"memory": true, "cpu": false}
 	require.NoError(t, c.SaveMetricViewPreferences("kubernetes", "core::v1::Pod", selected))
 	selected, err = c.GetMetricViewPreferences("kubernetes", "core::v1::Pod")
@@ -117,7 +117,7 @@ func TestMetricPreferencesRetainUnselectedConfigurationAndSelectionOrder(t *test
 	unselected, err := c.GetMetricViewPreferences("kubernetes", "core::v1::Pod")
 	require.NoError(t, err)
 	require.Equal(t, []string{"cpu"}, unselected.MetricIDs)
-	require.Equal(t, "chart", unselected.Displays["memory"])
+	require.Equal(t, "area", unselected.Displays["memory"])
 	require.True(t, unselected.Details["memory"])
 	unselected.MetricIDs = []string{"cpu", "memory"}
 	require.NoError(t, c.SaveMetricViewPreferences("kubernetes", "core::v1::Pod", unselected))
@@ -165,4 +165,30 @@ func TestMetricPreferencesBoundRetainedConfigurationIndependently(t *testing.T) 
 			require.NotContains(t, unchanged.Details, "overflow")
 		})
 	}
+}
+
+func TestMetricPreferencesRetainExactChartModesAcrossRestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.db")
+	store, err := settingsstore.Open(path)
+	require.NoError(t, err)
+	c := NewController(logging.NewNop(), nil, nil).(*controller)
+	c.SetMetricPreferencesStore(store)
+	preferences, err := c.GetMetricViewPreferences("kubernetes", "k8s:/pods")
+	require.NoError(t, err)
+	preferences.Displays = map[string]string{"cpu": "area", "memory": "line", "network": "sample-bars"}
+	require.NoError(t, c.SaveMetricViewPreferences("kubernetes", "k8s:/pods", preferences))
+	require.NoError(t, store.Close())
+	store, err = settingsstore.Open(path)
+	require.NoError(t, err)
+	defer store.Close()
+	restarted := NewController(logging.NewNop(), nil, nil).(*controller)
+	restarted.SetMetricPreferencesStore(store)
+	persisted, err := restarted.GetMetricViewPreferences("kubernetes", "k8s:/pods")
+	require.NoError(t, err)
+	require.Equal(t, preferences.Displays, persisted.Displays)
+	other, err := restarted.GetMetricViewPreferences("kubernetes", "k8s:/nodes")
+	require.NoError(t, err)
+	require.Empty(t, other.Displays)
+	persisted.Displays["cpu"] = "chart"
+	require.Error(t, restarted.SaveMetricViewPreferences("kubernetes", "k8s:/pods", persisted))
 }

@@ -32,6 +32,7 @@ export function observeMetrics(spec: MetricsObservationSpec, receive: Receiver, 
       for (const point of result.points ?? []) Object.freeze(point);
       if (result.points) Object.freeze(result.points);
       if (result.dimensions) Object.freeze(result.dimensions);
+      if (result.source) Object.freeze(result.source);
       Object.freeze(result);
     }
     if (snapshot.data) {

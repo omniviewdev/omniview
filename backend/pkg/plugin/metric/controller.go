@@ -67,8 +67,8 @@ type Controller interface {
 	Unsubscribe(subscriptionID string) error
 	BeginConnectionChange(pluginID, connectionID string) func()
 
-	// Finite native metrics share one authority-partitioned coordinator.
-	GetResourceMetricsCatalog(context.Context, string, string, string) (*metric.ResourceMetricsCatalog, error)
+	// Finite metrics share one authority-partitioned coordinator.
+	GetResourceMetricsCatalog(context.Context, ResourceMetricsCatalogRequest) (*metric.ResourceMetricsCatalog, error)
 	ReadFiniteResourceMetrics(context.Context, MetricsObservationSpec) (*metric.ResourceMetricsResponse, error)
 	OpenMetricsObservation(context.Context, OpenMetricsObservationRequest, func(MetricsObservationSnapshot)) (MetricsObservationSnapshot, error)
 	AttachMetricsObservation(context.Context, string) error
@@ -78,6 +78,7 @@ type Controller interface {
 	SetMetricPreferencesStore(*settingsstore.Store)
 	GetMetricViewPreferences(string, string) (MetricViewPreferences, error)
 	SaveMetricViewPreferences(string, string, MetricViewPreferences) error
+	MetricConfigurationController
 }
 
 // SubscribeRequest contains parameters for subscribing to a metric stream.
@@ -101,26 +102,29 @@ type subscriptionIndex struct {
 var _ Controller = (*controller)(nil)
 
 type controller struct {
-	emitter             resource.EventEmitter
-	ctx                 context.Context
-	logger              logging.Logger
-	settingsProvider    pkgsettings.Provider
-	clients             map[string]Provider
-	providerInfos       map[string]*metric.ProviderInfo // pluginID -> provider info
-	handlerMap          map[string][]metric.Handler     // pluginID -> handlers
-	resourceIndex       map[string][]string             // resource key -> []pluginID
-	subscriptions       map[string]subscriptionIndex    // subscriptionID -> index
-	streams             map[metricStreamKey]*metricStream
-	streamErrors        map[metricStreamKey]error
-	streamBlocked       map[metricStreamKey]int
-	resourceClient      resource.ConnectionReader
-	referenceAdmitter   resource.ReferenceAdmitter
-	uiReferenceAdmitter resource.ReferenceAdmitter
-	mux                 sync.RWMutex
-	finiteOnce          sync.Once
-	finite              atomic.Pointer[finiteCoordinator]
-	preferencesMu       sync.Mutex
-	preferencesStore    *settingsstore.Store
+	emitter               resource.EventEmitter
+	ctx                   context.Context
+	logger                logging.Logger
+	settingsProvider      pkgsettings.Provider
+	clients               map[string]Provider
+	providerInfos         map[string]*metric.ProviderInfo // pluginID -> provider info
+	handlerMap            map[string][]metric.Handler     // pluginID -> handlers
+	resourceIndex         map[string][]string             // resource key -> []pluginID
+	subscriptions         map[string]subscriptionIndex    // subscriptionID -> index
+	streams               map[metricStreamKey]*metricStream
+	streamErrors          map[metricStreamKey]error
+	streamBlocked         map[metricStreamKey]int
+	resourceClient        resource.ConnectionReader
+	referenceAdmitter     resource.ReferenceAdmitter
+	uiReferenceAdmitter   resource.ReferenceAdmitter
+	metricResourceReader  MetricResourceReader
+	resourceIdentityGuard ResourceIdentityGuard
+	metricState           *metricState
+	mux                   sync.RWMutex
+	finiteOnce            sync.Once
+	finite                atomic.Pointer[finiteCoordinator]
+	preferencesMu         sync.Mutex
+	preferencesStore      *settingsstore.Store
 }
 
 // SetReferenceAdmitter binds native admission without changing invocation identity.

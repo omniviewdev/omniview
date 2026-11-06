@@ -41,6 +41,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/window"
 	"github.com/omniviewdev/omniview/internal/appstate"
 	"github.com/omniviewdev/omniview/internal/bootstrap"
+	"github.com/omniviewdev/omniview/internal/builtinplugins/grafana"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	controlhost "github.com/omniviewdev/omniview/internal/devcontrol/host"
 	"github.com/omniviewdev/omniview/internal/devsession"
@@ -107,6 +108,8 @@ func newUICapabilityControllers(
 	logsController.SetUIReferenceAdmitter(admitReference)
 	metricController.SetUIReferenceAdmitter(admitReference)
 	metricController.SetReferenceAdmitter(resourceController.AdmitReference)
+	metricController.SetMetricResourceReader(resourceController.ReadObservedResource)
+	metricController.SetResourceIdentityGuard(resourceController.GuardObservedReference)
 	return execController, networkerController, logsController, metricController
 }
 
@@ -358,6 +361,7 @@ func main() {
 	)
 	resourceController.SetConnectionChangeHook(metricController.BeginConnectionChange)
 	metricController.SetMetricPreferencesStore(settingsStore)
+	metricController.SetMetricStateRoot(stateDir.RootDir())
 	toolsController := tools.NewController(log, resourceBoundary)
 
 	dataController := data.NewController(log, stateDir.PluginData)
@@ -379,8 +383,15 @@ func main() {
 
 	pluginRegistryClient := registry.NewClient("")
 	// Product-owned providers are selected at compile time, never by installed metadata.
-	// The product cohort remains empty until the containers migration.
-	builtinCatalog, err := plugin.NewCatalog(nil)
+	builtinCatalog, err := plugin.NewCatalog([]plugin.CatalogEntry{
+		grafana.CatalogEntry(func() (*os.Root, error) {
+			const statePath = "builtin/grafana"
+			if err := stateDir.RootDir().MkdirAll(statePath, 0700); err != nil {
+				return nil, err
+			}
+			return stateDir.RootDir().OpenRoot(statePath)
+		}),
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: invalid built-in plugin catalog: %v\n", err)
 		os.Exit(1)

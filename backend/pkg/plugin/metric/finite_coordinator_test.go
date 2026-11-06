@@ -41,12 +41,12 @@ func (*finiteTestProvider) Query(*types.PluginContext, sdk.QueryRequest) (*sdk.Q
 func (*finiteTestProvider) StreamResourceMetrics(context.Context, chan sdk.StreamInput) (chan sdk.StreamOutput, error) {
 	return nil, errors.New("legacy stream must not execute")
 }
-func (p *finiteTestProvider) GetResourceMetricsCatalog(pc *types.PluginContext, key string) (*sdk.ResourceMetricsCatalog, error) {
+func (p *finiteTestProvider) GetResourceMetricsCatalog(pc *types.PluginContext, request sdk.ResourceMetricsCatalogRequest) (*sdk.ResourceMetricsCatalog, error) {
 	shapes := p.shapes
 	if len(shapes) == 0 {
 		shapes = []string{"current"}
 	}
-	return &sdk.ResourceMetricsCatalog{Source: sdk.MetricSourceRef{PluginID: "kubernetes", ConnectionID: pc.Connection.ID, DatasourceKind: "metrics-server"}, MaxTargets: 256, Metrics: []sdk.FiniteMetricDescriptor{{ID: "cpu", Name: "CPU", ResourceKey: key, Unit: "cores", Shapes: shapes}, {ID: "memory", Name: "Memory", ResourceKey: key, Unit: "bytes", Shapes: shapes}}}, nil
+	return &sdk.ResourceMetricsCatalog{Source: request.Source, MaxTargets: 256, Metrics: []sdk.FiniteMetricDescriptor{{ID: "cpu", Name: "CPU", ResourceKey: request.ResourceKey, Unit: "cores", Shapes: shapes}, {ID: "memory", Name: "Memory", ResourceKey: request.ResourceKey, Unit: "bytes", Shapes: shapes}}}, nil
 }
 func (p *finiteTestProvider) QueryResources(pc *types.PluginContext, q sdk.ResourceMetricsQuery) (*sdk.ResourceMetricsResponse, error) {
 	p.queries.Add(1)
@@ -81,6 +81,9 @@ func finiteTestController(t *testing.T) (*controller, *finiteTestProvider, conte
 	p := &finiteTestProvider{calls: make(chan sdk.ResourceMetricsQuery, 16), release: make(chan struct{}), cancelled: make(chan struct{}, 16)}
 	c := NewController(logging.NewNop(), nil, finiteTestConnections{}).(*controller)
 	c.clients["kubernetes"] = p
+	c.SetResourceIdentityGuard(func(context.Context, string, string, resourcev2.AccessRoute, resourcev2.ResourceReference) (func(context.Context) error, error) {
+		return func(context.Context) error { return nil }, nil
+	})
 	c.referenceAdmitter = func(ctx context.Context, op, plugin string, route resourcev2.AccessRoute, ref resourcev2.ResourceReference) (context.Context, error) {
 		return invocation.NewBoundary(nil).Admit(ctx, op, invocation.Target{Provider: plugin, Connection: route.Connection, ResourceType: ref.Address.Type, Object: ref.Address.ID})
 	}

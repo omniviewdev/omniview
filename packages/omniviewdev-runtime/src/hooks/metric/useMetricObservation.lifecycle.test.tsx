@@ -1,12 +1,14 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { ResourceMetricTarget, ResourceMetricsCatalog } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
-import type { MetricsObservationSnapshot } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/models';
+import type { MetricsObservationSnapshot, MetricsObservationSpec } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/models';
 import { Duration } from '../../bindings/time/models';
 import { useMetricObservation } from './useMetricObservation';
 
-const transport = vi.hoisted(() => ({ receivers: [] as Array<(value: MetricsObservationSnapshot) => void> }));
-vi.mock('./observationClient', () => ({ observeMetrics: (_spec: unknown, receive: (value: MetricsObservationSnapshot) => void) => {
+const transport = vi.hoisted(() => ({ receivers: [] as Array<(value: MetricsObservationSnapshot) => void>, specs: [] as MetricsObservationSpec[] }));
+vi.mock('../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/servicewrapper', () => ({ GetResourceMetricsCatalog: vi.fn() }));
+vi.mock('./observationClient', () => ({ observeMetrics: (spec: MetricsObservationSpec, receive: (value: MetricsObservationSnapshot) => void) => {
+  transport.specs.push(spec);
   transport.receivers.push(receive);
   return { close() {}, refresh: () => Promise.resolve() };
 } }));
@@ -25,7 +27,7 @@ function frame(name: string, extra: Partial<MetricsObservationSnapshot> = {}): M
     ...extra } as MetricsObservationSnapshot;
 }
 const base = { ownerPluginID: 'kubernetes', ownerConnectionID: 'cluster', resourceKey: 'k8s:/pods', metricIDs: ['cpu'], intervalMs: 0 };
-beforeEach(() => { transport.receivers.length = 0; vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-05T10:00:01Z')); });
+beforeEach(() => { transport.receivers.length = 0; transport.specs.length = 0; vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-05T10:00:01Z')); });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 it('removes another Pod and an old incarnation before a replacement response arrives', () => {
@@ -70,6 +72,22 @@ it('retains compatible displayed data and domain through a nil-data range acknow
   expect(result.current.results[0].status).toBe('missing');
 });
 
+it('delegates relative bounds to the host without a frontend collection timer', () => {
+  const { result } = renderHook(() => useMetricObservation({
+    ...base, targets: [target('pod-a')], shape: 'range', durationMs: 3600000, stepMs: 15000,
+  }));
+  expect(transport.specs[0]).toMatchObject({
+    duration_ms: 3600000, start_time: '0001-01-01T00:00:00Z', end_time: '0001-01-01T00:00:00Z',
+  });
+  expect(result.current.domain).toBeNull();
+  act(() => vi.advanceTimersByTime(60000));
+  expect(transport.specs).toHaveLength(1);
+  act(() => transport.receivers[0](frame('pod-a')));
+  expect(result.current.domain).toEqual({
+    startMs: Date.parse('2026-11-05T09:00:00Z'), endMs: Date.parse('2026-11-05T10:00:00Z'),
+  });
+});
+
 it('ages actual source samples without fetching or renewing their timestamp', () => {
   const { result } = renderHook(() => useMetricObservation({ ...base, targets: [target('pod-a')] }));
   act(() => transport.receivers[0](frame('pod-a')));
@@ -93,4 +111,19 @@ it('keeps freshness unknown when source policy or observation time is unknown', 
   act(() => transport.receivers[0](withoutTime));
   expect(result.current.results[0].observedAt).toBeNull();
   expect(result.current.results[0].freshness).toBe('unknown');
+});
+
+it('sends explicit generated source and binding without caller query bodies, and clears old source data immediately', () => {
+  const source = { plugin_id: 'grafana', connection_id: 'observability', datasource_uid: 'prometheus', datasource_kind: 'prometheus' };
+  const { result, rerender } = renderHook(({ bindingID }) => useMetricObservation({
+    ...base, targets: [target('pod-a')], bindingID, source,
+  }), { initialProps: { bindingID: 'binding-a' } });
+  expect(transport.specs[0]).toMatchObject({ binding_id: 'binding-a', source });
+  expect(transport.specs[0]).not.toHaveProperty('resource_data');
+  expect(transport.specs[0]).not.toHaveProperty('params');
+  act(() => transport.receivers[0](frame('pod-a')));
+  expect(result.current.results).toHaveLength(1);
+  rerender({ bindingID: 'binding-b' });
+  expect(result.current.results).toEqual([]);
+  expect(result.current.catalog).toBeNull();
 });

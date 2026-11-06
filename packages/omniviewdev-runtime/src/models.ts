@@ -53,6 +53,36 @@ export {
   QueryResponse,
   TimeSeries,
 } from './bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
+export {
+  MetricSourceRef,
+  FiniteMetricDescriptor,
+  ResourceMetricTarget,
+  ResourceMetricPoint,
+  ResourceMetricResult,
+  ResourceMetricsResponse,
+  ResourceMetricsCatalog,
+  MetricDefinition,
+  MetricDefinitionOverride,
+  MetricFieldBinding,
+  MetricFieldTransform,
+  MetricBinding,
+  MetricSourceDefaults,
+  MetricViewSourceSelection,
+  ProviderConnection,
+  ProviderConnectionInput,
+  MetricDataSource,
+  MetricValidationIssue,
+  MetricValidationResult,
+  MetricDiscoveryRequest,
+  MetricDiscoveryResult,
+} from './bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
+export {
+  MetricsObservationSpec,
+  MetricsObservationSnapshot,
+  OpenMetricsObservationRequest,
+  MetricViewPreferences,
+  ResourceMetricsCatalogRequest,
+} from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/models';
 
 // networker: re-export everything except Connection (collides with types)
 export {

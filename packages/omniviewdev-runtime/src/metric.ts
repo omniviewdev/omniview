@@ -1,3 +1,33 @@
+// The host owns finite observation scheduling, admission, caching and source routing.
+// Generated finite operations share one public host boundary.
+export {
+  OpenMetricsObservation,
+  AttachMetricsObservation,
+  CloseMetricsObservation,
+  RefreshMetricsObservation,
+  GetResourceMetricsCatalog,
+  GetMetricViewPreferences,
+  SaveMetricViewPreferences,
+  GetMetricViewSourceSelection,
+  SaveMetricViewSourceSelection,
+  GetProviderConnections,
+  SaveProviderConnection,
+  DeleteProviderConnection,
+  GetDataSources,
+  TestProviderConnection,
+  ValidateMetricDefinition,
+  DiscoverMetricLabels,
+  GetMetricDefinitions,
+  SaveMetricDefinition,
+  DeleteMetricDefinition,
+  GetMetricBindings,
+  SaveMetricBinding,
+  DeleteMetricBinding,
+  GetMetricSourceDefaults,
+  SaveMetricSourceDefaults,
+  PreviewMetricDefinition,
+} from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/servicewrapper';
+
 import { Call, type CancellablePromise } from '@wailsio/runtime';
 import type { MetricShape, QueryResponse } from './bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
 import type { Value, ResourceReference, AccessRoute } from './resource/v2/domain';
@@ -5,7 +35,7 @@ import { encodeRequestJSON } from './resource/v2/requestJSON';
 
 export { GetProviders, GetProvidersForResource, HasPlugin, ListPlugins, Unsubscribe } from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/servicewrapper';
 
-/** SDK query metadata plus the canonical, optional resource target. Times are RFC 3339; step is nanoseconds. */
+/** Existing non-finite providers retain their real operations until their callers migrate. */
 export interface MetricQueryRequest {
   resource_key: string;
   resource_id: string;

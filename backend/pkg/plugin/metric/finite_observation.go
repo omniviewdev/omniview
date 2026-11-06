@@ -13,23 +13,25 @@ import (
 )
 
 type finiteObservation struct {
-	coordinator   *finiteCoordinator
-	owner         invocation.Request
-	spec          MetricsObservationSpec
-	snapshot      MetricsObservationSnapshot
-	ctx           context.Context
-	cancel        context.CancelFunc
-	emit          func(MetricsObservationSnapshot)
-	attached      bool
-	ready         bool
-	running       bool
-	refresh       bool
-	due           time.Time
-	expires       time.Time
-	dataBytes     int
-	publishMu     sync.Mutex
-	waiter        *finiteWaiter
-	lastPublished uint64
+	coordinator        *finiteCoordinator
+	owner              invocation.Request
+	spec               MetricsObservationSpec
+	configurationKeys  []finiteConfigurationKey
+	configurationEpoch uint64
+	snapshot           MetricsObservationSnapshot
+	ctx                context.Context
+	cancel             context.CancelFunc
+	emit               func(MetricsObservationSnapshot)
+	attached           bool
+	ready              bool
+	running            bool
+	refresh            bool
+	due                time.Time
+	expires            time.Time
+	dataBytes          int
+	publishMu          sync.Mutex
+	waiter             *finiteWaiter
+	lastPublished      uint64
 }
 
 func (o *finiteObservation) publish() {
@@ -61,7 +63,7 @@ func validateClientToken(token string) error {
 }
 
 // OpenMetricsObservation reserves an observation in the authenticated caller's
-// session without collecting samples. Open resolves the admitted native catalog;
+// session without collecting samples. Open resolves the admitted selected catalog;
 // Attach is the sample collection activation barrier.
 // Pending reservations expire after 30 seconds. Close-before-Open tombstones
 // last 30 seconds and suppress late registration; use a new token to reopen.
@@ -82,6 +84,11 @@ func (c *controller) OpenMetricsObservation(ctx context.Context, request OpenMet
 	owner, err := finiteIdentity(ctx)
 	if err != nil {
 		return MetricsObservationSnapshot{}, err
+	}
+	request.Spec = copyJSON(request.Spec)
+	for i := range request.Spec.Targets {
+		// Caller projections never become retained host authority.
+		request.Spec.Targets[i].PublicData = nil
 	}
 	life, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	if lifetime, ok := ctx.Value(metricSessionLifetimeKey{}).(context.Context); ok {
@@ -119,13 +126,14 @@ func (c *controller) OpenMetricsObservation(ctx context.Context, request OpenMet
 	}
 	f.generation++
 	snapshot := MetricsObservationSnapshot{ClientToken: request.ClientToken, Generation: f.generation, Sequence: 1}
-	if request.Spec.Shape == "range" {
+	if request.Spec.Shape == "range" && request.Spec.DurationMs == 0 {
 		start, end := request.Spec.StartTime, request.Spec.EndTime
 		snapshot.DomainStart = &start
 		snapshot.DomainEnd = &end
 	}
 	observation := &finiteObservation{coordinator: f, owner: owner, spec: request.Spec, snapshot: snapshot, ctx: life, cancel: cancel, emit: emit, expires: time.Now().Add(finitePendingTTL)}
 	epoch := f.epochs[lane]
+	configurationEpoch := observation.configurationEpoch
 	f.observations[key] = observation
 	f.mu.Unlock()
 	f.signal()
@@ -151,7 +159,7 @@ func (c *controller) OpenMetricsObservation(ctx context.Context, request OpenMet
 	if !owner.OwnedBy(admitted) {
 		return MetricsObservationSnapshot{}, finiteError("DENIED", "Reference admission changed observation ownership.")
 	}
-	catalog, err := c.finiteCatalog(admitted, request.Spec.OwnerPluginID, request.Spec.OwnerConnectionID, request.Spec.ResourceKey)
+	catalog, err := c.selectedResourceMetricsCatalog(admitted, ResourceMetricsCatalogRequest{OwnerPluginID: request.Spec.OwnerPluginID, OwnerConnectionID: request.Spec.OwnerConnectionID, ResourceKey: request.Spec.ResourceKey, BindingID: request.Spec.BindingID, Source: request.Spec.Source}, observation)
 	if err != nil {
 		return MetricsObservationSnapshot{}, err
 	}
@@ -166,7 +174,7 @@ func (c *controller) OpenMetricsObservation(ctx context.Context, request OpenMet
 	if err := ctx.Err(); err != nil {
 		return MetricsObservationSnapshot{}, err
 	}
-	if f.stopped || f.blocked[lane] > 0 || f.epochs[lane] != epoch {
+	if f.stopped || f.blocked[lane] > 0 || f.epochs[lane] != epoch || observation.configurationEpoch != configurationEpoch {
 		return MetricsObservationSnapshot{}, profileChangingError()
 	}
 	observation.snapshot.Catalog = cloneFiniteCatalog(catalog)
@@ -308,6 +316,9 @@ func (f *finiteCoordinator) pollObservations() {
 			}
 			continue
 		}
+		if !f.configurationCurrentLocked(o.configurationKeys, f.configurationSerial) {
+			continue
+		}
 		due := !o.due.IsZero() && !now.Before(o.due)
 		if o.running || (!o.refresh && !due) {
 			continue
@@ -333,12 +344,17 @@ func (f *finiteCoordinator) pollObservations() {
 func (f *finiteCoordinator) collectObservation(o *finiteObservation) {
 	f.mu.Lock()
 	refresh := o.refresh
+	epoch := o.configurationEpoch
 	o.refresh = false
 	f.mu.Unlock()
 	ctx, cancel := context.WithTimeout(o.ctx, resourceMetricsTimeout)
 	defer cancel()
 	var catalog *sdk.ResourceMetricsCatalog
-	data, err := f.c.readFiniteCatalog(ctx, o.spec, refresh, func(actual *sdk.ResourceMetricsCatalog) { catalog = actual }, o)
+	spec, err := resolveFiniteRange(o.spec, time.Now())
+	var data *sdk.ResourceMetricsResponse
+	if err == nil {
+		data, err = f.c.readFiniteCatalog(ctx, spec, refresh, func(actual *sdk.ResourceMetricsCatalog) { catalog = actual }, o)
+	}
 	size := 0
 	if err == nil {
 		encoded, failure := json.Marshal(data)
@@ -352,6 +368,15 @@ func (f *finiteCoordinator) collectObservation(o *finiteObservation) {
 	key := finiteObservationKey(o.owner, o.snapshot.ClientToken)
 	if f.observations[key] != o || o.ctx.Err() != nil {
 		f.mu.Unlock()
+		return
+	}
+	if o.configurationEpoch != epoch {
+		o.waiter = nil
+		o.running = false
+		o.refresh = true
+		o.snapshot.Fetching = false
+		f.mu.Unlock()
+		f.signal()
 		return
 	}
 	o.waiter = nil
@@ -372,11 +397,20 @@ func (f *finiteCoordinator) collectObservation(o *finiteObservation) {
 		o.snapshot.Data = nil
 		o.snapshot.Catalog = nil
 		o.snapshot.Invalidated = true
+		if o.spec.DurationMs > 0 {
+			o.snapshot.DomainStart = nil
+			o.snapshot.DomainEnd = nil
+		}
 	} else {
 		o.snapshot.Data = data
 		o.snapshot.Catalog = cloneFiniteCatalog(catalog)
 		o.snapshot.Error = ""
 		o.snapshot.Invalidated = false
+		if spec.Shape == "range" {
+			start, end := spec.StartTime, spec.EndTime
+			o.snapshot.DomainStart = &start
+			o.snapshot.DomainEnd = &end
+		}
 	}
 	// Polling deadlines advance when due, not when another observer or a manual
 	// refresh finishes. Each observer therefore retains its independent cadence.

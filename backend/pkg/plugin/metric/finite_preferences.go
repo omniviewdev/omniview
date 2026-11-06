@@ -42,7 +42,7 @@ func validateMetricViewPreferences(p MetricViewPreferences) error {
 		ids[id] = true
 	}
 	for id, display := range p.Displays {
-		if id == "" || len(id) > 256 || !utf8.ValidString(id) || strings.ContainsAny(id, "\x00\r\n") || (display != "auto" && display != "value" && display != "capacity" && display != "gauge" && display != "chart") {
+		if id == "" || len(id) > 256 || !utf8.ValidString(id) || strings.ContainsAny(id, "\x00\r\n") || (display != "auto" && display != "value" && display != "capacity" && display != "gauge" && display != "area" && display != "line" && display != "sample-bars") {
 			return finiteError("INVALID_REQUEST", "Invalid metric display preference.")
 		}
 	}

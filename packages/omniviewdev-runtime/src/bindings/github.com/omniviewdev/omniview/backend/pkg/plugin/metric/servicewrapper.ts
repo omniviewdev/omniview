@@ -35,34 +35,88 @@ export function CloseMetricsObservation(token: string): $CancellablePromise<void
     return $Call.ByID(3678659766, token);
 }
 
+export function DeleteMetricBinding(ownerPlugin: string, ownerConnection: string, id: string): $CancellablePromise<void> {
+    return $Call.ByID(1190334611, ownerPlugin, ownerConnection, id);
+}
+
+export function DeleteMetricDefinition(id: string): $CancellablePromise<void> {
+    return $Call.ByID(2124341767, id);
+}
+
+export function DeleteProviderConnection(plugin: string, connection: string): $CancellablePromise<void> {
+    return $Call.ByID(478424223, plugin, connection);
+}
+
+export function DiscoverMetricLabels(plugin: string, connection: string, datasourceUID: string, request: metric$0.MetricDiscoveryRequest): $CancellablePromise<metric$0.MetricDiscoveryResult | null> {
+    return $Call.ByID(2925635001, plugin, connection, datasourceUID, request).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+export function GetDataSources(plugin: string, connection: string): $CancellablePromise<metric$0.MetricDataSource[]> {
+    return $Call.ByID(2792223243, plugin, connection).then(($result: any) => {
+        return $$createType3($result);
+    });
+}
+
+export function GetMetricBindings(ownerPlugin: string, ownerConnection: string): $CancellablePromise<metric$0.MetricBinding[]> {
+    return $Call.ByID(1504155525, ownerPlugin, ownerConnection).then(($result: any) => {
+        return $$createType5($result);
+    });
+}
+
+export function GetMetricDefinitions(): $CancellablePromise<metric$0.MetricDefinition[]> {
+    return $Call.ByID(1756334367).then(($result: any) => {
+        return $$createType7($result);
+    });
+}
+
+export function GetMetricSourceDefaults(): $CancellablePromise<metric$0.MetricSourceDefaults> {
+    return $Call.ByID(4225050448).then(($result: any) => {
+        return $$createType8($result);
+    });
+}
+
 /**
  * GetMetricViewPreferences reads profile-durable presentation state. Revision is
  * required when saving; durable store failures are returned, never hidden.
  */
 export function GetMetricViewPreferences(plugin: string, resourceKey: string): $CancellablePromise<$models.MetricViewPreferences> {
     return $Call.ByID(2126901972, plugin, resourceKey).then(($result: any) => {
-        return $$createType0($result);
+        return $$createType9($result);
+    });
+}
+
+export function GetMetricViewSourceSelection(ownerPlugin: string, ownerConnection: string, resourceKey: string): $CancellablePromise<metric$0.MetricViewSourceSelection> {
+    return $Call.ByID(1830217639, ownerPlugin, ownerConnection, resourceKey).then(($result: any) => {
+        return $$createType10($result);
+    });
+}
+
+export function GetProviderConnections(plugin: string): $CancellablePromise<metric$0.ProviderConnection[]> {
+    return $Call.ByID(3409312451, plugin).then(($result: any) => {
+        return $$createType12($result);
     });
 }
 
 export function GetProviders(): $CancellablePromise<$models.MetricProviderSummary[]> {
     return $Call.ByID(3919346639).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType14($result);
     });
 }
 
 export function GetProvidersForResource(resourceKey: string): $CancellablePromise<$models.MetricProviderSummary[]> {
     return $Call.ByID(3953821778, resourceKey).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType14($result);
     });
 }
 
 /**
- * GetResourceMetricsCatalog resolves only an admitted owner native source.
+ * GetResourceMetricsCatalog resolves the selected source for an authenticated owner.
  */
-export function GetResourceMetricsCatalog(plugin: string, connection: string, resourceKey: string): $CancellablePromise<metric$0.ResourceMetricsCatalog | null> {
-    return $Call.ByID(1188767979, plugin, connection, resourceKey).then(($result: any) => {
-        return $$createType4($result);
+export function GetResourceMetricsCatalog(request: $models.ResourceMetricsCatalogRequest): $CancellablePromise<metric$0.ResourceMetricsCatalog | null> {
+    return $Call.ByID(1188767979, request).then(($result: any) => {
+        return $$createType16($result);
     });
 }
 
@@ -72,7 +126,7 @@ export function HasPlugin(pluginID: string): $CancellablePromise<boolean> {
 
 export function ListPlugins(): $CancellablePromise<string[]> {
     return $Call.ByID(2730149903).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType17($result);
     });
 }
 
@@ -84,19 +138,25 @@ export function ListPlugins(): $CancellablePromise<string[]> {
  */
 export function OpenMetricsObservation(request: $models.OpenMetricsObservationRequest): $CancellablePromise<$models.MetricsObservationSnapshot> {
     return $Call.ByID(3865072716, request).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType18($result);
+    });
+}
+
+export function PreviewMetricDefinition(spec: $models.MetricsObservationSpec, definition: metric$0.MetricDefinition): $CancellablePromise<metric$0.ResourceMetricsResponse | null> {
+    return $Call.ByID(3226762678, spec, definition).then(($result: any) => {
+        return $$createType20($result);
     });
 }
 
 export function Query(pluginID: string, connectionID: string, encoded: string): $CancellablePromise<metric$0.QueryResponse | null> {
     return $Call.ByID(3947209283, pluginID, connectionID, encoded).then(($result: any) => {
-        return $$createType8($result);
+        return $$createType22($result);
     });
 }
 
 export function QueryAll(connectionID: string, encoded: string): $CancellablePromise<{ [_ in string]?: metric$0.QueryResponse | null }> {
     return $Call.ByID(2480040278, connectionID, encoded).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType23($result);
     });
 }
 
@@ -107,6 +167,24 @@ export function RefreshMetricsObservation(token: string): $CancellablePromise<vo
     return $Call.ByID(1389948521, token);
 }
 
+export function SaveMetricBinding(binding: metric$0.MetricBinding): $CancellablePromise<metric$0.MetricBinding | null> {
+    return $Call.ByID(3387047509, binding).then(($result: any) => {
+        return $$createType24($result);
+    });
+}
+
+export function SaveMetricDefinition(definition: metric$0.MetricDefinition): $CancellablePromise<metric$0.MetricDefinition | null> {
+    return $Call.ByID(2132060213, definition).then(($result: any) => {
+        return $$createType25($result);
+    });
+}
+
+export function SaveMetricSourceDefaults(defaults: metric$0.MetricSourceDefaults): $CancellablePromise<metric$0.MetricSourceDefaults> {
+    return $Call.ByID(1553761531, defaults).then(($result: any) => {
+        return $$createType8($result);
+    });
+}
+
 /**
  * SaveMetricViewPreferences requires the loaded Revision. A stale edit returns
  * CONFLICT without overwriting other windows. Reload after a successful save.
@@ -115,22 +193,65 @@ export function SaveMetricViewPreferences(plugin: string, resourceKey: string, p
     return $Call.ByID(2629399501, plugin, resourceKey, preferences);
 }
 
+export function SaveMetricViewSourceSelection(selection: metric$0.MetricViewSourceSelection): $CancellablePromise<metric$0.MetricViewSourceSelection> {
+    return $Call.ByID(2377770278, selection).then(($result: any) => {
+        return $$createType10($result);
+    });
+}
+
+export function SaveProviderConnection(plugin: string, input: metric$0.ProviderConnectionInput): $CancellablePromise<metric$0.ProviderConnection | null> {
+    return $Call.ByID(321760569, plugin, input).then(($result: any) => {
+        return $$createType26($result);
+    });
+}
+
 export function Subscribe(pluginID: string, connectionID: string, encoded: string): $CancellablePromise<string> {
     return $Call.ByID(3738888803, pluginID, connectionID, encoded);
+}
+
+export function TestProviderConnection(plugin: string, connection: string): $CancellablePromise<metric$0.MetricValidationResult | null> {
+    return $Call.ByID(3882586540, plugin, connection).then(($result: any) => {
+        return $$createType28($result);
+    });
 }
 
 export function Unsubscribe(subscriptionID: string): $CancellablePromise<void> {
     return $Call.ByID(3994236150, subscriptionID);
 }
 
+export function ValidateMetricDefinition(plugin: string, connection: string, datasourceUID: string, definition: metric$0.MetricDefinition): $CancellablePromise<metric$0.MetricValidationResult | null> {
+    return $Call.ByID(4144358794, plugin, connection, datasourceUID, definition).then(($result: any) => {
+        return $$createType28($result);
+    });
+}
+
 // Private type creation functions
-const $$createType0 = $models.MetricViewPreferences.createFrom;
-const $$createType1 = $models.MetricProviderSummary.createFrom;
-const $$createType2 = $Create.Array($$createType1);
-const $$createType3 = metric$0.ResourceMetricsCatalog.createFrom;
-const $$createType4 = $Create.Nullable($$createType3);
-const $$createType5 = $Create.Array($Create.Any);
-const $$createType6 = $models.MetricsObservationSnapshot.createFrom;
-const $$createType7 = metric$0.QueryResponse.createFrom;
-const $$createType8 = $Create.Nullable($$createType7);
-const $$createType9 = $Create.Map($Create.Any, $$createType8);
+const $$createType0 = metric$0.MetricDiscoveryResult.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = metric$0.MetricDataSource.createFrom;
+const $$createType3 = $Create.Array($$createType2);
+const $$createType4 = metric$0.MetricBinding.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = metric$0.MetricDefinition.createFrom;
+const $$createType7 = $Create.Array($$createType6);
+const $$createType8 = metric$0.MetricSourceDefaults.createFrom;
+const $$createType9 = $models.MetricViewPreferences.createFrom;
+const $$createType10 = metric$0.MetricViewSourceSelection.createFrom;
+const $$createType11 = metric$0.ProviderConnection.createFrom;
+const $$createType12 = $Create.Array($$createType11);
+const $$createType13 = $models.MetricProviderSummary.createFrom;
+const $$createType14 = $Create.Array($$createType13);
+const $$createType15 = metric$0.ResourceMetricsCatalog.createFrom;
+const $$createType16 = $Create.Nullable($$createType15);
+const $$createType17 = $Create.Array($Create.Any);
+const $$createType18 = $models.MetricsObservationSnapshot.createFrom;
+const $$createType19 = metric$0.ResourceMetricsResponse.createFrom;
+const $$createType20 = $Create.Nullable($$createType19);
+const $$createType21 = metric$0.QueryResponse.createFrom;
+const $$createType22 = $Create.Nullable($$createType21);
+const $$createType23 = $Create.Map($Create.Any, $$createType22);
+const $$createType24 = $Create.Nullable($$createType4);
+const $$createType25 = $Create.Nullable($$createType6);
+const $$createType26 = $Create.Nullable($$createType11);
+const $$createType27 = metric$0.MetricValidationResult.createFrom;
+const $$createType28 = $Create.Nullable($$createType27);
