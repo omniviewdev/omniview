@@ -2,7 +2,6 @@ package metric
 
 import (
 	"context"
-	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	sdk "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
@@ -23,37 +22,31 @@ func (s *ServiceWrapper) metricSession(ctx context.Context) (context.Context, *m
 	if !ok || window == nil {
 		return ctx, nil, finiteError("DENIED", "Metrics operations require an authenticated frontend window.")
 	}
+	if s.Realm == nil {
+		return ctx, nil, finiteError("DENIED", "Metrics frontend realm is unavailable.")
+	}
 	s.sessionsMu.Lock()
 	defer s.sessionsMu.Unlock()
 	if s.sessions == nil {
 		s.sessions = map[uint]*metricFrontendSession{}
 	}
-	if s.closedWindows == nil {
-		s.closedWindows = map[uint]time.Time{}
-	}
-	now := time.Now()
-	for id, until := range s.closedWindows {
-		if !now.Before(until) {
-			delete(s.closedWindows, id)
-		}
-	}
-	if _, closed := s.closedWindows[window.ID()]; closed {
-		return ctx, nil, finiteError("CANCELLED", "Metric frontend session closed.")
-	}
 	session := s.sessions[window.ID()]
 	if session == nil {
-		if len(s.sessions) >= 64 || len(s.closedWindows) >= 1024 {
+		if len(s.sessions) >= 64 {
 			return ctx, nil, finiteError("RESOURCE_LIMIT", "Metric frontend session limit exceeded.")
 		}
-		scope := invocation.NewScope(invocation.TrustedUI)
-		life, cancel := context.WithCancel(scope.Context(context.Background()))
+		scope := s.Realm.ScopeForWindow(window)
+		if scope == nil {
+			return ctx, nil, finiteError("CANCELLED", "Metric frontend window is unavailable.")
+		}
+		lifeBase := context.WithValue(context.Background(), application.WindowKey, window)
+		life, cancel := context.WithCancel(scope.Context(lifeBase))
 		session = &metricFrontendSession{scope: scope, ctx: life, cancel: cancel, window: window}
 		s.sessions[window.ID()] = session
 		window.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
 			cancel()
 			s.Ctrl.RetireMetricsSession(life)
 			s.sessionsMu.Lock()
-			s.closedWindows[window.ID()] = time.Now().Add(finitePendingTTL)
 			if s.sessions[window.ID()] == session {
 				delete(s.sessions, window.ID())
 			}

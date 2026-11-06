@@ -8,12 +8,15 @@ import (
 	"testing"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	execsdk "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 	"github.com/omniviewdev/plugin-sdk/settings"
 	"github.com/stretchr/testify/require"
+	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 type nativeAdmissionKey struct{}
@@ -21,9 +24,15 @@ type nativeAdmissionKey struct{}
 type nativeConnectionFixture struct {
 	t       *testing.T
 	failure error
+	owner   string
 }
 
-func (f nativeConnectionFixture) GetConnection(_ context.Context, plugin, connectionID string) (sdktypes.Connection, error) {
+func (f nativeConnectionFixture) GetConnection(ctx context.Context, plugin, connectionID string) (sdktypes.Connection, error) {
+	if f.owner != "" {
+		request, ok := invocation.FromContext(ctx)
+		require.True(f.t, ok)
+		require.Equal(f.t, f.owner, request.Principal().Owner())
+	}
 	require.Equal(f.t, "installed-plugin", plugin)
 	require.Equal(f.t, "selected-connection", connectionID)
 	return sdktypes.Connection{ID: connectionID, Name: "authoritative connection"}, f.failure
@@ -44,7 +53,8 @@ func (p *nativePlanFixture) PlanNativeCommand(pc *sdktypes.PluginContext, _ exec
 	return p.plan, p.failure
 }
 
-func (p *nativePlanFixture) CreateSession(_ *sdktypes.PluginContext, _ execsdk.SessionOptions) (*execsdk.Session, error) {
+func (p *nativePlanFixture) CreateSession(pc *sdktypes.PluginContext, _ execsdk.SessionOptions) (*execsdk.Session, error) {
+	p.context = pc
 	p.createCalls++
 	return &execsdk.Session{ID: "builtin-created"}, nil
 }
@@ -99,7 +109,7 @@ func TestOpenNativeSessionPreservesAdmissionAndAllocatesNoSession(t *testing.T) 
 	require.NoError(t, err)
 	wrapper := ServiceWrapper{Ctrl: ctrl}
 	require.True(t, wrapper.GetNativeTerminalSupport())
-	require.NoError(t, wrapper.OpenNativeSession("installed-plugin", "selected-connection", string(encoded)))
+	require.NoError(t, wrapper.OpenNativeSession(context.Background(), "installed-plugin", "selected-connection", string(encoded)))
 	require.Equal(t, 1, provider.calls)
 	require.Equal(t, "selected-connection", provider.context.Connection.ID)
 	require.Equal(t, "authoritative connection", provider.context.Connection.Name)
@@ -120,7 +130,7 @@ func TestOpenNativeSessionUsesConfiguredApplication(t *testing.T) {
 	ctrl.settingsProvider = settings.NewProvider(settings.ProviderOpts{PluginSettings: []settings.Category{{
 		ID: "terminal", Settings: map[string]settings.Setting{"nativeApplication": {ID: "nativeApplication", Type: settings.Text, Default: "iterm2"}},
 	}}})
-	require.NoError(t, ctrl.OpenNativeSession("installed-plugin", "selected-connection", nativeSessionOptions()))
+	require.NoError(t, ctrl.OpenNativeSession(context.Background(), "installed-plugin", "selected-connection", nativeSessionOptions()))
 	require.Equal(t, "iterm2", launcher.application)
 }
 
@@ -153,7 +163,7 @@ func TestOpenNativeSessionRejectsBeforePlanning(t *testing.T) {
 			if test.change != nil {
 				test.change(ctrl, &opts)
 			}
-			err := ctrl.OpenNativeSession(test.plugin, "selected-connection", opts)
+			err := ctrl.OpenNativeSession(context.Background(), test.plugin, "selected-connection", opts)
 			require.Equal(t, test.code, resourcev2.ErrorCode(err))
 			require.Zero(t, provider.calls)
 			require.Zero(t, provider.createCalls)
@@ -178,7 +188,7 @@ func TestOpenNativeSessionProviderAndLaunchErrorsNeverFallback(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			ctrl, provider, launcher := nativeSessionController(t)
 			provider.plan, provider.failure, launcher.failure = test.plan, test.planning, test.launching
-			err := ctrl.OpenNativeSession("installed-plugin", "selected-connection", nativeSessionOptions())
+			err := ctrl.OpenNativeSession(context.Background(), "installed-plugin", "selected-connection", nativeSessionOptions())
 			require.Equal(t, test.code, resourcev2.ErrorCode(err))
 			require.Equal(t, 1, provider.calls)
 			require.Zero(t, provider.createCalls)
@@ -192,10 +202,10 @@ func TestNativeMissingPluginAndBuiltinSessionUnaffected(t *testing.T) {
 	ctrl, provider, _ := nativeSessionController(t)
 	delete(ctrl.clients, "installed-plugin")
 	var appError *apperror.AppError
-	require.ErrorAs(t, ctrl.OpenNativeSession("installed-plugin", "selected-connection", nativeSessionOptions()), &appError)
+	require.ErrorAs(t, ctrl.OpenNativeSession(context.Background(), "installed-plugin", "selected-connection", nativeSessionOptions()), &appError)
 	require.Equal(t, apperror.TypePluginNotFound, appError.Type)
 	ctrl.clients["installed-plugin"] = provider
-	session, err := ctrl.CreateSession("installed-plugin", "selected-connection", nativeSessionOptions())
+	session, err := ctrl.CreateSession(context.Background(), "installed-plugin", "selected-connection", nativeSessionOptions())
 	require.NoError(t, err)
 	require.Equal(t, "builtin-created", session.ID)
 	require.Contains(t, ctrl.sessionIndex, session.ID)
@@ -212,9 +222,9 @@ func TestOpenNativeSessionDecodeRejectsArbitraryAndUnboundedInput(t *testing.T) 
 		`{"command":["unterminated]}`,
 		strings.Repeat(" ", resourcev2.MaxMessageBytes+1),
 	} {
-		require.Error(t, wrapper.OpenNativeSession("plugin", "connection", encoded))
+		require.Error(t, wrapper.OpenNativeSession(context.Background(), "plugin", "connection", encoded))
 	}
-	require.Error(t, wrapper.OpenNativeSession("\xff", "connection", `{}`))
+	require.Error(t, wrapper.OpenNativeSession(context.Background(), "\xff", "connection", `{}`))
 }
 
 func TestNativeAdapterRejectsLegacyProvider(t *testing.T) {
@@ -236,11 +246,109 @@ func TestOpenNativeSessionRejectsUnavailableOrInvalidSetting(t *testing.T) {
 				}}})
 				want = "INVALID_REQUEST"
 			}
-			err := ctrl.OpenNativeSession("installed-plugin", "selected-connection", nativeSessionOptions())
+			err := ctrl.OpenNativeSession(context.Background(), "installed-plugin", "selected-connection", nativeSessionOptions())
 			require.Equal(t, want, resourcev2.ErrorCode(err))
 			require.Zero(t, provider.calls)
 			require.Zero(t, launcher.calls)
 			require.Empty(t, ctrl.sessionIndex)
 		})
+	}
+}
+
+type capabilityWindow struct {
+	application.Window
+	id uint
+}
+
+func (w *capabilityWindow) ID() uint { return w.id }
+func (w *capabilityWindow) OnWindowEvent(events.WindowEventType, func(*application.WindowEvent)) func() {
+	return func() {}
+}
+
+func TestWindowRealmExecBindingsPreserveWindowAndSessionLifetime(t *testing.T) {
+	realm := invocation.NewWindowRealm(nil)
+	window := &capabilityWindow{id: 1}
+	owner := realm.ScopeForWindow(window).Principal().Owner()
+	for _, native := range []bool{false, true} {
+		t.Run(map[bool]string{false: "builtin", true: "native"}[native], func(t *testing.T) {
+			for _, test := range []struct {
+				name    string
+				window  application.Window
+				allowed bool
+			}{
+				{"owner", window, true},
+				{"missing", nil, false},
+				{"other", &capabilityWindow{id: 2}, false},
+			} {
+				t.Run(test.name, func(t *testing.T) {
+					ctrl, provider, launcher := nativeSessionController(t)
+					ctrl.resourceClient = nativeConnectionFixture{t: t, owner: owner}
+					boundary := invocation.NewBoundary(invocation.AuthorizeFunc(func(principal invocation.Principal, _ string, _ invocation.Target) error {
+						if principal.Owner() != owner {
+							return resourcev2.NewError("FORBIDDEN", "Reference belongs to another window.")
+						}
+						return nil
+					}))
+					ctrl.SetReferenceAdmitter(func(ctx context.Context, operation, plugin string, route resourcev2.AccessRoute, _ resourcev2.ResourceReference) (context.Context, error) {
+						return boundary.Admit(realm.Context(ctx), operation, invocation.Target{Provider: plugin, Connection: route.Connection})
+					})
+					ctx, cancel := context.WithCancel(context.Background())
+					defer cancel()
+					if test.window != nil {
+						ctx = context.WithValue(ctx, application.WindowKey, test.window)
+					}
+					encoded, err := json.Marshal(nativeSessionOptions())
+					require.NoError(t, err)
+					wrapper := &ServiceWrapper{Ctrl: ctrl, Realm: realm}
+					if native {
+						err = wrapper.OpenNativeSession(ctx, "installed-plugin", "selected-connection", string(encoded))
+					} else {
+						_, err = wrapper.CreateSession(ctx, "installed-plugin", "selected-connection", string(encoded))
+					}
+					if !test.allowed {
+						require.Error(t, err)
+						require.Zero(t, provider.calls)
+						require.Zero(t, provider.createCalls)
+						require.Zero(t, launcher.calls)
+						return
+					}
+					require.NoError(t, err)
+					request, ok := invocation.FromContext(provider.context.Context)
+					require.True(t, ok)
+					require.Equal(t, owner, request.Principal().Owner())
+					require.Same(t, window, provider.context.Context.Value(application.WindowKey))
+					if !native {
+						cancel()
+						require.NoError(t, provider.context.Context.Err())
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestExecControllerPreservesHeadlessReferenceAuthority(t *testing.T) {
+	for _, native := range []bool{false, true} {
+		ctrl, provider, _ := nativeSessionController(t)
+		scope := invocation.NewScope(invocation.ExternalAgent)
+		boundary := invocation.NewBoundary(invocation.AuthorizeFunc(func(principal invocation.Principal, _ string, _ invocation.Target) error {
+			require.Equal(t, invocation.ExternalAgent, principal.Origin())
+			require.Equal(t, scope.Principal().Owner(), principal.Owner())
+			return nil
+		}))
+		ctrl.SetReferenceAdmitter(func(ctx context.Context, operation, plugin string, route resourcev2.AccessRoute, _ resourcev2.ResourceReference) (context.Context, error) {
+			return boundary.Admit(ctx, operation, invocation.Target{Provider: plugin, Connection: route.Connection})
+		})
+		ctx := scope.Context(context.Background())
+		if native {
+			require.NoError(t, ctrl.OpenNativeSession(ctx, "installed-plugin", "selected-connection", nativeSessionOptions()))
+		} else {
+			_, err := ctrl.CreateSession(ctx, "installed-plugin", "selected-connection", nativeSessionOptions())
+			require.NoError(t, err)
+		}
+		request, ok := invocation.FromContext(provider.context.Context)
+		require.True(t, ok)
+		require.Equal(t, invocation.ExternalAgent, request.Principal().Origin())
+		require.Equal(t, scope.Principal().Owner(), request.Principal().Owner())
 	}
 }

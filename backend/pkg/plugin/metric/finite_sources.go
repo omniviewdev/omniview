@@ -312,11 +312,7 @@ func (c *controller) finiteSourceContext(ctx context.Context, source sdk.MetricS
 	if _, private := client.(sdk.ProviderConfiguration); private {
 		return &sdktypes.PluginContext{Context: ctx, Connection: &sdktypes.Connection{ID: source.ConnectionID}}, nil
 	}
-	pc := c.getConnectedCtx(ctx, source.PluginID, source.ConnectionID)
-	if pc == nil {
-		return nil, finiteError("INVALID_CONTEXT", "Selected metric source connection is unavailable.")
-	}
-	return pc, nil
+	return c.getConnectedCtx(ctx, source.PluginID, source.ConnectionID)
 }
 func (c *controller) PreviewMetricDefinition(ctx context.Context, spec MetricsObservationSpec, definition sdk.MetricDefinition) (*sdk.ResourceMetricsResponse, error) {
 	if err := validateConfiguredMetricDefinition(definition); err != nil {

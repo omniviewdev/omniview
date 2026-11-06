@@ -327,7 +327,7 @@ func testNativeLogConnection(t *testing.T, direct bool) {
 	ctrl.ctx = ctx // Native controller lifetime; deliberately no Wails singleton.
 	t.Cleanup(func() { cancel(); _ = ctrl.OnPluginStop(pluginID, config.PluginMeta{ID: pluginID}) })
 	require.NoError(t, ctrl.OnPluginStart(pluginID, config.PluginMeta{ID: pluginID}, backend))
-	session, err := ctrl.CreateSession(pluginID, connectionID, sdklogs.CreateSessionOptions{
+	session, err := ctrl.CreateSession(nativeCtx, pluginID, connectionID, sdklogs.CreateSessionOptions{
 		ResourceKey: "native-log-group", ResourceID: fileName, ResourceData: fileData,
 		Options: sdklogs.LogSessionOptions{Follow: true, IncludeSourceEvents: true},
 	})

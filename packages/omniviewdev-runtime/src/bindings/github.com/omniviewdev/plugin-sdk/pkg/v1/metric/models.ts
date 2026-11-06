@@ -1205,7 +1205,9 @@ export class ResourceMetricResult {
     "message": string;
 
     /**
-     * Source is exact provenance. The host fills it after validating each lane.
+     * Source is exact provenance. The host fills external and mixed-source results.
+     * A single owner-native lane may omit this redundant field; use its catalog
+     * source. Consumers resolve result, descriptor, then catalog source.
      */
     "source"?: MetricSourceRef | null;
 

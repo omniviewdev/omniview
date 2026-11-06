@@ -16,7 +16,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
-	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
@@ -58,12 +57,12 @@ type Controller interface {
 	GetProvidersForResource(resourceKey string) []MetricProviderSummary
 
 	// Querying
-	Query(pluginID, connectionID string, req metric.QueryRequest) (*metric.QueryResponse, error)
-	QueryAll(connectionID string, req metric.QueryRequest) (map[string]*metric.QueryResponse, error)
+	Query(ctx context.Context, pluginID, connectionID string, req metric.QueryRequest) (*metric.QueryResponse, error)
+	QueryAll(ctx context.Context, connectionID string, req metric.QueryRequest) (map[string]*metric.QueryResponse, error)
 	ReadResourceMetrics(ctx context.Context, pluginID string, req metric.QueryRequest) (*metric.QueryResponse, error)
 
 	// Streaming
-	Subscribe(pluginID, connectionID string, req SubscribeRequest) (string, error)
+	Subscribe(ctx context.Context, pluginID, connectionID string, req SubscribeRequest) (string, error)
 	Unsubscribe(subscriptionID string) error
 	BeginConnectionChange(pluginID, connectionID string) func()
 
@@ -349,11 +348,11 @@ func (c *controller) getConnectedCtx(
 	ctx context.Context,
 	pluginID string,
 	connectionID string,
-) *sdktypes.PluginContext {
-	connection, err := c.resourceClient.GetConnection(invocation.HostContext(ctx), pluginID, connectionID)
+) (*sdktypes.PluginContext, error) {
+	connection, err := c.resourceClient.GetConnection(ctx, pluginID, connectionID)
 	if err != nil {
 		c.logger.Errorw(ctx, "error getting connection", "error", err)
-		return nil
+		return nil, err
 	}
 
 	return sdktypes.NewPluginContextWithConnection(
@@ -362,7 +361,7 @@ func (c *controller) getConnectedCtx(
 		nil,
 		nil,
 		&connection,
-	)
+	), nil
 }
 
 func (c *controller) getUnconnectedCtx(ctx context.Context) *sdktypes.PluginContext {
@@ -425,10 +424,11 @@ func (c *controller) GetProvidersForResource(resourceKey string) []MetricProvide
 // ================================ Querying ================================ //
 
 func (c *controller) Query(
+	ctx context.Context,
 	pluginID, connectionID string,
 	req metric.QueryRequest,
 ) (*metric.QueryResponse, error) {
-	ctx, span := tracer.Start(context.Background(), "metric.Query")
+	ctx, span := tracer.Start(ctx, "metric.Query")
 	defer span.End()
 	span.SetAttributes(
 		attribute.String("plugin_id", pluginID),
@@ -458,10 +458,11 @@ func (c *controller) Query(
 		return nil, err
 	}
 
-	resp, err := queryLegacyProvider(client,
-		c.getConnectedCtx(ctx, pluginID, connectionID),
-		req,
-	)
+	pc, err := c.getConnectedCtx(ctx, pluginID, connectionID)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := queryLegacyProvider(client, pc, req)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
 		return nil, err
@@ -492,13 +493,18 @@ func (c *controller) ReadResourceMetrics(
 	if !ok {
 		return nil, apperror.PluginNotFound(pluginID)
 	}
-	return queryLegacyProvider(client, c.getConnectedCtx(admitted, pluginID, req.Route.Connection), req)
+	pc, err := c.getConnectedCtx(admitted, pluginID, req.Route.Connection)
+	if err != nil {
+		return nil, err
+	}
+	return queryLegacyProvider(client, pc, req)
 }
 
 func (c *controller) QueryAll(
+	ctx context.Context,
 	connectionID string, req metric.QueryRequest,
 ) (map[string]*metric.QueryResponse, error) {
-	ctx, span := tracer.Start(context.Background(), "metric.QueryAll")
+	ctx, span := tracer.Start(ctx, "metric.QueryAll")
 	defer span.End()
 	span.SetAttributes(
 		attribute.String("connection_id", connectionID),
@@ -524,7 +530,7 @@ func (c *controller) QueryAll(
 		wg.Add(1)
 		go func(pid string) {
 			defer wg.Done()
-			resp, err := c.Query(pid, connectionID, req)
+			resp, err := c.Query(ctx, pid, connectionID, req)
 			if err != nil {
 				if req.Reference != nil {
 					mu.Lock()
@@ -553,8 +559,8 @@ func (c *controller) QueryAll(
 
 // ================================ Streaming ================================ //
 
-func (c *controller) Subscribe(pluginID, connectionID string, req SubscribeRequest) (string, error) {
-	ctx, span := tracer.Start(context.Background(), "metric.Subscribe")
+func (c *controller) Subscribe(ctx context.Context, pluginID, connectionID string, req SubscribeRequest) (string, error) {
+	ctx, span := tracer.Start(ctx, "metric.Subscribe")
 	defer span.End()
 	subscriptionID := uuid.NewString()
 	wireID := uuid.NewString()
@@ -582,6 +588,7 @@ func (c *controller) Subscribe(pluginID, connectionID string, req SubscribeReque
 		if !ok || revision == "" {
 			return "", apperror.ForResource(resourcev2.NewError("UNSUPPORTED", "Resource catalog admission is unavailable."), subscriptionID)
 		}
+		ctx = admitted
 		input.CatalogRevision = revision
 	}
 	// Admit the complete canonical frame before it can affect the shared lane.
@@ -591,7 +598,7 @@ func (c *controller) Subscribe(pluginID, connectionID string, req SubscribeReque
 	if req.Route != nil && req.Route.Connection != connectionID {
 		return "", apperror.ForResource(resourcev2.NewError("INVALID_REQUEST", "Metric route does not match the selected connection."), subscriptionID)
 	}
-	state, err := c.ensureStream(pluginID, connectionID)
+	state, err := c.ensureStream(ctx, pluginID, connectionID)
 	if err != nil {
 		var missing *apperror.AppError
 		if errors.As(err, &missing) && missing != nil && missing.Type == apperror.TypePluginNotFound {

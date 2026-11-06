@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"time"
 
+	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/transportjson"
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -17,10 +17,17 @@ import (
 //
 //	OnPluginDestroy
 type ServiceWrapper struct {
-	Ctrl          Controller
-	sessionsMu    sync.Mutex
-	sessions      map[uint]*metricFrontendSession
-	closedWindows map[uint]time.Time
+	Ctrl       Controller
+	Realm      *invocation.WindowRealm
+	sessionsMu sync.Mutex
+	sessions   map[uint]*metricFrontendSession
+}
+
+func (s *ServiceWrapper) realmContext(ctx context.Context) context.Context {
+	if s.Realm == nil {
+		return ctx
+	}
+	return s.Realm.Context(ctx)
 }
 
 func (s *ServiceWrapper) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
@@ -47,6 +54,7 @@ func (s *ServiceWrapper) GetProvidersForResource(resourceKey string) []MetricPro
 	return s.Ctrl.GetProvidersForResource(resourceKey)
 }
 func (s *ServiceWrapper) Query(
+	ctx context.Context,
 	pluginID, connectionID string,
 	encoded string,
 ) (*metricsdk.QueryResponse, error) {
@@ -54,21 +62,21 @@ func (s *ServiceWrapper) Query(
 	if err := transportjson.Decode(encoded, &req, pluginID, connectionID); err != nil {
 		return nil, err
 	}
-	return s.Ctrl.Query(pluginID, connectionID, req)
+	return s.Ctrl.Query(s.realmContext(ctx), pluginID, connectionID, req)
 }
-func (s *ServiceWrapper) QueryAll(connectionID, encoded string) (map[string]*metricsdk.QueryResponse, error) {
+func (s *ServiceWrapper) QueryAll(ctx context.Context, connectionID, encoded string) (map[string]*metricsdk.QueryResponse, error) {
 	var req metricsdk.QueryRequest
 	if err := transportjson.Decode(encoded, &req, connectionID); err != nil {
 		return nil, err
 	}
-	return s.Ctrl.QueryAll(connectionID, req)
+	return s.Ctrl.QueryAll(s.realmContext(ctx), connectionID, req)
 }
-func (s *ServiceWrapper) Subscribe(pluginID, connectionID, encoded string) (string, error) {
+func (s *ServiceWrapper) Subscribe(ctx context.Context, pluginID, connectionID, encoded string) (string, error) {
 	var req SubscribeRequest
 	if err := transportjson.Decode(encoded, &req, pluginID, connectionID); err != nil {
 		return "", err
 	}
-	return s.Ctrl.Subscribe(pluginID, connectionID, req)
+	return s.Ctrl.Subscribe(s.realmContext(ctx), pluginID, connectionID, req)
 }
 func (s *ServiceWrapper) Unsubscribe(subscriptionID string) error {
 	return s.Ctrl.Unsubscribe(subscriptionID)

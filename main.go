@@ -92,16 +92,15 @@ func newUICapabilityControllers(
 	log logging.Logger,
 	settingsProvider pkgsettings.Provider,
 	resourceController resource.Controller,
-	resourceUIRealm *invocation.Scope,
+	resourceUIRealm invocation.ContextScope,
 ) (exec.Controller, networker.Controller, pluginlogs.Controller, pluginmetric.Controller) {
-	uiResourceService := &resource.ServiceWrapper{Ctrl: resourceController, Realm: resourceUIRealm}
 	admitReference := func(ctx context.Context, operation, pluginID string, route resourcev2.AccessRoute, ref resourcev2.ResourceReference) (context.Context, error) {
 		return resourceController.AdmitReference(resourceUIRealm.Context(ctx), operation, pluginID, route, ref)
 	}
-	execController := exec.NewController(log, settingsProvider, uiResourceService)
-	networkerController := networker.NewController(log, settingsProvider, uiResourceService)
-	logsController := pluginlogs.NewController(log, settingsProvider, uiResourceService)
-	metricController := pluginmetric.NewController(log, settingsProvider, uiResourceService)
+	execController := exec.NewController(log, settingsProvider, resourceController)
+	networkerController := networker.NewController(log, settingsProvider, resourceController)
+	logsController := pluginlogs.NewController(log, settingsProvider, resourceController)
+	metricController := pluginmetric.NewController(log, settingsProvider, resourceController)
 	execController.SetReferenceAdmitter(admitReference)
 	networkerController.SetReferenceAdmitter(admitReference)
 	logsController.SetReferenceAdmitter(resourceController.AdmitReference)
@@ -338,8 +337,8 @@ func main() {
 	// Setup the plugin systems
 	mcpAuthority := mcprelay.NewAuthority()
 	resourceBoundary := invocation.NewBoundary(mcpAuthority)
-	resourceUIRealm := invocation.NewScope(invocation.TrustedUI)
 	resourceController := resource.NewController(log, settingsProvider, stateDir.PluginStore, resourceBoundary)
+	resourceUIRealm := invocation.NewWindowRealm(resourceController.RetireSourceOwner)
 	activityService, err := activity.NewService(stateDir.RootDir(), func(topic string, change sdkactivity.Change) {
 		app.Event.Emit(topic, change)
 	})
@@ -570,10 +569,10 @@ func main() {
 		application.NewService(&activity.FrontendService{Service: activityService, Realm: resourceUIRealm}),
 		application.NewService(&resource.ServiceWrapper{Ctrl: resourceController, Realm: resourceUIRealm}),
 		application.NewService(graphService),
-		application.NewService(&exec.ServiceWrapper{Ctrl: execController}),
-		application.NewService(&networker.ServiceWrapper{Ctrl: networkerController}),
-		application.NewService(&pluginlogs.ServiceWrapper{Ctrl: logsController}),
-		application.NewService(&pluginmetric.ServiceWrapper{Ctrl: metricController}),
+		application.NewService(&exec.ServiceWrapper{Ctrl: execController, Realm: resourceUIRealm}),
+		application.NewService(&networker.ServiceWrapper{Ctrl: networkerController, Realm: resourceUIRealm}),
+		application.NewService(&pluginlogs.ServiceWrapper{Ctrl: logsController, Realm: resourceUIRealm}),
+		application.NewService(&pluginmetric.ServiceWrapper{Ctrl: metricController, Realm: resourceUIRealm}),
 		application.NewService(&data.ServiceWrapper{Ctrl: dataController}),
 		application.NewService(ui.NewServiceWrapper(uiManager)),
 		application.NewService(utilsClient),

@@ -76,6 +76,8 @@ type Controller interface {
 	Run(context.Context)
 	Service
 	SetCrashCallback(cb func(pluginID string))
+	// RetireSourceOwner releases a native window's sources without exposing a browser binding.
+	RetireSourceOwner(owner string)
 	Graph() *graph.RelationshipGraph
 	ValidateReference(context.Context, string, resource.AccessRoute, resource.ResourceReference) error
 	SetConnectionChangeHook(func(pluginID, connectionID string) func())

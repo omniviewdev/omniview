@@ -34,8 +34,8 @@ type Controller interface {
 	GetPluginHandlers(plugin string) map[string]exec.Handler
 	GetHandlers() map[string]map[string]exec.Handler
 	GetHandler(plugin, resource string) *exec.Handler
-	CreateSession(plugin, connectionID string, opts exec.SessionOptions) (*exec.Session, error)
-	OpenNativeSession(plugin, connectionID string, opts exec.SessionOptions) error
+	CreateSession(ctx context.Context, plugin, connectionID string, opts exec.SessionOptions) (*exec.Session, error)
+	OpenNativeSession(ctx context.Context, plugin, connectionID string, opts exec.SessionOptions) error
 	GetNativeTerminalSupport() bool
 	CreateTerminal(opts exec.SessionOptions) (*exec.Session, error)
 	ListSessions() ([]*exec.Session, error)
@@ -461,7 +461,7 @@ func (c *controller) getConnectedCtx(
 	connectionID string,
 ) *sdktypes.PluginContext {
 	// get the connection from the right resource
-	connection, err := c.resourceClient.GetConnection(invocation.HostContext(ctx), plugin, connectionID)
+	connection, err := c.resourceClient.GetConnection(ctx, plugin, connectionID)
 	if err != nil {
 		c.logger.Errorw(ctx, "error getting connection", "error", err)
 		return nil
@@ -539,15 +539,16 @@ func (c *controller) GetHandler(
 // with TTY forced on.
 func (c *controller) CreateTerminal(opts exec.SessionOptions) (*exec.Session, error) {
 	opts.TTY = true
-	return c.CreateSession("local", "local", opts)
+	return c.CreateSession(context.Background(), "local", "local", opts)
 }
 
 func (c *controller) CreateSession(
+	ctx context.Context,
 	plugin string,
 	connectionID string,
 	opts exec.SessionOptions,
 ) (_ *exec.Session, err error) {
-	ctx, span := tracer.Start(context.Background(), "exec.CreateSession")
+	ctx, span := tracer.Start(ctx, "exec.CreateSession")
 	defer span.End()
 	defer func() {
 		if err != nil {
@@ -570,7 +571,7 @@ func (c *controller) CreateSession(
 		}
 		// start local terminal
 		session, err = c.terminalManager.StartSession(
-			c.getUnconnectedCtx(ctx, plugin),
+			c.getUnconnectedCtx(context.WithoutCancel(ctx), plugin),
 			opts,
 		)
 		if err != nil {
@@ -589,10 +590,13 @@ func (c *controller) CreateSession(
 		return nil, apperror.PluginNotFound(plugin)
 	}
 
-	session, err = client.CreateSession(
-		c.getConnectedCtx(ctx, plugin, connectionID),
-		opts,
-	)
+	pctx := c.getConnectedCtx(ctx, plugin, connectionID)
+	if pctx == nil {
+		return nil, resourcev2.NewError("UNAVAILABLE", "The selected resource connection is unavailable. Reconnect and retry.")
+	}
+	// Providers retain this context for the session, beyond binding completion.
+	pctx.Context = context.WithoutCancel(pctx.Context)
+	session, err = client.CreateSession(pctx, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -681,7 +685,7 @@ func (c *controller) GetSession(
 		return nil, apperror.PluginNotFound(index.pluginID)
 	}
 	return client.GetSession(
-		c.getConnectedCtx(ctx, index.pluginID, index.connectionID),
+		c.getConnectedCtx(invocation.HostContext(ctx), index.pluginID, index.connectionID),
 		sessionID,
 	)
 }
@@ -708,7 +712,7 @@ func (c *controller) AttachSession(sessionID string) (_ *exec.Session, _ []byte,
 		return nil, nil, apperror.PluginNotFound(index.pluginID)
 	}
 	return client.AttachSession(
-		c.getConnectedCtx(ctx, index.pluginID, index.connectionID),
+		c.getConnectedCtx(invocation.HostContext(ctx), index.pluginID, index.connectionID),
 		sessionID,
 	)
 }
@@ -735,7 +739,7 @@ func (c *controller) DetachSession(sessionID string) (_ *exec.Session, err error
 		return nil, apperror.PluginNotFound(index.pluginID)
 	}
 	return client.DetachSession(
-		c.getConnectedCtx(ctx, index.pluginID, index.connectionID),
+		c.getConnectedCtx(invocation.HostContext(ctx), index.pluginID, index.connectionID),
 		sessionID,
 	)
 }
@@ -799,7 +803,7 @@ func (c *controller) CloseSession(
 		return apperror.PluginNotFound(index.pluginID)
 	}
 	return client.CloseSession(
-		c.getConnectedCtx(ctx, index.pluginID, index.connectionID),
+		c.getConnectedCtx(invocation.HostContext(ctx), index.pluginID, index.connectionID),
 		sessionID,
 	)
 }
@@ -828,7 +832,7 @@ func (c *controller) ResizeSession(
 		return apperror.PluginNotFound(index.pluginID)
 	}
 	return client.ResizeSession(
-		c.getConnectedCtx(ctx, index.pluginID, index.connectionID),
+		c.getConnectedCtx(invocation.HostContext(ctx), index.pluginID, index.connectionID),
 		sessionID,
 		int32(cols),
 		int32(rows),

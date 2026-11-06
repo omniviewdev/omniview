@@ -25,7 +25,7 @@ func newTestController() Controller {
 
 func TestCreateSession_PluginNotFound(t *testing.T) {
 	ctrl := newTestController()
-	_, err := ctrl.CreateSession("nonexistent", "conn", logs.CreateSessionOptions{})
+	_, err := ctrl.CreateSession(context.Background(), "nonexistent", "conn", logs.CreateSessionOptions{})
 
 	require.Error(t, err)
 	var target *apperror.AppError
