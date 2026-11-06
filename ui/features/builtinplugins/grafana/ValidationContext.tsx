@@ -8,7 +8,7 @@ export type ValidationSample = { context: MappingSchemaContext; resource?: Resou
 export default function ValidationContext({ resourceTypes, onChange, lockOwner = false }: { resourceTypes: string[]; onChange: (sample: ValidationSample | undefined) => void; lockOwner?: boolean }) {
   const { plugins } = usePluginManager();
   const [owner, setOwner] = useState('');
-  return <fieldset title={lockOwner ? 'Save or discard mapping changes before changing the resource owner.' : undefined}><legend>Resource context</legend>
+  return <fieldset className="grafana-resource-context" title={lockOwner ? 'Save or discard mapping changes before changing the resource owner.' : undefined}><legend>Resource context</legend>
     <label>Resource owner<MetricsSelect label="Resource owner" value={owner} disabled={lockOwner} onChange={value => {
       setOwner(value); onChange(undefined); 
     }} options={[{ value: '', label: 'Choose loaded resource owner' }, ...(plugins.data ?? []).map(plugin => ({ value: plugin.id, label: plugin.metadata.name }))]} /></label>
