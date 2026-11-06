@@ -61,7 +61,7 @@ Each bench is one user-visible action, timed until its result is on screen:
 | Bench | What one sample is |
 |---|---|
 | k8s pod table: mount until first row | Mount the native Pod page from the named corpus until the first row shows |
-| k8s pod table: scroll up to 30 viewport steps within native page | Stop at the real native-page scroll boundary, then return to top; each positive step delivers the scroll event and forces layout |
+| k8s pod table: scroll up to 30 viewport steps within native page | Stop at the real native-page scroll boundary, then return to top; each positive step delivers the scroll event, flushes the React commit, and forces layout |
 | k8s pod table: sort by name | Click the Name header until the top row changes (cycles asc → desc → unsorted) |
 | log viewer: mount + stream 10k lines | Mount, receive 100 backend batches of 100 lines, until the newest line is visible |
 | log viewer: scroll 100k-line buffer | As the table scroll, on a full 100k-line buffer with follow off |
@@ -72,6 +72,11 @@ Each bench is one user-visible action, timed until its result is on screen:
 Pod scrolling rejects zero movement, unexpected end positions, and failed resets.
 The available native-page scroll range bounds the workload; clamped no-op
 assignments are not counted as viewport steps.
+
+`scrollStep` wraps scroll delivery in React's `flushSync` before forcing layout.
+Without that commit boundary, virtualized rows can remain at the previous offset,
+and a timing sample can omit the rendering work it claims to measure. Compare
+scroll timings only with runs that include this commit boundary.
 
 
 Compare runs on the same machine only. CI numbers (ubuntu-latest, shared runners)
