@@ -2,9 +2,9 @@
 
 ## Status and gates
 
-Status: draft acceptance. The earlier host `f03102e338770f5a095408ccf98656210097f4be` and Kubernetes `d2d59feb126e87ff64947a5dfa0271a21d90c098` cohort passed CI. Focused independent re-review cleared the new Events/sidebar-order correction with no Critical or Important findings. The reviewed candidate still requires new cohort CI and native/real WindowService proof. This receipt does not authorize a merge.
+Status: draft acceptance. Previous CI and native observations below apply only to their recorded revisions. The reconciled candidate requires fresh CI, Kubernetes table/detail/editor native acceptance, and merged-source smoke. This receipt does not authorize a merge.
 
-The reconciliation onto host main `256b330f5ffc9c8b2ca5ae4af631432fe93433a4` is not the previously tested cohort. Kubernetes PR #76 remains unmerged; the host temporarily retains main's Kubernetes gitlink and must pin the merged Kubernetes commit before acceptance. Previous CI and native observations below apply only to their recorded revisions. Kubernetes table/detail/editor native acceptance and merged-source smoke remain open.
+The host incorporates main through `4b7fb8108019148a29dd294d26bbff944a85705f` (P12 #343). Kubernetes PR #76 merged as `dcf0d2a022e489684f8684ea6d16a12772817232`, which the host gitlink selects. Historical cohort and verification statements below describe earlier candidates, not this reconciled candidate.
 
 The host resource browser waits for the provider registration and its optional `PreferenceMigrationGate` before mounting resource tables. The Kubernetes provider owns connection discovery and preference conversion; the host does not interpret provider identities.
 
@@ -14,9 +14,9 @@ The host resource browser waits for the provider registration and its optional `
 - Production cutover: [host #192](https://github.com/omniviewdev/omniview/pull/192), merged at `922d1e8cc15a371d58ecc61fc94abf55acf8852d`.
 - Workspace: `ri-p03`; branch: `feature/ri-p03-ac10053b`.
 - Recorded baselines: host `5b722f3db9e47d40819fa5dd6ac9effa1bc50a94`, Kubernetes `c3952b6bc798ab17268cba191413348cc82b5db1`, Proxmox `c466186e63c0742f9dd8a254e2ecf2bfcd0e6f8d`.
-- Kubernetes companion PR: https://github.com/omniviewdev/omniview-plugin-kubernetes/pull/76, targeting `main` with `resource-v2-candidate`.
-- Kubernetes candidate: `6ef14799c6b2664bed41f7413f94ea723664f623`. Host cohort and gitlink select this exact reviewed commit.
-- SDK and UI pins remain `0a5b64ed8c2de209fbb02ecce9feba3afd88f28c` and `61bf9c2ad88e7b427404256573941ba80fac4c00`.
+- Kubernetes companion PR: https://github.com/omniviewdev/omniview-plugin-kubernetes/pull/76, merged at `dcf0d2a022e489684f8684ea6d16a12772817232`.
+- Earlier reviewed Kubernetes candidate: `6ef14799c6b2664bed41f7413f94ea723664f623`.
+- Current host dependencies include published SDK `v0.15.0` and `@omniviewdev/base-ui` `~0.15.0`; earlier source pins below are historical.
 - Rebased host baseline: `3f73061544519d4b35fd51c71eef342065268935` (host #335).
 - Rebased Kubernetes baseline: `860627e04782ab153335a603497c8c514d3337b1` (Kubernetes #75).
 - The candidate retains upstream Kubernetes #75 code. The older PR head `2df894a0e0da660f61d9842a7a8d53450e5aefed` was not treated as equivalent ancestry.
