@@ -25,7 +25,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@omniviewdev/runtime', async (importOriginal) => ({
   ...(await importOriginal<typeof Runtime>()),
-  useSnackbar: () => ({ showSnackbar: mocks.showSnackbar }),
+  useNotifications: () => ({ notify: mocks.showSnackbar }),
 }));
 
 vi.mock('@/providers/BottomDrawer/events', () => ({
@@ -140,7 +140,7 @@ describe('BottomDrawerProvider', () => {
       expect(drawer.tabs[0].properties).not.toHaveProperty('opts');
       expect(drawer.tabs[0].properties?.resourceReferenceMigration).toMatchObject({ legacy: { opts } });
       expect(mocks.showSnackbar).toHaveBeenCalledWith(expect.objectContaining({
-        message: unresolvedResourceReferenceMessage, status: 'warning',
+        title: unresolvedResourceReferenceMessage, severity: 'warning',
       }));
       expect(warning).toHaveBeenCalledWith(expect.stringContaining('unconvertible'), expect.stringContaining(tab.id));
       expect(saveSlot).toHaveBeenLastCalledWith('drawer', expect.objectContaining({

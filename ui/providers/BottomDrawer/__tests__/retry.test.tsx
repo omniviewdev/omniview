@@ -117,7 +117,9 @@ it('preserves migrated terminal reference when replacing an expired session', as
   render(<BottomDrawerProvider><Harness index={1} migrated /></BottomDrawerProvider>);
   fireEvent.click(screen.getByText('Seed'));
   fireEvent.click(screen.getByText('Focus'));
-  await act(async () => { fireEvent.click(screen.getByText('Retry')); });
+  await act(async () => {
+    fireEvent.click(screen.getByText('Retry'));
+  });
   expect(state()).toEqual({
     ids: ['exec-new', 'logs', 'other'], focused: 'Logs', status: 'connected',
     migration: { version: 1, status: 'converted', legacy: { opts: { command: ['sh'] } } },

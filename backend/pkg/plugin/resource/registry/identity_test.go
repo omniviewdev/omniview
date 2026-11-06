@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/stretchr/testify/require"
+
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
 func TestCanonicalAddressKeyCollisionCorpus(t *testing.T) {
@@ -26,8 +27,10 @@ func TestCanonicalAddressKeyCollisionCorpus(t *testing.T) {
 		{name: "pipe ID", id: "a|b"},
 		{name: "unicode ID", id: "雪/é::🚀|"},
 		{name: "unicode normalization remains opaque", id: "雪/e\u0301::🚀|"},
-		{name: "node one VM", provider: "proxmox", typeID: "qemu", scope: []resourcev2.ScopeEntry{{Dimension: "node", Value: "pve-one"}}, id: "100"},
-		{name: "node two VM", provider: "proxmox", typeID: "qemu", scope: []resourcev2.ScopeEntry{{Dimension: "node", Value: "pve-two"}}, id: "100"},
+		{name: "node one VM", provider: "proxmox", typeID: "qemu",
+			scope: []resourcev2.ScopeEntry{{Dimension: "node", Value: "pve-one"}}, id: "100"},
+		{name: "node two VM", provider: "proxmox", typeID: "qemu",
+			scope: []resourcev2.ScopeEntry{{Dimension: "node", Value: "pve-two"}}, id: "100"},
 		{name: "second provider", provider: "other", id: "same"},
 		{name: "second authority", authority: "other", id: "same"},
 		{name: "second type", typeID: "other/type", id: "same"},
@@ -66,7 +69,10 @@ func TestCanonicalAddressKeyCollisionCorpus(t *testing.T) {
 			roundtripKey, err := CanonicalAddressKey(reference.Address)
 			require.NoError(t, err)
 			require.Equal(t, key, roundtripKey)
-			entry := ResourceEntry{PluginID: "plugin", Route: resourcev2.AccessRoute{Connection: "route"}, Reference: reference, Labels: map[string]string{"case": tc.name}}
+			entry := ResourceEntry{
+				PluginID: "plugin", Route: resourcev2.AccessRoute{Connection: "route"},
+				Reference: reference, Labels: map[string]string{"case": tc.name},
+			}
 			_, replaced := store.Put(entry)
 			require.False(t, replaced)
 			got, ok := store.Get(entry.PluginID, reference, entry.Route)
@@ -79,7 +85,10 @@ func TestCanonicalAddressKeyCollisionCorpus(t *testing.T) {
 }
 
 func TestCanonicalAddressKeyScopeOrderAndIncarnation(t *testing.T) {
-	address := resourcev2.ResourceAddress{Provider: "provider", Authority: "authority", Type: "opaque/type", ID: "same", Scope: []resourcev2.ScopeEntry{{Dimension: "zone", Value: "a/b"}, {Dimension: "node", Value: "雪::|"}}}
+	address := resourcev2.ResourceAddress{
+		Provider: "provider", Authority: "authority", Type: "opaque/type", ID: "same",
+		Scope: []resourcev2.ScopeEntry{{Dimension: "zone", Value: "a/b"}, {Dimension: "node", Value: "雪::|"}},
+	}
 	key, err := CanonicalAddressKey(address)
 	require.NoError(t, err)
 	reordered := address
@@ -91,8 +100,8 @@ func TestCanonicalAddressKeyScopeOrderAndIncarnation(t *testing.T) {
 
 	for _, incarnation := range []*string{nil, new("first/::|雪"), new("second")} {
 		reference := resourcev2.ResourceReference{Address: address, Incarnation: incarnation}
-		data, err := json.Marshal(reference)
-		require.NoError(t, err)
+		data, marshalErr := json.Marshal(reference)
+		require.NoError(t, marshalErr)
 		var roundtrip resourcev2.ResourceReference
 		require.NoError(t, json.Unmarshal(data, &roundtrip))
 		// SDK JSON canonicalizes the scope order without changing address identity.

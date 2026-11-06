@@ -15,7 +15,7 @@ import {
   type UpdateTab,
   type UpdateTabOpts,
   BottomDrawerContext,
-  useSnackbar,
+  useNotifications,
 } from '@omniviewdev/runtime';
 import { ExecClient } from '@omniviewdev/runtime/api';
 import log from '@/features/logger';
@@ -239,7 +239,7 @@ function initialDrawerTabsState(slot: DrawerSlot | null): DrawerTabsState {
 export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ children }) => {
   const defaultHeight = 32;
 
-  const { showSnackbar } = useSnackbar();
+  const { notify } = useNotifications();
   const [initialSlot] = React.useState(() => {
     const slot = readInitialSlot('drawer', parseDrawerSlot);
     return slot === null ? null : migrateDrawerResourceReferences(slot);
@@ -429,9 +429,9 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
       reportedSavedReferences.current.add(tab.id);
       const location = `Window ${currentWindow.name}, terminal ${tab.id}`;
       console.warn('[drawer] saved resource reference is unconvertible; original options retained', location);
-      showSnackbar({ message: unresolvedResourceReferenceMessage, status: 'warning', details: location, showOnce: true });
+      void notify({ title: unresolvedResourceReferenceMessage, severity: 'warning', details: location });
     }
-  }, [state.tabs, showSnackbar]);
+  }, [state.tabs, notify]);
 
   React.useEffect(() => {
     saveSlot('drawer', buildDrawerSlot(
