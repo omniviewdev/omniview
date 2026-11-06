@@ -148,6 +148,8 @@ Owner catalog lookups, source validation, binding saves, and mapping revision ch
 
 Public scope keys must appear in the resource owner's declared `ScopeFields`. User mappings and source providers cannot grant new keys. Required inputs follow required scope bindings in applicable mappings. Scope values remain bounded public metadata, separate from credentials and provider-private settings.
 
+Cross-owner editors mount resource hooks under `PluginContextProvider pluginId={ownerPluginID}`. Plugin-scoped hooks prefer their surrounding context; an explicit argument alone does not switch that context.
+
 The profile's managed `appstate.ScopedRoot` stores configuration atomically in `metrics/configuration.json` with private file modes, separately from presentation preferences. Definitions, bindings, profile defaults, and view source selections use loaded revisions; stale saves return `CONFLICT`. Both source save methods return updated DTOs and revisions. `SaveMetricSourceDefaults` with omitted `Source` resets profile inheritance to native. A view source selection stores its owner plugin, owner connection, resource key, mode, optional external source, and revision; `inherit` restores binding/profile precedence. Provider credentials remain in provider-owned private storage and never enter these public configuration DTOs or query context.
 
 

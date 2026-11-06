@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { parseAppError, type ResourceMetricTarget } from '@omniviewdev/runtime';
-import { ResourceClient } from '@omniviewdev/runtime/api';
+import { PluginContextProvider, useConnections, parseAppError, type ResourceMetricTarget } from '@omniviewdev/runtime';
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
 import SampleResource from './SampleResource';
 import type { MappingSchemaContext } from './SchemaFieldPicker';
@@ -14,16 +12,12 @@ export default function ValidationContext({ resourceTypes, onChange, lockOwner =
     <label>Resource owner<MetricsSelect label="Resource owner" value={owner} disabled={lockOwner} onChange={value => {
       setOwner(value); onChange(undefined); 
     }} options={[{ value: '', label: 'Choose loaded resource owner' }, ...(plugins.data ?? []).map(plugin => ({ value: plugin.id, label: plugin.metadata.name }))]} /></label>
-    {owner && <OwnerContext key={owner} owner={owner} resourceTypes={resourceTypes} onChange={onChange} lockOwner={lockOwner} />}
+    {owner && <PluginContextProvider pluginId={owner}><OwnerContext key={owner} owner={owner} resourceTypes={resourceTypes} onChange={onChange} lockOwner={lockOwner} /></PluginContextProvider>}
   </fieldset>;
 }
 
 function OwnerContext({ owner, resourceTypes, onChange, lockOwner }: { owner: string; resourceTypes: string[]; onChange: (sample: ValidationSample | undefined) => void; lockOwner: boolean }) {
-  const connections = useQuery({
-    queryKey: ['metrics', 'owner-connections', owner],
-    queryFn: async () => ResourceClient.ListConnections(owner),
-    staleTime: 30_000,
-  });
+  const { connections } = useConnections({ plugin: owner });
   const [connection, setConnection] = useState('');
   const [resourceType, setResourceType] = useState(resourceTypes[0] ?? '');
   const [resource, setResource] = useState<ResourceMetricTarget>();
