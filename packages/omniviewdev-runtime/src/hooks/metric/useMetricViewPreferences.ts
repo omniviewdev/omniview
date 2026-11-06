@@ -73,6 +73,29 @@ function load(entry: PreferenceEntry) {
   }).finally(() => { entry.loading = null; });
 }
 
+function enqueuePreferenceUpdate(entry: PreferenceEntry, change: MetricViewPreferenceUpdate): Promise<void> {
+  entry.pendingSaves++;
+  const operation = entry.queue.then(async () => {
+    ++entry.sequence;
+    try {
+      const latest = readPreferences(entry, await GetMetricViewPreferences(entry.ownerPluginID, entry.resourceKey));
+      const patch = typeof change === 'function' ? change(latest) : change;
+      const next = { ...latest, ...patch,
+        displays: { ...latest.displays, ...patch.displays }, details: { ...latest.details, ...patch.details } };
+      await SaveMetricViewPreferences(entry.ownerPluginID, entry.resourceKey, next);
+      const stored = await GetMetricViewPreferences(entry.ownerPluginID, entry.resourceKey);
+      publish(entry, { preferences: readPreferences(entry, stored), isLoading: false, error: null });
+    } catch (error) {
+      const failure = error instanceof Error ? error : new Error(String(error));
+      publish(entry, { ...entry.snapshot, isLoading: false, error: failure });
+      throw failure;
+    } finally { entry.pendingSaves--; }
+  });
+  // A failed save stays observable but does not prevent a later explicit save.
+  entry.queue = operation.catch(() => undefined);
+  return operation;
+}
+
 /**
  * Durable profile preferences, shared immediately across metrics surfaces in this window.
  * The resource-owning view supplies initial defaults; generic storage never invents
@@ -96,27 +119,6 @@ export function useMetricViewPreferences(ownerPluginID: string, resourceKey: str
   }, [entry]);
   const getSnapshot = useCallback(() => entry.snapshot, [entry]);
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  const update = useCallback((change: MetricViewPreferenceUpdate): Promise<void> => {
-    entry.pendingSaves++;
-    const operation = entry.queue.then(async () => {
-      ++entry.sequence;
-      try {
-        const latest = readPreferences(entry, await GetMetricViewPreferences(entry.ownerPluginID, entry.resourceKey));
-        const patch = typeof change === 'function' ? change(latest) : change;
-        const next = { ...latest, ...patch,
-          displays: { ...latest.displays, ...patch.displays }, details: { ...latest.details, ...patch.details } };
-        await SaveMetricViewPreferences(entry.ownerPluginID, entry.resourceKey, next);
-        const stored = await GetMetricViewPreferences(entry.ownerPluginID, entry.resourceKey);
-        publish(entry, { preferences: readPreferences(entry, stored), isLoading: false, error: null });
-      } catch (error) {
-        const failure = error instanceof Error ? error : new Error(String(error));
-        publish(entry, { ...entry.snapshot, isLoading: false, error: failure });
-        throw failure;
-      } finally { entry.pendingSaves--; }
-    });
-    // A failed save stays observable but does not prevent a later explicit save.
-    entry.queue = operation.catch(() => undefined);
-    return operation;
-  }, [entry]);
+  const update = useCallback((change: MetricViewPreferenceUpdate) => enqueuePreferenceUpdate(entry, change), [entry]);
   return { ...state, update };
 }
