@@ -28,7 +28,8 @@ The fixture's read-only verification separately measured all 30 Ready Pods. Inst
 - Host TypeScript projects passed.
 - Local base-ui metrics, runtime, Vite plugin/shim checks, and Kubernetes production UI builds passed. Managed workspace builds also completed both plugin producers and all shared-package producers.
 - Controlled host subset/token/cache regression delivered table and sidebar subsets through one provider invocation. This controlled count is not an observed production RPC count.
-- Kubernetes UI: 1,714 tests passed; three existing tests skipped. Scoped changed-component lint, production TypeScript, and production build passed.
+- Kubernetes UI: 1,714 tests passed; three tests skipped. Scoped changed-component lint, production TypeScript, and production build passed.
+- Complete host production frontend build passed, including the metrics chunk. Vite reported shared static/dynamic import and bundle-size warnings; this was not a warning-free build.
 
 ## Remaining acceptance
 
