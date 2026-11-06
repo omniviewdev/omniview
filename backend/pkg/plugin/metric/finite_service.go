@@ -188,11 +188,12 @@ func (s *ServiceWrapper) GetMetricOwnerCatalog(ctx context.Context, ownerPlugin,
 	}
 	return s.Ctrl.GetMetricOwnerCatalog(ctx, ownerPlugin, ownerConnection)
 }
-func (s *ServiceWrapper) SaveMetricDefinition(ctx context.Context, definition sdk.MetricDefinition) (*sdk.MetricDefinition, error) {
-	if _, _, err := s.metricSession(ctx); err != nil {
+func (s *ServiceWrapper) SaveMetricDefinition(ctx context.Context, ownerPlugin, ownerConnection string, definition sdk.MetricDefinition) (*sdk.MetricDefinition, error) {
+	ctx, _, err := s.metricSession(ctx)
+	if err != nil {
 		return nil, err
 	}
-	return s.Ctrl.SaveMetricDefinition(definition)
+	return s.Ctrl.SaveMetricDefinition(ctx, ownerPlugin, ownerConnection, definition)
 }
 func (s *ServiceWrapper) DeleteMetricDefinition(ctx context.Context, id string) error {
 	if _, _, err := s.metricSession(ctx); err != nil {

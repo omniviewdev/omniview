@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/omniviewdev/omniview/internal/appstate"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	sdk "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 	"github.com/stretchr/testify/require"
@@ -181,12 +182,12 @@ func TestOwnerSettingsCatalogOverlaysProfileWithoutExpandingScope(t *testing.T) 
 	require.NoError(t, err)
 	definition := raw.Definitions[0]
 	definition.Query = "profile-query"
-	_, err = c.SaveMetricDefinition(definition)
+	_, err = c.SaveMetricDefinition(ctx, "kubernetes", "cluster", definition)
 	require.NoError(t, err)
 	custom := definition
 	custom.ID = "custom-profile"
 	custom.FieldBindings = []sdk.MetricFieldBinding{{Field: "tenant", Source: "scope", Label: "undeclared"}}
-	savedCustom, err := c.SaveMetricDefinition(custom)
+	savedCustom, err := c.SaveMetricDefinition(ctx, "kubernetes", "cluster", custom)
 	require.NoError(t, err)
 	catalog, err := c.GetMetricOwnerCatalog(ctx, "kubernetes", "cluster")
 	require.NoError(t, err)
@@ -217,4 +218,71 @@ func TestSelectedSourceSavesRetainAdmissionAndCancellation(t *testing.T) {
 		return ctx.Err()
 	}}
 	require.ErrorIs(t, c.validateSelectedMetricSource(cancelled, source), context.Canceled)
+}
+
+type selectedRevisionOwnerCatalog struct {
+	*finiteTestProvider
+}
+
+func (p *selectedRevisionOwnerCatalog) GetMetricOwnerCatalog(pc *types.PluginContext) (*sdk.MetricOwnerCatalog, error) {
+	if _, err := finiteIdentity(pc.Context); err != nil {
+		return nil, err
+	}
+	if pc.Connection == nil || pc.Connection.ID != "cluster" {
+		return nil, errors.New("owner metadata requires its selected connection")
+	}
+	catalog, err := p.finiteTestProvider.GetMetricOwnerCatalog(pc)
+	if err != nil {
+		return nil, err
+	}
+	for i := range catalog.Definitions {
+		catalog.Definitions[i].Revision = "kubernetes-cadvisor-v1"
+	}
+	return catalog, nil
+}
+
+func TestSelectedOwnerDefinitionSaveUsesInheritedRevisionAndRestoresDefault(t *testing.T) {
+	c, owner, ctx := finiteTestController(t)
+	c.SetMetricStateRoot(appstate.NewTestService(t).RootDir())
+	c.resourceClient = admittedOwnerConnections{}
+	c.clients["kubernetes"] = &selectedRevisionOwnerCatalog{finiteTestProvider: owner}
+	c.clients["unrelated"] = &brokenOwnerCatalog{finiteTestProvider: owner}
+	catalog, err := c.GetMetricOwnerCatalog(ctx, "kubernetes", "cluster")
+	require.NoError(t, err)
+	inherited := catalog.Definitions[0]
+	require.Equal(t, "kubernetes-cadvisor-v1", inherited.Revision)
+	for _, change := range []func(*sdk.MetricDefinition){
+		func(d *sdk.MetricDefinition) { d.Unit = "percent" },
+		func(d *sdk.MetricDefinition) { d.Native = !d.Native },
+		func(d *sdk.MetricDefinition) { d.ResourceKeys = []string{"other:/resource"} },
+	} {
+		draft := copyJSON(inherited)
+		change(&draft)
+		_, err := c.SaveMetricDefinition(ctx, "kubernetes", "cluster", draft)
+		require.Error(t, err)
+	}
+	draft := copyJSON(inherited)
+	draft.Query = "profile-six-minute-query"
+	saved, err := c.SaveMetricDefinition(ctx, "kubernetes", "cluster", draft)
+	require.NoError(t, err)
+	require.NotEqual(t, inherited.Revision, saved.Revision)
+	_, err = c.SaveMetricDefinition(ctx, "kubernetes", "cluster", draft)
+	require.Equal(t, "CONFLICT", resourcev2.ErrorCode(err))
+	profile, err := c.GetMetricDefinitions()
+	require.NoError(t, err)
+	require.Equal(t, []sdk.MetricDefinition{*saved}, profile)
+	catalog, err = c.GetMetricOwnerCatalog(ctx, "kubernetes", "cluster")
+	require.NoError(t, err)
+	require.Equal(t, *saved, catalog.Definitions[0])
+	require.NoError(t, c.DeleteMetricDefinition(saved.ID))
+	profile, err = c.GetMetricDefinitions()
+	require.NoError(t, err)
+	require.Empty(t, profile)
+	catalog, err = c.GetMetricOwnerCatalog(ctx, "kubernetes", "cluster")
+	require.NoError(t, err)
+	require.Equal(t, inherited, catalog.Definitions[0])
+	_, err = c.SaveMetricDefinition(ctx, "kubernetes", "cluster", *saved)
+	require.Equal(t, "CONFLICT", resourcev2.ErrorCode(err))
+	_, err = c.SaveMetricDefinition(ctx, "kubernetes", "cluster", draft)
+	require.NoError(t, err)
 }

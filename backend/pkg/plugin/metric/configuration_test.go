@@ -67,7 +67,7 @@ func finiteCatalogSelection(spec MetricsObservationSpec) ResourceMetricsCatalogR
 }
 
 func TestMetricConfigurationPersistsSparseOverridesAndResets(t *testing.T) {
-	c, _, _ := finiteTestController(t)
+	c, _, ctx := finiteTestController(t)
 	addFinitePrivateProvider(t, c)
 	one, two := finitePrivateSource("one"), finitePrivateSource("two")
 	defaults, err := c.SaveMetricSourceDefaults(context.Background(), sdk.MetricSourceDefaults{Source: &one})
@@ -111,9 +111,9 @@ func TestMetricConfigurationPersistsSparseOverridesAndResets(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, bindings)
 	require.NoError(t, c.DeleteMetricDefinition("cpu"))
-	definitions, err := c.GetMetricDefinitions()
+	catalog, err := c.GetMetricOwnerCatalog(ctx, "kubernetes", "cluster")
 	require.NoError(t, err)
-	for _, definition := range definitions {
+	for _, definition := range catalog.Definitions {
 		if definition.ID == "cpu" {
 			require.Equal(t, "cpu-default", definition.Query)
 		}
@@ -217,7 +217,7 @@ func TestFiniteSourceRetirementAndMappingSaveCancelPrivateWork(t *testing.T) {
 				require.NoError(t, err)
 				definitions := catalog.Definitions
 				definitions[0].Query = "changed"
-				_, err = c.SaveMetricDefinition(definitions[0])
+				_, err = c.SaveMetricDefinition(ctx, "kubernetes", "cluster", definitions[0])
 				require.NoError(t, err)
 			}
 			require.Error(t, finiteTestReceive(t, result).err)
@@ -265,7 +265,7 @@ func TestMetricConfigurationRejectsUnapprovedScopeAndAnonymousServices(t *testin
 	require.Error(t, err)
 	_, err = wrapper.GetProviderConnections(ctx, "external")
 	require.Error(t, err)
-	_, err = wrapper.SaveMetricDefinition(ctx, sdk.MetricDefinition{})
+	_, err = wrapper.SaveMetricDefinition(ctx, "kubernetes", "cluster", sdk.MetricDefinition{})
 	require.Error(t, err)
 	_, err = wrapper.SaveMetricBinding(ctx, sdk.MetricBinding{})
 	require.Error(t, err)
@@ -414,7 +414,7 @@ func TestFiniteNativeSourceDoesNotReadExternalMappingFields(t *testing.T) {
 	definitions := catalog.Definitions
 	definition := definitions[0]
 	definition.FieldBindings = []sdk.MetricFieldBinding{{Field: "node", Label: "node", Source: "resource", ResourcePath: "/spec/nodeName", Required: true}}
-	_, err = c.SaveMetricDefinition(definition)
+	_, err = c.SaveMetricDefinition(ctx, "kubernetes", "cluster", definition)
 	require.NoError(t, err)
 	spec := finiteTestSpec("row", "pod-a", "cpu")
 	spec.Source = &sdk.MetricSourceRef{PluginID: spec.OwnerPluginID, ConnectionID: spec.OwnerConnectionID, Native: true}

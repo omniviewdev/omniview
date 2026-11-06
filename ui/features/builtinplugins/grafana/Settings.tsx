@@ -129,6 +129,10 @@ export default function GrafanaSettings({ registerNavigation }: Partial<PluginSe
           setTab('Global mappings'); setError('Choose a connection and datasource before validating drafts.'); return false; 
         }
 
+        if (!ownerPluginID || !ownerConnectionID) {
+          setTab('Global mappings'); setError('Choose a resource owner and connection before saving mappings.'); return false;
+        }
+
         setBusy(true);
         try {
           for (const draft of Object.values(mappingDrafts)) {
@@ -140,7 +144,7 @@ export default function GrafanaSettings({ registerNavigation }: Partial<PluginSe
           }
 
           for (const draft of Object.values(mappingDrafts)) {
-            await MetricClient.SaveMetricDefinition(draft);
+            await MetricClient.SaveMetricDefinition(ownerPluginID, ownerConnectionID, draft);
           }
 
           setMappingDrafts({}); await load(); setDraftEpoch(value => value + 1); return true;
@@ -154,7 +158,7 @@ export default function GrafanaSettings({ registerNavigation }: Partial<PluginSe
     return () => {
       registerNavigation(null); 
     };
-  }, [registerNavigation, editing, mappingDrafts, busy, selected, datasourceUID, load]);
+  }, [registerNavigation, editing, mappingDrafts, busy, selected, datasourceUID, ownerPluginID, ownerConnectionID, load]);
   const credential = useRef<HTMLInputElement>(null);
 
   useEffect(() => () => {
@@ -378,9 +382,17 @@ export default function GrafanaSettings({ registerNavigation }: Partial<PluginSe
       </section>
       {ownerCatalogError && <p role="alert">{ownerCatalogError}</p>}
       <ValidationContext lockOwner={Object.keys(mappingDrafts).length > 0} resourceTypes={[...new Set(visibleDefinitions.filter(definition => definition.query_language === 'promql' && Boolean(definition.query)).flatMap(definition => definition.resource_keys))]} onChange={setValidationSample} />
-      <Mappings key={JSON.stringify([draftEpoch, ownerKey])} definitions={visibleDefinitions} connectionID={selected} datasourceUID={datasourceUID} onDraft={onDraft} sampleRequest={sampleRequest} schemaContext={validationSample?.context.resourceType ? validationSample.context : undefined} save={async definition => {
-        await MetricClient.SaveMetricDefinition(definition); onDraft(definition.id, undefined); await load(); 
-      }} />
+      <fieldset disabled={!ownerPluginID || !ownerConnectionID} style={{ border: 0, padding: 0, margin: 0 }}>
+        <Mappings key={JSON.stringify([draftEpoch, ownerKey])} definitions={visibleDefinitions} savedDefinitionIDs={definitions.map(definition => definition.id)} connectionID={selected} datasourceUID={datasourceUID} onDraft={onDraft} sampleRequest={sampleRequest} schemaContext={validationSample?.context.resourceType ? validationSample.context : undefined} remove={async id => {
+          await MetricClient.DeleteMetricDefinition(id); onDraft(id, undefined); await load();
+        }} save={async definition => {
+          if (!ownerPluginID || !ownerConnectionID) {
+            throw new Error('Choose a resource owner and connection before saving mappings.');
+          }
+
+          await MetricClient.SaveMetricDefinition(ownerPluginID, ownerConnectionID, definition); onDraft(definition.id, undefined); await load();
+        }} />
+      </fieldset>
     </div>
   </fieldset>
   </section>;

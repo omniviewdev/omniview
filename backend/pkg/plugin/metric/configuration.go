@@ -26,7 +26,7 @@ type MetricConfigurationController interface {
 	DeleteMetricBinding(string, string, string) error
 	GetMetricDefinitions() ([]sdk.MetricDefinition, error)
 	GetMetricOwnerCatalog(context.Context, string, string) (*sdk.MetricOwnerCatalog, error)
-	SaveMetricDefinition(sdk.MetricDefinition) (*sdk.MetricDefinition, error)
+	SaveMetricDefinition(context.Context, string, string, sdk.MetricDefinition) (*sdk.MetricDefinition, error)
 	DeleteMetricDefinition(string) error
 	GetMetricSourceDefaults() (sdk.MetricSourceDefaults, error)
 	SaveMetricSourceDefaults(context.Context, sdk.MetricSourceDefaults) (sdk.MetricSourceDefaults, error)
@@ -424,78 +424,38 @@ func (c *controller) rawMetricOwnerCatalog(ctx context.Context, plugin, connecti
 	return copyJSON(result), nil
 }
 
-// catalogDefinitions serves global editor discovery only. Queries use the selected owner.
-func (c *controller) catalogDefinitions() ([]sdk.MetricDefinition, error) {
-	c.mux.RLock()
-	providers := make([]Provider, 0, len(c.clients))
-	for _, provider := range c.clients {
-		providers = append(providers, provider)
-	}
-	c.mux.RUnlock()
-	defs := map[string]sdk.MetricDefinition{}
-	for _, provider := range providers {
-		catalog, ok := provider.(sdk.MetricOwnerCatalogProvider)
-		if !ok {
-			continue
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), resourceMetricsTimeout)
-		items, err := catalog.GetMetricOwnerCatalog(c.getUnconnectedCtx(ctx))
-		cancel()
-		if err != nil || items == nil {
-			continue
-		}
-		for _, definition := range items.Definitions {
-			if old, exists := defs[definition.ID]; exists && metricDigest(old) != metricDigest(definition) {
-				return nil, fmt.Errorf("conflicting owner metric definition %q", definition.ID)
-			}
-			defs[definition.ID] = definition
-		}
-	}
-	out := make([]sdk.MetricDefinition, 0, len(defs))
-	for _, definition := range defs {
-		out = append(out, definition)
-	}
-	return out, nil
-}
 func (c *controller) GetMetricDefinitions() ([]sdk.MetricDefinition, error) {
-	defs, err := c.catalogDefinitions()
-	if err != nil {
-		return nil, err
-	}
 	s := c.state()
 	s.Lock()
 	defer s.Unlock()
-	if err = s.load(); err != nil {
+	if err := s.load(); err != nil {
 		return nil, err
 	}
-	byID := map[string]sdk.MetricDefinition{}
-	for _, d := range defs {
-		byID[d.ID] = d
-	}
+	out := make([]sdk.MetricDefinition, 0, len(s.data.Definitions))
 	for _, d := range s.data.Definitions {
-		byID[d.ID] = copyJSON(d)
-	}
-	out := make([]sdk.MetricDefinition, 0, len(byID))
-	for _, d := range byID {
-		out = append(out, d)
+		out = append(out, copyJSON(d))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, nil
 }
-func (c *controller) SaveMetricDefinition(d sdk.MetricDefinition) (*sdk.MetricDefinition, error) {
+func (c *controller) SaveMetricDefinition(ctx context.Context, ownerPlugin, ownerConnection string, d sdk.MetricDefinition) (*sdk.MetricDefinition, error) {
 	if err := validateConfiguredMetricDefinition(d); err != nil {
 		return nil, err
 	}
-	canonical, err := c.catalogDefinitions()
+	canonical, err := c.rawMetricOwnerCatalog(ctx, ownerPlugin, ownerConnection)
 	if err != nil {
 		return nil, err
 	}
-	for _, owner := range canonical {
+	inheritedRevision := ""
+	for _, owner := range canonical.Definitions {
 		if owner.ID == d.ID && (owner.Unit != d.Unit || metricDigest(owner.ResourceKeys) != metricDigest(d.ResourceKeys) || owner.Native != d.Native) {
 			return nil, errors.New("owner metric semantics and resource applicability cannot change")
 		}
+		if owner.ID == d.ID {
+			inheritedRevision = owner.Revision
+		}
 	}
-	keys, inheritedRevision, err := c.metricDefinitionConfigurationKeys(d.ID, d.ResourceKeys)
+	keys, err := c.metricDefinitionConfigurationKeys(d.ID, d.ResourceKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -539,7 +499,7 @@ func (c *controller) SaveMetricDefinition(d sdk.MetricDefinition) (*sdk.MetricDe
 	return &d, nil
 }
 func (c *controller) DeleteMetricDefinition(id string) error {
-	keys, _, err := c.metricDefinitionConfigurationKeys(id, nil)
+	keys, err := c.metricDefinitionConfigurationKeys(id, nil)
 	if err != nil {
 		return err
 	}

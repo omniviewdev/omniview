@@ -227,10 +227,9 @@ export function MappingEditor({ definition, connectionID, datasourceUID, onSave,
   </Stack>;
 }
 
-export function Mappings({ definitions, connectionID, datasourceUID, save, onDraft, sampleRequest, schemaContext }: { definitions: MetricDefinition[]; connectionID: string; datasourceUID: string; save: (definition: MetricDefinition) => Promise<void>; onDraft?: (id: string, draft: MetricDefinition | undefined) => void; sampleRequest?: MetricsObservationSpec; schemaContext?: MappingSchemaContext }) {
+export function Mappings({ definitions, savedDefinitionIDs, connectionID, datasourceUID, save, remove, onDraft, sampleRequest, schemaContext }: { definitions: MetricDefinition[]; savedDefinitionIDs: string[]; connectionID: string; datasourceUID: string; save: (definition: MetricDefinition) => Promise<void>; remove: (id: string) => Promise<void>; onDraft?: (id: string, draft: MetricDefinition | undefined) => void; sampleRequest?: MetricsObservationSpec; schemaContext?: MappingSchemaContext }) {
   const [search, setSearch] = useState('');
   const [newDefinition, setNewDefinition] = useState<MetricDefinition>();
-  const [deleted, setDeleted] = useState<string[]>([]);
   const [deleteError, setDeleteError] = useState('');
   const [ownerScope, setOwnerScope] = useState<{ context: string; fields: MetricScopeField[]; error: string }>();
   const ownerPluginID = schemaContext?.pluginID;
@@ -284,20 +283,16 @@ export function Mappings({ definitions, connectionID, datasourceUID, save, onDra
       onDraft?.(newDefinition.id, undefined); setNewDefinition(undefined); 
     }}>Cancel new metric</Button>
   </section>}
-  {definitions.filter(definition => definition.query_language === 'promql' && Boolean(definition.query) && !deleted.includes(definition.id)).map(definition => <details hidden={![definition.name, ...definition.resource_keys, definition.query].join(' ').toLowerCase().includes(search.toLowerCase())} className="grafana-mapping" key={`${definition.id}:${definition.revision}`}>
+  {definitions.filter(definition => definition.query_language === 'promql' && Boolean(definition.query)).map(definition => <details hidden={![definition.name, ...definition.resource_keys, definition.query].join(' ').toLowerCase().includes(search.toLowerCase())} className="grafana-mapping" key={`${definition.id}:${definition.revision}`}>
     <summary><strong>{definition.name}</strong><span>{definition.resource_keys.join(', ')} · {definition.unit}</span><QueryPreview query={definition.query} /></summary>
     <MappingEditor definition={definition} scopeFields={scopeFields} connectionID={connectionID} datasourceUID={datasourceUID} onSave={save} onDraft={onDraft} editSemantics schemaContext={schemaContext && definition.resource_keys.includes(schemaContext.resourceType) ? schemaContext : undefined} sampleRequest={sampleRequest && definition.resource_keys.includes(sampleRequest.resource_key) ? sampleRequest : undefined} />
-    {!definition.native && <Button size="sm" variant="ghost" color="danger" onClick={async () => {
-      if (!window.confirm(`Delete ${definition.name}? Existing overrides will no longer resolve this metric.`)) {
-        return;
-      }
-
+    {savedDefinitionIDs.includes(definition.id) && <Button size="sm" variant="ghost" color="danger" onClick={async () => {
       try {
-        await MetricClient.DeleteMetricDefinition(definition.id); onDraft?.(definition.id, undefined); setDeleted(previous => [...previous, definition.id]); 
+        await remove(definition.id);
       } catch (error) {
-        setDeleteError(String(error)); 
+        setDeleteError(String(error));
       }
-    }}>Delete metric</Button>}
+    }}>{definition.native ? 'Reset to owner default' : 'Delete metric'}</Button>}
   </details>)}
   {!definitions.length && <Text size="sm">No metric definitions available from active providers.</Text>}
   </Stack>;

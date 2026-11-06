@@ -136,35 +136,19 @@ func (c *controller) beginScopedMetricConfigurationChange(keys []finiteConfigura
 	return func() { apply(false) }
 }
 
-func (c *controller) metricDefinitionConfigurationKeys(id string, resources []string) ([]finiteConfigurationKey, string, error) {
-	defaults, err := c.catalogDefinitions()
-	if err != nil {
-		return nil, "", err
-	}
-	baseResources := []string{}
-	revision := ""
-	for _, definition := range defaults {
-		if definition.ID == id {
-			baseResources = definition.ResourceKeys
-			revision = definition.Revision
-			break
-		}
-	}
+func (c *controller) metricDefinitionConfigurationKeys(id string, resources []string) ([]finiteConfigurationKey, error) {
 	s := c.state()
 	s.Lock()
 	defer s.Unlock()
 	if err := s.load(); err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	oldResources := baseResources
+	var oldResources []string
 	for _, definition := range s.data.Definitions {
 		if definition.ID == id {
 			oldResources = definition.ResourceKeys
 			break
 		}
-	}
-	if resources == nil {
-		resources = baseResources
 	}
 	keys := []finiteConfigurationKey{{kind: "definition", resource: id}}
 	old := map[string]bool{}
@@ -176,7 +160,7 @@ func (c *controller) metricDefinitionConfigurationKeys(id string, resources []st
 			keys = append(keys, finiteConfigurationKey{kind: "definitions", resource: resource})
 		}
 	}
-	return keys, revision, nil
+	return keys, nil
 }
 
 // Retain change stamps while a read may still be resolving its dependencies.

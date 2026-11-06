@@ -165,7 +165,7 @@ func TestFiniteNativeCacheIgnoresUnusedExternalDefinitions(t *testing.T) {
 	require.NoError(t, err)
 	definitions := catalog.Definitions
 	definitions[0].Query = "external-only-edit"
-	_, err = c.SaveMetricDefinition(definitions[0])
+	_, err = c.SaveMetricDefinition(ctx, "kubernetes", "cluster", definitions[0])
 	require.NoError(t, err)
 	after, err := c.resolveFiniteSources(context.Background(), finiteCatalogSelection(spec), spec.MetricIDs, nil)
 	require.NoError(t, err)
@@ -299,7 +299,7 @@ func TestFiniteUnrelatedDefinitionPreservesExternalCache(t *testing.T) {
 	before, err := c.resolveFiniteSources(context.Background(), finiteCatalogSelection(spec), spec.MetricIDs, nil)
 	require.NoError(t, err)
 	require.NoError(t, finiteTestReceive(t, finiteTestRead(c, ctx, spec)).err)
-	_, err = c.SaveMetricDefinition(sdk.MetricDefinition{ID: "other-resource-cpu", Name: "Other resource CPU", ResourceKeys: []string{"k8s:/nodes"}, Unit: "cores", SupportedShapes: []string{"current"}, Query: "other-resource-query"})
+	_, err = c.SaveMetricDefinition(ctx, "kubernetes", "cluster", sdk.MetricDefinition{ID: "other-resource-cpu", Name: "Other resource CPU", ResourceKeys: []string{"k8s:/nodes"}, Unit: "cores", SupportedShapes: []string{"current"}, Query: "other-resource-query"})
 	require.NoError(t, err)
 	after, err := c.resolveFiniteSources(context.Background(), finiteCatalogSelection(spec), spec.MetricIDs, nil)
 	require.NoError(t, err)
@@ -373,7 +373,7 @@ func TestFiniteOwnerOverridesApplyOnlyToTheirResourceTypes(t *testing.T) {
 }
 
 func TestMetricDeletedRecordsRejectStaleSaves(t *testing.T) {
-	c, _, _ := finiteTestController(t)
+	c, _, ctx := finiteTestController(t)
 	addFinitePrivateProvider(t, c)
 	binding, err := c.SaveMetricBinding(context.Background(), sdk.MetricBinding{Signal: "metrics", ResourcePluginID: "kubernetes", ResourceConnectionID: "cluster"})
 	require.NoError(t, err)
@@ -383,10 +383,10 @@ func TestMetricDeletedRecordsRejectStaleSaves(t *testing.T) {
 	bindings, err := c.GetMetricBindings("kubernetes", "cluster")
 	require.NoError(t, err)
 	require.Empty(t, bindings)
-	definition, err := c.SaveMetricDefinition(sdk.MetricDefinition{ID: "custom", Name: "Custom", ResourceKeys: []string{"core::v1::Pod"}, Unit: "cores", SupportedShapes: []string{"current"}, Query: "custom-query"})
+	definition, err := c.SaveMetricDefinition(ctx, "kubernetes", "cluster", sdk.MetricDefinition{ID: "custom", Name: "Custom", ResourceKeys: []string{"core::v1::Pod"}, Unit: "cores", SupportedShapes: []string{"current"}, Query: "custom-query"})
 	require.NoError(t, err)
 	require.NoError(t, c.DeleteMetricDefinition(definition.ID))
-	_, err = c.SaveMetricDefinition(*definition)
+	_, err = c.SaveMetricDefinition(ctx, "kubernetes", "cluster", *definition)
 	require.Error(t, err)
 	definitions, err := c.GetMetricDefinitions()
 	require.NoError(t, err)
@@ -409,7 +409,7 @@ func TestFiniteDeletedDefinitionCanRecoverWithoutReopening(t *testing.T) {
 	private := addFinitePrivateProvider(t, c)
 	close(private.release)
 	c.clients["external"] = &finiteDynamicPrivateCatalog{finitePrivateProvider: private}
-	definition, err := c.SaveMetricDefinition(sdk.MetricDefinition{ID: "custom", Name: "Custom", ResourceKeys: []string{"core::v1::Pod"}, Unit: "cores", SupportedShapes: []string{"current"}, Query: "custom-query"})
+	definition, err := c.SaveMetricDefinition(ctx, "kubernetes", "cluster", sdk.MetricDefinition{ID: "custom", Name: "Custom", ResourceKeys: []string{"core::v1::Pod"}, Unit: "cores", SupportedShapes: []string{"current"}, Query: "custom-query"})
 	require.NoError(t, err)
 	one := finitePrivateSource("one")
 	_, err = c.SaveMetricBinding(ctx, sdk.MetricBinding{Signal: "metrics", ResourcePluginID: "kubernetes", ResourceConnectionID: "cluster", Overrides: []sdk.MetricDefinitionOverride{{MetricID: "custom", Source: &one}}})
@@ -425,7 +425,7 @@ func TestFiniteDeletedDefinitionCanRecoverWithoutReopening(t *testing.T) {
 	})
 	definition.Revision = ""
 	definition.Query = "restored-query"
-	_, err = c.SaveMetricDefinition(*definition)
+	_, err = c.SaveMetricDefinition(ctx, "kubernetes", "cluster", *definition)
 	require.NoError(t, err)
 	restored := nextFiniteSnapshot(t, events, func(s MetricsObservationSnapshot) bool { return s.Data != nil && !s.Fetching })
 	require.Equal(t, opened.Generation, restored.Generation)

@@ -179,8 +179,8 @@ export function SaveMetricBinding(binding: metric$0.MetricBinding): $Cancellable
     });
 }
 
-export function SaveMetricDefinition(definition: metric$0.MetricDefinition): $CancellablePromise<metric$0.MetricDefinition | null> {
-    return $Call.ByID(2132060213, definition).then(($result: any) => {
+export function SaveMetricDefinition(ownerPlugin: string, ownerConnection: string, definition: metric$0.MetricDefinition): $CancellablePromise<metric$0.MetricDefinition | null> {
+    return $Call.ByID(2132060213, ownerPlugin, ownerConnection, definition).then(($result: any) => {
         return $$createType27($result);
     });
 }

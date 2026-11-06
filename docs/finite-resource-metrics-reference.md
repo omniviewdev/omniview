@@ -8,7 +8,7 @@ Finite metrics evaluate an explicit set of resource references and metric IDs. T
 
 Resource owners publish definitions and approved public scope through `MetricOwnerCatalogProvider.GetMetricOwnerCatalog`. Source providers execute the supplied mappings; they do not own another plugin's resource presets.
 
-Query resolution reads the selected resource owner's catalog only. Global editor discovery is separate, so an unrelated catalog failure cannot block a selected source.
+Queries and editors read only the selected resource owner's catalog. Profile definition reads never contact providers.
 
 `MetricSourceRef.Native` selects the resource owner's built-in source. Native references carry that owner's plugin and connection IDs, with empty datasource kind and UID. External references use a typed provider connection and datasource instead. The host verifies native ownership; it never identifies native sources by a backend name.
 
@@ -128,7 +128,7 @@ ValidateMetricDefinition(ctx, plugin, connection, datasourceUID, definition)
 DiscoverMetricLabels(ctx, plugin, connection, datasourceUID, request)
 GetMetricOwnerCatalog(ctx, ownerPlugin, ownerConnection)
 GetMetricDefinitions(ctx)
-SaveMetricDefinition(ctx, definition)
+SaveMetricDefinition(ctx, ownerPlugin, ownerConnection, definition)
 DeleteMetricDefinition(ctx, id)
 PreviewMetricDefinition(ctx, spec, definition)
 GetMetricBindings(ctx, ownerPlugin, ownerConnection)
@@ -142,7 +142,7 @@ SaveMetricViewSourceSelection(ctx, selection)
 
 `GetProviders()` exposes `supports_connections`. Discover external connections only when true; native-only providers remain valid metric sources.
 
-The SDK owner callback supplies default definitions and approved scope fields. The host's `GetMetricOwnerCatalog` overlays saved profile definitions for connection editors, without reading unrelated owners. Deleting a saved definition restores inheritance. Connection bindings store sparse overrides of these effective defaults; removing an override resets it.
+`GetMetricDefinitions` returns saved profile overrides and custom metrics. `GetMetricOwnerCatalog` merges these with the selected owner's defaults and approved scope. Saves check that owner's inherited revision; deleting a saved override restores inheritance. Connection bindings store sparse overrides of these effective defaults.
 
 Owner catalog lookups, source validation, binding saves, and mapping revision checks retain the authenticated caller context and cancellation through resource connection admission.
 
