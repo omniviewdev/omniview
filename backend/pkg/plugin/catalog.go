@@ -221,11 +221,11 @@ func (pm *pluginManager) loadBuiltinLocked(id string, entry CatalogEntry, opts *
 		}
 	}
 	record.Phase = lifecycle.PhaseRunning
-	record.StateMachine.ForcePhase(record.Phase, "built-in activated")
 	pm.registerStateObserver(record.StateMachine)
 	pm.recordsMu.Lock()
 	pm.records[id] = record
 	pm.recordsMu.Unlock()
+	record.StateMachine.ForcePhase(record.Phase, "built-in activated")
 	return record.ToInfo(), nil
 }
 
