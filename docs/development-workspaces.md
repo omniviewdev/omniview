@@ -53,7 +53,7 @@ approve every dependency script; managed installs still use `--ignore-scripts`.
 
 Choose source refs that satisfy the actual peer contracts: compare the host's `packages/omniviewdev-runtime/package.json` with the selected UI's `packages/base-ui/package.json`. A checkout can lag an existing compatible release tag. Select compatible released source while preserving feature changes; do not invent a package version or weaken peer validation to make an older source pass.
 
-The frontend cohort consumes `@omniviewdev/base-ui` `~0.15.0`, `@omniviewdev/ai-ui` `~6.1.9`, and `@omniviewdev/editors` `~6.2.0`. Runtime `0.30.2` declares the matching base-ui peer `~0.15.0`; its Vite-plugin cohort shares the standalone `@omniviewdev/base-ui/metrics` entry. Keep React 19.3 and TanStack Table 9 compatible across host and plugins.
+The frontend cohort consumes `@omniviewdev/base-ui` `~0.15.0`, `@omniviewdev/ai-ui` `~6.1.9`, and `@omniviewdev/editors` `~6.2.0`. Runtime `0.30.2` supports base-ui peers `~0.14.0 || ~0.15.0`, allowing existing plugins to remain compatible during staged upgrades; the host and updated consumers select `0.15.0`. Its Vite-plugin cohort shares the standalone `@omniviewdev/base-ui/metrics` entry. Keep React 19.3 and TanStack Table 9 compatible across host and plugins.
 
 Canonical E2E and whole-app profiling consume UI packages from the host lockfile.
 Previous `0.14.x` base-ui source cannot satisfy this frontend cohort. Keep each

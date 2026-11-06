@@ -30,7 +30,8 @@ in marketplace publication metadata, not in `plugin.yaml`.
 
 The Base UI `0.15.0` cohort requires host/runtime and Vite plugin `0.30.2` or newer.
 It pairs with editors `6.2.0` and AI UI `6.1.9`. Runtime's base-ui peer range is
-`~0.15.0`; older runtime releases require the previous UI minor. Plugins using
+`~0.14.0 || ~0.15.0`, preserving existing consumers during staged upgrades.
+Older runtime releases require the previous UI minor. Plugins using
 this cohort must declare `min_ide_version: "0.30.2"` in marketplace metadata.
 The host and Vite plugin share `@omniviewdev/base-ui/metrics` as a separate entry,
 so plugins can use its presentation components without bundling another UI copy.
