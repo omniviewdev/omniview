@@ -162,6 +162,7 @@ func (b *ExternalBackend) detectViaProbing() ([]string, error) {
 		capability string
 		method     string
 	}{
+		{"settings", "/omniview.sdk.settings.v1.SettingsPlugin/ListSettings"},
 		{"resource", "/com.omniview.pluginsdk.ResourcePlugin/GetResourceGroups"},
 		{"exec", "/com.omniview.pluginsdk.ExecPlugin/GetSupportedResources"},
 		{"networker", "/com.omniview.pluginsdk.NetworkerPlugin/GetSupportedPortForwardTargets"},
