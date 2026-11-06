@@ -221,3 +221,18 @@ Each issue must record status and evidence. Implement contracts/coordinator firs
 Three parallel source investigations informed this proposal. Two independent reviewers then raised five architecture and six security-contract findings, including overlapping delivery-projection concerns. All findings were resolved before their final review: canonical pair coverage/token rebinding, native API overfetch limits, single-owner transition retention, refresh/deadline semantics, real end-to-end phase boundaries, authoritative projections, session-addressable observation lifecycle, explicit source precedence, source-scoped cluster bindings, and separately authorized source migration.
 
 Both reviewers returned no remaining concrete blockers in the revised design. This is design approval, not evidence that unimplemented code is correct or that scale targets are achieved. The later cache-partition clarification preserves subset indexing; the incarnation note explicitly limits claims when backend history has no UID labels.
+
+## Installed-plugin prerequisite
+
+The pinned host shares `@omniviewdev/base-ui` and its CSS, but not `@omniviewdev/base-ui/metrics`: `ui/features/plugins/api/shared_dependencies.ts:52-54` and `packages/omniviewdev-vite-plugin/src/sharedPackages.ts:43-44`. Phase one must add the metrics subpath to both registries, retain host-owned cascade-layered CSS, regenerate/verify dev shims, and prove installed-plugin module/React/context identity. Build runtime before Vite plugin. Do not work around missing sharing by bundling a private copy of base-ui inside Kubernetes.
+
+Unknown age belongs in concise metadata, not repeated warning paragraphs. Exact query/status/revision diagnostics remain inside the shared Details disclosure; ordinary refresh must not create a diagnostic wall.
+
+## Tracking
+
+- [Integration epic #410](https://github.com/omniviewdev/omniview/issues/410)
+- [Native vertical cutover #411](https://github.com/omniviewdev/omniview/issues/411)
+- [Grafana and connection routing #413](https://github.com/omniviewdev/omniview/issues/413)
+- [Complete IDE cutover #412](https://github.com/omniviewdev/omniview/issues/412)
+
+Planning is complete; these implementation issues remain open. No implementation PR or merge is claimed by this document.
