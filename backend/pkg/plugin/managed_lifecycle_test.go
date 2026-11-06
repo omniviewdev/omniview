@@ -89,7 +89,7 @@ func TestStopDevPluginRetainsInventoryAndRestartsWithFreshBackend(t *testing.T) 
 	source := t.TempDir()
 	var backends []*plugintypes.InProcessBackend
 	pm.backendFactory = func(config.PluginMeta, string) (plugintypes.PluginBackend, error) {
-		backend := plugintypes.NewInProcessBackend(map[string]interface{}{"exec": struct{}{}})
+		backend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"exec": struct{}{}}})
 		backends = append(backends, backend)
 		return backend, nil
 	}
@@ -125,7 +125,7 @@ func (*failingLifecycleController) OnPluginStart(string, config.PluginMeta, plug
 func TestControllerFailureFailsActualLoadAndKillsBackend(t *testing.T) {
 	pm := newTestManager(t)
 	installPluginFixture(t, pm, "controller-failure", []string{"exec"}, true)
-	backend := plugintypes.NewInProcessBackend(map[string]interface{}{"exec": struct{}{}})
+	backend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"exec": struct{}{}}})
 	pm.backendFactory = func(config.PluginMeta, string) (plugintypes.PluginBackend, error) { return backend, nil }
 	pm.connlessControllers[sdktypes.CapabilityExec] = &failingLifecycleController{}
 	_, err := pm.LoadPlugin("controller-failure", &LoadPluginOptions{DevMode: true, DevModePath: t.TempDir()})

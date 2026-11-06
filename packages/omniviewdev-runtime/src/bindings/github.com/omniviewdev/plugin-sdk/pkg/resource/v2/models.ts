@@ -92,6 +92,12 @@ export class ActionDescriptor {
 }
 
 /**
+ * ActionRequest invokes an independently declared named operation on exactly one target.
+ * Input preserves canonical Value scalar kinds and remains borrowed for the call.
+ */
+export type ActionRequest = any;
+
+/**
  * ActionScope distinguishes object actions from type-level actions. It is
  * descriptive metadata, not authority to widen a request's admitted reference.
  */
@@ -111,6 +117,144 @@ export enum ActionScope {
      */
     ActionScopeType = "type",
 };
+
+export class ActivityAction {
+    "id": string;
+    "kind": string;
+    "label": string;
+    "target"?: ResourceNavigationIntent | null;
+    "intent"?: ResourceActionIntent | null;
+    "taskId"?: string;
+
+    /** Creates a new ActivityAction instance. */
+    constructor($$source: Partial<ActivityAction> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+        if (!("label" in $$source)) {
+            this["label"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ActivityAction instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ActivityAction {
+        const $$createField3_0 = $$createType1;
+        const $$createField4_0 = $$createType3;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("target" in $$parsedSource) {
+            $$parsedSource["target"] = $$createField3_0($$parsedSource["target"]);
+        }
+        if ("intent" in $$parsedSource) {
+            $$parsedSource["intent"] = $$createField4_0($$parsedSource["intent"]);
+        }
+        return new ActivityAction($$parsedSource as Partial<ActivityAction>);
+    }
+}
+
+export class ActivityMetric {
+    "id": string;
+    "label": string;
+    "value": string;
+    "unit"?: string;
+    "tone"?: string;
+
+    /** Creates a new ActivityMetric instance. */
+    constructor($$source: Partial<ActivityMetric> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("label" in $$source)) {
+            this["label"] = "";
+        }
+        if (!("value" in $$source)) {
+            this["value"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ActivityMetric instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ActivityMetric {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ActivityMetric($$parsedSource as Partial<ActivityMetric>);
+    }
+}
+
+/**
+ * ActivityPresentation is safe, data-only presentation independent of business output.
+ */
+export class ActivityPresentation {
+    "title": string;
+    "message"?: string;
+    "details"?: string;
+    "progress"?: ActivityProgress | null;
+    "metrics"?: ActivityMetric[];
+    "actions"?: ActivityAction[];
+
+    /** Creates a new ActivityPresentation instance. */
+    constructor($$source: Partial<ActivityPresentation> = {}) {
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ActivityPresentation instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ActivityPresentation {
+        const $$createField3_0 = $$createType5;
+        const $$createField4_0 = $$createType7;
+        const $$createField5_0 = $$createType9;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("progress" in $$parsedSource) {
+            $$parsedSource["progress"] = $$createField3_0($$parsedSource["progress"]);
+        }
+        if ("metrics" in $$parsedSource) {
+            $$parsedSource["metrics"] = $$createField4_0($$parsedSource["metrics"]);
+        }
+        if ("actions" in $$parsedSource) {
+            $$parsedSource["actions"] = $$createField5_0($$parsedSource["actions"]);
+        }
+        return new ActivityPresentation($$parsedSource as Partial<ActivityPresentation>);
+    }
+}
+
+export class ActivityProgress {
+    "kind": string;
+    "message"?: string;
+    "current"?: string;
+    "total"?: string;
+    "unit"?: string;
+    "label"?: string;
+
+    /** Creates a new ActivityProgress instance. */
+    constructor($$source: Partial<ActivityProgress> = {}) {
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ActivityProgress instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ActivityProgress {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ActivityProgress($$parsedSource as Partial<ActivityProgress>);
+    }
+}
 
 /**
  * Catalog describes support observed through the requested route. Revision is
@@ -139,7 +283,7 @@ export class CatalogRequest {
      * Creates a new CatalogRequest instance from a string or object.
      */
     static createFrom($$source: any = {}): CatalogRequest {
-        const $$createField0_0 = $$createType0;
+        const $$createField0_0 = $$createType10;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("route" in $$parsedSource) {
             $$parsedSource["route"] = $$createField0_0($$parsedSource["route"]);
@@ -188,9 +332,9 @@ export class ColumnDefinition {
      * Creates a new ColumnDefinition instance from a string or object.
      */
     static createFrom($$source: any = {}): ColumnDefinition {
-        const $$createField4_0 = $$createType1;
-        const $$createField12_0 = $$createType3;
-        const $$createField13_0 = $$createType1;
+        const $$createField4_0 = $$createType11;
+        const $$createField12_0 = $$createType13;
+        const $$createField13_0 = $$createType11;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("colorMap" in $$parsedSource) {
             $$parsedSource["colorMap"] = $$createField4_0($$parsedSource["colorMap"]);
@@ -283,8 +427,8 @@ export class ConnectionMetadataSnapshot {
      * Creates a new ConnectionMetadataSnapshot instance from a string or object.
      */
     static createFrom($$source: any = {}): ConnectionMetadataSnapshot {
-        const $$createField5_0 = $$createType5;
-        const $$createField6_0 = $$createType6;
+        const $$createField5_0 = $$createType15;
+        const $$createField6_0 = $$createType16;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("lastRefreshError" in $$parsedSource) {
             $$parsedSource["lastRefreshError"] = $$createField5_0($$parsedSource["lastRefreshError"]);
@@ -327,6 +471,9 @@ export class Count {
  * Coverage states known acquisition limitations, not operation success alone.
  * Complete forbids Paths and Reason. Partial and unknown require a public-safe
  * Reason; preserve any reported path limitations rather than claiming completeness.
+ * Each Paths entry is an RFC6901 JSON pointer into the record body that starts
+ * with "/" and names a LIMITED subtree; empty Paths on partial or unknown
+ * coverage means the limitation is not localized.
  */
 export type Coverage = any;
 
@@ -350,48 +497,6 @@ export enum EdgeDirection {
      */
     EdgeIncoming = "incoming",
 };
-
-/**
- * EditorSchema associates editor selection metadata with an explicit schema
- * binding. URI is editor metadata, not permission to fetch an external document;
- * Binding distinguishes unavailable acquisition from known schema absence.
- */
-export class EditorSchema {
-    "type": string;
-    "fileMatch": string;
-    "uri": string;
-    "language": string;
-    "binding": SchemaBinding;
-
-    /** Creates a new EditorSchema instance. */
-    constructor($$source: Partial<EditorSchema> = {}) {
-        if (!("type" in $$source)) {
-            this["type"] = "";
-        }
-        if (!("fileMatch" in $$source)) {
-            this["fileMatch"] = "";
-        }
-        if (!("uri" in $$source)) {
-            this["uri"] = "";
-        }
-        if (!("language" in $$source)) {
-            this["language"] = "";
-        }
-        if (!("binding" in $$source)) {
-            this["binding"] = null;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new EditorSchema instance from a string or object.
-     */
-    static createFrom($$source: any = {}): EditorSchema {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new EditorSchema($$parsedSource as Partial<EditorSchema>);
-    }
-}
 
 /**
  * EnumerateRequest asks for one finite source page, not a subscription or a
@@ -423,7 +528,7 @@ export class EnumerateRequest {
      * Creates a new EnumerateRequest instance from a string or object.
      */
     static createFrom($$source: any = {}): EnumerateRequest {
-        const $$createField0_0 = $$createType7;
+        const $$createField0_0 = $$createType17;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("target" in $$parsedSource) {
             $$parsedSource["target"] = $$createField0_0($$parsedSource["target"]);
@@ -528,14 +633,19 @@ export enum Feature {
     FeatureStreamingActions = "streamingActions",
 
     /**
-     * FeatureBestEffortUpdates enables advisory updates without replay guarantees.
-     */
-    FeatureBestEffortUpdates = "bestEffortUpdates",
-
-    /**
      * FeatureConnectionMetadata enables public connection facts and refresh.
      */
     FeatureConnectionMetadata = "connectionMetadata",
+
+    /**
+     * FeatureSourceSessions enables phased source snapshot/update sessions.
+     */
+    FeatureSourceSessions = "sourceSessions",
+
+    /**
+     * featureLegacyBestEffortUpdates is accepted for old providers but grants no transport.
+     */
+    featureLegacyBestEffortUpdates = "bestEffortUpdates",
 };
 
 /**
@@ -559,7 +669,7 @@ export class FeatureSet {
      * Creates a new FeatureSet instance from a string or object.
      */
     static createFrom($$source: any = {}): FeatureSet {
-        const $$createField0_0 = $$createType8;
+        const $$createField0_0 = $$createType18;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("traits" in $$parsedSource) {
             $$parsedSource["traits"] = $$createField0_0($$parsedSource["traits"]);
@@ -597,8 +707,8 @@ export class GetRequest {
      * Creates a new GetRequest instance from a string or object.
      */
     static createFrom($$source: any = {}): GetRequest {
-        const $$createField0_0 = $$createType0;
-        const $$createField1_0 = $$createType9;
+        const $$createField0_0 = $$createType10;
+        const $$createField1_0 = $$createType19;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("route" in $$parsedSource) {
             $$parsedSource["route"] = $$createField0_0($$parsedSource["route"]);
@@ -681,6 +791,57 @@ export enum HealthStatus {
 };
 
 /**
+ * Operation names independently admitted capabilities, not required methods.
+ * Advertising one operation never implies support for another.
+ */
+export enum Operation {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * OperationEnumerate advertises scoped native enumeration, not final host query membership.
+     */
+    OperationEnumerate = "enumerate",
+
+    /**
+     * OperationGet advertises acquisition of one exact canonical reference.
+     */
+    OperationGet = "get",
+
+    /**
+     * OperationNativeQuery advertises provider-native query execution.
+     */
+    OperationNativeQuery = "nativeQuery",
+
+    /**
+     * OperationCreate admits only the create mutation verb.
+     */
+    OperationCreate = "create",
+
+    /**
+     * OperationMutationUpdate admits only the update mutation verb.
+     */
+    OperationMutationUpdate = "mutationUpdate",
+
+    /**
+     * OperationDelete admits only the delete mutation verb.
+     */
+    OperationDelete = "delete",
+
+    /**
+     * OperationAction advertises action dispatch; action descriptors define available actions.
+     */
+    OperationAction = "action",
+
+    /**
+     * OperationSourceUpdates advertises a source session that follows changes after its snapshot.
+     */
+    OperationSourceUpdates = "sourceUpdates",
+};
+
+/**
  * QueryScope intersects constraints across dimensions. Each declared query
  * dimension must appear exactly once, including unrestricted dimensions.
  * Nil or empty scope therefore applies only to a type with no query dimensions;
@@ -730,7 +891,7 @@ export class ReadTarget {
      * Creates a new ReadTarget instance from a string or object.
      */
     static createFrom($$source: any = {}): ReadTarget {
-        const $$createField0_0 = $$createType0;
+        const $$createField0_0 = $$createType10;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("route" in $$parsedSource) {
             $$parsedSource["route"] = $$createField0_0($$parsedSource["route"]);
@@ -778,8 +939,8 @@ export class Record {
      * Creates a new Record instance from a string or object.
      */
     static createFrom($$source: any = {}): Record {
-        const $$createField0_0 = $$createType9;
-        const $$createField2_0 = $$createType10;
+        const $$createField0_0 = $$createType19;
+        const $$createField2_0 = $$createType20;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("reference" in $$parsedSource) {
             $$parsedSource["reference"] = $$createField0_0($$parsedSource["reference"]);
@@ -842,9 +1003,9 @@ export class RelationshipDescriptor {
      * Creates a new RelationshipDescriptor instance from a string or object.
      */
     static createFrom($$source: any = {}): RelationshipDescriptor {
-        const $$createField6_0 = $$createType12;
-        const $$createField7_0 = $$createType14;
-        const $$createField8_0 = $$createType16;
+        const $$createField6_0 = $$createType22;
+        const $$createField7_0 = $$createType24;
+        const $$createField8_0 = $$createType26;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("extractor" in $$parsedSource) {
             $$parsedSource["extractor"] = $$createField6_0($$parsedSource["extractor"]);
@@ -881,7 +1042,7 @@ export class RelationshipExtractor {
      * Creates a new RelationshipExtractor instance from a string or object.
      */
     static createFrom($$source: any = {}): RelationshipExtractor {
-        const $$createField2_0 = $$createType1;
+        const $$createField2_0 = $$createType11;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("labelSelector" in $$parsedSource) {
             $$parsedSource["labelSelector"] = $$createField2_0($$parsedSource["labelSelector"]);
@@ -915,8 +1076,8 @@ export class RelationshipTarget {
      * Creates a new RelationshipTarget instance from a string or object.
      */
     static createFrom($$source: any = {}): RelationshipTarget {
-        const $$createField0_0 = $$createType9;
-        const $$createField1_0 = $$createType0;
+        const $$createField0_0 = $$createType19;
+        const $$createField1_0 = $$createType10;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("reference" in $$parsedSource) {
             $$parsedSource["reference"] = $$createField0_0($$parsedSource["reference"]);
@@ -1032,8 +1193,8 @@ export class ResolvedRelationship {
      * Creates a new ResolvedRelationship instance from a string or object.
      */
     static createFrom($$source: any = {}): ResolvedRelationship {
-        const $$createField0_0 = $$createType17;
-        const $$createField1_0 = $$createType19;
+        const $$createField0_0 = $$createType27;
+        const $$createField1_0 = $$createType29;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("descriptor" in $$parsedSource) {
             $$parsedSource["descriptor"] = $$createField0_0($$parsedSource["descriptor"]);
@@ -1042,6 +1203,31 @@ export class ResolvedRelationship {
             $$parsedSource["targets"] = $$createField1_0($$parsedSource["targets"]);
         }
         return new ResolvedRelationship($$parsedSource as Partial<ResolvedRelationship>);
+    }
+}
+
+export class ResourceActionIntent {
+    "pluginID": string;
+    "request": ActionRequest;
+
+    /** Creates a new ResourceActionIntent instance. */
+    constructor($$source: Partial<ResourceActionIntent> = {}) {
+        if (!("pluginID" in $$source)) {
+            this["pluginID"] = "";
+        }
+        if (!("request" in $$source)) {
+            this["request"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ResourceActionIntent instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ResourceActionIntent {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ResourceActionIntent($$parsedSource as Partial<ResourceActionIntent>);
     }
 }
 
@@ -1072,7 +1258,7 @@ export class ResourceDefinition {
      * Creates a new ResourceDefinition instance from a string or object.
      */
     static createFrom($$source: any = {}): ResourceDefinition {
-        const $$createField0_0 = $$createType21;
+        const $$createField0_0 = $$createType31;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("columnDefs" in $$parsedSource) {
             $$parsedSource["columnDefs"] = $$createField0_0($$parsedSource["columnDefs"]);
@@ -1161,7 +1347,7 @@ export class ResourceGroup {
      * Creates a new ResourceGroup instance from a string or object.
      */
     static createFrom($$source: any = {}): ResourceGroup {
-        const $$createField4_0 = $$createType22;
+        const $$createField4_0 = $$createType32;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("resources" in $$parsedSource) {
             $$parsedSource["resources"] = $$createField4_0($$parsedSource["resources"]);
@@ -1195,7 +1381,7 @@ export class ResourceHealth {
      * Creates a new ResourceHealth instance from a string or object.
      */
     static createFrom($$source: any = {}): ResourceHealth {
-        const $$createField4_0 = $$createType24;
+        const $$createField4_0 = $$createType34;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("conditions" in $$parsedSource) {
             $$parsedSource["conditions"] = $$createField4_0($$parsedSource["conditions"]);
@@ -1239,8 +1425,8 @@ export class ResourceLink {
      * Creates a new ResourceLink instance from a string or object.
      */
     static createFrom($$source: any = {}): ResourceLink {
-        const $$createField2_0 = $$createType1;
-        const $$createField4_0 = $$createType16;
+        const $$createField2_0 = $$createType11;
+        const $$createField4_0 = $$createType26;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("typeMap" in $$parsedSource) {
             $$parsedSource["typeMap"] = $$createField2_0($$parsedSource["typeMap"]);
@@ -1249,6 +1435,51 @@ export class ResourceLink {
             $$parsedSource["scopeAccessors"] = $$createField4_0($$parsedSource["scopeAccessors"]);
         }
         return new ResourceLink($$parsedSource as Partial<ResourceLink>);
+    }
+}
+
+export class ResourceNavigationIntent {
+    "pluginID": string;
+    "targetId": string;
+    "route": AccessRoute;
+    "reference": ResourceReference;
+    "representation": string;
+
+    /** Creates a new ResourceNavigationIntent instance. */
+    constructor($$source: Partial<ResourceNavigationIntent> = {}) {
+        if (!("pluginID" in $$source)) {
+            this["pluginID"] = "";
+        }
+        if (!("targetId" in $$source)) {
+            this["targetId"] = "";
+        }
+        if (!("route" in $$source)) {
+            this["route"] = (new AccessRoute());
+        }
+        if (!("reference" in $$source)) {
+            this["reference"] = (new ResourceReference());
+        }
+        if (!("representation" in $$source)) {
+            this["representation"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ResourceNavigationIntent instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ResourceNavigationIntent {
+        const $$createField2_0 = $$createType10;
+        const $$createField3_0 = $$createType19;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("route" in $$parsedSource) {
+            $$parsedSource["route"] = $$createField2_0($$parsedSource["route"]);
+        }
+        if ("reference" in $$parsedSource) {
+            $$parsedSource["reference"] = $$createField3_0($$parsedSource["reference"]);
+        }
+        return new ResourceNavigationIntent($$parsedSource as Partial<ResourceNavigationIntent>);
     }
 }
 
@@ -1286,7 +1517,7 @@ export class ResourceOperationError {
      * Creates a new ResourceOperationError instance from a string or object.
      */
     static createFrom($$source: any = {}): ResourceOperationError {
-        const $$createField3_0 = $$createType22;
+        const $$createField3_0 = $$createType32;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("suggestions" in $$parsedSource) {
             $$parsedSource["suggestions"] = $$createField3_0($$parsedSource["suggestions"]);
@@ -1365,7 +1596,7 @@ export class SchemaDocument {
      * Creates a new SchemaDocument instance from a string or object.
      */
     static createFrom($$source: any = {}): SchemaDocument {
-        const $$createField0_0 = $$createType25;
+        const $$createField0_0 = $$createType35;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("reference" in $$parsedSource) {
             $$parsedSource["reference"] = $$createField0_0($$parsedSource["reference"]);
@@ -1460,6 +1691,39 @@ export class ScopeExtractor {
     }
 }
 
+export class SourceCoverage {
+    "enumeration": string;
+    "consistency": string;
+    "limitations": string[];
+
+    /** Creates a new SourceCoverage instance. */
+    constructor($$source: Partial<SourceCoverage> = {}) {
+        if (!("enumeration" in $$source)) {
+            this["enumeration"] = "";
+        }
+        if (!("consistency" in $$source)) {
+            this["consistency"] = "";
+        }
+        if (!("limitations" in $$source)) {
+            this["limitations"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SourceCoverage instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SourceCoverage {
+        const $$createField2_0 = $$createType32;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("limitations" in $$parsedSource) {
+            $$parsedSource["limitations"] = $$createField2_0($$parsedSource["limitations"]);
+        }
+        return new SourceCoverage($$parsedSource as Partial<SourceCoverage>);
+    }
+}
+
 /**
  * Value preserves scalar intent rather than reducing every number to float64.
  * Kind is null, bool, string, int64, uint64, double, timestamp, list, or map; the
@@ -1472,143 +1736,40 @@ export class ScopeExtractor {
  */
 export type Value = any;
 
-/**
- * WatchConnectionSummary is a source-state observation, not a total inventory.
- * Resources and ResourceCounts are keyed by opaque resource type; unknown counts
- * must not be treated as zero or inferred from the number of map entries.
- */
-export class WatchConnectionSummary {
-    "route": AccessRoute;
-    "resources": { [_ in string]?: WatchState };
-    "resourceCounts": { [_ in string]?: Count };
-
-    /**
-     * Scope is optional summary metadata, not permission to widen individual
-     * admitted targets. Nil does not establish unrestricted acquisition.
-     */
-    "scope": QueryScope;
-    "guarantee": string;
-
-    /** Creates a new WatchConnectionSummary instance. */
-    constructor($$source: Partial<WatchConnectionSummary> = {}) {
-        if (!("route" in $$source)) {
-            this["route"] = (new AccessRoute());
-        }
-        if (!("resources" in $$source)) {
-            this["resources"] = {};
-        }
-        if (!("resourceCounts" in $$source)) {
-            this["resourceCounts"] = {};
-        }
-        if (!("scope" in $$source)) {
-            this["scope"] = null;
-        }
-        if (!("guarantee" in $$source)) {
-            this["guarantee"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new WatchConnectionSummary instance from a string or object.
-     */
-    static createFrom($$source: any = {}): WatchConnectionSummary {
-        const $$createField0_0 = $$createType0;
-        const $$createField1_0 = $$createType26;
-        const $$createField2_0 = $$createType28;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("route" in $$parsedSource) {
-            $$parsedSource["route"] = $$createField0_0($$parsedSource["route"]);
-        }
-        if ("resources" in $$parsedSource) {
-            $$parsedSource["resources"] = $$createField1_0($$parsedSource["resources"]);
-        }
-        if ("resourceCounts" in $$parsedSource) {
-            $$parsedSource["resourceCounts"] = $$createField2_0($$parsedSource["resourceCounts"]);
-        }
-        return new WatchConnectionSummary($$parsedSource as Partial<WatchConnectionSummary>);
-    }
-}
-
-/**
- * WatchState describes one advisory source's lifecycle, not connection health or
- * source completeness. In particular, synced cannot prove gap-free delivery.
- */
-export enum WatchState {
-    /**
-     * The Go zero value for the underlying type of the enum.
-     */
-    $zero = 0,
-
-    /**
-     * WatchStateIdle means the source is registered but has not begun syncing.
-     */
-    WatchStateIdle = 0,
-
-    /**
-     * WatchStateSyncing means native cache acquisition is in progress.
-     */
-    WatchStateSyncing = 1,
-
-    /**
-     * WatchStateSynced means the native cache reports readiness, not continuity.
-     */
-    WatchStateSynced = 2,
-
-    /**
-     * WatchStateError means an attempt failed and may be retried.
-     */
-    WatchStateError = 3,
-
-    /**
-     * WatchStateStopped means the source ended without a terminal failure.
-     */
-    WatchStateStopped = 4,
-
-    /**
-     * WatchStateFailed means the source exhausted retries or failed admission.
-     */
-    WatchStateFailed = 5,
-
-    /**
-     * WatchStateForbidden means source access was denied.
-     */
-    WatchStateForbidden = 6,
-
-    /**
-     * WatchStateSkipped means startup was intentionally omitted.
-     */
-    WatchStateSkipped = 7,
-};
-
 // Private type creation functions
-const $$createType0 = AccessRoute.createFrom;
-const $$createType1 = $Create.Map($Create.Any, $Create.Any);
-const $$createType2 = ResourceLink.createFrom;
+const $$createType0 = ResourceNavigationIntent.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = ResourceActionIntent.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = ConnectionMetadataError.createFrom;
+const $$createType4 = ActivityProgress.createFrom;
 const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = $Create.Map($Create.Any, $Create.Any);
-const $$createType7 = ReadTarget.createFrom;
-const $$createType8 = $Create.Array($Create.Any);
-const $$createType9 = ResourceReference.createFrom;
-const $$createType10 = Representation.createFrom;
-const $$createType11 = RelationshipExtractor.createFrom;
-const $$createType12 = $Create.Nullable($$createType11);
-const $$createType13 = ScopeEntry.createFrom;
-const $$createType14 = $Create.Array($$createType13);
-const $$createType15 = ScopeExtractor.createFrom;
-const $$createType16 = $Create.Array($$createType15);
-const $$createType17 = RelationshipDescriptor.createFrom;
-const $$createType18 = RelationshipTarget.createFrom;
-const $$createType19 = $Create.Array($$createType18);
-const $$createType20 = ColumnDefinition.createFrom;
-const $$createType21 = $Create.Array($$createType20);
-const $$createType22 = $Create.Array($Create.Any);
-const $$createType23 = HealthCondition.createFrom;
+const $$createType6 = ActivityMetric.createFrom;
+const $$createType7 = $Create.Array($$createType6);
+const $$createType8 = ActivityAction.createFrom;
+const $$createType9 = $Create.Array($$createType8);
+const $$createType10 = AccessRoute.createFrom;
+const $$createType11 = $Create.Map($Create.Any, $Create.Any);
+const $$createType12 = ResourceLink.createFrom;
+const $$createType13 = $Create.Nullable($$createType12);
+const $$createType14 = ConnectionMetadataError.createFrom;
+const $$createType15 = $Create.Nullable($$createType14);
+const $$createType16 = $Create.Map($Create.Any, $Create.Any);
+const $$createType17 = ReadTarget.createFrom;
+const $$createType18 = $Create.Array($Create.Any);
+const $$createType19 = ResourceReference.createFrom;
+const $$createType20 = Representation.createFrom;
+const $$createType21 = RelationshipExtractor.createFrom;
+const $$createType22 = $Create.Nullable($$createType21);
+const $$createType23 = ScopeEntry.createFrom;
 const $$createType24 = $Create.Array($$createType23);
-const $$createType25 = SchemaDocumentReference.createFrom;
-const $$createType26 = $Create.Map($Create.Any, $Create.Any);
-const $$createType27 = Count.createFrom;
-const $$createType28 = $Create.Map($Create.Any, $$createType27);
+const $$createType25 = ScopeExtractor.createFrom;
+const $$createType26 = $Create.Array($$createType25);
+const $$createType27 = RelationshipDescriptor.createFrom;
+const $$createType28 = RelationshipTarget.createFrom;
+const $$createType29 = $Create.Array($$createType28);
+const $$createType30 = ColumnDefinition.createFrom;
+const $$createType31 = $Create.Array($$createType30);
+const $$createType32 = $Create.Array($Create.Any);
+const $$createType33 = HealthCondition.createFrom;
+const $$createType34 = $Create.Array($$createType33);
+const $$createType35 = SchemaDocumentReference.createFrom;

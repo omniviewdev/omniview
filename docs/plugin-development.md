@@ -4,28 +4,168 @@ This guide covers everything you need to know to develop plugins for Omniview wi
 
 ### Marketplace host compatibility
 
-Host registry API requests advertise `ide_version=0.20.0`, sourced from
-`internal/version.CompatibilityVersion`. This is the source's minimum host
-compatibility release line, not the SDK version or a PR/nightly display label.
-Development builds advertise the same `0.20.0` API baseline while retaining
-their existing development display labels. Release builds stamp the display
-version from the release tag.
+Host registry API requests and local plugin compatibility checks use
+`internal/version.CompatibilityVersion()`. Stable release builds automatically
+advertise their linker-stamped release version, normalized without a leading `v`
+or build metadata. Releasing a new stable patch does not require a second version
+constant to be updated.
 
-Advance this explicit compatibility line when a coordinated host/runtime/SDK
-cutover changes plugin requirements. Updating display-version linker flags alone
-does not change marketplace compatibility. Transactional settings require rebuilt
-SDK v0.10.0 plugins; Kubernetes v0.11.0 requires host/runtime v0.14.0.
+Development, nightly, prerelease, and non-version build labels use the explicit
+source capability baseline (`0.30.0`). Advance that baseline when development
+source gains a coordinated host/runtime/SDK capability; do not derive capabilities
+from labels such as `0.0.0-nightly...` or `pr-build-macos`.
+
+Transactional settings require rebuilt SDK v0.10.0 plugins; Kubernetes v0.11.0
+requires host/runtime v0.14.0.
 Plugins using write-only connection-profile credentials require host/runtime v0.20.0
 and must declare an inclusive `min_ide_version` of `0.20.0` or newer.
+Kubernetes v0.15.0 declares a minimum host version of v0.27.1.
+Kubernetes v0.15.1 requires host/runtime v0.27.2 and SDK v0.14.6 for native
+streaming log clients and completed-source handling, alongside Base UI v0.12.0.
+Its marketplace submission declares an inclusive `min_ide_version` of `0.27.2`.
+Activity-enabled plugin releases require host/runtime v0.30.0 or newer and use
+Base UI v0.14.0 with SDK v0.15.0. Older stable hosts do not expose activity hooks
+and reject the new resource-action stream field. Declare `min_ide_version: "0.30.0"`
+in marketplace publication metadata, not in `plugin.yaml`.
 
 Publisher minimum and maximum IDE versions are inclusive semantic-version bounds.
 Hosts that omit `ide_version` can only access unconstrained plugin versions.
 Artifact and CDN URLs, including signed URLs returned by download endpoints,
 are not decorated with the host version.
 
+Version history requests opt into `include_incompatible=true` to show newer public
+releases with an explicit compatibility reason instead of hiding them. The host
+checks inclusive minimum/maximum bounds against its compatibility baseline and
+sorts all pages by semantic version. `discovery_supported` is true only when the
+marketplace acknowledges this metadata-only mode with
+`X-Omniview-Incompatible-Versions: true`; an older API may still omit incompatible
+releases. Exact-version lookup and download requests never opt into discovery
+and continue enforcing compatibility before artifact access.
+
+Structured runtime errors preserve the outer operation title and render nested
+public causes as readable text, including JSON escaped through Wails or prefixed
+by Go operation context. Raw diagnostic prefixes, malformed structured causes,
+and sensitive provider fallback fields remain hidden.
+
 The public marketplace API is `https://mkt.omniview.dev`. Explicit
 `developer.marketplace_url` overrides remain unchanged. Existing profiles that
 saved the retired `api.omniview.dev` default must update that setting.
+
+### Rich activity notifications
+
+Use `useNotifications().notify({ title, severity, details, actions })` for UI
+diagnostics. Trusted callback actions remain in memory for the current session;
+they are never serialized into host activity records. Error helpers
+`showAppError` and `createErrorHandler` accept this object-based `notify` function.
+`actionToNotification` omits unsupported retries and unsafe documentation URLs.
+
+Use `useActivityActions().startResourceAction({ pluginID, request, presentation })`
+for adopted resource work. Keep canonical resource `Value` inputs intact,
+including decimal-string integer values. The host owns stream attachment and
+execution after adoption. Navigation, hiding a toast, collapsing a card, and
+unmounting a resource view do not cancel work. Cancellation requires an explicit
+request and remains pending until the producer reports an outcome.
+
+Mount one `ActivityProvider` above runtime hook consumers. Mount one
+`ActivitySurfaces` below the host theme and action contexts, inside the existing
+`ToastProvider`; it projects one rich toast and the shared Notification Center.
+Pass `onAction(action, record)` to `ActivitySurfaces` for typed navigation and
+reviewed resource-action intents. Use `canHandleAction(action, record)` to omit
+unavailable actions, such as resource navigation in a settings-only window.
+The generic runtime never selects behavior by resource type or plugin identity.
+
+The footer uses `useActivities().activeTasks` and
+`useNotifications().notificationCount`. Both open the same center through
+`openNotifications('active' | 'attention' | 'all')`. Collapsed and toast-hidden
+state persist through the host; updates and completion do not reset them.
+Overflow remains visible in the center. An open active row stays visible after
+completion until the center closes. History clearing preserves active work and
+firing alerts.
+
+Cards show a status indicator and a measured progress bar with one compact count.
+The bar uses canonical current/total values, animates value changes, and respects
+reduced-motion preferences. Unknown totals remain indeterminate; completed units
+do not independently mark the operation successful. Routine phase text, connection
+identity, and extra metrics live in Details or status tooltips instead of repeating
+below the bar. Failures and observation-loss states remain visible. Collapsing a
+card preserves measured progress and its outcome indicator.
+
+Plugin UI test configurations keep result and transform caches in a per-checkout
+OS temporary directory, outside supervisor-owned dependency trees.
+`OMNIVIEW_TEST_CACHE_DIRECTORY` overrides that location. Use `--no-cache
+--configLoader runner` for direct Vitest runs. Leave binding generation and
+output-writing builds to the managed workspace supervisor, which invokes the
+canonical `task bindings` task and builds runtime before Vite plugin shims.
+
+Runtime observation uses `Subscribe`, a scoped event listener, then `Attach`.
+Revisioned snapshots and removal tombstones prevent stale hydration from
+restoring old state. One native-window-bound producer capability belongs to each
+document; observing view remounts do not replace that document's producer identity.
+A heartbeat covers only that producer's report-only tasks, never another window.
+After lease expiry, observation and capability reconnect without replaying any
+mutation or reviving unknown tasks. Adopted native tasks do not depend on the
+browser's lifetime. Both unit and step progress use decimal-string current and
+total counts; the UI calculates ratios without losing canonical integer precision.
+
+If recording an adopted action's progress or terminal result fails, the host emits
+an `activity/observation-error` diagnostic. The runtime shows safe, copyable text
+without persisting another notification, changing the action result, or replaying
+the mutation. Verify the actual remote outcome before retrying.
+
+#### Host reporting and persistence
+
+The host owns one profile-local activity history. Task execution, alert condition,
+and presentation are independent: collapsing, reading, dismissing, snoozing, or
+acknowledging a record does not finish work or resolve an alert.
+
+Go plugins report tasks, messages, and keyed alert observations through
+`plugin.Activities()`. The lifecycle protocol binds a separate process-scoped
+reporter; it does not use delegated connections or synthetic resource events.
+The host stamps plugin identity, fences retired process generations, and rejects
+cross-plugin updates and intents. Use stable alert keys containing connection,
+resource, rule, and dimension identity. Duplicate or older observations do not
+change alerts. Only a newer recovery observation resolves a condition.
+
+`ActionEvent.Activity` carries typed presentation independently of canonical
+action output. Host-adopted resource actions persist their task before mutation
+and reuse normal action admission and fresh descriptor checks. The admitted
+descriptor selects finite RPC execution or native-ready streaming. Both execute
+under the host's provider-generation lifetime, not the browser request.
+Navigation and component teardown do not cancel them. Adopted resource actions
+do not advertise remote cancellation: stopping an observation stream does not
+cancel a rollout or other remote mutation. Provider pause or stop controls remain
+reviewed typed resource actions. Generic tasks with a real cancellation contract
+remain requested until an observed outcome; a request never proves rollback.
+
+The frontend binding is `backend/pkg/activity.FrontendService`. Call `Subscribe`,
+install the `activity/change/<id>` listener, then call `Attach`. Buffer changes
+while attaching and apply only increasing revisions. Subscriptions own views,
+not producers. The subscription ID also grants a document-scoped producer
+capability bound to its native caller window. Generic producer methods take this
+ID before their request. The root provider renews `Heartbeat(id)` every ten
+seconds; report-only UI work becomes unknown after thirty seconds without
+producer observation. Another document cannot renew that capability. Expired
+capabilities require a fresh session, without replaying mutations. Native adopted
+actions do not depend on this lease. Generic UI reports cannot claim plugin
+source identity.
+
+Bindings carrying presentation or action requests take strict encoded JSON
+strings to preserve canonical resource values, including double negative zero:
+`BeginTask`, `ReportTask`, `FinishTask`, `PublishMessage`, `UpsertAlert`, and
+`StartResourceAction`. The runtime client performs this encoding.
+
+History lives in an atomically replaced private `activities.json` under the
+active profile state root. Restart marks unfinished tasks and firing alerts
+unknown without replaying mutations. History retains at most 500 terminal,
+message, or resolved records, while active work and unresolved conditions remain.
+`ClearHistory` removes only eligible history.
+
+The store validates schema version, record provenance, revisions, timestamps,
+and canonical state before recovery. Activity files cannot exceed 16 MiB.
+Admission bounds active tasks and unresolved alerts globally and per producer;
+subscription and live producer identities also have finite limits. Retired
+identities are removed rather than accumulated in an unbounded blacklist.
+
 
 ### Host drawer context
 
@@ -38,6 +178,82 @@ Global search still works because it renders inside the bottom drawer provider.
 When checking sidebar actions, verify that Logs opens a log tab, Exec opens a
 terminal tab, and Delete opens its confirmation dialog (then cancel it).
 Container shell availability is separate from action dispatch.
+
+### Host-owned in-process backend lifetime
+
+`backend/pkg/plugin/types.InProcessBackend` accepts `InProcessBackendConfig`
+with capability providers, an optional `HealthCheck`, and an optional aggregate
+`Shutdown`. Configuration is fixed at construction; the backend snapshots the
+provider map without copying provider instances.
+
+`Stop` immediately fences dispensing and health, invokes aggregate shutdown once,
+and waits for it to finish. Concurrent `Stop` and `Kill` calls share that shutdown;
+later `Stop` calls return its original error. `Exited` becomes true only after
+shutdown completes. In-process `Kill` cannot terminate native code forcibly.
+
+Callbacks run outside the backend state lock. Health checks may overlap shutdown
+and must synchronize their own native state. Shutdown may inspect backend state,
+but must not recursively call `Stop` or `Kill` on the same backend.
+
+Aggregate shutdown must not duplicate cleanup already owned by capability
+controllers. The resource controller and exec controller already close their
+providers; the backend does not infer ownership from a provider's `Close` method.
+
+### Trusted built-in plugins
+
+Product composition supplies `plugin.NewCatalog([]plugin.CatalogEntry)` to
+`plugin.NewManager`. Each entry contains ordinary SDK metadata, a
+`FrontendModule` key for UI capabilities, and a `NewBackend(context.Context)`
+factory for backend capabilities. The factory must construct a fresh provider
+graph for each activation. Installed manifests cannot opt into this catalog.
+
+`types.ComposeNativeBackend(types.NativeProviders{...})` binds native SDK
+utilities to the resource provider's real connection registry. Resource utility
+providers must implement the SDK connection-context consumer contract. Direct
+adapters dispatch canonical resource operations through the SDK's native resource
+interfaces, just as the external transport does; they do not fall back to legacy
+resource-data callbacks. Existing host reference admission and catalog pins still
+apply.
+
+Built-ins appear in `ListPlugins` before activation, with `origin: "builtin"` and
+their trusted `frontendModule`. `LoadPlugin` activates them without an installed
+manifest, binary, or asset directory. Discovery and enabling do not activate them.
+`SetPluginEnabled` persists the preference independently from activation; disabling
+retires controllers before releasing aggregate native resources.
+
+| Resource owner | Cleanup responsibility |
+| --- | --- |
+| Resource controller | Retire admission, generation-bound work, and the resource provider |
+| Exec controller | Close sessions and cancel/drain its forwarding worker |
+| Logs controller | Close supported native providers, cancel/drain forwarding, retire buffered output |
+| Metrics controller | Cancel/drain connection streams and retire subscription interests |
+| Network controller | Stop provider sessions and port forwards |
+| Settings/tools controllers | Retire their host registrations and pending host work |
+| Aggregate `Shutdown` | Release shared native clients not already owned by controllers |
+
+Product-owned IDs cannot be replaced through marketplace, local archive,
+development-link, or uninstall operations. An existing external installation with
+the same ID causes an explicit collision; the host does not delete or migrate
+that installation implicitly. Built-in versions follow the application release.
+
+Frontend composition registers a static import function and declarative route
+metadata in `ui/features/plugins/adapters/builtinModules.ts`. The module key must
+match the trusted catalog entry. Navigation or an explicit plugin-service load
+activates the native backend, imports the module, and uses the normal export
+validation and contribution pipeline. Unknown module keys fail closed without
+SystemJS or development-server fallback. Disable, unload, and replacement fence
+late imports so they cannot restore retired routes or contributions.
+
+The production catalog and module registry are intentionally empty until the
+separate containers migration. No sample or test feature ships with the app.
+See [the integration plan](builtin-plugins.md) for
+the containers, packaging, performance, and SSH/SFTP gates.
+
+In a linked workspace, let the installed `omniview-dev` CLI run dependency
+installation and producer builds; it invokes `task bindings` internally.
+Standalone installs or producer builds can invalidate output ownership. Use
+`workspace reset-modules` for changed dependency trees and `workspace recover`
+for retained build recovery, rather than editing journals or weakening checks.
 
 ---
 
@@ -67,6 +283,18 @@ my-plugin/
     src/
       entry.ts         # Plugin UI entry point
 ```
+
+Installed plugin directories reserve `data/` and `store/` for runtime state.
+Do not include either directory in a release archive; the host rejects those
+packages before stopping the existing plugin. This includes case aliases on
+case-insensitive volumes; case-distinct names remain valid on case-sensitive
+volumes. Archive replacement moves the
+existing state directories into the new installation without copying them, so
+cached scoped roots and nested authority handles still address live state.
+Failed publication moves that same state back before restarting the original
+plugin. Runtime unload does not close appstate-owned roots; appstate closes them
+when the application shuts down. Interrupted transactions retain their existing
+recovery barrier and private staging evidence instead of adopting another path.
 
 ### 1.3 The `plugin.yaml` File
 
@@ -111,6 +339,20 @@ remain unchanged. No modifier shortcut or default destination is configured.
 `terminal.nativeApplication` accepts `terminal` (default) or `iterm2`. The action
 is hidden outside macOS. The selected application must be installed; the host
 never silently switches applications or falls back to built-in Exec.
+
+Settings discovers installed supported terminal applications through macOS's
+application registry. Display names come from each installed bundle and icons
+come from `NSWorkspace`, rendered as 64px PNGs. Application choices are not a
+static settings enum; only applications with an implemented safe launch adapter
+are offered. Registering as a shell-document handler does not qualify an editor
+or browser as a terminal. Discovery does not send Automation events or launch
+applications.
+
+The picker preserves its draft until Save Changes. Refresh applications rescans
+the device without changing the draft. A removed saved application stays visibly
+unavailable until the user chooses an installed alternative; discovery errors
+remain distinct from an empty installed list. Availability is checked again at
+launch. Existing `terminal` and `iterm2` preference IDs remain stable.
 
 Plugins built with SDK v0.12.0 can provide `NativeCommandHandler` on an exec
 handler, or implement the optional `exec.NativeCommandProvider`. Advertise native
@@ -415,6 +657,16 @@ Failed plugin startup closes its dispensed source exactly once even when the
 provider was never published; saved desired profiles and the original typed
 startup failure survive that teardown.
 
+### Borrowed connection tools
+
+Borrowed MCP tools use the host's sanitized snapshot of configured connections.
+Native resource discovery has a separate deadline. Its timeout does not remove
+borrowed tool names. The relay still checks live grants, lifecycle cancellation,
+connection state, and consent at dispatch.
+Consent binds the exact tool contract and target. An unrelated catalog change
+does not cancel that consent. A changed or removed tool, policy change, or
+session retirement still cancels the call and blocks late results.
+
 ### Connection/server metadata
 
 Use the optional resource-v2 `connectionMetadata` trait for public connection facts such as `aws.region` or `kubernetes.server_version`. Keep configuration in desired profiles and resource inventory/capabilities in resource queries/catalogs. Do not store summaries; derive them from selected keys in the consumer.
@@ -603,6 +855,12 @@ and native pages at 256 records. Aggregate pages remain frame-bounded before
 generated decoding. These finite transport ceilings require final policy review;
 they do not change the separate predicate/projection policy or promise latency.
 
+Source sessions cap retained membership at 128 MiB, the same limit as snapshot
+staging. Incremental changes that exceed this limit fail with `RESOURCE_LIMIT`.
+Retained members, committing snapshots, and members referenced by in-progress view
+snapshots share a 256 MiB ledger. View references can cause a snapshot or change
+to fail with `RESOURCE_LIMIT`; the session remains failed until refreshed.
+
 ### Protecting connection-dependent routes
 
 Plugin availability is not connection readiness. Wrap the resource subtree in the runtime's `ConnectionBoundary` before rendering components that use resource hooks. Keep connection lists, creation, and credential editing outside the boundary.
@@ -782,7 +1040,7 @@ The reference set is `kubernetes/ui/src/icons/resourceIcons.tsx`. Other plugins 
 
 #### Live data, cache ownership, and failures
 
-The host acquires native resource subscriptions while resource scopes are open, deduplicates them, and releases them on scope changes, close, and unmount. Late successful acquisitions are also released. Failed acquisition leaves existing results visible with a **Retry live updates** banner; retry does not replace healthy watchers.
+The host shares source sessions across resource views and releases them when their interests close. A view receives a snapshot and status, followed by updates when supported. Failed sources retain existing results and expose a retry.
 
 Use the public cache keys when storing native snapshots:
 
@@ -792,7 +1050,10 @@ Use the public cache keys when storing native snapshots:
 - `resourceQueryKeys.resource(pluginId,{targetId,request:GetRequest})` stores `HostRecord`, never a display projection or legacy GetResult.
 - Pagination, representation, query scope, and native query inputs remain explicit request fields; never replace an unfiltered acquisition page with search-filtered rows.
 
-Subscribe and unsubscribe using `(pluginId,{targetId,target:ReadTarget})`. Advisory ADD/UPDATE payloads carry `record:HostRecord`; DELETE carries host keys and canonical reference. Search filters matching request-context events, invalidates the plugin's resourcev2 cache, and coalesces refreshes without rediscovering connections or resetting selection. Events received during an in-flight fetch re-invalidate its settled snapshot before the trailing refresh. BEST_EFFORT updates do not establish snapshot/update continuity.
+Use `openSourceView(pluginId, {targetId, target, updates})` for a source view. The runtime attaches to the view topic before synchronization, stages snapshot chunks until `snapshotEnd`, and applies ordered changes by host record key. Close the view when it is no longer needed. A reset starts a new view generation; continuity and coverage describe the source's guarantees.
+
+The PR workflow runs `src/resource/v2/sourceView.test.ts` from `packages/omniviewdev-runtime`.
+The suite checks atomic snapshots, frame-batched notifications, continuity gaps, and view retirement.
 
 Use the cache query's signal for shared native work and the request signal to fence obsolete search publication. Cancelling a search must not cancel another table's shared fetch. Resource/action execution still performs its own fresh identity and authorization checks instead of trusting discovery cache freshness.
 
@@ -801,6 +1062,61 @@ Distinguish disconnected, connecting, authentication-required, forbidden, unavai
 Query edits retain the previous result surface, disable obsolete activation, and publish the replacement query wave coherently after its sources settle. CommandList does not apply another label-only filter to provider-ranked results. Compact icon/status badges carry availability; full source messages remain under Details. Providers must still report truthful typed states and bounded completion.
 
 Kubernetes is the reference integration in `ui/src/search/provider.tsx`. It caches resource snapshots for 15 seconds and readiness for 2 seconds, scans at most 200 objects, reports incomplete results, and transfers exact list text without changing structured filters. See [scoped search design and acceptance cases](scoped-search-design.md).
+
+### Inspecting extension registrations
+
+Open **Developer: Inspect Extensions** from global search, or choose
+**Inspect contributions** in plugin details. Diagnostics live in a workspace
+tab, not a Settings category.
+
+The namespace tree groups extension points and their contributions. Use the
+plugin filter to inspect one contributor without losing the point hierarchy.
+The contribution table includes every registered value, including entries
+hidden by single-mode selection or quarantine. Pending registrations appear
+separately because their requested target point does not yet exist.
+
+Select a Problem to reveal the associated contribution and captured evidence.
+The inspector distinguishes module loading, registration, context resolution,
+and quarantine. None of these proves a component rendered successfully.
+Captured crash history is bounded session evidence and can clear on reload or
+re-enable. Export before recovery; inspect potentially sensitive errors locally
+before sharing them.
+
+The full-height explorer sits beside the registration editor and metadata
+inspector. Problems dock below the editor and inspector; all three pane
+boundaries can be resized. Repeated problems group by kind, plugin, point,
+contribution, and boundary. Expand a group or the inspector's event history to
+review every retained record; exports retain the ungrouped bounded evidence.
+Registration JSON contains only the safe type descriptor, never contribution
+values. Lifecycle and render eligibility remain explicitly unknown where no
+instrumentation exists. Coverage and safety details are available in a disclosure.
+Double-click a resize handle to restore its default size. Narrow windows clamp
+the side panes without clearing the selected registration or filter. If a registry
+change invalidates an action's capture, select the current registration again
+before running lookup or recovery.
+Initial selections bind to the first capture with a resolved runtime window
+identity. Later inventory updates do not silently replace an action's capture.
+
+Reveal sensitive exception text captures and pauses the current state. Resume
+before lookup, recovery, or another reveal. Safe JSON export still redacts text
+from a sensitive paused capture. Sensitive export and recovery require review
+or confirmation; recovery clears the contribution's captured crash history.
+
+Context lookup is an explicit action because plugin matchers can execute code.
+It never mounts contributed components. Unsupported context types and gaps in
+specialized-consumer diagnostics are labeled instead of treated as healthy.
+
+Agents can inspect the same live document without using the UI:
+
+```sh
+omniview-dev extensions inspect --workspace /path/to/workspace \
+  --plugin my-plugin --json
+```
+
+See [extension diagnostics for agents](development-cli.md#extension-diagnostics-for-agents)
+for point/issue filters, explicit resource-context lookup, window selection,
+and sensitive-error opt-in. A missing frontend is an unavailable capture,
+not evidence that the plugin registered nothing.
 
 ### 1.5 Contributing a Theme
 
@@ -846,6 +1162,16 @@ Registration cleanup follows the plugin lifecycle:
 - Reloading or replacing a registration disposes its previous theme before registering the current contribution. Plugin code does not need to unregister themes manually.
 
 Before React starts, the loading surface uses the last cached built-in theme, including validated legacy Light and Solarized preferences during upgrades. Custom/plugin themes use Void for this first paint until their contribution loads; the persisted requested theme ID is not changed. The Appearance theme picker applies selections immediately and exposes the accessible name “Theme.”
+
+### 1.6 Persistent Plugin Data
+
+Use `usePluginData` for profile-backed plugin preferences. Pass a literal value to replace a key, or a pure functional updater to merge with its latest persisted value.
+
+Functional updates use a fresh backend snapshot and compare-and-swap, including across independent windows and QueryClients. A conflicting write re-evaluates the updater, up to eight attempts. Prepare IDs, timestamps, uploads, and other side effects outside the updater. Exhausted conflicts and storage failures reject the update promise; callers must surface the error rather than reporting success.
+
+Literal replacements intentionally remain last-write-wins and do not require reading the old value. They can therefore reset a key whose persisted JSON cannot be read. Failed optimistic writes restore the previous cached value, or the supplied default when no cached value exists.
+
+The host data service exposes `GetSnapshot` and `CompareAndSwap` for this protocol. Revisions are opaque content tokens, not monotonic counters. An absent key has an empty revision; stored JSON `null` has a nonempty revision. Keep both methods and the consuming runtime in the same published host/runtime cohort; older hosts do not provide these bindings.
 
 ---
 
@@ -1156,3 +1482,23 @@ plugin.Serve()
 Use the CLI for reproducible noninteractive work in isolated development profiles;
 use plugin cards for interactive work. Neither path trusts PID-only discovery.
 
+
+## 8. Log Session Lifecycle
+
+Use the runtime `LogsClient.CreateSession` adapter when opening log sessions.
+It reserves a UUID and subscribes before the create RPC, so immediate lines,
+errors, and completion events survive until the log viewer attaches. The host
+rejects duplicate correlation IDs; these IDs do not grant resource authority.
+The handoff retains the newest 10,000 lines within an 8 MiB UTF-8 JSON budget,
+100 source events, and the latest session-scoped lifecycle event of each type.
+Its 60-second abandonment timeout starts only after successful creation, so a
+slow create does not lose early output. Host creation has a 90-second deadline;
+the runtime bounds a stalled call to 120 seconds, leaving time for host cleanup.
+Accepted streams retain their independent lifetime. Failed or canceled creation
+releases listeners immediately.
+
+`SESSION_READY` means source setup completed, not that a line has arrived.
+A ready stream can remain empty while following. Finite empty streams complete
+normally; they are not lost connections. Source-scoped errors, removal, and EOF
+must not terminate other sources. Only session-scoped `STREAM_ENDED` ends the
+whole viewer. Each viewer removes only its own event listeners on disconnect.

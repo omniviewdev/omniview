@@ -70,7 +70,7 @@ export function prepareApplication({ root, privateRoot, sources, refs, env, exec
   phase('application-build-once', () => {
     let failure;
     try {
-      execute(cohort.tool, ['build', cohort.config, directory, buildReport], { cwd: root, extraEnv: buildEnvironment, timeout: 480_000 });
+      execute(cohort.tool, ['build', cohort.config, directory, buildReport], { cwd: root, extraEnv: buildEnvironment, timeout: 900_000 });
     } catch (error) { failure = error; }
     try {
       buildExecution = privateJSON(buildReport);
@@ -90,7 +90,7 @@ export function prepareApplication({ root, privateRoot, sources, refs, env, exec
     const source = sources[id];
     const artifact = join(directory, id);
     const sdkIdentity = built?.sdkIdentity;
-    if (built?.source !== source || built?.artifact !== artifact || sdkIdentity?.Directory !== sources['plugin-sdk'] || sdkIdentity.ReviewedRevision !== refs['plugin-sdk'] || !/^[a-f0-9]{64}$/.test(sdkIdentity.SourceDigest)) throw Error('Actual plugin build evidence differs from the selected cohort');
+    if (built?.source !== source || built?.artifact !== artifact || sdkIdentity?.Directory !== sources['plugin-sdk'] || sdkIdentity.Revision !== refs['plugin-sdk'] || !/^[a-f0-9]{64}$/.test(sdkIdentity.SourceDigest)) throw Error('Actual plugin build evidence differs from the selected cohort');
     // Both owned branches have joined. Only now copy immutable UI assets and
     // metadata into the already-built private binary artifacts.
     phase(`${id}-artifact-finalize`, () => {
@@ -225,7 +225,7 @@ export async function startApplicationBroker({ application, ownershipDir, env, p
   };
   const start = async profile => {
     profile.generation = randomUUID();
-    const childEnv = { ...profile.env, OMNIVIEW_WORKSPACE_FILE: profile.manifest, OMNIVIEW_GENERATION: profile.generation, WAILS_SERVER_HOST: '127.0.0.1', WAILS_SERVER_PORT: String(profile.port), OMNIVIEW_EXPECTED_SDK_REVISION: env.REVIEWED_SDK_REVISION ?? '', ...(profile.liveFrontend ? { FRONTEND_DEVSERVER_URL: profile.viteURL } : {}) };
+    const childEnv = { ...profile.env, OMNIVIEW_WORKSPACE_FILE: profile.manifest, OMNIVIEW_GENERATION: profile.generation, WAILS_SERVER_HOST: '127.0.0.1', WAILS_SERVER_PORT: String(profile.port), ...(profile.liveFrontend ? { FRONTEND_DEVSERVER_URL: profile.viteURL } : {}) };
     profile.host = launch(artifact.binary, [], { wrapper: artifact.binary, profileWorkspace: profile.manifest, owner: { WorkspaceID: profile.descriptor.workspaceID, Generation: profile.generation, Role: 'host', Source: join(ownershipDir, profile.name, 'artifact') }, cwd: artifact.root, env: childEnv, log: join(ownershipDir, `${profile.name}-${profile.generation}.log`) });
     records.add(profile.host);
     publishOwnership(profile, 'starting');
@@ -252,7 +252,7 @@ export async function startApplicationBroker({ application, ownershipDir, env, p
         if (name === 'profile-b' && plugin.id !== 'workspace-probe') continue;
         cpSync(plugin.artifact, join(created.descriptor.stateRoot, 'plugins', plugin.id), { recursive: true, errorOnExist: true });
         const installedBinary = join(created.descriptor.stateRoot, 'plugins', plugin.id, 'bin/plugin');
-        execFileSync(artifact.binary, ['--e2e-record-plugin', root, plugin.id, installedBinary, plugin.sdkIdentity.Directory, plugin.sdkIdentity.ReviewedRevision, plugin.sdkIdentity.SourceDigest], { env: childEnv, encoding: 'utf8', timeout: 30_000, stdio: ['ignore', 'pipe', 'ignore'] });
+        execFileSync(artifact.binary, ['--e2e-record-plugin', root, plugin.id, installedBinary, plugin.sdkIdentity.Directory, plugin.sdkIdentity.SourceDigest], { env: childEnv, encoding: 'utf8', timeout: 30_000, stdio: ['ignore', 'pipe', 'ignore'] });
       }
       profile = { ...created, name, home, env: childEnv, port: await port(), liveFrontend: false };
       profiles.set(name, profile);

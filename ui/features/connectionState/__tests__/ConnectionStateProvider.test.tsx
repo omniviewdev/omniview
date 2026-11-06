@@ -1,33 +1,27 @@
 import { render, act, screen } from '@testing-library/react';
 import { ConnectionStateProvider, useConnectionStateDialog } from '../index';
+import type { HostSourceStates } from '@omniviewdev/runtime';
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
 
-const mockWatchStateReturn = {
-  summary: { data: null } as any,
+const mockSourceStateReturn = {
+  summary: undefined as HostSourceStates | undefined,
   isFullySynced: false,
-  getResourceState: vi.fn(),
+  getTypeStatus: vi.fn(),
   syncProgress: 0,
   errorCount: 0,
 };
 
 vi.mock('@omniviewdev/runtime', () => ({
-  useWatchState: () => mockWatchStateReturn,
-  WatchState: {
-    WatchStateIdle: 0, WatchStateSyncing: 1, WatchStateSynced: 2, WatchStateError: 3,
-    WatchStateStopped: 4, WatchStateFailed: 5, WatchStateForbidden: 6, WatchStateSkipped: 7,
-  },
+  useSourceStates: () => mockSourceStateReturn,
 }));
 
-const mockEnsureResourceWatch = vi.fn().mockResolvedValue(undefined);
-const admittedTarget = { route: { connection: 'c1' }, provider: 'test', authority: 'host', type: 'opaque/type', scope: [], representation: 'json' };
-const mockResolveTarget = vi.fn().mockResolvedValue({ targetId: 'admitted', target: admittedTarget });
+const mockRetryConnectionSources = vi.fn().mockResolvedValue(undefined);
 vi.mock('@omniviewdev/runtime/api', () => ({
   ResourceClient: {
-    ResolveTarget: (...args: unknown[]) => mockResolveTarget(...args),
-    EnsureResourceWatch: (...args: any[]) => mockEnsureResourceWatch(...args),
+    RetryConnectionSources: (...args: unknown[]) => mockRetryConnectionSources(...args),
   },
 }));
 
@@ -72,8 +66,8 @@ describe('ConnectionStateProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
-    mockWatchStateReturn.summary = { data: null };
-    mockWatchStateReturn.isFullySynced = false;
+    mockSourceStateReturn.summary = undefined;
+    mockSourceStateReturn.isFullySynced = false;
   });
 
   afterEach(() => {
@@ -130,7 +124,7 @@ describe('ConnectionStateProvider', () => {
     expect(screen.getByTestId('dialog')).toBeTruthy();
 
     // Simulate sync completing
-    mockWatchStateReturn.isFullySynced = true;
+    mockSourceStateReturn.isFullySynced = true;
 
     // Re-render to pick up the mock change
     act(() => {
@@ -141,8 +135,8 @@ describe('ConnectionStateProvider', () => {
     expect(screen.getByTestId('dialog')).toBeTruthy();
   });
 
-  it('retries the host-resolved canonical target', async () => {
-    mockWatchStateReturn.summary = { data: { resources: { 'opaque/type': 3 }, resourceCounts: {}, scope: [] } };
+  it('retries sources for the connection', async () => {
+    mockSourceStateReturn.summary = { route: { connection: 'c1' }, types: { 'opaque/type': { state: 'failed', mode: 'snapshot', count: { kind: 'unknown' } } } };
     render(<ConnectionStateProvider><TestConsumer /></ConnectionStateProvider>);
     act(() => {
       showFn({ pluginID: 'provider', connectionID: 'c1', connectionName: 'Production' }); 
@@ -150,10 +144,7 @@ describe('ConnectionStateProvider', () => {
     await act(async () => {
       screen.getByText('Retry').click(); 
     });
-    expect(mockResolveTarget).toHaveBeenCalledWith('provider', {
-      route: { connection: 'c1' }, type: 'opaque/type', scope: [],
-    });
-    expect(mockEnsureResourceWatch).toHaveBeenCalledWith('provider', admittedTarget);
+    expect(mockRetryConnectionSources).toHaveBeenCalledWith('provider', { connection: 'c1' });
   });
 
   it('throws when useConnectionStateDialog is used outside provider', () => {

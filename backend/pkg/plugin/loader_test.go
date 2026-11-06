@@ -44,6 +44,18 @@ func installPluginFixture(t *testing.T, pm *pluginManager, id string, caps []str
 	installPluginFixtureAt(t, pluginsDir, id, caps, withBinary)
 }
 
+func TestValidateForLoadRejectsInvalidConnectionDeclarations(t *testing.T) {
+	meta := config.PluginMeta{
+		ID: "consumer",
+		Requires: &config.RequiresSpec{Connections: []config.ConnectionRequirement{{
+			Plugin: "consumer", Operations: []string{"get"}, ResourceTypes: []string{"type"},
+		}}},
+	}
+	for _, devMode := range []bool{false, true} {
+		require.Error(t, validateForLoad(meta.ID, meta, t.TempDir(), devMode))
+	}
+}
+
 func TestLoadPlugin_NotFound(t *testing.T) {
 	pm := newTestManager(t)
 
@@ -117,8 +129,8 @@ func TestLoadPlugin_BackendPlugin_ViaFactory(t *testing.T) {
 	factoryCalled := false
 	pm.backendFactory = func(_ config.PluginMeta, _ string) (plugintypes.PluginBackend, error) {
 		factoryCalled = true
-		return plugintypes.NewInProcessBackend(map[string]interface{}{
-			"resource": "mock",
+		return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{
+			Providers: map[string]interface{}{"resource": "mock"},
 		}), nil
 	}
 
@@ -143,7 +155,7 @@ func TestLoadPlugin_DevMode_SkipsUIValidation(t *testing.T) {
 	installPluginFixture(t, pm, "dev-plugin", []string{"resource", "ui"}, true)
 
 	pm.backendFactory = func(_ config.PluginMeta, _ string) (plugintypes.PluginBackend, error) {
-		return plugintypes.NewInProcessBackend(nil), nil
+		return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{}), nil
 	}
 
 	// Dev mode only validates binary, not UI assets.
@@ -174,7 +186,7 @@ func TestUnloadPlugin_NotLoaded_Idempotent(t *testing.T) {
 func TestUnloadPlugin_Running_Stops(t *testing.T) {
 	pm := newTestManager(t)
 
-	backend := plugintypes.NewInProcessBackend(nil)
+	backend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{})
 	pm.records["test"] = &plugintypes.PluginRecord{
 		ID:       "test",
 		Phase:    lifecycle.PhaseRunning,
@@ -193,7 +205,7 @@ func TestLoadPlugin_ExistingState_Applied(t *testing.T) {
 	installPluginFixture(t, pm, "state-plugin", []string{"resource"}, true)
 
 	pm.backendFactory = func(_ config.PluginMeta, _ string) (plugintypes.PluginBackend, error) {
-		return plugintypes.NewInProcessBackend(nil), nil
+		return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{}), nil
 	}
 
 	info, err := pm.LoadPlugin("state-plugin", &LoadPluginOptions{
@@ -249,7 +261,7 @@ func TestCreateBackend_UsesFactory(t *testing.T) {
 		called = true
 		assert.Equal(t, "test-meta", meta.ID)
 		assert.Equal(t, "/some/location", location)
-		return plugintypes.NewInProcessBackend(nil), nil
+		return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{}), nil
 	}
 
 	backend, err := pm.createBackend("test", config.PluginMeta{ID: "test-meta"}, "/some/location")
@@ -299,7 +311,7 @@ func TestDevInstall_StatePersistsDevModeFields(t *testing.T) {
 	installPluginFixture(t, pm, "dev-persist", []string{"resource", "ui"}, true)
 
 	pm.backendFactory = func(_ config.PluginMeta, _ string) (plugintypes.PluginBackend, error) {
-		return plugintypes.NewInProcessBackend(nil), nil
+		return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{}), nil
 	}
 
 	// Simulate what InstallInDevMode does: load with dev mode opts.
@@ -343,7 +355,7 @@ func TestDevPlugin_SurvivesRestart(t *testing.T) {
 	installPluginFixtureAt(t, svc.Plugins().ResolvePath(""), "dev-restart", []string{"resource", "ui"}, true)
 
 	pm1.backendFactory = func(_ config.PluginMeta, _ string) (plugintypes.PluginBackend, error) {
-		return plugintypes.NewInProcessBackend(nil), nil
+		return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{}), nil
 	}
 
 	_, err := pm1.LoadPlugin("dev-restart", &LoadPluginOptions{
@@ -367,7 +379,7 @@ func TestDevPlugin_SurvivesRestart(t *testing.T) {
 		emitter:             testNoopEmitter{},
 	}
 	pm2.backendFactory = func(_ config.PluginMeta, _ string) (plugintypes.PluginBackend, error) {
-		return plugintypes.NewInProcessBackend(nil), nil
+		return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{}), nil
 	}
 
 	// Replay what Initialize does: read state, build lookup, load with ExistingState.

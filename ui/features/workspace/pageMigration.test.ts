@@ -28,6 +28,13 @@ describe('saved provider page migration', () => {
     expect(saveSlot).not.toHaveBeenCalled();
   });
 
+  it('retains the first legacy path when a migrated tab opens in another window', () => {
+    const legacy = { path: '/old' };
+    const state = createSingleTabState({ id: 'a', path: '/new', legacy }, 'p');
+    const reloaded = parsePagesState(JSON.parse(JSON.stringify(state)));
+    expect(reloaded.tabs.a).toMatchObject({ path: '/new', legacy });
+  });
+
   it('reports unresolved paths and retains the saved original', () => {
     const path = '/_plugin/kubernetes/cluster/c/resources/example_v1_Widget';
     const controller = new WorkspaceController(createSingleTabState({ id: 'a', path }, 'p'), []);

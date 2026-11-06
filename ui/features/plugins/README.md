@@ -42,6 +42,7 @@ ui/features/plugins/
 ├── adapters/                # Dependency injection — wires real infra to PluginService
 │   ├── createProductionDeps.ts  # Production deps (SystemJS, Wails events, etc.)
 │   ├── importPlugin.ts      # SystemJS (prod) / ESM (dev) module import
+│   ├── builtinModules.ts    # Static lazy imports, declarative routes, trusted resolution
 │   ├── clearPlugin.ts       # Module cache cleanup
 │   └── devSharedDeps.ts     # Dev-mode shared dependency setup
 │
@@ -90,7 +91,7 @@ idle ──→ loading ──→ ready
 
 ### Loading a Plugin
 
-1. **Import** — `deps.importModule(pluginId)` fetches the JS module (SystemJS in prod, ESM in dev)
+1. **Resolve and import** — Native inventory selects the source. Built-ins activate their backend before a static lazy import; external plugins retain SystemJS/Vite loading.
 2. **Validate** — `deps.validateExports(module)` checks the module exports a `PluginWindow` and valid contribution shapes
 3. **Build registrations** — Extract routes (set via `PluginWindow.withRoutes()`)
 4. **Normalize contributions** — Transform sidebars, drawers, and extension registrations into a unified `NormalizedContribution[]`
@@ -100,8 +101,8 @@ idle ──→ loading ──→ ready
 
 ### Startup and Development Server Readiness
 
-The host starts plugin UI loading during startup, not on the first sidebar click.
-`useInstalledPlugins()` combines installed descriptors with the live dev-server
+The host starts external plugin UI loading during startup, not on the first sidebar click.
+`useInstalledPlugins()` combines host inventory descriptors with the live dev-server
 state from `useDevServers()`. That subscription is installed before fetching its
 initial snapshot; status events received during the request take precedence over
 the older snapshot.
@@ -150,6 +151,41 @@ including dev plugins waiting for their server. Welcome is only used once that
 state is settled and no cards are registered. Existing cards remain usable while
 other plugins load, and saved card order is not pruned against a partial registry.
 
+### Built-in Discovery and Demand
+
+The host-owned `PluginInfo.origin` and `frontendModule` fields select product code.
+Installed metadata cannot opt into built-in loading. `adapters/builtinModules.ts`
+contains an explicit module-key registry. Each entry declares inexpensive route
+metadata and a `load: () => import('./feature/entry')` function. Route metadata must
+not import the feature entry. The production registry is empty until a feature
+migration supplies its real frontend and backend.
+
+Discovery registers those route descriptors without evaluating modules or calling
+`PluginManager.LoadPlugin`. Built-ins never join `loadAll`, including when callers
+pass them directly. Opening `/_plugin/<id>/...` activates the feature through
+`PluginRouteStatus`. Commands and capability consumers explicitly call the shared
+`usePluginService().load(id)` action before using feature registrations.
+
+The production resolver reads authoritative native inventory, rejects disabled
+plugins and unknown module keys, calls native `LoadPlugin`, and only then imports
+the module. Unknown built-in keys never fall back to SystemJS or a dev server.
+All sources use the same export validation, normalization, extension ordering and
+registration pipeline. Static imports use the host's existing React/runtime
+singletons; no second shared-dependency map is introduced.
+
+Concurrent requests join one activation. Disable, unload, inventory replacement,
+and provider reset retire pending work. Retirement before native startup finishes
+also prevents module evaluation. Retirement during import prevents late routes or
+contributions from publishing. Disable removes active registrations immediately
+and hides declarative routes. Re-enable restores discovery without eager
+activation; an already-open plugin page counts as navigation demand.
+
+The management page labels built-ins as product managed, shows disabled or failed
+state, and calls `SetPluginEnabled(id, enabled)` for enable/disable. Update and
+uninstall actions are absent. Versions ship with Omniview, not marketplace updates.
+Tests inject a `BuiltinModuleRegistry` into `createPluginModuleResolver` and
+`builtinRoutes`; production feature modules need no runtime registration hook.
+
 ### Concurrency Safety
 
 - `load()` and `reload()` deduplicate concurrent calls via `inflightLoads`; an old
@@ -192,6 +228,70 @@ The generic resource table uses catalog type IDs without parsing provider-specif
 
 Editor schemas carry canonical schema bindings. The host fetches each referenced schema document once per route and revision, registers that shared document, and links each resource editor to its declared root. YAML editor parsing retains integer precision before canonical mutation encoding.
 
+### Kubernetes Resource Editors
+
+The runtime exports `RESOURCE_EDITOR_EXTENSION_POINT` (`kubernetes/resource/editor/v1`) and
+`ResourceEditorContribution`. Register a descriptor as the `value` of an existing
+`ExtensionRegistration<ResourceEditorContribution>`; do not create another registry.
+The authenticated loader assigns plugin ownership and contribution IDs. The registry
+rejects malformed descriptors and duplicate IDs; the loader isolates rejected editor
+contributions without failing unrelated plugin contributions.
+
+Contract version 1 matches exact group, version, kind, discovered plural and scope.
+Optional requirements narrow applicability through explicit capability, action, feature
+and schema facts. Unknown availability never grants a requirement. Passive inspection
+does not imply create/update permission. Empty resource names are reserved for
+inspect-only protocol envelopes without owned paths, or explicit request protocols;
+they never identify a CRUD collection.
+For imported local captures only, the host may set the reserved discovery feature
+`host.local-capture: 'available'` after validating the captured exact GVK. This permits
+`inspect` matching when server discovery is absent or unknown, without changing that
+server status. It never enables create/edit/action, overrides denied/unavailable
+discovery, or satisfies other capability/schema requirements. Descriptor and manifest
+data cannot establish this host-owned capture marker.
+
+Descriptors may declare `ownershipPolicy: 'declarative' | 'conditional' | 'controller' |
+'system'`; omission remains unknown. This is domain editing policy, not an RBAC grant.
+The authenticated host may classify declarative resources as application-owned for
+explicit create/edit, but controller owner references or actual system/installer
+evidence override that classification. Conditional resources permit explicit manual
+create; existing unknown ownership stays inspection-only until real policy establishes
+ownership. Controller/system resources remain inspection-only. Manifest annotations,
+checkboxes and descriptor policy cannot bypass discovery, real verbs or server
+admission. Feature requirements must refer to evidence the host actually provides:
+discovering a gated kind can establish API availability, while unknown optional
+controller health is not itself permission denial.
+
+`selectResourceEditor` prefers a compatible remembered ID, then a sole compatible
+built-in, then a sole add-on. Competing providers require a chooser; no match preserves
+YAML fallback. Built-in identity comes from authenticated registry ownership, not
+descriptor metadata.
+
+Forms receive an immutable redacted draft and submit atomic session/revision patches
+within declared owned paths. Keep invalid local input local. Never persist drafts,
+credentials or opaque markers. Reference services return sanitized projections and
+distinguish empty results, denial, absence and unavailable transport. Action services
+accept host-whitelisted protocols, cancellation and session generations, not URLs.
+Provider `request.buildInput` callbacks always receive redacted projections. Sensitive
+Kubernetes bodies instead declare `request: { protocol, source: 'canonical' }` without
+a callback. Only review, service-account-token, CSR approval, pod eviction and scale
+protocols permit canonical extraction. The host privately checks exact protocol,
+GVK, identity and session, then extracts the minimal protocol payload. CSR approval
+includes metadata and conditions only, never certificate request bytes. Projection
+markers are never transport payloads; calling provider code from the host does not
+make that code trusted for raw source access.
+Optional `validateSubmission(draft, context, { references, actions }, signal)` performs
+read-only asynchronous domain admission using real prerequisite evidence. It receives
+only the immutable redacted projection and returns safe field issues; it must not
+perform mutations or automatic corrective effects. The host runs it on actual submit
+in both Form and YAML modes, alongside pure `validate`, even when a form is unmounted.
+The host binds cancellation to session/revision and rechecks the snapshot after awaiting
+before mutation. Registration, matching, selection and passive inspection never invoke
+submission validators or pure validators.
+This is a trusted in-process UI contract, not a security sandbox. Plugins must use the
+host's compatible runtime/base-ui/theme release cohort; MUI/Emotion and private
+Kubernetes components are not shared public dependencies.
+
 ### Error Isolation
 
 Each contribution is wrapped in its own React `ErrorBoundary`, which catches render-time and lifecycle errors. A render crash in one plugin's contribution does not affect other contributions or the host. Crashes are logged via `logPluginBoundaryError()` with structured data (plugin ID, extension point ID, contribution ID, stack trace). Note that `ErrorBoundary` does not catch errors in event handlers, async callbacks, or non-render code paths — those require explicit `try/catch` handling within the plugin.
@@ -215,6 +315,8 @@ Derives the route tree from loaded plugin registrations. Each plugin's routes ar
 ```text
 /_plugin/{pluginId}/...routes
 ```
+
+Each registered route receives a local error boundary unless the plugin provides one, including boundaries exported by lazy route modules. Child route render and loader failures, function-form lazy import failures, and object-form `lazy.Component` import failures show an error inside the parent outlet, preserving the parent layout and navigation. The outer `PluginRenderer` boundary remains the last resort for failures in the plugin layout itself.
 
 ### `<ExtensionPointRenderer>`
 

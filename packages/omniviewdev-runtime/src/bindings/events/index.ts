@@ -79,6 +79,21 @@ export const MenuViewSidebarMinimize = "menu/view/sidebar/minimize";
 export const MenuViewTerminalCreate = "menu/view/terminal/create";
 
 /**
+ * Name of the custom event "menu/view/zoom/in".
+ */
+export const MenuViewZoomIn = "menu/view/zoom/in";
+
+/**
+ * Name of the custom event "menu/view/zoom/out".
+ */
+export const MenuViewZoomOut = "menu/view/zoom/out";
+
+/**
+ * Name of the custom event "menu/view/zoom/reset".
+ */
+export const MenuViewZoomReset = "menu/view/zoom/reset";
+
+/**
  * Name of the custom event "plugin/crash".
  */
 export const PluginCrash = "plugin/crash";
@@ -214,9 +229,9 @@ export const SettingsChanged = "settings/changed";
 export const SettingsState = "settings/state";
 
 /**
- * Name of the custom event "watch/STATE".
+ * Name of the custom event "source/STATE".
  */
-export const WatchSTATE = "watch/STATE";
+export const SourceSTATE = "source/STATE";
 
 /**
  * Name of the custom event "windows/changed".

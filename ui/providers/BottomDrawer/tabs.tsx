@@ -17,7 +17,7 @@ import {
   type BottomDrawerTab,
   useBottomDrawer,
   useSettings,
-  useSnackbar,
+  useNotifications,
   parseAppError,
   showAppError,
 } from '@omniviewdev/runtime';
@@ -93,7 +93,7 @@ function renderTabIcon(tab: BottomDrawerTab): React.ReactNode {
 const BottomDrawerTabs: React.FC<Props> = ({ resizeControls }) => {
   const { tabs, focused, focusTab, closeTab, closeTabs, createTab, updateTab, reorderTab } = useBottomDrawer();
   const { transferTabOut, adoptTabs } = useBottomDrawerWindow();
-  const { showSnackbar } = useSnackbar();
+  const { notify } = useNotifications();
   const { settings } = useSettings();
   const windows = useWindowsList();
   const canResize = tabs.length > 0;
@@ -335,9 +335,9 @@ const BottomDrawerTabs: React.FC<Props> = ({ resizeControls }) => {
       await openWindow({ kind: 'panel', slots: { drawer: buildPanelDrawerSlot(serializeDrawerTab(tab)) }, pointer });
       transferTabOut(tab.id);
     } catch (err) {
-      showAppError(showSnackbar, err, 'Failed to move the tab to a new window');
+      showAppError(notify, err, 'Failed to move the tab to a new window');
     }
-  }, [transferTabOut, showSnackbar]);
+  }, [transferTabOut, notify]);
 
   const moveTabToWindow = React.useCallback(async (tab: BottomDrawerTab, target: WindowMenuTarget) => {
     try {
@@ -347,9 +347,9 @@ const BottomDrawerTabs: React.FC<Props> = ({ resizeControls }) => {
         console.error(`[drawer] failed to focus window "${target.name}"`, err);
       });
     } catch (err) {
-      showAppError(showSnackbar, err, `Failed to move the tab to ${target.label}`);
+      showAppError(notify, err, `Failed to move the tab to ${target.label}`);
     }
-  }, [transferTabOut, showSnackbar]);
+  }, [transferTabOut, notify]);
 
   const handleTearOff = React.useCallback(({ id, clientX, clientY }: DetachCommit) => {
     const tab = tabs.find((candidate) => candidate.id === id);

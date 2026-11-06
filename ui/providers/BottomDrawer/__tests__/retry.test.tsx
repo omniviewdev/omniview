@@ -22,7 +22,7 @@ vi.mock('@omniviewdev/runtime', async () => {
     BottomDrawerContext,
     useBottomDrawer: () => useContext(BottomDrawerContext),
     useSettings: () => ({ settings: {} }),
-    useSnackbar: () => ({ showSnackbar: vi.fn() }),
+    useNotifications: () => ({ notify: vi.fn() }),
     showAppError: vi.fn(),
     parseAppError: (error: Error) => ({ detail: error.message }),
   };
@@ -57,12 +57,12 @@ vi.mock('@omniviewdev/runtime/runtime', () => ({ Events: { On: vi.fn(() => vi.fn
 vi.mock('@/features/logger', () => ({ default: { error: vi.fn() } }));
 vi.mock('@/components/icons/Icon', () => ({ default: () => null }));
 
-function Harness({ index }: { index: number }) {
+function Harness({ index, migrated = false }: { index: number; migrated?: boolean }) {
   const drawer = useBottomDrawer();
   return <>
     <button onClick={() => {
       drawer.createTabs([
-        { id: 'exec-old', title: 'Exec', variant: 'terminal', properties: { status: 'connected' } },
+        { id: 'exec-old', title: 'Exec', variant: 'terminal', properties: { status: migrated ? 'expired' : 'connected', ...(migrated ? { resourceReferenceMigration: { version: 1, status: 'converted', legacy: { opts: { command: ['sh'] } } } } : {}) } },
         { id: 'logs', title: 'Logs', variant: 'logs' },
         { id: 'other', title: 'Other', variant: 'logs' },
       ]);
@@ -82,6 +82,7 @@ function Harness({ index }: { index: number }) {
       focused: drawer.tabs[drawer.focused]?.title,
       status: drawer.tabs[0]?.properties?.status,
       error: drawer.tabs[0]?.properties?.error,
+      ...(migrated ? { migration: drawer.tabs[0]?.properties?.resourceReferenceMigration } : {}),
     })}</output>
     <BottomDrawerTabs />
   </>;
@@ -109,6 +110,18 @@ it.each([0, 1, 2])('keeps tab order and focused tab %i while retry connects', as
   expect(state()).toEqual({ ids: ['exec-new', 'logs', 'other'],
     focused: ['Exec', 'Logs', 'Other'][index], status: 'connected' });
   expect(backend.close).toHaveBeenCalledWith('exec-old');
+});
+
+it('preserves migrated terminal reference when replacing an expired session', async () => {
+  backend.create.mockResolvedValue({ id: 'exec-new' });
+  render(<BottomDrawerProvider><Harness index={1} migrated /></BottomDrawerProvider>);
+  fireEvent.click(screen.getByText('Seed'));
+  fireEvent.click(screen.getByText('Focus'));
+  await act(async () => { fireEvent.click(screen.getByText('Retry')); });
+  expect(state()).toEqual({
+    ids: ['exec-new', 'logs', 'other'], focused: 'Logs', status: 'connected',
+    migration: { version: 1, status: 'converted', legacy: { opts: { command: ['sh'] } } },
+  });
 });
 
 it('keeps failed retry in its original slot without selecting logs', async () => {

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Setting, SettingType } from '@omniviewdev/runtime/models';
 import SettingsEntry from './SettingsEntry';
@@ -8,21 +9,33 @@ vi.mock('@omniviewdev/runtime/api', () => ({ OpenFileSelectionDialog: vi.fn() })
 afterEach(cleanup);
 
 describe('generic setting editors', () => {
-  it('preserves numeric and structured option values', () => {
+  it('preserves numeric and structured option values', async () => {
+    const user = userEvent.setup();
     const onChange = vi.fn();
     const structuredValue = { mode: 'full' };
-    render(<SettingsEntry id='choice' setting={new Setting({ label: 'Choice', type: SettingType.Select, value: 42,
-      options: [{ label: 'Number', description: '', value: 42 }, { label: 'Object', description: '', value: structuredValue }],
-    })} draftValue={undefined} handleChange={onChange} />);
-    expect(screen.getByRole('combobox')).toHaveValue('0');
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: '1' } });
+    function DraftChoice() {
+      const [draft, setDraft] = useState<unknown>(42);
+      return <SettingsEntry id='choice' setting={new Setting({ label: 'Choice', type: SettingType.Select,
+        options: [{ label: 'Number', description: '', value: 42 }, { label: 'Object', description: '', value: structuredValue }],
+      })} draftValue={draft} handleChange={(name, next) => {
+        onChange(name, next);
+        setDraft(next);
+      }} />;
+    }
+
+    render(<DraftChoice />);
+    expect(screen.getByRole('combobox')).toHaveTextContent('Number');
+    await user.click(screen.getByRole('combobox'));
+    await user.click(await screen.findByRole('option', { name: 'Object' }));
     expect(onChange).toHaveBeenCalledWith('choice', structuredValue);
     expect(onChange.mock.calls[0][1]).toBe(structuredValue);
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: '0' } });
+    await user.click(screen.getByRole('combobox'));
+    await user.click(await screen.findByRole('option', { name: 'Number' }));
     expect(onChange).toHaveBeenLastCalledWith('choice', 42);
   });
 
-  it.each([SettingType.Select, SettingType.MultiSelect])('matches saved %s objects regardless of nested key order while preserving array order and value types', type => {
+  it.each([SettingType.Select, SettingType.MultiSelect])('matches saved %s objects regardless of nested key order while preserving array order and value types', async type => {
+    const user = userEvent.setup();
     const savedValue = { nested: { attempts: 2, mode: 'full' }, sequence: [{ position: 1, label: 'first' }, 'last'] };
     const optionValue = { sequence: [{ label: 'first', position: 1 }, 'last'], nested: { mode: 'full', attempts: 2 } };
     const multiple = type === SettingType.MultiSelect;
@@ -34,8 +47,32 @@ describe('generic setting editors', () => {
         { label: 'Text attempts', description: '', value: { ...optionValue, nested: { mode: 'full', attempts: '2' } } },
       ],
     })} draftValue={undefined} handleChange={vi.fn()} />);
-    expect(screen.getByLabelText('Choice')).toHaveValue(multiple ? ['1'] : '1');
-    expect(screen.getByRole('option', { name: 'Saved choice' })).toHaveProperty('selected', true);
+    expect(screen.getByRole('combobox', { name: 'Choice' })).toHaveTextContent('Saved choice');
+    await user.click(screen.getByRole('combobox', { name: 'Choice' }));
+    expect(await screen.findByRole('option', { name: 'Saved choice' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('adds and removes multi-select choices without coercing their values', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const object = { mode: 'full' };
+    function DraftChoices() {
+      const [draft, setDraft] = useState<unknown>([42]);
+      return <SettingsEntry id='choices' setting={new Setting({ label: 'Choices', type: SettingType.MultiSelect,
+        options: [{ label: 'Number', description: '', value: 42 }, { label: 'Object', description: '', value: object }],
+      })} draftValue={draft} handleChange={(name, next) => {
+        onChange(name, next);
+        setDraft(next);
+      }} />;
+    }
+
+    render(<DraftChoices />);
+    await user.click(screen.getByRole('combobox', { name: 'Choices' }));
+    await user.click(await screen.findByRole('option', { name: 'Object' }));
+    expect(onChange).toHaveBeenLastCalledWith('choices', [42, object]);
+    await user.click(screen.getByRole('option', { name: 'Number' }));
+    expect(onChange).toHaveBeenLastCalledWith('choices', [object]);
+    expect(onChange.mock.lastCall?.[1][0]).toBe(object);
   });
 
   it('stages an empty list when array text is cleared', () => {

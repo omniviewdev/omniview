@@ -26,6 +26,17 @@ func profileFenceFixture(t *testing.T) (*controller, *mockProvider, ResolvedRefe
 	return ctrl, provider, ref
 }
 
+func TestNoopConnectionRefreshDoesNotRetireBorrowedCalls(t *testing.T) {
+	ctrl, provider, _ := profileFenceFixture(t)
+	var retired atomic.Int32
+	ctrl.AddConnectionChangeHook(func(string, string) { retired.Add(1) })
+	_, err := ctrl.replayConnectionProfiles(testInvocationContext(), "plugin", []types.Connection{profileTestConnection("route", "A")})
+	require.NoError(t, err)
+	_, err = ctrl.refreshWatchedConnections(testInvocationContext(), "plugin", provider, ctrl.plugins["plugin"])
+	require.NoError(t, err)
+	require.Zero(t, retired.Load())
+}
+
 func fenceGet(ref ResolvedReference) HostGetRequest {
 	return HostGetRequest{TargetID: ref.TargetID, Request: resourcev2.GetRequest{Route: ref.Route, Reference: ref.Reference, Representation: ref.Representation}}
 }
@@ -396,7 +407,7 @@ func TestRetiredConnectionListenerCannotBorrowReplacementGeneration(t *testing.T
 			generationA := ctrl.plugins["plugin"]
 			signal, entered, resume := make(chan struct{}), make(chan struct{}), make(chan struct{})
 			var resumeOnce sync.Once
-			t.Cleanup(func() { resumeOnce.Do(func() { close(resume) }); generationA.watchCancel() })
+			t.Cleanup(func() { resumeOnce.Do(func() { close(resume) }); generationA.cancel() })
 			var reads atomic.Int32
 			old.ListConnectionsFunc = func(context.Context) ([]types.Connection, error) {
 				reads.Add(1)
@@ -419,7 +430,7 @@ func TestRetiredConnectionListenerCannotBorrowReplacementGeneration(t *testing.T
 			}
 			ctxB, cancelB := context.WithCancel(context.Background())
 			defer cancelB()
-			generationB := &pluginState{provider: connectionOverlayTestProvider(profileTestConnection("route", "B")), ctx: ctxB, watchCancel: cancelB, generationID: "replacement-B"}
+			generationB := &pluginState{provider: connectionOverlayTestProvider(profileTestConnection("route", "B")), ctx: ctxB, cancel: cancelB, generationID: "replacement-B"}
 			// Match actual replacement ordering: publish B before canceling A.
 			ctrl.pluginsMu.Lock()
 			ctrl.plugins["plugin"] = generationB

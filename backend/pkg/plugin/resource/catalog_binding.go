@@ -47,32 +47,44 @@ func (c *controller) routeCatalog(ctx context.Context, pluginID string, route re
 }
 
 func (c *controller) resolveAuthority(ctx context.Context, pluginID string, route resourcev2.AccessRoute, catalog resourcev2.Catalog, admission catalogAdmission, resourceType string) (AuthorityResolution, error) {
-	var descriptor *resourcev2.ResourceType
-	for i := range catalog.Types {
-		if catalog.Types[i].Type == resourceType {
-			descriptor = &catalog.Types[i]
+	found := false
+	for _, descriptor := range catalog.Types {
+		if descriptor.Type == resourceType {
+			found = true
 			break
 		}
 	}
-	if descriptor == nil {
+	if !found {
 		return AuthorityResolution{}, resourcev2.NewError("NOT_FOUND", "Resource type is not in the route catalog.")
 	}
-	if err := ctx.Err(); err != nil {
+	resolutions, err := c.resolveCatalogAuthorities(ctx, pluginID, route, catalog, admission)
+	if err != nil {
 		return AuthorityResolution{}, err
 	}
+	resolution, ok := resolutions[resourceType]
+	if !ok {
+		return AuthorityResolution{}, resourcev2.NewError("NOT_FOUND", "Resource type is not in the observed catalog.")
+	}
+	return resolution, nil
+}
+
+func (c *controller) resolveCatalogAuthorities(ctx context.Context, pluginID string, route resourcev2.AccessRoute, catalog resourcev2.Catalog, admission catalogAdmission) (map[string]AuthorityResolution, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if err := c.observeCatalogBinding(ctx, pluginID, route, catalog, admission); err != nil {
-		return AuthorityResolution{}, err
+		return nil, err
 	}
 	c.pluginsMu.RLock()
 	defer c.pluginsMu.RUnlock()
 	generation := admission.generation
 	if generation == nil || c.plugins[pluginID] != generation || generation.provider == nil || generation.ctx.Err() != nil {
-		return AuthorityResolution{}, resourcev2.NewError("RESET_REQUIRED", "Provider generation retired.")
+		return nil, resourcev2.NewError("RESET_REQUIRED", "Provider generation retired.")
 	}
 	// Keep this check and ObserveCatalog under the same pluginsMu read fence
 	// used by invalidateProfileRoutes' write-locked epoch/authority reset.
 	if admission.epoch.Connection != route.Connection || generation.sourceEpoch[route.Connection] != admission.epoch.Epoch || generation.sourceChanging[route.Connection] {
-		return AuthorityResolution{}, resourcev2.NewError("RESET_REQUIRED", "Connection configuration changed during catalog acquisition.")
+		return nil, resourcev2.NewError("RESET_REQUIRED", "Connection configuration changed during catalog acquisition.")
 	}
 	c.finite.mu.Lock()
 	defer c.finite.mu.Unlock()
@@ -83,23 +95,15 @@ func (c *controller) resolveAuthority(ctx context.Context, pluginID string, rout
 	if resolver == nil {
 		root, err := c.pluginStoreFn(pluginID)
 		if err != nil {
-			return AuthorityResolution{}, err
+			return nil, err
 		}
 		resolver, err = NewAuthorityResolver(root)
 		if err != nil {
-			return AuthorityResolution{}, err
+			return nil, err
 		}
 		c.finite.authorities[pluginID] = resolver
 	}
-	resolutions, err := resolver.ObserveCatalog(pluginID, route.Connection, catalog)
-	if err != nil {
-		return AuthorityResolution{}, err
-	}
-	resolution, ok := resolutions[resourceType]
-	if !ok {
-		return AuthorityResolution{}, resourcev2.NewError("NOT_FOUND", "Resource type is not in the observed catalog.")
-	}
-	return resolution, nil
+	return resolver.ObserveCatalog(pluginID, route.Connection, catalog)
 }
 
 // catalogBindingState tracks native source generations, not resource identity.

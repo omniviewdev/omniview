@@ -50,6 +50,9 @@ declare module "@wailsio/runtime" {
             "menu/view/bottomdrawer/minimize": void;
             "menu/view/sidebar/minimize": void;
             "menu/view/terminal/create": void;
+            "menu/view/zoom/in": void;
+            "menu/view/zoom/out": void;
+            "menu/view/zoom/reset": void;
             "plugin/crash": plugin$0.PluginErrorPayload;
             "plugin/crash_recovery_failed": plugin$0.PluginErrorPayload;
             "plugin/deprecated_protocol": plugin$0.DeprecatedProtocolPayload;
@@ -77,7 +80,7 @@ declare module "@wailsio/runtime" {
             "resource/connection/metadata": resource$0.HostConnectionMetadata;
             "settings/changed": settings$0.Scope;
             "settings/state": window$0.SettingsState;
-            "watch/STATE": resource$0.HostWatchStateEvent;
+            "source/STATE": resource$0.HostSourceStateEvent;
             "windows/changed": window$0.WindowsChangedEvent;
             "windows/closed": window$0.WindowClosedEvent;
             "windows/drag/begin": window$0.DragBeginEvent;

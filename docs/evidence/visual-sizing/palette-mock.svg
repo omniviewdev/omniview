@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1568 864">
+  <title>Omniview palette sizing proposal, 1568 by 864</title>
+  <rect width="1568" height="864" fill="#111214"/>
+  <text x="32" y="48" font-family="sans-serif" font-size="14" fill="#9a9da5">MOCK — comfortable density, 100% UI text</text>
+  <rect x="464" y="170" width="640" height="474" rx="14" fill="#202126" stroke="#3a3c43"/>
+  <text x="488" y="207" font-family="sans-serif" font-size="18" fill="#9a9da5">⌕</text>
+  <text x="518" y="206" font-family="sans-serif" font-size="15" fill="#b5b8bf">Search resources or run a command…</text>
+  <text x="1050" y="206" font-family="sans-serif" font-size="12" fill="#9a9da5">esc</text>
+  <path d="M465 225H1103" stroke="#34363e"/>
+  <rect x="486" y="239" width="104" height="28" rx="7" fill="#303c55"/>
+  <text x="497" y="258" font-family="sans-serif" font-size="12" fill="#dee6f5">kind-kind ×</text>
+  <text x="488" y="296" font-family="sans-serif" font-size="12" fill="#9a9da5">Resources</text>
+  <rect x="476" y="308" width="616" height="42" rx="7" fill="#333946"/>
+  <g font-family="sans-serif" font-size="14" fill="#e4e6eb">
+    <text x="493" y="334">▦</text><text x="522" y="334">Dashboard</text>
+    <text x="493" y="378">◇</text><text x="522" y="378">Node</text>
+    <text x="493" y="422">□</text><text x="522" y="422">Namespace</text>
+    <text x="493" y="466">▣</text><text x="522" y="466">Pod</text>
+    <text x="493" y="510">▥</text><text x="522" y="510">Deployment</text>
+  </g>
+  <g font-family="sans-serif" font-size="12" fill="#9a9da5">
+    <text x="947" y="334">General</text><text x="947" y="378">General</text>
+    <text x="947" y="422">General</text><text x="947" y="466">Workload</text>
+    <text x="947" y="510">Workload</text>
+    <text x="1064" y="334">↵</text><text x="1064" y="378">›</text>
+    <text x="1064" y="422">›</text><text x="1064" y="466">›</text><text x="1064" y="510">›</text>
+    <text x="488" y="559">More results available</text>
+  </g>
+  <path d="M465 590H1103" stroke="#34363e"/>
+  <g font-family="sans-serif" font-size="12" fill="#b5b8bf">
+    <text x="488" y="621">↑ ↓ Navigate</text><text x="635" y="621">↵ Open</text>
+    <text x="742" y="621">Tab Explore</text><text x="1020" y="621">Esc Close</text>
+  </g>
+</svg>

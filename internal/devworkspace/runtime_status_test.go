@@ -48,7 +48,7 @@ func TestSourceReloadRejectsForeignTargetsBeforeDiscovery(t *testing.T) {
 func TestCompatibilityPreflightRejectsWrongSDKModuleBeforeBuild(t *testing.T) {
 	graph := graphFixture(t)
 	writeGraphFixture(t, filepath.Join(graph.workspace.Root, "sdk", "go.mod"), "module example.com/not-the-sdk\n\ngo 1.26.0\n")
-	err := compatibilityPreflight(context.Background(), graph.workspace, LaunchOptions{})
+	err := compatibilityPreflight(context.Background(), graph.workspace)
 	var failure *devcontract.Error
 	if !errors.As(err, &failure) || failure.Code != "sdk_contract_mismatch" {
 		t.Fatalf("wrong SDK module must fail preflight directly: %v", err)
@@ -61,7 +61,7 @@ func TestCompatibilityPreflightRequiresSDK(t *testing.T) {
 	if err := writeManifest(graph.workspace.Root, graph.workspace.Manifest); err != nil {
 		t.Fatal(err)
 	}
-	err := compatibilityPreflight(context.Background(), graph.workspace, LaunchOptions{})
+	err := compatibilityPreflight(context.Background(), graph.workspace)
 	var failure *devcontract.Error
 	if !errors.As(err, &failure) || failure.Code != "sdk_source_required" {
 		t.Fatalf("missing SDK must fail before reading source: %v", err)

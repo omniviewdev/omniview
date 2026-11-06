@@ -127,7 +127,8 @@ export async function chooseSetting(page: Page, id: string, option: string): Pro
   if (id === 'appearance.theme') {
     await settingRow(page, id).getByRole('radio', { name: option, exact: true }).click();
   } else {
-    await settingRow(page, id).getByRole('combobox').selectOption({ label: option });
+    await settingRow(page, id).getByRole('combobox').click();
+    await page.getByRole('option', { name: option, exact: true }).click();
   }
 }
 

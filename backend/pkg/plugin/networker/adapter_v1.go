@@ -1,6 +1,7 @@
 package networker
 
 import (
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
 )
@@ -45,6 +46,15 @@ func (a *AdapterV1) StartPortForwardSession(
 	ctx *types.PluginContext,
 	opts networker.PortForwardSessionOptions,
 ) (*networker.PortForwardSession, error) {
+	_, resourceValue := opts.Connection.(networker.PortForwardResourceConnection)
+	_, resourcePointer := opts.Connection.(*networker.PortForwardResourceConnection)
+	if resourceValue || resourcePointer || opts.ConnectionType == networker.PortForwardConnectionTypeResource {
+		provider, ok := a.inner.(networker.ResourcePortForwardProvider)
+		if !ok {
+			return nil, resourcev2.NewError("UNSUPPORTED", "Resource network provider unavailable.")
+		}
+		return provider.StartResourcePortForwardSession(ctx, opts)
+	}
 	return a.inner.StartPortForwardSession(ctx, opts)
 }
 

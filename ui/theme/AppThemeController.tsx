@@ -3,9 +3,11 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from 'react';
 import {
@@ -17,12 +19,20 @@ import {
 import {
   showAppError,
   useSettings,
-  useSnackbar,
+  useNotifications,
   useScopedSettings,
   HOST_SETTINGS_SCOPE,
 } from '@omniviewdev/runtime';
 
+import { MotionConfig } from 'framer-motion';
+import {
+  readAppearanceBootstrap,
+  resolveAppearance,
+  writeAppearanceBootstrap,
+  type AppearancePreferences,
+} from './appearancePreferences';
 import { ThemeContributionBridge } from '@/features/extensions/theme/ThemeContributionBridge';
+import UiZoomController from './UIZoomController';
 
 import {
   clearLegacyThemeKeys,
@@ -81,10 +91,43 @@ function ThemeStateBridge({ children, selectTheme }: ThemeStateBridgeProps) {
   );
 }
 
+const reducedMotionQuery = '(prefers-reduced-motion: reduce)';
+function subscribeSystemMotion(notify: () => void): () => void {
+  const media = window.matchMedia?.(reducedMotionQuery);
+  media?.addEventListener('change', notify);
+
+  return () => {
+    media?.removeEventListener('change', notify);
+  };
+}
+
+function readSystemMotion(): boolean {
+  return window.matchMedia?.(reducedMotionQuery).matches ?? false;
+}
+
+function readServerMotion(): boolean {
+  return false;
+}
+
+function AppearanceBridge({ preferences, children }: { preferences: AppearancePreferences; children: ReactNode }) {
+  const { setDensity, setTextSize, setMotion } = useTheme();
+  const systemReduced = useSyncExternalStore(subscribeSystemMotion, readSystemMotion, readServerMotion);
+  const motion = preferences.motion === 'system'
+    ? (systemReduced ? 'reduced' : 'normal')
+    : preferences.motion;
+  useLayoutEffect(() => {
+    setDensity(preferences.density);
+    setTextSize(preferences.textSize);
+    setMotion(motion);
+  }, [preferences.density, preferences.textSize, motion, setDensity, setTextSize, setMotion]);
+
+  return <MotionConfig reducedMotion={motion === 'reduced' ? 'always' : 'never'}><UiZoomController>{children}</UiZoomController></MotionConfig>;
+}
+
 export default function AppThemeController({ children }: { children: ReactNode }) {
   const { settings } = useSettings();
   const { commit } = useScopedSettings(HOST_SETTINGS_SCOPE);
-  const { showSnackbar } = useSnackbar();
+  const { notify } = useNotifications();
   const [storage] = useState<Storage | null>(() => {
     try {
       return window.localStorage;
@@ -92,6 +135,22 @@ export default function AppThemeController({ children }: { children: ReactNode }
       return null;
     }
   });
+  const [bootstrapAppearance] = useState(() => readAppearanceBootstrap(storage));
+  const appearance = resolveAppearance({
+    density: settings['appearance.density'],
+    textSize: settings['appearance.textSize'],
+    motion: settings['appearance.motion'],
+  }, bootstrapAppearance);
+  const initialMotion = appearance.motion === 'system'
+    ? (readSystemMotion() ? 'reduced' : 'normal')
+    : appearance.motion;
+  useEffect(() => {
+    writeAppearanceBootstrap(storage, {
+      density: appearance.density,
+      textSize: appearance.textSize,
+      motion: appearance.motion,
+    });
+  }, [storage, appearance.density, appearance.textSize, appearance.motion]);
   const [requestedThemeId, setRequestedThemeId] = useState<string>(() => (
     storage === null ? 'void' : readBootstrapTheme(storage)
   ));
@@ -146,10 +205,10 @@ export default function AppThemeController({ children }: { children: ReactNode }
         }
 
         if (!result.applied || result.uncertain) {
-          showSnackbar(result.message || 'Theme saved, but could not be applied completely.', 'warning');
+          void notify({ title: result.message || 'Theme saved, but could not be applied completely.', severity: 'warning' });
         }
       } catch (error) {
-        showAppError(showSnackbar, error, 'Failed to save theme');
+        showAppError(notify, error, 'Failed to save theme');
       } finally {
         settledSelectionRef.current = selection;
         if (selection === latestSelectionRef.current) {
@@ -169,7 +228,7 @@ export default function AppThemeController({ children }: { children: ReactNode }
       : queued.then(persist, persist);
     persistenceQueueRef.current = persistence;
     await persistence;
-  }, [commit, showSnackbar, storage]);
+  }, [commit, notify, storage]);
 
   return (
     <ThemeProvider
@@ -178,13 +237,17 @@ export default function AppThemeController({ children }: { children: ReactNode }
       onThemeChange={(id) => {
         selectTheme(id).catch(() => undefined);
       }}
-      initialDensity="compact"
+      initialDensity={appearance.density}
+      initialTextSize={appearance.textSize}
+      initialMotion={initialMotion}
       registry={themeRegistry}
     >
       <ThemeContributionBridge registry={themeRegistry} />
-      <ThemeStateBridge selectTheme={selectTheme}>
-        {children}
-      </ThemeStateBridge>
+      <AppearanceBridge preferences={appearance}>
+        <ThemeStateBridge selectTheme={selectTheme}>
+          {children}
+        </ThemeStateBridge>
+      </AppearanceBridge>
     </ThemeProvider>
   );
 }

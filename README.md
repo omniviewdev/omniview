@@ -53,13 +53,41 @@ Omniview is a groundbreaking Integrated Development Environment (IDE) tailored s
 Settings → AI Tools controls the loopback MCP relay. Resource tools expose provider action
 labels, descriptions and danger notices. Actions and mutations require consent unless the
 tool's confirm override is set to false.
+Search the tool list by name, description, plugin, or connection. Resource tools show a
+readable title and their MCP name; the MCP name remains the policy and client identifier.
 
-The read-only preset includes per-resource metrics and route-level events, health and related
-resources. Each route-level tool accepts a resource type from its advertised enum. Unsupported
-provider operations return an error; health can return `null` when the provider has no assessment.
-Related resources contain references, not resource bodies. The relay returns at most 1000 edges
-and sets `truncated` when more edges exist. Route-level policy is plugin- and
+For configured Kubernetes connections, five generic resource tools remain available while
+the cluster is disconnected: `kubernetes_resource_discover`, `kubernetes_resource_read`,
+`kubernetes_resource_write`, `kubernetes_resource_action`, and `kubernetes_resource_telemetry`.
+The first call starts the selected connection. Use the `catalog` operation of
+`kubernetes_resource_discover` to find live operations and their argument schemas.
+Each tool uses an `operation` argument to select an operation. Unsupported operations
+return an error.
+
+AI Tools applies policy to each generic group and connection, not to individual Kubernetes
+resource types. Existing resource-specific overrides and saved presets do not grant or deny
+the new tools. The current preset and its defaults apply to the new tool names.
+Review the new policies: the read-only preset can enable reads that an old override denied.
+Write and action calls require consent by default.
+
+For other providers, the read-only preset includes per-resource metrics and route-level
+events, health and related resources. Each route-level tool accepts a resource type from
+its advertised enum. Health can return `null` when the provider has no assessment.
+Related resources contain references, not resource bodies. The relay returns at most 1000
+edges and sets `truncated` when more edges exist. Route-level policy is plugin- and
 connection-scoped; disabling one type's get tool does not disable these separate read tools.
+
+Plugins may declare access to selected resource types exported by another installed
+plugin. The host checks both manifests and routes each call through the owning plugin;
+the consumer never receives the owner's connection profile or credentials. AI Tools
+policy and consent still apply to the consumer and selected connection. Only started
+owner connections appear in the consumer's connection list. A named tool remains
+available for a stopped configured connection and reports that the connection is not
+started; it does not start the connection.
+
+Connection lists use sanitized host observations without native readiness probes.
+Starting an already-started connection preserves existing resource handles.
+Stop or configuration reset retires delegated calls; a later start requires a fresh call.
 
 ## Why Omniview?
 
@@ -108,13 +136,38 @@ The frontend source cohort uses Node.js 26.13.0 LTS, pnpm 12.14.0, React 19.3.1,
 
 Monaco stays pinned to 0.52.2 while the current YAML worker integration requires its legacy API. A maintained YAML fork and coordinated newer-Monaco upgrade are tracked in the UI repository's `packages/editors/docs/MONACO_YAML_COMPAT.md`.
 
+The host and standalone Kubernetes plugin declare the same Monaco 0.52.2
+word-highlighter lifecycle backport from [upstream VS Code](https://github.com/microsoft/vscode/blob/e57fbd7a49486f12be089ec5800293f3453eefbd/src/vs/editor/contrib/wordHighlighter/browser/wordHighlighter.ts#L294-L315).
+The two asynchronous highlight callers own their cancellation promises while
+unexpected failures still reach Monaco's error handler. Editors and their models
+continue to dispose immediately; highlighting and Find remain enabled.
+
+Managed workspaces can compose byte-identical patches declared independently by
+multiple repositories. Each declaration must reference its own repository-owned
+file, and each standalone lock retains its originating source authority.
+Changing either patch invalidates the composition; conflicting bytes, redirected
+paths, and borrowing another repository's declaration remain refused.
+
+CI uses the SDK declared by the host `go.mod`. Managed workspaces identify the
+selected SDK checkout by its current commit and source digest. Live-source
+validation rejects records and removals outside the admitted catalog contract.
+
 Vite remains on 7.3.7 to preserve SystemJS plugin output. Vite 8 and newer pnpm versions require separate loader/backend work and are not part of this frontend-only upgrade. Keep strict peer validation and the 24-hour release-age policy enabled.
 
-Build the runtime before the Vite plugin: shim generation verifies the current runtime's exports. Host lint excludes generated bindings and linked plugin repositories; run each plugin's own lint and behavior suite. Owned Playwright runs use the existing isolated source-cohort runner, not ambient marketplace plugins or cluster credentials.
+Build the runtime before the Vite plugin: shim generation verifies the current runtime's exports. Host lint excludes generated bindings and linked plugin repositories; run each plugin's own lint and behavior suite. Owned Playwright runs use an isolated workspace with the SDK commit resolved from the host `go.mod`, UI packages from the host lockfile, and Kubernetes from the host gitlink, not ambient marketplace plugins or cluster credentials.
 
 Keep tracked `dist/.gitkeep` for Go's `all:dist` embed during clean pre-frontend compile checks. Production and application acceptance still require actual built frontend assets.
 
 Error reports retain their normalized error, reference ID, and timestamp as occurrence-owned state rather than compiler optimization caches. Inspecting or copying a report must not replace its identity; a new failure must. Metric stream starts capture the current resource payload, including payload-only updates.
+
+### Connection startup readiness
+
+The host publishes a successful connection-status event only after relationship
+bootstrap, eager-source admission, and connection-start commit finish. Native
+provider registration alone must not release resource pages while startup can
+still retire persisted catalog authority. This ordering preserves source-epoch
+fences without replaying stale queries. Source inventory can continue syncing
+after the connection becomes ready; readiness is not a network-health probe.
 
 ### Host profiling
 
@@ -153,6 +206,11 @@ Open the footer's **pprof** popover to find each plugin's actual endpoint. Use t
 Saving never opens or closes an existing plugin listener. Restart Omniview after enabling or disabling the preference. Plugin reloads replace the process, PID, and endpoint; do not reuse an endpoint from a previous process. Status requests run only while the popover is open and pause while the window is hidden. The display reports listeners, not client connections or active captures.
 
 The host explicitly supplies `OMNIVIEW_PLUGIN_PPROF_ENABLED=true` or `false` from its startup preference and removes inherited host profiling ports. The SDK accepts only the exact value `true` as opt-in. Listeners use the same unauthenticated local-only access, request guards, capture caps, and shutdown cleanup as host profiling. Disable **Telemetry → Profiling** before restarting plugins for CPU captures when continuous Pyroscope profiling is enabled; Omniview does not pause it automatically.
+
+For a seeded, isolated workspace and verified host/plugin captures, use the
+[performance profiling skill](.agents/skills/omniview-performance-profiling/SKILL.md).
+The [2026-11-02 investigation](docs/performance-profiling-2026-11-02.md) records
+the controlled timeout reproduction, setup issues, and evidence boundaries.
 
 ### Process identification
 

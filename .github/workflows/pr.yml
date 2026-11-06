@@ -15,7 +15,6 @@ env:
   NODE_OPTIONS: "--max-old-space-size=4096"
   GO_VERSION: "1.26"
   NODE_VERSION: "26.13.0"
-  REVIEWED_SDK_REVISION: 0a5b64ed8c2de209fbb02ecce9feba3afd88f28c # Reviewed SDK v0.12.1
 
 jobs:
   # One canonical application execution; the exact required check name stays
@@ -45,11 +44,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - os: macos-15-intel
             platform: darwin/universal
             artifact-name: pr-build-macos
             build-tags: "production"
             extra-ldflags: ""
+            developer-dir: /Applications/Xcode_26.3.app/Contents/Developer
           - os: ubuntu-24.04
             container: ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1
             platform: linux/amd64
@@ -71,6 +71,7 @@ jobs:
     timeout-minutes: 30
     env:
       GOWORK: "off"
+      DEVELOPER_DIR: ${{ matrix.developer-dir || '' }}
     steps:
       # Container Git must own the mount after checkout's temporary HOME expires.
       - name: Match checkout directory ownership to container user
@@ -88,27 +89,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Admit reviewed candidate cohort
-        id: candidate
-        shell: bash
-        run: node e2e/scripts/candidate-source.mjs resolve
-
-      - name: Checkout reviewed SDK
-        uses: actions/checkout@v4
-        with:
-          repository: omniviewdev/plugin-sdk
-          ref: ${{ steps.candidate.outputs.sdk }}
-          path: .candidate-sources/sdk
-          persist-credentials: false
-          fetch-depth: 0
-
-      - name: Select reviewed SDK source
-        shell: bash
-        run: |
-          export SDK_SOURCE="$(cd .candidate-sources/sdk && pwd -P)"
-          node e2e/scripts/candidate-source.mjs verify-sdk
-          echo "SDK_SOURCE=$SDK_SOURCE" >> "$GITHUB_ENV"
-
       - name: Setup pnpm
         uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
         with:
@@ -124,9 +104,7 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-          cache-dependency-path: |
-            go.sum
-            .candidate-sources/sdk/go.sum
+          cache-dependency-path: go.sum
 
       - name: Install Task
         uses: arduino/setup-task@v2
@@ -154,9 +132,9 @@ jobs:
         shell: bash
         env:
           CGO_ENABLED: "1"
-          CGO_CFLAGS: ${{ runner.os == 'macOS' && '-mmacosx-version-min=10.15' || '' }}
-          CGO_LDFLAGS: ${{ runner.os == 'macOS' && '-mmacosx-version-min=10.15' || '' }}
-          MACOSX_DEPLOYMENT_TARGET: ${{ runner.os == 'macOS' && '10.15' || '' }}
+          CGO_CFLAGS: ${{ runner.os == 'macOS' && '-mmacosx-version-min=12.0' || '' }}
+          CGO_LDFLAGS: ${{ runner.os == 'macOS' && '-mmacosx-version-min=12.0' || '' }}
+          MACOSX_DEPLOYMENT_TARGET: ${{ runner.os == 'macOS' && '12.0' || '' }}
         run: |
           HOST_MODFILE="$(task --silent host:prepare)"
           build_command=(go build -o bin/Omniview)

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 390">
+<title>Mock: joined Debug actions and readable cluster settings navigation</title>
+<g font-family="system-ui, sans-serif" fill="currentColor">
+<text x="20" y="28" font-size="14">MOCK — shared components, not application output</text>
+<rect x="20" y="48" width="246" height="320" rx="6" fill="none" stroke="currentColor" opacity=".35"/>
+<text x="35" y="77" font-size="16" font-weight="600">←  Cluster Settings</text>
+<rect x="30" y="96" width="226" height="52" rx="5" fill="none" stroke="currentColor" opacity=".25"/>
+<text x="44" y="117" font-size="13" font-weight="600">KK    kind-kind</text>
+<text x="76" y="136" font-size="12">Connected</text>
+<text x="34" y="173" font-size="11" opacity=".65">General</text>
+<rect x="28" y="183" width="230" height="34" rx="5" fill="currentColor" opacity=".12"/>
+<g font-size="13"><text x="44" y="205">Identity</text><text x="44" y="239">Tags</text><text x="44" y="273">Cluster Info</text><text x="44" y="307">Connection</text></g>
+<text x="34" y="332" font-size="11" opacity=".65">Configuration</text><text x="44" y="356" font-size="13">Metrics</text>
+<text x="304" y="77" font-size="16" font-weight="600">Inspector action group</text>
+<rect x="305" y="100" width="48" height="24" rx="5" fill="none" stroke="currentColor" opacity=".35"/>
+<path d="M329 104V120M339 110L343 114L347 110" fill="none" stroke="currentColor"/>
+<g stroke="currentColor" fill="none"><ellipse cx="317" cy="113" rx="4" ry="5"/><path d="M317 108V118M310 110H313M321 110H324M310 116H313M321 116H324"/></g>
+<text x="305" y="155" font-size="14">Primary: Debug</text><text x="305" y="180" font-size="14">Arrow: choose debug options</text>
+<text x="305" y="221" font-size="14">Joined corners; subtle divider; independent focus.</text>
+<text x="305" y="247" font-size="14">24px comfortable / 22px compact action height.</text>
+<text x="305" y="298" font-size="14">Cluster navigation matches host Settings:</text>
+<text x="305" y="324" font-size="14">34px comfortable / 28px compact rows.</text>
+<text x="305" y="350" font-size="14">13px labels follow UI text sizing.</text>
+</g></svg>

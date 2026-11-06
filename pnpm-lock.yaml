@@ -169,6 +169,8 @@ overrides:
 
 patchedDependencies:
   '@wailsio/runtime@3.0.0-beta.34': c07536c6a63634b99b63cb3f02b0fc2e21063066b96ae8aa9dfa3069810ea862
+  monaco-editor@0.52.2: c9b4df6cf0c9f7250a4cac07c32e978eff7b3e8a3972ccf4e016e437eac285e0
+  vite@7.3.7: 55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b
 
 importers:
 
@@ -194,16 +196,16 @@ importers:
         version: 2.13.0
       '@monaco-editor/react':
         specifier: 4.7.0
-        version: 4.7.0(monaco-editor@0.52.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        version: 4.7.0(monaco-editor@0.52.2(patch_hash=c9b4df6cf0c9f7250a4cac07c32e978eff7b3e8a3972ccf4e016e437eac285e0))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@omniviewdev/ai-ui':
-        specifier: ~6.1.3
-        version: 6.1.3(@omniviewdev/base-ui@0.10.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react-icons@5.7.0(react@19.3.1))(react@19.3.1)
+        specifier: ~6.1.8
+        version: 6.1.8(@omniviewdev/base-ui@0.14.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react-icons@5.7.0(react@19.3.1))(react@19.3.1)
       '@omniviewdev/base-ui':
-        specifier: ~0.10.0
-        version: 0.10.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        specifier: ~0.14.0
+        version: 0.14.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@omniviewdev/editors':
-        specifier: ~6.1.3
-        version: 6.1.3(@omniviewdev/base-ui@0.10.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        specifier: ~6.1.8
+        version: 6.1.8(@omniviewdev/base-ui@0.14.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@omniviewdev/providers':
         specifier: workspace:*
         version: link:packages/omniviewdev-providers
@@ -269,16 +271,16 @@ importers:
         version: 4.4.2
       monaco-editor:
         specifier: 0.52.2
-        version: 0.52.2
+        version: 0.52.2(patch_hash=c9b4df6cf0c9f7250a4cac07c32e978eff7b3e8a3972ccf4e016e437eac285e0)
       monaco-editor-nginx:
         specifier: 2.0.2
-        version: 2.0.2(@babel/runtime@8.0.8)(@nginx/reference-lib@1.1.43)(monaco-editor@0.52.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        version: 2.0.2(@babel/runtime@8.0.8)(@nginx/reference-lib@1.1.43)(monaco-editor@0.52.2(patch_hash=c9b4df6cf0c9f7250a4cac07c32e978eff7b3e8a3972ccf4e016e437eac285e0))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       monaco-types:
         specifier: 0.1.2
         version: 0.1.2
       monaco-yaml:
         specifier: 5.5.1
-        version: 5.5.1(monaco-editor@0.52.2)
+        version: 5.5.1(monaco-editor@0.52.2(patch_hash=c9b4df6cf0c9f7250a4cac07c32e978eff7b3e8a3972ccf4e016e437eac285e0))
       prettier:
         specifier: 3.9.10
         version: 3.9.10
@@ -298,8 +300,8 @@ importers:
         specifier: 9.3.0
         version: 9.3.0(@types/react@19.3.0)(react@19.3.1)(redux@5.0.1)
       react-router:
-        specifier: 8.5.0
-        version: 8.5.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        specifier: 8.5.1
+        version: 8.5.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       react-use:
         specifier: 17.6.1
         version: 17.6.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -363,10 +365,10 @@ importers:
         version: typescript@7.0.2
       '@vitejs/plugin-react':
         specifier: 5.2.0
-        version: 5.2.0(vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
+        version: 5.2.0(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
       '@vitest/browser-playwright':
         specifier: 5.0.5
-        version: 5.0.5(playwright@1.64.1)(vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))(vitest@5.0.5)
+        version: 5.0.5(playwright@1.64.1)(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))(vitest@5.0.5)
       '@vitest/ui':
         specifier: 5.0.5
         version: 5.0.5(vitest@5.0.5)
@@ -414,10 +416,10 @@ importers:
         version: '@typescript/typescript6@6.0.2'
       vite:
         specifier: 7.3.7
-        version: 7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)
+        version: 7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)
       vitest:
         specifier: 5.0.5
-        version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(jsdom@30.1.3)(vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
+        version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(jsdom@30.1.3)(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
 
   e2e:
     devDependencies:
@@ -445,7 +447,7 @@ importers:
         version: typescript@7.0.2
       '@vitejs/plugin-react':
         specifier: 5.2.0
-        version: 5.2.0(vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
+        version: 5.2.0(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
       react:
         specifier: 19.3.1
         version: 19.3.1
@@ -457,7 +459,7 @@ importers:
         version: '@typescript/typescript6@6.0.2'
       vite:
         specifier: 7.3.7
-        version: 7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)
+        version: 7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)
 
   packages/omniviewdev-runtime:
     dependencies:
@@ -472,8 +474,8 @@ importers:
         version: 0.10.3
     devDependencies:
       '@omniviewdev/base-ui':
-        specifier: ~0.10.0
-        version: 0.10.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        specifier: ~0.14.0
+        version: 0.14.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@tanstack/react-query':
         specifier: 5.105.0
         version: 5.105.0(@types/react@19.3.0)(react@19.3.1)
@@ -488,7 +490,7 @@ importers:
         version: typescript@7.0.2
       '@vitejs/plugin-react':
         specifier: 5.2.0
-        version: 5.2.0(vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
+        version: 5.2.0(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
       react:
         specifier: 19.3.1
         version: 19.3.1
@@ -496,8 +498,8 @@ importers:
         specifier: 19.3.1
         version: 19.3.1(react@19.3.1)
       react-router:
-        specifier: 8.5.0
-        version: 8.5.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        specifier: 8.5.1
+        version: 8.5.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       ts-node:
         specifier: 10.9.2
         version: 10.9.2(@types/node@26.6.5)(@typescript/typescript6@6.0.2)
@@ -509,10 +511,10 @@ importers:
         version: '@typescript/typescript6@6.0.2'
       vite:
         specifier: 7.3.7
-        version: 7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)
+        version: 7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)
       vite-plugin-dts:
         specifier: 5.1.2
-        version: 5.1.2(@typescript/typescript6@6.0.2)(esbuild@0.28.2)(rollup@4.65.1)(vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
+        version: 5.1.2(@typescript/typescript6@6.0.2)(esbuild@0.28.2)(rollup@4.65.1)(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/omniviewdev-vite-plugin:
     devDependencies:
@@ -533,7 +535,7 @@ importers:
         version: '@typescript/typescript6@6.0.2'
       vite:
         specifier: 7.3.7
-        version: 7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)
+        version: 7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)
 
 packages:
 
@@ -1064,24 +1066,24 @@ packages:
   '@nginx/reference-lib@1.1.43':
     resolution: {integrity: sha512-OoX3lTWhiJpffmKknYG33GBSBBHrpf/+4H9Eyc7KYvnpu93o+rTT6X2QQGTJt3l8QLPKEVB8Sa4Np+p/Mrtgrw==}
 
-  '@omniviewdev/ai-ui@6.1.3':
-    resolution: {integrity: sha512-VummfPMYZXfl/H16BJEo6L8LA3Z8Z75rXIGQC6p6qwExjFFuB9V/DhooZg3d4jSWuI2seNwDJVXWPdmcjY3Z6Q==}
+  '@omniviewdev/ai-ui@6.1.8':
+    resolution: {integrity: sha512-GB1tq8iOTvo/dJF8BfXpBZLmQgew4yi2SaRvPbb0DTwTF+CXkC4avr2RtN6oKXbACUnQxvXkPCW25EYXUBzREQ==}
     peerDependencies:
-      '@omniviewdev/base-ui': 0.10.0
+      '@omniviewdev/base-ui': 0.14.0
       react: ^19.3.1
       react-dom: ^19.3.1
       react-icons: ^5.7.0
 
-  '@omniviewdev/base-ui@0.10.0':
-    resolution: {integrity: sha512-26Gz6mMBSasaXuI1/5H2Ydw+3abMRu0NCCgnxOaKR84FauUQrpi4R9usmUJWjAGeeynuabQZWvr53RaEOjnmUg==}
+  '@omniviewdev/base-ui@0.14.0':
+    resolution: {integrity: sha512-FUb16EJ4ZJtc5Cp4FqCjDQOdCtTiCxHnhosSugaNGZvNtlW4OVVzQxW4HzFRWwMsiUyEkc+qMNPbRHXObylbiw==}
     peerDependencies:
       react: ^19.3.1
       react-dom: ^19.3.1
 
-  '@omniviewdev/editors@6.1.3':
-    resolution: {integrity: sha512-DRmmIJGM0B/wpvhcwLinHbbYLhYM9L2MEV7mMUwMu03hqA5dk1kj5/VJu/oh0shl4OkKf6p2ICP4nGRMGTsz1Q==}
+  '@omniviewdev/editors@6.1.8':
+    resolution: {integrity: sha512-7R2X3/DS4VOzA4axcQTMZiK04+fa1yTl2qY8fJMl/FMAwkIeTVlmLxRjek+wnzInQqOs7PbYlsqKkNPhpmc2pQ==}
     peerDependencies:
-      '@omniviewdev/base-ui': 0.10.0
+      '@omniviewdev/base-ui': 0.14.0
       react: ^19.3.1
       react-dom: ^19.3.1
 
@@ -3114,8 +3116,8 @@ packages:
     resolution: {integrity: sha512-QgT5//D3jfjJb6Gsjxv0Slpj23ip+HtOpnNgnb2S5zU3CB26G/IDPGoy4RJB42wzFE46DRsstbW6tKHoKbhAxw==}
     engines: {node: '>=0.10.0'}
 
-  react-router@8.5.0:
-    resolution: {integrity: sha512-9nEd/deifcTJIIcUaNIyQGkyXD0D6QVB9XD2O5GgHpP3xu3U5RXm87YQ8++Wn8JQWgMBM/5+PjWPM/7n7O7WHA==}
+  react-router@8.5.1:
+    resolution: {integrity: sha512-5u1eQ46QjuXjNfEnLwzrnou1Bm5dquO3xjVYkkMYCudtkicD2AQHtx+fvXzPATtPJx8TW6DR1x1TDRqsfHyZBw==}
     engines: {node: '>=22.22.0'}
     peerDependencies:
       '@types/react': 19.3.0
@@ -4286,10 +4288,10 @@ snapshots:
     dependencies:
       state-local: 1.0.7
 
-  '@monaco-editor/react@4.7.0(monaco-editor@0.52.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@monaco-editor/react@4.7.0(monaco-editor@0.52.2(patch_hash=c9b4df6cf0c9f7250a4cac07c32e978eff7b3e8a3972ccf4e016e437eac285e0))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
       '@monaco-editor/loader': 1.7.0
-      monaco-editor: 0.52.2
+      monaco-editor: 0.52.2(patch_hash=c9b4df6cf0c9f7250a4cac07c32e978eff7b3e8a3972ccf4e016e437eac285e0)
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
 
@@ -4305,9 +4307,9 @@ snapshots:
 
   '@nginx/reference-lib@1.1.43': {}
 
-  '@omniviewdev/ai-ui@6.1.3(@omniviewdev/base-ui@0.10.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react-icons@5.7.0(react@19.3.1))(react@19.3.1)':
+  '@omniviewdev/ai-ui@6.1.8(@omniviewdev/base-ui@0.14.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react-icons@5.7.0(react@19.3.1))(react@19.3.1)':
     dependencies:
-      '@omniviewdev/base-ui': 0.10.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@omniviewdev/base-ui': 0.14.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@tanstack/react-virtual': 3.14.23(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
@@ -4318,7 +4320,7 @@ snapshots:
       - '@types/react'
       - supports-color
 
-  '@omniviewdev/base-ui@0.10.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@omniviewdev/base-ui@0.14.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
       '@base-ui/react': 1.9.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@dnd-kit/core': 6.3.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -4335,9 +4337,9 @@ snapshots:
       - '@types/react'
       - date-fns
 
-  '@omniviewdev/editors@6.1.3(@omniviewdev/base-ui@0.10.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@omniviewdev/editors@6.1.8(@omniviewdev/base-ui@0.14.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
-      '@omniviewdev/base-ui': 0.10.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@omniviewdev/base-ui': 0.14.0(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@xterm/addon-fit': 0.11.0
       '@xterm/addon-search': 0.16.0
       '@xterm/addon-serialize': 0.14.0
@@ -4345,8 +4347,8 @@ snapshots:
       '@xterm/addon-web-links': 0.12.0
       '@xterm/addon-webgl': 0.19.0
       '@xterm/xterm': 6.0.0
-      monaco-editor: 0.52.2
-      monaco-yaml: 5.5.1(monaco-editor@0.52.2)
+      monaco-editor: 0.52.2(patch_hash=c9b4df6cf0c9f7250a4cac07c32e978eff7b3e8a3972ccf4e016e437eac285e0)
+      monaco-yaml: 5.5.1(monaco-editor@0.52.2(patch_hash=c9b4df6cf0c9f7250a4cac07c32e978eff7b3e8a3972ccf4e016e437eac285e0))
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
       react-markdown: 10.1.0(@types/react@19.3.0)(react@19.3.1)
@@ -4687,7 +4689,7 @@ snapshots:
       picocolors: 1.1.1
       redent: 3.0.0
     optionalDependencies:
-      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(jsdom@30.1.3)(vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
+      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(jsdom@30.1.3)(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
 
   '@testing-library/react@16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
@@ -5054,7 +5056,7 @@ snapshots:
   '@unrs/resolver-binding-win32-x64-msvc@1.12.2':
     optional: true
 
-  '@vitejs/plugin-react@5.2.0(vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))':
+  '@vitejs/plugin-react@5.2.0(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))':
     dependencies:
       '@babel/core': 7.29.7
       '@babel/plugin-transform-react-jsx-self': 7.29.7(@babel/core@7.29.7)
@@ -5062,34 +5064,34 @@ snapshots:
       '@rolldown/pluginutils': 1.0.0-rc.3
       '@types/babel__core': 7.20.5
       react-refresh: 0.18.0
-      vite: 7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)
+      vite: 7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@vitest/browser-playwright@5.0.5(playwright@1.64.1)(vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))(vitest@5.0.5)':
+  '@vitest/browser-playwright@5.0.5(playwright@1.64.1)(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))(vitest@5.0.5)':
     dependencies:
-      '@vitest/browser': 5.0.5(vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))(vitest@5.0.5)
-      '@vitest/mocker': 5.0.5(vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
+      '@vitest/browser': 5.0.5(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))(vitest@5.0.5)
+      '@vitest/mocker': 5.0.5(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
       playwright: 1.64.1
       tinyrainbow: 3.2.0
-      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(jsdom@30.1.3)(vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
+      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(jsdom@30.1.3)(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
     transitivePeerDependencies:
       - bufferutil
       - msw
       - utf-8-validate
       - vite
 
-  '@vitest/browser@5.0.5(vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))(vitest@5.0.5)':
+  '@vitest/browser@5.0.5(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))(vitest@5.0.5)':
     dependencies:
       '@blazediff/core': 1.10.0
-      '@vitest/mocker': 5.0.5(vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
+      '@vitest/mocker': 5.0.5(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
       '@vitest/ui': 5.0.5(vitest@5.0.5)
       '@vitest/utils': 5.0.5
       magic-string: 1.4.5
       pngjs: 7.0.0
       sirv: 3.0.2
       tinyrainbow: 3.2.0
-      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(jsdom@30.1.3)(vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
+      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(jsdom@30.1.3)(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
       ws: 8.22.0
     transitivePeerDependencies:
       - bufferutil
@@ -5097,14 +5099,14 @@ snapshots:
       - utf-8-validate
       - vite
 
-  '@vitest/mocker@5.0.5(vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))':
+  '@vitest/mocker@5.0.5(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
       '@vitest/spy': 5.0.5
       estree-walker: 3.0.3
       magic-string: 1.4.5
     optionalDependencies:
-      vite: 7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)
+      vite: 7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)
 
   '@vitest/pretty-format@5.0.5':
     dependencies:
@@ -5120,7 +5122,7 @@ snapshots:
       pathe: 2.0.3
       sirv: 3.0.2
       tinyrainbow: 3.2.0
-      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(jsdom@30.1.3)(vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
+      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(jsdom@30.1.3)(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
 
   '@vitest/utils@5.0.5':
     dependencies:
@@ -6301,15 +6303,15 @@ snapshots:
       pkg-types: 1.3.1
       ufo: 1.6.4
 
-  monaco-editor-nginx@2.0.2(@babel/runtime@8.0.8)(@nginx/reference-lib@1.1.43)(monaco-editor@0.52.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
+  monaco-editor-nginx@2.0.2(@babel/runtime@8.0.8)(@nginx/reference-lib@1.1.43)(monaco-editor@0.52.2(patch_hash=c9b4df6cf0c9f7250a4cac07c32e978eff7b3e8a3972ccf4e016e437eac285e0))(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
     dependencies:
       '@babel/runtime': 8.0.8
       '@nginx/reference-lib': 1.1.43
-      monaco-editor: 0.52.2
+      monaco-editor: 0.52.2(patch_hash=c9b4df6cf0c9f7250a4cac07c32e978eff7b3e8a3972ccf4e016e437eac285e0)
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
 
-  monaco-editor@0.52.2: {}
+  monaco-editor@0.52.2(patch_hash=c9b4df6cf0c9f7250a4cac07c32e978eff7b3e8a3972ccf4e016e437eac285e0): {}
 
   monaco-languageserver-types@0.4.1:
     dependencies:
@@ -6323,19 +6325,19 @@ snapshots:
 
   monaco-types@0.1.2: {}
 
-  monaco-worker-manager@2.0.1(monaco-editor@0.52.2):
+  monaco-worker-manager@2.0.1(monaco-editor@0.52.2(patch_hash=c9b4df6cf0c9f7250a4cac07c32e978eff7b3e8a3972ccf4e016e437eac285e0)):
     dependencies:
-      monaco-editor: 0.52.2
+      monaco-editor: 0.52.2(patch_hash=c9b4df6cf0c9f7250a4cac07c32e978eff7b3e8a3972ccf4e016e437eac285e0)
 
-  monaco-yaml@5.5.1(monaco-editor@0.52.2):
+  monaco-yaml@5.5.1(monaco-editor@0.52.2(patch_hash=c9b4df6cf0c9f7250a4cac07c32e978eff7b3e8a3972ccf4e016e437eac285e0)):
     dependencies:
       '@vscode/l10n': 0.0.18
       jsonc-parser: 3.3.1
-      monaco-editor: 0.52.2
+      monaco-editor: 0.52.2(patch_hash=c9b4df6cf0c9f7250a4cac07c32e978eff7b3e8a3972ccf4e016e437eac285e0)
       monaco-languageserver-types: 0.4.1
       monaco-marker-data-provider: 1.2.5
       monaco-types: 0.1.2
-      monaco-worker-manager: 2.0.1(monaco-editor@0.52.2)
+      monaco-worker-manager: 2.0.1(monaco-editor@0.52.2(patch_hash=c9b4df6cf0c9f7250a4cac07c32e978eff7b3e8a3972ccf4e016e437eac285e0))
       path-browserify: 1.0.1
       prettier: 3.9.10
       proxy-disposable: 1.0.0
@@ -6546,7 +6548,7 @@ snapshots:
 
   react-refresh@0.18.0: {}
 
-  react-router@8.5.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
+  react-router@8.5.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
     dependencies:
       '@remix-run/route-pattern': 0.22.1
       cookie-es: 3.1.1
@@ -7078,7 +7080,7 @@ snapshots:
       unist-util-is: 6.0.1
       unist-util-visit-parents: 6.1.0
 
-  unplugin-dts@1.1.2(@typescript/typescript6@6.0.2)(esbuild@0.28.2)(rollup@4.65.1)(vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)):
+  unplugin-dts@1.1.2(@typescript/typescript6@6.0.2)(esbuild@0.28.2)(rollup@4.65.1)(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)):
     dependencies:
       '@rollup/pluginutils': 5.5.1(rollup@4.65.1)
       '@volar/typescript': 2.4.30(@typescript/typescript6@6.0.2)
@@ -7093,7 +7095,7 @@ snapshots:
     optionalDependencies:
       esbuild: 0.28.2
       rollup: 4.65.1
-      vite: 7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)
+      vite: 7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -7162,12 +7164,12 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
-  vite-plugin-dts@5.1.2(@typescript/typescript6@6.0.2)(esbuild@0.28.2)(rollup@4.65.1)(vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)):
+  vite-plugin-dts@5.1.2(@typescript/typescript6@6.0.2)(esbuild@0.28.2)(rollup@4.65.1)(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)):
     dependencies:
-      unplugin-dts: 1.1.2(@typescript/typescript6@6.0.2)(esbuild@0.28.2)(rollup@4.65.1)(vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
+      unplugin-dts: 1.1.2(@typescript/typescript6@6.0.2)(esbuild@0.28.2)(rollup@4.65.1)(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
     optionalDependencies:
       rollup: 4.65.1
-      vite: 7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)
+      vite: 7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)
     transitivePeerDependencies:
       - '@rspack/core'
       - '@vue/language-core'
@@ -7177,7 +7179,7 @@ snapshots:
       - typescript
       - webpack
 
-  vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1):
+  vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1):
     dependencies:
       esbuild: 0.28.2
       fdir: 6.5.0(picomatch@4.0.7)
@@ -7191,10 +7193,10 @@ snapshots:
       tsx: 4.23.15
       yaml: 2.9.1
 
-  vitest@5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(jsdom@30.1.3)(vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)):
+  vitest@5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(jsdom@30.1.3)(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)):
     dependencies:
       '@types/chai': 5.2.3
-      '@vitest/mocker': 5.0.5(vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
+      '@vitest/mocker': 5.0.5(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))
       chai: 6.3.0
       es-module-lexer: 2.3.2
       expect-type: 1.4.0
@@ -7205,12 +7207,12 @@ snapshots:
       tinybench: 6.2.2
       tinyexec: 1.3.1
       tinyglobby: 0.2.17
-      vite: 7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)
+      vite: 7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1)
       why-is-node-running: 3.2.1
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
       '@types/node': 26.6.5
-      '@vitest/browser-playwright': 5.0.5(playwright@1.64.1)(vite@7.3.7(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))(vitest@5.0.5)
+      '@vitest/browser-playwright': 5.0.5(playwright@1.64.1)(vite@7.3.7(patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b)(@types/node@26.6.5)(tsx@4.23.15)(yaml@2.9.1))(vitest@5.0.5)
       '@vitest/ui': 5.0.5(vitest@5.0.5)
       jsdom: 30.1.3
     transitivePeerDependencies:

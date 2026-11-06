@@ -58,17 +58,18 @@ var _ ConfigStore = (*settingsstore.Store)(nil)
 
 // Options are the relay dependencies.
 type Options struct {
-	Log              logging.Logger
-	Store            ConfigStore
-	Tools            tools.Controller
-	Connections      resource.Service
-	Version          string
-	Authority        *Authority
-	Boundary         *invocation.Boundary
-	ShowConfirmation func() error
-	Logs             ResourceLogsReader
-	Metrics          ResourceMetricsReader
-	Graph            ResourceGraphReader
+	Log                 logging.Logger
+	Store               ConfigStore
+	Tools               tools.Controller
+	Connections         resource.Service
+	Version             string
+	Authority           *Authority
+	Boundary            *invocation.Boundary
+	ShowConfirmation    func() error
+	Logs                ResourceLogsReader
+	Metrics             ResourceMetricsReader
+	Graph               ResourceGraphReader
+	BorrowedConnections func(context.Context, string, string, bool) ([]sdktypes.Connection, error)
 }
 
 // Relay owns the MCP server, the policy document and the HTTP listener.
@@ -84,6 +85,7 @@ type Relay struct {
 	logs                 ResourceLogsReader
 	metrics              ResourceMetricsReader
 	graph                ResourceGraphReader
+	borrowedConnections  func(context.Context, string, string, bool) ([]sdktypes.Connection, error)
 	transitionMu         sync.Mutex
 	resyncMu             sync.Mutex
 	stopped              bool
@@ -93,17 +95,23 @@ type Relay struct {
 	lifecycleCancel      context.CancelFunc
 	unsubscribeTools     func()
 
-	mu             sync.Mutex // guards cfg, catalog, registered, listener state
-	cfg            Config
-	loaded         bool
-	catalog        []ToolInfo
-	configRevision uint64
-	registered     map[string]bool
-	published      map[string]ToolInfo
-	listener       net.Listener
-	httpServer     *http.Server
-	listenErr      string
-	listenAddr     string // tests set "127.0.0.1:0"; empty means the configured port
+	mu                    sync.Mutex // guards cfg, catalog, registered, listener state
+	cfg                   Config
+	loaded                bool
+	catalog               []ToolInfo
+	configRevision        uint64
+	inventoryReady        bool
+	discoveryDirty        bool
+	discoveryRunning      bool
+	discoveredConnections map[string][]string
+	configuredConnections map[string][]string
+	discoveredBorrowed    map[string][]string
+	registered            map[string]bool
+	published             map[string]ToolInfo
+	listener              net.Listener
+	httpServer            *http.Server
+	listenErr             string
+	listenAddr            string // tests set "127.0.0.1:0"; empty means the configured port
 
 	confirmMu sync.Mutex
 	pending   map[string]*pendingEntry
@@ -128,6 +136,7 @@ func New(o Options) *Relay {
 	r.logs = o.Logs
 	r.metrics = o.Metrics
 	r.graph = o.Graph
+	r.borrowedConnections = o.BorrowedConnections
 	r.lifecycleCtx, r.lifecycleCancel = context.WithCancel(context.Background())
 	r.authority.SetAudit(func(event AuditEvent) {
 		r.log.Infow(context.Background(), "MCP invocation audit", "event", event)
@@ -140,9 +149,9 @@ func New(o Options) *Relay {
 		r.unsubscribeInventory = source.OnInventoryChange(r.inventoryChanged)
 	}
 	if source, ok := o.Tools.(interface{ Subscribe(func()) func() }); ok {
-		r.unsubscribeTools = source.Subscribe(r.resync)
+		r.unsubscribeTools = source.Subscribe(r.toolsChanged)
 	} else {
-		o.Tools.OnChange(r.resync)
+		o.Tools.OnChange(r.toolsChanged)
 	}
 	return r
 }
@@ -164,7 +173,7 @@ func (r *Relay) ServiceStartup(_ context.Context, _ application.ServiceOptions) 
 			case <-r.lifecycleCtx.Done():
 				return
 			case <-ticker.C:
-				r.resync()
+				r.requestDiscovery()
 			}
 		}
 	}()
@@ -457,31 +466,104 @@ func (r *Relay) allowedConnections(parent context.Context, cfg *Config) map[stri
 	return out
 }
 
-// resync rebuilds the catalog and registers exactly the listed tools.
-func (r *Relay) resync() {
-	r.resyncMu.Lock()
-	defer r.resyncMu.Unlock()
+// listedConnections retains configured borrowed routes even when stopped.
+func (r *Relay) listedConnections(ctx context.Context, cfg *Config, tool ToolInfo, local []string) []string {
+	if tool.ConnectionOwner == "" || r.borrowedConnections == nil {
+		return local
+	}
+	connections, err := r.borrowedConnections(ctx, tool.PluginID, tool.ConnectionOwner, false)
+	if err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(connections))
+	for _, connection := range connections {
+		if cfg.ConnectionAccess(tool.PluginID, connection.ID) {
+			out = append(out, connection.ID)
+		}
+	}
+	return out
+}
+
+// requestDiscovery coalesces notifications without blocking their producer.
+func (r *Relay) requestDiscovery() {
 	r.mu.Lock()
 	if !r.loaded || r.stopped {
 		r.mu.Unlock()
 		return
 	}
-	cfg := r.cfg
-	revision := r.configRevision
+	r.discoveryDirty = true
+	if r.discoveryRunning {
+		r.mu.Unlock()
+		return
+	}
+	r.discoveryRunning = true
+	r.resyncMu.Lock()
 	r.mu.Unlock()
+	go r.discoverLoop()
+}
 
+// resync provides synchronous initial discovery and explicit refreshes.
+func (r *Relay) resync() {
+	r.mu.Lock()
+	if !r.loaded || r.stopped {
+		r.mu.Unlock()
+		return
+	}
+	r.discoveryDirty = true
+	if r.discoveryRunning {
+		r.mu.Unlock()
+		return
+	}
+	r.discoveryRunning = true
+	r.resyncMu.Lock()
+	r.mu.Unlock()
+	r.discoverLoop()
+}
+
+func (r *Relay) discoverLoop() {
+	for {
+		r.mu.Lock()
+		if r.stopped || !r.discoveryDirty {
+			r.discoveryRunning = false
+			r.resyncMu.Unlock()
+			r.mu.Unlock()
+			return
+		}
+		r.discoveryDirty = false
+		revision := r.configRevision
+		r.mu.Unlock()
+		r.discover(revision)
+	}
+}
+
+func (r *Relay) discover(revision uint64) {
 	catalog := BuildCatalog(r.tools.ListAll())
-	discoveryCtx, discoveryCancel := context.WithTimeout(invocation.HostContext(r.lifecycleCtx), 10*time.Second)
+	catalog = append(catalog, genericKubernetesTools()...)
+	listingCtx := invocation.HostContext(r.lifecycleCtx)
+	discoveryCtx, discoveryCancel := context.WithTimeout(listingCtx, 10*time.Second)
 	defer discoveryCancel()
+	connected := map[string][]string{}
+	configured := map[string][]string{}
 	if r.connections != nil {
+		profiles, err := r.connections.ListAllConnections(discoveryCtx)
+		if err == nil {
+			for pluginID, entries := range profiles {
+				for _, connection := range entries {
+					configured[pluginID] = append(configured[pluginID], connection.ID)
+				}
+			}
+		}
 		states, err := r.connections.GetAllConnectionStates(discoveryCtx)
 		if err == nil {
 			var routes []ResourceRoute
 			for pluginID, entries := range states {
 				for _, state := range entries {
 					if state.ReadinessError == nil && state.Readiness == sdktypes.ConnectionStatusConnected {
-						routes = append(routes, ResourceRoute{PluginID: pluginID, PluginName: pluginID,
-							Route: resourcev2.AccessRoute{Connection: state.Connection.ID}})
+						connected[pluginID] = append(connected[pluginID], state.Connection.ID)
+						if pluginID != "kubernetes" {
+							routes = append(routes, ResourceRoute{PluginID: pluginID, PluginName: pluginID,
+								Route: resourcev2.AccessRoute{Connection: state.Connection.ID}})
+						}
 					}
 				}
 			}
@@ -499,14 +581,99 @@ func (r *Relay) resync() {
 			}
 		}
 		for _, tool := range catalog {
-			if tool.Resource != nil && !builtins[tool.PluginID] {
+			if (tool.Resource != nil || isGenericKubernetesTool(tool)) && !builtins[tool.PluginID] {
 				builtins[tool.PluginID] = true
 				catalog = append(catalog, listConnectionsInfo(tool.PluginID, tool.PluginName))
 			}
 		}
 	}
-	allowed := r.allowedConnections(discoveryCtx, &cfg)
 
+	finalizeCatalog(catalog)
+	borrowed := map[string][]string{}
+	for _, tool := range catalog {
+		if tool.ConnectionOwner == "" || r.borrowedConnections == nil {
+			continue
+		}
+		key := tool.PluginID + "\x00" + tool.ConnectionOwner
+		if _, exists := borrowed[key]; exists {
+			continue
+		}
+		borrowed[key] = nil
+		connections, err := r.borrowedConnections(listingCtx, tool.PluginID, tool.ConnectionOwner, false)
+		if err == nil {
+			for _, connection := range connections {
+				borrowed[key] = append(borrowed[key], connection.ID)
+			}
+		}
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.stopped || r.discoveryDirty {
+		return
+	}
+	if r.configRevision != revision {
+		// Discovery is policy-independent, but publication must use a fresh fence.
+		// Keep the inventory and project only the current revision.
+		revision = r.configRevision
+	}
+	catalogChanged := !reflect.DeepEqual(r.catalog, catalog)
+	r.catalog = catalog
+	r.inventoryReady = true
+	r.discoveredConnections = connected
+	r.configuredConnections = configured
+	r.discoveredBorrowed = borrowed
+	if catalogChanged {
+		r.authority.UpdateCatalog(catalog)
+	}
+	r.projectPolicyLocked(revision, catalogChanged)
+}
+
+// toolsChanged publishes the cheap native-tool snapshot before returning.
+// Resource discovery remains coalesced, but removed or replaced native tools
+// must not retain callable handlers while an unrelated resource scan runs.
+func (r *Relay) toolsChanged() {
+	catalog := BuildCatalog(r.tools.ListAll())
+	catalog = append(catalog, genericKubernetesTools()...)
+	r.mu.Lock()
+	if !r.loaded || r.stopped {
+		r.mu.Unlock()
+		return
+	}
+	r.discoveryDirty = true
+	builtins := map[string]bool{}
+	for _, tool := range catalog {
+		if tool.BuiltIn {
+			builtins[tool.PluginID] = true
+		}
+	}
+	for _, tool := range catalog {
+		if isGenericKubernetesTool(tool) && !builtins[tool.PluginID] {
+			builtins[tool.PluginID] = true
+			catalog = append(catalog, listConnectionsInfo(tool.PluginID, tool.PluginName))
+		}
+	}
+	for _, tool := range r.catalog {
+		if tool.Resource == nil || tool.PluginID == "kubernetes" {
+			continue
+		}
+		catalog = append(catalog, tool)
+		if !builtins[tool.PluginID] {
+			builtins[tool.PluginID] = true
+			catalog = append(catalog, listConnectionsInfo(tool.PluginID, tool.PluginName))
+		}
+	}
+	finalizeCatalog(catalog)
+	changed := !reflect.DeepEqual(r.catalog, catalog)
+	r.catalog = catalog
+	if changed {
+		r.authority.UpdateCatalog(catalog)
+	}
+	r.projectPolicyLocked(r.configRevision, changed)
+	r.mu.Unlock()
+	r.requestDiscovery()
+}
+
+func finalizeCatalog(catalog []ToolInfo) {
 	sort.SliceStable(catalog, func(i, j int) bool {
 		if catalog[i].MCPName != catalog[j].MCPName {
 			return catalog[i].MCPName < catalog[j].MCPName
@@ -529,23 +696,44 @@ func (r *Relay) resync() {
 			tool.Status = StatusConflict
 		}
 	}
+}
+
+// projectPolicyLocked performs no discovery or external inventory reads.
+// Holding mu through registration prevents stale publications after retirement.
+func (r *Relay) projectPolicyLocked(revision uint64, catalogChanged bool) {
+	if r.stopped || revision != r.configRevision {
+		return
+	}
 	desired := map[string]ToolInfo{}
-	for _, t := range catalog {
-		if t.Status == StatusOK && cfg.Listed(t, allowed[t.PluginID]) {
-			desired[t.MCPName] = t
+	allowedByRoute := map[string][]string{}
+	for _, tool := range r.catalog {
+		key := tool.PluginID
+		ids := r.discoveredConnections[tool.PluginID]
+		if isGenericKubernetesTool(tool) {
+			key += "\x00configured"
+			ids = r.configuredConnections[tool.PluginID]
+		}
+		if tool.ConnectionOwner != "" {
+			key += "\x00" + tool.ConnectionOwner
+			ids = r.discoveredBorrowed[key]
+		}
+		allowed, exists := allowedByRoute[key]
+		if !exists {
+			allowed = make([]string, 0, len(ids))
+			for _, id := range ids {
+				if r.cfg.ConnectionAccess(tool.PluginID, id) {
+					allowed = append(allowed, id)
+				}
+			}
+			allowedByRoute[key] = allowed
+		}
+		if tool.Status == StatusOK && r.cfg.Listed(tool, allowed) {
+			desired[tool.MCPName] = tool
 		}
 	}
-
-	r.mu.Lock()
 	if r.published == nil {
 		r.published = make(map[string]ToolInfo)
 	}
-	if r.stopped || r.configRevision != revision {
-		r.mu.Unlock()
-		return
-	}
-	catalogChanged := !reflect.DeepEqual(r.catalog, catalog)
-	r.catalog = catalog
 	var removed []string
 	for name := range r.registered {
 		if _, ok := desired[name]; !ok {
@@ -555,22 +743,19 @@ func (r *Relay) resync() {
 		}
 	}
 	var added []ToolInfo
-	for name, t := range desired {
+	for name, tool := range desired {
 		r.registered[name] = true
-		if prior, exists := r.published[name]; !exists || !reflect.DeepEqual(prior, t) {
-			r.published[name] = t
-			added = append(added, t)
+		if prior, exists := r.published[name]; !exists || (catalogChanged && !reflect.DeepEqual(prior, tool)) {
+			r.published[name] = tool
+			added = append(added, tool)
 		}
 	}
-	r.mu.Unlock()
-
-	r.authority.UpdateCatalog(catalog)
 	sort.Slice(added, func(i, j int) bool { return added[i].MCPName < added[j].MCPName })
 	if len(removed) > 0 {
 		r.server.RemoveTools(removed...)
 	}
-	for _, t := range added {
-		r.server.AddTool(mcpTool(t), r.handler(t))
+	for _, tool := range added {
+		r.server.AddTool(mcpTool(tool), r.handler(tool))
 	}
 	if catalogChanged || len(removed) > 0 || len(added) > 0 {
 		r.emit(EventToolsChanged, "")
@@ -632,8 +817,17 @@ func (r *Relay) handler(t ToolInfo) mcp.ToolHandler {
 		r.mu.Lock()
 		cfg := r.cfg
 		r.mu.Unlock()
-		allowed := r.allowedConnections(ctx, &cfg)
-		if !cfg.Listed(t, allowed[t.PluginID]) {
+		var allowed []string
+		if t.Scope == ScopeConnection && t.ConnectionOwner == "" {
+			if isGenericKubernetesTool(t) {
+				r.mu.Lock()
+				allowed = append(allowed, r.configuredConnections[t.PluginID]...)
+				r.mu.Unlock()
+			} else {
+				allowed = r.allowedConnections(ctx, &cfg)[t.PluginID]
+			}
+		}
+		if !cfg.Listed(t, r.listedConnections(ctx, &cfg, t, allowed)) {
 			return errorResult(fmt.Sprintf("tool %s is disabled in Omniview AI Tools settings", t.MCPName)), nil
 		}
 
@@ -647,9 +841,31 @@ func (r *Relay) handler(t ToolInfo) mcp.ToolHandler {
 			if t.Resource != nil && id != t.Resource.Route.Connection {
 				return errorResult("connection does not match advertised resource route"), nil
 			}
-			resolved, err := r.connections.GetConnection(ctx, t.PluginID, id)
-			if err != nil {
-				return errorResult(fmt.Sprintf("unknown connection %s for plugin %s", id, t.PluginID)), nil
+			var resolved sdktypes.Connection
+			if t.ConnectionOwner != "" {
+				if r.borrowedConnections == nil {
+					return errorResult("OWNER_UNAVAILABLE: The connection owner is unavailable."), nil
+				}
+				configured, err := r.borrowedConnections(ctx, t.PluginID, t.ConnectionOwner, false)
+				if err != nil {
+					return errorResult("OWNER_UNAVAILABLE: The connection owner is unavailable."), nil
+				}
+				found := false
+				for _, candidate := range configured {
+					if candidate.ID == id {
+						resolved, found = candidate, true
+						break
+					}
+				}
+				if !found {
+					return errorResult("GRANT_DENIED: Cross-plugin connection access is not permitted."), nil
+				}
+			} else {
+				var err error
+				resolved, err = r.connections.GetConnection(ctx, t.PluginID, id)
+				if err != nil {
+					return errorResult(fmt.Sprintf("unknown connection %s for plugin %s", id, t.PluginID)), nil
+				}
 			}
 			if !cfg.ConnectionEnabled(t.PluginID, id, t) {
 				return errorResult(fmt.Sprintf(
@@ -683,6 +899,9 @@ func (r *Relay) handler(t ToolInfo) mcp.ToolHandler {
 				ConnectionID:  connectionID,
 				ArgumentsJSON: string(argsJSON),
 			}
+			if t.ConnectionOwner != "" {
+				payload.PluginName += " via " + t.ConnectionOwner
+			}
 			if connection != nil {
 				payload.ConnectionName = connection.Name
 			}
@@ -713,6 +932,10 @@ func (r *Relay) handler(t ToolInfo) mcp.ToolHandler {
 		var builtinResult *mcp.CallToolResult
 		err = r.authority.Dispatch(callCtx, func(dispatchCtx context.Context) error {
 			var callErr error
+			if isGenericKubernetesTool(t) {
+				builtinResult, callErr = r.dispatchGenericKubernetes(dispatchCtx, t, connection, argsJSON)
+				return callErr
+			}
 			if t.BuiltIn {
 				policy, err := r.authority.Policy(dispatchCtx)
 				if err != nil {
@@ -740,21 +963,86 @@ func (r *Relay) handler(t ToolInfo) mcp.ToolHandler {
 			if requestCtx.Err() != nil {
 				return nil, requestCtx.Err()
 			}
+			switch resourcev2.ErrorCode(err) {
+			case "CONNECTION_NOT_STARTED":
+				return errorResult("CONNECTION_NOT_STARTED: The owner connection is not started."), nil
+			case "OWNER_UNAVAILABLE":
+				return errorResult("OWNER_UNAVAILABLE: The connection owner is unavailable."), nil
+			case "GRANT_DENIED":
+				return errorResult("GRANT_DENIED: Cross-plugin connection access is not permitted."), nil
+			case "DELEGATION_NOT_ACTIVE":
+				return errorResult("DELEGATION_NOT_ACTIVE: The delegated tool call is not active."), nil
+			}
 			return errorResult("tool invocation failed"), nil
 		}
-		if t.BuiltIn {
+		if t.BuiltIn || isGenericKubernetesTool(t) {
 			return builtinResult, nil
+		}
+		if result == nil {
+			return errorResult("tool invocation failed"), nil
+		}
+		if t.ConnectionOwner != "" && result.IsError {
+			switch result.ErrorCode {
+			case "GRANT_DENIED":
+				return errorResult("GRANT_DENIED: Cross-plugin connection access is not permitted."), nil
+			case "CONNECTION_NOT_STARTED":
+				return errorResult("CONNECTION_NOT_STARTED: The owner connection is not started."), nil
+			case "OWNER_UNAVAILABLE":
+				return errorResult("OWNER_UNAVAILABLE: The connection owner is unavailable."), nil
+			case "DELEGATION_NOT_ACTIVE":
+				return errorResult("DELEGATION_NOT_ACTIVE: The delegated tool call is not active."), nil
+			case "CONFLICT":
+				return errorResult("CONFLICT: The object changed during the update."), nil
+			case "TIMEOUT":
+				return errorResult("TIMEOUT: The operation timed out."), nil
+			case "UNSUPPORTED":
+				return errorResult("UNSUPPORTED: The operation is not supported."), nil
+			default:
+				return errorResult("tool invocation failed"), nil
+			}
 		}
 
 		out := &mcp.CallToolResult{IsError: result.IsError, Content: make([]mcp.Content, 0, len(result.Content))}
 		for _, c := range result.Content {
 			out.Content = append(out.Content, &mcp.TextContent{Text: c.Text})
 		}
-		if len(result.StructuredContent) > 0 {
+		if !result.IsError && len(result.StructuredContent) > 0 {
 			out.StructuredContent = result.StructuredContent
 		}
 		return out, nil
 	}
+}
+
+// dispatchResolvedKubernetes binds consent to the discovered operation's exact
+// target before using its catalog observation at the native boundary.
+func (r *Relay) dispatchResolvedKubernetes(ctx context.Context, tool ToolInfo, argsJSON []byte) (*mcp.CallToolResult, error) {
+	confirm, err := r.authority.resolveKubernetes(ctx, tool, argsJSON)
+	if err != nil {
+		return nil, err
+	}
+	if confirm {
+		call := ctx.Value(authorityContextKey{}).(*authorityCall)
+		payload := PendingConfirmation{
+			MCPName: call.tool.MCPName, PluginID: tool.PluginID, PluginName: tool.PluginName,
+			ConnectionID: tool.Resource.Route.Connection, ArgumentsJSON: string(argsJSON),
+		}
+		approved, _ := r.awaitConfirmation(ctx, payload)
+		if !approved {
+			return errorResult("the user denied this call or authorization expired"), nil
+		}
+		if err := r.authority.approveResolvedKubernetes(ctx); err != nil {
+			return nil, err
+		}
+	}
+	value, err := DispatchResource(ctx, r.connections, tool, argsJSON)
+	if err != nil {
+		return nil, err
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	return &mcp.CallToolResult{StructuredContent: json.RawMessage(encoded)}, nil
 }
 
 type connectionListing struct {
@@ -777,6 +1065,22 @@ func (r *Relay) listConnections(ctx context.Context, cfg *Config, t ToolInfo) (*
 		listed[name] = enabled
 	}
 	r.mu.Unlock()
+
+	if r.borrowedConnections != nil {
+		owners := make(map[string]bool)
+		for _, candidate := range catalog {
+			if candidate.PluginID == t.PluginID && candidate.ConnectionOwner != "" {
+				owners[candidate.ConnectionOwner] = true
+			}
+		}
+		for owner := range owners {
+			borrowed, borrowErr := r.borrowedConnections(ctx, t.PluginID, owner, true)
+			if borrowErr != nil {
+				return errorResult("OWNER_UNAVAILABLE: The connection owner is unavailable."), nil
+			}
+			connections = append(connections, borrowed...)
+		}
+	}
 
 	listings := make([]connectionListing, 0, len(connections))
 	for _, connection := range connections {
@@ -869,7 +1173,7 @@ func rejectDuplicateFields(raw []byte) error {
 }
 
 func (r *Relay) inventoryChanged() {
-	r.resync()
+	r.requestDiscovery()
 	r.mu.Lock()
 	active := r.loaded && !r.stopped
 	r.mu.Unlock()

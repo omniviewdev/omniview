@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { Avatar, NavList } from '@omniviewdev/base-ui';
+import { Avatar, NavList, useTheme } from '@omniviewdev/base-ui';
 
 import Icon from '@/components/icons/Icon';
 import { type SectionSelection, Section } from './settingsContext';
@@ -38,6 +38,7 @@ const decodeKey = (key: string): { section: Section; id: string } => {
 };
 
 const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
+  const { density } = useTheme();
   const settings = useScopedSettings({ kind: 'host' });
   const { plugins } = usePluginManager();
 
@@ -58,11 +59,6 @@ const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
           label: category.label,
           icon: <Icon name={category.icon} size={16} />,
         })),
-        {
-          id: encodeKey(Section.Core, 'extensions'),
-          label: 'Extensions',
-          icon: <Icon name='LuBrainCircuit' size={16} />,
-        },
         {
           id: encodeKey(Section.Core, 'ai-tools'),
           label: 'AI Tools',
@@ -96,6 +92,7 @@ const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
   return (
     <NavList
       size='sm'
+      density={density}
       selectionMode='single'
       selectedKeys={new Set([selectedKey])}
       onSelectedKeysChange={(keys) => {

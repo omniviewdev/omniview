@@ -2,8 +2,6 @@ package resource
 
 import (
 	"context"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -49,15 +47,6 @@ func TestOnPluginStart_RegistersProvider(t *testing.T) {
 		LoadConnectionsFunc: func(_ context.Context) ([]types.Connection, error) {
 			return nil, nil
 		},
-		ListenForEventsFunc: func(ctx context.Context, _ resource.WatchEventSink, onReady func() error) error {
-			if onReady != nil {
-				if err := onReady(); err != nil {
-					return err
-				}
-			}
-			<-ctx.Done()
-			return nil
-		},
 		WatchConnectionsFunc: func(ctx context.Context, _ chan<- []types.Connection) error {
 			<-ctx.Done()
 			return nil
@@ -88,9 +77,9 @@ func TestOnPluginStart_DoubleStart_CancelsOld(t *testing.T) {
 	var oldCancelCalled bool
 	oldCtx, oldCancel := context.WithCancel(context.Background())
 	ctrl.plugins["p1"] = &pluginState{
-		provider:    &mockProvider{},
-		version:     1,
-		watchCancel: func() { oldCancelCalled = true; oldCancel() },
+		provider: &mockProvider{},
+		version:  1,
+		cancel:   func() { oldCancelCalled = true; oldCancel() },
 	}
 	ctrl.connections["p1"] = []types.Connection{}
 
@@ -127,7 +116,7 @@ func TestOnPluginStop_CancelsWatchCtx(t *testing.T) {
 	ctrl.plugins["p1"] = &pluginState{
 		provider: &mockProvider{},
 		version:  1,
-		watchCancel: func() {
+		cancel: func() {
 			cancelled = true
 			cancel()
 		},
@@ -149,16 +138,6 @@ func TestOnPluginStop_RemovesConnections(t *testing.T) {
 	_, ok := ctrl.connections["p1"]
 	ctrl.connsMu.RUnlock()
 	assert.False(t, ok)
-}
-
-func TestOnPluginStop_RemovesSubscriptions(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	registerMockPlugin(ctrl, "p1", &mockProvider{CatalogFunc: lifecycleTestCatalog("pods")})
-	require.NoError(t, ctrl.SubscribeResource(testInvocationContext(), "p1", admittedSubscription(t, ctrl, "p1", "c1", "pods")))
-
-	_ = ctrl.OnPluginStop("p1", defaultMeta())
-
-	assert.False(t, ctrl.subs.IsSubscribed("p1", "c1", "pods"))
 }
 
 // ============================================================================
@@ -208,100 +187,6 @@ func TestHasPlugin_TrueAndFalse(t *testing.T) {
 		assert.NoError(t, err)
 		assert.False(t, present)
 	}
-}
-
-// ============================================================================
-// listenForWatchEvents
-// ============================================================================
-
-func TestListenForWatchEvents_ContextCancel(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	mock := &mockProvider{
-		ListenForEventsFunc: func(ctx context.Context, _ resource.WatchEventSink, onReady func() error) error {
-			if onReady != nil {
-				if err := onReady(); err != nil {
-					return err
-				}
-			}
-			<-ctx.Done()
-			return nil
-		},
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
-
-	done := make(chan struct{})
-	ready := make(chan error, 1)
-	go func() {
-		ctrl.listenForWatchEvents(ctx, "p1", mock, sink, ready)
-		close(done)
-	}()
-
-	cancel()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("listenForWatchEvents did not exit after context cancel")
-	}
-}
-
-func TestListenForWatchEvents_ProviderError_CrashRecovery(t *testing.T) {
-	ctrl, _ := newTestControllerWithEmitter(t)
-	var called atomic.Int32
-	ctrl.onCrashCallback = func(_ string) { called.Add(1) }
-	registerMockPlugin(ctrl, "p1", &mockProvider{})
-
-	errorProvider := &mockProvider{
-		ListenForEventsFunc: func(_ context.Context, _ resource.WatchEventSink, onReady func() error) error {
-			if onReady != nil {
-				if err := onReady(); err != nil {
-					return err
-				}
-			}
-			return assert.AnError
-		},
-	}
-
-	ctx := context.Background()
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	ready2 := make(chan error, 1)
-	go func() {
-		defer wg.Done()
-		ctrl.listenForWatchEvents(ctx, "p1", errorProvider, sink, ready2)
-	}()
-	wg.Wait()
-
-	// Crash callback should have been invoked.
-	assert.Eventually(t, func() bool { return called.Load() >= 1 }, 2*time.Second, 10*time.Millisecond)
-}
-
-func TestListenForWatchEvents_ProviderError_ContextDone_NoCrash(t *testing.T) {
-	ctrl, emitter := newTestControllerWithEmitter(t)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // Already cancelled.
-
-	errorProvider := &mockProvider{
-		ListenForEventsFunc: func(_ context.Context, _ resource.WatchEventSink, onReady func() error) error {
-			if onReady != nil {
-				if err := onReady(); err != nil {
-					return err
-				}
-			}
-			return assert.AnError
-		},
-	}
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
-	ready3 := make(chan error, 1)
-
-	ctrl.listenForWatchEvents(ctx, "p1", errorProvider, sink, ready3)
-
-	events := emitter.EventsWithKey("plugin/crash")
-	assert.Empty(t, events, "should not crash if context already done")
 }
 
 // ============================================================================
@@ -372,7 +257,7 @@ func lifecycleTestCatalog(resourceTypes ...string) func(context.Context, resourc
 		catalog.Types = nil
 		for _, resourceType := range resourceTypes {
 			descriptor := canonicalTestCatalog("proof", resourceType).Types[0]
-			descriptor.Capabilities = append(descriptor.Capabilities, resource.Capability{Operation: resource.OperationUpdate, Guarantee: resource.BestEffortGuarantee})
+			descriptor.Capabilities = append(descriptor.Capabilities, resource.Capability{Operation: resource.OperationSourceUpdates, Guarantee: resource.ContinuityBestEffort})
 			catalog.Types = append(catalog.Types, descriptor)
 		}
 		return catalog, nil
@@ -386,7 +271,7 @@ func TestOnPluginStart_CatalogOnlyDoesNotRequireUpdateListener(t *testing.T) {
 		catalog.Types[0].Capabilities = nil
 		return catalog, nil
 	}}
-	backend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": provider})
+	backend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": provider}})
 	require.NoError(t, ctrl.OnPluginStart("catalog-only", defaultMeta(), backend))
 	t.Cleanup(func() { require.NoError(t, ctrl.OnPluginStop("catalog-only", defaultMeta())) })
 	catalog, err := ctrl.Catalog(testInvocationContext(), "catalog-only", resource.CatalogRequest{Route: resource.AccessRoute{Connection: "explicit"}})

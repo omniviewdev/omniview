@@ -44,19 +44,18 @@ type Service interface {
 	ResetConnectionProfile(ctx context.Context, pluginID string, connectionID string) (ConnectionProfileResult, error)
 	RemoveConnection(ctx context.Context, pluginID string, connectionID string) error
 
-	StartConnectionWatch(ctx context.Context, pluginID string, targets []resourcev2.ReadTarget) error
-	StopConnectionWatch(ctx context.Context, pluginID string, route resourcev2.AccessRoute) error
-	GetWatchState(ctx context.Context, pluginID string, route resourcev2.AccessRoute) (*resourcev2.WatchConnectionSummary, error)
-	EnsureResourceWatch(ctx context.Context, pluginID string, target resourcev2.ReadTarget) error
-	StopResourceWatch(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) error
-	RestartResourceWatch(ctx context.Context, pluginID string, target resourcev2.ReadTarget) error
-	IsResourceWatchRunning(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) (bool, error)
-	SubscribeResource(ctx context.Context, pluginID string, subscription HostSubscription) error
-	UnsubscribeResource(ctx context.Context, pluginID string, subscription HostSubscription) error
+	OpenSourceView(ctx context.Context, pluginID string, request HostSourceViewRequest) (HostSourceViewOpened, error)
+	SyncSourceView(ctx context.Context, pluginID, viewID string) error
+	RefreshSourceView(ctx context.Context, pluginID, viewID string) error
+	CloseSourceView(ctx context.Context, pluginID, viewID string) error
+	GetSourceStates(ctx context.Context, pluginID string, route resourcev2.AccessRoute) (HostSourceStates, error)
+	RetryConnectionSources(ctx context.Context, pluginID string, route resourcev2.AccessRoute) error
 
 	GetResourceGroups(ctx context.Context, pluginID string, route resourcev2.AccessRoute) ([]resourcev2.ResourceGroup, error)
 	GetResourceDefinition(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) (resourcev2.ResourceDefinition, error)
-	GetEditorSchemas(ctx context.Context, pluginID string, route resourcev2.AccessRoute) ([]resourcev2.EditorSchema, error)
+	GetSchemaFields(ctx context.Context, pluginID string, request SchemaFieldsRequest) (SchemaFieldsResult, error)
+	GetEditorSchemas(ctx context.Context, pluginID string, route resourcev2.AccessRoute) ([]EditorSchemaAssociation, error)
+	GetEditorSchemaDocument(ctx context.Context, pluginID string, route resourcev2.AccessRoute, documentID string) (EditorSchemaDocument, error)
 	GetSchemaDocument(ctx context.Context, pluginID string, route resourcev2.AccessRoute, reference resourcev2.SchemaDocumentReference) (resourcev2.SchemaDocument, error)
 	GetRelationships(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) ([]resourcev2.RelationshipDescriptor, error)
 	ResolveRelationships(ctx context.Context, pluginID string, request resourcev2.GetRequest) ([]resourcev2.ResolvedRelationship, error)

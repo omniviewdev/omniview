@@ -24,6 +24,14 @@ func (c *controller) invalidateProfileRoutesLocked(pluginID string, connections 
 // Profile changes also remove inventory until their effective snapshot is published.
 // Caller holds pluginsMu across retirement and its configuration fence.
 func (c *controller) invalidateSourceRoutesLocked(pluginID string, connections []string, removeInventory bool) error {
+	return c.invalidateSourceRoutesWithRecoveryLocked(pluginID, connections, removeInventory, !removeInventory)
+}
+
+func (c *controller) invalidateStoppedSourceRoutesLocked(pluginID, connection string) error {
+	return c.invalidateSourceRoutesWithRecoveryLocked(pluginID, []string{connection}, false, false)
+}
+
+func (c *controller) invalidateSourceRoutesWithRecoveryLocked(pluginID string, connections []string, removeInventory, recoverBinding bool) error {
 	generation := c.plugins[pluginID]
 	if generation == nil || generation.provider == nil {
 		return resourcev2.NewError("UNAVAILABLE", "Provider generation retired during profile apply.")
@@ -50,8 +58,15 @@ func (c *controller) invalidateSourceRoutesLocked(pluginID string, connections [
 	if generation.sourceEpoch == nil {
 		generation.sourceEpoch = make(map[string]uint64)
 	}
+	if removeInventory && generation.connectionLifecycleEpoch == nil {
+		generation.connectionLifecycleEpoch = make(map[string]uint64)
+	}
 	for connection := range seen {
 		generation.sourceEpoch[connection]++
+		c.schemas.DropConnection(pluginID, connection)
+		if removeInventory {
+			generation.connectionLifecycleEpoch[connection]++
+		}
 	}
 	c.finite.mu.Lock()
 	resolver := c.finite.authorities[pluginID]
@@ -70,7 +85,11 @@ func (c *controller) invalidateSourceRoutesLocked(pluginID string, connections [
 		}
 		c.graph.RemoveEdgesForConnection(pluginID, connection)
 		c.graph.ClearDeclarationsForConnection(pluginID, resourcev2.AccessRoute{Connection: connection})
-		c.subs.RemoveRoute(pluginID, connection)
+		if recoverBinding {
+			go c.sources.recoverBinding(pluginID, connection, generation, generation.sourceEpoch[connection])
+		} else {
+			go c.sources.invalidate(pluginID, connection)
+		}
 		if !removeInventory {
 			continue
 		}

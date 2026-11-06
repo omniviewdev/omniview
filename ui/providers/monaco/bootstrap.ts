@@ -36,5 +36,8 @@ export const monacoYaml = configureMonacoYaml(monaco, {
   enableSchemaRequest: true,
   schemas: [],
 });
+// The shared editor package uses this guard for its own Monaco setup.
+// The host already owns worker routing and the YAML provider.
+(globalThis as typeof globalThis & { __omniview_monaco_setup__?: boolean }).__omniview_monaco_setup__ = true;
 
 export { monaco };

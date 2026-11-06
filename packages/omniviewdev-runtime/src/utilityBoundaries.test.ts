@@ -4,6 +4,7 @@ import type { LogSessionRequest, MetricQueryRequest, PortForwardSessionRequest }
 
 const transport = vi.hoisted(() => ({ frames: [] as string[] }));
 vi.mock('@wailsio/runtime', () => ({
+  Events: { On: vi.fn(() => vi.fn()) },
   Call: { ByName: (method: string, ...args: unknown[]) => {
     transport.frames.push(JSON.stringify({ method, args }));
     return Promise.reject(new Error('Transport stopped after serialization'));

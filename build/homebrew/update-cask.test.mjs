@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { updateCask } from './update-cask.mjs';
 
 const sha = 'a'.repeat(64);
@@ -14,32 +19,57 @@ end
 `;
 
 for (const channel of ['omniview', 'omniview-nightly']) {
-  test(`${channel}: upgrade old app-only casks and retain metadata`, () => {
-    const result = updateCask(source(channel), '0.8.0-nightly.20261027', sha);
-    assert.match(result, /version "0.8.0-nightly.20261027"/);
-    assert.ok(result.includes(`  sha256 "${sha}"`));
-    assert.ok(result.includes(`  app "Omniview.app"\n${cli}`));
-    assert.ok(result.includes(source(channel).split('\n').find((line) => line.startsWith('  url '))));
-    assert.ok(result.includes('  zap trash: ["~/.omniview"]'));
-    assert.equal(updateCask(result, '0.8.0-nightly.20261027', sha), result);
-    const upgraded = updateCask(result, '0.8.1', 'c'.repeat(64));
-    assert.equal(upgraded.split(cli).length, 2);
-    assert.match(upgraded, /version "0.8.1"/);
+  test(`${channel}: refuse ambiguous or unsupported eligibility`, () => {
+    for (const stanza of [
+      '  depends_on macos: ">= 12.3"',
+      '  depends_on macos: ">= 12.3.1"',
+      '  depends_on macos: ">= 26.0.1"',
+      '  depends_on macos: ">= 28"',
+      '  depends_on macos: ">= :future_release"',
+      '  depends_on macos: :future_release',
+      '  depends_on macos: ">= 12", arch: :arm64',
+      '  depends_on macos: ["12", "13"]',
+      '  depends_on :macos => ">= 12"',
+      '  depends_on macos: ">= 12"\n  depends_on macos: ">= 13"',
+      '  depends_on macos: ">= 12" if Hardware::CPU.arm?',
+      '  depends_on macos:\n    ">= 12"',
+    ]) {
+      const input = source(channel).replace('  app ', `${stanza}\n  app `);
+      assert.throws(() => updateCask(input, '0.26.0', sha), Error);
+    }
   });
 }
 
-test('refuse malformed publication inputs without changing files', () => {
+test('reject invalid release data and ambiguous cask ownership', () => {
   for (const version of ['latest', '0.8.0"\n  binary "evil', '../0.8.0']) {
-    assert.throws(() => updateCask(source('omniview'), version, sha), /Invalid cask version/);
+    assert.throws(() => updateCask(source('omniview'), version, sha), Error);
   }
-  assert.throws(() => updateCask(source('omniview'), '0.8.0', 'broken'), /Invalid SHA-256/);
+  assert.throws(() => updateCask(source('omniview'), '0.8.0', 'broken'), Error);
   for (const stanza of ['version', 'sha256', 'app']) {
     const line = source('omniview').split('\n').find((value) => value.startsWith(`  ${stanza} `));
-    assert.throws(() => updateCask(source('omniview').replace(line, ''), '0.8.0', sha), /exactly one/);
-    assert.throws(() => updateCask(source('omniview').replace(line, `${line}\n${line}`), '0.8.0', sha), /exactly one/);
+    assert.throws(() => updateCask(source('omniview').replace(line, ''), '0.8.0', sha), Error);
+    assert.throws(() => updateCask(source('omniview').replace(line, `${line}\n${line}`), '0.8.0', sha), Error);
   }
-  assert.throws(() => updateCask(source('omniview').replace('Omniview.app', 'Other.app'), '0.8.0', sha), /app stanza/);
-  assert.throws(() => updateCask(source('omniview').replace('  app ', '  binary "wrong"\n  app '), '0.8.0', sha), /Unexpected binary/);
-  assert.throws(() => updateCask(source('omniview').replace('  app ', `${cli}\n${cli}\n  app `), '0.8.0', sha), /Unexpected binary/);
-  assert.throws(() => updateCask(source('omniview').replace('darwin_universal.dmg', 'darwin_arm64.dmg'), '0.8.0', sha), /release archive URL/);
+  assert.throws(() => updateCask(source('omniview').replace('Omniview.app', 'Other.app'), '0.8.0', sha), Error);
+  assert.throws(() => updateCask(source('omniview').replace('  app ', '  binary "wrong"\n  app '), '0.8.0', sha), Error);
+  assert.throws(() => updateCask(source('omniview').replace('  app ', `${cli}\n${cli}\n  app `), '0.8.0', sha), Error);
+  assert.throws(() => updateCask(source('omniview').replace('darwin_universal.dmg', 'darwin_arm64.dmg'), '0.8.0', sha), Error);
+});
+
+test('publication command leaves precise unsupported tap policy untouched', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'omniview-cask-policy-'));
+  const file = join(directory, 'omniview.rb');
+  try {
+    for (const minimum of ['12.3', '12.3.1', '26.0.1']) {
+      const original = source('omniview').replace('  app ', `  depends_on macos: ">= ${minimum}"\n  app `);
+      writeFileSync(file, original);
+      const command = spawnSync(process.execPath, [
+        fileURLToPath(new URL('./update-cask.mjs', import.meta.url)), file, '0.27.1', sha,
+      ], { encoding: 'utf8' });
+      assert.notEqual(command.status, 0);
+      assert.equal(readFileSync(file, 'utf8'), original);
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

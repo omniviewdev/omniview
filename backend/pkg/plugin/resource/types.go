@@ -7,7 +7,7 @@ import (
 )
 
 // ConnectionState is the full state snapshot for a single connection,
-// combining metadata, lifecycle, and watch state. Returned by GetAllConnectionStates
+// combining metadata, lifecycle, and source state. Returned by GetAllConnectionStates
 // so the frontend can hydrate everything in a single call.
 type ConnectionState struct {
 	// Connection metadata (name, avatar, labels, etc.)
@@ -17,8 +17,8 @@ type ConnectionState struct {
 	Readiness      types.ConnectionStatusCode `json:"readiness"`
 	ReadinessError *apperror.AppError         `json:"readinessError,omitempty"`
 
-	// Per-resource watch states (resource key → WatchState enum).
-	Resources map[string]sdkresource.WatchState `json:"resources"`
+	// Per-resource source states (resource key → source state).
+	Resources map[string]string `json:"resources"`
 
 	// Observed cache membership, not source totals.
 	ResourceCounts map[string]sdkresource.Count `json:"resourceCounts"`

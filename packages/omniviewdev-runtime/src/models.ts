@@ -8,14 +8,16 @@ export {
   ConnectionLifecycle,
   ConnectionStatus,
   ConnectionStatusCode,
-  PluginInfo,
 } from './bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
+export { PluginInfo } from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/types/models';
 export * from './bindings/github.com/omniviewdev/plugin-sdk/pkg/config/models';
 export * from './resource/v2/domain';
 export * from './resource/v2/ancillary';
 export * from './resource/v2/host';
 export * from './resource/v2/graph';
-export { WatchState, SyncPolicy } from './types/watch';
+export * as ResourceQuery from './resource/v2/query';
+export * as QueryLease from './resource/v2/query-lease';
+export type { SourceSessionState, SourceMode, SourceContinuity, SourceCoverage } from './types/source';
 export type { LogSessionRequest } from './logs';
 export type { MetricQueryRequest, SubscribeRequest } from './metric';
 export type { PortForwardSessionRequest, ResourcePortForwardTarget } from './networker';

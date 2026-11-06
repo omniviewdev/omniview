@@ -45,6 +45,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
   const [follow, setFollow] = useState(true);
   const [paused, setPaused] = useState(false);
   const [events, setEvents] = useState<LogStreamEvent[]>([]);
+  const [sessionReady, setSessionReady] = useState(false);
   const [openFilterKey, setOpenFilterKey] = useState<string | null>(null);
 
   // Track programmatic scrolls so scroll handler doesn't disengage follow
@@ -108,6 +109,16 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
   );
   const effectiveSource = source ?? sessionSource;
 
+  const previousSource = useRef({ source: effectiveSource, sessionId });
+  React.useEffect(() => {
+    setEvents([]);
+    setSessionReady(false);
+    if (previousSource.current.source !== effectiveSource || previousSource.current.sessionId !== sessionId) {
+      clearBuffer();
+      previousSource.current = { source: effectiveSource, sessionId };
+    }
+  }, [effectiveSource, sessionId, clearBuffer]);
+
   // Source selection (multi-select filtering)
   const sourceState = useLogSources({ sessionId, events, entries, version, declaredDimensions: effectiveSource?.declaredDimensions });
 
@@ -132,6 +143,10 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
   );
 
   const handleEvent = useCallback((event: LogStreamEvent) => {
+    if (event.type === StreamEventType.SESSION_READY) {
+      setSessionReady(true);
+    }
+
     setEvents((prev) => [...prev.slice(-99), event]);
   }, []);
 
@@ -441,7 +456,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
 
   // Derive stream-ended / source-removed state from events
   const streamEnded = useMemo(
-    () => events.some((e) => e.type === StreamEventType.STREAM_ENDED),
+    () => events.some((e) => e.type === StreamEventType.STREAM_ENDED && !e.source_id),
     [events],
   );
   const sourcesRemoved = useMemo(
@@ -449,7 +464,12 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
     [events],
   );
   const hasSourcesRemoved = sourcesRemoved.length > 0;
-  const streamDead = streamEnded || (hasSourcesRemoved && !hasErrors);
+  // One source can disappear while other sources keep streaming.
+  const streamDead = streamEnded;
+  const hasFatalErrors = streamErrors.some((event) => !event.source_id);
+  const streamEndMessage = hasSourcesRemoved
+    ? `Log stream ended — ${sourcesRemoved.length} source${sourcesRemoved.length !== 1 ? 's' : ''} no longer available`
+    : 'Log stream ended';
 
   const handleCloseTab = useCallback(() => {
     if (sessionId) {
@@ -600,8 +620,8 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
         toolbarActions={toolbarActions}
       />
 
-      {/* Error banner when logs are flowing but errors occurred */}
-      {hasErrors && filteredLineCount > 0 && !streamDead && (
+      {/* Source errors remain visible even while sibling sources have no logs. */}
+      {hasErrors && !((hasFatalErrors || streamDead) && filteredLineCount === 0) && (
         <div className={styles.Banner} data-color='warning'>
           <LuTriangleAlert size={14} />
           <Text size='xs' className={styles.BannerText}>
@@ -611,14 +631,12 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
         </div>
       )}
 
-      {/* Dead stream banner — resource deleted or connection lost */}
+      {/* Whole-session completion can include individual source removals. */}
       {streamDead && filteredLineCount > 0 && (
         <div className={styles.Banner} data-color={hasSourcesRemoved ? 'danger' : 'warning'} data-tall>
           <LuUnplug size={14} />
           <Text size='xs' className={styles.BannerText}>
-            {hasSourcesRemoved
-              ? `Resource removed — ${sourcesRemoved.length} source${sourcesRemoved.length !== 1 ? 's' : ''} no longer available`
-              : 'Log stream ended — connection lost'}
+            {streamEndMessage}
           </Text>
           {sessionId && (
             <Button
@@ -636,19 +654,25 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
       )}
 
       {/* Empty error state -- no logs and errors present */}
-      {(hasErrors || streamDead) && filteredLineCount === 0 ? (
+      {(hasFatalErrors || streamDead) && filteredLineCount === 0 ? (
         <div className={styles.Placeholder}>
-          {streamDead && !hasErrors ? (
+          {streamDead && !hasFatalErrors ? (
             <>
               <LuUnplug size={32} className={styles.WarningIcon} />
               <Text weight='semibold' tone='warning'>
-                {hasSourcesRemoved ? 'Resource no longer available' : 'Log stream ended'}
+                {streamEndMessage}
               </Text>
               <Text size='sm' tone='muted' className={styles.PlaceholderText}>
-                {hasSourcesRemoved
-                  ? 'The resource was deleted or is no longer accessible.'
-                  : 'The connection to the log stream was lost.'}
+                {entries.length > 0
+                  ? 'No logs match the selected sources.'
+                  : 'No log entries were returned.'}
               </Text>
+              {streamErrors.map((err, i) => (
+                <Text key={i} size='sm' tone='muted' mono className={styles.PlaceholderError}>
+                  {err.source_id && <><strong>{err.source_id}:</strong>{' '}</>}
+                  {err.message}
+                </Text>
+              ))}
               {sessionId && (
                 <Button
                   size='sm'
@@ -689,16 +713,20 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
             </>
           )}
         </div>
-      ) : !(hasErrors || streamDead) && filteredLineCount === 0 ? (
-        /* Loading state — waiting for log data */
+      ) : !(hasFatalErrors || streamDead) && filteredLineCount === 0 ? (
+        /* Distinguish an empty connected stream from an unconnected stream. */
         <div className={styles.Placeholder}>
-          <Spinner size='lg' />
+          {entries.length === 0 && !sessionReady && <Spinner size='lg' />}
           <Text size='sm' tone='subtle'>
-            Connecting to log sources...
+            {entries.length > 0
+              ? 'No logs match the selected sources.'
+              : sessionReady
+                ? 'No log entries yet.'
+                : 'Connecting to log sources...'}
           </Text>
-          {sourceState.sources.length > 0 && (
+          {entries.length === 0 && sourceState.sources.length > 0 && (
             <Text size='xs' tone='subtle'>
-              {sourceState.sources.length} source{sourceState.sources.length !== 1 ? 's' : ''} found, waiting for data
+              {sourceState.sources.length} source{sourceState.sources.length !== 1 ? 's' : ''} {sessionReady ? 'connected, waiting for data' : 'found, connecting'}
             </Text>
           )}
         </div>

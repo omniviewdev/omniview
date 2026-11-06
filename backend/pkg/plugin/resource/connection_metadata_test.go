@@ -195,7 +195,7 @@ func TestConnectionMetadataStopRetainsSDKStateButRevokesTransport(t *testing.T) 
 	state := metadataTestState(ctrl, "p", &mockProvider{})
 	_, err := ctrl.acceptMetadata("p", state, metadataTestEvent("c", "1", "retained"))
 	require.NoError(t, err)
-	state.watchCancel()
+	state.cancel()
 	ctrl.retireMetadata("p", state)
 	require.False(t, state.metadataAvailable)
 	// Host cannot invent a stale SDK entry or a new revision when transport stops.
@@ -405,7 +405,7 @@ func TestConnectionMetadataReplacementRevokesOldTransportBeforeReadiness(t *test
 	}
 	done := make(chan error, 1)
 	go func() {
-		done <- ctrl.OnPluginStart("p", defaultMeta(), plugintypes.NewInProcessBackend(map[string]interface{}{"resource": next}))
+		done <- ctrl.OnPluginStart("p", defaultMeta(), plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": next}}))
 	}()
 	select {
 	case <-next.entered:

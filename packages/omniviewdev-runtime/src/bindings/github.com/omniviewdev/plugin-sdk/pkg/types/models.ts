@@ -7,9 +7,6 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as config$0 from "../config/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
 import * as time$0 from "../../../../../time/models.js";
 
 /**
@@ -434,62 +431,6 @@ export enum ConnectionStatusCode {
     ConnectionStatusRequestEntityTooLarge = "REQUEST_ENTITY_TOO_LARGE",
 };
 
-/**
- * PluginInfo represents the display/API-facing view of a plugin.
- * This type is safe to serialize to JSON for the frontend.
- * Runtime fields (RPCClient, PluginClient) live in the host-only PluginRecord.
- */
-export class PluginInfo {
-    "id": string;
-    "metadata": config$0.PluginMeta;
-    "phase": string;
-    "enabled": boolean;
-    "devMode": boolean;
-    "devPath"?: string;
-    "capabilities": Capability[];
-    "lastError"?: string;
-
-    /** Creates a new PluginInfo instance. */
-    constructor($$source: Partial<PluginInfo> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("metadata" in $$source)) {
-            this["metadata"] = (new config$0.PluginMeta());
-        }
-        if (!("phase" in $$source)) {
-            this["phase"] = "";
-        }
-        if (!("enabled" in $$source)) {
-            this["enabled"] = false;
-        }
-        if (!("devMode" in $$source)) {
-            this["devMode"] = false;
-        }
-        if (!("capabilities" in $$source)) {
-            this["capabilities"] = [];
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new PluginInfo instance from a string or object.
-     */
-    static createFrom($$source: any = {}): PluginInfo {
-        const $$createField1_0 = $$createType7;
-        const $$createField6_0 = $$createType8;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("metadata" in $$parsedSource) {
-            $$parsedSource["metadata"] = $$createField1_0($$parsedSource["metadata"]);
-        }
-        if ("capabilities" in $$parsedSource) {
-            $$parsedSource["capabilities"] = $$createField6_0($$parsedSource["capabilities"]);
-        }
-        return new PluginInfo($$parsedSource as Partial<PluginInfo>);
-    }
-}
-
 // Private type creation functions
 const $$createType0 = $Create.Map($Create.Any, $Create.Any);
 const $$createType1 = ConnectionLifecycle.createFrom;
@@ -498,5 +439,3 @@ const $$createType3 = ConnectionAutoConnect.createFrom;
 const $$createType4 = $Create.Nullable($$createType3);
 const $$createType5 = Connection.createFrom;
 const $$createType6 = $Create.Nullable($$createType5);
-const $$createType7 = config$0.PluginMeta.createFrom;
-const $$createType8 = $Create.Array($Create.Any);

@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -64,22 +65,23 @@ type Manager interface {
 	Shutdown()
 
 	InstallInDevMode() (*config.PluginMeta, error)
-	InstallDevPluginFromPath(path string) (sdktypes.PluginInfo, error)
-	UnlinkDevPlugin(id string) (sdktypes.PluginInfo, error)
+	InstallDevPluginFromPath(path string) (plugintypes.PluginInfo, error)
+	UnlinkDevPlugin(id string) (plugintypes.PluginInfo, error)
 	InstallFromPathPrompt() (*config.PluginMeta, error)
 	InstallPluginFromPath(path string) (*config.PluginMeta, error)
 	InstallPluginVersion(pluginID string, version string) (*config.PluginMeta, error)
 
-	LoadPlugin(id string, opts *LoadPluginOptions) (sdktypes.PluginInfo, error)
-	ReloadPlugin(id string) (sdktypes.PluginInfo, error)
+	LoadPlugin(id string, opts *LoadPluginOptions) (plugintypes.PluginInfo, error)
+	ReloadPlugin(id string) (plugintypes.PluginInfo, error)
 	UnloadPlugin(id string) error
 	StopDevPlugin(id string) error
 	ReloadManagedPlugin(ctx context.Context, id, source, generation string) error
-	RetryFailedPlugin(id string) (sdktypes.PluginInfo, error)
-	UninstallPlugin(id string) (sdktypes.PluginInfo, error)
+	RetryFailedPlugin(id string) (plugintypes.PluginInfo, error)
+	UninstallPlugin(id string) (plugintypes.PluginInfo, error)
+	SetPluginEnabled(id string, enabled bool) (plugintypes.PluginInfo, error)
 
-	GetPlugin(id string) (sdktypes.PluginInfo, error)
-	ListPlugins() []sdktypes.PluginInfo
+	GetPlugin(id string) (plugintypes.PluginInfo, error)
+	ListPlugins() []plugintypes.PluginInfo
 	GetPluginMeta(id string) (config.PluginMeta, error)
 	ListPluginMetas() []config.PluginMeta
 	GetPluginProfilingStatuses() []PluginProfilingStatus
@@ -116,13 +118,15 @@ func NewManager(
 	settingsProvider pkgsettings.Provider,
 	registryClient *registry.Client,
 	telemetryConfigFn func() TelemetryEnvConfig,
+	catalog *Catalog,
 ) Manager {
 	pluginPprofEnabled := false
 	if settingsProvider != nil {
 		enabled, err := settingsProvider.GetBool("developer.plugin_pprof_enabled")
 		pluginPprofEnabled = err == nil && enabled
 	}
-	return &pluginManager{
+	pm := &pluginManager{
+		catalog:     catalog,
 		ctx:         nil, // set by Initialize or Run
 		logger:      logger,
 		stateRoot:   stateRoot,
@@ -155,6 +159,13 @@ func NewManager(
 		pluginOpsMu:        sync.Mutex{},
 		pluginOpsLocks:     make(map[string]*sync.Mutex),
 	}
+	if source, ok := resourceController.(interface {
+		SetFatalTransportCallback(func(string, plugintypes.PluginBackend, func(func()) bool))
+	}); ok {
+		source.SetFatalTransportCallback(pm.markFatalSourceTransport)
+	}
+	pm.configureConnectionSharing(resourceController, toolsController)
+	return pm
 }
 
 // DevServerChecker allows the plugin manager to check if a plugin is managed
@@ -171,6 +182,7 @@ type pluginManager struct {
 	pluginsRoot         *appstate.ScopedRoot // scoped to ~/.omniview/plugins
 	recordsMu           sync.RWMutex
 	records             map[string]*plugintypes.PluginRecord
+	catalog             *Catalog
 	pendingArchiveState map[string]*plugintypes.PluginStateRecord // recordsMu protects durable preimages until archive commit
 	connlessControllers map[sdktypes.Capability]plugintypes.Controller
 	connfullControllers map[sdktypes.Capability]plugintypes.LifecycleController
@@ -186,6 +198,8 @@ type pluginManager struct {
 	emitter             resource.EventEmitter
 	telemetryConfigFn   func() TelemetryEnvConfig // returns current telemetry config for env injection
 	pluginPprofEnabled  bool                      // immutable startup snapshot; changes require a host restart
+	sharing             *sharingState
+	activities          *activityBinding
 
 	// pluginOpsMu serializes load/reload/unload operations per plugin to
 	// prevent concurrent lifecycle transitions for the same plugin (e.g.
@@ -209,6 +223,9 @@ type managedDevServers interface {
 // plugin (e.g. two file-change events triggering simultaneous reloads).
 func (pm *pluginManager) pluginOpsLock(pluginID string) *sync.Mutex {
 	pm.pluginOpsMu.Lock()
+	if pm.pluginOpsLocks == nil {
+		pm.pluginOpsLocks = make(map[string]*sync.Mutex)
+	}
 	mu, ok := pm.pluginOpsLocks[pluginID]
 	if !ok {
 		mu = &sync.Mutex{}
@@ -234,6 +251,12 @@ const crashContextLogLines = 20
 
 // HandlePluginCrash handles a plugin process crash with exponential backoff recovery.
 func (pm *pluginManager) HandlePluginCrash(pluginID string) {
+	pm.handlePluginCrash(pluginID, nil, nil)
+}
+
+func (pm *pluginManager) handlePluginCrash(pluginID string, expected *probedCrash, unlock func()) {
+	pm.retireConnectionSharing(pluginID)
+	pm.retireActivities(pluginID)
 	// Capture the last few log entries before the crash for diagnostics.
 	// These are pulled from the in-memory ring buffer that captures all
 	// plugin stderr output (including panic stack traces).
@@ -297,10 +320,17 @@ func (pm *pluginManager) HandlePluginCrash(pluginID string) {
 		}
 	}
 	pm.recordsMu.Unlock()
+	if unlock != nil {
+		unlock()
+	}
 
 	// Delegate to the health checker's backoff-based recovery if available.
 	if pm.healthChecker != nil {
-		pm.healthChecker.HandleCrashWithBackoff(pluginID)
+		if expected != nil {
+			pm.healthChecker.handleCrashWithBackoff(pluginID, expected)
+		} else {
+			pm.healthChecker.HandleCrashWithBackoff(pluginID)
+		}
 		return
 	}
 
@@ -312,7 +342,17 @@ func (pm *pluginManager) HandlePluginCrash(pluginID string) {
 		timer.Stop()
 		return
 	}
-	if _, err := pm.ReloadPlugin(pluginID); err != nil {
+	var err error
+	if expected == nil {
+		_, err = pm.ReloadPlugin(pluginID)
+	} else {
+		var current bool
+		current, err = pm.reloadProbedCrash(pluginID, expected)
+		if !current {
+			return
+		}
+	}
+	if err != nil {
 		pm.logger.Errorw(pm.ctx, "plugin crash recovery failed", "pluginID", pluginID, "error", err)
 		pm.emitter.Emit(EventCrashRecoveryFailed, PluginErrorPayload{
 			PluginID: pluginID,
@@ -341,10 +381,18 @@ func (pm *pluginManager) Shutdown() {
 	}
 	pm.recordsMu.RUnlock()
 
-	for id, record := range snapshot {
-		if err := pm.shutdownPlugin(id, record); err != nil {
-			pm.logger.Warnw(pm.ctx, "failed to shut down plugin", "pluginID", id, "error", err)
+	for id := range snapshot {
+		lock := pm.pluginOpsLock(id)
+		lock.Lock()
+		pm.recordsMu.RLock()
+		record := pm.records[id]
+		pm.recordsMu.RUnlock()
+		if record != nil {
+			if err := pm.shutdownPlugin(id, record); err != nil {
+				pm.logger.Warnw(pm.ctx, "failed to shut down plugin", "pluginID", id, "error", err)
+			}
 		}
+		lock.Unlock()
 	}
 
 	if err := pm.pidTracker.Save(); err != nil {
@@ -399,13 +447,26 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 	// Kill any orphaned plugin processes from a previous unclean shutdown.
 	pm.pidTracker.CleanupStale(pm.logger)
 
+	pluginDir := pm.pluginsRoot.ResolvePath("")
+
+	states, err := pm.readPluginStateJSON()
+	if err != nil {
+		pm.logger.Warnw(pm.ctx, "failed to read plugin state file, reconciling from filesystem", "error", err)
+		states = pm.reconcileStatesFromFilesystem(pluginDir, states)
+	}
+	// Catalog collisions stay visible, but must not block unrelated startup.
+	builtinErr := pm.discoverBuiltins(states)
 	blockedUninstalls, err := pm.restoreUninstallRecoveries()
 	if err != nil {
-		return fmt.Errorf("validate pending plugin uninstalls: %w", err)
+		return errors.Join(builtinErr, fmt.Errorf("validate pending plugin uninstalls: %w", err))
 	}
 	blockedArchives, err := pm.reconcileArchiveRecoveries()
 	if err != nil {
-		return fmt.Errorf("validate pending plugin archive replacements: %w", err)
+		var builtinRecovery builtinArchiveRecoveryError
+		if !errors.As(err, &builtinRecovery) {
+			return errors.Join(builtinErr, fmt.Errorf("validate pending plugin archive replacements: %w", err))
+		}
+		builtinErr = errors.Join(builtinErr, err)
 	}
 	for id := range blockedArchives {
 		if blockedUninstalls == nil {
@@ -414,13 +475,6 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 		blockedUninstalls[id] = true
 	}
 
-	pluginDir := pm.pluginsRoot.ResolvePath("")
-
-	states, err := pm.readPluginStateJSON()
-	if err != nil {
-		pm.logger.Warnw(pm.ctx, "failed to read plugin state file, reconciling from filesystem", "error", err)
-		states = pm.reconcileStatesFromFilesystem(pluginDir, states)
-	}
 	if len(blockedUninstalls) != 0 {
 		allowedStates := states[:0]
 		for _, state := range states {
@@ -434,7 +488,7 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 	pm.logger.Debugw(pm.ctx, "Loading plugins states from disk", "states", states)
 
 	if _, err = os.ReadDir(pluginDir); err != nil {
-		return fmt.Errorf("error reading plugin directory: %w", err)
+		return errors.Join(builtinErr, fmt.Errorf("error reading plugin directory: %w", err))
 	}
 
 	// Reverse migration: rename <id>-dev → <id> if needed.
@@ -443,7 +497,7 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 	// Re-read directory after potential renames so subsequent code sees migrated names.
 	files, err := os.ReadDir(pluginDir)
 	if err != nil {
-		return fmt.Errorf("error re-reading plugin directory after migration: %w", err)
+		return errors.Join(builtinErr, fmt.Errorf("error re-reading plugin directory after migration: %w", err))
 	}
 
 	// A recovery marker owns the original inode, not whatever now occupies its
@@ -477,7 +531,7 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 
 	pm.emitter.Emit(EventInitComplete)
 
-	return nil
+	return builtinErr
 }
 
 // devPluginEntry is a dev-mode plugin whose dev server Initialize starts.
@@ -513,6 +567,9 @@ func (pm *pluginManager) planPluginLoads(
 	// repository/directory was removed; rebind only through the install transaction.
 	workspaceDev := make(map[string]bool)
 	for _, state := range states {
+		if _, owned := pm.builtin(state.ID); owned {
+			continue
+		}
 		if !state.DevMode {
 			continue
 		}
@@ -538,6 +595,9 @@ func (pm *pluginManager) planPluginLoads(
 	var toLoad []pluginLoadEntry
 
 	for _, file := range files {
+		if _, owned := pm.builtin(file.Name()); owned {
+			continue
+		}
 		if !file.IsDir() {
 			continue
 		}
@@ -598,6 +658,9 @@ func (pm *pluginManager) reconcileStatesFromFilesystem(
 // the dev directory exists.
 func (pm *pluginManager) migrateDevPluginDirs(states []plugintypes.PluginStateRecord) {
 	for _, state := range states {
+		if _, owned := pm.builtin(state.ID); owned {
+			continue
+		}
 		devName := state.ID + "-dev"
 
 		devExists := false
@@ -699,21 +762,21 @@ func (pm *pluginManager) startDevServers(devPlugins []devPluginEntry) {
 }
 
 // GetPlugin returns the plugin with the given ID.
-func (pm *pluginManager) GetPlugin(id string) (sdktypes.PluginInfo, error) {
+func (pm *pluginManager) GetPlugin(id string) (plugintypes.PluginInfo, error) {
 	pm.recordsMu.RLock()
 	defer pm.recordsMu.RUnlock()
 	record, ok := pm.records[id]
 	if !ok {
-		return sdktypes.PluginInfo{}, fmt.Errorf("plugin '%s' not found", id)
+		return plugintypes.PluginInfo{}, fmt.Errorf("plugin '%s' not found", id)
 	}
 	return record.ToInfo(), nil
 }
 
 // ListPlugins returns all loaded plugins.
-func (pm *pluginManager) ListPlugins() []sdktypes.PluginInfo {
+func (pm *pluginManager) ListPlugins() []plugintypes.PluginInfo {
 	pm.recordsMu.RLock()
 	defer pm.recordsMu.RUnlock()
-	plugins := make([]sdktypes.PluginInfo, 0, len(pm.records))
+	plugins := make([]plugintypes.PluginInfo, 0, len(pm.records))
 	for _, record := range pm.records {
 		plugins = append(plugins, record.ToInfo())
 	}
@@ -744,6 +807,7 @@ func (pm *pluginManager) ListPluginMetas() []config.PluginMeta {
 
 // GetPluginVersions fetches version info for a marketplace plugin.
 func (pm *pluginManager) GetPluginVersions(pluginID string) ([]registry.VersionInfo, error) {
+	pm.syncRegistryURL()
 	return pm.registryClient.GetPluginVersions(context.Background(), pluginID)
 }
 

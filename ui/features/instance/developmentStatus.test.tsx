@@ -3,12 +3,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import InstanceIndicator from '@/components/displays/Footer/InstanceIndicator';
 import { hostStatus, parseDevelopmentStatus } from './developmentStatus';
 
-const host = vi.hoisted(() => ({
-  identity: { kind: 'development', displayName: 'main', instanceID: 'instance', generation: 'generation' },
-  info: { workspaceID: 'workspace', generation: 'generation', readiness: 'host-ready', endpoints: { browser: null as string | null }, repositories: [] },
-  status: 'confirmed',
-  refreshInfo: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
-}));
+const host = vi.hoisted(() => {
+  const endpoints: { browser: string | null; vite: string | null } = { browser: null, vite: 'http://127.0.0.1:5173' };
+  return {
+    identity: { kind: 'development', displayName: 'main', instanceID: 'instance', generation: 'generation' },
+    info: { workspaceID: 'workspace', generation: 'generation', readiness: 'host-ready', endpoints, repositories: [] },
+    status: 'confirmed',
+    refreshInfo: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+  };
+});
 vi.mock('./InstanceContext', () => ({ useInstance: () => host }));
 
 const payload = {
@@ -19,7 +22,7 @@ const payload = {
 const parse = (value: unknown) => parseDevelopmentStatus(value, 'workspace', 'generation');
 
 afterEach(() => {
-  cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); host.status = 'confirmed'; host.info.readiness = 'host-ready'; host.info.endpoints.browser = null; host.refreshInfo.mockReset(); 
+  cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); host.status = 'confirmed'; host.info.readiness = 'host-ready'; host.info.endpoints.browser = null; host.info.endpoints.vite = 'http://127.0.0.1:5173'; host.refreshInfo.mockReset();
 });
 
 describe('host status boundaries', () => {
@@ -124,4 +127,39 @@ it('clears old readiness when polling fails and cancels pending work on unmount'
   await vi.advanceTimersByTimeAsync(10000);
   expect(fetchStatus).toHaveBeenCalledTimes(2);
   expect(fetchStatus.mock.calls[1][1].signal?.aborted).toBe(true);
+});
+
+it('does not request Vite observations for a confirmed static frontend', async () => {
+  vi.useFakeTimers();
+  host.info.endpoints.vite = null;
+  const fetchStatus = vi.fn();
+  vi.stubGlobal('fetch', fetchStatus);
+  render(<InstanceIndicator />);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(15000);
+  });
+  expect(fetchStatus).not.toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: 'DEV · main · Static' })).toBeVisible();
+});
+
+it('retires live polling and ignores its late response when the frontend becomes static', async () => {
+  vi.useFakeTimers();
+  const pending = Promise.withResolvers<unknown>();
+  const fetchStatus = vi.fn(async (_url: string, _options: RequestInit) => pending.promise);
+  vi.stubGlobal('fetch', fetchStatus);
+  const view = render(<InstanceIndicator />);
+  expect(fetchStatus).toHaveBeenCalledOnce();
+  const signal = fetchStatus.mock.calls[0][1].signal;
+  host.info.endpoints.vite = null;
+  view.rerender(<InstanceIndicator />);
+  expect(signal?.aborted).toBe(true);
+  await act(async () => {
+    pending.resolve({ ok: true, json: async () => payload });
+    await vi.advanceTimersByTimeAsync(15000);
+  });
+  expect(fetchStatus).toHaveBeenCalledOnce();
+  expect(screen.getByRole('button', { name: 'DEV · main · Static' })).toBeVisible();
+  host.info.endpoints.vite = 'http://127.0.0.1:5173';
+  view.rerender(<InstanceIndicator />);
+  expect(fetchStatus).toHaveBeenCalledTimes(2);
 });

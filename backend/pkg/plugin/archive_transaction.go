@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"reflect"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
@@ -389,6 +391,27 @@ func (pm *pluginManager) archivePublicationFailure(recovery *archiveRecovery, ca
 		http.StatusInternalServerError, title).WithInstance(recovery.ID)
 }
 
+// moveArchiveState transfers directory capabilities, not copies of their bytes.
+// Cached appstate roots and controller-held handles must keep naming the same
+// inodes after either publication or rollback.
+func (pm *pluginManager) moveArchiveState(recovery *archiveRecovery, from, to string) error {
+	if err := pm.validateArchiveRecovery(recovery); err != nil {
+		return err
+	}
+	for _, name := range []string{"data", "store"} {
+		source := filepath.Join(from, name)
+		if _, err := pm.pluginsRoot.DirectoryIdentity(source); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return err
+		}
+		if err := pm.pluginsRoot.RenameDirectoryNoReplace(source, filepath.Join(to, name)); err != nil {
+			return err
+		}
+	}
+	return errors.Join(syncUninstallDirectory(pm.pluginsRoot, from), syncUninstallDirectory(pm.pluginsRoot, to))
+}
+
 func (pm *pluginManager) rollbackArchive(recovery *archiveRecovery, original *plugintypes.PluginRecord, wasManaged, oldUnloaded, candidatePublished bool, cause error) error {
 	if candidatePublished {
 		if err := pm.unloadArchivePlugin(recovery); err != nil {
@@ -400,6 +423,11 @@ func (pm *pluginManager) rollbackArchive(recovery *archiveRecovery, original *pl
 	}
 	canonical, err := pm.pluginsRoot.DirectoryIdentity(recovery.ID)
 	if err == nil && canonical == recovery.CandidateIdentity {
+		if recovery.PreviousIdentity != (appstate.FilesystemIdentity{}) {
+			if err = pm.moveArchiveState(recovery, recovery.ID, filepath.Join(recovery.Stage, "previous")); err != nil {
+				return pm.archiveRecoveryFailure(recovery, errors.Join(cause, err))
+			}
+		}
 		if err = pm.pluginsRoot.RenameDirectoryNoReplace(recovery.ID, filepath.Join(recovery.Stage, "candidate")); err != nil {
 			return pm.archiveRecoveryFailure(recovery, errors.Join(cause, err))
 		}
@@ -433,7 +461,10 @@ func (pm *pluginManager) rollbackArchive(recovery *archiveRecovery, original *pl
 	return cause
 }
 
-func (pm *pluginManager) installArchiveCandidate(path string, metadata *config.PluginMeta) (statePublished bool, err error) {
+func (pm *pluginManager) installArchiveCandidate(path string, metadata *config.PluginMeta, version string) (statePublished bool, err error) {
+	if err := pm.guardProductOwned(metadata.ID); err != nil {
+		return false, err
+	}
 	stage, err := pm.pluginsRoot.MkdirTemp(".archive-" + metadata.ID + "-")
 	if err != nil {
 		return false, apperror.Internal(err, "Failed to create private archive staging")
@@ -461,6 +492,16 @@ func (pm *pluginManager) installArchiveCandidate(path string, metadata *config.P
 	if err = unpackPluginArchive(path, pm.pluginsRoot.ResolvePath(candidate)); err != nil {
 		return false, apperror.Wrap(err, apperror.TypePluginInstallFailed, http.StatusInternalServerError, "Failed to unpack plugin package")
 	}
+	// Runtime state belongs to the installed plugin, never to package contents.
+	// Resolve reserved paths through the destination filesystem so case aliases
+	// are rejected on case-insensitive volumes without banning distinct names.
+	for _, name := range []string{"data", "store"} {
+		if _, statErr := pm.pluginsRoot.Stat(filepath.Join(candidate, name)); statErr == nil {
+			return false, fmt.Errorf("plugin package contains reserved runtime directory %q", name)
+		} else if !os.IsNotExist(statErr) {
+			return false, statErr
+		}
+	}
 	actualMetadata, metadataErr := sdktypes.LoadPluginMetadata(pm.pluginsRoot.ResolvePath(candidate))
 	if metadataErr != nil {
 		return false, apperror.Wrap(metadataErr, apperror.TypePluginInstallFailed,
@@ -473,6 +514,14 @@ func (pm *pluginManager) installArchiveCandidate(path string, metadata *config.P
 	// The loader consumes the extracted file, not an earlier tar entry.
 	// All capability, trust, publication and event decisions use that same data.
 	*metadata = actualMetadata
+	if version != "" {
+		// Registry verification already authenticated the downloaded archive.
+		// Change only the private extracted metadata, never the signed archive.
+		if err = persistArchiveVersion(filepath.Join(pm.pluginsRoot.ResolvePath(candidate), pluginMetaFile), version); err != nil {
+			return false, apperror.Internal(err, "Failed to persist marketplace plugin version")
+		}
+		metadata.Version = version
+	}
 	pm.emitter.Emit(EventInstallStarted, metadata)
 	if err = pm.preflightArchive(*metadata, candidate); err != nil {
 		return false, apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusInternalServerError, "Plugin archive preflight rejected")
@@ -531,6 +580,11 @@ func (pm *pluginManager) installArchiveCandidate(path string, metadata *config.P
 	if err = pm.pluginsRoot.RenameDirectoryNoReplace(candidate, metadata.ID); err != nil {
 		return false, pm.rollbackArchive(recovery, original, wasManaged, true, false, err)
 	}
+	if recovery.PreviousIdentity != (appstate.FilesystemIdentity{}) {
+		if err = pm.moveArchiveState(recovery, filepath.Join(stage, "previous"), metadata.ID); err != nil {
+			return false, pm.rollbackArchive(recovery, original, wasManaged, true, false, err)
+		}
+	}
 	if _, err = pm.LoadPlugin(metadata.ID, &LoadPluginOptions{archive: recovery}); err != nil {
 		cause := apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusInternalServerError, "Failed to load plugin after install")
 		return false, pm.rollbackArchive(recovery, original, wasManaged, true, true, cause)
@@ -552,4 +606,45 @@ func (pm *pluginManager) installArchiveCandidate(path string, metadata *config.P
 		return true, pm.archivePublicationFailure(recovery, err)
 	}
 	return true, nil
+}
+
+// Preserve unknown manifest fields while making the registry version durable
+// before the candidate can replace the canonical installation.
+func persistArchiveVersion(path, version string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var document yaml.Node
+	if err = yaml.Unmarshal(data, &document); err != nil {
+		return err
+	}
+	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
+		return errors.New("plugin metadata must be a mapping")
+	}
+	mapping := document.Content[0]
+	found := false
+	for i := 0; i < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value == "version" {
+			mapping.Content[i+1] = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: version}
+			found = true
+			break
+		}
+	}
+	if !found {
+		mapping.Content = append(mapping.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "version"},
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: version})
+	}
+	data, err = yaml.Marshal(&document)
+	if err != nil {
+		return err
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0)
+	if err != nil {
+		return err
+	}
+	_, writeErr := file.Write(data)
+	syncErr := file.Sync()
+	return errors.Join(writeErr, syncErr, file.Close())
 }

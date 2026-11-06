@@ -17,6 +17,18 @@ func (c *controller) SetConnectionChangeHook(begin func(pluginID, connectionID s
 	c.connectionChangeHook = begin
 }
 
+// AddConnectionChangeHook registers a host-only cancellation observer.
+// Registration occurs before plugin loading; callbacks run before resource locks.
+func (c *controller) AddConnectionChangeHook(begin func(pluginID, connectionID string)) {
+	c.connectionRetireHook = begin
+}
+
+func (c *controller) retireConnectionCalls(pluginID, connectionID string) {
+	if c.connectionRetireHook != nil {
+		c.connectionRetireHook(pluginID, connectionID)
+	}
+}
+
 // Caller holds profilesMu; callbacks must never run under pluginsMu.
 func (c *controller) beginMetricConnectionChange(pluginID, connectionID string) func() {
 	if c.connectionChangeHook == nil {

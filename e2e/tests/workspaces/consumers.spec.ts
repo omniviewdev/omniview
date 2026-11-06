@@ -29,9 +29,12 @@ test.describe('Real application plugin consumers', () => {
     const descriptor = await workspace.verify();
     expect(descriptor.plugins.map(plugin => plugin.id).sort()).toEqual(['kubernetes', probeID]);
     await appPage.goto(`${workspace.browserURL()}#/_plugin/kubernetes/`);
-    const clusters = appPage.getByRole('tab', { name: 'All Clusters', exact: true });
-    await clusters.click();
-    await expect(clusters).toHaveAttribute('aria-selected', 'true');
+    const search = appPage.getByRole('combobox', { name: 'Search clusters', exact: true });
+    await expect(search).toBeFocused();
+    await search.fill('reg');
+    await expect(appPage.getByRole('option', { name: /^region:/ })).toHaveAttribute('aria-selected', 'true');
+    await search.press('Enter');
+    await expect(search).toHaveValue('region:');
     await appPage.goto(`${workspace.browserURL()}#/_plugin/${probeID}/`);
     await expect(appPage.getByRole('heading', { name: 'Workspace Probe', exact: true })).toBeVisible();
     await appPage.getByRole('button', { name: 'Probe increment', exact: true }).click();

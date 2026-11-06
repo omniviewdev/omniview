@@ -37,7 +37,6 @@ jobs:
       GOFLAGS: ""
       GO_VERSION: "1.26"
       NODE_OPTIONS: "--max-old-space-size=4096"
-      REVIEWED_SDK_REVISION: 0a5b64ed8c2de209fbb02ecce9feba3afd88f28c # Reviewed SDK v0.12.1
       CACHE_ONLY: ${{ inputs.cache-only && 'true' || 'false' }}
       OMNIVIEW_E2E_PREINSTALLED_LINUX: "true"
       SELECTION_BASE: ${{ inputs.base }}
@@ -55,33 +54,26 @@ jobs:
         with:
           node-version: "26.13.0"
 
-      - name: Admit independently reviewed candidate cohort
-        id: candidate
-        run: node e2e/scripts/candidate-source.mjs resolve
+      - name: Setup Go
+        id: go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
 
-      - name: Checkout reviewed SDK source
+      - name: Resolve SDK commit from host module
+        id: sdk
+        run: node e2e/scripts/sdk-source.mjs github-output
+
+      - name: Checkout resolved SDK source
         uses: actions/checkout@v4
         with:
           repository: omniviewdev/plugin-sdk
-          ref: ${{ steps.candidate.outputs.sdk }}
+          ref: ${{ steps.sdk.outputs.sdk }}
           path: plugin-sdk
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Checkout UI implementation
-        uses: actions/checkout@v4
-        with:
-          repository: omniviewdev/ui
-          ref: ${{ steps.candidate.outputs.ui }}
-          path: ui
-          persist-credentials: false
-
-      - name: Verify exact candidate checkouts
-        env:
-          SDK_SOURCE: ${{ github.workspace }}/plugin-sdk
-          UI_SOURCE: ${{ github.workspace }}/ui
-          KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
-        run: node e2e/scripts/candidate-source.mjs verify
 
       - name: Resolve container source and native payload paths
         # Shell paths use the container mounts, unlike host-side workflow contexts.
@@ -89,8 +81,6 @@ jobs:
         run: |
           {
             echo "SDK_SOURCE=$GITHUB_WORKSPACE/plugin-sdk"
-            echo "UI_SOURCE=$GITHUB_WORKSPACE/ui"
-            echo "KUBERNETES_SOURCE=$GITHUB_WORKSPACE/host/plugins/kubernetes"
             echo "OMNIVIEW_E2E_TOOL_CACHE_ROOT=$(realpath -e "$RUNNER_TEMP")/omniview-e2e-native-private-v1/omniview-e2e-native-tool-cache-v1"
           } >> "$GITHUB_ENV"
 
@@ -115,22 +105,14 @@ jobs:
 
       - name: Explain no application impact
         if: steps.selection.outputs.kind == 'none'
-        run: echo "Application E2E preparation skipped only for explicitly allowlisted prose with an unchanged committed source cohort."
-
-      - name: Setup Go
-        id: go
-        if: steps.selection.outputs.kind != 'none' && steps.selection.outputs.requires_application != 'false'
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: false
+        run: echo "Application E2E preparation skipped only for explicitly allowlisted prose changes."
 
       - name: Select exact native payload keys
         id: cache-keys
         if: steps.selection.outputs.kind != 'none'
         env:
-          PNPM_KEY: ${{ runner.os }}-${{ runner.arch }}-e2e-native-pnpm-12.14.0-v1-${{ hashFiles('host/pnpm-lock.yaml', 'ui/pnpm-lock.yaml', 'host/plugins/kubernetes/ui/pnpm-lock.yaml') }}
-          GO_KEY: setup-go-Linux-x64-ubuntu24-go-${{ steps.go.outputs.go-version }}-${{ hashFiles('host/go.sum', 'plugin-sdk/go.sum', 'host/plugins/kubernetes/go.sum', 'host/e2e/source-cohort.json', 'host/e2e/fixtures/workspace-probe/go.sum', 'host/e2e/scripts/tool-cache.mjs') }}
+          PNPM_KEY: ${{ runner.os }}-${{ runner.arch }}-e2e-native-pnpm-12.14.0-v1-${{ hashFiles('host/pnpm-lock.yaml', 'host/plugins/kubernetes/ui/pnpm-lock.yaml') }}
+          GO_KEY: setup-go-Linux-x64-ubuntu24-go-${{ steps.go.outputs.go-version }}-${{ hashFiles('host/go.sum', 'host/plugins/kubernetes/go.sum', 'host/e2e/fixtures/workspace-probe/go.sum', 'host/e2e/scripts/tool-cache.mjs') }}
           BROWSER_KEY: ${{ runner.os }}-${{ runner.arch }}-ubuntu24-e2e-chromium-v1-${{ hashFiles('host/pnpm-lock.yaml', 'host/e2e/package.json') }}
         run: |
           echo "pnpm=$PNPM_KEY" >> "$GITHUB_OUTPUT"

@@ -292,7 +292,6 @@ func TestAncillaryOptionalAbsenceReturnsUnsupported(t *testing.T) {
 			_, err := ctrl.GetResourceDefinition(testInvocationContext(), "p1", route, "pods")
 			return err
 		}},
-		{"editor", func() error { _, err := ctrl.GetEditorSchemas(testInvocationContext(), "p1", route); return err }},
 		{"schemaDocument", func() error {
 			_, err := ctrl.GetSchemaDocument(testInvocationContext(), "p1", route, resource.SchemaDocumentReference{ID: "schema", Revision: "1"})
 			return err
@@ -359,9 +358,9 @@ func TestPresentationAncillaryForwardsCanonicalRouteAndDocumentReference(t *test
 	definition := resource.ResourceDefinition{ColumnDefs: []resource.ColumnDefinition{{ID: "name", Header: "Name"}}}
 	document := resource.SchemaDocument{Reference: reference, Dialect: "https://json-schema.org/draft/2020-12/schema", Document: []byte(`{"type":"object"}`)}
 	registerMockPlugin(ctrl, "p1", &mockProvider{
-		CatalogFunc: func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+		CatalogFunc: withReferencedSchema(func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
 			return canonicalTestCatalog("p1", "k8s:/pods"), nil
-		},
+		}, reference),
 		GetResourceGroupsFunc: func(_ context.Context, got resource.AccessRoute) ([]resource.ResourceGroup, error) {
 			assert.Equal(t, route, got)
 			return groups, nil

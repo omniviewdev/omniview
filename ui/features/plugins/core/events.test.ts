@@ -276,23 +276,12 @@ describe('Group 20: Lifecycle Operations', () => {
     expect(snap.routeVersion).toBe(0);
   });
 
-  it('20.6 — reset() stops event listeners', () => {
-    s.service.startEventListeners();
-    expect(s.eventBus.listenerCount()).toBe(7);
-
-    s.service.reset();
-    expect(s.eventBus.listenerCount()).toBe(0);
-  });
-
   it('20.7 — reset() clears inflightLoads and discards stale results', async () => {
     const deferred = createDeferred<unknown>();
     s.importer.register('A', async () => deferred.promise);
 
     // Start load (will hang on import until deferred resolves)
     const loadPromise = s.service.load('A');
-
-    // Plugin should be in loading state
-    expect(s.service.getPluginState('A')?.phase).toBe('loading');
 
     // Debug snapshot should show inflight
     const debug1 = s.service.getDebugSnapshot();

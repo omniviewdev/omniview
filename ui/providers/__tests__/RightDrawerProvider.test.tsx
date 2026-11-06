@@ -12,7 +12,7 @@ vi.mock('@omniviewdev/runtime', async () => {
   const actual = await vi.importActual<typeof Runtime>('@omniviewdev/runtime');
   return {
     ...actual,
-    useSnackbar: () => ({ showSnackbar: vi.fn() }),
+    useNotifications: () => ({ notify: vi.fn() }),
     ConnectionBoundary: ({ pluginID, connectionID, children }: { pluginID: string; connectionID: string; children: ReactNode }): ReactNode => {
       native.boundary(pluginID, connectionID);
       return native.connected ? children : <div>Connection is disconnected</div>;
@@ -68,7 +68,7 @@ function observed(data: unknown): HostRecord {
     record: {
       reference: target.reference,
       body: jsonToValue(data),
-      representation: { id: 'json', revision: '', schema: { state: 'unknown', validation: 'none', unvalidated: [] } },
+      representation: { id: 'json', revision: '', schema: { state: 'unknown' } },
       coverage: { kind: 'complete', paths: [] },
     },
   };

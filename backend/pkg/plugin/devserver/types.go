@@ -153,7 +153,6 @@ type BuildOpts struct {
 	NodePath                  string
 	Environment               []string
 	StateRoot                 string
-	ExpectedSDKRevision       string
 	ViteStarted               func(devcontract.ProcessIdentity) error
 	ViteOwner                 devsession.ProcessOwner
 	ProcessSupervisor         *devsession.ProcessBridgeClient

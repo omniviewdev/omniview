@@ -6,11 +6,12 @@ import { DevProcessStatus } from '@omniviewdev/runtime/models';
 import { validatePluginExports } from '../core/validation';
 import { MissingExtensionPointError, DuplicateContributionError } from '../core/errors';
 import { InMemoryCrashDataStrategy } from '../core/CrashDataService';
-import type { PluginServiceDeps, PluginServiceConfig } from '../core/types';
+import type { PluginDescriptor, PluginServiceDeps, PluginServiceConfig } from '../core/types';
 import { DEFAULT_CONFIG } from '../core/types';
 import { importPlugin } from './importPlugin';
 import { clearPlugin } from './clearPlugin';
 import { ensureDevSharedDeps } from './devSharedDeps';
+import { builtinRoutes, createPluginModuleResolver } from './builtinModules';
 
 const pluginServiceLogger = {
   debug(message: string, data?: Record<string, unknown>): void {
@@ -34,23 +35,40 @@ export function createProductionDeps(config?: Partial<PluginServiceConfig>): Plu
   const resolved = { ...DEFAULT_CONFIG, ...config };
   const crashData = new InMemoryCrashDataStrategy({ maxRecordsPerContribution: resolved.maxCrashRecordsPerContribution });
 
+  const builtinIds = new Set<string>();
+  const getPluginDescriptor = async (pluginId: string): Promise<PluginDescriptor> => {
+    const plugin = await PluginManager.GetPlugin(pluginId);
+    if (plugin.origin === 'builtin') {
+      builtinIds.add(pluginId);
+      return { id: pluginId, dev: false, origin: 'builtin', frontendModule: plugin.frontendModule, enabled: plugin.enabled };
+    }
+
+    builtinIds.delete(pluginId);
+    if (!plugin.devMode) {
+      return { id: pluginId, dev: false, origin: 'external', enabled: plugin.enabled };
+    }
+
+    const server = await DevServerManager.GetDevServerState(pluginId);
+    if (server?.viteStatus !== DevProcessStatus.DevProcessStatusReady || server.vitePort <= 0) {
+      throw new Error(`Development server for plugin "${pluginId}" is not ready`);
+    }
+
+    return { id: pluginId, dev: true, devPort: server.vitePort, origin: 'external', enabled: plugin.enabled };
+  };
+
   return {
     crashData,
-    getPluginDescriptor: async (pluginId) => {
-      const plugin = await PluginManager.GetPlugin(pluginId);
-      if (!plugin.devMode) {
-        return { id: pluginId, dev: false };
-      }
-
-      const server = await DevServerManager.GetDevServerState(pluginId);
-      if (server?.viteStatus !== DevProcessStatus.DevProcessStatusReady || server.vitePort <= 0) {
-        throw new Error(`Development server for plugin "${pluginId}" is not ready`);
-      }
-
-      return { id: pluginId, dev: true, devPort: server.vitePort };
+    getPluginDescriptor,
+    getBuiltinRoutes: builtinRoutes,
+    setPluginEnabled: async (id, enabled) => {
+      await PluginManager.SetPluginEnabled(id, enabled);
     },
-    importPlugin,
-    clearPlugin,
+    importPlugin: createPluginModuleResolver({
+      getDescriptor: getPluginDescriptor,
+      activateBackend: async (id) => PluginManager.LoadPlugin(id, null),
+      importExternal: importPlugin,
+    }),
+    clearPlugin: async (opts) => builtinIds.has(opts.pluginId) ? Promise.resolve() : clearPlugin(opts),
 
     onEvent: (eventName, handler) => {
       // Events.On returns () => void — use it for proper cleanup.

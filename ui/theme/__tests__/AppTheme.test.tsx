@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => {
   return {
     settings,
     setSetting: vi.fn(),
-    showSnackbar: vi.fn(),
+    notify: vi.fn(),
     showAppError: vi.fn(),
   };
 });
@@ -17,7 +17,7 @@ vi.mock('@omniviewdev/runtime', () => ({
   useSettings: () => ({ settings: mocks.settings }),
   HOST_SETTINGS_SCOPE: { kind: 'host' },
   useScopedSettings: () => ({ commit: mocks.setSetting }),
-  useSnackbar: () => ({ showSnackbar: mocks.showSnackbar }),
+  useNotifications: () => ({ notify: mocks.notify }),
   showAppError: mocks.showAppError,
   useExtensionPoint: () => undefined,
 }));
@@ -58,7 +58,7 @@ describe('application theme provider integration', () => {
     mocks.settings = {};
     mocks.setSetting.mockReset();
     mocks.setSetting.mockResolvedValue({ applied: true, uncertain: false, message: '' });
-    mocks.showSnackbar.mockReset();
+    mocks.notify.mockReset();
     mocks.showAppError.mockReset();
     localStorage.clear();
   });
@@ -74,7 +74,7 @@ describe('application theme provider integration', () => {
     root.removeAttribute('style');
   });
 
-  it('mounts Base UI in Void compact mode before settings load', () => {
+  it('mounts Base UI in Void comfortable mode before settings load', () => {
     render(
       <AppThemeController>
         <Probe />
@@ -86,10 +86,10 @@ describe('application theme provider integration', () => {
       providerRequestedId: 'void',
       activeId: 'void',
       isFallback: false,
-      density: 'compact',
+      density: 'comfortable',
     });
     expect(document.documentElement.dataset.ovTheme).toBe('void');
-    expect(document.documentElement.dataset.ovDensity).toBe('compact');
+    expect(document.documentElement.dataset.ovDensity).toBe('comfortable');
   });
 
   it('preserves an unavailable custom request while Base UI safely applies Void', () => {

@@ -19,7 +19,6 @@ import (
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
-	"github.com/omniviewdev/omniview/internal/devsource"
 )
 
 const (
@@ -381,7 +380,6 @@ func planTrackingRepository(
 	p.TreesEqual = refValue(ctx, r.CommonDir, p.ActualHEAD+"^{tree}") ==
 		refValue(ctx, r.CommonDir, p.TargetSHA+"^{tree}")
 	classifyUpstreamAncestry(ctx, r, &p)
-	validatePlannedSDK(ctx, w, r, repository.ID, &p)
 	validatePlannedPlugins(ctx, w, r, repository.ID, &p)
 	return p
 }
@@ -405,23 +403,6 @@ func classifyUpstreamAncestry(ctx context.Context, r resource, p *RepositoryUpda
 	p.Classification = updateDivergent
 	if p.BlockedReason == "" {
 		p.BlockedReason = "non_fast_forward"
-	}
-}
-
-func validatePlannedSDK(ctx context.Context, w Workspace, r resource, id string, p *RepositoryUpdatePlan) {
-	if w.Manifest.Links.SDKRepositoryID == nil || id != *w.Manifest.Links.SDKRepositoryID ||
-		p.ActualHEAD == p.TargetSHA {
-		return
-	}
-	launch, err := LoadLaunchOptions(w)
-	if err != nil || launch.ReviewedSDKRevision == "" {
-		p.BlockedReason = "reviewed_sdk_required"
-		return
-	}
-	err = devsource.VerifyUpstreamCommit(ctx, r.CommonDir, launch.ReviewedSDKRevision, p.TargetSHA,
-		devsource.VerifyOptions{AllowIsolationCoreChanges: launch.AllowIsolationSourceChanges})
-	if err != nil {
-		p.BlockedReason = "sdk_source_untrusted"
 	}
 }
 

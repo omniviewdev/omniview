@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 
-import { useWatchState } from '@omniviewdev/runtime';
+import { useSourceStates } from '@omniviewdev/runtime';
 import { ResourceClient } from '@omniviewdev/runtime/api';
 
 import ConnectionStateDialog from './ConnectionStateDialog';
@@ -26,7 +26,7 @@ export const useConnectionStateDialog = (): ConnectionStateContextValue => {
 };
 
 // ---------------------------------------------------------------------------
-// Inner dialog — only mounts when we have a valid target, so useWatchState
+// Inner dialog — only mounts when we have a valid target, so useSourceStates
 // is never called with empty pluginID (which would throw from
 // useResolvedPluginId at the app level where there's no PluginContext).
 // ---------------------------------------------------------------------------
@@ -42,26 +42,21 @@ function ActiveConnectionStateDialog({
   onClose: () => void;
   manualOpenRef: React.RefObject<boolean>;
 }) {
-  const { summary, isFullySynced } = useWatchState({
+  const { summary, isFullySynced } = useSourceStates({
     pluginID: target.pluginID,
     route: { connection: target.connectionID },
   });
 
-  const resources = summary.data?.resources ?? {};
-  const resourceCounts = summary.data?.resourceCounts ?? {};
+  const resources = Object.fromEntries(Object.entries(summary?.types ?? {}).map(([type, status]) => [type, status.state]));
+  const resourceCounts = Object.fromEntries(Object.entries(summary?.types ?? {}).map(([type, status]) => [type, status.count]));
 
-  const handleRetryResource = useCallback(async (resourceKey: string) => {
+  const handleRetryResource = useCallback(async () => {
     try {
-      const resolved = await ResourceClient.ResolveTarget(target.pluginID, {
-        route: { connection: target.connectionID },
-        type: resourceKey,
-        scope: summary.data?.scope,
-      });
-      await ResourceClient.EnsureResourceWatch(target.pluginID, resolved.target);
+      await ResourceClient.RetryConnectionSources(target.pluginID, { connection: target.connectionID });
     } catch (err) {
-      console.error('Failed to retry watch:', err);
+      console.error('Failed to retry sources:', err);
     }
-  }, [target.pluginID, target.connectionID, summary.data]);
+  }, [target.pluginID, target.connectionID]);
 
   // Auto-close after sync completes (only for auto-opened dialogs)
   useEffect(() => {

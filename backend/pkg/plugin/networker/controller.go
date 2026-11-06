@@ -128,6 +128,15 @@ func (c *controller) ServiceStartup(ctx context.Context, _ application.ServiceOp
 
 // ServiceShutdown cleans up resources during application shutdown.
 func (c *controller) ServiceShutdown() error {
+	c.mu.RLock()
+	plugins := make([]string, 0, len(c.clients))
+	for id := range c.clients {
+		plugins = append(plugins, id)
+	}
+	c.mu.RUnlock()
+	for _, id := range plugins {
+		_ = c.OnPluginStop(id, config.PluginMeta{})
+	}
 	return nil
 }
 
@@ -215,14 +224,8 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	return nil
 }
 
-func (c *controller) OnPluginShutdown(pluginID string, _ config.PluginMeta) error {
-	logger := c.logger.With(logging.Any("pluginID", pluginID))
-	logger.Debugw(context.Background(), "OnPluginShutdown")
-
-	c.mu.Lock()
-	delete(c.clients, pluginID)
-	c.mu.Unlock()
-	return nil
+func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) error {
+	return c.OnPluginStop(pluginID, meta)
 }
 
 func (c *controller) OnPluginDestroy(pluginID string, _ config.PluginMeta) error {

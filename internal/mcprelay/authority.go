@@ -22,6 +22,7 @@ type authorityCall struct {
 	credential, session, id string
 	epoch, policy, catalog  uint64
 	tool                    ToolInfo
+	resolved                *ToolInfo
 	connection              string
 	arguments               []byte
 	operation               string
@@ -30,6 +31,7 @@ type authorityCall struct {
 	confirm, approved       bool
 	graphRootAdmitted       bool
 	config                  Config
+	delegation              *invocation.Delegation
 }
 
 // Authority owns the relay's credential epoch and immutable call observations.
@@ -120,12 +122,12 @@ func (a *Authority) UpdateCatalog(tools []ToolInfo) {
 		return
 	}
 	a.catalog++
+	a.tools = append(a.tools[:0], tools...)
 	for _, c := range a.calls {
-		if c.bound {
+		if c.bound && !a.allowedLocked(c) {
 			c.cancel()
 		}
 	}
-	a.tools = append([]ToolInfo(nil), tools...)
 }
 
 func (a *Authority) allowedLocked(c *authorityCall) bool {
@@ -135,7 +137,7 @@ func (a *Authority) allowedLocked(c *authorityCall) bool {
 	if !c.bound {
 		return true
 	}
-	if c.policy != a.policy || c.catalog != a.catalog || c.tool.Status != StatusOK {
+	if c.policy != a.policy || c.tool.Status != StatusOK {
 		return false
 	}
 	found := false
@@ -218,6 +220,48 @@ func (a *Authority) Bind(ctx context.Context, tool ToolInfo, connection string, 
 	return boundCtx, nil
 }
 
+// resolveKubernetes binds a discovered operation to the already admitted call.
+// The catalog observation on the resource binding fences provider generations.
+func (a *Authority) resolveKubernetes(ctx context.Context, tool ToolInfo, args []byte) (bool, error) {
+	c, ok := ctx.Value(authorityContextKey{}).(*authorityCall)
+	if !ok || tool.Resource == nil {
+		return false, errAuthority
+	}
+	target, err := tool.Resource.InvocationTarget(args)
+	if err != nil {
+		return false, err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !c.dispatched || !isGenericKubernetesTool(c.tool) || c.resolved != nil ||
+		!a.allowedLocked(c) || tool.Status != StatusOK || tool.PluginID != c.tool.PluginID ||
+		target.Provider != c.tool.PluginID || target.Connection != c.connection {
+		return false, errAuthority
+	}
+	c.resolved = &tool
+	c.operation = tool.Resource.Operation
+	c.target = target
+	c.target.Scope = maps.Clone(target.Scope)
+	c.arguments = append([]byte(nil), args...)
+	c.confirm = a.cfg.confirmWithDefault(c.tool.PluginID, c.connection, c.tool, tool.Destructive)
+	c.approved = false
+	return c.confirm, nil
+}
+
+func (a *Authority) approveResolvedKubernetes(ctx context.Context) error {
+	c, ok := ctx.Value(authorityContextKey{}).(*authorityCall)
+	if !ok {
+		return errAuthority
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !c.dispatched || c.resolved == nil || !a.allowedLocked(c) {
+		return errAuthority
+	}
+	c.approved = true
+	return nil
+}
+
 // Dispatch admits once, then fences cancellation and retirement before returning
 // any result. The callback must use its supplied context, never a UI/host scope.
 // Completion cancels the bound context to release ownership. Callers must use
@@ -255,6 +299,63 @@ func (a *Authority) Dispatch(ctx context.Context, fn func(context.Context) error
 	return err
 }
 
+// RegisterDelegation binds one host-issued grant to the dispatched principal.
+func (a *Authority) RegisterDelegation(ctx context.Context, grant invocation.Delegation) (func(), error) {
+	c, ok := ctx.Value(authorityContextKey{}).(*authorityCall)
+	if !ok {
+		return nil, errAuthority
+	}
+	request, ok := invocation.FromContext(ctx)
+	if !ok || !request.OwnedBy(ctx) || request.Principal() != c.principal ||
+		request.Operation() != "tools.call" || !reflect.DeepEqual(request.Target(), c.target) {
+		return nil, errAuthority
+	}
+	a.mu.Lock()
+	if !a.allowedLocked(c) || !c.dispatched || c.delegation != nil ||
+		c.tool.PluginID != grant.Consumer || c.tool.ConnectionOwner == "" ||
+		c.tool.ConnectionOwner != grant.Owner || c.connection != grant.Connection ||
+		(c.tool.ReadOnly && !grant.ReadOnly) {
+		a.mu.Unlock()
+		return nil, errAuthority
+	}
+	retained := grant
+	c.delegation = &retained
+	a.mu.Unlock()
+	return func() {
+		a.mu.Lock()
+		if c.delegation == &retained {
+			c.delegation = nil
+		}
+		a.mu.Unlock()
+	}, nil
+}
+
+func delegatedAllowed(grant *invocation.Delegation, operation string, target invocation.Target) bool {
+	if grant == nil || target.Provider != grant.Owner || target.Connection != grant.Connection {
+		return false
+	}
+	var right string
+	switch operation {
+	case "resource.Catalog", "resource.GetSchemaDocument":
+		// The broker filters catalogs and checks schema references against them.
+		return target.ResourceType == "" && target.Action == ""
+	case "resource.ResolveTarget":
+		right = "catalog"
+	case "resource.Get":
+		right = "get"
+	case "resource.Enumerate":
+		right = "enumerate"
+	case "resource.Mutate":
+		if grant.ReadOnly || target.Action != "update" {
+			return false
+		}
+		right = "update"
+	default:
+		return false
+	}
+	return grant.Grant.Allows(right, target.ResourceType)
+}
+
 // Authorize is the single native invocation authorizer. Relay policy is checked
 // here against the actual operation and target, not against an MCP tool hint.
 func (a *Authority) Authorize(p invocation.Principal, operation string, target invocation.Target) error {
@@ -282,6 +383,30 @@ func (a *Authority) Authorize(p invocation.Principal, operation string, target i
 			}
 		}
 		return errAuthority
+	}
+	if c.dispatched && isGenericKubernetesTool(c.tool) && c.resolved == nil {
+		switch operation {
+		case "resource.StartConnection", "resource.Catalog":
+			if reflect.DeepEqual(target, invocation.Target{Provider: c.tool.PluginID, Connection: c.connection}) {
+				return nil
+			}
+		case "resource.Features":
+			if reflect.DeepEqual(target, invocation.Target{Provider: c.tool.PluginID}) {
+				return nil
+			}
+		case "resource.ResolveTarget", "resource.GetActions":
+			expected := invocation.Target{Provider: c.tool.PluginID, Connection: c.connection, ResourceType: target.ResourceType}
+			if target.ResourceType != "" && reflect.DeepEqual(target, expected) {
+				return nil
+			}
+		}
+		return errAuthority
+	}
+	if c.resolved != nil && c.confirm && !c.approved {
+		return errAuthority
+	}
+	if c.dispatched && delegatedAllowed(c.delegation, operation, target) {
+		return nil
 	}
 	// Health reads the bound object before assessing it; the Get stays exact.
 	if !c.dispatched || (operation != c.operation && (c.operation != opGetHealth || operation != opGet)) {

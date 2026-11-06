@@ -13,13 +13,12 @@ import { handle } from './harness/backend';
 import { lineMarker, makeLogLines, makeLogSession, streamLines, type BenchLogSession } from './fixtures/logs';
 import { BENCH_CONNECTION_ID } from './fixtures/defaults';
 
-let sessionSeq = 0;
 let lastSessionId = '';
 
 const sessions = new Map<string, BenchLogSession>();
 handle('logs/servicewrapper.CreateSession', (plugin: string, connection: string, encoded: string) => {
-  lastSessionId = `bench-drawer-${sessionSeq++}`;
-  const session = makeLogSession(lastSessionId, plugin, connection, encoded);
+  const session = makeLogSession('bench-drawer', plugin, connection, encoded);
+  lastSessionId = session.id;
   sessions.set(session.id, session);
   return session;
 });

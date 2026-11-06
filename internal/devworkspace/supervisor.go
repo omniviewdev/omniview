@@ -123,7 +123,7 @@ func callSupervisor(ctx context.Context, record supervisorRecord, token []byte, 
 	if command == supervisorStatusCommand {
 		// Cover the response body too: a listener or flushed header does not
 		// prove the authenticated owner can complete an observation.
-		client.Timeout = supervisorStatusTimeout
+		client.Timeout = supervisorStatusClientTimeout
 	}
 	response, err := client.Do(request)
 	if err != nil {
@@ -162,7 +162,9 @@ const supervisorSourceUpdateCommand = "source-update"
 
 const supervisorStatusCommand = "status"
 
-const supervisorStatusTimeout = 5 * time.Second
+// Leave time for the authenticated response after observation finishes.
+const supervisorStatusObservationTimeout = 15 * time.Second
+const supervisorStatusClientTimeout = 20 * time.Second
 
 const supervisorStopCommand = "stop"
 
@@ -406,7 +408,7 @@ func (s *workspaceSupervisor) persist() {
 	if err := saveLaunchJSON(launchPath(s.workspace, "launch-status.json"), s.snapshot()); err != nil {
 		s.mu.Lock()
 		s.status.Phase = "error"
-		s.status.LastError = devcontract.Fail(4, "generated_conflict", "cannot persist owned launch status; source metadata changed or write failed")
+		s.status.LastError = devcontract.Fail(4, "generated_conflict", "cannot persist owned launch status: "+err.Error())
 		s.mu.Unlock()
 		if s.sessionCancel != nil {
 			s.sessionCancel()
@@ -485,9 +487,13 @@ func (s *workspaceSupervisor) setWaitStage(stage string) {
 }
 func (s *workspaceSupervisor) execute(ctx context.Context, command string) (Status, error) {
 	if command == supervisorStatusCommand {
-		observation, cancel := context.WithTimeout(ctx, supervisorStatusTimeout)
+		observation, cancel := context.WithTimeout(ctx, supervisorStatusObservationTimeout)
 		defer cancel()
-		return s.statusResponse(observation), nil
+		status := s.statusResponse(observation)
+		if err := observation.Err(); err != nil {
+			return status, err
+		}
+		return status, nil
 	}
 	if command == supervisorSourceUpdateCommand {
 		return s.applySourceUpdate(ctx)

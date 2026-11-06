@@ -21,6 +21,8 @@ import (
 	"github.com/omniviewdev/omniview/internal/devcontrol"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
 	"github.com/omniviewdev/omniview/internal/devsession"
+	sdkconfig "github.com/omniviewdev/plugin-sdk/pkg/config"
+	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
 type childOutput struct {
@@ -211,7 +213,7 @@ func (s *workspaceSupervisor) startVite(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	node, script, err := resolveViteCommand(host)
+	node, script, err := resolveViteCommand(ctx, host)
 	if err != nil {
 		return err
 	}
@@ -553,13 +555,68 @@ func controlMutation(ctx context.Context, client *devcontrol.Client, operation s
 	}
 	return response, nil
 }
+
+// Resolve selected owners before consumers, without selecting or starting connections.
+func managedPluginStartupOrder(workspace *Workspace) ([]devcontract.Plugin, error) {
+	plugins := workspace.Manifest.Plugins
+	selected := make(map[string]int, len(plugins))
+	nodes := make([]struct {
+		requires *sdkconfig.RequiresSpec
+		state    uint8
+	}, len(plugins))
+	for index, plugin := range plugins {
+		path, err := workspace.RepositoryPath(plugin.RepositoryID)
+		if err != nil {
+			return nil, err
+		}
+		metadata, err := sdktypes.LoadPluginMetadata(path)
+		if err != nil {
+			return nil, fmt.Errorf("managed plugin %s metadata: %w", plugin.ID, err)
+		}
+		selected[plugin.ID] = index
+		nodes[index].requires = metadata.Requires
+	}
+	ordered := make([]devcontract.Plugin, 0, len(plugins))
+	var visit func(int) error
+	visit = func(index int) error {
+		switch nodes[index].state {
+		case 1:
+			return devcontract.Fail(5, "plugin_dependency_cycle", fmt.Sprintf("managed connection dependency cycle at %s", plugins[index].ID))
+		case 2:
+			return nil
+		}
+		nodes[index].state = 1
+		if requirements := nodes[index].requires; requirements != nil {
+			for _, requirement := range requirements.Connections {
+				if dependency, exists := selected[requirement.Plugin]; exists {
+					if err := visit(dependency); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		nodes[index].state = 2
+		ordered = append(ordered, plugins[index])
+		return nil
+	}
+	for index := range plugins {
+		if err := visit(index); err != nil {
+			return nil, err
+		}
+	}
+	return ordered, nil
+}
 func (s *workspaceSupervisor) startPlugins(ctx context.Context) error {
+	plugins, err := managedPluginStartupOrder(&s.workspace)
+	if err != nil {
+		return err
+	}
 	client, _, err := ConnectWorkspaceControl(ctx, s.workspace, s.manager.options.Home, s.generation)
 	if err != nil {
 		return err
 	}
 	defer client.Close()
-	for _, plugin := range s.workspace.Manifest.Plugins {
+	for _, plugin := range plugins {
 		path, err := s.workspace.RepositoryPath(plugin.RepositoryID)
 		if err != nil {
 			return err

@@ -144,134 +144,154 @@ const LogViewerToolbar: React.FC<Props> = ({
   return (
     <div className={styles.Toolbar}>
       {/* Prefix slot (e.g., status chip for dev build) */}
-      {toolbarPrefix}
-      {toolbarPrefix && <Separator orientation='vertical' className={styles.Separator} />}
+      {toolbarPrefix && (
+        <>
+          <div className={styles.Group}>{toolbarPrefix}</div>
+          <Separator orientation='vertical' className={styles.Separator} />
+        </>
+      )}
 
-      {/* Search */}
-      <SearchInput
-        size='sm'
-        placeholder='Search in logs'
-        autoFocus
-        autoComplete='off'
-        data-search-input
-        className={styles.Search}
-        value={searchQuery}
-        onValueChange={onSearchChange}
-        startDecorator={<LuSearch size={12} />}
-        clearDecorator={<LuX size={10} />}
-        endDecorator={
-          matchCount > 0 ? (
-            <Text size='xs' tone='subtle'>
-              {currentMatch + 1}/{matchCount.toLocaleString()}{matchCapped ? '+' : ''}
-            </Text>
-          ) : searchQuery ? (
-            <Text size='xs' tone='subtle'>0/0</Text>
-          ) : undefined
-        }
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            if (e.shiftKey) {
-              onPrevMatch();
-            } else {
-              onNextMatch();
+      <div className={styles.SearchGroup} role='group' aria-label='Log search'>
+        <SearchInput
+          size='sm'
+          placeholder='Search in logs'
+          autoFocus
+          autoComplete='off'
+          data-search-input
+          className={styles.Search}
+          value={searchQuery}
+          onValueChange={onSearchChange}
+          startDecorator={<LuSearch />}
+          clearDecorator={<LuX />}
+          endDecorator={
+            matchCount > 0 ? (
+              <Text size='xs' tone='subtle'>
+                {currentMatch + 1}/{matchCount.toLocaleString()}{matchCapped ? '+' : ''}
+              </Text>
+            ) : searchQuery ? (
+              <Text size='xs' tone='subtle'>0/0</Text>
+            ) : undefined
+          }
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              if (e.shiftKey) {
+                onPrevMatch();
+              } else {
+                onNextMatch();
+              }
             }
-          }
 
-          if (e.key === 'Escape') {
-            onSearchChange('');
-          }
-        }}
-      />
+            if (e.key === 'Escape') {
+              onSearchChange('');
+            }
+          }}
+        />
 
-      <ToggleButton label='Case sensitive' active={caseSensitive} onClick={onToggleCaseSensitive}>
-        <LuCaseSensitive size={12} />
-      </ToggleButton>
+        <div className={styles.Group}>
+          <ToggleButton label='Case sensitive' pressed active={caseSensitive} onClick={onToggleCaseSensitive}>
+            <LuCaseSensitive />
+          </ToggleButton>
 
-      <ToggleButton label='Regex' active={isRegex} onClick={onToggleRegex}>
-        <LuRegex size={12} />
-      </ToggleButton>
+          <ToggleButton label='Regex' pressed active={isRegex} onClick={onToggleRegex}>
+            <LuRegex />
+          </ToggleButton>
 
-      <IconButton size='xs' variant='ghost' color='neutral' aria-label='Previous match' disabled={matchCount === 0} {...prevHold}>
-        <LuChevronUp size={12} />
-      </IconButton>
-      <IconButton size='xs' variant='ghost' color='neutral' aria-label='Next match' disabled={matchCount === 0} {...nextHold}>
-        <LuChevronDown size={12} />
-      </IconButton>
-
-      <Separator orientation='vertical' className={styles.Separator} />
-
-      {/* Filter selectors */}
-      {filterSelectors}
-
-      {/* Controls */}
-      <ToggleButton label='Timestamps' active={showTimestamps} onClick={onToggleTimestamps}>
-        <LuClock size={12} />
-      </ToggleButton>
-
-      <ToggleButton label='Source badges' active={showSources} onClick={onToggleSources}>
-        <LuTag size={12} />
-      </ToggleButton>
-
-      <ToggleButton label='Line numbers' active={showLineNumbers} onClick={onToggleLineNumbers}>
-        <LuHash size={12} />
-      </ToggleButton>
-
-      <ToggleButton label='Word wrap' active={wrap} onClick={onToggleWrap}>
-        <LuWrapText size={12} />
-      </ToggleButton>
-
-      <ToggleButton
-        label={colorize ? 'ANSI colors on' : 'ANSI colors off'}
-        ariaLabel='Toggle ANSI colors'
-        pressed
-        active={colorize}
-        onClick={onToggleColorize}
-      >
-        <LuPalette size={12} />
-      </ToggleButton>
-
-      <ToggleButton label={follow ? 'Following' : 'Follow output'} active={follow} onClick={onToggleFollow}>
-        <LuArrowDownToLine size={12} />
-      </ToggleButton>
-
-      {jumpToTime}
-
-      {/* Custom actions slot (e.g., restart/rebuild for dev build) */}
-      {toolbarActions}
-
-      <ToggleButton label={paused ? 'Resume' : 'Pause'} active={paused} activeColor='warning' onClick={onTogglePaused}>
-        {paused ? <LuPlay size={12} /> : <LuPause size={12} />}
-      </ToggleButton>
+          <IconButton size='xs' variant='ghost' color='neutral' aria-label='Previous match' disabled={matchCount === 0} {...prevHold}>
+            <LuChevronUp />
+          </IconButton>
+          <IconButton size='xs' variant='ghost' color='neutral' aria-label='Next match' disabled={matchCount === 0} {...nextHold}>
+            <LuChevronDown />
+          </IconButton>
+        </div>
+      </div>
 
       <Separator orientation='vertical' className={styles.Separator} />
 
-      <ToggleButton
-        label={copyFeedback === 'visible' ? 'Copied!' : `Copy visible lines (${isMac ? '⌘⇧V' : 'Ctrl+Shift+V'})`}
-        ariaLabel='Copy visible lines'
-        active={copyFeedback === 'visible'}
-        activeColor='success'
-        onClick={onCopyVisible}
-      >
-        {copyFeedback === 'visible' ? <LuClipboardCheck size={12} /> : <LuCopy size={12} />}
-      </ToggleButton>
+      {React.Children.count(filterSelectors) > 0 && (
+        <>
+          <div className={styles.Group} role='group' aria-label='Log filters'>
+            {filterSelectors}
+          </div>
+          <Separator orientation='vertical' className={styles.Separator} />
+        </>
+      )}
 
-      <ToggleButton
-        label={copyFeedback === 'all' ? 'Copied!' : `Copy all lines (${isMac ? '⌘⇧C' : 'Ctrl+Shift+C'})`}
-        ariaLabel='Copy all lines'
-        active={copyFeedback === 'all'}
-        activeColor='success'
-        onClick={onCopyAll}
-      >
-        {copyFeedback === 'all' ? <LuClipboardCheck size={12} /> : <LuClipboard size={12} />}
-      </ToggleButton>
+      <div className={styles.Group} role='group' aria-label='Log display'>
+        <ToggleButton label='Timestamps' pressed active={showTimestamps} onClick={onToggleTimestamps}>
+          <LuClock />
+        </ToggleButton>
 
-      <ToggleButton label='Download' onClick={onDownload}>
-        <LuDownload size={12} />
-      </ToggleButton>
+        <ToggleButton label='Source badges' pressed active={showSources} onClick={onToggleSources}>
+          <LuTag />
+        </ToggleButton>
 
-      <ToggleButton label='Clear' onClick={onClear}>
-        <LuTrash2 size={12} />
-      </ToggleButton>
+        <ToggleButton label='Line numbers' pressed active={showLineNumbers} onClick={onToggleLineNumbers}>
+          <LuHash />
+        </ToggleButton>
+
+        <ToggleButton label='Word wrap' pressed active={wrap} onClick={onToggleWrap}>
+          <LuWrapText />
+        </ToggleButton>
+
+        <ToggleButton
+          label={colorize ? 'ANSI colors on' : 'ANSI colors off'}
+          ariaLabel='Toggle ANSI colors'
+          pressed
+          active={colorize}
+          onClick={onToggleColorize}
+        >
+          <LuPalette />
+        </ToggleButton>
+      </div>
+
+      <Separator orientation='vertical' className={styles.Separator} />
+
+      <div className={styles.Group} role='group' aria-label='Log playback'>
+        <ToggleButton label={follow ? 'Following' : 'Follow output'} pressed active={follow} onClick={onToggleFollow}>
+          <LuArrowDownToLine />
+        </ToggleButton>
+
+        {jumpToTime}
+
+        {/* Custom actions slot (e.g., restart/rebuild for dev build) */}
+        {toolbarActions}
+
+        <ToggleButton label={paused ? 'Resume' : 'Pause'} pressed active={paused} activeColor='warning' onClick={onTogglePaused}>
+          {paused ? <LuPlay /> : <LuPause />}
+        </ToggleButton>
+      </div>
+
+      <Separator orientation='vertical' className={styles.Separator} />
+
+      <div className={styles.Group} role='group' aria-label='Log actions'>
+        <ToggleButton
+          label={copyFeedback === 'visible' ? 'Copied!' : `Copy visible lines (${isMac ? '⌘⇧V' : 'Ctrl+Shift+V'})`}
+          ariaLabel='Copy visible lines'
+          active={copyFeedback === 'visible'}
+          activeColor='success'
+          onClick={onCopyVisible}
+        >
+          {copyFeedback === 'visible' ? <LuClipboardCheck /> : <LuCopy />}
+        </ToggleButton>
+
+        <ToggleButton
+          label={copyFeedback === 'all' ? 'Copied!' : `Copy all lines (${isMac ? '⌘⇧C' : 'Ctrl+Shift+C'})`}
+          ariaLabel='Copy all lines'
+          active={copyFeedback === 'all'}
+          activeColor='success'
+          onClick={onCopyAll}
+        >
+          {copyFeedback === 'all' ? <LuClipboardCheck /> : <LuClipboard />}
+        </ToggleButton>
+
+        <ToggleButton label='Download' onClick={onDownload}>
+          <LuDownload />
+        </ToggleButton>
+
+        <ToggleButton label='Clear' onClick={onClear}>
+          <LuTrash2 />
+        </ToggleButton>
+      </div>
 
       {/* Status */}
       <span className={styles.Spacer} />

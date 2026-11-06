@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { themeRegistry } from '@omniviewdev/base-ui';
 import type * as AppThemeControllerModule from '@/theme/AppThemeController';
 import { Setting, SettingType } from '@omniviewdev/runtime/models';
@@ -41,6 +42,21 @@ vi.mock('@omniviewdev/runtime', () => ({
           value: 'dark',
           default: 'dark',
           options: [],
+        }),
+        density: new Setting({
+          id: 'density', label: 'UI Density', type: SettingType.Text,
+          value: 'comfortable', default: 'comfortable',
+          options: [{ value: 'comfortable', label: 'Comfortable', description: '' }, { value: 'compact', label: 'Compact', description: '' }],
+        }),
+        textSize: new Setting({
+          id: 'textSize', label: 'UI Text Size', type: SettingType.Text,
+          value: '100', default: '100',
+          options: [{ value: '80', label: '80%', description: '' }, { value: '90', label: '90%', description: '' }, { value: '100', label: '100%', description: '' }, { value: '110', label: '110%', description: '' }, { value: '125', label: '125%', description: '' }],
+        }),
+        motion: new Setting({
+          id: 'motion', label: 'Motion', type: SettingType.Text,
+          value: 'system', default: 'system',
+          options: [{ value: 'system', label: 'Follow System', description: '' }, { value: 'normal', label: 'Normal', description: '' }, { value: 'reduced', label: 'Reduced', description: '' }],
         }),
         headerSearch: new Setting({
           id: 'headerSearch',
@@ -96,6 +112,27 @@ describe('CoreSettingsPage appearance settings', () => {
       'appearance.theme': expect.anything(),
     }));
     expect(screen.queryByText('Unsaved change')).not.toBeInTheDocument();
+  });
+
+  it.each(['80', '90', '125'])('saves %s percent text through ordinary validated settings commits', async textSize => {
+    const user = userEvent.setup();
+    render(<CoreSettingsPage id='appearance' />);
+    await user.click(screen.getByRole('combobox', { name: 'UI Density' }));
+    await user.click(await screen.findByRole('option', { name: 'Compact' }));
+    await user.click(screen.getByRole('combobox', { name: 'UI Text Size' }));
+    await user.click(await screen.findByRole('option', { name: `${textSize}%` }));
+    await user.click(screen.getByRole('combobox', { name: 'Motion' }));
+    await user.click(await screen.findByRole('option', { name: 'Reduced' }));
+    expect(mocks.setSettings).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    });
+    expect(mocks.setSettings).toHaveBeenCalledWith({
+      'appearance.density': 'compact',
+      'appearance.textSize': textSize,
+      'appearance.motion': 'reduced',
+    });
+    expect(mocks.selectTheme).not.toHaveBeenCalled();
   });
 
   it('marks an empty draft value and clears its marker when discarded', () => {

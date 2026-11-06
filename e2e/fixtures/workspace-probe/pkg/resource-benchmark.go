@@ -4,7 +4,7 @@ package main
 // The V2 catalog advertises one exact type per fixed connection. Source pages
 // retain corpus scopes and tagged scalar values under the host-admitted target.
 // Diagnostic stress repetition happens in the UI, never inside canonical pages.
-// Only the container profile supplies advisory updates, released explicitly.
+// Only the container profile supplies live updates, released explicitly.
 import (
 	"context"
 	_ "embed"
@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"runtime"
 	"sort"
 	"strings"
@@ -110,7 +111,7 @@ func (p *benchmarkSource) Catalog(ctx context.Context, request resource.CatalogR
 		{Operation: resource.OperationGet, Scope: scope},
 	}
 	if len(scenario.Updates) > 0 {
-		capabilities = append(capabilities, resource.Capability{Operation: resource.OperationUpdate, Scope: scope, Guarantee: resource.BestEffortGuarantee})
+		capabilities = append(capabilities, resource.Capability{Operation: resource.OperationSourceUpdates, Scope: scope, Guarantee: resource.ContinuityBestEffort})
 	}
 	return resource.Catalog{
 		Provider: "workspace-probe", Revision: "fixture-v2-1", Coverage: resource.Coverage{Kind: "complete"},
@@ -290,7 +291,7 @@ func matchesScope(scope map[string]string, constraints resource.QueryScope) bool
 }
 
 func nativeRepresentation() resource.Representation {
-	return resource.Representation{ID: "native", Revision: "1", Schema: resource.SchemaBinding{State: "absent", Validation: "none"}}
+	return resource.Representation{ID: "native", Revision: "1", Schema: resource.SchemaBinding{State: "absent"}}
 }
 
 func (p *benchmarkSource) record(target resource.ReadTarget, item benchmarkRecord) (resource.Record, error) {
@@ -372,7 +373,8 @@ func benchmarkError(code, message string) error {
 
 type benchmarkEvents struct{ *benchmarkSource }
 
-func (p *benchmarkEvents) Watch(ctx context.Context, client *benchmarkClient, target resource.ReadTarget, _ resource.Representation, sink resource.WatchEventSink) error {
+func (p *benchmarkEvents) Source(ctx context.Context, client *benchmarkClient, request resource.SourceRequest, emitter resource.SourceEmitter) error {
+	target := request.Target
 	scenario := p.scenarios[client.name]
 	if len(scenario.Updates) == 0 {
 		return benchmarkError("UNSUPPORTED", "snapshot-only fixture")
@@ -391,7 +393,29 @@ func (p *benchmarkEvents) Watch(ctx context.Context, client *benchmarkClient, ta
 		p.writeLifecycleLocked()
 		p.mu.Unlock()
 	}()
-	sink.OnStateChange(resource.WatchStateEvent{Route: target.Route, Type: scenario.Type, State: resource.WatchStateSynced, Count: resource.Count{Kind: "unknown"}, Guarantee: resource.BestEffortGuarantee})
+	for _, page := range scenario.Pages {
+		observations := make([]resource.SourceObservation, 0, len(page.Records))
+		for _, name := range page.Records {
+			item := p.records[name]
+			if !matchesScope(item.Scope, target.Scope) {
+				continue
+			}
+			record, err := p.record(target, item)
+			if err != nil {
+				return err
+			}
+			if !reflect.DeepEqual(record.Representation, request.Representation) {
+				return emitter.Reset(ctx, resource.SourceResetBindingChanged, "Source binding changed.")
+			}
+			observations = append(observations, resource.SourceObservation{Record: resource.CompactSourceRecord(record)})
+		}
+		if err := emitter.Snapshot(ctx, observations); err != nil {
+			return err
+		}
+	}
+	if err := emitter.EndSnapshot(ctx, resource.SourceCoverage{Enumeration: resource.EnumerationExhausted, Consistency: resource.ConsistencyBestEffort}, resource.ContinuityBestEffort); err != nil {
+		return err
+	}
 	select {
 	case <-ctx.Done():
 		return nil
@@ -406,7 +430,12 @@ func (p *benchmarkEvents) Watch(ctx context.Context, client *benchmarkClient, ta
 			if err != nil {
 				return err
 			}
-			sink.OnUpdate(resource.WatchUpdatePayload{Route: target.Route, Record: record, Guarantee: resource.BestEffortGuarantee})
+			if !reflect.DeepEqual(record.Representation, request.Representation) {
+				return emitter.Reset(ctx, resource.SourceResetBindingChanged, "Source binding changed.")
+			}
+			if err := emitter.Changes(ctx, []resource.SourceChange{{Kind: resource.SourceChangeUpsert, Observation: &resource.SourceObservation{Record: resource.CompactSourceRecord(record)}}}, nil); err != nil {
+				return err
+			}
 			p.mu.Lock()
 			p.events++
 			p.mu.Unlock()

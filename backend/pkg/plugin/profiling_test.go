@@ -21,7 +21,7 @@ import (
 
 func newProfilingManager(t *testing.T, provider pkgsettings.Provider) *pluginManager {
 	t.Helper()
-	return NewManager(testLogger(t), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, provider, nil, nil).(*pluginManager)
+	return NewManager(testLogger(t), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, provider, nil, nil, nil).(*pluginManager)
 }
 
 func TestPluginProfilingDefaultsAndFrozenStartupSetting(t *testing.T) {
@@ -75,8 +75,8 @@ func (c *profilingRPCClient) GetProfilingStatus(ctx context.Context, _ *emptypb.
 }
 
 func profilingTestBackend(query func(context.Context) (*lifecyclepb.ProfilingStatusResponse, error)) *plugintypes.InProcessBackend {
-	return plugintypes.NewInProcessBackend(map[string]interface{}{
-		"lifecycle": lc.NewClient(&profilingRPCClient{query: query}),
+	return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{
+		Providers: map[string]interface{}{"lifecycle": lc.NewClient(&profilingRPCClient{query: query})},
 	})
 }
 
@@ -137,7 +137,7 @@ func TestPluginProfilingStatusesDistinguishUnsupportedAndRPCFailure(t *testing.T
 
 func TestPluginProfilingLegacyLifecycleRPCReportsUnsupported(t *testing.T) {
 	client, server := serveLifecycleFixture(t, &lifecycleRPCFixture{})
-	backend := plugintypes.NewInProcessBackend(map[string]interface{}{"lifecycle": client})
+	backend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"lifecycle": client}})
 	pm := &pluginManager{records: map[string]*plugintypes.PluginRecord{
 		"legacy": {ID: "legacy", Phase: lifecycle.PhaseRunning, Backend: backend},
 	}}
@@ -178,7 +178,7 @@ func TestPluginProfilingStatusesDropDisplacedOrExitedBackend(t *testing.T) {
 			pm.recordsMu.Lock()
 			switch transition {
 			case "reload":
-				pm.records["fixture"] = &plugintypes.PluginRecord{ID: "fixture", Phase: lifecycle.PhaseRunning, Backend: plugintypes.NewInProcessBackend(nil)}
+				pm.records["fixture"] = &plugintypes.PluginRecord{ID: "fixture", Phase: lifecycle.PhaseRunning, Backend: plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{})}
 			case "unload":
 				delete(pm.records, "fixture")
 			case "exit":

@@ -64,12 +64,11 @@ application suite. The stable `e2e-tests` check accepts only the reusable job's
 success, including an explicitly proven prose-only skip. Browser results alone
 do not prove canonical preparation, acceptance and cleanup succeeded.
 
-The checked-out host's `e2e/source-cohort.json` selects full UI and Kubernetes
-commits for canonical CI and whole-app profiling. Kubernetes must match the
-committed `plugins/kubernetes` gitlink. The cohort SDK must match the independently
-reviewed release pinned in workflow `REVIEWED_SDK_REVISION`: SDK v0.12.1 at
-`0a5b64ed8c2de209fbb02ecce9feba3afd88f28c`. Repository variables remain unchanged;
-editing the cohort alone cannot approve another SDK commit.
+Canonical CI and whole-app profiling resolve the SDK checkout commit from the
+host's `go.mod` using Go module download metadata. UI packages come from the host
+lockfile, and Kubernetes comes from the committed `plugins/kubernetes` gitlink.
+Managed workspaces identify their linked SDK checkout by HEAD and source digest,
+including dirty source changes; this identity is not a sandbox.
 
 Playwright uses its GitHub reporter in Actions for failure annotations on the
 check and source locations, alongside terminal output, HTML and case timings.
@@ -114,14 +113,11 @@ evidence artifact separately when individual files are needed. Do not open only
 link to serve an interactive website.
 
 For a locally generated report, use `pnpm --dir e2e report`. To run the canonical
-suite locally, explicitly select the companion sources and independently reviewed
-SDK commit, then invoke the runner rather than bypassing preparation:
+suite locally, select a clean SDK checkout at the commit resolved from the host
+`go.mod` and initialize the Kubernetes submodule, then invoke the runner:
 
 ```sh
 SDK_SOURCE=/absolute/path/to/plugin-sdk \
-UI_SOURCE=/absolute/path/to/ui \
-KUBERNETES_SOURCE=/absolute/path/to/omniview-plugin-kubernetes \
-REVIEWED_SDK_REVISION='<independently-reviewed-full-sdk-commit>' \
 node e2e/scripts/run.mjs --full
 ```
 
@@ -210,6 +206,14 @@ Plain Go commands do not automatically select an unpublished companion SDK or co
 Implementation ownership: `main.go` composes startup and retains profile-lock ordering; `internal/hostruntime` owns Wails/platform configuration, native-store removal and server asset policy; `internal/devcontrol/host` owns control-service registration, lifecycle and observed endpoints. `internal/instance` remains native-independent so the workspace CLI can share profile policy. The frontend-bound `AppService` stays in `app.go`; control receives private snapshot callbacks rather than an exported mutation API.
 
 macOS PR and release artifacts share `build/darwin/build-universal.sh`: it builds CGO-enabled arm64 and amd64 executables, combines them, and verifies both slices before publishing the output. Bundle metadata is stamped in the staged app before signing: the numeric SemVer core becomes `CFBundleShortVersionString`, and the workflow run number becomes Apple-valid `CFBundleVersion`. Source plists are not rewritten by CI.
+
+Homebrew publication uses named macOS release symbols, such as
+`depends_on macos: :monterey`, rather than deprecated comparison strings.
+The updater migrates legacy lower bounds, keeps supported stricter major-release
+policies, and refuses constraints it cannot represent without weakening eligibility.
+Patch-level minima at or above macOS 12 require explicit tap-policy review.
+Actual install, upgrade, CLI-link, and uninstall checks run on disposable macOS
+CI machines before desktop publication; do not run them against a user's Homebrew.
 
 ## Stock native storage
 

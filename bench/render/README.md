@@ -39,15 +39,16 @@ Production React and JSX are the default. Use `BENCH_REACT_DEV=1` only for debug
   metrics, and log lines with JSON and ANSI-coloured content.
   Shared defaults explicitly answer `CheckConnection` with `CONNECTED` for the requested
   synthetic connection ID. Render and whole-app profiles exercise the real readiness
-  guard; they do not bypass it or wait for watch synchronization to authorize reads.
+  guard; they do not bypass it or wait for source synchronization to authorize reads.
   Kubernetes fixtures advertise `k8s:/pods`, return tagged V2 Values and host-owned
-  record identities, and honor native page sizes and cursors. The current Pod screen
-  requests 256 records per native page; 1k/5k labels describe source corpus sizes,
-  not simultaneous mounted row counts. Older full-list baselines are not comparable.
+  record identities, and honor native page sizes and cursors. Source views emit
+  ordered snapshots in chunks of at most 256 records, followed by snapshot status.
+  The 1k/5k labels describe source corpus sizes, not simultaneous mounted row counts.
+  Older full-list baselines are not comparable.
   Historical result files remain unchanged.
-  Log creation consumes the current encoded JSON request and preserves session options
-  in the current session DTO. Drawer and whole-app fixtures retain live sessions until
-  the real close call removes them; unknown session reads fail.
+  Log creation consumes the current encoded JSON request and preserves its correlation
+  ID and session options in the current session DTO. Drawer and whole-app fixtures
+  retain live sessions until the real close call removes them; unknown session reads fail.
 - The kubernetes Pod table is rendered from the `plugins/kubernetes` submodule source
   against the app's own `@omniviewdev/runtime` / `@omniviewdev/base-ui` (as plugins get them
   at runtime through the shared-deps import map). Run `git submodule update --init

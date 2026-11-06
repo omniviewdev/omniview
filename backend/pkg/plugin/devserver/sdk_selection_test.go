@@ -38,7 +38,6 @@ func managedSDKSelection(t *testing.T) managedSDKSelectionFixture {
 	require.NoError(t, err)
 	t.Setenv("HOME", home)
 	t.Setenv("GOFLAGS", "")
-	t.Setenv("OMNIVIEW_ALLOW_ISOLATION_SOURCE_CHANGES", "0")
 	fixture := managedSDKSelectionFixture{source: filepath.Join(root, "plugin"), sdk: filepath.Join(root, "sdk-a"), revision: revision, goPath: goPath}
 	cloneSDKSelectionFixture(t, seed, fixture.sdk)
 	for _, directory := range []string{fixture.source, filepath.Join(root, "host")} {
@@ -74,56 +73,50 @@ func managedSDKSelection(t *testing.T) managedSDKSelectionFixture {
 	return fixture
 }
 
-// Removing the directory binding must fail even when both checkouts have the
-// same reviewed commit and identical source bytes, with or without core opt-in.
-func TestVerifySelectedSDKManagedRejectsUnselectedReviewedCheckout(t *testing.T) {
-	for _, allowCoreChanges := range []string{"0", "1"} {
-		t.Run("allow-isolation-source-changes="+allowCoreChanges, func(t *testing.T) {
-			fixture := managedSDKSelection(t)
-			environment := append(fixture.environment, "OMNIVIEW_ALLOW_ISOLATION_SOURCE_CHANGES="+allowCoreChanges)
-			selected, err := VerifySelectedSDK(context.Background(), fixture.goPath, fixture.source, fixture.revision, environment)
-			require.NoError(t, err, "the manifest-selected checkout must remain acceptable")
-			canonical, err := filepath.EvalSymlinks(fixture.sdk)
-			require.NoError(t, err)
-			require.Equal(t, canonical, selected.Directory)
-			require.Equal(t, fixture.revision, selected.ReviewedRevision)
-			require.Len(t, selected.SourceDigest, 64)
+// Directory binding must fail even when both checkouts have identical commits and source bytes.
+func TestVerifySelectedSDKManagedRejectsUnselectedCheckout(t *testing.T) {
+	fixture := managedSDKSelection(t)
+	selected, err := VerifySelectedSDK(context.Background(), fixture.goPath, fixture.source, fixture.environment)
+	require.NoError(t, err, "the manifest-selected checkout must remain acceptable")
+	canonical, err := filepath.EvalSymlinks(fixture.sdk)
+	require.NoError(t, err)
+	require.Equal(t, canonical, selected.Directory)
+	require.Equal(t, fixture.revision, selected.Revision)
+	require.Len(t, selected.SourceDigest, 64)
 
-			foreign := filepath.Join(filepath.Dir(fixture.sdk), "sdk-b")
-			cloneSDKSelectionFixture(t, fixture.sdk, foreign)
-			foreignIdentity, err := devsource.Verify(context.Background(), foreign, fixture.revision)
-			require.NoError(t, err, "B must independently pass the real reviewed ancestry and containment-core verifier")
-			require.Equal(t, selected.ReviewedRevision, foreignIdentity.ReviewedRevision)
-			require.Equal(t, selected.SourceDigest, foreignIdentity.SourceDigest)
-			require.NotEqual(t, selected.Directory, foreignIdentity.Directory, "equal revision and bytes do not make two checkouts the same selected source")
+	foreign := filepath.Join(filepath.Dir(fixture.sdk), "sdk-b")
+	cloneSDKSelectionFixture(t, fixture.sdk, foreign)
+	foreignIdentity, err := devsource.Verify(context.Background(), foreign)
+	require.NoError(t, err)
+	require.Equal(t, selected.Revision, foreignIdentity.Revision)
+	require.Equal(t, selected.SourceDigest, foreignIdentity.SourceDigest)
+	require.NotEqual(t, selected.Directory, foreignIdentity.Directory,
+		"equal revision and bytes do not make two checkouts the same selected source")
 
-			goMod := filepath.Join(fixture.source, "go.mod")
-			original, err := os.ReadFile(goMod)
-			require.NoError(t, err)
-			require.NoError(t, os.WriteFile(goMod, []byte(fmt.Sprintf("module fixture\n\ngo 1.24.0\nrequire github.com/omniviewdev/plugin-sdk v0.0.0\nreplace github.com/omniviewdev/plugin-sdk => %q\n", foreign)), 0600))
-			_, err = VerifySelectedSDK(context.Background(), fixture.goPath, fixture.source, fixture.revision, environment)
-			require.Error(t, err, "real Go resolution of reviewed but unselected SDK B must not inherit workspace A's authority")
+	goMod := filepath.Join(fixture.source, "go.mod")
+	original, err := os.ReadFile(goMod)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(goMod, []byte(fmt.Sprintf(
+		"module fixture\n\ngo 1.24.0\nrequire github.com/omniviewdev/plugin-sdk v0.0.0\n"+
+			"replace github.com/omniviewdev/plugin-sdk => %q\n", foreign)), 0600))
+	_, err = VerifySelectedSDK(context.Background(), fixture.goPath, fixture.source, fixture.environment)
+	require.Error(t, err, "Go resolution of unselected SDK B must not inherit workspace A's selection")
 
-			require.NoError(t, os.WriteFile(goMod, original, 0600))
-			restored, err := VerifySelectedSDK(context.Background(), fixture.goPath, fixture.source, fixture.revision, environment)
-			require.NoError(t, err)
-			require.Equal(t, selected, restored, "restoring selected A must preserve its exact source identity")
-		})
-	}
+	require.NoError(t, os.WriteFile(goMod, original, 0600))
+	restored, err := VerifySelectedSDK(context.Background(), fixture.goPath, fixture.source, fixture.environment)
+	require.NoError(t, err)
+	require.Equal(t, selected, restored, "restoring selected A must preserve its exact source identity")
 }
 
-func TestVerifySelectedSDKManagedCoreChangesRequireExplicitConsent(t *testing.T) {
+func TestVerifySelectedSDKManagedDirtySourceChangesDigest(t *testing.T) {
 	fixture := managedSDKSelection(t)
-	selected, err := VerifySelectedSDK(context.Background(), fixture.goPath, fixture.source, fixture.revision, fixture.environment)
+	selected, err := VerifySelectedSDK(context.Background(), fixture.goPath, fixture.source, fixture.environment)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(fixture.sdk, "pkg", "state", "root.go"), []byte("package state\n// deliberate isolation development\n"), 0600))
-	_, err = VerifySelectedSDK(context.Background(), fixture.goPath, fixture.source, fixture.revision, fixture.environment)
-	require.Error(t, err, "a validated managed profile alone must not authorize isolation-core edits")
-	environment := append(fixture.environment, "OMNIVIEW_ALLOW_ISOLATION_SOURCE_CHANGES=1")
-	dirty, err := VerifySelectedSDK(context.Background(), fixture.goPath, fixture.source, fixture.revision, environment)
-	require.NoError(t, err, "explicit consent in the matching validated profile must still permit isolation development")
+	dirty, err := VerifySelectedSDK(context.Background(), fixture.goPath, fixture.source, fixture.environment)
+	require.NoError(t, err)
 	require.Equal(t, selected.Directory, dirty.Directory)
-	require.Equal(t, selected.ReviewedRevision, dirty.ReviewedRevision)
+	require.Equal(t, selected.Revision, dirty.Revision)
 	require.NotEqual(t, selected.SourceDigest, dirty.SourceDigest)
 }
 
@@ -133,12 +126,10 @@ func TestVerifySelectedSDKManagedRejectsProfileIdentityMismatch(t *testing.T) {
 		"OMNIVIEW_WORKSPACE_ID=7595bdf8-c4e9-46fa-b233-ea2bf9d23eca",
 		"OMNIVIEW_STATE_DIR=" + t.TempDir(),
 	} {
-		for _, allowCoreChanges := range []string{"0", "1"} {
-			t.Run(override+"/allow-isolation-source-changes="+allowCoreChanges, func(t *testing.T) {
-				environment := append(append([]string{}, fixture.environment...), override, "OMNIVIEW_ALLOW_ISOLATION_SOURCE_CHANGES="+allowCoreChanges)
-				_, err := VerifySelectedSDK(context.Background(), fixture.goPath, fixture.source, fixture.revision, environment)
-				require.Error(t, err, "managed source verification must retain the selected profile identity even without core-change opt-in")
-			})
-		}
+		t.Run(override, func(t *testing.T) {
+			environment := append(append([]string{}, fixture.environment...), override)
+			_, err := VerifySelectedSDK(context.Background(), fixture.goPath, fixture.source, environment)
+			require.Error(t, err, "managed source verification must retain the selected profile identity")
+		})
 	}
 }

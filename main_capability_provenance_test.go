@@ -85,7 +85,7 @@ func TestCapabilityConnectionAdmissionPreservesUIAndNativeOrigins(t *testing.T) 
 					return &sdkmetric.QueryResponse{Success: true, Results: []sdkmetric.MetricResult{{CurrentValue: &sdkmetric.CurrentValue{MetricID: "gomaxprocs", Value: float64(runtime.GOMAXPROCS(0))}}}}, nil
 				}, nil)
 			manager.BindConnectionContextProvider(provider)
-			backend := plugintypes.NewInProcessBackend(map[string]interface{}{"resource": provider, "metric": manager})
+			backend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": provider, "metric": manager}})
 			resources := hostresource.NewController(logger, nil, state.PluginStore, boundary)
 			resources.Run(ctx)
 			t.Cleanup(func() {

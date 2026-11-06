@@ -4,6 +4,8 @@
 
 Status: draft acceptance. The earlier host `f03102e338770f5a095408ccf98656210097f4be` and Kubernetes `d2d59feb126e87ff64947a5dfa0271a21d90c098` cohort passed CI. Focused independent re-review cleared the new Events/sidebar-order correction with no Critical or Important findings. The reviewed candidate still requires new cohort CI and native/real WindowService proof. This receipt does not authorize a merge.
 
+The reconciliation onto host main `256b330f5ffc9c8b2ca5ae4af631432fe93433a4` is not the previously tested cohort. Kubernetes PR #76 remains unmerged; the host temporarily retains main's Kubernetes gitlink and must pin the merged Kubernetes commit before acceptance. Previous CI and native observations below apply only to their recorded revisions. Kubernetes table/detail/editor native acceptance and merged-source smoke remain open.
+
 - Packet: P03, [omniview#82](https://github.com/omniviewdev/omniview/issues/82).
 - Consumed contracts: P00 identity and P45 structured resource references. No new wire contract or freeze gate.
 - Predecessors: [P00 #79](https://github.com/omniviewdev/omniview/issues/79), [P44 SDK #11](https://github.com/omniviewdev/plugin-sdk/issues/11), and [P45 SDK #12](https://github.com/omniviewdev/plugin-sdk/issues/12) are closed.

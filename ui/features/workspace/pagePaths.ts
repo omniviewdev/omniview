@@ -88,6 +88,10 @@ export function connectionKeyOfPath(path: string): string | null {
  */
 export function derivePageTitle(path: string, lookup: PageTitleLookup): string | null {
   const target = parsePagePath(path);
+  if (pathnameOf(path) === '/developer-tools/extensions') {
+    return 'Extension Inspector';
+  }
+
   switch (target.kind) {
     case 'home':
       return 'Home';

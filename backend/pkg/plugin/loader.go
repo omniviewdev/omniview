@@ -43,28 +43,32 @@ const pluginStartTimeout = 15 * time.Second
 
 // LoadPluginOptions configures how a plugin is loaded.
 type LoadPluginOptions struct {
-	DevMode        bool
-	DevModePath    string
-	ExistingState  *plugintypes.PluginStateRecord
-	archive        *archiveRecovery
-	archiveRestore bool
+	DevMode         bool
+	DevModePath     string
+	ExistingState   *plugintypes.PluginStateRecord
+	archive         *archiveRecovery
+	archiveRestore  bool
+	dependencyOwner bool
 }
 
 // LoadPlugin loads a plugin from its installation directory.
 // If the plugin is already loaded and running, this is a no-op.
-func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (sdktypes.PluginInfo, error) {
+func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (plugintypes.PluginInfo, error) {
 	opsMu := pm.pluginOpsLock(id)
 	opsMu.Lock()
 	defer opsMu.Unlock()
 	return pm.loadPluginLocked(id, opts)
 }
 
-func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (sdktypes.PluginInfo, error) {
+func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (plugintypes.PluginInfo, error) {
+	if entry, ok := pm.builtin(id); ok {
+		return pm.loadBuiltinLocked(id, entry, opts)
+	}
 	if err := pm.guardUninstallRecovery(id); err != nil {
-		return sdktypes.PluginInfo{}, err
+		return plugintypes.PluginInfo{}, err
 	}
 	if err := pm.checkArchiveLoad(id, opts); err != nil {
-		return sdktypes.PluginInfo{}, err
+		return plugintypes.PluginInfo{}, err
 	}
 	log := pm.logger.Named("LoadPlugin").With(logging.Any("id", id), logging.Any("opts", opts))
 	// An existing dev binding remains dev inventory even when a caller omits
@@ -81,13 +85,13 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (s
 			oldSource, oldErr := devcontract.CanonicalPath(prior.DevPath)
 			newSource, newErr := devcontract.CanonicalPath(opts.DevModePath)
 			if oldErr != nil {
-				return sdktypes.PluginInfo{}, oldErr
+				return plugintypes.PluginInfo{}, oldErr
 			}
 			if newErr != nil {
-				return sdktypes.PluginInfo{}, newErr
+				return plugintypes.PluginInfo{}, newErr
 			}
 			if oldSource != newSource {
-				return sdktypes.PluginInfo{}, fmt.Errorf("plugin %q is bound to another source; use the canonical workspace link/rebind transaction", id)
+				return plugintypes.PluginInfo{}, fmt.Errorf("plugin %q is bound to another source; use the canonical workspace link/rebind transaction", id)
 			}
 		} else {
 			inherited := LoadPluginOptions{}
@@ -116,7 +120,7 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (s
 		}
 		workspaceManaged, selectionErr = pm.validateManagedSource(id, developmentSource, archive)
 		if selectionErr != nil {
-			return sdktypes.PluginInfo{}, selectionErr
+			return plugintypes.PluginInfo{}, selectionErr
 		}
 	}
 
@@ -127,11 +131,16 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (s
 			log.Debugw(pm.ctx, "plugin already loaded and running, skipping", "pluginID", id)
 			info := existing.ToInfo()
 			pm.recordsMu.RUnlock()
+			if opts == nil || !opts.dependencyOwner {
+				if ctrl, ok := pm.connfullControllers[sdktypes.CapabilityResource].(interface{ PromoteDependencyStart(string) }); ok {
+					ctrl.PromoteDependencyStart(id)
+				}
+			}
 			return info, nil
 		}
 		if existing.Phase == lifecycle.PhaseStarting {
 			pm.recordsMu.RUnlock()
-			return sdktypes.PluginInfo{}, apperror.New(apperror.TypePluginLoadFailed, http.StatusConflict,
+			return plugintypes.PluginInfo{}, apperror.New(apperror.TypePluginLoadFailed, http.StatusConflict,
 				"Plugin is starting", fmt.Sprintf("Plugin '%s' is currently starting.", id)).WithInstance(id)
 		}
 	}
@@ -141,45 +150,55 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (s
 	log.Debugw(pm.ctx, "loading plugin from location", "location", location, "pluginID", id)
 
 	if _, err := os.Stat(location); os.IsNotExist(err) {
-		return sdktypes.PluginInfo{}, apperror.PluginNotFound(id)
+		return plugintypes.PluginInfo{}, apperror.PluginNotFound(id)
 	}
 
 	metadata, err := sdktypes.LoadPluginMetadata(location)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return sdktypes.PluginInfo{}, apperror.New(apperror.TypePluginLoadFailed, http.StatusNotFound,
+			return plugintypes.PluginInfo{}, apperror.New(apperror.TypePluginLoadFailed, http.StatusNotFound,
 				"Plugin metadata missing",
 				fmt.Sprintf("Plugin '%s' is missing its metadata file (plugin.yaml).", id)).
 				WithInstance(id)
 		}
-		return sdktypes.PluginInfo{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusInternalServerError,
+		return plugintypes.PluginInfo{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusInternalServerError,
 			fmt.Sprintf("Failed to load metadata for plugin '%s'", id)).
 			WithInstance(id)
 	}
 
 	if metadata.ID != id {
-		return sdktypes.PluginInfo{}, fmt.Errorf("installed metadata ID %q does not match %q", metadata.ID, id)
+		return plugintypes.PluginInfo{}, fmt.Errorf("installed metadata ID %q does not match %q", metadata.ID, id)
 	}
 	// Validate based on mode.
 	isDevMode := (opts != nil && opts.DevMode) ||
 		(opts != nil && opts.ExistingState != nil && opts.ExistingState.DevMode)
 
 	if err = validateForLoad(id, metadata, location, isDevMode); err != nil {
-		return sdktypes.PluginInfo{}, err
+		return plugintypes.PluginInfo{}, err
 	}
 	if workspaceManaged {
 		if err = pm.requireManagedArtifactStage(id, developmentSource, metadata); err != nil {
-			return sdktypes.PluginInfo{}, err
+			return plugintypes.PluginInfo{}, err
 		}
 	}
 
+	// Build the record directly.
+	record := newLoadRecord(id, metadata, opts)
+	if !record.Enabled {
+		record.Phase = lifecycle.PhaseInstalled
+		record.StateMachine.ForcePhase(record.Phase, "plugin disabled")
+		pm.recordsMu.Lock()
+		pm.records[id] = record
+		pm.recordsMu.Unlock()
+		return record.ToInfo(), nil
+	}
+	if err := pm.startRequiredOwners(metadata); err != nil {
+		return plugintypes.PluginInfo{}, err
+	}
 	// Remove stale entry under write lock.
 	pm.recordsMu.Lock()
 	delete(pm.records, id)
 	pm.recordsMu.Unlock()
-
-	// Build the record directly.
-	record := newLoadRecord(id, metadata, opts)
 
 	pm.logger.Debugw(pm.ctx, "found metadata",
 		"metadata", metadata,
@@ -190,9 +209,9 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (s
 	var backend plugintypes.PluginBackend
 
 	if metadata.HasBackendCapabilities() {
-		backend, err = pm.startBackend(id, record, metadata, location)
+		backend, err = pm.startBackend(id, record, metadata, location, opts != nil && opts.dependencyOwner)
 		if err != nil {
-			return sdktypes.PluginInfo{}, err
+			return plugintypes.PluginInfo{}, err
 		}
 	}
 
@@ -201,6 +220,9 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (s
 	pm.recordsMu.Lock()
 	pm.records[id] = record
 	pm.recordsMu.Unlock()
+	if ctrl, ok := pm.connlessControllers[sdktypes.CapabilityTools].(interface{ Refresh() }); ok {
+		ctrl.Refresh()
+	}
 
 	// Sync the state machine to Running.
 	if record.StateMachine != nil {
@@ -239,7 +261,8 @@ func (pm *pluginManager) startBackend(
 	record *plugintypes.PluginRecord,
 	metadata config.PluginMeta,
 	location string,
-) (plugintypes.PluginBackend, error) {
+	dependencyOwner bool,
+) (result plugintypes.PluginBackend, resultErr error) {
 	generation := pm.managedRuntimeGeneration(id, record.DevPath)
 	if err := pm.checkBackendRecovery(id); err != nil {
 		pm.storeFailedRecord(id, record, err)
@@ -255,11 +278,25 @@ func (pm *pluginManager) startBackend(
 		).WithInstance(id)
 	}
 	succeeded := false
+	record.Backend = backend
 	defer func() {
 		if !succeeded {
-			backend.Kill()
-			pm.pidTracker.Remove(id)
-			_ = pm.pidTracker.Save()
+			cleanupErr := pm.shutdownPlugin(id, record)
+			resultErr = errors.Join(resultErr, cleanupErr)
+			pm.storeFailedRecord(id, record, resultErr)
+		}
+	}()
+	if err := pm.bindConnectionSharing(metadata, backend); err != nil {
+		pm.storeFailedRecord(id, record, err)
+		return nil, err
+	}
+	if err := pm.bindActivities(id, backend); err != nil {
+		pm.storeFailedRecord(id, record, err)
+		return nil, err
+	}
+	defer func() {
+		if !succeeded {
+			pm.retireConnectionSharing(id)
 		}
 	}()
 	if err := pm.trackBackendPID(id, record.DevPath, backend); err != nil {
@@ -284,7 +321,7 @@ func (pm *pluginManager) startBackend(
 		).WithInstance(id)
 	}
 
-	if err := pm.startPlugin(record, backend); err != nil {
+	if err := pm.startPlugin(record, backend, dependencyOwner); err != nil {
 		pm.storeFailedRecord(id, record, err)
 		pm.observeManagedLifecycle(id, record.DevPath, generation, false, false, err)
 		return nil, apperror.Wrap(
@@ -300,6 +337,10 @@ func (pm *pluginManager) startBackend(
 // In dev mode only backend plugins need a binary (UI-only plugins are served by
 // the Vite dev server); otherwise the full start validation runs.
 func validateForLoad(id string, metadata config.PluginMeta, location string, isDevMode bool) error {
+	if err := metadata.Validate(); err != nil {
+		return apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusBadRequest,
+			fmt.Sprintf("Plugin '%s' has invalid connection declarations", id)).WithInstance(id)
+	}
 	if isDevMode {
 		if !metadata.HasBackendCapabilities() {
 			return nil
@@ -319,14 +360,15 @@ func validateForLoad(id string, metadata config.PluginMeta, location string, isD
 
 // storeFailedRecord marks record as failed with cause and stores it under id.
 func (pm *pluginManager) storeFailedRecord(id string, record *plugintypes.PluginRecord, cause error) {
+	pm.recordsMu.Lock()
 	record.LastError = cause.Error()
 	record.Phase = lifecycle.PhaseFailed
-	if record.StateMachine != nil {
-		record.StateMachine.ForcePhase(lifecycle.PhaseFailed, cause.Error())
-	}
-	pm.recordsMu.Lock()
 	pm.records[id] = record
+	machine := record.StateMachine
 	pm.recordsMu.Unlock()
+	if machine != nil {
+		machine.ForcePhase(lifecycle.PhaseFailed, cause.Error())
+	}
 }
 
 // trackBackendPID records the PID of an external plugin process so it can be
@@ -369,6 +411,22 @@ func (pm *pluginManager) createBackend(
 	metadata config.PluginMeta,
 	location string,
 ) (plugintypes.PluginBackend, error) {
+	if entry, ok := pm.builtin(id); ok {
+		ctx := pm.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		backend, err := entry.NewBackend(ctx)
+		if err != nil && backend != nil {
+			err = errors.Join(err, backend.Stop())
+			backend.Kill()
+			return nil, err
+		}
+		if err == nil && backend == nil {
+			err = errors.New("built-in factory returned nil backend")
+		}
+		return backend, err
+	}
 	if pm.backendFactory != nil {
 		return pm.backendFactory(metadata, location)
 	}
@@ -438,11 +496,16 @@ func (pm *pluginManager) createBackend(
 				"lifecycle": &lc.Plugin{Plugin: nil, Impl: nil},
 			},
 		},
-		GRPCDialOptions:  sdk.GRPCDialOptions(),
-		Cmd:              cmd,
-		SkipHostEnv:      true,
-		StartTimeout:     pluginStartTimeout,
-		AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
+		// Reuse the process listener for callback services. Separate broker
+		// listeners use the host's TMPDIR, whose profile-scoped path can exceed
+		// Unix socket limits even when the plugin has a verified short socket root.
+		// Activity and host-connection bindings complete sequentially before admission.
+		GRPCBrokerMultiplex: true,
+		GRPCDialOptions:     sdk.GRPCDialOptions(),
+		Cmd:                 cmd,
+		SkipHostEnv:         true,
+		StartTimeout:        pluginStartTimeout,
+		AllowedProtocols:    []goplugin.Protocol{goplugin.ProtocolGRPC},
 		Logger: hclog.New(&hclog.LoggerOptions{
 			Name:   id,
 			Output: logOutput,
@@ -465,23 +528,23 @@ func (pm *pluginManager) createBackend(
 }
 
 // ReloadPlugin stops and re-loads a plugin.
-func (pm *pluginManager) ReloadPlugin(id string) (sdktypes.PluginInfo, error) {
+func (pm *pluginManager) ReloadPlugin(id string) (plugintypes.PluginInfo, error) {
 	opsMu := pm.pluginOpsLock(id)
 	opsMu.Lock()
 	defer opsMu.Unlock()
 	return pm.reloadPluginLocked(id)
 }
 
-func (pm *pluginManager) reloadPluginLocked(id string) (sdktypes.PluginInfo, error) {
+func (pm *pluginManager) reloadPluginLocked(id string) (plugintypes.PluginInfo, error) {
 	if err := pm.guardArchiveRecovery(id); err != nil {
-		return sdktypes.PluginInfo{}, err
+		return plugintypes.PluginInfo{}, err
 	}
 
 	pm.recordsMu.RLock()
 	record, ok := pm.records[id]
 	pm.recordsMu.RUnlock()
 	if !ok {
-		return sdktypes.PluginInfo{}, apperror.New(apperror.TypePluginNotLoaded, http.StatusNotFound,
+		return plugintypes.PluginInfo{}, apperror.New(apperror.TypePluginNotLoaded, http.StatusNotFound,
 			"Plugin not loaded",
 			fmt.Sprintf("Plugin '%s' is not currently loaded.", id)).WithInstance(id)
 	}
@@ -500,7 +563,7 @@ func (pm *pluginManager) reloadPluginLocked(id string) (sdktypes.PluginInfo, err
 	}
 
 	if err := pm.unloadPluginLocked(id); err != nil {
-		return sdktypes.PluginInfo{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusInternalServerError,
+		return plugintypes.PluginInfo{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusInternalServerError,
 			"Failed to unload plugin during reload").WithInstance(id)
 	}
 	return pm.loadPluginLocked(id, opts)
@@ -510,7 +573,7 @@ func (pm *pluginManager) reloadPluginLocked(id string) (sdktypes.PluginInfo, err
 // Use this for user-initiated retries (e.g. the UI "Retry Plugin" button)
 // so the plugin gets fresh recovery attempts. Do NOT use for automated
 // crash recovery — use ReloadPlugin instead.
-func (pm *pluginManager) RetryFailedPlugin(id string) (sdktypes.PluginInfo, error) {
+func (pm *pluginManager) RetryFailedPlugin(id string) (plugintypes.PluginInfo, error) {
 	if pm.healthChecker != nil {
 		pm.healthChecker.CancelRecovery(id)
 	}
@@ -532,27 +595,37 @@ func (pm *pluginManager) UnloadPlugin(id string) error {
 func (pm *pluginManager) unloadPluginLocked(id string) error {
 	pm.recordsMu.RLock()
 	record, ok := pm.records[id]
+	if ok {
+		snapshot := *record
+		record = &snapshot
+	}
 	pm.recordsMu.RUnlock()
 	if !ok {
 		return nil // idempotent: not loaded = success
 	}
 
+	var cleanupErr error
 	if record.Phase == lifecycle.PhaseRunning {
-		if err := pm.stopPlugin(record); err != nil {
-			return fmt.Errorf("error stopping plugin: %w", err)
-		}
+		cleanupErr = pm.stopPlugin(record)
 	}
-
-	if record.Phase != lifecycle.PhaseStopped || record.Backend != nil {
-		if err := pm.shutdownPlugin(id, record); err != nil {
-			return fmt.Errorf("error shutting down plugin: %w", err)
-		}
+	cleanupErr = errors.Join(cleanupErr, pm.shutdownPlugin(id, record))
+	if cleanupErr != nil {
+		pm.storeFailedRecord(id, record, cleanupErr)
+		return cleanupErr
 	}
 	pm.observeManagedLifecycle(id, record.DevPath, pm.managedRuntimeGeneration(id, record.DevPath), false, false, nil)
 
 	pm.recordsMu.Lock()
-	delete(pm.records, id)
+	if record.Origin == "builtin" {
+		record.Phase = lifecycle.PhaseStopped
+		pm.records[id] = record
+	} else {
+		delete(pm.records, id)
+	}
 	pm.recordsMu.Unlock()
+	if record.Origin == "builtin" {
+		record.StateMachine.ForcePhase(record.Phase, "built-in unloaded")
+	}
 	return nil
 }
 
@@ -592,7 +665,7 @@ func (pm *pluginManager) initPlugin(record *plugintypes.PluginRecord) error {
 }
 
 // startPlugin starts all plugin controllers using lifecycle-based capability detection.
-func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend plugintypes.PluginBackend) error {
+func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend plugintypes.PluginBackend, dependencyOwner ...bool) (resultErr error) {
 	if record == nil {
 		return errors.New("record is nil")
 	}
@@ -611,7 +684,7 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 	defer func() {
 		if !committed {
 			for i := len(started) - 1; i >= 0; i-- {
-				_ = started[i].OnPluginStop(pluginID, record.Metadata)
+				resultErr = errors.Join(resultErr, started[i].OnPluginStop(pluginID, record.Metadata))
 			}
 		}
 	}()
@@ -659,13 +732,24 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 	// Start controllers for detected capabilities.
 	for _, cap := range detectedCaps {
 		if cap == sdktypes.CapabilitySettings {
-			continue // already handled above
+			continue
 		}
 		ctrl := pm.controllerFor(cap)
 		if ctrl == nil {
 			continue
 		}
 		started = append(started, ctrl)
+		if cap == sdktypes.CapabilityResource && len(dependencyOwner) != 0 && dependencyOwner[0] {
+			if noAuto, ok := ctrl.(interface {
+				OnPluginStartWithoutAutoConnect(string, config.PluginMeta, plugintypes.PluginBackend) error
+			}); ok {
+				if err := noAuto.OnPluginStartWithoutAutoConnect(pluginID, record.Metadata, backend); err != nil {
+					return fmt.Errorf("start %s controller: %w", cap.String(), err)
+				}
+				continue
+			}
+			return fmt.Errorf("resource controller cannot suppress dependency auto-connect")
+		}
 		if err := ctrl.OnPluginStart(pluginID, record.Metadata, backend); err != nil {
 			return fmt.Errorf("start %s controller: %w", cap.String(), err)
 		}
@@ -702,34 +786,32 @@ func (pm *pluginManager) stopPlugin(record *plugintypes.PluginRecord) error {
 
 	ctx := context.Background()
 	pluginID := record.ID
+	pm.retireConnectionSharing(pluginID)
+	pm.retireActivities(pluginID)
 
+	var errs []error
 	for name, manager := range pm.managers {
 		if err := manager.OnPluginStop(ctx, pluginID, record.Metadata); err != nil {
-			pm.logger.Errorw(ctx, "error invoking stop for plugin manager",
-				"manager", name, "pluginID", record.Metadata.ID, "error", err)
+			errs = append(errs, fmt.Errorf("stop plugin manager %s: %w", name, err))
 		}
 	}
-
 	if ctrl := pm.connlessControllers[sdktypes.CapabilitySettings]; ctrl != nil {
 		if err := ctrl.OnPluginStop(pluginID, record.Metadata); err != nil {
-			return fmt.Errorf("error stopping settings plugin: %w", err)
+			errs = append(errs, fmt.Errorf("stop settings: %w", err))
 		}
 	}
-
 	for _, cap := range record.Capabilities {
 		if cap == sdktypes.CapabilitySettings {
-			continue // already handled above
-		}
-		ctrl := pm.controllerFor(cap)
-		if ctrl == nil {
 			continue
 		}
-		if err := ctrl.OnPluginStop(pluginID, record.Metadata); err != nil {
-			return fmt.Errorf("error stopping %s plugin: %w", cap, err)
+		if ctrl := pm.controllerFor(cap); ctrl != nil {
+			if err := ctrl.OnPluginStop(pluginID, record.Metadata); err != nil {
+				errs = append(errs, fmt.Errorf("stop %s: %w", cap, err))
+			}
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 // shutdownPlugin shuts down the plugin process and controllers.
@@ -737,57 +819,75 @@ func (pm *pluginManager) shutdownPlugin(pluginID string, record *plugintypes.Plu
 	if record == nil {
 		return errors.New("record is nil")
 	}
+	pm.retireConnectionSharing(pluginID)
+	pm.retireActivities(pluginID)
 
 	ctx := context.Background()
 
+	var errs []error
 	for name, manager := range pm.managers {
 		if err := manager.OnPluginShutdown(ctx, pluginID, record.Metadata); err != nil {
-			pm.logger.Errorw(ctx, "error invoking shutdown for plugin manager",
-				"manager", name, "pluginID", record.Metadata.ID, "error", err)
+			errs = append(errs, fmt.Errorf("shutdown manager %s: %w", name, err))
 		}
 	}
-
-	if record.Metadata.HasBackendCapabilities() {
-		if err := pm.shutdownBackend(ctx, pluginID, record); err != nil {
-			return err
-		}
-	}
-
-	for _, cap := range record.Capabilities {
-		if cap == sdktypes.CapabilitySettings {
-			continue // already handled above
-		}
-		ctrl := pm.controllerFor(cap)
+	// Initialization registers every controller, even when startup fails before
+	// capability negotiation. Retire all registrations, resource admission first.
+	for cap, ctrl := range pm.connfullControllers {
 		if ctrl == nil {
 			continue
 		}
 		if err := ctrl.OnPluginShutdown(pluginID, record.Metadata); err != nil {
-			return fmt.Errorf("error shutting down %s plugin: %w", cap, err)
+			errs = append(errs, fmt.Errorf("shutdown %s: %w", cap, err))
 		}
 	}
-	return nil
-}
-
-// shutdownBackend stops and kills the plugin's backend process, forgets its PID
-// and shuts down its settings controller.
-func (pm *pluginManager) shutdownBackend(ctx context.Context, pluginID string, record *plugintypes.PluginRecord) error {
-	if record.Backend != nil {
-		if err := record.Backend.Stop(); err != nil {
-			pm.logger.Warnw(ctx, "error closing plugin backend", "pluginID", pluginID, "error", err)
+	for cap, ctrl := range pm.connlessControllers {
+		if cap == sdktypes.CapabilitySettings || ctrl == nil {
+			continue
 		}
-		record.Backend.Kill()
+		if err := ctrl.OnPluginShutdown(pluginID, record.Metadata); err != nil {
+			errs = append(errs, fmt.Errorf("shutdown %s: %w", cap, err))
+		}
 	}
-	pm.pidTracker.Remove(pluginID)
-	if err := pm.pidTracker.Save(); err != nil {
-		return err
-	}
-
 	if ctrl := pm.connlessControllers[sdktypes.CapabilitySettings]; ctrl != nil {
 		if err := ctrl.OnPluginShutdown(pluginID, record.Metadata); err != nil {
-			return fmt.Errorf("error shutting down settings plugin: %w", err)
+			errs = append(errs, fmt.Errorf("shutdown settings: %w", err))
 		}
 	}
-	return nil
+	errs = append(errs, pm.shutdownBackend(ctx, pluginID, record))
+	result := errors.Join(errs...)
+	phase := lifecycle.PhaseStopped
+	detail := ""
+	if result != nil {
+		phase = lifecycle.PhaseFailed
+		detail = result.Error()
+	}
+	pm.recordsMu.Lock()
+	record.Phase = phase
+	record.LastError = detail
+	record.Backend = nil
+	machine := record.StateMachine
+	pm.recordsMu.Unlock()
+	if machine != nil {
+		machine.ForcePhase(phase, detail)
+	}
+	return result
+}
+
+// shutdownBackend releases aggregate resources after capability retirement.
+func (pm *pluginManager) shutdownBackend(ctx context.Context, pluginID string, record *plugintypes.PluginRecord) error {
+	pm.recordsMu.RLock()
+	backend := record.Backend
+	pm.recordsMu.RUnlock()
+	var stopErr error
+	if backend != nil {
+		stopErr = backend.Stop()
+		backend.Kill()
+	}
+	if pm.pidTracker != nil {
+		pm.pidTracker.Remove(pluginID)
+		stopErr = errors.Join(stopErr, pm.pidTracker.Save())
+	}
+	return stopErr
 }
 
 // controllerFor returns the controller registered for capability c, or nil.

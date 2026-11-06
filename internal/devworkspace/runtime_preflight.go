@@ -14,7 +14,7 @@ import (
 )
 
 // Preflight reads the selected graph before installers, bindings or compilers run.
-func compatibilityPreflight(ctx context.Context, w Workspace, options LaunchOptions) error {
+func compatibilityPreflight(ctx context.Context, w Workspace) error {
 	plan, err := makeLinkPlan(w)
 	if err != nil {
 		return err
@@ -30,19 +30,8 @@ func compatibilityPreflight(ctx context.Context, w Workspace, options LaunchOpti
 	if err != nil || sdkModule.Module == nil || sdkModule.Module.Mod.Path != linkedSDK {
 		return devcontract.Fail(3, "sdk_contract_mismatch", "selected SDK must declare module "+linkedSDK+"; select a compatible SDK repository")
 	}
-	if _, err = devsource.VerifyWithOptions(ctx, plan.SDK, options.ReviewedSDKRevision, devsource.VerifyOptions{AllowIsolationCoreChanges: options.AllowIsolationSourceChanges}); err != nil {
-		var selected devcontract.Repository
-		for _, repository := range w.Manifest.Repositories {
-			if w.Manifest.Links.SDKRepositoryID != nil && repository.ID == *w.Manifest.Links.SDKRepositoryID {
-				selected = repository
-				break
-			}
-		}
-		head, headErr := git(ctx, plan.SDK, "", "rev-parse", "HEAD")
-		if headErr != nil {
-			head = selected.BaseCommit
-		}
-		return devcontract.Fail(4, "sdk_source_untrusted", fmt.Sprintf("selected SDK ref %q commit %s; independently reviewed commit %s: %v", selected.BaseRef, strings.TrimSpace(head), options.ReviewedSDKRevision, err))
+	if _, err = devsource.Verify(ctx, plan.SDK); err != nil {
+		return err
 	}
 	for _, root := range plan.GoRoots {
 		bytes, err := os.ReadFile(filepath.Join(root, "go.mod"))

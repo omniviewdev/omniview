@@ -1,23 +1,55 @@
 .Toolbar {
+  /* Keep fields and injected actions on the same compact action geometry. */
+  --ov-size-button-height-xs: var(--ov-size-card-action-height-sm);
+  --ov-size-button-height-sm: var(--ov-size-card-action-height-sm);
+  --ov-size-button-font-size-xs: var(--ov-primitive-font-size-12);
+  --ov-size-button-font-size-sm: var(--ov-primitive-font-size-12);
+  --ov-size-icon-button-icon-xs: var(--ov-primitive-font-size-14);
+  --ov-size-icon-button-icon-sm: var(--ov-primitive-font-size-14);
+
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   flex-shrink: 0;
-  gap: 2px;
-  min-height: 28px;
-  padding: 2px 6px;
+  gap: var(--ov-space-2);
+  min-inline-size: 0;
+  padding: var(--ov-space-1) var(--ov-space-2);
+  font-size: var(--ov-primitive-font-size-12);
   background: var(--ov-color-bg-surface);
   border-bottom: 1px solid var(--ov-color-border-muted);
 }
 
-.Separator {
-  align-self: stretch;
-  margin: 2px var(--ov-space-1);
+.Group,
+.SearchGroup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ov-space-1);
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+.Group > :where(button) {
+  flex-shrink: 0;
+}
+
+.SearchGroup {
+  flex: 0 1 28em;
+  flex-wrap: nowrap;
+}
+
+.Toolbar .Separator[data-ov-orientation='vertical'] {
+  flex-shrink: 0;
+  align-self: center;
+  block-size: calc(var(--ov-size-card-action-height-sm) - var(--ov-space-2));
+  min-block-size: 0;
+  margin: 0;
 }
 
 .Search {
-  min-width: 200px;
-  max-width: 300px;
-  font-size: 12px;
+  flex: 1 1 18em;
+  min-inline-size: min(10em, 100%);
+  max-inline-size: 24em;
 }
 
 .Spacer {
@@ -25,5 +57,6 @@
 }
 
 .LineCount {
-  margin-right: var(--ov-space-2);
+  flex-shrink: 0;
+  white-space: nowrap;
 }

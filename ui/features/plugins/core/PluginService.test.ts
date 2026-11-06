@@ -1301,3 +1301,36 @@ describe('reset()', () => {
     expect(s.service.getPluginState('A')?.phase).toBe('ready');
   });
 });
+
+describe('resource editor contribution isolation', () => {
+  it('keeps plugin ready after malformed and duplicate editors and authenticates ownership', async () => {
+    const s = setup();
+    const point = 'kubernetes/resource/editor/v1';
+    s.extensions.addExtensionPoint({ id: point, pluginId: 'kubernetes', mode: 'multiple' });
+    const descriptor = {
+      contractVersion: 1,
+      label: 'Widget',
+      targets: [{ group: 'example.io', version: 'v1', kind: 'Widget', resource: 'widgets', scope: 'Namespaced' }],
+      intents: ['inspect'],
+      sections: [{ id: 'details', label: 'Details' }],
+      ownedPaths: [],
+      component: () => null,
+    };
+    s.importer.register('addon', validModule({
+      routes: [{ path: '/working', Component: () => null }],
+      extensionRegistrations: [
+        { extensionPointId: point, registration: { id: 'bad', label: 'Bad', value: { ...descriptor, contractVersion: 99 } } },
+        { extensionPointId: point, registration: { id: 'widget', plugin: 'kubernetes', label: 'Widget', value: descriptor } },
+        { extensionPointId: point, registration: { id: 'widget', label: 'Duplicate', value: descriptor } },
+      ],
+    }));
+    await s.service.load('addon');
+    expect(s.service.getPluginState('addon')?.phase).toBe('ready');
+    expect(s.service.getAllRoutes()).toHaveLength(1);
+    const registered = s.extensions.getExtensionPoint(point)!.listAll();
+    expect(registered).toHaveLength(1);
+    expect(registered[0]?.plugin).toBe('addon');
+    await s.service.unload('addon');
+    expect(s.extensions.getExtensionPoint(point)!.listAll()).toHaveLength(0);
+  });
+});

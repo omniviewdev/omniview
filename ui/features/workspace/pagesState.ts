@@ -68,7 +68,7 @@ export type PagesAction =
 export function createSingleTabState(tab: PageTab, paneId: string): PagesState {
   return {
     version: 1,
-    tabs: { [tab.id]: { id: tab.id, path: tab.path, ...(tab.pinned ? { pinned: true } : {}), ...(tab.title ? { title: tab.title } : {}) } },
+    tabs: { [tab.id]: { id: tab.id, path: tab.path, ...(tab.pinned ? { pinned: true } : {}), ...(tab.title ? { title: tab.title } : {}), ...(tab.legacy ? { legacy: tab.legacy } : {}) } },
     groups: [],
     panes: [{ id: paneId, tabIds: [tab.id], activeTabId: tab.id }],
     activePaneId: paneId,

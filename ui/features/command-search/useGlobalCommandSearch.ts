@@ -1,6 +1,6 @@
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { PluginManager, ResourceClient } from '@omniviewdev/runtime/api';
-import { GLOBAL_SEARCH_OPEN_EVENT, resourceQueryKeys } from '@omniviewdev/runtime';
+import { GLOBAL_SEARCH_OPEN_EVENT, openSourceView, resourceQueryKeys } from '@omniviewdev/runtime';
 import type { ExtensionContributionRegistration, NavigationTargetV1, OpenGlobalSearchOptions, ReadTarget, SearchProviderV1, SearchProviderItemV1 } from '@omniviewdev/runtime';
 import { ConnectionStatusCode } from '@omniviewdev/runtime/models';
 import { Events } from '@wailsio/runtime';
@@ -80,7 +80,7 @@ export function useGlobalCommandSearch() {
   const routeTrees = useMemo(
     () =>
       new Map<string, RouteObject[]>(
-        Array.from(registrations, ([id, registration]) => [id, normalizePluginRoutes(registration.routes)]),
+        Array.from(registrations, ([id, registration]) => [id, normalizePluginRoutes(registration.routes, id)]),
       ),
     [registrations],
   );
@@ -126,7 +126,7 @@ export function useGlobalCommandSearch() {
         const routes =
           latestRoutingContext.current.registrations.get(id) === registration
             ? latestRoutingContext.current.routeTrees.get(id)
-            : normalizePluginRoutes(registration.routes);
+            : normalizePluginRoutes(registration.routes, id);
         return routes !== undefined && matchRoutes(routes, path) !== null;
       },
       listResourcePlugins: ResourceClient.ListPlugins,
@@ -344,7 +344,7 @@ export function useGlobalCommandSearch() {
         });
         next.notifyDataChanged();
       }),
-      Events.On('watch/STATE', () => {
+      Events.On('source/STATE', () => {
         next.notifyDataChanged(); 
       }),
       Events.On('plugin/inventory_changed', next.refresh),
@@ -461,7 +461,7 @@ export function useGlobalCommandSearch() {
 
         return latestRoutingContext.current.registrations.get(id) === registration
           ? latestRoutingContext.current.routeTrees.get(id)
-          : normalizePluginRoutes(registration.routes);
+          : normalizePluginRoutes(registration.routes, id);
       }, (id) => pluginService.getPluginState(id)?.phase === 'ready'));
     controllerRef.current?.open(resolved);
     input.current?.focus();
@@ -618,7 +618,7 @@ export function useGlobalCommandSearch() {
           continue;
         }
 
-        const stop = Events.On(`${pluginId}/${connectionId}/watch/STATE`, () => {
+        const stop = Events.On(`${pluginId}/${connectionId}/source/STATE`, () => {
           void queryClient.invalidateQueries({ queryKey: ['search-connection-status', pluginId, connectionId], refetchType: 'none' });
           controller.notifyDataChanged();
         });
@@ -626,8 +626,6 @@ export function useGlobalCommandSearch() {
       }
 
       for (const [key, { pluginId, target, targetId }] of resources) {
-        const connectionId = target.route.connection;
-        const resourceKey = target.type;
         const subscriptionKey = `resource:${key}`;
         desired.add(subscriptionKey);
         if (nativeSubscriptions.current.has(subscriptionKey)) {
@@ -654,13 +652,34 @@ export function useGlobalCommandSearch() {
             controller.notifyDataChanged();
           }
         });
-        const stops = ['ADD', 'UPDATE', 'DELETE'].map((type) =>
-          Events.On(`${pluginId}/${connectionId}/${resourceKey}/${type}`, (event) => {
-            const payload = event.data;
-            if ((type === 'DELETE' ? payload?.targetId : payload?.record?.targetId) !== targetId) {
+        const acquired = Promise.resolve().then(async () => {
+          if (!active) {
+            return undefined;
+          }
+
+          const view = await openSourceView(pluginId, { targetId, target, updates: 'ifSupported' });
+          if (!active) {
+            view.close();
+            return undefined;
+          }
+
+          let revision = 0;
+          const update = () => {
+            const snapshot = view.getSnapshot();
+            const unavailable = view.mode === 'snapshot' || snapshot.status?.state === 'failed' || snapshot.status?.state === 'closed';
+            if (unavailable) {
+              failedSubscriptions.current.add(subscriptionKey);
+            } else {
+              failedSubscriptions.current.delete(subscriptionKey);
+            }
+
+            setLiveFailureCount(failedSubscriptions.current.size);
+            const event = snapshot.event;
+            if (!event || event.revision === revision) {
               return;
             }
 
+            revision = event.revision;
             for (const query of queryCache.findAll({ queryKey })) {
               if (query.state.fetchStatus !== 'idle') {
                 dirtyQueries.add(query.queryHash);
@@ -669,36 +688,28 @@ export function useGlobalCommandSearch() {
 
             void queryClient.invalidateQueries({ queryKey, refetchType: 'none' });
             controller.notifyDataChanged();
-          }));
-        // Deferring acquisition also catches synchronous native failures.
-        const acquired = Promise.resolve().then(async () => {
-          if (!active) {
-            return false;
-          }
+          };
 
-          await ResourceClient.SubscribeResource(pluginId, { targetId, target });
-          return true;
+          const stop = view.subscribe(update);
+          update();
+          return { view, stop };
         }).catch(() => {
           if (active) {
             failedSubscriptions.current.add(subscriptionKey);
             setLiveFailureCount(failedSubscriptions.current.size);
           }
 
-          return false;
+          return undefined;
         });
         nativeSubscriptions.current.set(subscriptionKey, () => {
           active = false;
           stopCache();
           dirtyQueries.clear();
           failedSubscriptions.current.delete(subscriptionKey);
-          stops.forEach((stop) => {
-            stop(); 
+          void acquired.then((subscription) => {
+            subscription?.stop();
+            subscription?.view.close();
           });
-          void acquired.then(async (success) => {
-            if (success) {
-              await ResourceClient.UnsubscribeResource(pluginId, { targetId, target });
-            }
-          }).catch(() => undefined);
         });
       }
     }

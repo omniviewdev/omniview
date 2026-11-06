@@ -1,0 +1,333 @@
+package leasewire
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/query"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+)
+
+func meta() ResultMetadata {
+	return ResultMetadata{Coverage: "complete", Limitations: []string{}, Freshness: "current", Count: ResultCount{Kind: "unknown"}}
+}
+func frame(g string, n int) ResultDataFrame {
+	p := ResultDataPayload{Kind: "changes", Changes: []ResultChange{}, Metadata: meta()}
+	if n == 1 {
+		p = ResultDataPayload{Kind: "open", Rows: []ResultRow{}, Metadata: meta()}
+	}
+	return ResultDataFrame{Lane: "data", LeaseID: "lease", Generation: g, Sequence: fmt.Sprint(n), Payload: p}
+}
+func drain(t *testing.T, q *Queue, now time.Time) map[string]any {
+	t.Helper()
+	b, e := q.BeginDrain()
+	if e != nil {
+		t.Fatal(e)
+	}
+	var v map[string]any
+	if e = json.Unmarshal(b, &v); e != nil {
+		t.Fatalf("%s: %v", b, e)
+	}
+	q.EndDrain(now)
+	return v
+}
+func TestOverflowAndResetBarrier(t *testing.T) {
+	now := time.Unix(10, 0)
+	q, _ := NewQueue("lease", "g1")
+	for i := 1; i <= 64; i++ {
+		signal, e := q.Publish(frame("g1", i), now)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if signal != (i == 1) {
+			t.Fatalf("doorbell %d=%v", i, signal)
+		}
+	}
+	if _, e := q.Publish(frame("g1", 65), now); !errors.Is(e, ErrOverflow) {
+		t.Fatal(e)
+	}
+	if _, e := q.Publish(frame("g1", 65), now); !errors.Is(e, ErrOverflow) {
+		t.Fatal("overflow did not latch", e)
+	}
+	if _, e := q.Complete(now); !errors.Is(e, ErrOverflow) {
+		t.Fatal("completion passed overflow", e)
+	}
+	b, e := q.BeginDrain()
+	if e != nil || b != nil {
+		t.Fatalf("old-generation data survived overflow: %s %v", b, e)
+	}
+	q.EndDrain(now)
+	if _, e := q.Reset("g2", "overflow", now); e != nil {
+		t.Fatal(e)
+	}
+	v := drain(t, q, now)
+	p := v["payload"].(map[string]any)
+	if p["kind"] != "reset" || p["nextGeneration"] != "g2" {
+		t.Fatal(v)
+	}
+	if _, e := q.Publish(frame("g1", 65), now); !errors.Is(e, ErrGeneration) {
+		t.Fatal(e)
+	}
+	if _, e := q.Publish(frame("g2", 1), now); e != nil {
+		t.Fatal(e)
+	}
+	v = drain(t, q, now)
+	if v["sequence"] != "1" || v["generation"] != "g2" {
+		t.Fatal(v)
+	}
+}
+func TestTerminalBypassesData(t *testing.T) {
+	now := time.Unix(10, 0)
+	q, _ := NewQueue("lease", "g1")
+	if _, e := q.Publish(frame("g1", 1), now); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := q.Terminate("accessInvalidated", nil, now); e != nil {
+		t.Fatal(e)
+	}
+	v := drain(t, q, now)
+	if v["payload"].(map[string]any)["kind"] != "close" {
+		t.Fatal(v)
+	}
+	if _, e := q.Publish(frame("g1", 2), now); !errors.Is(e, ErrClosed) {
+		t.Fatal(e)
+	}
+}
+func TestCompleteAndDrain(t *testing.T) {
+	now := time.Unix(10, 0)
+	q, _ := NewQueue("lease", "g1")
+	q.Publish(frame("g1", 1), now)
+	q.Complete(now)
+	b, e := q.BeginDrain()
+	if e != nil || !strings.Contains(string(b), `"kind":"open"`) {
+		t.Fatal(string(b), e)
+	}
+	if _, e = q.BeginDrain(); !errors.Is(e, ErrDrainPending) {
+		t.Fatal(e)
+	}
+	if !q.EndDrain(now) {
+		t.Fatal("missing doorbell")
+	}
+	v := drain(t, q, now)
+	if v["payload"].(map[string]any)["state"] != "complete" {
+		t.Fatal(v)
+	}
+	if _, e = q.Publish(frame("g1", 2), now); !errors.Is(e, ErrClosed) {
+		t.Fatal(e)
+	}
+}
+func TestExpiryAndOversize(t *testing.T) {
+	now := time.Unix(10, 0)
+	q, _ := NewQueue("lease", "g1")
+	f := frame("g1", 1)
+	f.Payload.Metadata.Limitations = []string{strings.Repeat("x", MaxFrameBytes)}
+	if _, e := q.Publish(f, now); !errors.Is(e, ErrFrameTooLarge) {
+		t.Fatal(e)
+	}
+	if _, e := q.Publish(frame("g1", 1), now); e != nil {
+		t.Fatal(e)
+	}
+	if q.Expire(now.Add(InactiveTimeout - time.Nanosecond)) {
+		t.Fatal("early expiry")
+	}
+	if !q.Expire(now.Add(InactiveTimeout)) {
+		t.Fatal("missing expiry")
+	}
+	if _, e := q.Publish(frame("g1", 2), now); !errors.Is(e, ErrClosed) {
+		t.Fatal(e)
+	}
+}
+func TestDecimalAndEmptyArray(t *testing.T) {
+	f := frame("g1", 1)
+	n := "9007199254740993"
+	f.Payload.Metadata.Count = ResultCount{Kind: "exact", Value: &n}
+	b, e := f.encode()
+	if e != nil || !strings.Contains(string(b), `"rows":[]`) || !strings.Contains(string(b), `"value":"9007199254740993"`) {
+		t.Fatal(string(b), e)
+	}
+	n = "01"
+	if _, e = f.encode(); e == nil {
+		t.Fatal("accepted noncanonical integer")
+	}
+}
+
+func TestByteSaturationAndDrainResponse(t *testing.T) {
+	now := time.Unix(10, 0)
+	q, _ := NewQueue("lease", "g1")
+	for n := 1; n <= 5; n++ {
+		f := frame("g1", n)
+		f.Payload.Metadata.Limitations = []string{strings.Repeat("x", 220000)}
+		_, err := q.Publish(f, now)
+		if n < 5 && err != nil {
+			t.Fatal(err)
+		}
+		if n == 5 && !errors.Is(err, ErrOverflow) {
+			t.Fatalf("expected byte overflow, got %v", err)
+		}
+	}
+	b, err := json.Marshal(ControlQueryLeaseResponse{Kind: "drain"})
+	if err != nil || string(b) != `{"kind":"drain","event":null}` {
+		t.Fatalf("empty drain: %s %v", b, err)
+	}
+}
+
+func TestStrictControlRequests(t *testing.T) {
+	valid := []byte(`{"leaseId":"l","control":{"kind":"recover","generation":"g"}}`)
+	if _, err := DecodeControlQueryLeaseRequest(valid); err != nil {
+		t.Fatal(err)
+	}
+	for _, input := range []string{
+		`{"leaseId":"l","leaseId":"x","control":{"kind":"attach"}}`,
+		`{"leaseId":"l","control":{"kind":"attach","generation":null}}`,
+		`{"leaseId":"l","control":{"kind":"recover","generation":null}}`,
+		`{"leaseId":"l","control":{"kind":"drain","extra":1}}`,
+		`{"leaseId":null,"control":{"kind":"attach"}}`,
+		`{"LeaseId":"l","control":{"kind":"attach"}}`,
+		`{"leaseId":"l","control":{"Kind":"attach"}}`,
+		`{"leaseId":"l","LEASEID":"x","control":{"kind":"attach"}}`,
+	} {
+		if _, err := DecodeControlQueryLeaseRequest([]byte(input)); err == nil {
+			t.Fatalf("accepted %s", input)
+		}
+	}
+}
+
+func TestPreflightEscapesAndCycles(t *testing.T) {
+	f := frame("g1", 1)
+	f.Payload.Metadata.Limitations = []string{strings.Repeat("<", MaxFrameBytes/5)}
+	if err := preflight(f); !errors.Is(err, ErrFrameTooLarge) {
+		t.Fatalf("escaped JSON exceeded limit: %v", err)
+	}
+	type node struct {
+		Next *node `json:"next"`
+	}
+	n := &node{}
+	n.Next = n
+	if err := preflight(n); !errors.Is(err, ErrFrameTooLarge) {
+		t.Fatalf("cycle accepted: %v", err)
+	}
+}
+
+func TestSecurityErasure(t *testing.T) {
+	now := time.Unix(10, 0)
+	q, _ := NewQueue("lease", "g1")
+	_, _ = q.Publish(frame("g1", 1), now)
+	_, _ = q.Reset("g2", "overflow", now)
+	_, _ = q.Publish(frame("g2", 1), now)
+	if _, err := q.Reset("g3", "bindingChanged", now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.Publish(frame("g2", 2), now); !errors.Is(err, ErrGeneration) {
+		t.Fatal("retired generation accepted", err)
+	}
+	if _, err := q.Publish(frame("g3", 1), now); err != nil {
+		t.Fatal("replacement rejected while reset deferred", err)
+	}
+	if _, err := q.Reset("g4", "overflow", now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.Publish(frame("g4", 1), now); err != nil {
+		t.Fatal(err)
+	}
+	first := drain(t, q, now)
+	if first["payload"].(map[string]any)["nextGeneration"] != "g2" {
+		t.Fatal(first)
+	}
+	second := drain(t, q, now)
+	payload := second["payload"].(map[string]any)
+	if payload["generation"] != "g2" || payload["nextGeneration"] != "g4" || payload["reason"] != "bindingChanged" {
+		t.Fatalf("deferred reset not promoted: %v", second)
+	}
+	replacement := drain(t, q, now)
+	if replacement["generation"] != "g4" {
+		t.Fatalf("retired data survived: %v", replacement)
+	}
+	q2, _ := NewQueue("lease", "g1")
+	_, _ = q2.Publish(frame("g1", 1), now)
+	failure := &apperror.AppError{Detail: strings.Repeat("x", MaxFrameBytes)}
+	_, err := q2.Terminate("accessInvalidated", failure, now)
+	if !errors.Is(err, ErrFrameTooLarge) {
+		t.Fatal(err)
+	}
+	v := drain(t, q2, now)
+	if v["payload"].(map[string]any)["reason"] != "accessInvalidated" {
+		t.Fatal(v)
+	}
+}
+
+func TestPreflightInvalidUTF8(t *testing.T) {
+	f := frame("g1", 1)
+	f.Payload.Metadata.Limitations = []string{strings.Repeat("\xff", MaxFrameBytes/5)}
+	if err := preflight(f); !errors.Is(err, ErrFrameTooLarge) {
+		t.Fatalf("invalid UTF-8 expansion not bounded: %v", err)
+	}
+}
+
+func TestOptionalTokensOnPublishedFrames(t *testing.T) {
+	empty, valid := "", "token"
+	for _, field := range []string{"continuation", "incarnation"} {
+		for _, tc := range []struct {
+			name  string
+			value *string
+			valid bool
+		}{{"absent", nil, true}, {"empty", &empty, false}, {"valid", &valid, true}} {
+			t.Run(field+"/"+tc.name, func(t *testing.T) {
+				f := frame("g1", 1)
+				f.Payload.Rows = []ResultRow{{
+					Key: "row", TargetID: "target",
+					Resource:       resourcev2.ResourceReference{Address: resourcev2.ResourceAddress{Provider: "p", Authority: "a", Type: "t", Scope: []resourcev2.ScopeEntry{}, ID: "id"}},
+					Representation: query.RepresentationSelector{ID: "r", Revision: "1"},
+					Provenance:     ResultProvenance{Source: "s", Coverage: "complete"},
+					Values:         map[string]ProjectedValue{},
+				}}
+				if field == "continuation" {
+					f.Payload.Metadata.Continuation = tc.value
+				} else {
+					f.Payload.Rows[0].Resource.Incarnation = tc.value
+				}
+				q, err := NewQueue("lease", "g1")
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, err = q.Publish(f, time.Unix(10, 0))
+				if !tc.valid {
+					if !errors.Is(err, ErrInvalid) {
+						t.Fatalf("accepted empty %s: %v", field, err)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				b, err := q.BeginDrain()
+				if err != nil {
+					t.Fatal(err)
+				}
+				var event struct {
+					Payload struct {
+						Rows []struct {
+							Resource map[string]any `json:"resource"`
+						} `json:"rows"`
+						Metadata map[string]any `json:"metadata"`
+					} `json:"payload"`
+				}
+				if err := json.Unmarshal(b, &event); err != nil {
+					t.Fatal(err)
+				}
+				m := event.Payload.Metadata
+				if field == "incarnation" {
+					m = event.Payload.Rows[0].Resource
+				}
+				got, present := m[field]
+				if present != (tc.value != nil) || (present && got != *tc.value) {
+					t.Fatalf("%s: present=%v value=%v", field, present, got)
+				}
+			})
+		}
+	}
+}

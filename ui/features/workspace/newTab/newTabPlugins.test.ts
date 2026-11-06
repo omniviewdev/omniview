@@ -2,7 +2,7 @@ import type { PluginInfo } from '@omniviewdev/runtime/models';
 import { describe, expect, it } from 'vitest';
 import { selectNewTabPlugins } from './newTabPlugins';
 
-const plugin = (id: string, name?: string) => ({ id, metadata: { name, icon: `Si${id}` } }) as unknown as PluginInfo;
+const plugin = (id: string, name?: string) => ({ id, enabled: true, metadata: { name, icon: `Si${id}` } }) as unknown as PluginInfo;
 const withPages = { routes: [{ path: '' }] };
 
 describe('selectNewTabPlugins', () => {
@@ -19,6 +19,16 @@ describe('selectNewTabPlugins', () => {
     expect(selectNewTabPlugins([plugin('kubernetes', 'Kubernetes'), plugin('aws', 'AWS')], registrations).map(({ id }) => id))
       .toEqual(['aws', 'kubernetes']);
   });
+  it('shows discovered built-in pages without advertising disabled or command-only built-ins', () => {
+    const inventory = [
+      { ...plugin('pages'), origin: 'builtin', enabled: true },
+      { ...plugin('commands'), origin: 'builtin', enabled: true },
+      { ...plugin('disabled'), origin: 'builtin', enabled: false },
+    ];
+    const registrations = new Map([['pages', withPages], ['disabled', withPages]]);
+    expect(selectNewTabPlugins(inventory, registrations).map(({ id }) => id)).toEqual(['pages']);
+  });
+
 
   it('sorts by display name, falling back to the plugin ID', () => {
     const registrations = new Map([['proxmox', withPages], ['kubernetes', withPages], ['zeta', withPages]]);

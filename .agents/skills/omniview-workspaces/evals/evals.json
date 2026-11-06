@@ -6,10 +6,10 @@
       "id": 1,
       "name": "create-multi-plugin",
       "prompt": "You are in /tmp with no workspace environment. Set up and start browser feature comet touching UI, SDK, Kubernetes and metrics. Use registered sources, only necessary repos and both plugin links. Give concise command template plus prerequisites and next evidence; no global links or canonical edits. We are in a hurry; assume --help works if unsure.",
-      "expected_output": "Explicit root and registered repo IDs including host/UI/SDK/both plugin repos; repeat plugin IDs separately; One workspace create comet --start command, browser mode, real reviewed revision and link-evidence prerequisite; Inspect/paths and authenticated instance identity before readiness claim; no invented help evidence",
+      "expected_output": "Explicit root and registered repo IDs including host/UI/SDK/both plugin repos; repeat plugin IDs separately; One workspace create comet --start command, browser mode, selected local SDK and link-evidence prerequisite; Inspect/paths and authenticated instance identity before readiness claim; no invented help evidence",
       "assertions": [
         "Explicit root and registered repo IDs including host/UI/SDK/both plugin repos; repeat plugin IDs separately",
-        "One workspace create comet --start command, browser mode, real reviewed revision and link-evidence prerequisite",
+        "One workspace create comet --start command, browser mode, selected local SDK and link-evidence prerequisite",
         "Inspect/paths and authenticated instance identity before readiness claim; no invented help evidence"
       ],
       "files": []

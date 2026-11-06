@@ -36,7 +36,7 @@ function harness() {
         return resource;
       } } },
     ],
-  }]);
+  }], 'provider');
   const resolve = () => resolveRouteSearchScope(location, (id) => id === 'provider' && registered ? routes : undefined, () => ready);
   const controller = createGlobalSearchController({ registry: new ExtensionPointRegistry(), isPluginReady: () => ready,
     hasPluginRoute: () => registered, listResourcePlugins: async () => [], loadConnections: async () => [], navigate: () => undefined,
@@ -82,7 +82,7 @@ describe('registered route search context and opening', () => {
         path: page,
         handle: { searchScope: (context: SearchRouteContextV1) => ({ ...connection, connectionId: context.params.id }) },
       }],
-    }]);
+    }], 'provider');
     expect(resolveRouteSearchScope({ pathname: '/_plugin/provider' + pathname, search: '' }, () => routes, () => true))
       .toEqual({ ...connection, connectionId });
   });
@@ -101,7 +101,7 @@ describe('registered route search context and opening', () => {
           { path: ':resourceKey' },
         ] },
       ],
-    }]);
+    }], 'kubernetes');
     for (const suffix of ['edit', 'resources', 'resources/metrics', 'resources/page/cost', 'resources/not-a-resource', 'resources/core_v1_Pod', 'resources/example.io_v1_Widget']) {
       expect(resolveRouteSearchScope({ pathname: '/_plugin/kubernetes/cluster/west/' + suffix, search: '' }, () => routes, () => true)).toEqual(cluster);
     }

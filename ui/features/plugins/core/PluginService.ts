@@ -1,3 +1,4 @@
+import { RESOURCE_EDITOR_EXTENSION_POINT } from '@omniviewdev/runtime';
 import type { RouteObject } from 'react-router';
 import { assertValidTransition } from './transitions';
 import { normalizeContributions, extractDeclaredDependencies } from './normalization';
@@ -76,6 +77,8 @@ export class PluginService {
   private readonly state = new Map<string, PluginState>();
   private readonly registrations = new Map<string, PluginRegistrations>();
   private readonly inflightLoads = new Map<string, Promise<void>>();
+  private readonly builtinInventory = new Map<string, PluginDescriptor>();
+  private readonly pendingBuiltinDisables = new Set<string>();
   private readonly listeners = new Set<() => void>();
   private eventCleanups: Array<() => void> = [];
 
@@ -135,7 +138,7 @@ export class PluginService {
 
     this.cachedSnapshot = Object.freeze({
       plugins: new Map(this.state),
-      registrations: new Map(this.registrations),
+      registrations: this.getDiscoverableRegistrations(),
       ready: this.ready,
       routeVersion: this.routeVersion,
     });
@@ -153,7 +156,7 @@ export class PluginService {
     }
 
     const routes: RouteObject[] = [];
-    for (const reg of this.registrations.values()) {
+    for (const reg of this.getDiscoverableRegistrations().values()) {
       routes.push(...reg.routes);
     }
 
@@ -271,9 +274,76 @@ export class PluginService {
     };
   }
 
+  /** Discover routes without importing feature modules or starting backends. */
+  discoverBuiltins(plugins: readonly PluginDescriptor[]): void {
+    const next = new Map(plugins.filter(p => p.origin === 'builtin').map(p => [p.id, p]));
+    let changed = false;
+    for (const [id, previous] of this.builtinInventory) {
+      const replacement = next.get(id);
+      if (!replacement || replacement.frontendModule !== previous.frontendModule || replacement.enabled !== previous.enabled) {
+        void this.unload(id);
+        changed = true;
+      }
+    }
+
+    for (const [id, plugin] of next) {
+      const previous = this.builtinInventory.get(id);
+      if (!previous || previous.frontendModule !== plugin.frontendModule || previous.enabled !== plugin.enabled) {
+        changed = true;
+      }
+    }
+
+    this.builtinInventory.clear();
+    for (const [id, plugin] of next) {
+      this.builtinInventory.set(id, plugin);
+    }
+
+    if (changed) {
+      this.bumpRouteVersion();
+      this.notify();
+    }
+  }
+
+  async setEnabled(pluginId: string, enabled: boolean): Promise<void> {
+    if (!this.builtinInventory.has(pluginId) || !this.deps.setPluginEnabled) {
+      throw new Error(`Built-in enablement is unavailable for plugin "${pluginId}"`);
+    }
+
+    if (!enabled) {
+      this.pendingBuiltinDisables.add(pluginId);
+      this.bumpRouteVersion();
+      this.notify();
+    }
+
+    try {
+      if (!enabled) {
+        await this.unload(pluginId);
+      }
+
+      await this.deps.setPluginEnabled(pluginId, enabled);
+      const descriptor = this.builtinInventory.get(pluginId);
+      if (descriptor) {
+        this.builtinInventory.set(pluginId, { ...descriptor, enabled });
+      }
+
+      if (enabled && descriptor) {
+        this.updateBackendPhase(pluginId, 'Installed');
+      }
+    } finally {
+      this.pendingBuiltinDisables.delete(pluginId);
+      this.bumpRouteVersion();
+      this.notify();
+    }
+  }
+
+
   // ── Commands ────────────────────────────────────────────────────
 
   async load(pluginId: string, opts?: PluginLoadOpts): Promise<void> {
+    if (this.builtinInventory.get(pluginId)?.enabled === false || this.pendingBuiltinDisables.has(pluginId)) {
+      throw new Error(`Built-in plugin "${pluginId}" is disabled`);
+    }
+
     const existing = this.state.get(pluginId);
 
     // Already loaded — no-op
@@ -294,8 +364,16 @@ export class PluginService {
 
     this.deps.log.debug(`Loading plugin "${pluginId}"`, { plugin: pluginId });
 
-    const promise = this.doLoad(pluginId, opts);
+    // Reserve synchronously so unload/reset can fence this attempt before yielding.
+    // ES2023 exposes promise resolvers through the constructor executor.
+    let resolveLoad!: () => void;
+    let rejectLoad!: (error: unknown) => void;
+    const promise = new Promise<void>((resolve, reject) => {
+      resolveLoad = resolve;
+      rejectLoad = reject;
+    });
     this.inflightLoads.set(pluginId, promise);
+    void this.doLoad(pluginId, opts).then(resolveLoad, rejectLoad);
 
     try {
       await promise;
@@ -352,6 +430,9 @@ export class PluginService {
     this.inflightLoads.delete(pluginId);
     const generation = this.bumpLoadGeneration(pluginId);
 
+    this.removePluginRegistrations(pluginId);
+    this.bumpRouteVersion();
+    this.notify();
     if (current.phase === 'ready') {
       this.transition(pluginId, 'unloading');
       this.notify();
@@ -368,7 +449,7 @@ export class PluginService {
 
     // Transition to idle, preserving backendPhase
     this.state.set(pluginId, createDefaultPluginState(pluginId, {
-      backendPhase: current.backendPhase,
+      backendPhase: this.state.get(pluginId)?.backendPhase ?? current.backendPhase,
       isDev: current.isDev,
       devPort: current.devPort,
     }));
@@ -444,6 +525,7 @@ export class PluginService {
         dev: resolved.dev,
         devPort: resolved.devPort,
         moduleHash: resolved.moduleHash,
+        isCurrent: () => this.isCurrentGeneration(pluginId, generation),
       }));
 
       if (!this.isCurrentGeneration(pluginId, generation)) {
@@ -581,6 +663,10 @@ export class PluginService {
 
     // Filter out already-loaded
     const toLoad = plugins.filter((p) => {
+      if (p.origin === 'builtin' || this.builtinInventory.has(p.id) || p.enabled === false) {
+        return false;
+      }
+
       const existing = this.state.get(p.id);
       return !this.inflightLoads.has(p.id) && (!existing || existing.phase === 'idle');
     });
@@ -614,6 +700,27 @@ export class PluginService {
     } // idempotent
 
     this.eventCleanups.push(
+      this.deps.onEvent('plugin/enablement_changed', (data: { pluginID?: string; enabled?: boolean }) => {
+        if (!data?.pluginID || typeof data.enabled !== 'boolean') {
+          return;
+        }
+
+        const descriptor = this.builtinInventory.get(data.pluginID);
+        if (!descriptor) {
+          return;
+        }
+
+        this.builtinInventory.set(data.pluginID, { ...descriptor, enabled: data.enabled });
+        if (!data.enabled) {
+          void this.unload(data.pluginID);
+        } else {
+          this.updateBackendPhase(data.pluginID, 'Installed');
+        }
+
+        this.bumpRouteVersion();
+        this.notify();
+      }),
+
       this.deps.onEvent('plugin/install_finished', (meta: { id?: string }) => {
         if (!meta?.id) {
           return;
@@ -661,6 +768,9 @@ export class PluginService {
         }
 
         this.updateBackendPhase(data.pluginID, data.to);
+        if ((data.to === 'Stopping' || data.to === 'Stopped') && this.builtinInventory.has(data.pluginID)) {
+          void this.unload(data.pluginID);
+        }
       }),
 
       this.deps.onEvent('plugin/crash', (data: { pluginID?: string; error?: string }) => {
@@ -744,6 +854,8 @@ export class PluginService {
 
     this.state.clear();
     this.registrations.clear();
+    this.builtinInventory.clear();
+    this.pendingBuiltinDisables.clear();
     this.normalizedContributionsByPlugin.clear();
     this.definedExtensionPointIdsByPlugin.clear();
     this.pendingContributionsByExtensionPoint.clear();
@@ -757,6 +869,31 @@ export class PluginService {
     this.ready = false;
     this.routeVersion = 0;
     this.notify();
+  }
+
+
+  private getDiscoverableRegistrations(): Map<string, PluginRegistrations> {
+    const registrations = new Map(this.registrations);
+    for (const [id, descriptor] of this.builtinInventory) {
+      if (!descriptor.frontendModule || descriptor.enabled === false
+        || this.pendingBuiltinDisables.has(id) || registrations.has(id)) {
+        continue;
+      }
+
+      let routes: RouteObject[];
+      try {
+        routes = this.deps.getBuiltinRoutes?.(descriptor.frontendModule ?? '') ?? [];
+      } catch {
+        // Retain an error surface; demand still fails closed in the resolver.
+        routes = [{ path: '*' }];
+      }
+
+      if (routes.length) {
+        registrations.set(id, { routes });
+      }
+    }
+
+    return registrations;
   }
 
   private async loadBatch(toLoad: PluginDescriptor[], owner: Promise<void>): Promise<void> {
@@ -959,6 +1096,8 @@ export class PluginService {
         dev: resolved.dev,
         devPort: resolved.devPort,
         moduleHash: resolved.moduleHash,
+        isCurrent: () => this.isCurrentGeneration(pluginId, generation)
+          && this.getPluginState(pluginId)?.phase === 'loading',
       }));
 
       // Stale check
@@ -1087,6 +1226,7 @@ export class PluginService {
         dev: isDev,
         devPort: resolved.devPort,
         moduleHash: resolved.moduleHash,
+        isCurrent: () => this.isCurrentGeneration(pluginId, generation),
       }));
 
       if (!this.isCurrentGeneration(pluginId, generation)) {
@@ -1235,6 +1375,7 @@ export class PluginService {
         dev: isDev,
         devPort: devPort ?? undefined,
         moduleHash: moduleHash ?? undefined,
+        isCurrent: () => this.inflightLoads.get(pluginId) === owner,
       }));
 
       const validated = this.deps.validateExports(rawModule);
@@ -1297,6 +1438,8 @@ export class PluginService {
             `Contribution "${c.contributionId}" held pending — extension point "${c.extensionPointId}" not yet registered`,
             { pluginId, contributionId: c.contributionId, extensionPointId: c.extensionPointId },
           );
+        } else if (c.extensionPointId === RESOURCE_EDITOR_EXTENSION_POINT) {
+          this.deps.log.warn('Rejected resource editor contribution', { pluginId, contributionId: c.contributionId });
         } else {
           throw err;
         }
@@ -1349,6 +1492,8 @@ export class PluginService {
               `Discarded stale duplicate pending contribution "${c.contributionId}" for "${c.extensionPointId}"`,
               { pluginId: c.pluginId, contributionId: c.contributionId, extensionPointId: c.extensionPointId },
             );
+          } else if (c.extensionPointId === RESOURCE_EDITOR_EXTENSION_POINT) {
+            this.deps.log.warn('Rejected resource editor contribution', { pluginId: c.pluginId, contributionId: c.contributionId });
           } else {
             throw err;
           }
@@ -1392,6 +1537,11 @@ export class PluginService {
             }
 
             if (err instanceof DuplicateContributionError) {
+              continue;
+            }
+
+            if (c.extensionPointId === RESOURCE_EDITOR_EXTENSION_POINT) {
+              this.deps.log.warn('Rejected resource editor contribution', { pluginId: pid, contributionId: c.contributionId });
               continue;
             }
 

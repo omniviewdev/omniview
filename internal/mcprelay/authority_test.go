@@ -32,6 +32,89 @@ func authorityFixture(t *testing.T) (*Authority, Config, ToolInfo, context.Conte
 	return a, cfg, tool, context.WithValue(a.Authenticate(ctx), authoritySessionKey{}, session)
 }
 
+func TestGenericKubernetesStartupAdmissionIsScopedAndRevocable(t *testing.T) {
+	a, cfg, _, ctx := authorityFixture(t)
+	tool := genericKubernetesTools()[0]
+	a.UpdateCatalog([]ToolInfo{tool})
+	bound, err := a.Bind(ctx, tool, "cluster-a", []byte(`{}`))
+	require.NoError(t, err)
+	start := invocation.Target{Provider: tool.PluginID, Connection: "cluster-a"}
+	boundary := invocation.NewBoundary(a)
+	_, err = boundary.Admit(bound, "resource.StartConnection", start)
+	require.Error(t, err, "startup is forbidden before dispatch and consent")
+	require.NoError(t, a.Approve(bound))
+	require.Error(t, a.Dispatch(bound, func(callCtx context.Context) error {
+		_, err := boundary.Admit(callCtx, "resource.StartConnection", start)
+		require.NoError(t, err)
+		_, err = boundary.Admit(callCtx, "resource.StartConnection", invocation.Target{Provider: tool.PluginID, Connection: "cluster-b"})
+		require.Error(t, err)
+		_, err = boundary.Admit(callCtx, "resource.StartConnection", invocation.Target{Provider: "other", Connection: "cluster-a"})
+		require.Error(t, err)
+		_, err = boundary.Admit(callCtx, "resource.Mutate", start)
+		require.Error(t, err)
+		cfg.Global.Preset = PresetNone
+		a.UpdatePolicy(cfg)
+		_, err = boundary.Admit(callCtx, "resource.StartConnection", start)
+		require.Error(t, err)
+		return nil
+	}))
+}
+
+func TestGenericKubernetesStartupCancellationFencesResult(t *testing.T) {
+	a, _, _, ctx := authorityFixture(t)
+	tool := genericKubernetesTools()[0]
+	a.UpdateCatalog([]ToolInfo{tool})
+	ctx, cancel := context.WithCancel(ctx)
+	bound, err := a.Bind(ctx, tool, "cluster-a", []byte(`{}`))
+	require.NoError(t, err)
+	require.NoError(t, a.Approve(bound))
+	err = a.Dispatch(bound, func(callCtx context.Context) error {
+		cancel()
+		require.Error(t, callCtx.Err())
+		_, err := invocation.NewBoundary(a).Admit(callCtx, "resource.StartConnection",
+			invocation.Target{Provider: tool.PluginID, Connection: "cluster-a"})
+		require.Error(t, err)
+		return nil
+	})
+	require.Error(t, err)
+}
+
+func TestGenericKubernetesResolvedToolPolicyAndTarget(t *testing.T) {
+	a, cfg, _, ctx := authorityFixture(t)
+	generic := genericKubernetesTools()[0]
+	a.UpdateCatalog([]ToolInfo{generic})
+	real := ToolInfo{
+		MCPName: "kubernetes_scope_values", PluginID: "kubernetes", Scope: ScopeConnection,
+		ReadOnly: true, Status: StatusOK,
+		Resource: &ResourceBinding{PluginID: "kubernetes", Route: resourcev2.AccessRoute{Connection: "cluster-a"},
+			Operation: "resource.ScopeValues", Dimensions: []string{"namespace"}},
+	}
+	require.NoError(t, cfg.SetToolOverride(Scope{}, real.MCPName, ToolOverride{Enabled: new(false)}))
+	a.UpdatePolicy(cfg)
+	bound, err := a.Bind(ctx, generic, "cluster-a", []byte(`{}`))
+	require.NoError(t, err)
+	require.NoError(t, a.Approve(bound))
+	require.Error(t, a.Dispatch(bound, func(callCtx context.Context) error {
+		confirm, err := a.resolveKubernetes(callCtx, real, []byte(`{"dimension":"namespace"}`))
+		require.NoError(t, err, "group policy must not consult the resolved tool override")
+		require.False(t, confirm)
+		target := invocation.Target{Provider: "kubernetes", Connection: "cluster-a", Scope: map[string]string{"dimension": "namespace"}}
+		_, err = invocation.NewBoundary(a).Admit(callCtx, "resource.ScopeValues", target)
+		require.NoError(t, err, "resolved tool override must not revoke the selected group")
+		target.Scope["dimension"] = "other"
+		_, err = invocation.NewBoundary(a).Admit(callCtx, "resource.ScopeValues", target)
+		require.Error(t, err, "resolved scope must remain exact")
+		_, err = invocation.NewBoundary(a).Admit(callCtx, "resource.ScopeValues",
+			invocation.Target{Provider: "kubernetes", Connection: "cluster-b"})
+		require.Error(t, err, "resolved target must remain exact")
+		cfg.Global.Preset = PresetNone
+		a.UpdatePolicy(cfg)
+		err = a.approveResolvedKubernetes(callCtx)
+		require.Error(t, err, "group policy changes revoke the call")
+		return nil
+	}))
+}
+
 func TestAuthorityRevocationDuringConsentPreventsProviderCall(t *testing.T) {
 	a, cfg, tool, ctx := authorityFixture(t)
 	bound, err := a.Bind(ctx, tool, "", []byte(`{"input":"immutable"}`))
@@ -56,6 +139,46 @@ func TestAuthorityRevocationDuringConsentPreventsProviderCall(t *testing.T) {
 	calls := 0
 	require.Error(t, a.Dispatch(bound, func(context.Context) error { calls++; return nil }))
 	require.Zero(t, calls)
+}
+
+func TestAuthorityUnrelatedCatalogChangeKeepsPendingConsent(t *testing.T) {
+	a, _, tool, ctx := authorityFixture(t)
+	bound, err := a.Bind(ctx, tool, "", []byte(`{}`))
+	require.NoError(t, err)
+	relay := &Relay{authority: a, pending: map[string]*pendingEntry{}, showConfirmation: func() error { return nil }}
+	requested := make(chan struct{})
+	a.SetAudit(func(event AuditEvent) {
+		if event.Outcome == "consent-requested" {
+			close(requested)
+		}
+	})
+	resolved := make(chan bool, 1)
+	go func() {
+		approved, _ := relay.awaitConfirmation(bound, PendingConfirmation{})
+		resolved <- approved
+	}()
+	<-requested
+	unrelated := ToolInfo{MCPName: "other_custom", PluginID: "other", Name: "custom", Scope: ScopePlugin, Status: StatusOK}
+	a.UpdateCatalog([]ToolInfo{tool, unrelated})
+	pending := relay.ListPendingConfirmations()
+	require.Len(t, pending, 1)
+	require.NoError(t, relay.ResolveConfirmation(pending[0].ID, true))
+	require.True(t, <-resolved)
+	require.NoError(t, a.Approve(bound))
+
+	boundary := invocation.NewBoundary(a)
+	effects := 0
+	require.NoError(t, a.Dispatch(bound, func(callCtx context.Context) error {
+		_, err := boundary.Admit(callCtx, "tools.call", invocation.Target{Provider: tool.PluginID, Action: tool.Name})
+		if err != nil {
+			return err
+		}
+		effects++
+		_, err = boundary.Admit(callCtx, "tools.call", invocation.Target{Provider: unrelated.PluginID, Action: unrelated.Name})
+		require.Error(t, err, "an unrelated catalog addition must not extend the admitted target")
+		return nil
+	}))
+	require.Equal(t, 1, effects)
 }
 
 func TestAuthorityRetirementInvalidatesConsentAndLateResults(t *testing.T) {

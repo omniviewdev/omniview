@@ -78,7 +78,7 @@ func (*nativeLogFileStore) CheckConnection(_ context.Context, connection sdktype
 }
 
 func nativeLogRepresentation() sdkresource.Representation {
-	return sdkresource.Representation{ID: "native", Revision: "native:1", Schema: sdkresource.SchemaBinding{State: "absent", Validation: "none"}}
+	return sdkresource.Representation{ID: "native", Revision: "native:1", Schema: sdkresource.SchemaBinding{State: "absent"}}
 }
 
 func nativeLogRecord(target sdkresource.ReadTarget, name string, body sdkresource.Value) sdkresource.Record {
@@ -154,6 +154,11 @@ func (f *nativeFollowingLogFile) Close() error {
 }
 
 func TestNativeLogSessionConsumesRegisteredConnectionAndClosesFile(t *testing.T) {
+	t.Run("grpc", func(t *testing.T) { testNativeLogConnection(t, false) })
+	t.Run("direct", func(t *testing.T) { testNativeLogConnection(t, true) })
+}
+
+func testNativeLogConnection(t *testing.T, direct bool) {
 	ctx, cancel := context.WithTimeout(t.Context(), 12*time.Second)
 	defer cancel()
 	const pluginID = "native-logs-success"
@@ -249,40 +254,53 @@ func TestNativeLogSessionConsumesRegisteredConnectionAndClosesFile(t *testing.T)
 			},
 		},
 	})
-	logManager.BindConnectionContextProvider(resourceManager)
-	t.Cleanup(logManager.Close)
+	if !direct {
+		logManager.BindConnectionContextProvider(resourceManager)
+		t.Cleanup(logManager.Close)
+	}
 
 	streamStopped := make(chan struct{})
-	server := grpc.NewServer(sdkutils.RegisterServerOpts([]grpc.ServerOption{grpc.StreamInterceptor(func(service interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		err := handler(service, stream)
-		if info.FullMethod == logspb.LogPlugin_Stream_FullMethodName {
-			close(streamStopped)
-		}
-		return err
-	})}, logging.NewNop())...)
-	resourceplugin.RegisterServer(server, resourceManager)
-	logPlugin := &sdklogs.Plugin{Impl: logManager}
-	require.NoError(t, logPlugin.GRPCServer(nil, server))
-	listener := bufconn.Listen(1024 * 1024)
-	go func() { _ = server.Serve(listener) }()
-	t.Cleanup(func() { server.Stop(); _ = listener.Close() })
-	transport, err := grpc.DialContext(ctx, "passthrough:///native-logs-success",
-		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return listener.DialContext(ctx) }),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithChainUnaryInterceptor(sdk.ClientPluginContextInterceptor(logging.NewNop()), func(ctx context.Context, method string, request, response interface{}, conn *grpc.ClientConn, invoker grpc.UnaryInvoker, options ...grpc.CallOption) error {
-			callCtx, stop := context.WithTimeout(ctx, 3*time.Second)
-			defer stop()
-			return invoker(callCtx, method, request, response, conn, options...)
-		}),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = transport.Close() })
-	logClient, err := logPlugin.GRPCClient(ctx, nil, transport)
-	require.NoError(t, err)
-	backend := plugintypes.NewInProcessBackend(map[string]interface{}{
-		"resource": resourceplugin.NewClient(transport),
-		"log":      logClient,
-	})
+	var backend *plugintypes.InProcessBackend
+	if direct {
+		backend, err = plugintypes.ComposeNativeBackend(plugintypes.NativeProviders{
+			Resource: resourceManager,
+			Logs:     logManager,
+		})
+		require.NoError(t, err)
+	} else {
+		server := grpc.NewServer(sdkutils.RegisterServerOpts([]grpc.ServerOption{grpc.StreamInterceptor(func(service interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+			err := handler(service, stream)
+			if info.FullMethod == logspb.LogPlugin_Stream_FullMethodName {
+				close(streamStopped)
+			}
+			return err
+		})}, logging.NewNop())...)
+		resourceplugin.RegisterServer(server, resourceManager)
+		logPlugin := &sdklogs.Plugin{Impl: logManager}
+		require.NoError(t, logPlugin.GRPCServer(nil, server))
+		listener := bufconn.Listen(1024 * 1024)
+		go func() { _ = server.Serve(listener) }()
+		t.Cleanup(func() { server.Stop(); _ = listener.Close() })
+		transport, err := grpc.DialContext(ctx, "passthrough:///native-logs-success",
+			grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return listener.DialContext(ctx) }),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithChainUnaryInterceptor(sdk.ClientPluginContextInterceptor(logging.NewNop()), func(ctx context.Context, method string, request, response interface{}, conn *grpc.ClientConn, invoker grpc.UnaryInvoker, options ...grpc.CallOption) error {
+				callCtx, stop := context.WithTimeout(ctx, 3*time.Second)
+				defer stop()
+				return invoker(callCtx, method, request, response, conn, options...)
+			}),
+		)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = transport.Close() })
+		logClient, err := logPlugin.GRPCClient(ctx, nil, transport)
+		require.NoError(t, err)
+		backend = plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{
+			Providers: map[string]interface{}{
+				"resource": resourceplugin.NewClient(transport),
+				"log":      logClient,
+			},
+		})
+	}
 	state := appstate.NewTestService(t)
 	resources := hostresource.NewController(logging.NewNop(), nil, state.PluginStore, invocation.NewBoundary(nil))
 	resources.Run(ctx)
@@ -365,7 +383,11 @@ func TestNativeLogSessionConsumesRegisteredConnectionAndClosesFile(t *testing.T)
 		require.Equal(t, fileName, line.SourceID)
 		require.Equal(t, fileName, line.Labels["file"])
 	}
-	require.NoError(t, ctrl.CloseSession(session.ID))
+	if direct {
+		require.NoError(t, ctrl.OnPluginShutdown(pluginID, config.PluginMeta{ID: pluginID}))
+	} else {
+		require.NoError(t, ctrl.CloseSession(session.ID))
+	}
 	select {
 	case <-reader.closed:
 	case <-ctx.Done():
@@ -374,18 +396,22 @@ func TestNativeLogSessionConsumesRegisteredConnectionAndClosesFile(t *testing.T)
 	require.ErrorIs(t, reader.ctx.Err(), context.Canceled)
 	_, err = reader.file.Stat()
 	require.ErrorIs(t, err, os.ErrClosed)
-	sessions, err := ctrl.ListSessions()
-	require.NoError(t, err)
-	require.Empty(t, sessions)
-	_, err = ctrl.GetSession(session.ID)
-	require.Error(t, err)
+	if !direct {
+		sessions, err := ctrl.ListSessions()
+		require.NoError(t, err)
+		require.Empty(t, sessions)
+		_, err = ctrl.GetSession(session.ID)
+		require.Error(t, err)
+	}
 	_, err = resources.StopConnection(nativeCtx, pluginID, connectionID)
 	require.NoError(t, err)
 	require.NoError(t, ctrl.OnPluginStop(pluginID, config.PluginMeta{ID: pluginID}))
-	select {
-	case <-streamStopped:
-	case <-ctx.Done():
-		t.Fatal("real logs gRPC stream survived plugin stop: ", ctx.Err())
+	if !direct {
+		select {
+		case <-streamStopped:
+		case <-ctx.Done():
+			t.Fatal("real logs gRPC stream survived plugin stop: ", ctx.Err())
+		}
 	}
 	require.False(t, ctrl.HasPlugin(pluginID))
 	require.Empty(t, ctrl.GetSupportedResources(pluginID))

@@ -46,7 +46,12 @@ const (
 // resource controller over gRPC, then the metric RPC's actual SDK interceptors
 // carry that connection to the SDK metric manager's native collector.
 func TestQueryRegisteredNativeRuntimeMetricThroughConnectionGRPC(t *testing.T) {
-	fixture := newNativeMetricFixture(t, func(ctx *sdkmetric.QueryContext, req sdkmetric.QueryRequest) (*sdkmetric.QueryResponse, error) {
+	t.Run("grpc", func(t *testing.T) { testRegisteredNativeMetric(t, false) })
+	t.Run("direct", func(t *testing.T) { testRegisteredNativeMetric(t, true) })
+}
+
+func testRegisteredNativeMetric(t *testing.T, direct bool) {
+	fixture := nativeMetricFixtureForTransport(t, direct, func(ctx *sdkmetric.QueryContext, req sdkmetric.QueryRequest) (*sdkmetric.QueryResponse, error) {
 		if ctx == nil || ctx.Connection == nil {
 			return nil, errors.New("native metric query requires its selected connection")
 		}
@@ -180,6 +185,10 @@ type nativeMetricFixture struct {
 }
 
 func newNativeMetricFixture(t *testing.T, query sdkmetric.QueryFunc) *nativeMetricFixture {
+	return nativeMetricFixtureForTransport(t, false, query)
+}
+
+func nativeMetricFixtureForTransport(t *testing.T, direct bool, query sdkmetric.QueryFunc) *nativeMetricFixture {
 	t.Helper()
 	rootCtx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -205,61 +214,69 @@ func newNativeMetricFixture(t *testing.T, query sdkmetric.QueryFunc) *nativeMetr
 			Metrics: []sdkmetric.MetricDescriptor{{ID: nativeRuntimeMetricID, Name: "GOMAXPROCS", Unit: sdkmetric.UnitCount,
 				SupportedShapes: []sdkmetric.MetricShape{sdkmetric.ShapeCurrent, sdkmetric.ShapeTimeseries}}},
 		}}, query, nil)
-	manager.BindConnectionContextProvider(resourceManager)
+	var backend *plugintypes.InProcessBackend
 	started := make(chan struct{}, 1)
 	stopped := make(chan struct{}, 1)
-	options := utils.RegisterServerOpts(nil, logging.NewNop())
-	options = append(options, grpc.ChainStreamInterceptor(func(server any, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		if strings.HasSuffix(info.FullMethod, "/StreamResourceMetrics") {
-			started <- struct{}{}
-			defer func() { stopped <- struct{}{} }()
-		}
-		return handler(server, stream)
-	}))
-	server := grpc.NewServer(options...)
-	resourceplugin.RegisterServer(server, resourceManager)
-	metricPlugin := &sdkmetric.Plugin{Impl: manager}
-	require.NoError(t, metricPlugin.GRPCServer(nil, server))
-	listener := bufconn.Listen(1024 * 1024)
-	served := make(chan error, 1)
-	go func() { served <- server.Serve(listener) }()
-	var connection *grpc.ClientConn
-	t.Cleanup(func() {
-		if connection != nil {
-			if err := connection.Close(); err != nil {
-				t.Errorf("owned metric gRPC connection close failed: %v", err)
+	if direct {
+		backend, err = plugintypes.ComposeNativeBackend(plugintypes.NativeProviders{Resource: resourceManager, Metric: manager})
+		require.NoError(t, err)
+	} else {
+		manager.BindConnectionContextProvider(resourceManager)
+		options := utils.RegisterServerOpts(nil, logging.NewNop())
+		options = append(options, grpc.ChainStreamInterceptor(func(server any, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+			if strings.HasSuffix(info.FullMethod, "/StreamResourceMetrics") {
+				started <- struct{}{}
+				defer func() { stopped <- struct{}{} }()
 			}
-		}
-		server.Stop()
-		if err := listener.Close(); err != nil {
-			t.Errorf("owned metric gRPC listener close failed: %v", err)
-		}
-		select {
-		case serveErr := <-served:
-			if serveErr != nil && !errors.Is(serveErr, grpc.ErrServerStopped) {
-				t.Errorf("owned metric gRPC server failed: %v", serveErr)
+			return handler(server, stream)
+		}))
+		server := grpc.NewServer(options...)
+		resourceplugin.RegisterServer(server, resourceManager)
+		metricPlugin := &sdkmetric.Plugin{Impl: manager}
+		require.NoError(t, metricPlugin.GRPCServer(nil, server))
+		listener := bufconn.Listen(1024 * 1024)
+		served := make(chan error, 1)
+		go func() { served <- server.Serve(listener) }()
+		var connection *grpc.ClientConn
+		t.Cleanup(func() {
+			if connection != nil {
+				if err := connection.Close(); err != nil {
+					t.Errorf("owned metric gRPC connection close failed: %v", err)
+				}
 			}
-		case <-time.After(5 * time.Second):
-			t.Error("owned metric gRPC server did not stop")
-		}
-	})
-	dialCtx, dialCancel := context.WithTimeout(rootCtx, 5*time.Second)
-	defer dialCancel()
-	dialOptions := sdk.GRPCDialOptionsWithLogger(logging.NewNop())
-	dialOptions = append(dialOptions, grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
-		return listener.DialContext(ctx)
-	}), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
-	//nolint:staticcheck // Matches the repository's real bufconn integration convention.
-	connection, err = grpc.DialContext(dialCtx, "bufnet", dialOptions...)
-	require.NoError(t, err)
-	metricClient, err := metricPlugin.GRPCClient(rootCtx, nil, connection)
-	require.NoError(t, err)
-	client, ok := metricClient.(sdkmetric.Provider)
-	require.True(t, ok)
-	backend := plugintypes.NewInProcessBackend(map[string]interface{}{
-		"resource": resourceplugin.NewClient(connection),
-		"metric":   client,
-	})
+			server.Stop()
+			if err := listener.Close(); err != nil {
+				t.Errorf("owned metric gRPC listener close failed: %v", err)
+			}
+			select {
+			case serveErr := <-served:
+				if serveErr != nil && !errors.Is(serveErr, grpc.ErrServerStopped) {
+					t.Errorf("owned metric gRPC server failed: %v", serveErr)
+				}
+			case <-time.After(5 * time.Second):
+				t.Error("owned metric gRPC server did not stop")
+			}
+		})
+		dialCtx, dialCancel := context.WithTimeout(rootCtx, 5*time.Second)
+		defer dialCancel()
+		dialOptions := sdk.GRPCDialOptionsWithLogger(logging.NewNop())
+		dialOptions = append(dialOptions, grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+			return listener.DialContext(ctx)
+		}), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
+		//nolint:staticcheck // Matches the repository's real bufconn integration convention.
+		connection, err = grpc.DialContext(dialCtx, "bufnet", dialOptions...)
+		require.NoError(t, err)
+		metricClient, err := metricPlugin.GRPCClient(rootCtx, nil, connection)
+		require.NoError(t, err)
+		client, ok := metricClient.(sdkmetric.Provider)
+		require.True(t, ok)
+		backend = plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{
+			Providers: map[string]interface{}{
+				"resource": resourceplugin.NewClient(connection),
+				"metric":   client,
+			},
+		})
+	}
 	resources := hostresource.NewController(logging.NewNop(), nil, state.PluginStore, invocation.NewBoundary(nil))
 	resources.Run(rootCtx)
 	t.Cleanup(func() {
@@ -353,7 +370,7 @@ func (nativeRuntimeConnections) CheckConnection(_ context.Context, connection sd
 type nativeRuntimeResourcer struct{}
 
 func nativeRuntimeRepresentation() sdkresource.Representation {
-	return sdkresource.Representation{ID: "native", Revision: "native:1", Schema: sdkresource.SchemaBinding{State: "absent", Validation: "none"}}
+	return sdkresource.Representation{ID: "native", Revision: "native:1", Schema: sdkresource.SchemaBinding{State: "absent"}}
 }
 
 func (nativeRuntimeResourcer) Get(ctx context.Context, process *os.Process, input sdkresource.GetRequest) (sdkresource.Record, error) {

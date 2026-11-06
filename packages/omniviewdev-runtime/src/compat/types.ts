@@ -13,8 +13,8 @@ export {
   ConnectionAutoConnectTrigger,
   ConnectionLifecycle,
   ConnectionStatus,
-  PluginInfo,
 } from '../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
+export { PluginInfo } from '../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/types/models';
 
 export const ConnectionStatusCode = withLegacyNames(Generated, 'ConnectionStatus');
 export type ConnectionStatusCode = Generated;

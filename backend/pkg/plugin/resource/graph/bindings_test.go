@@ -116,7 +116,7 @@ func TestBoundSelectorsCrossTargetAuthority(t *testing.T) {
 			g, store, idx, source, bindings, _ := boundFixture(t, MethodLabelSelector)
 			target := registry.ResourceEntry{PluginID: source.PluginID, Route: bindings.Targets[0].Target.Route, Reference: resource.ResourceReference{Address: resource.ResourceAddress{Provider: "other-provider", Authority: "unknown:target", Type: "opaque/target", ID: "target", Scope: []resource.ScopeEntry{{Dimension: "account", Value: "a"}, {Dimension: "zone", Value: "west"}}}}, Labels: map[string]string{"app": "web"}}
 			var rejected []registry.ResourceEntry
-			for _, kind := range []string{"authority", "provider", "scope", "extra dimension", "route"} {
+			for _, kind := range []string{"authority", "provider", "scope", "extra dimension", "route", "type", "plugin"} {
 				wrong := target
 				wrong.Reference.Address.ID = kind
 				switch kind {
@@ -130,6 +130,10 @@ func TestBoundSelectorsCrossTargetAuthority(t *testing.T) {
 					wrong.Reference.Address.Scope = []resource.ScopeEntry{{Dimension: "account", Value: "a"}, {Dimension: "zone", Value: "west"}, {Dimension: "tenant", Value: "source"}}
 				case "route":
 					wrong.Route = source.Route
+				case "type":
+					wrong.Reference.Address.Type = "opaque/unrelated"
+				case "plugin":
+					wrong.PluginID = "unrelated-plugin"
 				}
 				rejected = append(rejected, wrong)
 				if !late {
@@ -140,6 +144,15 @@ func TestBoundSelectorsCrossTargetAuthority(t *testing.T) {
 				store.Put(target)
 			}
 			idx.OnAdd(source, json.RawMessage(`{"link":{"app":"web"},"account":"a"}`))
+			cached := g.selectorSnapshot(nodeFromEntry(target))
+			if len(cached) != 1 {
+				t.Fatalf("matching cross-authority snapshot has %d selectors, want 1", len(cached))
+			}
+			for _, wrong := range rejected {
+				if got := g.selectorSnapshot(nodeFromEntry(wrong)); len(got) != 0 {
+					t.Fatalf("unrelated target %q copied %d selectors", wrong.Reference.Address.ID, len(got))
+				}
+			}
 			if late {
 				store.Put(target)
 				idx.OnAdd(target, json.RawMessage(`{}`))
@@ -156,6 +169,18 @@ func TestBoundSelectorsCrossTargetAuthority(t *testing.T) {
 			g.ClearDeclarationsForConnection(source.PluginID, source.Route)
 			if g.hasSelectors(source.EntryKey()) {
 				t.Fatal("retired selector survived")
+			}
+			if got := g.selectorSnapshot(nodeFromEntry(target)); len(got) != 0 {
+				t.Fatal("retired selector remained in target snapshot")
+			}
+			g.addBoundEdge(GraphEdge{
+				Source: cached[0].node,
+				Target: nodeFromEntry(target),
+				Type:   cached[0].decl.Type,
+				Label:  cached[0].decl.Label,
+			}, cached[0].node, true, cached[0].snapshot)
+			if len(g.EdgesFrom(source.EntryKey())) != 0 {
+				t.Fatal("retired selector snapshot republished an edge")
 			}
 			if _, _, ok := g.GetBoundDeclarations(source.PluginID, source.Route, source.Reference.Address.Type); ok {
 				t.Fatal("retired declaration survived")

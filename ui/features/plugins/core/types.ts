@@ -232,6 +232,8 @@ export type PluginImportOpts = {
   readonly moduleHash?: string;
   readonly dev?: boolean;
   readonly devPort?: number;
+  /** Fence native activation and module evaluation after retirement. */
+  readonly isCurrent?: () => boolean;
 };
 
 export type PluginLoadOpts = {
@@ -245,6 +247,9 @@ export type PluginDescriptor = {
   readonly dev: boolean;
   readonly devPort?: number;
   readonly moduleHash?: string;
+  readonly origin?: 'builtin' | 'external';
+  readonly frontendModule?: string;
+  readonly enabled?: boolean;
 };
 
 // ─── Plugin Service Config ───────────────────────────────────────────
@@ -283,6 +288,8 @@ export type PluginServiceDeps = {
   getPluginDescriptor(pluginId: string): Promise<PluginDescriptor>;
 
   importPlugin(opts: PluginImportOpts): Promise<unknown>;
+  getBuiltinRoutes?(frontendModule: string): RouteObject[];
+  setPluginEnabled?(pluginId: string, enabled: boolean): Promise<void>;
   clearPlugin(opts: { pluginId: string; dev?: boolean }): Promise<void>;
   onEvent(eventName: string, handler: (...args: any[]) => void): () => void;
   ensureBuiltinExtensionPoints(): void;
