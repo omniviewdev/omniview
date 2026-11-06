@@ -156,7 +156,7 @@ A current `ok` result has a finite `Value`. Range results contain strictly incre
 
 ## Provider callbacks
 
-See the [provider SDK guide](https://github.com/omniviewdev/plugin-sdk/blob/feature/metrics-native-cutover-20261105-f0ad9ab1/docs/finite-resource-metrics.md) for registration and examples.
+See the [provider SDK guide](https://github.com/omniviewdev/plugin-sdk/blob/main/docs/finite-resource-metrics.md) for registration and examples.
 
 The host invokes `GetResourceMetricsCatalog` and `QueryResources` through the SDK. The SDK validates every target and holds its connection/catalog leases during collection. Providers execute the requested batch; they do not own polling.
 

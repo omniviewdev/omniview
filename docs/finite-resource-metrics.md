@@ -201,5 +201,5 @@ Preferences save choices; your view renders them. They do not add history or cap
 
 ## Go deeper
 
-- **Writing a backend provider?** Start with the [SDK provider guide](https://github.com/omniviewdev/plugin-sdk/blob/feature/metrics-native-cutover-20261105-f0ad9ab1/docs/finite-resource-metrics.md).
+- **Writing a backend provider?** Start with the [SDK provider guide](https://github.com/omniviewdev/plugin-sdk/blob/main/docs/finite-resource-metrics.md).
 - **Maintaining the host?** See [limits, permissions, timestamps, and transport lifecycle](finite-resource-metrics-reference.md).
