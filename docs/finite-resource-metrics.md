@@ -88,7 +88,7 @@ Let base-ui format the value. Missing measurements are `null`, not zero. Native 
 
 ## 3. Remember view settings
 
-Call this hook inside your metrics component:
+Import `useMetricViewPreferences` from `@omniviewdev/runtime` and call it inside your metrics component:
 
 ```ts
 const view = useMetricViewPreferences('kubernetes', 'k8s:/pods', {
@@ -97,7 +97,7 @@ const view = useMetricViewPreferences('kubernetes', 'k8s:/pods', {
 });
 ```
 
-Import `useMetricViewPreferences` from `@omniviewdev/runtime`. Pass `view.preferences.metric_ids` to the observation hook to use the saved selection.
+Pass `view.preferences.metric_ids` to the observation hook to use the saved selection.
 
 In an async event handler, save only the fields that changed:
 
