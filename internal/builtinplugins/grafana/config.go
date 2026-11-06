@@ -400,5 +400,5 @@ func pluginContext(ctx *types.PluginContext) context.Context {
 }
 
 func (p *Provider) GetSupportedResources(*types.PluginContext) (*metric.ProviderInfo, []metric.Handler) {
-	return &metric.ProviderInfo{ID: "grafana", Name: "Grafana / Prometheus"}, nil
+	return &metric.ProviderInfo{ID: "grafana", Name: "Grafana / Prometheus", Icon: "SiGrafana"}, nil
 }
