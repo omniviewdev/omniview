@@ -3,6 +3,8 @@ package metric
 import (
 	"context"
 	"errors"
+	"sync"
+	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/transportjson"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -15,7 +17,10 @@ import (
 //
 //	OnPluginDestroy
 type ServiceWrapper struct {
-	Ctrl Controller
+	Ctrl          Controller
+	sessionsMu    sync.Mutex
+	sessions      map[uint]*metricFrontendSession
+	closedWindows map[uint]time.Time
 }
 
 func (s *ServiceWrapper) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {

@@ -6,11 +6,18 @@ export {
     ColorRange,
     CurrentValue,
     DataPoint,
+    FiniteMetricDescriptor,
     Handler,
     MetricDescriptor,
     MetricResult,
     MetricShape,
+    MetricSourceRef,
     MetricUnit,
     QueryResponse,
+    ResourceMetricPoint,
+    ResourceMetricResult,
+    ResourceMetricTarget,
+    ResourceMetricsCatalog,
+    ResourceMetricsResponse,
     TimeSeries
 } from "./models.js";

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,6 +20,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
@@ -64,6 +66,18 @@ type Controller interface {
 	Subscribe(pluginID, connectionID string, req SubscribeRequest) (string, error)
 	Unsubscribe(subscriptionID string) error
 	BeginConnectionChange(pluginID, connectionID string) func()
+
+	// Finite native metrics share one authority-partitioned coordinator.
+	GetResourceMetricsCatalog(context.Context, string, string, string) (*metric.ResourceMetricsCatalog, error)
+	ReadFiniteResourceMetrics(context.Context, MetricsObservationSpec) (*metric.ResourceMetricsResponse, error)
+	OpenMetricsObservation(context.Context, OpenMetricsObservationRequest, func(MetricsObservationSnapshot)) (MetricsObservationSnapshot, error)
+	AttachMetricsObservation(context.Context, string) error
+	CloseMetricsObservation(context.Context, string) error
+	RefreshMetricsObservation(context.Context, string) error
+	RetireMetricsSession(context.Context)
+	SetMetricPreferencesStore(*settingsstore.Store)
+	GetMetricViewPreferences(string, string) (MetricViewPreferences, error)
+	SaveMetricViewPreferences(string, string, MetricViewPreferences) error
 }
 
 // SubscribeRequest contains parameters for subscribing to a metric stream.
@@ -103,6 +117,10 @@ type controller struct {
 	referenceAdmitter   resource.ReferenceAdmitter
 	uiReferenceAdmitter resource.ReferenceAdmitter
 	mux                 sync.RWMutex
+	finiteOnce          sync.Once
+	finite              atomic.Pointer[finiteCoordinator]
+	preferencesMu       sync.Mutex
+	preferencesStore    *settingsstore.Store
 }
 
 // SetReferenceAdmitter binds native admission without changing invocation identity.
@@ -144,6 +162,9 @@ func (c *controller) ServiceStartup(ctx context.Context, _ application.ServiceOp
 }
 
 func (c *controller) ServiceShutdown() error {
+	if finite := c.finite.Load(); finite != nil {
+		finite.shutdown()
+	}
 	c.mux.RLock()
 	plugins := make([]string, 0, len(c.clients))
 	for id := range c.clients {
@@ -162,8 +183,8 @@ func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
 	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginInit")
 }
 
-// dispenseProvider extracts the metric provider from the backend,
-// wrapping it in the version-appropriate adapter.
+// dispenseProvider retains the negotiated SDK provider directly. Optional
+// finite and canonical legacy capabilities are selected at the call site.
 func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Provider, error) {
 	raw, err := backend.Dispense("metric")
 	if err != nil {
@@ -173,15 +194,15 @@ func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Pro
 	version := backend.NegotiatedVersion()
 	switch version {
 	case 1:
-		v1, ok := raw.(metric.Provider)
+		v1, ok := raw.(Provider)
 		if !ok {
 			return nil, apperror.New(
 				apperror.TypePluginLoadFailed, http.StatusInternalServerError,
 				"Plugin type mismatch",
-				fmt.Sprintf("Expected metric.Provider for v1, got %T", raw),
+				fmt.Sprintf("Expected metric discovery provider for v1, got %T", raw),
 			)
 		}
-		return NewAdapterV1(v1), nil
+		return v1, nil
 	default:
 		return nil, apperror.New(
 			apperror.TypePluginLoadFailed, http.StatusInternalServerError,
@@ -257,6 +278,7 @@ func (c *controller) HasPlugin(pluginID string) bool {
 
 func (c *controller) removePlugin(pluginID string) {
 	c.mux.Lock()
+	finite := c.finite.Load()
 	var retired []*metricStream
 	for key, state := range c.streams {
 		if key.plugin == pluginID {
@@ -290,6 +312,9 @@ func (c *controller) removePlugin(pluginID string) {
 	}
 
 	c.mux.Unlock()
+	if finite != nil {
+		finite.retire(pluginID, "", false)
+	}
 	for _, state := range retired {
 		c.endStream(state, closedStreamError())
 	}
@@ -429,7 +454,7 @@ func (c *controller) Query(
 		return nil, err
 	}
 
-	resp, err := client.Query(
+	resp, err := queryLegacyProvider(client,
 		c.getConnectedCtx(ctx, pluginID, connectionID),
 		req,
 	)
@@ -463,7 +488,7 @@ func (c *controller) ReadResourceMetrics(
 	if !ok {
 		return nil, apperror.PluginNotFound(pluginID)
 	}
-	return client.Query(c.getConnectedCtx(admitted, pluginID, req.Route.Connection), req)
+	return queryLegacyProvider(client, c.getConnectedCtx(admitted, pluginID, req.Route.Connection), req)
 }
 
 func (c *controller) QueryAll(

@@ -21,15 +21,48 @@ import * as metric$0 from "../../../../../plugin-sdk/pkg/v1/metric/models.js";
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
+/**
+ * AttachMetricsObservation activates an acknowledged window-owned reservation.
+ */
+export function AttachMetricsObservation(token: string): $CancellablePromise<void> {
+    return $Call.ByID(4163287449, token);
+}
+
+/**
+ * CloseMetricsObservation is idempotent and covers close-before-registration.
+ */
+export function CloseMetricsObservation(token: string): $CancellablePromise<void> {
+    return $Call.ByID(3678659766, token);
+}
+
+/**
+ * GetMetricViewPreferences reads profile-durable presentation state. Revision is
+ * required when saving; durable store failures are returned, never hidden.
+ */
+export function GetMetricViewPreferences(plugin: string, resourceKey: string): $CancellablePromise<$models.MetricViewPreferences> {
+    return $Call.ByID(2126901972, plugin, resourceKey).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
 export function GetProviders(): $CancellablePromise<$models.MetricProviderSummary[]> {
     return $Call.ByID(3919346639).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType2($result);
     });
 }
 
 export function GetProvidersForResource(resourceKey: string): $CancellablePromise<$models.MetricProviderSummary[]> {
     return $Call.ByID(3953821778, resourceKey).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType2($result);
+    });
+}
+
+/**
+ * GetResourceMetricsCatalog resolves only an admitted owner native source.
+ */
+export function GetResourceMetricsCatalog(plugin: string, connection: string, resourceKey: string): $CancellablePromise<metric$0.ResourceMetricsCatalog | null> {
+    return $Call.ByID(1188767979, plugin, connection, resourceKey).then(($result: any) => {
+        return $$createType4($result);
     });
 }
 
@@ -39,20 +72,47 @@ export function HasPlugin(pluginID: string): $CancellablePromise<boolean> {
 
 export function ListPlugins(): $CancellablePromise<string[]> {
     return $Call.ByID(2730149903).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType5($result);
+    });
+}
+
+/**
+ * OpenMetricsObservation reserves a window-owned observation without collection.
+ * The caller installs metric/observation routing before Open, processes the
+ * returned snapshot, then calls Attach. Events are sent only to this Wails
+ * window; no application-global metrics payload is broadcast.
+ */
+export function OpenMetricsObservation(request: $models.OpenMetricsObservationRequest): $CancellablePromise<$models.MetricsObservationSnapshot> {
+    return $Call.ByID(3865072716, request).then(($result: any) => {
+        return $$createType6($result);
     });
 }
 
 export function Query(pluginID: string, connectionID: string, encoded: string): $CancellablePromise<metric$0.QueryResponse | null> {
     return $Call.ByID(3947209283, pluginID, connectionID, encoded).then(($result: any) => {
-        return $$createType4($result);
+        return $$createType8($result);
     });
 }
 
 export function QueryAll(connectionID: string, encoded: string): $CancellablePromise<{ [_ in string]?: metric$0.QueryResponse | null }> {
     return $Call.ByID(2480040278, connectionID, encoded).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType9($result);
     });
+}
+
+/**
+ * RefreshMetricsObservation bypasses completed cache, not compatible in-flight work.
+ */
+export function RefreshMetricsObservation(token: string): $CancellablePromise<void> {
+    return $Call.ByID(1389948521, token);
+}
+
+/**
+ * SaveMetricViewPreferences requires the loaded Revision. A stale edit returns
+ * CONFLICT without overwriting other windows. Reload after a successful save.
+ */
+export function SaveMetricViewPreferences(plugin: string, resourceKey: string, preferences: $models.MetricViewPreferences): $CancellablePromise<void> {
+    return $Call.ByID(2629399501, plugin, resourceKey, preferences);
 }
 
 export function Subscribe(pluginID: string, connectionID: string, encoded: string): $CancellablePromise<string> {
@@ -64,9 +124,13 @@ export function Unsubscribe(subscriptionID: string): $CancellablePromise<void> {
 }
 
 // Private type creation functions
-const $$createType0 = $models.MetricProviderSummary.createFrom;
-const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = $Create.Array($Create.Any);
-const $$createType3 = metric$0.QueryResponse.createFrom;
+const $$createType0 = $models.MetricViewPreferences.createFrom;
+const $$createType1 = $models.MetricProviderSummary.createFrom;
+const $$createType2 = $Create.Array($$createType1);
+const $$createType3 = metric$0.ResourceMetricsCatalog.createFrom;
 const $$createType4 = $Create.Nullable($$createType3);
-const $$createType5 = $Create.Map($Create.Any, $$createType4);
+const $$createType5 = $Create.Array($Create.Any);
+const $$createType6 = $models.MetricsObservationSnapshot.createFrom;
+const $$createType7 = metric$0.QueryResponse.createFrom;
+const $$createType8 = $Create.Nullable($$createType7);
+const $$createType9 = $Create.Map($Create.Any, $$createType8);

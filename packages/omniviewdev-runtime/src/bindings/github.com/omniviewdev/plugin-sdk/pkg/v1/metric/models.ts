@@ -7,6 +7,9 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as resourcev2$0 from "../../resource/v2/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as time$0 from "../../../../../../time/models.js";
 
 /**
@@ -186,6 +189,55 @@ export class DataPoint {
 }
 
 /**
+ * FiniteMetricDescriptor declares physical base units and supported evaluations.
+ * Units are cores or bytes; shapes are current or range, never legacy enum numbers.
+ */
+export class FiniteMetricDescriptor {
+    "id": string;
+    "name": string;
+    "resource_key": string;
+    "unit": string;
+    "shapes": string[];
+    "description": string;
+
+    /** Creates a new FiniteMetricDescriptor instance. */
+    constructor($$source: Partial<FiniteMetricDescriptor> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("resource_key" in $$source)) {
+            this["resource_key"] = "";
+        }
+        if (!("unit" in $$source)) {
+            this["unit"] = "";
+        }
+        if (!("shapes" in $$source)) {
+            this["shapes"] = [];
+        }
+        if (!("description" in $$source)) {
+            this["description"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new FiniteMetricDescriptor instance from a string or object.
+     */
+    static createFrom($$source: any = {}): FiniteMetricDescriptor {
+        const $$createField4_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("shapes" in $$parsedSource) {
+            $$parsedSource["shapes"] = $$createField4_0($$parsedSource["shapes"]);
+        }
+        return new FiniteMetricDescriptor($$parsedSource as Partial<FiniteMetricDescriptor>);
+    }
+}
+
+/**
  * Handler maps a resource key to its available metrics.
  */
 export class Handler {
@@ -208,7 +260,7 @@ export class Handler {
      * Creates a new Handler instance from a string or object.
      */
     static createFrom($$source: any = {}): Handler {
-        const $$createField1_0 = $$createType2;
+        const $$createField1_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("metrics" in $$parsedSource) {
             $$parsedSource["metrics"] = $$createField1_0($$parsedSource["metrics"]);
@@ -264,8 +316,8 @@ export class MetricDescriptor {
      * Creates a new MetricDescriptor instance from a string or object.
      */
     static createFrom($$source: any = {}): MetricDescriptor {
-        const $$createField4_0 = $$createType4;
-        const $$createField6_0 = $$createType5;
+        const $$createField4_0 = $$createType5;
+        const $$createField6_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("color_ranges" in $$parsedSource) {
             $$parsedSource["color_ranges"] = $$createField4_0($$parsedSource["color_ranges"]);
@@ -295,9 +347,9 @@ export class MetricResult {
      * Creates a new MetricResult instance from a string or object.
      */
     static createFrom($$source: any = {}): MetricResult {
-        const $$createField0_0 = $$createType7;
-        const $$createField1_0 = $$createType9;
-        const $$createField2_0 = $$createType11;
+        const $$createField0_0 = $$createType8;
+        const $$createField1_0 = $$createType10;
+        const $$createField2_0 = $$createType12;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("time_series" in $$parsedSource) {
             $$parsedSource["time_series"] = $$createField0_0($$parsedSource["time_series"]);
@@ -336,6 +388,43 @@ export enum MetricShape {
      */
     ShapeAggregate = 2,
 };
+
+/**
+ * MetricSourceRef identifies the selected source, not the resource owner.
+ * Native sources use kind metrics-server and an empty datasource UID.
+ */
+export class MetricSourceRef {
+    "plugin_id": string;
+    "connection_id": string;
+    "datasource_uid": string;
+    "datasource_kind": string;
+
+    /** Creates a new MetricSourceRef instance. */
+    constructor($$source: Partial<MetricSourceRef> = {}) {
+        if (!("plugin_id" in $$source)) {
+            this["plugin_id"] = "";
+        }
+        if (!("connection_id" in $$source)) {
+            this["connection_id"] = "";
+        }
+        if (!("datasource_uid" in $$source)) {
+            this["datasource_uid"] = "";
+        }
+        if (!("datasource_kind" in $$source)) {
+            this["datasource_kind"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MetricSourceRef instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MetricSourceRef {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new MetricSourceRef($$parsedSource as Partial<MetricSourceRef>);
+    }
+}
 
 /**
  * MetricUnit represents the unit of a metric value.
@@ -439,12 +528,247 @@ export class QueryResponse {
      * Creates a new QueryResponse instance from a string or object.
      */
     static createFrom($$source: any = {}): QueryResponse {
-        const $$createField1_0 = $$createType13;
+        const $$createField1_0 = $$createType14;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("results" in $$parsedSource) {
             $$parsedSource["results"] = $$createField1_0($$parsedSource["results"]);
         }
         return new QueryResponse($$parsedSource as Partial<QueryResponse>);
+    }
+}
+
+/**
+ * ResourceMetricPoint carries source time and a physical base-unit value.
+ * A nil Value is a gap, never zero. NaN and infinity are invalid.
+ */
+export class ResourceMetricPoint {
+    "time": string;
+    "value": number | null;
+
+    /** Creates a new ResourceMetricPoint instance. */
+    constructor($$source: Partial<ResourceMetricPoint> = {}) {
+        if (!("time" in $$source)) {
+            this["time"] = "0001-01-01T00:00:00.000Z";
+        }
+        if (!("value" in $$source)) {
+            this["value"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ResourceMetricPoint instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ResourceMetricPoint {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ResourceMetricPoint($$parsedSource as Partial<ResourceMetricPoint>);
+    }
+}
+
+/**
+ * ResourceMetricResult reports one target/metric evaluation. ObservedAt and
+ * Window come from the source; absence must never be replaced by receipt time.
+ * Non-ok statuses carry no numeric data. Missing is not a zero-valued sample.
+ */
+export class ResourceMetricResult {
+    "resource_token": string;
+    "metric_id": string;
+    "status": string;
+    "value": number | null;
+    "points": ResourceMetricPoint[];
+    "dimensions": { [_ in string]?: string };
+    "observed_at": string | null;
+    "window": time$0.Duration;
+
+    /**
+     * IdentityScope describes source attribution, not host cache fencing.
+     * \"incarnation\" means source verified UID; \"name\" means name-only attribution.
+     */
+    "identity_scope": string;
+    "message": string;
+
+    /** Creates a new ResourceMetricResult instance. */
+    constructor($$source: Partial<ResourceMetricResult> = {}) {
+        if (!("resource_token" in $$source)) {
+            this["resource_token"] = "";
+        }
+        if (!("metric_id" in $$source)) {
+            this["metric_id"] = "";
+        }
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+        if (!("value" in $$source)) {
+            this["value"] = null;
+        }
+        if (!("points" in $$source)) {
+            this["points"] = [];
+        }
+        if (!("dimensions" in $$source)) {
+            this["dimensions"] = {};
+        }
+        if (!("observed_at" in $$source)) {
+            this["observed_at"] = null;
+        }
+        if (!("window" in $$source)) {
+            this["window"] = time$0.Duration.$zero;
+        }
+        if (!("identity_scope" in $$source)) {
+            this["identity_scope"] = "";
+        }
+        if (!("message" in $$source)) {
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ResourceMetricResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ResourceMetricResult {
+        const $$createField4_0 = $$createType16;
+        const $$createField5_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("points" in $$parsedSource) {
+            $$parsedSource["points"] = $$createField4_0($$parsedSource["points"]);
+        }
+        if ("dimensions" in $$parsedSource) {
+            $$parsedSource["dimensions"] = $$createField5_0($$parsedSource["dimensions"]);
+        }
+        return new ResourceMetricResult($$parsedSource as Partial<ResourceMetricResult>);
+    }
+}
+
+/**
+ * ResourceMetricTarget binds a caller correlation token to an admitted reference.
+ * Token does not confer authority. Route must match the selected connection.
+ */
+export class ResourceMetricTarget {
+    "token": string;
+    "reference": resourcev2$0.ResourceReference;
+    "route": resourcev2$0.AccessRoute;
+
+    /** Creates a new ResourceMetricTarget instance. */
+    constructor($$source: Partial<ResourceMetricTarget> = {}) {
+        if (!("token" in $$source)) {
+            this["token"] = "";
+        }
+        if (!("reference" in $$source)) {
+            this["reference"] = (new resourcev2$0.ResourceReference());
+        }
+        if (!("route" in $$source)) {
+            this["route"] = (new resourcev2$0.AccessRoute());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ResourceMetricTarget instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ResourceMetricTarget {
+        const $$createField1_0 = $$createType17;
+        const $$createField2_0 = $$createType18;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("reference" in $$parsedSource) {
+            $$parsedSource["reference"] = $$createField1_0($$parsedSource["reference"]);
+        }
+        if ("route" in $$parsedSource) {
+            $$parsedSource["route"] = $$createField2_0($$parsedSource["route"]);
+        }
+        return new ResourceMetricTarget($$parsedSource as Partial<ResourceMetricTarget>);
+    }
+}
+
+/**
+ * ResourceMetricsCatalog is authoritative for source units, shapes and batch size.
+ */
+export class ResourceMetricsCatalog {
+    "source": MetricSourceRef;
+    "metrics": FiniteMetricDescriptor[];
+    "max_targets": number;
+
+    /**
+     * MaxSampleAge is the source's live-data age policy, not cache TTL.
+     * Zero leaves freshness unknown. Range completeness is independent of live age.
+     */
+    "max_sample_age": time$0.Duration;
+
+    /** Creates a new ResourceMetricsCatalog instance. */
+    constructor($$source: Partial<ResourceMetricsCatalog> = {}) {
+        if (!("source" in $$source)) {
+            this["source"] = (new MetricSourceRef());
+        }
+        if (!("metrics" in $$source)) {
+            this["metrics"] = [];
+        }
+        if (!("max_targets" in $$source)) {
+            this["max_targets"] = 0;
+        }
+        if (!("max_sample_age" in $$source)) {
+            this["max_sample_age"] = time$0.Duration.$zero;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ResourceMetricsCatalog instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ResourceMetricsCatalog {
+        const $$createField0_0 = $$createType19;
+        const $$createField1_0 = $$createType21;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("source" in $$parsedSource) {
+            $$parsedSource["source"] = $$createField0_0($$parsedSource["source"]);
+        }
+        if ("metrics" in $$parsedSource) {
+            $$parsedSource["metrics"] = $$createField1_0($$parsedSource["metrics"]);
+        }
+        return new ResourceMetricsCatalog($$parsedSource as Partial<ResourceMetricsCatalog>);
+    }
+}
+
+/**
+ * ResourceMetricsResponse separates completeness from individual result status.
+ * Complete requires exactly one result for every requested target/metric pair.
+ */
+export class ResourceMetricsResponse {
+    "results": ResourceMetricResult[];
+    "complete": boolean;
+    "warnings": string[];
+
+    /** Creates a new ResourceMetricsResponse instance. */
+    constructor($$source: Partial<ResourceMetricsResponse> = {}) {
+        if (!("results" in $$source)) {
+            this["results"] = [];
+        }
+        if (!("complete" in $$source)) {
+            this["complete"] = false;
+        }
+        if (!("warnings" in $$source)) {
+            this["warnings"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ResourceMetricsResponse instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ResourceMetricsResponse {
+        const $$createField0_0 = $$createType23;
+        const $$createField2_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("results" in $$parsedSource) {
+            $$parsedSource["results"] = $$createField0_0($$parsedSource["results"]);
+        }
+        if ("warnings" in $$parsedSource) {
+            $$parsedSource["warnings"] = $$createField2_0($$parsedSource["warnings"]);
+        }
+        return new ResourceMetricsResponse($$parsedSource as Partial<ResourceMetricsResponse>);
     }
 }
 
@@ -475,7 +799,7 @@ export class TimeSeries {
      * Creates a new TimeSeries instance from a string or object.
      */
     static createFrom($$source: any = {}): TimeSeries {
-        const $$createField1_0 = $$createType15;
+        const $$createField1_0 = $$createType25;
         const $$createField2_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("data_points" in $$parsedSource) {
@@ -490,18 +814,28 @@ export class TimeSeries {
 
 // Private type creation functions
 const $$createType0 = $Create.Map($Create.Any, $Create.Any);
-const $$createType1 = MetricDescriptor.createFrom;
-const $$createType2 = $Create.Array($$createType1);
-const $$createType3 = ColorRange.createFrom;
-const $$createType4 = $Create.Array($$createType3);
-const $$createType5 = $Create.Array($Create.Any);
-const $$createType6 = TimeSeries.createFrom;
-const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = CurrentValue.createFrom;
-const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = AggregateValue.createFrom;
-const $$createType11 = $Create.Nullable($$createType10);
-const $$createType12 = MetricResult.createFrom;
-const $$createType13 = $Create.Array($$createType12);
-const $$createType14 = DataPoint.createFrom;
-const $$createType15 = $Create.Array($$createType14);
+const $$createType1 = $Create.Array($Create.Any);
+const $$createType2 = MetricDescriptor.createFrom;
+const $$createType3 = $Create.Array($$createType2);
+const $$createType4 = ColorRange.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = $Create.Array($Create.Any);
+const $$createType7 = TimeSeries.createFrom;
+const $$createType8 = $Create.Nullable($$createType7);
+const $$createType9 = CurrentValue.createFrom;
+const $$createType10 = $Create.Nullable($$createType9);
+const $$createType11 = AggregateValue.createFrom;
+const $$createType12 = $Create.Nullable($$createType11);
+const $$createType13 = MetricResult.createFrom;
+const $$createType14 = $Create.Array($$createType13);
+const $$createType15 = ResourceMetricPoint.createFrom;
+const $$createType16 = $Create.Array($$createType15);
+const $$createType17 = resourcev2$0.ResourceReference.createFrom;
+const $$createType18 = resourcev2$0.AccessRoute.createFrom;
+const $$createType19 = MetricSourceRef.createFrom;
+const $$createType20 = FiniteMetricDescriptor.createFrom;
+const $$createType21 = $Create.Array($$createType20);
+const $$createType22 = ResourceMetricResult.createFrom;
+const $$createType23 = $Create.Array($$createType22);
+const $$createType24 = DataPoint.createFrom;
+const $$createType25 = $Create.Array($$createType24);

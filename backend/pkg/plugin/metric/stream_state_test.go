@@ -62,8 +62,7 @@ func TestStreamOnlyProviderProducesActualNativeMetric(t *testing.T) {
 			}()
 			return out, nil
 		})
-	adapter := NewAdapterV1(manager)
-	query, err := adapter.Query(types.NewPluginContext(context.Background(), "native", nil, nil, nil), sdkmetric.QueryRequest{})
+	query, err := queryLegacyProvider(manager, types.NewPluginContext(context.Background(), "native", nil, nil, nil), sdkmetric.QueryRequest{})
 	require.NoError(t, err)
 	require.False(t, query.Success)
 	require.NotEmpty(t, query.Error)
@@ -71,7 +70,7 @@ func TestStreamOnlyProviderProducesActualNativeMetric(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	input := make(chan sdkmetric.StreamInput)
-	output, err := adapter.StreamResourceMetrics(ctx, input)
+	output, err := streamLegacyProvider(manager, ctx, input)
 	require.NoError(t, err)
 	select {
 	case input <- sdkmetric.StreamInput{SubscriptionID: "native", Command: sdkmetric.StreamCommandSubscribe}:

@@ -105,7 +105,7 @@ func (c *controller) ensureStream(pluginID, connectionID string) (*metricStream,
 	}
 	pc := types.NewPluginContextWithConnection(ctx, "metric", nil, nil, &connection)
 	streamCtx := types.WithPluginContext(ctx, pc)
-	output, err := provider.StreamResourceMetrics(streamCtx, state.input)
+	output, err := streamLegacyProvider(provider, streamCtx, state.input)
 	if err != nil {
 		return fail(err)
 	}
@@ -215,10 +215,14 @@ func (c *controller) BeginConnectionChange(pluginID, connectionID string) func()
 	key := metricStreamKey{pluginID, connectionID}
 	c.mux.Lock()
 	c.streamBlocked[key]++
+	finite := c.finite.Load()
 	state := c.streams[key]
 	delete(c.streams, key)
 	delete(c.streamErrors, key)
 	c.mux.Unlock()
+	if finite != nil {
+		finite.retire(pluginID, connectionID, true)
+	}
 	if state != nil {
 		c.endStream(state, profileChangingError())
 	}
@@ -226,6 +230,14 @@ func (c *controller) BeginConnectionChange(pluginID, connectionID string) func()
 	return func() {
 		once.Do(func() {
 			c.mux.Lock()
+			if finite := c.finite.Load(); finite != nil {
+				finite.mu.Lock()
+				finite.blocked[key]--
+				if finite.blocked[key] == 0 {
+					delete(finite.blocked, key)
+				}
+				finite.mu.Unlock()
+			}
 			defer c.mux.Unlock()
 			c.streamBlocked[key]--
 			if c.streamBlocked[key] == 0 {

@@ -50,6 +50,7 @@ export const shared = {
 
   // @omniviewdev npm packages (base-ui, ai-ui, editors)
   '@omniviewdev/base-ui': async () => import('@omniviewdev/base-ui'),
+  '@omniviewdev/base-ui/metrics': async () => import('@omniviewdev/base-ui/metrics'),
   // Reuse the host entry so plugin loading cannot bypass its cascade layer.
   '@omniviewdev/base-ui/styles.css': async () => import('@/theme/base-ui.css'),
   '@omniviewdev/ai-ui': async () => import('@omniviewdev/ai-ui'),

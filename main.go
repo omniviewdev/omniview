@@ -357,6 +357,7 @@ func main() {
 		log, settingsProvider, resourceController, resourceUIRealm,
 	)
 	resourceController.SetConnectionChangeHook(metricController.BeginConnectionChange)
+	metricController.SetMetricPreferencesStore(settingsStore)
 	toolsController := tools.NewController(log, resourceBoundary)
 
 	dataController := data.NewController(log, stateDir.PluginData)
