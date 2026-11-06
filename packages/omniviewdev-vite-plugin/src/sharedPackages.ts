@@ -41,6 +41,7 @@ export const SHARED_PACKAGES: readonly string[] = [
 
   // @omniviewdev npm packages (base-ui, ai-ui, editors)
   '@omniviewdev/base-ui',
+  '@omniviewdev/base-ui/metrics',
   '@omniviewdev/base-ui/styles.css',
   '@omniviewdev/ai-ui',
   '@omniviewdev/ai-ui/styles.css',

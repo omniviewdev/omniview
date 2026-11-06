@@ -18,6 +18,12 @@
   background: var(--ov-color-bg-surface);
 }
 
+.HeaderSeparator {
+  flex: none;
+  height: var(--drawer-header-divider-height);
+  background: var(--ov-color-border-muted);
+}
+
 @media (max-width: 599px) {
   .Container {
     display: none;

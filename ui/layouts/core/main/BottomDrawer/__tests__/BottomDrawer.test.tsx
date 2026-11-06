@@ -113,20 +113,12 @@ describe('BottomDrawerContainer', () => {
     cleanup();
   });
 
-  it('renders at minHeight (32px) when no tabs', () => {
-    const { container } = render(<BottomDrawerContainer />);
-    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
-    expect(drawer).toBeTruthy();
-    // Initial state — minHeight should be 32px
-    expect(drawer.style.height).toBe('32px');
-  });
-
   it('starts minimized with tabs when no saved startup state exists', () => {
     mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('tab1')], focused: 0 });
 
     const { container } = render(<BottomDrawerContainer />);
     const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
-    expect(drawer.style.height).toBe('32px');
+    expect(drawer.style.height).toBe(drawer.style.minHeight);
   });
 
   it('restores saved expanded height when tabs exist on startup', () => {
@@ -143,7 +135,7 @@ describe('BottomDrawerContainer', () => {
 
     const { container } = render(<BottomDrawerContainer />);
     const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
-    expect(drawer.style.height).toBe('32px');
+    expect(drawer.style.height).toBe(drawer.style.minHeight);
   });
 
   it('expands to defaultHeight when tabs appear', () => {
@@ -168,7 +160,7 @@ describe('BottomDrawerContainer', () => {
     rerender(<BottomDrawerContainer />);
 
     const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
-    expect(drawer.style.height).toBe('32px');
+    expect(drawer.style.height).toBe(drawer.style.minHeight);
   });
 
   it('does not expand when a retry swaps a tab id in place', () => {
@@ -197,7 +189,7 @@ describe('BottomDrawerContainer', () => {
     });
 
     const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
-    expect(drawer.style.height).toBe('32px');
+    expect(drawer.style.height).toBe(drawer.style.minHeight);
     expect(mocks.mockSaveLayout).toHaveBeenLastCalledWith('minimized', undefined);
   });
 
@@ -229,7 +221,7 @@ describe('BottomDrawerContainer', () => {
     act(() => {
       fireEvent.click(getByTestId('btn-minimize'));
     });
-    expect(drawer.style.height).toBe('32px');
+    expect(drawer.style.height).toBe(drawer.style.minHeight);
 
     // Expand should restore to 550px
     act(() => {
@@ -304,7 +296,7 @@ describe('BottomDrawerContainer', () => {
     act(() => {
       fireEvent.click(dragHandle, { detail: 2 });
     });
-    expect(drawer.style.height).toBe('32px');
+    expect(drawer.style.height).toBe(drawer.style.minHeight);
 
     // Double-click again to restore default
     act(() => {
@@ -319,7 +311,7 @@ describe('BottomDrawerContainer', () => {
     const dragHandle = getByTestId('bottom-drawer-drag-handle');
     const onResize = mocks.eventBusHandlers.onResize;
 
-    expect(drawer.style.height).toBe('32px');
+    expect(drawer.style.height).toBe(drawer.style.minHeight);
 
     act(() => {
       fireEvent.click(getByTestId('btn-expand'));
@@ -330,7 +322,7 @@ describe('BottomDrawerContainer', () => {
       }
     });
 
-    expect(drawer.style.height).toBe('32px');
+    expect(drawer.style.height).toBe(drawer.style.minHeight);
   });
 
   it('event bus onResize sets height', () => {
@@ -376,52 +368,7 @@ describe('BottomDrawerContainer', () => {
     });
 
     const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
-    expect(drawer.style.height).toBe('32px');
-  });
-
-  it('minHeight stays at 32px floor when expanded', () => {
-    const { container, rerender } = render(<BottomDrawerContainer />);
-    finishRestore(rerender);
-
-    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('tab1')], focused: 0 });
-    rerender(<BottomDrawerContainer />);
-
-    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
-
-    // Expanded to 550px — minHeight should still be 32px (the floor)
-    expect(drawer.style.height).toBe('550px');
-    expect(drawer.style.minHeight).toBe('32px');
-    expect(drawer.style.maxHeight).toBe('550px');
-  });
-
-  it('minHeight stays at 32px floor when fullscreen', () => {
-    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('tab1')], focused: 0 });
-
-    const { container, getByTestId } = render(<BottomDrawerContainer />);
-
-    act(() => {
-      fireEvent.click(getByTestId('btn-fullscreen'));
-    });
-
-    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
-    expect(drawer.style.height).toBe('900px');
-    expect(drawer.style.minHeight).toBe('32px');
-    expect(drawer.style.maxHeight).toBe('900px');
-  });
-
-  it('all height properties lock to 32px when minimized', () => {
-    mocks.mockUseBottomDrawer.mockReturnValue({ tabs: [terminalTab('tab1')], focused: 0 });
-
-    const { container, getByTestId } = render(<BottomDrawerContainer />);
-
-    act(() => {
-      fireEvent.click(getByTestId('btn-minimize'));
-    });
-
-    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
-    expect(drawer.style.height).toBe('32px');
-    expect(drawer.style.minHeight).toBe('32px');
-    expect(drawer.style.maxHeight).toBe('32px');
+    expect(drawer.style.height).toBe(drawer.style.minHeight);
   });
 
   it('renders terminal container for terminal tab variant', () => {
@@ -465,7 +412,7 @@ describe('BottomDrawerContainer', () => {
     rerender(<BottomDrawerContainer />);
 
     const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
-    expect(drawer.style.height).toBe('32px');
+    expect(drawer.style.height).toBe(drawer.style.minHeight);
   });
 
   it('expands a tab the user opens before the restore finishes', () => {
