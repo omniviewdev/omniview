@@ -156,7 +156,9 @@ export default function GrafanaSettings({ registerNavigation }: Partial<PluginSe
           setError(String(err)); return false; 
         } finally {
           setBusy(false); 
-          if (changed) await queryClient.invalidateQueries({ queryKey: ['metric'] });
+          if (changed) {
+            await queryClient.invalidateQueries({ queryKey: ['metric'] });
+          }
         }
       },
     });
