@@ -48,7 +48,7 @@ export default function GrafanaConnectionSettings({ resourcePluginID, connection
 
     return { owner_plugin_id: resourcePluginID, owner_connection_id: connectionID, resource_key: sample.reference.address.type,
       binding_id: saved?.id ?? '', source: sampleSource, targets: [sample], metric_ids: [], shape: 'range',
-      start_time: '', end_time: '', duration_ms: 300000, step_ms: 15000, interval_ms: 0 };
+      start_time: '0001-01-01T00:00:00Z', end_time: '0001-01-01T00:00:00Z', duration_ms: 300000, step_ms: 15000, interval_ms: 0 };
   }, [sample, sampleSource, saved?.id, resourcePluginID, connectionID]);
   useEffect(() => {
     let active = true;
