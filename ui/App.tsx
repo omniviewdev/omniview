@@ -1,4 +1,5 @@
 import React from 'react';
+import './providers/monaco/useSchemaRegistration';
 
 // ensure we preload deps first before anything
 import { preloadSharedDeps } from './features/plugins/api/preloader';
