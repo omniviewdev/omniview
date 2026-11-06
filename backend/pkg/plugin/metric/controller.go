@@ -36,12 +36,13 @@ const resourceMetricsTimeout = 30 * time.Second
 // MetricProviderSummary is a lightweight summary of a metric provider,
 // exposed to the frontend.
 type MetricProviderSummary struct {
-	PluginID    string           `json:"plugin_id"`
-	ProviderID  string           `json:"provider_id"`
-	Name        string           `json:"name"`
-	Icon        string           `json:"icon"`
-	Description string           `json:"description"`
-	Handlers    []metric.Handler `json:"handlers"`
+	PluginID            string           `json:"plugin_id"`
+	ProviderID          string           `json:"provider_id"`
+	Name                string           `json:"name"`
+	Icon                string           `json:"icon"`
+	Description         string           `json:"description"`
+	Handlers            []metric.Handler `json:"handlers"`
+	SupportsConnections bool             `json:"supports_connections"`
 }
 
 // Controller manages metric providers across all plugins.
@@ -382,13 +383,15 @@ func (c *controller) GetProviders() []MetricProviderSummary {
 
 	result := make([]MetricProviderSummary, 0)
 	for pluginID, info := range c.providerInfos {
+		_, supportsConnections := c.clients[pluginID].(metric.ProviderConfiguration)
 		result = append(result, MetricProviderSummary{
-			PluginID:    pluginID,
-			ProviderID:  info.ID,
-			Name:        info.Name,
-			Icon:        info.Icon,
-			Description: info.Description,
-			Handlers:    c.handlerMap[pluginID],
+			PluginID:            pluginID,
+			ProviderID:          info.ID,
+			Name:                info.Name,
+			Icon:                info.Icon,
+			Description:         info.Description,
+			Handlers:            c.handlerMap[pluginID],
+			SupportsConnections: supportsConnections,
 		})
 	}
 	return result
@@ -409,13 +412,15 @@ func (c *controller) GetProvidersForResource(resourceKey string) []MetricProvide
 		if info == nil {
 			continue
 		}
+		_, supportsConnections := c.clients[pluginID].(metric.ProviderConfiguration)
 		result = append(result, MetricProviderSummary{
-			PluginID:    pluginID,
-			ProviderID:  info.ID,
-			Name:        info.Name,
-			Icon:        info.Icon,
-			Description: info.Description,
-			Handlers:    c.handlerMap[pluginID],
+			PluginID:            pluginID,
+			ProviderID:          info.ID,
+			Name:                info.Name,
+			Icon:                info.Icon,
+			Description:         info.Description,
+			Handlers:            c.handlerMap[pluginID],
+			SupportsConnections: supportsConnections,
 		})
 	}
 	return result

@@ -5,9 +5,20 @@
 .grafana-settings select, .grafana-settings input[type=password] { min-height: 28px; padding: 4px 8px; color: var(--ov-color-fg-default); background: var(--ov-color-bg-inset); border: 1px solid var(--ov-color-border-default); border-radius: 4px; font: inherit; }
 .grafana-tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--ov-color-border-default); padding-bottom: 8px; }
 .grafana-tabs [aria-selected=true] { border-bottom: 2px solid var(--ov-color-primary); }
-.grafana-connections { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; width: 100%; }
-.grafana-connection, .grafana-setup { padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; width: 100%; box-sizing: border-box; }
-.grafana-stepper { list-style: none; display: grid; grid-template-columns: repeat(3,1fr); padding: 0; width: 100%; gap: 0; }
+.grafana-connections { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 440px)); gap: 12px; width: 100%; align-items: start; }
+.grafana-connection, .grafana-setup { padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; width: 100%; box-sizing: border-box; }
+.grafana-settings .grafana-settings-heading { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
+.grafana-settings-heading > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.grafana-settings-heading > button { flex: 0 0 auto; width: auto; }
+.grafana-settings-heading > div > :last-child, .grafana-connection-meta { color: var(--ov-color-fg-muted); }
+.grafana-connection { background: var(--ov-color-bg-surface); border: 1px solid var(--ov-color-border-default); border-radius: 8px; }
+.grafana-connection-url { overflow-wrap: anywhere; font-family: var(--ov-font-mono); font-size: 11px; }
+.grafana-connection-meta svg { display: inline; vertical-align: -2px; }
+.grafana-connection-actions { border-top: 1px solid var(--ov-color-border-default); padding-top: 10px; margin-top: 2px; }
+.grafana-connection-actions button { flex: 0 0 auto; }
+.grafana-setup { max-width: 620px; align-self: flex-start; }
+.grafana-settings > fieldset > label { max-width: 440px; }
+.grafana-stepper { list-style: none; display: grid; grid-template-columns: repeat(3,1fr); padding: 0; margin: 2px 0 6px; width: 100%; gap: 0; }
 .grafana-stepper li { padding: 8px 4px; border-bottom: 2px solid var(--ov-color-border-default); }
 .grafana-stepper [aria-current=step] { color: var(--ov-color-primary); border-color: currentColor; }
 .grafana-mapping { border: 1px solid var(--ov-color-border-default); border-radius: 4px; padding: 8px 10px; min-width: 0; }
@@ -85,3 +96,4 @@
 .grafana-query-results small { display: block; font-size: 11px; margin-top: 3px; }
 .grafana-query-results > details { margin-top: 8px; color: var(--ov-color-fg-muted); }
 .grafana-query-results summary { cursor: pointer; }
+@media(max-width:480px) { .grafana-settings .grafana-settings-heading { align-items: flex-start; flex-direction: column; } }

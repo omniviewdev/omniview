@@ -133,6 +133,8 @@ GetMetricViewSourceSelection(ctx, ownerPlugin, ownerConnection, resourceKey)
 SaveMetricViewSourceSelection(ctx, selection)
 ```
 
+`GetProviders()` exposes `supports_connections`. Discover external connections only when true; native-only providers remain valid metric sources.
+
 Host-owned canonical semantics and trusted provider mappings form the default definition registry. Saved definitions override that registry; deletion restores the inherited definition. A binding stores one sparse metrics configuration per owner connection. Nil per-metric override fields inherit; removing an override resets it. Only the public `cluster` scope key is accepted. Arbitrary labels, tenants, provider settings, and credentials are not public mapping scope.
 
 The profile's managed `appstate.ScopedRoot` stores configuration atomically in `metrics/configuration.json` with private file modes, separately from presentation preferences. Definitions, bindings, profile defaults, and view source selections use loaded revisions; stale saves return `CONFLICT`. Both source save methods return updated DTOs and revisions. `SaveMetricSourceDefaults` with omitted `Source` resets profile inheritance to native. A view source selection stores its owner plugin, owner connection, resource key, mode, optional external source, and revision; `inherit` restores binding/profile precedence. Provider credentials remain in provider-owned private storage and never enter these public configuration DTOs or query context.

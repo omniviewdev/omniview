@@ -20,6 +20,7 @@ export class MetricProviderSummary {
     "icon": string;
     "description": string;
     "handlers": metric$0.Handler[];
+    "supports_connections": boolean;
 
     /** Creates a new MetricProviderSummary instance. */
     constructor($$source: Partial<MetricProviderSummary> = {}) {
@@ -40,6 +41,9 @@ export class MetricProviderSummary {
         }
         if (!("handlers" in $$source)) {
             this["handlers"] = [];
+        }
+        if (!("supports_connections" in $$source)) {
+            this["supports_connections"] = false;
         }
 
         Object.assign(this, $$source);

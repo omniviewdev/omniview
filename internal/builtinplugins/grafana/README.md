@@ -2,6 +2,10 @@
 
 The trusted host catalog registers `grafana.CatalogEntry(openState)`. Each opener returns an independently owned `os.Root` under the active profile's `builtin/grafana` directory. Metadata and activation perform no network calls. The frontend module key is `grafana`.
 
+Activation registers a direct native lifecycle provider for identity, declared capabilities, and backend readiness. The host runs the normal plugin-service activation path, including optional activity negotiation. This builtin does not expose process activity reporting or delegated host connections; it explicitly reports that optional activity backchannel as unsupported. No broker, subprocess, or dummy legacy metric callbacks are created.
+
+Only advertised backend capabilities start controllers. Settings hydration precedes other providers only when `settings` is advertised. Grafana's finite source configuration uses its private configuration boundary and does not register a settings provider.
+
 ## Connections and credentials
 
 Use `ProviderConnectionInput` with public connection ID, name, transport kind (`grafana` or `prometheus`), URL, and `public_config`. The top-level `credential` is write-only: omission preserves it; an empty string clears it. Returned connections expose only `has_credentials`. Credentials live in atomic mode-0600 `connections.json` inside the private profile directory. This is private file storage, not encryption at rest. Protect the operating-system account and backups.

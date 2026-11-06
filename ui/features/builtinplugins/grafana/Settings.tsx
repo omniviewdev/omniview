@@ -247,106 +247,108 @@ export default function GrafanaSettings({ registerNavigation }: Partial<PluginSe
     }
   }
 
-  return <section className="grafana-settings" aria-label="Grafana settings"><header><Stack direction="row" align="center" spacing={2}><SiGrafana size={20} color="#f46800" aria-hidden /><Text weight="semibold">Grafana</Text></Stack><Text size="sm">Reusable metric providers. Bind sources in each resource connection’s settings.</Text></header>
-    <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, display: 'contents' }}>
-      <div role="tablist" aria-label="Grafana settings sections" className="grafana-tabs">{['Connections', 'Data sources', 'Global mappings'].map(value => <Button size="sm" role="tab" aria-selected={tab === value} key={value} onClick={() => {
-        if (editing && value !== 'Connections') {
-          setError('Save or cancel connection setup before changing section.'); return; 
+  return <section className="grafana-settings" aria-label="Grafana settings"><header className="grafana-settings-heading"><div><Stack direction="row" align="center" spacing={2}><SiGrafana size={20} color="#f46800" aria-hidden /><Text weight="semibold">Grafana</Text></Stack><Text size="sm">Connect providers, then bind sources in resource settings.</Text></div>{tab === 'Connections' && <Button size="sm" disabled={busy} onClick={() => {
+    start();
+  }}><LuPlug size={14} aria-hidden />Connect Grafana</Button>}</header>
+  <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, display: 'contents' }}>
+    <div role="tablist" aria-label="Grafana settings sections" className="grafana-tabs">{['Connections', 'Data sources', 'Global mappings'].map(value => <Button size="sm" role="tab" aria-selected={tab === value} key={value} onClick={() => {
+      if (editing && value !== 'Connections') {
+        setError('Save or cancel connection setup before changing section.'); return; 
+      }
+
+      setTab(value); 
+    }}>{value}</Button>)}</div>
+    {error && <p role="alert">{error}</p>}{status && <p role="status">{status}</p>}
+    {tab === 'Connections' && <><div className="grafana-connections">{connections.map(connection => <Card className="grafana-connection" key={connection.id}>
+      <Stack direction="row" align="center" spacing={2}><SiGrafana size={20} color="#f46800" aria-hidden /><Text weight="semibold">{connection.name}</Text></Stack>
+      <Text size="sm" className="grafana-connection-url">{connection.url}</Text>
+      <Text size="xs" className="grafana-connection-meta">{connection.kind === 'grafana' ? 'Grafana gateway' : 'Prometheus / Mimir'} · <LuKeyRound size={12} aria-hidden /> {connection.has_credentials ? 'Credential stored privately' : 'No credential'}</Text>
+      <Text size="xs" className="grafana-connection-meta">Health checks reachability, not query access.</Text>
+      <Stack direction="row" spacing={2} wrap className="grafana-connection-actions"><Button size="sm" onClick={async () => testConnection(connection.id)}><LuCheck size={14} aria-hidden />Test connection</Button><Button size="sm" onClick={() => {
+        start(connection); 
+      }}><LuSettings size={14} aria-hidden />Manage</Button><Button size="sm" onClick={async () => {
+        setTab('Data sources'); return discover(connection.id);
+      }}><LuDatabase size={14} aria-hidden />View sources</Button><Button size="sm" onClick={async () => {
+        if (!window.confirm(`Delete ${connection.name}? Existing bindings will report unavailable source.`)) {
+          return;
         }
 
-        setTab(value); 
-      }}>{value}</Button>)}</div>
-      {error && <p role="alert">{error}</p>}{status && <p role="status">{status}</p>}
-      {tab === 'Connections' && <><Button size="sm" onClick={() => {
-        start(); 
-      }}><LuPlug size={14} aria-hidden />Connect Grafana</Button><div className="grafana-connections">{connections.map(connection => <Card className="grafana-connection" key={connection.id}>
-        <Stack direction="row" justify="between"><Stack direction="row" align="center" spacing={2}><SiGrafana size={20} color="#f46800" aria-hidden /><Text weight="semibold">{connection.name}</Text></Stack><Text size="xs"><LuKeyRound size={12} aria-hidden /> {connection.has_credentials ? 'Credential stored privately' : 'No credential'}</Text></Stack>
-        <Text size="sm">{connection.url}</Text><Text size="xs">{connection.kind === 'grafana' ? 'Grafana gateway' : 'Prometheus / Mimir'} · Query access not verified by health test</Text>
-        <Stack direction="row" spacing={2}><Button size="sm" onClick={async () => testConnection(connection.id)}><LuCheck size={14} aria-hidden />Test connection</Button><Button size="sm" onClick={() => {
-          start(connection); 
-        }}><LuSettings size={14} aria-hidden />Manage</Button><Button size="sm" onClick={async () => {
-          setTab('Data sources'); return discover(connection.id);
-        }}><LuDatabase size={14} aria-hidden />View sources</Button><Button size="sm" onClick={async () => {
-          if (!window.confirm(`Delete ${connection.name}? Existing bindings will report unavailable source.`)) {
-            return;
-          }
+        try {
+          await MetricClient.DeleteProviderConnection('grafana', connection.id); await load(); 
+        } catch (err) {
+          setError(String(err)); 
+        } 
+      }}><LuTrash2 size={14} aria-hidden />Delete</Button></Stack>
+    </Card>)}</div></>}
+    {editing && tab === 'Connections' && <Card className="grafana-setup"><Text weight="semibold">Connect a metric provider</Text><ol className="grafana-stepper">{['Instance', 'Read token', 'Verify'].map((label, i) => <li key={label} aria-current={step === i ? 'step' : undefined}>{i + 1}. {label}</li>)}</ol>
+      {step === 0 && <Stack direction="column" spacing={2}><label>Name<Input.Root><Input.Control value={editing.name} onChange={event => {
+        setEditing({ ...editing, name: event.target.value }); 
+      }} /></Input.Root></label><label>Transport<MetricsSelect label="Transport" value={editing.kind} onChange={value => {
+        setEditing({ ...editing, kind: value, public_config: { ...editing.public_config, credentialKind: value === 'grafana' ? 'grafana-service-account' : 'cloud-access-policy' } }); 
+      }} options={[{ value: 'prometheus', label: 'Grafana Cloud / direct Prometheus or Mimir' }, { value: 'grafana', label: 'Self-hosted Grafana gateway' }]} /></label><label>Endpoint URL<Input.Root><Input.Control type="url" value={editing.url} onChange={event => {
+        setEditing({ ...editing, url: event.target.value }); 
+      }} /></Input.Root></label>
+      <Checkbox size="sm" className="grafana-http-checkbox" checked={editing.public_config.allowInsecureHTTP === 'true'} onCheckedChange={checked => {
+        setEditing({ ...editing, public_config: { ...editing.public_config, allowInsecureHTTP: String(checked) } }); 
+      }}>Allow unencrypted HTTP for this endpoint</Checkbox>
+      <Text size="xs">HTTP exposes credentials and metrics. Use only trusted local networks.</Text>
+      </Stack>}
+      <div hidden={step !== 1}><Stack direction="column" spacing={2}>
+        <Text size="sm">{editing.kind === 'grafana' ? 'Administration → Users and access → Service accounts. Create an account, grant datasource query access, then add a token.' : editing.public_config.credentialKind === 'prometheus-token' ? 'Use a bearer token with query access from your Prometheus-compatible service.' : 'Create a Cloud access policy with metrics:read. Use this stack’s query endpoint and instance ID.'}</Text>
+        <Button size="sm" variant="ghost" onClick={async () => Browser.OpenURL(editing.kind === 'grafana' ? 'https://grafana.com/docs/grafana/latest/administration/service-accounts/#add-a-token-to-a-service-account-in-grafana' : editing.public_config.credentialKind === 'prometheus-token' ? 'https://prometheus.io/docs/operating/security/' : 'https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/').catch(err => {
+          setError(String(err));
+        })}><LuExternalLink size={14} aria-hidden />{editing.kind === 'grafana' ? 'Service account setup' : editing.public_config.credentialKind === 'prometheus-token' ? 'Authentication guidance' : 'Cloud access policy setup'}</Button>
+        <label>Credential type<MetricsSelect label="Credential type" value={editing.public_config.credentialKind ?? (editing.kind === 'grafana' ? 'grafana-service-account' : 'cloud-access-policy')} onChange={value => {
+          setEditing({ ...editing, public_config: { ...editing.public_config, credentialKind: value } }); 
+        }} options={(editing.kind === 'grafana' ? ['grafana-service-account'] : ['cloud-access-policy', 'prometheus-token']).map(value => ({ value, label: credentialLabels[value] ?? value }))} /></label>
+        <label>Cloud instance ID / username (optional)<Input.Root><Input.Control value={editing.public_config.username ?? ''} onChange={event => {
+          setEditing({ ...editing, public_config: { ...editing.public_config, username: event.target.value } }); 
+        }} /></Input.Root></label>
+        <label>Read token<Input.Root><Input.Control ref={credential} type="password" autoComplete="new-password" placeholder={editing.has_credentials ? 'Leave blank to retain stored credential' : 'Read-only token'} /></Input.Root></label>
+        <Text size="xs">Stored privately on this device. Never saved in browser storage.</Text>
+      </Stack></div>
+      {step === 2 && <Text size="sm">Save {editing.name} and check reachability. Use Test query to verify datasource permissions.</Text>}
+      <Stack direction="row" spacing={2}><Button size="sm" disabled={busy} onClick={() => {
+        editorGeneration.current++; discoveryGeneration.current++; if (credential.current) {
+          credential.current.value = '';
+        }
 
+        setEditing(undefined); 
+      }}>Cancel</Button>{step > 0 && <Button size="sm" disabled={busy} onClick={() => {
+        setStep(step - 1); 
+      }}>Back</Button>}{step < 2 ? <Button size="sm" disabled={!editing.name || !editing.url} onClick={() => {
+        setStep(step + 1); 
+      }}>Continue</Button> : <Button size="sm" disabled={busy} onClick={save}>Save and test</Button>}</Stack>
+    </Card>}
+    {tab !== 'Connections' && <label>Provider connection<MetricsSelect label="Provider connection" value={selected} onChange={discover} options={[{ value: '', label: 'Choose connection' }, ...connections.map(connection => ({ value: connection.id, label: connection.name }))]} /></label>}
+    {tab === 'Data sources' && <>{catalogErrors[selected] && <p role="alert">Datasource discovery unavailable: {catalogErrors[selected]}</p>}<div className="grafana-connections">{(sources[selected] ?? []).map(source => <Card key={source.uid}><Text weight="semibold">{source.name}</Text><Text size="sm">{source.kind} · {source.uid}</Text></Card>)}{selected && !sources[selected]?.length && !catalogErrors[selected] && <Text size="sm">No Prometheus datasources discovered.</Text>}</div></>}
+    <div hidden={tab !== 'Global mappings'}><DatasourceSelector sources={sources[selected] ?? []} value={datasourceUID} disabled={!selected} catalogError={catalogErrors[selected]} onChange={setDatasourceUID} />
+      <section className="grafana-provider-card" aria-label="Global source default"><strong>Default metrics source</strong><Text size="sm">{defaultSource}. Per-connection bindings override this profile default.</Text>
+        <Stack direction="row" spacing={2}><Button size="sm" disabled={!selected || !datasourceUID || busy} onClick={async () => {
+          setBusy(true); setError('');
           try {
-            await MetricClient.DeleteProviderConnection('grafana', connection.id); await load(); 
+            const result = await MetricClient.SaveMetricSourceDefaults({ revision: defaultRevision, source: { plugin_id: 'grafana', connection_id: selected, datasource_uid: datasourceUID, datasource_kind: 'prometheus' } }); setDefaultRevision(result.revision); setDefaultSource(`${selected} / ${datasourceUID}`); setStatus('Global source default saved'); 
           } catch (err) {
             setError(String(err)); 
-          } 
-        }}><LuTrash2 size={14} aria-hidden />Delete</Button></Stack>
-      </Card>)}</div></>}
-      {editing && tab === 'Connections' && <Card className="grafana-setup"><Text weight="semibold">Connect a metric provider</Text><ol className="grafana-stepper">{['Instance', 'Read token', 'Verify'].map((label, i) => <li key={label} aria-current={step === i ? 'step' : undefined}>{i + 1}. {label}</li>)}</ol>
-        {step === 0 && <Stack direction="column" spacing={2}><label>Name<Input.Root><Input.Control value={editing.name} onChange={event => {
-          setEditing({ ...editing, name: event.target.value }); 
-        }} /></Input.Root></label><label>Transport<MetricsSelect label="Transport" value={editing.kind} onChange={value => {
-          setEditing({ ...editing, kind: value, public_config: { ...editing.public_config, credentialKind: value === 'grafana' ? 'grafana-service-account' : 'cloud-access-policy' } }); 
-        }} options={[{ value: 'prometheus', label: 'Grafana Cloud / direct Prometheus or Mimir' }, { value: 'grafana', label: 'Self-hosted Grafana gateway' }]} /></label><label>Endpoint URL<Input.Root><Input.Control type="url" value={editing.url} onChange={event => {
-          setEditing({ ...editing, url: event.target.value }); 
-        }} /></Input.Root></label>
-        <Checkbox size="sm" className="grafana-http-checkbox" checked={editing.public_config.allowInsecureHTTP === 'true'} onCheckedChange={checked => {
-          setEditing({ ...editing, public_config: { ...editing.public_config, allowInsecureHTTP: String(checked) } }); 
-        }}>Allow unencrypted HTTP for this endpoint</Checkbox>
-        <Text size="xs">HTTP exposes credentials and metrics. Use only trusted local networks.</Text>
-        </Stack>}
-        <div hidden={step !== 1}><Stack direction="column" spacing={2}>
-          <Text size="sm">{editing.kind === 'grafana' ? 'Administration → Users and access → Service accounts. Create an account, grant datasource query access, then add a token.' : editing.public_config.credentialKind === 'prometheus-token' ? 'Use a bearer token with query access from your Prometheus-compatible service.' : 'Create a Cloud access policy with metrics:read. Use this stack’s query endpoint and instance ID.'}</Text>
-          <Button size="sm" variant="ghost" onClick={async () => Browser.OpenURL(editing.kind === 'grafana' ? 'https://grafana.com/docs/grafana/latest/administration/service-accounts/#add-a-token-to-a-service-account-in-grafana' : editing.public_config.credentialKind === 'prometheus-token' ? 'https://prometheus.io/docs/operating/security/' : 'https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/').catch(err => {
-            setError(String(err));
-          })}><LuExternalLink size={14} aria-hidden />{editing.kind === 'grafana' ? 'Service account setup' : editing.public_config.credentialKind === 'prometheus-token' ? 'Authentication guidance' : 'Cloud access policy setup'}</Button>
-          <label>Credential type<MetricsSelect label="Credential type" value={editing.public_config.credentialKind ?? (editing.kind === 'grafana' ? 'grafana-service-account' : 'cloud-access-policy')} onChange={value => {
-            setEditing({ ...editing, public_config: { ...editing.public_config, credentialKind: value } }); 
-          }} options={(editing.kind === 'grafana' ? ['grafana-service-account'] : ['cloud-access-policy', 'prometheus-token']).map(value => ({ value, label: credentialLabels[value] ?? value }))} /></label>
-          <label>Cloud instance ID / username (optional)<Input.Root><Input.Control value={editing.public_config.username ?? ''} onChange={event => {
-            setEditing({ ...editing, public_config: { ...editing.public_config, username: event.target.value } }); 
-          }} /></Input.Root></label>
-          <label>Read token<Input.Root><Input.Control ref={credential} type="password" autoComplete="new-password" placeholder={editing.has_credentials ? 'Leave blank to retain stored credential' : 'Read-only token'} /></Input.Root></label>
-          <Text size="xs">Stored privately on this device. Never saved in browser storage.</Text>
-        </Stack></div>
-        {step === 2 && <Text size="sm">Save {editing.name} and check reachability. Verify datasource permissions separately with a real Test query.</Text>}
-        <Stack direction="row" spacing={2}><Button size="sm" disabled={busy} onClick={() => {
-          editorGeneration.current++; discoveryGeneration.current++; if (credential.current) {
-            credential.current.value = '';
+          } finally {
+            setBusy(false); 
           }
-
-          setEditing(undefined); 
-        }}>Cancel</Button>{step > 0 && <Button size="sm" disabled={busy} onClick={() => {
-          setStep(step - 1); 
-        }}>Back</Button>}{step < 2 ? <Button size="sm" disabled={!editing.name || !editing.url} onClick={() => {
-          setStep(step + 1); 
-        }}>Continue</Button> : <Button size="sm" disabled={busy} onClick={save}>Save and test</Button>}</Stack>
-      </Card>}
-      {tab !== 'Connections' && <label>Provider connection<MetricsSelect label="Provider connection" value={selected} onChange={discover} options={[{ value: '', label: 'Choose connection' }, ...connections.map(connection => ({ value: connection.id, label: connection.name }))]} /></label>}
-      {tab === 'Data sources' && <>{catalogErrors[selected] && <p role="alert">Datasource discovery unavailable: {catalogErrors[selected]}</p>}<div className="grafana-connections">{(sources[selected] ?? []).map(source => <Card key={source.uid}><Text weight="semibold">{source.name}</Text><Text size="sm">{source.kind} · {source.uid}</Text></Card>)}{selected && !sources[selected]?.length && !catalogErrors[selected] && <Text size="sm">No Prometheus datasources discovered.</Text>}</div></>}
-      <div hidden={tab !== 'Global mappings'}><DatasourceSelector sources={sources[selected] ?? []} value={datasourceUID} disabled={!selected} catalogError={catalogErrors[selected]} onChange={setDatasourceUID} />
-        <section className="grafana-provider-card" aria-label="Global source default"><strong>Default metrics source</strong><Text size="sm">{defaultSource}. Per-connection bindings override this profile default.</Text>
-          <Stack direction="row" spacing={2}><Button size="sm" disabled={!selected || !datasourceUID || busy} onClick={async () => {
-            setBusy(true); setError('');
-            try {
-              const result = await MetricClient.SaveMetricSourceDefaults({ revision: defaultRevision, source: { plugin_id: 'grafana', connection_id: selected, datasource_uid: datasourceUID, datasource_kind: 'prometheus' } }); setDefaultRevision(result.revision); setDefaultSource(`${selected} / ${datasourceUID}`); setStatus('Global source default saved'); 
-            } catch (err) {
-              setError(String(err)); 
-            } finally {
-              setBusy(false); 
-            }
-          }}>Use selected source globally</Button><Button size="sm" variant="ghost" disabled={busy} onClick={async () => {
-            setBusy(true); setError('');
-            try {
-              const result = await MetricClient.SaveMetricSourceDefaults({ revision: defaultRevision }); setDefaultRevision(result.revision); setDefaultSource('Native source'); setStatus('Global source reset to native'); 
-            } catch (err) {
-              setError(String(err)); 
-            } finally {
-              setBusy(false); 
-            }
-          }}>Reset to native</Button></Stack>
-        </section>
-        <ValidationContext resourceTypes={[...new Set(definitions.flatMap(definition => definition.resource_keys))]} onChange={setValidationSample} />
-        <Mappings key={draftEpoch} definitions={definitions} connectionID={selected} datasourceUID={datasourceUID} onDraft={onDraft} sampleRequest={sampleRequest} schemaContext={validationSample?.context} save={async definition => {
-          await MetricClient.SaveMetricDefinition(definition); onDraft(definition.id, undefined); await load(); 
-        }} />
-      </div>
-    </fieldset>
+        }}>Use selected source globally</Button><Button size="sm" variant="ghost" disabled={busy} onClick={async () => {
+          setBusy(true); setError('');
+          try {
+            const result = await MetricClient.SaveMetricSourceDefaults({ revision: defaultRevision }); setDefaultRevision(result.revision); setDefaultSource('Native source'); setStatus('Global source reset to native'); 
+          } catch (err) {
+            setError(String(err)); 
+          } finally {
+            setBusy(false); 
+          }
+        }}>Reset to native</Button></Stack>
+      </section>
+      <ValidationContext resourceTypes={[...new Set(definitions.flatMap(definition => definition.resource_keys))]} onChange={setValidationSample} />
+      <Mappings key={draftEpoch} definitions={definitions} connectionID={selected} datasourceUID={datasourceUID} onDraft={onDraft} sampleRequest={sampleRequest} schemaContext={validationSample?.context} save={async definition => {
+        await MetricClient.SaveMetricDefinition(definition); onDraft(definition.id, undefined); await load(); 
+      }} />
+    </div>
+  </fieldset>
   </section>;
 }
