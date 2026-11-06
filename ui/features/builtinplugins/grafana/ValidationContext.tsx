@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useConnections, type ResourceMetricTarget } from '@omniviewdev/runtime';
+import { useQuery } from '@tanstack/react-query';
+import { parseAppError, type ResourceMetricTarget } from '@omniviewdev/runtime';
+import { ResourceClient } from '@omniviewdev/runtime/api';
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
 import SampleResource from './SampleResource';
 import type { MappingSchemaContext } from './SchemaFieldPicker';
@@ -17,7 +19,11 @@ export default function ValidationContext({ resourceTypes, onChange, lockOwner =
 }
 
 function OwnerContext({ owner, resourceTypes, onChange, lockOwner }: { owner: string; resourceTypes: string[]; onChange: (sample: ValidationSample | undefined) => void; lockOwner: boolean }) {
-  const { connections } = useConnections({ plugin: owner });
+  const connections = useQuery({
+    queryKey: ['metrics', 'owner-connections', owner],
+    queryFn: async () => ResourceClient.ListConnections(owner),
+    staleTime: 30_000,
+  });
   const [connection, setConnection] = useState('');
   const [resourceType, setResourceType] = useState(resourceTypes[0] ?? '');
   const [resource, setResource] = useState<ResourceMetricTarget>();
@@ -27,6 +33,7 @@ function OwnerContext({ owner, resourceTypes, onChange, lockOwner }: { owner: st
   return <><label>Resource connection<MetricsSelect label="Resource connection" value={connection} disabled={lockOwner} onChange={value => {
     setResource(undefined); setConnection(value); 
   }} options={[{ value: '', label: 'Choose resource connection' }, ...(connections.data ?? []).map(value => ({ value: value.id, label: value.name || value.id }))]} /></label>
+  {connections.error && <span role="alert">{parseAppError(connections.error).title}</span>}
   <label>Resource type<MetricsSelect label="Resource type" value={resourceType} onChange={value => {
     setResource(undefined); setResourceType(value); 
   }} options={[{ value: '', label: 'Choose resource type' }, ...resourceTypes.map(value => ({ value, label: value }))]} /></label>
