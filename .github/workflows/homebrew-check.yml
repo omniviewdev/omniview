@@ -61,7 +61,7 @@ jobs:
           repository: omniviewdev/homebrew-tap
           path: homebrew-tap
       - name: Validate signed package source run
-        if: github.event_name == 'workflow_dispatch'
+        if: inputs.source-run-id != ''
         uses: actions/github-script@v7
         env:
           SOURCE_RUN_ID: ${{ inputs.source-run-id }}

@@ -128,6 +128,8 @@ Named workspaces use selected local source overlays rather than consuming unpubl
 
 The root manifest’s `packageManager` field declares the repository's pnpm version. Keep workflow setup pins and managed policy aligned with it. CI and release workflows use frozen lockfile installs; review and commit intended lockfile changes from development.
 
+The Homebrew package check uses the current run's artifact for reusable workflow calls. A direct dispatch validates the supplied source run and commit before downloading its artifact.
+
 `task check:ui-typecheck` checks application and test programs separately. The test configuration explicitly loads React diagnostic augmentation types, so component flags such as `whyDidYouRender` do not depend on unrelated imports being present.
 
 Drag-and-drop handlers preserve domain IDs: homepage contributions use strings; bottom-drawer tab positions use numbers, including zero. The owned Playwright drawer journey verifies real terminal-tab reordering rather than simulated drag callbacks.
