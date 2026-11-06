@@ -165,6 +165,7 @@ function moveTabToPaneEnd(state: PagesState, tabId: string): PagesState {
   };
 }
 
+/** Apply one workspace action before normalizing panes, groups, and tab order. */
 function applyAction(state: PagesState, action: PagesAction): PagesState {
   switch (action.type) {
     case 'open': {

@@ -9,6 +9,7 @@ import (
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
+// TestCanonicalAddressKeyCollisionCorpus checks that opaque identities remain distinct in both keys and the store.
 func TestCanonicalAddressKeyCollisionCorpus(t *testing.T) {
 	base := resourcev2.ResourceAddress{Provider: "provider", Authority: "authority", Type: "opaque/type", ID: "same"}
 	cases := []struct {
@@ -84,6 +85,7 @@ func TestCanonicalAddressKeyCollisionCorpus(t *testing.T) {
 	require.Len(t, keys, len(cases))
 }
 
+// TestCanonicalAddressKeyScopeOrderAndIncarnation checks canonical scope order without changing address identity.
 func TestCanonicalAddressKeyScopeOrderAndIncarnation(t *testing.T) {
 	address := resourcev2.ResourceAddress{
 		Provider: "provider", Authority: "authority", Type: "opaque/type", ID: "same",
@@ -113,6 +115,7 @@ func TestCanonicalAddressKeyScopeOrderAndIncarnation(t *testing.T) {
 	}
 }
 
+// TestMemoryStoreRecreationWithoutIncarnationIsNotDetected records the limit of address-only identity.
 func TestMemoryStoreRecreationWithoutIncarnationIsNotDetected(t *testing.T) {
 	store := NewMemoryStore()
 	entry := makeEntry("plugin", "route", "qemu", "node-one", "100", map[string]string{"observation": "first"})

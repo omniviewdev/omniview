@@ -133,6 +133,7 @@ function focusAfterRemoval(state: DrawerTabsState, remaining: BottomDrawerTab[])
   return Math.max(Math.min(state.focused - removedBeforeFocus - 1, remaining.length - 1), 0);
 }
 
+/** Apply drawer tab updates while retaining focus and tab properties. */
 function drawerTabsReducer(state: DrawerTabsState, action: DrawerTabsAction): DrawerTabsState {
   switch (action.type) {
     case 'create':
@@ -226,6 +227,7 @@ function drawerTabsReducer(state: DrawerTabsState, action: DrawerTabsAction): Dr
   }
 }
 
+/** Hydrate saved tabs and select the saved focus, or start with an empty drawer. */
 function initialDrawerTabsState(slot: DrawerSlot | null): DrawerTabsState {
   if (slot === null) {
     return { tabs: [], focused: 0 };
@@ -237,6 +239,7 @@ function initialDrawerTabsState(slot: DrawerSlot | null): DrawerTabsState {
 
 // ===================================== PROVIDER ===================================== //
 
+/** Restore drawer sessions and coordinate their lifetime with window state. */
 export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ children }) => {
   const defaultHeight = 32;
 
