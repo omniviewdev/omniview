@@ -4,7 +4,7 @@ Show resource measurements with a runtime hook and a base-ui component. Omniview
 
 Resource plugins declare metric IDs, default mappings, and approved public scope. Source providers execute queries. The host shares work without knowing resource kinds.
 
-[Show a metric](#1-show-pod-cpu) · [Show multiple resources](#2-show-multiple-resources) · [Remember settings](#3-remember-view-settings) · [API reference](#api-reference)
+[Show a metric](#1-show-pod-cpu) · [Show multiple resources](#2-show-multiple-resources) · [Remember settings](#3-remember-view-settings) · [Overlay object attributes](#4-overlay-object-attributes) · [API reference](#api-reference)
 
 ## Before you start
 
@@ -160,6 +160,41 @@ stepMs: 15_000,
 The host advances the range on each refresh. For a fixed window, use `startTime` and `endTime` instead of `durationMs`. Kubernetes metrics-server has no history.
 
 See the [host reference](finite-resource-metrics-reference.md) for source precedence, permissions, and collection limits.
+
+## 4. Overlay object attributes
+
+Pass numeric references alongside your existing measurements. Your plugin reads the typed resource body; base-ui draws the overlay. No additional metric request is needed.
+
+For example, `volume` is the admitted resource body, with optional numeric byte quantities:
+
+```tsx
+import { TimeSeriesChart, type MetricReference } from '@omniviewdev/base-ui/metrics';
+
+const references: readonly MetricReference[] = [
+  { kind: 'line', id: 'request', label: 'Request',
+    value: volume.spec?.requestedBytes, lineStyle: 'dashed',
+    source: 'Current resource configuration' },
+  { kind: 'line', id: 'limit', label: 'Limit',
+    value: volume.spec?.limitBytes, lineStyle: 'dotted',
+    source: 'Current resource configuration' },
+];
+
+<TimeSeriesChart label="Storage used" series={series} domain={domain}
+  unit={{ kind: 'bytes', display: 'binary' }} references={references} />;
+```
+
+Use the same `references` prop on stacked charts, capacity bars, compact metric cells, gauges, and ranked bars. `MetricValue` shows a compact summary without inventing a numeric scale, so value-only views keep the same context.
+
+| Reference | Fields |
+| --- | --- |
+| Line | `kind: 'line'`, `id`, `label`, `value` |
+| Band | `kind: 'band'`, `id`, `label`, `from`, `to` |
+| Optional presentation | `tone`, `lineStyle`, `source` |
+
+- **Use base units.** Byte references remain bytes even when the axis displays MiB. CPU references follow the component's declared cores/millicores base.
+- **Keep missing values missing.** Undefined, null, and non-finite values are omitted; real zero remains visible. Resource plugins decide effective aggregation and whether a partial limit is meaningful.
+- **Keep bounds honest.** Automatic chart bounds include references. Explicit domains stay pinned. Capacity percentages still require a real positive `bound`.
+- **Describe current configuration.** Object-derived references update with the resource, not the metric query. They do not reconstruct historical requests, limits, or quotas.
 
 ## API reference
 
