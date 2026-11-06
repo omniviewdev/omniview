@@ -27,6 +27,8 @@ export {
   ResourceMetricsResponse,
   ResourceMetricsCatalog,
   MetricDefinition,
+  MetricOwnerCatalog,
+  MetricScopeField,
   MetricDefinitionOverride,
   MetricFieldBinding,
   MetricFieldTransform,

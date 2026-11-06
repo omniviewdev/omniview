@@ -2,7 +2,6 @@ package metric
 
 import (
 	"context"
-	"errors"
 	"sort"
 
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
@@ -115,14 +114,15 @@ func applyMetricOverride(d sdk.MetricDefinition, o sdk.MetricDefinitionOverride)
 	}
 	return d
 }
-func (c *controller) resolveFiniteSources(request ResourceMetricsCatalogRequest, ids []string, preview *sdk.MetricDefinition) ([]finiteSourceLane, error) {
+func (c *controller) resolveFiniteSources(ctx context.Context, request ResourceMetricsCatalogRequest, ids []string, preview *sdk.MetricDefinition) ([]finiteSourceLane, error) {
 	if request.OwnerPluginID == "" || request.OwnerConnectionID == "" || request.ResourceKey == "" {
 		return nil, finiteError("INVALID_REQUEST", "Owner connection and resource key are required.")
 	}
-	definitions, err := c.catalogDefinitions()
+	catalog, err := c.rawMetricOwnerCatalog(ctx, request.OwnerPluginID, request.OwnerConnectionID)
 	if err != nil {
 		return nil, err
 	}
+	definitions := catalog.Definitions
 	data, err := c.configurationSnapshot(request, definitions, preview)
 	if err != nil {
 		return nil, err
@@ -141,8 +141,11 @@ func (c *controller) resolveFiniteSources(request ResourceMetricsCatalogRequest,
 	if request.BindingID != "" && binding == nil {
 		return nil, finiteError("NOT_FOUND", "Selected metric binding does not belong to this owner.")
 	}
-	source := sdk.MetricSourceRef{PluginID: request.OwnerPluginID, ConnectionID: request.OwnerConnectionID, DatasourceKind: "metrics-server"}
+	source := sdk.MetricSourceRef{PluginID: request.OwnerPluginID, ConnectionID: request.OwnerConnectionID, Native: true}
 	if data.Defaults.Source != nil {
+		if data.Defaults.Source.Native {
+			return nil, finiteError("INVALID_REQUEST", "Native profile defaults must use an empty source.")
+		}
 		source = *data.Defaults.Source
 	}
 	if binding != nil && binding.Source != (sdk.MetricSourceRef{}) {
@@ -159,7 +162,7 @@ func (c *controller) resolveFiniteSources(request ResourceMetricsCatalogRequest,
 			switch selection.Mode {
 			case "inherit":
 			case "native":
-				source = sdk.MetricSourceRef{PluginID: request.OwnerPluginID, ConnectionID: request.OwnerConnectionID, DatasourceKind: "metrics-server"}
+				source = sdk.MetricSourceRef{PluginID: request.OwnerPluginID, ConnectionID: request.OwnerConnectionID, Native: true}
 				explicitSelection = true
 			case "external":
 				if selection.Source == nil {
@@ -181,18 +184,24 @@ func (c *controller) resolveFiniteSources(request ResourceMetricsCatalogRequest,
 		byID[d.ID] = d
 	}
 	for _, d := range data.Definitions {
+		if owner, exists := byID[d.ID]; exists && (owner.Unit != d.Unit || metricDigest(owner.ResourceKeys) != metricDigest(d.ResourceKeys) || owner.Native != d.Native) {
+			return nil, finiteError("INVALID_REQUEST", "Saved definition changes owner metric semantics.")
+		}
 		byID[d.ID] = d
 	}
 	if preview != nil {
+		if owner, exists := byID[preview.ID]; exists && (owner.Unit != preview.Unit || metricDigest(owner.ResourceKeys) != metricDigest(preview.ResourceKeys) || owner.Native != preview.Native) {
+			return nil, finiteError("INVALID_REQUEST", "Preview changes owner metric semantics.")
+		}
 		byID[preview.ID] = *preview
 	}
 	overrides := map[string]sdk.MetricDefinitionOverride{}
 	scope := map[string]string{}
 	if binding != nil {
+		if err := validateOwnerScope(binding.PublicScope, catalog); err != nil {
+			return nil, err
+		}
 		for k, v := range binding.PublicScope {
-			if !publicScopeKey(k) || len(v) > 1024 {
-				return nil, errors.New("only bounded public cluster scope is supported")
-			}
 			scope[k] = v
 		}
 		for _, o := range binding.Overrides {
@@ -214,6 +223,9 @@ func (c *controller) resolveFiniteSources(request ResourceMetricsCatalogRequest,
 		if o, ok := overrides[d.ID]; ok && (preview == nil || preview.ID != d.ID) {
 			d = applyMetricOverride(d, o)
 		}
+		if err := validateOwnerDefinitionScope(d, catalog); err != nil {
+			return nil, err
+		}
 		if err = validateConfiguredMetricDefinition(d); err != nil {
 			return nil, err
 		}
@@ -223,7 +235,7 @@ func (c *controller) resolveFiniteSources(request ResourceMetricsCatalogRequest,
 	// Include all definitions assigned to a lane, not only the visible metric subset.
 	// This keeps exact-subset sharing stable while still partitioning mapping edits.
 	laneDefinitions := func(selected sdk.MetricSourceRef) []sdk.MetricDefinition {
-		if selected.DatasourceKind == "metrics-server" {
+		if selected.Native {
 			return nil
 		}
 		out := []sdk.MetricDefinition{}
@@ -274,12 +286,12 @@ func (c *controller) resolveFiniteSources(request ResourceMetricsCatalogRequest,
 		if len(ids) > 0 && len(metricIDs) == 0 {
 			continue
 		}
-		if selected.PluginID == "" || selected.ConnectionID == "" || selected.DatasourceKind == "" {
-			return nil, finiteError("INVALID_REQUEST", "Selected metric source is incomplete.")
+		if err := c.validateOwnerMetricSource(ctx, selected, request.OwnerPluginID, request.OwnerConnectionID); err != nil {
+			return nil, err
 		}
 		mappings := laneDefinitions(selected)
 		laneScope := scope
-		if selected.DatasourceKind == "metrics-server" {
+		if selected.Native {
 			laneScope = nil
 		}
 		revision := metricDigest([]any{request.ResourceKey, selected, laneScope, mappings})
@@ -287,13 +299,13 @@ func (c *controller) resolveFiniteSources(request ResourceMetricsCatalogRequest,
 		if request.Source == nil {
 			keys = append(keys, finiteConfigurationKey{kind: "view", plugin: request.OwnerPluginID, connection: request.OwnerConnectionID, resource: request.ResourceKey})
 		}
-		if selected.DatasourceKind != "metrics-server" || !explicitSelection {
+		if !selected.Native || !explicitSelection {
 			keys = append(keys, finiteConfigurationKey{kind: "binding", plugin: request.OwnerPluginID, connection: request.OwnerConnectionID})
 		}
 		if !explicitSelection && viewMode == "inherit" && (binding == nil || binding.Source == (sdk.MetricSourceRef{})) && selected == source {
 			keys = append(keys, finiteConfigurationKey{kind: "defaults"})
 		}
-		if selected.DatasourceKind != "metrics-server" {
+		if !selected.Native {
 			for _, definition := range mappings {
 				keys = append(keys, finiteConfigurationKey{kind: "definition", resource: definition.ID})
 			}
@@ -306,6 +318,9 @@ func (c *controller) resolveFiniteSources(request ResourceMetricsCatalogRequest,
 	return lanes, nil
 }
 func (c *controller) finiteSourceContext(ctx context.Context, source sdk.MetricSourceRef) (*sdktypes.PluginContext, error) {
+	if source.Native {
+		return c.getConnectedCtx(ctx, source.PluginID, source.ConnectionID)
+	}
 	c.mux.RLock()
 	client := c.clients[source.PluginID]
 	c.mux.RUnlock()
@@ -324,7 +339,7 @@ func (c *controller) PreviewMetricDefinition(ctx context.Context, spec MetricsOb
 	return c.readFiniteResolved(ctx, spec, true, nil, nil, &definition)
 }
 
-func (f *finiteCoordinator) fenceFiniteSources(request ResourceMetricsCatalogRequest, lanes []finiteSourceLane, generation, serial uint64, preview *sdk.MetricDefinition) (func() error, error) {
+func (f *finiteCoordinator) fenceFiniteSources(ctx context.Context, request ResourceMetricsCatalogRequest, lanes []finiteSourceLane, generation, serial uint64, preview *sdk.MetricDefinition) (func() error, error) {
 	f.mu.Lock()
 	keys := map[metricStreamKey]uint64{{request.OwnerPluginID, request.OwnerConnectionID}: 0}
 	dependencies := finiteLaneConfigurationKeys(lanes)
@@ -364,7 +379,7 @@ func (f *finiteCoordinator) fenceFiniteSources(request ResourceMetricsCatalogReq
 		if !current {
 			return profileChangingError()
 		}
-		resolved, err := f.c.resolveFiniteSources(request, ids, preview)
+		resolved, err := f.c.resolveFiniteSources(ctx, request, ids, preview)
 		if err != nil {
 			return err
 		}

@@ -730,6 +730,42 @@ export enum MetricFieldTransform {
 };
 
 /**
+ * MetricOwnerCatalog exposes owner-authored definitions and public scope metadata.
+ */
+export class MetricOwnerCatalog {
+    "definitions": MetricDefinition[];
+    "scope_fields": MetricScopeField[];
+
+    /** Creates a new MetricOwnerCatalog instance. */
+    constructor($$source: Partial<MetricOwnerCatalog> = {}) {
+        if (!("definitions" in $$source)) {
+            this["definitions"] = [];
+        }
+        if (!("scope_fields" in $$source)) {
+            this["scope_fields"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MetricOwnerCatalog instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MetricOwnerCatalog {
+        const $$createField0_0 = $$createType16;
+        const $$createField1_0 = $$createType18;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("definitions" in $$parsedSource) {
+            $$parsedSource["definitions"] = $$createField0_0($$parsedSource["definitions"]);
+        }
+        if ("scope_fields" in $$parsedSource) {
+            $$parsedSource["scope_fields"] = $$createField1_0($$parsedSource["scope_fields"]);
+        }
+        return new MetricOwnerCatalog($$parsedSource as Partial<MetricOwnerCatalog>);
+    }
+}
+
+/**
  * MetricResult wraps one of the possible metric result types.
  */
 export class MetricResult {
@@ -747,9 +783,9 @@ export class MetricResult {
      * Creates a new MetricResult instance from a string or object.
      */
     static createFrom($$source: any = {}): MetricResult {
-        const $$createField0_0 = $$createType16;
-        const $$createField1_0 = $$createType18;
-        const $$createField2_0 = $$createType20;
+        const $$createField0_0 = $$createType20;
+        const $$createField1_0 = $$createType22;
+        const $$createField2_0 = $$createType24;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("time_series" in $$parsedSource) {
             $$parsedSource["time_series"] = $$createField0_0($$parsedSource["time_series"]);
@@ -761,6 +797,38 @@ export class MetricResult {
             $$parsedSource["aggregate_value"] = $$createField2_0($$parsedSource["aggregate_value"]);
         }
         return new MetricResult($$parsedSource as Partial<MetricResult>);
+    }
+}
+
+/**
+ * MetricScopeField describes one owner-approved public scope entry.
+ */
+export class MetricScopeField {
+    "key": string;
+    "name": string;
+    "description": string;
+
+    /** Creates a new MetricScopeField instance. */
+    constructor($$source: Partial<MetricScopeField> = {}) {
+        if (!("key" in $$source)) {
+            this["key"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("description" in $$source)) {
+            this["description"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MetricScopeField instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MetricScopeField {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new MetricScopeField($$parsedSource as Partial<MetricScopeField>);
     }
 }
 
@@ -820,13 +888,14 @@ export class MetricSourceDefaults {
 
 /**
  * MetricSourceRef identifies the selected source, not the resource owner.
- * Native sources use kind metrics-server and an empty datasource UID.
+ * Native sources have no datasource kind or UID.
  */
 export class MetricSourceRef {
     "plugin_id": string;
     "connection_id": string;
     "datasource_uid": string;
     "datasource_kind": string;
+    "native"?: boolean;
 
     /** Creates a new MetricSourceRef instance. */
     constructor($$source: Partial<MetricSourceRef> = {}) {
@@ -979,7 +1048,7 @@ export class MetricValidationResult {
      * Creates a new MetricValidationResult instance from a string or object.
      */
     static createFrom($$source: any = {}): MetricValidationResult {
-        const $$createField1_0 = $$createType22;
+        const $$createField1_0 = $$createType26;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("issues" in $$parsedSource) {
             $$parsedSource["issues"] = $$createField1_0($$parsedSource["issues"]);
@@ -1107,7 +1176,7 @@ export class ProviderConnectionInput {
      * Creates a new ProviderConnectionInput instance from a string or object.
      */
     static createFrom($$source: any = {}): ProviderConnectionInput {
-        const $$createField0_0 = $$createType23;
+        const $$createField0_0 = $$createType27;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("connection" in $$parsedSource) {
             $$parsedSource["connection"] = $$createField0_0($$parsedSource["connection"]);
@@ -1143,7 +1212,7 @@ export class QueryResponse {
      * Creates a new QueryResponse instance from a string or object.
      */
     static createFrom($$source: any = {}): QueryResponse {
-        const $$createField1_0 = $$createType25;
+        const $$createField1_0 = $$createType29;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("results" in $$parsedSource) {
             $$parsedSource["results"] = $$createField1_0($$parsedSource["results"]);
@@ -1251,7 +1320,7 @@ export class ResourceMetricResult {
      * Creates a new ResourceMetricResult instance from a string or object.
      */
     static createFrom($$source: any = {}): ResourceMetricResult {
-        const $$createField4_0 = $$createType27;
+        const $$createField4_0 = $$createType31;
         const $$createField5_0 = $$createType0;
         const $$createField10_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
@@ -1302,8 +1371,8 @@ export class ResourceMetricTarget {
      * Creates a new ResourceMetricTarget instance from a string or object.
      */
     static createFrom($$source: any = {}): ResourceMetricTarget {
-        const $$createField1_0 = $$createType28;
-        const $$createField2_0 = $$createType29;
+        const $$createField1_0 = $$createType32;
+        const $$createField2_0 = $$createType33;
         const $$createField3_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("reference" in $$parsedSource) {
@@ -1356,7 +1425,7 @@ export class ResourceMetricsCatalog {
      */
     static createFrom($$source: any = {}): ResourceMetricsCatalog {
         const $$createField0_0 = $$createType2;
-        const $$createField1_0 = $$createType31;
+        const $$createField1_0 = $$createType35;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("source" in $$parsedSource) {
             $$parsedSource["source"] = $$createField0_0($$parsedSource["source"]);
@@ -1396,7 +1465,7 @@ export class ResourceMetricsResponse {
      * Creates a new ResourceMetricsResponse instance from a string or object.
      */
     static createFrom($$source: any = {}): ResourceMetricsResponse {
-        const $$createField0_0 = $$createType33;
+        const $$createField0_0 = $$createType37;
         const $$createField2_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("results" in $$parsedSource) {
@@ -1436,7 +1505,7 @@ export class TimeSeries {
      * Creates a new TimeSeries instance from a string or object.
      */
     static createFrom($$source: any = {}): TimeSeries {
-        const $$createField1_0 = $$createType35;
+        const $$createField1_0 = $$createType39;
         const $$createField2_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("data_points" in $$parsedSource) {
@@ -1465,24 +1534,28 @@ const $$createType11 = $Create.Nullable($$createType1);
 const $$createType12 = ColorRange.createFrom;
 const $$createType13 = $Create.Array($$createType12);
 const $$createType14 = $Create.Array($Create.Any);
-const $$createType15 = TimeSeries.createFrom;
-const $$createType16 = $Create.Nullable($$createType15);
-const $$createType17 = CurrentValue.createFrom;
-const $$createType18 = $Create.Nullable($$createType17);
-const $$createType19 = AggregateValue.createFrom;
+const $$createType15 = MetricDefinition.createFrom;
+const $$createType16 = $Create.Array($$createType15);
+const $$createType17 = MetricScopeField.createFrom;
+const $$createType18 = $Create.Array($$createType17);
+const $$createType19 = TimeSeries.createFrom;
 const $$createType20 = $Create.Nullable($$createType19);
-const $$createType21 = MetricValidationIssue.createFrom;
-const $$createType22 = $Create.Array($$createType21);
-const $$createType23 = ProviderConnection.createFrom;
-const $$createType24 = MetricResult.createFrom;
-const $$createType25 = $Create.Array($$createType24);
-const $$createType26 = ResourceMetricPoint.createFrom;
-const $$createType27 = $Create.Array($$createType26);
-const $$createType28 = resourcev2$0.ResourceReference.createFrom;
-const $$createType29 = resourcev2$0.AccessRoute.createFrom;
-const $$createType30 = FiniteMetricDescriptor.createFrom;
+const $$createType21 = CurrentValue.createFrom;
+const $$createType22 = $Create.Nullable($$createType21);
+const $$createType23 = AggregateValue.createFrom;
+const $$createType24 = $Create.Nullable($$createType23);
+const $$createType25 = MetricValidationIssue.createFrom;
+const $$createType26 = $Create.Array($$createType25);
+const $$createType27 = ProviderConnection.createFrom;
+const $$createType28 = MetricResult.createFrom;
+const $$createType29 = $Create.Array($$createType28);
+const $$createType30 = ResourceMetricPoint.createFrom;
 const $$createType31 = $Create.Array($$createType30);
-const $$createType32 = ResourceMetricResult.createFrom;
-const $$createType33 = $Create.Array($$createType32);
-const $$createType34 = DataPoint.createFrom;
+const $$createType32 = resourcev2$0.ResourceReference.createFrom;
+const $$createType33 = resourcev2$0.AccessRoute.createFrom;
+const $$createType34 = FiniteMetricDescriptor.createFrom;
 const $$createType35 = $Create.Array($$createType34);
+const $$createType36 = ResourceMetricResult.createFrom;
+const $$createType37 = $Create.Array($$createType36);
+const $$createType38 = DataPoint.createFrom;
+const $$createType39 = $Create.Array($$createType38);

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button, Input, Stack, Text, TextArea, Tooltip } from '@omniviewdev/base-ui';
 import { MetricClient } from '@omniviewdev/runtime/api';
-import type { MetricDefinition, MetricValidationResult, MetricsObservationSpec, ResourceMetricsResponse } from '@omniviewdev/runtime';
+import type { MetricDefinition, MetricScopeField, MetricValidationResult, MetricsObservationSpec, ResourceMetricsResponse } from '@omniviewdev/runtime';
 import './grafana.css';
 import SchemaFieldPicker, { type MappingSchemaContext } from './SchemaFieldPicker';
 import { LuPlus } from 'react-icons/lu';
@@ -14,11 +14,12 @@ export function QueryPreview({ query }: { query: string }) {
       <span key={index} className={part.startsWith('{{') ? 'grafana-interpolation' : /^(sum|rate|by|avg|max|min|count|irate)$/.test(part) ? 'grafana-function' : undefined}>{part}</span>)}</code></pre>;
 }
 
-export function MappingEditor({ definition, connectionID, datasourceUID, onSave, onReset, inherited, onDraft, sampleRequest, schemaContext, editSemantics = false }: {
+export function MappingEditor({ definition, connectionID, datasourceUID, onSave, onReset, inherited, onDraft, sampleRequest, schemaContext, scopeFields = [], editSemantics = false }: {
   definition: MetricDefinition; connectionID: string; datasourceUID: string; onSave: (definition: MetricDefinition) => Promise<void>;
   onReset?: () => void; inherited?: boolean; onDraft?: (id: string, draft: MetricDefinition | undefined) => void;
   sampleRequest?: MetricsObservationSpec;
   schemaContext?: MappingSchemaContext;
+  scopeFields?: readonly MetricScopeField[];
   editSemantics?: boolean;
 }) {
   const [draft, setDraft] = useState(definition);
@@ -94,7 +95,7 @@ export function MappingEditor({ definition, connectionID, datasourceUID, onSave,
   }
 
   return <Stack className="grafana-mapping-editor" direction="column" spacing={2}>
-    <div className="grafana-editor-heading"><strong>{inherited === true || onReset !== undefined ? 'Cluster override' : 'Metric query'}</strong><span className="grafana-spacer" />{onReset && <Button size="sm" variant="ghost" onClick={onReset}>Reset to global</Button>}</div>
+    <div className="grafana-editor-heading"><strong>{inherited === true || onReset !== undefined ? 'Connection override' : 'Metric query'}</strong><span className="grafana-spacer" />{onReset && <Button size="sm" variant="ghost" onClick={onReset}>Reset to owner default</Button>}</div>
     {editSemantics && <fieldset><legend>Metric definition</legend><Text size="xs">Stable ID: {draft.id}</Text>
       <label>Name<Input.Root className="grafana-input" size="md"><Input.Control value={draft.name} onChange={event => {
         setDraft({ ...draft, name: event.target.value }); 
@@ -133,12 +134,15 @@ export function MappingEditor({ definition, connectionID, datasourceUID, onSave,
           setDraft({ ...draft, field_bindings: draft.field_bindings.map((value, i) => i === index ? { ...value, label: event.target.value } : value) }); 
         }} /></Input.Root></label>
         <label>Source<MetricsSelect label="Binding source" value={binding.source} onChange={value => {
-          setDraft({ ...draft, field_bindings: draft.field_bindings.map((binding, i) => i === index ? { ...binding, source: value, field: value === 'scope' ? 'cluster' : 'id', resource_path: '' } : binding) }); 
+          setDraft({ ...draft, field_bindings: draft.field_bindings.map((binding, i) => i === index ? { ...binding, source: value, field: '', resource_path: '' } : binding) });
         }} options={[{ value: 'resource', label: 'Resource scalar' }, { value: 'scope', label: 'Public scope' }]} /></label>
-        <label>Template field<Input.Root className="grafana-input" size="md"><Input.Control value={binding.field} onChange={event => {
-          setDraft({ ...draft, field_bindings: draft.field_bindings.map((value, i) => i === index ? { ...value, field: event.target.value } : value) }); 
-        }} /></Input.Root></label>
-        <Text size="xs">{binding.required ? 'Required scalar' : 'Optional scalar'} · {binding.resource_path === undefined || binding.resource_path === '' ? binding.source === 'scope' ? 'Public scope value' : 'Canonical identity field' : binding.resource_path}</Text>
+        {binding.source === 'scope' ? <label>Public scope field<MetricsSelect label="Public scope field" value={binding.field} onChange={field => {
+          setDraft({ ...draft, field_bindings: draft.field_bindings.map((value, i) => i === index ? { ...value, field } : value) });
+        }} options={[{ value: '', label: 'Choose owner scope field' }, ...scopeFields.map(field => ({ value: field.key, label: field.name }))]} /></label> :
+          <label>Template field<Input.Root className="grafana-input" size="md"><Input.Control value={binding.field} onChange={event => {
+            setDraft({ ...draft, field_bindings: draft.field_bindings.map((value, i) => i === index ? { ...value, field: event.target.value } : value) });
+          }} /></Input.Root></label>}
+        <Text size="xs">{binding.required ? 'Required scalar' : 'Optional scalar'} · {binding.source === 'scope' ? 'Public scope value' : binding.resource_path === '' ? 'Select an explicit resource path' : binding.resource_path ?? 'Select an explicit resource path'}</Text>
         {binding.source === 'resource' && (schemaContext ? <SchemaFieldPicker key={JSON.stringify([schemaContext, index])} context={schemaContext} value={binding.resource_path ?? ''} onSelect={pointer => {
           setDraft({ ...draft, field_bindings: draft.field_bindings.map((value, i) => i === index ? { ...value, resource_path: pointer } : value) }); 
         }} /> : <Text size="xs">Select a resource connection validation context to browse authoritative schema fields.</Text>)}
@@ -158,7 +162,7 @@ export function MappingEditor({ definition, connectionID, datasourceUID, onSave,
         try {
           const now = Date.now();
           const result = await MetricClient.DiscoverMetricLabels('grafana', connectionID, datasourceUID, {
-            source: { plugin_id: 'grafana', connection_id: connectionID, datasource_uid: datasourceUID, datasource_kind: 'prometheus' },
+            source: { plugin_id: 'grafana', connection_id: connectionID, datasource_uid: datasourceUID, datasource_kind: 'prometheus', native: false },
             metric_name: metricName, label_name: '', matchers: {}, start_time: new Date(now - 3600000).toISOString(),
             end_time: new Date(now).toISOString(), limit: 100,
           });
@@ -228,10 +232,39 @@ export function Mappings({ definitions, connectionID, datasourceUID, save, onDra
   const [newDefinition, setNewDefinition] = useState<MetricDefinition>();
   const [deleted, setDeleted] = useState<string[]>([]);
   const [deleteError, setDeleteError] = useState('');
+  const [ownerScope, setOwnerScope] = useState<{ context: string; fields: MetricScopeField[]; error: string }>();
+  const ownerPluginID = schemaContext?.pluginID;
+  const ownerConnectionID = schemaContext?.connectionID;
+  const ownerContext = JSON.stringify([ownerPluginID, ownerConnectionID]);
+  const scopeFields = ownerScope?.context === ownerContext ? ownerScope.fields : [];
+  const ownerError = ownerScope?.context === ownerContext ? ownerScope.error : '';
+  useEffect(() => {
+    let active = true;
+    if (ownerPluginID !== undefined && ownerConnectionID !== undefined) {
+      MetricClient.GetMetricOwnerCatalog(ownerPluginID, ownerConnectionID).then(catalog => {
+        if (!catalog) {
+          throw new Error('No owner metric catalog returned.');
+        }
+
+        if (active) {
+          setOwnerScope({ context: ownerContext, fields: catalog.scope_fields ?? [], error: '' });
+        }
+      }).catch(error => {
+        if (active) {
+          setOwnerScope({ context: ownerContext, fields: [], error: String(error) });
+        }
+      });
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [ownerPluginID, ownerConnectionID, ownerContext]);
   return <Stack direction="column" spacing={2}><Input.Root className="grafana-input grafana-mapping-search" size="md"><Input.Control aria-label="Search global mappings" placeholder="Search name, resource, or query" value={search} onChange={event => {
     setSearch(event.target.value); 
   }} /></Input.Root>
   {deleteError && <p role="alert">{deleteError}</p>}
+  {ownerError && <p role="alert">{ownerError}</p>}
   <Button size="sm" onClick={() => {
     const template = definitions[0];
     const definition: MetricDefinition = {
@@ -243,7 +276,7 @@ export function Mappings({ definitions, connectionID, datasourceUID, save, onDra
     setNewDefinition(definition); onDraft?.(definition.id, definition);
   }} disabled={Boolean(newDefinition)}><LuPlus size={14} aria-hidden />Add metric</Button>
   {newDefinition && <section className="grafana-mapping" aria-label="New metric definition">
-    <MappingEditor definition={newDefinition} connectionID={connectionID} datasourceUID={datasourceUID} editSemantics schemaContext={schemaContext} sampleRequest={sampleRequest}
+    <MappingEditor definition={newDefinition} scopeFields={scopeFields} connectionID={connectionID} datasourceUID={datasourceUID} editSemantics schemaContext={schemaContext} sampleRequest={sampleRequest}
       onDraft={(id, draft) => onDraft?.(id, draft ?? newDefinition)} onSave={async draft => {
         await save(draft); setNewDefinition(undefined); 
       }} />
@@ -251,9 +284,9 @@ export function Mappings({ definitions, connectionID, datasourceUID, save, onDra
       onDraft?.(newDefinition.id, undefined); setNewDefinition(undefined); 
     }}>Cancel new metric</Button>
   </section>}
-  {definitions.filter(definition => !deleted.includes(definition.id)).map(definition => <details hidden={![definition.name, ...definition.resource_keys, definition.query].join(' ').toLowerCase().includes(search.toLowerCase())} className="grafana-mapping" key={`${definition.id}:${definition.revision}`}>
+  {definitions.filter(definition => definition.query_language === 'promql' && Boolean(definition.query) && !deleted.includes(definition.id)).map(definition => <details hidden={![definition.name, ...definition.resource_keys, definition.query].join(' ').toLowerCase().includes(search.toLowerCase())} className="grafana-mapping" key={`${definition.id}:${definition.revision}`}>
     <summary><strong>{definition.name}</strong><span>{definition.resource_keys.join(', ')} · {definition.unit}</span><QueryPreview query={definition.query} /></summary>
-    <MappingEditor definition={definition} connectionID={connectionID} datasourceUID={datasourceUID} onSave={save} onDraft={onDraft} editSemantics schemaContext={schemaContext && definition.resource_keys.includes(schemaContext.resourceType) ? schemaContext : undefined} sampleRequest={sampleRequest && definition.resource_keys.includes(sampleRequest.resource_key) ? sampleRequest : undefined} />
+    <MappingEditor definition={definition} scopeFields={scopeFields} connectionID={connectionID} datasourceUID={datasourceUID} onSave={save} onDraft={onDraft} editSemantics schemaContext={schemaContext && definition.resource_keys.includes(schemaContext.resourceType) ? schemaContext : undefined} sampleRequest={sampleRequest && definition.resource_keys.includes(sampleRequest.resource_key) ? sampleRequest : undefined} />
     {!definition.native && <Button size="sm" variant="ghost" color="danger" onClick={async () => {
       if (!window.confirm(`Delete ${definition.name}? Existing overrides will no longer resolve this metric.`)) {
         return;

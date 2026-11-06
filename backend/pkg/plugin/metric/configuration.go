@@ -22,15 +22,16 @@ type MetricConfigurationController interface {
 	SetMetricResourceReader(MetricResourceReader)
 	SetResourceIdentityGuard(ResourceIdentityGuard)
 	GetMetricBindings(string, string) ([]sdk.MetricBinding, error)
-	SaveMetricBinding(sdk.MetricBinding) (*sdk.MetricBinding, error)
+	SaveMetricBinding(context.Context, sdk.MetricBinding) (*sdk.MetricBinding, error)
 	DeleteMetricBinding(string, string, string) error
 	GetMetricDefinitions() ([]sdk.MetricDefinition, error)
+	GetMetricOwnerCatalog(context.Context, string, string) (*sdk.MetricOwnerCatalog, error)
 	SaveMetricDefinition(sdk.MetricDefinition) (*sdk.MetricDefinition, error)
 	DeleteMetricDefinition(string) error
 	GetMetricSourceDefaults() (sdk.MetricSourceDefaults, error)
-	SaveMetricSourceDefaults(sdk.MetricSourceDefaults) (sdk.MetricSourceDefaults, error)
+	SaveMetricSourceDefaults(context.Context, sdk.MetricSourceDefaults) (sdk.MetricSourceDefaults, error)
 	GetMetricViewSourceSelection(string, string, string) (sdk.MetricViewSourceSelection, error)
-	SaveMetricViewSourceSelection(sdk.MetricViewSourceSelection) (sdk.MetricViewSourceSelection, error)
+	SaveMetricViewSourceSelection(context.Context, sdk.MetricViewSourceSelection) (sdk.MetricViewSourceSelection, error)
 	GetProviderConnections(string) ([]sdk.ProviderConnection, error)
 	SaveProviderConnection(string, sdk.ProviderConnectionInput) (*sdk.ProviderConnection, error)
 	DeleteProviderConnection(string, string) error
@@ -142,7 +143,31 @@ func metricDigest(v any) string {
 	raw, _ := json.Marshal(v)
 	return fmt.Sprintf("%x", sha256.Sum256(raw))
 }
-func publicScopeKey(key string) bool { return key == "cluster" }
+func validateOwnerScope(scope map[string]string, catalog *sdk.MetricOwnerCatalog) error {
+	if len(scope) > 32 {
+		return errors.New("public scope exceeds limits")
+	}
+	approved := map[string]bool{}
+	for _, field := range catalog.ScopeFields {
+		approved[field.Key] = true
+	}
+	for key, value := range scope {
+		if !approved[key] || len(value) > 1024 {
+			return errors.New("public scope field is not approved by resource owner or exceeds limits")
+		}
+	}
+	return nil
+}
+
+func validateOwnerDefinitionScope(definition sdk.MetricDefinition, catalog *sdk.MetricOwnerCatalog) error {
+	scope := map[string]string{}
+	for _, binding := range definition.FieldBindings {
+		if binding.Source == "scope" {
+			scope[binding.Field] = ""
+		}
+	}
+	return validateOwnerScope(scope, catalog)
+}
 func (c *controller) GetMetricBindings(plugin, connection string) ([]sdk.MetricBinding, error) {
 	if plugin == "" || connection == "" {
 		return nil, errors.New("resource owner and connection are required")
@@ -161,30 +186,37 @@ func (c *controller) GetMetricBindings(plugin, connection string) ([]sdk.MetricB
 	}
 	return out, nil
 }
-func (c *controller) SaveMetricBinding(b sdk.MetricBinding) (*sdk.MetricBinding, error) {
+func (c *controller) SaveMetricBinding(ctx context.Context, b sdk.MetricBinding) (*sdk.MetricBinding, error) {
 	if b.ResourcePluginID == "" || b.ResourceConnectionID == "" || b.Signal != "metrics" {
 		return nil, errors.New("metrics signal and resource owner connection are required")
 	}
 	if b.Policy != "" && b.Policy != "replace" {
 		return nil, errors.New("binding policy must be replace")
 	}
-	if len(b.PublicScope) > 1 || len(b.Overrides) > 64 {
+	if len(b.Overrides) > 64 {
 		return nil, errors.New("binding exceeds limits")
 	}
-	for k, v := range b.PublicScope {
-		if !publicScopeKey(k) || len(v) > 1024 {
-			return nil, errors.New("only bounded public cluster scope is supported")
-		}
-	}
-	if b.Source != (sdk.MetricSourceRef{}) {
-		if err := c.validateSelectedMetricSource(b.Source); err != nil {
-			return nil, err
-		}
-	}
-	definitions, err := c.GetMetricDefinitions()
+	catalog, err := c.rawMetricOwnerCatalog(ctx, b.ResourcePluginID, b.ResourceConnectionID)
 	if err != nil {
 		return nil, err
 	}
+	if err := validateOwnerScope(b.PublicScope, catalog); err != nil {
+		return nil, err
+	}
+	if b.Source != (sdk.MetricSourceRef{}) {
+		if err := c.validateOwnerMetricSource(ctx, b.Source, b.ResourcePluginID, b.ResourceConnectionID); err != nil {
+			return nil, err
+		}
+	}
+	definitions := catalog.Definitions
+	state := c.state()
+	state.Lock()
+	if err := state.load(); err != nil {
+		state.Unlock()
+		return nil, err
+	}
+	definitions = append(append([]sdk.MetricDefinition(nil), definitions...), copyJSON(state.data.Definitions)...)
+	state.Unlock()
 	byID := map[string]sdk.MetricDefinition{}
 	for _, d := range definitions {
 		byID[d.ID] = d
@@ -196,7 +228,7 @@ func (c *controller) SaveMetricBinding(b sdk.MetricBinding) (*sdk.MetricBinding,
 		}
 		seen[o.MetricID] = true
 		if o.Source != nil {
-			if err := c.validateSelectedMetricSource(*o.Source); err != nil {
+			if err := c.validateOwnerMetricSource(ctx, *o.Source, b.ResourcePluginID, b.ResourceConnectionID); err != nil {
 				return nil, err
 			}
 		}
@@ -205,6 +237,9 @@ func (c *controller) SaveMetricBinding(b sdk.MetricBinding) (*sdk.MetricBinding,
 			return nil, errors.New("override metric definition does not exist")
 		}
 		definition = applyMetricOverride(definition, o)
+		if err := validateOwnerDefinitionScope(definition, catalog); err != nil {
+			return nil, err
+		}
 		if err := validateConfiguredMetricDefinition(definition); err != nil {
 			return nil, err
 		}
@@ -284,9 +319,12 @@ func (c *controller) GetMetricSourceDefaults() (sdk.MetricSourceDefaults, error)
 	}
 	return copyJSON(s.data.Defaults), nil
 }
-func (c *controller) SaveMetricSourceDefaults(d sdk.MetricSourceDefaults) (sdk.MetricSourceDefaults, error) {
+func (c *controller) SaveMetricSourceDefaults(ctx context.Context, d sdk.MetricSourceDefaults) (sdk.MetricSourceDefaults, error) {
 	if d.Source != nil {
-		if err := c.validateSelectedMetricSource(*d.Source); err != nil {
+		if d.Source.Native {
+			return sdk.MetricSourceDefaults{}, errors.New("native profile defaults must use an empty source")
+		}
+		if err := c.validateSelectedMetricSource(ctx, *d.Source); err != nil {
 			return sdk.MetricSourceDefaults{}, err
 		}
 	}
@@ -309,43 +347,113 @@ func (c *controller) SaveMetricSourceDefaults(d sdk.MetricSourceDefaults) (sdk.M
 	}
 	return copyJSON(d), nil
 }
+
+// GetMetricOwnerCatalog exposes effective profile definitions for owner settings.
+// SDK catalogs remain raw owner declarations; persisted definitions never add scope fields.
+func (c *controller) GetMetricOwnerCatalog(ctx context.Context, plugin, connection string) (*sdk.MetricOwnerCatalog, error) {
+	catalog, err := c.rawMetricOwnerCatalog(ctx, plugin, connection)
+	if err != nil {
+		return nil, err
+	}
+	s := c.state()
+	s.Lock()
+	defer s.Unlock()
+	if err := s.load(); err != nil {
+		return nil, err
+	}
+	byID := make(map[string]int, len(catalog.Definitions))
+	for i, definition := range catalog.Definitions {
+		byID[definition.ID] = i
+	}
+	for _, definition := range s.data.Definitions {
+		if i, exists := byID[definition.ID]; exists {
+			catalog.Definitions[i] = copyJSON(definition)
+		} else {
+			byID[definition.ID] = len(catalog.Definitions)
+			catalog.Definitions = append(catalog.Definitions, copyJSON(definition))
+		}
+	}
+	return catalog, nil
+}
+
+// rawMetricOwnerCatalog preserves owner authority for scope and query composition.
+func (c *controller) rawMetricOwnerCatalog(ctx context.Context, plugin, connection string) (*sdk.MetricOwnerCatalog, error) {
+	if plugin == "" || connection == "" {
+		return nil, errors.New("resource owner connection is required")
+	}
+	c.mux.RLock()
+	provider := c.clients[plugin]
+	c.mux.RUnlock()
+	if provider == nil {
+		return nil, finiteError("NOT_FOUND", "Resource owner is unavailable.")
+	}
+	catalog, ok := provider.(sdk.MetricOwnerCatalogProvider)
+	if !ok {
+		return &sdk.MetricOwnerCatalog{}, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, resourceMetricsTimeout)
+	defer cancel()
+	if capabilities, ok := provider.(interface {
+		GetMetricOwnerCapabilities(context.Context) (bool, error)
+	}); ok {
+		supported, err := capabilities.GetMetricOwnerCapabilities(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if !supported {
+			cancel()
+			return &sdk.MetricOwnerCatalog{}, nil
+		}
+	}
+	pc, err := c.getConnectedCtx(ctx, plugin, connection)
+	if err != nil {
+		return nil, err
+	}
+	result, err := catalog.GetMetricOwnerCatalog(pc)
+	if err != nil {
+		return nil, err
+	}
+	if err := sdk.ValidateMetricOwnerCatalog(result); err != nil {
+		return nil, err
+	}
+	for _, definition := range result.Definitions {
+		if err := validateConfiguredMetricDefinition(definition); err != nil {
+			return nil, err
+		}
+	}
+	return copyJSON(result), nil
+}
+
+// catalogDefinitions serves global editor discovery only. Queries use the selected owner.
 func (c *controller) catalogDefinitions() ([]sdk.MetricDefinition, error) {
 	c.mux.RLock()
-	providers := make(map[string]Provider, len(c.clients))
-	for id, p := range c.clients {
-		providers[id] = p
+	providers := make([]Provider, 0, len(c.clients))
+	for _, provider := range c.clients {
+		providers = append(providers, provider)
 	}
 	c.mux.RUnlock()
 	defs := map[string]sdk.MetricDefinition{}
-	for _, d := range canonicalMetricDefinitions() {
-		defs[d.ID] = d
-	}
-	for _, p := range providers {
-		catalog, ok := p.(sdk.MetricCatalogProvider)
+	for _, provider := range providers {
+		catalog, ok := provider.(sdk.MetricOwnerCatalogProvider)
 		if !ok {
 			continue
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), resourceMetricsTimeout)
-		items, err := catalog.GetMetricDefinitions(c.getUnconnectedCtx(ctx))
+		items, err := catalog.GetMetricOwnerCatalog(c.getUnconnectedCtx(ctx))
 		cancel()
-		if err != nil {
-			return nil, err
+		if err != nil || items == nil {
+			continue
 		}
-		for _, d := range items {
-			if old, exists := defs[d.ID]; exists {
-				if old.Unit != d.Unit || metricDigest(old.ResourceKeys) != metricDigest(d.ResourceKeys) {
-					return nil, fmt.Errorf("conflicting metric semantics %q", d.ID)
-				}
-				if !old.Native && metricDigest(old) != metricDigest(d) {
-					return nil, fmt.Errorf("conflicting metric definition %q", d.ID)
-				}
+		for _, definition := range items.Definitions {
+			if old, exists := defs[definition.ID]; exists && metricDigest(old) != metricDigest(definition) {
+				return nil, fmt.Errorf("conflicting owner metric definition %q", definition.ID)
 			}
-			defs[d.ID] = d
+			defs[definition.ID] = definition
 		}
 	}
 	out := make([]sdk.MetricDefinition, 0, len(defs))
-	for _, d := range defs {
-		out = append(out, d)
+	for _, definition := range defs {
+		out = append(out, definition)
 	}
 	return out, nil
 }
@@ -378,9 +486,13 @@ func (c *controller) SaveMetricDefinition(d sdk.MetricDefinition) (*sdk.MetricDe
 	if err := validateConfiguredMetricDefinition(d); err != nil {
 		return nil, err
 	}
-	for _, canonical := range canonicalMetricDefinitions() {
-		if canonical.ID == d.ID && (canonical.Unit != d.Unit || metricDigest(canonical.ResourceKeys) != metricDigest(d.ResourceKeys)) {
-			return nil, errors.New("canonical metric units and resource applicability cannot change")
+	canonical, err := c.catalogDefinitions()
+	if err != nil {
+		return nil, err
+	}
+	for _, owner := range canonical {
+		if owner.ID == d.ID && (owner.Unit != d.Unit || metricDigest(owner.ResourceKeys) != metricDigest(d.ResourceKeys) || owner.Native != d.Native) {
+			return nil, errors.New("owner metric semantics and resource applicability cannot change")
 		}
 	}
 	keys, inheritedRevision, err := c.metricDefinitionConfigurationKeys(d.ID, d.ResourceKeys)
@@ -568,8 +680,17 @@ func (c *controller) DiscoverMetricLabels(plugin, connection, datasource string,
 	defer cancel()
 	return p.DiscoverMetricLabels(c.getUnconnectedCtx(ctx), request)
 }
-func (c *controller) validateSelectedMetricSource(source sdk.MetricSourceRef) error {
-	if source.PluginID == "" || source.ConnectionID == "" || source.DatasourceKind == "" {
+func (c *controller) validateOwnerMetricSource(ctx context.Context, source sdk.MetricSourceRef, plugin, connection string) error {
+	if source.Native {
+		if source.PluginID != plugin || source.ConnectionID != connection || source.DatasourceKind != "" || source.DatasourceUID != "" {
+			return errors.New("native metric source must match resource owner connection")
+		}
+		return nil
+	}
+	return c.validateSelectedMetricSource(ctx, source)
+}
+func (c *controller) validateSelectedMetricSource(ctx context.Context, source sdk.MetricSourceRef) error {
+	if source.Native || source.PluginID == "" || source.ConnectionID == "" || source.DatasourceKind == "" || source.DatasourceUID == "" {
 		return errors.New("an explicit provider connection and typed datasource are required")
 	}
 	if err := sdk.ValidateResourceMetricsCatalogRequest(sdk.ResourceMetricsCatalogRequest{Source: source, ResourceKey: "source-validation"}); err != nil {
@@ -579,7 +700,7 @@ func (c *controller) validateSelectedMetricSource(source sdk.MetricSourceRef) er
 		if _, err = c.finiteProvider(source.PluginID); err != nil {
 			return err
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), resourceMetricsTimeout)
+		ctx, cancel := context.WithTimeout(ctx, resourceMetricsTimeout)
 		defer cancel()
 		_, err = c.finiteSourceContext(ctx, source)
 		return err
@@ -588,7 +709,7 @@ func (c *controller) validateSelectedMetricSource(source sdk.MetricSourceRef) er
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), resourceMetricsTimeout)
+	ctx, cancel := context.WithTimeout(ctx, resourceMetricsTimeout)
 	defer cancel()
 	pc := c.getUnconnectedCtx(ctx)
 	connections, err := p.GetProviderConnections(pc)
@@ -615,15 +736,6 @@ func (c *controller) validateSelectedMetricSource(source sdk.MetricSourceRef) er
 		}
 	}
 	return errors.New("selected datasource does not exist or has incompatible kind")
-}
-
-func canonicalMetricDefinitions() []sdk.MetricDefinition {
-	return []sdk.MetricDefinition{
-		{ID: "kubernetes.pod.cpu.usage", Name: "CPU usage", ResourceKeys: []string{"k8s:/pods"}, Unit: "cores", Semantics: "rate", SupportedShapes: []string{"current"}, Revision: "host-native-v1", Native: true},
-		{ID: "kubernetes.pod.memory.working_set", Name: "Memory working set", ResourceKeys: []string{"k8s:/pods"}, Unit: "bytes", Semantics: "gauge", SupportedShapes: []string{"current"}, Revision: "host-native-v1", Native: true},
-		{ID: "kubernetes.node.cpu.usage", Name: "CPU usage", ResourceKeys: []string{"k8s:/nodes"}, Unit: "cores", Semantics: "rate", SupportedShapes: []string{"current"}, Revision: "host-native-v1", Native: true},
-		{ID: "kubernetes.node.memory.working_set", Name: "Memory working set", ResourceKeys: []string{"k8s:/nodes"}, Unit: "bytes", Semantics: "gauge", SupportedShapes: []string{"current"}, Revision: "host-native-v1", Native: true},
-	}
 }
 
 func (c *controller) configuredMetricSource(plugin, connection, datasource string) (sdk.MetricSourceRef, error) {
@@ -678,17 +790,17 @@ func (c *controller) GetMetricViewSourceSelection(plugin, connection, resource s
 	}
 	return selection, nil
 }
-func (c *controller) SaveMetricViewSourceSelection(selection sdk.MetricViewSourceSelection) (sdk.MetricViewSourceSelection, error) {
+func (c *controller) SaveMetricViewSourceSelection(ctx context.Context, selection sdk.MetricViewSourceSelection) (sdk.MetricViewSourceSelection, error) {
 	empty := sdk.MetricViewSourceSelection{}
 	if selection.OwnerPluginID == "" || selection.OwnerConnectionID == "" || selection.ResourceKey == "" {
 		return empty, finiteError("INVALID_REQUEST", "View source owner connection and resource key are required.")
 	}
 	switch selection.Mode {
 	case "external":
-		if selection.Source == nil || selection.Source.DatasourceKind == "metrics-server" {
+		if selection.Source == nil || selection.Source.Native {
 			return empty, finiteError("INVALID_REQUEST", "External view source requires a typed external source.")
 		}
-		if err := c.validateSelectedMetricSource(*selection.Source); err != nil {
+		if err := c.validateSelectedMetricSource(ctx, *selection.Source); err != nil {
 			return empty, err
 		}
 	case "inherit", "native":

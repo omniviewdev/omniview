@@ -2,15 +2,21 @@
 
 Show resource measurements with a runtime hook and a base-ui component. Omniview handles fetching, shared requests, refreshes, and cleanup.
 
-**Available now:** live Pod and Node CPU/memory from Kubernetes metrics-server, plus configured Grafana or direct Prometheus-compatible sources with finite current and range queries. Source catalogs declare the supported metrics and shapes.
+Resource plugins declare metric IDs, default mappings, and approved public scope. Source providers execute queries. The host shares work without knowing resource kinds.
 
 [Show a metric](#1-show-pod-cpu) · [Show multiple resources](#2-show-multiple-resources) · [Remember settings](#3-remember-view-settings) · [API reference](#api-reference)
 
 ## Before you start
 
 - Use a workspace containing the new runtime and base-ui metrics components.
-- Connect a Kubernetes cluster for resource ownership. Use metrics-server for native live values, or configure an external source for mapped current/range values.
-- Get resource targets from the resource view, not from names or copied Pod JSON.
+- Connect the resource-owning plugin. The Kubernetes examples below use metrics-server or a configured Grafana/Prometheus source.
+- Get resource targets from the resource view, not from names or copied resource JSON.
+
+| Owner | Responsibility |
+| --- | --- |
+| Resource plugin | Metric definitions, identity field paths, and approved scope fields |
+| Source provider | Authentication, query execution, and result joins |
+| Host | Admission, scheduling, shared requests, and persistence |
 
 ## 1. Show Pod CPU
 
@@ -88,7 +94,7 @@ Match each result using `resourceToken` and `metricID`. Compatible table and sid
 
 Node views use `k8s:/nodes` with `kubernetes.node.cpu.usage` and `kubernetes.node.memory.working_set`. Native Pod and Node metrics support `current` only. External mappings declare their own applicability and supported shapes.
 
-Let base-ui format the value. Missing measurements are `null`, not zero. Native metrics are live values, not a time-series history.
+Let base-ui format the value. Missing measurements are `null`, not zero. Read supported shapes from the catalog; native sources can support history too.
 
 ## 3. Remember view settings
 
@@ -123,7 +129,7 @@ Display `view.error` when a save fails, and handle the rejected promise in your 
 
 ### Configure a source separately
 
-Add a Grafana connection in **Settings → Metrics**. Select its datasource in the cluster's **Metrics** settings. Cluster mappings override global defaults without copying them.
+Add a Grafana connection in **Settings → Metrics**. Select its datasource in the resource connection's **Metrics** settings. Connection mappings override global defaults without copying them.
 
 For a source picker in your view, import `useMetricViewSourceSelection`:
 
@@ -139,7 +145,7 @@ await source.update('external', {
 });
 ```
 
-Use `source.update('native')` for metrics-server or `source.update('inherit')` for cluster/global defaults. Show `source.error` if saving fails.
+Use `source.update('native')` for the resource owner's built-in source or `source.update('inherit')` for connection/global defaults. Show `source.error` if saving fails.
 
 ### Show history
 
@@ -151,7 +157,7 @@ durationMs: 3_600_000, // Moving last hour.
 stepMs: 15_000,
 ```
 
-The host advances the range on each refresh. For a fixed window, use `startTime` and `endTime` instead of `durationMs`. Native metrics-server has no history.
+The host advances the range on each refresh. For a fixed window, use `startTime` and `endTime` instead of `durationMs`. Kubernetes metrics-server has no history.
 
 See the [host reference](finite-resource-metrics-reference.md) for source precedence, permissions, and collection limits.
 
@@ -172,7 +178,7 @@ See the [host reference](finite-resource-metrics-reference.md) for source preced
 | `durationMs` | Moving relative range, without absolute bounds | Range-capable sources only |
 | `startTime`, `endTime`, `stepMs` | Fixed range bounds and positive step; relative ranges also require step | Range-capable sources only |
 
-An empty target or metric list disables collection. Native metrics-server supports `current` only; selected external mappings can also support `range`.
+An empty target or metric list disables collection. Each source catalog declares whether a metric supports `current`, `range`, or both.
 
 | Returned field | Use it to… |
 | --- | --- |

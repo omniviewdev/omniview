@@ -36,6 +36,32 @@ export default function GrafanaSettings({ registerNavigation }: Partial<PluginSe
   const [mappingDrafts, setMappingDrafts] = useState<Record<string, MetricDefinition>>({});
   const [draftEpoch, setDraftEpoch] = useState(0);
   const [validationSample, setValidationSample] = useState<ValidationSample>();
+  const ownerPluginID = validationSample?.context.pluginID;
+  const ownerConnectionID = validationSample?.context.connectionID;
+  const ownerKey = JSON.stringify([ownerPluginID, ownerConnectionID]);
+  const [ownerCatalog, setOwnerCatalog] = useState<{ key: string; definitions: MetricDefinition[]; error: string }>();
+  const visibleDefinitions = ownerPluginID && ownerConnectionID
+    ? ownerCatalog?.key === ownerKey ? ownerCatalog.definitions : []
+    : definitions;
+  const ownerCatalogError = ownerCatalog?.key === ownerKey ? ownerCatalog.error : '';
+  useEffect(() => {
+    let active = true;
+    if (ownerPluginID && ownerConnectionID) {
+      MetricClient.GetMetricOwnerCatalog(ownerPluginID, ownerConnectionID).then(catalog => {
+        if (active) {
+          setOwnerCatalog({ key: ownerKey, definitions: catalog?.definitions ?? [], error: '' });
+        }
+      }).catch(error => {
+        if (active) {
+          setOwnerCatalog({ key: ownerKey, definitions: [], error: String(error) });
+        }
+      });
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [ownerPluginID, ownerConnectionID, ownerKey]);
   const sampleRequest = useMemo<MetricsObservationSpec | undefined>(() => {
     if (!validationSample?.resource || !selected || !datasourceUID) {
       return undefined;
@@ -44,7 +70,7 @@ export default function GrafanaSettings({ registerNavigation }: Partial<PluginSe
     return {
       owner_plugin_id: validationSample.context.pluginID, owner_connection_id: validationSample.context.connectionID,
       resource_key: validationSample.context.resourceType, binding_id: '',
-      source: { plugin_id: 'grafana', connection_id: selected, datasource_uid: datasourceUID, datasource_kind: 'prometheus' },
+      source: { plugin_id: 'grafana', connection_id: selected, datasource_uid: datasourceUID, datasource_kind: 'prometheus', native: false },
       targets: [validationSample.resource], metric_ids: [], shape: 'range',
       start_time: '0001-01-01T00:00:00Z', end_time: '0001-01-01T00:00:00Z', duration_ms: 300000, step_ms: 15000, interval_ms: 0,
     };
@@ -62,6 +88,20 @@ export default function GrafanaSettings({ registerNavigation }: Partial<PluginSe
       return Object.fromEntries(Object.entries(previous).filter(([key]) => key !== id));
     });
   }, []);
+  const load = useCallback(async (generation = editorGeneration.current) => {
+    const [catalog, mappings] = await Promise.all([MetricClient.GetProviderConnections('grafana'), MetricClient.GetMetricDefinitions()]);
+    if (generation !== editorGeneration.current) {
+      return;
+    }
+
+    setConnections(catalog ?? []); setDefinitions(mappings ?? []);
+    if (ownerPluginID && ownerConnectionID) {
+      const owner = await MetricClient.GetMetricOwnerCatalog(ownerPluginID, ownerConnectionID);
+      if (generation === editorGeneration.current) {
+        setOwnerCatalog({ key: ownerKey, definitions: owner?.definitions ?? [], error: '' });
+      }
+    }
+  }, [ownerPluginID, ownerConnectionID, ownerKey]);
   useEffect(() => {
     if (!registerNavigation) {
       return;
@@ -114,16 +154,8 @@ export default function GrafanaSettings({ registerNavigation }: Partial<PluginSe
     return () => {
       registerNavigation(null); 
     };
-  }, [registerNavigation, editing, mappingDrafts, busy, selected, datasourceUID]);
+  }, [registerNavigation, editing, mappingDrafts, busy, selected, datasourceUID, load]);
   const credential = useRef<HTMLInputElement>(null);
-  async function load(generation = editorGeneration.current) {
-    const [catalog, mappings] = await Promise.all([MetricClient.GetProviderConnections('grafana'), MetricClient.GetMetricDefinitions()]);
-    if (generation !== editorGeneration.current) {
-      return;
-    }
-
-    setConnections(catalog ?? []); setDefinitions(mappings ?? []);
-  }
 
   useEffect(() => () => {
     editorGeneration.current++; discoveryGeneration.current++; if (credential.current) {
@@ -327,7 +359,7 @@ export default function GrafanaSettings({ registerNavigation }: Partial<PluginSe
         <Stack direction="row" spacing={2}><Button size="sm" disabled={!selected || !datasourceUID || busy} onClick={async () => {
           setBusy(true); setError('');
           try {
-            const result = await MetricClient.SaveMetricSourceDefaults({ revision: defaultRevision, source: { plugin_id: 'grafana', connection_id: selected, datasource_uid: datasourceUID, datasource_kind: 'prometheus' } }); setDefaultRevision(result.revision); setDefaultSource(`${selected} / ${datasourceUID}`); setStatus('Global source default saved'); 
+            const result = await MetricClient.SaveMetricSourceDefaults({ revision: defaultRevision, source: { plugin_id: 'grafana', connection_id: selected, datasource_uid: datasourceUID, datasource_kind: 'prometheus', native: false } }); setDefaultRevision(result.revision); setDefaultSource(`${selected} / ${datasourceUID}`); setStatus('Global source default saved');
           } catch (err) {
             setError(String(err)); 
           } finally {
@@ -344,8 +376,9 @@ export default function GrafanaSettings({ registerNavigation }: Partial<PluginSe
           }
         }}>Reset to native</Button></Stack>
       </section>
-      <ValidationContext resourceTypes={[...new Set(definitions.flatMap(definition => definition.resource_keys))]} onChange={setValidationSample} />
-      <Mappings key={draftEpoch} definitions={definitions} connectionID={selected} datasourceUID={datasourceUID} onDraft={onDraft} sampleRequest={sampleRequest} schemaContext={validationSample?.context} save={async definition => {
+      {ownerCatalogError && <p role="alert">{ownerCatalogError}</p>}
+      <ValidationContext lockOwner={Object.keys(mappingDrafts).length > 0} resourceTypes={[...new Set(visibleDefinitions.filter(definition => definition.query_language === 'promql' && Boolean(definition.query)).flatMap(definition => definition.resource_keys))]} onChange={setValidationSample} />
+      <Mappings key={JSON.stringify([draftEpoch, ownerKey])} definitions={visibleDefinitions} connectionID={selected} datasourceUID={datasourceUID} onDraft={onDraft} sampleRequest={sampleRequest} schemaContext={validationSample?.context.resourceType ? validationSample.context : undefined} save={async definition => {
         await MetricClient.SaveMetricDefinition(definition); onDraft(definition.id, undefined); await load(); 
       }} />
     </div>

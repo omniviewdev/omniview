@@ -81,7 +81,7 @@ function targetIdentity(target: ResourceMetricTarget): string {
 }
 function sourceIdentity(catalog: ResourceMetricsCatalog | null | undefined): string {
   const source = catalog?.source;
-  return JSON.stringify(source ? [source.plugin_id, source.connection_id, source.datasource_uid, source.datasource_kind] : null);
+  return JSON.stringify(source ? [source.plugin_id, source.connection_id, source.datasource_uid, source.datasource_kind, source.native === true] : null);
 }
 
 /**
@@ -100,7 +100,7 @@ export function prepareMetricResults(snapshot: MetricsObservationSnapshot | null
     if (!resourceIdentity) continue;
     const descriptor = descriptors.get(result.metric_id);
     const resultSource = result.source ?? descriptor?.source ?? catalog?.source ?? null;
-    const source = JSON.stringify(resultSource ? [resultSource.plugin_id, resultSource.connection_id, resultSource.datasource_uid, resultSource.datasource_kind] : null);
+    const source = JSON.stringify(resultSource ? [resultSource.plugin_id, resultSource.connection_id, resultSource.datasource_uid, resultSource.datasource_kind, resultSource.native === true] : null);
     const dimensionEntries = Object.entries(result.dimensions ?? {})
       .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
       .sort(([a], [b]) => a.localeCompare(b));

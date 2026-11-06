@@ -282,11 +282,11 @@ func (c *controller) selectedResourceMetricsCatalog(ctx context.Context, request
 	f := c.finiteCoordinator()
 	generation, serial, finishRead := f.beginConfigurationRead()
 	defer finishRead()
-	lanes, err := c.resolveFiniteSources(request, nil, nil)
+	lanes, err := c.resolveFiniteSources(ctx, request, nil, nil)
 	if err != nil {
 		return nil, err
 	}
-	sourceGuard, err := f.fenceFiniteSources(request, lanes, generation, serial, nil)
+	sourceGuard, err := f.fenceFiniteSources(ctx, request, lanes, generation, serial, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -336,7 +336,7 @@ func (c *controller) admitFinite(ctx context.Context, spec MetricsObservationSpe
 		return ctx, sdk.ResourceMetricsQuery{}, err
 	}
 	spec = resolved
-	q := sdk.ResourceMetricsQuery{Source: sdk.MetricSourceRef{PluginID: spec.OwnerPluginID, ConnectionID: spec.OwnerConnectionID, DatasourceKind: "metrics-server"}, Targets: spec.Targets, MetricIDs: spec.MetricIDs, Shape: spec.Shape, StartTime: spec.StartTime, EndTime: spec.EndTime, Step: time.Duration(spec.StepMs) * time.Millisecond}
+	q := sdk.ResourceMetricsQuery{Source: sdk.MetricSourceRef{PluginID: spec.OwnerPluginID, ConnectionID: spec.OwnerConnectionID, Native: true}, Targets: spec.Targets, MetricIDs: spec.MetricIDs, Shape: spec.Shape, StartTime: spec.StartTime, EndTime: spec.EndTime, Step: time.Duration(spec.StepMs) * time.Millisecond}
 	if spec.Source != nil {
 		q.Source = *spec.Source
 	}
@@ -406,18 +406,18 @@ func (c *controller) readFiniteResolved(ctx context.Context, spec MetricsObserva
 	generation, serial, finishRead := f.beginConfigurationRead()
 	defer finishRead()
 	request := ResourceMetricsCatalogRequest{OwnerPluginID: spec.OwnerPluginID, OwnerConnectionID: spec.OwnerConnectionID, ResourceKey: spec.ResourceKey, BindingID: spec.BindingID, Source: spec.Source}
-	lanes, err := c.resolveFiniteSources(request, spec.MetricIDs, preview)
+	lanes, err := c.resolveFiniteSources(admitted, request, spec.MetricIDs, preview)
 	if err != nil {
 		return nil, err
 	}
 	if preview != nil {
 		for _, lane := range lanes {
-			if lane.source.DatasourceKind == "metrics-server" {
+			if lane.source.Native {
 				return nil, finiteError("UNSUPPORTED", "Definition previews require a mapping-capable selected source.")
 			}
 		}
 	}
-	sourceGuard, err := f.fenceFiniteSources(request, lanes, generation, serial, preview)
+	sourceGuard, err := f.fenceFiniteSources(admitted, request, lanes, generation, serial, preview)
 	if err != nil {
 		return nil, err
 	}
@@ -457,7 +457,7 @@ func (c *controller) readFiniteResolved(ctx context.Context, spec MetricsObserva
 		source := lane.source
 		laneSpec.Source = &source
 		laneSpec.MetricIDs = lane.metrics
-		laneGuard, err := f.fenceFiniteSources(request, []finiteSourceLane{lane}, generation, serial, preview)
+		laneGuard, err := f.fenceFiniteSources(admitted, request, []finiteSourceLane{lane}, generation, serial, preview)
 		if err != nil {
 			return nil, err
 		}
@@ -648,7 +648,7 @@ func (c *controller) readFiniteLane(ctx context.Context, spec MetricsObservation
 		for _, t := range q.Targets {
 			tokens[finiteTargetKey(t)] = t.Token
 		}
-		ownerNative := sdk.MetricSourceRef{PluginID: spec.OwnerPluginID, ConnectionID: spec.OwnerConnectionID, DatasourceKind: "metrics-server"}
+		ownerNative := sdk.MetricSourceRef{PluginID: spec.OwnerPluginID, ConnectionID: spec.OwnerConnectionID, Native: true}
 		for i := range result.data.Results {
 			result.data.Results[i] = cloneFiniteResult(result.data.Results[i])
 			result.data.Results[i].ResourceToken = tokens[result.data.Results[i].ResourceToken]

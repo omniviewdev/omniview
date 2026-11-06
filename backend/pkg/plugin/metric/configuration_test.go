@@ -46,11 +46,11 @@ func (*finitePrivateProvider) TestProviderConnection(*types.PluginContext, strin
 func (*finitePrivateProvider) ValidateMetricDefinition(_ *types.PluginContext, source sdk.MetricSourceRef, _ sdk.MetricDefinition) (*sdk.MetricValidationResult, error) {
 	return &sdk.MetricValidationResult{Valid: source.DatasourceKind == "prometheus"}, nil
 }
-func (*finitePrivateProvider) GetMetricDefinitions(*types.PluginContext) ([]sdk.MetricDefinition, error) {
-	return []sdk.MetricDefinition{
+func (*finiteTestProvider) GetMetricOwnerCatalog(*types.PluginContext) (*sdk.MetricOwnerCatalog, error) {
+	return &sdk.MetricOwnerCatalog{Definitions: []sdk.MetricDefinition{
 		{ID: "cpu", Name: "CPU", ResourceKeys: []string{"core::v1::Pod"}, Unit: "cores", SupportedShapes: []string{"current", "range"}, Query: "cpu-default"},
 		{ID: "memory", Name: "Memory", ResourceKeys: []string{"core::v1::Pod"}, Unit: "bytes", SupportedShapes: []string{"current", "range"}, Query: "memory-default"},
-	}, nil
+	}, ScopeFields: []sdk.MetricScopeField{{Key: "cluster", Name: "Cluster"}, {Key: "region", Name: "Region"}, {Key: "account", Name: "Account"}, {Key: "project", Name: "Project"}}}, nil
 }
 func finitePrivateSource(connection string) sdk.MetricSourceRef {
 	return sdk.MetricSourceRef{PluginID: "external", ConnectionID: connection, DatasourceUID: "db", DatasourceKind: "prometheus"}
@@ -70,14 +70,14 @@ func TestMetricConfigurationPersistsSparseOverridesAndResets(t *testing.T) {
 	c, _, _ := finiteTestController(t)
 	addFinitePrivateProvider(t, c)
 	one, two := finitePrivateSource("one"), finitePrivateSource("two")
-	defaults, err := c.SaveMetricSourceDefaults(sdk.MetricSourceDefaults{Source: &one})
+	defaults, err := c.SaveMetricSourceDefaults(context.Background(), sdk.MetricSourceDefaults{Source: &one})
 	require.NoError(t, err)
 	require.NotEmpty(t, defaults.Revision)
 	query := "owner-cpu"
-	binding, err := c.SaveMetricBinding(sdk.MetricBinding{Signal: "metrics", ResourcePluginID: "kubernetes", ResourceConnectionID: "cluster", PublicScope: map[string]string{"cluster": "prod"}, Overrides: []sdk.MetricDefinitionOverride{{MetricID: "cpu", Query: &query}, {MetricID: "memory", Source: &two}}})
+	binding, err := c.SaveMetricBinding(context.Background(), sdk.MetricBinding{Signal: "metrics", ResourcePluginID: "kubernetes", ResourceConnectionID: "cluster", PublicScope: map[string]string{"cluster": "prod"}, Overrides: []sdk.MetricDefinitionOverride{{MetricID: "cpu", Query: &query}, {MetricID: "memory", Source: &two}}})
 	require.NoError(t, err)
 	request := finiteCatalogSelection(finiteTestSpec("row", "pod-a", "cpu", "memory"))
-	lanes, err := c.resolveFiniteSources(request, []string{"cpu", "memory"}, nil)
+	lanes, err := c.resolveFiniteSources(context.Background(), request, []string{"cpu", "memory"}, nil)
 	require.NoError(t, err)
 	require.Len(t, lanes, 2)
 	require.Equal(t, one, lanes[0].source)
@@ -86,22 +86,22 @@ func TestMetricConfigurationPersistsSparseOverridesAndResets(t *testing.T) {
 	require.Equal(t, map[string]string{"cluster": "prod"}, lanes[0].context.PublicScope)
 	oldRevision := lanes[0].context.MappingRevision
 	binding.Overrides = nil
-	saved, err := c.SaveMetricBinding(*binding)
+	saved, err := c.SaveMetricBinding(context.Background(), *binding)
 	require.NoError(t, err)
-	lanes, err = c.resolveFiniteSources(request, []string{"cpu", "memory"}, nil)
+	lanes, err = c.resolveFiniteSources(context.Background(), request, []string{"cpu", "memory"}, nil)
 	require.NoError(t, err)
 	require.Len(t, lanes, 1)
 	require.Equal(t, "cpu-default", lanes[0].context.Definitions[0].Query)
 	require.NotEqual(t, oldRevision, lanes[0].context.MappingRevision)
-	_, err = c.SaveMetricBinding(*binding)
+	_, err = c.SaveMetricBinding(context.Background(), *binding)
 	require.Error(t, err, "stale binding revision must not overwrite reset")
-	defaults, err = c.SaveMetricSourceDefaults(sdk.MetricSourceDefaults{Revision: defaults.Revision})
+	defaults, err = c.SaveMetricSourceDefaults(context.Background(), sdk.MetricSourceDefaults{Revision: defaults.Revision})
 	require.NoError(t, err)
 	require.Nil(t, defaults.Source)
 	require.NoError(t, c.DeleteMetricBinding("kubernetes", "cluster", saved.ID))
-	lanes, err = c.resolveFiniteSources(request, []string{"cpu"}, nil)
+	lanes, err = c.resolveFiniteSources(context.Background(), request, []string{"cpu"}, nil)
 	require.NoError(t, err)
-	require.Equal(t, "metrics-server", lanes[0].source.DatasourceKind)
+	require.True(t, lanes[0].source.Native)
 	root := c.state().root
 	c.SetMetricStateRoot(root)
 	loaded, err := c.GetMetricSourceDefaults()
@@ -153,9 +153,9 @@ func TestFiniteMixedSourceLanesPreserveRangeAndProvenance(t *testing.T) {
 	external := addFinitePrivateProvider(t, c)
 	close(external.release)
 	one, two := finitePrivateSource("one"), finitePrivateSource("two")
-	_, err := c.SaveMetricSourceDefaults(sdk.MetricSourceDefaults{Source: &one})
+	_, err := c.SaveMetricSourceDefaults(ctx, sdk.MetricSourceDefaults{Source: &one})
 	require.NoError(t, err)
-	_, err = c.SaveMetricBinding(sdk.MetricBinding{Signal: "metrics", ResourcePluginID: "kubernetes", ResourceConnectionID: "cluster", Overrides: []sdk.MetricDefinitionOverride{{MetricID: "memory", Source: &two}}})
+	_, err = c.SaveMetricBinding(ctx, sdk.MetricBinding{Signal: "metrics", ResourcePluginID: "kubernetes", ResourceConnectionID: "cluster", Overrides: []sdk.MetricDefinitionOverride{{MetricID: "memory", Source: &two}}})
 	require.NoError(t, err)
 	external.response = func(q sdk.ResourceMetricsQuery) *sdk.ResourceMetricsResponse {
 		out := &sdk.ResourceMetricsResponse{Complete: true}
@@ -213,8 +213,9 @@ func TestFiniteSourceRetirementAndMappingSaveCancelPrivateWork(t *testing.T) {
 				release := c.BeginConnectionChange("external", "one")
 				defer release()
 			} else {
-				definitions, err := external.GetMetricDefinitions(nil)
+				catalog, err := external.GetMetricOwnerCatalog(nil)
 				require.NoError(t, err)
+				definitions := catalog.Definitions
 				definitions[0].Query = "changed"
 				_, err = c.SaveMetricDefinition(definitions[0])
 				require.NoError(t, err)
@@ -254,7 +255,7 @@ func TestFiniteCachedProjectionStillChecksOriginalOwner(t *testing.T) {
 func TestMetricConfigurationRejectsUnapprovedScopeAndAnonymousServices(t *testing.T) {
 	c, _, _ := finiteTestController(t)
 	addFinitePrivateProvider(t, c)
-	_, err := c.SaveMetricBinding(sdk.MetricBinding{Signal: "metrics", ResourcePluginID: "kubernetes", ResourceConnectionID: "cluster", PublicScope: map[string]string{"tenant": "secret"}})
+	_, err := c.SaveMetricBinding(context.Background(), sdk.MetricBinding{Signal: "metrics", ResourcePluginID: "kubernetes", ResourceConnectionID: "cluster", PublicScope: map[string]string{"tenant": "secret"}})
 	require.Error(t, err)
 	wrapper := &ServiceWrapper{Ctrl: c}
 	ctx := context.Background()
@@ -358,10 +359,11 @@ func TestFinitePreviewUsesDraftAndOwnerScopeWithoutSaving(t *testing.T) {
 	external := addFinitePrivateProvider(t, c)
 	close(external.release)
 	storedQuery := "saved-owner-query"
-	_, err := c.SaveMetricBinding(sdk.MetricBinding{Signal: "metrics", ResourcePluginID: "kubernetes", ResourceConnectionID: "cluster", PublicScope: map[string]string{"cluster": "prod"}, Overrides: []sdk.MetricDefinitionOverride{{MetricID: "cpu", Query: &storedQuery}}})
+	_, err := c.SaveMetricBinding(ctx, sdk.MetricBinding{Signal: "metrics", ResourcePluginID: "kubernetes", ResourceConnectionID: "cluster", PublicScope: map[string]string{"cluster": "prod"}, Overrides: []sdk.MetricDefinitionOverride{{MetricID: "cpu", Query: &storedQuery}}})
 	require.NoError(t, err)
-	definitions, err := external.GetMetricDefinitions(nil)
+	catalog, err := external.GetMetricOwnerCatalog(nil)
 	require.NoError(t, err)
+	definitions := catalog.Definitions
 	draft := definitions[0]
 	draft.Query = "draft-query"
 	source := finitePrivateSource("one")
@@ -375,7 +377,7 @@ func TestFinitePreviewUsesDraftAndOwnerScopeWithoutSaving(t *testing.T) {
 	bindings, err := c.GetMetricBindings("kubernetes", "cluster")
 	require.NoError(t, err)
 	require.Equal(t, storedQuery, *bindings[0].Overrides[0].Query)
-	native := sdk.MetricSourceRef{PluginID: spec.OwnerPluginID, ConnectionID: spec.OwnerConnectionID, DatasourceKind: "metrics-server"}
+	native := sdk.MetricSourceRef{PluginID: spec.OwnerPluginID, ConnectionID: spec.OwnerConnectionID, Native: true}
 	spec.Source = &native
 	_, err = c.PreviewMetricDefinition(ctx, spec, draft)
 	require.Error(t, err)
@@ -387,10 +389,10 @@ func TestFiniteMixedUnsupportedShapeFailsBeforeAnySampleQuery(t *testing.T) {
 	external := addFinitePrivateProvider(t, c)
 	close(external.release)
 	one := finitePrivateSource("one")
-	native := sdk.MetricSourceRef{PluginID: "kubernetes", ConnectionID: "cluster", DatasourceKind: "metrics-server"}
-	_, err := c.SaveMetricSourceDefaults(sdk.MetricSourceDefaults{Source: &one})
+	native := sdk.MetricSourceRef{PluginID: "kubernetes", ConnectionID: "cluster", Native: true}
+	_, err := c.SaveMetricSourceDefaults(ctx, sdk.MetricSourceDefaults{Source: &one})
 	require.NoError(t, err)
-	_, err = c.SaveMetricBinding(sdk.MetricBinding{Signal: "metrics", ResourcePluginID: "kubernetes", ResourceConnectionID: "cluster", Overrides: []sdk.MetricDefinitionOverride{{MetricID: "memory", Source: &native}}})
+	_, err = c.SaveMetricBinding(ctx, sdk.MetricBinding{Signal: "metrics", ResourcePluginID: "kubernetes", ResourceConnectionID: "cluster", Overrides: []sdk.MetricDefinitionOverride{{MetricID: "memory", Source: &native}}})
 	require.NoError(t, err)
 	spec := finiteTestSpec("row", "pod-a", "cpu", "memory")
 	spec.Shape = "range"
@@ -407,14 +409,15 @@ func TestFiniteNativeSourceDoesNotReadExternalMappingFields(t *testing.T) {
 	c, owner, ctx := finiteTestController(t)
 	external := addFinitePrivateProvider(t, c)
 	close(owner.release)
-	definitions, err := external.GetMetricDefinitions(nil)
+	catalog, err := external.GetMetricOwnerCatalog(nil)
 	require.NoError(t, err)
+	definitions := catalog.Definitions
 	definition := definitions[0]
 	definition.FieldBindings = []sdk.MetricFieldBinding{{Field: "node", Label: "node", Source: "resource", ResourcePath: "/spec/nodeName", Required: true}}
 	_, err = c.SaveMetricDefinition(definition)
 	require.NoError(t, err)
 	spec := finiteTestSpec("row", "pod-a", "cpu")
-	spec.Source = &sdk.MetricSourceRef{PluginID: spec.OwnerPluginID, ConnectionID: spec.OwnerConnectionID, DatasourceKind: "metrics-server"}
+	spec.Source = &sdk.MetricSourceRef{PluginID: spec.OwnerPluginID, ConnectionID: spec.OwnerConnectionID, Native: true}
 	result := finiteTestReceive(t, finiteTestRead(c, ctx, spec))
 	require.NoError(t, result.err)
 	require.Equal(t, int32(1), owner.queries.Load())
@@ -427,8 +430,8 @@ func TestFiniteMixedNativeAndExternalResultsKeepExactProvenance(t *testing.T) {
 	close(owner.release)
 	close(external.release)
 	source := finitePrivateSource("one")
-	native := sdk.MetricSourceRef{PluginID: "kubernetes", ConnectionID: "cluster", DatasourceKind: "metrics-server"}
-	_, err := c.SaveMetricBinding(sdk.MetricBinding{
+	native := sdk.MetricSourceRef{PluginID: "kubernetes", ConnectionID: "cluster", Native: true}
+	_, err := c.SaveMetricBinding(ctx, sdk.MetricBinding{
 		Signal: "metrics", ResourcePluginID: "kubernetes", ResourceConnectionID: "cluster",
 		Source: source, PublicScope: map[string]string{"cluster": "prod"},
 		Overrides: []sdk.MetricDefinitionOverride{{MetricID: "memory", Source: &native}},

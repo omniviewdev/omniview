@@ -32,7 +32,7 @@ func validateSampleTime(t time.Time, q metric.ResourceMetricsQuery, end, now tim
 	return nil
 }
 func (p *Provider) GetResourceMetricsCatalog(ctx *types.PluginContext, req metric.ResourceMetricsCatalogRequest) (*metric.ResourceMetricsCatalog, error) {
-	if req.Source.PluginID != "grafana" || req.Source.ConnectionID == "" || req.Source.DatasourceKind != "prometheus" {
+	if req.Source.Native || req.Source.PluginID != "grafana" || req.Source.ConnectionID == "" || req.Source.DatasourceKind != "prometheus" {
 		return nil, errors.New("explicit Grafana Prometheus source required")
 	}
 	if _, err := p.GetDataSources(ctx, req.Source); err != nil {
@@ -40,9 +40,6 @@ func (p *Provider) GetResourceMetricsCatalog(ctx *types.PluginContext, req metri
 	}
 	out := &metric.ResourceMetricsCatalog{Source: req.Source, MaxTargets: metric.MaxFiniteTargets}
 	defs := req.Context.Definitions
-	if len(defs) == 0 {
-		defs, _ = p.GetMetricDefinitions(ctx)
-	}
 	for _, d := range defs {
 		for _, key := range d.ResourceKeys {
 			if key == req.ResourceKey {
@@ -59,7 +56,7 @@ func (p *Provider) QueryResources(ctx *types.PluginContext, q metric.ResourceMet
 	if ctx == nil || ctx.Context == nil {
 		return nil, errors.New("query context required")
 	}
-	if q.Source.PluginID != "grafana" || q.Source.ConnectionID == "" || q.Source.DatasourceKind != "prometheus" {
+	if q.Source.Native || q.Source.PluginID != "grafana" || q.Source.ConnectionID == "" || q.Source.DatasourceKind != "prometheus" {
 		return nil, errors.New("explicit Grafana Prometheus source required")
 	}
 	if err := metric.ValidateResourceMetricsQuery(q); err != nil {
@@ -212,15 +209,6 @@ func (p *Provider) QueryResources(ctx *types.PluginContext, q metric.ResourceMet
 				continue
 			}
 			r.Status = "ok"
-			for _, binding := range d.FieldBindings {
-				if binding.Field == "uid" {
-					for _, label := range d.IdentityLabels {
-						if label == binding.Label {
-							r.IdentityScope = "incarnation"
-						}
-					}
-				}
-			}
 		}
 		out.Warnings = append(out.Warnings, response.Warnings...)
 	}

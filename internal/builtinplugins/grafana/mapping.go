@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -75,10 +74,11 @@ func definitionError(d metric.MetricDefinition) error {
 		if b.Source != "scope" && b.Source != "resource" {
 			return errors.New("field source must be scope or resource")
 		}
-		if b.ResourcePath != "" {
-			if b.Source != "resource" || !validResourcePath(b.ResourcePath) {
-				return errors.New("resource_path requires a bounded RFC6901 pointer and resource source")
-			}
+		if b.Source == "resource" && !validResourcePath(b.ResourcePath) {
+			return errors.New("resource source requires a bounded RFC6901 resource_path")
+		}
+		if b.Source == "scope" && b.ResourcePath != "" {
+			return errors.New("scope source must not declare resource_path")
 		}
 		if !b.Required {
 			return errors.New("matcher fields must be required to avoid unscoped queries")
@@ -117,28 +117,7 @@ func fieldValue(b metric.MetricFieldBinding, r metric.ResourceMetricTarget, scop
 	if b.Source == "scope" {
 		v = scope[b.Field]
 	} else {
-		switch b.Field {
-		case "pod", "id", "name":
-			v = r.Reference.Address.ID
-		case "uid":
-			if r.Reference.Incarnation != nil {
-				v = *r.Reference.Incarnation
-			}
-		case "resource_key", "key":
-			v = r.Reference.Address.Type
-		default:
-			v = r.PublicData[b.Field]
-		}
-		if b.Field == "namespace" {
-			for _, entry := range r.Reference.Address.Scope {
-				if entry.Dimension == "namespace" {
-					v = entry.Value
-				}
-			}
-		}
-		if b.ResourcePath != "" {
-			v = r.PublicData[b.Field]
-		}
+		v = r.PublicData[b.Field]
 	}
 	if v == "" || len(v) > 1024 {
 		return "", &fieldContextError{Field: b.Field}
@@ -212,68 +191,6 @@ func (p *Provider) ValidateMetricDefinition(ctx *types.PluginContext, source met
 	}
 	out.Issues = append(out.Issues, metric.MetricValidationIssue{Field: "sample", Code: "scope_required", Message: "Static validation only. Run an admitted resource-set query with public scope to validate datasource permission, syntax, identities, freshness and exporter units."})
 	return out, nil
-}
-func (p *Provider) GetMetricDefinitions(*types.PluginContext) ([]metric.MetricDefinition, error) {
-	bindings := []metric.MetricFieldBinding{{Field: "cluster", Label: "cluster", Source: "scope", Required: true}, {Field: "namespace", Label: "namespace", Source: "resource", Required: true}, {Field: "pod", Label: "pod", Source: "resource", Required: true}}
-	base := metric.MetricDefinition{ResourceKeys: []string{"k8s:/pods"}, Semantics: "gauge", QueryLanguage: "promql", FieldBindings: bindings, IdentityLabels: []string{"cluster", "namespace", "pod"}, Reducer: "none", BatchStrategy: "identity", Revision: "kubernetes-cadvisor-v1", SupportedShapes: []string{"current", "range"}}
-	cpu := base
-	cpu.ID = "kubernetes.pod.cpu.usage"
-	cpu.Name = "CPU usage"
-	cpu.Unit = "cores"
-	cpu.Semantics = "rate"
-	cpu.Query = `sum by (cluster,namespace,pod) (rate(container_cpu_usage_seconds_total{cluster=~"{{cluster}}",namespace=~"{{namespace}}",pod=~"{{pod}}",container!="",container!="POD"}[5m]))`
-	memory := base
-	memory.FieldBindings = slices.Clone(base.FieldBindings)
-	memory.ResourceKeys = slices.Clone(base.ResourceKeys)
-	memory.IdentityLabels = slices.Clone(base.IdentityLabels)
-	memory.SupportedShapes = slices.Clone(base.SupportedShapes)
-	memory.ID = "kubernetes.pod.memory.working_set"
-	memory.Name = "Memory working set"
-	memory.Unit = "bytes"
-	memory.Query = `sum by (cluster,namespace,pod) (container_memory_working_set_bytes{cluster=~"{{cluster}}",namespace=~"{{namespace}}",pod=~"{{pod}}",container!="",container!="POD"})`
-	const scope = `cluster=~"{{cluster}}",namespace=~"{{namespace}}",pod=~"{{pod}}"`
-	const containers = scope + `,container!="",container!="POD"`
-	const group = ` by (cluster,namespace,pod) `
-	presets := []struct {
-		id, name, semantics, query string
-		unit                       string
-	}{
-		{"memory_rss", "Memory RSS", "gauge", `sum` + group + `(container_memory_rss{` + containers + `})`, "bytes"},
-		{"memory_cache", "Memory cache", "gauge", `sum` + group + `(container_memory_cache{` + containers + `})`, "bytes"},
-		{"network_receive", "Network receive", "rate", `sum` + group + `(max by (cluster,namespace,pod,interface) (rate(container_network_receive_bytes_total{` + scope + `,interface!="lo"}[5m])))`, "bytes_per_second"},
-		{"network_transmit", "Network transmit", "rate", `sum` + group + `(max by (cluster,namespace,pod,interface) (rate(container_network_transmit_bytes_total{` + scope + `,interface!="lo"}[5m])))`, "bytes_per_second"},
-		{"disk_read", "Disk read", "rate", `sum` + group + `(rate(container_fs_reads_bytes_total{` + containers + `}[5m]))`, "bytes_per_second"},
-		{"disk_write", "Disk write", "rate", `sum` + group + `(rate(container_fs_writes_bytes_total{` + containers + `}[5m]))`, "bytes_per_second"},
-		{"cpu_throttling", "CPU throttled periods", "gauge", `100 * sum` + group + `(rate(container_cpu_cfs_throttled_periods_total{` + containers + `}[5m])) / (sum` + group + `(rate(container_cpu_cfs_periods_total{` + containers + `}[5m])) > 0)`, "percent"},
-		{"restarts", "Container restarts", "gauge", `sum` + group + `(max by (cluster,namespace,pod,container) (kube_pod_container_status_restarts_total{` + scope + `}))`, "count"},
-		{"cpu_requests", "CPU requests", "gauge", `sum` + group + `(max by (cluster,namespace,pod,container) (kube_pod_container_resource_requests{` + scope + `,resource="cpu",unit="core"}))`, "cores"},
-		{"cpu_limits", "CPU limits", "gauge", `sum` + group + `(max by (cluster,namespace,pod,container) (kube_pod_container_resource_limits{` + scope + `,resource="cpu",unit="core"}))`, "cores"},
-		{"memory_requests", "Memory requests", "gauge", `sum` + group + `(max by (cluster,namespace,pod,container) (kube_pod_container_resource_requests{` + scope + `,resource="memory",unit="byte"}))`, "bytes"},
-		{"memory_limits", "Memory limits", "gauge", `sum` + group + `(max by (cluster,namespace,pod,container) (kube_pod_container_resource_limits{` + scope + `,resource="memory",unit="byte"}))`, "bytes"},
-		{"network_receive_packets", "Network receive packets", "rate", `sum` + group + `(max by (cluster,namespace,pod,interface) (rate(container_network_receive_packets_total{` + scope + `,interface!="lo"}[5m])))`, "count_per_second"},
-		{"network_transmit_packets", "Network transmit packets", "rate", `sum` + group + `(max by (cluster,namespace,pod,interface) (rate(container_network_transmit_packets_total{` + scope + `,interface!="lo"}[5m])))`, "count_per_second"},
-		{"network_receive_drops", "Network receive drops", "rate", `sum` + group + `(max by (cluster,namespace,pod,interface) (rate(container_network_receive_packets_dropped_total{` + scope + `,interface!="lo"}[5m])))`, "count_per_second"},
-		{"network_transmit_drops", "Network transmit drops", "rate", `sum` + group + `(max by (cluster,namespace,pod,interface) (rate(container_network_transmit_packets_dropped_total{` + scope + `,interface!="lo"}[5m])))`, "count_per_second"},
-		{"network_receive_errors", "Network receive errors", "rate", `sum` + group + `(max by (cluster,namespace,pod,interface) (rate(container_network_receive_errors_total{` + scope + `,interface!="lo"}[5m])))`, "count_per_second"},
-		{"network_transmit_errors", "Network transmit errors", "rate", `sum` + group + `(max by (cluster,namespace,pod,interface) (rate(container_network_transmit_errors_total{` + scope + `,interface!="lo"}[5m])))`, "count_per_second"},
-		{"memory_total_usage", "Memory total usage", "gauge", `sum` + group + `(max by (cluster,namespace,pod,container) (container_memory_usage_bytes{` + containers + `}))`, "bytes"},
-		{"filesystem_usage", "Filesystem used", "gauge", `sum` + group + `(max by (cluster,namespace,pod,container,device) (container_fs_usage_bytes{` + containers + `}))`, "bytes"},
-		{"processes", "Container processes", "gauge", `sum` + group + `(max by (cluster,namespace,pod,container) (container_processes{` + containers + `}))`, "count"},
-		{"threads", "Container threads", "gauge", `sum` + group + `(max by (cluster,namespace,pod,container) (container_threads{` + containers + `}))`, "count"},
-	}
-	definitions := make([]metric.MetricDefinition, 2, len(presets)+2)
-	definitions[0], definitions[1] = cpu, memory
-	for _, preset := range presets {
-		definition := base
-		definition.FieldBindings = slices.Clone(base.FieldBindings)
-		definition.ResourceKeys = slices.Clone(base.ResourceKeys)
-		definition.IdentityLabels = slices.Clone(base.IdentityLabels)
-		definition.SupportedShapes = slices.Clone(base.SupportedShapes)
-		definition.ID, definition.Name = preset.id, preset.name
-		definition.Semantics, definition.Query, definition.Unit = preset.semantics, preset.query, preset.unit
-		definitions = append(definitions, definition)
-	}
-	return definitions, nil
 }
 
 func validateResourceMapping(d metric.MetricDefinition, resources []metric.ResourceMetricTarget, scope map[string]string, shape string) error {

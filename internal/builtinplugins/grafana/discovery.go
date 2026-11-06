@@ -18,7 +18,7 @@ var metricName = regexp.MustCompile(`^[a-zA-Z_:][a-zA-Z0-9_:]*$`)
 
 // DiscoverMetricLabels applies exact matchers only. It never accepts raw selector syntax.
 func (p *Provider) DiscoverMetricLabels(ctx *types.PluginContext, req metric.MetricDiscoveryRequest) (*metric.MetricDiscoveryResult, error) {
-	if ctx == nil || ctx.Context == nil || req.Source.PluginID != "grafana" {
+	if ctx == nil || ctx.Context == nil || req.Source.Native || req.Source.PluginID != "grafana" {
 		return nil, errors.New("provider discovery context mismatch")
 	}
 	if req.Limit < 1 || req.Limit > 100 {

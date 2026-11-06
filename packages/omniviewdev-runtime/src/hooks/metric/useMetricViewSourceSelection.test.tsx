@@ -13,7 +13,7 @@ function setup(connection = 'cluster-a') {
   return { client, ...renderHook(() => useMetricViewSourceSelection('kubernetes', connection, 'k8s:/pods'), { wrapper }) };
 }
 const stored = { owner_plugin_id: 'kubernetes', owner_connection_id: 'cluster-a', resource_key: 'k8s:/pods', mode: 'inherit', revision: 'r1' };
-const source = { plugin_id: 'grafana', connection_id: 'monitor', datasource_uid: 'prom', datasource_kind: 'prometheus' };
+const source = { plugin_id: 'grafana', connection_id: 'monitor', datasource_uid: 'prom', datasource_kind: 'prometheus', native: false };
 
 it('loads host routing using owner connection and resource kind, independent of presentation', async () => {
   host.get.mockResolvedValue(stored);

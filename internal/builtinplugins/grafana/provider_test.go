@@ -79,10 +79,18 @@ func TestCloudBasicCredentialsRequireParsedHTTPS(t *testing.T) {
 	tr.close()
 }
 func fixtureQuery(p *Provider) metric.ResourceMetricsQuery {
-	defs, _ := p.GetMetricDefinitions(nil)
-	q := metric.ResourceMetricsQuery{Source: metric.MetricSourceRef{PluginID: "grafana", ConnectionID: "test", DatasourceKind: "prometheus", DatasourceUID: "direct"}, MetricIDs: []string{"kubernetes.pod.cpu.usage", "kubernetes.pod.memory.working_set"}, Shape: "current", Context: metric.MetricQueryContext{Definitions: defs, PublicScope: map[string]string{"cluster": "cluster-a"}}}
+	bindings := []metric.MetricFieldBinding{
+		{Field: "fleet", Label: "fleet", Source: "scope", Required: true},
+		{Field: "division", Label: "division", Source: "resource", ResourcePath: "/organization/division", Required: true},
+		{Field: "machine", Label: "machine", Source: "resource", ResourcePath: "/identity/serial", Required: true},
+	}
+	base := metric.MetricDefinition{ID: "example.machine.load", Name: "Load", ResourceKeys: []string{"example:/machines"}, Unit: "count", Semantics: "gauge", QueryLanguage: "promql", Query: `machine_load{fleet=~"{{fleet}}",division=~"{{division}}",machine=~"{{machine}}"}`, FieldBindings: bindings, IdentityLabels: []string{"fleet", "division", "machine"}, Reducer: "none", BatchStrategy: "identity", SupportedShapes: []string{"current", "range"}}
+	memory := base
+	memory.ID, memory.Name, memory.Unit = "example.machine.capacity", "Capacity", "bytes"
+	memory.Query = `machine_capacity_bytes{fleet=~"{{fleet}}",division=~"{{division}}",machine=~"{{machine}}"}`
+	q := metric.ResourceMetricsQuery{Source: metric.MetricSourceRef{PluginID: "grafana", ConnectionID: "test", DatasourceKind: "prometheus", DatasourceUID: "direct"}, MetricIDs: []string{base.ID, memory.ID}, Shape: "current", Context: metric.MetricQueryContext{Definitions: []metric.MetricDefinition{base, memory}, PublicScope: map[string]string{"fleet": "fleet-a"}}}
 	for i := range 24 {
-		q.Targets = append(q.Targets, metric.ResourceMetricTarget{Token: fmt.Sprint(i), Reference: resourcev2.ResourceReference{Address: resourcev2.ResourceAddress{Provider: "kubernetes", Authority: "host-owner", Type: "k8s:/pods", ID: fmt.Sprintf("pod-%d", i), Scope: []resourcev2.ScopeEntry{{Dimension: "namespace", Value: "ns"}}}}, Route: resourcev2.AccessRoute{Connection: "owner-not-source"}})
+		q.Targets = append(q.Targets, metric.ResourceMetricTarget{Token: fmt.Sprint(i), Reference: resourcev2.ResourceReference{Address: resourcev2.ResourceAddress{Provider: "example", Authority: "host-owner", Type: "example:/machines", ID: fmt.Sprintf("opaque-%d", i)}}, Route: resourcev2.AccessRoute{Connection: "owner-not-source"}, PublicData: map[string]string{"division": "division-a", "machine": fmt.Sprintf("serial-%d", i)}})
 	}
 	return q
 }
@@ -99,9 +107,9 @@ func TestFiniteBatchAndSourceAuthentication(t *testing.T) {
 		}
 		var results []any
 		for i := range 24 {
-			results = append(results, map[string]any{"metric": map[string]string{"cluster": "cluster-a", "namespace": "ns", "pod": fmt.Sprintf("pod-%d", i)}, "value": []any{now.Unix(), "2"}})
+			results = append(results, map[string]any{"metric": map[string]string{"fleet": "fleet-a", "division": "division-a", "machine": fmt.Sprintf("serial-%d", i)}, "value": []any{now.Unix(), "2"}})
 		}
-		results = append(results, map[string]any{"metric": map[string]string{"cluster": "other", "namespace": "ns", "pod": "pod-0"}, "value": []any{now.Unix(), "999"}})
+		results = append(results, map[string]any{"metric": map[string]string{"fleet": "other", "division": "division-a", "machine": "serial-0"}, "value": []any{now.Unix(), "999"}})
 		_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "data": map[string]any{"resultType": "vector", "result": results}})
 	}))
 	defer server.Close()
@@ -156,27 +164,31 @@ func TestPrivateStoreAndGenerationRetirement(t *testing.T) {
 		t.Fatal("deleted generation not canceled")
 	}
 }
-func TestExactIdentityAndUIDProjection(t *testing.T) {
+func TestExactIdentityAndIncarnationProjection(t *testing.T) {
 	p := NewProvider(nil)
 	defer p.Close()
 	q := fixtureQuery(p)
 	d := q.Context.Definitions[0]
-	d.FieldBindings = append(d.FieldBindings, metric.MetricFieldBinding{Field: "uid", Label: "uid", Source: "resource", Required: true})
-	d.IdentityLabels = append(d.IdentityLabels, "uid")
-	d.Query = strings.Replace(d.Query, "container!=", `uid=~"{{uid}}",container!=`, 1)
-	uid := "uid-a"
+	d.FieldBindings = append(d.FieldBindings, metric.MetricFieldBinding{Field: "generation", Label: "generation", Source: "resource", ResourcePath: "/identity/generation", Required: true})
+	d.IdentityLabels = append(d.IdentityLabels, "generation")
+	d.Query = strings.Replace(d.Query, "machine_load{", `machine_load{generation=~"{{generation}}",`, 1)
+	uid := "generation-a"
 	q.Targets[0].Reference.Incarnation = &uid
-	_, ids, err := compile(d, q.Targets[:1], q.Context.PublicScope)
+	q.Targets[0].PublicData["generation"] = uid
+	expression, ids, err := compile(d, q.Targets[:1], q.Context.PublicScope)
 	if err != nil {
 		t.Fatal(err)
 	}
-	key, _ := identity(map[string]string{"cluster": "cluster-a", "namespace": "ns", "pod": "pod-0", "uid": "uid-b"}, d.IdentityLabels)
+	if !strings.Contains(expression, "serial-0") || strings.Contains(expression, "opaque-0") {
+		t.Fatalf("query did not use projected identity: %s", expression)
+	}
+	key, _ := identity(map[string]string{"fleet": "fleet-a", "division": "division-a", "machine": "serial-0", "generation": "generation-b"}, d.IdentityLabels)
 	if _, ok := ids[key]; ok {
 		t.Fatal("wrong incarnation joined")
 	}
-	q.Targets[0].Reference.Incarnation = nil
+	delete(q.Targets[0].PublicData, "generation")
 	if _, _, err := compile(d, q.Targets[:1], q.Context.PublicScope); err == nil {
-		t.Fatal("missing UID accepted")
+		t.Fatal("reference incarnation substituted for missing projection")
 	}
 }
 
@@ -189,7 +201,7 @@ func TestRangeSamplesAndAmbiguity(t *testing.T) {
 				if r.URL.Path != "/api/v1/query_range" {
 					t.Error(r.URL.Path)
 				}
-				sample := map[string]any{"metric": map[string]string{"cluster": "cluster-a", "namespace": "ns", "pod": "pod-0"}, "values": []any{[]any{start.Unix(), "1"}, []any{end.Unix(), "3"}}}
+				sample := map[string]any{"metric": map[string]string{"fleet": "fleet-a", "division": "division-a", "machine": "serial-0"}, "values": []any{[]any{start.Unix(), "1"}, []any{end.Unix(), "3"}}}
 				series := []any{sample}
 				if duplicate {
 					series = append(series, sample)
@@ -273,32 +285,29 @@ func TestDeniedAndShutdownCancellation(t *testing.T) {
 	}
 }
 
-func TestRealPodPresetUnitsAndMappings(t *testing.T) {
-	p := NewProvider(nil)
-	defer p.Close()
-	q := fixtureQuery(p)
-	if len(q.Context.Definitions) != 24 {
-		t.Fatalf("preset count=%d", len(q.Context.Definitions))
+func TestResourceBindingsRequireExplicitProjection(t *testing.T) {
+	q := fixtureQuery(nil)
+	for _, field := range []string{"pod", "namespace", "name", "id", "uid", "key", "resource_key"} {
+		t.Run(field, func(t *testing.T) {
+			binding := metric.MetricFieldBinding{Field: field, Label: field, Source: "resource", ResourcePath: "/public/value", Required: true}
+			target := q.Targets[0]
+			incarnation := "reference-incarnation"
+			target.Reference.Incarnation = &incarnation
+			target.Reference.Address.Scope = []resourcev2.ScopeEntry{{Dimension: "namespace", Value: "reference-scope"}}
+			if _, err := fieldValue(binding, target, q.Context.PublicScope); err == nil {
+				t.Fatal("unprojected identity inferred from reference")
+			}
+			target.PublicData = map[string]string{field: "projected-value"}
+			if value, err := fieldValue(binding, target, q.Context.PublicScope); err != nil || value != "projected-value" {
+				t.Fatalf("value=%q err=%v", value, err)
+			}
+		})
 	}
-	for _, d := range q.Context.Definitions {
-		if err := definitionError(d); err != nil {
-			t.Fatalf("%s: %v", d.ID, err)
-		}
-		if _, _, err := compile(d, q.Targets, q.Context.PublicScope); err != nil {
-			t.Fatalf("%s: %v", d.ID, err)
-		}
-		if (d.ID == "kubernetes.pod.cpu.usage" || d.ID == "cpu_requests" || d.ID == "cpu_limits") && (d.Unit != "cores" || strings.Contains(d.Query, "1000 *")) {
-			t.Fatalf("CPU not base units: %+v", d)
-		}
-		if d.ID == "network_receive" && d.Unit != "bytes_per_second" {
-			t.Fatal(d.Unit)
-		}
-		if d.ID == "restarts" && d.Unit != "count" {
-			t.Fatal(d.Unit)
-		}
-		if d.ID == "cpu_throttling" && (!strings.Contains(d.Query, " > 0") || d.Unit != "percent") {
-			t.Fatalf("throttling lacks real positive denominator: %+v", d)
-		}
+	d := q.Context.Definitions[0]
+	d.FieldBindings = append([]metric.MetricFieldBinding(nil), d.FieldBindings...)
+	d.FieldBindings[1].ResourcePath = ""
+	if err := definitionError(d); err == nil {
+		t.Fatal("resource binding without explicit path accepted")
 	}
 }
 
@@ -317,5 +326,45 @@ func TestDirectDatasourceInfersKindWithoutChangingIdentity(t *testing.T) {
 	source.DatasourceUID = "other"
 	if _, err := p.GetDataSources(nil, source); err == nil {
 		t.Fatal("different direct datasource identity accepted")
+	}
+}
+
+func TestCatalogUsesOnlyInjectedDefinitions(t *testing.T) {
+	p := fixtureProvider(t, "http://127.0.0.1:1")
+	q := fixtureQuery(p)
+	request := metric.ResourceMetricsCatalogRequest{Source: q.Source, ResourceKey: "example:/machines", Context: q.Context}
+	catalog, err := p.GetResourceMetricsCatalog(nil, request)
+	if err != nil || len(catalog.Metrics) != 2 {
+		t.Fatalf("catalog=%+v err=%v", catalog, err)
+	}
+	request.Context.Definitions = nil
+	catalog, err = p.GetResourceMetricsCatalog(nil, request)
+	if err != nil || len(catalog.Metrics) != 0 {
+		t.Fatalf("unrequested defaults returned: catalog=%+v err=%v", catalog, err)
+	}
+	request.Source.Native = true
+	if _, err := p.GetResourceMetricsCatalog(nil, request); err == nil {
+		t.Fatal("native source accepted by external provider")
+	}
+}
+
+func TestMissingProjectedIdentityDoesNotQuery(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		t.Error("missing projection reached upstream")
+	}))
+	defer server.Close()
+	p := fixtureProvider(t, server.URL)
+	q := fixtureQuery(p)
+	q.Targets = q.Targets[:1]
+	q.MetricIDs = q.MetricIDs[:1]
+	delete(q.Targets[0].PublicData, "machine")
+	out, err := p.QueryResources(&types.PluginContext{Context: context.Background()}, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 0 || len(out.Results) != 1 || out.Results[0].Status != "invalid_context" || out.Results[0].Value != nil {
+		t.Fatalf("calls=%d response=%+v", calls.Load(), out)
 	}
 }

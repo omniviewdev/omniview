@@ -20,7 +20,7 @@ it('preserves unknown values, actual source time, window and name-scoped attribu
   }, { resource_token: 'pod-row', metric_id: 'memory', status: 'missing', value: null,
     observed_at: null, window: Duration.$zero, identity_scope: '', dimensions: {}, points: [], message: 'No sample' }],
   } });
-  const catalog = { source: { plugin_id: 'kubernetes', connection_id: 'cluster', datasource_uid: '', datasource_kind: 'metrics-server' },
+  const catalog = { source: { plugin_id: 'inventory', connection_id: 'tenant', datasource_uid: '', datasource_kind: '', native: true },
     metrics: [{ id: 'cpu', unit: 'cores' }, { id: 'memory', unit: 'bytes' }] } as ResourceMetricsCatalog;
   const [cpu, memory] = prepareMetricResults(snapshot, catalog, [target]);
   expect(cpu.value).toBeNull();
@@ -38,7 +38,7 @@ it('preserves unknown values, actual source time, window and name-scoped attribu
 });
 
 it('keys series by canonical incarnation rather than caller tokens or scope ordering', () => {
-  const catalog = { source: { plugin_id: 'kubernetes', connection_id: 'cluster', datasource_uid: '', datasource_kind: 'metrics-server' },
+  const catalog = { source: { plugin_id: 'inventory', connection_id: 'tenant', datasource_uid: '', datasource_kind: '', native: true },
     metrics: [{ id: 'cpu', unit: 'cores' }] } as ResourceMetricsCatalog;
   const make = (token: string) => new MetricsObservationSnapshot({ data: { complete: true, warnings: [], results: [{
     resource_token: token, metric_id: 'cpu', status: 'ok', value: 0, observed_at: null, dimensions: {},
@@ -79,8 +79,8 @@ it.each([
 });
 
 it('retains exact per-result source provenance when a catalog contains supplemented lanes', () => {
-  const native = { plugin_id: 'kubernetes', connection_id: 'cluster', datasource_uid: '', datasource_kind: 'metrics-server' };
-  const external = { plugin_id: 'grafana', connection_id: 'observability', datasource_uid: 'prom', datasource_kind: 'prometheus' };
+  const native = { plugin_id: 'inventory', connection_id: 'tenant', datasource_uid: '', datasource_kind: '', native: true };
+  const external = { plugin_id: 'grafana', connection_id: 'observability', datasource_uid: 'prom', datasource_kind: 'prometheus', native: false };
   const catalog = { source: external, metrics: [{ id: 'cpu', unit: 'cores' }] } as ResourceMetricsCatalog;
   const snapshot = (source: typeof native) => new MetricsObservationSnapshot({ data: { complete: true, warnings: [], results: [{
     resource_token: target.token, metric_id: 'cpu', status: 'ok', value: 0.125, observed_at: null,
@@ -94,8 +94,8 @@ it('retains exact per-result source provenance when a catalog contains supplemen
 });
 
 it('uses descriptor provenance for omitted result sources in a mixed native/external catalog', () => {
-  const native = { plugin_id: 'kubernetes', connection_id: 'cluster', datasource_uid: '', datasource_kind: 'metrics-server' };
-  const external = { plugin_id: 'grafana', connection_id: 'observability', datasource_uid: 'prom', datasource_kind: 'prometheus' };
+  const native = { plugin_id: 'inventory', connection_id: 'tenant', datasource_uid: '', datasource_kind: '', native: true };
+  const external = { plugin_id: 'grafana', connection_id: 'observability', datasource_uid: 'prom', datasource_kind: 'prometheus', native: false };
   const catalog = { source: external, metrics: [
     { id: 'native-cpu', unit: 'cores', source: native },
     { id: 'external-cpu', unit: 'cores', source: external },
@@ -107,6 +107,6 @@ it('uses descriptor provenance for omitted result sources in a mixed native/exte
   const [nativeResult, externalResult] = prepareMetricResults(snapshot, catalog, [target]);
   expect(nativeResult.source).toEqual(native);
   expect(externalResult.source).toEqual(external);
-  expect(JSON.parse(nativeResult.id)[0]).toBe(JSON.stringify(['kubernetes', 'cluster', '', 'metrics-server']));
-  expect(JSON.parse(externalResult.id)[0]).toBe(JSON.stringify(['grafana', 'observability', 'prom', 'prometheus']));
+  expect(JSON.parse(nativeResult.id)[0]).toBe(JSON.stringify(['inventory', 'tenant', '', '', true]));
+  expect(JSON.parse(externalResult.id)[0]).toBe(JSON.stringify(['grafana', 'observability', 'prom', 'prometheus', false]));
 });

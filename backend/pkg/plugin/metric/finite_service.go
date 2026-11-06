@@ -181,6 +181,13 @@ func (s *ServiceWrapper) GetMetricDefinitions(ctx context.Context) ([]sdk.Metric
 	}
 	return s.Ctrl.GetMetricDefinitions()
 }
+func (s *ServiceWrapper) GetMetricOwnerCatalog(ctx context.Context, ownerPlugin, ownerConnection string) (*sdk.MetricOwnerCatalog, error) {
+	ctx, _, err := s.metricSession(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.Ctrl.GetMetricOwnerCatalog(ctx, ownerPlugin, ownerConnection)
+}
 func (s *ServiceWrapper) SaveMetricDefinition(ctx context.Context, definition sdk.MetricDefinition) (*sdk.MetricDefinition, error) {
 	if _, _, err := s.metricSession(ctx); err != nil {
 		return nil, err
@@ -200,10 +207,11 @@ func (s *ServiceWrapper) GetMetricBindings(ctx context.Context, ownerPlugin, own
 	return s.Ctrl.GetMetricBindings(ownerPlugin, ownerConnection)
 }
 func (s *ServiceWrapper) SaveMetricBinding(ctx context.Context, binding sdk.MetricBinding) (*sdk.MetricBinding, error) {
-	if _, _, err := s.metricSession(ctx); err != nil {
+	ctx, _, err := s.metricSession(ctx)
+	if err != nil {
 		return nil, err
 	}
-	return s.Ctrl.SaveMetricBinding(binding)
+	return s.Ctrl.SaveMetricBinding(ctx, binding)
 }
 func (s *ServiceWrapper) DeleteMetricBinding(ctx context.Context, ownerPlugin, ownerConnection, id string) error {
 	if _, _, err := s.metricSession(ctx); err != nil {
@@ -218,10 +226,11 @@ func (s *ServiceWrapper) GetMetricSourceDefaults(ctx context.Context) (sdk.Metri
 	return s.Ctrl.GetMetricSourceDefaults()
 }
 func (s *ServiceWrapper) SaveMetricSourceDefaults(ctx context.Context, defaults sdk.MetricSourceDefaults) (sdk.MetricSourceDefaults, error) {
-	if _, _, err := s.metricSession(ctx); err != nil {
+	ctx, _, err := s.metricSession(ctx)
+	if err != nil {
 		return sdk.MetricSourceDefaults{}, err
 	}
-	return s.Ctrl.SaveMetricSourceDefaults(defaults)
+	return s.Ctrl.SaveMetricSourceDefaults(ctx, defaults)
 }
 func (s *ServiceWrapper) PreviewMetricDefinition(ctx context.Context, spec MetricsObservationSpec, definition sdk.MetricDefinition) (*sdk.ResourceMetricsResponse, error) {
 	ctx, _, err := s.metricSession(ctx)
@@ -238,8 +247,9 @@ func (s *ServiceWrapper) GetMetricViewSourceSelection(ctx context.Context, owner
 	return s.Ctrl.GetMetricViewSourceSelection(ownerPlugin, ownerConnection, resourceKey)
 }
 func (s *ServiceWrapper) SaveMetricViewSourceSelection(ctx context.Context, selection sdk.MetricViewSourceSelection) (sdk.MetricViewSourceSelection, error) {
-	if _, _, err := s.metricSession(ctx); err != nil {
+	ctx, _, err := s.metricSession(ctx)
+	if err != nil {
 		return sdk.MetricViewSourceSelection{}, err
 	}
-	return s.Ctrl.SaveMetricViewSourceSelection(selection)
+	return s.Ctrl.SaveMetricViewSourceSelection(ctx, selection)
 }

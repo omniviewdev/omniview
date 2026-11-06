@@ -23,7 +23,7 @@ export default function SampleResource({ pluginID, connectionID, resourceKey, on
   useEffect(() => {
     onSelect(resource); 
   }, [resource, onSelect]);
-  return <label>Real sample resource<MetricsSelect label="Real sample resource" value={selected} onChange={setSelected} options={[{ value: '', label: 'Choose an admitted resource for Test query' }, ...(records ?? []).map(record => ({ value: record.key, label: `${record.record.reference.address.scope.find(value => value.dimension === 'namespace')?.value ?? ''}/${record.record.reference.address.id}` }))]} />
+  return <label>Real sample resource<MetricsSelect label="Real sample resource" value={selected} onChange={setSelected} options={[{ value: '', label: 'Choose an admitted resource for Test query' }, ...(records ?? []).map(record => ({ value: record.key, label: [...record.record.reference.address.scope.map(value => `${value.dimension}=${value.value}`), record.record.reference.address.id].join(' / ') }))]} />
     {(target.isLoading || resources.isLoading || isSyncing) && <span role="status">Loading resource snapshot…</span>}
     {(error ?? sourceError) && <span role="alert">Resource catalog unavailable: {error ? `${error.title}${error.code ? ` (${error.code})` : ''}: ${error.detail}` : 'Source view failed without an error detail.'}</span>}
   </label>;

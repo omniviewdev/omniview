@@ -17,7 +17,7 @@ const target = (name: string, incarnation = 'uid-1'): ResourceMetricTarget => ({
   token: name, route: { connection: 'cluster' }, reference: { incarnation,
     address: { provider: 'kubernetes', authority: 'authority', type: 'k8s:/pods', scope: [{ dimension: 'namespace', value: 'apps' }], id: name } },
 }) as ResourceMetricTarget;
-const catalog = { source: { plugin_id: 'kubernetes', connection_id: 'cluster', datasource_uid: '', datasource_kind: 'metrics-server' },
+const catalog = { source: { plugin_id: 'inventory', connection_id: 'tenant', datasource_uid: '', datasource_kind: '', native: true },
   metrics: [{ id: 'cpu', unit: 'cores' }], max_targets: 256, max_sample_age: 2 * Duration.Minute } as ResourceMetricsCatalog;
 function frame(name: string, extra: Partial<MetricsObservationSnapshot> = {}): MetricsObservationSnapshot {
   return { client_token: 'test', generation: 1, sequence: 1, invalidated: false, error: '', fetching: false, catalog,
@@ -114,7 +114,7 @@ it('keeps freshness unknown when source policy or observation time is unknown', 
 });
 
 it('sends explicit generated source and binding without caller query bodies, and clears old source data immediately', () => {
-  const source = { plugin_id: 'grafana', connection_id: 'observability', datasource_uid: 'prometheus', datasource_kind: 'prometheus' };
+  const source = { plugin_id: 'grafana', connection_id: 'observability', datasource_uid: 'prometheus', datasource_kind: 'prometheus', native: false };
   const { result, rerender } = renderHook(({ bindingID }) => useMetricObservation({
     ...base, targets: [target('pod-a')], bindingID, source,
   }), { initialProps: { bindingID: 'binding-a' } });

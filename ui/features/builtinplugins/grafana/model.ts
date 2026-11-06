@@ -27,3 +27,23 @@ export function stageDefinition(binding: MetricBinding, global: MetricDefinition
   return { ...binding, overrides: [...binding.overrides.filter(value => value.metric_id !== global.id),
     ...(Object.keys(override).length > 2 ? [override] : [])] };
 }
+
+/** Keep only public metadata declared by the resource owner. */
+export function approvedScope(scope: Readonly<Record<string, string | undefined>>, fields: ReadonlyArray<{ key: string }>): Record<string, string> {
+  return Object.fromEntries(fields.slice(0, 32).flatMap(field => {
+    const value = scope[field.key];
+    return typeof value === 'string' ? [[field.key, value]] : [];
+  }));
+}
+
+export function scopeRequirements(definitions: readonly MetricDefinition[]): Set<string> {
+  return new Set(definitions.flatMap(definition => definition.field_bindings
+    .filter(binding => binding.source === 'scope' && binding.required).map(binding => binding.field)));
+}
+
+export function validScope(scope: Readonly<Record<string, string | undefined>>, fields: ReadonlyArray<{ key: string }>, required: ReadonlySet<string>): boolean {
+  const approved = new Set(fields.slice(0, 32).map(field => field.key));
+  return fields.length <= 32 && Object.entries(scope).length <= 32
+    && Object.entries(scope).every(([key, value]) => approved.has(key) && typeof value === 'string' && new TextEncoder().encode(value).length <= 1024)
+    && [...required].every(key => approved.has(key) && Boolean(scope[key]?.trim()));
+}

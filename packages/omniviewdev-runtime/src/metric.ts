@@ -18,6 +18,7 @@ export {
   ValidateMetricDefinition,
   DiscoverMetricLabels,
   GetMetricDefinitions,
+  GetMetricOwnerCatalog,
   SaveMetricDefinition,
   DeleteMetricDefinition,
   GetMetricBindings,

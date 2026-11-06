@@ -270,7 +270,7 @@ func (p *Provider) retireLocked(id string) {
 	}
 }
 func (p *Provider) GetDataSources(ctx *types.PluginContext, source metric.MetricSourceRef) ([]metric.MetricDataSource, error) {
-	if source.PluginID != "grafana" {
+	if source.Native || source.PluginID != "grafana" {
 		return nil, errors.New("provider source mismatch")
 	}
 	if ctx == nil {

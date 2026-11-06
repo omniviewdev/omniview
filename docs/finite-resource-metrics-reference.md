@@ -6,7 +6,13 @@ Finite metrics evaluate an explicit set of resource references and metric IDs. T
 
 ## Sources and semantic definitions
 
-Kubernetes provides native `metrics-server` catalogs for Pods (`k8s:/pods`) and Nodes (`k8s:/nodes`):
+Resource owners publish definitions and approved public scope through `MetricOwnerCatalogProvider.GetMetricOwnerCatalog`. Source providers execute the supplied mappings; they do not own another plugin's resource presets.
+
+Query resolution reads the selected resource owner's catalog only. Global editor discovery is separate, so an unrelated catalog failure cannot block a selected source.
+
+`MetricSourceRef.Native` selects the resource owner's built-in source. Native references carry that owner's plugin and connection IDs, with empty datasource kind and UID. External references use a typed provider connection and datasource instead. The host verifies native ownership; it never identifies native sources by a backend name.
+
+For example, the Kubernetes plugin—not the host or Grafana provider—declares these current-value metrics:
 
 | Metric ID | Meaning | Physical unit | Shape |
 | --- | --- | --- | --- |
@@ -17,7 +23,7 @@ Kubernetes provides native `metrics-server` catalogs for Pods (`k8s:/pods`) and 
 
 Read descriptors from the returned catalog instead of inferring units from labels or legacy metric IDs. Unsupported providers, metrics, and shapes fail explicitly; finite calls never fall back to legacy query or stream execution.
 
-Native collection does not retain history. Repeated current reads do not become a historical series. The trusted Grafana provider supports configured Grafana gateways and direct Prometheus-compatible endpoints, with explicit datasource selection, current/range mappings, and bounded discovery. Default Pod mappings retain the canonical CPU/memory IDs and include network, filesystem, throttling, and restart metrics. Node external mappings require explicit real definitions; the host does not invent exporter queries.
+Kubernetes metrics-server provides current values, not retained history. Its plugin also supplies PromQL recipes for compatible exporters. The Grafana provider executes those recipes against configured Grafana gateways or direct Prometheus-compatible endpoints. Other resource plugins supply their own definitions and scope declarations. Supported shapes always come from the selected source catalog.
 
 ## Resource authority and limits
 
@@ -29,7 +35,7 @@ Pass `context.Context` through Go session/query entrypoints, including exec, log
 
 `MetricsObservationSpec` selects `OwnerPluginID`, `OwnerConnectionID`, `ResourceKey`, optional `BindingID`/`Source`, `Targets`, `MetricIDs`, `Shape`, `DurationMs`, `StartTime`, `EndTime`, `StepMs`, and `IntervalMs`. JSON names are snake_case. Every target's provider, route connection, and resource type must match the original owner. Target tokens and canonical resource identities must be distinct. Incarnations distinguish recreated resources even when names match.
 
-Source precedence is explicit request `Source`, saved owner-connection/resource view selection, per-metric/owner binding source, profile default, then the owner's native metrics-server. Saved view modes are `inherit`, `native`, and `external`. Native mode overrides per-metric source choices; inherit restores lower-layer selection. `BindingID` identifies an actual owner binding only; it has no reserved source aliases. External mappings retain the owner's public scope. Invalid or unavailable explicit sources fail without native fallback. Provider-private source contexts carry the selected source ID, not owner credentials.
+Source precedence is explicit request `Source`, saved owner-connection/resource view selection, per-metric/owner binding source, profile default, then the owner's native source. Saved view modes are `inherit`, `native`, and `external`. Native mode overrides per-metric source choices; inherit restores lower-layer selection. `BindingID` identifies an actual owner binding only. External mappings retain approved owner scope. Invalid explicit sources fail without fallback. Provider-private contexts carry selected source credentials, never owner credentials.
 
 The host admits every target before collection and re-admits every delivery, including cache hits. Owner and source connections have independent generation fences. Configuration dependencies are scoped to the selected owner binding, view tuple, source connection, and consumed mappings. Unrelated owner/source edits preserve active work and completed cache. Matching edits cancel old work, clear stale snapshots, and re-resolve attached observations without requiring new client tokens. Source deletion shows an explicit error; fixing that selected source can recover the same observation.
 
@@ -120,6 +126,7 @@ GetDataSources(ctx, plugin, connection)
 TestProviderConnection(ctx, plugin, connection)
 ValidateMetricDefinition(ctx, plugin, connection, datasourceUID, definition)
 DiscoverMetricLabels(ctx, plugin, connection, datasourceUID, request)
+GetMetricOwnerCatalog(ctx, ownerPlugin, ownerConnection)
 GetMetricDefinitions(ctx)
 SaveMetricDefinition(ctx, definition)
 DeleteMetricDefinition(ctx, id)
@@ -135,7 +142,11 @@ SaveMetricViewSourceSelection(ctx, selection)
 
 `GetProviders()` exposes `supports_connections`. Discover external connections only when true; native-only providers remain valid metric sources.
 
-Host-owned canonical semantics and trusted provider mappings form the default definition registry. Saved definitions override that registry; deletion restores the inherited definition. A binding stores one sparse metrics configuration per owner connection. Nil per-metric override fields inherit; removing an override resets it. Only the public `cluster` scope key is accepted. Arbitrary labels, tenants, provider settings, and credentials are not public mapping scope.
+The SDK owner callback supplies default definitions and approved scope fields. The host's `GetMetricOwnerCatalog` overlays saved profile definitions for connection editors, without reading unrelated owners. Deleting a saved definition restores inheritance. Connection bindings store sparse overrides of these effective defaults; removing an override resets it.
+
+Owner catalog lookups, source validation, binding saves, and mapping revision checks retain the authenticated caller context and cancellation through resource connection admission.
+
+Public scope keys must appear in the resource owner's declared `ScopeFields`. User mappings and source providers cannot grant new keys. Required inputs follow required scope bindings in applicable mappings. Scope values remain bounded public metadata, separate from credentials and provider-private settings.
 
 The profile's managed `appstate.ScopedRoot` stores configuration atomically in `metrics/configuration.json` with private file modes, separately from presentation preferences. Definitions, bindings, profile defaults, and view source selections use loaded revisions; stale saves return `CONFLICT`. Both source save methods return updated DTOs and revisions. `SaveMetricSourceDefaults` with omitted `Source` resets profile inheritance to native. A view source selection stores its owner plugin, owner connection, resource key, mode, optional external source, and revision; `inherit` restores binding/profile precedence. Provider credentials remain in provider-owned private storage and never enter these public configuration DTOs or query context.
 
@@ -146,11 +157,11 @@ CPU values remain cores throughout transport and preparation; memory values rema
 
 Go timestamps are `time.Time`; JSON timestamps are RFC 3339 strings. Query `Step`, result `Window`, and catalog `MaxSampleAge` are Go durations and JSON nanoseconds. Observation `step_ms`/`interval_ms`, preference time fields, and prepared timestamps/windows use milliseconds. `ObservedAt` and `Window` come from the source; never replace missing source time with receipt time.
 
-Native catalogs set `MaxSampleAge` to two minutes (`120000000000` JSON nanoseconds). Zero means no source age policy, so freshness is unknown. The observation hook reports current values as `fresh`, `delayed`, or `unknown` using source time and that policy only. It does not use cache expiry or invent a generic age threshold. Range-series completeness is independent of live sample age.
+Each source declares `MaxSampleAge`; Kubernetes metrics-server uses two minutes. Zero means no age policy, so freshness is unknown. The observation hook reports current values as `fresh`, `delayed`, or `unknown` using source time and that policy only, never cache expiry. Range completeness is independent of live sample age.
 
 A current `ok` result has a finite `Value`. Range results contain strictly increasing points within the requested domain; a null point value is a gap. Missing values are not zero. Non-`ok` statuses carry no numeric data. Statuses are `ok`, `missing`, `unsupported`, `denied`, `invalid_context`, `invalid_mapping`, `ambiguous`, and `failed`.
 
-`Complete` means every requested target/metric pair has a result; it does not mean every result is `ok`. Native scans classify an unseen Pod as `missing` only after that namespace scan completes. Partial or denied scans must not claim an unseen measurement is absent. Response warnings survive shared and cached assembly with duplicate strings removed.
+`Complete` means every requested target/metric pair has a result, not that every result is `ok`. A provider may classify a missing measurement only after its relevant scan completes. Partial or denied scans must not claim absence. Response warnings survive shared and cached assembly with duplicates removed.
 
 `IdentityScope` describes source attribution: `incarnation` means the source verified the resource UID; `name` means attribution by name only. Host incarnation fencing does not turn a name-scoped source sample into UID-verified data.
 
