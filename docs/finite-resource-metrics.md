@@ -87,6 +87,14 @@ const metrics = useMetricObservation({
 
 Match each result using `resourceToken` and `metricID`. Compatible table and sidebar requests can share host collection work. No extra polling timer or query cache is needed in your plugin.
 
+Use `useMetricCatalog` for available metric choices. An observation's catalog describes its admitted samples, not the complete discovery list.
+
+The host reuses recent compatible results across views; refresh bypasses that reuse. Original sample times stay unchanged.
+
+- Source changes refresh only the affected catalogs.
+- Temporary collection failures keep authorized samples visible and report the error.
+- Permission, source, or configuration changes clear incompatible data. Failed setup never grants permission to reuse old data.
+
 | Pod metric | ID | Value returned |
 | --- | --- | --- |
 | CPU usage | `kubernetes.pod.cpu.usage` | Cores |

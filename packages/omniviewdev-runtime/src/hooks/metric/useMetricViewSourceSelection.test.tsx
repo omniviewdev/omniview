@@ -65,3 +65,28 @@ it('rejects an empty save response without discarding admitted routing or the fa
   expect(result.current.error?.message).toBe('No metric source selection response.');
   expect(client.getQueryData(['metric', 'view-source', 'kubernetes', 'cluster-a', 'k8s:/pods'])).toEqual(stored);
 });
+
+it('invalidates only catalogs for the saved owner, connection, and resource kind', async () => {
+  host.get.mockResolvedValue(stored);
+  host.save.mockImplementation(async selection => ({ ...selection, revision: 'r2' }));
+  const { result, client } = setup();
+  await waitFor(() => expect(result.current.isLoading).toBe(false));
+  const request = { owner_plugin_id: 'kubernetes', owner_connection_id: 'cluster-a', resource_key: 'k8s:/pods', binding_id: '', source: null };
+  const affected = [
+    ['metric', 'catalog', request],
+    ['metric', 'catalog', { ...request, binding_id: 'external', source }],
+  ];
+  const unaffected = [
+    ['metric', 'catalog', { ...request, owner_plugin_id: 'other-owner' }],
+    ['metric', 'catalog', { ...request, owner_connection_id: 'cluster-b' }],
+    ['metric', 'catalog', { ...request, resource_key: 'k8s:/nodes' }],
+  ];
+  const catalog = { metrics: [{ id: 'cpu' }, { id: 'optional' }], source };
+  for (const key of [...affected, ...unaffected]) client.setQueryData(key, catalog);
+  await act(async () => { await result.current.update('external', source); });
+  for (const key of affected) expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+  for (const key of unaffected) {
+    expect(client.getQueryState(key)?.isInvalidated).toBe(false);
+    expect(client.getQueryData(key)).toEqual(catalog);
+  }
+});

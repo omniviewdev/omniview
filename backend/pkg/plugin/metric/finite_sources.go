@@ -413,8 +413,8 @@ func (c *controller) invalidateMetricConfiguration() {
 	}
 	f.mu.Lock()
 	f.configuration++
-	for _, read := range f.catalogs {
-		read.cancel()
+	for id, read := range f.catalogs {
+		f.cancelCatalogLocked(id, read)
 	}
 	clear(f.catalogs)
 	for job := range f.jobs {

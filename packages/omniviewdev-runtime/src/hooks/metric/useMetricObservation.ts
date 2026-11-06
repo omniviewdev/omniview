@@ -218,7 +218,7 @@ export function useMetricObservation(options: UseMetricObservationOptions) {
           let displayed = compatible ? previous.displayed : null;
           if (snapshot.invalidated) displayed = null;
           else if (snapshot.data != null) displayed = { snapshot, targets: input.targets, receivedAtMs };
-          return { authority: scope, displayed, catalog: snapshot.catalog ?? (compatible ? previous.catalog : null), requestIdentity: identity,
+          return { authority: scope, displayed, catalog: snapshot.invalidated ? null : snapshot.catalog ?? (compatible ? previous.catalog : null), requestIdentity: identity,
             settled: snapshot.data != null || !!snapshot.error || snapshot.invalidated,
             fetching: snapshot.fetching, error: snapshot.error ? new Error(snapshot.error) : null };
         });

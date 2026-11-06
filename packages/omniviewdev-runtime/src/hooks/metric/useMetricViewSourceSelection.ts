@@ -44,7 +44,9 @@ export function useMetricViewSourceSelection(ownerPluginID: string, ownerConnect
       client.setQueryData(queryKey, stored);
       setMutation(current => current.scope === scope && current.sequence === operation
         ? { ...current, saving: false, attempted: null, error: null } : current);
-      await client.invalidateQueries({ queryKey: ['metric', 'catalog'] });
+      await client.invalidateQueries({ queryKey: ['metric', 'catalog', {
+        owner_plugin_id: ownerPluginID, owner_connection_id: ownerConnectionID, resource_key: resourceKey,
+      }] });
       return stored;
     } catch (error) {
       const failure = error instanceof Error ? error : new Error(String(error));

@@ -3,12 +3,14 @@ package metric
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
 
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	sdk "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 )
 
@@ -32,6 +34,47 @@ type finiteObservation struct {
 	publishMu          sync.Mutex
 	waiter             *finiteWaiter
 	lastPublished      uint64
+}
+
+type finiteProviderFailure struct{ error }
+
+func (e finiteProviderFailure) Unwrap() error { return e.error }
+
+type finiteAuthorityFailure struct{ error }
+
+func (e finiteAuthorityFailure) Unwrap() error { return e.error }
+
+func finiteAuthorityError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return finiteAuthorityFailure{err}
+}
+
+func finiteOperationalFailure(err error) bool {
+	var authorityFailure finiteAuthorityFailure
+	if errors.As(err, &authorityFailure) {
+		return false
+	}
+	var classified *resourcev2.ResourceOperationError
+	if errors.As(err, &classified) && classified != nil {
+		switch classified.Code {
+		case "RESOURCE_LIMIT", "TIMEOUT", "UNAVAILABLE", "CONNECTION_ERROR", "PROVIDER_ERROR", "PARTIAL_RESULT", "INTERNAL":
+		default:
+			// Unknown and authority classifications fail closed, even when the
+			// transport would normalize an unreviewed code to INTERNAL.
+			return false
+		}
+	}
+	switch resourcev2.ErrorCode(err) {
+	case "RESOURCE_LIMIT", "TIMEOUT", "UNAVAILABLE", "CONNECTION_ERROR", "PROVIDER_ERROR", "PARTIAL_RESULT":
+		return true
+	case "INTERNAL":
+		var providerFailure finiteProviderFailure
+		return errors.As(err, &providerFailure)
+	default:
+		return false
+	}
 }
 
 func (o *finiteObservation) publish() {
@@ -349,11 +392,11 @@ func (f *finiteCoordinator) collectObservation(o *finiteObservation) {
 	f.mu.Unlock()
 	ctx, cancel := context.WithTimeout(o.ctx, resourceMetricsTimeout)
 	defer cancel()
-	var catalog *sdk.ResourceMetricsCatalog
 	spec, err := resolveFiniteRange(o.spec, time.Now())
 	var data *sdk.ResourceMetricsResponse
+	var sampleCatalog *sdk.ResourceMetricsCatalog
 	if err == nil {
-		data, err = f.c.readFiniteCatalog(ctx, spec, refresh, func(actual *sdk.ResourceMetricsCatalog) { catalog = actual }, o)
+		data, err = f.c.readFiniteResolved(ctx, spec, refresh, func(catalog *sdk.ResourceMetricsCatalog) { sampleCatalog = catalog }, o, nil)
 	}
 	size := 0
 	if err == nil {
@@ -383,8 +426,11 @@ func (f *finiteCoordinator) collectObservation(o *finiteObservation) {
 	if err == nil && f.snapshotBytes-o.dataBytes+size > 16<<20 {
 		err = finiteError("RESOURCE_LIMIT", "Metric observation snapshot byte budget exceeded.")
 	}
-	f.snapshotBytes -= o.dataBytes
-	o.dataBytes = 0
+	retain := err != nil && finiteOperationalFailure(err) && !o.snapshot.Invalidated
+	if !retain {
+		f.snapshotBytes -= o.dataBytes
+		o.dataBytes = 0
+	}
 	if err == nil {
 		o.dataBytes = size
 		f.snapshotBytes += size
@@ -394,16 +440,20 @@ func (f *finiteCoordinator) collectObservation(o *finiteObservation) {
 	o.snapshot.Sequence++
 	if err != nil {
 		o.snapshot.Error = err.Error()
-		o.snapshot.Data = nil
-		o.snapshot.Catalog = nil
-		o.snapshot.Invalidated = true
-		if o.spec.DurationMs > 0 {
-			o.snapshot.DomainStart = nil
-			o.snapshot.DomainEnd = nil
+		// Operational pressure does not revoke already admitted capabilities or
+		// samples. Keep their original domain, timestamps and byte accounting.
+		if !retain {
+			o.snapshot.Data = nil
+			o.snapshot.Catalog = nil
+			o.snapshot.Invalidated = true
+			if o.spec.DurationMs > 0 {
+				o.snapshot.DomainStart = nil
+				o.snapshot.DomainEnd = nil
+			}
 		}
 	} else {
 		o.snapshot.Data = data
-		o.snapshot.Catalog = cloneFiniteCatalog(catalog)
+		o.snapshot.Catalog = cloneFiniteCatalog(sampleCatalog)
 		o.snapshot.Error = ""
 		o.snapshot.Invalidated = false
 		if spec.Shape == "range" {

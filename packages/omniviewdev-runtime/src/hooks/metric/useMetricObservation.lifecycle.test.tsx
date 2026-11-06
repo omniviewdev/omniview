@@ -5,11 +5,13 @@ import type { MetricsObservationSnapshot, MetricsObservationSpec } from '../../b
 import { Duration } from '../../bindings/time/models';
 import { useMetricObservation } from './useMetricObservation';
 
-const transport = vi.hoisted(() => ({ receivers: [] as Array<(value: MetricsObservationSnapshot) => void>, specs: [] as MetricsObservationSpec[] }));
+const transport = vi.hoisted(() => ({ receivers: [] as Array<(value: MetricsObservationSnapshot) => void>, specs: [] as MetricsObservationSpec[],
+  failures: [] as Array<(error: Error) => void> }));
 vi.mock('../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/servicewrapper', () => ({ GetResourceMetricsCatalog: vi.fn() }));
-vi.mock('./observationClient', () => ({ observeMetrics: (spec: MetricsObservationSpec, receive: (value: MetricsObservationSnapshot) => void) => {
+vi.mock('./observationClient', () => ({ observeMetrics: (spec: MetricsObservationSpec, receive: (value: MetricsObservationSnapshot) => void, fail: (error: Error) => void) => {
   transport.specs.push(spec);
   transport.receivers.push(receive);
+  transport.failures.push(fail);
   return { close() {}, refresh: () => Promise.resolve() };
 } }));
 
@@ -27,7 +29,7 @@ function frame(name: string, extra: Partial<MetricsObservationSnapshot> = {}): M
     ...extra } as MetricsObservationSnapshot;
 }
 const base = { ownerPluginID: 'kubernetes', ownerConnectionID: 'cluster', resourceKey: 'k8s:/pods', metricIDs: ['cpu'], intervalMs: 0 };
-beforeEach(() => { transport.receivers.length = 0; transport.specs.length = 0; vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-05T10:00:01Z')); });
+beforeEach(() => { transport.receivers.length = 0; transport.specs.length = 0; transport.failures.length = 0; vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-05T10:00:01Z')); });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 it('removes another Pod and an old incarnation before a replacement response arrives', () => {
@@ -126,4 +128,51 @@ it('sends explicit generated source and binding without caller query bodies, and
   rerender({ bindingID: 'binding-b' });
   expect(result.current.results).toEqual([]);
   expect(result.current.catalog).toBeNull();
+});
+
+it('retains same-authority values through transient errors but clears denied snapshots', () => {
+  const { result, rerender } = renderHook(({ intervalMs }) => useMetricObservation({
+    ...base, intervalMs, targets: [target('pod-a')],
+  }), { initialProps: { intervalMs: 0 } });
+  act(() => transport.receivers[0](frame('pod-a')));
+  const original = result.current.results[0];
+  rerender({ intervalMs: 30000 });
+  act(() => transport.receivers[1](frame('pod-a', {
+    data: null, catalog: null, error: 'Provider temporarily unavailable',
+  })));
+  expect(result.current.results[0]).toEqual(original);
+  expect(result.current.catalog).toEqual(catalog);
+  expect(result.current.error?.message).toBe('Provider temporarily unavailable');
+  act(() => transport.receivers[1](frame('pod-a', {
+    data: null, catalog: null, invalidated: true, error: 'Permission denied',
+  })));
+  expect(result.current.results).toEqual([]);
+  expect(result.current.domain).toBeNull();
+  expect(result.current.catalog).toBeNull();
+  expect(result.current.error?.message).toBe('Permission denied');
+});
+
+it('clears retained values when inherited routing resolves to a different source', () => {
+  const { result } = renderHook(() => useMetricObservation({ ...base, targets: [target('pod-a')] }));
+  act(() => transport.receivers[0](frame('pod-a')));
+  expect(result.current.results).toHaveLength(1);
+  const external = { ...catalog, source: { plugin_id: 'grafana', connection_id: 'monitor',
+    datasource_uid: 'prometheus', datasource_kind: 'prometheus', native: false } } as ResourceMetricsCatalog;
+  act(() => transport.receivers[0](frame('pod-a', { data: null, catalog: external, fetching: true })));
+  expect(result.current.results).toEqual([]);
+  expect(result.current.catalog).toEqual(external);
+  expect(result.current.domain).toBeNull();
+});
+
+it('does not retain old samples after an unacknowledged reentry setup failure', () => {
+  const { result, rerender } = renderHook(({ intervalMs }) => useMetricObservation({
+    ...base, intervalMs, targets: [target('pod-a')],
+  }), { initialProps: { intervalMs: 0 } });
+  act(() => transport.receivers[0](frame('pod-a')));
+  expect(result.current.results).toHaveLength(1);
+  rerender({ intervalMs: 30000 });
+  act(() => transport.failures[1](new Error('Session admission failed')));
+  expect(result.current.results).toEqual([]);
+  expect(result.current.catalog).toBeNull();
+  expect(result.current.error?.message).toBe('Session admission failed');
 });

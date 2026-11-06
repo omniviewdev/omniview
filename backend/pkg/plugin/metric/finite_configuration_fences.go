@@ -49,8 +49,7 @@ func (f *finiteCoordinator) configurationCurrentLocked(keys []finiteConfiguratio
 func (f *finiteCoordinator) invalidateConfigurationKeysLocked(keys []finiteConfigurationKey) []*finiteObservation {
 	for id, read := range f.catalogs {
 		if finiteConfigurationMatches(read.configurationKeys, keys) {
-			read.cancel()
-			delete(f.catalogs, id)
+			f.cancelCatalogLocked(id, read)
 		}
 	}
 	for job := range f.jobs {
