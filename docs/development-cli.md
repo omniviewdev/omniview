@@ -89,6 +89,11 @@ An interrupted materialization is resumed only after the owned supervisor exits.
 Initial launch recovery can reuse the genuine protocol evidence saved in
 `launch.json`, even if linking failed before accepting a link journal. Missing
 proof still requires explicit `--link-evidence FILE`; recovery never invents proof.
+If a refreshed launch fails after dependency preparation has already completed,
+recovery resumes its retained `start` or `verify` boundary instead of reinstalling
+the captured cohort. It authenticates and shuts down only the observed failed
+supervisor generation before starting its successor. A generation replacement
+during that handoff is refused, never stopped as a substitute target.
 
 `workspace restart` also starts a stopped or exited workspace using its saved
 launch settings. Missing or exited supervisors are not errors by themselves.
