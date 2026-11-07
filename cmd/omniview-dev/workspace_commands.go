@@ -549,7 +549,7 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 			value, err = manager.ResumeWorkspace(ctx, target)
 		case workspaceRecover:
 			var recovered devworkspace.Workspace
-			recovered, err = manager.Inspect(ctx, target)
+			recovered, err = manager.PrepareRecovery(ctx, target)
 			if err != nil {
 				return fail(err)
 			}
@@ -777,7 +777,12 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 			options.Ports = ports
 			var refresh devworkspace.RefreshOptions
 			refresh.Diagnostics = diagnostics
+			var applyExecutable string
 			if c.apply {
+				applyExecutable, err = os.Executable()
+				if err != nil {
+					return fail(err)
+				}
 				if preflightErr := manager.PreflightEdit(ctx, w.Manifest.WorkspaceID, options); preflightErr != nil {
 					return fail(preflightErr)
 				}
@@ -820,26 +825,15 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 			}
 			if err == nil && c.apply {
 				edited := value
+				switch result := edited.(type) {
+				case devworkspace.ReconfigureResult:
+					w = result.Workspace
+				case devworkspace.Workspace:
+					w = result
+				}
 				value, err = manager.Refresh(ctx, w.Manifest.WorkspaceID, refresh)
 				if err != nil {
-					var payload *devcontract.Error
-					if !errors.As(err, &payload) {
-						payload = devcontract.Fail(5, "apply_failed", err.Error())
-					}
-					partial := *payload
-					partial.Details = make(map[string]any, len(payload.Details)+6)
-					for key, detail := range payload.Details {
-						partial.Details[key] = detail
-					}
-					partial.Details["editApplied"] = true
-					partial.Details["manifest"] = w.ManifestPath
-					partial.Details["completedPhase"] = "edit"
-					partial.Details["pendingPhase"] = "refresh"
-					partial.Details["selection"] = edited
-					next := "omniview-dev workspace recover --workspace '" + strings.ReplaceAll(w.ManifestPath, "'", "'\\''") + "'"
-					partial.Details["nextCommand"] = next
-					partial.Message = "selection edit persisted; apply failed: " + payload.Message + "; resume with: " + next
-					err = &partial
+					err = workspaceApplyFailure(err, w, edited, applyExecutable)
 				}
 			}
 		}
@@ -856,6 +850,27 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 		printWorkspaceValue(out, value)
 	}
 	return true, 0
+}
+
+func workspaceApplyFailure(err error, edited devworkspace.Workspace, selection any, executable string) *devcontract.Error {
+	var payload *devcontract.Error
+	if !errors.As(err, &payload) {
+		payload = devcontract.Fail(5, "apply_failed", err.Error())
+	}
+	partial := *payload
+	partial.Details = make(map[string]any, len(payload.Details)+6)
+	for key, detail := range payload.Details {
+		partial.Details[key] = detail
+	}
+	partial.Details["editApplied"] = true
+	partial.Details["manifest"] = edited.ManifestPath
+	partial.Details["completedPhase"] = "edit"
+	partial.Details["pendingPhase"] = "refresh"
+	partial.Details["selection"] = selection
+	next := "'" + strings.ReplaceAll(executable, "'", "'\\''") + "' workspace recover --workspace '" + strings.ReplaceAll(edited.ManifestPath, "'", "'\\''") + "'"
+	partial.Details["nextCommand"] = next
+	partial.Message = "selection edit persisted; apply failed: " + payload.Message + "; resume with: " + next
+	return &partial
 }
 
 func printWorkspaceValue(out io.Writer, value any) {

@@ -65,7 +65,11 @@ func launchOptionDifferences(requested, saved LaunchOptions) []string {
 }
 
 func refreshIntentMismatch(w Workspace, intent refreshIntent, fields []string) *devcontract.Error {
-	next := workspaceRecoveryCommand(w, "recover")
+	executable, err := os.Executable()
+	if err != nil {
+		return devcontract.Fail(5, "executable_unavailable", "cannot identify the invoking executable for recovery guidance")
+	}
+	next := shellCommand([]string{executable, "workspace", "recover", "--workspace", w.ManifestPath})
 	failure := devcontract.Fail(upstreamExitBlocked, "refresh_intent_mismatch",
 		"requested fields "+strings.Join(fields, ", ")+" differ from captured refresh intent at phase "+intent.Phase+"; resume saved options with: "+next)
 	failure.Details = map[string]any{
@@ -89,7 +93,7 @@ func (m *Manager) Refresh(ctx context.Context, name string, options RefreshOptio
 // Recover resumes retained work only. Retrying completed recovery does not
 // create another dependency install or restart a running supervisor.
 func (m *Manager) Recover(ctx context.Context, name string, options RefreshOptions) (RefreshResult, error) {
-	w, err := m.Inspect(ctx, name)
+	w, err := m.PrepareRecovery(ctx, name)
 	if err != nil {
 		return RefreshResult{}, err
 	}

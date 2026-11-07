@@ -221,7 +221,9 @@ func TestCapturedRefreshReportsSafeOptionDiffAndResumesSavedIntent(t *testing.T)
 			require.Equal(t, "refresh_intent_mismatch", failure.Code)
 			require.Equal(t, []string{"launch." + test.field}, failure.Details["differingFields"])
 			require.Equal(t, refreshStart, failure.Details["phase"])
-			require.Equal(t, workspaceRecoveryCommand(w, "recover"), failure.Details["nextCommand"])
+			executable, err := os.Executable()
+			require.NoError(t, err)
+			require.Equal(t, shellCommand([]string{executable, "workspace", "recover", "--workspace", w.ManifestPath}), failure.Details["nextCommand"])
 			encoded, err := json.Marshal(failure)
 			require.NoError(t, err)
 			for _, private := range []string{"private-probe-payload", "private-seed-payload", "private-version-payload"} {
@@ -236,4 +238,26 @@ func TestCapturedRefreshReportsSafeOptionDiffAndResumesSavedIntent(t *testing.T)
 			require.Equal(t, "stopped", result.Status.Phase)
 		})
 	}
+}
+
+func TestRecoverResumesJournalOnlyCreation(t *testing.T) {
+	m, _ := fixtureManager(t)
+	ctx := context.Background()
+	registry, err := LoadRegistry(ctx, m.Root)
+	require.NoError(t, err)
+	manifest, err := m.plan(ctx, registry, CreateOptions{Slug: "journal-only"})
+	require.NoError(t, err)
+	root := filepath.Join(m.Root, "workspaces", "journal-only")
+	j := newJournal(root, manifest, registry)
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".local"), 0700))
+	require.NoError(t, saveJournal(root, j))
+	_, err = m.Recover(ctx, "journal-only", RefreshOptions{})
+	var failure *devcontract.Error
+	require.ErrorAs(t, err, &failure)
+	require.Equal(t, "refresh_evidence_required", failure.Code)
+	recovered, err := m.Inspect(ctx, "journal-only")
+	require.NoError(t, err)
+	require.Equal(t, manifest.WorkspaceID, recovered.Manifest.WorkspaceID)
+	require.Equal(t, "complete", recovered.Phase)
+	require.FileExists(t, filepath.Join(recovered.Root, "omniview", "README"))
 }

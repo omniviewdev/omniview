@@ -82,6 +82,9 @@ evidence that the application is ready.
 `workspace recover` does not require a failed supervisor to be stopped first.
 For materialized workspaces, recovery validates retained intent and proof before
 authenticated shutdown.
+Completed manifests must still match their owned lifecycle journal before any
+shutdown. Interrupted creates whose journal exists before `workspace.json` is
+published can resume materialization through `workspace recover`.
 An interrupted materialization is resumed only after the owned supervisor exits.
 Initial launch recovery can reuse the genuine protocol evidence saved in
 `launch.json`, even if linking failed before accepting a link journal. Missing
@@ -320,11 +323,15 @@ If an edit persists but its subsequent refresh fails, the error reports
 `editApplied: true`, manifest identity, completed/pending phases, selected workspace,
 and an exact `nextCommand` in its JSON details. Human output also names the
 persisted edit and recovery command. Do not repeat the edit to hide an apply failure.
+Partial-result identity comes from the persisted edit, including a changed slug
+and manifest directory, rather than from the command's original target.
 
 Retained refresh intent is immutable. An override mismatch names safe field paths,
 captured operation and phase, and the exact command to resume saved intent without
 overrides. Seed paths and protocol payload values are not included in that diff.
 Complete the captured operation before requesting a different cohort.
+Mismatch and partial-apply recovery commands use the shell-quoted invoking
+executable, so source CLI workflows do not depend on a matching binary in PATH.
 
 Successful stopped refresh/recovery remains stopped and not ready. It clears
 current failure, wait-stage and recovery hints while retaining prior diagnostics
