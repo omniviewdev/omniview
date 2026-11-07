@@ -23,7 +23,7 @@ func compatibilityPreflight(ctx context.Context, w Workspace) error {
 		return err
 	}
 	if plan.SDK == "" {
-		return devcontract.Fail(2, "sdk_source_required", "select the plugin-sdk repository before launching")
+		return sdkSourceRequired(ctx, "select the plugin-sdk repository before launching", workspaceSDKProbes(w), editAddSDKCommand(w))
 	}
 	sdkBytes, err := os.ReadFile(filepath.Join(plan.SDK, "go.mod"))
 	if err != nil {
