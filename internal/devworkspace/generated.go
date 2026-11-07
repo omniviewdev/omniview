@@ -472,6 +472,31 @@ func publishedGeneratedTree(w Workspace, relative string) (string, error) {
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
+
+// publishedGeneratedFileDigest returns the ledger digest of one regular file
+// whose bytes still exactly match their recorded publication.
+func publishedGeneratedFileDigest(w Workspace, relative string) (string, error) {
+	ledger, unlock, _, err := lockGenerated(w)
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
+	if _, pending := ledger.Pending[filepath.Dir(relative)]; pending || ledger.Cleanup != nil {
+		return "", devcontract.Fail(4, "generated_pending", "generated output has an unfinished writer")
+	}
+	entry, recorded := ledger.Entries[relative]
+	if !recorded || entry.Kind != "file" || entry.SHA256 == "" {
+		return "", devcontract.Fail(4, "generated_conflict", "generated file has no recorded publication: "+relative)
+	}
+	path, err := generatedPath(w, relative)
+	if err != nil {
+		return "", err
+	}
+	if err = checkGeneratedEntry(path, entry); err != nil {
+		return "", err
+	}
+	return entry.SHA256, nil
+}
 func removeGeneratedSnapshot(root, relative string, entries map[string]generatedEntry) error {
 	paths := make([]string, 0, len(entries))
 	for path := range entries {

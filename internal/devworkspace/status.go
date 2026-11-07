@@ -28,6 +28,9 @@ type Status struct {
 	LastError  *devcontract.Error              `json:"lastError,omitempty"`
 	Health     RuntimeHealth                   `json:"health"`
 	Checkouts  map[string]CheckoutStatus       `json:"checkouts,omitempty"`
+	// ArchivePlugins lists the installed archive cohort of an archive plugin
+	// runtime launch, keyed by plugin ID.
+	ArchivePlugins map[string]ArchivePluginStatus `json:"archivePlugins,omitempty"`
 	// ReadyCheckouts samples the filesystem after a successful readiness
 	// transition. It does not bind compiler inputs or served artifact bytes.
 	ReadyCheckouts        map[string]CheckoutStatus `json:"readyCheckouts,omitempty"`
@@ -38,6 +41,10 @@ type Status struct {
 	Update                *UpdatePlan               `json:"update,omitempty"`
 	HistoricalError       *devcontract.Error        `json:"historicalError,omitempty"`
 	HistoricalFailedStage string                    `json:"historicalFailedStage,omitempty"`
+
+	// PluginRuntime is the live supervisor's plugin runtime, reported only
+	// for an archive runtime launch.
+	PluginRuntime string `json:"pluginRuntime,omitempty"`
 
 	// SourceUpdateSupported is evidence only in an authenticated live response.
 	SourceUpdateSupported bool `json:"sourceUpdateSupported,omitempty"`

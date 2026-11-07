@@ -12,6 +12,16 @@ func (m *Manager) requireSourceUpdateSupervisor(w Workspace, status Status) erro
 	if status.SourceUpdateSupported {
 		return nil
 	}
+	if status.PluginRuntime == PluginRuntimeArchive {
+		// Nothing is captured: stop first, then the stopped-workspace update
+		// path applies the same plan without a live supervisor.
+		down := []string{"omniview-dev", "workspace", "down", w.Manifest.WorkspaceID, "--root", m.Root}
+		err := devcontract.Fail(sourceUpdateConflictExitCode, "archive_runtime_source_update",
+			"a running archive plugin runtime cannot apply source updates in place; stop it with: "+shellCommand(down)+
+				", repeat the update on the stopped workspace, then run workspace up (saved options keep the archive runtime)")
+		err.Details = map[string]any{"nextArgv": down, "nextCommand": shellCommand(down)}
+		return err
+	}
 	// Restart loads the complete saved LaunchOptions itself. Supplying launch
 	// flags here could override saved explicit false values or trust settings.
 	argv := []string{"omniview-dev", "workspace", "restart", w.Manifest.WorkspaceID, "--root", m.Root}
