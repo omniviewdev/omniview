@@ -372,7 +372,7 @@ export function attachManagedViteFeedback(server: ManagedFeedbackServer, raw = p
         response.end(JSON.stringify({
           workspaceID: context.workspaceID,
           generation: context.generation,
-          health: Object.fromEntries(['build', 'hmr', 'servedSource', 'sourceReload', 'dependencies', 'readiness'].flatMap((key) =>
+          health: Object.fromEntries(['build', 'hmr', 'servedSource', 'checkoutSinceReady', 'sourceReload', 'dependencies', 'readiness'].flatMap((key) =>
             typeof observed?.health?.[key] === 'string' && observed.health[key] ? [[key, observed.health[key]]] : [])),
           builds: Object.fromEntries(Object.entries(current.builds ?? {}).map(([name, build]) => [name, {
             phase: build && typeof build === 'object' && 'phase' in build && typeof build.phase === 'string' ? build.phase : 'unknown',
