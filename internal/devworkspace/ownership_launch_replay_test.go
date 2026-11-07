@@ -103,3 +103,54 @@ func TestInitialUpOwnershipGuidanceReplaysSavedLaunch(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, launch, saved)
 }
+
+func TestUnlinkingOwnershipGuidanceCompletesInterruptedTeardown(t *testing.T) {
+	for _, savedLaunch := range []bool{false, true} {
+		t.Run(map[bool]string{false: "without-launch", true: "saved-launch"}[savedLaunch], func(t *testing.T) {
+			ctx := context.Background()
+			f := newResetModulesFixture(t)
+			if savedLaunch {
+				j, err := loadLinkJournal(f.w)
+				require.NoError(t, err)
+				require.NoError(t, saveLaunchJSON(launchPath(f.w, "launch.json"), LaunchOptions{
+					Mode: "browser", Watch: true, LiveFrontend: true,
+					Timeout: 10 * time.Second, LinkEvidence: j.Evidence,
+				}))
+			}
+			foreign := filepath.Join(f.w.Root, "node_modules", "foreign")
+			require.NoError(t, os.WriteFile(foreign, []byte("unowned install"), 0600))
+			_, err := f.m.Unlink(ctx, f.w.Manifest.Slug)
+			require.Error(t, err)
+			payload := workspaceOwnershipError(err, f.w)
+			conflict := payload.Details["ownershipConflict"].(*devoutputs.Conflict)
+			require.Equal(t, "unlinking", conflict.LifecyclePhase)
+			var actions []string
+			for _, argv := range conflict.NextCommands {
+				actions = append(actions, argv[2])
+				switch argv[2] {
+				case "ownership":
+					_, err = devoutputs.Inspect(ctx, f.w.ResolvedWorkspace, nil)
+				case "down":
+					_, err = f.m.Down(ctx, f.w.Manifest.Slug)
+				case "reset-modules":
+					var report ResetModulesReport
+					report, err = f.m.ResetModules(ctx, f.w.Manifest.Slug)
+					require.False(t, report.Reinstalled)
+				case "unlink":
+					var report LinkReport
+					report, err = f.m.Unlink(ctx, f.w.Manifest.Slug)
+					require.Equal(t, "unlinked", report.Phase)
+				default:
+					t.Fatalf("unexpected teardown recovery action: %v", argv)
+				}
+				require.NoError(t, err, "%v", argv)
+			}
+			require.Equal(t, []string{"ownership", "down", "reset-modules", "unlink"}, actions)
+			require.Equal(t, 1, f.installs, "teardown must not reinstall dependencies")
+			require.NoFileExists(t, foreign)
+			_, err = loadLinkJournal(f.w)
+			require.True(t, os.IsNotExist(err), "unlink must retire its interrupted journal")
+			require.NoError(t, devoutputs.Validate(ctx, f.w.ResolvedWorkspace))
+		})
+	}
+}

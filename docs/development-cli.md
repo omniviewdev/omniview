@@ -295,6 +295,9 @@ install, run `workspace down --workspace /absolute/workspace`, then
 and protocol evidence (or repeat the original `workspace up` command). If retained
 refresh intent exists, the diagnostic instead includes `workspace recover` to
 finish that operation with its retained running/stopped intent.
+For an `unlinking` journal, the diagnostic instead ends with `workspace unlink`
+after reset, even when launch settings exist: teardown must finish before any
+new launch. It also supplies this teardown action without saved launch settings.
 Preserve any wanted dependency bytes externally first.
 Use the managed launcher for package commands to retain pre-run verification.
 
