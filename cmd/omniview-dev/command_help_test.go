@@ -66,3 +66,41 @@ func TestWorkspaceUpstreamHelpExplainsSafetyAndConsent(t *testing.T) {
 		})
 	}
 }
+
+func TestFlagFailuresExposeOnlyRegisteredIdentity(t *testing.T) {
+	for _, test := range []struct {
+		args []string
+		flag string
+	}{
+		{[]string{"workspace", "restart", "--mode=PRIVATE_INPUT", "--json"}, "--mode"},
+		{[]string{"workspace", "restart", "--seed-from", "PRIVATE_INPUT", "--json"}, "--seed-from"},
+		{[]string{"workspace", "restart", "--PRIVATE_INPUT", "--json"}, ""},
+		{[]string{"workspace", "restart", "--sk-live-PRIVATE_INPUT", "--json"}, ""},
+		{[]string{"workspace", "restart", "--timeout=PRIVATE_INPUT", "--json"}, "--timeout"},
+	} {
+		var out, diagnostics bytes.Buffer
+		if code := run(test.args, &out, &diagnostics); code != 2 {
+			t.Fatalf("invalid flags exit %d", code)
+		}
+		var result struct {
+			Error struct {
+				Details map[string]any `json:"details"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(out.String()+diagnostics.String(), "PRIVATE_INPUT") {
+			t.Fatal("private flag input escaped")
+		}
+		if result.Error.Details["helpCommand"] != "omniview-dev workspace restart --help" {
+			t.Fatalf("wrong help target: %s", &out)
+		}
+		if got, _ := result.Error.Details["flag"].(string); got != test.flag {
+			t.Fatalf("flag identity %q, want %q", got, test.flag)
+		}
+		if strings.Contains(out.String(), "valid commands") {
+			t.Fatal("leaf failure returned parent command inventory")
+		}
+	}
+}

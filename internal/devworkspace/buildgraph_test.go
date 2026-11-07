@@ -99,9 +99,14 @@ func graphFixture(t *testing.T) *BuildGraph {
 		t.Fatal(err)
 	}
 	traceStage("compile build graph")
-	g, err := compileBuildGraph(w, p, BuildOptions{Generation: "22222222-2222-4222-8222-222222222222", GoBuildCacheDirectory: cache, ExpectedSDKRevision: strings.Repeat("a", 40), VerifySDKSource: func(_ context.Context, directory, revision string) (devsource.Identity, error) {
-		return devsource.Identity{Directory: directory, ReviewedRevision: revision, SourceDigest: strings.Repeat("c", 64)}, nil
-	}, HostBuild: func(context.Context, HostBuildRequest) error { return nil }})
+	g, err := compileBuildGraph(w, p, BuildOptions{
+		Generation: "22222222-2222-4222-8222-222222222222", GoBuildCacheDirectory: cache,
+		VerifySDKSource: func(_ context.Context, directory string) (devsource.Identity, error) {
+			return devsource.Identity{
+				Directory: directory, Revision: strings.Repeat("a", 40), SourceDigest: strings.Repeat("c", 64),
+			}, nil
+		}, HostBuild: func(context.Context, HostBuildRequest) error { return nil },
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,15 +192,21 @@ func TestBuildGraphManifestMutationRequiresExplicitRelink(t *testing.T) {
 func TestVerifyBuildSDKRejectsWrongEffectiveSourceAndIncompleteIdentity(t *testing.T) {
 	g := graphFixture(t)
 	for _, tc := range []struct {
-		name, dir, digest string
-		want              bool
-	}{{"selected live source", g.plan.SDK, strings.Repeat("c", 64), true}, {"missing content identity", g.plan.SDK, "", false}, {"wrong source", filepath.Dir(g.plan.SDK), strings.Repeat("c", 64), false}} {
+		name, dir, revision, digest string
+		want                        bool
+	}{
+		{"selected live source", g.plan.SDK, strings.Repeat("a", 40), strings.Repeat("c", 64), true},
+		{"missing content identity", g.plan.SDK, strings.Repeat("a", 40), "", false},
+		{"malformed digest", g.plan.SDK, strings.Repeat("a", 40), "invalid", false},
+		{"malformed revision", g.plan.SDK, "invalid", strings.Repeat("c", 64), false},
+		{"wrong source", filepath.Dir(g.plan.SDK), strings.Repeat("a", 40), strings.Repeat("c", 64), false},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
 			g.run = func(_ context.Context, dir, program string, args ...string) ([]byte, error) {
 				return json.Marshal(map[string]any{"Path": linkedSDK, "Dir": tc.dir, "Replace": map[string]any{"Dir": tc.dir}})
 			}
-			g.options.VerifySDKSource = func(_ context.Context, directory, revision string) (devsource.Identity, error) {
-				return devsource.Identity{Directory: directory, ReviewedRevision: revision, SourceDigest: tc.digest}, nil
+			g.options.VerifySDKSource = func(_ context.Context, directory string) (devsource.Identity, error) {
+				return devsource.Identity{Directory: directory, Revision: tc.revision, SourceDigest: tc.digest}, nil
 			}
 			_, err := g.verifySDK(context.Background(), filepath.Join(g.workspace.Root, "host"))
 			if (err == nil) != tc.want {
@@ -214,8 +225,10 @@ func TestVerifyBuildSDKRejectsSourceMutationDuringBuild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g.options.VerifySDKSource = func(_ context.Context, directory, revision string) (devsource.Identity, error) {
-		return devsource.Identity{Directory: directory, ReviewedRevision: revision, SourceDigest: strings.Repeat("d", 64)}, nil
+	g.options.VerifySDKSource = func(_ context.Context, directory string) (devsource.Identity, error) {
+		return devsource.Identity{
+			Directory: directory, Revision: strings.Repeat("a", 40), SourceDigest: strings.Repeat("d", 64),
+		}, nil
 	}
 	if err = g.verifyUnchangedSDK(context.Background(), filepath.Join(g.workspace.Root, "host"), before); err == nil {
 		t.Fatal("source mutated during build but old identity remained trusted")

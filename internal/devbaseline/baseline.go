@@ -72,10 +72,13 @@ type Result struct {
 	StateRoot    string   `json:"stateRoot"`
 	ManifestPath string   `json:"manifestPath"`
 	Plugins      []Plugin `json:"plugins"`
+	Policy       string   `json:"policy"`
+	CopiedScope  []string `json:"copiedScope"`
+	Exclusions   []string `json:"exclusions"`
 }
 
 func exclusions() []string {
-	return []string{"unknown-setting-keys", "sensitive-settings", "plugin-settings-and-data", "credentials", "connections-and-autoconnect", "sessions-and-terminals", "telemetry-enablement-auth-and-export", "runtime-locks-pids-pgids", "devinfo-discovery-control-and-tokens", "logs-caches-and-temporary-files", "native-and-browser-storage", "source-dev-paths", "executables-and-artifacts"}
+	return []string{"unknown-setting-keys", "sensitive-settings", "plugin-settings-and-data", "credentials", "connections-and-autoconnect", "grafana-connections-and-credentials", "metric-bindings-and-configuration", "sessions-and-terminals", "telemetry-enablement-auth-and-export", "runtime-locks-pids-pgids", "devinfo-discovery-control-and-tokens", "logs-caches-and-temporary-files", "native-and-browser-storage", "source-dev-paths", "executables-and-artifacts"}
 }
 
 var inventoryID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
@@ -117,6 +120,28 @@ func normalize(b *Baseline) (*Baseline, error) {
 	}
 	sort.Slice(result.Plugins, func(i, j int) bool { return result.Plugins[i].ID < result.Plugins[j].ID })
 	return result, nil
+}
+
+// SameContent compares validated copy-policy content, not explanatory labels.
+// It never rewrites either snapshot or its published receipt.
+func SameContent(a, b *Baseline) (bool, error) {
+	left, err := normalize(a)
+	if err != nil {
+		return false, err
+	}
+	right, err := normalize(b)
+	if err != nil {
+		return false, err
+	}
+	leftJSON, err := json.Marshal(left)
+	if err != nil {
+		return false, err
+	}
+	rightJSON, err := json.Marshal(right)
+	if err != nil {
+		return false, err
+	}
+	return string(leftJSON) == string(rightJSON), nil
 }
 
 // Seed is the CLI integration entrypoint: validate target, snapshot a stopped
@@ -262,9 +287,64 @@ func importLocked(ctx context.Context, clean *Baseline, opts ImportOptions, home
 	}
 	stage.disarm()
 	if err := syncDirectory(parent); err != nil {
-		return Result{StateRoot: destination, ManifestPath: filepath.Join(destination, "baseline.json"), Plugins: clean.Plugins}, fmt.Errorf("baseline: profile published but directory sync failed: %w", err)
+		return importResult(destination, clean), fmt.Errorf("baseline: profile published but directory sync failed: %w", err)
 	}
-	return Result{StateRoot: destination, ManifestPath: filepath.Join(destination, "baseline.json"), Plugins: clean.Plugins}, nil
+	return importResult(destination, clean), nil
+}
+
+func importResult(destination string, clean *Baseline) Result {
+	return Result{StateRoot: destination, ManifestPath: filepath.Join(destination, "baseline.json"), Plugins: clean.Plugins, Policy: Policy, CopiedScope: []string{"allowlisted-safe-preferences", "inactive-unverified-plugin-inventory"}, Exclusions: exclusions()}
+}
+
+// InspectImport validates the published import receipt and readable settings.
+// It does not claim that integrations or plugins are configured or runnable.
+func InspectImport(ctx context.Context, destination string, initial bool) (Result, error) {
+	path := filepath.Join(destination, "baseline.json")
+	info, err := os.Lstat(path)
+	if err != nil {
+		return Result{}, err
+	}
+	if !info.Mode().IsRegular() {
+		return Result{}, fmt.Errorf("baseline: import receipt is not a regular file")
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return Result{}, err
+	}
+	var saved Baseline
+	if err := json.Unmarshal(raw, &saved); err != nil {
+		return Result{}, err
+	}
+	clean, err := normalize(&saved)
+	if err != nil {
+		return Result{}, err
+	}
+	// Explanatory labels may grow without changing the copy policy. Validate
+	// imported content, but derive disclosure from today's canonical labels.
+	saved.Exclusions = clean.Exclusions
+	actual, err := json.Marshal(saved)
+	if err != nil {
+		return Result{}, err
+	}
+	expected, err := json.Marshal(clean)
+	if err != nil || string(actual) != string(expected) {
+		return Result{}, fmt.Errorf("baseline: import receipt does not match current policy")
+	}
+	values, err := readDatabase(ctx, filepath.Join(destination, "settings.db"))
+	if err != nil {
+		return Result{}, err
+	}
+	if initial {
+		actual, err := json.Marshal(values)
+		if err != nil {
+			return Result{}, err
+		}
+		expected, err := json.Marshal(clean.Preferences)
+		if err != nil || string(actual) != string(expected) {
+			return Result{}, fmt.Errorf("baseline: published settings do not match import receipt")
+		}
+	}
+	return importResult(destination, clean), nil
 }
 
 func writePrivate(path string, data []byte) error {

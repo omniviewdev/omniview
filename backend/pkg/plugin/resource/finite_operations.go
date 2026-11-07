@@ -376,6 +376,13 @@ func (c *controller) Action(ctx context.Context, pluginID string, request resour
 	if err := c.currentGeneration(ctx, pluginID, generation); err != nil {
 		return _result, err
 	}
+	return c.executePreparedAction(ctx, pluginID, request, generation, descriptor, actionDescriptor, actioner)
+}
+
+func (c *controller) executePreparedAction(ctx context.Context, pluginID string, request resourcev2.ActionRequest, generation *pluginState, descriptor resourcev2.ResourceType, actionDescriptor *resourcev2.ActionDescriptor, actioner resourcev2.Actioner) (_result resourcev2.Value, retErr error) {
+	if err := c.currentGeneration(ctx, pluginID, generation); err != nil {
+		return _result, err
+	}
 	value, err := actioner.Action(ctx, request)
 	if err != nil {
 		return _result, err

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ExtensionPointRegistry } from '@omniviewdev/runtime';
+import { ExtensionPointRegistry, CONNECTION_SETTINGS_EXTENSION_POINT_ID, PLUGIN_SETTINGS_EXTENSION_POINT_ID } from '@omniviewdev/runtime';
 
 import { ensureBuiltinExtensionPointsRegistered } from './registerBuiltinExtensionPoints';
 import {
@@ -36,6 +36,19 @@ describe('Group 11: Built-in registration', () => {
     expect(registry.hasExtensionPoint('omniview/global-search')).toBe(true);
   });
 
+  it.each([CONNECTION_SETTINGS_EXTENSION_POINT_ID, PLUGIN_SETTINGS_EXTENSION_POINT_ID])(
+    'registers typed settings point %s as core-owned and rejects foreign ownership',
+    (id) => {
+      ensureBuiltinExtensionPointsRegistered(registry);
+      expect(registry.getExtensionPoint(id)?.pluginId).toBe('core');
+      expect(registry.getExtensionPoint(id)?.mode).toBe('multiple');
+      const foreign = new ExtensionPointRegistry();
+      foreign.addExtensionPoint({ id, pluginId: 'foreign', mode: 'multiple' });
+      expect(() => {
+        ensureBuiltinExtensionPointsRegistered(foreign); 
+      }).toThrow(/non-core owner/);
+    },
+  );
 
   it('builtin extension points are owned by core', () => {
     ensureBuiltinExtensionPointsRegistered(registry);

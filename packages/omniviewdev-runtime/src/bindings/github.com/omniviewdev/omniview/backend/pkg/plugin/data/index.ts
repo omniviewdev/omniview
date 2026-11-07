@@ -5,3 +5,7 @@ import * as ServiceWrapper from "./servicewrapper.js";
 export {
     ServiceWrapper
 };
+
+export {
+    Snapshot
+} from "./models.js";

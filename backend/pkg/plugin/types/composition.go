@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
@@ -19,13 +20,18 @@ import (
 // Settings and tools expose no disposal contract. Shutdown owns only shared
 // clients and other aggregate resources after all controllers have retired.
 type NativeProviders struct {
-	Resource    resourcev2.Provider
-	Exec        exec.Provider
-	Logs        logs.Provider
-	Metric      metric.Provider
+	Resource resourcev2.Provider
+	Exec     exec.Provider
+	Logs     logs.Provider
+	// Metric requires discovery only. Finite and legacy execution are independent
+	// capabilities, so finite-only sources need no dummy Query or Stream methods.
+	Metric interface {
+		GetSupportedResources(*types.PluginContext) (*metric.ProviderInfo, []metric.Handler)
+	}
 	Networker   networker.Provider
 	Settings    settings.Provider
 	Tools       tools.Provider
+	Lifecycle   *NativeLifecycle
 	HealthCheck func() bool
 	Shutdown    func() error
 }
@@ -75,6 +81,9 @@ func ComposeNativeBackend(native NativeProviders) (*InProcessBackend, error) {
 	}
 	if native.Tools != nil {
 		providers["tools"] = native.Tools
+	}
+	if native.Lifecycle != nil {
+		providers["lifecycle"] = native.Lifecycle
 	}
 	return newOwnedInProcessBackend(InProcessBackendConfig{
 		Providers:   providers,

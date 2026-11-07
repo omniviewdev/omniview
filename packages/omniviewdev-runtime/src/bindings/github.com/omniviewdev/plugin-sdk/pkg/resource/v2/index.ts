@@ -5,6 +5,10 @@ export {
     AccessRoute,
     ActionDescriptor,
     ActionScope,
+    ActivityAction,
+    ActivityMetric,
+    ActivityPresentation,
+    ActivityProgress,
     CatalogRequest,
     ColumnDefinition,
     ConnectionMetadataError,
@@ -27,11 +31,13 @@ export {
     RelationshipType,
     Representation,
     ResolvedRelationship,
+    ResourceActionIntent,
     ResourceDefinition,
     ResourceEvent,
     ResourceGroup,
     ResourceHealth,
     ResourceLink,
+    ResourceNavigationIntent,
     ResourceOperationError,
     ResourceReference,
     SchemaDocument,
@@ -42,6 +48,7 @@ export {
 } from "./models.js";
 
 export type {
+    ActionRequest,
     Catalog,
     ConnectionMetadataEntry,
     Coverage,

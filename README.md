@@ -53,12 +53,28 @@ Omniview is a groundbreaking Integrated Development Environment (IDE) tailored s
 Settings → AI Tools controls the loopback MCP relay. Resource tools expose provider action
 labels, descriptions and danger notices. Actions and mutations require consent unless the
 tool's confirm override is set to false.
+Search the tool list by name, description, plugin, or connection. Resource tools show a
+readable title and their MCP name; the MCP name remains the policy and client identifier.
 
-The read-only preset includes per-resource metrics and route-level events, health and related
-resources. Each route-level tool accepts a resource type from its advertised enum. Unsupported
-provider operations return an error; health can return `null` when the provider has no assessment.
-Related resources contain references, not resource bodies. The relay returns at most 1000 edges
-and sets `truncated` when more edges exist. Route-level policy is plugin- and
+For configured Kubernetes connections, five generic resource tools remain available while
+the cluster is disconnected: `kubernetes_resource_discover`, `kubernetes_resource_read`,
+`kubernetes_resource_write`, `kubernetes_resource_action`, and `kubernetes_resource_telemetry`.
+The first call starts the selected connection. Use the `catalog` operation of
+`kubernetes_resource_discover` to find live operations and their argument schemas.
+Each tool uses an `operation` argument to select an operation. Unsupported operations
+return an error.
+
+AI Tools applies policy to each generic group and connection, not to individual Kubernetes
+resource types. Existing resource-specific overrides and saved presets do not grant or deny
+the new tools. The current preset and its defaults apply to the new tool names.
+Review the new policies: the read-only preset can enable reads that an old override denied.
+Write and action calls require consent by default.
+
+For other providers, the read-only preset includes per-resource metrics and route-level
+events, health and related resources. Each route-level tool accepts a resource type from
+its advertised enum. Health can return `null` when the provider has no assessment.
+Related resources contain references, not resource bodies. The relay returns at most 1000
+edges and sets `truncated` when more edges exist. Route-level policy is plugin- and
 connection-scoped; disabling one type's get tool does not disable these separate read tools.
 
 Plugins may declare access to selected resource types exported by another installed
@@ -112,6 +128,8 @@ Named workspaces use selected local source overlays rather than consuming unpubl
 
 The root manifest’s `packageManager` field declares the repository's pnpm version. Keep workflow setup pins and managed policy aligned with it. CI and release workflows use frozen lockfile installs; review and commit intended lockfile changes from development.
 
+The Homebrew package check uses the current run's artifact for reusable workflow calls. A direct dispatch validates the supplied source run and commit before downloading its artifact.
+
 `task check:ui-typecheck` checks application and test programs separately. The test configuration explicitly loads React diagnostic augmentation types, so component flags such as `whyDidYouRender` do not depend on unrelated imports being present.
 
 Drag-and-drop handlers preserve domain IDs: homepage contributions use strings; bottom-drawer tab positions use numbers, including zero. The owned Playwright drawer journey verifies real terminal-tab reordering rather than simulated drag callbacks.
@@ -132,15 +150,13 @@ file, and each standalone lock retains its originating source authority.
 Changing either patch invalidates the composition; conflicting bytes, redirected
 paths, and borrowing another repository's declaration remain refused.
 
-CI admits SDK v0.14.3 after independent host-connection, live-source, and
-connection-timeout policy reviews. The original profile-isolation ancestry remains required; protected
-isolation files must match the reviewed host-connection checkpoint. Exact SDK
-approval stays separate from candidate selection. Live-source validation rejects
-records and removals outside the admitted catalog contract.
+CI uses the SDK declared by the host `go.mod`. Managed workspaces identify the
+selected SDK checkout by its current commit and source digest. Live-source
+validation rejects records and removals outside the admitted catalog contract.
 
 Vite remains on 7.3.7 to preserve SystemJS plugin output. Vite 8 and newer pnpm versions require separate loader/backend work and are not part of this frontend-only upgrade. Keep strict peer validation and the 24-hour release-age policy enabled.
 
-Build the runtime before the Vite plugin: shim generation verifies the current runtime's exports. Host lint excludes generated bindings and linked plugin repositories; run each plugin's own lint and behavior suite. Owned Playwright runs use the existing isolated source-cohort runner, not ambient marketplace plugins or cluster credentials.
+Build the runtime before the Vite plugin: shim generation verifies the current runtime's exports. Host lint excludes generated bindings and linked plugin repositories; run each plugin's own lint and behavior suite. Owned Playwright runs use an isolated workspace with the SDK commit resolved from the host `go.mod`, UI packages from the host lockfile, and Kubernetes from the host gitlink, not ambient marketplace plugins or cluster credentials.
 
 Keep tracked `dist/.gitkeep` for Go's `all:dist` embed during clean pre-frontend compile checks. Production and application acceptance still require actual built frontend assets.
 

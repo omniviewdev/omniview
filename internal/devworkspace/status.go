@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/omniviewdev/omniview/internal/devbaseline"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devcontrol"
 	"github.com/omniviewdev/omniview/internal/devsession"
@@ -18,20 +19,32 @@ import (
 // A saved status file is diagnostic history, never evidence of current readiness.
 type Status struct {
 	Workspace
-	Generation      string                          `json:"generation,omitempty"`
-	Phase           string                          `json:"launchPhase"`
-	Instance        *devcontract.InstanceDescriptor `json:"instance,omitempty"`
-	Builds          map[string]BuildEvent           `json:"builds,omitempty"`
-	Services        map[string]ServiceStatus        `json:"services,omitempty"`
-	LastError       *devcontract.Error              `json:"lastError,omitempty"`
-	Health          RuntimeHealth                   `json:"health"`
-	Checkouts       map[string]CheckoutStatus       `json:"checkouts,omitempty"`
-	ServedCheckouts map[string]CheckoutStatus       `json:"servedCheckouts,omitempty"`
-	FailedStage     string                          `json:"failedStage,omitempty"`
-	WaitStage       string                          `json:"waitStage,omitempty"`
-	RecoveryCommand string                          `json:"recoveryCommand,omitempty"`
-	Follow          *FollowStatus                   `json:"follow,omitempty"`
-	Update          *UpdatePlan                     `json:"update,omitempty"`
+	Seed       *devbaseline.Result             `json:"seed,omitempty"`
+	Generation string                          `json:"generation,omitempty"`
+	Phase      string                          `json:"launchPhase"`
+	Instance   *devcontract.InstanceDescriptor `json:"instance,omitempty"`
+	Builds     map[string]BuildEvent           `json:"builds,omitempty"`
+	Services   map[string]ServiceStatus        `json:"services,omitempty"`
+	LastError  *devcontract.Error              `json:"lastError,omitempty"`
+	Health     RuntimeHealth                   `json:"health"`
+	Checkouts  map[string]CheckoutStatus       `json:"checkouts,omitempty"`
+	// ArchivePlugins lists the installed archive cohort of an archive plugin
+	// runtime launch, keyed by plugin ID.
+	ArchivePlugins map[string]ArchivePluginStatus `json:"archivePlugins,omitempty"`
+	// ReadyCheckouts samples the filesystem after a successful readiness
+	// transition. It does not bind compiler inputs or served artifact bytes.
+	ReadyCheckouts        map[string]CheckoutStatus `json:"readyCheckouts,omitempty"`
+	FailedStage           string                    `json:"failedStage,omitempty"`
+	WaitStage             string                    `json:"waitStage,omitempty"`
+	RecoveryCommand       string                    `json:"recoveryCommand,omitempty"`
+	Follow                *FollowStatus             `json:"follow,omitempty"`
+	Update                *UpdatePlan               `json:"update,omitempty"`
+	HistoricalError       *devcontract.Error        `json:"historicalError,omitempty"`
+	HistoricalFailedStage string                    `json:"historicalFailedStage,omitempty"`
+
+	// PluginRuntime is the live supervisor's plugin runtime, reported only
+	// for an archive runtime launch.
+	PluginRuntime string `json:"pluginRuntime,omitempty"`
 
 	// SourceUpdateSupported is evidence only in an authenticated live response.
 	SourceUpdateSupported bool `json:"sourceUpdateSupported,omitempty"`
@@ -131,6 +144,13 @@ func ConnectWorkspaceControl(ctx context.Context, w Workspace, home, generation 
 func (m *Manager) Status(ctx context.Context, name string) (Status, error) {
 	result, err := m.status(ctx, name)
 	if result.Manifest.WorkspaceID != "" {
+		// Authenticated live status already carries validated import evidence.
+		// Reopening settings here would contend with the running host's DB lock.
+		if result.Seed == nil {
+			if seed, seedErr := inspectWorkspaceSeed(ctx, result.Workspace); seedErr == nil {
+				result.Seed = &seed
+			}
+		}
 		// Render launch recovery from the selected identity, never from an
 		// opaque command retained by a supervisor or an older status record.
 		if result.RecoveryCommand != "" {
@@ -201,10 +221,12 @@ func exitedSupervisorStatus(ctx context.Context, status Status) Status {
 	if readLaunchJSON(launchPath(status.Workspace, "launch-status.json"), &saved) == nil && saved.Generation == status.Generation {
 		status.Builds = saved.Builds
 		status.LastError = saved.LastError
+		status.HistoricalError = saved.HistoricalError
+		status.HistoricalFailedStage = saved.HistoricalFailedStage
 		status.FailedStage = saved.FailedStage
 		status.WaitStage = saved.WaitStage
 		status.RecoveryCommand = saved.RecoveryCommand
-		status.ServedCheckouts = saved.ServedCheckouts
+		status.ReadyCheckouts = saved.ReadyCheckouts
 		if saved.Phase == "stopped" {
 			return status
 		}
@@ -232,5 +254,8 @@ func RequireStopped(ctx context.Context, w devcontract.ResolvedWorkspace) error 
 	if err != nil {
 		return err
 	}
-	return devcontract.Fail(4, "workspace_running", "stop the owned workspace supervisor before changing its source selection")
+	command := workspaceRecoveryCommand(workspace, "down")
+	failure := devcontract.Fail(4, "workspace_running", "run "+command+" before changing workspace state")
+	failure.Details = map[string]any{"recoveryCommand": command}
+	return failure
 }

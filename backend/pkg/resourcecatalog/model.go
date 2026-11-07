@@ -69,6 +69,9 @@ type Node struct {
 	Enum         []resourcev2.Value
 	Const        *resourcev2.Value
 	Format       string
+	// Sensitive marks annotations that forbid host public-scalar projection.
+	// This is projection policy, not a resource admission constraint.
+	Sensitive bool `json:"-"`
 
 	Minimum          *big.Rat
 	Maximum          *big.Rat

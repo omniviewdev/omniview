@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
 	"github.com/omniviewdev/omniview/internal/devsession"
 )
@@ -105,31 +106,43 @@ func runRefreshPhaseRecovery(t *testing.T, phase string) {
 	path := filepath.Join(m.Root, ".omniview-dev", "recovery", w.Manifest.WorkspaceID, "refresh.json")
 	attached := false
 	var assertSupervisor func()
-	attach := func(current string) {
-		if current == "start" && !attached {
-			attached = true
-			assertSupervisor = phaseRecoverySupervisor(t, m, w)
-			writer, err := devoutputs.BeginVite(context.Background(), w.ResolvedWorkspace, filepath.Join(w.Root, "omniview"))
-			require.NoError(t, err)
-			t.Cleanup(func() { require.NoError(t, writer.Finish(context.Background())) })
-			cache := filepath.Join(w.Root, "omniview", "node_modules", ".vite-temp", "live-recovery-cache")
-			require.NoError(t, os.MkdirAll(filepath.Dir(cache), 0700))
-			require.NoError(t, os.WriteFile(cache, []byte("live cache bytes"), 0600))
+	attach := func(current string) bool {
+		if current != refreshStart || attached {
+			return false
 		}
+		var intent refreshIntent
+		raw, err := os.ReadFile(path)
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(raw, &intent))
+		if len(intent.LaunchGenerations) == 0 {
+			return false
+		}
+		attached = true
+		assertSupervisor = phaseRecoverySupervisor(t, m, w, intent.LaunchGenerations[len(intent.LaunchGenerations)-1])
+		writer, err := devoutputs.BeginVite(context.Background(), w.ResolvedWorkspace, filepath.Join(w.Root, "omniview"))
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, writer.Finish(context.Background())) })
+		cache := filepath.Join(w.Root, "omniview", "node_modules", ".vite-temp", "live-recovery-cache")
+		require.NoError(t, os.MkdirAll(filepath.Dir(cache), 0700))
+		require.NoError(t, os.WriteFile(cache, []byte("live cache bytes"), 0600))
+		return true
 	}
 	observed := false
 	m.afterDurablePhase = func(kind, current string) error {
 		if kind != "refresh" {
 			return nil
 		}
-		attach(current)
+		newlyAttached := attach(current)
 		if current == phase {
 			observed = true
 			return errPhaseInterrupted
 		}
+		if newlyAttached {
+			return errPhaseInterrupted
+		}
 		return nil
 	}
-	launch := LaunchOptions{Mode: "browser", ReviewedSDKRevision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+	launch := LaunchOptions{Mode: "browser"}
 	evidence := LinkProtocolEvidence{
 		Protocol: "workspace", Versions: []string{"12.14.0"}, AtomicDist: true, Peers: true, Runtime: true,
 	}
@@ -139,6 +152,9 @@ func runRefreshPhaseRecovery(t *testing.T, phase string) {
 		refs[repository.ID] = repository.TargetSHA
 	}
 	_, err := m.refresh(context.Background(), w.Manifest.WorkspaceID, options, refs)
+	if errors.Is(err, errPhaseInterrupted) && !observed {
+		_, err = m.Recover(context.Background(), w.Manifest.WorkspaceID, RefreshOptions{})
+	}
 	require.ErrorIs(t, err, errPhaseInterrupted)
 	require.True(t, observed, "must execute target boundary through the real installer")
 	var retained refreshIntent
@@ -172,7 +188,7 @@ func runRefreshPhaseRecovery(t *testing.T, phase string) {
 func resumeRefreshPhaseSequence(t *testing.T, m *Manager, w Workspace, plan UpdatePlan, assertCanaries func()) {
 	t.Helper()
 	path := filepath.Join(m.Root, ".omniview-dev", "recovery", w.Manifest.WorkspaceID, "refresh.json")
-	const durablePhases = 6
+	const durablePhases = 7
 	for range durablePhases + 1 {
 		result, err := m.Recover(context.Background(), w.Manifest.WorkspaceID, RefreshOptions{})
 		assertCanaries()
@@ -277,9 +293,8 @@ func assertPhaseRecoveryTargets(t *testing.T, m *Manager, w Workspace, plan Upda
 	}
 }
 
-func phaseRecoverySupervisor(t *testing.T, m *Manager, w Workspace) func() {
+func phaseRecoverySupervisor(t *testing.T, m *Manager, w Workspace, generation string) func() {
 	t.Helper()
-	generation := NewGeneration()
 	owner := devsession.ProcessOwner{
 		WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "supervisor", Source: w.Root,
 	}
@@ -302,6 +317,7 @@ func phaseRecoverySupervisor(t *testing.T, m *Manager, w Workspace) func() {
 		Endpoint: server.URL + "/v1/supervisor", TokenFile: launchPath(w, "supervisor-"+generation+".secret"),
 		Process: child.identity}
 	require.NoError(t, os.WriteFile(record.TokenFile, token, 0600))
+	recordTestLaunchAuthorization(t, m, w, record.Process)
 	require.NoError(t, rawSaveLaunchJSON(launchPath(w, "supervisor.json"), record))
 	return func() {
 		t.Helper()
@@ -313,6 +329,19 @@ func phaseRecoverySupervisor(t *testing.T, m *Manager, w Workspace) func() {
 		require.Equal(t, generation, status.Generation)
 		require.Equal(t, "ready", status.Phase)
 	}
+}
+
+// Transport fixtures own these real child handles from creation. Supply their
+// explicit issuer proof, never authority inferred from a later selected owner.
+func recordTestLaunchAuthorization(t *testing.T, m *Manager, w Workspace, process devcontract.ProcessIdentity) {
+	t.Helper()
+	require.NoError(t, m.authorizeSupervisorLaunch(context.Background(), w, process.Generation, process))
+	path, err := m.supervisorLaunchAuthorizationPath(w, process.Generation)
+	require.NoError(t, err)
+	var authorization supervisorLaunchAuthorization
+	require.NoError(t, readLaunchJSON(path, &authorization))
+	authorization.Claimed = true
+	require.NoError(t, atomicOwnedJSON(path, authorization, w.Manifest.WorkspaceID))
 }
 
 func assertTerminalRecoveryIdempotent(t *testing.T, m *Manager, w Workspace) {
@@ -472,7 +501,7 @@ func TestReadyRecoveryProofKeepsInstallAndModuleOwnershipStrict(t *testing.T) {
 	fixtureGit(t, source, "commit", "-m", "add actual package consumer")
 	w, err := m.Create(ctx, CreateOptions{Slug: "ready-proof"})
 	require.NoError(t, err)
-	assertSupervisor := phaseRecoverySupervisor(t, m, w)
+	assertSupervisor := phaseRecoverySupervisor(t, m, w, NewGeneration())
 	repo := filepath.Join(w.Root, "omniview")
 	install, err := devoutputs.BeginInstall(ctx, w.ResolvedWorkspace, repo)
 	require.NoError(t, err)

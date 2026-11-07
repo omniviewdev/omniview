@@ -5,14 +5,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as WailsRuntime from '@wailsio/runtime';
 
 const transport = vi.hoisted(() => ({
-  get: vi.fn(), check: vi.fn(), start: vi.fn(), stop: vi.fn(), save: vi.fn(), remove: vi.fn(),
+  get: vi.fn(),
+  check: vi.fn(),
+  start: vi.fn(),
+  stop: vi.fn(),
+  save: vi.fn(),
+  remove: vi.fn(),
 }));
-vi.mock('../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper', () => ({
-  GetConnection: transport.get,
-  CheckConnection: transport.check,
-  StartConnection: transport.start,
-  StopConnection: transport.stop,
-}));
+vi.mock(
+  '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper',
+  () => ({
+    GetConnection: transport.get,
+    CheckConnection: transport.check,
+    StartConnection: transport.start,
+    StopConnection: transport.stop,
+  }),
+);
 vi.mock('@wailsio/runtime', async (importOriginal) => {
   const actual = await importOriginal<typeof WailsRuntime>();
   return { ...actual, Events: { ...actual.Events, On: () => () => {} } };
@@ -25,7 +33,7 @@ vi.mock('../../resource/v2/client', () => ({
   RemoveConnection: transport.remove,
 }));
 vi.mock('../useResolvedPluginId', () => ({ useResolvedPluginId: (explicit: string) => explicit }));
-vi.mock('../snackbar/useSnackbar', () => ({ useSnackbar: () => ({ showSnackbar: vi.fn() }) }));
+vi.mock('../../activity/context', () => ({ useNotifications: () => ({ notify: vi.fn() }) }));
 
 import { useConnection } from './useConnection';
 import { useConnectionReadiness } from './useConnectionReadiness';
@@ -40,18 +48,30 @@ beforeEach(() => {
   transport.check.mockReset().mockResolvedValue({ ...status, status: 'DISCONNECTED' });
   transport.start.mockReset().mockResolvedValue(status);
   transport.stop.mockReset().mockResolvedValue(connection);
-  transport.save.mockReset().mockResolvedValue({ applied: true, profile: { id: connection.id, source: 'override', connection, active: true } });
+  transport.save
+    .mockReset()
+    .mockResolvedValue({
+      applied: true,
+      profile: { id: connection.id, source: 'override', connection, active: true },
+    });
   transport.remove.mockReset().mockResolvedValue(undefined);
 });
 afterEach(() => cleanup());
 
 function setup() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
-  const hook = renderHook(() => ({
-    connection: useConnection(options),
-    readiness: useConnectionReadiness(options),
-  }), { wrapper });
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  const hook = renderHook(
+    () => ({
+      connection: useConnection(options),
+      readiness: useConnectionReadiness(options),
+    }),
+    { wrapper },
+  );
   return { ...hook, client };
 }
 
@@ -60,7 +80,9 @@ describe('useConnection readiness integration', () => {
     const { result, client } = setup();
     await waitFor(() => expect(result.current.readiness.phase).toBe('disconnected'));
     let returned: unknown;
-    await act(async () => { returned = await result.current.connection.startConnection(); });
+    await act(async () => {
+      returned = await result.current.connection.startConnection();
+    });
     expect(returned).toEqual(status);
     expect(client.getQueryData(queryKey)).toEqual(connection);
     expect(client.getQueryData(queryKey)).not.toHaveProperty('status');
@@ -83,7 +105,11 @@ describe('useConnection readiness integration', () => {
     const { result } = setup();
     await waitFor(() => expect(result.current.readiness.phase).toBe('connected'));
     transport.check.mockResolvedValue({ ...status, status: 'UNAUTHORIZED' });
-    await act(async () => result.current.connection.saveConnectionProfile({ ...connection } as Parameters<typeof result.current.connection.saveConnectionProfile>[0]));
+    await act(async () =>
+      result.current.connection.saveConnectionProfile({ ...connection } as Parameters<
+        typeof result.current.connection.saveConnectionProfile
+      >[0]),
+    );
     await waitFor(() => expect(result.current.readiness.phase).toBe('unauthorized'));
     await act(async () => result.current.connection.removeConnection());
     expect(result.current.readiness.phase).toBe('not-found');

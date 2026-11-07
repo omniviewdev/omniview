@@ -1,0 +1,12 @@
+id: testbench
+version: 0.1.0
+name: Testbench (test only)
+icon: LuFlaskConical
+description: Test-only Go fixture for isolated workspace state and connection lifecycle probes. Not a product plugin.
+license: Apache-2.0
+author:
+  name: Omniview
+schema_version: 1
+sdk_protocol_version: 1
+capabilities:
+  - resource

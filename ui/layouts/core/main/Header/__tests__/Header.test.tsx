@@ -181,7 +181,7 @@ vi.mock('@omniviewdev/runtime/runtime', async (importOriginal) => {
 
 vi.mock('@omniviewdev/runtime', async (importOriginal) => {
   const original = await importOriginal<typeof RuntimeCore>();
-  return { ...original, openSourceView: native.openSourceView, useSnackbar: () => ({ showSnackbar: vi.fn() }) };
+  return { ...original, openSourceView: native.openSourceView, useNotifications: () => ({ notify: vi.fn() }) };
 });
 
 vi.mock('@/hooks/useDevMode', () => ({ useDevMode: () => false }));

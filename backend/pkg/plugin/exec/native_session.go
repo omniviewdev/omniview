@@ -37,7 +37,7 @@ func (c *controller) GetNativeTerminalSupport() bool {
 
 // OpenNativeSession plans and launches a fresh process for an admitted resource.
 // It never creates, indexes, attaches, closes, or transfers a terminal session.
-func (c *controller) OpenNativeSession(plugin, connectionID string, opts execsdk.SessionOptions) error {
+func (c *controller) OpenNativeSession(ctx context.Context, plugin, connectionID string, opts execsdk.SessionOptions) error {
 	if err := execsdk.ValidateNativeCommandOptions(opts); err != nil {
 		return err
 	}
@@ -48,7 +48,7 @@ func (c *controller) OpenNativeSession(plugin, connectionID string, opts execsdk
 	if !launcher.Supported() {
 		return resourcev2.NewError("UNSUPPORTED", "External resource shells are supported only on macOS.")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	ctx, err := c.admitSessionReference(ctx, plugin, connectionID, opts)
 	if err != nil {

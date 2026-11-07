@@ -22,9 +22,10 @@ const (
 )
 
 type ActionEventDTO struct {
-	Type  string             `json:"type"`
-	Data  *resourcev2.Value  `json:"data,omitempty"`
-	Error *apperror.AppError `json:"error,omitempty"`
+	Type     string                           `json:"type"`
+	Data     *resourcev2.Value                `json:"data,omitempty"`
+	Error    *apperror.AppError               `json:"error,omitempty"`
+	Activity *resourcev2.ActivityPresentation `json:"activity,omitempty"`
 }
 type ActionSnapshot struct {
 	Sequence uint64         `json:"sequence"`
@@ -36,21 +37,24 @@ type actionReservation struct {
 	request  invocation.Request
 	provider string
 	cancel   context.CancelFunc
+	observer func(ActionSnapshot)
 }
 type actionHandle struct {
 	// delivery fences actual dispatch against completed removal. Never wait for it
 	// while holding the registry mutex.
-	delivery      sync.Mutex
-	id            string
-	request       invocation.Request
-	closing       bool
-	provider      string
-	cancel        context.CancelFunc
-	attached      bool
-	snapshot      ActionSnapshot
-	attachTimer   actionTimer
-	lifetimeTimer actionTimer
-	terminalTimer actionTimer
+	delivery        sync.Mutex
+	id              string
+	request         invocation.Request
+	closing         bool
+	provider        string
+	cancel          context.CancelFunc
+	attached        bool
+	snapshot        ActionSnapshot
+	attachTimer     actionTimer
+	lifetimeTimer   actionTimer
+	terminalTimer   actionTimer
+	observer        func(ActionSnapshot)
+	observationDone chan struct{}
 }
 type actionRegistry struct {
 	mu        sync.Mutex
@@ -113,7 +117,11 @@ func (r *actionRegistry) commit(reservation *actionReservation, ctx context.Cont
 	delete(r.pending, reservation)
 	handle := &actionHandle{id: uuid.NewString(), request: reservation.request, provider: reservation.provider, cancel: reservation.cancel, snapshot: ActionSnapshot{Sequence: 1, Event: ActionEventDTO{Type: "progress", Data: &resourcev2.Value{Kind: "map", Map: map[string]resourcev2.Value{"message": {Kind: "string", String: "Started"}}}}}}
 	r.entries[handle.id] = handle
-	handle.attachTimer = r.afterFunc(actionAttachTimeout, func() { r.expireUnattached(handle) })
+	handle.observer = reservation.observer
+	handle.observationDone = make(chan struct{})
+	if handle.observer == nil {
+		handle.attachTimer = r.afterFunc(actionAttachTimeout, func() { r.expireUnattached(handle) })
+	}
 	handle.lifetimeTimer = r.afterFunc(actionLifetime, func() { r.expire(handle, true) })
 	return handle, nil
 }
@@ -178,6 +186,9 @@ func (r *actionRegistry) update(handle *actionHandle, event ActionEventDTO, term
 	}
 	snapshot, attached, emit := handle.snapshot, handle.attached, r.emit
 	r.mu.Unlock()
+	if handle.observer != nil {
+		handle.observer(snapshot)
+	}
 	if terminal {
 		handle.cancel()
 	}
@@ -186,6 +197,9 @@ func (r *actionRegistry) update(handle *actionHandle, event ActionEventDTO, term
 	}
 }
 func (r *actionRegistry) removeLocked(handle *actionHandle) {
+	if !handle.closing && handle.observationDone != nil {
+		close(handle.observationDone)
+	}
 	// Keep closing handles discoverable by concurrent stop calls until fenced.
 	handle.closing = true
 	for _, timer := range []actionTimer{handle.attachTimer, handle.lifetimeTimer, handle.terminalTimer} {
@@ -198,10 +212,15 @@ func (r *actionRegistry) finishRemoval(handle *actionHandle) {
 	handle.delivery.Lock()
 	defer handle.delivery.Unlock()
 	r.mu.Lock()
+	removed := false
 	if r.entries[handle.id] == handle {
 		delete(r.entries, handle.id)
+		removed = true
 	}
 	r.mu.Unlock()
+	if removed && handle.observer != nil && !handle.snapshot.Terminal {
+		handle.observer(actionObservationLost(handle))
+	}
 }
 func (r *actionRegistry) expireUnattached(handle *actionHandle) {
 	r.mu.Lock()
@@ -224,6 +243,15 @@ func (r *actionRegistry) expire(handle *actionHandle, timeout bool) {
 	}
 	attached, emit := handle.attached, r.emit
 	r.removeLocked(handle)
+	if handle.observer != nil && timeout {
+		snapshot := actionObservationLost(handle)
+		handle.snapshot = snapshot
+		delete(r.entries, handle.id)
+		r.mu.Unlock()
+		handle.cancel()
+		handle.observer(snapshot)
+		return
+	}
 	if timeout && attached && emit != nil {
 		snapshot := ActionSnapshot{Sequence: handle.snapshot.Sequence + 1, Terminal: true, Event: ActionEventDTO{Type: "error", Error: apperror.ForResource(context.DeadlineExceeded, handle.request.ID())}}
 		handle.snapshot = snapshot
@@ -241,6 +269,33 @@ func (r *actionRegistry) expire(handle *actionHandle, timeout bool) {
 	delete(r.entries, handle.id)
 	r.mu.Unlock()
 	handle.cancel()
+}
+
+func actionObservationLost(handle *actionHandle) ActionSnapshot {
+	return ActionSnapshot{Sequence: handle.snapshot.Sequence + 1, Terminal: true, Event: actionObservationLostEvent(handle.request.ID())}
+}
+
+func actionObservationLostEvent(requestID string) ActionEventDTO {
+	err := apperror.ForResource(context.Canceled, requestID)
+	err.Code = "ACTIVITY_OBSERVATION_LOST"
+	err.Detail = "The host can no longer observe the action outcome."
+	return ActionEventDTO{Type: "error", Error: err}
+}
+
+func (r *actionRegistry) requestCancellation(id string) error {
+	r.mu.Lock()
+	handle := r.entries[id]
+	if handle == nil || handle.closing {
+		r.mu.Unlock()
+		return unavailableAction()
+	}
+	cancel := handle.cancel
+	terminal := handle.snapshot.Terminal
+	r.mu.Unlock()
+	if !terminal {
+		cancel()
+	}
+	return nil
 }
 func (r *actionRegistry) startPlugin(provider string) {
 	r.mu.Lock()

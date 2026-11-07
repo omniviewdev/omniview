@@ -1,0 +1,256 @@
+{
+  "auditBaseline": "1c44975c14403470fac48f2dcd48e5ded2cba9a2",
+  "codeRevisions": {
+    "host": "087a17fc",
+    "kubernetes": "e13d8d6",
+    "baseUi": "c9f94e6",
+    "sdk": "fe479313e4aa0be678e995d11e449af1f5baa26f"
+  },
+  "liveEquivalentRevisions": {
+    "host": "43d7ff9e",
+    "kubernetes": "4383a86",
+    "baseUi": "9d167c7"
+  },
+  "checks": {
+    "baseUi": {
+      "testFiles": 161,
+      "passed": 1833,
+      "nativeSourceAndTestTypes": true,
+      "lintWarnings": 0,
+      "formatting": true
+    },
+    "runtime": {
+      "testFiles": 41,
+      "passed": 464,
+      "actualGoTransportCorpus": true
+    },
+    "host": {
+      "testFiles": 119,
+      "passed": 1518,
+      "skipped": 3,
+      "typecheck": true,
+      "lintErrors": 0,
+      "existingWarnings": 10
+    },
+    "kubernetes": {
+      "testFiles": 201,
+      "passed": 1741,
+      "skipped": 3,
+      "typecheck": true,
+      "productionBuild": true,
+      "runtimeImportSmoke": true,
+      "lintErrors": 0
+    },
+    "grafanaGoProvider": {
+      "packages": 1,
+      "passed": true
+    }
+  },
+  "live": {
+    "ide": "http://127.0.0.1:34836/",
+    "storybook": "http://127.0.0.1:23680/",
+    "grafanaTable": {
+      "rows": 20,
+      "cells": [
+        {
+          "value": "2.55m",
+          "trackWidth": 24,
+          "trackHeight": 4,
+          "font": "12px",
+          "neutralColor": "rgb(230, 231, 234)",
+          "trackChildren": 1
+        },
+        {
+          "value": "45.79MiB",
+          "trackWidth": 24,
+          "trackHeight": 4,
+          "font": "12px",
+          "neutralColor": "rgb(230, 231, 234)",
+          "trackChildren": 1
+        },
+        {
+          "value": "2.71m",
+          "trackWidth": 24,
+          "trackHeight": 4,
+          "font": "12px",
+          "neutralColor": "rgb(230, 231, 234)",
+          "trackChildren": 1
+        },
+        {
+          "value": "41.86MiB",
+          "trackWidth": 24,
+          "trackHeight": 4,
+          "font": "12px",
+          "neutralColor": "rgb(230, 231, 234)",
+          "trackChildren": 1
+        }
+      ]
+    },
+    "nativeNodeInventory": [
+      "omniview-load-lab-control-plane\nDebian GNU/Linux 12 (bookworm)\nv1.35.0\nReady\n5d",
+      "omniview-load-lab-worker\nDebian GNU/Linux 12 (bookworm)\nv1.35.0\nReady\n5d",
+      "omniview-load-lab-worker2\nDebian GNU/Linux 12 (bookworm)\nv1.35.0\nReady\n5d",
+      "omniview-load-lab-worker3\nDebian GNU/Linux 12 (bookworm)\nv1.35.0\nReady\n5d"
+    ],
+    "nativePanels": {
+      "source": "kind-omniview-load-lab · Native",
+      "hasProviderIcon": true,
+      "cards": [
+        "CPU usage\n167.18\nm\nDetails",
+        "Memory working set\n1.41\nGiB\nDetails"
+      ],
+      "historyCharts": 0
+    },
+    "nativePodTable": {
+      "url": "http://127.0.0.1:34836/#/_plugin/kubernetes/cluster/kind-omniview-load-lab/resources/k8s%3A%2Fpods",
+      "search": "Search Pod...",
+      "mountedRows": 30,
+      "metricCells": 60,
+      "values": [
+        "0.02m",
+        "328KiB",
+        "0.03m",
+        "332KiB"
+      ],
+      "totalResourcesLabel": "Search 316 Pod..."
+    },
+    "manualRefresh": {
+      "charts": 3,
+      "retained": true,
+      "frames": 20,
+      "minCount": 3,
+      "heightRange": [
+        162,
+        162
+      ],
+      "yRange": [
+        297,
+        297
+      ]
+    },
+    "uncachedRangeChange": {
+      "label": "Last 1 hour",
+      "charts": 3,
+      "retained": true,
+      "frames": 270,
+      "minCount": 3,
+      "heightRange": [
+        162,
+        162
+      ],
+      "yRange": [
+        297,
+        297
+      ]
+    },
+    "podSwitch": {
+      "identity": "clusterkind-kindnamespacemetrics-workloadspodmetrics-io-759c5874bf-sqbt7",
+      "time": "Last 1 hour",
+      "cpuArea": "true",
+      "cpuDetails": true,
+      "grid": "repeat(auto-fit, minmax(280px, 1fr))"
+    },
+    "reload": {
+      "time": "Last 1 hour",
+      "cpuArea": "true",
+      "cpuDetails": true,
+      "grid": "repeat(auto-fit, minmax(280px, 1fr))"
+    },
+    "hostRestart": {
+      "revision": 57,
+      "layout": "grid",
+      "durationMs": 3600000,
+      "cpuDisplay": "area",
+      "cpuDetails": true,
+      "icons": [
+        {
+          "pluginID": "grafana",
+          "icon": "SiGrafana"
+        },
+        {
+          "pluginID": "kubernetes",
+          "icon": "SiKubernetes"
+        }
+      ]
+    },
+    "sourceSelection": {
+      "nativeSelected": true,
+      "nativeIcon": true,
+      "nativeSelectionRemovedHistory": true,
+      "exactExternalDatasourceRestored": true
+    },
+    "optionalDateField": {
+      "empty": null,
+      "partial": "true",
+      "cleared": null,
+      "failingBefore": true,
+      "passingAfter": true
+    },
+    "finalSurface": {
+      "source": "Kind monitoring · Prometheus",
+      "sourceIcons": 2,
+      "time": "Last 1 hour",
+      "timeIconGap": "8px",
+      "grid": "repeat(auto-fit, minmax(280px, 1fr))",
+      "diagnosticsInitiallyClosed": true,
+      "identityChips": "clusterkind-kindnamespacekube-systempodkube-apiserver-kind-control-plane",
+      "memoryAxis": [
+        {
+          "text": "572.2 MiB",
+          "height": 13,
+          "whiteSpace": "nowrap"
+        },
+        {
+          "text": "381.47 MiB",
+          "height": 13,
+          "whiteSpace": "nowrap"
+        },
+        {
+          "text": "190.73 MiB",
+          "height": 13,
+          "whiteSpace": "nowrap"
+        },
+        {
+          "text": "0 B",
+          "height": 13,
+          "whiteSpace": "nowrap"
+        }
+      ]
+    },
+    "sharedMetricChips": [
+      {
+        "label": "Remove CPU usage",
+        "height": 28,
+        "font": "13px",
+        "size": "lg"
+      },
+      {
+        "label": "Remove Memory working set",
+        "height": 28,
+        "font": "13px",
+        "size": "lg"
+      },
+      {
+        "label": "Remove Network receive",
+        "height": 28,
+        "font": "13px",
+        "size": "lg"
+      },
+      {
+        "label": "Remove Container restarts",
+        "height": 28,
+        "font": "13px",
+        "size": "lg"
+      }
+    ],
+    "removedConsumerChromeOverrides": true
+  },
+  "limits": [
+    "Native Node metrics are current-only; no polling history is fabricated.",
+    "Grafana current results without source timestamps display unknown timing, not receipt time.",
+    "Earlier upstream request-count evidence is not a new throughput measurement for this visual repair.",
+    "Existing host/plugin lint warnings remain outside the repaired consumers; base-ui lint is clean.",
+    "Local reviewed SDK source mode is explicitly not a sandbox."
+  ],
+  "shippingGate": "User audit approval, then normal base-ui patch and compatible SDK/host-runtime publication before updating the Kubernetes minimum/lockfile. No merges, releases, or CI workflow changes."
+}

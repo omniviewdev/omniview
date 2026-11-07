@@ -52,6 +52,20 @@ manifest ranges before installation, naming both consumer and linked manifests.
 Overlapping ranges are not proof that a selected lockfile resolves compatible
 versions. Complex ranges and policy-adjusted peers remain the native resolver's
 decision; a clean planning result does not replace strict installation.
+When a peer itself comes from selected linked source, planning compares that
+package's actual manifest version with the linked consumer's peer range. It names
+the consumer, peer requester, and selected provider manifests. A stale dependency
+range does not replace the selected provider's version. Generated `workspace:*`
+overrides do not suppress this check; unrelated policy overrides still defer to
+native resolution.
+
+Commit pins must already exist in the registered source repository. A
+`local_ref_missing` error names the repository and pinned object without printing
+Git stderr or remote URLs. Explicitly fetch the branch containing that object in
+the registered source repository, then repeat the selection. The CLI never fetches
+an unknown pin automatically; explicit remote-tracking branch selection retains
+its existing fetch behavior.
+
 
 Go source preflight also checks direct SDK imports against non-test package source
 in the selected SDK worktree before installation. It scans platform/tag variants
@@ -64,6 +78,41 @@ refuses to replace it and reports its launch phase and recovery command, includi
 the absolute manifest target. Use the reported command: failed builds normally need
 `workspace refresh`, not another `workspace up`. A retained supervisor is not
 evidence that the application is ready.
+
+`workspace recover` does not require a failed supervisor to be stopped first.
+For materialized workspaces, recovery validates retained intent and proof before
+authenticated shutdown.
+Completed manifests must still match their owned lifecycle journal before any
+shutdown. Interrupted creates whose journal exists before `workspace.json` is
+published can resume materialization through `workspace recover`.
+An interrupted materialization is resumed only after the owned supervisor exits.
+Initial launch recovery can reuse the genuine protocol evidence saved in
+`launch.json`, even if linking failed before accepting a link journal. Missing
+proof still requires explicit `--link-evidence FILE`; recovery never invents proof.
+If a refreshed launch fails after dependency preparation has already completed,
+recovery resumes its retained `start` or `verify` boundary instead of reinstalling
+the captured cohort. Each launch generation is minted and recorded in the private
+refresh intent before its supervisor is spawned. A UUID or environment selection
+alone grants no launch authority. The controller captures its actual child before
+reaping can permit PID reuse and issues a private, one-shot native launch handoff.
+Only that exact process identity can claim it, before publishing supervisor state.
+Recovery requires the claimed handoff to match the selected process and fences
+shutdown by both generation and native identity. Different successors and direct
+`supervise` replays are refused, including reuse of a known generation.
+
+Potential attempts remain recorded across interruptions before ownership publication;
+recovery never infers authority from whichever supervisor happens to be latest.
+Malformed, zero, noncanonical or duplicate persisted generation identities are
+rejected, never normalized into authority. Older retained intents without native handoff
+proof cannot adopt or stop a live owner automatically. Inspect ownership before
+an explicit transition. These private metadata and native invocation checks are
+not a sandbox against a same-user actor who can rewrite metadata or executables.
+
+`workspace restart` also starts a stopped or exited workspace using its saved
+launch settings. Missing or exited supervisors are not errors by themselves.
+Live ownership conflicts and generation changes remain refusals. On Darwin,
+authenticated shutdown still waits for the exact supervisor's kernel exit before
+starting a successor.
 
 The target application must have been built with `devcontrol` enabled and launched
 against the workspace. Release builds do not advertise a control endpoint.
@@ -81,6 +130,10 @@ name lookup searches ancestors of the current directory for the A03 source
 registry, then uses its workspace identity/journal lookup. Use `./name` to select
 an unambiguously relative directory instead of a registry name. Unknown or
 ambiguous names fail rather than guessing.
+`instance inspect [WORKSPACE]` accepts the same workspace selector positionally.
+The positional selector and `--workspace` must agree when both are supplied;
+plugin and operation positional IDs remain resource IDs, not workspace selectors.
+
 
 From a host Git checkout, `workspace collections --json` lists reachable, validated
 collections associated with that repository's registered Git worktrees. It does
@@ -88,6 +141,8 @@ not scan sibling directories, create a global index, select a profile, or fetch
 refs. Invalid, redirected, and unavailable collections are omitted; an orphaned
 collection without a registered host worktree still needs explicit `--root`.
 Choose a returned root explicitly with `workspace list --root COLLECTION`.
+Listing skips directories without a `workspace.json`; existing malformed or
+unreadable manifests still cause an error.
 
 The client reads the private per-workspace discovery record and token reference,
 verifies the process start identity, then authenticates `instance.inspect` against
@@ -150,8 +205,27 @@ metadata from existing worktrees.
 "$DEV" workspace reset-modules feature [--json]
 ```
 
-`edit` persists selection/ref/name/port edits. `--apply` also refreshes the workspace:
-stop owned services, relink dependencies, rebuild, restart, and verify readiness.
+`edit` persists selection/ref/name/port edits.
+
+Linked rename validates aggregate files, producer outputs, and generated metadata
+before recording intent. It tears down old-root links under the lifecycle and
+stopped-profile guards, then applies strict root admission before moving anything.
+Only exact validated owned paths receive temporary admission; changed bytes,
+foreign neighbors, redirected paths, and unfinished producers remain refusals.
+Interrupted teardown resumes at the old root; interrupted move resumes from its
+persisted lifecycle journal. Link journals containing absolute roots never move.
+Validated nonsecret saved launch options, including protocol evidence, survive rename.
+The lifecycle journal carries that configuration across generated-output cleanup;
+the new root republishes it through the generated ownership ledger. Interrupted
+publication resumes without adopting foreign files.
+Exact launch publication bytes are journaled before publication, so recovery can
+finish ledger recording after interruption without accepting different bytes.
+Validated baseline seed markers and intents also survive rename. Restart retains
+the original seed receipt and disclosure instead of snapshotting the source again.
+Build outputs and secrets do not move, and workspaces without saved launch options
+still require explicit launch setup.
+Use explicit `edit --apply` to rebuild and relink at the new root.
+With `--apply`, stop owned services, relink dependencies, rebuild, restart, and verify readiness.
 Canonical edit intent is validated before `--apply` stops a healthy supervisor;
 the mutation repeats that planning under its lifecycle lock.
 `refresh` uses the current worktree contents without advancing Git refs. `update`
@@ -199,7 +273,7 @@ record by hand to force cleanup.
 
 `workspace reset-modules` is the explicit recovery. It requires a stopped
 workspace (the same lifecycle lock and stopped-profile guard as `link`; a running
-supervisor or live consumer is refused) whose dependency link is complete. It
+supervisor or live consumer is refused). For a complete dependency link, it
 deletes every journal-owned `node_modules` tree, the TypeScript and Vite loader
 caches inside it, the external Vite optimizer cache, and any `node_modules` at the
 composition root or a selected package root, including trees left by an
@@ -216,8 +290,123 @@ When an `unlink` or `remove` was interrupted by such a refusal (link phase
 records, without reinstalling into the partially restored overlay, and reports
 `reinstalled: false`. Every other output and its pending restoration stay for the
 rerun `workspace unlink` or `workspace remove`, which then completes. Other
-incomplete link phases are still refused. Use the managed launcher for package
-commands to retain pre-run dependency verification.
+incomplete phases are refused except `applying`: explicit reset also deletes
+selected dependency trees in that phase without running an installer. Then rerun
+the original `workspace up` or `workspace link` command with the same exact
+workspace and protocol evidence. For first launch after an unmanaged frozen
+install, follow the diagnostic's ordered `nextCommands`: inspect ownership,
+stop, reset modules, preserve/reconcile any separately reported producer outputs,
+then restart with saved launch settings and protocol evidence. A package
+postinstall can create an ignored producer output before managed ownership exists;
+module reset deliberately leaves that output untouched. Reconciliation preserves
+it externally before restoring the committed baseline. If retained refresh intent
+exists, the diagnostic ends with `workspace recover` instead of restart.
+For an `unlinking` journal, the diagnostic instead ends with `workspace unlink`
+after reset, even when launch settings exist: teardown must finish before any
+new launch. It also supplies this teardown action without saved launch settings.
+Preserve any wanted dependency bytes externally first.
+Use the managed launcher for package commands to retain pre-run verification.
+
+### Read-only ownership inspection and standalone reentry
+
+```sh
+"$DEV" workspace ownership feature --root "$COLLECTION" --json
+"$DEV" workspace preflight feature --root "$COLLECTION" --ownership --json
+```
+
+`ownership` checks every selected composition module root (including the aggregate
+store), staged producer boundary, and recorded cache. It enumerates all conflicts
+without installing, starting processes, creating metadata/locks, or changing
+receipts. Results are point-in-time observations, not reusable launch authority;
+each real writer repeats its admission checks. Active or interrupted writers and
+pending restoration are not reported ready.
+Changed file/link/special-file root kinds are reported per boundary without
+discarding other selected conflicts. Genuine I/O failures and cancellation remain
+errors, not ownership drift. Regular-file payloads are opened without following
+links, with nonblocking opens where supported; opened type and identity are
+checked before hashing. Dependency links remain opaque link observations.
+On Windows, metadata and identity come together from the initial metadata-only
+handle; a preceding pathname-only observation is never upgraded into identity
+proof. Later payload opens must still match that original handle's identity.
+
+Ordinary `preflight` remains lightweight and reports `ownershipChecked: false`.
+The explicit `--ownership` option performs the recursive ownership scan and
+includes its report. Neither form certifies source trust, runtime readiness, or
+the absence of a mutation after inspection.
+
+Conflicts name the producer, consumer, absolute target, ownership state, phase,
+bounded differing paths and file kinds. Publication conflicts also identify the
+stage and backup. Typed ownership details survive supervised build/status
+transport; arbitrary compiler output stays redacted. `inspect` and `paths` expose
+separate `metadata` locations for workspace ownership, links, producer receipts,
+launch status and profile state. A reserved profile path need not exist.
+
+For standalone-to-managed reentry, inspect once before linking. Preserve **every**
+reported unowned module root externally while stopped. No command silently adopts
+those bytes, and `reset-modules` is not a nondestructive preservation operation.
+An interrupted `applying` link can use the stopped, explicit selected-module
+reset above before retrying the original launch.
+Replay accepts only the same validated journal's exact original or applied bytes;
+already-applied aggregate files from a failed install need not be removed.
+Changed or unverified aggregate files still require preservation and explicit link
+recovery; reset never adopts those bytes. Retain source/profile data and resolve
+separately reported conflicts.
+
+### Managed bindings and explicit producer reconciliation
+
+```sh
+"$DEV" workspace down feature --root "$COLLECTION"
+"$DEV" workspace bindings feature --root "$COLLECTION" --json
+```
+
+Use `workspace bindings` in an already-linked managed workspace instead of
+running standalone output generation there. It invokes the canonical `task
+bindings` through the existing staged graph producer, holding stopped-process,
+worktree and profile guards. It verifies the selected effective SDK before and
+after generation, retains the saved browser/native build context (browser for a
+never-launched workspace), and publishes only validated output. Standalone
+checkouts still use `task bindings`; raw Wails generation is not supported.
+
+If a standalone producer changed a journal-owned output, or a package postinstall
+created an unowned output, preserve that exact boundary before restoring its
+current committed baseline:
+
+```sh
+mkdir -m 700 "$PRESERVATION_DIRECTORY"
+"$DEV" workspace reconcile-output feature --root "$COLLECTION" \
+  --producer bindings --consumer "$HOST_DIRECTORY" \
+  --preserve-at "$PRESERVATION_DIRECTORY/bindings" --json
+"$DEV" workspace bindings feature --root "$COLLECTION" --json
+```
+
+The preservation directory must already be private and outside both the
+collection and profile. The exact destination must not exist. Source and
+destination parent directory handles are pinned to their recorded identities;
+the no-replace rename is handle-relative, with no pathname fallback. This
+preserves the entire output, including unknown bytes and directory identity;
+cross-filesystem moves are refused rather than copied/deleted. A changed parent
+namespace cannot redirect the move and causes refusal before further inspection.
+Reconciliation never adopts or deletes the preserved tree, changes unrelated
+outputs, or resets source/profile data. It restores only this producer's current
+committed baseline through the existing publication state machine. Interrupted
+reconciliation retains an intent: rerun the same command with the exact original
+preservation path. Source, parent or preserved-byte changes cause refusal.
+Recovery commands reuse that retained path without creating another directory.
+For new preservation, guidance chooses a sibling of the collection after checking
+that its parent and the producer share a filesystem. If that layout crosses
+filesystems, choose a private external path on the producer filesystem explicitly;
+guidance does not emit a restart that skips the blocked preservation.
+Retained refresh operations resume with `workspace recover`, not `restart`, so
+the original intent records and fences the successor generation.
+Supported exact producers are `bindings`, `distribution`, `shims`, and
+`yaml-worker`. For an unowned output, this explicit command authorizes preservation
+only; it never admits existing bytes as managed producer output.
+
+For standalone verification, place compiler build-info outside managed module
+trees (for example, `tsc --noEmit --incremental false` when the project supports
+it). Tools that write managed caches must use their existing managed writer
+lifetime; arbitrary test/build commands do not gain cache ownership.
+
 
 Managed Vite loaders use an owned, precreated `node_modules/.vite-temp` directory,
 so their interrupted writer is part of the explicit dependency reset. Fresh
@@ -225,18 +414,114 @@ workspaces no longer register a separate root timestamp-file writer. Root-level
 timestamp artifacts remain unmanaged and are never adopted or deleted by this
 reset. A proofless live root-loader entry from an older journal remains a safe
 refusal; a writer token alone cannot prove that its producer stopped.
+New cache roots are created exclusively through pinned parent handles with private
+protection established at creation: owner-only mode on Unix, and the current user
+SID plus a protected owner-only DACL on Windows. Existing directories are never
+adopted or permission-repaired by this creation path. Windows POSIX-style mode
+bits are not an ACL/ownership proof; preservation directories likewise require
+actual private ownership and access protection, not merely `chmod`/mode settings.
 
 Refresh commands reuse saved launch settings and protocol evidence. Supply launch
 flags for a workspace that has never launched, or override saved settings
 explicitly. `workspace evidence` inspects reusable protocol proof;
 `--link-evidence FILE` applies supplied proof through the normal link operation.
 Refresh revalidates link state rather than treating old link freshness as current.
+
+`workspace restart` accepts no launch overrides: it reuses saved launch settings
+and protocol evidence. Use `workspace refresh` to change launch settings.
+Flag errors identify registered offending names and the exact subcommand help
+command, but never echo values or arbitrary unknown names.
+
+Plain `workspace edit` requires a stopped supervisor. Its refusal includes an
+exact absolute-manifest `omniview-dev workspace down --workspace MANIFEST`
+command. `edit --apply` manages stopping and refresh with retained prerequisites.
+
+A `link_conflict` identifies the dependency path and link phase. When completed
+links retain valid protocol proof and saved launch settings, the diagnostic offers
+the exact workspace refresh command. Refresh may stop and restart the workspace
+and still refuses overlapping edits it cannot preserve safely. Missing
+prerequisites or incomplete links instead point to the applicable command help;
+do not edit receipts or assume that `up` will adopt changed dependency files.
+
+### Protocol evidence
+
+Every `--link-evidence FILE` argument is a report file path, not inline JSON.
+`workspace evidence` without that flag only inspects saved proof. A fresh workspace
+returns structured `evidence_missing` with `state: absent`, without creating a
+link journal. Supplying the flag invokes the normal link operation; it is not a
+proof-only save.
+
+From the selected host source checkout, run the actual pinned composition probe:
+
+```sh
+GOWORK=off A11_PROTOCOL_PROBE=1 A11_PROTOCOL_REPORT=/absolute/path/link-protocol.json \
+  go test ./internal/devworkspace -run '^TestLinkPinnedProtocolProbe$' -count=1
+```
+
+The probe uses disposable repositories, the native pinned pnpm executable, and
+registry access. It writes the report only after live distribution replacement,
+recursive peer checks, and runtime checks pass. The current report schema contains
+`protocol`, `versions`, `atomicDist`, `peers`, and `runtime`; the selected pin is
+validated exactly. Do not construct acceptance booleans manually or reuse a report
+for a different protocol or pnpm version.
+
+Use the emitted file with `workspace preflight --workspace MANIFEST
+--link-evidence FILE`, then `workspace up --workspace MANIFEST --link-evidence
+FILE` after resolving reported source prerequisites. Inspection of saved proof is
+not certification that installed dependency bytes remain unchanged.
+
+When launch, `preflight`, or `create --start` refuses with `sdk_source_required`,
+the CLI reads each selected repository's committed `go.mod` (no network, no checkout
+needed) and reports the declared `plugin-sdk` requirement in `details.requirements`
+(`repository`, `version`, `ref`, `kind`). `ref` is the tag, or the commit embedded in
+a pseudo-version. `details.nextCommand` is the exact command, for example
+`workspace edit --workspace MANIFEST --add-repo plugin-sdk --ref plugin-sdk=v0.16.0`
+(for `create --start` it names the `--repo`/`--ref` flags to add). The host's
+requirement is preferred; `details.mixed` is true when consumers disagree. The SDK is
+never added automatically, the exit code stays 2, and the code and details survive
+the supervisor status boundary.
+
+For first launch, use plain `workspace edit` to select prerequisite repositories,
+then `workspace preflight`, then `workspace up --link-evidence FILE`. The
+[protocol acceptance gate](development-package-linking.md#protocol-acceptance-gate)
+documents how to generate genuine probe evidence. `edit --apply` requires accepted
+protocol evidence and valid saved launch settings before stopping a supervisor or
+changing selection. A bootstrap refusal leaves the manifest unchanged.
+
+If an edit persists but its subsequent refresh fails, the error reports
+`editApplied: true`, manifest identity, completed/pending phases, selected workspace,
+and an exact `nextCommand` in its JSON details. Human output also names the
+persisted edit and recovery command. Do not repeat the edit to hide an apply failure.
+Partial-result identity comes from the persisted edit, including a changed slug
+and manifest directory, rather than from the command's original target.
+
+Retained refresh intent is immutable. An override mismatch names safe field paths,
+captured operation and phase, and the exact command to resume saved intent without
+overrides. Seed paths and protocol payload values are not included in that diff.
+Complete the captured operation before requesting a different cohort.
+Mismatch and partial-apply recovery commands use the shell-quoted invoking
+executable, so source CLI workflows do not depend on a matching binary in PATH.
+
+Successful stopped refresh/recovery remains stopped and not ready. It clears
+current failure, wait-stage and recovery hints while retaining prior diagnostics
+as `historicalError` and `historicalFailedStage`. Those fields describe history,
+not an instruction to recover again.
+
 Workspace commands print human diagnostics by default; `--json` returns structured
 errors and results. Control API commands retain their JSON response envelopes.
 
 `workspace inspect` reports independent process, build, dependency, served-source,
-readiness, HMR, and source-reload observations. Current checkout commit, branch,
-dirty state, and source digest remain distinct from the last served checkout.
+readiness, HMR, and source-reload observations. Instance repository
+`configuredRef` and `baseCommit` describe immutable workspace configuration.
+Workspace `checkouts` samples the current commit, branch, dirty state, and source
+digest. `readyCheckouts` samples those same fields after the last successful
+readiness transition; a failed rebuild does not replace that observation.
+`health.checkoutSinceReady` reports `unchanged`, `changed`, or `unknown`. Neither
+checkout observation proves compiler inputs or the source served by a process.
+`health.servedSource` remains `unknown` without artifact-to-source attestation.
+The footer reports host readiness independently of served provenance. It shows
+checkout changes since readiness and served-source evidence separately; a ready
+host does not attest which source produced its artifacts.
 Failures name the failed stage and a recovery command. An HMR connection alone
 does not prove that an edited source module was served or executed.
 
@@ -248,7 +533,12 @@ To verify an actual source edit, add a unique marker to the module, then run:
 ```
 
 The command authenticates the owned host and fetches the marker from its exact
-Vite endpoint. Evidence proves the edited source was served, not browser execution.
+owned Vite endpoint. An authenticated browser host can provide this capability
+at `backend-ready`; native application readiness is a separate requirement.
+Evidence includes the SHA-256 `responseDigest` of the complete transformed module
+response. It proves marker delivery, not browser execution, a served repository
+revision, or a checkout-to-artifact binding. The included `checkouts` are separate
+filesystem observations, not provenance for the response bytes.
 
 For control API commands, flags may appear before or after the single positional
 ID/path, following the command group and action. `--id ID` can replace positional

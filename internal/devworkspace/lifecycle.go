@@ -224,7 +224,38 @@ func (m *Manager) apply(ctx context.Context, root string, j *journal) error {
 		if err != nil {
 			return err
 		}
+		if j.RenameLaunch == nil {
+			if err = validateRenameGenerated(w); err != nil {
+				return err
+			}
+			launch, loadErr := LoadLaunchOptions(w)
+			if loadErr != nil && !os.IsNotExist(loadErr) {
+				return loadErr
+			}
+			if loadErr == nil {
+				if err = launch.validate(); err != nil {
+					return err
+				}
+				j.RenameLaunch = &launch
+				j.RenameFiles = make(map[string][]byte)
+				for _, name := range []string{"baseline-seeded.json", "baseline-intent.json"} {
+					data, readErr := os.ReadFile(launchPath(w, name))
+					if readErr != nil && !os.IsNotExist(readErr) {
+						return readErr
+					}
+					if readErr == nil {
+						j.RenameFiles[name] = data
+					}
+				}
+				if err = saveJournal(root, j); err != nil {
+					return err
+				}
+			}
+		}
 		if _, err = prepareNativeSnapshot(w); err != nil {
+			return err
+		}
+		if err = teardownRenameLinks(ctx, w); err != nil {
 			return err
 		}
 		if err = RestoreRepositoryOutputs(ctx, w); err != nil {
@@ -434,16 +465,16 @@ func (m *Manager) validateEdit(ctx context.Context, root string, j *journal, w W
 	rename := desired.Slug != j.Manifest.Slug
 	destination := ""
 	if rename {
-		if err := preflightWorkspaceFiles(root, j, true); err != nil {
+		owned, err := renameOwnedRootPaths(ctx, w)
+		if err != nil {
 			return "", err
 		}
-		if err := ValidateGenerated(ctx, w); err != nil {
+		if err := preflightWorkspaceFilesOwned(root, j, true, owned); err != nil {
 			return "", err
 		}
-		if err := ValidateRepositoryOutputs(ctx, w); err != nil {
+		if err := validateRenameGenerated(w); err != nil {
 			return "", err
 		}
-		var err error
 		destination, err = m.renameDestination(desired.Slug)
 		if err != nil {
 			return "", err
@@ -669,10 +700,37 @@ func (m *Manager) finishRename(ctx context.Context, root string, j *journal) err
 	for i := range j.Resources {
 		j.Resources[i].Path = filepath.Join(target, j.Resources[i].Repository.Directory)
 	}
-	j.Root, j.RenameTo, j.Phase = target, "", "complete"
+	if j.RenameLaunch != nil {
+		if err := j.RenameLaunch.validate(); err != nil {
+			return err
+		}
+	}
 	if err := writeManifest(target, j.Manifest); err != nil {
 		return err
 	}
+	if j.RenameLaunch != nil {
+		data, err := json.Marshal(j.RenameLaunch)
+		if err != nil {
+			return err
+		}
+		if j.RenameFiles == nil {
+			j.RenameFiles = make(map[string][]byte)
+		}
+		j.RenameFiles["launch.json"] = append(data, '\n')
+		j.Root = target
+		// Persist exact publication bytes before the owned writer can publish.
+		if err = saveJournal(target, j); err != nil {
+			return err
+		}
+		for _, name := range []string{"launch.json", "baseline-intent.json", "baseline-seeded.json"} {
+			if data, ok := j.RenameFiles[name]; ok {
+				if err = restoreRenameFile(target, name, data, nil); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	j.Root, j.RenameTo, j.Phase, j.RenameLaunch, j.RenameFiles = target, "", "complete", nil, nil
 	return saveJournal(target, j)
 }
 
@@ -887,10 +945,19 @@ func preflightFiles(root string, j *journal) error {
 }
 
 func preflightWorkspaceFiles(root string, j *journal, generatedValidatorPresent bool) error {
+	return preflightWorkspaceFilesOwned(root, j, generatedValidatorPresent, nil)
+}
+
+func preflightWorkspaceFilesOwned(root string, j *journal, generatedValidatorPresent bool, owned []string) error {
 	if err := recoverOwnedStaging(root, j); err != nil {
 		return err
 	}
 	allowed := map[string]bool{"workspace.json": true, ".local": true}
+	for _, path := range owned {
+		if filepath.Dir(path) == root {
+			allowed[filepath.Base(path)] = true
+		}
+	}
 	for _, r := range j.Resources {
 		allowed[r.Repository.Directory] = true
 	}

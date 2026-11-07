@@ -1,6 +1,7 @@
 import React, { useContext } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 import type { FallbackProps } from 'react-error-boundary';
+import { useRouteError } from 'react-router';
 import { Text } from '@omniviewdev/base-ui';
 import { PluginServiceContext } from '../react/context';
 import styles from './PluginSurfaceBoundary.module.css';
@@ -163,35 +164,7 @@ export function PluginSurfaceBoundary({
   fallback: FallbackComponent = DefaultPluginFallback,
   resetKeys,
 }: PluginSurfaceBoundaryProps): React.ReactElement {
-  const service = useContext(PluginServiceContext);
-
-  const handleError = React.useCallback(
-    (caught: unknown, info: React.ErrorInfo) => {
-      const error = caught instanceof Error ? caught : new Error(String(caught));
-      logPluginBoundaryError({
-        pluginId,
-        boundary,
-        resourceKey,
-        message: error.message,
-        stack: error.stack ?? '',
-        componentStack: info.componentStack ?? '',
-      });
-      // F3: Record crash (no quarantine check — quarantine only applies to
-      // extension contributions rendered via ExtensionPointRenderer)
-      service?.recordBoundaryCrash({
-        contributionId: `${pluginId}/${boundary}${resourceKey ? `/${resourceKey}` : ''}`,
-        pluginId,
-        extensionPointId: '',
-        boundary,
-        resourceKey,
-        errorMessage: error.message,
-        stack: error.stack,
-        componentStack: info.componentStack ?? undefined,
-        timestamp: Date.now(),
-      });
-    },
-    [pluginId, boundary, resourceKey, service],
-  );
+  const handleError = usePluginBoundaryError(pluginId, boundary, resourceKey);
 
   const renderFallback = React.useCallback(
     ({ error: fallbackError }: FallbackProps) => (
@@ -215,5 +188,49 @@ export function PluginSurfaceBoundary({
     >
       {children}
     </ErrorBoundary>
+  );
+}
+
+/** Adapt router render/loader failures to the same local plugin crash reporting. */
+export function PluginRouteErrorBoundary({ pluginId }: { readonly pluginId: string }): React.ReactElement {
+  const caught = useRouteError();
+  const error = React.useMemo(
+    () => caught instanceof Error ? caught : new Error(String(caught)),
+    [caught],
+  );
+  const reportError = usePluginBoundaryError(pluginId, 'plugin-route');
+  React.useEffect(() => {
+    reportError(error, {});
+  }, [error, reportError]);
+  return <DefaultPluginFallback pluginId={pluginId} boundary="plugin-route" error={error} />;
+}
+
+function usePluginBoundaryError(pluginId: string, boundary: BoundaryKind, resourceKey?: string) {
+  const service = useContext(PluginServiceContext);
+  return React.useCallback(
+    (caught: unknown, info: React.ErrorInfo) => {
+      const error = caught instanceof Error ? caught : new Error(String(caught));
+      logPluginBoundaryError({
+        pluginId,
+        boundary,
+        resourceKey,
+        message: error.message,
+        stack: error.stack ?? '',
+        componentStack: info.componentStack ?? '',
+      });
+      // Quarantine applies only to extension contributions, not whole routes.
+      service?.recordBoundaryCrash({
+        contributionId: `${pluginId}/${boundary}${resourceKey ? `/${resourceKey}` : ''}`,
+        pluginId,
+        extensionPointId: '',
+        boundary,
+        resourceKey,
+        errorMessage: error.message,
+        stack: error.stack,
+        componentStack: info.componentStack ?? undefined,
+        timestamp: Date.now(),
+      });
+    },
+    [pluginId, boundary, resourceKey, service],
   );
 }

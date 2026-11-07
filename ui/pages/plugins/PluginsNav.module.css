@@ -82,10 +82,6 @@
   animation: spin 1s linear infinite;
 }
 
-.MenuPopup {
-  min-width: 200px;
-}
-
 /* ─── Search ─── */
 
 .Search {

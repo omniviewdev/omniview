@@ -371,11 +371,13 @@ func (s *workspaceSupervisor) startHost(ctx context.Context) error {
 			return err
 		}
 		env = append(env, allowed...)
-		pluginTools, err := s.pluginPNPMEnvironment(ctx)
-		if err != nil {
-			return err
+		if !s.options.archiveRuntime() {
+			pluginTools, err := s.pluginPNPMEnvironment(ctx)
+			if err != nil {
+				return err
+			}
+			env = append(env, pluginTools)
 		}
-		env = append(env, pluginTools)
 		if s.options.Mode == "browser" {
 			env = append(env, "WAILS_SERVER_HOST=127.0.0.1", "WAILS_SERVER_PORT="+strconv.Itoa(browser.Port))
 		}
@@ -441,11 +443,12 @@ func (s *workspaceSupervisor) startHost(ctx context.Context) error {
 			if descriptor.Process != child.identity {
 				return devcontract.Fail(4, "stale_target", "ready descriptor is not the exact captured host child")
 			}
-			if s.options.Mode == "browser" && descriptor.Readiness == "backend-ready" {
-				if descriptor.WorkspaceID != target.WorkspaceID || descriptor.InstanceID != target.InstanceID || descriptor.Generation != target.Generation || descriptor.StateRoot != target.StateRoot {
-					return devcontract.Fail(4, "stale_target", "host startup identity differs")
-				}
-			} else if err = hostDescriptorReady(descriptor, target); err != nil {
+			if s.options.Mode == "browser" {
+				err = frontendDescriptorReady(descriptor, target)
+			} else {
+				err = hostDescriptorReady(descriptor, target)
+			}
+			if err != nil {
 				return err
 			}
 			if s.options.Mode == "browser" {
@@ -611,6 +614,9 @@ func (s *workspaceSupervisor) startPlugins(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if s.options.archiveRuntime() {
+		return s.installPluginArchives(ctx, plugins)
+	}
 	client, _, err := ConnectWorkspaceControl(ctx, s.workspace, s.manager.options.Home, s.generation)
 	if err != nil {
 		return err
@@ -633,6 +639,79 @@ func (s *workspaceSupervisor) startPlugins(ctx context.Context) error {
 	s.hostReplacementPending = false
 	s.mu.Unlock()
 	return nil
+}
+
+// installPluginArchives publishes each selected plugin as a canonical archive
+// built from this launch's actual outputs and installs it through the same
+// operation as plugin.install-archive. No source is linked, no Vite server is
+// allocated and no dependency watcher exists in this runtime.
+func (s *workspaceSupervisor) installPluginArchives(ctx context.Context, plugins []devcontract.Plugin) error {
+	if s.graphInstance == nil {
+		return devcontract.Fail(5, "archive_not_ready", "archive runtime has no owned build graph")
+	}
+	client, _, err := ConnectWorkspaceControl(ctx, s.workspace, s.manager.options.Home, s.generation)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	cohort := make(map[string]ArchivePluginStatus, len(plugins))
+	for _, plugin := range plugins {
+		path, receipt, err := s.graphInstance.PublishPluginArchive(ctx, plugin)
+		if err != nil {
+			return fmt.Errorf("archive plugin %s: %w", plugin.ID, err)
+		}
+		response, err := controlMutation(ctx, client, "plugin.install-archive", devcontrol.PathParams{Path: path}, s.options.Timeout)
+		if err != nil {
+			return fmt.Errorf("archive plugin %s install: %w", plugin.ID, err)
+		}
+		if response.Status != "succeeded" {
+			return devcontract.Fail(5, "archive_install_failed", fmt.Sprintf("archive plugin %s install operation ended %q", plugin.ID, response.Status))
+		}
+		receipt.OperationID = response.OperationID
+		if err = s.waitArchivePluginReady(ctx, client, plugin.ID); err != nil {
+			return err
+		}
+		cohort[plugin.ID] = receipt
+	}
+	s.mu.Lock()
+	s.status.ArchivePlugins = cohort
+	s.hostReplacementPending = false
+	s.mu.Unlock()
+	s.persist()
+	return nil
+}
+
+func readArchivePluginInfo(ctx context.Context, client *devcontrol.Client, id string) (sdktypes.PluginInfo, error) {
+	var info sdktypes.PluginInfo
+	response, err := client.Call(ctx, "plugin.get", devcontrol.PluginParams{ID: id})
+	if err != nil {
+		return info, err
+	}
+	err = json.Unmarshal(response.Result, &info)
+	return info, err
+}
+
+func (s *workspaceSupervisor) waitArchivePluginReady(ctx context.Context, client *devcontrol.Client, id string) error {
+	ticker := time.NewTicker(150 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		info, err := readArchivePluginInfo(ctx, client, id)
+		if err != nil {
+			return err
+		}
+		ready, err := archivePluginReady(info)
+		if err != nil {
+			return err
+		}
+		if ready {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("archive plugin %s was not ready (phase %q): %w", id, info.Phase, ctx.Err())
+		case <-ticker.C:
+		}
+	}
 }
 func (s *workspaceSupervisor) pluginState(ctx context.Context, id string) (devcontrol.DevState, error) {
 	client, _, err := ConnectWorkspaceControl(ctx, s.workspace, s.manager.options.Home, s.generation)

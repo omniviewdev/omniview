@@ -26,6 +26,12 @@ result, err := devbaseline.Seed(ctx,
 
 The caller holds its workspace lifecycle operation lock around create/seed/up. **Seed before creating the destination state directory or its `.lock`** and before launching any host. An existing state directory is rejected even when it contains only an empty lock scaffold: replacing that directory would discard the flock inode used by startup. Do not delete an initialized root to make seeding succeed.
 
+Workspace rename retains the validated nonsecret seed intent and completion marker
+alongside saved launch options. Their exact bytes are journaled before restoration
+and recorded through generated ownership. An interrupted restoration accepts only
+those bytes; changed or foreign files remain conflicts. Restart reuses the original
+seed receipt and disclosure, not a fresh source snapshot with a new timestamp.
+
 `Seed` and direct `Import` internally acquire the shared stable profile guard at `<HOME>/.omniview-dev/locks/<workspaceID>.lock` before checking that the destination is absent, and hold it through validation, staging, and atomic publication. Startup acquires the same guard before its state-root flock, so an absent destination cannot be initialized during import. `Seed` acquires it once and invokes the internal locked import path; callers must not pre-acquire this same non-reentrant guard around either public API. The source's stopped-instance root flock remains a separate lock; source/destination overlap is rejected before acquiring profile/source locks.
 
 For a default UUID profile, both public import APIs establish its ownership marker under that guard before publishing state. A direct `ResolveWorkspace` → `Seed`/`Import` caller therefore gets the same startup-valid ownership handoff as the CLI; no separate build-cache initialization is required. Custom profiles retain their separately validated binding and sibling owner marker.
@@ -33,7 +39,7 @@ For a default UUID profile, both public import APIs establish its ownership mark
 Separate APIs are available:
 
 - `Snapshot(ctx, SnapshotOptions) (*Baseline, error)` acquires the same `<source>/.lock` used by the application, then reads bbolt with `ReadOnly: true` and one coherent `View`. A busy source returns `ErrSourceBusy`; the CLI should explain that the source instance must first be stopped. It does not retry a live-source clone.
-- `Import(ctx, *Baseline, ImportOptions) (Result, error)` revalidates profile identity and reapplies the allowlist even for a decoded or modified snapshot. `Result` includes the state root, `baseline.json` path, and inactive inventory.
+- `Import(ctx, *Baseline, ImportOptions) (Result, error)` revalidates profile identity and reapplies the allowlist even for a decoded or modified snapshot. `Result` includes the state root, `baseline.json` path, inactive inventory, authoritative `policy`, `copiedScope`, and `exclusions`.
 - `Seed` validates nonoverlap before acquiring the source lock and combines those operations.
 
 A caller may JSON-encode a `Baseline` for transport. Source root and ancestor identities are SHA-256 fingerprints, not copied source paths. They preserve overlap checks across JSON round trips; they are identifiers, not signatures or artifact trust. Source version is restricted to a bounded version identifier. Inventory provenance is always `unverified-source-inventory`, regardless of source metadata claims.
@@ -56,6 +62,16 @@ The existing host persists numeric `editor.fontWeight` (including its default `1
 ## Unconditional exclusions
 
 No runtime locks, PID/PGID records, `plugin_pids.json`, `devserver_pids.json`, `.devinfo*`, control endpoints/tokens, discovery, logs, caches, temporary files, sessions, terminal instances, native/webview/browser storage, credentials, connections, autoconnect state, or telemetry enablement/auth/export destinations are copied. No executable, plugin directory, source-worktree path, symlink or hardlink is installed. `plugin_state.json` is read only to reconstruct plugin ID/version; enabled flags, development paths, errors and isolation claims are discarded.
+
+The `safe-preferences-and-inactive-inventory-v1` policy deliberately excludes Grafana saved connections and their credentials, including stores that mix public connection details with secrets. It also excludes metric-binding stores such as `metrics/configuration.json`; public bindings are not migrated separately. Reconfigure integrations and bindings explicitly in the destination. Successful seeding does not prove integration readiness.
+
+Accepted workspace launch/status JSON exposes validated import details under `seed`: `policy`, `copiedScope` (`allowlisted-safe-preferences`, `inactive-unverified-plugin-inventory`), and canonical `exclusions`, including `grafana-connections-and-credentials` and `metric-bindings-and-configuration`. Human output and `--seed-from` help explain the same boundary. These policy details contain no source paths, endpoints, credential values, or copied preference values. Resume retains disclosure only after checking the seed receipt digest, current sanitized policy, and readable destination settings. Interrupted import recovery additionally requires the published preferences to match the recorded import intent before publishing its completion marker.
+
+`workspace resume --json` returns the same status and validated seed disclosure as `workspace inspect --json` after stopped-workspace recovery completes. Invalid or missing import evidence omits `seed`; resume does not infer disclosure from saved launch options.
+
+Exclusion labels are explanatory metadata, not an expanded copy policy. Earlier receipts and pending intents remain valid when only those labels differ; resume verifies the original receipt digest without rewriting its bytes, then derives disclosure from the current canonical exclusions.
+
+While the host runs, status retains the authenticated supervisor's validated seed disclosure without reopening the exclusively locked settings database. Stopped workspace status checks the receipt and readable settings again. If an older pending intent imports successfully but stops before marker publication, retry compares sanitized import content independently of exclusion labels and preserves the published receipt bytes and digest.
 
 Source settings bytes remain unchanged, including on corruption. The writable corruption-recovery settings-store `Open` is never used on the source. If the source has no `.lock`, taking the offline lock may create that empty runtime marker; `source.lockMarker` records `created-for-offline-lock` or `existing`. The lock is not copied to the destination. No source files are renamed or recovered.
 

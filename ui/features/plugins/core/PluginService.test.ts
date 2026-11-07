@@ -60,6 +60,15 @@ describe('Group 3: Load Operations', () => {
       expect(s.importer.importCount).toBe(1);
     });
 
+    it('registers the provider preference migration gate', async () => {
+      const module = validModule();
+      const gate = () => null;
+      module.plugin.PreferenceMigrationGate = gate;
+      s.importer.register('A', module);
+      await s.service.load('A');
+      expect(s.service.getSnapshot().registrations.get('A')?.PreferenceMigrationGate).toBe(gate);
+    });
+
     it('loads resource views keyed by opaque native type IDs', async () => {
       s.importer.register('A', validModule({
         sidebars: { 'k8s:/pods': () => null, 'k8s:core/pods': () => null },

@@ -1,0 +1,31 @@
+{
+  "backend": "real metrics-server on Kind omniview-load-lab",
+  "clusterNodes": 4,
+  "clusterPods": 316,
+  "namespace": "load-000",
+  "visiblePods": 30,
+  "metrics": [
+    "CPU usage",
+    "Memory working set"
+  ],
+  "renderedValues": 60,
+  "measurement": "Counter reset, then waited for an actual table sample change via MutationObserver.",
+  "upstream": {
+    "native GET /apis/metrics.k8s.io/v1beta1": {
+      "started": 1,
+      "completed": 1,
+      "failed": 0
+    },
+    "native GET /apis/metrics.k8s.io/v1beta1/namespaces/load-000/pods": {
+      "started": 1,
+      "completed": 1,
+      "failed": 0
+    },
+    "native GET /openapi/v3/apis/metrics.k8s.io/v1beta1": {
+      "started": 1,
+      "completed": 1,
+      "failed": 0
+    }
+  },
+  "perPodMetricGets": 0
+}

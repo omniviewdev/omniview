@@ -123,6 +123,7 @@ type SettingsParams struct {
 	Values   map[string]json.RawMessage `json:"values,omitempty"`
 }
 type OperationParams struct {
-	OperationID string `json:"operationID"`
-	TimeoutMS   int    `json:"timeoutMS,omitempty"`
+	OperationID   string `json:"operationID"`
+	TimeoutMS     int    `json:"timeoutMS,omitempty"`
+	IncludeOutput bool   `json:"includeOutput,omitempty"`
 }

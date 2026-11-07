@@ -20,6 +20,7 @@ export class MetricProviderSummary {
     "icon": string;
     "description": string;
     "handlers": metric$0.Handler[];
+    "supports_connections": boolean;
 
     /** Creates a new MetricProviderSummary instance. */
     constructor($$source: Partial<MetricProviderSummary> = {}) {
@@ -41,6 +42,9 @@ export class MetricProviderSummary {
         if (!("handlers" in $$source)) {
             this["handlers"] = [];
         }
+        if (!("supports_connections" in $$source)) {
+            this["supports_connections"] = false;
+        }
 
         Object.assign(this, $$source);
     }
@@ -58,6 +62,342 @@ export class MetricProviderSummary {
     }
 }
 
+/**
+ * MetricViewPreferences is profile-durable presentation state shared by owner
+ * plugin and resource key, never source credentials or resource authority.
+ * Version is 1. Revision is a compare-and-swap token: load, edit, save the loaded
+ * revision, then reload. Stale saves return CONFLICT without changing any field.
+ * MetricIDs is the ordered visible selection; there is no second order array.
+ * Displays maps IDs to auto, value, capacity, gauge, area, line, or sample-bars.
+ * Layout is auto, grid, or stack. Capacity requires real owner request/limit data.
+ * TimeMode is relative (DurationMs, up to 31 days) or absolute (StartMs < EndMs,
+ * epoch milliseconds, at most 31 days). Details and Displays may retain settings
+ * for temporarily unselected metrics, bounded to 128 IDs each.
+ * Unpersisted defaults (Revision 0) contain no selected metric IDs, auto layout,
+ * and relative one hour. Owning views may supply domain defaults only while
+ * Revision is 0. A persisted empty selection (Revision > 0) stays empty.
+ */
+export class MetricViewPreferences {
+    "version": number;
+    "revision": number;
+    "metric_ids": string[];
+    "displays": { [_ in string]?: string };
+    "layout": string;
+    "time_mode": string;
+    "duration_ms": number;
+    "start_ms": number;
+    "end_ms": number;
+    "details": { [_ in string]?: boolean };
+
+    /** Creates a new MetricViewPreferences instance. */
+    constructor($$source: Partial<MetricViewPreferences> = {}) {
+        if (!("version" in $$source)) {
+            this["version"] = 0;
+        }
+        if (!("revision" in $$source)) {
+            this["revision"] = 0;
+        }
+        if (!("metric_ids" in $$source)) {
+            this["metric_ids"] = [];
+        }
+        if (!("displays" in $$source)) {
+            this["displays"] = {};
+        }
+        if (!("layout" in $$source)) {
+            this["layout"] = "";
+        }
+        if (!("time_mode" in $$source)) {
+            this["time_mode"] = "";
+        }
+        if (!("duration_ms" in $$source)) {
+            this["duration_ms"] = 0;
+        }
+        if (!("start_ms" in $$source)) {
+            this["start_ms"] = 0;
+        }
+        if (!("end_ms" in $$source)) {
+            this["end_ms"] = 0;
+        }
+        if (!("details" in $$source)) {
+            this["details"] = {};
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MetricViewPreferences instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MetricViewPreferences {
+        const $$createField2_0 = $$createType2;
+        const $$createField3_0 = $$createType3;
+        const $$createField9_0 = $$createType4;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("metric_ids" in $$parsedSource) {
+            $$parsedSource["metric_ids"] = $$createField2_0($$parsedSource["metric_ids"]);
+        }
+        if ("displays" in $$parsedSource) {
+            $$parsedSource["displays"] = $$createField3_0($$parsedSource["displays"]);
+        }
+        if ("details" in $$parsedSource) {
+            $$parsedSource["details"] = $$createField9_0($$parsedSource["details"]);
+        }
+        return new MetricViewPreferences($$parsedSource as Partial<MetricViewPreferences>);
+    }
+}
+
+/**
+ * MetricsObservationSnapshot is immutable publication state. Generation fences
+ * reused tokens; Sequence strictly increases within a generation. Data is absent
+ * while initially pending, and remains visible while compatible refreshes run.
+ * Source timestamps and units are unchanged (CPU cores, memory bytes); missing
+ * samples are not zero. Invalidated clears Data on retirement or lost authority.
+ * DomainStart/DomainEnd describe the data's actual range. Relative observations
+ * leave the domain absent until collection succeeds and retain it during refresh.
+ * Catalog is admitted metadata for the delivered sample lanes, not full metric
+ * discovery. Consumers derive units/source identity from this snapshot and use
+ * GetResourceMetricsCatalog independently for available metric choices.
+ */
+export class MetricsObservationSnapshot {
+    "client_token": string;
+    "generation": number;
+    "sequence": number;
+    "data": metric$0.ResourceMetricsResponse | null;
+    "catalog": metric$0.ResourceMetricsCatalog | null;
+    "fetching": boolean;
+    "error": string;
+    "domain_start": string | null;
+    "domain_end": string | null;
+    "invalidated": boolean;
+
+    /** Creates a new MetricsObservationSnapshot instance. */
+    constructor($$source: Partial<MetricsObservationSnapshot> = {}) {
+        if (!("client_token" in $$source)) {
+            this["client_token"] = "";
+        }
+        if (!("generation" in $$source)) {
+            this["generation"] = 0;
+        }
+        if (!("sequence" in $$source)) {
+            this["sequence"] = 0;
+        }
+        if (!("data" in $$source)) {
+            this["data"] = null;
+        }
+        if (!("catalog" in $$source)) {
+            this["catalog"] = null;
+        }
+        if (!("fetching" in $$source)) {
+            this["fetching"] = false;
+        }
+        if (!("error" in $$source)) {
+            this["error"] = "";
+        }
+        if (!("domain_start" in $$source)) {
+            this["domain_start"] = null;
+        }
+        if (!("domain_end" in $$source)) {
+            this["domain_end"] = null;
+        }
+        if (!("invalidated" in $$source)) {
+            this["invalidated"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MetricsObservationSnapshot instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MetricsObservationSnapshot {
+        const $$createField3_0 = $$createType6;
+        const $$createField4_0 = $$createType8;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("data" in $$parsedSource) {
+            $$parsedSource["data"] = $$createField3_0($$parsedSource["data"]);
+        }
+        if ("catalog" in $$parsedSource) {
+            $$parsedSource["catalog"] = $$createField4_0($$parsedSource["catalog"]);
+        }
+        return new MetricsObservationSnapshot($$parsedSource as Partial<MetricsObservationSnapshot>);
+    }
+}
+
+/**
+ * MetricsObservationSpec describes a finite, reference-bound interest, not a grant.
+ * OwnerPluginID/OwnerConnectionID select an admitted owner. Source selection is
+ * independent of resource authority and never grants access to resource data.
+ * Shape is current or range. Range uses fixed UTC bounds or positive DurationMs,
+ * never both. The host resolves relative bounds anew for each collection.
+ * IntervalMs is zero for initial/manual reads, otherwise 1000..3600000 milliseconds.
+ * At most 256 targets and 32 metric IDs are accepted. Unsupported selections fail
+ * before collection without retrying through another source.
+ */
+export class MetricsObservationSpec {
+    "owner_plugin_id": string;
+    "owner_connection_id": string;
+    "resource_key": string;
+    "binding_id": string;
+    "source"?: metric$0.MetricSourceRef | null;
+    "targets": metric$0.ResourceMetricTarget[];
+    "metric_ids": string[];
+    "shape": string;
+    "duration_ms": number;
+    "start_time": string;
+    "end_time": string;
+    "step_ms": number;
+    "interval_ms": number;
+
+    /** Creates a new MetricsObservationSpec instance. */
+    constructor($$source: Partial<MetricsObservationSpec> = {}) {
+        if (!("owner_plugin_id" in $$source)) {
+            this["owner_plugin_id"] = "";
+        }
+        if (!("owner_connection_id" in $$source)) {
+            this["owner_connection_id"] = "";
+        }
+        if (!("resource_key" in $$source)) {
+            this["resource_key"] = "";
+        }
+        if (!("binding_id" in $$source)) {
+            this["binding_id"] = "";
+        }
+        if (!("targets" in $$source)) {
+            this["targets"] = [];
+        }
+        if (!("metric_ids" in $$source)) {
+            this["metric_ids"] = [];
+        }
+        if (!("shape" in $$source)) {
+            this["shape"] = "";
+        }
+        if (!("duration_ms" in $$source)) {
+            this["duration_ms"] = 0;
+        }
+        if (!("start_time" in $$source)) {
+            this["start_time"] = "0001-01-01T00:00:00.000Z";
+        }
+        if (!("end_time" in $$source)) {
+            this["end_time"] = "0001-01-01T00:00:00.000Z";
+        }
+        if (!("step_ms" in $$source)) {
+            this["step_ms"] = 0;
+        }
+        if (!("interval_ms" in $$source)) {
+            this["interval_ms"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MetricsObservationSpec instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MetricsObservationSpec {
+        const $$createField4_0 = $$createType10;
+        const $$createField5_0 = $$createType12;
+        const $$createField6_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("source" in $$parsedSource) {
+            $$parsedSource["source"] = $$createField4_0($$parsedSource["source"]);
+        }
+        if ("targets" in $$parsedSource) {
+            $$parsedSource["targets"] = $$createField5_0($$parsedSource["targets"]);
+        }
+        if ("metric_ids" in $$parsedSource) {
+            $$parsedSource["metric_ids"] = $$createField6_0($$parsedSource["metric_ids"]);
+        }
+        return new MetricsObservationSpec($$parsedSource as Partial<MetricsObservationSpec>);
+    }
+}
+
+/**
+ * OpenMetricsObservationRequest reserves a session-owned correlation token.
+ * Use a fresh opaque token (for example a UUID) for each logical observation.
+ * Open does not collect: install the event listener, await Open, then Attach.
+ */
+export class OpenMetricsObservationRequest {
+    "client_token": string;
+    "spec": MetricsObservationSpec;
+
+    /** Creates a new OpenMetricsObservationRequest instance. */
+    constructor($$source: Partial<OpenMetricsObservationRequest> = {}) {
+        if (!("client_token" in $$source)) {
+            this["client_token"] = "";
+        }
+        if (!("spec" in $$source)) {
+            this["spec"] = (new MetricsObservationSpec());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new OpenMetricsObservationRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): OpenMetricsObservationRequest {
+        const $$createField1_0 = $$createType13;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("spec" in $$parsedSource) {
+            $$parsedSource["spec"] = $$createField1_0($$parsedSource["spec"]);
+        }
+        return new OpenMetricsObservationRequest($$parsedSource as Partial<OpenMetricsObservationRequest>);
+    }
+}
+
+/**
+ * ResourceMetricsCatalogRequest selects a source without accepting resource data.
+ */
+export class ResourceMetricsCatalogRequest {
+    "owner_plugin_id": string;
+    "owner_connection_id": string;
+    "resource_key": string;
+    "binding_id": string;
+    "source"?: metric$0.MetricSourceRef | null;
+
+    /** Creates a new ResourceMetricsCatalogRequest instance. */
+    constructor($$source: Partial<ResourceMetricsCatalogRequest> = {}) {
+        if (!("owner_plugin_id" in $$source)) {
+            this["owner_plugin_id"] = "";
+        }
+        if (!("owner_connection_id" in $$source)) {
+            this["owner_connection_id"] = "";
+        }
+        if (!("resource_key" in $$source)) {
+            this["resource_key"] = "";
+        }
+        if (!("binding_id" in $$source)) {
+            this["binding_id"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ResourceMetricsCatalogRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ResourceMetricsCatalogRequest {
+        const $$createField4_0 = $$createType10;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("source" in $$parsedSource) {
+            $$parsedSource["source"] = $$createField4_0($$parsedSource["source"]);
+        }
+        return new ResourceMetricsCatalogRequest($$parsedSource as Partial<ResourceMetricsCatalogRequest>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = metric$0.Handler.createFrom;
 const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = $Create.Array($Create.Any);
+const $$createType3 = $Create.Map($Create.Any, $Create.Any);
+const $$createType4 = $Create.Map($Create.Any, $Create.Any);
+const $$createType5 = metric$0.ResourceMetricsResponse.createFrom;
+const $$createType6 = $Create.Nullable($$createType5);
+const $$createType7 = metric$0.ResourceMetricsCatalog.createFrom;
+const $$createType8 = $Create.Nullable($$createType7);
+const $$createType9 = metric$0.MetricSourceRef.createFrom;
+const $$createType10 = $Create.Nullable($$createType9);
+const $$createType11 = metric$0.ResourceMetricTarget.createFrom;
+const $$createType12 = $Create.Array($$createType11);
+const $$createType13 = MetricsObservationSpec.createFrom;

@@ -2,25 +2,28 @@ package devworkspace
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devoutputs"
 	"github.com/omniviewdev/omniview/internal/devsource"
 	"golang.org/x/mod/modfile"
 )
 
 // Preflight reads the selected graph before installers, bindings or compilers run.
-func compatibilityPreflight(ctx context.Context, w Workspace, options LaunchOptions) error {
+func compatibilityPreflight(ctx context.Context, w Workspace) error {
 	plan, err := makeLinkPlan(w)
 	if err != nil {
 		return err
 	}
 	if plan.SDK == "" {
-		return devcontract.Fail(2, "sdk_source_required", "select the plugin-sdk repository before launching")
+		return sdkSourceRequired(ctx, "select the plugin-sdk repository before launching", workspaceSDKProbes(w), editAddSDKCommand(w))
 	}
 	sdkBytes, err := os.ReadFile(filepath.Join(plan.SDK, "go.mod"))
 	if err != nil {
@@ -30,19 +33,8 @@ func compatibilityPreflight(ctx context.Context, w Workspace, options LaunchOpti
 	if err != nil || sdkModule.Module == nil || sdkModule.Module.Mod.Path != linkedSDK {
 		return devcontract.Fail(3, "sdk_contract_mismatch", "selected SDK must declare module "+linkedSDK+"; select a compatible SDK repository")
 	}
-	if _, err = devsource.VerifyWithOptions(ctx, plan.SDK, options.ReviewedSDKRevision, devsource.VerifyOptions{AllowIsolationCoreChanges: options.AllowIsolationSourceChanges}); err != nil {
-		var selected devcontract.Repository
-		for _, repository := range w.Manifest.Repositories {
-			if w.Manifest.Links.SDKRepositoryID != nil && repository.ID == *w.Manifest.Links.SDKRepositoryID {
-				selected = repository
-				break
-			}
-		}
-		head, headErr := git(ctx, plan.SDK, "", "rev-parse", "HEAD")
-		if headErr != nil {
-			head = selected.BaseCommit
-		}
-		return devcontract.Fail(4, "sdk_source_untrusted", fmt.Sprintf("selected SDK ref %q commit %s; independently reviewed commit %s: %v", selected.BaseRef, strings.TrimSpace(head), options.ReviewedSDKRevision, err))
+	if _, err = devsource.Verify(ctx, plan.SDK); err != nil {
+		return err
 	}
 	for _, root := range plan.GoRoots {
 		bytes, err := os.ReadFile(filepath.Join(root, "go.mod"))
@@ -134,4 +126,136 @@ func safeCompilerDiagnostic(text, root string) string {
 		text = text[len(text)-8192:]
 	}
 	return strings.TrimSpace(text)
+}
+
+// workspaceOwnershipError preserves typed ownership data without treating
+// arbitrary compiler output as structured or trusted diagnostic fields.
+func workspaceOwnershipError(err error, w Workspace) *devcontract.Error {
+	var original *devoutputs.Conflict
+	if !errors.As(err, &original) {
+		return workspaceError(err)
+	}
+	conflict := *original
+	executable, err := os.Executable()
+	if err != nil {
+		conflict.NextCommands = nil
+		payload := workspaceError(&conflict)
+		payload.Details["recoveryUnavailable"] = "cannot identify the invoking executable for recovery guidance"
+		return payload
+	}
+	conflict.NextCommands = [][]string{
+		{executable, "workspace", "ownership", "--workspace", w.ManifestPath, "--json"},
+		{executable, "workspace", "down", "--workspace", w.ManifestPath},
+	}
+	repairAvailable := true
+	if j, e := loadLinkJournal(w); e == nil {
+		conflict.LifecyclePhase = j.Phase
+		if (j.Phase == "linked" || j.Phase == "unlinking" || j.Phase == "applying") && (conflict.Producer == "modules" || conflict.Producer == "vite-cache" || conflict.Producer == "vite-loader-cache" || conflict.Producer == "typescript-cache") {
+			// This is an available destructive action, never automatic consent.
+			conflict.NextCommands = append(conflict.NextCommands, []string{executable, "workspace", "reset-modules", "--workspace", w.ManifestPath})
+			if j.Phase != "unlinking" {
+				if inspection, inspectErr := InspectOwnership(context.Background(), w); inspectErr == nil {
+					for _, entry := range inspection.Entries {
+						if entry.Conflict != nil {
+							commands, repairErr := producerPreservationCommands(executable, w, entry.Conflict)
+							if repairErr != nil {
+								conflict.Guidance += " " + repairErr.Error()
+								repairAvailable = false
+							}
+							conflict.NextCommands = append(conflict.NextCommands, commands...)
+						}
+					}
+				}
+			}
+			if j.Phase == "unlinking" {
+				// Reset only deletes dependencies during teardown; finish the
+				// interrupted unlink before attempting another launch.
+				conflict.NextCommands = append(conflict.NextCommands, []string{executable, "workspace", "unlink", "--workspace", w.ManifestPath})
+			} else if launch, loadErr := LoadLaunchOptions(w); repairAvailable && loadErr == nil && launch.Validate() == nil {
+				// A retained refresh must finish first. Without one, Recover
+				// would create a stopped refresh and lose the initial up intent.
+				conflict.NextCommands = append(conflict.NextCommands, ownershipLaunchRecoveryCommand(executable, w))
+			}
+		}
+	}
+	switch conflict.Producer {
+	case devoutputs.Bindings, devoutputs.Distribution, devoutputs.Shims, devoutputs.YAMLWorker:
+		commands, repairErr := producerPreservationCommands(executable, w, &conflict)
+		if repairErr != nil {
+			conflict.Guidance += " " + repairErr.Error()
+			return workspaceError(&conflict)
+		}
+		conflict.NextCommands = append(conflict.NextCommands, commands...)
+		if launch, loadErr := LoadLaunchOptions(w); loadErr == nil && launch.Validate() == nil {
+			conflict.NextCommands = append(conflict.NextCommands, ownershipLaunchRecoveryCommand(executable, w))
+		}
+		conflict.Guidance += " Run nextCommands in order. New preservation directories must be private and external; interrupted reconciliation must reuse its original exact preservation path."
+	}
+	payload := workspaceError(&conflict)
+	return payload
+}
+
+// Each explicit command authorizes preservation of one exact producer boundary.
+// Directory creation is exclusive; a collision cannot reuse a foreign location.
+func producerPreservationCommands(executable string, w Workspace, conflict *devoutputs.Conflict) ([][]string, error) {
+	switch conflict.Producer {
+	case devoutputs.Bindings, devoutputs.Distribution, devoutputs.Shims, devoutputs.YAMLWorker:
+		destination := conflict.PreservedAt
+		var commands [][]string
+		if destination == "" {
+			base, err := producerPreservationBase(w, conflict.Target, preservationDirectoryIdentity)
+			if err != nil {
+				return nil, fmt.Errorf("recovery requires a private external preservation directory on the producer filesystem: %w", err)
+			}
+			preservation := filepath.Join(base, "omniview-preserved-"+uuid.NewString())
+			commands = append(commands, []string{"/bin/mkdir", "-m", "700", preservation})
+			destination = filepath.Join(preservation, "output")
+		}
+		return append(commands, []string{executable, "workspace", "reconcile-output", "--workspace", w.ManifestPath, "--consumer", conflict.Consumer, "--producer", string(conflict.Producer), "--preserve-at", destination}), nil
+	}
+	return nil, nil
+}
+
+func ownershipLaunchRecoveryCommand(executable string, w Workspace) []string {
+	verb := "restart"
+	base := filepath.Join(filepath.Dir(filepath.Dir(w.Root)), ".omniview-dev", "recovery", w.Manifest.WorkspaceID)
+	if pending, err := readRecoveryRefresh(w, filepath.Join(base, "refresh.json")); pending || err != nil {
+		verb = "recover"
+	}
+	return []string{executable, "workspace", verb, "--workspace", w.ManifestPath}
+}
+
+// Prefer a sibling of the collection, never an owned output or workspace.
+// Refuse mount layouts without a known same-volume external parent.
+func producerPreservationBase(w Workspace, target string, identity func(string) (generatedFileIdentity, error)) (string, error) {
+	base := filepath.Dir(filepath.Dir(filepath.Dir(w.Root)))
+	source, err := identity(filepath.Dir(target))
+	if err != nil {
+		return "", err
+	}
+	external, err := identity(base)
+	if err != nil {
+		return "", err
+	}
+	if source.Device != external.Device {
+		return "", fmt.Errorf("collection parent and producer reside on different filesystems; choose an external path on device %s explicitly", source.Device)
+	}
+	return base, nil
+}
+
+func preservationDirectoryIdentity(path string) (generatedFileIdentity, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return generatedFileIdentity{}, err
+	}
+	defer file.Close()
+	return generatedDirectoryIdentity(file)
+}
+
+func supervisedBuildError(event BuildEvent, w Workspace) *devcontract.Error {
+	var conflict *devoutputs.Conflict
+	if errors.As(event.cause, &conflict) {
+		return workspaceOwnershipError(event.cause, w)
+	}
+	return devcontract.Fail(buildFailureExitCode, "build_failed", safeCompilerDiagnostic(event.Error, w.Root))
 }

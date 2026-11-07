@@ -15,6 +15,7 @@ import {
   type UpdateTab,
   type UpdateTabOpts,
   BottomDrawerContext,
+  useNotifications,
 } from '@omniviewdev/runtime';
 import { ExecClient } from '@omniviewdev/runtime/api';
 import log from '@/features/logger';
@@ -39,6 +40,12 @@ import {
   parseSerializedDrawerTab,
 } from './drawerSlot';
 import { planDrawerRestore } from './drawerRestore';
+import {
+  hasUnresolvedResourceReference,
+  migrateDrawerResourceReferences,
+  savedResourceReferenceStatus,
+  unresolvedResourceReferenceMessage,
+} from './resourceReferenceMigration';
 import { markTerminalSessionHandedOff } from './terminalHandoff';
 import {
   type AdoptDrawerTabsPlacement,
@@ -126,6 +133,7 @@ function focusAfterRemoval(state: DrawerTabsState, remaining: BottomDrawerTab[])
   return Math.max(Math.min(state.focused - removedBeforeFocus - 1, remaining.length - 1), 0);
 }
 
+/** Apply drawer tab updates while retaining focus and tab properties. */
 function drawerTabsReducer(state: DrawerTabsState, action: DrawerTabsAction): DrawerTabsState {
   switch (action.type) {
     case 'create':
@@ -219,6 +227,7 @@ function drawerTabsReducer(state: DrawerTabsState, action: DrawerTabsAction): Dr
   }
 }
 
+/** Hydrate saved tabs and select the saved focus, or start with an empty drawer. */
 function initialDrawerTabsState(slot: DrawerSlot | null): DrawerTabsState {
   if (slot === null) {
     return { tabs: [], focused: 0 };
@@ -230,10 +239,15 @@ function initialDrawerTabsState(slot: DrawerSlot | null): DrawerTabsState {
 
 // ===================================== PROVIDER ===================================== //
 
+/** Restore drawer sessions and coordinate their lifetime with window state. */
 export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ children }) => {
   const defaultHeight = 32;
 
-  const [initialSlot] = React.useState(() => readInitialSlot('drawer', parseDrawerSlot));
+  const { notify } = useNotifications();
+  const [initialSlot] = React.useState(() => {
+    const slot = readInitialSlot('drawer', parseDrawerSlot);
+    return slot === null ? null : migrateDrawerResourceReferences(slot);
+  });
   const [state, dispatch] = React.useReducer(drawerTabsReducer, initialSlot, initialDrawerTabsState);
   const [drawerHeight, setDrawerHeight] = React.useState<number>(defaultHeight);
   const [layout, setLayout] = React.useState<DrawerLayout>(() => ({
@@ -408,6 +422,20 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
   }, []);
 
   // ===================================== WINDOW WIRING ===================================== //
+  const reportedSavedReferences = React.useRef(new Set<string>());
+
+  React.useEffect(() => {
+    for (const tab of state.tabs) {
+      if (!hasUnresolvedResourceReference(tab) || reportedSavedReferences.current.has(tab.id)) {
+        continue;
+      }
+
+      reportedSavedReferences.current.add(tab.id);
+      const location = `Window ${currentWindow.name}, terminal ${tab.id}`;
+      console.warn('[drawer] saved resource reference is unconvertible; original options retained', location);
+      void notify({ title: unresolvedResourceReferenceMessage, severity: 'warning', details: location });
+    }
+  }, [state.tabs, notify]);
 
   React.useEffect(() => {
     saveSlot('drawer', buildDrawerSlot(
@@ -421,13 +449,25 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
   React.useEffect(() => {
     let disposed = false;
     planDrawerRestore(initialSlot?.tabs ?? [])
-      .then(({ deadTabIds, orphanedSessionTabs }) => {
+      .then(({ deadTabIds, expiredMigratedIds, orphanedSessionTabs }) => {
         if (disposed) {
           return;
         }
 
         if (deadTabIds.size > 0) {
           dispatch({ type: 'remove', ids: deadTabIds });
+        }
+
+        for (const id of expiredMigratedIds) {
+          dispatch({ type: 'update', find: { id }, updates: { properties: { status: 'expired' } } });
+        }
+
+        // A previously expired tab can have a live session after state is restored.
+        for (const tab of initialSlot?.tabs ?? []) {
+          if (isTerminalSessionTab(tab) && tab.properties?.status === 'expired'
+            && savedResourceReferenceStatus(tab) !== undefined && !expiredMigratedIds.has(tab.id)) {
+            dispatch({ type: 'update', find: { id: tab.id }, updates: { properties: { status: 'connected' } } });
+          }
         }
 
         adoptTabs(orphanedSessionTabs, {});
@@ -458,7 +498,7 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
 
       let slot: DrawerSlot;
       try {
-        slot = parseDrawerSlot(JSON.parse(states.drawer));
+        slot = migrateDrawerResourceReferences(parseDrawerSlot(JSON.parse(states.drawer)));
       } catch (err) {
         console.error(`[drawer] ignoring invalid drawer state of closed window "${name}"`, err);
         return;

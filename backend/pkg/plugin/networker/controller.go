@@ -65,6 +65,7 @@ type Controller interface {
 
 	// StartResourcePortForwardingSession starts a port forwarding session
 	StartResourcePortForwardingSession(
+		ctx context.Context,
 		pluginID, connectionID string,
 		opts networker.PortForwardSessionOptions,
 	) (*networker.PortForwardSession, error)
@@ -262,7 +263,7 @@ func (c *controller) getConnectedCtx(
 	connectionID string,
 ) *sdktypes.PluginContext {
 	// get the connection from the right resource
-	connection, err := c.resourceClient.GetConnection(invocation.HostContext(ctx), plugin, connectionID)
+	connection, err := c.resourceClient.GetConnection(ctx, plugin, connectionID)
 	if err != nil {
 		c.logger.Errorw(ctx, "getConnectedCtx: failed to get connection",
 			"pluginID", plugin,
@@ -349,7 +350,7 @@ func (c *controller) GetPortForwardSession(
 	)
 
 	return provider.GetPortForwardSession(
-		c.getConnectedCtx(ctx, index.pluginID, index.connectionID),
+		c.getConnectedCtx(invocation.HostContext(ctx), index.pluginID, index.connectionID),
 		sessionID,
 	)
 }
@@ -374,7 +375,7 @@ func (c *controller) ListPortForwardSessions(
 	}
 
 	return provider.ListPortForwardSessions(
-		c.getConnectedCtx(ctx, pluginID, connectionID),
+		c.getConnectedCtx(invocation.HostContext(ctx), pluginID, connectionID),
 	)
 }
 
@@ -409,7 +410,7 @@ func (c *controller) ListAllPortForwardSessions() ([]*networker.PortForwardSessi
 	for _, pp := range pairs {
 		provider := pp.provider
 		sessions, err := provider.ListPortForwardSessions(
-			c.getConnectedCtx(ctx, pp.pluginID, pp.connectionID),
+			c.getConnectedCtx(invocation.HostContext(ctx), pp.pluginID, pp.connectionID),
 		)
 		if err != nil {
 			c.logger.Warnw(ctx, "ListAllPortForwardSessions: error listing sessions",
@@ -443,17 +444,18 @@ func (c *controller) FindPortForwardSessions(
 	}
 
 	return provider.FindPortForwardSessions(
-		c.getConnectedCtx(ctx, pluginID, connectionID),
+		c.getConnectedCtx(invocation.HostContext(ctx), pluginID, connectionID),
 		request,
 	)
 }
 
 // StartResourcePortForwardingSession starts a port forwarding session.
 func (c *controller) StartResourcePortForwardingSession(
+	ctx context.Context,
 	pluginID, connectionID string,
 	opts networker.PortForwardSessionOptions,
 ) (*networker.PortForwardSession, error) {
-	ctx, span := tracer.Start(context.Background(), "networker.StartResourcePortForwardingSession")
+	ctx, span := tracer.Start(ctx, "networker.StartResourcePortForwardingSession")
 	defer span.End()
 	span.SetAttributes(
 		attribute.String("plugin_id", pluginID),
@@ -526,6 +528,8 @@ func (c *controller) StartResourcePortForwardingSession(
 		"pluginID", pluginID,
 	)
 
+	// Providers retain this context for the session, beyond binding completion.
+	pctx.Context = context.WithoutCancel(pctx.Context)
 	session, err := provider.StartPortForwardSession(pctx, opts)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
@@ -589,7 +593,7 @@ func (c *controller) ClosePortForwardSession(
 	)
 
 	session, err := provider.ClosePortForwardSession(
-		c.getConnectedCtx(ctx, index.pluginID, index.connectionID),
+		c.getConnectedCtx(invocation.HostContext(ctx), index.pluginID, index.connectionID),
 		sessionID,
 	)
 	if err != nil {

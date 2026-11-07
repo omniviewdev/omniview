@@ -182,6 +182,34 @@ describe('plugin startup navigation', () => {
     expect(currentTabPath()).toBe('/_plugin/kubernetes/cluster/native');
   });
 
+  it('activates trusted Grafana settings before plugin navigation', async () => {
+    const descriptor = { id: 'grafana', dev: false, origin: 'builtin' as const, frontendModule: 'grafana', enabled: true };
+    backend.listPlugins.mockResolvedValue([{ ...descriptor, devMode: false, phase: 'Installed' }]);
+    backend.listServers.mockResolvedValue([]);
+    const activateBackend = vi.fn(async () => undefined);
+    const load = vi.fn(async () => pluginModule('Grafana settings'));
+    const registry: BuiltinModuleRegistry = {
+      grafana: { routes: [{ index: true }], activateAtStartup: true, load },
+    };
+    testDeps.deps.getPluginDescriptor = async () => descriptor;
+    testDeps.deps.getBuiltinRoutes = key => builtinRoutes(key, registry);
+    testDeps.deps.importPlugin = createPluginModuleResolver({
+      getDescriptor: testDeps.deps.getPluginDescriptor,
+      activateBackend,
+      importExternal: testDeps.importer.importPlugin,
+      registry,
+    });
+    startPath = '/';
+    renderWorkspace();
+    await screen.findByRole('heading', { name: 'Home' });
+    await waitFor(() => {
+      expect(load).toHaveBeenCalledTimes(1); 
+    });
+    expect(activateBackend).toHaveBeenCalledWith('grafana');
+    expect(currentTabPath()).toBe('/');
+    expect(testDeps.importer.importCount).toBe(0);
+  });
+
   it('removes disabled built-in pages and reactivates an open page after re-enable', async () => {
     let enabled = true;
     const descriptor = () => ({ id: 'kubernetes', dev: false, origin: 'builtin' as const, frontendModule: 'native/ui', enabled });
