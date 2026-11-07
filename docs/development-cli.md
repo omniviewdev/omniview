@@ -299,8 +299,14 @@ Workspace commands print human diagnostics by default; `--json` returns structur
 errors and results. Control API commands retain their JSON response envelopes.
 
 `workspace inspect` reports independent process, build, dependency, served-source,
-readiness, HMR, and source-reload observations. Current checkout commit, branch,
-dirty state, and source digest remain distinct from the last served checkout.
+readiness, HMR, and source-reload observations. Instance repository
+`configuredRef` and `baseCommit` describe immutable workspace configuration.
+Workspace `checkouts` samples the current commit, branch, dirty state, and source
+digest. `readyCheckouts` samples those same fields after the last successful
+readiness transition; a failed rebuild does not replace that observation.
+`health.checkoutSinceReady` reports `unchanged`, `changed`, or `unknown`. Neither
+checkout observation proves compiler inputs or the source served by a process.
+`health.servedSource` remains `unknown` without artifact-to-source attestation.
 Failures name the failed stage and a recovery command. An HMR connection alone
 does not prove that an edited source module was served or executed.
 
@@ -312,7 +318,12 @@ To verify an actual source edit, add a unique marker to the module, then run:
 ```
 
 The command authenticates the owned host and fetches the marker from its exact
-Vite endpoint. Evidence proves the edited source was served, not browser execution.
+owned Vite endpoint. An authenticated browser host can provide this capability
+at `backend-ready`; native application readiness is a separate requirement.
+Evidence includes the SHA-256 `responseDigest` of the complete transformed module
+response. It proves marker delivery, not browser execution, a served repository
+revision, or a checkout-to-artifact binding. The included `checkouts` are separate
+filesystem observations, not provenance for the response bytes.
 
 For control API commands, flags may appear before or after the single positional
 ID/path, following the command group and action. `--id ID` can replace positional

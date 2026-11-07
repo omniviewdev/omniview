@@ -122,7 +122,7 @@ func TestStatusTerminalEdgesOwnerExitsAfterAuthenticatedResponse(t *testing.T) {
 					require.Equal(t, savedProof.FailedStage, result.status.FailedStage)
 					require.Equal(t, savedProof.WaitStage, result.status.WaitStage)
 					require.Equal(t, savedProof.RecoveryCommand, result.status.RecoveryCommand)
-					require.Equal(t, savedProof.ServedCheckouts, result.status.ServedCheckouts)
+					require.Equal(t, savedProof.ReadyCheckouts, result.status.ReadyCheckouts)
 				}
 			}
 			var retained supervisorRecord

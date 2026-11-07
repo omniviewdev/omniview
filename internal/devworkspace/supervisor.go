@@ -443,7 +443,8 @@ func (s *workspaceSupervisor) setPhase(phase string, err error) {
 		s.status.RecoveryCommand = workspaceRecoveryCommand(s.workspace, "refresh")
 	}
 	if phase == "ready" {
-		s.status.ServedCheckouts = served
+		// This is an observation at readiness, not a build-input attestation.
+		s.status.ReadyCheckouts = served
 		s.status.FailedStage = ""
 		s.status.RecoveryCommand = ""
 	}

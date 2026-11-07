@@ -19,11 +19,14 @@ type Endpoints struct {
 	Control *string `json:"control"`
 	Health  *string `json:"health"`
 }
+
+// RepositoryResolution describes immutable workspace configuration, never the
+// checkout HEAD or the source revision served by a running process.
 type RepositoryResolution struct {
-	ID     string `json:"id"`
-	Path   string `json:"path"`
-	Ref    string `json:"ref"`
-	Commit string `json:"commit"`
+	ID            string `json:"id"`
+	Path          string `json:"path"`
+	ConfiguredRef string `json:"configuredRef"`
+	BaseCommit    string `json:"baseCommit"`
 }
 type PluginState struct {
 	ID               string `json:"id"`

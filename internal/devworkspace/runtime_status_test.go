@@ -167,13 +167,13 @@ func TestWatchCommitPreservesPendingHostFailure(t *testing.T) {
 	s.status.Phase = "build-error"
 	s.status.FailedStage = "host"
 	s.status.RecoveryCommand = "recover-host"
-	s.status.ServedCheckouts = map[string]CheckoutStatus{"host": {Commit: "previous"}}
+	s.status.ReadyCheckouts = map[string]CheckoutStatus{"host": {Commit: "previous"}}
 	if err := s.watchHooks().CommitFeedback(context.Background(), WatchChange{}); err != nil {
 		t.Fatal(err)
 	}
 	status := s.snapshot()
 	if status.Phase != "build-error" || status.FailedStage != "host" || status.RecoveryCommand != "recover-host" ||
-		status.ServedCheckouts["host"].Commit != "previous" || !s.feedback.hostPending {
+		status.ReadyCheckouts["host"].Commit != "previous" || !s.feedback.hostPending {
 		t.Fatalf("frontend-only success cleared pending host failure: %+v", status)
 	}
 	// This fixture did not create an owned feedback file.
@@ -201,7 +201,7 @@ func TestReadyInspectionHonorsSessionCancellation(t *testing.T) {
 	cancel()
 	s.sessionContext = ctx
 	s.setPhase("ready", nil)
-	for id, checkout := range s.snapshot().ServedCheckouts {
+	for id, checkout := range s.snapshot().ReadyCheckouts {
 		if checkout.Error == "" {
 			t.Fatalf("canceled ready inspection reported checkout %s as current", id)
 		}
@@ -226,6 +226,33 @@ func TestSourceReloadRejectsMissingOrReplacedReportedHost(t *testing.T) {
 		var failure *devcontract.Error
 		if !errors.As(err, &failure) || failure.Code != "stale_target" {
 			t.Fatalf("unbound source evidence accepted: %v", err)
+		}
+	}
+}
+
+func TestSourceReloadBackendReadyRequiresFrontendCapabilities(t *testing.T) {
+	browser, vite := "http://127.0.0.1:31000", "http://127.0.0.1:31001"
+	host := devcontract.InstanceDescriptor{
+		WorkspaceID: "workspace", InstanceID: "instance", Generation: "generation",
+		StateRoot: "/state", Readiness: "backend-ready",
+		Process:   devcontract.ProcessIdentity{PID: 123, StartIdentity: "original"},
+		Endpoints: devcontract.Endpoints{Browser: &browser, Vite: &vite},
+	}
+	if err := sourceReloadHostReady(host, &host); err != nil {
+		t.Fatal(err)
+	}
+	if hostDescriptorReady(host, host) == nil {
+		t.Fatal("frontend capability must not imply native readiness")
+	}
+	for _, missing := range []string{"browser", "vite"} {
+		candidate := host
+		if missing == "browser" {
+			candidate.Endpoints.Browser = nil
+		} else {
+			candidate.Endpoints.Vite = nil
+		}
+		if sourceReloadHostReady(candidate, &candidate) == nil {
+			t.Fatalf("accepted missing %s capability", missing)
 		}
 	}
 }

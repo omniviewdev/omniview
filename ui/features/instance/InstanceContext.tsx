@@ -16,7 +16,7 @@ export type InstanceInfo = {
   version: string;
   commit: string;
   readiness: string;
-  repositories: Array<{ id: string; path: string; ref: string; commit: string }> | null;
+  repositories: Array<{ id: string; path: string; configuredRef: string; baseCommit: string }> | null;
   endpoints: {
     browser: string | null;
     vite: string | null;

@@ -154,8 +154,8 @@ export default function InstanceIndicator() {
                       <Heading level={4} size='xs'>{repo.id}</Heading>
                       <DescriptionList layout='horizontal' size='xs' className={styles.InstanceDetails}>
                         <DescriptionList.Item label='Path' copyable>{repo.path}</DescriptionList.Item>
-                        <DescriptionList.Item label='Ref' copyable>{repo.ref}</DescriptionList.Item>
-                        {repo.commit && repo.commit !== repo.ref && <DescriptionList.Item label='Commit' copyable>{repo.commit}</DescriptionList.Item>}
+                        <DescriptionList.Item label='Configured ref' copyable>{repo.configuredRef}</DescriptionList.Item>
+                        {repo.baseCommit && repo.baseCommit !== repo.configuredRef && <DescriptionList.Item label='Base commit' copyable>{repo.baseCommit}</DescriptionList.Item>}
                       </DescriptionList>
                     </section>
                   ))}
