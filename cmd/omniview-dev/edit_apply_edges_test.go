@@ -7,12 +7,14 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/omniview/internal/devworkspace"
 )
 
@@ -262,5 +264,95 @@ func TestWorkspaceDirtyMetadataEditPreservesSourceEdges(t *testing.T) {
 	}
 	if after, err := os.ReadFile(path); err != nil || !bytes.Equal(before, after) {
 		t.Fatalf("metadata edit changed dirty source: %q %v", after, err)
+	}
+}
+
+func TestRecoverFailedOwnerPreflightsProofWithoutMaterializationStopGuard(t *testing.T) {
+	f := newCLIEdgeFixture(t)
+	manager, before, record := startCLIEdgeOwner(t, &f)
+	manifest := f.manifest()
+	var out, diagnostics bytes.Buffer
+	code := run([]string{"workspace", "recover", "--workspace", f.workspace.ManifestPath, "--json"}, &out, &diagnostics)
+	var response struct {
+		Error *devcontract.Error `json:"error"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if code != 3 || response.Error == nil || response.Error.Code != "refresh_evidence_required" {
+		t.Fatalf("failed owner recovery did not reach proof preflight: exit=%d stdout=%s stderr=%s", code, &out, &diagnostics)
+	}
+	after, err := manager.Status(context.Background(), f.workspace.Manifest.WorkspaceID)
+	if err != nil || after.Generation != before.Generation || after.Phase != "error" {
+		t.Fatalf("proof refusal changed owned supervisor: %+v %v", after, err)
+	}
+	actual, err := os.ReadFile(filepath.Join(f.workspace.Root, ".local", "supervisor.json"))
+	if err != nil || !bytes.Equal(record, actual) || !bytes.Equal(manifest, f.manifest()) {
+		t.Fatalf("proof refusal changed supervisor identity or selection: %v", err)
+	}
+}
+
+func TestRecoverRejectsManualManifestBeforeStoppingOwnedSupervisor(t *testing.T) {
+	f := newCLIEdgeFixture(t)
+	manager, before, record := startCLIEdgeOwner(t, &f)
+	changed := f.workspace.Manifest
+	changed.DisplayName = "Manual manifest change"
+	if err := devsession.WritePrivateJSON(f.workspace.ManifestPath, changed); err != nil {
+		t.Fatal(err)
+	}
+	var out, diagnostics bytes.Buffer
+	code := run([]string{"workspace", "recover", "--workspace", f.workspace.ManifestPath, "--json"}, &out, &diagnostics)
+	var response struct {
+		Error *devcontract.Error `json:"error"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if code != 4 || response.Error == nil || response.Error.Code != "manifest_changed" {
+		t.Fatalf("manual manifest was not rejected before recovery: exit=%d stdout=%s stderr=%s", code, &out, &diagnostics)
+	}
+	after, err := manager.Status(context.Background(), f.workspace.Manifest.WorkspaceID)
+	if err != nil || after.Generation != before.Generation || after.Phase != "error" {
+		t.Fatalf("manifest rejection changed live owner: %+v %v", after, err)
+	}
+	actual, err := os.ReadFile(filepath.Join(f.workspace.Root, ".local", "supervisor.json"))
+	if err != nil || !bytes.Equal(record, actual) {
+		t.Fatalf("manifest rejection replaced supervisor record: %v", err)
+	}
+}
+
+func TestRenamedApplyFailureTargetsEditedWorkspaceAndInvokingExecutable(t *testing.T) {
+	f := newCLIEdgeFixture(t)
+	var edited devworkspace.ReconfigureResult
+	raw := f.success("workspace", "edit", "--workspace", f.workspace.ManifestPath, "--slug", "renamed", "--json")
+	if err := json.Unmarshal(raw, &edited); err != nil {
+		t.Fatal(err)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cause := devcontract.Fail(4, "workspace_busy", "held refresh lock")
+	cause.Details = map[string]any{"operation": "refresh"}
+	failure := workspaceApplyFailure(cause, edited.Workspace, edited, executable)
+	if failure.Details["editApplied"] != true || failure.Details["operation"] != "refresh" ||
+		failure.Details["manifest"] != edited.ManifestPath || edited.Manifest.Slug != "renamed" {
+		t.Fatalf("partial result lost persisted selection or original detail: %+v", failure.Details)
+	}
+	next, ok := failure.Details["nextCommand"].(string)
+	if !ok {
+		t.Fatal("missing recovery command")
+	}
+	command := exec.Command("/bin/sh", "-c", "set -- "+next+"; printf '%s\\000' \"$@\"")
+	raw, err = command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("cannot parse recovery command: %s %v", raw, err)
+	}
+	args := strings.Split(strings.TrimSuffix(string(raw), "\x00"), "\x00")
+	if len(args) != 5 || args[0] != executable || args[4] != edited.ManifestPath {
+		t.Fatalf("recovery command changed executable or target: %q", args)
+	}
+	if _, err := os.Stat(f.workspace.ManifestPath); !os.IsNotExist(err) {
+		t.Fatalf("old manifest unexpectedly exists: %v", err)
 	}
 }
