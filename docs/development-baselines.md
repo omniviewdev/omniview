@@ -63,6 +63,8 @@ Accepted workspace launch/status JSON exposes validated import details under `se
 
 Exclusion labels are explanatory metadata, not an expanded copy policy. Earlier receipts and pending intents remain valid when only those labels differ; resume verifies the original receipt digest without rewriting its bytes, then derives disclosure from the current canonical exclusions.
 
+While the host runs, status retains the authenticated supervisor's validated seed disclosure without reopening the exclusively locked settings database. Stopped workspace status checks the receipt and readable settings again. If an older pending intent imports successfully but stops before marker publication, retry compares sanitized import content independently of exclusion labels and preserves the published receipt bytes and digest.
+
 Source settings bytes remain unchanged, including on corruption. The writable corruption-recovery settings-store `Open` is never used on the source. If the source has no `.lock`, taking the offline lock may create that empty runtime marker; `source.lockMarker` records `created-for-offline-lock` or `existing`. The lock is not copied to the destination. No source files are renamed or recovered.
 
 Source flock acquisition opens the actual `.lock` without following the final component, verifies the opened inode against the named independent file, and takes the same nonblocking OS lock as the host. Unix uses descriptor-relative `O_EXCL` creation/`O_NOFOLLOW` open and `LOCK_EX|LOCK_NB`; Windows opens reparse points themselves, rejects them, and uses the host's one-byte `LockFileEx` range. A symlink inserted after inspection cannot cause an outside target to be created.

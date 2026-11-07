@@ -57,3 +57,36 @@ func TestSeedResumePreservesOlderExplanatoryReceiptBytes(t *testing.T) {
 		})
 	}
 }
+
+func TestSeedResumeImportsLegacyIntentBeforeMarkerPublication(t *testing.T) {
+	s := supervisorEdgeFixture(t)
+	source, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	store, err := settingsstore.Open(filepath.Join(source, "settings.db"))
+	require.NoError(t, err)
+	require.NoError(t, store.SaveCategory("general", map[string]any{"language": "es"}))
+	require.NoError(t, store.Close())
+	s.options.BaselineSource = source
+	baseline, err := devbaseline.Snapshot(context.Background(), devbaseline.SnapshotOptions{SourceRoot: source})
+	require.NoError(t, err)
+	baseline.Exclusions = []string{"credentials", "connections-and-autoconnect"}
+	require.NoError(t, saveLaunchJSON(launchPath(s.workspace, "baseline-intent.json"), map[string]any{"source": source, "baseline": baseline}))
+	profile, err := profileFor(s.workspace, s.manager.options.Home, s.generation)
+	require.NoError(t, err)
+	// Import completed, but the process stopped before publishing a marker.
+	_, err = devbaseline.Import(context.Background(), baseline, devbaseline.ImportOptions{Destination: profile, Home: s.manager.options.Home})
+	require.NoError(t, err)
+	path := filepath.Join(s.workspace.StateRoot, "baseline.json")
+	before, err := os.ReadFile(path)
+	require.NoError(t, err)
+	_, err = os.Stat(launchPath(s.workspace, "baseline-seeded.json"))
+	require.True(t, os.IsNotExist(err))
+	require.NoError(t, s.seed(context.Background()))
+	require.NotNil(t, s.status.Seed)
+	after, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, before, after)
+	require.NoError(t, s.seed(context.Background()))
+	_, err = inspectWorkspaceSeed(context.Background(), s.workspace)
+	require.NoError(t, err)
+}

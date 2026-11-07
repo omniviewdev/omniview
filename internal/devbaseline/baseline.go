@@ -122,6 +122,28 @@ func normalize(b *Baseline) (*Baseline, error) {
 	return result, nil
 }
 
+// SameContent compares validated copy-policy content, not explanatory labels.
+// It never rewrites either snapshot or its published receipt.
+func SameContent(a, b *Baseline) (bool, error) {
+	left, err := normalize(a)
+	if err != nil {
+		return false, err
+	}
+	right, err := normalize(b)
+	if err != nil {
+		return false, err
+	}
+	leftJSON, err := json.Marshal(left)
+	if err != nil {
+		return false, err
+	}
+	rightJSON, err := json.Marshal(right)
+	if err != nil {
+		return false, err
+	}
+	return string(leftJSON) == string(rightJSON), nil
+}
+
 // Seed is the CLI integration entrypoint: validate target, snapshot a stopped
 // source, then import. No host or plugin is launched. A16 owns command wiring.
 func Seed(ctx context.Context, source SnapshotOptions, target ImportOptions) (Result, error) {
