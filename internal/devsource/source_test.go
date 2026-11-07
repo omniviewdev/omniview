@@ -193,3 +193,28 @@ func BenchmarkSDKVerification(b *testing.B) {
 		})
 	}
 }
+
+func TestVerifyReturnsOnlyValidIdentities(t *testing.T) {
+	root, _ := sourceFixture(t)
+	identity, err := Verify(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = identity.Validate(); err != nil {
+		t.Fatalf("Verify returned an identity its own validator rejects: %v", err)
+	}
+	for name, mutate := range map[string]func(*Identity){
+		"relative directory": func(i *Identity) { i.Directory = "sdk" },
+		"unclean directory":  func(i *Identity) { i.Directory += string(filepath.Separator) },
+		"missing revision":   func(i *Identity) { i.Revision = "" },
+		"uppercase revision": func(i *Identity) { i.Revision = strings.Repeat("A", 40) },
+		"missing digest":     func(i *Identity) { i.SourceDigest = "" },
+		"short digest":       func(i *Identity) { i.SourceDigest = i.SourceDigest[1:] },
+	} {
+		incomplete := identity
+		mutate(&incomplete)
+		if incomplete.Validate() == nil {
+			t.Fatalf("%s was accepted as a complete source identity", name)
+		}
+	}
+}
