@@ -41,6 +41,17 @@ func validateEntryRecord(entry *outputEntry) error {
 	if entry == nil {
 		return fmt.Errorf("nil output journal entry")
 	}
+	if p := entry.Preservation; p != nil {
+		if entry.Spec.Kind != Distribution && entry.Spec.Kind != Bindings && entry.Spec.Kind != Shims && entry.Spec.Kind != YAMLWorker {
+			return fmt.Errorf("preservation is not a staged producer")
+		}
+		if !filepath.IsAbs(p.Path) || filepath.Clean(p.Path) != p.Path || p.ParentIdentity == "" || p.Head == "" {
+			return fmt.Errorf("invalid producer preservation record")
+		}
+		if err := validateSnapshotPaths(entry.Spec, p.Before); err != nil {
+			return err
+		}
+	}
 	for _, values := range []snapshot{entry.Expected, entry.Original} {
 		if err := validateSnapshotPaths(entry.Spec, values); err != nil {
 			return err

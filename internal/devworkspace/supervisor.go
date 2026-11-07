@@ -461,7 +461,7 @@ func (s *workspaceSupervisor) setPhase(phase string, err error) {
 		}
 	}
 	if err != nil {
-		s.status.LastError = workspaceError(err)
+		s.status.LastError = workspaceOwnershipError(err, s.workspace)
 	}
 	s.mu.Unlock()
 	s.persist()

@@ -25,13 +25,14 @@ type journal struct {
 	Restoring            bool
 }
 type outputEntry struct {
-	Spec     specification
-	Expected snapshot
-	Original snapshot
-	Exclude  []string
-	Live     map[string]bool
-	Pending  *publication
-	Cleanup  *cleanup
+	Spec         specification
+	Expected     snapshot
+	Original     snapshot
+	Exclude      []string
+	Live         map[string]bool
+	Pending      *publication
+	Cleanup      *cleanup
+	Preservation *preservation `json:",omitempty"`
 }
 
 // Phase, Restore and Remove retain the existing journal encoding. All runtime
@@ -108,7 +109,7 @@ func locked(ctx context.Context, s scope, action func(*journal) error) error {
 	if err != nil {
 		return err
 	}
-	return action(&j)
+	return decorateConflict(s, action(&j))
 }
 func save(s scope, j *journal) error  { return devsession.WritePrivateJSON(s.path, j) }
 func keyOf(spec specification) string { return spec.Target + "|" + string(spec.Kind) }
@@ -167,16 +168,16 @@ func Prepare(ctx context.Context, w devcontract.ResolvedWorkspace, consumer stri
 		baseline := baselineSnapshot(baselineFiles)
 		if entry == nil {
 			if err = requireBaseline(current, baseline); err != nil {
-				return err
+				return conflict(spec, "unowned", "admission", current, baseline, err)
 			}
 			entry = &outputEntry{Spec: spec, Expected: current, Original: current, Live: map[string]bool{}}
 			j.Entries[key] = entry
 		} else {
-			if entry.Pending != nil || len(entry.Live) > 0 {
-				return fmt.Errorf("repository producer already has an unfinished writer")
+			if entry.Preservation != nil || entry.Pending != nil || len(entry.Live) > 0 {
+				return entryConflict(entry, "admission", current, fmt.Errorf("repository producer already has an unfinished writer"))
 			}
 			if err = matchesOwnedOrCommitted(current, entry.Expected, baseline); err != nil {
-				return err
+				return entryConflict(entry, "admission", current, err)
 			}
 		}
 		sourceHead, err := head(ctx, spec.Repository)
@@ -272,14 +273,14 @@ func Publish(ctx context.Context, stages ...*Stage) error {
 				return err
 			}
 			if !sameSnapshot(current, entry.Pending.Before) {
-				return fmt.Errorf("producer source/destination changed during generation")
+				return entryConflict(entry, "generation", current, fmt.Errorf("producer source/destination changed during generation"))
 			}
 			currentHead, err := head(ctx, entry.Spec.Repository)
 			if err != nil {
 				return err
 			}
 			if currentHead != entry.Pending.Head {
-				return fmt.Errorf("source commit changed during generation")
+				return entryConflict(entry, "generation", current, fmt.Errorf("source commit changed during generation"))
 			}
 			after, err := snapshotPath(stageSpec(entry), nil)
 			if err != nil {
@@ -557,7 +558,7 @@ func validateCapturedStage(entry *outputEntry) error {
 		return err
 	}
 	if !sameSnapshot(actual, entry.Pending.After) {
-		return fmt.Errorf("captured producer stage changed before publication")
+		return entryConflict(entry, "publication", actual, fmt.Errorf("captured producer stage changed before publication"))
 	}
 	container := entry.Spec
 	container.Mode = "tree"

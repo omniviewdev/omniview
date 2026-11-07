@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devoutputs"
 	"github.com/omniviewdev/omniview/internal/devworkspace"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -40,6 +41,8 @@ func (v *repeatedWorkspaceFlag) Type() string           { return "string" }
 type workspaceCommand struct {
 	verb, root, target, explicit, name, slug, stateRoot, linkEvidence                           string
 	modulePath, marker                                                                          string
+	producer, consumer, preserveAt                                                              string
+	ownership                                                                                   bool
 	json, start, deleteState, deleteBranches, apply, check                                      bool
 	repositories, plugins, refs, addRepositories, removeRepositories, addPlugins, removePlugins repeatedWorkspaceFlag
 	sources, sourceRefs, sourceDirectories                                                      repeatedWorkspaceFlag
@@ -55,6 +58,7 @@ func addWorkspaceCommands(root *cobra.Command) {
 	group := &cobra.Command{Use: "workspace", Short: "Manage development workspaces"}
 	for _, verb := range []string{
 		"init", "create", "up", "preflight", workspaceRefresh, workspaceUpdate, workspaceFollow, workspaceRecover, "evidence",
+		"ownership", "bindings", "reconcile-output",
 		"verify-reload",
 		"down", "restart", "edit", "link", "remove", "profile", "inspect", "paths", "list", "collections", "unlink", workspaceResetModules,
 		"resume", "rollback", "supervise",
@@ -106,6 +110,7 @@ func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceComm
 		launchFlags()
 		if c.verb == "preflight" {
 			cmd.Short = "Report all launch input prerequisites without installing or starting"
+			flags.BoolVar(&c.ownership, "ownership", false, "deep read-only inspection of all selected dependency and producer ownership")
 		}
 	case workspaceRefresh, workspaceUpdate, workspaceFollow, workspaceRecover:
 		if c.verb == workspaceUpdate || c.verb == workspaceFollow {
@@ -165,6 +170,15 @@ func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceComm
 		flags.BoolVar(&c.deleteBranches, "delete-branches", false, "explicitly delete owned feature branches")
 	case "profile":
 		flags.StringVar(&c.stateRoot, "state-root", "", "explicit custom state leaf under a new dedicated profile container")
+	case "ownership":
+		cmd.Short = "Inspect all selected dependency and producer boundaries without changing metadata or files"
+	case "bindings":
+		cmd.Short = "Generate bindings through the stopped managed workspace task producer"
+	case "reconcile-output":
+		cmd.Short = "Preserve one changed producer output externally and restore its committed baseline"
+		flags.StringVar(&c.producer, "producer", "", "exact producer: bindings, distribution, shims, or yaml-worker")
+		flags.StringVar(&c.consumer, "consumer", "", "absolute selected producer consumer directory")
+		flags.StringVar(&c.preserveAt, "preserve-at", "", "new absolute external path receiving the complete output; never overwritten")
 	case workspaceResetModules:
 		cmd.Short = "Delete and reinstall owned dependency trees of a stopped workspace"
 		cmd.Long = "Explicit recovery for an externally changed dependency tree (for example a stray pnpm install). " +
@@ -381,6 +395,15 @@ func workspaceLaunchInputs(c workspaceCommand, options devworkspace.LaunchOption
 func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagnostics io.Writer) (bool, int) {
 	var value any
 	fail := func(err error) (bool, int) {
+		var ownershipConflict *devoutputs.Conflict
+		if errors.As(err, &ownershipConflict) {
+			if c.json {
+				_ = json.NewEncoder(out).Encode(map[string]any{"error": ownershipConflict})
+			} else {
+				fmt.Fprintln(diagnostics, ownershipConflict)
+			}
+			return true, 4
+		}
 		var payload *devcontract.Error
 		if !errors.As(err, &payload) {
 			payload = devcontract.Fail(5, "operation_failed", err.Error())
@@ -585,6 +608,18 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 		case "preflight":
 			options, optionErr := workspaceLaunchOptions(c, w)
 			report := devworkspace.PreflightLaunch(w, options)
+			report.OwnershipChecked = c.ownership
+			if c.ownership {
+				inspection, inspectionErr := devworkspace.InspectOwnership(ctx, w)
+				if inspectionErr != nil {
+					return fail(inspectionErr)
+				}
+				report.Ownership = &inspection
+				if !inspection.Ready {
+					report.Issues = append(report.Issues, devcontract.Fail(4, "ownership_conflict", "selected dependency or producer ownership is blocked; inspect ownership.entries"))
+					report.Ready = false
+				}
+			}
 			if optionErr != nil {
 				var issue *devcontract.Error
 				if !errors.As(optionErr, &issue) {
@@ -616,6 +651,31 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 				return true, 3
 			}
 			return true, 0
+		case "ownership":
+			var inspection devoutputs.Inspection
+			inspection, err = devworkspace.InspectOwnership(ctx, w)
+			if err != nil {
+				return fail(err)
+			}
+			if c.json {
+				_ = json.NewEncoder(out).Encode(inspection)
+			} else {
+				fmt.Fprintf(out, "Scope: %s\nMetadata: %s\n", inspection.Scope, inspection.MetadataPath)
+				for _, entry := range inspection.Entries {
+					fmt.Fprintf(out, "%s %s %s %s\n", entry.Producer, entry.Ownership, entry.Phase, entry.Target)
+					if entry.Conflict != nil {
+						fmt.Fprintln(out, entry.Conflict)
+					}
+				}
+			}
+			if !inspection.Ready {
+				return true, 4
+			}
+			return true, 0
+		case "bindings":
+			value, err = manager.GenerateBindings(ctx, w.Manifest.WorkspaceID, diagnostics)
+		case "reconcile-output":
+			value, err = manager.ReconcileOutput(ctx, w.Manifest.WorkspaceID, c.consumer, c.producer, c.preserveAt)
 		case "inspect":
 			if manager == nil {
 				value = w

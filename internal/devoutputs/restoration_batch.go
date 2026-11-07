@@ -15,8 +15,11 @@ import (
 // authority for a later rename or deletion. Pending/Cleanup retain their own
 // persisted images and are validated without replacing them.
 func observeEntry(ctx context.Context, entry *outputEntry, allowRecovery bool) (snapshot, error) {
+	if entry.Preservation != nil {
+		return nil, entryConflict(entry, "preservation", nil, fmt.Errorf("explicit output reconciliation is incomplete; rerun reconcile-output with the original preservation path"))
+	}
 	if len(entry.Live) > 0 {
-		return nil, fmt.Errorf("repository output still has an active or interrupted writer")
+		return nil, entryConflict(entry, "restoration", nil, fmt.Errorf("repository output still has an active or interrupted writer"))
 	}
 	if entry.Pending != nil {
 		if !allowRecovery {
@@ -36,7 +39,7 @@ func observeEntry(ctx context.Context, entry *outputEntry, allowRecovery bool) (
 	}
 	if entry.Spec.Kind == modules || entry.Spec.Kind == viteCache || entry.Spec.Kind == loaderCache || entry.Spec.Kind == typeCache {
 		if !sameSnapshot(actual, physical(entry.Expected)) {
-			return nil, fmt.Errorf("owned generated tree changed: %s", entry.Spec.Target)
+			return nil, entryConflict(entry, "restoration", actual, fmt.Errorf("owned generated tree changed"))
 		}
 		return actual, nil
 	}
@@ -45,7 +48,7 @@ func observeEntry(ctx context.Context, entry *outputEntry, allowRecovery bool) (
 		return nil, err
 	}
 	if err = matchesOwnedOrCommitted(actual, entry.Expected, baselineSnapshot(baseline)); err != nil {
-		return nil, err
+		return nil, entryConflict(entry, "restoration", actual, err)
 	}
 	return actual, nil
 }
