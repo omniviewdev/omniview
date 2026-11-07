@@ -237,6 +237,16 @@ func (m *Manager) apply(ctx context.Context, root string, j *journal) error {
 					return err
 				}
 				j.RenameLaunch = &launch
+				j.RenameFiles = make(map[string][]byte)
+				for _, name := range []string{"baseline-seeded.json", "baseline-intent.json"} {
+					data, readErr := os.ReadFile(launchPath(w, name))
+					if readErr != nil && !os.IsNotExist(readErr) {
+						return readErr
+					}
+					if readErr == nil {
+						j.RenameFiles[name] = data
+					}
+				}
 				if err = saveJournal(root, j); err != nil {
 					return err
 				}
@@ -699,11 +709,28 @@ func (m *Manager) finishRename(ctx context.Context, root string, j *journal) err
 		return err
 	}
 	if j.RenameLaunch != nil {
-		if err := saveLaunchJSON(filepath.Join(target, ".local", "launch.json"), *j.RenameLaunch); err != nil {
+		data, err := json.Marshal(j.RenameLaunch)
+		if err != nil {
 			return err
 		}
+		if j.RenameFiles == nil {
+			j.RenameFiles = make(map[string][]byte)
+		}
+		j.RenameFiles["launch.json"] = append(data, '\n')
+		j.Root = target
+		// Persist exact publication bytes before the owned writer can publish.
+		if err = saveJournal(target, j); err != nil {
+			return err
+		}
+		for _, name := range []string{"launch.json", "baseline-intent.json", "baseline-seeded.json"} {
+			if data, ok := j.RenameFiles[name]; ok {
+				if err = restoreRenameFile(target, name, data, nil); err != nil {
+					return err
+				}
+			}
+		}
 	}
-	j.Root, j.RenameTo, j.Phase, j.RenameLaunch = target, "", "complete", nil
+	j.Root, j.RenameTo, j.Phase, j.RenameLaunch, j.RenameFiles = target, "", "complete", nil, nil
 	return saveJournal(target, j)
 }
 
