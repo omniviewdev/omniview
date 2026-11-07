@@ -222,7 +222,7 @@ func TestRegisterStateObserver(t *testing.T) {
 	sm := lifecycle.NewPluginStateMachine("test", lifecycle.PhaseStarting)
 
 	var observed bool
-	pm.registerStateObserver(sm)
+	pm.registerStateObserver("test", sm)
 	sm.AddObserver(func(_ string, _ lifecycle.Transition) {
 		observed = true
 	})

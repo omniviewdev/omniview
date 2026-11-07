@@ -92,6 +92,10 @@ export function derivePageTitle(path: string, lookup: PageTitleLookup): string |
     return 'Extension Inspector';
   }
 
+  if (pathnameOf(path) === '/developer-tools/performance') {
+    return 'Performance';
+  }
+
   switch (target.kind) {
     case 'home':
       return 'Home';

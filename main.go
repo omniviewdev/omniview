@@ -45,6 +45,8 @@ import (
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	controlhost "github.com/omniviewdev/omniview/internal/devcontrol/host"
 	"github.com/omniviewdev/omniview/internal/devsession"
+	appdiagnostics "github.com/omniviewdev/omniview/internal/diagnostics"
+	diagnosticshost "github.com/omniviewdev/omniview/internal/diagnostics/host"
 	"github.com/omniviewdev/omniview/internal/hostruntime"
 	"github.com/omniviewdev/omniview/internal/instance"
 	"github.com/omniviewdev/omniview/internal/mcprelay"
@@ -275,6 +277,31 @@ func main() {
 	}
 	settingsProvider := coreSettings.Provider()
 	telemetryCfg := telemetry.DefaultConfig(version.IsDevelopment()).WithSettings(coreSettings.CategoryValues("telemetry"))
+	diagnosticsSource := ""
+	if profile.Workspace != nil {
+		diagnosticsSource, err = profile.Workspace.RepositoryPath("omniview")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "fatal: diagnostics source: %v\n", err)
+			os.Exit(1)
+		}
+	}
+	applicationDiagnostics, err := appdiagnostics.New(appdiagnostics.Options{
+		Directory: filepath.Join(profile.Descriptor.StateRoot, "diagnostics", "captures"),
+		Identity:  appdiagnostics.Identity{InstanceID: profile.Descriptor.InstanceID, Generation: profile.Descriptor.Generation, Version: version.Version, Revision: version.GitCommit, SourceState: appdiagnostics.SourceState(), BuildDate: version.BuildDate, ConfigID: fmt.Sprintf("application-v1:metrics=%t:traces=%t:profiling=%t", telemetryCfg.Metrics, telemetryCfg.Traces, telemetryCfg.Profiling)},
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: diagnostics initialization: %v\n", err)
+		os.Exit(1)
+	}
+	defer applicationDiagnostics.Close()
+	diagnosticsHTTP, err := appdiagnostics.StartHTTP(context.Background(), applicationDiagnostics, appdiagnostics.HTTPOptions{RuntimeDirectory: profile.RuntimeRoot, WorkspaceID: profile.Descriptor.WorkspaceID, StateRoot: profile.Descriptor.StateRoot, Source: diagnosticsSource})
+	if err != nil {
+		// A stale or invalid discovery file must not keep the IDE from starting.
+		// In-app diagnostics keep working; only the agent endpoint is unavailable.
+		fmt.Fprintf(os.Stderr, "warning: diagnostics endpoint disabled: %v\n", err)
+	} else {
+		defer diagnosticsHTTP.Close()
+	}
 
 	// Bootstrap telemetry (tracing, metrics, log shipping, profiling).
 	telemetrySvc := telemetry.New(
@@ -285,6 +312,7 @@ func main() {
 		version.IsDevelopment(),
 		logDir,
 	)
+	telemetrySvc.SetDiagnostics(applicationDiagnostics)
 	if initErr := telemetrySvc.Init(context.Background()); initErr != nil {
 		fmt.Fprintf(os.Stderr, "telemetry init failed, continuing without telemetry: %v\n", initErr)
 	}
@@ -421,6 +449,16 @@ func main() {
 		builtinCatalog,
 	)
 	plugin.ConfigureActivities(pluginManager, resourceController, activityService)
+	telemetry.RegisterPluginProcessSource(func() []telemetry.PluginProcess {
+		var processes []telemetry.PluginProcess
+		for _, info := range pluginManager.GetPluginProcesses() {
+			// Only verified, separately owned child processes; in-process plugins share the host.
+			if info.Ownership == "verified" && info.Identity != nil && info.Error == "" {
+				processes = append(processes, telemetry.PluginProcess{PluginID: info.PluginID, PID: info.Identity.PID})
+			}
+		}
+		return processes
+	})
 
 	// Wire crash recovery: when a plugin crash is detected by the resource
 	// controller's event listeners, the manager will attempt to reload it.
@@ -583,6 +621,7 @@ func main() {
 		application.NewService(appService),
 		application.NewService(diagnosticsClient),
 		application.NewService(extensiondiagnosticshost.NewService(extensionDiagnostics)),
+		application.NewService(diagnosticshost.NewService(applicationDiagnostics, diagnosticsHTTP)),
 		application.NewService(telemetry.NewTelemetryBinding(telemetrySvc)),
 		application.NewService(&profiling.ServiceWrapper{Service: hostProfiling}),
 		application.NewService(uiInspection),

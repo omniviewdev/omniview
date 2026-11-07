@@ -20,6 +20,8 @@ export * as MetricClient from './metric';
 export * as DataClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/data/servicewrapper';
 export * as WindowClient from './bindings/github.com/omniviewdev/omniview/backend/window/service';
 export * as ExtensionDiagnosticsClient from './bindings/github.com/omniviewdev/omniview/backend/extensiondiagnostics/host/service';
+export * as Diagnostics from './bindings/github.com/omniviewdev/omniview/internal/diagnostics/host/service';
+export type { Snapshot, Metric, MetricDescriptor, Capture, CaptureSummary, Comparison, Catalog as DiagnosticsCatalog, Health as DiagnosticsHealth } from './bindings/github.com/omniviewdev/omniview/internal/diagnostics/models';
 
 export * as DevServerManager from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/devserver/servicewrapper';
 export * as PluginLogManager from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/pluginlog/servicewrapper';

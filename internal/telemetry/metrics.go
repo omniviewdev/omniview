@@ -15,8 +15,16 @@ type Metrics struct {
 	ResourceOpErrors    metric.Int64Counter
 	ResourceWatchActive metric.Int64UpDownCounter
 
-	WailsCallDuration metric.Float64Histogram
-	WailsCalls        metric.Int64Counter
+	WailsCallDuration        metric.Float64Histogram
+	OperationCalls           metric.Int64Counter
+	OperationActive          metric.Int64UpDownCounter
+	ResourceRecords          metric.Int64Counter
+	PipelineEvents           metric.Int64Counter
+	PipelineQueueDuration    metric.Float64Histogram
+	PipelineProviderDuration metric.Float64Histogram
+	PipelineWork             metric.Int64Counter
+	PipelineResponseBytes    metric.Int64Histogram
+	WailsCalls               metric.Int64Counter
 }
 
 // NewMetrics registers all application metrics with the given MeterProvider.
@@ -73,6 +81,10 @@ func NewMetrics(mp metric.MeterProvider) (*Metrics, error) {
 	); err != nil {
 		return nil, err
 	}
+	if err = registerMeasurements(meter, &m); err != nil {
+		return nil, err
+	}
+	activeMetrics.Store(&m)
 
 	return &m, nil
 }
