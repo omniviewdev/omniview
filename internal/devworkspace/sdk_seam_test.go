@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -39,6 +40,7 @@ func TestWorkspaceExitCodesCoverEveryTypedConstructor(t *testing.T) {
 	ambiguous := map[string][]int{"invalid_process_bridge": {2, 4}, "invalid_registry": {2, 4}, "overlapping_repositories": {2, 4}}
 	fset := token.NewFileSet()
 	checked := 0
+	var missing []string
 	for _, directory := range directories {
 		entries, err := os.ReadDir(directory)
 		require.NoError(t, err)
@@ -121,12 +123,15 @@ func TestWorkspaceExitCodesCoverEveryTypedConstructor(t *testing.T) {
 					require.Equal(t, 4, workspaceExitCode(code), "%s: ambiguous code must list the blocking exit", position)
 					return true
 				}
-				require.Equal(t, exit, workspaceExitCode(code), "%s: devcontract.Fail(%d, %q) loses its exit across the supervisor boundary; add it to workspaceExitCodes", position, exit, code)
+				if workspaceExitCode(code) != exit {
+					missing = append(missing, fmt.Sprintf("%s: devcontract.Fail(%d, %q) restores exit %d", position, exit, code, workspaceExitCode(code)))
+				}
 				checked++
 				return true
 			})
 		}
 	}
+	require.Empty(t, missing, "typed codes lose their exit across the supervisor boundary; add each to workspaceExitCodes")
 	require.Greater(t, checked, 400, "the scan must see the typed constructors")
 }
 

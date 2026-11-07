@@ -153,6 +153,7 @@ var workspaceExitCodes = map[string]int{
 	"baseline_destination_exists":  4,
 	"baseline_source_busy":         4,
 	"collection_busy":              4,
+	"composition_changed":          4,
 	"composition_not_installed":    4,
 	"conflict":                     4,
 	"conflicting_state_root":       4,
