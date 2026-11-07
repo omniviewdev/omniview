@@ -264,3 +264,28 @@ func TestWorkspaceDirtyMetadataEditPreservesSourceEdges(t *testing.T) {
 		t.Fatalf("metadata edit changed dirty source: %q %v", after, err)
 	}
 }
+
+func TestRecoverFailedOwnerPreflightsProofWithoutMaterializationStopGuard(t *testing.T) {
+	f := newCLIEdgeFixture(t)
+	manager, before, record := startCLIEdgeOwner(t, &f)
+	manifest := f.manifest()
+	var out, diagnostics bytes.Buffer
+	code := run([]string{"workspace", "recover", "--workspace", f.workspace.ManifestPath, "--json"}, &out, &diagnostics)
+	var response struct {
+		Error *devcontract.Error `json:"error"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if code != 3 || response.Error == nil || response.Error.Code != "refresh_evidence_required" {
+		t.Fatalf("failed owner recovery did not reach proof preflight: exit=%d stdout=%s stderr=%s", code, &out, &diagnostics)
+	}
+	after, err := manager.Status(context.Background(), f.workspace.Manifest.WorkspaceID)
+	if err != nil || after.Generation != before.Generation || after.Phase != "error" {
+		t.Fatalf("proof refusal changed owned supervisor: %+v %v", after, err)
+	}
+	actual, err := os.ReadFile(filepath.Join(f.workspace.Root, ".local", "supervisor.json"))
+	if err != nil || !bytes.Equal(record, actual) || !bytes.Equal(manifest, f.manifest()) {
+		t.Fatalf("proof refusal changed supervisor identity or selection: %v", err)
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -78,4 +79,67 @@ func TestStartRetainsFailedSupervisorForRecovery(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, before, after)
 	t.Log(failure)
+}
+
+func TestRestartStoppedWorkspaceReachesLaunchPreconditions(t *testing.T) {
+	for _, recorded := range []bool{false, true} {
+		t.Run(map[bool]string{false: "missing", true: "exited"}[recorded], func(t *testing.T) {
+			m, _ := fixtureManager(t)
+			ctx := context.Background()
+			w, err := m.Create(ctx, CreateOptions{Slug: "restart-stopped"})
+			require.NoError(t, err)
+			require.NoError(t, rawSaveLaunchJSON(launchPath(w, "launch.json"), LaunchOptions{Mode: "browser"}))
+			if recorded {
+				generation := NewGeneration()
+				owner := devsession.ProcessOwner{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "supervisor", Source: w.Root}
+				child, startErr := startOwnedChild(ctx, w.Root, os.Environ(), io.Discard, owner, nil, "/bin/sleep", "300")
+				require.NoError(t, startErr)
+				require.NoError(t, rawSaveLaunchJSON(launchPath(w, "supervisor.json"), supervisorRecord{
+					WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Process: child.identity,
+					Endpoint: "http://127.0.0.1:1/v1/supervisor",
+				}))
+				require.NoError(t, child.stop(ctx))
+			}
+			_, err = m.Restart(ctx, w.Manifest.WorkspaceID)
+			var failure *devcontract.Error
+			require.ErrorAs(t, err, &failure)
+			require.Equal(t, "sdk_source_required", failure.Code)
+		})
+	}
+}
+
+func TestStoppedRefreshMovesFailureToHistory(t *testing.T) {
+	m, w, j := recoveryFixture(t)
+	ctx := context.Background()
+	generation := NewGeneration()
+	owner := devsession.ProcessOwner{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "supervisor", Source: w.Root}
+	child, err := startOwnedChild(ctx, w.Root, os.Environ(), io.Discard, owner, nil, "/bin/sleep", "300")
+	require.NoError(t, err)
+	require.NoError(t, rawSaveLaunchJSON(launchPath(w, "supervisor.json"), supervisorRecord{
+		WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Process: child.identity,
+		Endpoint: "http://127.0.0.1:1/v1/supervisor",
+	}))
+	require.NoError(t, child.stop(ctx))
+	failure := devcontract.Fail(5, "build_failed", "fixture failure")
+	require.NoError(t, saveLaunchJSON(launchPath(w, "launch-status.json"), Status{
+		Generation: generation, Phase: "stopped", LastError: failure, FailedStage: "host", RecoveryCommand: "obsolete",
+	}))
+	path := filepath.Join(m.Root, ".omniview-dev", "recovery", w.Manifest.WorkspaceID, "refresh.json")
+	require.NoError(t, atomicJSON(path, refreshIntent{
+		WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, Phase: refreshStart,
+		Evidence: j.Evidence, Launch: LaunchOptions{Mode: "browser"},
+	}))
+	result, err := m.Refresh(ctx, w.Manifest.WorkspaceID, RefreshOptions{})
+	require.NoError(t, err)
+	require.Equal(t, sourceUpdateComplete, result.Phase)
+	status, err := m.Status(ctx, w.Manifest.WorkspaceID)
+	require.NoError(t, err)
+	require.Equal(t, "stopped", status.Phase)
+	require.Nil(t, status.LastError)
+	require.Empty(t, status.FailedStage)
+	require.Empty(t, status.RecoveryCommand)
+	require.NotNil(t, status.HistoricalError)
+	require.Equal(t, failure.Code, status.HistoricalError.Code)
+	require.Equal(t, failure.Message, status.HistoricalError.Message)
+	require.Equal(t, "host", status.HistoricalFailedStage)
 }

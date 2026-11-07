@@ -549,7 +549,7 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 			value, err = manager.ResumeWorkspace(ctx, target)
 		case workspaceRecover:
 			var recovered devworkspace.Workspace
-			recovered, err = manager.ResumeWorkspace(ctx, target)
+			recovered, err = manager.Inspect(ctx, target)
 			if err != nil {
 				return fail(err)
 			}
@@ -781,6 +781,22 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 				if preflightErr := manager.PreflightEdit(ctx, w.Manifest.WorkspaceID, options); preflightErr != nil {
 					return fail(preflightErr)
 				}
+				if _, proofErr := manager.ProtocolEvidence(ctx, w.Manifest.WorkspaceID); proofErr != nil {
+					if !os.IsNotExist(proofErr) {
+						return fail(proofErr)
+					}
+					return fail(devcontract.Fail(3, "apply_bootstrap_required", "edit --apply requires accepted protocol evidence; edit without --apply, then run workspace up with protocol evidence"))
+				}
+				savedLaunch, launchErr := devworkspace.LoadLaunchOptions(w)
+				if launchErr != nil {
+					if !os.IsNotExist(launchErr) {
+						return fail(launchErr)
+					}
+					return fail(devcontract.Fail(3, "apply_bootstrap_required", "edit --apply requires saved launch options; edit without --apply, then run workspace up"))
+				}
+				if launchErr = savedLaunch.Validate(); launchErr != nil {
+					return fail(launchErr)
+				}
 				// Capture authenticated liveness before Down intentionally stops it.
 				status, statusErr := manager.Status(ctx, w.Manifest.WorkspaceID)
 				if statusErr != nil {
@@ -803,7 +819,28 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 				value, err = manager.Reconfigure(ctx, w.Manifest.WorkspaceID, options)
 			}
 			if err == nil && c.apply {
+				edited := value
 				value, err = manager.Refresh(ctx, w.Manifest.WorkspaceID, refresh)
+				if err != nil {
+					var payload *devcontract.Error
+					if !errors.As(err, &payload) {
+						payload = devcontract.Fail(5, "apply_failed", err.Error())
+					}
+					partial := *payload
+					partial.Details = make(map[string]any, len(payload.Details)+6)
+					for key, detail := range payload.Details {
+						partial.Details[key] = detail
+					}
+					partial.Details["editApplied"] = true
+					partial.Details["manifest"] = w.ManifestPath
+					partial.Details["completedPhase"] = "edit"
+					partial.Details["pendingPhase"] = "refresh"
+					partial.Details["selection"] = edited
+					next := "omniview-dev workspace recover --workspace '" + strings.ReplaceAll(w.ManifestPath, "'", "'\\''") + "'"
+					partial.Details["nextCommand"] = next
+					partial.Message = "selection edit persisted; apply failed: " + payload.Message + "; resume with: " + next
+					err = &partial
+				}
 			}
 		}
 	}

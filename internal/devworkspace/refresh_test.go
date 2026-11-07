@@ -158,3 +158,82 @@ func TestRefreshConfigurationAcceptsOnlyCapturedProgress(t *testing.T) {
 	progress.Repositories[0].Upstream = &devcontract.RepositoryUpstream{Remote: "different", Branch: "refs/heads/main"}
 	require.ErrorContains(t, validateRefreshConfiguration(progress, &plan), "configuration differs")
 }
+
+func TestRefreshUsesSavedLaunchEvidenceBeforeFirstAcceptedLink(t *testing.T) {
+	m, _ := fixtureManager(t)
+	ctx := context.Background()
+	w, err := m.Create(ctx, CreateOptions{Slug: "first-launch-recovery"})
+	require.NoError(t, err)
+	_, _, accepted := recoveryFixture(t)
+	options := LaunchOptions{Mode: "browser", LinkEvidence: accepted.Evidence}
+	require.NoError(t, rawSaveLaunchJSON(launchPath(w, "launch.json"), options))
+	_, err = m.ProtocolEvidence(ctx, w.Manifest.WorkspaceID)
+	require.True(t, os.IsNotExist(err))
+	m.afterDurablePhase = func(kind, phase string) error {
+		require.Equal(t, "refresh", kind)
+		require.Equal(t, refreshStop, phase)
+		return errPhaseInterrupted
+	}
+	_, err = m.Refresh(ctx, w.Manifest.WorkspaceID, RefreshOptions{})
+	require.ErrorIs(t, err, errPhaseInterrupted)
+	var intent refreshIntent
+	path := filepath.Join(m.Root, ".omniview-dev", "recovery", w.Manifest.WorkspaceID, "refresh.json")
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(raw, &intent))
+	require.Equal(t, options.LinkEvidence, intent.Evidence)
+}
+
+func TestCapturedRefreshReportsSafeOptionDiffAndResumesSavedIntent(t *testing.T) {
+	for _, test := range []struct {
+		field  string
+		change func(*LaunchOptions)
+	}{
+		{"mode", func(o *LaunchOptions) { o.Mode = "native" }},
+		{"mcp", func(o *LaunchOptions) { o.MCP = true }},
+		{"watch", func(o *LaunchOptions) { o.Watch = true }},
+		{"liveFrontend", func(o *LaunchOptions) { o.LiveFrontend = true }},
+		{"linkEvidence", func(o *LaunchOptions) { o.LinkEvidence.Protocol = "private-probe-payload" }},
+		{"baselineSource", func(o *LaunchOptions) { o.BaselineSource = "/private-seed-payload" }},
+		{"baselineVersion", func(o *LaunchOptions) { o.BaselineVersion = "private-version-payload" }},
+		{"timeout", func(o *LaunchOptions) { o.Timeout++ }},
+	} {
+		t.Run(test.field, func(t *testing.T) {
+			m, _ := fixtureManager(t)
+			ctx := context.Background()
+			w, err := m.Create(ctx, CreateOptions{Slug: "captured-options"})
+			require.NoError(t, err)
+			_, _, j := recoveryFixture(t)
+			saved := LaunchOptions{Mode: "browser"}
+			intent := refreshIntent{
+				WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, Phase: refreshStart,
+				Evidence: j.Evidence, Launch: saved,
+			}
+			path := filepath.Join(m.Root, ".omniview-dev", "recovery", w.Manifest.WorkspaceID, "refresh.json")
+			require.NoError(t, atomicJSON(path, intent))
+			before, err := os.ReadFile(path)
+			require.NoError(t, err)
+			requested := saved
+			test.change(&requested)
+			_, err = m.Recover(ctx, w.Manifest.WorkspaceID, RefreshOptions{Launch: &requested})
+			var failure *devcontract.Error
+			require.ErrorAs(t, err, &failure)
+			require.Equal(t, "refresh_intent_mismatch", failure.Code)
+			require.Equal(t, []string{"launch." + test.field}, failure.Details["differingFields"])
+			require.Equal(t, refreshStart, failure.Details["phase"])
+			require.Equal(t, workspaceRecoveryCommand(w, "recover"), failure.Details["nextCommand"])
+			encoded, err := json.Marshal(failure)
+			require.NoError(t, err)
+			for _, private := range []string{"private-probe-payload", "private-seed-payload", "private-version-payload"} {
+				require.NotContains(t, string(encoded), private)
+			}
+			after, err := os.ReadFile(path)
+			require.NoError(t, err)
+			require.Equal(t, before, after)
+			result, err := m.Recover(ctx, w.Manifest.WorkspaceID, RefreshOptions{})
+			require.NoError(t, err)
+			require.Equal(t, sourceUpdateComplete, result.Phase)
+			require.Equal(t, "stopped", result.Status.Phase)
+		})
+	}
+}

@@ -247,11 +247,13 @@ func (m *Manager) Restart(ctx context.Context, name string) (Status, error) {
 	if err != nil {
 		return Status{}, err
 	}
+	// Restart can start an absent or exited generation, but never adopts a
+	// foreign live process. Live owners still use authenticated restart.
 	stopped, err := m.supervisorCommand(ctx, name, supervisorRestartCommand)
 	if err != nil {
 		return stopped, err
 	}
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS == "darwin" || stopped.Generation == "" {
 		return m.Start(ctx, name, options, "", io.Discard)
 	}
 	ticker := time.NewTicker(50 * time.Millisecond)
@@ -281,13 +283,13 @@ func (m *Manager) supervisorCommand(ctx context.Context, name, command string) (
 	}
 	var record supervisorRecord
 	if err = readLaunchJSON(launchPath(w, "supervisor.json"), &record); err != nil {
-		if os.IsNotExist(err) && command == supervisorStopCommand {
+		if os.IsNotExist(err) && (command == supervisorStopCommand || command == supervisorRestartCommand) {
 			return Status{Workspace: w, Phase: "stopped"}, nil
 		}
 		return Status{}, err
 	}
 	if err = verifySupervisor(record, w); err != nil {
-		if errors.Is(err, devsession.ErrProcessGone) && command == supervisorStopCommand {
+		if errors.Is(err, devsession.ErrProcessGone) && (command == supervisorStopCommand || command == supervisorRestartCommand) {
 			return Status{Workspace: w, Generation: record.Generation, Phase: "crashed"}, nil
 		}
 		return Status{}, err

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 
 	"github.com/omniviewdev/omniview/internal/devcompose"
 	"github.com/omniviewdev/omniview/internal/devcontract"
@@ -51,6 +52,29 @@ type refreshIntent struct {
 	Plan        *UpdatePlan          `json:"plan,omitempty"`
 }
 
+func launchOptionDifferences(requested, saved LaunchOptions) []string {
+	want, have := reflect.ValueOf(requested), reflect.ValueOf(saved)
+	fields := make([]string, 0, want.NumField())
+	for index := range want.NumField() {
+		if !reflect.DeepEqual(want.Field(index).Interface(), have.Field(index).Interface()) {
+			name, _, _ := strings.Cut(want.Type().Field(index).Tag.Get("json"), ",")
+			fields = append(fields, "launch."+name)
+		}
+	}
+	return fields
+}
+
+func refreshIntentMismatch(w Workspace, intent refreshIntent, fields []string) *devcontract.Error {
+	next := workspaceRecoveryCommand(w, "recover")
+	failure := devcontract.Fail(upstreamExitBlocked, "refresh_intent_mismatch",
+		"requested fields "+strings.Join(fields, ", ")+" differ from captured refresh intent at phase "+intent.Phase+"; resume saved options with: "+next)
+	failure.Details = map[string]any{
+		"differingFields": fields, "operation": "refresh", "phase": intent.Phase,
+		"workspaceID": w.Manifest.WorkspaceID, "nextCommand": next,
+	}
+	return failure
+}
+
 const refreshCrashed = "crashed"
 
 const updateUpToDate = "up_to_date"
@@ -68,6 +92,16 @@ func (m *Manager) Recover(ctx context.Context, name string, options RefreshOptio
 	w, err := m.Inspect(ctx, name)
 	if err != nil {
 		return RefreshResult{}, err
+	}
+	if w.Phase != "complete" {
+		// Materialization resumes only after authenticated owned shutdown.
+		if _, err = m.Down(ctx, name); err != nil {
+			return RefreshResult{}, err
+		}
+		w, err = m.ResumeWorkspace(ctx, name)
+		if err != nil {
+			return RefreshResult{}, err
+		}
 	}
 	base := filepath.Join(m.Root, ".omniview-dev", "recovery", w.Manifest.WorkspaceID)
 	receiptPath := filepath.Join(base, "recover-complete.json")
@@ -256,20 +290,16 @@ func (m *Manager) refresh(ctx context.Context, name string, options RefreshOptio
 			return result, devcontract.Fail(4, "foreign_recovery", "refresh intent identity differs from workspace")
 		}
 		if refs != nil && !reflect.DeepEqual(refs, intent.Refs) {
-			return result, devcontract.Fail(upstreamExitBlocked, "refresh_intent_mismatch",
-				"captured update targets differ; resume the retained operation with workspace recover")
+			return result, refreshIntentMismatch(w, intent, []string{"refs"})
 		}
 		if options.Launch != nil && !reflect.DeepEqual(*options.Launch, intent.Launch) {
-			return result, devcontract.Fail(upstreamExitBlocked, "refresh_intent_mismatch",
-				"launch options differ from retained refresh intent; resume with saved options")
+			return result, refreshIntentMismatch(w, intent, launchOptionDifferences(*options.Launch, intent.Launch))
 		}
 		if options.Evidence.Protocol != "" && !reflect.DeepEqual(options.Evidence, intent.Evidence) {
-			return result, devcontract.Fail(upstreamExitBlocked, "refresh_intent_mismatch",
-				"protocol evidence differs from retained refresh intent")
+			return result, refreshIntentMismatch(w, intent, []string{"evidence"})
 		}
 		if refreshPlanDiffers(options.plan, intent.Plan) {
-			return result, devcontract.Fail(upstreamExitBlocked, "refresh_intent_mismatch",
-				"selected cohort differs from retained refresh intent")
+			return result, refreshIntentMismatch(w, intent, []string{"plan"})
 		}
 	} else if os.IsNotExist(err) {
 		if options.recoverOnly {
@@ -280,7 +310,16 @@ func (m *Manager) refresh(ctx context.Context, name string, options RefreshOptio
 		if evidence.Protocol == "" {
 			evidence, err = m.ProtocolEvidence(ctx, name)
 			if os.IsNotExist(err) {
-				return result, devcontract.Fail(3, "refresh_evidence_required", "workspace has no accepted protocol proof; run the protocol probe and up with its evidence before refresh")
+				// Initial launch saves explicit probe evidence before linking.
+				// Reuse that evidence, never fabricate acceptance after failure.
+				launch, loadErr := LoadLaunchOptions(w)
+				if loadErr != nil && !os.IsNotExist(loadErr) {
+					return result, loadErr
+				}
+				if loadErr != nil || launch.LinkEvidence.validate() != nil {
+					return result, devcontract.Fail(3, "refresh_evidence_required", "workspace has no accepted or saved protocol proof; supply --link-evidence with real protocol probe evidence")
+				}
+				evidence, err = launch.LinkEvidence, nil
 			}
 			if err != nil {
 				return result, err
@@ -422,8 +461,28 @@ func (m *Manager) refresh(ctx context.Context, name string, options RefreshOptio
 			return result, err
 		}
 		if !intent.WasRunning {
+			release, lockErr := withWorkspaceOperation(ctx, w)
+			if lockErr != nil {
+				return result, lockErr
+			}
+			defer release()
 			result.Status, err = m.Status(ctx, name)
 			if err != nil {
+				return result, err
+			}
+			if err = RequireStopped(ctx, w.ResolvedWorkspace); err != nil {
+				return result, err
+			}
+			if result.Status.LastError != nil || result.Status.FailedStage != "" {
+				result.Status.HistoricalError = result.Status.LastError
+				result.Status.HistoricalFailedStage = result.Status.FailedStage
+			}
+			result.Status.LastError = nil
+			result.Status.FailedStage = ""
+			result.Status.WaitStage = ""
+			result.Status.RecoveryCommand = ""
+			result.Status.Phase = "stopped"
+			if err = saveLaunchJSON(launchPath(w, "launch-status.json"), result.Status); err != nil {
 				return result, err
 			}
 			if err = os.Remove(path); err != nil {

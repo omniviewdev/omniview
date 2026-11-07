@@ -79,6 +79,20 @@ the absolute manifest target. Use the reported command: failed builds normally n
 `workspace refresh`, not another `workspace up`. A retained supervisor is not
 evidence that the application is ready.
 
+`workspace recover` does not require a failed supervisor to be stopped first.
+For materialized workspaces, recovery validates retained intent and proof before
+authenticated shutdown.
+An interrupted materialization is resumed only after the owned supervisor exits.
+Initial launch recovery can reuse the genuine protocol evidence saved in
+`launch.json`, even if linking failed before accepting a link journal. Missing
+proof still requires explicit `--link-evidence FILE`; recovery never invents proof.
+
+`workspace restart` also starts a stopped or exited workspace using its saved
+launch settings. Missing or exited supervisors are not errors by themselves.
+Live ownership conflicts and generation changes remain refusals. On Darwin,
+authenticated shutdown still waits for the exact supervisor's kernel exit before
+starting a successor.
+
 The target application must have been built with `devcontrol` enabled and launched
 against the workspace. Release builds do not advertise a control endpoint.
 
@@ -294,6 +308,28 @@ Use the emitted file with `workspace preflight --workspace MANIFEST
 --link-evidence FILE`, then `workspace up --workspace MANIFEST --link-evidence
 FILE` after resolving reported source prerequisites. Inspection of saved proof is
 not certification that installed dependency bytes remain unchanged.
+
+For first launch, use plain `workspace edit` to select prerequisite repositories,
+then `workspace preflight`, then `workspace up --link-evidence FILE`. The
+[protocol acceptance gate](development-package-linking.md#protocol-acceptance-gate)
+documents how to generate genuine probe evidence. `edit --apply` requires accepted
+protocol evidence and valid saved launch settings before stopping a supervisor or
+changing selection. A bootstrap refusal leaves the manifest unchanged.
+
+If an edit persists but its subsequent refresh fails, the error reports
+`editApplied: true`, manifest identity, completed/pending phases, selected workspace,
+and an exact `nextCommand` in its JSON details. Human output also names the
+persisted edit and recovery command. Do not repeat the edit to hide an apply failure.
+
+Retained refresh intent is immutable. An override mismatch names safe field paths,
+captured operation and phase, and the exact command to resume saved intent without
+overrides. Seed paths and protocol payload values are not included in that diff.
+Complete the captured operation before requesting a different cohort.
+
+Successful stopped refresh/recovery remains stopped and not ready. It clears
+current failure, wait-stage and recovery hints while retaining prior diagnostics
+as `historicalError` and `historicalFailedStage`. Those fields describe history,
+not an instruction to recover again.
 
 Workspace commands print human diagnostics by default; `--json` returns structured
 errors and results. Control API commands retain their JSON response envelopes.

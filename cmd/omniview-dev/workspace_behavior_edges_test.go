@@ -214,3 +214,28 @@ func TestWorkspaceMalformedExplicitEvidenceAggregatesWithoutMutationEdges(t *tes
 		t.Fatal("preflight changed manifest")
 	}
 }
+
+func TestFreshApplyPreservesSelectionBeforeBootstrap(t *testing.T) {
+	f := newCLIEdgeFixture(t)
+	before := f.manifest()
+	var out, diagnostics bytes.Buffer
+	code := run([]string{
+		"workspace", "edit", "feature", "--root", f.root,
+		"--name", "Must not persist", "--apply", "--json",
+	}, &out, &diagnostics)
+	if code != 3 {
+		t.Fatalf("exit=%d stdout=%s stderr=%s", code, &out, &diagnostics)
+	}
+	if !bytes.Equal(before, f.manifest()) {
+		t.Fatal("bootstrap refusal changed selection")
+	}
+	var response struct {
+		Error *devcontract.Error `json:"error"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Error == nil || response.Error.Code != "apply_bootstrap_required" {
+		t.Fatalf("missing bootstrap error: %+v", response)
+	}
+}
