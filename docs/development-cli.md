@@ -89,6 +89,24 @@ An interrupted materialization is resumed only after the owned supervisor exits.
 Initial launch recovery can reuse the genuine protocol evidence saved in
 `launch.json`, even if linking failed before accepting a link journal. Missing
 proof still requires explicit `--link-evidence FILE`; recovery never invents proof.
+If a refreshed launch fails after dependency preparation has already completed,
+recovery resumes its retained `start` or `verify` boundary instead of reinstalling
+the captured cohort. Each launch generation is minted and recorded in the private
+refresh intent before its supervisor is spawned. A UUID or environment selection
+alone grants no launch authority. The controller captures its actual child before
+reaping can permit PID reuse and issues a private, one-shot native launch handoff.
+Only that exact process identity can claim it, before publishing supervisor state.
+Recovery requires the claimed handoff to match the selected process and fences
+shutdown by both generation and native identity. Different successors and direct
+`supervise` replays are refused, including reuse of a known generation.
+
+Potential attempts remain recorded across interruptions before ownership publication;
+recovery never infers authority from whichever supervisor happens to be latest.
+Malformed, zero, noncanonical or duplicate persisted generation identities are
+rejected, never normalized into authority. Older retained intents without native handoff
+proof cannot adopt or stop a live owner automatically. Inspect ownership before
+an explicit transition. These private metadata and native invocation checks are
+not a sandbox against a same-user actor who can rewrite metadata or executables.
 
 `workspace restart` also starts a stopped or exited workspace using its saved
 launch settings. Missing or exited supervisors are not errors by themselves.
