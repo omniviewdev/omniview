@@ -208,10 +208,29 @@ func convert(data *metricdata.ResourceMetrics) ([]Metric, bool) {
 	}
 	return metrics, truncated
 }
+
+// queueRemote stores an owned copy of the newest collection for the forwarder.
+func (s *Service) queueRemote(data *metricdata.ResourceMetrics) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || s.remote == nil || s.remoteDisabled {
+		return
+	}
+	owned := copyResource(data)
+	s.pending = &owned
+	select {
+	case s.notify <- struct{}{}:
+	default:
+	}
+}
+
 func (s *Service) Export(ctx context.Context, data *metricdata.ResourceMetrics) error {
 	// OTel owns data buffers. Convert local values and deep-copy remote data before returning.
 	metrics, truncated := convert(data)
 	now := time.Now()
+	// Remote forwarding is independent of local validation: a local limit must
+	// not keep the rest of a collection from reaching the configured exporter.
+	s.queueRemote(data)
 	var ambiguous, limited bool
 	metrics, ambiguous, limited = unambiguousMetrics(metrics)
 	truncated = truncated || limited
@@ -289,18 +308,15 @@ func (s *Service) Export(ctx context.Context, data *metricdata.ResourceMetrics) 
 			c.Error = "capture persistence failed or storage limit reached"
 			c.Coverage.Complete = false
 			c.Samples = c.Samples[:len(c.Samples)-1]
+			// Metadata must describe the retained samples, not the discarded one.
+			c.ElapsedSeconds = sampledElapsed(c)
+			coverage := captureCoverage(c)
+			coverage.Complete = false
+			c.Coverage = coverage
 			_ = s.persist(c)
 		}
 		if c.Status != "running" {
 			s.stopTimer(c.ID)
-		}
-	}
-	if s.remote != nil && !s.remoteDisabled {
-		owned := copyResource(data)
-		s.pending = &owned
-		select {
-		case s.notify <- struct{}{}:
-		default:
 		}
 	}
 	s.mu.Unlock()
@@ -337,7 +353,7 @@ func (s *Service) GetCatalog() Catalog {
 			metrics[i] = MetricDescriptor{Name: metric.Name, Description: metric.Description, Unit: metric.Unit, Kind: metric.Kind}
 		}
 	}
-	return Catalog{SchemaVersion: SchemaVersion, Identity: s.opts.Identity, Metrics: metrics, Limits: Limits{HistorySamples: s.opts.HistoryLimit, CaptureCount: 20, CaptureSeconds: 300, ConcurrentCaptures: 2, DiskBytes: 64 << 20, Metrics: 128, SeriesPerMetric: 16, SampleBytes: 256 << 10, CaptureBytes: 8 << 20}}
+	return Catalog{SchemaVersion: SchemaVersion, Identity: s.opts.Identity, Metrics: metrics, Limits: Limits{HistorySamples: s.opts.HistoryLimit, CaptureCount: 20, CaptureSeconds: 300, ConcurrentCaptures: 2, DiskBytes: 64 << 20, Metrics: 128, SeriesPerMetric: maxSeriesPerMetric, SampleBytes: 256 << 10, CaptureBytes: 8 << 20}}
 }
 func (s *Service) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

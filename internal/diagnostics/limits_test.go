@@ -12,7 +12,7 @@ import (
 
 func TestCountLimitDiagnosticDoesNotClaimAmbiguity(t *testing.T) {
 	s := testService(t)
-	points := make([]metricdata.DataPoint[int64], 17)
+	points := make([]metricdata.DataPoint[int64], maxSeriesPerMetric+1)
 	for i := range points {
 		points[i] = metricdata.DataPoint[int64]{Attributes: attribute.NewSet(attribute.String("state", fmt.Sprintf("bounded-state-%d", i))), Value: int64(i)}
 	}
@@ -24,7 +24,7 @@ func TestCountLimitDiagnosticDoesNotClaimAmbiguity(t *testing.T) {
 	if snapshot.Health.Complete || snapshot.Health.Dropped != 1 || !strings.Contains(snapshot.Health.LastError, "limit") || strings.Contains(snapshot.Health.LastError, "ambiguous") {
 		t.Fatalf("limit diagnostic wrong: %+v", snapshot.Health)
 	}
-	if len(snapshot.Metrics) != 1 || len(snapshot.Metrics[0].Points) != 16 {
+	if len(snapshot.Metrics) != 1 || len(snapshot.Metrics[0].Points) != maxSeriesPerMetric {
 		t.Fatalf("series bound changed: %+v", snapshot.Metrics)
 	}
 }

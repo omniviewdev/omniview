@@ -13,7 +13,8 @@ import (
 	"time"
 )
 
-const maxResponseBytes = 32 << 20
+// 300 retained samples at the 256 KiB sample bound fit within this limit.
+const maxResponseBytes = 96 << 20
 
 type Client struct {
 	identity EndpointIdentity

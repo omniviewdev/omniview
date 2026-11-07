@@ -23,6 +23,10 @@ func (s *Service) StartCapture(request diagnostics.CaptureRequest) (diagnostics.
 	return s.core.StartCapture(request)
 }
 func (s *Service) GetCapture(id string) (diagnostics.Capture, error) { return s.core.GetCapture(id) }
+
+// DeleteCapture removes a finished capture so its slot and storage can be reused.
+func (s *Service) DeleteCapture(id string) error { return s.core.DeleteCapture(id) }
+
 func (s *Service) CancelCapture(id string) (diagnostics.Capture, error) {
 	return s.core.CancelCapture(id)
 }

@@ -296,10 +296,12 @@ func main() {
 	defer applicationDiagnostics.Close()
 	diagnosticsHTTP, err := appdiagnostics.StartHTTP(context.Background(), applicationDiagnostics, appdiagnostics.HTTPOptions{RuntimeDirectory: profile.RuntimeRoot, WorkspaceID: profile.Descriptor.WorkspaceID, StateRoot: profile.Descriptor.StateRoot, Source: diagnosticsSource})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "fatal: diagnostics endpoint: %v\n", err)
-		os.Exit(1)
+		// A stale or invalid discovery file must not keep the IDE from starting.
+		// In-app diagnostics keep working; only the agent endpoint is unavailable.
+		fmt.Fprintf(os.Stderr, "warning: diagnostics endpoint disabled: %v\n", err)
+	} else {
+		defer diagnosticsHTTP.Close()
 	}
-	defer diagnosticsHTTP.Close()
 
 	// Bootstrap telemetry (tracing, metrics, log shipping, profiling).
 	telemetrySvc := telemetry.New(

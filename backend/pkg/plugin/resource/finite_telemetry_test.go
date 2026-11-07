@@ -101,7 +101,7 @@ func TestFiniteOperationTelemetryRecordsReturnedWorkAndErrors(t *testing.T) {
 	}
 	require.Equal(t, uint64(9), durations)
 	require.Equal(t, int64(5), failures)
-	require.Equal(t, int64(2), records, "Count only returned records, not failed requests or provider count estimates")
+	require.Equal(t, int64(4), records, "Count only returned records from successful calls (get, enumerate, query, mutate), not failed requests or provider count estimates")
 	require.Equal(t, int64(9), callsCount)
 	require.Zero(t, active, "Every success and error must end its operation")
 }

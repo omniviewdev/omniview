@@ -187,6 +187,7 @@ func (c *controller) Get(ctx context.Context, pluginID string, input HostGetRequ
 	if err := c.currentGeneration(ctx, pluginID, generation); err != nil {
 		return _result, err
 	}
+	telemetry.RecordResourceRecords(ctx, "get", 1)
 	return out, nil
 }
 
@@ -356,6 +357,7 @@ func (c *controller) Mutate(ctx context.Context, pluginID string, request resour
 	if err := c.currentGeneration(ctx, pluginID, generation); err != nil {
 		return _result, err
 	}
+	telemetry.RecordResourceRecords(ctx, "mutate", 1)
 	return record, nil
 }
 

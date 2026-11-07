@@ -26,6 +26,13 @@ export function CompareCaptures(baseline: string, candidate: string): $Cancellab
     });
 }
 
+/**
+ * DeleteCapture removes a finished capture so its slot and storage can be reused.
+ */
+export function DeleteCapture(id: string): $CancellablePromise<void> {
+    return $Call.ByID(430679748, id);
+}
+
 export function GetCapture(id: string): $CancellablePromise<diagnostics$0.Capture> {
     return $Call.ByID(2655914667, id).then(($result: any) => {
         return $$createType0($result);

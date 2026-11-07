@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -55,7 +56,10 @@ func (s *Service) load() error {
 		}
 		total += info.Size()
 		if total > 64<<20 || len(s.captures) >= 20 {
-			return fmt.Errorf("capture storage exceeds limit")
+			// Do not refuse to start: leave the rest on disk and report it.
+			s.health.Errors++
+			s.health.LastError = "saved captures exceed storage limits; some were not loaded"
+			break
 		}
 		path := filepath.Join(s.opts.Directory, entry.Name())
 		if err := os.Chmod(path, 0600); err != nil {
@@ -63,17 +67,21 @@ func (s *Service) load() error {
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return err
+			s.quarantine(path, "unreadable")
+			continue
 		}
 		var c Capture
 		if err = json.Unmarshal(data, &c); err != nil {
-			return fmt.Errorf("invalid capture %s: %w", id, err)
+			s.quarantine(path, "malformed")
+			continue
 		}
 		if c.ID != id || c.SchemaVersion != SchemaVersion {
-			return fmt.Errorf("capture identity or schema mismatch")
+			s.quarantine(path, "incompatible")
+			continue
 		}
 		if len(c.Samples) > 302 || c.DurationSeconds < 1 || c.DurationSeconds > 300 {
-			return fmt.Errorf("capture samples or duration exceeds limit")
+			s.quarantine(path, "over limit")
+			continue
 		}
 		if c.Status == "running" {
 			c.Status = "interrupted"
@@ -87,6 +95,15 @@ func (s *Service) load() error {
 	}
 	return nil
 }
+
+// quarantine sets aside a capture file that cannot be used so one bad file never
+// prevents the application from starting. The file is kept for inspection.
+func (s *Service) quarantine(path, reason string) {
+	s.health.Errors++
+	s.health.LastError = "an unusable saved capture was set aside (" + reason + ")"
+	_ = os.Rename(path, path+".invalid")
+}
+
 func (s *Service) persist(c *Capture) error {
 	c.SchemaVersion = SchemaVersion
 	data, err := json.Marshal(c)
@@ -223,6 +240,26 @@ func (s *Service) ListCaptures() []CaptureSummary {
 	sort.Slice(out, func(i, j int) bool { return out[i].StartedAt.After(out[j].StartedAt) })
 	return out
 }
+
+// DeleteCapture removes a finished capture from memory and disk so its slot and
+// storage can be reused. Running captures must be canceled first.
+func (s *Service) DeleteCapture(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, ok := s.captures[id]
+	if !ok {
+		return failure("not_found", "capture not found")
+	}
+	if c.Status == "running" {
+		return failure("conflict", "cancel the running capture before deleting it")
+	}
+	if err := os.Remove(filepath.Join(s.opts.Directory, c.ID+".json")); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	delete(s.captures, id)
+	return nil
+}
+
 func (s *Service) CancelCapture(id string) (Capture, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -5,6 +5,9 @@ import (
 	"slices"
 )
 
+// maxSeriesPerMetric covers the 32 plugins the process sampler supports plus other dimensions.
+const maxSeriesPerMetric = 64
+
 // Histograms remain additive when labels are removed only if their bucket layout
 // and cumulative start time agree. Other ambiguous series must not be guessed.
 func normalizedPoints(metric Metric) ([]Point, bool) {
@@ -63,8 +66,8 @@ func unambiguousMetrics(metrics []Metric) ([]Metric, bool, bool) {
 			rejected = true
 			continue
 		}
-		if len(points) > 16 {
-			points = points[:16]
+		if len(points) > maxSeriesPerMetric {
+			points = points[:maxSeriesPerMetric]
 			limited = true
 		}
 		metric.Points = points

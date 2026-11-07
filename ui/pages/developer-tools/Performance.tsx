@@ -15,13 +15,16 @@ import styles from '@/features/diagnostics/Performance.module.css';
 const views = ['overview', 'plugins', 'operations', 'pipeline', 'captures', 'all'] as const;
 const labels = { overview: 'Overview', plugins: 'Plugins', operations: 'Operations', pipeline: 'Metrics pipeline', captures: 'Captures', all: 'All measurements' };
 const pageSize = 12;
-const windows = [{ value: '30', label: 'Last minute' }, { value: '150', label: 'Last 5 minutes' }, { value: '300', label: 'Last 10 minutes' }];
+const windows = [{ value: '60', label: 'Last minute' }, { value: '300', label: 'Last 5 minutes' }, { value: '600', label: 'Last 10 minutes' }];
 
 export default function Performance() {
   const [live, setLive] = useState(true);
-  const [windowSize, setWindowSize] = useState('150');
+  const [windowSize, setWindowSize] = useState('300');
   const diagnostics = useDiagnostics(live);
-  const samples = diagnostics.samples.slice(-Number(windowSize));
+  const newest = diagnostics.samples.at(-1);
+  const newestMs = newest ? new Date(newest.timestamp).getTime() : 0;
+  // Select by time, so a collection gap never lets older samples appear inside the chosen window.
+  const samples = diagnostics.samples.filter(sample => newestMs - new Date(sample.timestamp).getTime() <= Number(windowSize) * 1000);
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const requested = params.get('view');
@@ -44,7 +47,7 @@ export default function Performance() {
   const ready = diagnostics.latest !== undefined;
   return <main className={styles.Page} aria-label='Application performance'>
     <Toolbar size='sm' className={styles.Toolbar}><Toolbar.Group><Breadcrumbs size='sm'><Breadcrumbs.Item>Developer Tools</Breadcrumbs.Item><Breadcrumbs.Item active>Performance</Breadcrumbs.Item></Breadcrumbs><HintTooltip content={details}><span tabIndex={0}><Chip size='sm' color={diagnostics.error ? 'danger' : health ? health.complete ? 'success' : 'warning' : 'neutral'}>{status}</Chip></span></HintTooltip></Toolbar.Group><Toolbar.Group>{diagnostics.updatedAt > 0 && <Text size='sm' tone='muted' className={styles.NoWrap}>Updated {new Date(diagnostics.updatedAt).toLocaleTimeString()}</Text>}<Select size='sm' value={windowSize} onValueChange={value => {
-      setWindowSize(value ?? '150');
+      setWindowSize(value ?? '300');
     }}><Select.Trigger aria-label='Time window'><Select.Value>{(value: string) => windows.find(option => option.value === value)?.label ?? 'Last 5 minutes'}</Select.Value><Select.Icon /></Select.Trigger><Select.Portal><Select.Positioner><Select.Popup><Select.List>{windows.map(option => <Select.Item key={option.value} value={option.value}>{option.label}</Select.Item>)}</Select.List></Select.Popup></Select.Positioner></Select.Portal></Select><Button size='sm' variant={live ? 'outline' : 'solid'} aria-pressed={!live} onClick={() => {
       setLive(!live);
     }}>{live ? 'Pause' : 'Resume'}</Button><Button size='sm' variant='ghost' onClick={() => {

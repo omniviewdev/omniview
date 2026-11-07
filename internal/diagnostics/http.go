@@ -118,7 +118,10 @@ func (s *HTTPServer) Close() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		s.closeErr = s.server.Shutdown(ctx)
-		lock, err := devsession.AcquirePrivateLock(ctx, s.directory, "discovery.lock")
+		// Cleanup has its own deadline so a slow request cannot leave a stopped endpoint advertised.
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cleanupCancel()
+		lock, err := devsession.AcquirePrivateLock(cleanupCtx, s.directory, "discovery.lock")
 		if err != nil {
 			s.closeErr = errors.Join(s.closeErr, err)
 			return
@@ -192,6 +195,10 @@ func (s *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case "/diagnostics/v1/compare":
 			result, callErr = s.service.CompareCaptures(r.URL.Query().Get("baseline"), r.URL.Query().Get("candidate"))
 		case "/metrics":
+			if !s.service.Fresh() {
+				reject(503, "diagnostics collection is stale")
+				return
+			}
 			w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 			io.WriteString(w, s.service.Prometheus())
 			return
@@ -217,6 +224,14 @@ func (s *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		result, callErr = s.service.StartCapture(request)
+	} else if r.Method == http.MethodDelete && r.URL.Query().Get("remove") == "1" {
+		if id, ok := capturePath(path); ok {
+			callErr = s.service.DeleteCapture(id)
+			result = map[string]bool{"removed": callErr == nil}
+		} else {
+			reject(404, "unknown diagnostics path")
+			return
+		}
 	} else if r.Method == http.MethodDelete {
 		if id, ok := capturePath(path); ok {
 			result, callErr = s.service.CancelCapture(id)

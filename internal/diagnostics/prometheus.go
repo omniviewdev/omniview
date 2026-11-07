@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func metricName(name string) string {
@@ -49,6 +50,15 @@ func emittedNames(m Metric) []string {
 	}
 	return []string{name}
 }
+
+// Fresh reports whether collection is current, so scrapes can fail instead of
+// republishing cached values under new scrape timestamps.
+func (s *Service) Fresh() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return !s.lastSuccess.IsZero() && time.Since(s.lastSuccess) <= 3*s.opts.Interval
+}
+
 func (s *Service) Prometheus() string {
 	snapshot := s.GetSnapshot()
 	// Sanitization and histogram suffixes can collide. Omit every conflicting family.

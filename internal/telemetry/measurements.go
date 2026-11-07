@@ -91,11 +91,12 @@ func (o Operation) End(err error) {
 	if err != nil {
 		outcome = "error"
 	}
-	if errors.Is(err, context.Canceled) {
-		outcome = "canceled"
-	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		outcome = "timeout"
+	}
+	// The API reports CANCELLED when both are wrapped, so cancellation wins.
+	if errors.Is(err, context.Canceled) {
+		outcome = "canceled"
 	}
 	result := metric.WithAttributes(append(append([]attribute.KeyValue{}, base...), attribute.String("outcome", outcome))...)
 	o.metrics.OperationCalls.Add(o.ctx, 1, result)
@@ -189,11 +190,11 @@ func RecordPipelineProvider(ctx context.Context, operation string, started time.
 		if err != nil {
 			outcome = "error"
 		}
-		if errors.Is(err, context.Canceled) {
-			outcome = "canceled"
-		}
 		if errors.Is(err, context.DeadlineExceeded) {
 			outcome = "timeout"
+		}
+		if errors.Is(err, context.Canceled) {
+			outcome = "canceled"
 		}
 		m.PipelineProviderDuration.Record(ctx, float64(time.Since(started))/float64(time.Millisecond), metric.WithAttributes(append([]attribute.KeyValue{attribute.String("operation", operation), attribute.String("outcome", outcome)}, pluginAttributes(ctx)...)...))
 	}

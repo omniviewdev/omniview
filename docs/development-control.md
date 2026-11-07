@@ -4,7 +4,7 @@ The local control service exists only in a host built with the explicit `devcont
 
 ## Application diagnostics
 
-Application diagnostics is separate from development control and runs in normal desktop builds too. It owns only the selected profile's private `runtime/diagnostics/` discovery and generation-token files; it never updates control discovery. Agents should use the native-free CLI, which verifies private permissions, selected profile/source, live process start identity, and authenticated endpoint identity. Never copy credentials into flags, URLs, logs, or reports.
+Application diagnostics is separate from development control and runs in normal desktop builds too. It owns only the selected profile's private `runtime/diagnostics/` discovery and generation-token files; it never updates control discovery. Agents should use the native-free CLI, which verifies private permissions, selected profile/source, live process start identity, and authenticated endpoint identity. Never copy credentials into flags, URLs, logs, or reports. Saved captures are stored separately, under the selected profile's state root at `diagnostics/captures/`; removing `runtime/diagnostics/` does not delete them. Use `omniview-dev diagnostics delete CAPTURE_ID` (or the Delete action in Developer Tools → Performance) to remove a finished capture and free its slot; at most 20 are kept.
 
 ```bash
 omniview-dev diagnostics describe --workspace my-workspace
@@ -23,7 +23,7 @@ Polling responses stay metadata-only: `/captures` (`ListCaptures`) returns `Capt
 
 Local collection stays at two seconds. Remote OTLP forwarding retains the prior 60-second default or positive `OTEL_METRIC_EXPORT_INTERVAL` in milliseconds; the first enabled sample may ship immediately. One owned pending cumulative snapshot coalesces intermediate local updates. Explicit flush/shutdown sends the latest pending snapshot before flushing within the caller deadline. `Identity.configScope` covers telemetry toggles, this remote cadence, and local collection bounds—not full application settings or a workload fingerprint.
 
-RPC call histograms aggregate across private method/peer dimensions using compatible buckets and cumulative start times; only finite protocol/status labels remain. Ambiguous gauges and incompatible histogram families are rejected, not summed. Current collection completeness recovers after a valid batch; lifetime loss/error/gap counters remain cumulative, while capture coverage uses its sample window and retains any incomplete sample in that window.
+RPC call histograms aggregate across private method/peer dimensions using compatible buckets and cumulative start times; only finite protocol/status labels remain. Ambiguous gauges and incompatible histogram families are rejected, not summed. Current collection completeness recovers after a valid batch; lifetime loss/error/gap counters remain cumulative, while capture coverage uses its sample window and retains any incomplete sample in that window. This guarantee covers local diagnostics only: when OTLP export is enabled, the configured collector receives the original attributes, including `rpc.method`.
 
 Host lifecycle calls `diagnostics.StartHTTP(ctx, service, diagnostics.HTTPOptions{RuntimeDirectory: profile.RuntimeRoot, WorkspaceID: profile.Descriptor.WorkspaceID, StateRoot: profile.Descriptor.StateRoot, Source: selectedHostSource})` after profile ownership. Close the returned server before closing the collection service.
 

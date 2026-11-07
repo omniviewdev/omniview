@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Banner, Button, Chip, FormField, Heading, Input, Pagination, Select, Table, Text } from '@omniviewdev/base-ui';
 import { Diagnostics } from '@omniviewdev/runtime/api';
 import type { Capture, CaptureSummary, Comparison } from './model';
@@ -35,7 +35,43 @@ export function Captures({ captures, refresh, maxSeconds }: { captures: CaptureS
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [capturePage, setCapturePage] = useState(1);
-  const captureMetrics = selected?.samples?.at(-1)?.metrics ?? [];
+  const captureMetrics = (() => {
+    // A measurement can be absent from the final snapshot yet present earlier; keep every one.
+    const byName = new Map<string, NonNullable<Capture['samples']>[number]['metrics'][number]>();
+    for (const sample of selected?.samples ?? []) {
+      for (const metric of sample.metrics ?? []) {
+        byName.set(metric.name, metric);
+      }
+    }
+
+    return [...byName.values()];
+  })();
+  const selectedSummary = captures.find(capture => capture.id === selected?.id);
+  const selectedId = selected?.id;
+  const summaryStatus = selectedSummary?.status;
+  const summarySamples = selectedSummary?.sampleCount;
+  useEffect(() => {
+    // Keep the open capture in step with its list row while it runs or finishes.
+    if (selectedId === undefined || summaryStatus === undefined) {
+      return;
+    }
+
+    let current = true;
+    void (async () => {
+      try {
+        const latest = await Diagnostics.GetCapture(selectedId);
+        if (current) {
+          setSelected(latest);
+        }
+      } catch {
+        // The row remains authoritative; the next change retries.
+      }
+    })();
+
+    return () => {
+      current = false;
+    };
+  }, [selectedId, summaryStatus, summarySamples]);
   const capturePages = Math.max(1, Math.ceil(captureMetrics.length / 24));
   const currentCapturePage = Math.min(capturePage, capturePages);
   const request = useRef(0);
@@ -89,7 +125,18 @@ export function Captures({ captures, refresh, maxSeconds }: { captures: CaptureS
           setSelected(canceled);
         } 
       }); 
-    }}>Cancel</Button>}</Table.Cell></Table.Row>)}</Table.Body></Table></Table.Container>
+    }}>Cancel</Button>}{capture.status !== 'running' && <Button size='sm' variant='ghost' disabled={busy} onClick={() => {
+      void run(async () => {
+        await Diagnostics.DeleteCapture(capture.id);
+        if (selected?.id === capture.id) {
+          setSelected(null);
+        }
+
+        setComparison(null);
+        setBaseline(current => current === capture.id ? '' : current);
+        setCandidate(current => current === capture.id ? '' : current);
+      });
+    }}>Delete</Button>}</Table.Cell></Table.Row>)}</Table.Body></Table></Table.Container>
     {!captures.length && <Banner size='sm'>No saved captures. Record the same workload before and after a change.</Banner>}
     <section className={styles.Compare} aria-label='Compare captures'>
       <CaptureSelect label='Baseline capture' value={baseline} captures={captures} disabled={busy} onChange={value => {
