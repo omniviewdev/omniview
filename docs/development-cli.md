@@ -205,8 +205,27 @@ metadata from existing worktrees.
 "$DEV" workspace reset-modules feature [--json]
 ```
 
-`edit` persists selection/ref/name/port edits. `--apply` also refreshes the workspace:
-stop owned services, relink dependencies, rebuild, restart, and verify readiness.
+`edit` persists selection/ref/name/port edits.
+
+Linked rename validates aggregate files, producer outputs, and generated metadata
+before recording intent. It tears down old-root links under the lifecycle and
+stopped-profile guards, then applies strict root admission before moving anything.
+Only exact validated owned paths receive temporary admission; changed bytes,
+foreign neighbors, redirected paths, and unfinished producers remain refusals.
+Interrupted teardown resumes at the old root; interrupted move resumes from its
+persisted lifecycle journal. Link journals containing absolute roots never move.
+Validated nonsecret saved launch options, including protocol evidence, survive rename.
+The lifecycle journal carries that configuration across generated-output cleanup;
+the new root republishes it through the generated ownership ledger. Interrupted
+publication resumes without adopting foreign files.
+Exact launch publication bytes are journaled before publication, so recovery can
+finish ledger recording after interruption without accepting different bytes.
+Validated baseline seed markers and intents also survive rename. Restart retains
+the original seed receipt and disclosure instead of snapshotting the source again.
+Build outputs and secrets do not move, and workspaces without saved launch options
+still require explicit launch setup.
+Use explicit `edit --apply` to rebuild and relink at the new root.
+With `--apply`, stop owned services, relink dependencies, rebuild, restart, and verify readiness.
 Canonical edit intent is validated before `--apply` stops a healthy supervisor;
 the mutation repeats that planning under its lifecycle lock.
 `refresh` uses the current worktree contents without advancing Git refs. `update`
@@ -254,7 +273,7 @@ record by hand to force cleanup.
 
 `workspace reset-modules` is the explicit recovery. It requires a stopped
 workspace (the same lifecycle lock and stopped-profile guard as `link`; a running
-supervisor or live consumer is refused) whose dependency link is complete. It
+supervisor or live consumer is refused). For a complete dependency link, it
 deletes every journal-owned `node_modules` tree, the TypeScript and Vite loader
 caches inside it, the external Vite optimizer cache, and any `node_modules` at the
 composition root or a selected package root, including trees left by an
@@ -271,8 +290,22 @@ When an `unlink` or `remove` was interrupted by such a refusal (link phase
 records, without reinstalling into the partially restored overlay, and reports
 `reinstalled: false`. Every other output and its pending restoration stay for the
 rerun `workspace unlink` or `workspace remove`, which then completes. Other
-incomplete link phases are still refused. Use the managed launcher for package
-commands to retain pre-run dependency verification.
+incomplete phases are refused except `applying`: explicit reset also deletes
+selected dependency trees in that phase without running an installer. Then rerun
+the original `workspace up` or `workspace link` command with the same exact
+workspace and protocol evidence. For first launch after an unmanaged frozen
+install, follow the diagnostic's ordered `nextCommands`: inspect ownership,
+stop, reset modules, preserve/reconcile any separately reported producer outputs,
+then restart with saved launch settings and protocol evidence. A package
+postinstall can create an ignored producer output before managed ownership exists;
+module reset deliberately leaves that output untouched. Reconciliation preserves
+it externally before restoring the committed baseline. If retained refresh intent
+exists, the diagnostic ends with `workspace recover` instead of restart.
+For an `unlinking` journal, the diagnostic instead ends with `workspace unlink`
+after reset, even when launch settings exist: teardown must finish before any
+new launch. It also supplies this teardown action without saved launch settings.
+Preserve any wanted dependency bytes externally first.
+Use the managed launcher for package commands to retain pre-run verification.
 
 ### Read-only ownership inspection and standalone reentry
 
@@ -311,9 +344,13 @@ launch status and profile state. A reserved profile path need not exist.
 For standalone-to-managed reentry, inspect once before linking. Preserve **every**
 reported unowned module root externally while stopped. No command silently adopts
 those bytes, and `reset-modules` is not a nondestructive preservation operation.
-An interrupted `applying` link must first be unlinked with the same exact workspace
-target; this does not authorize deleting standalone files. Retain source/profile
-data and resolve any separately reported owned-output conflict before retrying.
+An interrupted `applying` link can use the stopped, explicit selected-module
+reset above before retrying the original launch.
+Replay accepts only the same validated journal's exact original or applied bytes;
+already-applied aggregate files from a failed install need not be removed.
+Changed or unverified aggregate files still require preservation and explicit link
+recovery; reset never adopts those bytes. Retain source/profile data and resolve
+separately reported conflicts.
 
 ### Managed bindings and explicit producer reconciliation
 
@@ -330,8 +367,9 @@ after generation, retains the saved browser/native build context (browser for a
 never-launched workspace), and publishes only validated output. Standalone
 checkouts still use `task bindings`; raw Wails generation is not supported.
 
-If a standalone producer already changed or replaced a **journal-owned** output,
-preserve that exact boundary before restoring its current committed baseline:
+If a standalone producer changed a journal-owned output, or a package postinstall
+created an unowned output, preserve that exact boundary before restoring its
+current committed baseline:
 
 ```sh
 mkdir -m 700 "$PRESERVATION_DIRECTORY"
@@ -353,9 +391,16 @@ outputs, or resets source/profile data. It restores only this producer's current
 committed baseline through the existing publication state machine. Interrupted
 reconciliation retains an intent: rerun the same command with the exact original
 preservation path. Source, parent or preserved-byte changes cause refusal.
+Recovery commands reuse that retained path without creating another directory.
+For new preservation, guidance chooses a sibling of the collection after checking
+that its parent and the producer share a filesystem. If that layout crosses
+filesystems, choose a private external path on the producer filesystem explicitly;
+guidance does not emit a restart that skips the blocked preservation.
+Retained refresh operations resume with `workspace recover`, not `restart`, so
+the original intent records and fences the successor generation.
 Supported exact producers are `bindings`, `distribution`, `shims`, and
-`yaml-worker`. Unowned outputs require separate preservation and exact baseline
-restoration; this command does not create ownership authority for them.
+`yaml-worker`. For an unowned output, this explicit command authorizes preservation
+only; it never admits existing bytes as managed producer output.
 
 For standalone verification, place compiler build-info outside managed module
 trees (for example, `tsc --noEmit --incremental false` when the project supports

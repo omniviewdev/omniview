@@ -75,6 +75,9 @@ func addWorkspaceCommands(root *cobra.Command) {
 func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceCommand) error) *cobra.Command {
 	c := workspaceCommand{verb: verb, supplied: map[string]bool{}}
 	cmd := &cobra.Command{Use: verb + " [NAME]", Short: "Workspace " + verb}
+	if verb == "init" || verb == "list" || verb == "collections" {
+		cmd.Use = verb
+	}
 	flags := cmd.Flags()
 	flags.StringVar(&c.root, "root", "", "machine-local source registry/collection root")
 	flags.StringVar(&c.explicit, "workspace", "", "explicit workspace manifest/directory")
@@ -85,7 +88,7 @@ func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceComm
 		flags.BoolVar(&c.launch.Watch, "watch", true, "own source build/watch for the session lifetime")
 		flags.BoolVar(&c.launch.LiveFrontend, "live-frontend", true, "run actual strict host Vite and HMR")
 		flags.StringVar(&c.linkEvidence, "link-evidence", "", "FILE containing the actual successful pinned pnpm protocol probe report (JSON)")
-		flags.StringVar(&c.launch.BaselineSource, "seed-from", "", "stopped baseline source state root")
+		flags.StringVar(&c.launch.BaselineSource, "seed-from", "", "stopped source state root; safe-preferences-and-inactive-inventory-v1 copies only allowlisted safe preferences and inactive plugin inventory, not a profile clone; excludes Grafana connections/credentials and metric bindings/configuration")
 		flags.StringVar(&c.launch.BaselineVersion, "seed-version", "", "nonsecret baseline source build version")
 		flags.DurationVar(&c.launch.Timeout, "timeout", 20*time.Minute, "bounded build/readiness deadline")
 	}
@@ -570,6 +573,9 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 		switch c.verb {
 		case "resume":
 			value, err = manager.ResumeWorkspace(ctx, target)
+			if err == nil {
+				value, err = manager.Status(ctx, target)
+			}
 		case workspaceRecover:
 			var recovered devworkspace.Workspace
 			recovered, err = manager.PrepareRecovery(ctx, target)
@@ -960,9 +966,12 @@ func printWorkspaceValue(out io.Writer, value any) {
 		}
 		if result.Reinstalled {
 			fmt.Fprintln(out, "Reinstalled: dependency trees recorded by the composition installer")
-		} else {
+		} else if result.Phase == "unlinking" {
 			fmt.Fprintln(out, "Not reinstalled: the dependency unlink was interrupted (phase "+result.Phase+"); "+
 				"rerun the interrupted `workspace unlink` or `workspace remove`")
+		} else {
+			fmt.Fprintln(out, "Not reinstalled: selected dependency trees were removed while the first launch was still applying (phase "+result.Phase+"); "+
+				"continue with the remaining recovery actions from the original ownership conflict")
 		}
 		return
 	case devworkspace.Registry:
@@ -973,6 +982,9 @@ func printWorkspaceValue(out io.Writer, value any) {
 	}
 	if status, ok := value.(devworkspace.Status); ok {
 		fmt.Fprintf(out, "%s (%s)\nWorkspace: %s\nState: %s\nStatus: %s\n", status.Manifest.DisplayName, status.Manifest.WorkspaceID, status.Root, status.StateRoot, status.Phase)
+		if status.Seed != nil {
+			fmt.Fprintf(out, "Seed policy: %s\nCopied scope: %s\nExcluded: %s\nSeed is not a profile clone or integration-readiness proof.\n", status.Seed.Policy, strings.Join(status.Seed.CopiedScope, ", "), strings.Join(status.Seed.Exclusions, ", "))
+		}
 		fmt.Fprintf(out, "Health: process=%s build=%s dependencies=%s served-source=%s checkout-since-ready=%s readiness=%s hmr=%s reload=%s\n", status.Health.Liveness, status.Health.Build, status.Health.Dependencies, status.Health.ServedSource, status.Health.CheckoutSinceReady, status.Health.Readiness, status.Health.HMR, status.Health.SourceReload)
 		if status.FailedStage != "" {
 			fmt.Fprintf(out, "Failed stage: %s\n", status.FailedStage)
