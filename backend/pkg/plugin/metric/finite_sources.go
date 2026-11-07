@@ -418,8 +418,7 @@ func (c *controller) invalidateMetricConfiguration() {
 	}
 	clear(f.catalogs)
 	for job := range f.jobs {
-		job.retired = true
-		job.cancel()
+		job.retireLocked()
 		for w := range job.waiters {
 			delete(f.pending, w)
 			f.finishWaiter(w, profileChangingError())

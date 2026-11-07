@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
+	"github.com/omniviewdev/omniview/internal/telemetry"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	sdk "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 )
@@ -121,11 +122,13 @@ type finiteCoordinator struct {
 	configurationReaders  map[uint64]int
 	wake                  chan struct{}
 	nextDispatch          time.Time
+	unregisterDiagnostics func()
 }
 
 func (c *controller) finiteCoordinator() *finiteCoordinator {
 	c.finiteOnce.Do(func() {
 		f := &finiteCoordinator{c: c, pending: map[*finiteWaiter]bool{}, jobs: map[*finiteJob]bool{}, epochs: map[metricStreamKey]uint64{}, blocked: map[metricStreamKey]int{}, observations: map[string]*finiteObservation{}, tombstones: map[string]time.Time{}, wake: make(chan struct{}, 1)}
+		f.unregisterDiagnostics = telemetry.RegisterPipelineState(f.diagnosticsState)
 		c.mux.RLock()
 		for key, count := range c.streamBlocked {
 			f.blocked[key] = count
@@ -246,7 +249,9 @@ func (c *controller) finiteCatalogUncached(ctx context.Context, request Resource
 	if err != nil {
 		return nil, err
 	}
+	started := time.Now()
 	catalog, err := p.GetResourceMetricsCatalog(pc, providerRequest)
+	telemetry.RecordPipelineProvider(ctx, "catalog", started, err)
 	if err != nil {
 		return nil, finiteProviderFailure{err}
 	}
@@ -622,6 +627,8 @@ func (c *controller) readFiniteLane(ctx context.Context, spec MetricsObservation
 			}
 		}
 	}
+	telemetry.RecordPipelineEvent(ctx, "cache_hit_pairs", int64(len(w.cachedPairs)))
+	telemetry.RecordPipelineEvent(ctx, "cache_miss_pairs", int64(w.missing))
 	if w.missing > 0 {
 		for job := range f.jobs {
 			if job.retired || job.partition != partition || job.configuration != generation || job.epoch != w.epoch || job.sourceEpoch != w.sourceEpoch {
@@ -685,6 +692,7 @@ func (c *controller) readFiniteLane(ctx context.Context, spec MetricsObservation
 		}
 		return result.data, nil
 	case <-ctx.Done():
+		telemetry.RecordPipelineEvent(ctx, "cancel_interest", 1)
 		f.detach(w)
 		return nil, ctx.Err()
 	}
@@ -720,9 +728,8 @@ func (f *finiteCoordinator) removeWaiterLocked(w *finiteWaiter) {
 	delete(f.pending, w)
 	for j := range f.jobs {
 		delete(j.waiters, w)
-		if len(j.waiters) == 0 {
-			j.retired = true
-			j.cancel()
+		if len(j.waiters) == 0 && !j.retired {
+			j.retireLocked()
 		}
 	}
 }
@@ -1044,11 +1051,13 @@ func (f *finiteCoordinator) dispatchAtLocked(now time.Time) {
 		}
 	}
 	f.jobs[job] = true
+	telemetry.RecordPipelineDispatch(workCtx, base.queued, len(q.Targets), len(job.pairs))
 	f.nextDispatch = now.Add(finiteDispatchInterval)
 	go f.runJob(workCtx, job, base.spec)
 }
 func (f *finiteCoordinator) runJob(ctx context.Context, job *finiteJob, base MetricsObservationSpec) {
 	defer job.cancel()
+	defer f.releaseDiagnosticsIfStopped()
 	spec := base
 	spec.Targets = job.query.Targets
 	spec.MetricIDs = job.query.MetricIDs
@@ -1091,7 +1100,9 @@ func (f *finiteCoordinator) runJob(ctx context.Context, job *finiteJob, base Met
 					err = finiteAuthorityError(job.configurationGuard())
 				}
 				if err == nil {
+					started := time.Now()
 					response, err = provider.QueryResources(pc, projected)
+					telemetry.RecordPipelineProvider(ctx, "query", started, err)
 					if err != nil {
 						err = finiteProviderFailure{err}
 					}
@@ -1115,6 +1126,9 @@ func (f *finiteCoordinator) runJob(ctx context.Context, job *finiteJob, base Met
 		if encodeErr != nil || size > finiteMaxBytes {
 			err = finiteError("RESOURCE_LIMIT", "Metric response byte limit exceeded.")
 		}
+	}
+	if err == nil {
+		telemetry.RecordPipelineResponse(ctx, size, len(response.Results))
 	}
 	f.mu.Lock()
 	if !f.jobs[job] {
@@ -1178,9 +1192,8 @@ func (f *finiteCoordinator) runJob(ctx context.Context, job *finiteJob, base Met
 			delete(f.pending, w)
 			for other := range f.jobs {
 				delete(other.waiters, w)
-				if len(other.waiters) == 0 {
-					other.retired = true
-					other.cancel()
+				if len(other.waiters) == 0 && !other.retired {
+					other.retireLocked()
 				}
 			}
 			f.finishWaiter(w, err)
@@ -1233,8 +1246,7 @@ func (f *finiteCoordinator) retire(plugin, connection string, stop bool) {
 	}
 	for job := range f.jobs {
 		if matches(job.key) || matches(job.sourceKey) {
-			job.retired = true
-			job.cancel()
+			job.retireLocked()
 			for w := range job.waiters {
 				delete(f.pending, w)
 				f.finishWaiter(w, profileChangingError())
@@ -1295,7 +1307,7 @@ func (f *finiteCoordinator) shutdown() {
 	}
 	clear(f.catalogs)
 	for job := range f.jobs {
-		job.cancel()
+		job.retireLocked()
 		for w := range job.waiters {
 			f.finishWaiter(w, closedStreamError())
 		}
@@ -1306,10 +1318,10 @@ func (f *finiteCoordinator) shutdown() {
 	for key, o := range f.observations {
 		f.forgetObservationLocked(key, o)
 	}
-	clear(f.jobs)
 	clear(f.pending)
 	clear(f.observations)
 	f.cache = nil
 	f.mu.Unlock()
+	f.releaseDiagnosticsIfStopped()
 	f.signal()
 }

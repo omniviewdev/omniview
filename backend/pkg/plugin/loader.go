@@ -23,6 +23,7 @@ import (
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/instance"
+	"github.com/omniviewdev/omniview/internal/telemetry"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	resourceplugin "github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
@@ -60,9 +61,17 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (plugint
 	return pm.loadPluginLocked(id, opts)
 }
 
-func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (plugintypes.PluginInfo, error) {
+func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (info plugintypes.PluginInfo, resultErr error) {
 	if entry, ok := pm.builtin(id); ok {
 		return pm.loadBuiltinLocked(id, entry, opts)
+	}
+	pm.recordsMu.RLock()
+	existing := pm.records[id]
+	alreadyRunning := existing != nil && existing.Phase == lifecycle.PhaseRunning
+	pm.recordsMu.RUnlock()
+	if !alreadyRunning {
+		op := telemetry.BeginOperation(context.Background(), "plugin", "load")
+		defer func() { op.End(resultErr) }()
 	}
 	if err := pm.guardUninstallRecovery(id); err != nil {
 		return plugintypes.PluginInfo{}, err

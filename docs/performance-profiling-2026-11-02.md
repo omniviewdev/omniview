@@ -525,3 +525,44 @@ The integration source cohort and Kubernetes submodule also pin the optimized
 SDK consumer. This keeps source-based application checks on the same SDK as
 the canonical host and plugin modules, rather than the earlier schema-budget
 cohort. These dependency updates are not additional matched performance runs.
+
+## Application diagnostics instrument catalogue
+
+The application meter measures the host process only. It does not receive child
+plugin process telemetry, infer provider HTTP calls, or report provider-internal
+inventory scans. All labels use fixed vocabularies; resource references, plugin
+IDs, connection IDs, query text and caller names are never metric attributes.
+
+| Instrument | Kind / unit | Meaning |
+| --- | --- | --- |
+| `omniview.process.cpu_time` | cumulative counter / `s` | OS process CPU time, `state=user/system`; utilization requires observed counter deltas divided by elapsed time |
+| `omniview.process.memory_peak_rss` | gauge / `By` | OS peak resident memory, not current RSS |
+| `omniview.process.go_heap_bytes` | gauge / `By` | Go heap objects, not total process memory |
+| `omniview.process.goroutines` | gauge | Current Go goroutines |
+| `omniview.operation.calls`, `.active` | counter, up/down counter | Completed and executing host operations, bounded `domain` and `operation` |
+| `omniview.resource.op_duration`, `.op_errors`, `.records` | histogram / `ms`, counters | Get/enumerate/query/mutate latency, errors, successful returned record counts |
+| `omniview.plugin.load_duration`, `.active`, `.crashes`, `.quarantines` | histogram / `ms`, up/down counter, counters | Load attempts and actual lifecycle transitions; active means Running |
+| `omniview.metric.pipeline.state` | gauge / `{item}` | Queued sample interests with uncovered work, sample jobs, catalog jobs/readers, cache entries and observations |
+| `omniview.metric.pipeline.state_bytes` | gauge / `By` | Retained sample cache and displayed observation snapshot bytes |
+| `omniview.metric.pipeline.queue_duration` | histogram / `ms` | Oldest sample interest age at dispatch |
+| `omniview.metric.pipeline.provider_duration` | histogram / `ms` | Actual finite provider query/catalog calls, excluding host admission/projection |
+| `omniview.metric.pipeline.events` | counter | Sample pair cache hits/misses, dispatches, canceled reader interests and abandoned-provider cancellation requests |
+| `omniview.metric.pipeline.work` | counter | Dispatched targets/pairs and validated response results, not scanned inventory |
+| `omniview.metric.pipeline.response_bytes` | histogram / `By` | Validated bounded provider response JSON bytes before caller projection |
+
+Operation outcomes are `success`, `error`, `canceled` or `timeout`. A canceled
+provider retains its inflight slot until it actually returns. State gauges read
+the coordinator's authoritative locked state; they do not duplicate lifecycle
+accounting. Cancellation events are requests, not proof a provider has stopped.
+Response counts include validated replies even when their final reader retires
+before delivery. Cached returns do not repeat provider-work counts.
+
+OS CPU and peak RSS currently support macOS and Linux (`getrusage`); macOS RSS
+uses bytes and Linux KiB is converted to bytes. Other platforms omit those
+observations rather than reporting false zeros. Heap and goroutines remain
+available. These metrics do not equate `GOMAXPROCS` with consumed CPU.
+
+Wails v3.1 exposes no supported around-binding execution hook. Wails timing/count
+instruments therefore have no observations; the UI must show unavailable rather
+than invent zeros. Backend operation timing is real, but is not end-to-end IPC
+or frontend rendering latency.

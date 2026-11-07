@@ -8,6 +8,7 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	"github.com/omniviewdev/omniview/internal/telemetry"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
@@ -29,6 +30,7 @@ const (
 type crashBudget struct {
 	count       int
 	windowStart time.Time
+	quarantined bool
 }
 
 // HealthChecker periodically checks the health of running plugins
@@ -240,6 +242,7 @@ func (hc *HealthChecker) consumeCrashBudgetLocked(pluginID string) bool {
 	if time.Since(cb.windowStart) > crashBudgetWindow {
 		cb.count = 0
 		cb.windowStart = time.Now()
+		cb.quarantined = false
 	}
 	cb.count++
 	if cb.count <= maxTotalCrashes {
@@ -258,6 +261,15 @@ func (hc *HealthChecker) markFailedLocked(pluginID, lastError, reason string) {
 	hc.pm.recordsMu.Lock()
 	defer hc.pm.recordsMu.Unlock()
 	if record, ok := hc.pm.records[pluginID]; ok {
+		budget := hc.crashBudgets[pluginID]
+		if budget == nil {
+			budget = &crashBudget{windowStart: time.Now()}
+			hc.crashBudgets[pluginID] = budget
+		}
+		if !budget.quarantined {
+			budget.quarantined = true
+			telemetry.RecordPluginQuarantine(context.Background())
+		}
 		record.Phase = lifecycle.PhaseFailed
 		record.LastError = lastError
 		if record.StateMachine != nil {

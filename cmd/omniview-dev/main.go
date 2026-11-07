@@ -52,6 +52,7 @@ func newRootCommand(in io.Reader, out, diagnostics io.Writer) *cobra.Command {
 	addWorkspaceCommands(root)
 	addControlCommands(root, in)
 	addViteFeedbackCommand(root)
+	addDiagnosticsCommands(root)
 	configureCommandGroups(root)
 	return root
 }
@@ -148,7 +149,7 @@ func controlCommandOutput(cmd *cobra.Command) bool {
 		cmd = cmd.Parent()
 	}
 	switch cmd.Name() {
-	case "instance", "plugin", "settings", "operation", "extensions":
+	case "instance", "plugin", "settings", "operation", "extensions", "diagnostics":
 		return true
 	default:
 		return false

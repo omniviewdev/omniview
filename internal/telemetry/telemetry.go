@@ -24,6 +24,8 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
+
+	"github.com/omniviewdev/omniview/internal/diagnostics"
 )
 
 // Rotation limits for the omniview.log file.
@@ -58,7 +60,8 @@ type Service struct {
 	switchableMetricExp *SwitchableMetricExporter
 	switchableLogExp    *SwitchableLogExporter
 
-	mu sync.RWMutex
+	diagnostics *diagnostics.Service
+	mu          sync.RWMutex
 }
 
 // New creates a telemetry Service. Call Init to start it.
@@ -121,12 +124,21 @@ func (s *Service) Init(ctx context.Context) error {
 		otel.SetTracerProvider(s.tracerProvider)
 	}
 
-	s.meterProvider = NewMeterProvider(s.resource, s.switchableMetricExp)
+	if s.diagnostics != nil {
+		s.diagnostics.SetRemote(s.switchableMetricExp)
+		s.updateDiagnosticsIdentity(s.cfg)
+		s.meterProvider = sdkmetric.NewMeterProvider(sdkmetric.WithResource(s.resource), sdkmetric.WithCardinalityLimit(128), sdkmetric.WithReader(sdkmetric.NewPeriodicReader(s.diagnostics, sdkmetric.WithInterval(2*time.Second))))
+	} else {
+		s.meterProvider = NewMeterProvider(s.resource, s.switchableMetricExp)
+	}
 	otel.SetMeterProvider(s.meterProvider)
 	if err = otelruntime.Start(otelruntime.WithMinimumReadMemStatsInterval(runtimeMetricsInterval)); err != nil {
 		otel.SetMeterProvider(noopmeter.NewMeterProvider())
 		_ = s.meterProvider.Shutdown(context.Background())
 		s.meterProvider = nil
+		return err
+	}
+	if _, err = NewMetrics(s.meterProvider); err != nil {
 		return err
 	}
 
@@ -233,6 +245,16 @@ func (s *Service) LoggerProvider() *sdklog.LoggerProvider { return s.loggerProvi
 // Resource returns the OTel resource describing this Omniview instance.
 func (s *Service) Resource() *resource.Resource { return s.resource }
 
+// SetDiagnostics installs the single local collection path before Init.
+func (s *Service) SetDiagnostics(service *diagnostics.Service) { s.diagnostics = service }
+
+func (s *Service) updateDiagnosticsIdentity(cfg Config) {
+	if s.diagnostics != nil {
+		s.diagnostics.SetRemoteEnabled(cfg.Enabled && cfg.Metrics && cfg.OTLPEndpoint != "")
+		s.diagnostics.SetConfigID(fmt.Sprintf("application-v1:enabled=%t:metrics=%t:traces=%t:profiling=%t", cfg.Enabled, cfg.Metrics, cfg.Traces, cfg.Profiling))
+	}
+}
+
 // ZapLogger returns the triple-core Zap logger.
 func (s *Service) ZapLogger() *zap.Logger { return s.zapLogger }
 
@@ -269,6 +291,7 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg Config) error {
 	if !cfg.Enabled {
 		s.disableAll()
 		s.cfg = cfg
+		s.updateDiagnosticsIdentity(cfg)
 		return nil
 	}
 
@@ -349,6 +372,7 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg Config) error {
 	s.applyProfiling(cfg, newProfiler)
 
 	s.cfg = cfg
+	s.updateDiagnosticsIdentity(cfg)
 	applied = true
 	return nil
 }
