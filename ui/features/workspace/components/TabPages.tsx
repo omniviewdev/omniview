@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { RouterProvider } from 'react-router/dom';
 import { reportStartupReady } from '@/features/perf/startup';
 import { usePagesState, useWorkspaceController } from '../WorkspaceProvider';
+import { PageVisibilityContext } from '../pageVisibility';
 
 function TabPage({ tabId, initialPath, active }: { tabId: string; initialPath: string; active: boolean }) {
   const controller = useWorkspaceController();
@@ -21,9 +22,11 @@ function TabPage({ tabId, initialPath, active }: { tabId: string; initialPath: s
   }, [router]);
 
   return (
-    <Activity mode={active ? 'visible' : 'hidden'}>
-      {router && <RouterProvider router={router} />}
-    </Activity>
+    <PageVisibilityContext value={active}>
+      <Activity mode={active ? 'visible' : 'hidden'}>
+        {router && <RouterProvider router={router} />}
+      </Activity>
+    </PageVisibilityContext>
   );
 }
 

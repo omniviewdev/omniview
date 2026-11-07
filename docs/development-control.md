@@ -2,6 +2,31 @@
 
 The local control service exists only in a host built with the explicit `devcontrol` Go build tag. Normal/release builds contain the client and an inert `Start` returning `ErrDisabled`, but no listener, dispatcher, provider adapter, or native host bridge. Build through the repository Taskfile; binding generation remains `task bindings` only.
 
+## Application diagnostics
+
+Application diagnostics is separate from development control and runs in normal desktop builds too. It owns only the selected profile's private `runtime/diagnostics/` discovery and generation-token files; it never updates control discovery. Agents should use the native-free CLI, which verifies private permissions, selected profile/source, live process start identity, and authenticated endpoint identity. Never copy credentials into flags, URLs, logs, or reports. Saved captures are stored separately, under the selected profile's state root at `diagnostics/captures/`; removing `runtime/diagnostics/` does not delete them. Use `omniview-dev diagnostics delete CAPTURE_ID` (or the Delete action in Developer Tools → Performance) to remove a finished capture and free its slot; at most 20 are kept.
+
+```bash
+omniview-dev diagnostics describe --workspace my-workspace
+omniview-dev diagnostics snapshot --workspace my-workspace --json
+omniview-dev diagnostics capture --workspace my-workspace --duration 60s --name baseline --workload idle
+# Keep result.id; captures persist across host restarts and build changes.
+omniview-dev diagnostics compare BASELINE_ID CANDIDATE_ID --workspace my-workspace --json
+omniview-dev diagnostics snapshot --channel stable --json
+```
+
+All commands return JSON envelopes (`schemaVersion`, `result`), or a safe `error` envelope. Capture starts a bounded server-side job, waits with a deadline, and handles SIGINT/SIGTERM with bounded server-side cancellation. Only `complete` exits successfully; error, canceled, interrupted, reset, or incomplete captures exit nonzero and retain safe capture ID/status in `result`. Polling errors retain their original classification; `result.cancellation` reports cancellation confirmation separately. Completed captures retain original build/config identity; comparison reports incompatible or incomplete measurements instead of treating unrelated process counters as deltas.
+
+The authenticated API exposes `GET /diagnostics/v1/identity`, `/catalog`, `/snapshot`, `/history`, `/captures`, `/captures/{id}`, `/compare?baseline=ID&candidate=ID`, and `GET /metrics`. All abbreviated diagnostics paths use the `/diagnostics/v1` prefix. Start jobs with `POST /diagnostics/v1/captures` and JSON `{"name":"baseline","durationSeconds":60,"workload":"idle"}`; fetch and cancel HTTP captures by safe ID with `GET` or `DELETE /diagnostics/v1/captures/{id}`. Every request needs exactly one private bearer capability. JSON APIs also require `X-Diagnostics-Generation`; `/metrics` supports standard Prometheus bearer-only scraping because the capability is already generation-specific. The client disables redirects/proxies and bounds response reads. The server rejects browser Origin, proxy forwarding, wrong Host/peer, stale generations, oversized bodies, unknown fields, and extra JSON values. Safe API errors expose bounded code/message pairs, never filesystem errors. Compare query parameters and CLI compare arguments accept exact IDs or unique persisted names (URL-encode names in query parameters); ambiguous names fail explicitly. The HTTP capture-ID path does not accept arbitrary names. The IDE uses its Wails service, not this HTTP capability.
+
+Polling responses stay metadata-only: `/captures` (`ListCaptures`) returns `CaptureSummary` records with `sampleCount`, never `samples`; `/catalog` returns instrument descriptors without `points`. Fetch a full capture and its bounded samples only through `/captures/{id}` (`GetCapture`).
+
+Local collection stays at two seconds. Remote OTLP forwarding retains the prior 60-second default or positive `OTEL_METRIC_EXPORT_INTERVAL` in milliseconds; the first enabled sample may ship immediately. One owned pending cumulative snapshot coalesces intermediate local updates. Explicit flush/shutdown sends the latest pending snapshot before flushing within the caller deadline. `Identity.configScope` covers telemetry toggles, this remote cadence, and local collection bounds—not full application settings or a workload fingerprint.
+
+RPC call histograms aggregate across private method/peer dimensions using compatible buckets and cumulative start times; only finite protocol/status labels remain. Ambiguous gauges and incompatible histogram families are rejected, not summed. Current collection completeness recovers after a valid batch; lifetime loss/error/gap counters remain cumulative, while capture coverage uses its sample window and retains any incomplete sample in that window. This guarantee covers local diagnostics only: when OTLP export is enabled, the configured collector receives the original attributes, including `rpc.method`.
+
+Host lifecycle calls `diagnostics.StartHTTP(ctx, service, diagnostics.HTTPOptions{RuntimeDirectory: profile.RuntimeRoot, WorkspaceID: profile.Descriptor.WorkspaceID, StateRoot: profile.Descriptor.StateRoot, Source: selectedHostSource})` after profile ownership. Close the returned server before closing the collection service.
+
 ## Host integration
 
 The integration owner starts the service after profile ownership, plugin manager, settings providers, and managed devserver configuration are established. A build-tagged host integration file imports `internal/devcontrol/host`; ordinary production files must not import that package.

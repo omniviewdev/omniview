@@ -52,7 +52,7 @@ export function getNavigationHref(target: unknown): string | undefined {
   }
 
   if (target.kind === 'core') {
-    return target.path === '/' || target.path === '/plugins' || target.path === '/developer-tools/extensions' ? target.path : undefined;
+    return target.path === '/' || target.path === '/plugins' || target.path === '/developer-tools/extensions' || target.path === '/developer-tools/performance' ? target.path : undefined;
   }
 
   if (target.kind !== 'plugin' || !identifier(target.pluginId) || typeof target.path !== 'string') {
@@ -276,7 +276,7 @@ export function admitSearchEntry(input: unknown): SearchEntryV1 | undefined {
       return undefined;
     }
 
-    if (input.target.kind === 'core' && (input.target.path === '/' || input.target.path === '/plugins' || input.target.path === '/developer-tools/extensions')) {
+    if (input.target.kind === 'core' && (input.target.path === '/' || input.target.path === '/plugins' || input.target.path === '/developer-tools/extensions' || input.target.path === '/developer-tools/performance')) {
       return { ...common, kind: 'navigation', target: { kind: 'core', path: input.target.path } };
     }
 
