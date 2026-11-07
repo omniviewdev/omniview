@@ -53,16 +53,56 @@ type refreshIntent struct {
 	LaunchGenerations []string             `json:"launchGenerations,omitempty"`
 }
 
-func requireRefreshLaunchAuthority(intent refreshIntent, status Status) error {
-	if status.Phase == sourceUpdateStopped || status.Phase == refreshCrashed {
-		return nil
-	}
-	for _, generation := range intent.LaunchGenerations {
-		if generation == status.Generation {
-			return nil
+func validateRefreshLaunchGenerations(generations []string) error {
+	for index, generation := range generations {
+		if err := validateLaunchGeneration(generation); err != nil {
+			return sourceUpdateFailure("invalid_refresh", "retained launch authority contains a noncanonical or zero generation")
+		}
+		for _, previous := range generations[:index] {
+			if previous == generation {
+				return sourceUpdateFailure("invalid_refresh", "retained launch authority contains a duplicate generation")
+			}
 		}
 	}
-	return devcontract.Fail(4, "stale_target", "live supervisor is not a recorded launch attempt of the retained refresh; refusing to adopt or stop it")
+	return nil
+}
+
+func (m *Manager) requireRefreshLaunchAuthority(intent refreshIntent, status Status) (devcontract.ProcessIdentity, error) {
+	var process devcontract.ProcessIdentity
+	if status.Phase == sourceUpdateStopped || status.Phase == refreshCrashed {
+		return process, nil
+	}
+	recorded := false
+	for _, generation := range intent.LaunchGenerations {
+		if generation == status.Generation {
+			recorded = true
+			break
+		}
+	}
+	if !recorded {
+		return process, devcontract.Fail(4, "stale_target", "live supervisor is not a recorded launch attempt of the retained refresh; refusing to adopt or stop it")
+	}
+	var record supervisorRecord
+	if err := readLaunchJSON(launchPath(status.Workspace, "supervisor.json"), &record); err != nil {
+		return process, err
+	}
+	path, err := m.supervisorLaunchAuthorizationPath(status.Workspace, status.Generation)
+	if err != nil {
+		return process, err
+	}
+	var authorization supervisorLaunchAuthorization
+	if err = readLaunchJSON(path, &authorization); err != nil {
+		if os.IsNotExist(err) {
+			return process, devcontract.Fail(4, "stale_target", "retained generation has no native launch handoff; refusing to adopt or stop its live owner")
+		}
+		return process, err
+	}
+	if record.WorkspaceID != status.Manifest.WorkspaceID || record.Generation != status.Generation ||
+		!authorization.Claimed || authorization.WorkspaceID != record.WorkspaceID || authorization.Root != status.Root ||
+		authorization.Generation != record.Generation || authorization.Process != record.Process {
+		return process, devcontract.Fail(4, "stale_target", "current supervisor does not match the retained launch's claimed native invocation")
+	}
+	return record.Process, nil
 }
 
 func launchOptionDifferences(requested, saved LaunchOptions) []string {
@@ -189,7 +229,7 @@ func readRecoveryRefresh(w Workspace, path string) (bool, error) {
 	default:
 		return true, sourceUpdateFailure("invalid_refresh", "refresh intent has an unknown phase")
 	}
-	return true, errors.Join(intent.Evidence.validate(), intent.Launch.Validate())
+	return true, errors.Join(intent.Evidence.validate(), intent.Launch.Validate(), validateRefreshLaunchGenerations(intent.LaunchGenerations))
 }
 
 func (m *Manager) completedRecovery(
@@ -305,6 +345,9 @@ func (m *Manager) refresh(ctx context.Context, name string, options RefreshOptio
 		}
 		if intent.WorkspaceID != w.Manifest.WorkspaceID || intent.Root != w.Root {
 			return result, devcontract.Fail(4, "foreign_recovery", "refresh intent identity differs from workspace")
+		}
+		if err = validateRefreshLaunchGenerations(intent.LaunchGenerations); err != nil {
+			return result, err
 		}
 		if refs != nil && !reflect.DeepEqual(refs, intent.Refs) {
 			return result, refreshIntentMismatch(w, intent, []string{"refs"})
@@ -481,7 +524,7 @@ func (m *Manager) refresh(ctx context.Context, name string, options RefreshOptio
 		if statusErr != nil {
 			return result, statusErr
 		}
-		if err = requireRefreshLaunchAuthority(intent, current); err != nil {
+		if _, err = m.requireRefreshLaunchAuthority(intent, current); err != nil {
 			return result, err
 		}
 		switch current.Phase {
@@ -531,13 +574,14 @@ func (m *Manager) refresh(ctx context.Context, name string, options RefreshOptio
 		if err != nil {
 			return result, err
 		}
-		if err = requireRefreshLaunchAuthority(intent, result.Status); err != nil {
-			return result, err
+		process, authorityErr := m.requireRefreshLaunchAuthority(intent, result.Status)
+		if authorityErr != nil {
+			return result, authorityErr
 		}
 		if result.Status.Phase == "error" || result.Status.Phase == "build-error" {
 			// Both durable operation authority and the just-observed process
 			// generation must match before authenticated shutdown.
-			if _, err = m.downGeneration(ctx, name, false, result.Status.Generation); err != nil {
+			if _, err = m.downAuthorizedGeneration(ctx, name, process); err != nil {
 				return result, err
 			}
 		}
@@ -570,7 +614,7 @@ func (m *Manager) refresh(ctx context.Context, name string, options RefreshOptio
 		if err != nil {
 			return result, err
 		}
-		if err = requireRefreshLaunchAuthority(intent, result.Status); err != nil {
+		if _, err = m.requireRefreshLaunchAuthority(intent, result.Status); err != nil {
 			return result, err
 		}
 		if result.Status.Phase != "ready" {

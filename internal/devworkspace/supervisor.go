@@ -17,7 +17,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devsession"
 )
@@ -237,6 +236,17 @@ func (m *Manager) ServeSupervisor(ctx context.Context, name string, output io.Wr
 	if err != nil {
 		return err
 	}
+	generation := os.Getenv(supervisorGenerationEnvironment)
+	var owner devcontract.ProcessIdentity
+	if generation == "" {
+		generation = NewGeneration()
+		owner, err = devsession.CaptureProcess(os.Getpid(), devsession.ProcessOwner{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "supervisor", Source: w.Root})
+	} else {
+		owner, err = m.claimSupervisorLaunch(ctx, w, generation)
+	}
+	if err != nil {
+		return err
+	}
 	lockPath, err := GeneratedLockPath(w, "supervisor")
 	if err != nil {
 		return err
@@ -265,19 +275,6 @@ func (m *Manager) ServeSupervisor(ctx context.Context, name string, output io.Wr
 		return err
 	}
 	if err = options.validate(); err != nil {
-		return err
-	}
-	generation := os.Getenv(supervisorGenerationEnvironment)
-	if generation == "" {
-		generation = NewGeneration()
-	} else {
-		parsed, parseErr := uuid.Parse(generation)
-		if parseErr != nil || parsed == uuid.Nil || parsed.String() != generation {
-			return devcontract.Fail(4, "invalid_launch_generation", "assigned supervisor generation is not a canonical launch identity")
-		}
-	}
-	owner, err := devsession.CaptureProcess(os.Getpid(), devsession.ProcessOwner{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "supervisor", Source: w.Root})
-	if err != nil {
 		return err
 	}
 	registry, err := devsession.OpenRegistry(filepath.Join(m.options.Home, ".omniview-dev", "sessions"), devsession.RegistryOptions{})

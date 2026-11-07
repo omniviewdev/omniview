@@ -171,6 +171,35 @@ func (m *Manager) startGeneration(ctx context.Context, name string, o LaunchOpti
 	if err = command.Start(); err != nil {
 		return Status{}, err
 	}
+	if generation != "" {
+		// Keep the native child handle unreaped until its identity is captured:
+		// a recycled PID must never receive this operation's authorization.
+		owner := devsession.ProcessOwner{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "supervisor", Source: w.Root}
+		launched := launchedExecutable(command)
+		process, captureErr := captureExecutedProcess(ctx, launched, supervisorExecutable(), execCaptureTimeout, func() (devcontract.ProcessIdentity, error) {
+			return devsession.CaptureProcess(command.Process.Pid, owner)
+		})
+		if captureErr == nil {
+			actualExecutable := process.Executable
+			if resolved, resolveErr := filepath.EvalSymlinks(actualExecutable); resolveErr == nil {
+				actualExecutable = resolved
+			}
+			if actualExecutable != launched {
+				failure := devcontract.Fail(4, "launch_authorization_invalid", "retained supervisor launch did not execute the selected native controller")
+				failure.Details = map[string]any{"selectedExecutable": launched, "actualExecutable": process.Executable}
+				captureErr = failure
+			}
+		}
+		if captureErr == nil {
+			captureErr = m.authorizeSupervisorLaunch(ctx, w, generation, process)
+		}
+		if captureErr != nil {
+			// An unauthorized child cannot publish a supervisor record and
+			// exits after its bounded handoff wait. Reap only our own handle.
+			go func() { _ = command.Wait() }()
+			return Status{}, captureErr
+		}
+	}
 	// Reap only our own supervisor handle if it exits during startup. This does
 	// not signal it when the short CLI returns or grant detached PID ownership.
 	supervisorExited := make(chan error, 1)
@@ -210,10 +239,14 @@ func (m *Manager) Down(ctx context.Context, name string) (Status, error) {
 }
 
 func (m *Manager) down(ctx context.Context, name string, fence bool) (Status, error) {
-	return m.downGeneration(ctx, name, fence, "")
+	return m.downSupervisor(ctx, name, fence, "", nil)
 }
 
-func (m *Manager) downGeneration(ctx context.Context, name string, fence bool, generation string) (Status, error) {
+func (m *Manager) downAuthorizedGeneration(ctx context.Context, name string, process devcontract.ProcessIdentity) (Status, error) {
+	return m.downSupervisor(ctx, name, false, process.Generation, &process)
+}
+
+func (m *Manager) downSupervisor(ctx context.Context, name string, fence bool, generation string, process *devcontract.ProcessIdentity) (Status, error) {
 	if fence {
 		if err := m.fenceFollow(ctx, name); err != nil {
 			return Status{}, err
@@ -224,7 +257,7 @@ func (m *Manager) downGeneration(ctx context.Context, name string, fence bool, g
 		}
 		defer release()
 	}
-	status, err := m.supervisorGenerationCommand(ctx, name, supervisorStopCommand, generation)
+	status, err := m.supervisorTargetCommand(ctx, name, supervisorStopCommand, generation, process)
 	if err != nil || status.Generation == "" || runtime.GOOS == "darwin" {
 		return status, err
 	}
@@ -241,6 +274,9 @@ func (m *Manager) downGeneration(ctx context.Context, name string, fence bool, g
 		}
 		if record.Generation != status.Generation {
 			return status, devcontract.Fail(4, "stale_target", "workspace generation changed during shutdown")
+		}
+		if process != nil && record.Process != *process {
+			return status, devcontract.Fail(4, "stale_target", "supervisor native invocation changed during shutdown")
 		}
 		if err = verifySupervisor(record, w); errors.Is(err, devsession.ErrProcessGone) {
 			return status, nil
@@ -293,10 +329,10 @@ func (m *Manager) Restart(ctx context.Context, name string) (Status, error) {
 	return m.Start(ctx, name, options, "", io.Discard)
 }
 func (m *Manager) supervisorCommand(ctx context.Context, name, command string) (Status, error) {
-	return m.supervisorGenerationCommand(ctx, name, command, "")
+	return m.supervisorTargetCommand(ctx, name, command, "", nil)
 }
 
-func (m *Manager) supervisorGenerationCommand(ctx context.Context, name, command, generation string) (Status, error) {
+func (m *Manager) supervisorTargetCommand(ctx context.Context, name, command, generation string, process *devcontract.ProcessIdentity) (Status, error) {
 	w, err := m.Inspect(ctx, name)
 	if err != nil {
 		return Status{}, err
@@ -313,6 +349,9 @@ func (m *Manager) supervisorGenerationCommand(ctx context.Context, name, command
 	}
 	if generation != "" && record.Generation != generation {
 		return Status{}, devcontract.Fail(4, "stale_target", "workspace generation changed before shutdown")
+	}
+	if process != nil && record.Process != *process {
+		return Status{}, devcontract.Fail(4, "stale_target", "supervisor native invocation changed before shutdown")
 	}
 	if err = verifySupervisor(record, w); err != nil {
 		if errors.Is(err, devsession.ErrProcessGone) && (command == supervisorStopCommand || command == supervisorRestartCommand) {

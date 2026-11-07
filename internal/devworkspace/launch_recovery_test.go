@@ -181,6 +181,7 @@ func TestLateRefreshFailureRetiresOnlyFailedLaunchWithoutReinstall(t *testing.T)
 			record := supervisorRecord{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation,
 				Endpoint: server.URL + "/v1/supervisor", TokenFile: launchPath(w, "supervisor-"+generation+".secret"), Process: child.identity}
 			require.NoError(t, os.WriteFile(record.TokenFile, token, 0600))
+			recordTestLaunchAuthorization(t, m, w, record.Process)
 			require.NoError(t, rawSaveLaunchJSON(launchPath(w, "supervisor.json"), record))
 			path := filepath.Join(m.Root, ".omniview-dev", "recovery", w.Manifest.WorkspaceID, "refresh.json")
 			require.NoError(t, atomicJSON(path, refreshIntent{
@@ -220,7 +221,9 @@ func TestFailedRefreshShutdownRejectsSuccessorGeneration(t *testing.T) {
 	require.NoError(t, rawSaveLaunchJSON(launchPath(w, "supervisor.json"), record))
 	before, err := os.ReadFile(launchPath(w, "supervisor.json"))
 	require.NoError(t, err)
-	_, err = m.downGeneration(ctx, w.Manifest.WorkspaceID, false, NewGeneration())
+	expected := child.identity
+	expected.Generation = NewGeneration()
+	_, err = m.downAuthorizedGeneration(ctx, w.Manifest.WorkspaceID, expected)
 	var failure *devcontract.Error
 	require.ErrorAs(t, err, &failure)
 	require.Equal(t, "stale_target", failure.Code)
@@ -231,14 +234,16 @@ func TestFailedRefreshShutdownRejectsSuccessorGeneration(t *testing.T) {
 }
 
 func TestRecoverDoesNotRetireUnrelatedFailedSuccessor(t *testing.T) {
-	for _, replacement := range []string{"before-start", "before-verify", "between-verify-and-start", "unbound-legacy"} {
+	for _, replacement := range []string{"before-start", "before-verify", "between-verify-and-start", "same-generation-before-start", "same-generation-between-reads", "unbound-legacy", "missing-native-handoff"} {
 		t.Run(replacement, func(t *testing.T) {
 			m, w, j := recoveryFixture(t)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			var stops atomic.Int32
-			startOwner := func() (supervisorRecord, *ownedChild, devsession.ProcessOwner) {
-				generation := NewGeneration()
+			startOwner := func(generation string) (supervisorRecord, *ownedChild, devsession.ProcessOwner) {
+				if generation == "" {
+					generation = NewGeneration()
+				}
 				owner := devsession.ProcessOwner{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "supervisor", Source: w.Root}
 				child, err := startOwnedChild(ctx, w.Root, os.Environ(), io.Discard, owner, nil, "/bin/sleep", "300")
 				require.NoError(t, err)
@@ -258,19 +263,30 @@ func TestRecoverDoesNotRetireUnrelatedFailedSuccessor(t *testing.T) {
 				require.NoError(t, os.WriteFile(record.TokenFile, token, 0600))
 				return record, child, owner
 			}
-			attempt, original, originalOwner := startOwner()
-			successor, replacementChild, replacementOwner := startOwner()
+			attempt, original, originalOwner := startOwner("")
+			if replacement != "missing-native-handoff" {
+				recordTestLaunchAuthorization(t, m, w, attempt.Process)
+			}
+			successorGeneration := ""
+			if replacement == "same-generation-before-start" || replacement == "same-generation-between-reads" {
+				successorGeneration = attempt.Generation
+			}
+			successor, replacementChild, replacementOwner := startOwner(successorGeneration)
 			intent := refreshIntent{WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, Phase: refreshStart,
 				Evidence: j.Evidence, Launch: LaunchOptions{Mode: "browser"}, WasRunning: true,
 				LaunchGenerations: []string{attempt.Generation}}
-			if replacement == "before-verify" || replacement == "between-verify-and-start" {
+			if replacement == "before-verify" || replacement == "between-verify-and-start" || replacement == "same-generation-between-reads" {
 				intent.Phase = refreshVerify
 			}
 			if replacement == "unbound-legacy" {
 				intent.LaunchGenerations = nil
 			}
 			record := successor
-			if replacement == "between-verify-and-start" {
+			expectedRecord := successor
+			if replacement == "missing-native-handoff" {
+				record, expectedRecord = attempt, attempt
+			}
+			if replacement == "between-verify-and-start" || replacement == "same-generation-between-reads" {
 				record = attempt
 				m.afterDurablePhase = func(kind, phase string) error {
 					require.Equal(t, "refresh", kind)
@@ -290,7 +306,7 @@ func TestRecoverDoesNotRetireUnrelatedFailedSuccessor(t *testing.T) {
 			require.NoError(t, devsession.VerifyOwnedProcess(replacementChild.identity, replacementOwner))
 			var retained supervisorRecord
 			require.NoError(t, readLaunchJSON(launchPath(w, "supervisor.json"), &retained))
-			require.Equal(t, successor, retained)
+			require.Equal(t, expectedRecord, retained)
 		})
 	}
 }

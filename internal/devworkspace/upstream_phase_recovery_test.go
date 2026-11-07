@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
 	"github.com/omniviewdev/omniview/internal/devsession"
 )
@@ -316,6 +317,7 @@ func phaseRecoverySupervisor(t *testing.T, m *Manager, w Workspace, generation s
 		Endpoint: server.URL + "/v1/supervisor", TokenFile: launchPath(w, "supervisor-"+generation+".secret"),
 		Process: child.identity}
 	require.NoError(t, os.WriteFile(record.TokenFile, token, 0600))
+	recordTestLaunchAuthorization(t, m, w, record.Process)
 	require.NoError(t, rawSaveLaunchJSON(launchPath(w, "supervisor.json"), record))
 	return func() {
 		t.Helper()
@@ -327,6 +329,19 @@ func phaseRecoverySupervisor(t *testing.T, m *Manager, w Workspace, generation s
 		require.Equal(t, generation, status.Generation)
 		require.Equal(t, "ready", status.Phase)
 	}
+}
+
+// Transport fixtures own these real child handles from creation. Supply their
+// explicit issuer proof, never authority inferred from a later selected owner.
+func recordTestLaunchAuthorization(t *testing.T, m *Manager, w Workspace, process devcontract.ProcessIdentity) {
+	t.Helper()
+	require.NoError(t, m.authorizeSupervisorLaunch(context.Background(), w, process.Generation, process))
+	path, err := m.supervisorLaunchAuthorizationPath(w, process.Generation)
+	require.NoError(t, err)
+	var authorization supervisorLaunchAuthorization
+	require.NoError(t, readLaunchJSON(path, &authorization))
+	authorization.Claimed = true
+	require.NoError(t, atomicOwnedJSON(path, authorization, w.Manifest.WorkspaceID))
 }
 
 func assertTerminalRecoveryIdempotent(t *testing.T, m *Manager, w Workspace) {
