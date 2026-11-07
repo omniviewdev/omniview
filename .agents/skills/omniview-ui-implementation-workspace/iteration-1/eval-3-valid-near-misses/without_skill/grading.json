@@ -1,0 +1,31 @@
+{
+  "expectations": [
+    {
+      "text": "Does not ban semantic structural HTML or domain ANSI colors.",
+      "passed": true,
+      "evidence": "The response says semantic `main`/`section`/`form` markup and base-ui `TextField` “do not establish a defect,” and ANSI domain colors' “presence alone is not a styling violation.”"
+    },
+    {
+      "text": "Does not fabricate History or utilization percentages for unsupported shapes/unknown capacity.",
+      "passed": true,
+      "evidence": "It explicitly states “Do not require unsupported history” and “Omitting utilization percentage when capacity is unknown avoids presenting an unsupported value.”"
+    },
+    {
+      "text": "Does not blanket-ban full-width URL input or explicitly approved menu presentation.",
+      "passed": true,
+      "evidence": "It says “A URL input filling a bounded form column is not, by itself, a layout problem” and, for the approved menu, “do not block it merely for changing the control type.”"
+    },
+    {
+      "text": "Separates remaining actual verification from invented defects and does not claim unobserved screenshots were personally inspected.",
+      "passed": true,
+      "evidence": "Checks are introduced as “Remaining verification, if not already covered” and explicitly qualified: “These are verification requirements, not findings of defects.” “Inspect the actual ANSI output” is a prospective check, not a claim of completed screenshot inspection."
+    }
+  ],
+  "critique": "All four assertions are satisfied. The response directly answers that none of the supplied facts is itself a blocker, preserves the approved alternatives, and distinguishes conditional accessibility, behavior, legibility, and responsive-layout checks from actual defect findings. It does not claim personal inspection of visual evidence or demand new features. The assertions are concrete and discriminating overall; the no-personal-inspection clause is a negative constraint rather than evidence that any inspection occurred, and the response appropriately makes no such claim.",
+  "summary": {
+    "passed": 4,
+    "failed": 0,
+    "total": 4,
+    "pass_rate": 1
+  }
+}
