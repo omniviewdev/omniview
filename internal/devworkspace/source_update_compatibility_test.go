@@ -21,6 +21,15 @@ import (
 
 func sourceCompatibilitySupervisor(t *testing.T, w Workspace, current bool) (*ownedChild, <-chan string) {
 	t.Helper()
+	return sourceCompatibilitySupervisorStatus(t, w, current, func() Status {
+		return Status{Workspace: w, Phase: "ready"}
+	})
+}
+
+// sourceCompatibilitySupervisorStatus serves the status produced by live, so a
+// test can report what the real supervisor snapshot reports.
+func sourceCompatibilitySupervisorStatus(t *testing.T, w Workspace, current bool, live func() Status) (*ownedChild, <-chan string) {
+	t.Helper()
 	generation := NewGeneration()
 	owner := devsession.ProcessOwner{
 		WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "supervisor", Source: w.Root,
@@ -30,7 +39,8 @@ func sourceCompatibilitySupervisor(t *testing.T, w Workspace, current bool) (*ow
 	t.Cleanup(func() { require.NoError(t, child.stop(context.Background())) })
 	token := []byte("source-compatibility-authenticated-supervisor-token")
 	commands := make(chan string, 16)
-	status := Status{Workspace: w, Generation: generation, Phase: "ready"}
+	status := live()
+	status.Generation = generation
 	var handler http.Handler
 	if current {
 		handler = supervisorHandler(w.Manifest.WorkspaceID, generation, token,
@@ -193,6 +203,8 @@ func TestStoppedSourceUpdateNeedsNoSupervisorCapability(t *testing.T) {
 func TestSupervisorSnapshotAdvertisesSourceUpdateSupport(t *testing.T) {
 	supervisor := &workspaceSupervisor{status: Status{Phase: "ready"}}
 	require.True(t, supervisor.snapshot().SourceUpdateSupported)
+	supervisor.options = LaunchOptions{Mode: "browser", PluginRuntime: PluginRuntimeArchive}
+	require.False(t, supervisor.snapshot().SourceUpdateSupported)
 }
 
 func TestFollowOldSupervisorRetainsRestartGuidanceAcrossObservations(t *testing.T) {
@@ -273,4 +285,41 @@ func TestFollowOldSupervisorRetainsRestartGuidanceAcrossObservations(t *testing.
 	for len(commands) > 0 {
 		require.Equal(t, supervisorStatusCommand, <-commands, "follow must not send mutation or restart commands")
 	}
+}
+
+// A running archive runtime refuses before the manager captures any intent, so
+// no dead-end source-update.json is left to block update, follow and recover.
+func TestArchiveRuntimeSourceUpdateRefusesBeforeCapture(t *testing.T) {
+	m, w, plan := sourcePlanFixture(t)
+	archive := &workspaceSupervisor{
+		options: LaunchOptions{Mode: "browser", PluginRuntime: PluginRuntimeArchive},
+		status:  Status{Workspace: w, Phase: "ready"},
+	}
+	child, commands := sourceCompatibilitySupervisorStatus(t, w, true, archive.snapshot)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	status, err := m.Status(ctx, w.Manifest.WorkspaceID)
+	require.NoError(t, err)
+	require.Equal(t, "ready", status.Phase)
+	require.False(t, status.SourceUpdateSupported)
+	require.Equal(t, PluginRuntimeArchive, status.PluginRuntime)
+	for range 2 { // a repeat must be as clean as the first attempt: no dead-end loop
+		_, err = m.applySourceUpdateRequest(ctx, w.Manifest.WorkspaceID, plan, UpdateOptions{}, false)
+		var typed *devcontract.Error
+		require.ErrorAs(t, err, &typed)
+		require.Equal(t, "archive_runtime_source_update", typed.Code)
+		require.Equal(t, sourceUpdateConflictExitCode, typed.Exit)
+		down := []string{"omniview-dev", "workspace", "down", w.Manifest.WorkspaceID, "--root", m.Root}
+		require.Equal(t, down, typed.Details["nextArgv"])
+		require.Contains(t, typed.Message, shellCommand(down))
+		require.NoFileExists(t, sourceUpdatePath(m, w), "refusal left a persisted intent that would block every later update")
+	}
+	require.NoError(t, devsession.VerifyOwnedProcess(child.identity, devsession.ProcessOwner{
+		WorkspaceID: w.Manifest.WorkspaceID, Generation: status.Generation, Role: "supervisor", Source: w.Root,
+	}))
+	for len(commands) > 0 {
+		require.Equal(t, supervisorStatusCommand, <-commands, "refusal must not send a mutation command")
+	}
+	// Once stopped, the same plan is not refused by the runtime check.
+	require.NoError(t, m.requireSourceUpdateSupervisor(w, Status{Workspace: w, Phase: sourceUpdateStopped, PluginRuntime: PluginRuntimeArchive}))
 }

@@ -222,7 +222,9 @@ func supervisorHandler(workspaceID, generation string, token []byte, execute fun
 			return
 		}
 		status, err := execute(r.Context(), request.Command)
-		status.SourceUpdateSupported = true
+		// An archive runtime has no in-place source update path; its live
+		// status says so before the manager captures any update intent.
+		status.SourceUpdateSupported = status.PluginRuntime != PluginRuntimeArchive
 		w.Header().Set("Content-Type", "application/json")
 		failure := workspaceError(err)
 		_ = json.NewEncoder(w).Encode(map[string]any{"status": status, "error": failure})
@@ -405,7 +407,10 @@ func (s *workspaceSupervisor) snapshot() Status {
 	raw, _ := json.Marshal(s.status)
 	var status Status
 	_ = json.Unmarshal(raw, &status)
-	status.SourceUpdateSupported = true
+	status.SourceUpdateSupported = !s.options.archiveRuntime()
+	if s.options.archiveRuntime() {
+		status.PluginRuntime = PluginRuntimeArchive
+	}
 	return status
 }
 func (s *workspaceSupervisor) persist() {

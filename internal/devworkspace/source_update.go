@@ -295,7 +295,7 @@ func (s *workspaceSupervisor) startSourceWatcher(ctx context.Context) {
 
 func (s *workspaceSupervisor) applySourceUpdate(ctx context.Context) (Status, error) {
 	if s.options.archiveRuntime() {
-		return s.snapshot(), devcontract.Fail(4, "archive_runtime_source_update", "an archive plugin runtime cannot apply source updates in place; stop the workspace and launch it again")
+		return s.snapshot(), devcontract.Fail(4, "archive_runtime_source_update", "an archive plugin runtime cannot apply source updates in place; run workspace down, update the stopped workspace, then workspace up")
 	}
 	if err := s.sourceMu.LockContext(ctx); err != nil {
 		return s.snapshot(), err

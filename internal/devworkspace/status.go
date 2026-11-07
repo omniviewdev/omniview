@@ -42,6 +42,10 @@ type Status struct {
 	HistoricalError       *devcontract.Error        `json:"historicalError,omitempty"`
 	HistoricalFailedStage string                    `json:"historicalFailedStage,omitempty"`
 
+	// PluginRuntime is the live supervisor's plugin runtime, reported only
+	// for an archive runtime launch.
+	PluginRuntime string `json:"pluginRuntime,omitempty"`
+
 	// SourceUpdateSupported is evidence only in an authenticated live response.
 	SourceUpdateSupported bool `json:"sourceUpdateSupported,omitempty"`
 }

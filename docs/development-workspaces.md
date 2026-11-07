@@ -184,14 +184,14 @@ checked producers, so the destination workspace records its own build evidence.
 For each plugin it then joins the actual published backend binary and frontend
 `dist/assets` into `.local/archive/PLUGIN/plugin.tar.gz` under the generated
 output ledger (symlinks, missing, changed, foreign and duplicate paths are
-refused; backend bytes must still match the recorded build digest), installs it
+refused; the backend must pass the host build record and match the ledger digest of its recorded publication, assets must still match their recorded publication after packaging), installs it
 through the `plugin.install-archive` operation and waits for that operation.
 No `plugin.dev.link`, Vite allocation or dependency watcher exists in this
 runtime. Readiness requires the plugin to be installed (not dev-linked), and for
 backend plugins Running with every declared backend capability negotiated; it is
 not inferred from install success. `inspect` reports the cohort as
 `archivePlugins` (archive digest, backend digest, asset count, install operation).
-In-place source updates are refused in this runtime; stop and launch again.
+In-place source updates are refused in this runtime; stop the workspace first (`workspace down`), update it stopped, then `workspace up`.
 
 Managed plugins follow their declared `requires.connections` dependencies.
 The supervisor links selected owners before their consumers.

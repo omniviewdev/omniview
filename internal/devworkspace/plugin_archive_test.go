@@ -3,6 +3,7 @@ package devworkspace
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -56,28 +57,29 @@ func containsIssue(report LaunchPreflight, code string) bool {
 	return false
 }
 
-func TestArchiveRuntimeIsPartOfVariantAndLifecycleComparison(t *testing.T) {
-	managed := &workspaceSupervisor{options: LaunchOptions{Mode: "browser"}}
-	explicit := &workspaceSupervisor{options: LaunchOptions{Mode: "browser", PluginRuntime: PluginRuntimeManaged}}
-	archive := &workspaceSupervisor{options: LaunchOptions{Mode: "browser", PluginRuntime: PluginRuntimeArchive}}
-	if managed.hostVariant() != explicit.hostVariant() {
-		t.Fatal("empty and explicit managed runtime produce different build variants")
+// Changing the runtime must invalidate a recorded host build: the reuse
+// fingerprint of the host backend node differs between managed and archive.
+func TestArchiveRuntimeChangesHostReuseFingerprint(t *testing.T) {
+	f := newReuseFixture(t)
+	g := f.g
+	node := outputGraphNode(t, g, "host-backend")
+	node.Dependencies = nil
+	g.toolInputs = g.toolchainInputs // the fixture's constant stub would hide the variant
+	fingerprint := func(options LaunchOptions) string {
+		s := &workspaceSupervisor{workspace: g.workspace, options: options}
+		g.options.HostVariant = s.hostVariant()
+		inputs, err := g.nodeInputs(context.Background(), node)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return inputs
 	}
-	if managed.hostVariant() == archive.hostVariant() {
-		t.Fatal("archive runtime does not change the reuse variant")
+	managed := fingerprint(LaunchOptions{Mode: "browser"})
+	if managed != fingerprint(LaunchOptions{Mode: "browser", PluginRuntime: PluginRuntimeManaged}) {
+		t.Fatal("empty and explicit managed runtime produce different build fingerprints")
 	}
-	fields := launchOptionDifferences(archive.options, explicit.options)
-	if len(fields) != 1 || fields[0] != "launch.pluginRuntime" {
-		t.Fatalf("lifecycle intent comparison omitted the plugin runtime: %v", fields)
-	}
-}
-
-func TestArchiveRuntimeRefusesInPlaceSourceUpdate(t *testing.T) {
-	s := &workspaceSupervisor{options: LaunchOptions{Mode: "browser", PluginRuntime: PluginRuntimeArchive}}
-	_, err := s.applySourceUpdate(t.Context())
-	var failure *devcontract.Error
-	if !errors.As(err, &failure) || failure.Code != "archive_runtime_source_update" {
-		t.Fatalf("archive runtime accepted an in-place source update: %v", err)
+	if managed == fingerprint(LaunchOptions{Mode: "browser", PluginRuntime: PluginRuntimeArchive}) {
+		t.Fatal("archive runtime reuses a managed build fingerprint")
 	}
 }
 
@@ -145,7 +147,10 @@ func readArchiveFiles(t *testing.T, path string) map[string][]byte {
 }
 
 func TestPluginArchiveLayoutDigestAndRefusals(t *testing.T) {
-	dir := t.TempDir()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	binary := filepath.Join(dir, "plugin")
 	if err := os.WriteFile(binary, []byte("backend bytes"), 0o700); err != nil {
 		t.Fatal(err)
@@ -185,8 +190,15 @@ func TestPluginArchiveLayoutDigestAndRefusals(t *testing.T) {
 		}
 	}
 	// A backend whose bytes differ from the recorded build evidence is never packaged.
-	if _, err = writePluginArchive(filepath.Join(dir, "bad.tar.gz"), []byte("id: p\n"), entries, strings.Repeat("0", 64)); err == nil {
-		t.Fatal("backend bytes that differ from build evidence were packaged")
+	// Bytes swapped after the recorded digest was taken are never packaged.
+	if err = os.WriteFile(binary, []byte("swapped bytes"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = writePluginArchive(filepath.Join(dir, "bad.tar.gz"), []byte("id: p\n"), entries, expected); err == nil {
+		t.Fatal("backend bytes that differ from the recorded digest were packaged")
+	}
+	if err = os.WriteFile(binary, []byte("backend bytes"), 0o700); err != nil {
+		t.Fatal(err)
 	}
 	// Symlinked assets are refused, not followed.
 	if err = os.Symlink(binary, filepath.Join(assets, "link.js")); err != nil {
@@ -200,5 +212,112 @@ func TestPluginArchiveLayoutDigestAndRefusals(t *testing.T) {
 	}
 	if _, err = writePluginArchive(path, []byte("id: p\n"), nil, ""); err == nil {
 		t.Fatal("existing archive was overwritten")
+	}
+}
+
+func TestPublishedGeneratedFileDigestBindsBytesAfterPublication(t *testing.T) {
+	w := generatedFixture(t)
+	prepared, err := PrepareGeneratedTree(w, "build/p", "generation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(prepared.Directory, "plugin"), []byte("built bytes"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err = RecordGeneratedTree(prepared); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256([]byte("built bytes"))
+	digest, err := publishedGeneratedFileDigest(w, "build/p/plugin")
+	if err != nil || digest != hex.EncodeToString(sum[:]) {
+		t.Fatalf("recorded publication digest: %q %v", digest, err)
+	}
+	if _, err = publishedGeneratedFileDigest(w, "build/p/missing"); err == nil {
+		t.Fatal("unrecorded file accepted")
+	}
+	if err = os.WriteFile(filepath.Join(w.Root, ".local/build/p/plugin"), []byte("swapped after build"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = publishedGeneratedFileDigest(w, "build/p/plugin"); err == nil {
+		t.Fatal("bytes mutated after the build record were accepted")
+	}
+}
+
+func TestArchiveAssetsRefuseRedirectedParentDirectory(t *testing.T) {
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assets, outside := filepath.Join(dir, "assets"), filepath.Join(dir, "outside")
+	for _, d := range []string{assets, outside} {
+		if err = os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err = os.WriteFile(filepath.Join(outside, "secret.js"), []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Symlink(outside, filepath.Join(assets, "nested")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = archiveAssetEntries(assets); err == nil {
+		t.Fatal("asset reached through a redirected parent directory was listed")
+	}
+	if err = os.RemoveAll(assets); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Symlink(outside, assets); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = archiveAssetEntries(assets); err == nil {
+		t.Fatal("redirected asset root was listed")
+	}
+}
+
+// Frontend-only plugin through the real ledger path: build via the graph, then
+// publish; mutating or redirecting assets after the build record must fail.
+func TestPublishPluginArchiveFrontendOnlyThroughOwnedOutputs(t *testing.T) {
+	f := newReuseFixture(t)
+	g := f.g
+	source := filepath.Join(g.workspace.Root, "plugin")
+	writeGraphFixture(t, filepath.Join(source, "plugin.yaml"), "id: plugin\nversion: 0.1.0\nname: Plugin\nschema_version: 1\nsdk_protocol_version: 1\ncapabilities:\n  - ui\n")
+	fixtureGit(t, source, "add", "plugin.yaml")
+	fixtureGit(t, source, "commit", "-m", "metadata")
+	inner := g.runProducer
+	g.runProducer = func(ctx context.Context, directory string, environment []string, program string, args ...string) ([]byte, error) {
+		out, err := inner(ctx, directory, environment, program, args...)
+		if directory == filepath.Join(source, "ui") {
+			for _, entry := range environment {
+				if key, value, _ := strings.Cut(entry, "="); key == "OMNIVIEW_BUILD_OUTPUT_DIRECTORY" {
+					writeGraphFixture(t, filepath.Join(value, "assets", "entry.js"), "export {}\n")
+					writeGraphFixture(t, filepath.Join(value, "assets", "chunk", "a.js"), "a\n")
+				}
+			}
+		}
+		return out, err
+	}
+	f.bootstrap(t)
+	plugin := g.workspace.Manifest.Plugins[0]
+	path, receipt, err := g.PublishPluginArchive(context.Background(), plugin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := readArchiveFiles(t, path)
+	if receipt.AssetFiles != 2 || string(files["assets/entry.js"]) != "export {}\n" || files["bin/plugin"] != nil || !strings.Contains(string(files["plugin.yaml"]), "id: plugin") {
+		t.Fatalf("frontend-only archive layout wrong: %+v %v", receipt, files)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum := sha256.Sum256(raw); hex.EncodeToString(sum[:]) != receipt.ArchiveSHA256 {
+		t.Fatal("receipt digest differs from published archive")
+	}
+	assets := filepath.Join(source, "ui", "dist", "assets")
+	if err = os.WriteFile(filepath.Join(assets, "entry.js"), []byte("tampered\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = g.PublishPluginArchive(context.Background(), plugin); err == nil {
+		t.Fatal("asset mutated after the recorded publication was packaged")
 	}
 }

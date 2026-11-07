@@ -14,10 +14,12 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
+	"github.com/omniviewdev/omniview/internal/instance"
 	sdkconfig "github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	"gopkg.in/yaml.v3"
@@ -83,10 +85,20 @@ func (g *BuildGraph) PublishPluginArchive(ctx context.Context, plugin devcontrac
 	}
 
 	var entries []archiveEntry
+	verifyFrontend := func() error { return nil }
+	ledgerDigest := ""
 	binaryPath := ""
 	if wantsBackend {
 		if _, err = publishedGeneratedTree(g.workspace, filepath.Join("build", plugin.ID)); err != nil {
 			return "", receipt, fmt.Errorf("archive plugin %s backend output is not an owned published build: %w", plugin.ID, err)
+		}
+		// The ledger digest of the published binary is the byte authority:
+		// the host's own artifact record must accept the file, and the digest
+		// stamped into the archive and copied into it must equal the ledger's.
+		var ledgerErr error
+		ledgerDigest, ledgerErr = publishedGeneratedFileDigest(g.workspace, filepath.Join("build", plugin.ID, "plugin"))
+		if ledgerErr != nil {
+			return "", receipt, fmt.Errorf("archive plugin %s backend binary: %w", plugin.ID, ledgerErr)
 		}
 		destination, pathErr := generatedPath(g.workspace, filepath.Join("build", plugin.ID))
 		if pathErr != nil {
@@ -100,9 +112,15 @@ func (g *BuildGraph) PublishPluginArchive(ctx context.Context, plugin devcontrac
 		if err = g.verifyUnchangedSDK(ctx, backend.Directory, identity); err != nil {
 			return "", receipt, err
 		}
+		if err = instance.VerifyPluginArtifact(g.workspace.ResolvedWorkspace, plugin.ID, binaryPath); err != nil {
+			return "", receipt, fmt.Errorf("archive plugin %s backend does not match this workspace's build evidence: %w", plugin.ID, err)
+		}
 		provenance, provenanceErr := sdkconfig.BuildStateIsolationProvenance(binaryPath, identity.Revision, identity.SourceDigest)
 		if provenanceErr != nil {
 			return "", receipt, provenanceErr
+		}
+		if provenance.BinarySHA256 != ledgerDigest {
+			return "", receipt, fmt.Errorf("archive plugin %s backend bytes changed after their recorded publication", plugin.ID)
 		}
 		metadata.StateIsolation = provenance
 		receipt.BackendSHA256 = provenance.BinarySHA256
@@ -121,6 +139,19 @@ func (g *BuildGraph) PublishPluginArchive(ctx context.Context, plugin devcontrac
 		assetEntries, walkErr := archiveAssetEntries(assets)
 		if walkErr != nil {
 			return "", receipt, fmt.Errorf("archive plugin %s assets: %w", plugin.ID, walkErr)
+		}
+		// Re-verify the recorded publication after packaging (below) against
+		// this digest: a swap during the copy fails the plugin.
+		frontendDigest, digestErr := devoutputs.Published(ctx, g.workspace.ResolvedWorkspace, frontend.Directory, devoutputs.Distribution)
+		if digestErr != nil {
+			return "", receipt, digestErr
+		}
+		verifyFrontend = func() error {
+			again, err := devoutputs.Published(ctx, g.workspace.ResolvedWorkspace, frontend.Directory, devoutputs.Distribution)
+			if err != nil || again != frontendDigest {
+				return errors.Join(err, fmt.Errorf("archive plugin %s frontend output changed while packaging", plugin.ID))
+			}
+			return nil
 		}
 		receipt.AssetFiles = len(assetEntries)
 		entries = append(entries, assetEntries...)
@@ -144,12 +175,23 @@ func (g *BuildGraph) PublishPluginArchive(ctx context.Context, plugin devcontrac
 		return "", receipt, err
 	}
 	staged := filepath.Join(prepared.Directory, pluginArchiveName)
-	digest, writeErr := writePluginArchive(staged, encodedMetadata, entries, receipt.BackendSHA256)
+	digest, writeErr := writePluginArchive(staged, encodedMetadata, entries, ledgerDigest)
+	if writeErr == nil {
+		writeErr = verifyFrontend()
+	}
 	if writeErr != nil {
 		_ = os.Remove(staged)
 	}
 	if err = errors.Join(writeErr, RecordGeneratedTree(prepared)); err != nil {
 		return "", receipt, err
+	}
+	archiveRelative := filepath.Join("archive", plugin.ID, pluginArchiveName)
+	published, err := publishedGeneratedFileDigest(g.workspace, archiveRelative)
+	if err != nil {
+		return "", receipt, err
+	}
+	if published != digest {
+		return "", receipt, fmt.Errorf("archive plugin %s published archive differs from the written archive", plugin.ID)
 	}
 	receipt.Archive = filepath.Join(prepared.Destination, pluginArchiveName)
 	receipt.ArchiveSHA256 = digest
@@ -160,7 +202,14 @@ func (g *BuildGraph) PublishPluginArchive(ctx context.Context, plugin devcontrac
 // other non-regular entry are refused, never followed or skipped.
 func archiveAssetEntries(root string) ([]archiveEntry, error) {
 	var entries []archiveEntry
-	err := filepath.WalkDir(root, func(path string, item fs.DirEntry, walkErr error) error {
+	canonicalRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return nil, err
+	}
+	if canonicalRoot != root {
+		return nil, fmt.Errorf("asset root %s is redirected through a symlink", root)
+	}
+	err = filepath.WalkDir(root, func(path string, item fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -173,6 +222,10 @@ func archiveAssetEntries(root string) ([]archiveEntry, error) {
 		relative, err := filepath.Rel(root, path)
 		if err != nil {
 			return err
+		}
+		// A redirected parent directory would pass the leaf check below.
+		if canonical, err := filepath.EvalSymlinks(path); err != nil || canonical != path {
+			return fmt.Errorf("asset %s is redirected through a symlink", path)
 		}
 		if len(entries) >= pluginArchiveMaxEntries {
 			return fmt.Errorf("asset tree exceeds %d files", pluginArchiveMaxEntries)
@@ -219,7 +272,15 @@ func writePluginArchive(destination string, metadata []byte, entries []archiveEn
 }
 
 func copyArchiveEntry(tw *tar.Writer, header func(string, int64, int64) *tar.Header, entry archiveEntry, expectedBinary string) error {
-	source, err := os.Open(entry.path)
+	// Classify before opening so a swapped FIFO or device cannot block the open.
+	linked, err := os.Lstat(entry.path)
+	if err != nil {
+		return err
+	}
+	if !linked.Mode().IsRegular() {
+		return fmt.Errorf("archive input %s is not a stable regular file", entry.name)
+	}
+	source, err := os.OpenFile(entry.path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return err
 	}
@@ -228,11 +289,7 @@ func copyArchiveEntry(tw *tar.Writer, header func(string, int64, int64) *tar.Hea
 	if err != nil {
 		return err
 	}
-	linked, err := os.Lstat(entry.path)
-	if err != nil {
-		return err
-	}
-	if !opened.Mode().IsRegular() || !linked.Mode().IsRegular() || !os.SameFile(opened, linked) {
+	if !opened.Mode().IsRegular() || !os.SameFile(opened, linked) {
 		return fmt.Errorf("archive input %s is not a stable regular file", entry.name)
 	}
 	if err = tw.WriteHeader(header(entry.name, entry.mode, opened.Size())); err != nil {
