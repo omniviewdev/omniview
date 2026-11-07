@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/omniviewdev/omniview/internal/devbaseline"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devcontrol"
 	"github.com/omniviewdev/omniview/internal/devsession"
@@ -18,6 +19,7 @@ import (
 // A saved status file is diagnostic history, never evidence of current readiness.
 type Status struct {
 	Workspace
+	Seed       *devbaseline.Result             `json:"seed,omitempty"`
 	Generation string                          `json:"generation,omitempty"`
 	Phase      string                          `json:"launchPhase"`
 	Instance   *devcontract.InstanceDescriptor `json:"instance,omitempty"`
@@ -135,6 +137,13 @@ func ConnectWorkspaceControl(ctx context.Context, w Workspace, home, generation 
 func (m *Manager) Status(ctx context.Context, name string) (Status, error) {
 	result, err := m.status(ctx, name)
 	if result.Manifest.WorkspaceID != "" {
+		// Authenticated live status already carries validated import evidence.
+		// Reopening settings here would contend with the running host's DB lock.
+		if result.Seed == nil {
+			if seed, seedErr := inspectWorkspaceSeed(ctx, result.Workspace); seedErr == nil {
+				result.Seed = &seed
+			}
+		}
 		// Render launch recovery from the selected identity, never from an
 		// opaque command retained by a supervisor or an older status record.
 		if result.RecoveryCommand != "" {
@@ -239,7 +248,7 @@ func RequireStopped(ctx context.Context, w devcontract.ResolvedWorkspace) error 
 		return err
 	}
 	command := workspaceRecoveryCommand(workspace, "down")
-	failure := devcontract.Fail(4, "workspace_running", "run "+command+" before changing source selection")
+	failure := devcontract.Fail(4, "workspace_running", "run "+command+" before changing workspace state")
 	failure.Details = map[string]any{"recoveryCommand": command}
 	return failure
 }

@@ -219,7 +219,7 @@ func (m *Manager) startGeneration(ctx context.Context, name string, o LaunchOpti
 				return current, nil
 			case "error", "crashed":
 				if current.LastError != nil {
-					return current, workspaceError(current.LastError)
+					return current, workspaceOwnershipError(current.LastError, w)
 				}
 				return current, devcontract.Fail(5, "launch_failed", "supervisor failed; inspect private supervisor.log")
 			}
@@ -612,6 +612,9 @@ func (s *workspaceSupervisor) reuseHost(context.Context) error {
 }
 
 func (s *workspaceSupervisor) seed(ctx context.Context) error {
+	s.mu.Lock()
+	s.status.Seed = nil
+	s.mu.Unlock()
 	if s.options.BaselineSource == "" {
 		return nil
 	}
@@ -644,7 +647,7 @@ func (s *workspaceSupervisor) seed(ctx context.Context) error {
 		if digestGenerated(normalized) != prior.Digest {
 			return devcontract.Fail(4, "baseline_conflict", "seeded baseline receipt changed or disappeared")
 		}
-		return nil
+		return s.recordSeed(ctx, false)
 	} else if !os.IsNotExist(err) {
 		return err
 	}
@@ -668,10 +671,6 @@ func (s *workspaceSupervisor) seed(ctx context.Context) error {
 	if intent.Source != s.options.BaselineSource || intent.Baseline == nil {
 		return devcontract.Fail(4, "baseline_conflict", "pending baseline intent belongs to another explicit source")
 	}
-	expected, err := json.Marshal(intent.Baseline)
-	if err != nil {
-		return err
-	}
 	destinationManifest := filepath.Join(s.workspace.StateRoot, "baseline.json")
 	if info, statErr := os.Lstat(destinationManifest); statErr == nil {
 		if !info.Mode().IsRegular() {
@@ -685,21 +684,77 @@ func (s *workspaceSupervisor) seed(ctx context.Context) error {
 		if err = json.Unmarshal(raw, &actual); err != nil {
 			return err
 		}
-		normalized, err := json.Marshal(actual)
+		matches, err := devbaseline.SameContent(&actual, intent.Baseline)
 		if err != nil {
 			return err
 		}
-		if string(normalized) != string(expected) {
+		if !matches {
 			return devcontract.Fail(4, "baseline_conflict", "existing initialized profile does not match the recorded seed intent")
 		}
 	} else if !os.IsNotExist(statErr) {
 		return statErr
 	} else {
-		if _, err = devbaseline.Import(ctx, intent.Baseline, devbaseline.ImportOptions{Destination: profile, Home: s.manager.options.Home}); err != nil {
-			return err
+		result, importErr := devbaseline.Import(ctx, intent.Baseline, devbaseline.ImportOptions{Destination: profile, Home: s.manager.options.Home})
+		if importErr != nil {
+			return importErr
 		}
+		s.mu.Lock()
+		s.status.Seed = &result
+		s.mu.Unlock()
 	}
-	return saveLaunchJSON(marker, seedRecord{Source: s.options.BaselineSource, Digest: digestGenerated(expected)})
+	if err := s.recordSeed(ctx, true); err != nil {
+		return err
+	}
+	raw, err := os.ReadFile(destinationManifest)
+	if err != nil {
+		return err
+	}
+	var published devbaseline.Baseline
+	if err := json.Unmarshal(raw, &published); err != nil {
+		return err
+	}
+	receipt, err := json.Marshal(published)
+	if err != nil {
+		return err
+	}
+	return saveLaunchJSON(marker, seedRecord{Source: s.options.BaselineSource, Digest: digestGenerated(receipt)})
+}
+
+func (s *workspaceSupervisor) recordSeed(ctx context.Context, initial bool) error {
+	result, err := devbaseline.InspectImport(ctx, s.workspace.StateRoot, initial)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.status.Seed = &result
+	s.mu.Unlock()
+	return nil
+}
+
+func inspectWorkspaceSeed(ctx context.Context, w Workspace) (devbaseline.Result, error) {
+	var marker struct {
+		Source string `json:"source"`
+		Digest string `json:"digest"`
+	}
+	if err := readLaunchJSON(launchPath(w, "baseline-seeded.json"), &marker); err != nil {
+		return devbaseline.Result{}, err
+	}
+	raw, err := os.ReadFile(filepath.Join(w.StateRoot, "baseline.json"))
+	if err != nil {
+		return devbaseline.Result{}, err
+	}
+	var saved devbaseline.Baseline
+	if err := json.Unmarshal(raw, &saved); err != nil {
+		return devbaseline.Result{}, err
+	}
+	normalized, err := json.Marshal(saved)
+	if err != nil {
+		return devbaseline.Result{}, err
+	}
+	if digestGenerated(normalized) != marker.Digest {
+		return devbaseline.Result{}, devcontract.Fail(4, "baseline_conflict", "seeded baseline receipt changed or disappeared")
+	}
+	return devbaseline.InspectImport(ctx, w.StateRoot, false)
 }
 
 func NewGeneration() string { return uuid.NewString() }
