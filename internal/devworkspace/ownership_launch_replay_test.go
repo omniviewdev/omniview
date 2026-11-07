@@ -66,7 +66,14 @@ func TestInitialUpOwnershipGuidanceReplaysSavedLaunch(t *testing.T) {
 	launch := LaunchOptions{Mode: "browser", Watch: true, LiveFrontend: true, Timeout: 10 * time.Second, LinkEvidence: j.Evidence}
 	require.NoError(t, saveLaunchJSON(launchPath(f.w, "launch.json"), launch))
 	require.NoError(t, os.WriteFile(filepath.Join(f.w.Root, "node_modules", "foreign"), []byte("unowned install"), 0600))
-	payload := workspaceOwnershipError(&devoutputs.Conflict{Producer: "modules"}, f.w)
+	worker := filepath.Join(f.host, "ui", "providers", "monaco", "yaml.worker.bundle.js")
+	require.NoError(t, os.MkdirAll(filepath.Dir(worker), 0700))
+	require.NoError(t, os.WriteFile(worker, []byte("postinstall output"), 0600))
+	neighbor := filepath.Join(filepath.Dir(worker), "foreign-neighbor")
+	require.NoError(t, os.WriteFile(neighbor, []byte("untouched"), 0600))
+	err = devoutputs.Validate(ctx, f.w.ResolvedWorkspace)
+	require.Error(t, err)
+	payload := workspaceOwnershipError(err, f.w)
 	conflict := payload.Details["ownershipConflict"].(*devoutputs.Conflict)
 	t.Setenv("OMNIVIEW_OWNERSHIP_REPLAY_HELPER", "1")
 	t.Setenv("OMNIVIEW_OWNERSHIP_REPLAY_ROOT", f.m.Root)
@@ -75,13 +82,26 @@ func TestInitialUpOwnershipGuidanceReplaysSavedLaunch(t *testing.T) {
 	t.Cleanup(func() { _, _ = f.m.Down(context.Background(), f.w.Manifest.Slug) })
 	launched := false
 	for _, argv := range conflict.NextCommands {
+		if argv[0] == "/bin/mkdir" {
+			require.NoError(t, os.Mkdir(argv[3], 0700))
+			t.Cleanup(func() { _ = os.RemoveAll(argv[3]) })
+			continue
+		}
 		switch argv[2] {
 		case "ownership":
 			_, err = devoutputs.Inspect(ctx, f.w.ResolvedWorkspace, nil)
 		case "down":
 			_, err = f.m.Down(ctx, f.w.Manifest.Slug)
 		case "reset-modules":
-			_, err = f.m.ResetModules(ctx, f.w.Manifest.Slug)
+			_, err = f.m.resetModules(ctx, f.w.Manifest.Slug, f.run)
+		case "reconcile-output":
+			var report devoutputs.Reconciliation
+			report, err = f.m.ReconcileOutput(ctx, f.w.Manifest.Slug, argv[6], argv[8], argv[10])
+			require.NoError(t, err)
+			require.True(t, report.RestoredBaseline)
+			raw, readErr := os.ReadFile(argv[10])
+			require.NoError(t, readErr)
+			require.Equal(t, "postinstall output", string(raw))
 		case "recover":
 			_, err = f.m.Recover(ctx, f.w.Manifest.Slug, RefreshOptions{})
 		case "restart":
@@ -102,6 +122,9 @@ func TestInitialUpOwnershipGuidanceReplaysSavedLaunch(t *testing.T) {
 	saved, err := LoadLaunchOptions(f.w)
 	require.NoError(t, err)
 	require.Equal(t, launch, saved)
+	raw, err := os.ReadFile(neighbor)
+	require.NoError(t, err)
+	require.Equal(t, "untouched", string(raw))
 }
 
 func TestUnlinkingOwnershipGuidanceCompletesInterruptedTeardown(t *testing.T) {

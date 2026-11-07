@@ -294,12 +294,13 @@ incomplete phases are refused except `applying`: explicit reset also deletes
 selected dependency trees in that phase without running an installer. Then rerun
 the original `workspace up` or `workspace link` command with the same exact
 workspace and protocol evidence. For first launch after an unmanaged frozen
-install, run `workspace down --workspace /absolute/workspace`, then
-`workspace reset-modules --workspace /absolute/workspace`, then
-`workspace restart --workspace /absolute/workspace` to replay saved launch settings
-and protocol evidence (or repeat the original `workspace up` command). If retained
-refresh intent exists, the diagnostic instead includes `workspace recover` to
-finish that operation with its retained running/stopped intent.
+install, follow the diagnostic's ordered `nextCommands`: inspect ownership,
+stop, reset modules, preserve/reconcile any separately reported producer outputs,
+then restart with saved launch settings and protocol evidence. A package
+postinstall can create an ignored producer output before managed ownership exists;
+module reset deliberately leaves that output untouched. Reconciliation preserves
+it externally before restoring the committed baseline. If retained refresh intent
+exists, the diagnostic ends with `workspace recover` instead of restart.
 For an `unlinking` journal, the diagnostic instead ends with `workspace unlink`
 after reset, even when launch settings exist: teardown must finish before any
 new launch. It also supplies this teardown action without saved launch settings.
@@ -366,8 +367,9 @@ after generation, retains the saved browser/native build context (browser for a
 never-launched workspace), and publishes only validated output. Standalone
 checkouts still use `task bindings`; raw Wails generation is not supported.
 
-If a standalone producer already changed or replaced a **journal-owned** output,
-preserve that exact boundary before restoring its current committed baseline:
+If a standalone producer changed a journal-owned output, or a package postinstall
+created an unowned output, preserve that exact boundary before restoring its
+current committed baseline:
 
 ```sh
 mkdir -m 700 "$PRESERVATION_DIRECTORY"
@@ -390,8 +392,8 @@ committed baseline through the existing publication state machine. Interrupted
 reconciliation retains an intent: rerun the same command with the exact original
 preservation path. Source, parent or preserved-byte changes cause refusal.
 Supported exact producers are `bindings`, `distribution`, `shims`, and
-`yaml-worker`. Unowned outputs require separate preservation and exact baseline
-restoration; this command does not create ownership authority for them.
+`yaml-worker`. For an unowned output, this explicit command authorizes preservation
+only; it never admits existing bytes as managed producer output.
 
 For standalone verification, place compiler build-info outside managed module
 trees (for example, `tsc --noEmit --incremental false` when the project supports

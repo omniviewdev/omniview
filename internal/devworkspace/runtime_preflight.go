@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
 	"github.com/omniviewdev/omniview/internal/devsource"
@@ -151,6 +152,15 @@ func workspaceOwnershipError(err error, w Workspace) *devcontract.Error {
 		if (j.Phase == "linked" || j.Phase == "unlinking" || j.Phase == "applying") && (conflict.Producer == "modules" || conflict.Producer == "vite-cache" || conflict.Producer == "vite-loader-cache" || conflict.Producer == "typescript-cache") {
 			// This is an available destructive action, never automatic consent.
 			conflict.NextCommands = append(conflict.NextCommands, []string{executable, "workspace", "reset-modules", "--workspace", w.ManifestPath})
+			if j.Phase != "unlinking" {
+				if inspection, inspectErr := InspectOwnership(context.Background(), w); inspectErr == nil {
+					for _, entry := range inspection.Entries {
+						if entry.Conflict != nil {
+							conflict.NextCommands = append(conflict.NextCommands, producerPreservationCommands(executable, w, entry.Conflict)...)
+						}
+					}
+				}
+			}
 			if j.Phase == "unlinking" {
 				// Reset only deletes dependencies during teardown; finish the
 				// interrupted unlink before attempting another launch.
@@ -167,8 +177,34 @@ func workspaceOwnershipError(err error, w Workspace) *devcontract.Error {
 			}
 		}
 	}
+	switch conflict.Producer {
+	case devoutputs.Bindings, devoutputs.Distribution, devoutputs.Shims, devoutputs.YAMLWorker:
+		conflict.NextCommands = append(conflict.NextCommands, producerPreservationCommands(executable, w, &conflict)...)
+		if launch, loadErr := LoadLaunchOptions(w); loadErr == nil && launch.Validate() == nil {
+			conflict.NextCommands = append(conflict.NextCommands, []string{executable, "workspace", "restart", "--workspace", w.ManifestPath})
+		}
+		conflict.Guidance += " Run nextCommands in order. The private external preservation directory must be new; reconciliation preserves the complete output before restoring its committed baseline."
+	}
 	payload := workspaceError(&conflict)
 	return payload
+}
+
+// Each explicit command authorizes preservation of one exact producer boundary.
+// Directory creation is exclusive; a collision cannot reuse a foreign location.
+func producerPreservationCommands(executable string, w Workspace, conflict *devoutputs.Conflict) [][]string {
+	switch conflict.Producer {
+	case devoutputs.Bindings, devoutputs.Distribution, devoutputs.Shims, devoutputs.YAMLWorker:
+		base, err := filepath.EvalSymlinks(os.TempDir())
+		if err != nil {
+			return nil
+		}
+		preservation := filepath.Join(base, "omniview-preserved-"+uuid.NewString())
+		return [][]string{
+			{"/bin/mkdir", "-m", "700", preservation},
+			{executable, "workspace", "reconcile-output", "--workspace", w.ManifestPath, "--consumer", conflict.Consumer, "--producer", string(conflict.Producer), "--preserve-at", filepath.Join(preservation, "output")},
+		}
+	}
+	return nil
 }
 
 func supervisedBuildError(event BuildEvent, w Workspace) *devcontract.Error {

@@ -25,9 +25,9 @@ type Reconciliation struct {
 	RestoredBaseline bool   `json:"restoredBaseline"`
 }
 
-// Reconcile preserves one stopped, journal-owned staged producer by renaming it
-// to an explicitly selected new external path. It never deletes or adopts the
-// preserved tree. The caller must hold lifecycle, profile and stopped guards.
+// Reconcile preserves one explicitly selected staged producer by renaming it to
+// a new external path. Unowned bytes receive only preservation authority, never
+// admission as producer output. The caller holds lifecycle and stopped guards.
 // A durable intent makes an interrupted preservation retryable with exact args.
 func Reconcile(ctx context.Context, w devcontract.ResolvedWorkspace, consumer, producer, preserveAt string) (Reconciliation, error) {
 	report := Reconciliation{PreservedAt: preserveAt}
@@ -63,7 +63,13 @@ func Reconcile(ctx context.Context, w devcontract.ResolvedWorkspace, consumer, p
 	err = locked(ctx, s, func(j *journal) error {
 		entry := j.Entries[keyOf(spec)]
 		if entry == nil {
-			return fmt.Errorf("reconciliation requires an existing producer receipt; unowned roots must be preserved separately")
+			files, e := tracked(ctx, spec)
+			if e != nil {
+				return e
+			}
+			baseline := baselineSnapshot(files)
+			entry = &outputEntry{Spec: spec, Expected: baseline, Original: baseline, Live: map[string]bool{}}
+			j.Entries[keyOf(spec)] = entry
 		}
 		if j.Restoring || len(entry.Live) > 0 || entry.Cleanup != nil {
 			return entryConflict(entry, "reconciliation", nil, fmt.Errorf("finish existing producer/restoration work first"))
