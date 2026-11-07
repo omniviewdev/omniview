@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Select, Text } from '@omniviewdev/base-ui';
 import { Histogram, MetricPanel, MetricValue, RankedBars, TimeSeriesChart } from '@omniviewdev/base-ui/metrics';
 import { histogramBuckets, metricSeries, metricUnit, pointKey } from './model';
+import { metricTitle } from './display';
 import type { Metric, Snapshot } from './model';
 import type { DiagnosticsHealth } from '@omniviewdev/runtime/api';
 import styles from './Performance.module.css';
@@ -20,11 +21,11 @@ function MetricChart({ metric, samples, updating, health }: { metric: Metric; sa
   const startMs = first ? new Date(first.timestamp).getTime() : null;
   const endMs = last ? new Date(last.timestamp).getTime() : null;
   const domain = startMs !== null && endMs !== null && Number.isFinite(startMs) && Number.isFinite(endMs) && startMs < endMs ? { startMs, endMs } : null;
-  const title = metric.description === '' ? metric.name : metric.description;
+  const title = metricTitle(metric.name);
   const hasData = points.length > 0 && !!unit;
   return <MetricPanel title={title}
     state={!unit ? { kind: 'unsupported', message: `Unsupported unit: ${metric.unit}` } : !hasData ? { kind: 'empty', message: 'No observed samples.' } : { kind: 'data', updating, completeness: health ? health.complete ? 'complete' : 'partial' : 'unknown' }}
-    details={{ content: <Text size='sm' tone='muted'>{metric.name} · {metric.kind} · {metric.unit === '' ? 'count' : metric.unit}{cpu ? ' · observed interval CPU cores' : histogram ? ' · cumulative observations' : metric.kind === 'counter' ? ' · cumulative process total' : ' · sampled value'}</Text> }}
+    details={{ content: <Text size='sm' tone='muted'>{metric.description === '' ? metric.name : metric.description} · {metric.name} · {metric.kind} · {metric.unit === '' ? 'count' : metric.unit}</Text> }}
     actions={histogram && points.length > 1 ? <Select size='sm' value={pointKey(point.attributes)} onValueChange={value => {
       setSelected(value ?? ''); 
     }}><Select.Trigger aria-label={`${metric.name} distribution series`}><Select.Value>{() => selectedLabel === '' ? 'All observations' : selectedLabel}</Select.Value><Select.Icon /></Select.Trigger><Select.Portal><Select.Positioner><Select.Popup><Select.List>{points.map(value => <Select.Item key={pointKey(value.attributes)} value={pointKey(value.attributes)}>{Object.entries(value.attributes ?? {}).map(([key, label]) => `${key}: ${label}`).join(' · ') || 'All observations'}</Select.Item>)}</Select.List></Select.Popup></Select.Positioner></Select.Portal></Select> : undefined}

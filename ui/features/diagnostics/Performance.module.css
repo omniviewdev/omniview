@@ -16,5 +16,10 @@ small.Muted { display: block; margin-top: 3px; }
 .Form label { display: flex; flex-direction: column; gap: 6px; }
 .Compare { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding-block: 8px; border-block: 1px solid var(--ov-color-border-default); }
 .Compare > :not(:last-child) { min-width: 160px; }
+.Dashboard { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.Tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; align-items: start; }
+.Charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; align-items: start; }
+.Tiles > *, .Charts > * { min-width: 0; }
+.Chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 @media (min-width: 1700px) { .Grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 850px) { .Grid { grid-template-columns: minmax(0, 1fr); } .Form { grid-template-columns: 1fr 1fr; } .Heading { padding: 10px 12px; } .Content { padding: 10px 12px; } }

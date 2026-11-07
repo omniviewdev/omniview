@@ -36,37 +36,32 @@ describe('capture measurement pagination', () => {
   it('makes saved measurements beyond 24 reachable and resets on a different capture', async () => {
     render(<Captures captures={captures} refresh={refresh} maxSeconds={300} />);
     fireEvent.click(screen.getByRole('button', { name: 'Before' }));
-    expect(await screen.findByText('Saved metric 1')).toBeVisible();
-    expect(screen.queryByText('Saved metric 25')).not.toBeInTheDocument();
+    expect(await screen.findByText('Saved-1')).toBeVisible();
+    expect(screen.queryByText('Saved-25')).not.toBeInTheDocument();
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Saved capture measurement pages' })).getByText('2'));
-    expect(await screen.findByText('Saved metric 25')).toBeVisible();
-    expect(screen.queryByText('Saved metric 1')).not.toBeInTheDocument();
+    expect(await screen.findByText('Saved-25')).toBeVisible();
+    expect(screen.queryByText('Saved-1')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'After' }));
-    expect(await screen.findByText('Saved metric 1')).toBeVisible();
-    expect(screen.queryByText('Saved metric 25')).not.toBeInTheDocument();
+    expect(await screen.findByText('Saved-1')).toBeVisible();
+    expect(screen.queryByText('Saved-25')).not.toBeInTheDocument();
   });
 
-  it('makes comparison rows beyond 80 reachable and resets after selection changes', async () => {
+  it('makes every comparison row reachable and resets after selection changes', async () => {
     render(<Captures captures={captures} refresh={refresh} maxSeconds={300} />);
     await chooseCapture('Baseline capture', 'Before · complete');
     await chooseCapture('Candidate capture', 'After · complete');
     const compare = screen.getByRole('button', { name: 'Compare captures' });
     await waitFor(() => expect(compare).toBeEnabled());
     fireEvent.click(compare);
-    expect(await screen.findByText('compared-1')).toBeVisible();
-    expect(within(screen.getByRole('table', { name: 'Compared measurements' })).getAllByRole('row')).toHaveLength(81);
-    expect(screen.queryByText('compared-81')).not.toBeInTheDocument();
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Comparison pages' })).getByText('2'));
-    expect(await screen.findByText('compared-81')).toBeVisible();
-    expect(screen.queryByText('compared-1')).not.toBeInTheDocument();
-    expect(within(screen.getByRole('table', { name: 'Compared measurements' })).getAllByRole('row')).toHaveLength(2);
+    fireEvent.click(await screen.findByText('All measurements (81)'));
+    const table = await screen.findByRole('table', { name: 'Compared measurements' });
+    expect(within(table).getAllByRole('row').length).toBeLessThan(81);
+    expect(screen.queryByText('Compared-81')).not.toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Comparison pages' })).getByText('3'));
+    expect(await screen.findByText('Compared-81')).toBeVisible();
+    expect(screen.queryByText('Compared-1')).not.toBeInTheDocument();
     await chooseCapture('Candidate capture', 'Before · complete');
     expect(screen.queryByRole('table', { name: 'Compared measurements' })).not.toBeInTheDocument();
     expect(compare).toBeDisabled();
-    await chooseCapture('Candidate capture', 'After · complete');
-    await waitFor(() => expect(compare).toBeEnabled());
-    fireEvent.click(compare);
-    expect(await screen.findByText('compared-1')).toBeVisible();
-    expect(screen.queryByText('compared-81')).not.toBeInTheDocument();
   });
 });

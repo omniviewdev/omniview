@@ -1,11 +1,21 @@
 import { useRef, useState } from 'react';
 import { Banner, Button, Chip, Heading, Input, Pagination, Select, Table, Text } from '@omniviewdev/base-ui';
-import { MetricValue } from '@omniviewdev/base-ui/metrics';
 import { Diagnostics } from '@omniviewdev/runtime/api';
 import type { Capture, CaptureSummary, Comparison } from './model';
-import { comparisonSuffix, comparisonUnit } from './model';
+import { ComparisonSummary } from './ComparisonSummary';
 import { MetricGrid } from './MetricGrid';
 import styles from './Performance.module.css';
+
+
+function captureColor(status: string) {
+  switch (status) {
+    case 'complete': return 'success' as const;
+    case 'running': return 'info' as const;
+    case 'incomplete': case 'reset': case 'interrupted': return 'warning' as const;
+    case 'error': return 'danger' as const;
+    default: return 'neutral' as const;
+  }
+}
 
 function CaptureSelect({ label, value, captures, onChange, disabled }: { label: string; value: string; captures: CaptureSummary[]; onChange: (value: string) => void; disabled: boolean }) {
   const selectedCapture = captures.find(capture => capture.id === value);
@@ -24,11 +34,7 @@ export function Captures({ captures, refresh, maxSeconds }: { captures: CaptureS
   const [comparison, setComparison] = useState<Comparison | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [comparisonPage, setComparisonPage] = useState(1);
   const [capturePage, setCapturePage] = useState(1);
-  const comparisonMetrics = comparison?.metrics ?? [];
-  const comparisonPages = Math.max(1, Math.ceil(comparisonMetrics.length / 80));
-  const currentComparisonPage = Math.min(comparisonPage, comparisonPages);
   const captureMetrics = selected?.samples?.at(-1)?.metrics ?? [];
   const capturePages = Math.max(1, Math.ceil(captureMetrics.length / 24));
   const currentCapturePage = Math.min(capturePage, capturePages);
@@ -77,7 +83,7 @@ export function Captures({ captures, refresh, maxSeconds }: { captures: CaptureS
     {error && <Banner color='danger' size='sm'>{error}</Banner>}
     <Table.Container><Table size='sm' stickyHeader aria-label='Diagnostic captures'><Table.Head><Table.Row><Table.HeaderCell>Capture</Table.HeaderCell><Table.HeaderCell>Revision / workload</Table.HeaderCell><Table.HeaderCell>State</Table.HeaderCell><Table.HeaderCell>Elapsed</Table.HeaderCell><Table.HeaderCell>Actions</Table.HeaderCell></Table.Row></Table.Head><Table.Body>{captures.map(capture => <Table.Row key={capture.id} selected={selected?.id === capture.id}><Table.Cell><Button size='sm' variant='ghost' disabled={busy} onClick={() => {
       selectCapture(capture.id); 
-    }}>{capture.name}</Button><small className={styles.Muted}>{new Date(capture.startedAt).toLocaleString()}</small></Table.Cell><Table.Cell>{capture.identity.revision === '' ? capture.identity.version : capture.identity.revision}<small className={styles.Muted}>{capture.workload === '' ? 'Workload not specified' : capture.workload}</small></Table.Cell><Table.Cell><Chip size='sm' color={capture.status === 'complete' ? 'success' : 'neutral'}>{capture.status}</Chip></Table.Cell><Table.Cell>{capture.elapsedSeconds.toFixed(1)} / {capture.durationSeconds}s</Table.Cell><Table.Cell>{capture.status === 'running' && <Button size='sm' variant='outline' disabled={busy} onClick={() => {
+    }}>{capture.name}</Button><small className={styles.Muted}>{new Date(capture.startedAt).toLocaleString()}</small></Table.Cell><Table.Cell>{capture.identity.revision === '' ? capture.identity.version : capture.identity.revision}<small className={styles.Muted}>{capture.workload === '' ? 'Workload not specified' : capture.workload}</small></Table.Cell><Table.Cell><Chip size='sm' color={captureColor(capture.status)}>{capture.status}</Chip></Table.Cell><Table.Cell>{capture.elapsedSeconds.toFixed(1)} / {capture.durationSeconds}s</Table.Cell><Table.Cell>{capture.status === 'running' && <Button size='sm' variant='outline' disabled={busy} onClick={() => {
       void run(async () => {
         const canceled = await Diagnostics.CancelCapture(capture.id); if (selected?.id === capture.id) {
           setSelected(canceled);
@@ -87,28 +93,18 @@ export function Captures({ captures, refresh, maxSeconds }: { captures: CaptureS
     {!captures.length && <Banner size='sm'>No saved captures. Record the same workload before and after a change.</Banner>}
     <section className={styles.Compare} aria-label='Compare captures'>
       <CaptureSelect label='Baseline capture' value={baseline} captures={captures} disabled={busy} onChange={value => {
-        setBaseline(value); setComparison(null); setComparisonPage(1);
+        setBaseline(value); setComparison(null);
       }} />
       <CaptureSelect label='Candidate capture' value={candidate} captures={captures} disabled={busy} onChange={value => {
-        setCandidate(value); setComparison(null); setComparisonPage(1);
+        setCandidate(value); setComparison(null);
       }} />
       <Button size='sm' disabled={busy || !baseline || !candidate || baseline === candidate} onClick={() => {
         void run(async () => {
-          setComparison(await Diagnostics.CompareCaptures(baseline, candidate)); setSelected(null); setComparisonPage(1);
+          setComparison(await Diagnostics.CompareCaptures(baseline, candidate)); setSelected(null);
         }); 
       }}>Compare captures</Button>
     </section>
-    {comparison && <section aria-label='Capture comparison'>
-      <Heading size='sm'>{comparison.compatible ? 'Capture comparison' : 'Incompatible captures'}</Heading>
-      {(comparison.warnings ?? []).map((warning, index) => <Banner key={index} color='warning' size='sm'>{warning}</Banner>)}
-      <Table size='sm' aria-label='Compared measurements'><Table.Head><Table.Row><Table.HeaderCell>Measurement / semantics</Table.HeaderCell><Table.HeaderCell>Baseline</Table.HeaderCell><Table.HeaderCell>Candidate</Table.HeaderCell><Table.HeaderCell>Change</Table.HeaderCell></Table.Row></Table.Head><Table.Body>{comparisonMetrics.slice((currentComparisonPage - 1) * 80, currentComparisonPage * 80).map((metric, index) => {
-        const unit = comparisonUnit(metric.unit, metric.kind, metric.name);
-        const usable = metric.valid && comparison.compatible && unit;
-        return <Table.Row key={`${metric.name}:${index}`}><Table.Cell>{metric.name}<small className={styles.Muted}>{metric.semantics}{metric.warning ? ` · ${metric.warning}` : ''}{Object.keys(metric.attributes ?? {}).length ? ` · ${Object.entries(metric.attributes).map(([key, value]) => `${key}: ${value}`).join(', ')}` : ''}</small></Table.Cell>{[metric.baseline, metric.candidate, metric.delta].map((value, column) => <Table.Cell key={column}>{usable ? <><MetricValue value={Number.isFinite(value) ? value : null} unit={unit} size='sm' />{comparisonSuffix(metric.unit, metric.kind, metric.name)}</> : 'Unavailable'}</Table.Cell>)}</Table.Row>;
-      })}</Table.Body></Table>
-      <div className={styles.Filter}><Text size='sm' tone='muted'>{comparisonMetrics.length} compared measurements · page {currentComparisonPage} of {comparisonPages}</Text>{comparisonPages > 1 && <Pagination size='sm' aria-label='Comparison pages' count={comparisonPages} page={currentComparisonPage} onChange={setComparisonPage} />}</div>
-      {!comparison.metrics?.length && <Banner size='sm'>No comparable measurements.</Banner>}
-    </section>}
+    {comparison && <ComparisonSummary comparison={comparison} />}
     {selected && <section aria-label='Saved capture details'><div className={styles.Heading}><Heading size='sm'>{selected.name}</Heading><Chip size='sm'>{selected.status}</Chip><Button size='sm' variant='ghost' disabled={busy} onClick={() => {
       selectCapture(selected.id); 
     }}>Reload capture</Button></div>
