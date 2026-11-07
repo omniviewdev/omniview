@@ -4,7 +4,7 @@ Standalone verification module, not a host dependency or production store. Histo
 
 ## Reproduce on native macOS
 
-Requires Go 1.26, Xcode clang/ar, git, make and configure's native prerequisites. Run:
+Requires Go 1.27, Xcode clang/ar, git, make and configure's native prerequisites. Run:
 
 ```sh
 bash native-darwin.sh

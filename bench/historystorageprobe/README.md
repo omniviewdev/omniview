@@ -4,7 +4,7 @@ Verification-only standalone module. The host does not import this module or acq
 
 ## Run
 
-From this directory, using Go 1.26:
+From this directory, using Go 1.27:
 
 ```sh
 GOWORK=off CGO_ENABLED=0 go run .

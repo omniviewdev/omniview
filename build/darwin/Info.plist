@@ -34,7 +34,7 @@
 		<key>CFBundleVersion</key>
 		<string>0.0.1</string>
 		<key>LSMinimumSystemVersion</key>
-		<string>12.0.0</string>
+		<string>13.0.0</string>
 		<key>NSHighResolutionCapable</key>
 		<string>true</string>
 		<key>NSAppleEventsUsageDescription</key>

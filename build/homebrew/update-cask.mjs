@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 const binary = '  binary "#{appdir}/Omniview.app/Contents/MacOS/omniview-dev", target: "omniview-dev"';
-const macOSBaseline = '  depends_on macos: :monterey';
+const macOSBaseline = '  depends_on macos: :ventura';
 const macOSVersions = {
   tiger: '10.4', leopard: '10.5', snow_leopard: '10.6', lion: '10.7',
   mountain_lion: '10.8', mavericks: '10.9', yosemite: '10.10', el_capitan: '10.11',
@@ -32,7 +32,7 @@ export function updateCask(source, version, sha256) {
   if (binaries.length > 1 || (binaries.length === 1 && binaries[0] !== binary)) {
     throw new Error('Unexpected binary stanza; review CLI linking before publication');
   }
-  // Production Info.plist and Go builds require macOS 12. Preserve stricter tap policy.
+  // Production Info.plist and Go builds require macOS 13. Preserve stricter tap policy.
   const macOSLines = source.split('\n').filter((line) => /\bmacos\b/.test(line));
   if (macOSLines.length > 1) throw new Error('Unexpected macOS requirement; review eligibility before publication');
   let macOSRequirement = macOSBaseline;
@@ -44,7 +44,7 @@ export function updateCask(source, version, sha256) {
       throw new Error('Unexpected macOS requirement; review eligibility before publication');
     }
     const components = minimum.split('.').map(Number);
-    if (components[0] >= 12) {
+    if (components[0] >= 13) {
       // Refuse unrepresentable minima rather than weaken eligibility or emit deprecated DSL.
       const release = Object.entries(macOSVersions).find(([, value]) => value === String(components[0]));
       if (!release || !components.slice(1).every((value) => value === 0)) {

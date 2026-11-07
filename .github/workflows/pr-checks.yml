@@ -13,7 +13,7 @@ permissions:
   pull-requests: read
 
 env:
-  GO_VERSION: "1.26"
+  GO_VERSION: "1.27"
   NODE_VERSION: "26.13.0"
   GOWORK: "off"
 
@@ -38,7 +38,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -90,7 +90,7 @@ jobs:
           version: 12.14.0
           install: false
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -160,9 +160,9 @@ jobs:
       # Supply the root-relative patch directly: the action would filter it out
       # because the private working directory is outside GITHUB_WORKSPACE.
       - name: Lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.14
+          version: v2.15.0
           only-new-issues: false
           working-directory: ${{ steps.lint-source.outputs.directory }}
           args: >-
@@ -197,7 +197,7 @@ jobs:
         with:
           node-version: "26.13.0"
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true

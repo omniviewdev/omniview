@@ -4,7 +4,7 @@ Standalone HR02 acceptance command, not production storage. Successful execution
 
 ## Native CI prerequisites and command
 
-Use `windows-latest`, Windows AMD64 Go **1.26+**, MSYS2 **MINGW64**, and these maintained MSYS2 packages:
+Use `windows-latest`, Windows AMD64 Go **1.27+**, MSYS2 **MINGW64**, and these maintained MSYS2 packages:
 
 ```text
 git

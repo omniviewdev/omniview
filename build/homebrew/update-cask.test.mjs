@@ -21,18 +21,18 @@ end
 for (const channel of ['omniview', 'omniview-nightly']) {
   test(`${channel}: refuse ambiguous or unsupported eligibility`, () => {
     for (const stanza of [
-      '  depends_on macos: ">= 12.3"',
-      '  depends_on macos: ">= 12.3.1"',
+      '  depends_on macos: ">= 13.3"',
+      '  depends_on macos: ">= 13.3.1"',
       '  depends_on macos: ">= 26.0.1"',
       '  depends_on macos: ">= 28"',
       '  depends_on macos: ">= :future_release"',
       '  depends_on macos: :future_release',
-      '  depends_on macos: ">= 12", arch: :arm64',
-      '  depends_on macos: ["12", "13"]',
-      '  depends_on :macos => ">= 12"',
-      '  depends_on macos: ">= 12"\n  depends_on macos: ">= 13"',
-      '  depends_on macos: ">= 12" if Hardware::CPU.arm?',
-      '  depends_on macos:\n    ">= 12"',
+      '  depends_on macos: ">= 13", arch: :arm64',
+      '  depends_on macos: ["13", "14"]',
+      '  depends_on :macos => ">= 13"',
+      '  depends_on macos: ">= 13"\n  depends_on macos: ">= 14"',
+      '  depends_on macos: ">= 13" if Hardware::CPU.arm?',
+      '  depends_on macos:\n    ">= 13"',
     ]) {
       const input = source(channel).replace('  app ', `${stanza}\n  app `);
       assert.throws(() => updateCask(input, '0.26.0', sha), Error);
@@ -60,7 +60,7 @@ test('publication command leaves precise unsupported tap policy untouched', () =
   const directory = mkdtempSync(join(tmpdir(), 'omniview-cask-policy-'));
   const file = join(directory, 'omniview.rb');
   try {
-    for (const minimum of ['12.3', '12.3.1', '26.0.1']) {
+    for (const minimum of ['13.3', '13.3.1', '26.0.1']) {
       const original = source('omniview').replace('  app ', `  depends_on macos: ">= ${minimum}"\n  app `);
       writeFileSync(file, original);
       const command = spawnSync(process.execPath, [

@@ -17,7 +17,7 @@ concurrency:
 
 env:
   NODE_OPTIONS: "--max-old-space-size=4096"
-  GO_VERSION: "1.26"
+  GO_VERSION: "1.27"
   NODE_VERSION: "26.13.0"
   # Nightly is an optimized production profile, not a development tooling build.
   GOWORK: "off"
@@ -98,7 +98,7 @@ jobs:
           pnpm install --frozen-lockfile
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -129,9 +129,9 @@ jobs:
         shell: bash
         env:
           CGO_ENABLED: "1"
-          CGO_CFLAGS: "-mmacosx-version-min=12.0"
-          CGO_LDFLAGS: "-mmacosx-version-min=12.0"
-          MACOSX_DEPLOYMENT_TARGET: "12.0"
+          CGO_CFLAGS: "-mmacosx-version-min=13.0"
+          CGO_LDFLAGS: "-mmacosx-version-min=13.0"
+          MACOSX_DEPLOYMENT_TARGET: "13.0"
         run: |
           bash build/darwin/build-universal.sh bin/Omniview -modfile="$GO_MODFILE" -tags production -trimpath -buildvcs=false \
             -ldflags "-w -s \
@@ -286,7 +286,7 @@ jobs:
           pnpm install --frozen-lockfile
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -366,7 +366,7 @@ jobs:
           pnpm install --frozen-lockfile
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
