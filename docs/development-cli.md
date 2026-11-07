@@ -205,8 +205,17 @@ metadata from existing worktrees.
 "$DEV" workspace reset-modules feature [--json]
 ```
 
-`edit` persists selection/ref/name/port edits. `--apply` also refreshes the workspace:
-stop owned services, relink dependencies, rebuild, restart, and verify readiness.
+`edit` persists selection/ref/name/port edits.
+
+Linked rename validates aggregate files, producer outputs, and generated metadata
+before recording intent. It tears down old-root links under the lifecycle and
+stopped-profile guards, then applies strict root admission before moving anything.
+Only exact validated owned paths receive temporary admission; changed bytes,
+foreign neighbors, redirected paths, and unfinished producers remain refusals.
+Interrupted teardown resumes at the old root; interrupted move resumes from its
+persisted lifecycle journal. Link journals containing absolute roots never move.
+Use explicit `edit --apply` to rebuild and relink at the new root.
+With `--apply`, stop owned services, relink dependencies, rebuild, restart, and verify readiness.
 Canonical edit intent is validated before `--apply` stops a healthy supervisor;
 the mutation repeats that planning under its lifecycle lock.
 `refresh` uses the current worktree contents without advancing Git refs. `update`
@@ -254,7 +263,7 @@ record by hand to force cleanup.
 
 `workspace reset-modules` is the explicit recovery. It requires a stopped
 workspace (the same lifecycle lock and stopped-profile guard as `link`; a running
-supervisor or live consumer is refused) whose dependency link is complete. It
+supervisor or live consumer is refused). For a complete dependency link, it
 deletes every journal-owned `node_modules` tree, the TypeScript and Vite loader
 caches inside it, the external Vite optimizer cache, and any `node_modules` at the
 composition root or a selected package root, including trees left by an
@@ -271,8 +280,14 @@ When an `unlink` or `remove` was interrupted by such a refusal (link phase
 records, without reinstalling into the partially restored overlay, and reports
 `reinstalled: false`. Every other output and its pending restoration stay for the
 rerun `workspace unlink` or `workspace remove`, which then completes. Other
-incomplete link phases are still refused. Use the managed launcher for package
-commands to retain pre-run dependency verification.
+incomplete phases are refused except `applying`: explicit reset also deletes
+selected dependency trees in that phase without running an installer. Then rerun
+the original `workspace up` or `workspace link` command with the same exact
+workspace and protocol evidence. For first launch after an unmanaged frozen
+install, run `workspace down --workspace /absolute/workspace`, then
+`workspace reset-modules --workspace /absolute/workspace`, then the original
+`workspace up` command. Preserve any wanted dependency bytes externally first.
+Use the managed launcher for package commands to retain pre-run verification.
 
 ### Read-only ownership inspection and standalone reentry
 
@@ -311,9 +326,10 @@ launch status and profile state. A reserved profile path need not exist.
 For standalone-to-managed reentry, inspect once before linking. Preserve **every**
 reported unowned module root externally while stopped. No command silently adopts
 those bytes, and `reset-modules` is not a nondestructive preservation operation.
-An interrupted `applying` link must first be unlinked with the same exact workspace
-target; this does not authorize deleting standalone files. Retain source/profile
-data and resolve any separately reported owned-output conflict before retrying.
+An interrupted `applying` link can use the stopped, explicit selected-module
+reset above before retrying the original launch. Changed or unverified aggregate
+files still require preservation and explicit link recovery; reset never adopts
+those bytes. Retain source/profile data and resolve separately reported conflicts.
 
 ### Managed bindings and explicit producer reconciliation
 

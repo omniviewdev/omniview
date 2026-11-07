@@ -227,6 +227,9 @@ func (m *Manager) apply(ctx context.Context, root string, j *journal) error {
 		if _, err = prepareNativeSnapshot(w); err != nil {
 			return err
 		}
+		if err = teardownRenameLinks(ctx, w); err != nil {
+			return err
+		}
 		if err = RestoreRepositoryOutputs(ctx, w); err != nil {
 			return err
 		}
@@ -434,16 +437,16 @@ func (m *Manager) validateEdit(ctx context.Context, root string, j *journal, w W
 	rename := desired.Slug != j.Manifest.Slug
 	destination := ""
 	if rename {
-		if err := preflightWorkspaceFiles(root, j, true); err != nil {
+		owned, err := renameOwnedRootPaths(ctx, w)
+		if err != nil {
 			return "", err
 		}
-		if err := ValidateGenerated(ctx, w); err != nil {
+		if err := preflightWorkspaceFilesOwned(root, j, true, owned); err != nil {
 			return "", err
 		}
-		if err := ValidateRepositoryOutputs(ctx, w); err != nil {
+		if err := validateRenameGenerated(w); err != nil {
 			return "", err
 		}
-		var err error
 		destination, err = m.renameDestination(desired.Slug)
 		if err != nil {
 			return "", err
@@ -887,10 +890,19 @@ func preflightFiles(root string, j *journal) error {
 }
 
 func preflightWorkspaceFiles(root string, j *journal, generatedValidatorPresent bool) error {
+	return preflightWorkspaceFilesOwned(root, j, generatedValidatorPresent, nil)
+}
+
+func preflightWorkspaceFilesOwned(root string, j *journal, generatedValidatorPresent bool, owned []string) error {
 	if err := recoverOwnedStaging(root, j); err != nil {
 		return err
 	}
 	allowed := map[string]bool{"workspace.json": true, ".local": true}
+	for _, path := range owned {
+		if filepath.Dir(path) == root {
+			allowed[filepath.Base(path)] = true
+		}
+	}
 	for _, r := range j.Resources {
 		allowed[r.Repository.Directory] = true
 	}
