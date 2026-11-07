@@ -151,7 +151,11 @@ func workspaceOwnershipError(err error, w Workspace) *devcontract.Error {
 		if (j.Phase == "linked" || j.Phase == "unlinking" || j.Phase == "applying") && (conflict.Producer == "modules" || conflict.Producer == "vite-cache" || conflict.Producer == "vite-loader-cache" || conflict.Producer == "typescript-cache") {
 			// This is an available destructive action, never automatic consent.
 			conflict.NextCommands = append(conflict.NextCommands, []string{executable, "workspace", "reset-modules", "--workspace", w.ManifestPath})
-			if launch, loadErr := LoadLaunchOptions(w); loadErr == nil && launch.Validate() == nil {
+			if j.Phase == "unlinking" {
+				// Reset only deletes dependencies during teardown; finish the
+				// interrupted unlink before attempting another launch.
+				conflict.NextCommands = append(conflict.NextCommands, []string{executable, "workspace", "unlink", "--workspace", w.ManifestPath})
+			} else if launch, loadErr := LoadLaunchOptions(w); loadErr == nil && launch.Validate() == nil {
 				// A retained refresh must finish first. Without one, Recover
 				// would create a stopped refresh and lose the initial up intent.
 				base := filepath.Join(filepath.Dir(filepath.Dir(w.Root)), ".omniview-dev", "recovery", w.Manifest.WorkspaceID)
