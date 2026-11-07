@@ -33,7 +33,7 @@ func (m *Manager) ValidateLifecycleContext(ctx context.Context, name, environmen
 	} else {
 		var receiptErr error
 		j, receiptErr = m.findRetirement(name)
-		if receiptErr != nil {
+		if receiptErr != nil || j == nil {
 			return "", inspectErr
 		}
 	}
