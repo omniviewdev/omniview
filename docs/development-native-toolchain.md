@@ -15,7 +15,15 @@ GOWORK=off GOFLAGS= go test -modfile="$GO_MODFILE" ./... -count=1
 
 Standalone effective mod/sum files live under ignored `.local/hostmod`; managed workspaces use their ledger-owned `toolsrc/hostmod` capability. Preparation does not copy framework sources. It refuses Wails replacements, unsafe output paths, and foreign output ownership. CLI caches separately hash immutable module templates and executables before reuse. `task host:prepare SDK_SOURCE="$SDK_SOURCE"` prints the effective modfile.
 
-Bindings remain `task bindings SDK_SOURCE="$SDK_SOURCE"`. Tasks select the Wails CLI from the root Go pin rather than trusting an ambient `wails3`. Never run raw binding generation or build Vite-plugin shims before the runtime package.
+Standalone bindings remain `task bindings SDK_SOURCE="$SDK_SOURCE"`. In an
+already-linked managed workspace, use `omniview-dev workspace bindings` while
+stopped; it runs that canonical task through the owned graph producer, preserving
+the selected SDK and build context. Direct standalone generation can invalidate
+managed output receipts; use the explicit preserve-first reconciliation described
+in [the CLI guide](development-cli.md#managed-bindings-and-explicit-producer-reconciliation)
+instead of adopting or deleting changed output. Tasks select the Wails CLI from
+the root Go pin rather than trusting an ambient `wails3`. Never run raw binding
+generation or build Vite-plugin shims before the runtime package.
 
 ## Canonical Linux E2E prerequisites and payloads
 

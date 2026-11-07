@@ -2,6 +2,7 @@ package devworkspace
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devoutputs"
 	"github.com/omniviewdev/omniview/internal/devsource"
 	"golang.org/x/mod/modfile"
 )
@@ -123,4 +125,42 @@ func safeCompilerDiagnostic(text, root string) string {
 		text = text[len(text)-8192:]
 	}
 	return strings.TrimSpace(text)
+}
+
+// workspaceOwnershipError preserves typed ownership data without treating
+// arbitrary compiler output as structured or trusted diagnostic fields.
+func workspaceOwnershipError(err error, w Workspace) *devcontract.Error {
+	var original *devoutputs.Conflict
+	if !errors.As(err, &original) {
+		return workspaceError(err)
+	}
+	conflict := *original
+	executable, err := os.Executable()
+	if err != nil {
+		conflict.NextCommands = nil
+		payload := workspaceError(&conflict)
+		payload.Details["recoveryUnavailable"] = "cannot identify the invoking executable for recovery guidance"
+		return payload
+	}
+	conflict.NextCommands = [][]string{
+		{executable, "workspace", "ownership", "--workspace", w.ManifestPath, "--json"},
+		{executable, "workspace", "down", "--workspace", w.ManifestPath},
+	}
+	if j, e := loadLinkJournal(w); e == nil {
+		conflict.LifecyclePhase = j.Phase
+		if (j.Phase == "linked" || j.Phase == "unlinking") && (conflict.Producer == "modules" || conflict.Producer == "vite-cache" || conflict.Producer == "vite-loader-cache" || conflict.Producer == "typescript-cache") {
+			// This is an available destructive action, never automatic consent.
+			conflict.NextCommands = append(conflict.NextCommands, []string{executable, "workspace", "reset-modules", "--workspace", w.ManifestPath})
+		}
+	}
+	payload := workspaceError(&conflict)
+	return payload
+}
+
+func supervisedBuildError(event BuildEvent, w Workspace) *devcontract.Error {
+	var conflict *devoutputs.Conflict
+	if errors.As(event.cause, &conflict) {
+		return workspaceOwnershipError(event.cause, w)
+	}
+	return devcontract.Fail(buildFailureExitCode, "build_failed", safeCompilerDiagnostic(event.Error, w.Root))
 }

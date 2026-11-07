@@ -49,6 +49,7 @@ type BuildEvent struct {
 	Node  string `json:"node"`
 	Phase string `json:"phase"` // building, ready, error, invalidated
 	Error string `json:"error,omitempty"`
+	cause error
 }
 
 type BuildOptions struct {
@@ -276,6 +277,7 @@ func (g *BuildGraph) emit(id, phase string, err error) {
 	event := BuildEvent{Node: id, Phase: phase}
 	if err != nil {
 		event.Error = safeCompilerDiagnostic(err.Error(), g.workspace.Root)
+		event.cause = err
 	}
 	g.eventMu.Lock()
 	defer g.eventMu.Unlock()

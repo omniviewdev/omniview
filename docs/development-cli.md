@@ -274,12 +274,107 @@ rerun `workspace unlink` or `workspace remove`, which then completes. Other
 incomplete link phases are still refused. Use the managed launcher for package
 commands to retain pre-run dependency verification.
 
+### Read-only ownership inspection and standalone reentry
+
+```sh
+"$DEV" workspace ownership feature --root "$COLLECTION" --json
+"$DEV" workspace preflight feature --root "$COLLECTION" --ownership --json
+```
+
+`ownership` checks every selected composition module root (including the aggregate
+store), staged producer boundary, and recorded cache. It enumerates all conflicts
+without installing, starting processes, creating metadata/locks, or changing
+receipts. Results are point-in-time observations, not reusable launch authority;
+each real writer repeats its admission checks. Active or interrupted writers and
+pending restoration are not reported ready.
+Changed file/link/special-file root kinds are reported per boundary without
+discarding other selected conflicts. Genuine I/O failures and cancellation remain
+errors, not ownership drift. Regular-file payloads are opened without following
+links, with nonblocking opens where supported; opened type and identity are
+checked before hashing. Dependency links remain opaque link observations.
+On Windows, metadata and identity come together from the initial metadata-only
+handle; a preceding pathname-only observation is never upgraded into identity
+proof. Later payload opens must still match that original handle's identity.
+
+Ordinary `preflight` remains lightweight and reports `ownershipChecked: false`.
+The explicit `--ownership` option performs the recursive ownership scan and
+includes its report. Neither form certifies source trust, runtime readiness, or
+the absence of a mutation after inspection.
+
+Conflicts name the producer, consumer, absolute target, ownership state, phase,
+bounded differing paths and file kinds. Publication conflicts also identify the
+stage and backup. Typed ownership details survive supervised build/status
+transport; arbitrary compiler output stays redacted. `inspect` and `paths` expose
+separate `metadata` locations for workspace ownership, links, producer receipts,
+launch status and profile state. A reserved profile path need not exist.
+
+For standalone-to-managed reentry, inspect once before linking. Preserve **every**
+reported unowned module root externally while stopped. No command silently adopts
+those bytes, and `reset-modules` is not a nondestructive preservation operation.
+An interrupted `applying` link must first be unlinked with the same exact workspace
+target; this does not authorize deleting standalone files. Retain source/profile
+data and resolve any separately reported owned-output conflict before retrying.
+
+### Managed bindings and explicit producer reconciliation
+
+```sh
+"$DEV" workspace down feature --root "$COLLECTION"
+"$DEV" workspace bindings feature --root "$COLLECTION" --json
+```
+
+Use `workspace bindings` in an already-linked managed workspace instead of
+running standalone output generation there. It invokes the canonical `task
+bindings` through the existing staged graph producer, holding stopped-process,
+worktree and profile guards. It verifies the selected effective SDK before and
+after generation, retains the saved browser/native build context (browser for a
+never-launched workspace), and publishes only validated output. Standalone
+checkouts still use `task bindings`; raw Wails generation is not supported.
+
+If a standalone producer already changed or replaced a **journal-owned** output,
+preserve that exact boundary before restoring its current committed baseline:
+
+```sh
+mkdir -m 700 "$PRESERVATION_DIRECTORY"
+"$DEV" workspace reconcile-output feature --root "$COLLECTION" \
+  --producer bindings --consumer "$HOST_DIRECTORY" \
+  --preserve-at "$PRESERVATION_DIRECTORY/bindings" --json
+"$DEV" workspace bindings feature --root "$COLLECTION" --json
+```
+
+The preservation directory must already be private and outside both the
+collection and profile. The exact destination must not exist. Source and
+destination parent directory handles are pinned to their recorded identities;
+the no-replace rename is handle-relative, with no pathname fallback. This
+preserves the entire output, including unknown bytes and directory identity;
+cross-filesystem moves are refused rather than copied/deleted. A changed parent
+namespace cannot redirect the move and causes refusal before further inspection.
+Reconciliation never adopts or deletes the preserved tree, changes unrelated
+outputs, or resets source/profile data. It restores only this producer's current
+committed baseline through the existing publication state machine. Interrupted
+reconciliation retains an intent: rerun the same command with the exact original
+preservation path. Source, parent or preserved-byte changes cause refusal.
+Supported exact producers are `bindings`, `distribution`, `shims`, and
+`yaml-worker`. Unowned outputs require separate preservation and exact baseline
+restoration; this command does not create ownership authority for them.
+
+For standalone verification, place compiler build-info outside managed module
+trees (for example, `tsc --noEmit --incremental false` when the project supports
+it). Tools that write managed caches must use their existing managed writer
+lifetime; arbitrary test/build commands do not gain cache ownership.
+
+
 Managed Vite loaders use an owned, precreated `node_modules/.vite-temp` directory,
 so their interrupted writer is part of the explicit dependency reset. Fresh
 workspaces no longer register a separate root timestamp-file writer. Root-level
 timestamp artifacts remain unmanaged and are never adopted or deleted by this
 reset. A proofless live root-loader entry from an older journal remains a safe
 refusal; a writer token alone cannot prove that its producer stopped.
+New cache roots are created exclusively through pinned parent handles with private
+protection established at creation: owner-only mode on Unix, and the current user
+SID plus a protected owner-only DACL on Windows. Existing directories are never
+adopted or permission-repaired by this creation path. Windows POSIX-style mode
+bits are not an ACL/ownership proof; preservation directories likewise require
+actual private ownership and access protection, not merely `chmod`/mode settings.
 
 Refresh commands reuse saved launch settings and protocol evidence. Supply launch
 flags for a workspace that has never launched, or override saved settings
@@ -355,6 +450,7 @@ Successful stopped refresh/recovery remains stopped and not ready. It clears
 current failure, wait-stage and recovery hints while retaining prior diagnostics
 as `historicalError` and `historicalFailedStage`. Those fields describe history,
 not an instruction to recover again.
+
 Workspace commands print human diagnostics by default; `--json` returns structured
 errors and results. Control API commands retain their JSON response envelopes.
 

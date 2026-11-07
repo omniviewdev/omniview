@@ -22,3 +22,18 @@ func directoryIdentity(path string) (string, error) {
 	}
 	return fmt.Sprintf("%d:%d", stat.Dev, stat.Ino), nil
 }
+
+func directoryHandleIdentity(file *os.File) (string, error) {
+	info, err := file.Stat()
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("output parent handle is not a directory")
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return "", fmt.Errorf("output parent identity unavailable")
+	}
+	return fmt.Sprintf("%d:%d", stat.Dev, stat.Ino), nil
+}
