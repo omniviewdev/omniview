@@ -62,6 +62,8 @@ const (
 	buildFailureExitCode = 5
 )
 
+const supervisorGenerationEnvironment = "OMNIVIEW_SUPERVISOR_GENERATION"
+
 func workspaceEnvironment(base []string, w Workspace, generation string, o LaunchOptions) []string {
 	env := make([]string, 0, len(base)+12)
 	for _, entry := range base {
@@ -76,7 +78,7 @@ func workspaceEnvironment(base []string, w Workspace, generation string, o Launc
 			continue
 		}
 		switch key {
-		case goWorkEnv, goFlagsEnv, "GO_MODFILE", "GOROOT", nodePathEnv, "SDK_SOURCE", "OMNIVIEW_PLUGIN_PNPM_COMMANDS", "OMNIVIEW_VITE_ALLOWED_ROOTS", "WAILS_VITE_PORT", "FORCE_COLOR", "NO_COLOR", "OMNIVIEW_WORKSPACE_FILE", "OMNIVIEW_STATE_DIR", "OMNIVIEW_INSTANCE_ID", "OMNIVIEW_GENERATION", "OMNIVIEW_WORKSPACE_GRAPH_WATCH", "FRONTEND_DEVSERVER_URL", "WAILS_SERVER_HOST", "WAILS_SERVER_PORT", "WAILS_MCP_HOST", "WAILS_MCP_PORT", "WAILS_MCP_TOKEN", "WAILS_MCP", "OMNIVIEW_CHANNEL":
+		case goWorkEnv, goFlagsEnv, "GO_MODFILE", "GOROOT", nodePathEnv, "SDK_SOURCE", "OMNIVIEW_PLUGIN_PNPM_COMMANDS", "OMNIVIEW_VITE_ALLOWED_ROOTS", "WAILS_VITE_PORT", "FORCE_COLOR", "NO_COLOR", "OMNIVIEW_WORKSPACE_FILE", "OMNIVIEW_STATE_DIR", "OMNIVIEW_INSTANCE_ID", "OMNIVIEW_GENERATION", supervisorGenerationEnvironment, "OMNIVIEW_WORKSPACE_GRAPH_WATCH", "FRONTEND_DEVSERVER_URL", "WAILS_SERVER_HOST", "WAILS_SERVER_PORT", "WAILS_MCP_HOST", "WAILS_MCP_PORT", "WAILS_MCP_TOKEN", "WAILS_MCP", "OMNIVIEW_CHANNEL":
 			continue
 		}
 		env = append(env, entry)
@@ -101,6 +103,10 @@ func workspaceEnvironment(base []string, w Workspace, generation string, o Launc
 // Start creates a persistent, authenticated supervisor using this exact CLI
 // executable. The short-lived caller never adopts or kills a recorded PID.
 func (m *Manager) Start(ctx context.Context, name string, o LaunchOptions, executable string, diagnostics io.Writer) (Status, error) {
+	return m.startGeneration(ctx, name, o, executable, diagnostics, "")
+}
+
+func (m *Manager) startGeneration(ctx context.Context, name string, o LaunchOptions, executable string, diagnostics io.Writer, generation string) (Status, error) {
 	w, err := m.Inspect(ctx, name)
 	if err != nil {
 		return Status{}, err
@@ -158,6 +164,9 @@ func (m *Manager) Start(ctx context.Context, name string, o LaunchOptions, execu
 	}
 	command := exec.Command(executable, "workspace", "supervise", "--root", m.Root, "--workspace", w.Root)
 	command.Env = workspaceEnvironment(os.Environ(), w, "", o)
+	if generation != "" {
+		command.Env = append(command.Env, supervisorGenerationEnvironment+"="+generation)
+	}
 	detachSupervisor(command)
 	if err = command.Start(); err != nil {
 		return Status{}, err
@@ -173,6 +182,9 @@ func (m *Manager) Start(ctx context.Context, name string, o LaunchOptions, execu
 	for {
 		current, statusErr := m.Status(deadline, name)
 		if statusErr == nil && current.Generation != "" && current.Generation != status.Generation {
+			if generation != "" && current.Generation != generation {
+				return current, devcontract.Fail(4, "stale_target", "a different supervisor generation appeared during the retained launch")
+			}
 			switch current.Phase {
 			case "ready":
 				return current, nil

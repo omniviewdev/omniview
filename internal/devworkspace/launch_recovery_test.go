@@ -186,6 +186,7 @@ func TestLateRefreshFailureRetiresOnlyFailedLaunchWithoutReinstall(t *testing.T)
 			require.NoError(t, atomicJSON(path, refreshIntent{
 				WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, Phase: phase,
 				Evidence: j.Evidence, Launch: LaunchOptions{Mode: "browser"}, WasRunning: true,
+				LaunchGenerations: []string{generation},
 			}))
 			linksBefore, err := os.ReadFile(launchPath(w, "links.json"))
 			require.NoError(t, err)
@@ -227,4 +228,67 @@ func TestFailedRefreshShutdownRejectsSuccessorGeneration(t *testing.T) {
 	after, err := os.ReadFile(launchPath(w, "supervisor.json"))
 	require.NoError(t, err)
 	require.Equal(t, before, after)
+}
+
+func TestRecoverDoesNotRetireUnrelatedFailedSuccessor(t *testing.T) {
+	for _, replacement := range []string{"before-start", "before-verify", "between-verify-and-start", "unbound-legacy"} {
+		t.Run(replacement, func(t *testing.T) {
+			m, w, j := recoveryFixture(t)
+			ctx := context.Background()
+			var stops atomic.Int32
+			startOwner := func() (supervisorRecord, *ownedChild, devsession.ProcessOwner) {
+				generation := NewGeneration()
+				owner := devsession.ProcessOwner{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "supervisor", Source: w.Root}
+				child, err := startOwnedChild(ctx, w.Root, os.Environ(), io.Discard, owner, nil, "/bin/sleep", "300")
+				require.NoError(t, err)
+				t.Cleanup(func() { require.NoError(t, child.stop(context.Background())) })
+				token := []byte("unrelated-successor-authenticated-supervisor-token")
+				server := httptest.NewServer(supervisorHandler(w.Manifest.WorkspaceID, generation, token,
+					func(_ context.Context, command string) (Status, error) {
+						if command == supervisorStopCommand {
+							stops.Add(1)
+						}
+						return Status{Workspace: w, Generation: generation, Phase: "error"}, nil
+					}))
+				t.Cleanup(server.Close)
+				record := supervisorRecord{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation,
+					Endpoint: server.URL + "/v1/supervisor", TokenFile: launchPath(w, "supervisor-"+generation+".secret"), Process: child.identity}
+				require.NoError(t, os.WriteFile(record.TokenFile, token, 0600))
+				return record, child, owner
+			}
+			attempt, original, originalOwner := startOwner()
+			successor, replacementChild, replacementOwner := startOwner()
+			intent := refreshIntent{WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, Phase: refreshStart,
+				Evidence: j.Evidence, Launch: LaunchOptions{Mode: "browser"}, WasRunning: true,
+				LaunchGenerations: []string{attempt.Generation}}
+			if replacement == "before-verify" || replacement == "between-verify-and-start" {
+				intent.Phase = refreshVerify
+			}
+			if replacement == "unbound-legacy" {
+				intent.LaunchGenerations = nil
+			}
+			record := successor
+			if replacement == "between-verify-and-start" {
+				record = attempt
+				m.afterDurablePhase = func(kind, phase string) error {
+					require.Equal(t, "refresh", kind)
+					require.Equal(t, refreshStart, phase)
+					return rawSaveLaunchJSON(launchPath(w, "supervisor.json"), successor)
+				}
+			}
+			require.NoError(t, rawSaveLaunchJSON(launchPath(w, "supervisor.json"), record))
+			path := filepath.Join(m.Root, ".omniview-dev", "recovery", w.Manifest.WorkspaceID, "refresh.json")
+			require.NoError(t, atomicJSON(path, intent))
+			_, err := m.Recover(ctx, w.Manifest.WorkspaceID, RefreshOptions{})
+			var failure *devcontract.Error
+			require.ErrorAs(t, err, &failure)
+			require.Equal(t, "stale_target", failure.Code)
+			require.Zero(t, stops.Load(), "Recover signaled a generation outside its durable launch authority")
+			require.NoError(t, devsession.VerifyOwnedProcess(original.identity, originalOwner))
+			require.NoError(t, devsession.VerifyOwnedProcess(replacementChild.identity, replacementOwner))
+			var retained supervisorRecord
+			require.NoError(t, readLaunchJSON(launchPath(w, "supervisor.json"), &retained))
+			require.Equal(t, successor, retained)
+		})
+	}
 }

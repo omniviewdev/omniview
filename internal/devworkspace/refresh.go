@@ -42,14 +42,27 @@ type RefreshResult struct {
 }
 
 type refreshIntent struct {
-	WorkspaceID string               `json:"workspaceID"`
-	Root        string               `json:"root"`
-	Phase       string               `json:"phase"`
-	Evidence    LinkProtocolEvidence `json:"evidence"`
-	Launch      LaunchOptions        `json:"launch"`
-	Refs        map[string]string    `json:"refs,omitempty"`
-	WasRunning  bool                 `json:"wasRunning"`
-	Plan        *UpdatePlan          `json:"plan,omitempty"`
+	WorkspaceID       string               `json:"workspaceID"`
+	Root              string               `json:"root"`
+	Phase             string               `json:"phase"`
+	Evidence          LinkProtocolEvidence `json:"evidence"`
+	Launch            LaunchOptions        `json:"launch"`
+	Refs              map[string]string    `json:"refs,omitempty"`
+	WasRunning        bool                 `json:"wasRunning"`
+	Plan              *UpdatePlan          `json:"plan,omitempty"`
+	LaunchGenerations []string             `json:"launchGenerations,omitempty"`
+}
+
+func requireRefreshLaunchAuthority(intent refreshIntent, status Status) error {
+	if status.Phase == sourceUpdateStopped || status.Phase == refreshCrashed {
+		return nil
+	}
+	for _, generation := range intent.LaunchGenerations {
+		if generation == status.Generation {
+			return nil
+		}
+	}
+	return devcontract.Fail(4, "stale_target", "live supervisor is not a recorded launch attempt of the retained refresh; refusing to adopt or stop it")
 }
 
 func launchOptionDifferences(requested, saved LaunchOptions) []string {
@@ -468,6 +481,9 @@ func (m *Manager) refresh(ctx context.Context, name string, options RefreshOptio
 		if statusErr != nil {
 			return result, statusErr
 		}
+		if err = requireRefreshLaunchAuthority(intent, current); err != nil {
+			return result, err
+		}
 		switch current.Phase {
 		case "error", "build-error", sourceUpdateStopped, refreshCrashed:
 			if err = save(refreshStart); err != nil {
@@ -515,15 +531,29 @@ func (m *Manager) refresh(ctx context.Context, name string, options RefreshOptio
 		if err != nil {
 			return result, err
 		}
+		if err = requireRefreshLaunchAuthority(intent, result.Status); err != nil {
+			return result, err
+		}
 		if result.Status.Phase == "error" || result.Status.Phase == "build-error" {
-			// Bind shutdown to the failed generation just authenticated above.
-			// A successor published meanwhile must remain untouched.
+			// Both durable operation authority and the just-observed process
+			// generation must match before authenticated shutdown.
 			if _, err = m.downGeneration(ctx, name, false, result.Status.Generation); err != nil {
 				return result, err
 			}
 		}
 		if result.Status.Phase != "ready" {
-			result.Status, err = m.Start(ctx, name, intent.Launch, options.Executable, options.Diagnostics)
+			if result.Status.Phase != "error" && result.Status.Phase != "build-error" &&
+				result.Status.Phase != sourceUpdateStopped && result.Status.Phase != refreshCrashed {
+				return result, devcontract.Fail(4, "refresh_launch_in_progress", "the recorded refresh launch is still in progress; inspect its status before retrying")
+			}
+			generation := NewGeneration()
+			intent.LaunchGenerations = append(intent.LaunchGenerations, generation)
+			// Persist authority before spawning. Keep all attempted identities:
+			// a caller can exit before its child publishes the ownership record.
+			if err = save(refreshStart); err != nil {
+				return result, err
+			}
+			result.Status, err = m.startGeneration(ctx, name, intent.Launch, options.Executable, options.Diagnostics, generation)
 			if err != nil {
 				return result, err
 			}
@@ -538,6 +568,9 @@ func (m *Manager) refresh(ctx context.Context, name string, options RefreshOptio
 		}
 		result.Status, err = m.Status(ctx, name)
 		if err != nil {
+			return result, err
+		}
+		if err = requireRefreshLaunchAuthority(intent, result.Status); err != nil {
 			return result, err
 		}
 		if result.Status.Phase != "ready" {
