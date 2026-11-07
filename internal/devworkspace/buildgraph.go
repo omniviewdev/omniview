@@ -297,9 +297,12 @@ func (g *BuildGraph) commandWithEnvironment(ctx context.Context, dir string, env
 	cmd.Dir = dir
 	// Module selection belongs to the selected actual go.mod, not ambient flags.
 	// Host-only native modfiles are supplied explicitly by the host callback.
+	// Only the selected SDK checkout may set SDK_SOURCE (callers pass it
+	// explicitly): an ambient value would make the Taskfile replace the SDK with
+	// a checkout the verifier never observed.
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
-		if strings.EqualFold(key, "pnpm_config_pm_on_fail") || workspaceRootEnvironment(key) {
+		if strings.EqualFold(key, "pnpm_config_pm_on_fail") || strings.EqualFold(key, sdkSourceEnv) || workspaceRootEnvironment(key) {
 			continue
 		}
 		switch key {

@@ -358,7 +358,7 @@ func linkCommand(ctx context.Context, dir, program string, args ...string) ([]by
 	cmd.Dir = dir
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
-		if workspaceRootEnvironment(key) || key == compositionInstallEnvironment {
+		if workspaceRootEnvironment(key) || strings.EqualFold(key, sdkSourceEnv) || key == compositionInstallEnvironment {
 			continue
 		}
 		if key != "GOWORK" && key != "GOFLAGS" && key != "NODE_PATH" && key != "GOCACHE" && key != "OMNIVIEW_PNPM_NODE_PATH" {

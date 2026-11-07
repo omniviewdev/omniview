@@ -253,9 +253,14 @@ func preservationDirectoryIdentity(path string) (generatedFileIdentity, error) {
 	return generatedDirectoryIdentity(file)
 }
 
+// supervisedBuildError reports a failed build node. Ownership conflicts and
+// every other typed error keep their code, exit and typed details across the
+// supervisor boundary; only untyped compiler or tool failures are flattened to
+// build_failed with a sanitized diagnostic.
 func supervisedBuildError(event BuildEvent, w Workspace) *devcontract.Error {
 	var conflict *devoutputs.Conflict
-	if errors.As(event.cause, &conflict) {
+	var typed *devcontract.Error
+	if errors.As(event.cause, &conflict) || errors.As(event.cause, &typed) {
 		return workspaceOwnershipError(event.cause, w)
 	}
 	return devcontract.Fail(buildFailureExitCode, "build_failed", safeCompilerDiagnostic(event.Error, w.Root))

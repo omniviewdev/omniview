@@ -24,6 +24,10 @@ type Options struct {
 	// policy admits source identities only. It is a constructor input: nothing
 	// reads it from the environment.
 	SDKPolicy devsdk.Policy
+	// Executable resolves the CLI executable that hosts a new supervisor when
+	// Start or Restart receive none. Nil resolves os.Executable. Tests inject a
+	// resolver so no launch path can execute the test binary.
+	Executable func() (string, error)
 }
 
 type Manager struct {

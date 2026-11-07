@@ -157,7 +157,7 @@ func (m *Manager) startGeneration(ctx context.Context, name string, o LaunchOpti
 		return Status{}, err
 	}
 	if executable == "" {
-		executable, err = os.Executable()
+		executable, err = m.supervisorExecutable()
 		if err != nil {
 			return Status{}, err
 		}
@@ -773,3 +773,13 @@ func inspectWorkspaceSeed(ctx context.Context, w Workspace) (devbaseline.Result,
 }
 
 func NewGeneration() string { return uuid.NewString() }
+
+// supervisorExecutable resolves the CLI executable that hosts a new supervisor
+// when Start or Restart receive none: the manager's injected resolver, or this
+// process's own executable.
+func (m *Manager) supervisorExecutable() (string, error) {
+	if m.options.Executable != nil {
+		return m.options.Executable()
+	}
+	return os.Executable()
+}
