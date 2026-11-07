@@ -28,14 +28,14 @@ type Status struct {
 	Checkouts  map[string]CheckoutStatus       `json:"checkouts,omitempty"`
 	// ReadyCheckouts samples the filesystem after a successful readiness
 	// transition. It does not bind compiler inputs or served artifact bytes.
-	ReadyCheckouts  map[string]CheckoutStatus `json:"readyCheckouts,omitempty"`
-	FailedStage     string                    `json:"failedStage,omitempty"`
-	WaitStage       string                    `json:"waitStage,omitempty"`
-	RecoveryCommand string                    `json:"recoveryCommand,omitempty"`
-	Follow          *FollowStatus             `json:"follow,omitempty"`
-	Update          *UpdatePlan               `json:"update,omitempty"`
-	HistoricalError       *devcontract.Error `json:"historicalError,omitempty"`
-	HistoricalFailedStage string             `json:"historicalFailedStage,omitempty"`
+	ReadyCheckouts        map[string]CheckoutStatus `json:"readyCheckouts,omitempty"`
+	FailedStage           string                    `json:"failedStage,omitempty"`
+	WaitStage             string                    `json:"waitStage,omitempty"`
+	RecoveryCommand       string                    `json:"recoveryCommand,omitempty"`
+	Follow                *FollowStatus             `json:"follow,omitempty"`
+	Update                *UpdatePlan               `json:"update,omitempty"`
+	HistoricalError       *devcontract.Error        `json:"historicalError,omitempty"`
+	HistoricalFailedStage string                    `json:"historicalFailedStage,omitempty"`
 
 	// SourceUpdateSupported is evidence only in an authenticated live response.
 	SourceUpdateSupported bool `json:"sourceUpdateSupported,omitempty"`
