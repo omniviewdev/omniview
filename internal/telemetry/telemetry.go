@@ -35,7 +35,9 @@ const (
 	logMaxAgeDays = 14
 
 	// runtimeMetricsInterval is the minimum interval between runtime MemStats reads.
-	runtimeMetricsInterval = 15 * time.Second
+	// It matches local diagnostics sampling so cumulative allocation counters
+	// advance between samples instead of repeating a cached read.
+	runtimeMetricsInterval = 2 * time.Second
 )
 
 // Service is the top-level telemetry orchestrator. It initialises tracing,
