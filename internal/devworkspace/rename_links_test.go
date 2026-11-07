@@ -2,6 +2,8 @@ package devworkspace
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -224,4 +226,68 @@ func TestRenameLaunchRestorationResumesAfterMove(t *testing.T) {
 			require.Nil(t, final.RenameLaunch)
 		})
 	}
+}
+
+func TestRenamePublicationInterruptedBeforeLedger(t *testing.T) {
+	for _, foreign := range []bool{false, true} {
+		t.Run(map[bool]string{false: "resume", true: "foreign"}[foreign], func(t *testing.T) {
+			ctx := context.Background()
+			m, root := fixtureManager(t)
+			w, err := m.Create(ctx, CreateOptions{Slug: "publication-before"})
+			require.NoError(t, err)
+			_, _, accepted := recoveryFixture(t)
+			options := LaunchOptions{Mode: "browser", LinkEvidence: accepted.Evidence}
+			data, err := json.Marshal(options)
+			require.NoError(t, err)
+			data = append(data, '\n')
+			j, err := loadJournal(w.Root)
+			require.NoError(t, err)
+			j.Phase, j.Manifest.Slug, j.RenameLaunch = "rename", "publication-after", &options
+			j.RenameTo = filepath.Join(root, "workspaces", j.Manifest.Slug)
+			j.RenameFiles = map[string][]byte{"launch.json": data}
+			require.NoError(t, saveJournal(w.Root, j))
+			require.NoError(t, os.Rename(w.Root, j.RenameTo))
+			require.NoError(t, writeManifest(j.RenameTo, j.Manifest))
+			interrupted := errors.New("interrupted after publication")
+			require.ErrorIs(t, restoreRenameFile(j.RenameTo, "launch.json", data, func() error { return interrupted }), interrupted)
+			if foreign {
+				require.NoError(t, os.WriteFile(filepath.Join(j.RenameTo, ".local", "launch.json"), []byte("foreign"), 0600))
+			}
+			after, err := m.Resume(ctx, "publication-after")
+			if foreign {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.NoError(t, ValidateGenerated(ctx, after))
+		})
+	}
+}
+
+func TestSeededRenameRetainsReceiptAndDisclosure(t *testing.T) {
+	ctx := context.Background()
+	m, _ := fixtureManager(t)
+	w, err := m.Create(ctx, CreateOptions{Slug: "seed-before"})
+	require.NoError(t, err)
+	_, _, accepted := recoveryFixture(t)
+	source, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	options := LaunchOptions{Mode: "browser", LinkEvidence: accepted.Evidence, BaselineSource: source}
+	require.NoError(t, saveLaunchJSON(launchPath(w, "launch.json"), options))
+	s := &workspaceSupervisor{workspace: w, manager: m, options: options, generation: NewGeneration()}
+	err = s.seed(ctx)
+	require.NoError(t, err, "seed error: %#v", err)
+	receipt, err := os.ReadFile(filepath.Join(w.StateRoot, "baseline.json"))
+	require.NoError(t, err)
+	slug := "seed-after"
+	after, err := m.Edit(ctx, w.Manifest.Slug, EditOptions{Slug: &slug})
+	require.NoError(t, err)
+	s.workspace = after
+	require.NoError(t, s.seed(ctx))
+	retained, err := os.ReadFile(filepath.Join(after.StateRoot, "baseline.json"))
+	require.NoError(t, err)
+	require.Equal(t, receipt, retained)
+	require.FileExists(t, launchPath(after, "baseline-seeded.json"))
+	require.FileExists(t, launchPath(after, "baseline-intent.json"))
+	require.NoError(t, ValidateGenerated(ctx, after))
 }
