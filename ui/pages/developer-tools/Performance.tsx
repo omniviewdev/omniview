@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Banner, Breadcrumbs, Button, Chip, EmptyState, SearchInput, Tabs, Text, Toolbar } from '@omniviewdev/base-ui';
 import { useNavigate, useSearchParams } from 'react-router';
 import { MetricPanel } from '@omniviewdev/base-ui/metrics';
+import HintTooltip from '@/components/base/HintTooltip';
 import { useDiagnostics } from '@/features/diagnostics/useDiagnostics';
 import { MetricGrid } from '@/features/diagnostics/MetricGrid';
 import { Captures } from '@/features/diagnostics/Captures';
@@ -37,7 +38,7 @@ export default function Performance() {
   ].filter(part => part !== '').join(' — ');
   const ready = diagnostics.latest !== undefined;
   return <main className={styles.Page} aria-label='Application performance'>
-    <Toolbar size='sm' className={styles.Toolbar}><Toolbar.Group><Breadcrumbs size='sm'><Breadcrumbs.Item>Developer Tools</Breadcrumbs.Item><Breadcrumbs.Item active>Performance</Breadcrumbs.Item></Breadcrumbs><span title={details}><Chip size='sm' color={diagnostics.error ? 'danger' : health ? health.complete ? 'success' : 'warning' : 'neutral'}>{status}</Chip></span></Toolbar.Group><Toolbar.Group><Button size='sm' variant='ghost' onClick={() => {
+    <Toolbar size='sm' className={styles.Toolbar}><Toolbar.Group><Breadcrumbs size='sm'><Breadcrumbs.Item>Developer Tools</Breadcrumbs.Item><Breadcrumbs.Item active>Performance</Breadcrumbs.Item></Breadcrumbs><HintTooltip content={details}><span tabIndex={0}><Chip size='sm' color={diagnostics.error ? 'danger' : health ? health.complete ? 'success' : 'warning' : 'neutral'}>{status}</Chip></span></HintTooltip></Toolbar.Group><Toolbar.Group><Button size='sm' variant='ghost' onClick={() => {
       void navigate('/developer-tools/extensions');
     }}>Extension Inspector</Button><Button size='sm' variant='outline' disabled={diagnostics.updating} onClick={() => {
       void diagnostics.refresh();

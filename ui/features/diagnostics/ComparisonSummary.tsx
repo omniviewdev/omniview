@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Chip, Collapsible, CollapsibleContent, CollapsibleTrigger, Pagination, Table, Text } from '@omniviewdev/base-ui';
+import { Chip, Collapsible, CollapsibleContent, CollapsibleTrigger, EmptyState, Pagination, Table, Text } from '@omniviewdev/base-ui';
 import { MetricPanel, MetricValue, RankedBars } from '@omniviewdev/base-ui/metrics';
 import type { MetricUnit } from '@omniviewdev/base-ui/metrics';
 import { comparisonArea, dimensionLabel, metricTitle } from './display';
@@ -50,7 +50,7 @@ export function ComparisonSummary({ comparison }: { comparison: Comparison }) {
     </div>
     {changes.length > 0 && <div className={styles.Charts}>
       {areas.map(area => <MetricPanel key={area} title={area} state={{ kind: 'data', updating: false, completeness: 'complete' }}>
-        <RankedBars items={changes.filter(change => comparisonArea(change.metric.name) === area).map(change => ({ id: `${change.metric.name}:${dimensionLabel(change.metric.attributes)}`, label: `${change.percent > 0 ? '▲' : '▼'} ${metricTitle(change.metric.name)} ${dimensionLabel(change.metric.attributes)}`.trim(), value: Math.abs(change.percent) }))} unit={percent} limit={5} label={`${area} changes`} />
+        <RankedBars items={changes.filter(change => comparisonArea(change.metric.name) === area).map(change => ({ id: `${change.metric.name}:${dimensionLabel(change.metric.attributes)}`, label: `${metricTitle(change.metric.name)} ${dimensionLabel(change.metric.attributes)}`.trim(), value: change.percent }))} unit={percent} limit={5} label={`${area} changes`} />
       </MetricPanel>)}
     </div>}
     {comparison.compatible && changes.length === 0 && <Text size='sm' tone='muted'>No measurement changed by {threshold}% or more.</Text>}
@@ -65,6 +65,6 @@ export function ComparisonSummary({ comparison }: { comparison: Comparison }) {
         {pages > 1 && <div className={styles.Filter}><Text size='sm' tone='muted'>{metrics.length} measurements</Text><Pagination size='sm' aria-label='Comparison pages' count={pages} page={current} onChange={setPage} /></div>}
       </CollapsibleContent>
     </Collapsible>
-    {metrics.length === 0 && <Button size='sm' variant='ghost' disabled>No comparable measurements</Button>}
+    {metrics.length === 0 && <EmptyState size='sm' title='No comparable measurements' />}
   </section>;
 }

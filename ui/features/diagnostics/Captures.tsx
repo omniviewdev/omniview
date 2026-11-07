@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Banner, Button, Chip, Heading, Input, Pagination, Select, Table, Text } from '@omniviewdev/base-ui';
+import { Banner, Button, Chip, FormField, Heading, Input, Pagination, Select, Table, Text } from '@omniviewdev/base-ui';
 import { Diagnostics } from '@omniviewdev/runtime/api';
 import type { Capture, CaptureSummary, Comparison } from './model';
 import { ComparisonSummary } from './ComparisonSummary';
@@ -65,15 +65,15 @@ export function Captures({ captures, refresh, maxSeconds }: { captures: CaptureS
 
   return <div className={styles.Captures}>
     <section className={styles.Form} aria-label='Start diagnostic capture'>
-      <label>Name<Input size='sm'><Input.Control value={name} onChange={event => {
+      <FormField size='sm' label='Name' htmlFor='capture-name'><Input size='sm'><Input.Control id='capture-name' value={name} onChange={event => {
         setName(event.target.value); 
-      }} placeholder='Baseline before change' maxLength={80} /></Input></label>
-      <label>Workload<Input size='sm'><Input.Control value={workload} onChange={event => {
+      }} placeholder='Baseline before change' maxLength={80} /></Input></FormField>
+      <FormField size='sm' label='Workload' htmlFor='capture-workload'><Input size='sm'><Input.Control id='capture-workload' value={workload} onChange={event => {
         setWorkload(event.target.value); 
-      }} placeholder='Same workload for comparison' maxLength={120} /></Input></label>
-      <label>Seconds{maxSeconds ? ` (1–${maxSeconds})` : ''}<Input size='sm'><Input.Control value={duration} onChange={event => {
+      }} placeholder='Same workload for comparison' maxLength={120} /></Input></FormField>
+      <FormField size='sm' label={`Seconds${maxSeconds ? ` (1–${maxSeconds})` : ''}`} htmlFor='capture-seconds'><Input size='sm'><Input.Control id='capture-seconds' value={duration} onChange={event => {
         setDuration(event.target.value); 
-      }} inputMode='numeric' aria-label='Capture duration seconds' /></Input></label>
+      }} inputMode='numeric' /></Input></FormField>
       <Button size='sm' disabled={busy || !maxSeconds || !name.trim() || !Number.isInteger(Number(duration)) || Number(duration) <= 0 || Number(duration) > maxSeconds} onClick={() => {
         void run(async () => {
           const capture = await Diagnostics.StartCapture({ name: name.trim(), workload: workload.trim(), durationSeconds: Number(duration) }); setSelected(capture); setComparison(null); setCapturePage(1);
@@ -83,7 +83,7 @@ export function Captures({ captures, refresh, maxSeconds }: { captures: CaptureS
     {error && <Banner color='danger' size='sm'>{error}</Banner>}
     <Table.Container><Table size='sm' stickyHeader aria-label='Diagnostic captures'><Table.Head><Table.Row><Table.HeaderCell>Capture</Table.HeaderCell><Table.HeaderCell>Revision / workload</Table.HeaderCell><Table.HeaderCell>State</Table.HeaderCell><Table.HeaderCell>Elapsed</Table.HeaderCell><Table.HeaderCell>Actions</Table.HeaderCell></Table.Row></Table.Head><Table.Body>{captures.map(capture => <Table.Row key={capture.id} selected={selected?.id === capture.id}><Table.Cell><Button size='sm' variant='ghost' disabled={busy} onClick={() => {
       selectCapture(capture.id); 
-    }}>{capture.name}</Button><small className={styles.Muted}>{new Date(capture.startedAt).toLocaleString()}</small></Table.Cell><Table.Cell>{capture.identity.revision === '' ? capture.identity.version : capture.identity.revision}<small className={styles.Muted}>{capture.workload === '' ? 'Workload not specified' : capture.workload}</small></Table.Cell><Table.Cell><Chip size='sm' color={captureColor(capture.status)}>{capture.status}</Chip></Table.Cell><Table.Cell>{capture.elapsedSeconds.toFixed(1)} / {capture.durationSeconds}s</Table.Cell><Table.Cell>{capture.status === 'running' && <Button size='sm' variant='outline' disabled={busy} onClick={() => {
+    }}>{capture.name}</Button><Text as='div' size='sm' tone='muted'>{new Date(capture.startedAt).toLocaleString()}</Text></Table.Cell><Table.Cell>{capture.identity.revision === '' ? capture.identity.version : capture.identity.revision}<Text as='div' size='sm' tone='muted'>{capture.workload === '' ? 'Workload not specified' : capture.workload}</Text></Table.Cell><Table.Cell><Chip size='sm' color={captureColor(capture.status)}>{capture.status}</Chip></Table.Cell><Table.Cell>{capture.elapsedSeconds.toFixed(1)} / {capture.durationSeconds}s</Table.Cell><Table.Cell>{capture.status === 'running' && <Button size='sm' variant='outline' disabled={busy} onClick={() => {
       void run(async () => {
         const canceled = await Diagnostics.CancelCapture(capture.id); if (selected?.id === capture.id) {
           setSelected(canceled);
@@ -108,7 +108,7 @@ export function Captures({ captures, refresh, maxSeconds }: { captures: CaptureS
     {selected && <section aria-label='Saved capture details'><div className={styles.Heading}><Heading size='sm'>{selected.name}</Heading><Chip size='sm'>{selected.status}</Chip><Button size='sm' variant='ghost' disabled={busy} onClick={() => {
       selectCapture(selected.id); 
     }}>Reload capture</Button></div>
-    <p className={styles.Muted}>{selected.samples?.length ?? 0} samples · {selected.elapsedSeconds.toFixed(1)}s · {selected.coverage.gaps} gaps · {selected.coverage.dropped} dropped{!selected.coverage.complete ? ' · incomplete coverage' : ''}</p>
+    <Text as='p' size='sm' tone='muted'>{selected.samples?.length ?? 0} samples · {selected.elapsedSeconds.toFixed(1)}s · {selected.coverage.gaps} gaps · {selected.coverage.dropped} dropped{!selected.coverage.complete ? ' · incomplete coverage' : ''}</Text>
     {selected.error && <Banner color='warning' size='sm'>{selected.error}</Banner>}
     <MetricGrid metrics={captureMetrics.slice((currentCapturePage - 1) * 24, currentCapturePage * 24)} samples={selected.samples ?? []} updating={false} health={selected.coverage} />
     <div className={styles.Filter}><Text size='sm' tone='muted'>{captureMetrics.length} measurements · page {currentCapturePage} of {capturePages}</Text>{capturePages > 1 && <Pagination size='sm' aria-label='Saved capture measurement pages' count={capturePages} page={currentCapturePage} onChange={setCapturePage} />}</div>

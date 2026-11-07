@@ -1,5 +1,5 @@
 import { EmptyState } from '@omniviewdev/base-ui';
-import { MetricPanel, MetricValue, Sparkline, TimeSeriesChart } from '@omniviewdev/base-ui/metrics';
+import { MetricPanel, MetricValue, Sparkline, StackedTimeSeriesChart, TimeSeriesChart } from '@omniviewdev/base-ui/metrics';
 import type { MetricUnit, NumericSeries } from '@omniviewdev/base-ui/metrics';
 import type { DiagnosticsHealth } from '@omniviewdev/runtime/api';
 import { metricTitle } from './display';
@@ -71,7 +71,7 @@ export function Overview({ samples, updating, health }: { samples: Snapshot[]; u
     </div>
     <div className={styles.Charts}>
       {cpuParts.length > 0 && <MetricPanel title='CPU by state' state={{ kind: 'data', updating, completeness: health ? health.complete ? 'complete' : 'partial' : 'unknown' }}>
-        <TimeSeriesChart series={cpuParts} unit={cores} domain={domain} maxGapMs={6000} height={160} label='CPU by state' />
+        <StackedTimeSeriesChart frame={{ timestamps: cpuParts[0].points.map(point => point.timeMs), series: cpuParts.map(part => ({ id: part.id, label: part.label, values: part.points.map(point => point.value) })) }} unit={cores} domain={domain} height={160} label='CPU by state' />
       </MetricPanel>}
       {heap !== null && peak !== null && <MetricPanel title='Memory' state={{ kind: 'data', updating, completeness: health ? health.complete ? 'complete' : 'partial' : 'unknown' }}>
         <TimeSeriesChart series={[heap, peak]} unit={bytes} domain={domain} maxGapMs={6000} height={160} label='Heap and peak memory' />

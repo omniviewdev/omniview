@@ -56,10 +56,10 @@ describe('capture measurement pagination', () => {
     fireEvent.click(await screen.findByText('All measurements (81)'));
     const table = await screen.findByRole('table', { name: 'Compared measurements' });
     expect(within(table).getAllByRole('row').length).toBeLessThan(81);
-    expect(screen.queryByText('Compared-81')).not.toBeInTheDocument();
+    expect(within(table).queryByText('Compared-81')).not.toBeInTheDocument();
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Comparison pages' })).getByText('3'));
-    expect(await screen.findByText('Compared-81')).toBeVisible();
-    expect(screen.queryByText('Compared-1')).not.toBeInTheDocument();
+    expect(await within(table).findByText('Compared-81')).toBeVisible();
+    expect(within(table).queryByText('Compared-1')).not.toBeInTheDocument();
     await chooseCapture('Candidate capture', 'Before · complete');
     expect(screen.queryByRole('table', { name: 'Compared measurements' })).not.toBeInTheDocument();
     expect(compare).toBeDisabled();

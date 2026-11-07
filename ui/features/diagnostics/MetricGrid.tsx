@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Select, Text } from '@omniviewdev/base-ui';
-import { Histogram, MetricPanel, MetricValue, RankedBars, TimeSeriesChart } from '@omniviewdev/base-ui/metrics';
+import { Histogram, MetricDetails, MetricPanel, MetricValue, RankedBars, TimeSeriesChart } from '@omniviewdev/base-ui/metrics';
 import { histogramBuckets, metricSeries, metricUnit, pointKey } from './model';
 import { metricTitle } from './display';
 import type { Metric, Snapshot } from './model';
@@ -25,7 +25,12 @@ function MetricChart({ metric, samples, updating, health }: { metric: Metric; sa
   const hasData = points.length > 0 && !!unit;
   return <MetricPanel title={title}
     state={!unit ? { kind: 'unsupported', message: `Unsupported unit: ${metric.unit}` } : !hasData ? { kind: 'empty', message: 'No observed samples.' } : { kind: 'data', updating, completeness: health ? health.complete ? 'complete' : 'partial' : 'unknown' }}
-    details={{ content: <Text size='sm' tone='muted'>{metric.description === '' ? metric.name : metric.description} · {metric.name} · {metric.kind} · {metric.unit === '' ? 'count' : metric.unit}</Text> }}
+    details={{ content: <MetricDetails label={`${title} details`} items={[
+      { id: 'instrument', label: 'Instrument', value: metric.name },
+      { id: 'kind', label: 'Kind', value: metric.kind },
+      { id: 'unit', label: 'Unit', value: metric.unit === '' ? 'count' : metric.unit },
+      { id: 'description', label: 'Description', value: metric.description === '' ? 'Not provided' : metric.description, advanced: true },
+    ]} samples={last ? [{ id: 'latest', label: 'Latest sample', status: health ? health.complete ? 'ok' : 'unknown' : 'unknown', updatedAtMs: new Date(last.timestamp).getTime() }] : undefined} /> }}
     actions={histogram && points.length > 1 ? <Select size='sm' value={pointKey(point.attributes)} onValueChange={value => {
       setSelected(value ?? ''); 
     }}><Select.Trigger aria-label={`${metric.name} distribution series`}><Select.Value>{() => selectedLabel === '' ? 'All observations' : selectedLabel}</Select.Value><Select.Icon /></Select.Trigger><Select.Portal><Select.Positioner><Select.Popup><Select.List>{points.map(value => <Select.Item key={pointKey(value.attributes)} value={pointKey(value.attributes)}>{Object.entries(value.attributes ?? {}).map(([key, label]) => `${key}: ${label}`).join(' · ') || 'All observations'}</Select.Item>)}</Select.List></Select.Popup></Select.Positioner></Select.Portal></Select> : undefined}
