@@ -98,11 +98,17 @@ func sourceReloadHostReady(connected devcontract.InstanceDescriptor, reported *d
 	if reported == nil || connected.Process != reported.Process {
 		return devcontract.Fail(4, "stale_target", "connected host differs from the supervisor-reported host")
 	}
-	return frontendDescriptorReady(connected, *reported)
+	if err := frontendDescriptorReady(connected, *reported); err != nil {
+		return err
+	}
+	if connected.Endpoints.Vite == nil {
+		return devcontract.Fail(3, "vite_not_ready", "source reload verification requires the selected live frontend")
+	}
+	return nil
 }
 
-// frontendDescriptorReady checks authenticated frontend capability, not native
-// application startup. Callers still verify the exact owned frontend endpoint.
+// frontendDescriptorReady checks authenticated browser capability, not native
+// application startup. Source reload separately requires an owned Vite endpoint.
 func frontendDescriptorReady(actual, target devcontract.InstanceDescriptor) error {
 	if actual.Readiness != "backend-ready" {
 		return hostDescriptorReady(actual, target)
@@ -110,8 +116,8 @@ func frontendDescriptorReady(actual, target devcontract.InstanceDescriptor) erro
 	if actual.WorkspaceID != target.WorkspaceID || actual.InstanceID != target.InstanceID || actual.Generation != target.Generation || actual.StateRoot != target.StateRoot {
 		return devcontract.Fail(4, "stale_target", "host identity differs from the selected workspace generation")
 	}
-	if actual.Endpoints.Browser == nil || actual.Endpoints.Vite == nil {
-		return devcontract.Fail(3, "frontend_not_ready", "selected host has not published browser and Vite capabilities")
+	if actual.Endpoints.Browser == nil {
+		return devcontract.Fail(3, "frontend_not_ready", "selected host has not published browser capability")
 	}
 	return nil
 }

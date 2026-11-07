@@ -209,10 +209,12 @@ func TestReadyInspectionHonorsSessionCancellation(t *testing.T) {
 }
 
 func TestSourceReloadRejectsMissingOrReplacedReportedHost(t *testing.T) {
+	vite := "http://127.0.0.1:31001"
 	connected := devcontract.InstanceDescriptor{
 		WorkspaceID: "workspace", InstanceID: "instance", Generation: "generation",
 		StateRoot: "/state", Readiness: "ready",
-		Process: devcontract.ProcessIdentity{PID: 123, StartIdentity: "original"},
+		Process:   devcontract.ProcessIdentity{PID: 123, StartIdentity: "original"},
+		Endpoints: devcontract.Endpoints{Vite: &vite},
 	}
 	if err := sourceReloadHostReady(connected, &connected); err != nil {
 		t.Fatalf("matching host rejected: %v", err)
@@ -254,5 +256,25 @@ func TestSourceReloadBackendReadyRequiresFrontendCapabilities(t *testing.T) {
 		if sourceReloadHostReady(candidate, &candidate) == nil {
 			t.Fatalf("accepted missing %s capability", missing)
 		}
+	}
+}
+
+func TestEmbeddedBrowserReadinessDoesNotRequireLiveFrontend(t *testing.T) {
+	browser := "http://127.0.0.1:31000"
+	host := devcontract.InstanceDescriptor{
+		WorkspaceID: "workspace", InstanceID: "instance", Generation: "generation",
+		StateRoot: "/state", Readiness: "backend-ready",
+		Process:   devcontract.ProcessIdentity{PID: 123, StartIdentity: "original"},
+		Endpoints: devcontract.Endpoints{Browser: &browser},
+	}
+	if err := frontendDescriptorReady(host, host); err != nil {
+		t.Fatal(err)
+	}
+	var failure *devcontract.Error
+	if err := sourceReloadHostReady(host, &host); !errors.As(err, &failure) || failure.Code != "vite_not_ready" {
+		t.Fatalf("embedded browser source reload did not require Vite: %v", err)
+	}
+	if hostDescriptorReady(host, host) == nil {
+		t.Fatal("embedded browser capability must not imply native readiness")
 	}
 }
