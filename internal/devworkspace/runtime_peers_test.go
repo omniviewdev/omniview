@@ -123,3 +123,34 @@ func TestLinkPlanningRejectsPeerConflictBeforeInstallation(t *testing.T) {
 		t.Fatalf("planning must diagnose incompatible sources without an installer: %v", err)
 	}
 }
+
+func TestLinkedPeerContractsUseSelectedProviderVersion(t *testing.T) {
+	root := t.TempDir()
+	consumer := filepath.Join(root, "plugin")
+	linked := filepath.Join(root, "host/runtime")
+	provider := filepath.Join(root, "ui/base")
+	writeGraphFixture(t, filepath.Join(consumer, "package.json"), `{"dependencies":{"runtime":"1.0.0","base":"1.0.0"}}`)
+	writeGraphFixture(t, filepath.Join(linked, "package.json"), `{"peerDependencies":{"base":"^2.0.0"}}`)
+	writeGraphFixture(t, filepath.Join(provider, "package.json"), `{"version":"1.0.0"}`)
+	plan := linkPlan{Consumers: []linkConsumer{{Path: consumer, Targets: map[string]string{"runtime": linked, "base": provider}}}}
+	w := Workspace{ResolvedWorkspace: devcontract.ResolvedWorkspace{Root: root}}
+	plan.Composition = &devcompose.Plan{
+		Targets: map[string]string{"base": provider},
+		Files:   []devcompose.File{{Path: filepath.Join(root, "pnpm-workspace.yaml"), Data: []byte("overrides:\n  base: workspace:*\n")}},
+	}
+	err := validateLinkedPeerContracts(w, plan)
+	var failure *devcontract.Error
+	if !errors.As(err, &failure) || failure.Code != "peer_contract_mismatch" {
+		t.Fatalf("selected peer conflict missed: %v", err)
+	}
+	for _, path := range []string{"plugin/package.json", "host/runtime/package.json", "ui/base/package.json"} {
+		if !strings.Contains(failure.Message, path) {
+			t.Fatalf("missing conflicting manifest %s: %v", path, err)
+		}
+	}
+	// A stale dependency declaration does not override the selected provider.
+	writeGraphFixture(t, filepath.Join(provider, "package.json"), `{"version":"2.0.0"}`)
+	if err := validateLinkedPeerContracts(w, plan); err != nil {
+		t.Fatalf("compatible selected provider rejected: %v", err)
+	}
+}

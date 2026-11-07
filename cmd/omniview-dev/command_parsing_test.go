@@ -91,3 +91,19 @@ func TestControlParserKeepsUsageErrorsPrivate(t *testing.T) {
 		}
 	}
 }
+
+func TestInstanceInspectWorkspaceSelection(t *testing.T) {
+	for _, args := range [][]string{
+		{"instance", "inspect", "/tmp/selected/workspace.json"},
+		{"instance", "inspect", "--workspace", "/tmp/selected/workspace.json"},
+		{"instance", "inspect", "/tmp/selected/workspace.json", "--workspace", "/tmp/selected/workspace.json"},
+	} {
+		command, err := parseControlCommandForTest(args, nil, &bytes.Buffer{})
+		if err != nil || command.workspace != "/tmp/selected/workspace.json" || command.params != (devcontrol.EmptyParams{}) {
+			t.Fatalf("workspace target lost: %#v %v", command, err)
+		}
+	}
+	if _, err := parseControlCommandForTest([]string{"instance", "inspect", "first", "--workspace", "second"}, nil, &bytes.Buffer{}); devcontract.ExitCode(err) != 4 {
+		t.Fatalf("conflicting selection accepted: %v", err)
+	}
+}

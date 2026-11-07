@@ -80,7 +80,7 @@ func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceComm
 		flags.BoolVar(&c.launch.MCP, "mcp", false, "enable authenticated native MCP")
 		flags.BoolVar(&c.launch.Watch, "watch", true, "own source build/watch for the session lifetime")
 		flags.BoolVar(&c.launch.LiveFrontend, "live-frontend", true, "run actual strict host Vite and HMR")
-		flags.StringVar(&c.linkEvidence, "link-evidence", "", "actual successful pinned pnpm probe JSON")
+		flags.StringVar(&c.linkEvidence, "link-evidence", "", "FILE containing the actual successful pinned pnpm protocol probe report (JSON)")
 		flags.StringVar(&c.launch.BaselineSource, "seed-from", "", "stopped baseline source state root")
 		flags.StringVar(&c.launch.BaselineVersion, "seed-version", "", "nonsecret baseline source build version")
 		flags.DurationVar(&c.launch.Timeout, "timeout", 20*time.Minute, "bounded build/readiness deadline")
@@ -135,13 +135,20 @@ func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceComm
 		}
 		launchFlags()
 	case "evidence":
-		flags.StringVar(&c.linkEvidence, "link-evidence", "", "successful pinned pnpm probe JSON to retain; omit to inspect saved evidence")
+		flags.StringVar(&c.linkEvidence, "link-evidence", "", "FILE containing a successful pinned pnpm protocol probe report; applies links, omit to inspect saved proof")
 	case "verify-reload":
 		flags.StringVar(&c.modulePath, "module", "", "Vite module URL path for edited source")
 		flags.StringVar(&c.marker, "marker", "", "unique marker added to source")
 	case "down", "restart":
 		flags.DurationVar(&c.launch.Timeout, "timeout", 20*time.Minute, "bounded stop/restart wait")
+		if c.verb == "restart" {
+			cmd.Long = "Restart using saved launch settings and protocol evidence. " +
+				"Launch flags are not accepted; use workspace refresh to change saved launch settings."
+		}
 	case "edit":
+		cmd.Long = "Change source selection. Plain edit requires a stopped workspace; run " +
+			"omniview-dev workspace down --workspace MANIFEST first. " +
+			"--apply manages stopping and refresh using retained launch settings and protocol evidence."
 		flags.BoolVar(&c.apply, "apply", false, "apply edits and refresh; restart only a previously running workspace")
 		flags.StringVar(&c.name, "name", "", "new display name")
 		flags.StringVar(&c.slug, "slug", "", "new workspace slug")
@@ -152,7 +159,7 @@ func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceComm
 		flags.Var(&c.refs, "ref", "ID=ref override (repeatable)")
 		flags.Var(&c.upstreams, "upstream", "ID=REMOTE/BRANCH update policy (repeatable); does not change the selected ref")
 	case "link":
-		flags.StringVar(&c.linkEvidence, "link-evidence", "", "actual successful pinned pnpm probe JSON")
+		flags.StringVar(&c.linkEvidence, "link-evidence", "", "FILE containing the actual successful pinned pnpm protocol probe report (JSON)")
 	case "remove":
 		flags.BoolVar(&c.deleteState, "delete-state", false, "explicitly delete owned stopped profile state")
 		flags.BoolVar(&c.deleteBranches, "delete-branches", false, "explicitly delete owned feature branches")
@@ -344,9 +351,18 @@ func workspaceLaunchInputs(c workspaceCommand, options devworkspace.LaunchOption
 		}
 	}
 	if evidence != "" {
+		if strings.HasPrefix(strings.TrimSpace(evidence), "{") || strings.HasPrefix(strings.TrimSpace(evidence), "[") {
+			return options, devcontract.Fail(2, "invalid_link_evidence", "--link-evidence expects a report file path, not inline JSON; see docs/development-cli.md#protocol-evidence")
+		}
 		raw, err := os.ReadFile(evidence)
 		if err != nil {
-			return options, devcontract.Fail(3, "link_evidence_required", "provide --link-evidence with the actual successful pinned protocol probe report")
+			failure := devcontract.Fail(3, "link_evidence_required", "cannot read protocol report FILE; provide --link-evidence FILE from the successful pinned protocol probe; see docs/development-cli.md#protocol-evidence")
+			// File paths are useful for missing input, but arbitrary inline input
+			// and filesystem errors must not become diagnostic payloads.
+			if os.IsNotExist(err) && !strings.ContainsAny(evidence, "\x00\r\n@=?#") && !strings.Contains(evidence, "://") {
+				failure.Details = map[string]any{"reportFile": evidence}
+			}
+			return options, failure
 		}
 		if err := json.Unmarshal(raw, &options.LinkEvidence); err != nil {
 			return options, devcontract.Fail(2, "invalid_link_evidence", "pinned protocol probe report is invalid JSON")
@@ -722,6 +738,11 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 		case "evidence":
 			if c.linkEvidence == "" {
 				value, err = manager.ProtocolEvidence(ctx, w.Manifest.WorkspaceID)
+				if os.IsNotExist(err) {
+					failure := devcontract.Fail(3, "evidence_missing", "workspace has no retained protocol proof; run the pinned protocol probe, then workspace preflight and up with --link-evidence FILE; see docs/development-cli.md#protocol-evidence")
+					failure.Details = map[string]any{"workspaceID": w.Manifest.WorkspaceID, "state": "absent", "helpCommand": "omniview-dev workspace evidence --help"}
+					err = failure
+				}
 			} else {
 				options, optionErr := workspaceLaunchOptions(c, w)
 				if optionErr != nil {

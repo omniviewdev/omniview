@@ -43,6 +43,11 @@ func TestStartRetainsFailedSupervisorForRecovery(t *testing.T) {
 	require.NoError(t, rawSaveLaunchJSON(launchPath(w, "supervisor.json"), record))
 	before, err := os.ReadFile(launchPath(w, "supervisor.json"))
 	require.NoError(t, err)
+	var stoppedFailure *devcontract.Error
+	require.ErrorAs(t, RequireStopped(ctx, w.ResolvedWorkspace), &stoppedFailure)
+	require.Equal(t, "workspace_running", stoppedFailure.Code)
+	require.Equal(t, workspaceRecoveryCommand(w, "down"), stoppedFailure.Details["recoveryCommand"])
+	require.NoError(t, devsession.VerifyOwnedProcess(child.identity, owner))
 
 	status, err := m.Start(ctx, w.Manifest.WorkspaceID, LaunchOptions{Mode: "browser"}, "/must-not-launch", io.Discard)
 	var failure *devcontract.Error

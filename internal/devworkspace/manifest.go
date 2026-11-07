@@ -180,6 +180,14 @@ func (m *Manager) plan(ctx context.Context, reg Registry, opts CreateOptions) (d
 		}
 		commit, err := resolve(ctx, s.CommonDir, selection)
 		if err != nil {
+			if ctx.Err() != nil {
+				return manifest, ctx.Err()
+			}
+			if IsPinnedRef(selection) {
+				failure := devcontract.Fail(3, "local_ref_missing", "repository "+s.ID+" cannot resolve pinned ref "+selection+" locally; explicitly fetch the containing branch in its registered source repository, then retry; pinned refs are never fetched automatically")
+				failure.Details = map[string]any{"repository": s.ID, "ref": selection, "source": s.Worktree, "automaticFetch": false}
+				return manifest, failure
+			}
 			return manifest, err
 		}
 		commits[s.ID] = commit

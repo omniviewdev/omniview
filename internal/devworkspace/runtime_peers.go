@@ -31,7 +31,12 @@ func validateLinkedPeerContracts(w Workspace, plan linkPlan) error {
 				return nil
 			}
 			overrides, _ := policy["overrides"].(map[string]any)
-			for selector := range overrides {
+			for selector, value := range overrides {
+				if value == "workspace:*" && plan.Composition.Targets[selector] != "" {
+					// Managed mappings select an exact local provider. They
+					// must not hide that provider's provable peer mismatch.
+					continue
+				}
 				overrideSelectors = append(overrideSelectors, selector)
 			}
 		}
@@ -78,7 +83,7 @@ func validateLinkedPeerContracts(w Workspace, plan linkPlan) error {
 			peers, _ := linked["peerDependencies"].(map[string]any)
 			for name, value := range peers {
 				required, ok := value.(string)
-				if !ok || consumer.Targets[name] != "" {
+				if !ok {
 					continue
 				}
 				adjusted := false
@@ -92,12 +97,27 @@ func validateLinkedPeerContracts(w Workspace, plan linkPlan) error {
 					continue
 				}
 				provided := providers[name]
+				providerManifest := ""
+				if target := consumer.Targets[name]; target != "" {
+					// The linked provider's version, not the consumer's stale
+					// dependency range, is authoritative for this selected edge.
+					provider, err := read(target)
+					if err != nil {
+						return err
+					}
+					provided, _ = provider["version"].(string)
+					providerManifest, _ = filepath.Rel(w.Root, filepath.Join(target, "package.json"))
+				}
 				if !manifestRangesDisjoint(provided, required) {
 					continue
 				}
 				from, _ := filepath.Rel(w.Root, filepath.Join(consumer.Path, "package.json"))
 				to, _ := filepath.Rel(w.Root, filepath.Join(path, "package.json"))
-				conflicts = append(conflicts, fmt.Sprintf("%s declares %s %s, but linked %s requires peer %s", from, name, provided, to, required))
+				if providerManifest != "" {
+					conflicts = append(conflicts, fmt.Sprintf("%s selects %s from %s at %s, but linked %s requires peer %s", from, name, providerManifest, provided, to, required))
+				} else {
+					conflicts = append(conflicts, fmt.Sprintf("%s declares %s %s, but linked %s requires peer %s", from, name, provided, to, required))
+				}
 			}
 			return nil
 		}
