@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/omniviewdev/omniview/internal/devoutputs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -135,4 +136,43 @@ func TestLinkedRenameRefusesChangedLinkJournalIdentity(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, before, after)
 	require.FileExists(t, filepath.Join(f.w.Root, "package.json"))
+}
+
+func TestApplyingModulesConflictGivesRetainedOrderedRecovery(t *testing.T) {
+	f := newResetModulesFixture(t)
+	j, err := loadLinkJournal(f.w)
+	require.NoError(t, err)
+	j.Phase = "applying"
+	require.NoError(t, saveLinkJournal(j))
+	require.NoError(t, saveLaunchJSON(launchPath(f.w, "launch.json"), LaunchOptions{
+		Mode: "browser", LinkEvidence: j.Evidence,
+	}))
+	payload := workspaceOwnershipError(&devoutputs.Conflict{
+		Producer: "modules", Target: filepath.Join(f.host, "node_modules"),
+		Ownership: "unowned", Phase: "installation",
+	}, f.w)
+	conflict := payload.Details["ownershipConflict"].(*devoutputs.Conflict)
+	executable, err := os.Executable()
+	require.NoError(t, err)
+	require.Equal(t, "applying", conflict.LifecyclePhase)
+	require.Equal(t, [][]string{
+		{executable, "workspace", "ownership", "--workspace", f.w.ManifestPath, "--json"},
+		{executable, "workspace", "down", "--workspace", f.w.ManifestPath},
+		{executable, "workspace", "reset-modules", "--workspace", f.w.ManifestPath},
+		{executable, "workspace", "recover", "--workspace", f.w.ManifestPath},
+	}, conflict.NextCommands)
+}
+
+func TestLinkedRenameRefusesUnfinishedInstallerBeforeMutation(t *testing.T) {
+	f := newResetModulesFixture(t)
+	j, err := loadLinkJournal(f.w)
+	require.NoError(t, err)
+	_, err = devoutputs.BeginCompositionInstall(context.Background(), f.w.ResolvedWorkspace, *j.Plan.Composition)
+	require.NoError(t, err)
+	slug := "not-moved"
+	_, err = f.m.Edit(context.Background(), f.w.Manifest.Slug, EditOptions{Slug: &slug})
+	require.Error(t, err)
+	require.DirExists(t, f.w.Root)
+	require.FileExists(t, filepath.Join(f.w.Root, "package.json"))
+	require.FileExists(t, filepath.Join(f.w.Root, ".local", "links.json"))
 }
