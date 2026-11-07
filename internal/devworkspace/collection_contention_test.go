@@ -56,6 +56,19 @@ func TestConcurrentCreatesReportCollectionNotWorkspaceContention(t *testing.T) {
 	require.Len(t, items, 8)
 }
 
+func TestCreateReportsHeldCollectionLockWithoutPublishingWorkspace(t *testing.T) {
+	m, root := fixtureManager(t)
+	release, err := lockRoot(root)
+	require.NoError(t, err)
+	defer release()
+
+	_, err = m.Create(context.Background(), CreateOptions{Slug: "blocked"})
+	var conflict *devcontract.Error
+	require.True(t, errors.As(err, &conflict), "%v", err)
+	require.Equal(t, "collection_busy", conflict.Code)
+	require.NoDirExists(t, filepath.Join(root, "workspaces", "blocked"))
+}
+
 func TestProfileLockContentionPreservesDistinctRole(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".lock")
 	release, err := tryLock(path)
