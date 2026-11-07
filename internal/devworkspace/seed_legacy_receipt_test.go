@@ -37,6 +37,12 @@ func TestSeedResumePreservesOlderExplanatoryReceiptBytes(t *testing.T) {
 			if markerPresent {
 				require.NoError(t, saveLaunchJSON(launchPath(s.workspace, "baseline-seeded.json"), map[string]string{"source": source, "digest": digestGenerated(old)}))
 			} else {
+				// Interruption before marker publication leaves no marker and no ledger entry.
+				ledger, unlock, ledgerPath, err := lockGenerated(s.workspace)
+				require.NoError(t, err)
+				delete(ledger.Entries, "baseline-seeded.json")
+				require.NoError(t, rawSaveLaunchJSON(ledgerPath, ledger))
+				unlock()
 				require.NoError(t, os.Remove(launchPath(s.workspace, "baseline-seeded.json")))
 			}
 			require.NoError(t, s.seed(context.Background()))
