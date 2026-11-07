@@ -1,6 +1,7 @@
 package devoutputs
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -55,6 +56,11 @@ func conflict(spec specification, ownership, phase string, actual, expected snap
 		c.Guidance += " No automatic repair is authorized for unowned outputs. Preserve them externally and restore the exact committed baseline before retrying."
 	}
 	if actual == nil {
+		var substitution *pathConflict
+		if errors.As(cause, &substitution) {
+			c.ChangedPaths = []string{substitution.Path}
+			c.Differences = []Difference{{Path: substitution.Path, ActualKind: substitution.ActualKind, ExpectedKind: substitution.ExpectedKind}}
+		}
 		return c
 	}
 	paths := map[string]bool{}

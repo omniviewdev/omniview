@@ -12,10 +12,11 @@ import (
 )
 
 type preservation struct {
-	Path           string
-	ParentIdentity string
-	Before         snapshot
-	Head           string
+	Path                 string
+	ParentIdentity       string
+	SourceParentIdentity string
+	Before               snapshot
+	Head                 string
 }
 
 type Reconciliation struct {
@@ -85,7 +86,11 @@ func Reconcile(ctx context.Context, w devcontract.ResolvedWorkspace, consumer, p
 			if e != nil {
 				return e
 			}
-			entry.Preservation = &preservation{Path: preserveAt, ParentIdentity: parentIdentity, Before: current, Head: revision}
+			sourceParentIdentity, e := directoryIdentity(filepath.Dir(spec.Target))
+			if e != nil {
+				return e
+			}
+			entry.Preservation = &preservation{Path: preserveAt, ParentIdentity: parentIdentity, SourceParentIdentity: sourceParentIdentity, Before: current, Head: revision}
 			if e = save(s, j); e != nil {
 				return e
 			}
@@ -122,7 +127,7 @@ func Reconcile(ctx context.Context, w devcontract.ResolvedWorkspace, consumer, p
 				return e
 			}
 			// Atomic exclusion refuses even an empty foreign destination directory.
-			if e = preserveRename(spec.Target, preserveAt); e != nil {
+			if e = preserveRename(spec.Target, preserveAt, p.SourceParentIdentity, p.ParentIdentity); e != nil {
 				return e
 			}
 			preserved, e = snapshotPath(preservedSpec, nil)

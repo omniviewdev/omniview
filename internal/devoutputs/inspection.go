@@ -3,6 +3,7 @@ package devoutputs
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -46,6 +47,9 @@ type Inspection struct {
 // result is a point-in-time observation, never authorization for later mutation.
 func Inspect(ctx context.Context, w devcontract.ResolvedWorkspace, requests []Request) (Inspection, error) {
 	report := Inspection{Ready: true, Scope: "repository producer and dependency ownership only; not source trust, link proof, runtime or process readiness", Entries: []OwnershipEntry{}}
+	if err := ctx.Err(); err != nil {
+		return report, err
+	}
 	s, err := newScope(w)
 	if err != nil {
 		return report, err
@@ -54,14 +58,11 @@ func Inspect(ctx context.Context, w devcontract.ResolvedWorkspace, requests []Re
 	if err = devsession.ValidatePrivateDirectory(s.directory); err != nil && !os.IsNotExist(err) {
 		return report, err
 	}
-	if err = devsession.ValidatePrivateFile(s.path); err != nil && !os.IsNotExist(err) {
-		return report, err
-	}
-	before, err := os.ReadFile(s.path)
+	before, err := readJournalBytes(s.path)
 	if err != nil && !os.IsNotExist(err) {
 		return report, err
 	}
-	j, err := readJournal(s)
+	j, err := readJournalMode(s, true)
 	if err != nil {
 		return report, err
 	}
@@ -75,7 +76,8 @@ func Inspect(ctx context.Context, w devcontract.ResolvedWorkspace, requests []Re
 	}
 	for _, request := range requests {
 		spec, e := s.spec(request.Consumer, request.Producer)
-		if e != nil {
+		var substitution *pathConflict
+		if e != nil && (spec.Target == "" || !errors.As(e, &substitution)) {
 			return report, e
 		}
 		specs[keyOf(spec)] = spec
@@ -103,12 +105,24 @@ func Inspect(ctx context.Context, w devcontract.ResolvedWorkspace, requests []Re
 			if entry.Cleanup != nil {
 				item.Phase = "cleanup"
 			}
+		}
+		if _, e := cleanPath(spec.Target); e != nil {
+			var substitution *pathConflict
+			if !errors.As(e, &substitution) {
+				return report, e
+			}
+			item.Conflict = conflict(spec, item.Ownership, item.Phase, nil, nil, e)
+		} else if entry != nil {
 			_, e := observeEntry(ctx, entry, true)
 			if e == nil && (entry.Pending != nil || entry.Cleanup != nil) {
-				e = fmt.Errorf("producer publication or cleanup is incomplete")
+				e = entryConflict(entry, item.Phase, nil, fmt.Errorf("producer publication or cleanup is incomplete"))
 			}
 			if e != nil {
-				if c, ok := e.(*Conflict); ok {
+				if !inspectionBoundaryConflict(e) {
+					return report, e
+				}
+				var c *Conflict
+				if errors.As(e, &c) {
 					item.Conflict = c
 				} else {
 					item.Conflict = entryConflict(entry, item.Phase, nil, e)
@@ -117,9 +131,12 @@ func Inspect(ctx context.Context, w devcontract.ResolvedWorkspace, requests []Re
 		} else {
 			actual, e := snapshotPath(spec, nil)
 			if e != nil {
-				return report, e
-			}
-			if spec.Kind == modules {
+				var substitution *pathConflict
+				if !errors.As(e, &substitution) {
+					return report, e
+				}
+				item.Conflict = conflict(spec, "unowned", "admission", nil, nil, e)
+			} else if spec.Kind == modules {
 				if len(actual) > 0 {
 					item.Conflict = conflict(spec, "unowned", "admission", actual, nil, fmt.Errorf("preexisting dependency root has no ownership receipt"))
 				} else {
@@ -144,10 +161,7 @@ func Inspect(ctx context.Context, w devcontract.ResolvedWorkspace, requests []Re
 		}
 		report.Entries = append(report.Entries, item)
 	}
-	if err = devsession.ValidatePrivateFile(s.path); err != nil && !os.IsNotExist(err) {
-		return report, err
-	}
-	after, err := os.ReadFile(s.path)
+	after, err := readJournalBytes(s.path)
 	if err != nil && !os.IsNotExist(err) {
 		return report, err
 	}
@@ -155,4 +169,17 @@ func Inspect(ctx context.Context, w devcontract.ResolvedWorkspace, requests []Re
 		return report, fmt.Errorf("ownership metadata changed during inspection; retry read-only inspection")
 	}
 	return report, nil
+}
+
+func inspectionBoundaryConflict(err error) bool {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	var ioFailure *os.PathError
+	if errors.As(err, &ioFailure) {
+		return false
+	}
+	var substitution *pathConflict
+	var ownership *Conflict
+	return errors.As(err, &substitution) || errors.As(err, &ownership)
 }

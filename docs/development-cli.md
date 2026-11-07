@@ -269,6 +269,11 @@ without installing, starting processes, creating metadata/locks, or changing
 receipts. Results are point-in-time observations, not reusable launch authority;
 each real writer repeats its admission checks. Active or interrupted writers and
 pending restoration are not reported ready.
+Changed file/link/special-file root kinds are reported per boundary without
+discarding other selected conflicts. Genuine I/O failures and cancellation remain
+errors, not ownership drift. Regular-file payloads are opened without following
+links, with nonblocking opens where supported; opened type and identity are
+checked before hashing. Dependency links remain opaque link observations.
 
 Ordinary `preflight` remains lightweight and reports `ownershipChecked: false`.
 The explicit `--ownership` option performs the recursive ownership scan and
@@ -316,9 +321,12 @@ mkdir -m 700 "$PRESERVATION_DIRECTORY"
 ```
 
 The preservation directory must already be private and outside both the
-collection and profile. The exact destination must not exist. Atomic no-replace
-rename preserves the entire output, including unknown bytes and directory
-identity; cross-filesystem moves are refused rather than copied/deleted.
+collection and profile. The exact destination must not exist. Source and
+destination parent directory handles are pinned to their recorded identities;
+the no-replace rename is handle-relative, with no pathname fallback. This
+preserves the entire output, including unknown bytes and directory identity;
+cross-filesystem moves are refused rather than copied/deleted. A changed parent
+namespace cannot redirect the move and causes refusal before further inspection.
 Reconciliation never adopts or deletes the preserved tree, changes unrelated
 outputs, or resets source/profile data. It restores only this producer's current
 committed baseline through the existing publication state machine. Interrupted

@@ -1,7 +1,10 @@
 package devoutputs
 
-import "golang.org/x/sys/unix"
+import (
+	"golang.org/x/sys/unix"
+	"os"
+)
 
-func preserveRename(source, destination string) error {
-	return unix.RenameatxNp(unix.AT_FDCWD, source, unix.AT_FDCWD, destination, unix.RENAME_EXCL|unix.RENAME_NOFOLLOW_ANY)
+func renamePinnedNoReplace(source *os.File, sourceName string, destination *os.File, destinationName string) error {
+	return unix.RenameatxNp(int(source.Fd()), sourceName, int(destination.Fd()), destinationName, unix.RENAME_EXCL|unix.RENAME_NOFOLLOW_ANY)
 }

@@ -31,7 +31,10 @@ func observeEntry(ctx context.Context, entry *outputEntry, allowRecovery bool) (
 		if !allowRecovery {
 			return nil, fmt.Errorf("repository cleanup requires recovery")
 		}
-		return nil, validateCleanup(ctx, entry)
+		if err := validateCleanup(ctx, entry); err != nil {
+			return nil, entryConflict(entry, "cleanup", nil, err)
+		}
+		return nil, nil
 	}
 	actual, err := snapshotPath(entry.Spec, entry.Exclude)
 	if err != nil {

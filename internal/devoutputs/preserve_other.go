@@ -2,8 +2,11 @@
 
 package devoutputs
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+)
 
-func preserveRename(source, destination string) error {
-	return fmt.Errorf("atomic no-replace preservation is unsupported on this platform")
+func renamePinnedNoReplace(*os.File, string, *os.File, string) error {
+	return fmt.Errorf("atomic handle-relative no-replace preservation is unsupported on this platform")
 }

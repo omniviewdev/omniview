@@ -207,6 +207,14 @@ func TestInterruptedPreservationRetainsAuthorityAndResumesExactMove(t *testing.T
 				t.Fatal(err)
 			}
 			destination := filepath.Join(root, "preserved")
+			sourceParentIdentity, err := directoryIdentity(filepath.Dir(spec.Target))
+			if err != nil {
+				t.Fatal(err)
+			}
+			destinationParentIdentity, err := directoryIdentity(root)
+			if err != nil {
+				t.Fatal(err)
+			}
 			err = locked(ctx, s, func(j *journal) error {
 				entry := j.Entries[keyOf(spec)]
 				actual, e := snapshotPath(spec, nil)
@@ -221,7 +229,7 @@ func TestInterruptedPreservationRetainsAuthorityAndResumesExactMove(t *testing.T
 				if e != nil {
 					return e
 				}
-				entry.Preservation = &preservation{Path: destination, ParentIdentity: identity, Before: actual, Head: revision}
+				entry.Preservation = &preservation{Path: destination, ParentIdentity: identity, SourceParentIdentity: sourceParentIdentity, Before: actual, Head: revision}
 				return save(s, j)
 			})
 			if err != nil {
@@ -231,7 +239,7 @@ func TestInterruptedPreservationRetainsAuthorityAndResumesExactMove(t *testing.T
 				t.Fatal("preservation intent reused as a publication")
 			}
 			if afterMove {
-				if err = preserveRename(spec.Target, destination); err != nil {
+				if err = preserveRename(spec.Target, destination, sourceParentIdentity, destinationParentIdentity); err != nil {
 					t.Fatal(err)
 				}
 			}

@@ -98,6 +98,10 @@ func finishCleanup(ctx context.Context, s scope, j *journal, key string) error {
 		if err != nil {
 			return err
 		}
+		info, err = stableSnapshotInfo(path, info)
+		if err != nil {
+			return err
+		}
 		value, err := reader.item(path, info, false)
 		if err != nil {
 			return err

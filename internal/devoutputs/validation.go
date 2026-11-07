@@ -45,7 +45,7 @@ func validateEntryRecord(entry *outputEntry) error {
 		if entry.Spec.Kind != Distribution && entry.Spec.Kind != Bindings && entry.Spec.Kind != Shims && entry.Spec.Kind != YAMLWorker {
 			return fmt.Errorf("preservation is not a staged producer")
 		}
-		if !filepath.IsAbs(p.Path) || filepath.Clean(p.Path) != p.Path || p.ParentIdentity == "" || p.Head == "" {
+		if !filepath.IsAbs(p.Path) || filepath.Clean(p.Path) != p.Path || p.ParentIdentity == "" || p.SourceParentIdentity == "" || p.Head == "" {
 			return fmt.Errorf("invalid producer preservation record")
 		}
 		if err := validateSnapshotPaths(entry.Spec, p.Before); err != nil {
