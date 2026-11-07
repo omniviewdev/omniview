@@ -15,6 +15,13 @@ func prepareWorkspaceBuildCache(ctx context.Context, w Workspace, home, generati
 		return "", err
 	}
 	defer func() { resultErr = errors.Join(resultErr, release()) }()
+	return prepareWorkspaceBuildCacheLocked(w, home, generation)
+}
+
+// Caller holds the UUID profile guard through the complete producer lifetime.
+func prepareWorkspaceBuildCacheLocked(w Workspace, home, generation string) (string, error) {
+	var directory string
+	var err error
 	if err = devcontract.EnsureDefaultProfileOwnership(home, w.Manifest.WorkspaceID); err != nil {
 		return "", err
 	}

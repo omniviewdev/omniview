@@ -36,7 +36,8 @@ func (m *Manager) durablePhase(kind, phase string) error {
 
 type Workspace struct {
 	devcontract.ResolvedWorkspace
-	Phase string `json:"phase"`
+	Phase    string            `json:"phase"`
+	Metadata map[string]string `json:"metadata"`
 }
 
 type WorkspacePaths struct {
@@ -48,6 +49,7 @@ type WorkspacePaths struct {
 	RuntimeRoot  string            `json:"runtimeRoot"`
 	WebviewRoot  string            `json:"webviewRoot"`
 	Repositories map[string]string `json:"repositories"`
+	Metadata     map[string]string `json:"metadata"`
 }
 
 type CreateOptions struct {
@@ -364,7 +366,11 @@ func (m *Manager) Inspect(ctx context.Context, name string) (Workspace, error) {
 	if err != nil {
 		return Workspace{}, err
 	}
-	return m.inspectRoot(root)
+	w, err := m.inspectRoot(root)
+	if err == nil {
+		w.Metadata = OwnershipMetadataPaths(w)
+	}
+	return w, err
 }
 
 func (m *Manager) Paths(ctx context.Context, name string) (WorkspacePaths, error) {
@@ -388,6 +394,7 @@ func (m *Manager) Paths(ctx context.Context, name string) (WorkspacePaths, error
 		return WorkspacePaths{}, devcontract.Fail(4, "foreign_profile", "runtime or webview resolves outside the UUID profile")
 	}
 	paths := WorkspacePaths{WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, ManifestPath: w.ManifestPath, LocalRoot: filepath.Join(w.Root, ".local"), StateRoot: w.StateRoot, RuntimeRoot: runtime, WebviewRoot: webview, Repositories: map[string]string{}}
+	paths.Metadata = OwnershipMetadataPaths(w)
 	for _, r := range w.Manifest.Repositories {
 		paths.Repositories[r.ID], err = devcontract.CanonicalPath(filepath.Join(w.Root, r.Directory))
 		if err != nil {

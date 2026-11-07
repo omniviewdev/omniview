@@ -4,8 +4,10 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
+	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/stretchr/testify/require"
 )
 
@@ -72,7 +74,10 @@ func TestManagedLoaderPreallocatesOwnedDirectoryBeforeProducer(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, info.IsDir())
 	require.Zero(t, info.Mode()&os.ModeSymlink)
-	require.Equal(t, os.FileMode(0700), info.Mode().Perm())
+	require.NoError(t, devsession.ValidatePrivateDirectory(root), "allocated loader root must have current-user-only platform protection")
+	if runtime.GOOS != "windows" {
+		require.Equal(t, os.FileMode(0700), info.Mode().Perm())
+	}
 	require.NoError(t, locked(ctx, writer.s, func(j *journal) error {
 		require.NotNil(t, j.Entries[root+"|"+string(loaderCache)])
 		require.Nil(t, j.Entries[consumer+"|"+string(loaderFiles)], "root timestamp files are never adopted")

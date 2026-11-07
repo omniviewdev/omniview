@@ -449,8 +449,7 @@ func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 				s.status.Phase = "build-error"
 				s.status.FailedStage = event.Node
 				s.status.RecoveryCommand = workspaceRecoveryCommand(s.workspace, "refresh")
-				s.status.LastError = devcontract.Fail(buildFailureExitCode, "build_failed",
-					safeCompilerDiagnostic(event.Error, s.workspace.Root))
+				s.status.LastError = supervisedBuildError(event, s.workspace)
 			}
 			s.mu.Unlock()
 			s.persist()

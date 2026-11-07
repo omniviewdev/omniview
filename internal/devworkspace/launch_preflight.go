@@ -1,12 +1,17 @@
 package devworkspace
 
-import "github.com/omniviewdev/omniview/internal/devcontract"
+import (
+	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devoutputs"
+)
 
 // LaunchPreflight reports launch inputs without installing dependencies or starting processes.
 // Readiness here does not replace source trust, composition or runtime checks at launch.
 type LaunchPreflight struct {
-	Ready  bool                 `json:"ready"`
-	Issues []*devcontract.Error `json:"issues"`
+	Ready            bool                   `json:"ready"`
+	Issues           []*devcontract.Error   `json:"issues"`
+	OwnershipChecked bool                   `json:"ownershipChecked"`
+	Ownership        *devoutputs.Inspection `json:"ownership,omitempty"`
 }
 
 // PreflightLaunch checks all independent launch prerequisites, retaining the normal gates.
