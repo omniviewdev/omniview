@@ -14,6 +14,9 @@ func bindOperationControlCommand(command *controlCommand, flags *pflag.FlagSet) 
 	}
 	var id string
 	flags.StringVar(&id, "id", "", "operation ID")
+	if command.operation == "operation.get" {
+		flags.BoolVar(&command.unsafeOutput, "unsafe-output", false, "include bounded raw operation diagnostics; may contain secrets")
+	}
 	return func(positionals []string) error {
 		var err error
 		id, err = controlTarget(id, positionals, "ID arguments disagree")
@@ -23,7 +26,7 @@ func bindOperationControlCommand(command *controlCommand, flags *pflag.FlagSet) 
 		if err := requireControlID(id); err != nil {
 			return err
 		}
-		command.params = devcontrol.OperationParams{OperationID: id}
+		command.params = devcontrol.OperationParams{OperationID: id, IncludeOutput: command.unsafeOutput}
 		return nil
 	}
 }

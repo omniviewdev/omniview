@@ -211,6 +211,55 @@ func TestWaitTimeoutDoesNotCancelAcceptedMutation(t *testing.T) {
 	}
 }
 
+func TestFailedOperationDiagnosticsWithoutPluginInventory(t *testing.T) {
+	s, _, _ := fixtureServer(t)
+	accepted := s.accept(devcontract.Request{RequestID: "failed-install"}, func(context.Context) (any, error) {
+		return nil, errors.New("compiler: private-token " + strings.Repeat("x", 10000))
+	})
+	failed := waitOperation(t, s, accepted)
+	if failed.Status != "failed" || failed.Error.Details["diagnosticsOperationID"] != accepted.OperationID {
+		t.Fatalf("missing correlation: %+v", failed)
+	}
+	api := httptest.NewServer(http.HandlerFunc(s.serveHTTP))
+	defer api.Close()
+	s.host = strings.TrimPrefix(api.URL, "http://")
+	call := func(include bool, generation string) devcontract.Response {
+		t.Helper()
+		params, _ := json.Marshal(OperationParams{OperationID: accepted.OperationID, IncludeOutput: include})
+		body, _ := json.Marshal(devcontract.Request{ProtocolVersion: 1, RequestID: "diagnostic-read", WorkspaceID: testWorkspace,
+			Generation: generation, Operation: "operation.get", Params: params})
+		req, _ := http.NewRequest(http.MethodPost, api.URL+"/v1/control", bytes.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+string(s.token))
+		result, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer result.Body.Close()
+		var response devcontract.Response
+		if err := json.NewDecoder(result.Body).Decode(&response); err != nil {
+			t.Fatal(err)
+		}
+		return response
+	}
+	safe := call(false, s.generation)
+	data, _ := json.Marshal(safe)
+	if strings.Contains(string(data), "private-token") || safe.WorkspaceID != testWorkspace || safe.Generation != s.generation {
+		t.Fatalf("unsafe or unbound response: %s", data)
+	}
+	raw := call(true, s.generation)
+	diagnostic, _ := raw.Error.Details["unsafeDiagnostic"].(string)
+	if !strings.Contains(diagnostic, "private-token") || len(diagnostic) != 8192 {
+		t.Fatalf("missing bounded diagnostic: length=%d", len(diagnostic))
+	}
+	if stale := call(true, "other-generation"); stale.Error == nil || stale.Error.Code != "stale_target" {
+		t.Fatalf("foreign generation accepted: %+v", stale)
+	}
+	again := call(false, s.generation)
+	if _, exists := again.Error.Details["unsafeDiagnostic"]; exists {
+		t.Fatal("unsafe retrieval contaminated default response")
+	}
+}
+
 func TestStrictTypedParamsAndReadAuthentication(t *testing.T) {
 	s, _, _ := fixtureServer(t)
 	for _, op := range []string{"instance.inspect", "plugin.list", "settings.schema", "operation.get"} {

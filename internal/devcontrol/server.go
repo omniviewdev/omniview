@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -29,8 +30,9 @@ const maxOperations = 1024
 const settingsValidationExit = 2
 
 type operation struct {
-	response devcontract.Response
-	done     chan struct{}
+	response   devcontract.Response
+	done       chan struct{}
+	diagnostic string
 }
 type Server struct {
 	mu          sync.Mutex
@@ -400,10 +402,32 @@ func (s *Server) accept(request devcontract.Request, run func(context.Context) (
 		}
 		finished := s.result(request, value, err)
 		finished.OperationID = id
+		var diagnostic string
+		if err != nil {
+			var text strings.Builder
+			for cause, depth := err, 0; cause != nil && depth < 16 && text.Len() < 8192; cause, depth = errors.Unwrap(cause), depth+1 {
+				message := cause.Error()
+				if depth > 0 {
+					text.WriteByte('\n')
+				}
+				remaining := 8192 - text.Len()
+				if len(message) > remaining {
+					message = message[:remaining]
+				}
+				text.WriteString(message)
+			}
+			diagnostic = text.String()
+			if finished.Error.Details == nil {
+				finished.Error.Details = map[string]any{}
+			}
+			finished.Error.Details["diagnosticsOperationID"] = id
+			finished.Error.Details["diagnosticsCommand"] = "operation get " + id
+		}
 		if errors.Is(err, context.Canceled) {
 			finished.Status = "cancelled"
 		}
 		s.mu.Lock()
+		op.diagnostic = diagnostic
 		op.response = finished
 		close(op.done)
 		s.mu.Unlock()
@@ -444,6 +468,15 @@ func (s *Server) getOperation(ctx context.Context, request devcontract.Request, 
 	}
 	s.mu.Lock()
 	response := op.response
+	if p.IncludeOutput && op.diagnostic != "" && response.Error != nil {
+		copyError := *response.Error
+		copyError.Details = make(map[string]any, len(response.Error.Details)+1)
+		for key, value := range response.Error.Details {
+			copyError.Details[key] = value
+		}
+		copyError.Details["unsafeDiagnostic"] = op.diagnostic
+		response.Error = &copyError
+	}
 	s.mu.Unlock()
 	response.RequestID = request.RequestID
 	return response
