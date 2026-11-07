@@ -224,6 +224,24 @@ func (m *Manager) apply(ctx context.Context, root string, j *journal) error {
 		if err != nil {
 			return err
 		}
+		if j.RenameLaunch == nil {
+			if err = validateRenameGenerated(w); err != nil {
+				return err
+			}
+			launch, loadErr := LoadLaunchOptions(w)
+			if loadErr != nil && !os.IsNotExist(loadErr) {
+				return loadErr
+			}
+			if loadErr == nil {
+				if err = launch.validate(); err != nil {
+					return err
+				}
+				j.RenameLaunch = &launch
+				if err = saveJournal(root, j); err != nil {
+					return err
+				}
+			}
+		}
 		if _, err = prepareNativeSnapshot(w); err != nil {
 			return err
 		}
@@ -672,10 +690,20 @@ func (m *Manager) finishRename(ctx context.Context, root string, j *journal) err
 	for i := range j.Resources {
 		j.Resources[i].Path = filepath.Join(target, j.Resources[i].Repository.Directory)
 	}
-	j.Root, j.RenameTo, j.Phase = target, "", "complete"
+	if j.RenameLaunch != nil {
+		if err := j.RenameLaunch.validate(); err != nil {
+			return err
+		}
+	}
 	if err := writeManifest(target, j.Manifest); err != nil {
 		return err
 	}
+	if j.RenameLaunch != nil {
+		if err := saveLaunchJSON(filepath.Join(target, ".local", "launch.json"), *j.RenameLaunch); err != nil {
+			return err
+		}
+	}
+	j.Root, j.RenameTo, j.Phase, j.RenameLaunch = target, "", "complete", nil
 	return saveJournal(target, j)
 }
 

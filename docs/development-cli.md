@@ -214,6 +214,11 @@ Only exact validated owned paths receive temporary admission; changed bytes,
 foreign neighbors, redirected paths, and unfinished producers remain refusals.
 Interrupted teardown resumes at the old root; interrupted move resumes from its
 persisted lifecycle journal. Link journals containing absolute roots never move.
+Validated nonsecret saved launch options, including protocol evidence, survive rename.
+The lifecycle journal carries that configuration across generated-output cleanup;
+the new root republishes it through the generated ownership ledger. Interrupted
+publication resumes without adopting foreign files. Build outputs and secrets do
+not move, and workspaces without saved launch options still require explicit launch setup.
 Use explicit `edit --apply` to rebuild and relink at the new root.
 With `--apply`, stop owned services, relink dependencies, rebuild, restart, and verify readiness.
 Canonical edit intent is validated before `--apply` stops a healthy supervisor;
