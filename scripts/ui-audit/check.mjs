@@ -286,7 +286,17 @@ async function main() {
       options.base = git(root, ['merge-base', 'HEAD', ref]).trim();
       if (!options.base) throw new Error('merge-base returned no revision');
     } catch (error) {
-      throw new Error(`Cannot determine GitHub PR audit base ${ref}: ${String(error.stderr || error.message).trim()}`);
+      if (process.env.GITHUB_ACTIONS !== 'true') {
+        throw new Error(`Cannot determine GitHub PR audit base ${ref}: ${String(error.stderr || error.message).trim()}`);
+      }
+      // Actions checks out a depth-1 merge commit with no remote-tracking base. Its diff against the
+      // fetched base tip is exactly the PR change, so no merge-base is required.
+      try {
+        git(root, ['fetch', '--no-tags', '--depth=1', 'origin', process.env.GITHUB_BASE_REF]);
+        options.base = git(root, ['rev-parse', '--verify', 'FETCH_HEAD^{commit}']).trim();
+      } catch (fetchError) {
+        throw new Error(`Cannot determine GitHub PR audit base ${process.env.GITHUB_BASE_REF}: ${String(fetchError.stderr || fetchError.message).trim()}`);
+      }
     }
   }
   if (args.some(arg => arg.startsWith('--'))) throw new Error('Unknown audit option');

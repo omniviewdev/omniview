@@ -206,6 +206,33 @@ test('GitHub PR environment selects merge-base and fails closed when remote base
   assert.match(missing.stderr, /Cannot determine GitHub PR audit base/);
 });
 
+test('GitHub Actions shallow checkout fetches the base tip and still catches new controls', async t => {
+  const { root, put } = await fixture(t);
+  const origin = path.join(root, 'origin');
+  const clone = path.join(root, 'clone');
+  git(root, 'init', origin);
+  git(origin, 'config', 'user.email', 'fixture@example.invalid');
+  git(origin, 'config', 'user.name', 'Fixture');
+  await mkdir(path.join(origin, 'ui'), { recursive: true });
+  await writeFile(path.join(origin, 'ui/View.tsx'), 'const a = <section/>;');
+  git(origin, 'add', '.');
+  git(origin, 'commit', '-m', 'baseline');
+  git(origin, 'branch', '-M', 'audit-base');
+  git(origin, 'checkout', '-b', 'pr');
+  await writeFile(path.join(origin, 'ui/View.tsx'), 'const a = <button/>;');
+  git(origin, 'add', '.');
+  git(origin, 'commit', '-m', 'new control');
+  git(root, 'clone', '--depth=1', '--no-tags', '--branch', 'pr', `file://${origin}`, clone);
+  const cli = fileURLToPath(new URL('./check.mjs', import.meta.url));
+  const env = { ...process.env, GITHUB_BASE_REF: 'audit-base', GITHUB_ACTIONS: 'true' };
+  const result = spawnSync(process.execPath, [cli, '--root', clone], { encoding: 'utf8', env });
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /native-control/);
+  const missing = spawnSync(process.execPath, [cli, '--root', clone], { encoding: 'utf8', env: { ...env, GITHUB_BASE_REF: 'nope' } });
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /Cannot determine GitHub PR audit base/);
+});
+
 test('resolves native temporal props through object spreads and const aliases with overrides', async t => {
   const { root, put } = await fixture(t);
   await put('ui/View.tsx', `import {Input} from '@omniviewdev/base-ui';
