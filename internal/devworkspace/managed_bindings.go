@@ -11,7 +11,7 @@ import (
 	"github.com/omniviewdev/omniview/internal/devcompose"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
-	"github.com/omniviewdev/omniview/internal/devsource"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 )
 
 // GenerateBindings uses the canonical task through the staged graph producer.
@@ -51,7 +51,8 @@ func (m *Manager) GenerateBindings(ctx context.Context, name string, output io.W
 	if options.Mode != "browser" && options.Mode != "native" {
 		return "", fmt.Errorf("saved bindings build mode is invalid")
 	}
-	if err = compatibilityPreflight(ctx, w); err != nil {
+	verify := devsdk.NewVerifier(m.options.SDKPolicy)
+	if err = compatibilityPreflight(ctx, w, verify); err != nil {
 		return "", err
 	}
 	generation := uuid.NewString()
@@ -59,7 +60,7 @@ func (m *Manager) GenerateBindings(ctx context.Context, name string, output io.W
 	if err != nil {
 		return "", err
 	}
-	g := &BuildGraph{workspace: w, plan: j.Plan, options: BuildOptions{Generation: generation, GoBuildCacheDirectory: cache, VerifySDKSource: devsource.Verify}}
+	g := &BuildGraph{workspace: w, plan: j.Plan, options: BuildOptions{Generation: generation, GoBuildCacheDirectory: cache, VerifySDK: verify}}
 	if output != nil {
 		g.options.Output = &lockedWriter{writer: output}
 	}

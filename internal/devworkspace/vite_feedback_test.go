@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsession"
 )
 
@@ -72,7 +73,7 @@ func feedbackWatchFixture(t *testing.T) (*BuildGraph, *workspaceSupervisor, Watc
 	s, path := feedbackSupervisorFixture(t, g)
 	g.run = func(_ context.Context, _ string, program string, _ ...string) ([]byte, error) {
 		if program == "go" {
-			return json.Marshal(map[string]any{"Path": linkedSDK, "Dir": g.plan.SDK})
+			return json.Marshal(map[string]any{"Path": devsdk.Module, "Dir": sdkDirectory(t, g)})
 		}
 		return nil, nil
 	}
@@ -223,7 +224,7 @@ func TestViteFeedbackHoldsBeforePublicationUntilAllReplacementReadiness(t *testi
 		assertFeedbackHeld(t, s, true, "consumer refresh completion boundary")
 		return nil
 	}
-	if err := g.rebuildChange(context.Background(), []string{filepath.Join(g.plan.SDK, "repair.go")}, hooks); err != nil {
+	if err := g.rebuildChange(context.Background(), []string{filepath.Join(sdkDirectory(t, g), "repair.go")}, hooks); err != nil {
 		t.Fatal(err)
 	}
 	last := assertFeedbackHeld(t, s, false, "successful replacement committed")
@@ -255,7 +256,7 @@ func TestViteFeedbackFailureCannotBeReleasedByUnrelatedFrontendSuccess(t *testin
 			case "refresh":
 				hooks.RefreshConsumers = func(context.Context, WatchChange) error { return broken }
 			}
-			if err := g.rebuildChange(context.Background(), []string{filepath.Join(g.plan.SDK, "repair.go")}, hooks); !errors.Is(err, broken) {
+			if err := g.rebuildChange(context.Background(), []string{filepath.Join(sdkDirectory(t, g), "repair.go")}, hooks); !errors.Is(err, broken) {
 				t.Fatalf("replacement error lost: %v", err)
 			}
 			failed := assertFeedbackHeld(t, s, true, "failed replacement")
@@ -265,7 +266,7 @@ func TestViteFeedbackFailureCannotBeReleasedByUnrelatedFrontendSuccess(t *testin
 				t.Fatalf("independent frontend publication: %v", err)
 			}
 			assertFeedbackHeld(t, s, true, "unrelated frontend success cannot discharge host obligation")
-			if err := g.rebuildChange(context.Background(), []string{filepath.Join(g.plan.SDK, "repair.go")}, hooks); err != nil {
+			if err := g.rebuildChange(context.Background(), []string{filepath.Join(sdkDirectory(t, g), "repair.go")}, hooks); err != nil {
 				t.Fatal(err)
 			}
 			repaired := assertFeedbackHeld(t, s, false, "complete SDK replacement repairs held transaction")
@@ -287,7 +288,7 @@ func TestViteFeedbackRefusesUnknownExistingFileBeforePublishing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = g.rebuildChange(context.Background(), []string{filepath.Join(g.plan.SDK, "repair.go")}, hooks); err == nil {
+	if err = g.rebuildChange(context.Background(), []string{filepath.Join(sdkDirectory(t, g), "repair.go")}, hooks); err == nil {
 		t.Error("replacement adopted an unknown preexisting feedback file")
 	}
 	after, err := os.ReadFile(published)
@@ -359,7 +360,7 @@ func TestViteFeedbackRejectsTamperedOwnershipBeforeRelease(t *testing.T) {
 				}
 				return nil
 			}
-			if err := g.rebuildChange(context.Background(), []string{filepath.Join(g.plan.SDK, "repair.go")}, hooks); err == nil {
+			if err := g.rebuildChange(context.Background(), []string{filepath.Join(sdkDirectory(t, g), "repair.go")}, hooks); err == nil {
 				t.Fatal("replacement released feedback after ownership/integrity tampering")
 			}
 			if foreign == nil {

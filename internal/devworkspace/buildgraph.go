@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -19,8 +18,8 @@ import (
 
 	"github.com/omniviewdev/omniview/internal/devcompose"
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsession"
-	"github.com/omniviewdev/omniview/internal/devsource"
 	"github.com/omniviewdev/omniview/internal/instance"
 )
 
@@ -37,9 +36,9 @@ type BuildNode struct {
 }
 
 type HostBuildRequest struct {
-	Workspace    Workspace
-	SDKDirectory string
-	SDKSource    devsource.Identity
+	Workspace Workspace
+	// SDK is the verified identity of the SDK the host is built against.
+	SDK devsdk.Identity
 	// Generated bindings, JS exports and frontend assets are already built.
 	// The callback builds the actual selected host binary, without another
 	// bindings/frontend writer. A native/server target is an orchestrator choice.
@@ -57,8 +56,8 @@ type BuildOptions struct {
 	Generation string
 	// An already-owned UUID profile runtime cache, never a source-tree cache.
 	GoBuildCacheDirectory string
-	// Required local-source verifier; normally devsource.Verify.
-	VerifySDKSource func(context.Context, string) (devsource.Identity, error)
+	// Required verifier of the selected SDK; normally devsdk.NewVerifier.
+	VerifySDK devsdk.Verifier
 	// HostBuild must compile the selected host (including native/module flags).
 	HostBuild func(context.Context, HostBuildRequest) error
 	// Optional real Task adapter. Output must remain exclusively in outputDirectory.
@@ -153,8 +152,6 @@ func (m *Manager) NewBuildGraph(ctx context.Context, name string, opts BuildOpti
 	return g, nil
 }
 
-var sdkRevisionPattern = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
-
 // compileBuildGraph validates build options against the linked plan and plans
 // the selected nodes. Producer output is wrapped once so parallel nodes never
 // write it concurrently.
@@ -173,10 +170,10 @@ func compileBuildGraph(w Workspace, p linkPlan, opts BuildOptions) (*BuildGraph,
 	if opts.HostBuild == nil {
 		return nil, fmt.Errorf("a real selected-host build callback is required")
 	}
-	if opts.VerifySDKSource == nil {
+	if opts.VerifySDK == nil {
 		return nil, fmt.Errorf("a real selected SDK source verifier is required")
 	}
-	if p.SDK == "" {
+	if p.SDK.Mode() != devsdk.ModeSource {
 		return nil, fmt.Errorf("a selected local SDK source is required for trusted builds")
 	}
 	if opts.Output != nil {
@@ -333,9 +330,13 @@ func (g *BuildGraph) commandWithEnvironment(ctx context.Context, dir string, env
 }
 
 // verifySDK resolves the actual consumer module graph and identifies its live source.
-func (g *BuildGraph) verifySDK(ctx context.Context, consumer string) (devsource.Identity, error) {
-	var identity devsource.Identity
-	raw, err := g.run(ctx, consumer, "go", "list", "-m", "-json", linkedSDK)
+func (g *BuildGraph) verifySDK(ctx context.Context, consumer string) (devsdk.Identity, error) {
+	var identity devsdk.Identity
+	selection, ok := g.plan.SDK.Directory()
+	if !ok {
+		return identity, fmt.Errorf("SDK verification requires a selected local SDK source")
+	}
+	raw, err := g.run(ctx, consumer, "go", "list", "-m", "-json", devsdk.Module)
 	if err != nil {
 		return identity, err
 	}
@@ -357,27 +358,28 @@ func (g *BuildGraph) verifySDK(ctx context.Context, consumer string) (devsource.
 	if err != nil {
 		return identity, err
 	}
-	selected, err := devcontract.CanonicalPath(g.plan.SDK)
+	selected, err := devcontract.CanonicalPath(selection)
 	if err != nil {
 		return identity, err
 	}
-	if module.Path != linkedSDK || dir == "" || actual != selected {
+	if module.Path != devsdk.Module || dir == "" || actual != selected {
 		return identity, fmt.Errorf("effective SDK source differs from selected feature source")
 	}
-	identity, err = g.options.VerifySDKSource(ctx, selected)
+	checkout, err := devsdk.SourceSelection(selected)
 	if err != nil {
 		return identity, err
 	}
-	if identity.Directory != selected || !sdkRevisionPattern.MatchString(identity.Revision) ||
-		!sourceDigestPattern.MatchString(identity.SourceDigest) {
-		return devsource.Identity{}, fmt.Errorf("SDK verifier returned a different or incomplete selected source identity")
+	identity, err = g.options.VerifySDK(ctx, checkout)
+	if err != nil {
+		return identity, err
+	}
+	if source, isSource := identity.Source(); !isSource || source.Directory != selected {
+		return devsdk.Identity{}, fmt.Errorf("SDK verifier returned a different or incomplete selected source identity")
 	}
 	return identity, nil
 }
 
-var sourceDigestPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
-
-func (g *BuildGraph) verifyUnchangedSDK(ctx context.Context, consumer string, before devsource.Identity) error {
+func (g *BuildGraph) verifyUnchangedSDK(ctx context.Context, consumer string, before devsdk.Identity) error {
 	after, err := g.verifySDK(ctx, consumer)
 	if err != nil {
 		return err
@@ -425,7 +427,7 @@ func (g *BuildGraph) buildNode(ctx context.Context, n BuildNode) error {
 		}
 		includesSDK := false
 		for _, dependency := range info.Deps {
-			if dependency.Path == linkedSDK {
+			if dependency.Path == devsdk.Module {
 				includesSDK = true
 				break
 			}
@@ -441,7 +443,7 @@ func (g *BuildGraph) buildNode(ctx context.Context, n BuildNode) error {
 			return err
 		}
 		if err = g.options.HostBuild(ctx, HostBuildRequest{
-			Workspace: g.workspace, SDKDirectory: g.plan.SDK, SDKSource: before,
+			Workspace: g.workspace, SDK: before,
 		}); err != nil {
 			return err
 		}
@@ -454,12 +456,10 @@ func (g *BuildGraph) buildNode(ctx context.Context, n BuildNode) error {
 // recordArtifact attests a plugin binary to its verified SDK source. The
 // profile lock it takes fails fast on contention, so parallel plugin nodes in
 // this graph take turns instead of failing each other with profile_busy.
-func (g *BuildGraph) recordArtifact(pluginID, binary string, source devsource.Identity) error {
+func (g *BuildGraph) recordArtifact(pluginID, binary string, sdk devsdk.Identity) error {
 	g.attestMu.Lock()
 	defer g.attestMu.Unlock()
-	return instance.RecordBuiltArtifactSource(
-		g.workspace.ResolvedWorkspace, pluginID, binary, source.Revision, source.SourceDigest,
-	)
+	return instance.RecordBuiltArtifact(g.workspace.ResolvedWorkspace, pluginID, binary, sdk)
 }
 
 func (g *BuildGraph) withBuildLock(ctx context.Context, fn func() error) error {

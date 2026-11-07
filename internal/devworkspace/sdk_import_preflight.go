@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 )
 
 // validateSDKImports checks source presence, not exported APIs or target-specific
@@ -82,11 +83,11 @@ func validateSDKImports(ctx context.Context, root, sdk string) error {
 			if err != nil {
 				return fmt.Errorf("read SDK import in %s: %w", file, err)
 			}
-			if importPath != linkedSDK && !strings.HasPrefix(importPath, linkedSDK+"/") || checked[importPath] {
+			if importPath != devsdk.Module && !strings.HasPrefix(importPath, devsdk.Module+"/") || checked[importPath] {
 				continue
 			}
 			checked[importPath] = true
-			rel := strings.TrimPrefix(strings.TrimPrefix(importPath, linkedSDK), "/")
+			rel := strings.TrimPrefix(strings.TrimPrefix(importPath, devsdk.Module), "/")
 			if rel != "" && (path.Clean(rel) != rel || rel == ".." || strings.HasPrefix(rel, "../") || strings.Contains(rel, "\\") || strings.HasPrefix(rel, "/")) {
 				return fmt.Errorf("invalid SDK import %q in %s", importPath, file)
 			}

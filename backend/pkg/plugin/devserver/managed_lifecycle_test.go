@@ -13,6 +13,7 @@ import (
 
 	"github.com/omniviewdev/omniview/internal/appstate"
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/omniview/internal/devsource"
 	logging "github.com/omniviewdev/plugin-sdk/log"
@@ -131,15 +132,30 @@ func TestBuildMetadataReplacesUntrustedYAMLAttestation(t *testing.T) {
 	require.NoError(t, root.MkdirAll(filepath.Dir(gw.buildRelativePath), 0700))
 	binary := root.ResolvePath(gw.buildRelativePath)
 	require.NoError(t, root.WriteFile(gw.buildRelativePath, []byte("built artifact fixture"), 0700))
-	gw.selectedSDK = devsource.Identity{
+	selected, err := devsdk.NewSourceIdentity(devsource.Identity{
 		Directory: source, Revision: strings.Repeat("a", 40), SourceDigest: strings.Repeat("b", 64),
-	}
+	})
+	require.NoError(t, err)
+	gw.sdk = selected
 	require.NoError(t, gw.syncPluginYaml())
 	installed, err = sdktypes.LoadPluginMetadata(root.ResolvePath("metadata"))
 	require.NoError(t, err)
+	evidence, _ := selected.Source()
 	require.NoError(t, installed.StateIsolation.VerifyArtifact(
-		binary, gw.selectedSDK.Revision, gw.selectedSDK.SourceDigest,
+		binary, evidence.Revision, evidence.SourceDigest,
 	))
+	// A published SDK has no checkout revision to attest: the installed
+	// provenance stays cleared instead of inventing one.
+	published, err := devsdk.NewPublishedIdentity(devsdk.Published{
+		Module: devsdk.Module, Version: "v0.16.0",
+		ModuleSum: "h1:q3jMU47l+0APFGpEdbJ4d5NmAnwaloV+siwiu3G4OOU=", GoModSum: "h1:FFxi7m1H27zsC3VwMZ6Z9zVrwIytVTAkRjLT5cpv0G4=",
+	})
+	require.NoError(t, err)
+	gw.sdk = published
+	require.NoError(t, gw.syncPluginYaml())
+	installed, err = sdktypes.LoadPluginMetadata(root.ResolvePath("metadata"))
+	require.NoError(t, err)
+	require.Nil(t, installed.StateIsolation)
 	original, err := os.ReadFile(path)
 	require.NoError(t, err)
 	require.Equal(t, data, original, "never rewrite source metadata")

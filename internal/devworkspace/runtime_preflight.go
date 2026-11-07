@@ -12,28 +12,29 @@ import (
 	"github.com/google/uuid"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
-	"github.com/omniviewdev/omniview/internal/devsource"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"golang.org/x/mod/modfile"
 )
 
 // Preflight reads the selected graph before installers, bindings or compilers run.
-func compatibilityPreflight(ctx context.Context, w Workspace) error {
+func compatibilityPreflight(ctx context.Context, w Workspace, verify devsdk.Verifier) error {
 	plan, err := makeLinkPlan(w)
 	if err != nil {
 		return err
 	}
-	if plan.SDK == "" {
+	sdk, ok := plan.SDK.Directory()
+	if !ok {
 		return sdkSourceRequired(ctx, "select the plugin-sdk repository before launching", workspaceSDKProbes(w), editAddSDKCommand(w))
 	}
-	sdkBytes, err := os.ReadFile(filepath.Join(plan.SDK, "go.mod"))
+	sdkBytes, err := os.ReadFile(filepath.Join(sdk, "go.mod"))
 	if err != nil {
 		return err
 	}
 	sdkModule, err := modfile.Parse("go.mod", sdkBytes, nil)
-	if err != nil || sdkModule.Module == nil || sdkModule.Module.Mod.Path != linkedSDK {
-		return devcontract.Fail(3, "sdk_contract_mismatch", "selected SDK must declare module "+linkedSDK+"; select a compatible SDK repository")
+	if err != nil || sdkModule.Module == nil || sdkModule.Module.Mod.Path != devsdk.Module {
+		return devcontract.Fail(3, "sdk_contract_mismatch", "selected SDK must declare module "+devsdk.Module+"; select a compatible SDK repository")
 	}
-	if _, err = devsource.Verify(ctx, plan.SDK); err != nil {
+	if _, err = verify(ctx, plan.SDK); err != nil {
 		return err
 	}
 	for _, root := range plan.GoRoots {
@@ -47,15 +48,15 @@ func compatibilityPreflight(ctx context.Context, w Workspace) error {
 		}
 		declaresSDK := false
 		for _, requirement := range module.Require {
-			if requirement.Mod.Path == linkedSDK {
+			if requirement.Mod.Path == devsdk.Module {
 				declaresSDK = true
 				break
 			}
 		}
 		if !declaresSDK {
-			return devcontract.Fail(3, "sdk_contract_mismatch", fmt.Sprintf("%s/go.mod does not declare %s; select compatible host and plugin branches", filepath.Base(root), linkedSDK))
+			return devcontract.Fail(3, "sdk_contract_mismatch", fmt.Sprintf("%s/go.mod does not declare %s; select compatible host and plugin branches", filepath.Base(root), devsdk.Module))
 		}
-		if err := validateSDKImports(ctx, root, plan.SDK); err != nil {
+		if err := validateSDKImports(ctx, root, sdk); err != nil {
 			return err
 		}
 	}

@@ -9,7 +9,27 @@ import (
 	"testing"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsdk"
+	"github.com/omniviewdev/omniview/internal/devsource"
 )
+
+// sourceIdentity is the validated source evidence a trusted builder passes to
+// RecordBuiltArtifact. The directory is irrelevant to the schema-3 record.
+func sourceIdentity(t *testing.T, revision, digest string) devsdk.Identity {
+	t.Helper()
+	identity, err := devsdk.NewSourceIdentity(devsource.Identity{
+		Directory: filepath.Join(t.TempDir(), "sdk"), Revision: revision, SourceDigest: digest,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return identity
+}
+
+func fixtureSDK(t *testing.T) devsdk.Identity {
+	t.Helper()
+	return sourceIdentity(t, strings.Repeat("a", 40), strings.Repeat("b", 64))
+}
 
 func TestLegacyArtifactBlockedAndTrustedDigestChecked(t *testing.T) {
 	workspace := artifactWorkspaceFixture(t)
@@ -24,7 +44,7 @@ func TestLegacyArtifactBlockedAndTrustedDigestChecked(t *testing.T) {
 		t.Fatal("legacy executable allowed without trusted record")
 	}
 	revision := strings.Repeat("a", 40)
-	if err := RecordBuiltArtifactSource(workspace, "kubernetes", binary, revision, strings.Repeat("b", 64)); err != nil {
+	if err := RecordBuiltArtifact(workspace, "kubernetes", binary, sourceIdentity(t, revision, strings.Repeat("b", 64))); err != nil {
 		t.Fatal(err)
 	}
 	if err := VerifyPluginArtifact(workspace, "kubernetes", binary); err != nil {
@@ -86,10 +106,43 @@ func TestArtifactRecordsRejectTraversalAndUnresolvedRevision(t *testing.T) {
 	if err := os.WriteFile(binary, []byte("fixture"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	for _, tc := range []struct{ id, revision string }{{"../foreign", strings.Repeat("a", 40)}, {"plugin", "main"}, {"plugin", ""}} {
-		if err := RecordBuiltArtifactSource(workspace, tc.id, binary, tc.revision, strings.Repeat("b", 64)); err == nil {
-			t.Fatalf("accepted invalid trusted record %+v", tc)
+	if err := RecordBuiltArtifact(workspace, "../foreign", binary, fixtureSDK(t)); err == nil {
+		t.Fatal("accepted a traversing plugin ID")
+	}
+	// The typed identity cannot even be built from an unresolved revision, and
+	// the recorder refuses the zero identity.
+	for _, revision := range []string{"main", ""} {
+		if _, err := devsdk.NewSourceIdentity(devsource.Identity{Directory: t.TempDir(), Revision: revision, SourceDigest: strings.Repeat("b", 64)}); err == nil {
+			t.Fatalf("accepted unresolved revision %q", revision)
 		}
+	}
+	if err := RecordBuiltArtifact(workspace, "plugin", binary, devsdk.Identity{}); err == nil {
+		t.Fatal("accepted a trusted record without verified SDK evidence")
+	}
+}
+
+func TestArtifactSchemaRecordsOnlySourceIdentities(t *testing.T) {
+	workspace := artifactWorkspaceFixture(t)
+	binary := filepath.Join(t.TempDir(), "plugin")
+	if err := os.WriteFile(binary, []byte("fixture"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	published, err := devsdk.NewPublishedIdentity(devsdk.Published{
+		Module: devsdk.Module, Version: "v0.16.0",
+		ModuleSum: "h1:q3jMU47l+0APFGpEdbJ4d5NmAnwaloV+siwiu3G4OOU=", GoModSum: "h1:FFxi7m1H27zsC3VwMZ6Z9zVrwIytVTAkRjLT5cpv0G4=",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = RecordBuiltArtifact(workspace, "plugin", binary, published); err == nil {
+		t.Fatal("schema 3 attested a published SDK identity it cannot represent")
+	}
+	dir, err := artifactDirectory(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, statErr := os.Lstat(filepath.Join(dir, "plugin.json")); !os.IsNotExist(statErr) {
+		t.Fatalf("a refused identity left trusted evidence behind: %v", statErr)
 	}
 }
 
@@ -110,7 +163,7 @@ func TestArtifactEvidenceCannotUseRemappedProfileAsState(t *testing.T) {
 	for _, root := range []string{stateAlias, profile} {
 		selected := workspace
 		selected.StateRoot = root
-		if err := RecordBuiltArtifactSource(selected, "plugin", binary, strings.Repeat("a", 40), strings.Repeat("b", 64)); err == nil {
+		if err := RecordBuiltArtifact(selected, "plugin", binary, fixtureSDK(t)); err == nil {
 			t.Fatal("remapped state created trusted record outside its UUID boundary")
 		}
 	}
@@ -128,11 +181,11 @@ func TestTrustedArtifactRequiresSourceSnapshotIdentity(t *testing.T) {
 	revision := strings.Repeat("a", 40)
 	digest := strings.Repeat("b", 64)
 	for _, invalid := range []string{"", "branch", strings.Repeat("b", 63), strings.Repeat("B", 64)} {
-		if err := RecordBuiltArtifactSource(workspace, "plugin", binary, revision, invalid); err == nil {
+		if _, err := devsdk.NewSourceIdentity(devsource.Identity{Directory: t.TempDir(), Revision: revision, SourceDigest: invalid}); err == nil {
 			t.Fatalf("accepted invalid source snapshot %q", invalid)
 		}
 	}
-	if err := RecordBuiltArtifactSource(workspace, "plugin", binary, revision, digest); err != nil {
+	if err := RecordBuiltArtifact(workspace, "plugin", binary, sourceIdentity(t, revision, digest)); err != nil {
 		t.Fatal(err)
 	}
 	dir, err := artifactDirectory(workspace)
@@ -195,7 +248,7 @@ func TestArtifactIdentityRevalidatedWithoutAmbientWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv(devcontract.WorkspaceEnvironment, "/unrelated/workspace.json")
-	if err := RecordBuiltArtifactSource(workspace, "plugin", binary, strings.Repeat("a", 40), strings.Repeat("b", 64)); err != nil {
+	if err := RecordBuiltArtifact(workspace, "plugin", binary, fixtureSDK(t)); err != nil {
 		t.Fatal(err)
 	}
 	prepared, cleanup, err := PreparePluginArtifact(workspace, "plugin", binary)
@@ -219,7 +272,7 @@ func TestVerifyPluginArtifactDoesNotRequireWritableRuntime(t *testing.T) {
 	if err := os.WriteFile(binary, []byte("trusted preflight fixture"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := RecordBuiltArtifactSource(workspace, "plugin", binary, strings.Repeat("a", 40), strings.Repeat("b", 64)); err != nil {
+	if err := RecordBuiltArtifact(workspace, "plugin", binary, fixtureSDK(t)); err != nil {
 		t.Fatal(err)
 	}
 	dir, err := artifactDirectory(workspace)
@@ -262,7 +315,7 @@ func TestVerifyPluginArtifactRejectsCrossProfileEvidence(t *testing.T) {
 	if err := os.WriteFile(binary, []byte("first profile artifact"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := RecordBuiltArtifactSource(workspace, "plugin", binary, strings.Repeat("a", 40), strings.Repeat("b", 64)); err != nil {
+	if err := RecordBuiltArtifact(workspace, "plugin", binary, fixtureSDK(t)); err != nil {
 		t.Fatal(err)
 	}
 	foreignManifest := workspaceFixture(t, home, "22f2dbb0-9ecd-4b17-9690-a0c2239387ac", "Foreign artifact fixture")
@@ -274,7 +327,7 @@ func TestVerifyPluginArtifactRejectsCrossProfileEvidence(t *testing.T) {
 	if err := os.WriteFile(foreignBinary, []byte("foreign profile artifact"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := RecordBuiltArtifactSource(foreign, "plugin", foreignBinary, strings.Repeat("a", 40), strings.Repeat("b", 64)); err != nil {
+	if err := RecordBuiltArtifact(foreign, "plugin", foreignBinary, fixtureSDK(t)); err != nil {
 		t.Fatal(err)
 	}
 	if err := VerifyPluginArtifact(foreign, "plugin", foreignBinary); err != nil {
@@ -308,7 +361,7 @@ func TestVerifyPluginArtifactRequiresSelectedProfileOwnership(t *testing.T) {
 	if err := os.WriteFile(binary, []byte("trusted ownership fixture"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := RecordBuiltArtifactSource(workspace, "plugin", binary, strings.Repeat("a", 40), strings.Repeat("b", 64)); err != nil {
+	if err := RecordBuiltArtifact(workspace, "plugin", binary, fixtureSDK(t)); err != nil {
 		t.Fatal(err)
 	}
 	if err := VerifyPluginArtifact(workspace, "plugin", binary); err != nil {
@@ -349,7 +402,7 @@ func TestBoundCustomStateArtifactsStayInDefaultUUIDRuntime(t *testing.T) {
 	if err := os.WriteFile(binary, []byte("trusted custom source fixture"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := RecordBuiltArtifactSource(bound, "plugin", binary, strings.Repeat("a", 40), strings.Repeat("b", 64)); err != nil {
+	if err := RecordBuiltArtifact(bound, "plugin", binary, fixtureSDK(t)); err != nil {
 		t.Fatal(err)
 	}
 	dir, err := artifactDirectory(bound)
@@ -390,7 +443,7 @@ func TestArtifactWriterCannotClaimUnmarkedDefaultTransientProfile(t *testing.T) 
 	if err := os.WriteFile(binary, []byte("trusted fixture"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := RecordBuiltArtifactSource(workspace, "plugin", binary, strings.Repeat("a", 40), strings.Repeat("b", 64)); err == nil {
+	if err := RecordBuiltArtifact(workspace, "plugin", binary, fixtureSDK(t)); err == nil {
 		t.Fatal("artifact writer claimed nonempty unmarked default profile")
 	}
 	got, err := os.ReadFile(sentinel)
