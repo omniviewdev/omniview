@@ -148,9 +148,14 @@ func workspaceOwnershipError(err error, w Workspace) *devcontract.Error {
 	}
 	if j, e := loadLinkJournal(w); e == nil {
 		conflict.LifecyclePhase = j.Phase
-		if (j.Phase == "linked" || j.Phase == "unlinking") && (conflict.Producer == "modules" || conflict.Producer == "vite-cache" || conflict.Producer == "vite-loader-cache" || conflict.Producer == "typescript-cache") {
+		if (j.Phase == "linked" || j.Phase == "unlinking" || j.Phase == "applying") && (conflict.Producer == "modules" || conflict.Producer == "vite-cache" || conflict.Producer == "vite-loader-cache" || conflict.Producer == "typescript-cache") {
 			// This is an available destructive action, never automatic consent.
 			conflict.NextCommands = append(conflict.NextCommands, []string{executable, "workspace", "reset-modules", "--workspace", w.ManifestPath})
+			if launch, loadErr := LoadLaunchOptions(w); loadErr == nil && launch.Validate() == nil {
+				// Recover consumes retained launch/refresh intent, including its
+				// evidence and mode, rather than reconstructing lossy up flags.
+				conflict.NextCommands = append(conflict.NextCommands, []string{executable, "workspace", "recover", "--workspace", w.ManifestPath})
+			}
 		}
 	}
 	payload := workspaceError(&conflict)

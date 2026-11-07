@@ -896,6 +896,24 @@ func (m *Manager) Link(ctx context.Context, name string, opts LinkOptions) (Link
 			}
 			return LinkReport{WorkspaceID: j.WorkspaceID, Protocol: j.Evidence.Protocol, Phase: j.Phase, SeedConvergence: j.Plan.Composition.Convergence}, nil
 		}
+		if j.Phase == "applying" {
+			// Resume only the retained, validated selection. The installer still
+			// refuses unowned modules until explicit reset authorizes deletion.
+			if err = devcompose.CheckInputs(*j.Plan.Composition); err != nil {
+				return LinkReport{}, err
+			}
+			if err = applyLinkFiles(j); err != nil {
+				return LinkReport{}, err
+			}
+			if err = installComposition(ctx, w.ResolvedWorkspace, j, linkCommand); err != nil {
+				return LinkReport{WorkspaceID: j.WorkspaceID, Protocol: j.Evidence.Protocol, Phase: j.Phase}, err
+			}
+			j.Phase = "linked"
+			if err = saveLinkJournal(j); err != nil {
+				return LinkReport{}, err
+			}
+			return LinkReport{WorkspaceID: j.WorkspaceID, Protocol: j.Evidence.Protocol, Phase: j.Phase, SeedConvergence: j.Plan.Composition.Convergence}, nil
+		}
 		return LinkReport{}, devcontract.Fail(4, "link_interrupted", "unlink the interrupted dependency transaction before retrying")
 	}
 	if !os.IsNotExist(err) {
@@ -1018,7 +1036,7 @@ func (m *Manager) ResetModules(ctx context.Context, name string) (ResetModulesRe
 	}
 	// Delete-only recovery never runs the installer or prepares its toolchain.
 	// resetModules rechecks the phase under the lifecycle lock.
-	if j, journalErr := loadLinkJournal(w); journalErr == nil && j.Phase == "unlinking" {
+	if j, journalErr := loadLinkJournal(w); journalErr == nil && (j.Phase == "unlinking" || j.Phase == "applying") {
 		return m.resetModules(ctx, name, nil)
 	}
 	scoped, err := m.linkCommandContext(ctx, name)
@@ -1052,14 +1070,18 @@ func (m *Manager) resetModules(ctx context.Context, name string, run func(contex
 	for _, consumer := range j.Plan.Consumers {
 		roots = append(roots, consumer.Path)
 	}
-	if j.Phase == "unlinking" {
-		// The overlay is partially restored: never reinstall into it. Deleting
-		// the dependency trees lets the interrupted unlink/remove resume.
-		report.Removed, err = devoutputs.ResetDependencyTrees(ctx, w.ResolvedWorkspace, roots, true)
+	if j.Phase == "unlinking" || j.Phase == "applying" {
+		// Never reinstall into a partial overlay. Explicit reset authorizes
+		// deletion of selected dependency trees, not adoption of their bytes.
+		// The existing link intent remains resumable by Link or Unlink.
+		if err = checkLinkFiles(w.Root, j); err != nil {
+			return report, err
+		}
+		report.Removed, err = devoutputs.ResetDependencyTrees(ctx, w.ResolvedWorkspace, roots, j.Phase == "unlinking")
 		return report, err
 	}
 	if j.Phase != "linked" || j.Plan.Composition == nil {
-		return ResetModulesReport{}, devcontract.Fail(4, "link_interrupted", "dependency link is not complete (phase "+j.Phase+"); unlink the interrupted dependency transaction before resetting modules")
+		return ResetModulesReport{}, devcontract.Fail(4, "link_interrupted", "dependency link has an unsupported phase")
 	}
 	if run == nil {
 		return ResetModulesReport{}, devcontract.Fail(4, "link_conflict", "dependency link phase changed during reset-modules; rerun it")

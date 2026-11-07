@@ -132,6 +132,37 @@ func ValidateGenerated(_ context.Context, w Workspace) error {
 	defer unlock()
 	return validateGeneratedLocked(w, ledger)
 }
+
+// validateRenameGenerated admits link metadata only through its owning parser
+// and byte validation. This temporary view grants no generated deletion rights.
+func validateRenameGenerated(w Workspace) error {
+	ledger, unlock, _, err := lockGenerated(w)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	j, err := loadLinkJournal(w)
+	if os.IsNotExist(err) {
+		return validateGeneratedLocked(w, ledger)
+	}
+	if err != nil {
+		return err
+	}
+	if err = checkLinkFiles(w.Root, j); err != nil {
+		return err
+	}
+	entry, err := inspectGenerated(filepath.Join(w.Root, ".local", "links.json"))
+	if err != nil {
+		return err
+	}
+	view := ledger
+	view.Entries = make(map[string]generatedEntry, len(ledger.Entries)+1)
+	for path, value := range ledger.Entries {
+		view.Entries[path] = value
+	}
+	view.Entries["links.json"] = entry
+	return validateGeneratedLocked(w, view)
+}
 func cleanGenerated(w Workspace) error {
 	ledger, unlock, path, err := lockGenerated(w)
 	if err != nil {
