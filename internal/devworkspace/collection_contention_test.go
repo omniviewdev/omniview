@@ -2,6 +2,7 @@ package devworkspace
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -67,6 +68,11 @@ func TestCreateReportsHeldCollectionLockWithoutPublishingWorkspace(t *testing.T)
 	require.True(t, errors.As(err, &conflict), "%v", err)
 	require.Equal(t, "collection_busy", conflict.Code)
 	require.NoDirExists(t, filepath.Join(root, "workspaces", "blocked"))
+	wire, err := json.Marshal(conflict)
+	require.NoError(t, err)
+	var received devcontract.Error
+	require.NoError(t, json.Unmarshal(wire, &received))
+	require.Equal(t, 4, workspaceError(&received).Exit)
 }
 
 func TestProfileLockContentionPreservesDistinctRole(t *testing.T) {
