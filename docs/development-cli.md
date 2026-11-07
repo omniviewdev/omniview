@@ -470,6 +470,17 @@ Use the emitted file with `workspace preflight --workspace MANIFEST
 FILE` after resolving reported source prerequisites. Inspection of saved proof is
 not certification that installed dependency bytes remain unchanged.
 
+When launch, `preflight`, or `create --start` refuses with `sdk_source_required`,
+the CLI reads each selected repository's committed `go.mod` (no network, no checkout
+needed) and reports the declared `plugin-sdk` requirement in `details.requirements`
+(`repository`, `version`, `ref`, `kind`). `ref` is the tag, or the commit embedded in
+a pseudo-version. `details.nextCommand` is the exact command, for example
+`workspace edit --workspace MANIFEST --add-repo plugin-sdk --ref plugin-sdk=v0.16.0`
+(for `create --start` it names the `--repo`/`--ref` flags to add). The host's
+requirement is preferred; `details.mixed` is true when consumers disagree. The SDK is
+never added automatically, the exit code stays 2, and the code and details survive
+the supervisor status boundary.
+
 For first launch, use plain `workspace edit` to select prerequisite repositories,
 then `workspace preflight`, then `workspace up --link-evidence FILE`. The
 [protocol acceptance gate](development-package-linking.md#protocol-acceptance-gate)

@@ -613,7 +613,7 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 		switch c.verb {
 		case "preflight":
 			options, optionErr := workspaceLaunchOptions(c, w)
-			report := devworkspace.PreflightLaunch(w, options)
+			report := devworkspace.PreflightLaunch(ctx, w, options)
 			report.OwnershipChecked = c.ownership
 			if c.ownership {
 				inspection, inspectionErr := devworkspace.InspectOwnership(ctx, w)

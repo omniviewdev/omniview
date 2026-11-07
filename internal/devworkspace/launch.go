@@ -148,7 +148,7 @@ func (m *Manager) startGeneration(ctx context.Context, name string, o LaunchOpti
 		return status, devcontract.Fail(4, "workspace_running", fmt.Sprintf("workspace has an owned supervisor in launch phase %q; recover with: %s", status.Phase, recovery))
 	}
 	if w.Manifest.Links.SDKRepositoryID == nil {
-		return Status{}, devcontract.Fail(2, "sdk_source_required", "select the plugin-sdk repository before launching")
+		return Status{}, sdkSourceRequired(ctx, "select the plugin-sdk repository before launching", workspaceSDKProbes(w), editAddSDKCommand(w))
 	}
 	if err = ResumeGeneratedPublication(w); err != nil {
 		return Status{}, err

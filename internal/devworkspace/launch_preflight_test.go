@@ -1,6 +1,7 @@
 package devworkspace
 
 import (
+	"context"
 	"testing"
 
 	"github.com/omniviewdev/omniview/internal/devcompose"
@@ -16,11 +17,11 @@ func TestLaunchPreflightRequiresActualProtocolProof(t *testing.T) {
 			Protocol: "workspace", Versions: []string{devcompose.Version}, AtomicDist: true, Peers: true, Runtime: true,
 		},
 	}
-	if report := PreflightLaunch(w, o); !report.Ready || len(report.Issues) != 0 {
+	if report := PreflightLaunch(context.Background(), w, o); !report.Ready || len(report.Issues) != 0 {
 		t.Fatalf("valid inputs refused: %+v", report)
 	}
 	o.LinkEvidence.Peers = false
-	report := PreflightLaunch(w, o)
+	report := PreflightLaunch(context.Background(), w, o)
 	if report.Ready || len(report.Issues) != 1 || report.Issues[0].Code != "link_protocol_unproved" {
 		t.Fatalf("unproved evidence accepted: %+v", report)
 	}
