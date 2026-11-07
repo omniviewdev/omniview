@@ -232,5 +232,8 @@ func RequireStopped(ctx context.Context, w devcontract.ResolvedWorkspace) error 
 	if err != nil {
 		return err
 	}
-	return devcontract.Fail(4, "workspace_running", "stop the owned workspace supervisor before changing its source selection")
+	command := workspaceRecoveryCommand(workspace, "down")
+	failure := devcontract.Fail(4, "workspace_running", "run "+command+" before changing source selection")
+	failure.Details = map[string]any{"recoveryCommand": command}
+	return failure
 }

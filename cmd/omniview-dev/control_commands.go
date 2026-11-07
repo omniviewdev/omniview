@@ -133,6 +133,11 @@ func addControlCommandsWithExecutor(root *cobra.Command, in io.Reader, execute f
 		command := &controlCommand{operation: operation}
 		parts := strings.Split(operation, ".")
 		leaf := &cobra.Command{Use: parts[len(parts)-1] + " [ID | PATH]", Short: "Run " + strings.ReplaceAll(operation, ".", " ")}
+		if operation == "instance.inspect" {
+			leaf.Use = "inspect [WORKSPACE]"
+			leaf.Long = "Inspect the authenticated instance selected by a workspace name, UUID, manifest or directory. " +
+				"The positional workspace and --workspace must agree when both are supplied."
+		}
 		if parts[0] == "extensions" {
 			leaf.Use = parts[len(parts)-1]
 			leaf.Short = "Read live extension registry diagnostics"
@@ -173,9 +178,14 @@ func addControlCommandsWithExecutor(root *cobra.Command, in io.Reader, execute f
 			prepare = bindOperationControlCommand(command, flags)
 		default:
 			prepare = func(args []string) error {
-				if len(args) != 0 {
-					return controlUsage("this command accepts no positional target")
+				if len(args) != 0 && command.workspace != "" && command.workspace != args[0] {
+					return devcontract.Fail(4, "conflicting_target", "positional workspace and --workspace disagree")
 				}
+				target, err := controlTarget(command.workspace, args, "positional workspace and --workspace disagree")
+				if err != nil {
+					return err
+				}
+				command.workspace = target
 				command.params = devcontrol.EmptyParams{}
 				return nil
 			}
