@@ -1,4 +1,5 @@
 .Page { display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; overflow: hidden; }
+.Toolbar button, .Toolbar span { white-space: nowrap; }
 .Toolbar { flex: 0 0 auto; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 5px 12px; border-bottom: 1px solid var(--ov-color-border-default); background: var(--ov-color-bg-surface); }
 .Heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 14px 16px 10px; }
 .Metadata { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 5px 12px; }
@@ -23,3 +24,4 @@ small.Muted { display: block; margin-top: 3px; }
 .Chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 @media (min-width: 1700px) { .Grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 850px) { .Grid { grid-template-columns: minmax(0, 1fr); } .Form { grid-template-columns: 1fr 1fr; } .Heading { padding: 10px 12px; } .Content { padding: 10px 12px; } }
+.NoWrap { white-space: nowrap; }
