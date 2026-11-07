@@ -238,7 +238,7 @@ func TestFiniteViteBuildRefusesEachReplacedConsumerCacheBeforeProducer(t *testin
 					t.Fatal("consumer lacks its actual optimizer cache")
 				}
 			}
-			original, err := os.Stat(target)
+			original, err := observeSnapshotPath(target)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -257,7 +257,7 @@ func TestFiniteViteBuildRefusesEachReplacedConsumerCacheBeforeProducer(t *testin
 			if _, err = os.Stat(output); !os.IsNotExist(err) {
 				t.Fatal("producer wrote before replacement was refused", err)
 			}
-			current, err := os.Stat(retained)
+			current, err := observeSnapshotPath(retained)
 			if err != nil || !os.SameFile(original, current) {
 				t.Fatal("refusal discarded the original owned root", err)
 			}

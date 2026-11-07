@@ -351,6 +351,12 @@ workspaces no longer register a separate root timestamp-file writer. Root-level
 timestamp artifacts remain unmanaged and are never adopted or deleted by this
 reset. A proofless live root-loader entry from an older journal remains a safe
 refusal; a writer token alone cannot prove that its producer stopped.
+New cache roots are created exclusively through pinned parent handles with private
+protection established at creation: owner-only mode on Unix, and the current user
+SID plus a protected owner-only DACL on Windows. Existing directories are never
+adopted or permission-repaired by this creation path. Windows POSIX-style mode
+bits are not an ACL/ownership proof; preservation directories likewise require
+actual private ownership and access protection, not merely `chmod`/mode settings.
 
 Refresh commands reuse saved launch settings and protocol evidence. Supply launch
 flags for a workspace that has never launched, or override saved settings

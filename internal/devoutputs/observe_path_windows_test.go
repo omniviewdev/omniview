@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/omniviewdev/omniview/internal/devsession"
 )
 
 func TestWindowsInitialObservationPinsIdentityBeforeMetadataCapture(t *testing.T) {
@@ -50,7 +52,15 @@ func TestWindowsInitialObservationPinsIdentityBeforeMetadataCapture(t *testing.T
 				t.Fatal(err)
 			}
 			replacement := []byte(strings.Repeat("x", len(original)))
-			if err = os.WriteFile(path, replacement, 0600); err != nil {
+			if boundary == "journal" {
+				err = devsession.WritePrivateFile(path, replacement)
+				if err == nil {
+					err = devsession.ValidatePrivateFile(path)
+				}
+			} else {
+				err = os.WriteFile(path, replacement, 0600)
+			}
+			if err != nil {
 				t.Fatal(err)
 			}
 			if err = os.Chtimes(path, stamp, stamp); err != nil {

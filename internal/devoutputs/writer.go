@@ -685,13 +685,18 @@ func (writer *Writer) beginViteConsumer(ctx context.Context, j *journal, consume
 		writer.registered = true
 		expectedRoot := entry.Expected["."]
 		if expectedRoot.Kind == "" || expectedRoot.Kind == "absent" {
+			parentIdentity := parent.Expected["."].Identity
 			if kind == viteCache {
 				if err = ensureMetadataDirectory(s, filepath.Dir(spec.Target)); err != nil {
 					return err
 				}
+				parentIdentity, err = directoryIdentity(filepath.Dir(spec.Target))
+				if err != nil {
+					return err
+				}
 			}
-			if err = os.Mkdir(spec.Target, 0700); err != nil {
-				return err
+			if err = createPrivateOutputDirectory(spec.Target, parentIdentity); err != nil {
+				return entryConflict(entry, "cache-allocation", nil, err)
 			}
 			entry.Expected, err = snapshotPath(spec, nil)
 			if err != nil {

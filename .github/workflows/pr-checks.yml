@@ -52,6 +52,11 @@ jobs:
         env:
           GOWORK: "off"
           GOFLAGS: ""
+      - name: Test exclusive private directory creation
+        run: go test ./internal/devsession -run '^TestCreatePrivateDirectoryAt' -count=1
+        env:
+          GOWORK: "off"
+          GOFLAGS: ""
 
   go-checks:
     name: Go checks

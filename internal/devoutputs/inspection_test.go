@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/omniviewdev/omniview/internal/devsession"
 )
 
 func TestInspectionEnumeratesUnownedRootsWithoutCreatingMetadata(t *testing.T) {
@@ -135,10 +137,7 @@ func TestReconcilePreservesForeignBindingsAndRestoresCommittedBaseline(t *testin
 				changed = filepath.Join(changed, "foreign.txt")
 			}
 			writeOutput(t, changed, "private bytes")
-			preservationRoot, _ := filepath.EvalSymlinks(t.TempDir())
-			if err = os.Chmod(preservationRoot, 0700); err != nil {
-				t.Fatal(err)
-			}
+			preservationRoot := privateOutputFixtureDirectory(t)
 			destination := filepath.Join(preservationRoot, "preserved")
 			report, err := Reconcile(ctx, w, repo, string(kind), destination)
 			if err != nil || !report.RestoredBaseline {
@@ -174,8 +173,7 @@ func TestReconcileNeverOverwritesForeignPreservationDestination(t *testing.T) {
 	if err = Publish(ctx, stage); err != nil {
 		t.Fatal(err)
 	}
-	root, _ := filepath.EvalSymlinks(t.TempDir())
-	_ = os.Chmod(root, 0700)
+	root := privateOutputFixtureDirectory(t)
 	occupied := filepath.Join(root, "saved")
 	writeOutput(t, occupied, "foreign")
 	if _, err = Reconcile(ctx, w, repo, string(Bindings), occupied); err == nil {
@@ -202,10 +200,7 @@ func TestInterruptedPreservationRetainsAuthorityAndResumesExactMove(t *testing.T
 			}
 			s, _ := newScope(w)
 			spec, _ := s.spec(repo, Bindings)
-			root, _ := filepath.EvalSymlinks(t.TempDir())
-			if err = os.Chmod(root, 0700); err != nil {
-				t.Fatal(err)
-			}
+			root := privateOutputFixtureDirectory(t)
 			destination := filepath.Join(root, "preserved")
 			sourceParentIdentity, err := directoryIdentity(filepath.Dir(spec.Target))
 			if err != nil {
@@ -271,7 +266,7 @@ func TestReadOnlyInspectionRefusesRedirectedJournal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = os.MkdirAll(s.directory, 0700); err != nil {
+	if err = ensureMetadataDirectory(s, s.directory); err != nil {
 		t.Fatal(err)
 	}
 	foreign := filepath.Join(t.TempDir(), "foreign.json")
@@ -291,4 +286,16 @@ func TestReadOnlyInspectionRefusesRedirectedJournal(t *testing.T) {
 	if target, err := os.Readlink(s.path); err != nil || target != foreign {
 		t.Fatal("inspection changed journal redirect", err)
 	}
+}
+
+func privateOutputFixtureDirectory(t *testing.T) string {
+	t.Helper()
+	root, err := devsession.EnsurePrivateDirectory(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = devsession.ValidatePrivateDirectory(root); err != nil {
+		t.Fatal(err)
+	}
+	return root
 }
