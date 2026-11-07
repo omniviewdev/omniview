@@ -51,7 +51,7 @@ func TestSDKSourceRequiredNamesDeclaredRefAcrossSupervisorBoundary(t *testing.T)
 			require.ErrorAs(t, err, &failure)
 			require.Equal(t, "sdk_source_required", failure.Code, failure.Message)
 			require.Equal(t, 2, failure.Exit, "exit must survive the json:\"-\" Exit field")
-			want := "'omniview-dev' 'workspace' 'edit' '--workspace' '" + w.ManifestPath + "' '--add-repo' 'plugin-sdk' '--ref' 'plugin-sdk=" + test.ref + "' '--apply'"
+			want := "'omniview-dev' 'workspace' 'edit' '--workspace' '" + w.ManifestPath + "' '--add-repo' 'plugin-sdk' '--ref' 'plugin-sdk=" + test.ref + "'"
 			require.Equal(t, want, failure.Details["nextCommand"])
 			require.Equal(t, test.ref, failure.Details["ref"])
 			requirements := failure.Details["requirements"].([]any)
@@ -72,4 +72,28 @@ func TestSDKSourceRequiredWithoutDeclaredRequirementKeepsPlainError(t *testing.T
 	require.Equal(t, 2, failure.Exit)
 	require.Equal(t, "m", failure.Message)
 	require.Nil(t, failure.Details)
+}
+
+func TestSDKSourceRequiredPrefersHostAndComparesDeclaredCommit(t *testing.T) {
+	probes := func(host, plugin string) []sdkProbe {
+		root := t.TempDir()
+		// "demo" sorts before "omniview": ordering must still prefer the host.
+		hostDir, pluginDir := filepath.Join(root, "omniview"), filepath.Join(root, "demo")
+		require.NoError(t, os.MkdirAll(hostDir, 0o700))
+		require.NoError(t, os.MkdirAll(pluginDir, 0o700))
+		commitGoMod(t, hostDir, host)
+		commitGoMod(t, pluginDir, plugin)
+		return []sdkProbe{{Repository: "demo", GitDir: pluginDir, Revision: "HEAD"}, {Repository: "omniview", GitDir: hostDir, Revision: "HEAD"}}
+	}
+	command := func(ref string) string { return "use " + ref }
+
+	failure := sdkSourceRequired(context.Background(), "m", probes("v0.16.0", "v0.14.4-0.20261103022722-1712cd3b66e1"), command)
+	require.Equal(t, "v0.16.0", failure.Details["ref"])
+	require.Equal(t, true, failure.Details["mixed"])
+	require.Equal(t, "use v0.16.0", failure.Details["nextCommand"])
+
+	// Different pseudo-version strings naming the same commit agree.
+	failure = sdkSourceRequired(context.Background(), "m", probes("v0.14.4-0.20261103022722-1712cd3b66e1", "v0.14.5-0.20261104000000-1712cd3b66e1"), command)
+	require.Equal(t, "1712cd3b66e1", failure.Details["ref"])
+	require.Equal(t, false, failure.Details["mixed"])
 }

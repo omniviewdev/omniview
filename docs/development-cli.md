@@ -475,7 +475,7 @@ the CLI reads each selected repository's committed `go.mod` (no network, no chec
 needed) and reports the declared `plugin-sdk` requirement in `details.requirements`
 (`repository`, `version`, `ref`, `kind`). `ref` is the tag, or the commit embedded in
 a pseudo-version. `details.nextCommand` is the exact command, for example
-`workspace edit --workspace MANIFEST --add-repo plugin-sdk --ref plugin-sdk=v0.16.0 --apply`
+`workspace edit --workspace MANIFEST --add-repo plugin-sdk --ref plugin-sdk=v0.16.0`
 (for `create --start` it names the `--repo`/`--ref` flags to add). The host's
 requirement is preferred; `details.mixed` is true when consumers disagree. The SDK is
 never added automatically, the exit code stays 2, and the code and details survive

@@ -111,9 +111,9 @@ func sdkSourceRequired(ctx context.Context, message string, probes []sdkProbe, c
 func editAddSDKCommand(w Workspace) func(string) string {
 	return func(ref string) string {
 		executable := "omniview-dev"
-		args := []string{executable, "workspace", "edit", "--workspace", w.ManifestPath, "--add-repo", "plugin-sdk", "--ref", "plugin-sdk=" + ref, "--apply"}
+		args := []string{executable, "workspace", "edit", "--workspace", w.ManifestPath, "--add-repo", "plugin-sdk", "--ref", "plugin-sdk=" + ref}
 		if w.ManifestPath == "" {
-			args = []string{executable, "workspace", "edit", w.Manifest.Slug, "--add-repo", "plugin-sdk", "--ref", "plugin-sdk=" + ref, "--apply"}
+			args = []string{executable, "workspace", "edit", w.Manifest.Slug, "--add-repo", "plugin-sdk", "--ref", "plugin-sdk=" + ref}
 		}
 		return strings.TrimSpace(shellCommand(args))
 	}
