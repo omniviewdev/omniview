@@ -53,6 +53,15 @@ describe('universal provider admission', () => {
   });
 });
 describe('global search v1 admission', () => {
+  it('admits both developer tools without widening core navigation', () => {
+    for (const path of ['/developer-tools/extensions', '/developer-tools/performance']) {
+      const entry = { schemaVersion: 1, kind: 'navigation', target: { kind: 'core', path } };
+      expect(admitSearchEntry(entry)).toEqual(entry);
+      expect(getNavigationHref(entry.target)).toBe(path);
+    }
+
+    expect(getNavigationHref({ kind: 'core', path: '/developer-tools/performance/unknown' })).toBeUndefined();
+  });
   it.each([
     null,
     { ...navigation(), schemaVersion: 2 },

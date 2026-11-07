@@ -16,6 +16,7 @@ import ResourceBrowser from '@/features/connections/ResourceBrowser';
 import ConnectionDetails from '@/features/connections/ConnectionDetails';
 import ConnectionProfiles from '@/features/connections/ConnectionProfiles';
 import ExtensionInspector from '@/pages/developer-tools/ExtensionInspector';
+import Performance from '@/pages/developer-tools/Performance';
 
 function LegacyExtensionBookmark() {
   const location = useLocation();
@@ -35,6 +36,7 @@ export function buildPageRoutes(pluginRoutes: RouteObject[]): RouteObject[] {
       children: [
         { index: true, Component: Home, ErrorBoundary: RouterErrorBoundary },
         { path: 'developer-tools/extensions', Component: ExtensionInspector, ErrorBoundary: RouterErrorBoundary },
+        { path: 'developer-tools/performance', Component: Performance, ErrorBoundary: RouterErrorBoundary },
         { path: 'settings', Component: LegacyExtensionBookmark },
         {
           path: 'plugins',

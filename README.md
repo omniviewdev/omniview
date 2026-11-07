@@ -242,6 +242,21 @@ The public WebKit policy covers main, restored, and newly created windows. It ap
 
 Native verification used Safari's Record button on the actual Omniview WKWebView, with application source frames and layout/paint records. Safari 27.0.1 on the verification machine exported some zero-timestamp JavaScript stacks; console-started recording exported only zero-timestamp stacks. Use the inspector's Record button, inspect the captured interval, and do not treat those receipts as complete temporal alignment or a performance benchmark. Chromium/browser-mode traces are not native WebKit evidence. The outstanding cluster-specific performance measurement remains tracked in [#215](https://github.com/omniviewdev/omniview/issues/215).
 
+### Application performance
+
+Open **Developer Tools → Performance**, or search for **Developer Tools: Performance**.
+Overview shows host process measurements; Operations and Metrics pipeline show observed application work.
+Choose **All measurements** to browse every catalog instrument, including runtime metrics.
+Operations lists each observed dimension set with cumulative observation counts and mean latency or size; select a row to inspect it.
+Charts retain collection gaps rather than displaying missing observations as zero.
+CPU reports observed host-process cores, Go heap reports live allocation, and peak RSS is not current resident memory.
+
+In **Captures / comparison**, name a capture, describe the workload, and choose its duration in seconds.
+Select a saved capture to inspect its samples, or cancel an active capture.
+Record the same workload before and after a change, then choose baseline and candidate and click **Compare captures**.
+Comparisons show coverage and compatibility warnings; incompatible or missing measurements remain unavailable.
+Captures stay in the selected profile across application restarts. Extension Inspector remains a separate developer tool.
+
 ## Documentation
 
 For detailed instructions, tutorials, and API documentation, visit our [official documentation](https://docs.omniview.dev/docs/introduction).
