@@ -53,10 +53,10 @@ approve every dependency script; managed installs still use `--ignore-scripts`.
 
 Choose source refs that satisfy the actual peer contracts: compare the host's `packages/omniviewdev-runtime/package.json` with the selected UI's `packages/base-ui/package.json`. A checkout can lag an existing compatible release tag. Select compatible released source while preserving feature changes; do not invent a package version or weaken peer validation to make an older source pass.
 
-The frontend cohort consumes `@omniviewdev/base-ui` `~0.8.0` and `@omniviewdev/ai-ui`/`@omniviewdev/editors` `~6.1.0`; the runtime's base-ui peer lower bound is also `0.8.0`. These minor releases move together with React 19.3 and TanStack Table 9.
+The frontend cohort consumes `@omniviewdev/base-ui` `~0.15.0`, `@omniviewdev/ai-ui` `~6.1.9`, and `@omniviewdev/editors` `~6.2.0`. Runtime `0.30.2` supports base-ui peers `~0.14.0 || ~0.15.0`, allowing existing plugins to remain compatible during staged upgrades; the host and updated consumers select `0.15.0`. Its Vite-plugin cohort shares the standalone `@omniviewdev/base-ui/metrics` entry. Keep React 19.3 and TanStack Table 9 compatible across host and plugins.
 
 Canonical E2E and whole-app profiling consume UI packages from the host lockfile.
-Previous `0.7.x` base-ui source cannot satisfy this frontend cohort. Keep each
+Previous `0.14.x` base-ui source cannot satisfy this frontend cohort. Keep each
 branch's package dependencies compatible with its actual package contracts.
 
 The owned `e2e/fixtures/workspace-probe/ui` frontend is also a public registry
@@ -92,10 +92,11 @@ The host declares its own interaction-test dependencies rather than relying on
 the UI repository's managed install. The existing UI checks job runs component
 tests after build, lint, and typechecks, reusing its runner and frozen install.
 
-Workspace Probe is a managed-source fixture. Its bootstrap registry pins remain
-at the last compatible runtime/shim release until the new cohort publishes;
-managed composition resolves its actual UI/runtime imports from selected source.
-Update those pins and their lock together after runtime/shim publication.
+Workspace Probe's independent bootstrap pins select published base-ui `0.15.0`
+and runtime/Vite plugin `0.30.2`. Regenerate its manifest and lock together only
+after the target runtime/shim cohort publishes, then verify a standalone frozen
+install and production build. Managed composition still resolves actual UI/runtime
+imports from selected source; linked builds do not prove registry compatibility.
 
 ```sh
 # Run from the host checkout containing the workspace implementation.

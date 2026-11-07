@@ -45,11 +45,11 @@ Automated coverage exercises error retention, detail opening, multiple actions, 
 
 ## Marketplace installation controls
 
-The detail page owns the recommended install/update action. Sidebar entries navigate to that page rather than installing on a secondary click target. The installation card shows the installed version, recommended compatible release, last marketplace check, and an explicit refresh. Releases sort by semantic-version precedence, newest first. Stable compatible releases take priority over prereleases; prereleases remain selectable. Incompatible releases show the registry's specific requirement and cannot be installed. Discovery limitations remain metadata, not explanatory UI copy.
+The detail page owns the recommended install/update action. Sidebar entries navigate to that page rather than installing on a secondary click target. A compact action row shows the recommended compatible version on the install/update button, Other versions, and Refresh; the header already shows the installed version. Background checks show a short pending status rather than a permanent timestamp or explanatory installation card. Releases sort by semantic-version precedence, newest first. Stable compatible releases take priority over prereleases; prereleases remain selectable. Incompatible releases show the registry's specific requirement and cannot be installed. Discovery limitations remain metadata, not explanatory UI copy.
 
-Other versions opens a base-ui Dialog with RadioGroup items. Selection is keyed by plugin ID and version and never installs immediately. Choosing an older version labels the action as a downgrade and requires a second confirmation explaining data compatibility risk. Plugin tools and uninstall remain separate from the primary installation card; archive and developer installation remain in the sidebar source menu.
+Other versions opens a base-ui Dialog with RadioGroup items. Selection is keyed by plugin ID and version and never installs immediately. Choosing an older version labels the action as a downgrade and requires a second confirmation explaining data compatibility risk. Contribution inspection lives in the upper-right Plugin actions overflow menu. Connection profiles and uninstall use intrinsic-width header buttons. Built-in plugins expose Enable/Disable in that same row and cannot be uninstalled. Archive and developer installation remain in the sidebar source menu.
 
-Installation, restart, and uninstall share a per-plugin operation guard and live status across detail and sidebar. Progress describes actual pending installation/startup and frontend loading stages, not invented download percentages. Structured runtime errors remain available through Notifications. Backend startup phase and last error stay visible after installation; Retry startup remains available for a failed plugin. Uninstall keeps its confirmation open on failure and unlocks retry.
+Installation, restart, and uninstall share a per-plugin operation guard and live status across detail and sidebar. Progress describes actual pending installation/startup and frontend loading stages, not invented download percentages. Structured runtime errors remain available through Notifications. Non-running startup phases and retained errors stay visible after installation; healthy startup does not add a duplicate Running label. Retry startup remains available for a failed plugin. Uninstall keeps its confirmation open on failure and unlocks retry.
 
 Startup retry also recovers the frontend state machine: failed interfaces use retry, ready interfaces reload, and unloaded interfaces load. Success is reported only after frontend recovery completes.
 
@@ -57,13 +57,14 @@ Readme and reviews load only for their active tabs. Versions and changelog share
 
 UI smoke scenarios:
 
-1. Open a marketplace entry. Verify one recommended action, versions sorted newest first, compatibility reason, freshness, and refresh.
+1. Open a marketplace entry. Verify compact, intrinsic-width actions, versions sorted newest first, compatibility reason, pending checks, and refresh.
 2. Choose another version using the keyboard. Verify no install occurs until confirmation; cancel leaves inventory unchanged.
 3. Choose an older version. Verify the explicit downgrade confirmation; cancel performs no install.
 4. Start installation and attempt uninstall or a second install. Verify controls remain locked and sidebar shows the same pending operation.
 5. Force a startup failure. Verify retained backend phase/error, Notifications details, and Retry startup; no claim of a running plugin.
 6. Fail uninstall. Verify the dialog stays open and retry becomes available.
 7. Switch between versions and changelog, then overview and reviews. Verify one shared version fetch and no inactive review/readme/stats calls.
+8. Open a healthy built-in plugin. Verify an intrinsic-width Enable/Disable button, inspection under Plugin actions, visible connection-profile actions, and no duplicate Running status. Disable and re-enable it; verify pending status and failed-startup retry remain available.
 
 Focused coverage: `ui/pages/plugins/versionPolicy.test.ts`, `ui/hooks/plugin/usePluginManager.test.tsx`, and `e2e/tests/plugins/plugins.spec.ts`.
 

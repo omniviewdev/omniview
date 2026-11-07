@@ -159,7 +159,6 @@ test.describe('Plugins page', () => {
     const calls = await fakeMarketplace(page, { installed: [fakePlugin(1)] });
     await page.goto('/#/plugins/e2e-plugin-1');
 
-    await page.getByText('Plugin tools', { exact: true }).click();
     await page.getByRole('button', { name: 'Uninstall' }).click();
     const dialog = confirmDialog(page, 'Uninstall E2E Plugin 1?');
     await expect(dialog).toBeVisible();
@@ -173,7 +172,6 @@ test.describe('Plugins page', () => {
   test('cancelling the uninstall dialog leaves the plugin alone', async ({ page }) => {
     const calls = await fakeMarketplace(page, { installed: [fakePlugin(1)] });
     await page.goto('/#/plugins/e2e-plugin-1');
-    await page.getByText('Plugin tools', { exact: true }).click();
 
     await page.getByRole('button', { name: 'Uninstall' }).click();
     const dialog = confirmDialog(page, 'Uninstall E2E Plugin 1?');

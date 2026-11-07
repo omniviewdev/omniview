@@ -330,6 +330,13 @@ This is a trusted in-process UI contract, not a security sandbox. Plugins must u
 host's compatible runtime/base-ui/theme release cohort; MUI/Emotion and private
 Kubernetes components are not shared public dependencies.
 
+The host shares `@omniviewdev/base-ui/metrics` as a separate singleton module.
+Keep its entry in `api/shared_dependencies.ts` and the Vite plugin's
+`SHARED_PACKAGES` list in sync: development imports use host-backed shims, while
+production bundles leave the subpath external for the host's SystemJS import map.
+After installing the matching UI cohort, build runtime before building the Vite
+plugin; the Vite plugin build regenerates and checks shared shims.
+
 ### Error Isolation
 
 Each contribution is wrapped in its own React `ErrorBoundary`, which catches render-time and lifecycle errors. A render crash in one plugin's contribution does not affect other contributions or the host. Crashes are logged via `logPluginBoundaryError()` with structured data (plugin ID, extension point ID, contribution ID, stack trace). Note that `ErrorBoundary` does not catch errors in event handlers, async callbacks, or non-render code paths — those require explicit `try/catch` handling within the plugin.
