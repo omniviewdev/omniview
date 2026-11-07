@@ -323,3 +323,54 @@ func TestArchiveRuntimeSourceUpdateRefusesBeforeCapture(t *testing.T) {
 	// Once stopped, the same plan is not refused by the runtime check.
 	require.NoError(t, m.requireSourceUpdateSupervisor(w, Status{Workspace: w, Phase: sourceUpdateStopped, PluginRuntime: PluginRuntimeArchive}))
 }
+
+// follow --apply on a running archive runtime must not route the operator to
+// `workspace recover` (impossible while running) or claim explicit recovery:
+// the refusal is pre-mutation, so it carries the same `workspace down` guidance.
+func TestFollowApplyArchiveRuntimeRefusesWithDownGuidanceAndNoIntent(t *testing.T) {
+	m, w, remote, _ := upstreamFixture(t)
+	archive := &workspaceSupervisor{
+		options: LaunchOptions{Mode: "browser", PluginRuntime: PluginRuntimeArchive},
+		status:  Status{Workspace: w, Phase: "ready"},
+	}
+	_, commands := sourceCompatibilitySupervisorStatus(t, w, true, archive.snapshot)
+	require.NoError(t, rawSaveLaunchJSON(launchPath(w, "launch.json"), archive.options))
+	upstreamCommit(t, remote, "component.ts", "export const revision = 1")
+	down := []string{"omniview-dev", "workspace", "down", w.Manifest.WorkspaceID, "--root", m.Root}
+	waits, failed, blocked := 0, 0, 0
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	err := m.Follow(ctx, w.Manifest.Slug, FollowOptions{
+		Apply: true,
+		wait: func(context.Context, time.Duration) error {
+			if waits++; waits == 3 {
+				return context.Canceled
+			}
+			return nil
+		},
+	}, func(status FollowStatus) error {
+		require.NoFileExists(t, sourceUpdatePath(m, w), "pre-mutation refusal persisted an update intent")
+		switch status.Result {
+		case followApplying:
+		case followApplyFailed, "blocked_failed_cohort":
+			require.Equal(t, "archive_runtime_source_update", status.BlockedReason)
+			require.NotEqual(t, "explicit_recovery_required", status.BlockedReason)
+			require.Equal(t, down, status.NextArgv)
+			require.Equal(t, shellCommand(down), status.NextCommand)
+			if status.Result == followApplyFailed {
+				failed++
+			} else {
+				blocked++
+			}
+		default:
+			t.Fatalf("unexpected follow result: %s", status.Result)
+		}
+		return nil
+	})
+	require.ErrorIs(t, err, context.Canceled)
+	require.NotZero(t, failed)
+	require.NotZero(t, blocked, "the failed cohort retains the down guidance on later observations")
+	for len(commands) > 0 {
+		require.Equal(t, supervisorStatusCommand, <-commands, "follow must not send mutation commands")
+	}
+}
