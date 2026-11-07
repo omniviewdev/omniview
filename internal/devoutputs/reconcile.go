@@ -101,6 +101,9 @@ func Reconcile(ctx context.Context, w devcontract.ResolvedWorkspace, consumer, p
 		if revision != p.Head {
 			return fmt.Errorf("source changed during reconciliation; preserve bytes and inspect before continuing")
 		}
+		if e = validatePreservationParent(parent, p.ParentIdentity); e != nil {
+			return e
+		}
 		preservedSpec := spec
 		preservedSpec.Target = preserveAt
 		preserved, e := snapshotPath(preservedSpec, nil)
@@ -114,6 +117,9 @@ func Reconcile(ctx context.Context, w devcontract.ResolvedWorkspace, consumer, p
 			}
 			if !sameSnapshot(actual, p.Before) {
 				return entryConflict(entry, "preservation", actual, fmt.Errorf("producer changed after preservation intent"))
+			}
+			if e = validatePreservationParent(parent, p.ParentIdentity); e != nil {
+				return e
 			}
 			// Atomic exclusion refuses even an empty foreign destination directory.
 			if e = preserveRename(spec.Target, preserveAt); e != nil {
@@ -184,4 +190,21 @@ func Reconcile(ctx context.Context, w devcontract.ResolvedWorkspace, consumer, p
 		return nil
 	})
 	return report, err
+}
+
+func validatePreservationParent(parent, expected string) error {
+	if _, err := cleanPath(parent); err != nil {
+		return err
+	}
+	if err := devsession.ValidatePrivateDirectory(parent); err != nil {
+		return err
+	}
+	actual, err := directoryIdentity(parent)
+	if err != nil {
+		return err
+	}
+	if actual != expected {
+		return fmt.Errorf("preservation parent was replaced; refusing to move output")
+	}
+	return nil
 }

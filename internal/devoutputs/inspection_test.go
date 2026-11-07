@@ -256,3 +256,31 @@ func TestInterruptedPreservationRetainsAuthorityAndResumesExactMove(t *testing.T
 		})
 	}
 }
+
+func TestReadOnlyInspectionRefusesRedirectedJournal(t *testing.T) {
+	w, _ := outputFixture(t)
+	s, err := newScope(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.MkdirAll(s.directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	foreign := filepath.Join(t.TempDir(), "foreign.json")
+	if err = os.WriteFile(foreign, []byte("private foreign payload"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Symlink(foreign, s.path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = Inspect(context.Background(), w, nil); err == nil {
+		t.Fatal("redirected journal accepted")
+	}
+	raw, err := os.ReadFile(foreign)
+	if err != nil || string(raw) != "private foreign payload" {
+		t.Fatal("foreign journal was changed", err)
+	}
+	if target, err := os.Readlink(s.path); err != nil || target != foreign {
+		t.Fatal("inspection changed journal redirect", err)
+	}
+}

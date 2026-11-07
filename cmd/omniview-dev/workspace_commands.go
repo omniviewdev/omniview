@@ -660,13 +660,14 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 			if c.json {
 				_ = json.NewEncoder(out).Encode(inspection)
 			} else {
-				fmt.Fprintf(out, "Scope: %s\nMetadata: %s\n", inspection.Scope, inspection.MetadataPath)
+				fmt.Fprintf(out, "Scope: %s\nMetadata: %s\nLink phase: %s\n", inspection.Scope, inspection.MetadataPath, inspection.LifecyclePhase)
 				for _, entry := range inspection.Entries {
 					fmt.Fprintf(out, "%s %s %s %s\n", entry.Producer, entry.Ownership, entry.Phase, entry.Target)
 					if entry.Conflict != nil {
 						fmt.Fprintln(out, entry.Conflict)
 					}
 				}
+				fmt.Fprintln(out, inspection.ReentryGuidance)
 			}
 			if !inspection.Ready {
 				return true, 4

@@ -54,6 +54,9 @@ func Inspect(ctx context.Context, w devcontract.ResolvedWorkspace, requests []Re
 	if err = devsession.ValidatePrivateDirectory(s.directory); err != nil && !os.IsNotExist(err) {
 		return report, err
 	}
+	if err = devsession.ValidatePrivateFile(s.path); err != nil && !os.IsNotExist(err) {
+		return report, err
+	}
 	before, err := os.ReadFile(s.path)
 	if err != nil && !os.IsNotExist(err) {
 		return report, err
@@ -140,6 +143,9 @@ func Inspect(ctx context.Context, w devcontract.ResolvedWorkspace, requests []Re
 			report.Ready = false
 		}
 		report.Entries = append(report.Entries, item)
+	}
+	if err = devsession.ValidatePrivateFile(s.path); err != nil && !os.IsNotExist(err) {
+		return report, err
 	}
 	after, err := os.ReadFile(s.path)
 	if err != nil && !os.IsNotExist(err) {
