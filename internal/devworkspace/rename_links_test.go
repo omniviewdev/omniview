@@ -63,6 +63,10 @@ func TestRenameLinkTeardownRemovesAbsoluteRootJournal(t *testing.T) {
 func TestLinkedRenamePreservesWorkspaceIdentity(t *testing.T) {
 	ctx := context.Background()
 	f := newResetModulesFixture(t)
+	j, err := loadLinkJournal(f.w)
+	require.NoError(t, err)
+	options := LaunchOptions{Mode: "browser", Watch: true, LinkEvidence: j.Evidence}
+	require.NoError(t, saveLaunchJSON(launchPath(f.w, "launch.json"), options))
 	slug := "renamed-linked"
 	after, err := f.m.Edit(ctx, f.w.Manifest.Slug, EditOptions{Slug: &slug})
 	require.NoError(t, err)
@@ -71,6 +75,17 @@ func TestLinkedRenamePreservesWorkspaceIdentity(t *testing.T) {
 	require.Equal(t, f.w.Manifest.Repositories, after.Manifest.Repositories)
 	require.NoDirExists(t, f.w.Root)
 	require.NoFileExists(t, filepath.Join(after.Root, ".local", "links.json"))
+	saved, err := LoadLaunchOptions(after)
+	require.NoError(t, err)
+	require.Equal(t, options, saved)
+	require.NoError(t, ValidateGenerated(ctx, after))
+	f.m.afterDurablePhase = func(kind, phase string) error {
+		require.Equal(t, "refresh", kind)
+		require.Equal(t, refreshStop, phase)
+		return errPhaseInterrupted
+	}
+	_, err = f.m.Refresh(ctx, after.Manifest.WorkspaceID, RefreshOptions{})
+	require.ErrorIs(t, err, errPhaseInterrupted)
 }
 
 func TestLinkedRenameRefusesUnknownMetadataAndRootNeighbors(t *testing.T) {
@@ -175,4 +190,38 @@ func TestLinkedRenameRefusesUnfinishedInstallerBeforeMutation(t *testing.T) {
 	require.DirExists(t, f.w.Root)
 	require.FileExists(t, filepath.Join(f.w.Root, "package.json"))
 	require.FileExists(t, filepath.Join(f.w.Root, ".local", "links.json"))
+}
+
+func TestRenameLaunchRestorationResumesAfterMove(t *testing.T) {
+	for _, restored := range []bool{false, true} {
+		t.Run(map[bool]string{false: "before-launch-publication", true: "after-launch-publication"}[restored], func(t *testing.T) {
+			ctx := context.Background()
+			m, root := fixtureManager(t)
+			w, err := m.Create(ctx, CreateOptions{Slug: "launch-before"})
+			require.NoError(t, err)
+			_, _, accepted := recoveryFixture(t)
+			options := LaunchOptions{Mode: "browser", LinkEvidence: accepted.Evidence}
+			require.NoError(t, saveLaunchJSON(launchPath(w, "launch.json"), options))
+			j, err := loadJournal(w.Root)
+			require.NoError(t, err)
+			j.Phase, j.Manifest.Slug, j.RenameLaunch = "rename", "launch-after", &options
+			j.RenameTo = filepath.Join(root, "workspaces", j.Manifest.Slug)
+			require.NoError(t, saveJournal(w.Root, j))
+			require.NoError(t, CleanGenerated(w))
+			require.NoError(t, os.Rename(w.Root, j.RenameTo))
+			if restored {
+				require.NoError(t, writeManifest(j.RenameTo, j.Manifest))
+				require.NoError(t, saveLaunchJSON(filepath.Join(j.RenameTo, ".local", "launch.json"), options))
+			}
+			after, err := m.Resume(ctx, "launch-after")
+			require.NoError(t, err)
+			saved, err := LoadLaunchOptions(after)
+			require.NoError(t, err)
+			require.Equal(t, options, saved)
+			require.NoError(t, ValidateGenerated(ctx, after))
+			final, err := loadJournal(after.Root)
+			require.NoError(t, err)
+			require.Nil(t, final.RenameLaunch)
+		})
+	}
 }

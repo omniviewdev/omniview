@@ -29,6 +29,7 @@ type journal struct {
 	Root                 string                        `json:"root"`
 	Phase                string                        `json:"phase"`
 	RenameTo             string                        `json:"renameTo,omitempty"`
+	RenameLaunch         *LaunchOptions                `json:"renameLaunch,omitempty"`
 	StageRoot            string                        `json:"stageRoot,omitempty"`
 	StagingVersion       int                           `json:"stagingVersion,omitempty"`
 	Retired              bool                          `json:"retired"`
