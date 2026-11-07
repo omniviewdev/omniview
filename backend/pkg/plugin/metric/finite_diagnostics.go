@@ -2,6 +2,7 @@ package metric
 
 import (
 	"context"
+
 	"github.com/omniviewdev/omniview/internal/telemetry"
 )
 

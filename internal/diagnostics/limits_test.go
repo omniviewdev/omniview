@@ -3,10 +3,11 @@ package diagnostics
 import (
 	"context"
 	"fmt"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"strings"
 	"testing"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 func TestCountLimitDiagnosticDoesNotClaimAmbiguity(t *testing.T) {

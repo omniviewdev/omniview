@@ -3,8 +3,9 @@
 package telemetry
 
 import (
-	"golang.org/x/sys/unix"
 	"runtime"
+
+	"golang.org/x/sys/unix"
 )
 
 // getrusage reports actual process CPU consumed, not scheduler capacity.

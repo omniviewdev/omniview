@@ -2,10 +2,11 @@ package diagnostics
 
 import (
 	"context"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"strings"
 	"testing"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 func TestDroppedLabelsCannotProduceIndistinguishableSeries(t *testing.T) {

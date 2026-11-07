@@ -2,6 +2,7 @@ package host
 
 import (
 	"context"
+
 	"github.com/omniviewdev/omniview/internal/diagnostics"
 )
 

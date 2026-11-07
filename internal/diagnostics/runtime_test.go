@@ -2,11 +2,12 @@ package diagnostics
 
 import (
 	"context"
+	"testing"
+	"time"
+
 	otelruntime "go.opentelemetry.io/contrib/instrumentation/runtime"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
-	"testing"
-	"time"
 )
 
 func TestRealRuntimeMemoryDimensionsKeepCaptureComplete(t *testing.T) {
