@@ -566,6 +566,22 @@ func (s *workspaceSupervisor) statusResponse(ctx context.Context) Status {
 	// transient build failure or intentional plugin stop must neither
 	// poison the supervisor phase nor restart a managed generation.
 	for _, plugin := range status.Manifest.Plugins {
+		if s.options.archiveRuntime() {
+			info, infoErr := readArchivePluginInfo(ctx, client, plugin.ID)
+			ready := false
+			if infoErr == nil {
+				ready, infoErr = archivePluginReady(info)
+			}
+			if infoErr != nil || !ready {
+				status.Phase = "error"
+				status.LastError = workspaceError(infoErr)
+				if infoErr == nil {
+					status.LastError = devcontract.Fail(supervisorPluginFailureExitCode, "plugin_not_ready", fmt.Sprintf("archive plugin %s is not ready: phase %s", plugin.ID, info.Phase))
+				}
+				break
+			}
+			continue
+		}
 		state, stateErr := readPluginState(ctx, client, plugin.ID)
 		if stateErr != nil {
 			status.Phase = "error"

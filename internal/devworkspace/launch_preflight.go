@@ -31,6 +31,9 @@ func PreflightLaunch(w Workspace, o LaunchOptions) LaunchPreflight {
 	if o.MCP && o.Mode != "native" {
 		report.Issues = append(report.Issues, devcontract.Fail(2, "invalid_mcp_mode", "native MCP requires --mode native"))
 	}
+	if err := o.validatePluginRuntime(); err != nil {
+		report.Issues = append(report.Issues, err.(*devcontract.Error))
+	}
 	report.Ready = len(report.Issues) == 0
 	return report
 }

@@ -706,3 +706,37 @@ func TestEvidenceRequiresReportFileWithoutEchoingPayload(t *testing.T) {
 		t.Fatalf("credential-bearing input escaped: %s (%v)", raw, marshalErr)
 	}
 }
+
+func TestWorkspacePluginRuntimeIsPersistedAndOnlyExplicitlyChanged(t *testing.T) {
+	w := devworkspace.Workspace{ResolvedWorkspace: devcontract.ResolvedWorkspace{Root: t.TempDir()}}
+	directory, err := devsession.EnsurePrivateDirectory(filepath.Join(w.Root, ".local"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := devworkspace.LaunchOptions{Mode: "browser", PluginRuntime: devworkspace.PluginRuntimeArchive, Timeout: time.Minute}
+	if err = devsession.WritePrivateJSON(filepath.Join(directory, "launch.json"), saved); err != nil {
+		t.Fatal(err)
+	}
+	for _, verb := range []string{"up", "refresh", "update", "follow", "recover"} {
+		command, parseErr := parseWorkspaceCommand([]string{"workspace", verb, "feature"}, io.Discard)
+		if parseErr != nil {
+			t.Fatal(parseErr)
+		}
+		options, optionErr := workspaceLaunchOptions(command, w)
+		if optionErr != nil || options.PluginRuntime != devworkspace.PluginRuntimeArchive {
+			t.Fatalf("%s: omitted --plugin-runtime did not preserve the saved archive runtime: %+v %v", verb, options, optionErr)
+		}
+		refresh, refreshErr := workspaceRefreshOptions(command, w, io.Discard)
+		if refreshErr != nil || refresh.Launch != nil {
+			t.Fatalf("%s: omitted runtime became explicit launch intent: %+v %v", verb, refresh, refreshErr)
+		}
+		command, parseErr = parseWorkspaceCommand([]string{"workspace", verb, "feature", "--plugin-runtime=managed"}, io.Discard)
+		if parseErr != nil {
+			t.Fatal(parseErr)
+		}
+		refresh, refreshErr = workspaceRefreshOptions(command, w, io.Discard)
+		if refreshErr != nil || refresh.Launch == nil || refresh.Launch.PluginRuntime != devworkspace.PluginRuntimeManaged {
+			t.Fatalf("%s: explicit managed runtime was lost: %+v %v", verb, refresh, refreshErr)
+		}
+	}
+}

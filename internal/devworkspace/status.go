@@ -28,6 +28,9 @@ type Status struct {
 	LastError  *devcontract.Error              `json:"lastError,omitempty"`
 	Health     RuntimeHealth                   `json:"health"`
 	Checkouts  map[string]CheckoutStatus       `json:"checkouts,omitempty"`
+	// ArchivePlugins lists the installed archive cohort of an archive plugin
+	// runtime launch, keyed by plugin ID.
+	ArchivePlugins map[string]ArchivePluginStatus `json:"archivePlugins,omitempty"`
 	// ReadyCheckouts samples the filesystem after a successful readiness
 	// transition. It does not bind compiler inputs or served artifact bytes.
 	ReadyCheckouts        map[string]CheckoutStatus `json:"readyCheckouts,omitempty"`
