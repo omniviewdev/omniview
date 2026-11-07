@@ -663,7 +663,7 @@ func TestWorkspaceEditApplyCLILeavesStoppedWorkspaceStopped(t *testing.T) {
 		Error *devcontract.Error `json:"error"`
 	}
 	if err := json.Unmarshal(out.Bytes(), &failure); err != nil || code != 3 ||
-		failure.Error == nil || failure.Error.Code != "refresh_evidence_required" {
+		failure.Error == nil || failure.Error.Code != "apply_bootstrap_required" {
 		t.Fatalf("missing real dependency proof was not reported: exit=%d stdout=%s stderr=%s err=%v",
 			code, &out, &diagnostics, err)
 	}
@@ -671,7 +671,7 @@ func TestWorkspaceEditApplyCLILeavesStoppedWorkspaceStopped(t *testing.T) {
 	if err := json.Unmarshal(invoke("workspace", "inspect", "feature", "--root", root, "--json"), &status); err != nil {
 		t.Fatal(err)
 	}
-	if status.Manifest.DisplayName != "Edited While Stopped" ||
+	if status.Manifest.DisplayName != created.Manifest.DisplayName ||
 		status.Manifest.WorkspaceID != created.Manifest.WorkspaceID ||
 		status.Phase != "stopped" || status.Generation != "" || workspaceWasRunning(status) {
 		t.Fatalf("edit --apply started or replaced stopped workspace identity: %+v", status)
