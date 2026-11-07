@@ -1,6 +1,7 @@
 package devworkspace
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -38,8 +39,12 @@ func (m *Manager) addUpstreamStatus(status *Status) {
 }
 
 func workspaceRecoveryCommand(w Workspace, verb string) string {
+	executable, err := os.Executable()
+	if err != nil {
+		return ""
+	}
 	return shellCommand([]string{
-		"omniview-dev", "workspace", verb, "--workspace", w.ManifestPath,
+		executable, "workspace", verb, "--workspace", w.ManifestPath,
 	})
 }
 

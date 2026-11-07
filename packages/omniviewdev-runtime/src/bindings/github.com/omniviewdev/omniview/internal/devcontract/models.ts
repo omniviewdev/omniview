@@ -282,11 +282,15 @@ export class ProcessIdentity {
     }
 }
 
+/**
+ * RepositoryResolution describes immutable workspace configuration, never the
+ * checkout HEAD or the source revision served by a running process.
+ */
 export class RepositoryResolution {
     "id": string;
     "path": string;
-    "ref": string;
-    "commit": string;
+    "configuredRef": string;
+    "baseCommit": string;
 
     /** Creates a new RepositoryResolution instance. */
     constructor($$source: Partial<RepositoryResolution> = {}) {
@@ -296,11 +300,11 @@ export class RepositoryResolution {
         if (!("path" in $$source)) {
             this["path"] = "";
         }
-        if (!("ref" in $$source)) {
-            this["ref"] = "";
+        if (!("configuredRef" in $$source)) {
+            this["configuredRef"] = "";
         }
-        if (!("commit" in $$source)) {
-            this["commit"] = "";
+        if (!("baseCommit" in $$source)) {
+            this["baseCommit"] = "";
         }
 
         Object.assign(this, $$source);

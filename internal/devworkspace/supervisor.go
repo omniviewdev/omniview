@@ -236,6 +236,17 @@ func (m *Manager) ServeSupervisor(ctx context.Context, name string, output io.Wr
 	if err != nil {
 		return err
 	}
+	generation := os.Getenv(supervisorGenerationEnvironment)
+	var owner devcontract.ProcessIdentity
+	if generation == "" {
+		generation = NewGeneration()
+		owner, err = devsession.CaptureProcess(os.Getpid(), devsession.ProcessOwner{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "supervisor", Source: w.Root})
+	} else {
+		owner, err = m.claimSupervisorLaunch(ctx, w, generation)
+	}
+	if err != nil {
+		return err
+	}
 	lockPath, err := GeneratedLockPath(w, "supervisor")
 	if err != nil {
 		return err
@@ -264,11 +275,6 @@ func (m *Manager) ServeSupervisor(ctx context.Context, name string, output io.Wr
 		return err
 	}
 	if err = options.validate(); err != nil {
-		return err
-	}
-	generation := NewGeneration()
-	owner, err := devsession.CaptureProcess(os.Getpid(), devsession.ProcessOwner{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "supervisor", Source: w.Root})
-	if err != nil {
 		return err
 	}
 	registry, err := devsession.OpenRegistry(filepath.Join(m.options.Home, ".omniview-dev", "sessions"), devsession.RegistryOptions{})
@@ -443,7 +449,8 @@ func (s *workspaceSupervisor) setPhase(phase string, err error) {
 		s.status.RecoveryCommand = workspaceRecoveryCommand(s.workspace, "refresh")
 	}
 	if phase == "ready" {
-		s.status.ServedCheckouts = served
+		// This is an observation at readiness, not a build-input attestation.
+		s.status.ReadyCheckouts = served
 		s.status.FailedStage = ""
 		s.status.RecoveryCommand = ""
 	}
@@ -460,7 +467,7 @@ func (s *workspaceSupervisor) setPhase(phase string, err error) {
 		}
 	}
 	if err != nil {
-		s.status.LastError = workspaceError(err)
+		s.status.LastError = workspaceOwnershipError(err, s.workspace)
 	}
 	s.mu.Unlock()
 	s.persist()

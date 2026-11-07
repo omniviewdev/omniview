@@ -40,7 +40,9 @@ func supportedPNPMVersion(version string) bool {
 
 func (e LinkProtocolEvidence) validate() error {
 	if e.Protocol != "workspace" || len(e.Versions) != 1 || e.Versions[0] != devcompose.Version || !e.AtomicDist || !e.Peers || !e.Runtime {
-		return devcontract.Fail(3, "link_protocol_unproved", "run the native pnpm12 composition live-dist/recursive-peer probe; historical independent-root evidence cannot authorize this workspace")
+		failure := devcontract.Fail(3, "link_protocol_unproved", "provide the successful native composition probe report FILE for pnpm "+devcompose.Version+"; historical independent-root evidence cannot authorize this workspace; see docs/development-cli.md#protocol-evidence")
+		failure.Details = map[string]any{"protocol": "workspace", "pnpmVersion": devcompose.Version, "reportFields": []string{"protocol", "versions", "atomicDist", "peers", "runtime"}}
+		return failure
 	}
 	return nil
 }
@@ -653,7 +655,7 @@ func loadLinkJournal(w Workspace) (*linkJournal, error) {
 func checkLinkFiles(root string, j *linkJournal) error {
 	for _, e := range j.Files {
 		if j.Phase == "linked" && e.Pending {
-			return devcontract.Fail(4, "link_conflict", "linked composition has an unfinished output intent")
+			return dependencyLinkConflict(root, j, "", "linked composition has an unfinished output intent")
 		}
 		current, err := snapshotLinkFile(root, filepath.Join(root, e.Path))
 		if err != nil {
@@ -661,16 +663,40 @@ func checkLinkFiles(root string, j *linkJournal) error {
 		}
 		hash := current.OriginalHash
 		if e.Pending && hash != e.AppliedHash {
-			return devcontract.Fail(4, "link_conflict", "interrupted installer left unverified dependency changes: "+e.Path)
+			return dependencyLinkConflict(root, j, e.Path, "interrupted installer left unverified dependency changes")
 		}
 		if j.Phase == "linked" && hash != e.AppliedHash {
-			return devcontract.Fail(4, "link_conflict", "dependency file changed after linking: "+e.Path)
+			return dependencyLinkConflict(root, j, e.Path, "dependency file changed after linking")
 		}
 		if hash != e.AppliedHash && hash != e.OriginalHash {
-			return devcontract.Fail(4, "link_conflict", "dependency file changed after linking: "+e.Path)
+			return dependencyLinkConflict(root, j, e.Path, "dependency file changed after linking")
 		}
 	}
 	return nil
+}
+
+// Report prerequisites without mutating links or treating retained evidence as
+// current dependency proof. Refresh still performs preservation and validation.
+func dependencyLinkConflict(root string, j *linkJournal, path, reason string) error {
+	w := Workspace{ResolvedWorkspace: devcontract.ResolvedWorkspace{
+		Root: root, ManifestPath: filepath.Join(root, "workspace.json"), Manifest: j.Manifest,
+	}}
+	message := reason
+	if path != "" {
+		message += ": " + filepath.Join(root, path)
+	}
+	failure := devcontract.Fail(4, "link_conflict", message)
+	failure.Details = map[string]any{"linkPhase": j.Phase, "path": filepath.Join(root, path), "preserved": true}
+	launch, err := LoadLaunchOptions(w)
+	if j.Phase == "linked" && j.Evidence.validateRoots(j.Plan.Roots) == nil && err == nil && launch.Validate() == nil {
+		command := workspaceRecoveryCommand(w, "refresh")
+		failure.Message += "; reconcile the selected source changes with " + command + "; refresh may stop and restart the workspace and preserves conflicting edits"
+		failure.Details["recoveryCommand"] = command
+	} else {
+		failure.Message += "; preserve dependency edits; inspect workspace refresh --help for explicit launch settings and --link-evidence FILE prerequisites, or workspace recover --help for an interrupted operation; do not edit ownership receipts"
+		failure.Details["helpCommand"] = "omniview-dev workspace refresh --help"
+	}
+	return failure
 }
 
 func applyLinkFiles(j *linkJournal) error {

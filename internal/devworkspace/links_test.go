@@ -517,3 +517,40 @@ func TestUnlinkStillRejectsMissingSelectedWorktree(t *testing.T) {
 	require.FileExists(t, filepath.Join(moved, "README"))
 	require.FileExists(t, filepath.Join(w.Root, "omniview", "README"))
 }
+
+func TestLinkConflictRecoveryRequiresSavedPrerequisites(t *testing.T) {
+	root := linkFixtureRoot(t)
+	path := filepath.Join(root, "go.mod")
+	require.NoError(t, os.WriteFile(path, []byte("original"), 0600))
+	entry, err := snapshotLinkFile(root, path)
+	require.NoError(t, err)
+	entry.AppliedHash = entry.OriginalHash
+	require.NoError(t, os.WriteFile(path, []byte("user edit"), 0600))
+	j := &linkJournal{Root: root, Phase: "linked", Files: []linkFile{entry}}
+	check := func(wantCommand bool) {
+		t.Helper()
+		var failure *devcontract.Error
+		require.ErrorAs(t, checkLinkFiles(root, j), &failure)
+		require.Equal(t, "link_conflict", failure.Code)
+		require.Equal(t, path, failure.Details["path"])
+		require.Equal(t, "linked", failure.Details["linkPhase"])
+		command, exists := failure.Details["recoveryCommand"]
+		require.Equal(t, wantCommand, exists)
+		if exists {
+			require.Equal(t, workspaceRecoveryCommand(Workspace{ResolvedWorkspace: devcontract.ResolvedWorkspace{ManifestPath: filepath.Join(root, "workspace.json")}}, "refresh"), command)
+		}
+		got, err := os.ReadFile(path)
+		require.NoError(t, err)
+		require.Equal(t, "user edit", string(got))
+	}
+	check(false)
+	j.Evidence = LinkProtocolEvidence{Protocol: "workspace", Versions: []string{devcompose.Version}, AtomicDist: true, Peers: true, Runtime: true}
+	check(false)
+	w := Workspace{ResolvedWorkspace: devcontract.ResolvedWorkspace{Root: root}}
+	require.NoError(t, rawSaveLaunchJSON(launchPath(w, "launch.json"), LaunchOptions{Mode: "browser"}))
+	check(true)
+	j.Phase = "applying"
+	var failure *devcontract.Error
+	require.ErrorAs(t, checkLinkFiles(root, j), &failure)
+	require.NotContains(t, failure.Details, "recoveryCommand")
+}

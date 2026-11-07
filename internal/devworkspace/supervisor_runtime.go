@@ -441,11 +441,12 @@ func (s *workspaceSupervisor) startHost(ctx context.Context) error {
 			if descriptor.Process != child.identity {
 				return devcontract.Fail(4, "stale_target", "ready descriptor is not the exact captured host child")
 			}
-			if s.options.Mode == "browser" && descriptor.Readiness == "backend-ready" {
-				if descriptor.WorkspaceID != target.WorkspaceID || descriptor.InstanceID != target.InstanceID || descriptor.Generation != target.Generation || descriptor.StateRoot != target.StateRoot {
-					return devcontract.Fail(4, "stale_target", "host startup identity differs")
-				}
-			} else if err = hostDescriptorReady(descriptor, target); err != nil {
+			if s.options.Mode == "browser" {
+				err = frontendDescriptorReady(descriptor, target)
+			} else {
+				err = hostDescriptorReady(descriptor, target)
+			}
+			if err != nil {
 				return err
 			}
 			if s.options.Mode == "browser" {

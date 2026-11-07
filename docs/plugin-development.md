@@ -265,9 +265,12 @@ the containers, packaging, performance, and SSH/SFTP gates.
 
 In a linked workspace, let the installed `omniview-dev` CLI run dependency
 installation and producer builds; it invokes `task bindings` internally.
-Standalone installs or producer builds can invalidate output ownership. Use
-`workspace reset-modules` for changed dependency trees and `workspace recover`
-for retained build recovery, rather than editing journals or weakening checks.
+Standalone installs or producer builds can invalidate output ownership. Inspect
+all boundaries with `workspace ownership`; use `workspace reset-modules` only
+with explicit authorization to delete changed dependency trees. Generate managed
+bindings with `workspace bindings`. Changed journal-owned producer outputs have
+an explicit preserve-first `workspace reconcile-output` path; `workspace recover`
+alone does not authorize adopting or deleting foreign bytes.
 
 ---
 

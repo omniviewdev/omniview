@@ -129,6 +129,19 @@ func TestWorkspaceLifecycleCLIUsesRealGitAndPreservesBranches(t *testing.T) {
 	if err := json.Unmarshal(raw, &workspace); err != nil {
 		t.Fatal(err)
 	}
+	var proofOut, proofDiagnostics bytes.Buffer
+	if code := run([]string{"workspace", "evidence", "--workspace", workspace.ManifestPath, "--json"}, &proofOut, &proofDiagnostics); code != 3 {
+		t.Fatalf("missing proof exit %d: %s", code, &proofOut)
+	}
+	var proofFailure struct {
+		Error *devcontract.Error `json:"error"`
+	}
+	if err := json.Unmarshal(proofOut.Bytes(), &proofFailure); err != nil || proofFailure.Error == nil || proofFailure.Error.Code != "evidence_missing" || proofFailure.Error.Details["state"] != "absent" {
+		t.Fatalf("missing proof state: %s (%v)", &proofOut, err)
+	}
+	if _, err := os.Stat(filepath.Join(workspace.Root, ".local", "links.json")); !os.IsNotExist(err) {
+		t.Fatalf("inspection changed link state: %v", err)
+	}
 	if len(workspace.Manifest.Repositories) != 1 || workspace.Manifest.Repositories[0].Directory != "omniview" {
 		t.Fatalf("failed registry initialization changed source mapping: %s", raw)
 	}
@@ -650,7 +663,7 @@ func TestWorkspaceEditApplyCLILeavesStoppedWorkspaceStopped(t *testing.T) {
 		Error *devcontract.Error `json:"error"`
 	}
 	if err := json.Unmarshal(out.Bytes(), &failure); err != nil || code != 3 ||
-		failure.Error == nil || failure.Error.Code != "refresh_evidence_required" {
+		failure.Error == nil || failure.Error.Code != "apply_bootstrap_required" {
 		t.Fatalf("missing real dependency proof was not reported: exit=%d stdout=%s stderr=%s err=%v",
 			code, &out, &diagnostics, err)
 	}
@@ -658,7 +671,7 @@ func TestWorkspaceEditApplyCLILeavesStoppedWorkspaceStopped(t *testing.T) {
 	if err := json.Unmarshal(invoke("workspace", "inspect", "feature", "--root", root, "--json"), &status); err != nil {
 		t.Fatal(err)
 	}
-	if status.Manifest.DisplayName != "Edited While Stopped" ||
+	if status.Manifest.DisplayName != created.Manifest.DisplayName ||
 		status.Manifest.WorkspaceID != created.Manifest.WorkspaceID ||
 		status.Phase != "stopped" || status.Generation != "" || workspaceWasRunning(status) {
 		t.Fatalf("edit --apply started or replaced stopped workspace identity: %+v", status)
@@ -667,5 +680,29 @@ func TestWorkspaceEditApplyCLILeavesStoppedWorkspaceStopped(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(created.Root, ".local", name)); !os.IsNotExist(err) {
 			t.Fatalf("edit --apply created launch state for stopped workspace: %s: %v", name, err)
 		}
+	}
+}
+
+func TestEvidenceRequiresReportFileWithoutEchoingPayload(t *testing.T) {
+	for _, value := range []string{`{"token":"PRIVATE_INPUT"}`, `["PRIVATE_INPUT"]`} {
+		_, err := workspaceLaunchInputs(workspaceCommand{linkEvidence: value}, devworkspace.LaunchOptions{})
+		var failure *devcontract.Error
+		if !errors.As(err, &failure) || failure.Code != "invalid_link_evidence" || strings.Contains(err.Error(), "PRIVATE_INPUT") {
+			t.Fatalf("unsafe inline evidence error: %v", err)
+		}
+	}
+	path := filepath.Join(t.TempDir(), "missing-report.json")
+	_, err := workspaceLaunchInputs(workspaceCommand{linkEvidence: path}, devworkspace.LaunchOptions{})
+	var failure *devcontract.Error
+	if !errors.As(err, &failure) || failure.Code != "link_evidence_required" || failure.Details["reportFile"] != path {
+		t.Fatalf("missing report context: %v", err)
+	}
+	_, err = workspaceLaunchInputs(workspaceCommand{linkEvidence: "https://user:PRIVATE_INPUT@example.invalid/report.json"}, devworkspace.LaunchOptions{})
+	if !errors.As(err, &failure) {
+		t.Fatalf("expected typed file error: %v", err)
+	}
+	raw, marshalErr := json.Marshal(failure)
+	if marshalErr != nil || bytes.Contains(raw, []byte("PRIVATE_INPUT")) {
+		t.Fatalf("credential-bearing input escaped: %s (%v)", raw, marshalErr)
 	}
 }
