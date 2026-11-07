@@ -91,9 +91,14 @@ Initial launch recovery can reuse the genuine protocol evidence saved in
 proof still requires explicit `--link-evidence FILE`; recovery never invents proof.
 If a refreshed launch fails after dependency preparation has already completed,
 recovery resumes its retained `start` or `verify` boundary instead of reinstalling
-the captured cohort. It authenticates and shuts down only the observed failed
-supervisor generation before starting its successor. A generation replacement
-during that handoff is refused, never stopped as a substitute target.
+the captured cohort. Each launch generation is minted and recorded in the private
+refresh intent before its supervisor is spawned. Recovery authenticates the live
+process and retires it only when its generation belongs to that retained operation.
+A different successor is refused even if it appeared before recovery inspected it.
+Potential attempts remain recorded across interruptions before ownership publication;
+recovery never infers launch authority from whichever supervisor happens to be latest.
+An older retained intent without launch-generation evidence cannot adopt or stop
+a live owner automatically. Inspect that ownership before an explicit transition.
 
 `workspace restart` also starts a stopped or exited workspace using its saved
 launch settings. Missing or exited supervisors are not errors by themselves.

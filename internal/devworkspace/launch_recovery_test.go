@@ -234,7 +234,8 @@ func TestRecoverDoesNotRetireUnrelatedFailedSuccessor(t *testing.T) {
 	for _, replacement := range []string{"before-start", "before-verify", "between-verify-and-start", "unbound-legacy"} {
 		t.Run(replacement, func(t *testing.T) {
 			m, w, j := recoveryFixture(t)
-			ctx := context.Background()
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
 			var stops atomic.Int32
 			startOwner := func() (supervisorRecord, *ownedChild, devsession.ProcessOwner) {
 				generation := NewGeneration()
@@ -247,6 +248,7 @@ func TestRecoverDoesNotRetireUnrelatedFailedSuccessor(t *testing.T) {
 					func(_ context.Context, command string) (Status, error) {
 						if command == supervisorStopCommand {
 							stops.Add(1)
+							return Status{}, errors.New("unexpected successor retirement request")
 						}
 						return Status{Workspace: w, Generation: generation, Phase: "error"}, nil
 					}))
