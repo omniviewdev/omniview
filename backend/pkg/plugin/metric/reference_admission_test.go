@@ -34,31 +34,31 @@ func TestReferenceUtilitiesFailBeforeConnectionWorkWithoutAdmission(t *testing.T
 		{"exec.CreateSession", func(admit hostresource.ReferenceAdmitter) error {
 			ctrl := hostexec.NewController(logging.NewNop(), nil, nil)
 			ctrl.SetReferenceAdmitter(admit)
-			_, err := ctrl.CreateSession("test", "connection", sdkexec.SessionOptions{Reference: reference, Route: route})
+			_, err := ctrl.CreateSession(context.Background(), "test", "connection", sdkexec.SessionOptions{Reference: reference, Route: route})
 			return err
 		}},
 		{"logs.CreateSession", func(admit hostresource.ReferenceAdmitter) error {
 			ctrl := hostlogs.NewController(logging.NewNop(), nil, nil)
 			ctrl.SetUIReferenceAdmitter(admit)
-			_, err := ctrl.CreateSession("test", "connection", sdklogs.CreateSessionOptions{Reference: reference, Route: route})
+			_, err := ctrl.CreateSession(context.Background(), "test", "connection", sdklogs.CreateSessionOptions{Reference: reference, Route: route})
 			return err
 		}},
 		{"networker.StartResourcePortForwardingSession", func(admit hostresource.ReferenceAdmitter) error {
 			ctrl := hostnetworker.NewController(logging.NewNop(), nil, nil)
 			ctrl.SetReferenceAdmitter(admit)
-			_, err := ctrl.StartResourcePortForwardingSession("test", "connection", sdknetworker.PortForwardSessionOptions{Connection: &sdknetworker.PortForwardResourceConnection{Reference: reference, Route: route}})
+			_, err := ctrl.StartResourcePortForwardingSession(context.Background(), "test", "connection", sdknetworker.PortForwardSessionOptions{Connection: &sdknetworker.PortForwardResourceConnection{Reference: reference, Route: route}})
 			return err
 		}},
 		{"metric.Query", func(admit hostresource.ReferenceAdmitter) error {
 			ctrl := NewController(logging.NewNop(), nil, nil)
 			ctrl.SetUIReferenceAdmitter(admit)
-			_, err := ctrl.Query("test", "connection", sdkmetric.QueryRequest{Reference: reference, Route: route})
+			_, err := ctrl.Query(context.Background(), "test", "connection", sdkmetric.QueryRequest{Reference: reference, Route: route})
 			return err
 		}},
 		{"metric.Subscribe", func(admit hostresource.ReferenceAdmitter) error {
 			ctrl := NewController(logging.NewNop(), nil, nil)
 			ctrl.SetUIReferenceAdmitter(admit)
-			_, err := ctrl.Subscribe("test", "connection", SubscribeRequest{Reference: reference, Route: route})
+			_, err := ctrl.Subscribe(context.Background(), "test", "connection", SubscribeRequest{Reference: reference, Route: route})
 			return err
 		}},
 	}
@@ -77,9 +77,9 @@ func TestReferenceUtilitiesFailBeforeConnectionWorkWithoutAdmission(t *testing.T
 		})
 	}
 	local := hostexec.NewController(logging.NewNop(), nil, nil)
-	_, err := local.CreateSession("local", "local", sdkexec.SessionOptions{ResourceData: &resourcev2.Value{Kind: "null"}})
+	_, err := local.CreateSession(context.Background(), "local", "local", sdkexec.SessionOptions{ResourceData: &resourcev2.Value{Kind: "null"}})
 	require.Equal(t, "INVALID_REQUEST", resourcev2.ErrorCode(err))
-	_, err = (&ServiceWrapper{}).Subscribe("test", "connection", `{"catalog_revision":"frontend-forgery"}`)
+	_, err = (&ServiceWrapper{}).Subscribe(context.Background(), "test", "connection", `{"catalog_revision":"frontend-forgery"}`)
 	require.Equal(t, "INVALID_REQUEST", resourcev2.ErrorCode(err))
 }
 
@@ -129,7 +129,7 @@ func testReferenceQueryCatalogPin(t *testing.T, direct bool) {
 		}
 		return admitted, err
 	})
-	result, err := ctrl.Query(nativeMetricPluginID, nativeMetricConnectionID, sdkmetric.QueryRequest{ResourceKey: nativeMetricResourceKey, ResourceID: observed.Record.Reference.Address.ID, ResourceData: &observed.Record.Body, Reference: &observed.Record.Reference, Route: &observed.Route, Shape: sdkmetric.ShapeCurrent})
+	result, err := ctrl.Query(invocation.HostContext(context.Background()), nativeMetricPluginID, nativeMetricConnectionID, sdkmetric.QueryRequest{ResourceKey: nativeMetricResourceKey, ResourceID: observed.Record.Reference.Address.ID, ResourceData: &observed.Record.Body, Reference: &observed.Record.Reference, Route: &observed.Route, Shape: sdkmetric.ShapeCurrent})
 	require.NoError(t, err)
 	require.Equal(t, float64(runtime.GOMAXPROCS(0)), result.Results[0].CurrentValue.Value)
 	select {
@@ -199,7 +199,7 @@ func TestReferenceSubscriptionPinsAndDropsQueuedSamplesAcrossPublicIDReuse(t *te
 		}
 		return admitted, err
 	})
-	id, err := ctrl.Subscribe(nativeMetricPluginID, nativeMetricConnectionID, SubscribeRequest{ResourceKey: nativeMetricResourceKey, ResourceID: observed.Record.Reference.Address.ID, ResourceData: &observed.Record.Body, Reference: &observed.Record.Reference, Route: &observed.Route, Interval: time.Second})
+	id, err := ctrl.Subscribe(invocation.HostContext(context.Background()), nativeMetricPluginID, nativeMetricConnectionID, SubscribeRequest{ResourceKey: nativeMetricResourceKey, ResourceID: observed.Record.Reference.Address.ID, ResourceData: &observed.Record.Body, Reference: &observed.Record.Reference, Route: &observed.Route, Interval: time.Second})
 	require.NoError(t, err)
 	fixture.waitMetricRPCStarted(t)
 	select {
@@ -229,7 +229,7 @@ func TestReferenceSubscriptionPinsAndDropsQueuedSamplesAcrossPublicIDReuse(t *te
 	// interest is removed. The public event had translated only this ID field.
 	queued.SubscriptionID = first.wireID
 	require.NoError(t, ctrl.Unsubscribe(id))
-	replacement, err := ctrl.Subscribe(nativeMetricPluginID, nativeMetricConnectionID, SubscribeRequest{ResourceKey: nativeMetricResourceKey, Interval: time.Second})
+	replacement, err := ctrl.Subscribe(invocation.HostContext(context.Background()), nativeMetricPluginID, nativeMetricConnectionID, SubscribeRequest{ResourceKey: nativeMetricResourceKey, Interval: time.Second})
 	require.NoError(t, err)
 	// The public API currently mints fresh IDs too. Simulate an external adapter
 	// reusing its old public identity without ever reusing the SDK wire identity.
@@ -281,7 +281,7 @@ func TestQueryAllPropagatesReferenceAdmissionDenial(t *testing.T) {
 	) (context.Context, error) {
 		return nil, resourcev2.NewError("FORBIDDEN", "Reference metrics are denied.")
 	})
-	result, err := ctrl.QueryAll("connection", sdkmetric.QueryRequest{
+	result, err := ctrl.QueryAll(context.Background(), "connection", sdkmetric.QueryRequest{
 		ResourceKey: "pods", Reference: &resourcev2.ResourceReference{Address: resourcev2.ResourceAddress{Provider: "denied-provider", Authority: "cluster", Type: "pods", ID: "pod", Scope: []resourcev2.ScopeEntry{}}},
 		Route: &resourcev2.AccessRoute{Connection: "connection"},
 	})
@@ -320,7 +320,7 @@ func TestPollingOperationErrorRetainsInterestAndUnsubscribeCancelsNativeWork(t *
 	ctrl.emitter = metricRecordingEmitter{events: events}
 	require.NoError(t, ctrl.OnPluginStart(nativeMetricPluginID, config.PluginMeta{}, fixture.backend))
 	t.Cleanup(func() { _ = ctrl.OnPluginStop(nativeMetricPluginID, config.PluginMeta{}) })
-	id, err := ctrl.Subscribe(nativeMetricPluginID, nativeMetricConnectionID, SubscribeRequest{ResourceKey: nativeMetricResourceKey, Interval: 200 * time.Millisecond})
+	id, err := ctrl.Subscribe(invocation.HostContext(context.Background()), nativeMetricPluginID, nativeMetricConnectionID, SubscribeRequest{ResourceKey: nativeMetricResourceKey, Interval: 200 * time.Millisecond})
 	require.NoError(t, err)
 	fixture.waitMetricRPCStarted(t)
 	select {

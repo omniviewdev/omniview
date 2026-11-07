@@ -14,7 +14,6 @@ import (
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	sdkactivity "github.com/omniviewdev/plugin-sdk/pkg/activity"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
-	sdklifecycle "github.com/omniviewdev/plugin-sdk/pkg/v1/lifecycle"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -118,9 +117,11 @@ func (pm *pluginManager) bindActivities(id string, backend plugintypes.PluginBac
 	if err != nil {
 		return err
 	}
-	client, ok := raw.(*sdklifecycle.Client)
+	client, ok := raw.(interface {
+		ServeActivities(context.Context, sdkactivity.Reporter) (func(), error)
+	})
 	if !ok {
-		return fmt.Errorf("plugin %s has invalid lifecycle client", id)
+		return fmt.Errorf("plugin %s has invalid activity lifecycle provider", id)
 	}
 
 	generation := uuid.NewString()

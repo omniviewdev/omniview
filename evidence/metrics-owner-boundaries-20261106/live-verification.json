@@ -1,0 +1,159 @@
+{
+  "checked_at": "2026-11-06T15:49:32.632Z",
+  "source_revisions": {
+    "host": "4984a79102cec46506ef104d32b18f8ce75426a3",
+    "sdk": "fe479313e4aa0be678e995d11e449af1f5baa26f",
+    "kubernetes": "993336c6e2231bc4ae240eb647f89b1bec39439b"
+  },
+  "workspace": {
+    "name": "metrics-integrated-live-20261106",
+    "url": "http://127.0.0.1:34836/",
+    "mode": "browser",
+    "status": "Ready"
+  },
+  "checks": {
+    "sdk_go": {
+      "tested_packages": 27,
+      "no_tests_packages": 20
+    },
+    "host_go": {
+      "tested_packages": 61,
+      "no_tests_packages": 10
+    },
+    "kubernetes_go": {
+      "tested_packages": 11,
+      "no_tests_packages": 6
+    },
+    "runtime": {
+      "tests": 460,
+      "files": 40
+    },
+    "host_ui": {
+      "passed": 1518,
+      "skipped": 3,
+      "passed_files": 119
+    },
+    "kubernetes_ui": {
+      "passed": 1740,
+      "skipped": 3,
+      "passed_files": 200
+    },
+    "host_race_packages": 3,
+    "sdk_race_packages": 2,
+    "public_sdk_kubernetes_metric_race": true,
+    "public_sdk_host_build": true,
+    "production_frontend_build": true,
+    "runtime_and_vite_plugin_builds": true,
+    "host_lint": {
+      "errors": 0,
+      "warnings": 10
+    },
+    "kubernetes_lint": {
+      "errors": 0,
+      "warnings": 1538
+    },
+    "sdk_ci": "https://github.com/omniviewdev/plugin-sdk/actions/runs/42232290348"
+  },
+  "live": {
+    "native": {
+      "cluster": "kind-omniview-load-lab",
+      "ready_nodes": 4,
+      "total_pods": 316,
+      "visiblePods": 30,
+      "numericCPU": 30,
+      "readyContainers": 30,
+      "node_panels": [
+        "CPU usage151.58mDetailsNativeSampleUpdatedValid untilCurrent09:43:32 AM09:45:32 AMnodeomniview-load-lab-control-planeAttributionName scopedMeasurement window20.019 s",
+        "Memory working set1.43GiBDetailsNativeSampleUpdatedValid untilCurrent09:43:32 AM09:45:32 AMnodeomniview-load-lab-control-planeAttributionName scopedMeasurement window20.019 s"
+      ]
+    },
+    "grafana": {
+      "cluster": "kind-kind",
+      "datasource_uid": "prometheus",
+      "final_table": {
+        "pods": 24,
+        "cpu": "2.5m",
+        "memory": "46.74MiB"
+      },
+      "visualizations": [
+        "Line",
+        "Area",
+        "Bars",
+        "Value"
+      ],
+      "real_global_query_preview": {
+        "status": "ok",
+        "latest_cores": 0.02625
+      },
+      "connection_override_validated_previewed_saved": true,
+      "global_owner_default_saved_with_nonempty_inherited_revision": true,
+      "global_reset_restored_five_minute_owner_query": true,
+      "final_profile_definitions": 0,
+      "connection_override_remains_two_minutes": true
+    },
+    "plot_stability": {
+      "range_change": {
+        "range": "Last 6 hours",
+        "retained": true,
+        "detached": false,
+        "loading": false,
+        "plotCount": 3
+      },
+      "manual_refresh": {
+        "retained": true,
+        "detached": false,
+        "loading": false
+      }
+    },
+    "preferences": {
+      "pod_switch": true,
+      "page_reload": true,
+      "host_restart": true,
+      "selected_metrics": [
+        "kubernetes.pod.cpu.usage",
+        "kubernetes.pod.memory.working_set",
+        "kubernetes.pod.network_receive",
+        "kubernetes.pod.restarts"
+      ],
+      "display_modes": [
+        "Line",
+        "Area",
+        "Bars",
+        "Value"
+      ],
+      "six_hour_range_survived_reload": true,
+      "final_range": "Last 1 hour"
+    },
+    "cross_owner_discovery": {
+      "provider_context": "grafana",
+      "resource_owner": "kubernetes",
+      "real_owner_connection_and_admitted_pod_sample": true,
+      "owner_context_uses_existing_plugin_provider": true
+    },
+    "browser_errors_after_final_reload": 0
+  },
+  "ownership_regressions": {
+    "evidence": "Go and UI behavior regressions; independent reviews resolved",
+    "generic_scope_keys": [
+      "region",
+      "account",
+      "project"
+    ],
+    "undeclared_scope_rejected": true,
+    "forged_native_owner_rejected": true,
+    "unrelated_catalog_failure_isolated": true,
+    "global_saves_use_selected_owner_revision": true,
+    "reset_preserves_other_metric_drafts": true
+  },
+  "batching": {
+    "fresh_upstream_counts_remeasured": false,
+    "prior_real_counts": "../metrics-native-cutover-20261106/native-batching.json",
+    "current_verification": "Provider batching/join/projection regressions passed; actual native and Grafana reads exercised. No new upstream-count claim."
+  },
+  "shipping": {
+    "ci_workflows_changed": false,
+    "merged": false,
+    "released": false,
+    "hold": "User draft audit; compatible host/runtime publication precedes Kubernetes minimum-version bump."
+  }
+}

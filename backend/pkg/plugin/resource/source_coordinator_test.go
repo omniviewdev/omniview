@@ -51,7 +51,7 @@ func (p *scriptedSourceProvider) OpenSourceStream(ctx context.Context, request r
 	return stream, nil
 }
 
-func sourceTestFixture(t *testing.T) (*controller, *recordingEmitter, *scriptedSourceProvider, ResolvedTarget) {
+func sourceTestFixture(t *testing.T, configure ...func(*scriptedSourceProvider)) (*controller, *recordingEmitter, *scriptedSourceProvider, ResolvedTarget) {
 	t.Helper()
 	ctrl, events := newTestControllerWithEmitter(t)
 	base := &mockProvider{
@@ -65,6 +65,9 @@ func sourceTestFixture(t *testing.T) (*controller, *recordingEmitter, *scriptedS
 		},
 	}
 	provider := &scriptedSourceProvider{mockProvider: base, opens: make(chan scriptedSourceOpen, 16)}
+	for _, setup := range configure {
+		setup(provider)
+	}
 	registerMockPlugin(ctrl, "p1", provider)
 	_, err := ctrl.StartConnection(testInvocationContext(), "p1", "conn-1")
 	require.NoError(t, err)

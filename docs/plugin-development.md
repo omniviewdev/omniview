@@ -384,6 +384,20 @@ resource-session JSON as built-in Exec, applies the same host reference admissio
 and asks the plugin for its command immediately before launch. It is not a
 frontend arbitrary-command API. Commands are not logged or returned to the UI.
 
+The Go Exec creation/native-launch, port-forward creation, and legacy metric
+`Query`, `QueryAll`, and `Subscribe` APIs accept `context.Context`; Wails injects
+that argument without changing JavaScript calls.
+UI bindings retain the authenticated native window through reference admission
+and connection lookup. A missing window or another window's reference fails
+before provider dispatch. Native headless callers retain their own principal;
+they must not pass through UI window admission. Integrated exec and forwarding
+providers receive a context that preserves admitted values but does not inherit
+binding-completion cancellation. Native command planning and launch remain
+bounded by the request context and a 30-second timeout.
+Legacy metric reference queries and subscription admission also retain the
+authenticated window. Shared metric stream lifetime remains independent of
+the binding request.
+
 Frontend plugins use `useNativeExec({ pluginID?, resourceKey })` from
 `@omniviewdev/runtime`. It returns `isSupported`, `isPending`, and
 `openNativeSession({ connectionID, opts }): Promise<boolean>`; `opts` is

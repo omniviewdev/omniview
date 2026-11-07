@@ -76,10 +76,14 @@ type Controller interface {
 	Run(context.Context)
 	Service
 	SetCrashCallback(cb func(pluginID string))
+	// RetireSourceOwner releases a native window's sources without exposing a browser binding.
+	RetireSourceOwner(owner string)
 	Graph() *graph.RelationshipGraph
 	ValidateReference(context.Context, string, resource.AccessRoute, resource.ResourceReference) error
 	SetConnectionChangeHook(func(pluginID, connectionID string) func())
 	AdmitReference(context.Context, string, string, resource.AccessRoute, resource.ResourceReference) (context.Context, error)
+	ReadObservedResource(context.Context, string, resource.AccessRoute, resource.ResourceReference, []string) (*resource.Value, func(context.Context) error, error)
+	GuardObservedReference(context.Context, string, string, resource.AccessRoute, resource.ResourceReference) (func(context.Context) error, error)
 }
 
 // pluginState holds per-plugin runtime state.

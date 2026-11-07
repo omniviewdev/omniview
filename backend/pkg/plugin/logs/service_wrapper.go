@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/transportjson"
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -15,7 +16,8 @@ import (
 //
 //	OnPluginDestroy
 type ServiceWrapper struct {
-	Ctrl Controller
+	Ctrl  Controller
+	Realm invocation.ContextScope
 }
 
 func (s *ServiceWrapper) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
@@ -39,6 +41,7 @@ func (s *ServiceWrapper) GetSupportedResources(pluginID string) []logssdk.Handle
 	return s.Ctrl.GetSupportedResources(pluginID)
 }
 func (s *ServiceWrapper) CreateSession(
+	ctx context.Context,
 	plugin, connectionID string,
 	encoded string,
 ) (*logssdk.LogSession, error) {
@@ -46,7 +49,10 @@ func (s *ServiceWrapper) CreateSession(
 	if err := transportjson.Decode(encoded, &opts, plugin, connectionID); err != nil {
 		return nil, err
 	}
-	return s.Ctrl.CreateSession(plugin, connectionID, opts)
+	if s.Realm != nil {
+		ctx = s.Realm.Context(ctx)
+	}
+	return s.Ctrl.CreateSession(ctx, plugin, connectionID, opts)
 }
 func (s *ServiceWrapper) GetSession(sessionID string) (*logssdk.LogSession, error) {
 	return s.Ctrl.GetSession(sessionID)

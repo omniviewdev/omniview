@@ -157,14 +157,52 @@ The host-owned `PluginInfo.origin` and `frontendModule` fields select product co
 Installed metadata cannot opt into built-in loading. `adapters/builtinModules.ts`
 contains an explicit module-key registry. Each entry declares inexpensive route
 metadata and a `load: () => import('./feature/entry')` function. Route metadata must
-not import the feature entry. The production registry is empty until a feature
-migration supplies its real frontend and backend.
+not import the feature entry. Grafana is a trusted in-tree module and declares
+`activateAtStartup` because its settings contributions must exist before navigation.
 
 Discovery registers those route descriptors without evaluating modules or calling
 `PluginManager.LoadPlugin`. Built-ins never join `loadAll`, including when callers
 pass them directly. Opening `/_plugin/<id>/...` activates the feature through
 `PluginRouteStatus`. Commands and capability consumers explicitly call the shared
 `usePluginService().load(id)` action before using feature registrations.
+Startup explicitly calls that same `load(id)` action for enabled trusted modules
+with `activateAtStartup`; all other built-ins remain demand-loaded. This does not
+add built-ins to the external `loadAll` batch.
+
+Typed `omniview/plugin/settings` contributions replace only their registration
+owner's settings body and register draft/save/discard navigation state.
+Typed `omniview/connection/settings` contributions render only where the resource
+owner places `ConnectionSettingsContributions`. The owner supplies approved public
+metadata; rendering never grants source credentials or resource-query authority.
+Both settings surfaces accept function/class components and React memo/lazy
+wrappers; lazy contributions render through the existing Suspense boundary.
+
+Resource metric views use one finite catalog and observation surface. Native
+samples remain current-only; external sources can return supported range histories.
+Mixed selections partition into disjoint current/range observations by supported
+shape; no current-only metric is requested as a range. Relative windows send a
+duration for host-owned evaluation, while absolute bounds remain fixed. Chart
+domains come from the corresponding delivered snapshot, not a frontend timer.
+Profile/kind presentation preferences retain metric selection and order, layout,
+display mode, time range and details visibility. Owner-connection source choices
+remain separate from presentation preferences and provider credentials.
+Owning views declare initial CPU/memory favorites. Selected metrics appear as
+compact removable chips; additional catalog metrics live in the searchable Add
+metric menu, without pruning saved unavailable IDs. History panels compose a
+prominent latest value, area chart, icon display menu and shared Details footer.
+Area, line and sample-bar chart modes persist exactly as `area`, `line` and
+`sample-bars`; native current-only value/capacity preferences retain their vocabulary.
+Source selection persists separately by owner connection and resource kind.
+Successful source saves publish the host-returned revision before completion;
+failed choices remain visible without replacing admitted query-cache routing.
+Missing validation, preview and discovery responses are failures, not empty success.
+Concise normalized errors remain visible; extended diagnostics belong in Details.
+Failed, ambiguous and invalid-context/mapping results render as errors, not empty
+samples. Healthy metrics remain visible when another metric fails.
+Sample provenance resolves result source, then matching descriptor source, then
+catalog source, preserving native supplementation inside mixed catalogs.
+Genuine cluster/namespace dashboard operations retain their existing non-resource
+query contract until an equivalent finite aggregate contract exists.
 
 The production resolver reads authoritative native inventory, rejects disabled
 plugins and unknown module keys, calls native `LoadPlugin`, and only then imports

@@ -42,6 +42,7 @@ export const useConnection = ({
       queryClient.invalidateQueries({ queryKey: [pluginID, 'connection'] }),
       queryClient.invalidateQueries({ queryKey: resourceQueryKeys.all(pluginID) }),
       queryClient.invalidateQueries({ queryKey: [pluginID, 'resource-v2', 'editor-schemas'] }),
+      queryClient.invalidateQueries({ queryKey: ['metric'] }),
     ]);
   };
   const refreshProfileState = async () => {

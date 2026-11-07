@@ -7,5 +7,10 @@ export {
 };
 
 export {
-    MetricProviderSummary
+    MetricProviderSummary,
+    MetricViewPreferences,
+    MetricsObservationSnapshot,
+    MetricsObservationSpec,
+    OpenMetricsObservationRequest,
+    ResourceMetricsCatalogRequest
 } from "./models.js";

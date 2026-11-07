@@ -14,7 +14,7 @@ import (
 // graph reference validation are deliberately not frontend methods.
 type ServiceWrapper struct {
 	Ctrl  Controller
-	Realm *invocation.Scope
+	Realm invocation.ContextScope
 }
 
 func (s *ServiceWrapper) realmContext(ctx context.Context) context.Context {

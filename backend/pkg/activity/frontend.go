@@ -31,7 +31,7 @@ type frontendSession struct {
 // report-only work. The capability never grants plugin producer authority.
 type FrontendService struct {
 	Service *Service
-	Realm   *invocation.Scope
+	Realm   invocation.ContextScope
 
 	mu       sync.Mutex
 	sessions map[string]frontendSession

@@ -116,9 +116,11 @@ type sourceCoordinator struct {
 	sessions map[string]*sourceSession
 	views    map[string]*sourceView
 	now      func() time.Time
-	after    func(time.Duration) <-chan time.Time
-	stateMu  sync.Mutex
-	states   map[sourceStateKey]*sourceAggregate
+	// Retired host-issued owners cannot regain interests through an in-flight open.
+	retiredOwners map[string]struct{}
+	after         func(time.Duration) <-chan time.Time
+	stateMu       sync.Mutex
+	states        map[sourceStateKey]*sourceAggregate
 }
 
 func newSourceCoordinator(c *controller) *sourceCoordinator {
@@ -307,6 +309,11 @@ func (sc *sourceCoordinator) acquire(ctx context.Context, pluginID string, targe
 	key := boundSourceKey(pluginID, owner, target, mode, opctx.Value(sourceBindingKey{}).(sourceBinding))
 retry:
 	sc.mu.Lock()
+	if _, retired := sc.retiredOwners[owner]; retired {
+		sc.mu.Unlock()
+		cancel()
+		return nil, "", resourcev2.NewError("NOT_FOUND", "Source owner retired.")
+	}
 	if err := sc.ctrl.currentGeneration(opctx, pluginID, generation); err != nil {
 		sc.mu.Unlock()
 		cancel()
@@ -469,6 +476,35 @@ func (sc *sourceCoordinator) release(s *sourceSession, v *sourceView) {
 	}
 }
 
+// RetireSourceOwner is native-only. The caller supplies the host-issued window
+// owner, never a browser-provided view or owner identifier.
+func (c *controller) RetireSourceOwner(owner string) {
+	if owner == "" {
+		return
+	}
+	sc := c.sources
+	sc.mu.Lock()
+	if sc.retiredOwners == nil {
+		sc.retiredOwners = make(map[string]struct{})
+	}
+	sc.retiredOwners[owner] = struct{}{}
+	var closing []*sourceSession
+	for key, s := range sc.sessions {
+		if s.owner == owner {
+			delete(sc.sessions, key)
+			closing = append(closing, s)
+		}
+	}
+	for id, v := range sc.views {
+		if v.owner == owner {
+			delete(sc.views, id)
+		}
+	}
+	sc.mu.Unlock()
+	// Never acquire a session lock or join a stream while holding sc.mu.
+	sc.closeSessions(closing)
+}
+
 func (c *controller) OpenSourceView(ctx context.Context, pluginID string, request HostSourceViewRequest) (_ HostSourceViewOpened, retErr error) {
 	ctx, err := c.admit(ctx, "resource.OpenSourceView", readTarget(pluginID, request.Target))
 	if err != nil {
@@ -486,7 +522,8 @@ func (c *controller) OpenSourceView(ctx context.Context, pluginID string, reques
 	s.mu.Lock()
 	sc.mu.Lock()
 	s.reservations--
-	if err := ctx.Err(); err != nil || len(sc.views) >= maxSourceViews || s.closed {
+	_, retired := sc.retiredOwners[owner]
+	if err := ctx.Err(); err != nil || retired || len(sc.views) >= maxSourceViews || s.closed {
 		empty := !s.inventory && len(s.views) == 0 && s.reservations == 0
 		if empty && sc.sessions[s.key] == s {
 			delete(sc.sessions, s.key)
