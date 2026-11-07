@@ -966,9 +966,12 @@ func printWorkspaceValue(out io.Writer, value any) {
 		}
 		if result.Reinstalled {
 			fmt.Fprintln(out, "Reinstalled: dependency trees recorded by the composition installer")
-		} else {
+		} else if result.Phase == "unlinking" {
 			fmt.Fprintln(out, "Not reinstalled: the dependency unlink was interrupted (phase "+result.Phase+"); "+
 				"rerun the interrupted `workspace unlink` or `workspace remove`")
+		} else {
+			fmt.Fprintln(out, "Not reinstalled: selected dependency trees were removed while the first launch was still applying (phase "+result.Phase+"); "+
+				"continue with the remaining recovery actions from the original ownership conflict")
 		}
 		return
 	case devworkspace.Registry:
