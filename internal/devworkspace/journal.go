@@ -2,6 +2,8 @@ package devworkspace
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -235,7 +237,14 @@ func lockRoot(root string) (func(), error) {
 	if err = os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
-	return tryLock(filepath.Join(dir, "lifecycle.lock"))
+	release, err := tryLock(filepath.Join(dir, "lifecycle.lock"))
+	if err != nil {
+		var busy *devcontract.Error
+		if errors.As(err, &busy) && busy.Code == "workspace_busy" {
+			return nil, devcontract.Fail(4, "collection_busy", fmt.Sprintf("collection lifecycle operation is busy at %q (lock %q); this does not establish that the requested workspace is running. Wait for the active collection operation to finish, inspect the requested workspace, then explicitly retry only if still needed. Do not delete the lock file or kill a process based on this path", root, filepath.Join(dir, "lifecycle.lock")))
+		}
+	}
+	return release, err
 }
 
 func tryLock(path string) (func(), error) {
@@ -245,7 +254,7 @@ func tryLock(path string) (func(), error) {
 		return nil, err
 	}
 	if !ok {
-		return nil, devcontract.Fail(4, "workspace_busy", "workspace or profile is in use by another process")
+		return nil, devcontract.Fail(4, "workspace_busy", fmt.Sprintf("workspace/profile operation is busy at lock %q; wait for its owner to finish, inspect the exact workspace/profile, then explicitly retry only if still needed. Do not delete the lock file or infer process ownership from a PID", path))
 	}
 	return func() { _ = f.Unlock() }, nil
 }
