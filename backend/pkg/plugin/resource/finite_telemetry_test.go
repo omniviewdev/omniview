@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"testing"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/omniviewdev/omniview/internal/telemetry"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/stretchr/testify/require"
@@ -72,7 +74,7 @@ func TestFiniteOperationTelemetryRecordsReturnedWorkAndErrors(t *testing.T) {
 				require.True(t, ok)
 				for _, point := range data.DataPoints {
 					durations += point.Count
-					require.NotContains(t, fmt.Sprint(point.Attributes.ToSlice()), "private-")
+					requireOperationAttributes(t, point.Attributes.ToSlice())
 				}
 			case "omniview.resource.op_errors":
 				data, ok := measurement.Data.(metricdata.Sum[int64])
@@ -84,7 +86,7 @@ func TestFiniteOperationTelemetryRecordsReturnedWorkAndErrors(t *testing.T) {
 				data, ok := measurement.Data.(metricdata.Sum[int64])
 				require.True(t, ok)
 				for _, point := range data.DataPoints {
-					require.NotContains(t, fmt.Sprint(point.Attributes.ToSlice()), "private-")
+					requireOperationAttributes(t, point.Attributes.ToSlice())
 					switch measurement.Name {
 					case "omniview.resource.records":
 						records += point.Value
@@ -102,4 +104,20 @@ func TestFiniteOperationTelemetryRecordsReturnedWorkAndErrors(t *testing.T) {
 	require.Equal(t, int64(2), records, "Count only returned records, not failed requests or provider count estimates")
 	require.Equal(t, int64(9), callsCount)
 	require.Zero(t, active, "Every success and error must end its operation")
+}
+
+// requireOperationAttributes pins the measurement label contract: the host-assigned
+// plugin ID is the only identity; errors, routes and references never appear.
+func requireOperationAttributes(t *testing.T, attributes []attribute.KeyValue) {
+	t.Helper()
+	for _, kv := range attributes {
+		switch string(kv.Key) {
+		case "domain", "operation", "outcome":
+		case "plugin":
+			require.Equal(t, "private-plugin", kv.Value.AsString())
+		default:
+			t.Fatalf("unexpected measurement attribute %q", kv.Key)
+		}
+		require.NotContains(t, fmt.Sprint(kv.Value.AsInterface()), "private provider detail")
+	}
 }
