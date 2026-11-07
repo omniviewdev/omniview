@@ -33,7 +33,7 @@ For a default UUID profile, both public import APIs establish its ownership mark
 Separate APIs are available:
 
 - `Snapshot(ctx, SnapshotOptions) (*Baseline, error)` acquires the same `<source>/.lock` used by the application, then reads bbolt with `ReadOnly: true` and one coherent `View`. A busy source returns `ErrSourceBusy`; the CLI should explain that the source instance must first be stopped. It does not retry a live-source clone.
-- `Import(ctx, *Baseline, ImportOptions) (Result, error)` revalidates profile identity and reapplies the allowlist even for a decoded or modified snapshot. `Result` includes the state root, `baseline.json` path, and inactive inventory.
+- `Import(ctx, *Baseline, ImportOptions) (Result, error)` revalidates profile identity and reapplies the allowlist even for a decoded or modified snapshot. `Result` includes the state root, `baseline.json` path, inactive inventory, authoritative `policy`, `copiedScope`, and `exclusions`.
 - `Seed` validates nonoverlap before acquiring the source lock and combines those operations.
 
 A caller may JSON-encode a `Baseline` for transport. Source root and ancestor identities are SHA-256 fingerprints, not copied source paths. They preserve overlap checks across JSON round trips; they are identifiers, not signatures or artifact trust. Source version is restricted to a bounded version identifier. Inventory provenance is always `unverified-source-inventory`, regardless of source metadata claims.
@@ -56,6 +56,12 @@ The existing host persists numeric `editor.fontWeight` (including its default `1
 ## Unconditional exclusions
 
 No runtime locks, PID/PGID records, `plugin_pids.json`, `devserver_pids.json`, `.devinfo*`, control endpoints/tokens, discovery, logs, caches, temporary files, sessions, terminal instances, native/webview/browser storage, credentials, connections, autoconnect state, or telemetry enablement/auth/export destinations are copied. No executable, plugin directory, source-worktree path, symlink or hardlink is installed. `plugin_state.json` is read only to reconstruct plugin ID/version; enabled flags, development paths, errors and isolation claims are discarded.
+
+The `safe-preferences-and-inactive-inventory-v1` policy deliberately excludes Grafana saved connections and their credentials, including stores that mix public connection details with secrets. It also excludes metric-binding stores such as `metrics/configuration.json`; public bindings are not migrated separately. Reconfigure integrations and bindings explicitly in the destination. Successful seeding does not prove integration readiness.
+
+Accepted workspace launch/status JSON exposes validated import details under `seed`: `policy`, `copiedScope` (`allowlisted-safe-preferences`, `inactive-unverified-plugin-inventory`), and canonical `exclusions`, including `grafana-connections-and-credentials` and `metric-bindings-and-configuration`. Human output and `--seed-from` help explain the same boundary. These policy details contain no source paths, endpoints, credential values, or copied preference values. Resume retains disclosure only after checking the seed receipt digest, current sanitized policy, and readable destination settings. Interrupted import recovery additionally requires the published preferences to match the recorded import intent before publishing its completion marker.
+
+Exclusion labels are explanatory metadata, not an expanded copy policy. Earlier receipts and pending intents remain valid when only those labels differ; resume verifies the original receipt digest without rewriting its bytes, then derives disclosure from the current canonical exclusions.
 
 Source settings bytes remain unchanged, including on corruption. The writable corruption-recovery settings-store `Open` is never used on the source. If the source has no `.lock`, taking the offline lock may create that empty runtime marker; `source.lockMarker` records `created-for-offline-lock` or `existing`. The lock is not copied to the destination. No source files are renamed or recovered.
 

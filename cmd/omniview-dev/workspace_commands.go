@@ -85,7 +85,7 @@ func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceComm
 		flags.BoolVar(&c.launch.Watch, "watch", true, "own source build/watch for the session lifetime")
 		flags.BoolVar(&c.launch.LiveFrontend, "live-frontend", true, "run actual strict host Vite and HMR")
 		flags.StringVar(&c.linkEvidence, "link-evidence", "", "FILE containing the actual successful pinned pnpm protocol probe report (JSON)")
-		flags.StringVar(&c.launch.BaselineSource, "seed-from", "", "stopped baseline source state root")
+		flags.StringVar(&c.launch.BaselineSource, "seed-from", "", "stopped source state root; safe-preferences-and-inactive-inventory-v1 copies only allowlisted safe preferences and inactive plugin inventory, not a profile clone; excludes Grafana connections/credentials and metric bindings/configuration")
 		flags.StringVar(&c.launch.BaselineVersion, "seed-version", "", "nonsecret baseline source build version")
 		flags.DurationVar(&c.launch.Timeout, "timeout", 20*time.Minute, "bounded build/readiness deadline")
 	}
@@ -973,6 +973,9 @@ func printWorkspaceValue(out io.Writer, value any) {
 	}
 	if status, ok := value.(devworkspace.Status); ok {
 		fmt.Fprintf(out, "%s (%s)\nWorkspace: %s\nState: %s\nStatus: %s\n", status.Manifest.DisplayName, status.Manifest.WorkspaceID, status.Root, status.StateRoot, status.Phase)
+		if status.Seed != nil {
+			fmt.Fprintf(out, "Seed policy: %s\nCopied scope: %s\nExcluded: %s\nSeed is not a profile clone or integration-readiness proof.\n", status.Seed.Policy, strings.Join(status.Seed.CopiedScope, ", "), strings.Join(status.Seed.Exclusions, ", "))
+		}
 		fmt.Fprintf(out, "Health: process=%s build=%s dependencies=%s served-source=%s checkout-since-ready=%s readiness=%s hmr=%s reload=%s\n", status.Health.Liveness, status.Health.Build, status.Health.Dependencies, status.Health.ServedSource, status.Health.CheckoutSinceReady, status.Health.Readiness, status.Health.HMR, status.Health.SourceReload)
 		if status.FailedStage != "" {
 			fmt.Fprintf(out, "Failed stage: %s\n", status.FailedStage)
