@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	"github.com/omniviewdev/omniview/internal/devcontract"
@@ -257,6 +258,60 @@ func TestFailedOperationDiagnosticsWithoutPluginInventory(t *testing.T) {
 	again := call(false, s.generation)
 	if _, exists := again.Error.Details["unsafeDiagnostic"]; exists {
 		t.Fatal("unsafe retrieval contaminated default response")
+	}
+}
+
+// diagnosticChainError deliberately does not repeat its cause in Error.
+type diagnosticChainError struct {
+	message string
+	cause   error
+}
+
+func (e diagnosticChainError) Error() string { return e.message }
+func (e diagnosticChainError) Unwrap() error { return e.cause }
+
+func TestOperationDiagnosticBoundaries(t *testing.T) {
+	chain := error(errors.New("outside-depth"))
+	for i := 15; i >= 0; i-- {
+		message := "middle"
+		if i == 15 {
+			message = "last-in-depth"
+		}
+		chain = diagnosticChainError{message, chain}
+	}
+	for _, test := range []struct {
+		name   string
+		err    error
+		want   string
+		absent string
+	}{
+		{"utf8", errors.New(strings.Repeat("x", 8191) + "界"), strings.Repeat("x", 8191), "�"},
+		{"joined", diagnosticChainError{"build: " + strings.Repeat("x", 9000),
+			errors.Join(errors.New("compiler: "+strings.Repeat("x", 9000)), errors.New("persistence-cause"))},
+			"persistence-cause", ""},
+		{"depth", chain, "last-in-depth", "outside-depth"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			s, _, _ := fixtureServer(t)
+			accepted := s.accept(devcontract.Request{}, func(context.Context) (any, error) { return nil, test.err })
+			waitOperation(t, s, accepted)
+			api := httptest.NewServer(http.HandlerFunc(s.serveHTTP))
+			defer api.Close()
+			s.host = strings.TrimPrefix(api.URL, "http://")
+			client, err := NewClient(api.URL, s.token, s.workspaceID, s.generation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer client.Close()
+			response, _ := client.Call(context.Background(), "operation.get", OperationParams{
+				OperationID: accepted.OperationID, IncludeOutput: true,
+			})
+			text, _ := response.Error.Details["unsafeDiagnostic"].(string)
+			if !utf8.ValidString(text) || len(text) > 8192 || !strings.Contains(text, test.want) ||
+				(test.absent != "" && strings.Contains(text, test.absent)) {
+				t.Fatalf("diagnostic lost cause or violated boundary: bytes=%d contains-cause=%v", len(text), strings.Contains(text, test.want))
+			}
+		})
 	}
 }
 
