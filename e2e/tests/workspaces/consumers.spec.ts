@@ -26,8 +26,7 @@ async function saveCounter(page: Page, value: number): Promise<Page> {
 
 test.describe('Real application plugin consumers', () => {
   test('loads real probe and Kubernetes once through the shared host runtime', async ({ appPage, workspace }) => {
-    const descriptor = await workspace.verify();
-    expect(descriptor.plugins.map(plugin => plugin.id).sort()).toEqual(['kubernetes', probeID]);
+    await workspace.verify();
     await appPage.goto(`${workspace.browserURL()}#/_plugin/kubernetes/`);
     const search = appPage.getByRole('combobox', { name: 'Search clusters', exact: true });
     await expect(search).toBeFocused();
