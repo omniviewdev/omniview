@@ -152,9 +152,14 @@ func workspaceOwnershipError(err error, w Workspace) *devcontract.Error {
 			// This is an available destructive action, never automatic consent.
 			conflict.NextCommands = append(conflict.NextCommands, []string{executable, "workspace", "reset-modules", "--workspace", w.ManifestPath})
 			if launch, loadErr := LoadLaunchOptions(w); loadErr == nil && launch.Validate() == nil {
-				// Recover consumes retained launch/refresh intent, including its
-				// evidence and mode, rather than reconstructing lossy up flags.
-				conflict.NextCommands = append(conflict.NextCommands, []string{executable, "workspace", "recover", "--workspace", w.ManifestPath})
+				// A retained refresh must finish first. Without one, Recover
+				// would create a stopped refresh and lose the initial up intent.
+				base := filepath.Join(filepath.Dir(filepath.Dir(w.Root)), ".omniview-dev", "recovery", w.Manifest.WorkspaceID)
+				if pending, readErr := readRecoveryRefresh(w, filepath.Join(base, "refresh.json")); pending || readErr != nil {
+					conflict.NextCommands = append(conflict.NextCommands, []string{executable, "workspace", "recover", "--workspace", w.ManifestPath})
+				} else {
+					conflict.NextCommands = append(conflict.NextCommands, []string{executable, "workspace", "restart", "--workspace", w.ManifestPath})
+				}
 			}
 		}
 	}

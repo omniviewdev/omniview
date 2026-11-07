@@ -700,18 +700,22 @@ func dependencyLinkConflict(root string, j *linkJournal, path, reason string) er
 }
 
 func applyLinkFiles(j *linkJournal) error {
+	return writePlannedLinkFiles(j, false)
+}
+
+func writePlannedLinkFiles(j *linkJournal, replay bool) error {
 	unchanged := func(e linkFile) error {
 		current, err := snapshotLinkFile(j.Root, filepath.Join(j.Root, e.Path))
 		if err != nil {
 			return err
 		}
-		if current.OriginalHash != e.OriginalHash {
+		if current.OriginalHash != e.OriginalHash && (!replay || current.OriginalHash != e.AppliedHash) {
 			return devcontract.Fail(4, "link_conflict", "dependency file changed during link planning: "+e.Path)
 		}
 		return nil
 	}
-	// SDK planning invokes external Go commands. Recheck every original before
-	// saving intent or writing any prepared bytes, including files not modified.
+	// SDK planning invokes external Go commands. Recheck every file before
+	// writing; only a validated retained journal may replay already-applied bytes.
 	if j.Plan.Composition != nil {
 		if err := devcompose.CheckInputs(*j.Plan.Composition); err != nil {
 			return err
@@ -867,7 +871,11 @@ func (m *Manager) Link(ctx context.Context, name string, opts LinkOptions) (Link
 	if err != nil {
 		return LinkReport{}, err
 	}
-	ctx = scoped
+	return m.link(scoped, name, opts, linkCommand)
+}
+
+// link runs the transaction with the selected dependency command runner.
+func (m *Manager) link(ctx context.Context, name string, opts LinkOptions, run func(context.Context, string, string, ...string) ([]byte, error)) (LinkReport, error) {
 	w, unlock, err := m.linkWorkspace(ctx, name)
 	if err != nil {
 		return LinkReport{}, err
@@ -888,7 +896,7 @@ func (m *Manager) Link(ctx context.Context, name string, opts LinkOptions) (Link
 			if err = devcompose.CheckInputs(*j.Plan.Composition); err != nil {
 				return LinkReport{}, err
 			}
-			if _, err = linkCommand(ctx, w.Root, "pnpm", "-r", "peers", "check", "--json", "--lockfile-only"); err != nil {
+			if _, err = run(ctx, w.Root, "pnpm", "-r", "peers", "check", "--json", "--lockfile-only"); err != nil {
 				return LinkReport{}, err
 			}
 			if err = errors.Join(devcompose.CheckInputs(*j.Plan.Composition), checkLinkFiles(w.Root, j)); err != nil {
@@ -902,10 +910,10 @@ func (m *Manager) Link(ctx context.Context, name string, opts LinkOptions) (Link
 			if err = devcompose.CheckInputs(*j.Plan.Composition); err != nil {
 				return LinkReport{}, err
 			}
-			if err = applyLinkFiles(j); err != nil {
+			if err = writePlannedLinkFiles(j, true); err != nil {
 				return LinkReport{}, err
 			}
-			if err = installComposition(ctx, w.ResolvedWorkspace, j, linkCommand); err != nil {
+			if err = installComposition(ctx, w.ResolvedWorkspace, j, run); err != nil {
 				return LinkReport{WorkspaceID: j.WorkspaceID, Protocol: j.Evidence.Protocol, Phase: j.Phase}, err
 			}
 			j.Phase = "linked"
@@ -966,7 +974,7 @@ func (m *Manager) Link(ctx context.Context, name string, opts LinkOptions) (Link
 	if err = applyLinkFiles(j); err != nil {
 		return LinkReport{}, err
 	}
-	if err = installComposition(ctx, w.ResolvedWorkspace, j, linkCommand); err != nil {
+	if err = installComposition(ctx, w.ResolvedWorkspace, j, run); err != nil {
 		return LinkReport{WorkspaceID: j.WorkspaceID, Protocol: j.Evidence.Protocol, Phase: j.Phase, SeedConvergence: j.Plan.Composition.Convergence}, err
 	}
 	j.Phase = "linked"

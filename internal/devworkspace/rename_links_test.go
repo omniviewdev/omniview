@@ -159,7 +159,7 @@ func TestApplyingModulesConflictGivesRetainedOrderedRecovery(t *testing.T) {
 		{executable, "workspace", "ownership", "--workspace", f.w.ManifestPath, "--json"},
 		{executable, "workspace", "down", "--workspace", f.w.ManifestPath},
 		{executable, "workspace", "reset-modules", "--workspace", f.w.ManifestPath},
-		{executable, "workspace", "recover", "--workspace", f.w.ManifestPath},
+		{executable, "workspace", "restart", "--workspace", f.w.ManifestPath},
 	}, conflict.NextCommands)
 }
 

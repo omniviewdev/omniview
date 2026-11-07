@@ -285,8 +285,12 @@ selected dependency trees in that phase without running an installer. Then rerun
 the original `workspace up` or `workspace link` command with the same exact
 workspace and protocol evidence. For first launch after an unmanaged frozen
 install, run `workspace down --workspace /absolute/workspace`, then
-`workspace reset-modules --workspace /absolute/workspace`, then the original
-`workspace up` command. Preserve any wanted dependency bytes externally first.
+`workspace reset-modules --workspace /absolute/workspace`, then
+`workspace restart --workspace /absolute/workspace` to replay saved launch settings
+and protocol evidence (or repeat the original `workspace up` command). If retained
+refresh intent exists, the diagnostic instead includes `workspace recover` to
+finish that operation with its retained running/stopped intent.
+Preserve any wanted dependency bytes externally first.
 Use the managed launcher for package commands to retain pre-run verification.
 
 ### Read-only ownership inspection and standalone reentry
@@ -327,9 +331,12 @@ For standalone-to-managed reentry, inspect once before linking. Preserve **every
 reported unowned module root externally while stopped. No command silently adopts
 those bytes, and `reset-modules` is not a nondestructive preservation operation.
 An interrupted `applying` link can use the stopped, explicit selected-module
-reset above before retrying the original launch. Changed or unverified aggregate
-files still require preservation and explicit link recovery; reset never adopts
-those bytes. Retain source/profile data and resolve separately reported conflicts.
+reset above before retrying the original launch.
+Replay accepts only the same validated journal's exact original or applied bytes;
+already-applied aggregate files from a failed install need not be removed.
+Changed or unverified aggregate files still require preservation and explicit link
+recovery; reset never adopts those bytes. Retain source/profile data and resolve
+separately reported conflicts.
 
 ### Managed bindings and explicit producer reconciliation
 
