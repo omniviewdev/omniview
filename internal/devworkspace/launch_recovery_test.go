@@ -11,7 +11,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -142,4 +144,87 @@ func TestStoppedRefreshMovesFailureToHistory(t *testing.T) {
 	require.Equal(t, failure.Code, status.HistoricalError.Code)
 	require.Equal(t, failure.Message, status.HistoricalError.Message)
 	require.Equal(t, "host", status.HistoricalFailedStage)
+}
+
+func TestLateRefreshFailureRetiresOnlyFailedLaunchWithoutReinstall(t *testing.T) {
+	for _, phase := range []string{refreshStart, refreshVerify} {
+		t.Run(phase, func(t *testing.T) {
+			m, w, j := recoveryFixture(t)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			generation := NewGeneration()
+			owner := devsession.ProcessOwner{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "supervisor", Source: w.Root}
+			child, err := startOwnedChild(ctx, w.Root, os.Environ(), io.Discard, owner, nil, "/bin/sleep", "300")
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, child.stop(context.Background())) })
+			token := []byte("late-refresh-authenticated-supervisor-token")
+			var stops atomic.Int32
+			server := httptest.NewServer(supervisorHandler(w.Manifest.WorkspaceID, generation, token,
+				func(_ context.Context, command string) (Status, error) {
+					status := Status{Workspace: w, Generation: generation, Phase: "error"}
+					switch command {
+					case supervisorStatusCommand:
+						return status, nil
+					case supervisorStopCommand:
+						stops.Add(1)
+						if err := child.stop(context.Background()); err != nil {
+							return status, err
+						}
+						status.Phase = "stopped"
+						return status, nil
+					default:
+						t.Errorf("unexpected supervisor command: %s", command)
+						return status, errors.New("unexpected supervisor command")
+					}
+				}))
+			defer server.Close()
+			record := supervisorRecord{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation,
+				Endpoint: server.URL + "/v1/supervisor", TokenFile: launchPath(w, "supervisor-"+generation+".secret"), Process: child.identity}
+			require.NoError(t, os.WriteFile(record.TokenFile, token, 0600))
+			require.NoError(t, rawSaveLaunchJSON(launchPath(w, "supervisor.json"), record))
+			path := filepath.Join(m.Root, ".omniview-dev", "recovery", w.Manifest.WorkspaceID, "refresh.json")
+			require.NoError(t, atomicJSON(path, refreshIntent{
+				WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, Phase: phase,
+				Evidence: j.Evidence, Launch: LaunchOptions{Mode: "browser"}, WasRunning: true,
+			}))
+			linksBefore, err := os.ReadFile(launchPath(w, "links.json"))
+			require.NoError(t, err)
+			_, err = m.Recover(ctx, w.Manifest.WorkspaceID, RefreshOptions{Executable: "/must-not-launch"})
+			var failure *devcontract.Error
+			require.ErrorAs(t, err, &failure)
+			// This source-only cohort lacks SDK selection: reaching Start's
+			// real prerequisite proves the failed owner no longer blocks it.
+			require.Equal(t, "sdk_source_required", failure.Code)
+			require.Equal(t, int32(1), stops.Load())
+			require.ErrorIs(t, devsession.VerifyOwnedProcess(child.identity, owner), devsession.ErrProcessGone)
+			linksAfter, err := os.ReadFile(launchPath(w, "links.json"))
+			require.NoError(t, err)
+			require.Equal(t, linksBefore, linksAfter, "late launch recovery repeated dependency preparation")
+		})
+	}
+}
+
+func TestFailedRefreshShutdownRejectsSuccessorGeneration(t *testing.T) {
+	m, _ := fixtureManager(t)
+	ctx := context.Background()
+	w, err := m.Create(ctx, CreateOptions{Slug: "failed-owner-successor"})
+	require.NoError(t, err)
+	generation := NewGeneration()
+	owner := devsession.ProcessOwner{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "supervisor", Source: w.Root}
+	child, err := startOwnedChild(ctx, w.Root, os.Environ(), io.Discard, owner, nil, "/bin/sleep", "300")
+	require.NoError(t, err)
+	defer child.stop(ctx)
+	record := supervisorRecord{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation,
+		Endpoint: "http://127.0.0.1:1/v1/supervisor", Process: child.identity}
+	require.NoError(t, rawSaveLaunchJSON(launchPath(w, "supervisor.json"), record))
+	before, err := os.ReadFile(launchPath(w, "supervisor.json"))
+	require.NoError(t, err)
+	_, err = m.downGeneration(ctx, w.Manifest.WorkspaceID, false, NewGeneration())
+	var failure *devcontract.Error
+	require.ErrorAs(t, err, &failure)
+	require.Equal(t, "stale_target", failure.Code)
+	require.NoError(t, devsession.VerifyOwnedProcess(child.identity, owner))
+	after, err := os.ReadFile(launchPath(w, "supervisor.json"))
+	require.NoError(t, err)
+	require.Equal(t, before, after)
 }

@@ -198,6 +198,10 @@ func (m *Manager) Down(ctx context.Context, name string) (Status, error) {
 }
 
 func (m *Manager) down(ctx context.Context, name string, fence bool) (Status, error) {
+	return m.downGeneration(ctx, name, fence, "")
+}
+
+func (m *Manager) downGeneration(ctx context.Context, name string, fence bool, generation string) (Status, error) {
 	if fence {
 		if err := m.fenceFollow(ctx, name); err != nil {
 			return Status{}, err
@@ -208,7 +212,7 @@ func (m *Manager) down(ctx context.Context, name string, fence bool) (Status, er
 		}
 		defer release()
 	}
-	status, err := m.supervisorCommand(ctx, name, supervisorStopCommand)
+	status, err := m.supervisorGenerationCommand(ctx, name, supervisorStopCommand, generation)
 	if err != nil || status.Generation == "" || runtime.GOOS == "darwin" {
 		return status, err
 	}
@@ -277,16 +281,26 @@ func (m *Manager) Restart(ctx context.Context, name string) (Status, error) {
 	return m.Start(ctx, name, options, "", io.Discard)
 }
 func (m *Manager) supervisorCommand(ctx context.Context, name, command string) (Status, error) {
+	return m.supervisorGenerationCommand(ctx, name, command, "")
+}
+
+func (m *Manager) supervisorGenerationCommand(ctx context.Context, name, command, generation string) (Status, error) {
 	w, err := m.Inspect(ctx, name)
 	if err != nil {
 		return Status{}, err
 	}
 	var record supervisorRecord
 	if err = readLaunchJSON(launchPath(w, "supervisor.json"), &record); err != nil {
+		if os.IsNotExist(err) && generation != "" {
+			return Status{}, devcontract.Fail(4, "stale_target", "selected supervisor generation disappeared before shutdown")
+		}
 		if os.IsNotExist(err) && (command == supervisorStopCommand || command == supervisorRestartCommand) {
 			return Status{Workspace: w, Phase: "stopped"}, nil
 		}
 		return Status{}, err
+	}
+	if generation != "" && record.Generation != generation {
+		return Status{}, devcontract.Fail(4, "stale_target", "workspace generation changed before shutdown")
 	}
 	if err = verifySupervisor(record, w); err != nil {
 		if errors.Is(err, devsession.ErrProcessGone) && (command == supervisorStopCommand || command == supervisorRestartCommand) {

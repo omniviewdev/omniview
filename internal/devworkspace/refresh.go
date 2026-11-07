@@ -460,6 +460,21 @@ func (m *Manager) refresh(ctx context.Context, name string, options RefreshOptio
 	if options.Diagnostics == nil {
 		options.Diagnostics = io.Discard
 	}
+	// A launch can fail after refresh has already advanced beyond stop/install.
+	// Re-enter only the launch boundary; never repeat installation or change the
+	// captured cohort merely because its owned supervisor failed.
+	if intent.Phase == refreshVerify {
+		current, statusErr := m.Status(ctx, name)
+		if statusErr != nil {
+			return result, statusErr
+		}
+		switch current.Phase {
+		case "error", "build-error", sourceUpdateStopped, refreshCrashed:
+			if err = save(refreshStart); err != nil {
+				return result, err
+			}
+		}
+	}
 	if intent.Phase == "start" {
 		if err = m.validateFinalRefreshCohort(ctx, name, intent.Plan); err != nil {
 			return result, err
@@ -499,6 +514,13 @@ func (m *Manager) refresh(ctx context.Context, name string, options RefreshOptio
 		result.Status, err = m.Status(ctx, name)
 		if err != nil {
 			return result, err
+		}
+		if result.Status.Phase == "error" || result.Status.Phase == "build-error" {
+			// Bind shutdown to the failed generation just authenticated above.
+			// A successor published meanwhile must remain untouched.
+			if _, err = m.downGeneration(ctx, name, false, result.Status.Generation); err != nil {
+				return result, err
+			}
 		}
 		if result.Status.Phase != "ready" {
 			result.Status, err = m.Start(ctx, name, intent.Launch, options.Executable, options.Diagnostics)
