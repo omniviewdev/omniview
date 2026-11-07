@@ -20,12 +20,13 @@ func TestPrivateOutputCreationDoesNotRepairExistingWindowsACL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeOutput(t, filepath.Join(path, "retained"), "unknown bytes")
+	marker := filepath.Join(path, "retained")
+	writeOutput(t, marker, "unknown bytes")
 	user, err := windows.GetCurrentProcessToken().GetTokenUser()
 	if err != nil {
 		t.Fatal(err)
 	}
-	descriptor, err := windows.SecurityDescriptorFromString("D:P(A;;FA;;;" + user.User.Sid.String() + ")(A;;FR;;;WD)")
+	descriptor, err := windows.SecurityDescriptorFromString("D:P(A;OICI;FA;;;" + user.User.Sid.String() + ")(A;OICI;FR;;;WD)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,6 +39,10 @@ func TestPrivateOutputCreationDoesNotRepairExistingWindowsACL(t *testing.T) {
 	}
 	if err = devsession.ValidatePrivateDirectory(path); !errors.Is(err, devsession.ErrOwnership) {
 		t.Fatalf("fixture did not expose an additional principal: %v", err)
+	}
+	raw, err := os.ReadFile(marker)
+	if err != nil || string(raw) != "unknown bytes" {
+		t.Fatal("fixture marker is not readable before refused creation", err)
 	}
 	before, err := observeSnapshotPath(path)
 	if err != nil {
@@ -53,7 +58,7 @@ func TestPrivateOutputCreationDoesNotRepairExistingWindowsACL(t *testing.T) {
 	if err != nil || !os.SameFile(before, after) {
 		t.Fatal("existing root identity changed", err)
 	}
-	raw, err := os.ReadFile(filepath.Join(path, "retained"))
+	raw, err = os.ReadFile(marker)
 	if err != nil || string(raw) != "unknown bytes" {
 		t.Fatal("unknown bytes changed", err)
 	}
