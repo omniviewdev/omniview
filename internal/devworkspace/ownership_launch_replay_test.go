@@ -2,6 +2,8 @@ package devworkspace
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -176,4 +178,130 @@ func TestUnlinkingOwnershipGuidanceCompletesInterruptedTeardown(t *testing.T) {
 			require.NoError(t, devoutputs.Validate(ctx, f.w.ResolvedWorkspace))
 		})
 	}
+}
+
+func TestProducerOwnershipRecoveryRetainsRefreshRoute(t *testing.T) {
+	f := newResetModulesFixture(t, "plugin-sdk")
+	ctx := context.Background()
+	j, err := loadLinkJournal(f.w)
+	require.NoError(t, err)
+	require.NoError(t, saveLaunchJSON(launchPath(f.w, "launch.json"), LaunchOptions{Mode: "browser", LinkEvidence: j.Evidence}))
+	path := filepath.Join(f.m.Root, ".omniview-dev", "recovery", f.w.Manifest.WorkspaceID, "refresh.json")
+	require.NoError(t, atomicJSON(path, refreshIntent{WorkspaceID: f.w.Manifest.WorkspaceID, Root: f.w.Root, Phase: refreshStart, WasRunning: true, Evidence: j.Evidence, Launch: LaunchOptions{Mode: "browser"}}))
+	worker := filepath.Join(f.host, "ui", "providers", "monaco", "yaml.worker.bundle.js")
+	require.NoError(t, os.MkdirAll(filepath.Dir(worker), 0700))
+	require.NoError(t, os.WriteFile(worker, []byte("postinstall"), 0600))
+	inspection, err := InspectOwnership(ctx, f.w)
+	require.NoError(t, err)
+	var found bool
+	for _, entry := range inspection.Entries {
+		if entry.Producer != devoutputs.YAMLWorker {
+			continue
+		}
+		require.NotNil(t, entry.Conflict)
+		payload := workspaceOwnershipError(entry.Conflict, f.w)
+		conflict := payload.Details["ownershipConflict"].(*devoutputs.Conflict)
+		require.Equal(t, "recover", conflict.NextCommands[len(conflict.NextCommands)-1][2])
+		found = true
+	}
+	require.True(t, found)
+	require.FileExists(t, path, "guidance must not consume retained intent")
+}
+
+func TestProducerOwnershipRecoveryRetriesOriginalPreservation(t *testing.T) {
+	for _, moved := range []bool{false, true} {
+		t.Run(map[bool]string{false: "intent", true: "moved"}[moved], func(t *testing.T) {
+			f := newResetModulesFixture(t, "plugin-sdk")
+			ctx := context.Background()
+			require.NoError(t, os.MkdirAll(filepath.Join(f.host, "ui", "providers", "monaco"), 0700))
+			stage, err := devoutputs.Prepare(ctx, f.w.ResolvedWorkspace, f.host, devoutputs.YAMLWorker)
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(filepath.Join(stage.Directory, "yaml.worker.bundle.js"), []byte("preserve me"), 0600))
+			require.NoError(t, devoutputs.Publish(ctx, stage))
+			worker := filepath.Join(f.host, "ui", "providers", "monaco", "yaml.worker.bundle.js")
+			parent, err := filepath.EvalSymlinks(t.TempDir())
+			require.NoError(t, err)
+			require.NoError(t, os.Chmod(parent, 0700))
+			destination := filepath.Join(parent, "original")
+			destinationID, err := preservationDirectoryIdentity(parent)
+			require.NoError(t, err)
+			sourceID, err := preservationDirectoryIdentity(filepath.Dir(worker))
+			require.NoError(t, err)
+			journalPath := filepath.Join(f.m.Root, ".omniview-dev", "repository-outputs", f.w.Manifest.WorkspaceID, "journal.json")
+			raw, err := os.ReadFile(journalPath)
+			require.NoError(t, err)
+			var journal map[string]any
+			require.NoError(t, json.Unmarshal(raw, &journal))
+			entry := journal["Entries"].(map[string]any)[worker+"|yaml-worker"].(map[string]any)
+			entry["Preservation"] = map[string]any{
+				"Path": destination, "ParentIdentity": destinationID.Device + ":" + destinationID.FileID,
+				"SourceParentIdentity": sourceID.Device + ":" + sourceID.FileID,
+				"Before":               entry["Expected"], "Head": fixtureGit(t, f.host, "rev-parse", "HEAD"),
+			}
+			raw, err = json.Marshal(journal)
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(journalPath, raw, 0600))
+			if moved {
+				require.NoError(t, os.Rename(worker, destination))
+			}
+			inspection, err := InspectOwnership(ctx, f.w)
+			require.NoError(t, err)
+			var retried bool
+			for _, item := range inspection.Entries {
+				if item.Producer != devoutputs.YAMLWorker {
+					continue
+				}
+				require.NotNil(t, item.Conflict)
+				payload := workspaceOwnershipError(item.Conflict, f.w)
+				conflict := payload.Details["ownershipConflict"].(*devoutputs.Conflict)
+				for _, argv := range conflict.NextCommands {
+					require.NotEqual(t, "/bin/mkdir", argv[0])
+					if argv[2] == "reconcile-output" {
+						require.Equal(t, destination, argv[10])
+						report, err := f.m.ReconcileOutput(ctx, f.w.Manifest.Slug, argv[6], argv[8], argv[10])
+						require.NoError(t, err)
+						require.True(t, report.RestoredBaseline)
+						retried = true
+					}
+				}
+			}
+			require.True(t, retried)
+			raw, err = os.ReadFile(destination)
+			require.NoError(t, err)
+			require.Equal(t, "preserve me", string(raw))
+			next, err := devoutputs.Prepare(ctx, f.w.ResolvedWorkspace, f.host, devoutputs.YAMLWorker)
+			require.NoError(t, err)
+			require.NoError(t, next.Abort(ctx))
+		})
+	}
+}
+
+func TestProducerPreservationBaseRequiresProducerFilesystem(t *testing.T) {
+	f := newResetModulesFixture(t)
+	base := filepath.Dir(f.m.Root)
+	target := filepath.Join(f.host, "ui", "providers", "monaco", "yaml.worker.bundle.js")
+	for _, sameDevice := range []bool{false, true} {
+		got, err := producerPreservationBase(f.w, target, func(path string) (generatedFileIdentity, error) {
+			if path == filepath.Dir(target) {
+				return generatedFileIdentity{Device: "producer"}, nil
+			}
+			require.Equal(t, base, path)
+			device := "producer"
+			if !sameDevice {
+				device = "other"
+			}
+			return generatedFileIdentity{Device: device}, nil
+		})
+		if sameDevice {
+			require.NoError(t, err)
+			require.Equal(t, base, got)
+		} else {
+			require.ErrorContains(t, err, "different filesystems")
+			require.Empty(t, got)
+		}
+	}
+	_, err := producerPreservationBase(f.w, target, func(string) (generatedFileIdentity, error) {
+		return generatedFileIdentity{}, errors.New("unavailable")
+	})
+	require.ErrorContains(t, err, "unavailable")
 }

@@ -20,6 +20,7 @@ type Conflict struct {
 	MetadataPath   string       `json:"metadataPath,omitempty"`
 	Stage          string       `json:"stage,omitempty"`
 	Backup         string       `json:"backup,omitempty"`
+	PreservedAt    string       `json:"preservedAt,omitempty"`
 	ChangedPaths   []string     `json:"changedPaths,omitempty"`
 	MoreChanges    bool         `json:"moreChanges,omitempty"`
 	Differences    []Difference `json:"differences,omitempty"`
@@ -111,6 +112,9 @@ func conflict(spec specification, ownership, phase string, actual, expected snap
 }
 func entryConflict(entry *outputEntry, phase string, actual snapshot, cause error) *Conflict {
 	c := conflict(entry.Spec, "owned", phase, actual, physical(entry.Expected), cause)
+	if entry.Preservation != nil {
+		c.PreservedAt = entry.Preservation.Path
+	}
 	if entry.Pending != nil {
 		c.Stage = entry.Pending.Directory
 		c.Backup = entry.Pending.Backup

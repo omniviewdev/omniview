@@ -391,6 +391,13 @@ outputs, or resets source/profile data. It restores only this producer's current
 committed baseline through the existing publication state machine. Interrupted
 reconciliation retains an intent: rerun the same command with the exact original
 preservation path. Source, parent or preserved-byte changes cause refusal.
+Recovery commands reuse that retained path without creating another directory.
+For new preservation, guidance chooses a sibling of the collection after checking
+that its parent and the producer share a filesystem. If that layout crosses
+filesystems, choose a private external path on the producer filesystem explicitly;
+guidance does not emit a restart that skips the blocked preservation.
+Retained refresh operations resume with `workspace recover`, not `restart`, so
+the original intent records and fences the successor generation.
 Supported exact producers are `bindings`, `distribution`, `shims`, and
 `yaml-worker`. For an unowned output, this explicit command authorizes preservation
 only; it never admits existing bytes as managed producer output.
