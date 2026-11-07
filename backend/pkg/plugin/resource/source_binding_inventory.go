@@ -43,7 +43,7 @@ func (sc *sourceCoordinator) reconcileBindingInventory(ctx context.Context, plug
 		}
 		keep := false
 		for _, target := range targets {
-			if sourceKey(pluginID, s.owner, target, resourcev2.SourceModeSnapshotAndUpdates) == s.key {
+			if sourceKey(pluginID, s.owner, target, resourcev2.SourceModeSnapshotAndUpdates) == sourceKey(pluginID, s.owner, s.target, s.mode) {
 				keep = true
 				break
 			}

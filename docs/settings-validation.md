@@ -377,13 +377,10 @@ The host pins the coordinated transactional SDK in `go.mod`. Rebuild plugins
 against that contract. Local source selection requires an absolute SDK path;
 normal builds use the exact pinned module dependency.
 
-The E2E runner checks out the independently reviewed SDK commit in
-`e2e/source-cohort.json`. That SHA must exactly match repository variable
-`OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION` or
-`OMNIVIEW_RESOURCE_V2_REVIEWED_MAINTENANCE_SDK_REVISION`. After admission, workflows
-pass the selected commit downstream as `REVIEWED_SDK_REVISION`. Updating `go.mod`
-alone does not approve another SDK. These external approvals remain under
-user-authorized release administration; the isolation guards remain independent.
+The E2E runner requires an SDK checkout at the commit resolved from the host
+`go.mod`. UI packages come from the host lockfile, and Kubernetes comes from the
+host gitlink. Managed workspace builds observe the linked SDK checkout's HEAD
+and source digest, including dirty changes, to bind artifacts to their source.
 
 ```sh
 SDK_SOURCE=/absolute/path/to/plugin-sdk

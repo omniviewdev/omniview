@@ -19,15 +19,14 @@ not require launch evidence. Before launching, run:
 
 Preflight reports all missing launch inputs together and exits 3 when blocked.
 Supply `--link-evidence /path/to/probe.json` with a successful pinned protocol
-probe and `--reviewed-sdk-revision FULL_COMMIT` with an independently reviewed
-SDK commit. Saved launch options and retained protocol evidence are reused.
+probe. Saved launch options and retained protocol evidence are reused.
 Launching requires selecting `--repo plugin-sdk` even when you do not intend
 to develop the SDK. For an existing workspace, use
 `workspace edit FEATURE --root "$COLLECTION" --add-repo plugin-sdk`.
 
-Preflight does not install dependencies, start processes, or authorize unreviewed
-source. A ready report covers launch inputs only; launch still validates source
-trust, strict peer dependencies, and runtime compatibility.
+Preflight does not install dependencies or start processes. A ready report covers
+launch inputs only; launch still validates source identity, strict peer dependencies,
+and runtime compatibility.
 
 ## Bootstrap the local CLI and sources
 
@@ -54,12 +53,11 @@ approve every dependency script; managed installs still use `--ignore-scripts`.
 
 Choose source refs that satisfy the actual peer contracts: compare the host's `packages/omniviewdev-runtime/package.json` with the selected UI's `packages/base-ui/package.json`. A checkout can lag an existing compatible release tag. Select compatible released source while preserving feature changes; do not invent a package version or weaken peer validation to make an older source pass.
 
-The frontend cohort consumes `@omniviewdev/base-ui` `~0.8.0` and `@omniviewdev/ai-ui`/`@omniviewdev/editors` `~6.1.0`; the runtime's base-ui peer lower bound is also `0.8.0`. These minor releases move together with React 19.3 and TanStack Table 9.
+The frontend cohort consumes `@omniviewdev/base-ui` `~0.15.0`, `@omniviewdev/ai-ui` `~6.1.9`, and `@omniviewdev/editors` `~6.2.0`. Runtime `0.30.2` supports base-ui peers `~0.14.0 || ~0.15.0`, allowing existing plugins to remain compatible during staged upgrades; the host and updated consumers select `0.15.0`. Its Vite-plugin cohort shares the standalone `@omniviewdev/base-ui/metrics` entry. Keep React 19.3 and TanStack Table 9 compatible across host and plugins.
 
-Select the UI source commit from `e2e/source-cohort.json`, not a global UI ref
-or a historical release's source pin. Previous `0.7.x` base-ui source cannot
-satisfy this frontend cohort. Keep each branch's source commits compatible with
-its actual package contracts so old main and upgraded PRs can validate independently.
+Canonical E2E and whole-app profiling consume UI packages from the host lockfile.
+Previous `0.14.x` base-ui source cannot satisfy this frontend cohort. Keep each
+branch's package dependencies compatible with its actual package contracts.
 
 The owned `e2e/fixtures/workspace-probe/ui` frontend is also a public registry
 consumer. Its manifest and pnpm12 lockfile must select the released base-ui,
@@ -94,10 +92,11 @@ The host declares its own interaction-test dependencies rather than relying on
 the UI repository's managed install. The existing UI checks job runs component
 tests after build, lint, and typechecks, reusing its runner and frozen install.
 
-Workspace Probe is a managed-source fixture. Its bootstrap registry pins remain
-at the last compatible runtime/shim release until the new cohort publishes;
-managed composition resolves its actual UI/runtime imports from selected source.
-Update those pins and their lock together after runtime/shim publication.
+Workspace Probe's independent bootstrap pins select published base-ui `0.15.0`
+and runtime/Vite plugin `0.30.2`. Regenerate its manifest and lock together only
+after the target runtime/shim cohort publishes, then verify a standalone frozen
+install and production build. Managed composition still resolves actual UI/runtime
+imports from selected source; linked builds do not prove registry compatibility.
 
 ```sh
 # Run from the host checkout containing the workspace implementation.
@@ -106,17 +105,17 @@ DEV="$(task --silent dev:cli:build)"
 "$DEV" workspace init --root "$COLLECTION" \
   --source "omniview=$HOST_SOURCE" \
   --source "ui=$UI_SOURCE_OR_BARE_REPOSITORY" \
-  --source "plugin-sdk=$FIXED_SDK_SOURCE" \
+  --source "plugin-sdk=$SDK_SOURCE" \
   --source "plugin-a=$PLUGIN_A_SOURCE" \
   --source "plugin-b=$PLUGIN_B_SOURCE" \
-  --source-ref "plugin-sdk=v0.7.0" --json
+  --source-ref "plugin-sdk=v0.15.0" --json
 ```
 
 Each source is an explicit local normal or bare Git repository. Use repeatable `--source-ref ID=REF` and `--source-directory ID=DIRECTORY` when defaults differ. Plugin IDs are read from committed `plugin.yaml` at the selected ref, never inferred from a directory name. Selected host refs must contain the tooling; creating a worktree does not copy uncommitted host changes from another checkout.
 
 Register every repository/plugin source needed by the collection up front. Registry source mappings are deliberately immutable: repeating the same initialization is allowed, but changing or adding mappings returns `registry_exists` with conflict exit4 and leaves the existing registry intact. Initialize another collection for a different source set; `workspace edit --add-plugin` selects an already registered plugin, not a new repository registration.
 
-The reviewed published SDK `v0.7.0` commit is `5b3ef764d1cf738835a723a749a0cb6c45f85e44`, including the shared read-only profile contract and single structured settings validator required by this host. Select that release or a reviewed descendant; older SDK releases do not provide the current settings contract. Subsequent ordinary edits in the selected feature SDK worktree are live development input and do not require per-edit commits. Protected isolation implementation changes require the explicit warning-bearing `--allow-isolation-source-changes` flag; it is scoped to this workspace's child processes and is not a sandbox.
+Managed workspaces require a linked local SDK checkout. Select a source compatible with the host's declared SDK dependency. Workspace builds observe the checkout's HEAD and source digest, including dirty edits, to bind artifact provenance to the actual source. This identification is not a sandbox.
 
 Local package linking requires the actual successful pinned pnpm protocol probe report, not manually asserted booleans. Run the probe once on the integrated host source with its effective SDK-aware module selection, then pass the report explicitly (or place it at `$COLLECTION/.omniview-dev/link-protocol.json`):
 
@@ -124,7 +123,7 @@ Local package linking requires the actual successful pinned pnpm protocol probe 
 PROBE_DIR="$(mktemp -d)"
 mkdir "$PROBE_DIR/hostmod" "$PROBE_DIR/module"
 HOST_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go \
-  --root "$PWD" --sdk-source "$FIXED_SDK_SOURCE" \
+  --root "$PWD" --sdk-source "$SDK_SOURCE" \
   --output-directory "$PROBE_DIR/hostmod")"
 cp "$HOST_MODFILE" "$PROBE_DIR/module/probe.mod"
 cp "${HOST_MODFILE%.mod}.sum" "$PROBE_DIR/module/probe.sum"
@@ -143,14 +142,12 @@ The probe performs real native12 recursive peer, singleton, live-export and atom
   --repo ui --repo plugin-sdk \
   --plugin "$PLUGIN_A_ID" --plugin "$PLUGIN_B_ID" \
   --start --mode browser \
-  --reviewed-sdk-revision 5b3ef764d1cf738835a723a749a0cb6c45f85e44 \
   --link-evidence "$LINK_EVIDENCE" --json
 
 # The same plugin ID can run independently in another profile.
 "$DEV" workspace create feature-b --root "$COLLECTION" \
   --repo ui --repo plugin-sdk --plugin "$PLUGIN_A_ID" \
   --start --mode browser \
-  --reviewed-sdk-revision 5b3ef764d1cf738835a723a749a0cb6c45f85e44 \
   --link-evidence "$LINK_EVIDENCE" --json
 
 "$DEV" workspace inspect feature-a --root "$COLLECTION" --json
@@ -170,6 +167,31 @@ or environment variables.
 Browser mode starts the real Wails server. Use `instance.endpoints.browser`, **not** the asset-only Vite URL. `--live-frontend=false` serves built assets instead of launching host Vite. `--watch=false` disables the supervisor build graph; otherwise its lifetime owns serial source rebuilds and real managed-generation waits. Runtime/shim changes restart actual consumers; a successful compiler exit alone is not plugin readiness.
 
 The development footer polls Vite's status middleware only when the confirmed host descriptor reports a Vite endpoint. Static frontends show **Static**, report the host's explicit backend readiness, and mark live status observations/HMR as unsupported and source freshness as unobserved. This does not certify that built assets match current source. Live Vite retains its independent build, HMR, and source-provenance observations. Switching capabilities retires the previous polling request and snapshot; a failed live observation never becomes a static-mode readiness fallback.
+
+### Archive plugin runtime
+
+`--plugin-runtime managed` (default) links each selected plugin as a managed
+source. `--plugin-runtime archive` instead publishes every selected plugin as a
+static installed archive and requires `--mode browser --watch=false
+--live-frontend=false`. Incompatible combinations are refused with
+`archive_runtime_options` (exit 2) before any output, worktree or process is
+touched. The choice is saved with the launch options, so omitted flags, `restart`
+and `down` then `up` keep it and never relink sources; an explicit
+`--plugin-runtime managed` is the only way back.
+
+The supervisor builds the selected composition through the normal ownership-
+checked producers, so the destination workspace records its own build evidence.
+For each plugin it then joins the actual published backend binary and frontend
+`dist/assets` into `.local/archive/PLUGIN/plugin.tar.gz` under the generated
+output ledger (symlinks, missing, changed, foreign and duplicate paths are
+refused; the backend must pass the host build record and match the ledger digest of its recorded publication, assets must still match their recorded publication after packaging), installs it
+through the `plugin.install-archive` operation and waits for that operation.
+No `plugin.dev.link`, Vite allocation or dependency watcher exists in this
+runtime. Readiness requires the plugin to be installed (not dev-linked), and for
+backend plugins Running with every declared backend capability negotiated; it is
+not inferred from install success. `inspect` reports the cohort as
+`archivePlugins` (archive digest, backend digest, asset count, install operation).
+In-place source updates are refused in this runtime; stop the workspace first (`workspace down`), update it stopped, then `workspace up`.
 
 Managed plugins follow their declared `requires.connections` dependencies.
 The supervisor links selected owners before their consumers.
@@ -289,7 +311,7 @@ Unchanged source and composition return `up_to_date` without reinstalling or
 restarting. Dependency-changing updates use the owned aggregate refresh, not
 one install per repository. Source-only updates use the existing affected build
 graph. Omitted launch flags preserve saved browser/native mode, MCP, local
-watch, live/embedded frontend, reviewed SDK baseline and timeout. Explicit
+watch, live/embedded frontend and timeout. Explicit
 `--mcp=false`, `--watch=false` and `--live-frontend=false` remain real overrides.
 UUID, profile, settings and port policy remain workspace-owned and stable.
 An update returns a previously running workspace to ready; a stopped workspace
@@ -465,9 +487,7 @@ worktree is a source input, not a second package-install root.
 
 ```sh
 export GOWORK=off
-export SDK_SOURCE=/absolute/plugin-sdk UI_SOURCE=/absolute/ui
-export KUBERNETES_SOURCE=/absolute/kubernetes
-export REVIEWED_SDK_REVISION=<reviewed-full-sdk-commit>
+export SDK_SOURCE=/absolute/plugin-sdk
 task e2e
 task e2e -- --changed --base origin/main
 task e2e -- --grep 'published consumers'
@@ -535,37 +555,23 @@ PRs execute the selected application suite once. The small, always-evaluated
 canonical job succeeded, including an explicitly proven prose-only skip. Failed,
 cancelled, missing or skipped jobs cannot make the gate green.
 
-Canonical E2E and whole-app profiling read the checked-out host's
-`e2e/source-cohort.json`: `plugin-sdk`, `ui`, and `kubernetes` must each contain a
-full commit SHA. UI checkout uses the validated cohort SHA. Kubernetes must match
-the host's `plugins/kubernetes` gitlink; canonical E2E also verifies the recursive
-submodule checkout. PR branches and `main` can therefore select different
-compatible UI/Kubernetes sources without changing repository variables.
-The SDK SHA must exactly match an independently reviewed commit in repository
-variable `OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION` or
-`OMNIVIEW_RESOURCE_V2_REVIEWED_MAINTENANCE_SDK_REVISION`. Workflows admit either
-external approval and propagate only the selected commit as `REVIEWED_SDK_REVISION`.
-Maintenance approval does not replace mainline approval. Only user-authorized
-release administration changes these approvals; changing the cohort alone cannot
-approve another SDK commit. Source
-identity registration, mandatory probes, conservative selection, and native
-payload cache rules remain unchanged.
+Canonical E2E and whole-app profiling resolve the SDK commit from the host's
+`go.mod` using Go module download metadata. The SDK checkout must match that
+commit. UI packages come from the host lockfile, and Kubernetes comes from the
+committed `plugins/kubernetes` gitlink. Initialize the submodule at that gitlink
+before running E2E. Source identity registration, mandatory probes, conservative
+selection, and native payload cache rules remain unchanged.
 
-Update Kubernetes cohort metadata and the gitlink together after the selected
-Kubernetes consumer commit is published and reviewed. Fetch that exact commit
-in `plugins/kubernetes`, check it out detached, replace only the `kubernetes`
-value in `e2e/source-cohort.json`, and stage both paths in the same host commit.
-Preserve the reviewed SDK pin and independently selected UI source. Do not
-replace a source SHA with a package version, release tag, or an uncommitted
-worktree identity.
+Update the Kubernetes gitlink when selecting a different plugin commit. Stage the
+gitlink in the host commit; no separate source pin is required.
 
-Run final acceptance only after committing the complete consumer cohort.
-Selected host, SDK, UI and Kubernetes sources must pass source admission;
-ignored dependency/build outputs are not source evidence. In particular, a
-worktree containing linked managed dependencies is not a standalone registry
-install root. Use independently owned dependencies, never mutate another
-workspace's `node_modules` through a symlink. Keep public-registry install/build
-evidence separate from canonical linked-source E2E and interactive visual review.
+Run final acceptance from a clean, committed host checkout with a clean SDK
+checkout at the resolved commit and the Kubernetes submodule at the gitlink.
+Ignored dependency/build outputs are not source evidence. A worktree containing
+linked managed dependencies is not a standalone registry install root. Use
+independently owned dependencies, never mutate another workspace's `node_modules`
+through a symlink. Keep public-registry install/build evidence separate from
+canonical linked-source E2E and interactive visual review.
 
 The separate push-main cache primer first performs lookup-only requests for the
 same exact Go and native pnpm keys used by PRs. If both payloads exist, it skips
@@ -577,10 +583,10 @@ OMNIVIEW_E2E_TOOL_CACHE_ROOT=/absolute/owned-native-cache \
   node e2e/scripts/run.mjs --cache-only
 ```
 
-This exclusive mode uses the same committed complete source cohort, reviewed SDK,
+This exclusive mode uses the same declared dependencies and resolved SDK checkout,
 actual native composition protocol probe, SDK-aware Task-owned Wails preparation,
 producer dependency order (runtime before Vite shims), source proof and canonical
-cohort/private preparation retirement. It does not install Chromium, start
+workspace/private preparation retirement. It does not install Chromium, start
 application profiles or run browser/application assertions. Its report records
 `operation: "cache-only"` and `applicationAcceptance: false`; success is cache
 preparation evidence, never application acceptance. The inclusive 600-second
@@ -598,7 +604,7 @@ payloads are created by trusted main pushes and are then available to PRs.
 ### Verified local execution
 
 The full canonical invocation on 2026-10-25 passed all 85 cases with zero retries
-in **301.955 seconds**, including dependency preparation, the single source-cohort
+in **301.955 seconds**, including dependency preparation, the single source cohort
 build, actual profile startup/replacement, assertions and complete retirement.
 The host source was `1db293fb18867ead0fd206d2e20669f53d36365f`, SDK
 `9ba88075a39e5406926a22d536722afecaab465c`, UI

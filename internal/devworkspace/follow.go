@@ -432,7 +432,9 @@ func (m *Manager) followObservedPlan(
 	status.BlockedReason = followErrorCode(applyErr, "update_failed")
 	m.followRecoveryCommand(name, status)
 	var typed *devcontract.Error
-	if errors.As(applyErr, &typed) && typed.Code == "supervisor_upgrade_required" {
+	preMutationRefusal := errors.As(applyErr, &typed) &&
+		(typed.Code == "supervisor_upgrade_required" || typed.Code == "archive_runtime_source_update")
+	if preMutationRefusal {
 		status.NextArgv, _ = typed.Details["nextArgv"].([]string)
 		status.NextCommand, _ = typed.Details["nextCommand"].(string)
 	}
@@ -440,7 +442,9 @@ func (m *Manager) followObservedPlan(
 		key: key, blockedReason: "explicit_recovery_required",
 		nextCommand: status.NextCommand, nextArgv: status.NextArgv,
 	}
-	if status.BlockedReason == "supervisor_upgrade_required" {
+	if preMutationRefusal {
+		// Nothing was captured, so recovery is not required: keep the typed
+		// refusal and its own next command.
 		failedCohort.blockedReason = status.BlockedReason
 	}
 	if err := publish(); err != nil {

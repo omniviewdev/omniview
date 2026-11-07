@@ -17,14 +17,23 @@ const sourceFileType = "proof::v1::File"
 
 type sourceFileClient struct{ path string }
 
-func sourceFileObservation(client *sourceFileClient, target resourcev2.ReadTarget) (resourcev2.SourceObservation, error) {
+func sourceFileRecord(client *sourceFileClient, target resourcev2.ReadTarget) (resourcev2.Record, error) {
 	body, err := os.ReadFile(client.path)
 	if err != nil {
-		return resourcev2.SourceObservation{}, err
+		return resourcev2.Record{}, err
 	}
 	record := canonicalTestRecord(target.Provider, target.Authority, target.Type, "watched/opaque:%2F")
 	record.Body.Map["value"] = resourcev2.Value{Kind: "string", String: string(body)}
-	return resourcev2.SourceObservation{Record: record, Metadata: &resourcev2.ResourceMetadata{Labels: map[string]string{"value": string(body)}}}, nil
+	return record, nil
+}
+
+func sourceFileObservation(client *sourceFileClient, target resourcev2.ReadTarget) (resourcev2.SourceObservation, error) {
+	record, err := sourceFileRecord(client, target)
+	if err != nil {
+		return resourcev2.SourceObservation{}, err
+	}
+	value := record.Body.Map["value"].String
+	return resourcev2.SourceObservation{Record: resourcev2.CompactSourceRecord(record), Metadata: &resourcev2.ResourceMetadata{Labels: map[string]string{"value": value}}}, nil
 }
 
 func TestC02SourceViewLifecycle(t *testing.T) {
@@ -62,11 +71,12 @@ func TestC02SourceViewLifecycle(t *testing.T) {
 		Registrations: []resourcev2.Registration[sourceFileClient]{{
 			Type: sourceFileType, Scope: resourcev2.QueryScope{},
 			Enumerate: func(_ context.Context, client *sourceFileClient, request resourcev2.EnumerateRequest) (resourcev2.SourcePage, error) {
-				observation, err := sourceFileObservation(client, request.Target)
+				record, err := sourceFileRecord(client, request.Target)
 				if err != nil {
 					return resourcev2.SourcePage{}, err
 				}
-				return resourcev2.SourcePage{Records: []resourcev2.Record{observation.Record}, Count: resourcev2.Count{Kind: "unknown"}, Coverage: resourcev2.Coverage{Kind: "complete"}, Consistency: resourcev2.ConsistencyBestEffort}, nil
+
+				return resourcev2.SourcePage{Records: []resourcev2.Record{record}, Count: resourcev2.Count{Kind: "unknown"}, Coverage: resourcev2.Coverage{Kind: "complete"}, Consistency: resourcev2.ConsistencyBestEffort}, nil
 			},
 			Source: func(ctx context.Context, client *sourceFileClient, request resourcev2.SourceRequest, emitter resourcev2.SourceEmitter) error {
 				defer close(stopped)

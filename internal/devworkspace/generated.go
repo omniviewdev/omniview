@@ -472,6 +472,31 @@ func publishedGeneratedTree(w Workspace, relative string) (string, error) {
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
+
+// publishedGeneratedFileDigest returns the ledger digest of one regular file
+// whose bytes still exactly match their recorded publication.
+func publishedGeneratedFileDigest(w Workspace, relative string) (string, error) {
+	ledger, unlock, _, err := lockGenerated(w)
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
+	if _, pending := ledger.Pending[filepath.Dir(relative)]; pending || ledger.Cleanup != nil {
+		return "", devcontract.Fail(4, "generated_pending", "generated output has an unfinished writer")
+	}
+	entry, recorded := ledger.Entries[relative]
+	if !recorded || entry.Kind != "file" || entry.SHA256 == "" {
+		return "", devcontract.Fail(4, "generated_conflict", "generated file has no recorded publication: "+relative)
+	}
+	path, err := generatedPath(w, relative)
+	if err != nil {
+		return "", err
+	}
+	if err = checkGeneratedEntry(path, entry); err != nil {
+		return "", err
+	}
+	return entry.SHA256, nil
+}
 func removeGeneratedSnapshot(root, relative string, entries map[string]generatedEntry) error {
 	paths := make([]string, 0, len(entries))
 	for path := range entries {
@@ -520,6 +545,62 @@ func saveOwnedGeneratedFile(w Workspace, relative string, data []byte, writer fu
 	expected := generatedEntry{Kind: "file", SHA256: digestGenerated(data)}
 	if err = checkGeneratedEntry(path, expected); err != nil {
 		return err
+	}
+	ledger.Entries[relative] = expected
+	return rawSaveLaunchJSON(ledgerPath, ledger)
+}
+
+// restoreRenameFile accepts an unrecorded publication only when the durable
+// rename journal reserves its exact bytes. afterPublish is an interruption seam.
+func restoreRenameFile(root, relative string, data []byte, afterPublish func() error) error {
+	j, err := loadJournal(root)
+	if err != nil {
+		return err
+	}
+	if j.RenameTo != root || digestGenerated(j.RenameFiles[relative]) != digestGenerated(data) {
+		return devcontract.Fail(4, "invalid_journal", "rename publication lacks an exact durable intent")
+	}
+	w, _, _, err := generatedFileContext(filepath.Join(root, ".local", relative))
+	if err != nil {
+		return err
+	}
+	ledger, unlock, ledgerPath, err := lockGenerated(w)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if err = generatedWritable(ledger); err != nil {
+		return err
+	}
+	path, err := generatedPath(w, relative)
+	if err != nil {
+		return err
+	}
+	expected := generatedEntry{Kind: "file", SHA256: digestGenerated(data)}
+	if actual, statErr := inspectGenerated(path); statErr == nil {
+		if actual != expected {
+			return devcontract.Fail(4, "generated_conflict", "rename publication differs from its durable intent")
+		}
+		if recorded, ok := ledger.Entries[relative]; ok && recorded != expected {
+			return devcontract.Fail(4, "generated_conflict", "rename publication differs from its ownership record")
+		}
+	} else if !os.IsNotExist(statErr) {
+		return statErr
+	} else {
+		if _, ok := ledger.Entries[relative]; ok {
+			return devcontract.Fail(4, "generated_conflict", "recorded rename publication was removed")
+		}
+		if err = rawSaveLaunchJSON(path, json.RawMessage(data)); err != nil {
+			return err
+		}
+		if err = checkGeneratedEntry(path, expected); err != nil {
+			return err
+		}
+		if afterPublish != nil {
+			if err = afterPublish(); err != nil {
+				return err
+			}
+		}
 	}
 	ledger.Entries[relative] = expected
 	return rawSaveLaunchJSON(ledgerPath, ledger)

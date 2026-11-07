@@ -252,7 +252,7 @@ func TestLifecycleEdgesConcurrentSameSlugHasOneDurableWinner(t *testing.T) {
 	if winner.Error != "" {
 		winner, loser = b, a
 	}
-	require.Contains(t, []string{"workspace_busy", "workspace_exists"}, loser.Code)
+	require.Contains(t, []string{"collection_busy", "workspace_exists"}, loser.Code)
 	items, err := m.List(context.Background())
 	require.NoError(t, err)
 	require.Len(t, items, 1)
@@ -386,7 +386,7 @@ func TestLifecycleEdgesRemoveContendsWithRemoveEditAndResume(t *testing.T) {
 			name := "must-not-publish"
 			contender := startLifecycleEdge(t, m, lifecycleEdgeConfig{Action: action, Name: w.Manifest.WorkspaceID, Edit: EditOptions{DisplayName: &name}})
 			contender.signal(t)
-			require.Equal(t, "workspace_busy", contender.result(t).Code)
+			require.Equal(t, "collection_busy", contender.result(t).Code)
 			_, err = gate.Write([]byte{1})
 			require.NoError(t, err)
 			require.Empty(t, remover.result(t).Error)

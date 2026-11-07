@@ -135,11 +135,12 @@ export const test = profileTest.extend<AppFixtures>({
     await bindWindowContext(page, 'main');
     await use(page);
   },
-  workspace: async ({ liveFrontend }, use) => {
+  // Delivery-mode startup must not consume the browser scenario's assertion budget.
+  workspace: [async ({ liveFrontend }, use) => {
     const workspace = await new ApplicationWorkspace('profile-a', liveFrontend).open();
     workspace.assertOwned();
     await use(workspace);
-  },
+  }, { timeout: 90_000 }],
   baseURL: async ({ workspace }, use) => {
     await use(workspace.browserURL()); 
   },

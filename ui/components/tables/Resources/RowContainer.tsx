@@ -7,7 +7,7 @@ import {
   flexRender,
 } from '@tanstack/react-table';
 import useRightDrawer from '@/hooks/useRightDrawer';
-import { showAppError, useSnackbar } from '@omniviewdev/runtime';
+import { showAppError, useNotifications } from '@omniviewdev/runtime';
 
 import { type Virtualizer, type VirtualItem } from '@tanstack/react-virtual';
 import type { ResourceTableRow } from '@/hooks/resource/useResourceDefinition';
@@ -34,7 +34,7 @@ export const RowContainer: React.FC<Props> = ({
   row,
 }) => {
   const { showResourceSidebar } = useRightDrawer();
-  const { showSnackbar } = useSnackbar();
+  const { notify } = useNotifications();
   const resourceID = row.original.record.record.reference.address.id;
 
   // Reattach the measurement ref when an identity-keyed row moves to a new virtual index.
@@ -56,7 +56,7 @@ export const RowContainer: React.FC<Props> = ({
           return;
         }
 
-        showAppError(showSnackbar, error, `Failed to load resource: ${resourceID}`);
+        showAppError(notify, error, `Failed to load resource: ${resourceID}`);
       });
     }
   };

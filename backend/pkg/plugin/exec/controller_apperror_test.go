@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -21,7 +22,7 @@ func newTestController() Controller {
 
 func TestCreateSession_PluginNotFound(t *testing.T) {
 	ctrl := newTestController()
-	_, err := ctrl.CreateSession("nonexistent", "conn", exec.SessionOptions{})
+	_, err := ctrl.CreateSession(context.Background(), "nonexistent", "conn", exec.SessionOptions{})
 
 	require.Error(t, err)
 	var target *apperror.AppError

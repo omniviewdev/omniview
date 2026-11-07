@@ -24,27 +24,49 @@ import (
 // LaunchOptions is persisted privately so up/restart use the same explicit
 // source trust, tooling and mode. No credentials are copied into this record.
 type LaunchOptions struct {
-	Mode                        string               `json:"mode"`
-	MCP                         bool                 `json:"mcp"`
-	Watch                       bool                 `json:"watch"`
-	LiveFrontend                bool                 `json:"liveFrontend"`
-	ReviewedSDKRevision         string               `json:"reviewedSDKRevision"`
-	AllowIsolationSourceChanges bool                 `json:"allowIsolationSourceChanges"`
-	LinkEvidence                LinkProtocolEvidence `json:"linkEvidence"`
-	BaselineSource              string               `json:"baselineSource,omitempty"`
-	BaselineVersion             string               `json:"baselineVersion,omitempty"`
-	Timeout                     time.Duration        `json:"timeout"`
+	Mode         string `json:"mode"`
+	MCP          bool   `json:"mcp"`
+	Watch        bool   `json:"watch"`
+	LiveFrontend bool   `json:"liveFrontend"`
+	// PluginRuntime selects how selected plugins reach the host: managed
+	// source links (default) or installed static archives built from the
+	// same selected sources. Empty means managed.
+	PluginRuntime   string               `json:"pluginRuntime,omitempty"`
+	LinkEvidence    LinkProtocolEvidence `json:"linkEvidence"`
+	BaselineSource  string               `json:"baselineSource,omitempty"`
+	BaselineVersion string               `json:"baselineVersion,omitempty"`
+	Timeout         time.Duration        `json:"timeout"`
 }
+
+// Plugin runtime selections.
+const (
+	PluginRuntimeManaged = "managed"
+	PluginRuntimeArchive = "archive"
+)
+
+// archiveRuntime reports whether selected plugins are published as installed
+// archives instead of being linked as managed sources.
+func (o LaunchOptions) archiveRuntime() bool { return o.PluginRuntime == PluginRuntimeArchive }
 
 func (o LaunchOptions) validate() error {
 	if o.Mode != "browser" && o.Mode != "native" {
 		return devcontract.Fail(2, "invalid_mode", "mode must be browser or native")
 	}
-	if !reviewedSDKRevision.MatchString(o.ReviewedSDKRevision) {
-		return devcontract.Fail(2, "reviewed_sdk_required", "supply an independently reviewed full SDK commit with --reviewed-sdk-revision")
-	}
 	if o.MCP && o.Mode != "native" {
 		return devcontract.Fail(2, "invalid_mcp_mode", "native MCP requires --mode native")
+	}
+	return o.validatePluginRuntime()
+}
+
+func (o LaunchOptions) validatePluginRuntime() error {
+	switch o.PluginRuntime {
+	case "", PluginRuntimeManaged:
+	case PluginRuntimeArchive:
+		if o.Mode != "browser" || o.Watch || o.LiveFrontend {
+			return devcontract.Fail(2, "archive_runtime_options", "--plugin-runtime archive requires --mode browser --watch=false --live-frontend=false")
+		}
+	default:
+		return devcontract.Fail(2, "invalid_plugin_runtime", "plugin runtime must be managed or archive")
 	}
 	return nil
 }
@@ -57,6 +79,17 @@ func LoadLaunchOptions(w Workspace) (LaunchOptions, error) {
 	err := readLaunchJSON(launchPath(w, "launch.json"), &o)
 	return o, err
 }
+
+const (
+	goFlagsEnv           = "GOFLAGS"
+	goWorkEnv            = "GOWORK"
+	nodePathEnv          = "NODE_PATH"
+	bindingsNode         = "bindings"
+	buildingPhase        = "building"
+	buildFailureExitCode = 5
+)
+
+const supervisorGenerationEnvironment = "OMNIVIEW_SUPERVISOR_GENERATION"
 
 func workspaceEnvironment(base []string, w Workspace, generation string, o LaunchOptions) []string {
 	env := make([]string, 0, len(base)+12)
@@ -72,12 +105,14 @@ func workspaceEnvironment(base []string, w Workspace, generation string, o Launc
 			continue
 		}
 		switch key {
-		case "GOWORK", "GOFLAGS", "GO_MODFILE", "GOROOT", "NODE_PATH", "SDK_SOURCE", "OMNIVIEW_PLUGIN_PNPM_COMMANDS", "OMNIVIEW_VITE_ALLOWED_ROOTS", "WAILS_VITE_PORT", "FORCE_COLOR", "NO_COLOR", "OMNIVIEW_WORKSPACE_FILE", "OMNIVIEW_STATE_DIR", "OMNIVIEW_INSTANCE_ID", "OMNIVIEW_GENERATION", "OMNIVIEW_EXPECTED_SDK_REVISION", "OMNIVIEW_FIXED_SDK_REVISION", "OMNIVIEW_ALLOW_ISOLATION_SOURCE_CHANGES", "OMNIVIEW_WORKSPACE_GRAPH_WATCH", "FRONTEND_DEVSERVER_URL", "WAILS_SERVER_HOST", "WAILS_SERVER_PORT", "WAILS_MCP_HOST", "WAILS_MCP_PORT", "WAILS_MCP_TOKEN", "WAILS_MCP", "OMNIVIEW_CHANNEL":
+		case goWorkEnv, goFlagsEnv, "GO_MODFILE", "GOROOT", nodePathEnv, "SDK_SOURCE", "OMNIVIEW_PLUGIN_PNPM_COMMANDS", "OMNIVIEW_VITE_ALLOWED_ROOTS", "WAILS_VITE_PORT", "FORCE_COLOR", "NO_COLOR", "OMNIVIEW_WORKSPACE_FILE", "OMNIVIEW_STATE_DIR", "OMNIVIEW_INSTANCE_ID", "OMNIVIEW_GENERATION", supervisorGenerationEnvironment, "OMNIVIEW_WORKSPACE_GRAPH_WATCH", "FRONTEND_DEVSERVER_URL", "WAILS_SERVER_HOST", "WAILS_SERVER_PORT", "WAILS_MCP_HOST", "WAILS_MCP_PORT", "WAILS_MCP_TOKEN", "WAILS_MCP", "OMNIVIEW_CHANNEL":
 			continue
 		}
 		env = append(env, entry)
 	}
-	env = append(env, "GOWORK=off", "GOFLAGS=", "FORCE_COLOR=0", "NO_COLOR=1", "OMNIVIEW_CHANNEL=local", "OMNIVIEW_WORKSPACE_FILE="+w.ManifestPath, "OMNIVIEW_STATE_DIR="+w.StateRoot, "OMNIVIEW_INSTANCE_ID="+w.Manifest.WorkspaceID, "OMNIVIEW_GENERATION="+generation, "OMNIVIEW_EXPECTED_SDK_REVISION="+o.ReviewedSDKRevision)
+	env = append(env, goWorkEnv+"=off", goFlagsEnv+"=", "FORCE_COLOR=0", "NO_COLOR=1", "OMNIVIEW_CHANNEL=local",
+		"OMNIVIEW_WORKSPACE_FILE="+w.ManifestPath, "OMNIVIEW_STATE_DIR="+w.StateRoot,
+		"OMNIVIEW_INSTANCE_ID="+w.Manifest.WorkspaceID, "OMNIVIEW_GENERATION="+generation)
 	if w.Manifest.Links.SDKRepositoryID != nil {
 		for _, repository := range w.Manifest.Repositories {
 			if repository.ID == *w.Manifest.Links.SDKRepositoryID {
@@ -89,15 +124,16 @@ func workspaceEnvironment(base []string, w Workspace, generation string, o Launc
 	if o.Watch {
 		env = append(env, "OMNIVIEW_WORKSPACE_GRAPH_WATCH=1")
 	}
-	if o.AllowIsolationSourceChanges {
-		env = append(env, "OMNIVIEW_ALLOW_ISOLATION_SOURCE_CHANGES=1")
-	}
 	return env
 }
 
 // Start creates a persistent, authenticated supervisor using this exact CLI
 // executable. The short-lived caller never adopts or kills a recorded PID.
 func (m *Manager) Start(ctx context.Context, name string, o LaunchOptions, executable string, diagnostics io.Writer) (Status, error) {
+	return m.startGeneration(ctx, name, o, executable, diagnostics, "")
+}
+
+func (m *Manager) startGeneration(ctx context.Context, name string, o LaunchOptions, executable string, diagnostics io.Writer, generation string) (Status, error) {
 	w, err := m.Inspect(ctx, name)
 	if err != nil {
 		return Status{}, err
@@ -110,11 +146,6 @@ func (m *Manager) Start(ctx context.Context, name string, o LaunchOptions, execu
 	}
 	ctx, cancelStart := context.WithTimeout(ctx, o.Timeout)
 	defer cancelStart()
-	if o.AllowIsolationSourceChanges {
-		if _, err = fmt.Fprintln(diagnostics, "WARNING: this workspace explicitly permits unreviewed SDK isolation-boundary edits. Its source-built plugins may bypass profile isolation. This is not a sandbox."); err != nil {
-			return Status{}, err
-		}
-	}
 	operationUnlock, err := withWorkspaceOperation(ctx, w)
 	if err != nil {
 		return Status{}, err
@@ -144,7 +175,7 @@ func (m *Manager) Start(ctx context.Context, name string, o LaunchOptions, execu
 		return status, devcontract.Fail(4, "workspace_running", fmt.Sprintf("workspace has an owned supervisor in launch phase %q; recover with: %s", status.Phase, recovery))
 	}
 	if w.Manifest.Links.SDKRepositoryID == nil {
-		return Status{}, devcontract.Fail(2, "sdk_source_required", "select the plugin-sdk repository before launching")
+		return Status{}, sdkSourceRequired(ctx, "select the plugin-sdk repository before launching", workspaceSDKProbes(w), editAddSDKCommand(w))
 	}
 	if err = ResumeGeneratedPublication(w); err != nil {
 		return Status{}, err
@@ -160,9 +191,41 @@ func (m *Manager) Start(ctx context.Context, name string, o LaunchOptions, execu
 	}
 	command := exec.Command(executable, "workspace", "supervise", "--root", m.Root, "--workspace", w.Root)
 	command.Env = workspaceEnvironment(os.Environ(), w, "", o)
+	if generation != "" {
+		command.Env = append(command.Env, supervisorGenerationEnvironment+"="+generation)
+	}
 	detachSupervisor(command)
 	if err = command.Start(); err != nil {
 		return Status{}, err
+	}
+	if generation != "" {
+		// Keep the native child handle unreaped until its identity is captured:
+		// a recycled PID must never receive this operation's authorization.
+		owner := devsession.ProcessOwner{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "supervisor", Source: w.Root}
+		launched := launchedExecutable(command)
+		process, captureErr := captureExecutedProcess(ctx, launched, supervisorExecutable(), execCaptureTimeout, func() (devcontract.ProcessIdentity, error) {
+			return devsession.CaptureProcess(command.Process.Pid, owner)
+		})
+		if captureErr == nil {
+			actualExecutable := process.Executable
+			if resolved, resolveErr := filepath.EvalSymlinks(actualExecutable); resolveErr == nil {
+				actualExecutable = resolved
+			}
+			if actualExecutable != launched {
+				failure := devcontract.Fail(4, "launch_authorization_invalid", "retained supervisor launch did not execute the selected native controller")
+				failure.Details = map[string]any{"selectedExecutable": launched, "actualExecutable": process.Executable}
+				captureErr = failure
+			}
+		}
+		if captureErr == nil {
+			captureErr = m.authorizeSupervisorLaunch(ctx, w, generation, process)
+		}
+		if captureErr != nil {
+			// An unauthorized child cannot publish a supervisor record and
+			// exits after its bounded handoff wait. Reap only our own handle.
+			go func() { _ = command.Wait() }()
+			return Status{}, captureErr
+		}
 	}
 	// Reap only our own supervisor handle if it exits during startup. This does
 	// not signal it when the short CLI returns or grant detached PID ownership.
@@ -175,12 +238,15 @@ func (m *Manager) Start(ctx context.Context, name string, o LaunchOptions, execu
 	for {
 		current, statusErr := m.Status(deadline, name)
 		if statusErr == nil && current.Generation != "" && current.Generation != status.Generation {
+			if generation != "" && current.Generation != generation {
+				return current, devcontract.Fail(4, "stale_target", "a different supervisor generation appeared during the retained launch")
+			}
 			switch current.Phase {
 			case "ready":
 				return current, nil
 			case "error", "crashed":
 				if current.LastError != nil {
-					return current, workspaceError(current.LastError)
+					return current, workspaceOwnershipError(current.LastError, w)
 				}
 				return current, devcontract.Fail(5, "launch_failed", "supervisor failed; inspect private supervisor.log")
 			}
@@ -200,6 +266,14 @@ func (m *Manager) Down(ctx context.Context, name string) (Status, error) {
 }
 
 func (m *Manager) down(ctx context.Context, name string, fence bool) (Status, error) {
+	return m.downSupervisor(ctx, name, fence, "", nil)
+}
+
+func (m *Manager) downAuthorizedGeneration(ctx context.Context, name string, process devcontract.ProcessIdentity) (Status, error) {
+	return m.downSupervisor(ctx, name, false, process.Generation, &process)
+}
+
+func (m *Manager) downSupervisor(ctx context.Context, name string, fence bool, generation string, process *devcontract.ProcessIdentity) (Status, error) {
 	if fence {
 		if err := m.fenceFollow(ctx, name); err != nil {
 			return Status{}, err
@@ -210,7 +284,7 @@ func (m *Manager) down(ctx context.Context, name string, fence bool) (Status, er
 		}
 		defer release()
 	}
-	status, err := m.supervisorCommand(ctx, name, supervisorStopCommand)
+	status, err := m.supervisorTargetCommand(ctx, name, supervisorStopCommand, generation, process)
 	if err != nil || status.Generation == "" || runtime.GOOS == "darwin" {
 		return status, err
 	}
@@ -227,6 +301,9 @@ func (m *Manager) down(ctx context.Context, name string, fence bool) (Status, er
 		}
 		if record.Generation != status.Generation {
 			return status, devcontract.Fail(4, "stale_target", "workspace generation changed during shutdown")
+		}
+		if process != nil && record.Process != *process {
+			return status, devcontract.Fail(4, "stale_target", "supervisor native invocation changed during shutdown")
 		}
 		if err = verifySupervisor(record, w); errors.Is(err, devsession.ErrProcessGone) {
 			return status, nil
@@ -249,11 +326,13 @@ func (m *Manager) Restart(ctx context.Context, name string) (Status, error) {
 	if err != nil {
 		return Status{}, err
 	}
+	// Restart can start an absent or exited generation, but never adopts a
+	// foreign live process. Live owners still use authenticated restart.
 	stopped, err := m.supervisorCommand(ctx, name, supervisorRestartCommand)
 	if err != nil {
 		return stopped, err
 	}
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS == "darwin" || stopped.Generation == "" {
 		return m.Start(ctx, name, options, "", io.Discard)
 	}
 	ticker := time.NewTicker(50 * time.Millisecond)
@@ -277,19 +356,32 @@ func (m *Manager) Restart(ctx context.Context, name string) (Status, error) {
 	return m.Start(ctx, name, options, "", io.Discard)
 }
 func (m *Manager) supervisorCommand(ctx context.Context, name, command string) (Status, error) {
+	return m.supervisorTargetCommand(ctx, name, command, "", nil)
+}
+
+func (m *Manager) supervisorTargetCommand(ctx context.Context, name, command, generation string, process *devcontract.ProcessIdentity) (Status, error) {
 	w, err := m.Inspect(ctx, name)
 	if err != nil {
 		return Status{}, err
 	}
 	var record supervisorRecord
 	if err = readLaunchJSON(launchPath(w, "supervisor.json"), &record); err != nil {
-		if os.IsNotExist(err) && command == supervisorStopCommand {
+		if os.IsNotExist(err) && generation != "" {
+			return Status{}, devcontract.Fail(4, "stale_target", "selected supervisor generation disappeared before shutdown")
+		}
+		if os.IsNotExist(err) && (command == supervisorStopCommand || command == supervisorRestartCommand) {
 			return Status{Workspace: w, Phase: "stopped"}, nil
 		}
 		return Status{}, err
 	}
+	if generation != "" && record.Generation != generation {
+		return Status{}, devcontract.Fail(4, "stale_target", "workspace generation changed before shutdown")
+	}
+	if process != nil && record.Process != *process {
+		return Status{}, devcontract.Fail(4, "stale_target", "supervisor native invocation changed before shutdown")
+	}
 	if err = verifySupervisor(record, w); err != nil {
-		if errors.Is(err, devsession.ErrProcessGone) && command == supervisorStopCommand {
+		if errors.Is(err, devsession.ErrProcessGone) && (command == supervisorStopCommand || command == supervisorRestartCommand) {
 			return Status{Workspace: w, Generation: record.Generation, Phase: "crashed"}, nil
 		}
 		return Status{}, err
@@ -330,7 +422,7 @@ func (s *workspaceSupervisor) runLaunchCommand(ctx context.Context, directory st
 // launch-status events.
 func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 	o := s.options
-	if err := compatibilityPreflight(ctx, s.workspace, o); err != nil {
+	if err := compatibilityPreflight(ctx, s.workspace); err != nil {
 		return nil, err
 	}
 	report, err := s.manager.Link(ctx, s.workspace.Manifest.WorkspaceID, LinkOptions{Evidence: o.LinkEvidence})
@@ -347,49 +439,49 @@ func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 	if _, err = devcompose.Installed(s.workspace.ResolvedWorkspace, host); err != nil {
 		return nil, fmt.Errorf("supervisor build requires the completed aggregate install and recursive peer transaction: %w", err)
 	}
-	verify := func(ctx context.Context, directory, revision string) (devsource.Identity, error) {
-		identity, err := devsource.VerifyWithOptions(ctx, directory, revision, devsource.VerifyOptions{AllowIsolationCoreChanges: o.AllowIsolationSourceChanges})
-		if err != nil {
-			return identity, devcontract.Fail(4, "sdk_source_untrusted", err.Error())
-		}
-		return identity, nil
-	}
-	return s.manager.NewBuildGraph(ctx, s.workspace.Manifest.WorkspaceID, BuildOptions{Generation: s.generation, GoBuildCacheDirectory: s.goBuildCache, ExpectedSDKRevision: o.ReviewedSDKRevision, VerifySDKSource: verify, HostBuild: s.buildHost, HostVariant: s.hostVariant(), HostOutput: s.hostOutput(), ReuseHost: s.reuseHost, Bindings: func(ctx context.Context, host, outputDirectory string) (resultErr error) {
-		hostModOutput, err := prepareStableHostModTree(s.workspace, s.generation)
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if errors.Is(resultErr, errOwnedCommandUncertain) {
-				_ = hostModOutput.stageFile.Close()
-				return
+	return s.manager.NewBuildGraph(ctx, s.workspace.Manifest.WorkspaceID, BuildOptions{
+		Generation: s.generation, GoBuildCacheDirectory: s.goBuildCache, VerifySDKSource: devsource.Verify,
+		HostBuild: s.buildHost, HostVariant: s.hostVariant(), HostOutput: s.hostOutput(), ReuseHost: s.reuseHost,
+		Bindings: func(ctx context.Context, host, outputDirectory string) (resultErr error) {
+			hostModOutput, prepareErr := prepareStableHostModTree(s.workspace, s.generation)
+			if prepareErr != nil {
+				return prepareErr
 			}
-			resultErr = errors.Join(resultErr, recordStableHostModTree(hostModOutput))
-		}()
-		args := []string{"bindings", "DEV=true", "EXTRA_TAGS=devcontrol", "BINDINGS_OUTPUT_DIRECTORY=" + outputDirectory, "HOST_MOD_OUTPUT_DIRECTORY=" + hostModOutput.Directory, "GO_BUILD_CACHE_DIRECTORY=" + s.goBuildCache}
-		if o.Mode == "browser" {
-			args = append(args, "SERVER=true")
-		}
-		if o.MCP {
-			args = append(args, "WAILS_MCP=1")
-		}
-		_, resultErr = s.runLaunchCommand(ctx, host, s.environment(), s.output, "task", args...)
-		return resultErr
-	}, Output: s.output, OnEvent: func(event BuildEvent) {
-		s.mu.Lock()
-		s.status.Builds[event.Node] = event
-		if event.Phase == "building" {
-			s.status.Phase = "building"
-			s.status.LastError = nil
-		} else if event.Phase == "error" || event.Phase == "invalidated" {
-			s.status.Phase = "build-error"
-			s.status.FailedStage = event.Node
-			s.status.RecoveryCommand = workspaceRecoveryCommand(s.workspace, "refresh")
-			s.status.LastError = devcontract.Fail(5, "build_failed", safeCompilerDiagnostic(event.Error, s.workspace.Root))
-		}
-		s.mu.Unlock()
-		s.persist()
-	}})
+			defer func() {
+				if errors.Is(resultErr, errOwnedCommandUncertain) {
+					_ = hostModOutput.stageFile.Close()
+					return
+				}
+				resultErr = errors.Join(resultErr, recordStableHostModTree(hostModOutput))
+			}()
+			args := []string{bindingsNode, "DEV=true", "EXTRA_TAGS=devcontrol",
+				"BINDINGS_OUTPUT_DIRECTORY=" + outputDirectory, "HOST_MOD_OUTPUT_DIRECTORY=" + hostModOutput.Directory,
+				"GO_BUILD_CACHE_DIRECTORY=" + s.goBuildCache}
+			if o.Mode == "browser" {
+				args = append(args, "SERVER=true")
+			}
+			if o.MCP {
+				args = append(args, "WAILS_MCP=1")
+			}
+			_, resultErr = s.runLaunchCommand(ctx, host, s.environment(), s.output, "task", args...)
+			return resultErr
+		}, Output: s.output, OnEvent: func(event BuildEvent) {
+			s.mu.Lock()
+			s.status.Builds[event.Node] = event
+			switch event.Phase {
+			case buildingPhase:
+				s.status.Phase = buildingPhase
+				s.status.LastError = nil
+			case "error", "invalidated":
+				s.status.Phase = "build-error"
+				s.status.FailedStage = event.Node
+				s.status.RecoveryCommand = workspaceRecoveryCommand(s.workspace, "refresh")
+				s.status.LastError = supervisedBuildError(event, s.workspace)
+			}
+			s.mu.Unlock()
+			s.persist()
+		},
+	})
 }
 
 // buildHost compiles the selected host against the owned host modfile into a
@@ -446,7 +538,7 @@ func (s *workspaceSupervisor) buildHost(ctx context.Context, request HostBuildRe
 	if actual != request.SDKDirectory {
 		return fmt.Errorf("effective native host graph changed selected SDK source")
 	}
-	before, err := devsource.VerifyWithOptions(ctx, actual, request.ExpectedSDKRevision, devsource.VerifyOptions{AllowIsolationCoreChanges: s.options.AllowIsolationSourceChanges})
+	before, err := devsource.Verify(ctx, actual)
 	if err != nil {
 		return err
 	}
@@ -482,7 +574,7 @@ func (s *workspaceSupervisor) buildHost(ctx context.Context, request HostBuildRe
 	if _, err = s.runLaunchCommand(ctx, host, env, s.output, "go", "build", "-modfile="+hostModule.Modfile, "-tags="+tags, "-buildvcs=false", "-ldflags=-X github.com/omniviewdev/omniview/internal/instance.buildChannel=local", "-o", binary, "."); err != nil {
 		return err
 	}
-	after, err := devsource.VerifyWithOptions(ctx, actual, request.ExpectedSDKRevision, devsource.VerifyOptions{AllowIsolationCoreChanges: s.options.AllowIsolationSourceChanges})
+	after, err := devsource.Verify(ctx, actual)
 	if err != nil {
 		return err
 	}
@@ -502,7 +594,11 @@ func (s *workspaceSupervisor) hostOutput() string { return filepath.Join("bin", 
 
 // hostVariant names every host build setting that is not a source file.
 func (s *workspaceSupervisor) hostVariant() string {
-	return fmt.Sprintf("mode=%s mcp=%t platform=%s/%s", s.options.Mode, s.options.MCP, runtime.GOOS, runtime.GOARCH)
+	runtimeKind := s.options.PluginRuntime
+	if runtimeKind == "" {
+		runtimeKind = PluginRuntimeManaged
+	}
+	return fmt.Sprintf("mode=%s mcp=%t plugins=%s platform=%s/%s", s.options.Mode, s.options.MCP, runtimeKind, runtime.GOOS, runtime.GOARCH)
 }
 
 // hostExecutable is the go build output name inside the host output tree.
@@ -547,6 +643,9 @@ func (s *workspaceSupervisor) reuseHost(context.Context) error {
 }
 
 func (s *workspaceSupervisor) seed(ctx context.Context) error {
+	s.mu.Lock()
+	s.status.Seed = nil
+	s.mu.Unlock()
 	if s.options.BaselineSource == "" {
 		return nil
 	}
@@ -579,7 +678,7 @@ func (s *workspaceSupervisor) seed(ctx context.Context) error {
 		if digestGenerated(normalized) != prior.Digest {
 			return devcontract.Fail(4, "baseline_conflict", "seeded baseline receipt changed or disappeared")
 		}
-		return nil
+		return s.recordSeed(ctx, false)
 	} else if !os.IsNotExist(err) {
 		return err
 	}
@@ -603,10 +702,6 @@ func (s *workspaceSupervisor) seed(ctx context.Context) error {
 	if intent.Source != s.options.BaselineSource || intent.Baseline == nil {
 		return devcontract.Fail(4, "baseline_conflict", "pending baseline intent belongs to another explicit source")
 	}
-	expected, err := json.Marshal(intent.Baseline)
-	if err != nil {
-		return err
-	}
 	destinationManifest := filepath.Join(s.workspace.StateRoot, "baseline.json")
 	if info, statErr := os.Lstat(destinationManifest); statErr == nil {
 		if !info.Mode().IsRegular() {
@@ -620,21 +715,77 @@ func (s *workspaceSupervisor) seed(ctx context.Context) error {
 		if err = json.Unmarshal(raw, &actual); err != nil {
 			return err
 		}
-		normalized, err := json.Marshal(actual)
+		matches, err := devbaseline.SameContent(&actual, intent.Baseline)
 		if err != nil {
 			return err
 		}
-		if string(normalized) != string(expected) {
+		if !matches {
 			return devcontract.Fail(4, "baseline_conflict", "existing initialized profile does not match the recorded seed intent")
 		}
 	} else if !os.IsNotExist(statErr) {
 		return statErr
 	} else {
-		if _, err = devbaseline.Import(ctx, intent.Baseline, devbaseline.ImportOptions{Destination: profile, Home: s.manager.options.Home}); err != nil {
-			return err
+		result, importErr := devbaseline.Import(ctx, intent.Baseline, devbaseline.ImportOptions{Destination: profile, Home: s.manager.options.Home})
+		if importErr != nil {
+			return importErr
 		}
+		s.mu.Lock()
+		s.status.Seed = &result
+		s.mu.Unlock()
 	}
-	return saveLaunchJSON(marker, seedRecord{Source: s.options.BaselineSource, Digest: digestGenerated(expected)})
+	if err := s.recordSeed(ctx, true); err != nil {
+		return err
+	}
+	raw, err := os.ReadFile(destinationManifest)
+	if err != nil {
+		return err
+	}
+	var published devbaseline.Baseline
+	if err := json.Unmarshal(raw, &published); err != nil {
+		return err
+	}
+	receipt, err := json.Marshal(published)
+	if err != nil {
+		return err
+	}
+	return saveLaunchJSON(marker, seedRecord{Source: s.options.BaselineSource, Digest: digestGenerated(receipt)})
+}
+
+func (s *workspaceSupervisor) recordSeed(ctx context.Context, initial bool) error {
+	result, err := devbaseline.InspectImport(ctx, s.workspace.StateRoot, initial)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.status.Seed = &result
+	s.mu.Unlock()
+	return nil
+}
+
+func inspectWorkspaceSeed(ctx context.Context, w Workspace) (devbaseline.Result, error) {
+	var marker struct {
+		Source string `json:"source"`
+		Digest string `json:"digest"`
+	}
+	if err := readLaunchJSON(launchPath(w, "baseline-seeded.json"), &marker); err != nil {
+		return devbaseline.Result{}, err
+	}
+	raw, err := os.ReadFile(filepath.Join(w.StateRoot, "baseline.json"))
+	if err != nil {
+		return devbaseline.Result{}, err
+	}
+	var saved devbaseline.Baseline
+	if err := json.Unmarshal(raw, &saved); err != nil {
+		return devbaseline.Result{}, err
+	}
+	normalized, err := json.Marshal(saved)
+	if err != nil {
+		return devbaseline.Result{}, err
+	}
+	if digestGenerated(normalized) != marker.Digest {
+		return devbaseline.Result{}, devcontract.Fail(4, "baseline_conflict", "seeded baseline receipt changed or disappeared")
+	}
+	return devbaseline.InspectImport(ctx, w.StateRoot, false)
 }
 
 func NewGeneration() string { return uuid.NewString() }

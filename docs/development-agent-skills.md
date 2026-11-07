@@ -26,7 +26,7 @@ Claude Code can invoke `/omniview-workspaces`, `/omniview-repo-map`, `/omniview-
 
 Provide the collection root and feature name/UUID or manifest path. For a new collection, provide explicit source IDs and clone paths. Normal clones and bare repositories with a main worktree are supported; clone names and parent-directory layouts are not authority. Source registry `.omniview-dev/repositories.json` selects the actual sources; `workspace paths` resolves the feature checkouts before any edit.
 
-For launch, also supply an independently reviewed full fixed-capability SDK revision and the **actual successful pinned package-link protocol probe JSON**. Do not fabricate these values or assume a help invocation proves readiness. Ordinary dirty SDK source edits do not require a commit per edit. Isolation-boundary changes require explicit review and `--allow-isolation-source-changes`, not a silent bypass.
+For launch, select a local SDK checkout and supply the **actual successful pinned package-link protocol probe JSON**. Do not fabricate evidence or assume a help invocation proves readiness. The workspace observes the SDK checkout's HEAD and dirty-source digest, including isolation-boundary edits; this is not a sandbox.
 
 From the host checkout, capture the actual CLI path once, then invoke that immutable executable:
 
@@ -39,14 +39,14 @@ The helper builds outside source in the private OS user cache and prints the act
 
 For an existing feature, `task dev -- ...` wraps canonical `workspace up` (native default; `SERVER=true` browser; `WAILS_MCP=1` native MCP). Task dev/workspace wrappers capture the helper once internally, without extra path output contaminating JSON. Forward selection and real launch prerequisites after `--`; do not run a separate `wails dev` supervisor.
 
-Published SDK `v0.6.0` resolves to reviewed commit `1e92fb518b117814acb504aaae1772ff39abcdef` and contains the shared profile contract required by this host. Its module and checksum have been verified through the public Go proxy. Earlier Task lifecycle evidence used the pre-release integration commit recorded in the roadmap; that evidence is not a claim of a fresh full lifecycle run against every subsequent release.
+Declared dependencies define the source contract: the host `go.mod` resolves the SDK commit for E2E and application profiling, the host lockfile selects UI packages, and the host gitlink selects Kubernetes. Local development workspaces use their selected SDK checkout and record its identity and source digest.
 
 A useful request is: “Use omniview-workspaces. Collection ROOT, feature NAME; select host, UI, SDK, Kubernetes and this second registered plugin. Start browser mode, report actual paths/UUID/generation/endpoints and any unverified boundary.” Plugin repository IDs and `plugin.yaml` plugin IDs are distinct; repeat both selections for multiple plugins.
 
 ## Evidence and safety
 
 - No context-file changes or global skill installation are necessary.
-- Real owned browser launch, concurrent native A/B/production-tagged windows, warm restart and canonical feature retirement have been exercised for the reviewed companion-source cohort. This does not establish every consumer-refresh, platform or source-ref combination; consult retained integration evidence rather than treating help output or command examples as exercised successes.
+- Real owned browser launch, concurrent native A/B/production-tagged windows, warm restart and canonical feature retirement have been exercised for earlier companion sources. This does not establish every consumer-refresh, platform or source-ref combination; consult retained integration evidence rather than treating help output or command examples as exercised successes.
 - Fresh-context model decision evaluations and their provenance are versioned under `.agents/skills/evals/` (additional handoff artifacts under `.superpowers/sdd/2026-10-17-agentic-workspaces/a18-*`). The 21/21 result applies to the recorded text-model scenarios, not executed CLI, filesystem, browser, screenshot, cluster, or native tests. Subsequent bounded reference alignment is documented separately and has not been re-evaluated.
 - Missing/ambiguous workspace context, wrong UUID/generation, occupied ports, failed builds, and missing link/trust evidence fail closed. A healthy listener is not an owned instance.
 - Baseline seeding is explicit and offline; never copy a running profile's database/tree or connect to a real cluster automatically. Removal preserves state and branches by default and refuses dirty/user work rather than forcing cleanup.

@@ -104,6 +104,7 @@ type Relay struct {
 	discoveryDirty        bool
 	discoveryRunning      bool
 	discoveredConnections map[string][]string
+	configuredConnections map[string][]string
 	discoveredBorrowed    map[string][]string
 	registered            map[string]bool
 	published             map[string]ToolInfo
@@ -537,11 +538,21 @@ func (r *Relay) discoverLoop() {
 
 func (r *Relay) discover(revision uint64) {
 	catalog := BuildCatalog(r.tools.ListAll())
+	catalog = append(catalog, genericKubernetesTools()...)
 	listingCtx := invocation.HostContext(r.lifecycleCtx)
 	discoveryCtx, discoveryCancel := context.WithTimeout(listingCtx, 10*time.Second)
 	defer discoveryCancel()
 	connected := map[string][]string{}
+	configured := map[string][]string{}
 	if r.connections != nil {
+		profiles, err := r.connections.ListAllConnections(discoveryCtx)
+		if err == nil {
+			for pluginID, entries := range profiles {
+				for _, connection := range entries {
+					configured[pluginID] = append(configured[pluginID], connection.ID)
+				}
+			}
+		}
 		states, err := r.connections.GetAllConnectionStates(discoveryCtx)
 		if err == nil {
 			var routes []ResourceRoute
@@ -549,8 +560,10 @@ func (r *Relay) discover(revision uint64) {
 				for _, state := range entries {
 					if state.ReadinessError == nil && state.Readiness == sdktypes.ConnectionStatusConnected {
 						connected[pluginID] = append(connected[pluginID], state.Connection.ID)
-						routes = append(routes, ResourceRoute{PluginID: pluginID, PluginName: pluginID,
-							Route: resourcev2.AccessRoute{Connection: state.Connection.ID}})
+						if pluginID != "kubernetes" {
+							routes = append(routes, ResourceRoute{PluginID: pluginID, PluginName: pluginID,
+								Route: resourcev2.AccessRoute{Connection: state.Connection.ID}})
+						}
 					}
 				}
 			}
@@ -568,7 +581,7 @@ func (r *Relay) discover(revision uint64) {
 			}
 		}
 		for _, tool := range catalog {
-			if tool.Resource != nil && !builtins[tool.PluginID] {
+			if (tool.Resource != nil || isGenericKubernetesTool(tool)) && !builtins[tool.PluginID] {
 				builtins[tool.PluginID] = true
 				catalog = append(catalog, listConnectionsInfo(tool.PluginID, tool.PluginName))
 			}
@@ -607,6 +620,7 @@ func (r *Relay) discover(revision uint64) {
 	r.catalog = catalog
 	r.inventoryReady = true
 	r.discoveredConnections = connected
+	r.configuredConnections = configured
 	r.discoveredBorrowed = borrowed
 	if catalogChanged {
 		r.authority.UpdateCatalog(catalog)
@@ -619,6 +633,7 @@ func (r *Relay) discover(revision uint64) {
 // must not retain callable handlers while an unrelated resource scan runs.
 func (r *Relay) toolsChanged() {
 	catalog := BuildCatalog(r.tools.ListAll())
+	catalog = append(catalog, genericKubernetesTools()...)
 	r.mu.Lock()
 	if !r.loaded || r.stopped {
 		r.mu.Unlock()
@@ -631,8 +646,14 @@ func (r *Relay) toolsChanged() {
 			builtins[tool.PluginID] = true
 		}
 	}
+	for _, tool := range catalog {
+		if isGenericKubernetesTool(tool) && !builtins[tool.PluginID] {
+			builtins[tool.PluginID] = true
+			catalog = append(catalog, listConnectionsInfo(tool.PluginID, tool.PluginName))
+		}
+	}
 	for _, tool := range r.catalog {
-		if tool.Resource == nil {
+		if tool.Resource == nil || tool.PluginID == "kubernetes" {
 			continue
 		}
 		catalog = append(catalog, tool)
@@ -688,6 +709,10 @@ func (r *Relay) projectPolicyLocked(revision uint64, catalogChanged bool) {
 	for _, tool := range r.catalog {
 		key := tool.PluginID
 		ids := r.discoveredConnections[tool.PluginID]
+		if isGenericKubernetesTool(tool) {
+			key += "\x00configured"
+			ids = r.configuredConnections[tool.PluginID]
+		}
 		if tool.ConnectionOwner != "" {
 			key += "\x00" + tool.ConnectionOwner
 			ids = r.discoveredBorrowed[key]
@@ -794,7 +819,13 @@ func (r *Relay) handler(t ToolInfo) mcp.ToolHandler {
 		r.mu.Unlock()
 		var allowed []string
 		if t.Scope == ScopeConnection && t.ConnectionOwner == "" {
-			allowed = r.allowedConnections(ctx, &cfg)[t.PluginID]
+			if isGenericKubernetesTool(t) {
+				r.mu.Lock()
+				allowed = append(allowed, r.configuredConnections[t.PluginID]...)
+				r.mu.Unlock()
+			} else {
+				allowed = r.allowedConnections(ctx, &cfg)[t.PluginID]
+			}
 		}
 		if !cfg.Listed(t, r.listedConnections(ctx, &cfg, t, allowed)) {
 			return errorResult(fmt.Sprintf("tool %s is disabled in Omniview AI Tools settings", t.MCPName)), nil
@@ -901,6 +932,10 @@ func (r *Relay) handler(t ToolInfo) mcp.ToolHandler {
 		var builtinResult *mcp.CallToolResult
 		err = r.authority.Dispatch(callCtx, func(dispatchCtx context.Context) error {
 			var callErr error
+			if isGenericKubernetesTool(t) {
+				builtinResult, callErr = r.dispatchGenericKubernetes(dispatchCtx, t, connection, argsJSON)
+				return callErr
+			}
 			if t.BuiltIn {
 				policy, err := r.authority.Policy(dispatchCtx)
 				if err != nil {
@@ -940,7 +975,7 @@ func (r *Relay) handler(t ToolInfo) mcp.ToolHandler {
 			}
 			return errorResult("tool invocation failed"), nil
 		}
-		if t.BuiltIn {
+		if t.BuiltIn || isGenericKubernetesTool(t) {
 			return builtinResult, nil
 		}
 		if result == nil {
@@ -976,6 +1011,38 @@ func (r *Relay) handler(t ToolInfo) mcp.ToolHandler {
 		}
 		return out, nil
 	}
+}
+
+// dispatchResolvedKubernetes binds consent to the discovered operation's exact
+// target before using its catalog observation at the native boundary.
+func (r *Relay) dispatchResolvedKubernetes(ctx context.Context, tool ToolInfo, argsJSON []byte) (*mcp.CallToolResult, error) {
+	confirm, err := r.authority.resolveKubernetes(ctx, tool, argsJSON)
+	if err != nil {
+		return nil, err
+	}
+	if confirm {
+		call := ctx.Value(authorityContextKey{}).(*authorityCall)
+		payload := PendingConfirmation{
+			MCPName: call.tool.MCPName, PluginID: tool.PluginID, PluginName: tool.PluginName,
+			ConnectionID: tool.Resource.Route.Connection, ArgumentsJSON: string(argsJSON),
+		}
+		approved, _ := r.awaitConfirmation(ctx, payload)
+		if !approved {
+			return errorResult("the user denied this call or authorization expired"), nil
+		}
+		if err := r.authority.approveResolvedKubernetes(ctx); err != nil {
+			return nil, err
+		}
+	}
+	value, err := DispatchResource(ctx, r.connections, tool, argsJSON)
+	if err != nil {
+		return nil, err
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	return &mcp.CallToolResult{StructuredContent: json.RawMessage(encoded)}, nil
 }
 
 type connectionListing struct {

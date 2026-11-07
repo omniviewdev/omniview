@@ -1,11 +1,15 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useBottomDrawer, type BottomDrawerContextType } from '@omniviewdev/runtime';
+import type * as Runtime from '@omniviewdev/runtime';
 
 import BottomDrawerProvider from '../provider';
 import { consumeTerminalSessionHandoff } from '../terminalHandoff';
 import { useBottomDrawerWindow, type BottomDrawerWindowContextType } from '../windowContext';
+import { parseDrawerSlot } from '../drawerSlot';
 import type { DrawerSlot, SerializedDrawerTab } from '../drawerSlot';
 import type { ClosedWindowEvent } from '@/features/windows';
+import { saveSlot } from '@/features/windows';
+import { unresolvedResourceReferenceMessage } from '../resourceReferenceMigration';
 
 const mocks = vi.hoisted(() => ({
   mockEmit: vi.fn(),
@@ -16,6 +20,12 @@ const mocks = vi.hoisted(() => ({
   listLogSessions: vi.fn(),
   listStates: vi.fn(),
   closeSession: vi.fn(),
+  showSnackbar: vi.fn(),
+}));
+
+vi.mock('@omniviewdev/runtime', async (importOriginal) => ({
+  ...(await importOriginal<typeof Runtime>()),
+  useNotifications: () => ({ notify: mocks.showSnackbar }),
 }));
 
 vi.mock('@/providers/BottomDrawer/events', () => ({
@@ -117,6 +127,101 @@ describe('BottomDrawerProvider', () => {
     mocks.listLogSessions.mockResolvedValue([]);
     mocks.listStates.mockResolvedValue({});
     mocks.closeSession.mockResolvedValue(undefined);
+  });
+
+  it('retains unresolved references, saves their originals and reports the restore failure', async () => {
+    const opts = { resource_plugin: 'kubernetes', resource_key: 'core::v1::pods', params: { name: 'same' } };
+    const tab = { ...serializedTab('legacy-session'), properties: { pluginID: 'kubernetes', connectionID: 'route', opts } };
+    mocks.initialSlot = slotOf([tab], tab.id);
+    const warning = vi.spyOn(console, 'warn').mockImplementation(vi.fn());
+    try {
+      await renderRestoredDrawer();
+      expect(tabIds()).toEqual([tab.id]);
+      expect(drawer.tabs[0].properties).not.toHaveProperty('opts');
+      expect(drawer.tabs[0].properties?.resourceReferenceMigration).toMatchObject({ legacy: { opts } });
+      expect(mocks.showSnackbar).toHaveBeenCalledWith(expect.objectContaining({
+        title: unresolvedResourceReferenceMessage, severity: 'warning',
+      }));
+      expect(warning).toHaveBeenCalledWith(expect.stringContaining('unconvertible'), expect.stringContaining(tab.id));
+      expect(saveSlot).toHaveBeenLastCalledWith('drawer', expect.objectContaining({
+        tabs: [expect.objectContaining({ properties: drawer.tabs[0].properties })],
+      }));
+      expect(mocks.closeSession).not.toHaveBeenCalled();
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
+  it('keeps a converted reference and its original options when the expired session reloads', async () => {
+    const opts = { reference: { address: {
+      provider: 'provider', authority: 'host-issued', type: 'opaque/type', scope: [], id: 'a/b::|雪',
+    }, incarnation: 'first' }, command: ['/bin/sh'] };
+    const tab = { ...serializedTab('converted-session'), properties: { pluginID: 'plugin', connectionID: 'explicit-route', opts } };
+    mocks.initialSlot = slotOf([tab], tab.id);
+    const view = render(<BottomDrawerProvider><Probe /></BottomDrawerProvider>);
+    await waitFor(() => {
+      expect(drawerWindow.restoreComplete).toBe(true);
+    });
+    expect(tabIds()).toEqual([tab.id]);
+    const migrated = drawer.tabs[0].properties;
+    expect(migrated?.opts).toEqual({ ...opts, route: { connection: 'explicit-route' } });
+    expect(migrated?.status).toBe('expired');
+    expect(migrated?.resourceReferenceMigration).toMatchObject({ status: 'converted', legacy: { opts } });
+    const saved = vi.mocked(saveSlot).mock.calls.at(-1)![1];
+    view.unmount();
+    mocks.initialSlot = parseDrawerSlot(JSON.parse(JSON.stringify(saved)));
+    await renderRestoredDrawer();
+    expect(tabIds()).toEqual([tab.id]);
+    expect(drawer.tabs[0].properties).toEqual(migrated);
+    expect(mocks.showSnackbar).not.toHaveBeenCalled();
+  });
+
+  it('reconciles a previously expired migrated tab with its live session', async () => {
+    const opts = { reference: { address: {
+      provider: 'provider', authority: 'host', type: 'type', scope: [], id: 'resource',
+    } }, route: { connection: 'route' } };
+    const tab = { ...serializedTab('live-migrated'), properties: {
+      pluginID: 'plugin', connectionID: 'route', opts, status: 'expired',
+      resourceReferenceMigration: { version: 1, status: 'converted', legacy: { opts } },
+    } };
+    mocks.initialSlot = { version: 2, tabs: [tab], focusedId: tab.id };
+    mocks.listExecSessions.mockResolvedValue([{ id: tab.id }]);
+    await renderRestoredDrawer();
+    expect(tabIds()).toEqual([tab.id]);
+    expect(drawer.tabs[0].properties).toEqual({ ...tab.properties, status: 'connected' });
+  });
+
+  it('retains an expired v1 tab with a complete canonical reference', async () => {
+    const opts = { reference: { address: {
+      provider: 'provider', authority: 'host', type: 'type', scope: [], id: 'resource',
+    } }, route: { connection: 'route' } };
+    const tab = { ...serializedTab('canonical'), properties: { pluginID: 'plugin', connectionID: 'route', opts } };
+    mocks.initialSlot = slotOf([tab], tab.id);
+    await renderRestoredDrawer();
+    expect(tabIds()).toEqual([tab.id]);
+    expect(drawer.tabs[0].properties).toMatchObject({
+      opts, status: 'expired', resourceReferenceMigration: { status: 'converted', legacy: { opts } },
+    });
+  });
+
+  it('preserves a live v2 opaque selector and prunes an ordinary expired session', async () => {
+    const opts = { resource_key: 'opaque/type', command: ['/bin/sh'] };
+    const live = { ...serializedTab('live'), properties: { pluginID: 'plugin', connectionID: 'route', opts, metadata: 'keep' } };
+    mocks.initialSlot = { version: 2, tabs: [live, serializedTab('expired')], focusedId: live.id };
+    mocks.listExecSessions.mockResolvedValue([{ id: live.id }]);
+    const view = render(<BottomDrawerProvider><Probe /></BottomDrawerProvider>);
+    await waitFor(() => {
+      expect(drawerWindow.restoreComplete).toBe(true);
+    });
+    expect(tabIds()).toEqual(['live']);
+    expect(drawer.tabs[0].properties).toEqual(live.properties);
+    expect(mocks.showSnackbar).not.toHaveBeenCalled();
+    const saved = vi.mocked(saveSlot).mock.calls.at(-1)![1];
+    view.unmount();
+    mocks.initialSlot = parseDrawerSlot(JSON.parse(JSON.stringify(saved)));
+    await renderRestoredDrawer();
+    expect(drawer.tabs[0].properties).toEqual(live.properties);
+    expect(mocks.showSnackbar).not.toHaveBeenCalled();
   });
 
   it('createTabs([]) is a no-op and does not emit onTabCreated', () => {

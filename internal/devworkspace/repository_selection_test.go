@@ -242,3 +242,31 @@ func TestPluginDiscoveryReportsMissingSourcePath(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, reg.Repositories[len(reg.Repositories)-1].CommonDir)
 }
+
+func TestMissingPinnedSelectionRequiresExplicitFetch(t *testing.T) {
+	m, root := fixtureManager(t)
+	ctx := context.Background()
+	remote := fixtureRepo(t, t.TempDir(), "upstream", "")
+	clone := filepath.Join(t.TempDir(), "source")
+	fixtureGit(t, root, "clone", remote, clone)
+	_, err := AddRepository(ctx, root, SourceSpec{ID: "provider", Path: clone, DefaultRef: "main"})
+	require.NoError(t, err)
+	initial := fixtureGit(t, clone, "rev-parse", "HEAD")
+	fixtureGit(t, remote, "commit", "--allow-empty", "-m", "new pinned commit")
+	pin := fixtureGit(t, remote, "rev-parse", "HEAD")
+	options := CreateOptions{Slug: "missing-pin", Repositories: []string{"provider"}, Refs: map[string]string{"provider": pin}}
+	_, err = m.Create(ctx, options)
+	var failure *devcontract.Error
+	require.ErrorAs(t, err, &failure)
+	require.Equal(t, "local_ref_missing", failure.Code)
+	require.Equal(t, "provider", failure.Details["repository"])
+	require.Equal(t, pin, failure.Details["ref"])
+	require.Equal(t, false, failure.Details["automaticFetch"])
+	require.Equal(t, initial, fixtureGit(t, clone, "rev-parse", "HEAD"))
+	require.Equal(t, initial, fixtureGit(t, clone, "rev-parse", "origin/main"))
+	fixtureGit(t, clone, "fetch", "--no-tags", "origin", "main")
+	w, err := m.Create(ctx, options)
+	require.NoError(t, err)
+	require.Equal(t, pin, selectedRepository(t, w, "provider").BaseCommit)
+	require.Equal(t, initial, fixtureGit(t, clone, "rev-parse", "HEAD"))
+}

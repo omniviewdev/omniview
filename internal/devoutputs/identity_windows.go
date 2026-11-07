@@ -4,6 +4,7 @@ package devoutputs
 
 import (
 	"fmt"
+	"os"
 
 	"golang.org/x/sys/windows"
 )
@@ -24,6 +25,17 @@ func directoryIdentity(path string) (string, error) {
 	}
 	if info.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 || info.FileAttributes&windows.FILE_ATTRIBUTE_DIRECTORY == 0 {
 		return "", fmt.Errorf("output boundary is a reparse point or not a directory")
+	}
+	return fmt.Sprintf("%d:%d:%d", info.VolumeSerialNumber, info.FileIndexHigh, info.FileIndexLow), nil
+}
+
+func directoryHandleIdentity(file *os.File) (string, error) {
+	var info windows.ByHandleFileInformation
+	if err := windows.GetFileInformationByHandle(windows.Handle(file.Fd()), &info); err != nil {
+		return "", err
+	}
+	if info.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 || info.FileAttributes&windows.FILE_ATTRIBUTE_DIRECTORY == 0 {
+		return "", fmt.Errorf("output parent handle is a reparse point or not a directory")
 	}
 	return fmt.Sprintf("%d:%d:%d", info.VolumeSerialNumber, info.FileIndexHigh, info.FileIndexLow), nil
 }

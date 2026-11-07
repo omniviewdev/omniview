@@ -1,0 +1,525 @@
+{
+  "sharedTableBug": {
+    "upstreamChecked": "201c595883bb4902d22e0f0e21a1367e9af37a06",
+    "cause": "Viewport-wide table and zero-basis flex cells squeezed declared widths",
+    "scroll": [
+      {
+        "mode": "ordinary",
+        "viewport": 518,
+        "scrollWidth": 740,
+        "scrollLeft": 160,
+        "tableWidth": 740,
+        "maxAlignmentError": 0
+      },
+      {
+        "mode": "virtual",
+        "viewport": 518,
+        "scrollWidth": 740,
+        "scrollLeft": 160,
+        "tableWidth": 740,
+        "maxAlignmentError": 0
+      }
+    ],
+    "punctuationIDs": [
+      {
+        "mode": "ordinary",
+        "viewport": 518,
+        "table": 880,
+        "scrollWidth": 880,
+        "scrollLeft": 140,
+        "alignmentError": 0,
+        "headers": [
+          {
+            "name": "Container ID",
+            "width": 120
+          },
+          {
+            "name": "Name",
+            "width": 140
+          },
+          {
+            "name": "CPU usage",
+            "width": 180
+          },
+          {
+            "name": "Memory usage",
+            "width": 300
+          },
+          {
+            "name": "Collision control",
+            "width": 140
+          }
+        ],
+        "metrics": [
+          {
+            "width": 160,
+            "track": 72.859375
+          },
+          {
+            "width": 280,
+            "track": 192.859375
+          }
+        ]
+      },
+      {
+        "mode": "virtual",
+        "viewport": 518,
+        "table": 880,
+        "scrollWidth": 880,
+        "scrollLeft": 140,
+        "alignmentError": 0,
+        "headers": [
+          {
+            "name": "Container ID",
+            "width": 120
+          },
+          {
+            "name": "Name",
+            "width": 140
+          },
+          {
+            "name": "CPU usage",
+            "width": 180
+          },
+          {
+            "name": "Memory usage",
+            "width": 300
+          },
+          {
+            "name": "Collision control",
+            "width": 140
+          }
+        ],
+        "metrics": [
+          {
+            "width": 160,
+            "track": 72.859375
+          },
+          {
+            "width": 280,
+            "track": 192.859375
+          }
+        ]
+      }
+    ],
+    "contentSlot": [
+      {
+        "label": "CPU usage",
+        "contentWidth": 160,
+        "available": 160,
+        "track": 72.859375
+      },
+      {
+        "label": "Memory usage",
+        "contentWidth": 280,
+        "available": 280,
+        "track": 192.859375
+      },
+      {
+        "label": "CPU usage",
+        "contentWidth": 160,
+        "available": 160,
+        "track": 72.859375
+      },
+      {
+        "label": "Memory usage",
+        "contentWidth": 280,
+        "available": 280,
+        "track": 192.859375
+      }
+    ],
+    "rootCause": "Punctuation-bearing column IDs produced invalid CSS variable references; zero flex bases and intrinsic content wrappers additionally prevented stable responsive sizing."
+  },
+  "metricCell": {
+    "joinedValueUnitGapPx": 2,
+    "reservedCombinedSlot": true,
+    "byteConversion": [
+      {
+        "width": 222,
+        "height": 21,
+        "track": 134.859375,
+        "value": 83.140625,
+        "gap": 2
+      },
+      {
+        "width": 222,
+        "height": 21,
+        "track": 134.859375,
+        "value": 83.140625,
+        "gap": 2
+      },
+      {
+        "width": 222,
+        "height": 21,
+        "track": 134.859375,
+        "value": 83.140625,
+        "gap": 2
+      },
+      {
+        "width": 222,
+        "height": 21,
+        "track": 134.859375,
+        "value": 83.140625,
+        "gap": 2
+      }
+    ],
+    "loading": [
+      {
+        "height": 21,
+        "skeletons": 1,
+        "text": ""
+      },
+      {
+        "height": 21,
+        "skeletons": 1,
+        "text": ""
+      },
+      {
+        "height": 21,
+        "skeletons": 1,
+        "text": ""
+      },
+      {
+        "height": 21,
+        "skeletons": 1,
+        "text": ""
+      },
+      {
+        "height": 21,
+        "skeletons": 1,
+        "text": ""
+      },
+      {
+        "height": 21,
+        "skeletons": 1,
+        "text": ""
+      }
+    ],
+    "reducedMotion": {
+      "before": "OS reduce still computed pulse because attribute selector outranked media rule",
+      "after": {
+        "normal": "_ov-skeleton-pulse_s8lul_1",
+        "reduced": {
+          "matches": true,
+          "animation": "none"
+        }
+      }
+    },
+    "states": [
+      {
+        "label": "Memory sample 1",
+        "width": 222,
+        "height": 21,
+        "track": 134.859375,
+        "value": 83.140625
+      },
+      {
+        "label": "Memory sample 2",
+        "width": 222,
+        "height": 21,
+        "track": 134.859375,
+        "value": 83.140625
+      },
+      {
+        "label": "Memory sample 3",
+        "width": 222,
+        "height": 21,
+        "track": 134.859375,
+        "value": 83.140625
+      },
+      {
+        "label": "Memory sample 4",
+        "width": 222,
+        "height": 21,
+        "track": 134.859375,
+        "value": 83.140625
+      },
+      {
+        "label": "Memory sample 5",
+        "width": 222,
+        "height": 21,
+        "track": 134.859375,
+        "value": 83.140625
+      },
+      {
+        "label": "Unknown bound",
+        "width": 222,
+        "height": 21,
+        "track": 134.859375,
+        "value": 83.140625
+      },
+      {
+        "label": "Unit not discovered: Loading",
+        "width": 222,
+        "height": 21,
+        "track": 222,
+        "value": 222
+      },
+      {
+        "label": "Wide number fallback",
+        "width": 222,
+        "height": 21,
+        "track": 134.859375,
+        "value": 83.140625
+      }
+    ],
+    "narrowTrackAccessibility": "- group \"Memory sample 1\" [ref=e1]:\n  - 'img \"Memory sample 1: 0 B; capacity: 1 GiB\" [ref=e2]'\n  - generic \"0 B\" [ref=e3]:\n    - generic [ref=e4]: \"0\"\n    - generic [ref=e5]: B"
+  },
+  "card": {
+    "initial": {
+      "height": 342,
+      "width": 398
+    },
+    "data": {
+      "height": 342,
+      "width": 398
+    }
+  },
+  "checks": {
+    "baseUI": {
+      "files": 161,
+      "tests": 1837,
+      "typecheck": true,
+      "lintZeroWarnings": true,
+      "productionBuild": true
+    },
+    "kubernetes": {
+      "filesPassed": 201,
+      "filesSkipped": 1,
+      "testsPassed": 1741,
+      "testsSkipped": 3,
+      "typecheck": true,
+      "lintErrors": 0,
+      "existingLintWarnings": 1
+    }
+  },
+  "limits": [
+    "Not a new throughput benchmark",
+    "Source-only consumers still require normal package publication; CLI cohort uses explicit local links"
+  ],
+  "sourceRevisions": {
+    "baseUI": "e40982f2cce42dcbef5dcec277c8591f7ef94445",
+    "kubernetes": "0dc6757d35ceb65366274640b34bc78d7a5e0c65",
+    "host": "57d6b175f060ef54457fc9284c4a170e8537a742"
+  },
+  "actualIDE": {
+    "initialFiveMetrics": {
+      "rows": 20,
+      "metrics": 100,
+      "headers": [
+        {
+          "text": "",
+          "width": 40
+        },
+        {
+          "text": "Name↑",
+          "width": 300
+        },
+        {
+          "text": "Namespace",
+          "width": 150
+        },
+        {
+          "text": "Containers",
+          "width": 150
+        },
+        {
+          "text": "CPU",
+          "width": 288
+        },
+        {
+          "text": "Memory",
+          "width": 168
+        },
+        {
+          "text": "Memory total usage",
+          "width": 168
+        },
+        {
+          "text": "Network receive errors",
+          "width": 168
+        },
+        {
+          "text": "Network receive packets",
+          "width": 168
+        },
+        {
+          "text": "Controlled By",
+          "width": 120
+        },
+        {
+          "text": "Node",
+          "width": 150
+        },
+        {
+          "text": "Pod IP",
+          "width": 120
+        },
+        {
+          "text": "QoS",
+          "width": 100
+        },
+        {
+          "text": "Restarts",
+          "width": 80
+        },
+        {
+          "text": "Status",
+          "width": 100
+        },
+        {
+          "text": "Age",
+          "width": 100
+        },
+        {
+          "text": "",
+          "width": 50
+        }
+      ],
+      "alignmentError": 0,
+      "firstCells": [
+        {
+          "label": "kubernetes.pod.cpu.usage",
+          "text": "2.97m",
+          "width": 272,
+          "track": 184.859375,
+          "value": 83.140625
+        },
+        {
+          "label": "kubernetes.pod.memory.working_set",
+          "text": "47.29MiB",
+          "width": 152,
+          "track": 64.859375,
+          "value": 83.140625
+        },
+        {
+          "label": "kubernetes.pod.memory_total_usage",
+          "text": "82.82MiB",
+          "width": 152,
+          "track": 64.859375,
+          "value": 83.140625
+        },
+        {
+          "label": "kubernetes.pod.network_receive_errors",
+          "text": "0/s",
+          "width": 152,
+          "track": 64.859375,
+          "value": 83.140625
+        },
+        {
+          "label": "kubernetes.pod.network_receive_packets",
+          "text": "16.02/s",
+          "width": 152,
+          "track": 64.859375,
+          "value": 83.140625
+        }
+      ]
+    },
+    "afterColumnDrag": [
+      {
+        "label": "kubernetes.pod.cpu.usage",
+        "width": 352,
+        "track": 264.859375,
+        "value": 83.140625,
+        "height": 15.75
+      },
+      {
+        "label": "kubernetes.pod.memory.working_set",
+        "width": 192,
+        "track": 104.859375,
+        "value": 83.140625,
+        "height": 15.75
+      },
+      {
+        "label": "kubernetes.pod.memory_total_usage",
+        "width": 152,
+        "track": 64.859375,
+        "value": 83.140625,
+        "height": 15.75
+      },
+      {
+        "label": "kubernetes.pod.network_receive_errors",
+        "width": 152,
+        "track": 64.859375,
+        "value": 83.140625,
+        "height": 15.75
+      },
+      {
+        "label": "kubernetes.pod.network_receive_packets",
+        "width": 152,
+        "track": 64.859375,
+        "value": 83.140625,
+        "height": 15.75
+      }
+    ],
+    "finalTable": {
+      "rows": 20,
+      "metricCells": 100,
+      "viewport": 1254,
+      "scrollWidth": 2540,
+      "scrollLeft": 540,
+      "alignmentError": 0,
+      "nonzeroMetricWidths": true
+    },
+    "newColumnLoading": [
+      {
+        "count": 20,
+        "cells": [
+          {
+            "label": "kubernetes.pod.disk_read: Loading",
+            "skeletons": 1,
+            "width": 152,
+            "height": 15.75
+          },
+          {
+            "label": "kubernetes.pod.disk_read: Loading",
+            "skeletons": 1,
+            "width": 152,
+            "height": 15.75
+          },
+          {
+            "label": "kubernetes.pod.disk_read: Loading",
+            "skeletons": 1,
+            "width": 152,
+            "height": 15.75
+          }
+        ]
+      },
+      {
+        "count": 20,
+        "cells": [
+          {
+            "label": "kubernetes.pod.disk_read: Loading",
+            "skeletons": 1,
+            "width": 152,
+            "height": 15.75
+          },
+          {
+            "label": "kubernetes.pod.disk_read: Loading",
+            "skeletons": 1,
+            "width": 152,
+            "height": 15.75
+          },
+          {
+            "label": "kubernetes.pod.disk_read: Loading",
+            "skeletons": 1,
+            "width": 152,
+            "height": 15.75
+          }
+        ]
+      }
+    ],
+    "loadedExtraCell": {
+      "width": 152,
+      "height": 15.75,
+      "text": "0B/s"
+    },
+    "javascriptErrors": [],
+    "liveRevisions": {
+      "baseUI": "79f9a55",
+      "kubernetes": "01b89de",
+      "host": "43d7ff9e"
+    },
+    "startupNote": "After development backend refresh, reloaded frontend after cluster connected to reattach catalog/collection state."
+  }
+}

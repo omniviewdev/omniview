@@ -222,7 +222,9 @@ func supervisorHandler(workspaceID, generation string, token []byte, execute fun
 			return
 		}
 		status, err := execute(r.Context(), request.Command)
-		status.SourceUpdateSupported = true
+		// An archive runtime has no in-place source update path; its live
+		// status says so before the manager captures any update intent.
+		status.SourceUpdateSupported = status.PluginRuntime != PluginRuntimeArchive
 		w.Header().Set("Content-Type", "application/json")
 		failure := workspaceError(err)
 		_ = json.NewEncoder(w).Encode(map[string]any{"status": status, "error": failure})
@@ -233,6 +235,17 @@ func supervisorHandler(workspaceID, generation string, token []byte, execute fun
 // ownership for every host/frontend lifetime; a later CLI only authenticates it.
 func (m *Manager) ServeSupervisor(ctx context.Context, name string, output io.Writer) (resultErr error) {
 	w, err := m.Inspect(ctx, name)
+	if err != nil {
+		return err
+	}
+	generation := os.Getenv(supervisorGenerationEnvironment)
+	var owner devcontract.ProcessIdentity
+	if generation == "" {
+		generation = NewGeneration()
+		owner, err = devsession.CaptureProcess(os.Getpid(), devsession.ProcessOwner{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "supervisor", Source: w.Root})
+	} else {
+		owner, err = m.claimSupervisorLaunch(ctx, w, generation)
+	}
 	if err != nil {
 		return err
 	}
@@ -264,11 +277,6 @@ func (m *Manager) ServeSupervisor(ctx context.Context, name string, output io.Wr
 		return err
 	}
 	if err = options.validate(); err != nil {
-		return err
-	}
-	generation := NewGeneration()
-	owner, err := devsession.CaptureProcess(os.Getpid(), devsession.ProcessOwner{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "supervisor", Source: w.Root})
-	if err != nil {
 		return err
 	}
 	registry, err := devsession.OpenRegistry(filepath.Join(m.options.Home, ".omniview-dev", "sessions"), devsession.RegistryOptions{})
@@ -399,7 +407,10 @@ func (s *workspaceSupervisor) snapshot() Status {
 	raw, _ := json.Marshal(s.status)
 	var status Status
 	_ = json.Unmarshal(raw, &status)
-	status.SourceUpdateSupported = true
+	status.SourceUpdateSupported = !s.options.archiveRuntime()
+	if s.options.archiveRuntime() {
+		status.PluginRuntime = PluginRuntimeArchive
+	}
 	return status
 }
 func (s *workspaceSupervisor) persist() {
@@ -408,7 +419,7 @@ func (s *workspaceSupervisor) persist() {
 	if err := saveLaunchJSON(launchPath(s.workspace, "launch-status.json"), s.snapshot()); err != nil {
 		s.mu.Lock()
 		s.status.Phase = "error"
-		s.status.LastError = devcontract.Fail(4, "generated_conflict", "cannot persist owned launch status; source metadata changed or write failed")
+		s.status.LastError = devcontract.Fail(4, "generated_conflict", "cannot persist owned launch status: "+err.Error())
 		s.mu.Unlock()
 		if s.sessionCancel != nil {
 			s.sessionCancel()
@@ -443,7 +454,8 @@ func (s *workspaceSupervisor) setPhase(phase string, err error) {
 		s.status.RecoveryCommand = workspaceRecoveryCommand(s.workspace, "refresh")
 	}
 	if phase == "ready" {
-		s.status.ServedCheckouts = served
+		// This is an observation at readiness, not a build-input attestation.
+		s.status.ReadyCheckouts = served
 		s.status.FailedStage = ""
 		s.status.RecoveryCommand = ""
 	}
@@ -460,7 +472,7 @@ func (s *workspaceSupervisor) setPhase(phase string, err error) {
 		}
 	}
 	if err != nil {
-		s.status.LastError = workspaceError(err)
+		s.status.LastError = workspaceOwnershipError(err, s.workspace)
 	}
 	s.mu.Unlock()
 	s.persist()
@@ -559,6 +571,22 @@ func (s *workspaceSupervisor) statusResponse(ctx context.Context) Status {
 	// transient build failure or intentional plugin stop must neither
 	// poison the supervisor phase nor restart a managed generation.
 	for _, plugin := range status.Manifest.Plugins {
+		if s.options.archiveRuntime() {
+			info, infoErr := readArchivePluginInfo(ctx, client, plugin.ID)
+			ready := false
+			if infoErr == nil {
+				ready, infoErr = archivePluginReady(info)
+			}
+			if infoErr != nil || !ready {
+				status.Phase = "error"
+				status.LastError = workspaceError(infoErr)
+				if infoErr == nil {
+					status.LastError = devcontract.Fail(supervisorPluginFailureExitCode, "plugin_not_ready", fmt.Sprintf("archive plugin %s is not ready: phase %s", plugin.ID, info.Phase))
+				}
+				break
+			}
+			continue
+		}
 		state, stateErr := readPluginState(ctx, client, plugin.ID)
 		if stateErr != nil {
 			status.Phase = "error"

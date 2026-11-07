@@ -1,6 +1,7 @@
 package networker
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -63,7 +64,7 @@ func TestFindPortForwardSessions_PluginNotFound(t *testing.T) {
 
 func TestStartResourcePortForwardingSession_PluginNotFound(t *testing.T) {
 	ctrl := newTestController()
-	_, err := ctrl.StartResourcePortForwardingSession("nonexistent", "conn", networker.PortForwardSessionOptions{})
+	_, err := ctrl.StartResourcePortForwardingSession(context.Background(), "nonexistent", "conn", networker.PortForwardSessionOptions{})
 
 	require.Error(t, err)
 	var target *apperror.AppError

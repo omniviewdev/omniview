@@ -30,7 +30,7 @@ export function assertStandaloneBootstrap(host) {
   for (;;) {
     try {
       lstatSync(join(directory, 'workspace.json'));
-      throw Error('E2E bootstrap refuses a managed enclosing workspace: create a dedicated clean standalone committed host source-tool bootstrap checkout and pass explicit clean SDK_SOURCE, UI_SOURCE and KUBERNETES_SOURCE; actual application cohorts are still created by the owned workspace CLI. Never install or manually link inside the enclosing managed source');
+      throw Error('E2E bootstrap refuses a managed enclosing workspace: create a dedicated clean standalone committed host source-tool bootstrap checkout and provide a clean SDK_SOURCE checkout at the host go.mod SDK commit; actual application cohorts are still created by the owned workspace CLI. Never install or manually link inside the enclosing managed source');
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
     }

@@ -23,7 +23,7 @@ type resetModulesFixture struct {
 
 // A stopped, linked workspace whose composition was installed through the
 // recorded writer by a fake pnpm that writes every selected modules tree.
-func newResetModulesFixture(t *testing.T) *resetModulesFixture {
+func newResetModulesFixture(t *testing.T, repositories ...string) *resetModulesFixture {
 	t.Helper()
 	ctx := context.Background()
 	m, root := fixtureManager(t)
@@ -38,7 +38,7 @@ func newResetModulesFixture(t *testing.T) *resetModulesFixture {
 	require.NoError(t, os.WriteFile(filepath.Join(source, "pnpm-workspace.yaml"), []byte("packages:\n  - packages/*\n"), 0600))
 	fixtureGit(t, source, "add", "package.json", "pnpm-workspace.yaml", "packages")
 	fixtureGit(t, source, "commit", "-m", "dependency fixture inputs")
-	w, err := m.Create(ctx, CreateOptions{Slug: "reset-modules"})
+	w, err := m.Create(ctx, CreateOptions{Slug: "reset-modules", Repositories: repositories})
 	require.NoError(t, err)
 	f := &resetModulesFixture{m: m, w: w, host: filepath.Join(w.Root, "omniview")}
 	j := compositionJournalFixture(t, w)

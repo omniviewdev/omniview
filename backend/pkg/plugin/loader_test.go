@@ -563,10 +563,10 @@ func TestStartPlugin_SettingsNotCalledTwice(t *testing.T) {
 	pm.connlessControllers[sdktypes.CapabilitySettings] = settingsCtrl
 	pm.connlessControllers[sdktypes.CapabilityExec] = execCtrl
 
-	// Backend that detects exec capability.
+	// Settings is declared after exec but must be hydrated first and only once.
 	backend := &capDetectingBackend{
 		version: plugintypes.CurrentProtocolVersion,
-		caps:    []string{"exec"},
+		caps:    []string{"exec", "settings"},
 	}
 
 	record := &plugintypes.PluginRecord{
@@ -585,6 +585,24 @@ func TestStartPlugin_SettingsNotCalledTwice(t *testing.T) {
 	execCtrl.mu.Lock()
 	defer execCtrl.mu.Unlock()
 	assert.Len(t, execCtrl.startCalls, 1, "exec OnPluginStart should be called exactly once")
+}
+
+func TestStartPlugin_DoesNotStartUndeclaredSettings(t *testing.T) {
+	pm := newTestManager(t)
+	pm.ctx = context.Background()
+	settings := &trackingController{}
+	exec := &trackingController{}
+	pm.connlessControllers[sdktypes.CapabilitySettings] = settings
+	pm.connlessControllers[sdktypes.CapabilityExec] = exec
+	backend := &capDetectingBackend{version: plugintypes.CurrentProtocolVersion, caps: []string{"exec"}}
+	record := &plugintypes.PluginRecord{ID: "test", Phase: lifecycle.PhaseStarting, Metadata: config.PluginMeta{ID: "test"}}
+	require.NoError(t, pm.startPlugin(record, backend))
+	settings.mu.Lock()
+	defer settings.mu.Unlock()
+	require.Empty(t, settings.startCalls, "settings startup must follow declared capability support")
+	exec.mu.Lock()
+	defer exec.mu.Unlock()
+	require.Len(t, exec.startCalls, 1)
 }
 
 func TestStopPlugin_SettingsNotCalledTwice(t *testing.T) {
@@ -787,9 +805,9 @@ func TestCapStringsToCapabilities_TableDriven(t *testing.T) {
 			expected: []sdktypes.Capability{sdktypes.CapabilityResource, sdktypes.CapabilityExec, sdktypes.CapabilityLog},
 		},
 		{
-			name:     "settings filtered out",
+			name:     "declared settings preserved",
 			input:    []string{"resource", "settings"},
-			expected: []sdktypes.Capability{sdktypes.CapabilityResource},
+			expected: []sdktypes.Capability{sdktypes.CapabilityResource, sdktypes.CapabilitySettings},
 		},
 		{
 			name:     "unknown ignored",

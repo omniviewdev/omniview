@@ -159,6 +159,11 @@ func NewManager(
 		pluginOpsMu:        sync.Mutex{},
 		pluginOpsLocks:     make(map[string]*sync.Mutex),
 	}
+	if source, ok := resourceController.(interface {
+		SetFatalTransportCallback(func(string, plugintypes.PluginBackend, func(func()) bool))
+	}); ok {
+		source.SetFatalTransportCallback(pm.markFatalSourceTransport)
+	}
 	pm.configureConnectionSharing(resourceController, toolsController)
 	return pm
 }
@@ -194,6 +199,7 @@ type pluginManager struct {
 	telemetryConfigFn   func() TelemetryEnvConfig // returns current telemetry config for env injection
 	pluginPprofEnabled  bool                      // immutable startup snapshot; changes require a host restart
 	sharing             *sharingState
+	activities          *activityBinding
 
 	// pluginOpsMu serializes load/reload/unload operations per plugin to
 	// prevent concurrent lifecycle transitions for the same plugin (e.g.
@@ -217,6 +223,9 @@ type managedDevServers interface {
 // plugin (e.g. two file-change events triggering simultaneous reloads).
 func (pm *pluginManager) pluginOpsLock(pluginID string) *sync.Mutex {
 	pm.pluginOpsMu.Lock()
+	if pm.pluginOpsLocks == nil {
+		pm.pluginOpsLocks = make(map[string]*sync.Mutex)
+	}
 	mu, ok := pm.pluginOpsLocks[pluginID]
 	if !ok {
 		mu = &sync.Mutex{}
@@ -242,7 +251,12 @@ const crashContextLogLines = 20
 
 // HandlePluginCrash handles a plugin process crash with exponential backoff recovery.
 func (pm *pluginManager) HandlePluginCrash(pluginID string) {
+	pm.handlePluginCrash(pluginID, nil, nil)
+}
+
+func (pm *pluginManager) handlePluginCrash(pluginID string, expected *probedCrash, unlock func()) {
 	pm.retireConnectionSharing(pluginID)
+	pm.retireActivities(pluginID)
 	// Capture the last few log entries before the crash for diagnostics.
 	// These are pulled from the in-memory ring buffer that captures all
 	// plugin stderr output (including panic stack traces).
@@ -306,10 +320,17 @@ func (pm *pluginManager) HandlePluginCrash(pluginID string) {
 		}
 	}
 	pm.recordsMu.Unlock()
+	if unlock != nil {
+		unlock()
+	}
 
 	// Delegate to the health checker's backoff-based recovery if available.
 	if pm.healthChecker != nil {
-		pm.healthChecker.HandleCrashWithBackoff(pluginID)
+		if expected != nil {
+			pm.healthChecker.handleCrashWithBackoff(pluginID, expected)
+		} else {
+			pm.healthChecker.HandleCrashWithBackoff(pluginID)
+		}
 		return
 	}
 
@@ -321,7 +342,17 @@ func (pm *pluginManager) HandlePluginCrash(pluginID string) {
 		timer.Stop()
 		return
 	}
-	if _, err := pm.ReloadPlugin(pluginID); err != nil {
+	var err error
+	if expected == nil {
+		_, err = pm.ReloadPlugin(pluginID)
+	} else {
+		var current bool
+		current, err = pm.reloadProbedCrash(pluginID, expected)
+		if !current {
+			return
+		}
+	}
+	if err != nil {
 		pm.logger.Errorw(pm.ctx, "plugin crash recovery failed", "pluginID", pluginID, "error", err)
 		pm.emitter.Emit(EventCrashRecoveryFailed, PluginErrorPayload{
 			PluginID: pluginID,

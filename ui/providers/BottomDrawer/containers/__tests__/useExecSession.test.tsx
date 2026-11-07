@@ -5,14 +5,14 @@ import { useExec } from '../../../../../packages/omniviewdev-runtime/src/hooks/e
 import { Session } from '../../../../../packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/exec/models';
 import type * as WailsRuntime from '@wailsio/runtime';
 
-const mocks = vi.hoisted(() => ({ create: vi.fn(), createTab: vi.fn(), updateTab: vi.fn(), snackbar: vi.fn() }));
+const mocks = vi.hoisted(() => ({ create: vi.fn(), createTab: vi.fn(), updateTab: vi.fn(), notify: vi.fn() }));
 vi.mock('@wailsio/runtime', async () => {
   const actual = await vi.importActual<typeof WailsRuntime>('@wailsio/runtime');
   return { ...actual, Call: { ...actual.Call, ByName: mocks.create } };
 });
 vi.mock('../../../../../packages/omniviewdev-runtime/src/hooks/drawer', () => ({ useBottomDrawer: () => ({ createTab: mocks.createTab, updateTab: mocks.updateTab }) }));
 vi.mock('../../../../../packages/omniviewdev-runtime/src/hooks/useResolvedPluginId', () => ({ useResolvedPluginId: () => 'kubernetes' }));
-vi.mock('../../../../../packages/omniviewdev-runtime/src/hooks/snackbar/useSnackbar', () => ({ useSnackbar: () => ({ showSnackbar: mocks.snackbar }) }));
+vi.mock('../../../../../packages/omniviewdev-runtime/src/activity/context', () => ({ useNotifications: () => ({ notify: mocks.notify }) }));
 vi.mock('../../../../../packages/omniviewdev-runtime/src/errors/parseAppError', () => ({ parseAppError: (error: Error) => ({ detail: error.message }), showAppError: vi.fn() }));
 
 function setup() {

@@ -72,10 +72,10 @@ func TestWorkspacePreflightAggregatesMissingInputsAfterSourceOnlyCreation(t *tes
 		if err := json.Unmarshal(out.Bytes(), &report); err != nil {
 			t.Fatal(err)
 		}
-		if report.Ready || len(report.Issues) != 3 {
-			t.Fatalf("expected all three missing inputs: %+v", report)
+		if report.Ready || len(report.Issues) != 2 {
+			t.Fatalf("expected both missing inputs: %+v", report)
 		}
-		for i, code := range []string{"link_evidence_required", "reviewed_sdk_required", "sdk_source_required"} {
+		for i, code := range []string{"link_evidence_required", "sdk_source_required"} {
 			if report.Issues[i].Code != code {
 				t.Fatalf("issue %d: %+v", i, report.Issues[i])
 			}

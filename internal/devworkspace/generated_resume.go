@@ -173,3 +173,29 @@ func (m *Manager) ResumeWorkspace(ctx context.Context, name string) (Workspace, 
 	}
 	return resumed, nil
 }
+
+// PrepareRecovery validates the owned lifecycle journal without requiring a
+// completed workspace's supervisor to stop. Journal-only creation retains the
+// original stopped-only materialization resume path.
+func (m *Manager) PrepareRecovery(ctx context.Context, name string) (Workspace, error) {
+	root, err := m.workspaceRoot(name)
+	if err != nil {
+		return Workspace{}, err
+	}
+	j, err := loadJournal(root)
+	if err != nil {
+		return Workspace{}, err
+	}
+	if j.Phase == "complete" {
+		if err = checkManifest(root, j); err != nil {
+			return Workspace{}, err
+		}
+		return m.Inspect(ctx, name)
+	}
+	if _, err = os.Lstat(filepath.Join(root, "workspace.json")); os.IsNotExist(err) {
+		return m.ResumeWorkspace(ctx, name)
+	} else if err != nil {
+		return Workspace{}, err
+	}
+	return m.Inspect(ctx, name)
+}

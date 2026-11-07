@@ -222,6 +222,51 @@ func controlFixtureWithCustomState(t *testing.T, customState string, mutate func
 	return root, &requests
 }
 
+func TestDiagnosticRetrievalCommandSelectsOriginalWorkspace(t *testing.T) {
+	const id = "operation-with-private-output"
+	root, requests := controlFixture(t, nil, func(request devcontract.Request, response *devcontract.Response) {
+		if request.Operation != "operation.get" {
+			return
+		}
+		response.Status, response.OperationID = "failed", id
+		response.Error = devcontract.Fail(5, "internal_error", "")
+		response.Error.Details = map[string]any{"diagnosticsOperationID": id}
+		var params devcontrol.OperationParams
+		_ = json.Unmarshal(request.Params, &params)
+		if params.IncludeOutput {
+			response.Error.Details["unsafeDiagnostic"] = "private-compiler-cause"
+		}
+	})
+	var out, diagnostics bytes.Buffer
+	run([]string{"operation", "get", id, "--workspace", root}, &out, &diagnostics)
+	var failed devcontract.Response
+	if err := json.Unmarshal(out.Bytes(), &failed); err != nil {
+		t.Fatal(err)
+	}
+	command, _ := failed.Error.Details["diagnosticsCommand"].(string)
+	if strings.Contains(out.String(), "private-compiler-cause") {
+		t.Fatal("default retrieval leaked diagnostic")
+	}
+	// Let a real shell decode emitted quoting, including manifest paths.
+	parsed, err := exec.Command("sh", "-c", "set -- "+command+"; printf '%s\\000' \"$@\"").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := strings.Split(strings.TrimSuffix(string(parsed), "\x00"), "\x00")
+	t.Chdir(t.TempDir())
+	t.Setenv(devcontract.WorkspaceEnvironment, "")
+	out.Reset()
+	diagnostics.Reset()
+	run(args, &out, &diagnostics)
+	last := (*requests)[len(*requests)-1]
+	var params devcontrol.OperationParams
+	_ = json.Unmarshal(last.Params, &params)
+	if !params.IncludeOutput || params.OperationID != id || !strings.Contains(out.String(), "private-compiler-cause") ||
+		!strings.Contains(diagnostics.String(), "--unsafe-output") {
+		t.Fatalf("emitted command failed: args=%q params=%+v stdout=%s stderr=%s", args, params, &out, &diagnostics)
+	}
+}
+
 func TestControlCommandsRejectSelectedSourceMismatchBeforeMutation(t *testing.T) {
 	root, requests := controlFixture(t, nil)
 	path := filepath.Join(root, "workspace.json")

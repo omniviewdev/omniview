@@ -105,13 +105,13 @@ func TestBindingsStageIsNotPublishedAcrossSDKMutation(t *testing.T) {
 		return json.Marshal(map[string]any{"Path": linkedSDK, "Dir": g.plan.SDK})
 	}
 	calls := 0
-	g.options.VerifySDKSource = func(_ context.Context, directory, revision string) (devsource.Identity, error) {
+	g.options.VerifySDKSource = func(_ context.Context, directory string) (devsource.Identity, error) {
 		calls++
 		digest := strings.Repeat("c", 64)
 		if calls > 1 {
 			digest = strings.Repeat("d", 64)
 		}
-		return devsource.Identity{Directory: directory, ReviewedRevision: revision, SourceDigest: digest}, nil
+		return devsource.Identity{Directory: directory, Revision: strings.Repeat("a", 40), SourceDigest: digest}, nil
 	}
 	g.options.Bindings = func(_ context.Context, _ string, output string) error {
 		writeGraphFixture(t, filepath.Join(output, "index.ts"), "export const changed = true;\n")

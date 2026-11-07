@@ -2,7 +2,7 @@ import React from 'react';
 import { LuChevronDown } from 'react-icons/lu';
 
 import { Button, Card, Chip, Select, Switch, Text, TextField } from '@omniviewdev/base-ui';
-import { useConfirmationModal, useSnackbar } from '@omniviewdev/runtime';
+import { useConfirmationModal, useNotifications } from '@omniviewdev/runtime';
 
 import Icon from '@/components/icons/Icon';
 import {
@@ -90,10 +90,11 @@ const AiToolsSettingsPage: React.FC = () => {
   const [scope, setScope] = React.useState<McpScope>(GLOBAL_SCOPE);
   const relay = useMcpRelay(scope);
   const { show: confirm } = useConfirmationModal();
-  const { showSnackbar } = useSnackbar();
+  const { notify } = useNotifications();
   const [tokenVisible, setTokenVisible] = React.useState(false);
   const [portDraft, setPortDraft] = React.useState<string | null>(null);
   const [presetName, setPresetName] = React.useState('');
+  const [toolSearch, setToolSearch] = React.useState('');
   const registerForm = React.useContext(SettingsFormRegistration);
   const [draftError, setDraftError] = React.useState('');
   const [savingDraft, setSavingDraft] = React.useState(false);
@@ -154,10 +155,10 @@ const AiToolsSettingsPage: React.FC = () => {
   const copy = (label: string, text: string) => {
     void navigator.clipboard.writeText(text).then(
       () => {
-        showSnackbar(`${label} copied`, 'success'); 
+        void notify({ title: `${label} copied`, severity: 'success' });
       },
       () => {
-        showSnackbar(`Failed to copy ${label.toLowerCase()}`, 'error'); 
+        void notify({ title: `Failed to copy ${label.toLowerCase()}`, severity: 'error' });
       },
     );
   };
@@ -186,14 +187,20 @@ const AiToolsSettingsPage: React.FC = () => {
 
   const grouped = React.useMemo(() => {
     const groups = new Map<string, { pluginName: string; tools: McpToolView[] }>();
+    const search = toolSearch.trim().toLowerCase();
     for (const tool of tools ?? []) {
+      if (search && ![tool.mcpName, tool.name, tool.title, tool.description, tool.pluginName, tool.pluginID, tool.connectionID]
+        .some(value => value?.toLowerCase().includes(search))) {
+        continue;
+      }
+
       const group = groups.get(tool.pluginID) ?? { pluginName: tool.pluginName, tools: [] };
       group.tools.push(tool);
       groups.set(tool.pluginID, group);
     }
 
     return [...groups.entries()];
-  }, [tools]);
+  }, [tools, toolSearch]);
 
   return (
     <div className={styles.Root}>
@@ -434,9 +441,22 @@ const AiToolsSettingsPage: React.FC = () => {
               {isGlobal ? 'Tools' : `Tools on ${selectedConnection?.connectionName ?? scope.connectionID}`}
             </Text>
             <Text size='xs'>Tool annotations are provider hints, not permissions. Host policy and native authorization still apply.</Text>
+            <TextField.Root size='sm' className={styles.Field}>
+              <TextField.Label>Search tools</TextField.Label>
+              <TextField.Control
+                type='search'
+                value={toolSearch}
+                placeholder='Search tools'
+                onChange={(event) => {
+                  setToolSearch(event.target.value);
+                }}
+              />
+            </TextField.Root>
             {relay.tools.isLoading && <Text size='sm' role='status'>Loading tools…</Text>}
             {!relay.tools.isLoading && !relay.tools.isError && grouped.length === 0 && (
-              <Text size='sm' className={styles.Muted}>No plugin exposes tools yet.</Text>
+              <Text size='sm' className={styles.Muted}>
+                {tools?.length ? 'No tools match your search.' : 'No plugin exposes tools yet.'}
+              </Text>
             )}
             {grouped.map(([pluginID, group]) => (
               <PluginToolGroup
@@ -568,6 +588,7 @@ type ToolRowProps = {
 
 const ToolRow: React.FC<ToolRowProps> = ({ tool, onOverride }) => {
   const controlsDisabled = tool.status !== 'ok';
+  const showResourceTitle = /^resource_[a-f0-9]{64}$/.test(tool.mcpName) && tool.title;
   const statusLabel: Record<string, string> = {
     conflict: 'name conflict',
     'invalid-name': 'invalid name',
@@ -576,7 +597,8 @@ const ToolRow: React.FC<ToolRowProps> = ({ tool, onOverride }) => {
   return (
     <div className={styles.ToolRow}>
       <div className={styles.ToolInfo}>
-        <Text size='sm' className={styles.ToolName}>{tool.mcpName}</Text>
+        <Text size='sm' className={styles.ToolName}>{showResourceTitle || tool.mcpName}</Text>
+        {showResourceTitle && <Text size='xs' className={styles.Muted}>MCP name: {tool.mcpName}</Text>}
         {tool.description && <Text size='xs' className={styles.Muted}>{tool.description}</Text>}
         <Text size='xs'>Policy: {tool.enabled ? 'enabled' : 'disabled'} ({tool.enabledSource}); consent {tool.confirm ? 'required' : 'not required'} ({tool.confirmSource})</Text>
         <Text size='xs'>Route: {tool.connectionID || (tool.scope === 'connection' ? 'connection (not bound)' : 'plugin')} · {tool.ready ? 'ready' : 'not ready'} · {tool.listed ? 'advertised' : 'not advertised'}</Text>

@@ -5,7 +5,7 @@ import {
   ListAllPortForwardSessions,
 } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/networker/servicewrapper';
 import { Browser, Events } from '@wailsio/runtime';
-import { useSnackbar } from '../snackbar';
+import { useNotifications } from '../../activity/context';
 import { createErrorHandler, parseAppError } from '../../errors/parseAppError';
 
 const ALL_SESSIONS_KEY = ['networker', 'portforward', 'all-sessions'] as const;
@@ -15,7 +15,7 @@ const ALL_SESSIONS_KEY = ['networker', 'portforward', 'all-sessions'] as const;
  * Listens to Wails events for real-time updates instead of polling.
  */
 export function usePortForwardSessions() {
-  const { showSnackbar } = useSnackbar();
+  const { notify } = useNotifications();
   const queryClient = useQueryClient();
 
   const sessions = useQuery({
@@ -53,7 +53,7 @@ export function usePortForwardSessions() {
 
   const closeMutation = useMutation({
     mutationFn: async (sessionID: string) => ClosePortForwardSession(sessionID),
-    onError: createErrorHandler(showSnackbar, 'Failed to close port forwarding session'),
+    onError: createErrorHandler(notify, 'Failed to close port forwarding session'),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [...ALL_SESSIONS_KEY] });
     },

@@ -20,6 +20,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/extensiondiagnostics"
 	extensiondiagnosticshost "github.com/omniviewdev/omniview/backend/extensiondiagnostics/host"
 	"github.com/omniviewdev/omniview/backend/menus"
+	"github.com/omniviewdev/omniview/backend/pkg/activity"
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/data"
@@ -40,6 +41,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/window"
 	"github.com/omniviewdev/omniview/internal/appstate"
 	"github.com/omniviewdev/omniview/internal/bootstrap"
+	"github.com/omniviewdev/omniview/internal/builtinplugins/grafana"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	controlhost "github.com/omniviewdev/omniview/internal/devcontrol/host"
 	"github.com/omniviewdev/omniview/internal/devsession"
@@ -55,6 +57,7 @@ import (
 	"github.com/omniviewdev/omniview/internal/uiinspection"
 	"github.com/omniviewdev/omniview/internal/version"
 	logging "github.com/omniviewdev/plugin-sdk/log"
+	sdkactivity "github.com/omniviewdev/plugin-sdk/pkg/activity"
 	sdkprofiling "github.com/omniviewdev/plugin-sdk/pkg/profiling"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
@@ -89,22 +92,23 @@ func newUICapabilityControllers(
 	log logging.Logger,
 	settingsProvider pkgsettings.Provider,
 	resourceController resource.Controller,
-	resourceUIRealm *invocation.Scope,
+	resourceUIRealm invocation.ContextScope,
 ) (exec.Controller, networker.Controller, pluginlogs.Controller, pluginmetric.Controller) {
-	uiResourceService := &resource.ServiceWrapper{Ctrl: resourceController, Realm: resourceUIRealm}
 	admitReference := func(ctx context.Context, operation, pluginID string, route resourcev2.AccessRoute, ref resourcev2.ResourceReference) (context.Context, error) {
 		return resourceController.AdmitReference(resourceUIRealm.Context(ctx), operation, pluginID, route, ref)
 	}
-	execController := exec.NewController(log, settingsProvider, uiResourceService)
-	networkerController := networker.NewController(log, settingsProvider, uiResourceService)
-	logsController := pluginlogs.NewController(log, settingsProvider, uiResourceService)
-	metricController := pluginmetric.NewController(log, settingsProvider, uiResourceService)
+	execController := exec.NewController(log, settingsProvider, resourceController)
+	networkerController := networker.NewController(log, settingsProvider, resourceController)
+	logsController := pluginlogs.NewController(log, settingsProvider, resourceController)
+	metricController := pluginmetric.NewController(log, settingsProvider, resourceController)
 	execController.SetReferenceAdmitter(admitReference)
 	networkerController.SetReferenceAdmitter(admitReference)
 	logsController.SetReferenceAdmitter(resourceController.AdmitReference)
 	logsController.SetUIReferenceAdmitter(admitReference)
 	metricController.SetUIReferenceAdmitter(admitReference)
 	metricController.SetReferenceAdmitter(resourceController.AdmitReference)
+	metricController.SetMetricResourceReader(resourceController.ReadObservedResource)
+	metricController.SetResourceIdentityGuard(resourceController.GuardObservedReference)
 	return execController, networkerController, logsController, metricController
 }
 
@@ -333,8 +337,15 @@ func main() {
 	// Setup the plugin systems
 	mcpAuthority := mcprelay.NewAuthority()
 	resourceBoundary := invocation.NewBoundary(mcpAuthority)
-	resourceUIRealm := invocation.NewScope(invocation.TrustedUI)
 	resourceController := resource.NewController(log, settingsProvider, stateDir.PluginStore, resourceBoundary)
+	resourceUIRealm := invocation.NewWindowRealm(resourceController.RetireSourceOwner)
+	activityService, err := activity.NewService(stateDir.RootDir(), func(topic string, change sdkactivity.Change) {
+		app.Event.Emit(topic, change)
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: cannot open activity history: %v\n", err)
+		os.Exit(1)
+	}
 	graphService := resource.NewGraphService(resourceController.Graph(), resourceUIRealm, resourceBoundary, resourceController.ValidateReference)
 	// A nil realm keeps the agent principal from ctx at the boundary.
 	relayGraph := resource.NewGraphService(
@@ -348,6 +359,8 @@ func main() {
 		log, settingsProvider, resourceController, resourceUIRealm,
 	)
 	resourceController.SetConnectionChangeHook(metricController.BeginConnectionChange)
+	metricController.SetMetricPreferencesStore(settingsStore)
+	metricController.SetMetricStateRoot(stateDir.RootDir())
 	toolsController := tools.NewController(log, resourceBoundary)
 
 	dataController := data.NewController(log, stateDir.PluginData)
@@ -369,8 +382,15 @@ func main() {
 
 	pluginRegistryClient := registry.NewClient("")
 	// Product-owned providers are selected at compile time, never by installed metadata.
-	// The product cohort remains empty until the containers migration.
-	builtinCatalog, err := plugin.NewCatalog(nil)
+	builtinCatalog, err := plugin.NewCatalog([]plugin.CatalogEntry{
+		grafana.CatalogEntry(func() (*os.Root, error) {
+			const statePath = "builtin/grafana"
+			if err := stateDir.RootDir().MkdirAll(statePath, 0700); err != nil {
+				return nil, err
+			}
+			return stateDir.RootDir().OpenRoot(statePath)
+		}),
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: invalid built-in plugin catalog: %v\n", err)
 		os.Exit(1)
@@ -400,6 +420,7 @@ func main() {
 		},
 		builtinCatalog,
 	)
+	plugin.ConfigureActivities(pluginManager, resourceController, activityService)
 
 	// Wire crash recovery: when a plugin crash is detected by the resource
 	// controller's event listeners, the manager will attempt to reload it.
@@ -419,9 +440,8 @@ func main() {
 			fmt.Fprintf(os.Stderr, "fatal: cannot locate workspace session registry: %v\n", err)
 			os.Exit(1)
 		}
-		// The launcher/build integration supplies the independently verified
-		// fixed revision. Empty means backend builds remain fail-closed.
-		if err := devServerManager.ConfigureWorkspace(profile, filepath.Join(home, ".omniview-dev", "sessions"), os.Getenv("OMNIVIEW_EXPECTED_SDK_REVISION")); err != nil {
+		err = devServerManager.ConfigureWorkspace(profile, filepath.Join(home, ".omniview-dev", "sessions"))
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "fatal: cannot configure managed workspace: %v\n", err)
 			os.Exit(1)
 		}
@@ -546,12 +566,13 @@ func main() {
 	// OnPluginStart on all controllers — they need ctx for gRPC streams.
 	services := []application.Service{
 		// 1. Controllers — need ctx before plugin loading
+		application.NewService(&activity.FrontendService{Service: activityService, Realm: resourceUIRealm}),
 		application.NewService(&resource.ServiceWrapper{Ctrl: resourceController, Realm: resourceUIRealm}),
 		application.NewService(graphService),
-		application.NewService(&exec.ServiceWrapper{Ctrl: execController}),
-		application.NewService(&networker.ServiceWrapper{Ctrl: networkerController}),
-		application.NewService(&pluginlogs.ServiceWrapper{Ctrl: logsController}),
-		application.NewService(&pluginmetric.ServiceWrapper{Ctrl: metricController}),
+		application.NewService(&exec.ServiceWrapper{Ctrl: execController, Realm: resourceUIRealm}),
+		application.NewService(&networker.ServiceWrapper{Ctrl: networkerController, Realm: resourceUIRealm}),
+		application.NewService(&pluginlogs.ServiceWrapper{Ctrl: logsController, Realm: resourceUIRealm}),
+		application.NewService(&pluginmetric.ServiceWrapper{Ctrl: metricController, Realm: resourceUIRealm}),
 		application.NewService(&data.ServiceWrapper{Ctrl: dataController}),
 		application.NewService(ui.NewServiceWrapper(uiManager)),
 		application.NewService(utilsClient),

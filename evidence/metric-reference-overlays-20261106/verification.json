@@ -1,0 +1,116 @@
+{
+  "capturedAt": "2026-11-06T22:03:54.760Z",
+  "sources": {
+    "ui": "e2addb5e1065ef305fdb7a47127e08644bc0f5f2",
+    "kubernetes": "2e45b885f280a13a07ddaf1cea554810b764870d",
+    "authorGuide": "23ab73494cead76badf39e83f6ec51d9b35323e4",
+    "sdkUnchanged": "fe479313e4aa0be678e995d11e449af1f5baa26f"
+  },
+  "checks": {
+    "sharedUI": {
+      "testFiles": 163,
+      "testsPassed": 1860,
+      "nativeSourceAndTestTypes": "passed",
+      "lint": "passed with zero warnings",
+      "format": "passed",
+      "productionBundlesAndDeclarations": "passed"
+    },
+    "kubernetes": {
+      "testFilesPassed": 201,
+      "testFilesSkipped": 1,
+      "testsPassed": 1783,
+      "testsSkipped": 3,
+      "types": "passed",
+      "changedProductionSourceLint": "zero errors; one existing react-refresh/only-export-components warning in TableMetrics.tsx",
+      "runtimeImports": "passed"
+    }
+  },
+  "storyResize": {
+    "narrow": {
+      "width": 160,
+      "chartHeight": 180,
+      "plotHeight": 106,
+      "legendHeight": 56,
+      "clippedLabels": 0
+    },
+    "wide": {
+      "width": 640,
+      "chartHeight": 180,
+      "plotHeight": 149,
+      "legendHeight": 13,
+      "retainedPlot": true,
+      "clippedLabels": 0
+    }
+  },
+  "extremeGeometry": {
+    "height": 45,
+    "path": "M0.00,33.75L640.00,11.25",
+    "invalidGeometry": false
+  },
+  "native": {
+    "cluster": "kind-omniview-load-lab",
+    "cells": [
+      {
+        "value": "0m",
+        "source": "Request: 1 m (Current resource configuration); Limit: 50 m (Current resource configuration)",
+        "markers": 2,
+        "height": 15.75
+      },
+      {
+        "value": "328KiB",
+        "source": "Request: 4 MiB (Current resource configuration); Limit: 16 MiB (Current resource configuration)",
+        "markers": 2,
+        "height": 15.75
+      },
+      {
+        "value": "0m",
+        "source": "Request: 1 m (Current resource configuration); Limit: 50 m (Current resource configuration)",
+        "markers": 2,
+        "height": 15.75
+      },
+      {
+        "value": "328KiB",
+        "source": "Request: 4 MiB (Current resource configuration); Limit: 16 MiB (Current resource configuration)",
+        "markers": 2,
+        "height": 15.75
+      }
+    ],
+    "visibleRows": 31,
+    "search": "Search 316 Pod...",
+    "scalarReferences": [
+      "Request: 1 m; Limit: 50 m",
+      "Request: 4 MiB; Limit: 16 MiB"
+    ],
+    "capacityViewExercised": true,
+    "statViewExercised": true
+  },
+  "grafana": {
+    "cluster": "kind-kind",
+    "source": "Kind monitoring · Prometheus",
+    "references": [
+      "Request: 100 m",
+      "Request: 70 MiB; Limit: 170 MiB"
+    ],
+    "refresh": {
+      "dataPathsChanged": true,
+      "disconnectedDuringRefresh": false,
+      "retainedPlots": true,
+      "plotHeights": [
+        149,
+        149,
+        162
+      ],
+      "chartHeights": [
+        180,
+        180,
+        180
+      ]
+    }
+  },
+  "limits": [
+    "Storybook examples use deliberate fixture values; IDE screenshots use actual cluster/provider data.",
+    "The Grafana fixture native source returned Native metrics namespace scan failed; working native proof uses the separate native fixture.",
+    "No new query-count or throughput benchmark was performed. References derive from already-loaded object attributes; no query API was added.",
+    "No backend/SDK protocol change, CI workflow change, merge, or release. Compatible normal package publication and desktop approval remain shipping gates."
+  ]
+}

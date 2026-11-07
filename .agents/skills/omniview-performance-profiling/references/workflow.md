@@ -15,22 +15,21 @@ kind get clusters
 
 A broad `brew list --versions` can fail on an unrelated stale cask. Query `brew list --cask --versions omniview` instead. Current native pnpm pin lives in the selected host's `package.json`. Existing shell PATH can differ from Homebrew's installation; use the native executable described in `docs/development-workspaces.md`.
 
-Read the selected host's `e2e/source-cohort.json` for SDK, UI and Kubernetes refs. Fetch missing refs in their registered repositories. Do not reset canonical source or select a stale SDK simply because it has a convenient sibling directory.
+For application profiling, resolve the SDK commit from the selected host's `go.mod`, use UI packages from its lockfile, and select Kubernetes at the host gitlink. With the host checkout at `HOST_REF`, obtain `SDK_REF` using `node e2e/scripts/sdk-source.mjs print` from that checkout and `KUBERNETES_REF` using `git rev-parse HEAD:plugins/kubernetes`. Fetch missing refs in their registered repositories. Do not reset canonical source or select a stale SDK simply because it has a convenient sibling directory.
 
 ```sh
 omniview-dev workspace create "$FEATURE" --root "$COLLECTION" \
-  --repo ui --repo plugin-sdk --plugin kubernetes \
-  --ref "omniview=$HOST_REF" --ref "ui=$UI_REF" \
+  --repo plugin-sdk --plugin kubernetes \
+  --ref "omniview=$HOST_REF" \
   --ref "plugin-sdk=$SDK_REF" --ref "kubernetes=$KUBERNETES_REF" --json
 omniview-dev workspace paths "$FEATURE" --root "$COLLECTION" --json
 ```
 
-Assign `WORKSPACE`, `HOST`, `SDK` and `KUBERNETES` from the returned paths. For an existing workspace, inspect/resume it instead of creating a duplicate. The independently reviewed SDK revision is a required input, not a hash an agent may invent. Run preflight to see all missing inputs:
+Assign `WORKSPACE`, `HOST`, `SDK` and `KUBERNETES` from the returned paths. For an existing workspace, inspect/resume it instead of creating a duplicate. The selected local SDK checkout's HEAD and source digest are observed by the workspace. Run preflight to see all missing inputs:
 
 ```sh
 PREFLIGHT_STATUS=0
-omniview-dev workspace preflight --workspace "$WORKSPACE" \
-  --reviewed-sdk-revision "$REVIEWED_SDK_REVISION" --json || PREFLIGHT_STATUS=$?
+omniview-dev workspace preflight --workspace "$WORKSPACE" --json || PREFLIGHT_STATUS=$?
 case "$PREFLIGHT_STATUS" in 0|3) ;; *) exit "$PREFLIGHT_STATUS" ;; esac
 ```
 
@@ -49,7 +48,6 @@ GOWORK=off GOFLAGS= A11_PROTOCOL_PROBE=1 A11_PROTOCOL_REPORT="$LINK_EVIDENCE" \
   go test -modfile="$MODFILE" -tags server ./internal/devworkspace \
   -run '^TestLinkPinnedProtocolProbe$' -count=1 -v
 omniview-dev workspace up --workspace "$WORKSPACE" --mode browser --watch=false \
-  --reviewed-sdk-revision "$REVIEWED_SDK_REVISION" \
   --link-evidence "$LINK_EVIDENCE" --json
 )
 ```

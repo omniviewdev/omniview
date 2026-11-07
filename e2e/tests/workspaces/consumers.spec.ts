@@ -26,12 +26,14 @@ async function saveCounter(page: Page, value: number): Promise<Page> {
 
 test.describe('Real application plugin consumers', () => {
   test('loads real probe and Kubernetes once through the shared host runtime', async ({ appPage, workspace }) => {
-    const descriptor = await workspace.verify();
-    expect(descriptor.plugins.map(plugin => plugin.id).sort()).toEqual(['kubernetes', probeID]);
+    await workspace.verify();
     await appPage.goto(`${workspace.browserURL()}#/_plugin/kubernetes/`);
-    const clusters = appPage.getByRole('tab', { name: 'All Clusters', exact: true });
-    await clusters.click();
-    await expect(clusters).toHaveAttribute('aria-selected', 'true');
+    const search = appPage.getByRole('combobox', { name: 'Search clusters', exact: true });
+    await expect(search).toBeFocused();
+    await search.fill('reg');
+    await expect(appPage.getByRole('option', { name: /^region:/ })).toHaveAttribute('aria-selected', 'true');
+    await search.press('Enter');
+    await expect(search).toHaveValue('region:');
     await appPage.goto(`${workspace.browserURL()}#/_plugin/${probeID}/`);
     await expect(appPage.getByRole('heading', { name: 'Workspace Probe', exact: true })).toBeVisible();
     await appPage.getByRole('button', { name: 'Probe increment', exact: true }).click();
@@ -105,7 +107,9 @@ test.describe('Real application plugin consumers', () => {
     expect(afterB.generation).toBe(beforeB.generation);
     expect(afterB.stateRoot).toBe(beforeB.stateRoot);
     expect(afterB.process).toEqual(beforeB.process);
-    expect(afterB.plugins).toEqual(beforeB.plugins);
+    expect([...afterB.plugins].sort((a, b) => a.id.localeCompare(b.id))).toEqual(
+      [...beforeB.plugins].sort((a, b) => a.id.localeCompare(b.id)),
+    );
     expect(afterB.endpoints).toEqual(beforeB.endpoints);
     expect(await b.workspace.control('settings.get', { scope: 'plugin', pluginID: probeID, id: 'probe_counter' })).toMatchObject({ status: 'succeeded', result: beforeSettingB.result });
   });

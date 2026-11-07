@@ -13,12 +13,12 @@ import (
 // GraphService exposes observed relationships and rejects incomplete whole results.
 type GraphService struct {
 	graph             *graph.RelationshipGraph
-	realm             *invocation.Scope
+	realm             invocation.ContextScope
 	boundary          *invocation.Boundary
 	validateReference func(context.Context, string, resourcev2.AccessRoute, resourcev2.ResourceReference) error
 }
 
-func NewGraphService(g *graph.RelationshipGraph, realm *invocation.Scope, boundary *invocation.Boundary, validateReference func(context.Context, string, resourcev2.AccessRoute, resourcev2.ResourceReference) error) *GraphService {
+func NewGraphService(g *graph.RelationshipGraph, realm invocation.ContextScope, boundary *invocation.Boundary, validateReference func(context.Context, string, resourcev2.AccessRoute, resourcev2.ResourceReference) error) *GraphService {
 	return &GraphService{graph: g, realm: realm, boundary: boundary, validateReference: validateReference}
 }
 

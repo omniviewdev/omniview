@@ -498,11 +498,15 @@ export class StateIsolationProvenance {
     "schema_version": number;
     "capability": string;
     "sdk_module": string;
+
+    /**
+     * SDKRevision identifies the selected SDK checkout commit observed by the builder.
+     */
     "sdk_revision": string;
 
     /**
      * SDKSourceSHA256 identifies the trusted builder's exact selected working-tree
-     * snapshot, permitting live feature edits above the reviewed capability base.
+     * snapshot, including live edits to that checkout.
      * Empty is reserved for immutable, clean, commit-only trusted builds.
      */
     "sdk_source_sha256"?: string;

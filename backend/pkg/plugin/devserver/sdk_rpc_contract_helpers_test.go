@@ -380,10 +380,10 @@ func (p *sdkRPCProfile) writeBrokenAPI(t *testing.T) {
 
 func (p *sdkRPCProfile) identity(t *testing.T) devsource.Identity {
 	t.Helper()
-	identity, err := VerifySelectedSDK(p.fixture.ctx, p.fixture.goPath, p.source, p.revision, p.env)
+	identity, err := VerifySelectedSDK(p.fixture.ctx, p.fixture.goPath, p.source, p.env)
 	require.NoError(t, err)
 	require.Equal(t, p.sdkSource, identity.Directory, "actual Go module replacement must select the owned copy")
-	require.Equal(t, p.revision, identity.ReviewedRevision, "fixture-local source-verifier baseline, not invented upstream identity")
+	require.Equal(t, p.revision, identity.Revision, "identity must record the fixture checkout HEAD")
 	require.Len(t, identity.SourceDigest, 64)
 	return identity
 }
@@ -398,7 +398,7 @@ func (p *sdkRPCProfile) start(t *testing.T) {
 		metadataBefore[name] = sha256.Sum256(data)
 	}
 	p.watcher = newGoWatcherProcess(p.fixture.ctx, logging.NewNop(), sdkRPCContractID, p.source,
-		BuildOpts{GoPath: p.fixture.goPath, Environment: p.env, ExpectedSDKRevision: p.revision, Workspace: &p.workspace, Generation: p.generation},
+		BuildOpts{GoPath: p.fixture.goPath, Environment: p.env, Workspace: &p.workspace, Generation: p.generation},
 		p, p.state.Plugins(), func(entry LogEntry) {
 			if entry.Source == logSourceGoBuild && entry.Level == logLevelInfo {
 				p.mu.Lock()
@@ -451,7 +451,7 @@ func (p *sdkRPCProfile) ReloadManagedPlugin(ctx context.Context, id, source, gen
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	before, err := VerifySelectedSDK(ctx, p.fixture.goPath, p.source, p.revision, p.env)
+	before, err := VerifySelectedSDK(ctx, p.fixture.goPath, p.source, p.env)
 	if err != nil {
 		return err
 	}
@@ -475,7 +475,7 @@ func (p *sdkRPCProfile) ReloadManagedPlugin(ctx context.Context, id, source, gen
 	if err := p.verifyCompiledSDK(hostBinary); err != nil {
 		return err
 	}
-	after, err := VerifySelectedSDK(ctx, p.fixture.goPath, p.source, p.revision, p.env)
+	after, err := VerifySelectedSDK(ctx, p.fixture.goPath, p.source, p.env)
 	if err != nil {
 		return err
 	}

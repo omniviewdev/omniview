@@ -49,6 +49,7 @@ test.describe('Theme', () => {
 
     settings = await openSettingsCategory(appPage, 'Appearance');
     await settings.reload();
+    settings = await openSettingsCategory(appPage, 'Appearance');
     await expect(settings.getByRole('radio', { name: 'Solarized Dark', exact: true })).toBeChecked();
     await chooseSetting(settings, 'appearance.theme', 'Void');
     await expect.poll(async () => storedValue(appPage, 'appearance.theme')).toBe('void');

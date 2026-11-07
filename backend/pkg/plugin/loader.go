@@ -290,6 +290,10 @@ func (pm *pluginManager) startBackend(
 		pm.storeFailedRecord(id, record, err)
 		return nil, err
 	}
+	if err := pm.bindActivities(id, backend); err != nil {
+		pm.storeFailedRecord(id, record, err)
+		return nil, err
+	}
 	defer func() {
 		if !succeeded {
 			pm.retireConnectionSharing(id)
@@ -492,11 +496,16 @@ func (pm *pluginManager) createBackend(
 				"lifecycle": &lc.Plugin{Plugin: nil, Impl: nil},
 			},
 		},
-		GRPCDialOptions:  sdk.GRPCDialOptions(),
-		Cmd:              cmd,
-		SkipHostEnv:      true,
-		StartTimeout:     pluginStartTimeout,
-		AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
+		// Reuse the process listener for callback services. Separate broker
+		// listeners use the host's TMPDIR, whose profile-scoped path can exceed
+		// Unix socket limits even when the plugin has a verified short socket root.
+		// Activity and host-connection bindings complete sequentially before admission.
+		GRPCBrokerMultiplex: true,
+		GRPCDialOptions:     sdk.GRPCDialOptions(),
+		Cmd:                 cmd,
+		SkipHostEnv:         true,
+		StartTimeout:        pluginStartTimeout,
+		AllowedProtocols:    []goplugin.Protocol{goplugin.ProtocolGRPC},
 		Logger: hclog.New(&hclog.LoggerOptions{
 			Name:   id,
 			Output: logOutput,
@@ -700,13 +709,6 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 		}
 	}
 
-	if ctrl := pm.connlessControllers[sdktypes.CapabilitySettings]; ctrl != nil {
-		started = append(started, ctrl)
-		if err := ctrl.OnPluginStart(pluginID, record.Metadata, backend); err != nil {
-			return fmt.Errorf("error starting settings plugin: %w", err)
-		}
-	}
-
 	// Detect capabilities via the backend.
 	var detectedCaps []sdktypes.Capability
 	if detector, ok := backend.(plugintypes.CapabilityDetector); ok {
@@ -719,6 +721,20 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 	}
 
 	record.Capabilities = detectedCaps
+	// Settings hydration must precede other declared providers, but settings is
+	// optional like every other capability. Never dispense an undeclared provider.
+	for _, capability := range detectedCaps {
+		if capability != sdktypes.CapabilitySettings {
+			continue
+		}
+		if ctrl := pm.connlessControllers[sdktypes.CapabilitySettings]; ctrl != nil {
+			started = append(started, ctrl)
+			if err := ctrl.OnPluginStart(pluginID, record.Metadata, backend); err != nil {
+				return fmt.Errorf("start settings controller: %w", err)
+			}
+		}
+		break
+	}
 
 	// Start controllers for detected capabilities.
 	for _, cap := range detectedCaps {
@@ -760,8 +776,7 @@ func capStringsToCapabilities(caps []string) []sdktypes.Capability {
 	var result []sdktypes.Capability
 	for _, capStr := range caps {
 		c, ok := sdktypes.ParseCapability(capStr)
-		if !ok || c == sdktypes.CapabilitySettings {
-			// settings is always registered separately, skip
+		if !ok {
 			continue
 		}
 		result = append(result, c)
@@ -778,6 +793,7 @@ func (pm *pluginManager) stopPlugin(record *plugintypes.PluginRecord) error {
 	ctx := context.Background()
 	pluginID := record.ID
 	pm.retireConnectionSharing(pluginID)
+	pm.retireActivities(pluginID)
 
 	var errs []error
 	for name, manager := range pm.managers {
@@ -810,6 +826,7 @@ func (pm *pluginManager) shutdownPlugin(pluginID string, record *plugintypes.Plu
 		return errors.New("record is nil")
 	}
 	pm.retireConnectionSharing(pluginID)
+	pm.retireActivities(pluginID)
 
 	ctx := context.Background()
 

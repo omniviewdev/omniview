@@ -76,15 +76,20 @@ type Controller interface {
 	Run(context.Context)
 	Service
 	SetCrashCallback(cb func(pluginID string))
+	// RetireSourceOwner releases a native window's sources without exposing a browser binding.
+	RetireSourceOwner(owner string)
 	Graph() *graph.RelationshipGraph
 	ValidateReference(context.Context, string, resource.AccessRoute, resource.ResourceReference) error
 	SetConnectionChangeHook(func(pluginID, connectionID string) func())
 	AdmitReference(context.Context, string, string, resource.AccessRoute, resource.ResourceReference) (context.Context, error)
+	ReadObservedResource(context.Context, string, resource.AccessRoute, resource.ResourceReference, []string) (*resource.Value, func(context.Context) error, error)
+	GuardObservedReference(context.Context, string, string, resource.AccessRoute, resource.ResourceReference) (func(context.Context) error, error)
 }
 
 // pluginState holds per-plugin runtime state.
 type pluginState struct {
 	provider                 ResourceProvider
+	backend                  plugintypes.PluginBackend
 	version                  int
 	cancel                   context.CancelFunc
 	ctx                      context.Context
@@ -150,8 +155,9 @@ type controller struct {
 	graph         *graph.RelationshipGraph
 	graphNotifier *graphChangeNotifier
 
-	onCrashCallback func(pluginID string)
-	pluginStoreFn   func(pluginID string) (*appstate.ScopedRoot, error)
+	onCrashCallback  func(pluginID string)
+	onFatalTransport func(string, plugintypes.PluginBackend, func(func()) bool)
+	pluginStoreFn    func(pluginID string) (*appstate.ScopedRoot, error)
 	// schemas is the authoritative schema catalog. Its mutex is a leaf lock:
 	// never call into the controller while holding it.
 	schemas *resourcecatalog.Catalog
@@ -300,7 +306,7 @@ func (c *controller) onPluginStart(pluginID string, backend plugintypes.PluginBa
 	watchCtx, watchCancel := context.WithCancel(context.Background())
 
 	state := &pluginState{
-		version: version, cancel: watchCancel, ctx: watchCtx, generationID: uuid.NewString(),
+		version: version, backend: backend, cancel: watchCancel, ctx: watchCtx, generationID: uuid.NewString(),
 		suppressAutoConnect: !autoConnect,
 	}
 	c.pluginsMu.RLock()

@@ -171,9 +171,9 @@ const PluginsNav: React.FC = () => {
             />
             <Menu.Portal>
               <Menu.Positioner side='bottom' align='end' sideOffset={4}>
-                <Menu.Popup className={styles.MenuPopup}>
+                <Menu.Popup>
                   <Menu.Item
-                    startDecorator={<LuFolderOpen size={15} />}
+                    startDecorator={<LuFolderOpen />}
                     onClick={() => {
                       void installFromPath.mutateAsync();
                     }}
@@ -182,7 +182,7 @@ const PluginsNav: React.FC = () => {
                     Install from File...
                   </Menu.Item>
                   <Menu.Item
-                    startDecorator={<LuAtom size={15} />}
+                    startDecorator={<LuAtom />}
                     onClick={() => {
                       void installDev.mutateAsync();
                     }}

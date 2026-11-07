@@ -99,7 +99,7 @@ func testRegisteredNativeMetric(t *testing.T, direct bool) {
 
 	for _, shape := range []sdkmetric.MetricShape{sdkmetric.ShapeCurrent, sdkmetric.ShapeTimeseries} {
 		started := time.Now()
-		response, err := ctrl.Query(nativeMetricPluginID, nativeMetricConnectionID, sdkmetric.QueryRequest{
+		response, err := ctrl.Query(invocation.HostContext(context.Background()), nativeMetricPluginID, nativeMetricConnectionID, sdkmetric.QueryRequest{
 			ResourceKey: nativeMetricResourceKey,
 			ResourceID:  strconv.Itoa(os.Getpid()),
 			MetricIDs:   []string{nativeRuntimeMetricID},
