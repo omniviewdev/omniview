@@ -88,6 +88,9 @@ type BuildGraph struct {
 	mu          sync.Mutex
 	eventMu     sync.Mutex
 	attestMu    sync.Mutex // serializes recordArtifact
+	// attested holds the verified SDK identity of every plugin binary this
+	// graph recorded evidence for, keyed by plugin ID. Guarded by attestMu.
+	attested    map[string]devsdk.Identity
 	toolchainMu sync.Mutex
 	toolchains  map[string]pnpmToolchain
 
@@ -462,7 +465,23 @@ func (g *BuildGraph) buildNode(ctx context.Context, n BuildNode) error {
 func (g *BuildGraph) recordArtifact(pluginID, binary string, sdk devsdk.Identity) error {
 	g.attestMu.Lock()
 	defer g.attestMu.Unlock()
-	return instance.RecordBuiltArtifact(g.workspace.ResolvedWorkspace, pluginID, binary, sdk)
+	if err := instance.RecordBuiltArtifact(g.workspace.ResolvedWorkspace, pluginID, binary, sdk); err != nil {
+		return err
+	}
+	if g.attested == nil {
+		g.attested = map[string]devsdk.Identity{}
+	}
+	g.attested[pluginID] = sdk
+	return nil
+}
+
+// attestedIdentity returns the SDK identity under which this graph recorded
+// destination-owned build evidence for pluginID.
+func (g *BuildGraph) attestedIdentity(pluginID string) (devsdk.Identity, bool) {
+	g.attestMu.Lock()
+	defer g.attestMu.Unlock()
+	identity, ok := g.attested[pluginID]
+	return identity, ok
 }
 
 func (g *BuildGraph) withBuildLock(ctx context.Context, fn func() error) error {

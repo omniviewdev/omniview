@@ -24,15 +24,29 @@ import (
 // LaunchOptions is persisted privately so up/restart use the same explicit
 // source trust, tooling and mode. No credentials are copied into this record.
 type LaunchOptions struct {
-	Mode            string               `json:"mode"`
-	MCP             bool                 `json:"mcp"`
-	Watch           bool                 `json:"watch"`
-	LiveFrontend    bool                 `json:"liveFrontend"`
+	Mode         string `json:"mode"`
+	MCP          bool   `json:"mcp"`
+	Watch        bool   `json:"watch"`
+	LiveFrontend bool   `json:"liveFrontend"`
+	// PluginRuntime selects how selected plugins reach the host: managed
+	// source links (default) or installed static archives built from the
+	// same selected sources. Empty means managed.
+	PluginRuntime   string               `json:"pluginRuntime,omitempty"`
 	LinkEvidence    LinkProtocolEvidence `json:"linkEvidence"`
 	BaselineSource  string               `json:"baselineSource,omitempty"`
 	BaselineVersion string               `json:"baselineVersion,omitempty"`
 	Timeout         time.Duration        `json:"timeout"`
 }
+
+// Plugin runtime selections.
+const (
+	PluginRuntimeManaged = "managed"
+	PluginRuntimeArchive = "archive"
+)
+
+// archiveRuntime reports whether selected plugins are published as installed
+// archives instead of being linked as managed sources.
+func (o LaunchOptions) archiveRuntime() bool { return o.PluginRuntime == PluginRuntimeArchive }
 
 func (o LaunchOptions) validate() error {
 	if o.Mode != "browser" && o.Mode != "native" {
@@ -40,6 +54,19 @@ func (o LaunchOptions) validate() error {
 	}
 	if o.MCP && o.Mode != "native" {
 		return devcontract.Fail(2, "invalid_mcp_mode", "native MCP requires --mode native")
+	}
+	return o.validatePluginRuntime()
+}
+
+func (o LaunchOptions) validatePluginRuntime() error {
+	switch o.PluginRuntime {
+	case "", PluginRuntimeManaged:
+	case PluginRuntimeArchive:
+		if o.Mode != "browser" || o.Watch || o.LiveFrontend {
+			return devcontract.Fail(2, "archive_runtime_options", "--plugin-runtime archive requires --mode browser --watch=false --live-frontend=false")
+		}
+	default:
+		return devcontract.Fail(2, "invalid_plugin_runtime", "plugin runtime must be managed or archive")
 	}
 	return nil
 }
@@ -582,7 +609,11 @@ func (s *workspaceSupervisor) hostOutput() string { return filepath.Join("bin", 
 
 // hostVariant names every host build setting that is not a source file.
 func (s *workspaceSupervisor) hostVariant() string {
-	return fmt.Sprintf("mode=%s mcp=%t platform=%s/%s", s.options.Mode, s.options.MCP, runtime.GOOS, runtime.GOARCH)
+	runtimeKind := s.options.PluginRuntime
+	if runtimeKind == "" {
+		runtimeKind = PluginRuntimeManaged
+	}
+	return fmt.Sprintf("mode=%s mcp=%t plugins=%s platform=%s/%s", s.options.Mode, s.options.MCP, runtimeKind, runtime.GOOS, runtime.GOARCH)
 }
 
 // hostExecutable is the go build output name inside the host output tree.

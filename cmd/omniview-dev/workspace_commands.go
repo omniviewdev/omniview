@@ -87,6 +87,7 @@ func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceComm
 		flags.BoolVar(&c.launch.MCP, "mcp", false, "enable authenticated native MCP")
 		flags.BoolVar(&c.launch.Watch, "watch", true, "own source build/watch for the session lifetime")
 		flags.BoolVar(&c.launch.LiveFrontend, "live-frontend", true, "run actual strict host Vite and HMR")
+		flags.StringVar(&c.launch.PluginRuntime, "plugin-runtime", devworkspace.PluginRuntimeManaged, "managed (linked sources) or archive (installed static archives; requires --mode browser --watch=false --live-frontend=false)")
 		flags.StringVar(&c.linkEvidence, "link-evidence", "", "FILE containing the actual successful pinned pnpm protocol probe report (JSON)")
 		flags.StringVar(&c.launch.BaselineSource, "seed-from", "", "stopped source state root; safe-preferences-and-inactive-inventory-v1 copies only allowlisted safe preferences and inactive plugin inventory, not a profile clone; excludes Grafana connections/credentials and metric bindings/configuration")
 		flags.StringVar(&c.launch.BaselineVersion, "seed-version", "", "nonsecret baseline source build version")
@@ -342,6 +343,9 @@ func workspaceLaunchOptions(c workspaceCommand, w devworkspace.Workspace) (devwo
 			}
 			if !c.supplied["live-frontend"] {
 				options.LiveFrontend = previous.LiveFrontend
+			}
+			if !c.supplied["plugin-runtime"] {
+				options.PluginRuntime = previous.PluginRuntime
 			}
 			if !c.supplied["seed-from"] {
 				options.BaselineSource = previous.BaselineSource
@@ -1102,7 +1106,7 @@ func bindWorkspaceProfile(ctx context.Context, manager *devworkspace.Manager, w 
 func workspaceRefreshOptions(c workspaceCommand, w devworkspace.Workspace, diagnostics io.Writer) (devworkspace.RefreshOptions, error) {
 	refresh := devworkspace.RefreshOptions{Diagnostics: diagnostics}
 	for _, name := range []string{
-		"mode", "mcp", "watch", "live-frontend", "link-evidence", "seed-from", "seed-version", "timeout",
+		"mode", "mcp", "watch", "live-frontend", "plugin-runtime", "link-evidence", "seed-from", "seed-version", "timeout",
 	} {
 		if !c.supplied[name] {
 			continue
