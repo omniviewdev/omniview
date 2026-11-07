@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	"github.com/omniviewdev/omniview/internal/devcontract"
@@ -208,6 +209,109 @@ func TestWaitTimeoutDoesNotCancelAcceptedMutation(t *testing.T) {
 	response = waitOperation(t, s, accepted)
 	if response.Status != "succeeded" {
 		t.Fatalf("eventual state: %+v", response)
+	}
+}
+
+func TestFailedOperationDiagnosticsWithoutPluginInventory(t *testing.T) {
+	s, _, _ := fixtureServer(t)
+	accepted := s.accept(devcontract.Request{RequestID: "failed-install"}, func(context.Context) (any, error) {
+		return nil, errors.New("compiler: private-token " + strings.Repeat("x", 10000))
+	})
+	failed := waitOperation(t, s, accepted)
+	if failed.Status != "failed" || failed.Error.Details["diagnosticsOperationID"] != accepted.OperationID {
+		t.Fatalf("missing correlation: %+v", failed)
+	}
+	api := httptest.NewServer(http.HandlerFunc(s.serveHTTP))
+	defer api.Close()
+	s.host = strings.TrimPrefix(api.URL, "http://")
+	call := func(include bool, generation string) devcontract.Response {
+		t.Helper()
+		params, _ := json.Marshal(OperationParams{OperationID: accepted.OperationID, IncludeOutput: include})
+		body, _ := json.Marshal(devcontract.Request{ProtocolVersion: 1, RequestID: "diagnostic-read", WorkspaceID: testWorkspace,
+			Generation: generation, Operation: "operation.get", Params: params})
+		req, _ := http.NewRequest(http.MethodPost, api.URL+"/v1/control", bytes.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+string(s.token))
+		result, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer result.Body.Close()
+		var response devcontract.Response
+		if err := json.NewDecoder(result.Body).Decode(&response); err != nil {
+			t.Fatal(err)
+		}
+		return response
+	}
+	safe := call(false, s.generation)
+	data, _ := json.Marshal(safe)
+	if strings.Contains(string(data), "private-token") || safe.WorkspaceID != testWorkspace || safe.Generation != s.generation {
+		t.Fatalf("unsafe or unbound response: %s", data)
+	}
+	raw := call(true, s.generation)
+	diagnostic, _ := raw.Error.Details["unsafeDiagnostic"].(string)
+	if !strings.Contains(diagnostic, "private-token") || len(diagnostic) != 8192 {
+		t.Fatalf("missing bounded diagnostic: length=%d", len(diagnostic))
+	}
+	if stale := call(true, "other-generation"); stale.Error == nil || stale.Error.Code != "stale_target" {
+		t.Fatalf("foreign generation accepted: %+v", stale)
+	}
+	again := call(false, s.generation)
+	if _, exists := again.Error.Details["unsafeDiagnostic"]; exists {
+		t.Fatal("unsafe retrieval contaminated default response")
+	}
+}
+
+// diagnosticChainError deliberately does not repeat its cause in Error.
+type diagnosticChainError struct {
+	message string
+	cause   error
+}
+
+func (e diagnosticChainError) Error() string { return e.message }
+func (e diagnosticChainError) Unwrap() error { return e.cause }
+
+func TestOperationDiagnosticBoundaries(t *testing.T) {
+	chain := error(errors.New("outside-depth"))
+	for i := 15; i >= 0; i-- {
+		message := "middle"
+		if i == 15 {
+			message = "last-in-depth"
+		}
+		chain = diagnosticChainError{message, chain}
+	}
+	for _, test := range []struct {
+		name   string
+		err    error
+		want   string
+		absent string
+	}{
+		{"utf8", errors.New(strings.Repeat("x", 8191) + "界"), strings.Repeat("x", 8191), "�"},
+		{"joined", diagnosticChainError{"build: " + strings.Repeat("x", 9000),
+			errors.Join(errors.New("compiler: "+strings.Repeat("x", 9000)), errors.New("persistence-cause"))},
+			"persistence-cause", ""},
+		{"depth", chain, "last-in-depth", "outside-depth"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			s, _, _ := fixtureServer(t)
+			accepted := s.accept(devcontract.Request{}, func(context.Context) (any, error) { return nil, test.err })
+			waitOperation(t, s, accepted)
+			api := httptest.NewServer(http.HandlerFunc(s.serveHTTP))
+			defer api.Close()
+			s.host = strings.TrimPrefix(api.URL, "http://")
+			client, err := NewClient(api.URL, s.token, s.workspaceID, s.generation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer client.Close()
+			response, _ := client.Call(context.Background(), "operation.get", OperationParams{
+				OperationID: accepted.OperationID, IncludeOutput: true,
+			})
+			text, _ := response.Error.Details["unsafeDiagnostic"].(string)
+			if !utf8.ValidString(text) || len(text) > 8192 || !strings.Contains(text, test.want) ||
+				(test.absent != "" && strings.Contains(text, test.absent)) {
+				t.Fatalf("diagnostic lost cause or violated boundary: bytes=%d contains-cause=%v", len(text), strings.Contains(text, test.want))
+			}
+		})
 	}
 }
 

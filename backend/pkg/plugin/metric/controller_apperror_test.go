@@ -1,6 +1,7 @@
 package metric
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -18,7 +19,7 @@ func newTestController() Controller {
 func TestQuery_PluginNotFound(t *testing.T) {
 	c := newTestController()
 
-	_, err := c.Query("nonexistent", "conn", metric.QueryRequest{})
+	_, err := c.Query(context.Background(), "nonexistent", "conn", metric.QueryRequest{})
 	require.Error(t, err)
 
 	var appErr *apperror.AppError
@@ -30,7 +31,7 @@ func TestQuery_PluginNotFound(t *testing.T) {
 func TestSubscribe_PluginNotFound(t *testing.T) {
 	c := newTestController()
 
-	_, err := c.Subscribe("nonexistent", "conn", SubscribeRequest{})
+	_, err := c.Subscribe(context.Background(), "nonexistent", "conn", SubscribeRequest{})
 	require.Error(t, err)
 
 	var appErr *apperror.AppError

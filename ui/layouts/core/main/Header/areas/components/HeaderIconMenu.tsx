@@ -30,7 +30,7 @@ const HeaderIconMenu: React.FC<Props> = ({ id, icon, helpText, items }) => {
       </HintTooltip>
       <Menu.Portal>
         <Menu.Positioner align='end' sideOffset={4}>
-          <Menu.Popup id={id} style={{ minWidth: 120 }}>
+          <Menu.Popup id={id}>
             {items.map(({ label, icon: itemIcon, link }) => (
               <Menu.Item
                 key={label}

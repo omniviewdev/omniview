@@ -3,6 +3,7 @@ import { PluginServiceContext } from './context';
 import { PluginService } from '../core/PluginService';
 import { createProductionDeps } from '../adapters/createProductionDeps';
 import type { PluginDescriptor } from '../core/types';
+import { builtinModules } from '../adapters/builtinModules';
 
 // Startup discovery is independent from the service consumer hook.
 import { useInstalledPlugins } from '@/hooks/plugin/useInstalledPlugins';
@@ -57,16 +58,18 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
     // Ready dev servers join the initial batch; others are loaded as soon as
     // their reconciled status becomes ready, independently of navigation.
     const descriptors: PluginDescriptor[] = installedPlugins
-      .filter((p) => p.origin !== 'builtin' && p.enabled !== false && (!p.dev || (p.dev && p.devPort && p.devPort > 0)))
+      .filter((p) => p.origin !== 'builtin' && p.enabled !== false && (!p.dev || Boolean(p.devPort && p.devPort > 0)))
       .map((p) => ({
         id: p.id,
         dev: p.dev,
         devPort: p.devPort,
       }));
-    const batchIds = new Set(descriptors.map((plugin) => plugin.id));
+    const startupBuiltins = installedPlugins.filter(p => p.origin === 'builtin' &&
+      p.enabled !== false && builtinModules[p.frontendModule ?? '']?.activateAtStartup === true);
+    const batchIds = new Set([...descriptors, ...startupBuiltins].map((plugin) => plugin.id));
     initialBatch.current = batchIds;
 
-    void service.loadAll(descriptors)
+    void Promise.all([service.loadAll(descriptors), ...startupBuiltins.map(async p => service.load(p.id))])
       .catch((err) => {
         console.error('[PluginServiceProvider] loadAll failed:', err);
       })

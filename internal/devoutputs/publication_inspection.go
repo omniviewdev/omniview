@@ -30,7 +30,14 @@ type publicationInspection struct {
 	current, backup snapshot
 }
 
-func inspectPublication(ctx context.Context, entry *outputEntry) (publicationInspection, error) {
+func inspectPublication(ctx context.Context, entry *outputEntry) (result publicationInspection, resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			if _, ok := resultErr.(*Conflict); !ok {
+				resultErr = entryConflict(entry, "publication", result.current, resultErr)
+			}
+		}
+	}()
 	p := entry.Pending
 	state, err := p.state()
 	if err != nil {

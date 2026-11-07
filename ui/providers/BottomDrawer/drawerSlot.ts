@@ -24,7 +24,7 @@ export type SerializedDrawerTab = {
 };
 
 export type DrawerSlot = {
-  version: 1;
+  version: 1 | 2;
   tabs: SerializedDrawerTab[];
   focusedId: string | null;
   mode?: DrawerMode;
@@ -141,7 +141,7 @@ export function parseDrawerSlot(value: unknown): DrawerSlot {
   }
 
   const { version, tabs, focusedId, mode, height } = value;
-  if (version !== 1) {
+  if (version !== 1 && version !== 2) {
     throw new Error(`unsupported drawer slot version ${String(version)}`);
   }
 
@@ -168,7 +168,7 @@ export function parseDrawerSlot(value: unknown): DrawerSlot {
   }
 
   return {
-    version: 1,
+    version,
     tabs: parsedTabs,
     focusedId,
     ...(mode !== undefined && { mode }),
@@ -188,12 +188,12 @@ export function buildDrawerSlot(
 ): DrawerSlot {
   const savedTabs = tabs.filter((tab) => !isPendingDrawerTab(tab)).map(serializeDrawerTab);
   const focusedId = savedTabs.some((tab) => tab.id === focusedTabId) ? focusedTabId ?? null : null;
-  return { version: 1, tabs: savedTabs, focusedId, mode, height };
+  return { version: 2, tabs: savedTabs, focusedId, mode, height };
 }
 
 /** Slot for a new panel window that holds a single torn-off or moved tab. */
 export function buildPanelDrawerSlot(tab: SerializedDrawerTab): DrawerSlot {
-  return { version: 1, tabs: [tab], focusedId: tab.id };
+  return { version: 2, tabs: [tab], focusedId: tab.id };
 }
 
 /**

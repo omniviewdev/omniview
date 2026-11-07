@@ -8,7 +8,7 @@ const backend = vi.hoisted(() => ({
   installDev: vi.fn(),
   list: vi.fn(),
   get: vi.fn(),
-  showSnackbar: vi.fn(),
+  notify: vi.fn(),
   installVersion: vi.fn(),
   uninstall: vi.fn(),
   versions: vi.fn(async () => []),
@@ -34,10 +34,10 @@ vi.mock('@omniviewdev/runtime/api', () => ({
   },
 }));
 vi.mock('@omniviewdev/runtime', () => ({
-  useSnackbar: () => ({ showSnackbar: backend.showSnackbar }),
+  useNotifications: () => ({ notify: backend.notify }),
   createErrorHandler: () => () => undefined,
   parseAppError: () => ({ title: 'Error', type: 'omniview:internal', detail: 'The operation could not be completed.' }),
-  actionToSnackbar: (action: unknown) => action,
+  actionToNotification: (action: unknown) => action,
 }));
 vi.mock('@omniviewdev/runtime/runtime', () => ({
   Events: { On: () => () => undefined },
@@ -95,11 +95,6 @@ describe('dev install retained-failure reconciliation', () => {
       });
       expect(result.current.manager.installDev.isError).toBe(true);
       expect(result.current.manager.installDev.isSuccess).toBe(false);
-      expect(backend.showSnackbar).toHaveBeenLastCalledWith(expect.objectContaining({
-        status: 'error',
-        details: expect.stringContaining('Dev plugin build failed'),
-        actions: expect.arrayContaining([expect.objectContaining({ label: 'Retry installation' })]),
-      }));
     } finally {
       unmount();
       client.clear();

@@ -42,7 +42,7 @@ func sdkSourceFixture(t *testing.T) (source, sdk, revision, goPath string) {
 	}
 	git("init", "-q")
 	git("add", ".")
-	git("commit", "-qm", "reviewed fixture")
+	git("commit", "-qm", "SDK fixture")
 	revision = strings.TrimSpace(git("rev-parse", "HEAD"))
 	require.NoError(t, os.WriteFile(filepath.Join(source, "go.mod"), []byte(fmt.Sprintf("module fixture\n\ngo 1.24.0\nrequire github.com/omniviewdev/plugin-sdk v0.0.0\nreplace github.com/omniviewdev/plugin-sdk => %q\n", sdk)), 0600))
 	return source, sdk, revision, goPath
@@ -50,49 +50,37 @@ func sdkSourceFixture(t *testing.T) (source, sdk, revision, goPath string) {
 
 func TestVerifySelectedSDKUsesActualGoModuleAndDirtySourceDigest(t *testing.T) {
 	source, sdk, revision, goPath := sdkSourceFixture(t)
-	identity, err := VerifySelectedSDK(context.Background(), goPath, source, revision, os.Environ())
+	identity, err := VerifySelectedSDK(context.Background(), goPath, source, os.Environ())
 	require.NoError(t, err)
 	canonical, err := filepath.EvalSymlinks(sdk)
 	require.NoError(t, err)
 	require.Equal(t, canonical, identity.Directory)
+	require.Equal(t, revision, identity.Revision)
 	require.Len(t, identity.SourceDigest, 64)
 	require.NoError(t, os.WriteFile(filepath.Join(sdk, "settings", "value.go"), []byte("package settings\nconst Value=2\n"), 0600))
-	dirty, err := VerifySelectedSDK(context.Background(), goPath, source, revision, os.Environ())
+	dirty, err := VerifySelectedSDK(context.Background(), goPath, source, os.Environ())
 	require.NoError(t, err)
 	require.NotEqual(t, identity.SourceDigest, dirty.SourceDigest, "ordinary dirty SDK API edits must receive fresh source evidence")
 	require.NoError(t, os.WriteFile(filepath.Join(sdk, "pkg", "state", "root.go"), []byte("package state\n// containment changed\n"), 0600))
-	_, err = VerifySelectedSDK(context.Background(), goPath, source, revision, os.Environ())
-	require.Error(t, err, "changed containment core must not inherit baseline trust")
-	env := append(os.Environ(), "OMNIVIEW_WORKSPACE_ID=9f479dc5-9fd0-4359-915a-ed307fbe5510", "OMNIVIEW_ALLOW_ISOLATION_SOURCE_CHANGES=1")
-	_, err = VerifySelectedSDK(context.Background(), goPath, source, revision, env)
-	require.ErrorContains(t, err, "explicit validated workspace", "a bare environment flag must not authorize containment-core changes")
-}
-
-func TestVerifySelectedSDKRejectsDirtyProfileContract(t *testing.T) {
-	source, sdk, revision, goPath := sdkSourceFixture(t)
-	require.NoError(t, os.WriteFile(filepath.Join(sdk, "pkg", "profilecontract", "profile.go"), []byte("package profilecontract\n// containment changed\n"), 0600))
-	_, err := VerifySelectedSDK(context.Background(), goPath, source, revision, os.Environ())
-	require.ErrorContains(t, err, "pkg/profilecontract/profile.go", "the shared ownership reader must not inherit baseline trust after a dirty edit")
-	require.ErrorContains(t, err, "--allow-isolation-source-changes")
+	isolationDirty, err := VerifySelectedSDK(context.Background(), goPath, source, os.Environ())
+	require.NoError(t, err)
+	require.Equal(t, revision, isolationDirty.Revision)
+	require.NotEqual(t, dirty.SourceDigest, isolationDirty.SourceDigest,
+		"dirty isolation edits must receive fresh source evidence")
 }
 
 func TestVerifySelectedSDKIgnoresYAMLAndFollowsReplacement(t *testing.T) {
-	source, _, revision, goPath := sdkSourceFixture(t)
+	source, _, _, goPath := sdkSourceFixture(t)
 	require.NoError(t, os.WriteFile(filepath.Join(source, "plugin.yaml"), []byte("state_isolation: {sdk_revision: arbitrary}\n"), 0600))
-	_, err := VerifySelectedSDK(context.Background(), goPath, source, "", os.Environ())
-	require.ErrorContains(t, err, "trusted exact")
-	_, foreign, _, _ := sdkSourceFixture(t)
-	// A same-ID foreign module cannot inherit the reviewed selected repository's proof.
+	_, foreign, foreignRevision, _ := sdkSourceFixture(t)
 	require.NoError(t, os.WriteFile(filepath.Join(foreign, "settings", "value.go"), []byte("package settings\nconst Value=99\n"), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(source, "go.mod"), []byte(fmt.Sprintf("module fixture\n\ngo 1.24.0\nrequire github.com/omniviewdev/plugin-sdk v0.0.0\nreplace github.com/omniviewdev/plugin-sdk => %q\n", foreign)), 0600))
-	actual, err := VerifySelectedSDK(context.Background(), goPath, source, revision, os.Environ())
-	// Fixture repositories may have the same initial commit; source evidence must
-	// nevertheless identify the actual replacement, never the prior selected dir.
-	if err == nil {
-		canonical, e := filepath.EvalSymlinks(foreign)
-		require.NoError(t, e)
-		require.Equal(t, canonical, actual.Directory)
-	}
+	actual, err := VerifySelectedSDK(context.Background(), goPath, source, os.Environ())
+	require.NoError(t, err)
+	canonical, err := filepath.EvalSymlinks(foreign)
+	require.NoError(t, err)
+	require.Equal(t, canonical, actual.Directory)
+	require.Equal(t, foreignRevision, actual.Revision)
 }
 
 func TestDependencyWatchesCoverEffectiveSDKSettingsLogAndProto(t *testing.T) {

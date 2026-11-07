@@ -204,7 +204,7 @@ while IFS= read -r ignored; do :; done`)
 
 	for i, selected := range connections {
 		t.Run(selected.Name, func(t *testing.T) {
-			session, createErr := ctrl.CreateSession(pluginID, selected.ID, sdkexec.SessionOptions{ResourcePlugin: providerID, ResourceKey: resourceKey, Command: []string{"native-file-apply"}})
+			session, createErr := ctrl.CreateSession(invocation.HostContext(ctx), pluginID, selected.ID, sdkexec.SessionOptions{ResourcePlugin: providerID, ResourceKey: resourceKey, Command: []string{"native-file-apply"}})
 			require.NoError(t, createErr)
 			setupCtx, setupCancel := context.WithTimeout(ctx, 5*time.Second)
 			defer setupCancel()
@@ -279,7 +279,7 @@ while IFS= read -r ignored; do :; done`)
 	ctrl.mu.RUnlock()
 	require.Zero(t, indexCount)
 	require.Zero(t, inputCount)
-	_, err = ctrl.CreateSession(pluginID, connections[0].ID, sdkexec.SessionOptions{ResourcePlugin: providerID, ResourceKey: resourceKey})
+	_, err = ctrl.CreateSession(invocation.HostContext(ctx), pluginID, connections[0].ID, sdkexec.SessionOptions{ResourcePlugin: providerID, ResourceKey: resourceKey})
 	var appError *apperror.AppError
 	require.ErrorAs(t, err, &appError)
 	require.Equal(t, apperror.TypePluginNotFound, appError.Type)

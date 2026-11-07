@@ -1,0 +1,184 @@
+{
+  "capturedAt": "2026-11-06T23:33:55.935Z",
+  "commits": {
+    "host": "5e03ae1a7bff04eb743ba1ec040496441e610602",
+    "ui": "215b845b159a74b127068373243d0f862e33614f",
+    "sdkUnchanged": "fe479313e4aa0be678e995d11e449af1f5baa26f"
+  },
+  "policy": {
+    "dispatchIntervalMs": 250,
+    "coalesceMs": 25,
+    "occupiedSlots": 4,
+    "completedReuseMaxMs": 30000,
+    "cacheEntries": 64,
+    "cacheBytes": 8388608
+  },
+  "checks": {
+    "goMetricRace": "passed",
+    "goFullSuite": "61 packages passed;10 no tests",
+    "goBuild": "passed with existing macOS linker warnings",
+    "runtimeTests": 468,
+    "runtimeTypes": "passed",
+    "runtimeBuildAndViteShims": "passed;existing CJS import.meta warning",
+    "sharedUITests": 1860,
+    "sharedUITypesLintFormatBuild": "passed;lint zero warnings",
+    "reviews": "scheduler and authority/lifecycle reviews completed; cancellation and queued-catalog findings fixed"
+  },
+  "grafanaImmediateReentry": {
+    "before": {
+      "at": "2026-11-06T23:23:11.811Z",
+      "query": 9839,
+      "query_range": 15398
+    },
+    "after": {
+      "at": "2026-11-06T23:23:12.567Z",
+      "query": 9839,
+      "query_range": 15398
+    },
+    "delta": {
+      "instant": 0,
+      "range": 0
+    },
+    "sameDomains": true
+  },
+  "refreshWindow": {
+    "before": {
+      "at": "2026-11-06T23:26:41.338Z",
+      "query": 9899,
+      "query_range": 15422
+    },
+    "after": {
+      "at": "2026-11-06T23:30:22.850Z",
+      "query": 9961,
+      "query_range": 15446
+    },
+    "blanked": false,
+    "unmounted": false,
+    "retainedPlots": true,
+    "chartHeights": [
+      180,
+      180,
+      180
+    ],
+    "cells": 100
+  },
+  "native": {
+    "inventoryPods": 316,
+    "initialConnectionToTableMs": 4310,
+    "viewport": {
+      "iterations": 24,
+      "durationMs": 13884,
+      "maxMountedRows": 60,
+      "remounts": 0,
+      "visitedPositions": [
+        1043,
+        7127
+      ]
+    },
+    "revisit": {
+      "revisitSettledMs": 3180,
+      "values": [
+        "0m",
+        "332KiB",
+        "0.01m",
+        "332KiB"
+      ]
+    },
+    "panel": {
+      "settledMs": 1654,
+      "cards": [
+        "CPU usage0mRequest: 1 mLimit: 50 mDetailskind-omniview-load-lab · NativeSampleUpdatedValid untilCurr",
+        "Memory working set332KiBRequest: 4 MiBLimit: 16 MiBDetailskind-omniview-load-lab · NativeSampleUpdat"
+      ]
+    },
+    "namespaceAPIProbe": {
+      "exit": 0,
+      "durationMs": 82,
+      "responseBytes": 10499,
+      "objects": 30,
+      "cpuPresent": true,
+      "memoryPresent": true
+    }
+  },
+  "motion": {
+    "before": [
+      {
+        "width": 43.65625,
+        "height": 4,
+        "duration": "0.16s, 0.16s, 0.16s",
+        "property": "width, block-size, inset-inline-start"
+      },
+      {
+        "width": 4,
+        "height": 3.359375,
+        "duration": "0.16s, 0.16s, 0.16s",
+        "property": "width, block-size, inset-inline-start"
+      }
+    ],
+    "during": [
+      {
+        "width": 43.65625,
+        "height": 4,
+        "animations": [
+          "running"
+        ]
+      },
+      {
+        "width": 4,
+        "height": 3.359375,
+        "animations": [
+          "running"
+        ]
+      }
+    ],
+    "after": [
+      {
+        "rowHeight": 21,
+        "fill": [
+          {
+            "width": 229.1875,
+            "height": 4
+          }
+        ]
+      },
+      {
+        "rowHeight": 21,
+        "fill": [
+          {
+            "width": 4,
+            "height": 17.625
+          }
+        ]
+      }
+    ],
+    "reduced": [
+      {
+        "duration": "0s, 0s, 0s",
+        "animations": 0
+      },
+      {
+        "duration": "0s, 0s, 0s",
+        "animations": 0
+      }
+    ]
+  },
+  "catalogAfterBrowserReload": {
+    "selectedColumns": 15,
+    "selectableFields": 42,
+    "metricCells": 100,
+    "optionalChoicesPresent": [
+      "CPU requests",
+      "CPU limits",
+      "Memory total usage",
+      "Network receive errors",
+      "Network receive packets"
+    ]
+  },
+  "limitations": [
+    "Native revisit3.18s remains a dev scan/render optimization target; no claim of instant native replay.",
+    "Synthetic20000-inventory coordinator test is not real20000-Pod scan evidence.",
+    "Dispatch rate bounds jobs, not HTTP calls hidden inside providers.",
+    "Provider counters are shared endpoint counts; immediate same-domain reentry showed zero deltas.",
+    "No new SDK protocol, CI workflow, merge, or release."
+  ]
+}

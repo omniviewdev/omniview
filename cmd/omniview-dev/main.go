@@ -12,6 +12,7 @@ import (
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // commandExitError carries an exit status after the command has written its result.
@@ -46,14 +47,52 @@ func newRootCommand(in io.Reader, out, diagnostics io.Writer) *cobra.Command {
 	root.SetErr(diagnostics)
 	// Cobra's raw flag errors may echo secret values. Emit safe usage diagnostics
 	// centrally, including for errors raised before RunE or command validation.
-	root.SetFlagErrorFunc(func(_ *cobra.Command, _ error) error {
-		return devcontract.Fail(2, "usage", "invalid command flags; inspect command help for accepted flags and values")
+	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		var name string
+		var unknown *pflag.NotExistError
+		var missing *pflag.ValueRequiredError
+		var invalid *pflag.InvalidValueError
+		switch {
+		case errors.As(err, &unknown):
+			// Only registered names are public. Unknown names can themselves
+			// contain credentials, even when no flag value was supplied.
+			if registeredFlag(root, unknown.GetSpecifiedName()) {
+				name = unknown.GetSpecifiedName()
+			}
+		case errors.As(err, &missing):
+			name = missing.GetFlag().Name
+		case errors.As(err, &invalid):
+			name = invalid.GetFlag().Name
+		}
+		message := "invalid command flags"
+		if name != "" {
+			message += ": --" + name
+		}
+		help := cmd.CommandPath() + " --help"
+		failure := devcontract.Fail(2, "usage", message+"; inspect "+help+" for accepted flags and values")
+		failure.Details = map[string]any{"helpCommand": help}
+		if name != "" {
+			failure.Details["flag"] = "--" + name
+		}
+		return failure
 	})
 	addWorkspaceCommands(root)
 	addControlCommands(root, in)
 	addViteFeedbackCommand(root)
 	configureCommandGroups(root)
 	return root
+}
+
+func registeredFlag(cmd *cobra.Command, name string) bool {
+	if cmd.Flags().Lookup(name) != nil || cmd.PersistentFlags().Lookup(name) != nil {
+		return true
+	}
+	for _, child := range cmd.Commands() {
+		if registeredFlag(child, name) {
+			return true
+		}
+	}
+	return false
 }
 
 func configureCommandGroups(parent *cobra.Command) {
@@ -113,9 +152,7 @@ func runWithInput(ctx context.Context, args []string, in io.Reader, out, diagnos
 	}
 	if failure.Exit == 2 {
 		parent := cmd
-		if !parent.HasAvailableSubCommands() && parent.Parent() != nil {
-			parent = parent.Parent()
-		}
+		// A leaf parse error needs its own help, not its parent's inventory.
 		var commands []string
 		for _, child := range parent.Commands() {
 			if child.IsAvailableCommand() {

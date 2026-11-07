@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query';
-import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
+import { useNotifications } from '../../activity/context';
 import { parseAppError, showAppError } from '../../errors/parseAppError';
 import { SessionOptions } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/exec/models';
 import { CreateSession } from '../../exec';
@@ -12,28 +12,27 @@ type UseResourceMutationsOptions = {
    * @example "kubernetes"
    */
   pluginID?: string;
-
 };
 
 type CreateSessionOptions = {
   connectionID: string;
   icon?: string | React.ReactNode;
   label?: string;
-  opts: Partial<SessionOptions>
+  opts: Partial<SessionOptions>;
   /** UI-only explicit recovery; never serialized into session options. */
   recovery?: {
     label: string;
     canRecover: (error: { title: string; suggestion: string; raw: string }) => boolean;
     run: () => Promise<void>;
   };
-}
+};
 
 /**
  * Create or manage sessions from throughout the app
  */
 export const useExec = ({ pluginID: explicitPluginID }: UseResourceMutationsOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
-  const { showSnackbar } = useSnackbar();
+  const { notify } = useNotifications();
   const { createTab, updateTab } = useBottomDrawer();
 
   const createSessionMutation = useMutation({
@@ -70,7 +69,13 @@ export const useExec = ({ pluginID: explicitPluginID }: UseResourceMutationsOpti
           {
             id: session.id,
             title: label ?? `Session ${session.id.substring(0, 8)}`,
-            properties: { status: 'connected', pluginID, connectionID, opts: { ...opts }, recovery },
+            properties: {
+              status: 'connected',
+              pluginID,
+              connectionID,
+              opts: { ...opts },
+              recovery,
+            },
           },
         );
         return session;
@@ -81,16 +86,25 @@ export const useExec = ({ pluginID: explicitPluginID }: UseResourceMutationsOpti
           { id: tempId },
           {
             properties: {
-              status: 'error', error: appErr.detail, pluginID, connectionID, opts: { ...opts }, recovery,
-              errorInfo: { title: appErr.title || 'Session error', suggestion: appErr.detail, raw: appErr.detail },
+              status: 'error',
+              error: appErr.detail,
+              pluginID,
+              connectionID,
+              opts: { ...opts },
+              recovery,
+              errorInfo: {
+                title: appErr.title || 'Session error',
+                suggestion: appErr.detail,
+                raw: appErr.detail,
+              },
             },
           },
         );
-        showAppError(showSnackbar, error, 'Failed to start session');
+        showAppError(notify, error, 'Failed to start session');
         return null;
       }
     },
-  })
+  });
 
   return {
     createSession: createSessionMutation.mutateAsync,

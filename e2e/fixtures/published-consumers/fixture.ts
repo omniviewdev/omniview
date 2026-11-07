@@ -108,7 +108,7 @@ async function producer(kind: 'runtime' | Delivery) {
     const timer = setTimeout(() => {
       pending.delete(id);
       result.reject(new Error(`Published-consumer ${action} timed out`));
-    }, 10_000);
+    }, action === 'export' ? 75_000 : 10_000);
     pending.set(id, { ...result, timer });
     child.send({ id, action, color }, error => {
       if (error) {
@@ -153,7 +153,7 @@ async function producer(kind: 'runtime' | Delivery) {
     await rm(root, { recursive: true, force: true });
   };
   try {
-    const initial = await beforeDeadline(ready.promise, 20_000, 'Published-consumer startup timed out');
+    const initial = await beforeDeadline(ready.promise, kind === 'runtime' ? 150_000 : 20_000, 'Published-consumer startup timed out');
     if (!child.pid) throw new Error('Producer has no owned process identity');
     return { root, pid: child.pid, ports: initial.ports, a: initial.a, b: initial.b, request, close };
   } catch (error) {

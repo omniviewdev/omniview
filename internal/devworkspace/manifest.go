@@ -36,7 +36,8 @@ func (m *Manager) durablePhase(kind, phase string) error {
 
 type Workspace struct {
 	devcontract.ResolvedWorkspace
-	Phase string `json:"phase"`
+	Phase    string            `json:"phase"`
+	Metadata map[string]string `json:"metadata"`
 }
 
 type WorkspacePaths struct {
@@ -48,6 +49,7 @@ type WorkspacePaths struct {
 	RuntimeRoot  string            `json:"runtimeRoot"`
 	WebviewRoot  string            `json:"webviewRoot"`
 	Repositories map[string]string `json:"repositories"`
+	Metadata     map[string]string `json:"metadata"`
 }
 
 type CreateOptions struct {
@@ -180,6 +182,14 @@ func (m *Manager) plan(ctx context.Context, reg Registry, opts CreateOptions) (d
 		}
 		commit, err := resolve(ctx, s.CommonDir, selection)
 		if err != nil {
+			if ctx.Err() != nil {
+				return manifest, ctx.Err()
+			}
+			if IsPinnedRef(selection) {
+				failure := devcontract.Fail(3, "local_ref_missing", "repository "+s.ID+" cannot resolve pinned ref "+selection+" locally; explicitly fetch the containing branch in its registered source repository, then retry; pinned refs are never fetched automatically")
+				failure.Details = map[string]any{"repository": s.ID, "ref": selection, "source": s.Worktree, "automaticFetch": false}
+				return manifest, failure
+			}
 			return manifest, err
 		}
 		commits[s.ID] = commit
@@ -356,7 +366,11 @@ func (m *Manager) Inspect(ctx context.Context, name string) (Workspace, error) {
 	if err != nil {
 		return Workspace{}, err
 	}
-	return m.inspectRoot(root)
+	w, err := m.inspectRoot(root)
+	if err == nil {
+		w.Metadata = OwnershipMetadataPaths(w)
+	}
+	return w, err
 }
 
 func (m *Manager) Paths(ctx context.Context, name string) (WorkspacePaths, error) {
@@ -380,6 +394,7 @@ func (m *Manager) Paths(ctx context.Context, name string) (WorkspacePaths, error
 		return WorkspacePaths{}, devcontract.Fail(4, "foreign_profile", "runtime or webview resolves outside the UUID profile")
 	}
 	paths := WorkspacePaths{WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, ManifestPath: w.ManifestPath, LocalRoot: filepath.Join(w.Root, ".local"), StateRoot: w.StateRoot, RuntimeRoot: runtime, WebviewRoot: webview, Repositories: map[string]string{}}
+	paths.Metadata = OwnershipMetadataPaths(w)
 	for _, r := range w.Manifest.Repositories {
 		paths.Repositories[r.ID], err = devcontract.CanonicalPath(filepath.Join(w.Root, r.Directory))
 		if err != nil {
@@ -444,6 +459,13 @@ func (m *Manager) List(ctx context.Context) ([]Workspace, error) {
 		}
 		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
+		}
+		_, err := os.Lstat(filepath.Join(base, e.Name(), "workspace.json"))
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return nil, err
 		}
 		w, err := m.inspectRoot(filepath.Join(base, e.Name()))
 		if err != nil {

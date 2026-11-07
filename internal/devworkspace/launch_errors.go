@@ -6,6 +6,7 @@ import (
 
 	"github.com/omniviewdev/omniview/internal/devbaseline"
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devoutputs"
 	"github.com/omniviewdev/omniview/internal/devsession"
 )
 
@@ -13,16 +14,26 @@ func workspaceError(err error) *devcontract.Error {
 	if err == nil {
 		return nil
 	}
+	var conflict *devoutputs.Conflict
+	if errors.As(err, &conflict) {
+		// Only library-typed ownership fields cross the compiler diagnostic
+		// boundary. Arbitrary compiler text is never copied into Details.
+		payload := devcontract.Fail(4, "ownership_conflict", conflict.Error())
+		payload.Details = map[string]any{"ownershipConflict": conflict}
+		return payload
+	}
 	var typed *devcontract.Error
 	if errors.As(err, &typed) {
 		copy := *typed
 		if copy.Exit == 0 {
 			switch copy.Code {
-			case "usage", "invalid_mode", "invalid_mcp_mode", "reviewed_sdk_required":
+			case "usage", "invalid_mode", "invalid_mcp_mode", "sdk_source_required":
 				copy.Exit = 2
 			case "missing_workspace", "link_evidence_required", linkResolutionFailureCode, "host_not_ready", "sdk_contract_mismatch", "ui_contract_mismatch":
 				copy.Exit = 3
-			case "stale_target", "workspace_running", "workspace_busy", "launch_conflict", "generated_conflict", "generated_pending", "port_conflict", "port_attempts_exhausted", "sdk_source_untrusted", "native_profile_conflict", "edit_pending", "baseline_conflict":
+			case "stale_target", "workspace_running", "workspace_busy", "collection_busy", "launch_conflict", "generated_conflict",
+				"generated_pending", "port_conflict", "port_attempts_exhausted", "native_profile_conflict",
+				"edit_pending", "baseline_conflict", "ownership_conflict":
 				copy.Exit = 4
 			case "unauthorized":
 				copy.Exit = 6

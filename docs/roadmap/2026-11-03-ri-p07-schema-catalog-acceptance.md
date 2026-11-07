@@ -78,3 +78,99 @@ The integration coordinator owns the final cohort pin, review, and CI. The user 
 Historical live evidence remains separate: 189/189 corrected-schema admissions and 189/189 raw-schema rejections belong to their original source cohort. The earlier failed 185-Pod sample remains failed. The new 451-byte controlled fixture is not a fresh live-Pod, native UI, or P13 result.
 
 C04 still requires the user's merge of [grpc-go #1](https://github.com/omniviewdev/grpc-go/pull/1), followed by the actual merged-fork pin and fresh SDK proof. No development fork pin is released by this PR.
+
+## Live cohort verification (2026-11-03)
+
+This proof used the disposable workspace `c04-final-proof` with native MCP on
+port 9112. Its host was `2f17b9ac364e8d4c0d4b06e360c804a3ecc142f5`, SDK was
+`d576a1516b29049466b56bf67aa65eb4766a358d`, Kubernetes was
+`fcd3d88cd5491007888a1210df48db222dee8d61`, UI was
+`5af0ec923a605aba5e6e3571d639f6238095804c`, Flux was `b9e4fd14`,
+and Proxmox was `07a37c5`. The SDK, UI and Flux revisions were merged; the host,
+Kubernetes and Proxmox revisions were candidates. The host changed after this proof.
+
+The earlier gate statements describe the original PR's state. The canonical pin
+merged as `23fb11eb`, and grpc-go #1 merged as `4c6f1d1c`. They no longer await
+merge.
+
+The Pod YAML editor displayed schema documentation for `apiVersion`. Completion
+at `spec.serviceAcc` included the registered Pod schema property
+`automountServiceAccountToken`; the UI did not identify the suggestion provider.
+An unsaved `status.startTime: 42` produced the Monaco diagnostic
+`Incorrect type. Expected one of null, string.` Changing the value to `null`
+cleared that marker. The registered Pod schema permits unknown properties, so an
+unknown field did not produce a diagnostic.
+
+The editor observations used the native MCP DOM and JavaScript tools; the edits
+were not saved.
+
+The Event table showed new scratch Deployment events without a reload. The scratch
+namespace was deleted, and a subsequent Kubernetes get returned `NotFound`.
+These observations do not replace the historical measurements above or establish
+the final merged-source smoke proof.
+
+On 2026-11-04, candidate host `bf47c022f957eb9ace7770e75e39ebfd9b2fab1a`
+used the same SDK, Kubernetes, UI, Flux and Proxmox revisions. Pod,
+`events.k8s.io` Event and ReplicaSet sources were following with 192, 873 and
+141 records respectively;
+the corresponding `kubectl` counts matched. The catalog initially remained
+pending and idle. An explicit query refetch and route navigation recovered it.
+The Pod YAML preview opened, but hover did not appear. Editable-editor hover and
+worker inspection were not checked on this host. This was not a fresh
+schema-admission measurement or a merged-source proof.
+
+The repinned candidate used host `300fa9a99af58edb257e2d65947d52e62492a808`,
+SDK `57f8b8bf4f761b44ebb33dea478a9e68c1d02049`, Kubernetes
+`67f0513e5094ea788bb96cf1d01b48a067b1951b`, Proxmox
+`eed8a71cae990dfe6b6be1e35337eca21e3ab74f`, Flux
+`c0409e1072260584519474133e5331414a6cbc4b`, and UI
+`5af0ec923a605aba5e6e3571d639f6238095804c`. The catalog opened without a
+refetch. Pod, core Event and ReplicaSet sources were following with 190, 170
+and 141 records; contemporaneous `kubectl` counts matched. An editable
+standalone scratch Pod YAML showed the `apiVersion` schema description on
+hover. No edit was saved. The scratch namespace was deleted, and a subsequent
+get returned `NotFound`. This is candidate evidence, not merged-source proof.
+
+The later candidate used host `496156d4cf1c15d11d3d08324eaf3fcbc9df0c81`,
+SDK `427ef1da1f1db4f5787d384af3ae183ff31b0cd3`, Kubernetes
+`a92b947d9568ccf5bf2f5fb810a7ade74ea45492`, Proxmox
+`6feac2c9dab94e91517674d9dac8ecfc39f47864`, Flux
+`b2c4588e90d1c233d5340e43cdba406aa461bd41`, and the same UI revision.
+Pod, core Event and ReplicaSet sources were following with 190, 187 and 141
+records; contemporaneous `kubectl` counts matched. The catalog initially waited
+for more than 90 seconds; Home-to-Open navigation recovered it without an
+explicit refetch. Editable scratch Pod YAML showed the `apiVersion` schema
+description on hover. No edit was saved. The scratch namespace was deleted,
+and a subsequent get returned `NotFound`. This is not merged-source proof.
+
+The activity-integrated candidate used host `98a08390629bdb871743d9cb6f46eb81b4813492`,
+SDK `427ef1da1f1db4f5787d384af3ae183ff31b0cd3`, Kubernetes
+`aa9999cce2d4cb77033d7fc46eab8ddeb7f3201d`, Proxmox
+`0c8b8a5985c3d39822522297bfb6db714ef54a2d`, Flux
+`cc0df91e3da116748e1f0aa4b4371dad7e5ea8a7`, and UI
+`20cc1a7e881fc3986a37a7cf0de207059c28b71c`. Pod, core Event and ReplicaSet
+sources were following with 190, 262 and 141 records; contemporaneous
+`kubectl` counts matched. The catalog waited over 95 seconds before navigation
+recovered it. Editable scratch Pod YAML showed `apiVersion` schema documentation
+on hover. No edit was saved. The scratch namespace was deleted and a subsequent
+get returned `NotFound`. Flux was not at its later merged SDK pin, so this is
+not a final merged-cohort proof.
+
+### Acceptance status
+
+| Evidence or gate | Status |
+| --- | --- |
+| Canonical Kubernetes pin | Merged; source-selection guards passed on the merge. |
+| Earlier candidate Pod editor and Event checks | Observed on `2f17b9ac`; completion provider not identified. |
+| `bf47c022` Pod preview hover | Not observed; editable-editor hover and worker inspection remain open. |
+| `300fa9a9` editable Pod hover | Observed with the repinned candidate cohort; no edit saved. |
+| `496156d4` editable Pod hover | Observed with its candidate cohort; no edit saved. |
+| `98a08390` editable Pod hover | Observed with the activity candidate; no edit saved. |
+| `bf47c022` catalog startup | Pending/idle until explicit refetch and navigation; investigation remains open. |
+| `496156d4` catalog startup | Waited over 90 seconds; navigation recovered it without refetch. Investigation remains open. |
+| `98a08390` catalog startup | Waited over 95 seconds; navigation recovered it. Investigation remains open. |
+| Unknown-field diagnostic | Not observed; the registered schema allows unknown properties. |
+| Historical Pod admissions and resource measurements | Historical only; see the earlier receipt and original acceptance records. |
+| Historical native worker and authority-URI checks | Historical only; not repeated for this cohort. |
+| Fresh live Pod admission and merged-source smoke | Open. |
+| Changed catalog and schema-wrapper coverage gaps | Not assessed by this proof. |

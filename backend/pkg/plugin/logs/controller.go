@@ -48,7 +48,7 @@ type Controller interface {
 	SetReferenceAdmitter(resource.ReferenceAdmitter)
 	SetUIReferenceAdmitter(resource.ReferenceAdmitter)
 	GetSupportedResources(pluginID string) []logs.Handler
-	CreateSession(plugin, connectionID string, opts logs.CreateSessionOptions) (*logs.LogSession, error)
+	CreateSession(context.Context, string, string, logs.CreateSessionOptions) (*logs.LogSession, error)
 	ReadResourceLogs(context.Context, string, logs.CreateSessionOptions) (*HeadlessResult, error)
 	GetSession(sessionID string) (*logs.LogSession, error)
 	ListSessions() ([]*logs.LogSession, error)
@@ -477,11 +477,11 @@ func (c *controller) getConnectedCtx(
 	ctx context.Context,
 	pluginID string,
 	connectionID string,
-) *sdktypes.PluginContext {
-	connection, err := c.resourceClient.GetConnection(invocation.HostContext(ctx), pluginID, connectionID)
+) (*sdktypes.PluginContext, error) {
+	connection, err := c.resourceClient.GetConnection(ctx, pluginID, connectionID)
 	if err != nil {
 		c.logger.Errorw(ctx, "error getting connection", "error", err)
-		return nil
+		return nil, err
 	}
 
 	return sdktypes.NewPluginContextWithConnection(
@@ -490,7 +490,7 @@ func (c *controller) getConnectedCtx(
 		nil,
 		nil,
 		&connection,
-	)
+	), nil
 }
 
 func (c *controller) getUnconnectedCtx(ctx context.Context) *sdktypes.PluginContext {
@@ -519,11 +519,12 @@ func (c *controller) GetSupportedResources(pluginID string) []logs.Handler {
 }
 
 func (c *controller) CreateSession(
+	ctx context.Context,
 	pluginID string,
 	connectionID string,
 	opts logs.CreateSessionOptions,
 ) (*logs.LogSession, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), uiSessionCreateTimeout)
+	ctx, cancel := context.WithTimeout(ctx, uiSessionCreateTimeout)
 	defer cancel()
 	return c.createSessionWithContext(ctx, pluginID, connectionID, opts)
 }
@@ -562,7 +563,6 @@ func (c *controller) createSessionWithContext(
 		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
-
 	// The UI may reserve a correlation ID before the RPC to subscribe before
 	// the provider emits output. The ID is correlation, not authority.
 	if opts.SessionID == "" {
@@ -577,8 +577,15 @@ func (c *controller) createSessionWithContext(
 	}
 	c.sessionIndex[opts.SessionID] = sessionIndex{pluginID: pluginID, connectionID: connectionID}
 	c.mu.Unlock()
+	pctx, err := c.getConnectedCtx(ctx, pluginID, connectionID)
+	if err != nil {
+		c.mu.Lock()
+		delete(c.sessionIndex, opts.SessionID)
+		c.mu.Unlock()
+		return nil, err
+	}
 	session, err := client.CreateSession(
-		c.getConnectedCtx(ctx, pluginID, connectionID),
+		pctx,
 		opts,
 	)
 	if err == nil {
@@ -636,8 +643,12 @@ func (c *controller) GetSession(sessionID string) (*logs.LogSession, error) {
 		return nil, err
 	}
 
+	pctx, err := c.getConnectedCtx(invocation.HostContext(ctx), index.pluginID, index.connectionID)
+	if err != nil {
+		return nil, err
+	}
 	return client.GetSession(
-		c.getConnectedCtx(ctx, index.pluginID, index.connectionID),
+		pctx,
 		sessionID,
 	)
 }
@@ -689,8 +700,12 @@ func (c *controller) CloseSession(sessionID string) error {
 		return err
 	}
 
-	err := client.CloseSession(
-		c.getConnectedCtx(ctx, index.pluginID, index.connectionID),
+	pctx, err := c.getConnectedCtx(invocation.HostContext(ctx), index.pluginID, index.connectionID)
+	if err != nil {
+		return err
+	}
+	err = client.CloseSession(
+		pctx,
 		sessionID,
 	)
 	if err != nil {
@@ -769,8 +784,12 @@ func (c *controller) UpdateSessionOptions(
 		return nil, err
 	}
 
+	pctx, err := c.getConnectedCtx(invocation.HostContext(ctx), index.pluginID, index.connectionID)
+	if err != nil {
+		return nil, err
+	}
 	return client.UpdateSessionOptions(
-		c.getConnectedCtx(ctx, index.pluginID, index.connectionID),
+		pctx,
 		sessionID,
 		opts,
 	)

@@ -194,7 +194,7 @@ func (c *Config) presetRule(name string, t ToolInfo) (bool, error) {
 		return false, nil
 	case PresetReadOnly:
 		// Custom tool annotations are provider hints, not host authority.
-		return (t.BuiltIn || t.Resource != nil) && t.ReadOnly, nil
+		return (t.BuiltIn || t.Resource != nil || isGenericKubernetesTool(t)) && t.ReadOnly, nil
 	}
 	preset, ok := c.UserPresets[name]
 	if !ok {
@@ -263,9 +263,13 @@ func (c *Config) ConnectionEnabled(pluginID, connectionID string, t ToolInfo) bo
 // Confirm reports whether a call must be confirmed by the user. connectionID
 // is empty for plugin-scoped tools.
 func (c *Config) Confirm(pluginID, connectionID string, t ToolInfo) bool {
+	return c.confirmWithDefault(pluginID, connectionID, t, t.Destructive)
+}
+
+func (c *Config) confirmWithDefault(pluginID, connectionID string, t ToolInfo, destructive bool) bool {
 	// A custom handler may do arbitrary native work despite its hints. Always
 	// ask for consent, even when a preset or override explicitly enables it.
-	if !t.BuiltIn && t.Resource == nil {
+	if !t.BuiltIn && t.Resource == nil && !isGenericKubernetesTool(t) {
 		return true
 	}
 	if connectionID != "" {
@@ -277,7 +281,7 @@ func (c *Config) Confirm(pluginID, connectionID string, t ToolInfo) bool {
 	if o, ok := c.Global.ToolOverrides[t.MCPName]; ok && o.Confirm != nil {
 		return *o.Confirm
 	}
-	return t.Destructive
+	return destructive
 }
 
 // Listed reports whether the tool is offered to MCP clients at all:

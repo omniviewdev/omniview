@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	pluginmetric "github.com/omniviewdev/omniview/backend/pkg/plugin/metric"
@@ -23,6 +24,13 @@ import (
 	sdklogs "github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 	sdkmetric "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 )
+
+type capabilityWindow struct{ application.Window }
+
+func (*capabilityWindow) ID() uint { return 1 }
+func (*capabilityWindow) OnWindowEvent(events.WindowEventType, func(*application.WindowEvent)) func() {
+	return func() {}
+}
 
 // This invokes the production composition's metric consumer and the real
 // resource admission boundary. The SDK callback samples the Go runtime, not
@@ -41,7 +49,9 @@ func TestCapabilityConnectionAdmissionPreservesUIAndNativeOrigins(t *testing.T) 
 			t.Cleanup(cancel)
 			logger := logging.NewNop()
 			state := appstate.NewTestService(t)
-			realm := invocation.NewScope(invocation.TrustedUI)
+			realm := invocation.NewWindowRealm(nil)
+			window := &capabilityWindow{}
+			uiScope := realm.ScopeForWindow(window)
 			type admission struct {
 				principal invocation.Principal
 				target    invocation.Target
@@ -107,16 +117,20 @@ func TestCapabilityConnectionAdmissionPreservesUIAndNativeOrigins(t *testing.T) 
 			require.NoError(t, metrics.ServiceStartup(ctx, application.ServiceOptions{}))
 			require.NoError(t, metrics.OnPluginStart(pluginID, config.PluginMeta{}, backend))
 			t.Cleanup(func() { cancel(); _ = metrics.OnPluginStop(pluginID, config.PluginMeta{}) })
-			response, queryErr := metrics.Query(pluginID, connectionID, sdkmetric.QueryRequest{ResourceKey: resourceKey})
+			caller := invocation.HostContext(ctx)
+			if tc.ui {
+				caller = realm.Context(context.WithValue(ctx, application.WindowKey, window))
+			}
+			response, queryErr := metrics.Query(caller, pluginID, connectionID, sdkmetric.QueryRequest{ResourceKey: resourceKey})
 			select {
 			case observed := <-seen:
 				require.Equal(t, tc.origin, observed.principal.Origin())
 				require.Equal(t, pluginID, observed.target.Provider)
 				require.Equal(t, connectionID, observed.target.Connection)
 				if tc.ui {
-					require.Equal(t, realm.Principal().Owner(), observed.principal.Owner())
+					require.Equal(t, uiScope.Principal().Owner(), observed.principal.Owner())
 				} else {
-					require.NotEqual(t, realm.Principal().Owner(), observed.principal.Owner())
+					require.NotEqual(t, uiScope.Principal().Owner(), observed.principal.Owner())
 				}
 			case <-time.After(time.Second):
 				t.Fatal("capability bypassed real resource connection admission")

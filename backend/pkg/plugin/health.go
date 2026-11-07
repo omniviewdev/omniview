@@ -2,7 +2,7 @@ package plugin
 
 import (
 	"context"
-	"fmt"
+	"reflect"
 	"sync"
 	"time"
 
@@ -71,9 +71,9 @@ func (hc *HealthChecker) Start(ctx context.Context) {
 
 // checkAll iterates over all loaded plugins and checks their health.
 func (hc *HealthChecker) checkAll() {
-	// Collect the running backend plugins under the records lock, then probe
-	// them without holding it: Healthy() can be an RPC to the plugin.
-	var ids []string
+	// Collect candidate IDs under the records lock, then probe without holding
+	// it: Healthy() can be an RPC to the plugin.
+	var probes []string
 	hc.pm.recordsMu.RLock()
 	for id, record := range hc.pm.records {
 		if record.Phase != lifecycle.PhaseRunning {
@@ -83,11 +83,11 @@ func (hc *HealthChecker) checkAll() {
 		if record.Backend == nil && !record.Metadata.HasBackendCapabilities() {
 			continue
 		}
-		ids = append(ids, id)
+		probes = append(probes, id)
 	}
 	hc.pm.recordsMu.RUnlock()
 
-	for _, id := range ids {
+	for _, id := range probes {
 		// Skip if recovery is already in progress for this plugin.
 		hc.mu.Lock()
 		_, recovering := hc.recoveryStates[id]
@@ -95,32 +95,39 @@ func (hc *HealthChecker) checkAll() {
 		if recovering {
 			continue
 		}
+		// Reacquire the pair together so replacements made after collection are
+		// probed now, while later replacements remain fenced from the result.
+		hc.pm.recordsMu.RLock()
+		record := hc.pm.records[id]
+		if record == nil || record.Phase != lifecycle.PhaseRunning ||
+			(record.Backend == nil && !record.Metadata.HasBackendCapabilities()) {
+			hc.pm.recordsMu.RUnlock()
+			continue
+		}
+		backend, source := record.Backend, record.DevPath
+		hc.pm.recordsMu.RUnlock()
 
-		if !hc.checkPlugin(id) {
+		if !hc.checkPlugin(id, source, record, backend) {
 			hc.logger.Warnw(hc.pm.ctx, "plugin health check failed, triggering recovery",
 				"pluginID", id)
-			go hc.pm.HandlePluginCrash(id)
+			go hc.pm.handleProbedCrash(id, record, backend)
 		}
 	}
 }
 
 // checkPlugin checks the health of a single running plugin using its Backend.
 // Returns true if healthy, false if recovery should be triggered.
-func (hc *HealthChecker) checkPlugin(id string) bool {
-	hc.pm.recordsMu.RLock()
-	var backend plugintypes.PluginBackend
-	record, ok := hc.pm.records[id]
-	if ok {
-		backend = record.Backend
-	}
-	hc.pm.recordsMu.RUnlock()
+func (hc *HealthChecker) checkPlugin(id, source string, record *plugintypes.PluginRecord, backend plugintypes.PluginBackend) bool {
 	if record != nil {
-		source := record.DevPath
 		generation := hc.pm.managedRuntimeGeneration(id, source)
 		if generation != "" && backend != nil {
 			err := verifyLifecycleRPC(backend, id)
 			if err != nil {
-				hc.pm.observeManagedLifecycle(id, source, generation, false, false, err)
+				unlock := hc.pm.lockProbedCrash(id, &probedCrash{record: record, backend: backend}, lifecycle.PhaseRunning)
+				if unlock != nil {
+					hc.pm.observeManagedLifecycle(id, source, generation, false, false, err)
+					unlock()
+				}
 			}
 			return err == nil
 		}
@@ -139,6 +146,7 @@ type CrashRecoveryState struct {
 	Attempts    int
 	NextBackoff time.Duration
 	LastAttempt time.Time
+	owner       context.Context
 }
 
 // CancelRecovery cancels any in-progress crash recovery goroutine for the given plugin.
@@ -261,6 +269,24 @@ func (hc *HealthChecker) markFailedLocked(pluginID, lastError, reason string) {
 // HandleCrashWithBackoff handles a plugin crash with exponential backoff.
 // Uses an iterative loop instead of recursion to avoid stack growth.
 func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
+	hc.handleCrashWithBackoff(pluginID, nil)
+}
+
+func (hc *HealthChecker) handleCrashWithBackoff(pluginID string, expected *probedCrash) {
+	var unlock func()
+	var recoveryOptions *LoadPluginOptions
+	if expected != nil {
+		unlock = hc.pm.lockProbedCrash(pluginID, expected, lifecycle.PhaseRecovering)
+		if unlock == nil {
+			return
+		}
+		hc.pm.recordsMu.RLock()
+		record := expected.record
+		recoveryOptions = &LoadPluginOptions{ExistingState: &plugintypes.PluginStateRecord{
+			ID: record.ID, Enabled: record.Enabled, DevMode: record.DevMode, DevPath: record.DevPath,
+		}}
+		hc.pm.recordsMu.RUnlock()
+	}
 	hc.mu.Lock()
 
 	// Enforce a global crash budget to prevent infinite recovery cycles.
@@ -269,6 +295,9 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 	// across all cycles within a time window.
 	if hc.consumeCrashBudgetLocked(pluginID) {
 		hc.mu.Unlock()
+		if unlock != nil {
+			unlock()
+		}
 		hc.pm.emitter.Emit(EventCrashRecoveryFailed, PluginErrorPayload{
 			PluginID: pluginID,
 			Error:    "crash budget exhausted — too many crashes in a short time",
@@ -289,7 +318,11 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 	// Guard against nil manager context.
 	if hc.pm.ctx == nil {
 		hc.logger.Errorw(context.Background(), "cannot start crash recovery: manager context is nil", "pluginID", pluginID)
+		delete(hc.recoveryStates, pluginID)
 		hc.mu.Unlock()
+		if unlock != nil {
+			unlock()
+		}
 		return
 	}
 
@@ -300,19 +333,29 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 	if prevCancel, exists := hc.recoveryCancels[pluginID]; exists {
 		prevCancel()
 	}
+	state.owner = ctx
 	hc.recoveryCancels[pluginID] = cancel
 	hc.mu.Unlock()
+	if unlock != nil {
+		unlock()
+	}
 
 	defer func() {
 		hc.mu.Lock()
-		// Only clean up if we're still the active cancel (not replaced by a newer goroutine).
-		currentCancel, active := hc.recoveryCancels[pluginID]
-		if active && fmt.Sprintf("%p", currentCancel) == fmt.Sprintf("%p", cancel) {
+		// A newer recovery may have reused the state.
+		if hc.recoveryStates[pluginID] == state && state.owner == ctx {
+			delete(hc.recoveryStates, pluginID)
 			delete(hc.recoveryCancels, pluginID)
 		}
 		hc.mu.Unlock()
 		cancel()
 	}()
+	// After each failed reload, ownership moves to the record published by
+	// that reload. Capture it while holding the lifecycle lock.
+	var owned *recoveryRecord
+	if expected != nil {
+		owned = &recoveryRecord{record: expected.record, backend: expected.backend, phase: lifecycle.PhaseRecovering}
+	}
 
 	for {
 		// Check if cancelled (plugin uninstalled).
@@ -323,7 +366,20 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 		default:
 		}
 
+		if expected != nil {
+			unlock = hc.lockRecoveryRecord(pluginID, owned)
+			if unlock == nil {
+				return
+			}
+			if ctx.Err() != nil {
+				unlock()
+				return
+			}
+		}
 		backoff, attempt, proceed := hc.beginRecoveryAttempt(pluginID, state)
+		if expected != nil {
+			unlock()
+		}
 		if !proceed {
 			return
 		}
@@ -345,21 +401,76 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 			return
 		}
 
-		if _, err := hc.pm.ReloadPlugin(pluginID); err != nil {
+		var err error
+		if expected == nil {
+			_, err = hc.pm.ReloadPlugin(pluginID)
+		} else {
+			unlock = hc.lockRecoveryRecord(pluginID, owned)
+			if unlock == nil {
+				return
+			}
+			if ctx.Err() != nil {
+				unlock()
+				return
+			}
+			if owned.record == nil {
+				if err = hc.pm.guardArchiveRecovery(pluginID); err == nil {
+					_, err = hc.pm.loadPluginLocked(pluginID, recoveryOptions)
+				}
+			} else {
+				_, err = hc.pm.reloadPluginLocked(pluginID)
+			}
+			if err != nil {
+				hc.pm.recordsMu.RLock()
+				record := hc.pm.records[pluginID]
+				owned = &recoveryRecord{record: record}
+				if record != nil {
+					owned.backend = record.Backend
+					owned.phase = record.Phase
+				}
+				hc.pm.recordsMu.RUnlock()
+			}
+			unlock()
+		}
+		if err != nil {
 			hc.logger.Errorw(hc.pm.ctx, "crash recovery attempt failed",
 				"pluginID", pluginID, "attempt", attempt, "error", err)
 			continue
 		}
 
-		// Success — reset the state.
+		// Success — the deferred cleanup resets the state.
 		hc.logger.Infow(hc.pm.ctx, "plugin recovered after crash",
 			"pluginID", pluginID, "attempts", attempt)
-
-		hc.mu.Lock()
-		delete(hc.recoveryStates, pluginID)
-		hc.mu.Unlock()
 
 		hc.pm.emitter.Emit(EventRecovered, PluginErrorPayload{PluginID: pluginID})
 		return
 	}
+}
+
+// recoveryRecord identifies the exact lifecycle state left by a failed reload.
+// A nil record is also tracked, so a later replacement is never adopted.
+type recoveryRecord struct {
+	record  *plugintypes.PluginRecord
+	backend plugintypes.PluginBackend
+	phase   lifecycle.PluginPhase
+}
+
+func (hc *HealthChecker) lockRecoveryRecord(id string, expected *recoveryRecord) func() {
+	if expected.backend != nil && !reflect.TypeOf(expected.backend).Comparable() {
+		return nil
+	}
+	lock := hc.pm.pluginOpsLock(id)
+	lock.Lock()
+	hc.pm.recordsMu.RLock()
+	record := hc.pm.records[id]
+	current := record == expected.record
+	if current && record != nil {
+		current = record.Backend == expected.backend && record.Phase == expected.phase
+	}
+	hc.pm.recordsMu.RUnlock()
+	if !current {
+		lock.Unlock()
+		return nil
+	}
+	return lock.Unlock
 }

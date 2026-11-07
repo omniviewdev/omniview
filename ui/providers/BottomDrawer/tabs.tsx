@@ -17,14 +17,14 @@ import {
   type BottomDrawerTab,
   useBottomDrawer,
   useSettings,
-  useSnackbar,
+  useNotifications,
   parseAppError,
   showAppError,
 } from '@omniviewdev/runtime';
 
 // project imports
 import Icon from '@/components/icons/Icon';
-import { LuChevronDown, LuChevronUp, LuMaximize, LuMinimize, LuPlus } from 'react-icons/lu';
+import { LuArrowLeftToLine, LuArrowRightToLine, LuAppWindow, LuChevronDown, LuChevronUp, LuMaximize, LuMinimize, LuPlus, LuPanelsTopLeft, LuSquareArrowOutUpRight, LuX } from 'react-icons/lu';
 import { SessionOptions, type LogSessionRequest } from '@omniviewdev/runtime/models';
 import { ExecClient, LogsClient, WindowClient } from '@omniviewdev/runtime/api';
 import {
@@ -93,7 +93,7 @@ function renderTabIcon(tab: BottomDrawerTab): React.ReactNode {
 const BottomDrawerTabs: React.FC<Props> = ({ resizeControls }) => {
   const { tabs, focused, focusTab, closeTab, closeTabs, createTab, updateTab, reorderTab } = useBottomDrawer();
   const { transferTabOut, adoptTabs } = useBottomDrawerWindow();
-  const { showSnackbar } = useSnackbar();
+  const { notify } = useNotifications();
   const { settings } = useSettings();
   const windows = useWindowsList();
   const canResize = tabs.length > 0;
@@ -335,9 +335,9 @@ const BottomDrawerTabs: React.FC<Props> = ({ resizeControls }) => {
       await openWindow({ kind: 'panel', slots: { drawer: buildPanelDrawerSlot(serializeDrawerTab(tab)) }, pointer });
       transferTabOut(tab.id);
     } catch (err) {
-      showAppError(showSnackbar, err, 'Failed to move the tab to a new window');
+      showAppError(notify, err, 'Failed to move the tab to a new window');
     }
-  }, [transferTabOut, showSnackbar]);
+  }, [transferTabOut, notify]);
 
   const moveTabToWindow = React.useCallback(async (tab: BottomDrawerTab, target: WindowMenuTarget) => {
     try {
@@ -347,9 +347,9 @@ const BottomDrawerTabs: React.FC<Props> = ({ resizeControls }) => {
         console.error(`[drawer] failed to focus window "${target.name}"`, err);
       });
     } catch (err) {
-      showAppError(showSnackbar, err, `Failed to move the tab to ${target.label}`);
+      showAppError(notify, err, `Failed to move the tab to ${target.label}`);
     }
-  }, [transferTabOut, showSnackbar]);
+  }, [transferTabOut, notify]);
 
   const handleTearOff = React.useCallback(({ id, clientX, clientY }: DetachCommit) => {
     const tab = tabs.find((candidate) => candidate.id === id);
@@ -432,6 +432,8 @@ const BottomDrawerTabs: React.FC<Props> = ({ resizeControls }) => {
             <EditorTabs
               className={styles.Tabs}
               aria-label='Bottom drawer tabs'
+              variant='pill'
+              size='sm'
               tabs={tabDescriptors}
               activeId={tabs[focused]?.id ?? ''}
               onActiveChange={handleActiveChange}
@@ -450,28 +452,29 @@ const BottomDrawerTabs: React.FC<Props> = ({ resizeControls }) => {
             <ContextMenu.Positioner>
               {menuTab !== undefined && (
                 <ContextMenu.Popup>
-                  <ContextMenu.Item onClick={() => {
+                  <ContextMenu.Item startDecorator={<LuX />} onClick={() => {
                     closeTab({ id: menuTab.id });
                   }}>
                     Close Tab
                   </ContextMenu.Item>
-                  <ContextMenu.Item onClick={() => {
+                  <ContextMenu.Item startDecorator={<LuArrowRightToLine />} onClick={() => {
                     closeTabs(tabs.slice(menuTabIndex + 1).map((tab) => ({ id: tab.id })));
                   }}>
                     Close Tabs to Right
                   </ContextMenu.Item>
-                  <ContextMenu.Item onClick={() => {
+                  <ContextMenu.Item startDecorator={<LuArrowLeftToLine />} onClick={() => {
                     closeTabs(tabs.slice(0, menuTabIndex).map((tab) => ({ id: tab.id })));
                   }}>
                     Close Tabs to Left
                   </ContextMenu.Item>
-                  <ContextMenu.Item onClick={() => {
+                  <ContextMenu.Item startDecorator={<LuPanelsTopLeft />} onClick={() => {
                     closeTabs(tabs.filter((tab) => tab.id !== menuTab.id).map((tab) => ({ id: tab.id })));
                   }}>
                     Close Other Tabs
                   </ContextMenu.Item>
                   <ContextMenu.Separator />
                   <ContextMenu.Item
+                    startDecorator={<LuSquareArrowOutUpRight />}
                     disabled={menuTabIsPending || !canTearOff}
                     onClick={() => {
                       void moveTabToNewWindow(menuTab);
@@ -480,7 +483,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ resizeControls }) => {
                     Move to New Window
                   </ContextMenu.Item>
                   <ContextMenu.SubmenuRoot>
-                    <ContextMenu.SubmenuTrigger disabled={menuTabIsPending || otherWindows.length === 0}>
+                    <ContextMenu.SubmenuTrigger startDecorator={<LuAppWindow />} disabled={menuTabIsPending || otherWindows.length === 0}>
                       Move to Window
                     </ContextMenu.SubmenuTrigger>
                     <ContextMenu.Portal>
@@ -489,6 +492,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ resizeControls }) => {
                           {otherWindows.map((target) => (
                             <ContextMenu.Item
                               key={target.name}
+                              startDecorator={<LuAppWindow />}
                               data-ov-window-target={target.name}
                               onClick={() => {
                                 void moveTabToWindow(menuTab, target);

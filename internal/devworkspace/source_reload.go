@@ -2,6 +2,8 @@ package devworkspace
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,13 +16,14 @@ import (
 
 // SourceReloadEvidence records explicit source-marker delivery, not merely HMR connectivity.
 type SourceReloadEvidence struct {
-	WorkspaceID  string                    `json:"workspaceID"`
-	Generation   string                    `json:"generation"`
-	ModulePath   string                    `json:"modulePath"`
-	SourceMarker string                    `json:"sourceMarker"`
-	VerifiedAt   time.Time                 `json:"verifiedAt"`
-	Verification string                    `json:"verification"`
-	Checkouts    map[string]CheckoutStatus `json:"checkouts"`
+	WorkspaceID    string                    `json:"workspaceID"`
+	Generation     string                    `json:"generation"`
+	ModulePath     string                    `json:"modulePath"`
+	SourceMarker   string                    `json:"sourceMarker"`
+	VerifiedAt     time.Time                 `json:"verifiedAt"`
+	Verification   string                    `json:"verification"`
+	ResponseDigest string                    `json:"responseDigest"`
+	Checkouts      map[string]CheckoutStatus `json:"checkouts"`
 }
 
 // VerifySourceReload accepts a caller's unique marker from a deliberate source edit.
@@ -48,6 +51,9 @@ func (m *Manager) VerifySourceReload(ctx context.Context, name, modulePath, mark
 	if !ok || !service.Ready || service.HMR == "" {
 		return evidence, devcontract.Fail(3, "vite_not_ready", "source reload verification requires the selected live frontend")
 	}
+	if descriptor.Endpoints.Vite == nil || strings.TrimSuffix(*descriptor.Endpoints.Vite, "/") != strings.TrimSuffix(service.URL, "/") {
+		return evidence, devcontract.Fail(4, "stale_target", "authenticated host frontend differs from the supervisor-owned frontend")
+	}
 	endpoint, err := url.Parse(service.URL)
 	if err != nil || endpoint.Scheme != "http" || endpoint.Hostname() != "127.0.0.1" {
 		return evidence, devcontract.Fail(4, "stale_target", "selected frontend endpoint is not owned loopback HTTP")
@@ -69,11 +75,11 @@ func (m *Manager) VerifySourceReload(ctx context.Context, name, modulePath, mark
 		return evidence, err
 	}
 	defer response.Body.Close()
-	bytes, err := io.ReadAll(io.LimitReader(response.Body, 8<<20))
+	bytes, err := io.ReadAll(io.LimitReader(response.Body, (8<<20)+1))
 	if err != nil {
 		return evidence, err
 	}
-	if response.StatusCode != http.StatusOK || !strings.Contains(string(bytes), marker) {
+	if len(bytes) > 8<<20 || response.StatusCode != http.StatusOK || !strings.Contains(string(bytes), marker) {
 		return evidence, devcontract.Fail(3, "source_reload_unverified", "owned Vite did not serve the source-edit marker; inspect build health and retry after fixing the failed stage")
 	}
 	current, err := m.Status(ctx, name)
@@ -84,12 +90,34 @@ func (m *Manager) VerifySourceReload(ctx context.Context, name, modulePath, mark
 		sourceReloadHostReady(descriptor, current.Instance) != nil {
 		return evidence, devcontract.Fail(4, "stale_target", "workspace frontend changed during source verification; retry against the current generation")
 	}
-	return SourceReloadEvidence{WorkspaceID: status.Manifest.WorkspaceID, Generation: status.Generation, ModulePath: modulePath, SourceMarker: marker, VerifiedAt: time.Now().UTC(), Verification: "source-marker-served (browser execution not asserted)", Checkouts: checkoutStatuses(ctx, status.Workspace)}, nil
+	digest := sha256.Sum256(bytes)
+	return SourceReloadEvidence{WorkspaceID: status.Manifest.WorkspaceID, Generation: status.Generation, ModulePath: modulePath, SourceMarker: marker, VerifiedAt: time.Now().UTC(), Verification: "source-marker-served (browser execution and checkout provenance not asserted)", ResponseDigest: hex.EncodeToString(digest[:]), Checkouts: checkoutStatuses(ctx, status.Workspace)}, nil
 }
 
 func sourceReloadHostReady(connected devcontract.InstanceDescriptor, reported *devcontract.InstanceDescriptor) error {
 	if reported == nil || connected.Process != reported.Process {
 		return devcontract.Fail(4, "stale_target", "connected host differs from the supervisor-reported host")
 	}
-	return hostDescriptorReady(connected, *reported)
+	if err := frontendDescriptorReady(connected, *reported); err != nil {
+		return err
+	}
+	if connected.Endpoints.Vite == nil {
+		return devcontract.Fail(3, "vite_not_ready", "source reload verification requires the selected live frontend")
+	}
+	return nil
+}
+
+// frontendDescriptorReady checks authenticated browser capability, not native
+// application startup. Source reload separately requires an owned Vite endpoint.
+func frontendDescriptorReady(actual, target devcontract.InstanceDescriptor) error {
+	if actual.Readiness != "backend-ready" {
+		return hostDescriptorReady(actual, target)
+	}
+	if actual.WorkspaceID != target.WorkspaceID || actual.InstanceID != target.InstanceID || actual.Generation != target.Generation || actual.StateRoot != target.StateRoot {
+		return devcontract.Fail(4, "stale_target", "host identity differs from the selected workspace generation")
+	}
+	if actual.Endpoints.Browser == nil {
+		return devcontract.Fail(3, "frontend_not_ready", "selected host has not published browser capability")
+	}
+	return nil
 }

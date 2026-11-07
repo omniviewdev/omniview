@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { useTheme, type ThemeTextSize } from '@omniviewdev/base-ui';
-import { HOST_SETTINGS_SCOPE, showAppError, useScopedSettings, useSnackbar } from '@omniviewdev/runtime';
+import { HOST_SETTINGS_SCOPE, showAppError, useScopedSettings, useNotifications } from '@omniviewdev/runtime';
 import { Events } from '@omniviewdev/runtime/runtime';
 
 const TEXT_SIZES: readonly ThemeTextSize[] = ['80', '90', '100', '110', '125'];
@@ -9,7 +9,7 @@ type ZoomAction = 'in' | 'out' | 'reset';
 export default function UiZoomController({ children }: { children: ReactNode }): ReactNode {
   const { textSize } = useTheme();
   const { commit } = useScopedSettings(HOST_SETTINGS_SCOPE);
-  const { showSnackbar } = useSnackbar();
+  const { notify } = useNotifications();
   const saving = useRef(false);
   const index = TEXT_SIZES.indexOf(textSize);
   const change = useCallback((action: ZoomAction) => {
@@ -25,14 +25,14 @@ export default function UiZoomController({ children }: { children: ReactNode }):
     saving.current = true;
     void commit({ 'appearance.textSize': next }).then((result) => {
       if (!result.applied || result.uncertain) {
-        showSnackbar(result.message || 'Text size saved, but could not be applied completely.', 'warning');
+        void notify({ title: result.message || 'Text size saved, but could not be applied completely.', severity: 'warning' });
       }
     }).catch((error: unknown) => {
-      showAppError(showSnackbar, error, 'Failed to save UI text size');
+      showAppError(notify, error, 'Failed to save UI text size');
     }).finally(() => {
       saving.current = false;
     });
-  }, [commit, index, showSnackbar, textSize]);
+  }, [commit, index, notify, textSize]);
 
   useEffect(() => {
     // Native menu actions are emitted only to the window that owns the menu action.

@@ -2,7 +2,7 @@ module github.com/omniviewdev/workspace-probe
 
 go 1.25.0
 
-require github.com/omniviewdev/plugin-sdk v0.7.0
+require github.com/omniviewdev/plugin-sdk v0.15.0
 
 require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
@@ -44,3 +44,6 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+// Source-session receive controls require the scoped grpc-go fork.
+replace google.golang.org/grpc => github.com/omniviewdev/grpc-go v1.79.3-0.20261103012409-4c6f1d1c4e10

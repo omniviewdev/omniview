@@ -329,6 +329,9 @@ func (n *normalizer) normalize(pointer string, raw any) (Node, error) {
 		return b.node, nil
 	}
 	m := raw.(map[string]any)
+	// Preserve privacy annotations even for dialects that ignore $ref siblings.
+	// Do not reinterpret them as resource validation constraints.
+	b.node.Sensitive = m["writeOnly"] == true || m["x-sensitive"] == true
 	if ref, ok := m["$ref"]; ok {
 		if err := b.ref(ref); err != nil {
 			return Node{}, err

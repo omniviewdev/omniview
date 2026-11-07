@@ -35,6 +35,28 @@ func TestScopedRoot_MkdirAll(t *testing.T) {
 	require.NoError(t, r.WriteFile("a/b/c/file.txt", []byte("nested"), 0644))
 }
 
+func TestScopedRoot_OpenRoot(t *testing.T) {
+	t.Parallel()
+	r := newTestScopedRoot(t)
+	require.NoError(t, r.MkdirAll("builtin/grafana", 0700))
+	child, err := r.OpenRoot("builtin/grafana")
+	require.NoError(t, err)
+	defer child.Close()
+	require.NoError(t, child.WriteFile("connections.json", []byte("{}"), 0600))
+	data, err := r.ReadFile("builtin/grafana/connections.json")
+	require.NoError(t, err)
+	assert.Equal(t, "{}", string(data))
+	for _, path := range []string{"", "../outside", t.TempDir()} {
+		_, err := r.OpenRoot(path)
+		require.Error(t, err)
+	}
+	require.NoError(t, os.Symlink(t.TempDir(), filepath.Join(r.path, "escape")))
+	_, err = r.OpenRoot("escape")
+	require.Error(t, err)
+	require.NoError(t, r.Close())
+	require.NoError(t, child.WriteFile("still-owned.json", []byte("{}"), 0600))
+}
+
 func TestScopedRoot_Stat(t *testing.T) {
 	t.Parallel()
 	r := newTestScopedRoot(t)

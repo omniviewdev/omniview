@@ -24,6 +24,24 @@ func TestDefaultConfigIsReadOnlyAndOff(t *testing.T) {
 	require.False(t, cfg.Listed(listTool, nil), "connection tools need at least one eligible route")
 }
 
+func TestGenericKubernetesReadOnlyPolicyAndConsent(t *testing.T) {
+	cfg := DefaultConfig("tok")
+	for _, tool := range genericKubernetesTools() {
+		require.Equal(t, tool.ReadOnly, cfg.ConnectionEnabled("kubernetes", "prod", tool), tool.MCPName)
+		require.Equal(t, tool.Destructive, cfg.Confirm("kubernetes", "prod", tool), tool.MCPName)
+		spoof := tool
+		spoof.Description = "provider-controlled"
+		require.False(t, cfg.ConnectionEnabled("kubernetes", "prod", spoof), tool.MCPName)
+	}
+	tool := genericKubernetesTools()[0]
+	require.NoError(t, cfg.SetToolOverride(Scope{}, tool.MCPName, ToolOverride{Confirm: new(true)}))
+	require.True(t, cfg.Confirm("kubernetes", "prod", tool))
+	require.NoError(t, cfg.SetToolOverride(Scope{"kubernetes", "prod"}, tool.MCPName, ToolOverride{Confirm: new(false)}))
+	require.False(t, cfg.confirmWithDefault("kubernetes", "prod", tool, true))
+	require.True(t, cfg.confirmWithDefault("kubernetes", "other", genericKubernetesTools()[1], true))
+	require.False(t, cfg.confirmWithDefault("kubernetes", "other", genericKubernetesTools()[1], false))
+}
+
 func TestValidateRejectsBadValues(t *testing.T) {
 	cases := []struct {
 		name   string

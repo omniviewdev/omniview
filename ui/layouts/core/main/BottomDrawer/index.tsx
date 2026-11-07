@@ -1,7 +1,5 @@
 import React from 'react';
 
-import { Separator } from '@omniviewdev/base-ui';
-
 // project imports
 import BottomDrawerTabs from '@/providers/BottomDrawer/tabs';
 import DrawerTabPanels from '@/providers/BottomDrawer/DrawerTabPanels';
@@ -13,12 +11,17 @@ import { Events } from '@omniviewdev/runtime/runtime';
 import handleStyles from '@/components/base/ResizeHandle.module.css';
 import styles from './BottomDrawer.module.css';
 
+// The collapsed drawer contains the top separator, tab strip, and bar border.
+// Share these dimensions with the header CSS so every resize path uses its full height.
+const DRAWER_TAB_STRIP_HEIGHT = 36;
+const DRAWER_HEADER_DIVIDER_HEIGHT = 1;
+const minHeight = DRAWER_TAB_STRIP_HEIGHT + 2 * DRAWER_HEADER_DIVIDER_HEIGHT;
+
 /**
  * Sticky resizable drawer at the bottom of the screen used to display
  * interactive context items, such as terminals and reports.
  */
 const BottomDrawerContainer: React.FC = () => {
-  const minHeight = 32;
   const defaultHeight = DEFAULT_DRAWER_EXPANDED_HEIGHT;
 
   const { tabs } = useBottomDrawer();
@@ -258,7 +261,7 @@ const BottomDrawerContainer: React.FC = () => {
     drawerRef.current.style.minHeight = `${minHeight}px`;
     drawerRef.current.style.maxHeight = `${newHeight}px`;
     bottomDrawerChannel.emit('onResizeHandler', newHeight);
-  }, [hasTabs, isDragging, minHeight]);
+  }, [hasTabs, isDragging]);
 
   const handleMouseUp = React.useCallback(() => {
     setIsDragging(false);
@@ -308,7 +311,13 @@ const BottomDrawerContainer: React.FC = () => {
     <div
       className={`BottomDrawer ${styles.Drawer}`}
       ref={drawerRef}
-      style={{ height: minHeight, minHeight, maxHeight: minHeight }}
+      style={{
+        '--drawer-tab-strip-height': `${DRAWER_TAB_STRIP_HEIGHT}px`,
+        '--drawer-header-divider-height': `${DRAWER_HEADER_DIVIDER_HEIGHT}px`,
+        height: minHeight,
+        minHeight,
+        maxHeight: minHeight,
+      } as React.CSSProperties}
       // Restored tabs are reconciled with live sessions; tests and benchmarks wait for it.
       data-ov-drawer-restored={restoreComplete || undefined}
     >
@@ -323,7 +332,7 @@ const BottomDrawerContainer: React.FC = () => {
         onMouseUp={handleMouseUp}
       />
       <div className={`BottomDrawerContainer ${styles.Container}`}>
-        <Separator />
+        <div className={styles.HeaderSeparator} aria-hidden="true" />
         <BottomDrawerTabs
           resizeControls={{
             isMinimized: height === minHeight,

@@ -7,24 +7,34 @@ import type * as ExecClient from '../../exec';
 import type { NativeExecInput } from './useNativeExec';
 import { useNativeExec } from './useNativeExec';
 
-const native = vi.hoisted(() => ({ platform: vi.fn(), handler: vi.fn(), launch: vi.fn(), snackbar: vi.fn() }));
+const native = vi.hoisted(() => ({
+  platform: vi.fn(),
+  handler: vi.fn(),
+  launch: vi.fn(),
+  notify: vi.fn(),
+}));
 vi.mock('@wailsio/runtime', async () => {
   const actual = await vi.importActual<typeof WailsRuntime>('@wailsio/runtime');
   return { ...actual, Call: { ...actual.Call, ByName: native.launch } };
 });
 vi.mock('../../exec', async () => ({
-  ...await vi.importActual<typeof ExecClient>('../../exec'),
+  ...(await vi.importActual<typeof ExecClient>('../../exec')),
   GetNativeTerminalSupport: native.platform,
   GetHandler: native.handler,
 }));
-vi.mock('../useResolvedPluginId', () => ({ useResolvedPluginId: (explicit?: string) => explicit ?? 'context-plugin' }));
-vi.mock('../snackbar/useSnackbar', () => ({ useSnackbar: () => ({ showSnackbar: native.snackbar }) }));
+vi.mock('../useResolvedPluginId', () => ({
+  useResolvedPluginId: (explicit?: string) => explicit ?? 'context-plugin',
+}));
+vi.mock('../../activity/context', () => ({ useNotifications: () => ({ notify: native.notify }) }));
 
 const clients: QueryClient[] = [];
 function setup(resourceKey = 'pods') {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
   clients.push(client);
-  const wrapper = ({ children }: { children: React.ReactNode }) => React.createElement(QueryClientProvider, { client }, children);
+  const wrapper = ({ children }: { children: React.ReactNode }) =>
+    React.createElement(QueryClientProvider, { client }, children);
   const hook = renderHook(() => useNativeExec({ resourceKey }), { wrapper });
   return { ...hook, client, wrapper };
 }
@@ -34,12 +44,24 @@ const input: NativeExecInput = {
     resource_key: 'pods',
     params: { container: 'ordinary-app' },
     command: ['/bin/sh'],
-    reference: { address: { provider: 'context-plugin', authority: 'cluster', type: 'pods', id: 'pod-1', scope: [] }, incarnation: 'original-uid' },
+    reference: {
+      address: {
+        provider: 'context-plugin',
+        authority: 'cluster',
+        type: 'pods',
+        id: 'pod-1',
+        scope: [],
+      },
+      incarnation: 'original-uid',
+    },
     route: { connection: 'selected-connection' },
-    resource_data: { kind: 'map', value: {
-      generation: { kind: 'int64', value: '9223372036854775807' },
-      signedZero: { kind: 'double', value: -0 },
-    } },
+    resource_data: {
+      kind: 'map',
+      value: {
+        generation: { kind: 'int64', value: '9223372036854775807' },
+        signedZero: { kind: 'double', value: -0 },
+      },
+    },
   },
 };
 
@@ -59,15 +81,18 @@ describe('native exec consumer contract', () => {
     [false, true],
     [true, false],
     [true, undefined],
-  ])('does not offer or launch native exec with platform %s and handler metadata %s', async (platform, supports) => {
-    native.platform.mockResolvedValue(platform);
-    native.handler.mockResolvedValue({ supports_native_command: supports });
-    const view = setup();
-    await waitFor(() => expect(view.client.isFetching()).toBe(0));
-    expect(view.result.current.isSupported).toBe(false);
-    await act(async () => expect(await view.result.current.openNativeSession(input)).toBe(false));
-    expect(native.launch).not.toHaveBeenCalled();
-  });
+  ])(
+    'does not offer or launch native exec with platform %s and handler metadata %s',
+    async (platform, supports) => {
+      native.platform.mockResolvedValue(platform);
+      native.handler.mockResolvedValue({ supports_native_command: supports });
+      const view = setup();
+      await waitFor(() => expect(view.client.isFetching()).toBe(0));
+      expect(view.result.current.isSupported).toBe(false);
+      await act(async () => expect(await view.result.current.openNativeSession(input)).toBe(false));
+      expect(native.launch).not.toHaveBeenCalled();
+    },
+  );
 
   it('keeps failed capability discovery unavailable', async () => {
     native.handler.mockRejectedValue(new Error('Plugin unavailable'));
@@ -93,13 +118,18 @@ describe('native exec consumer contract', () => {
     await waitFor(() => expect(view.result.current.isPending).toBe(true));
     expect(native.launch).toHaveBeenCalledTimes(1);
     const [method, plugin, connection, encoded] = native.launch.mock.calls[0];
-    expect(method).toBe('github.com/omniviewdev/omniview/backend/pkg/plugin/exec.ServiceWrapper.OpenNativeSession');
+    expect(method).toBe(
+      'github.com/omniviewdev/omniview/backend/pkg/plugin/exec.ServiceWrapper.OpenNativeSession',
+    );
     expect(plugin).toBe('context-plugin');
     expect(connection).toBe(input.connectionID);
     const decoded = JSON.parse(encoded);
     expect(decoded).toMatchObject(input.opts);
     expect(Object.is(decoded.resource_data.value.signedZero.value, -0)).toBe(true);
-    await act(async () => { pending.resolve(); expect(await first).toBe(true); });
+    await act(async () => {
+      pending.resolve();
+      expect(await first).toBe(true);
+    });
     await waitFor(() => expect(view.result.current.isPending).toBe(false));
   });
 
@@ -109,16 +139,23 @@ describe('native exec consumer contract', () => {
     const row = setup();
     await waitFor(() => expect(row.result.current.isSupported).toBe(true));
     let first!: Promise<boolean>;
-    act(() => { first = row.result.current.openNativeSession(input); });
+    act(() => {
+      first = row.result.current.openNativeSession(input);
+    });
     await waitFor(() => expect(native.launch).toHaveBeenCalledTimes(1));
 
-    const drawer = renderHook(() => useNativeExec({ resourceKey: 'pods' }), { wrapper: row.wrapper });
+    const drawer = renderHook(() => useNativeExec({ resourceKey: 'pods' }), {
+      wrapper: row.wrapper,
+    });
     expect(drawer.result.current.isPending).toBe(true);
     await waitFor(() => expect(drawer.result.current.isSupported).toBe(true));
     await act(async () => expect(await drawer.result.current.openNativeSession(input)).toBe(false));
     expect(native.launch).toHaveBeenCalledTimes(1);
 
-    await act(async () => { pending.resolve(); expect(await first).toBe(true); });
+    await act(async () => {
+      pending.resolve();
+      expect(await first).toBe(true);
+    });
     await waitFor(() => {
       expect(row.result.current.isPending).toBe(false);
       expect(drawer.result.current.isPending).toBe(false);
@@ -128,29 +165,45 @@ describe('native exec consumer contract', () => {
   });
 
   it('returns false with safe actionable feedback, no integrated fallback, and allows an explicit retry', async () => {
-    native.launch.mockRejectedValueOnce(new Error(JSON.stringify({
-      type: 'native-terminal-unavailable', title: 'Terminal unavailable', status: 503,
-      detail: 'Install iTerm2 or select Terminal in Settings.',
-    })));
+    native.launch.mockRejectedValueOnce(
+      new Error(
+        JSON.stringify({
+          type: 'native-terminal-unavailable',
+          title: 'Terminal unavailable',
+          status: 503,
+          detail: 'Install iTerm2 or select Terminal in Settings.',
+        }),
+      ),
+    );
     const view = setup();
     await waitFor(() => expect(view.result.current.isSupported).toBe(true));
     await act(async () => expect(await view.result.current.openNativeSession(input)).toBe(false));
-    expect(native.snackbar).toHaveBeenCalledWith(expect.objectContaining({
-      status: 'error', details: 'Install iTerm2 or select Terminal in Settings.',
-    }));
+    expect(native.notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        severity: 'error',
+        details: 'Install iTerm2 or select Terminal in Settings.',
+      }),
+    );
     expect(native.launch).toHaveBeenCalledTimes(1);
     await act(async () => expect(await view.result.current.openNativeSession(input)).toBe(true));
     expect(native.launch).toHaveBeenCalledTimes(2);
-    expect(native.launch.mock.calls.every(([method]) => method.endsWith('.OpenNativeSession'))).toBe(true);
+    expect(
+      native.launch.mock.calls.every(([method]) => method.endsWith('.OpenNativeSession')),
+    ).toBe(true);
   });
 
   it('rejects unsafe request text before crossing Wails without allocating an integrated session', async () => {
     const view = setup();
     await waitFor(() => expect(view.result.current.isSupported).toBe(true));
-    await act(async () => expect(await view.result.current.openNativeSession({
-      ...input, opts: { ...input.opts, params: { container: '\ud800' } },
-    })).toBe(false));
+    await act(async () =>
+      expect(
+        await view.result.current.openNativeSession({
+          ...input,
+          opts: { ...input.opts, params: { container: '\ud800' } },
+        }),
+      ).toBe(false),
+    );
     expect(native.launch).not.toHaveBeenCalled();
-    expect(native.snackbar).toHaveBeenCalledWith(expect.objectContaining({ status: 'error' }));
+    expect(native.notify).toHaveBeenCalledWith(expect.objectContaining({ severity: 'error' }));
   });
 });

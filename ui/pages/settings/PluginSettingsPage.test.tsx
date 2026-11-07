@@ -1,7 +1,8 @@
+import { lazy, memo } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Setting, SettingType } from '@omniviewdev/runtime/models';
-import { ExtensionPointRegistry, ExtensionProvider } from '@omniviewdev/runtime';
+import { ExtensionPointRegistry, ExtensionProvider, PLUGIN_SETTINGS_EXTENSION_POINT_ID, type PluginSettingsContribution, type PluginSettingsBodyProps } from '@omniviewdev/runtime';
 import type * as RuntimeCore from '@omniviewdev/runtime';
 
 const mocks = vi.hoisted(() => ({ validate: vi.fn(), save: vi.fn() }));
@@ -30,7 +31,44 @@ describe('plugin settings validation', () => {
     mocks.validate.mockReset().mockResolvedValue({ valid: true, code: 'ready', message: 'Tool ready.' });
     mocks.save.mockReset().mockResolvedValue({ applied: true, uncertain: false, message: '' });
   });
+  afterEach(() => {
+    registry.removeContributions('grafana'); 
+  });
   afterEach(cleanup);
+
+  it('renders a typed body only on its registration owner settings page', () => {
+    if (!registry.hasExtensionPoint(PLUGIN_SETTINGS_EXTENSION_POINT_ID)) {
+      registry.addExtensionPoint({ id: PLUGIN_SETTINGS_EXTENSION_POINT_ID, pluginId: 'core', mode: 'multiple' });
+    }
+
+    registry.getExtensionPoint<PluginSettingsContribution>(PLUGIN_SETTINGS_EXTENSION_POINT_ID)!.register({
+      id: 'grafana/settings', plugin: 'grafana', label: 'Grafana', value: {
+        contractVersion: 1, label: 'Grafana', component: () => <div>Grafana connection cards</div>,
+      },
+    });
+    const view = render(<Fixture id='grafana' />);
+    expect(screen.getByText('Grafana connection cards')).toBeVisible();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    view.rerender(<Fixture id='kubernetes' />);
+    expect(screen.queryByText('Grafana connection cards')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox')).toBeVisible();
+  });
+
+  it.each(['memo', 'lazy'] as const)('renders a registered %s settings body instead of the generic form', async (wrapper) => {
+    if (!registry.hasExtensionPoint(PLUGIN_SETTINGS_EXTENSION_POINT_ID)) {
+      registry.addExtensionPoint({ id: PLUGIN_SETTINGS_EXTENSION_POINT_ID, pluginId: 'core', mode: 'multiple' });
+    }
+
+    const Body = (props: PluginSettingsBodyProps) => <div>{wrapper} settings for {props.pluginID}</div>;
+    const component = wrapper === 'memo' ? memo(Body) : lazy(async () => ({ default: Body }));
+    registry.getExtensionPoint<PluginSettingsContribution>(PLUGIN_SETTINGS_EXTENSION_POINT_ID)!.register({
+      id: 'grafana/settings', plugin: 'grafana', label: 'Grafana',
+      value: { contractVersion: 1, label: 'Grafana', component },
+    });
+    render(<Fixture id='grafana' />);
+    expect(await screen.findByText(`${wrapper} settings for grafana`)).toBeVisible();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  });
 
   it('validates through the plugin and preserves dotted setting IDs when saving', async () => {
     render(<Fixture id='fixture.plugin' />);

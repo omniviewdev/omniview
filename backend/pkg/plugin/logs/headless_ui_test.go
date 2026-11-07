@@ -49,7 +49,7 @@ func TestImmediateFiniteUIOutputPrecedesCreationResponse(t *testing.T) {
 	ctrl := &controller{logger: logging.NewNop(), clients: make(map[string]Provider), sessionIndex: make(map[string]sessionIndex), batches: make(map[string]*logBatch), resourceClient: immediateUIConnection{}}
 	provider := &immediateUIProvider{controller: ctrl}
 	ctrl.clients["plugin"] = provider
-	session, err := ctrl.CreateSession("plugin", "route", sdklogs.CreateSessionOptions{ResourceKey: "pod", ResourceID: "pod"})
+	session, err := ctrl.CreateSession(context.Background(), "plugin", "route", sdklogs.CreateSessionOptions{ResourceKey: "pod", ResourceID: "pod"})
 	if provider.timer != nil {
 		defer provider.timer.Stop()
 	}
@@ -72,7 +72,7 @@ func TestUICorrelationIDIsPreservedAndCannotBeReused(t *testing.T) {
 	ctrl := &controller{logger: logging.NewNop(), clients: make(map[string]Provider), sessionIndex: make(map[string]sessionIndex), batches: make(map[string]*logBatch), resourceClient: immediateUIConnection{}}
 	provider := &immediateUIProvider{controller: ctrl}
 	ctrl.clients["plugin"] = provider
-	session, err := ctrl.CreateSession("plugin", "route", sdklogs.CreateSessionOptions{SessionID: id})
+	session, err := ctrl.CreateSession(context.Background(), "plugin", "route", sdklogs.CreateSessionOptions{SessionID: id})
 	if provider.timer != nil {
 		defer provider.timer.Stop()
 	}
@@ -82,7 +82,7 @@ func TestUICorrelationIDIsPreservedAndCannotBeReused(t *testing.T) {
 	if session.ID != id {
 		t.Fatalf("listener reserved %s, provider received %s", id, session.ID)
 	}
-	_, err = ctrl.CreateSession("plugin", "other-route", sdklogs.CreateSessionOptions{SessionID: id})
+	_, err = ctrl.CreateSession(context.Background(), "plugin", "other-route", sdklogs.CreateSessionOptions{SessionID: id})
 	if resourcev2.ErrorCode(err) != "INVALID_REQUEST" {
 		t.Fatalf("duplicate correlation must be rejected, got %v", err)
 	}
@@ -93,7 +93,7 @@ func TestUICorrelationIDIsPreservedAndCannotBeReused(t *testing.T) {
 
 func TestUIRejectsInvalidCorrelationID(t *testing.T) {
 	ctrl := &controller{clients: map[string]Provider{"plugin": &stubLogsProvider{}}}
-	_, err := ctrl.CreateSession("plugin", "route", sdklogs.CreateSessionOptions{SessionID: "not-a-uuid"})
+	_, err := ctrl.CreateSession(context.Background(), "plugin", "route", sdklogs.CreateSessionOptions{SessionID: "not-a-uuid"})
 	if resourcev2.ErrorCode(err) != "INVALID_REQUEST" {
 		t.Fatalf("invalid correlation must be rejected before provider call, got %v", err)
 	}

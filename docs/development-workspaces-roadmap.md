@@ -7,7 +7,7 @@ This is the durable handoff for the multi-repository workspace work. Use [develo
 - The host owns `omniview-dev`; marketplace authentication is not a workspace prerequisite. Task wrappers delegate to this CLI rather than starting another Wails/plugin supervisor.
 - Register existing normal or bare Git sources once. Each feature gets selected worktrees, an immutable UUID, an editable name/slug and its own profile. Repository names and shell cwd are not authority.
 - Generate one **native pnpm 12.14.0 workspace per feature** above its independent Git worktrees. Keep source package manifests and standalone lockfiles as inputs; reconcile compatible locked edges in host → selected UI → stable remaining-source order. Preserve strict recursive peers, frozen installation and reversible ownership. Do not globally link packages or invent a compatible version.
-- Use selected worktree-local Go replacements and explicit reviewed SDK source. Never use an ambient parent `go.work`; every Go command uses `GOWORK=off`.
+- Use selected worktree-local Go replacements and an explicit linked SDK source. Never use an ambient parent `go.work`; every Go command uses `GOWORK=off`.
 - Separate production/nightly singleton identity from development UUIDs. The same plugin ID can run independently in different profiles; within one profile, select distinct plugin IDs.
 - Bind ports through owned leases, retain sticky assignments and inspect actual endpoints. Strict occupied-port requests fail; they do not increment a port or kill its owner.
 - Baselines are stopped-source, allowlisted preferences plus inactive install inventory—not recursive copies of live databases, credentials, executables or browser stores.
@@ -32,7 +32,7 @@ Repeat plugin selections for multiple plugins. The registry maps repository IDs;
 
 Current setup/build rules:
 
-- The fixed isolation SDK is a reviewed local-source prerequisite until its real release is published. Supply `SDK_SOURCE` when bootstrapping the CLI; do not pretend the older declared published SDK contains the new APIs.
+- Managed workspaces require a linked local SDK checkout; bootstrap with `SDK_SOURCE` when appropriate. Builds observe its HEAD and source digest. Canonical E2E and profiling resolve the SDK commit from host `go.mod`, use host lockfile UI packages, and use the Kubernetes gitlink.
 - Build runtime before Vite-plugin shim generation/checking. Generate Wails bindings only with `task bindings`.
 - An already-running agent may not see a newly installed Homebrew pnpm. Resolve the existing formula to its canonical native executable; the [bootstrap instructions](development-workspaces.md#bootstrap-the-local-cli-and-sources) show the session-only environment selection. No global reinstall, link or shell configuration change is required.
 - Use `.agents/skills/omniview-workspaces`, `omniview-repo-map` and `omniview-instance-verification`. [Registration and handoff](development-agent-skills.md) explains Codex/Claude discovery without global instruction copies.

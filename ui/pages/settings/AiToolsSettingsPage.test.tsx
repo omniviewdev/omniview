@@ -3,9 +3,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ConfirmationModalContext } from '@omniviewdev/runtime';
 import type * as WailsRuntime from '@wailsio/runtime';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AppSnackbarProvider } from '@/contexts/AppSnackbarProvider';
+import type * as Runtime from '@omniviewdev/runtime';
 import { SettingsFormRegistration, type SettingsNavigationForm } from '@/hooks/settings/useSettingsForm';
 
+vi.mock('@omniviewdev/runtime', async importOriginal => ({
+  ...await importOriginal<typeof Runtime>(),
+  useNotifications: () => ({ notify: vi.fn() }),
+}));
 const mocks = vi.hoisted(() => ({
   getStatus: vi.fn(),
   getConfig: vi.fn(),
@@ -97,13 +101,11 @@ function renderPage(registerForm: (form: SettingsNavigationForm | null) => void 
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <AppSnackbarProvider>
-        <ConfirmationModalContext.Provider value={{ show: mocks.confirmShow }}>
-          <SettingsFormRegistration.Provider value={registerForm}>
-            <AiToolsSettingsPage />
-          </SettingsFormRegistration.Provider>
-        </ConfirmationModalContext.Provider>
-      </AppSnackbarProvider>
+      <ConfirmationModalContext.Provider value={{ show: mocks.confirmShow }}>
+        <SettingsFormRegistration.Provider value={registerForm}>
+          <AiToolsSettingsPage />
+        </SettingsFormRegistration.Provider>
+      </ConfirmationModalContext.Provider>
     </QueryClientProvider>,
   );
 }
@@ -144,6 +146,32 @@ describe('AiToolsSettingsPage', () => {
   });
 
   afterEach(cleanup);
+
+  it('filters tools by readable title, plugin, and connection without changing policy', async () => {
+    const hashedName = `resource_${'a'.repeat(64)}`;
+    mocks.listTools.mockResolvedValue([
+      tool({ mcpName: hashedName, title: 'Pods get', description: 'Get a pod', connectionID: 'production' }),
+      tool({ mcpName: 'alpha_ping', pluginID: 'alpha', pluginName: 'Alpha', name: 'ping' }),
+    ]);
+    renderPage();
+    await screen.findByText('Pods get');
+    const search = screen.getByRole('searchbox', { name: 'Search tools' });
+    expect(screen.getByText(`MCP name: ${hashedName}`)).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: 'PODS GET' } });
+    expect(screen.getByText('Pods get')).toBeInTheDocument();
+    expect(screen.queryByText('alpha_ping')).not.toBeInTheDocument();
+    fireEvent.change(search, { target: { value: 'production' } });
+    expect(screen.getByText('Pods get')).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: 'alpha' } });
+    expect(screen.getByText('alpha_ping')).toBeInTheDocument();
+    expect(screen.queryByText('Pods get')).not.toBeInTheDocument();
+    fireEvent.change(search, { target: { value: 'no match' } });
+    expect(screen.getByText('No tools match your search.')).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: '' } });
+    expect(screen.getByText('Pods get')).toBeInTheDocument();
+    expect(screen.getByText('alpha_ping')).toBeInTheDocument();
+    expect(mocks.setToolOverride).not.toHaveBeenCalled();
+  });
 
   it('saves drafts from the footer and discards later edits without writing them', async () => {
     renderPage();

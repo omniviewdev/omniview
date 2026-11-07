@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
-	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
@@ -55,7 +54,19 @@ func (c *controller) awaitStream(key metricStreamKey, state *metricStream) (*met
 
 // ensureStream coalesces concurrent first subscriptions. No lane is ready until
 // its actual host profile is resolved and the SDK's bounded handshake completes.
-func (c *controller) ensureStream(pluginID, connectionID string) (*metricStream, error) {
+func (c *controller) ensureStream(requestCtx context.Context, pluginID, connectionID string) (*metricStream, error) {
+	if !c.HasPlugin(pluginID) {
+		return nil, apperror.PluginNotFound(pluginID)
+	}
+	// Every caller must pass connection admission, even when sharing a ready lane.
+	// Resolve before reserving shared state so denial cannot affect other owners.
+	connection, err := c.resourceClient.GetConnection(requestCtx, pluginID, connectionID)
+	if err != nil {
+		return nil, err
+	}
+	if connection.ID != connectionID {
+		return nil, resourcev2.NewError("INVALID_REQUEST", "Metric connection profile does not match its selected route.")
+	}
 	key := metricStreamKey{pluginID, connectionID}
 	c.mux.Lock()
 	if c.streamBlocked[key] > 0 {
@@ -96,16 +107,9 @@ func (c *controller) ensureStream(pluginID, connectionID string) (*metricStream,
 		state.stop()
 		return nil, err
 	}
-	connection, err := c.resourceClient.GetConnection(invocation.HostContext(ctx), pluginID, connectionID)
-	if err != nil {
-		return fail(err)
-	}
-	if connection.ID != connectionID {
-		return fail(resourcev2.NewError("INVALID_REQUEST", "Metric connection profile does not match its selected route."))
-	}
 	pc := types.NewPluginContextWithConnection(ctx, "metric", nil, nil, &connection)
 	streamCtx := types.WithPluginContext(ctx, pc)
-	output, err := provider.StreamResourceMetrics(streamCtx, state.input)
+	output, err := streamLegacyProvider(provider, streamCtx, state.input)
 	if err != nil {
 		return fail(err)
 	}
@@ -215,10 +219,14 @@ func (c *controller) BeginConnectionChange(pluginID, connectionID string) func()
 	key := metricStreamKey{pluginID, connectionID}
 	c.mux.Lock()
 	c.streamBlocked[key]++
+	finite := c.finite.Load()
 	state := c.streams[key]
 	delete(c.streams, key)
 	delete(c.streamErrors, key)
 	c.mux.Unlock()
+	if finite != nil {
+		finite.retire(pluginID, connectionID, true)
+	}
 	if state != nil {
 		c.endStream(state, profileChangingError())
 	}
@@ -226,6 +234,14 @@ func (c *controller) BeginConnectionChange(pluginID, connectionID string) func()
 	return func() {
 		once.Do(func() {
 			c.mux.Lock()
+			if finite := c.finite.Load(); finite != nil {
+				finite.mu.Lock()
+				finite.blocked[key]--
+				if finite.blocked[key] == 0 {
+					delete(finite.blocked, key)
+				}
+				finite.mu.Unlock()
+			}
 			defer c.mux.Unlock()
 			c.streamBlocked[key]--
 			if c.streamBlocked[key] == 0 {

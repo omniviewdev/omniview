@@ -80,6 +80,15 @@ func (s *ScopedRoot) MkdirAll(path string, perm fs.FileMode) error {
 	return s.root.MkdirAll(path, perm)
 }
 
+// OpenRoot opens a separately owned child handle with kernel-enforced containment.
+// Closing the returned handle does not close this scope.
+func (s *ScopedRoot) OpenRoot(name string) (*os.Root, error) {
+	if err := validate(name); err != nil {
+		return nil, err
+	}
+	return s.root.OpenRoot(name)
+}
+
 func (s *ScopedRoot) Remove(name string) error {
 	if err := validate(name); err != nil {
 		return err

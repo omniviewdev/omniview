@@ -102,7 +102,9 @@ func TestStoppedSlugRenameRetiresAttestedOutputsAndPreservesState(t *testing.T) 
 			require.Equal(t, "48", string(counter))
 			require.NoDirExists(t, w.Root)
 			require.NoDirExists(t, filepath.Join(after.Root, ".local", "bin"))
-			require.NoFileExists(t, launchPath(after, "launch.json"))
+			saved, err := LoadLaunchOptions(after)
+			require.NoError(t, err)
+			require.Equal(t, LaunchOptions{Mode: "browser"}, saved)
 			for _, repo := range after.Manifest.Repositories {
 				require.Equal(t, repo.Branch, fixtureGit(t, filepath.Join(after.Root, repo.Directory), "branch", "--show-current"))
 			}

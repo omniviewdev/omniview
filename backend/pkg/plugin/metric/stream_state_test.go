@@ -32,11 +32,11 @@ func TestQueryOnlyProviderRetainsActualNativeQuery(t *testing.T) {
 	require.NoError(t, ctrl.ServiceStartup(context.Background(), application.ServiceOptions{}))
 	require.NoError(t, ctrl.OnPluginStart(nativeMetricPluginID, config.PluginMeta{}, backend))
 	t.Cleanup(func() { _ = ctrl.OnPluginStop(nativeMetricPluginID, config.PluginMeta{}) })
-	response, err := ctrl.Query(nativeMetricPluginID, nativeMetricConnectionID, sdkmetric.QueryRequest{ResourceKey: nativeMetricResourceKey, ResourceID: "owned", Shape: sdkmetric.ShapeCurrent})
+	response, err := ctrl.Query(invocation.HostContext(context.Background()), nativeMetricPluginID, nativeMetricConnectionID, sdkmetric.QueryRequest{ResourceKey: nativeMetricResourceKey, ResourceID: "owned", Shape: sdkmetric.ShapeCurrent})
 	require.NoError(t, err)
 	require.NotEmpty(t, response.Results)
 	require.Positive(t, response.Results[0].CurrentValue.Value)
-	_, err = ctrl.Subscribe(nativeMetricPluginID, nativeMetricConnectionID, SubscribeRequest{ResourceKey: nativeMetricResourceKey, Interval: time.Second})
+	_, err = ctrl.Subscribe(invocation.HostContext(context.Background()), nativeMetricPluginID, nativeMetricConnectionID, SubscribeRequest{ResourceKey: nativeMetricResourceKey, Interval: time.Second})
 	require.Equal(t, "UNSUPPORTED", resourcev2.ErrorCode(err))
 }
 
@@ -62,8 +62,7 @@ func TestStreamOnlyProviderProducesActualNativeMetric(t *testing.T) {
 			}()
 			return out, nil
 		})
-	adapter := NewAdapterV1(manager)
-	query, err := adapter.Query(types.NewPluginContext(context.Background(), "native", nil, nil, nil), sdkmetric.QueryRequest{})
+	query, err := queryLegacyProvider(manager, types.NewPluginContext(context.Background(), "native", nil, nil, nil), sdkmetric.QueryRequest{})
 	require.NoError(t, err)
 	require.False(t, query.Success)
 	require.NotEmpty(t, query.Error)
@@ -71,7 +70,7 @@ func TestStreamOnlyProviderProducesActualNativeMetric(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	input := make(chan sdkmetric.StreamInput)
-	output, err := adapter.StreamResourceMetrics(ctx, input)
+	output, err := streamLegacyProvider(manager, ctx, input)
 	require.NoError(t, err)
 	select {
 	case input <- sdkmetric.StreamInput{SubscriptionID: "native", Command: sdkmetric.StreamCommandSubscribe}:
@@ -115,7 +114,7 @@ func TestInvalidSubscriptionCannotPoisonSharedLane(t *testing.T) {
 	state.key = metricStreamKey{nativeMetricPluginID, nativeMetricConnectionID}
 	defer state.stop()
 	ctrl.streams[state.key] = state
-	_, err = ctrl.Subscribe(nativeMetricPluginID, nativeMetricConnectionID, SubscribeRequest{ResourceKey: "different-type", ResourceID: observed.Record.Reference.Address.ID, Interval: time.Second, Reference: &observed.Record.Reference, Route: &observed.Route})
+	_, err = ctrl.Subscribe(invocation.HostContext(context.Background()), nativeMetricPluginID, nativeMetricConnectionID, SubscribeRequest{ResourceKey: "different-type", ResourceID: observed.Record.Reference.Address.ID, Interval: time.Second, Reference: &observed.Record.Reference, Route: &observed.Route})
 	require.Equal(t, "INVALID_REQUEST", resourcev2.ErrorCode(err))
 	require.Empty(t, ctrl.subscriptions)
 	select {
@@ -126,14 +125,15 @@ func TestInvalidSubscriptionCannotPoisonSharedLane(t *testing.T) {
 }
 
 func TestMetricRetirementUnblocksCommandsAndFansOutExactInterests(t *testing.T) {
-	ctrl := NewController(logging.NewNop(), nil, nil).(*controller)
+	ctrl := NewController(logging.NewNop(), nil, finiteTestConnections{}).(*controller)
+	ctrl.clients["metrics"] = &unreachableMetricQuery{}
 	state := testMetricStream()
 	ctrl.streams[state.key] = state
 	subscribe := func() string {
 		result := make(chan string, 1)
 		failure := make(chan error, 1)
 		go func() {
-			id, err := ctrl.Subscribe("metrics", "connection", SubscribeRequest{ResourceKey: "cluster::metrics", Interval: time.Second, Params: map[string]string{"prometheus_service_port": "9090"}})
+			id, err := ctrl.Subscribe(context.Background(), "metrics", "connection", SubscribeRequest{ResourceKey: "cluster::metrics", Interval: time.Second, Params: map[string]string{"prometheus_service_port": "9090"}})
 			if err != nil {
 				failure <- err
 			} else {
@@ -195,7 +195,7 @@ func TestMetricRetirementUnblocksCommandsAndFansOutExactInterests(t *testing.T) 
 	case <-time.After(time.Second):
 		t.Fatal("retirement did not release unsubscribe")
 	}
-	_, err := ctrl.Subscribe("metrics", "connection", SubscribeRequest{ResourceKey: "cluster::metrics", Interval: time.Second})
+	_, err := ctrl.Subscribe(context.Background(), "metrics", "connection", SubscribeRequest{ResourceKey: "cluster::metrics", Interval: time.Second})
 	require.Equal(t, "UNAVAILABLE", resourcev2.ErrorCode(err))
 	newer := testMetricStream()
 	defer newer.stop()
@@ -208,7 +208,8 @@ func TestMetricRetirementUnblocksCommandsAndFansOutExactInterests(t *testing.T) 
 }
 
 func TestProfileTransactionFencesOnlyItsConnectionLane(t *testing.T) {
-	ctrl := NewController(logging.NewNop(), nil, nil).(*controller)
+	ctrl := NewController(logging.NewNop(), nil, finiteTestConnections{}).(*controller)
+	ctrl.clients["metrics"] = &unreachableMetricQuery{}
 	old := testMetricStream()
 	ctrl.streams[old.key] = old
 	other := testMetricStream()
@@ -221,21 +222,21 @@ func TestProfileTransactionFencesOnlyItsConnectionLane(t *testing.T) {
 	default:
 		t.Fatal("profile change did not cancel old lane")
 	}
-	_, err := ctrl.ensureStream("metrics", "connection")
+	_, err := ctrl.ensureStream(invocation.HostContext(context.Background()), "metrics", "connection")
 	require.Equal(t, "RESET_REQUIRED", resourcev2.ErrorCode(err))
-	retained, err := ctrl.ensureStream("metrics", "other")
+	retained, err := ctrl.ensureStream(invocation.HostContext(context.Background()), "metrics", "other")
 	require.NoError(t, err)
 	require.Same(t, other, retained)
 	nested := ctrl.BeginConnectionChange("metrics", "connection")
 	release()
 	release()
-	_, err = ctrl.ensureStream("metrics", "connection")
+	_, err = ctrl.ensureStream(invocation.HostContext(context.Background()), "metrics", "connection")
 	require.Equal(t, "RESET_REQUIRED", resourcev2.ErrorCode(err))
 	nested()
 	newer := testMetricStream()
 	defer newer.stop()
 	ctrl.streams[newer.key] = newer
-	active, err := ctrl.ensureStream("metrics", "connection")
+	active, err := ctrl.ensureStream(invocation.HostContext(context.Background()), "metrics", "connection")
 	require.NoError(t, err)
 	require.Same(t, newer, active)
 }
@@ -264,7 +265,7 @@ func TestConnectionScopedLaneUsesTrustedProfileThroughActualGRPC(t *testing.T) {
 	require.NoError(t, ctrl.ServiceStartup(ctx, application.ServiceOptions{}))
 	require.NoError(t, ctrl.OnPluginStart(nativeMetricPluginID, config.PluginMeta{}, fixture.backend))
 	t.Cleanup(func() { _ = ctrl.OnPluginStop(nativeMetricPluginID, config.PluginMeta{}) })
-	state, err := ctrl.ensureStream(nativeMetricPluginID, nativeMetricConnectionID)
+	state, err := ctrl.ensureStream(invocation.HostContext(context.Background()), nativeMetricPluginID, nativeMetricConnectionID)
 	require.NoError(t, err)
 	fixture.waitMetricRPCStarted(t)
 	select {
@@ -314,7 +315,7 @@ func TestStoppedProfileCannotOpenMetricSubscriptionUntilExplicitStart(t *testing
 	case <-time.After(time.Second):
 		t.Fatal("native connection did not stop")
 	}
-	id, err := ctrl.Subscribe(nativeMetricPluginID, nativeMetricConnectionID, SubscribeRequest{ResourceKey: nativeMetricResourceKey, Interval: time.Second})
+	id, err := ctrl.Subscribe(invocation.HostContext(context.Background()), nativeMetricPluginID, nativeMetricConnectionID, SubscribeRequest{ResourceKey: nativeMetricResourceKey, Interval: time.Second})
 	if err == nil {
 		_ = ctrl.Unsubscribe(id)
 	}
@@ -340,7 +341,7 @@ func TestStoppedProfileCannotOpenMetricSubscriptionUntilExplicitStart(t *testing
 	case <-time.After(time.Second):
 		t.Fatal("explicit start did not create its native client")
 	}
-	state, err := ctrl.ensureStream(nativeMetricPluginID, nativeMetricConnectionID)
+	state, err := ctrl.ensureStream(invocation.HostContext(context.Background()), nativeMetricPluginID, nativeMetricConnectionID)
 	require.NoError(t, err)
 	fixture.waitMetricRPCStarted(t)
 	select {

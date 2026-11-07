@@ -70,7 +70,7 @@ func workspaceSelectionFixture(t *testing.T, mode string) (*pluginManager, *devs
 	manager.pidTracker = NewPIDTracker(service.RootDir())
 	servers := devserver.NewDevServerManager(logging.NewNop(), service.RootDir(), service.Plugins(), &PluginRefAdapter{Mgr: manager}, &PluginReloaderAdapter{Mgr: manager}, nil)
 	profile := instance.Profile{Workspace: &workspace, Descriptor: devcontract.InstanceDescriptor{WorkspaceID: id, InstanceID: id, StateRoot: workspace.StateRoot, Generation: "5523f405-4385-472d-bc06-ef4f64d7b318"}}
-	require.NoError(t, servers.ConfigureWorkspace(profile, t.TempDir(), ""))
+	require.NoError(t, servers.ConfigureWorkspace(profile, t.TempDir()))
 	manager.SetDevServerManager(servers)
 	t.Cleanup(func() { _ = servers.ServiceShutdown() })
 	return manager, servers, selected, old
@@ -206,6 +206,10 @@ func TestSelectedUIStartupUsesCanonicalLifecycleAndActualHTTPBeforeReady(t *test
 	if err != nil {
 		t.Skip("Node unavailable")
 	}
+	output, err := exec.Command(node, "-p", "require('node:fs').realpathSync(process.execPath)").Output()
+	require.NoError(t, err)
+	node = strings.TrimSpace(string(output))
+	require.True(t, filepath.IsAbs(node), "Node returned a nonabsolute executable path")
 	manager, servers, selected, _ := workspaceSelectionFixture(t, "selected")
 	emitter := &testRecordingEmitter{}
 	manager.emitter = emitter

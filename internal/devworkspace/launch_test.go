@@ -16,33 +16,36 @@ import (
 	"github.com/omniviewdev/omniview/internal/devsession"
 )
 
-func TestLaunchOptionsRejectUnreviewedSDKAndInvalidModes(t *testing.T) {
-	for _, o := range []LaunchOptions{{Mode: "browser"}, {Mode: "other", ReviewedSDKRevision: strings.Repeat("a", 40)}, {Mode: "browser", ReviewedSDKRevision: "base7bc9616"}, {Mode: "browser", ReviewedSDKRevision: strings.Repeat("a", 40), MCP: true}} {
+func TestLaunchOptionsRejectInvalidModes(t *testing.T) {
+	for _, o := range []LaunchOptions{{Mode: "other"}, {Mode: "browser", MCP: true}} {
 		if err := o.validate(); err == nil {
 			t.Fatalf("accepted invalid launch options: %+v", o)
 		}
 	}
-	if err := (LaunchOptions{Mode: "native", ReviewedSDKRevision: strings.Repeat("a", 40), MCP: true}).validate(); err != nil {
-		t.Fatal(err)
+	for _, o := range []LaunchOptions{{Mode: "browser"}, {Mode: "native", MCP: true}} {
+		if err := o.validate(); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
 func TestWorkspaceChildEnvironmentDoesNotLeakHostModuleFlags(t *testing.T) {
 	w := Workspace{ResolvedWorkspace: devcontract.ResolvedWorkspace{Root: "/selected", ManifestPath: "/selected/workspace.json", StateRoot: "/profile/state", Manifest: devcontract.WorkspaceManifest{WorkspaceID: "f14566c4-5130-4e3f-aa09-3e49c63b29a6"}}}
-	o := LaunchOptions{ReviewedSDKRevision: strings.Repeat("a", 40), Watch: true}
-	env := workspaceEnvironment([]string{"HOME=/unchanged", "GOFLAGS=-modfile=/foreign.mod", "GOWORK=/foreign.work", "OMNIVIEW_ALLOW_ISOLATION_SOURCE_CHANGES=1", "OMNIVIEW_WORKSPACE_FILE=/foreign", "PNPM_CONFIG_WORKSPACE_DIR=/foreign/root", "pnpm_config_workspace_dir=/foreign/root", "NPM_CONFIG_WORKSPACE_DIR=/foreign/root", "npm_config_workspace_dir=/foreign/root"}, w, "generation", o)
+	o := LaunchOptions{Watch: true}
+	env := workspaceEnvironment([]string{
+		"HOME=/unchanged", "GOFLAGS=-modfile=/foreign.mod", "GOWORK=/foreign.work",
+		"OMNIVIEW_WORKSPACE_FILE=/foreign", "PNPM_CONFIG_WORKSPACE_DIR=/foreign/root",
+		"pnpm_config_workspace_dir=/foreign/root", "NPM_CONFIG_WORKSPACE_DIR=/foreign/root",
+		"npm_config_workspace_dir=/foreign/root",
+	}, w, "generation", o)
 	joined := strings.Join(env, "\n")
-	if strings.Contains(joined, "/foreign") || strings.Contains(joined, "OMNIVIEW_ALLOW_ISOLATION_SOURCE_CHANGES=1") {
+	if strings.Contains(joined, "/foreign") {
 		t.Fatal(joined)
 	}
 	for _, wanted := range []string{"HOME=/unchanged", "GOWORK=off", "GOFLAGS=", "OMNIVIEW_WORKSPACE_FILE=/selected/workspace.json", "OMNIVIEW_WORKSPACE_GRAPH_WATCH=1"} {
 		if !strings.Contains(joined, wanted) {
 			t.Fatalf("missing %s: %s", wanted, joined)
 		}
-	}
-	o.AllowIsolationSourceChanges = true
-	if !strings.Contains(strings.Join(workspaceEnvironment(nil, w, "generation", o), "\n"), "OMNIVIEW_ALLOW_ISOLATION_SOURCE_CHANGES=1") {
-		t.Fatal("explicit opt-in absent")
 	}
 }
 
@@ -93,6 +96,22 @@ func TestSupervisorStatusWritesAtomicPrivateJSON(t *testing.T) {
 	}
 	if err := devsession.ValidatePrivateFile(path); err != nil {
 		t.Fatalf("status is not platform-private: %v", err)
+	}
+}
+
+func TestSupervisorPersistReportsUnderlyingError(t *testing.T) {
+	root := t.TempDir()
+	s := &workspaceSupervisor{
+		workspace: Workspace{ResolvedWorkspace: devcontract.ResolvedWorkspace{Root: root}},
+		output:    io.Discard,
+	}
+	s.persist()
+	status := s.snapshot()
+	if status.Phase != "error" || status.LastError == nil || status.LastError.Code != "generated_conflict" {
+		t.Fatalf("unexpected status: %+v", status)
+	}
+	if !strings.Contains(status.LastError.Message, "workspace manifest is missing") {
+		t.Fatalf("underlying error missing: %s", status.LastError.Message)
 	}
 }
 

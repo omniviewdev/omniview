@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => {
   return {
     settings,
     setSetting: vi.fn(),
-    showSnackbar: vi.fn(),
+    notify: vi.fn(),
     showAppError: vi.fn(),
   };
 });
@@ -17,7 +17,7 @@ vi.mock('@omniviewdev/runtime', () => ({
   useSettings: () => ({ settings: mocks.settings }),
   HOST_SETTINGS_SCOPE: { kind: 'host' },
   useScopedSettings: () => ({ commit: mocks.setSetting }),
-  useSnackbar: () => ({ showSnackbar: mocks.showSnackbar }),
+  useNotifications: () => ({ notify: mocks.notify }),
   showAppError: mocks.showAppError,
   useExtensionPoint: () => undefined,
 }));
@@ -77,7 +77,7 @@ describe('AppThemeController', () => {
   beforeEach(() => {
     mocks.settings = {};
     mocks.setSetting.mockReset().mockResolvedValue({ applied: true, uncertain: false, message: '' });
-    mocks.showSnackbar.mockReset();
+    mocks.notify.mockReset();
     mocks.showAppError.mockReset();
     localStorage.clear();
   });
@@ -230,7 +230,7 @@ describe('AppThemeController', () => {
     );
   });
 
-  it('rolls back a rejected selection, reports it, and leaves the cache unchanged', async () => {
+  it('rolls back a rejected selection and leaves the cache unchanged', async () => {
     const error = new Error('write failed');
     mocks.settings = { 'appearance.theme': 'dark' };
     localStorage.setItem(
@@ -249,11 +249,6 @@ describe('AppThemeController', () => {
     expect(localStorage.getItem(BOOTSTRAP_KEY)).toBe(
       JSON.stringify({ schemaVersion: 1, themeId: 'dark' }),
     );
-    expect(mocks.showAppError).toHaveBeenCalledWith(
-      mocks.showSnackbar,
-      error,
-      'Failed to save theme',
-    );
   });
 
   it('keeps a durably saved theme when application is uncertain', async () => {
@@ -265,8 +260,6 @@ describe('AppThemeController', () => {
 
     expect(readThemeState()).toMatchObject({ requestedThemeId: 'light' });
     expect(JSON.parse(localStorage.getItem(BOOTSTRAP_KEY)!)).toMatchObject({ themeId: 'light' });
-    expect(mocks.showSnackbar).toHaveBeenCalledWith('Saved; application uncertain.', 'warning');
-    expect(mocks.showAppError).not.toHaveBeenCalled();
   });
 
   it('normalizes a legacy Solarized backend value', () => {

@@ -57,8 +57,7 @@ func TestLoaderRecoveryEdgesStoppedWriterHasSupportedRecovery(t *testing.T) {
 	// Recovery resumes retirement after dependency-only reset. Unmanaged
 	// root-level loader files remain outside both operations' authority.
 	launch := LaunchOptions{
-		Mode:                "browser",
-		ReviewedSDKRevision: fixtureGit(t, filepath.Join(f.m.Root, "plugin-sdk"), "rev-parse", "HEAD"),
+		Mode: "browser",
 	}
 	result, recoverErr := f.m.Recover(ctx, f.w.Manifest.Slug, RefreshOptions{Launch: &launch})
 	assertCanaries()
