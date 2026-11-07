@@ -21,31 +21,37 @@ func TestParseCPUTime(t *testing.T) {
 	}
 }
 
-func TestPluginUsageIsCachedBoundedAndOmitsUnreadable(t *testing.T) {
-	reads := 0
+func TestPluginUsageSamplesOffTheCollectionPathAndOmitsUnreadable(t *testing.T) {
 	pluginProcesses.Lock()
-	pluginProcesses.latest = nil
-	pluginProcesses.read = func(pids []int) map[int]pluginUsage {
-		reads++
+	pluginProcesses.read = func([]int) map[int]pluginUsage {
 		return map[int]pluginUsage{10: {cpuSeconds: 2, rssBytes: 4096}}
 	}
 	pluginProcesses.Unlock()
 	t.Cleanup(func() {
+		StopPluginProcessSampling()
 		pluginProcesses.Lock()
-		pluginProcesses.source, pluginProcesses.read, pluginProcesses.latest = nil, readProcessUsage, nil
+		pluginProcesses.read = readProcessUsage
 		pluginProcesses.Unlock()
 	})
+	blocked := make(chan struct{})
+	t.Cleanup(func() { close(blocked) })
 	RegisterPluginProcessSource(func() []PluginProcess {
 		return []PluginProcess{{PluginID: "kubernetes", PID: 10}, {PluginID: "gone", PID: 11}, {PluginID: "bad id!", PID: 10}}
 	})
-	now := time.Now()
-	usage := samplePluginUsage(now)
+	require.Eventually(t, func() bool { return len(cachedPluginUsage()) > 0 }, 2*time.Second, 10*time.Millisecond)
+	usage := cachedPluginUsage()
 	require.Equal(t, map[string]pluginUsage{"kubernetes": {cpuSeconds: 2, rssBytes: 4096}}, usage)
 	require.NotContains(t, usage, "gone", "unreadable process must be absent, not zero")
-	samplePluginUsage(now.Add(time.Second))
-	require.Equal(t, 1, reads, "reads inside the refresh window must reuse the cache")
-	samplePluginUsage(now.Add(pluginProcessRefresh + time.Second))
-	require.Equal(t, 2, reads)
+
+	// A source that never returns must not block readers of the cached result.
+	RegisterPluginProcessSource(func() []PluginProcess { <-blocked; return nil })
+	done := make(chan struct{})
+	go func() { cachedPluginUsage(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("cached read blocked behind a stalled process source")
+	}
 }
 
 func TestPluginLabelIsHostValidatedAndOptional(t *testing.T) {

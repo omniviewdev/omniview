@@ -197,6 +197,7 @@ func (s *Service) swapInInitialExporters(ctx context.Context) error {
 // using otel.Tracer() / otel.Meter() after shutdown get safe no-ops instead of
 // closed providers.
 func (s *Service) Shutdown(ctx context.Context) error {
+	StopPluginProcessSampling()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
