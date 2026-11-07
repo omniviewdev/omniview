@@ -756,6 +756,23 @@ module.exports = [
     files: ['e2e/**/*.ts'],
     rules: { '@typescript-eslint/parameter-properties': ['error', { prefer: 'class-property' }] },
   },
+  {
+    files: ['ui/features/builtinplugins/grafana/**/*.tsx'],
+    ignores: ['**/*.test.*', '**/*.stories.*'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'JSXOpeningElement[name.type="JSXIdentifier"][name.name=/^(button|input|select|textarea|progress|meter)$/]',
+          message: 'Compose @omniviewdev/base-ui controls. Add missing shared capability there instead of a native metrics-view substitute.',
+        },
+        {
+          selector: 'JSXAttribute[name.name="type"][value.value=/^(datetime-local|date|time)$/]',
+          message: 'Use the shared date/time components instead of browser-native temporal inputs.',
+        },
+      ],
+    },
+  },
   { files: ['**/*.d.ts'], rules: { '@typescript-eslint/no-unused-vars': 'off' } },
   {
     files: ['ui/vite-env.d.ts'],

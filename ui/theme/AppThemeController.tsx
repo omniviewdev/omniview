@@ -19,7 +19,7 @@ import {
 import {
   showAppError,
   useSettings,
-  useSnackbar,
+  useNotifications,
   useScopedSettings,
   HOST_SETTINGS_SCOPE,
 } from '@omniviewdev/runtime';
@@ -127,7 +127,7 @@ function AppearanceBridge({ preferences, children }: { preferences: AppearancePr
 export default function AppThemeController({ children }: { children: ReactNode }) {
   const { settings } = useSettings();
   const { commit } = useScopedSettings(HOST_SETTINGS_SCOPE);
-  const { showSnackbar } = useSnackbar();
+  const { notify } = useNotifications();
   const [storage] = useState<Storage | null>(() => {
     try {
       return window.localStorage;
@@ -205,10 +205,10 @@ export default function AppThemeController({ children }: { children: ReactNode }
         }
 
         if (!result.applied || result.uncertain) {
-          showSnackbar(result.message || 'Theme saved, but could not be applied completely.', 'warning');
+          void notify({ title: result.message || 'Theme saved, but could not be applied completely.', severity: 'warning' });
         }
       } catch (error) {
-        showAppError(showSnackbar, error, 'Failed to save theme');
+        showAppError(notify, error, 'Failed to save theme');
       } finally {
         settledSelectionRef.current = selection;
         if (selection === latestSelectionRef.current) {
@@ -228,7 +228,7 @@ export default function AppThemeController({ children }: { children: ReactNode }
       : queued.then(persist, persist);
     persistenceQueueRef.current = persistence;
     await persistence;
-  }, [commit, showSnackbar, storage]);
+  }, [commit, notify, storage]);
 
   return (
     <ThemeProvider

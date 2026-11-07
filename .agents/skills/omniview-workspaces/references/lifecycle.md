@@ -5,10 +5,10 @@ Authority: host `cmd/omniview-dev/workspace_commands.go`, `control_commands.go`,
 From the host checkout, capture the actual immutable CLI path printed by the build helper once:
 
 ```sh
-DEV="$(SDK_SOURCE="$FIXED_SDK_SOURCE" task --silent dev:cli:build)"
+DEV="$(task --silent dev:cli:build)"
 ```
 
-The helper writes outside source in the private OS user cache; do not guess `$PWD/bin/omniview-dev`, add an alias, or rebuild a CLI under the source tree while its supervisor owns that checkout. Initial/root bootstrap needs explicit canonical `FIXED_SDK_SOURCE` because the reviewed fixed SDK is unpublished. Within an enclosing workspace, SDK selection may derive only from its canonical manifest—not a guessed sibling. Commands below invoke the captured `"$DEV"`; other references' `omniview-dev` denotes this CLI, not an assumed PATH install.
+The helper writes outside source in the private OS user cache; do not guess `$PWD/bin/omniview-dev`, add an alias, or rebuild a CLI under the source tree while its supervisor owns that checkout. Bootstrap uses the SDK declared in the host `go.mod`; select local SDK development explicitly with `SDK_SOURCE`. Within an enclosing workspace, SDK selection may derive only from its canonical manifest—not a guessed sibling. Commands below invoke the captured `"$DEV"`; other references' `omniview-dev` denotes this CLI, not an assumed PATH install.
 
 Managed JavaScript uses **one stock pnpm12.14.0 workspace per feature** above the selected physical worktrees; Git repositories, Go modules and profile UUIDs remain separate. Native pnpm must be on PATH or explicitly selected by canonical `OMNIVIEW_PNPM_EXECUTABLE`. The owned launcher sets `PNPM_CONFIG_WORKSPACE_DIR` to the validated feature root while preserving package cwd/argv; do not point it at another feature or assume a child YAML policy is inherited. Do not manually edit generated aggregate files or run an unowned child installer beside a managed session.
 
@@ -42,11 +42,10 @@ For host + UI + SDK + two distinct plugins, use this **single command template**
   --repo kube-repo --repo metrics-repo \
   --plugin kubernetes --plugin metrics \
   --start --mode browser --watch=true --live-frontend=true \
-  --reviewed-sdk-revision "$FULL_REVIEWED_SDK_REVISION" \
   --link-evidence "$SUCCESSFUL_PINNED_LINK_PROBE_JSON" --json
 ```
 
-Host `omniview` is required; launch also requires selected SDK. Select UI only when needed. Use repeated `--ref ID=REF` for selected repository overrides. References must resolve committed metadata; never invent a second real plugin. Missing reviewed **full** fixed-capability SDK revision or successful actual pinned pnpm protocol probe is a prerequisite, not permission to forge evidence. See host `docs/development-package-linking.md` for the real probe contract. No global `pnpm link`, guessed `file:` protocol, or published SDK fallback.
+Host `omniview` is required; launch also requires a selected local SDK. Select UI only when needed. Use repeated `--ref ID=REF` for selected repository overrides. References must resolve committed metadata; never invent a second real plugin. A successful actual pinned pnpm protocol probe is a prerequisite, not permission to forge evidence. See host `docs/development-package-linking.md` for the real probe contract. No global `pnpm link`, guessed `file:` protocol, or published SDK fallback for managed workspaces.
 
 Use `--mode native` instead for a desktop app; `--mcp` is optional and native-only. `--timeout 20m` bounds startup. Watch/live frontend default true; disabling them is explicit. Source-defined orchestration still needs the parent's real compile/link/start barrier before claiming it works end to end.
 
@@ -55,11 +54,10 @@ For an existing selected workspace, root `task dev` is the canonical CLI `worksp
 ```sh
 "$DEV" workspace up "$FEATURE" --mode browser \
   --root "$COLLECTION" \
-  --reviewed-sdk-revision "$FULL_REVIEWED_SDK_REVISION" \
   --link-evidence "$SUCCESSFUL_PINNED_LINK_PROBE_JSON" --json
 ```
 
-Do not start a second Wails/Vite supervisor beside this managed session. A reviewed fixed SDK commit available only in the local source collection is not a published module: ensure every selected SDK checkout can resolve that exact commit rather than claiming an unpushed revision can be fetched from a remote module release.
+Do not start a second Wails/Vite supervisor beside this managed session. E2E and application profiling resolve the SDK commit from host `go.mod`, use UI packages from the host lockfile, and use Kubernetes from the host gitlink. A local development workspace instead observes its selected SDK checkout.
 
 After create/start (or failure), obtain authoritative paths and status:
 
@@ -87,7 +85,7 @@ Read returned `manifest.workspaceID`, `root`, `stateRoot`, `generation`, `launch
 
 `resume` resumes lifecycle metadata, not a substitute for `up` or plugin rebuild. Do not run `up` against an already-owned live supervisor; inspect it, repair source, or restart as appropriate. Keep the same feature UUID and dirty source. Link reports retain expected/resolved paths and problems; missing dist exports require ordered bootstrap, not suppression. Link conflicts/user-edited overlay bytes require explicit reconciliation, not deleting journals. Build order: `task bindings` only; UI base-ui → ai-ui/editors; providers/runtime **before** Vite plugin/shims; selected plugins and host. Do not run competing writers beside the supervisor graph.
 
-Ordinary dirty SDK APIs are source-digested and rebuilt by the trusted local builder against an independently reviewed baseline—no commit/review per edit. Protected isolation-core changes need explicit review and workspace `--allow-isolation-source-changes`; this is not a sandbox. Do not enable it for unrelated failures.
+The trusted local builder records the selected SDK checkout's HEAD and source digest, including dirty API and isolation-core changes. This identifies the source snapshot; it is not a sandbox.
 
 ## Failed plugin build / occupied port
 

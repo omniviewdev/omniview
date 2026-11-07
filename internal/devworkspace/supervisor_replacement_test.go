@@ -155,6 +155,7 @@ func testSupervisorFrontendReplacementRetry(t *testing.T, failStart, failPlugins
 		if err := os.MkdirAll(filepath.Join(w.Root, "fixture-plugin"), 0700); err != nil {
 			t.Fatal(err)
 		}
+		writeGraphFixture(t, filepath.Join(w.Root, "fixture-plugin", "plugin.yaml"), "id: fixture-plugin\nversion: 0.1.0\nname: Fixture plugin\n")
 		if err := writeManifest(w.Root, w.Manifest); err != nil {
 			t.Fatal(err)
 		}

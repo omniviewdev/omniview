@@ -3,6 +3,7 @@ package networker
 import (
 	"context"
 
+	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/transportjson"
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -14,7 +15,15 @@ import (
 //
 //	OnPluginDestroy
 type ServiceWrapper struct {
-	Ctrl Controller
+	Ctrl  Controller
+	Realm invocation.ContextScope
+}
+
+func (s *ServiceWrapper) realmContext(ctx context.Context) context.Context {
+	if s.Realm == nil {
+		return ctx
+	}
+	return s.Realm.Context(ctx)
 }
 
 func (s *ServiceWrapper) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
@@ -52,6 +61,7 @@ func (s *ServiceWrapper) FindPortForwardSessions(
 	return s.Ctrl.FindPortForwardSessions(pluginID, connectionID, request)
 }
 func (s *ServiceWrapper) StartResourcePortForwardingSession(
+	ctx context.Context,
 	pluginID, connectionID string,
 	encoded string,
 ) (*networkersdk.PortForwardSession, error) {
@@ -59,7 +69,7 @@ func (s *ServiceWrapper) StartResourcePortForwardingSession(
 	if err := transportjson.Decode(encoded, &opts, pluginID, connectionID); err != nil {
 		return nil, err
 	}
-	return s.Ctrl.StartResourcePortForwardingSession(pluginID, connectionID, opts)
+	return s.Ctrl.StartResourcePortForwardingSession(s.realmContext(ctx), pluginID, connectionID, opts)
 }
 func (s *ServiceWrapper) ClosePortForwardSession(sessionID string) (*networkersdk.PortForwardSession, error) {
 	return s.Ctrl.ClosePortForwardSession(sessionID)

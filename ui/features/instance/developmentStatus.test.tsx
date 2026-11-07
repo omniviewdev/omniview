@@ -16,7 +16,7 @@ vi.mock('./InstanceContext', () => ({ useInstance: () => host }));
 
 const payload = {
   workspaceID: 'workspace', generation: 'generation', phase: 'ready',
-  health: { build: 'ready', hmr: 'connected', servedSource: 'current', sourceReload: 'unverified', readiness: 'authenticated', dependencies: 'current' },
+  health: { build: 'ready', hmr: 'connected', servedSource: 'unknown', checkoutSinceReady: 'unchanged', sourceReload: 'unverified', readiness: 'authenticated', dependencies: 'current' },
   builds: {}, selectedPluginCount: 2,
 };
 const parse = (value: unknown) => parseDevelopmentStatus(value, 'workspace', 'generation');
@@ -42,8 +42,14 @@ describe('host status boundaries', () => {
     expect(hostStatus(parse({ ...payload, failedStage: 'host-backend' }), true).tone).toBe('danger');
     expect(hostStatus(parse({ ...payload, builds: { host: { phase: 'invalidated' } } }), true).tone).toBe('danger');
     expect(hostStatus(parse({ ...payload, builds: { host: { phase: 'building' } } }), true).tone).toBe('warning');
-    expect(hostStatus(parse({ ...payload, health: { servedSource: 'stale' } }), true).tone).toBe('neutral');
+    expect(hostStatus(parse({ ...payload, health: { dependencies: 'stale' } }), true).tone).toBe('neutral');
     expect(hostStatus(parse({ ...payload, phase: 'stopped' }), true).tone).toBe('neutral');
+  });
+  it('keeps host readiness separate from unknown served provenance and changed checkouts', () => {
+    expect(hostStatus(parse(payload), true)).toEqual({ label: 'Ready', tone: 'success' });
+    expect(hostStatus(parse({ ...payload, health: { ...payload.health, checkoutSinceReady: 'changed' } }), true))
+      .toEqual({ label: 'Changed', tone: 'neutral' });
+    expect(hostStatus(parse({ ...payload, health: { ...payload.health, readiness: 'unknown' } }), true).tone).toBe('neutral');
   });
   it('does not infer selected plugin counts from repositories or accept invalid counts', () => {
     expect(parse({ ...payload, selectedPluginCount: -1 })?.selectedPluginCount).toBeNull();

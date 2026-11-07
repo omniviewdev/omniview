@@ -31,7 +31,7 @@ type snapshotReader struct {
 func snapshotPath(spec specification, exclude []string) (snapshot, error) {
 	result := snapshot{}
 	var reader snapshotReader
-	info, err := os.Lstat(spec.Target)
+	info, err := observeSnapshotPath(spec.Target)
 	if os.IsNotExist(err) {
 		return result, nil
 	}
@@ -47,7 +47,7 @@ func snapshotPath(spec specification, exclude []string) (snapshot, error) {
 		return result, nil
 	}
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return nil, fmt.Errorf("producer directory was replaced: %s", spec.Target)
+		return nil, &pathConflict{Path: spec.Target, ActualKind: fileKind(info), ExpectedKind: "directory", Reason: "producer directory was replaced"}
 	}
 	// File observations are independent. Join bounded readers before returning
 	// an image; mutation admission and per-leaf deletion checks remain separate.
@@ -79,7 +79,7 @@ func snapshotPath(spec specification, exclude []string) (snapshot, error) {
 		if spec.Mode == filteredOutputMode && relative != "." {
 			if entry.IsDir() {
 				if IsViteConfigTemporaryFile(entry.Name()) {
-					return fmt.Errorf("config-loader artifact was replaced by a directory")
+					return &pathConflict{Path: path, ActualKind: "directory", ExpectedKind: "file", Reason: "config-loader artifact was replaced by a directory"}
 				}
 				return filepath.SkipDir
 			}
@@ -92,7 +92,7 @@ func snapshotPath(spec specification, exclude []string) (snapshot, error) {
 				return fmt.Errorf("producer output overlaps Git metadata")
 			}
 		}
-		info, err := entry.Info()
+		info, err := observeSnapshotPath(path)
 		if err != nil {
 			return err
 		}
@@ -160,15 +160,28 @@ func (reader *snapshotReader) item(path string, info os.FileInfo, allowLinks boo
 		return result, err
 	case info.Mode()&os.ModeSymlink != 0:
 		if !allowLinks {
-			return result, fmt.Errorf("producer source/output contains a symlink: %s", path)
+			return result, &pathConflict{Path: path, ActualKind: "link", ExpectedKind: "file-or-directory", Reason: "producer source/output contains a symlink"}
 		}
 		result.Kind = "link"
 		target, err := os.Readlink(path)
+		if err != nil {
+			return result, snapshotPathError(path, info, err)
+		}
+		after, err := observeSnapshotPath(path)
+		if os.IsNotExist(err) {
+			return result, changedPath(path, info, nil, "producer link disappeared during snapshot")
+		}
+		if err != nil {
+			return result, err
+		}
+		if !os.SameFile(info, after) || after.Mode()&os.ModeSymlink == 0 {
+			return result, changedPath(path, info, after, "producer link was substituted during snapshot")
+		}
 		result.Link = target
-		return result, err
+		return result, nil
 	case info.Mode().IsRegular():
 		result.Kind = "file"
-		stream, err := os.Open(path)
+		stream, err := openObservedSnapshotFile(path, info)
 		if err != nil {
 			return result, err
 		}
@@ -188,17 +201,20 @@ func (reader *snapshotReader) item(path string, info os.FileInfo, allowLinks boo
 		if closeErr != nil {
 			return result, closeErr
 		}
-		after, err := os.Lstat(path)
+		after, err := observeSnapshotPath(path)
+		if os.IsNotExist(err) {
+			return result, changedPath(path, info, nil, "producer file disappeared during snapshot")
+		}
 		if err != nil {
 			return result, err
 		}
-		if !os.SameFile(info, after) || info.Size() != after.Size() || info.ModTime() != after.ModTime() {
-			return result, fmt.Errorf("producer output changed during snapshot: %s", path)
+		if !after.Mode().IsRegular() || !os.SameFile(info, after) || info.Mode() != after.Mode() || info.Size() != after.Size() || info.ModTime() != after.ModTime() {
+			return result, changedPath(path, info, after, "producer output changed during snapshot")
 		}
 		result.Hash = hex.EncodeToString(reader.digest.Sum(reader.sum[:0]))
 		return result, nil
 	default:
-		return result, fmt.Errorf("producer output contains a special file: %s", path)
+		return result, &pathConflict{Path: path, ActualKind: "special", ExpectedKind: "file-or-directory", Reason: "producer output contains a special file"}
 	}
 }
 func sameSnapshot(left, right snapshot) bool {
@@ -326,7 +342,7 @@ func removeSnapshotLeaves(spec specification, expected snapshot) error {
 		if relative != "." {
 			path = filepath.Join(path, relative)
 		}
-		current, err := os.Lstat(path)
+		current, err := observeSnapshotPath(path)
 		if os.IsNotExist(err) {
 			continue
 		}

@@ -31,6 +31,11 @@ Drawer toggles use the log viewer's bottom-drawer strip, never a document-wide
 Expand/Minimize label or button position. Sidebar tree controls may share those
 labels; every measured toggle must still change the drawer's actual height.
 
+Drawer toggle controls are selected within the measured bottom drawer. Resource
+trees can also expose an `Expand` button; a document-wide lookup can click that
+unrelated control without resizing the drawer. The geometry assertion still
+requires a height change of more than 50 pixels for each of the ten toggles.
+
 The Pod scenario opens the native page from a 5k-pod corpus, then scrolls up to
 30 viewport steps within that page. Current V2 Kubernetes requests 256 records per native page. Fixtures
 honor that bound and return real next cursors; they do not return the full corpus
@@ -41,85 +46,42 @@ unexpected end positions, and verify the reset. Reports expose actual forward st
 and total steps (including the reset); wall and busy per-step timings use that
 actual total rather than the requested 30-step budget.
 
-## Reproducible source cohort
+## Reproducible application sources
 
-CI reads the checked-out host's `e2e/source-cohort.json`, with full commit strings
-for `plugin-sdk`, `ui`, and `kubernetes`. UI and Kubernetes checkouts use validated
-cohort outputs; Kubernetes must match the host's `plugins/kubernetes` gitlink.
-After Kubernetes merges, update both pins to its final merge commit before the coordinated consumer release.
-The SDK entry must equal the independently reviewed release pinned explicitly in
-the candidate workflows: SDK v0.14.2,
-`0597ff45586b45e3a57fe7ac86194ce96884c7ef`. The original isolation ancestry minimum remains
-`5b3ef764d1cf738835a723a749a0cb6c45f85e44`. The connection-sharing release advances the
-reviewed isolation checkpoint to SDK v0.13.0 after independent
-security review of the five protected files.
-The changes add callback binding and retain the profiler lifecycle in
-`pkg/sdk/plugin.go`; state-root, profile-contract, and store protections remain
-unchanged. Admission requires the baseline to precede that pinned checkpoint, the
-checkpoint to precede the selected SDK, and all five selected protected files
-to match the checkpoint byte-for-byte. Neither cohort approval, tags nor
-environment variables can substitute another isolation checkpoint.
-Review selected commits before updating the branch-owned cohort and
-gitlink; checkout reachability is required, publication is not. This avoids global UI/Kubernetes ref changes when older `main` and an
-upgraded PR need different compatible sources. The host input remains the exact
-checked-out PR commit, or selected branch commit for manual dispatch.
+CI resolves the SDK commit from the host's declared `go.mod` dependency and
+checks out that commit for the managed workspace. UI packages come from the host
+lockfile; Kubernetes comes from the host's `plugins/kubernetes` gitlink. The
+host input remains the exact checked-out PR commit, or the selected branch
+commit for manual dispatch. Managed workspaces record the SDK checkout's commit
+and source digest, rather than requiring an approval revision.
 
 The source builder reuses canonical workspace `Init`/`Create`/`Link`, native pnpm
 12.14.0, the actual protocol-probe report, and the existing JavaScript build graph
 and output-ownership producers in a disposable collection with its own private
 home. Its manager uses the same session-aware `RequireStopped` guard as the real
 workspace CLI; a private home is not a substitute for proving the workspace is
-stopped before linking or retirement. Only the real Kubernetes UI dependency
-closure is built: base-ui, ai-ui,
-editors, providers, runtime, Vite plugin, then Kubernetes. The host's committed
-Wails bindings are compiler inputs, just as for `task packages`; no native host,
-plugin backend, SDK attestation or app service is substituted or launched.
-Source manifests keep their declared versions. Canonical `workspace:*` overrides
-select the reviewed sources, including an explicitly unpublished next-release
-source cohort; no version is stamped by this helper and no future registry
-package is fetched as a fallback. Managed local edges in standalone lockfiles
-are seed inputs: their versions become actual source links in the generated
-aggregate lock. A source runtime/Vite plugin 0.5.0 and Kubernetes `^0.5.0` can
-therefore be profiled before npm publication, without rewriting the standalone
-Kubernetes lock to claim a release exists. Refresh that consumer lock only after
-the real npm release, before merging/tagging the production plugin. Registry
-edges retain their lock evidence. Install scripts remain disabled and strict
-peers are audited recursively.
+stopped before linking or retirement. It builds the Kubernetes UI dependency
+closure and uses the host's committed Wails bindings as compiler inputs, just as
+for `task packages`; no native host, plugin backend, SDK attestation or app
+service is substituted or launched. Source manifests retain their declared
+versions. Registry edges retain their lock evidence. Install scripts remain
+disabled and strict peers are audited recursively.
 
-Source install policies must agree explicitly. In particular, the reviewed host
-and Kubernetes sources must both declare `allowBuilds.esbuild: true`, with
-Kubernetes retaining `unrs-resolver: false`. The managed install still uses
-`--ignore-scripts`; the builder does not rewrite policies, approve all scripts,
-or relax peers. Kubernetes commit
-`5df15b06b80790c3a8e9255d300f40795fde9bef` has the modern UI and output contracts,
-but its explicit `esbuild: false` conflicts with the host and must not be used
-unchanged for this composition. Published runtime 0.4.2 is not an alternative:
-its base-ui peer range is `^0.2.1`, not the host source runtime's `~0.4.3`.
+Source install policies must agree explicitly. The host and Kubernetes sources
+must both declare `allowBuilds.esbuild: true`, with Kubernetes retaining
+`unrs-resolver: false`. The managed install still uses `--ignore-scripts`; the
+builder does not rewrite policies, approve all scripts, or relax peers.
 
-With installed/built host packages and the reviewed sources checked out:
+With installed/built host packages, initialize the Kubernetes submodule and check
+out the SDK commit resolved by the host module:
 
-Candidate CI uses `e2e/source-cohort.json` as its exact SDK/UI/Kubernetes
-selection. The explicit workflow `REVIEWED_SDK_REVISION` must equal that SDK commit;
-UI and Kubernetes refs come only from that cohort in candidate workflows, not
-legacy repository UI/profile variables. The selected UI checkout must satisfy the
-host/runtime shared-UI dependency ranges. Update `e2e/source-cohort.json` alongside
-those ranges; changing only the registry lockfile cannot make an older pinned UI
-checkout compatible. Do not change legacy repository variables to approve
-candidate sources. Explicit direct-CLI `UI_SOURCE_REF` or
-`KUBERNETES_SOURCE_REF` values must still match the selected cohort.
-The Kubernetes gitlink must also match. Commits must be reachable by checkout,
-but candidate testing does not require a module or npm publication.
-Candidate admission requires an exact independently reviewed SDK commit from
-repository variable `OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION` or the separate
-`OMNIVIEW_RESOURCE_V2_REVIEWED_MAINTENANCE_SDK_REVISION`. These approvals remain
-under user-authorized release administration. Maintenance servicing must not
-replace mainline approval. Workflows propagate the admitted selection as
-`REVIEWED_SDK_REVISION`; direct execution supplies either that variable or
-`REVIEWED_MAINTENANCE_SDK_REVISION`. Neither a cohort edit nor a release tag grants
-approval.
-The independent SDK isolation-core baseline remains
-`5b3ef764d1cf738835a723a749a0cb6c45f85e44`; candidate approval does not
-authorize protected isolation changes or replace review with release-tag trust.
+```bash
+git submodule update --init plugins/kubernetes
+SDK_SOURCE=/absolute/path/plugin-sdk
+SDK_COMMIT="$(node e2e/scripts/sdk-source.mjs print)"
+git -C "$SDK_SOURCE" checkout --detach "$SDK_COMMIT"
+```
+
 PR validation runs for stacked PR bases as well as `main`, with read-only
 permissions. Release and nightly workflows retain published dependencies.
 
@@ -133,10 +95,9 @@ A11_PROTOCOL_PROBE=1 A11_PROTOCOL_REPORT=/absolute/path/link-protocol.json \
   GOWORK=off GOFLAGS= go test -mod=readonly -modfile="$HOST_MODFILE" -tags server ./internal/devworkspace \
   -run '^TestLinkPinnedProtocolProbe$' -count=1
 GOWORK=off GOFLAGS= go run -mod=readonly -modfile="$HOST_MODFILE" -tags server ./bench/app/build-plugin \
-  --host \"$PWD\" --host-ref \"$(git rev-parse HEAD)\" \
-  --sdk "$SDK_SOURCE" --sdk-ref "$REVIEWED_SDK_COMMIT" \
-  --ui /absolute/path/ui --ui-ref \"$REVIEWED_UI_COMMIT\" \
-  --kubernetes /absolute/path/kubernetes --kubernetes-ref \"$REVIEWED_KUBERNETES_COMMIT\" \
+  --host "$PWD" --host-ref "$(git rev-parse HEAD)" \
+  --sdk "$SDK_SOURCE" --sdk-ref "$SDK_COMMIT" \
+  --kubernetes "$PWD/plugins/kubernetes" --kubernetes-ref "$(git -C plugins/kubernetes rev-parse HEAD)" \
   --link-evidence /absolute/path/link-protocol.json -- --runs 3
 ```
 
@@ -213,6 +174,11 @@ must receive the same fixture files byte-for-byte in its own feature worktree;
 do not overwrite its registered source repository or change registry mappings.
 The runner checks canonical/managed source equality. Preserve the existing
 settings/click smoke behavior.
+
+The probe's standalone Go module pins SDK v0.15.0 and its required gRPC fork.
+Go replacements are not transitive: retain the probe's transport replacement
+when selecting a local SDK. Snapshot and update observations use the SDK's
+compact source-record conversion; finite pages retain their full representation.
 
 ### Corpus and launch
 

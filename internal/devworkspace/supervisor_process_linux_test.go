@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -77,6 +78,23 @@ func (p linuxProcReadFailure) Open(name string) (fs.File, error) {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: p.err}
 	}
 	return p.FS.Open(name)
+}
+
+type linuxProcStatRecheck struct {
+	fs.FS
+	path   string
+	err    error
+	checks *int
+}
+
+func (p linuxProcStatRecheck) Stat(name string) (fs.FileInfo, error) {
+	if name == p.path {
+		*p.checks++
+		if p.err != nil {
+			return nil, &fs.PathError{Op: "stat", Path: name, Err: p.err}
+		}
+	}
+	return fs.Stat(p.FS, name)
 }
 
 const linuxUnfilteredProcMount = "42 23 0:5 / /proc rw,nosuid,nodev,noexec,relatime - proc proc rw\n"
@@ -162,6 +180,52 @@ func TestLinuxUnreapedGroupInspection(t *testing.T) {
 			}
 			if err != nil || live != test.live {
 				t.Fatalf("live=%t error=%v, want live=%t", live, err, test.live)
+			}
+		})
+	}
+}
+
+func TestLinuxMalformedStatRequiresConfirmedDisappearance(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		leader     string
+		member     string
+		recheck    string
+		recheckErr error
+		uncertain  bool
+		checks     int
+	}{
+		{name: "truncated task disappears", member: "", recheck: "200", recheckErr: fs.ErrNotExist, checks: 1},
+		{name: "malformed task exits", member: "200 (worker) R 1", recheck: "200", recheckErr: unix.ESRCH, checks: 1},
+		{name: "malformed task remains", member: "200 (worker) R 1", recheck: "200", uncertain: true, checks: 1},
+		{name: "recheck permission denied", member: "200 (worker) R 1", recheck: "200", recheckErr: fs.ErrPermission, uncertain: true, checks: 1},
+		{name: "recheck I/O failure", member: "200 (worker) R 1", recheck: "200", recheckErr: unix.EIO, uncertain: true, checks: 1},
+		{name: "pinned leader malformed", leader: "100 (leader) Z 1", recheck: "100", recheckErr: fs.ErrNotExist, uncertain: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			leader := test.leader
+			if leader == "" {
+				leader = "100 (leader) Z 1 100"
+			}
+			proc := fstest.MapFS{
+				"100/stat":       &fstest.MapFile{Data: []byte(leader)},
+				"200/stat":       &fstest.MapFile{Data: []byte(test.member)},
+				"self/mountinfo": &fstest.MapFile{Data: []byte(linuxUnfilteredProcMount)},
+			}
+			checks := 0
+			live, err := inspectLinuxUnreapedGroup(linuxProcStatRecheck{FS: proc, path: test.recheck, err: test.recheckErr, checks: &checks}, 100)
+			if checks != test.checks {
+				t.Fatalf("rechecked %d times, want %d", checks, test.checks)
+			}
+			if test.uncertain {
+				if err == nil || !strings.Contains(err.Error(), "malformed proc stat") {
+					t.Fatalf("malformed record did not retain uncertainty: %v", err)
+				}
+				if test.recheckErr != nil && !errors.Is(test.recheckErr, fs.ErrNotExist) && !errors.Is(test.recheckErr, unix.ESRCH) && !errors.Is(err, test.recheckErr) {
+					t.Fatalf("recheck error was lost: %v", err)
+				}
+			} else if err != nil || live {
+				t.Fatalf("confirmed disappearance: live=%t error=%v", live, err)
 			}
 		})
 	}

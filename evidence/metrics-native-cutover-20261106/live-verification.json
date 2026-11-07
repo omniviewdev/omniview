@@ -1,0 +1,156 @@
+{
+  "verified_at": "2026-11-06T07:38:45.165Z",
+  "sources": "Actual Kubernetes APIs and existing Grafana/Prometheus; no generated metric samples",
+  "native": {
+    "nodes": 4,
+    "pods": 316,
+    "visible_pods": 30,
+    "visible_metric_cells": 60,
+    "proof": {
+      "pods": 30,
+      "valuesChanged": true
+    },
+    "upstream_counts": {
+      "native GET /apis/metrics.k8s.io/v1beta1": {
+        "started": 1,
+        "completed": 1,
+        "failed": 0
+      },
+      "native GET /apis/metrics.k8s.io/v1beta1/namespaces/load-000/pods": {
+        "started": 1,
+        "completed": 1,
+        "failed": 0
+      },
+      "native GET /openapi/v3/apis/metrics.k8s.io/v1beta1": {
+        "started": 1,
+        "completed": 1,
+        "failed": 0
+      }
+    }
+  },
+  "grafana": {
+    "visible_pods": 24,
+    "visible_metric_cells": 48,
+    "proof": {
+      "pods": 24,
+      "metricCells": 48,
+      "valuesChanged": true
+    },
+    "upstream_counts": {
+      "grafana GET /api/datasources/proxy/uid/prometheus/api/v1/query": {
+        "started": 2,
+        "completed": 2,
+        "failed": 0
+      }
+    }
+  },
+  "chart_continuity": {
+    "original_svg_plots": 2,
+    "all_original_plots_connected": true,
+    "detached": false,
+    "loading_placeholder_shown": false,
+    "uncached_range": "Last 6 hours"
+  },
+  "live_inventory": {
+    "before": 24,
+    "after": 25,
+    "withoutReload": true,
+    "restored": 24
+  },
+  "persisted_view": {
+    "preferences": {
+      "version": 1,
+      "revision": 7,
+      "metric_ids": [
+        "kubernetes.pod.cpu.usage",
+        "kubernetes.pod.memory.working_set",
+        "network_receive",
+        "restarts"
+      ],
+      "displays": {
+        "kubernetes.pod.cpu.usage": "line",
+        "network_receive": "sample-bars",
+        "restarts": "value"
+      },
+      "layout": "stack",
+      "time_mode": "relative",
+      "duration_ms": 21600000,
+      "start_ms": 0,
+      "end_ms": 0,
+      "details": {}
+    },
+    "source": {
+      "owner_plugin_id": "kubernetes",
+      "owner_connection_id": "kind-kind",
+      "resource_key": "k8s:/pods",
+      "mode": "external",
+      "source": {
+        "plugin_id": "grafana",
+        "connection_id": "2b18ecd2-2782-45de-9861-442a644e66c9",
+        "datasource_uid": "prometheus",
+        "datasource_kind": "prometheus"
+      },
+      "revision": "e499ed92-dd34-48a1-90c2-e2a5cf690282"
+    }
+  },
+  "verified_view_transitions": [
+    "close drawer and open another real Pod",
+    "normal browser reload"
+  ],
+  "restart_verification": {
+    "passed": true,
+    "range": "Last 6 hours",
+    "display_modes": [
+      "CPU usage display: Line",
+      "Memory working set display: Area",
+      "Network receive display: Bars",
+      "Container restarts display: Value"
+    ],
+    "layout": "stack",
+    "source": "External · Kind monitoring · Prometheus (grafana)",
+    "single_wails_transport": true,
+    "live_update_warning": false,
+    "unavailable_catalog_warning": false,
+    "temporary_request_counter_stopped": true,
+    "native_table_metric_cells_with_real_values": 60,
+    "durable_private_cluster_inputs": true
+  },
+  "cleanup": {
+    "temporary_probe_pods_removed": 4,
+    "temporary_probe_namespace_removed": true,
+    "temporary_counter_and_credential_copies_removed": true,
+    "remaining_real_grafana_cluster_pods": 20,
+    "audit_layout": "Grid restored after verifying the saved stacked layout."
+  },
+  "query_preview": {
+    "resource": "metrics-workloads/metrics-cpu-f8f9cff47-sgq8v",
+    "status": "ok",
+    "inherited_five_minute_rate": "Latest 0.07609 cores",
+    "saved_cluster_two_minute_rate": "Latest 0.07647 cores",
+    "sparse_cluster_override_survived_reload": true,
+    "global_definition_unchanged": true,
+    "single_wails_transport": true
+  },
+  "checks": {
+    "host_go_tested_packages": 61,
+    "host_go_no_test_packages": 10,
+    "host_go_note": "The 300-second tool deadline interrupted the full command; the remaining 17 packages passed separately.",
+    "sdk_go_tested_packages": 27,
+    "kubernetes_go_tested_packages": 11,
+    "runtime_tests_passed": 460,
+    "host_ui_tests_passed": 1508,
+    "kubernetes_ui_tests_passed": 1738,
+    "changed_ui_lint_errors": 0,
+    "new_ci_workflows": 0,
+    "standalone_kubernetes_release_gate": "Publish the new runtime APIs, then advance the normal dependency minimum and lockfile."
+  },
+  "final_chart_continuity": {
+    "resource": "kube-system/kube-apiserver-kind-control-plane",
+    "retained_original_plots": 3,
+    "detached": false,
+    "loading_placeholder_shown": false,
+    "range_change": "Last 6 hours to Last 1 hour",
+    "refresh_exercised": true,
+    "unexpected_browser_errors": 0
+  }
+}

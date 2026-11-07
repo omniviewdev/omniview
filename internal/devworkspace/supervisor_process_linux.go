@@ -128,6 +128,18 @@ func inspectLinuxUnreapedGroup(proc fs.FS, pgid int) (bool, error) {
 			return false, fmt.Errorf("inspect proc process %d: %w", pid, err)
 		}
 		group, memberLive, err := parseLinuxGroupMember(data, pid)
+		if err != nil && pid != pgid {
+			// A task may exit while procfs is producing its stat record.
+			// Discard malformed data only after the exact PID directory is
+			// confirmed gone; other lookup failures remain uncertain.
+			_, statErr := fs.Stat(proc, name)
+			if errors.Is(statErr, fs.ErrNotExist) || errors.Is(statErr, unix.ESRCH) {
+				continue
+			}
+			if statErr != nil {
+				return false, errors.Join(err, fmt.Errorf("recheck proc process %d: %w", pid, statErr))
+			}
+		}
 		if err != nil {
 			return false, err
 		}

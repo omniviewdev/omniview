@@ -12,14 +12,14 @@ import { Provider } from 'react-redux';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   ExtensionProvider,
-  OperationsProvider,
+  ActivityProvider,
   PluginContextProvider,
   SettingsProvider,
 } from '@omniviewdev/runtime';
 
 import { store } from '@/store/store';
 import AppThemeController from '@/theme/AppThemeController';
-import { AppSnackbarProvider } from '@/contexts/AppSnackbarProvider';
+import { ToastProvider } from '@omniviewdev/base-ui';
 import RightDrawerProvider from '@/providers/RightDrawerProvider';
 import BottomDrawerProvider from '@/providers/BottomDrawer/provider';
 import { EXTENSION_REGISTRY } from '@/features/extensions/store';
@@ -27,7 +27,9 @@ import { ConfirmationModalProvider } from '@/contexts/ConfirmationModalContext';
 import { ConnectionStateProvider } from '@/features/connectionState';
 
 export function newQueryClient(): QueryClient {
-  return new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false, retry: false } } });
+  return new QueryClient({
+    defaultOptions: { queries: { refetchOnWindowFocus: false, retry: false } },
+  });
 }
 
 export interface AppProvidersProps {
@@ -41,21 +43,25 @@ export function AppProviders({ children, queryClient }: AppProvidersProps) {
     <QueryClientProvider client={client}>
       <SettingsProvider>
         <ExtensionProvider registry={EXTENSION_REGISTRY}>
-          <AppSnackbarProvider>
+          <ActivityProvider>
             <Provider store={store}>
               <AppThemeController>
-                <OperationsProvider>
+                <ToastProvider
+                  maxVisible={5}
+                  position="bottom-right"
+                  style={{ bottom: 24, padding: 12 }}
+                >
                   <ConfirmationModalProvider>
                     <ConnectionStateProvider>
-                      <RightDrawerProvider>
-                        <BottomDrawerProvider>{children}</BottomDrawerProvider>
-                      </RightDrawerProvider>
+                      <BottomDrawerProvider>
+                        <RightDrawerProvider>{children}</RightDrawerProvider>
+                      </BottomDrawerProvider>
                     </ConnectionStateProvider>
                   </ConfirmationModalProvider>
-                </OperationsProvider>
+                </ToastProvider>
               </AppThemeController>
             </Provider>
-          </AppSnackbarProvider>
+          </ActivityProvider>
         </ExtensionProvider>
       </SettingsProvider>
     </QueryClientProvider>
@@ -77,7 +83,15 @@ export function PluginScreen({ pluginId, path, url, children }: PluginScreenProp
     <AppProviders>
       <MemoryRouter initialEntries={[url]}>
         <PluginContextProvider pluginId={pluginId}>
-          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, height: '100vh' }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              flex: 1,
+              minHeight: 0,
+              height: '100vh',
+            }}
+          >
             <Routes>
               <Route path={path} element={children} />
             </Routes>

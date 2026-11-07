@@ -171,7 +171,7 @@ async function runtimeConsumer(r: Resources, name: string, generator: string, ma
     }
     await run(process.execPath, [path.join(root, 'generate-shims.mjs')], {
       cwd: root, env: { ...r.env, OMNIVIEW_SHIMS_OUTPUT_DIRECTORY: shims, OMNIVIEW_SHIMS_SOURCE_DIRECTORY: shims },
-      timeout: 10_000, maxBuffer: 64 * 1024,
+      timeout: 60_000, maxBuffer: 64 * 1024,
     });
     const symbol = revised ? 'newlyPublishedLabel' : 'runtimeLabel';
     await put(path.join(plugin, 'consumer.ts'), `import { ${symbol} } from '@omniviewdev/runtime';\nexport const sharedFunction = ${symbol};\nexport const served = ${symbol}('served');\n`);

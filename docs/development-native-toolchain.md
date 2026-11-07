@@ -15,7 +15,15 @@ GOWORK=off GOFLAGS= go test -modfile="$GO_MODFILE" ./... -count=1
 
 Standalone effective mod/sum files live under ignored `.local/hostmod`; managed workspaces use their ledger-owned `toolsrc/hostmod` capability. Preparation does not copy framework sources. It refuses Wails replacements, unsafe output paths, and foreign output ownership. CLI caches separately hash immutable module templates and executables before reuse. `task host:prepare SDK_SOURCE="$SDK_SOURCE"` prints the effective modfile.
 
-Bindings remain `task bindings SDK_SOURCE="$SDK_SOURCE"`. Tasks select the Wails CLI from the root Go pin rather than trusting an ambient `wails3`. Never run raw binding generation or build Vite-plugin shims before the runtime package.
+Standalone bindings remain `task bindings SDK_SOURCE="$SDK_SOURCE"`. In an
+already-linked managed workspace, use `omniview-dev workspace bindings` while
+stopped; it runs that canonical task through the owned graph producer, preserving
+the selected SDK and build context. Direct standalone generation can invalidate
+managed output receipts; use the explicit preserve-first reconciliation described
+in [the CLI guide](development-cli.md#managed-bindings-and-explicit-producer-reconciliation)
+instead of adopting or deleting changed output. Tasks select the Wails CLI from
+the root Go pin rather than trusting an ambient `wails3`. Never run raw binding
+generation or build Vite-plugin shims before the runtime package.
 
 ## Canonical Linux E2E prerequisites and payloads
 
@@ -64,22 +72,11 @@ application suite. The stable `e2e-tests` check accepts only the reusable job's
 success, including an explicitly proven prose-only skip. Browser results alone
 do not prove canonical preparation, acceptance and cleanup succeeded.
 
-The checked-out host's `e2e/source-cohort.json` selects full UI and Kubernetes
-commits for canonical CI and whole-app profiling. Kubernetes must match the
-committed `plugins/kubernetes` gitlink. The cohort SDK must exactly match an
-independently reviewed commit in repository variable
-`OMNIVIEW_RESOURCE_V2_REVIEWED_SDK_REVISION` or
-`OMNIVIEW_RESOURCE_V2_REVIEWED_MAINTENANCE_SDK_REVISION`. The separate maintenance
-approval services the deployed wire contract without replacing mainline approval.
-Workflows admit those values as `REVIEWED_SDK_REVISION` and
-`REVIEWED_MAINTENANCE_SDK_REVISION`, then pass the admitted selection downstream as
-`REVIEWED_SDK_REVISION`. Only user-authorized release administration changes these
-external approvals; editing the cohort alone cannot approve another SDK commit.
-
-The isolation guard separately pins SDK checkpoint
-`eea5943f7a5319fb1585a8ec2d9ce5d06fa763ca`, after independent review of the
-host-connections binding added to plugin startup. The original isolation baseline,
-checkpoint ancestry, and byte comparisons for all five protected files remain required.
+Canonical CI and whole-app profiling resolve the SDK checkout commit from the
+host's `go.mod` using Go module download metadata. UI packages come from the host
+lockfile, and Kubernetes comes from the committed `plugins/kubernetes` gitlink.
+Managed workspaces identify their linked SDK checkout by HEAD and source digest,
+including dirty source changes; this identity is not a sandbox.
 
 Playwright uses its GitHub reporter in Actions for failure annotations on the
 check and source locations, alongside terminal output, HTML and case timings.
@@ -124,14 +121,11 @@ evidence artifact separately when individual files are needed. Do not open only
 link to serve an interactive website.
 
 For a locally generated report, use `pnpm --dir e2e report`. To run the canonical
-suite locally, explicitly select the companion sources and independently reviewed
-SDK commit, then invoke the runner rather than bypassing preparation:
+suite locally, select a clean SDK checkout at the commit resolved from the host
+`go.mod` and initialize the Kubernetes submodule, then invoke the runner:
 
 ```sh
 SDK_SOURCE=/absolute/path/to/plugin-sdk \
-UI_SOURCE=/absolute/path/to/ui \
-KUBERNETES_SOURCE=/absolute/path/to/omniview-plugin-kubernetes \
-REVIEWED_SDK_REVISION='<independently-reviewed-full-sdk-commit>' \
 node e2e/scripts/run.mjs --full
 ```
 

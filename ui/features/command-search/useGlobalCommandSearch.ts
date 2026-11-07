@@ -80,7 +80,7 @@ export function useGlobalCommandSearch() {
   const routeTrees = useMemo(
     () =>
       new Map<string, RouteObject[]>(
-        Array.from(registrations, ([id, registration]) => [id, normalizePluginRoutes(registration.routes)]),
+        Array.from(registrations, ([id, registration]) => [id, normalizePluginRoutes(registration.routes, id)]),
       ),
     [registrations],
   );
@@ -126,7 +126,7 @@ export function useGlobalCommandSearch() {
         const routes =
           latestRoutingContext.current.registrations.get(id) === registration
             ? latestRoutingContext.current.routeTrees.get(id)
-            : normalizePluginRoutes(registration.routes);
+            : normalizePluginRoutes(registration.routes, id);
         return routes !== undefined && matchRoutes(routes, path) !== null;
       },
       listResourcePlugins: ResourceClient.ListPlugins,
@@ -461,7 +461,7 @@ export function useGlobalCommandSearch() {
 
         return latestRoutingContext.current.registrations.get(id) === registration
           ? latestRoutingContext.current.routeTrees.get(id)
-          : normalizePluginRoutes(registration.routes);
+          : normalizePluginRoutes(registration.routes, id);
       }, (id) => pluginService.getPluginState(id)?.phase === 'ready'));
     controllerRef.current?.open(resolved);
     input.current?.focus();

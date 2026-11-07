@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -70,7 +69,7 @@ func TestLateRefreshRecoveryRefusesDifferentCompletedCohort(t *testing.T) {
 				}
 				intent := refreshIntent{
 					WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, Phase: phase, Plan: &plan, Evidence: evidence,
-					Launch: LaunchOptions{Mode: "browser", ReviewedSDKRevision: strings.Repeat("a", 40)},
+					Launch: LaunchOptions{Mode: "browser"},
 				}
 				path := filepath.Join(m.Root, ".omniview-dev", "recovery", w.Manifest.WorkspaceID, "refresh.json")
 				require.NoError(t, atomicOwnedJSON(path, intent, w.Manifest.WorkspaceID))

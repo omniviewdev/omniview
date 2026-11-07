@@ -41,7 +41,9 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   build-macos:
     if: github.event_name == 'push'
-    runs-on: macos-latest
+    runs-on: macos-15-intel
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - name: Normalize version
         id: version

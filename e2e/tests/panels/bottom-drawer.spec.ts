@@ -1,9 +1,8 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { test, expect } from '../fixtures/app.fixture';
 import { expectPageDoesNotScroll } from '../fixtures/helpers';
 
-// Collapsed height of the drawer (its tab strip) and the height a new tab opens it to.
-const MINIMIZED = 32;
+// Height a newly opened tab expands the drawer to.
 const DEFAULT_EXPANDED = 550;
 
 function drawer(page: Page) {
@@ -16,6 +15,17 @@ function drawer(page: Page) {
     newTerminal: page.getByRole('button', { name: 'New terminal' }),
     height: async () => (await root.boundingBox())!.height,
   };
+}
+
+async function expectCollapsed(root: Locator) {
+  await expect.poll(async () => root.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    const strip = element.querySelector('[data-ov-drawer-strip]')!.getBoundingClientRect();
+    return {
+      bottomGap: Math.round(bounds.bottom - strip.bottom),
+      clipped: strip.top < bounds.top || strip.bottom > bounds.bottom,
+    };
+  })).toEqual({ bottomGap: 0, clipped: false });
 }
 
 /**
@@ -53,7 +63,7 @@ test.describe('Bottom Drawer', () => {
     const d = await restoredDrawer(appPage);
     await expect(d.handle).toBeAttached();
     await expect(d.tabs).toHaveCount(0);
-    expect(await d.height()).toBeCloseTo(MINIMIZED, 0);
+    await expectCollapsed(d.root);
     await expect(appPage.getByRole('button', { name: 'Expand' })).toBeDisabled();
   });
 
@@ -69,7 +79,7 @@ test.describe('Bottom Drawer', () => {
     await expect.poll(d.height).toBeCloseTo(DEFAULT_EXPANDED, 0);
 
     await appPage.getByRole('button', { name: 'Minimize' }).click();
-    await expect.poll(d.height).toBeCloseTo(MINIMIZED, 0);
+    await expectCollapsed(d.root);
 
     await appPage.getByRole('button', { name: 'Expand' }).click();
     await expect.poll(d.height).toBeCloseTo(DEFAULT_EXPANDED, 0);
@@ -106,7 +116,7 @@ test.describe('Bottom Drawer', () => {
     await expect.poll(d.height).toBeCloseTo(DEFAULT_EXPANDED, 0);
 
     await dragDrawerTo(appPage, 50);
-    await expect.poll(d.height).toBeCloseTo(MINIMIZED, 0);
+    await expectCollapsed(d.root);
     await expect(appPage.getByRole('button', { name: 'Expand' })).toBeEnabled();
   });
 
@@ -115,7 +125,7 @@ test.describe('Bottom Drawer', () => {
     await expect.poll(d.height).toBeCloseTo(DEFAULT_EXPANDED, 0);
 
     await d.handle.dblclick();
-    await expect.poll(d.height).toBeCloseTo(MINIMIZED, 0);
+    await expectCollapsed(d.root);
     await d.handle.dblclick();
     await expect.poll(d.height).toBeCloseTo(DEFAULT_EXPANDED, 0);
   });
@@ -139,7 +149,7 @@ test.describe('Bottom Drawer', () => {
 
     await d.tabs.first().getByRole('button', { name: /^Close / }).click();
     await expect(d.tabs).toHaveCount(0);
-    await expect.poll(d.height).toBeCloseTo(MINIMIZED, 0);
+    await expectCollapsed(d.root);
   });
 
   test('switches between terminal tabs', async ({ appPage }) => {

@@ -35,17 +35,17 @@ func Published(ctx context.Context, w devcontract.ResolvedWorkspace, consumer st
 		}
 		entry := j.Entries[keyOf(spec)]
 		if entry == nil {
-			return fmt.Errorf("repository output has no controlled publication: %s", spec.Target)
+			return conflict(spec, "unowned", "publication", nil, nil, fmt.Errorf("repository output has no controlled publication"))
 		}
-		if len(entry.Live) > 0 || entry.Pending != nil || entry.Cleanup != nil {
-			return fmt.Errorf("repository output has an unfinished writer: %s", spec.Target)
+		if len(entry.Live) > 0 || entry.Pending != nil || entry.Cleanup != nil || entry.Preservation != nil {
+			return entryConflict(entry, "publication", nil, fmt.Errorf("repository output has an unfinished writer"))
 		}
 		actual, err := snapshotPath(entry.Spec, entry.Exclude)
 		if err != nil {
 			return err
 		}
 		if len(actual) == 0 || !sameSnapshot(actual, physical(entry.Expected)) {
-			return fmt.Errorf("repository output changed since its controlled publication: %s", spec.Target)
+			return entryConflict(entry, "publication", actual, fmt.Errorf("repository output changed since its controlled publication"))
 		}
 		digest = contentDigest(actual)
 		return nil

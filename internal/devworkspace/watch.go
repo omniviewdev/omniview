@@ -273,8 +273,8 @@ func (g *BuildGraph) buildSourceChange(
 	if err := h.BeginFeedback(ctx, change); err != nil {
 		return err
 	}
-	// Ordinary dirty SDK APIs are trusted local development input, bound to the
-	// reviewed isolation baseline and exact source identity on both build sides.
+	// Dirty SDK APIs are local development input, bound to exact source identity
+	// on both build sides.
 	if change.SDKChanged {
 		for _, consumer := range g.plan.GoRoots {
 			if _, err := g.verifySDK(ctx, consumer); err != nil {
@@ -325,7 +325,7 @@ func (g *BuildGraph) rebuildSourceHost(ctx context.Context, h WatchHooks) (map[s
 	g.emit("host-restart", "building", nil)
 	ready, err := h.HostRebuildAndWait(ctx, HostBuildRequest{
 		Workspace: g.workspace, SDKDirectory: g.plan.SDK,
-		ExpectedSDKRevision: g.options.ExpectedSDKRevision, SDKSource: before,
+		SDKSource: before,
 	})
 	if err != nil {
 		g.emit("host-restart", "error", err)

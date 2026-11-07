@@ -7,6 +7,9 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as resourcev2$0 from "../../resource/v2/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as time$0 from "../../../../../../time/models.js";
 
 /**
@@ -186,6 +189,64 @@ export class DataPoint {
 }
 
 /**
+ * FiniteMetricDescriptor declares physical base units and supported evaluations.
+ * Units use ValidFiniteUnit; shapes are current or range, never legacy enum numbers.
+ */
+export class FiniteMetricDescriptor {
+    "id": string;
+    "name": string;
+    "resource_key": string;
+    "unit": string;
+    "shapes": string[];
+    "description": string;
+
+    /**
+     * Source overrides the catalog default for host-composed mixed-source lanes.
+     */
+    "source"?: MetricSourceRef | null;
+
+    /** Creates a new FiniteMetricDescriptor instance. */
+    constructor($$source: Partial<FiniteMetricDescriptor> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("resource_key" in $$source)) {
+            this["resource_key"] = "";
+        }
+        if (!("unit" in $$source)) {
+            this["unit"] = "";
+        }
+        if (!("shapes" in $$source)) {
+            this["shapes"] = [];
+        }
+        if (!("description" in $$source)) {
+            this["description"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new FiniteMetricDescriptor instance from a string or object.
+     */
+    static createFrom($$source: any = {}): FiniteMetricDescriptor {
+        const $$createField4_0 = $$createType1;
+        const $$createField6_0 = $$createType3;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("shapes" in $$parsedSource) {
+            $$parsedSource["shapes"] = $$createField4_0($$parsedSource["shapes"]);
+        }
+        if ("source" in $$parsedSource) {
+            $$parsedSource["source"] = $$createField6_0($$parsedSource["source"]);
+        }
+        return new FiniteMetricDescriptor($$parsedSource as Partial<FiniteMetricDescriptor>);
+    }
+}
+
+/**
  * Handler maps a resource key to its available metrics.
  */
 export class Handler {
@@ -208,12 +269,257 @@ export class Handler {
      * Creates a new Handler instance from a string or object.
      */
     static createFrom($$source: any = {}): Handler {
-        const $$createField1_0 = $$createType2;
+        const $$createField1_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("metrics" in $$parsedSource) {
             $$parsedSource["metrics"] = $$createField1_0($$parsedSource["metrics"]);
         }
         return new Handler($$parsedSource as Partial<Handler>);
+    }
+}
+
+/**
+ * MetricBinding stores source configuration independently of presentation preferences.
+ * Resource owner authority never comes from the selected source connection.
+ */
+export class MetricBinding {
+    "id": string;
+    "signal": string;
+    "resource_plugin_id": string;
+    "resource_connection_id": string;
+    "source": MetricSourceRef;
+    "policy": string;
+    "public_scope": { [_ in string]?: string };
+    "overrides": MetricDefinitionOverride[];
+    "revision": string;
+
+    /** Creates a new MetricBinding instance. */
+    constructor($$source: Partial<MetricBinding> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("signal" in $$source)) {
+            this["signal"] = "";
+        }
+        if (!("resource_plugin_id" in $$source)) {
+            this["resource_plugin_id"] = "";
+        }
+        if (!("resource_connection_id" in $$source)) {
+            this["resource_connection_id"] = "";
+        }
+        if (!("source" in $$source)) {
+            this["source"] = (new MetricSourceRef());
+        }
+        if (!("policy" in $$source)) {
+            this["policy"] = "";
+        }
+        if (!("public_scope" in $$source)) {
+            this["public_scope"] = {};
+        }
+        if (!("overrides" in $$source)) {
+            this["overrides"] = [];
+        }
+        if (!("revision" in $$source)) {
+            this["revision"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MetricBinding instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MetricBinding {
+        const $$createField4_0 = $$createType2;
+        const $$createField6_0 = $$createType0;
+        const $$createField7_0 = $$createType7;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("source" in $$parsedSource) {
+            $$parsedSource["source"] = $$createField4_0($$parsedSource["source"]);
+        }
+        if ("public_scope" in $$parsedSource) {
+            $$parsedSource["public_scope"] = $$createField6_0($$parsedSource["public_scope"]);
+        }
+        if ("overrides" in $$parsedSource) {
+            $$parsedSource["overrides"] = $$createField7_0($$parsedSource["overrides"]);
+        }
+        return new MetricBinding($$parsedSource as Partial<MetricBinding>);
+    }
+}
+
+export class MetricDataSource {
+    "uid": string;
+    "name": string;
+    "kind": string;
+
+    /** Creates a new MetricDataSource instance. */
+    constructor($$source: Partial<MetricDataSource> = {}) {
+        if (!("uid" in $$source)) {
+            this["uid"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MetricDataSource instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MetricDataSource {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new MetricDataSource($$parsedSource as Partial<MetricDataSource>);
+    }
+}
+
+/**
+ * MetricDefinition combines stable semantics with an explicitly selected source mapping.
+ * Units and shapes use the same physical vocabulary as FiniteMetricDescriptor.
+ */
+export class MetricDefinition {
+    "id": string;
+    "name": string;
+    "resource_keys": string[];
+    "unit": string;
+    "semantics": string;
+    "dimensions": string[];
+    "supported_shapes": string[];
+    "query_language": string;
+    "query": string;
+    "field_bindings": MetricFieldBinding[];
+    "identity_labels": string[];
+    "reducer": string;
+    "batch_strategy": string;
+    "revision": string;
+    "native": boolean;
+
+    /** Creates a new MetricDefinition instance. */
+    constructor($$source: Partial<MetricDefinition> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("resource_keys" in $$source)) {
+            this["resource_keys"] = [];
+        }
+        if (!("unit" in $$source)) {
+            this["unit"] = "";
+        }
+        if (!("semantics" in $$source)) {
+            this["semantics"] = "";
+        }
+        if (!("dimensions" in $$source)) {
+            this["dimensions"] = [];
+        }
+        if (!("supported_shapes" in $$source)) {
+            this["supported_shapes"] = [];
+        }
+        if (!("query_language" in $$source)) {
+            this["query_language"] = "";
+        }
+        if (!("query" in $$source)) {
+            this["query"] = "";
+        }
+        if (!("field_bindings" in $$source)) {
+            this["field_bindings"] = [];
+        }
+        if (!("identity_labels" in $$source)) {
+            this["identity_labels"] = [];
+        }
+        if (!("reducer" in $$source)) {
+            this["reducer"] = "";
+        }
+        if (!("batch_strategy" in $$source)) {
+            this["batch_strategy"] = "";
+        }
+        if (!("revision" in $$source)) {
+            this["revision"] = "";
+        }
+        if (!("native" in $$source)) {
+            this["native"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MetricDefinition instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MetricDefinition {
+        const $$createField2_0 = $$createType1;
+        const $$createField5_0 = $$createType1;
+        const $$createField6_0 = $$createType1;
+        const $$createField9_0 = $$createType9;
+        const $$createField10_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("resource_keys" in $$parsedSource) {
+            $$parsedSource["resource_keys"] = $$createField2_0($$parsedSource["resource_keys"]);
+        }
+        if ("dimensions" in $$parsedSource) {
+            $$parsedSource["dimensions"] = $$createField5_0($$parsedSource["dimensions"]);
+        }
+        if ("supported_shapes" in $$parsedSource) {
+            $$parsedSource["supported_shapes"] = $$createField6_0($$parsedSource["supported_shapes"]);
+        }
+        if ("field_bindings" in $$parsedSource) {
+            $$parsedSource["field_bindings"] = $$createField9_0($$parsedSource["field_bindings"]);
+        }
+        if ("identity_labels" in $$parsedSource) {
+            $$parsedSource["identity_labels"] = $$createField10_0($$parsedSource["identity_labels"]);
+        }
+        return new MetricDefinition($$parsedSource as Partial<MetricDefinition>);
+    }
+}
+
+/**
+ * MetricDefinitionOverride is sparse. Nil inherits; removing the override resets it.
+ */
+export class MetricDefinitionOverride {
+    "metric_id": string;
+    "source"?: MetricSourceRef | null;
+    "query"?: string | null;
+    "field_bindings"?: MetricFieldBinding[] | null;
+    "identity_labels"?: string[] | null;
+    "reducer"?: string | null;
+    "batch_strategy"?: string | null;
+    "revision": string;
+
+    /** Creates a new MetricDefinitionOverride instance. */
+    constructor($$source: Partial<MetricDefinitionOverride> = {}) {
+        if (!("metric_id" in $$source)) {
+            this["metric_id"] = "";
+        }
+        if (!("revision" in $$source)) {
+            this["revision"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MetricDefinitionOverride instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MetricDefinitionOverride {
+        const $$createField1_0 = $$createType3;
+        const $$createField3_0 = $$createType10;
+        const $$createField4_0 = $$createType11;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("source" in $$parsedSource) {
+            $$parsedSource["source"] = $$createField1_0($$parsedSource["source"]);
+        }
+        if ("field_bindings" in $$parsedSource) {
+            $$parsedSource["field_bindings"] = $$createField3_0($$parsedSource["field_bindings"]);
+        }
+        if ("identity_labels" in $$parsedSource) {
+            $$parsedSource["identity_labels"] = $$createField4_0($$parsedSource["identity_labels"]);
+        }
+        return new MetricDefinitionOverride($$parsedSource as Partial<MetricDefinitionOverride>);
     }
 }
 
@@ -264,8 +570,8 @@ export class MetricDescriptor {
      * Creates a new MetricDescriptor instance from a string or object.
      */
     static createFrom($$source: any = {}): MetricDescriptor {
-        const $$createField4_0 = $$createType4;
-        const $$createField6_0 = $$createType5;
+        const $$createField4_0 = $$createType13;
+        const $$createField6_0 = $$createType14;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("color_ranges" in $$parsedSource) {
             $$parsedSource["color_ranges"] = $$createField4_0($$parsedSource["color_ranges"]);
@@ -274,6 +580,188 @@ export class MetricDescriptor {
             $$parsedSource["supported_shapes"] = $$createField6_0($$parsedSource["supported_shapes"]);
         }
         return new MetricDescriptor($$parsedSource as Partial<MetricDescriptor>);
+    }
+}
+
+/**
+ * MetricDiscoveryRequest permits bounded exact-match discovery, not arbitrary selectors.
+ */
+export class MetricDiscoveryRequest {
+    "source": MetricSourceRef;
+    "metric_name": string;
+    "label_name": string;
+    "matchers": { [_ in string]?: string };
+    "start_time": string;
+    "end_time": string;
+    "limit": number;
+
+    /** Creates a new MetricDiscoveryRequest instance. */
+    constructor($$source: Partial<MetricDiscoveryRequest> = {}) {
+        if (!("source" in $$source)) {
+            this["source"] = (new MetricSourceRef());
+        }
+        if (!("metric_name" in $$source)) {
+            this["metric_name"] = "";
+        }
+        if (!("label_name" in $$source)) {
+            this["label_name"] = "";
+        }
+        if (!("matchers" in $$source)) {
+            this["matchers"] = {};
+        }
+        if (!("start_time" in $$source)) {
+            this["start_time"] = "0001-01-01T00:00:00.000Z";
+        }
+        if (!("end_time" in $$source)) {
+            this["end_time"] = "0001-01-01T00:00:00.000Z";
+        }
+        if (!("limit" in $$source)) {
+            this["limit"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MetricDiscoveryRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MetricDiscoveryRequest {
+        const $$createField0_0 = $$createType2;
+        const $$createField3_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("source" in $$parsedSource) {
+            $$parsedSource["source"] = $$createField0_0($$parsedSource["source"]);
+        }
+        if ("matchers" in $$parsedSource) {
+            $$parsedSource["matchers"] = $$createField3_0($$parsedSource["matchers"]);
+        }
+        return new MetricDiscoveryRequest($$parsedSource as Partial<MetricDiscoveryRequest>);
+    }
+}
+
+export class MetricDiscoveryResult {
+    "values": string[];
+    "truncated": boolean;
+    "warnings": string[];
+
+    /** Creates a new MetricDiscoveryResult instance. */
+    constructor($$source: Partial<MetricDiscoveryResult> = {}) {
+        if (!("values" in $$source)) {
+            this["values"] = [];
+        }
+        if (!("truncated" in $$source)) {
+            this["truncated"] = false;
+        }
+        if (!("warnings" in $$source)) {
+            this["warnings"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MetricDiscoveryResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MetricDiscoveryResult {
+        const $$createField0_0 = $$createType1;
+        const $$createField2_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("values" in $$parsedSource) {
+            $$parsedSource["values"] = $$createField0_0($$parsedSource["values"]);
+        }
+        if ("warnings" in $$parsedSource) {
+            $$parsedSource["warnings"] = $$createField2_0($$parsedSource["warnings"]);
+        }
+        return new MetricDiscoveryResult($$parsedSource as Partial<MetricDiscoveryResult>);
+    }
+}
+
+/**
+ * MetricFieldBinding binds an approved owner scalar or public scope to a source label.
+ * ResourcePath is an RFC6901 scalar pointer; only the host may populate PublicData.
+ */
+export class MetricFieldBinding {
+    "field": string;
+    "label": string;
+    "source": string;
+    "required": boolean;
+    "transform"?: MetricFieldTransform;
+    "resource_path"?: string;
+
+    /** Creates a new MetricFieldBinding instance. */
+    constructor($$source: Partial<MetricFieldBinding> = {}) {
+        if (!("field" in $$source)) {
+            this["field"] = "";
+        }
+        if (!("label" in $$source)) {
+            this["label"] = "";
+        }
+        if (!("source" in $$source)) {
+            this["source"] = "";
+        }
+        if (!("required" in $$source)) {
+            this["required"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MetricFieldBinding instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MetricFieldBinding {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new MetricFieldBinding($$parsedSource as Partial<MetricFieldBinding>);
+    }
+}
+
+/**
+ * MetricFieldTransform is a bounded, deterministic public identity transform.
+ */
+export enum MetricFieldTransform {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    MetricTransformIdentity = "identity",
+    MetricTransformLowercase = "lowercase",
+    MetricTransformUppercase = "uppercase",
+};
+
+/**
+ * MetricOwnerCatalog exposes owner-authored definitions and public scope metadata.
+ */
+export class MetricOwnerCatalog {
+    "definitions": MetricDefinition[];
+    "scope_fields": MetricScopeField[];
+
+    /** Creates a new MetricOwnerCatalog instance. */
+    constructor($$source: Partial<MetricOwnerCatalog> = {}) {
+        if (!("definitions" in $$source)) {
+            this["definitions"] = [];
+        }
+        if (!("scope_fields" in $$source)) {
+            this["scope_fields"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MetricOwnerCatalog instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MetricOwnerCatalog {
+        const $$createField0_0 = $$createType16;
+        const $$createField1_0 = $$createType18;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("definitions" in $$parsedSource) {
+            $$parsedSource["definitions"] = $$createField0_0($$parsedSource["definitions"]);
+        }
+        if ("scope_fields" in $$parsedSource) {
+            $$parsedSource["scope_fields"] = $$createField1_0($$parsedSource["scope_fields"]);
+        }
+        return new MetricOwnerCatalog($$parsedSource as Partial<MetricOwnerCatalog>);
     }
 }
 
@@ -295,9 +783,9 @@ export class MetricResult {
      * Creates a new MetricResult instance from a string or object.
      */
     static createFrom($$source: any = {}): MetricResult {
-        const $$createField0_0 = $$createType7;
-        const $$createField1_0 = $$createType9;
-        const $$createField2_0 = $$createType11;
+        const $$createField0_0 = $$createType20;
+        const $$createField1_0 = $$createType22;
+        const $$createField2_0 = $$createType24;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("time_series" in $$parsedSource) {
             $$parsedSource["time_series"] = $$createField0_0($$parsedSource["time_series"]);
@@ -309,6 +797,38 @@ export class MetricResult {
             $$parsedSource["aggregate_value"] = $$createField2_0($$parsedSource["aggregate_value"]);
         }
         return new MetricResult($$parsedSource as Partial<MetricResult>);
+    }
+}
+
+/**
+ * MetricScopeField describes one owner-approved public scope entry.
+ */
+export class MetricScopeField {
+    "key": string;
+    "name": string;
+    "description": string;
+
+    /** Creates a new MetricScopeField instance. */
+    constructor($$source: Partial<MetricScopeField> = {}) {
+        if (!("key" in $$source)) {
+            this["key"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("description" in $$source)) {
+            this["description"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MetricScopeField instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MetricScopeField {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new MetricScopeField($$parsedSource as Partial<MetricScopeField>);
     }
 }
 
@@ -336,6 +856,73 @@ export enum MetricShape {
      */
     ShapeAggregate = 2,
 };
+
+/**
+ * MetricSourceDefaults is a profile default. A nil Source resets to native inheritance.
+ */
+export class MetricSourceDefaults {
+    "source"?: MetricSourceRef | null;
+    "revision": string;
+
+    /** Creates a new MetricSourceDefaults instance. */
+    constructor($$source: Partial<MetricSourceDefaults> = {}) {
+        if (!("revision" in $$source)) {
+            this["revision"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MetricSourceDefaults instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MetricSourceDefaults {
+        const $$createField0_0 = $$createType3;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("source" in $$parsedSource) {
+            $$parsedSource["source"] = $$createField0_0($$parsedSource["source"]);
+        }
+        return new MetricSourceDefaults($$parsedSource as Partial<MetricSourceDefaults>);
+    }
+}
+
+/**
+ * MetricSourceRef identifies the selected source, not the resource owner.
+ * Native sources have no datasource kind or UID.
+ */
+export class MetricSourceRef {
+    "plugin_id": string;
+    "connection_id": string;
+    "datasource_uid": string;
+    "datasource_kind": string;
+    "native"?: boolean;
+
+    /** Creates a new MetricSourceRef instance. */
+    constructor($$source: Partial<MetricSourceRef> = {}) {
+        if (!("plugin_id" in $$source)) {
+            this["plugin_id"] = "";
+        }
+        if (!("connection_id" in $$source)) {
+            this["connection_id"] = "";
+        }
+        if (!("datasource_uid" in $$source)) {
+            this["datasource_uid"] = "";
+        }
+        if (!("datasource_kind" in $$source)) {
+            this["datasource_kind"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MetricSourceRef instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MetricSourceRef {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new MetricSourceRef($$parsedSource as Partial<MetricSourceRef>);
+    }
+}
 
 /**
  * MetricUnit represents the unit of a metric value.
@@ -412,6 +999,192 @@ export enum MetricUnit {
     UnitCores = 12,
 };
 
+export class MetricValidationIssue {
+    "field": string;
+    "code": string;
+    "message": string;
+
+    /** Creates a new MetricValidationIssue instance. */
+    constructor($$source: Partial<MetricValidationIssue> = {}) {
+        if (!("field" in $$source)) {
+            this["field"] = "";
+        }
+        if (!("code" in $$source)) {
+            this["code"] = "";
+        }
+        if (!("message" in $$source)) {
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MetricValidationIssue instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MetricValidationIssue {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new MetricValidationIssue($$parsedSource as Partial<MetricValidationIssue>);
+    }
+}
+
+export class MetricValidationResult {
+    "valid": boolean;
+    "issues": MetricValidationIssue[];
+
+    /** Creates a new MetricValidationResult instance. */
+    constructor($$source: Partial<MetricValidationResult> = {}) {
+        if (!("valid" in $$source)) {
+            this["valid"] = false;
+        }
+        if (!("issues" in $$source)) {
+            this["issues"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MetricValidationResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MetricValidationResult {
+        const $$createField1_0 = $$createType26;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("issues" in $$parsedSource) {
+            $$parsedSource["issues"] = $$createField1_0($$parsedSource["issues"]);
+        }
+        return new MetricValidationResult($$parsedSource as Partial<MetricValidationResult>);
+    }
+}
+
+/**
+ * MetricViewSourceSelection is profile-durable source configuration for one
+ * owner connection and resource view, independent of presentation preferences.
+ * Mode is inherit, native, or external. Only external carries Source.
+ */
+export class MetricViewSourceSelection {
+    "owner_plugin_id": string;
+    "owner_connection_id": string;
+    "resource_key": string;
+    "mode": string;
+    "source"?: MetricSourceRef | null;
+    "revision": string;
+
+    /** Creates a new MetricViewSourceSelection instance. */
+    constructor($$source: Partial<MetricViewSourceSelection> = {}) {
+        if (!("owner_plugin_id" in $$source)) {
+            this["owner_plugin_id"] = "";
+        }
+        if (!("owner_connection_id" in $$source)) {
+            this["owner_connection_id"] = "";
+        }
+        if (!("resource_key" in $$source)) {
+            this["resource_key"] = "";
+        }
+        if (!("mode" in $$source)) {
+            this["mode"] = "";
+        }
+        if (!("revision" in $$source)) {
+            this["revision"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new MetricViewSourceSelection instance from a string or object.
+     */
+    static createFrom($$source: any = {}): MetricViewSourceSelection {
+        const $$createField4_0 = $$createType3;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("source" in $$parsedSource) {
+            $$parsedSource["source"] = $$createField4_0($$parsedSource["source"]);
+        }
+        return new MetricViewSourceSelection($$parsedSource as Partial<MetricViewSourceSelection>);
+    }
+}
+
+/**
+ * ProviderConnection contains public configuration only; no operation returns secrets.
+ */
+export class ProviderConnection {
+    "id": string;
+    "name": string;
+    "plugin_id": string;
+    "kind": string;
+    "url": string;
+    "has_credentials": boolean;
+    "public_config": { [_ in string]?: string };
+
+    /** Creates a new ProviderConnection instance. */
+    constructor($$source: Partial<ProviderConnection> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("plugin_id" in $$source)) {
+            this["plugin_id"] = "";
+        }
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+        if (!("url" in $$source)) {
+            this["url"] = "";
+        }
+        if (!("has_credentials" in $$source)) {
+            this["has_credentials"] = false;
+        }
+        if (!("public_config" in $$source)) {
+            this["public_config"] = {};
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ProviderConnection instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ProviderConnection {
+        const $$createField6_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("public_config" in $$parsedSource) {
+            $$parsedSource["public_config"] = $$createField6_0($$parsedSource["public_config"]);
+        }
+        return new ProviderConnection($$parsedSource as Partial<ProviderConnection>);
+    }
+}
+
+/**
+ * ProviderConnectionInput accepts a write-only secret: nil preserves, empty clears.
+ */
+export class ProviderConnectionInput {
+    "connection": ProviderConnection;
+    "credential"?: string | null;
+
+    /** Creates a new ProviderConnectionInput instance. */
+    constructor($$source: Partial<ProviderConnectionInput> = {}) {
+        if (!("connection" in $$source)) {
+            this["connection"] = (new ProviderConnection());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ProviderConnectionInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ProviderConnectionInput {
+        const $$createField0_0 = $$createType27;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("connection" in $$parsedSource) {
+            $$parsedSource["connection"] = $$createField0_0($$parsedSource["connection"]);
+        }
+        return new ProviderConnectionInput($$parsedSource as Partial<ProviderConnectionInput>);
+    }
+}
+
 /**
  * QueryResponse is the Go-side representation of a metric query response.
  */
@@ -439,12 +1212,269 @@ export class QueryResponse {
      * Creates a new QueryResponse instance from a string or object.
      */
     static createFrom($$source: any = {}): QueryResponse {
-        const $$createField1_0 = $$createType13;
+        const $$createField1_0 = $$createType29;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("results" in $$parsedSource) {
             $$parsedSource["results"] = $$createField1_0($$parsedSource["results"]);
         }
         return new QueryResponse($$parsedSource as Partial<QueryResponse>);
+    }
+}
+
+/**
+ * ResourceMetricPoint carries an evaluation timestamp and a physical base-unit
+ * value. It does not establish the age of the underlying source sample.
+ * A nil Value is a gap, never zero. NaN and infinity are invalid.
+ */
+export class ResourceMetricPoint {
+    "time": string;
+    "value": number | null;
+
+    /** Creates a new ResourceMetricPoint instance. */
+    constructor($$source: Partial<ResourceMetricPoint> = {}) {
+        if (!("time" in $$source)) {
+            this["time"] = "0001-01-01T00:00:00.000Z";
+        }
+        if (!("value" in $$source)) {
+            this["value"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ResourceMetricPoint instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ResourceMetricPoint {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ResourceMetricPoint($$parsedSource as Partial<ResourceMetricPoint>);
+    }
+}
+
+/**
+ * ResourceMetricResult reports one target/metric evaluation. ObservedAt and
+ * Window come from the source; absence must never be replaced by receipt time.
+ * Non-ok statuses carry no numeric data. Missing is not a zero-valued sample.
+ */
+export class ResourceMetricResult {
+    "resource_token": string;
+    "metric_id": string;
+    "status": string;
+    "value": number | null;
+    "points": ResourceMetricPoint[];
+    "dimensions": { [_ in string]?: string };
+    "observed_at": string | null;
+    "window": time$0.Duration;
+
+    /**
+     * IdentityScope describes source attribution, not host cache fencing.
+     * \"incarnation\" means source verified UID; \"name\" means name-only attribution.
+     */
+    "identity_scope": string;
+    "message": string;
+
+    /**
+     * Source is exact provenance. The host fills external and mixed-source results.
+     * A single owner-native lane may omit this redundant field; use its catalog
+     * source. Consumers resolve result, descriptor, then catalog source.
+     */
+    "source"?: MetricSourceRef | null;
+
+    /** Creates a new ResourceMetricResult instance. */
+    constructor($$source: Partial<ResourceMetricResult> = {}) {
+        if (!("resource_token" in $$source)) {
+            this["resource_token"] = "";
+        }
+        if (!("metric_id" in $$source)) {
+            this["metric_id"] = "";
+        }
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+        if (!("value" in $$source)) {
+            this["value"] = null;
+        }
+        if (!("points" in $$source)) {
+            this["points"] = [];
+        }
+        if (!("dimensions" in $$source)) {
+            this["dimensions"] = {};
+        }
+        if (!("observed_at" in $$source)) {
+            this["observed_at"] = null;
+        }
+        if (!("window" in $$source)) {
+            this["window"] = time$0.Duration.$zero;
+        }
+        if (!("identity_scope" in $$source)) {
+            this["identity_scope"] = "";
+        }
+        if (!("message" in $$source)) {
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ResourceMetricResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ResourceMetricResult {
+        const $$createField4_0 = $$createType31;
+        const $$createField5_0 = $$createType0;
+        const $$createField10_0 = $$createType3;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("points" in $$parsedSource) {
+            $$parsedSource["points"] = $$createField4_0($$parsedSource["points"]);
+        }
+        if ("dimensions" in $$parsedSource) {
+            $$parsedSource["dimensions"] = $$createField5_0($$parsedSource["dimensions"]);
+        }
+        if ("source" in $$parsedSource) {
+            $$parsedSource["source"] = $$createField10_0($$parsedSource["source"]);
+        }
+        return new ResourceMetricResult($$parsedSource as Partial<ResourceMetricResult>);
+    }
+}
+
+/**
+ * ResourceMetricTarget binds a caller correlation token to an admitted reference.
+ * Token does not confer authority. Route must match the selected connection.
+ */
+export class ResourceMetricTarget {
+    "token": string;
+    "reference": resourcev2$0.ResourceReference;
+    "route": resourcev2$0.AccessRoute;
+
+    /**
+     * PublicData contains only host-approved scalar fields from owner observations.
+     * Providers must never interpret this projection as resource authority.
+     */
+    "public_data"?: { [_ in string]?: string };
+
+    /** Creates a new ResourceMetricTarget instance. */
+    constructor($$source: Partial<ResourceMetricTarget> = {}) {
+        if (!("token" in $$source)) {
+            this["token"] = "";
+        }
+        if (!("reference" in $$source)) {
+            this["reference"] = (new resourcev2$0.ResourceReference());
+        }
+        if (!("route" in $$source)) {
+            this["route"] = (new resourcev2$0.AccessRoute());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ResourceMetricTarget instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ResourceMetricTarget {
+        const $$createField1_0 = $$createType32;
+        const $$createField2_0 = $$createType33;
+        const $$createField3_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("reference" in $$parsedSource) {
+            $$parsedSource["reference"] = $$createField1_0($$parsedSource["reference"]);
+        }
+        if ("route" in $$parsedSource) {
+            $$parsedSource["route"] = $$createField2_0($$parsedSource["route"]);
+        }
+        if ("public_data" in $$parsedSource) {
+            $$parsedSource["public_data"] = $$createField3_0($$parsedSource["public_data"]);
+        }
+        return new ResourceMetricTarget($$parsedSource as Partial<ResourceMetricTarget>);
+    }
+}
+
+/**
+ * ResourceMetricsCatalog is authoritative for source units, shapes and batch size.
+ */
+export class ResourceMetricsCatalog {
+    "source": MetricSourceRef;
+    "metrics": FiniteMetricDescriptor[];
+    "max_targets": number;
+
+    /**
+     * MaxSampleAge is the source's live-data age policy, not cache TTL.
+     * Zero leaves freshness unknown. Range completeness is independent of live age.
+     */
+    "max_sample_age": time$0.Duration;
+
+    /** Creates a new ResourceMetricsCatalog instance. */
+    constructor($$source: Partial<ResourceMetricsCatalog> = {}) {
+        if (!("source" in $$source)) {
+            this["source"] = (new MetricSourceRef());
+        }
+        if (!("metrics" in $$source)) {
+            this["metrics"] = [];
+        }
+        if (!("max_targets" in $$source)) {
+            this["max_targets"] = 0;
+        }
+        if (!("max_sample_age" in $$source)) {
+            this["max_sample_age"] = time$0.Duration.$zero;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ResourceMetricsCatalog instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ResourceMetricsCatalog {
+        const $$createField0_0 = $$createType2;
+        const $$createField1_0 = $$createType35;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("source" in $$parsedSource) {
+            $$parsedSource["source"] = $$createField0_0($$parsedSource["source"]);
+        }
+        if ("metrics" in $$parsedSource) {
+            $$parsedSource["metrics"] = $$createField1_0($$parsedSource["metrics"]);
+        }
+        return new ResourceMetricsCatalog($$parsedSource as Partial<ResourceMetricsCatalog>);
+    }
+}
+
+/**
+ * ResourceMetricsResponse separates completeness from individual result status.
+ * Complete requires exactly one result for every requested target/metric pair.
+ */
+export class ResourceMetricsResponse {
+    "results": ResourceMetricResult[];
+    "complete": boolean;
+    "warnings": string[];
+
+    /** Creates a new ResourceMetricsResponse instance. */
+    constructor($$source: Partial<ResourceMetricsResponse> = {}) {
+        if (!("results" in $$source)) {
+            this["results"] = [];
+        }
+        if (!("complete" in $$source)) {
+            this["complete"] = false;
+        }
+        if (!("warnings" in $$source)) {
+            this["warnings"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ResourceMetricsResponse instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ResourceMetricsResponse {
+        const $$createField0_0 = $$createType37;
+        const $$createField2_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("results" in $$parsedSource) {
+            $$parsedSource["results"] = $$createField0_0($$parsedSource["results"]);
+        }
+        if ("warnings" in $$parsedSource) {
+            $$parsedSource["warnings"] = $$createField2_0($$parsedSource["warnings"]);
+        }
+        return new ResourceMetricsResponse($$parsedSource as Partial<ResourceMetricsResponse>);
     }
 }
 
@@ -475,7 +1505,7 @@ export class TimeSeries {
      * Creates a new TimeSeries instance from a string or object.
      */
     static createFrom($$source: any = {}): TimeSeries {
-        const $$createField1_0 = $$createType15;
+        const $$createField1_0 = $$createType39;
         const $$createField2_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("data_points" in $$parsedSource) {
@@ -490,18 +1520,42 @@ export class TimeSeries {
 
 // Private type creation functions
 const $$createType0 = $Create.Map($Create.Any, $Create.Any);
-const $$createType1 = MetricDescriptor.createFrom;
-const $$createType2 = $Create.Array($$createType1);
-const $$createType3 = ColorRange.createFrom;
-const $$createType4 = $Create.Array($$createType3);
-const $$createType5 = $Create.Array($Create.Any);
-const $$createType6 = TimeSeries.createFrom;
-const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = CurrentValue.createFrom;
-const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = AggregateValue.createFrom;
-const $$createType11 = $Create.Nullable($$createType10);
-const $$createType12 = MetricResult.createFrom;
+const $$createType1 = $Create.Array($Create.Any);
+const $$createType2 = MetricSourceRef.createFrom;
+const $$createType3 = $Create.Nullable($$createType2);
+const $$createType4 = MetricDescriptor.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = MetricDefinitionOverride.createFrom;
+const $$createType7 = $Create.Array($$createType6);
+const $$createType8 = MetricFieldBinding.createFrom;
+const $$createType9 = $Create.Array($$createType8);
+const $$createType10 = $Create.Nullable($$createType9);
+const $$createType11 = $Create.Nullable($$createType1);
+const $$createType12 = ColorRange.createFrom;
 const $$createType13 = $Create.Array($$createType12);
-const $$createType14 = DataPoint.createFrom;
-const $$createType15 = $Create.Array($$createType14);
+const $$createType14 = $Create.Array($Create.Any);
+const $$createType15 = MetricDefinition.createFrom;
+const $$createType16 = $Create.Array($$createType15);
+const $$createType17 = MetricScopeField.createFrom;
+const $$createType18 = $Create.Array($$createType17);
+const $$createType19 = TimeSeries.createFrom;
+const $$createType20 = $Create.Nullable($$createType19);
+const $$createType21 = CurrentValue.createFrom;
+const $$createType22 = $Create.Nullable($$createType21);
+const $$createType23 = AggregateValue.createFrom;
+const $$createType24 = $Create.Nullable($$createType23);
+const $$createType25 = MetricValidationIssue.createFrom;
+const $$createType26 = $Create.Array($$createType25);
+const $$createType27 = ProviderConnection.createFrom;
+const $$createType28 = MetricResult.createFrom;
+const $$createType29 = $Create.Array($$createType28);
+const $$createType30 = ResourceMetricPoint.createFrom;
+const $$createType31 = $Create.Array($$createType30);
+const $$createType32 = resourcev2$0.ResourceReference.createFrom;
+const $$createType33 = resourcev2$0.AccessRoute.createFrom;
+const $$createType34 = FiniteMetricDescriptor.createFrom;
+const $$createType35 = $Create.Array($$createType34);
+const $$createType36 = ResourceMetricResult.createFrom;
+const $$createType37 = $Create.Array($$createType36);
+const $$createType38 = DataPoint.createFrom;
+const $$createType39 = $Create.Array($$createType38);

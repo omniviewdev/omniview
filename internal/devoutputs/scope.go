@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -17,7 +18,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/omniviewdev/omniview/internal/devcontract"
-	"github.com/omniviewdev/omniview/internal/devsession"
 	"gopkg.in/yaml.v3"
 )
 
@@ -61,7 +61,7 @@ func cleanPath(path string) (string, error) {
 		return "", err
 	}
 	if canonical != filepath.Clean(path) {
-		return "", fmt.Errorf("producer path or parent was redirected through a symlink: %s", path)
+		return "", &pathConflict{Path: path, ActualKind: "redirected", ExpectedKind: "canonical-path", Reason: "producer path or parent was redirected through a symlink"}
 	}
 	return canonical, nil
 }
@@ -148,13 +148,14 @@ func (s scope) spec(consumer string, kind Producer) (specification, error) {
 	// It is not a selected repository, and carries no Git source authority.
 	if consumer == s.workspace.Root && kind == modules {
 		target := filepath.Join(consumer, "node_modules")
+		spec = specification{Kind: modules, Consumer: consumer, Target: target, Relative: "node_modules", Mode: "tree"}
 		if _, err = cleanPath(target); err != nil {
 			return spec, err
 		}
 		if s.workspace.StateRoot != "" && (contains(s.workspace.StateRoot, target) || contains(target, s.workspace.StateRoot)) {
 			return spec, fmt.Errorf("aggregate modules overlap selected state")
 		}
-		return specification{Kind: modules, Consumer: consumer, Target: target, Relative: "node_modules", Mode: "tree"}, nil
+		return spec, nil
 	}
 	repo, _, err := s.repository(consumer)
 	if err != nil {
@@ -198,17 +199,26 @@ func (s scope) spec(consumer string, kind Producer) (specification, error) {
 	default:
 		return spec, fmt.Errorf("unknown repository producer")
 	}
-	if _, err = cleanPath(target); err != nil {
-		return spec, err
-	}
 	relative := ""
 	if kind != viteCache {
-		_, relative, err = s.repository(target)
+		relative, err = filepath.Rel(repo, target)
 		if err != nil {
 			return spec, err
 		}
 	}
-	return specification{Kind: kind, Consumer: consumer, Target: target, Repository: repo, Relative: relative, Mode: mode}, nil
+	// Describe the exact static boundary before observing its filesystem shape.
+	// Read-only inspection can then retain a typed root conflict without granting
+	// mutation authority or inventing a second target convention.
+	spec = specification{Kind: kind, Consumer: consumer, Target: target, Repository: repo, Relative: relative, Mode: mode}
+	if _, err = cleanPath(target); err != nil {
+		return spec, err
+	}
+	if kind != viteCache {
+		if _, _, err = s.repository(target); err != nil {
+			return spec, err
+		}
+	}
+	return spec, nil
 }
 func runGit(ctx context.Context, repo string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
@@ -443,13 +453,15 @@ func packagePrefix(pattern, parts []string) bool {
 	return err == nil && matched && packagePrefix(pattern[1:], parts[1:])
 }
 func readJournal(s scope) (journal, error) {
+	return readJournalMode(s, false)
+}
+
+func readJournalMode(s scope, inspection bool) (journal, error) {
 	j := journal{Version: 1, WorkspaceID: s.workspace.Manifest.WorkspaceID, Root: s.workspace.Root, Repositories: s.repos, RepositoryIdentities: s.identities, Entries: map[string]*outputEntry{}}
-	if err := devsession.ValidatePrivateFile(s.path); os.IsNotExist(err) {
+	raw, err := readJournalBytes(s.path)
+	if os.IsNotExist(err) {
 		return j, nil
-	} else if err != nil {
-		return j, err
 	}
-	raw, err := os.ReadFile(s.path)
 	if err != nil {
 		return j, err
 	}
@@ -492,8 +504,12 @@ func readJournal(s scope) (journal, error) {
 			return j, err
 		}
 		expected, e := s.spec(entry.Spec.Consumer, entry.Spec.Kind)
-		if e != nil || expected != entry.Spec || key != entry.Spec.Target+"|"+string(entry.Spec.Kind) {
+		var substitution *pathConflict
+		if e != nil && !errors.As(e, &substitution) || expected != entry.Spec || key != entry.Spec.Target+"|"+string(entry.Spec.Kind) {
 			return j, fmt.Errorf("repository output journal target is not the selected producer")
+		}
+		if e != nil && !inspection {
+			return j, conflict(entry.Spec, "owned", "journal", nil, nil, e)
 		}
 		if entry.Spec.Consumer == s.workspace.Root && (j.RootIdentity == "" || entry.Spec.Kind != modules || len(entry.Exclude) != 0) {
 			return j, fmt.Errorf("aggregate modules require exact feature identity and immutable store ownership")

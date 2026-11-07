@@ -97,6 +97,35 @@ func TestBorrowedInventoryFencesResetAndStaleStart(t *testing.T) {
 	require.False(t, inventory[0].Started)
 }
 
+// Archive replacement retires the old provider before registering its successor.
+// A delayed old StartConnection response must not start that successor's route.
+func TestPluginReplacementFencesInFlightConnectionStart(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	entered, release := make(chan struct{}), make(chan struct{})
+	provider := &mockProvider{StartConnectionFunc: func(_ context.Context, id string) (types.ConnectionStatus, error) {
+		close(entered)
+		<-release
+		return types.ConnectionStatus{Status: types.ConnectionStatusConnected, Connection: &types.Connection{ID: id}}, nil
+	}}
+	registerMockPlugin(ctrl, "owner", provider)
+	ctrl.connsMu.Lock()
+	ctrl.connections["owner"] = []types.Connection{{ID: "A", Name: "Original"}}
+	ctrl.connsMu.Unlock()
+	done := make(chan error, 1)
+	go func() { _, err := ctrl.StartConnection(testInvocationContext(), "owner", "A"); done <- err }()
+	<-entered
+	require.NoError(t, ctrl.OnPluginStop("owner", defaultMeta()))
+	registerMockPlugin(ctrl, "owner", &mockProvider{})
+	ctrl.connsMu.Lock()
+	ctrl.connections["owner"] = []types.Connection{{ID: "A", Name: "Replacement"}}
+	ctrl.connsMu.Unlock()
+	close(release)
+	require.Error(t, <-done)
+	inventory := ctrl.BorrowableConnections("owner")
+	require.Len(t, inventory, 1)
+	require.False(t, inventory[0].Started)
+}
+
 func TestRepeatedStartPreservesCatalogObservation(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	connection := types.Connection{ID: "A", Name: "Cluster"}

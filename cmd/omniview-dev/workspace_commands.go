@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devoutputs"
 	"github.com/omniviewdev/omniview/internal/devworkspace"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -40,6 +41,8 @@ func (v *repeatedWorkspaceFlag) Type() string           { return "string" }
 type workspaceCommand struct {
 	verb, root, target, explicit, name, slug, stateRoot, linkEvidence                           string
 	modulePath, marker                                                                          string
+	producer, consumer, preserveAt                                                              string
+	ownership                                                                                   bool
 	json, start, deleteState, deleteBranches, apply, check                                      bool
 	repositories, plugins, refs, addRepositories, removeRepositories, addPlugins, removePlugins repeatedWorkspaceFlag
 	sources, sourceRefs, sourceDirectories                                                      repeatedWorkspaceFlag
@@ -55,6 +58,7 @@ func addWorkspaceCommands(root *cobra.Command) {
 	group := &cobra.Command{Use: "workspace", Short: "Manage development workspaces"}
 	for _, verb := range []string{
 		"init", "create", "up", "preflight", workspaceRefresh, workspaceUpdate, workspaceFollow, workspaceRecover, "evidence",
+		"ownership", "bindings", "reconcile-output",
 		"verify-reload",
 		"down", "restart", "edit", "link", "remove", "profile", "inspect", "paths", "list", "collections", "unlink", workspaceResetModules,
 		"resume", "rollback", "supervise",
@@ -71,6 +75,9 @@ func addWorkspaceCommands(root *cobra.Command) {
 func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceCommand) error) *cobra.Command {
 	c := workspaceCommand{verb: verb, supplied: map[string]bool{}}
 	cmd := &cobra.Command{Use: verb + " [NAME]", Short: "Workspace " + verb}
+	if verb == "init" || verb == "list" || verb == "collections" {
+		cmd.Use = verb
+	}
 	flags := cmd.Flags()
 	flags.StringVar(&c.root, "root", "", "machine-local source registry/collection root")
 	flags.StringVar(&c.explicit, "workspace", "", "explicit workspace manifest/directory")
@@ -80,10 +87,9 @@ func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceComm
 		flags.BoolVar(&c.launch.MCP, "mcp", false, "enable authenticated native MCP")
 		flags.BoolVar(&c.launch.Watch, "watch", true, "own source build/watch for the session lifetime")
 		flags.BoolVar(&c.launch.LiveFrontend, "live-frontend", true, "run actual strict host Vite and HMR")
-		flags.StringVar(&c.launch.ReviewedSDKRevision, "reviewed-sdk-revision", "", "independently reviewed full SDK commit")
-		flags.BoolVar(&c.launch.AllowIsolationSourceChanges, "allow-isolation-source-changes", false, "explicitly allow SDK isolation-boundary edits in this workspace")
-		flags.StringVar(&c.linkEvidence, "link-evidence", "", "actual successful pinned pnpm probe JSON")
-		flags.StringVar(&c.launch.BaselineSource, "seed-from", "", "stopped baseline source state root")
+		flags.StringVar(&c.launch.PluginRuntime, "plugin-runtime", devworkspace.PluginRuntimeManaged, "managed (linked sources) or archive (installed static archives; requires --mode browser --watch=false --live-frontend=false)")
+		flags.StringVar(&c.linkEvidence, "link-evidence", "", "FILE containing the actual successful pinned pnpm protocol probe report (JSON)")
+		flags.StringVar(&c.launch.BaselineSource, "seed-from", "", "stopped source state root; safe-preferences-and-inactive-inventory-v1 copies only allowlisted safe preferences and inactive plugin inventory, not a profile clone; excludes Grafana connections/credentials and metric bindings/configuration")
 		flags.StringVar(&c.launch.BaselineVersion, "seed-version", "", "nonsecret baseline source build version")
 		flags.DurationVar(&c.launch.Timeout, "timeout", 20*time.Minute, "bounded build/readiness deadline")
 	}
@@ -108,6 +114,7 @@ func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceComm
 		launchFlags()
 		if c.verb == "preflight" {
 			cmd.Short = "Report all launch input prerequisites without installing or starting"
+			flags.BoolVar(&c.ownership, "ownership", false, "deep read-only inspection of all selected dependency and producer ownership")
 		}
 	case workspaceRefresh, workspaceUpdate, workspaceFollow, workspaceRecover:
 		if c.verb == workspaceUpdate || c.verb == workspaceFollow {
@@ -137,13 +144,20 @@ func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceComm
 		}
 		launchFlags()
 	case "evidence":
-		flags.StringVar(&c.linkEvidence, "link-evidence", "", "successful pinned pnpm probe JSON to retain; omit to inspect saved evidence")
+		flags.StringVar(&c.linkEvidence, "link-evidence", "", "FILE containing a successful pinned pnpm protocol probe report; applies links, omit to inspect saved proof")
 	case "verify-reload":
 		flags.StringVar(&c.modulePath, "module", "", "Vite module URL path for edited source")
 		flags.StringVar(&c.marker, "marker", "", "unique marker added to source")
 	case "down", "restart":
 		flags.DurationVar(&c.launch.Timeout, "timeout", 20*time.Minute, "bounded stop/restart wait")
+		if c.verb == "restart" {
+			cmd.Long = "Restart using saved launch settings and protocol evidence. " +
+				"Launch flags are not accepted; use workspace refresh to change saved launch settings."
+		}
 	case "edit":
+		cmd.Long = "Change source selection. Plain edit requires a stopped workspace; run " +
+			"omniview-dev workspace down --workspace MANIFEST first. " +
+			"--apply manages stopping and refresh using retained launch settings and protocol evidence."
 		flags.BoolVar(&c.apply, "apply", false, "apply edits and refresh; restart only a previously running workspace")
 		flags.StringVar(&c.name, "name", "", "new display name")
 		flags.StringVar(&c.slug, "slug", "", "new workspace slug")
@@ -154,12 +168,21 @@ func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceComm
 		flags.Var(&c.refs, "ref", "ID=ref override (repeatable)")
 		flags.Var(&c.upstreams, "upstream", "ID=REMOTE/BRANCH update policy (repeatable); does not change the selected ref")
 	case "link":
-		flags.StringVar(&c.linkEvidence, "link-evidence", "", "actual successful pinned pnpm probe JSON")
+		flags.StringVar(&c.linkEvidence, "link-evidence", "", "FILE containing the actual successful pinned pnpm protocol probe report (JSON)")
 	case "remove":
 		flags.BoolVar(&c.deleteState, "delete-state", false, "explicitly delete owned stopped profile state")
 		flags.BoolVar(&c.deleteBranches, "delete-branches", false, "explicitly delete owned feature branches")
 	case "profile":
 		flags.StringVar(&c.stateRoot, "state-root", "", "explicit custom state leaf under a new dedicated profile container")
+	case "ownership":
+		cmd.Short = "Inspect all selected dependency and producer boundaries without changing metadata or files"
+	case "bindings":
+		cmd.Short = "Generate bindings through the stopped managed workspace task producer"
+	case "reconcile-output":
+		cmd.Short = "Preserve one changed producer output externally and restore its committed baseline"
+		flags.StringVar(&c.producer, "producer", "", "exact producer: bindings, distribution, shims, or yaml-worker")
+		flags.StringVar(&c.consumer, "consumer", "", "absolute selected producer consumer directory")
+		flags.StringVar(&c.preserveAt, "preserve-at", "", "new absolute external path receiving the complete output; never overwritten")
 	case workspaceResetModules:
 		cmd.Short = "Delete and reinstall owned dependency trees of a stopped workspace"
 		cmd.Long = "Explicit recovery for an externally changed dependency tree (for example a stray pnpm install). " +
@@ -321,11 +344,8 @@ func workspaceLaunchOptions(c workspaceCommand, w devworkspace.Workspace) (devwo
 			if !c.supplied["live-frontend"] {
 				options.LiveFrontend = previous.LiveFrontend
 			}
-			if !c.supplied["reviewed-sdk-revision"] {
-				options.ReviewedSDKRevision = previous.ReviewedSDKRevision
-			}
-			if !c.supplied["allow-isolation-source-changes"] {
-				options.AllowIsolationSourceChanges = previous.AllowIsolationSourceChanges
+			if !c.supplied["plugin-runtime"] {
+				options.PluginRuntime = previous.PluginRuntime
 			}
 			if !c.supplied["seed-from"] {
 				options.BaselineSource = previous.BaselineSource
@@ -352,9 +372,18 @@ func workspaceLaunchInputs(c workspaceCommand, options devworkspace.LaunchOption
 		}
 	}
 	if evidence != "" {
+		if strings.HasPrefix(strings.TrimSpace(evidence), "{") || strings.HasPrefix(strings.TrimSpace(evidence), "[") {
+			return options, devcontract.Fail(2, "invalid_link_evidence", "--link-evidence expects a report file path, not inline JSON; see docs/development-cli.md#protocol-evidence")
+		}
 		raw, err := os.ReadFile(evidence)
 		if err != nil {
-			return options, devcontract.Fail(3, "link_evidence_required", "provide --link-evidence with the actual successful pinned protocol probe report")
+			failure := devcontract.Fail(3, "link_evidence_required", "cannot read protocol report FILE; provide --link-evidence FILE from the successful pinned protocol probe; see docs/development-cli.md#protocol-evidence")
+			// File paths are useful for missing input, but arbitrary inline input
+			// and filesystem errors must not become diagnostic payloads.
+			if os.IsNotExist(err) && !strings.ContainsAny(evidence, "\x00\r\n@=?#") && !strings.Contains(evidence, "://") {
+				failure.Details = map[string]any{"reportFile": evidence}
+			}
+			return options, failure
 		}
 		if err := json.Unmarshal(raw, &options.LinkEvidence); err != nil {
 			return options, devcontract.Fail(2, "invalid_link_evidence", "pinned protocol probe report is invalid JSON")
@@ -373,6 +402,15 @@ func workspaceLaunchInputs(c workspaceCommand, options devworkspace.LaunchOption
 func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagnostics io.Writer) (bool, int) {
 	var value any
 	fail := func(err error) (bool, int) {
+		var ownershipConflict *devoutputs.Conflict
+		if errors.As(err, &ownershipConflict) {
+			if c.json {
+				_ = json.NewEncoder(out).Encode(map[string]any{"error": ownershipConflict})
+			} else {
+				fmt.Fprintln(diagnostics, ownershipConflict)
+			}
+			return true, 4
+		}
 		var payload *devcontract.Error
 		if !errors.As(err, &payload) {
 			payload = devcontract.Fail(5, "operation_failed", err.Error())
@@ -539,9 +577,12 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 		switch c.verb {
 		case "resume":
 			value, err = manager.ResumeWorkspace(ctx, target)
+			if err == nil {
+				value, err = manager.Status(ctx, target)
+			}
 		case workspaceRecover:
 			var recovered devworkspace.Workspace
-			recovered, err = manager.ResumeWorkspace(ctx, target)
+			recovered, err = manager.PrepareRecovery(ctx, target)
 			if err != nil {
 				return fail(err)
 			}
@@ -576,7 +617,19 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 		switch c.verb {
 		case "preflight":
 			options, optionErr := workspaceLaunchOptions(c, w)
-			report := devworkspace.PreflightLaunch(w, options)
+			report := devworkspace.PreflightLaunch(ctx, w, options)
+			report.OwnershipChecked = c.ownership
+			if c.ownership {
+				inspection, inspectionErr := devworkspace.InspectOwnership(ctx, w)
+				if inspectionErr != nil {
+					return fail(inspectionErr)
+				}
+				report.Ownership = &inspection
+				if !inspection.Ready {
+					report.Issues = append(report.Issues, devcontract.Fail(4, "ownership_conflict", "selected dependency or producer ownership is blocked; inspect ownership.entries"))
+					report.Ready = false
+				}
+			}
 			if optionErr != nil {
 				var issue *devcontract.Error
 				if !errors.As(optionErr, &issue) {
@@ -608,6 +661,32 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 				return true, 3
 			}
 			return true, 0
+		case "ownership":
+			var inspection devoutputs.Inspection
+			inspection, err = devworkspace.InspectOwnership(ctx, w)
+			if err != nil {
+				return fail(err)
+			}
+			if c.json {
+				_ = json.NewEncoder(out).Encode(inspection)
+			} else {
+				fmt.Fprintf(out, "Scope: %s\nMetadata: %s\nLink phase: %s\n", inspection.Scope, inspection.MetadataPath, inspection.LifecyclePhase)
+				for _, entry := range inspection.Entries {
+					fmt.Fprintf(out, "%s %s %s %s\n", entry.Producer, entry.Ownership, entry.Phase, entry.Target)
+					if entry.Conflict != nil {
+						fmt.Fprintln(out, entry.Conflict)
+					}
+				}
+				fmt.Fprintln(out, inspection.ReentryGuidance)
+			}
+			if !inspection.Ready {
+				return true, 4
+			}
+			return true, 0
+		case "bindings":
+			value, err = manager.GenerateBindings(ctx, w.Manifest.WorkspaceID, diagnostics)
+		case "reconcile-output":
+			value, err = manager.ReconcileOutput(ctx, w.Manifest.WorkspaceID, c.consumer, c.producer, c.preserveAt)
 		case "inspect":
 			if manager == nil {
 				value = w
@@ -730,6 +809,11 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 		case "evidence":
 			if c.linkEvidence == "" {
 				value, err = manager.ProtocolEvidence(ctx, w.Manifest.WorkspaceID)
+				if os.IsNotExist(err) {
+					failure := devcontract.Fail(3, "evidence_missing", "workspace has no retained protocol proof; run the pinned protocol probe, then workspace preflight and up with --link-evidence FILE; see docs/development-cli.md#protocol-evidence")
+					failure.Details = map[string]any{"workspaceID": w.Manifest.WorkspaceID, "state": "absent", "helpCommand": "omniview-dev workspace evidence --help"}
+					err = failure
+				}
 			} else {
 				options, optionErr := workspaceLaunchOptions(c, w)
 				if optionErr != nil {
@@ -764,9 +848,30 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 			options.Ports = ports
 			var refresh devworkspace.RefreshOptions
 			refresh.Diagnostics = diagnostics
+			var applyExecutable string
 			if c.apply {
+				applyExecutable, err = os.Executable()
+				if err != nil {
+					return fail(err)
+				}
 				if preflightErr := manager.PreflightEdit(ctx, w.Manifest.WorkspaceID, options); preflightErr != nil {
 					return fail(preflightErr)
+				}
+				if _, proofErr := manager.ProtocolEvidence(ctx, w.Manifest.WorkspaceID); proofErr != nil {
+					if !os.IsNotExist(proofErr) {
+						return fail(proofErr)
+					}
+					return fail(devcontract.Fail(3, "apply_bootstrap_required", "edit --apply requires accepted protocol evidence; edit without --apply, then run workspace up with protocol evidence"))
+				}
+				savedLaunch, launchErr := devworkspace.LoadLaunchOptions(w)
+				if launchErr != nil {
+					if !os.IsNotExist(launchErr) {
+						return fail(launchErr)
+					}
+					return fail(devcontract.Fail(3, "apply_bootstrap_required", "edit --apply requires saved launch options; edit without --apply, then run workspace up"))
+				}
+				if launchErr = savedLaunch.Validate(); launchErr != nil {
+					return fail(launchErr)
 				}
 				// Capture authenticated liveness before Down intentionally stops it.
 				status, statusErr := manager.Status(ctx, w.Manifest.WorkspaceID)
@@ -790,7 +895,17 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 				value, err = manager.Reconfigure(ctx, w.Manifest.WorkspaceID, options)
 			}
 			if err == nil && c.apply {
+				edited := value
+				switch result := edited.(type) {
+				case devworkspace.ReconfigureResult:
+					w = result.Workspace
+				case devworkspace.Workspace:
+					w = result
+				}
 				value, err = manager.Refresh(ctx, w.Manifest.WorkspaceID, refresh)
+				if err != nil {
+					err = workspaceApplyFailure(err, w, edited, applyExecutable)
+				}
 			}
 		}
 	}
@@ -806,6 +921,27 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 		printWorkspaceValue(out, value)
 	}
 	return true, 0
+}
+
+func workspaceApplyFailure(err error, edited devworkspace.Workspace, selection any, executable string) *devcontract.Error {
+	var payload *devcontract.Error
+	if !errors.As(err, &payload) {
+		payload = devcontract.Fail(5, "apply_failed", err.Error())
+	}
+	partial := *payload
+	partial.Details = make(map[string]any, len(payload.Details)+6)
+	for key, detail := range payload.Details {
+		partial.Details[key] = detail
+	}
+	partial.Details["editApplied"] = true
+	partial.Details["manifest"] = edited.ManifestPath
+	partial.Details["completedPhase"] = "edit"
+	partial.Details["pendingPhase"] = "refresh"
+	partial.Details["selection"] = selection
+	next := "'" + strings.ReplaceAll(executable, "'", "'\\''") + "' workspace recover --workspace '" + strings.ReplaceAll(edited.ManifestPath, "'", "'\\''") + "'"
+	partial.Details["nextCommand"] = next
+	partial.Message = "selection edit persisted; apply failed: " + payload.Message + "; resume with: " + next
+	return &partial
 }
 
 func printWorkspaceValue(out io.Writer, value any) {
@@ -834,9 +970,12 @@ func printWorkspaceValue(out io.Writer, value any) {
 		}
 		if result.Reinstalled {
 			fmt.Fprintln(out, "Reinstalled: dependency trees recorded by the composition installer")
-		} else {
+		} else if result.Phase == "unlinking" {
 			fmt.Fprintln(out, "Not reinstalled: the dependency unlink was interrupted (phase "+result.Phase+"); "+
 				"rerun the interrupted `workspace unlink` or `workspace remove`")
+		} else {
+			fmt.Fprintln(out, "Not reinstalled: selected dependency trees were removed while the first launch was still applying (phase "+result.Phase+"); "+
+				"continue with the remaining recovery actions from the original ownership conflict")
 		}
 		return
 	case devworkspace.Registry:
@@ -847,7 +986,10 @@ func printWorkspaceValue(out io.Writer, value any) {
 	}
 	if status, ok := value.(devworkspace.Status); ok {
 		fmt.Fprintf(out, "%s (%s)\nWorkspace: %s\nState: %s\nStatus: %s\n", status.Manifest.DisplayName, status.Manifest.WorkspaceID, status.Root, status.StateRoot, status.Phase)
-		fmt.Fprintf(out, "Health: process=%s build=%s dependencies=%s source=%s readiness=%s hmr=%s reload=%s\n", status.Health.Liveness, status.Health.Build, status.Health.Dependencies, status.Health.ServedSource, status.Health.Readiness, status.Health.HMR, status.Health.SourceReload)
+		if status.Seed != nil {
+			fmt.Fprintf(out, "Seed policy: %s\nCopied scope: %s\nExcluded: %s\nSeed is not a profile clone or integration-readiness proof.\n", status.Seed.Policy, strings.Join(status.Seed.CopiedScope, ", "), strings.Join(status.Seed.Exclusions, ", "))
+		}
+		fmt.Fprintf(out, "Health: process=%s build=%s dependencies=%s served-source=%s checkout-since-ready=%s readiness=%s hmr=%s reload=%s\n", status.Health.Liveness, status.Health.Build, status.Health.Dependencies, status.Health.ServedSource, status.Health.CheckoutSinceReady, status.Health.Readiness, status.Health.HMR, status.Health.SourceReload)
 		if status.FailedStage != "" {
 			fmt.Fprintf(out, "Failed stage: %s\n", status.FailedStage)
 		}
@@ -863,8 +1005,8 @@ func printWorkspaceValue(out io.Writer, value any) {
 					fmt.Fprintf(out, "  Checkout error: %s\n", checkout.Error)
 				}
 			}
-			if served, exists := status.ServedCheckouts[repo.ID]; exists {
-				fmt.Fprintf(out, "  Served: %s dirty=%t digest=%s\n", served.Commit, served.Dirty, served.SourceDigest)
+			if ready, exists := status.ReadyCheckouts[repo.ID]; exists {
+				fmt.Fprintf(out, "  Checkout at last ready (not served provenance): %s dirty=%t digest=%s\n", ready.Commit, ready.Dirty, ready.SourceDigest)
 			}
 		}
 		if status.Instance != nil {
@@ -963,7 +1105,9 @@ func bindWorkspaceProfile(ctx context.Context, manager *devworkspace.Manager, w 
 
 func workspaceRefreshOptions(c workspaceCommand, w devworkspace.Workspace, diagnostics io.Writer) (devworkspace.RefreshOptions, error) {
 	refresh := devworkspace.RefreshOptions{Diagnostics: diagnostics}
-	for _, name := range []string{"mode", "mcp", "watch", "live-frontend", "reviewed-sdk-revision", "allow-isolation-source-changes", "link-evidence", "seed-from", "seed-version", "timeout"} {
+	for _, name := range []string{
+		"mode", "mcp", "watch", "live-frontend", "plugin-runtime", "link-evidence", "seed-from", "seed-version", "timeout",
+	} {
 		if !c.supplied[name] {
 			continue
 		}

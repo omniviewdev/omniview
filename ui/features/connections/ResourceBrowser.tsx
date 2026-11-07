@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, type ComponentType, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { Button, Spinner, Stack, Text } from '@omniviewdev/base-ui';
 import { ConnectionBoundary, ConnectionBoundaryFallback, parseAppError, useConnection, useResourceGroups, useResourceTypes } from '@omniviewdev/runtime';
 import ResourceTable from '@/components/tables/Resources';
 import Icon from '@/components/icons/Icon';
 import { connectionProfilePath, connectionProfilesPath, parsePagePath } from '@/features/workspace/pagePaths';
+import { usePluginService } from '@/features/plugins';
+import PluginRouteStatus from '@/features/plugins/components/PluginRouteStatus';
 
 /** Workspace-owned browser; provider type IDs remain opaque in both state and URLs. */
 export default function ResourceBrowser() {
@@ -12,7 +14,27 @@ export default function ResourceBrowser() {
   const target = parsePagePath(useLocation().pathname);
   const pluginID = target.kind === 'connection' ? target.pluginId : '';
   const connectionID = target.kind === 'connection' ? target.connectionId : '';
+  return <ResourceBrowserForConnection key={JSON.stringify([pluginID, connectionID])} pluginID={pluginID} connectionID={connectionID} />;
+}
+
+/** Keep the initial migration gate and browser mounted during plugin reloads. */
+function ResourceBrowserForConnection({ pluginID, connectionID }: { pluginID: string; connectionID: string }) {
+  const { plugins, registrations } = usePluginService();
+  const plugin = plugins.get(pluginID);
+  const [initialRegistration, setInitialRegistration] = useState<{ gate: ComponentType<{ children: ReactNode }> | undefined } | null>(null);
+  if (plugin?.phase === 'ready' && initialRegistration === null) {
+    setInitialRegistration({ gate: registrations.get(pluginID)?.PreferenceMigrationGate });
+  } else if (plugin?.phase !== 'ready' && plugin?.phase !== 'loading' && initialRegistration !== null) {
+    setInitialRegistration(null);
+  }
+
+  const PreferenceMigrationGate = initialRegistration?.gate;
   const navigate = useNavigate();
+  if (plugin?.phase !== 'ready' && !(plugin?.phase === 'loading' && initialRegistration)) {
+    return <PluginRouteStatus pluginId={pluginID} />;
+  }
+
+  const browser = <ConnectedResourceBrowser key={JSON.stringify([pluginID, connectionID])} pluginID={pluginID} connectionID={connectionID} />;
   return <ConnectionBoundary pluginID={pluginID} connectionID={connectionID} fallback={(state) =>
     <ConnectionBoundaryFallback state={state}
       onEditConnection={async () => {
@@ -22,7 +44,7 @@ export default function ResourceBrowser() {
         await navigate(connectionProfilesPath(pluginID)); 
       }} />
   }>
-    <ConnectedResourceBrowser key={JSON.stringify([pluginID, connectionID])} pluginID={pluginID} connectionID={connectionID} />
+    {PreferenceMigrationGate ? <PreferenceMigrationGate>{browser}</PreferenceMigrationGate> : browser}
   </ConnectionBoundary>;
 }
 

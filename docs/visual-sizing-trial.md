@@ -23,7 +23,7 @@ The conversation includes resource-list/inspector and command-palette SVG mocks.
 
 ## Evidence
 
-Workspace: `visual-sizing-20261102`, UUID `9fec3990-e8b3-4b0a-98a2-91ca1a4c1ec8`. Sources are isolated CLI-managed worktrees under `workspaces/workspaces/visual-sizing-20261102`. The SDK uses the existing independently reviewed baseline `9f007a79cf63a64eac9df7cb88bbbaf3120b9f08`; the stale cohort SDK pin did not descend from that baseline and was rejected before launch.
+Workspace: `visual-sizing-20261102`, UUID `9fec3990-e8b3-4b0a-98a2-91ca1a4c1ec8`. Sources are isolated CLI-managed worktrees under `workspaces/workspaces/visual-sizing-20261102`. At the time, the SDK used the required reviewed baseline `9f007a79cf63a64eac9df7cb88bbbaf3120b9f08`; the stale cohort SDK pin did not descend from that baseline and was rejected before launch.
 
 Browser captures in [evidence/visual-sizing](evidence/visual-sizing) use a 1568 × 864 CSS viewport and device scale factor 1:
 

@@ -3,6 +3,7 @@ package exec
 import (
 	"context"
 
+	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/transportjson"
 	"github.com/omniviewdev/omniview/internal/nativeapps"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -15,7 +16,15 @@ import (
 //
 //	OnPluginDestroy
 type ServiceWrapper struct {
-	Ctrl Controller
+	Ctrl  Controller
+	Realm invocation.ContextScope
+}
+
+func (s *ServiceWrapper) realmContext(ctx context.Context) context.Context {
+	if s.Realm == nil {
+		return ctx
+	}
+	return s.Realm.Context(ctx)
 }
 
 func (s *ServiceWrapper) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
@@ -33,6 +42,7 @@ func (s *ServiceWrapper) ServiceShutdown() error {
 	return nil
 }
 func (s *ServiceWrapper) CreateSession(
+	ctx context.Context,
 	plugin, connectionID string,
 	encoded string,
 ) (*execsdk.Session, error) {
@@ -40,17 +50,17 @@ func (s *ServiceWrapper) CreateSession(
 	if err := transportjson.Decode(encoded, &opts, plugin, connectionID); err != nil {
 		return nil, err
 	}
-	return s.Ctrl.CreateSession(plugin, connectionID, opts)
+	return s.Ctrl.CreateSession(s.realmContext(ctx), plugin, connectionID, opts)
 }
 
 // OpenNativeSession accepts only the same bounded resource payload as CreateSession.
 // Executables and launch commands are never accepted from the frontend.
-func (s *ServiceWrapper) OpenNativeSession(plugin, connectionID, encoded string) error {
+func (s *ServiceWrapper) OpenNativeSession(ctx context.Context, plugin, connectionID, encoded string) error {
 	var opts execsdk.SessionOptions
 	if err := transportjson.Decode(encoded, &opts, plugin, connectionID); err != nil {
 		return err
 	}
-	return s.Ctrl.OpenNativeSession(plugin, connectionID, opts)
+	return s.Ctrl.OpenNativeSession(s.realmContext(ctx), plugin, connectionID, opts)
 }
 
 func (s *ServiceWrapper) GetNativeTerminalSupport() bool {

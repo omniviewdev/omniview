@@ -3,6 +3,10 @@
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
+  min-width: 0;
+  flex-shrink: 0;
+  background: var(--ov-color-bg-surface);
+  border-bottom: var(--drawer-header-divider-height) solid var(--ov-color-border-muted);
 }
 
 .Strip {
@@ -11,10 +15,9 @@
   flex-direction: row;
   align-items: center;
   min-width: 0;
-  height: 33px;
+  height: var(--drawer-tab-strip-height);
   gap: 2px;
   padding-inline: 2px;
-  border-bottom: 1px solid var(--ov-color-border-muted);
 }
 
 .StripSeparator {
@@ -26,10 +29,9 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  height: 33px;
+  height: var(--drawer-tab-strip-height);
   gap: 2px;
   padding-inline: var(--ov-space-2);
-  padding-bottom: 1px;
 }
 
 .Button {
@@ -50,5 +52,4 @@
 .Tabs {
   flex: 1;
   min-width: 0;
-  height: 100%;
 }

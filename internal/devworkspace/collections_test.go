@@ -43,6 +43,23 @@ func TestDiscoverCollectionsUsesRegisteredWorktreesWithoutSelectingProfile(t *te
 	require.Equal(t, "first", items[0].Manifest.Slug)
 }
 
+func TestListSkipsDirectoriesWithoutManifestsButRejectsMalformedManifests(t *testing.T) {
+	m, root := fixtureManager(t)
+	ctx := context.Background()
+	_, err := m.Create(ctx, CreateOptions{Slug: "first"})
+	require.NoError(t, err)
+	raw := filepath.Join(root, "workspaces", "raw")
+	require.NoError(t, os.Mkdir(raw, 0o755))
+	items, err := m.List(ctx)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	require.Equal(t, "first", items[0].Manifest.Slug)
+
+	require.NoError(t, os.WriteFile(filepath.Join(raw, "workspace.json"), []byte("{"), 0o644))
+	_, err = m.List(ctx)
+	require.Error(t, err)
+}
+
 func TestDiscoverCollectionsRefusesRedirectedRegistryAndHonorsCancellation(t *testing.T) {
 	m, root := fixtureManager(t)
 	_, err := m.Create(context.Background(), CreateOptions{Slug: "feature"})

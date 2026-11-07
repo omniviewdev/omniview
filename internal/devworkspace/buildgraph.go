@@ -37,10 +37,9 @@ type BuildNode struct {
 }
 
 type HostBuildRequest struct {
-	Workspace           Workspace
-	SDKDirectory        string
-	ExpectedSDKRevision string
-	SDKSource           devsource.Identity
+	Workspace    Workspace
+	SDKDirectory string
+	SDKSource    devsource.Identity
 	// Generated bindings, JS exports and frontend assets are already built.
 	// The callback builds the actual selected host binary, without another
 	// bindings/frontend writer. A native/server target is an orchestrator choice.
@@ -50,6 +49,7 @@ type BuildEvent struct {
 	Node  string `json:"node"`
 	Phase string `json:"phase"` // building, ready, error, invalidated
 	Error string `json:"error,omitempty"`
+	cause error
 }
 
 type BuildOptions struct {
@@ -57,11 +57,8 @@ type BuildOptions struct {
 	Generation string
 	// An already-owned UUID profile runtime cache, never a source-tree cache.
 	GoBuildCacheDirectory string
-	// Must be independently supplied by the reviewed SDK barrier, not BaseCommit.
-	ExpectedSDKRevision string
-	// Required trusted local-source verifier; normally devsource.Verify, or an
-	// explicit per-workspace VerifyWithOptions adapter for isolation-core work.
-	VerifySDKSource func(context.Context, string, string) (devsource.Identity, error)
+	// Required local-source verifier; normally devsource.Verify.
+	VerifySDKSource func(context.Context, string) (devsource.Identity, error)
 	// HostBuild must compile the selected host (including native/module flags).
 	HostBuild func(context.Context, HostBuildRequest) error
 	// Optional real Task adapter. Output must remain exclusively in outputDirectory.
@@ -92,6 +89,9 @@ type BuildGraph struct {
 	mu          sync.Mutex
 	eventMu     sync.Mutex
 	attestMu    sync.Mutex // serializes recordArtifact
+	// attested holds the verified SDK identity of every plugin binary this
+	// graph recorded evidence for, keyed by plugin ID. Guarded by attestMu.
+	attested    map[string]devsource.Identity
 	toolchainMu sync.Mutex
 	toolchains  map[string]pnpmToolchain
 
@@ -156,7 +156,7 @@ func (m *Manager) NewBuildGraph(ctx context.Context, name string, opts BuildOpti
 	return g, nil
 }
 
-var reviewedSDKRevision = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
+var sdkRevisionPattern = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 
 // compileBuildGraph validates build options against the linked plan and plans
 // the selected nodes. Producer output is wrapped once so parallel nodes never
@@ -178,9 +178,6 @@ func compileBuildGraph(w Workspace, p linkPlan, opts BuildOptions) (*BuildGraph,
 	}
 	if opts.VerifySDKSource == nil {
 		return nil, fmt.Errorf("a real selected SDK source verifier is required")
-	}
-	if !reviewedSDKRevision.MatchString(opts.ExpectedSDKRevision) {
-		return nil, fmt.Errorf("an independently reviewed full SDK commit is required")
 	}
 	if p.SDK == "" {
 		return nil, fmt.Errorf("a selected local SDK source is required for trusted builds")
@@ -221,7 +218,7 @@ func planBuildNodes(w Workspace) ([]BuildNode, error) {
 	add := func(id, dir, pin, kind string, deps ...string) {
 		nodes = append(nodes, BuildNode{ID: id, Directory: dir, PNPMVersion: pin, Kind: kind, Dependencies: append([]string(nil), deps...)})
 	}
-	add("bindings", host, "", "bindings")
+	add(bindingsNode, host, "", bindingsNode)
 	uiDeps := []string{}
 	if w.Manifest.Links.UIRepositoryID != nil {
 		ui := repos[*w.Manifest.Links.UIRepositoryID]
@@ -237,7 +234,7 @@ func planBuildNodes(w Workspace) ([]BuildNode, error) {
 	packageDeps := append([]string(nil), uiDeps...)
 	if w.Manifest.Links.HostPackages {
 		add("providers", filepath.Join(host, "packages/omniviewdev-providers"), version, "javascript")
-		runtimeDeps := append([]string{"bindings", "providers"}, uiDeps...)
+		runtimeDeps := append([]string{bindingsNode, "providers"}, uiDeps...)
 		add("runtime", filepath.Join(host, "packages/omniviewdev-runtime"), version, "javascript", runtimeDeps...)
 		add("vite-plugin", filepath.Join(host, "packages/omniviewdev-vite-plugin"), version, "javascript", "runtime")
 		packageDeps = append(packageDeps, "providers", "runtime", "vite-plugin")
@@ -283,6 +280,7 @@ func (g *BuildGraph) emit(id, phase string, err error) {
 	event := BuildEvent{Node: id, Phase: phase}
 	if err != nil {
 		event.Error = safeCompilerDiagnostic(err.Error(), g.workspace.Root)
+		event.cause = err
 	}
 	g.eventMu.Lock()
 	defer g.eventMu.Unlock()
@@ -311,7 +309,7 @@ func (g *BuildGraph) commandWithEnvironment(ctx context.Context, dir string, env
 			continue
 		}
 		switch key {
-		case "GOWORK", "GOFLAGS", "GOROOT", "GOCACHE", "NODE_PATH", "GO_MODFILE", "OMNIVIEW_PNPM_NODE_PATH",
+		case goWorkEnv, goFlagsEnv, "GOROOT", "GOCACHE", nodePathEnv, "GO_MODFILE", "OMNIVIEW_PNPM_NODE_PATH",
 			"OMNIVIEW_BUILD_OUTPUT_DIRECTORY", "OMNIVIEW_SHIMS_OUTPUT_DIRECTORY", "OMNIVIEW_SHIMS_SOURCE_DIRECTORY",
 			"OMNIVIEW_YAML_WORKER_OUTPUT_FILE", "OMNIVIEW_VITE_CACHE_DIRECTORY", compositionInstallEnvironment:
 			continue
@@ -337,8 +335,7 @@ func (g *BuildGraph) commandWithEnvironment(ctx context.Context, dir string, env
 	return []byte(output.String()), nil
 }
 
-// verifySDK resolves the actual consumer module graph, then binds its exact
-// live source to the independently reviewed fixed-capability baseline.
+// verifySDK resolves the actual consumer module graph and identifies its live source.
 func (g *BuildGraph) verifySDK(ctx context.Context, consumer string) (devsource.Identity, error) {
 	var identity devsource.Identity
 	raw, err := g.run(ctx, consumer, "go", "list", "-m", "-json", linkedSDK)
@@ -370,11 +367,12 @@ func (g *BuildGraph) verifySDK(ctx context.Context, consumer string) (devsource.
 	if module.Path != linkedSDK || dir == "" || actual != selected {
 		return identity, fmt.Errorf("effective SDK source differs from selected feature source")
 	}
-	identity, err = g.options.VerifySDKSource(ctx, selected, g.options.ExpectedSDKRevision)
+	identity, err = g.options.VerifySDKSource(ctx, selected)
 	if err != nil {
 		return identity, err
 	}
-	if identity.Directory != selected || identity.ReviewedRevision != g.options.ExpectedSDKRevision || !sourceDigestPattern.MatchString(identity.SourceDigest) {
+	if identity.Directory != selected || !sdkRevisionPattern.MatchString(identity.Revision) ||
+		!sourceDigestPattern.MatchString(identity.SourceDigest) {
 		return devsource.Identity{}, fmt.Errorf("SDK verifier returned a different or incomplete selected source identity")
 	}
 	return identity, nil
@@ -397,7 +395,7 @@ func (g *BuildGraph) verifyUnchangedSDK(ctx context.Context, consumer string, be
 // nodes bind their outputs to an SDK identity verified before and after.
 func (g *BuildGraph) buildNode(ctx context.Context, n BuildNode) error {
 	switch n.Kind {
-	case "bindings":
+	case bindingsNode:
 		return g.buildBindings(ctx, n)
 	case "javascript":
 		return g.buildJavaScript(ctx, n)
@@ -445,7 +443,9 @@ func (g *BuildGraph) buildNode(ctx context.Context, n BuildNode) error {
 		if err != nil {
 			return err
 		}
-		if err := g.options.HostBuild(ctx, HostBuildRequest{Workspace: g.workspace, SDKDirectory: g.plan.SDK, ExpectedSDKRevision: g.options.ExpectedSDKRevision, SDKSource: before}); err != nil {
+		if err = g.options.HostBuild(ctx, HostBuildRequest{
+			Workspace: g.workspace, SDKDirectory: g.plan.SDK, SDKSource: before,
+		}); err != nil {
 			return err
 		}
 		return g.verifyUnchangedSDK(ctx, n.Directory, before)
@@ -460,7 +460,25 @@ func (g *BuildGraph) buildNode(ctx context.Context, n BuildNode) error {
 func (g *BuildGraph) recordArtifact(pluginID, binary string, source devsource.Identity) error {
 	g.attestMu.Lock()
 	defer g.attestMu.Unlock()
-	return instance.RecordBuiltArtifactSource(g.workspace.ResolvedWorkspace, pluginID, binary, source.ReviewedRevision, source.SourceDigest)
+	if err := instance.RecordBuiltArtifactSource(
+		g.workspace.ResolvedWorkspace, pluginID, binary, source.Revision, source.SourceDigest,
+	); err != nil {
+		return err
+	}
+	if g.attested == nil {
+		g.attested = map[string]devsource.Identity{}
+	}
+	g.attested[pluginID] = source
+	return nil
+}
+
+// attestedIdentity returns the SDK identity under which this graph recorded
+// destination-owned build evidence for pluginID.
+func (g *BuildGraph) attestedIdentity(pluginID string) (devsource.Identity, bool) {
+	g.attestMu.Lock()
+	defer g.attestMu.Unlock()
+	identity, ok := g.attested[pluginID]
+	return identity, ok
 }
 
 func (g *BuildGraph) withBuildLock(ctx context.Context, fn func() error) error {
@@ -532,7 +550,7 @@ func (g *BuildGraph) execute(ctx context.Context, nodes []BuildNode, reuse *buil
 				}
 				pending = append(pending[:i], pending[i+1:]...)
 				running++
-				g.emit(n.ID, "building", nil)
+				g.emit(n.ID, buildingPhase, nil)
 				go func() {
 					err := g.produce(ctx, n, reuse)
 					if err != nil {

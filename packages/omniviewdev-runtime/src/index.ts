@@ -16,3 +16,34 @@ export * from './resource/v2/host';
 export * from './resource/v2/sourceView';
 export { sameGraphNode } from './resource/v2/graph';
 export { useResolvedResourceTarget } from './hooks/resource/useResolvedResourceTarget';
+export * from './activity';
+export {
+  MetricSourceRef,
+  MetricViewSourceSelection,
+  FiniteMetricDescriptor,
+  ResourceMetricTarget,
+  ResourceMetricPoint,
+  ResourceMetricResult,
+  ResourceMetricsResponse,
+  ResourceMetricsCatalog,
+  MetricDefinition,
+  MetricOwnerCatalog,
+  MetricScopeField,
+  MetricDefinitionOverride,
+  MetricFieldBinding,
+  MetricFieldTransform,
+  MetricBinding,
+  MetricSourceDefaults,
+  ProviderConnection,
+  ProviderConnectionInput,
+  MetricDataSource,
+  MetricValidationIssue,
+  MetricValidationResult,
+  MetricDiscoveryRequest,
+  MetricDiscoveryResult,
+  MetricsObservationSpec,
+  MetricsObservationSnapshot,
+  OpenMetricsObservationRequest,
+  MetricViewPreferences,
+  ResourceMetricsCatalogRequest,
+} from './models';

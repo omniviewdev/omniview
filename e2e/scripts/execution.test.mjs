@@ -66,7 +66,7 @@ test('selection-only CLI works without package managers or browser dependencies 
   const scripts = join(arena, 'e2e/scripts');
   mkdirSync(scripts, { recursive: true });
   try {
-    for (const name of ['run.mjs', 'execution.mjs', 'select-tests.mjs', 'application.mjs', 'cohort.mjs', 'tool-cache.mjs', 'browser-dependencies.mjs', 'candidate-source.mjs']) copyFileSync(fileURLToPath(new URL(name, import.meta.url)), join(scripts, name));
+    for (const name of ['run.mjs', 'execution.mjs', 'select-tests.mjs', 'application.mjs', 'cohort.mjs', 'tool-cache.mjs', 'browser-dependencies.mjs', 'sdk-source.mjs']) copyFileSync(fileURLToPath(new URL(name, import.meta.url)), join(scripts, name));
     mkdirSync(join(arena, 'scripts'));
     copyFileSync(fileURLToPath(new URL('../../scripts/wails-tool.mjs', import.meta.url)), join(arena, 'scripts/wails-tool.mjs'));
     const output = join(arena, 'github-output');
@@ -104,7 +104,7 @@ test('cache-only refuses missing explicit cache ownership before dependency or a
   const scripts = join(arena, 'e2e/scripts');
   mkdirSync(scripts, { recursive: true });
   try {
-    for (const name of ['run.mjs', 'execution.mjs', 'select-tests.mjs', 'application.mjs', 'cohort.mjs', 'tool-cache.mjs', 'browser-dependencies.mjs', 'candidate-source.mjs']) copyFileSync(fileURLToPath(new URL(name, import.meta.url)), join(scripts, name));
+    for (const name of ['run.mjs', 'execution.mjs', 'select-tests.mjs', 'application.mjs', 'cohort.mjs', 'tool-cache.mjs', 'browser-dependencies.mjs', 'sdk-source.mjs']) copyFileSync(fileURLToPath(new URL(name, import.meta.url)), join(scripts, name));
     mkdirSync(join(arena, 'scripts'));
     copyFileSync(fileURLToPath(new URL('../../scripts/wails-tool.mjs', import.meta.url)), join(arena, 'scripts/wails-tool.mjs'));
     assert.throws(() => execFileSync(process.execPath, [join(scripts, 'run.mjs'), '--cache-only'], { env: { ...toolEnvironment(process.env), PATH: '' }, stdio: 'pipe' }));
