@@ -355,7 +355,6 @@ Successful stopped refresh/recovery remains stopped and not ready. It clears
 current failure, wait-stage and recovery hints while retaining prior diagnostics
 as `historicalError` and `historicalFailedStage`. Those fields describe history,
 not an instruction to recover again.
-
 Workspace commands print human diagnostics by default; `--json` returns structured
 errors and results. Control API commands retain their JSON response envelopes.
 
