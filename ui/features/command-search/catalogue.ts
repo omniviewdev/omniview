@@ -71,6 +71,7 @@ export function registerCoreSearchCatalogue(
   register('Home', { schemaVersion: 1, kind: 'navigation', target: { kind: 'core', path: '/' } });
   register('Plugins', { schemaVersion: 1, kind: 'navigation', target: { kind: 'core', path: '/plugins' } });
   register('Developer Tools: Extension Inspector', { schemaVersion: 1, kind: 'navigation', target: { kind: 'core', path: '/developer-tools/extensions' } });
+  register('Developer Tools: Performance', { schemaVersion: 1, kind: 'navigation', target: { kind: 'core', path: '/developer-tools/performance' } });
 
   catalogue: for (const key in input.settings) {
     if (!Object.hasOwn(input.settings, key)) {

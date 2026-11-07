@@ -56,8 +56,7 @@ func (f *finiteCoordinator) invalidateConfigurationKeysLocked(keys []finiteConfi
 		if !finiteConfigurationMatches(job.configurationKeys, keys) {
 			continue
 		}
-		job.retired = true
-		job.cancel()
+		job.retireLocked()
 		for waiter := range job.waiters {
 			delete(f.pending, waiter)
 			f.finishWaiter(waiter, profileChangingError())
