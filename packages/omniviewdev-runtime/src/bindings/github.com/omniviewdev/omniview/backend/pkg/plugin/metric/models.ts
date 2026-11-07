@@ -154,9 +154,9 @@ export class MetricViewPreferences {
  * samples are not zero. Invalidated clears Data on retirement or lost authority.
  * DomainStart/DomainEnd describe the data's actual range. Relative observations
  * leave the domain absent until collection succeeds and retain it during refresh.
- * Catalog is the admitted source metadata used for this observation's data;
- * consumers must derive units/source identity from this snapshot, not a racing
- * standalone catalog request.
+ * Catalog is admitted metadata for the delivered sample lanes, not full metric
+ * discovery. Consumers derive units/source identity from this snapshot and use
+ * GetResourceMetricsCatalog independently for available metric choices.
  */
 export class MetricsObservationSnapshot {
     "client_token": string;

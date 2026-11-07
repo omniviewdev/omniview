@@ -1,8 +1,9 @@
 package metric
 
 import (
-	sdk "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 	"time"
+
+	sdk "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 )
 
 // MetricsObservationSpec describes a finite, reference-bound interest, not a grant.

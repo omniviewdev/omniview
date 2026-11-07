@@ -3,11 +3,12 @@ package grafana
 import (
 	"encoding/json"
 	"errors"
-	"github.com/omniviewdev/plugin-sdk/pkg/types"
-	"github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 	"math"
 	"strconv"
 	"time"
+
+	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 )
 
 func samplePoint(pair []json.RawMessage) (metric.DataPoint, error) {
