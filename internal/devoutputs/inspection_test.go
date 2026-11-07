@@ -162,6 +162,43 @@ func TestReconcilePreservesForeignBindingsAndRestoresCommittedBaseline(t *testin
 	}
 }
 
+func TestReconcileUnownedPostinstallOutputPreservesBytesWithoutAdmission(t *testing.T) {
+	w, repo := outputFixture(t)
+	ctx := context.Background()
+	s, err := newScope(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec, err := s.spec(repo, YAMLWorker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeOutput(t, spec.Target, "unowned postinstall bytes")
+	neighbor := filepath.Join(filepath.Dir(spec.Target), "foreign-neighbor")
+	writeOutput(t, neighbor, "untouched")
+	if _, err = Prepare(ctx, w, repo, YAMLWorker); err == nil {
+		t.Fatal("unowned output was admitted")
+	}
+	destination := filepath.Join(privateOutputFixtureDirectory(t), "preserved")
+	report, err := Reconcile(ctx, w, repo, string(YAMLWorker), destination)
+	if err != nil || !report.RestoredBaseline {
+		t.Fatalf("%+v %v", report, err)
+	}
+	for path, want := range map[string]string{destination: "unowned postinstall bytes", neighbor: "untouched"} {
+		raw, err := os.ReadFile(path)
+		if err != nil || string(raw) != want {
+			t.Fatalf("%s: %q %v", path, raw, err)
+		}
+	}
+	next, err := Prepare(ctx, w, repo, YAMLWorker)
+	if err != nil {
+		t.Fatal("reconciled baseline not admitted", err)
+	}
+	if err = next.Abort(ctx); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestReconcileNeverOverwritesForeignPreservationDestination(t *testing.T) {
 	w, repo := outputFixture(t)
 	ctx := context.Background()

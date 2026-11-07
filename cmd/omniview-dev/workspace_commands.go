@@ -75,6 +75,9 @@ func addWorkspaceCommands(root *cobra.Command) {
 func newWorkspaceCommand(verb string, execute func(*cobra.Command, workspaceCommand) error) *cobra.Command {
 	c := workspaceCommand{verb: verb, supplied: map[string]bool{}}
 	cmd := &cobra.Command{Use: verb + " [NAME]", Short: "Workspace " + verb}
+	if verb == "init" || verb == "list" || verb == "collections" {
+		cmd.Use = verb
+	}
 	flags := cmd.Flags()
 	flags.StringVar(&c.root, "root", "", "machine-local source registry/collection root")
 	flags.StringVar(&c.explicit, "workspace", "", "explicit workspace manifest/directory")
@@ -570,6 +573,9 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 		switch c.verb {
 		case "resume":
 			value, err = manager.ResumeWorkspace(ctx, target)
+			if err == nil {
+				value, err = manager.Status(ctx, target)
+			}
 		case workspaceRecover:
 			var recovered devworkspace.Workspace
 			recovered, err = manager.PrepareRecovery(ctx, target)

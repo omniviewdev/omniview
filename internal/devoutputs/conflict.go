@@ -20,6 +20,7 @@ type Conflict struct {
 	MetadataPath   string       `json:"metadataPath,omitempty"`
 	Stage          string       `json:"stage,omitempty"`
 	Backup         string       `json:"backup,omitempty"`
+	PreservedAt    string       `json:"preservedAt,omitempty"`
 	ChangedPaths   []string     `json:"changedPaths,omitempty"`
 	MoreChanges    bool         `json:"moreChanges,omitempty"`
 	Differences    []Difference `json:"differences,omitempty"`
@@ -41,7 +42,15 @@ func (c *Conflict) Error() string {
 	if c.cause != nil {
 		detail = ": " + c.cause.Error()
 	}
-	return fmt.Sprintf("%s: %s producer %s at %s (%s, %s)%s; %s", c.Code, c.Producer, c.Consumer, c.Target, c.Ownership, c.Phase, detail, c.Guidance)
+	message := fmt.Sprintf("%s: %s producer %s at %s (%s, %s)%s; %s", c.Code, c.Producer, c.Consumer, c.Target, c.Ownership, c.Phase, detail, c.Guidance)
+	for _, argv := range c.NextCommands {
+		quoted := make([]string, len(argv))
+		for i, arg := range argv {
+			quoted[i] = "'" + strings.ReplaceAll(arg, "'", "'\\''") + "'"
+		}
+		message += "\n" + strings.Join(quoted, " ")
+	}
+	return message
 }
 func (c *Conflict) Unwrap() error { return c.cause }
 
@@ -50,10 +59,8 @@ func conflict(spec specification, ownership, phase string, actual, expected snap
 		Guidance: "Preserve these bytes before reconciliation. Do not adopt or delete unknown files. Inspect with workspace ownership. Stop with workspace down before any managed repair."}
 	if spec.Kind == modules || spec.Kind == viteCache || spec.Kind == loaderCache || spec.Kind == typeCache {
 		c.Guidance += " workspace reset-modules is destructive and requires explicit authorization for all selected dependency trees; it leaves source, profiles and producer outputs untouched."
-	} else if ownership == "owned" {
-		c.Guidance += " Use workspace reconcile-output with an exact producer and an external preservation path, then regenerate through the managed producer."
 	} else {
-		c.Guidance += " No automatic repair is authorized for unowned outputs. Preserve them externally and restore the exact committed baseline before retrying."
+		c.Guidance += " Explicit workspace reconcile-output authorization preserves the exact selected producer externally before restoring its committed baseline; pass --consumer, --producer and --preserve-at with a new path inside an existing private external directory, then retry the saved launch with workspace restart."
 	}
 	if actual == nil {
 		var substitution *pathConflict
@@ -105,6 +112,9 @@ func conflict(spec specification, ownership, phase string, actual, expected snap
 }
 func entryConflict(entry *outputEntry, phase string, actual snapshot, cause error) *Conflict {
 	c := conflict(entry.Spec, "owned", phase, actual, physical(entry.Expected), cause)
+	if entry.Preservation != nil {
+		c.PreservedAt = entry.Preservation.Path
+	}
 	if entry.Pending != nil {
 		c.Stage = entry.Pending.Directory
 		c.Backup = entry.Pending.Backup
