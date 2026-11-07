@@ -188,8 +188,8 @@ func TestPrepareRejectsAlternateAndMVSSelectedUnapprovedWails(t *testing.T) {
 				if runtime.GOOS == "windows" {
 					proxyPath = strings.TrimPrefix(proxyPath, string(filepath.Separator))
 				}
-				hostmodtest.Module(t, proxyPath, wailsModule, "v3.0.0-beta.35", "module "+wailsModule+"\n\ngo 1.20\n")
-				put(t, filepath.Join(root, "booster", "go.mod"), "module example.com/booster\n\ngo 1.20\nrequire "+wailsModule+" v3.0.0-beta.35\n")
+				hostmodtest.Module(t, proxyPath, wailsModule, "v3.1.1", "module "+wailsModule+"\n\ngo 1.20\n")
+				put(t, filepath.Join(root, "booster", "go.mod"), "module example.com/booster\n\ngo 1.20\nrequire "+wailsModule+" v3.1.1\n")
 				body += "require example.com/booster v1.0.0\nreplace example.com/booster => ./booster\n"
 			} else {
 				sum, err := os.ReadFile(filepath.Join(root, "go.sum"))

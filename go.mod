@@ -24,7 +24,7 @@ require (
 	github.com/stretchr/testify v1.12.1
 	github.com/tidwall/gjson v1.20.1
 	github.com/wailsapp/mimetype v1.4.1
-	github.com/wailsapp/wails/v3 v3.0.0-beta.34.0.20261022002616-a90f7e7f50bf
+	github.com/wailsapp/wails/v3 v3.1.0
 	go.etcd.io/bbolt v1.5.0
 	go.opentelemetry.io/contrib/bridges/otelzap v0.21.0
 	go.opentelemetry.io/contrib/instrumentation/runtime v0.72.0
@@ -52,11 +52,11 @@ require (
 
 require (
 	cel.dev/expr v0.25.3 // indirect
-	github.com/adrg/xdg v0.5.3 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/ebitengine/purego v0.11.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
 	github.com/fatih/color v1.19.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.10.0 // indirect
