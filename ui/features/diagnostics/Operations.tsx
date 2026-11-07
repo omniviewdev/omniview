@@ -24,7 +24,7 @@ export function Operations({ metrics, samples, updating, health }: { metrics: Me
   const [selection, setSelection] = useState('');
   const rows = metrics.flatMap(metric => (metric.points ?? []).map(point => ({ metric, point, id: `${metric.name}:${pointKey(point.attributes)}` })));
   const calls = rows.filter(row => row.metric.name === 'omniview.operation.calls');
-  const latencies = rows.filter(row => row.metric.kind === 'histogram' && row.metric.unit === 'ms' && row.point.count > 0);
+  const latencies = rows.filter(row => row.metric.kind === 'histogram' && (row.metric.unit === 'ms' || row.metric.unit === 's') && row.point.count > 0);
   const currentPage = Math.min(page, Math.max(0, Math.ceil(rows.length / pageSize) - 1));
   const selected = rows.find(row => row.id === selection);
   const completeness = health ? health.complete ? 'complete' as const : 'partial' as const : 'unknown' as const;
@@ -38,7 +38,7 @@ export function Operations({ metrics, samples, updating, health }: { metrics: Me
         <RankedBars items={calls.map(row => ({ id: row.id, label: dimensionLabel(row.point.attributes), value: row.point.value }))} unit={{ kind: 'count' }} limit={6} label='Operation calls' />
       </MetricPanel>}
       {latencies.length > 0 && <MetricPanel title='Mean latency' state={{ kind: 'data', updating, completeness }}>
-        <RankedBars items={latencies.map(row => ({ id: row.id, label: `${metricTitle(row.metric.name)} ${dimensionLabel(row.point.attributes)}`.trim(), value: row.point.sum / row.point.count }))} unit={{ kind: 'duration', base: 'milliseconds' }} limit={6} selectedId={selection} onSelect={setSelection} label='Mean latency' />
+        <RankedBars items={latencies.map(row => ({ id: row.id, label: `${metricTitle(row.metric.name)} ${dimensionLabel(row.point.attributes)}`.trim(), value: (row.point.sum / row.point.count) * (row.metric.unit === 's' ? 1000 : 1) }))} unit={{ kind: 'duration', base: 'milliseconds' }} limit={6} selectedId={selection} onSelect={setSelection} label='Mean latency' />
       </MetricPanel>}
     </div>
     <Table.Container><Table size='sm' stickyHeader hoverable aria-label='Operation series'><Table.Head><Table.Row><Table.HeaderCell>Measurement</Table.HeaderCell><Table.HeaderCell>Dimensions</Table.HeaderCell><Table.HeaderCell>Count / value</Table.HeaderCell><Table.HeaderCell>Mean</Table.HeaderCell></Table.Row></Table.Head><Table.Body>{rows.slice(currentPage * pageSize, (currentPage + 1) * pageSize).map(({ metric, point, id }) => {
