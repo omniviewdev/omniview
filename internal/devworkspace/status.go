@@ -136,10 +136,13 @@ func ConnectWorkspaceControl(ctx context.Context, w Workspace, home, generation 
 
 func (m *Manager) Status(ctx context.Context, name string) (Status, error) {
 	result, err := m.status(ctx, name)
-	result.Seed = nil
 	if result.Manifest.WorkspaceID != "" {
-		if seed, seedErr := inspectWorkspaceSeed(ctx, result.Workspace); seedErr == nil {
-			result.Seed = &seed
+		// Authenticated live status already carries validated import evidence.
+		// Reopening settings here would contend with the running host's DB lock.
+		if result.Seed == nil {
+			if seed, seedErr := inspectWorkspaceSeed(ctx, result.Workspace); seedErr == nil {
+				result.Seed = &seed
+			}
 		}
 		// Render launch recovery from the selected identity, never from an
 		// opaque command retained by a supervisor or an older status record.

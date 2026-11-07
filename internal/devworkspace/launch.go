@@ -671,10 +671,6 @@ func (s *workspaceSupervisor) seed(ctx context.Context) error {
 	if intent.Source != s.options.BaselineSource || intent.Baseline == nil {
 		return devcontract.Fail(4, "baseline_conflict", "pending baseline intent belongs to another explicit source")
 	}
-	expected, err := json.Marshal(intent.Baseline)
-	if err != nil {
-		return err
-	}
 	destinationManifest := filepath.Join(s.workspace.StateRoot, "baseline.json")
 	if info, statErr := os.Lstat(destinationManifest); statErr == nil {
 		if !info.Mode().IsRegular() {
@@ -688,11 +684,11 @@ func (s *workspaceSupervisor) seed(ctx context.Context) error {
 		if err = json.Unmarshal(raw, &actual); err != nil {
 			return err
 		}
-		normalized, err := json.Marshal(actual)
+		matches, err := devbaseline.SameContent(&actual, intent.Baseline)
 		if err != nil {
 			return err
 		}
-		if string(normalized) != string(expected) {
+		if !matches {
 			return devcontract.Fail(4, "baseline_conflict", "existing initialized profile does not match the recorded seed intent")
 		}
 	} else if !os.IsNotExist(statErr) {
