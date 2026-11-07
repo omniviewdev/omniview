@@ -40,6 +40,7 @@ import (
 	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	"github.com/omniviewdev/omniview/backend/window"
 	"github.com/omniviewdev/omniview/internal/appstate"
+	"github.com/omniviewdev/omniview/internal/auditgate"
 	"github.com/omniviewdev/omniview/internal/bootstrap"
 	"github.com/omniviewdev/omniview/internal/builtinplugins/grafana"
 	"github.com/omniviewdev/omniview/internal/devcontract"
@@ -110,6 +111,62 @@ func newUICapabilityControllers(
 	metricController.SetMetricResourceReader(resourceController.ReadObservedResource)
 	metricController.SetResourceIdentityGuard(resourceController.GuardObservedReference)
 	return execController, networkerController, logsController, metricController
+}
+
+// boundServiceTypes lists, as typed nil pointers, the type of every service
+// that main registers with the Wails app. Wails binds every exported method of
+// these types to the page, so each one must be classified in the audit gateway
+// allowlist (internal/auditgate/policy.json). Keep this list next to the
+// registration code in main: the drift tests reflect over it, and
+// verifyAuditPolicy checks the instances that are actually registered.
+func boundServiceTypes() []any {
+	return []any{
+		(*activity.FrontendService)(nil),
+		(*resource.ServiceWrapper)(nil),
+		(*resource.GraphService)(nil),
+		(*exec.ServiceWrapper)(nil),
+		(*networker.ServiceWrapper)(nil),
+		(*pluginlogs.ServiceWrapper)(nil),
+		(*pluginmetric.ServiceWrapper)(nil),
+		(*data.ServiceWrapper)(nil),
+		(*ui.ServiceWrapper)(nil),
+		(*utils.Client)(nil),
+		(*devserver.ServiceWrapper)(nil),
+		(*bootstrap.Service)(nil),
+		(*AppService)(nil),
+		(*diagnostics.DiagnosticsClient)(nil),
+		(*extensiondiagnosticshost.Service)(nil),
+		(*telemetry.TelemetryBinding)(nil),
+		(*profiling.ServiceWrapper)(nil),
+		(*uiinspection.Service)(nil),
+		(*processinfo.Service)(nil),
+		(*settingsservice.Binding)(nil),
+		(*plugin.ServiceWrapper)(nil),
+		(*mcprelay.ServiceWrapper)(nil),
+		(*pluginlog.ServiceWrapper)(nil), // registered only when plugin logging is available
+		(*window.Service)(nil),
+	}
+}
+
+// checkAuditPolicy reports the first reason the audit gateway allowlist does
+// not cover every method Wails would bind for the given service instances.
+func checkAuditPolicy(instances ...any) error {
+	policy, err := auditgate.Default()
+	if err != nil {
+		return err
+	}
+	return policy.Verify(instances...)
+}
+
+// verifyAuditPolicy refuses to start when a service that is about to be
+// registered exposes a method the audit gateway allowlist does not classify.
+// It inspects the instances actually registered, so conditional services are
+// covered even when the drift tests do not build them.
+func verifyAuditPolicy(instances ...any) {
+	if err := checkAuditPolicy(instances...); err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 // main resolves instance identity, initializes services and runs the host.
@@ -599,6 +656,11 @@ func main() {
 		)
 	}
 
+	registered := make([]any, 0, len(services))
+	for _, service := range services {
+		registered = append(registered, service.Instance())
+	}
+	verifyAuditPolicy(registered...)
 	for _, service := range services {
 		app.RegisterService(service)
 	}
@@ -655,6 +717,7 @@ func main() {
 		SessionPath:    stateDir.RootDir().ResolvePath(window.SessionFileName),
 		Log:            log.Named("window"),
 	})
+	verifyAuditPolicy(windowService)
 	app.RegisterService(application.NewService(windowService))
 
 	// Install menus only after their backend window service is ready.
