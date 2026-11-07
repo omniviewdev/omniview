@@ -127,7 +127,7 @@ func safeAttributes(set attribute.Set) map[string]string {
 	for _, kv := range set.ToSlice() {
 		key := string(kv.Key)
 		switch key {
-		case "operation", "outcome", "controller", "provider", "phase", "state", "kind", "status", "reason", "cache", "queue", "direction", "type", "event", "work", "cpu.mode", "go.memory.type", "domain", "rpc.system.name", "rpc.response.status_code":
+		case "operation", "outcome", "controller", "provider", "phase", "state", "kind", "status", "reason", "cache", "queue", "direction", "type", "event", "work", "cpu.mode", "go.memory.type", "plugin", "domain", "rpc.system.name", "rpc.response.status_code":
 		default:
 			continue
 		}

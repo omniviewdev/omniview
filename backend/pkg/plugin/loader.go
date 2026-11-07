@@ -70,7 +70,7 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (i
 	alreadyRunning := existing != nil && existing.Phase == lifecycle.PhaseRunning
 	pm.recordsMu.RUnlock()
 	if !alreadyRunning {
-		op := telemetry.BeginOperation(context.Background(), "plugin", "load")
+		op := telemetry.BeginOperation(telemetry.WithPlugin(context.Background(), id), "plugin", "load")
 		defer func() { op.End(resultErr) }()
 	}
 	if err := pm.guardUninstallRecovery(id); err != nil {
@@ -236,7 +236,7 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (i
 	// Sync the state machine to Running.
 	if record.StateMachine != nil {
 		record.StateMachine.ForcePhase(lifecycle.PhaseRunning, "plugin loaded successfully")
-		pm.registerStateObserver(record.StateMachine)
+		pm.registerStateObserver(id, record.StateMachine)
 	}
 
 	return record.ToInfo(), nil

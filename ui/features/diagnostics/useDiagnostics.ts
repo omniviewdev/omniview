@@ -14,10 +14,10 @@ function isVisible() {
   return document.visibilityState !== 'hidden';
 }
 
-export function useDiagnostics() {
+export function useDiagnostics(live = true) {
   const documentVisible = useSyncExternalStore(subscribeVisibility, isVisible);
   const pageVisible = useContext(PageVisibilityContext);
-  const visible = documentVisible && pageVisible;
+  const visible = documentVisible && pageVisible && live;
   const query = useQuery({
     queryKey: ['application-diagnostics', 'live'],
     enabled: visible,
@@ -27,7 +27,7 @@ export function useDiagnostics() {
     queryFn: async ({ signal }) => {
       const history = await Diagnostics.GetHistory();
       signal.throwIfAborted();
-      return { samples: (history.samples ?? []).slice(-180), health: history.health };
+      return { samples: (history.samples ?? []).slice(-300), health: history.health };
     },
   });
   const captures = useQuery({
@@ -74,5 +74,6 @@ export function useDiagnostics() {
     updating: query.isFetching || captures.isFetching || catalog.isFetching,
     refresh,
     latest: samples.at(-1),
+    updatedAt: query.dataUpdatedAt,
   };
 }

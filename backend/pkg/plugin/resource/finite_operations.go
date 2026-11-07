@@ -126,6 +126,7 @@ func (c *controller) admitOperationCatalog(ctx context.Context, pluginID string,
 }
 
 func (c *controller) Get(ctx context.Context, pluginID string, input HostGetRequest) (_result HostRecord, retErr error) {
+	ctx = telemetry.WithPlugin(ctx, pluginID)
 	op := telemetry.BeginOperation(ctx, "resource", "get")
 	defer func() { op.End(retErr) }()
 	request := input.Request
@@ -198,6 +199,7 @@ func exactReadTarget(request resourcev2.GetRequest, descriptor resourcev2.Resour
 }
 
 func (c *controller) Enumerate(ctx context.Context, pluginID string, input HostEnumerateRequest) (_result HostSourcePage, retErr error) {
+	ctx = telemetry.WithPlugin(ctx, pluginID)
 	op := telemetry.BeginOperation(ctx, "resource", "enumerate")
 	defer func() { op.End(retErr) }()
 	request := input.Request
@@ -248,6 +250,7 @@ func (c *controller) Enumerate(ctx context.Context, pluginID string, input HostE
 }
 
 func (c *controller) NativeQuery(ctx context.Context, pluginID string, input HostNativeQueryRequest) (_result HostSourcePage, retErr error) {
+	ctx = telemetry.WithPlugin(ctx, pluginID)
 	op := telemetry.BeginOperation(ctx, "resource", "query")
 	defer func() { op.End(retErr) }()
 	request := input.Request
@@ -317,6 +320,7 @@ func hostPage(ctx context.Context, generation *pluginState, targetID string, tar
 }
 
 func (c *controller) Mutate(ctx context.Context, pluginID string, request resourcev2.MutationRequest) (_result resourcev2.Record, retErr error) {
+	ctx = telemetry.WithPlugin(ctx, pluginID)
 	op := telemetry.BeginOperation(ctx, "resource", "mutate")
 	defer func() { op.End(retErr) }()
 	target := referenceTarget(pluginID, request.Route, request.Reference)

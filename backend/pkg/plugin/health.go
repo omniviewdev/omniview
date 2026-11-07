@@ -268,7 +268,7 @@ func (hc *HealthChecker) markFailedLocked(pluginID, lastError, reason string) {
 		}
 		if !budget.quarantined {
 			budget.quarantined = true
-			telemetry.RecordPluginQuarantine(context.Background())
+			telemetry.RecordPluginQuarantine(telemetry.WithPlugin(context.Background(), pluginID))
 		}
 		record.Phase = lifecycle.PhaseFailed
 		record.LastError = lastError

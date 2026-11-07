@@ -251,7 +251,7 @@ func (c *controller) finiteCatalogUncached(ctx context.Context, request Resource
 	}
 	started := time.Now()
 	catalog, err := p.GetResourceMetricsCatalog(pc, providerRequest)
-	telemetry.RecordPipelineProvider(ctx, "catalog", started, err)
+	telemetry.RecordPipelineProvider(telemetry.WithPlugin(ctx, lane.source.PluginID), "catalog", started, err)
 	if err != nil {
 		return nil, finiteProviderFailure{err}
 	}
@@ -1102,7 +1102,7 @@ func (f *finiteCoordinator) runJob(ctx context.Context, job *finiteJob, base Met
 				if err == nil {
 					started := time.Now()
 					response, err = provider.QueryResources(pc, projected)
-					telemetry.RecordPipelineProvider(ctx, "query", started, err)
+					telemetry.RecordPipelineProvider(telemetry.WithPlugin(ctx, job.query.Source.PluginID), "query", started, err)
 					if err != nil {
 						err = finiteProviderFailure{err}
 					}

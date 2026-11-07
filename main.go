@@ -447,6 +447,16 @@ func main() {
 		builtinCatalog,
 	)
 	plugin.ConfigureActivities(pluginManager, resourceController, activityService)
+	telemetry.RegisterPluginProcessSource(func() []telemetry.PluginProcess {
+		var processes []telemetry.PluginProcess
+		for _, info := range pluginManager.GetPluginProcesses() {
+			// Only verified, separately owned child processes; in-process plugins share the host.
+			if info.Ownership == "verified" && info.Identity != nil && info.Error == "" {
+				processes = append(processes, telemetry.PluginProcess{PluginID: info.PluginID, PID: info.Identity.PID})
+			}
+		}
+		return processes
+	})
 
 	// Wire crash recovery: when a plugin crash is detected by the resource
 	// controller's event listeners, the manager will attempt to reload it.

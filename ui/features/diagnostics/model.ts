@@ -3,6 +3,10 @@ import type { MetricUnit, NumericSeries } from '@omniviewdev/base-ui/metrics';
 
 export type { Snapshot, Metric, Capture, CaptureSummary, Comparison } from '@omniviewdev/runtime/api';
 
+export function isCpuTime(name: string): boolean {
+  return name === 'omniview.process.cpu_time' || name === 'omniview.plugin.process.cpu_time';
+}
+
 export function metricUnit(unit: string): MetricUnit | null {
   switch (unit) {
     case 'By': case 'bytes': return { kind: 'bytes', display: 'binary' };
@@ -30,14 +34,14 @@ export function comparisonUnit(unit: string, kind: string, name = ''): MetricUni
   }
 
   if (unit === 's') {
-    return name === 'omniview.process.cpu_time' ? { kind: 'cpu', base: 'cores' } : { kind: 'number' };
+    return isCpuTime(name) ? { kind: 'cpu', base: 'cores' } : { kind: 'number' };
   }
 
   return null;
 }
 
 export function comparisonSuffix(unit: string, kind: string, name: string) {
-  return kind === 'counter' && unit === 's' && name !== 'omniview.process.cpu_time' ? 's/s' : '';
+  return kind === 'counter' && unit === 's' && !isCpuTime(name) ? 's/s' : '';
 }
 
 export function pointKey(attributes: Readonly<Record<string, string | undefined>>): string {
@@ -61,10 +65,10 @@ export function metricSeries(metric: Metric, samples: Snapshot[]): NumericSeries
     return {
       id: `${metric.name}:${key}`,
       label: dimensions === '' ? metric.description === '' ? metric.name : metric.description : dimensions,
-      points: samples.slice(-180).map((sample, index, window) => {
+      points: samples.slice(-300).map((sample, index, window) => {
         const value = sample.metrics?.find(item => item.name === metric.name)?.points?.find(item => pointKey(item.attributes) === key);
         const timeMs = new Date(sample.timestamp).getTime();
-        if (metric.name === 'omniview.process.cpu_time' && value) {
+        if (isCpuTime(metric.name) && value) {
           const previous = window[index - 1];
           const prior = previous?.metrics?.find(item => item.name === metric.name)?.points?.find(item => pointKey(item.attributes) === key);
           return { timeMs, value: previous && prior ? cpuRate(

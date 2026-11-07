@@ -4,6 +4,8 @@ const titles: Readonly<Record<string, string>> = {
   'omniview.process.go_heap_bytes': 'Heap',
   'omniview.process.goroutines': 'Goroutines',
   'omniview.process.memory_peak_rss': 'Peak memory',
+  'omniview.plugin.process.cpu_time': 'Plugin CPU',
+  'omniview.plugin.process.memory_rss': 'Plugin memory',
   'omniview.plugin.active': 'Plugins loaded',
   'omniview.plugin.load_duration': 'Plugin load time',
   'omniview.plugin.crashes': 'Plugin crashes',

@@ -3,6 +3,7 @@ package telemetry
 import (
 	"context"
 	"errors"
+	"regexp"
 	"runtime"
 	runtimemetrics "runtime/metrics"
 	"sync"
@@ -15,6 +16,28 @@ import (
 
 var activeMetrics atomic.Pointer[Metrics]
 
+type pluginContextKey struct{}
+
+// WithPlugin attaches the host-assigned plugin ID to measurements recorded with ctx.
+// IDs come from installed manifests, never from plugin-supplied data.
+func WithPlugin(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, pluginContextKey{}, id)
+}
+
+var pluginIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+
+// pluginAttributes returns the bounded plugin label, or none when ctx carries no plugin.
+func pluginAttributes(ctx context.Context) []attribute.KeyValue {
+	id, _ := ctx.Value(pluginContextKey{}).(string)
+	if id == "" {
+		return nil
+	}
+	if !pluginIDPattern.MatchString(id) {
+		id = "other"
+	}
+	return []attribute.KeyValue{attribute.String("plugin", id)}
+}
+
 // Operation measures one host operation. End must be deferred immediately.
 // Attribute values are normalized here, never copied from caller identities.
 type Operation struct {
@@ -22,6 +45,7 @@ type Operation struct {
 	ctx       context.Context
 	domain    string
 	operation string
+	plugin    []attribute.KeyValue
 	started   time.Time
 }
 
@@ -50,16 +74,18 @@ func BeginOperation(ctx context.Context, domain, operation string) Operation {
 		return Operation{}
 	}
 	domain, operation = safeOperation(domain, operation)
-	attrs := metric.WithAttributes(attribute.String("domain", domain), attribute.String("operation", operation))
+	plugin := pluginAttributes(ctx)
+	attrs := metric.WithAttributes(append([]attribute.KeyValue{attribute.String("domain", domain), attribute.String("operation", operation)}, plugin...)...)
 	m.OperationActive.Add(ctx, 1, attrs)
-	return Operation{metrics: m, ctx: ctx, domain: domain, operation: operation, started: time.Now()}
+	return Operation{metrics: m, ctx: ctx, domain: domain, operation: operation, plugin: plugin, started: time.Now()}
 }
 
 func (o Operation) End(err error) {
 	if o.metrics == nil {
 		return
 	}
-	attrs := metric.WithAttributes(attribute.String("domain", o.domain), attribute.String("operation", o.operation))
+	base := append([]attribute.KeyValue{attribute.String("domain", o.domain), attribute.String("operation", o.operation)}, o.plugin...)
+	attrs := metric.WithAttributes(base...)
 	o.metrics.OperationActive.Add(o.ctx, -1, attrs)
 	outcome := "success"
 	if err != nil {
@@ -71,7 +97,7 @@ func (o Operation) End(err error) {
 	if errors.Is(err, context.DeadlineExceeded) {
 		outcome = "timeout"
 	}
-	result := metric.WithAttributes(attribute.String("domain", o.domain), attribute.String("operation", o.operation), attribute.String("outcome", outcome))
+	result := metric.WithAttributes(append(append([]attribute.KeyValue{}, base...), attribute.String("outcome", outcome))...)
 	o.metrics.OperationCalls.Add(o.ctx, 1, result)
 	elapsed := float64(time.Since(o.started)) / float64(time.Millisecond)
 	switch o.domain {
@@ -96,22 +122,22 @@ func RecordResourceRecords(ctx context.Context, operation string, count int64) {
 	}
 	_, operation = safeOperation("resource", operation)
 	if m := activeMetrics.Load(); m != nil {
-		m.ResourceRecords.Add(ctx, count, metric.WithAttributes(attribute.String("operation", operation)))
+		m.ResourceRecords.Add(ctx, count, metric.WithAttributes(append([]attribute.KeyValue{attribute.String("operation", operation)}, pluginAttributes(ctx)...)...))
 	}
 }
 func RecordPluginActive(ctx context.Context, delta int64) {
 	if m := activeMetrics.Load(); m != nil {
-		m.PluginActive.Add(ctx, delta)
+		m.PluginActive.Add(ctx, delta, metric.WithAttributes(pluginAttributes(ctx)...))
 	}
 }
 func RecordPluginCrash(ctx context.Context) {
 	if m := activeMetrics.Load(); m != nil {
-		m.PluginCrashes.Add(ctx, 1)
+		m.PluginCrashes.Add(ctx, 1, metric.WithAttributes(pluginAttributes(ctx)...))
 	}
 }
 func RecordPluginQuarantine(ctx context.Context) {
 	if m := activeMetrics.Load(); m != nil {
-		m.PluginQuarantines.Add(ctx, 1)
+		m.PluginQuarantines.Add(ctx, 1, metric.WithAttributes(pluginAttributes(ctx)...))
 	}
 }
 
@@ -169,7 +195,7 @@ func RecordPipelineProvider(ctx context.Context, operation string, started time.
 		if errors.Is(err, context.DeadlineExceeded) {
 			outcome = "timeout"
 		}
-		m.PipelineProviderDuration.Record(ctx, float64(time.Since(started))/float64(time.Millisecond), metric.WithAttributes(attribute.String("operation", operation), attribute.String("outcome", outcome)))
+		m.PipelineProviderDuration.Record(ctx, float64(time.Since(started))/float64(time.Millisecond), metric.WithAttributes(append([]attribute.KeyValue{attribute.String("operation", operation), attribute.String("outcome", outcome)}, pluginAttributes(ctx)...)...))
 	}
 }
 func RecordPipelineResponse(ctx context.Context, bytes, results int) {
@@ -229,7 +255,16 @@ func registerMeasurements(meter metric.Meter, m *Metrics) error {
 	if err != nil {
 		return err
 	}
+	pluginCPU, err := meter.Float64ObservableCounter("omniview.plugin.process.cpu_time", metric.WithUnit("s"), metric.WithDescription("Cumulative CPU seconds of a plugin's verified child process"))
+	if err != nil {
+		return err
+	}
+	pluginRSS, err := meter.Int64ObservableGauge("omniview.plugin.process.memory_rss", metric.WithUnit("By"), metric.WithDescription("Current resident memory of a plugin's verified child process"))
+	if err != nil {
+		return err
+	}
 	_, err = meter.RegisterCallback(func(ctx context.Context, o metric.Observer) error {
+		observePluginUsage(ctx, o, pluginCPU, pluginRSS)
 		var total PipelineState
 		pipelineSources.Lock()
 		for _, source := range pipelineSources.sources {
@@ -267,6 +302,6 @@ func registerMeasurements(meter metric.Meter, m *Metrics) error {
 			o.ObserveInt64(peak, rss)
 		}
 		return nil
-	}, state, stateBytes, goroutines, heap, cpu, peak)
+	}, state, stateBytes, goroutines, heap, cpu, peak, pluginCPU, pluginRSS)
 	return err
 }

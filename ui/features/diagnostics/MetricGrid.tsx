@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Select, Text } from '@omniviewdev/base-ui';
 import { Histogram, MetricDetails, MetricPanel, MetricValue, RankedBars, TimeSeriesChart } from '@omniviewdev/base-ui/metrics';
-import { histogramBuckets, metricSeries, metricUnit, pointKey } from './model';
+import { histogramBuckets, isCpuTime, metricSeries, metricUnit, pointKey } from './model';
 import { metricTitle } from './display';
 import type { Metric, Snapshot } from './model';
 import type { DiagnosticsHealth } from '@omniviewdev/runtime/api';
@@ -12,7 +12,7 @@ function MetricChart({ metric, samples, updating, health }: { metric: Metric; sa
   const points = metric.points ?? [];
   const point = points.find(value => pointKey(value.attributes) === selected) ?? points[0];
   const selectedLabel = Object.entries(point?.attributes ?? {}).map(([key, label]) => `${key}: ${label}`).join(' · ');
-  const cpu = metric.name === 'omniview.process.cpu_time';
+  const cpu = isCpuTime(metric.name);
   const unit = cpu ? { kind: 'cpu' as const, base: 'cores' as const } : metricUnit(metric.unit);
   const histogram = metric.kind === 'histogram';
   const series = metricSeries(metric, samples);

@@ -189,7 +189,7 @@ func (pm *pluginManager) loadBuiltinLocked(id string, entry CatalogEntry, opts *
 			return existing.ToInfo(), nil
 		}
 	}
-	op := telemetry.BeginOperation(context.Background(), "plugin", "load")
+	op := telemetry.BeginOperation(telemetry.WithPlugin(context.Background(), id), "plugin", "load")
 	defer func() { op.End(resultErr) }()
 	if err := pm.builtinCollision(id); err != nil {
 		return plugintypes.PluginInfo{}, err
@@ -225,7 +225,7 @@ func (pm *pluginManager) loadBuiltinLocked(id string, entry CatalogEntry, opts *
 	}
 	record.Phase = lifecycle.PhaseRunning
 	record.StateMachine.ForcePhase(record.Phase, "built-in activated")
-	pm.registerStateObserver(record.StateMachine)
+	pm.registerStateObserver(id, record.StateMachine)
 	pm.recordsMu.Lock()
 	pm.records[id] = record
 	pm.recordsMu.Unlock()

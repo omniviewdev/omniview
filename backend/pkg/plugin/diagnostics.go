@@ -9,8 +9,8 @@ import (
 
 // State observers are installed only after successful activation. Failed startup
 // records therefore never contribute an active plugin or a matching decrement.
-func recordPluginActivation() {
-	telemetry.RecordPluginActive(context.Background(), 1)
+func recordPluginActivation(pluginID string) {
+	telemetry.RecordPluginActive(telemetry.WithPlugin(context.Background(), pluginID), 1)
 }
 
 func pluginTransitionMeasurements(t lifecycle.Transition) (activeDelta int64, crashed bool) {
@@ -26,9 +26,9 @@ func pluginTransitionMeasurements(t lifecycle.Transition) (activeDelta int64, cr
 	return activeDelta, t.From == lifecycle.PhaseRunning && t.To == lifecycle.PhaseRecovering
 }
 
-func recordPluginTransition(t lifecycle.Transition) {
+func recordPluginTransition(pluginID string, t lifecycle.Transition) {
 	delta, crashed := pluginTransitionMeasurements(t)
-	ctx := context.Background()
+	ctx := telemetry.WithPlugin(context.Background(), pluginID)
 	if delta != 0 {
 		telemetry.RecordPluginActive(ctx, delta)
 	}
