@@ -8,9 +8,10 @@ import { MetricGrid } from './MetricGrid';
 import styles from './Performance.module.css';
 
 function CaptureSelect({ label, value, captures, onChange, disabled }: { label: string; value: string; captures: CaptureSummary[]; onChange: (value: string) => void; disabled: boolean }) {
+  const selectedCapture = captures.find(capture => capture.id === value);
   return <Select size='sm' disabled={disabled} value={value} onValueChange={next => {
     onChange(next ?? ''); 
-  }}><Select.Trigger aria-label={label}><Select.Value placeholder={label} /><Select.Icon /></Select.Trigger><Select.Portal><Select.Positioner><Select.Popup><Select.List>{captures.map(capture => <Select.Item key={capture.id} value={capture.id}>{capture.name} · {capture.status}</Select.Item>)}</Select.List></Select.Popup></Select.Positioner></Select.Portal></Select>;
+  }}><Select.Trigger aria-label={label}><Select.Value placeholder={label}>{() => selectedCapture ? `${selectedCapture.name} · ${selectedCapture.status}` : value === '' ? label : 'Capture unavailable'}</Select.Value><Select.Icon /></Select.Trigger><Select.Portal><Select.Positioner><Select.Popup><Select.List>{captures.map(capture => <Select.Item key={capture.id} value={capture.id}>{capture.name} · {capture.status}</Select.Item>)}</Select.List></Select.Popup></Select.Positioner></Select.Portal></Select>;
 }
 
 export function Captures({ captures, refresh, maxSeconds }: { captures: CaptureSummary[]; refresh: () => Promise<void>; maxSeconds?: number }) {

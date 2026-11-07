@@ -10,6 +10,14 @@ import styles from '@/features/diagnostics/Performance.module.css';
 
 const views = ['overview', 'operations', 'pipeline', 'captures'] as const;
 const labels = { overview: 'Overview', operations: 'Operations', pipeline: 'Metrics pipeline', captures: 'Captures / comparison' };
+const overviewOrder = [
+  'omniview.process.cpu_time',
+  'omniview.process.go_heap_bytes',
+  'omniview.process.goroutines',
+  'omniview.process.memory_peak_rss',
+  'omniview.plugin.active',
+  'omniview.resource.watches_active',
+];
 export default function Performance() {
   const diagnostics = useDiagnostics();
   const navigate = useNavigate();
@@ -22,7 +30,7 @@ export default function Performance() {
   const currentMetrics = diagnostics.latest?.metrics ?? [];
   const metrics = [...currentMetrics, ...(diagnostics.catalog?.metrics ?? []).filter(metric => !currentMetrics.some(current => current.name === metric.name)).map(metric => ({ ...metric, points: [] }))];
   const groups = {
-    overview: metrics.filter(metric => /runtime|^go\.|process|plugin\.active|watches_active/.test(metric.name)),
+    overview: overviewOrder.flatMap(name => metrics.filter(metric => metric.name === name)),
     operations: metrics.filter(metric => /resource\.|plugin\.|wails\./.test(metric.name)),
     pipeline: metrics.filter(metric => /metric|pipeline|queue|cache|provider|cancel|scan|collect|export/.test(metric.name)),
   };
@@ -46,9 +54,9 @@ export default function Performance() {
     <div className={styles.Content}>{view === 'captures' ? <Captures captures={diagnostics.captures} refresh={diagnostics.refresh} maxSeconds={diagnostics.catalog?.limits.captureSeconds} /> : <>
       <div className={styles.Filter}><SearchInput size='sm' aria-label='Filter performance measurements' placeholder='Filter measurements…' value={query} onValueChange={value => {
         setQuery(value); setPage(0); 
-      }} /><Select size='sm' value={allMeasurements ? 'all' : 'view'} onValueChange={value => {
+      }} /><div className={styles.Scope}><Select size='sm' value={allMeasurements ? 'all' : 'view'} onValueChange={value => {
         setAllMeasurements(value === 'all'); setPage(0); 
-      }}><Select.Trigger aria-label='Measurement scope'><Select.Value /><Select.Icon /></Select.Trigger><Select.Portal><Select.Positioner><Select.Popup><Select.List><Select.Item value='view'>Current view</Select.Item><Select.Item value='all'>All measurements</Select.Item></Select.List></Select.Popup></Select.Positioner></Select.Portal></Select><Text size='sm' tone='muted'>{visible.length} measurements</Text></div>
+      }}><Select.Trigger aria-label='Measurement scope'><Select.Value>{value => value === 'all' ? 'All measurements' : 'Current view'}</Select.Value><Select.Icon /></Select.Trigger><Select.Portal><Select.Positioner><Select.Popup><Select.List><Select.Item value='view'>Current view</Select.Item><Select.Item value='all'>All measurements</Select.Item></Select.List></Select.Popup></Select.Positioner></Select.Portal></Select></div><Text size='sm' tone='muted'>{visible.length} measurements</Text></div>
       {!diagnostics.latest ? <MetricPanel title='Local measurements' loadingChart state={diagnostics.error ? { kind: 'error', message: diagnostics.error } : { kind: 'initial', message: 'Collecting application measurements…' }} /> : visible.length ? view === 'operations' && !allMeasurements ? <Operations metrics={visible} samples={diagnostics.samples} updating={diagnostics.updating} health={health} /> : <><MetricGrid metrics={visible.slice(currentPage * 24, (currentPage + 1) * 24)} samples={diagnostics.samples} updating={diagnostics.updating} health={health} />{visible.length > 24 && <div className={styles.Filter}><Button size='sm' variant='ghost' disabled={currentPage === 0} onClick={() => {
         setPage(currentPage - 1); 
       }}>Previous</Button><Text size='sm'>{currentPage + 1} / {Math.ceil(visible.length / 24)}</Text><Button size='sm' variant='ghost' disabled={(currentPage + 1) * 24 >= visible.length} onClick={() => {

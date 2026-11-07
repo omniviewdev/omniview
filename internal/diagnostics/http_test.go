@@ -2,6 +2,7 @@ package diagnostics
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -78,6 +79,20 @@ func TestHTTPPrivateDiscoverySecurityAndPersistence(t *testing.T) {
 			response, err := client.http.Do(req)
 			if err != nil {
 				t.Fatal(err)
+			}
+			var failure struct {
+				Error struct {
+					Code    string `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if err := json.NewDecoder(response.Body).Decode(&failure); err != nil {
+				response.Body.Close()
+				t.Fatal(err)
+			}
+			if failure.Error.Code == "" || failure.Error.Message == "" || strings.Contains(failure.Error.Message, string(token)) {
+				response.Body.Close()
+				t.Fatalf("unsafe or unstructured early error: %#v", failure)
 			}
 			response.Body.Close()
 			if response.StatusCode != test.status {

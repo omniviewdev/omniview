@@ -136,9 +136,24 @@ func (s *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	reject := func(status int, message string) {
+		code := "invalid_request"
+		switch status {
+		case http.StatusUnauthorized:
+			code = "unauthorized"
+		case http.StatusForbidden:
+			code = "forbidden"
+		case http.StatusConflict:
+			code = "stale_target"
+		case http.StatusNotFound:
+			code = "unknown_path"
+		case http.StatusMethodNotAllowed:
+			code = "method_not_allowed"
+		case http.StatusUnsupportedMediaType:
+			code = "unsupported_media_type"
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
-		json.NewEncoder(w).Encode(map[string]any{"error": message})
+		json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": code, "message": message}})
 	}
 	for key := range r.Header {
 		if strings.EqualFold(key, "Origin") || strings.EqualFold(key, "Forwarded") || strings.HasPrefix(strings.ToLower(key), "x-forwarded-") || strings.EqualFold(key, "Via") {

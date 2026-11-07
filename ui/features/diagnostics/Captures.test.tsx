@@ -29,6 +29,7 @@ async function chooseCapture(label: string, optionName: string) {
   fireEvent.pointerUp(option, { pointerType: 'mouse', button: 0 });
   fireEvent.click(option);
   await waitFor(() => expect(screen.queryByRole('listbox')).not.toBeInTheDocument());
+  expect(screen.getByLabelText(label)).toHaveTextContent(optionName);
 }
 
 describe('capture measurement pagination', () => {

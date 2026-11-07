@@ -20,6 +20,10 @@ func captureCoverage(c *Capture) Health {
 		health.LastError = "collection errors or truncated series occurred"
 	}
 	for _, sample := range c.Samples {
+		if !sample.Health.Complete {
+			health.Complete = false
+			health.LastError = "capture includes an incomplete collection sample"
+		}
 		if sample.Identity.ConfigID != c.Identity.ConfigID {
 			health.Complete = false
 			health.LastError = "configuration changed during capture"

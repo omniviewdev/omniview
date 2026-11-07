@@ -10,6 +10,7 @@ function MetricChart({ metric, samples, updating, health }: { metric: Metric; sa
   const [selected, setSelected] = useState('');
   const points = metric.points ?? [];
   const point = points.find(value => pointKey(value.attributes) === selected) ?? points[0];
+  const selectedLabel = Object.entries(point?.attributes ?? {}).map(([key, label]) => `${key}: ${label}`).join(' · ');
   const cpu = metric.name === 'omniview.process.cpu_time';
   const unit = cpu ? { kind: 'cpu' as const, base: 'cores' as const } : metricUnit(metric.unit);
   const histogram = metric.kind === 'histogram';
@@ -26,7 +27,7 @@ function MetricChart({ metric, samples, updating, health }: { metric: Metric; sa
     details={{ content: <Text size='sm' tone='muted'>{metric.name} · {metric.kind} · {metric.unit === '' ? 'count' : metric.unit}{cpu ? ' · observed interval CPU cores' : histogram ? ' · cumulative observations' : metric.kind === 'counter' ? ' · cumulative process total' : ' · sampled value'}</Text> }}
     actions={histogram && points.length > 1 ? <Select size='sm' value={pointKey(point.attributes)} onValueChange={value => {
       setSelected(value ?? ''); 
-    }}><Select.Trigger aria-label={`${metric.name} distribution series`}><Select.Value /><Select.Icon /></Select.Trigger><Select.Portal><Select.Positioner><Select.Popup><Select.List>{points.map(value => <Select.Item key={pointKey(value.attributes)} value={pointKey(value.attributes)}>{Object.entries(value.attributes ?? {}).map(([key, label]) => `${key}: ${label}`).join(' · ') || 'All observations'}</Select.Item>)}</Select.List></Select.Popup></Select.Positioner></Select.Portal></Select> : undefined}
+    }}><Select.Trigger aria-label={`${metric.name} distribution series`}><Select.Value>{() => selectedLabel === '' ? 'All observations' : selectedLabel}</Select.Value><Select.Icon /></Select.Trigger><Select.Portal><Select.Positioner><Select.Popup><Select.List>{points.map(value => <Select.Item key={pointKey(value.attributes)} value={pointKey(value.attributes)}>{Object.entries(value.attributes ?? {}).map(([key, label]) => `${key}: ${label}`).join(' · ') || 'All observations'}</Select.Item>)}</Select.List></Select.Popup></Select.Positioner></Select.Portal></Select> : undefined}
     value={!histogram && unit && points.length === 1 ? <MetricValue value={series[0]?.points.at(-1)?.value ?? null} unit={unit} size='md' /> : undefined}>
     {hasData && unit && (histogram ? <Histogram buckets={histogramBuckets(point.bounds ?? [])} values={point.bucketCounts ?? []} unit={unit} measure='count' height={140} label={title} /> : domain ? <TimeSeriesChart series={series} unit={unit} domain={domain} maxGapMs={6000} height={140} label={title} /> : <Text size='sm' tone='muted'>Waiting for observed history.</Text>)}
     {hasData && unit && !histogram && points.length > 1 && <RankedBars items={series.map(item => ({ id: item.id, label: item.label, value: item.points.at(-1)?.value ?? null }))} unit={unit} limit={4} label={`${metric.name} current series`} />}

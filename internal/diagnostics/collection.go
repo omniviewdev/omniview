@@ -127,11 +127,14 @@ func safeAttributes(set attribute.Set) map[string]string {
 	for _, kv := range set.ToSlice() {
 		key := string(kv.Key)
 		switch key {
-		case "operation", "outcome", "controller", "provider", "phase", "state", "kind", "status", "reason", "cache", "queue", "direction", "type", "event", "work", "cpu.mode", "go.memory.type":
+		case "operation", "outcome", "controller", "provider", "phase", "state", "kind", "status", "reason", "cache", "queue", "direction", "type", "event", "work", "cpu.mode", "go.memory.type", "domain", "rpc.system.name", "rpc.response.status_code":
 		default:
 			continue
 		}
 		value := kv.Value.AsString()
+		if !safeProtocolDimension(key, value) {
+			continue
+		}
 		if key == "go.memory.type" && value != "stack" && value != "other" {
 			continue
 		}
@@ -200,10 +203,6 @@ func convert(data *metricdata.ResourceMetrics) ([]Metric, bool) {
 			default:
 				continue
 			}
-			if len(out.Points) > 16 {
-				out.Points = out.Points[:16]
-				truncated = true
-			}
 			metrics = append(metrics, out)
 		}
 	}
@@ -213,9 +212,9 @@ func (s *Service) Export(ctx context.Context, data *metricdata.ResourceMetrics) 
 	// OTel owns data buffers. Convert local values and deep-copy remote data before returning.
 	metrics, truncated := convert(data)
 	now := time.Now()
-	var ambiguous bool
-	metrics, ambiguous = unambiguousMetrics(metrics)
-	truncated = truncated || ambiguous
+	var ambiguous, limited bool
+	metrics, ambiguous, limited = unambiguousMetrics(metrics)
+	truncated = truncated || limited
 	encoded, err := json.Marshal(metrics)
 	if err != nil {
 		s.recordError("non-finite measurement rejected")
@@ -230,14 +229,25 @@ func (s *Service) Export(ctx context.Context, data *metricdata.ResourceMetrics) 
 		s.mu.Unlock()
 		return fmt.Errorf("diagnostics closed")
 	}
-	if truncated {
+	// Completeness describes this collection; lifetime counters remain cumulative.
+	s.health.Complete = true
+	s.health.LastError = ""
+	if truncated || ambiguous {
 		s.health.Dropped++
 		s.health.Complete = false
-		s.health.LastError = "metric or series limit reached"
+		switch {
+		case truncated && ambiguous:
+			s.health.LastError = "ambiguous normalized series rejected; metric or series limit reached"
+		case ambiguous:
+			s.health.LastError = "ambiguous normalized metric series rejected"
+		default:
+			s.health.LastError = "metric or series limit reached"
+		}
 	}
 	if len(s.samples) > 0 && now.Sub(s.samples[len(s.samples)-1].Timestamp) > s.opts.Interval*3 {
 		s.health.Gaps++
 		s.health.Complete = false
+		s.health.LastError = "collection gap before this sample"
 	}
 	s.sequence++
 	s.lastSuccess = now

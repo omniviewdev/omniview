@@ -10,6 +10,7 @@ small.Muted { display: block; margin-top: 3px; }
 .Grid > * { min-width: 0; }
 .Filter { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .Filter > :first-child { width: 270px; max-width: 100%; }
+.Scope { width: 200px; max-width: 100%; flex: 0 1 200px; }
 .Captures { display: flex; flex-direction: column; gap: 12px; }
 .Form { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(160px, 1fr) 90px auto; align-items: end; gap: 10px; padding: 12px; border: 1px solid var(--ov-color-border-default); background: var(--ov-color-bg-surface); }
 .Form label { display: flex; flex-direction: column; gap: 6px; }
