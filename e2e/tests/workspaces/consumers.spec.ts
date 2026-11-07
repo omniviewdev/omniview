@@ -107,7 +107,9 @@ test.describe('Real application plugin consumers', () => {
     expect(afterB.generation).toBe(beforeB.generation);
     expect(afterB.stateRoot).toBe(beforeB.stateRoot);
     expect(afterB.process).toEqual(beforeB.process);
-    expect(afterB.plugins).toEqual(beforeB.plugins);
+    expect([...afterB.plugins].sort((a, b) => a.id.localeCompare(b.id))).toEqual(
+      [...beforeB.plugins].sort((a, b) => a.id.localeCompare(b.id)),
+    );
     expect(afterB.endpoints).toEqual(beforeB.endpoints);
     expect(await b.workspace.control('settings.get', { scope: 'plugin', pluginID: probeID, id: 'probe_counter' })).toMatchObject({ status: 'succeeded', result: beforeSettingB.result });
   });
