@@ -1,10 +1,11 @@
 package devsession
 
 import (
-	"golang.org/x/sys/windows"
 	"os"
 	"runtime"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 func createPrivateDirectoryAt(parent *os.File, name string) (*os.File, error) {

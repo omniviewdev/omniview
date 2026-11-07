@@ -2,11 +2,12 @@ package devoutputs
 
 import (
 	"errors"
-	"github.com/omniviewdev/omniview/internal/devsession"
-	"golang.org/x/sys/windows"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/omniviewdev/omniview/internal/devsession"
+	"golang.org/x/sys/windows"
 )
 
 func TestPrivateOutputCreationDoesNotRepairExistingWindowsACL(t *testing.T) {

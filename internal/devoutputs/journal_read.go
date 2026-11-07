@@ -1,9 +1,10 @@
 package devoutputs
 
 import (
-	"github.com/omniviewdev/omniview/internal/devsession"
 	"io"
 	"os"
+
+	"github.com/omniviewdev/omniview/internal/devsession"
 )
 
 func readJournalBytes(path string) ([]byte, error) {

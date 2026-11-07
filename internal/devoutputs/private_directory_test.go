@@ -1,10 +1,11 @@
 package devoutputs
 
 import (
-	"github.com/omniviewdev/omniview/internal/devsession"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/omniviewdev/omniview/internal/devsession"
 )
 
 func TestPrivateOutputDirectoryCreationRefusesExistingBoundary(t *testing.T) {

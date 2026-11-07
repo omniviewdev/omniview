@@ -3,9 +3,10 @@
 package devsession
 
 import (
-	"golang.org/x/sys/unix"
 	"os"
 	"runtime"
+
+	"golang.org/x/sys/unix"
 )
 
 func createPrivateDirectoryAt(parent *os.File, name string) (*os.File, error) {

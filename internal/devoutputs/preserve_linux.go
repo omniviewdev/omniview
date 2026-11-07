@@ -1,8 +1,9 @@
 package devoutputs
 
 import (
-	"golang.org/x/sys/unix"
 	"os"
+
+	"golang.org/x/sys/unix"
 )
 
 func renamePinnedNoReplace(source *os.File, sourceName string, destination *os.File, destinationName string) error {

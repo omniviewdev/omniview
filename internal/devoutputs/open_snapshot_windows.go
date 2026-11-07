@@ -1,9 +1,10 @@
 package devoutputs
 
 import (
-	"golang.org/x/sys/windows"
 	"os"
 	"path/filepath"
+
+	"golang.org/x/sys/windows"
 )
 
 func openSnapshotFile(path string) (*os.File, error) {
