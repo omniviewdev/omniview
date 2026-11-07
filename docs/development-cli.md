@@ -52,6 +52,20 @@ manifest ranges before installation, naming both consumer and linked manifests.
 Overlapping ranges are not proof that a selected lockfile resolves compatible
 versions. Complex ranges and policy-adjusted peers remain the native resolver's
 decision; a clean planning result does not replace strict installation.
+When a peer itself comes from selected linked source, planning compares that
+package's actual manifest version with the linked consumer's peer range. It names
+the consumer, peer requester, and selected provider manifests. A stale dependency
+range does not replace the selected provider's version. Generated `workspace:*`
+overrides do not suppress this check; unrelated policy overrides still defer to
+native resolution.
+
+Commit pins must already exist in the registered source repository. A
+`local_ref_missing` error names the repository and pinned object without printing
+Git stderr or remote URLs. Explicitly fetch the branch containing that object in
+the registered source repository, then repeat the selection. The CLI never fetches
+an unknown pin automatically; explicit remote-tracking branch selection retains
+its existing fetch behavior.
+
 
 Go source preflight also checks direct SDK imports against non-test package source
 in the selected SDK worktree before installation. It scans platform/tag variants
@@ -81,6 +95,10 @@ name lookup searches ancestors of the current directory for the A03 source
 registry, then uses its workspace identity/journal lookup. Use `./name` to select
 an unambiguously relative directory instead of a registry name. Unknown or
 ambiguous names fail rather than guessing.
+`instance inspect [WORKSPACE]` accepts the same workspace selector positionally.
+The positional selector and `--workspace` must agree when both are supplied;
+plugin and operation positional IDs remain resource IDs, not workspace selectors.
+
 
 From a host Git checkout, `workspace collections --json` lists reachable, validated
 collections associated with that repository's registered Git worktrees. It does
@@ -233,6 +251,50 @@ flags for a workspace that has never launched, or override saved settings
 explicitly. `workspace evidence` inspects reusable protocol proof;
 `--link-evidence FILE` applies supplied proof through the normal link operation.
 Refresh revalidates link state rather than treating old link freshness as current.
+
+`workspace restart` accepts no launch overrides: it reuses saved launch settings
+and protocol evidence. Use `workspace refresh` to change launch settings.
+Flag errors identify registered offending names and the exact subcommand help
+command, but never echo values or arbitrary unknown names.
+
+Plain `workspace edit` requires a stopped supervisor. Its refusal includes an
+exact absolute-manifest `omniview-dev workspace down --workspace MANIFEST`
+command. `edit --apply` manages stopping and refresh with retained prerequisites.
+
+A `link_conflict` identifies the dependency path and link phase. When completed
+links retain valid protocol proof and saved launch settings, the diagnostic offers
+the exact workspace refresh command. Refresh may stop and restart the workspace
+and still refuses overlapping edits it cannot preserve safely. Missing
+prerequisites or incomplete links instead point to the applicable command help;
+do not edit receipts or assume that `up` will adopt changed dependency files.
+
+### Protocol evidence
+
+Every `--link-evidence FILE` argument is a report file path, not inline JSON.
+`workspace evidence` without that flag only inspects saved proof. A fresh workspace
+returns structured `evidence_missing` with `state: absent`, without creating a
+link journal. Supplying the flag invokes the normal link operation; it is not a
+proof-only save.
+
+From the selected host source checkout, run the actual pinned composition probe:
+
+```sh
+GOWORK=off A11_PROTOCOL_PROBE=1 A11_PROTOCOL_REPORT=/absolute/path/link-protocol.json \
+  go test ./internal/devworkspace -run '^TestLinkPinnedProtocolProbe$' -count=1
+```
+
+The probe uses disposable repositories, the native pinned pnpm executable, and
+registry access. It writes the report only after live distribution replacement,
+recursive peer checks, and runtime checks pass. The current report schema contains
+`protocol`, `versions`, `atomicDist`, `peers`, and `runtime`; the selected pin is
+validated exactly. Do not construct acceptance booleans manually or reuse a report
+for a different protocol or pnpm version.
+
+Use the emitted file with `workspace preflight --workspace MANIFEST
+--link-evidence FILE`, then `workspace up --workspace MANIFEST --link-evidence
+FILE` after resolving reported source prerequisites. Inspection of saved proof is
+not certification that installed dependency bytes remain unchanged.
+
 Workspace commands print human diagnostics by default; `--json` returns structured
 errors and results. Control API commands retain their JSON response envelopes.
 
