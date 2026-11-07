@@ -91,14 +91,10 @@ func finishCleanup(ctx context.Context, s scope, j *journal, key string) error {
 	var reader snapshotReader
 	for _, relative := range paths {
 		path := filepath.Join(entry.Spec.Target, relative)
-		info, err := os.Lstat(path)
+		info, err := observeSnapshotPath(path)
 		if os.IsNotExist(err) {
 			continue
 		}
-		if err != nil {
-			return err
-		}
-		info, err = stableSnapshotInfo(path, info)
 		if err != nil {
 			return err
 		}

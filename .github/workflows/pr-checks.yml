@@ -47,6 +47,11 @@ jobs:
         env:
           GOWORK: "off"
           GOFLAGS: ""
+      - name: Test native output ownership and handle observations
+        run: go test ./internal/devoutputs -count=1
+        env:
+          GOWORK: "off"
+          GOFLAGS: ""
 
   go-checks:
     name: Go checks

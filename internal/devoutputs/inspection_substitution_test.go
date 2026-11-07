@@ -129,11 +129,7 @@ func TestInspectionDoesNotTurnIOFailuresIntoDrift(t *testing.T) {
 func TestSnapshotRejectsReplacementWithMatchingMetadata(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "output")
 	writeOutput(t, path, "original")
-	observed, err := os.Lstat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	observed, err = stableSnapshotInfo(path, observed)
+	observed, err := observeSnapshotPath(path)
 	if err != nil {
 		t.Fatal(err)
 	}

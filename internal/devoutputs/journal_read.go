@@ -7,15 +7,17 @@ import (
 )
 
 func readJournalBytes(path string) ([]byte, error) {
+	observed, err := observeSnapshotPath(path)
+	if err != nil {
+		return nil, err
+	}
+	return readObservedJournalBytes(path, observed)
+}
+
+// observed must originate from the initial filesystem observation, which is a
+// handle-derived observation on Windows, never a later rebase of pathname info.
+func readObservedJournalBytes(path string, observed os.FileInfo) ([]byte, error) {
 	if err := devsession.ValidatePrivateFile(path); err != nil {
-		return nil, err
-	}
-	observed, err := os.Lstat(path)
-	if err != nil {
-		return nil, err
-	}
-	observed, err = stableSnapshotInfo(path, observed)
-	if err != nil {
 		return nil, err
 	}
 	stream, err := openObservedSnapshotFile(path, observed)
@@ -30,7 +32,7 @@ func readJournalBytes(path string) ([]byte, error) {
 	if closeErr != nil {
 		return nil, closeErr
 	}
-	after, err := os.Lstat(path)
+	after, err := observeSnapshotPath(path)
 	if err != nil {
 		return nil, snapshotPathError(path, observed, err)
 	}

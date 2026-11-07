@@ -274,6 +274,9 @@ discarding other selected conflicts. Genuine I/O failures and cancellation remai
 errors, not ownership drift. Regular-file payloads are opened without following
 links, with nonblocking opens where supported; opened type and identity are
 checked before hashing. Dependency links remain opaque link observations.
+On Windows, metadata and identity come together from the initial metadata-only
+handle; a preceding pathname-only observation is never upgraded into identity
+proof. Later payload opens must still match that original handle's identity.
 
 Ordinary `preflight` remains lightweight and reports `ownershipChecked: false`.
 The explicit `--ownership` option performs the recursive ownership scan and

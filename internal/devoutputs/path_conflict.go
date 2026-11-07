@@ -50,7 +50,7 @@ func openObservedSnapshotFile(path string, observed os.FileInfo) (*os.File, erro
 }
 
 func snapshotPathError(path string, observed os.FileInfo, cause error) error {
-	current, statErr := os.Lstat(path)
+	current, statErr := observeSnapshotPath(path)
 	if os.IsNotExist(statErr) {
 		return changedPath(path, observed, nil, "producer entry disappeared during observation")
 	}

@@ -31,7 +31,7 @@ type snapshotReader struct {
 func snapshotPath(spec specification, exclude []string) (snapshot, error) {
 	result := snapshot{}
 	var reader snapshotReader
-	info, err := os.Lstat(spec.Target)
+	info, err := observeSnapshotPath(spec.Target)
 	if os.IsNotExist(err) {
 		return result, nil
 	}
@@ -39,10 +39,6 @@ func snapshotPath(spec specification, exclude []string) (snapshot, error) {
 		return nil, err
 	}
 	if spec.Mode == "file" {
-		info, err = stableSnapshotInfo(spec.Target, info)
-		if err != nil {
-			return nil, err
-		}
 		value, err := reader.item(spec.Target, info, false)
 		if err != nil {
 			return nil, err
@@ -96,11 +92,7 @@ func snapshotPath(spec specification, exclude []string) (snapshot, error) {
 				return fmt.Errorf("producer output overlaps Git metadata")
 			}
 		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		info, err = stableSnapshotInfo(path, info)
+		info, err := observeSnapshotPath(path)
 		if err != nil {
 			return err
 		}
@@ -175,7 +167,7 @@ func (reader *snapshotReader) item(path string, info os.FileInfo, allowLinks boo
 		if err != nil {
 			return result, snapshotPathError(path, info, err)
 		}
-		after, err := os.Lstat(path)
+		after, err := observeSnapshotPath(path)
 		if os.IsNotExist(err) {
 			return result, changedPath(path, info, nil, "producer link disappeared during snapshot")
 		}
@@ -209,7 +201,7 @@ func (reader *snapshotReader) item(path string, info os.FileInfo, allowLinks boo
 		if closeErr != nil {
 			return result, closeErr
 		}
-		after, err := os.Lstat(path)
+		after, err := observeSnapshotPath(path)
 		if os.IsNotExist(err) {
 			return result, changedPath(path, info, nil, "producer file disappeared during snapshot")
 		}
@@ -350,14 +342,10 @@ func removeSnapshotLeaves(spec specification, expected snapshot) error {
 		if relative != "." {
 			path = filepath.Join(path, relative)
 		}
-		current, err := os.Lstat(path)
+		current, err := observeSnapshotPath(path)
 		if os.IsNotExist(err) {
 			continue
 		}
-		if err != nil {
-			return err
-		}
-		current, err = stableSnapshotInfo(path, current)
 		if err != nil {
 			return err
 		}

@@ -9,11 +9,21 @@ import (
 )
 
 func openRelativeWindows(parent *os.File, name string, access, options uint32) (*os.File, error) {
+	return openRelativeWindowsObject(parent, name, access, options, windows.OBJ_CASE_INSENSITIVE|windows.OBJ_DONT_REPARSE)
+}
+
+// Metadata observation opens a final reparse point itself, never its target.
+// Read and rename callers retain OBJ_DONT_REPARSE and reject reparse points.
+func openRelativeWindowsMetadata(parent *os.File, name string) (*os.File, error) {
+	return openRelativeWindowsObject(parent, name, windows.FILE_READ_ATTRIBUTES, 0, windows.OBJ_CASE_INSENSITIVE)
+}
+
+func openRelativeWindowsObject(parent *os.File, name string, access, options, objectFlags uint32) (*os.File, error) {
 	objectName, err := windows.NewNTUnicodeString(name)
 	if err != nil {
 		return nil, err
 	}
-	attributes := windows.OBJECT_ATTRIBUTES{RootDirectory: windows.Handle(parent.Fd()), ObjectName: objectName, Attributes: windows.OBJ_CASE_INSENSITIVE | windows.OBJ_DONT_REPARSE}
+	attributes := windows.OBJECT_ATTRIBUTES{RootDirectory: windows.Handle(parent.Fd()), ObjectName: objectName, Attributes: objectFlags}
 	attributes.Length = uint32(unsafe.Sizeof(attributes))
 	var handle windows.Handle
 	err = windows.NtCreateFile(&handle, access|windows.SYNCHRONIZE, &attributes, &windows.IO_STATUS_BLOCK{}, nil, 0,

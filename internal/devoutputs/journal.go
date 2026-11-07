@@ -621,18 +621,15 @@ func retireJournal(s scope, j *journal) error {
 		return err
 	}
 	expected = append(expected, '\n')
-	if err = devsession.ValidatePrivateFile(s.path); err != nil {
-		return err
-	}
-	before, err := os.Lstat(s.path)
+	before, err := observeSnapshotPath(s.path)
 	if err != nil {
 		return err
 	}
-	actual, err := os.ReadFile(s.path)
+	actual, err := readObservedJournalBytes(s.path, before)
 	if err != nil {
 		return err
 	}
-	after, err := os.Lstat(s.path)
+	after, err := observeSnapshotPath(s.path)
 	if err != nil {
 		return err
 	}
