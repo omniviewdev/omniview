@@ -62,6 +62,13 @@ func executeControlCommand(cmd *cobra.Command, command controlCommand) error {
 	if err != nil && (response.Status == "" || response.Error == nil) {
 		return fail(err)
 	}
+	if response.Error != nil && response.OperationID != "" && response.Error.Details["diagnosticsOperationID"] == response.OperationID {
+		// Bind retrieval to the resolved manifest, not the caller's later cwd.
+		// Single-quote shell arguments without interpreting paths.
+		quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'" }
+		response.Error.Details["diagnosticsCommand"] = "operation get " + quote(response.OperationID) +
+			" --unsafe-output --workspace " + quote(workspace.ManifestPath)
+	}
 	if command.operation == "plugin.dev.logs" && response.Error == nil && !command.unsafeOutput {
 		var page devcontrol.LogPage
 		if json.Unmarshal(response.Result, &page) != nil {

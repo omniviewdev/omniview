@@ -48,7 +48,7 @@ Send `POST /v1/control` with a `devcontract.Request` v1 envelope. Unknown envelo
 | `settings.get` | same scope, optional `id`; omission returns all safe values |
 | `settings.set` | scope plus `id` and JSON `value` |
 | `settings.bulk` | scope plus `values` object keyed by setting ID |
-| `operation.get` | `{"operationID":"id"}` |
+| `operation.get` | `{"operationID":"id","includeOutput":false}` |
 | `operation.wait` | `{"operationID":"id","timeoutMS":30000}` |
 
 The envelope generation targets the host; rebuild and dependency-watch parameter generations target the managed plugin. Obtain the latter from dev status. `plugin.dev.dependencies` requires an explicit `enabled` boolean and invokes the canonical generation-checked backend watcher, so the workspace supervisor can transfer dependency-invalidation ownership without a second watcher or a no-op acknowledgment. Wait for the returned operation to succeed before claiming ownership; stale/stopped instances fail. Installed plugin operations target the manager's installed records, never marketplace publisher listings. Archive inputs remain caller-owned. There is no arbitrary filesystem-read, shell, Go-method, bound-method, or cancellation endpoint.
@@ -90,6 +90,10 @@ Plugin settings reads use A05's `RedactedPluginSettings` via the injected native
 Log reads are bounded to at most 500 entries (default 100) from the producer's existing 5000-entry ring. The cursor is an offset into the current snapshot, **not** a stable streaming sequence; ring rollover can change positions. `nextCursor` advances within that snapshot and `truncated` reports remaining entries or clipped message text.
 
 By default logs expose actual timestamps/source/level but hide unstructured message text, which has no authoritative secret classification. A deliberate `includeOutput: true` request returns actual message text, clipped to 2048 bytes per entry and the overall result limit. The CLI exposes this only as `--unsafe-output` and warns on stderr. **Arbitrary plugin/build output may contain secrets**; opt-in output is not claimed secret-safe and is never copied to server telemetry or diagnostics by control itself.
+
+Failed accepted operations retain up to 8192 bytes of their error chain in the host generation's bounded operation store, independent of installed plugin inventory. Traversal visits at most 16 error nodes and 16 levels, prioritizes underlying causes over repeated wrapper text, and shares the byte budget among distinct messages, truncating on UTF-8 boundaries. Default responses hide all unstructured diagnostic text and return a nonsecret operation correlation and retrieval command. Use `omniview-dev operation get ID --workspace WORKSPACE --unsafe-output` only when raw output is needed: it may contain credentials, private paths, or arbitrary compiler/plugin text. The CLI's emitted command selects the original absolute workspace manifest, even when run from another directory. Direct API responses select the original workspace UUID; add `--root COLLECTION` outside its registered collection, or replace `--workspace UUID` with the original absolute manifest path. Retrieval still requires the authenticated workspace and generation; unsafe reads do not change later default reads. Diagnostics expire with host shutdown or completed-operation eviction, so retrieve them before restarting the host. This is not a persistent crash archive.
+
+Archive replacement transfers retained data/store directory capabilities by rename, including rollback. Durable installation success does not prove resource catalog, query, connection, or cold-start provider health. Development unlink removes the installed binding and copied artifacts while preserving source. A later supervisor launch may intentionally relink plugins still selected in the workspace manifest.
 
 ## Verification boundary
 
