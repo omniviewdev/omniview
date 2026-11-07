@@ -307,6 +307,9 @@ readiness transition; a failed rebuild does not replace that observation.
 `health.checkoutSinceReady` reports `unchanged`, `changed`, or `unknown`. Neither
 checkout observation proves compiler inputs or the source served by a process.
 `health.servedSource` remains `unknown` without artifact-to-source attestation.
+The footer reports host readiness independently of served provenance. It shows
+checkout changes since readiness and served-source evidence separately; a ready
+host does not attest which source produced its artifacts.
 Failures name the failed stage and a recovery command. An HMR connection alone
 does not prove that an edited source module was served or executed.
 
