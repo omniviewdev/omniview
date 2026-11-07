@@ -58,11 +58,11 @@ Workspace frontend producers use `internal/devoutputs` controlled writer capabil
 
 ## Trusted SDK build evidence
 
-Workspace backend launch fails closed without independent host-owned artifact evidence; source YAML cannot supply or override it. The builder resolves the effective SDK using `go list -m -json`, including the actual replacement directory, and delegates source verification to `internal/devsource`.
+Workspace backend launch fails closed without independent host-owned artifact evidence; source YAML cannot supply or override it. The builder resolves the effective SDK using `go list -m -json`, including the actual replacement directory, and delegates source verification to `internal/devsdk`, which wraps `internal/devsource`.
 
 The source verifier observes the checkout's HEAD and a deterministic current source digest, including dirty tracked and nonignored untracked source files. The exact identity must remain unchanged before and after the actual build, and the resulting executable must include the SDK module. Dirty SDK edits therefore do not require committing before rebuilding.
 
-After successful verification/build the builder calls `instance.RecordBuiltArtifactSource(resolvedWorkspace, id, binary, sdkRevision, sourceDigest)`. Installed YAML gets newly generated provenance for that artifact, never the source file's self-attestation. The loader independently verifies the private host artifact record and executes a private digest-checked snapshot. Neither imported binaries nor arbitrary `state_isolation` YAML bypass this gate. Artifact storage is keyed by workspace UUID and is independent of a custom persistent-state directory's parent.
+After successful verification/build the builder calls `instance.RecordBuiltArtifact(resolvedWorkspace, id, binary, identity)` with the verified `devsdk.Identity` (artifact schema 3 records selected source identities only: checkout revision and source digest). Installed YAML gets newly generated provenance for that artifact, never the source file's self-attestation. The loader independently verifies the private host artifact record and executes a private digest-checked snapshot. Neither imported binaries nor arbitrary `state_isolation` YAML bypass this gate. Artifact storage is keyed by workspace UUID and is independent of a custom persistent-state directory's parent.
 
 ## Leases and owned cleanup
 
