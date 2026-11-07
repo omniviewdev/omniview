@@ -118,7 +118,7 @@ func Resolve(opts Options) (Profile, error) {
 			if e != nil {
 				return Profile{}, e
 			}
-			profile.Descriptor.Repositories = append(profile.Descriptor.Repositories, devcontract.RepositoryResolution{ID: repo.ID, Path: path, Ref: repo.BaseRef, Commit: repo.BaseCommit})
+			profile.Descriptor.Repositories = append(profile.Descriptor.Repositories, devcontract.RepositoryResolution{ID: repo.ID, Path: path, ConfiguredRef: repo.BaseRef, BaseCommit: repo.BaseCommit})
 		}
 	} else {
 		var contractErr *devcontract.Error

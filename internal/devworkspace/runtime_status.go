@@ -17,12 +17,15 @@ type RuntimeHealth struct {
 	Liveness     string `json:"liveness"`
 	Build        string `json:"build"`
 	Dependencies string `json:"dependencies"`
-	ServedSource string `json:"servedSource"`
-	Readiness    string `json:"readiness"`
-	HMR          string `json:"hmr"`
-	SourceReload string `json:"sourceReload"`
+	// ServedSource remains unknown without an artifact-to-source attestation.
+	ServedSource       string `json:"servedSource"`
+	CheckoutSinceReady string `json:"checkoutSinceReady"`
+	Readiness          string `json:"readiness"`
+	HMR                string `json:"hmr"`
+	SourceReload       string `json:"sourceReload"`
 }
 
+// CheckoutStatus is a filesystem observation, not a served-source attestation.
 type CheckoutStatus struct {
 	Commit       string `json:"commit"`
 	Branch       string `json:"branch,omitempty"`
@@ -115,7 +118,7 @@ func (r checkoutContextReader) Read(buffer []byte) (int, error) {
 }
 
 func (s *workspaceSupervisor) observeStatus(ctx context.Context, status Status) Status {
-	status.Health = RuntimeHealth{Liveness: "alive", Build: "unknown", Dependencies: "unknown", ServedSource: "unknown", Readiness: "unknown", HMR: "unverified", SourceReload: "unverified"}
+	status.Health = RuntimeHealth{Liveness: "alive", Build: "unknown", Dependencies: "unknown", ServedSource: "unknown", CheckoutSinceReady: "unknown", Readiness: "unknown", HMR: "unverified", SourceReload: "unverified"}
 	status.Checkouts = checkoutStatuses(ctx, status.Workspace)
 	if len(status.Builds) > 0 {
 		status.Health.Build = "ready"
@@ -141,15 +144,15 @@ func (s *workspaceSupervisor) observeStatus(ctx context.Context, status Status) 
 	} else {
 		status.Health.Dependencies = "stale"
 	}
-	if len(status.ServedCheckouts) > 0 {
-		status.Health.ServedSource = "stale"
-		if reflect.DeepEqual(status.Checkouts, status.ServedCheckouts) {
-			status.Health.ServedSource = "current"
+	if len(status.ReadyCheckouts) > 0 {
+		status.Health.CheckoutSinceReady = "changed"
+		if reflect.DeepEqual(status.Checkouts, status.ReadyCheckouts) {
+			status.Health.CheckoutSinceReady = "unchanged"
 		}
 	}
 	for _, checkout := range status.Checkouts {
 		if checkout.Error != "" {
-			status.Health.ServedSource = "unknown"
+			status.Health.CheckoutSinceReady = "unknown"
 		}
 	}
 	if status.Instance != nil {

@@ -126,7 +126,7 @@ func testSourceUpdateFailedReadiness(t *testing.T, stage string) {
 	s := &workspaceSupervisor{
 		manager: m, workspace: w, generation: generation, sessionContext: ctx,
 		options: LaunchOptions{Timeout: time.Second}, output: io.Discard, children: children,
-		status: Status{Workspace: w, Generation: generation, Phase: "ready", ServedCheckouts: served},
+		status: Status{Workspace: w, Generation: generation, Phase: "ready", ReadyCheckouts: served},
 	}
 	builds := 0
 	audits := 0
@@ -170,7 +170,7 @@ func testSourceUpdateFailedReadiness(t *testing.T, stage string) {
 	status := s.snapshot()
 	require.Equal(t, "error", status.Phase)
 	require.Equal(t, "plugin:kubernetes:"+stage, status.FailedStage)
-	require.Equal(t, served, status.ServedCheckouts)
+	require.Equal(t, served, status.ReadyCheckouts)
 	require.NotNil(t, status.LastError)
 	retained, err := readSourceUpdate(m, s.workspace)
 	require.NoError(t, err)

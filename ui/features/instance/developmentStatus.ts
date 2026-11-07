@@ -65,12 +65,16 @@ export function hostStatus(status: DevelopmentStatus | null, hostReady: boolean)
     return { label: 'Building', tone: 'warning' } as const;
   }
 
-  if (status.health.servedSource === 'stale' || status.health.dependencies === 'stale') {
+  if (status.health.dependencies === 'stale') {
     return { label: 'Stale', tone: 'neutral' } as const;
   }
 
+  if (status.health.checkoutSinceReady === 'changed') {
+    return { label: 'Changed', tone: 'neutral' } as const;
+  }
+
   if (hostReady && status.phase === 'ready' && status.health.build === 'ready'
-    && status.health.readiness === 'authenticated' && status.health.servedSource === 'current'
+    && status.health.readiness === 'authenticated'
     && status.health.dependencies === 'current') {
     return { label: 'Ready', tone: 'success' } as const;
   }
