@@ -92,7 +92,8 @@ export default function InstanceIndicator() {
             </DetailSection>
             <DetailSection title='Source & plugins'>
               <DescriptionList layout='horizontal' size='xs' className={styles.InstanceDetails}>
-                <DescriptionList.Item label='Source freshness'><Observation value={development?.health.servedSource ?? (staticFrontend ? 'Not observed' : 'Unknown')} /></DescriptionList.Item>
+                <DescriptionList.Item label='Checkout since ready'><Observation value={development?.health.checkoutSinceReady ?? 'Unknown'} /></DescriptionList.Item>
+                <DescriptionList.Item label='Served source'><Observation value={development?.health.servedSource ?? (staticFrontend ? 'Not observed' : 'Unknown')} /></DescriptionList.Item>
                 <DescriptionList.Item label='Source reload proof'><Observation value={staticFrontend ? 'Not supported' : development?.health.sourceReload ?? 'Unverified'} /></DescriptionList.Item>
                 <DescriptionList.Item label='Selected plugins'><span title='Selection does not imply plugin readiness'>{development?.selectedPluginCount ?? 'Unknown'}</span></DescriptionList.Item>
               </DescriptionList>
