@@ -860,7 +860,7 @@ func printWorkspaceValue(out io.Writer, value any) {
 	}
 	if status, ok := value.(devworkspace.Status); ok {
 		fmt.Fprintf(out, "%s (%s)\nWorkspace: %s\nState: %s\nStatus: %s\n", status.Manifest.DisplayName, status.Manifest.WorkspaceID, status.Root, status.StateRoot, status.Phase)
-		fmt.Fprintf(out, "Health: process=%s build=%s dependencies=%s source=%s readiness=%s hmr=%s reload=%s\n", status.Health.Liveness, status.Health.Build, status.Health.Dependencies, status.Health.ServedSource, status.Health.Readiness, status.Health.HMR, status.Health.SourceReload)
+		fmt.Fprintf(out, "Health: process=%s build=%s dependencies=%s served-source=%s checkout-since-ready=%s readiness=%s hmr=%s reload=%s\n", status.Health.Liveness, status.Health.Build, status.Health.Dependencies, status.Health.ServedSource, status.Health.CheckoutSinceReady, status.Health.Readiness, status.Health.HMR, status.Health.SourceReload)
 		if status.FailedStage != "" {
 			fmt.Fprintf(out, "Failed stage: %s\n", status.FailedStage)
 		}
@@ -876,8 +876,8 @@ func printWorkspaceValue(out io.Writer, value any) {
 					fmt.Fprintf(out, "  Checkout error: %s\n", checkout.Error)
 				}
 			}
-			if served, exists := status.ServedCheckouts[repo.ID]; exists {
-				fmt.Fprintf(out, "  Served: %s dirty=%t digest=%s\n", served.Commit, served.Dirty, served.SourceDigest)
+			if ready, exists := status.ReadyCheckouts[repo.ID]; exists {
+				fmt.Fprintf(out, "  Checkout at last ready (not served provenance): %s dirty=%t digest=%s\n", ready.Commit, ready.Dirty, ready.SourceDigest)
 			}
 		}
 		if status.Instance != nil {

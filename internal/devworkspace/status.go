@@ -18,20 +18,22 @@ import (
 // A saved status file is diagnostic history, never evidence of current readiness.
 type Status struct {
 	Workspace
-	Generation      string                          `json:"generation,omitempty"`
-	Phase           string                          `json:"launchPhase"`
-	Instance        *devcontract.InstanceDescriptor `json:"instance,omitempty"`
-	Builds          map[string]BuildEvent           `json:"builds,omitempty"`
-	Services        map[string]ServiceStatus        `json:"services,omitempty"`
-	LastError       *devcontract.Error              `json:"lastError,omitempty"`
-	Health          RuntimeHealth                   `json:"health"`
-	Checkouts       map[string]CheckoutStatus       `json:"checkouts,omitempty"`
-	ServedCheckouts map[string]CheckoutStatus       `json:"servedCheckouts,omitempty"`
-	FailedStage     string                          `json:"failedStage,omitempty"`
-	WaitStage       string                          `json:"waitStage,omitempty"`
-	RecoveryCommand string                          `json:"recoveryCommand,omitempty"`
-	Follow          *FollowStatus                   `json:"follow,omitempty"`
-	Update          *UpdatePlan                     `json:"update,omitempty"`
+	Generation string                          `json:"generation,omitempty"`
+	Phase      string                          `json:"launchPhase"`
+	Instance   *devcontract.InstanceDescriptor `json:"instance,omitempty"`
+	Builds     map[string]BuildEvent           `json:"builds,omitempty"`
+	Services   map[string]ServiceStatus        `json:"services,omitempty"`
+	LastError  *devcontract.Error              `json:"lastError,omitempty"`
+	Health     RuntimeHealth                   `json:"health"`
+	Checkouts  map[string]CheckoutStatus       `json:"checkouts,omitempty"`
+	// ReadyCheckouts samples the filesystem after a successful readiness
+	// transition. It does not bind compiler inputs or served artifact bytes.
+	ReadyCheckouts  map[string]CheckoutStatus `json:"readyCheckouts,omitempty"`
+	FailedStage     string                    `json:"failedStage,omitempty"`
+	WaitStage       string                    `json:"waitStage,omitempty"`
+	RecoveryCommand string                    `json:"recoveryCommand,omitempty"`
+	Follow          *FollowStatus             `json:"follow,omitempty"`
+	Update          *UpdatePlan               `json:"update,omitempty"`
 
 	// SourceUpdateSupported is evidence only in an authenticated live response.
 	SourceUpdateSupported bool `json:"sourceUpdateSupported,omitempty"`
@@ -204,7 +206,7 @@ func exitedSupervisorStatus(ctx context.Context, status Status) Status {
 		status.FailedStage = saved.FailedStage
 		status.WaitStage = saved.WaitStage
 		status.RecoveryCommand = saved.RecoveryCommand
-		status.ServedCheckouts = saved.ServedCheckouts
+		status.ReadyCheckouts = saved.ReadyCheckouts
 		if saved.Phase == "stopped" {
 			return status
 		}

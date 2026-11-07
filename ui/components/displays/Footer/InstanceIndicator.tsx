@@ -92,7 +92,8 @@ export default function InstanceIndicator() {
             </DetailSection>
             <DetailSection title='Source & plugins'>
               <DescriptionList layout='horizontal' size='xs' className={styles.InstanceDetails}>
-                <DescriptionList.Item label='Source freshness'><Observation value={development?.health.servedSource ?? (staticFrontend ? 'Not observed' : 'Unknown')} /></DescriptionList.Item>
+                <DescriptionList.Item label='Checkout since ready'><Observation value={development?.health.checkoutSinceReady ?? 'Unknown'} /></DescriptionList.Item>
+                <DescriptionList.Item label='Served source'><Observation value={development?.health.servedSource ?? (staticFrontend ? 'Not observed' : 'Unknown')} /></DescriptionList.Item>
                 <DescriptionList.Item label='Source reload proof'><Observation value={staticFrontend ? 'Not supported' : development?.health.sourceReload ?? 'Unverified'} /></DescriptionList.Item>
                 <DescriptionList.Item label='Selected plugins'><span title='Selection does not imply plugin readiness'>{development?.selectedPluginCount ?? 'Unknown'}</span></DescriptionList.Item>
               </DescriptionList>
@@ -154,8 +155,8 @@ export default function InstanceIndicator() {
                       <Heading level={4} size='xs'>{repo.id}</Heading>
                       <DescriptionList layout='horizontal' size='xs' className={styles.InstanceDetails}>
                         <DescriptionList.Item label='Path' copyable>{repo.path}</DescriptionList.Item>
-                        <DescriptionList.Item label='Ref' copyable>{repo.ref}</DescriptionList.Item>
-                        {repo.commit && repo.commit !== repo.ref && <DescriptionList.Item label='Commit' copyable>{repo.commit}</DescriptionList.Item>}
+                        <DescriptionList.Item label='Configured ref' copyable>{repo.configuredRef}</DescriptionList.Item>
+                        {repo.baseCommit && repo.baseCommit !== repo.configuredRef && <DescriptionList.Item label='Base commit' copyable>{repo.baseCommit}</DescriptionList.Item>}
                       </DescriptionList>
                     </section>
                   ))}
