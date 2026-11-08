@@ -118,7 +118,7 @@ Each source is an explicit local normal or bare Git repository. Use repeatable `
 
 Register every repository/plugin source needed by the collection up front. Registry source mappings are deliberately immutable: repeating the same initialization is allowed, but changing or adding mappings returns `registry_exists` with conflict exit4 and leaves the existing registry intact. Initialize another collection for a different source set; `workspace edit --add-plugin` selects an already registered plugin, not a new repository registration.
 
-Managed workspaces require a linked local SDK checkout. Select a source compatible with the host's declared SDK dependency. Workspace builds observe the checkout's HEAD and source digest, including dirty edits, to bind artifact provenance to the actual source. This identification is not a sandbox.
+Selecting the `plugin-sdk` repository is optional. With it the workspace is in source mode (required for native): select a source compatible with the host's declared SDK dependency; workspace builds observe the checkout's HEAD and source digest, including dirty edits, to bind artifact provenance to the actual source. This identification is not a sandbox. Without it the workspace is in published SDK mode (browser mode only) and builds against the released SDK each consumer's `go.mod` declares.
 
 Local package linking requires the actual successful pinned pnpm protocol probe report, not manually asserted booleans. Run the probe once on the integrated host source with its effective SDK-aware module selection, then pass the report explicitly (or place it at `$COLLECTION/.omniview-dev/link-protocol.json`):
 

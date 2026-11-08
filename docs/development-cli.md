@@ -68,10 +68,12 @@ its existing fetch behavior.
 
 
 Go source preflight also checks direct SDK imports against non-test package source
-in the selected SDK worktree before installation. It scans platform/tag variants
-conservatively and accepts ordinary uncommitted SDK source additions. This is
-source-presence evidence, not proof of exported API compatibility, target-specific
-buildability, or future source generation.
+before installation: in source mode in the selected SDK worktree, in published
+mode in the verified module-cache directory of the effective release. It scans
+platform/tag variants conservatively and, in source mode, accepts ordinary
+uncommitted SDK source additions. This is source-presence evidence, not proof of
+exported API compatibility, target-specific buildability, or future source
+generation.
 
 An owned supervisor can remain alive after a launch failure. `workspace up`
 refuses to replace it and reports its launch phase and recovery command, including
@@ -481,30 +483,93 @@ no mode flag, no SDK version override, and no fallback between the two. Nothing
 is cloned, fetched or added automatically, and consumer Go files are never
 edited. `--reviewed-sdk-revision` stays removed.
 
-Published mode accepts any released tag at or above the controller's own pinned
-SDK (`devsdk.FloorVersion`, `v0.17.0` today). Pseudo-versions and older releases are
-refused with `sdk_release_untrusted` (exit 4); there is no compatibility path.
+Published mode accepts a released tag at or above the controller's own pinned
+SDK (`devsdk.FloorVersion`, `v0.17.0` today) whose module checksum and go.mod
+checksum equal a row of the controller's compiled-in reviewed-release table. The
+table is append-only and holds only `v0.17.0` today, equal to the controller's own
+`go.sum` lines. A branch's own `go.sum` cannot attest itself: it must agree with a
+row the controller already reviewed. An unknown version or a different checksum
+tuple is refused with `sdk_release_untrusted` (exit 4), saying the release is not
+reviewed by this controller; rebuild the controller from a host checkout that
+adopts that release. Pseudo-versions and older releases are refused the same way;
+there is no compatibility path. Verification against the Go checksum database
+(sumdb) for tuples outside the table is not implemented. It is the way a future
+extension could verify releases beyond the table, but `GOPRIVATE` and `GONOSUMDB`
+commonly bypass it for `github.com/omniviewdev/*`, so it would not be a
+dependable anchor today.
+
 Each consumer is verified from its effective Go module graph with `-mod=readonly`
-against a private modfile copy and a scrubbed Go environment, never in the
-consumer: any `replace` of the SDK, including a dormant version-specific one, or a
-`vendor/` directory is refused with `sdk_selection_conflict` (exit 4) before Go
-runs; missing go.sum checksums with `sdk_checksums_required` (exit 3); an
-unreachable module with `sdk_dependency_unavailable` (exit 5); module-cache bytes
-that disagree with the recorded module or go.mod checksum, including a tampered
-scratch or shared cache, with `sdk_integrity_mismatch` (exit 4); and an SDK that
-changes between the before and after observation of a build with
-`sdk_identity_changed` (exit 4). The extracted module directory is hashed in place
-(`dirhash`) and must provide the `state-root-v1` capability. The built binary's
-Go build information must then name exactly that version and checksum with no
-replacement. The shared module cache is never repaired or deleted.
+against a private modfile copy, never in the consumer. Go runs under the caller's
+process ownership with `GOWORK=off`, `GO111MODULE=on` and an empty `GOFLAGS`
+variable. An ambient `GOFLAGS` variable is therefore neutralized, but an empty
+variable does not mask `GOFLAGS` set in the Go environment file (`go env -w`, the
+file `go env GOENV` names): Go falls back to the file's value. A user-level
+`-overlay`, `-toolexec`, `-modfile` or `-mod=vendor` there could change the SDK
+source that is compiled although only `-mod=readonly` is pinned. The verifier
+therefore reads the effective `go env GOFLAGS` through the same runner and
+environment and refuses a non-empty value with `sdk_selection_conflict` (exit 4)
+before it resolves or downloads anything. The message names the effective flags
+(credential-redacted and bounded) and the fix: `go env -u GOFLAGS`, or remove it
+from the file `go env GOENV` names. Refusal was chosen over `GOENV=off` so the
+user's `GOPRIVATE`, `GOPROXY`, `GOMODCACHE`, `GONOSUMDB` and `GOSUMDB` settings
+stay in effect. The check lives inside SDK verification, so it covers every
+published path that verifies before it builds: build-graph nodes (including
+bindings), the host build and a managed plugin rebuild. The read-only `workspace
+preflight` runs no Go, so it cannot observe this refusal; a launch reports it.
+Source mode is unchanged.
+
+The other typed refusals are: any `replace` of the SDK, including a dormant
+version-specific one, or a `vendor/` directory in the consumer's own files, with
+`sdk_selection_conflict` (exit 4) before Go runs; missing go.sum checksums for the
+SDK with `sdk_checksums_required` (exit 3); an unreachable module with
+`sdk_dependency_unavailable` (exit 5); module-cache bytes that disagree with the
+recorded module or go.mod checksum, including a tampered scratch or shared cache,
+with `sdk_integrity_mismatch` (exit 4); an SDK that changes between the before
+and after observation of a build with `sdk_identity_changed` (exit 4); a
+go.mod that states no usable SDK requirement with `sdk_contract_mismatch`
+(exit 3); and a release whose bytes do not provide `state-root-v1` with
+`sdk_release_untrusted` (exit 4).
+Missing go.sum entries of other modules are not reported as SDK checksum
+problems: they surface as `sdk_dependency_unavailable`. Diagnostics from failed Go
+commands are credential-redacted with one shared redactor before they are
+bounded, never the reverse.
+
+The extracted module directory is hashed in place (`dirhash`) and must provide the
+`state-root-v1` capability. The built binary's Go build information must then name
+exactly that version and checksum with no replacement. The shared module cache is
+never repaired or deleted. Published-mode SDK import presence checks scan that
+verified module-cache directory, not a checkout.
+
+#### What the `verification` labels mean
+
+`workspace preflight --json` and `workspace inspect --json` label each consumer:
+
+- `unresolved`: only the consumer's declared requirement (and the refusals its
+  files already prove) was read. Nothing was resolved, downloaded or
+  integrity-checked.
+- `verified`: in this controller's observation, (1) the extracted module-cache
+  bytes hash (`dirhash`) to module and go.mod checksums that the controller
+  itself reviewed (its compiled-in table), not merely what the branch's `go.sum`
+  says; (2) the module provides `state-root-v1`; (3) the compiled binary's Go
+  build information names exactly that version and checksum with no replacement;
+  and (4) the identity was unchanged between a before and an after observation of
+  the build. `verified` does not claim that the SDK's behavior was reviewed for
+  safety or sandboxing, that the executable's bytes were compiled from the hashed
+  bytes (build information is written by the go command and is not measured), or
+  that the toolchain or environment is trustworthy.
+- `historical`: a previous launch verified it. The workspace may have changed
+  since; this is evidence of that launch, not a fresh observation.
+
+A changed, refused or failed observation downgrades the consumer back to
+`unresolved`.
 
 `workspace preflight --json` and `workspace inspect --json` report an `sdk` object:
 `mode`, and in published mode per-consumer `requiredVersion` (from `go.mod`),
-`resolvedVersion` (only after a launch verified it), checksums and `verification`
-(`unresolved`, `verified` or `historical`). Preflight is read-only and runs no
-tool: it reports the declaration and the refusals the files already prove, never an
-effective resolution. `up` and `create --start` print the mode and the resolved
-versions. Published mode is browser mode only: `--mode native` is refused with
+`resolvedVersion` (only after a launch verified it), checksums and `verification`.
+Preflight is read-only and runs no tool: it reports the declaration and the
+refusals the files already prove, never an effective resolution. `up` and
+`create --start` print the mode and the resolved versions. Published mode is
+browser mode only: `--mode native` is refused with
 `sdk_published_native_unsupported` (exit 2); create the workspace with
 `--repo plugin-sdk` for native development. Changing an existing workspace between
 the modes is not part of this change; a source workspace keeps working unchanged.

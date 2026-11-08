@@ -77,8 +77,8 @@ do not prove canonical preparation, acceptance and cleanup succeeded.
 Canonical CI and whole-app profiling resolve the SDK checkout commit from the
 host's `go.mod` using Go module download metadata. UI packages come from the host
 lockfile, and Kubernetes comes from the committed `plugins/kubernetes` gitlink.
-Managed workspaces identify their linked SDK checkout by HEAD and source digest,
-including dirty source changes; this identity is not a sandbox.
+In source mode, managed workspaces identify their linked SDK checkout by HEAD and source digest,
+including dirty source changes; this identity is not a sandbox. A published-mode workspace has no checkout: it is browser mode only.
 
 Playwright uses its GitHub reporter in Actions for failure annotations on the
 check and source locations, alongside terminal output, HTML and case timings.
