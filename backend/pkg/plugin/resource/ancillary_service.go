@@ -27,7 +27,13 @@ func (c *controller) admitAncillaryCatalog(ctx context.Context, pluginID string,
 	if batch != nil && typ != "" {
 		key = admissionBatchKey{plugin: pluginID, route: route, generation: generation, epoch: captureCatalogAdmission(ctx, generation).epoch, typ: typ}
 		if entry, ok := batch.lookup(key); ok {
-			if err := c.currentGeneration(ctx, pluginID, generation); err != nil {
+			c.pluginsMu.RLock()
+			err := c.currentGenerationLocked(ctx, pluginID, generation)
+			if err == nil && reference != nil && !c.referenceCurrentLocked(pluginID, route, *reference) {
+				err = resourcev2.NewError("RESET_REQUIRED", "Observation authority retired.")
+			}
+			c.pluginsMu.RUnlock()
+			if err != nil {
 				return ctx, entry.catalog, err
 			}
 			if err := checkAncillaryReference(entry.catalog, entry.authority, typ, reference); err != nil {
