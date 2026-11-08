@@ -401,6 +401,10 @@ func TestCredentialEventsCarryTheirIDsAndTheNodeTheyArePinnedTo(t *testing.T) {
 	cred := h.pair()
 	b := h.browser(laptop, cred)
 	mustOpen(t, b, "page")
+	// The socket is open to the browser a moment before the audit records it.
+	eventually(t, 5*time.Second, "the tunnel_opened event", func() bool {
+		return len(eventsOf(h, gateway.EventTunnelOpened)) > 0
+	})
 	id := cred.info.ID
 	if opened := eventsOf(h, gateway.EventTunnelOpened); len(opened) != 1 || opened[0].CredentialID != id ||
 		opened[0].NodeID != laptop.NodeID {
