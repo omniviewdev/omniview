@@ -17,9 +17,8 @@ var ErrNotAccepted = errors.New("SDK is not accepted")
 //
 // Source identities are admitted by their own checkout verification and path
 // binding. A published identity is admitted only when the function given to
-// NewPolicy accepts it. The zero Policy accepts none, which is the only policy
-// production uses until published releases have an accepted floor and
-// capability proof.
+// NewPolicy accepts it: always a complete, validated tuple. The zero Policy
+// accepts none; production uses ReleasePolicy.
 type Policy struct {
 	acceptPublished func(Published) error
 }
@@ -48,19 +47,34 @@ func (p Policy) Admit(identity Identity) error {
 	return nil
 }
 
-// Verifier observes the identity of the SDK a selection resolves to. Production
+// Request names what a Verifier identifies. A source selection is identified
+// from its checkout alone. A published selection is identified from the
+// effective Go module graph of one consumer, resolved with the caller's runner.
+type Request struct {
+	Selection Selection
+	Consumer  Consumer
+	// Run executes the Go commands a published verification needs. It is unused
+	// for a source selection.
+	Run Runner
+}
+
+// Verifier observes the identity of the SDK a request resolves to. Production
 // code builds one with NewVerifier; tests inject deterministic verifiers.
-type Verifier func(ctx context.Context, selection Selection) (Identity, error)
+type Verifier func(ctx context.Context, request Request) (Identity, error)
 
 // NewVerifier returns the production Verifier. A source selection is identified
 // with devsource.Verify (HEAD plus the exact tracked and untracked source
-// bytes) and admitted under policy. A published selection cannot be verified
-// yet and is refused.
+// bytes) and admitted under policy. A published selection is identified from
+// the consumer's effective module graph: see observePublished.
 func NewVerifier(policy Policy) Verifier {
-	return func(ctx context.Context, selection Selection) (Identity, error) {
-		directory, ok := selection.Directory()
+	return func(ctx context.Context, request Request) (Identity, error) {
+		directory, ok := request.Selection.Directory()
 		if !ok {
-			return Identity{}, fmt.Errorf("%w: published SDK releases cannot be verified yet", ErrNotAccepted)
+			observed, err := observePublished(ctx, policy, request.Consumer, request.Run)
+			if err != nil {
+				return Identity{}, err
+			}
+			return observed.identity, nil
 		}
 		observed, err := devsource.Verify(ctx, directory)
 		if err != nil {

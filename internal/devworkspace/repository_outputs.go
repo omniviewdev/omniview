@@ -64,6 +64,7 @@ func (g *BuildGraph) buildBindings(ctx context.Context, n BuildNode) (resultErr 
 		return err
 	}
 	published = true
+	g.recordBuilt(n.ID, before)
 	return nil
 }
 
