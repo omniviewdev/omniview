@@ -47,11 +47,14 @@ func (c Consumer) label() string {
 	return filepath.Base(c.Directory)
 }
 
-// moduleEnvironment is appended to every published-SDK Go command, over the
-// runner's base environment: no workspace file, no ambient flags. Flags in the
-// Go environment file cannot be masked by an empty variable, so every command
-// also passes -mod and -modfile explicitly.
-func moduleEnvironment() []string {
+// ModuleEnvironment is appended to every published-SDK Go command, over the
+// runner's base environment: no workspace file, no ambient GOFLAGS variable.
+// Settings in the Go environment file are not masked by an empty variable: an
+// empty GOFLAGS falls back to the file's value. Every command therefore passes
+// -mod and -modfile explicitly, and the verifier refuses an effective GOFLAGS
+// before it resolves anything (see checkBuildEnvironment). A published build
+// that is not itself run by the verifier's runner appends this too.
+func ModuleEnvironment() []string {
 	return []string{"GOWORK=off", "GOFLAGS=", "GO111MODULE=on"}
 }
 
@@ -107,7 +110,7 @@ func newResolver(consumer Consumer, effective ModuleFiles, run Runner) (*resolve
 // module file: -mod=readonly never writes, and the private copy is all it reads.
 func (r *resolver) list(ctx context.Context, declared Published) (listedModule, error) {
 	var listed listedModule
-	output, err := r.run(ctx, r.consumer.Directory, moduleEnvironment(), "list", "-mod=readonly", "-modfile="+r.modfile, "-m", "-json", Module)
+	output, err := r.run(ctx, r.consumer.Directory, ModuleEnvironment(), "list", "-mod=readonly", "-modfile="+r.modfile, "-m", "-json", Module)
 	if err != nil {
 		return listed, commandFailure(ctx, r.name, declared, err)
 	}
@@ -126,7 +129,7 @@ func (r *resolver) list(ctx context.Context, declared Published) (listedModule, 
 // download fetches the exact module into the Go module cache, verified by Go
 // against the private sum file. It writes only the private copy and the cache.
 func (r *resolver) download(ctx context.Context, effective Published) error {
-	output, err := r.run(ctx, r.consumer.Directory, moduleEnvironment(), "mod", "download", "-modfile="+r.modfile, "-json", Module+"@"+effective.Version)
+	output, err := r.run(ctx, r.consumer.Directory, ModuleEnvironment(), "mod", "download", "-modfile="+r.modfile, "-json", Module+"@"+effective.Version)
 	if err != nil {
 		return commandFailure(ctx, r.name, effective, err)
 	}

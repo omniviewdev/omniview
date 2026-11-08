@@ -2,35 +2,99 @@ package devsdk
 
 import (
 	"fmt"
+	"strings"
 
 	"golang.org/x/mod/semver"
 )
 
 const (
 	// FloorVersion is the lowest released plugin SDK a published build may use:
-	// the SDK this controller is itself pinned to. A published SDK is any
-	// released tag at or above it; older releases and pseudo-versions are not
-	// supported and never converted. TestFloorMatchesTheControllerPin fails when
-	// the controller's own pin moves, so raising the floor is always a deliberate
-	// edit of this constant.
+	// the SDK this controller is itself pinned to. A published SDK is a released
+	// tag at or above it; older releases and pseudo-versions are not supported and
+	// never converted. TestFloorMatchesTheControllerPin fails when the
+	// controller's own pin moves, so raising the floor is always a deliberate edit
+	// of this constant.
 	FloorVersion = "v0.17.0"
+
+	// minimumFloor is the lowest value FloorVersion may ever take: the first
+	// release with reviewed state-root isolation behavior. A drifting pin can
+	// raise the floor, never lower it: TestFloorNeverDropsBelowTheReviewedMinimum
+	// fails when FloorVersion falls below it, even if go.mod fell with it.
+	minimumFloor = "v0.17.0"
 
 	// Capability names the SDK's per-profile state-root isolation contract. A
 	// published module must provide it, observed in its verified bytes.
 	Capability = "state-root-v1"
 )
 
-// ReleasePolicy is the policy production uses: it admits a published identity
-// exactly when its version is a released tag at or above FloorVersion. It is a
-// constructor value, never read from the environment or a global.
-func ReleasePolicy() Policy { return NewPolicy(admitRelease) }
+// reviewedReleases is the append-only table of released plugin SDK tuples this
+// controller anchors published builds to. A consumer's own go.sum is branch
+// content: a branch could record any checksums for any version, and the module
+// cache's bytes would then "verify" against them. A tuple the controller itself
+// knows cannot self-attest: the checksums a branch records must equal these rows
+// exactly, so the bytes that are hashed in place are the bytes that were reviewed.
+//
+// Rows are only ever appended, one per released tag at or above FloorVersion that
+// has been reviewed (a tag is added together with the pin bump that adopts it, or
+// ahead of it). TestReviewedReleasesCoverTheControllerPin fails when the
+// controller's own pinned release is missing here or recorded differently.
+var reviewedReleases = []Published{
+	{
+		Module: Module, Version: "v0.17.0",
+		ModuleSum: "h1:y+On5xnaevx96M744EQrwuMDdB37bjhdfhWMUpfU6xI=",
+		GoModSum:  "h1:FFxi7m1H27zsC3VwMZ6Z9zVrwIytVTAkRjLT5cpv0G4=",
+	},
+}
 
-func admitRelease(published Published) error {
+// ReviewedReleases returns a copy of the append-only table of reviewed releases.
+func ReviewedReleases() []Published { return append([]Published(nil), reviewedReleases...) }
+
+// ReleasePolicy is the policy production uses: it admits a published identity
+// exactly when it is a released tag at or above FloorVersion whose module and
+// go.mod checksums equal the reviewed row for that version. It is a constructor
+// value, never read from the environment or a global.
+func ReleasePolicy() Policy { return NewReleasePolicy(FloorVersion, reviewedReleases...) }
+
+// NewReleasePolicy is ReleasePolicy for a caller-supplied floor and table of
+// reviewed releases. Production passes the compiled-in ones through
+// ReleasePolicy; tests that serve synthetic releases name them here, through the
+// same constructors that inject every other policy.
+func NewReleasePolicy(floor string, reviewed ...Published) Policy {
+	known := make(map[string]Published, len(reviewed))
+	for _, release := range reviewed {
+		known[release.Version] = release
+	}
+	return NewPolicy(func(published Published) error { return admitRelease(floor, known, published) })
+}
+
+func admitRelease(floor string, known map[string]Published, published Published) error {
 	if semver.Prerelease(published.Version) != "" || semver.Build(published.Version) != "" {
 		return fmt.Errorf("%s is not a released tag; pseudo-versions and prereleases are not supported", published.Version)
 	}
-	if semver.Compare(published.Version, FloorVersion) < 0 {
-		return fmt.Errorf("%s is below the accepted floor %s; older releases are not supported", published.Version, FloorVersion)
+	if semver.Compare(published.Version, floor) < 0 {
+		return fmt.Errorf("%s is below the accepted floor %s; older releases are not supported", published.Version, floor)
+	}
+	reviewed, ok := known[published.Version]
+	if !ok {
+		versions := make([]string, 0, len(known))
+		for version := range known {
+			versions = append(versions, version)
+		}
+		return fmt.Errorf("%s is not a release this controller has reviewed (reviewed: %s); published builds are anchored to reviewed checksums, "+
+			"so rebuild the controller from a host checkout that adopts this release", published.Version, strings.Join(semverSorted(versions), ", "))
+	}
+	if reviewed != published {
+		return fmt.Errorf("%s records module checksums that differ from the reviewed release; the branch's go.sum cannot attest its own SDK", published.Version)
 	}
 	return nil
+}
+
+func semverSorted(versions []string) []string {
+	sorted := append([]string(nil), versions...)
+	for i := 1; i < len(sorted); i++ {
+		for j := i; j > 0 && semver.Compare(sorted[j-1], sorted[j]) > 0; j-- {
+			sorted[j-1], sorted[j] = sorted[j], sorted[j-1]
+		}
+	}
+	return sorted
 }

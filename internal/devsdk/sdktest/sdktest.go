@@ -240,6 +240,19 @@ func (w *World) Consumer(name string, releases ...Release) string {
 	return directory
 }
 
+// Policy is the production release policy extended with the world's served
+// releases as reviewed rows: the compiled-in floor and the production rules, with
+// the synthetic releases a test publishes known to it. The floor release a world
+// serves is the real pinned release, so it needs no row; every other served
+// version does.
+func (w *World) Policy(releases ...Release) devsdk.Policy {
+	reviewed := devsdk.ReviewedReleases()
+	for _, release := range releases {
+		reviewed = append(reviewed, release.Published())
+	}
+	return devsdk.NewReleasePolicy(devsdk.FloorVersion, reviewed...)
+}
+
 // Write writes one file below directory.
 func (w *World) Write(directory, name, content string) {
 	w.t.Helper()
