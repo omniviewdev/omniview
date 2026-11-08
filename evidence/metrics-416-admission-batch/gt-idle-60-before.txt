@@ -1,0 +1,12 @@
+apiserver_request_total nodes cluster LIST 38
+apiserver_request_total nodes resource GET 6
+apiserver_request_total pods cluster LIST 1
+apiserver_request_total pods namespace LIST 2877
+apiserver_response_sizes_count nodes cluster LIST 38
+apiserver_response_sizes_count nodes resource GET 6
+apiserver_response_sizes_count pods cluster LIST 1
+apiserver_response_sizes_count pods namespace LIST 2877
+apiserver_response_sizes_sum nodes cluster LIST 65907
+apiserver_response_sizes_sum nodes resource GET 2379
+apiserver_response_sizes_sum pods cluster LIST 109812
+apiserver_response_sizes_sum pods namespace LIST 3.0076001e+07
