@@ -16,7 +16,15 @@ import (
 func testController(t *testing.T) (Controller, *appstate.Service) {
 	t.Helper()
 	state := appstate.NewTestService(t)
-	return NewController(logging.NewNop(), state.PluginData), state
+	return NewController(logging.NewNop(), state), state
+}
+
+// brokenState fails every root lookup.
+type brokenState struct{ err error }
+
+func (b brokenState) PluginData(string) (*appstate.ScopedRoot, error) { return nil, b.err }
+func (b brokenState) PluginDataIfExists(string) (*appstate.ScopedRoot, bool, error) {
+	return nil, false, b.err
 }
 
 func TestMaximumLengthDataKeyRemainsUsable(t *testing.T) {
@@ -49,7 +57,7 @@ func TestSnapshotAbsentNullAndPersistedRevision(t *testing.T) {
 	if err != nil || ok {
 		t.Fatalf("absent revision overwrote null: %v, %v", ok, err)
 	}
-	reopened := NewController(logging.NewNop(), state.PluginData)
+	reopened := NewController(logging.NewNop(), state)
 	stored, err := reopened.GetSnapshot("test", "counts")
 	if err != nil || stored.Revision != null.Revision || stored.Value != nil {
 		t.Fatalf("reopened snapshot: %#v, %v", stored, err)
@@ -75,7 +83,7 @@ func TestStaleRevisionNeverOverwrites(t *testing.T) {
 	if err := c.Set("test", "counts", map[string]int{"count": 2, "existing": 9}); err != nil {
 		t.Fatal(err)
 	}
-	reopened := NewController(logging.NewNop(), state.PluginData)
+	reopened := NewController(logging.NewNop(), state)
 	persisted, err := reopened.GetSnapshot("test", "counts")
 	if err != nil {
 		t.Fatal(err)
@@ -211,7 +219,7 @@ func TestFailedReadsNeverOverwrite(t *testing.T) {
 		t.Fatalf("corrupt file overwritten: %s, %v", after, err)
 	}
 	failure := errors.New("scoped root unavailable")
-	broken := NewController(logging.NewNop(), func(string) (*appstate.ScopedRoot, error) { return nil, failure })
+	broken := NewController(logging.NewNop(), brokenState{err: failure})
 	if ok, err := broken.CompareAndSwap("test", "counts", "", 1); ok || !errors.Is(err, failure) {
 		t.Fatalf("failed root CAS: %v, %v", ok, err)
 	}

@@ -19,7 +19,7 @@ const (
 )
 
 type frontendSession struct {
-	windowID      uint
+	window        invocation.WindowIdentity
 	viewOwner     string
 	producerOwner string
 	lastHeartbeat time.Time
@@ -101,7 +101,7 @@ func (f *FrontendService) session(ctx context.Context, id string, renew bool) (f
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	session, ok := f.sessions[id]
-	if !ok || session.windowID != window.ID() {
+	if !ok || session.window != invocation.IdentityOf(window) {
 		return frontendSession{}, errors.New("activity session unavailable")
 	}
 	if time.Since(session.lastHeartbeat) > frontendProducerLease {
@@ -147,7 +147,7 @@ func (f *FrontendService) Subscribe(ctx context.Context) (sdk.Subscription, erro
 	}
 	producerOwner := "ui:" + newID()
 	f.sessions[subscription.ID] = frontendSession{
-		windowID:      window.ID(),
+		window:        invocation.IdentityOf(window),
 		viewOwner:     owner,
 		producerOwner: producerOwner,
 		lastHeartbeat: time.Now(),

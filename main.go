@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -40,6 +42,7 @@ import (
 	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	"github.com/omniviewdev/omniview/backend/window"
 	"github.com/omniviewdev/omniview/internal/appstate"
+	"github.com/omniviewdev/omniview/internal/auditgate"
 	"github.com/omniviewdev/omniview/internal/bootstrap"
 	"github.com/omniviewdev/omniview/internal/builtinplugins/grafana"
 	"github.com/omniviewdev/omniview/internal/devcontract"
@@ -112,6 +115,142 @@ func newUICapabilityControllers(
 	metricController.SetMetricResourceReader(resourceController.ReadObservedResource)
 	metricController.SetResourceIdentityGuard(resourceController.GuardObservedReference)
 	return execController, networkerController, logsController, metricController
+}
+
+// boundServiceTypes lists, as typed nil pointers, the type of every service
+// that main registers with the Wails app. Wails binds every exported method of
+// these types to the page, so each one must be classified in the audit gateway
+// allowlist (internal/auditgate/policy.json). Keep this list next to the
+// registration code in main: the drift tests reflect over it, and
+// verifyAuditPolicy checks the instances that are actually registered.
+func boundServiceTypes() []any {
+	return []any{
+		(*activity.FrontendService)(nil),
+		(*resource.ServiceWrapper)(nil),
+		(*resource.GraphService)(nil),
+		(*exec.ServiceWrapper)(nil),
+		(*networker.ServiceWrapper)(nil),
+		(*pluginlogs.ServiceWrapper)(nil),
+		(*pluginmetric.ServiceWrapper)(nil),
+		(*data.ServiceWrapper)(nil),
+		(*ui.ServiceWrapper)(nil),
+		(*utils.Client)(nil),
+		(*devserver.ServiceWrapper)(nil),
+		(*bootstrap.Service)(nil),
+		(*AppService)(nil),
+		(*diagnostics.DiagnosticsClient)(nil),
+		(*extensiondiagnosticshost.Service)(nil),
+		(*diagnosticshost.Service)(nil),
+		(*telemetry.TelemetryBinding)(nil),
+		(*profiling.ServiceWrapper)(nil),
+		(*uiinspection.Service)(nil),
+		(*processinfo.Service)(nil),
+		(*settingsservice.Binding)(nil),
+		(*plugin.ServiceWrapper)(nil),
+		(*mcprelay.ServiceWrapper)(nil),
+		(*pluginlog.ServiceWrapper)(nil), // registered only when plugin logging is available
+		(*window.Service)(nil),
+	}
+}
+
+// checkAuditPolicy reports the first reason the audit gateway allowlist does
+// not cover every method Wails would bind for the given service instances.
+func checkAuditPolicy(instances ...any) error {
+	policy, err := auditgate.Default()
+	if err != nil {
+		return err
+	}
+	return policy.Verify(instances...)
+}
+
+// compareServiceTypes reports every service type that is registered but not
+// declared in boundServiceTypes, declared but not registered, or registered
+// twice. The plugin log service is declared but registered only when plugin
+// logging is available, so its absence is allowed.
+func compareServiceTypes(declared, registered []any) error {
+	return compareServiceTypesWith(declared, registered, []any{(*pluginlog.ServiceWrapper)(nil)})
+}
+
+// compareServiceTypesWith is compareServiceTypes with an explicit list of
+// declared types that may be absent from the registered instances.
+func compareServiceTypesWith(declared, registered, optional []any) error {
+	declaredSet := make(map[reflect.Type]bool, len(declared))
+	var problems []string
+	for _, service := range declared {
+		kind := reflect.TypeOf(service)
+		if declaredSet[kind] {
+			problems = append(problems, fmt.Sprintf("%v is declared twice", kind))
+		}
+		declaredSet[kind] = true
+	}
+	optionalSet := make(map[reflect.Type]bool, len(optional))
+	for _, service := range optional {
+		optionalSet[reflect.TypeOf(service)] = true
+	}
+	seen := make(map[reflect.Type]bool, len(registered))
+	for _, service := range registered {
+		kind := reflect.TypeOf(service)
+		switch {
+		case !declaredSet[kind]:
+			problems = append(problems, fmt.Sprintf("%v is registered but not declared in boundServiceTypes", kind))
+		case seen[kind]:
+			problems = append(problems, fmt.Sprintf("%v is registered twice", kind))
+		}
+		seen[kind] = true
+	}
+	for _, service := range declared {
+		kind := reflect.TypeOf(service)
+		if !seen[kind] && !optionalSet[kind] {
+			problems = append(problems, fmt.Sprintf("%v is declared in boundServiceTypes but not registered", kind))
+		}
+	}
+	if len(problems) == 0 {
+		return nil
+	}
+	sort.Strings(problems)
+	return fmt.Errorf("registered services differ from boundServiceTypes: %s", strings.Join(problems, "; "))
+}
+
+// handleAuditFailure applies the startup policy to an audit check failure. A
+// development host is the only profile an audit gateway can front, so only
+// there does a stale allowlist stop startup; elsewhere remote audit access is
+// simply unavailable and the host keeps running.
+func handleAuditFailure(err error, strict bool, warn, fatal func(error)) {
+	if err == nil {
+		return
+	}
+	if strict {
+		fatal(err)
+		return
+	}
+	warn(err)
+}
+
+// auditStartupCheck carries the strictness and reporting for the startup
+// audit checks.
+type auditStartupCheck struct {
+	strict bool
+	warn   func(error)
+}
+
+func (c auditStartupCheck) fail(err error) {
+	handleAuditFailure(err, c.strict, c.warn, func(err error) {
+		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+		os.Exit(1)
+	})
+}
+
+// verifyAuditPolicy checks that every method of the service instances about
+// to be registered is classified by the audit gateway allowlist. It inspects
+// the instances actually registered, so conditional services are covered even
+// when the drift tests do not build them.
+func (c auditStartupCheck) verifyAuditPolicy(instances ...any) {
+	c.fail(checkAuditPolicy(instances...))
+}
+
+// verifyServiceTypes checks the registered instances against boundServiceTypes.
+func (c auditStartupCheck) verifyServiceTypes(registered ...any) {
+	c.fail(compareServiceTypes(boundServiceTypes(), registered))
 }
 
 // main resolves instance identity, initializes services and runs the host.
@@ -328,6 +467,15 @@ func main() {
 		Now:     nil,
 	})
 
+	audit := auditStartupCheck{
+		strict: profile.Descriptor.Kind == "development",
+		warn: func(err error) {
+			log.Warnw(context.Background(),
+				"remote audit access is unavailable until the audit allowlist is fixed",
+				"error", err)
+		},
+	}
+
 	if settingsStore == nil {
 		log.Warnw(
 			context.Background(),
@@ -391,7 +539,7 @@ func main() {
 	metricController.SetMetricStateRoot(stateDir.RootDir())
 	toolsController := tools.NewController(log, resourceBoundary)
 
-	dataController := data.NewController(log, stateDir.PluginData)
+	dataController := data.NewController(log, stateDir)
 
 	// Initialize per-plugin log manager for capturing plugin process stderr.
 	// Created here so it can be bound to Wails for UI access.
@@ -640,6 +788,11 @@ func main() {
 		)
 	}
 
+	registered := make([]any, 0, len(services))
+	for _, service := range services {
+		registered = append(registered, service.Instance())
+	}
+	audit.verifyAuditPolicy(registered...)
 	for _, service := range services {
 		app.RegisterService(service)
 	}
@@ -696,7 +849,9 @@ func main() {
 		SessionPath:    stateDir.RootDir().ResolvePath(window.SessionFileName),
 		Log:            log.Named("window"),
 	})
+	audit.verifyAuditPolicy(windowService)
 	app.RegisterService(application.NewService(windowService))
+	audit.verifyServiceTypes(append(registered, windowService)...)
 
 	// Install menus only after their backend window service is ready.
 	menus.SetupAppMenu(app, mainWindow, func() {
