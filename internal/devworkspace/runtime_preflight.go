@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devdiag"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
 	"github.com/omniviewdev/omniview/internal/devsdk"
 	"golang.org/x/mod/modfile"
@@ -125,27 +125,6 @@ func validateRuntimeUIContracts(w Workspace, plan linkPlan) error {
 		}
 	}
 	return nil
-}
-
-var diagnosticSecret = regexp.MustCompile(`(?i)(bearer\s+)[^\s]+|((?:token|password|secret|authorization|api[_-]?key)\s*[:=]\s*)(?:(?:bearer|basic)\s+)?[^\s,;]+|([a-z][a-z0-9+.-]*://)[^/@\s]+:[^/@\s]+@`)
-
-func safeCompilerDiagnostic(text, root string) string {
-	text = diagnosticSecret.ReplaceAllString(text, "${1}${2}${3}[REDACTED]")
-	for _, entry := range os.Environ() {
-		key, value, ok := strings.Cut(entry, "=")
-		key = strings.ToLower(key)
-		if ok && len(value) >= 4 && (strings.Contains(key, "token") || strings.Contains(key, "secret") || strings.Contains(key, "password") || strings.Contains(key, "api_key")) {
-			text = strings.ReplaceAll(text, value, "[REDACTED]")
-		}
-	}
-	text = strings.ReplaceAll(text, root, "$WORKSPACE")
-	if home, err := os.UserHomeDir(); err == nil {
-		text = strings.ReplaceAll(text, home, "$HOME")
-	}
-	if len(text) > 8192 {
-		text = text[len(text)-8192:]
-	}
-	return strings.TrimSpace(text)
 }
 
 // workspaceOwnershipError preserves typed ownership data without treating
@@ -282,5 +261,5 @@ func supervisedBuildError(event BuildEvent, w Workspace) *devcontract.Error {
 	if errors.As(event.cause, &conflict) || errors.As(event.cause, &typed) {
 		return workspaceOwnershipError(event.cause, w)
 	}
-	return devcontract.Fail(buildFailureExitCode, "build_failed", safeCompilerDiagnostic(event.Error, w.Root))
+	return devcontract.Fail(buildFailureExitCode, "build_failed", devdiag.Safe(event.Error, w.Root))
 }

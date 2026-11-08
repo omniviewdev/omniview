@@ -17,6 +17,7 @@ import (
 
 	"github.com/omniviewdev/omniview/internal/devcompose"
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devdiag"
 	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/omniview/internal/instance"
@@ -60,9 +61,19 @@ type BuildOptions struct {
 	// per consumer from its effective module graph; a source selection from the
 	// selected checkout.
 	VerifySDK devsdk.Verifier
-	// ObserveSDK, when set, receives every successful SDK verification with the
-	// verified consumer's repository ID. It reports; it never authorizes.
+	// ObserveSDK, when set, receives a consumer's published SDK identity only
+	// after it has passed a build's before/after comparison (or, for a
+	// verification with no build around it, such as a plugin archive's
+	// re-verification or a reused artifact's re-attestation, after the one
+	// observation that was made and not contradicted). It reports; it never
+	// authorizes.
 	ObserveSDK func(consumer string, identity devsdk.Identity)
+	// DowngradeSDK, when set, is called with the consumer's repository ID
+	// whenever a verification of that consumer is refused, a before/after
+	// comparison fails, or its node errors after an observation: whatever was
+	// reported for the consumer is no longer evidence, so the reporter must
+	// stop calling it verified.
+	DowngradeSDK func(consumer string)
 	// HostBuild must compile the selected host (including native/module flags).
 	HostBuild func(context.Context, HostBuildRequest) error
 	// Optional real Task adapter. Output must remain exclusively in outputDirectory.
@@ -75,7 +86,7 @@ type BuildOptions struct {
 	// enables host reuse: ReuseHost adopts that unchanged published tree as the
 	// launch binary instead of compiling. Both empty disables host reuse.
 	HostOutput string
-	ReuseHost  func(context.Context) error
+	ReuseHost  func(ctx context.Context, sdk devsdk.Identity) error
 	Output     io.Writer
 	OnEvent    func(BuildEvent)
 }
@@ -95,9 +106,17 @@ type BuildGraph struct {
 	attestMu    sync.Mutex // serializes recordArtifact
 	// attested holds the verified SDK identity of every plugin binary this
 	// graph recorded evidence for, keyed by plugin ID. Guarded by attestMu.
-	attested    map[string]devsdk.Identity
-	toolchainMu sync.Mutex
-	toolchains  map[string]pnpmToolchain
+	attested map[string]devsdk.Identity
+	// bindMu guards fingerprinted and built, the two sides of the check that a
+	// node's reuse record names the identity its own build was verified under.
+	bindMu sync.Mutex
+	// fingerprinted is the SDK identity embedded in a Go node's latest input
+	// fingerprint; built is the identity that node's latest build was verified
+	// under (after its before/after comparison). Both are keyed by node ID.
+	fingerprinted map[string]devsdk.Identity
+	built         map[string]devsdk.Identity
+	toolchainMu   sync.Mutex
+	toolchains    map[string]pnpmToolchain
 
 	// Bootstrap reuse fingerprints live in the UUID profile runtime; empty
 	// disables reuse (build-only graphs and tests without a profile).
@@ -278,7 +297,7 @@ func (g *BuildGraph) emit(id, phase string, err error) {
 	}
 	event := BuildEvent{Node: id, Phase: phase}
 	if err != nil {
-		event.Error = safeCompilerDiagnostic(err.Error(), g.workspace.Root)
+		event.Error = devdiag.Safe(err.Error(), g.workspace.Root)
 		event.cause = err
 	}
 	g.eventMu.Lock()
@@ -311,14 +330,14 @@ func (g *BuildGraph) commandWithEnvironment(ctx context.Context, dir string, env
 			continue
 		}
 		switch key {
-		case goWorkEnv, goFlagsEnv, "GOROOT", "GOCACHE", nodePathEnv, "GO_MODFILE", "OMNIVIEW_PNPM_NODE_PATH",
+		case goWorkEnv, goFlagsEnv, goModuleModeEnv, "GOROOT", "GOCACHE", nodePathEnv, "GO_MODFILE", "OMNIVIEW_PNPM_NODE_PATH",
 			"OMNIVIEW_BUILD_OUTPUT_DIRECTORY", "OMNIVIEW_SHIMS_OUTPUT_DIRECTORY", "OMNIVIEW_SHIMS_SOURCE_DIRECTORY",
 			"OMNIVIEW_YAML_WORKER_OUTPUT_FILE", "OMNIVIEW_VITE_CACHE_DIRECTORY", compositionInstallEnvironment:
 			continue
 		}
 		cmd.Env = append(cmd.Env, entry)
 	}
-	cmd.Env = append(cmd.Env, "GOWORK=off", "GOFLAGS=", "OMNIVIEW_PNPM_NODE_PATH=")
+	cmd.Env = append(cmd.Env, "GOWORK=off", "GOFLAGS=", goModuleModeEnv+"=on", "OMNIVIEW_PNPM_NODE_PATH=")
 	if g.options.GoBuildCacheDirectory != "" {
 		cmd.Env = append(cmd.Env, "GOCACHE="+g.options.GoBuildCacheDirectory)
 	}
@@ -332,7 +351,7 @@ func (g *BuildGraph) commandWithEnvironment(ctx context.Context, dir string, env
 		_, _ = io.WriteString(g.options.Output, output.String())
 	}
 	if err != nil {
-		return nil, errors.Join(err, fmt.Errorf("%s failed in selected checkout:\n%s", program, safeCompilerDiagnostic(output.String()+"\n"+stderr.text, g.workspace.Root)))
+		return nil, errors.Join(err, fmt.Errorf("%s failed in selected checkout:\n%s", program, devdiag.Safe(output.String()+"\n"+stderr.text, g.workspace.Root)))
 	}
 	return []byte(output.String()), nil
 }
@@ -351,17 +370,46 @@ func (g *BuildGraph) consumerName(directory string) string {
 	return workspaceConsumerName(g.workspace, directory)
 }
 
-// observeSDK reports a verified identity to the graph's observer.
+// observeSDK reports an identity that earned the "verified" label to the
+// graph's observer.
 func (g *BuildGraph) observeSDK(consumer string, identity devsdk.Identity) {
 	if g.options.ObserveSDK != nil {
 		g.options.ObserveSDK(g.consumerName(consumer), identity)
 	}
 }
 
+// downgradeSDK withdraws the "verified" label of a consumer.
+func (g *BuildGraph) downgradeSDK(consumer string) {
+	if g.options.DowngradeSDK != nil {
+		g.options.DowngradeSDK(g.consumerName(consumer))
+	}
+}
+
+// downgradeOnError withdraws the consumer's "verified" label when its node
+// failed, whatever was observed earlier in the node, and passes err through.
+func (g *BuildGraph) downgradeOnError(consumer string, err error) error {
+	if err != nil {
+		g.downgradeSDK(consumer)
+	}
+	return err
+}
+
 // verifySDK resolves the actual consumer module graph and identifies its live
 // SDK: the selected checkout's source in source mode, the effective published
-// module in published mode.
+// module in published mode. A verification is an observation, not yet
+// evidence: it never reports "verified" itself. A refusal withdraws the label
+// the consumer may have earned before.
 func (g *BuildGraph) verifySDK(ctx context.Context, consumer string) (devsdk.Identity, error) {
+	identity, err := g.identifySDK(ctx, consumer)
+	if err != nil {
+		g.downgradeSDK(consumer)
+		return devsdk.Identity{}, err
+	}
+	return identity, nil
+}
+
+// identifySDK is the verification itself, with no observation side effect.
+func (g *BuildGraph) identifySDK(ctx context.Context, consumer string) (devsdk.Identity, error) {
 	if g.plan.SDK.Mode() == devsdk.ModePublished {
 		return g.verifyPublishedSDK(ctx, consumer, "")
 	}
@@ -410,7 +458,6 @@ func (g *BuildGraph) verifySDK(ctx context.Context, consumer string) (devsdk.Ide
 	if source, isSource := identity.Source(); !isSource || source.Directory != selected {
 		return devsdk.Identity{}, fmt.Errorf("SDK verifier returned a different or incomplete selected source identity")
 	}
-	g.observeSDK(consumer, identity)
 	return identity, nil
 }
 
@@ -430,79 +477,122 @@ func (g *BuildGraph) verifyPublishedSDK(ctx context.Context, consumer, modfile s
 	if _, isPublished := identity.Published(); !isPublished {
 		return devsdk.Identity{}, fmt.Errorf("SDK verifier returned a source identity for a published selection")
 	}
-	g.observeSDK(consumer, identity)
 	return identity, nil
 }
 
+// verifyUnchangedSDK observes the consumer's SDK again and requires it to
+// equal before, the identity the build started under. Only an identity that
+// passes this comparison is reported as verified; a refusal or a change
+// withdraws the label.
 func (g *BuildGraph) verifyUnchangedSDK(ctx context.Context, consumer string, before devsdk.Identity) error {
 	after, err := g.verifySDK(ctx, consumer)
 	if err != nil {
 		return err
 	}
 	if after != before {
+		g.downgradeSDK(consumer)
 		if before.Mode() == devsdk.ModePublished {
 			return devsdk.IdentityChanged(g.consumerName(consumer), "the effective published plugin SDK changed during the build; the artifact was not attested")
 		}
 		return fmt.Errorf("selected SDK source changed during build; artifact was not attested")
 	}
+	g.observeSDK(consumer, after)
 	return nil
 }
 
 // buildNode runs one node's producer and publishes its owned outputs. Go
-// nodes bind their outputs to an SDK identity verified before and after.
+// nodes bind their outputs to an SDK identity verified before and after, and
+// a failure anywhere in the node withdraws the consumer's "verified" label.
 func (g *BuildGraph) buildNode(ctx context.Context, n BuildNode) error {
 	switch n.Kind {
 	case bindingsNode:
-		return g.buildBindings(ctx, n)
+		return g.downgradeOnError(n.Directory, g.buildBindings(ctx, n))
 	case "javascript":
 		return g.buildJavaScript(ctx, n)
 	case "plugin-backend":
-		before, err := g.verifySDK(ctx, n.Directory)
-		if err != nil {
-			return err
-		}
-		prepared, err := PrepareGeneratedTree(g.workspace, "build/"+n.PluginID, g.options.Generation)
-		if err != nil {
-			return err
-		}
-		stagedBinary := filepath.Join(prepared.Directory, "plugin")
-		args := []string{"build"}
-		if before.Mode() == devsdk.ModePublished {
-			// Never the repository's vendor tree, never an implicit go.mod edit.
-			args = append(args, "-mod=readonly")
-		}
-		_, buildErr := g.run(ctx, n.Directory, "go", append(args, "-o", stagedBinary, "./pkg")...)
-		if errors.Is(buildErr, errOwnedCommandUncertain) {
-			return errors.Join(buildErr, prepared.stageFile.Close())
-		}
-		// Proven terminal failures may leave real controlled partial output.
-		// Unknown descendant lifetimes above retain the durable writing intent.
-		if err = errors.Join(buildErr, RecordGeneratedTree(prepared)); err != nil {
-			return err
-		}
-		binary := filepath.Join(prepared.Destination, "plugin")
-		if err := g.verifyUnchangedSDK(ctx, n.Directory, before); err != nil {
-			return err
-		}
-		if err = devsdk.VerifyBinary(g.consumerName(n.Directory), binary, before); err != nil {
-			return err
-		}
-		// Trusted local rebuild binds binary bytes to the exact dirty source snapshot.
-		return g.recordArtifact(n.PluginID, binary, before)
+		return g.downgradeOnError(n.Directory, g.buildPluginBackend(ctx, n))
 	case "host-backend":
-		before, err := g.verifySDK(ctx, n.Directory)
-		if err != nil {
-			return err
-		}
-		if err = g.options.HostBuild(ctx, HostBuildRequest{
-			Workspace: g.workspace, SDK: before,
-		}); err != nil {
-			return err
-		}
-		return g.verifyUnchangedSDK(ctx, n.Directory, before)
+		return g.downgradeOnError(n.Directory, g.buildHostBackend(ctx, n))
 	default:
 		return fmt.Errorf("unknown build node kind %q", n.Kind)
 	}
+}
+
+func (g *BuildGraph) buildPluginBackend(ctx context.Context, n BuildNode) error {
+	before, err := g.verifySDK(ctx, n.Directory)
+	if err != nil {
+		return err
+	}
+	prepared, err := PrepareGeneratedTree(g.workspace, "build/"+n.PluginID, g.options.Generation)
+	if err != nil {
+		return err
+	}
+	stagedBinary := filepath.Join(prepared.Directory, "plugin")
+	args := []string{"build"}
+	if before.Mode() == devsdk.ModePublished {
+		// Never the repository's vendor tree, never an implicit go.mod edit.
+		args = append(args, "-mod=readonly")
+	}
+	_, buildErr := g.run(ctx, n.Directory, "go", append(args, "-o", stagedBinary, "./pkg")...)
+	if errors.Is(buildErr, errOwnedCommandUncertain) {
+		return errors.Join(buildErr, prepared.stageFile.Close())
+	}
+	// Proven terminal failures may leave real controlled partial output.
+	// Unknown descendant lifetimes above retain the durable writing intent.
+	if err = errors.Join(buildErr, RecordGeneratedTree(prepared)); err != nil {
+		return err
+	}
+	binary := filepath.Join(prepared.Destination, "plugin")
+	if err = g.verifyUnchangedSDK(ctx, n.Directory, before); err != nil {
+		return err
+	}
+	if err = devsdk.VerifyBinary(g.consumerName(n.Directory), binary, before); err != nil {
+		return err
+	}
+	// Trusted local rebuild binds binary bytes to the exact dirty source snapshot.
+	if err = g.recordArtifact(n.PluginID, binary, before); err != nil {
+		return err
+	}
+	g.recordBuilt(n.ID, before)
+	return nil
+}
+
+func (g *BuildGraph) buildHostBackend(ctx context.Context, n BuildNode) error {
+	before, err := g.verifySDK(ctx, n.Directory)
+	if err != nil {
+		return err
+	}
+	if err = g.options.HostBuild(ctx, HostBuildRequest{
+		Workspace: g.workspace, SDK: before,
+	}); err != nil {
+		return err
+	}
+	if err = g.verifyUnchangedSDK(ctx, n.Directory, before); err != nil {
+		return err
+	}
+	g.recordBuilt(n.ID, before)
+	return nil
+}
+
+// recordBuilt remembers the identity a Go node's build was verified under.
+func (g *BuildGraph) recordBuilt(nodeID string, identity devsdk.Identity) {
+	g.bindMu.Lock()
+	defer g.bindMu.Unlock()
+	if g.built == nil {
+		g.built = map[string]devsdk.Identity{}
+	}
+	g.built[nodeID] = identity
+}
+
+// recordFingerprinted remembers the identity embedded in a Go node's input
+// fingerprint.
+func (g *BuildGraph) recordFingerprinted(nodeID string, identity devsdk.Identity) {
+	g.bindMu.Lock()
+	defer g.bindMu.Unlock()
+	if g.fingerprinted == nil {
+		g.fingerprinted = map[string]devsdk.Identity{}
+	}
+	g.fingerprinted[nodeID] = identity
 }
 
 // recordArtifact attests a plugin binary to its verified SDK source. The

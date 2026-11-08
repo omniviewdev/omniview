@@ -105,6 +105,7 @@ func (g *BuildGraph) produce(ctx context.Context, n BuildNode, state *buildReuse
 	if state == nil {
 		return g.buildNode(ctx, n)
 	}
+	g.forgetBinding(n.ID)
 	inputs, err := g.nodeInputs(ctx, n)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -147,7 +148,46 @@ func (g *BuildGraph) produce(ctx context.Context, n BuildNode, state *buildReuse
 	if inputs == "" {
 		return nil
 	}
+	// The fingerprint embeds the SDK identity observed before the build; the
+	// build attested the identity it verified itself. A record that names a
+	// different identity than its own build ran under would let a later run
+	// reuse these outputs for an SDK they were never built against.
+	if err = g.checkBinding(n); err != nil {
+		g.logf("build reuse: %s: not recorded for reuse, %v", n.ID, err)
+		return nil
+	}
 	return g.setBuildReuse(state, n.ID, buildReuseRecord{Inputs: inputs, Outputs: outputs})
+}
+
+// forgetBinding drops what an earlier pass of the node bound.
+func (g *BuildGraph) forgetBinding(nodeID string) {
+	g.bindMu.Lock()
+	defer g.bindMu.Unlock()
+	delete(g.fingerprinted, nodeID)
+	delete(g.built, nodeID)
+}
+
+// checkBinding requires a Go node's build identity to equal the identity its
+// input fingerprint embeds. A published node must have both; a source node is
+// compared when both are known.
+func (g *BuildGraph) checkBinding(n BuildNode) error {
+	if n.Kind == "javascript" {
+		return nil
+	}
+	g.bindMu.Lock()
+	fingerprinted, haveFingerprint := g.fingerprinted[n.ID]
+	built, haveBuilt := g.built[n.ID]
+	g.bindMu.Unlock()
+	if !haveFingerprint || !haveBuilt {
+		if g.plan.SDK.Mode() == devsdk.ModePublished {
+			return errors.New("the build's SDK identity is not bound to its fingerprint")
+		}
+		return nil
+	}
+	if fingerprinted != built {
+		return errors.New("the SDK identity changed between fingerprinting and the build's own verification")
+	}
+	return nil
 }
 
 // reuseOutputs validates a previous build's outputs for reuse, re-establishing
@@ -159,18 +199,7 @@ func (g *BuildGraph) reuseOutputs(ctx context.Context, n BuildNode) (string, err
 		if err != nil {
 			return "", err
 		}
-		identity, err := g.verifySDK(ctx, n.Directory)
-		if err != nil {
-			return "", err
-		}
-		destination, err := generatedPath(g.workspace, filepath.Join("build", n.PluginID))
-		if err != nil {
-			return "", err
-		}
-		if err = g.recordArtifact(n.PluginID, filepath.Join(destination, "plugin"), identity); err != nil {
-			return "", err
-		}
-		return digest, nil
+		return digest, g.downgradeOnError(n.Directory, g.reusePluginBackend(ctx, n))
 	case "host-backend":
 		if g.options.ReuseHost == nil {
 			return "", errors.New("host reuse is not supported by this builder")
@@ -179,10 +208,67 @@ func (g *BuildGraph) reuseOutputs(ctx context.Context, n BuildNode) (string, err
 		if err != nil {
 			return "", err
 		}
-		return digest, g.options.ReuseHost(ctx)
+		return digest, g.downgradeOnError(n.Directory, g.reuseHost(ctx, n))
 	default:
 		return g.outputDigest(ctx, n)
 	}
+}
+
+// reusePluginBackend re-attests a reused plugin binary. The SDK identity is
+// observed again, and under a published identity the binary's own Go build
+// information must name exactly that release before any evidence is recorded:
+// a binary built against another release is never attested.
+func (g *BuildGraph) reusePluginBackend(ctx context.Context, n BuildNode) error {
+	identity, err := g.reuseIdentity(ctx, n)
+	if err != nil {
+		return err
+	}
+	destination, err := generatedPath(g.workspace, filepath.Join("build", n.PluginID))
+	if err != nil {
+		return err
+	}
+	binary := filepath.Join(destination, "plugin")
+	if identity.Mode() == devsdk.ModePublished {
+		if err = devsdk.VerifyBinary(g.consumerName(n.Directory), binary, identity); err != nil {
+			return err
+		}
+	}
+	if err = g.recordArtifact(n.PluginID, binary, identity); err != nil {
+		return err
+	}
+	g.observeSDK(n.Directory, identity)
+	return nil
+}
+
+// reuseHost adopts the previously built host through the builder's callback,
+// which checks the adopted binary against the identity observed here.
+func (g *BuildGraph) reuseHost(ctx context.Context, n BuildNode) error {
+	identity, err := g.reuseIdentity(ctx, n)
+	if err != nil {
+		return err
+	}
+	if err = g.options.ReuseHost(ctx, identity); err != nil {
+		return err
+	}
+	g.observeSDK(n.Directory, identity)
+	return nil
+}
+
+// reuseIdentity observes the SDK a reused node would be attested under and
+// requires it to equal the identity its fingerprint embedded: the fingerprint
+// that matched named another SDK otherwise.
+func (g *BuildGraph) reuseIdentity(ctx context.Context, n BuildNode) (devsdk.Identity, error) {
+	identity, err := g.verifySDK(ctx, n.Directory)
+	if err != nil {
+		return devsdk.Identity{}, err
+	}
+	g.bindMu.Lock()
+	fingerprinted, known := g.fingerprinted[n.ID]
+	g.bindMu.Unlock()
+	if known && fingerprinted != identity {
+		return devsdk.Identity{}, errors.New("the SDK identity changed since the node was fingerprinted")
+	}
+	return identity, nil
 }
 
 // outputDigest returns a content digest of every owned output of a node, each
@@ -266,6 +352,7 @@ func (g *BuildGraph) toolchainInputs(ctx context.Context, n BuildNode) (string, 
 		if err != nil {
 			return "", err
 		}
+		g.recordFingerprinted(n.ID, identity)
 		version, err := goVersion(ctx, n.Directory)
 		if err != nil {
 			return "", err

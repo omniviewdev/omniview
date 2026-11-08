@@ -17,6 +17,7 @@ import (
 	"github.com/omniviewdev/omniview/internal/devbaseline"
 	"github.com/omniviewdev/omniview/internal/devcompose"
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devdiag"
 	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsession"
 )
@@ -84,6 +85,10 @@ const (
 	goFlagsEnv  = "GOFLAGS"
 	goWorkEnv   = "GOWORK"
 	nodePathEnv = "NODE_PATH"
+	// goModuleModeEnv is pinned to "on" for every Go command the controller runs
+	// for a build, exactly as the SDK verifier pins it: a GOPATH-mode build
+	// would ignore the go.mod the verification read.
+	goModuleModeEnv = "GO111MODULE"
 	// sdkSourceEnv is the variable the Taskfile reads to replace the SDK with a
 	// local checkout. Only the selected workspace SDK may set it.
 	sdkSourceEnv         = "SDK_SOURCE"
@@ -423,7 +428,9 @@ func (m *Manager) supervisorTargetCommand(ctx context.Context, name, command, ge
 func (s *workspaceSupervisor) runLaunchCommand(ctx context.Context, directory string, environment []string, output io.Writer, program string, args ...string) ([]byte, error) {
 	command := exec.Command(program, args...)
 	command.Dir = directory
-	command.Env = environment
+	// Every build command runs in module mode, exactly as the SDK verifier does:
+	// GO111MODULE=off would make the compiler ignore the go.mod it verified.
+	command.Env = append(append([]string(nil), environment...), goModuleModeEnv+"=on")
 	var stdout strings.Builder
 	command.Stdout = &stdout
 	stderr := &childOutput{output: output}
@@ -436,7 +443,7 @@ func (s *workspaceSupervisor) runLaunchCommand(ctx context.Context, directory st
 		if ctx.Err() != nil && !errors.Is(err, errOwnedCommandUncertain) {
 			return nil, ctx.Err()
 		}
-		return nil, fmt.Errorf("%s failed in selected checkout: %w\n%s", program, err, safeCompilerDiagnostic(stdout.String()+"\n"+stderr.text, s.workspace.Root))
+		return nil, fmt.Errorf("%s failed in selected checkout: %w\n%s", program, err, devdiag.Safe(stdout.String()+"\n"+stderr.text, s.workspace.Root))
 	}
 	return []byte(stdout.String()), nil
 }
@@ -464,7 +471,7 @@ func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 		return nil, fmt.Errorf("supervisor build requires the completed aggregate install and recursive peer transaction: %w", err)
 	}
 	return s.manager.NewBuildGraph(ctx, s.workspace.Manifest.WorkspaceID, BuildOptions{
-		Generation: s.generation, GoBuildCacheDirectory: s.goBuildCache, VerifySDK: s.sdkVerifier(), ObserveSDK: s.observeSDK,
+		Generation: s.generation, GoBuildCacheDirectory: s.goBuildCache, VerifySDK: s.sdkVerifier(), ObserveSDK: s.observeSDK, DowngradeSDK: s.downgradeSDK,
 		HostBuild: s.buildHost, HostVariant: s.hostVariant(), HostOutput: s.hostOutput(), ReuseHost: s.reuseHost,
 		Bindings: func(ctx context.Context, host, outputDirectory string) (resultErr error) {
 			hostModOutput, prepareErr := prepareStableHostModTree(s.workspace, s.generation)
@@ -761,8 +768,11 @@ func (s *workspaceSupervisor) hostLaunchRelative() string {
 }
 
 // reuseHost adopts the published host from an unchanged previous build. The
-// graph has already verified the whole output tree against its ledger record.
-func (s *workspaceSupervisor) reuseHost(context.Context) error {
+// graph has already verified the whole output tree against its ledger record
+// and passes the SDK identity it verified just now. Under a published identity
+// the adopted binary's Go build information must name exactly that release: a
+// host built against another release is never adopted, so the graph rebuilds it.
+func (s *workspaceSupervisor) reuseHost(_ context.Context, sdk devsdk.Identity) error {
 	destination, err := generatedPath(s.workspace, s.hostOutput())
 	if err != nil {
 		return err
@@ -774,6 +784,11 @@ func (s *workspaceSupervisor) reuseHost(context.Context) error {
 	}
 	if !info.Mode().IsRegular() {
 		return fmt.Errorf("published host executable is not a regular file")
+	}
+	if sdk.Mode() == devsdk.ModePublished {
+		if err = devsdk.VerifyBinary("omniview", binary, sdk); err != nil {
+			return err
+		}
 	}
 	s.mu.Lock()
 	s.binary = binary

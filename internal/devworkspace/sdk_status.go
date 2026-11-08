@@ -15,11 +15,29 @@ import (
 // Verification labels of one SDK consumer. A declared requirement is never
 // reported as an effective resolution: only a verifier's observation is.
 const (
-	// SDKUnresolved: only the consumer's declared requirement was read. Nothing
-	// was resolved, downloaded or integrity-checked.
+	// SDKUnresolved: only the consumer's declared requirement was read, or an
+	// earlier observation was withdrawn because a later verification of the
+	// consumer was refused, a build's before/after comparison failed, or its
+	// build failed. Nothing is claimed about the effective SDK; the resolved
+	// version and checksums are empty.
 	SDKUnresolved = "unresolved"
-	// SDKVerified: the running (or just launched) supervisor resolved and
-	// verified the consumer's effective SDK.
+	// SDKVerified means exactly this, for an identity that passed the
+	// before/after comparison of a build (or, for a verification with no build
+	// around it, the one observation that was made and not contradicted):
+	//
+	//   - the extracted module-cache bytes of the SDK hash (dirhash) to the
+	//     module and go.mod checksums the CONTROLLER itself reviewed (its
+	//     compiled-in release table), not merely what the branch's go.sum says;
+	//   - that module provides the state-root-v1 capability;
+	//   - the compiled binary's Go build information names exactly that version
+	//     and sum, with no replacement; and
+	//   - the identity was unchanged between a before and an after observation of
+	//     the build.
+	//
+	// It does NOT claim: that the SDK's behavior was reviewed for safety or
+	// sandboxing; that the executable's bytes were compiled from the hashed
+	// bytes (the build information is written by the go command, not measured);
+	// or that the toolchain or the environment is trustworthy.
 	SDKVerified = "verified"
 	// SDKHistorical: a previous launch verified it. The workspace may have
 	// changed since; this is evidence of that launch, not a fresh observation.
@@ -44,12 +62,20 @@ type SDKConsumer struct {
 	RepositoryID string `json:"repositoryID"`
 	// RequiredVersion is the version the consumer's go.mod requires.
 	RequiredVersion string `json:"requiredVersion,omitempty"`
-	// ResolvedVersion is the effective MVS-selected version, present only when a
-	// verification observed it. ModuleSum and GoModSum are its checksums.
+	// ResolvedVersion is the effective MVS-selected version, present only for a
+	// consumer labelled verified: an identity that passed a build's before/after
+	// comparison (or the one uncontradicted observation of a verification with
+	// no build around it). ModuleSum and GoModSum are its module and go.mod
+	// checksums, the ones the controller's reviewed release table holds. All
+	// three are cleared when the label is withdrawn. They never claim that the
+	// SDK's behavior was reviewed, that the executable's bytes were compiled from
+	// the hashed bytes, or that the toolchain or environment is trustworthy; see
+	// SDKVerified.
 	ResolvedVersion string `json:"resolvedVersion,omitempty"`
 	ModuleSum       string `json:"moduleSum,omitempty"`
 	GoModSum        string `json:"goModSum,omitempty"`
-	Verification    string `json:"verification"`
+	// Verification is one of SDKUnresolved, SDKVerified and SDKHistorical.
+	Verification string `json:"verification"`
 }
 
 // moduleFileSource reads one repository's Go module files: the checked-out
@@ -220,8 +246,9 @@ func publishedNativeUnsupported() *devcontract.Error {
 		"native mode is not supported with the published plugin SDK yet; launch with --mode browser, or create the workspace with --repo plugin-sdk to build natively against explicit SDK source")
 }
 
-// observeSDK records the SDK a build verified so launch status can report the
-// resolved version. It reports; it never authorizes.
+// observeSDK records an identity that earned the "verified" label (see
+// SDKVerified) so launch status can report the resolved version. It reports;
+// it never authorizes.
 func (s *workspaceSupervisor) observeSDK(consumer string, identity devsdk.Identity) {
 	published, ok := identity.Published()
 	if !ok {
@@ -245,6 +272,26 @@ func (s *workspaceSupervisor) observeSDK(consumer string, identity devsdk.Identi
 		RepositoryID: consumer, RequiredVersion: published.Version, ResolvedVersion: published.Version,
 		ModuleSum: published.ModuleSum, GoModSum: published.GoModSum, Verification: SDKVerified,
 	})
+}
+
+// downgradeSDK withdraws the "verified" label of a consumer: its resolved
+// version and checksums are cleared and it is unresolved again. A verification
+// that was refused, a build whose before/after comparison failed, or a build
+// that errored after an observation leaves no verified claim behind.
+func (s *workspaceSupervisor) downgradeSDK(consumer string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.status.SDK == nil {
+		return
+	}
+	for index := range s.status.SDK.Consumers {
+		entry := &s.status.SDK.Consumers[index]
+		if entry.RepositoryID == consumer {
+			entry.ResolvedVersion, entry.ModuleSum, entry.GoModSum = "", "", ""
+			entry.Verification = SDKUnresolved
+			return
+		}
+	}
 }
 
 // workspaceSDKStatus derives a workspace's SDK status from its files alone, for

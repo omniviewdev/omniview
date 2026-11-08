@@ -48,7 +48,11 @@ func TestVerifyBuildSDKDelegatesAPublishedSelectionToTheVerifierPerConsumer(t *t
 		require.NoError(t, err)
 		require.Equal(t, published, identity)
 	}
-	require.Len(t, requests, 2)
+	require.Empty(t, observed, "a verification alone is not evidence; only a passed before/after comparison is reported")
+	for _, directory := range []string{host, plugin} {
+		require.NoError(t, g.verifyUnchangedSDK(context.Background(), directory, published))
+	}
+	require.Len(t, requests, 4, "each consumer is verified once before and once after")
 	for index, want := range []struct{ name, directory string }{{"omniview", host}, {"plugin", plugin}} {
 		require.Equal(t, devsdk.ModePublished, requests[index].Selection.Mode())
 		require.Equal(t, want.name, requests[index].Consumer.Name)
