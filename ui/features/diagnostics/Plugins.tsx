@@ -19,6 +19,8 @@ type PluginRow = {
   errors: number;
   latencyMs: number | null;
   crashes: number;
+  /** Plugin-reported measurements: 'ok' or why they are unavailable. Null when the host has not polled yet. */
+  reporting: string | null;
 };
 
 function named(samples: readonly Snapshot[], name: string): Metric | undefined {
@@ -37,6 +39,18 @@ function byPlugin(metric: Metric | undefined): Map<string, Metric['points']> {
   return groups;
 }
 
+function reportingNote(state: string | null) {
+  switch (state) {
+    case null:
+    case 'ok':
+      return null;
+    case 'truncated':
+      return <Chip size='sm' color='warning'>Plugin metrics partial</Chip>;
+    default:
+      return <Chip size='sm' color='neutral'>Plugin metrics unavailable</Chip>;
+  }
+}
+
 export function pluginRows(samples: Snapshot[]): PluginRow[] {
   const cpuMetric = named(samples, 'omniview.plugin.process.cpu_time');
   const cpuSeries = cpuMetric ? metricSeries(cpuMetric, samples) : [];
@@ -45,7 +59,8 @@ export function pluginRows(samples: Snapshot[]): PluginRow[] {
   const latency = byPlugin(named(samples, 'omniview.resource.op_duration'));
   const crashes = byPlugin(named(samples, 'omniview.plugin.crashes'));
   const active = byPlugin(named(samples, 'omniview.plugin.active'));
-  const ids = new Set([...rss.keys(), ...calls.keys(), ...latency.keys(), ...crashes.keys(), ...active.keys()]);
+  const reporting = byPlugin(named(samples, 'omniview.plugin.diagnostics.status'));
+  const ids = new Set([...rss.keys(), ...calls.keys(), ...latency.keys(), ...crashes.keys(), ...active.keys(), ...reporting.keys()]);
   const total = (points: Metric['points'] | undefined) => (points ?? []).reduce((sum, point) => sum + point.value, 0);
   return [...ids].sort().map(id => {
     const series = cpuSeries.find((_, index) => cpuMetric?.points[index]?.attributes.plugin === id);
@@ -61,6 +76,7 @@ export function pluginRows(samples: Snapshot[]): PluginRow[] {
       errors: total(callPoints.filter(point => point.attributes.outcome !== undefined && point.attributes.outcome !== 'success')),
       latencyMs: observations > 0 ? sumMs / observations : null,
       crashes: total(crashes.get(id)),
+      reporting: reporting.get(id)?.[0]?.attributes.state ?? null,
     };
   });
 }
@@ -86,7 +102,7 @@ export function Plugins({ samples, updating, health }: { samples: Snapshot[]; up
       <Table.Cell>{row.memory === null ? '—' : <MetricValue value={row.memory} unit={bytes} size='sm' />}</Table.Cell>
       <Table.Cell><MetricValue value={row.operations} unit={count} size='sm' /></Table.Cell>
       <Table.Cell>{row.latencyMs === null ? '—' : <MetricValue value={row.latencyMs} unit={millis} size='sm' />}</Table.Cell>
-      <Table.Cell>{row.errors > 0 && <Chip size='sm' color='danger'>{row.errors} failed</Chip>} {row.crashes > 0 && <Chip size='sm' color='warning'>{row.crashes} crashes</Chip>}</Table.Cell>
+      <Table.Cell>{row.errors > 0 && <Chip size='sm' color='danger'>{row.errors} failed</Chip>} {row.crashes > 0 && <Chip size='sm' color='warning'>{row.crashes} crashes</Chip>} {reportingNote(row.reporting)}</Table.Cell>
     </Table.Row>)}</Table.Body></Table></Table.Container>
   </div>;
 }

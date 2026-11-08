@@ -460,6 +460,8 @@ func main() {
 		return processes
 	})
 
+	telemetry.RegisterPluginDiagnosticsSource(pluginManager.DiagnosticsTargets)
+
 	// Wire crash recovery: when a plugin crash is detected by the resource
 	// controller's event listeners, the manager will attempt to reload it.
 	resourceController.SetCrashCallback(pluginManager.HandlePluginCrash)
