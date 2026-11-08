@@ -106,13 +106,13 @@ func TestBindingsStageIsNotPublishedAcrossSDKMutation(t *testing.T) {
 		return json.Marshal(map[string]any{"Path": devsdk.Module, "Dir": sdkDirectory(t, g)})
 	}
 	calls := 0
-	g.options.VerifySDK = func(_ context.Context, selection devsdk.Selection) (devsdk.Identity, error) {
+	g.options.VerifySDK = func(_ context.Context, request devsdk.Request) (devsdk.Identity, error) {
 		calls++
 		digest := strings.Repeat("c", 64)
 		if calls > 1 {
 			digest = strings.Repeat("d", 64)
 		}
-		directory, _ := selection.Directory()
+		directory, _ := request.Selection.Directory()
 		return devsdk.NewSourceIdentity(devsource.Identity{Directory: directory, Revision: strings.Repeat("a", 40), SourceDigest: digest})
 	}
 	g.options.Bindings = func(_ context.Context, _ string, output string) error {

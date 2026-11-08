@@ -2,6 +2,8 @@
 
 Omniview uses unmodified Go/native Wails `v3.0.0-beta.34.0.20261022002616-a90f7e7f50bf`. Native isolation uses application identity and stock platform options; cleanup and workspace policy belong to Omniview. The genuine npm `@wailsio/runtime` remains exactly `3.0.0-beta.34`, with the explicit checked-in dependency patch described below; no framework fork or patched Go-source build path is used.
 
+Native workspaces require explicit SDK source: a workspace that selects no `plugin-sdk` repository builds against the published SDK in browser mode only, and `--mode native` is refused with `sdk_published_native_unsupported` (exit 2) until the native host build supports published modules.
+
 Use Task entry points, or prepare an effective host module when selecting a local SDK:
 
 ```sh

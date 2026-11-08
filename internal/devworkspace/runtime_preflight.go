@@ -16,15 +16,34 @@ import (
 	"golang.org/x/mod/modfile"
 )
 
-// Preflight reads the selected graph before installers, bindings or compilers run.
-func compatibilityPreflight(ctx context.Context, w Workspace, verify devsdk.Verifier) error {
+// compatibilityPreflight reads the selected graph before installers, bindings or
+// compilers run. Source mode checks every Go consumer against the selected SDK
+// checkout. Published mode verifies every Go consumer's effective published SDK
+// (its own module files, the module bytes and the release policy) with run, the
+// caller's owned Go runner; a refusal here happens before any producer starts.
+func compatibilityPreflight(ctx context.Context, w Workspace, verify devsdk.Verifier, run devsdk.Runner) error {
 	plan, err := makeLinkPlan(w)
 	if err != nil {
 		return err
 	}
-	sdk, ok := plan.SDK.Directory()
-	if !ok {
-		return sdkSourceRequired(ctx, "select the plugin-sdk repository before launching", workspaceSDKProbes(w), editAddSDKCommand(w))
+	sdk, selected := plan.SDK.Directory()
+	if !selected {
+		for _, root := range plan.GoRoots {
+			request := devsdk.Request{Selection: plan.SDK, Consumer: devsdk.Consumer{Name: workspaceConsumerName(w, root), Directory: root}, Run: run}
+			if _, err = verify(ctx, request); err != nil {
+				return err
+			}
+			// The compiler stays authoritative for the selected target; this only
+			// names a missing package early, from the verified module bytes.
+			directory, directoryErr := devsdk.PublishedDirectory(ctx, request.Consumer, run)
+			if directoryErr != nil {
+				return directoryErr
+			}
+			if err = validateSDKImports(ctx, root, directory); err != nil {
+				return err
+			}
+		}
+		return validateRuntimeUIContracts(w, plan)
 	}
 	sdkBytes, err := os.ReadFile(filepath.Join(sdk, "go.mod"))
 	if err != nil {
@@ -34,7 +53,7 @@ func compatibilityPreflight(ctx context.Context, w Workspace, verify devsdk.Veri
 	if err != nil || sdkModule.Module == nil || sdkModule.Module.Mod.Path != devsdk.Module {
 		return devcontract.Fail(3, "sdk_contract_mismatch", "selected SDK must declare module "+devsdk.Module+"; select a compatible SDK repository")
 	}
-	if _, err = verify(ctx, plan.SDK); err != nil {
+	if _, err = verify(ctx, devsdk.Request{Selection: plan.SDK}); err != nil {
 		return err
 	}
 	for _, root := range plan.GoRoots {

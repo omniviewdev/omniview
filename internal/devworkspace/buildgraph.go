@@ -2,7 +2,6 @@ package devworkspace
 
 import (
 	"context"
-	"debug/buildinfo"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -56,8 +55,14 @@ type BuildOptions struct {
 	Generation string
 	// An already-owned UUID profile runtime cache, never a source-tree cache.
 	GoBuildCacheDirectory string
-	// Required verifier of the selected SDK; normally devsdk.NewVerifier.
+	// Required verifier of the selected SDK; normally devsdk.NewVerifier under
+	// the manager's injected devsdk.Policy. A published selection is verified
+	// per consumer from its effective module graph; a source selection from the
+	// selected checkout.
 	VerifySDK devsdk.Verifier
+	// ObserveSDK, when set, receives every successful SDK verification with the
+	// verified consumer's repository ID. It reports; it never authorizes.
+	ObserveSDK func(consumer string, identity devsdk.Identity)
 	// HostBuild must compile the selected host (including native/module flags).
 	HostBuild func(context.Context, HostBuildRequest) error
 	// Optional real Task adapter. Output must remain exclusively in outputDirectory.
@@ -174,10 +179,7 @@ func compileBuildGraph(w Workspace, p linkPlan, opts BuildOptions) (*BuildGraph,
 		return nil, fmt.Errorf("a real selected-host build callback is required")
 	}
 	if opts.VerifySDK == nil {
-		return nil, fmt.Errorf("a real selected SDK source verifier is required")
-	}
-	if p.SDK.Mode() != devsdk.ModeSource {
-		return nil, fmt.Errorf("a selected local SDK source is required for trusted builds")
+		return nil, fmt.Errorf("a real SDK verifier is required")
 	}
 	if opts.Output != nil {
 		opts.Output = &lockedWriter{writer: opts.Output}
@@ -335,8 +337,34 @@ func (g *BuildGraph) commandWithEnvironment(ctx context.Context, dir string, env
 	return []byte(output.String()), nil
 }
 
-// verifySDK resolves the actual consumer module graph and identifies its live source.
+// goRunner is the owned Go command runner published-SDK verification uses: the
+// same owned, cancellable, ledgered process path as every other graph command.
+func (g *BuildGraph) goRunner() devsdk.Runner {
+	return func(ctx context.Context, directory string, environment []string, args ...string) ([]byte, error) {
+		return g.runProducer(ctx, directory, environment, "go", args...)
+	}
+}
+
+// consumerName labels a Go consumer directory in typed diagnostics: the ID of
+// the selected repository that owns it, or its directory name.
+func (g *BuildGraph) consumerName(directory string) string {
+	return workspaceConsumerName(g.workspace, directory)
+}
+
+// observeSDK reports a verified identity to the graph's observer.
+func (g *BuildGraph) observeSDK(consumer string, identity devsdk.Identity) {
+	if g.options.ObserveSDK != nil {
+		g.options.ObserveSDK(g.consumerName(consumer), identity)
+	}
+}
+
+// verifySDK resolves the actual consumer module graph and identifies its live
+// SDK: the selected checkout's source in source mode, the effective published
+// module in published mode.
 func (g *BuildGraph) verifySDK(ctx context.Context, consumer string) (devsdk.Identity, error) {
+	if g.plan.SDK.Mode() == devsdk.ModePublished {
+		return g.verifyPublishedSDK(ctx, consumer, "")
+	}
 	var identity devsdk.Identity
 	selection, ok := g.plan.SDK.Directory()
 	if !ok {
@@ -375,13 +403,34 @@ func (g *BuildGraph) verifySDK(ctx context.Context, consumer string) (devsdk.Ide
 	if err != nil {
 		return identity, err
 	}
-	identity, err = g.options.VerifySDK(ctx, checkout)
+	identity, err = g.options.VerifySDK(ctx, devsdk.Request{Selection: checkout})
 	if err != nil {
 		return identity, err
 	}
 	if source, isSource := identity.Source(); !isSource || source.Directory != selected {
 		return devsdk.Identity{}, fmt.Errorf("SDK verifier returned a different or incomplete selected source identity")
 	}
+	g.observeSDK(consumer, identity)
+	return identity, nil
+}
+
+// verifyPublishedSDK identifies the published SDK the consumer's effective
+// module graph selects. modfile optionally names the consumer's explicit
+// effective module file (the host's generated host.mod), verified in addition
+// to the consumer's own go.mod.
+func (g *BuildGraph) verifyPublishedSDK(ctx context.Context, consumer, modfile string) (devsdk.Identity, error) {
+	identity, err := g.options.VerifySDK(ctx, devsdk.Request{
+		Selection: g.plan.SDK,
+		Consumer:  devsdk.Consumer{Name: g.consumerName(consumer), Directory: consumer, Modfile: modfile},
+		Run:       g.goRunner(),
+	})
+	if err != nil {
+		return devsdk.Identity{}, err
+	}
+	if _, isPublished := identity.Published(); !isPublished {
+		return devsdk.Identity{}, fmt.Errorf("SDK verifier returned a source identity for a published selection")
+	}
+	g.observeSDK(consumer, identity)
 	return identity, nil
 }
 
@@ -391,6 +440,9 @@ func (g *BuildGraph) verifyUnchangedSDK(ctx context.Context, consumer string, be
 		return err
 	}
 	if after != before {
+		if before.Mode() == devsdk.ModePublished {
+			return devsdk.IdentityChanged(g.consumerName(consumer), "the effective published plugin SDK changed during the build; the artifact was not attested")
+		}
 		return fmt.Errorf("selected SDK source changed during build; artifact was not attested")
 	}
 	return nil
@@ -414,7 +466,12 @@ func (g *BuildGraph) buildNode(ctx context.Context, n BuildNode) error {
 			return err
 		}
 		stagedBinary := filepath.Join(prepared.Directory, "plugin")
-		_, buildErr := g.run(ctx, n.Directory, "go", "build", "-o", stagedBinary, "./pkg")
+		args := []string{"build"}
+		if before.Mode() == devsdk.ModePublished {
+			// Never the repository's vendor tree, never an implicit go.mod edit.
+			args = append(args, "-mod=readonly")
+		}
+		_, buildErr := g.run(ctx, n.Directory, "go", append(args, "-o", stagedBinary, "./pkg")...)
 		if errors.Is(buildErr, errOwnedCommandUncertain) {
 			return errors.Join(buildErr, prepared.stageFile.Close())
 		}
@@ -427,19 +484,8 @@ func (g *BuildGraph) buildNode(ctx context.Context, n BuildNode) error {
 		if err := g.verifyUnchangedSDK(ctx, n.Directory, before); err != nil {
 			return err
 		}
-		info, err := buildinfo.ReadFile(binary)
-		if err != nil {
-			return fmt.Errorf("built plugin has no inspectable Go module identity: %w", err)
-		}
-		includesSDK := false
-		for _, dependency := range info.Deps {
-			if dependency.Path == devsdk.Module {
-				includesSDK = true
-				break
-			}
-		}
-		if !includesSDK {
-			return fmt.Errorf("built plugin does not include the selected SDK dependency")
+		if err = devsdk.VerifyBinary(g.consumerName(n.Directory), binary, before); err != nil {
+			return err
 		}
 		// Trusted local rebuild binds binary bytes to the exact dirty source snapshot.
 		return g.recordArtifact(n.PluginID, binary, before)

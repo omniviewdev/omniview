@@ -46,6 +46,12 @@ type Status struct {
 	// for an archive runtime launch.
 	PluginRuntime string `json:"pluginRuntime,omitempty"`
 
+	// SDK reports the plugin SDK mode (derived from the manifest's single
+	// selection authority) and, in published mode, each Go consumer's declared
+	// requirement and the effective version a launch verified. It is
+	// observation, never authorization.
+	SDK *SDKStatus `json:"sdk,omitempty"`
+
 	// SourceUpdateSupported is evidence only in an authenticated live response.
 	SourceUpdateSupported bool `json:"sourceUpdateSupported,omitempty"`
 }
@@ -156,6 +162,11 @@ func (m *Manager) Status(ctx context.Context, name string) (Status, error) {
 		if result.RecoveryCommand != "" {
 			result.RecoveryCommand = workspaceRecoveryCommand(result.Workspace, "refresh")
 		}
+		// A stopped workspace, or an older supervisor, reports the mode and the
+		// declared requirements from files alone: every consumer unresolved.
+		if result.SDK == nil {
+			result.SDK = workspaceSDKStatus(ctx, result.Workspace)
+		}
 		m.addUpstreamStatus(&result)
 	}
 	return result, err
@@ -227,6 +238,7 @@ func exitedSupervisorStatus(ctx context.Context, status Status) Status {
 		status.WaitStage = saved.WaitStage
 		status.RecoveryCommand = saved.RecoveryCommand
 		status.ReadyCheckouts = saved.ReadyCheckouts
+		status.SDK = historicalSDKStatus(saved.SDK)
 		if saved.Phase == "stopped" {
 			return status
 		}

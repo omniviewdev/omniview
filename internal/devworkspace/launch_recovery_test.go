@@ -87,13 +87,15 @@ func TestRestartStoppedWorkspaceReachesLaunchPreconditions(t *testing.T) {
 	for _, recorded := range []bool{false, true} {
 		t.Run(map[bool]string{false: "missing", true: "exited"}[recorded], func(t *testing.T) {
 			m, _ := fixtureManager(t)
-			// Once the SDK prerequisite no longer stops Start, Restart must still
-			// never be able to execute this test binary as a supervisor.
+			// A source-only cohort is a published-SDK workspace: it is not stopped
+			// by an SDK prerequisite. Restart must still never be able to execute
+			// this test binary as a supervisor.
 			m.options.Executable = forbidSupervisorExecutable
 			ctx := context.Background()
 			w, err := m.Create(ctx, CreateOptions{Slug: "restart-stopped"})
 			require.NoError(t, err)
-			require.NoError(t, rawSaveLaunchJSON(launchPath(w, "launch.json"), LaunchOptions{Mode: "browser"}))
+			require.NoError(t, ReconcileGeneratedRoot(w))
+			require.NoError(t, saveLaunchJSON(launchPath(w, "launch.json"), LaunchOptions{Mode: "browser"}))
 			if recorded {
 				generation := NewGeneration()
 				owner := devsession.ProcessOwner{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "supervisor", Source: w.Root}
@@ -106,9 +108,7 @@ func TestRestartStoppedWorkspaceReachesLaunchPreconditions(t *testing.T) {
 				require.NoError(t, child.stop(ctx))
 			}
 			_, err = m.Restart(ctx, w.Manifest.WorkspaceID)
-			var failure *devcontract.Error
-			require.ErrorAs(t, err, &failure)
-			require.Equal(t, "sdk_source_required", failure.Code)
+			require.ErrorIs(t, err, errSupervisorExecutableForbidden, "restart must reach the real launch precondition, not an SDK gate")
 		})
 	}
 }
@@ -196,11 +196,11 @@ func TestLateRefreshFailureRetiresOnlyFailedLaunchWithoutReinstall(t *testing.T)
 			linksBefore, err := os.ReadFile(launchPath(w, "links.json"))
 			require.NoError(t, err)
 			_, err = m.Recover(ctx, w.Manifest.WorkspaceID, RefreshOptions{Executable: "/must-not-launch"})
-			var failure *devcontract.Error
-			require.ErrorAs(t, err, &failure)
-			// This source-only cohort lacks SDK selection: reaching Start's
-			// real prerequisite proves the failed owner no longer blocks it.
-			require.Equal(t, "sdk_source_required", failure.Code)
+			// This source-only (published SDK) cohort has no SDK prerequisite:
+			// Start attempts the explicit executable, which does not exist. That
+			// proves the failed owner no longer blocks the launch and that nothing
+			// was launched.
+			require.ErrorIs(t, err, os.ErrNotExist)
 			require.Equal(t, int32(1), stops.Load())
 			require.ErrorIs(t, devsession.VerifyOwnedProcess(child.identity, owner), devsession.ErrProcessGone)
 			linksAfter, err := os.ReadFile(launchPath(w, "links.json"))

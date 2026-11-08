@@ -207,7 +207,7 @@ func TestWorkspaceMalformedExplicitEvidenceAggregatesWithoutMutationEdges(t *tes
 		counts[issue.Code]++
 	}
 	if code != 3 || report.Ready || len(report.Issues) != 2 ||
-		counts["invalid_link_evidence"] != 1 || counts["sdk_source_required"] != 1 {
+		counts["invalid_link_evidence"] != 1 || counts["sdk_contract_mismatch"] != 1 {
 		t.Fatalf("explicit malformed evidence lost independent issues: code=%d report=%+v", code, report)
 	}
 	if after := f.manifest(); !bytes.Equal(before, after) {

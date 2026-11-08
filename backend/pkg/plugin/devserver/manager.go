@@ -17,6 +17,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/internal/appstate"
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/omniview/internal/instance"
 	logging "github.com/omniviewdev/plugin-sdk/log"
@@ -471,6 +472,7 @@ func (m *DevServerManager) resolveBuildOpts() BuildOpts {
 	opts.Environment = m.buildEnvironment
 	opts.Workspace = m.workspace
 	opts.ProcessSupervisor = m.processSupervisor
+	opts.SDKPolicy = devsdk.ReleasePolicy()
 	if m.settingsProvider != nil {
 		opts.GoPath, _ = m.settingsProvider.GetString("developer.gopath")
 		opts.PnpmPath, _ = m.settingsProvider.GetString("developer.pnpmpath")

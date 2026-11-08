@@ -7,8 +7,9 @@
 // A Selection mirrors the workspace manifest's single authority
 // (links.sdkRepositoryID): a selected checkout means source mode, and no
 // selection means the SDK each consumer's own Go dependency graph publishes.
-// An Identity is the validated evidence of the SDK a build used. Published
-// identities are defined and validated here, but no verifier produces one yet.
+// An Identity is the validated evidence of the SDK a build used. A published
+// identity is produced by the verifier from a consumer's effective Go module
+// graph (see NewVerifier) and admitted under the release policy.
 package devsdk
 
 import (
@@ -106,10 +107,10 @@ func (s *Selection) UnmarshalText(text []byte) error {
 // Published identifies a released SDK module by what Go resolved: the module
 // version and the go.sum content hashes of its source tree and go.mod.
 type Published struct {
-	Module    string
-	Version   string
-	ModuleSum string
-	GoModSum  string
+	Module    string `json:"module"`
+	Version   string `json:"version"`
+	ModuleSum string `json:"moduleSum"`
+	GoModSum  string `json:"goModSum"`
 }
 
 var moduleSumPattern = regexp.MustCompile(`^h1:[A-Za-z0-9+/]{43}=$`)

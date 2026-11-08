@@ -19,6 +19,7 @@ import (
 
 	"github.com/omniviewdev/omniview/internal/devcompose"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsession"
 )
 
@@ -38,7 +39,7 @@ type buildReuseState struct {
 	Nodes         map[string]buildReuseRecord `json:"nodes"`
 }
 
-const buildReuseSchema = 2
+const buildReuseSchema = 3
 
 // loadBuildReuse reads this workspace's reuse records. A missing, foreign or
 // older-schema record yields an empty state, so every node rebuilds.
@@ -265,16 +266,24 @@ func (g *BuildGraph) toolchainInputs(ctx context.Context, n BuildNode) (string, 
 		if err != nil {
 			return "", err
 		}
-		source, isSource := identity.Source()
-		if !isSource {
-			return "", errors.New("build reuse has no fingerprint for a published SDK identity")
-		}
 		version, err := goVersion(ctx, n.Directory)
 		if err != nil {
 			return "", err
 		}
-		fmt.Fprintf(&b, "sdk\x00%s\x00%s\x00go\x00%s\x00variant\x00%s",
-			source.Revision, source.SourceDigest, version, g.options.HostVariant)
+		// The SDK mode and the complete validated identity are fingerprint
+		// inputs: a published release, a different checksum or a source
+		// checkout can never reuse another's outputs.
+		switch identity.Mode() {
+		case devsdk.ModeSource:
+			source, _ := identity.Source()
+			fmt.Fprintf(&b, "sdk\x00source\x00%s\x00%s", source.Revision, source.SourceDigest)
+		case devsdk.ModePublished:
+			published, _ := identity.Published()
+			fmt.Fprintf(&b, "sdk\x00published\x00%s\x00%s\x00%s\x00%s", published.Module, published.Version, published.ModuleSum, published.GoModSum)
+		default:
+			return "", errors.New("build reuse has no fingerprint for an unverified SDK identity")
+		}
+		fmt.Fprintf(&b, "\x00go\x00%s\x00variant\x00%s", version, g.options.HostVariant)
 		return b.String(), nil
 	}
 	if g.plan.Composition == nil {

@@ -58,7 +58,4 @@ func TestAttestationBranchesCoverManagedAndUnmanagedBuildsInBothModes(t *testing
 	workspace := &devcontract.ResolvedWorkspace{}
 	managedWithoutIdentity := &goWatcherProcess{pluginID: "attest", pluginsRoot: root, buildOpts: BuildOpts{Workspace: workspace}}
 	require.Error(t, managedWithoutIdentity.attestBuild(), "a managed build without verified SDK evidence must never be attested")
-	managedPublished := &goWatcherProcess{pluginID: "attest", pluginsRoot: root, buildOpts: BuildOpts{Workspace: workspace}, sdk: published}
-	require.ErrorContains(t, managedPublished.attestBuild(), "records only selected source SDK identities",
-		"a published identity must be refused, not skipped, while artifact schema 3 cannot record it")
 }

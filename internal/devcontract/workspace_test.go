@@ -38,10 +38,22 @@ func TestManifestRejectsUnsafeSelections(t *testing.T) {
 			m.Plugins = []Plugin{{ID: "kubernetes", RepositoryID: "omniview", Mode: "managed"}, {ID: "kubernetes", RepositoryID: "omniview", Mode: "managed"}}
 		}},
 		{"unknown link", func(m *WorkspaceManifest) { s := "absent"; m.Links.UIRepositoryID = &s }},
+		// Without its link a selected SDK checkout would be silently ignored in
+		// favor of the published SDK.
+		{"selected SDK without link", func(m *WorkspaceManifest) {
+			m.Repositories = append(m.Repositories, Repository{ID: "plugin-sdk", Directory: "plugin-sdk", BaseRef: "main", BaseCommit: m.Repositories[0].BaseCommit, Branch: "feature/sdk"})
+		}},
 		{"invalid port", func(m *WorkspaceManifest) { m.Ports.Overrides = map[string]int{"vite": 70000} }},
 	}
 	if err := fixtureManifest().Validate(); err != nil {
 		t.Fatalf("valid selection rejected: %v", err)
+	}
+	linked := fixtureManifest()
+	sdk := "plugin-sdk"
+	linked.Repositories = append(linked.Repositories, Repository{ID: "plugin-sdk", Directory: "plugin-sdk", BaseRef: "main", BaseCommit: linked.Repositories[0].BaseCommit, Branch: "feature/sdk"})
+	linked.Links.SDKRepositoryID = &sdk
+	if err := linked.Validate(); err != nil {
+		t.Fatalf("a linked SDK selection was rejected: %v", err)
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

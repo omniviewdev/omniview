@@ -22,6 +22,7 @@ import (
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devsdk"
+	"github.com/omniviewdev/omniview/internal/devsdk/sdktest"
 	"github.com/omniviewdev/omniview/internal/devsource"
 	"github.com/omniviewdev/plugin-sdk/pkg/profilecontract"
 )
@@ -69,7 +70,7 @@ var dynamicTypedConstructors = map[string]map[string][]int{
 // the table from drifting when a code is added; constructors whose code or exit
 // is computed must be listed by hand so they cannot be skipped silently.
 func TestWorkspaceExitCodesCoverEveryTypedConstructor(t *testing.T) {
-	directories := []string{".", "../devsession", "../devcontract", "../devcontrol", "../devcontrol/host", "../../backend/pkg/plugin/devserver"}
+	directories := []string{".", "../devsdk", "../devsession", "../devcontract", "../devcontrol", "../devcontrol/host", "../../backend/pkg/plugin/devserver"}
 	fset := token.NewFileSet()
 	observed := map[string]map[int][]string{} // code -> exit -> constructing sites
 	note := func(code string, exit int, site string) {
@@ -283,8 +284,9 @@ func TestWorkspaceErrorRestoresExitFromCodeOnly(t *testing.T) {
 		code string
 		exit int
 	}{
-		{"usage", 2}, {"sdk_source_required", 2}, {"invalid_profile_binding", 2},
-		{"sdk_contract_mismatch", 3}, {"peer_contract_mismatch", 3},
+		{"usage", 2}, {"sdk_published_native_unsupported", 2}, {"invalid_profile_binding", 2},
+		{"sdk_contract_mismatch", 3}, {"sdk_checksums_required", 3}, {"peer_contract_mismatch", 3},
+		{"sdk_selection_conflict", 4}, {"sdk_integrity_mismatch", 4}, {"sdk_identity_changed", 4}, {"sdk_dependency_unavailable", 5},
 		{"invalid_journal", 4}, {"generated_cleanup_pending", 4}, {"conflicting_state_root", 4}, {"sdk_release_untrusted", 4},
 		{"unauthorized", 6}, {"timeout", 7},
 		{"build_failed", 5}, {"a_code_nobody_declared", 5},
@@ -370,7 +372,15 @@ func publishedFixtureIdentity(t *testing.T) devsdk.Identity {
 // the supervisor boundary as a bare wrapped sentinel, whichever way it was made.
 func TestWorkspaceErrorMapsAnUntrustedSDKRefusalToItsTypedExit4Code(t *testing.T) {
 	published := publishedFixtureIdentity(t)
-	_, verifierErr := devsdk.NewVerifier(devsdk.Policy{})(context.Background(), devsdk.PublishedSelection())
+	// The production verifier refuses a release below the floor for real: a
+	// served v0.16.0 module resolved from a scratch module cache.
+	world := sdktest.New(t)
+	below, uuid := world.PublishSDK("v0.16.0", nil), world.PublishPinned("github.com/google/uuid")
+	_, verifierErr := devsdk.NewVerifier(devsdk.ReleasePolicy())(context.Background(), devsdk.Request{
+		Selection: devsdk.PublishedSelection(),
+		Consumer:  devsdk.Consumer{Name: "plugin", Directory: world.Consumer("consumer", below, uuid)},
+		Run:       world.Runner(),
+	})
 	refusals := map[string]error{
 		"bare sentinel":      devsdk.ErrNotAccepted,
 		"wrapped sentinel":   fmt.Errorf("verify the selected SDK: %w", devsdk.ErrNotAccepted),

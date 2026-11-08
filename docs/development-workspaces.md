@@ -20,9 +20,12 @@ not require launch evidence. Before launching, run:
 Preflight reports all missing launch inputs together and exits 3 when blocked.
 Supply `--link-evidence /path/to/probe.json` with a successful pinned protocol
 probe. Saved launch options and retained protocol evidence are reused.
-Launching requires selecting `--repo plugin-sdk` even when you do not intend
-to develop the SDK. For an existing workspace, use
-`workspace edit FEATURE --root "$COLLECTION" --add-repo plugin-sdk`.
+Selecting `--repo plugin-sdk` is optional. Without it the workspace is in
+published SDK mode: the host and each plugin build against the plugin SDK release
+their own `go.mod` declares (a released tag at or above the controller's pinned
+SDK; see the CLI guide), and preflight reports each consumer's declared
+requirement as `unresolved` in its `sdk` object. Select `--repo plugin-sdk` to
+build every consumer against explicit SDK source instead; native mode requires it.
 
 Preflight does not install dependencies or start processes. A ready report covers
 launch inputs only; launch still validates source identity, strict peer dependencies,

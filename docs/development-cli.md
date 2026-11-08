@@ -16,8 +16,8 @@ omniview-dev --help
 ```
 
 For source development, bootstrap the CLI through the public task, which prints
-its actual immutable absolute executable path. The host consumes published SDK
-`v0.7.0`:
+its actual immutable absolute executable path. The host consumes the published
+plugin SDK its `go.mod` declares (currently `v0.17.0`):
 
 ```sh
 DEV="$(task --silent dev:cli:build)"
@@ -470,16 +470,44 @@ Use the emitted file with `workspace preflight --workspace MANIFEST
 FILE` after resolving reported source prerequisites. Inspection of saved proof is
 not certification that installed dependency bytes remain unchanged.
 
-When launch, `preflight`, or `create --start` refuses with `sdk_source_required`,
-the CLI reads each selected repository's committed `go.mod` (no network, no checkout
-needed) and reports the declared `plugin-sdk` requirement in `details.requirements`
-(`repository`, `version`, `ref`, `kind`). `ref` is the tag, or the commit embedded in
-a pseudo-version. `details.nextCommand` is the exact command, for example
-`workspace edit --workspace MANIFEST --add-repo plugin-sdk --ref plugin-sdk=v0.16.0`
-(for `create --start` it names the `--repo`/`--ref` flags to add). The host's
-requirement is preferred; `details.mixed` is true when consumers disagree. The SDK is
-never added automatically, the exit code stays 2, and the code and details survive
-the supervisor status boundary.
+### Published and source SDK modes
+
+The workspace manifest's `links.sdkRepositoryID` is the single selector. A
+workspace that selects the `plugin-sdk` repository is in **source** mode: every
+Go consumer builds against that exact checkout, including dirty edits. A workspace
+that does not select it is in **published** mode: the host and each selected
+plugin build against the plugin SDK their own `go.mod`/`go.sum` publish. There is
+no mode flag, no SDK version override, and no fallback between the two. Nothing
+is cloned, fetched or added automatically, and consumer Go files are never
+edited. `--reviewed-sdk-revision` stays removed.
+
+Published mode accepts any released tag at or above the controller's own pinned
+SDK (`devsdk.FloorVersion`, `v0.17.0` today). Pseudo-versions and older releases are
+refused with `sdk_release_untrusted` (exit 4); there is no compatibility path.
+Each consumer is verified from its effective Go module graph with `-mod=readonly`
+against a private modfile copy and a scrubbed Go environment, never in the
+consumer: any `replace` of the SDK, including a dormant version-specific one, or a
+`vendor/` directory is refused with `sdk_selection_conflict` (exit 4) before Go
+runs; missing go.sum checksums with `sdk_checksums_required` (exit 3); an
+unreachable module with `sdk_dependency_unavailable` (exit 5); module-cache bytes
+that disagree with the recorded module or go.mod checksum, including a tampered
+scratch or shared cache, with `sdk_integrity_mismatch` (exit 4); and an SDK that
+changes between the before and after observation of a build with
+`sdk_identity_changed` (exit 4). The extracted module directory is hashed in place
+(`dirhash`) and must provide the `state-root-v1` capability. The built binary's
+Go build information must then name exactly that version and checksum with no
+replacement. The shared module cache is never repaired or deleted.
+
+`workspace preflight --json` and `workspace inspect --json` report an `sdk` object:
+`mode`, and in published mode per-consumer `requiredVersion` (from `go.mod`),
+`resolvedVersion` (only after a launch verified it), checksums and `verification`
+(`unresolved`, `verified` or `historical`). Preflight is read-only and runs no
+tool: it reports the declaration and the refusals the files already prove, never an
+effective resolution. `up` and `create --start` print the mode and the resolved
+versions. Published mode is browser mode only: `--mode native` is refused with
+`sdk_published_native_unsupported` (exit 2); create the workspace with
+`--repo plugin-sdk` for native development. Changing an existing workspace between
+the modes is not part of this change; a source workspace keeps working unchanged.
 
 For first launch, use plain `workspace edit` to select prerequisite repositories,
 then `workspace preflight`, then `workspace up --link-evidence FILE`. The

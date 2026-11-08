@@ -115,7 +115,7 @@ func recordApplicationPlugin(root, id, binary, sdk, digest string) error {
 	if err != nil {
 		return err
 	}
-	identity, err := devsdk.NewVerifier(devsdk.Policy{})(ctx, selection)
+	identity, err := devsdk.NewVerifier(devsdk.Policy{})(ctx, devsdk.Request{Selection: selection})
 	if err != nil {
 		return err
 	}

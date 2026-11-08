@@ -3,7 +3,6 @@ package devserver
 import (
 	"bytes"
 	"context"
-	"debug/buildinfo"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -223,7 +222,11 @@ func (gw *goWatcherProcess) watchWorkspaceModules(watcher *fsnotify.Watcher, wat
 	if err != nil {
 		return
 	}
-	cmd := exec.CommandContext(gw.ctx, goPath, "list", "-m", "-json", "all")
+	arguments := []string{"list", "-m", "-json", "all"}
+	if gw.publishedBuild() {
+		arguments = []string{"list", "-mod=readonly", "-m", "-json", "all"}
+	}
+	cmd := exec.CommandContext(gw.ctx, goPath, arguments...)
 	cmd.Dir, cmd.Env = gw.devPath, goBuildEnv(gw.buildOpts.Environment)
 	data, err := cmd.Output()
 	if err != nil {
@@ -540,26 +543,38 @@ func (gw *goWatcherProcess) attestBuild() error {
 	return instance.RecordBuiltArtifact(*gw.buildOpts.Workspace, gw.pluginID, path, gw.sdk)
 }
 
+// publishedBuild reports whether this managed build uses the SDK published by
+// the plugin's own go.mod, rather than a selected source checkout.
+func (gw *goWatcherProcess) publishedBuild() bool {
+	if !gw.managedBuild() {
+		return false
+	}
+	if gw.sdk.Mode() == devsdk.ModePublished {
+		return true
+	}
+	if gw.buildOpts.Workspace == nil {
+		return false
+	}
+	selection, err := devsdk.SelectionOf(*gw.buildOpts.Workspace)
+	return err == nil && selection.Mode() == devsdk.ModePublished
+}
+
 // verifyBuiltSDK checks a managed build's evidence after the compile: the SDK
 // observed before it is unchanged and the binary includes the SDK module.
 func (gw *goWatcherProcess) verifyBuiltSDK(goPath, binaryPath string) error {
+	consumer := filepath.Base(gw.devPath)
 	after, err := verifySelectedSDK(gw.ctx, gw.sdkVerifier(), goPath, gw.devPath, gw.buildOpts.Environment)
 	if err != nil {
 		return err
 	}
 	if after != gw.sdk {
+		if gw.sdk.Mode() == devsdk.ModePublished {
+			return devsdk.IdentityChanged(consumer, fmt.Sprintf(
+				"the %s SDK changed during the build; rebuild against the new selection", consumer))
+		}
 		return fmt.Errorf("selected SDK source changed during build")
 	}
-	info, err := buildinfo.ReadFile(binaryPath)
-	if err != nil {
-		return fmt.Errorf("read built SDK provenance: %w", err)
-	}
-	for _, dependency := range info.Deps {
-		if dependency.Path == devsdk.Module {
-			return nil
-		}
-	}
-	return fmt.Errorf("built binary does not contain selected SDK module")
+	return devsdk.VerifyBinary(consumer, binaryPath, gw.sdk)
 }
 
 // goBuildEnv drops GOROOT from the inherited environment. The app may have been
@@ -625,7 +640,11 @@ func (gw *goWatcherProcess) runGoBuild() error {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	cmd := exec.CommandContext(gw.ctx, goPath, "build", "-o", binaryPath, "./pkg")
+	arguments := []string{"build", "-o", binaryPath, "./pkg"}
+	if gw.sdk.Mode() == devsdk.ModePublished {
+		arguments = []string{"build", "-mod=readonly", "-o", binaryPath, "./pkg"}
+	}
+	cmd := exec.CommandContext(gw.ctx, goPath, arguments...)
 	cmd.Dir = gw.devPath
 	cmd.Env = goBuildEnv(gw.buildOpts.Environment)
 	cmd.Stdout = &stdout
