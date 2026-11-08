@@ -124,8 +124,8 @@ func TestPublishedVerificationNeverReportsTheDeclaredVersionWhenTheGraphSelectsA
 	graph := func(t *testing.T) (fixture, sdktest.Release) {
 		t.Helper()
 		world := sdktest.New(t)
-		declared := world.PublishSDK("v0.17.4", trim)
-		higher := world.PublishSDK("v0.18.0", trim)
+		declared := world.PublishSDK("v0.18.4", trim)
+		higher := world.PublishSDK("v0.19.0", trim)
 		uuid := world.PublishPinned("github.com/google/uuid")
 		helper := world.PublishRequiring("example.com/helper", "v1.0.0", higher)
 		consumer := world.Consumer("consumer", declared, uuid)
@@ -140,7 +140,7 @@ func TestPublishedVerificationNeverReportsTheDeclaredVersionWhenTheGraphSelectsA
 		typed := refusal(t, err)
 		require.Equal(t, devsdk.CodeChecksumsRequired, typed.Code, typed.Message)
 		require.Equal(t, 3, typed.Exit)
-		require.Contains(t, typed.Message, devsdk.Module+"@v0.18.0", "the refusal names the version Go says is missing, not the declared one")
+		require.Contains(t, typed.Message, devsdk.Module+"@v0.19.0", "the refusal names the version Go says is missing, not the declared one")
 		require.Equal(t, devsdk.Identity{}, identity)
 	})
 	t.Run("the selected version's checksums are recorded", func(t *testing.T) {

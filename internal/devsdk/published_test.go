@@ -206,7 +206,7 @@ func TestPublishedVerificationRefusesReleasesBelowTheFloorAndNonReleases(t *test
 func TestPublishedVerificationAdmitsOnlyReviewedReleases(t *testing.T) {
 	t.Run("an unreviewed release above the floor is refused by production", func(t *testing.T) {
 		world := sdktest.New(t)
-		sdk := world.PublishSDK("v0.17.4", nil)
+		sdk := world.PublishSDK("v0.18.4", nil)
 		uuid := world.PublishPinned("github.com/google/uuid")
 		f := fixture{world: world, sdk: sdk, uuid: uuid, consumer: world.Consumer("consumer", sdk, uuid)}
 		identity, err := verifier()(context.Background(), f.request())
@@ -222,7 +222,7 @@ func TestPublishedVerificationAdmitsOnlyReviewedReleases(t *testing.T) {
 	})
 	t.Run("the same release reviewed in the world is admitted", func(t *testing.T) {
 		world := sdktest.New(t)
-		sdk := world.PublishSDK("v0.17.4", nil)
+		sdk := world.PublishSDK("v0.18.4", nil)
 		uuid := world.PublishPinned("github.com/google/uuid")
 		f := fixture{world: world, sdk: sdk, uuid: uuid, consumer: world.Consumer("consumer", sdk, uuid)}
 		identity, err := devsdk.NewVerifier(world.Policy(sdk))(context.Background(), f.request())
@@ -232,8 +232,8 @@ func TestPublishedVerificationAdmitsOnlyReviewedReleases(t *testing.T) {
 	})
 	t.Run("a reviewed row does not admit other checksums of the same version", func(t *testing.T) {
 		world := sdktest.New(t)
-		reviewedRelease := world.PublishSDK("v0.18.0", nil)
-		other := world.PublishSDK("v0.18.0", func(tree string) {
+		reviewedRelease := world.PublishSDK("v0.19.0", nil)
+		other := world.PublishSDK("v0.19.0", func(tree string) {
 			require.NoError(t, os.WriteFile(filepath.Join(tree, "marker.txt"), []byte("different bytes\n"), 0o600))
 		})
 		require.NotEqual(t, reviewedRelease.ModuleSum, other.ModuleSum)
@@ -385,7 +385,7 @@ func TestPublishedVerificationRefusesAReleaseWithoutTheIsolationCapability(t *te
 	for name, stub := range stubs {
 		t.Run(name, func(t *testing.T) {
 			world := sdktest.New(t)
-			sdk := world.PublishSDK("v0.18.0", stub)
+			sdk := world.PublishSDK("v0.19.0", stub)
 			uuid := world.PublishPinned("github.com/google/uuid")
 			f := fixture{world: world, sdk: sdk, uuid: uuid, consumer: world.Consumer("consumer", sdk, uuid)}
 			_, err := devsdk.NewVerifier(world.Policy(sdk))(context.Background(), f.request())
@@ -544,7 +544,7 @@ func TestPublishedVerificationOfAnEffectiveModfile(t *testing.T) {
 	})
 	t.Run("a generated modfile that states another SDK tuple is refused", func(t *testing.T) {
 		f, request := setup(t, func(f fixture, mod, sum string) (string, string) {
-			return strings.Replace(mod, devsdk.Module+" "+f.sdk.Version, devsdk.Module+" v0.17.9", 1), sum
+			return strings.Replace(mod, devsdk.Module+" "+f.sdk.Version, devsdk.Module+" v0.18.9", 1), sum
 		})
 		_, err := verifier()(context.Background(), request)
 		typed := refusal(t, err)
@@ -575,7 +575,7 @@ func TestVerifyBinaryChecksTheBuiltSDKAgainstTheVerifiedIdentity(t *testing.T) {
 	require.NoError(t, devsdk.VerifyBinary("plugin", binary, identity), "the binary built from the verified release matches")
 
 	t.Run("another release", func(t *testing.T) {
-		other := f.world.PublishSDK("v0.18.0", func(tree string) {
+		other := f.world.PublishSDK("v0.19.0", func(tree string) {
 			require.NoError(t, os.WriteFile(filepath.Join(tree, "marker.txt"), []byte("another release\n"), 0o600))
 		})
 		directory := f.world.Consumer("other", other, f.uuid)

@@ -15,7 +15,7 @@ const (
 	// never converted. TestFloorMatchesTheControllerPin fails when the
 	// controller's own pin moves, so raising the floor is always a deliberate edit
 	// of this constant.
-	FloorVersion = "v0.17.0"
+	FloorVersion = "v0.18.0"
 
 	// minimumFloor is the lowest value FloorVersion may ever take: the first
 	// release with reviewed state-root isolation behavior. A drifting pin can
@@ -35,10 +35,10 @@ const (
 // knows cannot self-attest: the checksums a branch records must equal these rows
 // exactly, so the bytes that are hashed in place are the bytes that were reviewed.
 //
-// Rows are only ever appended, one per released tag at or above FloorVersion that
-// has been reviewed (a tag is added together with the pin bump that adopts it, or
-// ahead of it). TestReviewedReleasesCoverTheControllerPin fails when the
-// controller's own pinned release is missing here or recorded differently.
+// Rows are only ever appended, one per reviewed released tag. Older rows remain
+// as review history when FloorVersion advances; admission still rejects them.
+// A new tag is added with the pin bump that adopts it, or ahead of it.
+// TestReviewedReleasesCoverTheControllerPin checks the pinned release's tuple.
 //
 // The table also subsumes retraction: a retracted release is simply never added,
 // and a published build never needs `go list -retracted`, which would need the
@@ -52,6 +52,11 @@ var reviewedReleases = []Published{
 		Module: Module, Version: "v0.17.0",
 		ModuleSum: "h1:y+On5xnaevx96M744EQrwuMDdB37bjhdfhWMUpfU6xI=",
 		GoModSum:  "h1:FFxi7m1H27zsC3VwMZ6Z9zVrwIytVTAkRjLT5cpv0G4=",
+	},
+	{
+		Module: Module, Version: "v0.18.0",
+		ModuleSum: "h1:DLcNbTghtD/Jc2knt+vBJAj+mJRTpuEgHx1lUOdqnso=",
+		GoModSum:  "h1:7ZjIDHv7L0YEHsy3Ld2CHKGr/HHTNY4wUrzVyfYRR8E=",
 	},
 }
 

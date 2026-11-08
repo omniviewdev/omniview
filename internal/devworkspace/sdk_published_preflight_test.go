@@ -131,7 +131,7 @@ func TestPublishedPreflightRefusals(t *testing.T) {
 	})
 	t.Run("release without the isolation capability", func(t *testing.T) {
 		env := newPubEnv(t)
-		bare := env.world.PublishSDK("v0.17.2", func(tree string) {
+		bare := env.world.PublishSDK("v0.18.2", func(tree string) {
 			pubWrite(t, filepath.Join(tree, "pkg", "config", "isolation.go"), "package config\n")
 		})
 		w := env.workspace()

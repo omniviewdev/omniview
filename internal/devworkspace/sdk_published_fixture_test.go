@@ -70,7 +70,7 @@ func newPubEnv(t *testing.T) *pubEnv {
 	env := &pubEnv{t: t, world: world, home: home}
 	env.sdk = world.PublishSDK(devsdk.FloorVersion, nil)
 	env.uuid = world.PublishPinned("github.com/google/uuid")
-	env.other = world.PublishSDK("v0.17.1", nil)
+	env.other = world.PublishSDK("v0.18.1", nil)
 	env.policy = world.Policy(env.other)
 	return env
 }
@@ -107,7 +107,7 @@ func pubSums(releases ...sdktest.Release) string {
 // appended verbatim.
 func pubGoMod(module string, extra string, releases ...sdktest.Release) string {
 	var mod strings.Builder
-	fmt.Fprintf(&mod, "module %s\n\ngo 1.26.0\n\nrequire (\n", module)
+	fmt.Fprintf(&mod, "module %s\n\ngo 1.27.0\n\nrequire (\n", module)
 	for _, release := range releases {
 		fmt.Fprintf(&mod, "\t%s %s\n", release.Module, release.Version)
 	}
