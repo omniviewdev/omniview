@@ -303,7 +303,7 @@ func (m *Manager) ServeSupervisor(ctx context.Context, name string, output io.Wr
 	// Source mutation guards from the short CLI must not reject this exact owner
 	// while it applies the stopped overlay before any host child exists.
 	localManager := *m
-	s := &workspaceSupervisor{manager: &localManager, workspace: w, options: options, generation: generation, owner: owner, record: record, registry: registry, output: output, status: Status{Workspace: w, Generation: generation, Phase: "starting", Builds: map[string]BuildEvent{}}, children: map[string]*ownedChild{}, leases: map[string]devsession.Lease{}, exit: make(chan struct{})}
+	s := &workspaceSupervisor{manager: &localManager, workspace: w, options: options, generation: generation, owner: owner, record: record, registry: registry, output: output, status: Status{Workspace: w, Generation: generation, Phase: "starting", Builds: map[string]BuildEvent{}, SDK: workspaceSDKStatus(ctx, w)}, children: map[string]*ownedChild{}, leases: map[string]devsession.Lease{}, exit: make(chan struct{})}
 	s.shutdownRequested = make(chan struct{})
 	s.sessionContext, s.sessionCancel = context.WithCancel(ctx)
 	s.childContext, s.childCancel = context.WithCancel(context.WithoutCancel(ctx))

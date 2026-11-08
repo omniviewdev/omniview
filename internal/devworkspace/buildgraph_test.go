@@ -159,8 +159,8 @@ func graphFixture(t *testing.T, options ...graphFixtureOptions) *BuildGraph {
 	}
 	g, err := compileBuildGraph(w, p, BuildOptions{
 		Generation: "22222222-2222-4222-8222-222222222222", GoBuildCacheDirectory: cache,
-		VerifySDK: func(_ context.Context, selection devsdk.Selection) (devsdk.Identity, error) {
-			directory, _ := selection.Directory()
+		VerifySDK: func(_ context.Context, request devsdk.Request) (devsdk.Identity, error) {
+			directory, _ := request.Selection.Directory()
 			return fakeSDKIdentity(directory, strings.Repeat("a", 40), strings.Repeat("c", 64))
 		}, HostBuild: func(context.Context, HostBuildRequest) error { return nil },
 	})
@@ -266,8 +266,8 @@ func TestVerifyBuildSDKRejectsWrongEffectiveSourceAndIncompleteIdentity(t *testi
 			g.run = func(_ context.Context, dir, program string, args ...string) ([]byte, error) {
 				return json.Marshal(map[string]any{"Path": devsdk.Module, "Dir": tc.dir, "Replace": map[string]any{"Dir": tc.dir}})
 			}
-			g.options.VerifySDK = func(_ context.Context, selection devsdk.Selection) (devsdk.Identity, error) {
-				directory, _ := selection.Directory()
+			g.options.VerifySDK = func(_ context.Context, request devsdk.Request) (devsdk.Identity, error) {
+				directory, _ := request.Selection.Directory()
 				return fakeSDKIdentity(directory, tc.revision, tc.digest)
 			}
 			_, err := g.verifySDK(context.Background(), filepath.Join(g.workspace.Root, "host"))
@@ -300,27 +300,11 @@ func TestVerifyBuildSDKRejectsIdentityOfAnotherCheckoutOrVariant(t *testing.T) {
 		"zero identity":      func() (devsdk.Identity, error) { return devsdk.Identity{}, nil },
 	} {
 		t.Run(name, func(t *testing.T) {
-			g.options.VerifySDK = func(context.Context, devsdk.Selection) (devsdk.Identity, error) { return answer() }
+			g.options.VerifySDK = func(context.Context, devsdk.Request) (devsdk.Identity, error) { return answer() }
 			if _, err := g.verifySDK(context.Background(), filepath.Join(g.workspace.Root, "host")); err == nil {
 				t.Fatal("graph trusted an identity that does not describe the selected source checkout")
 			}
 		})
-	}
-}
-
-func TestVerifyBuildSDKRefusesPublishedSelectionBeforeResolvingAnything(t *testing.T) {
-	g := graphFixture(t)
-	g.plan.SDK = devsdk.PublishedSelection()
-	g.run = func(context.Context, string, string, ...string) ([]byte, error) {
-		t.Fatal("a published selection must not be resolved through a source checkout")
-		return nil, nil
-	}
-	g.options.VerifySDK = func(context.Context, devsdk.Selection) (devsdk.Identity, error) {
-		t.Fatal("a published selection must not reach the source verifier")
-		return devsdk.Identity{}, nil
-	}
-	if _, err := g.verifySDK(context.Background(), filepath.Join(g.workspace.Root, "host")); err == nil {
-		t.Fatal("published selection produced a source identity")
 	}
 }
 
@@ -364,8 +348,8 @@ func TestVerifyBuildSDKRejectsSourceMutationDuringBuild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g.options.VerifySDK = func(_ context.Context, selection devsdk.Selection) (devsdk.Identity, error) {
-		directory, _ := selection.Directory()
+	g.options.VerifySDK = func(_ context.Context, request devsdk.Request) (devsdk.Identity, error) {
+		directory, _ := request.Selection.Directory()
 		return fakeSDKIdentity(directory, strings.Repeat("a", 40), strings.Repeat("d", 64))
 	}
 	if err = g.verifyUnchangedSDK(context.Background(), filepath.Join(g.workspace.Root, "host"), before); err == nil {
@@ -405,12 +389,23 @@ func TestBuildGraphRequiresRealSDKSourceVerifier(t *testing.T) {
 	}
 }
 
-func TestBuildGraphRequiresSelectedSDKSource(t *testing.T) {
+// A published selection is a first-class build plan: no SDK checkout is
+// required to compile the graph, but the verifier still is.
+func TestBuildGraphCompilesAPublishedSelectionWithoutASourceCheckout(t *testing.T) {
 	g := graphFixture(t)
 	plan := g.plan
 	plan.SDK = devsdk.PublishedSelection()
-	if _, err := compileBuildGraph(g.workspace, plan, g.options); err == nil {
-		t.Fatal("trusted builds were planned without a selected local SDK source")
+	compiled, err := compileBuildGraph(g.workspace, plan, g.options)
+	if err != nil {
+		t.Fatalf("a published selection was refused: %v", err)
+	}
+	if compiled.plan.SDK.Mode() != devsdk.ModePublished {
+		t.Fatal("the compiled graph lost its published selection")
+	}
+	opts := g.options
+	opts.VerifySDK = nil
+	if _, err := compileBuildGraph(g.workspace, plan, opts); err == nil {
+		t.Fatal("a published graph without a verifier was planned")
 	}
 }
 

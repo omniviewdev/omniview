@@ -101,7 +101,7 @@ func TestVerifierReturnsExactlyTheDevsourceIdentity(t *testing.T) {
 		}
 		expected, err := devsource.Verify(context.Background(), directory)
 		require.NoError(t, err, state)
-		identity, err := verify(context.Background(), selection)
+		identity, err := verify(context.Background(), Request{Selection: selection})
 		require.NoError(t, err, state)
 		source, ok := identity.Source()
 		require.True(t, ok, state)
@@ -114,7 +114,7 @@ func TestVerifierBindsToTheSelectedCheckout(t *testing.T) {
 	selected, other := sdkCheckout(t), sdkCheckout(t)
 	selection, err := SourceSelection(selected)
 	require.NoError(t, err)
-	identity, err := NewVerifier(Policy{})(context.Background(), selection)
+	identity, err := NewVerifier(Policy{})(context.Background(), Request{Selection: selection})
 	require.NoError(t, err)
 	source, _ := identity.Source()
 	require.Equal(t, selected, source.Directory)
@@ -122,22 +122,11 @@ func TestVerifierBindsToTheSelectedCheckout(t *testing.T) {
 
 	sibling, err := SourceSelection(filepath.Join(selected, "pkg"))
 	require.NoError(t, err)
-	_, err = NewVerifier(Policy{})(context.Background(), sibling)
+	_, err = NewVerifier(Policy{})(context.Background(), Request{Selection: sibling})
 	require.Error(t, err, "a subdirectory is not the selected repository root")
 
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err = NewVerifier(Policy{})(cancelled, selection)
+	_, err = NewVerifier(Policy{})(cancelled, Request{Selection: selection})
 	require.ErrorIs(t, err, context.Canceled)
-}
-
-func TestVerifierRefusesPublishedSelectionsUntilTheyCanBeVerified(t *testing.T) {
-	accepting := NewPolicy(func(Published) error { return nil })
-	for name, policy := range map[string]Policy{"default policy": {}, "accepting policy": accepting} {
-		t.Run(name, func(t *testing.T) {
-			identity, err := NewVerifier(policy)(context.Background(), PublishedSelection())
-			require.ErrorIs(t, err, ErrNotAccepted)
-			require.Equal(t, Identity{}, identity, "a refused selection must not yield partial evidence")
-		})
-	}
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/omniviewdev/omniview/internal/devbaseline"
 	"github.com/omniviewdev/omniview/internal/devcompose"
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devdiag"
 	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsession"
 )
@@ -84,6 +85,10 @@ const (
 	goFlagsEnv  = "GOFLAGS"
 	goWorkEnv   = "GOWORK"
 	nodePathEnv = "NODE_PATH"
+	// goModuleModeEnv is pinned to "on" for every Go command the controller runs
+	// for a build, exactly as the SDK verifier pins it: a GOPATH-mode build
+	// would ignore the go.mod the verification read.
+	goModuleModeEnv = "GO111MODULE"
 	// sdkSourceEnv is the variable the Taskfile reads to replace the SDK with a
 	// local checkout. Only the selected workspace SDK may set it.
 	sdkSourceEnv         = "SDK_SOURCE"
@@ -188,8 +193,12 @@ func (m *Manager) startGeneration(ctx context.Context, name string, o LaunchOpti
 		}
 		return status, devcontract.Fail(4, "workspace_running", fmt.Sprintf("workspace has an owned supervisor in launch phase %q; recover with: %s", status.Phase, recovery))
 	}
-	if w.Manifest.Links.SDKRepositoryID == nil {
-		return Status{}, sdkSourceRequired(ctx, "select the plugin-sdk repository before launching", workspaceSDKProbes(w), editAddSDKCommand(w))
+	selection, err := devsdk.SelectionOf(w.ResolvedWorkspace)
+	if err != nil {
+		return Status{}, err
+	}
+	if err = refusePublishedNative(selection, o); err != nil {
+		return Status{}, err
 	}
 	// Resolve the child environment first: a selection that cannot be resolved
 	// must refuse the launch before any launch state is written.
@@ -419,7 +428,9 @@ func (m *Manager) supervisorTargetCommand(ctx context.Context, name, command, ge
 func (s *workspaceSupervisor) runLaunchCommand(ctx context.Context, directory string, environment []string, output io.Writer, program string, args ...string) ([]byte, error) {
 	command := exec.Command(program, args...)
 	command.Dir = directory
-	command.Env = environment
+	// Every build command runs in module mode, exactly as the SDK verifier does:
+	// GO111MODULE=off would make the compiler ignore the go.mod it verified.
+	command.Env = append(append([]string(nil), environment...), goModuleModeEnv+"=on")
 	var stdout strings.Builder
 	command.Stdout = &stdout
 	stderr := &childOutput{output: output}
@@ -432,7 +443,7 @@ func (s *workspaceSupervisor) runLaunchCommand(ctx context.Context, directory st
 		if ctx.Err() != nil && !errors.Is(err, errOwnedCommandUncertain) {
 			return nil, ctx.Err()
 		}
-		return nil, fmt.Errorf("%s failed in selected checkout: %w\n%s", program, err, safeCompilerDiagnostic(stdout.String()+"\n"+stderr.text, s.workspace.Root))
+		return nil, fmt.Errorf("%s failed in selected checkout: %w\n%s", program, err, devdiag.Safe(stdout.String()+"\n"+stderr.text, s.workspace.Root))
 	}
 	return []byte(stdout.String()), nil
 }
@@ -442,7 +453,7 @@ func (s *workspaceSupervisor) runLaunchCommand(ctx context.Context, directory st
 // launch-status events.
 func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 	o := s.options
-	if err := compatibilityPreflight(ctx, s.workspace, s.sdkVerifier()); err != nil {
+	if err := compatibilityPreflight(ctx, s.workspace, s.sdkVerifier(), s.goRunner()); err != nil {
 		return nil, err
 	}
 	report, err := s.manager.Link(ctx, s.workspace.Manifest.WorkspaceID, LinkOptions{Evidence: o.LinkEvidence})
@@ -460,7 +471,7 @@ func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 		return nil, fmt.Errorf("supervisor build requires the completed aggregate install and recursive peer transaction: %w", err)
 	}
 	return s.manager.NewBuildGraph(ctx, s.workspace.Manifest.WorkspaceID, BuildOptions{
-		Generation: s.generation, GoBuildCacheDirectory: s.goBuildCache, VerifySDK: s.sdkVerifier(),
+		Generation: s.generation, GoBuildCacheDirectory: s.goBuildCache, VerifySDK: s.sdkVerifier(), ObserveSDK: s.observeSDK, DowngradeSDK: s.downgradeSDK,
 		HostBuild: s.buildHost, HostVariant: s.hostVariant(), HostOutput: s.hostOutput(), ReuseHost: s.reuseHost,
 		Bindings: func(ctx context.Context, host, outputDirectory string) (resultErr error) {
 			hostModOutput, prepareErr := prepareStableHostModTree(s.workspace, s.generation)
@@ -514,6 +525,18 @@ func (s *workspaceSupervisor) sdkVerifier() devsdk.Verifier {
 	return devsdk.NewVerifier(s.manager.options.SDKPolicy)
 }
 
+// goRunner runs the Go commands of published-SDK verification under this
+// supervisor's ownership, in the workspace child environment.
+func (s *workspaceSupervisor) goRunner() devsdk.Runner {
+	return func(ctx context.Context, directory string, environment []string, args ...string) ([]byte, error) {
+		base, err := s.environment()
+		if err != nil {
+			return nil, err
+		}
+		return s.runLaunchCommand(ctx, directory, append(base, environment...), nil, "go", args...)
+	}
+}
+
 // hostSDKDirectory returns the selected SDK directory a host build must use.
 // The verified identity names the canonical checkout while the manifest names
 // the path as written, so the two are equal only while that directory is not
@@ -546,10 +569,22 @@ func hostSDKDirectory(request HostBuildRequest) (string, error) {
 
 // buildHost compiles the selected host against the owned host modfile into a
 // generated bin tree and adopts it as the launch binary once published.
+//
+// The controller, not the selected host's scripts, is the authority over which
+// SDK the host is built against. In source mode it requires the generated
+// modfile to replace the SDK with exactly the selected, verified checkout. In
+// published mode it refuses SDK replacements in the host go.mod before the
+// host's own hostmod runs (the graph's verification of go.mod), then verifies
+// the generated host.mod/host.sum itself with its own read-only module commands
+// before and after the compile, and checks the built binary's module identity.
 func (s *workspaceSupervisor) buildHost(ctx context.Context, request HostBuildRequest) (resultErr error) {
-	sdkDirectory, err := hostSDKDirectory(request)
-	if err != nil {
-		return err
+	published := request.SDK.Mode() == devsdk.ModePublished
+	sdkDirectory := ""
+	if !published {
+		var err error
+		if sdkDirectory, err = hostSDKDirectory(request); err != nil {
+			return err
+		}
 	}
 	host, err := request.Workspace.RepositoryPath("omniview")
 	if err != nil {
@@ -570,7 +605,11 @@ func (s *workspaceSupervisor) buildHost(ctx context.Context, request HostBuildRe
 	if err != nil {
 		return err
 	}
-	raw, err := s.runLaunchCommand(ctx, host, env, s.output, "go", "run", "./scripts/hostmod/main.go", "--root", host, "--output-directory", hostModOutput.Directory, "--sdk-source", sdkDirectory, "--format", "json")
+	hostmod := []string{"run", "./scripts/hostmod/main.go", "--root", host, "--output-directory", hostModOutput.Directory}
+	if !published {
+		hostmod = append(hostmod, "--sdk-source", sdkDirectory)
+	}
+	raw, err := s.runLaunchCommand(ctx, host, env, s.output, "go", append(hostmod, "--format", "json")...)
 	if err != nil {
 		return err
 	}
@@ -583,38 +622,59 @@ func (s *workspaceSupervisor) buildHost(ctx context.Context, request HostBuildRe
 	if hostModule.Modfile != filepath.Join(hostModOutput.Directory, "host.mod") {
 		return fmt.Errorf("host module preparation returned no owned effective modfile")
 	}
-	// Inspect the exact alternate host graph, not just the source go.mod.
-	raw, err = s.runLaunchCommand(ctx, host, env, nil, "go", "list", "-modfile="+hostModule.Modfile, "-m", "-json", devsdk.Module)
-	if err != nil {
-		return err
-	}
-	var module struct {
-		Path, Dir string
-		Replace   *struct{ Dir, Version string }
-	}
-	if err = json.Unmarshal(raw, &module); err != nil {
-		return err
-	}
-	if module.Path != devsdk.Module || module.Replace == nil || module.Replace.Version != "" {
-		return fmt.Errorf("effective native host graph has no selected local SDK replacement")
-	}
-	actual, err := devcontract.CanonicalPath(module.Replace.Dir)
-	if err != nil {
-		return err
-	}
-	if actual != sdkDirectory {
-		return fmt.Errorf("effective native host graph changed selected SDK source")
-	}
-	checkout, err := devsdk.SourceSelection(actual)
-	if err != nil {
-		return err
-	}
 	verify := s.sdkVerifier()
-	before, err := verify(ctx, checkout)
+	var observe func(context.Context) (devsdk.Identity, error)
+	if published {
+		selection, selectionErr := devsdk.SelectionOf(request.Workspace.ResolvedWorkspace)
+		if selectionErr != nil {
+			return selectionErr
+		}
+		observe = func(ctx context.Context) (devsdk.Identity, error) {
+			return verify(ctx, devsdk.Request{
+				Selection: selection,
+				Consumer:  devsdk.Consumer{Name: "omniview", Directory: host, Modfile: hostModule.Modfile},
+				Run:       s.goRunner(),
+			})
+		}
+	} else {
+		// Inspect the exact alternate host graph, not just the source go.mod.
+		raw, err = s.runLaunchCommand(ctx, host, env, nil, "go", "list", "-modfile="+hostModule.Modfile, "-m", "-json", devsdk.Module)
+		if err != nil {
+			return err
+		}
+		var module struct {
+			Path, Dir string
+			Replace   *struct{ Dir, Version string }
+		}
+		if err = json.Unmarshal(raw, &module); err != nil {
+			return err
+		}
+		if module.Path != devsdk.Module || module.Replace == nil || module.Replace.Version != "" {
+			return fmt.Errorf("effective native host graph has no selected local SDK replacement")
+		}
+		actual, canonicalErr := devcontract.CanonicalPath(module.Replace.Dir)
+		if canonicalErr != nil {
+			return canonicalErr
+		}
+		if actual != sdkDirectory {
+			return fmt.Errorf("effective native host graph changed selected SDK source")
+		}
+		checkout, selectionErr := devsdk.SourceSelection(actual)
+		if selectionErr != nil {
+			return selectionErr
+		}
+		observe = func(ctx context.Context) (devsdk.Identity, error) {
+			return verify(ctx, devsdk.Request{Selection: checkout})
+		}
+	}
+	before, err := observe(ctx)
 	if err != nil {
 		return err
 	}
 	if before != request.SDK {
+		if published {
+			return devsdk.IdentityChanged("omniview", "the generated host module states a different published plugin SDK than the host's verified go.mod")
+		}
 		return fmt.Errorf("SDK source changed before native host build")
 	}
 	prepared, err := PrepareGeneratedTree(s.workspace, s.hostOutput(), s.generation)
@@ -643,15 +703,29 @@ func (s *workspaceSupervisor) buildHost(ctx context.Context, request HostBuildRe
 			s.mu.Unlock()
 		}
 	}()
-	if _, err = s.runLaunchCommand(ctx, host, env, s.output, "go", "build", "-modfile="+hostModule.Modfile, "-tags="+tags, "-buildvcs=false", "-ldflags=-X github.com/omniviewdev/omniview/internal/instance.buildChannel=local", "-o", binary, "."); err != nil {
+	build := []string{"build", "-modfile=" + hostModule.Modfile}
+	if published {
+		// Never the repository's vendor tree, never an implicit module edit.
+		build = append(build, "-mod=readonly")
+	}
+	build = append(build, "-tags="+tags, "-buildvcs=false", "-ldflags=-X github.com/omniviewdev/omniview/internal/instance.buildChannel=local", "-o", binary, ".")
+	if _, err = s.runLaunchCommand(ctx, host, env, s.output, "go", build...); err != nil {
 		return err
 	}
-	after, err := verify(ctx, checkout)
+	after, err := observe(ctx)
 	if err != nil {
 		return err
 	}
 	if before != after {
+		if published {
+			return devsdk.IdentityChanged("omniview", "the effective published plugin SDK changed during the host build")
+		}
 		return fmt.Errorf("SDK source changed during native host build")
+	}
+	if published {
+		if err = devsdk.VerifyBinary("omniview", binary, before); err != nil {
+			return err
+		}
 	}
 	if s.options.Mode == "native" && runtime.GOOS == "darwin" {
 		if _, err = s.runLaunchCommand(ctx, host, env, s.output, "task", "darwin:create:dev:app:bundle", "BIN_DIR="+bin, "HOST_MOD_OUTPUT_DIRECTORY="+hostModOutput.Directory, "GO_BUILD_CACHE_DIRECTORY="+s.goBuildCache); err != nil {
@@ -694,8 +768,11 @@ func (s *workspaceSupervisor) hostLaunchRelative() string {
 }
 
 // reuseHost adopts the published host from an unchanged previous build. The
-// graph has already verified the whole output tree against its ledger record.
-func (s *workspaceSupervisor) reuseHost(context.Context) error {
+// graph has already verified the whole output tree against its ledger record
+// and passes the SDK identity it verified just now. Under a published identity
+// the adopted binary's Go build information must name exactly that release: a
+// host built against another release is never adopted, so the graph rebuilds it.
+func (s *workspaceSupervisor) reuseHost(_ context.Context, sdk devsdk.Identity) error {
 	destination, err := generatedPath(s.workspace, s.hostOutput())
 	if err != nil {
 		return err
@@ -707,6 +784,11 @@ func (s *workspaceSupervisor) reuseHost(context.Context) error {
 	}
 	if !info.Mode().IsRegular() {
 		return fmt.Errorf("published host executable is not a regular file")
+	}
+	if sdk.Mode() == devsdk.ModePublished {
+		if err = devsdk.VerifyBinary("omniview", binary, sdk); err != nil {
+			return err
+		}
 	}
 	s.mu.Lock()
 	s.binary = binary

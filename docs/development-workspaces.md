@@ -20,11 +20,18 @@ not require launch evidence. Before launching, run:
 Preflight reports all missing launch inputs together and exits 3 when blocked.
 Supply `--link-evidence /path/to/probe.json` with a successful pinned protocol
 probe. Saved launch options and retained protocol evidence are reused.
-Launching requires selecting `--repo plugin-sdk` even when you do not intend
-to develop the SDK. For an existing workspace, use
-`workspace edit FEATURE --root "$COLLECTION" --add-repo plugin-sdk`.
+Selecting `--repo plugin-sdk` is optional. Without it the workspace is in
+published SDK mode: the host and each plugin build against the plugin SDK release
+their own `go.mod` declares (a released tag at or above the controller's pinned
+SDK; see the CLI guide), and preflight reports each consumer's declared
+requirement as `unresolved` in its `sdk` object. Select `--repo plugin-sdk` to
+build every consumer against explicit SDK source instead; native mode requires it.
 
-Preflight does not install dependencies or start processes. A ready report covers
+Preflight runs no installs, no network, no writes and no process; in published
+mode it reads the Go environment file (`GOENV`, default `<user config dir>/go/env`)
+and reports a non-empty `GOFLAGS` there, so the refusal appears at preflight as
+well as at launch; module-cache integrity, checksums and capability are verified
+only at launch. A ready report covers
 launch inputs only; launch still validates source identity, strict peer dependencies,
 and runtime compatibility.
 
@@ -115,7 +122,7 @@ Each source is an explicit local normal or bare Git repository. Use repeatable `
 
 Register every repository/plugin source needed by the collection up front. Registry source mappings are deliberately immutable: repeating the same initialization is allowed, but changing or adding mappings returns `registry_exists` with conflict exit4 and leaves the existing registry intact. Initialize another collection for a different source set; `workspace edit --add-plugin` selects an already registered plugin, not a new repository registration.
 
-Managed workspaces require a linked local SDK checkout. Select a source compatible with the host's declared SDK dependency. Workspace builds observe the checkout's HEAD and source digest, including dirty edits, to bind artifact provenance to the actual source. This identification is not a sandbox.
+Selecting the `plugin-sdk` repository is optional. With it the workspace is in source mode (required for native): select a source compatible with the host's declared SDK dependency; workspace builds observe the checkout's HEAD and source digest, including dirty edits, to bind artifact provenance to the actual source. This identification is not a sandbox. Without it the workspace is in published SDK mode (browser mode only) and builds against the released SDK each consumer's `go.mod` declares.
 
 Local package linking requires the actual successful pinned pnpm protocol probe report, not manually asserted booleans. Run the probe once on the integrated host source with its effective SDK-aware module selection, then pass the report explicitly (or place it at `$COLLECTION/.omniview-dev/link-protocol.json`):
 

@@ -32,7 +32,7 @@ func TestHostBuildRefusesASelectedSDKRedirectedAfterVerification(t *testing.T) {
 	g := graphFixture(t)
 	sdk := sdkDirectory(t, g)
 	ctx := context.Background()
-	verified, err := devsdk.NewVerifier(devsdk.Policy{})(ctx, g.plan.SDK)
+	verified, err := devsdk.NewVerifier(devsdk.Policy{})(ctx, devsdk.Request{Selection: g.plan.SDK})
 	require.NoError(t, err)
 
 	// Control: the verified, unredirected selection is accepted.
@@ -82,7 +82,7 @@ func TestHostBuildRefusesASelectedSDKRedirectedAfterVerification(t *testing.T) {
 func TestHostSDKDirectoryRequiresTheVerifiedSelectedCheckout(t *testing.T) {
 	g := graphFixture(t)
 	sdk := sdkDirectory(t, g)
-	verified, err := devsdk.NewVerifier(devsdk.Policy{})(context.Background(), g.plan.SDK)
+	verified, err := devsdk.NewVerifier(devsdk.Policy{})(context.Background(), devsdk.Request{Selection: g.plan.SDK})
 	require.NoError(t, err)
 
 	elsewhere, err := devsdk.NewSourceIdentity(devsource.Identity{

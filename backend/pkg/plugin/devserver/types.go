@@ -163,7 +163,8 @@ type BuildOpts struct {
 	DisableDependencyWatching bool
 	Workspace                 *devcontract.ResolvedWorkspace
 	// SDKPolicy admits the SDK identities managed builds may use. The zero policy
-	// admits source identities only; nothing reads it from the environment.
+	// admits source identities only; production passes devsdk.ReleasePolicy()
+	// from resolveBuildOpts. Nothing reads it from the environment.
 	SDKPolicy devsdk.Policy
 }
 

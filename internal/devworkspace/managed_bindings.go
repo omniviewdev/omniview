@@ -52,19 +52,22 @@ func (m *Manager) GenerateBindings(ctx context.Context, name string, output io.W
 		return "", fmt.Errorf("saved bindings build mode is invalid")
 	}
 	verify := devsdk.NewVerifier(m.options.SDKPolicy)
-	if err = compatibilityPreflight(ctx, w, verify); err != nil {
-		return "", err
-	}
 	generation := uuid.NewString()
-	cache, err := prepareWorkspaceBuildCacheLocked(w, m.options.Home, generation)
-	if err != nil {
-		return "", err
-	}
-	g := &BuildGraph{workspace: w, plan: j.Plan, options: BuildOptions{Generation: generation, GoBuildCacheDirectory: cache, VerifySDK: verify}}
+	g := &BuildGraph{workspace: w, plan: j.Plan, options: BuildOptions{Generation: generation, VerifySDK: verify}}
 	if output != nil {
 		g.options.Output = &lockedWriter{writer: output}
 	}
 	g.run, g.runProducer = g.command, g.commandWithEnvironment
+	// The preflight needs only module resolution, which needs no build cache:
+	// a refusal here creates none.
+	if err = compatibilityPreflight(ctx, w, verify, g.goRunner()); err != nil {
+		return "", err
+	}
+	cache, err := prepareWorkspaceBuildCacheLocked(w, m.options.Home, generation)
+	if err != nil {
+		return "", err
+	}
+	g.options.GoBuildCacheDirectory = cache
 	g.options.Bindings = func(ctx context.Context, host, directory string) (resultErr error) {
 		mod, e := prepareStableHostModTree(w, generation)
 		if e != nil {

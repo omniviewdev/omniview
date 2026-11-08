@@ -118,6 +118,12 @@ func (m WorkspaceManifest) Validate() error {
 			return Fail(2, "invalid_link", "linked repository is not selected")
 		}
 	}
+	// A selected SDK repository is the explicit source selection: without its
+	// link the workspace would silently build against the published SDK and
+	// ignore the checkout the user selected.
+	if repos["plugin-sdk"] && m.Links.SDKRepositoryID == nil {
+		return Fail(2, "invalid_link", "the plugin-sdk repository is selected but not linked: a workspace with an SDK checkout builds against it")
+	}
 	if m.Ports.Policy != "sticky" && m.Ports.Policy != "strict" {
 		return Fail(2, "invalid_port_policy", "port policy must be sticky or strict")
 	}

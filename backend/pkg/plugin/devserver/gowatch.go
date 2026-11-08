@@ -3,7 +3,6 @@ package devserver
 import (
 	"bytes"
 	"context"
-	"debug/buildinfo"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,6 +23,7 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/internal/appstate"
+	"github.com/omniviewdev/omniview/internal/devdiag"
 	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/instance"
 	logging "github.com/omniviewdev/plugin-sdk/log"
@@ -223,8 +223,12 @@ func (gw *goWatcherProcess) watchWorkspaceModules(watcher *fsnotify.Watcher, wat
 	if err != nil {
 		return
 	}
-	cmd := exec.CommandContext(gw.ctx, goPath, "list", "-m", "-json", "all")
-	cmd.Dir, cmd.Env = gw.devPath, goBuildEnv(gw.buildOpts.Environment)
+	arguments := []string{"list", "-m", "-json", "all"}
+	if gw.publishedBuild() {
+		arguments = []string{"list", "-mod=readonly", "-m", "-json", "all"}
+	}
+	cmd := exec.CommandContext(gw.ctx, goPath, arguments...)
+	cmd.Dir, cmd.Env = gw.devPath, gw.goCommandEnvironment()
 	data, err := cmd.Output()
 	if err != nil {
 		gw.appendLog(newLogEntry(logSourceGoWatch, logLevelError, fmt.Sprintf("Resolve dependency watches: %v", err)))
@@ -540,26 +544,49 @@ func (gw *goWatcherProcess) attestBuild() error {
 	return instance.RecordBuiltArtifact(*gw.buildOpts.Workspace, gw.pluginID, path, gw.sdk)
 }
 
+// publishedBuild reports whether this managed build uses the SDK published by
+// the plugin's own go.mod, rather than a selected source checkout.
+func (gw *goWatcherProcess) publishedBuild() bool {
+	if !gw.managedBuild() {
+		return false
+	}
+	if gw.sdk.Mode() == devsdk.ModePublished {
+		return true
+	}
+	if gw.buildOpts.Workspace == nil {
+		return false
+	}
+	selection, err := devsdk.SelectionOf(*gw.buildOpts.Workspace)
+	return err == nil && selection.Mode() == devsdk.ModePublished
+}
+
+// goCommandEnvironment is the environment of the build's own go commands. A
+// published build runs in the same neutral module environment its SDK was
+// verified in; source and unmanaged builds keep the inherited environment.
+func (gw *goWatcherProcess) goCommandEnvironment() []string {
+	environment := goBuildEnv(gw.buildOpts.Environment)
+	if gw.publishedBuild() {
+		environment = append(environment, devsdk.ModuleEnvironment()...)
+	}
+	return environment
+}
+
 // verifyBuiltSDK checks a managed build's evidence after the compile: the SDK
 // observed before it is unchanged and the binary includes the SDK module.
 func (gw *goWatcherProcess) verifyBuiltSDK(goPath, binaryPath string) error {
+	consumer := filepath.Base(gw.devPath)
 	after, err := verifySelectedSDK(gw.ctx, gw.sdkVerifier(), goPath, gw.devPath, gw.buildOpts.Environment)
 	if err != nil {
 		return err
 	}
 	if after != gw.sdk {
+		if gw.sdk.Mode() == devsdk.ModePublished {
+			return devsdk.IdentityChanged(consumer, fmt.Sprintf(
+				"the %s SDK changed during the build; rebuild against the new selection", consumer))
+		}
 		return fmt.Errorf("selected SDK source changed during build")
 	}
-	info, err := buildinfo.ReadFile(binaryPath)
-	if err != nil {
-		return fmt.Errorf("read built SDK provenance: %w", err)
-	}
-	for _, dependency := range info.Deps {
-		if dependency.Path == devsdk.Module {
-			return nil
-		}
-	}
-	return fmt.Errorf("built binary does not contain selected SDK module")
+	return devsdk.VerifyBinary(consumer, binaryPath, gw.sdk)
 }
 
 // goBuildEnv drops GOROOT from the inherited environment. The app may have been
@@ -625,15 +652,23 @@ func (gw *goWatcherProcess) runGoBuild() error {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	cmd := exec.CommandContext(gw.ctx, goPath, "build", "-o", binaryPath, "./pkg")
+	arguments := []string{"build", "-o", binaryPath, "./pkg"}
+	if gw.sdk.Mode() == devsdk.ModePublished {
+		arguments = []string{"build", "-mod=readonly", "-o", binaryPath, "./pkg"}
+	}
+	cmd := exec.CommandContext(gw.ctx, goPath, arguments...)
 	cmd.Dir = gw.devPath
-	cmd.Env = goBuildEnv(gw.buildOpts.Environment)
+	cmd.Env = gw.goCommandEnvironment()
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
 		// Parse build errors from stderr.
 		errOutput := stderr.String()
+		if gw.sdk.Mode() == devsdk.ModePublished {
+			// A failed module download names its proxy URL.
+			errOutput = devdiag.Redact(errOutput)
+		}
 		buildErrors := parseBuildErrors(errOutput, gw.devPath)
 		if len(buildErrors) > 0 {
 			gw.emitErrors(gw.pluginID, buildErrors)
