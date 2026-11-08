@@ -90,6 +90,15 @@ function sourceIdentity(catalog: ResourceMetricsCatalog | null | undefined): str
   const source = catalog?.source;
   return JSON.stringify(source ? [source.plugin_id, source.connection_id, source.datasource_uid, source.datasource_kind, source.native === true] : null);
 }
+/**
+ * An incomplete frame can precede its first result. It still answers a request that
+ * shares one of its targets and metrics; a result-less frame for any other request
+ * is not shown.
+ */
+function sharesRequest(displayed: DisplayedSnapshot, targets: readonly ResourceMetricTarget[], metricIDs: readonly string[]): boolean {
+  const held = new Set(displayed.targets.map(targetIdentity));
+  return targets.some(target => held.has(targetIdentity(target))) && metricIDs.some(id => displayed.metricIDs.includes(id));
+}
 
 /**
  * Prepare one delivered snapshot using the targets to which its tokens belong.
@@ -156,7 +165,11 @@ export function prepareMetricResults(snapshot: MetricsObservationSnapshot | null
 
 interface DisplayedSnapshot {
   snapshot: MetricsObservationSnapshot;
+  prepared: readonly PreparedMetricResult[];
   targets: readonly ResourceMetricTarget[];
+  /** Selection and resolution of the request that produced the snapshot stay with its data. */
+  metricIDs: readonly string[];
+  stepMs: number | null;
   receivedAtMs: number;
 }
 interface ObservationState {
@@ -169,12 +182,41 @@ interface ObservationState {
   error: Error | null;
 }
 
+/** Pending intervals must not erase samples already visible in the requested window. */
+function preservesDisplayedRange(previous: DisplayedSnapshot, incoming: readonly PreparedMetricResult[], snapshot: MetricsObservationSnapshot, input: UseMetricObservationOptions): boolean {
+  if (previous.stepMs !== (input.stepMs ?? null)) return false;
+  const start = epoch(snapshot.domain_start), end = epoch(snapshot.domain_end);
+  if (start === null || end === null) return false;
+  const targets = new Set(input.targets.map(targetIdentity));
+  const metrics = new Set(input.metricIDs);
+  const candidates = new Map(incoming.map(result => [result.id, result]));
+  for (const held of previous.prepared) {
+    if (!targets.has(held.resourceIdentity) || !metrics.has(held.metricID)) continue;
+    const next = candidates.get(held.id);
+    let cursor = 0;
+    for (const point of held.points) {
+      if (point.value === null || point.timeMs < start || point.timeMs > end) continue;
+      if (!next) return false;
+      while (cursor < next.points.length && next.points[cursor].timeMs < point.timeMs) cursor++;
+      if (next.points[cursor]?.timeMs !== point.timeMs) return false;
+    }
+  }
+  return true;
+}
+
 /**
  * Observe finite resource metrics. The host alone schedules network work.
  * Compatible range/step changes retain one displayed snapshot and its original
- * domain. Resource incarnations and metric selection are intersected synchronously:
- * a newly opened Pod never displays another Pod's retained sample. Source changes,
- * denied/invalidated delivery, and failed observation setup clear incompatible data.
+ * domain and step. Resource incarnations and metric selection are intersected
+ * synchronously: a newly opened Pod never displays another Pod's retained sample.
+ * Source changes, denied/invalidated delivery, and failed observation setup clear
+ * incompatible data.
+ *
+ * A host that is still collecting may publish incomplete frames (`isPartial`) that
+ * omit pairs it has not reached: an absent result is pending, never missing. While
+ * such a frame holds no result yet, `isLoading` stays true and `domain` and `stepMs`
+ * already describe it. `isFetching` alone says whether collection continues, so a
+ * final incomplete frame stays partial without loading.
  *
  * @example
  * useMetricObservation({ ownerPluginID: 'kubernetes', ownerConnectionID: connectionID,
@@ -217,7 +259,13 @@ export function useMetricObservation(options: UseMetricObservationOptions) {
           const compatible = previous.authority === scope && (!snapshot.catalog || !previous.catalog || sourceIdentity(snapshot.catalog) === sourceIdentity(previous.catalog));
           let displayed = compatible ? previous.displayed : null;
           if (snapshot.invalidated) displayed = null;
-          else if (snapshot.data != null) displayed = { snapshot, targets: input.targets, receivedAtMs };
+          else if (snapshot.data != null) {
+            const prepared = prepareMetricResults(snapshot, snapshot.catalog, input.targets);
+            if (!displayed || input.shape !== 'range' || !snapshot.fetching || snapshot.data.complete !== false ||
+                preservesDisplayedRange(displayed, prepared, snapshot, input)) {
+              displayed = { snapshot, prepared, targets: input.targets, metricIDs: input.metricIDs, stepMs: input.stepMs ?? null, receivedAtMs };
+            }
+          }
           return { authority: scope, displayed, catalog: snapshot.invalidated ? null : snapshot.catalog ?? (compatible ? previous.catalog : null), requestIdentity: identity,
             settled: snapshot.data != null || !!snapshot.error || snapshot.invalidated,
             fetching: snapshot.fetching, error: snapshot.error ? new Error(snapshot.error) : null };
@@ -229,7 +277,7 @@ export function useMetricObservation(options: UseMetricObservationOptions) {
   }, [identity]);
   const current = state.authority === authority ? state : null;
   const displayed = current?.displayed ?? null;
-  const prepared = useMemo(() => prepareMetricResults(displayed?.snapshot ?? null, displayed?.snapshot.catalog ?? null, displayed?.targets ?? []), [displayed]);
+  const prepared = displayed?.prepared ?? EMPTY;
   useEffect(() => {
     // Presentation expiry only. No network fetch, retry or cache deadline lives here.
     const now = Date.now();
@@ -268,8 +316,13 @@ export function useMetricObservation(options: UseMetricObservationOptions) {
   const settled = current?.requestIdentity === identity && current.settled;
   const error = current?.requestIdentity === identity ? current.error : null;
   const fetching = active && (!settled || !!current?.fetching);
+  // Data, domain and step travel together. An incomplete frame can precede its first result and still owns the view.
+  const owned = displayed && (results.length > 0 || (displayed.snapshot.data?.complete === false && sharesRequest(displayed, request.targets, request.metricIDs))) ? displayed : null;
+  const partial = owned?.snapshot.data?.complete === false;
   return { results, catalog: current?.catalog ?? null,
-    domain: displayed && results.length ? { startMs: epoch(displayed.snapshot.domain_start), endMs: epoch(displayed.snapshot.domain_end) } : null,
-    isLoading: active && !results.length && !settled && !error,
+    domain: owned ? { startMs: epoch(owned.snapshot.domain_start), endMs: epoch(owned.snapshot.domain_end) } : null,
+    stepMs: owned?.stepMs ?? null,
+    isPartial: partial,
+    isLoading: active && !results.length && !error && (!settled || (partial && fetching)),
     isFetching: fetching, error, refresh };
 }

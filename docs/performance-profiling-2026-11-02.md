@@ -566,3 +566,94 @@ Wails v3.1 exposes no supported around-binding execution hook. Wails timing/coun
 instruments therefore have no observations; the UI must show unavailable rather
 than invent zeros. Backend operation timing is real, but is not end-to-end IPC
 or frontend rendering latency.
+
+### Plugin-reported measurements
+
+The application meter above still measures the host process only. Plugins publish
+their own bounded in-process measurements through `PluginLifecycle.GetDiagnostics`.
+The host polls each running plugin every two seconds, stamps `plugin` from its own
+record, and merges the validated reply into this collector as `omniview.plugin.self.*`
+(see [plugin SDK diagnostics reporting](plugin-sdk-diagnostics-plan.md)). A plugin
+that is old, failing or stale is reported by `omniview.plugin.diagnostics.status`,
+never as zero.
+
+The Kubernetes plugin's native metrics scan reports these counters. They are
+cumulative since the plugin process started and exist at zero from startup, so a
+capture that begins before the first scan, denial or cancellation still has a start
+value for each series.
+
+| Instrument | Attribute | Meaning |
+| --- | --- | --- |
+| `omniview.plugin.self.native_scan.api_calls` | `operation` namespace, node | List requests a scan issued, including failed or canceled ones |
+| `omniview.plugin.self.native_scan.pages` | `operation` | List pages that decoded and validated |
+| `omniview.plugin.self.native_scan.objects` | `operation` | Metric objects decoded against the scan's object budget |
+| `omniview.plugin.self.native_scan.bytes` | `operation` | Response bytes read against the scan's byte budget |
+| `omniview.plugin.self.native_scan.scans` | `outcome` ok, denied, budget, canceled, timeout, failed | Finished scans, one per list sequence |
+| `omniview.plugin.self.native_scan.cancellations` | `reason` caller, deadline, retired | Queries that ended without delivering because of cancellation, a deadline or source retirement |
+
+These measure what a scan cost, not how long the provider call took; use
+`omniview.metric.pipeline.provider_duration` for latency. Compare counter increases
+per capture second, with independently calculated endpoint deltas for each capture.
+Preserve session, source-provenance and coverage warnings; a reset or incomplete
+capture does not establish a before/after win. Exact scan semantics are in the
+Kubernetes plugin's `docs/diagnostics.md`.
+
+## Issue 416: coverage-aware range reuse
+
+Real IDE workload `range-overlap-15m-1h-6x-120s`: one admitted Pod, genuine
+Prometheus-compatible history, two metric cards, six alternating one-hour and
+15-minute selections with six-second dwell. Both presets use a 15-second grid.
+Viewport was 1500×950; each capture followed a 45-second idle period and lasted
+120 seconds. The accepted candidate driver completed all transitions in 38.781
+seconds with both charts present.
+
+- Baseline: `bf5ef2e722654f9fff829e9c300efd8a`.
+- Candidate: `8b33d1f53dc73d74795a091a3ddc0700`.
+- Existing `diagnostics compare` reports compatible workloads. Relevant Grafana
+  query, payload and retained-state measurements are valid. Both captures have
+  complete collection coverage with no errors, drops or gaps.
+- Process sessions differ and source identity is unknown; the comparison warns
+  about both. Whole-process CPU/RSS are context, not attributed savings.
+
+| Observation | Baseline | Candidate |
+| --- | ---: | ---: |
+| Successful finite Grafana queries | 14 | 26 |
+| Validated provider response JSON bytes | 163,646 | 79,411 |
+| Successful query mean, ms | 5.486 | 6.381 |
+| Dispatch queue mean, ms | 54.000 | 182.715 |
+| Reader/provider cancellation requests | 0 / 0 | 0 / 0 |
+| Kubernetes plugin CPU, seconds | 2.08 | 2.83 |
+| Mean completed-cache bytes | 41,351 | 21,703 |
+| Final completed-cache bytes | 26,084 | 11,227 |
+| Mean displayed-snapshot bytes | 27,358 | 27,831 |
+| Final displayed-snapshot bytes | 24,334 | 24,341 |
+| Mean Kubernetes plugin RSS, bytes | 167,933,583 | 171,815,785 |
+| Final Kubernetes plugin RSS, bytes | 171,081,728 | 174,112,768 |
+
+Claim limited to validated provider response JSON: 51.5% fewer bytes in this
+workload. Calls, queue time and mean query latency increased; no latency, CPU or
+retained-process-memory win is claimed. These bytes are serialized finite
+responses, not Prometheus HTTP traffic or physical objects/pages/bytes scanned.
+Those source scan measurements are unavailable. Native scan counters remain zero
+because this workload uses the external source, not metrics-server.
+
+An intermediate corrected capture (`64fa2da27ae589d52ed400aea05f8b38`) lacked
+matching cancellation series in its fresh session. The existing pipeline now
+declares its two closed cancellation-event series at startup, without recording
+fake events. The final comparison validates both zero deltas. No cancellation
+improvement is claimed; cancellation requests do not prove a provider stopped.
+
+The first candidate (`78257c59c67ee92181068343dbe1da3c`) exposed a visual regression:
+partial refreshes replaced previously loaded samples with pending gaps. It is not
+the accepted result. A lifecycle regression reproduced the loss before the fix.
+The corrected hook retains its single displayed frame until non-regressing
+progress arrives. Actual IDE observation then kept 61 samples through refresh,
+displayed 60 only when the sliding domain excluded the oldest point, and restored
+61 when the new endpoint arrived. Source nulls remain gaps; no samples or source
+timestamps are fabricated.
+
+Host range-coordinator tests, Grafana tests, all 42 runtime metric-hook tests and
+the Kubernetes panel integration tests passed. Synthetic coordinator tests prove
+coverage, cancellation and authority boundaries; they are not physical provider
+scan evidence. Real native 1,000-Pod scan evidence is separate in the Kubernetes
+plugin's `docs/diagnostics.md`.

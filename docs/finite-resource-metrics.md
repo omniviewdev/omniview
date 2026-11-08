@@ -227,11 +227,15 @@ An empty target or metric list disables collection. Each source catalog declares
 | --- | --- |
 | `results` | Render prepared values, units, and source timestamps |
 | `catalog` | Discover the selected source's metrics and capabilities |
-| `isLoading` | Show the initial loading state |
+| `isLoading` | Show initial loading, including an incomplete empty frame while collection continues |
 | `isFetching` | Show a refresh without clearing existing data |
 | `error` | Report a collection failure |
 | `refresh()` | Request an immediate refresh |
 | `domain` | Read the displayed history range, when available |
+| `stepMs` | Use the resolution of displayed history, not a pending replacement request |
+| `isPartial` | Indicate that displayed data is incomplete; check `isFetching` separately for active collection |
+
+Range progress keeps data, domain and step together. A partial update does not erase already displayed numeric samples in the requested window. Until non-regressing progress arrives, retained history keeps its original domain and step. An absent pair in an incomplete frame is pending, not proof of a missing source sample. A final incomplete frame remains partial without staying busy.
 
 ### `useMetricViewPreferences(pluginID, resourceKey, defaults?)`
 

@@ -2,6 +2,7 @@ package metric
 
 import (
 	"context"
+	"reflect"
 	"sort"
 
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
@@ -180,8 +181,15 @@ func (c *controller) resolveFiniteSources(ctx context.Context, request ResourceM
 		source = *request.Source
 	}
 	byID := map[string]sdk.MetricDefinition{}
+	var rangeOwners map[string]sdk.MetricDefinition
 	for _, d := range definitions {
 		byID[d.ID] = d
+		if d.RangeReuse {
+			if rangeOwners == nil {
+				rangeOwners = map[string]sdk.MetricDefinition{}
+			}
+			rangeOwners[d.ID] = d
+		}
 	}
 	for _, d := range data.Definitions {
 		if owner, exists := byID[d.ID]; exists && (owner.Unit != d.Unit || metricDigest(owner.ResourceKeys) != metricDigest(d.ResourceKeys) || owner.Native != d.Native) {
@@ -223,6 +231,10 @@ func (c *controller) resolveFiniteSources(ctx context.Context, request ResourceM
 		if o, ok := overrides[d.ID]; ok && (preview == nil || preview.ID != d.ID) {
 			d = applyMetricOverride(d, o)
 		}
+		// An owner declaration cannot survive edits by inheriting a flag from
+		// an old draft. Only an unchanged owner-authored definition retains it.
+		owner, declared := rangeOwners[d.ID]
+		d.RangeReuse = declared && reflect.DeepEqual(owner, d)
 		if err := validateOwnerDefinitionScope(d, catalog); err != nil {
 			return nil, err
 		}
@@ -336,7 +348,7 @@ func (c *controller) PreviewMetricDefinition(ctx context.Context, spec MetricsOb
 	spec.MetricIDs = []string{definition.ID}
 	ctx, cancel := context.WithTimeout(ctx, resourceMetricsTimeout)
 	defer cancel()
-	return c.readFiniteResolved(ctx, spec, true, nil, nil, &definition)
+	return c.readFiniteResolved(ctx, spec, true, nil, nil, &definition, nil)
 }
 
 func (f *finiteCoordinator) fenceFiniteSources(ctx context.Context, request ResourceMetricsCatalogRequest, lanes []finiteSourceLane, generation, serial uint64, preview *sdk.MetricDefinition) (func() error, error) {
