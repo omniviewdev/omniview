@@ -247,9 +247,18 @@ func TestPublishedManagedBuildRefusesUntrustedSDKSelectionsTypedAndUnattested(t 
 			if test.prepare != nil {
 				test.prepare(build, t)
 			}
-			// A mutated floor release has synthetic checksums: the world's rows
-			// make the capability check, not the reviewed table, the subject.
-			watcher := build.watcher(t, build.goPath, build.world.Policy(build.sdk))
+			// The world's policy is the production table plus the world's synthetic
+			// releases, and refuses to let a release override a reviewed row. A
+			// mutated floor release has synthetic checksums for a reviewed version,
+			// so its case names it as the only reviewed row: the capability check,
+			// not the reviewed table, is then the subject.
+			var policy devsdk.Policy
+			if test.mutateSDK != nil {
+				policy = devsdk.NewReleasePolicy(devsdk.FloorVersion, build.sdk.Published())
+			} else {
+				policy = build.world.Policy(build.sdk)
+			}
+			watcher := build.watcher(t, build.goPath, policy)
 			err := watcher.buildPlugin(true, "", time.Now())
 			requireTyped(t, err, test.code)
 			require.NoFileExists(t, build.installed())
