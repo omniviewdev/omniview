@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devdiag"
 	"golang.org/x/mod/semver"
 	"gopkg.in/yaml.v3"
 )
@@ -133,7 +134,7 @@ func validateLinkedPeerContracts(w Workspace, plan linkPlan) error {
 		return nil
 	}
 	sort.Strings(conflicts)
-	return devcontract.Fail(3, "peer_contract_mismatch", safeCompilerDiagnostic(strings.Join(conflicts, "; ")+"; select compatible source revisions or reconcile the named manifests; strict peer validation remains enabled", w.Root))
+	return devcontract.Fail(3, "peer_contract_mismatch", devdiag.Safe(strings.Join(conflicts, "; ")+"; select compatible source revisions or reconcile the named manifests; strict peer validation remains enabled", w.Root))
 }
 
 // Ordinary exact, caret, and tilde ranges suffice for pinned source cohorts.

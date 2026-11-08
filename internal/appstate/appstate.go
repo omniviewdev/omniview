@@ -3,6 +3,7 @@ package appstate
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -239,6 +240,35 @@ func (s *Service) PluginData(id string) (*ScopedRoot, error) {
 	}
 	s.pluginDataRoots[id] = r
 	return r, nil
+}
+
+// PluginDataIfExists returns the scoped root for a plugin's data directory
+// only when that directory already exists. It never creates directories and
+// never caches a root for a missing directory, so read-only callers cannot
+// grow the disk or the descriptor table by probing novel plugin IDs.
+// ok is false (with a nil error) when the directory does not exist.
+func (s *Service) PluginDataIfExists(id string) (root *ScopedRoot, ok bool, err error) {
+	if err := validatePluginID(id); err != nil {
+		return nil, false, fmt.Errorf("appstate: PluginDataIfExists: %w", err)
+	}
+
+	s.pluginRootsMu.Lock()
+	defer s.pluginRootsMu.Unlock()
+
+	if r, cached := s.pluginDataRoots[id]; cached {
+		return r, true, nil
+	}
+
+	dir := filepath.Join(s.root, "plugins", id, "data")
+	r, err := openExistingScopedRoot(dir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("appstate: open plugin data root for %q: %w", id, err)
+	}
+	s.pluginDataRoots[id] = r
+	return r, true, nil
 }
 
 // PluginStore returns a scoped root for a specific plugin's store directory.

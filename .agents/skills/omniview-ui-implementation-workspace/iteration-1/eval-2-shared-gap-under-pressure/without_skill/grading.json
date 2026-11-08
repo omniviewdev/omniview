@@ -1,0 +1,36 @@
+{
+  "expectations": [
+    {
+      "text": "Rejects local trigger styling and routes gap/icon sizing fix to shared base-ui primitives.",
+      "passed": false,
+      "evidence": "The response correctly calls this a “shared-component consistency issue to raise with base-ui,” but explicitly allows “a narrowly scoped Omniview wrapper with `gap: 6px` as a temporary workaround.” It therefore does not reject local trigger styling, and does not explicitly route icon sizing to the shared primitives."
+    },
+    {
+      "text": "Recognizes Input.Control datetime-local as browser-native behavior despite approved import and chooses existing themed date/time capabilities.",
+      "passed": false,
+      "evidence": "The response says that Input.Control support “does not establish that it replaces every capability required from DateTimePicker” and mentions “Native-control support.” However, it never clearly explains that datetime-local behavior is browser-native despite the base-ui import, nor chooses existing themed date/time capabilities. Instead, it allows the substitution: “If nothing is missing, document why the simpler control is sufficient.”"
+    },
+    {
+      "text": "Does not restore invented CPU capacity or silently accept bare-number parity loss; requires explicit dense metric capability/design disposition.",
+      "passed": true,
+      "evidence": "The response rejects guessed capacity: “use a justified bound rather than another guessed constant.” It identifies visualization loss and requires explicit disposition: “If numbers-only is an intentional product change, explicitly approve that change,” and says it must not be “silently counted as full visualization parity.” It also requires recording a missing shared visualization capability if that blocks implementation. This satisfies the design-disposition alternative, although it does not explicitly discuss dense-table presentation."
+    },
+    {
+      "text": "Requires actionable library request before substitution, including owner, existing API gap, and acceptance evidence.",
+      "passed": true,
+      "evidence": "It directs “Log library requests and capability gaps now, not later,” and requires records identifying “the owning package, required behavior, current workaround or fallback, and acceptance criteria.” The trigger workaround must be “linked to that request”; the date/time section says “Before accepting the substitution” to define required behavior and record capabilities the input lacks. Its component-specific acceptance checks and final requirement that “agreed behavior is verified” supply an evidence requirement. Requests are conditional on an actual gap, rather than speculative."
+    },
+    {
+      "text": "Requires actual popup date/time keyboard/focus and narrow table-density verification before completion.",
+      "passed": false,
+      "evidence": "The response includes “keyboard interaction” among required date/time behavior and requires verifying usability in the “240px popup,” including “opening, dismissal, and focus behavior.” However, CPU acceptance only asks to “verify representative values ... against the agreed metric semantics.” There is no requirement to verify narrow table density, so the combined assertion is not met."
+    }
+  ],
+  "critique": "The response appropriately refuses premature completion, assigns application versus shared-library ownership, records real capability gaps immediately, and requires explicit approval for CPU visualization loss without inventing capacity. Its principal departures are permitting local trigger CSS and leaving a native datetime-local substitution open instead of selecting themed date/time capabilities. It also omits narrow-table density verification. The assertions bundle distinct requirements: shared ownership alone does not demonstrate rejection of wrappers, and popup checks alone do not demonstrate table-density checks. The CPU assertion's “capability/design disposition” alternative permits the response's explicit product approval route; requiring a particular metric component would overread it. The library-request assertion is somewhat weak about what constitutes acceptance evidence; this response requires future verification, but provides no executed test results, which should not be demanded in this decision evaluation.",
+  "summary": {
+    "passed": 2,
+    "failed": 3,
+    "total": 5,
+    "pass_rate": 0.4
+  }
+}

@@ -145,3 +145,34 @@ func TestFrontendCapabilityNeverEntersPersistedOwner(t *testing.T) {
 		t.Fatal("live producer capability leaked into persisted history")
 	}
 }
+
+type activityOtherKindWindow struct{ activityTestWindow }
+
+func TestFrontendCapabilityIsBoundToWindowKindAndID(t *testing.T) {
+	service, _ := testService(t)
+	frontend := &FrontendService{Service: service, Realm: invocation.NewScope(invocation.TrustedUI)}
+	native := frontendCaller(1)
+	other := context.WithValue(context.Background(), application.WindowKey, activityOtherKindWindow{activityTestWindow{id: 1}})
+	session, err := frontend.Subscribe(native)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, call := range map[string]func(context.Context) error{
+		"heartbeat":   func(ctx context.Context) error { return frontend.Heartbeat(ctx, session.ID) },
+		"attach":      func(ctx context.Context) error { _, err := frontend.Attach(ctx, session.ID); return err },
+		"unsubscribe": func(ctx context.Context) error { return frontend.Unsubscribe(ctx, session.ID) },
+	} {
+		if err := call(other); err == nil {
+			t.Fatalf("%s admitted a different window kind with the same ID", name)
+		}
+	}
+	if err := frontend.Heartbeat(native, session.ID); err != nil {
+		t.Fatalf("issuing window rejected: %v", err)
+	}
+	if _, err := frontend.Attach(native, session.ID); err != nil {
+		t.Fatalf("issuing window attach rejected: %v", err)
+	}
+	if err := frontend.Unsubscribe(native, session.ID); err != nil {
+		t.Fatalf("issuing window unsubscribe rejected: %v", err)
+	}
+}

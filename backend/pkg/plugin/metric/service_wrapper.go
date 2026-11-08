@@ -20,7 +20,7 @@ type ServiceWrapper struct {
 	Ctrl       Controller
 	Realm      *invocation.WindowRealm
 	sessionsMu sync.Mutex
-	sessions   map[uint]*metricFrontendSession
+	sessions   map[invocation.WindowIdentity]*metricFrontendSession
 }
 
 func (s *ServiceWrapper) realmContext(ctx context.Context) context.Context {

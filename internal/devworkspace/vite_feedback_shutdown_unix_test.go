@@ -22,7 +22,7 @@ func feedbackShutdownChildren(t *testing.T, s *workspaceSupervisor) (*ownedChild
 	}
 	children := map[string]*ownedChild{}
 	for _, role := range []string{"host", "vite"} {
-		child, err := startOwnedChild(context.Background(), hostSource, s.environment(), io.Discard, devsession.ProcessOwner{WorkspaceID: s.workspace.Manifest.WorkspaceID, Generation: s.generation, Role: role, Source: hostSource}, nil, "/bin/sleep", "300")
+		child, err := startOwnedChild(context.Background(), hostSource, mustEnvironment(t, s), io.Discard, devsession.ProcessOwner{WorkspaceID: s.workspace.Manifest.WorkspaceID, Generation: s.generation, Role: role, Source: hostSource}, nil, "/bin/sleep", "300")
 		if err != nil {
 			t.Fatal(err)
 		}

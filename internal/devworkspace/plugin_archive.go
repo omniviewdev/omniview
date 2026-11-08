@@ -115,15 +115,24 @@ func (g *BuildGraph) PublishPluginArchive(ctx context.Context, plugin devcontrac
 		if err = instance.VerifyPluginArtifact(g.workspace.ResolvedWorkspace, plugin.ID, binaryPath); err != nil {
 			return "", receipt, fmt.Errorf("archive plugin %s backend does not match this workspace's build evidence: %w", plugin.ID, err)
 		}
-		provenance, provenanceErr := sdkconfig.BuildStateIsolationProvenance(binaryPath, identity.Revision, identity.SourceDigest)
-		if provenanceErr != nil {
-			return "", receipt, provenanceErr
+		if sourceIdentity, isSource := identity.Source(); isSource {
+			provenance, provenanceErr := sdkconfig.BuildStateIsolationProvenance(binaryPath, sourceIdentity.Revision, sourceIdentity.SourceDigest)
+			if provenanceErr != nil {
+				return "", receipt, provenanceErr
+			}
+			if provenance.BinarySHA256 != ledgerDigest {
+				return "", receipt, fmt.Errorf("archive plugin %s backend bytes changed after their recorded publication", plugin.ID)
+			}
+			metadata.StateIsolation = provenance
+			receipt.BackendSHA256 = provenance.BinarySHA256
+		} else {
+			// A published SDK has no checkout revision to attest, and archive
+			// metadata is never release trust: the archive carries no source-style
+			// provenance. The destination's own private host evidence, verified
+			// above against these exact bytes, authorizes the launch.
+			metadata.StateIsolation = nil
+			receipt.BackendSHA256 = ledgerDigest
 		}
-		if provenance.BinarySHA256 != ledgerDigest {
-			return "", receipt, fmt.Errorf("archive plugin %s backend bytes changed after their recorded publication", plugin.ID)
-		}
-		metadata.StateIsolation = provenance
-		receipt.BackendSHA256 = provenance.BinarySHA256
 		entries = append(entries, archiveEntry{name: "bin/plugin", path: binaryPath, mode: 0o755})
 	} else {
 		metadata.StateIsolation = nil
