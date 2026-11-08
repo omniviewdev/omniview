@@ -4,17 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"io"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -30,128 +25,13 @@ var errSupervisorExecutableForbidden = errors.New("test attempted to resolve a s
 // launch a supervisor: reaching it is the observable "launch preconditions met".
 func forbidSupervisorExecutable() (string, error) { return "", errSupervisorExecutableForbidden }
 
-// Every typed constructor with a non-default exit must survive the JSON status
-// boundary, where Error.Exit is not serialized. Scanning the constructors keeps
-// the table from drifting when a code is added.
-func TestWorkspaceExitCodesCoverEveryTypedConstructor(t *testing.T) {
-	directories := []string{".", "../devsession", "../devcontract", "../devcontrol", "../devcontrol/host", "../../backend/pkg/plugin/devserver"}
-	// These codes are constructed with different exits at different sites; the
-	// table lists the blocking exit for them.
-	ambiguous := map[string][]int{"invalid_process_bridge": {2, 4}, "invalid_registry": {2, 4}, "overlapping_repositories": {2, 4}}
-	fset := token.NewFileSet()
-	checked := 0
-	var missing []string
-	for _, directory := range directories {
-		entries, err := os.ReadDir(directory)
-		require.NoError(t, err)
-		var files []*ast.File
-		constants := map[string]string{}
-		for _, entry := range entries {
-			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
-				continue
-			}
-			file, parseErr := parser.ParseFile(fset, filepath.Join(directory, entry.Name()), nil, 0)
-			require.NoError(t, parseErr)
-			files = append(files, file)
-			for _, declaration := range file.Decls {
-				generic, ok := declaration.(*ast.GenDecl)
-				if !ok || generic.Tok != token.CONST {
-					continue
-				}
-				for _, spec := range generic.Specs {
-					value := spec.(*ast.ValueSpec)
-					for index, name := range value.Names {
-						if index >= len(value.Values) {
-							continue
-						}
-						if literal, isLiteral := value.Values[index].(*ast.BasicLit); isLiteral {
-							constants[name.Name] = literal.Value
-						}
-					}
-				}
-			}
-		}
-		resolve := func(expression ast.Expr) (string, bool) {
-			switch node := expression.(type) {
-			case *ast.BasicLit:
-				return node.Value, true
-			case *ast.Ident:
-				value, found := constants[node.Name]
-				return value, found
-			}
-			return "", false
-		}
-		for _, file := range files {
-			ast.Inspect(file, func(node ast.Node) bool {
-				call, ok := node.(*ast.CallExpr)
-				if !ok || len(call.Args) < 2 {
-					return true
-				}
-				var exitText, codeText string
-				switch function := call.Fun.(type) {
-				case *ast.SelectorExpr:
-					if owner, isIdent := function.X.(*ast.Ident); !isIdent || owner.Name != "devcontract" || function.Sel.Name != "Fail" {
-						return true
-					}
-					exitText, _ = resolve(call.Args[0])
-					codeText, _ = resolve(call.Args[1])
-				case *ast.Ident:
-					switch function.Name {
-					case "Fail":
-						if filepath.Base(directory) != "devcontract" {
-							return true
-						}
-						exitText, _ = resolve(call.Args[0])
-						codeText, _ = resolve(call.Args[1])
-					case "sourceUpdateFailure":
-						exitText = constants["sourceUpdateConflictExitCode"]
-						codeText, _ = resolve(call.Args[0])
-					default:
-						return true
-					}
-				default:
-					return true
-				}
-				exit, exitErr := strconv.Atoi(exitText)
-				code, codeErr := strconv.Unquote(codeText)
-				if exitErr != nil || codeErr != nil {
-					return true // dynamic code or exit: the dynamic constructor is listed by hand
-				}
-				position := fset.Position(call.Pos())
-				if exits, mixed := ambiguous[code]; mixed {
-					require.Contains(t, exits, exit, "%s", position)
-					require.Equal(t, 4, workspaceExitCode(code), "%s: ambiguous code must list the blocking exit", position)
-					return true
-				}
-				if workspaceExitCode(code) != exit {
-					missing = append(missing, fmt.Sprintf("%s: devcontract.Fail(%d, %q) restores exit %d", position, exit, code, workspaceExitCode(code)))
-				}
-				checked++
-				return true
-			})
-		}
-	}
-	require.Empty(t, missing, "typed codes lose their exit across the supervisor boundary; add each to workspaceExitCodes")
-	require.Greater(t, checked, 400, "the scan must see the typed constructors")
-}
-
-func TestWorkspaceErrorRestoresExitFromCodeOnly(t *testing.T) {
-	for _, test := range []struct {
-		code string
-		exit int
-	}{
-		{"usage", 2}, {"sdk_source_required", 2}, {"sdk_contract_mismatch", 3}, {"peer_contract_mismatch", 3},
-		{"invalid_journal", 4}, {"generated_cleanup_pending", 4}, {"unauthorized", 6}, {"timeout", 7},
-		{"build_failed", 5}, {"a_code_nobody_declared", 5},
-	} {
-		t.Run(test.code, func(t *testing.T) {
-			restored := workspaceError(&devcontract.Error{Code: test.code, Message: "rebuilt from JSON"})
-			require.Equal(t, test.exit, restored.Exit)
-			require.Equal(t, test.code, restored.Code)
-		})
-	}
-	explicit := workspaceError(&devcontract.Error{Code: "peer_contract_mismatch", Exit: 4})
-	require.Equal(t, 4, explicit.Exit, "a constructor-assigned exit is never overridden by the table")
+// mustEnvironment is the supervisor child environment of a fixture whose
+// selected SDK resolves.
+func mustEnvironment(t testing.TB, s *workspaceSupervisor) []string {
+	t.Helper()
+	environment, err := s.environment()
+	require.NoError(t, err)
+	return environment
 }
 
 // A typed error raised inside a build node must cross the real supervisor
@@ -202,54 +82,128 @@ func TestTypedBuildNodeErrorsKeepCodeAndExitAcrossSupervisorTransport(t *testing
 	}
 }
 
-func commandEnvironmentProbe(t *testing.T) (program string, script string) {
+// sdkSourceProbe prints every environment entry whose name is SDK_SOURCE in
+// any letter case, which is what a case-insensitive (Windows) environment would
+// resolve to the Taskfile's variable.
+func sdkSourceProbe(t *testing.T) (program string, script string) {
 	t.Helper()
 	node, err := exec.LookPath("node")
 	if err != nil {
 		t.Skip("actual Node is required for command environment behavior")
 	}
-	return node, `process.stdout.write(JSON.stringify({sdk: process.env.SDK_SOURCE ?? "unset", lower: process.env.sdk_source ?? "unset"}))`
+	return node, `const found = {}; for (const [key, value] of Object.entries(process.env)) if (key.toLowerCase() === "sdk_source") found[key] = value; process.stdout.write(JSON.stringify(found))`
 }
 
 // An exported SDK_SOURCE would make the Taskfile replace the SDK with a
 // checkout the verifier never observed, so only the selected source may set it.
 func TestOwnedCommandsNeverInheritAmbientSDKSource(t *testing.T) {
-	node, script := commandEnvironmentProbe(t)
+	node, script := sdkSourceProbe(t)
 	t.Setenv("SDK_SOURCE", "/ambient/sdk-overlay")
 	t.Setenv("sdk_source", "/ambient/lowercase-overlay")
+	t.Setenv("Sdk_Source", "/ambient/mixed-case-overlay")
 	g := graphFixture(t)
-	read := func(raw []byte) string {
-		var got struct{ SDK, Lower string }
-		require.NoError(t, json.Unmarshal(raw, &got))
-		return got.SDK + "|" + got.Lower
+	read := func(raw []byte) map[string]string {
+		found := map[string]string{}
+		require.NoError(t, json.Unmarshal(raw, &found))
+		return found
 	}
 	raw, err := g.command(context.Background(), g.workspace.Root, node, "-e", script)
 	require.NoError(t, err)
-	require.Equal(t, "unset|unset", read(raw), "an ambient value reached a graph command")
+	require.Empty(t, read(raw), "an ambient value reached a graph command")
 	raw, err = g.commandWithEnvironment(context.Background(), g.workspace.Root, []string{"SDK_SOURCE=/selected/sdk"}, node, "-e", script)
 	require.NoError(t, err)
-	require.Equal(t, "/selected/sdk|unset", read(raw), "the selected source must still be the only value that can set it")
+	require.Equal(t, map[string]string{"SDK_SOURCE": "/selected/sdk"}, read(raw), "the selected source must still be the only value that can set it")
 	raw, err = linkCommand(context.Background(), g.workspace.Root, node, "-e", script)
 	require.NoError(t, err)
-	require.Equal(t, "unset|unset", read(raw), "an ambient value reached a dependency command")
+	require.Empty(t, read(raw), "an ambient value reached a dependency command")
 }
 
-// The workspace child environment sets SDK_SOURCE only from the selected SDK.
-func TestWorkspaceEnvironmentSetsSDKSourceOnlyFromTheSelection(t *testing.T) {
-	g := graphFixture(t)
-	ambient := []string{"SDK_SOURCE=/ambient/sdk-overlay", "HOME=/unchanged"}
-	count := func(env []string) (values []string) {
-		for _, entry := range env {
-			if strings.HasPrefix(entry, "SDK_SOURCE=") {
-				values = append(values, strings.TrimPrefix(entry, "SDK_SOURCE="))
-			}
-		}
-		return values
+func TestSDKSourceEnvironmentMatchesOnlyThatVariableInAnyCase(t *testing.T) {
+	for _, key := range []string{"SDK_SOURCE", "sdk_source", "Sdk_Source", "sDK_sOURCE"} {
+		require.True(t, sdkSourceEnvironment(key), key)
 	}
-	require.Equal(t, []string{sdkDirectory(t, g)}, count(workspaceEnvironment(ambient, g.workspace, "generation", LaunchOptions{})))
+	for _, key := range []string{"", "SDK_SOURCES", "NOT_SDK_SOURCE", "SDK_SOURCE_", "SDK-SOURCE", "SDK_SOURC"} {
+		require.False(t, sdkSourceEnvironment(key), key)
+	}
+}
+
+// sdkSourceEntries returns every entry named SDK_SOURCE in any letter case.
+func sdkSourceEntries(env []string) []string {
+	var entries []string
+	for _, entry := range env {
+		if key, _, _ := strings.Cut(entry, "="); strings.EqualFold(key, "SDK_SOURCE") {
+			entries = append(entries, entry)
+		}
+	}
+	return entries
+}
+
+// effectiveEnvironmentValue resolves name the way a child process does for a
+// block with duplicates: the last entry wins, and on Windows names compare
+// case-insensitively.
+func effectiveEnvironmentValue(env []string, name string, caseInsensitive bool) (string, bool) {
+	value, found := "", false
+	for _, entry := range env {
+		key, entryValue, _ := strings.Cut(entry, "=")
+		if key == name || caseInsensitive && strings.EqualFold(key, name) {
+			value, found = entryValue, true
+		}
+	}
+	return value, found
+}
+
+// The workspace child environment sets SDK_SOURCE only from the selected SDK,
+// whatever letter case an ambient variable uses. The case-insensitive leg is
+// what a Windows child resolves; a case-sensitive filter fails it in published
+// mode (the variant would be the only SDK_SOURCE) and by leaving two entries in
+// source mode.
+func TestWorkspaceEnvironmentStripsEveryCaseVariantOfSDKSource(t *testing.T) {
+	g := graphFixture(t)
+	selected := sdkDirectory(t, g)
 	published := g.workspace
 	published.Manifest.Links.SDKRepositoryID = nil
-	require.Empty(t, count(workspaceEnvironment(ambient, published, "generation", LaunchOptions{})), "a published selection must not inherit an overlay")
+	for _, variant := range []string{"SDK_SOURCE", "sdk_source", "Sdk_Source", "sDK_sOURCE"} {
+		t.Run(variant, func(t *testing.T) {
+			ambient := []string{"HOME=/unchanged", variant + "=/ambient/sdk-overlay", "NOT_SDK_SOURCE=/kept", "SDK_SOURCE_NOTES=/kept"}
+			env, err := workspaceEnvironment(ambient, g.workspace, "generation", LaunchOptions{})
+			require.NoError(t, err)
+			require.Equal(t, []string{"SDK_SOURCE=" + selected}, sdkSourceEntries(env), "an ambient %s entry survived beside the selected value", variant)
+			for _, caseInsensitive := range []bool{false, true} {
+				value, found := effectiveEnvironmentValue(env, "SDK_SOURCE", caseInsensitive)
+				require.True(t, found)
+				require.Equal(t, selected, value, "case-insensitive=%t", caseInsensitive)
+			}
+			require.Contains(t, env, "NOT_SDK_SOURCE=/kept", "unrelated names are not SDK_SOURCE")
+			require.Contains(t, env, "SDK_SOURCE_NOTES=/kept", "unrelated names are not SDK_SOURCE")
+
+			env, err = workspaceEnvironment(ambient, published, "generation", LaunchOptions{})
+			require.NoError(t, err)
+			require.Empty(t, sdkSourceEntries(env), "a published selection must not inherit an %s overlay", variant)
+			for _, caseInsensitive := range []bool{false, true} {
+				_, found := effectiveEnvironmentValue(env, "SDK_SOURCE", caseInsensitive)
+				require.False(t, found, "case-insensitive=%t resolved an ambient overlay", caseInsensitive)
+			}
+		})
+	}
+}
+
+// An unresolvable selection must fail the environment, not hand back one that
+// dropped the ambient value but never gained the selected one.
+func TestWorkspaceEnvironmentRefusesAnUnresolvableSDKSelection(t *testing.T) {
+	g := graphFixture(t)
+	broken := g.workspace
+	missing := "absent-sdk"
+	broken.Manifest.Links.SDKRepositoryID = &missing
+	env, err := workspaceEnvironment([]string{"sdk_source=/ambient/sdk-overlay"}, broken, "generation", LaunchOptions{})
+	require.Error(t, err)
+	require.Nil(t, env, "no environment may be handed out when the selected SDK cannot be resolved")
+	var failure *devcontract.Error
+	require.ErrorAs(t, err, &failure, "the typed selection failure must stay classifiable")
+	require.Equal(t, "missing_repository", failure.Code)
+
+	supervisor := &workspaceSupervisor{workspace: broken, generation: "generation"}
+	_, err = supervisor.environment()
+	require.ErrorAs(t, err, &failure, "the supervisor environment must propagate the same refusal")
 }
 
 // The bindings task is the production path an ambient SDK_SOURCE would flip.

@@ -40,7 +40,11 @@ func runNativeRemovalCommand(ctx context.Context, w Workspace, guards []GuardFil
 	deadline, cancel := context.WithTimeout(ctx, 40*time.Second)
 	defer cancel()
 	command := exec.CommandContext(deadline, binary, "--remove-native-profile", w.ManifestPath)
-	command.Env = append(workspaceEnvironment(os.Environ(), w, NewGeneration(), options), "OMNIVIEW_NATIVE_PURGE_LOCK_FDS="+string(encoded))
+	environment, err := workspaceEnvironment(os.Environ(), w, NewGeneration(), options)
+	if err != nil {
+		return err
+	}
+	command.Env = append(environment, "OMNIVIEW_NATIVE_PURGE_LOCK_FDS="+string(encoded))
 	command.ExtraFiles = files
 	command.Stdout = diagnostics
 	command.Stderr = diagnostics

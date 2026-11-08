@@ -7,8 +7,86 @@ import (
 	"github.com/omniviewdev/omniview/internal/devbaseline"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsession"
 )
+
+// sdkReleaseUntrustedCode classifies a selected SDK the release trust policy
+// does not admit: a refusal that needs an explicit operator decision (exit 4).
+const sdkReleaseUntrustedCode = "sdk_release_untrusted"
+
+// typedErrors returns every *devcontract.Error in err's chain in the order
+// errors.As visits them (depth first, joined errors in join order).
+func typedErrors(err error) []*devcontract.Error {
+	var found []*devcontract.Error
+	var walk func(error)
+	walk = func(current error) {
+		if current == nil {
+			return
+		}
+		if typed, ok := current.(*devcontract.Error); ok && typed != nil {
+			found = append(found, typed)
+		}
+		switch wrapped := current.(type) {
+		case interface{ Unwrap() error }:
+			walk(wrapped.Unwrap())
+		case interface{ Unwrap() []error }:
+			for _, inner := range wrapped.Unwrap() {
+				walk(inner)
+			}
+		}
+	}
+	walk(err)
+	return found
+}
+
+// typedErrorRank orders typed errors carried by one chain by consequence, not
+// by exit number. A failed build joined with a publication conflict, or a trust
+// refusal beside a failed command, is reported as the one that needs an
+// operator's decision:
+//
+//	2  exit 4: conflicts, ownership and trust refusals
+//	1  exit 5: failed commands and internal failures
+//	0  everything else: usage (2), unmet prerequisites (3), authorization (6)
+//	   and timeouts (7)
+//
+// A rebuilt error that lost its exit (Error.Exit is not serialized) ranks by the
+// exit its code restores.
+func typedErrorRank(typed *devcontract.Error) int {
+	exit := typed.Exit
+	if exit == 0 {
+		exit = workspaceExitCode(typed.Code)
+	}
+	switch exit {
+	case 4:
+		return 2
+	case 5:
+		return 1
+	default:
+		return 0
+	}
+}
+
+// classifyingTypedError picks the typed error that classifies a chain: the
+// highest rank wins, and within a rank the first in chain order, so a chain with
+// one typed error behaves exactly as errors.As did. A bare devsdk.ErrNotAccepted
+// competes as a synthesized exit-4 sdk_release_untrusted, ordered after the
+// chain's own typed errors.
+func classifyingTypedError(err error) *devcontract.Error {
+	candidates := typedErrors(err)
+	if errors.Is(err, devsdk.ErrNotAccepted) {
+		candidates = append(candidates, devcontract.Fail(4, sdkReleaseUntrustedCode,
+			"the selected plugin SDK is not accepted by the release trust policy; select an SDK source repository that is"))
+	}
+	var best *devcontract.Error
+	bestRank := -1
+	for _, candidate := range candidates {
+		if rank := typedErrorRank(candidate); rank > bestRank {
+			best, bestRank = candidate, rank
+		}
+	}
+	return best
+}
 
 func workspaceError(err error) *devcontract.Error {
 	if err == nil {
@@ -22,8 +100,7 @@ func workspaceError(err error) *devcontract.Error {
 		payload.Details = map[string]any{"ownershipConflict": conflict}
 		return payload
 	}
-	var typed *devcontract.Error
-	if errors.As(err, &typed) {
+	if typed := classifyingTypedError(err); typed != nil {
 		copy := *typed
 		if copy.Exit == 0 {
 			copy.Exit = workspaceExitCode(copy.Code)
@@ -67,8 +144,12 @@ func workspaceExitCode(code string) int {
 // other than 5, so the code keeps its exit after crossing the supervisor
 // boundary. TestWorkspaceExitCodesCoverEveryTypedConstructor scans the
 // constructors and fails when a code is missing or disagrees; add new codes
-// here with the exit their devcontract.Fail call uses. Codes that different
-// constructors give different exits list the blocking exit (4).
+// here with the exit their devcontract.Fail call uses. Codes whose code or exit
+// is computed (profile-contract codes, the native removal child's exit status)
+// cannot be scanned: that test also requires each such constructor to be listed
+// by hand with the exits it can produce. A code that different constructors give
+// different exits lists the blocking exit (4) here and is acknowledged in the
+// test's ambiguous set.
 var workspaceExitCodes = map[string]int{
 	// Exit 2.
 	"archive_runtime_options":   2,
@@ -93,6 +174,7 @@ var workspaceExitCodes = map[string]int{
 	"invalid_port_policy":       2,
 	"invalid_process_override":  2,
 	"invalid_profile":           2,
+	"invalid_profile_binding":   2,
 	"invalid_ref":               2,
 	"invalid_repository":        2,
 	"invalid_repository_path":   2,
@@ -232,6 +314,7 @@ var workspaceExitCodes = map[string]int{
 	"retained_branch":               4,
 	"rollback_not_allowed":          4,
 	"rollback_pending":              4,
+	sdkReleaseUntrustedCode:         4,
 	"shutting_down":                 4,
 	"source_changed":                4,
 	"source_mismatch":               4,

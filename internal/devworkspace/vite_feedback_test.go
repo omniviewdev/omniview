@@ -99,7 +99,11 @@ func readFeedbackConsumer(s *workspaceSupervisor) (feedbackConsumerContext, feed
 	var config feedbackConsumerContext
 	var state feedbackConsumerState
 	var encoded string
-	for _, entry := range s.environment() {
+	environment, environmentErr := s.environment()
+	if environmentErr != nil {
+		return config, state, nil, environmentErr
+	}
+	for _, entry := range environment {
 		if key, value, ok := strings.Cut(entry, "="); ok && key == "OMNIVIEW_VITE_FEEDBACK" {
 			if encoded != "" {
 				return config, state, nil, errors.New("child inherited duplicate feedback contexts")
@@ -173,7 +177,7 @@ func TestViteFeedbackPublishesNativeAuthorityForTheOriginalHandle(t *testing.T) 
 		t.Fatal(err)
 	}
 	var encoded string
-	for _, entry := range s.environment() {
+	for _, entry := range mustEnvironment(t, s) {
 		if value, ok := strings.CutPrefix(entry, viteFeedbackEnvironment+"="); ok {
 			encoded = value
 		}

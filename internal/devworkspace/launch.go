@@ -92,23 +92,39 @@ const (
 	buildFailureExitCode = 5
 )
 
+// sdkSourceEnvironment reports whether key names the variable that makes the
+// Taskfile replace the SDK with a local checkout. Windows environment names
+// are case-insensitive, so every ambient-environment filter (workspace child
+// environments, graph commands, dependency commands) matches it with this one
+// predicate rather than an exact-case comparison.
+func sdkSourceEnvironment(key string) bool { return strings.EqualFold(key, sdkSourceEnv) }
+
 const supervisorGenerationEnvironment = "OMNIVIEW_SUPERVISOR_GENERATION"
 
-func workspaceEnvironment(base []string, w Workspace, generation string, o LaunchOptions) []string {
+// workspaceEnvironment builds the child environment of a selected workspace.
+// Only the workspace's selected SDK checkout can set SDK_SOURCE; an ambient
+// value in any letter case is dropped. An unresolvable selection is an error:
+// a child must never start with the ambient value dropped but the selected one
+// silently missing.
+func workspaceEnvironment(base []string, w Workspace, generation string, o LaunchOptions) ([]string, error) {
+	selection, err := devsdk.SelectionOf(w.ResolvedWorkspace)
+	if err != nil {
+		return nil, fmt.Errorf("resolve the selected SDK for the workspace environment: %w", err)
+	}
 	env := make([]string, 0, len(base)+12)
 	for _, entry := range base {
 		key, _, _ := strings.Cut(entry, "=")
 		if strings.EqualFold(key, "PNPM_CONFIG_WORKSPACE_DIR") || strings.EqualFold(key, "NPM_CONFIG_WORKSPACE_DIR") {
 			continue
 		}
-		if strings.EqualFold(key, viteFeedbackEnvironment) {
+		if strings.EqualFold(key, viteFeedbackEnvironment) || sdkSourceEnvironment(key) {
 			continue
 		}
 		if strings.HasPrefix(key, "OMNIVIEW_PROCESS_BRIDGE_") || key == "OMNIVIEW_NATIVE_PURGE_LOCK_FDS" || key == "OMNIVIEW_NATIVE_ORIGINAL_XDG" || key == "OMNIVIEW_PNPM_NODE_PATH" {
 			continue
 		}
 		switch key {
-		case goWorkEnv, goFlagsEnv, "GO_MODFILE", "GOROOT", nodePathEnv, sdkSourceEnv, "OMNIVIEW_PLUGIN_PNPM_COMMANDS", "OMNIVIEW_VITE_ALLOWED_ROOTS", "WAILS_VITE_PORT", "FORCE_COLOR", "NO_COLOR", "OMNIVIEW_WORKSPACE_FILE", "OMNIVIEW_STATE_DIR", "OMNIVIEW_INSTANCE_ID", "OMNIVIEW_GENERATION", supervisorGenerationEnvironment, "OMNIVIEW_WORKSPACE_GRAPH_WATCH", "FRONTEND_DEVSERVER_URL", "WAILS_SERVER_HOST", "WAILS_SERVER_PORT", "WAILS_MCP_HOST", "WAILS_MCP_PORT", "WAILS_MCP_TOKEN", "WAILS_MCP", "OMNIVIEW_CHANNEL":
+		case goWorkEnv, goFlagsEnv, "GO_MODFILE", "GOROOT", nodePathEnv, "OMNIVIEW_PLUGIN_PNPM_COMMANDS", "OMNIVIEW_VITE_ALLOWED_ROOTS", "WAILS_VITE_PORT", "FORCE_COLOR", "NO_COLOR", "OMNIVIEW_WORKSPACE_FILE", "OMNIVIEW_STATE_DIR", "OMNIVIEW_INSTANCE_ID", "OMNIVIEW_GENERATION", supervisorGenerationEnvironment, "OMNIVIEW_WORKSPACE_GRAPH_WATCH", "FRONTEND_DEVSERVER_URL", "WAILS_SERVER_HOST", "WAILS_SERVER_PORT", "WAILS_MCP_HOST", "WAILS_MCP_PORT", "WAILS_MCP_TOKEN", "WAILS_MCP", "OMNIVIEW_CHANNEL":
 			continue
 		}
 		env = append(env, entry)
@@ -116,15 +132,13 @@ func workspaceEnvironment(base []string, w Workspace, generation string, o Launc
 	env = append(env, goWorkEnv+"=off", goFlagsEnv+"=", "FORCE_COLOR=0", "NO_COLOR=1", "OMNIVIEW_CHANNEL=local",
 		"OMNIVIEW_WORKSPACE_FILE="+w.ManifestPath, "OMNIVIEW_STATE_DIR="+w.StateRoot,
 		"OMNIVIEW_INSTANCE_ID="+w.Manifest.WorkspaceID, "OMNIVIEW_GENERATION="+generation)
-	if selection, err := devsdk.SelectionOf(w.ResolvedWorkspace); err == nil {
-		if directory, ok := selection.Directory(); ok {
-			env = append(env, sdkSourceEnv+"="+directory)
-		}
+	if directory, ok := selection.Directory(); ok {
+		env = append(env, sdkSourceEnv+"="+directory)
 	}
 	if o.Watch {
 		env = append(env, "OMNIVIEW_WORKSPACE_GRAPH_WATCH=1")
 	}
-	return env
+	return env, nil
 }
 
 // Start creates a persistent, authenticated supervisor using this exact CLI
@@ -177,6 +191,12 @@ func (m *Manager) startGeneration(ctx context.Context, name string, o LaunchOpti
 	if w.Manifest.Links.SDKRepositoryID == nil {
 		return Status{}, sdkSourceRequired(ctx, "select the plugin-sdk repository before launching", workspaceSDKProbes(w), editAddSDKCommand(w))
 	}
+	// Resolve the child environment first: a selection that cannot be resolved
+	// must refuse the launch before any launch state is written.
+	environment, err := workspaceEnvironment(os.Environ(), w, "", o)
+	if err != nil {
+		return Status{}, err
+	}
 	if err = ResumeGeneratedPublication(w); err != nil {
 		return Status{}, err
 	}
@@ -190,7 +210,7 @@ func (m *Manager) startGeneration(ctx context.Context, name string, o LaunchOpti
 		}
 	}
 	command := exec.Command(executable, "workspace", "supervise", "--root", m.Root, "--workspace", w.Root)
-	command.Env = workspaceEnvironment(os.Environ(), w, "", o)
+	command.Env = environment
 	if generation != "" {
 		command.Env = append(command.Env, supervisorGenerationEnvironment+"="+generation)
 	}
@@ -463,7 +483,11 @@ func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 			if o.MCP {
 				args = append(args, "WAILS_MCP=1")
 			}
-			_, resultErr = s.runLaunchCommand(ctx, host, s.environment(), s.output, "task", args...)
+			environment, environmentErr := s.environment()
+			if environmentErr != nil {
+				return environmentErr
+			}
+			_, resultErr = s.runLaunchCommand(ctx, host, environment, s.output, "task", args...)
 			return resultErr
 		}, Output: s.output, OnEvent: func(event BuildEvent) {
 			s.mu.Lock()
@@ -490,12 +514,42 @@ func (s *workspaceSupervisor) sdkVerifier() devsdk.Verifier {
 	return devsdk.NewVerifier(s.manager.options.SDKPolicy)
 }
 
+// hostSDKDirectory returns the selected SDK directory a host build must use.
+// The verified identity names the canonical checkout while the manifest names
+// the path as written, so the two are equal only while that directory is not
+// redirected. A symlink swapped in for the selected directory after the
+// identity was verified (a watch rebuild runs long after bootstrap) would make
+// canonical resolution observe another checkout under an unchanged name, which
+// the canonical comparisons alone cannot see. Refuse it before any command runs.
+func hostSDKDirectory(request HostBuildRequest) (string, error) {
+	source, isSource := request.SDK.Source()
+	if !isSource {
+		return "", fmt.Errorf("native host build requires a verified source SDK identity")
+	}
+	selection, err := devsdk.SelectionOf(request.Workspace.ResolvedWorkspace)
+	if err != nil {
+		return "", err
+	}
+	directory, selected := selection.Directory()
+	if !selected {
+		return "", fmt.Errorf("native host build requires a selected local SDK source")
+	}
+	canonical, err := devcontract.CanonicalPath(directory)
+	if err != nil {
+		return "", err
+	}
+	if canonical != directory || source.Directory != directory {
+		return "", fmt.Errorf("selected SDK source directory was redirected after it was verified; refusing the host build")
+	}
+	return directory, nil
+}
+
 // buildHost compiles the selected host against the owned host modfile into a
 // generated bin tree and adopts it as the launch binary once published.
 func (s *workspaceSupervisor) buildHost(ctx context.Context, request HostBuildRequest) (resultErr error) {
-	selected, isSource := request.SDK.Source()
-	if !isSource {
-		return fmt.Errorf("native host build requires a verified source SDK identity")
+	sdkDirectory, err := hostSDKDirectory(request)
+	if err != nil {
+		return err
 	}
 	host, err := request.Workspace.RepositoryPath("omniview")
 	if err != nil {
@@ -512,8 +566,11 @@ func (s *workspaceSupervisor) buildHost(ctx context.Context, request HostBuildRe
 		}
 		resultErr = errors.Join(resultErr, recordStableHostModTree(hostModOutput))
 	}()
-	env := s.environment()
-	raw, err := s.runLaunchCommand(ctx, host, env, s.output, "go", "run", "./scripts/hostmod/main.go", "--root", host, "--output-directory", hostModOutput.Directory, "--sdk-source", selected.Directory, "--format", "json")
+	env, err := s.environment()
+	if err != nil {
+		return err
+	}
+	raw, err := s.runLaunchCommand(ctx, host, env, s.output, "go", "run", "./scripts/hostmod/main.go", "--root", host, "--output-directory", hostModOutput.Directory, "--sdk-source", sdkDirectory, "--format", "json")
 	if err != nil {
 		return err
 	}
@@ -545,7 +602,7 @@ func (s *workspaceSupervisor) buildHost(ctx context.Context, request HostBuildRe
 	if err != nil {
 		return err
 	}
-	if actual != selected.Directory {
+	if actual != sdkDirectory {
 		return fmt.Errorf("effective native host graph changed selected SDK source")
 	}
 	checkout, err := devsdk.SourceSelection(actual)

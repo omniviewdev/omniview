@@ -305,7 +305,7 @@ func (g *BuildGraph) commandWithEnvironment(ctx context.Context, dir string, env
 	// a checkout the verifier never observed.
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
-		if strings.EqualFold(key, "pnpm_config_pm_on_fail") || strings.EqualFold(key, sdkSourceEnv) || workspaceRootEnvironment(key) {
+		if strings.EqualFold(key, "pnpm_config_pm_on_fail") || sdkSourceEnvironment(key) || workspaceRootEnvironment(key) {
 			continue
 		}
 		switch key {

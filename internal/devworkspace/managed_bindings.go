@@ -84,7 +84,11 @@ func (m *Manager) GenerateBindings(ctx context.Context, name string, output io.W
 		if options.MCP {
 			args = append(args, "WAILS_MCP=1")
 		}
-		_, resultErr = g.commandWithEnvironment(ctx, host, workspaceEnvironment(nil, w, generation, options), "task", args...)
+		environment, environmentErr := workspaceEnvironment(nil, w, generation, options)
+		if environmentErr != nil {
+			return environmentErr
+		}
+		_, resultErr = g.commandWithEnvironment(ctx, host, environment, "task", args...)
 		return resultErr
 	}
 	nodes, err := planBuildNodes(w)
