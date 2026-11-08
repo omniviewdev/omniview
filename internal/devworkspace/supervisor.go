@@ -226,7 +226,9 @@ func supervisorHandler(workspaceID, generation string, token []byte, execute fun
 			return
 		}
 		status, err := execute(r.Context(), request.Command)
-		status.SourceUpdateSupported = true
+		// An archive runtime has no in-place source update path; its live
+		// status says so before the manager captures any update intent.
+		status.SourceUpdateSupported = status.PluginRuntime != PluginRuntimeArchive
 		w.Header().Set("Content-Type", "application/json")
 		failure := workspaceError(err)
 		_ = json.NewEncoder(w).Encode(map[string]any{"status": status, "error": failure})
@@ -394,14 +396,18 @@ func (m *Manager) ServeSupervisor(ctx context.Context, name string, output io.Wr
 	return resultErr
 }
 func writeLaunchSecret(path string, token []byte) error { return writeOwnedLaunchSecret(path, token) }
-func (s *workspaceSupervisor) environment() []string {
-	env := append(workspaceEnvironment(os.Environ(), s.workspace, s.generation, s.options), "OMNIVIEW_DEV_CLI="+s.owner.Executable, "GOCACHE="+s.goBuildCache)
+func (s *workspaceSupervisor) environment() ([]string, error) {
+	base, err := workspaceEnvironment(os.Environ(), s.workspace, s.generation, s.options)
+	if err != nil {
+		return nil, err
+	}
+	env := append(base, "OMNIVIEW_DEV_CLI="+s.owner.Executable, "GOCACHE="+s.goBuildCache)
 	s.feedbackMu.Lock()
 	defer s.feedbackMu.Unlock()
 	if s.feedback != nil {
 		env = append(env, s.feedback.environment)
 	}
-	return env
+	return env, nil
 }
 func (s *workspaceSupervisor) snapshot() Status {
 	s.mu.Lock()
@@ -409,7 +415,10 @@ func (s *workspaceSupervisor) snapshot() Status {
 	raw, _ := json.Marshal(s.status)
 	var status Status
 	_ = json.Unmarshal(raw, &status)
-	status.SourceUpdateSupported = true
+	status.SourceUpdateSupported = !s.options.archiveRuntime()
+	if s.options.archiveRuntime() {
+		status.PluginRuntime = PluginRuntimeArchive
+	}
 	return status
 }
 func (s *workspaceSupervisor) persist() {
@@ -570,6 +579,22 @@ func (s *workspaceSupervisor) statusResponse(ctx context.Context) Status {
 	// transient build failure or intentional plugin stop must neither
 	// poison the supervisor phase nor restart a managed generation.
 	for _, plugin := range status.Manifest.Plugins {
+		if s.options.archiveRuntime() {
+			info, infoErr := readArchivePluginInfo(ctx, client, plugin.ID)
+			ready := false
+			if infoErr == nil {
+				ready, infoErr = archivePluginReady(info)
+			}
+			if infoErr != nil || !ready {
+				status.Phase = "error"
+				status.LastError = workspaceError(infoErr)
+				if infoErr == nil {
+					status.LastError = devcontract.Fail(supervisorPluginFailureExitCode, "plugin_not_ready", fmt.Sprintf("archive plugin %s is not ready: phase %s", plugin.ID, info.Phase))
+				}
+				break
+			}
+			continue
+		}
 		state, stateErr := readPluginState(ctx, client, plugin.ID)
 		if stateErr != nil {
 			status.Phase = "error"

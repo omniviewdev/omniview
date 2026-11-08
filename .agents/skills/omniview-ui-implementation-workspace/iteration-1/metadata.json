@@ -1,0 +1,19 @@
+{
+  "system": "You are an engineering assistant reviewing Omniview UI implementation decisions. Answer the task using only supplied facts. Do not claim tools or runtime checks were executed. Give concrete decisions and verification requirements.",
+  "model": "default",
+  "method": "8 fresh stateless paired completion calls + 8 independent semantic graders",
+  "scope": "decision guidance, not actual agent execution, tool use, runtime gating, screenshot review, or native rendering",
+  "bundle": [
+    {
+      "path": ".agents/skills/omniview-ui-implementation/SKILL.md"
+    },
+    {
+      "path": ".agents/skills/omniview-ui-implementation/references/audit-protocol.md"
+    },
+    {
+      "path": ".agents/skills/omniview-ui-implementation/references/metrics-regression-case.md"
+    }
+  ],
+  "bundleSha256": "49f0cb2f1d862150981b8872af375575d17e3ff2308030c1b342fde5a252c4a4",
+  "timingAndTokens": null
+}

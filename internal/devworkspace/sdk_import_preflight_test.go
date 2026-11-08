@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/omniviewdev/omniview/internal/devsdk"
 )
 
 func TestSDKImportPreflight(t *testing.T) {
@@ -25,12 +27,12 @@ func TestSDKImportPreflight(t *testing.T) {
 	}
 	t.Run("missing package and dirty source addition", func(t *testing.T) {
 		consumer, sdk := t.TempDir(), t.TempDir()
-		write(t, consumer, "main.go", "package consumer\nimport _ \""+linkedSDK+"/pkg/resource/v2\"\n")
+		write(t, consumer, "main.go", "package consumer\nimport _ \""+devsdk.Module+"/pkg/resource/v2\"\n")
 		err := validateSDKImports(context.Background(), consumer, sdk)
 		if err == nil {
 			t.Fatal("missing SDK package passed")
 		}
-		for _, want := range []string{consumer, sdk, linkedSDK + "/pkg/resource/v2"} {
+		for _, want := range []string{consumer, sdk, devsdk.Module + "/pkg/resource/v2"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Fatalf("missing diagnostic %q: %v", want, err)
 			}
@@ -50,7 +52,7 @@ func TestSDKImportPreflight(t *testing.T) {
 	})
 	t.Run("ignore non-import text and excluded trees", func(t *testing.T) {
 		consumer, sdk := t.TempDir(), t.TempDir()
-		write(t, consumer, "main.go", "package consumer\n// import \""+linkedSDK+"/missing\"\nvar text = `import \""+linkedSDK+"/missing\"`\n")
+		write(t, consumer, "main.go", "package consumer\n// import \""+devsdk.Module+"/missing\"\nvar text = `import \""+devsdk.Module+"/missing\"`\n")
 		for _, directory := range []string{"node_modules", "vendor", "coverage", "storybook-static", ".cache", "_cache", "testdata", "nested"} {
 			write(t, consumer, directory+"/bad.go", "not Go source")
 		}
@@ -64,9 +66,9 @@ func TestSDKImportPreflight(t *testing.T) {
 		for _, directory := range []string{"build", "bin", "dist", "shims"} {
 			t.Run(directory, func(t *testing.T) {
 				consumer, sdk := t.TempDir(), t.TempDir()
-				write(t, consumer, directory+"/source.go", "package consumer\nimport _ \""+linkedSDK+"/missing\"\n")
+				write(t, consumer, directory+"/source.go", "package consumer\nimport _ \""+devsdk.Module+"/missing\"\n")
 				err := validateSDKImports(context.Background(), consumer, sdk)
-				if err == nil || !strings.Contains(err.Error(), linkedSDK+"/missing") {
+				if err == nil || !strings.Contains(err.Error(), devsdk.Module+"/missing") {
 					t.Fatalf("missing import in %s escaped scan: %v", directory, err)
 				}
 			})
@@ -80,7 +82,7 @@ func TestSDKImportPreflight(t *testing.T) {
 				if external {
 					target = t.TempDir()
 				}
-				write(t, target, "source.go", "package consumer\nimport _ \""+linkedSDK+"/missing\"\n")
+				write(t, target, "source.go", "package consumer\nimport _ \""+devsdk.Module+"/missing\"\n")
 				link := filepath.Join(consumer, "linked")
 				if err := os.Symlink(target, link); err != nil {
 					t.Skipf("symlinks unavailable: %v", err)
@@ -128,7 +130,7 @@ func TestSDKImportPreflight(t *testing.T) {
 	})
 	t.Run("SDK package symlink refuses external source", func(t *testing.T) {
 		consumer, sdk, target := t.TempDir(), t.TempDir(), t.TempDir()
-		write(t, consumer, "source.go", "package consumer\nimport _ \""+linkedSDK+"/linked/pkg\"\n")
+		write(t, consumer, "source.go", "package consumer\nimport _ \""+devsdk.Module+"/linked/pkg\"\n")
 		write(t, target, "pkg/source.go", "package sdk\n")
 		link := filepath.Join(sdk, "linked")
 		if err := os.Symlink(target, link); err != nil {
@@ -146,7 +148,7 @@ func TestSDKImportPreflight(t *testing.T) {
 				write(t, target, "source.go", "package source\n")
 				root := consumer
 				if inSDK {
-					write(t, consumer, "source.go", "package consumer\nimport _ \""+linkedSDK+"\"\n")
+					write(t, consumer, "source.go", "package consumer\nimport _ \""+devsdk.Module+"\"\n")
 					root = sdk
 				}
 				link := filepath.Join(root, "linked.go")
@@ -169,7 +171,7 @@ func TestSDKImportPreflight(t *testing.T) {
 				consumer, sdk := t.TempDir(), t.TempDir()
 				root := consumer
 				if inSDK {
-					write(t, consumer, "source.go", "package consumer\nimport _ \""+linkedSDK+"\"\n")
+					write(t, consumer, "source.go", "package consumer\nimport _ \""+devsdk.Module+"\"\n")
 					root = sdk
 				}
 				file := filepath.Join(root, "pipe.go")
@@ -185,7 +187,7 @@ func TestSDKImportPreflight(t *testing.T) {
 	})
 	t.Run("all consumer platforms scanned", func(t *testing.T) {
 		consumer, sdk := t.TempDir(), t.TempDir()
-		write(t, consumer, "source_windows_test.go", "//go:build windows && custom\n\npackage consumer\nimport _ \""+linkedSDK+"/missing\"\n")
+		write(t, consumer, "source_windows_test.go", "//go:build windows && custom\n\npackage consumer\nimport _ \""+devsdk.Module+"/missing\"\n")
 		if err := validateSDKImports(context.Background(), consumer, sdk); err == nil {
 			t.Fatal("platform-specific missing import passed")
 		}
@@ -204,7 +206,7 @@ func TestSDKImportPreflight(t *testing.T) {
 		if err := os.Remove(filepath.Join(consumer, "bad.go")); err != nil {
 			t.Fatal(err)
 		}
-		write(t, consumer, "good.go", "package consumer\nimport _ \""+linkedSDK+"/broken\"\n")
+		write(t, consumer, "good.go", "package consumer\nimport _ \""+devsdk.Module+"/broken\"\n")
 		write(t, sdk, "broken/source.go", "not Go source")
 		if err := validateSDKImports(context.Background(), consumer, sdk); err == nil {
 			t.Fatal("invalid SDK package clause passed")

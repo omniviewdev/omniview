@@ -14,6 +14,9 @@ const defaultItems: HeaderAreaItemList = [
   {
     id: 'developer-tools', type: HeaderAreaItemType.LINK, icon: 'LuWrench', href: '/developer-tools/extensions', helpText: 'Extension Inspector',
   },
+  {
+    id: 'performance', type: HeaderAreaItemType.LINK, icon: 'LuActivity', href: '/developer-tools/performance', helpText: 'Performance',
+  },
 ];
 /**
  * Show the header with a context badge on the left, and a search bar in the center and items on the right.

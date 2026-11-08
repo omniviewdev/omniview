@@ -14,7 +14,7 @@ The executable creates a private temporary directory, exercises file-backed SQLi
 
 It asserts:
 
-- SQLite WAL and FTS5 availability through modernc.org/sqlite v1.61.0.
+- SQLite WAL and FTS5 availability through modernc.org/sqlite v1.62.0.
 - Unicode tokenizer behavior and the difference between token matching and substring matching.
 - Equal-timestamp keyset ordering and a stable reader transaction during a concurrent writer commit.
 - Private database, WAL and SHM permissions on the executing Unix platform.

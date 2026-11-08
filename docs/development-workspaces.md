@@ -168,6 +168,31 @@ Browser mode starts the real Wails server. Use `instance.endpoints.browser`, **n
 
 The development footer polls Vite's status middleware only when the confirmed host descriptor reports a Vite endpoint. Static frontends show **Static**, report the host's explicit backend readiness, and mark live status observations/HMR as unsupported and source freshness as unobserved. This does not certify that built assets match current source. Live Vite retains its independent build, HMR, and source-provenance observations. Switching capabilities retires the previous polling request and snapshot; a failed live observation never becomes a static-mode readiness fallback.
 
+### Archive plugin runtime
+
+`--plugin-runtime managed` (default) links each selected plugin as a managed
+source. `--plugin-runtime archive` instead publishes every selected plugin as a
+static installed archive and requires `--mode browser --watch=false
+--live-frontend=false`. Incompatible combinations are refused with
+`archive_runtime_options` (exit 2) before any output, worktree or process is
+touched. The choice is saved with the launch options, so omitted flags, `restart`
+and `down` then `up` keep it and never relink sources; an explicit
+`--plugin-runtime managed` is the only way back.
+
+The supervisor builds the selected composition through the normal ownership-
+checked producers, so the destination workspace records its own build evidence.
+For each plugin it then joins the actual published backend binary and frontend
+`dist/assets` into `.local/archive/PLUGIN/plugin.tar.gz` under the generated
+output ledger (symlinks, missing, changed, foreign and duplicate paths are
+refused; the backend must pass the host build record and match the ledger digest of its recorded publication, assets must still match their recorded publication after packaging), installs it
+through the `plugin.install-archive` operation and waits for that operation.
+No `plugin.dev.link`, Vite allocation or dependency watcher exists in this
+runtime. Readiness requires the plugin to be installed (not dev-linked), and for
+backend plugins Running with every declared backend capability negotiated; it is
+not inferred from install success. `inspect` reports the cohort as
+`archivePlugins` (archive digest, backend digest, asset count, install operation).
+In-place source updates are refused in this runtime; stop the workspace first (`workspace down`), update it stopped, then `workspace up`.
+
 Managed plugins follow their declared `requires.connections` dependencies.
 The supervisor links selected owners before their consumers.
 A dependency cycle stops startup before the first plugin link.
@@ -452,7 +477,7 @@ fallback termination.
 
 ## Output and references
 
-`--json` emits one machine-readable result on stdout, except foreground `workspace follow --json`, which streams one JSON diagnostic object per observation. Process/compiler output stays in the private supervisor log, and CLI warnings/diagnostics use stderr. Follow diagnostics include apply consent, owner, observation/schedule times, active operation, pending cohort, plan, result, blocker and next command. Token **values** never enter descriptors or ordinary startup output. Error responses remain JSON on stdout. Exit codes are 0 success, 2 invalid request, 3 missing target/dependency evidence, 4 identity/state/ownership/port conflict, 5 operation/build failure, 6 unauthorized and 7 timeout. A successful check can report available or blocked updates without claiming they were applied.
+`--json` emits one machine-readable result on stdout, except foreground `workspace follow --json`, which streams one JSON diagnostic object per observation. Process/compiler output stays in the private supervisor log, and CLI warnings/diagnostics use stderr. Follow diagnostics include apply consent, owner, observation/schedule times, active operation, pending cohort, plan, result, blocker and next command. Token **values** never enter descriptors or ordinary startup output. Error responses remain JSON on stdout. Exit codes are 0 success, 2 invalid request, 3 missing target/dependency evidence, 4 identity/state/ownership/port conflict, 5 operation/build failure, 6 unauthorized and 7 timeout. A typed error keeps its code and exit across the supervisor boundary: the exit is not serialized, so the controller restores it from the code through one table (a test scans every typed constructor so a new code cannot be missed); an unlisted code is a failure (exit 5). When one failure carries several typed errors, the one reported is chosen by consequence, not join order: conflicts, ownership and trust refusals (exit 4), then failed commands (5), then any other code, with the first in chain order winning within a rank. A successful check can report available or blocked updates without claiming they were applied.
 
 ## Application E2E
 

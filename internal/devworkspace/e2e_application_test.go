@@ -19,6 +19,7 @@ import (
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/omniview/internal/instance"
 )
@@ -109,7 +110,7 @@ func TestApplicationFixtureProducerOutputsRestoreCanonicalSource(t *testing.T) {
 	}
 	g.run = func(_ context.Context, _ string, program string, args ...string) ([]byte, error) {
 		if program == "go" {
-			return json.Marshal(map[string]any{"Path": linkedSDK, "Dir": g.plan.SDK})
+			return json.Marshal(map[string]any{"Path": devsdk.Module, "Dir": sdkDirectory(t, g)})
 		}
 		if program == "task" {
 			for _, arg := range args {

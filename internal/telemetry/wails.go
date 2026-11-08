@@ -61,6 +61,7 @@ func (b *TelemetryBinding) IngestFrontendSignals(payload string) error {
 		}
 	}
 
-	// Measurement conversion deferred to Task 21 (needs Metrics struct).
+	// Frontend-provided measurement names are not application instruments.
+	// Record diagnostics at trusted host operation boundaries instead.
 	return nil
 }

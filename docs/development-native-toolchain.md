@@ -1,6 +1,6 @@
 # Isolated native WebView toolchain
 
-Omniview uses unmodified Go/native Wails `v3.0.0-beta.34.0.20261022002616-a90f7e7f50bf`. Native isolation uses application identity and stock platform options; cleanup and workspace policy belong to Omniview. The genuine npm `@wailsio/runtime` remains exactly `3.0.0-beta.34`, with the explicit checked-in dependency patch described below; no framework fork or patched Go-source build path is used.
+Omniview uses unmodified Go/native Wails `v3.1.0`. Native isolation uses application identity and stock platform options; cleanup and workspace policy belong to Omniview. The genuine npm `@wailsio/runtime` remains exactly `3.1.0`, with the explicit checked-in dependency patch described below; no framework fork or patched Go-source build path is used.
 
 Use Task entry points, or prepare an effective host module when selecting a local SDK:
 
@@ -199,7 +199,7 @@ alone.
 
 ## Declared npm Call settlement patch
 
-`pnpm-workspace.yaml` declares `patches/@wailsio__runtime@3.0.0-beta.34.patch` for the exact published npm package. The patch makes its Call response callbacks settle only their own still-registered resolver record. Cancellation removes that ownership while still sending the existing native CancelCall request; a later response cannot reject an already-canceled promise or touch a newly reused call ID. Ordinary errors and successful void results remain unchanged. The generic CancellablePromise late-rejection policy is not weakened.
+`pnpm-workspace.yaml` declares `patches/@wailsio__runtime@3.1.0.patch` for the exact published npm package. The patch makes its Call response callbacks settle only their own still-registered resolver record. Cancellation removes that ownership while still sending the existing native CancelCall request; a later response cannot reject an already-canceled promise or touch a newly reused call ID. Ordinary errors and successful void results remain unchanged. The generic CancellablePromise late-rejection policy is not weakened.
 
 Native pnpm 12.14.0 generates and verifies the patch hash in `pnpm-lock.yaml`. Managed composition rebases and fingerprints the declared patch through its existing policy/source-hash path; never edit installed packages, caches or generated receipts. The post-install `node --test scripts/wails-call.test.mjs` regression imports the actual resolved package and uses strict isolated processes, not a Call clone or global rejection filter. Keep the patch until a genuinely corrected upstream release is selected and verified.
 

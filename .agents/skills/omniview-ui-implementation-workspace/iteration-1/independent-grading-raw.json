@@ -1,0 +1,262 @@
+[
+  {
+    "id": 1,
+    "variant": "with_skill",
+    "name": "metrics-cutover-parity",
+    "grade": {
+      "expectations": [
+        {
+          "text": "Blocks completion despite library imports, passing mocked tests, and opened screenshots.",
+          "passed": true,
+          "evidence": "The response opens, “No—this cutover is not ready to mark complete,” explains that “`base-ui` imports establish provenance, not correct supported composition,” and states, “Capturing and opening screenshots is insufficient” and “Mocked visual primitives cannot establish actual rendering.” These explicitly reject the offered completion signals."
+        },
+        {
+          "text": "Identifies dropdown and unsolicited arrow as unapproved composition changes; existing segmented picker is sufficient.",
+          "passed": true,
+          "evidence": "It identifies “The dropdown replaces the approved inset segmented switcher, and the reorder arrow is an unsolicited action,” and requires “Restore the approved inset segmented composition” and “Remove it unless its addition and behavior receive explicit approval.” This supports retaining the approved picker rather than introducing a replacement, although it does not explicitly verify that the existing installed picker API is sufficient."
+        },
+        {
+          "text": "Separates resource identity from dimensions and requires real Current/History observations without fabricating data.",
+          "passed": true,
+          "evidence": "It requires “Preserve structured cluster/namespace/pod identity separately from dimensions” and “Retrieve supported Current and History observations and preserve their provenance.” Its instructions “Do not parse opaque identity strings or invent labels” and “Do not manufacture History for native-only Current metrics” explicitly reject fabricated identity or observations."
+        },
+        {
+          "text": "Routes shared density and story-only spacing to base-ui rather than copying local CSS; does not claim size=sm guarantees table density.",
+          "passed": true,
+          "evidence": "The response says “a small size prop does not prove compact table typography or preserve bars,” routes insufficient supported APIs to the “owning UI package,” and calls for resolving “a shared capability gap—not a local CSS substitute.” For story-only spacing it says, “promote the needed shared capability rather than copying story CSS or applying local overrides.” It identifies the shared UI ownership layer rather than naming a concrete base-ui package, explicitly noting that exact package names require checkout inspection."
+        },
+        {
+          "text": "Requires matched integrated visual evidence and real components, not only stories or mocks.",
+          "passed": true,
+          "evidence": "The required checks say, “Verify the actual integrated consumer,” “Use real components and CSS with matched fixture, provider, resource, time range, theme, density, viewport, and pane width,” and “Compare actual baseline/current pixels.” It also states that rebuilding the story with Stack “does not demonstrate preservation in the actual consumer.”"
+        }
+      ],
+      "critique": "The response meets the substantive audit expectations: it blocks completion, identifies the concrete composition and information regressions, distinguishes unverified visual properties from confirmed failures, and assigns shared-library versus consumer responsibilities without pretending to have inspected source. Two assertion details are less directly evidenced: installed segmented-picker sufficiency is implied by the restore recommendation rather than established, and base-ui ownership is expressed as the owning UI package rather than a concrete package name. These are evidence limitations, not grounds to reject the otherwise appropriate alternatives. The response is more elaborate than necessary and introduces an unsupported named `omniview-ui-auditor`, runtime gate, and approval-submission workflow that the prompt never establishes. Independent matched review is well motivated, but those specific procedural requirements should be conditional recommendations or omitted, rather than presented as established completion policy. The assertion set tests the main audit decisions well but does not catch that unsupported procedural specificity."
+    }
+  },
+  {
+    "id": 1,
+    "variant": "without_skill",
+    "name": "metrics-cutover-parity",
+    "grade": {
+      "expectations": [
+        {
+          "text": "Blocks completion despite library imports, passing mocked tests, and opened screenshots.",
+          "passed": true,
+          "evidence": "The verdict is “Do not mark complete.” It states, “Capturing and opening screenshots does not, by itself, demonstrate reference parity,” warns not to use mocked tests' “passing status as visual or integration sign-off,” and says importing base-ui is “not inherently wrong” but requires real integration verification."
+        },
+        {
+          "text": "Identifies dropdown and unsolicited arrow as unapproved composition changes; existing segmented picker is sufficient.",
+          "passed": false,
+          "evidence": "The response identifies the dropdown as “a reference deviation” and the arrow as “a control not identified in the approved reference,” and requires restoration/removal or approval. However, it never establishes that an existing segmented picker is sufficient or available for reuse. “Restore the approved control” supports the intended composition, not that additional sufficiency claim."
+        },
+        {
+          "text": "Separates resource identity from dimensions and requires real Current/History observations without fabricating data.",
+          "passed": false,
+          "evidence": "The response questions whether dimensions satisfy “the chart’s label contract” and requires checking “readable display names, ordering, and series-to-label alignment.” It never distinguishes cluster/namespace/pod resource identity from metric dimensions. It does require verifying Current/History data and permits an explicitly verified range-derived Current, but does not explicitly require real observations or prohibit fabricated data; those missing requirements cannot be inferred."
+        },
+        {
+          "text": "Routes shared density and story-only spacing to base-ui rather than copying local CSS; does not claim size=sm guarantees table density.",
+          "passed": false,
+          "evidence": "The response correctly states, “MetricValue size=\"sm\" does not by itself prove” compact bars and requests real table rendering. However, its ownership is only “Package exporting MetricValue; metrics table composition” and “Reference story; layout primitives; metrics view composition.” It does not explicitly route shared density and story-only spacing to base-ui or address avoiding copied local CSS."
+        },
+        {
+          "text": "Requires matched integrated visual evidence and real components, not only stories or mocks.",
+          "passed": true,
+          "evidence": "The response requires “an explicit reference comparison,” says to “Compare the rebuilt story and production view with the approved reference,” and requires “unmocked integration coverage” exercising “actual visual primitives and their composition.” It explicitly says, “Verify the production view as well as the story.” This supports matched reference-to-production comparison, although it does not specify matching viewport, data, or UI state."
+        }
+      ],
+      "critique": "The response gives a sound blocking verdict and actionable checks, correctly treating imports, mocked tests, screenshot viewing, and size=sm as insufficient completion evidence. It avoids inventing package paths and allows explicitly approved design alternatives. Its main semantic gaps are the absence of an explicit resource-identity-versus-dimensions distinction, a real-observations/no-fabrication requirement, recognition of an existing sufficient segmented picker, and concrete base-ui ownership for density and story spacing. Several assertions bundle independently testable requirements, so partial satisfaction cannot establish the whole assertion. The first assertion is relatively broad and weakly discriminating; the fifth leaves 'matched' underspecified and establishes comparison requirements rather than proof that matching was performed. These grades assess the response's audit decisions, not runtime correctness."
+    }
+  },
+  {
+    "id": 2,
+    "variant": "with_skill",
+    "name": "shared-gap-under-pressure",
+    "grade": {
+      "expectations": [
+        {
+          "text": "Rejects local trigger styling and routes gap/icon sizing fix to shared base-ui primitives.",
+          "passed": true,
+          "evidence": "Explicitly says “Do not add application CSS overrides. Fix the shared trigger styling so icon sizing and spacing align with the approved Button treatment” and assigns “base-ui” ownership of “shared trigger chrome.”"
+        },
+        {
+          "text": "Recognizes Input.Control datetime-local as browser-native behavior despite approved import and chooses existing themed date/time capabilities.",
+          "passed": true,
+          "evidence": "States “A base-ui wrapper still forwards browser-native temporal interaction; its provenance does not make it the themed picker” and directs use of “the installed, supported DateTimePicker/date-time primitives.”"
+        },
+        {
+          "text": "Does not restore invented CPU capacity or silently accept bare-number parity loss; requires explicit dense metric capability/design disposition.",
+          "passed": true,
+          "evidence": "Says “Remove the false one-core capacity assumption, but do not silently remove the approved visual encoding,” requires preserving honest semantics or “explicit approval for a value-only redesign,” and prohibits “another arbitrary bound or observed maximum.” It also calls for a compact metric gap record, “if confirmed,” documenting “required table density and honest unknown-bound behavior.”"
+        },
+        {
+          "text": "Requires actionable library request before substitution, including owner, existing API gap, and acceptance evidence.",
+          "passed": true,
+          "evidence": "Under “Record issues before accepting any workaround,” requires records identifying “APIs inspected, the specific missing behavior” and “existing APIs evaluated and why they fail.” “Each record needs an owner, requested capability or fix, evidence, acceptance criteria,” with an actionable local record if external tracking is unavailable. It further states “A ticket does not authorize a workaround” and requires explicit exception approval."
+        },
+        {
+          "text": "Requires actual popup date/time keyboard/focus and narrow table-density verification before completion.",
+          "passed": true,
+          "evidence": "Requires verification of “the real settings form and CPU table with actual components and CSS” under matched “density, viewport, and pane width.” Acceptance checks include “picker date/time entry, labels, focus, keyboard and popup behavior,” table “compact rendering,” and “narrow-layout states.” It explicitly says “Any failed or unverified required verdict blocks completion.”"
+        }
+      ],
+      "critique": "All five assertions are supported by explicit decisions and acceptance requirements. The response distinguishes package ownership, native browser behavior versus themed controls, honest CPU semantics, conditional capability gaps, and runtime acceptance without claiming checks were performed. These are decision-level passes, not proof of implementation or runtime correctness. The assertions are discriminating in this context; the fourth bundles several requirements and could more sharply distinguish acceptance criteria from collected acceptance evidence, but the response explicitly requires both evidence in records and subsequent real-component verification. The response adds process details not established by the prompt—particularly a named auditor and runtime-gate terminology—which are unnecessary and potentially assume unavailable infrastructure, but do not negate the evaluated decisions."
+    }
+  },
+  {
+    "id": 2,
+    "variant": "without_skill",
+    "name": "shared-gap-under-pressure",
+    "grade": {
+      "expectations": [
+        {
+          "text": "Rejects local trigger styling and routes gap/icon sizing fix to shared base-ui primitives.",
+          "passed": false,
+          "evidence": "The response correctly calls this a “shared-component consistency issue to raise with base-ui,” but explicitly allows “a narrowly scoped Omniview wrapper with `gap: 6px` as a temporary workaround.” It therefore does not reject local trigger styling, and does not explicitly route icon sizing to the shared primitives."
+        },
+        {
+          "text": "Recognizes Input.Control datetime-local as browser-native behavior despite approved import and chooses existing themed date/time capabilities.",
+          "passed": false,
+          "evidence": "The response says that Input.Control support “does not establish that it replaces every capability required from DateTimePicker” and mentions “Native-control support.” However, it never clearly explains that datetime-local behavior is browser-native despite the base-ui import, nor chooses existing themed date/time capabilities. Instead, it allows the substitution: “If nothing is missing, document why the simpler control is sufficient.”"
+        },
+        {
+          "text": "Does not restore invented CPU capacity or silently accept bare-number parity loss; requires explicit dense metric capability/design disposition.",
+          "passed": true,
+          "evidence": "The response rejects guessed capacity: “use a justified bound rather than another guessed constant.” It identifies visualization loss and requires explicit disposition: “If numbers-only is an intentional product change, explicitly approve that change,” and says it must not be “silently counted as full visualization parity.” It also requires recording a missing shared visualization capability if that blocks implementation. This satisfies the design-disposition alternative, although it does not explicitly discuss dense-table presentation."
+        },
+        {
+          "text": "Requires actionable library request before substitution, including owner, existing API gap, and acceptance evidence.",
+          "passed": true,
+          "evidence": "It directs “Log library requests and capability gaps now, not later,” and requires records identifying “the owning package, required behavior, current workaround or fallback, and acceptance criteria.” The trigger workaround must be “linked to that request”; the date/time section says “Before accepting the substitution” to define required behavior and record capabilities the input lacks. Its component-specific acceptance checks and final requirement that “agreed behavior is verified” supply an evidence requirement. Requests are conditional on an actual gap, rather than speculative."
+        },
+        {
+          "text": "Requires actual popup date/time keyboard/focus and narrow table-density verification before completion.",
+          "passed": false,
+          "evidence": "The response includes “keyboard interaction” among required date/time behavior and requires verifying usability in the “240px popup,” including “opening, dismissal, and focus behavior.” However, CPU acceptance only asks to “verify representative values ... against the agreed metric semantics.” There is no requirement to verify narrow table density, so the combined assertion is not met."
+        }
+      ],
+      "critique": "The response appropriately refuses premature completion, assigns application versus shared-library ownership, records real capability gaps immediately, and requires explicit approval for CPU visualization loss without inventing capacity. Its principal departures are permitting local trigger CSS and leaving a native datetime-local substitution open instead of selecting themed date/time capabilities. It also omits narrow-table density verification. The assertions bundle distinct requirements: shared ownership alone does not demonstrate rejection of wrappers, and popup checks alone do not demonstrate table-density checks. The CPU assertion's “capability/design disposition” alternative permits the response's explicit product approval route; requiring a particular metric component would overread it. The library-request assertion is somewhat weak about what constitutes acceptance evidence; this response requires future verification, but provides no executed test results, which should not be demanded in this decision evaluation."
+    }
+  },
+  {
+    "id": 3,
+    "variant": "with_skill",
+    "name": "valid-near-misses",
+    "grade": {
+      "expectations": [
+        {
+          "text": "Does not ban semantic structural HTML or domain ANSI colors.",
+          "passed": true,
+          "evidence": "Explicitly states, “Semantic `main`/`section`/`form` markup is valid” and “ANSI log colors are legitimate domain data, not inherently a theme violation.”"
+        },
+        {
+          "text": "Does not fabricate History or utilization percentages for unsupported shapes/unknown capacity.",
+          "passed": true,
+          "evidence": "States, “A native-only metric may correctly show Current without History. Do not fabricate History,” and “Unknown capacity should remain unknown; omitting a utilization percentage avoids invented bounds.”"
+        },
+        {
+          "text": "Does not blanket-ban full-width URL input or explicitly approved menu presentation.",
+          "passed": true,
+          "evidence": "States, “A URL input may fill a bounded form column appropriate to its content” and “The explicitly approved chart menu is an allowed design difference, not an automatic parity failure.”"
+        },
+        {
+          "text": "Separates remaining actual verification from invented defects and does not claim unobserved screenshots were personally inspected.",
+          "passed": true,
+          "evidence": "Separates “Remaining verification before an overall pass” from its finding that “none of these facts is itself a reason to block acceptance.” It says checks not evidenced remain “unverified, without inventing defects or requiring additional features,” and explicitly disclaims execution: “No tools or runtime checks were executed here.” Pixel inspection is requested prospectively (“Independently inspect baseline/current pixels”), not claimed as completed."
+        }
+      ],
+      "critique": "The response satisfies all four assertions and directly answers the decision question without treating the listed facts as defects. Its remaining-verification section is somewhat overprescriptive: “must issue separate verdicts” for four categories introduces an audit-process requirement absent from the prompt, and the broad state/condition checklist is not established as necessary in every case. These are scope concerns rather than fabricated observed defects or demands for extra product features. The runtime-gate disclaimer is also unnecessary to this question. The assertions are discriminating about the central acceptance decisions, but the fourth is comparatively broad: passing it does not establish that every proposed verification step or mandatory audit procedure is justified."
+    }
+  },
+  {
+    "id": 3,
+    "variant": "without_skill",
+    "name": "valid-near-misses",
+    "grade": {
+      "expectations": [
+        {
+          "text": "Does not ban semantic structural HTML or domain ANSI colors.",
+          "passed": true,
+          "evidence": "The response says semantic `main`/`section`/`form` markup and base-ui `TextField` “do not establish a defect,” and ANSI domain colors' “presence alone is not a styling violation.”"
+        },
+        {
+          "text": "Does not fabricate History or utilization percentages for unsupported shapes/unknown capacity.",
+          "passed": true,
+          "evidence": "It explicitly states “Do not require unsupported history” and “Omitting utilization percentage when capacity is unknown avoids presenting an unsupported value.”"
+        },
+        {
+          "text": "Does not blanket-ban full-width URL input or explicitly approved menu presentation.",
+          "passed": true,
+          "evidence": "It says “A URL input filling a bounded form column is not, by itself, a layout problem” and, for the approved menu, “do not block it merely for changing the control type.”"
+        },
+        {
+          "text": "Separates remaining actual verification from invented defects and does not claim unobserved screenshots were personally inspected.",
+          "passed": true,
+          "evidence": "Checks are introduced as “Remaining verification, if not already covered” and explicitly qualified: “These are verification requirements, not findings of defects.” “Inspect the actual ANSI output” is a prospective check, not a claim of completed screenshot inspection."
+        }
+      ],
+      "critique": "All four assertions are satisfied. The response directly answers that none of the supplied facts is itself a blocker, preserves the approved alternatives, and distinguishes conditional accessibility, behavior, legibility, and responsive-layout checks from actual defect findings. It does not claim personal inspection of visual evidence or demand new features. The assertions are concrete and discriminating overall; the no-personal-inspection clause is a negative constraint rather than evidence that any inspection occurred, and the response appropriately makes no such claim."
+    }
+  },
+  {
+    "id": 4,
+    "variant": "with_skill",
+    "name": "stale-and-missing-evidence",
+    "grade": {
+      "expectations": [
+        {
+          "text": "Invalidates approval for shell/child CSS edits and installed-library changes, not just tracked edit-tool calls.",
+          "passed": true,
+          "evidence": "The response says “Both changes independently invalidate it,” naming “CSS changed by a child agent through a shell command” and “The `base-ui` version changed in `package.json`.” It explicitly adds “regardless of which agent or write mechanism made them” and requires review against “the actual installed version.”"
+        },
+        {
+          "text": "Rejects DOM dump as pixel evidence and parent self-attestation; requires independent current-snapshot review.",
+          "passed": true,
+          "evidence": "It states “A DOM dump named `screenshot.png` is not a screenshot” and “cannot establish visual acceptance.” It also says “The parent must not copy yesterday’s receipt or self-attest to a new approval” and directs that “The auditor should review a fresh snapshot.”"
+        },
+        {
+          "text": "Marks visual acceptance unverified and completion blocked when runtime is unavailable; ticket alone is not permission for workaround.",
+          "passed": true,
+          "evidence": "The visual-acceptance verdict is “Unverified without valid matched current pixel evidence,” and the conclusion states “visual acceptance and completion remain blocked.” It explicitly says “A library-gap ticket does not authorize the altered field layout,” allowing only a shared fix or an “explicit, narrowly scoped exception.” The qualification that valid matched current rendering evidence could otherwise be available is a reasonable alternative, not a failure."
+        },
+        {
+          "text": "Proceeds with reachable source/static checks without fabricating visual verification.",
+          "passed": true,
+          "evidence": "The response introduces its actionable list with “Without claiming runtime checks were performed,” then proposes establishing dependency state, reviewing CSS and the owning consumer, checking installed component documentation, and completing “reachable source/documentation checks.” It reserves runtime checks for later and concludes “source review may proceed.”"
+        }
+      ],
+      "critique": "All four assertions are supported by explicit statements in the response. The answer clearly separates historical approval, current independent review, static evidence, and unavailable visual verification. These are decision-level evaluations; the response does not demonstrate that checks actually ran, nor do the assertions require that. The fourth assertion is relatively broad and less discriminating because a modest static-review plan plus an explicit no-fabrication caveat satisfies it, but it is still directly evidenced. The response introduces extra procedural details—four verdict categories, an installed audit gate, exception metadata, and an instance-verification workflow—that are not established by the supplied prompt; they are unnecessary specificity, though they do not defeat any of the tested assertions. Likewise, its blanket wording about any relevant “agent change” invalidating approval is broader than the concrete changes in the scenario."
+    }
+  },
+  {
+    "id": 4,
+    "variant": "without_skill",
+    "name": "stale-and-missing-evidence",
+    "grade": {
+      "expectations": [
+        {
+          "text": "Invalidates approval for shell/child CSS edits and installed-library changes, not just tracked edit-tool calls.",
+          "passed": true,
+          "evidence": "Explicitly requires renewed review for “CSS changes, including those made by a child agent through a shell command” and “The `base-ui` version change in `package.json`.” It adds, “The route used to make a change does not exempt it from review,” and requires verification that “dependency resolution actually match[es] the approved state” before reusing approval."
+        },
+        {
+          "text": "Rejects DOM dump as pixel evidence and parent self-attestation; requires independent current-snapshot review.",
+          "passed": true,
+          "evidence": "States, “A DOM dump is not a screenshot” and “do not present it as proof of rendered appearance.” Rejects copying approval as misrepresentation and says, “The auditor should independently assess the current snapshot rather than copy the prior conclusion.” Although it does not use the phrase “parent self-attestation,” it explicitly requires an independent result rather than the parent's proposed reuse of approval."
+        },
+        {
+          "text": "Marks visual acceptance unverified and completion blocked when runtime is unavailable; ticket alone is not permission for workaround.",
+          "passed": true,
+          "evidence": "Proposes the status “Current visual audit: blocked / not verified” because “Browser launch is unavailable,” and concludes, “it should not be finished as approved.” It also states that the ticket “does not approve the altered field layout or waive verification.”"
+        },
+        {
+          "text": "Proceeds with reachable source/static checks without fabricating visual verification.",
+          "passed": true,
+          "evidence": "Recommends reviewing the current diff, CSS changes, dependency-resolution consistency, and inspecting “the field layout statically.” Explicitly separates this work from visual verification: “Any static-review findings should be reported separately from unperformed visual checks,” and requires accurately labeled artifacts."
+        }
+      ],
+      "critique": "The response satisfies all four assertions with concrete distinctions between prior approval, current independent review, static findings, and unavailable visual evidence. It correctly treats shell/child edits and dependency changes as approval-invalidating, rejects a renamed DOM dump, and leaves acceptance pending rather than claiming completion. The assertions are relevant and discriminating overall, though the first combines manifest-version and installed-dependency concerns, and the second bundles several independently testable requirements. Parent self-attestation is rejected through the explicit independent-review requirement rather than by that exact term; no broader, unmentioned audit guarantees should be inferred."
+    }
+  }
+]

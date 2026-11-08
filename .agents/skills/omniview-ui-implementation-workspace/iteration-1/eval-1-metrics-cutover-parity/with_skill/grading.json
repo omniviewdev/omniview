@@ -1,0 +1,36 @@
+{
+  "expectations": [
+    {
+      "text": "Blocks completion despite library imports, passing mocked tests, and opened screenshots.",
+      "passed": true,
+      "evidence": "The response opens, “No—this cutover is not ready to mark complete,” explains that “`base-ui` imports establish provenance, not correct supported composition,” and states, “Capturing and opening screenshots is insufficient” and “Mocked visual primitives cannot establish actual rendering.” These explicitly reject the offered completion signals."
+    },
+    {
+      "text": "Identifies dropdown and unsolicited arrow as unapproved composition changes; existing segmented picker is sufficient.",
+      "passed": true,
+      "evidence": "It identifies “The dropdown replaces the approved inset segmented switcher, and the reorder arrow is an unsolicited action,” and requires “Restore the approved inset segmented composition” and “Remove it unless its addition and behavior receive explicit approval.” This supports retaining the approved picker rather than introducing a replacement, although it does not explicitly verify that the existing installed picker API is sufficient."
+    },
+    {
+      "text": "Separates resource identity from dimensions and requires real Current/History observations without fabricating data.",
+      "passed": true,
+      "evidence": "It requires “Preserve structured cluster/namespace/pod identity separately from dimensions” and “Retrieve supported Current and History observations and preserve their provenance.” Its instructions “Do not parse opaque identity strings or invent labels” and “Do not manufacture History for native-only Current metrics” explicitly reject fabricated identity or observations."
+    },
+    {
+      "text": "Routes shared density and story-only spacing to base-ui rather than copying local CSS; does not claim size=sm guarantees table density.",
+      "passed": true,
+      "evidence": "The response says “a small size prop does not prove compact table typography or preserve bars,” routes insufficient supported APIs to the “owning UI package,” and calls for resolving “a shared capability gap—not a local CSS substitute.” For story-only spacing it says, “promote the needed shared capability rather than copying story CSS or applying local overrides.” It identifies the shared UI ownership layer rather than naming a concrete base-ui package, explicitly noting that exact package names require checkout inspection."
+    },
+    {
+      "text": "Requires matched integrated visual evidence and real components, not only stories or mocks.",
+      "passed": true,
+      "evidence": "The required checks say, “Verify the actual integrated consumer,” “Use real components and CSS with matched fixture, provider, resource, time range, theme, density, viewport, and pane width,” and “Compare actual baseline/current pixels.” It also states that rebuilding the story with Stack “does not demonstrate preservation in the actual consumer.”"
+    }
+  ],
+  "critique": "The response meets the substantive audit expectations: it blocks completion, identifies the concrete composition and information regressions, distinguishes unverified visual properties from confirmed failures, and assigns shared-library versus consumer responsibilities without pretending to have inspected source. Two assertion details are less directly evidenced: installed segmented-picker sufficiency is implied by the restore recommendation rather than established, and base-ui ownership is expressed as the owning UI package rather than a concrete package name. These are evidence limitations, not grounds to reject the otherwise appropriate alternatives. The response is more elaborate than necessary and introduces an unsupported named `omniview-ui-auditor`, runtime gate, and approval-submission workflow that the prompt never establishes. Independent matched review is well motivated, but those specific procedural requirements should be conditional recommendations or omitted, rather than presented as established completion policy. The assertion set tests the main audit decisions well but does not catch that unsupported procedural specificity.",
+  "summary": {
+    "passed": 5,
+    "failed": 0,
+    "total": 5,
+    "pass_rate": 1
+  }
+}

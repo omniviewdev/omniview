@@ -19,10 +19,9 @@ import (
 	"github.com/omniviewdev/omniview/internal/devcompose"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsession"
 )
-
-const linkedSDK = "github.com/omniviewdev/plugin-sdk"
 
 // LinkProtocolEvidence is emitted by TestLinkPinnedProtocolProbe, not inferred
 // from the existence of node_modules symlinks. Keep the gate fail-closed until
@@ -96,10 +95,13 @@ type linkConsumer struct {
 }
 
 type linkPlan struct {
-	Roots       []linkRoot       `json:"roots"`
-	Consumers   []linkConsumer   `json:"consumers"`
-	GoRoots     []string         `json:"goRoots"`
-	SDK         string           `json:"sdk,omitempty"`
+	Roots     []linkRoot     `json:"roots"`
+	Consumers []linkConsumer `json:"consumers"`
+	GoRoots   []string       `json:"goRoots"`
+	// SDK is the selected SDK. A source selection persists as its checkout
+	// directory and a published selection by omission, exactly as the former
+	// string field did.
+	SDK         devsdk.Selection `json:"sdk,omitzero"`
 	Composition *devcompose.Plan `json:"composition,omitempty"`
 }
 
@@ -274,8 +276,9 @@ func makeLinkPlan(w Workspace) (linkPlan, error) {
 			p.GoRoots = append(p.GoRoots, root)
 		}
 	}
-	if w.Manifest.Links.SDKRepositoryID != nil {
-		p.SDK = repos[*w.Manifest.Links.SDKRepositoryID]
+	p.SDK, err = devsdk.SelectionOf(w.ResolvedWorkspace)
+	if err != nil {
+		return p, err
 	}
 	composition, err := devcompose.New(w.ResolvedWorkspace, p.Roots, targets)
 	if err != nil {
@@ -361,7 +364,7 @@ func linkCommandWithInput(ctx context.Context, dir, program string, input io.Rea
 	cmd.Stdin = input
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
-		if workspaceRootEnvironment(key) || key == compositionInstallEnvironment {
+		if workspaceRootEnvironment(key) || sdkSourceEnvironment(key) || key == compositionInstallEnvironment {
 			continue
 		}
 		if key != "GOWORK" && key != "GOFLAGS" && key != "NODE_PATH" && key != "GOCACHE" && key != "OMNIVIEW_PNPM_NODE_PATH" {
@@ -444,7 +447,7 @@ func linkSDK(ctx context.Context, dir string, original []byte, sdk string) ([]by
 	}
 	matching := false
 	for _, r := range info.Replace {
-		if r.Old.Path != linkedSDK {
+		if r.Old.Path != devsdk.Module {
 			continue
 		}
 		target := r.New.Path
@@ -460,7 +463,7 @@ func linkSDK(ctx context.Context, dir string, original []byte, sdk string) ([]by
 	if matching {
 		return original, nil
 	}
-	if _, err = linkCommand(ctx, dir, "go", "mod", "edit", "-replace="+linkedSDK+"="+sdk, name); err != nil {
+	if _, err = linkCommand(ctx, dir, "go", "mod", "edit", "-replace="+devsdk.Module+"="+sdk, name); err != nil {
 		return nil, err
 	}
 	return os.ReadFile(name)
@@ -967,9 +970,9 @@ func (m *Manager) link(ctx context.Context, name string, opts LinkOptions, run f
 		e.Applied, e.AppliedHash = generated.Data, linkHash(generated.Data, true)
 		j.Files = append(j.Files, e)
 	}
-	if plan.SDK != "" {
+	if sdk, ok := plan.SDK.Directory(); ok {
 		for _, root := range plan.GoRoots {
-			if err = add(filepath.Join(root, "go.mod"), func(raw []byte) ([]byte, error) { return linkSDK(ctx, root, raw, plan.SDK) }); err != nil {
+			if err = add(filepath.Join(root, "go.mod"), func(raw []byte) ([]byte, error) { return linkSDK(ctx, root, raw, sdk) }); err != nil {
 				return LinkReport{}, err
 			}
 			if err = add(filepath.Join(root, "go.sum"), nil); err != nil {
@@ -1203,7 +1206,17 @@ for(;;){const p=path.join(dir,'package.json');if(fs.existsSync(p)){const j=JSON.
 } catch { return {Problem:'package resolution failed'}; }
 })));`
 
+// inspectLinkPlan resolves every linked JavaScript package and the Go SDK
+// replacement of each Go consumer.
 func inspectLinkPlan(ctx context.Context, j *linkJournal) LinkReport {
+	report := inspectJavaScriptLinks(ctx, j)
+	report.Resolutions = append(report.Resolutions, inspectSDKLinks(ctx, j)...)
+	return report
+}
+
+// inspectJavaScriptLinks resolves only the linked JavaScript packages; a
+// JavaScript-only build has no Go SDK identity to resolve.
+func inspectJavaScriptLinks(ctx context.Context, j *linkJournal) LinkReport {
 	report := LinkReport{WorkspaceID: j.WorkspaceID, Protocol: j.Evidence.Protocol, Phase: j.Phase, Resolutions: []LinkResolution{}, SeedConvergence: j.Plan.Composition.Convergence}
 	// Resolution is read-only. Keep each consumer's explicit parent URL, but
 	// start Node once per inspection rather than once per export or consumer.
@@ -1282,32 +1295,41 @@ func inspectLinkPlan(ctx context.Context, j *linkJournal) LinkReport {
 			}
 		}
 	}
-	if j.Plan.SDK != "" {
-		for _, root := range j.Plan.GoRoots {
-			r := LinkResolution{Consumer: root, Package: linkedSDK, Expected: j.Plan.SDK}
-			raw, err := linkCommand(ctx, root, "go", "list", "-m", "-json", linkedSDK)
-			var module struct {
-				Dir, Version string
-				Replace      *struct{ Dir, Path, Version string }
-			}
-			if err != nil {
-				r.Problem = err.Error()
-			} else if err = json.Unmarshal(raw, &module); err != nil {
-				r.Problem = "invalid Go resolution response"
+	return report
+}
+
+// inspectSDKLinks resolves the local SDK replacement of each Go consumer. A
+// published selection has no replacement to inspect.
+func inspectSDKLinks(ctx context.Context, j *linkJournal) []LinkResolution {
+	sdk, ok := j.Plan.SDK.Directory()
+	if !ok {
+		return nil
+	}
+	var resolutions []LinkResolution
+	for _, root := range j.Plan.GoRoots {
+		r := LinkResolution{Consumer: root, Package: devsdk.Module, Expected: sdk}
+		raw, err := linkCommand(ctx, root, "go", "list", "-m", "-json", devsdk.Module)
+		var module struct {
+			Dir, Version string
+			Replace      *struct{ Dir, Path, Version string }
+		}
+		if err != nil {
+			r.Problem = err.Error()
+		} else if err = json.Unmarshal(raw, &module); err != nil {
+			r.Problem = "invalid Go resolution response"
+		} else {
+			r.Resolved = module.Dir
+			r.Version = module.Version
+			if module.Replace == nil || module.Replace.Version != "" {
+				r.Problem = "SDK does not use a local replacement"
 			} else {
-				r.Resolved = module.Dir
-				r.Version = module.Version
-				if module.Replace == nil || module.Replace.Version != "" {
-					r.Problem = "SDK does not use a local replacement"
-				} else {
-					actual, e := devcontract.CanonicalPath(module.Replace.Dir)
-					if e != nil || actual != j.Plan.SDK {
-						r.Problem = "SDK replacement is not the selected feature SDK"
-					}
+				actual, e := devcontract.CanonicalPath(module.Replace.Dir)
+				if e != nil || actual != sdk {
+					r.Problem = "SDK replacement is not the selected feature SDK"
 				}
 			}
-			report.Resolutions = append(report.Resolutions, r)
 		}
+		resolutions = append(resolutions, r)
 	}
-	return report
+	return resolutions
 }

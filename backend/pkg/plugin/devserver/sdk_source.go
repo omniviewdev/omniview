@@ -10,20 +10,25 @@ import (
 	"strings"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
-	"github.com/omniviewdev/omniview/internal/devsource"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 )
 
-const sdkModulePath = "github.com/omniviewdev/plugin-sdk"
-
 // VerifySelectedSDK identifies the SDK module selected by Go, including
-// replacements, and binds managed workspaces to their selected checkout.
-func VerifySelectedSDK(ctx context.Context, goPath, source string, environment []string) (devsource.Identity, error) {
-	var result devsource.Identity
+// replacements, and binds managed workspaces to their selected checkout. Only
+// source checkouts verify: a published SDK is not accepted yet.
+func VerifySelectedSDK(ctx context.Context, goPath, source string, environment []string) (devsdk.Identity, error) {
+	return verifySelectedSDK(ctx, devsdk.NewVerifier(devsdk.Policy{}), goPath, source, environment)
+}
+
+// verifySelectedSDK resolves the effective SDK module and identifies it with
+// verify, the verifier built under the caller's injected policy.
+func verifySelectedSDK(ctx context.Context, verify devsdk.Verifier, goPath, source string, environment []string) (devsdk.Identity, error) {
+	var result devsdk.Identity
 	tool, err := resolveTool(goPath, "go")
 	if err != nil {
 		return result, err
 	}
-	cmd := exec.CommandContext(ctx, tool, "list", "-m", "-json", sdkModulePath)
+	cmd := exec.CommandContext(ctx, tool, "list", "-m", "-json", devsdk.Module)
 	cmd.Dir = source
 	cmd.Env = goBuildEnv(environment)
 	output, err := cmd.Output()
@@ -41,7 +46,7 @@ func VerifySelectedSDK(ctx context.Context, goPath, source string, environment [
 	if err = json.Unmarshal(output, &module); err != nil {
 		return result, err
 	}
-	if module.Path != sdkModulePath {
+	if module.Path != devsdk.Module {
 		return result, fmt.Errorf("selected module is not plugin SDK")
 	}
 	directory := module.Dir
@@ -63,7 +68,11 @@ func VerifySelectedSDK(ctx context.Context, goPath, source string, environment [
 	if err = verifyManagedSDKSelection(directory, values); err != nil {
 		return result, err
 	}
-	return devsource.Verify(ctx, directory)
+	selection, err := devsdk.SourceSelection(directory)
+	if err != nil {
+		return result, err
+	}
+	return verify(ctx, selection)
 }
 
 func verifyManagedSDKSelection(directory string, values map[string]string) error {
@@ -84,12 +93,13 @@ func verifyManagedSDKSelection(directory string, values map[string]string) error
 	if workspace.Manifest.WorkspaceID != workspaceID {
 		return errors.New("SDK verification workspace identity mismatch")
 	}
-	if workspace.Manifest.Links.SDKRepositoryID == nil {
-		return errors.New("managed workspace must explicitly select an SDK source repository")
-	}
-	selected, err := workspace.RepositoryPath(*workspace.Manifest.Links.SDKRepositoryID)
+	selection, err := devsdk.SelectionOf(workspace)
 	if err != nil {
 		return err
+	}
+	selected, ok := selection.Directory()
+	if !ok {
+		return errors.New("managed workspace must explicitly select an SDK source repository")
 	}
 	selected, err = devcontract.CanonicalPath(selected)
 	if err != nil {

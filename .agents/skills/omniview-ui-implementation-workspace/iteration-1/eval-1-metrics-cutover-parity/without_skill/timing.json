@@ -1,0 +1,6 @@
+{
+  "total_tokens": null,
+  "duration_ms": null,
+  "total_duration_seconds": null,
+  "note": "Helper does not expose provider token usage or precise execution timing; collection timestamps are not model runtime."
+}

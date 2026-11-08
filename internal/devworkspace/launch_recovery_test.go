@@ -89,6 +89,9 @@ func TestRestartStoppedWorkspaceReachesLaunchPreconditions(t *testing.T) {
 	for _, recorded := range []bool{false, true} {
 		t.Run(map[bool]string{false: "missing", true: "exited"}[recorded], func(t *testing.T) {
 			m, _ := fixtureManager(t, "omniview")
+			// Once the SDK prerequisite no longer stops Start, Restart must still
+			// never be able to execute this test binary as a supervisor.
+			m.options.Executable = forbidSupervisorExecutable
 			ctx := context.Background()
 			w := fixtureWorkspace(t, m, CreateOptions{Slug: "restart-stopped"})
 			var err error
@@ -154,6 +157,7 @@ func TestLateRefreshFailureRetiresOnlyFailedLaunchWithoutReinstall(t *testing.T)
 	for _, phase := range []string{refreshStart, refreshVerify} {
 		t.Run(phase, func(t *testing.T) {
 			m, w, j := recoveryFixture(t)
+			m.options.Executable = forbidSupervisorExecutable
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			generation := NewGeneration()

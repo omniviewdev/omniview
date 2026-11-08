@@ -117,6 +117,7 @@ func (c *controller) finiteCatalog(ctx context.Context, request ResourceMetricsC
 // A canceled running catalog still owns its slot until the provider returns.
 func (f *finiteCoordinator) runCatalog(id string, read *finiteCatalogRead) {
 	defer read.cancel()
+	defer f.releaseDiagnosticsIfStopped()
 	var result *sdk.ResourceMetricsCatalog
 	failure := read.ctx.Err()
 	if failure == nil {

@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsession"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -161,6 +162,9 @@ type BuildOpts struct {
 	Generation                string
 	DisableDependencyWatching bool
 	Workspace                 *devcontract.ResolvedWorkspace
+	// SDKPolicy admits the SDK identities managed builds may use. The zero policy
+	// admits source identities only; nothing reads it from the environment.
+	SDKPolicy devsdk.Policy
 }
 
 // StartupError retains diagnostics after a failed instance has been cleaned up.

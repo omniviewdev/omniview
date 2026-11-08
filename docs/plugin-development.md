@@ -2,6 +2,34 @@
 
 This guide covers everything you need to know to develop plugins for Omniview with fast iteration cycles. You will learn how to set up your environment, choose a development workflow, and troubleshoot common issues.
 
+### Test-only Go fixture
+
+`e2e/fixtures/testbench` is a Go-only test fixture, not a product plugin. It has
+no UI package or peer dependencies. Build from that directory:
+
+```bash
+GOWORK=off go build -o /tmp/omniview-testbench ./pkg
+```
+
+Use only in an isolated development workspace, through the normal managed plugin
+build/install flow with `plugin.yaml`. The standalone build command does not
+produce a state-isolation provenance attestation. The fixture refuses startup
+without both `OMNIVIEW_WORKSPACE_FILE` and `OMNIVIEW_STATE_DIR`; SDK validation
+rejects invalid workspace roots before plugin startup.
+
+Connect to `isolated`, then enumerate `testbench::v1::Diagnostics` or get its
+`diagnostics` record. The catalog advertises only Enumerate and Get. Each read
+increments, syncs, and reads back two persistent counters: `data/testbench-state`
+under the installed plugin root and `store/testbench` through the SDK storage API.
+The record reports capabilities, resolved paths, counter values, and successful
+read/write access. Failures return errors, not simulated success. Reads mutate
+only these fixture files; catalog discovery does not run the probes.
+
+Set `OMNIVIEW_TESTBENCH_CONNECTION_DELAY=5s` in the plugin process environment
+before startup to hold connection creation in flight. The default is zero;
+non-negative Go durations are accepted, and cancellation interrupts the delay.
+No network, cluster, cloud, engine, or hypervisor access occurs.
+
 ### Marketplace host compatibility
 
 Host registry API requests and local plugin compatibility checks use
@@ -175,6 +203,10 @@ subscription and live producer identities also have finite limits. Retired
 identities are removed rather than accumulated in an unbounded blacklist.
 
 
+### Diagnostics reporting
+
+Plugins built on plugin-sdk with `pkg/diagnostics` publish bounded in-plugin measurements. The host pulls them over `PluginLifecycle.GetDiagnostics` every two seconds and merges them into its diagnostics collector, so they appear in Performance views, captures, comparison, `/metrics` and configured OTLP with a host-assigned `plugin` label. Metric names must start with `omniview.plugin.self.`; attribute keys are a closed set (`operation`, `outcome`, `phase`, `state`, `reason`, `cache`, `queue`, `direction`, `event`) with values matching `^[a-z][a-z0-9_]{0,31}$`. Never record resource names, queries or credentials. Plugins built before the RPC existed, or that fail to answer, are reported through `omniview.plugin.diagnostics.status` as unavailable, not zero. Design, limits and decisions: [plugin-sdk-diagnostics-plan.md](plugin-sdk-diagnostics-plan.md).
+
 ### Host drawer context
 
 `BottomDrawerProvider` must wrap `RightDrawerProvider` in `ui/App.tsx`.
@@ -312,6 +344,16 @@ Failed publication moves that same state back before restarting the original
 plugin. Runtime unload does not close appstate-owned roots; appstate closes them
 when the application shuts down. Interrupted transactions retain their existing
 recovery barrier and private staging evidence instead of adopting another path.
+
+Managed development workspaces also require host-owned fixed-SDK build evidence
+for backend archives. Build the plugin through the selected workspace's normal
+managed builder first, then package the installed stamped `plugin.yaml` and exact
+`bin/plugin` bytes (plus built assets when applicable). Do not manufacture
+`state_isolation` metadata. The trusted artifact record is scoped to the
+destination workspace UUID and is not transported in the archive: an archive
+accepted in one workspace can correctly fail preflight in another until that
+destination has independently built the same artifact. Local archive admission
+is distinct from marketplace signature verification.
 
 ### 1.3 The `plugin.yaml` File
 

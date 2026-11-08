@@ -132,10 +132,11 @@ func applicationSDKIdentity(ctx context.Context, manager *devworkspace.Manager, 
 	}
 	environment := append(os.Environ(), "GOWORK=off", "GOFLAGS="+flags)
 	identity, err := devserver.VerifySelectedSDK(ctx, "", source, environment)
-	if err == nil && identity.Directory != paths.Repositories["plugin-sdk"] {
+	selected, isSource := identity.Source()
+	if err == nil && (!isSource || selected.Directory != paths.Repositories["plugin-sdk"]) {
 		err = fmt.Errorf("effective SDK differs from invocation-selected source")
 	}
-	return identity, err
+	return selected, err
 }
 
 func buildApplicationCohort(ctx context.Context, manager *devworkspace.Manager, target string, config configuration, configPath, artifacts, reportPath string) (resultErr error) {

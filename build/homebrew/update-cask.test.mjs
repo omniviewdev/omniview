@@ -38,6 +38,15 @@ for (const channel of ['omniview', 'omniview-nightly']) {
       assert.throws(() => updateCask(input, '0.26.0', sha), Error);
     }
   });
+
+  test(`${channel}: raise a macOS 12.3 minimum to the macOS 13 baseline`, () => {
+    const input = source(channel).replace('  app ', '  depends_on macos: ">= 12.3"\n  app ');
+    const result = updateCask(input, '0.26.0', sha);
+    assert.deepEqual(
+      result.split('\n').filter((line) => line.includes('depends_on macos:')),
+      ['  depends_on macos: :ventura'],
+    );
+  });
 }
 
 test('reject invalid release data and ambiguous cask ownership', () => {

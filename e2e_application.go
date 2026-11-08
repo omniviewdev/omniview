@@ -17,8 +17,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsession"
-	"github.com/omniviewdev/omniview/internal/devsource"
 	"github.com/omniviewdev/omniview/internal/devworkspace"
 	"github.com/omniviewdev/omniview/internal/instance"
 )
@@ -111,16 +111,21 @@ func recordApplicationPlugin(root, id, binary, sdk, digest string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	identity, err := devsource.Verify(ctx, sdk)
+	selection, err := devsdk.SourceSelection(sdk)
 	if err != nil {
 		return err
 	}
-	if identity.SourceDigest != digest {
+	identity, err := devsdk.NewVerifier(devsdk.Policy{})(ctx, selection)
+	if err != nil {
+		return err
+	}
+	source, isSource := identity.Source()
+	if !isSource || source.SourceDigest != digest {
 		return fmt.Errorf("SDK source changed after the actual artifact build")
 	}
 	profile, err := instance.Resolve(instance.Options{Workspace: root, Channel: "local"})
 	if err != nil {
 		return err
 	}
-	return instance.RecordBuiltArtifactSource(*profile.Workspace, id, binary, identity.Revision, identity.SourceDigest)
+	return instance.RecordBuiltArtifact(*profile.Workspace, id, binary, identity)
 }

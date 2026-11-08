@@ -29,7 +29,7 @@ Direct smoke after this script's private build is the executable invocation insi
 
 ## Pins, licenses, and artifact policy
 
-- `github.com/mattn/go-sqlite3 v1.14.52`: MIT. Maintained driver, `libsqlite3` tag; no stale bundled codec.
+- `github.com/mattn/go-sqlite3 v1.14.53`: MIT. Maintained driver, `libsqlite3` tag; no stale bundled codec.
 - Official SQLCipher **4.20.0**, commit [`355d4db92d3404e71faa8088d071a71d767807f4`](https://github.com/sqlcipher/sqlcipher/tree/355d4db92d3404e71faa8088d071a71d767807f4): [BSD-3-Clause](https://github.com/sqlcipher/sqlcipher/blob/355d4db92d3404e71faa8088d071a71d767807f4/LICENSE.md). Embedded upstream SQLite **3.54.1** is public domain. Required options: `HAS_CODEC`, `ENABLE_FTS5`, `TEMP_STORE=2`, `THREADSAFE=1`; explicit SQLCipher extra init/shutdown and OpenSSL provider.
 - OpenSSL **3.x**, maintained MSYS2 `mingw-w64-x86_64-openssl`: Apache-2.0. Exact resolved version/package/DLL hash is recorded per run, not falsely claimed as a fixed package version. Provider admission requires `openssl`; the build script rejects another OpenSSL major/provider DLL. The executable identity is recorded with that provider artifact.
 - `golang.org/x/sys v0.49.0`: BSD-3-Clause. Go standard library: Go BSD-3-Clause license. Native WinCred/security APIs ship with Windows.

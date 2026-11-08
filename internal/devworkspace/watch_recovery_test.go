@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/omniviewdev/omniview/internal/devsdk"
 )
 
 func recoveryWatchHooks(t *testing.T, g *BuildGraph, started chan struct{}) WatchHooks {
@@ -41,7 +43,7 @@ func TestWatchRecoveryCannotDeclareReadyWithUnrebuiltSDKBackend(t *testing.T) {
 	writeGraphFixture(t, runtimeSource, "broken")
 	g.run = func(_ context.Context, _ string, program string, _ ...string) ([]byte, error) {
 		if program == "go" {
-			return json.Marshal(map[string]any{"Path": linkedSDK, "Dir": g.plan.SDK})
+			return json.Marshal(map[string]any{"Path": devsdk.Module, "Dir": sdkDirectory(t, g)})
 		}
 		return nil, nil
 	}
@@ -82,7 +84,7 @@ func TestWatchRecoveryCannotDeclareReadyWithUnrebuiltSDKBackend(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("watch did not start")
 	}
-	writeGraphFixture(t, filepath.Join(g.plan.SDK, "changed.go"), "package sdk\n")
+	writeGraphFixture(t, filepath.Join(sdkDirectory(t, g), "changed.go"), "package sdk\n")
 	select {
 	case event := <-events:
 		if event.Phase != "error" {

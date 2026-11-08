@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsource"
 )
 
@@ -106,16 +107,17 @@ func TestBindingsStageIsNotPublishedAcrossSDKMutation(t *testing.T) {
 	g := graphFixture(t, graphFixtureOptions{NativeOnly: true})
 	node := outputGraphNode(t, g, "bindings")
 	g.run = func(context.Context, string, string, ...string) ([]byte, error) {
-		return json.Marshal(map[string]any{"Path": linkedSDK, "Dir": g.plan.SDK})
+		return json.Marshal(map[string]any{"Path": devsdk.Module, "Dir": sdkDirectory(t, g)})
 	}
 	calls := 0
-	g.options.VerifySDKSource = func(_ context.Context, directory string) (devsource.Identity, error) {
+	g.options.VerifySDK = func(_ context.Context, selection devsdk.Selection) (devsdk.Identity, error) {
 		calls++
 		digest := strings.Repeat("c", 64)
 		if calls > 1 {
 			digest = strings.Repeat("d", 64)
 		}
-		return devsource.Identity{Directory: directory, Revision: strings.Repeat("a", 40), SourceDigest: digest}, nil
+		directory, _ := selection.Directory()
+		return devsdk.NewSourceIdentity(devsource.Identity{Directory: directory, Revision: strings.Repeat("a", 40), SourceDigest: digest})
 	}
 	g.options.Bindings = func(_ context.Context, _ string, output string) error {
 		writeGraphFixture(t, filepath.Join(output, "index.ts"), "export const changed = true;\n")
@@ -158,7 +160,7 @@ func TestPluginCompilerUnknownLifetimeCannotPublishGeneratedTree(t *testing.T) {
 	var partial string
 	g.run = func(_ context.Context, _ string, _ string, args ...string) ([]byte, error) {
 		if len(args) > 0 && args[0] == "list" {
-			return json.Marshal(map[string]any{"Path": linkedSDK, "Dir": g.plan.SDK})
+			return json.Marshal(map[string]any{"Path": devsdk.Module, "Dir": sdkDirectory(t, g)})
 		}
 		if len(args) > 2 && args[0] == "build" && args[1] == "-o" {
 			partial = args[2]

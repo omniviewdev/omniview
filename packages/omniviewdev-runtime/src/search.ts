@@ -53,7 +53,7 @@ export type SettingTargetV1 =
   | { section: 'extensions' };
 
 export type NavigationTargetV1 =
-  | { kind: 'core'; path: '/' | '/plugins' | '/developer-tools/extensions' }
+  | { kind: 'core'; path: '/' | '/plugins' | '/developer-tools/extensions' | '/developer-tools/performance' }
   | { kind: 'plugin'; pluginId: string; path: string };
 
 export type HostCommandV1 = { kind: 'reload-connections'; pluginId: string };
