@@ -9,6 +9,7 @@ const names = [
   'omniview-instance-verification',
   'omniview-ui-mocks',
   'omniview-performance-profiling',
+  'omniview-ui-implementation',
 ];
 const skills = dirname(fileURLToPath(import.meta.url));
 const root = resolve(skills, '../..');

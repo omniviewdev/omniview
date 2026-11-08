@@ -1,6 +1,6 @@
 # Agent workspace skills
 
-Versioned instructions live in this host checkout under `.agents/skills`, not in a user's home directory. They are opt-in guidance, not evidence that launch, linking, or native integration has passed. The operational entry point is [development workspaces](development-workspaces.md); command definitions are in `cmd/omniview-dev/workspace_commands.go` and `control_commands.go`.
+Versioned instructions live in this host checkout under `.agents/skills`, not in a user's home directory. Skills are guidance, not evidence that launch, linking, or native integration has passed. UI implementation also has a project-local OMP completion gate and deterministic policy checks described below. The operational entry point is [development workspaces](development-workspaces.md); command definitions are in `cmd/omniview-dev/workspace_commands.go` and `control_commands.go`.
 
 ## Discover locally
 
@@ -19,8 +19,10 @@ Codex uses the canonical repository `.agents/skills` directly. Claude Code recei
 | Find the repository and source for a feature or bug | `omniview-repo-map` |
 | Verify browser/native behavior on the correct instance | `omniview-instance-verification` |
 | Design a UI change with grounded mocks, a clickable prototype, screenshots or an issue write-up | `omniview-ui-mocks` |
+| Profile actual host/plugin workloads | `omniview-performance-profiling` |
+| Build, migrate, fix, or audit UI while preserving approved composition | `omniview-ui-implementation` |
 
-Claude Code can invoke `/omniview-workspaces`, `/omniview-repo-map`, `/omniview-instance-verification`, or `/omniview-ui-mocks`. In Codex, ask it to use the corresponding skill (or select it in that client's skills UI). If the client cannot discover a skill, open its `SKILL.md` explicitly; do not install globally as a fallback. For clients other than these two, explicitly attach/read the canonical file; automatic discovery has not been established here.
+Claude Code can invoke the installed skills by name, including `/omniview-ui-implementation`. In Codex, ask it to use the corresponding skill (or select it in that client's skills UI). If a client cannot discover a skill, open its `SKILL.md` explicitly; do not install globally as a fallback. OMP discovers the canonical UI skill as `agents:project` and the auditor from `.omp/agents`; its automatic completion enforcement is separate from skill selection. Claude/Codex installation does not install an equivalent runtime gate.
 
 ## Minimal handoff to an agent
 
@@ -52,3 +54,37 @@ A useful request is: “Use omniview-workspaces. Collection ROOT, feature NAME; 
 - Baseline seeding is explicit and offline; never copy a running profile's database/tree or connect to a real cluster automatically. Removal preserves state and branches by default and refuses dirty/user work rather than forcing cleanup.
 
 Local discovery behavior is based on the [Codex skills documentation](https://developers.openai.com/codex/skills) and [Claude Code project skills/symlink documentation](https://code.claude.com/docs/en/skills#where-skills-live). Main reports actual installer positive/idempotence/collision/symlink-refusal checks passed. Actual agent-client discovery remains a separate check; neither documentation support nor installer checks mean those clients were launched here.
+
+## UI implementation and independent acceptance
+
+The [UI implementation skill](../.agents/skills/omniview-ui-implementation/SKILL.md) and [audit protocol](../.agents/skills/omniview-ui-implementation/references/audit-protocol.md) preserve appearance, interactions, information, density, and responsiveness. A library migration does not authorize redesign. The [metrics V01–V11 case](../.agents/skills/omniview-ui-implementation/references/metrics-regression-case.md) records why correct imports, passing functional checks, and opened screenshots were insufficient.
+
+### OMP automatic gate
+
+Start a fresh OMP session in this checkout with dependencies installed and ambient project extensions enabled. `.omp/hooks/pre/ui-audit.ts` registers `ui_audit_snapshot` and `ui_audit_submit` and blocks `session_stop` for unaudited UI changes. `agent_end` is not used as a gate. Existing sessions must reload extensions or restart; creating these files does not retroactively enable a hook.
+
+The initial session snapshot preserves preexisting user changes. Later shell, external-editor, child-agent, untracked, deleted, CSS, source, dependency, policy, or auditor changes invalidate approval. The baseline persists per worktree and session so resuming the same session cannot erase a blocked change. A genuinely new session establishes a new baseline; this local guard is not a repository-wide release attestation.
+
+For a feature collection, the parent `workspace.json` must explicitly select the current Git root. The gate then fingerprints all selected Git roots and the manifest, without guessing sibling repositories. The snapshot reports those roots. Unselected repositories are outside that audit; select them in the canonical manifest before work. For a standalone checkout only that Git root is covered.
+
+The parent inspects `ui_audit_snapshot({})`, then dispatches a direct `omniview-ui-auditor` child. The auditor reads the current source and approved contract, exercises the authenticated actual UI, compares real pixels, and submits through `ui_audit_submit`. Four verdicts must pass: library compliance, composition parity, information/interaction preservation, and visual acceptance. A missing browser, missing baseline, unresolved blocking finding, stale snapshot, or unverified required state blocks approval. Do not fabricate pixels or repeatedly retry an unchanged failure.
+
+The agent template selects high effort. Submission checks actual runtime effort (high/xhigh/max) and model identity rather than trusting report claims. Configure a compatible model; lowering effort or using a model without the required runtime evidence cannot produce approval. Reports and actionable library requests persist under the worktree Git directory's `ui-audit/<session hash>/`; tool responses return the receipt path. Parents cannot self-attest. Approved exceptions require explicit approval evidence; a library ticket alone never authorizes a workaround.
+
+Check tool availability before relying on enforcement. Disabled extensions, missing hook files, unsupported agent clients, or writes outside selected roots cannot be covered by this local gate. Same-user files and eval are not sandboxed. Image signatures and hashes reject renamed text and bind bytes, but do not prove screenshot provenance or visual correctness. Independent judgment and human approval remain necessary.
+
+### Deterministic checks and CI
+
+```sh
+pnpm lint:ui-policy
+node scripts/ui-audit/check.mjs --base origin/main
+pnpm test:ui-audit
+pnpm smoke:ui-audit --output /absolute/path/ui-audit-smoke.json
+```
+
+`pnpm lint` includes the policy checker. It flags newly introduced native controls, browser-native datetime use behind supported library wrappers, legacy UI imports, and explicit control resets. It parses source/CSS and resolves bindings; it does not establish visual quality, arbitrary token validity, every dynamic construction, or correct domain semantics. Structural HTML and domain colors remain allowed. Tests/stories/generated files and designated library implementations are not application-control violations.
+
+Locally, the default baseline is HEAD, with staged, unstaged, and untracked files included. In GitHub PR CI, `GITHUB_BASE_REF` selects the merge-base against the fetched remote base; an unavailable base fails closed. `--base` permits an explicit baseline. New duplicate violations cannot hide behind legacy debt. Existing lint CI gains these static checks, not an automatic model/pixel audit or server-side branch protection.
+
+The smoke invokes the installed OMP CLI and configured model against an owned disposable fixture. It is a runtime gate test, not an Omniview application visual test. Review [evaluation provenance and raw results](../.agents/skills/omniview-ui-implementation-workspace/README.md) and the [skill-creator viewer](../.agents/skills/omniview-ui-implementation-workspace/iteration-1/review.html). Text-model decision improvements do not establish runtime or visual correctness.
+
