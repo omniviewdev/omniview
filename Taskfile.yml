@@ -261,6 +261,7 @@ tasks:
       - task: check:go-build
       - task: check:go-vet
       - task: check:go-test
+      - task: check:go-test-devcontrol
       - task: check:go-lint
       - task: check:fmt-check
       - task: check:bindings-check
@@ -309,6 +310,14 @@ tasks:
           set -- -json
         fi
         GOWORK=off GOFLAGS= go test "$@" -modfile="$HOST_MODFILE" ./...
+
+  check:go-test-devcontrol:
+    summary: Run the development-control host tests that only build with the devcontrol tag
+    cmds:
+      - |
+        set -e
+        HOST_MODFILE="$({{.HOST_BOOTSTRAP}})"
+        GOWORK=off GOFLAGS= go test -tags devcontrol -modfile="$HOST_MODFILE" ./internal/devcontrol/host/... -count=1
 
   check:c02-corpus:
     summary: Generate fresh C02 SDK-to-gRPC-to-host errors at C02_ERROR_CORPUS

@@ -30,4 +30,13 @@ describe('pluginRows', () => {
     expect(aws?.memory).toBeNull();
     expect(aws?.operations).toBe(5);
   });
+
+  it('reports plugin-metric availability from the host-owned status, not from absent points', () => {
+    const status = (plugin: string, state: string) => point(plugin, undefined, 1, { attributes: { plugin, state } });
+    const withStatus = sample(1, 0, 10);
+    withStatus.metrics?.push({ name: 'omniview.plugin.diagnostics.status', description: '', unit: '1', kind: 'gauge', points: [status('kubernetes', 'ok'), status('aws', 'unsupported'), status('legacy', 'stale')] });
+    const rows = pluginRows([withStatus]);
+    expect(rows.map(row => [row.id, row.reporting])).toEqual([['aws', 'unsupported'], ['kubernetes', 'ok'], ['legacy', 'stale']]);
+    expect(pluginRows([sample(1, 0, 10)]).every(row => row.reporting === null)).toBe(true);
+  });
 });

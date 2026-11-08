@@ -299,7 +299,7 @@ func (m *Manager) ServeSupervisor(ctx context.Context, name string, output io.Wr
 	// Source mutation guards from the short CLI must not reject this exact owner
 	// while it applies the stopped overlay before any host child exists.
 	localManager := *m
-	s := &workspaceSupervisor{manager: &localManager, workspace: w, options: options, generation: generation, owner: owner, record: record, registry: registry, output: output, status: Status{Workspace: w, Generation: generation, Phase: "starting", Builds: map[string]BuildEvent{}}, children: map[string]*ownedChild{}, leases: map[string]devsession.Lease{}, exit: make(chan struct{})}
+	s := &workspaceSupervisor{manager: &localManager, workspace: w, options: options, generation: generation, owner: owner, record: record, registry: registry, output: output, status: Status{Workspace: w, Generation: generation, Phase: "starting", Builds: map[string]BuildEvent{}, SDK: workspaceSDKStatus(ctx, w)}, children: map[string]*ownedChild{}, leases: map[string]devsession.Lease{}, exit: make(chan struct{})}
 	s.shutdownRequested = make(chan struct{})
 	s.sessionContext, s.sessionCancel = context.WithCancel(ctx)
 	s.childContext, s.childCancel = context.WithCancel(context.WithoutCancel(ctx))
@@ -392,14 +392,18 @@ func (m *Manager) ServeSupervisor(ctx context.Context, name string, output io.Wr
 	return resultErr
 }
 func writeLaunchSecret(path string, token []byte) error { return writeOwnedLaunchSecret(path, token) }
-func (s *workspaceSupervisor) environment() []string {
-	env := append(workspaceEnvironment(os.Environ(), s.workspace, s.generation, s.options), "OMNIVIEW_DEV_CLI="+s.owner.Executable, "GOCACHE="+s.goBuildCache)
+func (s *workspaceSupervisor) environment() ([]string, error) {
+	base, err := workspaceEnvironment(os.Environ(), s.workspace, s.generation, s.options)
+	if err != nil {
+		return nil, err
+	}
+	env := append(base, "OMNIVIEW_DEV_CLI="+s.owner.Executable, "GOCACHE="+s.goBuildCache)
 	s.feedbackMu.Lock()
 	defer s.feedbackMu.Unlock()
 	if s.feedback != nil {
 		env = append(env, s.feedback.environment)
 	}
-	return env
+	return env, nil
 }
 func (s *workspaceSupervisor) snapshot() Status {
 	s.mu.Lock()

@@ -68,3 +68,33 @@ func TestWindowRealmConcurrentServicesShareOnePrincipal(t *testing.T) {
 		require.Equal(t, owners[0], owner)
 	}
 }
+
+type otherKindRealmWindow struct{ realmWindow }
+
+func TestWindowRealmKeysScopesByWindowKindAndID(t *testing.T) {
+	realm := NewWindowRealm(nil)
+	native, browser := &realmWindow{id: 1}, &otherKindRealmWindow{realmWindow{id: 1}}
+	nativeScope, browserScope := realm.ScopeForWindow(native), realm.ScopeForWindow(browser)
+	require.NotNil(t, nativeScope)
+	require.NotNil(t, browserScope)
+	require.NotSame(t, nativeScope, browserScope)
+	require.NotEqual(t, nativeScope.Principal().Owner(), browserScope.Principal().Owner())
+	require.Same(t, nativeScope, realm.ScopeForWindow(native))
+	require.Same(t, browserScope, realm.ScopeForWindow(browser))
+
+	native.onClose(nil)
+	require.Nil(t, realm.ScopeForWindow(native))
+	require.Same(t, browserScope, realm.ScopeForWindow(browser))
+	require.Nil(t, realm.ScopeForWindow(&realmWindow{id: 1}))
+	require.NotNil(t, realm.ScopeForWindow(&otherKindRealmWindow{realmWindow{id: 2}}))
+}
+
+func TestWindowRealmScopeCapCountsEveryWindowKind(t *testing.T) {
+	realm := NewWindowRealm(nil)
+	for id := uint(1); id <= 32; id++ {
+		require.NotNil(t, realm.ScopeForWindow(&realmWindow{id: id}))
+		require.NotNil(t, realm.ScopeForWindow(&otherKindRealmWindow{realmWindow{id: id}}))
+	}
+	require.Nil(t, realm.ScopeForWindow(&realmWindow{id: 33}))
+	require.Nil(t, realm.ScopeForWindow(&otherKindRealmWindow{realmWindow{id: 33}}))
+}

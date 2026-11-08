@@ -103,3 +103,20 @@ func TestRemoteCopyOwnsSDKBuffers(t *testing.T) {
 		t.Fatal("remote retained SDK buffer")
 	}
 }
+
+// Plugin-reported metrics rely on this: every key a plugin may attach, with the
+// host-stamped plugin label and the maximum four attributes, must survive
+// attribute filtering; anything else must not.
+func TestPluginReportedAttributeKeysSurviveAllowlist(t *testing.T) {
+	for _, key := range []string{"operation", "outcome", "phase", "state", "reason", "cache", "queue", "direction", "event"} {
+		got := safeAttributes(attribute.NewSet(attribute.String("plugin", "kube"), attribute.String(key, "ok")))
+		if got["plugin"] != "kube" || got[key] != "ok" {
+			t.Fatalf("%s dropped: %v", key, got)
+		}
+	}
+	got := safeAttributes(attribute.NewSet(attribute.String("plugin", "kube"), attribute.String("operation", "a"), attribute.String("outcome", "b"),
+		attribute.String("phase", "c"), attribute.String("state", "d"), attribute.String("resource_name", "secret")))
+	if len(got) != 5 || got["resource_name"] != "" {
+		t.Fatalf("unexpected attributes: %v", got)
+	}
+}

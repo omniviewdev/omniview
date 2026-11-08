@@ -102,7 +102,7 @@ func (g *BuildGraph) affected(paths []string) ([]BuildNode, error) {
 		if sourceManifest(path) {
 			return nil, fmt.Errorf("dependency graph invalidated by %s; stop and explicitly reconcile/link/bootstrap the selected graph", path)
 		}
-		if inside(g.plan.SDK, path) || path == g.plan.SDK {
+		if g.sdkContains(path) {
 			selected["bindings"] = true
 			selected["host-backend"] = true
 			continue
@@ -157,13 +157,25 @@ func (g *BuildGraph) affected(paths []string) ([]BuildNode, error) {
 	return nodes, nil
 }
 
+// sdkContains reports whether path is the selected SDK checkout or inside it. A
+// published SDK has no checkout, so no path is ever inside it.
+func (g *BuildGraph) sdkContains(path string) bool {
+	directory, ok := g.plan.SDK.Directory()
+	return ok && (path == directory || inside(directory, path))
+}
+
 func (g *BuildGraph) watchRoots() []string {
 	// Include every selected JavaScript input so plugin peer/config changes
 	// invalidate the composition even though A08 retains backend build ownership.
-	roots := []string{g.plan.SDK}
+	// A published SDK has no checkout to watch, never an empty or cache root.
+	var roots []string
+	sdk, selected := g.plan.SDK.Directory()
+	if selected {
+		roots = append(roots, sdk)
+	}
 	for _, r := range g.workspace.Manifest.Repositories {
 		path := filepath.Join(g.workspace.Root, r.Directory)
-		if path != g.plan.SDK {
+		if !selected || path != sdk {
 			roots = append(roots, path)
 		}
 	}
@@ -245,7 +257,7 @@ func (g *BuildGraph) sourceWatchChange(paths []string, nodes []BuildNode) (Watch
 	}
 	hostChanged := false
 	for _, path := range paths {
-		if inside(g.plan.SDK, path) || path == g.plan.SDK {
+		if g.sdkContains(path) {
 			change.SDKChanged = true
 		}
 	}
@@ -324,8 +336,7 @@ func (g *BuildGraph) rebuildSourceHost(ctx context.Context, h WatchHooks) (map[s
 	}
 	g.emit("host-restart", "building", nil)
 	ready, err := h.HostRebuildAndWait(ctx, HostBuildRequest{
-		Workspace: g.workspace, SDKDirectory: g.plan.SDK,
-		SDKSource: before,
+		Workspace: g.workspace, SDK: before,
 	})
 	if err != nil {
 		g.emit("host-restart", "error", err)

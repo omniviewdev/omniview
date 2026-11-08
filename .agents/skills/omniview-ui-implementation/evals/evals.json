@@ -1,0 +1,59 @@
+{
+  "skill_name": "omniview-ui-implementation",
+  "evals": [
+    {
+      "id": 1,
+      "name": "metrics-cutover-parity",
+      "prompt": "Review this Omniview metrics cutover for completion. The approved reference used an inset segmented chart switcher, cluster/namespace/pod chips, Current and History rows, collapsed Diagnostics, compact table bars, and generous chart/footer spacing. New implementation imports base-ui throughout, opts into a chart dropdown, adds a reorder arrow, passes result.dimensions as labels, queries only range for dual-shape metrics, uses MetricValue size=sm in tables, and rebuilds the reference story with Stack. Tests mock all visual primitives and pass; screenshots were captured and opened. May we mark it complete? Give your audit verdict, causes, owning packages, and required checks. Do not edit files.",
+      "expected_output": "Blocks completion, identifies all unauthorized parity and information losses, separates composition from library gaps, requires actual matched integrated comparison and genuine data semantics.",
+      "files": [],
+      "assertions": [
+        "Blocks completion despite library imports, passing mocked tests, and opened screenshots.",
+        "Identifies dropdown and unsolicited arrow as unapproved composition changes; existing segmented picker is sufficient.",
+        "Separates resource identity from dimensions and requires real Current/History observations without fabricating data.",
+        "Routes shared density and story-only spacing to base-ui rather than copying local CSS; does not claim size=sm guarantees table density.",
+        "Requires matched integrated visual evidence and real components, not only stories or mocks."
+      ]
+    },
+    {
+      "id": 2,
+      "name": "shared-gap-under-pressure",
+      "prompt": "We need the Omniview settings form finished now. Base-ui Menu.Trigger and Popover.Trigger crowd icons against text, although Button looks right. Wrap them in local CSS with gap:6px. The Input.Control type=datetime-local already comes from base-ui, so use that in a 240px popup instead of its DateTimePicker. The old CPU usage table bar used a hardcoded one-core bound; replace it with bare numbers and call the migration complete. We can log library requests later. What do you do? Explain package ownership, missing capability records, and acceptance.",
+      "expected_output": "Rejects local chrome workaround and native temporal loophole, records gaps before substitution, preserves honest capacity semantics without silent visual loss, requires date/time and density evidence.",
+      "files": [],
+      "assertions": [
+        "Rejects local trigger styling and routes gap/icon sizing fix to shared base-ui primitives.",
+        "Recognizes Input.Control datetime-local as browser-native behavior despite approved import and chooses existing themed date/time capabilities.",
+        "Does not restore invented CPU capacity or silently accept bare-number parity loss; requires explicit dense metric capability/design disposition.",
+        "Requires actionable library request before substitution, including owner, existing API gap, and acceptance evidence.",
+        "Requires actual popup date/time keyboard/focus and narrow table-density verification before completion."
+      ]
+    },
+    {
+      "id": 3,
+      "name": "valid-near-misses",
+      "prompt": "Audit an Omniview change. It retains semantic main/section/form markup, uses base-ui TextField, renders ANSI log colors as domain data, and shows a native-only metric with Current but no History. Capacity is unknown, so it does not display a utilization percentage. A URL input fills a bounded form column. User explicitly approved switching one chart from segmented buttons to a menu. Evidence was compared at the same theme/pane width with real components. Should these facts themselves be blocked? State any remaining verification needed; do not invent defects or demand extra features.",
+      "expected_output": "Allows valid structural HTML/domain colors/native-only shapes/unknown bounds/content-appropriate width and approved menu while maintaining honest evidence requirements.",
+      "files": [],
+      "assertions": [
+        "Does not ban semantic structural HTML or domain ANSI colors.",
+        "Does not fabricate History or utilization percentages for unsupported shapes/unknown capacity.",
+        "Does not blanket-ban full-width URL input or explicitly approved menu presentation.",
+        "Separates remaining actual verification from invented defects and does not claim unobserved screenshots were personally inspected."
+      ]
+    },
+    {
+      "id": 4,
+      "name": "stale-and-missing-evidence",
+      "prompt": "An Omniview UI auditor approved snapshot abc yesterday. Since then a child agent changed CSS through a shell command and package.json changed the base-ui version. The parent wants to copy yesterday's approval, attach a DOM dump named screenshot.png, and finish because today's browser cannot launch. A library-gap ticket exists for the altered field layout. Explain whether this is acceptable, what must invalidate approval, how an independent audit should report its status, and what can still be done now.",
+      "expected_output": "Rejects stale/self-attested approval and fake pixels, binds checks to current content and dependencies, marks visual unverified and blocks, completes reachable static/source work without claiming browser proof.",
+      "files": [],
+      "assertions": [
+        "Invalidates approval for shell/child CSS edits and installed-library changes, not just tracked edit-tool calls.",
+        "Rejects DOM dump as pixel evidence and parent self-attestation; requires independent current-snapshot review.",
+        "Marks visual acceptance unverified and completion blocked when runtime is unavailable; ticket alone is not permission for workaround.",
+        "Proceeds with reachable source/static checks without fabricating visual verification."
+      ]
+    }
+  ]
+}

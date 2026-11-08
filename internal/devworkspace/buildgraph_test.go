@@ -11,8 +11,25 @@ import (
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsource"
 )
+
+// sdkDirectory returns the SDK checkout the fixture's plan selected.
+func sdkDirectory(t testing.TB, g *BuildGraph) string {
+	t.Helper()
+	directory, ok := g.plan.SDK.Directory()
+	if !ok {
+		t.Fatal("the fixture plan selects no SDK checkout")
+	}
+	return directory
+}
+
+// fakeSDKIdentity is the deterministic source identity fixture verifiers report.
+// Incomplete evidence is refused by the typed identity itself.
+func fakeSDKIdentity(directory, revision, digest string) (devsdk.Identity, error) {
+	return devsdk.NewSourceIdentity(devsource.Identity{Directory: directory, Revision: revision, SourceDigest: digest})
+}
 
 func graphFixture(t *testing.T) *BuildGraph {
 	t.Helper()
@@ -101,10 +118,9 @@ func graphFixture(t *testing.T) *BuildGraph {
 	traceStage("compile build graph")
 	g, err := compileBuildGraph(w, p, BuildOptions{
 		Generation: "22222222-2222-4222-8222-222222222222", GoBuildCacheDirectory: cache,
-		VerifySDKSource: func(_ context.Context, directory string) (devsource.Identity, error) {
-			return devsource.Identity{
-				Directory: directory, Revision: strings.Repeat("a", 40), SourceDigest: strings.Repeat("c", 64),
-			}, nil
+		VerifySDK: func(_ context.Context, request devsdk.Request) (devsdk.Identity, error) {
+			directory, _ := request.Selection.Directory()
+			return fakeSDKIdentity(directory, strings.Repeat("a", 40), strings.Repeat("c", 64))
 		}, HostBuild: func(context.Context, HostBuildRequest) error { return nil },
 	})
 	if err != nil {
@@ -195,18 +211,19 @@ func TestVerifyBuildSDKRejectsWrongEffectiveSourceAndIncompleteIdentity(t *testi
 		name, dir, revision, digest string
 		want                        bool
 	}{
-		{"selected live source", g.plan.SDK, strings.Repeat("a", 40), strings.Repeat("c", 64), true},
-		{"missing content identity", g.plan.SDK, strings.Repeat("a", 40), "", false},
-		{"malformed digest", g.plan.SDK, strings.Repeat("a", 40), "invalid", false},
-		{"malformed revision", g.plan.SDK, "invalid", strings.Repeat("c", 64), false},
-		{"wrong source", filepath.Dir(g.plan.SDK), strings.Repeat("a", 40), strings.Repeat("c", 64), false},
+		{"selected live source", sdkDirectory(t, g), strings.Repeat("a", 40), strings.Repeat("c", 64), true},
+		{"missing content identity", sdkDirectory(t, g), strings.Repeat("a", 40), "", false},
+		{"malformed digest", sdkDirectory(t, g), strings.Repeat("a", 40), "invalid", false},
+		{"malformed revision", sdkDirectory(t, g), "invalid", strings.Repeat("c", 64), false},
+		{"wrong source", filepath.Dir(sdkDirectory(t, g)), strings.Repeat("a", 40), strings.Repeat("c", 64), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			g.run = func(_ context.Context, dir, program string, args ...string) ([]byte, error) {
-				return json.Marshal(map[string]any{"Path": linkedSDK, "Dir": tc.dir, "Replace": map[string]any{"Dir": tc.dir}})
+				return json.Marshal(map[string]any{"Path": devsdk.Module, "Dir": tc.dir, "Replace": map[string]any{"Dir": tc.dir}})
 			}
-			g.options.VerifySDKSource = func(_ context.Context, directory string) (devsource.Identity, error) {
-				return devsource.Identity{Directory: directory, Revision: tc.revision, SourceDigest: tc.digest}, nil
+			g.options.VerifySDK = func(_ context.Context, request devsdk.Request) (devsdk.Identity, error) {
+				directory, _ := request.Selection.Directory()
+				return fakeSDKIdentity(directory, tc.revision, tc.digest)
 			}
 			_, err := g.verifySDK(context.Background(), filepath.Join(g.workspace.Root, "host"))
 			if (err == nil) != tc.want {
@@ -216,19 +233,78 @@ func TestVerifyBuildSDKRejectsWrongEffectiveSourceAndIncompleteIdentity(t *testi
 	}
 }
 
+// A verifier is injected code: its answer must still describe the selected
+// checkout and be source evidence, whatever it claims.
+func TestVerifyBuildSDKRejectsIdentityOfAnotherCheckoutOrVariant(t *testing.T) {
+	g := graphFixture(t)
+	g.run = func(context.Context, string, string, ...string) ([]byte, error) {
+		return json.Marshal(map[string]any{"Path": devsdk.Module, "Dir": sdkDirectory(t, g)})
+	}
+	published, err := devsdk.NewPublishedIdentity(devsdk.Published{
+		Module: devsdk.Module, Version: "v0.16.0",
+		ModuleSum: "h1:q3jMU47l+0APFGpEdbJ4d5NmAnwaloV+siwiu3G4OOU=", GoModSum: "h1:FFxi7m1H27zsC3VwMZ6Z9zVrwIytVTAkRjLT5cpv0G4=",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, answer := range map[string]func() (devsdk.Identity, error){
+		"another checkout": func() (devsdk.Identity, error) {
+			return fakeSDKIdentity(filepath.Dir(sdkDirectory(t, g)), strings.Repeat("a", 40), strings.Repeat("c", 64))
+		},
+		"published identity": func() (devsdk.Identity, error) { return published, nil },
+		"zero identity":      func() (devsdk.Identity, error) { return devsdk.Identity{}, nil },
+	} {
+		t.Run(name, func(t *testing.T) {
+			g.options.VerifySDK = func(context.Context, devsdk.Request) (devsdk.Identity, error) { return answer() }
+			if _, err := g.verifySDK(context.Background(), filepath.Join(g.workspace.Root, "host")); err == nil {
+				t.Fatal("graph trusted an identity that does not describe the selected source checkout")
+			}
+		})
+	}
+}
+
+// Typed verification must report exactly what devsource.Verify observes for the
+// effective checkout, and still notice the dirty edit that makes a build stale.
+func TestVerifyBuildSDKReportsTheDevsourceIdentityOfTheSelectedCheckout(t *testing.T) {
+	g := graphFixture(t)
+	sdk := sdkDirectory(t, g)
+	g.run = func(context.Context, string, string, ...string) ([]byte, error) {
+		return json.Marshal(map[string]any{"Path": devsdk.Module, "Dir": sdk, "Replace": map[string]any{"Dir": sdk}})
+	}
+	g.options.VerifySDK = devsdk.NewVerifier(devsdk.Policy{})
+	host := filepath.Join(g.workspace.Root, "host")
+	before, err := g.verifySDK(context.Background(), host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected, err := devsource.Verify(context.Background(), sdk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source, ok := before.Source(); !ok || source != expected {
+		t.Fatalf("graph identity %+v differs from devsource.Verify %+v", source, expected)
+	}
+	if err = g.verifyUnchangedSDK(context.Background(), host, before); err != nil {
+		t.Fatalf("unchanged checkout was refused: %v", err)
+	}
+	writeGraphFixture(t, filepath.Join(sdk, "dirty.go"), "package sdk\n")
+	if err = g.verifyUnchangedSDK(context.Background(), host, before); err == nil {
+		t.Fatal("dirty SDK edit during a build kept the old identity trusted")
+	}
+}
+
 func TestVerifyBuildSDKRejectsSourceMutationDuringBuild(t *testing.T) {
 	g := graphFixture(t)
 	g.run = func(_ context.Context, dir, program string, args ...string) ([]byte, error) {
-		return json.Marshal(map[string]any{"Path": linkedSDK, "Dir": g.plan.SDK})
+		return json.Marshal(map[string]any{"Path": devsdk.Module, "Dir": sdkDirectory(t, g)})
 	}
 	before, err := g.verifySDK(context.Background(), filepath.Join(g.workspace.Root, "host"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	g.options.VerifySDKSource = func(_ context.Context, directory string) (devsource.Identity, error) {
-		return devsource.Identity{
-			Directory: directory, Revision: strings.Repeat("a", 40), SourceDigest: strings.Repeat("d", 64),
-		}, nil
+	g.options.VerifySDK = func(_ context.Context, request devsdk.Request) (devsdk.Identity, error) {
+		directory, _ := request.Selection.Directory()
+		return fakeSDKIdentity(directory, strings.Repeat("a", 40), strings.Repeat("d", 64))
 	}
 	if err = g.verifyUnchangedSDK(context.Background(), filepath.Join(g.workspace.Root, "host"), before); err == nil {
 		t.Fatal("source mutated during build but old identity remained trusted")
@@ -259,9 +335,29 @@ func TestBuildGraphTypecheckFailureStopsBuild(t *testing.T) {
 func TestBuildGraphRequiresRealSDKSourceVerifier(t *testing.T) {
 	g := graphFixture(t)
 	opts := g.options
-	opts.VerifySDKSource = nil
+	opts.VerifySDK = nil
 	if _, err := compileBuildGraph(g.workspace, g.plan, opts); err == nil {
 		t.Fatal("constructor accepted a missing trusted source verifier")
+	}
+}
+
+// A published selection is a first-class build plan: no SDK checkout is
+// required to compile the graph, but the verifier still is.
+func TestBuildGraphCompilesAPublishedSelectionWithoutASourceCheckout(t *testing.T) {
+	g := graphFixture(t)
+	plan := g.plan
+	plan.SDK = devsdk.PublishedSelection()
+	compiled, err := compileBuildGraph(g.workspace, plan, g.options)
+	if err != nil {
+		t.Fatalf("a published selection was refused: %v", err)
+	}
+	if compiled.plan.SDK.Mode() != devsdk.ModePublished {
+		t.Fatal("the compiled graph lost its published selection")
+	}
+	opts := g.options
+	opts.VerifySDK = nil
+	if _, err := compileBuildGraph(g.workspace, plan, opts); err == nil {
+		t.Fatal("a published graph without a verifier was planned")
 	}
 }
 

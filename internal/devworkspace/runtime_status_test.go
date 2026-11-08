@@ -11,11 +11,12 @@ import (
 	"testing"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devdiag"
 )
 
-func TestSafeCompilerDiagnosticKeepsActionableError(t *testing.T) {
+func TestBuildDiagnosticKeepsActionableError(t *testing.T) {
 	t.Setenv("OMNIVIEW_TEST_API_TOKEN", "sensitive-value")
-	diagnostic := safeCompilerDiagnostic("/workspace/plugin/main.go:12: undefined: sdk.Removed\nAuthorization: Bearer abc123\nAuthorization: Basic dXNlcjpwYXNz\ntoken=sensitive-value\nhttps://user:pass@example.com\nbasic compiler error", "/workspace")
+	diagnostic := devdiag.Safe("/workspace/plugin/main.go:12: undefined: sdk.Removed\nAuthorization: Bearer abc123\nAuthorization: Basic dXNlcjpwYXNz\ntoken=sensitive-value\nhttps://user:pass@example.com\nbasic compiler error", "/workspace")
 	for _, secret := range []string{"abc123", "dXNlcjpwYXNz", "sensitive-value", "user:pass", "/workspace"} {
 		if strings.Contains(diagnostic, secret) {
 			t.Fatalf("diagnostic leaked %q: %s", secret, diagnostic)
@@ -29,10 +30,44 @@ func TestSafeCompilerDiagnosticKeepsActionableError(t *testing.T) {
 	}
 }
 
-func TestSafeCompilerDiagnosticBoundsSummary(t *testing.T) {
-	diagnostic := safeCompilerDiagnostic(strings.Repeat("x", 10000)+"\nmain.go:9: error", "/workspace")
+func TestBuildDiagnosticBoundsSummary(t *testing.T) {
+	diagnostic := devdiag.Safe(strings.Repeat("x", 10000)+"\nmain.go:9: error", "/workspace")
 	if len(diagnostic) > 8192 || !strings.Contains(diagnostic, "main.go:9: error") {
 		t.Fatalf("invalid bounded diagnostic: %d bytes", len(diagnostic))
+	}
+}
+
+// A credential must be removed before the summary is cut: a truncation through
+// the middle of a URL would otherwise leave a secret without the scheme that
+// identifies it. The padding places an 8192-byte tail of the UNREDACTED text
+// inside the password.
+func TestBuildDiagnosticRedactsBeforeTruncating(t *testing.T) {
+	const leakedPart = "ter2-credential"
+	secret := "hun" + leakedPart
+	tailOfURL := leakedPart + "@proxy.example/mod"
+	text := strings.Repeat("x", 5000) + "https://ci:" + secret + "@proxy.example/mod" + strings.Repeat("y", 8192-len(tailOfURL))
+	diagnostic := devdiag.Safe(text, "/workspace")
+	if strings.Contains(diagnostic, "credential") || len(diagnostic) > 8192 {
+		t.Fatalf("credential survived truncation or the summary is unbounded: %d bytes: %.120s", len(diagnostic), diagnostic)
+	}
+}
+
+// Every typed build failure of the controller flattens untyped tool output
+// through the shared redactor: module proxy failures carry credentials in URLs.
+func TestSupervisedBuildErrorRedactsToolOutput(t *testing.T) {
+	w := graphFixture(t).workspace
+	event := BuildEvent{Node: "host-backend", Phase: "error", Error: "go: github.com/x/y@v1.0.0: reading https://deploy:s3cr3t-pass@proxy.example/x/@v/v1.0.0.info?access_token=abc123: 404\nat " + w.Root + "/host/main.go:3: undefined: sdk.Removed"}
+	failure := supervisedBuildError(event, w)
+	if failure.Code != "build_failed" {
+		t.Fatalf("code %q", failure.Code)
+	}
+	for _, secret := range []string{"s3cr3t-pass", "abc123", w.Root} {
+		if strings.Contains(failure.Message, secret) {
+			t.Fatalf("typed build failure leaked %q: %s", secret, failure.Message)
+		}
+	}
+	if !strings.Contains(failure.Message, "$WORKSPACE/host/main.go:3: undefined: sdk.Removed") {
+		t.Fatalf("lost compiler location: %s", failure.Message)
 	}
 }
 
@@ -48,23 +83,10 @@ func TestSourceReloadRejectsForeignTargetsBeforeDiscovery(t *testing.T) {
 func TestCompatibilityPreflightRejectsWrongSDKModuleBeforeBuild(t *testing.T) {
 	graph := graphFixture(t)
 	writeGraphFixture(t, filepath.Join(graph.workspace.Root, "sdk", "go.mod"), "module example.com/not-the-sdk\n\ngo 1.26.0\n")
-	err := compatibilityPreflight(context.Background(), graph.workspace)
+	err := compatibilityPreflight(context.Background(), graph.workspace, graph.options.VerifySDK, nil)
 	var failure *devcontract.Error
 	if !errors.As(err, &failure) || failure.Code != "sdk_contract_mismatch" {
 		t.Fatalf("wrong SDK module must fail preflight directly: %v", err)
-	}
-}
-
-func TestCompatibilityPreflightRequiresSDK(t *testing.T) {
-	graph := graphFixture(t)
-	graph.workspace.Manifest.Links.SDKRepositoryID = nil
-	if err := writeManifest(graph.workspace.Root, graph.workspace.Manifest); err != nil {
-		t.Fatal(err)
-	}
-	err := compatibilityPreflight(context.Background(), graph.workspace)
-	var failure *devcontract.Error
-	if !errors.As(err, &failure) || failure.Code != "sdk_source_required" {
-		t.Fatalf("missing SDK must fail before reading source: %v", err)
 	}
 }
 

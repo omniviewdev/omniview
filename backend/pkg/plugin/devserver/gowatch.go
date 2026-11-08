@@ -3,7 +3,6 @@ package devserver
 import (
 	"bytes"
 	"context"
-	"debug/buildinfo"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,7 +23,8 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/internal/appstate"
-	"github.com/omniviewdev/omniview/internal/devsource"
+	"github.com/omniviewdev/omniview/internal/devdiag"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/instance"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	sdkconfig "github.com/omniviewdev/plugin-sdk/pkg/config"
@@ -61,19 +61,22 @@ type goWatcherProcess struct {
 	setBuild   func(duration time.Duration, buildErr string)
 	emitErrors func(pluginID string, errors []BuildError)
 
-	watcher           *fsnotify.Watcher
-	done              chan struct{} // closed when the watcher goroutine exits
-	buildMu           sync.Mutex
-	lifecycleMu       sync.Mutex
-	stopping          bool
-	loopStarted       bool
-	publishers        sync.WaitGroup
-	stopOnce          sync.Once
-	retired           chan struct{}
-	stopErr           error
-	dependencyMu      sync.Mutex
-	dependencyDirs    []string
-	selectedSDK       devsource.Identity
+	watcher        *fsnotify.Watcher
+	done           chan struct{} // closed when the watcher goroutine exits
+	buildMu        sync.Mutex
+	lifecycleMu    sync.Mutex
+	stopping       bool
+	loopStarted    bool
+	publishers     sync.WaitGroup
+	stopOnce       sync.Once
+	retired        chan struct{}
+	stopErr        error
+	dependencyMu   sync.Mutex
+	dependencyDirs []string
+	// sdk is the verified SDK identity of the current workspace-managed build,
+	// observed before the compile and compared after it. It is the zero
+	// Identity for unmanaged development builds.
+	sdk               devsdk.Identity
 	buildRelativePath string
 	runtimeError      func(error)
 }
@@ -220,8 +223,12 @@ func (gw *goWatcherProcess) watchWorkspaceModules(watcher *fsnotify.Watcher, wat
 	if err != nil {
 		return
 	}
-	cmd := exec.CommandContext(gw.ctx, goPath, "list", "-m", "-json", "all")
-	cmd.Dir, cmd.Env = gw.devPath, goBuildEnv(gw.buildOpts.Environment)
+	arguments := []string{"list", "-m", "-json", "all"}
+	if gw.publishedBuild() {
+		arguments = []string{"list", "-mod=readonly", "-m", "-json", "all"}
+	}
+	cmd := exec.CommandContext(gw.ctx, goPath, arguments...)
+	cmd.Dir, cmd.Env = gw.devPath, gw.goCommandEnvironment()
 	data, err := cmd.Output()
 	if err != nil {
 		gw.appendLog(newLogEntry(logSourceGoWatch, logLevelError, fmt.Sprintf("Resolve dependency watches: %v", err)))
@@ -496,16 +503,8 @@ func (gw *goWatcherProcess) buildPlugin(initial bool, changedFile string, starte
 	if err := gw.ctx.Err(); err != nil {
 		return err
 	}
-	if gw.selectedSDK.Directory != "" {
-		path := gw.pluginsRoot.ResolvePath(filepath.Join(gw.pluginID, "bin", "plugin"))
-		if gw.buildOpts.Workspace == nil {
-			return fmt.Errorf("resolved workspace required for build source attestation")
-		}
-		if err := instance.RecordBuiltArtifactSource(
-			*gw.buildOpts.Workspace, gw.pluginID, path, gw.selectedSDK.Revision, gw.selectedSDK.SourceDigest,
-		); err != nil {
-			return err
-		}
+	if err := gw.attestBuild(); err != nil {
+		return err
 	}
 	if err := gw.ctx.Err(); err != nil {
 		return err
@@ -513,6 +512,81 @@ func (gw *goWatcherProcess) buildPlugin(initial bool, changedFile string, starte
 	gw.setBuild(time.Since(started), "")
 	gw.setStatus(DevProcessStatusReady)
 	return nil
+}
+
+// managedBuild reports whether this watcher builds for a workspace-managed
+// profile. Managed builds verify the SDK around the compile and attest the
+// published binary; unmanaged development builds do neither.
+func (gw *goWatcherProcess) managedBuild() bool {
+	for _, entry := range gw.buildOpts.Environment {
+		if strings.HasPrefix(entry, "OMNIVIEW_WORKSPACE_ID=") && entry != "OMNIVIEW_WORKSPACE_ID=" {
+			return true
+		}
+	}
+	return gw.buildOpts.Workspace != nil
+}
+
+// sdkVerifier identifies the SDK under the policy injected through BuildOpts.
+func (gw *goWatcherProcess) sdkVerifier() devsdk.Verifier {
+	return devsdk.NewVerifier(gw.buildOpts.SDKPolicy)
+}
+
+// attestBuild records the trusted artifact evidence of a managed build's
+// published binary. An unmanaged build has no verified SDK identity to attest.
+func (gw *goWatcherProcess) attestBuild() error {
+	if !gw.managedBuild() {
+		return nil
+	}
+	path := gw.pluginsRoot.ResolvePath(filepath.Join(gw.pluginID, "bin", "plugin"))
+	if gw.buildOpts.Workspace == nil {
+		return fmt.Errorf("resolved workspace required for build source attestation")
+	}
+	return instance.RecordBuiltArtifact(*gw.buildOpts.Workspace, gw.pluginID, path, gw.sdk)
+}
+
+// publishedBuild reports whether this managed build uses the SDK published by
+// the plugin's own go.mod, rather than a selected source checkout.
+func (gw *goWatcherProcess) publishedBuild() bool {
+	if !gw.managedBuild() {
+		return false
+	}
+	if gw.sdk.Mode() == devsdk.ModePublished {
+		return true
+	}
+	if gw.buildOpts.Workspace == nil {
+		return false
+	}
+	selection, err := devsdk.SelectionOf(*gw.buildOpts.Workspace)
+	return err == nil && selection.Mode() == devsdk.ModePublished
+}
+
+// goCommandEnvironment is the environment of the build's own go commands. A
+// published build runs in the same neutral module environment its SDK was
+// verified in; source and unmanaged builds keep the inherited environment.
+func (gw *goWatcherProcess) goCommandEnvironment() []string {
+	environment := goBuildEnv(gw.buildOpts.Environment)
+	if gw.publishedBuild() {
+		environment = append(environment, devsdk.ModuleEnvironment()...)
+	}
+	return environment
+}
+
+// verifyBuiltSDK checks a managed build's evidence after the compile: the SDK
+// observed before it is unchanged and the binary includes the SDK module.
+func (gw *goWatcherProcess) verifyBuiltSDK(goPath, binaryPath string) error {
+	consumer := filepath.Base(gw.devPath)
+	after, err := verifySelectedSDK(gw.ctx, gw.sdkVerifier(), goPath, gw.devPath, gw.buildOpts.Environment)
+	if err != nil {
+		return err
+	}
+	if after != gw.sdk {
+		if gw.sdk.Mode() == devsdk.ModePublished {
+			return devsdk.IdentityChanged(consumer, fmt.Sprintf(
+				"the %s SDK changed during the build; rebuild against the new selection", consumer))
+		}
+		return fmt.Errorf("selected SDK source changed during build")
+	}
+	return devsdk.VerifyBinary(consumer, binaryPath, gw.sdk)
 }
 
 // goBuildEnv drops GOROOT from the inherited environment. The app may have been
@@ -553,14 +627,10 @@ func (gw *goWatcherProcess) runGoBuild() error {
 	if err != nil {
 		return err
 	}
-	workspace := false
-	for _, entry := range gw.buildOpts.Environment {
-		if strings.HasPrefix(entry, "OMNIVIEW_WORKSPACE_ID=") && entry != "OMNIVIEW_WORKSPACE_ID=" {
-			workspace = true
-		}
-	}
-	if workspace || gw.buildOpts.Workspace != nil {
-		gw.selectedSDK, err = VerifySelectedSDK(gw.ctx, goPath, gw.devPath, gw.buildOpts.Environment)
+	managed := gw.managedBuild()
+	gw.sdk = devsdk.Identity{}
+	if managed {
+		gw.sdk, err = verifySelectedSDK(gw.ctx, gw.sdkVerifier(), goPath, gw.devPath, gw.buildOpts.Environment)
 		if err != nil {
 			return err
 		}
@@ -582,15 +652,23 @@ func (gw *goWatcherProcess) runGoBuild() error {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	cmd := exec.CommandContext(gw.ctx, goPath, "build", "-o", binaryPath, "./pkg")
+	arguments := []string{"build", "-o", binaryPath, "./pkg"}
+	if gw.sdk.Mode() == devsdk.ModePublished {
+		arguments = []string{"build", "-mod=readonly", "-o", binaryPath, "./pkg"}
+	}
+	cmd := exec.CommandContext(gw.ctx, goPath, arguments...)
 	cmd.Dir = gw.devPath
-	cmd.Env = goBuildEnv(gw.buildOpts.Environment)
+	cmd.Env = gw.goCommandEnvironment()
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
 		// Parse build errors from stderr.
 		errOutput := stderr.String()
+		if gw.sdk.Mode() == devsdk.ModePublished {
+			// A failed module download names its proxy URL.
+			errOutput = devdiag.Redact(errOutput)
+		}
 		buildErrors := parseBuildErrors(errOutput, gw.devPath)
 		if len(buildErrors) > 0 {
 			gw.emitErrors(gw.pluginID, buildErrors)
@@ -605,30 +683,9 @@ func (gw *goWatcherProcess) runGoBuild() error {
 
 		return apperror.New(apperror.TypePluginBuildFailed, http.StatusInternalServerError, "Plugin build failed", errOutput)
 	}
-	if gw.selectedSDK.Directory != "" {
-		var after devsource.Identity
-		after, err = VerifySelectedSDK(gw.ctx, goPath, gw.devPath, gw.buildOpts.Environment)
-		if err != nil {
+	if managed {
+		if err := gw.verifyBuiltSDK(goPath, binaryPath); err != nil {
 			return err
-		}
-		if after != gw.selectedSDK {
-			return fmt.Errorf("selected SDK source changed during build")
-		}
-	}
-	if gw.selectedSDK.Directory != "" {
-		info, err := buildinfo.ReadFile(binaryPath)
-		if err != nil {
-			return fmt.Errorf("read built SDK provenance: %w", err)
-		}
-		found := false
-		for _, dependency := range info.Deps {
-			if dependency.Path == sdkModulePath {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return fmt.Errorf("built binary does not contain selected SDK module")
 		}
 	}
 
@@ -677,10 +734,10 @@ func (gw *goWatcherProcess) syncPluginYaml() error {
 		return fmt.Errorf("source metadata plugin ID changed from %q to %q", gw.pluginID, metadata.ID)
 	}
 	metadata.StateIsolation = nil
-	if gw.selectedSDK.Directory != "" {
+	if source, ok := gw.sdk.Source(); ok {
 		binary := gw.pluginsRoot.ResolvePath(gw.buildRelativePath)
 		metadata.StateIsolation, err = sdkconfig.BuildStateIsolationProvenance(
-			binary, gw.selectedSDK.Revision, gw.selectedSDK.SourceDigest,
+			binary, source.Revision, source.SourceDigest,
 		)
 		if err != nil {
 			return err

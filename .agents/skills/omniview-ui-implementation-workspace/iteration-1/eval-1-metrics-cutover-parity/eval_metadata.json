@@ -1,0 +1,12 @@
+{
+  "eval_id": 1,
+  "eval_name": "metrics-cutover-parity",
+  "prompt": "Review this Omniview metrics cutover for completion. The approved reference used an inset segmented chart switcher, cluster/namespace/pod chips, Current and History rows, collapsed Diagnostics, compact table bars, and generous chart/footer spacing. New implementation imports base-ui throughout, opts into a chart dropdown, adds a reorder arrow, passes result.dimensions as labels, queries only range for dual-shape metrics, uses MetricValue size=sm in tables, and rebuilds the reference story with Stack. Tests mock all visual primitives and pass; screenshots were captured and opened. May we mark it complete? Give your audit verdict, causes, owning packages, and required checks. Do not edit files.",
+  "assertions": [
+    "Blocks completion despite library imports, passing mocked tests, and opened screenshots.",
+    "Identifies dropdown and unsolicited arrow as unapproved composition changes; existing segmented picker is sufficient.",
+    "Separates resource identity from dimensions and requires real Current/History observations without fabricating data.",
+    "Routes shared density and story-only spacing to base-ui rather than copying local CSS; does not claim size=sm guarantees table density.",
+    "Requires matched integrated visual evidence and real components, not only stories or mocks."
+  ]
+}

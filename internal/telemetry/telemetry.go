@@ -129,7 +129,7 @@ func (s *Service) Init(ctx context.Context) error {
 	if s.diagnostics != nil {
 		s.diagnostics.SetRemote(s.switchableMetricExp)
 		s.updateDiagnosticsIdentity(s.cfg)
-		s.meterProvider = sdkmetric.NewMeterProvider(sdkmetric.WithResource(s.resource), sdkmetric.WithCardinalityLimit(128), sdkmetric.WithReader(sdkmetric.NewPeriodicReader(s.diagnostics, sdkmetric.WithInterval(2*time.Second))))
+		s.meterProvider = sdkmetric.NewMeterProvider(sdkmetric.WithResource(s.resource), sdkmetric.WithCardinalityLimit(128), sdkmetric.WithReader(sdkmetric.NewPeriodicReader(s.diagnostics, sdkmetric.WithInterval(2*time.Second), pluginDiagnosticsReaderOption())))
 	} else {
 		s.meterProvider = NewMeterProvider(s.resource, s.switchableMetricExp)
 	}
@@ -198,6 +198,7 @@ func (s *Service) swapInInitialExporters(ctx context.Context) error {
 // closed providers.
 func (s *Service) Shutdown(ctx context.Context) error {
 	StopPluginProcessSampling()
+	StopPluginDiagnostics()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
