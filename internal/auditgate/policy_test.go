@@ -247,3 +247,59 @@ func TestParseRejectsBindingIDCollision(t *testing.T) {
 	_, err := Parse([]byte(table))
 	require.ErrorContains(t, err, "share binding id")
 }
+
+// Go's decoder keeps the last of repeated keys and matches keys without regard
+// to case, so a table with such a key would load differently from how a
+// reviewer reads the file. Parse refuses it.
+func TestParseRejectsRepeatedAndCaseVariantKeys(t *testing.T) {
+	const methodRow = `{"fqn": "example.com/pkg.Service.Read", "decision": "allow", "reason": "reads"}`
+	const eventRow = `{"match": "prefix", "name": "mcp/", "decision": "deny", "reason": "relay"}`
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"repeated top-level key", mutate(t, `"version": 1,`, `"version": 1, "version": 1,`), "duplicate key"},
+		{"repeated key in a method row", mutate(t, methodRow,
+			`{"fqn": "example.com/pkg.Service.Read", "decision": "deny", "decision": "allow", "reason": "reads"}`),
+			"duplicate key"},
+		{"case variant of a method row key", mutate(t, methodRow,
+			`{"fqn": "example.com/pkg.Service.Read", "decision": "deny", "Decision": "allow", "reason": "reads"}`),
+			"case folded key"},
+		{"case variant of a top-level key",
+			mutate(t, `"wails": "v3.0.0-test",`, `"wails": "v3.0.0-test", "WAILS": "x",`), "case folded key"},
+		{"repeated key in an event rule", mutate(t, eventRow,
+			`{"match": "prefix", "name": "mcp/", "decision": "deny", "decision": "allow", "reason": "relay"}`),
+			"duplicate key"},
+		{"repeated key in a runtime method", mutate(t, windowNameRow,
+			`{"method": 18, "name": "Name", "decision": "allow", "decision": "deny", "reason": "boot"}`),
+			"duplicate key"},
+		{"repeated key written with an escape", mutate(t, `"version": 1,`, `"version": 1, "\u0076ersion": 2,`),
+			"duplicate key"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policy, err := Parse([]byte(tt.input))
+			require.Nil(t, policy)
+			require.ErrorContains(t, err, tt.want)
+		})
+	}
+}
+
+// window.Service.GetState can open a saved native window on the host desktop
+// when it is handed the restore-gate name, and needs no window header to do
+// so; ListStates returns every window's saved UI state. The UI boots to its
+// default state without either, so both stay denied, while List (without
+// which the UI cannot identify its window) stays allowed.
+func TestWindowStateReadsStayDenied(t *testing.T) {
+	policy := defaultPolicy(t)
+	const window = "github.com/omniviewdev/omniview/backend/window.Service."
+	for _, method := range []string{"GetState", "ListStates", "SaveState", "Open", "OpenSettings"} {
+		rule, ok := policy.Method(window + method)
+		require.True(t, ok, method)
+		require.Equal(t, Deny, rule.Decision, method)
+	}
+	rule, ok := policy.Method(window + "List")
+	require.True(t, ok)
+	require.Equal(t, Allow, rule.Decision, "the UI cannot identify its window without List")
+}

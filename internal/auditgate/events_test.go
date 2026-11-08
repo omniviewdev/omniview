@@ -9,11 +9,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func eventFrame(name string) []byte {
+func eventMessage(name string) []byte {
 	return []byte(fmt.Sprintf(`{"name":%q,"data":null}`, name))
 }
 
-func TestFilterEventFrameForwardsAllowedEvents(t *testing.T) {
+// filterText filters a payload as a WebSocket text message.
+func filterText(policy *Policy, payload []byte) EventVerdict {
+	return policy.FilterEventMessage(MessageText, payload)
+}
+
+func TestFilterEventMessageForwardsAllowedEvents(t *testing.T) {
 	policy := defaultPolicy(t)
 	for _, name := range []string{
 		"plugin/state_change",
@@ -33,8 +38,7 @@ func TestFilterEventFrameForwardsAllowedEvents(t *testing.T) {
 		"core/logs/lines/session-1",
 		"core/logs/event/session-1",
 		"plugin/process/log",
-		"internal/log/update:host",
-		"internal/log/update:plugin",
+		"internal/log/update:ui",
 		"core/metrics/data/sub-1",
 		"core/metrics/error/sub-1",
 		"activity/change/abc123",
@@ -47,8 +51,7 @@ func TestFilterEventFrameForwardsAllowedEvents(t *testing.T) {
 		"kubernetes/minikube/graph/CHANGED",
 	} {
 		t.Run(name, func(t *testing.T) {
-			frame := eventFrame(name)
-			verdict := policy.FilterEventFrame(frame)
+			verdict := filterText(policy, eventMessage(name))
 			require.True(t, verdict.Forward)
 			require.Equal(t, EventAllowed, verdict.Reason)
 			require.Equal(t, name, verdict.Name)
@@ -57,8 +60,8 @@ func TestFilterEventFrameForwardsAllowedEvents(t *testing.T) {
 		})
 	}
 
-	t.Run("frames with a payload and a sender", func(t *testing.T) {
-		for _, frame := range []string{
+	t.Run("messages with a payload and a sender", func(t *testing.T) {
+		for _, message := range []string{
 			`{"name":"plugin/state_change","data":{"pluginID":"x","from":"a","to":"b"},"sender":"main"}`,
 			`{"name":"plugin/state_change","data":[1,2,3]}`,
 			`{"name":"plugin/state_change","data":"text","sender":""}`,
@@ -66,13 +69,12 @@ func TestFilterEventFrameForwardsAllowedEvents(t *testing.T) {
 			"  {\"name\" : \"plugin/state_change\" , \"data\" : null}\n",
 			`{"name":"plugin/state_change"}`,
 		} {
-			verdict := policy.FilterEventFrame([]byte(frame))
-			require.True(t, verdict.Forward, frame)
+			require.True(t, filterText(policy, []byte(message)).Forward, message)
 		}
 	})
 }
 
-func TestFilterEventFrameDropsExplicitlyDeniedEvents(t *testing.T) {
+func TestFilterEventMessageDropsExplicitlyDeniedEvents(t *testing.T) {
 	policy := defaultPolicy(t)
 	for _, name := range []string{
 		"core/exec/stream/stdout/session-1",
@@ -99,7 +101,7 @@ func TestFilterEventFrameDropsExplicitlyDeniedEvents(t *testing.T) {
 		"windows/drag/x/graph/CHANGED",
 	} {
 		t.Run(name, func(t *testing.T) {
-			verdict := policy.FilterEventFrame(eventFrame(name))
+			verdict := filterText(policy, eventMessage(name))
 			require.False(t, verdict.Forward)
 			require.Equal(t, EventDeniedByRule, verdict.Reason)
 			require.Equal(t, name, verdict.Name)
@@ -109,13 +111,14 @@ func TestFilterEventFrameDropsExplicitlyDeniedEvents(t *testing.T) {
 	}
 }
 
-func TestFilterEventFrameDropsUnlistedEvents(t *testing.T) {
+func TestFilterEventMessageDropsUnlistedEvents(t *testing.T) {
 	policy := defaultPolicy(t)
 	for _, name := range []string{
 		"plugin/unknown",
 		"plugin/crash2",
 		"plugin/state_change/",
 		"plugin/state_changed",
+		"plugin/process/log2",
 		"Plugin/state_change",
 		"core/other",
 		"core/log/lines/x",
@@ -126,9 +129,14 @@ func TestFilterEventFrameDropsUnlistedEvents(t *testing.T) {
 		"activity/change",
 		"resource/source-view",
 		"custom/event",
+		// The host emits internal/log/update:<name>; the bare prefix and a
+		// different separator are not that event.
+		"internal/log/update",
+		"internal/log/updates",
+		"internal/log/update/ui",
 	} {
 		t.Run(name, func(t *testing.T) {
-			verdict := policy.FilterEventFrame(eventFrame(name))
+			verdict := filterText(policy, eventMessage(name))
 			require.False(t, verdict.Forward)
 			require.Equal(t, EventNotAllowed, verdict.Reason)
 			require.Equal(t, name, verdict.Name)
@@ -137,11 +145,24 @@ func TestFilterEventFrameDropsUnlistedEvents(t *testing.T) {
 	}
 }
 
-func TestFilterEventFrameDropsMalformedFrames(t *testing.T) {
+func TestFilterEventMessageDropsNonTextMessages(t *testing.T) {
+	policy := defaultPolicy(t)
+	payload := eventMessage("plugin/state_change")
+	require.True(t, filterText(policy, payload).Forward)
+	for _, kind := range []MessageKind{MessageBinary, 0, 3, -1} {
+		verdict := policy.FilterEventMessage(kind, payload)
+		require.False(t, verdict.Forward, kind)
+		require.Equal(t, EventNotText, verdict.Reason, kind)
+		require.Empty(t, verdict.Name, kind)
+		require.False(t, verdict.Matched, kind)
+	}
+}
+
+func TestFilterEventMessageDropsMalformedMessages(t *testing.T) {
 	policy := defaultPolicy(t)
 	tests := []struct {
-		name  string
-		frame string
+		name    string
+		message string
 	}{
 		{"empty", ``},
 		{"whitespace", ` `},
@@ -174,35 +195,35 @@ func TestFilterEventFrameDropsMalformedFrames(t *testing.T) {
 		{"invalid utf-8 in the payload", "{\"name\":\"plugin/state_change\",\"data\":\"\xff\"}"},
 		{"invalid utf-8 in the name", "{\"name\":\"plugin/\xffstate\"}"},
 		{"byte order mark", "\xef\xbb\xbf{\"name\":\"plugin/state_change\"}"},
-		{"binary frame", "\x00\x01\x02"},
+		{"binary content in a text message", "\x00\x01\x02"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			verdict := policy.FilterEventFrame([]byte(tt.frame))
+			verdict := filterText(policy, []byte(tt.message))
 			require.False(t, verdict.Forward)
-			require.Equal(t, EventInvalidFrame, verdict.Reason)
+			require.Equal(t, EventInvalidMessage, verdict.Reason)
 			require.Empty(t, verdict.Name)
 			require.False(t, verdict.Matched)
 		})
 	}
 
-	t.Run("an oversized frame is dropped unread", func(t *testing.T) {
-		frame := append([]byte(`{"name":"plugin/state_change","data":"`), make([]byte, MaxEventFrameBytes)...)
-		verdict := policy.FilterEventFrame(frame)
+	t.Run("an oversized message is dropped unread", func(t *testing.T) {
+		message := append([]byte(`{"name":"plugin/state_change","data":"`), make([]byte, MaxEventMessageBytes)...)
+		verdict := filterText(policy, message)
 		require.False(t, verdict.Forward)
-		require.Equal(t, EventFrameTooLarge, verdict.Reason)
+		require.Equal(t, EventMessageTooLarge, verdict.Reason)
 	})
 }
 
 // The filter classifies by the top-level name only; payload content, however
 // adversarial, neither unlocks nor blocks an event.
-func TestFilterEventFrameClassifiesOnTheEnvelopeName(t *testing.T) {
+func TestFilterEventMessageClassifiesOnTheEnvelopeName(t *testing.T) {
 	policy := defaultPolicy(t)
-	blocked := policy.FilterEventFrame([]byte(`{"name":"mcp/status","data":{"name":"plugin/state_change"}}`))
+	blocked := filterText(policy, []byte(`{"name":"mcp/status","data":{"name":"plugin/state_change"}}`))
 	require.False(t, blocked.Forward)
 	require.Equal(t, "mcp/status", blocked.Name)
 
-	allowed := policy.FilterEventFrame([]byte(`{"name":"plugin/state_change","data":{"name":"mcp/status","name":"x"}}`))
+	allowed := filterText(policy, []byte(`{"name":"plugin/state_change","data":{"name":"mcp/status","name":"x"}}`))
 	require.True(t, allowed.Forward)
 	require.Equal(t, "plugin/state_change", allowed.Name)
 }
@@ -243,11 +264,11 @@ func TestDecidedEventDropsStayDropped(t *testing.T) {
 	}
 }
 
-// FuzzFilterEventFrame states the property behind the filter: whenever a frame
-// is forwarded, the name the filter classified is the name Go's decoder and an
-// exact-key reader such as a browser's JSON.parse both see, and it is an
-// allowed name.
-func FuzzFilterEventFrame(f *testing.F) {
+// FuzzFilterEventMessage states the property behind the filter: whenever a
+// message is forwarded it is text, and the name the filter classified is the
+// name Go's decoder and an exact-key reader such as a browser's JSON.parse both
+// see, and it is an allowed name.
+func FuzzFilterEventMessage(f *testing.F) {
 	policy := defaultPolicy(f)
 	for _, seed := range []string{
 		`{"name":"plugin/state_change","data":null}`,
@@ -262,19 +283,25 @@ func FuzzFilterEventFrame(f *testing.F) {
 		`{}`,
 		`[]`,
 	} {
-		f.Add([]byte(seed))
+		f.Add([]byte(seed), true)
+		f.Add([]byte(seed), false)
 	}
-	f.Fuzz(func(t *testing.T, frame []byte) {
-		verdict := policy.FilterEventFrame(frame)
+	f.Fuzz(func(t *testing.T, payload []byte, text bool) {
+		kind := MessageBinary
+		if text {
+			kind = MessageText
+		}
+		verdict := policy.FilterEventMessage(kind, payload)
 		if !verdict.Forward {
 			return
 		}
+		require.True(t, text, "a binary message was forwarded")
 		var decoded struct {
 			Name string `json:"name"`
 		}
-		require.NoError(t, json.Unmarshal(frame, &decoded))
+		require.NoError(t, json.Unmarshal(payload, &decoded))
 		var exact map[string]json.RawMessage
-		require.NoError(t, json.Unmarshal(frame, &exact))
+		require.NoError(t, json.Unmarshal(payload, &exact))
 		var exactName string
 		require.NoError(t, json.Unmarshal(exact["name"], &exactName))
 		require.Equal(t, verdict.Name, decoded.Name)

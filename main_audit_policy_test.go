@@ -184,14 +184,20 @@ func callBody(selector string) string {
 	return `{"object":0,"method":0,"args":{"call-id":"c1",` + selector + `,"args":[]}}`
 }
 
+const (
+	auditClientID     = "audit-test-client"
+	auditCallIDPrefix = "audit1/"
+)
+
 func runtimeRequest(body string) auditgate.RuntimeRequest {
 	return auditgate.RuntimeRequest{
 		Method:       "POST",
 		Path:         "/wails/runtime",
 		RawQuery:     "",
-		Header:       map[string][]string{"Content-Type": {"application/json"}},
+		Header:       map[string][]string{"Content-Type": {"application/json"}, "X-Wails-Client-Id": {auditClientID}},
 		Body:         []byte(body),
-		CallIDPrefix: "",
+		ClientID:     auditClientID,
+		CallIDPrefix: auditCallIDPrefix,
 	}
 }
 
@@ -333,7 +339,7 @@ func TestEventFilterReadsWailsFrames(t *testing.T) {
 		}, true},
 		{"log lines", &application.CustomEvent{Name: "core/logs/lines/s1", Data: "line one\nline two"}, true},
 		{"plugin process log", &application.CustomEvent{Name: "plugin/process/log", Data: map[string]any{"line": "x"}}, true},
-		{"host log tail", &application.CustomEvent{Name: "internal/log/update:host", Data: "line"}, true},
+		{"ui log tail", &application.CustomEvent{Name: "internal/log/update:ui", Data: "line"}, true},
 		{"dropped terminal output", &application.CustomEvent{Name: "core/exec/stream/stdout/s1", Data: "bytes"}, false},
 		{"dropped mcp event", &application.CustomEvent{
 			Name: "mcp/confirmation/resolved", Data: map[string]any{"id": "x"},
@@ -344,7 +350,7 @@ func TestEventFilterReadsWailsFrames(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			frame := tt.event.ToJSON()
 			require.NotEmpty(t, frame)
-			verdict := policy.FilterEventFrame([]byte(frame))
+			verdict := policy.FilterEventMessage(auditgate.MessageText, []byte(frame))
 			require.Equal(t, tt.forward, verdict.Forward, frame)
 			require.Equal(t, tt.event.Name, verdict.Name, frame)
 		})
@@ -352,8 +358,8 @@ func TestEventFilterReadsWailsFrames(t *testing.T) {
 }
 
 // The user chose to let the remote audit browser read logs, knowing they can
-// hold secrets. This pins that decision so changing it is deliberate: host
-// and plugin process logs, log viewer sessions and dev server logs, with
+// hold secrets. This pins that decision so changing it is deliberate: the UI
+// log, plugin process logs, log viewer sessions and dev server logs, with
 // their event streams, are all allowed.
 func TestLogViewerAccessIsAllowedByDecision(t *testing.T) {
 	policy := auditPolicy(t)
@@ -383,7 +389,7 @@ func TestLogViewerAccessIsAllowedByDecision(t *testing.T) {
 		verdict := policy.EvaluateRuntime(runtimeRequest(callBody(`"methodName":` + strconv.Quote(fqn))))
 		require.True(t, verdict.Allowed, "%s: %s", fqn, verdict.Reason)
 	}
-	events := []string{"plugin/process/log", "internal/log/update:host", "core/logs/lines/s1", "plugin/devserver/log"}
+	events := []string{"plugin/process/log", "internal/log/update:ui", "core/logs/lines/s1", "plugin/devserver/log"}
 	for _, name := range events {
 		decision, _, matched := policy.ClassifyEvent(name)
 		require.Equal(t, auditgate.Allow, decision, name)

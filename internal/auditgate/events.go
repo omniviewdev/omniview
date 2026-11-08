@@ -10,15 +10,31 @@ import (
 )
 
 const (
-	// MaxEventFrameBytes bounds one /wails/events frame the filter inspects.
-	// Backend events can carry whole resource lists, so the bound is generous;
-	// a larger frame is dropped, never forwarded.
-	MaxEventFrameBytes = 32 << 20
+	// MaxEventMessageBytes bounds one /wails/events message the filter
+	// inspects. Backend events can carry whole resource lists, so the bound
+	// is generous; a larger message is dropped, never forwarded. A gateway
+	// must also give its WebSocket connections a read limit of at least this
+	// size (for coder/websocket: Conn.SetReadLimit), because the library
+	// default is far smaller and closes the connection on a larger message.
+	MaxEventMessageBytes = 32 << 20
 
 	maxEventNameBytes = 512
-	// eventFrameKeys is the number of fields of a Wails custom event: name,
+	// eventMessageKeys is the number of fields of a Wails custom event: name,
 	// data and sender.
-	eventFrameKeys = 3
+	eventMessageKeys = 3
+)
+
+// MessageKind is the WebSocket message type of a message handed to
+// FilterEventMessage. It mirrors the text and binary types of the WebSocket
+// protocol without importing a WebSocket library.
+type MessageKind int
+
+// The WebSocket message types.
+const (
+	// MessageText is a text message. Wails sends every event as one.
+	MessageText MessageKind = iota + 1
+	// MessageBinary is a binary message. The host never sends one.
+	MessageBinary
 )
 
 // EventReason explains an event filter outcome. Values are stable machine
@@ -27,23 +43,24 @@ type EventReason string
 
 // Event filter outcomes.
 const (
-	EventAllowed       EventReason = "allowed"
-	EventDeniedByRule  EventReason = "denied_by_rule"
-	EventNotAllowed    EventReason = "not_allowed"
-	EventInvalidFrame  EventReason = "invalid_frame"
-	EventFrameTooLarge EventReason = "frame_too_large"
+	EventAllowed         EventReason = "allowed"
+	EventDeniedByRule    EventReason = "denied_by_rule"
+	EventNotAllowed      EventReason = "not_allowed"
+	EventInvalidMessage  EventReason = "invalid_message"
+	EventMessageTooLarge EventReason = "message_too_large"
+	EventNotText         EventReason = "not_text"
 )
 
-// EventVerdict is the outcome of filtering one backend event frame.
+// EventVerdict is the outcome of filtering one backend event message.
 type EventVerdict struct {
-	// Forward is true only when the frame may be sent to the remote client.
+	// Forward is true only when the message may be sent to the remote client.
 	Forward bool
 	Reason  EventReason
-	// Name is the event name when the frame parsed, otherwise empty.
+	// Name is the event name when the message parsed, otherwise empty.
 	Name string
 	// Rule is the table rule that decided the outcome. It is meaningful only
-	// when Matched is true; an invalid frame or an unlisted name (the default
-	// drop) has no deciding rule.
+	// when Matched is true; an invalid message or an unlisted name (the
+	// default drop) has no deciding rule.
 	Rule    EventRule
 	Matched bool
 }
@@ -77,24 +94,30 @@ func (p *Policy) ClassifyEvent(name string) (Decision, EventRule, bool) {
 	return Deny, none, false
 }
 
-// FilterEventFrame decides whether one server-to-client frame of the Wails
-// event socket may be forwarded. The frame is the JSON text of a Wails custom
-// event, {"name":...,"data":...,"sender":...}. Anything that is not exactly
-// that shape is dropped, and a frame is forwarded unchanged only when its
-// name is allowed. The filter never closes the socket: dropping is the only
-// negative outcome.
+// FilterEventMessage decides whether one message the host sent on the Wails
+// event socket may be forwarded to the remote client. The payload must be a
+// complete message: WebSocket libraries return whole messages, reassembled
+// from however many frames the peer used, so the filter never sees a partial
+// one. Only a text message holding the JSON of a Wails custom event,
+// {"name":...,"data":...,"sender":...}, can pass. A binary message, an unknown
+// kind, or text that is anything else is dropped, and a message is forwarded
+// unchanged only when its name is allowed. The filter never closes the
+// socket: dropping is the only negative outcome.
 //
 // Only the envelope is interpreted; the data payload is validated as JSON and
-// skipped. Event frames flow from the trusted host to the client, so unlike
+// skipped. Event messages flow from the trusted host to the client, so unlike
 // request bodies they need no canonical re-serialization.
-func (p *Policy) FilterEventFrame(frame []byte) EventVerdict {
+func (p *Policy) FilterEventMessage(kind MessageKind, payload []byte) EventVerdict {
 	var none EventRule
-	if len(frame) > MaxEventFrameBytes {
-		return EventVerdict{Forward: false, Reason: EventFrameTooLarge, Name: "", Rule: none, Matched: false}
+	if kind != MessageText {
+		return EventVerdict{Forward: false, Reason: EventNotText, Name: "", Rule: none, Matched: false}
 	}
-	name, err := parseEventFrame(frame)
+	if len(payload) > MaxEventMessageBytes {
+		return EventVerdict{Forward: false, Reason: EventMessageTooLarge, Name: "", Rule: none, Matched: false}
+	}
+	name, err := parseEventMessage(payload)
 	if err != nil {
-		return EventVerdict{Forward: false, Reason: EventInvalidFrame, Name: "", Rule: none, Matched: false}
+		return EventVerdict{Forward: false, Reason: EventInvalidMessage, Name: "", Rule: none, Matched: false}
 	}
 	decision, rule, matched := p.ClassifyEvent(name)
 	switch {
@@ -107,34 +130,34 @@ func (p *Policy) FilterEventFrame(frame []byte) EventVerdict {
 	}
 }
 
-var errEventFrame = errors.New("invalid event frame")
+var errEventMessage = errors.New("invalid event message")
 
-// parseEventFrame validates the frame envelope and returns the event name.
-func parseEventFrame(frame []byte) (string, error) {
-	if len(frame) == 0 || !utf8.Valid(frame) {
-		return "", errEventFrame
+// parseEventMessage validates the event envelope and returns the event name.
+func parseEventMessage(payload []byte) (string, error) {
+	if len(payload) == 0 || !utf8.Valid(payload) {
+		return "", errEventMessage
 	}
-	dec := json.NewDecoder(bytes.NewReader(frame))
+	dec := json.NewDecoder(bytes.NewReader(payload))
 	if token, err := dec.Token(); err != nil || token != json.Delim('{') {
-		return "", errEventFrame
+		return "", errEventMessage
 	}
 	fields, err := readEventFields(dec)
 	if err != nil {
 		return "", err
 	}
 	if token, tokenErr := dec.Token(); tokenErr != nil || token != json.Delim('}') {
-		return "", errEventFrame
+		return "", errEventMessage
 	}
 	if _, tokenErr := dec.Token(); !errors.Is(tokenErr, io.EOF) {
-		return "", errEventFrame
+		return "", errEventMessage
 	}
 	name, ok := stringValue(fields["name"])
 	if !ok || !validWireEventName(name) {
-		return "", errEventFrame
+		return "", errEventMessage
 	}
 	if sender, present := fields["sender"]; present {
 		if _, isString := stringValue(sender); !isString {
-			return "", errEventFrame
+			return "", errEventMessage
 		}
 	}
 	return name, nil
@@ -143,27 +166,27 @@ func parseEventFrame(frame []byte) (string, error) {
 // readEventFields reads the members of the event object, rejecting unknown
 // and repeated keys. Values are validated as JSON but otherwise skipped.
 func readEventFields(dec *json.Decoder) (map[string]json.RawMessage, error) {
-	fields := make(map[string]json.RawMessage, eventFrameKeys)
+	fields := make(map[string]json.RawMessage, eventMessageKeys)
 	for dec.More() {
 		token, err := dec.Token()
 		if err != nil {
-			return nil, errEventFrame
+			return nil, errEventMessage
 		}
 		key, isString := token.(string)
 		if !isString {
-			return nil, errEventFrame
+			return nil, errEventMessage
 		}
 		switch key {
 		case "name", "data", "sender":
 		default:
-			return nil, errEventFrame
+			return nil, errEventMessage
 		}
 		if _, dup := fields[key]; dup {
-			return nil, errEventFrame
+			return nil, errEventMessage
 		}
 		var raw json.RawMessage
 		if err = dec.Decode(&raw); err != nil {
-			return nil, errEventFrame
+			return nil, errEventMessage
 		}
 		fields[key] = raw
 	}

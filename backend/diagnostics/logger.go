@@ -2,8 +2,11 @@ package diagnostics
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -26,6 +29,9 @@ const (
 	logMaxBackups  = 30
 	logMaxAgeDays  = 90
 	zapFieldsPerKV = 2
+
+	// maxReadLogBytes caps the bytes ReadLog returns (from the end of the file).
+	maxReadLogBytes = 8 << 20
 )
 
 type BackendLogger struct {
@@ -192,12 +198,42 @@ func (b *BackendLogger) ListLogFiles(_ context.Context) ([]string, error) {
 	return out, nil
 }
 
+// ReadLog returns the contents of `<name>.log`. Files larger than maxReadLogBytes
+// are truncated: only the last bytes are returned, starting at a line boundary.
 func (b *BackendLogger) ReadLog(_ context.Context, name string) (string, error) {
-	data, err := os.ReadFile(filepath.Join(b.logDir, name+".log"))
+	f, err := os.Open(filepath.Join(b.logDir, name+".log"))
 	if err != nil {
 		return "", err
 	}
-	return string(data), nil
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return "", err
+	}
+	size := info.Size()
+	if size <= maxReadLogBytes {
+		data, readErr := io.ReadAll(f)
+		if readErr != nil {
+			return "", readErr
+		}
+		return string(data), nil
+	}
+
+	// Read one byte before the window so we can tell whether the window starts on a line boundary.
+	buf := make([]byte, maxReadLogBytes+1)
+	n, err := f.ReadAt(buf, size-maxReadLogBytes-1)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", err
+	}
+	buf = buf[:n]
+	if buf[0] == '\n' {
+		return string(buf[1:]), nil
+	}
+	if i := bytes.IndexByte(buf, '\n'); i >= 0 {
+		return string(buf[i+1:]), nil
+	}
+	return "", nil
 }
 
 func (b *BackendLogger) SearchLog(_ context.Context, name, pattern string) ([]string, error) {

@@ -27,10 +27,11 @@ func (s *ServiceWrapper) metricSession(ctx context.Context) (context.Context, *m
 	}
 	s.sessionsMu.Lock()
 	defer s.sessionsMu.Unlock()
+	key := invocation.IdentityOf(window)
 	if s.sessions == nil {
-		s.sessions = map[uint]*metricFrontendSession{}
+		s.sessions = map[invocation.WindowIdentity]*metricFrontendSession{}
 	}
-	session := s.sessions[window.ID()]
+	session := s.sessions[key]
 	if session == nil {
 		if len(s.sessions) >= 64 {
 			return ctx, nil, finiteError("RESOURCE_LIMIT", "Metric frontend session limit exceeded.")
@@ -42,13 +43,13 @@ func (s *ServiceWrapper) metricSession(ctx context.Context) (context.Context, *m
 		lifeBase := context.WithValue(context.Background(), application.WindowKey, window)
 		life, cancel := context.WithCancel(scope.Context(lifeBase))
 		session = &metricFrontendSession{scope: scope, ctx: life, cancel: cancel, window: window}
-		s.sessions[window.ID()] = session
+		s.sessions[key] = session
 		window.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
 			cancel()
 			s.Ctrl.RetireMetricsSession(life)
 			s.sessionsMu.Lock()
-			if s.sessions[window.ID()] == session {
-				delete(s.sessions, window.ID())
+			if s.sessions[key] == session {
+				delete(s.sessions, key)
 			}
 			s.sessionsMu.Unlock()
 		})

@@ -20,6 +20,10 @@ const (
 	fqnDeniedTerminal = pluginPkg + "/exec.ServiceWrapper.CreateTerminal"
 
 	noArgs = `"args":[]`
+
+	// The session every test request belongs to unless it says otherwise.
+	testClientID = "test-client_1"
+	testPrefix   = "s1/"
 )
 
 func defaultPolicy(t testing.TB) *Policy {
@@ -29,17 +33,20 @@ func defaultPolicy(t testing.TB) *Policy {
 	return policy
 }
 
-// post builds a well-formed runtime request around body.
+// post builds a well-formed runtime request around body for the session
+// (testClientID, testPrefix).
 func post(body string) RuntimeRequest {
 	header := http.Header{}
 	header.Set("Content-Type", "application/json")
+	header.Set("X-Wails-Client-Id", testClientID)
 	return RuntimeRequest{
 		Method:       http.MethodPost,
 		Path:         "/wails/runtime",
 		RawQuery:     "",
 		Header:       header,
 		Body:         []byte(body),
-		CallIDPrefix: "",
+		ClientID:     testClientID,
+		CallIDPrefix: testPrefix,
 	}
 }
 
@@ -60,9 +67,17 @@ func callByName(fqn, args string) string {
 	return callWith(byName(fqn), `"args":`+args)
 }
 
-// canonicalCall is the body the evaluator must forward for a call of fqn.
+// canonicalCall is the body the evaluator must forward for a call of fqn made
+// with call-id "c1" by the test session.
 func canonicalCall(fqn, args string) string {
-	return `{"object":0,"method":0,"args":{"call-id":"c1","methodName":` + strconv.Quote(fqn) + `,"args":` + args + `}}`
+	return `{"object":0,"method":0,"args":{"call-id":"` + testPrefix + `c1","methodName":` +
+		strconv.Quote(fqn) + `,"args":` + args + `}}`
+}
+
+// unprefix turns a forwarded body back into the body the client would have
+// sent, by removing the session prefix from its call-id.
+func unprefix(forward []byte) []byte {
+	return bytes.Replace(forward, []byte(`"call-id":"`+testPrefix), []byte(`"call-id":"`), 1)
 }
 
 func TestEvaluateRuntimeAllowsAndCanonicalizesBoundCalls(t *testing.T) {
@@ -95,17 +110,31 @@ func TestEvaluateRuntimeAllowsAndCanonicalizesBoundCalls(t *testing.T) {
 
 	t.Run("a call-id prefix covers calls and cancellations", func(t *testing.T) {
 		request := post(callByName(fqnAllowedLogs, "[]"))
-		request.CallIDPrefix = "s1/"
+		request.CallIDPrefix = "sess2:"
 		verdict := policy.EvaluateRuntime(request)
 		require.True(t, verdict.Allowed, verdict.Reason)
-		require.Contains(t, string(verdict.Forward), `"call-id":"s1/c1"`)
+		require.Contains(t, string(verdict.Forward), `"call-id":"sess2:c1"`)
 
 		cancel := post(`{"object":10,"method":0,"args":{"call-id":"c1"}}`)
-		cancel.CallIDPrefix = "s1/"
+		cancel.CallIDPrefix = "sess2:"
 		verdict = policy.EvaluateRuntime(cancel)
 		require.True(t, verdict.Allowed, verdict.Reason)
-		want := `{"object":10,"method":0,"args":{"call-id":"s1/c1"}}`
+		want := `{"object":10,"method":0,"args":{"call-id":"sess2:c1"}}`
 		require.Equal(t, want, string(verdict.Forward))
+	})
+
+	t.Run("prefixes of different sessions never produce the same call-id", func(t *testing.T) {
+		forwarded := func(prefix, callID string) string {
+			request := post(`{"object":10,"method":0,"args":{"call-id":"` + callID + `"}}`)
+			request.CallIDPrefix = prefix
+			verdict := policy.EvaluateRuntime(request)
+			require.True(t, verdict.Allowed, verdict.Reason)
+			return string(verdict.Forward)
+		}
+		// Without a terminator, "s1"+"2x" and "s12"+"x" would both be "s12x".
+		require.NotEqual(t, forwarded("s1/", "2x"), forwarded("s12/", "x"))
+		require.NotEqual(t, forwarded("s1:", "2x"), forwarded("s12:", "x"))
+		require.NotEqual(t, forwarded("s1.", "2x"), forwarded("s12.", "x"))
 	})
 
 	t.Run("argument payloads pass through compacted but otherwise untouched", func(t *testing.T) {
@@ -124,6 +153,20 @@ func TestEvaluateRuntimeAllowsAndCanonicalizesBoundCalls(t *testing.T) {
 		require.True(t, policy.EvaluateRuntime(post(body)).Allowed)
 		require.Equal(t, ReasonBodyTooLarge, policy.EvaluateRuntime(post(body+" ")).Reason)
 	})
+}
+
+func TestValidCallIDPrefix(t *testing.T) {
+	valid := []string{"s1/", "s1:", "s1.", "a-b_C9/", "A/", strings.Repeat("a", maxCallIDPrefixBytes-1) + "/"}
+	for _, prefix := range valid {
+		require.True(t, ValidCallIDPrefix(prefix), prefix)
+	}
+	invalid := []string{
+		"", "/", ":", "s1", "s12", "s1-", "s1_", "s1//", "s1/x", "s 1/", "s1/ ", "s1\\", `s1"`, "s1#", "s1|",
+		"\u00e9/", "s1/\n", "/s1/", strings.Repeat("a", maxCallIDPrefixBytes) + "/",
+	}
+	for _, prefix := range invalid {
+		require.False(t, ValidCallIDPrefix(prefix), prefix)
+	}
 }
 
 func TestEvaluateRuntimeRuntimeObjectCalls(t *testing.T) {
@@ -145,7 +188,8 @@ func TestEvaluateRuntimeRuntimeObjectCalls(t *testing.T) {
 		{"system dark mode", `{"object":8,"method":0}`, ReasonAllowed, "System.IsDarkMode", ""},
 		{"system environment", `{"object":8,"method":1}`, ReasonAllowed, "System.Environment", ""},
 		{"system capabilities", `{"object":8,"method":2}`, ReasonAllowed, "System.Capabilities", ""},
-		{"cancel call", `{"object":10,"method":0,"args":{"call-id":"abc_1-Z"}}`, ReasonAllowed, "CancelCall.Cancel", ""},
+		{"cancel call", `{"object":10,"method":0,"args":{"call-id":"abc_1-Z"}}`, ReasonAllowed,
+			"CancelCall.Cancel", `{"object":10,"method":0,"args":{"call-id":"s1/abc_1-Z"}}`},
 
 		{"allowed read with arguments", `{"object":6,"method":18,"args":{"x":1}}`, ReasonArgsForbidden, "Window.Name", ""},
 		{"application quit", `{"object":2,"method":2}`, ReasonRuntimeDenied, "Application.Quit", ""},
@@ -175,6 +219,8 @@ func TestEvaluateRuntimeRuntimeObjectCalls(t *testing.T) {
 		{"cancel with a non-string id", `{"object":10,"method":0,"args":{"call-id":7}}`,
 			ReasonCallID, "CancelCall.Cancel", ""},
 		{"cancel with a hostile id", `{"object":10,"method":0,"args":{"call-id":"a b"}}`,
+			ReasonCallID, "CancelCall.Cancel", ""},
+		{"cancel with an id that carries a prefix terminator", `{"object":10,"method":0,"args":{"call-id":"s2/c1"}}`,
 			ReasonCallID, "CancelCall.Cancel", ""},
 	}
 	for _, tt := range tests {
@@ -260,8 +306,8 @@ func TestEvaluateRuntimeMethodSelection(t *testing.T) {
 		{"null argument array", callWith(byID(allowedID), `"args":null`), ReasonCallArgs, fqnAllowed},
 		{"object argument array", callWith(byID(allowedID), `"args":{}`), ReasonCallArgs, fqnAllowed},
 		{"unknown call option", callWith(byID(allowedID), noArgs, `"timeout":5`), ReasonUnknownKey, ""},
-		{"call options with a non-canonical key", callWith(`"MethodID":`+strconv.FormatUint(uint64(allowedID), 10), noArgs),
-			ReasonUnknownKey, ""},
+		{"call options with a non-canonical key",
+			callWith(`"MethodID":`+strconv.FormatUint(uint64(allowedID), 10), noArgs), ReasonUnknownKey, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -295,6 +341,9 @@ func TestEvaluateRuntimeCallEnvelope(t *testing.T) {
 		{"empty call id", withCallID(`""`), ReasonCallID},
 		{"overlong call id", withCallID(strconv.Quote(strings.Repeat("a", maxCallIDBytes+1))), ReasonCallID},
 		{"call id with a slash", withCallID(`"a/b"`), ReasonCallID},
+		{"call id that looks prefixed", withCallID(`"s2/c1"`), ReasonCallID},
+		{"call id with a colon", withCallID(`"s2:c1"`), ReasonCallID},
+		{"call id with a dot", withCallID(`"s2.c1"`), ReasonCallID},
 		{"call id with unicode", withCallID(`"\u00e9"`), ReasonCallID},
 		{"unknown envelope key", `{"object":0,"method":0,"extra":1,"args":{"call-id":"c1",` + idMember + `,` + noArgs + `}}`,
 			ReasonUnknownKey},
@@ -423,10 +472,29 @@ func addHeader(key, value string) requestChange {
 	return func(r *RuntimeRequest) { r.Header.Add(key, value) }
 }
 
+func delHeader(key string) requestChange {
+	return func(r *RuntimeRequest) { r.Header.Del(key) }
+}
+
 // rawHeader stores a header under key exactly as given, bypassing the
 // canonicalization of http.Header.Set.
 func rawHeader(key, value string) requestChange {
 	return func(r *RuntimeRequest) { r.Header[key] = []string{value} }
+}
+
+func withSession(clientID, prefix string) requestChange {
+	return func(r *RuntimeRequest) {
+		r.ClientID = clientID
+		r.CallIDPrefix = prefix
+	}
+}
+
+func all(changes ...requestChange) requestChange {
+	return func(r *RuntimeRequest) {
+		for _, change := range changes {
+			change(r)
+		}
+	}
 }
 
 func TestEvaluateRuntimeRequestFraming(t *testing.T) {
@@ -446,14 +514,9 @@ func TestEvaluateRuntimeRequestFraming(t *testing.T) {
 
 		// The Wails protocol falls back to the query string when the body is
 		// empty; the gateway must make that form unreachable.
-		{"empty body with the call in the query string", func(r *RuntimeRequest) {
-			withBody("")(r)
-			withQuery(callInQuery)(r)
-		}, ReasonQuery},
-		{"empty body with application quit in the query string", func(r *RuntimeRequest) {
-			withBody("")(r)
-			withQuery("object=2&method=2")(r)
-		}, ReasonQuery},
+		{"empty body with the call in the query string", all(withBody(""), withQuery(callInQuery)), ReasonQuery},
+		{"empty body with application quit in the query string",
+			all(withBody(""), withQuery("object=2&method=2")), ReasonQuery},
 		{"valid body with a query string", withQuery("object=2&method=2"), ReasonQuery},
 		{"valid body with a bare query", withQuery("x"), ReasonQuery},
 		{"empty body", withBody(""), ReasonEmptyBody},
@@ -469,7 +532,18 @@ func TestEvaluateRuntimeRequestFraming(t *testing.T) {
 		{"chunk header with an upper-case key", rawHeader("X-WAILS-CHUNK-ID", "abc"), ReasonChunked},
 		{"unknown future chunk header", setHeader("X-Wails-Chunk-Token", "t"), ReasonChunked},
 
-		{"missing content type", func(r *RuntimeRequest) { r.Header.Del("Content-Type") }, ReasonContentType},
+		// Window headers choose the window Wails runs the call as; only the
+		// gateway-assigned client ID may influence that.
+		{"window id header", setHeader("X-Wails-Window-Id", "1"), ReasonWindowHeader},
+		{"window name header", setHeader("X-Wails-Window-Name", "main"), ReasonWindowHeader},
+		{"window header with a non-canonical key", rawHeader("x-wails-window-name", "main"), ReasonWindowHeader},
+		{"window header with an upper-case key", rawHeader("X-WAILS-WINDOW-NAME", "main"), ReasonWindowHeader},
+		{"window header with an empty value", setHeader("X-Wails-Window-Name", ""), ReasonWindowHeader},
+		{"unknown future window header", setHeader("X-Wails-Window-Target", "t"), ReasonWindowHeader},
+		{"chunk header is reported before a window header",
+			all(setHeader("X-Wails-Window-Name", "main"), setHeader("X-Wails-Chunk-Id", "a")), ReasonChunked},
+
+		{"missing content type", delHeader("Content-Type"), ReasonContentType},
 		{"text content type", setHeader("Content-Type", "text/plain"), ReasonContentType},
 		{"form content type", setHeader("Content-Type", "application/x-www-form-urlencoded"), ReasonContentType},
 		{"json lookalike", setHeader("Content-Type", "application/jsonp"), ReasonContentType},
@@ -478,14 +552,27 @@ func TestEvaluateRuntimeRequestFraming(t *testing.T) {
 		{"two content types", addHeader("Content-Type", "application/json"), ReasonContentType},
 		{"malformed content type", setHeader("Content-Type", "application/json; =x"), ReasonContentType},
 
+		// The client ID is the session's mapping key to its upstream events
+		// socket: absent, different or repeated values are all denied.
+		{"missing client id", delHeader("X-Wails-Client-Id"), ReasonClientID},
+		{"empty client id", setHeader("X-Wails-Client-Id", ""), ReasonClientID},
+		{"client id of another session", setHeader("X-Wails-Client-Id", "someone-else"), ReasonClientID},
+		{"client id in other case", setHeader("X-Wails-Client-Id", strings.ToUpper(testClientID)), ReasonClientID},
+		{"client id with a trailing space", setHeader("X-Wails-Client-Id", testClientID+" "), ReasonClientID},
 		{"overlong client id", setHeader("X-Wails-Client-Id", strings.Repeat("a", maxClientIDBytes+1)), ReasonClientID},
-		{"client id with a space", setHeader("X-Wails-Client-Id", "a b"), ReasonClientID},
 		{"client id with a slash", setHeader("X-Wails-Client-Id", "a/b"), ReasonClientID},
 		{"client id with unicode", setHeader("X-Wails-Client-Id", "caf\u00e9"), ReasonClientID},
-		{"two client ids", func(r *RuntimeRequest) {
-			addHeader("X-Wails-Client-Id", "a")(r)
-			addHeader("X-Wails-Client-Id", "b")(r)
-		}, ReasonClientID},
+		{"the session's client id twice", addHeader("X-Wails-Client-Id", testClientID), ReasonClientID},
+		{"two client ids", addHeader("X-Wails-Client-Id", "someone-else"), ReasonClientID},
+		{"client id under two keys", rawHeader("x-wails-client-id", testClientID), ReasonClientID},
+
+		// A session the gateway configured badly fails closed.
+		{"session without a client id", withSession("", testPrefix), ReasonClientID},
+		{"session with an invalid client id", all(withSession("a b", testPrefix), setHeader("X-Wails-Client-Id", "a b")),
+			ReasonClientID},
+		{"session without a call-id prefix", withSession(testClientID, ""), ReasonCallIDPrefix},
+		{"session with an unterminated call-id prefix", withSession(testClientID, "s1"), ReasonCallIDPrefix},
+		{"session with a call-id prefix that is only a terminator", withSession(testClientID, "/"), ReasonCallIDPrefix},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -504,26 +591,28 @@ func TestEvaluateRuntimeRequestFraming(t *testing.T) {
 		require.Equal(t, ReasonContentType, policy.EvaluateRuntime(request).Reason)
 	})
 
-	t.Run("accepted content types and client id", func(t *testing.T) {
+	t.Run("accepted content types", func(t *testing.T) {
 		for _, contentType := range []string{
 			"application/json", "application/json; charset=utf-8", "Application/JSON;Charset=UTF-8",
 		} {
 			request := post(good)
 			request.Header.Set("Content-Type", contentType)
-			request.Header.Set("X-Wails-Client-Id", "kV9_-aZ0")
-			verdict := policy.EvaluateRuntime(request)
-			require.True(t, verdict.Allowed, contentType)
-			require.Equal(t, "kV9_-aZ0", verdict.ClientID)
+			require.True(t, policy.EvaluateRuntime(request).Allowed, contentType)
 		}
 	})
 
-	t.Run("window selection headers are not part of the verdict", func(t *testing.T) {
+	t.Run("header names are matched without regard to case", func(t *testing.T) {
 		request := post(good)
-		request.Header.Set("X-Wails-Window-Id", "1")
-		request.Header.Set("X-Wails-Window-Name", "main")
-		verdict := policy.EvaluateRuntime(request)
-		require.True(t, verdict.Allowed)
-		require.Empty(t, verdict.ClientID)
+		request.Header = http.Header{"content-type": {"application/json"}, "x-wails-client-id": {testClientID}}
+		require.True(t, policy.EvaluateRuntime(request).Allowed)
+	})
+
+	t.Run("unrelated headers are ignored", func(t *testing.T) {
+		request := post(good)
+		request.Header.Set("Authorization", "Basic x")
+		request.Header.Set("Cookie", "a=b")
+		request.Header.Set("X-Forwarded-For", "10.0.0.1")
+		require.True(t, policy.EvaluateRuntime(request).Allowed)
 	})
 }
 
@@ -578,7 +667,10 @@ func TestClassifyPath(t *testing.T) {
 	require.Equal(t, PathRuntime, ClassifyPath("/wails/runtime"))
 	require.Equal(t, PathEvents, ClassifyPath("/wails/events"))
 	require.Equal(t, PathStream, ClassifyPath("/wails/stream/ws"))
-	others := []string{"/", "/wails/events/", "/wails/Events", "/_/plugins/x/assets/a.js", "/wails/runtime.js"}
+	others := []string{
+		"/", "/wails/events/", "/wails/Events", "/_/plugins/x/assets/a.js", "/wails/runtime.js",
+		"/wails/transport.js", "/wails/custom.js", "/health",
+	}
 	for _, path := range others {
 		require.Equal(t, PathOther, ClassifyPath(path), path)
 	}
@@ -630,6 +722,12 @@ func TestVerdictsNeverEchoRequestText(t *testing.T) {
 		require.False(t, verdict.Allowed)
 		require.NotContains(t, fmt.Sprintf("%+v", verdict), marker, body)
 	}
+
+	request := post(callByID(fqnAllowed, "[]"))
+	request.Header.Set("X-Wails-Window-Name", marker)
+	verdict := policy.EvaluateRuntime(request)
+	require.False(t, verdict.Allowed)
+	require.NotContains(t, fmt.Sprintf("%+v", verdict), marker)
 }
 
 // wailsCall is what Wails would run for a body.
@@ -677,7 +775,8 @@ func wailsView(policy *Policy, body []byte) (wailsCall, bool) {
 // body the evaluator allows, the method Wails would run from the original
 // bytes, the method it would run from the forwarded bytes, and the method the
 // evaluator authorized are one and the same allow row, and the forwarded body
-// is a fixed point of the evaluator.
+// is canonical: sent again by a client (without the session prefix) it comes
+// out unchanged.
 func FuzzEvaluateRuntime(f *testing.F) {
 	policy := defaultPolicy(f)
 	id := MethodID(fqnAllowed)
@@ -716,7 +815,7 @@ func FuzzEvaluateRuntime(f *testing.F) {
 			require.True(t, found)
 			require.Equal(t, Allow, rule.Decision, "allowed a body that runs %s", original.fqn)
 		}
-		again := policy.EvaluateRuntime(post(string(verdict.Forward)))
+		again := policy.EvaluateRuntime(post(string(unprefix(verdict.Forward))))
 		require.True(t, again.Allowed, "forwarded body is not accepted: %q", verdict.Forward)
 		require.True(t, bytes.Equal(verdict.Forward, again.Forward),
 			"forwarded body is not canonical: %q vs %q", verdict.Forward, again.Forward)

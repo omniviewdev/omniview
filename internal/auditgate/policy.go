@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"regexp"
 	"sort"
 	"strings"
@@ -133,18 +132,22 @@ var (
 	namePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
 )
 
-// Parse validates and indexes a policy table. It rejects unknown fields,
-// trailing data, an unsupported version, undecided or unexplained rows,
-// duplicates, ID collisions and event allow rules that a deny rule shadows.
+// Parse validates and indexes a policy table. It rejects repeated and
+// case-variant keys, unknown fields, trailing data, an unsupported version,
+// undecided or unexplained rows, duplicates, ID collisions and event allow
+// rules that a deny rule shadows.
 func Parse(data []byte) (*Policy, error) {
+	// Go's decoder keeps the last of repeated keys and matches keys
+	// case-insensitively, so a table with such a key would load differently
+	// from how a reviewer reads the file. Refuse the text before decoding it.
+	if reason := checkStrictJSON(data); reason != "" {
+		return nil, fmt.Errorf("auditgate: invalid policy: %s", strings.ReplaceAll(string(reason), "_", " "))
+	}
 	var file policyFile
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&file); err != nil {
 		return nil, fmt.Errorf("auditgate: invalid policy: %w", err)
-	}
-	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
-		return nil, errors.New("auditgate: invalid policy: trailing data after the table")
 	}
 	if file.Version != policyVersion {
 		return nil, fmt.Errorf("auditgate: unsupported policy version %d (want %d)", file.Version, policyVersion)

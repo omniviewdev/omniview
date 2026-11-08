@@ -31,6 +31,16 @@ func newScopedRoot(dir string) (*ScopedRoot, error) {
 	return &ScopedRoot{root: r, path: dir}, nil
 }
 
+// openExistingScopedRoot opens an os.Root at dir without creating it.
+// A missing directory returns an error satisfying errors.Is(err, fs.ErrNotExist).
+func openExistingScopedRoot(dir string) (*ScopedRoot, error) {
+	r, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, fmt.Errorf("appstate: open root %q: %w", dir, err)
+	}
+	return &ScopedRoot{root: r, path: dir}, nil
+}
+
 // Close releases the underlying os.Root handle.
 func (s *ScopedRoot) Close() error {
 	return s.root.Close()
