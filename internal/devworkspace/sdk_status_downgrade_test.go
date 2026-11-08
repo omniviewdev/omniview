@@ -99,7 +99,7 @@ func TestSDKStatusDowngradesAVerifiedConsumerWhenTheSDKChangesDuringABuild(t *te
 	require.NoError(t, f.g.verifyUnchangedSDK(ctx, f.plugin(), before))
 	require.Equal(t, SDKVerified, statusConsumer(t, f.supervisor, "plugin").Verification)
 
-	changed := publishedTuple(t, "v0.18.0")
+	changed := publishedTuple(t, "v0.19.0")
 	*f.current = changed
 	err = f.g.verifyUnchangedSDK(ctx, f.plugin(), before)
 	var failure *devcontract.Error
@@ -157,7 +157,7 @@ func TestSDKStatusOfTheHostFollowsItsBuildOutcome(t *testing.T) {
 	require.Error(t, f.g.buildNode(ctx, host))
 	require.Equal(t, SDKUnresolved, statusConsumer(t, f.supervisor, "omniview").Verification, "a failed build leaves no verified claim")
 
-	moved := publishedTuple(t, "v0.18.0")
+	moved := publishedTuple(t, "v0.19.0")
 	f.g.options.HostBuild = func(context.Context, HostBuildRequest) error {
 		*f.current = moved // the SDK moves while the host compiles
 		return nil
@@ -185,7 +185,7 @@ func TestHistoricalSDKStatusDoesNotResurrectADowngradedConsumer(t *testing.T) {
 	require.NoError(t, f.g.verifyUnchangedSDK(ctx, f.plugin(), before))
 	require.Equal(t, SDKHistorical, historicalSDKStatus(f.supervisor.snapshot().SDK).Consumers[0].Verification)
 
-	*f.current = publishedTuple(t, "v0.18.0")
+	*f.current = publishedTuple(t, "v0.19.0")
 	require.Error(t, f.g.verifyUnchangedSDK(ctx, f.plugin(), before))
 	history := historicalSDKStatus(f.supervisor.snapshot().SDK)
 	require.Equal(t, SDKUnresolved, history.Consumers[0].Verification)

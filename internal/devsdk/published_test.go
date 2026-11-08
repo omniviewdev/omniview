@@ -310,7 +310,14 @@ func TestPublishedVerificationRefusesAModuleThatDisagreesWithTheReviewedChecksum
 		require.NoError(t, os.WriteFile(filepath.Join(tree, "injected.go"), []byte("package sdk\n"), 0o600))
 	})
 	uuid := world.PublishPinned("github.com/google/uuid")
-	reviewed := devsdk.ReviewedReleases()[0]
+	var reviewed devsdk.Published
+	for _, release := range devsdk.ReviewedReleases() {
+		if release.Version == devsdk.FloorVersion {
+			reviewed = release
+			break
+		}
+	}
+	require.Equal(t, served.Version, reviewed.Version)
 	require.NotEqual(t, reviewed.ModuleSum, served.ModuleSum, "control: the proxy serves other bytes than the reviewed release")
 	recorded := sdktest.Release{Module: reviewed.Module, Version: reviewed.Version, ModuleSum: reviewed.ModuleSum, GoModSum: reviewed.GoModSum}
 	f := fixture{world: world, sdk: recorded, uuid: uuid, consumer: world.Consumer("consumer", recorded, uuid)}

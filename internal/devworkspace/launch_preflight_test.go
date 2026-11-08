@@ -31,11 +31,18 @@ func launchEvidence() LinkProtocolEvidence {
 // and whose go.sum records its two checksums.
 func writeConsumerModule(t *testing.T, directory, version string) {
 	t.Helper()
+	moduleSum, goModSum := fixtureModuleSum, fixtureGoModSum
+	for _, reviewed := range devsdk.ReviewedReleases() {
+		if reviewed.Version == version {
+			moduleSum, goModSum = reviewed.ModuleSum, reviewed.GoModSum
+			break
+		}
+	}
 	require.NoError(t, os.MkdirAll(directory, 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(directory, "go.mod"),
-		[]byte("module example.com/"+filepath.Base(directory)+"\n\ngo 1.26.0\n\nrequire "+devsdk.Module+" "+version+"\n"), 0o600))
+		[]byte("module example.com/"+filepath.Base(directory)+"\n\ngo 1.27.0\n\nrequire "+devsdk.Module+" "+version+"\n"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(directory, "go.sum"),
-		[]byte(devsdk.Module+" "+version+" "+fixtureModuleSum+"\n"+devsdk.Module+" "+version+"/go.mod "+fixtureGoModSum+"\n"), 0o600))
+		[]byte(devsdk.Module+" "+version+" "+moduleSum+"\n"+devsdk.Module+" "+version+"/go.mod "+goModSum+"\n"), 0o600))
 }
 
 // publishedWorkspace is a materialized published-SDK workspace: a host and one

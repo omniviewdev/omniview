@@ -75,7 +75,7 @@ func TestPublishedVerificationIgnoresAParentWorkspaceFile(t *testing.T) {
 	data, err := os.ReadFile(isolation)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(isolation, []byte(strings.Replace(string(data), `"state-root-v1"`, `"tampered"`, 1)), 0o600))
-	f.world.Write(f.world.Root, "go.work", "go 1.26.0\n\nuse ./consumer\n\nreplace "+devsdk.Module+" => ./tampered\n")
+	f.world.Write(f.world.Root, "go.work", "go 1.27.0\n\nuse ./consumer\n\nreplace "+devsdk.Module+" => ./tampered\n")
 	run := environmentRunner(f)
 
 	// Control: without the verifier's environment, Go really does build against
@@ -166,7 +166,7 @@ func TestPublishedVerificationMapsGoSumDiagnosticsFromRealGo(t *testing.T) {
 		// (github.com/creack/pty and others) need go.mod checksums this go.sum lacks.
 		data, err := os.ReadFile(filepath.Join(f.consumer, "go.mod"))
 		require.NoError(t, err)
-		f.world.Write(f.consumer, "go.mod", strings.Replace(string(data), "go 1.26.0", "go 1.16", 1))
+		f.world.Write(f.consumer, "go.mod", strings.Replace(string(data), "go 1.27.0", "go 1.16", 1))
 		identity, err := verifier()(context.Background(), f.request())
 		typed := refusal(t, err)
 		require.Equal(t, devsdk.CodeDependencyUnavailable, typed.Code, "a missing entry of another module is not the SDK's missing checksum: %s", typed.Message)
@@ -220,7 +220,7 @@ func TestPublishedVerificationAndGoToolchainDirectives(t *testing.T) {
 		f := newFixture(t)
 		data, err := os.ReadFile(filepath.Join(f.consumer, "go.mod"))
 		require.NoError(t, err)
-		f.world.Write(f.consumer, "go.mod", strings.Replace(string(data), "go 1.26.0", "go 1.99.0", 1))
+		f.world.Write(f.consumer, "go.mod", strings.Replace(string(data), "go 1.27.0", "go 1.99.0", 1))
 		identity, err := verifier()(context.Background(), f.request())
 		typed := refusal(t, err)
 		require.Equal(t, devsdk.CodeDependencyUnavailable, typed.Code, typed.Message)
